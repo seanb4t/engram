@@ -1,0 +1,7 @@
+# Release image: distroless + the goreleaser-built engram binary.
+# goreleaser places the prebuilt binary in the build context (no source build);
+# the standalone source-build path is the top-level Dockerfile.
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY engram /engram
+EXPOSE 8080
+ENTRYPOINT ["/engram", "serve"]

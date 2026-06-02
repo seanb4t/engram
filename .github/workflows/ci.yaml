@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  pull_request: {}
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: lint + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: arduino/setup-task@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: azure/setup-helm@v4
+      - name: Lint
+        run: task lint
+      - name: Test
+        run: task test
+      - name: Format check
+        run: task fmt:check
+      - name: License headers
+        run: task license:check
+      - name: Chart lint
+        run: task chart:lint
