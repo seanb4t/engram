@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Sean Brandt
+
 """Tests for the posttooluse-memory-capture-nudge hook."""
 
 from __future__ import annotations

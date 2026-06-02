@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Sean Brandt
+
 """Tests for memory-curator scope derivation."""
 
 from __future__ import annotations

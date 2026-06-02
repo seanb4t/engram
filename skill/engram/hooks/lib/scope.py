@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Sean Brandt
+
 """Two-tier memory scope derivation (local git/jj only — no network, no auth).
 
 Public API: derive_scopes(cwd) -> Scopes(spine, overlay).
