@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
+// Package embed produces text embeddings via an OpenAI-compatible
+// /v1/embeddings endpoint (e.g. LiteLLM fronting Ollama bge-m3).
 package embed
 
 import (
@@ -9,6 +14,7 @@ import (
 	"time"
 )
 
+// Client embeds text via an OpenAI-compatible embeddings API.
 type Client struct {
 	baseURL string
 	apiKey  string
@@ -16,6 +22,7 @@ type Client struct {
 	http    *http.Client
 }
 
+// New returns an embedding Client for the given base URL, API key, and model.
 func New(baseURL, apiKey, model string) *Client {
 	return &Client{baseURL: baseURL, apiKey: apiKey, model: model, http: &http.Client{Timeout: 30 * time.Second}}
 }
@@ -31,6 +38,7 @@ type embedResp struct {
 	} `json:"data"`
 }
 
+// Embed returns the embedding vector for text.
 func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
 	body, _ := json.Marshal(embedReq{Model: c.model, Input: text})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/embeddings", bytes.NewReader(body))
@@ -43,7 +51,7 @@ func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("embeddings: status %d", resp.StatusCode)
 	}

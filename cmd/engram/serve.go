@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
 package main
 
 import (
@@ -68,8 +71,8 @@ func withAuth(handler http.Handler) http.Handler {
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
 	verifier, err := auth.New(ctx, oidcIssuer, oidcAudience)
+	cancel()
 	if err != nil {
 		log.Fatalf("oidc verifier init: %v", err)
 	}

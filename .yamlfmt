@@ -1,0 +1,14 @@
+# yamlfmt configuration — https://github.com/google/yamlfmt
+formatter:
+  type: basic
+  indent: 2
+  max_line_length: 120
+  include_document_start: false
+  retain_line_breaks: true
+  trim_trailing_whitespace: true
+  eof_newline: true
+  pad_line_comments: 1
+exclude:
+  - dist/
+  - vendor/
+  - bin/

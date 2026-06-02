@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
 // Package auth validates Authentik-issued OIDC bearer tokens forwarded by the
 // LiteLLM MCP gateway (delegate_auth_to_upstream) and extracts the caller's
 // identity so memory writes can be attributed to a verified user.
@@ -10,6 +13,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -56,7 +60,9 @@ func (v *Verifier) TokenVerifier() mcpauth.TokenVerifier {
 	return func(ctx context.Context, token string, _ *http.Request) (*mcpauth.TokenInfo, error) {
 		idt, err := v.idv.Verify(ctx, token)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %v", mcpauth.ErrInvalidToken, err)
+			// Join keeps ErrInvalidToken in the chain (so RequireBearerToken maps
+			// to 401) while preserving the underlying verification error.
+			return nil, errors.Join(mcpauth.ErrInvalidToken, err)
 		}
 		var claims identityClaims
 		// Identity is best-effort: a token may carry only `sub` (no profile/email

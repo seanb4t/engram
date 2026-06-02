@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
+// Package store persists and queries memories as vectors in a Qdrant collection.
 package store
 
 import (
@@ -27,11 +31,13 @@ type Memory struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// Store persists and queries memories in a Qdrant collection.
 type Store struct {
 	client     *qdrant.Client
 	collection string
 }
 
+// New returns a Store backed by the given Qdrant client and collection.
 func New(c *qdrant.Client, collection string) *Store {
 	return &Store{client: c, collection: collection}
 }
@@ -117,6 +123,7 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	return m
 }
 
+// Upsert inserts or replaces a memory (same ID replaces in place).
 func (s *Store) Upsert(ctx context.Context, m Memory, vec []float32) error {
 	_, err := s.client.Upsert(ctx, &qdrant.UpsertPoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
@@ -133,6 +140,7 @@ func (s *Store) scopeFilter(scope string) *qdrant.Filter {
 	return &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatch("scope", scope)}}
 }
 
+// Search returns the k nearest memories to vec within scope.
 func (s *Store) Search(ctx context.Context, scope string, vec []float32, k uint64) ([]Memory, error) {
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
@@ -173,6 +181,7 @@ func (s *Store) List(ctx context.Context, scope string, limit uint64) ([]Memory,
 	return out, nil
 }
 
+// Get returns the memory with the given id.
 func (s *Store) Get(ctx context.Context, id string) (Memory, error) {
 	pts, err := s.client.Get(ctx, &qdrant.GetPoints{
 		CollectionName: s.collection, Ids: []*qdrant.PointId{qdrant.NewID(id)},
@@ -187,6 +196,7 @@ func (s *Store) Get(ctx context.Context, id string) (Memory, error) {
 	return fromPayload(id, pts[0].Payload), nil
 }
 
+// Delete removes the memory with the given id.
 func (s *Store) Delete(ctx context.Context, id string) error {
 	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
@@ -195,6 +205,7 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+// DeleteAll removes every memory in scope.
 func (s *Store) DeleteAll(ctx context.Context, scope string) error {
 	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),

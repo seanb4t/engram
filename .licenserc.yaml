@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Sean Brandt
+#
+# license-eye (Apache SkyWalking Eyes) config. Licenses Go code + functional
+# markdown; generated/vendored/user-facing content is excluded.
+header:
+  license:
+    content: |
+      SPDX-License-Identifier: Apache-2.0
+      Copyright 2026 Sean Brandt
+    pattern: |
+      SPDX-License-Identifier: Apache-2\.0
+  paths:
+    - "cmd/**"
+    - "internal/**"
+    - "docs/**"
+    - "*.md"
+  paths-ignore:
+    - "vendor/**"
+    - "dist/**"
+    - "bin/**"
+    - "AGENTS.md"
+    - "**/*.golden"
+    - "**/.gitkeep"
+  language:
+    Markdown:
+      extensions: [".md"]
+      comment_style_id: AngleBracket
+  comment: on-failure

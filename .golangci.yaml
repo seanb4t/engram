@@ -1,0 +1,34 @@
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    # Bugs / correctness
+    - errcheck
+    - govet
+    - staticcheck
+    - errorlint
+    # Style
+    - revive
+    - misspell
+    - unconvert
+    - gocritic
+    - nolintlint
+    # Performance
+    - prealloc
+    # Maintenance
+    - unparam
+
+  exclusions:
+    presets:
+      - common-false-positives
+    rules:
+      # Tests tolerate longer funcs + unchecked cleanup errors.
+      - path: '_test\.go'
+        linters:
+          - gocritic
+          - errcheck
+          - unparam

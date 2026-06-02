@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
+// Package server registers and serves the engram memory MCP tools.
 package server
 
 import (
@@ -66,8 +70,9 @@ func buildDepsFromEnv() *deps {
 
 	st := store.New(qc, collection)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	if err := st.EnsureCollection(ctx, embedDim); err != nil {
+	err = st.EnsureCollection(ctx, embedDim)
+	cancel()
+	if err != nil {
 		log.Fatalf("EnsureCollection: %v", err)
 	}
 

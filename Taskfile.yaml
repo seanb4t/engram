@@ -1,0 +1,103 @@
+# Task (https://taskfile.dev) — engram dev/CI entrypoints.
+# Conventions adapted from github.com/holomush/holomush (cobra+Task+goreleaser,
+# no viper). CI invokes these targets; commit-lint runs in CI on PR titles.
+version: "3"
+
+vars:
+  IMAGE: ghcr.io/seanb4t/engram
+  CHART_REPO: oci://ghcr.io/seanb4t/charts
+
+tasks:
+  default:
+    cmds:
+      - task: lint
+      - task: test
+
+  build:
+    desc: Build the engram binary
+    cmds:
+      - go build -trimpath -o bin/engram ./cmd/engram
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - go test ./...
+  test:coverage:
+    desc: Run tests with coverage
+    cmds:
+      - go test -coverprofile=cover.out ./...
+  test:short:
+    cmds:
+      - go test -short ./...
+
+  lint:
+    desc: Run all linters
+    deps: ['lint:go', 'lint:yaml', 'lint:actions', 'lint:markdown']
+  lint:go:
+    cmds:
+      - golangci-lint run ./...
+  lint:yaml:
+    cmds:
+      - yamlfmt -lint .
+  lint:actions:
+    cmds:
+      - actionlint
+  lint:markdown:
+    cmds:
+      - rumdl check .
+
+  fmt:
+    desc: Format all sources
+    deps: ['fmt:go', 'fmt:dprint', 'fmt:yaml']
+  fmt:go:
+    cmds:
+      - gofmt -w .
+  fmt:dprint:
+    cmds:
+      - dprint fmt
+  fmt:yaml:
+    cmds:
+      - yamlfmt .
+  fmt:check:
+    cmds:
+      - gofmt -l .
+      - dprint check
+
+  license:check:
+    desc: Verify Apache-2.0 SPDX headers
+    cmds:
+      - license-eye header check
+  license:add:
+    cmds:
+      - license-eye header fix
+
+  chart:lint:
+    desc: Lint + render the Helm chart
+    cmds:
+      - helm lint charts/engram
+      - helm template charts/engram
+  chart:push:
+    desc: Package + push the OCI Helm chart (VERSION required)
+    cmds:
+      - helm package charts/engram --version {{.VERSION}} --app-version {{.VERSION}} -d dist/
+      - helm push dist/engram-{{.VERSION}}.tgz {{.CHART_REPO}}
+    requires:
+      vars: [VERSION]
+
+  release:check:
+    cmds:
+      - goreleaser check
+  release:snapshot:
+    cmds:
+      - goreleaser release --snapshot --clean
+
+  deps:
+    cmds:
+      - go mod tidy
+  tools:
+    desc: Install tools declared via go.mod `tool` directives (Go 1.24+)
+    cmds:
+      - go install tool
+  clean:
+    cmds:
+      - rm -rf bin dist cover.out
