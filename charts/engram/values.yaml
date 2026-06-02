@@ -52,3 +52,19 @@ qdrant:
     limits:
       cpu: "1"
       memory: 2Gi
+  # Optional native S3 snapshot storage. Off by default (generic chart). When
+  # enabled, Qdrant writes app-consistent .snapshot files straight to an
+  # S3-compatible bucket; snapshots_path doubles as the object-key prefix.
+  # The cluster supplies bucket/endpoint/secret via valuesObject; access/secret
+  # keys come from an existing Secret (not chart-managed).
+  snapshots:
+    s3:
+      enabled: false
+      bucket: ""
+      region: "auto" # R2 ignores region; "auto" satisfies the S3 client
+      endpointUrl: "" # e.g. https://<account>.r2.cloudflarestorage.com
+      pathPrefix: "memory/qdrant-snapshots" # S3 key prefix (snapshots_path)
+      secret:
+        name: "" # Secret holding the S3 access/secret keys
+        accessKeyKey: access_key
+        secretKeyKey: secret_key
