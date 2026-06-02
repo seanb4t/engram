@@ -28,18 +28,18 @@ def _build_context(spine: str, overlay: str | None) -> str:
     lines.append("")
     lines.append(
         "To recall durable memories for this session, call "
-        f"mcp__memory_oauth__list_memory once per scope above ({which}), merge "
+        f"mcp__engram__list_memory once per scope above ({which}), merge "
         "results (prefer the spine record on duplicate ids), and surface them "
         'grouped as "Repo-wide memories" and "This workspace\'s memories" — '
-        "silently omitting any group that returns nothing. If memory_oauth "
+        "silently omitting any group that returns nothing. If engram "
         "returns 401/403 it is not authenticated: say once that memories are "
-        "unavailable and the user can authenticate via /mcp (memory_oauth -> "
+        "unavailable and the user can authenticate via /mcp (engram -> "
         "Authenticate), then continue without blocking."
     )
     lines.append("")
     lines.append(
         "Capturing durable memory: this repo has a durable-memory capability on "
-        "the same memory_oauth server. As the session progresses, store durable "
+        "the same engram server. As the session progresses, store durable "
         "facts — decisions, conventions, preferences, gotchas, project-specific "
         "facts that outlive the session — following the curating-memory skill "
         "(search-before-store; supersede-on-contradiction; default to the spine, "

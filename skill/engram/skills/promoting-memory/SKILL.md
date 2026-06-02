@@ -15,11 +15,11 @@ user/model-mediated — there is no automatic merge-triggered migration.
 1. Use the `Memory spine scope` and `Memory workspace scope` lines from session
    start. If there is **no** workspace scope (primary checkout), there is
    nothing workspace-local to promote — stop.
-2. `mcp__memory_oauth__list_memory(<overlay scope>)` to enumerate this
+2. `mcp__engram__list_memory(<overlay scope>)` to enumerate this
    workspace's local memories. (401/403 → server unauthenticated; tell the user
    to `/mcp` Authenticate and stop.) If empty, report "nothing to promote".
-   All tools are on the `memory_oauth` server; below, `…__` abbreviates the
-   `mcp__memory_oauth__` prefix.
+   All tools are on the `engram` server; below, `…__` abbreviates the
+   `mcp__engram__` prefix.
 3. For each overlay memory, decide with the user:
    - **Promote** — now true repo-wide. `…__search_memory(<spine>, …)` first for a
      duplicate/contradiction; then `…__store_memory(<spine>, …)` (or

@@ -1,6 +1,6 @@
 ---
 name: curating-memory
-description: Use when storing or updating durable project memory via the memory_oauth MCP tools — enforces durable-only capture, search-before-store, supersede-on-contradiction, and the two-tier spine/overlay scope. Trigger when the user states a durable decision/preference/convention, on the session-end capture nudge, and before any mcp__memory_oauth__store_memory / update_memory / delete_memory call.
+description: Use when storing or updating durable project memory via the engram MCP tools — enforces durable-only capture, search-before-store, supersede-on-contradiction, and the two-tier spine/overlay scope. Trigger when the user states a durable decision/preference/convention, on the session-end capture nudge, and before any mcp__engram__store_memory / update_memory / delete_memory call.
 ---
 
 # Curating Memory
@@ -19,7 +19,7 @@ keys, timestamps, one-off tool output, or anything trivially re-derivable.
 
 ## Discipline
 
-1. **Search before store.** Call `mcp__memory_oauth__search_memory` across both
+1. **Search before store.** Call `mcp__engram__search_memory` across both
    the spine and (if present) the workspace overlay first. `search_memory` is
    backed by a semantic/vector engine, so query it with a natural-language
    description of the fact (not keyword fragments) — it surfaces conceptually
@@ -41,9 +41,9 @@ keys, timestamps, one-off tool output, or anything trivially re-derivable.
 
 ## Tools and auth
 
-All tools are on the `memory_oauth` server: `mcp__memory_oauth__store_memory`,
+All tools are on the `engram` server: `mcp__engram__store_memory`,
 `…__search_memory`, `…__update_memory`, `…__delete_memory`, `…__list_memory`,
 `…__get_memory`. If a call returns 401/403 the server is not authenticated —
-tell the user to authenticate via `/mcp` (memory_oauth → Authenticate), and
+tell the user to authenticate via `/mcp` (engram → Authenticate), and
 restate the durable fact so they can re-store it after authenticating; never
 drop it silently.

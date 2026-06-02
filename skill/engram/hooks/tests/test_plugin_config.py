@@ -16,9 +16,9 @@ def load(path: Path) -> dict:
 
 def test_mcp_declares_oauth_server():
     cfg = load(PLUGIN_ROOT / ".mcp.json")
-    server = cfg["mcpServers"]["memory_oauth"]
+    server = cfg["mcpServers"]["engram"]
     assert server["type"] == "http"
-    assert server["url"] == "https://litellm.fzymgc.house/mcp/memory_oauth"
+    assert server["url"] == "https://litellm.fzymgc.house/mcp/engram"
     assert "headers" not in server  # OAuth: no static secret
     assert server["oauth"]["callbackPort"] == 8765
 

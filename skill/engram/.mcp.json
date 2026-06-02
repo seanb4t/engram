@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "memory_oauth": {
+    "engram": {
       "type": "http",
-      "url": "https://litellm.fzymgc.house/mcp/memory_oauth",
+      "url": "https://litellm.fzymgc.house/mcp/engram",
       "oauth": { "callbackPort": 8765 }
     }
   }
