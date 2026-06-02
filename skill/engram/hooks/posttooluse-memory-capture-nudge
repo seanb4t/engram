@@ -1,0 +1,90 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# ///
+"""PostToolUse hook: one silent, throttled capture reminder per session.
+
+Fires after mutating tools (Edit/Write/NotebookEdit — see hooks.json matcher).
+Emits `additionalContext`, which Claude Code injects silently and reads on the
+next model turn — no chat message, no "error" styling. Throttled to once per
+session via a marker file keyed by session_id, so it lands as a single timely
+nudge right when durable facts are being created, not on every edit.
+
+This replaces the old blocking Stop nudge: the Stop hook's only lever to make
+Claude act was decision:block, which the UI renders as a "Stop hook error" on
+every session. additionalContext here is silent and equally effective.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lib.scope import derive_scopes  # noqa: E402
+
+
+def _marker_path(session_id: str) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", session_id)
+    return Path(tempfile.gettempdir()) / f"memory-curator-capture-nudge-{safe}"
+
+
+def _build_context(spine: str, overlay: str | None) -> str:
+    target = f"the spine ({spine})"
+    if overlay:
+        target += f" or the workspace overlay ({overlay})"
+    return (
+        "Memory capture reminder: you have changed repo state this session. If a "
+        "durable fact has been established — a decision, convention, preference, "
+        "or gotcha that outlives the session — capture it now via the "
+        f"curating-memory skill into {target} (search-before-store; "
+        "supersede-on-contradiction; never store transient state or secrets). If "
+        "nothing durable has emerged yet, ignore this and continue."
+    )
+
+
+def main() -> None:
+    try:
+        raw = sys.stdin.read()
+        data = json.loads(raw) if raw.strip() else {}
+    except (json.JSONDecodeError, OSError):
+        sys.exit(0)
+
+    session_id = data.get("session_id")
+    if not session_id:
+        sys.exit(0)  # cannot throttle safely without a session key
+
+    marker = _marker_path(str(session_id))
+    if marker.exists():
+        sys.exit(0)  # already nudged this session
+
+    cwd = data.get("cwd", os.getcwd())
+    try:
+        spine, overlay = derive_scopes(cwd)
+    except Exception as exc:
+        print(f"posttooluse-memory-capture-nudge: scope derivation failed: {exc}", file=sys.stderr)
+        sys.exit(0)
+
+    if spine is None:
+        sys.exit(0)
+
+    try:
+        marker.touch()  # claim the per-session slot before emitting
+    except OSError:
+        pass  # best-effort throttle; still emit once
+
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": _build_context(spine, overlay),
+        }
+    }))
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

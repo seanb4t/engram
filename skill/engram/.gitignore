@@ -1,0 +1,3 @@
+# Python bytecode from running the hook test suite locally.
+__pycache__/
+*.pyc

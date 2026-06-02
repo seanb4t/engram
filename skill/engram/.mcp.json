@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "memory_oauth": {
+      "type": "http",
+      "url": "https://litellm.fzymgc.house/mcp/memory_oauth",
+      "oauth": { "callbackPort": 8765 }
+    }
+  }
+}
