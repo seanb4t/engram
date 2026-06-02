@@ -9,26 +9,62 @@ on:
 permissions:
   contents: read
 
+# CI installs each gate via its official action (the runner is bare; the local
+# `task lint`/`fmt` suite assumes the tools are already on PATH). `task` remains
+# the local-dev entrypoint; these jobs mirror its gates with reliable installs.
 jobs:
-  ci:
-    name: lint + test
+  test:
+    name: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: arduino/setup-task@v2
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: azure/setup-helm@v4
-      - name: Lint
-        run: task lint
       - name: Test
-        run: task test
-      - name: Format check
-        run: task fmt:check
-      - name: License headers
-        run: task license:check
-      - name: Chart lint
-        run: task chart:lint
+        run: go test ./...
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed on:"; echo "$unformatted"; exit 1
+          fi
+
+  golangci:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v8
+
+  license:
+    name: license headers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: apache/skywalking-eyes/header@v0.7.0
+
+  chart:
+    name: helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: helm lint
+        run: helm lint charts/engram
+
+  workflows:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: actionlint
+        run: |-
+          go install github.com/rhysd/actionlint/cmd/actionlint@latest
+          "$(go env GOPATH)/bin/actionlint"
