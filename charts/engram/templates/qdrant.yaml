@@ -34,6 +34,28 @@ spec:
           ports:
             - { containerPort: 6333, name: rest }
             - { containerPort: 6334, name: grpc }
+          {{- with .Values.qdrant.snapshots.s3 }}
+          {{- if .enabled }}
+          env:
+            # Native S3 snapshot storage. snapshots_path doubles as the S3 key
+            # prefix when snapshots_storage=s3 (no s3_config.prefix field).
+            - { name: QDRANT__STORAGE__SNAPSHOTS_PATH, value: {{ .pathPrefix | quote }} }
+            - { name: QDRANT__STORAGE__SNAPSHOTS_CONFIG__SNAPSHOTS_STORAGE, value: "s3" }
+            - { name: QDRANT__STORAGE__SNAPSHOTS_CONFIG__S3_CONFIG__BUCKET, value: {{ .bucket | quote }} }
+            - { name: QDRANT__STORAGE__SNAPSHOTS_CONFIG__S3_CONFIG__REGION, value: {{ .region | quote }} }
+            - { name: QDRANT__STORAGE__SNAPSHOTS_CONFIG__S3_CONFIG__ENDPOINT_URL, value: {{ .endpointUrl | quote }} }
+            - name: QDRANT__STORAGE__SNAPSHOTS_CONFIG__S3_CONFIG__ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secret.name | quote }}
+                  key: {{ .secret.accessKeyKey | quote }}
+            - name: QDRANT__STORAGE__SNAPSHOTS_CONFIG__S3_CONFIG__SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secret.name | quote }}
+                  key: {{ .secret.secretKeyKey | quote }}
+          {{- end }}
+          {{- end }}
           livenessProbe:
             httpGet: { path: /livez, port: rest }
             initialDelaySeconds: 10
