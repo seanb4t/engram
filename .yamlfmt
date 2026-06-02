@@ -12,3 +12,4 @@ exclude:
   - dist/
   - vendor/
   - bin/
+  - charts/engram/templates/ # Helm templates ({{ }}) are not plain YAML

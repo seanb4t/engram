@@ -1,0 +1,54 @@
+# engram Helm chart values.
+# Defaults mirror the live deployment so an existing install is ADOPTED (same
+# resource kind/name/namespace) rather than recreated. The cluster supplies
+# environment specifics (LiteLLM URL, OIDC issuer, secret refs) via valuesObject.
+
+image:
+  repository: ghcr.io/seanb4t/engram
+  tag: "" # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+# e.g. [{ name: ghcr-pull-secret }] — the cluster sets this for a private image.
+imagePullSecrets: []
+
+memory:
+  listenAddr: ":8080"
+  embed:
+    model: "ollama/bge-m3"
+    dim: 1024
+  litellm:
+    url: "" # cluster supplies, e.g. http://litellm.litellm.svc.cluster.local:4000
+    keySecret:
+      name: "" # Secret holding the embedder's LiteLLM key
+      key: ""
+  qdrant:
+    collection: "memory"
+  oidc:
+    issuer: "" # set → enables bearer-token enforcement (signature/issuer/expiry)
+    audience: "" # MEM_OIDC_AUDIENCE (optional aud pin)
+    resourceMetadata: "" # MEM_OIDC_RESOURCE_METADATA (optional)
+  # Reloader watches the DEPLOYMENT object's annotations (not the pod template).
+  # The cluster sets { reloader.stakater.com/auto: "true" }.
+  deploymentAnnotations: {}
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+qdrant:
+  image: qdrant/qdrant:v1.18.1
+  storage:
+    size: 5Gi
+    className: longhorn-encrypted
+    pvcName: qdrant-data # MUST match the live PVC for ArgoCD to adopt it
+  # Match the live deployment exactly (else OOMKill on cutover).
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
