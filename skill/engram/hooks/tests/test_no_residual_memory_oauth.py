@@ -21,12 +21,16 @@ OLD_IDS = ("memory" + "_oauth", "memory" + "-curator", "memory" + "_curator")
 # Private deployment hosts must never ship — the url is consumer-configured via
 # ${ENGRAM_MCP_URL}; a gateway like litellm is the deployer's own choice.
 PRIVATE_HOSTS = ("fzymgc", "lite" + "llm")
+# Tooling cache dirs that pytest/python create under the bundle at runtime.
+# They are not shipped, and their contents (e.g. .pytest_cache/.../nodeids,
+# which records this module's own name) would otherwise trip the needle scan.
+IGNORED_DIRS = frozenset({"__pycache__", ".pytest_cache"})
 
 
 def _scan_shipped(needles: tuple[str, ...]) -> list[str]:
     offenders = []
     for p in BUNDLE.rglob("*"):
-        if not p.is_file() or "__pycache__" in p.parts:
+        if not p.is_file() or IGNORED_DIRS.intersection(p.parts):
             continue
         if p.relative_to(BUNDLE).parts[:2] == ("hooks", "tests"):
             continue
