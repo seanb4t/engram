@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import NamedTuple
 
@@ -23,10 +24,25 @@ class Scopes(NamedTuple):
 
 
 def _run(args: list[str], cwd: str) -> str | None:
-    """Run a command; return stripped stdout, or None on any failure."""
+    """Run a command; return stripped stdout, or None when the probe doesn't resolve.
+
+    Two None cases are deliberately collapsed and treated the same by callers:
+    a clean negative (nonzero exit — e.g. ``jj root`` outside a jj repo) and a
+    failure (missing binary, timeout, permission error). They are indistinguishable
+    at a bare ``root``/``rev-parse`` probe, so the safe contract is to degrade
+    conservatively (no scope, or spine-only) rather than guess a tier.
+
+    Abnormal failures (the exception branch) are logged to stderr because they are
+    rare and worth diagnosing — a jj/git timeout silently dropping the overlay is
+    otherwise invisible. Nonzero exits are NOT logged: they are the expected
+    "not this VCS" negative and would spam every session.
+    """
     try:
         proc = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=5)
-    except (OSError, subprocess.SubprocessError, ValueError):
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        print(
+            f"engram scope: {args[0]} probe failed ({exc}); degrading", file=sys.stderr
+        )
         return None
     if proc.returncode != 0:
         return None
