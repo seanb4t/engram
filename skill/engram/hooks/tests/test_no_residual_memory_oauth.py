@@ -3,7 +3,7 @@
 
 """Guards on the *shipped* bundle: no pre-rebrand branding, no private hosts.
 
-Scope is the shipped bundle (skills, hooks, manifests, commands, .mcp.json).
+Scope is the shipped bundle (skills, hooks, manifests, commands).
 Only the ``hooks/tests/`` scaffolding is excluded — these guards and
 ``test_plugin_config`` must name the banned strings in order to assert against
 them, and tests are never shipped to consumers. The exclusion is pinned to

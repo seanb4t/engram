@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "engram": {
-      "type": "http",
-      "url": "${ENGRAM_MCP_URL:-http://localhost:8080}",
-      "oauth": { "callbackPort": 8765 }
-    }
-  }
-}
