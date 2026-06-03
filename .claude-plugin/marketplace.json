@@ -1,0 +1,11 @@
+{
+  "name": "engram",
+  "owner": { "name": "Sean Brandt", "url": "https://github.com/seanb4t" },
+  "plugins": [
+    {
+      "name": "engram",
+      "description": "Self-hosted, correctable, OAuth-secured memory for coding agents (skills + hooks + MCP).",
+      "source": "./skill/engram"
+    }
+  ]
+}

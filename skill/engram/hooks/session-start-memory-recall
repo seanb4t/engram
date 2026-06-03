@@ -1,0 +1,87 @@
+#!/usr/bin/env -S uv run --script
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Sean Brandt
+
+# /// script
+# requires-python = ">=3.11"
+# ///
+"""SessionStart hook: surface memory scopes + a recall instruction.
+
+Computes the two-tier memory scope locally (git/jj) and emits additionalContext
+instructing Claude to call list_memory over its own OAuth-authenticated MCP
+connection. Hooks cannot hold the OAuth token, so recall is model-mediated.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lib.scope import derive_scopes  # noqa: E402
+
+
+def _build_context(spine: str, overlay: str | None) -> str:
+    lines = [f"Memory spine scope: {spine}"]
+    if overlay:
+        lines.append(f"Memory workspace scope: {overlay}")
+    which = "spine, and the workspace overlay if present" if overlay else "the spine"
+    lines.append("")
+    lines.append(
+        "To recall durable memories for this session, call "
+        f"mcp__engram__list_memory once per scope above ({which}), merge "
+        "results (prefer the spine record on duplicate ids), and surface them "
+        'grouped as "Repo-wide memories" and "This workspace\'s memories" — '
+        "silently omitting any group that returns nothing. If engram "
+        "returns 401/403 it is not authenticated: say once that memories are "
+        "unavailable and the user can authenticate via /mcp (engram -> "
+        "Authenticate), then continue without blocking."
+    )
+    lines.append("")
+    lines.append(
+        "Capturing durable memory: this repo has a durable-memory capability on "
+        "the same engram server. As the session progresses, store durable "
+        "facts — decisions, conventions, preferences, gotchas, project-specific "
+        "facts that outlive the session — following the curating-memory skill "
+        "(search-before-store; supersede-on-contradiction; default to the spine, "
+        "overlay only for genuinely work-local facts; never store transient state, "
+        "progress, or secrets). search_memory is backed by a semantic/vector "
+        "engine, so a natural-language description of the fact surfaces related "
+        "records for dedup even without shared keywords. There is no end-of-session "
+        "prompt: capture durable facts when they are established, and before you "
+        "finish take one moment to store anything durable still unsaved — or move "
+        "on silently if nothing durable came up."
+    )
+    return "\n".join(lines)
+
+
+def main() -> None:
+    try:
+        raw = sys.stdin.read()
+        data = json.loads(raw) if raw.strip() else {}
+    except (json.JSONDecodeError, OSError):
+        sys.exit(0)
+
+    cwd = data.get("cwd", os.getcwd())
+    try:
+        spine, overlay = derive_scopes(cwd)
+    except Exception as exc:
+        print(f"session-start-memory-recall: scope derivation failed: {exc}", file=sys.stderr)
+        sys.exit(0)
+
+    if spine is None:
+        sys.exit(0)
+
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": _build_context(spine, overlay),
+        }
+    }))
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

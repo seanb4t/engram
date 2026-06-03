@@ -19,9 +19,15 @@ tasks:
       - go build -trimpath -o bin/engram ./cmd/engram
 
   test:
-    desc: Run unit tests
+    desc: Run unit tests (go + python)
+    deps: ['test:go', 'test:python']
+  test:go:
     cmds:
       - go test ./...
+  test:python:
+    desc: Run the engram skill-plugin hook tests
+    cmds:
+      - uv run --with pytest pytest skill/engram/hooks/tests -q
   test:coverage:
     desc: Run tests with coverage
     cmds:
@@ -32,7 +38,7 @@ tasks:
 
   lint:
     desc: Run all linters
-    deps: ['lint:go', 'lint:yaml', 'lint:actions', 'lint:markdown']
+    deps: ['lint:go', 'lint:yaml', 'lint:actions', 'lint:markdown', 'lint:python']
   lint:go:
     cmds:
       - golangci-lint run ./...
@@ -45,10 +51,15 @@ tasks:
   lint:markdown:
     cmds:
       - rumdl check .
+  lint:python:
+    desc: Lint the engram skill-plugin hooks (ruff)
+    cmds:
+      - uv run --with ruff ruff check skill/engram/hooks
+      - uv run --with ruff ruff format --check skill/engram/hooks
 
   fmt:
     desc: Format all sources
-    deps: ['fmt:go', 'fmt:dprint', 'fmt:yaml']
+    deps: ['fmt:go', 'fmt:dprint', 'fmt:yaml', 'fmt:python']
   fmt:go:
     cmds:
       - gofmt -w .
@@ -58,6 +69,10 @@ tasks:
   fmt:yaml:
     cmds:
       - yamlfmt .
+  fmt:python:
+    desc: Format the engram skill-plugin hooks (ruff)
+    cmds:
+      - uv run --with ruff ruff format skill/engram/hooks
   fmt:check:
     cmds:
       - gofmt -l .

@@ -68,3 +68,16 @@ jobs:
         run: |-
           go install github.com/rhysd/actionlint/cmd/actionlint@latest
           "$(go env GOPATH)/bin/actionlint"
+
+  python:
+    name: python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v8.1.0
+      - name: ruff
+        run: |
+          uv run --with ruff ruff check skill/engram/hooks
+          uv run --with ruff ruff format --check skill/engram/hooks
+      - name: pytest
+        run: uv run --with pytest pytest skill/engram/hooks/tests -q

@@ -79,6 +79,42 @@ helm install engram oci://ghcr.io/seanb4t/charts/engram --version <X.Y.Z> \
 
 The chart deploys the server plus a Qdrant instance with a persistent volume.
 
+## Connect your coding agent
+
+This repo bundles the **`engram` plugin** for Claude Code (`skill/engram/`) — two
+skills (`curating-memory`, `promoting-memory`), session-start recall + a silent
+capture nudge, and the MCP server declaration. Install it one of two ways:
+
+```sh
+# Marketplace (versioned with engram's git tags)
+/plugin marketplace add seanb4t/engram
+/plugin install engram
+
+# …or zero-install: symlink the bundle into your personal skills dir
+ln -s "$PWD/skill/engram" ~/.claude/skills/engram
+```
+
+Point it at **your** engram server. The bundled `.mcp.json` reads
+`ENGRAM_MCP_URL` (default `http://localhost:8080`, the server's own root
+endpoint); set it for any other deployment:
+
+```sh
+export ENGRAM_MCP_URL=https://engram.example.com
+```
+
+The default applies only when the variable is **unset** — `export ENGRAM_MCP_URL=`
+(empty) falls through to localhost. For non-default auth (a static bearer token,
+or a pre-registered OAuth client), run **`/engram-setup`**: it interviews the URL
+and auth mode and registers a user-scope server via `claude mcp add`. Then run
+`/mcp` to complete OAuth where required.
+
+| Posture | How |
+|---------|-----|
+| Direct server, OIDC OAuth | server runs with `--oidc-issuer` + `--oidc-resource-metadata`; `/mcp` authenticates on first `401` |
+| Behind an OAuth gateway | point `ENGRAM_MCP_URL` at the gateway route; `/mcp` authenticates |
+| Local / no auth | server runs without `--oidc-issuer`; just set `ENGRAM_MCP_URL` |
+| Bearer token / CI | `/engram-setup` → bearer mode (static `Authorization` header) |
+
 ## Develop
 
 ```sh

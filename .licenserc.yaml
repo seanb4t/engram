@@ -15,6 +15,7 @@ header:
     - "internal/**"
     - "docs/**"
     - "*.md"
+    - "skill/**"
   paths-ignore:
     - "vendor/**"
     - "dist/**"
@@ -22,8 +23,24 @@ header:
     - "AGENTS.md"
     - "**/*.golden"
     - "**/.gitkeep"
+    - "skill/**/*.json"
+    - "skill/**/.gitignore"
+    # SKILL.md and slash-command markdown must open with YAML frontmatter on
+    # line 1 for Claude Code's skill/command loader, so they cannot carry a
+    # leading SPDX comment (matches the upstream skills ecosystem convention);
+    # repo LICENSE + plugin.json cover provenance.
+    - "skill/**/SKILL.md"
+    - "skill/**/commands/*.md"
   language:
     Markdown:
       extensions: [".md"]
       comment_style_id: AngleBracket
+    Python:
+      extensions: [".py"]
+      comment_style_id: Hashtag
+    UvScript:
+      filenames:
+        - "session-start-memory-recall"
+        - "posttooluse-memory-capture-nudge"
+      comment_style_id: Hashtag
   comment: on-failure
