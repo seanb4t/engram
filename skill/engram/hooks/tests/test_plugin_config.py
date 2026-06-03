@@ -28,7 +28,10 @@ def test_no_bundled_mcp_server():
 def test_plugin_manifest():
     manifest = load(PLUGIN_ROOT / ".claude-plugin" / "plugin.json")
     assert manifest["name"] == "engram"
-    assert manifest["hooks"] == "./hooks/hooks.json"
+    # No `hooks` key: the loader auto-loads the conventional hooks/hooks.json,
+    # so referencing it here triggers a duplicate-hooks-file load failure.
+    # manifest.hooks is only for ADDITIONAL hook files in non-standard paths.
+    assert "hooks" not in manifest
     assert "mcpServers" not in manifest  # no bundled server; see /engram-setup
 
 
