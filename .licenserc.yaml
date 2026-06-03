@@ -31,6 +31,10 @@ header:
     # repo LICENSE + plugin.json cover provenance.
     - "skill/**/SKILL.md"
     - "skill/**/commands/*.md"
+    # ADR markdown is render-generated from its bd decision record (source of
+    # truth = bd; "do not edit manually"), so an SPDX comment would be clobbered
+    # on every re-render. repo LICENSE + the bd record cover provenance.
+    - "docs/adr/*.md"
   language:
     Markdown:
       extensions: [".md"]
