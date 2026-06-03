@@ -52,3 +52,15 @@ def test_hooks_register_sessionstart_and_posttooluse():
     ptu = hooks["PostToolUse"][0]
     assert ptu["matcher"] == "Edit|Write|NotebookEdit"
     assert "posttooluse-memory-capture-nudge" in ptu["hooks"][0]["command"]
+
+
+def test_engram_setup_command_shape():
+    cmd = (PLUGIN_ROOT / "commands" / "engram-setup.md").read_text(encoding="utf-8")
+    assert cmd.startswith("---\n")  # YAML frontmatter on line 1 (loader requires it)
+    frontmatter = cmd.split("---", 2)[1]
+    assert "description:" in frontmatter
+    assert "argument-hint:" in frontmatter
+    assert "disable-model-invocation: true" in frontmatter  # explicit /-invoke only
+    # The body registers a user-scope engram server via the supported CLI.
+    assert "claude mcp add --transport http engram" in cmd
+    assert "--scope user" in cmd

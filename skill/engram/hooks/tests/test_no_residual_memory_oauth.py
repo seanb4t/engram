@@ -42,7 +42,9 @@ def _scan_shipped(needles: tuple[str, ...]) -> list[str]:
 
 def test_no_residual_old_branding():
     offenders = _scan_shipped(OLD_IDS)
-    assert not offenders, f"residual pre-rebrand branding in shipped bundle: {offenders}"
+    assert not offenders, (
+        f"residual pre-rebrand branding in shipped bundle: {offenders}"
+    )
 
 
 def test_no_private_hosts_in_shipped_bundle():
