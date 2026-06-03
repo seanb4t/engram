@@ -17,22 +17,19 @@ def load(path: Path) -> dict:
         return json.load(fh)
 
 
-def test_mcp_declares_engram_server():
-    cfg = load(PLUGIN_ROOT / ".mcp.json")
-    server = cfg["mcpServers"]["engram"]
-    assert server["type"] == "http"
-    # Deployment-neutral: a consumer-configurable url with a localhost default
-    # (the server mounts MCP at its root). No private host ships in the bundle.
-    assert server["url"] == "${ENGRAM_MCP_URL:-http://localhost:8080}"
-    assert "headers" not in server  # OAuth: no static secret shipped
-    assert server["oauth"]["callbackPort"] == 8765
+def test_no_bundled_mcp_server():
+    # The plugin ships no .mcp.json. A static localhost default produced a
+    # permanently-failing duplicate server for remote/gateway deployments and
+    # was redundant with the user-scope server /engram-setup registers (which
+    # always outranks a plugin def). Registration is via /engram-setup only.
+    assert not (PLUGIN_ROOT / ".mcp.json").exists()
 
 
 def test_plugin_manifest():
     manifest = load(PLUGIN_ROOT / ".claude-plugin" / "plugin.json")
     assert manifest["name"] == "engram"
     assert manifest["hooks"] == "./hooks/hooks.json"
-    assert manifest["mcpServers"] == "./.mcp.json"
+    assert "mcpServers" not in manifest  # no bundled server; see /engram-setup
 
 
 def test_marketplace_points_at_bundle():

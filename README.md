@@ -82,8 +82,8 @@ The chart deploys the server plus a Qdrant instance with a persistent volume.
 ## Connect your coding agent
 
 This repo bundles the **`engram` plugin** for Claude Code (`skill/engram/`) — two
-skills (`curating-memory`, `promoting-memory`), session-start recall + a silent
-capture nudge, and the MCP server declaration. Install it one of two ways:
+skills (`curating-memory`, `promoting-memory`), and session-start recall + a
+silent capture nudge. Install it one of two ways:
 
 ```sh
 # Marketplace (versioned with engram's git tags)
@@ -94,25 +94,16 @@ capture nudge, and the MCP server declaration. Install it one of two ways:
 ln -s "$PWD/skill/engram" ~/.claude/skills/engram
 ```
 
-Point it at **your** engram server. The bundled `.mcp.json` reads
-`ENGRAM_MCP_URL` (default `http://localhost:8080`, the server's own root
-endpoint); set it for any other deployment:
-
-```sh
-export ENGRAM_MCP_URL=https://engram.example.com
-```
-
-The default applies only when the variable is **unset** — `export ENGRAM_MCP_URL=`
-(empty) falls through to localhost. For non-default auth (a static bearer token,
-or a pre-registered OAuth client), run **`/engram-setup`**: it interviews the URL
-and auth mode and registers a user-scope server via `claude mcp add`. Then run
-`/mcp` to complete OAuth where required.
+The plugin ships **no** MCP server of its own — point it at **your** engram
+server by running **`/engram-setup`**. It interviews the URL and auth mode and
+registers a user-scope `engram` server (available in every project) via the
+supported `claude mcp add` CLI. Then run `/mcp` to complete OAuth where required.
 
 | Posture | How |
 |---------|-----|
-| Direct server, OIDC OAuth | server runs with `--oidc-issuer` + `--oidc-resource-metadata`; `/mcp` authenticates on first `401` |
-| Behind an OAuth gateway | point `ENGRAM_MCP_URL` at the gateway route; `/mcp` authenticates |
-| Local / no auth | server runs without `--oidc-issuer`; just set `ENGRAM_MCP_URL` |
+| Direct server, OIDC OAuth | server runs with `--oidc-issuer` + `--oidc-resource-metadata`; `/engram-setup` → OAuth, `/mcp` authenticates on first `401` |
+| Behind an OAuth gateway | `/engram-setup` → OAuth, point it at the gateway route; `/mcp` authenticates |
+| Local / no auth | `/engram-setup` → None, point it at `http://localhost:8080` |
 | Bearer token / CI | `/engram-setup` → bearer mode (static `Authorization` header) |
 
 ## Develop

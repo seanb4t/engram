@@ -9,9 +9,8 @@ disable-model-invocation: true
 Register the `engram` MCP server in the user's Claude Code config, pointed at
 their self-hosted engram deployment. This writes a **user-scope** server
 (available in every project) using the supported `claude mcp add` CLI — never by
-hand-editing settings files. A user-scope `engram` server takes precedence over
-the plugin-bundled one (which defaults to `${ENGRAM_MCP_URL:-http://localhost:8080}`),
-so it cleanly overrides it.
+hand-editing settings files. The plugin ships no bundled MCP server, so this
+command is the canonical way to wire engram up.
 
 ## Steps
 
