@@ -33,7 +33,7 @@ from lib.scope import derive_scopes  # noqa: E402
 
 def _marker_path(session_id: str) -> Path:
     safe = re.sub(r"[^A-Za-z0-9_.-]", "_", session_id)
-    return Path(tempfile.gettempdir()) / f"memory-curator-capture-nudge-{safe}"
+    return Path(tempfile.gettempdir()) / f"engram-capture-nudge-{safe}"
 
 
 def _build_context(spine: str, overlay: str | None) -> str:
@@ -77,8 +77,11 @@ def main() -> None:
 
     try:
         marker.touch()  # claim the per-session slot before emitting
-    except OSError:
-        pass  # best-effort throttle; still emit once
+    except OSError as exc:
+        # Throttle disabled: TMPDIR unwritable means the marker never lands, so
+        # the nudge will repeat on every mutating tool this session. Log it (the
+        # repeated nudge is otherwise an unexplained annoyance) and emit anyway.
+        print(f"posttooluse-memory-capture-nudge: throttle disabled ({exc})", file=sys.stderr)
 
     print(json.dumps({
         "hookSpecificOutput": {
