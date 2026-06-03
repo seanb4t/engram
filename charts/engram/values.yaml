@@ -44,6 +44,13 @@ qdrant:
     size: 5Gi
     className: longhorn-encrypted
     pvcName: qdrant-data # MUST match the live PVC for ArgoCD to adopt it
+    # Custom annotations on the PVC (empty by default — the chart stays generic).
+    # The cluster supplies deletion-protection here, e.g. via valuesObject:
+    #   helm.sh/resource-policy: keep            # guards `helm uninstall`
+    #   argocd.argoproj.io/sync-options: Prune=false  # guards ArgoCD prune
+    # Without protection, an ArgoCD source-ownership transition (kustomize→helm)
+    # prunes+recreates the PVC and loses the data.
+    annotations: {}
   # Match the live deployment exactly (else OOMKill on cutover).
   resources:
     requests:
