@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Sean Brandt
 
-"""Tests for memory-curator scope derivation."""
+"""Tests for the engram scope-derivation library (hooks/lib/scope.py)."""
 
 from __future__ import annotations
 
@@ -226,3 +226,17 @@ def test_git_linked_worktree_overlay_basename(monkeypatch):
     spine, overlay = scope.derive_scopes("/repo/_wt/feat")
     assert spine == "repo:github.com/org/repo"
     assert overlay == "repo:github.com/org/repo:ws:feat"
+
+
+def test_run_logs_abnormal_failure(capsys, tmp_path):
+    # A missing binary (OSError) is an abnormal failure: return None AND log, so a
+    # silent jj/git timeout that drops the scope is diagnosable.
+    assert scope._run(["engram-no-such-binary-xyz"], str(tmp_path)) is None
+    assert "probe failed" in capsys.readouterr().err
+
+
+def test_run_silent_on_clean_nonzero(capsys, tmp_path):
+    # A real tool exiting nonzero (git outside a repo) is the expected "not this
+    # VCS" negative — it must return None WITHOUT logging, or every session spams.
+    assert scope._run(["git", "rev-parse", "--show-toplevel"], str(tmp_path)) is None
+    assert capsys.readouterr().err == ""

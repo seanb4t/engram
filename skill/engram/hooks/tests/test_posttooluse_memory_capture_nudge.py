@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -31,7 +32,10 @@ def git(*args, cwd):
 
 
 def marker_for(session_id: str) -> Path:
-    return Path(tempfile.gettempdir()) / f"memory-curator-capture-nudge-{session_id}"
+    # Mirror the hook's sanitization (posttooluse-memory-capture-nudge:_marker_path)
+    # so this helper resolves the same path for session ids with unsafe characters.
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", session_id)
+    return Path(tempfile.gettempdir()) / f"engram-capture-nudge-{safe}"
 
 
 @pytest.fixture()
@@ -80,6 +84,22 @@ def test_throttled_to_once_per_session(git_repo: Path, session_id: str):
     second = run_hook({"cwd": str(git_repo), "session_id": session_id})
     assert second.returncode == 0
     assert second.stdout.strip() == ""  # marker present → silent
+
+
+def test_throttle_handles_unsafe_session_id(git_repo: Path):
+    # A session id with path separators / spaces must sanitize to a safe marker
+    # filename (no traversal) and still throttle correctly.
+    sid = "weird/id with spaces:and*chars"
+    marker = marker_for(sid)
+    marker.unlink(missing_ok=True)
+    try:
+        first = run_hook({"cwd": str(git_repo), "session_id": sid})
+        assert first.stdout.strip()  # first call emits
+        assert marker.exists()  # marker landed at the sanitized path
+        second = run_hook({"cwd": str(git_repo), "session_id": sid})
+        assert second.stdout.strip() == ""  # throttled despite the unsafe id
+    finally:
+        marker.unlink(missing_ok=True)
 
 
 def test_overlay_scope_for_named_workspace(

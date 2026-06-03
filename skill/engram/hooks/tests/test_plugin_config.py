@@ -21,9 +21,7 @@ def test_mcp_declares_engram_server():
     cfg = load(PLUGIN_ROOT / ".mcp.json")
     server = cfg["mcpServers"]["engram"]
     assert server["type"] == "http"
-    assert server["url"].endswith("/mcp/engram") or server["url"].endswith(
-        "/mcp/memory_oauth"
-    )
+    assert server["url"].endswith("/mcp/engram")
     assert "headers" not in server  # OAuth: no static secret
     assert server["oauth"]["callbackPort"] == 8765
 
