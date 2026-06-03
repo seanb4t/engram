@@ -2,7 +2,7 @@
   "mcpServers": {
     "engram": {
       "type": "http",
-      "url": "https://litellm.fzymgc.house/mcp/engram",
+      "url": "${ENGRAM_MCP_URL:-http://localhost:8080}",
       "oauth": { "callbackPort": 8765 }
     }
   }

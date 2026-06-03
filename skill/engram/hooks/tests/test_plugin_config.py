@@ -21,8 +21,10 @@ def test_mcp_declares_engram_server():
     cfg = load(PLUGIN_ROOT / ".mcp.json")
     server = cfg["mcpServers"]["engram"]
     assert server["type"] == "http"
-    assert server["url"].endswith("/mcp/engram")
-    assert "headers" not in server  # OAuth: no static secret
+    # Deployment-neutral: a consumer-configurable url with a localhost default
+    # (the server mounts MCP at its root). No private host ships in the bundle.
+    assert server["url"] == "${ENGRAM_MCP_URL:-http://localhost:8080}"
+    assert "headers" not in server  # OAuth: no static secret shipped
     assert server["oauth"]["callbackPort"] == 8765
 
 
