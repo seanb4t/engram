@@ -1,0 +1,33 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices"
+  ],
+  "postUpdateOptions": [
+    "gomodTidy"
+  ],
+  "platformAutomerge": true,
+  "packageRules": [
+    {
+      "description": "Auto-merge non-major Go module updates; majors still need manual review. CI (the branch checks) gates every merge.",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest"
+      ],
+      "automerge": true,
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Always track the latest GitHub Actions (including major bumps) and auto-merge. config:best-practices pins each action to a commit SHA; CI gates the merge.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "automerge": true,
+      "minimumReleaseAge": "3 days"
+    }
+  ]
+}
