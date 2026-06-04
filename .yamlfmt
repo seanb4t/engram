@@ -9,6 +9,8 @@ formatter:
   eof_newline: true
   pad_line_comments: 1
 exclude:
+  - .beads/ # beads-managed config (written without trailing newline)
+  - .worktrees/
   - dist/
   - vendor/
   - bin/

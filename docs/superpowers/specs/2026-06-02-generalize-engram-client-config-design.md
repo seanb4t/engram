@@ -189,8 +189,9 @@ Extend the existing `skill/engram/hooks/tests` suite:
   (`description`, `disable-model-invocation`), the same constraint as `SKILL.md`
   — a leading SPDX `<!-- -->` comment would break command parsing. So
   `.licenserc.yaml` must exempt command markdown too; generalize the existing
-  `skill/**/SKILL.md` ignore to also cover `skill/**/commands/*.md` (repo LICENSE
-  + plugin.json cover provenance). Verify `license-eye header check` stays green.
+  `skill/**/SKILL.md` ignore to also cover `skill/**/commands/*.md` (repo
+  LICENSE + plugin.json cover provenance). Verify `license-eye header check`
+  stays green.
 
 ## Risks
 

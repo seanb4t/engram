@@ -1,0 +1,43 @@
+# rumdl configuration
+# https://github.com/rvben/rumdl
+
+[global]
+# Disabled rules
+disable = [
+  "MD013", # Line length - disabled for prose
+  "MD033", # Inline HTML (badges, complex formatting)
+  "MD034", # Bare URLs
+  "MD036", # Emphasis as pseudo-headings
+  "MD044", # Proper names capitalization (too noisy)
+  "MD057", # Relative link validation (TODO: re-enable after fixing broken links)
+  "MD060", # Table column alignment (too strict for complex tables)
+  "MD076", # List item blank line consistency (conflicts with checkbox-style plans)
+]
+
+exclude = [
+  ".git",
+  ".worktrees",
+  ".beads",   # beads-managed (README.md, generated config)
+  ".agents",  # agent-tool-managed skill mirrors
+  ".claude",
+  ".codex",
+  "dist",
+  "node_modules",
+  "vendor",
+]
+
+respect-gitignore = true
+
+# MD024: siblings_only=true is rumdl's default — matches our needs
+
+[MD029]
+style = "ordered"
+
+[MD026]
+punctuation = ".,;:!。，；：！"
+
+[MD046]
+style = "fenced"
+
+[MD048]
+style = "backtick"
