@@ -47,7 +47,7 @@ Design intent: explicit, zero-junk, correctable. Do not add auto-extraction.
 signature + issuer + expiry; optional audience). The verified identity becomes
 the memory `actor`. No issuer → validation disabled (logged loudly).
 
-
+<!-- rumdl-disable MD031 MD032 -->
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:6cd5cc61 -->
 ## Beads Issue Tracker
 
@@ -102,3 +102,4 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 - Do not commit or push without clear authority from the active profile or the current user request.
 - If a required sync or push is blocked, stop and report the exact command and error.
 <!-- END BEADS INTEGRATION -->
+<!-- rumdl-enable MD031 MD032 -->
