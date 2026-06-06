@@ -29,6 +29,19 @@ type Memory struct {
 	// the validated OIDC token — never client-supplied. Empty when auth is off.
 	Actor     string    `json:"actor"`
 	CreatedAt time.Time `json:"created_at"`
+	// Discovery-only (zero-valued for the curated four categories).
+	Kind      string     `json:"kind,omitempty"`      // "map" | "fact"
+	Citations []Citation `json:"citations,omitempty"` // >= 1 for discoveries
+	Summary   string     `json:"summary,omitempty"`
+}
+
+// Citation anchors a discovery to a source so it can be verified and aged.
+type Citation struct {
+	Kind    string `json:"kind"`              // file | commit | url | repo
+	Ref     string `json:"ref"`               // path / repo URL / doc URL
+	Locator string `json:"locator,omitempty"` // e.g. "200-240" line range
+	Pin     string `json:"pin,omitempty"`     // aging anchor captured at store time
+	Excerpt string `json:"excerpt,omitempty"` // cached substance
 }
 
 // Store persists and queries memories in a Qdrant collection.
@@ -64,7 +77,7 @@ func payload(m Memory) map[string]any {
 	for i, t := range m.Tags {
 		tags[i] = t
 	}
-	return map[string]any{
+	p := map[string]any{
 		"content":       m.Content,
 		"scope":         m.Scope,
 		"repo":          m.Repo,
@@ -77,6 +90,19 @@ func payload(m Memory) map[string]any {
 		"actor":         m.Actor,
 		"created_at":    m.CreatedAt.Format(time.RFC3339),
 	}
+	if m.Category == "discovery" {
+		p["kind"] = m.Kind
+		p["summary"] = m.Summary
+		cites := make([]any, len(m.Citations))
+		for i, c := range m.Citations {
+			cites[i] = map[string]any{
+				"kind": c.Kind, "ref": c.Ref, "locator": c.Locator,
+				"pin": c.Pin, "excerpt": c.Excerpt,
+			}
+		}
+		p["citations"] = cites
+	}
+	return p
 }
 
 func fromPayload(id string, p map[string]*qdrant.Value) Memory {
@@ -120,6 +146,26 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 			m.CreatedAt = t
 		}
 	}
+	if v, ok := p["kind"]; ok {
+		m.Kind = v.GetStringValue()
+	}
+	if v, ok := p["summary"]; ok {
+		m.Summary = v.GetStringValue()
+	}
+	if v, ok := p["citations"]; ok {
+		if lv := v.GetListValue(); lv != nil {
+			for _, item := range lv.GetValues() {
+				f := item.GetStructValue().GetFields()
+				m.Citations = append(m.Citations, Citation{
+					Kind:    f["kind"].GetStringValue(),
+					Ref:     f["ref"].GetStringValue(),
+					Locator: f["locator"].GetStringValue(),
+					Pin:     f["pin"].GetStringValue(),
+					Excerpt: f["excerpt"].GetStringValue(),
+				})
+			}
+		}
+	}
 	return m
 }
 
@@ -145,6 +191,33 @@ func (s *Store) Search(ctx context.Context, scope string, vec []float32, k uint6
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
 		Filter: s.scopeFilter(scope), Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Memory, 0, len(res))
+	for _, p := range res {
+		out = append(out, fromPayload(p.Id.GetUuid(), p.Payload))
+	}
+	return out, nil
+}
+
+// SearchDiscovery runs a top-k vector search constrained to discovery records.
+// Empty scope spans all discovery scopes (the cross_spine case); empty kind
+// matches both map and fact. Builds a compound exact-match filter from the same
+// NewMatch primitive scopeFilter uses — no prefix matching.
+func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, vec []float32, k uint64) ([]Memory, error) {
+	must := []*qdrant.Condition{qdrant.NewMatch("category", "discovery")}
+	if scope != "" {
+		must = append(must, qdrant.NewMatch("scope", scope))
+	}
+	if kind != "" {
+		must = append(must, qdrant.NewMatch("kind", kind))
+	}
+	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
+		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
+		Filter: &qdrant.Filter{Must: must}, Limit: qdrant.PtrOf(k),
+		WithPayload: qdrant.NewWithPayload(true),
 	})
 	if err != nil {
 		return nil, err
