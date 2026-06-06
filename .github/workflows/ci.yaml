@@ -23,12 +23,22 @@ jobs:
           go-version-file: go.mod
       - name: Test
         run: go test ./...
+      # Enforce go.mod/go.sum tidiness here, not via a GoReleaser hook: release
+      # builds use the exact tagged module files (tag = source of truth).
+      - name: go.mod tidy check
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
       - name: gofmt
         run: |
           unformatted="$(gofmt -l .)"
           if [ -n "$unformatted" ]; then
             echo "gofmt needed on:"; echo "$unformatted"; exit 1
           fi
+      - uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7
+        with:
+          version: "~> v2"
+          args: check
 
   golangci:
     name: golangci-lint
@@ -81,3 +91,14 @@ jobs:
           uv run --with ruff ruff format --check skill/engram/hooks
       - name: pytest
         run: uv run --with pytest pytest skill/engram/hooks/tests -q
+
+  commit-lint:
+    name: commit-lint
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read # action-semantic-pull-request reads PR metadata via GITHUB_TOKEN
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -2,46 +2,75 @@ name: release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
 
+# The release-please GitHub App token (minted below) performs every release-PR /
+# tag / GitHub Release write and is the named bypass actor on the protect-main
+# ruleset. The default GITHUB_TOKEN only needs packages:write to push the image +
+# OCI chart to GHCR.
 permissions:
   contents: read
 
 jobs:
   release:
-    name: image + OCI chart
+    name: release-please + image + OCI chart
     runs-on: ubuntu-latest
     permissions:
-      contents: write # create the GitHub Release + tag
-      packages: write # push image + chart to GHCR
+      contents: read
+      packages: write # push image + chart to GHCR via GITHUB_TOKEN
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        id: app-token
         with:
+          app-id: ${{ secrets.RELEASE_APP }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      # Build + ship artifacts only when the release PR was just merged — check
+      # out AT THE TAG release-please cut (not the triggering main HEAD).
+      - if: ${{ steps.release.outputs.release_created }}
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ steps.release.outputs.tag_name }}
           fetch-depth: 0
-      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+      - if: ${{ steps.release.outputs.release_created }}
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: go.mod
-      - uses: arduino/setup-task@v2
+      - if: ${{ steps.release.outputs.release_created }}
+        uses: arduino/setup-task@v2
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5
-      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
-      - name: Log in to GHCR (image)
+      - if: ${{ steps.release.outputs.release_created }}
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5
+      - if: ${{ steps.release.outputs.release_created }}
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+      - if: ${{ steps.release.outputs.release_created }}
+        name: Log in to GHCR (image)
         env:
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-      - uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7
+      # release-please already created the tag-keyed GitHub Release (changelog
+      # body); GoReleaser uploads the binary + image to it. The app token (not
+      # GITHUB_TOKEN) writes the release, matching the release-PR actor.
+      - if: ${{ steps.release.outputs.release_created }}
+        uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7
         with:
           version: "~> v2"
           args: release --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Push OCI Helm chart
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+      - if: ${{ steps.release.outputs.release_created }}
+        name: Push OCI Helm chart
         env:
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
         run: |-
           echo "$GHCR_TOKEN" | helm registry login ghcr.io -u "$GHCR_USER" --password-stdin
-          task chart:push VERSION="${GITHUB_REF_NAME#v}"
+          task chart:push VERSION="${TAG_NAME#v}"

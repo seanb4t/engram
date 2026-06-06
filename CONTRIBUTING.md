@@ -26,7 +26,9 @@ rumdl, actionlint, goreleaser, helm) are listed in the Taskfile; install via
 ## Conventions
 
 - **Commits:** [Conventional Commits](https://www.conventionalcommits.org/)
-  (`type(scope): summary`). Validated in CI on PR titles via cocogitto.
+  (`type(scope): summary`). PR titles are validated in CI via
+  action-semantic-pull-request, and release-please derives the next version
+  from them.
 - **License headers:** every Go and Markdown file carries the Apache-2.0 SPDX
   header (`task license:check` enforces it; `task license:add` applies it).
 - **Formatting/linting:** `task fmt` then `task lint` must be clean before a PR.
@@ -37,9 +39,10 @@ rumdl, actionlint, goreleaser, helm) are listed in the Taskfile; install via
 
 ## Releases
 
-Tagging `vX.Y.Z` triggers goreleaser (multi-arch image) and the OCI Helm chart
-push. Versions are derived from conventional commits; there is no in-repo
-changelog (GitHub Release notes are generated at release time).
+Releases are driven by [release-please](https://github.com/googleapis/release-please):
+merging its always-open release PR cuts the `vX.Y.Z` tag + GitHub Release, and the
+release workflow then ships the multi-arch image (goreleaser) and the OCI Helm
+chart. Versions are derived from Conventional Commits. See [RELEASING.md](./RELEASING.md).
 
 ## License
 
