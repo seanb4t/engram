@@ -341,6 +341,24 @@ func (s *Store) getWritable(ctx context.Context, id, sub string) (Memory, error)
 	return m, nil
 }
 
+// OwnedOrAbsent permits a client-supplied-id write: nil if the id is absent (new
+// record) or already owned by sub (replace in place); ErrNotFound if it exists
+// and is owned by another actor (refuse cross-owner overwrite). Transport errors
+// surface unchanged.
+func (s *Store) OwnedOrAbsent(ctx context.Context, id, sub string) error {
+	m, err := s.Get(ctx, id)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if m.Owner != sub {
+		return fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	return nil
+}
+
 // Update replaces a record's content (re-embedded via vec), only if owned by
 // sub. When shared is non-nil it also sets visibility (true → "shared", false →
 // ""); nil leaves visibility unchanged so a content edit never silently unshares.

@@ -513,6 +513,30 @@ func TestSetVisibilityOwnerGate(t *testing.T) {
 	}
 }
 
+func TestOwnedOrAbsent(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "discovery:repo:owned"
+	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	id := "b2b2b2b2-0000-0000-0000-000000000001"
+	// Absent id → ok (caller will create).
+	if err := s.OwnedOrAbsent(ctx, id, "sub-A"); err != nil {
+		t.Errorf("absent id should be ok: %v", err)
+	}
+	m := Memory{ID: id, Content: "d", Scope: scope, Category: "discovery", Kind: "fact", Owner: "sub-A", CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	// Owner re-supplies id → ok (replace).
+	if err := s.OwnedOrAbsent(ctx, id, "sub-A"); err != nil {
+		t.Errorf("owner replace should be ok: %v", err)
+	}
+	// Other actor supplies id → ErrNotFound (refuse overwrite).
+	if err := s.OwnedOrAbsent(ctx, id, "sub-B"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("cross-owner overwrite: want ErrNotFound, got %v", err)
+	}
+}
+
 // DeleteAllRaw removes every point in scope regardless of owner — test cleanup only.
 func (s *Store) DeleteAllRaw(ctx context.Context, scope string) error {
 	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{

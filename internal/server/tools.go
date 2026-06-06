@@ -231,6 +231,12 @@ func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string
 	if err := validateStoreDiscovery(a); err != nil {
 		return "", err
 	}
+	sub := ownerFromContext(ctx)
+	if a.ID != "" {
+		if err := d.st.OwnedOrAbsent(ctx, a.ID, sub); err != nil {
+			return "", err
+		}
+	}
 	vec, err := d.em.Embed(ctx, a.Content)
 	if err != nil {
 		return "", err
@@ -254,7 +260,7 @@ func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string
 		Summary:   a.Summary,
 		Tags:      a.Tags,
 		Actor:     actorFromContext(ctx),
-		Owner:     ownerFromContext(ctx),
+		Owner:     sub,
 		CreatedAt: time.Now().UTC(),
 	}
 	return m.ID, d.st.Upsert(ctx, m, vec)
