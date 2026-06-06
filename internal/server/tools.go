@@ -233,6 +233,37 @@ func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]store.Memory, 
 	return d.st.Search(ctx, a.Scope, vec, a.K)
 }
 
+// effectiveDiscoveryScope resolves the scope filter for a discovery search:
+// "" means span all discovery scopes (cross_spine). cross_spine ignores any
+// supplied scope; otherwise a scope is mandatory.
+func effectiveDiscoveryScope(a searchDiscoveryArgs) (string, error) {
+	if a.CrossSpine {
+		return "", nil
+	}
+	if a.Scope == "" {
+		return "", fmt.Errorf("scope is required unless cross_spine is true")
+	}
+	return a.Scope, nil
+}
+
+func (d *deps) searchDiscovery(ctx context.Context, a searchDiscoveryArgs) ([]store.Memory, error) {
+	scope, err := effectiveDiscoveryScope(a)
+	if err != nil {
+		return nil, err
+	}
+	if a.CrossSpine && a.Scope != "" {
+		log.Printf("search_discovery: cross_spine=true ignores scope %q", a.Scope)
+	}
+	if a.K == 0 {
+		a.K = 8
+	}
+	vec, err := d.em.Embed(ctx, a.Query)
+	if err != nil {
+		return nil, err
+	}
+	return d.st.SearchDiscovery(ctx, scope, a.Kind, vec, a.K)
+}
+
 func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 	cur, err := d.st.Get(ctx, a.ID)
 	if err != nil {
@@ -299,6 +330,12 @@ func Register(s *mcp.Server) {
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeDiscoveryArgs) (*mcp.CallToolResult, any, error) {
 			id, err := d.storeDiscovery(ctx, a)
 			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id}, err
+		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "search_discovery", Description: "Semantic search over the discovery pool. scope required unless cross_spine=true; optional kind=map|fact. Results carry citations + created_at (aging signals)."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a searchDiscoveryArgs) (*mcp.CallToolResult, any, error) {
+			hits, err := d.searchDiscovery(ctx, a)
+			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"discoveries": hits}, err
 		})
 }
 

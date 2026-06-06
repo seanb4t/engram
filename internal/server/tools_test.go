@@ -29,3 +29,19 @@ func TestValidateStoreDiscovery(t *testing.T) {
 		}
 	}
 }
+
+func TestEffectiveDiscoveryScope(t *testing.T) {
+	// cross_spine=false requires a scope.
+	if _, err := effectiveDiscoveryScope(searchDiscoveryArgs{CrossSpine: false, Scope: ""}); err == nil {
+		t.Error("expected error: scope required when cross_spine=false")
+	}
+	got, err := effectiveDiscoveryScope(searchDiscoveryArgs{CrossSpine: false, Scope: "discovery:repo:X"})
+	if err != nil || got != "discovery:repo:X" {
+		t.Errorf("scoped: got %q err %v", got, err)
+	}
+	// cross_spine=true spans all scopes (effective scope empty), scope ignored.
+	got, err = effectiveDiscoveryScope(searchDiscoveryArgs{CrossSpine: true, Scope: "discovery:repo:X"})
+	if err != nil || got != "" {
+		t.Errorf("cross_spine: got %q err %v", got, err)
+	}
+}
