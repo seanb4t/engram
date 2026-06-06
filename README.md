@@ -29,6 +29,8 @@ _who_ recorded a memory.
 | Tool | Purpose |
 |------|---------|
 | `store_memory(content, scope, source, category, tags?, …)` | Persist a durable memory |
+| `store_discovery(content, kind, citations[], scope, …)` | Cache citation-backed codebase understanding (kind=map\|fact) |
+| `search_discovery(query, scope?, kind?, cross_spine?)` | On-demand semantic search over the discovery pool |
 | `search_memory(query, scope, k?)` | Semantic search within a scope |
 | `list_memory(scope, limit?)` | Most-recent memories in a scope (session bootstrap, no query) |
 | `get_memory(id)` | Fetch one memory |
@@ -39,6 +41,11 @@ A memory record carries `content`, `scope`, `repo`/`workspace`/`worktree_path`/
 `base_dir`, `source` (`user-said` | `agent-inferred`), `category`, `tags`,
 `actor` (the verified caller identity — server-set, never client-supplied), and
 `created_at`.
+
+A **discovery** record (category `discovery`) additionally carries `kind`
+(`map` | `fact`), `citations[]` (each `kind`/`ref`/`locator`/`pin`/`excerpt`),
+and an optional `summary`; it lives in a `discovery:repo:<repo>` scope and is
+recalled on demand, never at session start.
 
 ## Authentication
 

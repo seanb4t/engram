@@ -41,6 +41,12 @@ Tools: `store_memory` / `search_memory` / `list_memory` / `get_memory` /
 `actor` (verified caller — server-set, never client-supplied), `created_at`.
 Design intent: explicit, zero-junk, correctable. Do not add auto-extraction.
 
+Discovery tools: `store_discovery` / `search_discovery`. A discovery is a 5th
+`category` carrying `kind` (`map`|`fact`), `citations` (with aging `pin`s), and
+`summary`; it lives in a separate `discovery:repo:*` scope, is recalled on
+demand (never at session start), and is captured via the `discovering` skill.
+Design intent unchanged: explicit, citation-backed, no auto-extraction.
+
 ## Auth
 
 `--oidc-issuer`/`MEM_OIDC_ISSUER` enables bearer-token enforcement (JWKS
