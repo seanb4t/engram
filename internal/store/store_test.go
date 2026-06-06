@@ -108,7 +108,7 @@ func TestUpsertGetDeleteRoundtrip(t *testing.T) {
 	if got.Scope != m.Scope {
 		t.Errorf("scope mismatch: got %q want %q", got.Scope, m.Scope)
 	}
-	if err := s.Delete(ctx, m.ID); err != nil {
+	if err := s.Delete(ctx, m.ID, ""); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 	if _, err := s.Get(ctx, m.ID); err == nil {
@@ -154,7 +154,7 @@ func TestDiscoveryRoundtrip(t *testing.T) {
 	if got.Citations[1].Ref != "github.com/qdrant/go-client" || got.Citations[1].Pin != "@v1.18.2" {
 		t.Errorf("citation[1] mismatch: %+v", got.Citations[1])
 	}
-	_ = s.Delete(ctx, m.ID)
+	_ = s.Delete(ctx, m.ID, "")
 }
 
 func TestSearchDiscoveryFilters(t *testing.T) {
@@ -411,6 +411,30 @@ func TestGetReadableOwnerGate(t *testing.T) {
 	_, err := s.GetReadable(ctx, priv.ID, "sub-A")
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("cross-actor private read: want ErrNotFound, got %v", err)
+	}
+}
+
+func TestDeleteOwnerGate(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:del"
+	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	// Even a SHARED record is not deletable by a non-owner.
+	m := Memory{ID: "eeeeeeee-0000-0000-0000-000000000001", Content: "s", Scope: scope, Owner: "sub-B", Visibility: "shared", CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if err := s.Delete(ctx, m.ID, "sub-A"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("non-owner delete: want ErrNotFound, got %v", err)
+	}
+	if _, err := s.Get(ctx, m.ID); err != nil {
+		t.Errorf("record should survive non-owner delete: %v", err)
+	}
+	if err := s.Delete(ctx, m.ID, "sub-B"); err != nil {
+		t.Errorf("owner delete failed: %v", err)
+	}
+	if _, err := s.Get(ctx, m.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("owner delete did not remove record: %v", err)
 	}
 }
 

@@ -373,7 +373,7 @@ func Register(s *mcp.Server) {
 
 	mcp.AddTool(s, &mcp.Tool{Name: "delete_memory", Description: "Delete one memory by id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-			err := d.st.Delete(ctx, a.ID)
+			err := d.st.Delete(ctx, a.ID, ownerFromContext(ctx))
 			return textResult("deleted"), nil, err
 		})
 

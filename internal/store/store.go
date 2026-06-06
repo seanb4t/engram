@@ -328,8 +328,24 @@ func (s *Store) GetReadable(ctx context.Context, id, sub string) (Memory, error)
 	return m, nil
 }
 
-// Delete removes the memory with the given id.
-func (s *Store) Delete(ctx context.Context, id string) error {
+// getWritable returns the record only if the caller OWNS it (shared does NOT
+// grant write); otherwise ErrNotFound. The mutate primitive.
+func (s *Store) getWritable(ctx context.Context, id, sub string) (Memory, error) {
+	m, err := s.Get(ctx, id)
+	if err != nil {
+		return Memory{}, err
+	}
+	if m.Owner != sub {
+		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	return m, nil
+}
+
+// Delete removes the memory with the given id, only if owned by sub.
+func (s *Store) Delete(ctx context.Context, id, sub string) error {
+	if _, err := s.getWritable(ctx, id, sub); err != nil {
+		return err
+	}
 	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
 		Points: qdrant.NewPointsSelector(qdrant.NewID(id)),
