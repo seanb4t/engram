@@ -155,7 +155,25 @@ func validateStoreDiscovery(a storeDiscoveryArgs) error {
 	if a.Scope == "" {
 		return fmt.Errorf("scope is required")
 	}
+	for i, c := range a.Citations {
+		if !validCitationKind(c.Kind) {
+			return fmt.Errorf("citation %d: kind must be one of file|commit|url|repo, got %q", i, c.Kind)
+		}
+		if c.Ref == "" {
+			return fmt.Errorf("citation %d: ref is required (the source anchor)", i)
+		}
+	}
 	return nil
+}
+
+// validCitationKind reports whether k is one of the four citation kinds the
+// store_discovery contract accepts. Mirrors the citationArg.Kind jsonschema enum.
+func validCitationKind(k string) bool {
+	switch k {
+	case "file", "commit", "url", "repo":
+		return true
+	}
+	return false
 }
 
 func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {

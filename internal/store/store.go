@@ -155,7 +155,11 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	if v, ok := p["citations"]; ok {
 		if lv := v.GetListValue(); lv != nil {
 			for _, item := range lv.GetValues() {
-				f := item.GetStructValue().GetFields()
+				sv := item.GetStructValue()
+				if sv == nil {
+					continue // skip malformed (non-struct) list items
+				}
+				f := sv.GetFields()
 				m.Citations = append(m.Citations, Citation{
 					Kind:    f["kind"].GetStringValue(),
 					Ref:     f["ref"].GetStringValue(),

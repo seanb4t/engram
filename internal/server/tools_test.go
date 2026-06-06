@@ -22,6 +22,10 @@ func TestValidateStoreDiscovery(t *testing.T) {
 		{"no citations", storeDiscoveryArgs{Content: "x", Kind: "fact", Scope: "s"}},
 		{"empty content", storeDiscoveryArgs{Content: "", Kind: "fact", Scope: "s", Citations: []citationArg{{Kind: "file", Ref: "f"}}}},
 		{"empty scope", storeDiscoveryArgs{Content: "x", Kind: "fact", Scope: "", Citations: []citationArg{{Kind: "file", Ref: "f"}}}},
+		{"empty citation ref", storeDiscoveryArgs{Content: "x", Kind: "fact", Scope: "s", Citations: []citationArg{{Kind: "file", Ref: ""}}}},
+		{"invalid citation kind", storeDiscoveryArgs{Content: "x", Kind: "fact", Scope: "s", Citations: []citationArg{{Kind: "blob", Ref: "f"}}}},
+		{"empty citation kind", storeDiscoveryArgs{Content: "x", Kind: "fact", Scope: "s", Citations: []citationArg{{Kind: "", Ref: "f"}}}},
+		{"second citation bad", storeDiscoveryArgs{Content: "x", Kind: "fact", Scope: "s", Citations: []citationArg{{Kind: "file", Ref: "ok"}, {Kind: "url", Ref: ""}}}},
 	}
 	for _, tc := range bad {
 		if err := validateStoreDiscovery(tc.a); err == nil {

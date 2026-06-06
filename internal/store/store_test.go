@@ -162,6 +162,24 @@ func TestSearchDiscoveryFilters(t *testing.T) {
 	}
 }
 
+func TestFromPayloadSkipsNonStructCitation(t *testing.T) {
+	// A malformed citations list (a stray non-struct item) must not yield an
+	// empty Citation{}; the struct items still read back. Pure unit test — no Qdrant.
+	p := qdrant.NewValueMap(map[string]any{
+		"citations": []any{
+			"not-a-struct",
+			map[string]any{"kind": "file", "ref": "f.go", "locator": "1-2"},
+		},
+	})
+	m := fromPayload("id-1", p)
+	if len(m.Citations) != 1 {
+		t.Fatalf("expected 1 citation (non-struct skipped), got %d: %+v", len(m.Citations), m.Citations)
+	}
+	if m.Citations[0].Ref != "f.go" || m.Citations[0].Kind != "file" {
+		t.Errorf("citation mismatch: %+v", m.Citations[0])
+	}
+}
+
 func TestSearchAndDeleteAll(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
