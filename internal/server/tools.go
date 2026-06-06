@@ -38,45 +38,50 @@ type deps struct {
 	}
 }
 
+// StoreFromEnv builds a Qdrant-backed Store from the MEM_QDRANT_* / MEM_EMBED_DIM
+// environment and ensures the collection exists. Shared by the server bootstrap
+// and the migrate-set-owner command.
+func StoreFromEnv() (*store.Store, error) {
+	qdrantAddr := EnvOr("MEM_QDRANT_ADDR", "localhost:6334")
+	collection := EnvOr("MEM_QDRANT_COLLECTION", "mem_eval")
+	embedDimStr := EnvOr("MEM_EMBED_DIM", "1024")
+	embedDim, err := strconv.ParseUint(embedDimStr, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid MEM_EMBED_DIM %q: %w", embedDimStr, err)
+	}
+	host, portStr, err := net.SplitHostPort(qdrantAddr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid MEM_QDRANT_ADDR %q: %w", qdrantAddr, err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid port in MEM_QDRANT_ADDR %q: %w", qdrantAddr, err)
+	}
+	qc, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
+	if err != nil {
+		return nil, fmt.Errorf("qdrant client: %w", err)
+	}
+	st := store.New(qc, collection)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := st.EnsureCollection(ctx, embedDim); err != nil {
+		return nil, fmt.Errorf("EnsureCollection: %w", err)
+	}
+	return st, nil
+}
+
 // buildDepsFromEnv reads environment variables and wires up the store and embedder.
 // Reads: MEM_QDRANT_ADDR (host:port gRPC 6334), MEM_QDRANT_COLLECTION (default "mem_eval"),
 // MEM_LITELLM_URL, MEM_LITELLM_KEY, MEM_EMBED_MODEL (default "ollama/bge-m3"),
 // MEM_EMBED_DIM (default 1024).
 func buildDepsFromEnv() *deps {
-	qdrantAddr := EnvOr("MEM_QDRANT_ADDR", "localhost:6334")
-	collection := EnvOr("MEM_QDRANT_COLLECTION", "mem_eval")
+	st, err := StoreFromEnv()
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
 	litellmURL := EnvOr("MEM_LITELLM_URL", "http://localhost:4000")
 	litellmKey := EnvOr("MEM_LITELLM_KEY", "")
 	embedModel := EnvOr("MEM_EMBED_MODEL", "ollama/bge-m3")
-	embedDimStr := EnvOr("MEM_EMBED_DIM", "1024")
-
-	embedDim, err := strconv.ParseUint(embedDimStr, 10, 64)
-	if err != nil {
-		log.Fatalf("invalid MEM_EMBED_DIM %q: %v", embedDimStr, err)
-	}
-
-	host, portStr, err := net.SplitHostPort(qdrantAddr)
-	if err != nil {
-		log.Fatalf("invalid MEM_QDRANT_ADDR %q: %v", qdrantAddr, err)
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		log.Fatalf("invalid port in MEM_QDRANT_ADDR %q: %v", qdrantAddr, err)
-	}
-
-	qc, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
-	if err != nil {
-		log.Fatalf("qdrant client: %v", err)
-	}
-
-	st := store.New(qc, collection)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	err = st.EnsureCollection(ctx, embedDim)
-	cancel()
-	if err != nil {
-		log.Fatalf("EnsureCollection: %v", err)
-	}
-
 	em := embed.New(litellmURL, litellmKey, embedModel)
 	return &deps{st: st, em: em}
 }

@@ -417,3 +417,33 @@ func (s *Store) DeleteAll(ctx context.Context, scope, sub string) error {
 	})
 	return err
 }
+
+// MigrateSetOwner backfills owner onto every record that lacks an owner key
+// (records written before per-actor isolation). Idempotent: records that already
+// carry an owner are not matched. NewIsEmpty matches missing/null keys but not an
+// empty string, so auth-disabled records (owner=="") are intentionally left
+// alone. Returns the number of records stamped.
+func (s *Store) MigrateSetOwner(ctx context.Context, owner string) (uint64, error) {
+	if owner == "" {
+		return 0, fmt.Errorf("owner must be non-empty")
+	}
+	missing := &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewIsEmpty("owner")}}
+	cnt, err := s.client.Count(ctx, &qdrant.CountPoints{
+		CollectionName: s.collection, Filter: missing, Exact: qdrant.PtrOf(true),
+	})
+	if err != nil {
+		return 0, err
+	}
+	if cnt == 0 {
+		return 0, nil
+	}
+	_, err = s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload:        qdrant.NewValueMap(map[string]any{"owner": owner}),
+		PointsSelector: qdrant.NewPointsSelectorFilter(missing),
+	})
+	if err != nil {
+		return 0, err
+	}
+	return cnt, nil
+}

@@ -163,7 +163,11 @@ func TestSearchDiscoveryFilters(t *testing.T) {
 	scopeA := "discovery:repo:A"
 	scopeB := "discovery:repo:B"
 	curated := "repo:A"
-	defer func() { _ = s.DeleteAll(ctx, scopeA, ""); _ = s.DeleteAll(ctx, scopeB, ""); _ = s.DeleteAll(ctx, curated, "") }()
+	defer func() {
+		_ = s.DeleteAll(ctx, scopeA, "")
+		_ = s.DeleteAll(ctx, scopeB, "")
+		_ = s.DeleteAll(ctx, curated, "")
+	}()
 
 	mk := func(id, scope, cat, kind string, vec []float32) {
 		m := Memory{ID: id, Content: "x", Scope: scope, Category: cat, Kind: kind,
@@ -558,6 +562,56 @@ func TestDeleteAllOwnerScoped(t *testing.T) {
 	}
 	if _, err := s.Get(ctx, b.ID); err != nil {
 		t.Errorf("B's record should survive A's teardown: %v", err)
+	}
+}
+
+func TestMigrateSetOwner(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:migrate"
+	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+
+	// Refuses empty owner.
+	if _, err := s.MigrateSetOwner(ctx, ""); err == nil {
+		t.Error("empty owner: expected error")
+	}
+
+	// A record written WITHOUT the owner key (simulating a pre-isolation record):
+	// build the payload, strip "owner", and upsert raw.
+	id := "d4d4d4d4-0000-0000-0000-000000000001"
+	p := payload(Memory{ID: id, Content: "legacy", Scope: scope, CreatedAt: time.Now().UTC()})
+	delete(p, "owner")
+	if _, err := s.client.Upsert(ctx, &qdrant.UpsertPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Points: []*qdrant.PointStruct{{
+			Id: qdrant.NewID(id), Vectors: qdrant.NewVectors(0.1, 0.2, 0.3),
+			Payload: qdrant.NewValueMap(p),
+		}},
+	}); err != nil {
+		t.Fatalf("raw upsert: %v", err)
+	}
+
+	n, err := s.MigrateSetOwner(ctx, "sub-OWNER")
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if n == 0 {
+		t.Fatal("migrate stamped 0 records, want >= 1")
+	}
+	got, err := s.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get after migrate: %v", err)
+	}
+	if got.Owner != "sub-OWNER" {
+		t.Errorf("owner not stamped: %q", got.Owner)
+	}
+	// Idempotent: a second run stamps nothing (the record now has an owner).
+	n2, err := s.MigrateSetOwner(ctx, "sub-OWNER")
+	if err != nil {
+		t.Fatalf("migrate rerun: %v", err)
+	}
+	if n2 != 0 {
+		t.Errorf("idempotency: rerun stamped %d, want 0", n2)
 	}
 }
 
