@@ -5,16 +5,63 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"os"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/qdrant/go-client/qdrant"
+	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
 
 	"github.com/seanb4t/engram/internal/store"
 )
+
+// testQdrantAddr is the gRPC host:port the integration tests run against. Set by
+// TestMain: MEM_QDRANT_TEST_ADDR if provided (fast path / override), else an
+// ephemeral testcontainer. Empty when neither is available (Docker absent), in
+// which case the integration tests skip.
+var testQdrantAddr string
+
+// TestMain provisions Qdrant for this package's integration tests. It prefers an
+// existing instance via MEM_QDRANT_TEST_ADDR; otherwise it boots an ephemeral
+// Qdrant via testcontainers and tears it down afterward. If neither is available
+// the suite still runs — the integration tests skip with a clear message.
+func TestMain(m *testing.M) {
+	if addr := os.Getenv("MEM_QDRANT_TEST_ADDR"); addr != "" {
+		testQdrantAddr = addr
+		os.Exit(m.Run())
+	}
+	// Bound startup so an unreachable daemon or a stalled image pull fails fast
+	// instead of hanging the suite. os.Exit skips defers, so cancel explicitly.
+	startCtx, startCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	container, err := tcqdrant.Run(startCtx, "qdrant/qdrant:v1.18.2")
+	if err != nil {
+		startCancel()
+		fmt.Fprintf(os.Stderr, "qdrant testcontainer unavailable (%v); integration tests will skip — set MEM_QDRANT_TEST_ADDR or start Docker\n", err)
+		os.Exit(m.Run())
+	}
+	testQdrantAddr, err = container.GRPCEndpoint(startCtx)
+	startCancel()
+	if err != nil {
+		terminateQdrant(container)
+		fmt.Fprintf(os.Stderr, "qdrant grpc endpoint: %v\n", err)
+		os.Exit(1)
+	}
+	code := m.Run()
+	terminateQdrant(container)
+	os.Exit(code)
+}
+
+// terminateQdrant tears down the container under a bounded context so a slow
+// Docker shutdown cannot hang the suite.
+func terminateQdrant(c *tcqdrant.QdrantContainer) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_ = c.Terminate(ctx)
+}
 
 // fakeEmbedder returns a fixed vector so handler tests don't need a live embedder.
 type fakeEmbedder struct{}
@@ -28,12 +75,17 @@ func (fakeEmbedder) Embed(context.Context, string) ([]float32, error) {
 // embedder is fakeable; deps.st is concrete, hence the Qdrant gate.
 func testDeps(t *testing.T) *deps {
 	t.Helper()
-	addr := os.Getenv("MEM_QDRANT_TEST_ADDR")
-	if addr == "" {
-		t.Skip("set MEM_QDRANT_TEST_ADDR to run handler integration tests")
+	if testQdrantAddr == "" {
+		t.Skip("no Qdrant available: set MEM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
 	}
-	host, portStr, _ := net.SplitHostPort(addr)
-	port, _ := strconv.Atoi(portStr)
+	host, portStr, err := net.SplitHostPort(testQdrantAddr)
+	if err != nil {
+		t.Fatalf("invalid Qdrant address %q: %v", testQdrantAddr, err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port <= 0 {
+		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, testQdrantAddr, err)
+	}
 	c, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
 	if err != nil {
 		t.Fatalf("client: %v", err)
