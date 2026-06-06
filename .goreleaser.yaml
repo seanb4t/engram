@@ -8,9 +8,12 @@ version: 2
 
 project_name: engram
 
-before:
-  hooks:
-    - go mod tidy
+# No `before.hooks: [go mod tidy]` — release builds must use the exact tagged
+# go.mod/go.sum (tag = source of truth). Tidiness is enforced in CI (ci.yaml
+# test job: `go mod tidy` + `git diff --exit-code`), not mutated here.
+
+gomod:
+  proxy: true
 
 builds:
   - id: engram
@@ -76,12 +79,10 @@ docker_manifests:
       - "ghcr.io/seanb4t/engram:{{ .Version }}-amd64"
       - "ghcr.io/seanb4t/engram:{{ .Version }}-arm64"
 
-changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
-      - "Merge pull request"
-      - "Merge branch"
+# No `changelog:` block — release-please owns the changelog (CHANGELOG.md + the
+# GitHub Release notes body), derived from Conventional Commits.
+release:
+  # release-please creates the GitHub Release (changelog body); GoReleaser only
+  # uploads artifacts to that already-created, tag-keyed release.
+  # replace_existing_artifacts makes re-runs idempotent.
+  replace_existing_artifacts: true

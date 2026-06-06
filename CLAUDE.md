@@ -24,14 +24,19 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 - **VCS:** jj-colocated. Use jj for VCS ops; never push to `main` directly.
 - **Task runner:** `task` (see `Taskfile.yaml`). `task` = lint + test.
 - **CLI:** cobra; **no viper** — config is env-first (`MEM_*`) with flag overrides.
-- **Commits:** Conventional Commits; validated in CI on PR titles (cocogitto).
+- **Commits:** Conventional Commits; PR titles validated in CI
+  (action-semantic-pull-request).
 - **License:** every Go/Markdown file carries the Apache-2.0 SPDX header
   (`task license:check`). `task license:add` applies it.
 - **Lint/format:** `task lint` (golangci-lint, yamlfmt, actionlint, rumdl) and
   `task fmt` (gofmt, dprint, yamlfmt) must be clean.
-- **Releases:** tag `vX.Y.Z` → goreleaser image + OCI Helm chart; version is
-  ldflags-injected into `main.version`.
-- **Not used here:** protobuf/buf, database migrations, viper.
+- **Releases:** release-please-driven (see `RELEASING.md`). Merging the
+  release PR cuts the `vX.Y.Z` tag + GitHub Release; the release workflow then
+  ships the binary + image (goreleaser) and the OCI Helm chart (`task
+  chart:push`). release-please syncs `charts/engram/Chart.yaml`
+  (`version`/`appVersion`) and `skill/engram/.claude-plugin/plugin.json`
+  (`$.version`); the binary version is ldflags-injected into `main.version`.
+- **Not used here:** protobuf/buf, database migrations, viper, cocogitto.
 
 ## Memory contract (stable)
 

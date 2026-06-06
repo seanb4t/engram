@@ -99,46 +99,16 @@ tasks:
     requires:
       vars: [VERSION]
 
+  # Releasing is driven by release-please (see RELEASING.md): merging the
+  # release PR cuts the tag + GitHub Release, and the release workflow ships the
+  # image + OCI chart. These targets are local validation only.
   release:check:
     cmds:
       - goreleaser check
   release:snapshot:
+    desc: Local goreleaser dry build (no publish)
     cmds:
       - goreleaser release --snapshot --clean
-  release:dry-run:
-    desc: Preview the next semver cog would derive (no tag, no push)
-    cmds:
-      - task: _cog
-        vars: {COG_ARGS: bump --auto --dry-run}
-  release:
-    desc: >-
-      Cut a release from main: derive the next semver from Conventional Commits, tag the current commit (no bump commit),
-      and push the tag to fire the release workflow (image + OCI chart). Preview first with release:dry-run.
-    cmds:
-      # --disable-bump-commit tags the real commit instead of an empty
-      # chore(version) commit, matching every prior tag.
-      - task: _cog
-        vars: {COG_ARGS: bump --auto --disable-bump-commit}
-      - git push origin "$(git describe --tags --abbrev=0)"
-    preconditions:
-      - sh: '[ -z "$(git status --porcelain)" ]'
-        msg: "Working tree is dirty — commit or discard changes before releasing."
-  _cog:
-    internal: true
-    # cog's branch_whitelist=[main] reads git HEAD's branch. In a colocated jj
-    # checkout HEAD is detached, so attach it to main for the cog run and
-    # restore the prior state on exit (a no-op in a plain-git checkout).
-    cmds:
-      - |
-        set -e
-        if ! git symbolic-ref -q HEAD >/dev/null; then
-          main_sha=$(git rev-parse refs/heads/main)
-          git symbolic-ref HEAD refs/heads/main
-          trap 'git symbolic-ref --delete HEAD 2>/dev/null || true; git update-ref --no-deref HEAD "$main_sha"' EXIT
-        fi
-        cog {{.COG_ARGS}}
-    requires:
-      vars: [COG_ARGS]
 
   deps:
     cmds:
