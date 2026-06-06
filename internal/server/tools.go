@@ -229,6 +229,10 @@ func validCitationKind(k string) bool {
 }
 
 func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
+	owner, err := ownerFromContext(ctx)
+	if err != nil {
+		return "", err
+	}
 	vec, err := d.em.Embed(ctx, a.Content)
 	if err != nil {
 		return "", err
@@ -245,7 +249,7 @@ func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
 		Category:  a.Category,
 		Tags:      a.Tags,
 		Actor:     actorFromContext(ctx),
-		Owner:     ownerFromContext(ctx),
+		Owner:     owner,
 		CreatedAt: time.Now().UTC(),
 	}
 	return m.ID, d.st.Upsert(ctx, m, vec)
@@ -255,7 +259,10 @@ func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string
 	if err := validateStoreDiscovery(a); err != nil {
 		return "", err
 	}
-	sub := ownerFromContext(ctx)
+	sub, err := ownerFromContext(ctx)
+	if err != nil {
+		return "", err
+	}
 	if a.ID != "" {
 		if err := d.st.OwnedOrAbsent(ctx, a.ID, sub); err != nil {
 			return "", err
@@ -301,27 +308,37 @@ func actorFromContext(ctx context.Context) string {
 }
 
 // ownerFromContext returns the stable OIDC subject (the authorization key)
-// injected by the RequireBearerToken middleware, or "" when auth is disabled.
-// Never client-supplied — it is the validated token's `sub`, which
-// auth.TokenVerifier places in TokenInfo.Extra["sub"].
-func ownerFromContext(ctx context.Context) string {
-	if ti := mcpauth.TokenInfoFromContext(ctx); ti != nil {
-		if sub, ok := ti.Extra["sub"].(string); ok {
-			return sub
-		}
+// injected by the RequireBearerToken middleware. It returns "" only when auth is
+// disabled (no token in context → the anonymous bucket). A present-but-malformed
+// token — validated by the middleware yet carrying no non-empty `sub` — is a
+// fail-closed error, never silently collapsed into the anonymous bucket, so a
+// partially-populated authenticated request is rejected rather than granted
+// no-auth read/write/delete semantics. Never client-supplied: the value is the
+// validated token's `sub`, which auth.TokenVerifier places in TokenInfo.Extra.
+func ownerFromContext(ctx context.Context) (string, error) {
+	ti := mcpauth.TokenInfoFromContext(ctx)
+	if ti == nil {
+		return "", nil // auth disabled: the anonymous bucket
 	}
-	return ""
+	if sub, ok := ti.Extra["sub"].(string); ok && sub != "" {
+		return sub, nil
+	}
+	return "", fmt.Errorf("validated token missing subject")
 }
 
 func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]store.Memory, error) {
 	if a.K == 0 {
 		a.K = 8
 	}
+	owner, err := ownerFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 	vec, err := d.em.Embed(ctx, a.Query)
 	if err != nil {
 		return nil, err
 	}
-	return d.st.Search(ctx, a.Scope, ownerFromContext(ctx), vec, a.K)
+	return d.st.Search(ctx, a.Scope, owner, vec, a.K)
 }
 
 // effectiveDiscoveryScope resolves the scope filter for a discovery search:
@@ -350,19 +367,27 @@ func (d *deps) searchDiscovery(ctx context.Context, a searchDiscoveryArgs) ([]st
 	if a.K == 0 {
 		a.K = 8
 	}
+	owner, err := ownerFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 	vec, err := d.em.Embed(ctx, a.Query)
 	if err != nil {
 		return nil, err
 	}
-	return d.st.SearchDiscovery(ctx, scope, a.Kind, ownerFromContext(ctx), vec, a.K)
+	return d.st.SearchDiscovery(ctx, scope, a.Kind, owner, vec, a.K)
 }
 
 func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
+	owner, err := ownerFromContext(ctx)
+	if err != nil {
+		return err
+	}
 	vec, err := d.em.Embed(ctx, a.Content)
 	if err != nil {
 		return err
 	}
-	return d.st.Update(ctx, a.ID, ownerFromContext(ctx), a.Content, a.Shared, vec)
+	return d.st.Update(ctx, a.ID, owner, a.Content, a.Shared, vec)
 }
 
 // Register wires the memory tools onto the MCP server.
@@ -386,13 +411,21 @@ func Register(s *mcp.Server) {
 			if a.Limit == 0 {
 				a.Limit = 20
 			}
-			mems, err := d.st.List(ctx, a.Scope, ownerFromContext(ctx), a.Limit)
+			owner, err := ownerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			mems, err := d.st.List(ctx, a.Scope, owner, a.Limit)
 			return textResult(fmt.Sprintf("%d memories", len(mems))), map[string]any{"memories": mems}, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-			m, err := d.st.GetReadable(ctx, a.ID, ownerFromContext(ctx))
+			owner, err := ownerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			m, err := d.st.GetReadable(ctx, a.ID, owner)
 			return textResult(m.Content), m, err
 		})
 
@@ -404,13 +437,21 @@ func Register(s *mcp.Server) {
 
 	mcp.AddTool(s, &mcp.Tool{Name: "delete_memory", Description: "Delete one memory by id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-			err := d.st.Delete(ctx, a.ID, ownerFromContext(ctx))
+			owner, err := ownerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			err = d.st.Delete(ctx, a.ID, owner)
 			return textResult("deleted"), nil, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "delete_all", Description: "Delete your own memories in a scope (teardown); never another caller's records."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a scopeArgs) (*mcp.CallToolResult, any, error) {
-			err := d.st.DeleteAll(ctx, a.Scope, ownerFromContext(ctx))
+			owner, err := ownerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			err = d.st.DeleteAll(ctx, a.Scope, owner)
 			return textResult("scope cleared"), nil, err
 		})
 
@@ -428,7 +469,11 @@ func Register(s *mcp.Server) {
 
 	mcp.AddTool(s, &mcp.Tool{Name: "set_visibility", Description: "Share or unshare a memory you own. shared=true → readable by any authenticated caller (never writable by others); false → private."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a setVisibilityArgs) (*mcp.CallToolResult, any, error) {
-			err := d.st.SetVisibility(ctx, a.ID, ownerFromContext(ctx), a.Shared)
+			owner, err := ownerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			err = d.st.SetVisibility(ctx, a.ID, owner, a.Shared)
 			return textResult("visibility updated"), nil, err
 		})
 }

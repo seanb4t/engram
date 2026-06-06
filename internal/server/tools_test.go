@@ -132,6 +132,19 @@ func TestValidateStoreDiscovery(t *testing.T) {
 	}
 }
 
+// TestOwnerFromContextNoToken pins the auth-disabled half of the contract: no
+// token in context is the anonymous bucket ("", nil), NOT an error — otherwise a
+// no-issuer deployment would reject every request. The fail-closed path (a
+// validated token lacking a non-empty sub → error) cannot be unit-tested here
+// because the go-sdk stores TokenInfo under an unexported context key, so there
+// is no way to inject one (same constraint as the deferred handler-isolation gap).
+func TestOwnerFromContextNoToken(t *testing.T) {
+	sub, err := ownerFromContext(context.Background())
+	if sub != "" || err != nil {
+		t.Errorf("no token: want (\"\", nil), got (%q, %v)", sub, err)
+	}
+}
+
 func TestEffectiveDiscoveryScope(t *testing.T) {
 	// cross_spine=false requires a scope.
 	if _, err := effectiveDiscoveryScope(searchDiscoveryArgs{CrossSpine: false, Scope: ""}); err == nil {
