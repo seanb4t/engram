@@ -27,8 +27,15 @@ type Memory struct {
 	Tags      []string `json:"tags"`
 	// Actor is the verified caller identity (email/username/subject) taken from
 	// the validated OIDC token — never client-supplied. Empty when auth is off.
-	Actor     string    `json:"actor"`
-	CreatedAt time.Time `json:"created_at"`
+	Actor string `json:"actor"`
+	// Owner is the stable OIDC subject (`sub`) of the caller — the authorization
+	// key. Server-set from the validated token, never client-supplied. Empty when
+	// auth is disabled (the single anonymous bucket).
+	Owner string `json:"owner"`
+	// Visibility gates cross-actor reads: "" (private, default) or "shared"
+	// (readable by any authenticated caller). Writes always require ownership.
+	Visibility string    `json:"visibility,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
 	// Discovery-only (zero-valued for the curated four categories).
 	Kind      string     `json:"kind,omitempty"`      // "map" | "fact"
 	Citations []Citation `json:"citations,omitempty"` // >= 1 for discoveries
@@ -88,6 +95,8 @@ func payload(m Memory) map[string]any {
 		"category":      m.Category,
 		"tags":          tags,
 		"actor":         m.Actor,
+		"owner":         m.Owner,
+		"visibility":    m.Visibility,
 		"created_at":    m.CreatedAt.Format(time.RFC3339),
 	}
 	if m.Category == "discovery" {
@@ -133,6 +142,12 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	}
 	if v, ok := p["actor"]; ok {
 		m.Actor = v.GetStringValue()
+	}
+	if v, ok := p["owner"]; ok {
+		m.Owner = v.GetStringValue()
+	}
+	if v, ok := p["visibility"]; ok {
+		m.Visibility = v.GetStringValue()
 	}
 	if v, ok := p["tags"]; ok {
 		if lv := v.GetListValue(); lv != nil {

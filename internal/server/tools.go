@@ -215,6 +215,7 @@ func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
 		Category:  a.Category,
 		Tags:      a.Tags,
 		Actor:     actorFromContext(ctx),
+		Owner:     ownerFromContext(ctx),
 		CreatedAt: time.Now().UTC(),
 	}
 	return m.ID, d.st.Upsert(ctx, m, vec)
@@ -247,6 +248,7 @@ func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string
 		Summary:   a.Summary,
 		Tags:      a.Tags,
 		Actor:     actorFromContext(ctx),
+		Owner:     ownerFromContext(ctx),
 		CreatedAt: time.Now().UTC(),
 	}
 	return m.ID, d.st.Upsert(ctx, m, vec)
@@ -258,6 +260,19 @@ func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string
 func actorFromContext(ctx context.Context) string {
 	if ti := mcpauth.TokenInfoFromContext(ctx); ti != nil {
 		return ti.UserID
+	}
+	return ""
+}
+
+// ownerFromContext returns the stable OIDC subject (the authorization key)
+// injected by the RequireBearerToken middleware, or "" when auth is disabled.
+// Never client-supplied — it is the validated token's `sub`, which
+// auth.TokenVerifier places in TokenInfo.Extra["sub"].
+func ownerFromContext(ctx context.Context) string {
+	if ti := mcpauth.TokenInfoFromContext(ctx); ti != nil {
+		if sub, ok := ti.Extra["sub"].(string); ok {
+			return sub
+		}
 	}
 	return ""
 }

@@ -273,3 +273,32 @@ func TestSearchAndDeleteAll(t *testing.T) {
 		t.Fatalf("expected 0 hits after delete_all, got %d", len(hits2))
 	}
 }
+
+func TestOwnerVisibilityRoundtrip(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	m := Memory{
+		ID:         "aaaaaaaa-0000-0000-0000-000000000001",
+		Content:    "owned + shared record",
+		Scope:      "iso-test:project:r",
+		Owner:      "sub-abc",
+		Visibility: "shared",
+		CreatedAt:  time.Now().UTC().Truncate(time.Second),
+	}
+	defer func() {
+		_, _ = s.client.Delete(ctx, &qdrant.DeletePoints{
+			CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+			Points: qdrant.NewPointsSelector(qdrant.NewID(m.ID)),
+		})
+	}()
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	got, err := s.Get(ctx, m.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Owner != "sub-abc" || got.Visibility != "shared" {
+		t.Errorf("round-trip lost owner/visibility: owner=%q visibility=%q", got.Owner, got.Visibility)
+	}
+}
