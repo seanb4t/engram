@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -128,11 +129,20 @@ type storeDiscoveryArgs struct {
 	Content   string        `json:"content" jsonschema:"the understanding to cache (embedded + searched)"`
 	Kind      string        `json:"kind" jsonschema:"map (orientation) or fact (pinned checkable claim)"`
 	Citations []citationArg `json:"citations" jsonschema:">= 1 source anchor"`
-	Scope     string        `json:"scope" jsonschema:"discovery:repo:<repo>"`
+	Scope     string        `json:"scope" jsonschema:"discovery scope, must start with discovery: (e.g. discovery:repo:<repo>)"`
 	Tags      []string      `json:"tags,omitempty"`
 	Summary   string        `json:"summary,omitempty"`
 	ID        string        `json:"id,omitempty" jsonschema:"omit to create; supply to replace in place"`
 }
+
+// store_discovery size bounds (resource-exhaustion guards). Generous enough not
+// to reject legitimate excerpts (the skill's soft cap is ~50 lines) while
+// rejecting abusive payloads outright.
+const (
+	maxDiscoveryContentBytes = 64 * 1024 // the understanding text (sent to the embedder)
+	maxCitationExcerptBytes  = 16 * 1024 // cached substance per citation
+	maxDiscoveryCitations    = 50
+)
 
 type searchDiscoveryArgs struct {
 	Query      string `json:"query"`
@@ -146,14 +156,23 @@ func validateStoreDiscovery(a storeDiscoveryArgs) error {
 	if a.Content == "" {
 		return fmt.Errorf("content is required")
 	}
+	if len(a.Content) > maxDiscoveryContentBytes {
+		return fmt.Errorf("content too large: %d bytes (max %d)", len(a.Content), maxDiscoveryContentBytes)
+	}
 	if a.Kind != "map" && a.Kind != "fact" {
 		return fmt.Errorf("kind must be \"map\" or \"fact\", got %q", a.Kind)
+	}
+	if a.Scope == "" {
+		return fmt.Errorf("scope is required")
+	}
+	if !strings.HasPrefix(a.Scope, "discovery:") {
+		return fmt.Errorf("scope must be a discovery scope (start with \"discovery:\"), got %q", a.Scope)
 	}
 	if len(a.Citations) == 0 {
 		return fmt.Errorf("at least one citation is required")
 	}
-	if a.Scope == "" {
-		return fmt.Errorf("scope is required")
+	if len(a.Citations) > maxDiscoveryCitations {
+		return fmt.Errorf("too many citations: %d (max %d)", len(a.Citations), maxDiscoveryCitations)
 	}
 	for i, c := range a.Citations {
 		if !validCitationKind(c.Kind) {
@@ -161,6 +180,9 @@ func validateStoreDiscovery(a storeDiscoveryArgs) error {
 		}
 		if c.Ref == "" {
 			return fmt.Errorf("citation %d: ref is required (the source anchor)", i)
+		}
+		if len(c.Excerpt) > maxCitationExcerptBytes {
+			return fmt.Errorf("citation %d: excerpt too large: %d bytes (max %d)", i, len(c.Excerpt), maxCitationExcerptBytes)
 		}
 	}
 	return nil
@@ -270,7 +292,9 @@ func (d *deps) searchDiscovery(ctx context.Context, a searchDiscoveryArgs) ([]st
 		return nil, err
 	}
 	if a.CrossSpine && a.Scope != "" {
-		log.Printf("search_discovery: cross_spine=true ignores scope %q", a.Scope)
+		// Don't echo the caller-supplied scope value into logs (avoids
+		// unbounded/sensitive scope strings reaching log aggregation).
+		log.Print("search_discovery: cross_spine=true; ignoring supplied scope")
 	}
 	if a.K == 0 {
 		a.K = 8

@@ -51,7 +51,9 @@ and ageable. For each citation capture:
    adding a duplicate.
 2. Explore breadth-first; for each meaningful unit decide map vs fact.
 3. Capture citations (pins + excerpts) as you read.
-4. `store_discovery(content, kind, citations[], scope="discovery:repo:<repo>", summary?, tags?)`.
+4. `store_discovery(content, kind, citations[], scope="discovery:repo:<repo>", summary?, tags?, id?)`
+   — omit `id` to create; pass the near-duplicate's `id` (from step 1) to replace
+   it in place rather than adding a new record.
 
 ## Recall (the other half)
 

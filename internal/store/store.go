@@ -199,11 +199,16 @@ func (s *Store) Search(ctx context.Context, scope string, vec []float32, k uint6
 	if err != nil {
 		return nil, err
 	}
+	return memoriesFromPoints(res), nil
+}
+
+// memoriesFromPoints decodes Qdrant scored points into Memory records.
+func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 	out := make([]Memory, 0, len(res))
 	for _, p := range res {
 		out = append(out, fromPayload(p.Id.GetUuid(), p.Payload))
 	}
-	return out, nil
+	return out
 }
 
 // SearchDiscovery runs a top-k vector search constrained to discovery records.
@@ -226,11 +231,7 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, vec []f
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Memory, 0, len(res))
-	for _, p := range res {
-		out = append(out, fromPayload(p.Id.GetUuid(), p.Payload))
-	}
-	return out, nil
+	return memoriesFromPoints(res), nil
 }
 
 // List returns memories in a scope without a query vector (for session-start
