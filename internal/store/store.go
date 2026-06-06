@@ -202,6 +202,33 @@ func (s *Store) Search(ctx context.Context, scope string, vec []float32, k uint6
 	return out, nil
 }
 
+// SearchDiscovery runs a top-k vector search constrained to discovery records.
+// Empty scope spans all discovery scopes (the cross_spine case); empty kind
+// matches both map and fact. Builds a compound exact-match filter from the same
+// NewMatch primitive scopeFilter uses — no prefix matching.
+func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, vec []float32, k uint64) ([]Memory, error) {
+	must := []*qdrant.Condition{qdrant.NewMatch("category", "discovery")}
+	if scope != "" {
+		must = append(must, qdrant.NewMatch("scope", scope))
+	}
+	if kind != "" {
+		must = append(must, qdrant.NewMatch("kind", kind))
+	}
+	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
+		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
+		Filter: &qdrant.Filter{Must: must}, Limit: qdrant.PtrOf(k),
+		WithPayload: qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Memory, 0, len(res))
+	for _, p := range res {
+		out = append(out, fromPayload(p.Id.GetUuid(), p.Payload))
+	}
+	return out, nil
+}
+
 // List returns memories in a scope without a query vector (for session-start
 // bootstrap), most-recent first. Scrolls up to scanCap points in the scope and
 // sorts by CreatedAt in-process to avoid requiring a Qdrant payload index.
