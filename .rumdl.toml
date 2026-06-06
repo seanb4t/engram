@@ -17,13 +17,14 @@ disable = [
 exclude = [
   ".git",
   ".worktrees",
-  ".beads",   # beads-managed (README.md, generated config)
-  ".agents",  # agent-tool-managed skill mirrors
+  ".beads", # beads-managed (README.md, generated config)
+  ".agents", # agent-tool-managed skill mirrors
   ".claude",
   ".codex",
   "dist",
   "node_modules",
   "vendor",
+  "CHANGELOG.md", # generated + owned by release-please (re-dirtied each release; MD012)
 ]
 
 respect-gitignore = true
