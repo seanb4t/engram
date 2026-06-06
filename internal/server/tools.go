@@ -70,20 +70,39 @@ func StoreFromEnv() (*store.Store, error) {
 	return st, nil
 }
 
-// buildDepsFromEnv reads environment variables and wires up the store and embedder.
-// Reads: MEM_QDRANT_ADDR (host:port gRPC 6334), MEM_QDRANT_COLLECTION (default "mem_eval"),
-// MEM_LITELLM_URL, MEM_LITELLM_KEY, MEM_EMBED_MODEL (default "ollama/bge-m3"),
-// MEM_EMBED_DIM (default 1024).
+// buildDepsFromEnv wires up the store and embedder from the environment. The
+// store/Qdrant vars (MEM_QDRANT_ADDR, MEM_QDRANT_COLLECTION, MEM_EMBED_DIM) are
+// read by StoreFromEnv; the embedder vars (MEM_LITELLM_URL, MEM_LITELLM_KEY,
+// MEM_EMBED_MODEL, default "ollama/bge-m3") are read here.
 func buildDepsFromEnv() *deps {
 	st, err := StoreFromEnv()
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
+	warnOwnerlessRecords(st)
 	litellmURL := EnvOr("MEM_LITELLM_URL", "http://localhost:4000")
 	litellmKey := EnvOr("MEM_LITELLM_KEY", "")
 	embedModel := EnvOr("MEM_EMBED_MODEL", "ollama/bge-m3")
 	em := embed.New(litellmURL, litellmKey, embedModel)
 	return &deps{st: st, em: em}
+}
+
+// warnOwnerlessRecords loudly warns at startup when pre-isolation (owner-less)
+// records exist: they are invisible to every owner-scoped read and cannot be
+// cleared by delete_all until claimed via `engram migrate-set-owner --owner <sub>`.
+// A count error is itself logged (best-effort; never blocks startup).
+func warnOwnerlessRecords(st *store.Store) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	n, err := st.CountOwnerless(ctx)
+	if err != nil {
+		log.Printf("WARNING: could not check for pre-isolation (owner-less) records: %v", err)
+		return
+	}
+	if n > 0 {
+		log.Printf("WARNING: %d pre-isolation record(s) have no owner — they are INVISIBLE to reads "+
+			"and not removable by delete_all until you run: engram migrate-set-owner --owner <your-oidc-sub>", n)
+	}
 }
 
 type storeArgs struct {
@@ -377,7 +396,7 @@ func Register(s *mcp.Server) {
 			return textResult(m.Content), m, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "update_memory", Description: "Replace a memory's content in place (re-embeds)."},
+	mcp.AddTool(s, &mcp.Tool{Name: "update_memory", Description: "Replace a memory's content in place (re-embeds). Optionally set `shared` to toggle visibility (true=shared, false=private); omit to keep current visibility."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a updateArgs) (*mcp.CallToolResult, any, error) {
 			err := d.updateMemory(ctx, a)
 			return textResult("updated"), nil, err

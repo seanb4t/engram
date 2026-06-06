@@ -48,8 +48,13 @@ can be marked `shared` (via `set_visibility` or `update_memory`'s `shared` flag)
 to make it readable by any authenticated caller — sharing grants read, never
 write. Isolation **requires authentication**: with no `--oidc-issuer`, all
 callers share one anonymous bucket. The `owner` is the stable `sub`, so a
-changed email never revokes access. New deployments with pre-existing records
-must run `engram migrate-set-owner --owner <sub>` once.
+changed email never revokes access.
+
+**Upgrading an existing deployment:** records written before isolation carry no
+`owner` and become **invisible to every read** (and un-clearable by `delete_all`)
+once the new binary starts. The server logs a startup warning when such records
+exist. Claim them once with `engram migrate-set-owner --owner <sub>` (using the
+`sub` you authenticate as); the command is idempotent and a rerun reports `0`.
 
 A **discovery** record (category `discovery`) additionally carries `kind`
 (`map` | `fact`), `citations[]` (each `kind`/`ref`/`locator`/`pin`/`excerpt`),

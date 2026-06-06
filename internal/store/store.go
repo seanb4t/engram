@@ -18,6 +18,11 @@ import (
 // the two are indistinguishable by design, so ownership never leaks across actors.
 var ErrNotFound = errors.New("not found")
 
+// visibilityShared is the Visibility sentinel for a record readable by any
+// authenticated caller. Sharing grants read, never write. Defined once so a typo
+// in an authorization path is a compile error rather than a silent gate bypass.
+const visibilityShared = "shared"
+
 // Memory is the unit of storage. Fields map 1:1 to Qdrant payload keys.
 type Memory struct {
 	ID        string   `json:"id"`
@@ -211,7 +216,7 @@ func (s *Store) Upsert(ctx context.Context, m Memory, vec []float32) error {
 func ownerOrSharedCondition(sub string) *qdrant.Condition {
 	return qdrant.NewFilterAsCondition(&qdrant.Filter{Should: []*qdrant.Condition{
 		qdrant.NewMatch("owner", sub),
-		qdrant.NewMatch("visibility", "shared"),
+		qdrant.NewMatch("visibility", visibilityShared),
 	}})
 }
 
@@ -318,7 +323,7 @@ func (s *Store) GetReadable(ctx context.Context, id, sub string) (Memory, error)
 	if err != nil {
 		return Memory{}, err
 	}
-	if m.Owner != sub && m.Visibility != "shared" {
+	if m.Owner != sub && m.Visibility != visibilityShared {
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	return m, nil
@@ -326,6 +331,10 @@ func (s *Store) GetReadable(ctx context.Context, id, sub string) (Memory, error)
 
 // getWritable returns the record only if the caller OWNS it (shared does NOT
 // grant write); otherwise ErrNotFound. The mutate primitive.
+//
+// When auth is disabled (sub==""), every record sits in the single anonymous
+// owner=="" bucket, so this gate is inert by design — per-actor isolation
+// requires authentication (see the package/README isolation contract).
 func (s *Store) getWritable(ctx context.Context, id, sub string) (Memory, error) {
 	m, err := s.Get(ctx, id)
 	if err != nil {
@@ -366,7 +375,7 @@ func (s *Store) Update(ctx context.Context, id, sub, content string, shared *boo
 	cur.Content = content
 	if shared != nil {
 		if *shared {
-			cur.Visibility = "shared"
+			cur.Visibility = visibilityShared
 		} else {
 			cur.Visibility = ""
 		}
@@ -382,7 +391,7 @@ func (s *Store) SetVisibility(ctx context.Context, id, sub string, shared bool) 
 	}
 	vis := ""
 	if shared {
-		vis = "shared"
+		vis = visibilityShared
 	}
 	_, err := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
@@ -418,16 +427,32 @@ func (s *Store) DeleteAll(ctx context.Context, scope, sub string) error {
 	return err
 }
 
-// MigrateSetOwner backfills owner onto every record that lacks an owner key
-// (records written before per-actor isolation). Idempotent: records that already
-// carry an owner are not matched. NewIsEmpty matches missing/null keys but not an
-// empty string, so auth-disabled records (owner=="") are intentionally left
-// alone. Returns the number of records stamped.
+// ownerlessFilter matches pre-isolation records — those written before the owner
+// key existed. NewIsEmpty matches a missing, null, or empty-array "owner" payload
+// but NOT an explicit empty string, so auth-disabled records (which carry an
+// explicit owner=="") are intentionally excluded.
+func ownerlessFilter() *qdrant.Filter {
+	return &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewIsEmpty("owner")}}
+}
+
+// CountOwnerless returns the number of pre-isolation (owner-less) records. These
+// are invisible to every owner-scoped read until migrate-set-owner stamps them;
+// the server bootstrap uses this to warn the operator. See ownerlessFilter.
+func (s *Store) CountOwnerless(ctx context.Context) (uint64, error) {
+	return s.client.Count(ctx, &qdrant.CountPoints{
+		CollectionName: s.collection, Filter: ownerlessFilter(), Exact: qdrant.PtrOf(true),
+	})
+}
+
+// MigrateSetOwner backfills owner onto every pre-isolation record (one that lacks
+// an owner key). Idempotent: records that already carry an owner — including the
+// auth-disabled owner=="" bucket — are not matched (see ownerlessFilter). Returns
+// the number of records stamped.
 func (s *Store) MigrateSetOwner(ctx context.Context, owner string) (uint64, error) {
 	if owner == "" {
 		return 0, fmt.Errorf("owner must be non-empty")
 	}
-	missing := &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewIsEmpty("owner")}}
+	missing := ownerlessFilter()
 	cnt, err := s.client.Count(ctx, &qdrant.CountPoints{
 		CollectionName: s.collection, Filter: missing, Exact: qdrant.PtrOf(true),
 	})
