@@ -13,6 +13,10 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-cgb](engram-cgb-enforce-per-actor-authorization-store-layer-not-handlers.md) | 2026-06-06 | Accepted | Enforce per-actor authorization in the store layer, not in handlers |
+| [engram-hvg](engram-hvg-use-stable-oidc-sub-as-authorization-key-new-owner-field.md) | 2026-06-06 | Accepted | Use the stable OIDC sub as the authorization key in a new owner field |
+| [engram-kyz](engram-kyz-sharing-grants-read-but-never-write-read-write-gate-asymmetr.md) | 2026-06-06 | Accepted | Sharing grants read but never write (read/write gate asymmetry) |
+| [engram-xa6](engram-xa6-return-404-not-found-unauthorized-id-addressed-operations.md) | 2026-06-06 | Accepted | Return 404 not-found for unauthorized id-addressed operations |
 | [engram-0gy](engram-0gy-dedicated-store-discovery-search-discovery-tools-not-overloa.md) | 2026-06-06 | Accepted | Dedicated store_discovery/search_discovery tools, not overloaded store_memory |
 | [engram-2bv](engram-2bv-discovery-is-5th-category-single-memory-collection.md) | 2026-06-06 | Accepted | Discovery is a 5th category in the single Memory collection |
 | [engram-3l0](engram-3l0-graceful-decay-over-binary-staleness-discovery-trust.md) | 2026-06-06 | Accepted | Graceful decay over binary staleness for discovery trust |
