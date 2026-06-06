@@ -216,3 +216,32 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 		t.Errorf("cross_spine search errored: %v", err)
 	}
 }
+
+func TestUpdateMemoryPreservesSharingHandler(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:handler-upd"
+	id := "e5e5e5e5-0000-0000-0000-000000000001"
+	defer func() { _ = d.st.DeleteAll(ctx, scope, "") }()
+
+	// Seed a shared record owned by the anonymous caller (sub == "").
+	m := store.Memory{ID: id, Content: "v1", Scope: scope, Owner: "", Visibility: "shared", CreatedAt: timeNow()}
+	if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	// Content-only update (Shared nil) must preserve "shared".
+	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "v2"}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Content != "v2" || got.Visibility != "shared" {
+		t.Errorf("handler content-only update lost sharing: content=%q visibility=%q", got.Content, got.Visibility)
+	}
+}
+
+// timeNow is a tiny indirection so the test reads cleanly; store records require
+// a CreatedAt.
+func timeNow() time.Time { return time.Now().UTC().Truncate(time.Second) }

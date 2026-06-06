@@ -39,8 +39,17 @@ _who_ recorded a memory.
 
 A memory record carries `content`, `scope`, `repo`/`workspace`/`worktree_path`/
 `base_dir`, `source` (`user-said` | `agent-inferred`), `category`, `tags`,
-`actor` (the verified caller identity — server-set, never client-supplied), and
-`created_at`.
+`actor` (the verified caller identity — server-set, never client-supplied),
+`owner` (the caller's stable OIDC `sub`, the authorization key — server-set),
+`visibility` (`private` by default, or `shared`), and `created_at`.
+
+**Isolation:** each actor reads and writes only their **own** records; a record
+can be marked `shared` (via `set_visibility` or `update_memory`'s `shared` flag)
+to make it readable by any authenticated caller — sharing grants read, never
+write. Isolation **requires authentication**: with no `--oidc-issuer`, all
+callers share one anonymous bucket. The `owner` is the stable `sub`, so a
+changed email never revokes access. New deployments with pre-existing records
+must run `engram migrate-set-owner --owner <sub>` once.
 
 A **discovery** record (category `discovery`) additionally carries `kind`
 (`map` | `fact`), `citations[]` (each `kind`/`ref`/`locator`/`pin`/`excerpt`),
