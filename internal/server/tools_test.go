@@ -132,6 +132,19 @@ func TestValidateStoreDiscovery(t *testing.T) {
 	}
 }
 
+// TestOwnerFromContextNoToken pins the auth-disabled half of the contract: no
+// token in context is the anonymous bucket ("", nil), NOT an error — otherwise a
+// no-issuer deployment would reject every request. The fail-closed path (a
+// validated token lacking a non-empty sub → error) cannot be unit-tested here
+// because the go-sdk stores TokenInfo under an unexported context key, so there
+// is no way to inject one (same constraint as the deferred handler-isolation gap).
+func TestOwnerFromContextNoToken(t *testing.T) {
+	sub, err := ownerFromContext(context.Background())
+	if sub != "" || err != nil {
+		t.Errorf("no token: want (\"\", nil), got (%q, %v)", sub, err)
+	}
+}
+
 func TestEffectiveDiscoveryScope(t *testing.T) {
 	// cross_spine=false requires a scope.
 	if _, err := effectiveDiscoveryScope(searchDiscoveryArgs{CrossSpine: false, Scope: ""}); err == nil {
@@ -155,7 +168,7 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()
 	scope := "discovery:repo:handler-test"
-	defer func() { _ = d.st.DeleteAll(ctx, scope) }()
+	defer func() { _ = d.st.DeleteAll(ctx, scope, "") }()
 
 	// create
 	id, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
@@ -216,3 +229,32 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 		t.Errorf("cross_spine search errored: %v", err)
 	}
 }
+
+func TestUpdateMemoryPreservesSharingHandler(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:handler-upd"
+	id := "e5e5e5e5-0000-0000-0000-000000000001"
+	defer func() { _ = d.st.DeleteAll(ctx, scope, "") }()
+
+	// Seed a shared record owned by the anonymous caller (sub == "").
+	m := store.Memory{ID: id, Content: "v1", Scope: scope, Owner: "", Visibility: "shared", CreatedAt: timeNow()}
+	if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	// Content-only update (Shared nil) must preserve "shared".
+	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "v2"}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Content != "v2" || got.Visibility != "shared" {
+		t.Errorf("handler content-only update lost sharing: content=%q visibility=%q", got.Content, got.Visibility)
+	}
+}
+
+// timeNow is a tiny indirection so the test reads cleanly; store records require
+// a CreatedAt.
+func timeNow() time.Time { return time.Now().UTC().Truncate(time.Second) }

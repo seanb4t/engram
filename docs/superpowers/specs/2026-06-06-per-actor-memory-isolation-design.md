@@ -227,7 +227,7 @@ shared). Because engram is single-user today, every existing record is Sean's.
 
 A one-time CLI subcommand stamps them:
 
-```
+```sh
 engram migrate-set-owner --owner <sub>     # env: MEM_MIGRATE_OWNER
 ```
 

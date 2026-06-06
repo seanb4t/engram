@@ -6,12 +6,22 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
 
 	"github.com/qdrant/go-client/qdrant"
 )
+
+// ErrNotFound is returned when an id is absent OR not visible to the caller —
+// the two are indistinguishable by design, so ownership never leaks across actors.
+var ErrNotFound = errors.New("not found")
+
+// visibilityShared is the Visibility sentinel for a record readable by any
+// authenticated caller. Sharing grants read, never write. Defined once so a typo
+// in an authorization path is a compile error rather than a silent gate bypass.
+const visibilityShared = "shared"
 
 // Memory is the unit of storage. Fields map 1:1 to Qdrant payload keys.
 type Memory struct {
@@ -27,8 +37,15 @@ type Memory struct {
 	Tags      []string `json:"tags"`
 	// Actor is the verified caller identity (email/username/subject) taken from
 	// the validated OIDC token — never client-supplied. Empty when auth is off.
-	Actor     string    `json:"actor"`
-	CreatedAt time.Time `json:"created_at"`
+	Actor string `json:"actor"`
+	// Owner is the stable OIDC subject (`sub`) of the caller — the authorization
+	// key. Server-set from the validated token, never client-supplied. Empty when
+	// auth is disabled (the single anonymous bucket).
+	Owner string `json:"owner"`
+	// Visibility gates cross-actor reads: "" (private, default) or "shared"
+	// (readable by any authenticated caller). Writes always require ownership.
+	Visibility string    `json:"visibility,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
 	// Discovery-only (zero-valued for the curated four categories).
 	Kind      string     `json:"kind,omitempty"`      // "map" | "fact"
 	Citations []Citation `json:"citations,omitempty"` // >= 1 for discoveries
@@ -88,6 +105,8 @@ func payload(m Memory) map[string]any {
 		"category":      m.Category,
 		"tags":          tags,
 		"actor":         m.Actor,
+		"owner":         m.Owner,
+		"visibility":    m.Visibility,
 		"created_at":    m.CreatedAt.Format(time.RFC3339),
 	}
 	if m.Category == "discovery" {
@@ -133,6 +152,12 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	}
 	if v, ok := p["actor"]; ok {
 		m.Actor = v.GetStringValue()
+	}
+	if v, ok := p["owner"]; ok {
+		m.Owner = v.GetStringValue()
+	}
+	if v, ok := p["visibility"]; ok {
+		m.Visibility = v.GetStringValue()
 	}
 	if v, ok := p["tags"]; ok {
 		if lv := v.GetListValue(); lv != nil {
@@ -186,15 +211,29 @@ func (s *Store) Upsert(ctx context.Context, m Memory, vec []float32) error {
 	return err
 }
 
-func (s *Store) scopeFilter(scope string) *qdrant.Filter {
-	return &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatch("scope", scope)}}
+// ownerOrSharedCondition matches records the caller may READ: owned by sub OR
+// marked shared. Sharing grants read, never write.
+func ownerOrSharedCondition(sub string) *qdrant.Condition {
+	return qdrant.NewFilterAsCondition(&qdrant.Filter{Should: []*qdrant.Condition{
+		qdrant.NewMatch("owner", sub),
+		qdrant.NewMatch("visibility", visibilityShared),
+	}})
 }
 
-// Search returns the k nearest memories to vec within scope.
-func (s *Store) Search(ctx context.Context, scope string, vec []float32, k uint64) ([]Memory, error) {
+// ownerScopeFilter restricts to a scope AND the caller's readable set.
+func (s *Store) ownerScopeFilter(scope, sub string) *qdrant.Filter {
+	return &qdrant.Filter{Must: []*qdrant.Condition{
+		qdrant.NewMatch("scope", scope),
+		ownerOrSharedCondition(sub),
+	}}
+}
+
+// Search returns the k nearest readable memories to vec within scope (records
+// the caller owns, plus shared records).
+func (s *Store) Search(ctx context.Context, scope, sub string, vec []float32, k uint64) ([]Memory, error) {
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
-		Filter: s.scopeFilter(scope), Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
+		Filter: s.ownerScopeFilter(scope, sub), Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
 	})
 	if err != nil {
 		return nil, err
@@ -213,9 +252,11 @@ func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 
 // SearchDiscovery runs a top-k vector search constrained to discovery records.
 // Empty scope spans all discovery scopes (the cross_spine case); empty kind
-// matches both map and fact. Builds a compound exact-match filter from the same
-// NewMatch primitive scopeFilter uses — no prefix matching.
-func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, vec []float32, k uint64) ([]Memory, error) {
+// matches both map and fact. sub restricts results to the caller's own records
+// plus any shared records (ownerOrSharedCondition), even when scope is empty —
+// this is the cross_spine = my+shared semantic. Builds a compound exact-match
+// filter from the NewMatch primitive — no prefix matching.
+func (s *Store) SearchDiscovery(ctx context.Context, scope, kind, sub string, vec []float32, k uint64) ([]Memory, error) {
 	must := []*qdrant.Condition{qdrant.NewMatch("category", "discovery")}
 	if scope != "" {
 		must = append(must, qdrant.NewMatch("scope", scope))
@@ -223,6 +264,7 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, vec []f
 	if kind != "" {
 		must = append(must, qdrant.NewMatch("kind", kind))
 	}
+	must = append(must, ownerOrSharedCondition(sub))
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
 		Filter: &qdrant.Filter{Must: must}, Limit: qdrant.PtrOf(k),
@@ -237,11 +279,11 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, vec []f
 // List returns memories in a scope without a query vector (for session-start
 // bootstrap), most-recent first. Scrolls up to scanCap points in the scope and
 // sorts by CreatedAt in-process to avoid requiring a Qdrant payload index.
-func (s *Store) List(ctx context.Context, scope string, limit uint64) ([]Memory, error) {
+func (s *Store) List(ctx context.Context, scope, sub string, limit uint64) ([]Memory, error) {
 	const scanCap = 1000
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
-		Filter:         s.scopeFilter(scope),
+		Filter:         s.ownerScopeFilter(scope, sub),
 		Limit:          qdrant.PtrOf(uint32(scanCap)),
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
@@ -269,13 +311,101 @@ func (s *Store) Get(ctx context.Context, id string) (Memory, error) {
 		return Memory{}, err
 	}
 	if len(pts) == 0 {
-		return Memory{}, fmt.Errorf("not found: %s", id)
+		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	return fromPayload(id, pts[0].Payload), nil
 }
 
-// Delete removes the memory with the given id.
-func (s *Store) Delete(ctx context.Context, id string) error {
+// GetReadable returns the record only if the caller may READ it (owns it or it
+// is shared); otherwise ErrNotFound, so ownership never leaks across actors.
+func (s *Store) GetReadable(ctx context.Context, id, sub string) (Memory, error) {
+	m, err := s.Get(ctx, id)
+	if err != nil {
+		return Memory{}, err
+	}
+	if m.Owner != sub && m.Visibility != visibilityShared {
+		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	return m, nil
+}
+
+// getWritable returns the record only if the caller OWNS it (shared does NOT
+// grant write); otherwise ErrNotFound. The mutate primitive.
+//
+// When auth is disabled (sub==""), every record sits in the single anonymous
+// owner=="" bucket, so this gate is inert by design — per-actor isolation
+// requires authentication (see the package/README isolation contract).
+func (s *Store) getWritable(ctx context.Context, id, sub string) (Memory, error) {
+	m, err := s.Get(ctx, id)
+	if err != nil {
+		return Memory{}, err
+	}
+	if m.Owner != sub {
+		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	return m, nil
+}
+
+// OwnedOrAbsent permits a client-supplied-id write: nil if the id is absent (new
+// record) or already owned by sub (replace in place); ErrNotFound if it exists
+// and is owned by another actor (refuse cross-owner overwrite). Transport errors
+// surface unchanged.
+func (s *Store) OwnedOrAbsent(ctx context.Context, id, sub string) error {
+	m, err := s.Get(ctx, id)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if m.Owner != sub {
+		return fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	return nil
+}
+
+// Update replaces a record's content (re-embedded via vec), only if owned by
+// sub. When shared is non-nil it also sets visibility (true → "shared", false →
+// ""); nil leaves visibility unchanged so a content edit never silently unshares.
+func (s *Store) Update(ctx context.Context, id, sub, content string, shared *bool, vec []float32) error {
+	cur, err := s.getWritable(ctx, id, sub)
+	if err != nil {
+		return err
+	}
+	cur.Content = content
+	if shared != nil {
+		if *shared {
+			cur.Visibility = visibilityShared
+		} else {
+			cur.Visibility = ""
+		}
+	}
+	return s.Upsert(ctx, cur, vec)
+}
+
+// SetVisibility flips a record's shared flag without re-embedding (uses
+// SetPayload, preserving the vector), only if owned by sub.
+func (s *Store) SetVisibility(ctx context.Context, id, sub string, shared bool) error {
+	if _, err := s.getWritable(ctx, id, sub); err != nil {
+		return err
+	}
+	vis := ""
+	if shared {
+		vis = visibilityShared
+	}
+	_, err := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload:        qdrant.NewValueMap(map[string]any{"visibility": vis}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
+	})
+	return err
+}
+
+// Delete removes the memory with the given id, only if owned by sub.
+func (s *Store) Delete(ctx context.Context, id, sub string) error {
+	if _, err := s.getWritable(ctx, id, sub); err != nil {
+		return err
+	}
 	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
 		Points: qdrant.NewPointsSelector(qdrant.NewID(id)),
@@ -283,11 +413,62 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	return err
 }
 
-// DeleteAll removes every memory in scope.
-func (s *Store) DeleteAll(ctx context.Context, scope string) error {
+// DeleteAll removes the caller's OWN records in scope (never another owner's,
+// and never another owner's shared records).
+func (s *Store) DeleteAll(ctx context.Context, scope, sub string) error {
+	filter := &qdrant.Filter{Must: []*qdrant.Condition{
+		qdrant.NewMatch("scope", scope),
+		qdrant.NewMatch("owner", sub),
+	}}
 	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
-		Points: qdrant.NewPointsSelectorFilter(s.scopeFilter(scope)),
+		Points: qdrant.NewPointsSelectorFilter(filter),
 	})
 	return err
+}
+
+// ownerlessFilter matches pre-isolation records — those written before the owner
+// key existed. NewIsEmpty matches a missing, null, or empty-array "owner" payload
+// but NOT an explicit empty string, so auth-disabled records (which carry an
+// explicit owner=="") are intentionally excluded.
+func ownerlessFilter() *qdrant.Filter {
+	return &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewIsEmpty("owner")}}
+}
+
+// CountOwnerless returns the number of pre-isolation (owner-less) records. These
+// are invisible to every owner-scoped read until migrate-set-owner stamps them;
+// the server bootstrap uses this to warn the operator. See ownerlessFilter.
+func (s *Store) CountOwnerless(ctx context.Context) (uint64, error) {
+	return s.client.Count(ctx, &qdrant.CountPoints{
+		CollectionName: s.collection, Filter: ownerlessFilter(), Exact: qdrant.PtrOf(true),
+	})
+}
+
+// MigrateSetOwner backfills owner onto every pre-isolation record (one that lacks
+// an owner key). Idempotent: records that already carry an owner — including the
+// auth-disabled owner=="" bucket — are not matched (see ownerlessFilter). Returns
+// the number of records stamped.
+func (s *Store) MigrateSetOwner(ctx context.Context, owner string) (uint64, error) {
+	if owner == "" {
+		return 0, fmt.Errorf("owner must be non-empty")
+	}
+	missing := ownerlessFilter()
+	cnt, err := s.client.Count(ctx, &qdrant.CountPoints{
+		CollectionName: s.collection, Filter: missing, Exact: qdrant.PtrOf(true),
+	})
+	if err != nil {
+		return 0, err
+	}
+	if cnt == 0 {
+		return 0, nil
+	}
+	_, err = s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload:        qdrant.NewValueMap(map[string]any{"owner": owner}),
+		PointsSelector: qdrant.NewPointsSelectorFilter(missing),
+	})
+	if err != nil {
+		return 0, err
+	}
+	return cnt, nil
 }

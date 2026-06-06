@@ -38,47 +38,71 @@ type deps struct {
 	}
 }
 
-// buildDepsFromEnv reads environment variables and wires up the store and embedder.
-// Reads: MEM_QDRANT_ADDR (host:port gRPC 6334), MEM_QDRANT_COLLECTION (default "mem_eval"),
-// MEM_LITELLM_URL, MEM_LITELLM_KEY, MEM_EMBED_MODEL (default "ollama/bge-m3"),
-// MEM_EMBED_DIM (default 1024).
-func buildDepsFromEnv() *deps {
+// StoreFromEnv builds a Qdrant-backed Store from the MEM_QDRANT_* / MEM_EMBED_DIM
+// environment and ensures the collection exists. Shared by the server bootstrap
+// and the migrate-set-owner command.
+func StoreFromEnv() (*store.Store, error) {
 	qdrantAddr := EnvOr("MEM_QDRANT_ADDR", "localhost:6334")
 	collection := EnvOr("MEM_QDRANT_COLLECTION", "mem_eval")
-	litellmURL := EnvOr("MEM_LITELLM_URL", "http://localhost:4000")
-	litellmKey := EnvOr("MEM_LITELLM_KEY", "")
-	embedModel := EnvOr("MEM_EMBED_MODEL", "ollama/bge-m3")
 	embedDimStr := EnvOr("MEM_EMBED_DIM", "1024")
-
 	embedDim, err := strconv.ParseUint(embedDimStr, 10, 64)
 	if err != nil {
-		log.Fatalf("invalid MEM_EMBED_DIM %q: %v", embedDimStr, err)
+		return nil, fmt.Errorf("invalid MEM_EMBED_DIM %q: %w", embedDimStr, err)
 	}
-
 	host, portStr, err := net.SplitHostPort(qdrantAddr)
 	if err != nil {
-		log.Fatalf("invalid MEM_QDRANT_ADDR %q: %v", qdrantAddr, err)
+		return nil, fmt.Errorf("invalid MEM_QDRANT_ADDR %q: %w", qdrantAddr, err)
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		log.Fatalf("invalid port in MEM_QDRANT_ADDR %q: %v", qdrantAddr, err)
+		return nil, fmt.Errorf("invalid port in MEM_QDRANT_ADDR %q: %w", qdrantAddr, err)
 	}
-
 	qc, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
 	if err != nil {
-		log.Fatalf("qdrant client: %v", err)
+		return nil, fmt.Errorf("qdrant client: %w", err)
 	}
-
 	st := store.New(qc, collection)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	err = st.EnsureCollection(ctx, embedDim)
-	cancel()
-	if err != nil {
-		log.Fatalf("EnsureCollection: %v", err)
+	defer cancel()
+	if err := st.EnsureCollection(ctx, embedDim); err != nil {
+		return nil, fmt.Errorf("EnsureCollection: %w", err)
 	}
+	return st, nil
+}
 
+// buildDepsFromEnv wires up the store and embedder from the environment. The
+// store/Qdrant vars (MEM_QDRANT_ADDR, MEM_QDRANT_COLLECTION, MEM_EMBED_DIM) are
+// read by StoreFromEnv; the embedder vars (MEM_LITELLM_URL, MEM_LITELLM_KEY,
+// MEM_EMBED_MODEL, default "ollama/bge-m3") are read here.
+func buildDepsFromEnv() *deps {
+	st, err := StoreFromEnv()
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	warnOwnerlessRecords(st)
+	litellmURL := EnvOr("MEM_LITELLM_URL", "http://localhost:4000")
+	litellmKey := EnvOr("MEM_LITELLM_KEY", "")
+	embedModel := EnvOr("MEM_EMBED_MODEL", "ollama/bge-m3")
 	em := embed.New(litellmURL, litellmKey, embedModel)
 	return &deps{st: st, em: em}
+}
+
+// warnOwnerlessRecords loudly warns at startup when pre-isolation (owner-less)
+// records exist: they are invisible to every owner-scoped read and cannot be
+// cleared by delete_all until claimed via `engram migrate-set-owner --owner <sub>`.
+// A count error is itself logged (best-effort; never blocks startup).
+func warnOwnerlessRecords(st *store.Store) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	n, err := st.CountOwnerless(ctx)
+	if err != nil {
+		log.Printf("WARNING: could not check for pre-isolation (owner-less) records: %v", err)
+		return
+	}
+	if n > 0 {
+		log.Printf("WARNING: %d pre-isolation record(s) have no owner — they are INVISIBLE to reads "+
+			"and not removable by delete_all until you run: engram migrate-set-owner --owner <your-oidc-sub>", n)
+	}
 }
 
 type storeArgs struct {
@@ -111,6 +135,7 @@ type idArgs struct {
 type updateArgs struct {
 	ID      string `json:"id"`
 	Content string `json:"content"`
+	Shared  *bool  `json:"shared,omitempty" jsonschema:"omit to keep current visibility; true=shared, false=private"`
 }
 
 type scopeArgs struct {
@@ -150,6 +175,11 @@ type searchDiscoveryArgs struct {
 	Kind       string `json:"kind,omitempty" jsonschema:"map|fact filter"`
 	K          uint64 `json:"k,omitempty"`
 	CrossSpine bool   `json:"cross_spine,omitempty" jsonschema:"span all discovery scopes (ignores scope)"`
+}
+
+type setVisibilityArgs struct {
+	ID     string `json:"id"`
+	Shared bool   `json:"shared" jsonschema:"true = readable by any authenticated caller; false = private"`
 }
 
 func validateStoreDiscovery(a storeDiscoveryArgs) error {
@@ -199,6 +229,10 @@ func validCitationKind(k string) bool {
 }
 
 func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
+	owner, err := ownerFromContext(ctx)
+	if err != nil {
+		return "", err
+	}
 	vec, err := d.em.Embed(ctx, a.Content)
 	if err != nil {
 		return "", err
@@ -215,6 +249,7 @@ func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
 		Category:  a.Category,
 		Tags:      a.Tags,
 		Actor:     actorFromContext(ctx),
+		Owner:     owner,
 		CreatedAt: time.Now().UTC(),
 	}
 	return m.ID, d.st.Upsert(ctx, m, vec)
@@ -223,6 +258,15 @@ func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
 func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string, error) {
 	if err := validateStoreDiscovery(a); err != nil {
 		return "", err
+	}
+	sub, err := ownerFromContext(ctx)
+	if err != nil {
+		return "", err
+	}
+	if a.ID != "" {
+		if err := d.st.OwnedOrAbsent(ctx, a.ID, sub); err != nil {
+			return "", err
+		}
 	}
 	vec, err := d.em.Embed(ctx, a.Content)
 	if err != nil {
@@ -247,6 +291,7 @@ func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string
 		Summary:   a.Summary,
 		Tags:      a.Tags,
 		Actor:     actorFromContext(ctx),
+		Owner:     sub,
 		CreatedAt: time.Now().UTC(),
 	}
 	return m.ID, d.st.Upsert(ctx, m, vec)
@@ -262,15 +307,38 @@ func actorFromContext(ctx context.Context) string {
 	return ""
 }
 
+// ownerFromContext returns the stable OIDC subject (the authorization key)
+// injected by the RequireBearerToken middleware. It returns "" only when auth is
+// disabled (no token in context → the anonymous bucket). A present-but-malformed
+// token — validated by the middleware yet carrying no non-empty `sub` — is a
+// fail-closed error, never silently collapsed into the anonymous bucket, so a
+// partially-populated authenticated request is rejected rather than granted
+// no-auth read/write/delete semantics. Never client-supplied: the value is the
+// validated token's `sub`, which auth.TokenVerifier places in TokenInfo.Extra.
+func ownerFromContext(ctx context.Context) (string, error) {
+	ti := mcpauth.TokenInfoFromContext(ctx)
+	if ti == nil {
+		return "", nil // auth disabled: the anonymous bucket
+	}
+	if sub, ok := ti.Extra["sub"].(string); ok && sub != "" {
+		return sub, nil
+	}
+	return "", fmt.Errorf("validated token missing subject")
+}
+
 func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]store.Memory, error) {
 	if a.K == 0 {
 		a.K = 8
+	}
+	owner, err := ownerFromContext(ctx)
+	if err != nil {
+		return nil, err
 	}
 	vec, err := d.em.Embed(ctx, a.Query)
 	if err != nil {
 		return nil, err
 	}
-	return d.st.Search(ctx, a.Scope, vec, a.K)
+	return d.st.Search(ctx, a.Scope, owner, vec, a.K)
 }
 
 // effectiveDiscoveryScope resolves the scope filter for a discovery search:
@@ -299,24 +367,27 @@ func (d *deps) searchDiscovery(ctx context.Context, a searchDiscoveryArgs) ([]st
 	if a.K == 0 {
 		a.K = 8
 	}
+	owner, err := ownerFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 	vec, err := d.em.Embed(ctx, a.Query)
 	if err != nil {
 		return nil, err
 	}
-	return d.st.SearchDiscovery(ctx, scope, a.Kind, vec, a.K)
+	return d.st.SearchDiscovery(ctx, scope, a.Kind, owner, vec, a.K)
 }
 
 func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
-	cur, err := d.st.Get(ctx, a.ID)
+	owner, err := ownerFromContext(ctx)
 	if err != nil {
 		return err
 	}
-	cur.Content = a.Content
 	vec, err := d.em.Embed(ctx, a.Content)
 	if err != nil {
 		return err
 	}
-	return d.st.Upsert(ctx, cur, vec) // same ID → in-place replace + re-embed
+	return d.st.Update(ctx, a.ID, owner, a.Content, a.Shared, vec)
 }
 
 // Register wires the memory tools onto the MCP server.
@@ -340,17 +411,25 @@ func Register(s *mcp.Server) {
 			if a.Limit == 0 {
 				a.Limit = 20
 			}
-			mems, err := d.st.List(ctx, a.Scope, a.Limit)
+			owner, err := ownerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			mems, err := d.st.List(ctx, a.Scope, owner, a.Limit)
 			return textResult(fmt.Sprintf("%d memories", len(mems))), map[string]any{"memories": mems}, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-			m, err := d.st.Get(ctx, a.ID)
+			owner, err := ownerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			m, err := d.st.GetReadable(ctx, a.ID, owner)
 			return textResult(m.Content), m, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "update_memory", Description: "Replace a memory's content in place (re-embeds)."},
+	mcp.AddTool(s, &mcp.Tool{Name: "update_memory", Description: "Replace a memory's content in place (re-embeds). Optionally set `shared` to toggle visibility (true=shared, false=private); omit to keep current visibility."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a updateArgs) (*mcp.CallToolResult, any, error) {
 			err := d.updateMemory(ctx, a)
 			return textResult("updated"), nil, err
@@ -358,13 +437,21 @@ func Register(s *mcp.Server) {
 
 	mcp.AddTool(s, &mcp.Tool{Name: "delete_memory", Description: "Delete one memory by id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-			err := d.st.Delete(ctx, a.ID)
+			owner, err := ownerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			err = d.st.Delete(ctx, a.ID, owner)
 			return textResult("deleted"), nil, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "delete_all", Description: "Delete every memory in a scope (teardown)."},
+	mcp.AddTool(s, &mcp.Tool{Name: "delete_all", Description: "Delete your own memories in a scope (teardown); never another caller's records."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a scopeArgs) (*mcp.CallToolResult, any, error) {
-			err := d.st.DeleteAll(ctx, a.Scope)
+			owner, err := ownerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			err = d.st.DeleteAll(ctx, a.Scope, owner)
 			return textResult("scope cleared"), nil, err
 		})
 
@@ -378,6 +465,16 @@ func Register(s *mcp.Server) {
 		func(ctx context.Context, _ *mcp.CallToolRequest, a searchDiscoveryArgs) (*mcp.CallToolResult, any, error) {
 			hits, err := d.searchDiscovery(ctx, a)
 			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"discoveries": hits}, err
+		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "set_visibility", Description: "Share or unshare a memory you own. shared=true → readable by any authenticated caller (never writable by others); false → private."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a setVisibilityArgs) (*mcp.CallToolResult, any, error) {
+			owner, err := ownerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			err = d.st.SetVisibility(ctx, a.ID, owner, a.Shared)
+			return textResult("visibility updated"), nil, err
 		})
 }
 

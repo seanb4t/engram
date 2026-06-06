@@ -43,8 +43,16 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 Tools: `store_memory` / `search_memory` / `list_memory` / `get_memory` /
 `update_memory` / `delete_memory` / `delete_all`. A record carries `content`,
 `scope`, repo/workspace/worktree/base_dir, `source`, `category`, `tags`,
-`actor` (verified caller — server-set, never client-supplied), `created_at`.
-Design intent: explicit, zero-junk, correctable. Do not add auto-extraction.
+`actor` (verified caller — server-set, never client-supplied), `owner` (caller's
+stable OIDC `sub`, the authz key — server-set), `visibility` (`private` default |
+`shared`), `created_at`. Design intent: explicit, zero-junk, correctable. Do not
+add auto-extraction.
+
+**Isolation (authz):** each actor sees/mutates only their own records; `shared`
+records are readable (never writable) by any authenticated caller. No issuer →
+single anonymous bucket. The `set_visibility` tool and `update_memory`'s `shared`
+field toggle sharing. Pre-isolation records are invisible to reads until you
+backfill them with `engram migrate-set-owner --owner <sub>`.
 
 Discovery tools: `store_discovery` / `search_discovery`. A discovery is a 5th
 `category` carrying `kind` (`map`|`fact`), `citations` (with aging `pin`s), and
