@@ -341,6 +341,25 @@ func (s *Store) getWritable(ctx context.Context, id, sub string) (Memory, error)
 	return m, nil
 }
 
+// Update replaces a record's content (re-embedded via vec), only if owned by
+// sub. When shared is non-nil it also sets visibility (true → "shared", false →
+// ""); nil leaves visibility unchanged so a content edit never silently unshares.
+func (s *Store) Update(ctx context.Context, id, sub, content string, shared *bool, vec []float32) error {
+	cur, err := s.getWritable(ctx, id, sub)
+	if err != nil {
+		return err
+	}
+	cur.Content = content
+	if shared != nil {
+		if *shared {
+			cur.Visibility = "shared"
+		} else {
+			cur.Visibility = ""
+		}
+	}
+	return s.Upsert(ctx, cur, vec)
+}
+
 // Delete removes the memory with the given id, only if owned by sub.
 func (s *Store) Delete(ctx context.Context, id, sub string) error {
 	if _, err := s.getWritable(ctx, id, sub); err != nil {

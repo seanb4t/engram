@@ -111,6 +111,7 @@ type idArgs struct {
 type updateArgs struct {
 	ID      string `json:"id"`
 	Content string `json:"content"`
+	Shared  *bool  `json:"shared,omitempty" jsonschema:"omit to keep current visibility; true=shared, false=private"`
 }
 
 type scopeArgs struct {
@@ -322,16 +323,11 @@ func (d *deps) searchDiscovery(ctx context.Context, a searchDiscoveryArgs) ([]st
 }
 
 func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
-	cur, err := d.st.Get(ctx, a.ID)
-	if err != nil {
-		return err
-	}
-	cur.Content = a.Content
 	vec, err := d.em.Embed(ctx, a.Content)
 	if err != nil {
 		return err
 	}
-	return d.st.Upsert(ctx, cur, vec) // same ID → in-place replace + re-embed
+	return d.st.Update(ctx, a.ID, ownerFromContext(ctx), a.Content, a.Shared, vec)
 }
 
 // Register wires the memory tools onto the MCP server.
