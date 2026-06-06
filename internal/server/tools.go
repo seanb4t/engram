@@ -116,6 +116,48 @@ type scopeArgs struct {
 	Scope string `json:"scope"`
 }
 
+type citationArg struct {
+	Kind    string `json:"kind" jsonschema:"file|commit|url|repo"`
+	Ref     string `json:"ref" jsonschema:"path, repo URL, or doc URL"`
+	Locator string `json:"locator,omitempty" jsonschema:"e.g. 200-240 line range"`
+	Pin     string `json:"pin,omitempty" jsonschema:"commit SHA, content-hash, @rev, or fetched-at"`
+	Excerpt string `json:"excerpt,omitempty" jsonschema:"cached substance (<= ~50 lines)"`
+}
+
+type storeDiscoveryArgs struct {
+	Content   string        `json:"content" jsonschema:"the understanding to cache (embedded + searched)"`
+	Kind      string        `json:"kind" jsonschema:"map (orientation) or fact (pinned checkable claim)"`
+	Citations []citationArg `json:"citations" jsonschema:">= 1 source anchor"`
+	Scope     string        `json:"scope" jsonschema:"discovery:repo:<repo>"`
+	Tags      []string      `json:"tags,omitempty"`
+	Summary   string        `json:"summary,omitempty"`
+	ID        string        `json:"id,omitempty" jsonschema:"omit to create; supply to replace in place"`
+}
+
+type searchDiscoveryArgs struct {
+	Query      string `json:"query"`
+	Scope      string `json:"scope,omitempty" jsonschema:"required unless cross_spine"`
+	Kind       string `json:"kind,omitempty" jsonschema:"map|fact filter"`
+	K          uint64 `json:"k,omitempty"`
+	CrossSpine bool   `json:"cross_spine,omitempty" jsonschema:"span all discovery scopes (ignores scope)"`
+}
+
+func validateStoreDiscovery(a storeDiscoveryArgs) error {
+	if a.Content == "" {
+		return fmt.Errorf("content is required")
+	}
+	if a.Kind != "map" && a.Kind != "fact" {
+		return fmt.Errorf("kind must be \"map\" or \"fact\", got %q", a.Kind)
+	}
+	if len(a.Citations) == 0 {
+		return fmt.Errorf("at least one citation is required")
+	}
+	if a.Scope == "" {
+		return fmt.Errorf("scope is required")
+	}
+	return nil
+}
+
 func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
 	vec, err := d.em.Embed(ctx, a.Content)
 	if err != nil {
@@ -131,6 +173,38 @@ func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
 		BaseDir:   a.BaseDir,
 		Source:    a.Source,
 		Category:  a.Category,
+		Tags:      a.Tags,
+		Actor:     actorFromContext(ctx),
+		CreatedAt: time.Now().UTC(),
+	}
+	return m.ID, d.st.Upsert(ctx, m, vec)
+}
+
+func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string, error) {
+	if err := validateStoreDiscovery(a); err != nil {
+		return "", err
+	}
+	vec, err := d.em.Embed(ctx, a.Content)
+	if err != nil {
+		return "", err
+	}
+	cites := make([]store.Citation, len(a.Citations))
+	for i, c := range a.Citations {
+		cites[i] = store.Citation{Kind: c.Kind, Ref: c.Ref, Locator: c.Locator, Pin: c.Pin, Excerpt: c.Excerpt}
+	}
+	id := a.ID
+	if id == "" {
+		id = uuid.NewString()
+	}
+	m := store.Memory{
+		ID:        id,
+		Content:   a.Content,
+		Scope:     a.Scope,
+		Source:    "agent-inferred",
+		Category:  "discovery",
+		Kind:      a.Kind,
+		Citations: cites,
+		Summary:   a.Summary,
 		Tags:      a.Tags,
 		Actor:     actorFromContext(ctx),
 		CreatedAt: time.Now().UTC(),
@@ -219,6 +293,12 @@ func Register(s *mcp.Server) {
 		func(ctx context.Context, _ *mcp.CallToolRequest, a scopeArgs) (*mcp.CallToolResult, any, error) {
 			err := d.st.DeleteAll(ctx, a.Scope)
 			return textResult("scope cleared"), nil, err
+		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "store_discovery", Description: "Cache agent-earned codebase understanding with citations. kind=map|fact; >=1 citation; scope discovery:repo:<repo>."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a storeDiscoveryArgs) (*mcp.CallToolResult, any, error) {
+			id, err := d.storeDiscovery(ctx, a)
+			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id}, err
 		})
 }
 
