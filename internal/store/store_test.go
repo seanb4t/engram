@@ -5,6 +5,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -383,6 +384,33 @@ func TestOwnerVisibilityRoundtrip(t *testing.T) {
 	}
 	if got.Owner != "sub-abc" || got.Visibility != "shared" {
 		t.Errorf("round-trip lost owner/visibility: owner=%q visibility=%q", got.Owner, got.Visibility)
+	}
+}
+
+func TestGetReadableOwnerGate(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:getr"
+	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	priv := Memory{ID: "dddddddd-0000-0000-0000-000000000001", Content: "p", Scope: scope, Owner: "sub-B", CreatedAt: time.Now().UTC()}
+	shar := Memory{ID: "dddddddd-0000-0000-0000-000000000002", Content: "s", Scope: scope, Owner: "sub-B", Visibility: "shared", CreatedAt: time.Now().UTC()}
+	for _, m := range []Memory{priv, shar} {
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert: %v", err)
+		}
+	}
+	// Owner reads own private record.
+	if _, err := s.GetReadable(ctx, priv.ID, "sub-B"); err != nil {
+		t.Errorf("owner denied own record: %v", err)
+	}
+	// Non-owner reads a shared record.
+	if _, err := s.GetReadable(ctx, shar.ID, "sub-A"); err != nil {
+		t.Errorf("shared record denied to other actor: %v", err)
+	}
+	// Non-owner denied a private record — and it looks like not-found.
+	_, err := s.GetReadable(ctx, priv.ID, "sub-A")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("cross-actor private read: want ErrNotFound, got %v", err)
 	}
 }
 

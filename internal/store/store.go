@@ -6,12 +6,17 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
 
 	"github.com/qdrant/go-client/qdrant"
 )
+
+// ErrNotFound is returned when an id is absent OR not visible to the caller —
+// the two are indistinguishable by design, so ownership never leaks across actors.
+var ErrNotFound = errors.New("not found")
 
 // Memory is the unit of storage. Fields map 1:1 to Qdrant payload keys.
 type Memory struct {
@@ -305,9 +310,22 @@ func (s *Store) Get(ctx context.Context, id string) (Memory, error) {
 		return Memory{}, err
 	}
 	if len(pts) == 0 {
-		return Memory{}, fmt.Errorf("not found: %s", id)
+		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	return fromPayload(id, pts[0].Payload), nil
+}
+
+// GetReadable returns the record only if the caller may READ it (owns it or it
+// is shared); otherwise ErrNotFound, so ownership never leaks across actors.
+func (s *Store) GetReadable(ctx context.Context, id, sub string) (Memory, error) {
+	m, err := s.Get(ctx, id)
+	if err != nil {
+		return Memory{}, err
+	}
+	if m.Owner != sub && m.Visibility != "shared" {
+		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	return m, nil
 }
 
 // Delete removes the memory with the given id.

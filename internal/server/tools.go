@@ -361,7 +361,7 @@ func Register(s *mcp.Server) {
 
 	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-			m, err := d.st.Get(ctx, a.ID)
+			m, err := d.st.GetReadable(ctx, a.ID, ownerFromContext(ctx))
 			return textResult(m.Content), m, err
 		})
 
