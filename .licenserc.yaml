@@ -35,6 +35,9 @@ header:
     # truth = bd; "do not edit manually"), so an SPDX comment would be clobbered
     # on every re-render. repo LICENSE + the bd record cover provenance.
     - "docs/adr/*.md"
+    # CHANGELOG.md is generated and owned by release-please (rewritten on every
+    # release), so it cannot carry a leading SPDX comment. repo LICENSE covers it.
+    - "CHANGELOG.md"
   language:
     Markdown:
       extensions: [".md"]
