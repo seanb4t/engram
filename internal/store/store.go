@@ -246,9 +246,11 @@ func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 
 // SearchDiscovery runs a top-k vector search constrained to discovery records.
 // Empty scope spans all discovery scopes (the cross_spine case); empty kind
-// matches both map and fact. Builds a compound exact-match filter from the same
-// NewMatch primitive scopeFilter uses — no prefix matching.
-func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, vec []float32, k uint64) ([]Memory, error) {
+// matches both map and fact. sub restricts results to the caller's own records
+// plus any shared records (ownerOrSharedCondition), even when scope is empty —
+// this is the cross_spine = my+shared semantic. Builds a compound exact-match
+// filter from the same NewMatch primitive scopeFilter uses — no prefix matching.
+func (s *Store) SearchDiscovery(ctx context.Context, scope, kind, sub string, vec []float32, k uint64) ([]Memory, error) {
 	must := []*qdrant.Condition{qdrant.NewMatch("category", "discovery")}
 	if scope != "" {
 		must = append(must, qdrant.NewMatch("scope", scope))
@@ -256,6 +258,7 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, vec []f
 	if kind != "" {
 		must = append(must, qdrant.NewMatch("kind", kind))
 	}
+	must = append(must, ownerOrSharedCondition(sub))
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
 		Filter: &qdrant.Filter{Must: must}, Limit: qdrant.PtrOf(k),

@@ -318,7 +318,7 @@ func (d *deps) searchDiscovery(ctx context.Context, a searchDiscoveryArgs) ([]st
 	if err != nil {
 		return nil, err
 	}
-	return d.st.SearchDiscovery(ctx, scope, a.Kind, vec, a.K)
+	return d.st.SearchDiscovery(ctx, scope, a.Kind, ownerFromContext(ctx), vec, a.K)
 }
 
 func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {

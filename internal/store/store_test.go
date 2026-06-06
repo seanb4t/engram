@@ -182,7 +182,7 @@ func TestSearchDiscoveryFilters(t *testing.T) {
 	q := []float32{0.9, 0.1, 0.0}
 
 	// scope-constrained: only scopeA discoveries, not curated, not scopeB.
-	hits, err := s.SearchDiscovery(ctx, scopeA, "", q, 10)
+	hits, err := s.SearchDiscovery(ctx, scopeA, "", "", q, 10)
 	if err != nil {
 		t.Fatalf("search scopeA: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestSearchDiscoveryFilters(t *testing.T) {
 	}
 
 	// kind filter.
-	maps, err := s.SearchDiscovery(ctx, scopeA, "map", q, 10)
+	maps, err := s.SearchDiscovery(ctx, scopeA, "map", "", q, 10)
 	if err != nil {
 		t.Fatalf("search kind=map: %v", err)
 	}
@@ -205,12 +205,55 @@ func TestSearchDiscoveryFilters(t *testing.T) {
 	}
 
 	// cross-spine: empty scope spans scopeA + scopeB discoveries (3), still no curated.
-	all, err := s.SearchDiscovery(ctx, "", "", q, 10)
+	all, err := s.SearchDiscovery(ctx, "", "", "", q, 10)
 	if err != nil {
 		t.Fatalf("search cross-spine: %v", err)
 	}
 	if len(all) != 3 {
 		t.Fatalf("cross-spine: got %d want 3", len(all))
+	}
+}
+
+func TestSearchDiscoveryOwnerIsolation(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scopeA := "discovery:repo:isoA"
+	scopeB := "discovery:repo:isoB"
+	defer func() { _ = s.DeleteAllRaw(ctx, scopeA); _ = s.DeleteAllRaw(ctx, scopeB) }()
+
+	mk := func(id, scope, owner, vis string) {
+		m := Memory{ID: id, Content: "d", Scope: scope, Category: "discovery", Kind: "fact",
+			Owner: owner, Visibility: vis, CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	mk("cccccccc-0000-0000-0000-000000000001", scopeA, "sub-A", "")       // A private, scopeA
+	mk("cccccccc-0000-0000-0000-000000000002", scopeA, "sub-B", "")       // B private, scopeA
+	mk("cccccccc-0000-0000-0000-000000000003", scopeB, "sub-A", "")       // A private, scopeB
+	mk("cccccccc-0000-0000-0000-000000000004", scopeB, "sub-B", "shared") // B shared, scopeB
+	q := []float32{0.1, 0.2, 0.3}
+
+	// Scoped: A in scopeA sees only A's record (1), not B's private.
+	hits, err := s.SearchDiscovery(ctx, scopeA, "", "sub-A", q, 10)
+	if err != nil {
+		t.Fatalf("scoped: %v", err)
+	}
+	if len(hits) != 1 || hits[0].Owner != "sub-A" {
+		t.Fatalf("scoped: got %d %+v want 1 A-owned", len(hits), hits)
+	}
+	// cross_spine (scope=""): A sees A across both scopes (2) + B's shared (1) = 3, never B's private.
+	all, err := s.SearchDiscovery(ctx, "", "", "sub-A", q, 10)
+	if err != nil {
+		t.Fatalf("cross_spine: %v", err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("cross_spine: got %d want 3", len(all))
+	}
+	for _, h := range all {
+		if h.Owner == "sub-B" && h.Visibility != "shared" {
+			t.Errorf("cross_spine leaked B's private discovery: %s", h.ID)
+		}
 	}
 }
 
