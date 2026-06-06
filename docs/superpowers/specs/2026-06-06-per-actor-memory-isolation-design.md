@@ -133,33 +133,65 @@ func ownerOrSharedCondition(sub string) *qdrant.Condition {
 ### Id-path gates
 
 Id-addressed operations gate on owner inside the store, so no handler can bypass
-them. The single primitive is an owner-aware fetch:
+them. `Get(ctx, id)` stays as the raw, package-internal fetch (no policy). Two
+**owner-aware store primitives** wrap it — one read-permissive, one write-strict
+— and the destructive store methods are rewritten to take `sub` and enforce
+internally. This is the load-bearing fix for the read/write asymmetry: a single
+`getOwned` would wrongly let a non-owner mutate a `shared` record, so the two
+sides get distinct primitives.
 
 ```go
-// getOwned returns the record only if the caller may read it (owner match or
+// getReadable returns the record only if the caller may READ it (owner match OR
 // shared); otherwise the same not-found error as a missing id. No existence leak.
-func (s *Store) getOwned(ctx context.Context, id, sub string) (Memory, error) {
-    m, err := s.Get(ctx, id) // raw fetch (unexported use)
+func (s *Store) getReadable(ctx context.Context, id, sub string) (Memory, error) {
+    m, err := s.Get(ctx, id) // raw internal fetch
     if err != nil { return Memory{}, err }
     if m.Owner != sub && m.Visibility != "shared" {
         return Memory{}, fmt.Errorf("not found: %s", id)
     }
     return m, nil
 }
+
+// getWritable returns the record only if the caller OWNS it (shared does NOT
+// grant write); otherwise not-found. The mutate primitive.
+func (s *Store) getWritable(ctx context.Context, id, sub string) (Memory, error) {
+    m, err := s.Get(ctx, id) // raw internal fetch
+    if err != nil { return Memory{}, err }
+    if m.Owner != sub {
+        return Memory{}, fmt.Errorf("not found: %s", id)
+    }
+    return m, nil
+}
 ```
 
-| Path | Gate |
-|------|------|
-| `get_memory` | `getOwned(id, sub)` — read allows owner **or** shared |
-| `update_memory` (content replace, and `shared` flag) | **write gate is stricter than read**: requires `owner == sub` (a shared record is readable by all but writable only by its owner). Mismatch → not found, never reaches `Upsert`. |
-| `delete_memory` | owner-only fetch-and-check before delete; mismatch → not found |
-| `store_discovery` with client-supplied `id` | before the upsert-replace, owner-only check on the existing record; if it exists and `owner != sub` → not found (refuse cross-owner overwrite). Fixes engram-ir1 / f7h.2. A brand-new `id` (no existing record) proceeds and stamps `owner` from ctx. |
-| `set_visibility` (new) | owner-only check, then flip `visibility` |
-| `store_memory` | unchanged — random UUID, no overwrite is possible; stamps `owner` from ctx |
+The destructive store methods change signature to enforce internally (so a
+store-level caller cannot bypass the gate):
 
-**Write vs read asymmetry (load-bearing):** read paths admit `owner == sub OR
-shared`; write/mutate paths (`update`, `delete`, `set_visibility`, discovery
-overwrite) require `owner == sub`. Sharing grants *read*, never *write*.
+- `Delete(ctx, id, sub)` → `getWritable` then delete; mismatch → not found.
+- `Update(ctx, id, sub, content, shared *bool)` → `getWritable`, apply content
+  (+visibility if `shared != nil`), re-embed, `Upsert`. (Replaces the handler's
+  current `Get`-then-`Upsert` two-step.)
+- `SetVisibility(ctx, id, sub string, shared bool)` → `getWritable`, set
+  `visibility`, `Upsert` (no re-embed).
+- For the discovery client-supplied-`id` overwrite, write-strict is *not*
+  sufficient because a brand-new `id` legitimately has no existing record.
+  The store gains `ownedOrAbsent(ctx, id, sub)`: raw `Get`; if **not found** →
+  ok (proceed as a new record); if **found and `owner == sub`** → ok (replace);
+  if **found and `owner != sub`** → not found (refuse cross-owner overwrite).
+
+| Path | Store gate |
+|------|-----------|
+| `get_memory` | `getReadable(id, sub)` — owner **or** shared |
+| `update_memory` (content, and optional `shared`) | `Update(id, sub, …)` → `getWritable`; owner-only, never reaches `Upsert` on mismatch |
+| `delete_memory` | `Delete(id, sub)` → `getWritable`; owner-only |
+| `set_visibility` (new) | `SetVisibility(id, sub, shared)` → `getWritable`; owner-only |
+| `store_discovery` with client-supplied `id` | `ownedOrAbsent(id, sub)` — replace own / create new / refuse other's. Fixes engram-ir1 / f7h.2. |
+| `store_memory` | unchanged — random UUID, no overwrite possible; stamps `owner` from ctx |
+
+**Write vs read asymmetry (load-bearing):** `getReadable` admits `owner == sub
+OR shared`; `getWritable` (used by update, delete, set_visibility) and
+`ownedOrAbsent` (discovery overwrite) require `owner == sub`. Sharing grants
+*read*, never *write*.
 
 ### `DeleteAll`
 
@@ -172,9 +204,11 @@ scope and never another owner's (and never another owner's shared records).
 The tool *contract* is unchanged except for two additions; `owner` is always
 server-set and never a tool argument:
 
-- **`update_memory`** gains an optional `shared bool` argument: replace content
-  and (if present) set visibility in one owner-gated call.
-- **`set_visibility(id, shared)`** — new dedicated tool to flip a record's
+- **`update_memory`** gains an optional `shared *bool` argument (`Shared *bool`
+  on `updateArgs`). **Pointer, not plain `bool`**: nil = leave visibility
+  untouched (content-only update), so a routine content replace does *not*
+  silently un-share a record; non-nil sets visibility explicitly.
+- **`set_visibility(id, shared bool)`** — new dedicated tool to flip a record's
   visibility without rewriting content. Owner-gated. Both mechanisms exist by
   design (a content-replace can also re-share; a pure re-share need not
   re-embed).
@@ -201,6 +235,14 @@ records that already have a non-empty `owner` are skipped, so re-running is safe
 Run once by the operator with their real `sub`; multi-user then starts from a
 clean, fully-owned state.
 
+**Empty-owner guard (footgun prevention):** the command **refuses to run with an
+empty `--owner`/`MEM_MIGRATE_OWNER`** and exits non-zero. Stamping records to
+`owner == ""` would place them in the anonymous bucket (see Auth-disabled
+invariant), defeating the migration. The operator must supply their real OIDC
+`sub` — obtainable from a decoded token or the IdP — and should run the
+migration *with OIDC enabled* so the value matches what the server will compare
+against.
+
 ## Auth-disabled invariant
 
 With no `--oidc-issuer`, there is no token, so `sub == ""`. New records get
@@ -211,6 +253,12 @@ an explicit invariant: **isolation requires authentication.** Corollary: the
 migration's configured `sub` should be the operator's *real* `sub`, so that
 enabling auth later keeps their records theirs rather than orphaning them in the
 anonymous bucket.
+
+Behavior note for tests: in auth-disabled mode `cross_spine` discovery search
+returns *all* discoveries (every record has `owner == ""`, which the filter
+admits) — consistent with the single-bucket invariant, but a deliberate change
+from today's unconditionally-unfiltered `cross_spine`. The filter is always
+applied; it is simply permissive when everyone shares the empty owner.
 
 ## Error handling
 
@@ -233,7 +281,13 @@ anonymous bucket.
   - `cross_spine` discovery search as A returns A's discoveries across scopes
     (plus shared), never B's private discoveries.
 - **Sharing:** A marks a record shared (via both `set_visibility` and the
-  `update_memory shared` flag); B can read it but cannot update/delete it.
+  `update_memory shared` flag); B can read it but cannot update/delete it
+  (`getWritable` denies). A content-only `update_memory` (`shared == nil`) on an
+  already-shared record **preserves** `visibility` (regression guard for the
+  pointer semantics).
+- **Discovery overwrite (`ownedOrAbsent`):** A's client-supplied **new** id
+  creates a record owned by A; A re-supplying that id replaces in place;
+  B supplying A's id → not found, A's record unchanged.
 - **Auth-disabled:** `sub == ""` round-trips through store + write in the single
   anonymous bucket.
 - **Migration:** owner-less records get stamped to the configured `sub`;
@@ -241,12 +295,14 @@ anonymous bucket.
 
 ## Scope of change
 
-- `internal/store/store.go` — `Memory` fields, `payload`/`fromPayload`,
-  `ownerScopeFilter` / `ownerOrSharedCondition`, `getOwned`, owner-aware
-  `Search`/`List`/`SearchDiscovery`/`Get`/`Delete`/`DeleteAll`, discovery
-  overwrite gate, `SetVisibility`.
+- `internal/store/store.go` — `Memory` fields (`Owner`, `Visibility`),
+  `payload`/`fromPayload`, `ownerScopeFilter` / `ownerOrSharedCondition`, the
+  `getReadable` / `getWritable` / `ownedOrAbsent` primitives (raw `Get` is left
+  unchanged, used internally by them), owner-aware
+  `Search`/`List`/`SearchDiscovery` (filter) and `Delete`/`Update`/`DeleteAll`
+  (signature gains `sub`), new `SetVisibility`, discovery-overwrite gate.
 - `internal/server/tools.go` — `ownerFromContext`, thread `sub` into store
-  calls, `update_memory` `shared` flag, `set_visibility` tool registration.
+  calls, `updateArgs.Shared *bool`, `set_visibility` tool registration.
 - `cmd/engram/` — `migrate-set-owner` subcommand.
 - `README.md` / `CLAUDE.md` — memory contract: document `owner`/`visibility`,
   the private-default + opt-in-shared model, and the isolation-requires-auth
