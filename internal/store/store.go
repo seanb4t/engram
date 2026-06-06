@@ -205,11 +205,29 @@ func (s *Store) scopeFilter(scope string) *qdrant.Filter {
 	return &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatch("scope", scope)}}
 }
 
-// Search returns the k nearest memories to vec within scope.
-func (s *Store) Search(ctx context.Context, scope string, vec []float32, k uint64) ([]Memory, error) {
+// ownerOrSharedCondition matches records the caller may READ: owned by sub OR
+// marked shared. Sharing grants read, never write.
+func ownerOrSharedCondition(sub string) *qdrant.Condition {
+	return qdrant.NewFilterAsCondition(&qdrant.Filter{Should: []*qdrant.Condition{
+		qdrant.NewMatch("owner", sub),
+		qdrant.NewMatch("visibility", "shared"),
+	}})
+}
+
+// ownerScopeFilter restricts to a scope AND the caller's readable set.
+func (s *Store) ownerScopeFilter(scope, sub string) *qdrant.Filter {
+	return &qdrant.Filter{Must: []*qdrant.Condition{
+		qdrant.NewMatch("scope", scope),
+		ownerOrSharedCondition(sub),
+	}}
+}
+
+// Search returns the k nearest readable memories to vec within scope (records
+// the caller owns, plus shared records).
+func (s *Store) Search(ctx context.Context, scope, sub string, vec []float32, k uint64) ([]Memory, error) {
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
-		Filter: s.scopeFilter(scope), Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
+		Filter: s.ownerScopeFilter(scope, sub), Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
 	})
 	if err != nil {
 		return nil, err
@@ -252,11 +270,11 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, vec []f
 // List returns memories in a scope without a query vector (for session-start
 // bootstrap), most-recent first. Scrolls up to scanCap points in the scope and
 // sorts by CreatedAt in-process to avoid requiring a Qdrant payload index.
-func (s *Store) List(ctx context.Context, scope string, limit uint64) ([]Memory, error) {
+func (s *Store) List(ctx context.Context, scope, sub string, limit uint64) ([]Memory, error) {
 	const scanCap = 1000
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
-		Filter:         s.scopeFilter(scope),
+		Filter:         s.ownerScopeFilter(scope, sub),
 		Limit:          qdrant.PtrOf(uint32(scanCap)),
 		WithPayload:    qdrant.NewWithPayload(true),
 	})

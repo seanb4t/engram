@@ -253,7 +253,7 @@ func TestSearchAndDeleteAll(t *testing.T) {
 		t.Fatalf("upsert m2: %v", err)
 	}
 
-	hits, err := s.Search(ctx, scope, []float32{0.9, 0.1, 0.0}, 5)
+	hits, err := s.Search(ctx, scope, "", []float32{0.9, 0.1, 0.0}, 5)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -265,12 +265,52 @@ func TestSearchAndDeleteAll(t *testing.T) {
 		t.Fatalf("delete_all: %v", err)
 	}
 
-	hits2, err := s.Search(ctx, scope, []float32{0.9, 0.1, 0.0}, 5)
+	hits2, err := s.Search(ctx, scope, "", []float32{0.9, 0.1, 0.0}, 5)
 	if err != nil {
 		t.Fatalf("search after delete_all: %v", err)
 	}
 	if len(hits2) != 0 {
 		t.Fatalf("expected 0 hits after delete_all, got %d", len(hits2))
+	}
+}
+
+func TestSearchListOwnerIsolation(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:search"
+	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+
+	mk := func(id, owner, vis string) {
+		m := Memory{ID: id, Content: "x", Scope: scope, Owner: owner, Visibility: vis,
+			CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	mk("bbbbbbbb-0000-0000-0000-000000000001", "sub-A", "")       // A private
+	mk("bbbbbbbb-0000-0000-0000-000000000002", "sub-B", "")       // B private
+	mk("bbbbbbbb-0000-0000-0000-000000000003", "sub-B", "shared") // B shared
+
+	// A sees only A-private + B-shared (2), never B-private.
+	hits, err := s.Search(ctx, scope, "sub-A", []float32{0.1, 0.2, 0.3}, 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) != 2 {
+		t.Fatalf("Search: got %d want 2", len(hits))
+	}
+	for _, h := range hits {
+		if h.Owner == "sub-B" && h.Visibility != "shared" {
+			t.Errorf("leaked B's private record: %s", h.ID)
+		}
+	}
+	// List honors the same filter.
+	lst, err := s.List(ctx, scope, "sub-A", 10)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(lst) != 2 {
+		t.Errorf("List: got %d want 2", len(lst))
 	}
 }
 
@@ -301,4 +341,15 @@ func TestOwnerVisibilityRoundtrip(t *testing.T) {
 	if got.Owner != "sub-abc" || got.Visibility != "shared" {
 		t.Errorf("round-trip lost owner/visibility: owner=%q visibility=%q", got.Owner, got.Visibility)
 	}
+}
+
+// DeleteAllRaw removes every point in scope regardless of owner — test cleanup only.
+func (s *Store) DeleteAllRaw(ctx context.Context, scope string) error {
+	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Points: qdrant.NewPointsSelectorFilter(&qdrant.Filter{
+			Must: []*qdrant.Condition{qdrant.NewMatch("scope", scope)},
+		}),
+	})
+	return err
 }

@@ -285,7 +285,7 @@ func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]store.Memory, 
 	if err != nil {
 		return nil, err
 	}
-	return d.st.Search(ctx, a.Scope, vec, a.K)
+	return d.st.Search(ctx, a.Scope, ownerFromContext(ctx), vec, a.K)
 }
 
 // effectiveDiscoveryScope resolves the scope filter for a discovery search:
@@ -355,7 +355,7 @@ func Register(s *mcp.Server) {
 			if a.Limit == 0 {
 				a.Limit = 20
 			}
-			mems, err := d.st.List(ctx, a.Scope, a.Limit)
+			mems, err := d.st.List(ctx, a.Scope, ownerFromContext(ctx), a.Limit)
 			return textResult(fmt.Sprintf("%d memories", len(mems))), map[string]any{"memories": mems}, err
 		})
 
