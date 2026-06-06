@@ -319,3 +319,4 @@ applied; it is simply permissive when everyone shares the empty owner.
 - **Admin/superuser cross-owner access** — none. Even `delete_all` is owner-scoped.
 - **Migrating by `actor`→`sub` mapping** — unnecessary while single-user; the
   flat stamp suffices.
+<!-- adr-capture: sha256=8099429c9761eb92; session=cli; ts=2026-06-06T17:28:37Z; adrs=engram-cgb,engram-hvg,engram-kyz,engram-xa6 -->

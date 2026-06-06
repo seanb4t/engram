@@ -1496,3 +1496,4 @@ jj commit -m "feat: handler wiring test + document owner/visibility isolation (e
 - [ ] `task license:check` clean (new `cmd/engram/migrate.go` carries the SPDX header).
 - [ ] Manual: two distinct tokens cannot read/update/delete each other's private records; a `shared` record is readable but not writable by the other; `cross_spine` returns own+shared only.
 - [ ] `engram migrate-set-owner --owner <sub>` stamps legacy records; rerun reports 0.
+<!-- adr-capture: sha256=734c9ade60e9f8be; session=cli; ts=2026-06-06T17:28:37Z; adrs=engram-cgb,engram-hvg,engram-kyz,engram-xa6 -->
