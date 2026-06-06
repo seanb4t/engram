@@ -477,6 +477,42 @@ func TestUpdateOwnerGateAndSharedFlag(t *testing.T) {
 	}
 }
 
+func TestSetVisibilityOwnerGate(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:vis"
+	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	m := Memory{ID: "a1a1a1a1-0000-0000-0000-000000000001", Content: "v", Scope: scope, Owner: "sub-B", CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	// Non-owner denied.
+	if err := s.SetVisibility(ctx, m.ID, "sub-A", true); !errors.Is(err, ErrNotFound) {
+		t.Errorf("non-owner set_visibility: want ErrNotFound, got %v", err)
+	}
+	// Owner shares, then unshares; vector is preserved (SetPayload, not Upsert).
+	if err := s.SetVisibility(ctx, m.ID, "sub-B", true); err != nil {
+		t.Fatalf("share: %v", err)
+	}
+	got, err := s.Get(ctx, m.ID)
+	if err != nil {
+		t.Fatalf("get after share: %v", err)
+	}
+	if got.Visibility != "shared" {
+		t.Errorf("share failed: %q", got.Visibility)
+	}
+	if err := s.SetVisibility(ctx, m.ID, "sub-B", false); err != nil {
+		t.Fatalf("unshare: %v", err)
+	}
+	got, err = s.Get(ctx, m.ID)
+	if err != nil {
+		t.Fatalf("get after unshare: %v", err)
+	}
+	if got.Visibility != "" {
+		t.Errorf("unshare failed: %q", got.Visibility)
+	}
+}
+
 // DeleteAllRaw removes every point in scope regardless of owner — test cleanup only.
 func (s *Store) DeleteAllRaw(ctx context.Context, scope string) error {
 	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{

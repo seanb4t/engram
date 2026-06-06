@@ -360,6 +360,24 @@ func (s *Store) Update(ctx context.Context, id, sub, content string, shared *boo
 	return s.Upsert(ctx, cur, vec)
 }
 
+// SetVisibility flips a record's shared flag without re-embedding (uses
+// SetPayload, preserving the vector), only if owned by sub.
+func (s *Store) SetVisibility(ctx context.Context, id, sub string, shared bool) error {
+	if _, err := s.getWritable(ctx, id, sub); err != nil {
+		return err
+	}
+	vis := ""
+	if shared {
+		vis = "shared"
+	}
+	_, err := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload:        qdrant.NewValueMap(map[string]any{"visibility": vis}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
+	})
+	return err
+}
+
 // Delete removes the memory with the given id, only if owned by sub.
 func (s *Store) Delete(ctx context.Context, id, sub string) error {
 	if _, err := s.getWritable(ctx, id, sub); err != nil {

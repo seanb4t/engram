@@ -153,6 +153,11 @@ type searchDiscoveryArgs struct {
 	CrossSpine bool   `json:"cross_spine,omitempty" jsonschema:"span all discovery scopes (ignores scope)"`
 }
 
+type setVisibilityArgs struct {
+	ID     string `json:"id"`
+	Shared bool   `json:"shared" jsonschema:"true = readable by any authenticated caller; false = private"`
+}
+
 func validateStoreDiscovery(a storeDiscoveryArgs) error {
 	if a.Content == "" {
 		return fmt.Errorf("content is required")
@@ -389,6 +394,12 @@ func Register(s *mcp.Server) {
 		func(ctx context.Context, _ *mcp.CallToolRequest, a searchDiscoveryArgs) (*mcp.CallToolResult, any, error) {
 			hits, err := d.searchDiscovery(ctx, a)
 			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"discoveries": hits}, err
+		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "set_visibility", Description: "Share or unshare a memory you own. shared=true → readable by any authenticated caller (never writable by others); false → private."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a setVisibilityArgs) (*mcp.CallToolResult, any, error) {
+			err := d.st.SetVisibility(ctx, a.ID, ownerFromContext(ctx), a.Shared)
+			return textResult("visibility updated"), nil, err
 		})
 }
 
