@@ -63,6 +63,47 @@ func TestUpsertGetDeleteRoundtrip(t *testing.T) {
 	}
 }
 
+func TestDiscoveryRoundtrip(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	m := Memory{
+		ID:       "44444444-4444-4444-4444-444444444444",
+		Content:  "retry logic lives in client.go, keyed off ctx deadline",
+		Scope:    "discovery:repo:github.com/seanb4t/engram",
+		Repo:     "github.com/seanb4t/engram",
+		Source:   "agent-inferred",
+		Category: "discovery",
+		Kind:     "fact",
+		Summary:  "retry = ctx deadline",
+		Citations: []Citation{
+			{Kind: "file", Ref: "internal/client.go", Locator: "200-240", Pin: "sha256:abc", Excerpt: "for ... { select { <-ctx.Done() } }"},
+			{Kind: "repo", Ref: "github.com/qdrant/go-client", Pin: "@v1.18.2"},
+		},
+		CreatedAt: time.Now().UTC().Truncate(time.Second),
+	}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	got, err := s.Get(ctx, m.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Kind != "fact" || got.Summary != "retry = ctx deadline" {
+		t.Errorf("kind/summary mismatch: %+v", got)
+	}
+	if len(got.Citations) != 2 {
+		t.Fatalf("citations: got %d want 2: %+v", len(got.Citations), got.Citations)
+	}
+	c0 := got.Citations[0]
+	if c0.Kind != "file" || c0.Ref != "internal/client.go" || c0.Locator != "200-240" || c0.Pin != "sha256:abc" || c0.Excerpt == "" {
+		t.Errorf("citation[0] mismatch: %+v", c0)
+	}
+	if got.Citations[1].Ref != "github.com/qdrant/go-client" || got.Citations[1].Pin != "@v1.18.2" {
+		t.Errorf("citation[1] mismatch: %+v", got.Citations[1])
+	}
+	_ = s.Delete(ctx, m.ID)
+}
+
 func TestSearchAndDeleteAll(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
