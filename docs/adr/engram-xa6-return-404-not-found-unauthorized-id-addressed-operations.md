@@ -18,12 +18,20 @@ All owner/visibility mismatches return the same not-found error (ErrNotFound, re
 
 ## Rationale
 
-- Existence of another actor's private record must not be observable — a 403 would confirm it.\n- Consistent with private-per-author intent: another owner's record is opaque to non-owners.\n- Uniform error simplifies handler code: no 'exists but not yours' branch.
+- Existence of another actor's private record must not be observable — a 403 would confirm it.
+- Consistent with private-per-author intent: another owner's record is opaque to non-owners.
+- Uniform error simplifies handler code: no 'exists but not yours' branch.
 
 ## Alternatives Considered
 
-**Return 403 Forbidden / distinct ownership error** — rejected: confirms the record exists under a different owner (existence oracle), breaking opacity.\n**Return the same not-found as a missing id (chosen)** — not-owned is indistinguishable from not-exists; no existence information leaks across actors.
+**Return 403 Forbidden / distinct ownership error** — rejected: confirms the record exists under a different owner (existence oracle), breaking opacity.
+
+**Return the same not-found as a missing id (chosen)** — not-owned is indistinguishable from not-exists; no existence information leaks across actors.
 
 ## Consequences
 
-**Positive:** no cross-actor existence oracle via any id-addressed tool; handler error handling stays a single not-found path.\n**Negative:** a caller who accidentally uses another actor's id gets a misleading not-found rather than a permission error; debugging mis-ownership requires inspecting Qdrant directly.\n**Neutral:** embedding and Qdrant transport errors still surface unchanged — only ownership/visibility mismatches are masked.
+**Positive:** no cross-actor existence oracle via any id-addressed tool; handler error handling stays a single not-found path.
+
+**Negative:** a caller who accidentally uses another actor's id gets a misleading not-found rather than a permission error; debugging mis-ownership requires inspecting Qdrant directly.
+
+**Neutral:** embedding and Qdrant transport errors still surface unchanged — only ownership/visibility mismatches are masked.

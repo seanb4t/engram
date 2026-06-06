@@ -18,12 +18,20 @@ getReadable admits owner==sub OR visibility=="shared"; getWritable and ownedOrAb
 
 ## Rationale
 
-- Sharing is a read-delegation model, not co-ownership — the author retains exclusive write authority.\n- A single predicate cannot express this without either over-granting writes or under-granting reads.\n- ownedOrAbsent handles the discovery client-supplied-id case where write-strict alone is insufficient because a brand-new id legitimately has no existing record.
+- Sharing is a read-delegation model, not co-ownership — the author retains exclusive write authority.
+- A single predicate cannot express this without either over-granting writes or under-granting reads.
+- ownedOrAbsent handles the discovery client-supplied-id case where write-strict alone is insufficient because a brand-new id legitimately has no existing record.
 
 ## Alternatives Considered
 
-**Single gate (owner OR shared grants all access)** — rejected: any authenticated caller could overwrite or delete another actor's shared record, defeating ownership.\n**Asymmetric primitives: getReadable (owner OR shared) vs getWritable (owner only) (chosen)** — sharing grants exactly read access; owners keep exclusive write/delete/visibility control; the asymmetry is a named, testable concept.
+**Single gate (owner OR shared grants all access)** — rejected: any authenticated caller could overwrite or delete another actor's shared record, defeating ownership.
+
+**Asymmetric primitives: getReadable (owner OR shared) vs getWritable (owner only) (chosen)** — sharing grants exactly read access; owners keep exclusive write/delete/visibility control; the asymmetry is a named, testable concept.
 
 ## Consequences
 
-**Positive:** shared records are safe from mutation by non-owners even when public; the three primitives cover every id-addressed access pattern without overlap.\n**Negative:** contributors must pick the right primitive for a new operation (wrong choice silently misgrants); update_memory's shared *bool pointer semantics (nil = preserve visibility) are a subtle invariant needing explicit tests.\n**Neutral:** DeleteAll is owner-scoped, applying getWritable semantics at the collection level.
+**Positive:** shared records are safe from mutation by non-owners even when public; the three primitives cover every id-addressed access pattern without overlap.
+
+**Negative:** contributors must pick the right primitive for a new operation (wrong choice silently misgrants); update_memory's shared *bool pointer semantics (nil = preserve visibility) are a subtle invariant needing explicit tests.
+
+**Neutral:** DeleteAll is owner-scoped, applying getWritable semantics at the collection level.

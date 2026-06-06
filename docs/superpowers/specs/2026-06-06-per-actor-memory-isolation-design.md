@@ -171,8 +171,10 @@ store-level caller cannot bypass the gate):
 - `Update(ctx, id, sub, content, shared *bool)` → `getWritable`, apply content
   (+visibility if `shared != nil`), re-embed, `Upsert`. (Replaces the handler's
   current `Get`-then-`Upsert` two-step.)
-- `SetVisibility(ctx, id, sub string, shared bool)` → `getWritable`, set
-  `visibility`, `Upsert` (no re-embed).
+- `SetVisibility(ctx, id, sub string, shared bool)` → `getWritable`, then
+  `SetPayload` to set only the `visibility` key — preserves the existing vector,
+  no re-embed (do **not** `Upsert`, which would rewrite vectors). Matches the
+  plan's Task 7.
 - For the discovery client-supplied-`id` overwrite, write-strict is *not*
   sufficient because a brand-new `id` legitimately has no existing record.
   The store gains `ownedOrAbsent(ctx, id, sub)`: raw `Get`; if **not found** →

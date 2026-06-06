@@ -18,12 +18,20 @@ Authorization is enforced entirely within internal/store/store.go via Qdrant-lev
 
 ## Rationale
 
-- Prevents any future handler or internal caller from accidentally bypassing isolation.\n- The Qdrant filter is applied at query time, not after fetching — avoids loading other owners' vectors into server memory.\n- Single invariant point: all read paths compose the owner filter; all write paths go through getWritable or ownedOrAbsent.
+- Prevents any future handler or internal caller from accidentally bypassing isolation.
+- The Qdrant filter is applied at query time, not after fetching — avoids loading other owners' vectors into server memory.
+- Single invariant point: all read paths compose the owner filter; all write paths go through getWritable or ownedOrAbsent.
 
 ## Alternatives Considered
 
-**Enforce in MCP tool handlers** — rejected: every new handler or internal caller must remember to apply the filter; a missed call-site silently grants full access, and post-filtering in a handler over-fetches other owners' vectors into memory.\n**Enforce in the store layer (chosen)** — isolation becomes an invariant of the data layer; no code path can return or mutate another owner's record.
+**Enforce in MCP tool handlers** — rejected: every new handler or internal caller must remember to apply the filter; a missed call-site silently grants full access, and post-filtering in a handler over-fetches other owners' vectors into memory.
+
+**Enforce in the store layer (chosen)** — isolation becomes an invariant of the data layer; no code path can return or mutate another owner's record.
 
 ## Consequences
 
-**Positive:** new tools cannot silently skip authz (they must pass sub to store calls); cross_spine discovery search stays safe because the owner/shared subclause is always present even when the scope condition is dropped.\n**Negative:** store method signatures become authz-aware, mixing persistence and security concerns; auth-disabled mode relies on the subtle sub=="" matches owner=="" invariant.\n**Neutral:** raw Get() stays an internal-only primitive beneath the owner-aware wrappers.
+**Positive:** new tools cannot silently skip authz (they must pass sub to store calls); cross_spine discovery search stays safe because the owner/shared subclause is always present even when the scope condition is dropped.
+
+**Negative:** store method signatures become authz-aware, mixing persistence and security concerns; auth-disabled mode relies on the subtle sub=="" matches owner=="" invariant.
+
+**Neutral:** raw Get() stays an internal-only primitive beneath the owner-aware wrappers.
