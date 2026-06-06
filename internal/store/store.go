@@ -206,10 +206,6 @@ func (s *Store) Upsert(ctx context.Context, m Memory, vec []float32) error {
 	return err
 }
 
-func (s *Store) scopeFilter(scope string) *qdrant.Filter {
-	return &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatch("scope", scope)}}
-}
-
 // ownerOrSharedCondition matches records the caller may READ: owned by sub OR
 // marked shared. Sharing grants read, never write.
 func ownerOrSharedCondition(sub string) *qdrant.Condition {
@@ -254,7 +250,7 @@ func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 // matches both map and fact. sub restricts results to the caller's own records
 // plus any shared records (ownerOrSharedCondition), even when scope is empty —
 // this is the cross_spine = my+shared semantic. Builds a compound exact-match
-// filter from the same NewMatch primitive scopeFilter uses — no prefix matching.
+// filter from the NewMatch primitive — no prefix matching.
 func (s *Store) SearchDiscovery(ctx context.Context, scope, kind, sub string, vec []float32, k uint64) ([]Memory, error) {
 	must := []*qdrant.Condition{qdrant.NewMatch("category", "discovery")}
 	if scope != "" {
@@ -408,11 +404,16 @@ func (s *Store) Delete(ctx context.Context, id, sub string) error {
 	return err
 }
 
-// DeleteAll removes every memory in scope.
-func (s *Store) DeleteAll(ctx context.Context, scope string) error {
+// DeleteAll removes the caller's OWN records in scope (never another owner's,
+// and never another owner's shared records).
+func (s *Store) DeleteAll(ctx context.Context, scope, sub string) error {
+	filter := &qdrant.Filter{Must: []*qdrant.Condition{
+		qdrant.NewMatch("scope", scope),
+		qdrant.NewMatch("owner", sub),
+	}}
 	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
-		Points: qdrant.NewPointsSelectorFilter(s.scopeFilter(scope)),
+		Points: qdrant.NewPointsSelectorFilter(filter),
 	})
 	return err
 }

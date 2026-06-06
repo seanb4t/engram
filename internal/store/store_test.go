@@ -163,7 +163,7 @@ func TestSearchDiscoveryFilters(t *testing.T) {
 	scopeA := "discovery:repo:A"
 	scopeB := "discovery:repo:B"
 	curated := "repo:A"
-	defer func() { _ = s.DeleteAll(ctx, scopeA); _ = s.DeleteAll(ctx, scopeB); _ = s.DeleteAll(ctx, curated) }()
+	defer func() { _ = s.DeleteAll(ctx, scopeA, ""); _ = s.DeleteAll(ctx, scopeB, ""); _ = s.DeleteAll(ctx, curated, "") }()
 
 	mk := func(id, scope, cat, kind string, vec []float32) {
 		m := Memory{ID: id, Content: "x", Scope: scope, Category: cat, Kind: kind,
@@ -305,7 +305,7 @@ func TestSearchAndDeleteAll(t *testing.T) {
 		t.Fatal("expected at least 1 search hit")
 	}
 
-	if err := s.DeleteAll(ctx, scope); err != nil {
+	if err := s.DeleteAll(ctx, scope, ""); err != nil {
 		t.Fatalf("delete_all: %v", err)
 	}
 
@@ -534,6 +534,30 @@ func TestOwnedOrAbsent(t *testing.T) {
 	// Other actor supplies id → ErrNotFound (refuse overwrite).
 	if err := s.OwnedOrAbsent(ctx, id, "sub-B"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("cross-owner overwrite: want ErrNotFound, got %v", err)
+	}
+}
+
+func TestDeleteAllOwnerScoped(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:delall"
+	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	a := Memory{ID: "c3c3c3c3-0000-0000-0000-000000000001", Content: "a", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+	b := Memory{ID: "c3c3c3c3-0000-0000-0000-000000000002", Content: "b", Scope: scope, Owner: "sub-B", CreatedAt: time.Now().UTC()}
+	for _, m := range []Memory{a, b} {
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert: %v", err)
+		}
+	}
+	// A's teardown removes only A's record; B's survives.
+	if err := s.DeleteAll(ctx, scope, "sub-A"); err != nil {
+		t.Fatalf("deleteAll: %v", err)
+	}
+	if _, err := s.Get(ctx, a.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("A's record should be gone: %v", err)
+	}
+	if _, err := s.Get(ctx, b.ID); err != nil {
+		t.Errorf("B's record should survive A's teardown: %v", err)
 	}
 }
 

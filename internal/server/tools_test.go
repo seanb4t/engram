@@ -155,7 +155,7 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()
 	scope := "discovery:repo:handler-test"
-	defer func() { _ = d.st.DeleteAll(ctx, scope) }()
+	defer func() { _ = d.st.DeleteAll(ctx, scope, "") }()
 
 	// create
 	id, err := d.storeDiscovery(ctx, storeDiscoveryArgs{

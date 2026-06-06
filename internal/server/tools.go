@@ -384,9 +384,9 @@ func Register(s *mcp.Server) {
 			return textResult("deleted"), nil, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "delete_all", Description: "Delete every memory in a scope (teardown)."},
+	mcp.AddTool(s, &mcp.Tool{Name: "delete_all", Description: "Delete your own memories in a scope (teardown); never another caller's records."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a scopeArgs) (*mcp.CallToolResult, any, error) {
-			err := d.st.DeleteAll(ctx, a.Scope)
+			err := d.st.DeleteAll(ctx, a.Scope, ownerFromContext(ctx))
 			return textResult("scope cleared"), nil, err
 		})
 
