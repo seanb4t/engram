@@ -301,8 +301,10 @@ applied; it is simply permissive when everyone shares the empty owner.
   unchanged, used internally by them), owner-aware
   `Search`/`List`/`SearchDiscovery` (filter) and `Delete`/`Update`/`DeleteAll`
   (signature gains `sub`), new `SetVisibility`, discovery-overwrite gate.
-- `internal/server/tools.go` — `ownerFromContext`, thread `sub` into store
-  calls, `updateArgs.Shared *bool`, `set_visibility` tool registration.
+- `internal/server/tools.go` — `ownerFromContext`; add `Owner:
+  ownerFromContext(ctx)` alongside the existing `Actor` line in **both** the
+  `storeMemory` and `storeDiscovery` constructors; thread `sub` into store
+  calls; `updateArgs.Shared *bool`; `set_visibility` tool registration.
 - `cmd/engram/` — `migrate-set-owner` subcommand.
 - `README.md` / `CLAUDE.md` — memory contract: document `owner`/`visibility`,
   the private-default + opt-in-shared model, and the isolation-requires-auth
