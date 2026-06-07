@@ -13,11 +13,73 @@ import (
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/qdrant/go-client/qdrant"
 	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
 
 	"github.com/seanb4t/engram/internal/store"
 )
+
+// TestToolArgSchemasDoNotPanic exercises jsonschema schema generation for every
+// tool's argument type via mcp.AddTool — the exact path that panicked at startup
+// in v0.4.2 ("tag must not begin with 'WORD='") because no test covered the
+// AddTool calls in Register (the handler tests use deps directly). Pure unit
+// test: no Qdrant or embedder. A bad jsonschema tag panics here instead of in
+// production at first serve.
+func TestToolArgSchemasDoNotPanic(t *testing.T) {
+	check := func(name string, register func(*mcp.Server)) {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("AddTool schema generation panicked: %v", r)
+				}
+			}()
+			register(mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil))
+		})
+	}
+	noop := func() (*mcp.CallToolResult, any, error) { return nil, nil, nil }
+	check("store_memory", func(s *mcp.Server) {
+		mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "x"}, func(context.Context, *mcp.CallToolRequest, storeArgs) (*mcp.CallToolResult, any, error) {
+			return noop()
+		})
+	})
+	check("search_memory", func(s *mcp.Server) {
+		mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "x"}, func(context.Context, *mcp.CallToolRequest, searchArgs) (*mcp.CallToolResult, any, error) {
+			return noop()
+		})
+	})
+	check("list_memory", func(s *mcp.Server) {
+		mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "x"}, func(context.Context, *mcp.CallToolRequest, listArgs) (*mcp.CallToolResult, any, error) { return noop() })
+	})
+	check("get_memory", func(s *mcp.Server) {
+		mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "x"}, func(context.Context, *mcp.CallToolRequest, idArgs) (*mcp.CallToolResult, any, error) { return noop() })
+	})
+	check("update_memory", func(s *mcp.Server) {
+		mcp.AddTool(s, &mcp.Tool{Name: "update_memory", Description: "x"}, func(context.Context, *mcp.CallToolRequest, updateArgs) (*mcp.CallToolResult, any, error) {
+			return noop()
+		})
+	})
+	check("delete_all", func(s *mcp.Server) {
+		mcp.AddTool(s, &mcp.Tool{Name: "delete_all", Description: "x"}, func(context.Context, *mcp.CallToolRequest, scopeArgs) (*mcp.CallToolResult, any, error) {
+			return noop()
+		})
+	})
+	check("store_discovery", func(s *mcp.Server) {
+		mcp.AddTool(s, &mcp.Tool{Name: "store_discovery", Description: "x"}, func(context.Context, *mcp.CallToolRequest, storeDiscoveryArgs) (*mcp.CallToolResult, any, error) {
+			return noop()
+		})
+	})
+	check("search_discovery", func(s *mcp.Server) {
+		mcp.AddTool(s, &mcp.Tool{Name: "search_discovery", Description: "x"}, func(context.Context, *mcp.CallToolRequest, searchDiscoveryArgs) (*mcp.CallToolResult, any, error) {
+			return noop()
+		})
+	})
+	check("set_visibility", func(s *mcp.Server) {
+		mcp.AddTool(s, &mcp.Tool{Name: "set_visibility", Description: "x"}, func(context.Context, *mcp.CallToolRequest, setVisibilityArgs) (*mcp.CallToolResult, any, error) {
+			return noop()
+		})
+	})
+}
 
 // testQdrantAddr is the gRPC host:port the integration tests run against. Set by
 // TestMain: MEM_QDRANT_TEST_ADDR if provided (fast path / override), else an
