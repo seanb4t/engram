@@ -68,3 +68,5 @@
 sync.remote: "git+https://github.com/seanb4t/engram.git"
 
 dolt.shared-server: true
+
+export.auto: false
