@@ -12,9 +12,17 @@ permissions:
 # CI installs each gate via its official action (the runner is bare; the local
 # `task lint`/`fmt` suite assumes the tools are already on PATH). `task` remains
 # the local-dev entrypoint; these jobs mirror its gates with reliable installs.
+#
+# Release-please PRs (head branch `release-please--*`) only touch CHANGELOG /
+# manifest / Chart.yaml / plugin.json, so the Go/python/license/actionlint jobs
+# skip themselves via a job-level `if` — skipped jobs still satisfy required
+# status checks (unlike workflow-level path filters, which leave them stuck in
+# "Expected"). `chart` and `commit-lint` still run: helm lint validates the
+# Chart.yaml bump and commit-lint validates the release PR title.
 jobs:
   test:
     name: test
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -42,6 +50,7 @@ jobs:
 
   golangci:
     name: golangci-lint
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -52,6 +61,7 @@ jobs:
 
   license:
     name: license headers
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -68,6 +78,7 @@ jobs:
 
   workflows:
     name: actionlint
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -81,6 +92,7 @@ jobs:
 
   python:
     name: python
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
