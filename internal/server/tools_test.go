@@ -16,8 +16,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/qdrant/go-client/qdrant"
 	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
+	"go.opentelemetry.io/otel"
 
 	"github.com/seanb4t/engram/internal/store"
+	"github.com/seanb4t/engram/internal/telemetry"
 )
 
 // TestToolArgSchemasDoNotPanic exercises jsonschema schema generation for every
@@ -327,7 +329,8 @@ func TestRegisterReturnsErrorOnStoreInitFailure(t *testing.T) {
 	t.Setenv("MEM_QDRANT_ADDR", "bad-host:1") // SplitHostPort ok, dial later fails
 	t.Setenv("MEM_EMBED_DIM", "not-a-number") // forces StoreFromEnv error pre-dial
 	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
-	if err := Register(s); err == nil {
+	tm := telemetry.NewToolMetrics(otel.Meter("test"))
+	if err := Register(s, tm); err == nil {
 		t.Fatal("Register must return an error when store init fails, not exit")
 	}
 }

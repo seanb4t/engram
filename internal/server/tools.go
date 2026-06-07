@@ -21,7 +21,6 @@ import (
 	"github.com/qdrant/go-client/qdrant"
 	otelgrpc "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 
 	"github.com/seanb4t/engram/internal/embed"
@@ -113,8 +112,8 @@ func warnOwnerlessRecords(st *store.Store) {
 		return
 	}
 	if n > 0 {
-		slog.Warn("pre-isolation records have no owner; invisible to reads and not removable by delete_all until claimed",
-			"count", n, "remedy", "engram migrate-set-owner --owner <your-oidc-sub>")
+		slog.Warn("pre-isolation records have no owner — invisible to reads and not removable by delete_all until migrate-set-owner runs",
+			"count", n)
 	}
 }
 
@@ -403,16 +402,18 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 	return d.st.Update(ctx, a.ID, owner, a.Content, a.Shared, vec)
 }
 
-// Register wires the memory tools onto the MCP server. It returns an error if
-// dependency construction (store/embedder) fails, so the caller can flush
-// telemetry and exit cleanly rather than aborting via log.Fatal.
-func Register(s *mcp.Server) error {
+// Register wires the memory tools onto the MCP server. It accepts a pre-built
+// *telemetry.ToolMetrics (constructed once in runServe and reused for both tool
+// instrumentation and auth-failure recording) so there is a single instrument
+// instance rather than two disjoint ones. Returns an error if dependency
+// construction (store/embedder) fails, so the caller can flush telemetry and
+// exit cleanly rather than aborting via log.Fatal.
+func Register(s *mcp.Server, tm *telemetry.ToolMetrics) error {
 	d, err := buildDepsFromEnv()
 	if err != nil {
 		return fmt.Errorf("build deps: %w", err)
 	}
 
-	tm := telemetry.NewToolMetrics(otel.Meter("github.com/seanb4t/engram"))
 	s.AddReceivingMiddleware(instrumentTools(tm.Record))
 
 	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps."},

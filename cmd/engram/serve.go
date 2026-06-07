@@ -69,25 +69,36 @@ func runServe() error {
 		_ = shutdown(ctx)
 	}()
 
+	// One ToolMetrics instance shared by tool instrumentation (Register) and
+	// the auth-failure recorder (accessLog), so all counters/histograms share
+	// the same instrument objects and export together.
+	tm := telemetry.NewToolMetrics(otel.Meter("github.com/seanb4t/engram"))
+
 	srv := mcp.NewServer(&mcp.Implementation{Name: "engram", Version: version}, nil)
-	if err := server.Register(srv); err != nil {
+	if err := server.Register(srv, tm); err != nil {
 		slog.Error("server registration failed", "err", err)
 		return err
 	}
 
 	var handler http.Handler = mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return srv }, nil)
-	handler = withAuth(handler)
-	tm := telemetry.NewToolMetrics(otel.Meter("github.com/seanb4t/engram"))
+	handler, err = withAuth(handler)
+	if err != nil {
+		slog.Error("oidc verifier init failed", "err", err, "issuer", oidcIssuer)
+		return err
+	}
 	handler = accessLog(tm.RecordAuthFailure, nil)(handler)
 	handler = otelhttp.NewHandler(handler, "mcp")
 
+	// ReadHeaderTimeout guards against slowloris; IdleTimeout reclaims idle
+	// keep-alive connections. ReadTimeout and WriteTimeout are intentionally
+	// unset (0): the streamable-HTTP / SSE transport holds connections open
+	// indefinitely and the go-sdk never clears write deadlines, so either
+	// timeout would sever long-lived SSE streams.
 	httpSrv := &http.Server{
 		Addr:              listenAddr,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
 
@@ -118,22 +129,23 @@ func runServe() error {
 // (delegate_auth_to_upstream); engram verifies it and exposes the caller
 // identity to tool handlers for attribution. No issuer → validation disabled
 // (all requests accepted), logged loudly so it is never silently open.
-func withAuth(handler http.Handler) http.Handler {
+// Returns an error on verifier-init failure so the deferred telemetry shutdown
+// in runServe runs before the process exits (no buffered OTLP records are lost).
+func withAuth(handler http.Handler) (http.Handler, error) {
 	if oidcIssuer == "" {
 		slog.Warn("OIDC validation DISABLED (no --oidc-issuer / MEM_OIDC_ISSUER); all requests accepted")
-		return handler
+		return handler, nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	verifier, err := auth.New(ctx, oidcIssuer, oidcAudience)
 	cancel()
 	if err != nil {
-		slog.Error("oidc verifier init failed", "err", err, "issuer", oidcIssuer)
-		os.Exit(1)
+		return nil, fmt.Errorf("oidc verifier init: %w", err)
 	}
 
 	slog.Info("OIDC bearer-token validation enabled", "issuer", oidcIssuer)
 	return mcpauth.RequireBearerToken(verifier.TokenVerifier(), &mcpauth.RequireBearerTokenOptions{
 		ResourceMetadataURL: oidcResourceMetadata,
-	})(handler)
+	})(handler), nil
 }
