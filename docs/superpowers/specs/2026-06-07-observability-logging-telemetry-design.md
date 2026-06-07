@@ -64,7 +64,7 @@ Observability concerns do not all surface at the same layer. Conflating them
 into a single "wrap the handler" approach would silently miss auth failures,
 because `RequireBearerToken` short-circuits before the MCP dispatcher runs.
 
-```
+```text
 ┌─ HTTP layer (http.Handler) ───────────────────────────────┐
 │  otelhttp.NewHandler + logging middleware                  │
 │  • AUTH FAILURES (401/403 from RequireBearerToken)         │
@@ -229,7 +229,7 @@ the chart stays generic.
 
 ## Data flow (one `store_memory` call)
 
-```
+```text
 client → HTTP (otelhttp span "mcp", access log)
        → RequireBearerToken (401+log+metric on failure)
        → MCP dispatch → AddReceivingMiddleware

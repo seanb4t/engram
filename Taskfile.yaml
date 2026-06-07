@@ -47,6 +47,7 @@ tasks:
       - yamlfmt -lint .
   lint:actions:
     cmds:
+      # bare actionlint auto-discovers .github/workflows/*.{yml,yaml}
       - actionlint
   lint:markdown:
     cmds:

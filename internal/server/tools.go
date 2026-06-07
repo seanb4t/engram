@@ -7,8 +7,9 @@ package server
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -18,9 +19,13 @@ import (
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/qdrant/go-client/qdrant"
+	otelgrpc "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"google.golang.org/grpc"
 
 	"github.com/seanb4t/engram/internal/embed"
 	"github.com/seanb4t/engram/internal/store"
+	"github.com/seanb4t/engram/internal/telemetry"
 )
 
 // EnvOr returns the environment variable k, or def when k is unset/empty.
@@ -57,7 +62,13 @@ func StoreFromEnv() (*store.Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid port in MEM_QDRANT_ADDR %q: %w", qdrantAddr, err)
 	}
-	qc, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
+	qc, err := qdrant.NewClient(&qdrant.Config{
+		Host: host,
+		Port: port,
+		GrpcOptions: []grpc.DialOption{
+			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("qdrant client: %w", err)
 	}
@@ -74,17 +85,18 @@ func StoreFromEnv() (*store.Store, error) {
 // store/Qdrant vars (MEM_QDRANT_ADDR, MEM_QDRANT_COLLECTION, MEM_EMBED_DIM) are
 // read by StoreFromEnv; the embedder vars (MEM_LITELLM_URL, MEM_LITELLM_KEY,
 // MEM_EMBED_MODEL, default "ollama/bge-m3") are read here.
-func buildDepsFromEnv() *deps {
+func buildDepsFromEnv() (*deps, error) {
 	st, err := StoreFromEnv()
 	if err != nil {
-		log.Fatalf("%v", err)
+		return nil, err
 	}
 	warnOwnerlessRecords(st)
 	litellmURL := EnvOr("MEM_LITELLM_URL", "http://localhost:4000")
 	litellmKey := EnvOr("MEM_LITELLM_KEY", "")
 	embedModel := EnvOr("MEM_EMBED_MODEL", "ollama/bge-m3")
-	em := embed.New(litellmURL, litellmKey, embedModel)
-	return &deps{st: st, em: em}
+	em := embed.New(litellmURL, litellmKey, embedModel,
+		embed.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)))
+	return &deps{st: st, em: em}, nil
 }
 
 // warnOwnerlessRecords loudly warns at startup when pre-isolation (owner-less)
@@ -96,12 +108,12 @@ func warnOwnerlessRecords(st *store.Store) {
 	defer cancel()
 	n, err := st.CountOwnerless(ctx)
 	if err != nil {
-		log.Printf("WARNING: could not check for pre-isolation (owner-less) records: %v", err)
+		slog.Warn("could not check for pre-isolation (owner-less) records", "err", err)
 		return
 	}
 	if n > 0 {
-		log.Printf("WARNING: %d pre-isolation record(s) have no owner — they are INVISIBLE to reads "+
-			"and not removable by delete_all until you run: engram migrate-set-owner --owner <your-oidc-sub>", n)
+		slog.Warn("pre-isolation records have no owner — invisible to reads and not removable by delete_all until migrate-set-owner runs",
+			"count", n)
 	}
 }
 
@@ -362,7 +374,7 @@ func (d *deps) searchDiscovery(ctx context.Context, a searchDiscoveryArgs) ([]st
 	if a.CrossSpine && a.Scope != "" {
 		// Don't echo the caller-supplied scope value into logs (avoids
 		// unbounded/sensitive scope strings reaching log aggregation).
-		log.Print("search_discovery: cross_spine=true; ignoring supplied scope")
+		slog.Info("search_discovery: cross_spine=true; ignoring supplied scope")
 	}
 	if a.K == 0 {
 		a.K = 8
@@ -390,9 +402,19 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 	return d.st.Update(ctx, a.ID, owner, a.Content, a.Shared, vec)
 }
 
-// Register wires the memory tools onto the MCP server.
-func Register(s *mcp.Server) {
-	d := buildDepsFromEnv()
+// Register wires the memory tools onto the MCP server. It accepts a pre-built
+// *telemetry.ToolMetrics (constructed once in runServe and reused for both tool
+// instrumentation and auth-failure recording) so there is a single instrument
+// instance rather than two disjoint ones. Returns an error if dependency
+// construction (store/embedder) fails, so the caller can flush telemetry and
+// exit cleanly rather than aborting via log.Fatal.
+func Register(s *mcp.Server, tm *telemetry.ToolMetrics) error {
+	d, err := buildDepsFromEnv()
+	if err != nil {
+		return fmt.Errorf("build deps: %w", err)
+	}
+
+	s.AddReceivingMiddleware(instrumentTools(tm.Record))
 
 	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeArgs) (*mcp.CallToolResult, any, error) {
@@ -476,6 +498,7 @@ func Register(s *mcp.Server) {
 			err = d.st.SetVisibility(ctx, a.ID, owner, a.Shared)
 			return textResult("visibility updated"), nil, err
 		})
+	return nil
 }
 
 func textResult(s string) *mcp.CallToolResult {

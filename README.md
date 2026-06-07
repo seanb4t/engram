@@ -91,6 +91,31 @@ configured purely by env, with flags as overrides):
 Storage/embedding are configured via `MEM_QDRANT_ADDR`, `MEM_QDRANT_COLLECTION`,
 `MEM_LITELLM_URL`, `MEM_LITELLM_KEY`, `MEM_EMBED_MODEL`, `MEM_EMBED_DIM`.
 
+## Observability
+
+`engram` emits structured logs and OpenTelemetry traces, metrics, and logs.
+Telemetry **export is disabled** when no OTLP endpoint is set — the server runs
+normally, the logger still writes to stdout, and no external collector is
+required.
+
+| Env var | Description | Default |
+|---------|-------------|---------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC collector endpoint (`host:port`). Empty → telemetry export disabled. | _(unset)_ |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Optional headers for the OTLP exporter (standard OTel env var, e.g. auth tokens). | _(unset)_ |
+| `OTEL_EXPORTER_OTLP_INSECURE` | Set to `true` to use plain-text (no TLS) gRPC — for in-cluster collectors. Omit or set to anything else to use TLS via system roots. | `false` |
+| `OTEL_RESOURCE_ATTRIBUTES` | Extra resource attributes, e.g. `deployment.environment=prod`. | _(unset)_ |
+| `MEM_LOG_LEVEL` | Log level: `debug`\|`info`\|`warn`\|`error`. | `info` |
+| `MEM_LOG_FORMAT` | Log format: `json`\|`text`. | `json` |
+| `MEM_LOG_STDOUT` | Also write logs to stdout. | `true` |
+
+Structured logs always reach stdout unless `MEM_LOG_STDOUT=false` **and** a
+working OTLP log endpoint is configured; a silent-process guard forces stdout
+back on otherwise.
+
+OTLP exporters use TLS via system roots by default. Set `OTEL_EXPORTER_OTLP_INSECURE=true`
+for a same-cluster collector over plain-text gRPC. `OTEL_EXPORTER_OTLP_HEADERS` can carry
+auth tokens but is not a substitute for transport security against a remote collector.
+
 ## Deploy (Helm)
 
 ```sh

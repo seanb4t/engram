@@ -16,8 +16,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/qdrant/go-client/qdrant"
 	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
+	"go.opentelemetry.io/otel"
 
 	"github.com/seanb4t/engram/internal/store"
+	"github.com/seanb4t/engram/internal/telemetry"
 )
 
 // TestToolArgSchemasDoNotPanic exercises jsonschema schema generation for every
@@ -320,3 +322,15 @@ func TestUpdateMemoryPreservesSharingHandler(t *testing.T) {
 // timeNow is a tiny indirection so the test reads cleanly; store records require
 // a CreatedAt.
 func timeNow() time.Time { return time.Now().UTC().Truncate(time.Second) }
+
+func TestRegisterReturnsErrorOnStoreInitFailure(t *testing.T) {
+	// Point Qdrant at an address that fails fast so StoreFromEnv errors and
+	// Register surfaces it instead of calling log.Fatal.
+	t.Setenv("MEM_QDRANT_ADDR", "bad-host:1") // SplitHostPort ok, dial later fails
+	t.Setenv("MEM_EMBED_DIM", "not-a-number") // forces StoreFromEnv error pre-dial
+	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
+	tm := telemetry.NewToolMetrics(otel.Meter("test"))
+	if err := Register(s, tm); err == nil {
+		t.Fatal("Register must return an error when store init fails, not exit")
+	}
+}

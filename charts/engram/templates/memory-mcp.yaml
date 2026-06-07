@@ -48,6 +48,21 @@ spec:
             {{- with .Values.memory.oidc.resourceMetadata }}
             - { name: MEM_OIDC_RESOURCE_METADATA, value: "{{ . }}" }
             {{- end }}
+            - { name: MEM_LOG_LEVEL, value: "{{ .Values.observability.log.level }}" }
+            - { name: MEM_LOG_FORMAT, value: "{{ .Values.observability.log.format }}" }
+            - { name: MEM_LOG_STDOUT, value: "{{ .Values.observability.log.stdout }}" }
+            {{- with .Values.observability.otlpEndpoint }}
+            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "{{ . }}" }
+            {{- end }}
+            {{- if and .Values.observability.otlpEndpoint .Values.observability.otlpHeaders }}
+            - { name: OTEL_EXPORTER_OTLP_HEADERS, value: "{{ .Values.observability.otlpHeaders }}" }
+            {{- end }}
+            {{- if and .Values.observability.otlpEndpoint .Values.observability.otlpInsecure }}
+            - { name: OTEL_EXPORTER_OTLP_INSECURE, value: "true" }
+            {{- end }}
+            {{- with .Values.observability.resourceAttributes }}
+            - { name: OTEL_RESOURCE_ATTRIBUTES, value: "{{ . }}" }
+            {{- end }}
           resources: {{ toYaml .Values.memory.resources | nindent 12 }}
           livenessProbe:
             tcpSocket: { port: http }

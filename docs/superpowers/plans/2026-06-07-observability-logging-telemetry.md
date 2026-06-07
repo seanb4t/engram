@@ -41,6 +41,7 @@
 ### Task 1: Telemetry config from env
 
 **Files:**
+
 - Create: `internal/telemetry/config.go`
 - Test: `internal/telemetry/config_test.go`
 
@@ -164,6 +165,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 2: Logger constructor with silent-process guard
 
 **Files:**
+
 - Create: `internal/telemetry/logger.go`
 - Test: `internal/telemetry/logger_test.go`
 
@@ -371,6 +373,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 3: Setup seam (no-op providers in Phase 1)
 
 **Files:**
+
 - Create: `internal/telemetry/telemetry.go`
 - Test: `internal/telemetry/telemetry_test.go`
 
@@ -465,6 +468,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 4: Migrate `internal/server` off stdlib log
 
 **Files:**
+
 - Modify: `internal/server/tools.go:10` (import), `:77-106` (`buildDepsFromEnv`, `warnOwnerlessRecords`), `:365` (`search_discovery` notice), `:393-395` (`Register`)
 - Test: `internal/server/tools_test.go` (add)
 
@@ -574,6 +578,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 5: Wire logger + error-returning Register into serve.go
 
 **Files:**
+
 - Modify: `cmd/engram/serve.go:6-18` (imports), `:50-60` (`runServe`), `:67-84` (`withAuth` logging)
 
 - [ ] **Step 1: Replace `runServe` to set up the logger and consume `Register`'s error**
@@ -666,6 +671,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 1: Add OTel dependencies
 
 **Files:**
+
 - Modify: `go.mod`, `go.sum`
 
 > If you ran this `go get` block as the Phase 1 Task 2 prerequisite, it is
@@ -714,6 +720,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 2: Build the OTel providers in `Setup`
 
 **Files:**
+
 - Create: `internal/telemetry/providers.go`
 - Modify: `internal/telemetry/telemetry.go` (`Setup` body)
 - Test: `internal/telemetry/telemetry_test.go` (add an enabled-path test using a bufconn-free construction check)
@@ -869,6 +876,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 3: Graceful shutdown with `http.Server`
 
 **Files:**
+
 - Modify: `cmd/engram/serve.go` (`runServe` server construction + signal handling)
 
 - [ ] **Step 1: Replace `http.ListenAndServe` with an `http.Server` + signal handling**
@@ -935,6 +943,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 1: Tool-call metric instruments
 
 **Files:**
+
 - Create: `internal/telemetry/metrics.go`
 - Test: `internal/telemetry/metrics_test.go`
 
@@ -1033,6 +1042,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 2: MCP tool-call middleware (span + metric + log)
 
 **Files:**
+
 - Create: `internal/server/instrument.go`
 - Modify: `internal/server/tools.go` (`Register` adds the middleware)
 - Test: `internal/server/instrument_test.go`
@@ -1218,6 +1228,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 3: HTTP access-log + auth-failure middleware + otelhttp
 
 **Files:**
+
 - Create: `cmd/engram/httplog.go`
 - Modify: `cmd/engram/serve.go` (`runServe` handler chain)
 - Test: `cmd/engram/httplog_test.go`
@@ -1358,6 +1369,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 4: Auth-failure reason logging in the verifier
 
 **Files:**
+
 - Modify: `internal/auth/auth.go:59-78` (`TokenVerifier`)
 - Test: `internal/auth/auth_test.go` (add)
 
@@ -1431,6 +1443,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 5: Embedder transport seam + otelhttp; Qdrant otelgrpc dial option
 
 **Files:**
+
 - Modify: `internal/embed/embed.go:17-28` (add `Option`/`WithHTTPTransport`)
 - Modify: `internal/server/tools.go:60` (Qdrant `GrpcOptions`), `:86` (embed transport)
 - Test: `internal/embed/embed_test.go` (add)
@@ -1539,6 +1552,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 1: Helm chart env wiring
 
 **Files:**
+
 - Modify: `charts/engram/values.yaml`, `charts/engram/templates/deployment.yaml`
 
 - [ ] **Step 1: Inspect the current chart env block**
@@ -1602,6 +1616,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 2: Docs + final quality gates
 
 **Files:**
+
 - Modify: `README.md` (observability/config section), `CLAUDE.md` (Auth/Conventions note if warranted)
 
 - [ ] **Step 1: Document the observability config surface**
