@@ -153,7 +153,7 @@ type citationArg struct {
 type storeDiscoveryArgs struct {
 	Content   string        `json:"content" jsonschema:"the understanding to cache (embedded + searched)"`
 	Kind      string        `json:"kind" jsonschema:"map (orientation) or fact (pinned checkable claim)"`
-	Citations []citationArg `json:"citations" jsonschema:">= 1 source anchor"`
+	Citations []citationArg `json:"citations" jsonschema:"at least one source anchor"`
 	Scope     string        `json:"scope" jsonschema:"discovery scope, must start with discovery: (e.g. discovery:repo:<repo>)"`
 	Tags      []string      `json:"tags,omitempty"`
 	Summary   string        `json:"summary,omitempty"`
