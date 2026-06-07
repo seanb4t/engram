@@ -5,8 +5,11 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
+
+	otellog "go.opentelemetry.io/otel/log"
 )
 
 func TestSetupEnabledBuildsProvidersAndShutsDown(t *testing.T) {
@@ -25,6 +28,33 @@ func TestSetupEnabledBuildsProvidersAndShutsDown(t *testing.T) {
 	defer cancel()
 	if err := shutdown(ctx); err != nil {
 		t.Errorf("shutdown error: %v", err)
+	}
+}
+
+func TestSetupBuildProvidersFallbackOnError(t *testing.T) {
+	// Swap in a failing stub to exercise the error-fallback path without a
+	// live OTLP endpoint.
+	orig := buildProvidersFn
+	t.Cleanup(func() { buildProvidersFn = orig })
+	buildProvidersFn = func(_ context.Context, _ Config) (otellog.LoggerProvider, ShutdownFunc, error) {
+		return nil, nil, errors.New("injected provider failure")
+	}
+
+	cfg := Config{ServiceName: "engram", ServiceVersion: "test",
+		OTLPEndpoint: "localhost:4317", LogLevel: "info", LogFormat: "json", LogStdout: true}
+	lg, shutdown, err := Setup(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Setup must never return a non-nil error; got %v", err)
+	}
+	if lg == nil {
+		t.Fatal("Setup must return a usable logger even when provider build fails")
+	}
+	// shutdown must be the no-op variant — safe to call repeatedly.
+	if err := shutdown(context.Background()); err != nil {
+		t.Errorf("fallback shutdown must be nil, got %v", err)
+	}
+	if err := shutdown(context.Background()); err != nil {
+		t.Errorf("second call to fallback shutdown must be nil, got %v", err)
 	}
 }
 

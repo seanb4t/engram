@@ -14,13 +14,20 @@ type ShutdownFunc func(context.Context) error
 
 func noopShutdown(context.Context) error { return nil }
 
-// Setup constructs the logger and (when enabled) the OTel providers, registers
-// them as globals, and returns a shutdown that flushes them. When telemetry is
-// disabled (no OTLP endpoint) it returns a stdout logger and a no-op shutdown.
+// buildProvidersFn is the production implementation; replaced in tests to inject
+// a failing stub without touching the real exporter constructors.
+var buildProvidersFn = buildProviders
+
+// Setup constructs the logger and (when enabled) the OTel trace, metric, and
+// log providers, registers them as globals, and returns a shutdown that flushes
+// all three. When telemetry is disabled (no OTLP endpoint) it returns a stdout
+// logger and a no-op shutdown. When provider construction fails it falls back to
+// a stdout logger and no-op shutdown rather than propagating the error.
 //
-// Phase 1: providers are not yet built; only the logger is wired. Phase 2
-// replaces the body below with real provider construction behind this same
-// signature, so callers never change.
+// Setup never returns a non-nil error. Telemetry is not a hard startup
+// dependency (ADR engram-uxh); all failure modes degrade gracefully to stdout
+// logging. The error return is kept in the signature so the API can evolve
+// without breaking callers.
 func Setup(ctx context.Context, cfg Config) (*slog.Logger, ShutdownFunc, error) {
 	if !cfg.Enabled() {
 		lg := NewLogger(cfg, nil)
@@ -29,7 +36,7 @@ func Setup(ctx context.Context, cfg Config) (*slog.Logger, ShutdownFunc, error) 
 		}
 		return lg, noopShutdown, nil
 	}
-	lp, shutdown, err := buildProviders(ctx, cfg)
+	lp, shutdown, err := buildProvidersFn(ctx, cfg)
 	if err != nil {
 		// Telemetry must never be a hard startup dependency: fall back to stdout.
 		lg := NewLogger(cfg, nil)

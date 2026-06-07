@@ -5,6 +5,7 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -80,15 +81,15 @@ func (f *fanoutHandler) Enabled(ctx context.Context, l slog.Level) bool {
 }
 
 func (f *fanoutHandler) Handle(ctx context.Context, r slog.Record) error {
-	var firstErr error
+	var errs []error
 	for _, h := range f.handlers {
 		if h.Enabled(ctx, r.Level) {
-			if err := h.Handle(ctx, r.Clone()); err != nil && firstErr == nil {
-				firstErr = err
+			if err := h.Handle(ctx, r.Clone()); err != nil {
+				errs = append(errs, err)
 			}
 		}
 	}
-	return firstErr
+	return errors.Join(errs...)
 }
 
 func (f *fanoutHandler) WithAttrs(as []slog.Attr) slog.Handler {
