@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/seanb4t/engram/compare/v0.4.2...v0.4.3) (2026-06-07)
+
+
+### Bug Fixes
+
+* **server:** store_discovery jsonschema tag crashes server at startup ([#41](https://github.com/seanb4t/engram/issues/41)) ([234df4c](https://github.com/seanb4t/engram/commit/234df4cabd590351edcf9bbdb32a38c346a0208e))
+
 ## [0.4.2](https://github.com/seanb4t/engram/compare/v0.4.1...v0.4.2) (2026-06-06)
 
 
