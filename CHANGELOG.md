@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0](https://github.com/seanb4t/engram/compare/v0.4.3...v0.5.0) (2026-06-07)
+
+
+### Features
+
+* **observability:** structured slog logging + OpenTelemetry (engram-ew7) ([#44](https://github.com/seanb4t/engram/issues/44)) ([0b074e3](https://github.com/seanb4t/engram/commit/0b074e387baa5026817d610b2aa885ae76e7a7d1))
+
+
+### Bug Fixes
+
+* **deps:** update opentelemetry-go-contrib monorepo to v0.69.0 ([#46](https://github.com/seanb4t/engram/issues/46)) ([3cae175](https://github.com/seanb4t/engram/commit/3cae175851087c671b37a34120661e73aa637b17))
+
+
+### Miscellaneous Chores
+
+* release 0.5.0 ([#47](https://github.com/seanb4t/engram/issues/47)) ([35ab973](https://github.com/seanb4t/engram/commit/35ab973984e04a11d2201639e9fd00829330a2eb))
+
 ## [0.4.3](https://github.com/seanb4t/engram/compare/v0.4.2...v0.4.3) (2026-06-07)
 
 
