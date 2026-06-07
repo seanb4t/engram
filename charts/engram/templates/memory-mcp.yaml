@@ -54,7 +54,13 @@ spec:
             {{- with .Values.observability.otlpEndpoint }}
             - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "{{ . }}" }
             {{- end }}
-            {{- if and .Values.observability.otlpEndpoint .Values.observability.otlpHeaders }}
+            {{- if and .Values.observability.otlpEndpoint .Values.observability.otlpHeadersSecret.name }}
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ .Values.observability.otlpHeadersSecret.name }}"
+                  key: "{{ .Values.observability.otlpHeadersSecret.key }}"
+            {{- else if and .Values.observability.otlpEndpoint .Values.observability.otlpHeaders }}
             - { name: OTEL_EXPORTER_OTLP_HEADERS, value: "{{ .Values.observability.otlpHeaders }}" }
             {{- end }}
             {{- if and .Values.observability.otlpEndpoint .Values.observability.otlpInsecure }}
@@ -63,6 +69,17 @@ spec:
             {{- with .Values.observability.resourceAttributes }}
             - { name: OTEL_RESOURCE_ATTRIBUTES, value: "{{ . }}" }
             {{- end }}
+            {{- if .Values.memory.litellm.caBundle.configMapName }}
+            # Go's crypto/x509 loads SSL_CERT_FILE instead of system roots —
+            # the mounted bundle must cover every TLS peer of this process.
+            - { name: SSL_CERT_FILE, value: "/etc/ssl/ca-bundle/{{ .Values.memory.litellm.caBundle.key }}" }
+            {{- end }}
+          {{- if .Values.memory.litellm.caBundle.configMapName }}
+          volumeMounts:
+            - name: ca-bundle
+              mountPath: /etc/ssl/ca-bundle
+              readOnly: true
+          {{- end }}
           resources: {{ toYaml .Values.memory.resources | nindent 12 }}
           livenessProbe:
             tcpSocket: { port: http }
@@ -72,6 +89,12 @@ spec:
             tcpSocket: { port: http }
             initialDelaySeconds: 5
             periodSeconds: 10
+      {{- if .Values.memory.litellm.caBundle.configMapName }}
+      volumes:
+        - name: ca-bundle
+          configMap:
+            name: "{{ .Values.memory.litellm.caBundle.configMapName }}"
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service
