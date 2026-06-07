@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/seanb4t/engram/compare/v0.5.0...v0.5.1) (2026-06-07)
+
+
+### Features
+
+* **chart:** internal-CA trust for embedder + secret-backed OTLP headers ([#48](https://github.com/seanb4t/engram/issues/48)) ([e93d3d0](https://github.com/seanb4t/engram/commit/e93d3d06d53a3db6d1d57ae748f5247af4e82b24))
+
 ## [0.5.0](https://github.com/seanb4t/engram/compare/v0.4.3...v0.5.0) (2026-06-07)
 
 
