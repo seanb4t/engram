@@ -41,6 +41,13 @@ memory:
 observability:
   # OTLP collector endpoint (host:port). Empty disables telemetry export.
   otlpEndpoint: ""
+  # OTLP request headers, e.g. "Authorization=Bearer <token>". Only sent when
+  # otlpEndpoint is set. Empty disables the header.
+  otlpHeaders: ""
+  # Use plaintext (no TLS) for the OTLP exporter. Default true = in-cluster
+  # plaintext collector; set false for TLS using system roots.
+  # Only emitted when otlpEndpoint is also set.
+  otlpInsecure: true
   # Extra OTel resource attributes, e.g. "deployment.environment=prod".
   resourceAttributes: ""
   log:
