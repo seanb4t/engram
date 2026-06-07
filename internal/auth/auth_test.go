@@ -3,7 +3,16 @@
 
 package auth
 
-import "testing"
+import (
+	"bytes"
+	"context"
+	"errors"
+	"log/slog"
+	"strings"
+	"testing"
+
+	"github.com/coreos/go-oidc/v3/oidc"
+)
 
 func TestIdentityPrefersHumanReadable(t *testing.T) {
 	tests := []struct {
@@ -23,5 +32,29 @@ func TestIdentityPrefersHumanReadable(t *testing.T) {
 					tt.subject, tt.email, tt.username, got, tt.want)
 			}
 		})
+	}
+}
+
+// stubIDV is an idVerifier that always fails, so the rejection path can be
+// exercised without a real OIDC provider.
+type stubIDV struct{ err error }
+
+func (s stubIDV) Verify(_ context.Context, _ string) (*oidc.IDToken, error) {
+	return nil, s.err
+}
+
+func TestTokenVerifierLogsRejectionReason(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	v := &Verifier{idv: stubIDV{err: errors.New("bad token")}}
+	_, err := v.TokenVerifier()(context.Background(), "garbage", nil)
+	if err == nil {
+		t.Fatal("expected rejection")
+	}
+	if !strings.Contains(buf.String(), "token rejected") {
+		t.Errorf("expected a 'token rejected' log line, got %q", buf.String())
 	}
 }

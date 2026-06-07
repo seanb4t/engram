@@ -15,16 +15,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 )
 
+// idVerifier is the subset of *oidc.IDTokenVerifier that TokenVerifier needs.
+// Extracting it as an interface lets tests inject a stub — the concrete oidc
+// verifier is hard to fake.
+type idVerifier interface {
+	Verify(ctx context.Context, rawIDToken string) (*oidc.IDToken, error)
+}
+
 // Verifier wraps an OIDC token verifier discovered from an issuer's well-known
 // configuration (which yields the JWKS used to check signatures).
 type Verifier struct {
-	idv *oidc.IDTokenVerifier
+	idv idVerifier
 }
 
 // New performs OIDC discovery against issuer and returns a Verifier. If audience
@@ -60,6 +68,7 @@ func (v *Verifier) TokenVerifier() mcpauth.TokenVerifier {
 	return func(ctx context.Context, token string, _ *http.Request) (*mcpauth.TokenInfo, error) {
 		idt, err := v.idv.Verify(ctx, token)
 		if err != nil {
+			slog.Warn("token rejected", "err", err)
 			// Join keeps ErrInvalidToken in the chain (so RequireBearerToken maps
 			// to 401) while preserving the underlying verification error.
 			return nil, errors.Join(mcpauth.ErrInvalidToken, err)

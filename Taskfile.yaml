@@ -47,7 +47,7 @@ tasks:
       - yamlfmt -lint .
   lint:actions:
     cmds:
-      - actionlint
+      - actionlint .github/workflows/*.yaml
   lint:markdown:
     cmds:
       - rumdl check .

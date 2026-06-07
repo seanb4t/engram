@@ -11,6 +11,20 @@ import (
 	"testing"
 )
 
+func TestWithHTTPTransportIsApplied(t *testing.T) {
+	marker := &markerTransport{}
+	c := New("http://x", "k", "m", WithHTTPTransport(marker))
+	if c.http.Transport != marker {
+		t.Fatal("WithHTTPTransport did not set the client transport")
+	}
+}
+
+type markerTransport struct{}
+
+func (m *markerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	return http.DefaultTransport.RoundTrip(r)
+}
+
 func TestEmbedReturnsVector(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer test-key" {

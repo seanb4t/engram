@@ -22,9 +22,22 @@ type Client struct {
 	http    *http.Client
 }
 
+// Option customizes a Client.
+type Option func(*Client)
+
+// WithHTTPTransport sets the underlying RoundTripper (e.g. otelhttp.NewTransport)
+// so embedder HTTP calls can be traced. The 30s timeout is preserved.
+func WithHTTPTransport(rt http.RoundTripper) Option {
+	return func(c *Client) { c.http.Transport = rt }
+}
+
 // New returns an embedding Client for the given base URL, API key, and model.
-func New(baseURL, apiKey, model string) *Client {
-	return &Client{baseURL: baseURL, apiKey: apiKey, model: model, http: &http.Client{Timeout: 30 * time.Second}}
+func New(baseURL, apiKey, model string, opts ...Option) *Client {
+	c := &Client{baseURL: baseURL, apiKey: apiKey, model: model, http: &http.Client{Timeout: 30 * time.Second}}
+	for _, o := range opts {
+		o(c)
+	}
+	return c
 }
 
 type embedReq struct {
