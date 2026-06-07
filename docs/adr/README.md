@@ -13,6 +13,10 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-tdk](engram-tdk-instrument-mcp-tools-via-addreceivingmiddleware-not-per-hand.md) | 2026-06-07 | Accepted | Instrument MCP tools via AddReceivingMiddleware, not per-handler |
+| [engram-dwi](engram-dwi-export-telemetry-via-otlp-only-omit-prometheus-scrape-endpoi.md) | 2026-06-07 | Accepted | Export telemetry via OTLP only; omit a Prometheus scrape endpoint |
+| [engram-f7p](engram-f7p-instrument-at-three-seams-http-mcp-method-and-downstream-cli.md) | 2026-06-07 | Accepted | Instrument at three seams: HTTP, MCP method, and downstream clients |
+| [engram-uxh](engram-uxh-telemetry-is-never-hard-server-startup-dependency.md) | 2026-06-07 | Accepted | Telemetry is never a hard server startup dependency |
 | [engram-cgb](engram-cgb-enforce-per-actor-authorization-store-layer-not-handlers.md) | 2026-06-06 | Accepted | Enforce per-actor authorization in the store layer, not in handlers |
 | [engram-hvg](engram-hvg-use-stable-oidc-sub-as-authorization-key-new-owner-field.md) | 2026-06-06 | Accepted | Use the stable OIDC sub as the authorization key in a new owner field |
 | [engram-kyz](engram-kyz-sharing-grants-read-but-never-write-read-write-gate-asymmetr.md) | 2026-06-06 | Accepted | Sharing grants read but never write (read/write gate asymmetry) |

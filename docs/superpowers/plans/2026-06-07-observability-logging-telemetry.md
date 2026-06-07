@@ -1639,3 +1639,4 @@ After all phases, verify against the spec:
 5. **No-op when disabled** — `Setup` returns stdout logger + no-op shutdown with no endpoint; instruments record into the no-op global providers. ✓ (Phase 1-2)
 6. **Flush on SIGTERM** — graceful shutdown drains HTTP then flushes batchers. ✓ (Phase 2 Task 3)
 7. **Dual-sink logs, stdout disableable, silent-process guard** — `NewLogger` fan-out + guard. ✓ (Phase 1 Task 2)
+<!-- adr-capture: sha256=4049ec40206153eb; session=cli; ts=2026-06-07T16:36:48Z; adrs=engram-tdk,engram-dwi,engram-f7p,engram-uxh -->
