@@ -72,8 +72,8 @@ func classifyOutcome(res mcp.Result, err error) string {
 
 // identityForLog extracts the verified actor (human-readable) and owner (sub)
 // from context for log attribution. Both are "" when auth is disabled. It
-// reuses the package's existing accessors rather than re-deriving from
-// mcpauth, so there is a single source of truth for identity extraction.
+// reuses actorFromContext/ownerFromContext (tools.go) so identity extraction
+// stays in one place.
 func identityForLog(ctx context.Context) (actor, owner string) {
 	actor = actorFromContext(ctx)
 	owner, _ = ownerFromContext(ctx) // log path: a missing-subject error degrades to "" rather than failing the log

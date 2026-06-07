@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sean Brandt
 
-// Package auth validates Authentik-issued OIDC bearer tokens forwarded by the
-// LiteLLM MCP gateway (delegate_auth_to_upstream) and extracts the caller's
-// identity so memory writes can be attributed to a verified user.
+// Package auth validates OIDC bearer tokens issued by a configured IdP and
+// forwarded by an MCP gateway, then extracts the caller's identity so memory
+// writes can be attributed to a verified user (canonical deployment: Authentik
+// IdP + LiteLLM gateway).
 //
 // The token is the only trustworthy source of identity: clients never assert
 // who they are, the IdP-signed JWT proves it. Validation covers signature
-// (Authentik JWKS), issuer, and expiry; the audience claim is checked only when
-// an expected value is configured.
+// (JWKS), issuer, and expiry; the audience claim is checked only when an
+// expected value is configured.
 package auth
 
 import (
