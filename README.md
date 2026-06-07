@@ -102,6 +102,7 @@ required.
 |---------|-------------|---------|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC collector endpoint (`host:port`). Empty → telemetry export disabled. | _(unset)_ |
 | `OTEL_EXPORTER_OTLP_HEADERS` | Optional headers for the OTLP exporter (standard OTel env var, e.g. auth tokens). | _(unset)_ |
+| `OTEL_EXPORTER_OTLP_INSECURE` | Set to `true` to use plain-text (no TLS) gRPC — for in-cluster collectors. Omit or set to anything else to use TLS via system roots. | `false` |
 | `OTEL_RESOURCE_ATTRIBUTES` | Extra resource attributes, e.g. `deployment.environment=prod`. | _(unset)_ |
 | `MEM_LOG_LEVEL` | Log level: `debug`\|`info`\|`warn`\|`error`. | `info` |
 | `MEM_LOG_FORMAT` | Log format: `json`\|`text`. | `json` |
@@ -111,10 +112,9 @@ Structured logs always reach stdout unless `MEM_LOG_STDOUT=false` **and** a
 working OTLP log endpoint is configured; a silent-process guard forces stdout
 back on otherwise.
 
-The OTLP exporters currently use **insecure gRPC** (no TLS), matching a
-same-cluster collector. `OTEL_EXPORTER_OTLP_HEADERS` is forwarded but is not a
-substitute for transport security against a remote/TLS collector — TLS support
-is not yet wired.
+OTLP exporters use TLS via system roots by default. Set `OTEL_EXPORTER_OTLP_INSECURE=true`
+for a same-cluster collector over plain-text gRPC. `OTEL_EXPORTER_OTLP_HEADERS` can carry
+auth tokens but is not a substitute for transport security against a remote collector.
 
 ## Deploy (Helm)
 

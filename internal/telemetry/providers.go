@@ -6,9 +6,12 @@ package telemetry
 import (
 	"context"
 	"log/slog"
+	"os"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -26,42 +29,63 @@ import (
 // gRPC exporters, registers them as OTel globals, and returns the log provider
 // (for the otelslog bridge) plus a shutdown that flushes all three.
 func buildProviders(ctx context.Context, cfg Config) (otellog.LoggerProvider, ShutdownFunc, error) {
-	res, err := resource.New(ctx, resource.WithAttributes(
-		semconv.ServiceName(cfg.ServiceName),
-		semconv.ServiceVersion(cfg.ServiceVersion),
-	))
+	// Shared exporter option values — the three exporter blocks below must stay
+	// value-identical; update this const and the RetryConfig together.
+	const exportTimeout = 500 * time.Millisecond
+	insecure := os.Getenv("OTEL_EXPORTER_OTLP_INSECURE") == "true"
+
+	// WithFromEnv() first so OTEL_RESOURCE_ATTRIBUTES is honoured; WithAttributes
+	// last so service.name/version/instance.id always win on conflict (later
+	// detectors overwrite earlier ones in resource.New's merge loop).
+	res, err := resource.New(ctx,
+		resource.WithFromEnv(),
+		resource.WithAttributes(
+			semconv.ServiceName(cfg.ServiceName),
+			semconv.ServiceVersion(cfg.ServiceVersion),
+			attribute.String("service.instance.id", uuid.New().String()),
+		),
+	)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	traceExp, err := otlptracegrpc.New(ctx,
+	traceOpts := []otlptracegrpc.Option{
 		otlptracegrpc.WithEndpoint(cfg.OTLPEndpoint),
-		otlptracegrpc.WithInsecure(),
-		otlptracegrpc.WithTimeout(500*time.Millisecond),
+		otlptracegrpc.WithTimeout(exportTimeout),
 		otlptracegrpc.WithRetry(otlptracegrpc.RetryConfig{Enabled: false}),
-	)
+	}
+	if insecure {
+		traceOpts = append(traceOpts, otlptracegrpc.WithInsecure())
+	}
+	traceExp, err := otlptracegrpc.New(ctx, traceOpts...)
 	if err != nil {
 		return nil, nil, err
 	}
 	tp := trace.NewTracerProvider(trace.WithBatcher(traceExp), trace.WithResource(res))
 
-	metricExp, err := otlpmetricgrpc.New(ctx,
+	metricOpts := []otlpmetricgrpc.Option{
 		otlpmetricgrpc.WithEndpoint(cfg.OTLPEndpoint),
-		otlpmetricgrpc.WithInsecure(),
-		otlpmetricgrpc.WithTimeout(500*time.Millisecond),
+		otlpmetricgrpc.WithTimeout(exportTimeout),
 		otlpmetricgrpc.WithRetry(otlpmetricgrpc.RetryConfig{Enabled: false}),
-	)
+	}
+	if insecure {
+		metricOpts = append(metricOpts, otlpmetricgrpc.WithInsecure())
+	}
+	metricExp, err := otlpmetricgrpc.New(ctx, metricOpts...)
 	if err != nil {
 		return nil, nil, err
 	}
 	mp := metric.NewMeterProvider(metric.WithReader(metric.NewPeriodicReader(metricExp)), metric.WithResource(res))
 
-	logExp, err := otlploggrpc.New(ctx,
+	logOpts := []otlploggrpc.Option{
 		otlploggrpc.WithEndpoint(cfg.OTLPEndpoint),
-		otlploggrpc.WithInsecure(),
-		otlploggrpc.WithTimeout(500*time.Millisecond),
+		otlploggrpc.WithTimeout(exportTimeout),
 		otlploggrpc.WithRetry(otlploggrpc.RetryConfig{Enabled: false}),
-	)
+	}
+	if insecure {
+		logOpts = append(logOpts, otlploggrpc.WithInsecure())
+	}
+	logExp, err := otlploggrpc.New(ctx, logOpts...)
 	if err != nil {
 		return nil, nil, err
 	}
