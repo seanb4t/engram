@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 func TestNewLoggerWritesJSONToStdout(t *testing.T) {
@@ -25,6 +27,43 @@ func TestNewLoggerWritesJSONToStdout(t *testing.T) {
 	}
 	if rec["msg"] != "hello" || rec["tool"] != "store_memory" {
 		t.Errorf("missing fields: %v", rec)
+	}
+}
+
+func TestNewLoggerStdoutIncludesTraceID(t *testing.T) {
+	var buf bytes.Buffer
+	lg := newLoggerTo(&buf, Config{LogLevel: "info", LogFormat: "json", LogStdout: true}, nil)
+
+	tid := trace.TraceID{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10}
+	sid := trace.SpanID{0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11}
+	ctx := trace.ContextWithSpanContext(context.Background(), trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID: tid, SpanID: sid, TraceFlags: trace.FlagsSampled,
+	}))
+	lg.InfoContext(ctx, "traced")
+
+	var rec map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &rec); err != nil {
+		t.Fatalf("expected JSON line, got %q (%v)", buf.String(), err)
+	}
+	if rec["trace_id"] != tid.String() {
+		t.Errorf("trace_id = %v, want %s", rec["trace_id"], tid.String())
+	}
+	if rec["span_id"] != sid.String() {
+		t.Errorf("span_id = %v, want %s", rec["span_id"], sid.String())
+	}
+}
+
+func TestNewLoggerStdoutOmitsTraceIDWithoutSpan(t *testing.T) {
+	var buf bytes.Buffer
+	lg := newLoggerTo(&buf, Config{LogLevel: "info", LogFormat: "json", LogStdout: true}, nil)
+	lg.InfoContext(context.Background(), "untraced")
+
+	var rec map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &rec); err != nil {
+		t.Fatalf("expected JSON line, got %q (%v)", buf.String(), err)
+	}
+	if _, ok := rec["trace_id"]; ok {
+		t.Errorf("trace_id must be absent without a span context: %v", rec)
 	}
 }
 

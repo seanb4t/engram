@@ -69,7 +69,7 @@ func (v *Verifier) TokenVerifier() mcpauth.TokenVerifier {
 	return func(ctx context.Context, token string, _ *http.Request) (*mcpauth.TokenInfo, error) {
 		idt, err := v.idv.Verify(ctx, token)
 		if err != nil {
-			slog.Warn("token rejected", "err", err)
+			slog.WarnContext(ctx, "token rejected", "err", err)
 			// Join keeps ErrInvalidToken in the chain (so RequireBearerToken maps
 			// to 401) while preserving the underlying verification error.
 			return nil, errors.Join(mcpauth.ErrInvalidToken, err)

@@ -374,7 +374,7 @@ func (d *deps) searchDiscovery(ctx context.Context, a searchDiscoveryArgs) ([]st
 	if a.CrossSpine && a.Scope != "" {
 		// Don't echo the caller-supplied scope value into logs (avoids
 		// unbounded/sensitive scope strings reaching log aggregation).
-		slog.Info("search_discovery: cross_spine=true; ignoring supplied scope")
+		slog.InfoContext(ctx, "search_discovery: cross_spine=true; ignoring supplied scope")
 	}
 	if a.K == 0 {
 		a.K = 8
