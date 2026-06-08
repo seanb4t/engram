@@ -346,12 +346,12 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	}
 
 	// get_memory (GetReadable) on the shared record must return not-found for anon.
-	if _, err := d.st.GetReadable(ctx, sharedID, ""); err == nil {
+	if _, err := d.st.GetReadable(ctx, sharedID, store.Anonymous()); err == nil {
 		t.Error("GetReadable: anonymous caller must not read owner-stamped shared record")
 	}
 
 	// get_memory on the ownerless record must succeed for anon.
-	if _, err := d.st.GetReadable(ctx, ownerlessID, ""); err != nil {
+	if _, err := d.st.GetReadable(ctx, ownerlessID, store.Anonymous()); err != nil {
 		t.Errorf("GetReadable: anonymous caller must read ownerless record, got %v", err)
 	}
 }

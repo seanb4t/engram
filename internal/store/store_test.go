@@ -432,15 +432,15 @@ func TestGetReadableOwnerGate(t *testing.T) {
 		}
 	}
 	// Owner reads own private record.
-	if _, err := s.GetReadable(ctx, priv.ID, "sub-B"); err != nil {
+	if _, err := s.GetReadable(ctx, priv.ID, Authenticated("sub-B")); err != nil {
 		t.Errorf("owner denied own record: %v", err)
 	}
 	// Non-owner reads a shared record.
-	if _, err := s.GetReadable(ctx, shar.ID, "sub-A"); err != nil {
+	if _, err := s.GetReadable(ctx, shar.ID, Authenticated("sub-A")); err != nil {
 		t.Errorf("shared record denied to other actor: %v", err)
 	}
 	// Non-owner denied a private record — and it looks like not-found.
-	_, err := s.GetReadable(ctx, priv.ID, "sub-A")
+	_, err := s.GetReadable(ctx, priv.ID, Authenticated("sub-A"))
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("cross-actor private read: want ErrNotFound, got %v", err)
 	}
@@ -873,7 +873,7 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 	}
 
 	// GetReadable: anon caller reads the anonymous-bucket record (owner=="").
-	got, err := s.GetReadable(ctx, ownerless.ID, "")
+	got, err := s.GetReadable(ctx, ownerless.ID, Anonymous())
 	if err != nil {
 		t.Errorf("GetReadable anon on ownerless record: unexpected error: %v", err)
 	}
@@ -882,19 +882,19 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 	}
 
 	// GetReadable: anon caller denied another owner's shared record → ErrNotFound.
-	_, err = s.GetReadable(ctx, authShared.ID, "")
+	_, err = s.GetReadable(ctx, authShared.ID, Anonymous())
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetReadable anon on shared record: want ErrNotFound, got %v", err)
 	}
 
 	// GetReadable: anon caller denied another owner's private record → ErrNotFound.
-	_, err = s.GetReadable(ctx, authPrivate.ID, "")
+	_, err = s.GetReadable(ctx, authPrivate.ID, Anonymous())
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetReadable anon on private record: want ErrNotFound, got %v", err)
 	}
 
 	// Authenticated caller still reads shared records (no regression).
-	got, err = s.GetReadable(ctx, authShared.ID, "sub-other")
+	got, err = s.GetReadable(ctx, authShared.ID, Authenticated("sub-other"))
 	if err != nil {
 		t.Errorf("GetReadable authenticated on shared record: unexpected error: %v", err)
 	}

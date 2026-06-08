@@ -337,27 +337,29 @@ func (s *Store) Get(ctx context.Context, id string) (Memory, error) {
 // GetReadable returns the record only if the caller may READ it; otherwise
 // ErrNotFound, so ownership never leaks across actors.
 //
-// Authenticated callers (sub != ""): readable if owner==sub OR visibility=="shared".
-// Anonymous callers (sub == ""): readable only if owner=="" (ownerless bucket).
+// Authenticated callers: readable if owner==sub OR visibility=="shared".
+// Anonymous callers: readable only if owner=="" (ownerless bucket).
 // The "shared" grant requires an authenticated subject — anonymous callers
-// cannot read shared records.
-func (s *Store) GetReadable(ctx context.Context, id, sub string) (Memory, error) {
+// cannot read shared records. nil/unknown Subject → fail closed (ErrNotFound).
+func (s *Store) GetReadable(ctx context.Context, id string, subj Subject) (Memory, error) {
 	m, err := s.Get(ctx, id)
 	if err != nil {
 		return Memory{}, err
 	}
-	if sub == "" {
-		// Fail-closed: anonymous callers may only read the ownerless bucket.
+	switch sj := subj.(type) {
+	case authenticated:
+		if m.Owner != sj.sub && m.Visibility != visibilityShared {
+			return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+		}
+		return m, nil
+	case anonymous:
 		if m.Owner != "" {
 			return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 		}
 		return m, nil
-	}
-	// Authenticated path: own record or shared.
-	if m.Owner != sub && m.Visibility != visibilityShared {
+	default:
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	return m, nil
 }
 
 // getWritable returns the record only if the caller OWNS it (shared does NOT

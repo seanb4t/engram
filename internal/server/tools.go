@@ -472,11 +472,11 @@ func Register(s *mcp.Server, tm *telemetry.ToolMetrics) error {
 
 	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-			owner, err := ownerFromContext(ctx)
+			subj, err := subjectFromContext(ctx)
 			if err != nil {
 				return nil, nil, err
 			}
-			m, err := d.st.GetReadable(ctx, a.ID, owner)
+			m, err := d.st.GetReadable(ctx, a.ID, subj)
 			return textResult(m.Content), m, err
 		})
 
