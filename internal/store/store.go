@@ -393,10 +393,11 @@ func (s *Store) getWritable(ctx context.Context, id string, subj Subject) (Memor
 }
 
 // OwnedOrAbsent permits a client-supplied-id write: nil if the id is absent (new
-// record) or already owned by sub (replace in place); ErrNotFound if it exists
-// and is owned by another actor (refuse cross-owner overwrite). Transport errors
-// surface unchanged.
-func (s *Store) OwnedOrAbsent(ctx context.Context, id, sub string) error {
+// record) or already owned by the subject (replace in place); ErrNotFound if it
+// exists and is owned by a different actor or the subject is anonymous but the
+// record has an owner (refuse cross-owner overwrite). Transport errors surface
+// unchanged.
+func (s *Store) OwnedOrAbsent(ctx context.Context, id string, subj Subject) error {
 	m, err := s.Get(ctx, id)
 	if errors.Is(err, ErrNotFound) {
 		return nil
@@ -404,10 +405,20 @@ func (s *Store) OwnedOrAbsent(ctx context.Context, id, sub string) error {
 	if err != nil {
 		return err
 	}
-	if m.Owner != sub {
+	switch sj := subj.(type) {
+	case authenticated:
+		if m.Owner != sj.sub {
+			return fmt.Errorf("%w: %s", ErrNotFound, id)
+		}
+		return nil
+	case anonymous:
+		if m.Owner != "" {
+			return fmt.Errorf("%w: %s", ErrNotFound, id)
+		}
+		return nil
+	default:
 		return fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	return nil
 }
 
 // FetchForUpdate returns the record iff it exists and is owned by the subject

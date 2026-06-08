@@ -241,7 +241,7 @@ func validCitationKind(k string) bool {
 }
 
 func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
-	owner, err := ownerFromContext(ctx)
+	subj, err := subjectFromContext(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -261,7 +261,7 @@ func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
 		Category:  a.Category,
 		Tags:      a.Tags,
 		Actor:     actorFromContext(ctx),
-		Owner:     owner,
+		Owner:     subj.Owner(),
 		CreatedAt: time.Now().UTC(),
 	}
 	return m.ID, d.st.Upsert(ctx, m, vec)
@@ -271,12 +271,12 @@ func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string
 	if err := validateStoreDiscovery(a); err != nil {
 		return "", err
 	}
-	sub, err := ownerFromContext(ctx)
+	subj, err := subjectFromContext(ctx)
 	if err != nil {
 		return "", err
 	}
 	if a.ID != "" {
-		if err := d.st.OwnedOrAbsent(ctx, a.ID, sub); err != nil {
+		if err := d.st.OwnedOrAbsent(ctx, a.ID, subj); err != nil {
 			return "", err
 		}
 	}
@@ -303,7 +303,7 @@ func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string
 		Summary:   a.Summary,
 		Tags:      a.Tags,
 		Actor:     actorFromContext(ctx),
-		Owner:     sub,
+		Owner:     subj.Owner(),
 		CreatedAt: time.Now().UTC(),
 	}
 	return m.ID, d.st.Upsert(ctx, m, vec)

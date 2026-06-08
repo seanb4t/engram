@@ -662,7 +662,7 @@ func TestOwnedOrAbsent(t *testing.T) {
 	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
 	id := "b2b2b2b2-0000-0000-0000-000000000001"
 	// Absent id → ok (caller will create).
-	if err := s.OwnedOrAbsent(ctx, id, "sub-A"); err != nil {
+	if err := s.OwnedOrAbsent(ctx, id, Authenticated("sub-A")); err != nil {
 		t.Errorf("absent id should be ok: %v", err)
 	}
 	m := Memory{ID: id, Content: "d", Scope: scope, Category: "discovery", Kind: "fact", Owner: "sub-A", CreatedAt: time.Now().UTC()}
@@ -670,11 +670,11 @@ func TestOwnedOrAbsent(t *testing.T) {
 		t.Fatalf("upsert: %v", err)
 	}
 	// Owner re-supplies id → ok (replace).
-	if err := s.OwnedOrAbsent(ctx, id, "sub-A"); err != nil {
+	if err := s.OwnedOrAbsent(ctx, id, Authenticated("sub-A")); err != nil {
 		t.Errorf("owner replace should be ok: %v", err)
 	}
 	// Other actor supplies id → ErrNotFound (refuse overwrite).
-	if err := s.OwnedOrAbsent(ctx, id, "sub-B"); !errors.Is(err, ErrNotFound) {
+	if err := s.OwnedOrAbsent(ctx, id, Authenticated("sub-B")); !errors.Is(err, ErrNotFound) {
 		t.Errorf("cross-owner overwrite: want ErrNotFound, got %v", err)
 	}
 }
