@@ -662,9 +662,11 @@ func TestRegisterReturnsErrorOnStoreInitFailure(t *testing.T) {
 // TestSubjectFromContextNoToken pins the auth-disabled half of the contract: no
 // token in context yields (Anonymous, nil), NOT an error — otherwise a no-issuer
 // deployment would reject every request. The fail-closed path (a validated token
-// lacking a non-empty sub → error) cannot be unit-tested here because the go-sdk
-// stores TokenInfo under an unexported context key, so there is no way to inject
-// one; it is exercised through the handler middleware helper authedContext.
+// lacking a non-empty sub → error) cannot be unit-tested here: the go-sdk stores
+// TokenInfo under an unexported context key, so there is no way to inject a
+// subject-less validated token. authedContext always supplies a non-empty sub,
+// so it covers only the Authenticated arm — the fail-closed branch has no direct
+// test, but a discarded extraction error still denies at the store default arm.
 func TestSubjectFromContextNoToken(t *testing.T) {
 	subj, err := subjectFromContext(context.Background())
 	if err != nil {

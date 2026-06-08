@@ -35,8 +35,17 @@ func (a authenticated) Owner() string { return a.sub }
 // Anonymous is the caller when auth is disabled (the owner=="" bucket).
 func Anonymous() Subject { return anonymous{} }
 
-// Authenticated is a caller carrying a verified, non-empty OIDC sub.
-func Authenticated(sub string) Subject { return authenticated{sub: sub} }
+// Authenticated is a caller carrying a verified, non-empty OIDC sub. It panics
+// on an empty sub: an authenticated subject must never collapse into the
+// owner=="" anonymous bucket by an empty-string slip. subjectFromContext already
+// guards this at the extraction boundary; the panic makes the invariant loud for
+// any other in-package caller or test, consistent with Owner()-on-nil panicking.
+func Authenticated(sub string) Subject {
+	if sub == "" {
+		panic("store.Authenticated: sub must be non-empty")
+	}
+	return authenticated{sub: sub}
+}
 
 // matchNothing returns a condition no record can satisfy (owner==x AND owner!=x).
 // It backs the fail-closed default arm of read-filter switches when the Subject
