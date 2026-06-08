@@ -241,7 +241,7 @@ func validCitationKind(k string) bool {
 }
 
 func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
-	owner, err := ownerFromContext(ctx)
+	subj, err := subjectFromContext(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -261,7 +261,7 @@ func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
 		Category:  a.Category,
 		Tags:      a.Tags,
 		Actor:     actorFromContext(ctx),
-		Owner:     owner,
+		Owner:     subj.Owner(),
 		CreatedAt: time.Now().UTC(),
 	}
 	return m.ID, d.st.Upsert(ctx, m, vec)
@@ -271,12 +271,12 @@ func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string
 	if err := validateStoreDiscovery(a); err != nil {
 		return "", err
 	}
-	sub, err := ownerFromContext(ctx)
+	subj, err := subjectFromContext(ctx)
 	if err != nil {
 		return "", err
 	}
 	if a.ID != "" {
-		if err := d.st.OwnedOrAbsent(ctx, a.ID, sub); err != nil {
+		if err := d.st.OwnedOrAbsent(ctx, a.ID, subj); err != nil {
 			return "", err
 		}
 	}
@@ -303,7 +303,7 @@ func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string
 		Summary:   a.Summary,
 		Tags:      a.Tags,
 		Actor:     actorFromContext(ctx),
-		Owner:     sub,
+		Owner:     subj.Owner(),
 		CreatedAt: time.Now().UTC(),
 	}
 	return m.ID, d.st.Upsert(ctx, m, vec)
@@ -319,41 +319,39 @@ func actorFromContext(ctx context.Context) string {
 	return ""
 }
 
-// ownerFromContext returns the stable OIDC subject (the authorization key)
-// injected by the RequireBearerToken middleware. It returns "" only when auth is
-// disabled (no token in context → the anonymous bucket). A present-but-malformed
-// token — validated by the middleware yet carrying no non-empty `sub` — is a
-// fail-closed error, never silently collapsed into the anonymous bucket, so a
-// partially-populated authenticated request is rejected rather than granted
-// no-auth read/write/delete semantics. Never client-supplied: the value is the
-// validated token's `sub`, which auth.TokenVerifier places in TokenInfo.Extra.
-func ownerFromContext(ctx context.Context) (string, error) {
+// subjectFromContext returns the verified caller as a store.Subject. No token in
+// context → Anonymous (auth disabled, the owner=="" bucket). A validated token
+// carrying a non-empty `sub` → Authenticated(sub). A validated-but-malformed
+// token (no non-empty sub) is a fail-closed error, never silently collapsed into
+// the anonymous bucket. Its nil-on-error return (vs ""-on-error) means a
+// discarded error fails closed at the store default arm.
+func subjectFromContext(ctx context.Context) (store.Subject, error) {
 	ti := mcpauth.TokenInfoFromContext(ctx)
 	if ti == nil {
-		return "", nil // auth disabled: the anonymous bucket
+		return store.Anonymous(), nil
 	}
 	if sub, ok := ti.Extra["sub"].(string); ok && sub != "" {
-		return sub, nil
+		return store.Authenticated(sub), nil
 	}
-	return "", fmt.Errorf("validated token missing subject")
+	return nil, fmt.Errorf("validated token missing subject")
 }
 
 func (d *deps) listMemory(ctx context.Context, a listArgs) ([]store.Memory, error) {
 	if a.Limit == 0 {
 		a.Limit = 20
 	}
-	owner, err := ownerFromContext(ctx)
+	subj, err := subjectFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return d.st.List(ctx, a.Scope, owner, a.Limit)
+	return d.st.List(ctx, a.Scope, subj, a.Limit)
 }
 
 func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]store.Memory, error) {
 	if a.K == 0 {
 		a.K = 8
 	}
-	owner, err := ownerFromContext(ctx)
+	subj, err := subjectFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -361,7 +359,7 @@ func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]store.Memory, 
 	if err != nil {
 		return nil, err
 	}
-	return d.st.Search(ctx, a.Scope, owner, vec, a.K)
+	return d.st.Search(ctx, a.Scope, subj, vec, a.K)
 }
 
 // effectiveDiscoveryScope resolves the scope filter for a discovery search:
@@ -390,7 +388,7 @@ func (d *deps) searchDiscovery(ctx context.Context, a searchDiscoveryArgs) ([]st
 	if a.K == 0 {
 		a.K = 8
 	}
-	owner, err := ownerFromContext(ctx)
+	subj, err := subjectFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -398,11 +396,11 @@ func (d *deps) searchDiscovery(ctx context.Context, a searchDiscoveryArgs) ([]st
 	if err != nil {
 		return nil, err
 	}
-	return d.st.SearchDiscovery(ctx, scope, a.Kind, owner, vec, a.K)
+	return d.st.SearchDiscovery(ctx, scope, a.Kind, subj, vec, a.K)
 }
 
 func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
-	owner, err := ownerFromContext(ctx)
+	subj, err := subjectFromContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -410,7 +408,7 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 	// (or missing record) gets ErrNotFound here, so we never reach the billable
 	// embed call or a write. The fetched record is handed straight to Update, so
 	// the update path makes one Qdrant round-trip for ownership, not two.
-	cur, err := d.st.FetchForUpdate(ctx, a.ID, owner)
+	cur, err := d.st.FetchForUpdate(ctx, a.ID, subj)
 	if err != nil {
 		return err
 	}
@@ -455,11 +453,11 @@ func Register(s *mcp.Server, tm *telemetry.ToolMetrics) error {
 
 	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-			owner, err := ownerFromContext(ctx)
+			subj, err := subjectFromContext(ctx)
 			if err != nil {
 				return nil, nil, err
 			}
-			m, err := d.st.GetReadable(ctx, a.ID, owner)
+			m, err := d.st.GetReadable(ctx, a.ID, subj)
 			return textResult(m.Content), m, err
 		})
 
@@ -471,21 +469,21 @@ func Register(s *mcp.Server, tm *telemetry.ToolMetrics) error {
 
 	mcp.AddTool(s, &mcp.Tool{Name: "delete_memory", Description: "Delete one memory by id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-			owner, err := ownerFromContext(ctx)
+			subj, err := subjectFromContext(ctx)
 			if err != nil {
 				return nil, nil, err
 			}
-			err = d.st.Delete(ctx, a.ID, owner)
+			err = d.st.Delete(ctx, a.ID, subj)
 			return textResult("deleted"), nil, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "delete_all", Description: "Delete your own memories in a scope (teardown); never another caller's records."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a scopeArgs) (*mcp.CallToolResult, any, error) {
-			owner, err := ownerFromContext(ctx)
+			subj, err := subjectFromContext(ctx)
 			if err != nil {
 				return nil, nil, err
 			}
-			err = d.st.DeleteAll(ctx, a.Scope, owner)
+			err = d.st.DeleteAll(ctx, a.Scope, subj)
 			return textResult("scope cleared"), nil, err
 		})
 
@@ -503,11 +501,11 @@ func Register(s *mcp.Server, tm *telemetry.ToolMetrics) error {
 
 	mcp.AddTool(s, &mcp.Tool{Name: "set_visibility", Description: "Share or unshare a memory you own. shared=true → readable by any authenticated caller (never writable by others); false → private."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a setVisibilityArgs) (*mcp.CallToolResult, any, error) {
-			owner, err := ownerFromContext(ctx)
+			subj, err := subjectFromContext(ctx)
 			if err != nil {
 				return nil, nil, err
 			}
-			err = d.st.SetVisibility(ctx, a.ID, owner, a.Shared)
+			err = d.st.SetVisibility(ctx, a.ID, subj, a.Shared)
 			return textResult("visibility updated"), nil, err
 		})
 	return nil

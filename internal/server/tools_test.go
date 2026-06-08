@@ -191,7 +191,7 @@ func cleanupErr(t *testing.T, what string, err error) {
 // request through the go-sdk's RequireBearerToken middleware with a stub
 // verifier. The go-sdk stores TokenInfo under an unexported context key, so this
 // middleware round-trip is the only way to inject an authenticated identity that
-// ownerFromContext can read — it is what makes authenticated handler-path tests
+// subjectFromContext can read — it is what makes authenticated handler-path tests
 // possible.
 func authedContext(t *testing.T, sub string) context.Context {
 	t.Helper()
@@ -249,22 +249,6 @@ func TestValidateStoreDiscovery(t *testing.T) {
 	}
 }
 
-// TestOwnerFromContextNoToken pins the auth-disabled half of the contract: no
-// token in context is the anonymous bucket ("", nil), NOT an error — otherwise a
-// no-issuer deployment would reject every request. The fail-closed path (a
-// validated token lacking a non-empty sub → error) cannot be unit-tested here
-// because the go-sdk stores TokenInfo under an unexported context key, so there
-// is no way to inject one. The anonymous-read isolation path (context.Background()
-// → sub=="" → ownerless-only results) IS covered by
-// TestAnonReadIsolationHandlers; authenticated handler-path reads are now covered
-// by TestAuthedCrossActorSharedReadHandlers via the authedContext middleware helper.
-func TestOwnerFromContextNoToken(t *testing.T) {
-	sub, err := ownerFromContext(context.Background())
-	if sub != "" || err != nil {
-		t.Errorf("no token: want (\"\", nil), got (%q, %v)", sub, err)
-	}
-}
-
 // TestAnonReadIsolationHandlers verifies that handler methods called with an
 // anonymous context (context.Background() → sub=="") return anonymous-bucket
 // records (explicit owner=="") but NOT owner-stamped shared records, satisfying
@@ -299,8 +283,8 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	}
 
 	defer func() {
-		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, "")) // removes ownerless record
-		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, "sub-owner"))
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) // removes ownerless record
+		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, store.Authenticated("sub-owner")))
 	}()
 
 	// searchMemory with anonymous context must return ownerless, not shared.
@@ -346,12 +330,12 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	}
 
 	// get_memory (GetReadable) on the shared record must return not-found for anon.
-	if _, err := d.st.GetReadable(ctx, sharedID, ""); err == nil {
+	if _, err := d.st.GetReadable(ctx, sharedID, store.Anonymous()); err == nil {
 		t.Error("GetReadable: anonymous caller must not read owner-stamped shared record")
 	}
 
 	// get_memory on the ownerless record must succeed for anon.
-	if _, err := d.st.GetReadable(ctx, ownerlessID, ""); err != nil {
+	if _, err := d.st.GetReadable(ctx, ownerlessID, store.Anonymous()); err != nil {
 		t.Errorf("GetReadable: anonymous caller must read ownerless record, got %v", err)
 	}
 }
@@ -389,8 +373,8 @@ func TestAnonReadIsolationDiscoveryHandler(t *testing.T) {
 	}
 
 	defer func() {
-		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, ""))
-		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, "sub-owner"))
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous()))
+		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, store.Authenticated("sub-owner")))
 	}()
 
 	hits, err := d.searchDiscovery(ctx, searchDiscoveryArgs{Query: "discovery", Scope: scope, K: 10})
@@ -437,7 +421,7 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()
 	scope := "discovery:repo:handler-test"
-	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, "")) }()
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
 
 	// create
 	id, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
@@ -504,7 +488,7 @@ func TestUpdateMemoryPreservesSharingHandler(t *testing.T) {
 	ctx := context.Background()
 	scope := "iso-test:project:handler-upd"
 	id := "e5e5e5e5-0000-0000-0000-000000000001"
-	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, "")) }()
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
 
 	// Seed a shared record owned by the anonymous caller (sub == "").
 	m := store.Memory{ID: id, Content: "v1", Scope: scope, Owner: "", Visibility: "shared", CreatedAt: timeNow()}
@@ -544,7 +528,9 @@ func TestUpdateMemoryEmbedNotCalledForNonOwner(t *testing.T) {
 	if err := d.st.Upsert(ctx, stamped, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("seed stamped record: %v", err)
 	}
-	defer func() { cleanupErr(t, "Delete "+stampedID, d.st.Delete(ctx, stampedID, "sub-owner")) }()
+	defer func() {
+		cleanupErr(t, "Delete "+stampedID, d.st.Delete(ctx, stampedID, store.Authenticated("sub-owner")))
+	}()
 
 	// Swap in a counting embedder.
 	counter := &countingEmbedder{}
@@ -573,7 +559,7 @@ func TestUpdateMemoryEmbedNotCalledForNonOwner(t *testing.T) {
 	if err := d.st.Upsert(ctx, ownerless, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("seed ownerless record: %v", err)
 	}
-	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, "")) }()
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
 
 	counter.calls = 0
 	if err := d.updateMemory(ctx, updateArgs{ID: ownerlessID, Content: "v2"}); err != nil {
@@ -615,8 +601,8 @@ func TestAuthedCrossActorSharedReadHandlers(t *testing.T) {
 		t.Fatalf("seed private: %v", err)
 	}
 	defer func() {
-		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, "actor-A"))
-		cleanupErr(t, "Delete "+privateID, d.st.Delete(ctx, privateID, "actor-A"))
+		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, store.Authenticated("actor-A")))
+		cleanupErr(t, "Delete "+privateID, d.st.Delete(ctx, privateID, store.Authenticated("actor-A")))
 	}()
 
 	// Caller B: a distinct authenticated subject.
@@ -670,5 +656,23 @@ func TestRegisterReturnsErrorOnStoreInitFailure(t *testing.T) {
 	tm := telemetry.NewToolMetrics(otel.Meter("test"))
 	if err := Register(s, tm); err == nil {
 		t.Fatal("Register must return an error when store init fails, not exit")
+	}
+}
+
+// TestSubjectFromContextNoToken pins the auth-disabled half of the contract: no
+// token in context yields (Anonymous, nil), NOT an error — otherwise a no-issuer
+// deployment would reject every request. The fail-closed path (a validated token
+// lacking a non-empty sub → error) cannot be unit-tested here: the go-sdk stores
+// TokenInfo under an unexported context key, so there is no way to inject a
+// subject-less validated token. authedContext always supplies a non-empty sub,
+// so it covers only the Authenticated arm — the fail-closed branch has no direct
+// test, but a discarded extraction error still denies at the store default arm.
+func TestSubjectFromContextNoToken(t *testing.T) {
+	subj, err := subjectFromContext(context.Background())
+	if err != nil {
+		t.Fatalf("no token: unexpected error %v", err)
+	}
+	if subj == nil || subj.Owner() != "" {
+		t.Errorf("no token: want non-nil Anonymous (Owner==\"\"), got %#v", subj)
 	}
 }

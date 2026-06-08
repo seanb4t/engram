@@ -211,44 +211,44 @@ func (s *Store) Upsert(ctx context.Context, m Memory, vec []float32) error {
 	return err
 }
 
-// ownerOrSharedCondition matches records the caller may READ.
+// ownerOrSharedCondition matches records the subject may READ.
 //
-// Authenticated callers (sub != ""): owner==sub OR visibility=="shared".
-// Anonymous callers (sub == "", auth disabled): owner=="" ONLY — shared
-// records are NOT readable by anonymous callers. The "shared" grant requires
-// an authenticated (non-empty) subject; the anonymous bucket (owner=="") is not
-// a back-door to all shared records. Note this is the explicit empty-string
-// owner of auth-disabled writes, distinct from the missing-key "ownerless"
-// pre-isolation records that ownerlessFilter targets.
-func ownerOrSharedCondition(sub string) *qdrant.Condition {
-	if sub == "" {
-		// Fail-closed: anonymous callers see only the anonymous bucket (owner=="").
+// Authenticated: owner==sub OR visibility=="shared".
+// Anonymous: owner=="" ONLY — shared records require an authenticated subject;
+// the anonymous bucket is not a back-door to all shared records.
+// nil/unknown (a discarded extraction error): matchNothing — fail closed.
+func ownerOrSharedCondition(subj Subject) *qdrant.Condition {
+	switch s := subj.(type) {
+	case authenticated:
+		return qdrant.NewFilterAsCondition(&qdrant.Filter{Should: []*qdrant.Condition{
+			qdrant.NewMatch("owner", s.sub),
+			qdrant.NewMatch("visibility", visibilityShared),
+		}})
+	case anonymous:
 		return qdrant.NewFilterAsCondition(&qdrant.Filter{Must: []*qdrant.Condition{
 			qdrant.NewMatch("owner", ""),
 		}})
+	default:
+		return matchNothing()
 	}
-	return qdrant.NewFilterAsCondition(&qdrant.Filter{Should: []*qdrant.Condition{
-		qdrant.NewMatch("owner", sub),
-		qdrant.NewMatch("visibility", visibilityShared),
-	}})
 }
 
 // ownerScopeFilter restricts to a scope AND the caller's readable set (see
 // ownerOrSharedCondition for anonymous vs authenticated semantics).
-func (s *Store) ownerScopeFilter(scope, sub string) *qdrant.Filter {
+func (s *Store) ownerScopeFilter(scope string, subj Subject) *qdrant.Filter {
 	return &qdrant.Filter{Must: []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),
-		ownerOrSharedCondition(sub),
+		ownerOrSharedCondition(subj),
 	}}
 }
 
 // Search returns the k nearest readable memories to vec within scope.
 // Authenticated callers see their own records plus shared records; anonymous
-// callers (sub=="") see only the ownerless bucket.
-func (s *Store) Search(ctx context.Context, scope, sub string, vec []float32, k uint64) ([]Memory, error) {
+// callers see only the ownerless bucket.
+func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []float32, k uint64) ([]Memory, error) {
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
-		Filter: s.ownerScopeFilter(scope, sub), Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
+		Filter: s.ownerScopeFilter(scope, subj), Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
 	})
 	if err != nil {
 		return nil, err
@@ -267,12 +267,12 @@ func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 
 // SearchDiscovery runs a top-k vector search constrained to discovery records.
 // Empty scope spans all discovery scopes (the cross_spine case); empty kind
-// matches both map and fact. sub restricts results via ownerOrSharedCondition:
+// matches both map and fact. subj restricts results via ownerOrSharedCondition:
 // authenticated callers see own + shared records (cross_spine = my+shared);
-// anonymous callers (sub=="") see only ownerless records — shared requires an
+// anonymous callers see only ownerless records — shared requires an
 // authenticated subject. Builds a compound exact-match filter — no prefix
 // matching.
-func (s *Store) SearchDiscovery(ctx context.Context, scope, kind, sub string, vec []float32, k uint64) ([]Memory, error) {
+func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Subject, vec []float32, k uint64) ([]Memory, error) {
 	must := []*qdrant.Condition{qdrant.NewMatch("category", "discovery")}
 	if scope != "" {
 		must = append(must, qdrant.NewMatch("scope", scope))
@@ -280,7 +280,7 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind, sub string, ve
 	if kind != "" {
 		must = append(must, qdrant.NewMatch("kind", kind))
 	}
-	must = append(must, ownerOrSharedCondition(sub))
+	must = append(must, ownerOrSharedCondition(subj))
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
 		Filter: &qdrant.Filter{Must: must}, Limit: qdrant.PtrOf(k),
@@ -297,11 +297,11 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind, sub string, ve
 // sorts by CreatedAt in-process to avoid requiring a Qdrant payload index.
 // Read set follows ownerOrSharedCondition: anonymous callers see only the
 // ownerless bucket; authenticated callers see own + shared records.
-func (s *Store) List(ctx context.Context, scope, sub string, limit uint64) ([]Memory, error) {
+func (s *Store) List(ctx context.Context, scope string, subj Subject, limit uint64) ([]Memory, error) {
 	const scanCap = 1000
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
-		Filter:         s.ownerScopeFilter(scope, sub),
+		Filter:         s.ownerScopeFilter(scope, subj),
 		Limit:          qdrant.PtrOf(uint32(scanCap)),
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
@@ -337,55 +337,67 @@ func (s *Store) Get(ctx context.Context, id string) (Memory, error) {
 // GetReadable returns the record only if the caller may READ it; otherwise
 // ErrNotFound, so ownership never leaks across actors.
 //
-// Authenticated callers (sub != ""): readable if owner==sub OR visibility=="shared".
-// Anonymous callers (sub == ""): readable only if owner=="" (ownerless bucket).
+// Authenticated callers: readable if owner==sub OR visibility=="shared".
+// Anonymous callers: readable only if owner=="" (ownerless bucket).
 // The "shared" grant requires an authenticated subject — anonymous callers
-// cannot read shared records.
-func (s *Store) GetReadable(ctx context.Context, id, sub string) (Memory, error) {
+// cannot read shared records. nil/unknown Subject → fail closed (ErrNotFound).
+func (s *Store) GetReadable(ctx context.Context, id string, subj Subject) (Memory, error) {
 	m, err := s.Get(ctx, id)
 	if err != nil {
 		return Memory{}, err
 	}
-	if sub == "" {
-		// Fail-closed: anonymous callers may only read the ownerless bucket.
+	switch sj := subj.(type) {
+	case authenticated:
+		if m.Owner != sj.sub && m.Visibility != visibilityShared {
+			return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+		}
+		return m, nil
+	case anonymous:
 		if m.Owner != "" {
 			return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 		}
 		return m, nil
-	}
-	// Authenticated path: own record or shared.
-	if m.Owner != sub && m.Visibility != visibilityShared {
+	default:
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	return m, nil
 }
 
 // getWritable returns the record only if the caller OWNS it (shared does NOT
 // grant write); otherwise ErrNotFound. The mutate primitive.
 //
-// When auth is disabled (sub==""), owner is always "" for new records, so the
-// owner==sub check (""=="") passes for the single anonymous bucket — the gate
-// is mutually writable by design. Any owner-stamped record (owner!="") written
-// by an authenticated caller is invisible to anonymous mutation (owner!=""
-// never equals sub==""), preserving fail-closed write isolation even in
-// mixed-auth deployments. Per-actor isolation requires authentication
-// (see the package isolation contract and README).
-func (s *Store) getWritable(ctx context.Context, id, sub string) (Memory, error) {
+// Owner-only: anonymous requires owner=="", authenticated requires owner==sub.
+// shared visibility is irrelevant to the write gate — shared grants read, not
+// write. Any owner-stamped record (owner!="") is invisible to anonymous mutation,
+// preserving fail-closed write isolation even in mixed-auth deployments.
+// Per-actor isolation requires authentication (see the package isolation contract
+// and README).
+func (s *Store) getWritable(ctx context.Context, id string, subj Subject) (Memory, error) {
 	m, err := s.Get(ctx, id)
 	if err != nil {
 		return Memory{}, err
 	}
-	if m.Owner != sub {
+	switch sj := subj.(type) {
+	case authenticated:
+		if m.Owner != sj.sub {
+			return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+		}
+		return m, nil
+	case anonymous:
+		if m.Owner != "" {
+			return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+		}
+		return m, nil
+	default:
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	return m, nil
 }
 
 // OwnedOrAbsent permits a client-supplied-id write: nil if the id is absent (new
-// record) or already owned by sub (replace in place); ErrNotFound if it exists
-// and is owned by another actor (refuse cross-owner overwrite). Transport errors
-// surface unchanged.
-func (s *Store) OwnedOrAbsent(ctx context.Context, id, sub string) error {
+// record) or already owned by the subject (replace in place); ErrNotFound if it
+// exists and is owned by a different actor or the subject is anonymous but the
+// record has an owner (refuse cross-owner overwrite). Transport errors surface
+// unchanged.
+func (s *Store) OwnedOrAbsent(ctx context.Context, id string, subj Subject) error {
 	m, err := s.Get(ctx, id)
 	if errors.Is(err, ErrNotFound) {
 		return nil
@@ -393,24 +405,34 @@ func (s *Store) OwnedOrAbsent(ctx context.Context, id, sub string) error {
 	if err != nil {
 		return err
 	}
-	if m.Owner != sub {
+	switch sj := subj.(type) {
+	case authenticated:
+		if m.Owner != sj.sub {
+			return fmt.Errorf("%w: %s", ErrNotFound, id)
+		}
+		return nil
+	case anonymous:
+		if m.Owner != "" {
+			return fmt.Errorf("%w: %s", ErrNotFound, id)
+		}
+		return nil
+	default:
 		return fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	return nil
 }
 
-// FetchForUpdate returns the record iff it exists and is owned by sub (the same
-// gate as the internal write path); otherwise ErrNotFound. The update handler
-// calls this once as the authoritative ownership gate BEFORE embedding, then
-// hands the returned record to Update — so the update path performs a single
-// Qdrant Get instead of two. The returned record carries current visibility, so
-// a content-only Update (shared==nil) preserves it.
+// FetchForUpdate returns the record iff it exists and is owned by the subject
+// (the same gate as the internal write path); otherwise ErrNotFound. The update
+// handler calls this once as the authoritative ownership gate BEFORE embedding,
+// then hands the returned record to Update — so the update path performs a
+// single Qdrant Get instead of two. The returned record carries current
+// visibility, so a content-only Update (shared==nil) preserves it.
 //
-// Anonymous-bucket semantics preserved: sub=="" matches owner=="" exactly as
+// Anonymous-bucket semantics preserved: Anonymous() matches owner=="" exactly as
 // getWritable does, so ownerless records remain mutually writable when auth is
 // disabled.
-func (s *Store) FetchForUpdate(ctx context.Context, id, sub string) (Memory, error) {
-	return s.getWritable(ctx, id, sub)
+func (s *Store) FetchForUpdate(ctx context.Context, id string, subj Subject) (Memory, error) {
+	return s.getWritable(ctx, id, subj)
 }
 
 // Update applies a content change (re-embedded via vec) to a record previously
@@ -431,15 +453,15 @@ func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *
 }
 
 // SetVisibility flips a record's shared flag without re-embedding (uses
-// SetPayload, preserving the vector), only if owned by sub.
+// SetPayload, preserving the vector), only if owned by subj.
 //
 // TOCTOU note: if the record is deleted between the getWritable ownership gate
 // and the SetPayload call, Qdrant's point-ID-selector SetPayload returns a
 // NotFound gRPC error (verified against v1.18.2). That error propagates
 // unchanged, so SetVisibility is fail-closed with respect to concurrent
 // deletion — no additional re-fetch is required.
-func (s *Store) SetVisibility(ctx context.Context, id, sub string, shared bool) error {
-	if _, err := s.getWritable(ctx, id, sub); err != nil {
+func (s *Store) SetVisibility(ctx context.Context, id string, subj Subject, shared bool) error {
+	if _, err := s.getWritable(ctx, id, subj); err != nil {
 		return err
 	}
 	vis := ""
@@ -454,9 +476,9 @@ func (s *Store) SetVisibility(ctx context.Context, id, sub string, shared bool) 
 	return err
 }
 
-// Delete removes the memory with the given id, only if owned by sub.
-func (s *Store) Delete(ctx context.Context, id, sub string) error {
-	if _, err := s.getWritable(ctx, id, sub); err != nil {
+// Delete removes the memory with the given id, only if owned by subj.
+func (s *Store) Delete(ctx context.Context, id string, subj Subject) error {
+	if _, err := s.getWritable(ctx, id, subj); err != nil {
 		return err
 	}
 	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{
@@ -466,12 +488,22 @@ func (s *Store) Delete(ctx context.Context, id, sub string) error {
 	return err
 }
 
-// DeleteAll removes the caller's OWN records in scope (never another owner's,
-// and never another owner's shared records).
-func (s *Store) DeleteAll(ctx context.Context, scope, sub string) error {
+// DeleteAll removes the subject's OWN records in scope (never another owner's,
+// and never another owner's shared records). A nil/unknown Subject is rejected
+// without deleting anything — fail closed.
+func (s *Store) DeleteAll(ctx context.Context, scope string, subj Subject) error {
+	var owner string
+	switch sj := subj.(type) {
+	case authenticated:
+		owner = sj.sub
+	case anonymous:
+		owner = ""
+	default:
+		return fmt.Errorf("%w: nil subject", ErrNotFound)
+	}
 	filter := &qdrant.Filter{Must: []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),
-		qdrant.NewMatch("owner", sub),
+		qdrant.NewMatch("owner", owner),
 	}}
 	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
