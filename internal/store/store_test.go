@@ -939,7 +939,7 @@ func TestAnonBucketDiscoveryReadIsolation(t *testing.T) {
 			t.Fatalf("upsert %s: %v", id, err)
 		}
 	}
-	mk("f1f1f1f1-0000-0000-0000-000000000021", "", "")         // ownerless
+	mk("f1f1f1f1-0000-0000-0000-000000000021", "", "")            // ownerless
 	mk("f1f1f1f1-0000-0000-0000-000000000022", "sub-A", "shared") // A's shared
 
 	q := []float32{0.1, 0.2, 0.3}
