@@ -397,6 +397,20 @@ func (s *Store) OwnedOrAbsent(ctx context.Context, id, sub string) error {
 	return nil
 }
 
+// OwnedForUpdate is a cheap pre-check: it returns nil iff the record exists and
+// is owned by sub (same semantics as getWritable). The caller MUST still call
+// Update; this method does not replace Update's own ownership gate — it is an
+// early-exit to avoid expensive operations (e.g. embedding) before the
+// authoritative gate inside Update fires. Transport errors surface unchanged.
+//
+// Anonymous-bucket semantics preserved: sub=="" matches owner=="" exactly as
+// getWritable does, so ownerless records remain mutually writable when auth is
+// disabled.
+func (s *Store) OwnedForUpdate(ctx context.Context, id, sub string) error {
+	_, err := s.getWritable(ctx, id, sub)
+	return err
+}
+
 // Update replaces a record's content (re-embedded via vec), only if owned by
 // sub. When shared is non-nil it also sets visibility (true → "shared", false →
 // ""); nil leaves visibility unchanged so a content edit never silently unshares.

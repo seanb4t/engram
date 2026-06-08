@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -132,6 +133,18 @@ type fakeEmbedder struct{}
 
 func (fakeEmbedder) Embed(context.Context, string) ([]float32, error) {
 	return []float32{0.1, 0.2, 0.3}, nil
+}
+
+// countingEmbedder wraps fakeEmbedder and records how many Embed calls were made.
+// Used to assert that the embedder is NOT called when the ownership pre-check
+// rejects the request early (cost-amplification hardening, eu8.4/eu8.2).
+type countingEmbedder struct {
+	calls int
+}
+
+func (e *countingEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+	e.calls++
+	return fakeEmbedder{}.Embed(ctx, text)
 }
 
 // testDeps builds a deps backed by a live Qdrant (skip-gated, same posture as the
@@ -468,6 +481,66 @@ func TestUpdateMemoryPreservesSharingHandler(t *testing.T) {
 	}
 	if got.Content != "v2" || got.Visibility != "shared" {
 		t.Errorf("handler content-only update lost sharing: content=%q visibility=%q", got.Content, got.Visibility)
+	}
+}
+
+// TestUpdateMemoryEmbedNotCalledForNonOwner verifies that updateMemory does NOT
+// invoke the embedder when the caller does not own the record (cost-amplification
+// hardening for eu8.4/eu8.2). A non-owner call must return ErrNotFound with zero
+// embed calls. The happy path (owner == record owner) must embed exactly once.
+// Integration: needs Qdrant.
+func TestUpdateMemoryEmbedNotCalledForNonOwner(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:upd-embed-gate"
+
+	// Record stamped to "sub-owner"; anonymous caller (sub=="") is a non-owner.
+	stampedID := "a7a7a7a7-0000-0000-0000-000000000001"
+	stamped := store.Memory{
+		ID: stampedID, Content: "original", Scope: scope,
+		Owner: "sub-owner", Category: "convention",
+		Source: "agent-inferred", CreatedAt: timeNow(),
+	}
+	if err := d.st.Upsert(ctx, stamped, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed stamped record: %v", err)
+	}
+	defer func() { _ = d.st.Delete(ctx, stampedID, "sub-owner") }()
+
+	// Swap in a counting embedder.
+	counter := &countingEmbedder{}
+	d.em = counter
+
+	// Non-owner call (anonymous ctx → sub=="" ≠ "sub-owner") must fail without embedding.
+	err := d.updateMemory(ctx, updateArgs{ID: stampedID, Content: "hijack"})
+	if err == nil {
+		t.Fatal("non-owner updateMemory: expected error, got nil")
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("non-owner updateMemory: want ErrNotFound, got %v", err)
+	}
+	if counter.calls != 0 {
+		t.Errorf("non-owner updateMemory: embed must not be called; got %d call(s)", counter.calls)
+	}
+
+	// Happy path: ownerless record (owner=="") is in the anonymous bucket and must
+	// succeed with exactly one embed call.
+	ownerlessID := "a7a7a7a7-0000-0000-0000-000000000002"
+	ownerless := store.Memory{
+		ID: ownerlessID, Content: "v1", Scope: scope,
+		Owner: "", Category: "convention",
+		Source: "agent-inferred", CreatedAt: timeNow(),
+	}
+	if err := d.st.Upsert(ctx, ownerless, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed ownerless record: %v", err)
+	}
+	defer func() { _ = d.st.DeleteAll(ctx, scope, "") }()
+
+	counter.calls = 0
+	if err := d.updateMemory(ctx, updateArgs{ID: ownerlessID, Content: "v2"}); err != nil {
+		t.Fatalf("ownerless updateMemory: unexpected error: %v", err)
+	}
+	if counter.calls != 1 {
+		t.Errorf("ownerless updateMemory: expected exactly 1 embed call, got %d", counter.calls)
 	}
 }
 

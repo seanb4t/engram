@@ -622,6 +622,52 @@ func TestOwnedOrAbsent(t *testing.T) {
 	}
 }
 
+// TestOwnedForUpdate mirrors TestOwnedOrAbsent for the OwnedForUpdate pre-check:
+// owner → nil, non-owner → ErrNotFound, absent → ErrNotFound (record must exist
+// to update), anonymous bucket (sub=="" on ownerless record) → nil.
+func TestOwnedForUpdate(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:owned-for-update"
+	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+
+	id := "b2b2b2b2-0000-0000-0000-000000000002"
+
+	// Absent record → ErrNotFound (nothing to update).
+	if err := s.OwnedForUpdate(ctx, id, "sub-A"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("absent record: want ErrNotFound, got %v", err)
+	}
+
+	m := Memory{ID: id, Content: "d", Scope: scope, Category: "convention", Owner: "sub-A", CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	// Owner → nil (may proceed to embed + Update).
+	if err := s.OwnedForUpdate(ctx, id, "sub-A"); err != nil {
+		t.Errorf("owner: unexpected error: %v", err)
+	}
+
+	// Non-owner → ErrNotFound (early-exit before embed).
+	if err := s.OwnedForUpdate(ctx, id, "sub-B"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("non-owner: want ErrNotFound, got %v", err)
+	}
+
+	// Anonymous bucket: ownerless record (owner=="") with sub=="" → nil.
+	ownerlessID := "b2b2b2b2-0000-0000-0000-000000000003"
+	ownerless := Memory{ID: ownerlessID, Content: "x", Scope: scope, Category: "convention", Owner: "", CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, ownerless, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert ownerless: %v", err)
+	}
+	if err := s.OwnedForUpdate(ctx, ownerlessID, ""); err != nil {
+		t.Errorf("anonymous bucket ownerless: unexpected error: %v", err)
+	}
+	// Stamped record (owner!="") with sub=="" → ErrNotFound (fail-closed write isolation).
+	if err := s.OwnedForUpdate(ctx, id, ""); !errors.Is(err, ErrNotFound) {
+		t.Errorf("anon on stamped record: want ErrNotFound, got %v", err)
+	}
+}
+
 func TestDeleteAllOwnerScoped(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
