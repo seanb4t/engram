@@ -45,10 +45,12 @@ A memory record carries `content`, `scope`, `repo`/`workspace`/`worktree_path`/
 
 **Isolation:** each actor reads and writes only their **own** records; a record
 can be marked `shared` (via `set_visibility` or `update_memory`'s `shared` flag)
-to make it readable by any authenticated caller — sharing grants read, never
-write. Isolation **requires authentication**: with no `--oidc-issuer`, all
-callers share one anonymous bucket. The `owner` is the stable `sub`, so a
-changed email never revokes access.
+to make it readable by any **authenticated** caller — sharing grants read, never
+write, and requires a non-empty `sub`. Anonymous callers (auth disabled) see
+only the ownerless bucket and cannot read shared records. Isolation **requires
+authentication**: with no `--oidc-issuer`, all callers share one anonymous
+bucket (owner `""`). The `owner` is the stable `sub`, so a changed email never
+revokes access.
 
 **Upgrading an existing deployment:** records written before isolation carry no
 `owner` and become **invisible to every read** (and un-clearable by `delete_all`)

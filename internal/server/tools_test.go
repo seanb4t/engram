@@ -201,11 +201,163 @@ func TestValidateStoreDiscovery(t *testing.T) {
 // no-issuer deployment would reject every request. The fail-closed path (a
 // validated token lacking a non-empty sub → error) cannot be unit-tested here
 // because the go-sdk stores TokenInfo under an unexported context key, so there
-// is no way to inject one (same constraint as the deferred handler-isolation gap).
+// is no way to inject one. The anonymous-read isolation path (context.Background()
+// → sub=="" → ownerless-only results) IS covered by
+// TestAnonReadIsolationHandlers; only authenticated-identity injection remains
+// untestable.
 func TestOwnerFromContextNoToken(t *testing.T) {
 	sub, err := ownerFromContext(context.Background())
 	if sub != "" || err != nil {
 		t.Errorf("no token: want (\"\", nil), got (%q, %v)", sub, err)
+	}
+}
+
+// TestAnonReadIsolationHandlers verifies that handler methods called with an
+// anonymous context (context.Background() → sub=="") return ownerless records
+// but NOT owner-stamped shared records, satisfying the acceptance criteria for
+// the anonymous-bucket read restriction through the full handler→store path.
+// Integration: needs Qdrant.
+func TestAnonReadIsolationHandlers(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:anon-handler"
+
+	ownerlessID := "a0000000-0000-0000-0000-000000000001"
+	sharedID := "a0000000-0000-0000-0000-000000000002"
+
+	// Seed ownerless record (anonymous bucket).
+	ownerless := store.Memory{
+		ID: ownerlessID, Content: "ownerless content", Scope: scope,
+		Owner: "", Visibility: "private", Category: "convention",
+		Source: "agent-inferred", CreatedAt: timeNow(),
+	}
+	if err := d.st.Upsert(ctx, ownerless, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed ownerless: %v", err)
+	}
+
+	// Seed owner-stamped shared record.
+	shared := store.Memory{
+		ID: sharedID, Content: "shared content", Scope: scope,
+		Owner: "sub-owner", Visibility: "shared", Category: "convention",
+		Source: "agent-inferred", CreatedAt: timeNow(),
+	}
+	if err := d.st.Upsert(ctx, shared, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed shared: %v", err)
+	}
+
+	defer func() {
+		_ = d.st.DeleteAll(ctx, scope, "") // removes ownerless record
+		_ = d.st.Delete(ctx, sharedID, "sub-owner")
+	}()
+
+	// searchMemory with anonymous context must return ownerless, not shared.
+	hits, err := d.searchMemory(ctx, searchArgs{Query: "content", Scope: scope, K: 10})
+	if err != nil {
+		t.Fatalf("searchMemory: %v", err)
+	}
+	foundOwnerless, foundShared := false, false
+	for _, h := range hits {
+		if h.ID == ownerlessID {
+			foundOwnerless = true
+		}
+		if h.ID == sharedID {
+			foundShared = true
+		}
+	}
+	if !foundOwnerless {
+		t.Error("searchMemory: ownerless record not returned for anonymous caller")
+	}
+	if foundShared {
+		t.Error("searchMemory: owner-stamped shared record must not be returned to anonymous caller")
+	}
+
+	// list_memory (List) with anonymous context must return ownerless, not shared.
+	mems, err := d.st.List(ctx, scope, "", 10)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	foundOwnerless, foundShared = false, false
+	for _, m := range mems {
+		if m.ID == ownerlessID {
+			foundOwnerless = true
+		}
+		if m.ID == sharedID {
+			foundShared = true
+		}
+	}
+	if !foundOwnerless {
+		t.Error("List: ownerless record not returned for anonymous caller")
+	}
+	if foundShared {
+		t.Error("List: owner-stamped shared record must not be returned to anonymous caller")
+	}
+
+	// get_memory (GetReadable) on the shared record must return not-found for anon.
+	if _, err := d.st.GetReadable(ctx, sharedID, ""); err == nil {
+		t.Error("GetReadable: anonymous caller must not read owner-stamped shared record")
+	}
+
+	// get_memory on the ownerless record must succeed for anon.
+	if _, err := d.st.GetReadable(ctx, ownerlessID, ""); err != nil {
+		t.Errorf("GetReadable: anonymous caller must read ownerless record, got %v", err)
+	}
+}
+
+// TestAnonReadIsolationDiscoveryHandler verifies the search_discovery handler
+// obeys the same anonymous-bucket restriction: ownerless discovery records are
+// returned; owner-stamped shared discovery records are not.
+// Integration: needs Qdrant.
+func TestAnonReadIsolationDiscoveryHandler(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "discovery:repo:anon-handler-test"
+
+	ownerlessID := "d0000000-0000-0000-0000-000000000001"
+	sharedID := "d0000000-0000-0000-0000-000000000002"
+
+	ownerlessDisc := store.Memory{
+		ID: ownerlessID, Content: "ownerless discovery", Scope: scope,
+		Owner: "", Visibility: "private", Category: "discovery",
+		Kind: "fact", Source: "agent-inferred", CreatedAt: timeNow(),
+		Citations: []store.Citation{{Kind: "file", Ref: "internal/auth/auth.go"}},
+	}
+	if err := d.st.Upsert(ctx, ownerlessDisc, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed ownerless discovery: %v", err)
+	}
+
+	sharedDisc := store.Memory{
+		ID: sharedID, Content: "shared discovery", Scope: scope,
+		Owner: "sub-owner", Visibility: "shared", Category: "discovery",
+		Kind: "fact", Source: "agent-inferred", CreatedAt: timeNow(),
+		Citations: []store.Citation{{Kind: "file", Ref: "internal/store/store.go"}},
+	}
+	if err := d.st.Upsert(ctx, sharedDisc, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed shared discovery: %v", err)
+	}
+
+	defer func() {
+		_ = d.st.DeleteAll(ctx, scope, "")
+		_ = d.st.Delete(ctx, sharedID, "sub-owner")
+	}()
+
+	hits, err := d.searchDiscovery(ctx, searchDiscoveryArgs{Query: "discovery", Scope: scope, K: 10})
+	if err != nil {
+		t.Fatalf("searchDiscovery: %v", err)
+	}
+	foundOwnerless, foundShared := false, false
+	for _, h := range hits {
+		if h.ID == ownerlessID {
+			foundOwnerless = true
+		}
+		if h.ID == sharedID {
+			foundShared = true
+		}
+	}
+	if !foundOwnerless {
+		t.Error("searchDiscovery: ownerless discovery not returned for anonymous caller")
+	}
+	if foundShared {
+		t.Error("searchDiscovery: owner-stamped shared discovery must not be returned to anonymous caller")
 	}
 }
 
