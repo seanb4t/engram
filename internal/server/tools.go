@@ -395,6 +395,13 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 	if err != nil {
 		return err
 	}
+	// Pre-check ownership before embedding: avoids a billable embedder call when
+	// the caller does not own the record. This is NOT a replacement for the
+	// authoritative ownership gate inside d.st.Update — that gate remains the
+	// source of truth; this is a cheap early-exit only.
+	if err := d.st.OwnedForUpdate(ctx, a.ID, owner); err != nil {
+		return err
+	}
 	vec, err := d.em.Embed(ctx, a.Content)
 	if err != nil {
 		return err

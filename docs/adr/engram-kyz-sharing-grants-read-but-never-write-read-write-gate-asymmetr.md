@@ -35,3 +35,7 @@ getReadable admits owner==sub OR visibility=="shared"; getWritable and ownedOrAb
 **Negative:** contributors must pick the right primitive for a new operation (wrong choice silently misgrants); update_memory's shared *bool pointer semantics (nil = preserve visibility) are a subtle invariant needing explicit tests.
 
 **Neutral:** DeleteAll is owner-scoped, applying getWritable semantics at the collection level.
+
+## Addenda
+
+- the getReadable read grant (owner==sub OR visibility=="shared") applies to authenticated callers (sub != ""). Anonymous callers (sub=="", auth disabled) are restricted to the anonymous bucket (owner=="") only and cannot read shared records — the shared read grant requires an authenticated subject. The write gates (getWritable, ownedOrAbsent) are unchanged: owner==sub, where anonymous callers match only owner=="". Refined in PR #54 (engram-99z.13).

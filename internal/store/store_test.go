@@ -517,6 +517,87 @@ func TestSetVisibilityOwnerGate(t *testing.T) {
 	}
 }
 
+// TestSetVisibilityTOCTOU verifies the TOCTOU behaviour of SetVisibility: a
+// record deleted between the ownership gate (getWritable) and the SetPayload
+// call must not cause SetVisibility to return nil.
+//
+// Qdrant v1.18.2 with a point-ID selector returns a NotFound gRPC error from
+// SetPayload when the target ID does not exist — so the error propagates
+// through SetVisibility without a separate re-fetch. Parts 1 and 2 are the
+// load-bearing TOCTOU assertions: they confirm at the raw Qdrant level that
+// SetPayload errors on a missing point-ID (the fail-closed contract we rely
+// on), including when the record vanishes after the gate has passed. Part 3
+// covers the simpler pre-entry case — the record is already gone when
+// SetVisibility is called, so the getWritable gate rejects it.
+func TestSetVisibilityTOCTOU(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:toctou"
+	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+
+	// Part 1: verify Qdrant's SetPayload (point-ID selector) errors on a
+	// missing ID — this is the contract that makes SetVisibility fail-closed.
+	missingID := "f0f0f0f0-0000-0000-0000-000000000001"
+	_, rawErr := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload:        qdrant.NewValueMap(map[string]any{"visibility": "shared"}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(missingID)}),
+	})
+	if rawErr == nil {
+		t.Fatal("qdrant SetPayload on missing point-ID returned nil — the fail-closed contract for SetVisibility is broken; review Qdrant behaviour for this version and update SetVisibility accordingly")
+	}
+
+	// Part 2: simulate the TOCTOU window at the raw level.
+	// Insert → verify gate passes → delete (concurrent race) → SetPayload.
+	// SetPayload must error because the ID no longer exists.
+	id := "f0f0f0f0-0000-0000-0000-000000000002"
+	m := Memory{
+		ID: id, Content: "toctou-target", Scope: scope,
+		Owner: "sub-owner", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := s.getWritable(ctx, id, "sub-owner"); err != nil {
+		t.Fatalf("getWritable pre-delete: %v", err)
+	}
+	// Concurrent delete: simulates what happens in the TOCTOU window.
+	if _, err := s.client.Delete(ctx, &qdrant.DeletePoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Points: qdrant.NewPointsSelector(qdrant.NewID(id)),
+	}); err != nil {
+		t.Fatalf("concurrent delete: %v", err)
+	}
+	_, setPayloadErr := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload:        qdrant.NewValueMap(map[string]any{"visibility": "shared"}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
+	})
+	if setPayloadErr == nil {
+		t.Error("TOCTOU: SetPayload on deleted point-ID returned nil — the fail-closed contract for SetVisibility is broken; review Qdrant behaviour for this version and update SetVisibility accordingly")
+	}
+
+	// Part 3: end-to-end via the SetVisibility public API.
+	// Insert → delete → SetVisibility must error. The record is absent at gate
+	// entry, so this surfaces ErrNotFound from getWritable — the pre-entry
+	// deletion case, not the TOCTOU window (which Part 2 covers).
+	id2 := "f0f0f0f0-0000-0000-0000-000000000003"
+	m2 := Memory{
+		ID: id2, Content: "sv-target", Scope: scope,
+		Owner: "sub-owner", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, m2, []float32{0.4, 0.5, 0.6}); err != nil {
+		t.Fatalf("upsert m2: %v", err)
+	}
+	if err := s.Delete(ctx, id2, "sub-owner"); err != nil {
+		t.Fatalf("delete m2: %v", err)
+	}
+	// SetVisibility on a missing record must not return nil.
+	if err := s.SetVisibility(ctx, id2, "sub-owner", true); err == nil {
+		t.Error("SetVisibility on deleted record returned nil — expected an error")
+	}
+}
+
 func TestOwnedOrAbsent(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -538,6 +619,52 @@ func TestOwnedOrAbsent(t *testing.T) {
 	// Other actor supplies id → ErrNotFound (refuse overwrite).
 	if err := s.OwnedOrAbsent(ctx, id, "sub-B"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("cross-owner overwrite: want ErrNotFound, got %v", err)
+	}
+}
+
+// TestOwnedForUpdate mirrors TestOwnedOrAbsent for the OwnedForUpdate pre-check:
+// owner → nil, non-owner → ErrNotFound, absent → ErrNotFound (record must exist
+// to update), anonymous bucket (sub=="" on ownerless record) → nil.
+func TestOwnedForUpdate(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:owned-for-update"
+	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+
+	id := "b2b2b2b2-0000-0000-0000-000000000002"
+
+	// Absent record → ErrNotFound (nothing to update).
+	if err := s.OwnedForUpdate(ctx, id, "sub-A"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("absent record: want ErrNotFound, got %v", err)
+	}
+
+	m := Memory{ID: id, Content: "d", Scope: scope, Category: "convention", Owner: "sub-A", CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	// Owner → nil (may proceed to embed + Update).
+	if err := s.OwnedForUpdate(ctx, id, "sub-A"); err != nil {
+		t.Errorf("owner: unexpected error: %v", err)
+	}
+
+	// Non-owner → ErrNotFound (early-exit before embed).
+	if err := s.OwnedForUpdate(ctx, id, "sub-B"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("non-owner: want ErrNotFound, got %v", err)
+	}
+
+	// Anonymous bucket: ownerless record (owner=="") with sub=="" → nil.
+	ownerlessID := "b2b2b2b2-0000-0000-0000-000000000003"
+	ownerless := Memory{ID: ownerlessID, Content: "x", Scope: scope, Category: "convention", Owner: "", CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, ownerless, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert ownerless: %v", err)
+	}
+	if err := s.OwnedForUpdate(ctx, ownerlessID, ""); err != nil {
+		t.Errorf("anonymous bucket ownerless: unexpected error: %v", err)
+	}
+	// Stamped record (owner!="") with sub=="" → ErrNotFound (fail-closed write isolation).
+	if err := s.OwnedForUpdate(ctx, id, ""); !errors.Is(err, ErrNotFound) {
+		t.Errorf("anon on stamped record: want ErrNotFound, got %v", err)
 	}
 }
 
@@ -612,6 +739,250 @@ func TestMigrateSetOwner(t *testing.T) {
 	}
 	if n2 != 0 {
 		t.Errorf("idempotency: rerun stamped %d, want 0", n2)
+	}
+}
+
+// TestAnonBucketReadIsolation verifies Q1 (engram-99z.13): anonymous callers
+// (sub=="") may only read the anonymous bucket (owner=="") — they cannot see
+// another owner's shared record via Search, List, or GetReadable.
+//
+// Scope: this exercises the anonymous bucket (explicit owner=="", as written by
+// auth-disabled deployments). It does NOT cover pre-isolation records (those
+// with a MISSING owner key): NewMatch("owner","") does not match missing keys,
+// so such records are intentionally invisible to every read until backfilled
+// (see ownerlessFilter / MigrateSetOwner and the README "Upgrading" note). That
+// invisibility is unchanged by this tightening.
+func TestAnonBucketReadIsolation(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "anon-test:project:read-iso"
+	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+
+	// anonymous-bucket record (explicit owner==""): what an auth-disabled
+	// deployment writes; readable by anonymous callers.
+	ownerless := Memory{
+		ID: "f1f1f1f1-0000-0000-0000-000000000001", Content: "anon-ownerless",
+		Scope: scope, Owner: "", Visibility: "", CreatedAt: time.Now().UTC(),
+	}
+	// authenticated owner's shared record — must NOT be visible to anon callers.
+	authShared := Memory{
+		ID: "f1f1f1f1-0000-0000-0000-000000000002", Content: "auth-shared",
+		Scope: scope, Owner: "sub-owner", Visibility: "shared", CreatedAt: time.Now().UTC(),
+	}
+	// authenticated owner's private record — must NOT be visible to anon callers.
+	authPrivate := Memory{
+		ID: "f1f1f1f1-0000-0000-0000-000000000003", Content: "auth-private",
+		Scope: scope, Owner: "sub-owner", Visibility: "", CreatedAt: time.Now().UTC(),
+	}
+	for _, m := range []Memory{ownerless, authShared, authPrivate} {
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", m.ID, err)
+		}
+	}
+
+	// Search: anonymous caller sees only the anonymous-bucket record (owner=="").
+	hits, err := s.Search(ctx, scope, "", []float32{0.1, 0.2, 0.3}, 10)
+	if err != nil {
+		t.Fatalf("Search anon: %v", err)
+	}
+	if len(hits) != 1 {
+		t.Errorf("Search anon: got %d want 1 (ownerless only)", len(hits))
+	} else if hits[0].ID != ownerless.ID {
+		t.Errorf("Search anon: got record %q, want ownerless %q", hits[0].ID, ownerless.ID)
+	}
+	for _, h := range hits {
+		if h.Owner != "" {
+			t.Errorf("Search anon leaked owner-stamped record: %s owner=%q", h.ID, h.Owner)
+		}
+	}
+
+	// List: same restriction.
+	lst, err := s.List(ctx, scope, "", 10)
+	if err != nil {
+		t.Fatalf("List anon: %v", err)
+	}
+	if len(lst) != 1 {
+		t.Errorf("List anon: got %d want 1 (ownerless only)", len(lst))
+	}
+	for _, h := range lst {
+		if h.Owner != "" {
+			t.Errorf("List anon leaked owner-stamped record: %s owner=%q", h.ID, h.Owner)
+		}
+	}
+
+	// GetReadable: anon caller reads the anonymous-bucket record (owner=="").
+	got, err := s.GetReadable(ctx, ownerless.ID, "")
+	if err != nil {
+		t.Errorf("GetReadable anon on ownerless record: unexpected error: %v", err)
+	}
+	if got.ID != ownerless.ID {
+		t.Errorf("GetReadable anon ownerless: got %q want %q", got.ID, ownerless.ID)
+	}
+
+	// GetReadable: anon caller denied another owner's shared record → ErrNotFound.
+	_, err = s.GetReadable(ctx, authShared.ID, "")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetReadable anon on shared record: want ErrNotFound, got %v", err)
+	}
+
+	// GetReadable: anon caller denied another owner's private record → ErrNotFound.
+	_, err = s.GetReadable(ctx, authPrivate.ID, "")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetReadable anon on private record: want ErrNotFound, got %v", err)
+	}
+
+	// Authenticated caller still reads shared records (no regression).
+	got, err = s.GetReadable(ctx, authShared.ID, "sub-other")
+	if err != nil {
+		t.Errorf("GetReadable authenticated on shared record: unexpected error: %v", err)
+	}
+	if got.ID != authShared.ID {
+		t.Errorf("GetReadable authenticated shared: got %q want %q", got.ID, authShared.ID)
+	}
+
+	// Authenticated Search: sub-owner sees own private + own shared (2), sub-other sees own (0) + shared (1).
+	ownerHits, err := s.Search(ctx, scope, "sub-owner", []float32{0.1, 0.2, 0.3}, 10)
+	if err != nil {
+		t.Fatalf("Search sub-owner: %v", err)
+	}
+	if len(ownerHits) != 2 {
+		t.Errorf("Search sub-owner: got %d want 2 (private+shared)", len(ownerHits))
+	}
+	otherHits, err := s.Search(ctx, scope, "sub-other", []float32{0.1, 0.2, 0.3}, 10)
+	if err != nil {
+		t.Fatalf("Search sub-other: %v", err)
+	}
+	if len(otherHits) != 1 {
+		t.Errorf("Search sub-other: got %d want 1 (shared only)", len(otherHits))
+	}
+}
+
+// TestAnonBucketWriteSemantics verifies Q2 (engram-99z.13): the anonymous
+// bucket (explicit owner=="") is mutually writable when sub=="" — the
+// auth-disabled deployment case. Owner-stamped records are NOT mutable by an
+// anonymous caller (fail-closed write isolation).
+func TestAnonBucketWriteSemantics(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "anon-test:project:write-sem"
+	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+
+	// Ownerless record — mutually writable by anonymous callers.
+	ownerless := Memory{
+		ID: "f1f1f1f1-0000-0000-0000-000000000011", Content: "v1",
+		Scope: scope, Owner: "", Visibility: "", CreatedAt: time.Now().UTC(),
+	}
+	// Owner-stamped record — must NOT be writable by anonymous callers.
+	stamped := Memory{
+		ID: "f1f1f1f1-0000-0000-0000-000000000012", Content: "s1",
+		Scope: scope, Owner: "sub-owner", Visibility: "", CreatedAt: time.Now().UTC(),
+	}
+	for _, m := range []Memory{ownerless, stamped} {
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", m.ID, err)
+		}
+	}
+
+	// getWritable on ownerless record with sub=="" → success (anon bucket mutually writable).
+	if _, err := s.getWritable(ctx, ownerless.ID, ""); err != nil {
+		t.Errorf("getWritable anon on ownerless record: unexpected error: %v", err)
+	}
+
+	// getWritable on owner-stamped record with sub=="" → ErrNotFound (fail-closed write isolation).
+	_, err := s.getWritable(ctx, stamped.ID, "")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("getWritable anon on owner-stamped record: want ErrNotFound, got %v", err)
+	}
+
+	// Update on ownerless record with sub=="" → success (anon bucket).
+	if err := s.Update(ctx, ownerless.ID, "", "v2", nil, []float32{0.2, 0.3, 0.4}); err != nil {
+		t.Errorf("Update anon on ownerless record: unexpected error: %v", err)
+	}
+	got, err := s.Get(ctx, ownerless.ID)
+	if err != nil {
+		t.Fatalf("Get after anon Update: %v", err)
+	}
+	if got.Content != "v2" {
+		t.Errorf("anon Update: content not applied, got %q", got.Content)
+	}
+
+	// Delete on owner-stamped record with sub=="" → ErrNotFound (fail-closed).
+	if err := s.Delete(ctx, stamped.ID, ""); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Delete anon on owner-stamped record: want ErrNotFound, got %v", err)
+	}
+	// Record must still exist.
+	if _, err := s.Get(ctx, stamped.ID); err != nil {
+		t.Errorf("owner-stamped record should survive anon Delete: %v", err)
+	}
+
+	// Delete on ownerless record with sub=="" → success.
+	if err := s.Delete(ctx, ownerless.ID, ""); err != nil {
+		t.Errorf("Delete anon on ownerless record: unexpected error: %v", err)
+	}
+	if _, err := s.Get(ctx, ownerless.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("ownerless record should be gone after anon Delete")
+	}
+}
+
+// TestAnonBucketDiscoveryReadIsolation verifies that SearchDiscovery respects
+// the same fail-closed anonymous read semantics: anon callers see only
+// anonymous-bucket discovery records (owner==""), not authenticated owners'
+// shared discoveries.
+func TestAnonBucketDiscoveryReadIsolation(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "discovery:repo:anon-test"
+	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+
+	mk := func(id, owner, vis string) {
+		m := Memory{
+			ID: id, Content: "d", Scope: scope, Category: "discovery", Kind: "fact",
+			Owner: owner, Visibility: vis,
+			Citations: []Citation{{Kind: "file", Ref: "f.go"}},
+			CreatedAt: time.Now().UTC(),
+		}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	mk("f1f1f1f1-0000-0000-0000-000000000021", "", "")            // ownerless
+	mk("f1f1f1f1-0000-0000-0000-000000000022", "sub-A", "shared") // A's shared
+
+	q := []float32{0.1, 0.2, 0.3}
+
+	// Anonymous caller sees only the ownerless discovery.
+	hits, err := s.SearchDiscovery(ctx, scope, "", "", q, 10)
+	if err != nil {
+		t.Fatalf("SearchDiscovery anon: %v", err)
+	}
+	if len(hits) != 1 {
+		t.Errorf("SearchDiscovery anon: got %d want 1 (ownerless only)", len(hits))
+	}
+	for _, h := range hits {
+		if h.Owner != "" {
+			t.Errorf("SearchDiscovery anon leaked owner-stamped discovery: %s owner=%q", h.ID, h.Owner)
+		}
+	}
+
+	// Authenticated caller sees own + shared.
+	authHits, err := s.SearchDiscovery(ctx, scope, "", "sub-A", q, 10)
+	if err != nil {
+		t.Fatalf("SearchDiscovery sub-A: %v", err)
+	}
+	if len(authHits) != 1 {
+		t.Errorf("SearchDiscovery sub-A: got %d want 1 (own shared only, no ownerless under sub-A)", len(authHits))
+	}
+
+	// sub-B sees sub-A's shared discovery (no regression on authenticated shared read).
+	bHits, err := s.SearchDiscovery(ctx, scope, "", "sub-B", q, 10)
+	if err != nil {
+		t.Fatalf("SearchDiscovery sub-B: %v", err)
+	}
+	if len(bHits) != 1 {
+		t.Errorf("SearchDiscovery sub-B: got %d want 1 (A's shared)", len(bHits))
+	}
+	if bHits[0].Owner != "sub-A" || bHits[0].Visibility != "shared" {
+		t.Errorf("SearchDiscovery sub-B: unexpected record %+v", bHits[0])
 	}
 }
 
