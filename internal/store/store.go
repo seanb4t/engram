@@ -211,44 +211,44 @@ func (s *Store) Upsert(ctx context.Context, m Memory, vec []float32) error {
 	return err
 }
 
-// ownerOrSharedCondition matches records the caller may READ.
+// ownerOrSharedCondition matches records the subject may READ.
 //
-// Authenticated callers (sub != ""): owner==sub OR visibility=="shared".
-// Anonymous callers (sub == "", auth disabled): owner=="" ONLY — shared
-// records are NOT readable by anonymous callers. The "shared" grant requires
-// an authenticated (non-empty) subject; the anonymous bucket (owner=="") is not
-// a back-door to all shared records. Note this is the explicit empty-string
-// owner of auth-disabled writes, distinct from the missing-key "ownerless"
-// pre-isolation records that ownerlessFilter targets.
-func ownerOrSharedCondition(sub string) *qdrant.Condition {
-	if sub == "" {
-		// Fail-closed: anonymous callers see only the anonymous bucket (owner=="").
+// Authenticated: owner==sub OR visibility=="shared".
+// Anonymous: owner=="" ONLY — shared records require an authenticated subject;
+// the anonymous bucket is not a back-door to all shared records.
+// nil/unknown (a discarded extraction error): matchNothing — fail closed.
+func ownerOrSharedCondition(subj Subject) *qdrant.Condition {
+	switch s := subj.(type) {
+	case authenticated:
+		return qdrant.NewFilterAsCondition(&qdrant.Filter{Should: []*qdrant.Condition{
+			qdrant.NewMatch("owner", s.sub),
+			qdrant.NewMatch("visibility", visibilityShared),
+		}})
+	case anonymous:
 		return qdrant.NewFilterAsCondition(&qdrant.Filter{Must: []*qdrant.Condition{
 			qdrant.NewMatch("owner", ""),
 		}})
+	default:
+		return matchNothing()
 	}
-	return qdrant.NewFilterAsCondition(&qdrant.Filter{Should: []*qdrant.Condition{
-		qdrant.NewMatch("owner", sub),
-		qdrant.NewMatch("visibility", visibilityShared),
-	}})
 }
 
 // ownerScopeFilter restricts to a scope AND the caller's readable set (see
 // ownerOrSharedCondition for anonymous vs authenticated semantics).
-func (s *Store) ownerScopeFilter(scope, sub string) *qdrant.Filter {
+func (s *Store) ownerScopeFilter(scope string, subj Subject) *qdrant.Filter {
 	return &qdrant.Filter{Must: []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),
-		ownerOrSharedCondition(sub),
+		ownerOrSharedCondition(subj),
 	}}
 }
 
 // Search returns the k nearest readable memories to vec within scope.
 // Authenticated callers see their own records plus shared records; anonymous
-// callers (sub=="") see only the ownerless bucket.
-func (s *Store) Search(ctx context.Context, scope, sub string, vec []float32, k uint64) ([]Memory, error) {
+// callers see only the ownerless bucket.
+func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []float32, k uint64) ([]Memory, error) {
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
-		Filter: s.ownerScopeFilter(scope, sub), Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
+		Filter: s.ownerScopeFilter(scope, subj), Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
 	})
 	if err != nil {
 		return nil, err
@@ -267,12 +267,12 @@ func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 
 // SearchDiscovery runs a top-k vector search constrained to discovery records.
 // Empty scope spans all discovery scopes (the cross_spine case); empty kind
-// matches both map and fact. sub restricts results via ownerOrSharedCondition:
+// matches both map and fact. subj restricts results via ownerOrSharedCondition:
 // authenticated callers see own + shared records (cross_spine = my+shared);
-// anonymous callers (sub=="") see only ownerless records — shared requires an
+// anonymous callers see only ownerless records — shared requires an
 // authenticated subject. Builds a compound exact-match filter — no prefix
 // matching.
-func (s *Store) SearchDiscovery(ctx context.Context, scope, kind, sub string, vec []float32, k uint64) ([]Memory, error) {
+func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Subject, vec []float32, k uint64) ([]Memory, error) {
 	must := []*qdrant.Condition{qdrant.NewMatch("category", "discovery")}
 	if scope != "" {
 		must = append(must, qdrant.NewMatch("scope", scope))
@@ -280,7 +280,7 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind, sub string, ve
 	if kind != "" {
 		must = append(must, qdrant.NewMatch("kind", kind))
 	}
-	must = append(must, ownerOrSharedCondition(sub))
+	must = append(must, ownerOrSharedCondition(subj))
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
 		Filter: &qdrant.Filter{Must: must}, Limit: qdrant.PtrOf(k),
@@ -297,11 +297,11 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind, sub string, ve
 // sorts by CreatedAt in-process to avoid requiring a Qdrant payload index.
 // Read set follows ownerOrSharedCondition: anonymous callers see only the
 // ownerless bucket; authenticated callers see own + shared records.
-func (s *Store) List(ctx context.Context, scope, sub string, limit uint64) ([]Memory, error) {
+func (s *Store) List(ctx context.Context, scope string, subj Subject, limit uint64) ([]Memory, error) {
 	const scanCap = 1000
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
-		Filter:         s.ownerScopeFilter(scope, sub),
+		Filter:         s.ownerScopeFilter(scope, subj),
 		Limit:          qdrant.PtrOf(uint32(scanCap)),
 		WithPayload:    qdrant.NewWithPayload(true),
 	})

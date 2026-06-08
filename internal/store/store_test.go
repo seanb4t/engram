@@ -212,7 +212,7 @@ func TestSearchDiscoveryFilters(t *testing.T) {
 	q := []float32{0.9, 0.1, 0.0}
 
 	// scope-constrained: only scopeA discoveries, not curated, not scopeB.
-	hits, err := s.SearchDiscovery(ctx, scopeA, "", "", q, 10)
+	hits, err := s.SearchDiscovery(ctx, scopeA, "", Anonymous(), q, 10)
 	if err != nil {
 		t.Fatalf("search scopeA: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestSearchDiscoveryFilters(t *testing.T) {
 	}
 
 	// kind filter.
-	maps, err := s.SearchDiscovery(ctx, scopeA, "map", "", q, 10)
+	maps, err := s.SearchDiscovery(ctx, scopeA, "map", Anonymous(), q, 10)
 	if err != nil {
 		t.Fatalf("search kind=map: %v", err)
 	}
@@ -235,7 +235,7 @@ func TestSearchDiscoveryFilters(t *testing.T) {
 	}
 
 	// cross-spine: empty scope spans scopeA + scopeB discoveries (3), still no curated.
-	all, err := s.SearchDiscovery(ctx, "", "", "", q, 10)
+	all, err := s.SearchDiscovery(ctx, "", "", Anonymous(), q, 10)
 	if err != nil {
 		t.Fatalf("search cross-spine: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestSearchDiscoveryOwnerIsolation(t *testing.T) {
 	q := []float32{0.1, 0.2, 0.3}
 
 	// Scoped: A in scopeA sees only A's record (1), not B's private.
-	hits, err := s.SearchDiscovery(ctx, scopeA, "", "sub-A", q, 10)
+	hits, err := s.SearchDiscovery(ctx, scopeA, "", Authenticated("sub-A"), q, 10)
 	if err != nil {
 		t.Fatalf("scoped: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestSearchDiscoveryOwnerIsolation(t *testing.T) {
 		t.Fatalf("scoped: got %d %+v want 1 A-owned", len(hits), hits)
 	}
 	// cross_spine (scope=""): A sees A across both scopes (2) + B's shared (1) = 3, never B's private.
-	all, err := s.SearchDiscovery(ctx, "", "", "sub-A", q, 10)
+	all, err := s.SearchDiscovery(ctx, "", "", Authenticated("sub-A"), q, 10)
 	if err != nil {
 		t.Fatalf("cross_spine: %v", err)
 	}
@@ -329,7 +329,7 @@ func TestSearchAndDeleteAll(t *testing.T) {
 		t.Fatalf("upsert m2: %v", err)
 	}
 
-	hits, err := s.Search(ctx, scope, "", []float32{0.9, 0.1, 0.0}, 5)
+	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -341,7 +341,7 @@ func TestSearchAndDeleteAll(t *testing.T) {
 		t.Fatalf("delete_all: %v", err)
 	}
 
-	hits2, err := s.Search(ctx, scope, "", []float32{0.9, 0.1, 0.0}, 5)
+	hits2, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5)
 	if err != nil {
 		t.Fatalf("search after delete_all: %v", err)
 	}
@@ -368,7 +368,7 @@ func TestSearchListOwnerIsolation(t *testing.T) {
 	mk("bbbbbbbb-0000-0000-0000-000000000003", "sub-B", "shared") // B shared
 
 	// A sees only A-private + B-shared (2), never B-private.
-	hits, err := s.Search(ctx, scope, "sub-A", []float32{0.1, 0.2, 0.3}, 10)
+	hits, err := s.Search(ctx, scope, Authenticated("sub-A"), []float32{0.1, 0.2, 0.3}, 10)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -381,7 +381,7 @@ func TestSearchListOwnerIsolation(t *testing.T) {
 		}
 	}
 	// List honors the same filter.
-	lst, err := s.List(ctx, scope, "sub-A", 10)
+	lst, err := s.List(ctx, scope, Authenticated("sub-A"), 10)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -843,7 +843,7 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 	}
 
 	// Search: anonymous caller sees only the anonymous-bucket record (owner=="").
-	hits, err := s.Search(ctx, scope, "", []float32{0.1, 0.2, 0.3}, 10)
+	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10)
 	if err != nil {
 		t.Fatalf("Search anon: %v", err)
 	}
@@ -859,7 +859,7 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 	}
 
 	// List: same restriction.
-	lst, err := s.List(ctx, scope, "", 10)
+	lst, err := s.List(ctx, scope, Anonymous(), 10)
 	if err != nil {
 		t.Fatalf("List anon: %v", err)
 	}
@@ -903,14 +903,14 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 	}
 
 	// Authenticated Search: sub-owner sees own private + own shared (2), sub-other sees own (0) + shared (1).
-	ownerHits, err := s.Search(ctx, scope, "sub-owner", []float32{0.1, 0.2, 0.3}, 10)
+	ownerHits, err := s.Search(ctx, scope, Authenticated("sub-owner"), []float32{0.1, 0.2, 0.3}, 10)
 	if err != nil {
 		t.Fatalf("Search sub-owner: %v", err)
 	}
 	if len(ownerHits) != 2 {
 		t.Errorf("Search sub-owner: got %d want 2 (private+shared)", len(ownerHits))
 	}
-	otherHits, err := s.Search(ctx, scope, "sub-other", []float32{0.1, 0.2, 0.3}, 10)
+	otherHits, err := s.Search(ctx, scope, Authenticated("sub-other"), []float32{0.1, 0.2, 0.3}, 10)
 	if err != nil {
 		t.Fatalf("Search sub-other: %v", err)
 	}
@@ -1017,7 +1017,7 @@ func TestAnonBucketDiscoveryReadIsolation(t *testing.T) {
 	q := []float32{0.1, 0.2, 0.3}
 
 	// Anonymous caller sees only the ownerless discovery.
-	hits, err := s.SearchDiscovery(ctx, scope, "", "", q, 10)
+	hits, err := s.SearchDiscovery(ctx, scope, "", Anonymous(), q, 10)
 	if err != nil {
 		t.Fatalf("SearchDiscovery anon: %v", err)
 	}
@@ -1031,7 +1031,7 @@ func TestAnonBucketDiscoveryReadIsolation(t *testing.T) {
 	}
 
 	// Authenticated caller sees own + shared.
-	authHits, err := s.SearchDiscovery(ctx, scope, "", "sub-A", q, 10)
+	authHits, err := s.SearchDiscovery(ctx, scope, "", Authenticated("sub-A"), q, 10)
 	if err != nil {
 		t.Fatalf("SearchDiscovery sub-A: %v", err)
 	}
@@ -1040,7 +1040,7 @@ func TestAnonBucketDiscoveryReadIsolation(t *testing.T) {
 	}
 
 	// sub-B sees sub-A's shared discovery (no regression on authenticated shared read).
-	bHits, err := s.SearchDiscovery(ctx, scope, "", "sub-B", q, 10)
+	bHits, err := s.SearchDiscovery(ctx, scope, "", Authenticated("sub-B"), q, 10)
 	if err != nil {
 		t.Fatalf("SearchDiscovery sub-B: %v", err)
 	}

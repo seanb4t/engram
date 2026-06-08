@@ -3,6 +3,8 @@
 
 package store
 
+import "github.com/qdrant/go-client/qdrant"
+
 // Subject is the verified caller identity used for authorization. It is a sealed
 // sum: exactly Anonymous (auth disabled — the owner=="" bucket) or Authenticated
 // (a verified, non-empty OIDC sub). The concrete variants are unexported, so the
@@ -35,3 +37,14 @@ func Anonymous() Subject { return anonymous{} }
 
 // Authenticated is a caller carrying a verified, non-empty OIDC sub.
 func Authenticated(sub string) Subject { return authenticated{sub: sub} }
+
+// matchNothing returns a condition no record can satisfy (owner==x AND owner!=x).
+// It backs the fail-closed default arm of read-filter switches when the Subject
+// is nil/unknown — a query then returns zero rows rather than over-returning.
+func matchNothing() *qdrant.Condition {
+	const x = "\x00engram-no-such-owner"
+	return qdrant.NewFilterAsCondition(&qdrant.Filter{
+		Must:    []*qdrant.Condition{qdrant.NewMatch("owner", x)},
+		MustNot: []*qdrant.Condition{qdrant.NewMatch("owner", x)},
+	})
+}

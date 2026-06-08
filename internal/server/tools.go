@@ -359,18 +359,18 @@ func (d *deps) listMemory(ctx context.Context, a listArgs) ([]store.Memory, erro
 	if a.Limit == 0 {
 		a.Limit = 20
 	}
-	owner, err := ownerFromContext(ctx)
+	subj, err := subjectFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return d.st.List(ctx, a.Scope, owner, a.Limit)
+	return d.st.List(ctx, a.Scope, subj, a.Limit)
 }
 
 func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]store.Memory, error) {
 	if a.K == 0 {
 		a.K = 8
 	}
-	owner, err := ownerFromContext(ctx)
+	subj, err := subjectFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -378,7 +378,7 @@ func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]store.Memory, 
 	if err != nil {
 		return nil, err
 	}
-	return d.st.Search(ctx, a.Scope, owner, vec, a.K)
+	return d.st.Search(ctx, a.Scope, subj, vec, a.K)
 }
 
 // effectiveDiscoveryScope resolves the scope filter for a discovery search:
@@ -407,7 +407,7 @@ func (d *deps) searchDiscovery(ctx context.Context, a searchDiscoveryArgs) ([]st
 	if a.K == 0 {
 		a.K = 8
 	}
-	owner, err := ownerFromContext(ctx)
+	subj, err := subjectFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -415,7 +415,7 @@ func (d *deps) searchDiscovery(ctx context.Context, a searchDiscoveryArgs) ([]st
 	if err != nil {
 		return nil, err
 	}
-	return d.st.SearchDiscovery(ctx, scope, a.Kind, owner, vec, a.K)
+	return d.st.SearchDiscovery(ctx, scope, a.Kind, subj, vec, a.K)
 }
 
 func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
