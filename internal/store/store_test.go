@@ -101,6 +101,16 @@ func testStore(t *testing.T) *Store {
 	return s
 }
 
+// cleanupErr surfaces a deferred-cleanup failure so leftover records can't
+// silently contaminate later tests in the run. ErrNotFound is tolerated: the
+// record is already gone, which is exactly what cleanup wanted.
+func cleanupErr(t *testing.T, what string, err error) {
+	t.Helper()
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		t.Errorf("cleanup %s: %v", what, err)
+	}
+}
+
 func TestUpsertGetDeleteRoundtrip(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -169,7 +179,7 @@ func TestDiscoveryRoundtrip(t *testing.T) {
 	if got.Citations[1].Ref != "github.com/qdrant/go-client" || got.Citations[1].Pin != "@v1.18.2" {
 		t.Errorf("citation[1] mismatch: %+v", got.Citations[1])
 	}
-	_ = s.Delete(ctx, m.ID, "")
+	cleanupErr(t, "Delete "+m.ID, s.Delete(ctx, m.ID, ""))
 }
 
 func TestSearchDiscoveryFilters(t *testing.T) {
@@ -179,9 +189,9 @@ func TestSearchDiscoveryFilters(t *testing.T) {
 	scopeB := "discovery:repo:B"
 	curated := "repo:A"
 	defer func() {
-		_ = s.DeleteAll(ctx, scopeA, "")
-		_ = s.DeleteAll(ctx, scopeB, "")
-		_ = s.DeleteAll(ctx, curated, "")
+		cleanupErr(t, "DeleteAll "+scopeA, s.DeleteAll(ctx, scopeA, ""))
+		cleanupErr(t, "DeleteAll "+scopeB, s.DeleteAll(ctx, scopeB, ""))
+		cleanupErr(t, "DeleteAll "+curated, s.DeleteAll(ctx, curated, ""))
 	}()
 
 	mk := func(id, scope, cat, kind string, vec []float32) {
@@ -239,7 +249,10 @@ func TestSearchDiscoveryOwnerIsolation(t *testing.T) {
 	ctx := context.Background()
 	scopeA := "discovery:repo:isoA"
 	scopeB := "discovery:repo:isoB"
-	defer func() { _ = s.DeleteAllRaw(ctx, scopeA); _ = s.DeleteAllRaw(ctx, scopeB) }()
+	defer func() {
+		cleanupErr(t, "DeleteAllRaw "+scopeA, s.DeleteAllRaw(ctx, scopeA))
+		cleanupErr(t, "DeleteAllRaw "+scopeB, s.DeleteAllRaw(ctx, scopeB))
+	}()
 
 	mk := func(id, scope, owner, vis string) {
 		m := Memory{ID: id, Content: "d", Scope: scope, Category: "discovery", Kind: "fact",
@@ -341,7 +354,7 @@ func TestSearchListOwnerIsolation(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	scope := "iso-test:project:search"
-	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
 
 	mk := func(id, owner, vis string) {
 		m := Memory{ID: id, Content: "x", Scope: scope, Owner: owner, Visibility: vis,
@@ -410,7 +423,7 @@ func TestGetReadableOwnerGate(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	scope := "iso-test:project:getr"
-	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
 	priv := Memory{ID: "dddddddd-0000-0000-0000-000000000001", Content: "p", Scope: scope, Owner: "sub-B", CreatedAt: time.Now().UTC()}
 	shar := Memory{ID: "dddddddd-0000-0000-0000-000000000002", Content: "s", Scope: scope, Owner: "sub-B", Visibility: "shared", CreatedAt: time.Now().UTC()}
 	for _, m := range []Memory{priv, shar} {
@@ -437,7 +450,7 @@ func TestDeleteOwnerGate(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	scope := "iso-test:project:del"
-	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
 	// Even a SHARED record is not deletable by a non-owner.
 	m := Memory{ID: "eeeeeeee-0000-0000-0000-000000000001", Content: "s", Scope: scope, Owner: "sub-B", Visibility: "shared", CreatedAt: time.Now().UTC()}
 	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
@@ -461,7 +474,7 @@ func TestUpdateOwnerGateAndSharedFlag(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	scope := "iso-test:project:upd"
-	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
 	m := Memory{ID: "ffffffff-0000-0000-0000-000000000001", Content: "v1", Scope: scope, Owner: "sub-B", Visibility: "shared", CreatedAt: time.Now().UTC()}
 	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("upsert: %v", err)
@@ -508,7 +521,7 @@ func TestSetVisibilityOwnerGate(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	scope := "iso-test:project:vis"
-	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
 	m := Memory{ID: "a1a1a1a1-0000-0000-0000-000000000001", Content: "v", Scope: scope, Owner: "sub-B", CreatedAt: time.Now().UTC()}
 	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("upsert: %v", err)
@@ -577,7 +590,7 @@ func TestSetVisibilityTOCTOU(t *testing.T) {
 	}
 
 	scope := "iso-test:project:toctou"
-	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
 
 	// Part 1: verify Qdrant's SetPayload (point-ID selector) errors on a
 	// missing ID — this is the contract that makes SetVisibility fail-closed.
@@ -646,7 +659,7 @@ func TestOwnedOrAbsent(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	scope := "discovery:repo:owned"
-	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
 	id := "b2b2b2b2-0000-0000-0000-000000000001"
 	// Absent id → ok (caller will create).
 	if err := s.OwnedOrAbsent(ctx, id, "sub-A"); err != nil {
@@ -674,7 +687,7 @@ func TestFetchForUpdate(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	scope := "iso-test:project:fetch-for-update"
-	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
 
 	id := "b2b2b2b2-0000-0000-0000-000000000002"
 
@@ -721,7 +734,7 @@ func TestDeleteAllOwnerScoped(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	scope := "iso-test:project:delall"
-	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
 	a := Memory{ID: "c3c3c3c3-0000-0000-0000-000000000001", Content: "a", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
 	b := Memory{ID: "c3c3c3c3-0000-0000-0000-000000000002", Content: "b", Scope: scope, Owner: "sub-B", CreatedAt: time.Now().UTC()}
 	for _, m := range []Memory{a, b} {
@@ -745,7 +758,7 @@ func TestMigrateSetOwner(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	scope := "iso-test:project:migrate"
-	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
 
 	// Refuses empty owner.
 	if _, err := s.MigrateSetOwner(ctx, ""); err == nil {
@@ -805,7 +818,7 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	scope := "anon-test:project:read-iso"
-	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
 
 	// anonymous-bucket record (explicit owner==""): what an auth-disabled
 	// deployment writes; readable by anonymous callers.
@@ -914,7 +927,7 @@ func TestAnonBucketWriteSemantics(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	scope := "anon-test:project:write-sem"
-	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
 
 	// Ownerless record — mutually writable by anonymous callers.
 	ownerless := Memory{
@@ -985,7 +998,7 @@ func TestAnonBucketDiscoveryReadIsolation(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	scope := "discovery:repo:anon-test"
-	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
 
 	mk := func(id, owner, vis string) {
 		m := Memory{

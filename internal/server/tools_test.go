@@ -177,6 +177,16 @@ func testDeps(t *testing.T) *deps {
 	return &deps{st: st, em: fakeEmbedder{}}
 }
 
+// cleanupErr surfaces a deferred-cleanup failure so leftover records can't
+// silently contaminate later tests in the run. store.ErrNotFound is tolerated:
+// the record is already gone, which is exactly what cleanup wanted.
+func cleanupErr(t *testing.T, what string, err error) {
+	t.Helper()
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("cleanup %s: %v", what, err)
+	}
+}
+
 // authedContext builds a context carrying a verified OIDC subject by running a
 // request through the go-sdk's RequireBearerToken middleware with a stub
 // verifier. The go-sdk stores TokenInfo under an unexported context key, so this
@@ -289,8 +299,8 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	}
 
 	defer func() {
-		_ = d.st.DeleteAll(ctx, scope, "") // removes ownerless record
-		_ = d.st.Delete(ctx, sharedID, "sub-owner")
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, "")) // removes ownerless record
+		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, "sub-owner"))
 	}()
 
 	// searchMemory with anonymous context must return ownerless, not shared.
@@ -379,8 +389,8 @@ func TestAnonReadIsolationDiscoveryHandler(t *testing.T) {
 	}
 
 	defer func() {
-		_ = d.st.DeleteAll(ctx, scope, "")
-		_ = d.st.Delete(ctx, sharedID, "sub-owner")
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, ""))
+		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, "sub-owner"))
 	}()
 
 	hits, err := d.searchDiscovery(ctx, searchDiscoveryArgs{Query: "discovery", Scope: scope, K: 10})
@@ -427,7 +437,7 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()
 	scope := "discovery:repo:handler-test"
-	defer func() { _ = d.st.DeleteAll(ctx, scope, "") }()
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, "")) }()
 
 	// create
 	id, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
@@ -494,7 +504,7 @@ func TestUpdateMemoryPreservesSharingHandler(t *testing.T) {
 	ctx := context.Background()
 	scope := "iso-test:project:handler-upd"
 	id := "e5e5e5e5-0000-0000-0000-000000000001"
-	defer func() { _ = d.st.DeleteAll(ctx, scope, "") }()
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, "")) }()
 
 	// Seed a shared record owned by the anonymous caller (sub == "").
 	m := store.Memory{ID: id, Content: "v1", Scope: scope, Owner: "", Visibility: "shared", CreatedAt: timeNow()}
@@ -534,7 +544,7 @@ func TestUpdateMemoryEmbedNotCalledForNonOwner(t *testing.T) {
 	if err := d.st.Upsert(ctx, stamped, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("seed stamped record: %v", err)
 	}
-	defer func() { _ = d.st.Delete(ctx, stampedID, "sub-owner") }()
+	defer func() { cleanupErr(t, "Delete "+stampedID, d.st.Delete(ctx, stampedID, "sub-owner")) }()
 
 	// Swap in a counting embedder.
 	counter := &countingEmbedder{}
@@ -563,7 +573,7 @@ func TestUpdateMemoryEmbedNotCalledForNonOwner(t *testing.T) {
 	if err := d.st.Upsert(ctx, ownerless, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("seed ownerless record: %v", err)
 	}
-	defer func() { _ = d.st.DeleteAll(ctx, scope, "") }()
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, "")) }()
 
 	counter.calls = 0
 	if err := d.updateMemory(ctx, updateArgs{ID: ownerlessID, Content: "v2"}); err != nil {
@@ -605,8 +615,8 @@ func TestAuthedCrossActorSharedReadHandlers(t *testing.T) {
 		t.Fatalf("seed private: %v", err)
 	}
 	defer func() {
-		_ = d.st.Delete(ctx, sharedID, "actor-A")
-		_ = d.st.Delete(ctx, privateID, "actor-A")
+		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, "actor-A"))
+		cleanupErr(t, "Delete "+privateID, d.st.Delete(ctx, privateID, "actor-A"))
 	}()
 
 	// Caller B: a distinct authenticated subject.
