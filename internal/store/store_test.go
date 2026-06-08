@@ -133,7 +133,7 @@ func TestUpsertGetDeleteRoundtrip(t *testing.T) {
 	if got.Scope != m.Scope {
 		t.Errorf("scope mismatch: got %q want %q", got.Scope, m.Scope)
 	}
-	if err := s.Delete(ctx, m.ID, ""); err != nil {
+	if err := s.Delete(ctx, m.ID, Anonymous()); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 	if _, err := s.Get(ctx, m.ID); err == nil {
@@ -179,7 +179,7 @@ func TestDiscoveryRoundtrip(t *testing.T) {
 	if got.Citations[1].Ref != "github.com/qdrant/go-client" || got.Citations[1].Pin != "@v1.18.2" {
 		t.Errorf("citation[1] mismatch: %+v", got.Citations[1])
 	}
-	cleanupErr(t, "Delete "+m.ID, s.Delete(ctx, m.ID, ""))
+	cleanupErr(t, "Delete "+m.ID, s.Delete(ctx, m.ID, Anonymous()))
 }
 
 func TestSearchDiscoveryFilters(t *testing.T) {
@@ -456,13 +456,13 @@ func TestDeleteOwnerGate(t *testing.T) {
 	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-	if err := s.Delete(ctx, m.ID, "sub-A"); !errors.Is(err, ErrNotFound) {
+	if err := s.Delete(ctx, m.ID, Authenticated("sub-A")); !errors.Is(err, ErrNotFound) {
 		t.Errorf("non-owner delete: want ErrNotFound, got %v", err)
 	}
 	if _, err := s.Get(ctx, m.ID); err != nil {
 		t.Errorf("record should survive non-owner delete: %v", err)
 	}
-	if err := s.Delete(ctx, m.ID, "sub-B"); err != nil {
+	if err := s.Delete(ctx, m.ID, Authenticated("sub-B")); err != nil {
 		t.Errorf("owner delete failed: %v", err)
 	}
 	if _, err := s.Get(ctx, m.ID); !errors.Is(err, ErrNotFound) {
@@ -481,11 +481,11 @@ func TestUpdateOwnerGateAndSharedFlag(t *testing.T) {
 	}
 	vec := []float32{0.4, 0.5, 0.6}
 	// Non-owner cannot update even a shared record.
-	if _, err := s.FetchForUpdate(ctx, m.ID, "sub-A"); !errors.Is(err, ErrNotFound) {
+	if _, err := s.FetchForUpdate(ctx, m.ID, Authenticated("sub-A")); !errors.Is(err, ErrNotFound) {
 		t.Errorf("non-owner update: want ErrNotFound, got %v", err)
 	}
 	// Owner content-only update (shared == nil) PRESERVES visibility.
-	cur, err := s.FetchForUpdate(ctx, m.ID, "sub-B")
+	cur, err := s.FetchForUpdate(ctx, m.ID, Authenticated("sub-B"))
 	if err != nil {
 		t.Fatalf("FetchForUpdate owner: %v", err)
 	}
@@ -501,7 +501,7 @@ func TestUpdateOwnerGateAndSharedFlag(t *testing.T) {
 	}
 	// Explicit unshare.
 	no := false
-	cur, err = s.FetchForUpdate(ctx, m.ID, "sub-B")
+	cur, err = s.FetchForUpdate(ctx, m.ID, Authenticated("sub-B"))
 	if err != nil {
 		t.Fatalf("FetchForUpdate before unshare: %v", err)
 	}
@@ -527,11 +527,11 @@ func TestSetVisibilityOwnerGate(t *testing.T) {
 		t.Fatalf("upsert: %v", err)
 	}
 	// Non-owner denied.
-	if err := s.SetVisibility(ctx, m.ID, "sub-A", true); !errors.Is(err, ErrNotFound) {
+	if err := s.SetVisibility(ctx, m.ID, Authenticated("sub-A"), true); !errors.Is(err, ErrNotFound) {
 		t.Errorf("non-owner set_visibility: want ErrNotFound, got %v", err)
 	}
 	// Owner shares, then unshares; vector is preserved (SetPayload, not Upsert).
-	if err := s.SetVisibility(ctx, m.ID, "sub-B", true); err != nil {
+	if err := s.SetVisibility(ctx, m.ID, Authenticated("sub-B"), true); err != nil {
 		t.Fatalf("share: %v", err)
 	}
 	got, err := s.Get(ctx, m.ID)
@@ -541,7 +541,7 @@ func TestSetVisibilityOwnerGate(t *testing.T) {
 	if got.Visibility != "shared" {
 		t.Errorf("share failed: %q", got.Visibility)
 	}
-	if err := s.SetVisibility(ctx, m.ID, "sub-B", false); err != nil {
+	if err := s.SetVisibility(ctx, m.ID, Authenticated("sub-B"), false); err != nil {
 		t.Fatalf("unshare: %v", err)
 	}
 	got, err = s.Get(ctx, m.ID)
@@ -615,7 +615,7 @@ func TestSetVisibilityTOCTOU(t *testing.T) {
 	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-	if _, err := s.getWritable(ctx, id, "sub-owner"); err != nil {
+	if _, err := s.getWritable(ctx, id, Authenticated("sub-owner")); err != nil {
 		t.Fatalf("getWritable pre-delete: %v", err)
 	}
 	// Concurrent delete: simulates what happens in the TOCTOU window.
@@ -646,11 +646,11 @@ func TestSetVisibilityTOCTOU(t *testing.T) {
 	if err := s.Upsert(ctx, m2, []float32{0.4, 0.5, 0.6}); err != nil {
 		t.Fatalf("upsert m2: %v", err)
 	}
-	if err := s.Delete(ctx, id2, "sub-owner"); err != nil {
+	if err := s.Delete(ctx, id2, Authenticated("sub-owner")); err != nil {
 		t.Fatalf("delete m2: %v", err)
 	}
 	// SetVisibility on a missing record must not return nil.
-	if err := s.SetVisibility(ctx, id2, "sub-owner", true); err == nil {
+	if err := s.SetVisibility(ctx, id2, Authenticated("sub-owner"), true); err == nil {
 		t.Error("SetVisibility on deleted record returned nil — expected an error")
 	}
 }
@@ -692,7 +692,7 @@ func TestFetchForUpdate(t *testing.T) {
 	id := "b2b2b2b2-0000-0000-0000-000000000002"
 
 	// Absent record → ErrNotFound (nothing to update).
-	if _, err := s.FetchForUpdate(ctx, id, "sub-A"); !errors.Is(err, ErrNotFound) {
+	if _, err := s.FetchForUpdate(ctx, id, Authenticated("sub-A")); !errors.Is(err, ErrNotFound) {
 		t.Errorf("absent record: want ErrNotFound, got %v", err)
 	}
 
@@ -702,7 +702,7 @@ func TestFetchForUpdate(t *testing.T) {
 	}
 
 	// Owner → record returned (may proceed to embed + Update).
-	got, err := s.FetchForUpdate(ctx, id, "sub-A")
+	got, err := s.FetchForUpdate(ctx, id, Authenticated("sub-A"))
 	if err != nil {
 		t.Errorf("owner: unexpected error: %v", err)
 	}
@@ -711,21 +711,21 @@ func TestFetchForUpdate(t *testing.T) {
 	}
 
 	// Non-owner → ErrNotFound (early-exit before embed).
-	if _, err := s.FetchForUpdate(ctx, id, "sub-B"); !errors.Is(err, ErrNotFound) {
+	if _, err := s.FetchForUpdate(ctx, id, Authenticated("sub-B")); !errors.Is(err, ErrNotFound) {
 		t.Errorf("non-owner: want ErrNotFound, got %v", err)
 	}
 
-	// Anonymous bucket: ownerless record (owner=="") with sub=="" → record returned.
+	// Anonymous bucket: ownerless record (owner=="") with Anonymous() → record returned.
 	ownerlessID := "b2b2b2b2-0000-0000-0000-000000000003"
 	ownerless := Memory{ID: ownerlessID, Content: "x", Scope: scope, Category: "convention", Owner: "", CreatedAt: time.Now().UTC()}
 	if err := s.Upsert(ctx, ownerless, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("upsert ownerless: %v", err)
 	}
-	if _, err := s.FetchForUpdate(ctx, ownerlessID, ""); err != nil {
+	if _, err := s.FetchForUpdate(ctx, ownerlessID, Anonymous()); err != nil {
 		t.Errorf("anonymous bucket ownerless: unexpected error: %v", err)
 	}
-	// Stamped record (owner!="") with sub=="" → ErrNotFound (fail-closed write isolation).
-	if _, err := s.FetchForUpdate(ctx, id, ""); !errors.Is(err, ErrNotFound) {
+	// Stamped record (owner!="") with Anonymous() → ErrNotFound (fail-closed write isolation).
+	if _, err := s.FetchForUpdate(ctx, id, Anonymous()); !errors.Is(err, ErrNotFound) {
 		t.Errorf("anon on stamped record: want ErrNotFound, got %v", err)
 	}
 }
@@ -945,19 +945,19 @@ func TestAnonBucketWriteSemantics(t *testing.T) {
 		}
 	}
 
-	// getWritable on ownerless record with sub=="" → success (anon bucket mutually writable).
-	if _, err := s.getWritable(ctx, ownerless.ID, ""); err != nil {
+	// getWritable on ownerless record with Anonymous() → success (anon bucket mutually writable).
+	if _, err := s.getWritable(ctx, ownerless.ID, Anonymous()); err != nil {
 		t.Errorf("getWritable anon on ownerless record: unexpected error: %v", err)
 	}
 
-	// getWritable on owner-stamped record with sub=="" → ErrNotFound (fail-closed write isolation).
-	_, err := s.getWritable(ctx, stamped.ID, "")
+	// getWritable on owner-stamped record with Anonymous() → ErrNotFound (fail-closed write isolation).
+	_, err := s.getWritable(ctx, stamped.ID, Anonymous())
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("getWritable anon on owner-stamped record: want ErrNotFound, got %v", err)
 	}
 
-	// Update on ownerless record with sub=="" → success (anon bucket).
-	cur, err := s.FetchForUpdate(ctx, ownerless.ID, "")
+	// Update on ownerless record with Anonymous() → success (anon bucket).
+	cur, err := s.FetchForUpdate(ctx, ownerless.ID, Anonymous())
 	if err != nil {
 		t.Fatalf("FetchForUpdate anon on ownerless record: unexpected error: %v", err)
 	}
@@ -972,8 +972,8 @@ func TestAnonBucketWriteSemantics(t *testing.T) {
 		t.Errorf("anon Update: content not applied, got %q", got.Content)
 	}
 
-	// Delete on owner-stamped record with sub=="" → ErrNotFound (fail-closed).
-	if err := s.Delete(ctx, stamped.ID, ""); !errors.Is(err, ErrNotFound) {
+	// Delete on owner-stamped record with Anonymous() → ErrNotFound (fail-closed).
+	if err := s.Delete(ctx, stamped.ID, Anonymous()); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Delete anon on owner-stamped record: want ErrNotFound, got %v", err)
 	}
 	// Record must still exist.
@@ -981,8 +981,8 @@ func TestAnonBucketWriteSemantics(t *testing.T) {
 		t.Errorf("owner-stamped record should survive anon Delete: %v", err)
 	}
 
-	// Delete on ownerless record with sub=="" → success.
-	if err := s.Delete(ctx, ownerless.ID, ""); err != nil {
+	// Delete on ownerless record with Anonymous() → success.
+	if err := s.Delete(ctx, ownerless.ID, Anonymous()); err != nil {
 		t.Errorf("Delete anon on ownerless record: unexpected error: %v", err)
 	}
 	if _, err := s.Get(ctx, ownerless.ID); !errors.Is(err, ErrNotFound) {

@@ -419,7 +419,7 @@ func (d *deps) searchDiscovery(ctx context.Context, a searchDiscoveryArgs) ([]st
 }
 
 func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
-	owner, err := ownerFromContext(ctx)
+	subj, err := subjectFromContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -427,7 +427,7 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 	// (or missing record) gets ErrNotFound here, so we never reach the billable
 	// embed call or a write. The fetched record is handed straight to Update, so
 	// the update path makes one Qdrant round-trip for ownership, not two.
-	cur, err := d.st.FetchForUpdate(ctx, a.ID, owner)
+	cur, err := d.st.FetchForUpdate(ctx, a.ID, subj)
 	if err != nil {
 		return err
 	}
@@ -488,11 +488,11 @@ func Register(s *mcp.Server, tm *telemetry.ToolMetrics) error {
 
 	mcp.AddTool(s, &mcp.Tool{Name: "delete_memory", Description: "Delete one memory by id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-			owner, err := ownerFromContext(ctx)
+			subj, err := subjectFromContext(ctx)
 			if err != nil {
 				return nil, nil, err
 			}
-			err = d.st.Delete(ctx, a.ID, owner)
+			err = d.st.Delete(ctx, a.ID, subj)
 			return textResult("deleted"), nil, err
 		})
 
@@ -520,11 +520,11 @@ func Register(s *mcp.Server, tm *telemetry.ToolMetrics) error {
 
 	mcp.AddTool(s, &mcp.Tool{Name: "set_visibility", Description: "Share or unshare a memory you own. shared=true → readable by any authenticated caller (never writable by others); false → private."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a setVisibilityArgs) (*mcp.CallToolResult, any, error) {
-			owner, err := ownerFromContext(ctx)
+			subj, err := subjectFromContext(ctx)
 			if err != nil {
 				return nil, nil, err
 			}
-			err = d.st.SetVisibility(ctx, a.ID, owner, a.Shared)
+			err = d.st.SetVisibility(ctx, a.ID, subj, a.Shared)
 			return textResult("visibility updated"), nil, err
 		})
 	return nil

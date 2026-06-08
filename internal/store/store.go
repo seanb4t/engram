@@ -365,22 +365,31 @@ func (s *Store) GetReadable(ctx context.Context, id string, subj Subject) (Memor
 // getWritable returns the record only if the caller OWNS it (shared does NOT
 // grant write); otherwise ErrNotFound. The mutate primitive.
 //
-// When auth is disabled (sub==""), owner is always "" for new records, so the
-// owner==sub check (""=="") passes for the single anonymous bucket — the gate
-// is mutually writable by design. Any owner-stamped record (owner!="") written
-// by an authenticated caller is invisible to anonymous mutation (owner!=""
-// never equals sub==""), preserving fail-closed write isolation even in
-// mixed-auth deployments. Per-actor isolation requires authentication
-// (see the package isolation contract and README).
-func (s *Store) getWritable(ctx context.Context, id, sub string) (Memory, error) {
+// Owner-only: anonymous requires owner=="", authenticated requires owner==sub.
+// shared visibility is irrelevant to the write gate — shared grants read, not
+// write. Any owner-stamped record (owner!="") is invisible to anonymous mutation,
+// preserving fail-closed write isolation even in mixed-auth deployments.
+// Per-actor isolation requires authentication (see the package isolation contract
+// and README).
+func (s *Store) getWritable(ctx context.Context, id string, subj Subject) (Memory, error) {
 	m, err := s.Get(ctx, id)
 	if err != nil {
 		return Memory{}, err
 	}
-	if m.Owner != sub {
+	switch sj := subj.(type) {
+	case authenticated:
+		if m.Owner != sj.sub {
+			return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+		}
+		return m, nil
+	case anonymous:
+		if m.Owner != "" {
+			return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+		}
+		return m, nil
+	default:
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	return m, nil
 }
 
 // OwnedOrAbsent permits a client-supplied-id write: nil if the id is absent (new
@@ -401,18 +410,18 @@ func (s *Store) OwnedOrAbsent(ctx context.Context, id, sub string) error {
 	return nil
 }
 
-// FetchForUpdate returns the record iff it exists and is owned by sub (the same
-// gate as the internal write path); otherwise ErrNotFound. The update handler
-// calls this once as the authoritative ownership gate BEFORE embedding, then
-// hands the returned record to Update — so the update path performs a single
-// Qdrant Get instead of two. The returned record carries current visibility, so
-// a content-only Update (shared==nil) preserves it.
+// FetchForUpdate returns the record iff it exists and is owned by the subject
+// (the same gate as the internal write path); otherwise ErrNotFound. The update
+// handler calls this once as the authoritative ownership gate BEFORE embedding,
+// then hands the returned record to Update — so the update path performs a
+// single Qdrant Get instead of two. The returned record carries current
+// visibility, so a content-only Update (shared==nil) preserves it.
 //
-// Anonymous-bucket semantics preserved: sub=="" matches owner=="" exactly as
+// Anonymous-bucket semantics preserved: Anonymous() matches owner=="" exactly as
 // getWritable does, so ownerless records remain mutually writable when auth is
 // disabled.
-func (s *Store) FetchForUpdate(ctx context.Context, id, sub string) (Memory, error) {
-	return s.getWritable(ctx, id, sub)
+func (s *Store) FetchForUpdate(ctx context.Context, id string, subj Subject) (Memory, error) {
+	return s.getWritable(ctx, id, subj)
 }
 
 // Update applies a content change (re-embedded via vec) to a record previously
@@ -433,15 +442,15 @@ func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *
 }
 
 // SetVisibility flips a record's shared flag without re-embedding (uses
-// SetPayload, preserving the vector), only if owned by sub.
+// SetPayload, preserving the vector), only if owned by subj.
 //
 // TOCTOU note: if the record is deleted between the getWritable ownership gate
 // and the SetPayload call, Qdrant's point-ID-selector SetPayload returns a
 // NotFound gRPC error (verified against v1.18.2). That error propagates
 // unchanged, so SetVisibility is fail-closed with respect to concurrent
 // deletion — no additional re-fetch is required.
-func (s *Store) SetVisibility(ctx context.Context, id, sub string, shared bool) error {
-	if _, err := s.getWritable(ctx, id, sub); err != nil {
+func (s *Store) SetVisibility(ctx context.Context, id string, subj Subject, shared bool) error {
+	if _, err := s.getWritable(ctx, id, subj); err != nil {
 		return err
 	}
 	vis := ""
@@ -456,9 +465,9 @@ func (s *Store) SetVisibility(ctx context.Context, id, sub string, shared bool) 
 	return err
 }
 
-// Delete removes the memory with the given id, only if owned by sub.
-func (s *Store) Delete(ctx context.Context, id, sub string) error {
-	if _, err := s.getWritable(ctx, id, sub); err != nil {
+// Delete removes the memory with the given id, only if owned by subj.
+func (s *Store) Delete(ctx context.Context, id string, subj Subject) error {
+	if _, err := s.getWritable(ctx, id, subj); err != nil {
 		return err
 	}
 	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{

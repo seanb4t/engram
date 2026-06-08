@@ -300,7 +300,7 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 
 	defer func() {
 		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, "")) // removes ownerless record
-		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, "sub-owner"))
+		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, store.Authenticated("sub-owner")))
 	}()
 
 	// searchMemory with anonymous context must return ownerless, not shared.
@@ -390,7 +390,7 @@ func TestAnonReadIsolationDiscoveryHandler(t *testing.T) {
 
 	defer func() {
 		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, ""))
-		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, "sub-owner"))
+		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, store.Authenticated("sub-owner")))
 	}()
 
 	hits, err := d.searchDiscovery(ctx, searchDiscoveryArgs{Query: "discovery", Scope: scope, K: 10})
@@ -544,7 +544,9 @@ func TestUpdateMemoryEmbedNotCalledForNonOwner(t *testing.T) {
 	if err := d.st.Upsert(ctx, stamped, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("seed stamped record: %v", err)
 	}
-	defer func() { cleanupErr(t, "Delete "+stampedID, d.st.Delete(ctx, stampedID, "sub-owner")) }()
+	defer func() {
+		cleanupErr(t, "Delete "+stampedID, d.st.Delete(ctx, stampedID, store.Authenticated("sub-owner")))
+	}()
 
 	// Swap in a counting embedder.
 	counter := &countingEmbedder{}
@@ -615,8 +617,8 @@ func TestAuthedCrossActorSharedReadHandlers(t *testing.T) {
 		t.Fatalf("seed private: %v", err)
 	}
 	defer func() {
-		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, "actor-A"))
-		cleanupErr(t, "Delete "+privateID, d.st.Delete(ctx, privateID, "actor-A"))
+		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, store.Authenticated("actor-A")))
+		cleanupErr(t, "Delete "+privateID, d.st.Delete(ctx, privateID, store.Authenticated("actor-A")))
 	}()
 
 	// Caller B: a distinct authenticated subject.
