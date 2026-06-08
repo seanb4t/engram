@@ -399,28 +399,26 @@ func (s *Store) OwnedOrAbsent(ctx context.Context, id, sub string) error {
 	return nil
 }
 
-// OwnedForUpdate is a cheap pre-check: it returns nil iff the record exists and
-// is owned by sub (same semantics as getWritable). The caller MUST still call
-// Update; this method does not replace Update's own ownership gate — it is an
-// early-exit to avoid expensive operations (e.g. embedding) before the
-// authoritative gate inside Update fires. Transport errors surface unchanged.
+// FetchForUpdate returns the record iff it exists and is owned by sub (the same
+// gate as the internal write path); otherwise ErrNotFound. The update handler
+// calls this once as the authoritative ownership gate BEFORE embedding, then
+// hands the returned record to Update — so the update path performs a single
+// Qdrant Get instead of two. The returned record carries current visibility, so
+// a content-only Update (shared==nil) preserves it.
 //
 // Anonymous-bucket semantics preserved: sub=="" matches owner=="" exactly as
 // getWritable does, so ownerless records remain mutually writable when auth is
 // disabled.
-func (s *Store) OwnedForUpdate(ctx context.Context, id, sub string) error {
-	_, err := s.getWritable(ctx, id, sub)
-	return err
+func (s *Store) FetchForUpdate(ctx context.Context, id, sub string) (Memory, error) {
+	return s.getWritable(ctx, id, sub)
 }
 
-// Update replaces a record's content (re-embedded via vec), only if owned by
-// sub. When shared is non-nil it also sets visibility (true → "shared", false →
-// ""); nil leaves visibility unchanged so a content edit never silently unshares.
-func (s *Store) Update(ctx context.Context, id, sub, content string, shared *bool, vec []float32) error {
-	cur, err := s.getWritable(ctx, id, sub)
-	if err != nil {
-		return err
-	}
+// Update applies a content change (re-embedded via vec) to a record previously
+// fetched and ownership-verified via FetchForUpdate. It does NOT re-fetch: cur
+// is authoritative, so the update path gates ownership exactly once. When shared
+// is non-nil it also sets visibility (true → "shared", false → ""); nil leaves
+// visibility unchanged so a content edit never silently unshares.
+func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *bool, vec []float32) error {
 	cur.Content = content
 	if shared != nil {
 		if *shared {

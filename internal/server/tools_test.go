@@ -8,12 +8,15 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/qdrant/go-client/qdrant"
 	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
@@ -174,6 +177,43 @@ func testDeps(t *testing.T) *deps {
 	return &deps{st: st, em: fakeEmbedder{}}
 }
 
+// cleanupErr surfaces a deferred-cleanup failure so leftover records can't
+// silently contaminate later tests in the run. store.ErrNotFound is tolerated:
+// the record is already gone, which is exactly what cleanup wanted.
+func cleanupErr(t *testing.T, what string, err error) {
+	t.Helper()
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("cleanup %s: %v", what, err)
+	}
+}
+
+// authedContext builds a context carrying a verified OIDC subject by running a
+// request through the go-sdk's RequireBearerToken middleware with a stub
+// verifier. The go-sdk stores TokenInfo under an unexported context key, so this
+// middleware round-trip is the only way to inject an authenticated identity that
+// ownerFromContext can read — it is what makes authenticated handler-path tests
+// possible.
+func authedContext(t *testing.T, sub string) context.Context {
+	t.Helper()
+	verifier := func(context.Context, string, *http.Request) (*mcpauth.TokenInfo, error) {
+		return &mcpauth.TokenInfo{
+			Expiration: timeNow().Add(time.Hour),
+			Extra:      map[string]any{"sub": sub},
+		}, nil
+	}
+	var captured context.Context
+	h := mcpauth.RequireBearerToken(verifier, nil)(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		captured = r.Context()
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if captured == nil {
+		t.Fatal("authedContext: middleware did not pass request through (verification failed)")
+	}
+	return captured
+}
+
 func TestValidateStoreDiscovery(t *testing.T) {
 	good := storeDiscoveryArgs{
 		Content: "x", Kind: "map", Scope: "discovery:repo:X",
@@ -216,8 +256,8 @@ func TestValidateStoreDiscovery(t *testing.T) {
 // because the go-sdk stores TokenInfo under an unexported context key, so there
 // is no way to inject one. The anonymous-read isolation path (context.Background()
 // → sub=="" → ownerless-only results) IS covered by
-// TestAnonReadIsolationHandlers; only authenticated-identity injection remains
-// untestable.
+// TestAnonReadIsolationHandlers; authenticated handler-path reads are now covered
+// by TestAuthedCrossActorSharedReadHandlers via the authedContext middleware helper.
 func TestOwnerFromContextNoToken(t *testing.T) {
 	sub, err := ownerFromContext(context.Background())
 	if sub != "" || err != nil {
@@ -259,8 +299,8 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	}
 
 	defer func() {
-		_ = d.st.DeleteAll(ctx, scope, "") // removes ownerless record
-		_ = d.st.Delete(ctx, sharedID, "sub-owner")
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, "")) // removes ownerless record
+		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, "sub-owner"))
 	}()
 
 	// searchMemory with anonymous context must return ownerless, not shared.
@@ -284,10 +324,10 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 		t.Error("searchMemory: owner-stamped shared record must not be returned to anonymous caller")
 	}
 
-	// list_memory (List) with anonymous context must return ownerless, not shared.
-	mems, err := d.st.List(ctx, scope, "", 10)
+	// list_memory handler with anonymous context must return ownerless, not shared.
+	mems, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10})
 	if err != nil {
-		t.Fatalf("List: %v", err)
+		t.Fatalf("listMemory: %v", err)
 	}
 	foundOwnerless, foundShared = false, false
 	for _, m := range mems {
@@ -349,8 +389,8 @@ func TestAnonReadIsolationDiscoveryHandler(t *testing.T) {
 	}
 
 	defer func() {
-		_ = d.st.DeleteAll(ctx, scope, "")
-		_ = d.st.Delete(ctx, sharedID, "sub-owner")
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, ""))
+		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, "sub-owner"))
 	}()
 
 	hits, err := d.searchDiscovery(ctx, searchDiscoveryArgs{Query: "discovery", Scope: scope, K: 10})
@@ -397,7 +437,7 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()
 	scope := "discovery:repo:handler-test"
-	defer func() { _ = d.st.DeleteAll(ctx, scope, "") }()
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, "")) }()
 
 	// create
 	id, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
@@ -464,7 +504,7 @@ func TestUpdateMemoryPreservesSharingHandler(t *testing.T) {
 	ctx := context.Background()
 	scope := "iso-test:project:handler-upd"
 	id := "e5e5e5e5-0000-0000-0000-000000000001"
-	defer func() { _ = d.st.DeleteAll(ctx, scope, "") }()
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, "")) }()
 
 	// Seed a shared record owned by the anonymous caller (sub == "").
 	m := store.Memory{ID: id, Content: "v1", Scope: scope, Owner: "", Visibility: "shared", CreatedAt: timeNow()}
@@ -504,7 +544,7 @@ func TestUpdateMemoryEmbedNotCalledForNonOwner(t *testing.T) {
 	if err := d.st.Upsert(ctx, stamped, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("seed stamped record: %v", err)
 	}
-	defer func() { _ = d.st.Delete(ctx, stampedID, "sub-owner") }()
+	defer func() { cleanupErr(t, "Delete "+stampedID, d.st.Delete(ctx, stampedID, "sub-owner")) }()
 
 	// Swap in a counting embedder.
 	counter := &countingEmbedder{}
@@ -533,7 +573,7 @@ func TestUpdateMemoryEmbedNotCalledForNonOwner(t *testing.T) {
 	if err := d.st.Upsert(ctx, ownerless, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("seed ownerless record: %v", err)
 	}
-	defer func() { _ = d.st.DeleteAll(ctx, scope, "") }()
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, "")) }()
 
 	counter.calls = 0
 	if err := d.updateMemory(ctx, updateArgs{ID: ownerlessID, Content: "v2"}); err != nil {
@@ -541,6 +581,79 @@ func TestUpdateMemoryEmbedNotCalledForNonOwner(t *testing.T) {
 	}
 	if counter.calls != 1 {
 		t.Errorf("ownerless updateMemory: expected exactly 1 embed call, got %d", counter.calls)
+	}
+}
+
+// TestAuthedCrossActorSharedReadHandlers verifies the authenticated read grant
+// at the handler boundary: caller B (a distinct verified sub) CAN read caller
+// A's shared record through searchMemory/listMemory, but NOT A's private record.
+// This regression-guards the ownerOrSharedCondition tightening from PR #54.
+// Integration: needs Qdrant.
+func TestAuthedCrossActorSharedReadHandlers(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:authed-xactor"
+
+	sharedID := "b0000000-0000-0000-0000-000000000001"
+	privateID := "b0000000-0000-0000-0000-000000000002"
+
+	// Seed caller A's shared + private records.
+	shared := store.Memory{
+		ID: sharedID, Content: "shared content", Scope: scope,
+		Owner: "actor-A", Visibility: "shared", Category: "convention",
+		Source: "agent-inferred", CreatedAt: timeNow(),
+	}
+	if err := d.st.Upsert(ctx, shared, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed shared: %v", err)
+	}
+	priv := store.Memory{
+		ID: privateID, Content: "private content", Scope: scope,
+		Owner: "actor-A", Visibility: "private", Category: "convention",
+		Source: "agent-inferred", CreatedAt: timeNow(),
+	}
+	if err := d.st.Upsert(ctx, priv, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed private: %v", err)
+	}
+	defer func() {
+		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, "actor-A"))
+		cleanupErr(t, "Delete "+privateID, d.st.Delete(ctx, privateID, "actor-A"))
+	}()
+
+	// Caller B: a distinct authenticated subject.
+	bctx := authedContext(t, "actor-B")
+
+	// searchMemory: B sees A's shared, not A's private.
+	hits, err := d.searchMemory(bctx, searchArgs{Query: "content", Scope: scope, K: 10})
+	if err != nil {
+		t.Fatalf("searchMemory: %v", err)
+	}
+	assertVisibility(t, "searchMemory", hits, sharedID, privateID)
+
+	// listMemory: same guarantee through the no-query handler path.
+	mems, err := d.listMemory(bctx, listArgs{Scope: scope, Limit: 10})
+	if err != nil {
+		t.Fatalf("listMemory: %v", err)
+	}
+	assertVisibility(t, "listMemory", mems, sharedID, privateID)
+}
+
+// assertVisibility checks that wantID appears in got and denyID does not.
+func assertVisibility(t *testing.T, where string, got []store.Memory, wantID, denyID string) {
+	t.Helper()
+	var sawWant, sawDeny bool
+	for _, m := range got {
+		switch m.ID {
+		case wantID:
+			sawWant = true
+		case denyID:
+			sawDeny = true
+		}
+	}
+	if !sawWant {
+		t.Errorf("%s: shared record not visible to authenticated cross-actor caller", where)
+	}
+	if sawDeny {
+		t.Errorf("%s: private record of another actor must NOT be visible", where)
 	}
 }
 
