@@ -52,7 +52,7 @@ func accessLog(authFail authFailureFunc, observe func(int)) func(http.Handler) h
 			}
 			observe(sw.status)
 
-			slog.Info("http request",
+			slog.InfoContext(r.Context(), "http request",
 				"method", r.Method, "path", r.URL.Path, "status", sw.status,
 				"dur_ms", ms, "remote", r.RemoteAddr, "ua", r.UserAgent())
 		})

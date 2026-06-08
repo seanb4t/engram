@@ -12,6 +12,7 @@ import (
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	otellog "go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func parseLevel(s string) slog.Level {
@@ -46,11 +47,15 @@ func newLoggerTo(w io.Writer, cfg Config, lp otellog.LoggerProvider) *slog.Logge
 	var handlers []slog.Handler
 	if stdout {
 		opts := &slog.HandlerOptions{Level: level}
+		var h slog.Handler
 		if cfg.LogFormat == "text" {
-			handlers = append(handlers, slog.NewTextHandler(w, opts))
+			h = slog.NewTextHandler(w, opts)
 		} else {
-			handlers = append(handlers, slog.NewJSONHandler(w, opts))
+			h = slog.NewJSONHandler(w, opts)
 		}
+		// The otelslog bridge resolves trace context itself; only the stdout
+		// handler needs trace_id/span_id injected for log↔trace correlation.
+		handlers = append(handlers, withTraceContext(h))
 	}
 	if lp != nil {
 		handlers = append(handlers, otelslog.NewHandler("github.com/seanb4t/engram",
@@ -61,6 +66,32 @@ func newLoggerTo(w io.Writer, cfg Config, lp otellog.LoggerProvider) *slog.Logge
 		return slog.New(handlers[0])
 	}
 	return slog.New(fanout(handlers))
+}
+
+// traceContextHandler stamps trace_id/span_id from the context's span onto
+// each record so stdout lines can be correlated with traces.
+type traceContextHandler struct {
+	slog.Handler
+}
+
+func withTraceContext(h slog.Handler) slog.Handler { return &traceContextHandler{Handler: h} }
+
+func (t *traceContextHandler) Handle(ctx context.Context, r slog.Record) error {
+	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+		r.AddAttrs(
+			slog.String("trace_id", sc.TraceID().String()),
+			slog.String("span_id", sc.SpanID().String()),
+		)
+	}
+	return t.Handler.Handle(ctx, r)
+}
+
+func (t *traceContextHandler) WithAttrs(as []slog.Attr) slog.Handler {
+	return &traceContextHandler{Handler: t.Handler.WithAttrs(as)}
+}
+
+func (t *traceContextHandler) WithGroup(name string) slog.Handler {
+	return &traceContextHandler{Handler: t.Handler.WithGroup(name)}
 }
 
 // fanout dispatches each record to every wrapped handler. Used to write both

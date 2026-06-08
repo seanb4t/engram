@@ -51,9 +51,9 @@ func instrumentTools(record recordFunc) mcp.Middleware {
 			if err != nil {
 				span.SetStatus(codes.Error, err.Error())
 				span.RecordError(err)
-				lg.Error("tool call failed", "err", err)
+				lg.ErrorContext(ctx, "tool call failed", "err", err)
 			} else {
-				lg.Info("tool call")
+				lg.InfoContext(ctx, "tool call")
 			}
 			return res, err
 		}
