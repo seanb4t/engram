@@ -216,11 +216,13 @@ func (s *Store) Upsert(ctx context.Context, m Memory, vec []float32) error {
 // Authenticated callers (sub != ""): owner==sub OR visibility=="shared".
 // Anonymous callers (sub == "", auth disabled): owner=="" ONLY — shared
 // records are NOT readable by anonymous callers. The "shared" grant requires
-// an authenticated (non-empty) subject; the anonymous bucket is the single
-// ownerless bucket, not a back-door to all shared records.
+// an authenticated (non-empty) subject; the anonymous bucket (owner=="") is not
+// a back-door to all shared records. Note this is the explicit empty-string
+// owner of auth-disabled writes, distinct from the missing-key "ownerless"
+// pre-isolation records that ownerlessFilter targets.
 func ownerOrSharedCondition(sub string) *qdrant.Condition {
 	if sub == "" {
-		// Fail-closed: anonymous callers see only the ownerless bucket.
+		// Fail-closed: anonymous callers see only the anonymous bucket (owner=="").
 		return qdrant.NewFilterAsCondition(&qdrant.Filter{Must: []*qdrant.Condition{
 			qdrant.NewMatch("owner", ""),
 		}})

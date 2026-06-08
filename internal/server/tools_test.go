@@ -226,10 +226,10 @@ func TestOwnerFromContextNoToken(t *testing.T) {
 }
 
 // TestAnonReadIsolationHandlers verifies that handler methods called with an
-// anonymous context (context.Background() → sub=="") return ownerless records
-// but NOT owner-stamped shared records, satisfying the acceptance criteria for
-// the anonymous-bucket read restriction through the full handler→store path.
-// Integration: needs Qdrant.
+// anonymous context (context.Background() → sub=="") return anonymous-bucket
+// records (explicit owner=="") but NOT owner-stamped shared records, satisfying
+// the acceptance criteria for the anonymous-bucket read restriction through the
+// full handler→store path. Integration: needs Qdrant.
 func TestAnonReadIsolationHandlers(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()
@@ -238,7 +238,7 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	ownerlessID := "a0000000-0000-0000-0000-000000000001"
 	sharedID := "a0000000-0000-0000-0000-000000000002"
 
-	// Seed ownerless record (anonymous bucket).
+	// Seed anonymous-bucket record (explicit owner=="").
 	ownerless := store.Memory{
 		ID: ownerlessID, Content: "ownerless content", Scope: scope,
 		Owner: "", Visibility: "private", Category: "convention",
@@ -317,9 +317,9 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 }
 
 // TestAnonReadIsolationDiscoveryHandler verifies the search_discovery handler
-// obeys the same anonymous-bucket restriction: ownerless discovery records are
-// returned; owner-stamped shared discovery records are not.
-// Integration: needs Qdrant.
+// obeys the same anonymous-bucket restriction: anonymous-bucket discovery
+// records (explicit owner=="") are returned; owner-stamped shared discovery
+// records are not. Integration: needs Qdrant.
 func TestAnonReadIsolationDiscoveryHandler(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()

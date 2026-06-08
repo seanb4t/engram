@@ -535,8 +535,8 @@ func TestSetVisibilityTOCTOU(t *testing.T) {
 	scope := "iso-test:project:toctou"
 	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
 
-	// ── Part 1: verify Qdrant's SetPayload (point-ID selector) errors on a
-	// missing ID — this is the contract that makes SetVisibility fail-closed. ──
+	// Part 1: verify Qdrant's SetPayload (point-ID selector) errors on a
+	// missing ID — this is the contract that makes SetVisibility fail-closed.
 	missingID := "f0f0f0f0-0000-0000-0000-000000000001"
 	_, rawErr := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
@@ -544,10 +544,10 @@ func TestSetVisibilityTOCTOU(t *testing.T) {
 		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(missingID)}),
 	})
 	if rawErr == nil {
-		t.Fatal("qdrant SetPayload on missing point-ID returned nil — TOCTOU contract violated; SetVisibility needs a post-SetPayload re-fetch")
+		t.Fatal("qdrant SetPayload on missing point-ID returned nil — the fail-closed contract for SetVisibility is broken; review Qdrant behaviour for this version and update SetVisibility accordingly")
 	}
 
-	// ── Part 2: simulate the TOCTOU window at the raw level ──
+	// Part 2: simulate the TOCTOU window at the raw level.
 	// Insert → verify gate passes → delete (concurrent race) → SetPayload.
 	// SetPayload must error because the ID no longer exists.
 	id := "f0f0f0f0-0000-0000-0000-000000000002"
@@ -574,10 +574,10 @@ func TestSetVisibilityTOCTOU(t *testing.T) {
 		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
 	})
 	if setPayloadErr == nil {
-		t.Error("TOCTOU: SetPayload on deleted point-ID returned nil — SetVisibility would silently succeed; a post-SetPayload re-fetch is required")
+		t.Error("TOCTOU: SetPayload on deleted point-ID returned nil — the fail-closed contract for SetVisibility is broken; review Qdrant behaviour for this version and update SetVisibility accordingly")
 	}
 
-	// ── Part 3: end-to-end via the SetVisibility public API ──
+	// Part 3: end-to-end via the SetVisibility public API.
 	// Insert → delete → SetVisibility must error. The record is absent at gate
 	// entry, so this surfaces ErrNotFound from getWritable — the pre-entry
 	// deletion case, not the TOCTOU window (which Part 2 covers).
@@ -743,18 +743,23 @@ func TestMigrateSetOwner(t *testing.T) {
 }
 
 // TestAnonBucketReadIsolation verifies Q1 (engram-99z.13): anonymous callers
-// (sub=="") may only read the ownerless bucket — they cannot see another
-// owner's shared record via Search, List, or GetReadable.
+// (sub=="") may only read the anonymous bucket (owner=="") — they cannot see
+// another owner's shared record via Search, List, or GetReadable.
 //
-// Also verifies eu8.14 reachability: pre-upgrade records (owner=="") remain
-// accessible to anonymous callers.
+// Scope: this exercises the anonymous bucket (explicit owner=="", as written by
+// auth-disabled deployments). It does NOT cover pre-isolation records (those
+// with a MISSING owner key): NewMatch("owner","") does not match missing keys,
+// so such records are intentionally invisible to every read until backfilled
+// (see ownerlessFilter / MigrateSetOwner and the README "Upgrading" note). That
+// invisibility is unchanged by this tightening.
 func TestAnonBucketReadIsolation(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	scope := "anon-test:project:read-iso"
 	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
 
-	// ownerless record — simulates pre-upgrade / auth-disabled records (eu8.14).
+	// anonymous-bucket record (explicit owner==""): what an auth-disabled
+	// deployment writes; readable by anonymous callers.
 	ownerless := Memory{
 		ID: "f1f1f1f1-0000-0000-0000-000000000001", Content: "anon-ownerless",
 		Scope: scope, Owner: "", Visibility: "", CreatedAt: time.Now().UTC(),
@@ -775,7 +780,7 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 		}
 	}
 
-	// Search: anonymous caller sees only the ownerless record (eu8.14 reachability).
+	// Search: anonymous caller sees only the anonymous-bucket record (owner=="").
 	hits, err := s.Search(ctx, scope, "", []float32{0.1, 0.2, 0.3}, 10)
 	if err != nil {
 		t.Fatalf("Search anon: %v", err)
@@ -805,7 +810,7 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 		}
 	}
 
-	// GetReadable: anon caller reads ownerless record — eu8.14 reachability.
+	// GetReadable: anon caller reads the anonymous-bucket record (owner=="").
 	got, err := s.GetReadable(ctx, ownerless.ID, "")
 	if err != nil {
 		t.Errorf("GetReadable anon on ownerless record: unexpected error: %v", err)
@@ -853,9 +858,9 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 }
 
 // TestAnonBucketWriteSemantics verifies Q2 (engram-99z.13): the anonymous
-// bucket (owner=="") is mutually writable when sub=="" — pre-upgrade
-// reachability and auth-disabled deployments. Owner-stamped records are NOT
-// mutable by an anonymous caller (fail-closed write isolation).
+// bucket (explicit owner=="") is mutually writable when sub=="" — the
+// auth-disabled deployment case. Owner-stamped records are NOT mutable by an
+// anonymous caller (fail-closed write isolation).
 func TestAnonBucketWriteSemantics(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -921,7 +926,8 @@ func TestAnonBucketWriteSemantics(t *testing.T) {
 
 // TestAnonBucketDiscoveryReadIsolation verifies that SearchDiscovery respects
 // the same fail-closed anonymous read semantics: anon callers see only
-// ownerless discovery records, not authenticated owners' shared discoveries.
+// anonymous-bucket discovery records (owner==""), not authenticated owners'
+// shared discoveries.
 func TestAnonBucketDiscoveryReadIsolation(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
