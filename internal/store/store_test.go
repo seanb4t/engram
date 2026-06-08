@@ -189,9 +189,9 @@ func TestSearchDiscoveryFilters(t *testing.T) {
 	scopeB := "discovery:repo:B"
 	curated := "repo:A"
 	defer func() {
-		cleanupErr(t, "DeleteAll "+scopeA, s.DeleteAll(ctx, scopeA, ""))
-		cleanupErr(t, "DeleteAll "+scopeB, s.DeleteAll(ctx, scopeB, ""))
-		cleanupErr(t, "DeleteAll "+curated, s.DeleteAll(ctx, curated, ""))
+		cleanupErr(t, "DeleteAll "+scopeA, s.DeleteAll(ctx, scopeA, Anonymous()))
+		cleanupErr(t, "DeleteAll "+scopeB, s.DeleteAll(ctx, scopeB, Anonymous()))
+		cleanupErr(t, "DeleteAll "+curated, s.DeleteAll(ctx, curated, Anonymous()))
 	}()
 
 	mk := func(id, scope, cat, kind string, vec []float32) {
@@ -337,7 +337,7 @@ func TestSearchAndDeleteAll(t *testing.T) {
 		t.Fatal("expected at least 1 search hit")
 	}
 
-	if err := s.DeleteAll(ctx, scope, ""); err != nil {
+	if err := s.DeleteAll(ctx, scope, Anonymous()); err != nil {
 		t.Fatalf("delete_all: %v", err)
 	}
 
@@ -743,7 +743,7 @@ func TestDeleteAllOwnerScoped(t *testing.T) {
 		}
 	}
 	// A's teardown removes only A's record; B's survives.
-	if err := s.DeleteAll(ctx, scope, "sub-A"); err != nil {
+	if err := s.DeleteAll(ctx, scope, Authenticated("sub-A")); err != nil {
 		t.Fatalf("deleteAll: %v", err)
 	}
 	if _, err := s.Get(ctx, a.ID); !errors.Is(err, ErrNotFound) {

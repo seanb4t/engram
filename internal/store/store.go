@@ -488,12 +488,22 @@ func (s *Store) Delete(ctx context.Context, id string, subj Subject) error {
 	return err
 }
 
-// DeleteAll removes the caller's OWN records in scope (never another owner's,
-// and never another owner's shared records).
-func (s *Store) DeleteAll(ctx context.Context, scope, sub string) error {
+// DeleteAll removes the subject's OWN records in scope (never another owner's,
+// and never another owner's shared records). A nil/unknown Subject is rejected
+// without deleting anything — fail closed.
+func (s *Store) DeleteAll(ctx context.Context, scope string, subj Subject) error {
+	var owner string
+	switch sj := subj.(type) {
+	case authenticated:
+		owner = sj.sub
+	case anonymous:
+		owner = ""
+	default:
+		return fmt.Errorf("%w: nil subject", ErrNotFound)
+	}
 	filter := &qdrant.Filter{Must: []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),
-		qdrant.NewMatch("owner", sub),
+		qdrant.NewMatch("owner", owner),
 	}}
 	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),

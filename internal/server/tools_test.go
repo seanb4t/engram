@@ -299,7 +299,7 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	}
 
 	defer func() {
-		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, "")) // removes ownerless record
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) // removes ownerless record
 		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, store.Authenticated("sub-owner")))
 	}()
 
@@ -389,7 +389,7 @@ func TestAnonReadIsolationDiscoveryHandler(t *testing.T) {
 	}
 
 	defer func() {
-		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, ""))
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous()))
 		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, store.Authenticated("sub-owner")))
 	}()
 
@@ -437,7 +437,7 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()
 	scope := "discovery:repo:handler-test"
-	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, "")) }()
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
 
 	// create
 	id, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
@@ -504,7 +504,7 @@ func TestUpdateMemoryPreservesSharingHandler(t *testing.T) {
 	ctx := context.Background()
 	scope := "iso-test:project:handler-upd"
 	id := "e5e5e5e5-0000-0000-0000-000000000001"
-	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, "")) }()
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
 
 	// Seed a shared record owned by the anonymous caller (sub == "").
 	m := store.Memory{ID: id, Content: "v1", Scope: scope, Owner: "", Visibility: "shared", CreatedAt: timeNow()}
@@ -575,7 +575,7 @@ func TestUpdateMemoryEmbedNotCalledForNonOwner(t *testing.T) {
 	if err := d.st.Upsert(ctx, ownerless, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("seed ownerless record: %v", err)
 	}
-	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, "")) }()
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
 
 	counter.calls = 0
 	if err := d.updateMemory(ctx, updateArgs{ID: ownerlessID, Content: "v2"}); err != nil {

@@ -498,11 +498,11 @@ func Register(s *mcp.Server, tm *telemetry.ToolMetrics) error {
 
 	mcp.AddTool(s, &mcp.Tool{Name: "delete_all", Description: "Delete your own memories in a scope (teardown); never another caller's records."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a scopeArgs) (*mcp.CallToolResult, any, error) {
-			owner, err := ownerFromContext(ctx)
+			subj, err := subjectFromContext(ctx)
 			if err != nil {
 				return nil, nil, err
 			}
-			err = d.st.DeleteAll(ctx, a.Scope, owner)
+			err = d.st.DeleteAll(ctx, a.Scope, subj)
 			return textResult("scope cleared"), nil, err
 		})
 
