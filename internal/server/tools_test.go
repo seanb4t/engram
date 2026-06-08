@@ -191,7 +191,7 @@ func cleanupErr(t *testing.T, what string, err error) {
 // request through the go-sdk's RequireBearerToken middleware with a stub
 // verifier. The go-sdk stores TokenInfo under an unexported context key, so this
 // middleware round-trip is the only way to inject an authenticated identity that
-// ownerFromContext can read — it is what makes authenticated handler-path tests
+// subjectFromContext can read — it is what makes authenticated handler-path tests
 // possible.
 func authedContext(t *testing.T, sub string) context.Context {
 	t.Helper()
@@ -246,22 +246,6 @@ func TestValidateStoreDiscovery(t *testing.T) {
 		if err := validateStoreDiscovery(tc.a); err == nil {
 			t.Errorf("%s: expected error, got nil", tc.name)
 		}
-	}
-}
-
-// TestOwnerFromContextNoToken pins the auth-disabled half of the contract: no
-// token in context is the anonymous bucket ("", nil), NOT an error — otherwise a
-// no-issuer deployment would reject every request. The fail-closed path (a
-// validated token lacking a non-empty sub → error) cannot be unit-tested here
-// because the go-sdk stores TokenInfo under an unexported context key, so there
-// is no way to inject one. The anonymous-read isolation path (context.Background()
-// → sub=="" → ownerless-only results) IS covered by
-// TestAnonReadIsolationHandlers; authenticated handler-path reads are now covered
-// by TestAuthedCrossActorSharedReadHandlers via the authedContext middleware helper.
-func TestOwnerFromContextNoToken(t *testing.T) {
-	sub, err := ownerFromContext(context.Background())
-	if sub != "" || err != nil {
-		t.Errorf("no token: want (\"\", nil), got (%q, %v)", sub, err)
 	}
 }
 

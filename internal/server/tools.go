@@ -319,31 +319,12 @@ func actorFromContext(ctx context.Context) string {
 	return ""
 }
 
-// ownerFromContext returns the stable OIDC subject (the authorization key)
-// injected by the RequireBearerToken middleware. It returns "" only when auth is
-// disabled (no token in context → the anonymous bucket). A present-but-malformed
-// token — validated by the middleware yet carrying no non-empty `sub` — is a
-// fail-closed error, never silently collapsed into the anonymous bucket, so a
-// partially-populated authenticated request is rejected rather than granted
-// no-auth read/write/delete semantics. Never client-supplied: the value is the
-// validated token's `sub`, which auth.TokenVerifier places in TokenInfo.Extra.
-func ownerFromContext(ctx context.Context) (string, error) {
-	ti := mcpauth.TokenInfoFromContext(ctx)
-	if ti == nil {
-		return "", nil // auth disabled: the anonymous bucket
-	}
-	if sub, ok := ti.Extra["sub"].(string); ok && sub != "" {
-		return sub, nil
-	}
-	return "", fmt.Errorf("validated token missing subject")
-}
-
 // subjectFromContext returns the verified caller as a store.Subject. No token in
 // context → Anonymous (auth disabled, the owner=="" bucket). A validated token
 // carrying a non-empty `sub` → Authenticated(sub). A validated-but-malformed
 // token (no non-empty sub) is a fail-closed error, never silently collapsed into
-// the anonymous bucket. This replaces ownerFromContext: its nil-on-error return
-// (vs ""-on-error) means a discarded error fails closed at the store default arm.
+// the anonymous bucket. Its nil-on-error return (vs ""-on-error) means a
+// discarded error fails closed at the store default arm.
 func subjectFromContext(ctx context.Context) (store.Subject, error) {
 	ti := mcpauth.TokenInfoFromContext(ctx)
 	if ti == nil {
