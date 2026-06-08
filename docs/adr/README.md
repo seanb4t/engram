@@ -13,6 +13,7 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-12c](engram-12c-represent-authz-subject-as-sealed-go-interface.md) | 2026-06-08 | Accepted | Represent authz Subject as a sealed Go interface |
 | [engram-tdk](engram-tdk-instrument-mcp-tools-via-addreceivingmiddleware-not-per-hand.md) | 2026-06-07 | Accepted | Instrument MCP tools via AddReceivingMiddleware, not per-handler |
 | [engram-dwi](engram-dwi-export-telemetry-via-otlp-only-omit-prometheus-scrape-endpoi.md) | 2026-06-07 | Accepted | Export telemetry via OTLP only; omit a Prometheus scrape endpoint |
 | [engram-f7p](engram-f7p-instrument-at-three-seams-http-mcp-method-and-downstream-cli.md) | 2026-06-07 | Accepted | Instrument at three seams: HTTP, MCP method, and downstream clients |
