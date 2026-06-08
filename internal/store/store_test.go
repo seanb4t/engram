@@ -1052,6 +1052,64 @@ func TestAnonBucketDiscoveryReadIsolation(t *testing.T) {
 	}
 }
 
+// TestNilSubjectFailsClosed pins the core guarantee of the typed-Subject
+// refactor: a nil Subject (what a discarded subjectFromContext error yields)
+// denies on every authz path — empty reads, ErrNotFound id-gates, and a rejected
+// bulk delete — rather than silently resolving to the anonymous bucket.
+func TestNilSubjectFailsClosed(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:nil-subject"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	// Seed an ownerless (anonymous-bucket) record and an owned record.
+	anon := Memory{ID: "a0a0a0a0-0000-0000-0000-000000000001", Content: "anon", Scope: scope, Owner: "", CreatedAt: time.Now().UTC()}
+	owned := Memory{ID: "a0a0a0a0-0000-0000-0000-000000000002", Content: "owned", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+	for _, m := range []Memory{anon, owned} {
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", m.ID, err)
+		}
+	}
+
+	var nilSubj Subject // zero value == nil: the discarded-error case
+
+	// Reads return nothing.
+	if hits, err := s.Search(ctx, scope, nilSubj, []float32{0.1, 0.2, 0.3}, 10); err != nil || len(hits) != 0 {
+		t.Errorf("Search(nil): want 0 hits nil err, got %d hits, %v", len(hits), err)
+	}
+	if mems, err := s.List(ctx, scope, nilSubj, 20); err != nil || len(mems) != 0 {
+		t.Errorf("List(nil): want 0 mems nil err, got %d, %v", len(mems), err)
+	}
+	if hits, err := s.SearchDiscovery(ctx, scope, "", nilSubj, []float32{0.1, 0.2, 0.3}, 10); err != nil || len(hits) != 0 {
+		t.Errorf("SearchDiscovery(nil): want 0 hits nil err, got %d, %v", len(hits), err)
+	}
+
+	// Id-gates return ErrNotFound (even for the ownerless record).
+	if _, err := s.GetReadable(ctx, anon.ID, nilSubj); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetReadable(nil): want ErrNotFound, got %v", err)
+	}
+	if _, err := s.FetchForUpdate(ctx, anon.ID, nilSubj); !errors.Is(err, ErrNotFound) {
+		t.Errorf("FetchForUpdate(nil): want ErrNotFound, got %v", err)
+	}
+	if err := s.Delete(ctx, anon.ID, nilSubj); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Delete(nil): want ErrNotFound, got %v", err)
+	}
+	if err := s.SetVisibility(ctx, anon.ID, nilSubj, true); !errors.Is(err, ErrNotFound) {
+		t.Errorf("SetVisibility(nil): want ErrNotFound, got %v", err)
+	}
+	if err := s.OwnedOrAbsent(ctx, anon.ID, nilSubj); !errors.Is(err, ErrNotFound) {
+		t.Errorf("OwnedOrAbsent(nil) on existing id: want ErrNotFound, got %v", err)
+	}
+
+	// Bulk delete is rejected and removes nothing.
+	if err := s.DeleteAll(ctx, scope, nilSubj); !errors.Is(err, ErrNotFound) {
+		t.Errorf("DeleteAll(nil): want ErrNotFound, got %v", err)
+	}
+	if _, err := s.Get(ctx, anon.ID); err != nil {
+		t.Errorf("DeleteAll(nil) must not delete: record gone, %v", err)
+	}
+}
+
 // DeleteAllRaw removes every point in scope regardless of owner — test cleanup only.
 func (s *Store) DeleteAllRaw(ctx context.Context, scope string) error {
 	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{
