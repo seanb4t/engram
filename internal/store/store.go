@@ -385,6 +385,12 @@ func (s *Store) Update(ctx context.Context, id, sub, content string, shared *boo
 
 // SetVisibility flips a record's shared flag without re-embedding (uses
 // SetPayload, preserving the vector), only if owned by sub.
+//
+// TOCTOU note: if the record is deleted between the getWritable ownership gate
+// and the SetPayload call, Qdrant's point-ID-selector SetPayload returns a
+// NotFound gRPC error (verified against v1.18.2). That error propagates
+// unchanged, so SetVisibility is fail-closed with respect to concurrent
+// deletion — no additional re-fetch is required.
 func (s *Store) SetVisibility(ctx context.Context, id, sub string, shared bool) error {
 	if _, err := s.getWritable(ctx, id, sub); err != nil {
 		return err

@@ -517,6 +517,87 @@ func TestSetVisibilityOwnerGate(t *testing.T) {
 	}
 }
 
+// TestSetVisibilityTOCTOU verifies the TOCTOU behaviour of SetVisibility: a
+// record deleted between the ownership gate (getWritable) and the SetPayload
+// call must not cause SetVisibility to return nil.
+//
+// Qdrant v1.18.2 with a point-ID selector returns a NotFound gRPC error from
+// SetPayload when the target ID does not exist — so the error propagates
+// through SetVisibility without a separate re-fetch. Parts 1 and 2 are the
+// load-bearing TOCTOU assertions: they confirm at the raw Qdrant level that
+// SetPayload errors on a missing point-ID (the fail-closed contract we rely
+// on), including when the record vanishes after the gate has passed. Part 3
+// covers the simpler pre-entry case — the record is already gone when
+// SetVisibility is called, so the getWritable gate rejects it.
+func TestSetVisibilityTOCTOU(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:toctou"
+	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
+
+	// ── Part 1: verify Qdrant's SetPayload (point-ID selector) errors on a
+	// missing ID — this is the contract that makes SetVisibility fail-closed. ──
+	missingID := "f0f0f0f0-0000-0000-0000-000000000001"
+	_, rawErr := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload:        qdrant.NewValueMap(map[string]any{"visibility": "shared"}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(missingID)}),
+	})
+	if rawErr == nil {
+		t.Fatal("qdrant SetPayload on missing point-ID returned nil — TOCTOU contract violated; SetVisibility needs a post-SetPayload re-fetch")
+	}
+
+	// ── Part 2: simulate the TOCTOU window at the raw level ──
+	// Insert → verify gate passes → delete (concurrent race) → SetPayload.
+	// SetPayload must error because the ID no longer exists.
+	id := "f0f0f0f0-0000-0000-0000-000000000002"
+	m := Memory{
+		ID: id, Content: "toctou-target", Scope: scope,
+		Owner: "sub-owner", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := s.getWritable(ctx, id, "sub-owner"); err != nil {
+		t.Fatalf("getWritable pre-delete: %v", err)
+	}
+	// Concurrent delete: simulates what happens in the TOCTOU window.
+	if _, err := s.client.Delete(ctx, &qdrant.DeletePoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Points: qdrant.NewPointsSelector(qdrant.NewID(id)),
+	}); err != nil {
+		t.Fatalf("concurrent delete: %v", err)
+	}
+	_, setPayloadErr := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload:        qdrant.NewValueMap(map[string]any{"visibility": "shared"}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
+	})
+	if setPayloadErr == nil {
+		t.Error("TOCTOU: SetPayload on deleted point-ID returned nil — SetVisibility would silently succeed; a post-SetPayload re-fetch is required")
+	}
+
+	// ── Part 3: end-to-end via the SetVisibility public API ──
+	// Insert → delete → SetVisibility must error. The record is absent at gate
+	// entry, so this surfaces ErrNotFound from getWritable — the pre-entry
+	// deletion case, not the TOCTOU window (which Part 2 covers).
+	id2 := "f0f0f0f0-0000-0000-0000-000000000003"
+	m2 := Memory{
+		ID: id2, Content: "sv-target", Scope: scope,
+		Owner: "sub-owner", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, m2, []float32{0.4, 0.5, 0.6}); err != nil {
+		t.Fatalf("upsert m2: %v", err)
+	}
+	if err := s.Delete(ctx, id2, "sub-owner"); err != nil {
+		t.Fatalf("delete m2: %v", err)
+	}
+	// SetVisibility on a missing record must not return nil.
+	if err := s.SetVisibility(ctx, id2, "sub-owner", true); err == nil {
+		t.Error("SetVisibility on deleted record returned nil — expected an error")
+	}
+}
+
 func TestOwnedOrAbsent(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
