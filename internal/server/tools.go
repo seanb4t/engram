@@ -406,18 +406,19 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 	if err != nil {
 		return err
 	}
-	// Pre-check ownership before embedding: avoids a billable embedder call when
-	// the caller does not own the record. This is NOT a replacement for the
-	// authoritative ownership gate inside d.st.Update — that gate remains the
-	// source of truth; this is a cheap early-exit only.
-	if err := d.st.OwnedForUpdate(ctx, a.ID, owner); err != nil {
+	// Ownership gate before embedding: a single authoritative Get. A non-owner
+	// (or missing record) gets ErrNotFound here, so we never reach the billable
+	// embed call or a write. The fetched record is handed straight to Update, so
+	// the update path makes one Qdrant round-trip for ownership, not two.
+	cur, err := d.st.FetchForUpdate(ctx, a.ID, owner)
+	if err != nil {
 		return err
 	}
 	vec, err := d.em.Embed(ctx, a.Content)
 	if err != nil {
 		return err
 	}
-	return d.st.Update(ctx, a.ID, owner, a.Content, a.Shared, vec)
+	return d.st.Update(ctx, cur, a.Content, a.Shared, vec)
 }
 
 // Register wires the memory tools onto the MCP server. It accepts a pre-built

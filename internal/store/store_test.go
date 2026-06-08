@@ -453,11 +453,15 @@ func TestUpdateOwnerGateAndSharedFlag(t *testing.T) {
 	}
 	vec := []float32{0.4, 0.5, 0.6}
 	// Non-owner cannot update even a shared record.
-	if err := s.Update(ctx, m.ID, "sub-A", "hijack", nil, vec); !errors.Is(err, ErrNotFound) {
+	if _, err := s.FetchForUpdate(ctx, m.ID, "sub-A"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("non-owner update: want ErrNotFound, got %v", err)
 	}
 	// Owner content-only update (shared == nil) PRESERVES visibility.
-	if err := s.Update(ctx, m.ID, "sub-B", "v2", nil, vec); err != nil {
+	cur, err := s.FetchForUpdate(ctx, m.ID, "sub-B")
+	if err != nil {
+		t.Fatalf("FetchForUpdate owner: %v", err)
+	}
+	if err := s.Update(ctx, cur, "v2", nil, vec); err != nil {
 		t.Fatalf("owner update: %v", err)
 	}
 	got, err := s.Get(ctx, m.ID)
@@ -469,7 +473,11 @@ func TestUpdateOwnerGateAndSharedFlag(t *testing.T) {
 	}
 	// Explicit unshare.
 	no := false
-	if err := s.Update(ctx, m.ID, "sub-B", "v3", &no, vec); err != nil {
+	cur, err = s.FetchForUpdate(ctx, m.ID, "sub-B")
+	if err != nil {
+		t.Fatalf("FetchForUpdate before unshare: %v", err)
+	}
+	if err := s.Update(ctx, cur, "v3", &no, vec); err != nil {
 		t.Fatalf("unshare update: %v", err)
 	}
 	got, err = s.Get(ctx, m.ID)
@@ -622,19 +630,20 @@ func TestOwnedOrAbsent(t *testing.T) {
 	}
 }
 
-// TestOwnedForUpdate mirrors TestOwnedOrAbsent for the OwnedForUpdate pre-check:
-// owner → nil, non-owner → ErrNotFound, absent → ErrNotFound (record must exist
-// to update), anonymous bucket (sub=="" on ownerless record) → nil.
-func TestOwnedForUpdate(t *testing.T) {
+// TestFetchForUpdate mirrors TestOwnedOrAbsent for the FetchForUpdate gate:
+// owner → record returned, non-owner → ErrNotFound, absent → ErrNotFound (record
+// must exist to update), anonymous bucket (sub=="" on ownerless record) → record
+// returned.
+func TestFetchForUpdate(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
-	scope := "iso-test:project:owned-for-update"
+	scope := "iso-test:project:fetch-for-update"
 	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
 
 	id := "b2b2b2b2-0000-0000-0000-000000000002"
 
 	// Absent record → ErrNotFound (nothing to update).
-	if err := s.OwnedForUpdate(ctx, id, "sub-A"); !errors.Is(err, ErrNotFound) {
+	if _, err := s.FetchForUpdate(ctx, id, "sub-A"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("absent record: want ErrNotFound, got %v", err)
 	}
 
@@ -643,27 +652,31 @@ func TestOwnedForUpdate(t *testing.T) {
 		t.Fatalf("upsert: %v", err)
 	}
 
-	// Owner → nil (may proceed to embed + Update).
-	if err := s.OwnedForUpdate(ctx, id, "sub-A"); err != nil {
+	// Owner → record returned (may proceed to embed + Update).
+	got, err := s.FetchForUpdate(ctx, id, "sub-A")
+	if err != nil {
 		t.Errorf("owner: unexpected error: %v", err)
+	}
+	if got.ID != id {
+		t.Errorf("owner: want ID %q, got %q", id, got.ID)
 	}
 
 	// Non-owner → ErrNotFound (early-exit before embed).
-	if err := s.OwnedForUpdate(ctx, id, "sub-B"); !errors.Is(err, ErrNotFound) {
+	if _, err := s.FetchForUpdate(ctx, id, "sub-B"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("non-owner: want ErrNotFound, got %v", err)
 	}
 
-	// Anonymous bucket: ownerless record (owner=="") with sub=="" → nil.
+	// Anonymous bucket: ownerless record (owner=="") with sub=="" → record returned.
 	ownerlessID := "b2b2b2b2-0000-0000-0000-000000000003"
 	ownerless := Memory{ID: ownerlessID, Content: "x", Scope: scope, Category: "convention", Owner: "", CreatedAt: time.Now().UTC()}
 	if err := s.Upsert(ctx, ownerless, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("upsert ownerless: %v", err)
 	}
-	if err := s.OwnedForUpdate(ctx, ownerlessID, ""); err != nil {
+	if _, err := s.FetchForUpdate(ctx, ownerlessID, ""); err != nil {
 		t.Errorf("anonymous bucket ownerless: unexpected error: %v", err)
 	}
 	// Stamped record (owner!="") with sub=="" → ErrNotFound (fail-closed write isolation).
-	if err := s.OwnedForUpdate(ctx, id, ""); !errors.Is(err, ErrNotFound) {
+	if _, err := s.FetchForUpdate(ctx, id, ""); !errors.Is(err, ErrNotFound) {
 		t.Errorf("anon on stamped record: want ErrNotFound, got %v", err)
 	}
 }
@@ -895,7 +908,11 @@ func TestAnonBucketWriteSemantics(t *testing.T) {
 	}
 
 	// Update on ownerless record with sub=="" → success (anon bucket).
-	if err := s.Update(ctx, ownerless.ID, "", "v2", nil, []float32{0.2, 0.3, 0.4}); err != nil {
+	cur, err := s.FetchForUpdate(ctx, ownerless.ID, "")
+	if err != nil {
+		t.Fatalf("FetchForUpdate anon on ownerless record: unexpected error: %v", err)
+	}
+	if err := s.Update(ctx, cur, "v2", nil, []float32{0.2, 0.3, 0.4}); err != nil {
 		t.Errorf("Update anon on ownerless record: unexpected error: %v", err)
 	}
 	got, err := s.Get(ctx, ownerless.ID)
