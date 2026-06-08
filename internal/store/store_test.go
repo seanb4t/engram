@@ -17,6 +17,21 @@ import (
 	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
 )
 
+// qdrantImageTag is the Qdrant image the integration suite boots via
+// testcontainers. The SetPayload-on-deleted-point fail-closed contract that
+// TestSetVisibilityTOCTOU depends on was verified against this image; bumping it
+// MUST be paired with re-verifying that contract and updating
+// qdrantTOCTOUVerifiedVersion below (the version guard there will fail loudly
+// until you do).
+const qdrantImageTag = "qdrant/qdrant:v1.18.2"
+
+// qdrantTOCTOUVerifiedVersion is the server version (as reported by HealthCheck)
+// whose SetPayload point-ID NotFound semantics TestSetVisibilityTOCTOU was
+// written against. Deliberately a SEPARATE constant from qdrantImageTag so a
+// version bump trips the guard in TestSetVisibilityTOCTOU and forces a conscious
+// re-verification rather than silently tracking the new image.
+const qdrantTOCTOUVerifiedVersion = "1.18.2"
+
 // testQdrantAddr is the gRPC host:port the integration tests run against. Set by
 // TestMain: MEM_QDRANT_TEST_ADDR if provided (fast path / override), else an
 // ephemeral testcontainer. Empty when neither is available (Docker absent), in
@@ -36,7 +51,7 @@ func TestMain(m *testing.M) {
 	// Bound startup so an unreachable daemon or a stalled image pull fails fast
 	// instead of hanging the suite. os.Exit skips defers, so cancel explicitly.
 	startCtx, startCancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	container, err := tcqdrant.Run(startCtx, "qdrant/qdrant:v1.18.2")
+	container, err := tcqdrant.Run(startCtx, qdrantImageTag)
 	if err != nil {
 		startCancel()
 		fmt.Fprintf(os.Stderr, "qdrant testcontainer unavailable (%v); integration tests will skip — set MEM_QDRANT_TEST_ADDR or start Docker\n", err)
@@ -536,10 +551,31 @@ func TestSetVisibilityOwnerGate(t *testing.T) {
 // SetPayload errors on a missing point-ID (the fail-closed contract we rely
 // on), including when the record vanishes after the gate has passed. Part 3
 // covers the simpler pre-entry case — the record is already gone when
-// SetVisibility is called, so the getWritable gate rejects it.
+// SetVisibility is called, so the getWritable gate rejects it. A version guard
+// at the top of this function enforces the image-version coupling: bumping
+// qdrantImageTag without updating qdrantTOCTOUVerifiedVersion will fail loudly
+// here, requiring conscious re-verification of Parts 1–2 before proceeding.
 func TestSetVisibilityTOCTOU(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
+
+	// Version guard: the SetPayload-on-deleted-point fail-closed contract asserted
+	// in Parts 1-2 was verified against Qdrant qdrantTOCTOUVerifiedVersion. When the
+	// suite boots the pinned testcontainer (no MEM_QDRANT_TEST_ADDR override),
+	// enforce that the running server matches — so bumping qdrantImageTag without
+	// re-verifying Parts 1-2 and updating qdrantTOCTOUVerifiedVersion fails loudly
+	// here. An operator-supplied external instance owns its own version, so the
+	// check is skipped on that path to avoid a spurious failure.
+	if os.Getenv("MEM_QDRANT_TEST_ADDR") == "" {
+		hc, err := s.client.HealthCheck(ctx)
+		if err != nil {
+			t.Fatalf("qdrant health check: %v", err)
+		}
+		if v := hc.GetVersion(); v != qdrantTOCTOUVerifiedVersion {
+			t.Fatalf("Qdrant version %q != verified %q: re-verify SetPayload point-ID NotFound semantics (Parts 1-2), then update qdrantTOCTOUVerifiedVersion and qdrantImageTag together", v, qdrantTOCTOUVerifiedVersion)
+		}
+	}
+
 	scope := "iso-test:project:toctou"
 	defer func() { _ = s.DeleteAllRaw(ctx, scope) }()
 
