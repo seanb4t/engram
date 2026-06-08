@@ -338,6 +338,17 @@ func ownerFromContext(ctx context.Context) (string, error) {
 	return "", fmt.Errorf("validated token missing subject")
 }
 
+func (d *deps) listMemory(ctx context.Context, a listArgs) ([]store.Memory, error) {
+	if a.Limit == 0 {
+		a.Limit = 20
+	}
+	owner, err := ownerFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return d.st.List(ctx, a.Scope, owner, a.Limit)
+}
+
 func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]store.Memory, error) {
 	if a.K == 0 {
 		a.K = 8
@@ -437,14 +448,7 @@ func Register(s *mcp.Server, tm *telemetry.ToolMetrics) error {
 
 	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List recent memories in a scope without a query (session bootstrap). Most-recent first."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listArgs) (*mcp.CallToolResult, any, error) {
-			if a.Limit == 0 {
-				a.Limit = 20
-			}
-			owner, err := ownerFromContext(ctx)
-			if err != nil {
-				return nil, nil, err
-			}
-			mems, err := d.st.List(ctx, a.Scope, owner, a.Limit)
+			mems, err := d.listMemory(ctx, a)
 			return textResult(fmt.Sprintf("%d memories", len(mems))), map[string]any{"memories": mems}, err
 		})
 

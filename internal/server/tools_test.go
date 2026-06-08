@@ -284,10 +284,10 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 		t.Error("searchMemory: owner-stamped shared record must not be returned to anonymous caller")
 	}
 
-	// list_memory (List) with anonymous context must return ownerless, not shared.
-	mems, err := d.st.List(ctx, scope, "", 10)
+	// list_memory handler with anonymous context must return ownerless, not shared.
+	mems, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10})
 	if err != nil {
-		t.Fatalf("List: %v", err)
+		t.Fatalf("listMemory: %v", err)
 	}
 	foundOwnerless, foundShared = false, false
 	for _, m := range mems {
