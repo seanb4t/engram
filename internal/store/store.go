@@ -531,13 +531,24 @@ func (s *Store) CountOwnerless(ctx context.Context) (uint64, error) {
 
 // MigrateSetOwner backfills owner onto every pre-isolation record (one that lacks
 // an owner key). Idempotent: records that already carry an owner — including the
-// auth-disabled owner=="" bucket — are not matched (see ownerlessFilter). Returns
-// the number of records stamped.
+// auth-disabled owner=="" bucket — are not matched (see ownerlessFilter).
+//
+// Returns the number of owner-less records counted immediately before the stamp.
+// The count and the SetPayload are two separate operations, not one atomic
+// transaction, and Qdrant's SetPayload reports no affected-point count to
+// reconcile against — so under concurrent writes the returned figure can drift
+// from the rows actually stamped (a record added after the count is still
+// stamped by the filter but not counted; one deleted in the window is counted
+// but not stamped). This is acceptable for the intended use: a one-time, offline
+// admin backfill on a single-user deployment with no concurrent writers. Run it
+// that way and the count is exact.
 func (s *Store) MigrateSetOwner(ctx context.Context, owner string) (uint64, error) {
 	if owner == "" {
 		return 0, fmt.Errorf("owner must be non-empty")
 	}
 	missing := ownerlessFilter()
+	// Snapshot count taken just before the stamp; see the non-atomicity caveat in
+	// the doc comment. Exact:true so the offline single-user count is precise.
 	cnt, err := s.client.Count(ctx, &qdrant.CountPoints{
 		CollectionName: s.collection, Filter: missing, Exact: qdrant.PtrOf(true),
 	})
