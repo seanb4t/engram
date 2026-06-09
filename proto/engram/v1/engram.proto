@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
+syntax = "proto3";
+
+package engram.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// A single memory record (mirrors internal/store.Memory's readable fields).
+message Memory {
+  string id = 1;
+  string content = 2;
+  string scope = 3;
+  string repo = 4;
+  string workspace = 5;
+  string worktree = 6;
+  string base_dir = 7;
+  string source = 8;
+  string category = 9;
+  repeated string tags = 10;
+  string actor = 11;
+  string owner = 12;
+  string visibility = 13;
+  google.protobuf.Timestamp created_at = 14;
+}
+
+message ScopeCount {
+  string scope = 1;
+  uint64 count = 2;
+}
+
+message ListScopesRequest {}
+message ListScopesResponse {
+  repeated ScopeCount scopes = 1;
+  bool approximate = 2; // true when the scan hit the scanCap ceiling
+}
+
+message ListMemoriesRequest {
+  string scope = 1;
+  uint64 limit = 2;
+}
+message ListMemoriesResponse { repeated Memory memories = 1; }
+
+message SearchMemoriesRequest {
+  string query = 1;
+  string scope = 2;
+  uint64 k = 3;
+}
+message SearchMemoriesResponse { repeated Memory memories = 1; }
+
+message GetMemoryRequest { string id = 1; }
+message GetMemoryResponse { Memory memory = 1; }
+
+message SearchDiscoveriesRequest {
+  string query = 1;
+  string scope = 2;
+  uint64 k = 3;
+}
+message SearchDiscoveriesResponse { repeated Memory discoveries = 1; }
+
+service EngramService {
+  rpc ListScopes(ListScopesRequest) returns (ListScopesResponse);
+  rpc ListMemories(ListMemoriesRequest) returns (ListMemoriesResponse);
+  rpc SearchMemories(SearchMemoriesRequest) returns (SearchMemoriesResponse);
+  rpc GetMemory(GetMemoryRequest) returns (GetMemoryResponse);
+  rpc SearchDiscoveries(SearchDiscoveriesRequest) returns (SearchDiscoveriesResponse);
+}
