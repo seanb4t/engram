@@ -312,6 +312,9 @@ func TestSearchAndDeleteAll(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	scope := "eval-test:project:search-test"
+	// A foreign-owned record survives the anon-scoped DeleteAll below, so clean
+	// the whole scope raw regardless of owner.
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
 
 	m1 := Memory{
 		ID: "22222222-2222-2222-2222-222222222222", Content: "prefers Go over Python",
@@ -321,12 +324,25 @@ func TestSearchAndDeleteAll(t *testing.T) {
 		ID: "33333333-3333-3333-3333-333333333333", Content: "uses conventional commits",
 		Scope: scope, Source: "agent-inferred", Category: "convention", CreatedAt: time.Now().UTC(),
 	}
+	// A record owned by a different sub, sharing m1's vector so it WOULD rank in
+	// the query below if the owner filter regressed to matching everything. Both
+	// the anon search (must exclude it) and the anon DeleteAll (must not delete
+	// it) then exercise the owner-match branch — without this record an absent
+	// owner filter would pass the test silently.
+	mForeign := Memory{
+		ID: "44444444-4444-4444-4444-444444444444", Content: "foreign-owned secret",
+		Scope: scope, Owner: "sub-foreign", Source: "user-said", Category: "preference",
+		CreatedAt: time.Now().UTC(),
+	}
 
 	if err := s.Upsert(ctx, m1, []float32{0.9, 0.1, 0.0}); err != nil {
 		t.Fatalf("upsert m1: %v", err)
 	}
 	if err := s.Upsert(ctx, m2, []float32{0.0, 0.1, 0.9}); err != nil {
 		t.Fatalf("upsert m2: %v", err)
+	}
+	if err := s.Upsert(ctx, mForeign, []float32{0.9, 0.1, 0.0}); err != nil {
+		t.Fatalf("upsert mForeign: %v", err)
 	}
 
 	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5)
@@ -335,6 +351,13 @@ func TestSearchAndDeleteAll(t *testing.T) {
 	}
 	if len(hits) == 0 {
 		t.Fatal("expected at least 1 search hit")
+	}
+	// The owner-match branch must fire: an anonymous caller sees only the
+	// anonymous bucket (owner==""), never the foreign-owned record.
+	for _, h := range hits {
+		if h.Owner != "" {
+			t.Errorf("anonymous search returned a non-anon record: id=%s owner=%q", h.ID, h.Owner)
+		}
 	}
 
 	if err := s.DeleteAll(ctx, scope, Anonymous()); err != nil {
@@ -347,6 +370,15 @@ func TestSearchAndDeleteAll(t *testing.T) {
 	}
 	if len(hits2) != 0 {
 		t.Fatalf("expected 0 hits after delete_all, got %d", len(hits2))
+	}
+	// DeleteAll is owner-scoped: the foreign-owned record must survive an
+	// anonymous DeleteAll.
+	survivors, err := s.Search(ctx, scope, Authenticated("sub-foreign"), []float32{0.9, 0.1, 0.0}, 5)
+	if err != nil {
+		t.Fatalf("search as foreign owner after delete_all: %v", err)
+	}
+	if len(survivors) != 1 {
+		t.Fatalf("foreign-owned record must survive anon delete_all: got %d want 1", len(survivors))
 	}
 }
 
