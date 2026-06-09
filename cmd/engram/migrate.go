@@ -6,13 +6,20 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/seanb4t/engram/internal/server"
 )
 
-var migrateOwner string
+var (
+	migrateOwner   string
+	migrateTimeout time.Duration
+)
 
 // migrateSetOwnerCmd backfills the stable OIDC `sub` onto memory records written
 // before per-actor isolation (which carry no `owner` key). One-time, idempotent.
@@ -29,7 +36,17 @@ var migrateSetOwnerCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		n, err := st.MigrateSetOwner(context.Background(), migrateOwner)
+		// Bound the backfill so a hung Qdrant cannot block forever, and let the
+		// operator abort with Ctrl-C / SIGTERM. context.Background() previously
+		// gave the underlying gRPC calls no deadline or cancellation path.
+		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if migrateTimeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, migrateTimeout)
+			defer cancel()
+		}
+		n, err := st.MigrateSetOwner(ctx, migrateOwner)
 		if err != nil {
 			return err
 		}
@@ -42,5 +59,7 @@ func init() {
 	migrateSetOwnerCmd.Flags().StringVar(&migrateOwner, "owner",
 		server.EnvOr("MEM_MIGRATE_OWNER", ""),
 		"OIDC sub to stamp onto owner-less records (required, non-empty)")
+	migrateSetOwnerCmd.Flags().DurationVar(&migrateTimeout, "timeout", 5*time.Minute,
+		"max wall-clock for the backfill (0 disables); also cancellable via Ctrl-C")
 	rootCmd.AddCommand(migrateSetOwnerCmd)
 }
