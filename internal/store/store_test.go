@@ -828,6 +828,19 @@ func TestMigrateSetOwner(t *testing.T) {
 	}
 }
 
+// TestMigrateSetOwnerHonorsCancel verifies the backfill propagates context
+// cancellation to its Qdrant calls instead of running to completion — the
+// property the CLI relies on for its --timeout / Ctrl-C bound (engram-027), so a
+// hung Qdrant cannot block forever.
+func TestMigrateSetOwnerHonorsCancel(t *testing.T) {
+	s := testStore(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel before the call: the first Count must observe it and bail.
+	if _, err := s.MigrateSetOwner(ctx, "sub-x"); err == nil {
+		t.Error("MigrateSetOwner with a cancelled context: expected error, got nil")
+	}
+}
+
 // TestAnonBucketReadIsolation verifies Q1 (engram-99z.13): anonymous callers
 // (sub=="") may only read the anonymous bucket (owner=="") — they cannot see
 // another owner's shared record via Search, List, or GetReadable.
