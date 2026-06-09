@@ -127,8 +127,9 @@ func TestConnectCrossActorIsolation(t *testing.T) {
 	})
 
 	t.Run("Anonymous_ListMemories_sees_nothing_of_actor_A", func(t *testing.T) {
-		// Anonymous = no TokenInfo on context → store.Anonymous() → owner=="" bucket only.
-		anonCtx := context.Background()
+		// Anonymous = interceptor ran with nil TokenInfo (auth disabled / no issuer).
+		// Inject via the test seam the same way the interceptor would: key present, ti==nil.
+		anonCtx := withConnectTokenInfo(context.Background(), nil)
 		resp, err := api.ListMemories(anonCtx, connect.NewRequest(&engramv1.ListMemoriesRequest{Scope: scope, Limit: 10}))
 		if err != nil {
 			t.Fatalf("ListMemories(anon): %v", err)
@@ -137,6 +138,15 @@ func TestConnectCrossActorIsolation(t *testing.T) {
 			if m.Owner != "" {
 				t.Errorf("Anonymous caller saw record owned by %q (id=%s); expected empty-owner bucket only", m.Owner, m.Id)
 			}
+		}
+	})
+
+	t.Run("NoInterceptor_fails_closed", func(t *testing.T) {
+		// Bare context.Background() has no connectSubjectKey → interceptor was never installed.
+		// subjectFromConnectContext must fail closed with an error, NOT silently grant anonymous access.
+		_, err := api.ListMemories(context.Background(), connect.NewRequest(&engramv1.ListMemoriesRequest{Scope: scope, Limit: 10}))
+		if err == nil {
+			t.Fatal("ListMemories with absent interceptor key: expected error (fail-closed), got nil")
 		}
 	})
 }

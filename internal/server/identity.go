@@ -35,10 +35,20 @@ func withConnectTokenInfo(ctx context.Context, ti *mcpauth.TokenInfo) context.Co
 	return context.WithValue(ctx, connectSubjectKey{}, ti)
 }
 
-// subjectFromConnectContext resolves the Subject for a Connect request. A request
-// that reached a handler without the interceptor populating the key is a
-// programming error and fails closed (nil Subject -> store default-deny).
+// subjectFromConnectContext resolves the Subject for a Connect request.
+//
+// Two distinct cases:
+//   - Key present, ti==nil  (interceptor ran, auth disabled / anonymous caller):
+//     resolves to the anonymous bucket via SubjectFromTokenInfo(nil). This is the
+//     legitimate no-issuer path.
+//   - Key absent (interceptor was never installed — a programming error):
+//     fails closed with an error rather than silently granting anonymous-bucket access.
 func subjectFromConnectContext(ctx context.Context) (store.Subject, error) {
-	ti, _ := ctx.Value(connectSubjectKey{}).(*mcpauth.TokenInfo)
+	ti, ok := ctx.Value(connectSubjectKey{}).(*mcpauth.TokenInfo)
+	if !ok {
+		// Interceptor not installed — a programming error. Fail closed rather
+		// than silently granting anonymous-bucket access.
+		return nil, fmt.Errorf("connect subject key absent: interceptor not installed")
+	}
 	return SubjectFromTokenInfo(ti)
 }
