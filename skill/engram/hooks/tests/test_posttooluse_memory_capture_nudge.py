@@ -49,6 +49,12 @@ def git_repo(tmp_path: Path) -> Path:
         "user.email=t@t",
         "-c",
         "user.name=t",
+        # commit.gpgsign=false keeps the fixture hermetic: a developer's global
+        # signing config (e.g. 1Password's gpg.ssh.program) otherwise makes this
+        # commit fail ("failed to write commit object", exit 128) whenever the
+        # signer can't sign — locked vault, headless drain, CI.
+        "-c",
+        "commit.gpgsign=false",
         "commit",
         "--allow-empty",
         "-m",
