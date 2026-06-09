@@ -13,6 +13,11 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-e38](engram-e38-shadcn-svelte-bits-ui-tailwind-v4-as-component-layer-re-them.md) | 2026-06-09 | Accepted | shadcn-svelte (on bits-ui) + Tailwind v4 as the component layer, re-themed |
+| [engram-8xe](engram-8xe-adopt-connectrpc-and-protobuf-buf-web-ui-api.md) | 2026-06-09 | Accepted | Adopt ConnectRPC and protobuf/buf for the web UI API |
+| [engram-bgj](engram-bgj-embed-bff-engram-go-binary-not-node-runtime.md) | 2026-06-09 | Accepted | Embed the BFF in the engram Go binary, not a Node runtime |
+| [engram-0lu](engram-0lu-sveltekit-adapter-static-spa-vendored-via-go-embed-ssr-dropp.md) | 2026-06-09 | Accepted | SvelteKit adapter-static SPA vendored via go:embed, SSR dropped |
+| [engram-u9v](engram-u9v-stateless-encrypted-cookie-session-no-server-side-store.md) | 2026-06-09 | Accepted | Stateless encrypted-cookie session, no server-side store |
 | [engram-12c](engram-12c-represent-authz-subject-as-sealed-go-interface.md) | 2026-06-08 | Accepted | Represent authz Subject as a sealed Go interface |
 | [engram-tdk](engram-tdk-instrument-mcp-tools-via-addreceivingmiddleware-not-per-hand.md) | 2026-06-07 | Accepted | Instrument MCP tools via AddReceivingMiddleware, not per-handler |
 | [engram-dwi](engram-dwi-export-telemetry-via-otlp-only-omit-prometheus-scrape-endpoi.md) | 2026-06-07 | Accepted | Export telemetry via OTLP only; omit a Prometheus scrape endpoint |
