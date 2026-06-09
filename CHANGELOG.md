@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.2](https://github.com/seanb4t/engram/compare/v0.5.1...v0.5.2) (2026-06-09)
+
+
+### Features
+
+* **migrate:** harden migrate-set-owner (timeout/cancel) + isolation test hardening ([#58](https://github.com/seanb4t/engram/issues/58)) ([8710b70](https://github.com/seanb4t/engram/commit/8710b70cd359fc1e875b72ab39aa244b0421302e))
+* **telemetry:** include trace_id/span_id in stdout logs ([#52](https://github.com/seanb4t/engram/issues/52)) ([0fefc14](https://github.com/seanb4t/engram/commit/0fefc1467df1bfb705fd1accc4cbeb11b3d70ab5))
+
+
+### Bug Fixes
+
+* **authz:** fail-closed hardening for the anonymous bucket (epic engram-dg5) ([#54](https://github.com/seanb4t/engram/issues/54)) ([fb44bf0](https://github.com/seanb4t/engram/commit/fb44bf028aa60e757cc0b1305b17dea4b70676c9))
+
 ## [0.5.1](https://github.com/seanb4t/engram/compare/v0.5.0...v0.5.1) (2026-06-07)
 
 
