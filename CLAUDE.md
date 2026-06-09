@@ -18,11 +18,16 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 | `internal/embed/` | embedder (OpenAI-compatible / LiteLLM) |
 | `internal/auth/` | OIDC bearer-token verifier (go-oidc + go-sdk auth middleware) |
 | `charts/engram/` | Helm chart (server + Qdrant), generic/parameterized |
+| `proto/engram/v1/` | protobuf schema (`EngramService` v1 read API) — source of truth for codegen |
+| `gen/` | committed buf-generated code (connect-go stubs in `gen/go/`, protobuf-es types in `gen/ts/`) |
 
 ## Conventions
 
 - **VCS:** jj-colocated. Use jj for VCS ops; never push to `main` directly.
 - **Task runner:** `task` (see `Taskfile.yaml`). `task` = lint + test.
+- **Protobuf/buf:** the `EngramService` Connect API is defined in `proto/` and
+  generated via `go tool buf` (`task proto:lint` / `task proto:gen`); the
+  generated `gen/` tree is committed and CI-checked for drift (`buf` job).
 - **CLI:** cobra; **no viper** — config is env-first (`MEM_*`) with flag overrides.
 - **Commits:** Conventional Commits; PR titles validated in CI
   (action-semantic-pull-request).
@@ -36,7 +41,7 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
   chart:push`). release-please syncs `charts/engram/Chart.yaml`
   (`version`/`appVersion`) and `skill/engram/.claude-plugin/plugin.json`
   (`$.version`); the binary version is ldflags-injected into `main.version`.
-- **Not used here:** protobuf/buf, database migrations, viper, cocogitto.
+- **Not used here:** database migrations, viper, cocogitto.
 
 ## Memory contract (stable)
 
