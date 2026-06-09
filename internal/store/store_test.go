@@ -1195,3 +1195,38 @@ func (s *Store) DeleteAllRaw(ctx context.Context, scope string) error {
 	})
 	return err
 }
+
+func TestListScopes(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	a, b := "ls-test:project:a", "ls-test:project:b"
+	defer func() {
+		cleanupErr(t, "DeleteAllRaw "+a, s.DeleteAllRaw(ctx, a))
+		cleanupErr(t, "DeleteAllRaw "+b, s.DeleteAllRaw(ctx, b))
+	}()
+	mk := func(id, scope, owner string) {
+		m := Memory{ID: id, Content: "x", Scope: scope, Owner: owner, CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	mk("c1111111-0000-0000-0000-000000000001", a, "sub-A")
+	mk("c1111111-0000-0000-0000-000000000002", a, "sub-A")
+	mk("c1111111-0000-0000-0000-000000000003", b, "sub-A")
+	mk("c1111111-0000-0000-0000-000000000004", a, "sub-B") // foreign: excluded for sub-A
+
+	scopes, approx, err := s.ListScopes(ctx, Authenticated("sub-A"))
+	if err != nil {
+		t.Fatalf("ListScopes: %v", err)
+	}
+	if approx {
+		t.Errorf("approximate=true for a tiny set, want false")
+	}
+	counts := map[string]uint64{}
+	for _, sc := range scopes {
+		counts[sc.Scope] = sc.Count
+	}
+	if counts[a] != 2 || counts[b] != 1 {
+		t.Errorf("counts = %v, want {%s:2, %s:1} (sub-B's record excluded)", counts, a, b)
+	}
+}
