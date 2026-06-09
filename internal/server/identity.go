@@ -4,6 +4,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
@@ -23,4 +24,21 @@ func SubjectFromTokenInfo(ti *mcpauth.TokenInfo) (store.Subject, error) {
 		return store.Authenticated(sub), nil
 	}
 	return nil, fmt.Errorf("validated token missing subject")
+}
+
+// connectSubjectKey is engram-owned (NOT the go-sdk's unexported key); the
+// Connect interceptor writes the resolved TokenInfo under it and
+// subjectFromConnectContext reads it. Tests use withConnectTokenInfo to inject.
+type connectSubjectKey struct{}
+
+func withConnectTokenInfo(ctx context.Context, ti *mcpauth.TokenInfo) context.Context {
+	return context.WithValue(ctx, connectSubjectKey{}, ti)
+}
+
+// subjectFromConnectContext resolves the Subject for a Connect request. A request
+// that reached a handler without the interceptor populating the key is a
+// programming error and fails closed (nil Subject -> store default-deny).
+func subjectFromConnectContext(ctx context.Context) (store.Subject, error) {
+	ti, _ := ctx.Value(connectSubjectKey{}).(*mcpauth.TokenInfo)
+	return SubjectFromTokenInfo(ti)
 }
