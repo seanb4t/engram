@@ -780,12 +780,28 @@ func TestMigrateSetOwner(t *testing.T) {
 		t.Fatalf("raw upsert: %v", err)
 	}
 
+	// An auth-disabled / anonymous-bucket record: the owner key is PRESENT but
+	// empty (""). ownerlessFilter uses qdrant.NewIsEmpty("owner"), which matches a
+	// MISSING key, not an empty-string value — so the backfill must leave this
+	// record untouched. Without that distinction, enabling auth and running
+	// migrate-set-owner would silently hijack every anonymous record into the
+	// operator's sub.
+	anonID := "d4d4d4d4-0000-0000-0000-000000000002"
+	if err := s.Upsert(ctx, Memory{
+		ID: anonID, Content: "anon-bucket", Scope: scope,
+		Owner: "", CreatedAt: time.Now().UTC(),
+	}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed anon-bucket record: %v", err)
+	}
+
 	n, err := s.MigrateSetOwner(ctx, "sub-OWNER")
 	if err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if n == 0 {
-		t.Fatal("migrate stamped 0 records, want >= 1")
+	// Exactly one record stamped: the missing-key legacy record. The explicit
+	// owner=="" record is not matched by NewIsEmpty and must not be counted.
+	if n != 1 {
+		t.Fatalf("migrate stamped %d records, want exactly 1 (only the missing-key record; the explicit owner=='' bucket must be skipped)", n)
 	}
 	got, err := s.Get(ctx, id)
 	if err != nil {
@@ -793,6 +809,14 @@ func TestMigrateSetOwner(t *testing.T) {
 	}
 	if got.Owner != "sub-OWNER" {
 		t.Errorf("owner not stamped: %q", got.Owner)
+	}
+	// The auth-disabled owner=="" record must be untouched by the backfill.
+	anon, err := s.Get(ctx, anonID)
+	if err != nil {
+		t.Fatalf("Get anon-bucket after migrate: %v", err)
+	}
+	if anon.Owner != "" {
+		t.Errorf("auth-disabled record hijacked: owner=%q, want \"\" (NewIsEmpty must not match empty-string owner)", anon.Owner)
 	}
 	// Idempotent: a second run stamps nothing (the record now has an owner).
 	n2, err := s.MigrateSetOwner(ctx, "sub-OWNER")
