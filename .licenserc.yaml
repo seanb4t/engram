@@ -13,6 +13,7 @@ header:
   paths:
     - "cmd/**"
     - "internal/**"
+    - "proto/**"
     - "docs/**"
     - "*.md"
     - "skill/**"

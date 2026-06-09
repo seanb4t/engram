@@ -330,6 +330,40 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, limit uint
 	return out, nil
 }
 
+// ScopeCount is a scope plus the number of records in it the caller can read.
+type ScopeCount struct {
+	Scope string
+	Count uint64
+}
+
+// ListScopes enumerates the caller's readable scopes with per-scope counts.
+// Qdrant has no GROUP BY, so it scrolls the readable set (owner OR shared, across
+// ALL scopes — ownerOrSharedCondition, not ownerScopeFilter which pins a scope)
+// bounded by scanCap and aggregates in-process. The second return is true when
+// the scan hit scanCap, meaning the counts are a bounded sample, not exact.
+func (s *Store) ListScopes(ctx context.Context, subj Subject) ([]ScopeCount, bool, error) {
+	const scanCap = 1000
+	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: s.collection,
+		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{ownerOrSharedCondition(subj)}},
+		Limit:          qdrant.PtrOf(uint32(scanCap)),
+		WithPayload:    qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	counts := map[string]uint64{}
+	for _, p := range pts {
+		counts[fromPayload(p.Id.GetUuid(), p.Payload).Scope]++
+	}
+	out := make([]ScopeCount, 0, len(counts))
+	for sc, n := range counts {
+		out = append(out, ScopeCount{Scope: sc, Count: n})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Scope < out[j].Scope })
+	return out, len(pts) == scanCap, nil
+}
+
 // Get returns the memory with the given id.
 func (s *Store) Get(ctx context.Context, id string) (Memory, error) {
 	pts, err := s.client.Get(ctx, &qdrant.GetPoints{

@@ -319,21 +319,10 @@ func actorFromContext(ctx context.Context) string {
 	return ""
 }
 
-// subjectFromContext returns the verified caller as a store.Subject. No token in
-// context → Anonymous (auth disabled, the owner=="" bucket). A validated token
-// carrying a non-empty `sub` → Authenticated(sub). A validated-but-malformed
-// token (no non-empty sub) is a fail-closed error, never silently collapsed into
-// the anonymous bucket. Its nil-on-error return (vs ""-on-error) means a
-// discarded error fails closed at the store default arm.
+// subjectFromContext delegates to SubjectFromTokenInfo. See that function for the
+// fail-closed rationale and nil-token semantics.
 func subjectFromContext(ctx context.Context) (store.Subject, error) {
-	ti := mcpauth.TokenInfoFromContext(ctx)
-	if ti == nil {
-		return store.Anonymous(), nil
-	}
-	if sub, ok := ti.Extra["sub"].(string); ok && sub != "" {
-		return store.Authenticated(sub), nil
-	}
-	return nil, fmt.Errorf("validated token missing subject")
+	return SubjectFromTokenInfo(mcpauth.TokenInfoFromContext(ctx))
 }
 
 func (d *deps) listMemory(ctx context.Context, a listArgs) ([]store.Memory, error) {
@@ -425,11 +414,12 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 // instance rather than two disjoint ones. Returns an error if dependency
 // construction (store/embedder) fails, so the caller can flush telemetry and
 // exit cleanly rather than aborting via log.Fatal.
-func Register(s *mcp.Server, tm *telemetry.ToolMetrics) error {
+func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, resolve connectResolver) error {
 	d, err := buildDepsFromEnv()
 	if err != nil {
 		return fmt.Errorf("build deps: %w", err)
 	}
+	d.mountConnect(mux, resolve)
 
 	s.AddReceivingMiddleware(instrumentTools(tm.Record))
 

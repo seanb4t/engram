@@ -74,10 +74,22 @@ func runServe() error {
 	// the same instrument objects and export together.
 	tm := telemetry.NewToolMetrics(otel.Meter("github.com/seanb4t/engram"))
 
+	mux := http.NewServeMux()
+
 	srv := mcp.NewServer(&mcp.Implementation{Name: "engram", Version: version}, nil)
-	if err := server.Register(srv, tm); err != nil {
+	// Build MCP tools + mount the Connect API on the mux from one deps. nil
+	// resolver = anonymous until the cookie/OIDC lane lands (later plan).
+	if err := server.Register(srv, mux, tm, nil); err != nil {
 		slog.Error("server registration failed", "err", err)
 		return err
+	}
+	// Connect/EngramService is mounted with no auth resolver; it serves only
+	// the anonymous (owner=="") bucket. Warn loudly so operators are never
+	// surprised — matching the "never silently open" principle in withAuth.
+	if oidcIssuer != "" {
+		slog.Warn("Connect/EngramService HTTP API mounted WITHOUT authentication (anonymous bucket only); OIDC does NOT gate this path — bearer-token enforcement applies to MCP only", "oidc_issuer", oidcIssuer)
+	} else {
+		slog.Warn("Connect/EngramService HTTP API mounted WITHOUT authentication (anonymous bucket only); set --oidc-issuer / MEM_OIDC_ISSUER to gate the MCP path")
 	}
 
 	var handler http.Handler = mcp.NewStreamableHTTPHandler(
@@ -89,6 +101,7 @@ func runServe() error {
 	}
 	handler = accessLog(tm.RecordAuthFailure, nil)(handler)
 	handler = otelhttp.NewHandler(handler, "mcp")
+	mux.Handle("/", handler) // MCP streamable transport stays the root catch-all
 
 	// ReadHeaderTimeout guards against slowloris; IdleTimeout reclaims idle
 	// keep-alive connections. ReadTimeout and WriteTimeout are intentionally
@@ -97,7 +110,7 @@ func runServe() error {
 	// timeout would sever long-lived SSE streams.
 	httpSrv := &http.Server{
 		Addr:              listenAddr,
-		Handler:           handler,
+		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

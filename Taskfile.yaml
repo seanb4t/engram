@@ -111,6 +111,15 @@ tasks:
     cmds:
       - goreleaser release --snapshot --clean
 
+  proto:lint:
+    desc: Lint protobuf schema
+    cmds:
+      - go tool buf lint
+  proto:gen:
+    desc: Regenerate connect stubs (Go + TS) from proto
+    cmds:
+      - go tool buf generate
+
   deps:
     cmds:
       - go mod tidy

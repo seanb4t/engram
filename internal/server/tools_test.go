@@ -683,7 +683,7 @@ func TestRegisterReturnsErrorOnStoreInitFailure(t *testing.T) {
 	t.Setenv("MEM_EMBED_DIM", "not-a-number") // forces StoreFromEnv error pre-dial
 	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
 	tm := telemetry.NewToolMetrics(otel.Meter("test"))
-	if err := Register(s, tm); err == nil {
+	if err := Register(s, http.NewServeMux(), tm, nil); err == nil {
 		t.Fatal("Register must return an error when store init fails, not exit")
 	}
 }
