@@ -1169,6 +1169,12 @@ func TestNilSubjectFailsClosed(t *testing.T) {
 	if err := s.OwnedOrAbsent(ctx, anon.ID, nilSubj); !errors.Is(err, ErrNotFound) {
 		t.Errorf("OwnedOrAbsent(nil) on existing id: want ErrNotFound, got %v", err)
 	}
+	// ABSENT id short-circuits before the subject switch (Get→ErrNotFound):
+	// nothing to overwrite, so OwnedOrAbsent returns nil even for a nil subject —
+	// the create-new arm, distinct from the existing-id default-deny above.
+	if err := s.OwnedOrAbsent(ctx, "00000000-0000-0000-0000-0000000000ab", nilSubj); err != nil {
+		t.Errorf("OwnedOrAbsent(nil) on absent id: want nil (create-new, nothing to overwrite), got %v", err)
+	}
 
 	// Bulk delete is rejected and removes nothing.
 	if err := s.DeleteAll(ctx, scope, nilSubj); !errors.Is(err, ErrNotFound) {

@@ -233,6 +233,17 @@ func ownerOrSharedCondition(subj Subject) *qdrant.Condition {
 	}
 }
 
+// matchNothing returns a condition no record can satisfy (owner==x AND owner!=x).
+// It backs the fail-closed default arm of read-filter switches when the Subject
+// is nil/unknown — a query then returns zero rows rather than over-returning.
+func matchNothing() *qdrant.Condition {
+	const x = "\x00engram-no-such-owner"
+	return qdrant.NewFilterAsCondition(&qdrant.Filter{
+		Must:    []*qdrant.Condition{qdrant.NewMatch("owner", x)},
+		MustNot: []*qdrant.Condition{qdrant.NewMatch("owner", x)},
+	})
+}
+
 // ownerScopeFilter restricts to a scope AND the caller's readable set (see
 // ownerOrSharedCondition for anonymous vs authenticated semantics).
 func (s *Store) ownerScopeFilter(scope string, subj Subject) *qdrant.Filter {

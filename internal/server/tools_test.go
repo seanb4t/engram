@@ -214,6 +214,35 @@ func authedContext(t *testing.T, sub string) context.Context {
 	return captured
 }
 
+// TestStoreMemoryStampsOwnerHandler pins that the storeMemory handler stamps
+// Memory.Owner from the authenticated subject (subj.Owner()) through the full
+// handler path. Every other owner-bearing test seeds records via st.Upsert, so
+// the handler's own owner-stamping line was never exercised end-to-end through
+// authedContext. Integration: needs Qdrant.
+func TestStoreMemoryStampsOwnerHandler(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-stamp")
+	scope := "iso-test:project:store-stamp"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-stamp")))
+	}()
+
+	id, err := d.storeMemory(ctx, storeArgs{
+		Content: "owned via handler", Scope: scope,
+		Source: "user-said", Category: "preference",
+	})
+	if err != nil {
+		t.Fatalf("storeMemory: %v", err)
+	}
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get after storeMemory: %v", err)
+	}
+	if got.Owner != "sub-stamp" {
+		t.Errorf("storeMemory did not stamp owner from subject: owner=%q, want %q", got.Owner, "sub-stamp")
+	}
+}
+
 func TestValidateStoreDiscovery(t *testing.T) {
 	good := storeDiscoveryArgs{
 		Content: "x", Kind: "map", Scope: "discovery:repo:X",
