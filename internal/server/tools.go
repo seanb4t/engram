@@ -414,11 +414,12 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 // instance rather than two disjoint ones. Returns an error if dependency
 // construction (store/embedder) fails, so the caller can flush telemetry and
 // exit cleanly rather than aborting via log.Fatal.
-func Register(s *mcp.Server, tm *telemetry.ToolMetrics) error {
+func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, resolve connectResolver) error {
 	d, err := buildDepsFromEnv()
 	if err != nil {
 		return fmt.Errorf("build deps: %w", err)
 	}
+	d.mountConnect(mux, resolve)
 
 	s.AddReceivingMiddleware(instrumentTools(tm.Record))
 

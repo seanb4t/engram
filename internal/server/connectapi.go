@@ -6,8 +6,10 @@ package server
 import (
 	"context"
 	"errors"
+	"net/http"
 
 	"connectrpc.com/connect"
+	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
@@ -122,4 +124,20 @@ func (a *engramAPI) SearchDiscoveries(ctx context.Context, req *connect.Request[
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&engramv1.SearchDiscoveriesResponse{Discoveries: memoriesToProto(ms)}), nil
+}
+
+// connectResolver supplies the per-request identity TokenInfo for the Connect
+// lane. The cookie/OIDC lane (later plan) provides a real one; a nil resolver
+// defaults to anonymous (the no-issuer case).
+type connectResolver func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)
+
+func (d *deps) mountConnect(mux *http.ServeMux, resolve connectResolver) {
+	if resolve == nil {
+		resolve = func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error) { return nil, nil }
+	}
+	path, h := engramv1connect.NewEngramServiceHandler(
+		&engramAPI{d: d},
+		connect.WithInterceptors(newConnectSubjectInterceptor(resolve)),
+	)
+	mux.Handle(path, h)
 }
