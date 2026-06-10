@@ -1,0 +1,126 @@
+---
+title: Memory Record
+description: Field-by-field reference for the engram memory record — types, allowed values, and isolation semantics.
+---
+
+Every piece of information stored in engram is a **memory record**. Records are
+stored as vectors in Qdrant and surfaced through the MCP tools. This page
+documents every field, its serialized JSON name, allowed values, and who sets it.
+
+## Field reference
+
+| Field | JSON key | Type | Set by | Description |
+|-------|----------|------|--------|-------------|
+| ID | `id` | string (UUID) | server | Unique record identifier, generated on creation |
+| Content | `content` | string | client | The memory text; also the text that is embedded |
+| Scope | `scope` | string | client | `run:tier:repo` identifier, e.g. `eval-2026-05:project:selfhosted-cluster` |
+| Repo | `repo` | string | client | Repository name or URL (optional context) |
+| Workspace | `workspace` | string | client | Workspace identifier (optional context) |
+| Worktree path | `worktree_path` | string | client | Path to the git worktree (optional context) |
+| Base dir | `base_dir` | string | client | Base directory for the project (optional context) |
+| Source | `source` | string | client | How the memory was produced — see [Source values](#source-values) |
+| Category | `category` | string | client | What kind of memory — see [Category values](#category-values) |
+| Tags | `tags` | string[] | client | Free-form labels |
+| Actor | `actor` | string | **server** | Verified caller identity extracted from the OIDC token (email, username, or subject); never client-supplied; empty when auth is disabled |
+| Owner | `owner` | string | **server** | Stable OIDC `sub` of the caller — the authorization key; never client-supplied; empty string when auth is disabled (anonymous bucket) |
+| Visibility | `visibility` | string | client/server | `""` (private, default) or `"shared"` — see [Visibility](#visibility) |
+| Created at | `created_at` | string (RFC3339) | server | UTC timestamp of creation |
+
+### Source values
+
+The `source` field describes how the memory was produced. Exactly two values are
+accepted by the store:
+
+| Value | Meaning |
+|-------|---------|
+| `user-said` | The user stated this explicitly |
+| `agent-inferred` | The agent derived or inferred this |
+
+Discovery records always have `source` set to `agent-inferred` by the server.
+
+### Category values
+
+The `category` field classifies what kind of memory is stored:
+
+| Value | Meaning |
+|-------|---------|
+| `decision` | An architectural or design decision |
+| `preference` | A stated user or team preference |
+| `convention` | A coding or workflow convention |
+| `gotcha` | A known pitfall or non-obvious behaviour |
+| `discovery` | Agent-earned codebase understanding (see [Discovery fields](#discovery-fields)) |
+
+The `discovery` category is set by the server for records created via
+`store_discovery`; client callers use the other four values with `store_memory`.
+
+### Visibility
+
+The `visibility` field controls cross-actor reads:
+
+| Value | Meaning |
+|-------|---------|
+| `""` (empty string) | Private — only the owner can read and write |
+| `"shared"` | Readable by any authenticated caller; writable only by owner |
+
+Toggle visibility with `set_visibility` or `update_memory`'s `shared` argument.
+Sharing grants **read only** — another actor can never write a record they do not
+own, even when it is shared.
+
+---
+
+## Discovery fields
+
+Records in the `discovery` category carry additional fields that are absent (or
+zero-valued) on regular memory records.
+
+| Field | JSON key | Type | Required | Description |
+|-------|----------|------|----------|-------------|
+| Kind | `kind` | string | yes | `map` (orientation/structure) or `fact` (pinned checkable claim) |
+| Citations | `citations` | Citation[] | yes | At least one source anchor; max 50 |
+| Summary | `summary` | string | no | Short human-readable summary |
+
+Discovery records live in scopes starting with `discovery:`, typically
+`discovery:repo:<repo>`. They are recalled on demand via `search_discovery` and
+are never returned by `list_memory` session bootstrap.
+
+### Citation fields
+
+Each citation anchors a discovery claim to a verifiable source:
+
+| Field | JSON key | Type | Required | Description |
+|-------|----------|------|----------|-------------|
+| Kind | `kind` | string | yes | `file`, `commit`, `url`, or `repo` |
+| Ref | `ref` | string | yes | Path, repo URL, or doc URL |
+| Locator | `locator` | string | no | E.g. `200-240` line range |
+| Pin | `pin` | string | no | Aging anchor: commit SHA, content-hash, `@rev`, or `fetched-at` |
+| Excerpt | `excerpt` | string | no | Cached substance from the source; max 16 KiB, soft cap ~50 lines |
+
+---
+
+## Field name notes
+
+The serialized JSON keys match the Go struct tags in `internal/store/store.go`
+exactly:
+
+- `worktree_path` (not `worktree`) — the struct field is `Worktree string \`json:"worktree_path"\``
+- `base_dir` (not `baseDir`) — snake_case throughout
+- `created_at` — RFC3339 string in the Qdrant payload; deserialized as `time.Time`
+
+These match the README's description (`repo`/`workspace`/`worktree_path`/`base_dir`).
+
+---
+
+## Isolation and ownership
+
+`actor` and `owner` are always server-set. The `actor` is extracted from the
+token's `UserID` (email, username, or subject claim, in priority order). The
+`owner` is always the stable OIDC `sub` claim — it does not change when the
+user's email changes.
+
+When authentication is disabled (no `--oidc-issuer`), both `actor` and `owner`
+are empty strings, and all callers share one anonymous bucket.
+
+Pre-isolation records — those written before per-actor ownership was added —
+carry no `owner` key (distinct from an empty-string `owner`). They are invisible
+to every owner-scoped read. See [Auth and Isolation](/reference/auth) for
+migration details.
