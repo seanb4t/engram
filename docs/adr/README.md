@@ -13,6 +13,7 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-1xv](engram-1xv-trust-sealed-cookie-sub-until-session-ttl-defer-per-request.md) | 2026-06-10 | Accepted | Trust sealed cookie sub until session TTL; defer per-request IdP refresh |
 | [engram-e38](engram-e38-shadcn-svelte-bits-ui-tailwind-v4-as-component-layer-re-them.md) | 2026-06-09 | Accepted | shadcn-svelte (on bits-ui) + Tailwind v4 as the component layer, re-themed |
 | [engram-8xe](engram-8xe-adopt-connectrpc-and-protobuf-buf-web-ui-api.md) | 2026-06-09 | Accepted | Adopt ConnectRPC and protobuf/buf for the web UI API |
 | [engram-bgj](engram-bgj-embed-bff-engram-go-binary-not-node-runtime.md) | 2026-06-09 | Accepted | Embed the BFF in the engram Go binary, not a Node runtime |
