@@ -3,7 +3,7 @@ title: Releasing
 description: How engram binary, image, and Helm chart releases are cut via release-please and GoReleaser.
 ---
 
-Engram releases are driven by [release-please](https://github.com/googleapis/release-please) and [GoReleaser](https://goreleaser.com), wired in `.github/workflows/release.yaml`. A single `vX.Y.Z` tag versions the binary, the multi-arch image, the OCI Helm chart, and the Claude plugin together.
+engram releases are driven by [release-please](https://github.com/googleapis/release-please) and [GoReleaser](https://goreleaser.com), wired in `.github/workflows/release.yaml`. A single `vX.Y.Z` tag versions the binary, the multi-arch image, the OCI Helm chart, and the Claude plugin together.
 
 ## How a release works
 
