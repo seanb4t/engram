@@ -95,7 +95,58 @@ func (h *Handler) Logout(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Callback completes the flow: recover state+verifier from the flow cookie,
+// enforce state equality (CSRF), exchange the code, verify the ID token, and
+// seal the session cookie. On success it redirects to "/".
+func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie(flowCookieName)
+	if err != nil {
+		http.Error(w, "missing or expired login flow", http.StatusBadRequest)
+		return
+	}
+	raw, err := h.codec.unsealBytes(c.Value)
+	if err != nil {
+		http.Error(w, "invalid login flow", http.StatusBadRequest)
+		return
+	}
+	var fs flowState
+	if err := json.Unmarshal(raw, &fs); err != nil {
+		http.Error(w, "invalid login flow", http.StatusBadRequest)
+		return
+	}
+	// Clear the flow cookie regardless of outcome (single use).
+	h.clearCookie(w, flowCookieName)
+
+	if r.URL.Query().Get("state") != fs.State || fs.State == "" {
+		http.Error(w, "state mismatch", http.StatusBadRequest)
+		return
+	}
+	code := r.URL.Query().Get("code")
+	if code == "" {
+		http.Error(w, "missing code", http.StatusBadRequest)
+		return
+	}
+
+	tok, sub, err := h.auth.exchange(r.Context(), code, fs.Verifier)
+	if err != nil {
+		slog.WarnContext(r.Context(), "oauth callback exchange failed", "err", err)
+		http.Error(w, "authentication failed", http.StatusUnauthorized)
+		return
+	}
+
+	sealed, err := h.codec.Seal(Session{
+		Sub:     sub,
+		Access:  tok.AccessToken,
+		Refresh: tok.RefreshToken,
+		Expiry:  nowUTC().Add(sessionTTL),
+	})
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	h.setCookie(w, sessionCookieName, sealed, sessionTTL)
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
 // nowUTC is a seam for tests; production uses the wall clock.
 var nowUTC = func() time.Time { return time.Now().UTC() }
-
-var _ = slog.Default // retained: callback/logout log via slog

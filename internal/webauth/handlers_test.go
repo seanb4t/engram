@@ -4,6 +4,7 @@
 package webauth
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -64,5 +65,29 @@ func TestLogoutClearsSessionCookie(t *testing.T) {
 	sc := rec.Header().Get("Set-Cookie")
 	if !strings.Contains(sc, sessionCookieName+"=") || !strings.Contains(sc, "Max-Age=0") {
 		t.Fatalf("session cookie not cleared: %q", sc)
+	}
+}
+
+func TestCallbackRejectsMissingFlowCookie(t *testing.T) {
+	h := testHandler(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/auth/callback?code=x&state=y", nil)
+	h.Callback(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d want 400 (no flow cookie)", rec.Code)
+	}
+}
+
+func TestCallbackRejectsStateMismatch(t *testing.T) {
+	h := testHandler(t)
+	// Seal a flow cookie with state "good".
+	fs, _ := json.Marshal(flowState{State: "good", Verifier: "v"})
+	sealed, _ := h.codec.sealBytes(fs)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/auth/callback?code=x&state=evil", nil)
+	req.AddCookie(&http.Cookie{Name: flowCookieName, Value: sealed})
+	h.Callback(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d want 400 (state mismatch)", rec.Code)
 	}
 }
