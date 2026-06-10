@@ -40,7 +40,7 @@ func (r *Resolver) Resolve(_ context.Context, req connect.AnyRequest) (*mcpauth.
 	if err != nil {
 		return nil, fmt.Errorf("invalid session cookie")
 	}
-	if !sess.Expiry.IsZero() && nowUTC().After(sess.Expiry) {
+	if sess.Expiry.IsZero() || nowUTC().After(sess.Expiry) {
 		return nil, fmt.Errorf("session expired")
 	}
 	if sess.Sub == "" {

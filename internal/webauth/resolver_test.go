@@ -5,7 +5,6 @@ package webauth
 
 import (
 	"context"
-	"net/http"
 	"testing"
 	"time"
 
@@ -62,6 +61,24 @@ func TestResolverRejectsTamperedCookie(t *testing.T) {
 	}
 }
 
+func TestResolverRejectsZeroExpiry(t *testing.T) {
+	codec := mustCodec(t)
+	r := NewResolver(codec)
+	sealed, _ := codec.Seal(Session{Sub: "u"})
+	if _, err := r.Resolve(context.Background(), resolverReq(t, sealed)); err == nil {
+		t.Fatal("expected error for zero-expiry session")
+	}
+}
+
+func TestResolverRejectsEmptySub(t *testing.T) {
+	codec := mustCodec(t)
+	r := NewResolver(codec)
+	sealed, _ := codec.Seal(Session{Sub: "", Expiry: nowUTC().Add(time.Hour)})
+	if _, err := r.Resolve(context.Background(), resolverReq(t, sealed)); err == nil {
+		t.Fatal("expected error for empty-sub session")
+	}
+}
+
 func mustCodec(t *testing.T) *SessionCodec {
 	t.Helper()
 	c, err := NewSessionCodec(testKey())
@@ -70,5 +87,3 @@ func mustCodec(t *testing.T) *SessionCodec {
 	}
 	return c
 }
-
-var _ = http.MethodGet // keep net/http import if unused elsewhere
