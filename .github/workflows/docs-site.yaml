@@ -72,3 +72,8 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: docs-site
           command: deploy
+          # The deploy job has no pnpm/node setup (it only downloads the prebuilt
+          # dist artifact). wrangler-action otherwise auto-detects pnpm from the
+          # packageManager field and fails with "Unable to locate executable
+          # file: pnpm" — force npm so it runs wrangler via npx (always present).
+          packageManager: npm
