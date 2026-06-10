@@ -6,9 +6,12 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 
 	"connectrpc.com/connect"
+	"connectrpc.com/otelconnect"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -131,13 +134,24 @@ func (a *engramAPI) SearchDiscoveries(ctx context.Context, req *connect.Request[
 // defaults to anonymous (the no-issuer case).
 type connectResolver func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)
 
-func (d *deps) mountConnect(mux *http.ServeMux, resolve connectResolver) {
+func (d *deps) mountConnect(mux *http.ServeMux, resolve connectResolver) error {
 	if resolve == nil {
-		resolve = func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error) { return nil, nil }
+		return nil // R1: no resolver => UI disabled => Connect not mounted at all.
+	}
+	otelIc, err := otelconnect.NewInterceptor()
+	if err != nil {
+		return fmt.Errorf("otelconnect interceptor: %w", err)
 	}
 	path, h := engramv1connect.NewEngramServiceHandler(
 		&engramAPI{d: d},
-		connect.WithInterceptors(newConnectSubjectInterceptor(resolve)),
+		// Order: otel outermost (spans cover auth + logging), then access-log,
+		// then the subject interceptor that resolves identity.
+		connect.WithInterceptors(
+			otelIc,
+			newConnectAccessLogInterceptor(slog.Default()),
+			newConnectSubjectInterceptor(resolve),
+		),
 	)
 	mux.Handle(path, h)
+	return nil
 }

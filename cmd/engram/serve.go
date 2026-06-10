@@ -78,18 +78,11 @@ func runServe() error {
 
 	srv := mcp.NewServer(&mcp.Implementation{Name: "engram", Version: version}, nil)
 	// Build MCP tools + mount the Connect API on the mux from one deps. nil
-	// resolver = anonymous until the cookie/OIDC lane lands (later plan).
+	// resolver = no cookie/OIDC lane configured => Connect API not mounted
+	// (Task 10 wires a real resolver once the web-auth lane lands).
 	if err := server.Register(srv, mux, tm, nil); err != nil {
 		slog.Error("server registration failed", "err", err)
 		return err
-	}
-	// Connect/EngramService is mounted with no auth resolver; it serves only
-	// the anonymous (owner=="") bucket. Warn loudly so operators are never
-	// surprised — matching the "never silently open" principle in withAuth.
-	if oidcIssuer != "" {
-		slog.Warn("Connect/EngramService HTTP API mounted WITHOUT authentication (anonymous bucket only); OIDC does NOT gate this path — bearer-token enforcement applies to MCP only", "oidc_issuer", oidcIssuer)
-	} else {
-		slog.Warn("Connect/EngramService HTTP API mounted WITHOUT authentication (anonymous bucket only); set --oidc-issuer / MEM_OIDC_ISSUER to gate the MCP path")
 	}
 
 	var handler http.Handler = mcp.NewStreamableHTTPHandler(

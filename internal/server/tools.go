@@ -430,7 +430,9 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 	if err != nil {
 		return fmt.Errorf("build deps: %w", err)
 	}
-	d.mountConnect(mux, resolve)
+	if err := d.mountConnect(mux, resolve); err != nil {
+		return fmt.Errorf("mount connect: %w", err)
+	}
 
 	s.AddReceivingMiddleware(instrumentTools(tm.Record))
 
