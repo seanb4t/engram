@@ -24,154 +24,20 @@ search before storing to avoid duplicates, and supersedes stale facts on
 contradiction. Writes are attributed to the verified caller, so you always know
 _who_ recorded a memory.
 
-## Tools
+## Documentation
 
-| Tool | Purpose |
-|------|---------|
-| `store_memory(content, scope, source, category, tags?, …)` | Persist a durable memory |
-| `store_discovery(content, kind, citations[], scope, …)` | Cache citation-backed codebase understanding (kind=map\|fact) |
-| `search_discovery(query, scope?, kind?, cross_spine?)` | On-demand semantic search over the discovery pool |
-| `search_memory(query, scope, k?)` | Semantic search within a scope |
-| `list_memory(scope, limit?)` | Most-recent memories in a scope (session bootstrap, no query) |
-| `get_memory(id)` | Fetch one memory |
-| `update_memory(id, content)` | Replace content in place (re-embeds) |
-| `delete_memory(id)` / `delete_all(scope)` | Correct / tear down |
+Full documentation — quickstart, deploy, configuration, the MCP tool
+contract, the memory-record and auth/isolation model, and contributor
+guides — lives at **<https://engram-docs.workers.dev>** (source under
+[`docs-site/`](./docs-site)).
 
-A memory record carries `content`, `scope`, `repo`/`workspace`/`worktree_path`/
-`base_dir`, `source` (`user-said` | `agent-inferred`), `category`, `tags`,
-`actor` (the verified caller identity — server-set, never client-supplied),
-`owner` (the caller's stable OIDC `sub`, the authorization key — server-set),
-`visibility` (`private` by default, or `shared`), and `created_at`.
-
-**Isolation:** each actor reads and writes only their **own** records; a record
-can be marked `shared` (via `set_visibility` or `update_memory`'s `shared` flag)
-to make it readable by any **authenticated** caller — sharing grants read, never
-write, and requires a non-empty `sub`. Anonymous callers (auth disabled) see
-only the anonymous bucket (`owner==""`) and cannot read other actors' shared
-records. Isolation **requires authentication**: with no `--oidc-issuer`, all
-callers share one anonymous bucket (`owner==""`). The `owner` is the stable
-`sub`, so a changed email never revokes access.
-
-**Upgrading an existing deployment:** records written before isolation carry no
-`owner` and become **invisible to every read** (and un-clearable by `delete_all`)
-once the new binary starts. The server logs a startup warning when such records
-exist. Claim them once with `engram migrate-set-owner --owner <sub>` (using the
-`sub` you authenticate as); the command is idempotent and a rerun reports `0`.
-
-> **Disabling auth on a deployment that previously had it:** records written
-> while authenticated carry a non-empty `owner`. After you remove `--oidc-issuer`,
-> callers fall into the anonymous bucket (`owner==""`) and can no longer read
-> those owner-stamped records — including ones marked `shared` (the shared read
-> grant requires an authenticated `sub`). The records are not lost and are not
-> deleted; they become readable again once auth is re-enabled.
-> (`migrate-set-owner` only backfills pre-isolation records that lack an `owner`
-> key and requires a non-empty `--owner`, so it cannot move owner-stamped
-> records into the anonymous bucket.)
-
-A **discovery** record (category `discovery`) additionally carries `kind`
-(`map` | `fact`), `citations[]` (each `kind`/`ref`/`locator`/`pin`/`excerpt`),
-and an optional `summary`; it lives in a `discovery:repo:<repo>` scope and is
-recalled on demand, never at session start.
-
-## Authentication
-
-`engram` validates an OIDC bearer token on every request when `--oidc-issuer`
-(env `MEM_OIDC_ISSUER`) is set: signature (via the issuer's JWKS), issuer, and
-expiry are enforced; an optional audience pin is available. The verified caller
-identity (email → username → subject) is extracted from the token and recorded
-as the memory's `actor`. With no issuer configured, validation is disabled and
-every request is accepted — logged loudly so it is never silently open. This is
-designed to sit behind a gateway (e.g. LiteLLM) that forwards the user's token.
-
-## Run
-
-```sh
-engram serve --listen-addr :8080 \
-  --oidc-issuer https://idp.example/application/o/engram/
-```
-
-All flags default from `MEM_*` environment variables (so a container can be
-configured purely by env, with flags as overrides):
-
-| Flag | Env | Default |
-|------|-----|---------|
-| `--listen-addr` | `MEM_LISTEN_ADDR` | `:8080` |
-| `--oidc-issuer` | `MEM_OIDC_ISSUER` | _(unset → auth disabled)_ |
-| `--oidc-audience` | `MEM_OIDC_AUDIENCE` | _(unset → audience not checked)_ |
-| `--oidc-resource-metadata` | `MEM_OIDC_RESOURCE_METADATA` | _(unset)_ |
-
-Storage/embedding are configured via `MEM_QDRANT_ADDR`, `MEM_QDRANT_COLLECTION`,
-`MEM_LITELLM_URL`, `MEM_LITELLM_KEY`, `MEM_EMBED_MODEL`, `MEM_EMBED_DIM`.
-
-## Observability
-
-`engram` emits structured logs and OpenTelemetry traces, metrics, and logs.
-Telemetry **export is disabled** when no OTLP endpoint is set — the server runs
-normally, the logger still writes to stdout, and no external collector is
-required.
-
-| Env var | Description | Default |
-|---------|-------------|---------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC collector endpoint (`host:port`). Empty → telemetry export disabled. | _(unset)_ |
-| `OTEL_EXPORTER_OTLP_HEADERS` | Optional headers for the OTLP exporter (standard OTel env var, e.g. auth tokens). | _(unset)_ |
-| `OTEL_EXPORTER_OTLP_INSECURE` | Set to `true` to use plain-text (no TLS) gRPC — for in-cluster collectors. Omit or set to anything else to use TLS via system roots. | `false` |
-| `OTEL_RESOURCE_ATTRIBUTES` | Extra resource attributes, e.g. `deployment.environment=prod`. | _(unset)_ |
-| `MEM_LOG_LEVEL` | Log level: `debug`\|`info`\|`warn`\|`error`. | `info` |
-| `MEM_LOG_FORMAT` | Log format: `json`\|`text`. | `json` |
-| `MEM_LOG_STDOUT` | Also write logs to stdout. | `true` |
-
-Structured logs always reach stdout unless `MEM_LOG_STDOUT=false` **and** a
-working OTLP log endpoint is configured; a silent-process guard forces stdout
-back on otherwise.
-
-OTLP exporters use TLS via system roots by default. Set `OTEL_EXPORTER_OTLP_INSECURE=true`
-for a same-cluster collector over plain-text gRPC. `OTEL_EXPORTER_OTLP_HEADERS` can carry
-auth tokens but is not a substitute for transport security against a remote collector.
-
-## Deploy (Helm)
-
-```sh
-helm install engram oci://ghcr.io/seanb4t/charts/engram --version <X.Y.Z> \
-  --values your-values.yaml
-```
-
-The chart deploys the server plus a Qdrant instance with a persistent volume.
-
-## Connect your coding agent
-
-This repo bundles the **`engram` plugin** for Claude Code (`skill/engram/`) — two
-skills (`curating-memory`, `promoting-memory`), and session-start recall + a
-silent capture nudge. Install it one of two ways:
-
-```sh
-# Marketplace (versioned with engram's git tags)
-/plugin marketplace add seanb4t/engram
-/plugin install engram
-
-# …or zero-install: symlink the bundle into your personal skills dir
-ln -s "$PWD/skill/engram" ~/.claude/skills/engram
-```
-
-The plugin ships **no** MCP server of its own — point it at **your** engram
-server by running **`/engram-setup`**. It interviews the URL and auth mode and
-registers a user-scope `engram` server (available in every project) via the
-supported `claude mcp add` CLI. Then run `/mcp` to complete OAuth where required.
-
-| Posture | How |
-|---------|-----|
-| Direct server, OIDC OAuth | server runs with `--oidc-issuer` + `--oidc-resource-metadata`; `/engram-setup` → OAuth, `/mcp` authenticates on first `401` |
-| Behind an OAuth gateway | `/engram-setup` → OAuth, point it at the gateway route; `/mcp` authenticates |
-| Local / no auth | `/engram-setup` → None, point it at `http://localhost:8080` |
-| Bearer token / CI | `/engram-setup` → bearer mode (static `Authorization` header) |
-
-## Develop
-
-```sh
-task           # lint + test
-task build     # build ./cmd/engram → bin/engram
-task lint      # golangci-lint + yamlfmt + actionlint + rumdl
-task fmt       # gofmt + dprint + yamlfmt
-```
+| Topic | Link |
+|-------|------|
+| Quickstart | <https://engram-docs.workers.dev/guides/quickstart/> |
+| Deploy (Helm / Docker) | <https://engram-docs.workers.dev/guides/deploy/> |
+| Configuration (`MEM_*`) | <https://engram-docs.workers.dev/guides/configure/> |
+| MCP tools | <https://engram-docs.workers.dev/reference/tools/> |
+| Auth & isolation | <https://engram-docs.workers.dev/reference/auth/> |
 
 ## License
 
