@@ -77,3 +77,8 @@ jobs:
           # packageManager field and fails with "Unable to locate executable
           # file: pnpm" — force npm so it runs wrangler via npx (always present).
           packageManager: npm
+          # No local wrangler is installed (deploy only pulls the dist artifact),
+          # so wrangler-action falls back to its bundled default (3.90.0), which
+          # is too old for assets-only deploys and errors "Missing entry-point".
+          # Pin the same major as the devDependency so assets-only deploy works.
+          wranglerVersion: "4.99.0"
