@@ -52,3 +52,17 @@ func TestLoginRedirectsWithChallengeAndState(t *testing.T) {
 		t.Fatalf("flow cookie not set: %q", rec.Header().Get("Set-Cookie"))
 	}
 }
+
+func TestLogoutClearsSessionCookie(t *testing.T) {
+	h := testHandler(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	h.Logout(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status=%d want 204", rec.Code)
+	}
+	sc := rec.Header().Get("Set-Cookie")
+	if !strings.Contains(sc, sessionCookieName+"=") || !strings.Contains(sc, "Max-Age=0") {
+		t.Fatalf("session cookie not cleared: %q", sc)
+	}
+}

@@ -88,6 +88,13 @@ func (h *Handler) clearCookie(w http.ResponseWriter, name string) {
 	})
 }
 
+// Logout clears the session cookie. Coarse (no IdP back-channel logout); the
+// sealed cookie simply stops being presented. 204 so the SPA can fire-and-forget.
+func (h *Handler) Logout(w http.ResponseWriter, _ *http.Request) {
+	h.clearCookie(w, sessionCookieName)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // nowUTC is a seam for tests; production uses the wall clock.
 var nowUTC = func() time.Time { return time.Now().UTC() }
 
