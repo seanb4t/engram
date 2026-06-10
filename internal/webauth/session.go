@@ -87,3 +87,25 @@ func (c *SessionCodec) Unseal(v string) (Session, error) {
 	}
 	return s, nil
 }
+
+// sealBytes/unsealBytes seal arbitrary bytes with the same AEAD, for the
+// short-lived OAuth flow cookie (state+verifier) that is not a Session.
+func (c *SessionCodec) sealBytes(plain []byte) (string, error) {
+	nonce := make([]byte, c.aead.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", fmt.Errorf("nonce: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(c.aead.Seal(nonce, nonce, plain, nil)), nil
+}
+
+func (c *SessionCodec) unsealBytes(v string) ([]byte, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(v)
+	if err != nil {
+		return nil, fmt.Errorf("decode: %w", err)
+	}
+	ns := c.aead.NonceSize()
+	if len(raw) < ns {
+		return nil, fmt.Errorf("sealed value too short")
+	}
+	return c.aead.Open(nil, raw[:ns], raw[ns:], nil)
+}
