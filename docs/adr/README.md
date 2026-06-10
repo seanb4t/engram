@@ -13,9 +13,10 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-8q3](engram-8q3-session-cookie-seals-only-sub-expiry-no-oidc-tokens-stored-c.md) | 2026-06-10 | Accepted | Session cookie seals only sub+expiry; no OIDC tokens stored client-side |
 | [engram-u5h](engram-u5h-host-docs-site-inside-engram-monorepo-at-docs-site.md) | 2026-06-10 | Accepted | Host the docs site inside the engram monorepo at docs-site/ |
 | [engram-ttb](engram-ttb-deploy-docs-site-via-workers-static-assets-without-ssr-adapt.md) | 2026-06-10 | Accepted | Deploy docs-site via Workers Static Assets without an SSR adapter |
-| [engram-1xv](engram-1xv-trust-sealed-cookie-sub-until-session-ttl-defer-per-request.md) | 2026-06-10 | Accepted | Trust sealed cookie sub until session TTL; defer per-request IdP refresh |
+| [engram-1xv](engram-1xv-trust-sealed-cookie-sub-until-session-ttl-defer-per-request.md) | 2026-06-10 | Superseded by engram-8q3 | Trust sealed cookie sub until session TTL; defer per-request IdP refresh |
 | [engram-1w7](engram-1w7-deploy-docs-site-via-repo-github-actions-wrangler-workflow.md) | 2026-06-10 | Accepted | Deploy docs-site via an in-repo GitHub Actions wrangler workflow |
 | [engram-u9v](engram-u9v-stateless-encrypted-cookie-session-no-server-side-store.md) | 2026-06-09 | Accepted | Stateless encrypted-cookie session, no server-side store |
 | [engram-e38](engram-e38-shadcn-svelte-bits-ui-tailwind-v4-as-component-layer-re-them.md) | 2026-06-09 | Accepted | shadcn-svelte (on bits-ui) + Tailwind v4 as the component layer, re-themed |
