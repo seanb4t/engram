@@ -21,7 +21,7 @@ func TestSessionRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSessionCodec: %v", err)
 	}
-	in := Session{Sub: "user-123", Access: "at", Refresh: "rt", Expiry: time.Unix(1000, 0).UTC()}
+	in := Session{Sub: "user-123", Expiry: time.Unix(1000, 0).UTC()}
 	sealed, err := c.Seal(in)
 	if err != nil {
 		t.Fatalf("Seal: %v", err)
@@ -30,7 +30,7 @@ func TestSessionRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unseal: %v", err)
 	}
-	if out.Sub != in.Sub || out.Access != in.Access || out.Refresh != in.Refresh || !out.Expiry.Equal(in.Expiry) {
+	if out.Sub != in.Sub || !out.Expiry.Equal(in.Expiry) {
 		t.Fatalf("round-trip mismatch: %+v vs %+v", out, in)
 	}
 }

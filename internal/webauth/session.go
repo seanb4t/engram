@@ -19,13 +19,12 @@ import (
 )
 
 // Session is the decrypted payload of the engram session cookie. Sub is the
-// authz key (OIDC subject); Access/Refresh ride along for the future write
-// phase; Expiry bounds the session lifetime.
+// authz key (OIDC subject); Expiry bounds the session lifetime. The payload is
+// deliberately minimal: the future write phase will reintroduce token handling
+// server-side rather than shipping credentials to the browser.
 type Session struct {
-	Sub     string    `json:"sub"`
-	Access  string    `json:"at"`
-	Refresh string    `json:"rt"`
-	Expiry  time.Time `json:"exp"`
+	Sub    string    `json:"sub"`
+	Expiry time.Time `json:"exp"`
 }
 
 // SessionCodec seals/unseals Session values with AES-256-GCM. The key MUST be
@@ -57,29 +56,16 @@ func (c *SessionCodec) Seal(s Session) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("marshal session: %w", err)
 	}
-	nonce := make([]byte, c.aead.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", fmt.Errorf("nonce: %w", err)
-	}
-	sealed := c.aead.Seal(nonce, nonce, plain, nil)
-	return base64.RawURLEncoding.EncodeToString(sealed), nil
+	return c.sealBytes(plain)
 }
 
 // Unseal decodes, decrypts, and deserializes a sealed cookie value. Any
 // tamper/wrong-key/short-input condition returns an error (fail closed).
+// Callers are responsible for checking Session.Expiry against the current time.
 func (c *SessionCodec) Unseal(v string) (Session, error) {
-	raw, err := base64.RawURLEncoding.DecodeString(v)
+	plain, err := c.unsealBytes(v)
 	if err != nil {
-		return Session{}, fmt.Errorf("decode: %w", err)
-	}
-	ns := c.aead.NonceSize()
-	if len(raw) < ns {
-		return Session{}, fmt.Errorf("sealed value too short")
-	}
-	nonce, ct := raw[:ns], raw[ns:]
-	plain, err := c.aead.Open(nil, nonce, ct, nil)
-	if err != nil {
-		return Session{}, fmt.Errorf("decrypt: %w", err)
+		return Session{}, err
 	}
 	var s Session
 	if err := json.Unmarshal(plain, &s); err != nil {

@@ -50,11 +50,13 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	fs, err := json.Marshal(flowState{State: state, Verifier: verifier})
 	if err != nil {
+		slog.ErrorContext(r.Context(), "marshal flow state", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	sealed, err := h.codec.sealBytes(fs)
 	if err != nil {
+		slog.ErrorContext(r.Context(), "seal flow cookie", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -97,7 +99,7 @@ func (h *Handler) Logout(w http.ResponseWriter, _ *http.Request) {
 
 // Callback completes the flow: recover state+verifier from the flow cookie,
 // enforce state equality (CSRF), exchange the code, verify the ID token, and
-// seal the session cookie. On success it redirects to "/".
+// seal the session cookie. On success it redirects to "/ui/".
 func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie(flowCookieName)
 	if err != nil {
@@ -127,7 +129,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tok, sub, err := h.auth.exchange(r.Context(), code, fs.Verifier)
+	_, sub, err := h.auth.exchange(r.Context(), code, fs.Verifier)
 	if err != nil {
 		slog.WarnContext(r.Context(), "oauth callback exchange failed", "err", err)
 		http.Error(w, "authentication failed", http.StatusUnauthorized)
@@ -135,17 +137,16 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sealed, err := h.codec.Seal(Session{
-		Sub:     sub,
-		Access:  tok.AccessToken,
-		Refresh: tok.RefreshToken,
-		Expiry:  nowUTC().Add(sessionTTL),
+		Sub:    sub,
+		Expiry: nowUTC().Add(sessionTTL),
 	})
 	if err != nil {
+		slog.ErrorContext(r.Context(), "seal session cookie", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	h.setCookie(w, sessionCookieName, sealed, sessionTTL)
-	http.Redirect(w, r, "/", http.StatusFound)
+	http.Redirect(w, r, "/ui/", http.StatusFound)
 }
 
 // nowUTC is a seam for tests; production uses the wall clock.

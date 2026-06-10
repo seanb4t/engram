@@ -91,3 +91,39 @@ func TestCallbackRejectsStateMismatch(t *testing.T) {
 		t.Fatalf("status=%d want 400 (state mismatch)", rec.Code)
 	}
 }
+
+func TestCallbackRejectsMissingCode(t *testing.T) {
+	h := testHandler(t)
+	// Valid flow cookie with matching state but no code param.
+	fs, _ := json.Marshal(flowState{State: "good", Verifier: "v"})
+	sealed, _ := h.codec.sealBytes(fs)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/auth/callback?state=good", nil)
+	req.AddCookie(&http.Cookie{Name: flowCookieName, Value: sealed})
+	h.Callback(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d want 400 (missing code)", rec.Code)
+	}
+}
+
+func TestCallbackRejectsCorruptFlowCookie(t *testing.T) {
+	h := testHandler(t)
+	// Seal a valid flow cookie, then corrupt a byte so unseal fails closed.
+	fs, _ := json.Marshal(flowState{State: "good", Verifier: "v"})
+	sealed, _ := h.codec.sealBytes(fs)
+	// Flip the last base64url char to a different valid one so the value stays
+	// cookie-safe but the ciphertext/tag no longer authenticates (fails closed).
+	b := []byte(sealed)
+	if b[len(b)-1] == 'A' {
+		b[len(b)-1] = 'B'
+	} else {
+		b[len(b)-1] = 'A'
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/auth/callback?code=x&state=good", nil)
+	req.AddCookie(&http.Cookie{Name: flowCookieName, Value: string(b)})
+	h.Callback(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d want 400 (corrupt flow cookie)", rec.Code)
+	}
+}
