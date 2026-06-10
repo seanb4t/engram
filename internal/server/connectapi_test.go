@@ -5,6 +5,8 @@ package server
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -154,3 +156,35 @@ func TestConnectCrossActorIsolation(t *testing.T) {
 // Note: SearchDiscoveries shares the identical subjectFromConnectContext seam.
 // Coverage is skipped here because discovery-scope seeding requires a separate
 // collection setup and discovery-specific Upsert path not yet exposed from testDeps.
+
+func TestMountConnectSkipsWhenResolverNil(t *testing.T) {
+	d := &deps{} // no store needed; we never serve a request
+	mux := http.NewServeMux()
+	if err := d.mountConnect(mux, nil); err != nil {
+		t.Fatalf("mountConnect(nil): %v", err)
+	}
+	// With no resolver, the EngramService path must NOT be registered: a request
+	// to it falls through to the mux's 404.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/engram.v1.EngramService/ListScopes", nil)
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d want 404 (Connect must be unmounted when resolver is nil)", rec.Code)
+	}
+}
+
+func TestMountConnectMountsWhenResolverPresent(t *testing.T) {
+	d := &deps{}
+	mux := http.NewServeMux()
+	resolve := func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error) { return nil, nil }
+	if err := d.mountConnect(mux, resolve); err != nil {
+		t.Fatalf("mountConnect: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/engram.v1.EngramService/ListScopes", nil)
+	mux.ServeHTTP(rec, req)
+	// Mounted: connect-go responds (415/400 for a malformed body), NOT 404.
+	if rec.Code == http.StatusNotFound {
+		t.Fatal("Connect path should be mounted when a resolver is present")
+	}
+}
