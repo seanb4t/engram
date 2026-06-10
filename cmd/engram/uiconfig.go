@@ -4,6 +4,8 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"strings"
 )
@@ -68,4 +70,26 @@ func resolveUIConfig(getenv func(string) string) (UIConfig, error) {
 		RedirectURL:  getenv("MEM_UI_REDIRECT_URL"),
 		CookieKey:    getenv("MEM_UI_COOKIE_KEY"),
 	}, nil
+}
+
+// decodeCookieKey turns the MEM_UI_COOKIE_KEY value into the 32-byte AES-256 key
+// the session codec requires. Operators provisioning secrets typically supply
+// encoded material, so we accept (in precedence order) hex, standard base64, or
+// raw-URL base64 that decodes to exactly 32 bytes, and finally a literal 32-byte
+// string. Anything else is a fail-fast startup error rather than a confusing
+// "key must be 32 bytes" deep in the codec.
+func decodeCookieKey(s string) ([]byte, error) {
+	if b, err := hex.DecodeString(s); err == nil && len(b) == 32 {
+		return b, nil
+	}
+	if b, err := base64.StdEncoding.DecodeString(s); err == nil && len(b) == 32 {
+		return b, nil
+	}
+	if b, err := base64.RawURLEncoding.DecodeString(s); err == nil && len(b) == 32 {
+		return b, nil
+	}
+	if len(s) == 32 {
+		return []byte(s), nil
+	}
+	return nil, fmt.Errorf("MEM_UI_COOKIE_KEY must decode to 32 bytes (hex, base64, or a literal 32-byte string); got %d chars", len(s))
 }

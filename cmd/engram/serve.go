@@ -121,7 +121,10 @@ func runServe() error {
 		if oidcIssuer == "" {
 			return fmt.Errorf("web UI enabled but no --oidc-issuer / MEM_OIDC_ISSUER: the login lane needs an issuer")
 		}
-		key := []byte(uiCfg.CookieKey)
+		key, err := decodeCookieKey(uiCfg.CookieKey)
+		if err != nil {
+			return err
+		}
 		codec, err := webauth.NewSessionCodec(key)
 		if err != nil {
 			return fmt.Errorf("session cookie key: %w", err)

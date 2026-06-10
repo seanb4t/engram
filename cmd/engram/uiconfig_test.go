@@ -3,7 +3,43 @@
 
 package main
 
-import "testing"
+import (
+	"encoding/base64"
+	"encoding/hex"
+	"strings"
+	"testing"
+)
+
+func TestDecodeCookieKey(t *testing.T) {
+	raw := make([]byte, 32)
+	for i := range raw {
+		raw[i] = byte(i)
+	}
+	cases := []struct {
+		name    string
+		in      string
+		wantErr bool
+	}{
+		{"hex 32 bytes", hex.EncodeToString(raw), false},
+		{"base64 std 32 bytes", base64.StdEncoding.EncodeToString(raw), false},
+		{"base64 rawurl 32 bytes", base64.RawURLEncoding.EncodeToString(raw), false},
+		{"literal 32-byte string", strings.Repeat("k", 32), false},
+		{"hex of 20 bytes (wrong length, not 32 chars)", hex.EncodeToString(raw[:20]), true},
+		{"too short", "deadbeef", true},
+		{"empty", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b, err := decodeCookieKey(tc.in)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err=%v wantErr=%v", err, tc.wantErr)
+			}
+			if err == nil && len(b) != 32 {
+				t.Fatalf("decoded key is %d bytes, want 32", len(b))
+			}
+		})
+	}
+}
 
 func TestResolveUIConfig(t *testing.T) {
 	full := map[string]string{
