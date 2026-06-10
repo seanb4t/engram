@@ -109,11 +109,22 @@ func warnOwnerlessRecords(st *store.Store) {
 	n, err := st.CountOwnerless(ctx)
 	if err != nil {
 		slog.Warn("could not check for pre-isolation (owner-less) records", "err", err)
-		return
 	}
-	if n > 0 {
+	if err == nil && n > 0 {
 		slog.Warn("pre-isolation records have no owner — invisible to reads and not removable by delete_all until migrate-set-owner runs",
 			"count", n)
+	}
+
+	// Anonymous bucket (explicit owner==""): readable by any anonymous caller.
+	// Surfaces a deployment that previously ran auth-disabled before any
+	// network read surface is exposed.
+	an, aErr := st.CountAnonymousBucket(ctx)
+	if aErr != nil {
+		slog.Warn("could not check the anonymous (owner=='') bucket", "err", aErr)
+		return
+	}
+	if an > 0 {
+		slog.Warn("anonymous-bucket records exist (owner==\"\"): readable by any unauthenticated caller; they predate an OIDC-enabled deployment", "count", an)
 	}
 }
 
@@ -419,7 +430,9 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 	if err != nil {
 		return fmt.Errorf("build deps: %w", err)
 	}
-	d.mountConnect(mux, resolve)
+	if err := d.mountConnect(mux, resolve); err != nil {
+		return fmt.Errorf("mount connect: %w", err)
+	}
 
 	s.AddReceivingMiddleware(instrumentTools(tm.Record))
 

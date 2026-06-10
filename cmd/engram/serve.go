@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"connectrpc.com/connect"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
@@ -24,6 +25,7 @@ import (
 	"github.com/seanb4t/engram/internal/auth"
 	"github.com/seanb4t/engram/internal/server"
 	"github.com/seanb4t/engram/internal/telemetry"
+	"github.com/seanb4t/engram/internal/webauth"
 )
 
 var (
@@ -31,6 +33,12 @@ var (
 	oidcIssuer           string
 	oidcAudience         string
 	oidcResourceMetadata string
+
+	uiEnabled      string
+	uiClientID     string
+	uiClientSecret string
+	uiRedirectURL  string
+	uiCookieKey    string
 )
 
 var serveCmd = &cobra.Command{
@@ -54,6 +62,16 @@ func init() {
 		"expected OIDC audience (optional)")
 	f.StringVar(&oidcResourceMetadata, "oidc-resource-metadata", server.EnvOr("MEM_OIDC_RESOURCE_METADATA", ""),
 		"WWW-Authenticate resource metadata URL (optional)")
+	f.StringVar(&uiEnabled, "ui-enabled", server.EnvOr("MEM_UI_ENABLED", ""),
+		"enable the web UI + login lane (empty=imply from creds; 'false'=hard off)")
+	f.StringVar(&uiClientID, "oidc-client-id", server.EnvOr("MEM_OIDC_CLIENT_ID", ""),
+		"OIDC confidential-client ID for the web login")
+	f.StringVar(&uiClientSecret, "oidc-client-secret", server.EnvOr("MEM_OIDC_CLIENT_SECRET", ""),
+		"OIDC client secret for the web login")
+	f.StringVar(&uiRedirectURL, "ui-redirect-url", server.EnvOr("MEM_UI_REDIRECT_URL", ""),
+		"OIDC auth-code callback URL")
+	f.StringVar(&uiCookieKey, "ui-cookie-key", server.EnvOr("MEM_UI_COOKIE_KEY", ""),
+		"32-byte AES-GCM key sealing the session cookie")
 }
 
 func runServe() error {
@@ -76,20 +94,68 @@ func runServe() error {
 
 	mux := http.NewServeMux()
 
+	uiCfg, err := resolveUIConfig(func(k string) string {
+		switch k {
+		case "MEM_UI_ENABLED":
+			return uiEnabled
+		case "MEM_OIDC_CLIENT_ID":
+			return uiClientID
+		case "MEM_OIDC_CLIENT_SECRET":
+			return uiClientSecret
+		case "MEM_UI_REDIRECT_URL":
+			return uiRedirectURL
+		case "MEM_UI_COOKIE_KEY":
+			return uiCookieKey
+		default:
+			return ""
+		}
+	})
+	if err != nil {
+		slog.Error("web UI config invalid", "err", err)
+		return err
+	}
+
+	var connectResolve func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)
+	var webHandler *webauth.Handler
+	if uiCfg.Enabled {
+		if oidcIssuer == "" {
+			return fmt.Errorf("web UI enabled but no --oidc-issuer / MEM_OIDC_ISSUER: the login lane needs an issuer")
+		}
+		key, err := decodeCookieKey(uiCfg.CookieKey)
+		if err != nil {
+			return err
+		}
+		codec, err := webauth.NewSessionCodec(key)
+		if err != nil {
+			return fmt.Errorf("session cookie key: %w", err)
+		}
+		oidcCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		authr, err := webauth.NewAuthenticator(oidcCtx, oidcIssuer, uiCfg.ClientID, uiCfg.ClientSecret, uiCfg.RedirectURL)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("web UI OIDC discovery: %w", err)
+		}
+		webHandler = webauth.NewHandler(authr, codec, true)
+		connectResolve = webauth.NewResolver(codec).Resolve
+		slog.Info("web UI auth lane enabled", "issuer", oidcIssuer, "redirect", uiCfg.RedirectURL)
+	} else {
+		slog.Info("web UI disabled (headless); Connect API not mounted")
+	}
+
 	srv := mcp.NewServer(&mcp.Implementation{Name: "engram", Version: version}, nil)
-	// Build MCP tools + mount the Connect API on the mux from one deps. nil
-	// resolver = anonymous until the cookie/OIDC lane lands (later plan).
-	if err := server.Register(srv, mux, tm, nil); err != nil {
+	if err := server.Register(srv, mux, tm, connectResolve); err != nil {
 		slog.Error("server registration failed", "err", err)
 		return err
 	}
-	// Connect/EngramService is mounted with no auth resolver; it serves only
-	// the anonymous (owner=="") bucket. Warn loudly so operators are never
-	// surprised — matching the "never silently open" principle in withAuth.
-	if oidcIssuer != "" {
-		slog.Warn("Connect/EngramService HTTP API mounted WITHOUT authentication (anonymous bucket only); OIDC does NOT gate this path — bearer-token enforcement applies to MCP only", "oidc_issuer", oidcIssuer)
-	} else {
-		slog.Warn("Connect/EngramService HTTP API mounted WITHOUT authentication (anonymous bucket only); set --oidc-issuer / MEM_OIDC_ISSUER to gate the MCP path")
+
+	if uiCfg.Enabled {
+		mux.HandleFunc("GET /auth/login", webHandler.Login)
+		mux.HandleFunc("GET /auth/callback", webHandler.Callback)
+		mux.HandleFunc("POST /auth/logout", webHandler.Logout)
+		// Static SPA is the fallback for non-API, non-auth routes. Registered
+		// last and only when enabled; the MCP handler still owns "/" below for
+		// the streamable transport, so static is mounted under "/ui/".
+		mux.Handle("/ui/", http.StripPrefix("/ui/", webauth.StaticHandler()))
 	}
 
 	var handler http.Handler = mcp.NewStreamableHTTPHandler(

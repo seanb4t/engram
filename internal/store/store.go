@@ -574,6 +574,20 @@ func (s *Store) CountOwnerless(ctx context.Context) (uint64, error) {
 	})
 }
 
+// CountAnonymousBucket returns the number of records in the auth-disabled
+// anonymous bucket (an explicit owner==""). Distinct from CountOwnerless, which
+// matches pre-isolation records with NO owner key (NewIsEmpty). The server
+// bootstrap warns when this is non-empty: those records are readable by any
+// anonymous caller, so an operator who once ran auth-disabled should know they
+// exist before enabling a network surface.
+func (s *Store) CountAnonymousBucket(ctx context.Context) (uint64, error) {
+	return s.client.Count(ctx, &qdrant.CountPoints{
+		CollectionName: s.collection,
+		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatch("owner", "")}},
+		Exact:          qdrant.PtrOf(true),
+	})
+}
+
 // MigrateSetOwner backfills owner onto every pre-isolation record (one that lacks
 // an owner key). Idempotent: records that already carry an owner — including the
 // auth-disabled owner=="" bucket — are not matched (see ownerlessFilter).

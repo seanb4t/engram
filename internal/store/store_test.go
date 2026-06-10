@@ -1230,3 +1230,34 @@ func TestListScopes(t *testing.T) {
 		t.Errorf("counts = %v, want {%s:2, %s:1} (sub-B's record excluded)", counts, a, b)
 	}
 }
+
+func TestCountAnonymousBucket(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	before, err := s.CountAnonymousBucket(ctx)
+	if err != nil {
+		t.Fatalf("CountAnonymousBucket(before): %v", err)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	anon1 := Memory{ID: "a1111111-0000-0000-0000-000000000001", Content: "anon one", Scope: "anon-count-scope", Owner: "", Source: "agent-inferred", Category: "fact", CreatedAt: now}
+	anon2 := Memory{ID: "a1111111-0000-0000-0000-000000000002", Content: "anon two", Scope: "anon-count-scope", Owner: "", Source: "agent-inferred", Category: "fact", CreatedAt: now}
+	owned := Memory{ID: "a1111111-0000-0000-0000-000000000003", Content: "owned", Scope: "anon-count-scope", Owner: "sub-x", Source: "agent-inferred", Category: "fact", CreatedAt: now}
+	for _, m := range []Memory{anon1, anon2, owned} {
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", m.ID, err)
+		}
+	}
+	defer func() {
+		_ = s.Delete(ctx, anon1.ID, Anonymous())
+		_ = s.Delete(ctx, anon2.ID, Anonymous())
+		_ = s.Delete(ctx, owned.ID, Authenticated("sub-x"))
+	}()
+
+	after, err := s.CountAnonymousBucket(ctx)
+	if err != nil {
+		t.Fatalf("CountAnonymousBucket(after): %v", err)
+	}
+	if after-before != 2 {
+		t.Fatalf("anonymous-bucket delta = %d, want 2", after-before)
+	}
+}
