@@ -88,3 +88,35 @@ func TestConnectCookieLaneIsolation(t *testing.T) {
 		t.Fatalf("anon request: got code %v want unauthenticated", connect.CodeOf(err))
 	}
 }
+
+// TestConnectNoCORSHeaders verifies that the Connect handler does NOT emit
+// Access-Control-Allow-Origin (or any CORS headers) in response to a
+// cross-origin preflight. The Connect lane is same-origin only; the web UI
+// is served from the same host so no CORS grant is needed or safe.
+func TestConnectNoCORSHeaders(t *testing.T) {
+	d := &deps{} // no Qdrant needed
+	mux := http.NewServeMux()
+	resolve := func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error) { return nil, nil }
+	if err := d.mountConnect(mux, resolve); err != nil {
+		t.Fatalf("mountConnect: %v", err)
+	}
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	req, err := http.NewRequest(http.MethodOptions, srv.URL+"/engram.v1.EngramService/ListMemories", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	req.Header.Set("Origin", "https://evil.example")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("OPTIONS request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("Connect handler must not emit CORS headers; got Access-Control-Allow-Origin=%q", got)
+	}
+}

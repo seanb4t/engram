@@ -3,7 +3,10 @@
 
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // UIConfig is the resolved web-UI activation state. When Enabled is false every
 // field except Enabled is zero and the caller mounts nothing (headless).
@@ -35,7 +38,7 @@ var requiredUICreds = []string{
 //     not finished wiring it.
 func resolveUIConfig(getenv func(string) string) (UIConfig, error) {
 	flag := getenv("MEM_UI_ENABLED")
-	if eqFold(flag, "false") {
+	if strings.EqualFold(flag, "false") {
 		return UIConfig{Enabled: false}, nil
 	}
 	present := 0
@@ -46,7 +49,7 @@ func resolveUIConfig(getenv func(string) string) (UIConfig, error) {
 	}
 	allCreds := present == len(requiredUICreds)
 
-	if eqFold(flag, "true") && !allCreds {
+	if strings.EqualFold(flag, "true") && !allCreds {
 		var missing []string
 		for _, k := range requiredUICreds {
 			if getenv(k) == "" {
@@ -65,22 +68,4 @@ func resolveUIConfig(getenv func(string) string) (UIConfig, error) {
 		RedirectURL:  getenv("MEM_UI_REDIRECT_URL"),
 		CookieKey:    getenv("MEM_UI_COOKIE_KEY"),
 	}, nil
-}
-
-// eqFold is a tiny ASCII case-insensitive compare (avoids importing strings for
-// one call site; matches the repo's lean-import style in cmd/engram).
-func eqFold(s, want string) bool {
-	if len(s) != len(want) {
-		return false
-	}
-	for i := range s {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		if c != want[i] {
-			return false
-		}
-	}
-	return true
 }

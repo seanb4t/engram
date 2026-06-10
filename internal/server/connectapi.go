@@ -130,8 +130,9 @@ func (a *engramAPI) SearchDiscoveries(ctx context.Context, req *connect.Request[
 }
 
 // connectResolver supplies the per-request identity TokenInfo for the Connect
-// lane. The cookie/OIDC lane (later plan) provides a real one; a nil resolver
-// defaults to anonymous (the no-issuer case).
+// lane. The webauth cookie/OIDC resolver is passed in by the caller (serve.go)
+// when the web UI is enabled. A nil resolver means Connect is NOT mounted at
+// all (R1): mountConnect returns immediately without registering any handler.
 type connectResolver func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)
 
 func (d *deps) mountConnect(mux *http.ServeMux, resolve connectResolver) error {
