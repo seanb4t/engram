@@ -1,0 +1,37 @@
+---
+title: Architecture
+description: Codebase layout and development conventions for the engram server.
+---
+
+engram is a self-hosted, correctable, OAuth-secured memory MCP server written in Go, backed by Qdrant.
+
+## Codebase layout
+
+| Path | Responsibility |
+|------|----------------|
+| `cmd/engram/` | cobra CLI: `root`, `serve`, `version` (entrypoint only) |
+| `internal/server/` | MCP tool registration + handlers (`Register`, `EnvOr`) |
+| `internal/store/` | Qdrant-backed memory store |
+| `internal/embed/` | embedder (OpenAI-compatible / LiteLLM) |
+| `internal/auth/` | OIDC bearer-token verifier (go-oidc + go-sdk auth middleware) |
+| `charts/engram/` | Helm chart (server + Qdrant), generic/parameterized |
+| `proto/engram/v1/` | protobuf schema (`EngramService` v1 read API) — source of truth for codegen |
+| `gen/` | committed buf-generated code (connect-go stubs in `gen/go/`, protobuf-es types in `gen/ts/`) |
+
+## Key conventions
+
+**VCS — jj-colocated.** Use `jj` for all VCS operations; never push directly to `main`.
+
+**Task runner.** `task` (see `Taskfile.yaml`) is the single entry point. Running `task` alone runs lint + test. Use `task proto:lint` / `task proto:gen` for protobuf work.
+
+**CLI — cobra, no viper.** Configuration is env-first (`MEM_*` variables) with flag overrides. There is no viper dependency and no config file format.
+
+**Connect/buf API.** The `EngramService` ConnectRPC API is defined in `proto/engram/v1/` and generated via `go tool buf`. The `gen/` tree is committed and CI-checks for drift — never edit generated files by hand.
+
+**Commits.** Conventional Commits format; PR titles are validated in CI via `action-semantic-pull-request`.
+
+**License.** Every Go and Markdown file carries the Apache-2.0 SPDX header. Run `task license:check` to verify; `task license:add` to apply it to new files.
+
+**Lint/format.** `task lint` runs golangci-lint, yamlfmt, actionlint, and rumdl. `task fmt` runs gofmt, dprint, and yamlfmt. Both must be clean before merging.
+
+**Not used here:** database migrations, viper, cocogitto.
