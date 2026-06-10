@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "engram-docs",
+  "compatibility_date": "2024-11-01",
+  // Static Assets only: no "main" worker script. Wrangler serves ./dist
+  // directly. When a custom domain is chosen, add a "routes" entry here.
+  "assets": {
+    "directory": "./dist"
+  }
+}
