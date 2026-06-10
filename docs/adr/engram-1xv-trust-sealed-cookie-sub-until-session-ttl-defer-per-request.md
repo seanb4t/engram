@@ -4,7 +4,7 @@
 # Trust sealed cookie sub until session TTL; defer per-request IdP refresh
 
 **Date:** 2026-06-10
-**Status:** Accepted
+**Status:** Superseded by engram-8q3
 **Decision:** engram-1xv
 **Deciders:** Sean
 
@@ -30,3 +30,7 @@ v1 trusts the sealed cookie's sub until the session TTL (Expiry) with no per-req
 ## Consequences
 
 Positive: resolver has no network dependency, so RPC latency is unaffected by IdP availability, and it is fully unit-testable without a live IdP. Negative: IdP-side session/token revocation is not reflected until the engram session cookie expires (up to the 12h TTL); future contributors must not add per-request IdP calls until the refresh refinement is designed. Neutral: the sealed refresh token remains in the cookie for the write phase; the mechanism exists but is not yet wired.
+
+## References
+
+- Superseded by: engram-8q3
