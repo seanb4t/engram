@@ -122,5 +122,5 @@ are empty strings, and all callers share one anonymous bucket.
 
 Pre-isolation records — those written before per-actor ownership was added —
 carry no `owner` key (distinct from an empty-string `owner`). They are invisible
-to every owner-scoped read. See [Auth and Isolation](/reference/auth) for
+to every owner-scoped read. See [Auth and Isolation](/reference/auth/) for
 migration details.
