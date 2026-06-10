@@ -5,9 +5,11 @@
 
 # Contributing to engram
 
-Full contributor documentation — development setup, conventions, code style,
-and the release process — lives at
-**<https://engram-docs.workers.dev/contributing/architecture/>**.
+Full contributor documentation lives on the docs site: codebase architecture,
+conventions, and code style at
+**<https://engram-docs.workers.dev/contributing/architecture/>**, and the
+release process at
+**<https://engram-docs.workers.dev/contributing/releasing/>**.
 
 Architecture Decision Records are under [`docs/adr/`](./docs/adr/).
 
