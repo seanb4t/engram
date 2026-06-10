@@ -25,6 +25,7 @@ exclude = [
   "node_modules",
   "vendor",
   "CHANGELOG.md", # generated + owned by release-please (re-dirtied each release; MD012)
+  "docs-site", # Astro/Starlight site — MDX + generated output, not plain prose
 ]
 
 respect-gitignore = true

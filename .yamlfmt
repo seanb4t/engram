@@ -15,3 +15,4 @@ exclude:
   - vendor/
   - bin/
   - charts/engram/templates/ # Helm templates ({{ }}) are not plain YAML
+  - docs-site/ # Astro/pnpm project (its own YAML/JSONC config, generated output)

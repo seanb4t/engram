@@ -30,6 +30,10 @@ header:
     # line 1 for Claude Code's skill/command loader, so they cannot carry a
     # leading SPDX comment (matches the upstream skills ecosystem convention);
     # repo LICENSE + plugin.json cover provenance.
+    # Astro .md/.mdx content opens with YAML frontmatter on line 1 (same
+    # conflict as skill/**/SKILL.md), and node_modules/dist are generated.
+    # repo LICENSE covers provenance.
+    - "docs-site/**"
     - "skill/**/SKILL.md"
     - "skill/**/commands/*.md"
     # ADR markdown is render-generated from its bd decision record (source of

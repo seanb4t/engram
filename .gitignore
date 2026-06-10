@@ -26,6 +26,11 @@ go.work.sum
 # Tool caches
 .task/
 
+# Docs site (Astro / pnpm)
+docs-site/node_modules/
+docs-site/dist/
+docs-site/.astro/
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
