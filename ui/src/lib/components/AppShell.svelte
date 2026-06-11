@@ -4,9 +4,10 @@
   import { base } from '$app/paths';
   import { Button } from '$lib/components/ui/button';
   let { children } = $props();
-  // mode-watcher 0.5: `mode` is a derived store, read via `$mode` (NOT mode.current).
+  // mode-watcher 1.x: `mode` is a rune-based object, read via `mode.current`
+  // (the v0.5 derived-store `$mode` form was removed in v1).
   function cycleTheme() {
-    const next = $mode === 'dark' ? 'light' : 'dark';
+    const next = mode.current === 'dark' ? 'light' : 'dark';
     setMode(next);
   }
 </script>
