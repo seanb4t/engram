@@ -303,31 +303,86 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Su
 	return memoriesFromPoints(res), nil
 }
 
-// List returns memories in a scope without a query vector (for session-start
-// bootstrap), most-recent first. Scrolls up to scanCap points in the scope and
-// sorts by CreatedAt in-process to avoid requiring a Qdrant payload index.
-// Read set follows ownerOrSharedCondition: anonymous callers see only the
-// ownerless bucket; authenticated callers see own + shared records.
-func (s *Store) List(ctx context.Context, scope string, subj Subject, limit uint64) ([]Memory, error) {
+// ListOptions parameterizes List: page window (Limit/Offset) and the server-side
+// category/visibility filters the operator console applies. Zero value = first
+// page, no filters.
+type ListOptions struct {
+	Limit      uint64
+	Offset     uint64
+	Categories []string // empty = all
+	Visibility string   // "" = all | "private" | "shared"
+}
+
+// listFilter builds the Qdrant filter for List: scope + per-actor authz (outer
+// Must constraint) AND optional category/visibility request filters. The authz
+// condition stays the outer Must, so no filter combination can reach another
+// actor's records.
+//
+// Visibility semantics:
+//   - "" (empty): no visibility filter — return all readable records.
+//   - "shared": match records with stored visibility=="shared".
+//   - "private": match records whose stored visibility is "" (the canonical
+//     private representation — the store only ever writes "" or "shared"). This
+//     is expressed as MustNot(visibility=="shared") so that an empty-string match
+//     in Qdrant is reliable across payload-key-absent and empty-value cases.
+func listFilter(scope string, subj Subject, opts ListOptions) *qdrant.Filter {
+	must := []*qdrant.Condition{
+		qdrant.NewMatch("scope", scope),
+		ownerOrSharedCondition(subj),
+	}
+	if len(opts.Categories) > 0 {
+		should := make([]*qdrant.Condition, 0, len(opts.Categories))
+		for _, c := range opts.Categories {
+			should = append(should, qdrant.NewMatch("category", c))
+		}
+		must = append(must, qdrant.NewFilterAsCondition(&qdrant.Filter{Should: should}))
+	}
+	switch opts.Visibility {
+	case visibilityShared:
+		must = append(must, qdrant.NewMatch("visibility", visibilityShared))
+	case "private":
+		// Private records are stored with visibility=="" (empty string). Use
+		// MustNot(visibility=="shared") rather than matching empty directly, because
+		// Qdrant's NewMatch on an empty string may not reliably match absent or
+		// empty-value keys across all payload states.
+		return &qdrant.Filter{
+			Must:    must,
+			MustNot: []*qdrant.Condition{qdrant.NewMatch("visibility", visibilityShared)},
+		}
+	}
+	return &qdrant.Filter{Must: must}
+}
+
+// List returns a CreatedAt-desc page of the caller's readable records in scope,
+// the pre-page total (matched within scanCap), and an approximate flag (true
+// when the match count hit scanCap). When Offset >= total, the page is empty
+// (clamped, never a slice panic) and total is still the real matched count.
+func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListOptions) ([]Memory, uint64, bool, error) {
 	const scanCap = 1000
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
-		Filter:         s.ownerScopeFilter(scope, subj),
+		Filter:         listFilter(scope, subj, opts),
 		Limit:          qdrant.PtrOf(uint32(scanCap)),
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
 	if err != nil {
-		return nil, err
+		return nil, 0, false, err
 	}
-	out := make([]Memory, 0, len(pts))
+	all := make([]Memory, 0, len(pts))
 	for _, p := range pts {
-		out = append(out, fromPayload(p.Id.GetUuid(), p.Payload))
+		all = append(all, fromPayload(p.Id.GetUuid(), p.Payload))
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
-	if limit > 0 && uint64(len(out)) > limit {
-		out = out[:limit]
+	sort.Slice(all, func(i, j int) bool { return all[i].CreatedAt.After(all[j].CreatedAt) })
+	total := uint64(len(all))
+	approximate := len(all) == scanCap
+	if opts.Offset >= total {
+		return []Memory{}, total, approximate, nil
 	}
-	return out, nil
+	end := opts.Offset + opts.Limit
+	if opts.Limit == 0 || end > total {
+		end = total
+	}
+	return all[opts.Offset:end], total, approximate, nil
 }
 
 // ScopeCount is a scope plus the number of records in it the caller can read.

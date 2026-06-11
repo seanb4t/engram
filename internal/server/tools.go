@@ -344,7 +344,8 @@ func (d *deps) listMemory(ctx context.Context, a listArgs) ([]store.Memory, erro
 	if err != nil {
 		return nil, err
 	}
-	return d.st.List(ctx, a.Scope, subj, a.Limit)
+	ms, _, _, err := d.st.List(ctx, a.Scope, subj, store.ListOptions{Limit: a.Limit})
+	return ms, err
 }
 
 func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]store.Memory, error) {

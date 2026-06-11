@@ -318,6 +318,9 @@ type ListMemoriesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Scope         string                 `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
 	Limit         uint64                 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset        uint64                 `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
+	Categories    []string               `protobuf:"bytes,4,rep,name=categories,proto3" json:"categories,omitempty"` // empty = all categories
+	Visibility    string                 `protobuf:"bytes,5,opt,name=visibility,proto3" json:"visibility,omitempty"` // "" = all | "private" | "shared"
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -366,9 +369,32 @@ func (x *ListMemoriesRequest) GetLimit() uint64 {
 	return 0
 }
 
+func (x *ListMemoriesRequest) GetOffset() uint64 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+func (x *ListMemoriesRequest) GetCategories() []string {
+	if x != nil {
+		return x.Categories
+	}
+	return nil
+}
+
+func (x *ListMemoriesRequest) GetVisibility() string {
+	if x != nil {
+		return x.Visibility
+	}
+	return ""
+}
+
 type ListMemoriesResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Memories      []*Memory              `protobuf:"bytes,1,rep,name=memories,proto3" json:"memories,omitempty"`
+	Total         uint64                 `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`             // readable records matching scope + filters (pre-page)
+	Approximate   bool                   `protobuf:"varint,3,opt,name=approximate,proto3" json:"approximate,omitempty"` // true when total hit the scanCap ceiling
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -408,6 +434,20 @@ func (x *ListMemoriesResponse) GetMemories() []*Memory {
 		return x.Memories
 	}
 	return nil
+}
+
+func (x *ListMemoriesResponse) GetTotal() uint64 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *ListMemoriesResponse) GetApproximate() bool {
+	if x != nil {
+		return x.Approximate
+	}
+	return false
 }
 
 type SearchMemoriesRequest struct {
@@ -737,12 +777,21 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\x11ListScopesRequest\"e\n" +
 	"\x12ListScopesResponse\x12-\n" +
 	"\x06scopes\x18\x01 \x03(\v2\x15.engram.v1.ScopeCountR\x06scopes\x12 \n" +
-	"\vapproximate\x18\x02 \x01(\bR\vapproximate\"A\n" +
+	"\vapproximate\x18\x02 \x01(\bR\vapproximate\"\x99\x01\n" +
 	"\x13ListMemoriesRequest\x12\x14\n" +
 	"\x05scope\x18\x01 \x01(\tR\x05scope\x12\x14\n" +
-	"\x05limit\x18\x02 \x01(\x04R\x05limit\"E\n" +
+	"\x05limit\x18\x02 \x01(\x04R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x03 \x01(\x04R\x06offset\x12\x1e\n" +
+	"\n" +
+	"categories\x18\x04 \x03(\tR\n" +
+	"categories\x12\x1e\n" +
+	"\n" +
+	"visibility\x18\x05 \x01(\tR\n" +
+	"visibility\"}\n" +
 	"\x14ListMemoriesResponse\x12-\n" +
-	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\"Q\n" +
+	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x04R\x05total\x12 \n" +
+	"\vapproximate\x18\x03 \x01(\bR\vapproximate\"Q\n" +
 	"\x15SearchMemoriesRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
 	"\x05scope\x18\x02 \x01(\tR\x05scope\x12\f\n" +

@@ -67,11 +67,18 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	ms, err := a.d.st.List(ctx, req.Msg.Scope, subj, req.Msg.Limit)
+	ms, total, approximate, err := a.d.st.List(ctx, req.Msg.Scope, subj, store.ListOptions{
+		Limit:      req.Msg.Limit,
+		Offset:     req.Msg.Offset,
+		Categories: req.Msg.Categories,
+		Visibility: req.Msg.Visibility,
+	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&engramv1.ListMemoriesResponse{Memories: memoriesToProto(ms)}), nil
+	return connect.NewResponse(&engramv1.ListMemoriesResponse{
+		Memories: memoriesToProto(ms), Total: total, Approximate: approximate,
+	}), nil
 }
 
 func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[engramv1.SearchMemoriesRequest]) (*connect.Response[engramv1.SearchMemoriesResponse], error) {

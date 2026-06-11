@@ -39,8 +39,16 @@ message ListScopesResponse {
 message ListMemoriesRequest {
   string scope = 1;
   uint64 limit = 2;
+  uint64 offset = 3;
+  repeated string categories = 4; // empty = all categories
+  string visibility = 5;          // "" = all | "private" | "shared"
 }
-message ListMemoriesResponse { repeated Memory memories = 1; }
+
+message ListMemoriesResponse {
+  repeated Memory memories = 1;
+  uint64 total = 2;       // readable records matching scope + filters (pre-page)
+  bool approximate = 3;   // true when total hit the scanCap ceiling
+}
 
 message SearchMemoriesRequest {
   string query = 1;
