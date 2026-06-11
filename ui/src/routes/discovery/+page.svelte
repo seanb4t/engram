@@ -9,7 +9,6 @@
   import MemoryList from '$lib/components/MemoryList.svelte';
   import MemoryDetail from '$lib/components/MemoryDetail.svelte';
   const q = $derived($page.url.searchParams.get('q') ?? '');
-  const scope = $derived($page.url.searchParams.get('scope') ?? '');
   const sel = $derived($page.url.searchParams.get('sel') ?? '');
   const discQ = createQuery(derived(page, ($p) => {
     const query = $p.url.searchParams.get('q') ?? '';

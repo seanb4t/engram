@@ -1,19 +1,20 @@
 <script lang="ts">
   import type { ScopeCount } from '$lib/gen/engram_pb';
+  import type { Category, Visibility } from '$lib/queries';
   import { Button } from '$lib/components/ui/button';
   import { Checkbox } from '$lib/components/ui/checkbox';
   import { Select } from '$lib/components/ui/select';
   let { scopes, activeScope, categories, visibility, loading = false, error = null, onscope, onfilter }: {
-    scopes: ScopeCount[]; activeScope: string; categories: string[]; visibility: string;
+    scopes: ScopeCount[]; activeScope: string; categories: Category[]; visibility: Visibility;
     loading?: boolean; error?: unknown;
-    onscope: (s: string) => void; onfilter: (cats: string[], vis: string) => void;
+    onscope: (s: string) => void; onfilter: (cats: Category[], vis: Visibility) => void;
   } = $props();
-  const allCats = ['convention', 'gotcha', 'decision', 'preference'];
-  function toggleCat(c: string) {
+  const allCats: Category[] = ['convention', 'gotcha', 'decision', 'preference'];
+  function toggleCat(c: Category) {
     const next = categories.includes(c) ? categories.filter((x) => x !== c) : [...categories, c];
     onfilter(next, visibility);
   }
-  const visOptions = [
+  const visOptions: { value: Visibility; label: string }[] = [
     { value: '', label: 'all' },
     { value: 'private', label: 'private' },
     { value: 'shared', label: 'shared' }
@@ -51,6 +52,6 @@
   {/each}
   <div class="block mt-2">
     <div class="eg-muted">visibility</div>
-    <Select value={visibility} options={visOptions} ariaLabel="visibility" onValueChange={(v) => onfilter(categories, v)} />
+    <Select value={visibility} options={visOptions} ariaLabel="visibility" onValueChange={(v) => onfilter(categories, v as Visibility)} />
   </div>
 </div>

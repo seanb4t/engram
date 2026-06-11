@@ -2,9 +2,7 @@
   import { Select as SelectPrimitive } from 'bits-ui';
   import { cn } from '$lib/utils';
 
-  // Thin, self-contained shadcn-svelte Select wrapper over the bits-ui Select
-  // primitive: takes a flat options list and a bindable single value. Styled
-  // with engram's CSS-variable tokens (app.css).
+  // shadcn-svelte Select wrapper over the bits-ui Select primitive.
   type Option = { value: string; label: string };
   let {
     value = $bindable(''),
@@ -21,10 +19,9 @@
   } = $props();
 
   const selectedLabel = $derived(options.find((o) => o.value === value)?.label ?? options[0]?.label ?? '');
-  const items = $derived(options.map((o) => ({ value: o.value, label: o.label })));
 </script>
 
-<SelectPrimitive.Root type="single" bind:value {onValueChange} {items}>
+<SelectPrimitive.Root type="single" bind:value {onValueChange} items={options}>
   <SelectPrimitive.Trigger
     aria-label={ariaLabel}
     class={cn(

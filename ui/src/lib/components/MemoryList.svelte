@@ -26,9 +26,9 @@
       <div class="eg-muted" style="font-size:11px">{m.tags.map((t) => '#' + t).join(' ')} · {m.visibility}</div>
     </Button>
   {/each}
-  {#if showTotal}
-    <div class="px-3 py-2 text-center eg-muted">{memories.length} of {total}{approximate ? ' (approximate)' : ''}</div>
-  {:else}
-    <div class="px-3 py-2 text-center eg-muted">{memories.length} result{memories.length === 1 ? '' : 's'}</div>
-  {/if}
+  <div class="px-3 py-2 text-center eg-muted">
+    {showTotal
+      ? `${memories.length} of ${total}${approximate ? ' (approximate)' : ''}`
+      : `${memories.length} result${memories.length === 1 ? '' : 's'}`}
+  </div>
 {/if}

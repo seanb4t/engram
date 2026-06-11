@@ -1,14 +1,21 @@
 export const PAGE_LIMIT = 50;
 
+export type Category = 'convention' | 'gotcha' | 'decision' | 'preference';
+export type Visibility = '' | 'private' | 'shared';
+
+const CATEGORIES: readonly Category[] = ['convention', 'gotcha', 'decision', 'preference'];
+const VISIBILITIES: readonly Visibility[] = ['', 'private', 'shared'];
+
 export interface ObserveParams {
-  scope: string; categories: string[]; visibility: string; offset: number; selectedId: string;
+  scope: string; categories: Category[]; visibility: Visibility; offset: number; selectedId: string;
 }
 
 export function parseObserveParams(sp: URLSearchParams): ObserveParams {
+  const vis = sp.get('vis') ?? '';
   return {
     scope: sp.get('scope') ?? '',
-    categories: sp.getAll('cat'),
-    visibility: sp.get('vis') ?? '',
+    categories: sp.getAll('cat').filter((c): c is Category => (CATEGORIES as readonly string[]).includes(c)),
+    visibility: (VISIBILITIES as readonly string[]).includes(vis) ? (vis as Visibility) : '',
     offset: Number(sp.get('offset') ?? '0') || 0,
     selectedId: sp.get('sel') ?? ''
   };

@@ -2,6 +2,7 @@
   import '../app.css';
   import { QueryClient, QueryClientProvider, QueryCache } from '@tanstack/svelte-query';
   import { ModeWatcher } from 'mode-watcher';
+  import { beforeNavigate } from '$app/navigation';
   import { mapAuthError } from '$lib/client';
   import { errorBanner, reportError, clearError } from '$lib/errors';
   import AppShell from '$lib/components/AppShell.svelte';
@@ -24,6 +25,9 @@
       }
     })
   });
+
+  // Clear any stale error banner when navigating between routes.
+  beforeNavigate(() => clearError());
 </script>
 
 <ModeWatcher />
