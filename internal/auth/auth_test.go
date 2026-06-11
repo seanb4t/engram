@@ -12,6 +12,10 @@ import (
 	"testing"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestIdentityPrefersHumanReadable(t *testing.T) {
@@ -57,4 +61,75 @@ func TestTokenVerifierLogsRejectionReason(t *testing.T) {
 	if !strings.Contains(buf.String(), "token rejected") {
 		t.Errorf("expected a 'token rejected' log line, got %q", buf.String())
 	}
+}
+
+type fakeIDV struct {
+	tok *oidc.IDToken
+	err error
+}
+
+func (f fakeIDV) Verify(_ context.Context, _ string) (*oidc.IDToken, error) {
+	return f.tok, f.err
+}
+
+func recorder(t *testing.T) *tracetest.SpanRecorder {
+	t.Helper()
+	sr := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
+	prevTP := otel.GetTracerProvider()
+	prevTracer := tracer
+	otel.SetTracerProvider(tp)
+	tracer = tp.Tracer("github.com/seanb4t/engram/internal/auth")
+	t.Cleanup(func() {
+		otel.SetTracerProvider(prevTP)
+		tracer = prevTracer
+	})
+	return sr
+}
+
+func TestTokenVerifierSpanSuccess(t *testing.T) {
+	sr := recorder(t)
+	v := &Verifier{idv: fakeIDV{tok: &oidc.IDToken{Subject: "user-1"}}}
+	info, err := v.TokenVerifier()(context.Background(), "tok", nil)
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if info.Extra["sub"] != "user-1" {
+		t.Errorf("sub = %v, want user-1", info.Extra["sub"])
+	}
+	sp := sr.Ended()
+	if len(sp) != 1 || sp[0].Name() != "auth.VerifyToken" {
+		t.Fatalf("want auth.VerifyToken span, got %v", sp)
+	}
+	if got := attr(sp[0], "engram.auth.outcome"); got != "ok" {
+		t.Errorf("outcome = %q, want ok", got)
+	}
+}
+
+func TestTokenVerifierSpanError(t *testing.T) {
+	sr := recorder(t)
+	v := &Verifier{idv: fakeIDV{err: errors.New("bad token")}}
+	_, err := v.TokenVerifier()(context.Background(), "tok", nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	sp := sr.Ended()
+	if len(sp) != 1 {
+		t.Fatalf("want 1 span, got %d", len(sp))
+	}
+	if sp[0].Status().Code != codes.Error {
+		t.Errorf("status = %v, want Error", sp[0].Status().Code)
+	}
+	if got := attr(sp[0], "engram.auth.outcome"); got != "error" {
+		t.Errorf("outcome = %q, want error", got)
+	}
+}
+
+func attr(s sdktrace.ReadOnlySpan, key string) string {
+	for _, kv := range s.Attributes() {
+		if string(kv.Key) == key {
+			return kv.Value.String()
+		}
+	}
+	return ""
 }

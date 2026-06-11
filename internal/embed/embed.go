@@ -12,7 +12,15 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/seanb4t/engram/internal/telemetry"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
+
+var tracer = otel.Tracer("github.com/seanb4t/engram/internal/embed")
 
 // Client embeds text via an OpenAI-compatible embeddings API.
 type Client struct {
@@ -52,7 +60,21 @@ type embedResp struct {
 }
 
 // Embed returns the embedding vector for text.
-func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
+func (c *Client) Embed(ctx context.Context, text string) (vec []float32, err error) {
+	ctx, span := tracer.Start(ctx, "embed.Embed",
+		trace.WithAttributes(attribute.String("engram.embed.model", c.model)))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordEmbed(ctx, start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int("engram.embed.dims", len(vec)))
+		}
+	}()
+
 	body, _ := json.Marshal(embedReq{Model: c.model, Input: text})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/embeddings", bytes.NewReader(body))
 	if err != nil {

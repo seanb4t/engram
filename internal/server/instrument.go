@@ -38,6 +38,10 @@ func instrumentTools(record recordFunc) mcp.Middleware {
 			ctx, span := tracer.Start(ctx, "tool/"+tool, oteltrace.WithSpanKind(oteltrace.SpanKindServer))
 			defer span.End() // panic-safe: the span always closes even if next() panics
 			span.SetAttributes(attribute.String("engram.tool", tool))
+			actor, owner := identityForLog(ctx)
+			if owner != "" {
+				span.SetAttributes(attribute.String("engram.owner", owner))
+			}
 			start := time.Now()
 
 			res, err := next(ctx, method, req)
@@ -46,7 +50,6 @@ func instrumentTools(record recordFunc) mcp.Middleware {
 			ms := float64(time.Since(start).Microseconds()) / 1000.0
 			record(ctx, tool, outcome, ms)
 
-			actor, owner := identityForLog(ctx)
 			lg := slog.With("tool", tool, "outcome", outcome, "dur_ms", ms, "actor", actor, "owner", owner)
 			if err != nil {
 				span.SetStatus(codes.Error, err.Error())

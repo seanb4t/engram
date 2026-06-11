@@ -70,6 +70,16 @@ observability:
   otlpInsecure: true
   # Extra OTel resource attributes, e.g. "deployment.environment=prod".
   resourceAttributes: ""
+  # Trace sampling. Empty => SDK default (parent-based always-on). Standard OTel
+  # values: always_on | always_off | traceidratio | parentbased_traceidratio.
+  # Only emitted when otlpEndpoint is set.
+  traces:
+    sampler: "" # OTEL_TRACES_SAMPLER
+    samplerArg: "" # OTEL_TRACES_SAMPLER_ARG, e.g. "0.1" for 10% with traceidratio
+  # Metric export cadence. Empty => SDK default (60000ms). Only emitted when
+  # otlpEndpoint is set.
+  metrics:
+    exportInterval: "" # OTEL_METRIC_EXPORT_INTERVAL in milliseconds
   log:
     level: info # debug|info|warn|error
     format: json # json|text

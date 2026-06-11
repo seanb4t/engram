@@ -34,17 +34,7 @@ func buildProviders(ctx context.Context, cfg Config) (otellog.LoggerProvider, Sh
 	const exportTimeout = 500 * time.Millisecond
 	insecure := os.Getenv("OTEL_EXPORTER_OTLP_INSECURE") == "true"
 
-	// WithFromEnv() first so OTEL_RESOURCE_ATTRIBUTES is honoured; WithAttributes
-	// last so service.name/version/instance.id always win on conflict (later
-	// detectors overwrite earlier ones in resource.New's merge loop).
-	res, err := resource.New(ctx,
-		resource.WithFromEnv(),
-		resource.WithAttributes(
-			semconv.ServiceName(cfg.ServiceName),
-			semconv.ServiceVersion(cfg.ServiceVersion),
-			attribute.String("service.instance.id", uuid.New().String()),
-		),
-	)
+	res, err := buildResource(ctx, cfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -112,4 +102,32 @@ func buildProviders(ctx context.Context, cfg Config) (otellog.LoggerProvider, Sh
 		return nil
 	}
 	return lp, shutdown, nil
+}
+
+// buildResource assembles the OTel resource from the full idiomatic detector
+// set plus engram's service identity. resource.New is opt-in per detector and
+// does NOT include resource.Default(), so every standard attribute group is
+// requested explicitly. WithFromEnv is first so OTEL_RESOURCE_ATTRIBUTES /
+// OTEL_SERVICE_NAME are honoured; WithAttributes is last so engram's
+// service.name/version/instance.id win on conflict. WithAttributes is schemaless,
+// so it never conflicts with the detectors' bundled semconv schema URL.
+func buildResource(ctx context.Context, cfg Config) (*resource.Resource, error) {
+	return resource.New(ctx,
+		resource.WithFromEnv(),      // OTEL_RESOURCE_ATTRIBUTES + OTEL_SERVICE_NAME
+		resource.WithTelemetrySDK(), // telemetry.sdk.name|language|version
+		// WithProcess captures ALL of os.Args onto process.command_args, exported
+		// on every signal. engram's flags are non-secret today; if a future flag
+		// carries a token/key/secret path, swap this for WithProcessRuntimeName()
+		// + WithProcessRuntimeVersion() (which omit command_args).
+		resource.WithProcess(),   // process.pid, process.executable.*, process.runtime.*, process.owner, process.command_args
+		resource.WithHost(),      // host.name
+		resource.WithHostID(),    // host.id
+		resource.WithOS(),        // os.type, os.description
+		resource.WithContainer(), // container.id (docker/k8s cgroup)
+		resource.WithAttributes(
+			semconv.ServiceName(cfg.ServiceName),
+			semconv.ServiceVersion(cfg.ServiceVersion),
+			attribute.String("service.instance.id", uuid.New().String()),
+		),
+	)
 }
