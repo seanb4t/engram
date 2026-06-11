@@ -14,7 +14,7 @@ The operator-console SPA calls five ConnectRPC read endpoints with loading/error
 
 ## Decision
 
-Adopt @tanstack/svelte-query (v5) as the sole async data layer. Every RPC call is a query with a stable composite key (e.g. [rpc, scope, filters, limit, offset]); loading/error/empty handled declaratively; staleTime tuned per query. The connect-es client stays a thin singleton that svelte-query wraps.
+Adopt @tanstack/svelte-query as the sole async data layer. Every RPC call is a query with a stable composite key (e.g. [rpc, scope, filters, limit, offset]); loading/error/empty handled declaratively; staleTime tuned per query. The connect-es client stays a thin singleton that svelte-query wraps.
 
 ## Rationale
 
