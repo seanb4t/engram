@@ -1379,3 +1379,4 @@ Expected: clean.
 - Cursor pagination / free-text server filters beyond category+visibility.
 - Playwright end-to-end smoke.
 - Pointing Vite directly at `gen/ts` instead of the committed `ui/src/lib/gen` copy.
+<!-- adr-capture: sha256=58c3224f8f31e506; session=cli; ts=2026-06-11T02:39:09Z; adrs=engram-2xl,engram-c4y,engram-vxk,engram-lkm -->

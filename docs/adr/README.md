@@ -13,6 +13,10 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-2xl](engram-2xl-use-tanstack-svelte-query-as-spa-data-layer.md) | 2026-06-11 | Accepted | Use @tanstack/svelte-query as the SPA data layer |
+| [engram-c4y](engram-c4y-drive-spa-shell-state-via-url-parameters.md) | 2026-06-11 | Accepted | Drive SPA shell state via URL parameters |
+| [engram-vxk](engram-vxk-spa-fallback-static-handler-serve-index-html-client-routes.md) | 2026-06-11 | Accepted | SPA-fallback static handler: serve index.html for client routes |
+| [engram-lkm](engram-lkm-listmemories-gains-offset-pagination-and-server-side-filters.md) | 2026-06-11 | Accepted | ListMemories gains offset pagination and server-side filters |
 | [engram-8q3](engram-8q3-session-cookie-seals-only-sub-expiry-no-oidc-tokens-stored-c.md) | 2026-06-10 | Accepted | Session cookie seals only sub+expiry; no OIDC tokens stored client-side |
 | [engram-u5h](engram-u5h-host-docs-site-inside-engram-monorepo-at-docs-site.md) | 2026-06-10 | Accepted | Host the docs site inside the engram monorepo at docs-site/ |
 | [engram-ttb](engram-ttb-deploy-docs-site-via-workers-static-assets-without-ssr-adapt.md) | 2026-06-10 | Accepted | Deploy docs-site via Workers Static Assets without an SSR adapter |
