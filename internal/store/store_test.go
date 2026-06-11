@@ -1272,7 +1272,7 @@ func TestListPagination(t *testing.T) {
 		m := Memory{
 			ID:      fmt.Sprintf("d0000000-0000-0000-0000-00000000000%d", i),
 			Content: fmt.Sprintf("rec %d", i), Scope: scope, Owner: "owner-A",
-			Visibility: "private", Category: "convention", Source: "agent-inferred",
+			Visibility: "", Category: "convention", Source: "agent-inferred",
 			CreatedAt: base.Add(time.Duration(-i) * time.Minute),
 		}
 		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
@@ -1314,9 +1314,11 @@ func TestListCategoryAndVisibilityFilter(t *testing.T) {
 	ctx := context.Background()
 	scope := "filter-test:project:x"
 	now := time.Now().UTC().Truncate(time.Second)
+	// Private records are stored with Visibility=="" (canonical representation).
 	seed := []Memory{
 		{ID: "e0000000-0000-0000-0000-000000000001", Content: "conv shared", Scope: scope, Owner: "owner-A", Visibility: "shared", Category: "convention", Source: "agent-inferred", CreatedAt: now},
-		{ID: "e0000000-0000-0000-0000-000000000002", Content: "gotcha private", Scope: scope, Owner: "owner-A", Visibility: "private", Category: "gotcha", Source: "agent-inferred", CreatedAt: now},
+		{ID: "e0000000-0000-0000-0000-000000000002", Content: "gotcha private", Scope: scope, Owner: "owner-A", Visibility: "", Category: "gotcha", Source: "agent-inferred", CreatedAt: now},
+		{ID: "e0000000-0000-0000-0000-000000000003", Content: "preference private", Scope: scope, Owner: "owner-A", Visibility: "", Category: "preference", Source: "agent-inferred", CreatedAt: now},
 	}
 	for _, m := range seed {
 		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
@@ -1330,13 +1332,95 @@ func TestListCategoryAndVisibilityFilter(t *testing.T) {
 	}()
 	subj := Authenticated("owner-A")
 
+	// Single-category filter.
 	got, total, _, _ := s.List(ctx, scope, subj, ListOptions{Limit: 10, Categories: []string{"gotcha"}})
 	if total != 1 || len(got) != 1 || got[0].Category != "gotcha" {
 		t.Fatalf("category filter: total=%d len=%d", total, len(got))
 	}
+
+	// Multi-category OR filter (af5.14): both gotcha and preference must match.
+	got, total, _, _ = s.List(ctx, scope, subj, ListOptions{Limit: 10, Categories: []string{"gotcha", "preference"}})
+	if total != 2 || len(got) != 2 {
+		t.Fatalf("multi-category OR filter: total=%d len=%d, want 2", total, len(got))
+	}
+	for _, r := range got {
+		if r.Category != "gotcha" && r.Category != "preference" {
+			t.Errorf("multi-category OR returned unexpected category: %q", r.Category)
+		}
+	}
+
+	// Shared visibility filter: returns only the shared record.
 	got, total, _, _ = s.List(ctx, scope, subj, ListOptions{Limit: 10, Visibility: "shared"})
 	if total != 1 || len(got) != 1 || got[0].Visibility != "shared" {
-		t.Fatalf("visibility filter: total=%d len=%d", total, len(got))
+		t.Fatalf("visibility=shared filter: total=%d len=%d", total, len(got))
+	}
+
+	// Private visibility filter: returns records with stored visibility=="" (2 private records),
+	// never the shared one.
+	got, total, _, _ = s.List(ctx, scope, subj, ListOptions{Limit: 10, Visibility: "private"})
+	if total != 2 || len(got) != 2 {
+		t.Fatalf("visibility=private filter: total=%d len=%d, want 2 private records", total, len(got))
+	}
+	for _, r := range got {
+		if r.Visibility == "shared" {
+			t.Errorf("visibility=private filter leaked shared record: id=%s", r.ID)
+		}
+		if r.ID == "e0000000-0000-0000-0000-000000000001" {
+			t.Errorf("visibility=private filter returned the shared record")
+		}
+	}
+}
+
+// TestListPrivateFilterCrossActorIsolation verifies that the private visibility
+// filter preserves authz isolation: caller B must not see caller A's private
+// records even when Visibility=="private" is specified in ListOptions.
+func TestListPrivateFilterCrossActorIsolation(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-private-filter:project:x"
+	now := time.Now().UTC().Truncate(time.Second)
+	// A private, B private, B shared.
+	aPriv := Memory{ID: "e1000000-0000-0000-0000-000000000001", Content: "A private", Scope: scope, Owner: "owner-A", Visibility: "", Category: "convention", Source: "agent-inferred", CreatedAt: now}
+	bPriv := Memory{ID: "e1000000-0000-0000-0000-000000000002", Content: "B private", Scope: scope, Owner: "owner-B", Visibility: "", Category: "convention", Source: "agent-inferred", CreatedAt: now}
+	bShared := Memory{ID: "e1000000-0000-0000-0000-000000000003", Content: "B shared", Scope: scope, Owner: "owner-B", Visibility: "shared", Category: "convention", Source: "agent-inferred", CreatedAt: now}
+	for _, m := range []Memory{aPriv, bPriv, bShared} {
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", m.ID, err)
+		}
+	}
+	defer func() {
+		_ = s.Delete(ctx, aPriv.ID, Authenticated("owner-A"))
+		_ = s.Delete(ctx, bPriv.ID, Authenticated("owner-B"))
+		_ = s.Delete(ctx, bShared.ID, Authenticated("owner-B"))
+	}()
+
+	// Caller A with Visibility=="private": sees only A's private record; never B's private or B's shared.
+	got, total, _, err := s.List(ctx, scope, Authenticated("owner-A"), ListOptions{Limit: 10, Visibility: "private"})
+	if err != nil {
+		t.Fatalf("List owner-A private: %v", err)
+	}
+	if total != 1 || len(got) != 1 {
+		t.Fatalf("owner-A private filter: total=%d len=%d, want 1", total, len(got))
+	}
+	if got[0].ID != aPriv.ID {
+		t.Errorf("owner-A private filter: got record %q, want A's private %q", got[0].ID, aPriv.ID)
+	}
+	for _, r := range got {
+		if r.Owner != "owner-A" {
+			t.Errorf("private filter leaked another owner's record: id=%s owner=%q", r.ID, r.Owner)
+		}
+	}
+
+	// Caller B with Visibility=="private": sees only B's private record; never A's private.
+	got, total, _, err = s.List(ctx, scope, Authenticated("owner-B"), ListOptions{Limit: 10, Visibility: "private"})
+	if err != nil {
+		t.Fatalf("List owner-B private: %v", err)
+	}
+	if total != 1 || len(got) != 1 {
+		t.Fatalf("owner-B private filter: total=%d len=%d, want 1", total, len(got))
+	}
+	if got[0].ID != bPriv.ID {
+		t.Errorf("owner-B private filter: got record %q, want B's private %q", got[0].ID, bPriv.ID)
 	}
 }
 
@@ -1346,8 +1430,8 @@ func TestListFilterPreservesIsolation(t *testing.T) {
 	scope := "iso-filter:project:x"
 	now := time.Now().UTC().Truncate(time.Second)
 	// owner-A private + owner-B private, both convention.
-	a := Memory{ID: "f0000000-0000-0000-0000-000000000001", Content: "A priv", Scope: scope, Owner: "owner-A", Visibility: "private", Category: "convention", Source: "agent-inferred", CreatedAt: now}
-	b := Memory{ID: "f0000000-0000-0000-0000-000000000002", Content: "B priv", Scope: scope, Owner: "owner-B", Visibility: "private", Category: "convention", Source: "agent-inferred", CreatedAt: now}
+	a := Memory{ID: "f0000000-0000-0000-0000-000000000001", Content: "A priv", Scope: scope, Owner: "owner-A", Visibility: "", Category: "convention", Source: "agent-inferred", CreatedAt: now}
+	b := Memory{ID: "f0000000-0000-0000-0000-000000000002", Content: "B priv", Scope: scope, Owner: "owner-B", Visibility: "", Category: "convention", Source: "agent-inferred", CreatedAt: now}
 	for _, m := range []Memory{a, b} {
 		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
 			t.Fatalf("seed: %v", err)

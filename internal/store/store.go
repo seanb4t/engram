@@ -313,10 +313,19 @@ type ListOptions struct {
 	Visibility string   // "" = all | "private" | "shared"
 }
 
-// listFilter is ownerScopeFilter (scope + per-actor authz) AND the optional
-// category/visibility request filters. The authz condition stays the outer
-// Must constraint, so no filter combination can reach another actor's records.
-func (s *Store) listFilter(scope string, subj Subject, opts ListOptions) *qdrant.Filter {
+// listFilter builds the Qdrant filter for List: scope + per-actor authz (outer
+// Must constraint) AND optional category/visibility request filters. The authz
+// condition stays the outer Must, so no filter combination can reach another
+// actor's records.
+//
+// Visibility semantics:
+//   - "" (empty): no visibility filter — return all readable records.
+//   - "shared": match records with stored visibility=="shared".
+//   - "private": match records whose stored visibility is "" (the canonical
+//     private representation — the store only ever writes "" or "shared"). This
+//     is expressed as MustNot(visibility=="shared") so that an empty-string match
+//     in Qdrant is reliable across payload-key-absent and empty-value cases.
+func listFilter(scope string, subj Subject, opts ListOptions) *qdrant.Filter {
 	must := []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),
 		ownerOrSharedCondition(subj),
@@ -328,8 +337,18 @@ func (s *Store) listFilter(scope string, subj Subject, opts ListOptions) *qdrant
 		}
 		must = append(must, qdrant.NewFilterAsCondition(&qdrant.Filter{Should: should}))
 	}
-	if opts.Visibility != "" {
-		must = append(must, qdrant.NewMatch("visibility", opts.Visibility))
+	switch opts.Visibility {
+	case visibilityShared:
+		must = append(must, qdrant.NewMatch("visibility", visibilityShared))
+	case "private":
+		// Private records are stored with visibility=="" (empty string). Use
+		// MustNot(visibility=="shared") rather than matching empty directly, because
+		// Qdrant's NewMatch on an empty string may not reliably match absent or
+		// empty-value keys across all payload states.
+		return &qdrant.Filter{
+			Must:    must,
+			MustNot: []*qdrant.Condition{qdrant.NewMatch("visibility", visibilityShared)},
+		}
 	}
 	return &qdrant.Filter{Must: must}
 }
@@ -342,7 +361,7 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 	const scanCap = 1000
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
-		Filter:         s.listFilter(scope, subj, opts),
+		Filter:         listFilter(scope, subj, opts),
 		Limit:          qdrant.PtrOf(uint32(scanCap)),
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
