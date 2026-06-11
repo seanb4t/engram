@@ -18,6 +18,16 @@ tasks:
     cmds:
       - go build -trimpath -o bin/engram ./cmd/engram
 
+  ui:build:
+    desc: Build the SvelteKit SPA and vendor it into internal/webauth/static
+    dir: ui
+    cmds:
+      - pnpm install --frozen-lockfile
+      - pnpm build
+      - rm -rf ../internal/webauth/static
+      - mkdir -p ../internal/webauth/static
+      - cp -R build/. ../internal/webauth/static/
+
   test:
     desc: Run unit tests (go + python)
     deps: ['test:go', 'test:python']
