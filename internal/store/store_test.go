@@ -413,7 +413,7 @@ func TestSearchListOwnerIsolation(t *testing.T) {
 		}
 	}
 	// List honors the same filter.
-	lst, err := s.List(ctx, scope, Authenticated("sub-A"), 10)
+	lst, _, _, err := s.List(ctx, scope, Authenticated("sub-A"), ListOptions{Limit: 10})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -928,7 +928,7 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 	}
 
 	// List: same restriction.
-	lst, err := s.List(ctx, scope, Anonymous(), 10)
+	lst, _, _, err := s.List(ctx, scope, Anonymous(), ListOptions{Limit: 10})
 	if err != nil {
 		t.Fatalf("List anon: %v", err)
 	}
@@ -1146,7 +1146,7 @@ func TestNilSubjectFailsClosed(t *testing.T) {
 	if hits, err := s.Search(ctx, scope, nilSubj, []float32{0.1, 0.2, 0.3}, 10); err != nil || len(hits) != 0 {
 		t.Errorf("Search(nil): want 0 hits nil err, got %d hits, %v", len(hits), err)
 	}
-	if mems, err := s.List(ctx, scope, nilSubj, 20); err != nil || len(mems) != 0 {
+	if mems, _, _, err := s.List(ctx, scope, nilSubj, ListOptions{Limit: 20}); err != nil || len(mems) != 0 {
 		t.Errorf("List(nil): want 0 mems nil err, got %d, %v", len(mems), err)
 	}
 	if hits, err := s.SearchDiscovery(ctx, scope, "", nilSubj, []float32{0.1, 0.2, 0.3}, 10); err != nil || len(hits) != 0 {
@@ -1259,5 +1259,107 @@ func TestCountAnonymousBucket(t *testing.T) {
 	}
 	if after-before != 2 {
 		t.Fatalf("anonymous-bucket delta = %d, want 2", after-before)
+	}
+}
+
+func TestListPagination(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "page-test:project:x"
+	base := time.Now().UTC().Truncate(time.Second)
+	// 5 owned records, descending CreatedAt so order is deterministic.
+	for i := 0; i < 5; i++ {
+		m := Memory{
+			ID:      fmt.Sprintf("d0000000-0000-0000-0000-00000000000%d", i),
+			Content: fmt.Sprintf("rec %d", i), Scope: scope, Owner: "owner-A",
+			Visibility: "private", Category: "convention", Source: "agent-inferred",
+			CreatedAt: base.Add(time.Duration(-i) * time.Minute),
+		}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %d: %v", i, err)
+		}
+	}
+	defer func() {
+		for i := 0; i < 5; i++ {
+			_ = s.Delete(ctx, fmt.Sprintf("d0000000-0000-0000-0000-00000000000%d", i), Authenticated("owner-A"))
+		}
+	}()
+	subj := Authenticated("owner-A")
+
+	// Page 1: limit 2, offset 0 -> 2 records, total 5.
+	got, total, approx, err := s.List(ctx, scope, subj, ListOptions{Limit: 2, Offset: 0})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if total != 5 || approx {
+		t.Fatalf("total=%d approx=%v, want 5/false", total, approx)
+	}
+	if len(got) != 2 || got[0].Content != "rec 0" {
+		t.Fatalf("page1 = %d records, first=%q", len(got), got[0].Content)
+	}
+	// Page 3: offset 4, limit 2 -> 1 record (the tail).
+	got, _, _, _ = s.List(ctx, scope, subj, ListOptions{Limit: 2, Offset: 4})
+	if len(got) != 1 {
+		t.Fatalf("page3 = %d records, want 1", len(got))
+	}
+	// Offset past total -> empty page, no panic, real total.
+	got, total, _, err = s.List(ctx, scope, subj, ListOptions{Limit: 2, Offset: 99})
+	if err != nil || len(got) != 0 || total != 5 {
+		t.Fatalf("oob: err=%v len=%d total=%d, want nil/0/5", err, len(got), total)
+	}
+}
+
+func TestListCategoryAndVisibilityFilter(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "filter-test:project:x"
+	now := time.Now().UTC().Truncate(time.Second)
+	seed := []Memory{
+		{ID: "e0000000-0000-0000-0000-000000000001", Content: "conv shared", Scope: scope, Owner: "owner-A", Visibility: "shared", Category: "convention", Source: "agent-inferred", CreatedAt: now},
+		{ID: "e0000000-0000-0000-0000-000000000002", Content: "gotcha private", Scope: scope, Owner: "owner-A", Visibility: "private", Category: "gotcha", Source: "agent-inferred", CreatedAt: now},
+	}
+	for _, m := range seed {
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", m.ID, err)
+		}
+	}
+	defer func() {
+		for _, m := range seed {
+			_ = s.Delete(ctx, m.ID, Authenticated("owner-A"))
+		}
+	}()
+	subj := Authenticated("owner-A")
+
+	got, total, _, _ := s.List(ctx, scope, subj, ListOptions{Limit: 10, Categories: []string{"gotcha"}})
+	if total != 1 || len(got) != 1 || got[0].Category != "gotcha" {
+		t.Fatalf("category filter: total=%d len=%d", total, len(got))
+	}
+	got, total, _, _ = s.List(ctx, scope, subj, ListOptions{Limit: 10, Visibility: "shared"})
+	if total != 1 || len(got) != 1 || got[0].Visibility != "shared" {
+		t.Fatalf("visibility filter: total=%d len=%d", total, len(got))
+	}
+}
+
+func TestListFilterPreservesIsolation(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-filter:project:x"
+	now := time.Now().UTC().Truncate(time.Second)
+	// owner-A private + owner-B private, both convention.
+	a := Memory{ID: "f0000000-0000-0000-0000-000000000001", Content: "A priv", Scope: scope, Owner: "owner-A", Visibility: "private", Category: "convention", Source: "agent-inferred", CreatedAt: now}
+	b := Memory{ID: "f0000000-0000-0000-0000-000000000002", Content: "B priv", Scope: scope, Owner: "owner-B", Visibility: "private", Category: "convention", Source: "agent-inferred", CreatedAt: now}
+	for _, m := range []Memory{a, b} {
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	defer func() {
+		_ = s.Delete(ctx, a.ID, Authenticated("owner-A"))
+		_ = s.Delete(ctx, b.ID, Authenticated("owner-B"))
+	}()
+	// Caller B with a category filter must still never see A's private record.
+	got, total, _, _ := s.List(ctx, scope, Authenticated("owner-B"), ListOptions{Limit: 10, Categories: []string{"convention"}})
+	if total != 1 || len(got) != 1 || got[0].Owner != "owner-B" {
+		t.Fatalf("isolation breach: total=%d, %+v", total, got)
 	}
 }

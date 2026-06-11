@@ -67,7 +67,7 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	ms, err := a.d.st.List(ctx, req.Msg.Scope, subj, req.Msg.Limit)
+	ms, _, _, err := a.d.st.List(ctx, req.Msg.Scope, subj, store.ListOptions{Limit: req.Msg.Limit})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
