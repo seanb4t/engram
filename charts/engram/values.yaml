@@ -38,6 +38,23 @@ memory:
     issuer: "" # set → enables bearer-token enforcement (signature/issuer/expiry)
     audience: "" # MEM_OIDC_AUDIENCE (optional aud pin)
     resourceMetadata: "" # MEM_OIDC_RESOURCE_METADATA (optional)
+    # Web-UI confidential-client credentials. Consumed only when the UI lane is
+    # on (memory.ui below). clientID is plain; the client secret is secret-backed
+    # via secretKeyRef (cluster supplies the Secret).
+    clientID: "" # MEM_OIDC_CLIENT_ID
+    clientSecret:
+      name: "" # Secret holding the OIDC client secret (MEM_OIDC_CLIENT_SECRET)
+      key: ""
+  # Web-UI / operator-console lane (cookie/OIDC observe auth). enabled: "" =
+  # headless unless full creds are present; "true" forces it on (fails fast on
+  # missing creds); "false" is a hard off-switch. The cookie-seal key is a
+  # 32-byte AES-256 key, secret-backed via secretKeyRef.
+  ui:
+    enabled: "" # MEM_UI_ENABLED: "" | "true" | "false"
+    redirectURL: "" # MEM_UI_REDIRECT_URL, e.g. https://engram.example/auth/callback
+    cookieKeySecret:
+      name: "" # Secret holding the AES-256 cookie key (MEM_UI_COOKIE_KEY)
+      key: ""
   # Reloader watches the DEPLOYMENT object's annotations (not the pod template).
   # The cluster sets { reloader.stakater.com/auto: "true" }.
   deploymentAnnotations: {}
