@@ -18,10 +18,18 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
+	"github.com/seanb4t/engram/internal/telemetry"
 )
+
+var tracer = otel.Tracer("github.com/seanb4t/engram/internal/auth")
 
 // idVerifier is the subset of *oidc.IDTokenVerifier that TokenVerifier needs.
 // Extracting it as an interface lets tests inject a stub — the concrete oidc
@@ -66,13 +74,28 @@ type identityClaims struct {
 // writes. A verification failure is wrapped in auth.ErrInvalidToken so the
 // RequireBearerToken middleware responds 401.
 func (v *Verifier) TokenVerifier() mcpauth.TokenVerifier {
-	return func(ctx context.Context, token string, _ *http.Request) (*mcpauth.TokenInfo, error) {
-		idt, err := v.idv.Verify(ctx, token)
-		if err != nil {
-			slog.WarnContext(ctx, "token rejected", "err", err)
+	return func(ctx context.Context, token string, _ *http.Request) (info *mcpauth.TokenInfo, err error) {
+		ctx, span := tracer.Start(ctx, "auth.VerifyToken")
+		defer span.End()
+		start := time.Now()
+		defer func() {
+			telemetry.RecordAuthVerify(ctx, start, err)
+			if err != nil {
+				span.SetAttributes(attribute.String("engram.auth.outcome", "error"))
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			} else {
+				span.SetAttributes(attribute.String("engram.auth.outcome", "ok"))
+			}
+		}()
+
+		idt, verr := v.idv.Verify(ctx, token)
+		if verr != nil {
+			slog.WarnContext(ctx, "token rejected", "err", verr)
 			// Join keeps ErrInvalidToken in the chain (so RequireBearerToken maps
 			// to 401) while preserving the underlying verification error.
-			return nil, errors.Join(mcpauth.ErrInvalidToken, err)
+			err = errors.Join(mcpauth.ErrInvalidToken, verr)
+			return nil, err
 		}
 		var claims identityClaims
 		// Identity is best-effort: a token may carry only `sub` (no profile/email
