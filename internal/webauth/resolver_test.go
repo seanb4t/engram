@@ -87,3 +87,12 @@ func mustCodec(t *testing.T) *SessionCodec {
 	}
 	return c
 }
+
+func TestNewResolverPanicsOnNilCodec(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("NewResolver(nil) did not panic; a nil codec must fail at construction, not first request")
+		}
+	}()
+	NewResolver(nil)
+}

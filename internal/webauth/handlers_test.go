@@ -28,6 +28,26 @@ func testHandler(t *testing.T) *Handler {
 	return NewHandler(a, codec, true /* secureCookies */)
 }
 
+func TestNewHandlerPanicsOnNilDeps(t *testing.T) {
+	cases := map[string]struct {
+		auth  *Authenticator
+		codec *SessionCodec
+	}{
+		"nil auth":  {nil, mustCodec(t)},
+		"nil codec": {&Authenticator{}, nil},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("NewHandler did not panic on a nil dependency; nil must fail at construction, not first request")
+				}
+			}()
+			NewHandler(tc.auth, tc.codec, true)
+		})
+	}
+}
+
 func TestLoginRedirectsWithChallengeAndState(t *testing.T) {
 	h := testHandler(t)
 	rec := httptest.NewRecorder()

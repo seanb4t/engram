@@ -32,6 +32,12 @@ type Handler struct {
 // NewHandler builds a Handler over an Authenticator and SessionCodec; secure
 // sets the Secure attribute on issued cookies (false only for plaintext dev).
 func NewHandler(auth *Authenticator, codec *SessionCodec, secure bool) *Handler {
+	if auth == nil {
+		panic("webauth: NewHandler requires a non-nil Authenticator")
+	}
+	if codec == nil {
+		panic("webauth: NewHandler requires a non-nil SessionCodec")
+	}
 	return &Handler{auth: auth, codec: codec, secure: secure}
 }
 
