@@ -23,6 +23,9 @@ type Resolver struct {
 
 // NewResolver builds a Resolver over the session codec.
 func NewResolver(codec *SessionCodec) *Resolver {
+	if codec == nil {
+		panic("webauth: NewResolver requires a non-nil SessionCodec")
+	}
 	return &Resolver{codec: codec}
 }
 
