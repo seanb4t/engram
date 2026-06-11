@@ -48,6 +48,33 @@ spec:
             {{- with .Values.memory.oidc.resourceMetadata }}
             - { name: MEM_OIDC_RESOURCE_METADATA, value: "{{ . }}" }
             {{- end }}
+            {{- with .Values.memory.oidc.clientID }}
+            - { name: MEM_OIDC_CLIENT_ID, value: "{{ . }}" }
+            {{- end }}
+            {{- if .Values.memory.oidc.clientSecret.name }}
+            - name: MEM_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ .Values.memory.oidc.clientSecret.name }}"
+                  key: "{{ .Values.memory.oidc.clientSecret.key }}"
+            {{- end }}
+            {{- if ne (.Values.memory.ui.enabled | toString) "" }}
+            # Tri-state: "" omits (headless-if-creds), "false" is a hard
+            # off-switch — both "true" and "false" must reach the binary, so
+            # gate on non-empty rather than truthiness (toString tolerates a
+            # YAML bool from --set).
+            - { name: MEM_UI_ENABLED, value: "{{ .Values.memory.ui.enabled }}" }
+            {{- end }}
+            {{- with .Values.memory.ui.redirectURL }}
+            - { name: MEM_UI_REDIRECT_URL, value: "{{ . }}" }
+            {{- end }}
+            {{- if .Values.memory.ui.cookieKeySecret.name }}
+            - name: MEM_UI_COOKIE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ .Values.memory.ui.cookieKeySecret.name }}"
+                  key: "{{ .Values.memory.ui.cookieKeySecret.key }}"
+            {{- end }}
             - { name: MEM_LOG_LEVEL, value: "{{ .Values.observability.log.level }}" }
             - { name: MEM_LOG_FORMAT, value: "{{ .Values.observability.log.format }}" }
             - { name: MEM_LOG_STDOUT, value: "{{ .Values.observability.log.stdout }}" }
