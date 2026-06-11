@@ -36,3 +36,6 @@ docs-site/.astro/
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# Visual-companion brainstorm scratch (not committed)
+.superpowers/
