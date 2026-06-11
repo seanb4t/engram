@@ -12,7 +12,26 @@ import (
 	"time"
 
 	"github.com/qdrant/go-client/qdrant"
+	"github.com/seanb4t/engram/internal/telemetry"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
+
+// tracer is the package-level OTel tracer for store-layer spans. It delegates to
+// the global TracerProvider at call time.
+var tracer = otel.Tracer("github.com/seanb4t/engram/internal/store")
+
+// ownerOf returns the span-safe opaque owner for subj. A nil Subject (the
+// discarded-extraction-error fail-closed case) has no owner, so it reports "" —
+// never panicking on the interface method call.
+func ownerOf(subj Subject) string {
+	if subj == nil {
+		return ""
+	}
+	return subj.Owner()
+}
 
 // ErrNotFound is returned when an id is absent OR not visible to the caller —
 // the two are indistinguishable by design, so ownership never leaks across actors.
@@ -73,7 +92,18 @@ func New(c *qdrant.Client, collection string) *Store {
 }
 
 // EnsureCollection is idempotent: creates the collection at the given vector size if absent.
-func (s *Store) EnsureCollection(ctx context.Context, dim uint64) error {
+func (s *Store) EnsureCollection(ctx context.Context, dim uint64) (err error) {
+	ctx, span := tracer.Start(ctx, "store.EnsureCollection")
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "EnsureCollection", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
 	exists, err := s.client.CollectionExists(ctx, s.collection)
 	if err != nil {
 		return err
@@ -199,8 +229,20 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 }
 
 // Upsert inserts or replaces a memory (same ID replaces in place).
-func (s *Store) Upsert(ctx context.Context, m Memory, vec []float32) error {
-	_, err := s.client.Upsert(ctx, &qdrant.UpsertPoints{
+func (s *Store) Upsert(ctx context.Context, m Memory, vec []float32) (err error) {
+	ctx, span := tracer.Start(ctx, "store.Upsert",
+		trace.WithAttributes(attribute.String("engram.scope", m.Scope)))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "Upsert", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
+	_, err = s.client.Upsert(ctx, &qdrant.UpsertPoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
 		Points: []*qdrant.PointStruct{{
 			Id:      qdrant.NewID(m.ID),
@@ -256,7 +298,24 @@ func (s *Store) ownerScopeFilter(scope string, subj Subject) *qdrant.Filter {
 // Search returns the k nearest readable memories to vec within scope.
 // Authenticated callers see their own records plus shared records; anonymous
 // callers see only the ownerless bucket.
-func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []float32, k uint64) ([]Memory, error) {
+func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []float32, k uint64) (out []Memory, err error) {
+	ctx, span := tracer.Start(ctx, "store.Search", trace.WithAttributes(
+		attribute.String("engram.scope", scope),
+		attribute.Int64("engram.k", int64(k)),
+		attribute.String("engram.owner", ownerOf(subj)),
+	))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "Search", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int("engram.result_count", len(out)))
+		}
+	}()
+
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
 		Filter: s.ownerScopeFilter(scope, subj), Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
@@ -283,7 +342,25 @@ func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 // anonymous callers see only ownerless records — shared requires an
 // authenticated subject. Builds a compound exact-match filter — no prefix
 // matching.
-func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Subject, vec []float32, k uint64) ([]Memory, error) {
+func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Subject, vec []float32, k uint64) (out []Memory, err error) {
+	ctx, span := tracer.Start(ctx, "store.SearchDiscovery", trace.WithAttributes(
+		attribute.String("engram.scope", scope),
+		attribute.String("engram.kind", kind),
+		attribute.Int64("engram.k", int64(k)),
+		attribute.String("engram.owner", ownerOf(subj)),
+	))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "SearchDiscovery", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int("engram.result_count", len(out)))
+		}
+	}()
+
 	must := []*qdrant.Condition{qdrant.NewMatch("category", "discovery")}
 	if scope != "" {
 		must = append(must, qdrant.NewMatch("scope", scope))
@@ -357,7 +434,23 @@ func listFilter(scope string, subj Subject, opts ListOptions) *qdrant.Filter {
 // the pre-page total (matched within scanCap), and an approximate flag (true
 // when the match count hit scanCap). When Offset >= total, the page is empty
 // (clamped, never a slice panic) and total is still the real matched count.
-func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListOptions) ([]Memory, uint64, bool, error) {
+func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListOptions) (items []Memory, total uint64, more bool, err error) {
+	ctx, span := tracer.Start(ctx, "store.List", trace.WithAttributes(
+		attribute.String("engram.scope", scope),
+		attribute.String("engram.owner", ownerOf(subj)),
+	))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "List", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int("engram.result_count", len(items)))
+		}
+	}()
+
 	const scanCap = 1000
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
@@ -373,7 +466,7 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		all = append(all, fromPayload(p.Id.GetUuid(), p.Payload))
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].CreatedAt.After(all[j].CreatedAt) })
-	total := uint64(len(all))
+	total = uint64(len(all))
 	approximate := len(all) == scanCap
 	if opts.Offset >= total {
 		return []Memory{}, total, approximate, nil
@@ -396,7 +489,21 @@ type ScopeCount struct {
 // ALL scopes — ownerOrSharedCondition, not ownerScopeFilter which pins a scope)
 // bounded by scanCap and aggregates in-process. The second return is true when
 // the scan hit scanCap, meaning the counts are a bounded sample, not exact.
-func (s *Store) ListScopes(ctx context.Context, subj Subject) ([]ScopeCount, bool, error) {
+func (s *Store) ListScopes(ctx context.Context, subj Subject) (out []ScopeCount, more bool, err error) {
+	ctx, span := tracer.Start(ctx, "store.ListScopes",
+		trace.WithAttributes(attribute.String("engram.owner", ownerOf(subj))))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "ListScopes", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int("engram.result_count", len(out)))
+		}
+	}()
+
 	const scanCap = 1000
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
@@ -411,7 +518,7 @@ func (s *Store) ListScopes(ctx context.Context, subj Subject) ([]ScopeCount, boo
 	for _, p := range pts {
 		counts[fromPayload(p.Id.GetUuid(), p.Payload).Scope]++
 	}
-	out := make([]ScopeCount, 0, len(counts))
+	out = make([]ScopeCount, 0, len(counts))
 	for sc, n := range counts {
 		out = append(out, ScopeCount{Scope: sc, Count: n})
 	}
@@ -420,7 +527,18 @@ func (s *Store) ListScopes(ctx context.Context, subj Subject) ([]ScopeCount, boo
 }
 
 // Get returns the memory with the given id.
-func (s *Store) Get(ctx context.Context, id string) (Memory, error) {
+func (s *Store) Get(ctx context.Context, id string) (m Memory, err error) {
+	ctx, span := tracer.Start(ctx, "store.Get")
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "Get", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
 	pts, err := s.client.Get(ctx, &qdrant.GetPoints{
 		CollectionName: s.collection, Ids: []*qdrant.PointId{qdrant.NewID(id)},
 		WithPayload: qdrant.NewWithPayload(true),
@@ -441,7 +559,19 @@ func (s *Store) Get(ctx context.Context, id string) (Memory, error) {
 // Anonymous callers: readable only if owner=="" (ownerless bucket).
 // The "shared" grant requires an authenticated subject — anonymous callers
 // cannot read shared records. nil/unknown Subject → fail closed (ErrNotFound).
-func (s *Store) GetReadable(ctx context.Context, id string, subj Subject) (Memory, error) {
+func (s *Store) GetReadable(ctx context.Context, id string, subj Subject) (out Memory, err error) {
+	ctx, span := tracer.Start(ctx, "store.GetReadable",
+		trace.WithAttributes(attribute.String("engram.owner", ownerOf(subj))))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "GetReadable", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
 	m, err := s.Get(ctx, id)
 	if err != nil {
 		return Memory{}, err
@@ -497,7 +627,19 @@ func (s *Store) getWritable(ctx context.Context, id string, subj Subject) (Memor
 // exists and is owned by a different actor or the subject is anonymous but the
 // record has an owner (refuse cross-owner overwrite). Transport errors surface
 // unchanged.
-func (s *Store) OwnedOrAbsent(ctx context.Context, id string, subj Subject) error {
+func (s *Store) OwnedOrAbsent(ctx context.Context, id string, subj Subject) (err error) {
+	ctx, span := tracer.Start(ctx, "store.OwnedOrAbsent",
+		trace.WithAttributes(attribute.String("engram.owner", ownerOf(subj))))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "OwnedOrAbsent", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
 	m, err := s.Get(ctx, id)
 	if errors.Is(err, ErrNotFound) {
 		return nil
@@ -531,7 +673,19 @@ func (s *Store) OwnedOrAbsent(ctx context.Context, id string, subj Subject) erro
 // Anonymous-bucket semantics preserved: Anonymous() matches owner=="" exactly as
 // getWritable does, so ownerless records remain mutually writable when auth is
 // disabled.
-func (s *Store) FetchForUpdate(ctx context.Context, id string, subj Subject) (Memory, error) {
+func (s *Store) FetchForUpdate(ctx context.Context, id string, subj Subject) (out Memory, err error) {
+	ctx, span := tracer.Start(ctx, "store.FetchForUpdate",
+		trace.WithAttributes(attribute.String("engram.owner", ownerOf(subj))))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "FetchForUpdate", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
 	return s.getWritable(ctx, id, subj)
 }
 
@@ -540,7 +694,18 @@ func (s *Store) FetchForUpdate(ctx context.Context, id string, subj Subject) (Me
 // is authoritative, so the update path gates ownership exactly once. When shared
 // is non-nil it also sets visibility (true → "shared", false → ""); nil leaves
 // visibility unchanged so a content edit never silently unshares.
-func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *bool, vec []float32) error {
+func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *bool, vec []float32) (err error) {
+	ctx, span := tracer.Start(ctx, "store.Update")
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "Update", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
 	cur.Content = content
 	if shared != nil {
 		if *shared {
@@ -560,7 +725,19 @@ func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *
 // NotFound gRPC error (verified against v1.18.2). That error propagates
 // unchanged, so SetVisibility is fail-closed with respect to concurrent
 // deletion — no additional re-fetch is required.
-func (s *Store) SetVisibility(ctx context.Context, id string, subj Subject, shared bool) error {
+func (s *Store) SetVisibility(ctx context.Context, id string, subj Subject, shared bool) (err error) {
+	ctx, span := tracer.Start(ctx, "store.SetVisibility",
+		trace.WithAttributes(attribute.String("engram.owner", ownerOf(subj))))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "SetVisibility", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
 	if _, err := s.getWritable(ctx, id, subj); err != nil {
 		return err
 	}
@@ -568,7 +745,7 @@ func (s *Store) SetVisibility(ctx context.Context, id string, subj Subject, shar
 	if shared {
 		vis = visibilityShared
 	}
-	_, err := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+	_, err = s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
 		Payload:        qdrant.NewValueMap(map[string]any{"visibility": vis}),
 		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
@@ -577,11 +754,23 @@ func (s *Store) SetVisibility(ctx context.Context, id string, subj Subject, shar
 }
 
 // Delete removes the memory with the given id, only if owned by subj.
-func (s *Store) Delete(ctx context.Context, id string, subj Subject) error {
+func (s *Store) Delete(ctx context.Context, id string, subj Subject) (err error) {
+	ctx, span := tracer.Start(ctx, "store.Delete",
+		trace.WithAttributes(attribute.String("engram.owner", ownerOf(subj))))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "Delete", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
 	if _, err := s.getWritable(ctx, id, subj); err != nil {
 		return err
 	}
-	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{
+	_, err = s.client.Delete(ctx, &qdrant.DeletePoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
 		Points: qdrant.NewPointsSelector(qdrant.NewID(id)),
 	})
@@ -591,7 +780,21 @@ func (s *Store) Delete(ctx context.Context, id string, subj Subject) error {
 // DeleteAll removes the subject's OWN records in scope (never another owner's,
 // and never another owner's shared records). A nil/unknown Subject is rejected
 // without deleting anything — fail closed.
-func (s *Store) DeleteAll(ctx context.Context, scope string, subj Subject) error {
+func (s *Store) DeleteAll(ctx context.Context, scope string, subj Subject) (err error) {
+	ctx, span := tracer.Start(ctx, "store.DeleteAll", trace.WithAttributes(
+		attribute.String("engram.scope", scope),
+		attribute.String("engram.owner", ownerOf(subj)),
+	))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "DeleteAll", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
 	var owner string
 	switch sj := subj.(type) {
 	case authenticated:
@@ -605,7 +808,7 @@ func (s *Store) DeleteAll(ctx context.Context, scope string, subj Subject) error
 		qdrant.NewMatch("scope", scope),
 		qdrant.NewMatch("owner", owner),
 	}}
-	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{
+	_, err = s.client.Delete(ctx, &qdrant.DeletePoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
 		Points: qdrant.NewPointsSelectorFilter(filter),
 	})
@@ -623,7 +826,20 @@ func ownerlessFilter() *qdrant.Filter {
 // CountOwnerless returns the number of pre-isolation (owner-less) records. These
 // are invisible to every owner-scoped read until migrate-set-owner stamps them;
 // the server bootstrap uses this to warn the operator. See ownerlessFilter.
-func (s *Store) CountOwnerless(ctx context.Context) (uint64, error) {
+func (s *Store) CountOwnerless(ctx context.Context) (n uint64, err error) {
+	ctx, span := tracer.Start(ctx, "store.CountOwnerless")
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "CountOwnerless", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int64("engram.result_count", int64(n)))
+		}
+	}()
+
 	return s.client.Count(ctx, &qdrant.CountPoints{
 		CollectionName: s.collection, Filter: ownerlessFilter(), Exact: qdrant.PtrOf(true),
 	})
@@ -635,7 +851,20 @@ func (s *Store) CountOwnerless(ctx context.Context) (uint64, error) {
 // bootstrap warns when this is non-empty: those records are readable by any
 // anonymous caller, so an operator who once ran auth-disabled should know they
 // exist before enabling a network surface.
-func (s *Store) CountAnonymousBucket(ctx context.Context) (uint64, error) {
+func (s *Store) CountAnonymousBucket(ctx context.Context) (n uint64, err error) {
+	ctx, span := tracer.Start(ctx, "store.CountAnonymousBucket")
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "CountAnonymousBucket", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int64("engram.result_count", int64(n)))
+		}
+	}()
+
 	return s.client.Count(ctx, &qdrant.CountPoints{
 		CollectionName: s.collection,
 		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatch("owner", "")}},
@@ -656,7 +885,20 @@ func (s *Store) CountAnonymousBucket(ctx context.Context) (uint64, error) {
 // but not stamped). This is acceptable for the intended use: a one-time, offline
 // admin backfill on a single-user deployment with no concurrent writers. Run it
 // that way and the count is exact.
-func (s *Store) MigrateSetOwner(ctx context.Context, owner string) (uint64, error) {
+func (s *Store) MigrateSetOwner(ctx context.Context, owner string) (n uint64, err error) {
+	ctx, span := tracer.Start(ctx, "store.MigrateSetOwner")
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "MigrateSetOwner", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int64("engram.result_count", int64(n)))
+		}
+	}()
+
 	if owner == "" {
 		return 0, fmt.Errorf("owner must be non-empty")
 	}
