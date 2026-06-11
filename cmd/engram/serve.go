@@ -91,6 +91,9 @@ func runServe() error {
 	// the auth-failure recorder (accessLog), so all counters/histograms share
 	// the same instrument objects and export together.
 	tm := telemetry.NewToolMetrics(otel.Meter("github.com/seanb4t/engram"))
+	// Install the store/embed/auth latency instruments as telemetry package
+	// state so the layer Record* helpers emit (no-op until this runs).
+	telemetry.InitLayerMetrics(otel.Meter("github.com/seanb4t/engram"))
 
 	mux := http.NewServeMux()
 

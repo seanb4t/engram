@@ -5,10 +5,12 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
@@ -23,8 +25,8 @@ func TestNewToolMetricsRecordsWithoutPanic(t *testing.T) {
 	})
 
 	t.Run("real provider assertions", func(t *testing.T) {
-		reader := sdkmetric.NewManualReader()
-		mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+		reader := metric.NewManualReader()
+		mp := metric.NewMeterProvider(metric.WithReader(reader))
 		m := NewToolMetrics(mp.Meter("test"))
 
 		ctx := context.Background()
@@ -102,4 +104,62 @@ func TestNewToolMetricsRecordsWithoutPanic(t *testing.T) {
 			t.Errorf("reason attr: got %q want unauthorized", v.AsString())
 		}
 	})
+}
+
+// collectStoreDuration reads the engram.store.duration histogram via a manual
+// reader and returns its data points.
+func collectStoreDuration(t *testing.T, rdr metric.Reader) []metricdata.HistogramDataPoint[float64] {
+	t.Helper()
+	var rm metricdata.ResourceMetrics
+	if err := rdr.Collect(context.Background(), &rm); err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != "engram.store.duration" {
+				continue
+			}
+			h, ok := m.Data.(metricdata.Histogram[float64])
+			if !ok {
+				t.Fatalf("engram.store.duration is %T, want Histogram[float64]", m.Data)
+			}
+			return h.DataPoints
+		}
+	}
+	return nil
+}
+
+func TestRecordStoreOpRecordsOperationAndOutcome(t *testing.T) {
+	rdr := metric.NewManualReader()
+	mp := metric.NewMeterProvider(metric.WithReader(rdr))
+	InitLayerMetrics(mp.Meter("test"))
+	t.Cleanup(func() { layer = nil })
+
+	RecordStoreOp(context.Background(), "Search", time.Now().Add(-5*time.Millisecond), nil)
+	RecordStoreOp(context.Background(), "Upsert", time.Now(), errors.New("boom"))
+
+	pts := collectStoreDuration(t, rdr)
+	if len(pts) != 2 {
+		t.Fatalf("got %d data points, want 2", len(pts))
+	}
+	got := map[string]string{}
+	for _, p := range pts {
+		op, _ := p.Attributes.Value("operation")
+		out, _ := p.Attributes.Value("outcome")
+		got[op.AsString()] = out.AsString()
+	}
+	if got["Search"] != "ok" {
+		t.Errorf("Search outcome = %q, want ok", got["Search"])
+	}
+	if got["Upsert"] != "error" {
+		t.Errorf("Upsert outcome = %q, want error", got["Upsert"])
+	}
+}
+
+func TestRecordHelpersAreNilSafeWhenUninitialised(_ *testing.T) {
+	layer = nil // telemetry disabled
+	// must not panic
+	RecordStoreOp(context.Background(), "Search", time.Now(), nil)
+	RecordEmbed(context.Background(), time.Now(), nil)
+	RecordAuthVerify(context.Background(), time.Now(), errors.New("x"))
 }
