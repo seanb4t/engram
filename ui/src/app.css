@@ -1,0 +1,18 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+  --foreground: #1f2328; --muted: #59636e; --accent: #1a7f37;
+  --cat-convention: #0969da; --cat-gotcha: #bc4c00; --cat-decision: #8250df; --cat-preference: #0550ae;
+}
+.dark {
+  --background: #0d1117; --surface: #161b22; --border: #30363d;
+  --foreground: #e6edf3; --muted: #8b949e; --accent: #3fb950;
+  --cat-convention: #a5d6ff; --cat-gotcha: #ffa657; --cat-decision: #d2a8ff; --cat-preference: #79c0ff;
+}
+body {
+  background: var(--background); color: var(--foreground);
+  font-family: ui-monospace, 'JetBrains Mono', monospace; font-size: 13px;
+}

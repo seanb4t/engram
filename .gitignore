@@ -39,3 +39,8 @@ docs-site/.astro/
 
 # Visual-companion brainstorm scratch (not committed)
 .superpowers/
+
+# SvelteKit UI (build artifacts; source in ui/ is tracked)
+ui/node_modules/
+ui/.svelte-kit/
+ui/build/
