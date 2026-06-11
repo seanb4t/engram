@@ -31,7 +31,7 @@
     "@connectrpc/connect": "^2.1.1",
     "@connectrpc/connect-web": "^2.1.1",
     "@internationalized/date": "^3.12.2",
-    "@tanstack/svelte-query": "^5.90.2",
+    "@tanstack/svelte-query": "^6.0.0",
     "bits-ui": "^2.18.1",
     "clsx": "^2.1.1",
     "mode-watcher": "^1.1.0",
