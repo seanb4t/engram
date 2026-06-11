@@ -11,6 +11,7 @@
   import ScopeRail from '$lib/components/ScopeRail.svelte';
   import MemoryList from '$lib/components/MemoryList.svelte';
   import MemoryDetail from '$lib/components/MemoryDetail.svelte';
+  import { Button } from '$lib/components/ui/button';
 
   const params = $derived(parseObserveParams($page.url.searchParams));
   function navigate(next: Partial<ObserveParams>) {
@@ -38,6 +39,8 @@
     activeScope={params.scope}
     categories={params.categories}
     visibility={params.visibility}
+    loading={$scopesQ.isLoading}
+    error={$scopesQ.error}
     onscope={(s) => navigate({ scope: s, offset: 0, selectedId: '' })}
     onfilter={(cats, vis) => navigate({ categories: cats, visibility: vis, offset: 0 })}
   />
@@ -51,9 +54,9 @@
       selectedId={params.selectedId}
       onselect={(id) => navigate({ selectedId: id })}
     />
-    <div class="flex justify-between px-3 py-1" style="color:var(--muted)">
-      <button disabled={params.offset === 0} onclick={() => navigate({ offset: Math.max(0, params.offset - PAGE_LIMIT) })}>‹ prev</button>
-      <button onclick={() => navigate({ offset: params.offset + PAGE_LIMIT })}>next ›</button>
+    <div class="flex justify-between px-3 py-1 eg-muted">
+      <Button variant="ghost" size="sm" disabled={params.offset === 0} onclick={() => navigate({ offset: Math.max(0, params.offset - PAGE_LIMIT) })}>‹ prev</Button>
+      <Button variant="ghost" size="sm" disabled={params.offset + PAGE_LIMIT >= Number($listQ.data?.total ?? 0n)} onclick={() => navigate({ offset: params.offset + PAGE_LIMIT })}>next ›</Button>
     </div>
   </div>
   <MemoryDetail memory={$detailQ.data?.memory} loading={$detailQ.isLoading} error={$detailQ.error} />

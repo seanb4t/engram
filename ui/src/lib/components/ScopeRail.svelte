@@ -1,7 +1,11 @@
 <script lang="ts">
   import type { ScopeCount } from '$lib/gen/engram_pb';
-  let { scopes, activeScope, categories, visibility, onscope, onfilter }: {
+  import { Button } from '$lib/components/ui/button';
+  import { Checkbox } from '$lib/components/ui/checkbox';
+  import { Select } from '$lib/components/ui/select';
+  let { scopes, activeScope, categories, visibility, loading = false, error = null, onscope, onfilter }: {
     scopes: ScopeCount[]; activeScope: string; categories: string[]; visibility: string;
+    loading?: boolean; error?: unknown;
     onscope: (s: string) => void; onfilter: (cats: string[], vis: string) => void;
   } = $props();
   const allCats = ['convention', 'gotcha', 'decision', 'preference'];
@@ -9,22 +13,44 @@
     const next = categories.includes(c) ? categories.filter((x) => x !== c) : [...categories, c];
     onfilter(next, visibility);
   }
+  const visOptions = [
+    { value: '', label: 'all' },
+    { value: 'private', label: 'private' },
+    { value: 'shared', label: 'shared' }
+  ];
 </script>
 
-<div class="p-3" style="border-right:1px solid var(--border);width:210px">
-  <div style="color:var(--muted);text-transform:uppercase;font-size:10px">Scopes</div>
-  {#each scopes as s (s.scope)}
-    <button class="block w-full text-left px-2 py-1" style="{s.scope === activeScope ? 'background:var(--surface);border-left:2px solid var(--accent)' : ''}" onclick={() => onscope(s.scope)}>
-      {s.scope} <span style="float:right;color:var(--muted)">{s.count}</span>
-    </button>
-  {/each}
-  <div class="mt-3" style="color:var(--muted);text-transform:uppercase;font-size:10px">Filters</div>
+<div class="p-3 eg-panel-r" style="width:210px">
+  <div class="eg-label">Scopes</div>
+  {#if error}
+    <div data-testid="scopes-error" class="eg-error py-1">failed to load scopes — retry</div>
+  {:else if loading}
+    <div class="eg-muted py-1">loading scopes…</div>
+  {:else if scopes.length === 0}
+    <div class="eg-muted py-1">no scopes</div>
+  {:else}
+    {#each scopes as s (s.scope)}
+      <Button
+        variant="ghost"
+        size="block"
+        class={s.scope === activeScope ? 'eg-surface' : ''}
+        style={s.scope === activeScope ? 'border-left:2px solid var(--accent)' : ''}
+        onclick={() => onscope(s.scope)}
+      >
+        <span class="flex-1">{s.scope}</span>
+        <span class="eg-muted">{s.count}</span>
+      </Button>
+    {/each}
+  {/if}
+  <div class="mt-3 eg-label">Filters</div>
   {#each allCats as c (c)}
-    <label class="block" style="color:var(--cat-{c})"><input type="checkbox" checked={categories.includes(c)} onchange={() => toggleCat(c)} /> {c}</label>
+    <label class="flex items-center gap-2" style="color:var(--cat-{c})">
+      <Checkbox checked={categories.includes(c)} onCheckedChange={() => toggleCat(c)} aria-label={c} />
+      {c}
+    </label>
   {/each}
-  <label class="block mt-2">visibility
-    <select value={visibility} onchange={(e) => onfilter(categories, e.currentTarget.value)}>
-      <option value="">all</option><option value="private">private</option><option value="shared">shared</option>
-    </select>
-  </label>
+  <div class="block mt-2">
+    <div class="eg-muted">visibility</div>
+    <Select value={visibility} options={visOptions} ariaLabel="visibility" onValueChange={(v) => onfilter(categories, v)} />
+  </div>
 </div>

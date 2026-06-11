@@ -16,3 +16,11 @@ body {
   background: var(--background); color: var(--foreground);
   font-family: ui-monospace, 'JetBrains Mono', monospace; font-size: 13px;
 }
+
+/* Shared token-driven utility classes (extracted from repeated inline styles). */
+.eg-surface { background: var(--surface); }
+.eg-panel-r { border-right: 1px solid var(--border); }
+.eg-row { border-bottom: 1px solid var(--border); }
+.eg-muted { color: var(--muted); }
+.eg-error { color: var(--cat-gotcha); }
+.eg-label { color: var(--muted); text-transform: uppercase; font-size: 10px; }

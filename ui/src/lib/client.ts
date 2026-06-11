@@ -2,8 +2,10 @@ import { createClient, ConnectError, Code } from '@connectrpc/connect';
 import { createConnectTransport } from '@connectrpc/connect-web';
 import { EngramService } from './gen/engram_pb';
 
-// Same-origin: the Connect handler is mounted at the service path on root, and
-// the httpOnly session cookie is sent automatically (credentials default).
+// Same-origin: the Connect handler is mounted at the service path on root.
+// Because requests go to the same origin, the browser's fetch API sends the
+// httpOnly session cookie automatically (fetch's `credentials` defaults to
+// "same-origin"). This is a fetch behavior, not a createConnectTransport option.
 const transport = createConnectTransport({ baseUrl: '/' });
 
 export const engram = createClient(EngramService, transport);
