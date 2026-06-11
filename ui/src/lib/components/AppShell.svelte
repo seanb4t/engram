@@ -3,9 +3,9 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   let { children } = $props();
-  // mode-watcher 0.5: `mode` is a rune-state object, read via `mode.current`.
+  // mode-watcher 0.5: `mode` is a Svelte readable store; read reactively via `$mode`.
   function cycleTheme() {
-    const next = mode.current === 'dark' ? 'light' : 'dark';
+    const next = $mode === 'dark' ? 'light' : 'dark';
     setMode(next);
   }
 </script>

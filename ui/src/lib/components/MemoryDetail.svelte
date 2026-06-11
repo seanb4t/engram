@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Memory } from '$lib/gen/engram_pb';
+  import { timestampDate } from '@bufbuild/protobuf/wkt';
   let { memory, loading, error }: { memory: Memory | undefined; loading: boolean; error: unknown } = $props();
 </script>
 
@@ -18,7 +19,7 @@
       <span>scope</span><span style="color:var(--foreground)">{memory.scope}</span>
       <span>source</span><span style="color:var(--foreground)">{memory.source}</span>
       <span>actor</span><span style="color:var(--foreground)">{memory.actor}</span>
-      <span>created</span><span style="color:var(--foreground)">{memory.createdAt?.toDate().toISOString().slice(0, 10)}</span>
+      <span>created</span><span style="color:var(--foreground)">{memory.createdAt ? timestampDate(memory.createdAt).toISOString().slice(0, 10) : ''}</span>
       <span>visibility</span><span style="color:var(--accent)">{memory.visibility}</span>
     </div>
     <div class="mt-2">{memory.tags.map((t) => '#' + t).join(' ')}</div>
