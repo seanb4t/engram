@@ -153,6 +153,41 @@ func TestConnectCrossActorIsolation(t *testing.T) {
 	})
 }
 
+func TestListMemoriesHandlerPagesAndIsolates(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "hdl-page:project:x"
+	// owner-A: 3 convention; owner-B: 1 private convention.
+	seed := []store.Memory{
+		{ID: "a1000000-0000-0000-0000-000000000001", Content: "A1", Scope: scope, Owner: "owner-A", Visibility: "private", Category: "convention", Source: "agent-inferred", CreatedAt: timeNow()},
+		{ID: "a1000000-0000-0000-0000-000000000002", Content: "A2", Scope: scope, Owner: "owner-A", Visibility: "shared", Category: "gotcha", Source: "agent-inferred", CreatedAt: timeNow()},
+		{ID: "a1000000-0000-0000-0000-000000000003", Content: "B1", Scope: scope, Owner: "owner-B", Visibility: "private", Category: "convention", Source: "agent-inferred", CreatedAt: timeNow()},
+	}
+	for _, m := range seed {
+		if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	defer func() {
+		_ = d.st.Delete(ctx, seed[0].ID, store.Authenticated("owner-A"))
+		_ = d.st.Delete(ctx, seed[1].ID, store.Authenticated("owner-A"))
+		_ = d.st.Delete(ctx, seed[2].ID, store.Authenticated("owner-B"))
+	}()
+	api := &engramAPI{d: d}
+	actx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"sub": "owner-A"}})
+
+	// A with category=convention -> only A's convention record; total 1.
+	resp, err := api.ListMemories(actx, connect.NewRequest(&engramv1.ListMemoriesRequest{
+		Scope: scope, Limit: 10, Categories: []string{"convention"},
+	}))
+	if err != nil {
+		t.Fatalf("ListMemories: %v", err)
+	}
+	if resp.Msg.Total != 1 || len(resp.Msg.Memories) != 1 || resp.Msg.Memories[0].Owner != "owner-A" {
+		t.Fatalf("got total=%d len=%d", resp.Msg.Total, len(resp.Msg.Memories))
+	}
+}
+
 // Note: SearchDiscoveries shares the identical subjectFromConnectContext seam.
 // Coverage is skipped here because discovery-scope seeding requires a separate
 // collection setup and discovery-specific Upsert path not yet exposed from testDeps.
