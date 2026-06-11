@@ -13,6 +13,10 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-6gb](engram-6gb-instrument-store-embed-auth-inline-spans-not-decorator-layer.md) | 2026-06-11 | Accepted | Instrument store/embed/auth with inline spans, not a decorator layer |
+| [engram-wot](engram-wot-spans-carry-engram-owner-only-exclude-actor-and-email-as-pii.md) | 2026-06-11 | Accepted | Spans carry engram.owner only; exclude actor and email as PII |
+| [engram-7qd](engram-7qd-reuse-otel-standard-env-vars-sampler-and-export-interval-add.md) | 2026-06-11 | Accepted | Reuse OTel-standard env vars for sampler and export interval; add no MEM_* equivalents |
+| [engram-9tj](engram-9tj-inject-k8s-resource-attributes-via-chart-downward-api-not-go.md) | 2026-06-11 | Accepted | Inject k8s resource attributes via chart Downward API, not Go SDK detectors |
 | [engram-2xl](engram-2xl-use-tanstack-svelte-query-as-spa-data-layer.md) | 2026-06-11 | Accepted | Use @tanstack/svelte-query as the SPA data layer |
 | [engram-c4y](engram-c4y-drive-spa-shell-state-via-url-parameters.md) | 2026-06-11 | Accepted | Drive SPA shell state via URL parameters |
 | [engram-vxk](engram-vxk-spa-fallback-static-handler-serve-index-html-client-routes.md) | 2026-06-11 | Accepted | SPA-fallback static handler: serve index.html for client routes |
