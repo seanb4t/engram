@@ -4,7 +4,7 @@
 # shadcn-svelte (on bits-ui) + Tailwind v4 as the component layer, re-themed
 
 **Date:** 2026-06-09
-**Status:** Accepted
+**Status:** Superseded by engram-lzz
 **Decision:** engram-e38
 **Deciders:** Sean
 
@@ -27,3 +27,7 @@ Adopt shadcn-svelte — its owned, CLI-copied-in components on bits-ui headless 
 ## Consequences
 
 Positive: accessible components fast; owned, editable component code (can be made dense/terminal-styled); a Command palette primitive for search. Negative: we maintain the copied component code; a custom theme must be built (the dense dark look is not free out of the box). Neutral: adds Tailwind v4 as a dev-time frontend dependency; this decision belongs to the frontend plan (a later slice), not the backend foundation.
+
+## References
+
+- Superseded by: engram-lzz
