@@ -13,6 +13,7 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-lzz](engram-lzz-adopt-shadcn-semantic-tokens-retire-bespoke-eg-cat-layer.md) | 2026-06-12 | Accepted | Adopt shadcn semantic tokens; retire bespoke eg-*/--cat-* layer |
 | [engram-y1g](engram-y1g-gate-recall-via-qdrant-filter-leave-get-memory-ungated.md) | 2026-06-12 | Accepted | Gate recall via Qdrant filter; leave get_memory ungated |
 | [engram-90w](engram-90w-add-schedule-memory-list-scheduled-tools-keep-store-memory-w.md) | 2026-06-12 | Accepted | Add schedule_memory/list_scheduled tools; keep store_memory windowless |
 | [engram-ufz](engram-ufz-soft-hide-expired-records-at-recall-opt-prune-expired-storag.md) | 2026-06-12 | Accepted | Soft-hide expired records at recall; opt-in prune-expired for storage reclaim |
@@ -31,7 +32,7 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 | [engram-1xv](engram-1xv-trust-sealed-cookie-sub-until-session-ttl-defer-per-request.md) | 2026-06-10 | Superseded by engram-8q3 | Trust sealed cookie sub until session TTL; defer per-request IdP refresh |
 | [engram-1w7](engram-1w7-deploy-docs-site-via-repo-github-actions-wrangler-workflow.md) | 2026-06-10 | Accepted | Deploy docs-site via an in-repo GitHub Actions wrangler workflow |
 | [engram-u9v](engram-u9v-stateless-encrypted-cookie-session-no-server-side-store.md) | 2026-06-09 | Accepted | Stateless encrypted-cookie session, no server-side store |
-| [engram-e38](engram-e38-shadcn-svelte-bits-ui-tailwind-v4-as-component-layer-re-them.md) | 2026-06-09 | Accepted | shadcn-svelte (on bits-ui) + Tailwind v4 as the component layer, re-themed |
+| [engram-e38](engram-e38-shadcn-svelte-bits-ui-tailwind-v4-as-component-layer-re-them.md) | 2026-06-09 | Superseded by engram-lzz | shadcn-svelte (on bits-ui) + Tailwind v4 as the component layer, re-themed |
 | [engram-bgj](engram-bgj-embed-bff-engram-go-binary-not-node-runtime.md) | 2026-06-09 | Accepted | Embed the BFF in the engram Go binary, not a Node runtime |
 | [engram-8xe](engram-8xe-adopt-connectrpc-and-protobuf-buf-web-ui-api.md) | 2026-06-09 | Accepted | Adopt ConnectRPC and protobuf/buf for the web UI API |
 | [engram-0lu](engram-0lu-sveltekit-adapter-static-spa-vendored-via-go-embed-ssr-dropp.md) | 2026-06-09 | Accepted | SvelteKit adapter-static SPA vendored via go:embed, SSR dropped |
