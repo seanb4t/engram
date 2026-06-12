@@ -66,6 +66,35 @@ memory:
       cpu: 500m
       memory: 256Mi
 
+# External entrypoint for the memory-mcp Service (:8080). Off by default —
+# the Service stays ClusterIP and the chart creates no Ingress/Route. Pick ONE
+# mode; both route the WHOLE service at host root (the operator console at /ui
+# also needs /auth/* and the Connect API, all on :8080), so reach the console
+# at https://<host>/ui. The UI lane must also be enabled (memory.ui above).
+expose:
+  mode: none # none | ingress | httproute
+  host: "" # external hostname; required when mode != none
+  # mode: ingress → networking.k8s.io/v1 Ingress
+  ingress:
+    className: "" # IngressClass (empty = cluster default)
+    path: /
+    pathType: Prefix # Prefix | Exact | ImplementationSpecific
+    tls:
+      secretName: "" # TLS cert Secret for host; empty = no TLS block
+    # Extra labels/annotations merged onto the Ingress (annotations are where
+    # controller config lives, e.g. cert-manager.io/cluster-issuer,
+    # nginx.ingress.kubernetes.io/*).
+    labels: {}
+    annotations: {}
+  # mode: httproute → gateway.networking.k8s.io/v1 HTTPRoute (attaches to an
+  # EXISTING Gateway you reference here; the chart does NOT create a Gateway).
+  httproute:
+    parentRefs: [] # required: [{ name: <gateway>, namespace: <ns>, sectionName: <listener> }]
+    path: / # PathPrefix match value
+    # Extra labels/annotations merged onto the HTTPRoute.
+    labels: {}
+    annotations: {}
+
 observability:
   # OTLP collector endpoint (host:port). Empty disables telemetry export.
   otlpEndpoint: ""

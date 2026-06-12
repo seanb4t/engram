@@ -1,0 +1,75 @@
+{{- /*
+External entrypoint for the operator console / memory-mcp Service (:8080).
+expose.mode selects exactly one of: none (default) | ingress | httproute.
+Both route the whole Service at host root so /ui, /auth/*, and the Connect API
+are all reachable. Validation lives here so it runs regardless of mode.
+*/ -}}
+{{- if not (has .Values.expose.mode (list "none" "ingress" "httproute")) }}
+{{- fail (printf "charts/engram: expose.mode must be one of none|ingress|httproute (got %q)" .Values.expose.mode) }}
+{{- end }}
+{{- if and (ne .Values.expose.mode "none") (not .Values.expose.host) }}
+{{- fail "charts/engram: expose.host is required when expose.mode is not 'none'" }}
+{{- end }}
+{{- if eq .Values.expose.mode "ingress" }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: memory-mcp
+  labels:
+    app.kubernetes.io/name: memory-mcp
+    {{- with .Values.expose.ingress.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.expose.ingress.annotations }}
+  annotations: {{ toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.expose.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.expose.ingress.tls.secretName }}
+  tls:
+    - hosts:
+        - {{ $.Values.expose.host | quote }}
+      secretName: {{ . }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.expose.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.expose.ingress.path | default "/" }}
+            pathType: {{ .Values.expose.ingress.pathType | default "Prefix" }}
+            backend:
+              service:
+                name: memory-mcp
+                port:
+                  number: 8080
+{{- else if eq .Values.expose.mode "httproute" }}
+{{- if not .Values.expose.httproute.parentRefs }}
+{{- fail "charts/engram: expose.httproute.parentRefs is required when expose.mode is 'httproute'" }}
+{{- end }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: memory-mcp
+  labels:
+    app.kubernetes.io/name: memory-mcp
+    {{- with .Values.expose.httproute.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.expose.httproute.annotations }}
+  annotations: {{ toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs: {{ toYaml .Values.expose.httproute.parentRefs | nindent 4 }}
+  hostnames:
+    - {{ .Values.expose.host | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ .Values.expose.httproute.path | default "/" | quote }}
+      backendRefs:
+        - name: memory-mcp
+          port: 8080
+{{- end }}
