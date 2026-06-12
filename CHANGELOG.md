@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.7.0](https://github.com/seanb4t/engram/compare/v0.6.1...v0.7.0) (2026-06-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **serve:** configurable MCP transport path (MEM_MCP_PATH); console at root when UI enabled ([#108](https://github.com/seanb4t/engram/issues/108)) (#111)
+
+### Features
+
+* **serve:** configurable MCP transport path (MEM_MCP_PATH); console at root when UI enabled ([#108](https://github.com/seanb4t/engram/issues/108)) ([#111](https://github.com/seanb4t/engram/issues/111)) ([a4e4c62](https://github.com/seanb4t/engram/commit/a4e4c62072a48ca9b50482b58906ae48d68e5362))
+
+
+### Bug Fixes
+
+* **webauth:** embed SvelteKit _app assets via //go:embed all: ([#106](https://github.com/seanb4t/engram/issues/106)) ([#109](https://github.com/seanb4t/engram/issues/109)) ([aa663e2](https://github.com/seanb4t/engram/commit/aa663e2714680087e21e289e4f8d5c783d524404))
+
 ## [0.6.1](https://github.com/seanb4t/engram/compare/v0.6.0...v0.6.1) (2026-06-12)
 
 
