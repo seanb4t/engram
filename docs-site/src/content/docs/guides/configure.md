@@ -10,8 +10,9 @@ engram uses **env-first configuration** with no viper: every setting is an envir
 | Environment variable | Flag | Default | Description |
 |---------------------|------|---------|-------------|
 | `MEM_LISTEN_ADDR` | `--listen-addr` | `:8080` | TCP address the HTTP server binds to |
+| `MEM_MCP_PATH` | `--mcp-path` | `/mcp` | Path the MCP transport mounts at. `/` restores the legacy root catch-all (where the transport answered at every path). When the web UI is enabled and this is `/mcp`, the host root serves the console. |
 
-Source: `cmd/engram/serve.go` (`f.StringVar(&listenAddr, "listen-addr", server.EnvOr("MEM_LISTEN_ADDR", ":8080"), ...)`)
+Source: `cmd/engram/serve.go` (`f.StringVar(&listenAddr, "listen-addr", server.EnvOr("MEM_LISTEN_ADDR", ":8080"), ...)`, `f.StringVar(&mcpPath, "mcp-path", server.EnvOr("MEM_MCP_PATH", ""), ...)`)
 
 ## Qdrant (vector store)
 
