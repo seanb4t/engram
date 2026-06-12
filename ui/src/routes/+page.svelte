@@ -17,24 +17,24 @@
 </script>
 
 <div class="p-4">
-  <h1 class="mb-3" style="color:var(--accent)">engram — operator console</h1>
+  <h1 class="mb-3 text-primary">engram — operator console</h1>
   {#if scopesQ.isLoading}
-    <div class="eg-muted">loading scopes…</div>
+    <div class="text-muted-foreground">loading scopes…</div>
   {:else if scopesQ.error}
-    <div class="eg-error">failed to load scopes</div>
+    <div class="text-cat-gotcha">failed to load scopes</div>
   {:else}
     <div class="grid gap-2" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">
       {#each scopesQ.data?.scopes ?? [] as s (s.scope)}
         <Button variant="surface" class="text-left p-3 h-auto block" onclick={() => goto(`${base}/observe?scope=${encodeURIComponent(s.scope)}`)}>
-          <div style="color:var(--foreground)">{s.scope}</div>
-          <div style="color:var(--accent);font-size:20px">{s.count}</div>
+          <div class="text-foreground">{s.scope}</div>
+          <div class="text-primary text-[20px]">{s.count}</div>
         </Button>
       {/each}
     </div>
-    {#if scopesQ.data?.approximate}<div class="eg-muted">counts approximate (scanCap)</div>{/if}
+    {#if scopesQ.data?.approximate}<div class="text-muted-foreground">counts approximate (scanCap)</div>{/if}
   {/if}
 
-  <div class="mt-4 eg-label">Recent memories</div>
+  <div class="mt-4 text-[10px] uppercase text-muted-foreground">Recent memories</div>
   <MemoryList
     memories={recentQ.data?.memories ?? []}
     total={recentQ.data?.total ?? 0n}

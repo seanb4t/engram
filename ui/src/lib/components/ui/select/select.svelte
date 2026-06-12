@@ -25,22 +25,22 @@
   <SelectPrimitive.Trigger
     aria-label={ariaLabel}
     class={cn(
-      'inline-flex h-7 items-center gap-1 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-[13px] text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-1',
+      'inline-flex h-7 items-center gap-1 rounded border border-border bg-background px-2 text-[13px] text-foreground focus-visible:outline-none focus-visible:ring-1',
       className
     )}
   >
     {selectedLabel}
-    <span class="text-[var(--muted)]">▾</span>
+    <span class="text-muted-foreground">▾</span>
   </SelectPrimitive.Trigger>
   <SelectPrimitive.Portal>
     <SelectPrimitive.Content
-      class="z-50 rounded border border-[var(--border)] bg-[var(--surface)] p-1 text-[13px] shadow"
+      class="z-50 rounded border border-border bg-secondary p-1 text-[13px] shadow"
     >
       {#each options as o (o.value)}
         <SelectPrimitive.Item
           value={o.value}
           label={o.label}
-          class="flex cursor-pointer select-none items-center rounded px-2 py-1 text-[var(--foreground)] data-[highlighted]:bg-[var(--background)] data-[state=checked]:text-[var(--accent)]"
+          class="flex cursor-pointer select-none items-center rounded px-2 py-1 text-foreground data-[highlighted]:bg-accent data-[state=checked]:text-primary"
         >
           {o.label}
         </SelectPrimitive.Item>

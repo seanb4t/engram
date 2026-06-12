@@ -6,3 +6,6 @@ import { twMerge } from 'tailwind-merge';
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+// Type helpers re-exported from bits-ui for vendored shadcn primitives.
+export type { WithElementRef, WithoutChild, WithoutChildren, WithoutChildrenOrChild } from 'bits-ui';
