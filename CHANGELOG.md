@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.1](https://github.com/seanb4t/engram/compare/v0.6.0...v0.6.1) (2026-06-12)
+
+
+### Features
+
+* **auth:** decouple web-UI OIDC issuer from MCP bearer issuer (MEM_UI_ISSUER) ([#105](https://github.com/seanb4t/engram/issues/105)) ([e8f7a4b](https://github.com/seanb4t/engram/commit/e8f7a4b743bb7651b99c3fe852940dd24b754be1))
+
+
+### Bug Fixes
+
+* **telemetry:** tolerate partial OTel resource detection on distroless ([#103](https://github.com/seanb4t/engram/issues/103)) ([8cec041](https://github.com/seanb4t/engram/commit/8cec04136ad1e861b0c52fbdaf269a1da39a6f5e))
+
 ## [0.6.0](https://github.com/seanb4t/engram/compare/v0.5.2...v0.6.0) (2026-06-12)
 
 
