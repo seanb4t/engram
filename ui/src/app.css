@@ -3,24 +3,41 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
-  --foreground: #1f2328; --muted: #59636e; --accent: #1a7f37;
+  --background: #ffffff; --foreground: #1f2328;
+  --card: #ffffff; --card-foreground: #1f2328;
+  --popover: #ffffff; --popover-foreground: #1f2328;
+  --primary: #1a7f37; --primary-foreground: #ffffff;
+  --secondary: #f6f8fa; --secondary-foreground: #1f2328;
+  --muted: #f6f8fa; --muted-foreground: #59636e;
+  --accent: #f6f8fa; --accent-foreground: #1f2328;
+  --border: #d0d7de; --input: #d0d7de; --ring: #1a7f37;
+  --radius: 0.5rem;
   --cat-convention: #0969da; --cat-gotcha: #bc4c00; --cat-decision: #8250df; --cat-preference: #0550ae;
 }
 .dark {
-  --background: #0d1117; --surface: #161b22; --border: #30363d;
-  --foreground: #e6edf3; --muted: #8b949e; --accent: #3fb950;
+  --background: #0d1117; --foreground: #e6edf3;
+  --card: #161b22; --card-foreground: #e6edf3;
+  --popover: #161b22; --popover-foreground: #e6edf3;
+  --primary: #3fb950; --primary-foreground: #0d1117;
+  --secondary: #161b22; --secondary-foreground: #e6edf3;
+  --muted: #161b22; --muted-foreground: #8b949e;
+  --accent: #21262d; --accent-foreground: #e6edf3;
+  --border: #30363d; --input: #30363d; --ring: #3fb950;
   --cat-convention: #a5d6ff; --cat-gotcha: #ffa657; --cat-decision: #d2a8ff; --cat-preference: #79c0ff;
 }
-body {
-  background: var(--background); color: var(--foreground);
-  font-family: ui-monospace, 'JetBrains Mono', monospace; font-size: 13px;
+
+@theme inline {
+  --color-background: var(--background); --color-foreground: var(--foreground);
+  --color-card: var(--card); --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover); --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary); --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary); --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted); --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent); --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border); --color-input: var(--input); --color-ring: var(--ring);
+  --color-cat-convention: var(--cat-convention); --color-cat-gotcha: var(--cat-gotcha);
+  --color-cat-decision: var(--cat-decision); --color-cat-preference: var(--cat-preference);
+  --radius-lg: var(--radius);
 }
 
-/* Shared token-driven utility classes (extracted from repeated inline styles). */
-.eg-surface { background: var(--surface); }
-.eg-panel-r { border-right: 1px solid var(--border); }
-.eg-row { border-bottom: 1px solid var(--border); }
-.eg-muted { color: var(--muted); }
-.eg-error { color: var(--cat-gotcha); }
-.eg-label { color: var(--muted); text-transform: uppercase; font-size: 10px; }
+body { background: var(--background); color: var(--foreground); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; font-size: 13px; }
