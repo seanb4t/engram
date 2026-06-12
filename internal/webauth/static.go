@@ -11,7 +11,11 @@ import (
 	"strings"
 )
 
-//go:embed static
+// all: is required — a bare `//go:embed static` excludes files and directories
+// whose names begin with "_" or ".", which would drop the SvelteKit build output
+// under static/_app/ and leave the SPA unable to mount (GH #106).
+//
+//go:embed all:static
 var staticFS embed.FS
 
 // StaticHandler serves the committed SPA assets and falls back to index.html for
