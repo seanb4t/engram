@@ -65,6 +65,10 @@ spec:
             # YAML bool from --set).
             - { name: MEM_UI_ENABLED, value: "{{ .Values.memory.ui.enabled }}" }
             {{- end }}
+            {{- with .Values.memory.ui.issuer }}
+            # Empty omits → server defaults the UI login issuer to MEM_OIDC_ISSUER.
+            - { name: MEM_UI_ISSUER, value: "{{ . }}" }
+            {{- end }}
             {{- with .Values.memory.ui.redirectURL }}
             - { name: MEM_UI_REDIRECT_URL, value: "{{ . }}" }
             {{- end }}

@@ -321,7 +321,10 @@ floor that always works. Every other v1 RPC reuses existing store methods
 - **OIDC confidential client.** engram, which today is only a resource server
   (it verifies bearer tokens), additionally becomes an OIDC **confidential
   client** for the web login: authorization-code flow with PKCE against the same
-  issuer, exchanging the code for tokens server-side.
+  issuer, exchanging the code for tokens server-side. *(Amended 2026-06-12, issue
+  #101: the login issuer is now decoupled from the bearer issuer via
+  `MEM_UI_ISSUER`, which defaults to `MEM_OIDC_ISSUER`, so "the same issuer" holds
+  only when `MEM_UI_ISSUER` is unset. See `docs-site` reference/auth.md.)*
 - **Login/callback/logout.** New web endpoints: `GET /auth/login` (redirect to
   the issuer), `GET /auth/callback` (code exchange, seal the session cookie),
   `POST /auth/logout` (clear the cookie). Unauthenticated UI requests redirect to
@@ -344,6 +347,7 @@ All new variables are UI-gated; engram stays headless when they are unset.
 | Variable | Purpose |
 |----------|---------|
 | `MEM_UI_ENABLED` | enable the web UI + login (or imply from the presence of client creds) |
+| `MEM_UI_ISSUER` | login-lane OIDC issuer; defaults to `MEM_OIDC_ISSUER` (added 2026-06-12, #101) |
 | `MEM_OIDC_CLIENT_ID` | engram as OIDC confidential client |
 | `MEM_OIDC_CLIENT_SECRET` | client secret for the code exchange |
 | `MEM_UI_REDIRECT_URL` | auth-code callback URL |

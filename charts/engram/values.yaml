@@ -51,6 +51,12 @@ memory:
   # 32-byte AES-256 key, secret-backed via secretKeyRef.
   ui:
     enabled: "" # MEM_UI_ENABLED: "" | "true" | "false"
+    # MEM_UI_ISSUER: OIDC issuer for the console login lane, decoupled from the
+    # MCP bearer issuer (memory.oidc.issuer). Set it when the console is a
+    # separate OIDC app (distinct iss) from the agents' bearer app — e.g.
+    # Authentik's per-application issuers. Empty → defaults to
+    # memory.oidc.issuer (single-app deployments need nothing here).
+    issuer: ""
     redirectURL: "" # MEM_UI_REDIRECT_URL, e.g. https://engram.example/auth/callback
     cookieKeySecret:
       name: "" # Secret holding the AES-256 cookie key (MEM_UI_COOKIE_KEY)

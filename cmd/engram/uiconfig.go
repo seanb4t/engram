@@ -14,6 +14,7 @@ import (
 // field except Enabled is zero and the caller mounts nothing (headless).
 type UIConfig struct {
 	Enabled      bool
+	Issuer       string
 	ClientID     string
 	ClientSecret string
 	RedirectURL  string
@@ -63,8 +64,22 @@ func resolveUIConfig(getenv func(string) string) (UIConfig, error) {
 	if !allCreds {
 		return UIConfig{Enabled: false}, nil
 	}
+	// The UI login lane verifies ID tokens against its own issuer, decoupled
+	// from the MCP bearer lane: MEM_UI_ISSUER lets the console run as a separate
+	// OIDC app (distinct iss) from the agents' bearer app. Unset → fall back to
+	// MEM_OIDC_ISSUER so single-app deployments need no extra config. An enabled
+	// UI with neither set is a fail-fast startup error — the login lane needs an
+	// issuer to discover.
+	issuer := getenv("MEM_UI_ISSUER")
+	if issuer == "" {
+		issuer = getenv("MEM_OIDC_ISSUER")
+	}
+	if issuer == "" {
+		return UIConfig{}, fmt.Errorf("web UI enabled but no OIDC issuer: set MEM_UI_ISSUER or MEM_OIDC_ISSUER")
+	}
 	return UIConfig{
 		Enabled:      true,
+		Issuer:       issuer,
 		ClientID:     getenv("MEM_OIDC_CLIENT_ID"),
 		ClientSecret: getenv("MEM_OIDC_CLIENT_SECRET"),
 		RedirectURL:  getenv("MEM_UI_REDIRECT_URL"),

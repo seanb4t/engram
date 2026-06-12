@@ -35,6 +35,7 @@ var (
 	oidcResourceMetadata string
 
 	uiEnabled      string
+	uiIssuer       string
 	uiClientID     string
 	uiClientSecret string
 	uiRedirectURL  string
@@ -64,6 +65,8 @@ func init() {
 		"WWW-Authenticate resource metadata URL (optional)")
 	f.StringVar(&uiEnabled, "ui-enabled", server.EnvOr("MEM_UI_ENABLED", ""),
 		"enable the web UI + login lane (empty=imply from creds; 'false'=hard off)")
+	f.StringVar(&uiIssuer, "ui-issuer", server.EnvOr("MEM_UI_ISSUER", ""),
+		"OIDC issuer for the web-UI login lane (empty=default to --oidc-issuer)")
 	f.StringVar(&uiClientID, "oidc-client-id", server.EnvOr("MEM_OIDC_CLIENT_ID", ""),
 		"OIDC confidential-client ID for the web login")
 	f.StringVar(&uiClientSecret, "oidc-client-secret", server.EnvOr("MEM_OIDC_CLIENT_SECRET", ""),
@@ -101,6 +104,10 @@ func runServe() error {
 		switch k {
 		case "MEM_UI_ENABLED":
 			return uiEnabled
+		case "MEM_UI_ISSUER":
+			return uiIssuer
+		case "MEM_OIDC_ISSUER":
+			return oidcIssuer
 		case "MEM_OIDC_CLIENT_ID":
 			return uiClientID
 		case "MEM_OIDC_CLIENT_SECRET":
@@ -121,9 +128,8 @@ func runServe() error {
 	var connectResolve func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)
 	var webHandler *webauth.Handler
 	if uiCfg.Enabled {
-		if oidcIssuer == "" {
-			return fmt.Errorf("web UI enabled but no --oidc-issuer / MEM_OIDC_ISSUER: the login lane needs an issuer")
-		}
+		// resolveUIConfig guarantees uiCfg.Issuer is non-empty here (it defaults
+		// to MEM_OIDC_ISSUER and fails fast when neither issuer is set).
 		key, err := decodeCookieKey(uiCfg.CookieKey)
 		if err != nil {
 			return err
@@ -133,14 +139,14 @@ func runServe() error {
 			return fmt.Errorf("session cookie key: %w", err)
 		}
 		oidcCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		authr, err := webauth.NewAuthenticator(oidcCtx, oidcIssuer, uiCfg.ClientID, uiCfg.ClientSecret, uiCfg.RedirectURL)
+		authr, err := webauth.NewAuthenticator(oidcCtx, uiCfg.Issuer, uiCfg.ClientID, uiCfg.ClientSecret, uiCfg.RedirectURL)
 		cancel()
 		if err != nil {
 			return fmt.Errorf("web UI OIDC discovery: %w", err)
 		}
 		webHandler = webauth.NewHandler(authr, codec, true)
 		connectResolve = webauth.NewResolver(codec).Resolve
-		slog.Info("web UI auth lane enabled", "issuer", oidcIssuer, "redirect", uiCfg.RedirectURL)
+		slog.Info("web UI auth lane enabled", "issuer", uiCfg.Issuer, "redirect", uiCfg.RedirectURL)
 	} else {
 		slog.Info("web UI disabled (headless); Connect API not mounted")
 	}
