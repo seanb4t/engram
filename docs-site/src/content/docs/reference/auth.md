@@ -52,6 +52,56 @@ silently open. All callers share a single anonymous bucket (`owner == ""`).
 
 ---
 
+## Two auth lanes: agents vs. web console
+
+engram authenticates over two independent lanes, each verifying the issuer and
+token signature on its own (and the audience where configured):
+
+- **MCP bearer lane** — agents forward an OIDC bearer token (issued to a
+  public PKCE client). Verified against `MEM_OIDC_ISSUER`; the audience is
+  checked only when `MEM_OIDC_AUDIENCE` is set.
+- **Web console login lane** — the operator console runs the OIDC
+  authorization-code flow as a confidential client. It verifies ID tokens
+  against its own issuer and pins the audience to the client ID.
+
+The console lane is configured by these env vars (all have `--flag` equivalents)
+and only activates when its credentials are present (or forced via
+`MEM_UI_ENABLED=true`):
+
+| Flag | Env | Purpose |
+|------|-----|---------|
+| `--ui-enabled` | `MEM_UI_ENABLED` | `""` implies-from-creds, `"true"` forces on, `"false"` hard off |
+| `--ui-issuer` | `MEM_UI_ISSUER` | Console OIDC issuer — **empty defaults to `MEM_OIDC_ISSUER`** |
+| `--oidc-client-id` | `MEM_OIDC_CLIENT_ID` | Confidential-client ID |
+| `--oidc-client-secret` | `MEM_OIDC_CLIENT_SECRET` | Confidential-client secret |
+| `--ui-redirect-url` | `MEM_UI_REDIRECT_URL` | Auth-code callback URL |
+| `--ui-cookie-key` | `MEM_UI_COOKIE_KEY` | 32-byte AES-256 session-cookie key |
+
+### Split-issuer (per-application IdP) topology
+
+On an IdP that mints a distinct issuer per application (for example
+Authentik's default `issuer_mode`), the security-preferred split — agents on a
+**public** PKCE client and the console on a **confidential** client, i.e. two
+apps with two different `iss` values — needs the two lanes to trust different
+issuers. Set `MEM_UI_ISSUER` to the console app's issuer; the MCP bearer lane
+keeps `MEM_OIDC_ISSUER` (the agents' app):
+
+```sh
+engram serve \
+  --oidc-issuer https://idp.example/application/o/engram-agents/ \
+  --ui-issuer   https://idp.example/application/o/engram-console/ \
+  --oidc-client-id engram-console \
+  --oidc-client-secret "$SECRET" \
+  --ui-redirect-url https://engram.example/auth/callback \
+  --ui-cookie-key "$COOKIE_KEY"
+```
+
+When `MEM_UI_ISSUER` is unset, the console lane reuses `MEM_OIDC_ISSUER`, so
+single-application deployments need no extra configuration. An enabled console
+with neither issuer set is a fail-fast startup error.
+
+---
+
 ## Isolation model
 
 Each authenticated caller is identified by the stable OIDC `sub` claim, stored
