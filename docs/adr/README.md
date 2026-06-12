@@ -13,6 +13,10 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-y1g](engram-y1g-gate-recall-via-qdrant-filter-leave-get-memory-ungated.md) | 2026-06-12 | Accepted | Gate recall via Qdrant filter; leave get_memory ungated |
+| [engram-90w](engram-90w-add-schedule-memory-list-scheduled-tools-keep-store-memory-w.md) | 2026-06-12 | Accepted | Add schedule_memory/list_scheduled tools; keep store_memory windowless |
+| [engram-ufz](engram-ufz-soft-hide-expired-records-at-recall-opt-prune-expired-storag.md) | 2026-06-12 | Accepted | Soft-hide expired records at recall; opt-in prune-expired for storage reclaim |
+| [engram-c0m](engram-c0m-inject-store-clock-via-withclock-option-keep-public-signatur.md) | 2026-06-12 | Accepted | Inject Store clock via WithClock option; keep public signatures stable |
 | [engram-6gb](engram-6gb-instrument-store-embed-auth-inline-spans-not-decorator-layer.md) | 2026-06-11 | Accepted | Instrument store/embed/auth with inline spans, not a decorator layer |
 | [engram-wot](engram-wot-spans-carry-engram-owner-only-exclude-actor-and-email-as-pii.md) | 2026-06-11 | Accepted | Spans carry engram.owner only; exclude actor and email as PII |
 | [engram-7qd](engram-7qd-reuse-otel-standard-env-vars-sampler-and-export-interval-add.md) | 2026-06-11 | Accepted | Reuse OTel-standard env vars for sampler and export interval; add no MEM_* equivalents |
