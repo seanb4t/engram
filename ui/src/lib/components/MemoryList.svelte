@@ -1,34 +1,22 @@
 <script lang="ts">
   import type { Memory } from '$lib/gen/engram_pb';
-  import { Button } from '$lib/components/ui/button';
-  let { memories, total, approximate = false, showTotal = true, loading, error, selectedId, onselect }: {
-    memories: Memory[]; total: bigint; approximate?: boolean; showTotal?: boolean; loading: boolean;
-    error: unknown; selectedId: string; onselect: (id: string) => void;
+  import { Skeleton } from '$lib/components/ui/skeleton';
+  import * as Empty from '$lib/components/ui/empty';
+  import MemoryRow from './MemoryRow.svelte';
+  let { memories, total, approximate = false, loading, error, selectedId, onselect }: {
+    memories: Memory[]; total: bigint; approximate?: boolean; loading: boolean; error: unknown; selectedId: string; onselect: (id: string) => void;
   } = $props();
-  const catColor = (c: string) => `var(--cat-${c})`;
 </script>
 
 {#if loading}
-  <div data-testid="list-loading" class="p-3 eg-muted">loading…</div>
+  <div data-testid="list-loading" class="p-3 flex flex-col gap-2"><Skeleton class="h-12 w-full" /><Skeleton class="h-12 w-full" /><Skeleton class="h-12 w-full" /></div>
 {:else if error}
-  <div class="p-3 eg-error">failed to load — retry</div>
+  <div class="p-3 text-cat-gotcha">failed to load — retry from the toolbar</div>
 {:else if memories.length === 0}
-  <div class="p-3 eg-muted">no memories in this scope/filter</div>
+  <Empty.Root class="p-8"><Empty.Title>no memories</Empty.Title><Empty.Description>nothing in this scope / filter</Empty.Description></Empty.Root>
 {:else}
   {#each memories as m (m.id)}
-    <Button
-      variant="ghost"
-      class="block w-full text-left px-3 py-2 h-auto eg-row {m.id === selectedId ? 'eg-surface' : ''}"
-      onclick={() => onselect(m.id)}
-    >
-      <span style="color:{catColor(m.category)};font-weight:700">{m.category}</span>
-      <span> · {m.content.slice(0, 80)}</span>
-      <div class="eg-muted" style="font-size:11px">{m.tags.map((t) => '#' + t).join(' ')} · {m.visibility}</div>
-    </Button>
+    <MemoryRow memory={m} selected={m.id === selectedId} {onselect} />
   {/each}
-  <div class="px-3 py-2 text-center eg-muted">
-    {showTotal
-      ? `${memories.length} of ${total}${approximate ? ' (approximate)' : ''}`
-      : `${memories.length} result${memories.length === 1 ? '' : 's'}`}
-  </div>
+  <div class="px-3 py-2 text-center text-muted-foreground text-[11px]">{memories.length} of {total}{approximate ? ' (approximate)' : ''}</div>
 {/if}
