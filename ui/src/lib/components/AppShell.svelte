@@ -1,27 +1,37 @@
 <script lang="ts">
   import { setMode, mode } from 'mode-watcher';
-  import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { Button } from '$lib/components/ui/button';
-  let { children } = $props();
-  // mode-watcher 1.x: `mode` is a rune-based object, read via `mode.current`
-  // (the v0.5 derived-store `$mode` form was removed in v1).
-  function cycleTheme() {
-    const next = mode.current === 'dark' ? 'light' : 'dark';
-    setMode(next);
-  }
+  import { Kbd } from '$lib/components/ui/kbd';
+  import EyeIcon from '@lucide/svelte/icons/eye';
+  import SearchIcon from '@lucide/svelte/icons/search';
+  import CompassIcon from '@lucide/svelte/icons/compass';
+  import SunMoonIcon from '@lucide/svelte/icons/sun-moon';
+  let { children, oncommand }: { children?: import('svelte').Snippet; oncommand?: () => void } = $props();
+  const nav = [
+    { href: `${base}/observe`, label: 'Observe', icon: EyeIcon },
+    { href: `${base}/search`, label: 'Search', icon: SearchIcon },
+    { href: `${base}/discovery`, label: 'Discovery', icon: CompassIcon }
+  ];
+  function cycleTheme() { setMode(mode.current === 'dark' ? 'light' : 'dark'); }
 </script>
 
-<div class="min-h-screen flex flex-col" style="background:var(--background);color:var(--foreground)">
-  <header class="flex items-center gap-3 px-3 py-2 eg-surface" style="border-bottom:1px solid var(--border)">
-    <span style="color:var(--accent);font-weight:700">◆ engram</span>
-    <Button
-      variant="outline"
-      aria-label="search"
-      class="flex-1 justify-start text-[var(--muted)]"
-      onclick={() => goto(`${base}/search`)}
-    >⌘K  search memories…</Button>
-    <Button variant="outline" size="sm" aria-label="toggle theme" onclick={cycleTheme}>◐</Button>
+<div class="min-h-screen flex flex-col bg-background text-foreground">
+  <header class="flex items-center gap-3 px-3 py-2 border-b border-border">
+    <span class="font-bold text-primary">◆ engram</span>
+    <Button variant="outline" aria-label="search" class="flex-1 justify-start text-muted-foreground" onclick={() => oncommand?.()}>
+      <SearchIcon data-icon="inline-start" /> search memories… <Kbd class="ml-auto">⌘K</Kbd>
+    </Button>
+    <Button variant="outline" size="sm" aria-label="toggle theme" onclick={cycleTheme}><SunMoonIcon data-icon="inline-start" /></Button>
   </header>
-  <main class="flex-1">{@render children?.()}</main>
+  <div class="flex flex-1 min-h-0">
+    <nav class="flex flex-col gap-1 p-2 border-r border-border w-[64px] items-center">
+      {#each nav as n (n.href)}
+        <a href={n.href} aria-label={n.label} class="flex flex-col items-center gap-1 p-2 rounded text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground">
+          <n.icon data-icon="inline-start" />{n.label}
+        </a>
+      {/each}
+    </nav>
+    <main class="flex-1 min-w-0">{@render children?.()}</main>
+  </div>
 </div>

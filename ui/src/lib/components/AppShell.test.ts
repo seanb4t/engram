@@ -3,10 +3,10 @@ import { describe, it, expect } from 'vitest';
 import AppShell from './AppShell.svelte';
 
 describe('AppShell', () => {
-  it('renders the engram mark, the ⌘K search trigger, and a theme toggle', () => {
+  it('renders nav links and the command trigger', () => {
     render(AppShell);
-    expect(screen.getByText(/engram/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /observe/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /search/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /theme/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /toggle theme/i })).toBeInTheDocument();
   });
 });
