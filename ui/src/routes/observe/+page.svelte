@@ -8,10 +8,11 @@
   import { createQuery } from '@tanstack/svelte-query';
   import { engram } from '$lib/client';
   import { parseObserveParams, observeSearch, listMemoriesKey, PAGE_LIMIT, type ObserveParams } from '$lib/queries';
-  import ScopeRail from '$lib/components/ScopeRail.svelte';
+  import ScopesSidebar from '$lib/components/ScopesSidebar.svelte';
   import MemoryList from '$lib/components/MemoryList.svelte';
   import MemoryDetail from '$lib/components/MemoryDetail.svelte';
-  import { Button } from '$lib/components/ui/button';
+  import * as Resizable from '$lib/components/ui/resizable';
+  import * as Pagination from '$lib/components/ui/pagination';
 
   const params = $derived(parseObserveParams(page.url.searchParams));
   function navigate(next: Partial<ObserveParams>) {
@@ -33,31 +34,45 @@
   });
 </script>
 
-<div class="flex">
-  <ScopeRail
-    scopes={scopesQ.data?.scopes ?? []}
-    activeScope={params.scope}
-    categories={params.categories}
-    visibility={params.visibility}
-    loading={scopesQ.isLoading}
-    error={scopesQ.error}
+<div class="flex h-full min-h-0">
+  <ScopesSidebar
+    scopes={scopesQ.data?.scopes ?? []} activeScope={params.scope}
+    categories={params.categories} visibility={params.visibility}
+    loading={scopesQ.isLoading} error={scopesQ.error}
     onscope={(s) => navigate({ scope: s, offset: 0, selectedId: '' })}
     onfilter={(cats, vis) => navigate({ categories: cats, visibility: vis, offset: 0 })}
   />
-  <div class="flex-1">
-    <MemoryList
-      memories={listQ.data?.memories ?? []}
-      total={listQ.data?.total ?? 0n}
-      approximate={listQ.data?.approximate ?? false}
-      loading={listQ.isLoading}
-      error={listQ.error}
-      selectedId={params.selectedId}
-      onselect={(id) => navigate({ selectedId: id })}
-    />
-    <div class="flex justify-between px-3 py-1 eg-muted">
-      <Button variant="ghost" size="sm" disabled={params.offset === 0} onclick={() => navigate({ offset: Math.max(0, params.offset - PAGE_LIMIT) })}>‹ prev</Button>
-      <Button variant="ghost" size="sm" disabled={params.offset + PAGE_LIMIT >= Number(listQ.data?.total ?? 0n)} onclick={() => navigate({ offset: params.offset + PAGE_LIMIT })}>next ›</Button>
-    </div>
-  </div>
-  <MemoryDetail memory={detailQ.data?.memory} loading={detailQ.isLoading} error={detailQ.error} />
+  <Resizable.PaneGroup direction="horizontal" class="flex-1 min-w-0">
+    <Resizable.Pane defaultSize={60} minSize={35} class="flex flex-col min-h-0">
+      <div class="flex-1 overflow-y-auto">
+        <MemoryList memories={listQ.data?.memories ?? []} total={listQ.data?.total ?? 0n}
+          approximate={listQ.data?.approximate ?? false} loading={listQ.isLoading} error={listQ.error}
+          selectedId={params.selectedId} onselect={(id) => navigate({ selectedId: id })} />
+      </div>
+      <Pagination.Root
+        count={Number(listQ.data?.total ?? 0n)}
+        perPage={PAGE_LIMIT}
+        page={Math.floor(params.offset / PAGE_LIMIT) + 1}
+        onPageChange={(p) => navigate({ offset: (p - 1) * PAGE_LIMIT })}
+      >
+        {#snippet children({ pages, currentPage })}
+          <Pagination.Content>
+            <Pagination.Item><Pagination.Previous /></Pagination.Item>
+            {#each pages as pg (pg.key)}
+              {#if pg.type === 'ellipsis'}
+                <Pagination.Item><Pagination.Ellipsis /></Pagination.Item>
+              {:else}
+                <Pagination.Item><Pagination.Link page={pg} isActive={currentPage === pg.value}>{pg.value}</Pagination.Link></Pagination.Item>
+              {/if}
+            {/each}
+            <Pagination.Item><Pagination.Next /></Pagination.Item>
+          </Pagination.Content>
+        {/snippet}
+      </Pagination.Root>
+    </Resizable.Pane>
+    <Resizable.Handle />
+    <Resizable.Pane defaultSize={40} minSize={25} class="min-h-0">
+      <MemoryDetail memory={detailQ.data?.memory} loading={detailQ.isLoading} error={detailQ.error} />
+    </Resizable.Pane>
+  </Resizable.PaneGroup>
 </div>

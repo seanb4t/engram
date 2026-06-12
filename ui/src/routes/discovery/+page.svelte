@@ -4,10 +4,8 @@
   import { base } from '$app/paths';
   import { createQuery } from '@tanstack/svelte-query';
   import { engram } from '$lib/client';
-  import SearchPalette from '$lib/components/SearchPalette.svelte';
   import MemoryList from '$lib/components/MemoryList.svelte';
   import MemoryDetail from '$lib/components/MemoryDetail.svelte';
-  const q = $derived(page.url.searchParams.get('q') ?? '');
   const sel = $derived(page.url.searchParams.get('sel') ?? '');
   const discQ = createQuery(() => {
     const query = page.url.searchParams.get('q') ?? '';
@@ -18,20 +16,14 @@
     const s = page.url.searchParams.get('sel') ?? '';
     return { queryKey: ['getMemory', s], queryFn: () => engram.getMemory({ id: s }), enabled: !!s };
   });
-  function setQuery(next: string) {
-    const sp = new URLSearchParams(page.url.searchParams);
-    sp.set('q', next);
-    goto(`${base}/discovery?${sp}`);
-  }
   function select(id: string) { const sp = new URLSearchParams(page.url.searchParams); sp.set('sel', id); goto(`${base}/discovery?${sp}`); }
 </script>
-<div class="p-3"><SearchPalette value={q} onsubmit={setQuery} /></div>
 <div class="flex">
   <div class="flex-1">
     <MemoryList
       memories={discQ.data?.discoveries ?? []}
       total={BigInt(discQ.data?.discoveries.length ?? 0)}
-      showTotal={false}
+      showScope={true}
       loading={discQ.isLoading}
       error={discQ.error}
       selectedId={sel}
