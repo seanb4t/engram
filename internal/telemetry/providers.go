@@ -34,10 +34,11 @@ func buildProviders(ctx context.Context, cfg Config) (otellog.LoggerProvider, Sh
 	const exportTimeout = 500 * time.Millisecond
 	insecure := os.Getenv("OTEL_EXPORTER_OTLP_INSECURE") == "true"
 
-	res, err := buildResource(ctx, cfg)
-	if err != nil {
-		return nil, nil, err
-	}
+	// boot is the configured stdout logger (no OTLP bridge yet — providers are
+	// being built). It carries any partial-resource warning on the reliable
+	// stdout channel, honouring MEM_LOG_LEVEL/FORMAT, before slog.SetDefault runs.
+	boot := NewLogger(cfg, nil)
+	res := buildResource(ctx, cfg, boot)
 
 	traceOpts := []otlptracegrpc.Option{
 		otlptracegrpc.WithEndpoint(cfg.OTLPEndpoint),
@@ -111,8 +112,8 @@ func buildProviders(ctx context.Context, cfg Config) (otellog.LoggerProvider, Sh
 // OTEL_SERVICE_NAME are honoured; WithAttributes is last so engram's
 // service.name/version/instance.id win on conflict. WithAttributes is schemaless,
 // so it never conflicts with the detectors' bundled semconv schema URL.
-func buildResource(ctx context.Context, cfg Config) (*resource.Resource, error) {
-	return resource.New(ctx,
+func buildResource(ctx context.Context, cfg Config, lg *slog.Logger) *resource.Resource {
+	return resourceFromOptions(ctx, lg,
 		resource.WithFromEnv(),      // OTEL_RESOURCE_ATTRIBUTES + OTEL_SERVICE_NAME
 		resource.WithTelemetrySDK(), // telemetry.sdk.name|language|version
 		// WithProcess captures ALL of os.Args onto process.command_args, exported
@@ -130,4 +131,31 @@ func buildResource(ctx context.Context, cfg Config) (*resource.Resource, error) 
 			attribute.String("service.instance.id", uuid.New().String()),
 		),
 	)
+}
+
+// resourceFromOptions builds an OTel resource, tolerating partial detection
+// failures. resource.New ALWAYS returns a usable, non-nil Resource: it merges
+// every detector that succeeds and skips only the one that failed, so the
+// surviving attributes (service.name/version/instance.id, process, os,
+// container, …) are still present. Resource detection is therefore best-effort
+// *metadata* and must NEVER disable telemetry export (ADR engram-uxh).
+//
+// The tolerance cannot rely on errors.Is alone: WithHostID on a distroless
+// image (no /etc/machine-id) returns a PLAIN error, not the documented
+// resource.ErrPartialResource sentinel (only WithFromEnv wraps that sentinel).
+// That plain error — propagated as fatal — was issue #102: a single optional
+// host.id detector took down traces + metrics together. So this swallows every
+// detection error and returns the partial resource regardless.
+//
+// The error is logged through lg, the caller's bootstrap stdout logger, NOT
+// the slog default: at telemetry.Setup time slog.SetDefault has not run (it
+// runs later in serve.go), so a bare slog.Warn would bypass MEM_LOG_LEVEL/FORMAT.
+func resourceFromOptions(ctx context.Context, lg *slog.Logger, opts ...resource.Option) *resource.Resource {
+	res, err := resource.New(ctx, opts...)
+	if err != nil {
+		// No span at startup, so the context-less Warn is correct
+		// (logger.go traceContextHandler convention).
+		lg.Warn("partial telemetry resource; exporting with detected attributes", "err", err)
+	}
+	return res
 }
