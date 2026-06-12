@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.6.0](https://github.com/seanb4t/engram/compare/v0.5.2...v0.6.0) (2026-06-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* cookie/OIDC auth lane for the Connect web UI (R1–R4) ([#67](https://github.com/seanb4t/engram/issues/67))
+
+### Features
+
+* **chart:** expose web-UI lane env vars (MEM_UI_*/MEM_OIDC_CLIENT_*) ([#91](https://github.com/seanb4t/engram/issues/91)) ([16253f5](https://github.com/seanb4t/engram/commit/16253f5585ec5d71669c5f3c24e3f96054d00cd0))
+* **chart:** optional Ingress / Gateway API HTTPRoute to expose the console ([#99](https://github.com/seanb4t/engram/issues/99)) ([42178a9](https://github.com/seanb4t/engram/commit/42178a9f592c4c8123869977e0027d6c88084540))
+* cookie/OIDC auth lane for the Connect web UI (R1–R4) ([#67](https://github.com/seanb4t/engram/issues/67)) ([5ee3982](https://github.com/seanb4t/engram/commit/5ee39827eafb53f78b164596e5c9e3e3ce55c02f))
+* engram operator-console SPA (v1 observe) ([#79](https://github.com/seanb4t/engram/issues/79)) ([54ede5e](https://github.com/seanb4t/engram/commit/54ede5ec183be026281c2116e7fdde56a72bb3d6))
+* engram web UI v1 backend API foundation (EngramService Connect) ([#62](https://github.com/seanb4t/engram/issues/62)) ([97b22ff](https://github.com/seanb4t/engram/commit/97b22ff663d893ccaa11af267cb89cb0044c8a9f))
+* **telemetry:** instrumentation depth at every seam ([#88](https://github.com/seanb4t/engram/issues/88)) ([09659de](https://github.com/seanb4t/engram/commit/09659de2c5e9aaf60506c77317c18b9537a25b28))
+
+
+### Bug Fixes
+
+* **deps:** migrate @tanstack/svelte-query to v6 (runes API) ([#98](https://github.com/seanb4t/engram/issues/98)) ([68dbe59](https://github.com/seanb4t/engram/commit/68dbe59402b774b1d54b321e6548c52d00e4fe9a))
+* **webauth:** nil-dependency guards in NewHandler/NewResolver ([#92](https://github.com/seanb4t/engram/issues/92)) ([d96477a](https://github.com/seanb4t/engram/commit/d96477a6718bd091b76c9e82b66686f855ad39f7))
+
 ## [0.5.2](https://github.com/seanb4t/engram/compare/v0.5.1...v0.5.2) (2026-06-09)
 
 
