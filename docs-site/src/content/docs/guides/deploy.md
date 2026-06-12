@@ -24,6 +24,7 @@ The chart sets `MEM_*` environment variables from these Helm values. Supply the 
 | Helm value | `MEM_*` variable set | Description |
 |-----------|---------------------|-------------|
 | `memory.listenAddr` | `MEM_LISTEN_ADDR` | Listen address (default `:8080`) |
+| `memory.mcpPath` | `MEM_MCP_PATH` | MCP transport path (empty → `/mcp`; `/` restores the legacy root catch-all) |
 | `memory.litellm.url` | `MEM_LITELLM_URL` | Embeddings endpoint URL (cluster must supply) |
 | `memory.embed.model` | `MEM_EMBED_MODEL` | Embed model name (default `ollama/bge-m3`) |
 | `memory.embed.dim` | `MEM_EMBED_DIM` | Vector dimension (default `1024`) |
@@ -63,4 +64,4 @@ docker run -d \
 
 **No volumes needed** — all state lives in Qdrant. Run a separate Qdrant container (see [Quickstart](/guides/quickstart/)) and point `MEM_QDRANT_ADDR` at it.
 
-The MCP endpoint is served at the root (`http://host:8080`), with no path prefix.
+The MCP endpoint is served at `http://host:8080/mcp` by default. Set `MEM_MCP_PATH=/` to restore the pre-0.7 behavior where the transport answered at the bare root.

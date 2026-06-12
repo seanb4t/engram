@@ -39,6 +39,10 @@ spec:
                 secretKeyRef:
                   name: "{{ .Values.memory.litellm.keySecret.name }}"
                   key: "{{ .Values.memory.litellm.keySecret.key }}"
+            {{- /* Empty omits the var → server defaults the MCP transport to /mcp. "/" restores the legacy root catch-all. */}}
+            {{- with .Values.memory.mcpPath }}
+            - { name: MEM_MCP_PATH, value: "{{ . }}" }
+            {{- end }}
             {{- with .Values.memory.oidc.issuer }}
             - { name: MEM_OIDC_ISSUER, value: "{{ . }}" }
             {{- end }}

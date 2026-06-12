@@ -40,6 +40,8 @@ var (
 	uiClientSecret string
 	uiRedirectURL  string
 	uiCookieKey    string
+
+	mcpPath string
 )
 
 var serveCmd = &cobra.Command{
@@ -75,6 +77,8 @@ func init() {
 		"OIDC auth-code callback URL")
 	f.StringVar(&uiCookieKey, "ui-cookie-key", server.EnvOr("MEM_UI_COOKIE_KEY", ""),
 		"32-byte AES-GCM key sealing the session cookie")
+	f.StringVar(&mcpPath, "mcp-path", server.EnvOr("MEM_MCP_PATH", ""),
+		"path for the MCP transport (empty=/mcp; '/'=legacy root catch-all)")
 }
 
 func runServe() error {
@@ -161,10 +165,15 @@ func runServe() error {
 		mux.HandleFunc("GET /auth/login", webHandler.Login)
 		mux.HandleFunc("GET /auth/callback", webHandler.Callback)
 		mux.HandleFunc("POST /auth/logout", webHandler.Logout)
-		// Static SPA is the fallback for non-API, non-auth routes. Registered
-		// last and only when enabled; the MCP handler still owns "/" below for
-		// the streamable transport, so static is mounted under "/ui/".
+		// The console SPA is served under "/ui/"; mountMCPRoutes below redirects a
+		// browser GET of the bare root here.
 		mux.Handle("/ui/", http.StripPrefix("/ui/", webauth.StaticHandler()))
+	}
+
+	resolvedMCPPath, err := resolveMCPPath(mcpPath)
+	if err != nil {
+		slog.Error("invalid MCP path", "err", err)
+		return err
 	}
 
 	var handler http.Handler = mcp.NewStreamableHTTPHandler(
@@ -176,7 +185,10 @@ func runServe() error {
 	}
 	handler = accessLog(tm.RecordAuthFailure, nil)(handler)
 	handler = otelhttp.NewHandler(handler, "mcp")
-	mux.Handle("/", handler) // MCP streamable transport stays the root catch-all
+	// Mount the MCP transport at its configured path and give "/" to the console
+	// landing / 404 handler (mcpPath="/" restores the legacy root catch-all).
+	mountMCPRoutes(mux, handler, uiCfg.Enabled, resolvedMCPPath)
+	slog.Info("MCP transport mounted", "path", resolvedMCPPath, "ui_enabled", uiCfg.Enabled)
 
 	// ReadHeaderTimeout guards against slowloris; IdleTimeout reclaims idle
 	// keep-alive connections. ReadTimeout and WriteTimeout are intentionally

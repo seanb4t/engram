@@ -13,6 +13,11 @@ imagePullSecrets: []
 
 memory:
   listenAddr: ":8080"
+  # MEM_MCP_PATH: where the MCP transport is mounted. "" → /mcp (default, both
+  # headless and UI modes). "/" restores the pre-0.7 root catch-all (MCP answers
+  # every path) for clients that still POST to the host root. When the UI is on
+  # and this is the default, the host root serves the console.
+  mcpPath: ""
   embed:
     model: "ollama/bge-m3"
     dim: 1024

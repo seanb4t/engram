@@ -32,7 +32,7 @@ docker run -d \
 
 (`host.docker.internal` resolves on macOS and Windows; Linux users need `--add-host host.docker.internal:host-gateway` or replace with the host IP.)
 
-The MCP endpoint is served at the **root** — `http://localhost:8080` — with no path prefix.
+The MCP endpoint is served at **`http://localhost:8080/mcp`** by default. Set `MEM_MCP_PATH=/` to restore the pre-0.7 behavior where the transport answered at the bare root.
 
 Key environment variables (see [Configure](/guides/configure/) for the full list):
 
