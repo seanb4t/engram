@@ -13,6 +13,8 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-no3](engram-no3-ship-engram-wordmark-as-outlined-svg-paths-not-webfont.md) | 2026-06-13 | Accepted | Ship engram wordmark as outlined SVG paths, not a webfont |
+| [engram-4ag](engram-4ag-gate-dashboard-category-breakdown-bar-listscopes-api-extensi.md) | 2026-06-13 | Accepted | Gate dashboard category-breakdown bar on a listScopes API extension |
 | [engram-lzz](engram-lzz-adopt-shadcn-semantic-tokens-retire-bespoke-eg-cat-layer.md) | 2026-06-12 | Accepted | Adopt shadcn semantic tokens; retire bespoke eg-*/--cat-* layer |
 | [engram-y1g](engram-y1g-gate-recall-via-qdrant-filter-leave-get-memory-ungated.md) | 2026-06-12 | Accepted | Gate recall via Qdrant filter; leave get_memory ungated |
 | [engram-90w](engram-90w-add-schedule-memory-list-scheduled-tools-keep-store-memory-w.md) | 2026-06-12 | Accepted | Add schedule_memory/list_scheduled tools; keep store_memory windowless |
