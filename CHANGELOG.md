@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.4](https://github.com/seanb4t/engram/compare/v0.7.3...v0.7.4) (2026-06-13)
+
+
+### Features
+
+* engram brand system — console identity + docs-site unification ([#127](https://github.com/seanb4t/engram/issues/127)) ([9b55779](https://github.com/seanb4t/engram/commit/9b55779c0936d4dba5731d1abafdf5da01e4839a))
+
+
+### Bug Fixes
+
+* **brand:** --cat-discovery token, dark-scheme favicon tuning, light/dark docs logo, accent dedupe ([#129](https://github.com/seanb4t/engram/issues/129)) ([7e61303](https://github.com/seanb4t/engram/commit/7e61303c2e2233ea6a36f99f6869d8581328769c))
+
 ## [0.7.3](https://github.com/seanb4t/engram/compare/v0.7.2...v0.7.3) (2026-06-13)
 
 
