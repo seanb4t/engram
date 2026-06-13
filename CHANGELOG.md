@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.3](https://github.com/seanb4t/engram/compare/v0.7.2...v0.7.3) (2026-06-13)
+
+
+### Features
+
+* **cmd:** add 'engram reindex' for embedder/model migration ([#117](https://github.com/seanb4t/engram/issues/117)) ([#123](https://github.com/seanb4t/engram/issues/123)) ([987045c](https://github.com/seanb4t/engram/commit/987045c42aaeb4ef69abb1a2792f10c8801bc6e7))
+
 ## [0.7.2](https://github.com/seanb4t/engram/compare/v0.7.1...v0.7.2) (2026-06-13)
 
 
