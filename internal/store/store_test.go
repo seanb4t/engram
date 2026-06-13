@@ -1469,3 +1469,16 @@ func TestPayloadRoundTripWindow(t *testing.T) {
 		t.Errorf("unwindowed: want nil pointers, got nb=%v na=%v", plain.NotBefore, plain.NotAfter)
 	}
 }
+
+func TestWithClockOverridesNow(t *testing.T) {
+	fixed := time.Date(2040, 1, 1, 0, 0, 0, 0, time.UTC)
+	s := New(nil, "c", WithClock(func() time.Time { return fixed }))
+	if got := s.now(); !got.Equal(fixed) {
+		t.Errorf("WithClock: got %v want %v", got, fixed)
+	}
+	// Default clock is time.Now (non-zero, recent).
+	d := New(nil, "c")
+	if d.now().IsZero() {
+		t.Error("default clock returned zero time")
+	}
+}

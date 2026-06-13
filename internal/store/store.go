@@ -90,11 +90,26 @@ type Citation struct {
 type Store struct {
 	client     *qdrant.Client
 	collection string
+	now        func() time.Time
+}
+
+// Option configures a Store at construction.
+type Option func(*Store)
+
+// WithClock overrides the time source the recall window gate reads. Defaults to
+// time.Now. Tests inject a fixed clock to exercise active/scheduled/expired
+// boundaries deterministically.
+func WithClock(fn func() time.Time) Option {
+	return func(s *Store) { s.now = fn }
 }
 
 // New returns a Store backed by the given Qdrant client and collection.
-func New(c *qdrant.Client, collection string) *Store {
-	return &Store{client: c, collection: collection}
+func New(c *qdrant.Client, collection string, opts ...Option) *Store {
+	s := &Store{client: c, collection: collection, now: time.Now}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // EnsureCollection is idempotent: creates the collection at the given vector size if absent.
