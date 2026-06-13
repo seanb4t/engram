@@ -3,7 +3,7 @@ export const PAGE_LIMIT = 50;
 export type Category = 'convention' | 'gotcha' | 'decision' | 'preference';
 export type Visibility = '' | 'private' | 'shared';
 
-const CATEGORIES: readonly Category[] = ['convention', 'gotcha', 'decision', 'preference'];
+export const CATEGORIES: readonly Category[] = ['convention', 'gotcha', 'decision', 'preference'];
 const VISIBILITIES: readonly Visibility[] = ['', 'private', 'shared'];
 
 export interface ObserveParams {

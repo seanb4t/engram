@@ -13,7 +13,11 @@ export default defineConfig({
       description:
         'Self-hosted, correctable, OAuth-secured memory for coding agents, over MCP.',
       customCss: ['./src/styles/brand.css'],
-      logo: { src: './src/assets/engram-mark.svg', replacesTitle: true },
+      logo: {
+        light: './src/assets/engram-mark.svg',
+        dark: './src/assets/engram-mark-dark.svg',
+        replacesTitle: true,
+      },
       social: [
         {
           icon: 'github',
