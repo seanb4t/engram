@@ -16,9 +16,15 @@ command is the canonical way to wire engram up.
 
 1. **Determine the server URL.** If an argument was provided (`$1`), use it.
    Otherwise ask the user for their engram server URL. Examples:
-   - Direct server: `http://localhost:8080`, or `https://engram.example.com`.
+   - Direct server: `http://localhost:8080/mcp`, or
+     `https://engram.example.com/mcp`.
    - Behind an OAuth gateway: the gateway's route, e.g.
      `https://gateway.example.com/mcp/engram`.
+
+   The engram server mounts the MCP transport at `/mcp` by default (since v0.7),
+   so a direct-server URL must include that suffix — registering the bare root
+   404s. Deployments that set `MEM_MCP_PATH=/` restore the legacy root catch-all;
+   for those, register the bare root URL (no `/mcp`). See ADR engram-bj6.
 
 2. **Ask the auth mode** — one of:
    - **OAuth** (direct OIDC, or gateway-fronted): the server/gateway returns a
