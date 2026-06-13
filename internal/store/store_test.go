@@ -1447,3 +1447,241 @@ func TestListFilterPreservesIsolation(t *testing.T) {
 		t.Fatalf("isolation breach: total=%d, %+v", total, got)
 	}
 }
+
+func TestPayloadRoundTripWindow(t *testing.T) {
+	nb := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	na := time.Date(2031, 6, 7, 8, 9, 10, 0, time.UTC)
+	m := Memory{
+		ID: "22222222-2222-2222-2222-222222222222", Content: "windowed",
+		Scope: "win-test:project:x", Owner: "sub-A", CreatedAt: time.Now().UTC(),
+		NotBefore: &nb, NotAfter: &na,
+	}
+	got := fromPayload(m.ID, qdrant.NewValueMap(payload(m)))
+	if got.NotBefore == nil || !got.NotBefore.Equal(nb) {
+		t.Errorf("NotBefore round-trip: got %v want %v", got.NotBefore, nb)
+	}
+	if got.NotAfter == nil || !got.NotAfter.Equal(na) {
+		t.Errorf("NotAfter round-trip: got %v want %v", got.NotAfter, na)
+	}
+	// Unwindowed record: keys absent, pointers stay nil.
+	plain := fromPayload("id", qdrant.NewValueMap(payload(Memory{ID: "id", Content: "x"})))
+	if plain.NotBefore != nil || plain.NotAfter != nil {
+		t.Errorf("unwindowed: want nil pointers, got nb=%v na=%v", plain.NotBefore, plain.NotAfter)
+	}
+}
+
+func TestWithClockOverridesNow(t *testing.T) {
+	fixed := time.Date(2040, 1, 1, 0, 0, 0, 0, time.UTC)
+	s := New(nil, "c", WithClock(func() time.Time { return fixed }))
+	if got := s.now(); !got.Equal(fixed) {
+		t.Errorf("WithClock: got %v want %v", got, fixed)
+	}
+	// Default clock is time.Now (non-zero, recent).
+	d := New(nil, "c")
+	if d.now().IsZero() {
+		t.Error("default clock returned zero time")
+	}
+}
+
+func TestRecallWindowGate(t *testing.T) {
+	s := testStore(t)
+	fixed := time.Date(2030, 6, 15, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return fixed } // white-box override
+	ctx := context.Background()
+	scope := "gate-test:project:x"
+	subj := Authenticated("sub-A")
+	past := fixed.Add(-24 * time.Hour)
+	future := fixed.Add(24 * time.Hour)
+
+	mk := func(id string, nb, na *time.Time) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A",
+			CreatedAt: fixed, NotBefore: nb, NotAfter: na}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+		t.Cleanup(func() { cleanupErr(t, id, s.Delete(ctx, id, subj)) })
+	}
+	mkVis := func(id, owner, vis string, nb, na *time.Time) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: owner, Visibility: vis,
+			CreatedAt: fixed, NotBefore: nb, NotAfter: na}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+		t.Cleanup(func() { cleanupErr(t, id, s.Delete(ctx, id, Authenticated(owner))) })
+	}
+	mk("a0000000-0000-0000-0000-000000000001", nil, nil)       // unwindowed -> visible
+	mk("a0000000-0000-0000-0000-000000000002", &past, &future) // active -> visible
+	mk("a0000000-0000-0000-0000-000000000003", &future, nil)   // scheduled -> hidden
+	mk("a0000000-0000-0000-0000-000000000004", nil, &past)     // expired -> hidden
+	// sub-B's SHARED but scheduled record: must stay hidden from sub-A until active
+	mkVis("a0000000-0000-0000-0000-000000000005", "sub-B", "shared", &future, nil)
+
+	// Active set is exactly the unwindowed + active records; a count-only check
+	// would pass a transposition (e.g. expired slipping in as active drops out).
+	wantActive := []string{
+		"a0000000-0000-0000-0000-000000000001",
+		"a0000000-0000-0000-0000-000000000002",
+	}
+	assertActiveSet := func(label string, ms []Memory) {
+		t.Helper()
+		got := make(map[string]bool, len(ms))
+		for _, m := range ms {
+			got[m.ID] = true
+		}
+		if len(got) != len(wantActive) {
+			t.Errorf("%s: got ids %v want exactly %v", label, got, wantActive)
+			return
+		}
+		for _, id := range wantActive {
+			if !got[id] {
+				t.Errorf("%s: missing expected id %s (got %v)", label, id, got)
+			}
+		}
+	}
+
+	hits, err := s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	assertActiveSet("Search", hits)
+	lst, _, _, err := s.List(ctx, scope, subj, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	assertActiveSet("List", lst)
+	// By-id is ungated: the scheduled record is still fetchable directly.
+	if _, err := s.GetReadable(ctx, "a0000000-0000-0000-0000-000000000003", subj); err != nil {
+		t.Errorf("GetReadable on scheduled record should be ungated, got %v", err)
+	}
+}
+
+func TestListScheduledStates(t *testing.T) {
+	s := testStore(t)
+	fixed := time.Date(2030, 6, 15, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return fixed }
+	ctx := context.Background()
+	scope := "sched-test:project:x"
+	subj := Authenticated("sub-A")
+	past := fixed.Add(-24 * time.Hour)
+	future := fixed.Add(24 * time.Hour)
+
+	mk := func(id string, nb, na *time.Time) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A",
+			CreatedAt: fixed, NotBefore: nb, NotAfter: na}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+		t.Cleanup(func() { cleanupErr(t, id, s.Delete(ctx, id, subj)) })
+	}
+	mk("b0000000-0000-0000-0000-000000000001", &future, nil)   // scheduled
+	mk("b0000000-0000-0000-0000-000000000002", nil, &past)     // expired
+	mk("b0000000-0000-0000-0000-000000000003", &past, &future) // active -> never listed
+
+	sched, err := s.ListScheduled(ctx, scope, subj, ScheduledPending, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("scheduled: %v", err)
+	}
+	if len(sched) != 1 || sched[0].ID != "b0000000-0000-0000-0000-000000000001" {
+		t.Errorf("ScheduledPending: got %d want 1 (the future record)", len(sched))
+	}
+	exp, err := s.ListScheduled(ctx, scope, subj, ScheduledExpired, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("expired: %v", err)
+	}
+	if len(exp) != 1 || exp[0].ID != "b0000000-0000-0000-0000-000000000002" {
+		t.Errorf("ScheduledExpired: got %d want 1 (the past record)", len(exp))
+	}
+	all, err := s.ListScheduled(ctx, scope, subj, ScheduledAll, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("all: %v", err)
+	}
+	if len(all) != 2 {
+		t.Errorf("ScheduledAll: got %d want 2 (scheduled+expired, never active)", len(all))
+	}
+}
+
+// TestListScheduledOwnerIsolation pins that ListScheduled is owner-only: a caller
+// never sees another actor's scheduled/expired records — not even `shared` ones.
+// A shared+scheduled memory must stay invisible to other actors until it becomes
+// active (then normal recall surfaces it); the management view must not leak it
+// early. Guards the deferred-reveal guarantee against an ownerOrShared regression.
+func TestListScheduledOwnerIsolation(t *testing.T) {
+	s := testStore(t)
+	fixed := time.Date(2030, 6, 15, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return fixed }
+	ctx := context.Background()
+	scope := "sched-iso:project:x"
+	future := fixed.Add(24 * time.Hour)
+	past := fixed.Add(-24 * time.Hour)
+
+	mkVis := func(id, owner, vis string, nb, na *time.Time) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: owner, Visibility: vis,
+			CreatedAt: fixed, NotBefore: nb, NotAfter: na}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+		t.Cleanup(func() { cleanupErr(t, id, s.Delete(ctx, id, Authenticated(owner))) })
+	}
+	// sub-A's records: one private+scheduled, one shared+scheduled, one shared+expired.
+	mkVis("d0000000-0000-0000-0000-000000000001", "sub-A", "", &future, nil)
+	mkVis("d0000000-0000-0000-0000-000000000002", "sub-A", "shared", &future, nil)
+	mkVis("d0000000-0000-0000-0000-000000000003", "sub-A", "shared", nil, &past)
+
+	// sub-B must see NONE of sub-A's windowed records via any state — owner-only.
+	subB := Authenticated("sub-B")
+	for _, st := range []ScheduledState{ScheduledPending, ScheduledExpired, ScheduledAll} {
+		got, err := s.ListScheduled(ctx, scope, subB, st, ListOptions{Limit: 10})
+		if err != nil {
+			t.Fatalf("ListScheduled(%s) for sub-B: %v", st, err)
+		}
+		if len(got) != 0 {
+			t.Errorf("ListScheduled(%s): sub-B saw %d of sub-A's records (incl. shared); want 0 — owner-only", st, len(got))
+		}
+	}
+	// sub-A still sees their own: 2 scheduled (pending) + 1 expired = 3 in `all`.
+	own, err := s.ListScheduled(ctx, scope, Authenticated("sub-A"), ScheduledAll, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListScheduled(all) for sub-A: %v", err)
+	}
+	if len(own) != 3 {
+		t.Errorf("ListScheduled(all) for owner sub-A: got %d want 3 (own records visible)", len(own))
+	}
+}
+
+func TestPruneExpired(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "prune-test:project:x"
+	subj := Authenticated("sub-A")
+	now := time.Now().UTC()
+	old := now.Add(-48 * time.Hour)
+	future := now.Add(48 * time.Hour)
+
+	mk := func(id string, na *time.Time) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A", CreatedAt: now, NotAfter: na}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+		t.Cleanup(func() { cleanupErr(t, id, s.Delete(ctx, id, subj)) })
+	}
+	mk("c0000000-0000-0000-0000-000000000001", &old)    // expired -> pruned
+	mk("c0000000-0000-0000-0000-000000000002", &future) // not expired -> kept
+	mk("c0000000-0000-0000-0000-000000000003", nil)     // no window -> kept
+
+	n, err := s.PruneExpired(ctx, now)
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("PruneExpired: deleted %d want 1", n)
+	}
+	if _, err := s.Get(ctx, "c0000000-0000-0000-0000-000000000001"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("expired record should be gone, got %v", err)
+	}
+	if _, err := s.Get(ctx, "c0000000-0000-0000-0000-000000000002"); err != nil {
+		t.Errorf("future record should survive, got %v", err)
+	}
+	if _, err := s.Get(ctx, "c0000000-0000-0000-0000-000000000003"); err != nil {
+		t.Errorf("unwindowed record (no not_after) should survive, got %v", err)
+	}
+}

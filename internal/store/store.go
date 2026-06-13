@@ -65,6 +65,12 @@ type Memory struct {
 	// (readable by any authenticated caller). Writes always require ownership.
 	Visibility string    `json:"visibility,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
+	// NotBefore gates deferred reveal: the record is hidden from recall until
+	// now >= NotBefore. nil = always active (no lower gate).
+	NotBefore *time.Time `json:"not_before,omitempty"`
+	// NotAfter gates expiry: the record drops out of recall once now >= NotAfter.
+	// nil = never expires.
+	NotAfter *time.Time `json:"not_after,omitempty"`
 	// Discovery-only (zero-valued for the curated four categories).
 	Kind      string     `json:"kind,omitempty"`      // "map" | "fact"
 	Citations []Citation `json:"citations,omitempty"` // >= 1 for discoveries
@@ -84,11 +90,26 @@ type Citation struct {
 type Store struct {
 	client     *qdrant.Client
 	collection string
+	now        func() time.Time
+}
+
+// Option configures a Store at construction.
+type Option func(*Store)
+
+// WithClock overrides the time source the recall window gate reads. Defaults to
+// time.Now. Tests inject a fixed clock to exercise active/scheduled/expired
+// boundaries deterministically.
+func WithClock(fn func() time.Time) Option {
+	return func(s *Store) { s.now = fn }
 }
 
 // New returns a Store backed by the given Qdrant client and collection.
-func New(c *qdrant.Client, collection string) *Store {
-	return &Store{client: c, collection: collection}
+func New(c *qdrant.Client, collection string, opts ...Option) *Store {
+	s := &Store{client: c, collection: collection, now: time.Now}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // EnsureCollection is idempotent: creates the collection at the given vector size if absent.
@@ -138,6 +159,12 @@ func payload(m Memory) map[string]any {
 		"owner":         m.Owner,
 		"visibility":    m.Visibility,
 		"created_at":    m.CreatedAt.Format(time.RFC3339),
+	}
+	if m.NotBefore != nil {
+		p["not_before"] = m.NotBefore.Unix()
+	}
+	if m.NotAfter != nil {
+		p["not_after"] = m.NotAfter.Unix()
 	}
 	if m.Category == "discovery" {
 		p["kind"] = m.Kind
@@ -200,6 +227,14 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 		if t, err := time.Parse(time.RFC3339, v.GetStringValue()); err == nil {
 			m.CreatedAt = t
 		}
+	}
+	if v, ok := p["not_before"]; ok {
+		t := time.Unix(v.GetIntegerValue(), 0).UTC()
+		m.NotBefore = &t
+	}
+	if v, ok := p["not_after"]; ok {
+		t := time.Unix(v.GetIntegerValue(), 0).UTC()
+		m.NotAfter = &t
 	}
 	if v, ok := p["kind"]; ok {
 		m.Kind = v.GetStringValue()
@@ -275,6 +310,22 @@ func ownerOrSharedCondition(subj Subject) *qdrant.Condition {
 	}
 }
 
+// ownerOnlyCondition restricts to records the caller OWNS — no shared-read grant.
+// It backs management views (ListScheduled) where a `shared` record belonging to
+// another actor must stay invisible: a shared+scheduled memory is hidden from
+// everyone but its owner until it becomes active (then normal recall surfaces it).
+// Fail-closed for nil/unknown Subjects, exactly like ownerOrSharedCondition.
+func ownerOnlyCondition(subj Subject) *qdrant.Condition {
+	switch s := subj.(type) {
+	case authenticated:
+		return qdrant.NewMatch("owner", s.sub)
+	case anonymous:
+		return qdrant.NewMatch("owner", "")
+	default:
+		return matchNothing()
+	}
+}
+
 // matchNothing returns a condition no record can satisfy (owner==x AND owner!=x).
 // It backs the fail-closed default arm of read-filter switches when the Subject
 // is nil/unknown — a query then returns zero rows rather than over-returning.
@@ -293,6 +344,27 @@ func (s *Store) ownerScopeFilter(scope string, subj Subject) *qdrant.Filter {
 		qdrant.NewMatch("scope", scope),
 		ownerOrSharedCondition(subj),
 	}}
+}
+
+// activeWindowConditions gates recall to records whose validity window is open
+// at now: (not_before absent OR <= now) AND (not_after absent OR > now). Stored
+// window keys are epoch-second integers; the Range bound is *float64 (Qdrant's
+// Range field type). Records with no window match via NewIsEmpty — unchanged
+// behavior for every pre-feature record. not_after is exclusive (expires AT it).
+func activeWindowConditions(now time.Time) []*qdrant.Condition {
+	sec := float64(now.Unix())
+	// Separate *float64 allocations per bound: proto message field pointers are
+	// independently owned, so the two Range structs must not alias one pointer.
+	return []*qdrant.Condition{
+		qdrant.NewFilterAsCondition(&qdrant.Filter{Should: []*qdrant.Condition{
+			qdrant.NewRange("not_before", &qdrant.Range{Lte: qdrant.PtrOf(sec)}),
+			qdrant.NewIsEmpty("not_before"),
+		}}),
+		qdrant.NewFilterAsCondition(&qdrant.Filter{Should: []*qdrant.Condition{
+			qdrant.NewRange("not_after", &qdrant.Range{Gt: qdrant.PtrOf(sec)}),
+			qdrant.NewIsEmpty("not_after"),
+		}}),
+	}
 }
 
 // Search returns the k nearest readable memories to vec within scope.
@@ -316,9 +388,11 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 		}
 	}()
 
+	f := s.ownerScopeFilter(scope, subj)
+	f.Must = append(f.Must, activeWindowConditions(s.now())...)
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
-		Filter: s.ownerScopeFilter(scope, subj), Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
+		Filter: f, Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
 	})
 	if err != nil {
 		return nil, err
@@ -452,9 +526,11 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 	}()
 
 	const scanCap = 1000
+	f := listFilter(scope, subj, opts)
+	f.Must = append(f.Must, activeWindowConditions(s.now())...)
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
-		Filter:         listFilter(scope, subj, opts),
+		Filter:         f,
 		Limit:          qdrant.PtrOf(uint32(scanCap)),
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
@@ -476,6 +552,87 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		end = total
 	}
 	return all[opts.Offset:end], total, approximate, nil
+}
+
+// ScheduledState selects which hidden-by-the-recall-gate records ListScheduled
+// returns. Active (currently-valid) windowed records are never returned here —
+// they surface through normal Search/List.
+type ScheduledState string
+
+// ScheduledPending, ScheduledExpired, and ScheduledAll filter which
+// hidden-by-the-recall-gate records ListScheduled returns.
+const (
+	ScheduledPending ScheduledState = "scheduled" // now < not_before (not yet active)
+	ScheduledExpired ScheduledState = "expired"   // now >= not_after (already lapsed)
+	ScheduledAll     ScheduledState = "all"       // union of pending and expired
+)
+
+// scheduledStateCondition returns the inverse-window clause for a state. now is
+// the comparison instant; its epoch seconds become the *float64 Qdrant Range bound.
+func scheduledStateCondition(state ScheduledState, now time.Time) *qdrant.Condition {
+	sec := float64(now.Unix())
+	// Separate *float64 allocations per bound: proto message field pointers are
+	// independently owned and must not alias.
+	pending := qdrant.NewRange("not_before", &qdrant.Range{Gt: qdrant.PtrOf(sec)})
+	expired := qdrant.NewRange("not_after", &qdrant.Range{Lte: qdrant.PtrOf(sec)})
+	switch state {
+	case ScheduledExpired:
+		return expired
+	case ScheduledAll:
+		return qdrant.NewFilterAsCondition(&qdrant.Filter{Should: []*qdrant.Condition{pending, expired}})
+	default: // ScheduledPending
+		return pending
+	}
+}
+
+// ListScheduled returns the caller's OWN windowed records that the recall gate is
+// hiding, for management (review/reschedule/delete). It applies the INVERSE
+// temporal clause and an owner-only authz envelope (ownerOnlyCondition, NOT the
+// shared-read grant): a `shared` scheduled/expired record belonging to another
+// actor stays invisible here until it becomes active, preserving the deferred-
+// reveal guarantee. It does not reuse List (whose gate would exclude exactly
+// these records). CreatedAt-desc, bounded by the same scanCap as List. Only
+// opts.Limit is honored; opts.Offset is ignored — paginates by Limit alone.
+func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, state ScheduledState, opts ListOptions) (items []Memory, err error) {
+	ctx, span := tracer.Start(ctx, "store.ListScheduled", trace.WithAttributes(
+		attribute.String("engram.scope", scope),
+		attribute.String("engram.owner", ownerOf(subj)),
+		attribute.String("engram.scheduled_state", string(state)),
+	))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "ListScheduled", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int("engram.result_count", len(items)))
+		}
+	}()
+
+	const scanCap = 1000
+	f := &qdrant.Filter{Must: []*qdrant.Condition{
+		qdrant.NewMatch("scope", scope),
+		ownerOnlyCondition(subj),
+		scheduledStateCondition(state, s.now()),
+	}}
+	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: s.collection, Filter: f,
+		Limit: qdrant.PtrOf(uint32(scanCap)), WithPayload: qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, err
+	}
+	all := make([]Memory, 0, len(pts))
+	for _, p := range pts {
+		all = append(all, fromPayload(p.Id.GetUuid(), p.Payload))
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].CreatedAt.After(all[j].CreatedAt) })
+	if opts.Limit > 0 && uint64(len(all)) > opts.Limit {
+		all = all[:opts.Limit]
+	}
+	return all, nil
 }
 
 // ScopeCount is a scope plus the number of records in it the caller can read.
@@ -813,6 +970,48 @@ func (s *Store) DeleteAll(ctx context.Context, scope string, subj Subject) (err 
 		Points: qdrant.NewPointsSelectorFilter(filter),
 	})
 	return err
+}
+
+// PruneExpired deletes every record whose not_after is strictly before the given
+// instant — an operator/admin sweep run from the CLI across the WHOLE collection
+// (no subject authz; it is not on behalf of a caller). Records without a
+// not_after key are never matched. Returns a BEST-EFFORT deleted count: it is the
+// Count taken just before the filter-Delete (Qdrant's delete response carries no
+// count), so concurrent writes between the two RPCs can make the reported number
+// drift from the exact number removed. The delete filter itself is exact; only
+// the reported tally is approximate. Treat it as a sweep summary, not an audit.
+func (s *Store) PruneExpired(ctx context.Context, before time.Time) (deleted uint64, err error) {
+	ctx, span := tracer.Start(ctx, "store.PruneExpired",
+		trace.WithAttributes(attribute.Int64("engram.before", before.Unix())))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "PruneExpired", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
+	f := &qdrant.Filter{Must: []*qdrant.Condition{
+		qdrant.NewRange("not_after", &qdrant.Range{Lt: qdrant.PtrOf(float64(before.Unix()))}),
+	}}
+	n, err := s.client.Count(ctx, &qdrant.CountPoints{
+		CollectionName: s.collection, Filter: f, Exact: qdrant.PtrOf(true),
+	})
+	if err != nil {
+		return 0, err
+	}
+	if n == 0 {
+		return 0, nil
+	}
+	if _, err := s.client.Delete(ctx, &qdrant.DeletePoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Points: qdrant.NewPointsSelectorFilter(f),
+	}); err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 // ownerlessFilter matches pre-isolation records — those written before the owner

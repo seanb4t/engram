@@ -45,8 +45,9 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 
 ## Memory contract (stable)
 
-Tools: `store_memory` / `search_memory` / `list_memory` / `get_memory` /
-`update_memory` / `delete_memory` / `delete_all`. A record carries `content`,
+Tools: `store_memory` / `schedule_memory` / `search_memory` / `list_memory` /
+`list_scheduled` / `get_memory` / `update_memory` / `delete_memory` /
+`delete_all`. A record carries `content`,
 `scope`, repo/workspace/worktree/base_dir, `source`, `category`, `tags`,
 `actor` (verified caller — server-set, never client-supplied), `owner` (caller's
 stable OIDC `sub`, the authz key — server-set), `visibility` (`private` default |
@@ -61,6 +62,14 @@ cannot read other actors' `shared` records. The `set_visibility` tool and
 `update_memory`'s `shared` field toggle sharing. Pre-isolation records (missing
 `owner` key) are invisible to every read until you backfill them with `engram
 migrate-set-owner --owner <sub>`.
+
+Scheduled tools: `schedule_memory` stores a memory with a temporal validity
+window — `not_before` (RFC3339; deferred reveal: hidden from recall until then)
+and/or `not_after` (RFC3339; expiry: dropped from recall at then). `list_scheduled`
+surfaces windowed records the recall gate is hiding (`state` = `scheduled` default
+| `expired` | `all`); active windowed records surface normally via
+`search_memory`/`list_memory`. Recall is gated; fetch-by-id (`get_memory`) is not.
+Operators reclaim lapsed records with `engram prune-expired [--older-than DUR]`.
 
 Discovery tools: `store_discovery` / `search_discovery`. A discovery is a 5th
 `category` carrying `kind` (`map`|`fact`), `citations` (with aging `pin`s), and

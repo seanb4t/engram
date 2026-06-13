@@ -13,8 +13,10 @@ records created.
 | Tool | Purpose |
 |------|---------|
 | `store_memory` | Persist a deliberate, well-formed memory |
+| `schedule_memory` | Persist a memory with a validity window (deferred reveal / expiry) |
 | `search_memory` | Semantic search within a scope |
 | `list_memory` | Most-recent memories in a scope (no query — session bootstrap) |
+| `list_scheduled` | List windowed memories the recall gate is hiding |
 | `get_memory` | Fetch one memory by id |
 | `update_memory` | Replace a memory's content in place (re-embeds) |
 | `delete_memory` | Delete one memory by id |
@@ -49,6 +51,33 @@ Returns the stored record's `id`.
 
 ---
 
+## schedule_memory
+
+Persist a memory with a temporal validity window. At least one of `not_before` /
+`not_after` is required (use `store_memory` for unscheduled records). `discovery`
+is not schedulable. A future `not_before` hides the record from recall until then;
+`not_after` drops it from recall at that time. Active windowed records surface
+normally via `search_memory`/`list_memory`.
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `content` | string | yes | The memory text to persist |
+| `scope` | string | yes | `run:tier:repo` identifier |
+| `source` | string | yes | `user-said` or `agent-inferred` |
+| `category` | string | yes | `decision`, `preference`, `convention`, or `gotcha` |
+| `tags` | string[] | no | Free-form labels |
+| `repo` | string | no | Repository name or URL |
+| `workspace` | string | no | Workspace identifier |
+| `worktree_path` | string | no | Path to the git worktree |
+| `base_dir` | string | no | Base directory for the project |
+| `not_before` | string | no | RFC3339; hide from recall until this time |
+| `not_after` | string | no | RFC3339; drop from recall at this time |
+
+Returns the scheduled record's `id`. At least one bound is required. Operators
+reclaim lapsed records with the `engram prune-expired [--older-than DUR]` CLI command.
+
+---
+
 ## search_memory
 
 Semantic (vector) search within a scope. Embeds `query` and returns the nearest
@@ -78,6 +107,21 @@ Returns a list of memory records.
 
 ---
 
+## list_scheduled
+
+List your windowed memories the recall gate is hiding. Active windowed records
+surface via `list_memory`/`search_memory`, not here.
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `scope` | string | yes | The scope to list scheduled/expired memories from |
+| `state` | string | no | `scheduled` (default, not yet active), `expired`, or `all` |
+| `limit` | uint64 | no | Maximum memories to return (default 20) |
+
+Returns the matching hidden windowed records.
+
+---
+
 ## get_memory
 
 Fetch one memory by id.
@@ -88,6 +132,9 @@ Fetch one memory by id.
 
 Returns the full memory record. Authenticated callers can read their own records
 plus any `shared` records. Anonymous callers can only read ownerless records.
+Fetch-by-id is **not** recall-gated: a windowed record (set via `schedule_memory`)
+that `search_memory`/`list_memory` hide because it is scheduled or expired is still
+retrievable directly by id here.
 
 ---
 
