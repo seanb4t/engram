@@ -330,6 +330,27 @@ func (s *Store) ownerScopeFilter(scope string, subj Subject) *qdrant.Filter {
 	}}
 }
 
+// activeWindowConditions gates recall to records whose validity window is open
+// at now: (not_before absent OR <= now) AND (not_after absent OR > now). Stored
+// window keys are epoch-second integers; the Range bound is *float64 (Qdrant's
+// Range field type). Records with no window match via NewIsEmpty — unchanged
+// behavior for every pre-feature record. not_after is exclusive (expires AT it).
+func activeWindowConditions(now time.Time) []*qdrant.Condition {
+	sec := float64(now.Unix())
+	// Separate *float64 allocations per bound: proto message field pointers are
+	// independently owned, so the two Range structs must not alias one pointer.
+	return []*qdrant.Condition{
+		qdrant.NewFilterAsCondition(&qdrant.Filter{Should: []*qdrant.Condition{
+			qdrant.NewRange("not_before", &qdrant.Range{Lte: qdrant.PtrOf(sec)}),
+			qdrant.NewIsEmpty("not_before"),
+		}}),
+		qdrant.NewFilterAsCondition(&qdrant.Filter{Should: []*qdrant.Condition{
+			qdrant.NewRange("not_after", &qdrant.Range{Gt: qdrant.PtrOf(sec)}),
+			qdrant.NewIsEmpty("not_after"),
+		}}),
+	}
+}
+
 // Search returns the k nearest readable memories to vec within scope.
 // Authenticated callers see their own records plus shared records; anonymous
 // callers see only the ownerless bucket.
@@ -351,9 +372,11 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 		}
 	}()
 
+	f := s.ownerScopeFilter(scope, subj)
+	f.Must = append(f.Must, activeWindowConditions(s.now())...)
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
-		Filter: s.ownerScopeFilter(scope, subj), Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
+		Filter: f, Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
 	})
 	if err != nil {
 		return nil, err
@@ -487,9 +510,11 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 	}()
 
 	const scanCap = 1000
+	f := listFilter(scope, subj, opts)
+	f.Must = append(f.Must, activeWindowConditions(s.now())...)
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
-		Filter:         listFilter(scope, subj, opts),
+		Filter:         f,
 		Limit:          qdrant.PtrOf(uint32(scanCap)),
 		WithPayload:    qdrant.NewWithPayload(true),
 	})

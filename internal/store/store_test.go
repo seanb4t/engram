@@ -1482,3 +1482,75 @@ func TestWithClockOverridesNow(t *testing.T) {
 		t.Error("default clock returned zero time")
 	}
 }
+
+func TestRecallWindowGate(t *testing.T) {
+	s := testStore(t)
+	fixed := time.Date(2030, 6, 15, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return fixed } // white-box override
+	ctx := context.Background()
+	scope := "gate-test:project:x"
+	subj := Authenticated("sub-A")
+	past := fixed.Add(-24 * time.Hour)
+	future := fixed.Add(24 * time.Hour)
+
+	mk := func(id string, nb, na *time.Time) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A",
+			CreatedAt: fixed, NotBefore: nb, NotAfter: na}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+		t.Cleanup(func() { cleanupErr(t, id, s.Delete(ctx, id, subj)) })
+	}
+	mkVis := func(id, owner, vis string, nb, na *time.Time) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: owner, Visibility: vis,
+			CreatedAt: fixed, NotBefore: nb, NotAfter: na}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+		t.Cleanup(func() { cleanupErr(t, id, s.Delete(ctx, id, Authenticated(owner))) })
+	}
+	mk("a0000000-0000-0000-0000-000000000001", nil, nil)       // unwindowed -> visible
+	mk("a0000000-0000-0000-0000-000000000002", &past, &future) // active -> visible
+	mk("a0000000-0000-0000-0000-000000000003", &future, nil)   // scheduled -> hidden
+	mk("a0000000-0000-0000-0000-000000000004", nil, &past)     // expired -> hidden
+	// sub-B's SHARED but scheduled record: must stay hidden from sub-A until active
+	mkVis("a0000000-0000-0000-0000-000000000005", "sub-B", "shared", &future, nil)
+
+	// Active set is exactly the unwindowed + active records; a count-only check
+	// would pass a transposition (e.g. expired slipping in as active drops out).
+	wantActive := []string{
+		"a0000000-0000-0000-0000-000000000001",
+		"a0000000-0000-0000-0000-000000000002",
+	}
+	assertActiveSet := func(label string, ms []Memory) {
+		t.Helper()
+		got := make(map[string]bool, len(ms))
+		for _, m := range ms {
+			got[m.ID] = true
+		}
+		if len(got) != len(wantActive) {
+			t.Errorf("%s: got ids %v want exactly %v", label, got, wantActive)
+			return
+		}
+		for _, id := range wantActive {
+			if !got[id] {
+				t.Errorf("%s: missing expected id %s (got %v)", label, id, got)
+			}
+		}
+	}
+
+	hits, err := s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	assertActiveSet("Search", hits)
+	lst, _, _, err := s.List(ctx, scope, subj, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	assertActiveSet("List", lst)
+	// By-id is ungated: the scheduled record is still fetchable directly.
+	if _, err := s.GetReadable(ctx, "a0000000-0000-0000-0000-000000000003", subj); err != nil {
+		t.Errorf("GetReadable on scheduled record should be ungated, got %v", err)
+	}
+}
