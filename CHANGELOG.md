@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/seanb4t/engram/compare/v0.7.0...v0.7.1) (2026-06-13)
+
+
+### Features
+
+* **ui:** operator console redesign — shadcn-forward shell, components, routes (engram-kco) ([#113](https://github.com/seanb4t/engram/issues/113)) ([b9353df](https://github.com/seanb4t/engram/commit/b9353df82b96ddf12740e93aa0a8702ee9a4e963))
+
 ## [0.7.0](https://github.com/seanb4t/engram/compare/v0.6.1...v0.7.0) (2026-06-12)
 
 
