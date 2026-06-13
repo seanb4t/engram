@@ -197,6 +197,12 @@ type listArgs struct {
 	Limit uint64 `json:"limit,omitempty" jsonschema:"max memories to return (default 20)"`
 }
 
+type listScheduledArgs struct {
+	Scope string `json:"scope" jsonschema:"the scope to list scheduled/expired memories from"`
+	State string `json:"state,omitempty" jsonschema:"scheduled (default, not yet active) | expired | all"`
+	Limit uint64 `json:"limit,omitempty" jsonschema:"max memories to return (default 20)"`
+}
+
 type idArgs struct {
 	ID string `json:"id"`
 }
@@ -427,6 +433,28 @@ func (d *deps) listMemory(ctx context.Context, a listArgs) ([]store.Memory, erro
 	return ms, err
 }
 
+func (d *deps) listScheduled(ctx context.Context, a listScheduledArgs) ([]store.Memory, error) {
+	if a.Limit == 0 {
+		a.Limit = 20
+	}
+	var state store.ScheduledState
+	switch a.State {
+	case "", "scheduled":
+		state = store.ScheduledPending
+	case "expired":
+		state = store.ScheduledExpired
+	case "all":
+		state = store.ScheduledAll
+	default:
+		return nil, fmt.Errorf("state must be one of scheduled|expired|all, got %q", a.State)
+	}
+	subj, err := subjectFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return d.st.ListScheduled(ctx, a.Scope, subj, state, store.ListOptions{Limit: a.Limit})
+}
+
 func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]store.Memory, error) {
 	if a.K == 0 {
 		a.K = 8
@@ -538,6 +566,12 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listArgs) (*mcp.CallToolResult, any, error) {
 			mems, err := d.listMemory(ctx, a)
 			return textResult(fmt.Sprintf("%d memories", len(mems))), map[string]any{"memories": mems}, err
+		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "list_scheduled", Description: "List your windowed memories the recall gate is hiding: state=scheduled (not yet active, default) | expired | all. Active memories surface via list_memory/search_memory."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a listScheduledArgs) (*mcp.CallToolResult, any, error) {
+			mems, err := d.listScheduled(ctx, a)
+			return textResult(fmt.Sprintf("%d scheduled", len(mems))), map[string]any{"memories": mems}, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id."},

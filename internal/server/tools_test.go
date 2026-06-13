@@ -90,6 +90,11 @@ func TestToolArgSchemasDoNotPanic(t *testing.T) {
 			return noop()
 		})
 	})
+	check("list_scheduled", func(s *mcp.Server) {
+		mcp.AddTool(s, &mcp.Tool{Name: "list_scheduled", Description: "x"}, func(context.Context, *mcp.CallToolRequest, listScheduledArgs) (*mcp.CallToolResult, any, error) {
+			return noop()
+		})
+	})
 }
 
 // testQdrantAddr is the gRPC host:port the integration tests run against. Set by
@@ -774,5 +779,31 @@ func TestSubjectFromContextNoToken(t *testing.T) {
 	}
 	if subj == nil || subj.Owner() != "" {
 		t.Errorf("no token: want non-nil Anonymous (Owner==\"\"), got %#v", subj)
+	}
+}
+
+func TestListScheduledTool(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-A")
+	// A far-future scheduled memory is hidden from normal recall but shows in list_scheduled.
+	id, err := d.scheduleMemory(ctx, scheduleArgs{Content: "future", Scope: "ls:project:x",
+		Source: "user-said", Category: "decision", NotBefore: "2099-01-01T00:00:00Z"})
+	if err != nil {
+		t.Fatalf("schedule: %v", err)
+	}
+	t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
+
+	got, err := d.listScheduled(ctx, listScheduledArgs{Scope: "ls:project:x"}) // default state=scheduled
+	if err != nil {
+		t.Fatalf("list_scheduled: %v", err)
+	}
+	found := false
+	for _, m := range got {
+		if m.ID == id {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("list_scheduled (default scheduled) did not return the future memory")
 	}
 }
