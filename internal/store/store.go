@@ -125,7 +125,14 @@ func (s *Store) EnsureCollection(ctx context.Context, dim uint64) (err error) {
 		}
 	}()
 
-	exists, err := s.client.CollectionExists(ctx, s.collection)
+	return s.ensureCollection(ctx, s.collection, dim)
+}
+
+// ensureCollection idempotently creates a named collection at the given vector
+// size (distance Cosine) if absent. Factored out of EnsureCollection so reindex
+// can provision a *target* collection distinct from s.collection.
+func (s *Store) ensureCollection(ctx context.Context, name string, dim uint64) error {
+	exists, err := s.client.CollectionExists(ctx, name)
 	if err != nil {
 		return err
 	}
@@ -133,7 +140,7 @@ func (s *Store) EnsureCollection(ctx context.Context, dim uint64) (err error) {
 		return nil
 	}
 	return s.client.CreateCollection(ctx, &qdrant.CreateCollection{
-		CollectionName: s.collection,
+		CollectionName: name,
 		VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
 			Size: dim, Distance: qdrant.Distance_Cosine,
 		}),
@@ -1122,4 +1129,162 @@ func (s *Store) MigrateSetOwner(ctx context.Context, owner string) (n uint64, er
 		return 0, err
 	}
 	return cnt, nil
+}
+
+// EmbedFunc re-embeds a memory's content into a vector. Reindex takes it as a
+// callback so the store stays embedder-agnostic (every other write path already
+// receives a precomputed vector); the caller supplies the currently-configured
+// embedder.
+type EmbedFunc func(ctx context.Context, content string) ([]float32, error)
+
+// ReindexOptions parameterizes Reindex. Target and Dim are required; Target must
+// differ from the source collection. Batch is the scroll page size (0 → a sane
+// default). DryRun scans and counts without creating the target or writing.
+type ReindexOptions struct {
+	Target string
+	Dim    uint64
+	Batch  uint32
+	DryRun bool
+}
+
+// ReindexResult reports what Reindex did: points scanned from the source,
+// points re-embedded and upserted into the target (0 on a dry run), and points
+// skipped because they carried no content to embed (Scanned == Upserted +
+// Skipped on a successful non-dry run).
+type ReindexResult struct {
+	Scanned  uint64
+	Upserted uint64
+	Skipped  uint64
+}
+
+// reindexBatch is the default scroll page size when ReindexOptions.Batch is 0.
+const reindexBatch = 256
+
+// Reindex re-embeds every point in the source collection (s.collection) into a
+// new Target collection, enabling a migration to an embedder with a different
+// output dimension (Qdrant vector size is immutable, so a new collection is the
+// only path). It scrolls the source for (id, payload), re-embeds the payload's
+// content with embed, and upserts (same id, new vector, payload preserved
+// VERBATIM) into the target. The source is never mutated, so the operator can
+// verify the target before cutting MEM_QDRANT_COLLECTION over.
+//
+// The payload is carried as the raw Qdrant map rather than round-tripped through
+// Memory: that preserves keys the Memory model does not know (forward/backward
+// schema drift) and, critically, does NOT synthesize an owner key on a
+// pre-isolation record — a Memory round-trip would write owner=="" and silently
+// drop it into the anonymous bucket.
+//
+// Fail-closed: an embed error aborts immediately and is returned wrapped; no
+// zero/garbage vector is ever written. A point carrying no content is skipped
+// (counted in ReindexResult.Skipped) rather than embedded as an empty string.
+// The operation is bounded and cancellable via ctx.
+//
+// No rollback: Reindex is NOT transactional. A scroll, embed, or upsert error
+// part-way through leaves the target partially populated (ReindexResult reports
+// how many landed). Because upsert is keyed by point id, re-running Reindex with
+// the same target is idempotent and safe — it overwrites and completes the set.
+func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFunc) (res ReindexResult, err error) {
+	ctx, span := tracer.Start(ctx, "store.Reindex",
+		trace.WithAttributes(attribute.String("engram.target", opts.Target)))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "Reindex", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(
+				attribute.Int64("engram.scanned", int64(res.Scanned)),
+				attribute.Int64("engram.upserted", int64(res.Upserted)),
+				attribute.Int64("engram.skipped", int64(res.Skipped)),
+			)
+		}
+	}()
+
+	if opts.Target == "" {
+		return res, fmt.Errorf("reindex: target collection is required")
+	}
+	if opts.Target == s.collection {
+		return res, fmt.Errorf("reindex: target collection %q must differ from source", opts.Target)
+	}
+	if opts.Dim == 0 {
+		return res, fmt.Errorf("reindex: target dimension must be > 0")
+	}
+	if embed == nil {
+		return res, fmt.Errorf("reindex: embed function is required")
+	}
+	batch := opts.Batch
+	if batch == 0 {
+		batch = reindexBatch
+	}
+
+	// Require the source to already exist. Without this, a typo'd source name
+	// (or a not-yet-created collection) would scroll zero points and report a
+	// misleading success — especially since the caller's StoreFromEnv may have
+	// just created an empty source at the wrong dimension.
+	srcExists, err := s.client.CollectionExists(ctx, s.collection)
+	if err != nil {
+		return res, fmt.Errorf("reindex: check source %q: %w", s.collection, err)
+	}
+	if !srcExists {
+		return res, fmt.Errorf("reindex: source collection %q does not exist", s.collection)
+	}
+
+	if !opts.DryRun {
+		if err = s.ensureCollection(ctx, opts.Target, opts.Dim); err != nil {
+			return res, fmt.Errorf("reindex: ensure target %q: %w", opts.Target, err)
+		}
+	}
+
+	var offset *qdrant.PointId
+	for {
+		var pts []*qdrant.RetrievedPoint
+		var next *qdrant.PointId
+		pts, next, err = s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
+			CollectionName: s.collection,
+			Limit:          qdrant.PtrOf(batch),
+			Offset:         offset,
+			WithPayload:    qdrant.NewWithPayload(true),
+			WithVectors:    qdrant.NewWithVectors(false),
+		})
+		if err != nil {
+			return res, fmt.Errorf("reindex: scroll source: %w", err)
+		}
+		for _, p := range pts {
+			res.Scanned++
+			if opts.DryRun {
+				continue
+			}
+			content := p.Payload["content"].GetStringValue()
+			if content == "" {
+				// Nothing to embed — skip rather than write a meaningless vector
+				// for an empty string. Surfaced via ReindexResult.Skipped.
+				res.Skipped++
+				continue
+			}
+			var vec []float32
+			vec, err = embed(ctx, content)
+			if err != nil {
+				return res, fmt.Errorf("reindex: embed point %s: %w", p.Id.GetUuid(), err)
+			}
+			if _, err = s.client.Upsert(ctx, &qdrant.UpsertPoints{
+				CollectionName: opts.Target,
+				Wait:           qdrant.PtrOf(true),
+				Points: []*qdrant.PointStruct{{
+					Id:      p.Id,
+					Vectors: qdrant.NewVectors(vec...),
+					Payload: p.Payload,
+				}},
+			}); err != nil {
+				return res, fmt.Errorf("reindex: upsert point %s into %q: %w", p.Id.GetUuid(), opts.Target, err)
+			}
+			res.Upserted++
+		}
+		if next == nil {
+			break
+		}
+		offset = next
+	}
+	return res, nil
 }
