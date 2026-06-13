@@ -1,6 +1,8 @@
 <script lang="ts">
   import { setMode, mode } from 'mode-watcher';
   import { base } from '$app/paths';
+  import { page } from '$app/state';
+  import BrandMark from './BrandMark.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Kbd } from '$lib/components/ui/kbd';
   import EyeIcon from '@lucide/svelte/icons/eye';
@@ -18,7 +20,7 @@
 
 <div class="min-h-screen flex flex-col bg-background text-foreground">
   <header class="flex items-center gap-3 px-3 py-2 border-b border-border">
-    <span class="font-bold text-primary">◆ engram</span>
+    <BrandMark />
     <Button variant="outline" aria-label="search" class="flex-1 justify-start text-muted-foreground" onclick={() => oncommand?.()}>
       <SearchIcon data-icon="inline-start" /> search memories… <Kbd class="ml-auto">⌘K</Kbd>
     </Button>
@@ -27,7 +29,11 @@
   <div class="flex flex-1 min-h-0">
     <nav class="flex flex-col gap-1 p-2 border-r border-border w-[64px] items-center">
       {#each nav as n (n.href)}
-        <a href={n.href} aria-label={n.label} class="flex flex-col items-center gap-1 p-2 rounded text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground">
+        {@const active = page.url.pathname.startsWith(n.href)}
+        <a href={n.href} aria-label={n.label}
+           class={'relative flex flex-col items-center gap-1 p-2 rounded text-[10px] ' +
+             (active ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:bg-accent hover:text-foreground')}>
+          {#if active}<span class="absolute left-0 top-1/4 bottom-1/4 w-[3px] rounded bg-primary"></span>{/if}
           <n.icon data-icon="inline-start" />{n.label}
         </a>
       {/each}

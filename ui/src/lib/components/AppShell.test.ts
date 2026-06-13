@@ -9,4 +9,9 @@ describe('AppShell', () => {
     expect(screen.getByRole('button', { name: /search/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /toggle theme/i })).toBeInTheDocument();
   });
+
+  it('renders the engram brand mark in the header', () => {
+    render(AppShell);
+    expect(screen.getByRole('img', { name: 'engram' })).toBeInTheDocument();
+  });
 });
