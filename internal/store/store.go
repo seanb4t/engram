@@ -538,6 +538,85 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 	return all[opts.Offset:end], total, approximate, nil
 }
 
+// ScheduledState selects which hidden-by-the-recall-gate records ListScheduled
+// returns. Active (currently-valid) windowed records are never returned here —
+// they surface through normal Search/List.
+type ScheduledState string
+
+// ScheduledPending, ScheduledExpired, and ScheduledAll filter which
+// hidden-by-the-recall-gate records ListScheduled returns.
+const (
+	ScheduledPending ScheduledState = "scheduled" // now < not_before (not yet active)
+	ScheduledExpired ScheduledState = "expired"   // now >= not_after (already lapsed)
+	ScheduledAll     ScheduledState = "all"       // union of pending and expired
+)
+
+// scheduledStateCondition returns the inverse-window clause for a state. now is
+// epoch seconds as *float64 (Qdrant Range field type).
+func scheduledStateCondition(state ScheduledState, now time.Time) *qdrant.Condition {
+	sec := float64(now.Unix())
+	// Separate *float64 allocations per bound: proto message field pointers are
+	// independently owned and must not alias.
+	pending := qdrant.NewRange("not_before", &qdrant.Range{Gt: qdrant.PtrOf(sec)})
+	expired := qdrant.NewRange("not_after", &qdrant.Range{Lte: qdrant.PtrOf(sec)})
+	switch state {
+	case ScheduledExpired:
+		return expired
+	case ScheduledAll:
+		return qdrant.NewFilterAsCondition(&qdrant.Filter{Should: []*qdrant.Condition{pending, expired}})
+	default: // ScheduledPending
+		return pending
+	}
+}
+
+// ListScheduled returns the caller's windowed records that the recall gate is
+// hiding, for management (review/reschedule/delete). It mirrors List's scope +
+// owner authz envelope but applies the INVERSE temporal clause; it does not
+// reuse List (whose gate would exclude exactly these records). CreatedAt-desc,
+// bounded by the same scanCap as List. Only opts.Limit is honored; opts.Offset
+// is ignored — this management view paginates by Limit alone, not by offset.
+func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, state ScheduledState, opts ListOptions) (items []Memory, err error) {
+	ctx, span := tracer.Start(ctx, "store.ListScheduled", trace.WithAttributes(
+		attribute.String("engram.scope", scope),
+		attribute.String("engram.owner", ownerOf(subj)),
+		attribute.String("engram.scheduled_state", string(state)),
+	))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "ListScheduled", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int("engram.result_count", len(items)))
+		}
+	}()
+
+	const scanCap = 1000
+	f := &qdrant.Filter{Must: []*qdrant.Condition{
+		qdrant.NewMatch("scope", scope),
+		ownerOrSharedCondition(subj),
+		scheduledStateCondition(state, s.now()),
+	}}
+	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: s.collection, Filter: f,
+		Limit: qdrant.PtrOf(uint32(scanCap)), WithPayload: qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, err
+	}
+	all := make([]Memory, 0, len(pts))
+	for _, p := range pts {
+		all = append(all, fromPayload(p.Id.GetUuid(), p.Payload))
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].CreatedAt.After(all[j].CreatedAt) })
+	if opts.Limit > 0 && uint64(len(all)) > opts.Limit {
+		all = all[:opts.Limit]
+	}
+	return all, nil
+}
+
 // ScopeCount is a scope plus the number of records in it the caller can read.
 type ScopeCount struct {
 	Scope string

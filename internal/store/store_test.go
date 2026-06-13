@@ -1554,3 +1554,48 @@ func TestRecallWindowGate(t *testing.T) {
 		t.Errorf("GetReadable on scheduled record should be ungated, got %v", err)
 	}
 }
+
+func TestListScheduledStates(t *testing.T) {
+	s := testStore(t)
+	fixed := time.Date(2030, 6, 15, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return fixed }
+	ctx := context.Background()
+	scope := "sched-test:project:x"
+	subj := Authenticated("sub-A")
+	past := fixed.Add(-24 * time.Hour)
+	future := fixed.Add(24 * time.Hour)
+
+	mk := func(id string, nb, na *time.Time) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A",
+			CreatedAt: fixed, NotBefore: nb, NotAfter: na}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+		t.Cleanup(func() { cleanupErr(t, id, s.Delete(ctx, id, subj)) })
+	}
+	mk("b0000000-0000-0000-0000-000000000001", &future, nil)   // scheduled
+	mk("b0000000-0000-0000-0000-000000000002", nil, &past)     // expired
+	mk("b0000000-0000-0000-0000-000000000003", &past, &future) // active -> never listed
+
+	sched, err := s.ListScheduled(ctx, scope, subj, ScheduledPending, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("scheduled: %v", err)
+	}
+	if len(sched) != 1 || sched[0].ID != "b0000000-0000-0000-0000-000000000001" {
+		t.Errorf("ScheduledPending: got %d want 1 (the future record)", len(sched))
+	}
+	exp, err := s.ListScheduled(ctx, scope, subj, ScheduledExpired, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("expired: %v", err)
+	}
+	if len(exp) != 1 || exp[0].ID != "b0000000-0000-0000-0000-000000000002" {
+		t.Errorf("ScheduledExpired: got %d want 1 (the past record)", len(exp))
+	}
+	all, err := s.ListScheduled(ctx, scope, subj, ScheduledAll, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("all: %v", err)
+	}
+	if len(all) != 2 {
+		t.Errorf("ScheduledAll: got %d want 2 (scheduled+expired, never active)", len(all))
+	}
+}
