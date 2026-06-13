@@ -25,7 +25,7 @@
     <div data-testid="scopes-loading" class="flex flex-col gap-1"><Skeleton class="h-7 w-full" /><Skeleton class="h-7 w-full" /></div>
   {:else}
     {#each scopes as s (s.scope)}
-      <Button variant="ghost" class={'h-auto justify-start w-full ' + (s.scope === activeScope ? 'bg-accent' : '')} onclick={() => onscope(s.scope)}>
+      <Button variant="ghost" class={'h-auto justify-start w-full min-w-0 ' + (s.scope === activeScope ? 'bg-primary/10 text-primary' : '')} onclick={() => onscope(s.scope)}>
         <ScopeChip scope={s.scope} mode="stacked" count={Number(s.count)} />
       </Button>
     {/each}
