@@ -27,7 +27,7 @@
           {#if p.org}<span class="text-muted-foreground opacity-60 text-[11px]">{p.org}/</span>{/if}{p.name}
         </span>
       {/if}
-      {#if count !== undefined}<span class="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">{count}</span>{/if}
+      {#if count !== undefined}<span class="ml-auto shrink-0 rounded-full border border-border bg-card px-2 py-0.5 text-[11px] tabular-nums">{count}</span>{/if}
     </span>
   </HoverCard.Trigger>
   <HoverCard.Content>
