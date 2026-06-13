@@ -1447,3 +1447,25 @@ func TestListFilterPreservesIsolation(t *testing.T) {
 		t.Fatalf("isolation breach: total=%d, %+v", total, got)
 	}
 }
+
+func TestPayloadRoundTripWindow(t *testing.T) {
+	nb := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	na := time.Date(2031, 6, 7, 8, 9, 10, 0, time.UTC)
+	m := Memory{
+		ID: "22222222-2222-2222-2222-222222222222", Content: "windowed",
+		Scope: "win-test:project:x", Owner: "sub-A", CreatedAt: time.Now().UTC(),
+		NotBefore: &nb, NotAfter: &na,
+	}
+	got := fromPayload(m.ID, qdrant.NewValueMap(payload(m)))
+	if got.NotBefore == nil || !got.NotBefore.Equal(nb) {
+		t.Errorf("NotBefore round-trip: got %v want %v", got.NotBefore, nb)
+	}
+	if got.NotAfter == nil || !got.NotAfter.Equal(na) {
+		t.Errorf("NotAfter round-trip: got %v want %v", got.NotAfter, na)
+	}
+	// Unwindowed record: keys absent, pointers stay nil.
+	plain := fromPayload("id", qdrant.NewValueMap(payload(Memory{ID: "id", Content: "x"})))
+	if plain.NotBefore != nil || plain.NotAfter != nil {
+		t.Errorf("unwindowed: want nil pointers, got nb=%v na=%v", plain.NotBefore, plain.NotAfter)
+	}
+}

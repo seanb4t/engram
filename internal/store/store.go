@@ -65,6 +65,12 @@ type Memory struct {
 	// (readable by any authenticated caller). Writes always require ownership.
 	Visibility string    `json:"visibility,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
+	// NotBefore gates deferred reveal: the record is hidden from recall until
+	// now >= NotBefore. nil = always active (no lower gate).
+	NotBefore *time.Time `json:"not_before,omitempty"`
+	// NotAfter gates expiry: the record drops out of recall once now >= NotAfter.
+	// nil = never expires.
+	NotAfter *time.Time `json:"not_after,omitempty"`
 	// Discovery-only (zero-valued for the curated four categories).
 	Kind      string     `json:"kind,omitempty"`      // "map" | "fact"
 	Citations []Citation `json:"citations,omitempty"` // >= 1 for discoveries
@@ -139,6 +145,12 @@ func payload(m Memory) map[string]any {
 		"visibility":    m.Visibility,
 		"created_at":    m.CreatedAt.Format(time.RFC3339),
 	}
+	if m.NotBefore != nil {
+		p["not_before"] = m.NotBefore.Unix()
+	}
+	if m.NotAfter != nil {
+		p["not_after"] = m.NotAfter.Unix()
+	}
 	if m.Category == "discovery" {
 		p["kind"] = m.Kind
 		p["summary"] = m.Summary
@@ -200,6 +212,14 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 		if t, err := time.Parse(time.RFC3339, v.GetStringValue()); err == nil {
 			m.CreatedAt = t
 		}
+	}
+	if v, ok := p["not_before"]; ok {
+		t := time.Unix(v.GetIntegerValue(), 0).UTC()
+		m.NotBefore = &t
+	}
+	if v, ok := p["not_after"]; ok {
+		t := time.Unix(v.GetIntegerValue(), 0).UTC()
+		m.NotAfter = &t
 	}
 	if v, ok := p["kind"]; ok {
 		m.Kind = v.GetStringValue()
