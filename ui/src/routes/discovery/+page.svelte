@@ -4,10 +4,9 @@
   import { base } from '$app/paths';
   import { createQuery } from '@tanstack/svelte-query';
   import { engram } from '$lib/client';
-  import SearchPalette from '$lib/components/SearchPalette.svelte';
   import MemoryList from '$lib/components/MemoryList.svelte';
   import MemoryDetail from '$lib/components/MemoryDetail.svelte';
-  const q = $derived(page.url.searchParams.get('q') ?? '');
+  import * as Resizable from '$lib/components/ui/resizable';
   const sel = $derived(page.url.searchParams.get('sel') ?? '');
   const discQ = createQuery(() => {
     const query = page.url.searchParams.get('q') ?? '';
@@ -18,25 +17,26 @@
     const s = page.url.searchParams.get('sel') ?? '';
     return { queryKey: ['getMemory', s], queryFn: () => engram.getMemory({ id: s }), enabled: !!s };
   });
-  function setQuery(next: string) {
-    const sp = new URLSearchParams(page.url.searchParams);
-    sp.set('q', next);
-    goto(`${base}/discovery?${sp}`);
-  }
   function select(id: string) { const sp = new URLSearchParams(page.url.searchParams); sp.set('sel', id); goto(`${base}/discovery?${sp}`); }
 </script>
-<div class="p-3"><SearchPalette value={q} onsubmit={setQuery} /></div>
-<div class="flex">
-  <div class="flex-1">
-    <MemoryList
-      memories={discQ.data?.discoveries ?? []}
-      total={BigInt(discQ.data?.discoveries.length ?? 0)}
-      showTotal={false}
-      loading={discQ.isLoading}
-      error={discQ.error}
-      selectedId={sel}
-      onselect={select}
-    />
-  </div>
-  <MemoryDetail memory={detailQ.data?.memory} loading={detailQ.isLoading} error={detailQ.error} />
+<div class="flex h-full min-h-0">
+  <Resizable.PaneGroup direction="horizontal" class="flex-1 min-w-0">
+    <Resizable.Pane defaultSize={60} minSize={35} class="flex flex-col min-h-0">
+      <div class="flex-1 overflow-y-auto">
+        <MemoryList
+          memories={discQ.data?.discoveries ?? []}
+          total={BigInt(discQ.data?.discoveries.length ?? 0)}
+          showScope={true}
+          loading={discQ.isLoading}
+          error={discQ.error}
+          selectedId={sel}
+          onselect={select}
+        />
+      </div>
+    </Resizable.Pane>
+    <Resizable.Handle />
+    <Resizable.Pane defaultSize={40} minSize={25} class="min-h-0">
+      <MemoryDetail memory={detailQ.data?.memory} loading={detailQ.isLoading} error={detailQ.error} />
+    </Resizable.Pane>
+  </Resizable.PaneGroup>
 </div>

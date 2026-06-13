@@ -6,15 +6,17 @@
     base: 'inline-flex items-center justify-center whitespace-nowrap rounded text-[13px] font-[inherit] transition-colors focus-visible:outline-none focus-visible:ring-1 disabled:pointer-events-none disabled:opacity-50',
     variants: {
       variant: {
-        default: 'bg-[var(--accent)] text-[var(--background)] hover:opacity-90',
-        outline: 'border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] hover:bg-[var(--surface)]',
-        ghost: 'text-[var(--foreground)] hover:bg-[var(--surface)]',
-        surface: 'bg-[var(--surface)] text-[var(--foreground)] border border-[var(--border)] hover:opacity-90'
+        default: 'bg-primary text-primary-foreground hover:opacity-90',
+        outline: 'border border-border bg-background text-foreground hover:bg-accent',
+        ghost: 'text-foreground hover:bg-accent',
+        surface: 'bg-secondary text-secondary-foreground border border-border hover:bg-accent'
       },
       size: {
         default: 'h-8 px-3 py-1',
         sm: 'h-7 px-2',
-        block: 'w-full text-left justify-start px-2 py-1'
+        block: 'w-full text-left justify-start px-2 py-1',
+        icon: 'h-8 w-8 p-0',
+        'icon-sm': 'h-7 w-7 p-0'
       }
     },
     defaultVariants: { variant: 'outline', size: 'default' }
