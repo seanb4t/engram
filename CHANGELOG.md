@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.2](https://github.com/seanb4t/engram/compare/v0.7.1...v0.7.2) (2026-06-13)
+
+
+### Features
+
+* scheduled/future memories (temporal validity window) ([#119](https://github.com/seanb4t/engram/issues/119)) ([74b1247](https://github.com/seanb4t/engram/commit/74b1247872d55a33ce1235d82237f66b552b1120))
+
+
+### Bug Fixes
+
+* **ui:** distinct 'select a scope' empty state + console test coverage (engram-2b0) ([#120](https://github.com/seanb4t/engram/issues/120)) ([8443cb8](https://github.com/seanb4t/engram/commit/8443cb82fc7cedd888cd198bbf08fcc822542b39))
+
 ## [0.7.1](https://github.com/seanb4t/engram/compare/v0.7.0...v0.7.1) (2026-06-13)
 
 
