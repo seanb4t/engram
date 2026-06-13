@@ -3,8 +3,8 @@
   import { Skeleton } from '$lib/components/ui/skeleton';
   import * as Empty from '$lib/components/ui/empty';
   import MemoryRow from './MemoryRow.svelte';
-  let { memories, total, approximate = false, loading, error, selectedId, onselect, showScope = false }: {
-    memories: Memory[]; total: bigint; approximate?: boolean; loading: boolean; error: unknown; selectedId: string; onselect: (id: string) => void; showScope?: boolean;
+  let { memories, total, approximate = false, loading, error, selectedId, onselect, showScope = false, scopeSelected = true }: {
+    memories: Memory[]; total: bigint; approximate?: boolean; loading: boolean; error: unknown; selectedId: string; onselect: (id: string) => void; showScope?: boolean; scopeSelected?: boolean;
   } = $props();
 </script>
 
@@ -12,6 +12,8 @@
   <div data-testid="list-loading" class="p-3 flex flex-col gap-2"><Skeleton class="h-12 w-full" /><Skeleton class="h-12 w-full" /><Skeleton class="h-12 w-full" /></div>
 {:else if error}
   <div class="p-3 text-cat-gotcha">failed to load — retry from the toolbar</div>
+{:else if memories.length === 0 && !scopeSelected}
+  <Empty.Root class="p-8"><Empty.Title>select a scope</Empty.Title><Empty.Description>choose a scope from the sidebar to browse its memories</Empty.Description></Empty.Root>
 {:else if memories.length === 0}
   <Empty.Root class="p-8"><Empty.Title>no memories</Empty.Title><Empty.Description>nothing in this scope / filter</Empty.Description></Empty.Root>
 {:else}
