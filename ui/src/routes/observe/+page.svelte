@@ -47,6 +47,7 @@
       <div class="flex-1 overflow-y-auto">
         <MemoryList memories={listQ.data?.memories ?? []} total={listQ.data?.total ?? 0n}
           approximate={listQ.data?.approximate ?? false} loading={listQ.isLoading} error={listQ.error}
+          scopeSelected={!!params.scope}
           selectedId={params.selectedId} onselect={(id) => navigate({ selectedId: id })} />
       </div>
       <Pagination.Root

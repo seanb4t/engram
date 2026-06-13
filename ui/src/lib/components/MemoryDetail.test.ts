@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/svelte';
 import { describe, it, expect } from 'vitest';
+import { ConnectError, Code } from '@connectrpc/connect';
 import MemoryDetail from './MemoryDetail.svelte';
 import { create } from '@bufbuild/protobuf';
 import { MemorySchema } from '$lib/gen/engram_pb';
@@ -15,5 +16,19 @@ describe('MemoryDetail', () => {
   it('prompts to select when nothing is chosen', () => {
     render(MemoryDetail, { props: { memory: undefined, loading: false, error: null } });
     expect(screen.getByText(/select a record/i)).toBeInTheDocument();
+  });
+  it('shows a loading indicator while fetching', () => {
+    render(MemoryDetail, { props: { memory: undefined, loading: true, error: null } });
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+  });
+  it('shows a not-found message for a NotFound error', () => {
+    render(MemoryDetail, { props: { memory: undefined, loading: false, error: new ConnectError('missing', Code.NotFound) } });
+    expect(screen.getByText(/record not found/i)).toBeInTheDocument();
+    expect(screen.queryByText(/failed to load/i)).not.toBeInTheDocument();
+  });
+  it('shows a generic failure message for a non-NotFound error', () => {
+    render(MemoryDetail, { props: { memory: undefined, loading: false, error: new Error('boom') } });
+    expect(screen.getByText(/failed to load record/i)).toBeInTheDocument();
+    expect(screen.queryByText(/record not found/i)).not.toBeInTheDocument();
   });
 });
