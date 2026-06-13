@@ -15,6 +15,7 @@
     </Command.Group>
     <Command.Group heading="Go to">
       <Command.Item onSelect={() => { onnavigate(`${base}/observe`); open = false; }}>Observe</Command.Item>
+      <Command.Item onSelect={() => { onnavigate(`${base}/search`); open = false; }}>Search</Command.Item>
       <Command.Item onSelect={() => { onnavigate(`${base}/discovery`); open = false; }}>Discovery</Command.Item>
     </Command.Group>
   </Command.List>

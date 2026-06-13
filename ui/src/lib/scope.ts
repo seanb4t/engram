@@ -24,8 +24,7 @@ export function parseScope(full: string): ParsedScope {
 
   // Drop a leading host (github.com/...) so org/name leads.
   const segs = rest.split('/').filter(Boolean);
-  const host = segs.length >= 3 && segs[0].includes('.') ? segs.shift() : undefined;
-  void host;
+  if (segs.length >= 3 && segs[0].includes('.')) segs.shift();
 
   if (segs.length >= 2) return { full, type, org: segs[segs.length - 2], name: segs[segs.length - 1] };
   return { full, type, org: '', name: segs[0] ?? rest };

@@ -6,7 +6,7 @@
   import { engram } from '$lib/client';
   import MemoryList from '$lib/components/MemoryList.svelte';
   import MemoryDetail from '$lib/components/MemoryDetail.svelte';
-  const scope = $derived(page.url.searchParams.get('scope') ?? '');
+  import * as Resizable from '$lib/components/ui/resizable';
   const sel = $derived(page.url.searchParams.get('sel') ?? '');
   const searchQ = createQuery(() => {
     const query = page.url.searchParams.get('q') ?? '';
@@ -19,7 +19,16 @@
   });
   function select(id: string) { const sp = new URLSearchParams(page.url.searchParams); sp.set('sel', id); goto(`${base}/search?${sp}`); }
 </script>
-<div class="flex">
-  <div class="flex-1"><MemoryList memories={searchQ.data?.memories ?? []} total={BigInt(searchQ.data?.memories.length ?? 0)} showScope={true} loading={searchQ.isLoading} error={searchQ.error} selectedId={sel} onselect={select} /></div>
-  <MemoryDetail memory={detailQ.data?.memory} loading={detailQ.isLoading} error={detailQ.error} />
+<div class="flex h-full min-h-0">
+  <Resizable.PaneGroup direction="horizontal" class="flex-1 min-w-0">
+    <Resizable.Pane defaultSize={60} minSize={35} class="flex flex-col min-h-0">
+      <div class="flex-1 overflow-y-auto">
+        <MemoryList memories={searchQ.data?.memories ?? []} total={BigInt(searchQ.data?.memories.length ?? 0)} showScope={true} loading={searchQ.isLoading} error={searchQ.error} selectedId={sel} onselect={select} />
+      </div>
+    </Resizable.Pane>
+    <Resizable.Handle />
+    <Resizable.Pane defaultSize={40} minSize={25} class="min-h-0">
+      <MemoryDetail memory={detailQ.data?.memory} loading={detailQ.isLoading} error={detailQ.error} />
+    </Resizable.Pane>
+  </Resizable.PaneGroup>
 </div>
