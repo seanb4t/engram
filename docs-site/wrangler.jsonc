@@ -3,8 +3,14 @@
   "name": "engram-docs",
   "compatibility_date": "2024-11-01",
   // Static Assets only: no "main" worker script. Wrangler serves ./dist
-  // directly. When a custom domain is chosen, add a "routes" entry here.
+  // directly.
   "assets": {
     "directory": "./dist"
-  }
+  },
+  // Custom domain. `custom_domain: true` makes wrangler provision the DNS
+  // record + edge cert on first deploy; the seanb4t.dev zone must live on the
+  // same Cloudflare account as this worker. The *.workers.dev URL still works.
+  "routes": [
+    { "pattern": "engram.seanb4t.dev", "custom_domain": true }
+  ]
 }
