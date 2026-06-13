@@ -1599,3 +1599,41 @@ func TestListScheduledStates(t *testing.T) {
 		t.Errorf("ScheduledAll: got %d want 2 (scheduled+expired, never active)", len(all))
 	}
 }
+
+func TestPruneExpired(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "prune-test:project:x"
+	subj := Authenticated("sub-A")
+	now := time.Now().UTC()
+	old := now.Add(-48 * time.Hour)
+	future := now.Add(48 * time.Hour)
+
+	mk := func(id string, na *time.Time) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A", CreatedAt: now, NotAfter: na}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+		t.Cleanup(func() { cleanupErr(t, id, s.Delete(ctx, id, subj)) })
+	}
+	mk("c0000000-0000-0000-0000-000000000001", &old)    // expired -> pruned
+	mk("c0000000-0000-0000-0000-000000000002", &future) // not expired -> kept
+	mk("c0000000-0000-0000-0000-000000000003", nil)     // no window -> kept
+
+	n, err := s.PruneExpired(ctx, now)
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("PruneExpired: deleted %d want 1", n)
+	}
+	if _, err := s.Get(ctx, "c0000000-0000-0000-0000-000000000001"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("expired record should be gone, got %v", err)
+	}
+	if _, err := s.Get(ctx, "c0000000-0000-0000-0000-000000000002"); err != nil {
+		t.Errorf("future record should survive, got %v", err)
+	}
+	if _, err := s.Get(ctx, "c0000000-0000-0000-0000-000000000003"); err != nil {
+		t.Errorf("unwindowed record (no not_after) should survive, got %v", err)
+	}
+}

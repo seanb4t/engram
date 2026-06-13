@@ -954,6 +954,45 @@ func (s *Store) DeleteAll(ctx context.Context, scope string, subj Subject) (err 
 	return err
 }
 
+// PruneExpired deletes every record whose not_after is strictly before the given
+// instant — an operator/admin sweep run from the CLI across the WHOLE collection
+// (no subject authz; it is not on behalf of a caller). Records without a
+// not_after key are never matched. Returns the number deleted (counted before
+// the delete, since Qdrant's delete response carries no count).
+func (s *Store) PruneExpired(ctx context.Context, before time.Time) (deleted uint64, err error) {
+	ctx, span := tracer.Start(ctx, "store.PruneExpired",
+		trace.WithAttributes(attribute.Int64("engram.before", before.Unix())))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "PruneExpired", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
+	f := &qdrant.Filter{Must: []*qdrant.Condition{
+		qdrant.NewRange("not_after", &qdrant.Range{Lt: qdrant.PtrOf(float64(before.Unix()))}),
+	}}
+	n, err := s.client.Count(ctx, &qdrant.CountPoints{
+		CollectionName: s.collection, Filter: f, Exact: qdrant.PtrOf(true),
+	})
+	if err != nil {
+		return 0, err
+	}
+	if n == 0 {
+		return 0, nil
+	}
+	if _, err := s.client.Delete(ctx, &qdrant.DeletePoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Points: qdrant.NewPointsSelectorFilter(f),
+	}); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 // ownerlessFilter matches pre-isolation records — those written before the owner
 // key existed. NewIsEmpty matches a missing, null, or empty-array "owner" payload
 // but NOT an explicit empty string, so auth-disabled records (which carry an
