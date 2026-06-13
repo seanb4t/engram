@@ -140,6 +140,52 @@ type storeArgs struct {
 	BaseDir   string   `json:"base_dir,omitempty"`
 }
 
+type scheduleArgs struct {
+	Content   string   `json:"content" jsonschema:"the memory text to persist"`
+	Scope     string   `json:"scope" jsonschema:"run:tier:repo, e.g. eval-2026-05:project:selfhosted-cluster"`
+	Source    string   `json:"source" jsonschema:"user-said or agent-inferred"`
+	Category  string   `json:"category" jsonschema:"decision|preference|convention|gotcha"`
+	Tags      []string `json:"tags,omitempty"`
+	Repo      string   `json:"repo,omitempty"`
+	Workspace string   `json:"workspace,omitempty"`
+	Worktree  string   `json:"worktree_path,omitempty"`
+	BaseDir   string   `json:"base_dir,omitempty"`
+	NotBefore string   `json:"not_before,omitempty" jsonschema:"RFC3339; hide from recall until this time"`
+	NotAfter  string   `json:"not_after,omitempty" jsonschema:"RFC3339; drop from recall at this time"`
+}
+
+// parseWindow validates and parses the schedule_memory temporal window. At least
+// one bound is required; not_after must be in the future and after not_before.
+func parseWindow(a scheduleArgs, now time.Time) (nb, na *time.Time, err error) {
+	if a.NotBefore == "" && a.NotAfter == "" {
+		return nil, nil, fmt.Errorf("schedule_memory requires not_before and/or not_after (use store_memory for unscheduled records)")
+	}
+	if a.Category == "discovery" {
+		return nil, nil, fmt.Errorf("discovery is not schedulable; use store_discovery")
+	}
+	if a.NotBefore != "" {
+		t, perr := time.Parse(time.RFC3339, a.NotBefore)
+		if perr != nil {
+			return nil, nil, fmt.Errorf("not_before: %w", perr)
+		}
+		nb = &t
+	}
+	if a.NotAfter != "" {
+		t, perr := time.Parse(time.RFC3339, a.NotAfter)
+		if perr != nil {
+			return nil, nil, fmt.Errorf("not_after: %w", perr)
+		}
+		if !t.After(now) {
+			return nil, nil, fmt.Errorf("not_after %s is not in the future", a.NotAfter)
+		}
+		na = &t
+	}
+	if nb != nil && na != nil && !nb.Before(*na) {
+		return nil, nil, fmt.Errorf("not_before must be strictly before not_after")
+	}
+	return nb, na, nil
+}
+
 type searchArgs struct {
 	Query string `json:"query"`
 	Scope string `json:"scope"`
@@ -274,6 +320,39 @@ func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
 		Actor:     actorFromContext(ctx),
 		Owner:     subj.Owner(),
 		CreatedAt: time.Now().UTC(),
+	}
+	return m.ID, d.st.Upsert(ctx, m, vec)
+}
+
+func (d *deps) scheduleMemory(ctx context.Context, a scheduleArgs) (string, error) {
+	subj, err := subjectFromContext(ctx)
+	if err != nil {
+		return "", err
+	}
+	nb, na, err := parseWindow(a, time.Now().UTC())
+	if err != nil {
+		return "", err
+	}
+	vec, err := d.em.Embed(ctx, a.Content)
+	if err != nil {
+		return "", err
+	}
+	m := store.Memory{
+		ID:        uuid.NewString(),
+		Content:   a.Content,
+		Scope:     a.Scope,
+		Repo:      a.Repo,
+		Workspace: a.Workspace,
+		Worktree:  a.Worktree,
+		BaseDir:   a.BaseDir,
+		Source:    a.Source,
+		Category:  a.Category,
+		Tags:      a.Tags,
+		Actor:     actorFromContext(ctx),
+		Owner:     subj.Owner(),
+		CreatedAt: time.Now().UTC(),
+		NotBefore: nb,
+		NotAfter:  na,
 	}
 	return m.ID, d.st.Upsert(ctx, m, vec)
 }
@@ -441,6 +520,12 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeArgs) (*mcp.CallToolResult, any, error) {
 			id, err := d.storeMemory(ctx, a)
 			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id}, err
+		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "schedule_memory", Description: "Persist a memory with a validity window (not_before defers recall; not_after expires it). At least one bound (RFC3339) is required; use store_memory for unscheduled records."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a scheduleArgs) (*mcp.CallToolResult, any, error) {
+			id, err := d.scheduleMemory(ctx, a)
+			return textResult(fmt.Sprintf("scheduled %s", id)), map[string]string{"id": id}, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope."},

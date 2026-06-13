@@ -85,6 +85,11 @@ func TestToolArgSchemasDoNotPanic(t *testing.T) {
 			return noop()
 		})
 	})
+	check("schedule_memory", func(s *mcp.Server) {
+		mcp.AddTool(s, &mcp.Tool{Name: "schedule_memory", Description: "x"}, func(context.Context, *mcp.CallToolRequest, scheduleArgs) (*mcp.CallToolResult, any, error) {
+			return noop()
+		})
+	})
 }
 
 // testQdrantAddr is the gRPC host:port the integration tests run against. Set by
@@ -212,6 +217,72 @@ func authedContext(t *testing.T, sub string) context.Context {
 		t.Fatal("authedContext: middleware did not pass request through (verification failed)")
 	}
 	return captured
+}
+
+func TestScheduleMemoryValidation(t *testing.T) {
+	d := testDeps(t) // skips if no Qdrant
+	ctx := authedContext(t, "sub-A")
+	base := scheduleArgs{Content: "do X next week", Scope: "sched:project:x",
+		Source: "user-said", Category: "decision"}
+
+	// No window at all -> rejected.
+	if _, err := d.scheduleMemory(ctx, base); err == nil {
+		t.Error("missing window: want error, got nil")
+	}
+	// not_after already in the past -> rejected.
+	past := base
+	past.NotAfter = "2000-01-01T00:00:00Z"
+	if _, err := d.scheduleMemory(ctx, past); err == nil {
+		t.Error("past not_after: want error, got nil")
+	}
+	// Inverted window (not_before >= not_after) -> rejected.
+	inv := base
+	inv.NotBefore = "2031-01-01T00:00:00Z"
+	inv.NotAfter = "2030-01-01T00:00:00Z"
+	if _, err := d.scheduleMemory(ctx, inv); err == nil {
+		t.Error("inverted window: want error, got nil")
+	}
+	// discovery category -> rejected.
+	disc := base
+	disc.Category = "discovery"
+	disc.NotBefore = "2030-01-01T00:00:00Z"
+	if _, err := d.scheduleMemory(ctx, disc); err == nil {
+		t.Error("discovery category: want error, got nil")
+	}
+	// Valid future-scheduled memory -> stored, hidden from normal recall.
+	ok := base
+	ok.NotBefore = "2030-01-01T00:00:00Z"
+	id, err := d.scheduleMemory(ctx, ok)
+	if err != nil {
+		t.Fatalf("valid schedule: %v", err)
+	}
+	t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
+	hits, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x"})
+	for _, h := range hits {
+		if h.ID == id {
+			t.Error("future-scheduled memory leaked into normal list_memory")
+		}
+	}
+
+	// A past not_before-only window is accepted (already revealed) and the record
+	// is immediately active, so it surfaces through normal list_memory.
+	activeNow := base
+	activeNow.NotBefore = "2000-01-01T00:00:00Z"
+	activeID, err := d.scheduleMemory(ctx, activeNow)
+	if err != nil {
+		t.Fatalf("past not_before should be accepted (immediately active): %v", err)
+	}
+	t.Cleanup(func() { _ = d.st.Delete(context.Background(), activeID, store.Authenticated("sub-A")) })
+	active, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x"})
+	found := false
+	for _, h := range active {
+		if h.ID == activeID {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("active (past not_before) memory should appear in normal list_memory")
+	}
 }
 
 // TestStoreMemoryStampsOwnerHandler pins that the storeMemory handler stamps
