@@ -4,9 +4,9 @@ import starlight from '@astrojs/starlight';
 
 // https://astro.build/config
 export default defineConfig({
-  // v1 ships on the *.workers.dev subdomain. When a custom domain is chosen,
-  // set this to the canonical https URL (used for canonical tags + sitemap).
-  site: 'https://engram-docs.workers.dev',
+  // Canonical https URL (used for canonical tags + sitemap). Served via the
+  // Cloudflare custom domain configured in wrangler.jsonc.
+  site: 'https://engram.seanb4t.dev',
   integrations: [
     starlight({
       title: 'engram',

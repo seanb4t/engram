@@ -28,16 +28,16 @@ _who_ recorded a memory.
 
 Full documentation — quickstart, deploy, configuration, the MCP tool
 contract, the memory-record and auth/isolation model, and contributor
-guides — lives at **<https://engram-docs.workers.dev>** (source under
+guides — lives at **<https://engram.seanb4t.dev>** (source under
 [`docs-site/`](./docs-site)).
 
 | Topic | Link |
 |-------|------|
-| Quickstart | <https://engram-docs.workers.dev/guides/quickstart/> |
-| Deploy (Helm / Docker) | <https://engram-docs.workers.dev/guides/deploy/> |
-| Configuration (`MEM_*`) | <https://engram-docs.workers.dev/guides/configure/> |
-| MCP tools | <https://engram-docs.workers.dev/reference/tools/> |
-| Auth & isolation | <https://engram-docs.workers.dev/reference/auth/> |
+| Quickstart | <https://engram.seanb4t.dev/guides/quickstart/> |
+| Deploy (Helm / Docker) | <https://engram.seanb4t.dev/guides/deploy/> |
+| Configuration (`MEM_*`) | <https://engram.seanb4t.dev/guides/configure/> |
+| MCP tools | <https://engram.seanb4t.dev/reference/tools/> |
+| Auth & isolation | <https://engram.seanb4t.dev/reference/auth/> |
 
 ## License
 
