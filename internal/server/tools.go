@@ -335,7 +335,8 @@ func (d *deps) scheduleMemory(ctx context.Context, a scheduleArgs) (string, erro
 	if err != nil {
 		return "", err
 	}
-	nb, na, err := parseWindow(a, time.Now().UTC())
+	now := time.Now().UTC()
+	nb, na, err := parseWindow(a, now)
 	if err != nil {
 		return "", err
 	}
@@ -356,7 +357,7 @@ func (d *deps) scheduleMemory(ctx context.Context, a scheduleArgs) (string, erro
 		Tags:      a.Tags,
 		Actor:     actorFromContext(ctx),
 		Owner:     subj.Owner(),
-		CreatedAt: time.Now().UTC(),
+		CreatedAt: now,
 		NotBefore: nb,
 		NotAfter:  na,
 	}

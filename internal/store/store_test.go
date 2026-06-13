@@ -1600,6 +1600,54 @@ func TestListScheduledStates(t *testing.T) {
 	}
 }
 
+// TestListScheduledOwnerIsolation pins that ListScheduled is owner-only: a caller
+// never sees another actor's scheduled/expired records — not even `shared` ones.
+// A shared+scheduled memory must stay invisible to other actors until it becomes
+// active (then normal recall surfaces it); the management view must not leak it
+// early. Guards the deferred-reveal guarantee against an ownerOrShared regression.
+func TestListScheduledOwnerIsolation(t *testing.T) {
+	s := testStore(t)
+	fixed := time.Date(2030, 6, 15, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return fixed }
+	ctx := context.Background()
+	scope := "sched-iso:project:x"
+	future := fixed.Add(24 * time.Hour)
+	past := fixed.Add(-24 * time.Hour)
+
+	mkVis := func(id, owner, vis string, nb, na *time.Time) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: owner, Visibility: vis,
+			CreatedAt: fixed, NotBefore: nb, NotAfter: na}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+		t.Cleanup(func() { cleanupErr(t, id, s.Delete(ctx, id, Authenticated(owner))) })
+	}
+	// sub-A's records: one private+scheduled, one shared+scheduled, one shared+expired.
+	mkVis("d0000000-0000-0000-0000-000000000001", "sub-A", "", &future, nil)
+	mkVis("d0000000-0000-0000-0000-000000000002", "sub-A", "shared", &future, nil)
+	mkVis("d0000000-0000-0000-0000-000000000003", "sub-A", "shared", nil, &past)
+
+	// sub-B must see NONE of sub-A's windowed records via any state — owner-only.
+	subB := Authenticated("sub-B")
+	for _, st := range []ScheduledState{ScheduledPending, ScheduledExpired, ScheduledAll} {
+		got, err := s.ListScheduled(ctx, scope, subB, st, ListOptions{Limit: 10})
+		if err != nil {
+			t.Fatalf("ListScheduled(%s) for sub-B: %v", st, err)
+		}
+		if len(got) != 0 {
+			t.Errorf("ListScheduled(%s): sub-B saw %d of sub-A's records (incl. shared); want 0 — owner-only", st, len(got))
+		}
+	}
+	// sub-A still sees their own: 2 scheduled (pending) + 1 expired = 3 in `all`.
+	own, err := s.ListScheduled(ctx, scope, Authenticated("sub-A"), ScheduledAll, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListScheduled(all) for sub-A: %v", err)
+	}
+	if len(own) != 3 {
+		t.Errorf("ListScheduled(all) for owner sub-A: got %d want 3 (own records visible)", len(own))
+	}
+}
+
 func TestPruneExpired(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

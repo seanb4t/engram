@@ -310,6 +310,22 @@ func ownerOrSharedCondition(subj Subject) *qdrant.Condition {
 	}
 }
 
+// ownerOnlyCondition restricts to records the caller OWNS — no shared-read grant.
+// It backs management views (ListScheduled) where a `shared` record belonging to
+// another actor must stay invisible: a shared+scheduled memory is hidden from
+// everyone but its owner until it becomes active (then normal recall surfaces it).
+// Fail-closed for nil/unknown Subjects, exactly like ownerOrSharedCondition.
+func ownerOnlyCondition(subj Subject) *qdrant.Condition {
+	switch s := subj.(type) {
+	case authenticated:
+		return qdrant.NewMatch("owner", s.sub)
+	case anonymous:
+		return qdrant.NewMatch("owner", "")
+	default:
+		return matchNothing()
+	}
+}
+
 // matchNothing returns a condition no record can satisfy (owner==x AND owner!=x).
 // It backs the fail-closed default arm of read-filter switches when the Subject
 // is nil/unknown — a query then returns zero rows rather than over-returning.
@@ -552,7 +568,7 @@ const (
 )
 
 // scheduledStateCondition returns the inverse-window clause for a state. now is
-// epoch seconds as *float64 (Qdrant Range field type).
+// the comparison instant; its epoch seconds become the *float64 Qdrant Range bound.
 func scheduledStateCondition(state ScheduledState, now time.Time) *qdrant.Condition {
 	sec := float64(now.Unix())
 	// Separate *float64 allocations per bound: proto message field pointers are
@@ -569,12 +585,14 @@ func scheduledStateCondition(state ScheduledState, now time.Time) *qdrant.Condit
 	}
 }
 
-// ListScheduled returns the caller's windowed records that the recall gate is
-// hiding, for management (review/reschedule/delete). It mirrors List's scope +
-// owner authz envelope but applies the INVERSE temporal clause; it does not
-// reuse List (whose gate would exclude exactly these records). CreatedAt-desc,
-// bounded by the same scanCap as List. Only opts.Limit is honored; opts.Offset
-// is ignored — this management view paginates by Limit alone, not by offset.
+// ListScheduled returns the caller's OWN windowed records that the recall gate is
+// hiding, for management (review/reschedule/delete). It applies the INVERSE
+// temporal clause and an owner-only authz envelope (ownerOnlyCondition, NOT the
+// shared-read grant): a `shared` scheduled/expired record belonging to another
+// actor stays invisible here until it becomes active, preserving the deferred-
+// reveal guarantee. It does not reuse List (whose gate would exclude exactly
+// these records). CreatedAt-desc, bounded by the same scanCap as List. Only
+// opts.Limit is honored; opts.Offset is ignored — paginates by Limit alone.
 func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, state ScheduledState, opts ListOptions) (items []Memory, err error) {
 	ctx, span := tracer.Start(ctx, "store.ListScheduled", trace.WithAttributes(
 		attribute.String("engram.scope", scope),
@@ -596,7 +614,7 @@ func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, s
 	const scanCap = 1000
 	f := &qdrant.Filter{Must: []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),
-		ownerOrSharedCondition(subj),
+		ownerOnlyCondition(subj),
 		scheduledStateCondition(state, s.now()),
 	}}
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
