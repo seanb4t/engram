@@ -18,6 +18,7 @@
   class={'w-full text-left px-3 py-2 border-b border-border flex flex-col gap-1.5 hover:bg-accent ' + (selected ? 'bg-accent shadow-[inset_2px_0_0_var(--primary)]' : '')}
 >
   <div class="flex items-center gap-2 min-w-0">
+    <span class="cat-dot" style="background:var(--cat-{memory.category})"></span>
     <Badge variant="outline" class="shrink-0 text-[10px] uppercase" style="color:var(--cat-{memory.category})">{memory.category}</Badge>
     <span class="truncate flex-1 text-[13px]">{summary}</span>
   </div>
