@@ -5,6 +5,7 @@
   import { engram } from '$lib/client';
   import { PAGE_LIMIT } from '$lib/queries';
   import MemoryList from '$lib/components/MemoryList.svelte';
+  import ScopeChip from '$lib/components/ScopeChip.svelte';
   import { Button } from '$lib/components/ui/button';
   // svelte-query v6: options wrapped in a function; results are runes objects read directly (no $).
   const scopesQ = createQuery(() => ({ queryKey: ['listScopes'], queryFn: () => engram.listScopes({}) }));
@@ -23,11 +24,12 @@
   {:else if scopesQ.error}
     <div class="text-cat-gotcha">failed to load scopes</div>
   {:else}
-    <div class="grid gap-2" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">
+    <div class="grid gap-2" style="grid-template-columns:repeat(auto-fill,minmax(215px,1fr))">
       {#each scopesQ.data?.scopes ?? [] as s (s.scope)}
-        <Button variant="surface" class="text-left p-3 h-auto block" onclick={() => goto(`${base}/observe?scope=${encodeURIComponent(s.scope)}`)}>
-          <div class="text-foreground">{s.scope}</div>
-          <div class="text-primary text-[20px]">{s.count}</div>
+        <Button variant="surface" class="relative text-left p-3 h-auto block overflow-hidden" onclick={() => goto(`${base}/observe?scope=${encodeURIComponent(s.scope)}`)}>
+          <span class="absolute left-0 top-0 bottom-0 w-[3px] bg-primary"></span>
+          <ScopeChip scope={s.scope} mode="stacked" />
+          <div class="text-primary text-[24px] tabular-nums mt-1">{s.count}</div>
         </Button>
       {/each}
     </div>
