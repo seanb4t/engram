@@ -45,22 +45,40 @@ type deps struct {
 
 // StoreFromEnv builds a Qdrant-backed Store from the MEM_QDRANT_* / MEM_EMBED_DIM
 // environment and ensures the collection exists. Shared by the server bootstrap
-// and the migrate-set-owner command.
+// and the migrate-set-owner / prune-expired commands.
 func StoreFromEnv() (*store.Store, error) {
+	st, embedDim, err := StoreFromEnvNoEnsure()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := st.EnsureCollection(ctx, embedDim); err != nil {
+		return nil, fmt.Errorf("EnsureCollection: %w", err)
+	}
+	return st, nil
+}
+
+// StoreFromEnvNoEnsure builds the Store from the same MEM_QDRANT_* / MEM_EMBED_DIM
+// environment as StoreFromEnv but does NOT create the collection, and returns the
+// configured embed dimension alongside it. reindex uses this so it can require
+// the source collection to already exist (rather than silently creating an
+// empty one at the new dimension) and reuse the dimension for the target.
+func StoreFromEnvNoEnsure() (*store.Store, uint64, error) {
 	qdrantAddr := EnvOr("MEM_QDRANT_ADDR", "localhost:6334")
 	collection := EnvOr("MEM_QDRANT_COLLECTION", "mem_eval")
 	embedDimStr := EnvOr("MEM_EMBED_DIM", "1024")
 	embedDim, err := strconv.ParseUint(embedDimStr, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("invalid MEM_EMBED_DIM %q: %w", embedDimStr, err)
+		return nil, 0, fmt.Errorf("invalid MEM_EMBED_DIM %q: %w", embedDimStr, err)
 	}
 	host, portStr, err := net.SplitHostPort(qdrantAddr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid MEM_QDRANT_ADDR %q: %w", qdrantAddr, err)
+		return nil, 0, fmt.Errorf("invalid MEM_QDRANT_ADDR %q: %w", qdrantAddr, err)
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid port in MEM_QDRANT_ADDR %q: %w", qdrantAddr, err)
+		return nil, 0, fmt.Errorf("invalid port in MEM_QDRANT_ADDR %q: %w", qdrantAddr, err)
 	}
 	qc, err := qdrant.NewClient(&qdrant.Config{
 		Host: host,
@@ -70,33 +88,33 @@ func StoreFromEnv() (*store.Store, error) {
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("qdrant client: %w", err)
+		return nil, 0, fmt.Errorf("qdrant client: %w", err)
 	}
-	st := store.New(qc, collection)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	if err := st.EnsureCollection(ctx, embedDim); err != nil {
-		return nil, fmt.Errorf("EnsureCollection: %w", err)
-	}
-	return st, nil
+	return store.New(qc, collection), embedDim, nil
 }
 
 // buildDepsFromEnv wires up the store and embedder from the environment. The
 // store/Qdrant vars (MEM_QDRANT_ADDR, MEM_QDRANT_COLLECTION, MEM_EMBED_DIM) are
-// read by StoreFromEnv; the embedder vars (MEM_LITELLM_URL, MEM_LITELLM_KEY,
-// MEM_EMBED_MODEL, default "ollama/bge-m3") are read here.
+// read by StoreFromEnv; the embedder vars are read by EmbedderFromEnv.
 func buildDepsFromEnv() (*deps, error) {
 	st, err := StoreFromEnv()
 	if err != nil {
 		return nil, err
 	}
 	warnOwnerlessRecords(st)
+	return &deps{st: st, em: EmbedderFromEnv()}, nil
+}
+
+// EmbedderFromEnv builds the OpenAI-compatible embedder from the MEM_LITELLM_URL,
+// MEM_LITELLM_KEY, and MEM_EMBED_MODEL environment (default model
+// "ollama/bge-m3"). Exported so admin commands (e.g. reindex) re-embed with the
+// same currently-configured embedder the server bootstrap uses.
+func EmbedderFromEnv() *embed.Client {
 	litellmURL := EnvOr("MEM_LITELLM_URL", "http://localhost:4000")
 	litellmKey := EnvOr("MEM_LITELLM_KEY", "")
 	embedModel := EnvOr("MEM_EMBED_MODEL", "ollama/bge-m3")
-	em := embed.New(litellmURL, litellmKey, embedModel,
+	return embed.New(litellmURL, litellmKey, embedModel,
 		embed.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)))
-	return &deps{st: st, em: em}, nil
 }
 
 // warnOwnerlessRecords loudly warns at startup when pre-isolation (owner-less)

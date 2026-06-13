@@ -1,0 +1,459 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
+package store
+
+import (
+	"context"
+	"errors"
+	"math"
+	"net"
+	"strconv"
+	"testing"
+	"time"
+
+	"github.com/qdrant/go-client/qdrant"
+)
+
+// l2normalize mirrors the normalization Qdrant applies when storing vectors in a
+// Cosine-distance collection, so the test can compare a re-embedded vector
+// against the embedder's raw output.
+func l2normalize(v []float32) []float32 {
+	var sum float64
+	for _, x := range v {
+		sum += float64(x) * float64(x)
+	}
+	n := float32(math.Sqrt(sum))
+	if n == 0 {
+		return v
+	}
+	out := make([]float32, len(v))
+	for i, x := range v {
+		out[i] = x / n
+	}
+	return out
+}
+
+// dialTestClient mirrors testStore's dialing but returns the bare client so a
+// reindex test can drive two collections (source + target) and read points back
+// verbatim, including vectors. Skips when no Qdrant is available.
+func dialTestClient(t *testing.T) *qdrant.Client {
+	t.Helper()
+	if testQdrantAddr == "" {
+		t.Skip("no Qdrant available: set MEM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
+	}
+	host, portStr, err := net.SplitHostPort(testQdrantAddr)
+	if err != nil {
+		t.Fatalf("invalid Qdrant address %q: %v", testQdrantAddr, err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port <= 0 {
+		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, testQdrantAddr, err)
+	}
+	c, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+	return c
+}
+
+// scrolledPoint is the verbatim shape a reindex test asserts against: the raw
+// payload map and the stored vector. Payloads are compared by proto-text per
+// key (reflect.DeepEqual on *qdrant.Value is unreliable across its internal
+// state fields).
+type scrolledPoint struct {
+	payload map[string]*qdrant.Value
+	vec     []float32
+}
+
+func scrollPoints(t *testing.T, c *qdrant.Client, collection string) map[string]scrolledPoint {
+	t.Helper()
+	ctx := context.Background()
+	pts, err := c.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: collection,
+		Limit:          qdrant.PtrOf(uint32(1000)),
+		WithPayload:    qdrant.NewWithPayload(true),
+		WithVectors:    qdrant.NewWithVectors(true),
+	})
+	if err != nil {
+		t.Fatalf("scroll %s: %v", collection, err)
+	}
+	out := make(map[string]scrolledPoint, len(pts))
+	for _, p := range pts {
+		// Dense vectors arrive via GetDense().GetData(); GetData() on VectorOutput
+		// is deprecated and empty for this server version.
+		out[p.Id.GetUuid()] = scrolledPoint{
+			payload: p.Payload,
+			vec:     p.GetVectors().GetVector().GetDense().GetData(),
+		}
+	}
+	return out
+}
+
+func payloadKeysEqual(t *testing.T, label string, want, got map[string]*qdrant.Value) {
+	t.Helper()
+	if len(want) != len(got) {
+		t.Errorf("%s: payload key count: want %d, got %d (want=%v got=%v)", label, len(want), len(got), keys(want), keys(got))
+		return
+	}
+	for k, wv := range want {
+		gv, ok := got[k]
+		if !ok {
+			t.Errorf("%s: missing payload key %q", label, k)
+			continue
+		}
+		if wv.String() != gv.String() {
+			t.Errorf("%s: payload key %q: want %q, got %q", label, k, wv.String(), gv.String())
+		}
+	}
+}
+
+func keys(m map[string]*qdrant.Value) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// seedSource writes two points into the source collection at dim 3:
+//   - a full Memory via the normal Upsert path (owner + shared + tags), and
+//   - a raw point carrying an UNKNOWN payload key and NO owner key, written
+//     straight through the client. The raw point is the crux: reindex must
+//     preserve unknown keys and must NOT synthesize an owner key (which a
+//     Memory round-trip would, dropping the record into the anonymous bucket).
+func seedSource(t *testing.T, c *qdrant.Client, src string) (fullID, rawID string) {
+	t.Helper()
+	ctx := context.Background()
+	s := New(c, src)
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("ensure source: %v", err)
+	}
+	fullID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	full := Memory{
+		ID:         fullID,
+		Content:    "alpha content",
+		Scope:      "eval-test:project:demo",
+		Repo:       "demo",
+		Source:     "user-said",
+		Category:   "preference",
+		Tags:       []string{"x", "y"},
+		Owner:      "sub-123",
+		Visibility: "shared",
+		CreatedAt:  time.Now().UTC().Truncate(time.Second),
+	}
+	if err := s.Upsert(ctx, full, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed full: %v", err)
+	}
+
+	rawID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+	if _, err := c.Upsert(ctx, &qdrant.UpsertPoints{
+		CollectionName: src,
+		Wait:           qdrant.PtrOf(true),
+		Points: []*qdrant.PointStruct{{
+			Id:      qdrant.NewID(rawID),
+			Vectors: qdrant.NewVectors(0.4, 0.5, 0.6),
+			Payload: qdrant.NewValueMap(map[string]any{
+				// Deliberately a different length than the full point's content so
+				// the re-embedded vectors differ per point (embed4 keys off length),
+				// making the per-point vector assertion discriminating.
+				"content":      "bravo",
+				"scope":        "eval-test:project:demo",
+				"legacy_field": "keep-me-verbatim",
+			}),
+		}},
+	}); err != nil {
+		t.Fatalf("seed raw: %v", err)
+	}
+	return fullID, rawID
+}
+
+// embed4Vec is the deterministic dim-4 vector for a content string, keyed off
+// its length so distinct contents yield distinct vectors.
+func embed4Vec(content string) []float32 {
+	return []float32{1, 0, 0, float32(len(content))}
+}
+
+// embed4 is a deterministic dim-4 embedder: the target dimension (4) differs
+// from the source (3), so a passing test proves a dimension-changing reindex.
+func embed4(_ context.Context, content string) ([]float32, error) {
+	return embed4Vec(content), nil
+}
+
+func TestReindexRoundtrip(t *testing.T) {
+	c := dialTestClient(t)
+	ctx := context.Background()
+	const src, tgt = "reindex_src", "reindex_tgt"
+	_ = c.DeleteCollection(ctx, src)
+	_ = c.DeleteCollection(ctx, tgt)
+	t.Cleanup(func() {
+		_ = c.DeleteCollection(context.Background(), src)
+		_ = c.DeleteCollection(context.Background(), tgt)
+	})
+
+	fullID, rawID := seedSource(t, c, src)
+	srcBefore := scrollPoints(t, c, src)
+
+	s := New(c, src)
+	res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4}, embed4)
+	if err != nil {
+		t.Fatalf("reindex: %v", err)
+	}
+	if res.Scanned != 2 || res.Upserted != 2 {
+		t.Errorf("counts: want scanned=2 upserted=2, got %+v", res)
+	}
+
+	got := scrollPoints(t, c, tgt)
+	if len(got) != 2 {
+		t.Fatalf("target point count: want 2, got %d", len(got))
+	}
+
+	for id, want := range srcBefore {
+		tp, ok := got[id]
+		if !ok {
+			t.Errorf("target missing id %s", id)
+			continue
+		}
+		// Payload preserved verbatim.
+		payloadKeysEqual(t, "id="+id, want.payload, tp.payload)
+		// Vector re-embedded at the new dimension. Qdrant stores Cosine-distance
+		// vectors L2-normalized, so compare against the normalized embedder output.
+		content := tp.payload["content"].GetStringValue()
+		wantVec := l2normalize(embed4Vec(content))
+		if len(tp.vec) != 4 {
+			t.Errorf("id=%s: target vector dim: want 4, got %d", id, len(tp.vec))
+		}
+		for i := range wantVec {
+			if i >= len(tp.vec) || math.Abs(float64(tp.vec[i]-wantVec[i])) > 1e-4 {
+				t.Errorf("id=%s: vector[%d]: want ~%v, got %v", id, i, wantVec[i], tp.vec[i])
+			}
+		}
+	}
+
+	// The raw point's unknown key survives, and no owner key is synthesized.
+	if _, ok := got[rawID].payload["legacy_field"]; !ok {
+		t.Errorf("raw point lost unknown payload key legacy_field")
+	}
+	if _, ok := got[rawID].payload["owner"]; ok {
+		t.Errorf("raw point gained a synthesized owner key (would land it in the anonymous bucket)")
+	}
+	// The full point keeps its owner verbatim.
+	if got[fullID].payload["owner"].GetStringValue() != "sub-123" {
+		t.Errorf("full point owner not preserved: %q", got[fullID].payload["owner"].GetStringValue())
+	}
+
+	// Source is left untouched: original 3-dim vectors intact.
+	srcAfter := scrollPoints(t, c, src)
+	if len(srcAfter) != 2 {
+		t.Errorf("source point count changed: want 2, got %d", len(srcAfter))
+	}
+	if got := srcAfter[rawID].vec; len(got) != 3 {
+		t.Errorf("source vector dim changed: want 3, got %d", len(got))
+	}
+}
+
+func TestReindexDryRunWritesNothing(t *testing.T) {
+	c := dialTestClient(t)
+	ctx := context.Background()
+	const src, tgt = "reindex_dry_src", "reindex_dry_tgt"
+	_ = c.DeleteCollection(ctx, src)
+	_ = c.DeleteCollection(ctx, tgt)
+	t.Cleanup(func() {
+		_ = c.DeleteCollection(context.Background(), src)
+		_ = c.DeleteCollection(context.Background(), tgt)
+	})
+	seedSource(t, c, src)
+
+	s := New(c, src)
+	res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, DryRun: true}, embed4)
+	if err != nil {
+		t.Fatalf("reindex dry-run: %v", err)
+	}
+	if res.Scanned != 2 || res.Upserted != 0 {
+		t.Errorf("dry-run counts: want scanned=2 upserted=0, got %+v", res)
+	}
+	exists, err := c.CollectionExists(ctx, tgt)
+	if err != nil {
+		t.Fatalf("collection exists: %v", err)
+	}
+	if exists {
+		t.Errorf("dry-run created the target collection")
+	}
+}
+
+func TestReindexErrorsOnMissingSource(t *testing.T) {
+	c := dialTestClient(t)
+	ctx := context.Background()
+	const src, tgt = "reindex_missing_src", "reindex_missing_tgt"
+	_ = c.DeleteCollection(ctx, src)
+	_ = c.DeleteCollection(ctx, tgt)
+	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), tgt) })
+
+	// Source never created — reindexing it must fail loudly, not silently scan
+	// zero and report success (which would mask a typo'd MEM_QDRANT_COLLECTION).
+	s := New(c, src)
+	_, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4}, embed4)
+	if err == nil {
+		t.Fatalf("want error for missing source collection, got nil")
+	}
+	if exists, _ := c.CollectionExists(ctx, tgt); exists {
+		t.Errorf("target created despite missing source")
+	}
+}
+
+func TestReindexSkipsEmptyContent(t *testing.T) {
+	c := dialTestClient(t)
+	ctx := context.Background()
+	const src, tgt = "reindex_empty_src", "reindex_empty_tgt"
+	_ = c.DeleteCollection(ctx, src)
+	_ = c.DeleteCollection(ctx, tgt)
+	t.Cleanup(func() {
+		_ = c.DeleteCollection(context.Background(), src)
+		_ = c.DeleteCollection(context.Background(), tgt)
+	})
+
+	s := New(c, src)
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("ensure source: %v", err)
+	}
+	withContent := "cccccccc-cccc-cccc-cccc-cccccccccccc"
+	noContent := "dddddddd-dddd-dddd-dddd-dddddddddddd"
+	if err := s.Upsert(ctx, Memory{ID: withContent, Content: "has content", Scope: "s"}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed with-content: %v", err)
+	}
+	// Raw point with NO content key at all.
+	if _, err := c.Upsert(ctx, &qdrant.UpsertPoints{
+		CollectionName: src, Wait: qdrant.PtrOf(true),
+		Points: []*qdrant.PointStruct{{
+			Id:      qdrant.NewID(noContent),
+			Vectors: qdrant.NewVectors(0.4, 0.5, 0.6),
+			Payload: qdrant.NewValueMap(map[string]any{"scope": "s"}),
+		}},
+	}); err != nil {
+		t.Fatalf("seed no-content: %v", err)
+	}
+
+	res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4}, embed4)
+	if err != nil {
+		t.Fatalf("reindex: %v", err)
+	}
+	if res.Scanned != 2 || res.Upserted != 1 || res.Skipped != 1 {
+		t.Errorf("counts: want scanned=2 upserted=1 skipped=1, got %+v", res)
+	}
+	got := scrollPoints(t, c, tgt)
+	if _, ok := got[noContent]; ok {
+		t.Errorf("empty-content point was upserted (garbage vector) instead of skipped")
+	}
+	if _, ok := got[withContent]; !ok {
+		t.Errorf("with-content point missing from target")
+	}
+}
+
+func TestReindexMultiPageCursor(t *testing.T) {
+	c := dialTestClient(t)
+	ctx := context.Background()
+	const src, tgt = "reindex_page_src", "reindex_page_tgt"
+	_ = c.DeleteCollection(ctx, src)
+	_ = c.DeleteCollection(ctx, tgt)
+	t.Cleanup(func() {
+		_ = c.DeleteCollection(context.Background(), src)
+		_ = c.DeleteCollection(context.Background(), tgt)
+	})
+
+	s := New(c, src)
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("ensure source: %v", err)
+	}
+	ids := []string{
+		"e0000000-0000-0000-0000-000000000001",
+		"e0000000-0000-0000-0000-000000000002",
+		"e0000000-0000-0000-0000-000000000003",
+	}
+	for i, id := range ids {
+		if err := s.Upsert(ctx, Memory{ID: id, Content: id, Scope: "s"}, []float32{float32(i), 0.1, 0.2}); err != nil {
+			t.Fatalf("seed %d: %v", i, err)
+		}
+	}
+
+	// Batch:1 forces the ScrollAndOffset cursor across multiple pages — the
+	// next-page path that a single-page scroll never exercises.
+	res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Batch: 1}, embed4)
+	if err != nil {
+		t.Fatalf("reindex: %v", err)
+	}
+	if res.Scanned != 3 || res.Upserted != 3 {
+		t.Errorf("counts: want scanned=3 upserted=3, got %+v", res)
+	}
+	got := scrollPoints(t, c, tgt)
+	if len(got) != 3 {
+		t.Errorf("target point count: want 3 (all pages migrated), got %d", len(got))
+	}
+}
+
+func TestReindexPartialWriteOnLateEmbedError(t *testing.T) {
+	c := dialTestClient(t)
+	ctx := context.Background()
+	const src, tgt = "reindex_partial_src", "reindex_partial_tgt"
+	_ = c.DeleteCollection(ctx, src)
+	_ = c.DeleteCollection(ctx, tgt)
+	t.Cleanup(func() {
+		_ = c.DeleteCollection(context.Background(), src)
+		_ = c.DeleteCollection(context.Background(), tgt)
+	})
+	seedSource(t, c, src) // 2 points
+
+	// Fail on the 2nd embed call regardless of scroll order: the first point is
+	// upserted, the second aborts. Documents the no-rollback contract — the
+	// target is left partially populated and the reported count matches.
+	calls := 0
+	boom := errors.New("embedder down on call 2")
+	flaky := func(_ context.Context, content string) ([]float32, error) {
+		calls++
+		if calls == 2 {
+			return nil, boom
+		}
+		return embed4Vec(content), nil
+	}
+
+	s := New(c, src)
+	res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Batch: 1}, flaky)
+	if !errors.Is(err, boom) {
+		t.Fatalf("want late embed error surfaced, got %v", err)
+	}
+	if res.Upserted != 1 {
+		t.Errorf("want exactly 1 point upserted before the failure, got %d", res.Upserted)
+	}
+	got := scrollPoints(t, c, tgt)
+	if len(got) != int(res.Upserted) {
+		t.Errorf("target count %d disagrees with reported Upserted %d", len(got), res.Upserted)
+	}
+}
+
+func TestReindexFailsClosedOnEmbedError(t *testing.T) {
+	c := dialTestClient(t)
+	ctx := context.Background()
+	const src, tgt = "reindex_fail_src", "reindex_fail_tgt"
+	_ = c.DeleteCollection(ctx, src)
+	_ = c.DeleteCollection(ctx, tgt)
+	t.Cleanup(func() {
+		_ = c.DeleteCollection(context.Background(), src)
+		_ = c.DeleteCollection(context.Background(), tgt)
+	})
+	seedSource(t, c, src)
+
+	boom := errors.New("embedder down")
+	failing := func(_ context.Context, _ string) ([]float32, error) { return nil, boom }
+
+	s := New(c, src)
+	_, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4}, failing)
+	if !errors.Is(err, boom) {
+		t.Fatalf("want embedder error surfaced, got %v", err)
+	}
+	// Fail-closed: no garbage/zero vector written to the target.
+	if exists, _ := c.CollectionExists(ctx, tgt); exists {
+		got := scrollPoints(t, c, tgt)
+		if len(got) != 0 {
+			t.Errorf("fail-closed violated: %d point(s) written to target", len(got))
+		}
+	}
+}
