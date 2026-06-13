@@ -4,7 +4,8 @@
   --sl-color-accent-high: #c9bdf5;
 }
 :root[data-theme='light'] {
+  /* --sl-color-accent is identical across themes; inherit it from :root and
+     override only the low/high endpoints that differ. */
   --sl-color-accent-low: #e6e0fb;
-  --sl-color-accent: #6E56CF;
   --sl-color-accent-high: #2b2150;
 }
