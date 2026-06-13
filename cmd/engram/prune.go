@@ -43,7 +43,7 @@ var pruneExpiredCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		cmd.Printf("pruned %d expired record(s) (not_after < %s)\n", n, before.Format(time.RFC3339))
+		cmd.Printf("pruned ~%d expired record(s) (not_after < %s; best-effort count)\n", n, before.Format(time.RFC3339))
 		return nil
 	},
 }

@@ -975,8 +975,11 @@ func (s *Store) DeleteAll(ctx context.Context, scope string, subj Subject) (err 
 // PruneExpired deletes every record whose not_after is strictly before the given
 // instant — an operator/admin sweep run from the CLI across the WHOLE collection
 // (no subject authz; it is not on behalf of a caller). Records without a
-// not_after key are never matched. Returns the number deleted (counted before
-// the delete, since Qdrant's delete response carries no count).
+// not_after key are never matched. Returns a BEST-EFFORT deleted count: it is the
+// Count taken just before the filter-Delete (Qdrant's delete response carries no
+// count), so concurrent writes between the two RPCs can make the reported number
+// drift from the exact number removed. The delete filter itself is exact; only
+// the reported tally is approximate. Treat it as a sweep summary, not an audit.
 func (s *Store) PruneExpired(ctx context.Context, before time.Time) (deleted uint64, err error) {
 	ctx, span := tracer.Start(ctx, "store.PruneExpired",
 		trace.WithAttributes(attribute.Int64("engram.before", before.Unix())))
