@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -28,14 +27,6 @@ import (
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/telemetry"
 )
-
-// EnvOr returns the environment variable k, or def when k is unset/empty.
-func EnvOr(k, def string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return def
-}
 
 type deps struct {
 	st *store.Store

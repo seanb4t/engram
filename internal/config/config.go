@@ -91,7 +91,7 @@ func Load(flags *flag.FlagSet) (*Config, error) {
 		TransformFunc: func(key, val string) (string, any) {
 			if val == "" {
 				// Empty env var preserves the registry default — same invariant
-				// as the retired EnvOr/envOr helpers (os.Getenv=="" fell through
+				// as the retired env-or helpers (os.Getenv=="" fell through
 				// to the default). To force an empty value, set the CLI flag
 				// (the changed-flag overlay bypasses this guard).
 				return "", nil
