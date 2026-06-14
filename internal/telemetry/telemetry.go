@@ -32,7 +32,7 @@ func Setup(ctx context.Context, cfg Config) (*slog.Logger, ShutdownFunc, error) 
 	if !cfg.Enabled() {
 		lg := NewLogger(cfg, nil)
 		if !cfg.LogStdout {
-			lg.Warn("MEM_LOG_STDOUT=false but no OTLP endpoint configured; forcing stdout so logs are not silently dropped")
+			lg.Warn("ENGRAM_LOG_STDOUT=false but no OTLP endpoint configured; forcing stdout so logs are not silently dropped")
 		}
 		return lg, noopShutdown, nil
 	}

@@ -7,9 +7,9 @@ import "testing"
 
 func TestConfigFromEnv(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "otel-collector:4317")
-	t.Setenv("MEM_LOG_LEVEL", "debug")
-	t.Setenv("MEM_LOG_FORMAT", "text")
-	t.Setenv("MEM_LOG_STDOUT", "false")
+	t.Setenv("ENGRAM_LOG_LEVEL", "debug")
+	t.Setenv("ENGRAM_LOG_FORMAT", "text")
+	t.Setenv("ENGRAM_LOG_STDOUT", "false")
 
 	c := ConfigFromEnv("engram", "1.2.3")
 
@@ -26,9 +26,9 @@ func TestConfigFromEnv(t *testing.T) {
 
 func TestConfigFromEnvDefaults(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
-	t.Setenv("MEM_LOG_LEVEL", "")
-	t.Setenv("MEM_LOG_FORMAT", "")
-	t.Setenv("MEM_LOG_STDOUT", "")
+	t.Setenv("ENGRAM_LOG_LEVEL", "")
+	t.Setenv("ENGRAM_LOG_FORMAT", "")
+	t.Setenv("ENGRAM_LOG_STDOUT", "")
 
 	c := ConfigFromEnv("engram", "dev")
 

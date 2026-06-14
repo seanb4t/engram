@@ -36,7 +36,7 @@ func buildProviders(ctx context.Context, cfg Config) (otellog.LoggerProvider, Sh
 
 	// boot is the configured stdout logger (no OTLP bridge yet — providers are
 	// being built). It carries any partial-resource warning on the reliable
-	// stdout channel, honouring MEM_LOG_LEVEL/FORMAT, before slog.SetDefault runs.
+	// stdout channel, honouring ENGRAM_LOG_LEVEL/FORMAT, before slog.SetDefault runs.
 	boot := NewLogger(cfg, nil)
 	res := buildResource(ctx, cfg, boot)
 
@@ -149,7 +149,7 @@ func buildResource(ctx context.Context, cfg Config, lg *slog.Logger) *resource.R
 //
 // The error is logged through lg, the caller's bootstrap stdout logger, NOT
 // the slog default: at telemetry.Setup time slog.SetDefault has not run (it
-// runs later in serve.go), so a bare slog.Warn would bypass MEM_LOG_LEVEL/FORMAT.
+// runs later in serve.go), so a bare slog.Warn would bypass ENGRAM_LOG_LEVEL/FORMAT.
 func resourceFromOptions(ctx context.Context, lg *slog.Logger, opts ...resource.Option) *resource.Resource {
 	res, err := resource.New(ctx, opts...)
 	if err != nil {

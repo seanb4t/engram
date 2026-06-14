@@ -87,7 +87,7 @@ func TestResourceFromOptionsToleratesDetectorFailure(t *testing.T) {
 
 // TestResourceFromOptionsLogsPartialViaProvidedLogger guards finding engram-1id.1:
 // the partial-resource warning must go through the caller-supplied bootstrap
-// logger (which honours MEM_LOG_LEVEL/FORMAT) rather than the global slog default
+// logger (which honours ENGRAM_LOG_LEVEL/FORMAT) rather than the global slog default
 // (which, at telemetry.Setup time, is still the stock handler — slog.SetDefault
 // runs later in serve.go).
 func TestResourceFromOptionsLogsPartialViaProvidedLogger(t *testing.T) {
