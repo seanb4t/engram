@@ -1,0 +1,29 @@
+---
+// Decorative only — faint memory-traces resolving into nodes (the brand mark's
+// concept). aria-hidden so it is not announced. Flat, no baked glow.
+---
+<svg class="lp-trace" aria-hidden="true" focusable="false" viewBox="0 0 800 300"
+     preserveAspectRatio="xMaxYMid slice" fill="none"
+     stroke="var(--sl-color-accent)" stroke-width="1.2">
+  <path d="M520 30 C 620 80, 600 160, 720 170" opacity=".5" />
+  <path d="M560 270 C 640 200, 720 220, 790 150" opacity=".4" />
+  <path d="M500 150 C 600 130, 660 80, 770 70" opacity=".45" />
+  <path d="M540 90 C 600 150, 700 150, 740 240" opacity=".33" />
+  <circle cx="720" cy="170" r="4.5" fill="var(--sl-color-accent)" stroke="none" />
+  <circle cx="770" cy="70" r="4" fill="var(--sl-color-accent)" stroke="none" />
+  <circle cx="790" cy="150" r="3" fill="var(--sl-color-accent)" stroke="none" />
+  <circle cx="740" cy="240" r="3" fill="var(--sl-color-accent)" stroke="none" />
+  <circle cx="500" cy="150" r="2.5" fill="var(--sl-color-accent)" stroke="none" />
+</svg>
+
+<style>
+  .lp-trace {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    opacity: 0.5;
+    pointer-events: none;
+  }
+</style>
