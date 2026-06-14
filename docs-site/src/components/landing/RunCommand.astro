@@ -49,6 +49,11 @@ const lines = command.split('\n');
 
 <script>
   document.querySelectorAll<HTMLButtonElement>('[data-lp-copy]').forEach((btn) => {
+    // Idempotent init: bind once per button so a re-run (e.g. if View
+    // Transitions / astro:page-load is ever enabled) can't stack duplicate
+    // click listeners on the same node.
+    if (btn.dataset.lpCopyInit) return;
+    btn.dataset.lpCopyInit = 'true';
     const originalText = btn.textContent ?? 'Copy';
     const originalLabel = btn.getAttribute('aria-label');
     let timer: ReturnType<typeof setTimeout> | null = null;

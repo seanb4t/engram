@@ -49,8 +49,11 @@ import SiteFooter from '../components/landing/SiteFooter.astro';
      not match a sidebar'd page.) */
   :root[data-has-sidebar] { --sl-content-width: 56rem; }
   .lp { --lp-prose: 42rem; }
-  /* The single page <h1> (StarlightPage PageTitle) IS the hero wordmark.
-     #_top specificity (1,0,0) wins over Starlight's default h1 styling. */
+  /* #_top is the id Starlight sets on the PageTitle <h1> ITSELF (built DOM:
+     `<h1 id="_top">engram</h1>`), so this rule styles the wordmark h1 directly —
+     not via inheritance from a wrapper. The id selector (1,0,0) beats Starlight's
+     element/class h1 rules and the UA default. NB: a descendant selector such as
+     `#_top h1` would match nothing (there is no h1 inside the h1). */
   #_top {
     font-size: var(--sl-text-6xl, 3.5rem);
     font-weight: 800;
