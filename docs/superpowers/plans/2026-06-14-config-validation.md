@@ -355,3 +355,4 @@ jj commit -m "feat(serve): fail fast on empty listen address (engram-syt)"
 
 - [ ] **Full gates green** — Run: `go build ./... && go test ./... && golangci-lint run && task license:check`
   Expected: build clean; all tests pass (integration auto-skips without Qdrant); `0 issues`; license headers valid (the two new files carry the SPDX header).
+<!-- adr-capture: sha256=11c05861f7fb09ef; session=cli; ts=2026-06-15T00:01:25Z; adrs=engram-wtw,engram-d24 -->

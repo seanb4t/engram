@@ -191,3 +191,4 @@ invalid configuration:
 - The serve double-`config.Load` refactor (separately tracked).
 - A strict/prod mode requiring connection fields be explicitly set.
 - File-based config validation (no config file exists).
+<!-- adr-capture: sha256=0e0f9a1786afed2f; session=cli; ts=2026-06-15T00:01:25Z; adrs=engram-wtw,engram-d24 -->
