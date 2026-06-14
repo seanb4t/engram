@@ -1,6 +1,6 @@
 ---
 name: curating-memory
-description: Use when storing or updating durable project memory via the engram MCP tools — enforces durable-only capture, search-before-store, supersede-on-contradiction, and the two-tier spine/overlay scope. Trigger when the user states a durable decision/preference/convention, on the session-end capture nudge, and before any mcp__engram__store_memory / schedule_memory / update_memory / delete_memory call.
+description: Use when storing or updating durable project memory via the engram MCP tools — enforces the engram-vs-beads routing gate, durable-only capture, search-before-store, supersede-on-contradiction, and the two-tier spine/overlay scope. Trigger when the user states a durable decision/preference/convention, when the user explicitly asks to remember something (including a time-bound reminder, due date, or "not before"/expiry — even if it looks task-shaped), on the session-end capture nudge, and before any mcp__engram__store_memory / schedule_memory / update_memory / delete_memory call.
 ---
 
 # Curating Memory
@@ -8,6 +8,23 @@ description: Use when storing or updating durable project memory via the engram 
 The memory store is **explicit and zero-junk**: only deliberately chosen durable
 facts live in it, and it stays correct over time. Apply this discipline before
 every memory write.
+
+## Routing: is this an engram memory at all?
+
+Decide *where* the fact belongs **before** applying the taxonomy below:
+
+- **A task to *do*** — a work item or action ("drain hl-kt1r", "fix the flaky
+  test", "ship the release") → that is a **bead**, not a memory. Route it to the
+  issue tracker; engram does not track work.
+- **A durable fact about the repo/project** — a decision, preference,
+  convention, or gotcha → engram memory. Continue below.
+- **An explicit ask to remember with a time bound** — "remember X by/until/after
+  `<when>`", a due date, a deferred reveal → engram, via `schedule_memory`. The
+  explicit *remember* plus the time window is the durability signal; do **not**
+  drop it as transient. See Scheduling.
+- **Unclear** — task-shaped *and* an explicit timed "remember" (e.g. "remember
+  to drain hl-kt1r tonight or tomorrow"), or the scope is ambiguous → **ask /
+  offer the choice** (bead vs scheduled memory). Never silently pick one.
 
 ## Junk taxonomy
 
@@ -45,10 +62,12 @@ Use `schedule_memory` instead of `store_memory` when a durable fact should not b
 recalled *yet*, or should stop being recalled *after* a point in time. It takes
 the same fields as `store_memory` plus a validity window — at least one of
 `not_before` (RFC3339; hidden from recall until then, a deferred reveal) or
-`not_after` (RFC3339; dropped from recall at then, an expiry). The junk taxonomy
-and search-before-store discipline still apply: scheduling controls *when* a
-durable fact is active, not *whether* it is durable. Discoveries are not
-schedulable.
+`not_after` (RFC3339; dropped from recall at then, an expiry). Search-before-store
+still applies. The junk-taxonomy "transient" exclusion targets *incidental* state
+the user never asked to keep — an explicit request to remember something
+by/until/after a time is itself durable (the ask is the signal), so schedule it
+rather than discarding it. Scheduling controls *when* a durable fact is active,
+not *whether* it is durable. Discoveries are not schedulable.
 
 A windowed record inside its active window surfaces normally through
 `search_memory` / `list_memory`. Outside that window the recall tools hide it,
