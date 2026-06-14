@@ -28,6 +28,21 @@
       ],
       "automerge": true,
       "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Rebuild and commit the vendored SvelteKit SPA whenever a ui/ dependency changes, so the 'ui vendored-asset drift' check stays green (the UI analog of gomodTidy). Requires the self-hosted bot to allow this command via allowedPostUpgradeCommands and to have node + pnpm available.",
+      "matchFileNames": [
+        "ui/package.json"
+      ],
+      "postUpgradeTasks": {
+        "commands": [
+          "cd ui && pnpm install --frozen-lockfile && pnpm build && rm -rf ../internal/webauth/static && mkdir -p ../internal/webauth/static && cp -R build/. ../internal/webauth/static/"
+        ],
+        "fileFilters": [
+          "internal/webauth/static/**"
+        ],
+        "executionMode": "branch"
+      }
     }
   ]
 }
