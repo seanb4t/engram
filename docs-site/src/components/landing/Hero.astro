@@ -13,8 +13,12 @@ try {
     readFileSync(new URL('../../../../.release-please-manifest.json', import.meta.url), 'utf8'),
   );
   version = manifest['.'] ?? '';
-} catch {
-  version = ''; // omit the version badge rather than show a wrong one
+} catch (err) {
+  // Omit the version badge rather than show a wrong one — but surface the
+  // failure in the build log so a renamed manifest or malformed JSON is not
+  // silently swallowed (only the absent badge would otherwise signal it).
+  console.warn('[landing] could not read version from .release-please-manifest.json:', err);
+  version = '';
 }
 
 const runCommand = [

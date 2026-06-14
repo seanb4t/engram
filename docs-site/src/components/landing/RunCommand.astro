@@ -43,29 +43,38 @@ const lines = command.split('\n');
     padding: 0.25rem 0.7rem; font-size: var(--sl-text-xs);
   }
   .lp-run-copy[data-copied] { background: var(--sl-color-accent); }
+  .lp-run-copy:focus-visible { outline: 2px solid var(--sl-color-accent); outline-offset: 2px; }
   .lp-run-note { color: var(--sl-color-gray-3); font-size: var(--sl-text-sm); margin: 0.6rem 0 0; }
 </style>
 
 <script>
   document.querySelectorAll<HTMLButtonElement>('[data-lp-copy]').forEach((btn) => {
     const originalText = btn.textContent ?? 'Copy';
+    const originalLabel = btn.getAttribute('aria-label');
     let timer: ReturnType<typeof setTimeout> | null = null;
     btn.addEventListener('click', async () => {
       const text = btn.dataset.clipboard ?? '';
       try {
         await navigator.clipboard.writeText(text);
+        // Update both the visible label AND aria-label: a static aria-label
+        // overrides textContent in the accessible-name computation, so without
+        // this an assistive-tech user never hears the state change.
         btn.textContent = 'Copied';
+        btn.setAttribute('aria-label', 'Run command copied to clipboard');
         btn.setAttribute('data-copied', '');
         if (timer) clearTimeout(timer);
         timer = setTimeout(() => {
           btn.textContent = originalText;
+          if (originalLabel !== null) btn.setAttribute('aria-label', originalLabel);
           btn.removeAttribute('data-copied');
           timer = null;
         }, 1500);
       } catch {
         // Clipboard API unavailable (insecure context / denied): leave the
-        // command visible and selectable so the user can copy manually.
+        // command visible and selectable so the user can copy manually, and
+        // announce the fallback via both the visible text and the aria-label.
         btn.textContent = 'Select & copy';
+        btn.setAttribute('aria-label', 'Copy failed — select the command and copy it manually');
       }
     });
   });

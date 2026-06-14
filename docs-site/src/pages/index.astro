@@ -42,8 +42,11 @@ import SiteFooter from '../components/landing/SiteFooter.astro';
     --lp-cat-preference: #7bd87b;
     --lp-cat-discovery: #2dd4bf;
   }
-  /* Width must out-specify middleware.css base :root{--sl-content-width:45rem}
-     (loads later, equal specificity). :root[data-has-sidebar] (0,2,0) wins. */
+  /* Width must beat middleware.css's base :root{--sl-content-width:45rem}, which
+     loads after this block. Equal specificity would lose on source order, so we
+     win on specificity instead: :root[data-has-sidebar] (0,2,0) outranks the
+     base :root (0,1,0). (middleware's html:not([data-has-sidebar]){67.5rem} does
+     not match a sidebar'd page.) */
   :root[data-has-sidebar] { --sl-content-width: 56rem; }
   .lp { --lp-prose: 42rem; }
   /* The single page <h1> (StarlightPage PageTitle) IS the hero wordmark.
