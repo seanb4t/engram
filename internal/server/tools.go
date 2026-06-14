@@ -58,7 +58,7 @@ func StoreFromEnv() (*store.Store, error) {
 func StoreFromEnvNoEnsure() (*store.Store, uint64, error) {
 	cfg, err := config.Load(nil)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("load config: %w", err)
 	}
 	embedDim, err := strconv.ParseUint(cfg.Embed.Dim, 10, 64)
 	if err != nil {

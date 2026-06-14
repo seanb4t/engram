@@ -23,26 +23,26 @@ type field struct {
 // their command, but their legacy names are registered for the guard in
 // legacy.go.
 var registry = []field{
-	{"server.listen_addr", "ENGRAM_LISTEN_ADDR", "MEM_LISTEN_ADDR", "listen-addr", ":8080"},
-	{"server.mcp_path", "ENGRAM_MCP_PATH", "MEM_MCP_PATH", "mcp-path", ""},
-	{"qdrant.addr", "ENGRAM_QDRANT_ADDR", "MEM_QDRANT_ADDR", "", "localhost:6334"},
-	{"qdrant.collection", "ENGRAM_QDRANT_COLLECTION", "MEM_QDRANT_COLLECTION", "", "mem_eval"},
-	{"embed.model", "ENGRAM_EMBED_MODEL", "MEM_EMBED_MODEL", "", "ollama/bge-m3"},
-	{"embed.dim", "ENGRAM_EMBED_DIM", "MEM_EMBED_DIM", "", "1024"},
-	{"openai.base_url", "ENGRAM_OPENAI_BASE_URL", "MEM_LITELLM_URL", "", "http://localhost:4000"},
-	{"openai.api_key", "ENGRAM_OPENAI_API_KEY", "MEM_LITELLM_KEY", "", ""},
-	{"oidc.issuer", "ENGRAM_OIDC_ISSUER", "MEM_OIDC_ISSUER", "oidc-issuer", ""},
-	{"oidc.audience", "ENGRAM_OIDC_AUDIENCE", "MEM_OIDC_AUDIENCE", "oidc-audience", ""},
-	{"oidc.client_id", "ENGRAM_OIDC_CLIENT_ID", "MEM_OIDC_CLIENT_ID", "oidc-client-id", ""},
-	{"oidc.client_secret", "ENGRAM_OIDC_CLIENT_SECRET", "MEM_OIDC_CLIENT_SECRET", "oidc-client-secret", ""},
-	{"oidc.resource_metadata", "ENGRAM_OIDC_RESOURCE_METADATA", "MEM_OIDC_RESOURCE_METADATA", "oidc-resource-metadata", ""},
-	{"ui.enabled", "ENGRAM_UI_ENABLED", "MEM_UI_ENABLED", "ui-enabled", ""},
-	{"ui.issuer", "ENGRAM_UI_ISSUER", "MEM_UI_ISSUER", "ui-issuer", ""},
-	{"ui.redirect_url", "ENGRAM_UI_REDIRECT_URL", "MEM_UI_REDIRECT_URL", "ui-redirect-url", ""},
-	{"ui.cookie_key", "ENGRAM_UI_COOKIE_KEY", "MEM_UI_COOKIE_KEY", "ui-cookie-key", ""},
-	{"log.level", "ENGRAM_LOG_LEVEL", "MEM_LOG_LEVEL", "", "info"},
-	{"log.format", "ENGRAM_LOG_FORMAT", "MEM_LOG_FORMAT", "", "json"},
-	{"log.stdout", "ENGRAM_LOG_STDOUT", "MEM_LOG_STDOUT", "", "true"},
+	{Key: "server.listen_addr", Env: "ENGRAM_LISTEN_ADDR", Legacy: "MEM_LISTEN_ADDR", Flag: "listen-addr", Default: ":8080"},
+	{Key: "server.mcp_path", Env: "ENGRAM_MCP_PATH", Legacy: "MEM_MCP_PATH", Flag: "mcp-path"},
+	{Key: "qdrant.addr", Env: "ENGRAM_QDRANT_ADDR", Legacy: "MEM_QDRANT_ADDR", Default: "localhost:6334"},
+	{Key: "qdrant.collection", Env: "ENGRAM_QDRANT_COLLECTION", Legacy: "MEM_QDRANT_COLLECTION", Default: "mem_eval"},
+	{Key: "embed.model", Env: "ENGRAM_EMBED_MODEL", Legacy: "MEM_EMBED_MODEL", Default: "ollama/bge-m3"},
+	{Key: "embed.dim", Env: "ENGRAM_EMBED_DIM", Legacy: "MEM_EMBED_DIM", Default: "1024"},
+	{Key: "openai.base_url", Env: "ENGRAM_OPENAI_BASE_URL", Legacy: "MEM_LITELLM_URL", Default: "http://localhost:4000"},
+	{Key: "openai.api_key", Env: "ENGRAM_OPENAI_API_KEY", Legacy: "MEM_LITELLM_KEY"},
+	{Key: "oidc.issuer", Env: "ENGRAM_OIDC_ISSUER", Legacy: "MEM_OIDC_ISSUER", Flag: "oidc-issuer"},
+	{Key: "oidc.audience", Env: "ENGRAM_OIDC_AUDIENCE", Legacy: "MEM_OIDC_AUDIENCE", Flag: "oidc-audience"},
+	{Key: "oidc.client_id", Env: "ENGRAM_OIDC_CLIENT_ID", Legacy: "MEM_OIDC_CLIENT_ID", Flag: "oidc-client-id"},
+	{Key: "oidc.client_secret", Env: "ENGRAM_OIDC_CLIENT_SECRET", Legacy: "MEM_OIDC_CLIENT_SECRET", Flag: "oidc-client-secret"},
+	{Key: "oidc.resource_metadata", Env: "ENGRAM_OIDC_RESOURCE_METADATA", Legacy: "MEM_OIDC_RESOURCE_METADATA", Flag: "oidc-resource-metadata"},
+	{Key: "ui.enabled", Env: "ENGRAM_UI_ENABLED", Legacy: "MEM_UI_ENABLED", Flag: "ui-enabled"},
+	{Key: "ui.issuer", Env: "ENGRAM_UI_ISSUER", Legacy: "MEM_UI_ISSUER", Flag: "ui-issuer"},
+	{Key: "ui.redirect_url", Env: "ENGRAM_UI_REDIRECT_URL", Legacy: "MEM_UI_REDIRECT_URL", Flag: "ui-redirect-url"},
+	{Key: "ui.cookie_key", Env: "ENGRAM_UI_COOKIE_KEY", Legacy: "MEM_UI_COOKIE_KEY", Flag: "ui-cookie-key"},
+	{Key: "log.level", Env: "ENGRAM_LOG_LEVEL", Legacy: "MEM_LOG_LEVEL", Default: "info"},
+	{Key: "log.format", Env: "ENGRAM_LOG_FORMAT", Legacy: "MEM_LOG_FORMAT", Default: "json"},
+	{Key: "log.stdout", Env: "ENGRAM_LOG_STDOUT", Legacy: "MEM_LOG_STDOUT", Default: "true"},
 }
 
 // envToKey maps each ENGRAM_* env var to its koanf key.
@@ -76,18 +76,20 @@ var flagToKey = func() map[string]string {
 	return m
 }()
 
+// flagToDefault maps a cobra flag name directly to its registry default.
+var flagToDefault = func() map[string]string {
+	m := make(map[string]string)
+	for _, f := range registry {
+		if f.Flag != "" {
+			m[f.Flag] = f.Default
+		}
+	}
+	return m
+}()
+
 // FlagDefault returns the registry default for the field bound to flag name, so
 // cobra flag registration shows accurate --help defaults without duplicating
 // literals. Returns "" when the flag is unknown or its field has no default.
 func FlagDefault(flagName string) string {
-	key, ok := flagToKey[flagName]
-	if !ok {
-		return ""
-	}
-	for _, f := range registry {
-		if f.Key == key {
-			return f.Default
-		}
-	}
-	return ""
+	return flagToDefault[flagName]
 }

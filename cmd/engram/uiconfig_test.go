@@ -62,8 +62,40 @@ func TestResolveUIConfigUIIssuerOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveUIConfig: %v", err)
 	}
+	if !got.Enabled {
+		t.Errorf("got %+v, want enabled (full creds, flag unset → implied on)", got)
+	}
 	if got.Issuer != "https://ui" {
 		t.Errorf("Issuer = %q, want ui issuer to win", got.Issuer)
+	}
+}
+
+func TestResolveUIConfigUIIssuerAloneSuffices(t *testing.T) {
+	// Split-issuer topology: UIIssuer set, OIDCIssuer empty (console app has a
+	// distinct issuer from the MCP bearer lane).
+	got, err := resolveUIConfig(uiRaw{
+		Enabled: "true", UIIssuer: "https://ui", ClientID: "c", ClientSecret: "s",
+		RedirectURL: "https://cb", CookieKey: "0123456789abcdef0123456789abcdef",
+	})
+	if err != nil {
+		t.Fatalf("resolveUIConfig: %v", err)
+	}
+	if !got.Enabled || got.Issuer != "https://ui" {
+		t.Errorf("got %+v, want enabled with issuer from UIIssuer alone (no OIDCIssuer)", got)
+	}
+}
+
+func TestResolveUIConfigImpliedOnFullCreds(t *testing.T) {
+	// Enabled unset ("") with all four creds present → implied on (not an error).
+	got, err := resolveUIConfig(uiRaw{
+		OIDCIssuer: "https://oidc", ClientID: "c", ClientSecret: "s",
+		RedirectURL: "https://cb", CookieKey: "0123456789abcdef0123456789abcdef",
+	})
+	if err != nil {
+		t.Fatalf("resolveUIConfig: %v", err)
+	}
+	if !got.Enabled || got.Issuer != "https://oidc" {
+		t.Errorf("got %+v, want implied-on with issuer defaulted to OIDC issuer", got)
 	}
 }
 

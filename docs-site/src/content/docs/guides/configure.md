@@ -3,7 +3,7 @@ title: Configure
 description: Full reference for engram's ENGRAM_* environment variables and their defaults.
 ---
 
-engram uses **env-first configuration** with no viper: every setting is an environment variable (`ENGRAM_*`). Only a subset of settings expose a `--flag` on `engram serve` — specifically the server listen address and the OIDC settings; Qdrant, embedder, and logging variables are env-only. Where a flag exists, it takes precedence over the environment variable.
+engram uses **env-first configuration** with no viper: every setting is an environment variable (`ENGRAM_*`). A subset of settings also expose a `--flag` on `engram serve` — the server settings (listen address, MCP path), the OIDC/auth settings, and the web-UI lane settings (see the per-section Flag columns below); Qdrant, embedder, and logging variables are env-only. Where a flag exists, it takes precedence over the environment variable.
 
 ## Server
 

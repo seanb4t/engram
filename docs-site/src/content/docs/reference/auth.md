@@ -19,7 +19,7 @@ engram serve \
   --oidc-audience engram
 ```
 
-The four serve flags that have both a `--flag` and an `ENGRAM_*` env equivalent:
+The MCP bearer-token lane's serve flags that have both a `--flag` and an `ENGRAM_*` env equivalent (the web-UI lane's flags are in the console section below):
 
 | Flag | Env | Default |
 |------|-----|---------|
