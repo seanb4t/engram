@@ -104,25 +104,14 @@ func runServe() error {
 
 	mux := http.NewServeMux()
 
-	uiCfg, err := resolveUIConfig(func(k string) string {
-		switch k {
-		case "MEM_UI_ENABLED":
-			return uiEnabled
-		case "MEM_UI_ISSUER":
-			return uiIssuer
-		case "MEM_OIDC_ISSUER":
-			return oidcIssuer
-		case "MEM_OIDC_CLIENT_ID":
-			return uiClientID
-		case "MEM_OIDC_CLIENT_SECRET":
-			return uiClientSecret
-		case "MEM_UI_REDIRECT_URL":
-			return uiRedirectURL
-		case "MEM_UI_COOKIE_KEY":
-			return uiCookieKey
-		default:
-			return ""
-		}
+	uiCfg, err := resolveUIConfig(uiRaw{
+		Enabled:      uiEnabled,
+		UIIssuer:     uiIssuer,
+		OIDCIssuer:   oidcIssuer,
+		ClientID:     uiClientID,
+		ClientSecret: uiClientSecret,
+		RedirectURL:  uiRedirectURL,
+		CookieKey:    uiCookieKey,
 	})
 	if err != nil {
 		slog.Error("web UI config invalid", "err", err)

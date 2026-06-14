@@ -21,73 +21,69 @@ type UIConfig struct {
 	CookieKey    string
 }
 
-// requiredUICreds are all-or-nothing: enabling the UI without all of them is a
-// fail-fast startup error, never a silent half-on state.
-var requiredUICreds = []string{
-	"MEM_OIDC_CLIENT_ID",
-	"MEM_OIDC_CLIENT_SECRET",
-	"MEM_UI_REDIRECT_URL",
-	"MEM_UI_COOKIE_KEY",
+// uiRaw is the unresolved web-UI input, built from *config.Config by the caller.
+// ClientID/ClientSecret come from the OIDC family (ENGRAM_OIDC_CLIENT_ID/SECRET);
+// OIDCIssuer is the MCP-lane issuer used as the UI-issuer fallback.
+type uiRaw struct {
+	Enabled      string // ENGRAM_UI_ENABLED
+	UIIssuer     string // ENGRAM_UI_ISSUER
+	OIDCIssuer   string // ENGRAM_OIDC_ISSUER
+	ClientID     string // ENGRAM_OIDC_CLIENT_ID
+	ClientSecret string // ENGRAM_OIDC_CLIENT_SECRET
+	RedirectURL  string // ENGRAM_UI_REDIRECT_URL
+	CookieKey    string // ENGRAM_UI_COOKIE_KEY
 }
 
-// resolveUIConfig implements the spec's activation tiebreaker:
-//   - MEM_UI_ENABLED=="false" (any case) is a hard off-switch — headless even
-//     when creds are present.
-//   - Otherwise the UI is enabled iff all required creds are present.
-//   - MEM_UI_ENABLED=="true" with missing creds is a startup error (fail fast),
-//     NOT a silent half-on state.
-//   - MEM_UI_ENABLED unset with partial creds is headless (not an error):
-//     presence-of-all-creds implies enabled; partial implies the operator has
-//     not finished wiring it.
-func resolveUIConfig(getenv func(string) string) (UIConfig, error) {
-	flag := getenv("MEM_UI_ENABLED")
-	if strings.EqualFold(flag, "false") {
+// resolveUIConfig implements the spec's activation tiebreaker (unchanged logic):
+//   - Enabled=="false" (any case) is a hard off-switch.
+//   - Otherwise the UI is on iff all four required creds are present.
+//   - Enabled=="true" with missing creds is a fail-fast startup error.
+//   - UIIssuer falls back to OIDCIssuer; enabled with neither is an error.
+func resolveUIConfig(r uiRaw) (UIConfig, error) {
+	if strings.EqualFold(r.Enabled, "false") {
 		return UIConfig{Enabled: false}, nil
 	}
-	present := 0
-	for _, k := range requiredUICreds {
-		if getenv(k) != "" {
-			present++
+	type cred struct {
+		env, val string
+	}
+	creds := []cred{
+		{"ENGRAM_OIDC_CLIENT_ID", r.ClientID},
+		{"ENGRAM_OIDC_CLIENT_SECRET", r.ClientSecret},
+		{"ENGRAM_UI_REDIRECT_URL", r.RedirectURL},
+		{"ENGRAM_UI_COOKIE_KEY", r.CookieKey},
+	}
+	var missing []string
+	for _, c := range creds {
+		if c.val == "" {
+			missing = append(missing, c.env)
 		}
 	}
-	allCreds := present == len(requiredUICreds)
+	allCreds := len(missing) == 0
 
-	if strings.EqualFold(flag, "true") && !allCreds {
-		var missing []string
-		for _, k := range requiredUICreds {
-			if getenv(k) == "" {
-				missing = append(missing, k)
-			}
-		}
-		return UIConfig{}, fmt.Errorf("MEM_UI_ENABLED=true but missing required creds: %v", missing)
+	if strings.EqualFold(r.Enabled, "true") && !allCreds {
+		return UIConfig{}, fmt.Errorf("ENGRAM_UI_ENABLED=true but missing required creds: %v", missing)
 	}
 	if !allCreds {
 		return UIConfig{Enabled: false}, nil
 	}
-	// The UI login lane verifies ID tokens against its own issuer, decoupled
-	// from the MCP bearer lane: MEM_UI_ISSUER lets the console run as a separate
-	// OIDC app (distinct iss) from the agents' bearer app. Unset → fall back to
-	// MEM_OIDC_ISSUER so single-app deployments need no extra config. An enabled
-	// UI with neither set is a fail-fast startup error — the login lane needs an
-	// issuer to discover.
-	issuer := getenv("MEM_UI_ISSUER")
+	issuer := r.UIIssuer
 	if issuer == "" {
-		issuer = getenv("MEM_OIDC_ISSUER")
+		issuer = r.OIDCIssuer
 	}
 	if issuer == "" {
-		return UIConfig{}, fmt.Errorf("web UI enabled but no OIDC issuer: set MEM_UI_ISSUER or MEM_OIDC_ISSUER")
+		return UIConfig{}, fmt.Errorf("web UI enabled but no OIDC issuer: set ENGRAM_UI_ISSUER or ENGRAM_OIDC_ISSUER")
 	}
 	return UIConfig{
 		Enabled:      true,
 		Issuer:       issuer,
-		ClientID:     getenv("MEM_OIDC_CLIENT_ID"),
-		ClientSecret: getenv("MEM_OIDC_CLIENT_SECRET"),
-		RedirectURL:  getenv("MEM_UI_REDIRECT_URL"),
-		CookieKey:    getenv("MEM_UI_COOKIE_KEY"),
+		ClientID:     r.ClientID,
+		ClientSecret: r.ClientSecret,
+		RedirectURL:  r.RedirectURL,
+		CookieKey:    r.CookieKey,
 	}, nil
 }
 
-// decodeCookieKey turns the MEM_UI_COOKIE_KEY value into the 32-byte AES-256 key
+// decodeCookieKey turns the ENGRAM_UI_COOKIE_KEY value into the 32-byte AES-256 key
 // the session codec requires. Operators provisioning secrets typically supply
 // encoded material, so we accept (in precedence order) hex, standard base64, or
 // raw-URL base64 that decodes to exactly 32 bytes, and finally a literal 32-byte
@@ -106,5 +102,5 @@ func decodeCookieKey(s string) ([]byte, error) {
 	if len(s) == 32 {
 		return []byte(s), nil
 	}
-	return nil, fmt.Errorf("MEM_UI_COOKIE_KEY must decode to 32 bytes (hex, base64, or a literal 32-byte string); got %d chars", len(s))
+	return nil, fmt.Errorf("ENGRAM_UI_COOKIE_KEY must decode to 32 bytes (hex, base64, or a literal 32-byte string); got %d chars", len(s))
 }
