@@ -1,0 +1,31 @@
+---
+// Mirrors the real MCP tool reference (store_memory / search_memory).
+---
+<section class="lp-sec" aria-labelledby="lp-code-h">
+  <h2 id="lp-code-h" class="lp-sec-label">See it work</h2>
+  <pre class="lp-code"><code><span class="lp-cm">// the agent stores something worth keeping</span>
+<span class="lp-fn">store_memory</span>(&#123; content: <span class="lp-st">"We use jj, never push to main"</span>, scope: <span class="lp-st">"repo:engram"</span>, category: <span class="lp-st">"convention"</span> &#125;)
+
+<span class="lp-cm">// a different session, days later — semantic recall</span>
+<span class="lp-fn">search_memory</span>(&#123; query: <span class="lp-st">"version control workflow"</span>, scope: <span class="lp-st">"repo:engram"</span> &#125;)
+<span class="lp-ar">→</span> <span class="lp-st">"We use jj, never push to main"</span>  <span class="lp-meta">convention · score 0.91</span></code></pre>
+</section>
+
+<style>
+  .lp-sec { padding: 1.75rem 0; border-top: 1px solid var(--sl-color-hairline); }
+  .lp-sec-label {
+    text-transform: uppercase; letter-spacing: 0.08em; font-size: var(--sl-text-xs);
+    font-weight: 700; color: var(--sl-color-gray-3); margin: 0 0 0.75rem;
+  }
+  .lp-code {
+    background: var(--sl-color-bg-nav); border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem; padding: 0.9rem 1rem; overflow-x: auto;
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+    font-size: var(--sl-text-sm); line-height: 1.7; color: var(--sl-color-gray-1);
+  }
+  .lp-cm { color: var(--sl-color-gray-3); }
+  .lp-fn { color: var(--sl-color-accent-high); }
+  .lp-st { color: var(--lp-cat-preference); }
+  .lp-ar { color: var(--sl-color-accent); }
+  .lp-meta { color: var(--sl-color-gray-3); }
+</style>

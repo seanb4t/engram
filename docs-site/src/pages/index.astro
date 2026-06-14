@@ -1,0 +1,65 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import Hero from '../components/landing/Hero.astro';
+import ConsoleShot from '../components/landing/ConsoleShot.astro';
+import PathCards from '../components/landing/PathCards.astro';
+import SeeItWork from '../components/landing/SeeItWork.astro';
+import FeatureCards from '../components/landing/FeatureCards.astro';
+import SiteFooter from '../components/landing/SiteFooter.astro';
+---
+
+<StarlightPage
+  frontmatter={{
+    title: 'engram',
+    description:
+      'Explicit, zero-junk, correctable memory for coding agents — self-hosted and OAuth-secured, over the Model Context Protocol.',
+    tableOfContents: false,
+  }}
+>
+  <div class="lp">
+    <Hero />
+    <ConsoleShot />
+    <PathCards />
+    <SeeItWork />
+    <FeatureCards />
+    <SiteFooter />
+  </div>
+</StarlightPage>
+
+<style is:global>
+  /* Page-scoped: ships only in index.html; does NOT affect inner docs pages. */
+  :root {
+    --lp-cat-convention: #1f6feb;
+    --lp-cat-gotcha: #9a6700;
+    --lp-cat-decision: #c026d3;
+    --lp-cat-preference: #1a7f37;
+    --lp-cat-discovery: #0d9488;
+  }
+  :root[data-theme='dark'] {
+    --lp-cat-convention: #7bb6d8;
+    --lp-cat-gotcha: #d8c27b;
+    --lp-cat-decision: #e879f9;
+    --lp-cat-preference: #7bd87b;
+    --lp-cat-discovery: #2dd4bf;
+  }
+  /* Width must beat middleware.css's base :root{--sl-content-width:45rem}, which
+     loads after this block. Equal specificity would lose on source order, so we
+     win on specificity instead: :root[data-has-sidebar] (0,2,0) outranks the
+     base :root (0,1,0). (middleware's html:not([data-has-sidebar]){67.5rem} does
+     not match a sidebar'd page.) */
+  :root[data-has-sidebar] { --sl-content-width: 56rem; }
+  .lp { --lp-prose: 42rem; }
+  /* #_top is the id Starlight sets on the PageTitle <h1> ITSELF (built DOM:
+     `<h1 id="_top">engram</h1>`), so this rule styles the wordmark h1 directly —
+     not via inheritance from a wrapper. The id selector (1,0,0) beats Starlight's
+     element/class h1 rules and the UA default. NB: a descendant selector such as
+     `#_top h1` would match nothing (there is no h1 inside the h1). */
+  #_top {
+    font-size: var(--sl-text-6xl, 3.5rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    margin: 0 0 0.75rem;
+    color: var(--sl-color-white);
+  }
+</style>

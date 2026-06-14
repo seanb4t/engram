@@ -1,0 +1,86 @@
+---
+interface Props { command: string; }
+const { command } = Astro.props;
+const lines = command.split('\n');
+---
+<figure class="lp-run">
+  <figcaption class="lp-run-cap">Run it</figcaption>
+  <div class="lp-run-box">
+    <pre class="lp-run-pre"><code>{lines.map((l) => (<span class="lp-run-line">{l}</span>))}</code></pre>
+    <button class="lp-run-copy" type="button" data-lp-copy
+            data-clipboard={command} aria-label="Copy run command to clipboard">
+      Copy
+    </button>
+  </div>
+  <p class="lp-run-note">
+    Needs Qdrant + an embedder first — see the <a href="/guides/quickstart/">Quickstart</a>.
+  </p>
+</figure>
+
+<style>
+  .lp-run { margin: 1.5rem 0 0; }
+  .lp-run-cap {
+    text-transform: uppercase; letter-spacing: 0.08em;
+    font-size: var(--sl-text-xs); font-weight: 700;
+    color: var(--sl-color-gray-3); margin-bottom: 0.5rem;
+  }
+  .lp-run-box {
+    display: flex; align-items: flex-start; gap: 0.75rem;
+    background: var(--sl-color-bg-nav);
+    border: 1px solid var(--sl-color-accent-low);
+    border-radius: 0.5rem; padding: 0.75rem 0.9rem;
+  }
+  .lp-run-pre { margin: 0; flex: 1; overflow-x: auto; }
+  .lp-run-pre code {
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+    font-size: var(--sl-text-sm); color: var(--sl-color-white);
+  }
+  .lp-run-line { display: block; white-space: pre; }
+  .lp-run-copy {
+    flex-shrink: 0; cursor: pointer;
+    background: var(--sl-color-accent-low); color: var(--sl-color-white);
+    border: 1px solid var(--sl-color-accent); border-radius: 0.35rem;
+    padding: 0.25rem 0.7rem; font-size: var(--sl-text-xs);
+  }
+  .lp-run-copy[data-copied] { background: var(--sl-color-accent); }
+  .lp-run-copy:focus-visible { outline: 2px solid var(--sl-color-accent); outline-offset: 2px; }
+  .lp-run-note { color: var(--sl-color-gray-3); font-size: var(--sl-text-sm); margin: 0.6rem 0 0; }
+</style>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>('[data-lp-copy]').forEach((btn) => {
+    // Idempotent init: bind once per button so a re-run (e.g. if View
+    // Transitions / astro:page-load is ever enabled) can't stack duplicate
+    // click listeners on the same node.
+    if (btn.dataset.lpCopyInit) return;
+    btn.dataset.lpCopyInit = 'true';
+    const originalText = btn.textContent ?? 'Copy';
+    const originalLabel = btn.getAttribute('aria-label');
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    btn.addEventListener('click', async () => {
+      const text = btn.dataset.clipboard ?? '';
+      try {
+        await navigator.clipboard.writeText(text);
+        // Update both the visible label AND aria-label: a static aria-label
+        // overrides textContent in the accessible-name computation, so without
+        // this an assistive-tech user never hears the state change.
+        btn.textContent = 'Copied';
+        btn.setAttribute('aria-label', 'Run command copied to clipboard');
+        btn.setAttribute('data-copied', '');
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          btn.textContent = originalText;
+          if (originalLabel !== null) btn.setAttribute('aria-label', originalLabel);
+          btn.removeAttribute('data-copied');
+          timer = null;
+        }, 1500);
+      } catch {
+        // Clipboard API unavailable (insecure context / denied): leave the
+        // command visible and selectable so the user can copy manually, and
+        // announce the fallback via both the visible text and the aria-label.
+        btn.textContent = 'Select & copy';
+        btn.setAttribute('aria-label', 'Copy failed — select the command and copy it manually');
+      }
+    });
+  });
+</script>

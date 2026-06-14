@@ -1,0 +1,28 @@
+---
+const links = [
+  { label: 'GitHub', href: 'https://github.com/seanb4t/engram' },
+  { label: 'Quickstart', href: '/guides/quickstart/' },
+  { label: 'MCP Tools', href: '/reference/tools/' },
+  { label: 'Releases', href: 'https://github.com/seanb4t/engram/releases' },
+];
+---
+<footer class="lp-foot">
+  <span class="lp-foot-brand">engram</span>
+  <span class="lp-foot-lic">Apache-2.0</span>
+  <nav class="lp-foot-nav" aria-label="Footer">
+    {links.map((l) => (<a href={l.href}>{l.label}</a>))}
+  </nav>
+</footer>
+
+<style>
+  .lp-foot {
+    display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap;
+    border-top: 1px solid var(--sl-color-hairline); padding: 1rem 0;
+    color: var(--sl-color-gray-3); font-size: var(--sl-text-sm);
+  }
+  .lp-foot-brand { font-weight: 700; color: var(--sl-color-white); }
+  .lp-foot-nav { margin-left: auto; display: flex; gap: 0.9rem; flex-wrap: wrap; }
+  .lp-foot-nav a { color: var(--sl-color-gray-2); }
+  .lp-foot-nav a:hover { color: var(--sl-color-accent); }
+  .lp-foot-nav a:focus-visible { outline: 2px solid var(--sl-color-accent); outline-offset: 2px; }
+</style>

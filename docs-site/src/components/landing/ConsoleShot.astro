@@ -1,0 +1,91 @@
+---
+// A CSS illustration of the operator console with SYNTHETIC data — not a
+// screenshot. No real/private records. Themes natively via --sl-color-* tokens.
+const cats = [
+  { name: 'convention', v: 'var(--lp-cat-convention)' },
+  { name: 'gotcha', v: 'var(--lp-cat-gotcha)' },
+  { name: 'decision', v: 'var(--lp-cat-decision)' },
+  { name: 'preference', v: 'var(--lp-cat-preference)' },
+];
+const rows = [
+  { cat: 'var(--lp-cat-convention)', label: 'convention', text: 'VCS: jj-colocated, never push to main directly' },
+  { cat: 'var(--lp-cat-gotcha)', label: 'gotcha', text: 'jj secondary-workspace snapshot trap — run jj in-ws' },
+  { cat: 'var(--lp-cat-decision)', label: 'decision', text: 'Brand: neural violet replaces the old GitHub greens' },
+];
+---
+<section class="lp-sec" aria-labelledby="lp-shot-h">
+  <h2 id="lp-shot-h" class="lp-sec-label">A real operator console — not just an API</h2>
+  <figure class="lp-shot" role="img"
+          aria-label="Illustration of the engram operator console showing scopes, category filters, stats, and example memory rows (synthetic demo data).">
+    <div class="lp-shot-bar" aria-hidden="true">
+      <span class="lp-tl"></span><span class="lp-tl"></span><span class="lp-tl"></span>
+      <span class="lp-shot-nm">engram · console</span>
+    </div>
+    <div class="lp-shot-body">
+      <div class="lp-shot-side" aria-hidden="true">
+        <div class="lp-sg">Scopes</div>
+        <div class="lp-si lp-si-on">repo:engram</div>
+        <div class="lp-si">user:global</div>
+        <div class="lp-sg">Categories</div>
+        {cats.map((c) => (
+          <div class="lp-si"><span class="lp-cd" style={`background:${c.v}`}></span>{c.name}</div>
+        ))}
+      </div>
+      <div class="lp-shot-main" aria-hidden="true">
+        <div class="lp-stat">
+          <div class="lp-stbox"><div class="lp-n">248</div><div class="lp-l">memories</div></div>
+          <div class="lp-stbox"><div class="lp-n">12</div><div class="lp-l">scopes</div></div>
+          <div class="lp-stbox"><div class="lp-n">5</div><div class="lp-l">categories</div></div>
+        </div>
+        {rows.map((r) => (
+          <div class="lp-mrow">
+            <span class="lp-cd" style={`background:${r.cat}`}></span>
+            <span class="lp-mc">{r.text}</span>
+            <span class="lp-mbadge" style={`color:${r.cat}`}>{r.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  </figure>
+</section>
+
+<style>
+  .lp-sec { padding: 1.75rem 0; border-top: 1px solid var(--sl-color-hairline); }
+  .lp-sec-label {
+    text-transform: uppercase; letter-spacing: 0.08em; font-size: var(--sl-text-xs);
+    font-weight: 700; color: var(--sl-color-gray-3); margin: 0 0 0.75rem;
+  }
+  .lp-shot {
+    margin: 0; background: var(--sl-color-bg); border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.6rem; overflow: hidden;
+  }
+  .lp-shot-bar {
+    display: flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.65rem;
+    background: var(--sl-color-bg-nav); border-bottom: 1px solid var(--sl-color-hairline);
+  }
+  .lp-tl { width: 8px; height: 8px; border-radius: 50%; background: var(--sl-color-gray-4); }
+  .lp-shot-nm { margin-left: 0.5rem; color: var(--sl-color-gray-3); font-size: var(--sl-text-xs); }
+  .lp-shot-body { display: flex; min-height: 11rem; }
+  .lp-shot-side {
+    width: 30%; max-width: 11rem; border-right: 1px solid var(--sl-color-hairline);
+    padding: 0.7rem; font-size: var(--sl-text-xs); background: var(--sl-color-bg-nav);
+  }
+  .lp-sg { color: var(--sl-color-gray-3); text-transform: uppercase; font-size: 0.62rem;
+           letter-spacing: 0.06em; margin: 0.55rem 0 0.3rem; }
+  .lp-sg:first-child { margin-top: 0; }
+  .lp-si { display: flex; align-items: center; gap: 0.4rem; color: var(--sl-color-gray-2); padding: 0.13rem 0; }
+  .lp-si-on { color: var(--sl-color-white); }
+  .lp-cd { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+  .lp-shot-main { flex: 1; padding: 0.7rem; }
+  .lp-stat { display: flex; gap: 0.5rem; margin-bottom: 0.6rem; }
+  .lp-stbox { flex: 1; background: var(--sl-color-bg-nav); border: 1px solid var(--sl-color-hairline);
+              border-radius: 0.4rem; padding: 0.4rem 0.55rem; }
+  .lp-n { color: var(--sl-color-white); font-weight: 700; font-size: var(--sl-text-lg); }
+  .lp-l { color: var(--sl-color-gray-3); font-size: 0.6rem; }
+  .lp-mrow { display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0;
+             border-bottom: 1px solid var(--sl-color-hairline); }
+  .lp-mc { color: var(--sl-color-gray-1); font-size: var(--sl-text-sm); flex: 1;
+           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lp-mbadge { font-size: 0.6rem; padding: 0.05rem 0.4rem; border-radius: 999px;
+               border: 1px solid currentColor; }
+</style>

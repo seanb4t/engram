@@ -1,0 +1,100 @@
+---
+import { readFileSync } from 'node:fs';
+import NeuralTrace from './NeuralTrace.astro';
+import RunCommand from './RunCommand.astro';
+
+// Build-time version from the release-please manifest (source of truth on main),
+// NOT a hardcoded literal that drifts each release. Resolved relative to THIS
+// module via import.meta.url: Hero.astro is at docs-site/src/components/landing/,
+// so four `../` segments reach the repo (worktree) root where the manifest lives.
+let version = '';
+try {
+  const manifest = JSON.parse(
+    readFileSync(new URL('../../../../.release-please-manifest.json', import.meta.url), 'utf8'),
+  );
+  version = manifest['.'] ?? '';
+} catch (err) {
+  // Omit the version badge rather than show a wrong one — but surface the
+  // failure in the build log so a renamed manifest or malformed JSON is not
+  // silently swallowed (only the absent badge would otherwise signal it).
+  console.warn('[landing] could not read version from .release-please-manifest.json:', err);
+  version = '';
+}
+
+const runCommand = [
+  'docker run -d \\',
+  '  -p 8080:8080 \\',
+  '  -e MEM_QDRANT_ADDR=host.docker.internal:6334 \\',
+  '  -e MEM_LITELLM_URL=http://host.docker.internal:4000 \\',
+  '  -e MEM_EMBED_MODEL=ollama/bge-m3 \\',
+  '  ghcr.io/seanb4t/engram:latest',
+].join('\n');
+---
+<header class="lp-hero">
+  <NeuralTrace />
+  <div class="lp-hero-body">
+    <p class="lp-tag">
+      Explicit, zero-junk, correctable memory for coding agents — self-hosted
+      and OAuth-secured, over the Model Context Protocol.
+    </p>
+    <ul class="lp-badges" aria-label="Project facts">
+      {version && <li class="lp-badge lp-badge-accent">v{version}</li>}
+      <li class="lp-badge">Apache-2.0</li>
+      <li class="lp-badge">MCP</li>
+      <li class="lp-badge">Self-hosted</li>
+    </ul>
+    <div class="lp-ww">
+      <div>
+        <h2 class="lp-ww-h"><span class="lp-bub" aria-hidden="true"></span> What it is</h2>
+        <p>
+          Coding agents start every session blank. engram is a memory store they
+          read and write <em>over MCP</em> — so the decisions, conventions, and
+          gotchas you've already established persist across sessions, repos, and
+          tools instead of being re-explained every time.
+        </p>
+      </div>
+      <div>
+        <h2 class="lp-ww-h"><span class="lp-bub" aria-hidden="true"></span> Why it's different</h2>
+        <p>
+          Most agent-memory tools auto-extract everything and quietly fill with
+          transient chatter you can't trust. engram inverts that: the agent
+          stores <em>only what's worth keeping</em>, every record is editable and
+          deletable, and each caller is OAuth-verified and isolated to their own
+          memories. You host it yourself.
+        </p>
+      </div>
+    </div>
+    <RunCommand command={runCommand} />
+  </div>
+</header>
+
+<style>
+  .lp-hero { position: relative; padding: 0.5rem 0 1.75rem; overflow: hidden; }
+  .lp-hero-body { position: relative; z-index: 1; }
+  .lp-tag {
+    color: var(--sl-color-gray-2); font-size: var(--sl-text-lg);
+    max-width: var(--lp-prose, 42rem); margin: 0 0 1rem;
+  }
+  .lp-badges {
+    list-style: none; display: flex; flex-wrap: wrap; gap: 0.4rem;
+    padding: 0; margin: 0 0 1.5rem;
+  }
+  .lp-badge {
+    font-size: var(--sl-text-xs); padding: 0.15rem 0.55rem; border-radius: 999px;
+    background: var(--sl-color-bg-nav); border: 1px solid var(--sl-color-accent-low);
+    color: var(--sl-color-gray-1);
+  }
+  .lp-badge-accent { color: var(--sl-color-accent-high); }
+  .lp-ww {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;
+    padding: 1.25rem 0 0; border-top: 1px solid var(--sl-color-hairline);
+  }
+  .lp-ww-h {
+    display: flex; align-items: center; gap: 0.45rem;
+    font-size: var(--sl-text-base); color: var(--sl-color-white); margin: 0 0 0.4rem;
+  }
+  .lp-bub { width: 6px; height: 6px; border-radius: 50%; background: var(--sl-color-accent); }
+  .lp-ww p { color: var(--sl-color-gray-2); font-size: var(--sl-text-sm); margin: 0; }
+  .lp-ww em { color: var(--sl-color-accent-high); font-style: normal; }
+  @media (max-width: 50rem) { .lp-ww { grid-template-columns: 1fr; } }
+</style>
