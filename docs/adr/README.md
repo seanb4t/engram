@@ -13,6 +13,9 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-jgq](engram-jgq-unify-config-under-engram-prefix-via-koanf-internal-config.md) | 2026-06-14 | Accepted | Unify config under ENGRAM_ prefix via koanf internal/config |
+| [engram-378](engram-378-name-embedder-connection-vars-by-protocol-not-implementation.md) | 2026-06-14 | Accepted | Name embedder connection vars by protocol, not implementation |
+| [engram-irq](engram-irq-breaking-config-renames-ship-fatal-legacy-env-startup-guard.md) | 2026-06-14 | Accepted | Breaking config renames ship with a fatal legacy-env startup guard |
 | [engram-no3](engram-no3-ship-engram-wordmark-as-outlined-svg-paths-not-webfont.md) | 2026-06-13 | Accepted | Ship engram wordmark as outlined SVG paths, not a webfont |
 | [engram-4ag](engram-4ag-gate-dashboard-category-breakdown-bar-listscopes-api-extensi.md) | 2026-06-13 | Accepted | Gate dashboard category-breakdown bar on a listScopes API extension |
 | [engram-lzz](engram-lzz-adopt-shadcn-semantic-tokens-retire-bespoke-eg-cat-layer.md) | 2026-06-12 | Accepted | Adopt shadcn semantic tokens; retire bespoke eg-*/--cat-* layer |
