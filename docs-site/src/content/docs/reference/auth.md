@@ -9,7 +9,7 @@ When it is disabled, all callers share a single anonymous bucket.
 
 ## Enabling authentication
 
-Set `--oidc-issuer` (or its env equivalent `MEM_OIDC_ISSUER`) to the OIDC
+Set `--oidc-issuer` (or its env equivalent `ENGRAM_OIDC_ISSUER`) to the OIDC
 issuer URL. This is the **only configuration required** to enable bearer-token
 enforcement.
 
@@ -19,18 +19,18 @@ engram serve \
   --oidc-audience engram
 ```
 
-The four serve flags that have both a `--flag` and a `MEM_*` env equivalent:
+The four serve flags that have both a `--flag` and an `ENGRAM_*` env equivalent:
 
 | Flag | Env | Default |
 |------|-----|---------|
-| `--listen-addr` | `MEM_LISTEN_ADDR` | `:8080` |
-| `--oidc-issuer` | `MEM_OIDC_ISSUER` | _(unset — auth disabled)_ |
-| `--oidc-audience` | `MEM_OIDC_AUDIENCE` | _(unset — audience not checked)_ |
-| `--oidc-resource-metadata` | `MEM_OIDC_RESOURCE_METADATA` | _(unset)_ |
+| `--listen-addr` | `ENGRAM_LISTEN_ADDR` | `:8080` |
+| `--oidc-issuer` | `ENGRAM_OIDC_ISSUER` | _(unset — auth disabled)_ |
+| `--oidc-audience` | `ENGRAM_OIDC_AUDIENCE` | _(unset — audience not checked)_ |
+| `--oidc-resource-metadata` | `ENGRAM_OIDC_RESOURCE_METADATA` | _(unset)_ |
 
-Storage and embedding are configured via env-only variables (`MEM_QDRANT_ADDR`,
-`MEM_QDRANT_COLLECTION`, `MEM_LITELLM_URL`, `MEM_LITELLM_KEY`,
-`MEM_EMBED_MODEL`, `MEM_EMBED_DIM`) — these do not have `--flag` equivalents.
+Storage and embedding are configured via env-only variables (`ENGRAM_QDRANT_ADDR`,
+`ENGRAM_QDRANT_COLLECTION`, `ENGRAM_OPENAI_BASE_URL`, `ENGRAM_OPENAI_API_KEY`,
+`ENGRAM_EMBED_MODEL`, `ENGRAM_EMBED_DIM`) — these do not have `--flag` equivalents.
 
 ### What is verified
 
@@ -58,24 +58,24 @@ engram authenticates over two independent lanes, each verifying the issuer and
 token signature on its own (and the audience where configured):
 
 - **MCP bearer lane** — agents forward an OIDC bearer token (issued to a
-  public PKCE client). Verified against `MEM_OIDC_ISSUER`; the audience is
-  checked only when `MEM_OIDC_AUDIENCE` is set.
+  public PKCE client). Verified against `ENGRAM_OIDC_ISSUER`; the audience is
+  checked only when `ENGRAM_OIDC_AUDIENCE` is set.
 - **Web console login lane** — the operator console runs the OIDC
   authorization-code flow as a confidential client. It verifies ID tokens
   against its own issuer and pins the audience to the client ID.
 
 The console lane is configured by these env vars (all have `--flag` equivalents)
 and only activates when its credentials are present (or forced via
-`MEM_UI_ENABLED=true`):
+`ENGRAM_UI_ENABLED=true`):
 
 | Flag | Env | Purpose |
 |------|-----|---------|
-| `--ui-enabled` | `MEM_UI_ENABLED` | `""` implies-from-creds, `"true"` forces on, `"false"` hard off |
-| `--ui-issuer` | `MEM_UI_ISSUER` | Console OIDC issuer — **empty defaults to `MEM_OIDC_ISSUER`** |
-| `--oidc-client-id` | `MEM_OIDC_CLIENT_ID` | Confidential-client ID |
-| `--oidc-client-secret` | `MEM_OIDC_CLIENT_SECRET` | Confidential-client secret |
-| `--ui-redirect-url` | `MEM_UI_REDIRECT_URL` | Auth-code callback URL |
-| `--ui-cookie-key` | `MEM_UI_COOKIE_KEY` | 32-byte AES-256 session-cookie key |
+| `--ui-enabled` | `ENGRAM_UI_ENABLED` | `""` implies-from-creds, `"true"` forces on, `"false"` hard off |
+| `--ui-issuer` | `ENGRAM_UI_ISSUER` | Console OIDC issuer — **empty defaults to `ENGRAM_OIDC_ISSUER`** |
+| `--oidc-client-id` | `ENGRAM_OIDC_CLIENT_ID` | Confidential-client ID |
+| `--oidc-client-secret` | `ENGRAM_OIDC_CLIENT_SECRET` | Confidential-client secret |
+| `--ui-redirect-url` | `ENGRAM_UI_REDIRECT_URL` | Auth-code callback URL |
+| `--ui-cookie-key` | `ENGRAM_UI_COOKIE_KEY` | 32-byte AES-256 session-cookie key |
 
 ### Split-issuer (per-application IdP) topology
 
@@ -83,8 +83,8 @@ On an IdP that mints a distinct issuer per application (for example
 Authentik's default `issuer_mode`), the security-preferred split — agents on a
 **public** PKCE client and the console on a **confidential** client, i.e. two
 apps with two different `iss` values — needs the two lanes to trust different
-issuers. Set `MEM_UI_ISSUER` to the console app's issuer; the MCP bearer lane
-keeps `MEM_OIDC_ISSUER` (the agents' app):
+issuers. Set `ENGRAM_UI_ISSUER` to the console app's issuer; the MCP bearer lane
+keeps `ENGRAM_OIDC_ISSUER` (the agents' app):
 
 ```sh
 engram serve \
@@ -96,7 +96,7 @@ engram serve \
   --ui-cookie-key "$COOKIE_KEY"
 ```
 
-When `MEM_UI_ISSUER` is unset, the console lane reuses `MEM_OIDC_ISSUER`, so
+When `ENGRAM_UI_ISSUER` is unset, the console lane reuses `ENGRAM_OIDC_ISSUER`, so
 single-application deployments need no extra configuration. An enabled console
 with neither issuer set is a fail-fast startup error.
 
@@ -154,7 +154,7 @@ once with:
 engram migrate-set-owner --owner <your-oidc-sub>
 ```
 
-The `--owner` flag also reads from `MEM_MIGRATE_OWNER`. The command is
+The `--owner` flag also reads from `ENGRAM_MIGRATE_OWNER`. The command is
 **idempotent** — re-running when no owner-less records remain reports `0`.
 
 The `migrate-set-owner` subcommand is implemented in `cmd/engram/migrate.go` and
