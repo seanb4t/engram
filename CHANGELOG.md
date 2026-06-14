@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.5](https://github.com/seanb4t/engram/compare/v0.7.4...v0.7.5) (2026-06-14)
+
+
+### Features
+
+* **docs-site:** landing-page redesign — sidebar, hero, cards, footer (engram-45i) ([#133](https://github.com/seanb4t/engram/issues/133)) ([4dbc5ff](https://github.com/seanb4t/engram/commit/4dbc5ff365543a37c48ce9587cf5e185a28af759))
+
 ## [0.7.4](https://github.com/seanb4t/engram/compare/v0.7.3...v0.7.4) (2026-06-13)
 
 
