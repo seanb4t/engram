@@ -1,0 +1,53 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+---
+
+<StarlightPage
+  frontmatter={{
+    title: 'engram',
+    description:
+      'Explicit, zero-junk, correctable memory for coding agents — self-hosted and OAuth-secured, over the Model Context Protocol.',
+    tableOfContents: false,
+  }}
+>
+  <div class="lp">
+    <header class="lp-hero">
+      <p class="lp-tag">
+        Explicit, zero-junk, correctable memory for coding agents — self-hosted
+        and OAuth-secured, over the Model Context Protocol.
+      </p>
+    </header>
+  </div>
+</StarlightPage>
+
+<style is:global>
+  /* Page-scoped: this CSS ships only in index.html, so these declarations do
+     NOT affect inner docs pages. */
+  :root {
+    --lp-cat-convention: #1f6feb;
+    --lp-cat-gotcha: #9a6700;
+    --lp-cat-decision: #c026d3;
+    --lp-cat-preference: #1a7f37;
+    --lp-cat-discovery: #0d9488;
+  }
+  :root[data-theme='dark'] {
+    --lp-cat-convention: #7bb6d8;
+    --lp-cat-gotcha: #d8c27b;
+    --lp-cat-decision: #e879f9;
+    --lp-cat-preference: #7bd87b;
+    --lp-cat-discovery: #2dd4bf;
+  }
+  /* Width: out-specify middleware.css's base :root{--sl-content-width:45rem},
+     which loads after this block at equal specificity. :root[data-has-sidebar]
+     (0,2,0) wins; the landing page carries data-has-sidebar on <html>. */
+  :root[data-has-sidebar] { --sl-content-width: 56rem; }
+  /* Cap running prose to a comfortable measure; cards may span the column. */
+  .lp { --lp-prose: 42rem; }
+  .lp-hero { position: relative; padding: 1rem 0 1.5rem; }
+  .lp-tag {
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-lg);
+    max-width: var(--lp-prose);
+    margin: 0;
+  }
+</style>
