@@ -1,0 +1,54 @@
+---
+const features = [
+  { glyph: '✎', tint: 'var(--lp-cat-gotcha)', title: 'Explicit & zero-junk',
+    desc: 'No auto-extraction noise — the store never accretes transient chatter.',
+    href: '/reference/memory-record/' },
+  { glyph: '✓', tint: 'var(--lp-cat-decision)', title: 'Correctable',
+    desc: 'Every memory is editable and deletable — the store stays correct.',
+    href: '/reference/memory-record/' },
+  { glyph: '⚙', tint: 'var(--lp-cat-preference)', title: 'OAuth-secured & isolated',
+    desc: 'Writes attributed to the verified caller; per-actor isolation.',
+    href: '/reference/auth/' },
+  { glyph: '🚀', tint: 'var(--lp-cat-convention)', title: 'Self-hosted',
+    desc: 'A small Go server backed by Qdrant — no vendor lock-in.',
+    href: '/guides/deploy/' },
+];
+---
+<section class="lp-sec" aria-labelledby="lp-feat-h">
+  <h2 id="lp-feat-h" class="lp-sec-label">Why engram</h2>
+  <div class="lp-feat-grid">
+    {features.map((f) => (
+      <a class="lp-feat" href={f.href}>
+        <span class="lp-feat-t">
+          <span class="lp-ico" style={`color:${f.tint}`} aria-hidden="true">{f.glyph}</span>
+          {f.title}
+          <span class="lp-feat-arrow" aria-hidden="true">→</span>
+        </span>
+        <span class="lp-feat-d">{f.desc}</span>
+      </a>
+    ))}
+  </div>
+</section>
+
+<style>
+  .lp-sec { padding: 1.75rem 0; border-top: 1px solid var(--sl-color-hairline); }
+  .lp-sec-label {
+    text-transform: uppercase; letter-spacing: 0.08em; font-size: var(--sl-text-xs);
+    font-weight: 700; color: var(--sl-color-gray-3); margin: 0 0 0.75rem;
+  }
+  .lp-feat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; }
+  .lp-feat {
+    display: flex; flex-direction: column; text-decoration: none;
+    background: var(--sl-color-bg-nav); border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.6rem; padding: 0.8rem; transition: border-color 0.15s;
+  }
+  .lp-feat:hover { border-color: var(--sl-color-accent); }
+  .lp-feat:focus-visible { border-color: var(--sl-color-accent); outline: 2px solid var(--sl-color-accent); outline-offset: 2px; }
+  .lp-ico { width: 1.35rem; height: 1.35rem; display: inline-flex;
+            align-items: center; justify-content: center; }
+  .lp-feat-t { display: flex; align-items: center; gap: 0.5rem;
+               color: var(--sl-color-white); font-weight: 600; font-size: var(--sl-text-base); }
+  .lp-feat-arrow { margin-left: auto; color: var(--sl-color-accent); font-weight: 700; }
+  .lp-feat-d { color: var(--sl-color-gray-2); font-size: var(--sl-text-sm); margin-top: 0.4rem; }
+  @media (max-width: 50rem) { .lp-feat-grid { grid-template-columns: 1fr; } }
+</style>
