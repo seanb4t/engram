@@ -2,7 +2,7 @@
 // Copyright 2026 Sean Brandt
 
 // Package embed produces text embeddings via an OpenAI-compatible
-// /v1/embeddings endpoint (e.g. LiteLLM fronting Ollama bge-m3).
+// /v1/embeddings endpoint (e.g. Ollama, vLLM, or a LiteLLM gateway).
 package embed
 
 import (

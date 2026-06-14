@@ -4,7 +4,7 @@
 // Package auth validates OIDC bearer tokens issued by a configured IdP and
 // forwarded by an MCP gateway, then extracts the caller's identity so memory
 // writes can be attributed to a verified user (canonical deployment: Authentik
-// IdP + LiteLLM gateway).
+// IdP + OIDC-aware embedding gateway).
 //
 // The token is the only trustworthy source of identity: clients never assert
 // who they are, the IdP-signed JWT proves it. Validation covers signature
