@@ -35,9 +35,20 @@ func TestCheckLegacyReportsMapping(t *testing.T) {
 }
 
 func TestCheckLegacyCommandLocalVar(t *testing.T) {
-	// Command-local legacy vars (not in the Config registry) are still caught.
+	// Command-local legacy vars read by a real command (not the Config registry)
+	// are still caught.
 	err := CheckLegacy([]string{"MEM_REINDEX_TARGET=foo"})
 	if err == nil || !strings.Contains(err.Error(), "ENGRAM_REINDEX_TARGET") {
 		t.Errorf("CheckLegacy(MEM_REINDEX_TARGET) = %v, want mapping to ENGRAM_REINDEX_TARGET", err)
+	}
+}
+
+func TestCheckLegacyIgnoresTestOnlyVar(t *testing.T) {
+	// MEM_QDRANT_TEST_ADDR is read only by integration tests, never by the
+	// runtime binary, so the startup guard (run in root PersistentPreRunE) must
+	// NOT trip on it. Otherwise a CI/dev env that exports it to point tests at
+	// Qdrant would be unable to run the engram binary in that same environment.
+	if err := CheckLegacy([]string{"MEM_QDRANT_TEST_ADDR=localhost:6334"}); err != nil {
+		t.Errorf("CheckLegacy(MEM_QDRANT_TEST_ADDR) = %v, want nil (test-only var, not a runtime guard concern)", err)
 	}
 }

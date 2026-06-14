@@ -15,10 +15,13 @@ import (
 // file at 1.0.
 var legacyMap = func() map[string]string {
 	m := map[string]string{
-		// command-local (read in reindex.go / migrate.go / tests)
-		"MEM_REINDEX_TARGET":   "ENGRAM_REINDEX_TARGET",
-		"MEM_MIGRATE_OWNER":    "ENGRAM_MIGRATE_OWNER",
-		"MEM_QDRANT_TEST_ADDR": "ENGRAM_QDRANT_TEST_ADDR",
+		// command-local vars read by a real command (reindex.go / migrate.go).
+		// Test-only vars (e.g. MEM_QDRANT_TEST_ADDR, read solely by integration
+		// tests) are deliberately NOT guarded here: the runtime binary never
+		// reads them, so flagging them would false-trip a CI/dev env that
+		// exports the legacy name to point tests at Qdrant.
+		"MEM_REINDEX_TARGET": "ENGRAM_REINDEX_TARGET",
+		"MEM_MIGRATE_OWNER":  "ENGRAM_MIGRATE_OWNER",
 	}
 	for _, f := range registry {
 		if f.Legacy != "" {
