@@ -33,18 +33,18 @@ const qdrantImageTag = "qdrant/qdrant:v1.18.2"
 const qdrantTOCTOUVerifiedVersion = "1.18.2"
 
 // testQdrantAddr is the gRPC host:port the integration tests run against. Set by
-// TestMain: MEM_QDRANT_TEST_ADDR if provided (fast path / override), else an
+// TestMain: ENGRAM_QDRANT_TEST_ADDR if provided (fast path / override), else an
 // ephemeral testcontainer. Empty when neither is available (Docker absent), in
 // which case the integration tests skip.
 var testQdrantAddr string
 
 // TestMain provisions Qdrant for this package's integration tests. It prefers an
-// existing instance via MEM_QDRANT_TEST_ADDR; otherwise it boots an ephemeral
+// existing instance via ENGRAM_QDRANT_TEST_ADDR; otherwise it boots an ephemeral
 // Qdrant via testcontainers and tears it down afterward. If neither is available
 // the suite still runs — the integration tests skip with a clear message — so
 // unit-only tests are unaffected.
 func TestMain(m *testing.M) {
-	if addr := os.Getenv("MEM_QDRANT_TEST_ADDR"); addr != "" {
+	if addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR"); addr != "" {
 		testQdrantAddr = addr
 		os.Exit(m.Run())
 	}
@@ -54,7 +54,7 @@ func TestMain(m *testing.M) {
 	container, err := tcqdrant.Run(startCtx, qdrantImageTag)
 	if err != nil {
 		startCancel()
-		fmt.Fprintf(os.Stderr, "qdrant testcontainer unavailable (%v); integration tests will skip — set MEM_QDRANT_TEST_ADDR or start Docker\n", err)
+		fmt.Fprintf(os.Stderr, "qdrant testcontainer unavailable (%v); integration tests will skip — set ENGRAM_QDRANT_TEST_ADDR or start Docker\n", err)
 		os.Exit(m.Run())
 	}
 	testQdrantAddr, err = container.GRPCEndpoint(startCtx)
@@ -80,7 +80,7 @@ func terminateQdrant(c *tcqdrant.QdrantContainer) {
 func testStore(t *testing.T) *Store {
 	t.Helper()
 	if testQdrantAddr == "" {
-		t.Skip("no Qdrant available: set MEM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
+		t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
 	}
 	host, portStr, err := net.SplitHostPort(testQdrantAddr)
 	if err != nil {
@@ -606,12 +606,12 @@ func TestSetVisibilityTOCTOU(t *testing.T) {
 
 	// Version guard: the SetPayload-on-deleted-point fail-closed contract asserted
 	// in Parts 1-2 was verified against Qdrant qdrantTOCTOUVerifiedVersion. When the
-	// suite boots the pinned testcontainer (no MEM_QDRANT_TEST_ADDR override),
+	// suite boots the pinned testcontainer (no ENGRAM_QDRANT_TEST_ADDR override),
 	// enforce that the running server matches — so bumping qdrantImageTag without
 	// re-verifying Parts 1-2 and updating qdrantTOCTOUVerifiedVersion fails loudly
 	// here. An operator-supplied external instance owns its own version, so the
 	// check is skipped on that path to avoid a spurious failure.
-	if os.Getenv("MEM_QDRANT_TEST_ADDR") == "" {
+	if os.Getenv("ENGRAM_QDRANT_TEST_ADDR") == "" {
 		hc, err := s.client.HealthCheck(ctx)
 		if err != nil {
 			t.Fatalf("qdrant health check: %v", err)

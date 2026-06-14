@@ -40,7 +40,7 @@ func l2normalize(v []float32) []float32 {
 func dialTestClient(t *testing.T) *qdrant.Client {
 	t.Helper()
 	if testQdrantAddr == "" {
-		t.Skip("no Qdrant available: set MEM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
+		t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
 	}
 	host, portStr, err := net.SplitHostPort(testQdrantAddr)
 	if err != nil {
@@ -290,7 +290,7 @@ func TestReindexErrorsOnMissingSource(t *testing.T) {
 	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), tgt) })
 
 	// Source never created — reindexing it must fail loudly, not silently scan
-	// zero and report success (which would mask a typo'd MEM_QDRANT_COLLECTION).
+	// zero and report success (which would mask a typo'd ENGRAM_QDRANT_COLLECTION).
 	s := New(c, src)
 	_, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4}, embed4)
 	if err == nil {

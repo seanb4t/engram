@@ -78,7 +78,7 @@ func TestMountMCPRoutes(t *testing.T) {
 		{"headless: GET / is 404 (no console)", false, "/mcp", http.MethodGet, "/", http.StatusNotFound, false, ""},
 		{"headless: POST / is 404", false, "/mcp", http.MethodPost, "/", http.StatusNotFound, false, ""},
 
-		// Escape hatch MEM_MCP_PATH=/: legacy root catch-all in either mode.
+		// Escape hatch ENGRAM_MCP_PATH=/: legacy root catch-all in either mode.
 		{"escape hatch ui: POST / reaches MCP", true, "/", http.MethodPost, "/", http.StatusOK, true, ""},
 		{"escape hatch headless: POST /anything reaches MCP", false, "/", http.MethodPost, "/anything", http.StatusOK, true, ""},
 	}

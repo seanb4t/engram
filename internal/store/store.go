@@ -1166,7 +1166,7 @@ const reindexBatch = 256
 // only path). It scrolls the source for (id, payload), re-embeds the payload's
 // content with embed, and upserts (same id, new vector, payload preserved
 // VERBATIM) into the target. The source is never mutated, so the operator can
-// verify the target before cutting MEM_QDRANT_COLLECTION over.
+// verify the target before cutting ENGRAM_QDRANT_COLLECTION over.
 //
 // The payload is carried as the raw Qdrant map rather than round-tripped through
 // Memory: that preserves keys the Memory model does not know (forward/backward

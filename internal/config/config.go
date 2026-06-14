@@ -29,26 +29,32 @@ type Config struct {
 	Log    LogConfig    `koanf:"log"`
 }
 
+// ServerConfig holds the HTTP server settings (listen address, MCP mount path).
 type ServerConfig struct {
 	ListenAddr string `koanf:"listen_addr"`
 	MCPPath    string `koanf:"mcp_path"`
 }
 
+// QdrantConfig holds the Qdrant connection address and memory collection name.
 type QdrantConfig struct {
 	Addr       string `koanf:"addr"`
 	Collection string `koanf:"collection"`
 }
 
+// EmbedConfig holds the embedding model name and its vector dimension.
 type EmbedConfig struct {
 	Model string `koanf:"model"`
 	Dim   string `koanf:"dim"`
 }
 
+// OpenAIConfig holds the OpenAI-compatible embeddings endpoint URL and API key.
 type OpenAIConfig struct {
 	BaseURL string `koanf:"base_url"`
 	APIKey  string `koanf:"api_key"`
 }
 
+// OIDCConfig holds the MCP bearer-token issuer settings and the web-UI
+// confidential-client credentials.
 type OIDCConfig struct {
 	Issuer           string `koanf:"issuer"`
 	Audience         string `koanf:"audience"`
@@ -57,6 +63,8 @@ type OIDCConfig struct {
 	ResourceMetadata string `koanf:"resource_metadata"`
 }
 
+// UIConfig holds the web-console lane settings (enable tri-state, login issuer,
+// redirect URL, session-cookie key).
 type UIConfig struct {
 	Enabled     string `koanf:"enabled"`
 	Issuer      string `koanf:"issuer"`
@@ -64,6 +72,7 @@ type UIConfig struct {
 	CookieKey   string `koanf:"cookie_key"`
 }
 
+// LogConfig holds the logging level, format, and stdout toggle.
 type LogConfig struct {
 	Level  string `koanf:"level"`
 	Format string `koanf:"format"`

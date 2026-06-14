@@ -35,7 +35,7 @@ guides — lives at **<https://engram.seanb4t.dev>** (source under
 |-------|------|
 | Quickstart | <https://engram.seanb4t.dev/guides/quickstart/> |
 | Deploy (Helm / Docker) | <https://engram.seanb4t.dev/guides/deploy/> |
-| Configuration (`MEM_*`) | <https://engram.seanb4t.dev/guides/configure/> |
+| Configuration (`ENGRAM_*`) | <https://engram.seanb4t.dev/guides/configure/> |
 | MCP tools | <https://engram.seanb4t.dev/reference/tools/> |
 | Auth & isolation | <https://engram.seanb4t.dev/reference/auth/> |
 
