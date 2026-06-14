@@ -28,35 +28,35 @@ spec:
           ports:
             - { containerPort: 8080, name: http }
           env:
-            - { name: MEM_LISTEN_ADDR, value: "{{ .Values.memory.listenAddr }}" }
-            - { name: MEM_QDRANT_ADDR, value: "qdrant.{{ .Release.Namespace }}.svc.cluster.local:6334" }
-            - { name: MEM_QDRANT_COLLECTION, value: "{{ .Values.memory.qdrant.collection }}" }
-            - { name: MEM_LITELLM_URL, value: "{{ .Values.memory.litellm.url }}" }
-            - { name: MEM_EMBED_MODEL, value: "{{ .Values.memory.embed.model }}" }
-            - { name: MEM_EMBED_DIM, value: "{{ .Values.memory.embed.dim }}" }
-            - name: MEM_LITELLM_KEY
+            - { name: ENGRAM_LISTEN_ADDR, value: "{{ .Values.memory.listenAddr }}" }
+            - { name: ENGRAM_QDRANT_ADDR, value: "qdrant.{{ .Release.Namespace }}.svc.cluster.local:6334" }
+            - { name: ENGRAM_QDRANT_COLLECTION, value: "{{ .Values.memory.qdrant.collection }}" }
+            - { name: ENGRAM_OPENAI_BASE_URL, value: "{{ .Values.memory.openai.baseURL }}" }
+            - { name: ENGRAM_EMBED_MODEL, value: "{{ .Values.memory.embed.model }}" }
+            - { name: ENGRAM_EMBED_DIM, value: "{{ .Values.memory.embed.dim }}" }
+            - name: ENGRAM_OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: "{{ .Values.memory.litellm.keySecret.name }}"
-                  key: "{{ .Values.memory.litellm.keySecret.key }}"
+                  name: "{{ .Values.memory.openai.apiKeySecret.name }}"
+                  key: "{{ .Values.memory.openai.apiKeySecret.key }}"
             {{- /* Empty omits the var → server defaults the MCP transport to /mcp. "/" restores the legacy root catch-all. */}}
             {{- with .Values.memory.mcpPath }}
-            - { name: MEM_MCP_PATH, value: "{{ . }}" }
+            - { name: ENGRAM_MCP_PATH, value: "{{ . }}" }
             {{- end }}
             {{- with .Values.memory.oidc.issuer }}
-            - { name: MEM_OIDC_ISSUER, value: "{{ . }}" }
+            - { name: ENGRAM_OIDC_ISSUER, value: "{{ . }}" }
             {{- end }}
             {{- with .Values.memory.oidc.audience }}
-            - { name: MEM_OIDC_AUDIENCE, value: "{{ . }}" }
+            - { name: ENGRAM_OIDC_AUDIENCE, value: "{{ . }}" }
             {{- end }}
             {{- with .Values.memory.oidc.resourceMetadata }}
-            - { name: MEM_OIDC_RESOURCE_METADATA, value: "{{ . }}" }
+            - { name: ENGRAM_OIDC_RESOURCE_METADATA, value: "{{ . }}" }
             {{- end }}
             {{- with .Values.memory.oidc.clientID }}
-            - { name: MEM_OIDC_CLIENT_ID, value: "{{ . }}" }
+            - { name: ENGRAM_OIDC_CLIENT_ID, value: "{{ . }}" }
             {{- end }}
             {{- if .Values.memory.oidc.clientSecret.name }}
-            - name: MEM_OIDC_CLIENT_SECRET
+            - name: ENGRAM_OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: "{{ .Values.memory.oidc.clientSecret.name }}"
@@ -67,25 +67,25 @@ spec:
             # off-switch — both "true" and "false" must reach the binary, so
             # gate on non-empty rather than truthiness (toString tolerates a
             # YAML bool from --set).
-            - { name: MEM_UI_ENABLED, value: "{{ .Values.memory.ui.enabled }}" }
+            - { name: ENGRAM_UI_ENABLED, value: "{{ .Values.memory.ui.enabled }}" }
             {{- end }}
             {{- with .Values.memory.ui.issuer }}
-            # Empty omits → server defaults the UI login issuer to MEM_OIDC_ISSUER.
-            - { name: MEM_UI_ISSUER, value: "{{ . }}" }
+            # Empty omits → server defaults the UI login issuer to ENGRAM_OIDC_ISSUER.
+            - { name: ENGRAM_UI_ISSUER, value: "{{ . }}" }
             {{- end }}
             {{- with .Values.memory.ui.redirectURL }}
-            - { name: MEM_UI_REDIRECT_URL, value: "{{ . }}" }
+            - { name: ENGRAM_UI_REDIRECT_URL, value: "{{ . }}" }
             {{- end }}
             {{- if .Values.memory.ui.cookieKeySecret.name }}
-            - name: MEM_UI_COOKIE_KEY
+            - name: ENGRAM_UI_COOKIE_KEY
               valueFrom:
                 secretKeyRef:
                   name: "{{ .Values.memory.ui.cookieKeySecret.name }}"
                   key: "{{ .Values.memory.ui.cookieKeySecret.key }}"
             {{- end }}
-            - { name: MEM_LOG_LEVEL, value: "{{ .Values.observability.log.level }}" }
-            - { name: MEM_LOG_FORMAT, value: "{{ .Values.observability.log.format }}" }
-            - { name: MEM_LOG_STDOUT, value: "{{ .Values.observability.log.stdout }}" }
+            - { name: ENGRAM_LOG_LEVEL, value: "{{ .Values.observability.log.level }}" }
+            - { name: ENGRAM_LOG_FORMAT, value: "{{ .Values.observability.log.format }}" }
+            - { name: ENGRAM_LOG_STDOUT, value: "{{ .Values.observability.log.stdout }}" }
             {{- with .Values.observability.otlpEndpoint }}
             - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "{{ . }}" }
             {{- end }}
@@ -123,12 +123,12 @@ spec:
               valueFrom: { fieldRef: { fieldPath: metadata.uid } }
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: "k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(POD_NAMESPACE),k8s.node.name=$(NODE_NAME),k8s.pod.uid=$(POD_UID){{ with .Values.observability.resourceAttributes }},{{ . }}{{ end }}"
-            {{- if .Values.memory.litellm.caBundle.configMapName }}
+            {{- if .Values.memory.openai.caBundle.configMapName }}
             # Go's crypto/x509 loads SSL_CERT_FILE instead of system roots —
             # the mounted bundle must cover every TLS peer of this process.
-            - { name: SSL_CERT_FILE, value: "/etc/ssl/ca-bundle/{{ .Values.memory.litellm.caBundle.key }}" }
+            - { name: SSL_CERT_FILE, value: "/etc/ssl/ca-bundle/{{ .Values.memory.openai.caBundle.key }}" }
             {{- end }}
-          {{- if .Values.memory.litellm.caBundle.configMapName }}
+          {{- if .Values.memory.openai.caBundle.configMapName }}
           volumeMounts:
             - name: ca-bundle
               mountPath: /etc/ssl/ca-bundle
@@ -143,11 +143,11 @@ spec:
             tcpSocket: { port: http }
             initialDelaySeconds: 5
             periodSeconds: 10
-      {{- if .Values.memory.litellm.caBundle.configMapName }}
+      {{- if .Values.memory.openai.caBundle.configMapName }}
       volumes:
         - name: ca-bundle
           configMap:
-            name: "{{ .Values.memory.litellm.caBundle.configMapName }}"
+            name: "{{ .Values.memory.openai.caBundle.configMapName }}"
       {{- end }}
 ---
 apiVersion: v1
