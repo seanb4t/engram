@@ -23,7 +23,7 @@ command is the canonical way to wire engram up.
 
    The engram server mounts the MCP transport at `/mcp` by default (since v0.7),
    so a direct-server URL must include that suffix — registering the bare root
-   404s. Deployments that set `MEM_MCP_PATH=/` restore the legacy root catch-all;
+   404s. Deployments that set `ENGRAM_MCP_PATH=/` restore the legacy root catch-all;
    for those, register the bare root URL (no `/mcp`). See ADR engram-bj6.
 
 2. **Ask the auth mode** — one of:

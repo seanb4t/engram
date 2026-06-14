@@ -8,6 +8,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/seanb4t/engram/internal/config"
 )
 
 // version is the engram build version, injected at release time via
@@ -25,6 +27,9 @@ var rootCmd = &cobra.Command{
 	Version:       version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+		return config.CheckLegacy(os.Environ())
+	},
 }
 
 func init() {

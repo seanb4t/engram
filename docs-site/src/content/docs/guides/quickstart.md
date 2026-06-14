@@ -13,7 +13,7 @@ Get the MCP server running locally in a few minutes.
   ```
 - **Embeddings endpoint** — an OpenAI-compatible embeddings endpoint. Options:
   - [LiteLLM](https://docs.litellm.ai/) in front of any model
-  - OpenAI API directly (set `MEM_LITELLM_URL=https://api.openai.com/v1` and `MEM_EMBED_MODEL=text-embedding-3-small`)
+  - OpenAI API directly (set `ENGRAM_OPENAI_BASE_URL=https://api.openai.com/v1` and `ENGRAM_EMBED_MODEL=text-embedding-3-small`)
 - **OIDC issuer** (optional) — if you want bearer-token enforcement, an OIDC issuer URL. Without one, the server accepts all requests (logged loudly).
 
 ## Run with Docker
@@ -24,23 +24,23 @@ Pull and run the latest image from GHCR:
 docker run -d \
   --name engram \
   -p 8080:8080 \
-  -e MEM_QDRANT_ADDR=host.docker.internal:6334 \
-  -e MEM_LITELLM_URL=http://host.docker.internal:4000 \
-  -e MEM_EMBED_MODEL=ollama/bge-m3 \
+  -e ENGRAM_QDRANT_ADDR=host.docker.internal:6334 \
+  -e ENGRAM_OPENAI_BASE_URL=http://host.docker.internal:4000 \
+  -e ENGRAM_EMBED_MODEL=ollama/bge-m3 \
   ghcr.io/seanb4t/engram:latest
 ```
 
 (`host.docker.internal` resolves on macOS and Windows; Linux users need `--add-host host.docker.internal:host-gateway` or replace with the host IP.)
 
-The MCP endpoint is served at **`http://localhost:8080/mcp`** by default. Set `MEM_MCP_PATH=/` to restore the pre-0.7 behavior where the transport answered at the bare root.
+The MCP endpoint is served at **`http://localhost:8080/mcp`** by default. Set `ENGRAM_MCP_PATH=/` to restore the pre-0.7 behavior where the transport answered at the bare root.
 
 Key environment variables (see [Configure](/guides/configure/) for the full list):
 
 | Variable | What it does |
 |----------|-------------|
-| `MEM_QDRANT_ADDR` | Qdrant gRPC address (`host:port`); default `localhost:6334` |
-| `MEM_LITELLM_URL` | Embeddings endpoint (OpenAI-compatible); default `http://localhost:4000` |
-| `MEM_EMBED_MODEL` | Model name forwarded to the endpoint; default `ollama/bge-m3` |
+| `ENGRAM_QDRANT_ADDR` | Qdrant gRPC address (`host:port`); default `localhost:6334` |
+| `ENGRAM_OPENAI_BASE_URL` | Embeddings endpoint (OpenAI-compatible); default `http://localhost:4000` |
+| `ENGRAM_EMBED_MODEL` | Model name forwarded to the endpoint; default `ollama/bge-m3` |
 
 ## Register with Claude Code
 

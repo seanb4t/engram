@@ -30,7 +30,7 @@ var migrateSetOwnerCmd = &cobra.Command{
 	Short: "Backfill owner (OIDC sub) onto pre-isolation memory records",
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if migrateOwner == "" {
-			return fmt.Errorf("--owner (or MEM_MIGRATE_OWNER) is required and must be a non-empty OIDC sub")
+			return fmt.Errorf("--owner (or ENGRAM_MIGRATE_OWNER) is required and must be a non-empty OIDC sub")
 		}
 		st, err := server.StoreFromEnv()
 		if err != nil {
@@ -57,7 +57,7 @@ var migrateSetOwnerCmd = &cobra.Command{
 
 func init() {
 	migrateSetOwnerCmd.Flags().StringVar(&migrateOwner, "owner",
-		server.EnvOr("MEM_MIGRATE_OWNER", ""),
+		os.Getenv("ENGRAM_MIGRATE_OWNER"),
 		"OIDC sub to stamp onto owner-less records (required, non-empty)")
 	migrateSetOwnerCmd.Flags().DurationVar(&migrateTimeout, "timeout", 5*time.Minute,
 		"max wall-clock for the backfill (0 disables); also cancellable via Ctrl-C")

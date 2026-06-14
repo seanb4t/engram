@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -23,18 +22,11 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc"
 
+	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/embed"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/telemetry"
 )
-
-// EnvOr returns the environment variable k, or def when k is unset/empty.
-func EnvOr(k, def string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return def
-}
 
 type deps struct {
 	st *store.Store
@@ -43,7 +35,7 @@ type deps struct {
 	}
 }
 
-// StoreFromEnv builds a Qdrant-backed Store from the MEM_QDRANT_* / MEM_EMBED_DIM
+// StoreFromEnv builds a Qdrant-backed Store from the ENGRAM_QDRANT_* / ENGRAM_EMBED_DIM
 // environment and ensures the collection exists. Shared by the server bootstrap
 // and the migrate-set-owner / prune-expired commands.
 func StoreFromEnv() (*store.Store, error) {
@@ -59,26 +51,26 @@ func StoreFromEnv() (*store.Store, error) {
 	return st, nil
 }
 
-// StoreFromEnvNoEnsure builds the Store from the same MEM_QDRANT_* / MEM_EMBED_DIM
-// environment as StoreFromEnv but does NOT create the collection, and returns the
-// configured embed dimension alongside it. reindex uses this so it can require
-// the source collection to already exist (rather than silently creating an
-// empty one at the new dimension) and reuse the dimension for the target.
+// StoreFromEnvNoEnsure builds the Store from the ENGRAM_QDRANT_* / ENGRAM_EMBED_DIM
+// environment but does NOT create the collection, and returns the configured embed
+// dimension. reindex uses this so it can require the source collection to already
+// exist rather than silently creating an empty one at the new dimension.
 func StoreFromEnvNoEnsure() (*store.Store, uint64, error) {
-	qdrantAddr := EnvOr("MEM_QDRANT_ADDR", "localhost:6334")
-	collection := EnvOr("MEM_QDRANT_COLLECTION", "mem_eval")
-	embedDimStr := EnvOr("MEM_EMBED_DIM", "1024")
-	embedDim, err := strconv.ParseUint(embedDimStr, 10, 64)
+	cfg, err := config.Load(nil)
 	if err != nil {
-		return nil, 0, fmt.Errorf("invalid MEM_EMBED_DIM %q: %w", embedDimStr, err)
+		return nil, 0, fmt.Errorf("load config: %w", err)
 	}
-	host, portStr, err := net.SplitHostPort(qdrantAddr)
+	embedDim, err := strconv.ParseUint(cfg.Embed.Dim, 10, 64)
 	if err != nil {
-		return nil, 0, fmt.Errorf("invalid MEM_QDRANT_ADDR %q: %w", qdrantAddr, err)
+		return nil, 0, fmt.Errorf("invalid ENGRAM_EMBED_DIM %q: %w", cfg.Embed.Dim, err)
+	}
+	host, portStr, err := net.SplitHostPort(cfg.Qdrant.Addr)
+	if err != nil {
+		return nil, 0, fmt.Errorf("invalid ENGRAM_QDRANT_ADDR %q: %w", cfg.Qdrant.Addr, err)
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		return nil, 0, fmt.Errorf("invalid port in MEM_QDRANT_ADDR %q: %w", qdrantAddr, err)
+		return nil, 0, fmt.Errorf("invalid port in ENGRAM_QDRANT_ADDR %q: %w", cfg.Qdrant.Addr, err)
 	}
 	qc, err := qdrant.NewClient(&qdrant.Config{
 		Host: host,
@@ -90,11 +82,11 @@ func StoreFromEnvNoEnsure() (*store.Store, uint64, error) {
 	if err != nil {
 		return nil, 0, fmt.Errorf("qdrant client: %w", err)
 	}
-	return store.New(qc, collection), embedDim, nil
+	return store.New(qc, cfg.Qdrant.Collection), embedDim, nil
 }
 
 // buildDepsFromEnv wires up the store and embedder from the environment. The
-// store/Qdrant vars (MEM_QDRANT_ADDR, MEM_QDRANT_COLLECTION, MEM_EMBED_DIM) are
+// store/Qdrant vars (ENGRAM_QDRANT_ADDR, ENGRAM_QDRANT_COLLECTION, ENGRAM_EMBED_DIM) are
 // read by StoreFromEnv; the embedder vars are read by EmbedderFromEnv.
 func buildDepsFromEnv() (*deps, error) {
 	st, err := StoreFromEnv()
@@ -105,15 +97,18 @@ func buildDepsFromEnv() (*deps, error) {
 	return &deps{st: st, em: EmbedderFromEnv()}, nil
 }
 
-// EmbedderFromEnv builds the OpenAI-compatible embedder from the MEM_LITELLM_URL,
-// MEM_LITELLM_KEY, and MEM_EMBED_MODEL environment (default model
-// "ollama/bge-m3"). Exported so admin commands (e.g. reindex) re-embed with the
-// same currently-configured embedder the server bootstrap uses.
+// EmbedderFromEnv builds the OpenAI-compatible embedder from the
+// ENGRAM_OPENAI_BASE_URL, ENGRAM_OPENAI_API_KEY, and ENGRAM_EMBED_MODEL
+// environment. Exported so admin commands (e.g. reindex) re-embed with the same
+// configured embedder the server bootstrap uses.
 func EmbedderFromEnv() *embed.Client {
-	litellmURL := EnvOr("MEM_LITELLM_URL", "http://localhost:4000")
-	litellmKey := EnvOr("MEM_LITELLM_KEY", "")
-	embedModel := EnvOr("MEM_EMBED_MODEL", "ollama/bge-m3")
-	return embed.New(litellmURL, litellmKey, embedModel,
+	cfg, err := config.Load(nil)
+	if err != nil {
+		// Defaults always load cleanly; a Load error here means a malformed
+		// koanf layer, which is a programming error, not operator input.
+		panic(fmt.Sprintf("config load: %v", err))
+	}
+	return embed.New(cfg.OpenAI.BaseURL, cfg.OpenAI.APIKey, cfg.Embed.Model,
 		embed.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)))
 }
 

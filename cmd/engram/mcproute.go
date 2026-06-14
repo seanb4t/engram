@@ -10,7 +10,7 @@ import (
 )
 
 // defaultMCPPath is where the MCP StreamableHTTP transport is mounted unless the
-// operator overrides it via MEM_MCP_PATH / --mcp-path.
+// operator overrides it via ENGRAM_MCP_PATH / --mcp-path.
 const defaultMCPPath = "/mcp"
 
 // reservedMCPRoots are the namespaces already owned by other mux mounts (the
@@ -31,17 +31,17 @@ func resolveMCPPath(raw string) (string, error) {
 		return defaultMCPPath, nil
 	}
 	if !strings.HasPrefix(p, "/") {
-		return "", fmt.Errorf("MEM_MCP_PATH must be an absolute path starting with %q, got %q", "/", p)
+		return "", fmt.Errorf("ENGRAM_MCP_PATH must be an absolute path starting with %q, got %q", "/", p)
 	}
 	if len(p) > 1 && strings.HasSuffix(p, "/") {
 		// A trailing slash makes http.ServeMux register a subtree pattern that
 		// 301-redirects POST <path> -> <path>/, which MCP clients do not follow.
 		// The bare root "/" is exempt — it is the catch-all escape hatch.
-		return "", fmt.Errorf("MEM_MCP_PATH %q must not end with a trailing slash (it would 301-redirect and break MCP POST)", p)
+		return "", fmt.Errorf("ENGRAM_MCP_PATH %q must not end with a trailing slash (it would 301-redirect and break MCP POST)", p)
 	}
 	for _, root := range reservedMCPRoots {
 		if p == root || strings.HasPrefix(p, root+"/") {
-			return "", fmt.Errorf("MEM_MCP_PATH %q collides with the reserved %q routes; choose another path", p, root)
+			return "", fmt.Errorf("ENGRAM_MCP_PATH %q collides with the reserved %q routes; choose another path", p, root)
 		}
 	}
 	return p, nil
@@ -49,7 +49,7 @@ func resolveMCPPath(raw string) (string, error) {
 
 // mountMCPRoutes wires the MCP transport and the root "/" handler onto mux. When
 // mcpPath is "/" the transport is the root catch-all in either UI mode (the
-// MEM_MCP_PATH=/ escape hatch for legacy clients); otherwise it is mounted at the
+// ENGRAM_MCP_PATH=/ escape hatch for legacy clients); otherwise it is mounted at the
 // exact mcpPath and "/" is given to rootHandler, which lands a browser on the
 // console when the UI is enabled and 404s everything else rather than the bearer
 // gate. The MCP go-sdk handler dispatches on method + session header and ignores

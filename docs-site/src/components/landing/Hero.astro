@@ -24,9 +24,9 @@ try {
 const runCommand = [
   'docker run -d \\',
   '  -p 8080:8080 \\',
-  '  -e MEM_QDRANT_ADDR=host.docker.internal:6334 \\',
-  '  -e MEM_LITELLM_URL=http://host.docker.internal:4000 \\',
-  '  -e MEM_EMBED_MODEL=ollama/bge-m3 \\',
+  '  -e ENGRAM_QDRANT_ADDR=host.docker.internal:6334 \\',
+  '  -e ENGRAM_OPENAI_BASE_URL=http://host.docker.internal:4000 \\',
+  '  -e ENGRAM_EMBED_MODEL=ollama/bge-m3 \\',
   '  ghcr.io/seanb4t/engram:latest',
 ].join('\n');
 ---

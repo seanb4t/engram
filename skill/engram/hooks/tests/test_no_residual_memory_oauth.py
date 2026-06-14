@@ -19,7 +19,7 @@ BUNDLE = Path(__file__).resolve().parents[2]  # skill/engram/
 # Built non-literally so this guard file is itself clean of the strings it bans.
 OLD_IDS = ("memory" + "_oauth", "memory" + "-curator", "memory" + "_curator")
 # Private deployment hosts must never ship — the url is consumer-configured via
-# ${ENGRAM_MCP_URL}; a gateway like litellm is the deployer's own choice.
+# ${ENGRAM_MCP_URL}; a gateway like litellm is the deployer's own choice (neutral example).
 PRIVATE_HOSTS = ("fzymgc", "lite" + "llm")
 # Tooling cache dirs that pytest/python create under the bundle at runtime.
 # They are not shipped, and their contents (e.g. .pytest_cache/.../nodeids,

@@ -15,8 +15,9 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 | `cmd/engram/` | cobra CLI: `root`, `serve`, `version` (entrypoint only) |
 | `internal/server/` | MCP tool registration + handlers (`Register`, `EnvOr`) |
 | `internal/store/` | Qdrant-backed memory store |
-| `internal/embed/` | embedder (OpenAI-compatible / LiteLLM) |
+| `internal/embed/` | embedder (OpenAI-compatible) |
 | `internal/auth/` | OIDC bearer-token verifier (go-oidc + go-sdk auth middleware) |
+| `internal/config/` | koanf config loader + field registry (single source of truth for ENGRAM_ vars) |
 | `charts/engram/` | Helm chart (server + Qdrant), generic/parameterized |
 | `proto/engram/v1/` | protobuf schema (`EngramService` v1 read API) — source of truth for codegen |
 | `gen/` | committed buf-generated code (connect-go stubs in `gen/go/`, protobuf-es types in `gen/ts/`) |
@@ -28,7 +29,7 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 - **Protobuf/buf:** the `EngramService` Connect API is defined in `proto/` and
   generated via `go tool buf` (`task proto:lint` / `task proto:gen`); the
   generated `gen/` tree is committed and CI-checked for drift (`buf` job).
-- **CLI:** cobra; **no viper** — config is env-first (`MEM_*`) with flag overrides.
+- **CLI:** cobra; config is loaded by `internal/config` (koanf): env-first via the `ENGRAM_` prefix with `--flag` overrides; no viper.
 - **Commits:** Conventional Commits; PR titles validated in CI
   (action-semantic-pull-request).
 - **License:** every Go/Markdown file carries the Apache-2.0 SPDX header
@@ -79,7 +80,7 @@ Design intent unchanged: explicit, citation-backed, no auto-extraction.
 
 ## Auth
 
-`--oidc-issuer`/`MEM_OIDC_ISSUER` enables bearer-token enforcement (JWKS
+`--oidc-issuer`/`ENGRAM_OIDC_ISSUER` enables bearer-token enforcement (JWKS
 signature + issuer + expiry; optional audience). The verified identity becomes
 the memory `actor`. No issuer → validation disabled (logged loudly).
 
