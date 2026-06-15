@@ -807,3 +807,18 @@ func TestListScheduledTool(t *testing.T) {
 		t.Error("list_scheduled (default scheduled) did not return the future memory")
 	}
 }
+
+func TestStoreFromEnvNoEnsureValidatesConfig(t *testing.T) {
+	// A malformed (non-empty) data-plane value reaches Config.Validate via
+	// StoreFromEnvNoEnsure's config.Load(nil). Validation runs BEFORE any Qdrant
+	// client construction, so this returns fast and needs no live Qdrant.
+	t.Setenv("ENGRAM_OPENAI_BASE_URL", "ftp://nope")
+	_, _, err := StoreFromEnvNoEnsure()
+	if err == nil {
+		t.Fatal("StoreFromEnvNoEnsure with bad ENGRAM_OPENAI_BASE_URL = nil, want validation error")
+	}
+	if !strings.Contains(err.Error(), "invalid configuration") ||
+		!strings.Contains(err.Error(), "ENGRAM_OPENAI_BASE_URL") {
+		t.Errorf("error %q, want aggregated validation error naming ENGRAM_OPENAI_BASE_URL", err)
+	}
+}

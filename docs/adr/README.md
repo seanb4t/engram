@@ -13,6 +13,8 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-wtw](engram-wtw-keep-config-load-assembly-only-validate-via-separate-config.md) | 2026-06-14 | Accepted | Keep config.Load assembly-only; validate via a separate Config.Validate() |
+| [engram-d24](engram-d24-validate-data-plane-fields-only-listen-addr-is-serve-local-g.md) | 2026-06-14 | Accepted | Validate data-plane fields only; listen_addr is a serve-local guard |
 | [engram-jgq](engram-jgq-unify-config-under-engram-prefix-via-koanf-internal-config.md) | 2026-06-14 | Accepted | Unify config under ENGRAM_ prefix via koanf internal/config |
 | [engram-378](engram-378-name-embedder-connection-vars-by-protocol-not-implementation.md) | 2026-06-14 | Accepted | Name embedder connection vars by protocol, not implementation |
 | [engram-irq](engram-irq-breaking-config-renames-ship-fatal-legacy-env-startup-guard.md) | 2026-06-14 | Accepted | Breaking config renames ship with a fatal legacy-env startup guard |
