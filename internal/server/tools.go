@@ -60,6 +60,12 @@ func StoreFromEnvNoEnsure() (*store.Store, uint64, error) {
 	if err != nil {
 		return nil, 0, fmt.Errorf("load config: %w", err)
 	}
+	// Fail fast and uniformly on malformed data-plane config before building any
+	// client. This single call site covers every store-building command: serve
+	// (via buildDepsFromEnv), reindex, migrate, and prune.
+	if err := cfg.Validate(); err != nil {
+		return nil, 0, err
+	}
 	embedDim, err := strconv.ParseUint(cfg.Embed.Dim, 10, 64)
 	if err != nil {
 		return nil, 0, fmt.Errorf("invalid ENGRAM_EMBED_DIM %q: %w", cfg.Embed.Dim, err)
