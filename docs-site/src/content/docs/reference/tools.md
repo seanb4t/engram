@@ -141,13 +141,15 @@ retrievable directly by id here.
 ## update_memory
 
 Replace a memory's content in place. The content is re-embedded. Optionally
-toggle visibility.
+toggle visibility or replace the tag set. The record's `id`, `created_at`, and
+ownership are preserved across the update.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `id` | string | yes | The UUID of the memory to update |
 | `content` | string | yes | The replacement text (re-embedded) |
 | `shared` | bool | no | `true` = shared, `false` = private; omit to keep current visibility |
+| `tags` | string[] | no | Replaces the full tag set; an empty array clears all tags. Omit to keep the current tags |
 
 Only the record owner can update. Returns `"updated"` on success.
 

@@ -227,9 +227,10 @@ type idArgs struct {
 }
 
 type updateArgs struct {
-	ID      string `json:"id"`
-	Content string `json:"content"`
-	Shared  *bool  `json:"shared,omitempty" jsonschema:"omit to keep current visibility; true=shared, false=private"`
+	ID      string    `json:"id"`
+	Content string    `json:"content"`
+	Shared  *bool     `json:"shared,omitempty" jsonschema:"omit to keep current visibility; true=shared, false=private"`
+	Tags    *[]string `json:"tags,omitempty" jsonschema:"omit to keep current tags; supply to replace the full set (empty array clears)"`
 }
 
 type scopeArgs struct {
@@ -544,7 +545,7 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 	if err != nil {
 		return err
 	}
-	return d.st.Update(ctx, cur, a.Content, a.Shared, vec)
+	return d.st.Update(ctx, cur, a.Content, a.Shared, a.Tags, vec)
 }
 
 // Register wires the memory tools onto the MCP server. It accepts a pre-built
@@ -604,7 +605,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			return textResult(m.Content), m, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "update_memory", Description: "Replace a memory's content in place (re-embeds). Optionally set `shared` to toggle visibility (true=shared, false=private); omit to keep current visibility."},
+	mcp.AddTool(s, &mcp.Tool{Name: "update_memory", Description: "Replace a memory's content in place (re-embeds). Optionally set `shared` to toggle visibility (true=shared, false=private); omit to keep current visibility. Optionally set `tags` to replace the full tag set (empty array clears); omit to keep current tags."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a updateArgs) (*mcp.CallToolResult, any, error) {
 			err := d.updateMemory(ctx, a)
 			return textResult("updated"), nil, err
