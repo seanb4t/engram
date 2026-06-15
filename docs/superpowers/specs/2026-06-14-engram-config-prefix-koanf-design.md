@@ -123,9 +123,9 @@ var registry = []field{
     {"ui.issuer",             "ENGRAM_UI_ISSUER",            "MEM_UI_ISSUER",            ""},
     {"ui.redirect_url",       "ENGRAM_UI_REDIRECT_URL",      "MEM_UI_REDIRECT_URL",      ""},
     {"ui.cookie_key",         "ENGRAM_UI_COOKIE_KEY",        "MEM_UI_COOKIE_KEY",        ""},
-    {"log.level",             "ENGRAM_LOG_LEVEL",            "MEM_LOG_LEVEL",            ""},
-    {"log.format",            "ENGRAM_LOG_FORMAT",           "MEM_LOG_FORMAT",           ""},
-    {"log.stdout",            "ENGRAM_LOG_STDOUT",           "MEM_LOG_STDOUT",           ""},
+    {"log.level",             "ENGRAM_LOG_LEVEL",            "MEM_LOG_LEVEL",            "info"},
+    {"log.format",            "ENGRAM_LOG_FORMAT",           "MEM_LOG_FORMAT",           "json"},
+    {"log.stdout",            "ENGRAM_LOG_STDOUT",           "MEM_LOG_STDOUT",           "true"},
 }
 ```
 

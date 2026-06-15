@@ -29,25 +29,29 @@ type Config struct {
 	Log    LogConfig    `koanf:"log"`
 }
 
-// ServerConfig holds the HTTP server settings (listen address, MCP mount path).
+// ServerConfig is engram's HTTP-listener surface: where the process binds and
+// the route the MCP transport mounts under.
 type ServerConfig struct {
 	ListenAddr string `koanf:"listen_addr"`
 	MCPPath    string `koanf:"mcp_path"`
 }
 
-// QdrantConfig holds the Qdrant connection address and memory collection name.
+// QdrantConfig points engram at its vector backend: the gRPC endpoint to dial
+// and the collection memories are stored in.
 type QdrantConfig struct {
 	Addr       string `koanf:"addr"`
 	Collection string `koanf:"collection"`
 }
 
-// EmbedConfig holds the embedding model name and its vector dimension.
+// EmbedConfig selects the embedding model and the vector dimension the memory
+// collection must be created at to match its output.
 type EmbedConfig struct {
 	Model string `koanf:"model"`
 	Dim   string `koanf:"dim"`
 }
 
-// OpenAIConfig holds the OpenAI-compatible embeddings endpoint URL and API key.
+// OpenAIConfig is the OpenAI-compatible /v1/embeddings endpoint engram calls to
+// vectorize content (any backend speaking that protocol: LiteLLM, Ollama, vLLM, …).
 type OpenAIConfig struct {
 	BaseURL string `koanf:"base_url"`
 	APIKey  string `koanf:"api_key"`
@@ -72,7 +76,8 @@ type UIConfig struct {
 	CookieKey   string `koanf:"cookie_key"`
 }
 
-// LogConfig holds the logging level, format, and stdout toggle.
+// LogConfig controls structured-log output: verbosity, encoding, and whether
+// records are written to stdout.
 type LogConfig struct {
 	Level  string `koanf:"level"`
 	Format string `koanf:"format"`
