@@ -65,6 +65,13 @@ func runServe(cmd *cobra.Command) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	// Serve-local guard: an empty listen address makes http.Server bind ":http"
+	// (port 80) silently. ENGRAM_LISTEN_ADDR defaults to :8080; only an explicit
+	// --listen-addr "" can empty it. Data-plane fields are validated in the store
+	// path (StoreFromEnvNoEnsure -> Config.Validate).
+	if cfg.Server.ListenAddr == "" {
+		return fmt.Errorf("ENGRAM_LISTEN_ADDR (or --listen-addr) is empty: a listen address is required")
+	}
 
 	telCfg := telemetry.ConfigFromEnv("engram", version)
 	logger, shutdown, err := telemetry.Setup(context.Background(), telCfg)
