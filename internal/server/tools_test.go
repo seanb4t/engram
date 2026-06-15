@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -610,6 +611,63 @@ func TestUpdateMemoryPreservesSharingHandler(t *testing.T) {
 	}
 	if got.Content != "v2" || got.Visibility != "shared" {
 		t.Errorf("handler content-only update lost sharing: content=%q visibility=%q", got.Content, got.Visibility)
+	}
+}
+
+// TestUpdateMemoryTagsHandler pins the tag-mutation contract: supplying tags
+// replaces them, omitting tags (nil) preserves the existing set, and the
+// record's id/created_at survive the update (no delete-and-recreate). Mirrors
+// TestUpdateMemoryPreservesSharingHandler's preserve-on-omit shape.
+func TestUpdateMemoryTagsHandler(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:handler-upd-tags"
+	id := "e6e6e6e6-0000-0000-0000-000000000001"
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
+
+	// Seed a record with an initial tag, owned by the anonymous caller (sub == "").
+	m := store.Memory{ID: id, Content: "v1", Scope: scope, Owner: "", Tags: []string{"old"}, CreatedAt: timeNow()}
+	if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	before, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("get seed: %v", err)
+	}
+
+	// Supplying tags replaces them; id and created_at are preserved.
+	newTags := []string{"alpha", "beta"}
+	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "v2", Tags: &newTags}); err != nil {
+		t.Fatalf("update with tags: %v", err)
+	}
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("get after replace: %v", err)
+	}
+	if got.Content != "v2" {
+		t.Errorf("content not updated: %q", got.Content)
+	}
+	if !slices.Equal(got.Tags, newTags) {
+		t.Errorf("tags not replaced: got %v want %v", got.Tags, newTags)
+	}
+	if got.ID != id || !got.CreatedAt.Equal(before.CreatedAt) {
+		t.Errorf("identity/history not preserved: id=%q created_at=%v want id=%q created_at=%v",
+			got.ID, got.CreatedAt, id, before.CreatedAt)
+	}
+
+	// Omitting tags (nil) preserves the existing set.
+	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "v3"}); err != nil {
+		t.Fatalf("update without tags: %v", err)
+	}
+	got, err = d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("get after omit: %v", err)
+	}
+	if got.Content != "v3" {
+		t.Errorf("content not updated on omit: %q", got.Content)
+	}
+	if !slices.Equal(got.Tags, newTags) {
+		t.Errorf("omitting tags did not preserve existing: got %v want %v", got.Tags, newTags)
 	}
 }
 

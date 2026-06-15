@@ -857,8 +857,10 @@ func (s *Store) FetchForUpdate(ctx context.Context, id string, subj Subject) (ou
 // fetched and ownership-verified via FetchForUpdate. It does NOT re-fetch: cur
 // is authoritative, so the update path gates ownership exactly once. When shared
 // is non-nil it also sets visibility (true → "shared", false → ""); nil leaves
-// visibility unchanged so a content edit never silently unshares.
-func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *bool, vec []float32) (err error) {
+// visibility unchanged so a content edit never silently unshares. tags follows
+// the same presence-signal contract: non-nil replaces the full set (an empty
+// slice clears), nil leaves the existing tags untouched.
+func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *bool, tags *[]string, vec []float32) (err error) {
 	ctx, span := tracer.Start(ctx, "store.Update")
 	defer span.End()
 	start := time.Now()
@@ -877,6 +879,9 @@ func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *
 		} else {
 			cur.Visibility = ""
 		}
+	}
+	if tags != nil {
+		cur.Tags = *tags
 	}
 	return s.Upsert(ctx, cur, vec)
 }

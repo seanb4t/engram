@@ -60,7 +60,8 @@ records are readable (never writable) by any **authenticated** caller — the
 shared read grant requires a non-empty `sub`. No issuer → single anonymous
 bucket (`owner==""`); anonymous callers (auth disabled) see only that bucket and
 cannot read other actors' `shared` records. The `set_visibility` tool and
-`update_memory`'s `shared` field toggle sharing. Pre-isolation records (missing
+`update_memory`'s `shared` field toggle sharing; `update_memory`'s `tags` field
+replaces the tag set (omit to preserve, empty array to clear). Pre-isolation records (missing
 `owner` key) are invisible to every read until you backfill them with `engram
 migrate-set-owner --owner <sub>`.
 
