@@ -41,6 +41,7 @@ func TestValidateFieldRules(t *testing.T) {
 		{"embed dim zero", func(c *Config) { c.Embed.Dim = "0" }, "ENGRAM_EMBED_DIM"},
 		{"openai base_url empty", func(c *Config) { c.OpenAI.BaseURL = "" }, "ENGRAM_OPENAI_BASE_URL"},
 		{"openai base_url bad scheme", func(c *Config) { c.OpenAI.BaseURL = "ftp://x" }, "scheme must be http"},
+		{"openai base_url scheme only, no host", func(c *Config) { c.OpenAI.BaseURL = "http://" }, "missing host"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -64,6 +64,10 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("ENGRAM_OPENAI_BASE_URL %q: must be a valid URL: %w", c.OpenAI.BaseURL, err))
 	case u.Scheme != "http" && u.Scheme != "https":
 		errs = append(errs, fmt.Errorf("ENGRAM_OPENAI_BASE_URL %q: scheme must be http or https", c.OpenAI.BaseURL))
+	case u.Host == "":
+		// url.Parse accepts scheme-only inputs like "http://"; reject them — a
+		// hostless base URL is not a usable embeddings endpoint.
+		errs = append(errs, fmt.Errorf("ENGRAM_OPENAI_BASE_URL %q: missing host", c.OpenAI.BaseURL))
 	}
 
 	if len(errs) == 0 {
