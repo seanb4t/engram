@@ -614,10 +614,11 @@ func TestUpdateMemoryPreservesSharingHandler(t *testing.T) {
 	}
 }
 
-// TestUpdateMemoryTagsHandler pins the tag-mutation contract: supplying tags
-// replaces them, omitting tags (nil) preserves the existing set, and the
-// record's id/created_at survive the update (no delete-and-recreate). Mirrors
-// TestUpdateMemoryPreservesSharingHandler's preserve-on-omit shape.
+// TestUpdateMemoryTagsHandler pins the full tag-mutation contract: supplying
+// tags replaces them, an empty slice clears them, omitting tags (nil) preserves
+// the existing set, and the record's id/created_at survive the update (no
+// delete-and-recreate). Mirrors TestUpdateMemoryPreservesSharingHandler's
+// preserve-on-omit shape.
 func TestUpdateMemoryTagsHandler(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()
@@ -668,6 +669,21 @@ func TestUpdateMemoryTagsHandler(t *testing.T) {
 	}
 	if !slices.Equal(got.Tags, newTags) {
 		t.Errorf("omitting tags did not preserve existing: got %v want %v", got.Tags, newTags)
+	}
+
+	// Supplying an empty slice clears all tags — distinct from nil-omit. This
+	// guards the boundary: if the store gated on len(*tags)>0 instead of
+	// tags!=nil, clear would silently degrade to preserve.
+	empty := []string{}
+	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "v4", Tags: &empty}); err != nil {
+		t.Fatalf("update with empty tags: %v", err)
+	}
+	got, err = d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("get after clear: %v", err)
+	}
+	if len(got.Tags) != 0 {
+		t.Errorf("empty slice did not clear tags: got %v", got.Tags)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -546,6 +547,73 @@ func TestUpdateOwnerGateAndSharedFlag(t *testing.T) {
 	}
 	if got.Visibility != "" {
 		t.Errorf("unshare failed: visibility=%q", got.Visibility)
+	}
+}
+
+// TestUpdateTags pins the store-level tag presence-signal at the layer that
+// owns it (mirroring TestUpdateOwnerGateAndSharedFlag's coverage of shared):
+// nil preserves, non-nil replaces, an empty slice clears — each surviving the
+// full Qdrant payload round-trip.
+func TestUpdateTags(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:upd-tags"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	id := "ffffffff-0000-0000-0000-0000000000a1"
+	m := Memory{ID: id, Content: "v1", Scope: scope, Owner: "sub-T", Tags: []string{"old"}, CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	vec := []float32{0.4, 0.5, 0.6}
+
+	// nil tags preserves the existing set.
+	cur, err := s.FetchForUpdate(ctx, id, Authenticated("sub-T"))
+	if err != nil {
+		t.Fatalf("fetch (preserve): %v", err)
+	}
+	if err := s.Update(ctx, cur, "v2", nil, nil, vec); err != nil {
+		t.Fatalf("update nil tags: %v", err)
+	}
+	got, err := s.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("get (preserve): %v", err)
+	}
+	if !slices.Equal(got.Tags, []string{"old"}) {
+		t.Errorf("nil tags should preserve: got %v", got.Tags)
+	}
+
+	// non-nil replaces the full set.
+	cur, err = s.FetchForUpdate(ctx, id, Authenticated("sub-T"))
+	if err != nil {
+		t.Fatalf("fetch (replace): %v", err)
+	}
+	repl := []string{"x", "y"}
+	if err := s.Update(ctx, cur, "v3", nil, &repl, vec); err != nil {
+		t.Fatalf("update replace: %v", err)
+	}
+	got, err = s.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("get (replace): %v", err)
+	}
+	if !slices.Equal(got.Tags, repl) {
+		t.Errorf("non-nil tags should replace: got %v want %v", got.Tags, repl)
+	}
+
+	// empty slice clears.
+	cur, err = s.FetchForUpdate(ctx, id, Authenticated("sub-T"))
+	if err != nil {
+		t.Fatalf("fetch (clear): %v", err)
+	}
+	empty := []string{}
+	if err := s.Update(ctx, cur, "v4", nil, &empty, vec); err != nil {
+		t.Fatalf("update clear: %v", err)
+	}
+	got, err = s.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("get (clear): %v", err)
+	}
+	if len(got.Tags) != 0 {
+		t.Errorf("empty slice should clear tags: got %v", got.Tags)
 	}
 }
 
