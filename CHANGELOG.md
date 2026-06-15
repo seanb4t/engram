@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.6](https://github.com/seanb4t/engram/compare/v0.7.5...v0.7.6) (2026-06-15)
+
+
+### Features
+
+* **config:** centralized Config.Validate for data-plane well-formedness ([#143](https://github.com/seanb4t/engram/issues/143)) ([eed8963](https://github.com/seanb4t/engram/commit/eed8963558777ecad112d5e6a6e392de2ffbf67a))
+
+
+### Bug Fixes
+
+* **config:** drop test-only MEM_QDRANT_TEST_ADDR from legacy runtime guard ([#142](https://github.com/seanb4t/engram/issues/142)) ([4622ac7](https://github.com/seanb4t/engram/commit/4622ac7aeccf1c065003dc2b32b5a88090f40749))
+* **engram-skill:** route explicit time-bound 'remember' requests via an engram-vs-beads gate ([#135](https://github.com/seanb4t/engram/issues/135)) ([d7f1d72](https://github.com/seanb4t/engram/commit/d7f1d72314d1b111065134df6e31837805c581fa))
+
 ## [0.7.5](https://github.com/seanb4t/engram/compare/v0.7.4...v0.7.5) (2026-06-14)
 
 
