@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.7](https://github.com/seanb4t/engram/compare/v0.7.6...v0.7.7) (2026-06-15)
+
+
+### Features
+
+* **memory:** update_memory can replace a record's tag set ([#147](https://github.com/seanb4t/engram/issues/147)) ([f145275](https://github.com/seanb4t/engram/commit/f1452758cd9ec8878cf12722901fac08f97a8f9f))
+
 ## [0.7.6](https://github.com/seanb4t/engram/compare/v0.7.5...v0.7.6) (2026-06-15)
 
 
