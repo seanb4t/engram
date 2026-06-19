@@ -358,9 +358,15 @@ func (s *Store) ownerScopeFilter(scope string, subj Subject) *qdrant.Filter {
 // every listed tag. Qdrant matches a scalar value against a list-valued payload
 // field by membership, so NewMatch("tags", t) means "the tags list contains t".
 // Empty/nil tags yields no conditions — a passthrough, never a contradiction.
+// Empty-string elements are skipped: a stored tag is never empty, so matching on
+// "" is meaningless and its filter behavior is implementation-defined; dropping
+// it makes [""] a passthrough and ["go", ""] equivalent to ["go"].
 func tagMatchConditions(tags []string) []*qdrant.Condition {
 	conds := make([]*qdrant.Condition, 0, len(tags))
 	for _, t := range tags {
+		if t == "" {
+			continue
+		}
 		conds = append(conds, qdrant.NewMatch("tags", t))
 	}
 	return conds
@@ -483,7 +489,7 @@ type ListOptions struct {
 	Offset     uint64
 	Categories []string // empty = all
 	Visibility string   // "" = all | "private" | "shared"
-	Tags       []string // empty = all; non-empty = records carrying ALL listed tags
+	Tags       []string // empty = all; non-empty = records carrying ALL listed tags. Honored by List (and Search via its tags param); ListScheduled ignores it.
 }
 
 // listFilter builds the Qdrant filter for List: scope + per-actor authz (outer

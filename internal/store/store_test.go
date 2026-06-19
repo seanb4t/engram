@@ -436,6 +436,15 @@ func TestSearchAndListTagsFilter(t *testing.T) {
 			"cccccccc-0000-0000-0000-000000000001",
 		}},
 		{"non-matching tag", []string{"rust"}, []string{}},
+		{"empty-string tag is passthrough", []string{""}, []string{
+			"cccccccc-0000-0000-0000-000000000001",
+			"cccccccc-0000-0000-0000-000000000002",
+			"cccccccc-0000-0000-0000-000000000003",
+		}},
+		{"empty-string element is dropped", []string{"go", ""}, []string{
+			"cccccccc-0000-0000-0000-000000000001",
+			"cccccccc-0000-0000-0000-000000000002",
+		}},
 	}
 	for _, tc := range cases {
 		hits, err := s.Search(ctx, scope, Anonymous(), q, 10, tc.tags)
@@ -452,6 +461,50 @@ func TestSearchAndListTagsFilter(t *testing.T) {
 		if got := ids(lst); !slices.Equal(got, tc.want) {
 			t.Errorf("List %s: got %v want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+// TestTagsFilterComposesWithWindow confirms the tag filter and the active-window
+// recall gate compose: an expired record is dropped even when its tags match,
+// because both are appended to the same Must envelope. The tag filter narrows;
+// it never resurrects a windowed-out record.
+func TestTagsFilterComposesWithWindow(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:tags-window"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	fixed := time.Date(2026, 6, 19, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return fixed } // white-box override of the recall clock
+
+	active := fixed.Add(time.Hour)   // not_after in the future → still recalled
+	expired := fixed.Add(-time.Hour) // not_after in the past → windowed out
+	mk := func(id string, notAfter time.Time) {
+		m := Memory{ID: id, Content: "x", Scope: scope, Owner: "", Tags: []string{"go"},
+			CreatedAt: fixed, NotAfter: &notAfter}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	activeID := "cdcdcdcd-0000-0000-0000-000000000001"
+	expiredID := "cdcdcdcd-0000-0000-0000-000000000002"
+	mk(activeID, active)
+	mk(expiredID, expired)
+
+	// Tag "go" matches both records, but the window gate must drop the expired one.
+	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10, []string{"go"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(hits) != 1 || hits[0].ID != activeID {
+		t.Errorf("Search tag+window: got %d (%v) want just %s", len(hits), hits, activeID)
+	}
+	lst, _, _, err := s.List(ctx, scope, Anonymous(), ListOptions{Limit: 10, Tags: []string{"go"}})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(lst) != 1 || lst[0].ID != activeID {
+		t.Errorf("List tag+window: got %d (%v) want just %s", len(lst), lst, activeID)
 	}
 }
 
