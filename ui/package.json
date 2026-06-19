@@ -10,7 +10,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json"
   },
   "devDependencies": {
-    "@lucide/svelte": "1.18.0",
+    "@lucide/svelte": "1.20.0",
     "@sveltejs/adapter-static": "3.0.10",
     "@sveltejs/kit": "2.65.1",
     "@sveltejs/vite-plugin-svelte": "7.1.2",
