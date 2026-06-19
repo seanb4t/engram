@@ -353,6 +353,19 @@ func (s *Store) ownerScopeFilter(scope string, subj Subject) *qdrant.Filter {
 	}}
 }
 
+// tagMatchConditions returns one exact-match condition per requested tag, with
+// AND semantics: appended to a filter's Must, they require a record to carry
+// every listed tag. Qdrant matches a scalar value against a list-valued payload
+// field by membership, so NewMatch("tags", t) means "the tags list contains t".
+// Empty/nil tags yields no conditions — a passthrough, never a contradiction.
+func tagMatchConditions(tags []string) []*qdrant.Condition {
+	conds := make([]*qdrant.Condition, 0, len(tags))
+	for _, t := range tags {
+		conds = append(conds, qdrant.NewMatch("tags", t))
+	}
+	return conds
+}
+
 // activeWindowConditions gates recall to records whose validity window is open
 // at now: (not_before absent OR <= now) AND (not_after absent OR > now). Stored
 // window keys are epoch-second integers; the Range bound is *float64 (Qdrant's
@@ -377,7 +390,7 @@ func activeWindowConditions(now time.Time) []*qdrant.Condition {
 // Search returns the k nearest readable memories to vec within scope.
 // Authenticated callers see their own records plus shared records; anonymous
 // callers see only the ownerless bucket.
-func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []float32, k uint64) (out []Memory, err error) {
+func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []float32, k uint64, tags []string) (out []Memory, err error) {
 	ctx, span := tracer.Start(ctx, "store.Search", trace.WithAttributes(
 		attribute.String("engram.scope", scope),
 		attribute.Int64("engram.k", int64(k)),
@@ -397,6 +410,7 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 
 	f := s.ownerScopeFilter(scope, subj)
 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
+	f.Must = append(f.Must, tagMatchConditions(tags)...)
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
 		Filter: f, Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
@@ -469,6 +483,7 @@ type ListOptions struct {
 	Offset     uint64
 	Categories []string // empty = all
 	Visibility string   // "" = all | "private" | "shared"
+	Tags       []string // empty = all; non-empty = records carrying ALL listed tags
 }
 
 // listFilter builds the Qdrant filter for List: scope + per-actor authz (outer
@@ -495,6 +510,7 @@ func listFilter(scope string, subj Subject, opts ListOptions) *qdrant.Filter {
 		}
 		must = append(must, qdrant.NewFilterAsCondition(&qdrant.Filter{Should: should}))
 	}
+	must = append(must, tagMatchConditions(opts.Tags)...)
 	switch opts.Visibility {
 	case visibilityShared:
 		must = append(must, qdrant.NewMatch("visibility", visibilityShared))

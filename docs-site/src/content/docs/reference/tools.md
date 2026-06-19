@@ -88,6 +88,7 @@ memories.
 | `query` | string | yes | Natural-language search query |
 | `scope` | string | yes | Scope to search within |
 | `k` | uint64 | no | Number of results to return (default 8) |
+| `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter. Applied as a hard pre-filter, then results are ranked by vector similarity |
 
 Returns a list of matching memory records.
 
@@ -102,6 +103,7 @@ bootstrap. Results are most-recent first.
 |----------|------|----------|-------------|
 | `scope` | string | yes | The scope to list memories from |
 | `limit` | uint64 | no | Maximum memories to return (default 20) |
+| `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter |
 
 Returns a list of memory records.
 

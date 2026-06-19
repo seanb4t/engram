@@ -94,7 +94,8 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	if k == 0 {
 		k = 20
 	}
-	ms, err := a.d.st.Search(ctx, req.Msg.Scope, subj, vec, k)
+	// The Connect read API does not expose a tag filter (proto surface unchanged); pass nil.
+	ms, err := a.d.st.Search(ctx, req.Msg.Scope, subj, vec, k, nil)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

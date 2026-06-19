@@ -39,7 +39,7 @@ func TestStoreSearchEmitsSpan(t *testing.T) {
 	sr := withSpanRecorder(t)
 
 	// testStore ensures a 3-dim collection (store_test.go: EnsureCollection(ctx, 3)).
-	_, err := st.Search(context.Background(), "repo:spans", anonymous{}, make([]float32, 3), 5)
+	_, err := st.Search(context.Background(), "repo:spans", anonymous{}, make([]float32, 3), 5, nil)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}

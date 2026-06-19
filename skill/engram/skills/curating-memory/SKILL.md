@@ -34,6 +34,22 @@ project-specific facts that outlive the session.
 **DO NOT STORE:** transient state, current activity/progress, secrets or API
 keys, timestamps, one-off tool output, or anything trivially re-derivable.
 
+## Tagging
+
+`tags` are now a recall dimension, not just display metadata: `search_memory`
+and `list_memory` accept an optional `tags` filter that narrows results to
+records carrying **all** listed tags (AND), and `update_memory` can correct a
+record's tag set after the fact. So tag deliberately — a tag is only useful for
+recall if it is applied **consistently** across the records that share it.
+
+Stay semantic-first, though: tags **complement** vector recall, they don't
+replace it. Reach for a tag when you want a precise, boolean axis the content
+text can't express (e.g. a project/component label, a `decision` vs `gotcha`
+distinction already covered by `category`, a transient-vs-durable marker) — not
+to rebuild a folksonomy the embedder already handles. Prefer a handful of stable,
+low-cardinality tags over an ever-growing taxonomy; when in doubt, rely on
+content + semantic search and leave the record untagged.
+
 ## Discipline
 
 1. **Search before store.** Call `mcp__engram__search_memory` across both

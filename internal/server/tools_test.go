@@ -589,6 +589,60 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	}
 }
 
+// TestSearchListMemoryTagsHandler pins that the optional tags filter threads
+// through both the search_memory and list_memory handlers: with a tag set, only
+// records carrying it are returned; omitting tags returns both.
+func TestSearchListMemoryTagsHandler(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:tags-handler"
+	taggedID := "d7000000-0000-0000-0000-000000000001"
+	plainID := "d7000000-0000-0000-0000-000000000002"
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
+
+	for _, m := range []store.Memory{
+		{ID: taggedID, Content: "x", Scope: scope, Owner: "", Tags: []string{"alpha"}, CreatedAt: timeNow()},
+		{ID: plainID, Content: "x", Scope: scope, Owner: "", CreatedAt: timeNow()},
+	} {
+		if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", m.ID, err)
+		}
+	}
+	has := func(ms []store.Memory, id string) bool {
+		for _, m := range ms {
+			if m.ID == id {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Filtered: only the tagged record on both handlers.
+	hits, err := d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha"}})
+	if err != nil {
+		t.Fatalf("searchMemory filtered: %v", err)
+	}
+	if !has(hits, taggedID) || has(hits, plainID) {
+		t.Errorf("searchMemory tags filter wrong: tagged=%v plain=%v", has(hits, taggedID), has(hits, plainID))
+	}
+	mems, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Tags: []string{"alpha"}})
+	if err != nil {
+		t.Fatalf("listMemory filtered: %v", err)
+	}
+	if !has(mems, taggedID) || has(mems, plainID) {
+		t.Errorf("listMemory tags filter wrong: tagged=%v plain=%v", has(mems, taggedID), has(mems, plainID))
+	}
+
+	// Omitted tags: both records returned (passthrough).
+	mems, err = d.listMemory(ctx, listArgs{Scope: scope, Limit: 10})
+	if err != nil {
+		t.Fatalf("listMemory passthrough: %v", err)
+	}
+	if !has(mems, taggedID) || !has(mems, plainID) {
+		t.Errorf("listMemory passthrough wrong: tagged=%v plain=%v", has(mems, taggedID), has(mems, plainID))
+	}
+}
+
 func TestUpdateMemoryPreservesSharingHandler(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()
