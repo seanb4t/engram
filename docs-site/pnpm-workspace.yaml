@@ -8,13 +8,15 @@ overrides:
   # in transitively at 0.27.x: vite caps it at ^0.27.0 (via astro), and
   # wrangler 4.101.0 pins esbuild 0.27.3.
   esbuild: ^0.28.1
-  # Force undici >=7.28.0 to clear GHSA-hm92-r4w5-c3mj (cross-origin request
-  # routing via SOCKS5 proxy pool reuse) and GHSA-vmh5-mc38-953g (TLS cert
-  # validation bypass via SOCKS5 ProxyAgent); both HIGH, both patched in 7.28.0.
-  # undici is pulled in transitively at 7.24.8 by wrangler/miniflare. Pin the
-  # 7.x patched line via caret, not the bare >=7.28.0 from the advisory (which
-  # would resolve to undici 8.x and major-bump wrangler's runtime).
-  undici: ^8.0.0
+  # Force undici to a patched release, clearing two HIGH SOCKS5 advisories:
+  # GHSA-hm92-r4w5-c3mj (cross-origin request routing via proxy pool reuse) and
+  # GHSA-vmh5-mc38-953g (TLS cert-validation bypass via SOCKS5 ProxyAgent).
+  # undici is transitive via wrangler/miniflare. Patched lines: 7.28.0 on 7.x,
+  # 8.2.0 / 8.5.0 on 8.x; the floor below sits at the 8.x patched release so the
+  # override can never resolve to a vulnerable version. (Keep the rationale, not
+  # a major-version preference, here — Renovate rewrites the value, not this
+  # comment.)
+  undici: ^8.5.0
 minimumReleaseAgeExclude:
   - '@astrojs/starlight@0.40.0'
   - '@expressive-code/core@0.43.1'

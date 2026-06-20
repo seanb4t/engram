@@ -8,8 +8,8 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit(), svelteTesting()],
   test: {
-    environment: 'jsdom',
+    environment: 'happy-dom',
     setupFiles: ['./vitest-setup.ts'],
-    environmentOptions: { jsdom: { url: 'http://localhost/' } }
+    environmentOptions: { happyDOM: { url: 'http://localhost/' } }
   }
 });

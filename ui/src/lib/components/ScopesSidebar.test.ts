@@ -54,7 +54,7 @@ describe('ScopesSidebar', () => {
 
   it('reflects the active visibility in the select trigger', () => {
     render(ScopesSidebar, { props: baseProps({ visibility: 'shared' }) });
-    // bits-ui's Select popover cannot be reliably opened under jsdom, so the
+    // bits-ui's Select popover cannot be reliably opened under the test DOM env, so the
     // onValueChange→onfilter path is exercised via the observe page in practice;
     // here we cover the value-binding branch (visibility → trigger label).
     expect(screen.getByRole('button', { name: 'visibility' })).toHaveTextContent('shared');
