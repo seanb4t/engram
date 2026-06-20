@@ -321,7 +321,7 @@ Must-include fact: the MCP endpoint is served at the **root** (`http://host:8080
 Frontmatter title `Deploy`. Two subsections:
 
 - **Helm** — `charts/engram/` deploys the server + Qdrant. Show `helm install` against the OCI chart `oci://ghcr.io/seanb4t/charts/engram`, and the key values an operator sets (issuer, embed endpoint, Qdrant). Migrate from `charts/engram/values.yaml` (read it during authoring; cite the real value keys, do not invent them).
-- **Docker** — the GHCR image, required env, volumes (none — state lives in Qdrant). 
+- **Docker** — the GHCR image, required env, volumes (none — state lives in Qdrant).
 
 Must-include: where the `MEM_*` env vars come from (the chart sets them; full list lives in `/reference/` → link to `configure.md`).
 
@@ -683,4 +683,5 @@ These steps need Cloudflare account access and cannot be done by the implementer
 | CI tool availability (Node+pnpm install) | 8 |
 | `protect-main` non-interference | 8 (step 4 verifies) |
 | ADRs linked not copied | 6 |
+
 <!-- adr-capture: sha256=95e77017c5a06e8c; session=cli; ts=2026-06-10T02:12:56Z; adrs=engram-ttb,engram-u5h,engram-1w7 -->

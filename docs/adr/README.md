@@ -56,4 +56,5 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 | [engram-2bv](engram-2bv-discovery-is-5th-category-single-memory-collection.md) | 2026-06-06 | Accepted | Discovery is a 5th category in the single Memory collection |
 | [engram-0gy](engram-0gy-dedicated-store-discovery-search-discovery-tools-not-overloa.md) | 2026-06-06 | Accepted | Dedicated store_discovery/search_discovery tools, not overloaded store_memory |
 | [engram-50b](engram-50b-engram-plugin-ships-no-bundled-mcp-server-engram-setup-is-so.md) | 2026-06-03 | Accepted | engram plugin ships no bundled MCP server; /engram-setup is the sole registration path |
+
 <!-- END INDEX -->

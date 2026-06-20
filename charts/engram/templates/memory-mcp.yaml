@@ -34,11 +34,13 @@ spec:
             - { name: ENGRAM_OPENAI_BASE_URL, value: "{{ .Values.memory.openai.baseURL }}" }
             - { name: ENGRAM_EMBED_MODEL, value: "{{ .Values.memory.embed.model }}" }
             - { name: ENGRAM_EMBED_DIM, value: "{{ .Values.memory.embed.dim }}" }
+            {{- if .Values.memory.openai.apiKeySecret.name }}
             - name: ENGRAM_OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: "{{ .Values.memory.openai.apiKeySecret.name }}"
                   key: "{{ .Values.memory.openai.apiKeySecret.key }}"
+            {{- end }}
             {{- /* Empty omits the var → server defaults the MCP transport to /mcp. "/" restores the legacy root catch-all. */}}
             {{- with .Values.memory.mcpPath }}
             - { name: ENGRAM_MCP_PATH, value: "{{ . }}" }
