@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.8](https://github.com/seanb4t/engram/compare/v0.7.7...v0.7.8) (2026-06-20)
+
+
+### Features
+
+* **api:** tag filter parity on Connect EngramService ([#166](https://github.com/seanb4t/engram/issues/166)) ([6e6d626](https://github.com/seanb4t/engram/commit/6e6d626004fa4383e663f259bfadb07302696a1b))
+* **memory:** tag-filtered recall on search_memory and list_memory ([#164](https://github.com/seanb4t/engram/issues/164)) ([475884b](https://github.com/seanb4t/engram/commit/475884b186beb20e47305b074be791856ba98c69))
+
 ## [0.7.7](https://github.com/seanb4t/engram/compare/v0.7.6...v0.7.7) (2026-06-15)
 
 
