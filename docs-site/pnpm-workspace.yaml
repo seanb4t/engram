@@ -2,6 +2,12 @@ allowBuilds:
   esbuild: true
   sharp: true
   workerd: true
+overrides:
+  # Force esbuild >=0.28.1 to clear GHSA-gv7w-rqvm-qjhr (build-time RCE via a
+  # malicious NPM_CONFIG_REGISTRY in esbuild's Deno module). esbuild is pulled
+  # in transitively at 0.27.x: vite caps it at ^0.27.0 (via astro), and
+  # wrangler 4.101.0 pins esbuild 0.27.3.
+  esbuild: ^0.28.1
 minimumReleaseAgeExclude:
   - '@astrojs/starlight@0.40.0'
   - '@expressive-code/core@0.43.1'
@@ -9,6 +15,6 @@ minimumReleaseAgeExclude:
   - '@expressive-code/plugin-shiki@0.43.1'
   - '@expressive-code/plugin-text-markers@0.43.1'
   - astro-expressive-code@0.43.1
-  - astro@6.4.6
+  - astro@6.4.8
   - expressive-code@0.43.1
   - rehype-expressive-code@0.43.1
