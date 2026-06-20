@@ -1,9 +1,3 @@
-# vitest declares both jsdom and happy-dom as optional peers. With pnpm's
-# default autoInstallPeers it auto-installs jsdom even though the test env is
-# happy-dom (see test.environment in vite.config.ts), and jsdom drags in undici
-# — the source of the recurring SOCKS5 advisories (GHSA-hm92-r4w5-c3mj /
-# GHSA-vmh5-mc38-953g). Ignoring the unused jsdom optional peer keeps undici out
-# of the ui/ dependency tree entirely (no override needed).
 ignoredOptionalDependencies:
   - jsdom
 overrides:
@@ -11,4 +5,4 @@ overrides:
   # range for the 0.7.0 fix, so a plain `pnpm update` can't reach it. Force the
   # patched line to clear GHSA-pxg6-pf52-xh8x (cookie <0.7.0 accepts
   # out-of-bounds characters in name/value/path).
-  cookie: ^0.7.0
+  cookie: ^1.0.0
