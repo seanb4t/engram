@@ -14,7 +14,7 @@ overrides:
   # undici is pulled in transitively at 7.24.8 by wrangler/miniflare. Pin the
   # 7.x patched line via caret, not the bare >=7.28.0 from the advisory (which
   # would resolve to undici 8.x and major-bump wrangler's runtime).
-  undici: ^7.28.0
+  undici: ^8.0.0
 minimumReleaseAgeExclude:
   - '@astrojs/starlight@0.40.0'
   - '@expressive-code/core@0.43.1'
