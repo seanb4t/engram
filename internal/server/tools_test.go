@@ -589,6 +589,78 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	}
 }
 
+// TestSearchListMemoryTagsHandler pins that the optional tags filter threads
+// through both the search_memory and list_memory handlers: a single tag narrows
+// to records carrying it, AND of two tags excludes a record with only a subset,
+// and omitting tags returns everything — verified on both handlers.
+func TestSearchListMemoryTagsHandler(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:tags-handler"
+	alphaID := "d7000000-0000-0000-0000-000000000001" // alpha only
+	bothID := "d7000000-0000-0000-0000-000000000002"  // alpha + beta
+	plainID := "d7000000-0000-0000-0000-000000000003" // untagged
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
+
+	for _, m := range []store.Memory{
+		{ID: alphaID, Content: "x", Scope: scope, Owner: "", Tags: []string{"alpha"}, CreatedAt: timeNow()},
+		{ID: bothID, Content: "x", Scope: scope, Owner: "", Tags: []string{"alpha", "beta"}, CreatedAt: timeNow()},
+		{ID: plainID, Content: "x", Scope: scope, Owner: "", CreatedAt: timeNow()},
+	} {
+		if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", m.ID, err)
+		}
+	}
+	ids := func(ms []store.Memory) map[string]bool {
+		out := map[string]bool{}
+		for _, m := range ms {
+			out[m.ID] = true
+		}
+		return out
+	}
+
+	// Single tag: both alpha-carrying records, never the untagged one — on both handlers.
+	hits, err := d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha"}})
+	if err != nil {
+		t.Fatalf("searchMemory alpha: %v", err)
+	}
+	if g := ids(hits); !g[alphaID] || !g[bothID] || g[plainID] {
+		t.Errorf("searchMemory alpha wrong: %v", g)
+	}
+	mems, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Tags: []string{"alpha"}})
+	if err != nil {
+		t.Fatalf("listMemory alpha: %v", err)
+	}
+	if g := ids(mems); !g[alphaID] || !g[bothID] || g[plainID] {
+		t.Errorf("listMemory alpha wrong: %v", g)
+	}
+
+	// AND of two tags: only the record carrying both; the alpha-only record is excluded.
+	hits, err = d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha", "beta"}})
+	if err != nil {
+		t.Fatalf("searchMemory AND: %v", err)
+	}
+	if g := ids(hits); !g[bothID] || g[alphaID] || g[plainID] {
+		t.Errorf("searchMemory AND-subset wrong: %v", g)
+	}
+
+	// Omitted tags: passthrough returns all three — on both handlers.
+	hits, err = d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10})
+	if err != nil {
+		t.Fatalf("searchMemory passthrough: %v", err)
+	}
+	if g := ids(hits); !g[alphaID] || !g[bothID] || !g[plainID] {
+		t.Errorf("searchMemory passthrough wrong: %v", g)
+	}
+	mems, err = d.listMemory(ctx, listArgs{Scope: scope, Limit: 10})
+	if err != nil {
+		t.Fatalf("listMemory passthrough: %v", err)
+	}
+	if g := ids(mems); !g[alphaID] || !g[bothID] || !g[plainID] {
+		t.Errorf("listMemory passthrough wrong: %v", g)
+	}
+}
+
 func TestUpdateMemoryPreservesSharingHandler(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()

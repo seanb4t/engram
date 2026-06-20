@@ -206,14 +206,16 @@ func parseWindow(a scheduleArgs, now time.Time) (nb, na *time.Time, err error) {
 }
 
 type searchArgs struct {
-	Query string `json:"query"`
-	Scope string `json:"scope"`
-	K     uint64 `json:"k,omitempty"`
+	Query string   `json:"query"`
+	Scope string   `json:"scope"`
+	K     uint64   `json:"k,omitempty"`
+	Tags  []string `json:"tags,omitempty" jsonschema:"optional; restrict to records carrying ALL listed tags"`
 }
 
 type listArgs struct {
-	Scope string `json:"scope" jsonschema:"the scope to list memories from"`
-	Limit uint64 `json:"limit,omitempty" jsonschema:"max memories to return (default 20)"`
+	Scope string   `json:"scope" jsonschema:"the scope to list memories from"`
+	Limit uint64   `json:"limit,omitempty" jsonschema:"max memories to return (default 20)"`
+	Tags  []string `json:"tags,omitempty" jsonschema:"optional; restrict to records carrying ALL listed tags"`
 }
 
 type listScheduledArgs struct {
@@ -450,7 +452,7 @@ func (d *deps) listMemory(ctx context.Context, a listArgs) ([]store.Memory, erro
 	if err != nil {
 		return nil, err
 	}
-	ms, _, _, err := d.st.List(ctx, a.Scope, subj, store.ListOptions{Limit: a.Limit})
+	ms, _, _, err := d.st.List(ctx, a.Scope, subj, store.ListOptions{Limit: a.Limit, Tags: a.Tags})
 	return ms, err
 }
 
@@ -488,7 +490,7 @@ func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]store.Memory, 
 	if err != nil {
 		return nil, err
 	}
-	return d.st.Search(ctx, a.Scope, subj, vec, a.K)
+	return d.st.Search(ctx, a.Scope, subj, vec, a.K, a.Tags)
 }
 
 // effectiveDiscoveryScope resolves the scope filter for a discovery search:
@@ -577,13 +579,13 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			return textResult(fmt.Sprintf("scheduled %s", id)), map[string]string{"id": id}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope."},
+	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a searchArgs) (*mcp.CallToolResult, any, error) {
 			hits, err := d.searchMemory(ctx, a)
 			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"memories": hits}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List recent memories in a scope without a query (session bootstrap). Most-recent first."},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List recent memories in a scope without a query (session bootstrap). Most-recent first. Optionally pass `tags` to restrict to records carrying all listed tags (AND)."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listArgs) (*mcp.CallToolResult, any, error) {
 			mems, err := d.listMemory(ctx, a)
 			return textResult(fmt.Sprintf("%d memories", len(mems))), map[string]any{"memories": mems}, err
