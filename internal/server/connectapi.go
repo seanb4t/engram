@@ -72,6 +72,7 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 		Offset:     req.Msg.Offset,
 		Categories: req.Msg.Categories,
 		Visibility: req.Msg.Visibility,
+		Tags:       req.Msg.Tags,
 	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
@@ -94,8 +95,7 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	if k == 0 {
 		k = 20
 	}
-	// The Connect read API does not expose a tag filter (proto surface unchanged); pass nil.
-	ms, err := a.d.st.Search(ctx, req.Msg.Scope, subj, vec, k, nil)
+	ms, err := a.d.st.Search(ctx, req.Msg.Scope, subj, vec, k, req.Msg.Tags)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

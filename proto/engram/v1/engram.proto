@@ -42,6 +42,7 @@ message ListMemoriesRequest {
   uint64 offset = 3;
   repeated string categories = 4; // empty = all categories
   string visibility = 5;          // "" = all | "private" | "shared"
+  repeated string tags = 6;       // empty = all; non-empty = records carrying ALL listed tags (AND)
 }
 
 message ListMemoriesResponse {
@@ -54,6 +55,7 @@ message SearchMemoriesRequest {
   string query = 1;
   string scope = 2;
   uint64 k = 3;
+  repeated string tags = 4; // empty = all; non-empty = records carrying ALL listed tags (AND)
 }
 message SearchMemoriesResponse { repeated Memory memories = 1; }
 
