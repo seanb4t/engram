@@ -6,3 +6,9 @@
 # of the ui/ dependency tree entirely (no override needed).
 ignoredOptionalDependencies:
   - jsdom
+overrides:
+  # cookie is transitive via @sveltejs/kit, which caps it at ^0.6.0 — out of
+  # range for the 0.7.0 fix, so a plain `pnpm update` can't reach it. Force the
+  # patched line to clear GHSA-pxg6-pf52-xh8x (cookie <0.7.0 accepts
+  # out-of-bounds characters in name/value/path).
+  cookie: ^0.7.0
