@@ -188,6 +188,67 @@ func TestListMemoriesHandlerPagesAndIsolates(t *testing.T) {
 	}
 }
 
+// TestConnectTagsFilter pins tag-filter parity on the Connect read API: both
+// ListMemories and SearchMemories honor the optional tags filter (AND — records
+// must carry all listed tags), matching the MCP search_memory/list_memory tools.
+func TestConnectTagsFilter(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "hdl-tags:project:x"
+	seed := []store.Memory{
+		{ID: "a2000000-0000-0000-0000-000000000001", Content: "x", Scope: scope, Owner: "owner-A", Category: "convention", Source: "agent-inferred", Tags: []string{"go", "perf"}, CreatedAt: timeNow()},
+		{ID: "a2000000-0000-0000-0000-000000000002", Content: "x", Scope: scope, Owner: "owner-A", Category: "convention", Source: "agent-inferred", Tags: []string{"go"}, CreatedAt: timeNow()},
+		{ID: "a2000000-0000-0000-0000-000000000003", Content: "x", Scope: scope, Owner: "owner-A", Category: "convention", Source: "agent-inferred", Tags: []string{"python"}, CreatedAt: timeNow()},
+	}
+	for _, m := range seed {
+		if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	defer func() {
+		for _, m := range seed {
+			_ = d.st.Delete(ctx, m.ID, store.Authenticated("owner-A"))
+		}
+	}()
+	api := &engramAPI{d: d}
+	actx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"sub": "owner-A"}})
+
+	ids := func(ms []*engramv1.Memory) map[string]bool {
+		out := map[string]bool{}
+		for _, m := range ms {
+			out[m.Id] = true
+		}
+		return out
+	}
+
+	// ListMemories single tag -> the two go-tagged records (not python).
+	lresp, err := api.ListMemories(actx, connect.NewRequest(&engramv1.ListMemoriesRequest{Scope: scope, Limit: 10, Tags: []string{"go"}}))
+	if err != nil {
+		t.Fatalf("ListMemories go: %v", err)
+	}
+	if g := ids(lresp.Msg.Memories); !g[seed[0].ID] || !g[seed[1].ID] || g[seed[2].ID] || lresp.Msg.Total != 2 {
+		t.Errorf("ListMemories go: total=%d ids=%v", lresp.Msg.Total, g)
+	}
+
+	// ListMemories AND of two tags -> only the record carrying both.
+	lresp, err = api.ListMemories(actx, connect.NewRequest(&engramv1.ListMemoriesRequest{Scope: scope, Limit: 10, Tags: []string{"go", "perf"}}))
+	if err != nil {
+		t.Fatalf("ListMemories AND: %v", err)
+	}
+	if g := ids(lresp.Msg.Memories); !g[seed[0].ID] || g[seed[1].ID] || lresp.Msg.Total != 1 {
+		t.Errorf("ListMemories AND: total=%d ids=%v", lresp.Msg.Total, g)
+	}
+
+	// SearchMemories single tag -> the two go-tagged records, never python.
+	sresp, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{Query: "x", Scope: scope, K: 10, Tags: []string{"go"}}))
+	if err != nil {
+		t.Fatalf("SearchMemories go: %v", err)
+	}
+	if g := ids(sresp.Msg.Memories); !g[seed[0].ID] || !g[seed[1].ID] || g[seed[2].ID] {
+		t.Errorf("SearchMemories go: ids=%v", g)
+	}
+}
+
 // Note: SearchDiscoveries shares the identical subjectFromConnectContext seam.
 // Coverage is skipped here because discovery-scope seeding requires a separate
 // collection setup and discovery-specific Upsert path not yet exposed from testDeps.

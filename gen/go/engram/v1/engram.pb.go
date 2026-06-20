@@ -321,6 +321,7 @@ type ListMemoriesRequest struct {
 	Offset        uint64                 `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
 	Categories    []string               `protobuf:"bytes,4,rep,name=categories,proto3" json:"categories,omitempty"` // empty = all categories
 	Visibility    string                 `protobuf:"bytes,5,opt,name=visibility,proto3" json:"visibility,omitempty"` // "" = all | "private" | "shared"
+	Tags          []string               `protobuf:"bytes,6,rep,name=tags,proto3" json:"tags,omitempty"`             // empty = all; non-empty = records carrying ALL listed tags (AND)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -390,6 +391,13 @@ func (x *ListMemoriesRequest) GetVisibility() string {
 	return ""
 }
 
+func (x *ListMemoriesRequest) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
 type ListMemoriesResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Memories      []*Memory              `protobuf:"bytes,1,rep,name=memories,proto3" json:"memories,omitempty"`
@@ -455,6 +463,7 @@ type SearchMemoriesRequest struct {
 	Query         string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
 	Scope         string                 `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
 	K             uint64                 `protobuf:"varint,3,opt,name=k,proto3" json:"k,omitempty"`
+	Tags          []string               `protobuf:"bytes,4,rep,name=tags,proto3" json:"tags,omitempty"` // empty = all; non-empty = records carrying ALL listed tags (AND)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -508,6 +517,13 @@ func (x *SearchMemoriesRequest) GetK() uint64 {
 		return x.K
 	}
 	return 0
+}
+
+func (x *SearchMemoriesRequest) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
 }
 
 type SearchMemoriesResponse struct {
@@ -777,7 +793,7 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\x11ListScopesRequest\"e\n" +
 	"\x12ListScopesResponse\x12-\n" +
 	"\x06scopes\x18\x01 \x03(\v2\x15.engram.v1.ScopeCountR\x06scopes\x12 \n" +
-	"\vapproximate\x18\x02 \x01(\bR\vapproximate\"\x99\x01\n" +
+	"\vapproximate\x18\x02 \x01(\bR\vapproximate\"\xad\x01\n" +
 	"\x13ListMemoriesRequest\x12\x14\n" +
 	"\x05scope\x18\x01 \x01(\tR\x05scope\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x04R\x05limit\x12\x16\n" +
@@ -787,15 +803,17 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"categories\x12\x1e\n" +
 	"\n" +
 	"visibility\x18\x05 \x01(\tR\n" +
-	"visibility\"}\n" +
+	"visibility\x12\x12\n" +
+	"\x04tags\x18\x06 \x03(\tR\x04tags\"}\n" +
 	"\x14ListMemoriesResponse\x12-\n" +
 	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x04R\x05total\x12 \n" +
-	"\vapproximate\x18\x03 \x01(\bR\vapproximate\"Q\n" +
+	"\vapproximate\x18\x03 \x01(\bR\vapproximate\"e\n" +
 	"\x15SearchMemoriesRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
 	"\x05scope\x18\x02 \x01(\tR\x05scope\x12\f\n" +
-	"\x01k\x18\x03 \x01(\x04R\x01k\"G\n" +
+	"\x01k\x18\x03 \x01(\x04R\x01k\x12\x12\n" +
+	"\x04tags\x18\x04 \x03(\tR\x04tags\"G\n" +
 	"\x16SearchMemoriesResponse\x12-\n" +
 	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\"\"\n" +
 	"\x10GetMemoryRequest\x12\x0e\n" +
