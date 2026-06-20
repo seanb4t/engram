@@ -26,7 +26,7 @@ jobs:
       run:
         working-directory: docs-site
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       # `uses:` steps ignore defaults.run.working-directory, so point
       # action-setup at the docs-site packageManager field explicitly.
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
@@ -61,7 +61,7 @@ jobs:
     steps:
       # Checkout supplies wrangler.jsonc; dist comes from the build job's
       # artifact (not a rebuild), so tested == deployed.
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: docs-site-dist
