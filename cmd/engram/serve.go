@@ -68,7 +68,7 @@ func runServe(cmd *cobra.Command) error {
 	// Serve-local guard: an empty listen address makes http.Server bind ":http"
 	// (port 80) silently. ENGRAM_LISTEN_ADDR defaults to :8080; only an explicit
 	// --listen-addr "" can empty it. Data-plane fields are validated in the store
-	// path (StoreFromEnvNoEnsure -> Config.Validate).
+	// path (buildDepsFromEnv -> loadAndValidate -> Config.Validate).
 	if cfg.Server.ListenAddr == "" {
 		return fmt.Errorf("ENGRAM_LISTEN_ADDR (or --listen-addr) is empty: a listen address is required")
 	}

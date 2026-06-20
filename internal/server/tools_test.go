@@ -20,9 +20,11 @@ import (
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/qdrant/go-client/qdrant"
+	flag "github.com/spf13/pflag"
 	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
 	"go.opentelemetry.io/otel"
 
+	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/telemetry"
 )
@@ -966,5 +968,35 @@ func TestStoreFromEnvNoEnsureValidatesConfig(t *testing.T) {
 	if !strings.Contains(err.Error(), "invalid configuration") ||
 		!strings.Contains(err.Error(), "ENGRAM_OPENAI_BASE_URL") {
 		t.Errorf("error %q, want aggregated validation error naming ENGRAM_OPENAI_BASE_URL", err)
+	}
+}
+
+// TestBuildDepsFromEnvLoadsConfigOnce pins the bead-635 invariant: wiring the
+// store + embedder at startup must parse the env config exactly once, not once
+// per dependency. The configLoad seam counts loads across the whole build.
+func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
+	if testQdrantAddr == "" {
+		t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
+	}
+	// buildDepsFromEnv reads the data-plane config from the process env; point it
+	// at the test Qdrant with a dedicated collection so EnsureCollection succeeds.
+	t.Setenv("ENGRAM_QDRANT_ADDR", testQdrantAddr)
+	t.Setenv("ENGRAM_QDRANT_COLLECTION", "mem_load_once_test")
+	t.Setenv("ENGRAM_EMBED_DIM", "3")
+
+	loads := 0
+	orig := configLoad
+	configLoad = func(flags *flag.FlagSet) (*config.Config, error) {
+		loads++
+		return orig(flags)
+	}
+	t.Cleanup(func() { configLoad = orig })
+
+	if _, err := buildDepsFromEnv(); err != nil {
+		t.Fatalf("buildDepsFromEnv: %v", err)
+	}
+
+	if loads != 1 {
+		t.Errorf("buildDepsFromEnv loaded config %d times, want exactly 1", loads)
 	}
 }

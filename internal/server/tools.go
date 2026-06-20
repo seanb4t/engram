@@ -35,37 +35,29 @@ type deps struct {
 	}
 }
 
-// StoreFromEnv builds a Qdrant-backed Store from the ENGRAM_QDRANT_* / ENGRAM_EMBED_DIM
-// environment and ensures the collection exists. Shared by the server bootstrap
-// and the migrate-set-owner / prune-expired commands.
-func StoreFromEnv() (*store.Store, error) {
-	st, embedDim, err := StoreFromEnvNoEnsure()
+// configLoad is the indirection seam for loading koanf config from the process
+// environment. buildDepsFromEnv must perform exactly one load per startup; tests
+// override this to count loads.
+var configLoad = config.Load
+
+// loadAndValidate loads the data-plane config and fails fast on malformed values
+// before any client is built. It is the one place load + Validate live, so every
+// store-building path funnels through it: serve (buildDepsFromEnv), reindex
+// (StoreFromEnvNoEnsure), and migrate / prune (StoreFromEnv).
+func loadAndValidate() (*config.Config, error) {
+	cfg, err := configLoad(nil)
 	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	if err := st.EnsureCollection(ctx, embedDim); err != nil {
-		return nil, fmt.Errorf("EnsureCollection: %w", err)
-	}
-	return st, nil
+	return cfg, nil
 }
 
-// StoreFromEnvNoEnsure builds the Store from the ENGRAM_QDRANT_* / ENGRAM_EMBED_DIM
-// environment but does NOT create the collection, and returns the configured embed
-// dimension. reindex uses this so it can require the source collection to already
-// exist rather than silently creating an empty one at the new dimension.
-func StoreFromEnvNoEnsure() (*store.Store, uint64, error) {
-	cfg, err := config.Load(nil)
-	if err != nil {
-		return nil, 0, fmt.Errorf("load config: %w", err)
-	}
-	// Fail fast and uniformly on malformed data-plane config before building any
-	// client. This single call site covers every store-building command: serve
-	// (via buildDepsFromEnv), reindex, migrate, and prune.
-	if err := cfg.Validate(); err != nil {
-		return nil, 0, err
-	}
+// storeFromConfig builds the Qdrant-backed Store (without ensuring the collection)
+// from an already-loaded config and returns the configured embed dimension.
+func storeFromConfig(cfg *config.Config) (*store.Store, uint64, error) {
 	embedDim, err := strconv.ParseUint(cfg.Embed.Dim, 10, 64)
 	if err != nil {
 		return nil, 0, fmt.Errorf("invalid ENGRAM_EMBED_DIM %q: %w", cfg.Embed.Dim, err)
@@ -91,16 +83,59 @@ func StoreFromEnvNoEnsure() (*store.Store, uint64, error) {
 	return store.New(qc, cfg.Qdrant.Collection), embedDim, nil
 }
 
-// buildDepsFromEnv wires up the store and embedder from the environment. The
-// store/Qdrant vars (ENGRAM_QDRANT_ADDR, ENGRAM_QDRANT_COLLECTION, ENGRAM_EMBED_DIM) are
-// read by StoreFromEnv; the embedder vars are read by EmbedderFromEnv.
+// ensureStoreFromConfig builds the Store from an already-loaded config and ensures
+// its collection exists at the configured embed dimension.
+func ensureStoreFromConfig(cfg *config.Config) (*store.Store, error) {
+	st, embedDim, err := storeFromConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := st.EnsureCollection(ctx, embedDim); err != nil {
+		return nil, fmt.Errorf("EnsureCollection: %w", err)
+	}
+	return st, nil
+}
+
+// StoreFromEnv builds a Qdrant-backed Store from the ENGRAM_QDRANT_* / ENGRAM_EMBED_DIM
+// environment and ensures the collection exists. Used by the migrate-set-owner /
+// prune-expired commands; the server bootstrap builds its store through
+// buildDepsFromEnv (sharing ensureStoreFromConfig) so config is loaded only once.
+func StoreFromEnv() (*store.Store, error) {
+	cfg, err := loadAndValidate()
+	if err != nil {
+		return nil, err
+	}
+	return ensureStoreFromConfig(cfg)
+}
+
+// StoreFromEnvNoEnsure builds the Store from the ENGRAM_QDRANT_* / ENGRAM_EMBED_DIM
+// environment but does NOT create the collection, and returns the configured embed
+// dimension. reindex uses this so it can require the source collection to already
+// exist rather than silently creating an empty one at the new dimension.
+func StoreFromEnvNoEnsure() (*store.Store, uint64, error) {
+	cfg, err := loadAndValidate()
+	if err != nil {
+		return nil, 0, err
+	}
+	return storeFromConfig(cfg)
+}
+
+// buildDepsFromEnv wires up the store and embedder from the environment with a
+// single config load: it loads + validates once, then builds both the
+// collection-ensured store and the embedder from that one *config.Config.
 func buildDepsFromEnv() (*deps, error) {
-	st, err := StoreFromEnv()
+	cfg, err := loadAndValidate()
+	if err != nil {
+		return nil, err
+	}
+	st, err := ensureStoreFromConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 	warnOwnerlessRecords(st)
-	return &deps{st: st, em: EmbedderFromEnv()}, nil
+	return &deps{st: st, em: embedderFromConfig(cfg)}, nil
 }
 
 // EmbedderFromEnv builds the OpenAI-compatible embedder from the
@@ -108,12 +143,18 @@ func buildDepsFromEnv() (*deps, error) {
 // environment. Exported so admin commands (e.g. reindex) re-embed with the same
 // configured embedder the server bootstrap uses.
 func EmbedderFromEnv() *embed.Client {
-	cfg, err := config.Load(nil)
+	cfg, err := configLoad(nil)
 	if err != nil {
 		// Defaults always load cleanly; a Load error here means a malformed
 		// koanf layer, which is a programming error, not operator input.
 		panic(fmt.Sprintf("config load: %v", err))
 	}
+	return embedderFromConfig(cfg)
+}
+
+// embedderFromConfig builds the OpenAI-compatible embedder from an already-loaded
+// config.
+func embedderFromConfig(cfg *config.Config) *embed.Client {
 	return embed.New(cfg.OpenAI.BaseURL, cfg.OpenAI.APIKey, cfg.Embed.Model,
 		embed.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)))
 }
