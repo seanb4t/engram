@@ -43,12 +43,12 @@ var reindexCmd = &cobra.Command{
 		// Build the source store WITHOUT creating its collection: reindex must read
 		// an EXISTING source (Reindex errors if it's absent), not conjure an empty
 		// one at the new dimension. dim is the currently-configured embedder's
-		// ENGRAM_EMBED_DIM — reused as the target collection's dimension.
-		st, dim, err := server.StoreFromEnvNoEnsure()
+		// ENGRAM_EMBED_DIM — reused as the target collection's dimension. Store and
+		// embedder come from a single config load.
+		st, dim, em, err := server.StoreAndEmbedderFromEnvNoEnsure()
 		if err != nil {
 			return err
 		}
-		em := server.EmbedderFromEnv()
 
 		// Bound the reindex so a hung Qdrant/embedder cannot block forever, and let
 		// the operator abort with Ctrl-C / SIGTERM.

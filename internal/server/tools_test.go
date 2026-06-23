@@ -956,14 +956,14 @@ func TestListScheduledTool(t *testing.T) {
 	}
 }
 
-func TestStoreFromEnvNoEnsureValidatesConfig(t *testing.T) {
+func TestStoreAndEmbedderFromEnvNoEnsureValidatesConfig(t *testing.T) {
 	// A malformed (non-empty) data-plane value reaches Config.Validate via
-	// StoreFromEnvNoEnsure's config.Load(nil). Validation runs BEFORE any Qdrant
-	// client construction, so this returns fast and needs no live Qdrant.
+	// StoreAndEmbedderFromEnvNoEnsure's loadAndValidate. Validation runs BEFORE any
+	// Qdrant client construction, so this returns fast and needs no live Qdrant.
 	t.Setenv("ENGRAM_OPENAI_BASE_URL", "ftp://nope")
-	_, _, err := StoreFromEnvNoEnsure()
+	_, _, _, err := StoreAndEmbedderFromEnvNoEnsure()
 	if err == nil {
-		t.Fatal("StoreFromEnvNoEnsure with bad ENGRAM_OPENAI_BASE_URL = nil, want validation error")
+		t.Fatal("StoreAndEmbedderFromEnvNoEnsure with bad ENGRAM_OPENAI_BASE_URL = nil, want validation error")
 	}
 	if !strings.Contains(err.Error(), "invalid configuration") ||
 		!strings.Contains(err.Error(), "ENGRAM_OPENAI_BASE_URL") {
@@ -998,5 +998,37 @@ func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
 
 	if loads != 1 {
 		t.Errorf("buildDepsFromEnv loaded config %d times, want exactly 1", loads)
+	}
+}
+
+// TestStoreAndEmbedderFromEnvNoEnsureLoadsConfigOnce pins the engram-mbnw
+// single-load invariant: the reindex build path must parse the env config
+// exactly once, not once per dependency (previously StoreFromEnvNoEnsure +
+// EmbedderFromEnv each loaded). No live Qdrant is needed: storeFromConfig only
+// constructs the client. qdrant.NewClient does fire a one-shot version
+// HealthCheck at construction, but against the refused loopback port it
+// fast-fails and is ignored, so the build still completes in milliseconds.
+func TestStoreAndEmbedderFromEnvNoEnsureLoadsConfigOnce(t *testing.T) {
+	t.Setenv("ENGRAM_QDRANT_ADDR", "localhost:6334")
+	t.Setenv("ENGRAM_EMBED_DIM", "3")
+
+	loads := 0
+	orig := configLoad
+	configLoad = func(flags *flag.FlagSet) (*config.Config, error) {
+		loads++
+		return orig(flags)
+	}
+	t.Cleanup(func() { configLoad = orig })
+
+	st, dim, em, err := StoreAndEmbedderFromEnvNoEnsure()
+	if err != nil {
+		t.Fatalf("StoreAndEmbedderFromEnvNoEnsure: %v", err)
+	}
+	if st == nil || em == nil || dim != 3 {
+		t.Fatalf("got store=%v dim=%d embedder=%v, want non-nil store/embedder and dim 3", st, dim, em)
+	}
+
+	if loads != 1 {
+		t.Errorf("StoreAndEmbedderFromEnvNoEnsure loaded config %d times, want exactly 1", loads)
 	}
 }

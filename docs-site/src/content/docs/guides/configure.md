@@ -22,7 +22,7 @@ Source: `cmd/engram/serve.go` (flag registration via `internal/config`)
 | `ENGRAM_QDRANT_COLLECTION` | — | `mem_eval` | Qdrant collection name for memories (binary default; the Helm chart sets this to `memory` — see [Deploy](/guides/deploy/)) |
 | `ENGRAM_EMBED_DIM` | — | `1024` | Vector dimension; must match the embedding model |
 
-Source: `internal/server/tools.go` (`StoreFromEnvNoEnsure`).
+Source: `internal/server/tools.go` (`StoreAndEmbedderFromEnvNoEnsure`).
 
 ## Embedder
 
@@ -32,7 +32,7 @@ Source: `internal/server/tools.go` (`StoreFromEnvNoEnsure`).
 | `ENGRAM_OPENAI_API_KEY` | — | _(empty)_ | API key for the embeddings endpoint |
 | `ENGRAM_EMBED_MODEL` | — | `ollama/bge-m3` | Model name forwarded to the endpoint |
 
-Source: `internal/config` (registry) + `internal/server/tools.go` (EmbedderFromEnv).
+Source: `internal/config` (registry) + `internal/server/tools.go` (`embedderFromConfig`).
 
 ## OIDC / Auth
 
