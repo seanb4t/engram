@@ -43,7 +43,7 @@ var configLoad = config.Load
 // loadAndValidate loads the data-plane config and fails fast on malformed values
 // before any client is built. It is the one place load + Validate live, so every
 // store-building path funnels through it: serve (buildDepsFromEnv), reindex
-// (StoreFromEnvNoEnsure), and migrate / prune (StoreFromEnv).
+// (StoreAndEmbedderFromEnvNoEnsure), and migrate / prune (StoreFromEnv).
 func loadAndValidate() (*config.Config, error) {
 	cfg, err := configLoad(nil)
 	if err != nil {
@@ -110,16 +110,22 @@ func StoreFromEnv() (*store.Store, error) {
 	return ensureStoreFromConfig(cfg)
 }
 
-// StoreFromEnvNoEnsure builds the Store from the ENGRAM_QDRANT_* / ENGRAM_EMBED_DIM
-// environment but does NOT create the collection, and returns the configured embed
-// dimension. reindex uses this so it can require the source collection to already
-// exist rather than silently creating an empty one at the new dimension.
-func StoreFromEnvNoEnsure() (*store.Store, uint64, error) {
+// StoreAndEmbedderFromEnvNoEnsure builds the no-ensure source Store (with its
+// configured embed dimension) and the matching embedder from a SINGLE config
+// load. reindex uses it so the source collection must already exist (no-ensure)
+// rather than being silently created at the new dimension, and so config is
+// parsed exactly once — the engram-635 single-load invariant, applied to the
+// reindex path the same way buildDepsFromEnv applies it to serve.
+func StoreAndEmbedderFromEnvNoEnsure() (*store.Store, uint64, *embed.Client, error) {
 	cfg, err := loadAndValidate()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
-	return storeFromConfig(cfg)
+	st, dim, err := storeFromConfig(cfg)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	return st, dim, embedderFromConfig(cfg), nil
 }
 
 // buildDepsFromEnv wires up the store and embedder from the environment with a
@@ -136,20 +142,6 @@ func buildDepsFromEnv() (*deps, error) {
 	}
 	warnOwnerlessRecords(st)
 	return &deps{st: st, em: embedderFromConfig(cfg)}, nil
-}
-
-// EmbedderFromEnv builds the OpenAI-compatible embedder from the
-// ENGRAM_OPENAI_BASE_URL, ENGRAM_OPENAI_API_KEY, and ENGRAM_EMBED_MODEL
-// environment. Exported so admin commands (e.g. reindex) re-embed with the same
-// configured embedder the server bootstrap uses.
-func EmbedderFromEnv() *embed.Client {
-	cfg, err := configLoad(nil)
-	if err != nil {
-		// Defaults always load cleanly; a Load error here means a malformed
-		// koanf layer, which is a programming error, not operator input.
-		panic(fmt.Sprintf("config load: %v", err))
-	}
-	return embedderFromConfig(cfg)
 }
 
 // embedderFromConfig builds the OpenAI-compatible embedder from an already-loaded
