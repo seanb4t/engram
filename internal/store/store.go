@@ -588,13 +588,24 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 // they surface through normal Search/List.
 type ScheduledState string
 
-// ScheduledPending, ScheduledExpired, and ScheduledAll filter which
-// hidden-by-the-recall-gate records ListScheduled returns.
+// The recognized ScheduledState values; each inline comment gives the recall-gate
+// predicate it selects.
 const (
 	ScheduledPending ScheduledState = "scheduled" // now < not_before (not yet active)
 	ScheduledExpired ScheduledState = "expired"   // now >= not_after (already lapsed)
 	ScheduledAll     ScheduledState = "all"       // union of pending and expired
 )
+
+// valid reports whether the state is one of the three recognized values. The
+// store guards on this so a caller that bypasses the handler's validation cannot
+// silently fall through scheduledStateCondition's default to ScheduledPending.
+func (st ScheduledState) valid() bool {
+	switch st {
+	case ScheduledPending, ScheduledExpired, ScheduledAll:
+		return true
+	}
+	return false
+}
 
 // scheduledStateCondition returns the inverse-window clause for a state. now is
 // the comparison instant; its epoch seconds become the *float64 Qdrant Range bound.
@@ -623,6 +634,9 @@ func scheduledStateCondition(state ScheduledState, now time.Time) *qdrant.Condit
 // these records). CreatedAt-desc, bounded by the same scanCap as List. Only
 // opts.Limit is honored; opts.Offset is ignored — paginates by Limit alone.
 func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, state ScheduledState, opts ListOptions) (items []Memory, err error) {
+	if !state.valid() {
+		return nil, fmt.Errorf("invalid scheduled state %q (want scheduled|expired|all)", state)
+	}
 	ctx, span := tracer.Start(ctx, "store.ListScheduled", trace.WithAttributes(
 		attribute.String("engram.scope", scope),
 		attribute.String("engram.owner", ownerOf(subj)),
@@ -1024,6 +1038,8 @@ func (s *Store) PruneExpired(ctx context.Context, before time.Time) (deleted uin
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int64("engram.result_count", int64(deleted)))
 		}
 	}()
 
@@ -1045,7 +1061,8 @@ func (s *Store) PruneExpired(ctx context.Context, before time.Time) (deleted uin
 	}); err != nil {
 		return 0, err
 	}
-	return n, nil
+	deleted = n
+	return deleted, nil
 }
 
 // ownerlessFilter matches pre-isolation records — those written before the owner

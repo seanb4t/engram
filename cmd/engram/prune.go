@@ -38,7 +38,7 @@ var pruneExpiredCmd = &cobra.Command{
 			ctx, cancel = context.WithTimeout(ctx, pruneTimeout)
 			defer cancel()
 		}
-		before := time.Now().UTC().Add(-pruneOlderThan)
+		before := pruneCutoff(time.Now().UTC(), pruneOlderThan)
 		n, err := st.PruneExpired(ctx, before)
 		if err != nil {
 			return err
@@ -46,6 +46,13 @@ var pruneExpiredCmd = &cobra.Command{
 		cmd.Printf("pruned ~%d expired record(s) (not_after < %s; best-effort count)\n", n, before.Format(time.RFC3339))
 		return nil
 	},
+}
+
+// pruneCutoff is the not_after threshold prune-expired deletes below: now minus
+// the --older-than grace period. A record whose not_after lapsed more recently
+// than the grace window is therefore spared (older-than=0 → cutoff is now).
+func pruneCutoff(now time.Time, olderThan time.Duration) time.Time {
+	return now.Add(-olderThan)
 }
 
 func init() {

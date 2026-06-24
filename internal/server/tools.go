@@ -33,6 +33,10 @@ type deps struct {
 	em interface {
 		Embed(context.Context, string) ([]float32, error)
 	}
+	// now is the handler time source for schedule_memory window validation. Nil
+	// means wall-clock time.Now (see clock); tests inject a fixed clock to pin
+	// "now" deterministically, mirroring store.WithClock.
+	now func() time.Time
 }
 
 // configLoad is the indirection seam for loading koanf config from the process
@@ -192,18 +196,14 @@ type storeArgs struct {
 	BaseDir   string   `json:"base_dir,omitempty"`
 }
 
+// scheduleArgs embeds storeArgs and adds the temporal window. The anonymous
+// embed flattens identically on both the json-decode and reflected-schema paths
+// (Go field promotion), so the schedule_memory wire contract is byte-for-byte the
+// store_memory fields plus not_before/not_after.
 type scheduleArgs struct {
-	Content   string   `json:"content" jsonschema:"the memory text to persist"`
-	Scope     string   `json:"scope" jsonschema:"run:tier:repo, e.g. eval-2026-05:project:selfhosted-cluster"`
-	Source    string   `json:"source" jsonschema:"user-said or agent-inferred"`
-	Category  string   `json:"category" jsonschema:"decision|preference|convention|gotcha"`
-	Tags      []string `json:"tags,omitempty"`
-	Repo      string   `json:"repo,omitempty"`
-	Workspace string   `json:"workspace,omitempty"`
-	Worktree  string   `json:"worktree_path,omitempty"`
-	BaseDir   string   `json:"base_dir,omitempty"`
-	NotBefore string   `json:"not_before,omitempty" jsonschema:"RFC3339; hide from recall until this time"`
-	NotAfter  string   `json:"not_after,omitempty" jsonschema:"RFC3339; drop from recall at this time"`
+	storeArgs
+	NotBefore string `json:"not_before,omitempty" jsonschema:"RFC3339; hide from recall until this time"`
+	NotAfter  string `json:"not_after,omitempty" jsonschema:"RFC3339; drop from recall at this time"`
 }
 
 // parseWindow validates and parses the schedule_memory temporal window. At least
@@ -358,6 +358,29 @@ func validCitationKind(k string) bool {
 	return false
 }
 
+// toMemory builds the common store.Memory from the shared store fields. The
+// caller supplies the server-set identity (owner/actor) and creation instant;
+// for scheduled records the caller then sets NotBefore/NotAfter on the returned
+// value. Both store_memory and schedule_memory funnel through here so their
+// record shape stays aligned.
+func (a storeArgs) toMemory(owner, actor string, createdAt time.Time) store.Memory {
+	return store.Memory{
+		ID:        uuid.NewString(),
+		Content:   a.Content,
+		Scope:     a.Scope,
+		Repo:      a.Repo,
+		Workspace: a.Workspace,
+		Worktree:  a.Worktree,
+		BaseDir:   a.BaseDir,
+		Source:    a.Source,
+		Category:  a.Category,
+		Tags:      a.Tags,
+		Actor:     actor,
+		Owner:     owner,
+		CreatedAt: createdAt,
+	}
+}
+
 func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
 	subj, err := subjectFromContext(ctx)
 	if err != nil {
@@ -367,22 +390,18 @@ func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	m := store.Memory{
-		ID:        uuid.NewString(),
-		Content:   a.Content,
-		Scope:     a.Scope,
-		Repo:      a.Repo,
-		Workspace: a.Workspace,
-		Worktree:  a.Worktree,
-		BaseDir:   a.BaseDir,
-		Source:    a.Source,
-		Category:  a.Category,
-		Tags:      a.Tags,
-		Actor:     actorFromContext(ctx),
-		Owner:     subj.Owner(),
-		CreatedAt: time.Now().UTC(),
-	}
+	m := a.toMemory(subj.Owner(), actorFromContext(ctx), d.clock())
 	return m.ID, d.st.Upsert(ctx, m, vec)
+}
+
+// clock returns the handler's current time in UTC, defaulting to wall-clock
+// time.Now when deps.now is unset so bare &deps{} literals and buildDepsFromEnv
+// keep working without wiring a clock.
+func (d *deps) clock() time.Time {
+	if d.now != nil {
+		return d.now().UTC()
+	}
+	return time.Now().UTC()
 }
 
 func (d *deps) scheduleMemory(ctx context.Context, a scheduleArgs) (string, error) {
@@ -390,7 +409,7 @@ func (d *deps) scheduleMemory(ctx context.Context, a scheduleArgs) (string, erro
 	if err != nil {
 		return "", err
 	}
-	now := time.Now().UTC()
+	now := d.clock()
 	nb, na, err := parseWindow(a, now)
 	if err != nil {
 		return "", err
@@ -399,23 +418,9 @@ func (d *deps) scheduleMemory(ctx context.Context, a scheduleArgs) (string, erro
 	if err != nil {
 		return "", err
 	}
-	m := store.Memory{
-		ID:        uuid.NewString(),
-		Content:   a.Content,
-		Scope:     a.Scope,
-		Repo:      a.Repo,
-		Workspace: a.Workspace,
-		Worktree:  a.Worktree,
-		BaseDir:   a.BaseDir,
-		Source:    a.Source,
-		Category:  a.Category,
-		Tags:      a.Tags,
-		Actor:     actorFromContext(ctx),
-		Owner:     subj.Owner(),
-		CreatedAt: now,
-		NotBefore: nb,
-		NotAfter:  na,
-	}
+	m := a.toMemory(subj.Owner(), actorFromContext(ctx), now)
+	m.NotBefore = nb
+	m.NotAfter = na
 	return m.ID, d.st.Upsert(ctx, m, vec)
 }
 
@@ -630,7 +635,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			return textResult(fmt.Sprintf("%d scheduled", len(mems))), map[string]any{"memories": mems}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id."},
+	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id. Unlike search_memory/list_memory, fetch-by-id is NOT recall-gated: it returns scheduled (not-yet-active) and expired records too."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
 			subj, err := subjectFromContext(ctx)
 			if err != nil {

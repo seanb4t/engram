@@ -1802,6 +1802,20 @@ func TestListScheduledStates(t *testing.T) {
 	}
 }
 
+// TestListScheduledRejectsInvalidState pins the store-layer guard (hr2.5): an
+// unrecognized ScheduledState must be rejected outright, not silently treated as
+// ScheduledPending. The handler validates already; this defends direct callers
+// that bypass it.
+func TestListScheduledRejectsInvalidState(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	_, err := s.ListScheduled(ctx, "any:project:x", Authenticated("sub-A"),
+		ScheduledState("bogus"), ListOptions{Limit: 10})
+	if err == nil {
+		t.Fatal("ListScheduled with invalid state returned nil error; want a store-layer rejection")
+	}
+}
+
 // TestListScheduledOwnerIsolation pins that ListScheduled is owner-only: a caller
 // never sees another actor's scheduled/expired records — not even `shared` ones.
 // A shared+scheduled memory must stay invisible to other actors until it becomes
@@ -1847,6 +1861,120 @@ func TestListScheduledOwnerIsolation(t *testing.T) {
 	}
 	if len(own) != 3 {
 		t.Errorf("ListScheduled(all) for owner sub-A: got %d want 3 (own records visible)", len(own))
+	}
+}
+
+// TestNotAfterBoundaryInstant pins the epoch-second boundary semantics at the
+// exact instant not_after == now (hr2.8). The three sites deliberately use
+// different operators, and their interaction at the boundary is the subtle part:
+//   - active recall gate:    not_after > now  (Gt)  → at ==now, NOT active (hidden)
+//   - ListScheduled expired: not_after <= now (Lte) → at ==now, IS expired (shown)
+//   - PruneExpired:          not_after < before (Lt) → at before==not_after, KEPT;
+//     one second past the boundary, pruned.
+func TestNotAfterBoundaryInstant(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	fixed := time.Date(2031, 6, 1, 12, 0, 0, 0, time.UTC) // epoch-second aligned
+	s.now = func() time.Time { return fixed }             // white-box recall clock
+	scope := "boundary:project:x"
+	subj := Authenticated("sub-bnd")
+	notAfter := fixed // record expires AT the comparison instant
+	id := "e0000000-0000-0000-0000-000000000001"
+	m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-bnd",
+		CreatedAt: fixed.Add(-time.Hour), NotAfter: &notAfter}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	t.Cleanup(func() { cleanupErr(t, id, s.Delete(ctx, id, subj)) })
+
+	// Active recall gate excludes it: Gt means not_after==now is already past the gate.
+	items, _, _, err := s.List(ctx, scope, subj, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, it := range items {
+		if it.ID == id {
+			t.Error("not_after==now leaked into active recall; the gate (Gt) must hide it at the boundary")
+		}
+	}
+
+	// ListScheduled(expired) includes it: Lte means not_after==now counts as expired.
+	exp, err := s.ListScheduled(ctx, scope, subj, ScheduledExpired, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListScheduled: %v", err)
+	}
+	foundExpired := false
+	for _, it := range exp {
+		if it.ID == id {
+			foundExpired = true
+		}
+	}
+	if !foundExpired {
+		t.Error("not_after==now not surfaced as expired; the expired clause (Lte) must include it at the boundary")
+	}
+
+	// PruneExpired keeps it at before==boundary (Lt is strict)...
+	n, err := s.PruneExpired(ctx, fixed)
+	if err != nil {
+		t.Fatalf("prune at boundary: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("PruneExpired(before==not_after) deleted %d, want 0 (Lt is strict)", n)
+	}
+	if _, err := s.Get(ctx, id); err != nil {
+		t.Errorf("record pruned at the boundary instant, want kept: %v", err)
+	}
+
+	// ...and removes it one second past the boundary.
+	n, err = s.PruneExpired(ctx, fixed.Add(time.Second))
+	if err != nil {
+		t.Fatalf("prune past boundary: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("PruneExpired(before=not_after+1s) deleted %d, want 1", n)
+	}
+	if _, err := s.Get(ctx, id); !errors.Is(err, ErrNotFound) {
+		t.Errorf("record survived one second past the boundary, want pruned: %v", err)
+	}
+}
+
+// TestPruneExpiredGracePeriod pins the partitioning a past cutoff produces
+// (hr2.9): PruneExpired(before) with before in the past spares records that
+// lapsed AFTER the cutoff (recently expired, still within the grace window) and
+// removes only those that lapsed at or before it. This is the behavior the
+// prune-expired --older-than flag yields via pruneCutoff(now, grace).
+func TestPruneExpiredGracePeriod(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "prune-grace:project:x"
+	subj := Authenticated("sub-A")
+	now := time.Now().UTC()
+	cutoff := now.Add(-24 * time.Hour) // grace = 24h
+	longAgo := now.Add(-48 * time.Hour)
+	recently := now.Add(-1 * time.Hour) // expired, but inside the grace window
+
+	mk := func(id string, na time.Time) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A", CreatedAt: longAgo, NotAfter: &na}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+		t.Cleanup(func() { cleanupErr(t, id, s.Delete(ctx, id, subj)) })
+	}
+	mk("f0000000-0000-0000-0000-000000000001", longAgo)  // lapsed before cutoff -> pruned
+	mk("f0000000-0000-0000-0000-000000000002", recently) // lapsed within grace -> kept
+
+	n, err := s.PruneExpired(ctx, cutoff)
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("PruneExpired(now-24h grace): deleted %d, want 1 (only the record older than the grace window)", n)
+	}
+	if _, err := s.Get(ctx, "f0000000-0000-0000-0000-000000000001"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("record older than grace should be pruned, got %v", err)
+	}
+	if _, err := s.Get(ctx, "f0000000-0000-0000-0000-000000000002"); err != nil {
+		t.Errorf("recently-expired record (within grace) should survive, got %v", err)
 	}
 }
 
