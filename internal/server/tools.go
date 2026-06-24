@@ -360,9 +360,9 @@ func validCitationKind(k string) bool {
 
 // toMemory builds the common store.Memory from the shared store fields. The
 // caller supplies the server-set identity (owner/actor) and creation instant;
-// scheduled records additionally set NotBefore/NotAfter on the result. Both
-// store_memory and schedule_memory funnel through here so their record shape
-// stays aligned.
+// for scheduled records the caller then sets NotBefore/NotAfter on the returned
+// value. Both store_memory and schedule_memory funnel through here so their
+// record shape stays aligned.
 func (a storeArgs) toMemory(owner, actor string, createdAt time.Time) store.Memory {
 	return store.Memory{
 		ID:        uuid.NewString(),
@@ -390,7 +390,7 @@ func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	m := a.toMemory(subj.Owner(), actorFromContext(ctx), time.Now().UTC())
+	m := a.toMemory(subj.Owner(), actorFromContext(ctx), d.clock())
 	return m.ID, d.st.Upsert(ctx, m, vec)
 }
 

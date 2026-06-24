@@ -232,13 +232,38 @@ func authedContext(t *testing.T, sub string) context.Context {
 // deterministically. With the clock pinned to the year 2100, a not_after in 2099
 // — still future by the wall clock but PAST the injected now — must be rejected.
 func TestScheduleMemoryUsesInjectedClock(t *testing.T) {
-	d := testDeps(t)
-	d.now = func() time.Time { return time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC) }
+	// No Qdrant/embedder needed: the not_after-in-the-past rejection happens in
+	// parseWindow, before the store or embedder are touched — so this covers the
+	// clock seam even in a Docker-less CI run (hx5x.4).
+	d := &deps{now: func() time.Time { return time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC) }}
 	ctx := authedContext(t, "sub-A")
 	a := scheduleArgs{storeArgs: storeArgs{Content: "x", Scope: "clock:project:x",
 		Source: "user-said", Category: "decision"}, NotAfter: "2099-01-01T00:00:00Z"}
 	if _, err := d.scheduleMemory(ctx, a); err == nil {
 		t.Error("not_after before the injected now should be rejected; the handler must read the deps clock, not the wall clock")
+	}
+}
+
+// TestStoreMemoryUsesInjectedClock pins that store_memory stamps CreatedAt from
+// the deps clock seam, not the wall clock (hx5x.7): clock() is documented as the
+// handler time source, so both store_memory and schedule_memory must read it.
+func TestStoreMemoryUsesInjectedClock(t *testing.T) {
+	d := testDeps(t)
+	fixed := time.Date(2055, 3, 4, 5, 6, 7, 0, time.UTC)
+	d.now = func() time.Time { return fixed }
+	ctx := authedContext(t, "sub-A")
+	id, err := d.storeMemory(ctx, storeArgs{Content: "x", Scope: "clock:project:store",
+		Source: "user-said", Category: "decision"})
+	if err != nil {
+		t.Fatalf("storeMemory: %v", err)
+	}
+	t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if !got.CreatedAt.Equal(fixed) {
+		t.Errorf("store_memory CreatedAt = %v, want injected %v (handler must read d.clock())", got.CreatedAt, fixed)
 	}
 }
 

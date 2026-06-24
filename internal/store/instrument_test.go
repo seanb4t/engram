@@ -23,9 +23,11 @@ var (
 // withSpanRecorder installs a process-wide SpanRecorder-backed TracerProvider on
 // first use and returns it. OTel's global delegate upgrades the package tracer to
 // a real provider only ONCE, so a per-test swap+restore would leave every span
-// test after the first recording into a dead provider. A single shared recorder
-// installed once sidesteps that; tests filter sr.Ended() by span name, so span
-// accumulation across tests is benign.
+// test after the first recording into a dead provider; a single shared recorder
+// installed once sidesteps that. The recorder ACCUMULATES every span for the rest
+// of the package run and span names repeat (many tests call PruneExpired/Search),
+// so a test MUST scope its lookup to the spans it produced: snapshot
+// len(sr.Ended()) before the call and search only sr.Ended()[before:].
 func withSpanRecorder(t *testing.T) *tracetest.SpanRecorder {
 	t.Helper()
 	spanRecorderOnce.Do(func() {
@@ -49,11 +51,12 @@ func TestStoreSearchEmitsSpan(t *testing.T) {
 	sr := withSpanRecorder(t)
 
 	// testStore ensures a 3-dim collection (store_test.go: EnsureCollection(ctx, 3)).
+	before := len(sr.Ended()) // scope the lookup to the span this call produces
 	_, err := st.Search(context.Background(), "repo:spans", anonymous{}, make([]float32, 3), 5, nil)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	sp := spanByName(sr.Ended(), "store.Search")
+	sp := spanByName(sr.Ended()[before:], "store.Search")
 	if sp == nil {
 		t.Fatal("no store.Search span recorded")
 	}
@@ -82,7 +85,7 @@ func TestStorePruneExpiredEmitsResultCount(t *testing.T) {
 	subj := Authenticated("sub-span")
 	now := time.Now().UTC()
 	expired := now.Add(-48 * time.Hour)
-	id := "d0000000-0000-0000-0000-000000000001"
+	id := "cafe0001-0000-0000-0000-000000000001" // unique to this test's shared-collection seed
 	m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-span", CreatedAt: now, NotAfter: &expired}
 	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("upsert: %v", err)
@@ -90,6 +93,7 @@ func TestStorePruneExpiredEmitsResultCount(t *testing.T) {
 	t.Cleanup(func() { cleanupErr(t, id, s.Delete(ctx, id, subj)) })
 
 	sr := withSpanRecorder(t)
+	before := len(sr.Ended()) // scope the lookup to the span this call produces
 	n, err := s.PruneExpired(ctx, now)
 	if err != nil {
 		t.Fatalf("PruneExpired: %v", err)
@@ -97,7 +101,7 @@ func TestStorePruneExpiredEmitsResultCount(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("PruneExpired deleted %d, want 1", n)
 	}
-	sp := spanByName(sr.Ended(), "store.PruneExpired")
+	sp := spanByName(sr.Ended()[before:], "store.PruneExpired")
 	if sp == nil {
 		t.Fatal("no store.PruneExpired span recorded")
 	}
