@@ -66,7 +66,11 @@ func buildProviders(ctx context.Context, cfg Config) (otellog.LoggerProvider, Sh
 	if err != nil {
 		return nil, nil, err
 	}
-	mp := metric.NewMeterProvider(metric.WithReader(metric.NewPeriodicReader(metricExp)), metric.WithResource(res))
+	mp := metric.NewMeterProvider(
+		metric.WithReader(metric.NewPeriodicReader(metricExp)),
+		metric.WithResource(res),
+		metric.WithView(metricViews()...),
+	)
 
 	logOpts := []otlploggrpc.Option{
 		otlploggrpc.WithEndpoint(cfg.OTLPEndpoint),
@@ -103,6 +107,26 @@ func buildProviders(ctx context.Context, cfg Config) (otellog.LoggerProvider, Sh
 		return nil
 	}
 	return lp, shutdown, nil
+}
+
+// durationBucketsMs are the explicit histogram boundaries (milliseconds) for
+// engram's own *.duration instruments. The OTel SDK default boundaries begin at
+// 0/5/10/… which collapse every sub-5ms operation (cache-hit token verify, small
+// Qdrant reads) into one bucket, hiding fast-path p50/p99. These add 0.5/1/2/3ms
+// resolution at the low end while keeping the familiar high end out to 10s.
+var durationBucketsMs = []float64{0.5, 1, 2, 3, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000}
+
+// metricViews customizes aggregation for engram's instruments. It targets ONLY
+// the engram.*.duration histograms (recorded in ms); the otelgrpc / otelhttp
+// client and server duration histograms are left on their semconv-native
+// (seconds) buckets — a single ms boundary set would be wrong for them.
+func metricViews() []metric.View {
+	return []metric.View{
+		metric.NewView(
+			metric.Instrument{Name: "engram.*.duration"},
+			metric.Stream{Aggregation: metric.AggregationExplicitBucketHistogram{Boundaries: durationBucketsMs}},
+		),
+	}
 }
 
 // buildResource assembles the OTel resource from the full idiomatic detector
