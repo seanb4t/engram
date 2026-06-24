@@ -68,15 +68,22 @@ var reindexCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if reindexDryRun {
-			cmd.Printf("dry-run: %d record(s) would be re-embedded into %q at dim %d\n",
-				res.Scanned, reindexTarget, dim)
-			return nil
-		}
-		cmd.Printf("re-embedded %d/%d record(s) into %q at dim %d (%d skipped, no content); source left untouched — verify, then set ENGRAM_QDRANT_COLLECTION=%s and restart to cut over\n",
-			res.Upserted, res.Scanned, reindexTarget, dim, res.Skipped, reindexTarget)
+		cmd.Println(reindexSummary(res, reindexTarget, dim, reindexDryRun))
 		return nil
 	},
+}
+
+// reindexSummary renders the operator-facing one-line result of a reindex run.
+// Kept pure (no I/O) so the dry-run vs cutover wording is unit-testable without a
+// live Qdrant.
+func reindexSummary(res store.ReindexResult, target string, dim uint64, dryRun bool) string {
+	if dryRun {
+		return fmt.Sprintf("dry-run: %d record(s) would be re-embedded into %q at dim %d",
+			res.Scanned, target, dim)
+	}
+	return fmt.Sprintf("re-embedded %d/%d record(s) into %q at dim %d (%d skipped, no content); "+
+		"source left untouched — verify, then set ENGRAM_QDRANT_COLLECTION=%s and restart to cut over",
+		res.Upserted, res.Scanned, target, dim, res.Skipped, target)
 }
 
 func init() {
@@ -86,6 +93,6 @@ func init() {
 	reindexCmd.Flags().BoolVar(&reindexDryRun, "dry-run", false,
 		"scan and count without creating the target or writing")
 	reindexCmd.Flags().DurationVar(&reindexTimeout, "timeout", 30*time.Minute,
-		"max wall-clock for the reindex (0 disables); also cancellable via Ctrl-C")
+		"max wall-clock for the reindex; 0 means no deadline (Ctrl-C or SIGTERM aborts either way)")
 	rootCmd.AddCommand(reindexCmd)
 }

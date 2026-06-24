@@ -78,7 +78,11 @@ func terminateQdrant(c *tcqdrant.QdrantContainer) {
 	_ = c.Terminate(ctx)
 }
 
-func testStore(t *testing.T) *Store {
+// dialTestClient dials the integration-test Qdrant and returns the bare client.
+// Skips when no Qdrant is available. It is the single dialing primitive: testStore
+// wraps it with a ready collection, and the reindex tests use it directly to drive
+// two collections and read points back verbatim.
+func dialTestClient(t *testing.T) *qdrant.Client {
 	t.Helper()
 	if testQdrantAddr == "" {
 		t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
@@ -95,7 +99,12 @@ func testStore(t *testing.T) *Store {
 	if err != nil {
 		t.Fatalf("client: %v", err)
 	}
-	s := New(c, "mem_eval_test")
+	return c
+}
+
+func testStore(t *testing.T) *Store {
+	t.Helper()
+	s := New(dialTestClient(t), "mem_eval_test")
 	if err := s.EnsureCollection(context.Background(), 3); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
