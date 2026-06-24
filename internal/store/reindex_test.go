@@ -7,8 +7,6 @@ import (
 	"context"
 	"errors"
 	"math"
-	"net"
-	"strconv"
 	"testing"
 	"time"
 
@@ -32,29 +30,6 @@ func l2normalize(v []float32) []float32 {
 		out[i] = x / n
 	}
 	return out
-}
-
-// dialTestClient mirrors testStore's dialing but returns the bare client so a
-// reindex test can drive two collections (source + target) and read points back
-// verbatim, including vectors. Skips when no Qdrant is available.
-func dialTestClient(t *testing.T) *qdrant.Client {
-	t.Helper()
-	if testQdrantAddr == "" {
-		t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
-	}
-	host, portStr, err := net.SplitHostPort(testQdrantAddr)
-	if err != nil {
-		t.Fatalf("invalid Qdrant address %q: %v", testQdrantAddr, err)
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil || port <= 0 {
-		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, testQdrantAddr, err)
-	}
-	c, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
-	if err != nil {
-		t.Fatalf("client: %v", err)
-	}
-	return c
 }
 
 // scrolledPoint is the verbatim shape a reindex test asserts against: the raw
@@ -178,6 +153,55 @@ func embed4Vec(content string) []float32 {
 // from the source (3), so a passing test proves a dimension-changing reindex.
 func embed4(_ context.Context, content string) ([]float32, error) {
 	return embed4Vec(content), nil
+}
+
+func TestReindexOptionsValidate(t *testing.T) {
+	cases := []struct {
+		name    string
+		opts    ReindexOptions
+		wantErr bool
+	}{
+		{"valid", ReindexOptions{Target: "tgt", Dim: 4}, false},
+		{"empty target", ReindexOptions{Target: "", Dim: 4}, true},
+		{"zero dim", ReindexOptions{Target: "tgt", Dim: 0}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.opts.Validate()
+			if tc.wantErr && err == nil {
+				t.Fatalf("Validate(%+v) = nil, want error", tc.opts)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("Validate(%+v) = %v, want nil", tc.opts, err)
+			}
+		})
+	}
+}
+
+// TestReindexRejectsInvalidArgs exercises the validation guards that fire before
+// any Qdrant call, so it runs even where no Qdrant container is available (a nil
+// client is safe — the round-trip tests Skip in that case, leaving these guards
+// otherwise uncovered).
+func TestReindexRejectsInvalidArgs(t *testing.T) {
+	ctx := context.Background()
+	s := New(nil, "src")
+	cases := []struct {
+		name  string
+		opts  ReindexOptions
+		embed EmbedFunc
+	}{
+		{"empty target", ReindexOptions{Target: "", Dim: 4}, embed4},
+		{"zero dim", ReindexOptions{Target: "tgt", Dim: 0}, embed4},
+		{"target equals source", ReindexOptions{Target: "src", Dim: 4}, embed4},
+		{"nil embed", ReindexOptions{Target: "tgt", Dim: 4}, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := s.Reindex(ctx, tc.opts, tc.embed); err == nil {
+				t.Fatalf("Reindex(%+v) = nil error, want a validation error", tc.opts)
+			}
+		})
+	}
 }
 
 func TestReindexRoundtrip(t *testing.T) {

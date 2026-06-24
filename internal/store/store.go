@@ -1174,6 +1174,19 @@ type ReindexOptions struct {
 	DryRun bool
 }
 
+// Validate checks the options that depend only on the options themselves. The
+// target-differs-from-source and non-nil-embed preconditions are checked by
+// Reindex, which alone has the source collection and the embed callback.
+func (o ReindexOptions) Validate() error {
+	if o.Target == "" {
+		return errors.New("reindex: target collection is required")
+	}
+	if o.Dim == 0 {
+		return errors.New("reindex: target dimension must be > 0")
+	}
+	return nil
+}
+
 // ReindexResult reports what Reindex did: points scanned from the source,
 // points re-embedded and upserted into the target (0 on a dry run), and points
 // skipped because they carried no content to embed (Scanned == Upserted +
@@ -1197,9 +1210,12 @@ const reindexBatch = 256
 //
 // The payload is carried as the raw Qdrant map rather than round-tripped through
 // Memory: that preserves keys the Memory model does not know (forward/backward
-// schema drift) and, critically, does NOT synthesize an owner key on a
-// pre-isolation record — a Memory round-trip would write owner=="" and silently
-// drop it into the anonymous bucket.
+// schema drift) and, critically, keeps a pre-isolation record's owner key ABSENT.
+// An absent owner key and an explicit owner=="" are distinct states: an absent
+// key marks a needs-backfill record invisible to every read until
+// `engram migrate-set-owner` sets it, whereas owner=="" is the anonymous bucket.
+// A Memory round-trip would synthesize an explicit owner=="" and silently
+// relocate the record into that bucket.
 //
 // Fail-closed: an embed error aborts immediately and is returned wrapped; no
 // zero/garbage vector is ever written. A point carrying no content is skipped
@@ -1229,14 +1245,11 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 		}
 	}()
 
-	if opts.Target == "" {
-		return res, fmt.Errorf("reindex: target collection is required")
+	if err = opts.Validate(); err != nil {
+		return res, err
 	}
 	if opts.Target == s.collection {
 		return res, fmt.Errorf("reindex: target collection %q must differ from source", opts.Target)
-	}
-	if opts.Dim == 0 {
-		return res, fmt.Errorf("reindex: target dimension must be > 0")
 	}
 	if embed == nil {
 		return res, fmt.Errorf("reindex: embed function is required")
@@ -1278,35 +1291,38 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 		if err != nil {
 			return res, fmt.Errorf("reindex: scroll source: %w", err)
 		}
-		for _, p := range pts {
-			res.Scanned++
-			if opts.DryRun {
-				continue
+		// A dry run only needs the count, so tally the whole page and skip the
+		// per-point embed/upsert path entirely.
+		if opts.DryRun {
+			res.Scanned += uint64(len(pts))
+		} else {
+			for _, p := range pts {
+				res.Scanned++
+				content := p.Payload["content"].GetStringValue()
+				if content == "" {
+					// Nothing to embed — skip rather than write a meaningless vector
+					// for an empty string. Surfaced via ReindexResult.Skipped.
+					res.Skipped++
+					continue
+				}
+				var vec []float32
+				vec, err = embed(ctx, content)
+				if err != nil {
+					return res, fmt.Errorf("reindex: embed point %s: %w", p.Id.GetUuid(), err)
+				}
+				if _, err = s.client.Upsert(ctx, &qdrant.UpsertPoints{
+					CollectionName: opts.Target,
+					Wait:           qdrant.PtrOf(true),
+					Points: []*qdrant.PointStruct{{
+						Id:      p.Id,
+						Vectors: qdrant.NewVectors(vec...),
+						Payload: p.Payload,
+					}},
+				}); err != nil {
+					return res, fmt.Errorf("reindex: upsert point %s into %q: %w", p.Id.GetUuid(), opts.Target, err)
+				}
+				res.Upserted++
 			}
-			content := p.Payload["content"].GetStringValue()
-			if content == "" {
-				// Nothing to embed — skip rather than write a meaningless vector
-				// for an empty string. Surfaced via ReindexResult.Skipped.
-				res.Skipped++
-				continue
-			}
-			var vec []float32
-			vec, err = embed(ctx, content)
-			if err != nil {
-				return res, fmt.Errorf("reindex: embed point %s: %w", p.Id.GetUuid(), err)
-			}
-			if _, err = s.client.Upsert(ctx, &qdrant.UpsertPoints{
-				CollectionName: opts.Target,
-				Wait:           qdrant.PtrOf(true),
-				Points: []*qdrant.PointStruct{{
-					Id:      p.Id,
-					Vectors: qdrant.NewVectors(vec...),
-					Payload: p.Payload,
-				}},
-			}); err != nil {
-				return res, fmt.Errorf("reindex: upsert point %s into %q: %w", p.Id.GetUuid(), opts.Target, err)
-			}
-			res.Upserted++
 		}
 		if next == nil {
 			break
