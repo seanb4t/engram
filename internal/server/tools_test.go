@@ -227,11 +227,26 @@ func authedContext(t *testing.T, sub string) context.Context {
 	return captured
 }
 
+// TestScheduleMemoryUsesInjectedClock pins hr2.3/7: schedule_memory window
+// validation reads the deps clock, not the wall clock, so tests can pin "now"
+// deterministically. With the clock pinned to the year 2100, a not_after in 2099
+// — still future by the wall clock but PAST the injected now — must be rejected.
+func TestScheduleMemoryUsesInjectedClock(t *testing.T) {
+	d := testDeps(t)
+	d.now = func() time.Time { return time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC) }
+	ctx := authedContext(t, "sub-A")
+	a := scheduleArgs{storeArgs: storeArgs{Content: "x", Scope: "clock:project:x",
+		Source: "user-said", Category: "decision"}, NotAfter: "2099-01-01T00:00:00Z"}
+	if _, err := d.scheduleMemory(ctx, a); err == nil {
+		t.Error("not_after before the injected now should be rejected; the handler must read the deps clock, not the wall clock")
+	}
+}
+
 func TestScheduleMemoryValidation(t *testing.T) {
 	d := testDeps(t) // skips if no Qdrant
 	ctx := authedContext(t, "sub-A")
-	base := scheduleArgs{Content: "do X next week", Scope: "sched:project:x",
-		Source: "user-said", Category: "decision"}
+	base := scheduleArgs{storeArgs: storeArgs{Content: "do X next week",
+		Scope: "sched:project:x", Source: "user-said", Category: "decision"}}
 
 	// No window at all -> rejected.
 	if _, err := d.scheduleMemory(ctx, base); err == nil {
@@ -934,8 +949,9 @@ func TestListScheduledTool(t *testing.T) {
 	d := testDeps(t)
 	ctx := authedContext(t, "sub-A")
 	// A far-future scheduled memory is hidden from normal recall but shows in list_scheduled.
-	id, err := d.scheduleMemory(ctx, scheduleArgs{Content: "future", Scope: "ls:project:x",
-		Source: "user-said", Category: "decision", NotBefore: "2099-01-01T00:00:00Z"})
+	id, err := d.scheduleMemory(ctx, scheduleArgs{storeArgs: storeArgs{Content: "future",
+		Scope: "ls:project:x", Source: "user-said", Category: "decision"},
+		NotBefore: "2099-01-01T00:00:00Z"})
 	if err != nil {
 		t.Fatalf("schedule: %v", err)
 	}
