@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.9](https://github.com/seanb4t/engram/compare/v0.7.8...v0.7.9) (2026-06-24)
+
+
+### Features
+
+* **telemetry:** finer low-end histogram buckets for engram.*.duration (engram-e1kh) ([#193](https://github.com/seanb4t/engram/issues/193)) ([560e5d1](https://github.com/seanb4t/engram/commit/560e5d19a6ea4e69ae682f943320cca715de18c2))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/coreos/go-oidc/v3 to v3.19.0 ([#176](https://github.com/seanb4t/engram/issues/176)) ([7718af6](https://github.com/seanb4t/engram/commit/7718af684428ba35a01e17dbaec9e1d98965cfc5))
+* **deps:** update module github.com/testcontainers/testcontainers-go/modules/qdrant to v0.43.0 ([#181](https://github.com/seanb4t/engram/issues/181)) ([0e4e905](https://github.com/seanb4t/engram/commit/0e4e90562045ff2a661065c99aa2e41ea8e1745a))
+* gate Helm OpenAI-key secret, bump cookie to 0.7.2, clear docs-site lint ([#171](https://github.com/seanb4t/engram/issues/171)) ([ac47513](https://github.com/seanb4t/engram/commit/ac475137f12169590deb7fd2285daf639999d2d4))
+
 ## [0.7.8](https://github.com/seanb4t/engram/compare/v0.7.7...v0.7.8) (2026-06-20)
 
 
