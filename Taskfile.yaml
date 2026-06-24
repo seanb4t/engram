@@ -45,6 +45,10 @@ tasks:
   test:short:
     cmds:
       - go test -short ./...
+  bench:
+    desc: Run Go microbenchmarks for hot paths (no live Qdrant required)
+    cmds:
+      - go test -run '^$' -bench=. -benchmem ./...
 
   lint:
     desc: Run all linters
