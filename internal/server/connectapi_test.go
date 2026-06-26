@@ -249,6 +249,25 @@ func TestConnectTagsFilter(t *testing.T) {
 	}
 }
 
+func TestMemoryToProtoMapsSummary(t *testing.T) {
+	pb := memoryToProto(store.Memory{ID: "1", Summary: "terse", SummarySource: "auto"})
+	if pb.Summary != "terse" || pb.SummarySource != "auto" {
+		t.Fatalf("summary fields not mapped: %+v", pb)
+	}
+}
+
+func TestShapeProtoMemoriesFullFlag(t *testing.T) {
+	ms := []store.Memory{{ID: "1", Content: "long body over the cap here", Summary: "kept", SummarySource: "client"}}
+	full := shapeProtoMemories(ms, true, 4)
+	if full[0].Content == "" {
+		t.Fatal("full=true must keep content")
+	}
+	compact := shapeProtoMemories(ms, false, 4)
+	if compact[0].Content != "" || compact[0].Summary != "kept" {
+		t.Fatalf("full=false must clear content and keep summary: %+v", compact[0])
+	}
+}
+
 // Note: SearchDiscoveries shares the identical subjectFromConnectContext seam.
 // Coverage is skipped here because discovery-scope seeding requires a separate
 // collection setup and discovery-specific Upsert path not yet exposed from testDeps.

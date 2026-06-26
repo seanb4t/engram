@@ -45,6 +45,15 @@ type recallView struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 
+// summaryOrTruncation is the value the recall path shows in place of content:
+// the stored summary, else a truncation. The bool reports truncation.
+func summaryOrTruncation(m store.Memory, maxChars int) (string, bool) {
+	if m.Summary != "" {
+		return m.Summary, false
+	}
+	return truncateForRecall(m.Content, maxChars)
+}
+
 // truncateForRecall returns a head-truncation of content (rune-safe) and whether
 // it was cut. Short content is returned unchanged.
 func truncateForRecall(content string, maxChars int) (string, bool) {
