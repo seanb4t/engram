@@ -70,6 +70,15 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("ENGRAM_OPENAI_BASE_URL %q: missing host", c.OpenAI.BaseURL))
 	}
 
+	if c.Summarize.Model != "" {
+		switch n, err := strconv.ParseUint(c.Summarize.MaxChars, 10, 64); {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_MAX_CHARS %q: must be a positive integer: %w", c.Summarize.MaxChars, err))
+		case n == 0:
+			errs = append(errs, errors.New("ENGRAM_SUMMARY_MAX_CHARS must be greater than 0"))
+		}
+	}
+
 	if len(errs) == 0 {
 		return nil
 	}

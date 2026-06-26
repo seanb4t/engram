@@ -20,13 +20,14 @@ import (
 // where the consumer already validates them (e.g. embed.dim is parsed by the
 // store with a fail-fast error), so unmarshal never silently coerces.
 type Config struct {
-	Server ServerConfig `koanf:"server"`
-	Qdrant QdrantConfig `koanf:"qdrant"`
-	Embed  EmbedConfig  `koanf:"embed"`
-	OpenAI OpenAIConfig `koanf:"openai"`
-	OIDC   OIDCConfig   `koanf:"oidc"`
-	UI     UIConfig     `koanf:"ui"`
-	Log    LogConfig    `koanf:"log"`
+	Server    ServerConfig    `koanf:"server"`
+	Qdrant    QdrantConfig    `koanf:"qdrant"`
+	Embed     EmbedConfig     `koanf:"embed"`
+	Summarize SummarizeConfig `koanf:"summarize"`
+	OpenAI    OpenAIConfig    `koanf:"openai"`
+	OIDC      OIDCConfig      `koanf:"oidc"`
+	UI        UIConfig        `koanf:"ui"`
+	Log       LogConfig       `koanf:"log"`
 }
 
 // ServerConfig is engram's HTTP-listener surface: where the process binds and
@@ -48,6 +49,14 @@ type QdrantConfig struct {
 type EmbedConfig struct {
 	Model string `koanf:"model"`
 	Dim   string `koanf:"dim"`
+}
+
+// SummarizeConfig selects the recall-summary model and the character cap shared
+// by the summarizer and recall truncation. Empty Model disables auto-summary
+// (presence-enables, like OIDC issuer); MaxChars defaults to "280".
+type SummarizeConfig struct {
+	Model    string `koanf:"model"`
+	MaxChars string `koanf:"max_chars"`
 }
 
 // OpenAIConfig is the OpenAI-compatible /v1/embeddings endpoint engram calls to

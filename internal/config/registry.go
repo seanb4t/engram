@@ -29,6 +29,8 @@ var registry = []field{
 	{Key: "qdrant.collection", Env: "ENGRAM_QDRANT_COLLECTION", Legacy: "MEM_QDRANT_COLLECTION", Default: "mem_eval"},
 	{Key: "embed.model", Env: "ENGRAM_EMBED_MODEL", Legacy: "MEM_EMBED_MODEL", Default: "ollama/bge-m3"},
 	{Key: "embed.dim", Env: "ENGRAM_EMBED_DIM", Legacy: "MEM_EMBED_DIM", Default: "1024"},
+	{Key: "summarize.model", Env: "ENGRAM_SUMMARY_MODEL"},
+	{Key: "summarize.max_chars", Env: "ENGRAM_SUMMARY_MAX_CHARS", Default: "280"},
 	{Key: "openai.base_url", Env: "ENGRAM_OPENAI_BASE_URL", Legacy: "MEM_LITELLM_URL", Default: "http://localhost:4000"},
 	{Key: "openai.api_key", Env: "ENGRAM_OPENAI_API_KEY", Legacy: "MEM_LITELLM_KEY"},
 	{Key: "oidc.issuer", Env: "ENGRAM_OIDC_ISSUER", Legacy: "MEM_OIDC_ISSUER", Flag: "oidc-issuer"},
