@@ -262,14 +262,20 @@ Fill summaries for memories that do not have one (`summary_source=auto`).
 Auto-generated summaries are created offline using the configured model.
 
 ```bash
-engram summarize-missing [--scope <scope>] [--limit <n>]
+engram summarize-missing (--scope <scope> | --all-scopes) [flags]
 ```
 
-| Flag | Type | Description |
-|------|------|-------------|
-| `--scope` | string | Memory scope to summarize within (required unless using default spine) |
-| `--limit` | uint64 | Maximum memories to summarize per invocation (default 10) |
+**Either `--scope` or `--all-scopes` is required.**
 
-Requires `ENGRAM_SUMMARY_MODEL` environment variable (e.g. `gpt-4o-mini`).
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--scope` | string | `""` | Only summarize records in this scope |
+| `--all-scopes` | bool | `false` | Sweep every scope (required if `--scope` is omitted) |
+| `--older-than` | duration | `0` | Only records created at least this long ago (0 = any age) |
+| `--limit` | int | `0` | Max records to scan (0 = no cap) |
+| `--dry-run` | bool | `false` | Count eligible records without writing |
+| `--timeout` | duration | `30m` | Max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C |
+
+Requires `ENGRAM_SUMMARY_MODEL` environment variable (e.g. `gpt-4o-mini`); the command errors if it is unset.
 Creates summaries with `summary_source=auto` and stores them back in place.
 Respects `ENGRAM_SUMMARY_MAX_CHARS` (default 280) for summary length.
