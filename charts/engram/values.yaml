@@ -37,6 +37,14 @@ memory:
     caBundle:
       configMapName: ""
       key: ca.crt # key inside the ConfigMap holding the PEM bundle
+  # Auto-summary for curated memories. Empty model = disabled (recall returns
+  # only client-authored summaries). When set, the server digests memories that
+  # lack a summary using this chat model, served by the SAME OpenAI-compatible
+  # endpoint as the embedder (memory.openai.baseURL + apiKeySecret). maxChars
+  # caps generated-summary length and is also the recall-truncation cap.
+  summarize:
+    model: "" # ENGRAM_SUMMARY_MODEL, e.g. "gpt-4o-mini"; empty disables auto-summary
+    maxChars: 280 # ENGRAM_SUMMARY_MAX_CHARS
   qdrant:
     collection: "memory"
   oidc:
