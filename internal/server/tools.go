@@ -25,6 +25,7 @@ import (
 	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/embed"
 	"github.com/seanb4t/engram/internal/store"
+	"github.com/seanb4t/engram/internal/summarize"
 	"github.com/seanb4t/engram/internal/telemetry"
 )
 
@@ -164,6 +165,30 @@ func summaryMaxChars(cfg *config.Config) int {
 func embedderFromConfig(cfg *config.Config) *embed.Client {
 	return embed.New(cfg.OpenAI.BaseURL, cfg.OpenAI.APIKey, cfg.Embed.Model,
 		embed.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)))
+}
+
+// summarizerFromConfig builds the chat-completions summarizer from config.
+func summarizerFromConfig(cfg *config.Config) *summarize.Client {
+	return summarize.New(cfg.OpenAI.BaseURL, cfg.OpenAI.APIKey, cfg.Summarize.Model, summaryMaxChars(cfg),
+		summarize.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)))
+}
+
+// StoreAndSummarizerFromEnv builds the store + summarizer + cap for the
+// summarize-missing command. Errors when ENGRAM_SUMMARY_MODEL is unset
+// (auto-summary disabled).
+func StoreAndSummarizerFromEnv() (*store.Store, *summarize.Client, int, error) {
+	cfg, err := loadAndValidate()
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	if cfg.Summarize.Model == "" {
+		return nil, nil, 0, fmt.Errorf("ENGRAM_SUMMARY_MODEL is empty: auto-summary is disabled")
+	}
+	st, err := ensureStoreFromConfig(cfg)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	return st, summarizerFromConfig(cfg), summaryMaxChars(cfg), nil
 }
 
 // warnOwnerlessRecords loudly warns at startup when pre-isolation (owner-less)
