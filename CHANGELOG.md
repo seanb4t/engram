@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.11](https://github.com/seanb4t/engram/compare/v0.7.10...v0.7.11) (2026-06-26)
+
+
+### Bug Fixes
+
+* **deps:** update dependency @astrojs/starlight to ^0.41.0 ([#212](https://github.com/seanb4t/engram/issues/212)) ([4afb026](https://github.com/seanb4t/engram/commit/4afb026727f14867202a9121b715d4dc00279faa))
+* **ui:** rebuild vendored SPA after svelte 5.56.4 bump ([#214](https://github.com/seanb4t/engram/issues/214)) ([efe5447](https://github.com/seanb4t/engram/commit/efe5447aaf9b660249ce4e8e7c62b526cbbcabcc))
+
 ## [0.7.10](https://github.com/seanb4t/engram/compare/v0.7.9...v0.7.10) (2026-06-26)
 
 
