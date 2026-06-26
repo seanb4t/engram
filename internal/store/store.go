@@ -913,8 +913,10 @@ func (s *Store) FetchForUpdate(ctx context.Context, id string, subj Subject) (ou
 // is non-nil it also sets visibility (true → "shared", false → ""); nil leaves
 // visibility unchanged so a content edit never silently unshares. tags follows
 // the same presence-signal contract: non-nil replaces the full set (an empty
-// slice clears), nil leaves the existing tags untouched.
-func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *bool, tags *[]string, vec []float32) (err error) {
+// slice clears), nil leaves the existing tags untouched. summary follows the
+// same presence-signal contract: non-nil replaces the summary (empty string
+// clears), nil leaves the existing summary untouched.
+func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *bool, tags *[]string, summary *string, vec []float32) (err error) {
 	ctx, span := tracer.Start(ctx, "store.Update")
 	defer span.End()
 	start := time.Now()
@@ -936,6 +938,14 @@ func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *
 	}
 	if tags != nil {
 		cur.Tags = *tags
+	}
+	if summary != nil {
+		cur.Summary = *summary
+		if *summary == "" {
+			cur.SummarySource, cur.SummaryModel = "", ""
+		} else {
+			cur.SummarySource, cur.SummaryModel = "client", ""
+		}
 	}
 	return s.Upsert(ctx, cur, vec)
 }

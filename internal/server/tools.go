@@ -266,6 +266,7 @@ type updateArgs struct {
 	Content string    `json:"content"`
 	Shared  *bool     `json:"shared,omitempty" jsonschema:"omit to keep current visibility; true=shared, false=private"`
 	Tags    *[]string `json:"tags,omitempty" jsonschema:"omit to keep current tags; supply to replace the full set (empty array clears)"`
+	Summary *string   `json:"summary,omitempty" jsonschema:"omit to keep current summary; supply to replace (empty string clears). If content changes and a caller-authored summary exists, you MUST address it (re-send to keep, update, or clear) or the update is rejected"`
 }
 
 type scopeArgs struct {
@@ -573,19 +574,28 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 	if err != nil {
 		return err
 	}
-	// Ownership gate before embedding: a single authoritative Get. A non-owner
-	// (or missing record) gets ErrNotFound here, so we never reach the billable
-	// embed call or a write. The fetched record is handed straight to Update, so
-	// the update path makes one Qdrant round-trip for ownership, not two.
+	// Ownership gate before embedding: one authoritative Get. A non-owner (or
+	// missing record) gets ErrNotFound here, before the billable embed or write.
 	cur, err := d.st.FetchForUpdate(ctx, a.ID, subj)
 	if err != nil {
 		return err
+	}
+	// Resolve the summary BEFORE embedding so a stale-summary rejection costs no
+	// embed call. The owner gate has already run, so a rejected caller never
+	// reaches here and never learns whether a summary exists.
+	value, apply, err := resolveSummaryUpdate(cur, a.Content != cur.Content, a.Summary)
+	if err != nil {
+		return err
+	}
+	var sumArg *string
+	if apply {
+		sumArg = &value
 	}
 	vec, err := d.em.Embed(ctx, a.Content)
 	if err != nil {
 		return err
 	}
-	return d.st.Update(ctx, cur, a.Content, a.Shared, a.Tags, vec)
+	return d.st.Update(ctx, cur, a.Content, a.Shared, a.Tags, sumArg, vec)
 }
 
 // Register wires the memory tools onto the MCP server. It accepts a pre-built
@@ -645,7 +655,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			return textResult(m.Content), m, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "update_memory", Description: "Replace a memory's content in place (re-embeds). Optionally set `shared` to toggle visibility (true=shared, false=private); omit to keep current visibility. Optionally set `tags` to replace the full tag set (empty array clears); omit to keep current tags."},
+	mcp.AddTool(s, &mcp.Tool{Name: "update_memory", Description: "Replace a memory's content in place (re-embeds). Optionally set `shared` to toggle visibility (true=shared, false=private); omit to keep current visibility. Optionally set `tags` to replace the full tag set (empty array clears); omit to keep current tags. Optionally set `summary` to replace the recall summary (empty string clears); omit to keep current. If you change content while a caller-authored summary exists, you must address the summary (re-send, update, or clear) or the update is rejected."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a updateArgs) (*mcp.CallToolResult, any, error) {
 			err := d.updateMemory(ctx, a)
 			return textResult("updated"), nil, err

@@ -656,7 +656,7 @@ func TestUpdateOwnerGateAndSharedFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchForUpdate owner: %v", err)
 	}
-	if err := s.Update(ctx, cur, "v2", nil, nil, vec); err != nil {
+	if err := s.Update(ctx, cur, "v2", nil, nil, nil, vec); err != nil {
 		t.Fatalf("owner update: %v", err)
 	}
 	got, err := s.Get(ctx, m.ID)
@@ -672,7 +672,7 @@ func TestUpdateOwnerGateAndSharedFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchForUpdate before unshare: %v", err)
 	}
-	if err := s.Update(ctx, cur, "v3", &no, nil, vec); err != nil {
+	if err := s.Update(ctx, cur, "v3", &no, nil, nil, vec); err != nil {
 		t.Fatalf("unshare update: %v", err)
 	}
 	got, err = s.Get(ctx, m.ID)
@@ -705,7 +705,7 @@ func TestUpdateTags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fetch (preserve): %v", err)
 	}
-	if err := s.Update(ctx, cur, "v2", nil, nil, vec); err != nil {
+	if err := s.Update(ctx, cur, "v2", nil, nil, nil, vec); err != nil {
 		t.Fatalf("update nil tags: %v", err)
 	}
 	got, err := s.Get(ctx, id)
@@ -722,7 +722,7 @@ func TestUpdateTags(t *testing.T) {
 		t.Fatalf("fetch (replace): %v", err)
 	}
 	repl := []string{"x", "y"}
-	if err := s.Update(ctx, cur, "v3", nil, &repl, vec); err != nil {
+	if err := s.Update(ctx, cur, "v3", nil, &repl, nil, vec); err != nil {
 		t.Fatalf("update replace: %v", err)
 	}
 	got, err = s.Get(ctx, id)
@@ -739,7 +739,7 @@ func TestUpdateTags(t *testing.T) {
 		t.Fatalf("fetch (clear): %v", err)
 	}
 	empty := []string{}
-	if err := s.Update(ctx, cur, "v4", nil, &empty, vec); err != nil {
+	if err := s.Update(ctx, cur, "v4", nil, &empty, nil, vec); err != nil {
 		t.Fatalf("update clear: %v", err)
 	}
 	got, err = s.Get(ctx, id)
@@ -1232,7 +1232,7 @@ func TestAnonBucketWriteSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchForUpdate anon on ownerless record: unexpected error: %v", err)
 	}
-	if err := s.Update(ctx, cur, "v2", nil, nil, []float32{0.2, 0.3, 0.4}); err != nil {
+	if err := s.Update(ctx, cur, "v2", nil, nil, nil, []float32{0.2, 0.3, 0.4}); err != nil {
 		t.Errorf("Update anon on ownerless record: unexpected error: %v", err)
 	}
 	got, err := s.Get(ctx, ownerless.ID)
