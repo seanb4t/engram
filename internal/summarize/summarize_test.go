@@ -59,6 +59,24 @@ func TestSummarizeErrorsOnEmptyChoices(t *testing.T) {
 	}
 }
 
+func TestSummarizeNon200IncludesStatusAndBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"error":"model overloaded"}`))
+	}))
+	defer srv.Close()
+	_, err := New(srv.URL, "k", "m", 280).Summarize(context.Background(), "x")
+	if err == nil {
+		t.Fatal("want error on 503, got nil")
+	}
+	if !strings.Contains(err.Error(), "503") {
+		t.Fatalf("error missing status code: %v", err)
+	}
+	if !strings.Contains(err.Error(), "model overloaded") {
+		t.Fatalf("error missing body detail: %v", err)
+	}
+}
+
 func TestSummarizeTruncatesToMaxChars(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"aaaaaaaaaaaaaaaaaaaa"}}]}`)) // 20 chars
