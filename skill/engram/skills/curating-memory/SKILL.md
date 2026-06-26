@@ -93,6 +93,19 @@ absent from `list_scheduled` is reached through ordinary recall, not missing.
 Recall is gated, but fetch-by-id (`get_memory`) is not. Operators reclaim lapsed
 records with the `engram prune-expired [--older-than DUR]` CLI.
 
+## Summaries
+
+Pass `summary` on `store_memory` or `update_memory` when you have explicit
+context on the caveat-bearing essence of the fact — `summary_source=client`.
+Recall returns compact summaries by default to keep the spine small; before
+acting on caveats or edge cases visible only in the summary, call `get_memory`
+(id fetch, always returns full content) or pass `full=true` on `search_memory`/`list_memory`.
+When `summary_source=auto` (offline-generated), the summary is lossy — rely
+on it only as orientation. Changing a memory's content while a caller-authored
+summary (`summary_source=client`) is present requires you to address it:
+re-send it (unchanged), update it (revised summary), or clear it (send empty
+`summary`) — otherwise the update is rejected.
+
 ## Tools and auth
 
 All tools are on the `engram` server: `mcp__engram__store_memory`,

@@ -49,6 +49,10 @@ tasks:
     desc: Run Go microbenchmarks for hot paths (no live Qdrant required)
     cmds:
       - go test -run '^$' -bench=. -benchmem ./...
+  eval:summary:
+    desc: Score whether the configured summary model preserves caveats (needs a live gateway+model)
+    cmds:
+      - ENGRAM_SUMMARY_EVAL=1 go test ./internal/summarize/ -run TestSummaryFidelity -v
 
   lint:
     desc: Run all linters

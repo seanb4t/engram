@@ -34,7 +34,9 @@ func memoryToProto(m store.Memory) *engramv1.Memory {
 		Repo: m.Repo, Workspace: m.Workspace, Worktree: m.Worktree, BaseDir: m.BaseDir,
 		Source: m.Source, Category: m.Category, Tags: m.Tags,
 		Actor: m.Actor, Owner: m.Owner, Visibility: m.Visibility,
-		CreatedAt: timestamppb.New(m.CreatedAt),
+		CreatedAt:     timestamppb.New(m.CreatedAt),
+		Summary:       m.Summary,
+		SummarySource: m.SummarySource,
 	}
 }
 
@@ -42,6 +44,23 @@ func memoriesToProto(ms []store.Memory) []*engramv1.Memory {
 	out := make([]*engramv1.Memory, len(ms))
 	for i, m := range ms {
 		out[i] = memoryToProto(m)
+	}
+	return out
+}
+
+// shapeProtoMemories mirrors the MCP recall contract over the Connect wire: when
+// not full, clear Content and surface a summary-or-truncation so default callers
+// pay summary-sized payloads. Callers opt into full content with full=true.
+func shapeProtoMemories(ms []store.Memory, full bool, maxChars int) []*engramv1.Memory {
+	out := make([]*engramv1.Memory, len(ms))
+	for i, m := range ms {
+		pb := memoryToProto(m)
+		if !full {
+			summary, _ := summaryOrTruncation(m, maxChars)
+			pb.Content = ""
+			pb.Summary = summary
+		}
+		out[i] = pb
 	}
 	return out
 }
@@ -78,7 +97,7 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&engramv1.ListMemoriesResponse{
-		Memories: memoriesToProto(ms), Total: total, Approximate: approximate,
+		Memories: shapeProtoMemories(ms, req.Msg.Full, a.d.summaryMaxChars), Total: total, Approximate: approximate,
 	}), nil
 }
 
@@ -99,7 +118,9 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&engramv1.SearchMemoriesResponse{Memories: memoriesToProto(ms)}), nil
+	return connect.NewResponse(&engramv1.SearchMemoriesResponse{
+		Memories: shapeProtoMemories(ms, req.Msg.Full, a.d.summaryMaxChars),
+	}), nil
 }
 
 func (a *engramAPI) GetMemory(ctx context.Context, req *connect.Request[engramv1.GetMemoryRequest]) (*connect.Response[engramv1.GetMemoryResponse], error) {

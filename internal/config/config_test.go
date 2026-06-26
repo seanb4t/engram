@@ -96,3 +96,41 @@ func TestLoadUnsetFlagDoesNotClobberEnv(t *testing.T) {
 		t.Errorf("Issuer = %q, want env value preserved (unset flag must not clobber)", cfg.OIDC.Issuer)
 	}
 }
+
+func TestSummarizeConfigDefaultsAndEnv(t *testing.T) {
+	t.Setenv("ENGRAM_SUMMARY_MODEL", "summary-cheap")
+	c, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.Summarize.Model != "summary-cheap" {
+		t.Errorf("Summarize.Model = %q, want summary-cheap", c.Summarize.Model)
+	}
+	if c.Summarize.MaxChars != "280" {
+		t.Errorf("Summarize.MaxChars = %q, want default 280", c.Summarize.MaxChars)
+	}
+}
+
+func TestValidateRejectsBadSummaryMaxCharsWhenEnabled(t *testing.T) {
+	c := &Config{
+		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "c"},
+		Embed:     EmbedConfig{Model: "m", Dim: "1024"},
+		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
+		Summarize: SummarizeConfig{Model: "summary-cheap", MaxChars: "0"},
+	}
+	if err := c.Validate(); err == nil {
+		t.Fatal("want error for ENGRAM_SUMMARY_MAX_CHARS=0 with model set, got nil")
+	}
+}
+
+func TestValidateIgnoresSummaryWhenDisabled(t *testing.T) {
+	c := &Config{
+		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "c"},
+		Embed:     EmbedConfig{Model: "m", Dim: "1024"},
+		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
+		Summarize: SummarizeConfig{Model: "", MaxChars: "garbage"},
+	}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("disabled summarize must not fail validation: %v", err)
+	}
+}

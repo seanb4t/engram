@@ -305,9 +305,13 @@ func TestScheduleMemoryValidation(t *testing.T) {
 		t.Fatalf("valid schedule: %v", err)
 	}
 	t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
-	hits, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x"})
+	hits, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
 	for _, h := range hits {
-		if h.ID == id {
+		m, ok := h.(store.Memory)
+		if !ok {
+			t.Fatalf("got element of type %T, want store.Memory", h)
+		}
+		if m.ID == id {
 			t.Error("future-scheduled memory leaked into normal list_memory")
 		}
 	}
@@ -321,10 +325,14 @@ func TestScheduleMemoryValidation(t *testing.T) {
 		t.Fatalf("past not_before should be accepted (immediately active): %v", err)
 	}
 	t.Cleanup(func() { _ = d.st.Delete(context.Background(), activeID, store.Authenticated("sub-A")) })
-	active, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x"})
+	active, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
 	found := false
 	for _, h := range active {
-		if h.ID == activeID {
+		m, ok := h.(store.Memory)
+		if !ok {
+			t.Fatalf("got element of type %T, want store.Memory", h)
+		}
+		if m.ID == activeID {
 			found = true
 		}
 	}
@@ -359,6 +367,38 @@ func TestStoreMemoryStampsOwnerHandler(t *testing.T) {
 	}
 	if got.Owner != "sub-stamp" {
 		t.Errorf("storeMemory did not stamp owner from subject: owner=%q, want %q", got.Owner, "sub-stamp")
+	}
+}
+
+// TestUpdateMemoryStaleSummaryGuard pins that updateMemory rejects a content
+// change when a caller-authored summary would go stale and the caller did not
+// address it (errStaleSummary). Integration: needs Qdrant.
+func TestUpdateMemoryStaleSummaryGuard(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-stale")
+
+	id := "e0000000-0000-0000-0000-000000000001"
+	scope := "stale:project:summary"
+	m := store.Memory{
+		ID: id, Content: "original content", Scope: scope,
+		Category: "convention", Source: "agent-inferred",
+		Owner: "sub-stale", Summary: "hand-written", SummarySource: "client",
+		CreatedAt: timeNow(),
+	}
+	if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete "+id, d.st.Delete(context.Background(), id, store.Authenticated("sub-stale")))
+	})
+
+	// Change content but omit summary — must be rejected with errStaleSummary.
+	err := d.updateMemory(ctx, updateArgs{
+		ID:      id,
+		Content: "changed content",
+	})
+	if !errors.Is(err, errStaleSummary) {
+		t.Errorf("updateMemory with changed content + unaddressed client summary: want errStaleSummary, got %v", err)
 	}
 }
 
@@ -436,16 +476,20 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	}()
 
 	// searchMemory with anonymous context must return ownerless, not shared.
-	hits, err := d.searchMemory(ctx, searchArgs{Query: "content", Scope: scope, K: 10})
+	hits, err := d.searchMemory(ctx, searchArgs{Query: "content", Scope: scope, K: 10, Full: true})
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}
 	foundOwnerless, foundShared := false, false
 	for _, h := range hits {
-		if h.ID == ownerlessID {
+		m, ok := h.(store.Memory)
+		if !ok {
+			t.Fatalf("got element of type %T, want store.Memory", h)
+		}
+		if m.ID == ownerlessID {
 			foundOwnerless = true
 		}
-		if h.ID == sharedID {
+		if m.ID == sharedID {
 			foundShared = true
 		}
 	}
@@ -457,16 +501,20 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	}
 
 	// list_memory handler with anonymous context must return ownerless, not shared.
-	mems, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10})
+	mems, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Full: true})
 	if err != nil {
 		t.Fatalf("listMemory: %v", err)
 	}
 	foundOwnerless, foundShared = false, false
 	for _, m := range mems {
-		if m.ID == ownerlessID {
+		mem, ok := m.(store.Memory)
+		if !ok {
+			t.Fatalf("got element of type %T, want store.Memory", m)
+		}
+		if mem.ID == ownerlessID {
 			foundOwnerless = true
 		}
-		if m.ID == sharedID {
+		if mem.ID == sharedID {
 			foundShared = true
 		}
 	}
@@ -653,23 +701,27 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 			t.Fatalf("seed %s: %v", m.ID, err)
 		}
 	}
-	ids := func(ms []store.Memory) map[string]bool {
+	ids := func(ms []any) map[string]bool {
 		out := map[string]bool{}
-		for _, m := range ms {
+		for _, h := range ms {
+			m, ok := h.(store.Memory)
+			if !ok {
+				t.Fatalf("ids: got element of type %T, want store.Memory", h)
+			}
 			out[m.ID] = true
 		}
 		return out
 	}
 
 	// Single tag: both alpha-carrying records, never the untagged one — on both handlers.
-	hits, err := d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha"}})
+	hits, err := d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha"}, Full: true})
 	if err != nil {
 		t.Fatalf("searchMemory alpha: %v", err)
 	}
 	if g := ids(hits); !g[alphaID] || !g[bothID] || g[plainID] {
 		t.Errorf("searchMemory alpha wrong: %v", g)
 	}
-	mems, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Tags: []string{"alpha"}})
+	mems, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Tags: []string{"alpha"}, Full: true})
 	if err != nil {
 		t.Fatalf("listMemory alpha: %v", err)
 	}
@@ -678,7 +730,7 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	}
 
 	// AND of two tags: only the record carrying both; the alpha-only record is excluded.
-	hits, err = d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha", "beta"}})
+	hits, err = d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha", "beta"}, Full: true})
 	if err != nil {
 		t.Fatalf("searchMemory AND: %v", err)
 	}
@@ -687,14 +739,14 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	}
 
 	// Omitted tags: passthrough returns all three — on both handlers.
-	hits, err = d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10})
+	hits, err = d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Full: true})
 	if err != nil {
 		t.Fatalf("searchMemory passthrough: %v", err)
 	}
 	if g := ids(hits); !g[alphaID] || !g[bothID] || !g[plainID] {
 		t.Errorf("searchMemory passthrough wrong: %v", g)
 	}
-	mems, err = d.listMemory(ctx, listArgs{Scope: scope, Limit: 10})
+	mems, err = d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Full: true})
 	if err != nil {
 		t.Fatalf("listMemory passthrough: %v", err)
 	}
@@ -902,14 +954,14 @@ func TestAuthedCrossActorSharedReadHandlers(t *testing.T) {
 	bctx := authedContext(t, "actor-B")
 
 	// searchMemory: B sees A's shared, not A's private.
-	hits, err := d.searchMemory(bctx, searchArgs{Query: "content", Scope: scope, K: 10})
+	hits, err := d.searchMemory(bctx, searchArgs{Query: "content", Scope: scope, K: 10, Full: true})
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}
 	assertVisibility(t, "searchMemory", hits, sharedID, privateID)
 
 	// listMemory: same guarantee through the no-query handler path.
-	mems, err := d.listMemory(bctx, listArgs{Scope: scope, Limit: 10})
+	mems, err := d.listMemory(bctx, listArgs{Scope: scope, Limit: 10, Full: true})
 	if err != nil {
 		t.Fatalf("listMemory: %v", err)
 	}
@@ -917,10 +969,14 @@ func TestAuthedCrossActorSharedReadHandlers(t *testing.T) {
 }
 
 // assertVisibility checks that wantID appears in got and denyID does not.
-func assertVisibility(t *testing.T, where string, got []store.Memory, wantID, denyID string) {
+func assertVisibility(t *testing.T, where string, got []any, wantID, denyID string) {
 	t.Helper()
 	var sawWant, sawDeny bool
-	for _, m := range got {
+	for _, h := range got {
+		m, ok := h.(store.Memory)
+		if !ok {
+			t.Fatalf("%s: assertVisibility: got element of type %T, want store.Memory", where, h)
+		}
 		switch m.ID {
 		case wantID:
 			sawWant = true
@@ -1071,5 +1127,18 @@ func TestStoreAndEmbedderFromEnvNoEnsureLoadsConfigOnce(t *testing.T) {
 
 	if loads != 1 {
 		t.Errorf("StoreAndEmbedderFromEnvNoEnsure loaded config %d times, want exactly 1", loads)
+	}
+}
+
+func TestToMemorySetsClientSummarySource(t *testing.T) {
+	withSummary := storeArgs{Content: "c", Scope: "s", Source: "user-said", Category: "decision", Summary: "terse"}
+	m := withSummary.toMemory("owner", "actor", time.Now())
+	if m.Summary != "terse" || m.SummarySource != "client" {
+		t.Fatalf("client summary not mapped: summary=%q source=%q", m.Summary, m.SummarySource)
+	}
+	noSummary := storeArgs{Content: "c", Scope: "s", Source: "user-said", Category: "decision"}
+	m2 := noSummary.toMemory("owner", "actor", time.Now())
+	if m2.Summary != "" || m2.SummarySource != "" {
+		t.Fatalf("absent summary must leave source empty: %+v", m2)
 	}
 }

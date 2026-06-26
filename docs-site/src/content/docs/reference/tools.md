@@ -46,6 +46,7 @@ or timestamps.
 | `workspace` | string | no | Workspace identifier |
 | `worktree_path` | string | no | Path to the git worktree |
 | `base_dir` | string | no | Base directory for the project |
+| `summary` | string | no | Short human-readable summary (caller-authored, `summary_source=client`). Omit for no summary. |
 
 Returns the stored record's `id`.
 
@@ -70,6 +71,7 @@ normally via `search_memory`/`list_memory`.
 | `workspace` | string | no | Workspace identifier |
 | `worktree_path` | string | no | Path to the git worktree |
 | `base_dir` | string | no | Base directory for the project |
+| `summary` | string | no | Short human-readable summary (caller-authored, `summary_source=client`). Omit for no summary. |
 | `not_before` | string | no | RFC3339; hide from recall until this time |
 | `not_after` | string | no | RFC3339; drop from recall at this time |
 
@@ -81,7 +83,7 @@ reclaim lapsed records with the `engram prune-expired [--older-than DUR]` CLI co
 ## search_memory
 
 Semantic (vector) search within a scope. Embeds `query` and returns the nearest
-memories.
+memories. By default returns compact summaries; pass `full=true` for complete content.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
@@ -89,6 +91,7 @@ memories.
 | `scope` | string | yes | Scope to search within |
 | `k` | uint64 | no | Number of results to return (default 8) |
 | `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter. Applied as a hard pre-filter, then results are ranked by vector similarity |
+| `full` | bool | no | Return full `content` instead of compact summaries (default `false`) |
 
 Returns a list of matching memory records.
 
@@ -97,13 +100,15 @@ Returns a list of matching memory records.
 ## list_memory
 
 List recent memories in a scope without a query. Intended for session-start
-bootstrap. Results are most-recent first.
+bootstrap. Results are most-recent first. By default returns compact summaries;
+pass `full=true` for complete content.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `scope` | string | yes | The scope to list memories from |
 | `limit` | uint64 | no | Maximum memories to return (default 20) |
 | `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter |
+| `full` | bool | no | Return full `content` instead of compact summaries (default `false`) |
 
 Returns a list of memory records.
 
@@ -143,8 +148,11 @@ retrievable directly by id here.
 ## update_memory
 
 Replace a memory's content in place. The content is re-embedded. Optionally
-toggle visibility or replace the tag set. The record's `id`, `created_at`, and
-ownership are preserved across the update.
+toggle visibility, replace the tag set, or update the summary. The record's `id`,
+`created_at`, and ownership are preserved across the update. **Important:** if
+the record has a caller-authored summary (`summary_source=client`), you must
+address it when changing content — re-send it (unchanged), update it (revised
+summary), or clear it (empty `summary`) — or the update is rejected.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
@@ -152,6 +160,7 @@ ownership are preserved across the update.
 | `content` | string | yes | The replacement text (re-embedded) |
 | `shared` | bool | no | `true` = shared, `false` = private; omit to keep current visibility |
 | `tags` | string[] | no | Replaces the full tag set; an empty array clears all tags. Omit to keep the current tags |
+| `summary` | string | no | Replace the summary; empty string clears it. Omit to keep the current summary. When changing `content`, must be addressed if `summary_source=client` |
 
 Only the record owner can update. Returns `"updated"` on success.
 
@@ -244,3 +253,29 @@ flag.
 
 Only the record owner can change visibility. Sharing grants read, never write.
 Returns `"visibility updated"` on success.
+
+---
+
+## CLI: summarize-missing
+
+Fill summaries for memories that do not have one (`summary_source=auto`).
+Auto-generated summaries are created offline using the configured model.
+
+```bash
+engram summarize-missing (--scope <scope> | --all-scopes) [flags]
+```
+
+**Either `--scope` or `--all-scopes` is required.**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--scope` | string | `""` | Only summarize records in this scope |
+| `--all-scopes` | bool | `false` | Sweep every scope (required if `--scope` is omitted) |
+| `--older-than` | duration | `0` | Only records created at least this long ago (0 = any age) |
+| `--limit` | int | `0` | Max records to scan (0 = no cap) |
+| `--dry-run` | bool | `false` | Count eligible records without writing |
+| `--timeout` | duration | `30m` | Max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C |
+
+Requires `ENGRAM_SUMMARY_MODEL` environment variable (e.g. `gpt-4o-mini`); the command errors if it is unset.
+Creates summaries with `summary_source=auto` and stores them back in place.
+Respects `ENGRAM_SUMMARY_MAX_CHARS` (default 280) for summary length.

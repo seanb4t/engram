@@ -25,6 +25,7 @@ import (
 	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/embed"
 	"github.com/seanb4t/engram/internal/store"
+	"github.com/seanb4t/engram/internal/summarize"
 	"github.com/seanb4t/engram/internal/telemetry"
 )
 
@@ -37,6 +38,8 @@ type deps struct {
 	// means wall-clock time.Now (see clock); tests inject a fixed clock to pin
 	// "now" deterministically, mirroring store.WithClock.
 	now func() time.Time
+	// summaryMaxChars is the recall truncation cap (ENGRAM_SUMMARY_MAX_CHARS).
+	summaryMaxChars int
 }
 
 // configLoad is the indirection seam for loading koanf config from the process
@@ -145,7 +148,20 @@ func buildDepsFromEnv() (*deps, error) {
 		return nil, err
 	}
 	warnOwnerlessRecords(st)
-	return &deps{st: st, em: embedderFromConfig(cfg)}, nil
+	return &deps{st: st, em: embedderFromConfig(cfg), summaryMaxChars: summaryMaxChars(cfg)}, nil
+}
+
+// summaryMaxChars parses the recall cap, defaulting to 280 on empty/invalid.
+func summaryMaxChars(cfg *config.Config) int {
+	n, err := strconv.Atoi(cfg.Summarize.MaxChars)
+	if err != nil || n <= 0 {
+		if cfg.Summarize.MaxChars != "" {
+			slog.Warn("ENGRAM_SUMMARY_MAX_CHARS is set but unparseable or non-positive; using default 280",
+				"value", cfg.Summarize.MaxChars)
+		}
+		return 280
+	}
+	return n
 }
 
 // embedderFromConfig builds the OpenAI-compatible embedder from an already-loaded
@@ -153,6 +169,32 @@ func buildDepsFromEnv() (*deps, error) {
 func embedderFromConfig(cfg *config.Config) *embed.Client {
 	return embed.New(cfg.OpenAI.BaseURL, cfg.OpenAI.APIKey, cfg.Embed.Model,
 		embed.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)))
+}
+
+// summarizerFromConfig builds the chat-completions summarizer from config.
+func summarizerFromConfig(cfg *config.Config) *summarize.Client {
+	return summarize.New(cfg.OpenAI.BaseURL, cfg.OpenAI.APIKey, cfg.Summarize.Model, summaryMaxChars(cfg),
+		summarize.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)))
+}
+
+// StoreAndSummarizerFromEnv builds the store + summarizer + resolved model name
+// + cap for the summarize-missing command. Errors when ENGRAM_SUMMARY_MODEL is
+// unset (auto-summary disabled). The model is returned (not re-read from the env
+// by the caller) so the value stamped on records as summary_model is exactly the
+// one the summarizer uses, regardless of which config layer supplied it.
+func StoreAndSummarizerFromEnv() (*store.Store, *summarize.Client, string, int, error) {
+	cfg, err := loadAndValidate()
+	if err != nil {
+		return nil, nil, "", 0, err
+	}
+	if cfg.Summarize.Model == "" {
+		return nil, nil, "", 0, fmt.Errorf("ENGRAM_SUMMARY_MODEL is empty: auto-summary is disabled")
+	}
+	st, err := ensureStoreFromConfig(cfg)
+	if err != nil {
+		return nil, nil, "", 0, err
+	}
+	return st, summarizerFromConfig(cfg), cfg.Summarize.Model, summaryMaxChars(cfg), nil
 }
 
 // warnOwnerlessRecords loudly warns at startup when pre-isolation (owner-less)
@@ -194,6 +236,7 @@ type storeArgs struct {
 	Workspace string   `json:"workspace,omitempty"`
 	Worktree  string   `json:"worktree_path,omitempty"`
 	BaseDir   string   `json:"base_dir,omitempty"`
+	Summary   string   `json:"summary,omitempty" jsonschema:"optional one-line recall summary shown in place of content; preserve negations/identifiers; omit to leave empty (operator backfill or truncation fills recall)"`
 }
 
 // scheduleArgs embeds storeArgs and adds the temporal window. The anonymous
@@ -243,12 +286,14 @@ type searchArgs struct {
 	Scope string   `json:"scope"`
 	K     uint64   `json:"k,omitempty"`
 	Tags  []string `json:"tags,omitempty" jsonschema:"optional; restrict to records carrying ALL listed tags"`
+	Full  bool     `json:"full,omitempty" jsonschema:"return full content instead of summaries (default false → compact summary view)"`
 }
 
 type listArgs struct {
 	Scope string   `json:"scope" jsonschema:"the scope to list memories from"`
 	Limit uint64   `json:"limit,omitempty" jsonschema:"max memories to return (default 20)"`
 	Tags  []string `json:"tags,omitempty" jsonschema:"optional; restrict to records carrying ALL listed tags"`
+	Full  bool     `json:"full,omitempty" jsonschema:"return full content instead of summaries (default false → compact summary view)"`
 }
 
 type listScheduledArgs struct {
@@ -266,6 +311,7 @@ type updateArgs struct {
 	Content string    `json:"content"`
 	Shared  *bool     `json:"shared,omitempty" jsonschema:"omit to keep current visibility; true=shared, false=private"`
 	Tags    *[]string `json:"tags,omitempty" jsonschema:"omit to keep current tags; supply to replace the full set (empty array clears)"`
+	Summary *string   `json:"summary,omitempty" jsonschema:"omit to keep current summary; supply to replace (empty string clears). If content changes and a caller-authored summary exists, you MUST address it (re-send to keep, update, or clear) or the update is rejected"`
 }
 
 type scopeArgs struct {
@@ -364,20 +410,26 @@ func validCitationKind(k string) bool {
 // value. Both store_memory and schedule_memory funnel through here so their
 // record shape stays aligned.
 func (a storeArgs) toMemory(owner, actor string, createdAt time.Time) store.Memory {
+	src := ""
+	if a.Summary != "" {
+		src = "client"
+	}
 	return store.Memory{
-		ID:        uuid.NewString(),
-		Content:   a.Content,
-		Scope:     a.Scope,
-		Repo:      a.Repo,
-		Workspace: a.Workspace,
-		Worktree:  a.Worktree,
-		BaseDir:   a.BaseDir,
-		Source:    a.Source,
-		Category:  a.Category,
-		Tags:      a.Tags,
-		Actor:     actor,
-		Owner:     owner,
-		CreatedAt: createdAt,
+		ID:            uuid.NewString(),
+		Content:       a.Content,
+		Scope:         a.Scope,
+		Repo:          a.Repo,
+		Workspace:     a.Workspace,
+		Worktree:      a.Worktree,
+		BaseDir:       a.BaseDir,
+		Source:        a.Source,
+		Category:      a.Category,
+		Tags:          a.Tags,
+		Summary:       a.Summary,
+		SummarySource: src,
+		Actor:         actor,
+		Owner:         owner,
+		CreatedAt:     createdAt,
 	}
 }
 
@@ -482,7 +534,7 @@ func subjectFromContext(ctx context.Context) (store.Subject, error) {
 	return SubjectFromTokenInfo(mcpauth.TokenInfoFromContext(ctx))
 }
 
-func (d *deps) listMemory(ctx context.Context, a listArgs) ([]store.Memory, error) {
+func (d *deps) listMemory(ctx context.Context, a listArgs) ([]any, error) {
 	if a.Limit == 0 {
 		a.Limit = 20
 	}
@@ -491,7 +543,10 @@ func (d *deps) listMemory(ctx context.Context, a listArgs) ([]store.Memory, erro
 		return nil, err
 	}
 	ms, _, _, err := d.st.List(ctx, a.Scope, subj, store.ListOptions{Limit: a.Limit, Tags: a.Tags})
-	return ms, err
+	if err != nil {
+		return nil, err
+	}
+	return shapeRecall(ms, a.Full, d.summaryMaxChars), nil
 }
 
 func (d *deps) listScheduled(ctx context.Context, a listScheduledArgs) ([]store.Memory, error) {
@@ -516,7 +571,7 @@ func (d *deps) listScheduled(ctx context.Context, a listScheduledArgs) ([]store.
 	return d.st.ListScheduled(ctx, a.Scope, subj, state, store.ListOptions{Limit: a.Limit})
 }
 
-func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]store.Memory, error) {
+func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]any, error) {
 	if a.K == 0 {
 		a.K = 8
 	}
@@ -528,7 +583,11 @@ func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]store.Memory, 
 	if err != nil {
 		return nil, err
 	}
-	return d.st.Search(ctx, a.Scope, subj, vec, a.K, a.Tags)
+	ms, err := d.st.Search(ctx, a.Scope, subj, vec, a.K, a.Tags)
+	if err != nil {
+		return nil, err
+	}
+	return shapeRecall(ms, a.Full, d.summaryMaxChars), nil
 }
 
 // effectiveDiscoveryScope resolves the scope filter for a discovery search:
@@ -573,19 +632,28 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 	if err != nil {
 		return err
 	}
-	// Ownership gate before embedding: a single authoritative Get. A non-owner
-	// (or missing record) gets ErrNotFound here, so we never reach the billable
-	// embed call or a write. The fetched record is handed straight to Update, so
-	// the update path makes one Qdrant round-trip for ownership, not two.
+	// Ownership gate before embedding: one authoritative Get. A non-owner (or
+	// missing record) gets ErrNotFound here, before the billable embed or write.
 	cur, err := d.st.FetchForUpdate(ctx, a.ID, subj)
 	if err != nil {
 		return err
+	}
+	// Resolve the summary BEFORE embedding so a stale-summary rejection costs no
+	// embed call. The owner gate has already run, so a rejected caller never
+	// reaches here and never learns whether a summary exists.
+	value, apply, err := resolveSummaryUpdate(cur, a.Content != cur.Content, a.Summary)
+	if err != nil {
+		return err
+	}
+	var sumArg *string
+	if apply {
+		sumArg = &value
 	}
 	vec, err := d.em.Embed(ctx, a.Content)
 	if err != nil {
 		return err
 	}
-	return d.st.Update(ctx, cur, a.Content, a.Shared, a.Tags, vec)
+	return d.st.Update(ctx, cur, a.Content, a.Shared, a.Tags, sumArg, vec)
 }
 
 // Register wires the memory tools onto the MCP server. It accepts a pre-built
@@ -605,7 +673,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 
 	s.AddReceivingMiddleware(instrumentTools(tm.Record))
 
-	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps."},
+	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps. Optionally pass `summary`: a one-line recall summary shown in place of content (keep negations/identifiers verbatim)."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeArgs) (*mcp.CallToolResult, any, error) {
 			id, err := d.storeMemory(ctx, a)
 			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id}, err
@@ -617,13 +685,13 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			return textResult(fmt.Sprintf("scheduled %s", id)), map[string]string{"id": id}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking."},
+	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a searchArgs) (*mcp.CallToolResult, any, error) {
 			hits, err := d.searchMemory(ctx, a)
 			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"memories": hits}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List recent memories in a scope without a query (session bootstrap). Most-recent first. Optionally pass `tags` to restrict to records carrying all listed tags (AND)."},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List recent memories in a scope without a query (session bootstrap). Most-recent first. Optionally pass `tags` to restrict to records carrying all listed tags (AND). Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listArgs) (*mcp.CallToolResult, any, error) {
 			mems, err := d.listMemory(ctx, a)
 			return textResult(fmt.Sprintf("%d memories", len(mems))), map[string]any{"memories": mems}, err
@@ -645,7 +713,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			return textResult(m.Content), m, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "update_memory", Description: "Replace a memory's content in place (re-embeds). Optionally set `shared` to toggle visibility (true=shared, false=private); omit to keep current visibility. Optionally set `tags` to replace the full tag set (empty array clears); omit to keep current tags."},
+	mcp.AddTool(s, &mcp.Tool{Name: "update_memory", Description: "Replace a memory's content in place (re-embeds). Optionally set `shared` to toggle visibility (true=shared, false=private); omit to keep current visibility. Optionally set `tags` to replace the full tag set (empty array clears); omit to keep current tags. Optionally set `summary` to replace the recall summary (empty string clears); omit to keep current. If you change content while a caller-authored summary exists, you must address the summary (re-send, update, or clear) or the update is rejected."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a updateArgs) (*mcp.CallToolResult, any, error) {
 			err := d.updateMemory(ctx, a)
 			return textResult("updated"), nil, err

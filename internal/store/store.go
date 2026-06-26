@@ -74,7 +74,15 @@ type Memory struct {
 	// Discovery-only (zero-valued for the curated four categories).
 	Kind      string     `json:"kind,omitempty"`      // "map" | "fact"
 	Citations []Citation `json:"citations,omitempty"` // >= 1 for discoveries
-	Summary   string     `json:"summary,omitempty"`
+	// Summary is a short recall line shown in place of Content by the recall
+	// path. Authored by the caller (SummarySource "client") or filled by the
+	// offline summarize-missing sweep ("auto"); "" means none.
+	Summary string `json:"summary,omitempty"`
+	// SummarySource is the trust signal: "client" | "auto" | "" (none).
+	SummarySource string `json:"summary_source,omitempty"`
+	// SummaryModel names the model that produced an "auto" summary (diagnostics);
+	// empty otherwise.
+	SummaryModel string `json:"summary_model,omitempty"`
 }
 
 // Citation anchors a discovery to a source so it can be verified and aged.
@@ -173,9 +181,13 @@ func payload(m Memory) map[string]any {
 	if m.NotAfter != nil {
 		p["not_after"] = m.NotAfter.Unix()
 	}
+	p["summary"] = m.Summary
+	p["summary_source"] = m.SummarySource
+	if m.SummaryModel != "" {
+		p["summary_model"] = m.SummaryModel
+	}
 	if m.Category == "discovery" {
 		p["kind"] = m.Kind
-		p["summary"] = m.Summary
 		cites := make([]any, len(m.Citations))
 		for i, c := range m.Citations {
 			cites[i] = map[string]any{
@@ -248,6 +260,12 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	}
 	if v, ok := p["summary"]; ok {
 		m.Summary = v.GetStringValue()
+	}
+	if v, ok := p["summary_source"]; ok {
+		m.SummarySource = v.GetStringValue()
+	}
+	if v, ok := p["summary_model"]; ok {
+		m.SummaryModel = v.GetStringValue()
 	}
 	if v, ok := p["citations"]; ok {
 		if lv := v.GetListValue(); lv != nil {
@@ -895,8 +913,10 @@ func (s *Store) FetchForUpdate(ctx context.Context, id string, subj Subject) (ou
 // is non-nil it also sets visibility (true → "shared", false → ""); nil leaves
 // visibility unchanged so a content edit never silently unshares. tags follows
 // the same presence-signal contract: non-nil replaces the full set (an empty
-// slice clears), nil leaves the existing tags untouched.
-func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *bool, tags *[]string, vec []float32) (err error) {
+// slice clears), nil leaves the existing tags untouched. summary follows the
+// same presence-signal contract: non-nil replaces the summary (empty string
+// clears), nil leaves the existing summary untouched.
+func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *bool, tags *[]string, summary *string, vec []float32) (err error) {
 	ctx, span := tracer.Start(ctx, "store.Update")
 	defer span.End()
 	start := time.Now()
@@ -918,6 +938,14 @@ func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *
 	}
 	if tags != nil {
 		cur.Tags = *tags
+	}
+	if summary != nil {
+		cur.Summary = *summary
+		if *summary == "" {
+			cur.SummarySource, cur.SummaryModel = "", ""
+		} else {
+			cur.SummarySource, cur.SummaryModel = "client", ""
+		}
 	}
 	return s.Upsert(ctx, cur, vec)
 }
