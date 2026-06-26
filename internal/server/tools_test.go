@@ -364,6 +364,38 @@ func TestStoreMemoryStampsOwnerHandler(t *testing.T) {
 	}
 }
 
+// TestUpdateMemoryStaleSummaryGuard pins that updateMemory rejects a content
+// change when a caller-authored summary would go stale and the caller did not
+// address it (errStaleSummary). Integration: needs Qdrant.
+func TestUpdateMemoryStaleSummaryGuard(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-stale")
+
+	id := "e0000000-0000-0000-0000-000000000001"
+	scope := "stale:project:summary"
+	m := store.Memory{
+		ID: id, Content: "original content", Scope: scope,
+		Category: "convention", Source: "agent-inferred",
+		Owner: "sub-stale", Summary: "hand-written", SummarySource: "client",
+		CreatedAt: timeNow(),
+	}
+	if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete "+id, d.st.Delete(context.Background(), id, store.Authenticated("sub-stale")))
+	})
+
+	// Change content but omit summary — must be rejected with errStaleSummary.
+	err := d.updateMemory(ctx, updateArgs{
+		ID:      id,
+		Content: "changed content",
+	})
+	if !errors.Is(err, errStaleSummary) {
+		t.Errorf("updateMemory with changed content + unaddressed client summary: want errStaleSummary, got %v", err)
+	}
+}
+
 func TestValidateStoreDiscovery(t *testing.T) {
 	good := storeDiscoveryArgs{
 		Content: "x", Kind: "map", Scope: "discovery:repo:X",

@@ -6,6 +6,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -144,6 +145,7 @@ func (s *Store) SummarizeMissing(ctx context.Context, opts SummarizeOptions, sum
 				continue
 			}
 			if _, ferr := s.FillSummary(ctx, m, summarize, opts.Model, opts.MaxChars); ferr != nil {
+				slog.WarnContext(ctx, "summarize-missing: fill failed", "id", m.ID, "err", ferr)
 				res.Failed++
 				continue
 			}
