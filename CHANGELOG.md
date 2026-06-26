@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.10](https://github.com/seanb4t/engram/compare/v0.7.9...v0.7.10) (2026-06-26)
+
+
+### Features
+
+* **summary:** auto-summary for curated memories (engram-cly5) ([#207](https://github.com/seanb4t/engram/issues/207)) ([d84ec95](https://github.com/seanb4t/engram/commit/d84ec95633c737718444785b970731699eb1d045))
+
 ## [0.7.9](https://github.com/seanb4t/engram/compare/v0.7.8...v0.7.9) (2026-06-24)
 
 
