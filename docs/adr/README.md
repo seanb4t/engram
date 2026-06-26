@@ -13,6 +13,9 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-4y7p](engram-4y7p-explicit-first-memory-summary-offline-operator-auto-fill.md) | 2026-06-26 | Accepted | Explicit-first memory summary with offline operator auto-fill |
+| [engram-ambu](engram-ambu-recall-returns-summary-by-default-full-content-opt.md) | 2026-06-26 | Accepted | Recall returns summary by default with full-content opt-in |
+| [engram-ddiw](engram-ddiw-reject-update-memory-content-change-unaddressed-client-summa.md) | 2026-06-26 | Accepted | Reject update_memory on content change with unaddressed client summary |
 | [engram-wtw](engram-wtw-keep-config-load-assembly-only-validate-via-separate-config.md) | 2026-06-14 | Accepted | Keep config.Load assembly-only; validate via a separate Config.Validate() |
 | [engram-d24](engram-d24-validate-data-plane-fields-only-listen-addr-is-serve-local-g.md) | 2026-06-14 | Accepted | Validate data-plane fields only; listen_addr is a serve-local guard |
 | [engram-jgq](engram-jgq-unify-config-under-engram-prefix-via-koanf-internal-config.md) | 2026-06-14 | Accepted | Unify config under ENGRAM_ prefix via koanf internal/config |

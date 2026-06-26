@@ -276,3 +276,4 @@ broadly — answering "is the cheap model good enough?" with data, not argument.
   retune it).
 - Whether the fidelity eval becomes a CI gate or a manual operator step before
   enabling auto in a given deployment.
+<!-- adr-capture: sha256=4f59f74dff4b5ca2; session=cli; ts=2026-06-26T01:06:21Z; adrs=engram-4y7p,engram-ambu,engram-ddiw -->
