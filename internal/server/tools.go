@@ -194,6 +194,7 @@ type storeArgs struct {
 	Workspace string   `json:"workspace,omitempty"`
 	Worktree  string   `json:"worktree_path,omitempty"`
 	BaseDir   string   `json:"base_dir,omitempty"`
+	Summary   string   `json:"summary,omitempty" jsonschema:"optional one-line recall summary shown in place of content; preserve negations/identifiers; omit to leave empty (operator backfill or truncation fills recall)"`
 }
 
 // scheduleArgs embeds storeArgs and adds the temporal window. The anonymous
@@ -365,20 +366,26 @@ func validCitationKind(k string) bool {
 // value. Both store_memory and schedule_memory funnel through here so their
 // record shape stays aligned.
 func (a storeArgs) toMemory(owner, actor string, createdAt time.Time) store.Memory {
+	src := ""
+	if a.Summary != "" {
+		src = "client"
+	}
 	return store.Memory{
-		ID:        uuid.NewString(),
-		Content:   a.Content,
-		Scope:     a.Scope,
-		Repo:      a.Repo,
-		Workspace: a.Workspace,
-		Worktree:  a.Worktree,
-		BaseDir:   a.BaseDir,
-		Source:    a.Source,
-		Category:  a.Category,
-		Tags:      a.Tags,
-		Actor:     actor,
-		Owner:     owner,
-		CreatedAt: createdAt,
+		ID:            uuid.NewString(),
+		Content:       a.Content,
+		Scope:         a.Scope,
+		Repo:          a.Repo,
+		Workspace:     a.Workspace,
+		Worktree:      a.Worktree,
+		BaseDir:       a.BaseDir,
+		Source:        a.Source,
+		Category:      a.Category,
+		Tags:          a.Tags,
+		Summary:       a.Summary,
+		SummarySource: src,
+		Actor:         actor,
+		Owner:         owner,
+		CreatedAt:     createdAt,
 	}
 }
 
@@ -615,7 +622,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 
 	s.AddReceivingMiddleware(instrumentTools(tm.Record))
 
-	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps."},
+	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps. Optionally pass `summary`: a one-line recall summary shown in place of content (keep negations/identifiers verbatim)."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeArgs) (*mcp.CallToolResult, any, error) {
 			id, err := d.storeMemory(ctx, a)
 			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id}, err

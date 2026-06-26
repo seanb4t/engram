@@ -1073,3 +1073,16 @@ func TestStoreAndEmbedderFromEnvNoEnsureLoadsConfigOnce(t *testing.T) {
 		t.Errorf("StoreAndEmbedderFromEnvNoEnsure loaded config %d times, want exactly 1", loads)
 	}
 }
+
+func TestToMemorySetsClientSummarySource(t *testing.T) {
+	withSummary := storeArgs{Content: "c", Scope: "s", Source: "user-said", Category: "decision", Summary: "terse"}
+	m := withSummary.toMemory("owner", "actor", time.Now())
+	if m.Summary != "terse" || m.SummarySource != "client" {
+		t.Fatalf("client summary not mapped: summary=%q source=%q", m.Summary, m.SummarySource)
+	}
+	noSummary := storeArgs{Content: "c", Scope: "s", Source: "user-said", Category: "decision"}
+	m2 := noSummary.toMemory("owner", "actor", time.Now())
+	if m2.Summary != "" || m2.SummarySource != "" {
+		t.Fatalf("absent summary must leave source empty: %+v", m2)
+	}
+}
