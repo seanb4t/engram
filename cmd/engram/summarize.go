@@ -69,8 +69,6 @@ var summarizeMissingCmd = &cobra.Command{
 	},
 }
 
-// summarizeModel echoes the configured model name for the result stamp. Read
-// from the env directly (the builder already validated it is non-empty).
 func summarizeModel() string { return os.Getenv("ENGRAM_SUMMARY_MODEL") }
 
 // summarizeSummary renders the operator-facing one-line result. Pure (no I/O) so

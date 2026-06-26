@@ -307,7 +307,10 @@ func TestScheduleMemoryValidation(t *testing.T) {
 	t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
 	hits, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
 	for _, h := range hits {
-		m := h.(store.Memory)
+		m, ok := h.(store.Memory)
+		if !ok {
+			t.Fatalf("got element of type %T, want store.Memory", h)
+		}
 		if m.ID == id {
 			t.Error("future-scheduled memory leaked into normal list_memory")
 		}
@@ -325,7 +328,10 @@ func TestScheduleMemoryValidation(t *testing.T) {
 	active, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
 	found := false
 	for _, h := range active {
-		m := h.(store.Memory)
+		m, ok := h.(store.Memory)
+		if !ok {
+			t.Fatalf("got element of type %T, want store.Memory", h)
+		}
 		if m.ID == activeID {
 			found = true
 		}
@@ -476,7 +482,10 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	}
 	foundOwnerless, foundShared := false, false
 	for _, h := range hits {
-		m := h.(store.Memory)
+		m, ok := h.(store.Memory)
+		if !ok {
+			t.Fatalf("got element of type %T, want store.Memory", h)
+		}
 		if m.ID == ownerlessID {
 			foundOwnerless = true
 		}
@@ -498,7 +507,10 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	}
 	foundOwnerless, foundShared = false, false
 	for _, m := range mems {
-		mem := m.(store.Memory)
+		mem, ok := m.(store.Memory)
+		if !ok {
+			t.Fatalf("got element of type %T, want store.Memory", m)
+		}
 		if mem.ID == ownerlessID {
 			foundOwnerless = true
 		}
@@ -692,7 +704,10 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	ids := func(ms []any) map[string]bool {
 		out := map[string]bool{}
 		for _, h := range ms {
-			m := h.(store.Memory)
+			m, ok := h.(store.Memory)
+			if !ok {
+				t.Fatalf("ids: got element of type %T, want store.Memory", h)
+			}
 			out[m.ID] = true
 		}
 		return out
@@ -958,7 +973,10 @@ func assertVisibility(t *testing.T, where string, got []any, wantID, denyID stri
 	t.Helper()
 	var sawWant, sawDeny bool
 	for _, h := range got {
-		m := h.(store.Memory)
+		m, ok := h.(store.Memory)
+		if !ok {
+			t.Fatalf("%s: assertVisibility: got element of type %T, want store.Memory", where, h)
+		}
 		switch m.ID {
 		case wantID:
 			sawWant = true

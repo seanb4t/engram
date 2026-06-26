@@ -155,6 +155,10 @@ func buildDepsFromEnv() (*deps, error) {
 func summaryMaxChars(cfg *config.Config) int {
 	n, err := strconv.Atoi(cfg.Summarize.MaxChars)
 	if err != nil || n <= 0 {
+		if cfg.Summarize.MaxChars != "" {
+			slog.Warn("ENGRAM_SUMMARY_MAX_CHARS is set but unparseable or non-positive; using default 280",
+				"value", cfg.Summarize.MaxChars)
+		}
 		return 280
 	}
 	return n
