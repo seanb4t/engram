@@ -37,6 +37,8 @@ type deps struct {
 	// means wall-clock time.Now (see clock); tests inject a fixed clock to pin
 	// "now" deterministically, mirroring store.WithClock.
 	now func() time.Time
+	// summaryMaxChars is the recall truncation cap (ENGRAM_SUMMARY_MAX_CHARS).
+	summaryMaxChars int
 }
 
 // configLoad is the indirection seam for loading koanf config from the process
@@ -145,7 +147,16 @@ func buildDepsFromEnv() (*deps, error) {
 		return nil, err
 	}
 	warnOwnerlessRecords(st)
-	return &deps{st: st, em: embedderFromConfig(cfg)}, nil
+	return &deps{st: st, em: embedderFromConfig(cfg), summaryMaxChars: summaryMaxChars(cfg)}, nil
+}
+
+// summaryMaxChars parses the recall cap, defaulting to 280 on empty/invalid.
+func summaryMaxChars(cfg *config.Config) int {
+	n, err := strconv.Atoi(cfg.Summarize.MaxChars)
+	if err != nil || n <= 0 {
+		return 280
+	}
+	return n
 }
 
 // embedderFromConfig builds the OpenAI-compatible embedder from an already-loaded
@@ -244,12 +255,14 @@ type searchArgs struct {
 	Scope string   `json:"scope"`
 	K     uint64   `json:"k,omitempty"`
 	Tags  []string `json:"tags,omitempty" jsonschema:"optional; restrict to records carrying ALL listed tags"`
+	Full  bool     `json:"full,omitempty" jsonschema:"return full content instead of summaries (default false → compact summary view)"`
 }
 
 type listArgs struct {
 	Scope string   `json:"scope" jsonschema:"the scope to list memories from"`
 	Limit uint64   `json:"limit,omitempty" jsonschema:"max memories to return (default 20)"`
 	Tags  []string `json:"tags,omitempty" jsonschema:"optional; restrict to records carrying ALL listed tags"`
+	Full  bool     `json:"full,omitempty" jsonschema:"return full content instead of summaries (default false → compact summary view)"`
 }
 
 type listScheduledArgs struct {
@@ -490,7 +503,7 @@ func subjectFromContext(ctx context.Context) (store.Subject, error) {
 	return SubjectFromTokenInfo(mcpauth.TokenInfoFromContext(ctx))
 }
 
-func (d *deps) listMemory(ctx context.Context, a listArgs) ([]store.Memory, error) {
+func (d *deps) listMemory(ctx context.Context, a listArgs) ([]any, error) {
 	if a.Limit == 0 {
 		a.Limit = 20
 	}
@@ -499,7 +512,10 @@ func (d *deps) listMemory(ctx context.Context, a listArgs) ([]store.Memory, erro
 		return nil, err
 	}
 	ms, _, _, err := d.st.List(ctx, a.Scope, subj, store.ListOptions{Limit: a.Limit, Tags: a.Tags})
-	return ms, err
+	if err != nil {
+		return nil, err
+	}
+	return shapeRecall(ms, a.Full, d.summaryMaxChars), nil
 }
 
 func (d *deps) listScheduled(ctx context.Context, a listScheduledArgs) ([]store.Memory, error) {
@@ -524,7 +540,7 @@ func (d *deps) listScheduled(ctx context.Context, a listScheduledArgs) ([]store.
 	return d.st.ListScheduled(ctx, a.Scope, subj, state, store.ListOptions{Limit: a.Limit})
 }
 
-func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]store.Memory, error) {
+func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]any, error) {
 	if a.K == 0 {
 		a.K = 8
 	}
@@ -536,7 +552,11 @@ func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]store.Memory, 
 	if err != nil {
 		return nil, err
 	}
-	return d.st.Search(ctx, a.Scope, subj, vec, a.K, a.Tags)
+	ms, err := d.st.Search(ctx, a.Scope, subj, vec, a.K, a.Tags)
+	if err != nil {
+		return nil, err
+	}
+	return shapeRecall(ms, a.Full, d.summaryMaxChars), nil
 }
 
 // effectiveDiscoveryScope resolves the scope filter for a discovery search:
@@ -634,13 +654,13 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			return textResult(fmt.Sprintf("scheduled %s", id)), map[string]string{"id": id}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking."},
+	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a searchArgs) (*mcp.CallToolResult, any, error) {
 			hits, err := d.searchMemory(ctx, a)
 			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"memories": hits}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List recent memories in a scope without a query (session bootstrap). Most-recent first. Optionally pass `tags` to restrict to records carrying all listed tags (AND)."},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List recent memories in a scope without a query (session bootstrap). Most-recent first. Optionally pass `tags` to restrict to records carrying all listed tags (AND). Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listArgs) (*mcp.CallToolResult, any, error) {
 			mems, err := d.listMemory(ctx, a)
 			return textResult(fmt.Sprintf("%d memories", len(mems))), map[string]any{"memories": mems}, err

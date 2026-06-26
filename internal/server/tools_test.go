@@ -305,9 +305,10 @@ func TestScheduleMemoryValidation(t *testing.T) {
 		t.Fatalf("valid schedule: %v", err)
 	}
 	t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
-	hits, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x"})
+	hits, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
 	for _, h := range hits {
-		if h.ID == id {
+		m := h.(store.Memory)
+		if m.ID == id {
 			t.Error("future-scheduled memory leaked into normal list_memory")
 		}
 	}
@@ -321,10 +322,11 @@ func TestScheduleMemoryValidation(t *testing.T) {
 		t.Fatalf("past not_before should be accepted (immediately active): %v", err)
 	}
 	t.Cleanup(func() { _ = d.st.Delete(context.Background(), activeID, store.Authenticated("sub-A")) })
-	active, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x"})
+	active, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
 	found := false
 	for _, h := range active {
-		if h.ID == activeID {
+		m := h.(store.Memory)
+		if m.ID == activeID {
 			found = true
 		}
 	}
@@ -436,16 +438,17 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	}()
 
 	// searchMemory with anonymous context must return ownerless, not shared.
-	hits, err := d.searchMemory(ctx, searchArgs{Query: "content", Scope: scope, K: 10})
+	hits, err := d.searchMemory(ctx, searchArgs{Query: "content", Scope: scope, K: 10, Full: true})
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}
 	foundOwnerless, foundShared := false, false
 	for _, h := range hits {
-		if h.ID == ownerlessID {
+		m := h.(store.Memory)
+		if m.ID == ownerlessID {
 			foundOwnerless = true
 		}
-		if h.ID == sharedID {
+		if m.ID == sharedID {
 			foundShared = true
 		}
 	}
@@ -457,16 +460,17 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	}
 
 	// list_memory handler with anonymous context must return ownerless, not shared.
-	mems, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10})
+	mems, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Full: true})
 	if err != nil {
 		t.Fatalf("listMemory: %v", err)
 	}
 	foundOwnerless, foundShared = false, false
 	for _, m := range mems {
-		if m.ID == ownerlessID {
+		mem := m.(store.Memory)
+		if mem.ID == ownerlessID {
 			foundOwnerless = true
 		}
-		if m.ID == sharedID {
+		if mem.ID == sharedID {
 			foundShared = true
 		}
 	}
@@ -653,23 +657,24 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 			t.Fatalf("seed %s: %v", m.ID, err)
 		}
 	}
-	ids := func(ms []store.Memory) map[string]bool {
+	ids := func(ms []any) map[string]bool {
 		out := map[string]bool{}
-		for _, m := range ms {
+		for _, h := range ms {
+			m := h.(store.Memory)
 			out[m.ID] = true
 		}
 		return out
 	}
 
 	// Single tag: both alpha-carrying records, never the untagged one — on both handlers.
-	hits, err := d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha"}})
+	hits, err := d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha"}, Full: true})
 	if err != nil {
 		t.Fatalf("searchMemory alpha: %v", err)
 	}
 	if g := ids(hits); !g[alphaID] || !g[bothID] || g[plainID] {
 		t.Errorf("searchMemory alpha wrong: %v", g)
 	}
-	mems, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Tags: []string{"alpha"}})
+	mems, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Tags: []string{"alpha"}, Full: true})
 	if err != nil {
 		t.Fatalf("listMemory alpha: %v", err)
 	}
@@ -678,7 +683,7 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	}
 
 	// AND of two tags: only the record carrying both; the alpha-only record is excluded.
-	hits, err = d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha", "beta"}})
+	hits, err = d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha", "beta"}, Full: true})
 	if err != nil {
 		t.Fatalf("searchMemory AND: %v", err)
 	}
@@ -687,14 +692,14 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	}
 
 	// Omitted tags: passthrough returns all three — on both handlers.
-	hits, err = d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10})
+	hits, err = d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Full: true})
 	if err != nil {
 		t.Fatalf("searchMemory passthrough: %v", err)
 	}
 	if g := ids(hits); !g[alphaID] || !g[bothID] || !g[plainID] {
 		t.Errorf("searchMemory passthrough wrong: %v", g)
 	}
-	mems, err = d.listMemory(ctx, listArgs{Scope: scope, Limit: 10})
+	mems, err = d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Full: true})
 	if err != nil {
 		t.Fatalf("listMemory passthrough: %v", err)
 	}
@@ -902,14 +907,14 @@ func TestAuthedCrossActorSharedReadHandlers(t *testing.T) {
 	bctx := authedContext(t, "actor-B")
 
 	// searchMemory: B sees A's shared, not A's private.
-	hits, err := d.searchMemory(bctx, searchArgs{Query: "content", Scope: scope, K: 10})
+	hits, err := d.searchMemory(bctx, searchArgs{Query: "content", Scope: scope, K: 10, Full: true})
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}
 	assertVisibility(t, "searchMemory", hits, sharedID, privateID)
 
 	// listMemory: same guarantee through the no-query handler path.
-	mems, err := d.listMemory(bctx, listArgs{Scope: scope, Limit: 10})
+	mems, err := d.listMemory(bctx, listArgs{Scope: scope, Limit: 10, Full: true})
 	if err != nil {
 		t.Fatalf("listMemory: %v", err)
 	}
@@ -917,10 +922,11 @@ func TestAuthedCrossActorSharedReadHandlers(t *testing.T) {
 }
 
 // assertVisibility checks that wantID appears in got and denyID does not.
-func assertVisibility(t *testing.T, where string, got []store.Memory, wantID, denyID string) {
+func assertVisibility(t *testing.T, where string, got []any, wantID, denyID string) {
 	t.Helper()
 	var sawWant, sawDeny bool
-	for _, m := range got {
+	for _, h := range got {
+		m := h.(store.Memory)
 		switch m.ID {
 		case wantID:
 			sawWant = true

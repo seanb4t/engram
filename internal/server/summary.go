@@ -55,6 +55,20 @@ func truncateForRecall(content string, maxChars int) (string, bool) {
 	return strings.TrimRight(string(r[:maxChars]), " ") + "…", true
 }
 
+// shapeRecall renders memories for a recall response: full store.Memory values
+// when full, else compact summary-shaped recallView values.
+func shapeRecall(ms []store.Memory, full bool, maxChars int) []any {
+	out := make([]any, len(ms))
+	for i, m := range ms {
+		if full {
+			out[i] = m
+		} else {
+			out[i] = toRecallView(m, maxChars)
+		}
+	}
+	return out
+}
+
 // toRecallView shapes one memory for default (summary) recall: the stored
 // summary when present, else a content truncation.
 func toRecallView(m store.Memory, maxChars int) recallView {
