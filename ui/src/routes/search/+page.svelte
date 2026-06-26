@@ -11,7 +11,7 @@
   const searchQ = createQuery(() => {
     const query = page.url.searchParams.get('q') ?? '';
     const scope = page.url.searchParams.get('scope') ?? '';
-    return { queryKey: ['searchMemories', query, scope], queryFn: () => engram.searchMemories({ query, scope, k: 50n }), enabled: !!query };
+    return { queryKey: ['searchMemories', query, scope], queryFn: () => engram.searchMemories({ query, scope, k: 50n, full: true }), enabled: !!query };
   });
   const detailQ = createQuery(() => {
     const s = page.url.searchParams.get('sel') ?? '';
