@@ -37,7 +37,7 @@ var summarizeMissingCmd = &cobra.Command{
 		if summarizeScope == "" && !summarizeAllScopes {
 			return fmt.Errorf("--scope <scope> or --all-scopes is required")
 		}
-		st, sm, maxChars, err := server.StoreAndSummarizerFromEnv()
+		st, sm, model, maxChars, err := server.StoreAndSummarizerFromEnv()
 		if err != nil {
 			return err
 		}
@@ -58,7 +58,7 @@ var summarizeMissingCmd = &cobra.Command{
 			OlderThan: older,
 			Limit:     summarizeLimit,
 			MaxChars:  maxChars,
-			Model:     summarizeModel(),
+			Model:     model,
 			DryRun:    summarizeDryRun,
 		}, sm.Summarize)
 		if err != nil {
@@ -68,8 +68,6 @@ var summarizeMissingCmd = &cobra.Command{
 		return nil
 	},
 }
-
-func summarizeModel() string { return os.Getenv("ENGRAM_SUMMARY_MODEL") }
 
 // summarizeSummary renders the operator-facing one-line result. Pure (no I/O) so
 // the dry-run vs live wording is unit-testable without a live gateway.

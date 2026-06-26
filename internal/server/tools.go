@@ -177,22 +177,24 @@ func summarizerFromConfig(cfg *config.Config) *summarize.Client {
 		summarize.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)))
 }
 
-// StoreAndSummarizerFromEnv builds the store + summarizer + cap for the
-// summarize-missing command. Errors when ENGRAM_SUMMARY_MODEL is unset
-// (auto-summary disabled).
-func StoreAndSummarizerFromEnv() (*store.Store, *summarize.Client, int, error) {
+// StoreAndSummarizerFromEnv builds the store + summarizer + resolved model name
+// + cap for the summarize-missing command. Errors when ENGRAM_SUMMARY_MODEL is
+// unset (auto-summary disabled). The model is returned (not re-read from the env
+// by the caller) so the value stamped on records as summary_model is exactly the
+// one the summarizer uses, regardless of which config layer supplied it.
+func StoreAndSummarizerFromEnv() (*store.Store, *summarize.Client, string, int, error) {
 	cfg, err := loadAndValidate()
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, "", 0, err
 	}
 	if cfg.Summarize.Model == "" {
-		return nil, nil, 0, fmt.Errorf("ENGRAM_SUMMARY_MODEL is empty: auto-summary is disabled")
+		return nil, nil, "", 0, fmt.Errorf("ENGRAM_SUMMARY_MODEL is empty: auto-summary is disabled")
 	}
 	st, err := ensureStoreFromConfig(cfg)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, "", 0, err
 	}
-	return st, summarizerFromConfig(cfg), summaryMaxChars(cfg), nil
+	return st, summarizerFromConfig(cfg), cfg.Summarize.Model, summaryMaxChars(cfg), nil
 }
 
 // warnOwnerlessRecords loudly warns at startup when pre-isolation (owner-less)
