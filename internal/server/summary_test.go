@@ -61,6 +61,7 @@ func TestResolveSummaryUpdate(t *testing.T) {
 		{"none + change = noop", none, true, nil, "", false, false},
 		{"auto + change = autoclear", autoSum, true, nil, "", true, false},
 		{"client + change + unaddressed = reject", clientSum, true, nil, "", false, true},
+		{"legacy (empty source) + change = preserve", store.Memory{Summary: "old", SummarySource: ""}, true, nil, "", false, false},
 	}
 	for _, tc := range cases {
 		v, apply, err := resolveSummaryUpdate(tc.cur, tc.contentChanged, tc.arg)
