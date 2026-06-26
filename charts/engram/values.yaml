@@ -42,9 +42,15 @@ memory:
   # lack a summary using this chat model, served by the SAME OpenAI-compatible
   # endpoint as the embedder (memory.openai.baseURL + apiKeySecret). maxChars
   # caps generated-summary length and is also the recall-truncation cap.
+  # Prefer a NON-reasoning model here: this is a tight-token, one-line task, and
+  # reasoning models burn the token budget on hidden reasoning. If you must use a
+  # reasoning model, raise maxTokens (it only bounds generation; the summary is
+  # still truncated to maxChars).
   summarize:
     model: "" # ENGRAM_SUMMARY_MODEL, e.g. "gpt-4o-mini"; empty disables auto-summary
     maxChars: 280 # ENGRAM_SUMMARY_MAX_CHARS
+    maxTokens: 1024 # ENGRAM_SUMMARY_MAX_TOKENS; generation ceiling (0 = gateway default). Raise for reasoning models.
+    timeout: 30s # ENGRAM_SUMMARY_TIMEOUT; per-request HTTP timeout (0 = none)
   qdrant:
     collection: "memory"
   oidc:

@@ -109,6 +109,28 @@ func TestSummarizeConfigDefaultsAndEnv(t *testing.T) {
 	if c.Summarize.MaxChars != "280" {
 		t.Errorf("Summarize.MaxChars = %q, want default 280", c.Summarize.MaxChars)
 	}
+	if c.Summarize.MaxTokens != "1024" {
+		t.Errorf("Summarize.MaxTokens = %q, want default 1024", c.Summarize.MaxTokens)
+	}
+	if c.Summarize.Timeout != "30s" {
+		t.Errorf("Summarize.Timeout = %q, want default 30s", c.Summarize.Timeout)
+	}
+}
+
+func TestSummarizeMaxTokensAndTimeoutEnvOverride(t *testing.T) {
+	t.Setenv("ENGRAM_SUMMARY_MODEL", "summary-cheap")
+	t.Setenv("ENGRAM_SUMMARY_MAX_TOKENS", "4096")
+	t.Setenv("ENGRAM_SUMMARY_TIMEOUT", "2m")
+	c, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.Summarize.MaxTokens != "4096" {
+		t.Errorf("Summarize.MaxTokens = %q, want 4096", c.Summarize.MaxTokens)
+	}
+	if c.Summarize.Timeout != "2m" {
+		t.Errorf("Summarize.Timeout = %q, want 2m", c.Summarize.Timeout)
+	}
 }
 
 func TestValidateRejectsBadSummaryMaxCharsWhenEnabled(t *testing.T) {

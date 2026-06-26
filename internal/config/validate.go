@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/url"
 	"strconv"
+	"time"
 )
 
 // Validate reports whether c's data-plane fields are well-formed. It is pure
@@ -76,6 +77,19 @@ func (c *Config) Validate() error {
 			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_MAX_CHARS %q: must be a positive integer: %w", c.Summarize.MaxChars, err))
 		case n == 0:
 			errs = append(errs, errors.New("ENGRAM_SUMMARY_MAX_CHARS must be greater than 0"))
+		}
+
+		// max_tokens is a non-negative ceiling; 0 omits the cap (gateway default).
+		if _, err := strconv.ParseUint(c.Summarize.MaxTokens, 10, 64); err != nil {
+			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_MAX_TOKENS %q: must be a non-negative integer: %w", c.Summarize.MaxTokens, err))
+		}
+
+		// timeout is a non-negative Go duration; 0 disables the per-request timeout.
+		switch d, err := time.ParseDuration(c.Summarize.Timeout); {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_TIMEOUT %q: must be a Go duration (e.g. 30s, 2m): %w", c.Summarize.Timeout, err))
+		case d < 0:
+			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_TIMEOUT %q: must not be negative", c.Summarize.Timeout))
 		}
 	}
 

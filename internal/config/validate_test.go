@@ -58,6 +58,64 @@ func TestValidateFieldRules(t *testing.T) {
 	}
 }
 
+// summarizeEnabled returns a valid Config with auto-summary turned on, so a test
+// can mutate a single summarize field to exercise one rule.
+func summarizeEnabled() *Config {
+	c := validConfig()
+	c.Summarize = SummarizeConfig{Model: "summary-cheap", MaxChars: "280", MaxTokens: "1024", Timeout: "30s"}
+	return c
+}
+
+func TestValidateSummarizeEnabledHappyPath(t *testing.T) {
+	if err := summarizeEnabled().Validate(); err != nil {
+		t.Fatalf("Validate(summarize enabled) = %v, want nil", err)
+	}
+}
+
+func TestValidateSummarizeFieldRules(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*Config)
+		want   string
+	}{
+		{"max_tokens non-numeric", func(c *Config) { c.Summarize.MaxTokens = "abc" }, "ENGRAM_SUMMARY_MAX_TOKENS"},
+		{"max_tokens negative", func(c *Config) { c.Summarize.MaxTokens = "-1" }, "ENGRAM_SUMMARY_MAX_TOKENS"},
+		{"max_tokens zero is allowed", func(c *Config) { c.Summarize.MaxTokens = "0" }, ""},
+		{"timeout not a duration", func(c *Config) { c.Summarize.Timeout = "30" }, "ENGRAM_SUMMARY_TIMEOUT"},
+		{"timeout negative", func(c *Config) { c.Summarize.Timeout = "-5s" }, "ENGRAM_SUMMARY_TIMEOUT"},
+		{"timeout zero is allowed", func(c *Config) { c.Summarize.Timeout = "0s" }, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := summarizeEnabled()
+			tc.mutate(c)
+			err := c.Validate()
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Validate() = nil, want error containing %q", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("Validate() error = %q, want substring %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidateIgnoresSummaryTokensAndTimeoutWhenDisabled(t *testing.T) {
+	c := summarizeEnabled()
+	c.Summarize.Model = "" // disable
+	c.Summarize.MaxTokens = "garbage"
+	c.Summarize.Timeout = "not-a-duration"
+	if err := c.Validate(); err != nil {
+		t.Fatalf("disabled summarize must not validate token/timeout: %v", err)
+	}
+}
+
 func TestValidateAggregatesAllFailures(t *testing.T) {
 	c := validConfig()
 	c.Qdrant.Addr = ""
