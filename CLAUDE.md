@@ -50,9 +50,11 @@ Tools: `store_memory` / `schedule_memory` / `search_memory` / `list_memory` /
 `list_scheduled` / `get_memory` / `update_memory` / `delete_memory` /
 `delete_all`. A record carries `content`,
 `scope`, repo/workspace/worktree/base_dir, `source`, `category`, `tags`,
+`summary`/`summary_source` (client-authored or auto-generated digest; omit for none),
 `actor` (verified caller — server-set, never client-supplied), `owner` (caller's
 stable OIDC `sub`, the authz key — server-set), `visibility` (`private` default |
-`shared`), `created_at`. Design intent: explicit, zero-junk, correctable. Do not
+`shared`), `created_at`. Recall returns summaries by default with `full=true` opt-in;
+full content via `get_memory`. Design intent: explicit, zero-junk, correctable. Do not
 add auto-extraction.
 
 **Isolation (authz):** each actor sees/mutates only their own records; `shared`
