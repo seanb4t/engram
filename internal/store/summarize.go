@@ -68,8 +68,8 @@ func (s *Store) SetSummary(ctx context.Context, id, summary, model string) (err 
 }
 
 // FillSummary summarizes one record and persists it, idempotently. Returns
-// filled=false (no error) when the record is ineligible. This is the reusable
-// unit shared by the sweep below and a future async-on-write queue worker.
+// filled=false (no error) when the record is ineligible. It is the reusable
+// per-record unit the sweep below builds on.
 func (s *Store) FillSummary(ctx context.Context, m Memory, summarize SummarizeFunc, model string, maxChars int) (filled bool, err error) {
 	if !shouldSummarize(m, maxChars) {
 		return false, nil

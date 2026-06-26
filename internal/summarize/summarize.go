@@ -115,7 +115,9 @@ func (c *Client) Summarize(ctx context.Context, content string) (sum string, err
 		return "", fmt.Errorf("chat completions: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var out chatResp
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	// Bound the success-path decode too: a one-line summary response is tiny, so
+	// cap at 1 MiB to keep a misbehaving gateway from forcing an unbounded read.
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
 		return "", err
 	}
 	if len(out.Choices) == 0 {
