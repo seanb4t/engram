@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.12](https://github.com/seanb4t/engram/compare/v0.7.11...v0.7.12) (2026-06-26)
+
+
+### Features
+
+* **chart:** surface auto-summary config (ENGRAM_SUMMARY_MODEL/_MAX_CHARS) ([#215](https://github.com/seanb4t/engram/issues/215)) ([c641523](https://github.com/seanb4t/engram/commit/c64152305c9d3af3999020890a896c8a0257b423))
+
 ## [0.7.11](https://github.com/seanb4t/engram/compare/v0.7.10...v0.7.11) (2026-06-26)
 
 
