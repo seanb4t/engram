@@ -41,6 +41,14 @@ spec:
                   name: "{{ .Values.memory.openai.apiKeySecret.name }}"
                   key: "{{ .Values.memory.openai.apiKeySecret.key }}"
             {{- end }}
+            {{- /* Auto-summary reuses the embedder's OpenAI client (base URL + key).
+                   Empty model omits the var → server disables auto-summary. */}}
+            {{- with .Values.memory.summarize.model }}
+            - { name: ENGRAM_SUMMARY_MODEL, value: "{{ . }}" }
+            {{- end }}
+            {{- with .Values.memory.summarize.maxChars }}
+            - { name: ENGRAM_SUMMARY_MAX_CHARS, value: "{{ . }}" }
+            {{- end }}
             {{- /* Empty omits the var → server defaults the MCP transport to /mcp. "/" restores the legacy root catch-all. */}}
             {{- with .Values.memory.mcpPath }}
             - { name: ENGRAM_MCP_PATH, value: "{{ . }}" }

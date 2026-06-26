@@ -34,6 +34,17 @@ Source: `internal/server/tools.go` (`StoreAndEmbedderFromEnvNoEnsure`).
 
 Source: `internal/config` (registry) + `internal/server/tools.go` (`embedderFromConfig`).
 
+## Auto-summary
+
+When `ENGRAM_SUMMARY_MODEL` is set, the server digests memories that lack a summary using that chat model, served by the **same** OpenAI-compatible endpoint as the embedder (`ENGRAM_OPENAI_BASE_URL` + `ENGRAM_OPENAI_API_KEY`). Empty disables auto-summary, and recall returns only client-authored summaries.
+
+| Environment variable | Flag | Default | Description |
+|---------------------|------|---------|-------------|
+| `ENGRAM_SUMMARY_MODEL` | — | _(empty)_ | Chat model for auto-summary, served by `ENGRAM_OPENAI_BASE_URL`; empty disables auto-summary |
+| `ENGRAM_SUMMARY_MAX_CHARS` | — | `280` | Max generated-summary length (also the recall-truncation cap) |
+
+Source: `internal/config` (registry) + `internal/server/tools.go` (`summarizerFromConfig`).
+
 ## OIDC / Auth
 
 Setting `ENGRAM_OIDC_ISSUER` enables bearer-token enforcement (JWKS signature + issuer + expiry validation). Without it, all requests are accepted and a loud warning is logged.

@@ -28,6 +28,8 @@ The chart sets `ENGRAM_*` environment variables from these Helm values. Supply t
 | `memory.openai.baseURL` | `ENGRAM_OPENAI_BASE_URL` | Embeddings endpoint URL (cluster must supply) |
 | `memory.embed.model` | `ENGRAM_EMBED_MODEL` | Embed model name (default `ollama/bge-m3`) |
 | `memory.embed.dim` | `ENGRAM_EMBED_DIM` | Vector dimension (default `1024`) |
+| `memory.summarize.model` | `ENGRAM_SUMMARY_MODEL` | Auto-summary chat model, served by `memory.openai.baseURL` (empty disables auto-summary) |
+| `memory.summarize.maxChars` | `ENGRAM_SUMMARY_MAX_CHARS` | Max generated-summary length (default `280`) |
 | `memory.qdrant.collection` | `ENGRAM_QDRANT_COLLECTION` | Qdrant collection name (default `memory`) |
 | `memory.oidc.issuer` | `ENGRAM_OIDC_ISSUER` | OIDC issuer URL; setting it enables bearer-token enforcement |
 | `memory.oidc.audience` | `ENGRAM_OIDC_AUDIENCE` | Expected OIDC audience (optional) |
