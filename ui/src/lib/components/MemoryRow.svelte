@@ -5,9 +5,10 @@
   import { relativeTime } from '$lib/time';
   import ScopeChip from './ScopeChip.svelte';
   let { memory, selected, showScope = false, onselect }: { memory: Memory; selected: boolean; showScope?: boolean; onselect: (id: string) => void } = $props();
-  // summary is server-guaranteed non-empty on list/search; stripCategoryPrefix
-  // is a cosmetic no-op on real summaries, meaningful only for truncation
-  // previews that begin with the category token.
+  // summary is server-guaranteed non-empty on list/search. stripCategoryPrefix
+  // drops a leading "CATEGORY (...)" token when present — common on auto
+  // summaries and truncation previews — so the category isn't shown twice
+  // (the row already renders the category separately below).
   const summary = $derived(stripCategoryPrefix(memory.summary, memory.category));
   const isAuto = $derived(memory.summarySource === 'auto');
   const when = $derived(memory.createdAt ? relativeTime(timestampDate(memory.createdAt)) : '');
@@ -19,7 +20,7 @@
   type="button"
   onclick={() => onselect(memory.id)}
   style="--c:var(--cat-{memory.category})"
-  class={'relative w-full text-left pl-3 pr-3 py-2 border-b border-border flex flex-col gap-1 hover:bg-accent ' + (selected ? 'bg-accent' : '')}
+  class={'relative w-full text-left px-3 py-2 border-b border-border flex flex-col gap-1 hover:bg-accent ' + (selected ? 'bg-accent' : '')}
 >
   <span class="absolute left-0 top-2 bottom-2 w-[3px] rounded-r" style="background:var(--c)"></span>
   <div class="flex items-center gap-2 min-w-0">

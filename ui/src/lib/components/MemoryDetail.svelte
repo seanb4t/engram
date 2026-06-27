@@ -16,7 +16,17 @@
   const hasSummary = $derived(!!memory?.summary?.trim());
   const defaultTab = $derived(hasSummary ? 'summary' : 'content');
   const bodyHtml = $derived(memory ? renderMarkdown(memory.content) : '');
-  async function copy() { if (memory) { await navigator.clipboard.writeText(memory.content); toast.success('copied'); } }
+  async function copy() {
+    if (!memory) return;
+    try {
+      await navigator.clipboard.writeText(memory.content);
+      toast.success('copied');
+    } catch {
+      // clipboard write can reject (denied permission, insecure context, lost focus);
+      // surface it so the button never appears to silently do nothing.
+      toast.error('copy failed');
+    }
+  }
 </script>
 
 <div class="w-[360px] shrink-0 border-l border-border flex flex-col min-h-0">

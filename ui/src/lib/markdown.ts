@@ -4,8 +4,9 @@ import DOMPurify from 'dompurify';
 
 // Memory content is caller-authored and `shared` records are cross-actor
 // readable, so the only safe path is: marked (no HTML passthrough trust) ->
-// DOMPurify tight allowlist -> {@html}. marked.parse() is synchronous unless
-// async mode is set, so the string return type holds.
+// DOMPurify tight allowlist -> {@html}. With `{ async: false }` marked's typed
+// overload returns `string` (no cast needed); flipping it to async would make
+// the type a Promise and fail the compile here, which is the intended guard.
 marked.use({ gfm: true, breaks: true });
 
 const ALLOWED_TAGS = [
@@ -43,6 +44,6 @@ function installLinkHook(): void {
 export function renderMarkdown(src: string): string {
   if (!src) return '';
   installLinkHook();
-  const html = marked.parse(src, { async: false }) as string;
+  const html = marked.parse(src, { async: false });
   return DOMPurify.sanitize(html, { ALLOWED_TAGS, ALLOWED_ATTR });
 }
