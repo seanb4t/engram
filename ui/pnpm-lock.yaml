@@ -76,7 +76,7 @@ importers:
         specifier: 20.10.6
         version: 20.10.6
       jsdom:
-        specifier: ^29.1.1
+        specifier: 29.1.1
         version: 29.1.1
       paneforge:
         specifier: 1.0.2
