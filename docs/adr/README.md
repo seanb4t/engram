@@ -13,6 +13,7 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-3nas](engram-3nas-render-user-memory-content-via-marked-dompurify-allowlist.md) | 2026-06-27 | Accepted | Render user memory content via marked + DOMPurify allowlist |
 | [engram-4y7p](engram-4y7p-explicit-first-memory-summary-offline-operator-auto-fill.md) | 2026-06-26 | Accepted | Explicit-first memory summary with offline operator auto-fill |
 | [engram-ambu](engram-ambu-recall-returns-summary-by-default-full-content-opt.md) | 2026-06-26 | Accepted | Recall returns summary by default with full-content opt-in |
 | [engram-ddiw](engram-ddiw-reject-update-memory-content-change-unaddressed-client-summa.md) | 2026-06-26 | Accepted | Reject update_memory on content change with unaddressed client summary |
