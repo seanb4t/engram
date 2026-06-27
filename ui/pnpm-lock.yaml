@@ -1282,9 +1282,6 @@ packages:
   zimmerframe@1.1.4:
     resolution: {integrity: sha512-B58NGBEoc8Y9MWWCQGl/gq9xBCe4IiKM0a2x7GZdQKOW5Exr8S1W24J6OgM1njK8xCRGvAJIL/MxXHf6SkmQKQ==}
 
-ignoredOptionalDependencies:
-  - jsdom
-
 snapshots:
 
   '@adobe/css-tools@4.5.0': {}
