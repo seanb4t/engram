@@ -54,9 +54,21 @@ type EmbedConfig struct {
 // SummarizeConfig selects the recall-summary model and the character cap shared
 // by the summarizer and recall truncation. Empty Model disables auto-summary
 // (presence-enables, like OIDC issuer); MaxChars defaults to "280".
+//
+// MaxTokens is the chat-completion generation ceiling (default "1024"). It is
+// deliberately decoupled from MaxChars: the visible summary is already hard-
+// capped at MaxChars runes, so this ceiling only bounds the model's token
+// budget. Reasoning models spend tokens on hidden reasoning before emitting an
+// answer, so a tight ceiling starves them into an empty response; a generous
+// one is free for non-reasoning models (they stop at EOS well below it). "0"
+// omits the cap entirely (gateway default). Timeout is the per-request HTTP
+// client timeout (default "30s"); "0" disables it. Neither is the same as the
+// summarize-missing command's --timeout, which bounds the whole sweep.
 type SummarizeConfig struct {
-	Model    string `koanf:"model"`
-	MaxChars string `koanf:"max_chars"`
+	Model     string `koanf:"model"`
+	MaxChars  string `koanf:"max_chars"`
+	MaxTokens string `koanf:"max_tokens"`
+	Timeout   string `koanf:"timeout"`
 }
 
 // OpenAIConfig is the OpenAI-compatible /v1/embeddings endpoint engram calls to

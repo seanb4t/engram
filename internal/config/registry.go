@@ -31,6 +31,8 @@ var registry = []field{
 	{Key: "embed.dim", Env: "ENGRAM_EMBED_DIM", Legacy: "MEM_EMBED_DIM", Default: "1024"},
 	{Key: "summarize.model", Env: "ENGRAM_SUMMARY_MODEL"},
 	{Key: "summarize.max_chars", Env: "ENGRAM_SUMMARY_MAX_CHARS", Default: "280"},
+	{Key: "summarize.max_tokens", Env: "ENGRAM_SUMMARY_MAX_TOKENS", Default: "1024"},
+	{Key: "summarize.timeout", Env: "ENGRAM_SUMMARY_TIMEOUT", Default: "30s"},
 	{Key: "openai.base_url", Env: "ENGRAM_OPENAI_BASE_URL", Legacy: "MEM_LITELLM_URL", Default: "http://localhost:4000"},
 	{Key: "openai.api_key", Env: "ENGRAM_OPENAI_API_KEY", Legacy: "MEM_LITELLM_KEY"},
 	{Key: "oidc.issuer", Env: "ENGRAM_OIDC_ISSUER", Legacy: "MEM_OIDC_ISSUER", Flag: "oidc-issuer"},

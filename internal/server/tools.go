@@ -164,6 +164,36 @@ func summaryMaxChars(cfg *config.Config) int {
 	return n
 }
 
+// summaryMaxTokens parses the generation ceiling, defaulting to 1024 on
+// empty/invalid. 0 is honored (omits the cap; gateway default); negatives fall
+// back to the default.
+func summaryMaxTokens(cfg *config.Config) int {
+	n, err := strconv.Atoi(cfg.Summarize.MaxTokens)
+	if err != nil || n < 0 {
+		if cfg.Summarize.MaxTokens != "" {
+			slog.Warn("ENGRAM_SUMMARY_MAX_TOKENS is set but unparseable or negative; using default 1024",
+				"value", cfg.Summarize.MaxTokens)
+		}
+		return 1024
+	}
+	return n
+}
+
+// summaryTimeout parses the per-request HTTP timeout, defaulting to 30s on
+// empty/invalid. 0 is honored (disables the timeout); negatives fall back to
+// the default.
+func summaryTimeout(cfg *config.Config) time.Duration {
+	d, err := time.ParseDuration(cfg.Summarize.Timeout)
+	if err != nil || d < 0 {
+		if cfg.Summarize.Timeout != "" {
+			slog.Warn("ENGRAM_SUMMARY_TIMEOUT is set but unparseable or negative; using default 30s",
+				"value", cfg.Summarize.Timeout)
+		}
+		return 30 * time.Second
+	}
+	return d
+}
+
 // embedderFromConfig builds the OpenAI-compatible embedder from an already-loaded
 // config.
 func embedderFromConfig(cfg *config.Config) *embed.Client {
@@ -174,7 +204,9 @@ func embedderFromConfig(cfg *config.Config) *embed.Client {
 // summarizerFromConfig builds the chat-completions summarizer from config.
 func summarizerFromConfig(cfg *config.Config) *summarize.Client {
 	return summarize.New(cfg.OpenAI.BaseURL, cfg.OpenAI.APIKey, cfg.Summarize.Model, summaryMaxChars(cfg),
-		summarize.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)))
+		summarize.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)),
+		summarize.WithMaxTokens(summaryMaxTokens(cfg)),
+		summarize.WithTimeout(summaryTimeout(cfg)))
 }
 
 // StoreAndSummarizerFromEnv builds the store + summarizer + resolved model name

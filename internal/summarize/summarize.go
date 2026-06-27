@@ -25,13 +25,24 @@ import (
 
 var tracer = otel.Tracer("github.com/seanb4t/engram/internal/summarize")
 
+// Default generation/transport bounds, used when no option overrides them.
+// defaultMaxTokens is deliberately generous: it is a ceiling, not a length
+// control (the output is hard-capped at maxChars runes below), so it costs
+// nothing for non-reasoning models yet leaves reasoning models room to think
+// before emitting visible text. See SummarizeConfig for the operator knobs.
+const (
+	defaultMaxTokens = 1024
+	defaultTimeout   = 30 * time.Second
+)
+
 // Client produces summaries via an OpenAI-compatible chat-completions API.
 type Client struct {
-	baseURL  string
-	apiKey   string
-	model    string
-	maxChars int
-	http     *http.Client
+	baseURL   string
+	apiKey    string
+	model     string
+	maxChars  int
+	maxTokens int
+	http      *http.Client
 }
 
 // Option customizes a Client.
@@ -42,10 +53,26 @@ func WithHTTPTransport(rt http.RoundTripper) Option {
 	return func(c *Client) { c.http.Transport = rt }
 }
 
+// WithMaxTokens sets the chat-completion generation ceiling. n <= 0 omits the
+// max_tokens field entirely, letting the gateway apply its own default.
+func WithMaxTokens(n int) Option {
+	return func(c *Client) {
+		if n < 0 {
+			n = 0
+		}
+		c.maxTokens = n
+	}
+}
+
+// WithTimeout sets the per-request HTTP client timeout. d <= 0 disables it.
+func WithTimeout(d time.Duration) Option {
+	return func(c *Client) { c.http.Timeout = d }
+}
+
 // New returns a summarizer for the given gateway, key, model, and character cap.
 func New(baseURL, apiKey, model string, maxChars int, opts ...Option) *Client {
 	c := &Client{baseURL: baseURL, apiKey: apiKey, model: model, maxChars: maxChars,
-		http: &http.Client{Timeout: 30 * time.Second}}
+		maxTokens: defaultMaxTokens, http: &http.Client{Timeout: defaultTimeout}}
 	for _, o := range opts {
 		o(c)
 	}
@@ -93,7 +120,11 @@ func (c *Client) Summarize(ctx context.Context, content string) (sum string, err
 	reqBody, _ := json.Marshal(chatReq{
 		Model:       c.model,
 		Temperature: 0,
-		MaxTokens:   c.maxChars/3 + 32,
+		// Generation ceiling only — the visible summary is hard-capped at
+		// maxChars runes below. 0 omits the field (omitempty) so the gateway
+		// applies its own default. See SummarizeConfig.MaxTokens for why this is
+		// decoupled from maxChars (reasoning-model headroom).
+		MaxTokens: c.maxTokens,
 		Messages: []chatMsg{
 			{Role: "system", Content: fmt.Sprintf(systemPromptTmpl, c.maxChars)},
 			{Role: "user", Content: content},

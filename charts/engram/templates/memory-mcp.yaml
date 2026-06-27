@@ -49,6 +49,14 @@ spec:
             {{- with .Values.memory.summarize.maxChars }}
             - { name: ENGRAM_SUMMARY_MAX_CHARS, value: "{{ . }}" }
             {{- end }}
+            {{- /* Generation ceiling + per-request timeout. Only meaningful when a
+                   summarize model is set; harmless otherwise. */}}
+            {{- with .Values.memory.summarize.maxTokens }}
+            - { name: ENGRAM_SUMMARY_MAX_TOKENS, value: "{{ . }}" }
+            {{- end }}
+            {{- with .Values.memory.summarize.timeout }}
+            - { name: ENGRAM_SUMMARY_TIMEOUT, value: "{{ . }}" }
+            {{- end }}
             {{- /* Empty omits the var → server defaults the MCP transport to /mcp. "/" restores the legacy root catch-all. */}}
             {{- with .Values.memory.mcpPath }}
             - { name: ENGRAM_MCP_PATH, value: "{{ . }}" }
