@@ -54,10 +54,18 @@ describe('ScopesSidebar', () => {
 
   it('reflects the active visibility in the select trigger', () => {
     render(ScopesSidebar, { props: baseProps({ visibility: 'shared' }) });
-    // bits-ui's Select popover cannot be reliably opened under the test DOM env, so the
-    // onValueChange→onfilter path is exercised via the observe page in practice;
-    // here we cover the value-binding branch (visibility → trigger label).
+    // Covers the value-binding branch (visibility → trigger label); the
+    // onValueChange→onfilter path is exercised by the next test.
     expect(screen.getByRole('button', { name: 'visibility' })).toHaveTextContent('shared');
+  });
+
+  it('fires onfilter with the chosen visibility when a select option is clicked', async () => {
+    const user = userEvent.setup();
+    const onfilter = vi.fn();
+    render(ScopesSidebar, { props: baseProps({ categories: ['gotcha'], onfilter }) });
+    await user.click(screen.getByRole('button', { name: 'visibility' }));
+    await user.click(await screen.findByRole('option', { name: 'private' }));
+    expect(onfilter).toHaveBeenCalledWith(['gotcha'], 'private');
   });
 
   it('shows an error message when scopes fail to load', () => {
