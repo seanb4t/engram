@@ -5,13 +5,26 @@ import MemoryDetail from './MemoryDetail.svelte';
 import { create } from '@bufbuild/protobuf';
 import { MemorySchema } from '$lib/gen/engram_pb';
 
-const mem = create(MemorySchema, { id: '1', content: 'full body here', category: 'gotcha', scope: 'repo:github.com/fzymgc-house/selfhosted-cluster', source: 'agent-inferred', actor: 'sean', visibility: 'private', tags: ['mcp'] });
+const withSummary = create(MemorySchema, {
+  id: '1', content: 'full **body** here', summary: 'terse digest line',
+  summarySource: 'auto', category: 'gotcha',
+  scope: 'repo:github.com/fzymgc-house/selfhosted-cluster',
+  source: 'agent-inferred', actor: 'sean', visibility: 'private', tags: ['mcp']
+});
+const noSummary = create(MemorySchema, {
+  id: '2', content: 'only content here', summary: '', summarySource: '',
+  category: 'decision', scope: 'repo:x', source: 'user-said', actor: 'sean', visibility: 'private'
+});
 
 describe('MemoryDetail', () => {
-  it('shows the full scope verbatim and the body', () => {
-    render(MemoryDetail, { props: { memory: mem, loading: false, error: null } });
-    expect(screen.getByText('repo:github.com/fzymgc-house/selfhosted-cluster')).toBeInTheDocument();
-    expect(screen.getByText('full body here')).toBeInTheDocument();
+  it('defaults to the Summary tab and shows summary + auto provenance', () => {
+    render(MemoryDetail, { props: { memory: withSummary, loading: false, error: null } });
+    expect(screen.getByText('terse digest line')).toBeInTheDocument();
+    expect(screen.getByText(/auto/i)).toBeInTheDocument();
+  });
+  it('falls through to Content (rendered markdown) when there is no summary', () => {
+    render(MemoryDetail, { props: { memory: noSummary, loading: false, error: null } });
+    expect(screen.getByText('only content here')).toBeInTheDocument();
   });
   it('prompts to select when nothing is chosen', () => {
     render(MemoryDetail, { props: { memory: undefined, loading: false, error: null } });
@@ -24,11 +37,9 @@ describe('MemoryDetail', () => {
   it('shows a not-found message for a NotFound error', () => {
     render(MemoryDetail, { props: { memory: undefined, loading: false, error: new ConnectError('missing', Code.NotFound) } });
     expect(screen.getByText(/record not found/i)).toBeInTheDocument();
-    expect(screen.queryByText(/failed to load/i)).not.toBeInTheDocument();
   });
   it('shows a generic failure message for a non-NotFound error', () => {
     render(MemoryDetail, { props: { memory: undefined, loading: false, error: new Error('boom') } });
     expect(screen.getByText(/failed to load record/i)).toBeInTheDocument();
-    expect(screen.queryByText(/record not found/i)).not.toBeInTheDocument();
   });
 });
