@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.13](https://github.com/seanb4t/engram/compare/v0.7.12...v0.7.13) (2026-06-27)
+
+
+### Bug Fixes
+
+* **summarize:** configurable max_tokens + HTTP timeout for reasoning models ([#218](https://github.com/seanb4t/engram/issues/218)) ([c45f0a2](https://github.com/seanb4t/engram/commit/c45f0a2563d171feba8fd44d5c56b4f503838556))
+
 ## [0.7.12](https://github.com/seanb4t/engram/compare/v0.7.11...v0.7.12) (2026-06-26)
 
 
