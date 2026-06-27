@@ -83,6 +83,11 @@ type Memory struct {
 	// SummaryModel names the model that produced an "auto" summary (diagnostics);
 	// empty otherwise.
 	SummaryModel string `json:"summary_model,omitempty"`
+	// SummaryEgressAt is the k1oe.2 durable audit stamp: when this record's
+	// content was egressed to the summarizer model (auto path only). Store-only;
+	// not on the Connect wire. Zero if never egressed or the summary was
+	// client-authored/cleared.
+	SummaryEgressAt time.Time `json:"summary_egress_at"`
 }
 
 // Citation anchors a discovery to a source so it can be verified and aged.
@@ -186,6 +191,9 @@ func payload(m Memory) map[string]any {
 	if m.SummaryModel != "" {
 		p["summary_model"] = m.SummaryModel
 	}
+	if !m.SummaryEgressAt.IsZero() {
+		p["summary_egress_at"] = m.SummaryEgressAt.Format(time.RFC3339)
+	}
 	if m.Category == "discovery" {
 		p["kind"] = m.Kind
 		cites := make([]any, len(m.Citations))
@@ -266,6 +274,11 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	}
 	if v, ok := p["summary_model"]; ok {
 		m.SummaryModel = v.GetStringValue()
+	}
+	if v, ok := p["summary_egress_at"]; ok {
+		if t, err := time.Parse(time.RFC3339, v.GetStringValue()); err == nil {
+			m.SummaryEgressAt = t
+		}
 	}
 	if v, ok := p["citations"]; ok {
 		if lv := v.GetListValue(); lv != nil {
@@ -946,6 +959,9 @@ func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *
 		} else {
 			cur.SummarySource, cur.SummaryModel = "client", ""
 		}
+		// A client-authored or cleared summary is no longer auto-egressed
+		// provenance, so the egress stamp is invalidated.
+		cur.SummaryEgressAt = time.Time{}
 	}
 	return s.Upsert(ctx, cur, vec)
 }
