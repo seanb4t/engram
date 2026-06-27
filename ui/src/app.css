@@ -14,6 +14,7 @@
   --radius: 0.5rem;
   --cat-convention: #0969da; --cat-gotcha: #bc4c00; --cat-decision: #C026D3; --cat-preference: #0550ae;
   --cat-discovery: #0d9488;
+  --code-bg: #f6f8fa;
 }
 .dark {
   --background: #0d1117; --foreground: #e6edf3;
@@ -26,6 +27,7 @@
   --border: #30363d; --input: #30363d; --ring: #8B7BE8;
   --cat-convention: #a5d6ff; --cat-gotcha: #ffa657; --cat-decision: #E879F9; --cat-preference: #79c0ff;
   --cat-discovery: #2dd4bf;
+  --code-bg: #1b2230;
 }
 
 @theme inline {
@@ -40,6 +42,7 @@
   --color-cat-convention: var(--cat-convention); --color-cat-gotcha: var(--cat-gotcha);
   --color-cat-decision: var(--cat-decision); --color-cat-preference: var(--cat-preference);
   --color-cat-discovery: var(--cat-discovery);
+  --color-code-bg: var(--code-bg);
   --radius-lg: var(--radius);
 }
 
