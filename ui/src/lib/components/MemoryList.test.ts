@@ -4,7 +4,7 @@ import MemoryList from './MemoryList.svelte';
 import { create } from '@bufbuild/protobuf';
 import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
 
-const mem = create(MemorySchema, { id: '1', content: 'GOTCHA (path must match) upstream', category: 'gotcha', visibility: 'private', tags: ['mcp', 'routing'] });
+const mem = create(MemorySchema, { id: '1', summary: 'GOTCHA (path must match) upstream', category: 'gotcha', visibility: 'private', tags: ['mcp', 'routing'] });
 
 type Props = {
   memories: Memory[]; total: bigint; loading: boolean; error: unknown; selectedId: string;
