@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.14](https://github.com/seanb4t/engram/compare/v0.7.13...v0.7.14) (2026-06-27)
+
+
+### Features
+
+* **ui:** memory display + auto-summary UX (epic engram-gyo7) ([#221](https://github.com/seanb4t/engram/issues/221)) ([49309b2](https://github.com/seanb4t/engram/commit/49309b2eaf67c20e0f870a8b57464eb81db1644a))
+
 ## [0.7.13](https://github.com/seanb4t/engram/compare/v0.7.12...v0.7.13) (2026-06-27)
 
 
