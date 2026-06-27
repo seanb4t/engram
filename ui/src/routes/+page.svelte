@@ -12,7 +12,7 @@
   // Recent memories below the scope tiles (first page, server default desc order).
   const recentQ = createQuery(() => ({
     queryKey: ['listMemories', '', [], '', PAGE_LIMIT, 0],
-    queryFn: () => engram.listMemories({ scope: '', limit: BigInt(PAGE_LIMIT), offset: 0n, categories: [], visibility: '', full: true })
+    queryFn: () => engram.listMemories({ scope: '', limit: BigInt(PAGE_LIMIT), offset: 0n, categories: [], visibility: '' })
   }));
   function openRecord(id: string) { goto(`${base}/observe?sel=${encodeURIComponent(id)}`); }
 </script>
