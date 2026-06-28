@@ -1,7 +1,3 @@
-// @vitest-environment jsdom
-// DOMPurify needs a spec-complete DOM: the default happy-dom env (v20) strips
-// allow-listed tags (pre/h1) and never fires afterSanitizeAttributes hooks, so
-// link-scheme hardening silently no-ops. jsdom is DOMPurify's reference DOM.
 import { describe, it, expect } from 'vitest';
 import { renderMarkdown } from './markdown';
 

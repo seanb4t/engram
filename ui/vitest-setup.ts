@@ -1,11 +1,10 @@
 import '@testing-library/jest-dom/vitest';
 
-// happy-dom (the vitest test environment) natively provides ResizeObserver and
-// Element.prototype.scrollIntoView, so the jsdom-era stubs for those are gone.
-// localStorage still needs a stub: Node exposes a `localStorage` global that is
-// `undefined` unless --localstorage-file is passed, and mode-watcher reads
-// localStorage at module-evaluation time (before happy-dom's storage is in
-// scope), so we install a minimal in-memory implementation.
+// The node tier runs under `environment: 'node'` (no DOM), so the pure-logic
+// suites need no DOM globals. localStorage still needs a stub: Node exposes a
+// `localStorage` global that is `undefined` unless --localstorage-file is
+// passed, and mode-watcher reads localStorage at module-evaluation time, so we
+// install a minimal in-memory implementation.
 if (typeof localStorage === 'undefined') {
   const store: Record<string, string> = {};
   Object.defineProperty(globalThis, 'localStorage', {

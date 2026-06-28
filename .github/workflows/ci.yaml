@@ -143,7 +143,39 @@ jobs:
           cd ui && pnpm install --frozen-lockfile && pnpm build
           rm -rf ../internal/webauth/static && mkdir -p ../internal/webauth/static
           cp -R build/. ../internal/webauth/static/
-      - run: git diff --exit-code internal/webauth/static/ || { echo "::error::vendored SPA is stale — run 'task ui:build' and commit"; exit 1; }
+      - run: git diff --exit-code internal/webauth/static/ || { echo "::error::vendored SPA is stale — run 'task ui:build'
+          and commit"; exit 1; }
+
+  ui-test:
+    name: ui tests
+    runs-on: ubuntu-latest
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          package_json_file: ui/package.json
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '26'
+          cache: pnpm
+          cache-dependency-path: ui/pnpm-lock.yaml
+      - run: cd ui && pnpm install --frozen-lockfile
+      # Cache the Playwright browser binaries keyed on the resolved version so
+      # warm runs skip the ~190MB Chromium download.
+      - name: playwright version
+        id: pw
+        run: cd ui && echo "version=$(node -p 'require("playwright/package.json").version')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - run: cd ui && pnpm exec playwright install --with-deps chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+      - run: cd ui && pnpm exec playwright install-deps chromium
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+      - run: cd ui && pnpm test
 
   commit-lint:
     name: commit-lint
