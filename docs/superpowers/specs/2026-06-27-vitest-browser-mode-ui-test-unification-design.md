@@ -66,7 +66,7 @@ A single `ui/vite.config.ts` declares both tiers via vitest 4's
 
 | Project   | Environment            | Glob                 | Contents |
 |-----------|------------------------|----------------------|----------|
-| **node**    | `node` (or `happy-dom`, see §5) | `src/**/*.test.ts`         | 7 pure-logic tests + `app.css.test.ts` |
+| **node**    | `node` (or `happy-dom`, see §5) | `src/**/*.test.ts`         | 6 pure-logic tests + `app.css.test.ts` |
 | **browser** | Chromium via `@vitest/browser-playwright` | `src/**/*.browser.test.ts` | sanitizer + 7 component tests |
 
 The browser project uses `extends: true` to inherit the root `sveltekit()` +
@@ -98,6 +98,8 @@ export default defineConfig({
         test: {
           name: { label: 'browser', color: 'green' },
           include: ['src/**/*.browser.test.ts'],
+          // setupFiles TBD: add a browser setup file IFF jest-dom matchers
+          // survive the migration — see §4 "jest-dom retention" and §5.
           browser: {
             enabled: true,
             provider: playwright(),
@@ -163,9 +165,21 @@ emphatically node-tier).
 - **Add (dev):** `@vitest/browser`, `@vitest/browser-playwright`, `playwright`,
   `vitest-browser-svelte` (pin to the installed `vitest` 4.1.x line).
 - **Remove (dev):** `jsdom` (+ transitive `undici`), `@testing-library/svelte`,
-  `@testing-library/user-event`. `happy-dom` removal is conditional on the §5
-  node-environment choice.
-- **Keep:** `@testing-library/jest-dom` (matchers used via `expect.element`).
+  `@testing-library/user-event`. Removing `@testing-library/svelte` also means
+  dropping the `svelteTesting()` plugin (imported from
+  `@testing-library/svelte/vite`) from `vite.config.ts` — currently the 3rd
+  entry in the root `plugins: [tailwindcss(), sveltekit(), svelteTesting()]`.
+  `happy-dom` removal is conditional on the §5 node-environment choice.
+- **jest-dom retention (conditional, mirrors §5):** vitest browser mode's
+  `expect.element(locator)` ships its own retriable matchers (`toBeVisible`,
+  `toHaveText`, …). The 7 component tests today lean on
+  `@testing-library/jest-dom` matchers (`toBeInTheDocument`,
+  `toHaveTextContent`) against DOM nodes; whether those survive on browser-mode
+  *locators* is unconfirmed. **Decision rule:** during the file-by-file
+  migration, prefer vitest browser's built-in matchers; **keep**
+  `@testing-library/jest-dom` (and add a browser `setupFiles` importing
+  `@testing-library/jest-dom/vitest`) only if a concrete assertion has no
+  built-in equivalent. Drop the dep if the built-ins cover every case.
 - Re-run `pnpm install`; commit the lockfile.
 
 ## 5. Open question deferred to plan: node-tier environment
