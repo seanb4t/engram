@@ -165,8 +165,7 @@ jobs:
       # warm runs skip the ~190MB Chromium download.
       - name: playwright version
         id: pw
-        run: cd ui && echo "version=$(pnpm ls playwright --depth 0 --parseable --long | sed -n 's/.*playwright@//p' | head
-          -1)" >> "$GITHUB_OUTPUT"
+        run: cd ui && echo "version=$(node -p 'require("playwright/package.json").version')" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: pw-cache
         with:
