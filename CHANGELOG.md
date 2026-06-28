@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.17](https://github.com/seanb4t/engram/compare/v0.7.16...v0.7.17) (2026-06-28)
+
+
+### Bug Fixes
+
+* **renovate:** block cookie major bumps (v2 breaks SvelteKit 2.68.0 build) ([#241](https://github.com/seanb4t/engram/issues/241)) ([2d59af0](https://github.com/seanb4t/engram/commit/2d59af0dc62c021266629a4c9120288fa6295787))
+* **ui:** cap app shell to viewport so detail pane stays fixed (engram-ecdj) ([#243](https://github.com/seanb4t/engram/issues/243)) ([6ea5867](https://github.com/seanb4t/engram/commit/6ea5867765f79d855b2ca03278fad64e90b2b3d2))
+
 ## [0.7.16](https://github.com/seanb4t/engram/compare/v0.7.15...v0.7.16) (2026-06-28)
 
 

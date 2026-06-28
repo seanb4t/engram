@@ -2,8 +2,8 @@ apiVersion: v2
 name: engram
 description: Self-hosted, correctable, OAuth-secured memory for coding agents (MCP)
 type: application
-version: 0.7.16
-appVersion: 0.7.16
+version: 0.7.17
+appVersion: 0.7.17
 home: https://github.com/seanb4t/engram
 sources:
   - https://github.com/seanb4t/engram
