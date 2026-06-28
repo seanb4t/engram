@@ -45,8 +45,10 @@ def _build_context(spine: str, overlay: str | None) -> str:
         "durable fact has been established — a decision, convention, preference, "
         "or gotcha that outlives the session — capture it now via the "
         f"curating-memory skill into {target} (search-before-store; "
-        "supersede-on-contradiction; never store transient state or secrets). If "
-        "nothing durable has emerged yet, ignore this and continue."
+        "supersede-on-contradiction; never store transient state or secrets). "
+        "engram is the durable-memory store here: capture to engram now, not to "
+        "`bd remember`, even if beads memory is also active. If nothing durable "
+        "has emerged yet, ignore this and continue."
     )
 
 

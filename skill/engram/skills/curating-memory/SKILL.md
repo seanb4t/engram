@@ -1,6 +1,6 @@
 ---
 name: curating-memory
-description: Use when storing or updating durable project memory via the engram MCP tools — enforces the engram-vs-beads routing gate, durable-only capture, search-before-store, supersede-on-contradiction, and the two-tier spine/overlay scope. Trigger when the user states a durable decision/preference/convention, when the user explicitly asks to remember something (including a time-bound reminder, due date, or "not before"/expiry — even if it looks task-shaped), on the session-end capture nudge, and before any mcp__engram__store_memory / schedule_memory / update_memory / delete_memory call.
+description: Use when storing or updating durable project memory via the engram MCP tools — enforces the engram-vs-beads routing gate (engram is preferred over `bd remember`/`bd memories` for durable facts), durable-only capture, search-before-store, supersede-on-contradiction, and the two-tier spine/overlay scope. Trigger when the user states a durable decision/preference/convention/gotcha, when the user explicitly asks to remember something (including a time-bound reminder, due date, or "not before"/expiry — even if it looks task-shaped), whenever you are about to record a durable fact and the repo also has a beads memory store (prefer engram; do not write it to `bd remember`), on the session-start recall and capture nudges, and before any mcp__engram__store_memory / schedule_memory / update_memory / delete_memory call.
 ---
 
 # Curating Memory
@@ -18,6 +18,16 @@ Decide *where* the fact belongs **before** applying the taxonomy below:
   issue tracker; engram does not track work.
 - **A durable fact about the repo/project** — a decision, preference,
   convention, or gotcha → engram memory. Continue below.
+- **A durable fact in a repo that *also* has beads memory** (`bd remember` /
+  `bd memories`) → **still engram.** engram is the preferred durable-memory store;
+  it wins over beads memory. Write the fact to engram, search engram first, and
+  do **not** split durable facts across both stores or mirror them into
+  `bd remember`. Beads memory is a read-only fallback for *recall* only when
+  engram is unavailable (401/403). Note the asymmetry that makes this easy to get
+  wrong: `bd prime` *auto-injects* its memories at session start, so memory can
+  *look* covered before you have read engram at all — it is not. Pull engram
+  explicitly, and capture into engram the moment a fact is established rather than
+  storing in beads and "lifting" later.
 - **An explicit ask to remember with a time bound** — "remember X by/until/after
   `<when>`", a due date, a deferred reveal → engram, via `schedule_memory`. The
   explicit *remember* plus the time window is the durability signal; do **not**
