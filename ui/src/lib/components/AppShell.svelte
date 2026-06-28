@@ -18,7 +18,7 @@
   function cycleTheme() { setMode(mode.current === 'dark' ? 'light' : 'dark'); }
 </script>
 
-<div class="min-h-screen flex flex-col bg-background text-foreground">
+<div class="h-dvh flex flex-col overflow-hidden bg-background text-foreground">
   <header class="flex items-center gap-3 px-3 py-2 border-b border-border">
     <BrandMark />
     <Button variant="outline" aria-label="search" class="flex-1 justify-start text-muted-foreground" onclick={() => oncommand?.()}>
@@ -38,6 +38,6 @@
         </a>
       {/each}
     </nav>
-    <main class="flex-1 min-w-0">{@render children?.()}</main>
+    <main class="flex-1 min-w-0 min-h-0">{@render children?.()}</main>
   </div>
 </div>
