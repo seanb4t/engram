@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/qdrant/go-client/qdrant"
 	"go.opentelemetry.io/otel/attribute"
@@ -61,6 +62,7 @@ func (s *Store) SetSummary(ctx context.Context, id, summary, model string) (err 
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
 		Payload: qdrant.NewValueMap(map[string]any{
 			"summary": summary, "summary_source": "auto", "summary_model": model,
+			"summary_egress_at": time.Now().UTC().Format(time.RFC3339),
 		}),
 		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
 	})
@@ -144,10 +146,24 @@ func (s *Store) SummarizeMissing(ctx context.Context, opts SummarizeOptions, sum
 				res.Filled++ // "would fill"
 				continue
 			}
-			if _, ferr := s.FillSummary(ctx, m, summarize, opts.Model, opts.MaxChars); ferr != nil {
-				slog.WarnContext(ctx, "summarize-missing: fill failed", "id", m.ID, "err", ferr)
+			filled, ferr := s.FillSummary(ctx, m, summarize, opts.Model, opts.MaxChars)
+			// k1oe.2: per-record egress audit (content_len only, never content).
+			auditAttrs := func(outcome string, extra ...slog.Attr) []slog.Attr {
+				return append([]slog.Attr{
+					slog.String("id", m.ID), slog.String("scope", m.Scope),
+					slog.String("visibility", m.Visibility), slog.String("owner", m.Owner),
+					slog.Int("content_len", utf8.RuneCountInString(m.Content)),
+					slog.String("model", opts.Model), slog.String("outcome", outcome),
+				}, extra...)
+			}
+			if ferr != nil {
+				slog.LogAttrs(ctx, slog.LevelWarn, "summarize-missing: egress",
+					auditAttrs("failed", slog.String("err", ferr.Error()))...)
 				res.Failed++
 				continue
+			}
+			if filled {
+				slog.LogAttrs(ctx, slog.LevelInfo, "summarize-missing: egress", auditAttrs("filled")...)
 			}
 			res.Filled++
 		}
