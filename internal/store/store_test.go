@@ -2020,12 +2020,12 @@ func TestPayloadRoundTripSummaryProvenance(t *testing.T) {
 	m := Memory{
 		ID: "11111111-1111-1111-1111-111111111111", Content: "long original content",
 		Scope: "repo:x", Category: "convention", Source: "agent-inferred",
-		Summary: "terse line", SummarySource: "auto", SummaryModel: "summary-cheap",
+		Summary: "terse line", SummarySource: SummarySourceAuto, SummaryModel: "summary-cheap",
 		CreatedAt: time.Now().UTC().Truncate(time.Second),
 	}
 	vm := qdrant.NewValueMap(payload(m))
 	got := fromPayload(m.ID, vm)
-	if got.Summary != "terse line" || got.SummarySource != "auto" || got.SummaryModel != "summary-cheap" {
+	if got.Summary != "terse line" || got.SummarySource != SummarySourceAuto || got.SummaryModel != "summary-cheap" {
 		t.Fatalf("summary provenance not round-tripped: %+v", got)
 	}
 

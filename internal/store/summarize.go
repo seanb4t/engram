@@ -61,7 +61,7 @@ func (s *Store) SetSummary(ctx context.Context, id, summary, model string) (err 
 	_, err = s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
 		Payload: qdrant.NewValueMap(map[string]any{
-			"summary": summary, "summary_source": "auto", "summary_model": model,
+			"summary": summary, "summary_source": string(SummarySourceAuto), "summary_model": model,
 			"summary_egress_at": time.Now().UTC().Format(time.RFC3339),
 		}),
 		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),

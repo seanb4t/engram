@@ -250,14 +250,14 @@ func TestConnectTagsFilter(t *testing.T) {
 }
 
 func TestMemoryToProtoMapsSummary(t *testing.T) {
-	pb := memoryToProto(store.Memory{ID: "1", Summary: "terse", SummarySource: "auto"})
+	pb := memoryToProto(store.Memory{ID: "1", Summary: "terse", SummarySource: store.SummarySourceAuto})
 	if pb.Summary != "terse" || pb.SummarySource != "auto" {
 		t.Fatalf("summary fields not mapped: %+v", pb)
 	}
 }
 
 func TestShapeProtoMemoriesFullFlag(t *testing.T) {
-	ms := []store.Memory{{ID: "1", Content: "long body over the cap here", Summary: "kept", SummarySource: "client"}}
+	ms := []store.Memory{{ID: "1", Content: "long body over the cap here", Summary: "kept", SummarySource: store.SummarySourceClient}}
 	full := shapeProtoMemories(ms, true, 4)
 	if full[0].Content == "" {
 		t.Fatal("full=true must keep content")

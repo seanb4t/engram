@@ -13,7 +13,7 @@ import (
 func sp(s string) *string { return &s }
 
 func TestToRecallViewPrefersSummaryElseTruncates(t *testing.T) {
-	withSum := store.Memory{ID: "1", Content: "a very long body well past the cap", Summary: "kept", SummarySource: "client", Scope: "s", Category: "decision"}
+	withSum := store.Memory{ID: "1", Content: "a very long body well past the cap", Summary: "kept", SummarySource: store.SummarySourceClient, Scope: "s", Category: "decision"}
 	v := toRecallView(withSum, 8)
 	if v.Summary != "kept" || v.Truncated {
 		t.Fatalf("summary should win untruncated: %+v", v)
@@ -42,8 +42,8 @@ func TestShapeRecallFullVsSummary(t *testing.T) {
 }
 
 func TestResolveSummaryUpdate(t *testing.T) {
-	clientSum := store.Memory{Summary: "hand-written", SummarySource: "client"}
-	autoSum := store.Memory{Summary: "machine", SummarySource: "auto"}
+	clientSum := store.Memory{Summary: "hand-written", SummarySource: store.SummarySourceClient}
+	autoSum := store.Memory{Summary: "machine", SummarySource: store.SummarySourceAuto}
 	none := store.Memory{}
 
 	cases := []struct {
@@ -61,7 +61,7 @@ func TestResolveSummaryUpdate(t *testing.T) {
 		{"none + change = noop", none, true, nil, "", false, false},
 		{"auto + change = autoclear", autoSum, true, nil, "", true, false},
 		{"client + change + unaddressed = reject", clientSum, true, nil, "", false, true},
-		{"legacy (empty source) + change = preserve", store.Memory{Summary: "old", SummarySource: ""}, true, nil, "", false, false},
+		{"legacy (empty source) + change = preserve", store.Memory{Summary: "old", SummarySource: store.SummarySourceNone}, true, nil, "", false, false},
 	}
 	for _, tc := range cases {
 		v, apply, err := resolveSummaryUpdate(tc.cur, tc.contentChanged, tc.arg)

@@ -36,7 +36,7 @@ func memoryToProto(m store.Memory) *engramv1.Memory {
 		Actor: m.Actor, Owner: m.Owner, Visibility: m.Visibility,
 		CreatedAt:     timestamppb.New(m.CreatedAt),
 		Summary:       m.Summary,
-		SummarySource: m.SummarySource,
+		SummarySource: string(m.SummarySource),
 	}
 }
 

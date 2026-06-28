@@ -40,7 +40,7 @@ func TestUpdateSummaryPersists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetReadable after Update: %v", err)
 	}
-	if got.Summary != "concise summary" || got.SummarySource != "client" {
+	if got.Summary != "concise summary" || got.SummarySource != SummarySourceClient {
 		t.Fatalf("summary not persisted: Summary=%q SummarySource=%q", got.Summary, got.SummarySource)
 	}
 
@@ -72,7 +72,7 @@ func TestUpdateClearsSummaryEgressAt(t *testing.T) {
 	m := Memory{
 		ID: id, Content: "original content", Scope: "repo:egress-clear",
 		Category: "convention", Source: "agent-inferred", Owner: "owner-F",
-		Summary: "auto", SummarySource: "auto", SummaryEgressAt: stamped,
+		Summary: "auto", SummarySource: SummarySourceAuto, SummaryEgressAt: stamped,
 		CreatedAt: time.Now().UTC(),
 	}
 	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
@@ -197,7 +197,7 @@ func TestSummarizeMissingFillsEmptyOnly(t *testing.T) {
 
 	seed := []Memory{
 		{ID: "a0000000-0000-0000-0000-000000000001", Content: long, Scope: scope, Category: "convention", Source: "agent-inferred", Owner: "owner-A", CreatedAt: time.Now().UTC()},
-		{ID: "a0000000-0000-0000-0000-000000000002", Content: long, Scope: scope, Category: "convention", Source: "agent-inferred", Owner: "owner-A", Summary: "already", SummarySource: "client", CreatedAt: time.Now().UTC()},
+		{ID: "a0000000-0000-0000-0000-000000000002", Content: long, Scope: scope, Category: "convention", Source: "agent-inferred", Owner: "owner-A", Summary: "already", SummarySource: SummarySourceClient, CreatedAt: time.Now().UTC()},
 		{ID: "a0000000-0000-0000-0000-000000000003", Content: "short", Scope: scope, Category: "convention", Source: "agent-inferred", Owner: "owner-A", CreatedAt: time.Now().UTC()},
 	}
 	for _, m := range seed {
@@ -218,7 +218,7 @@ func TestSummarizeMissingFillsEmptyOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get filled: %v", err)
 	}
-	if got.Summary != "AUTO terse" || got.SummarySource != "auto" || got.SummaryModel != "summary-cheap" {
+	if got.Summary != "AUTO terse" || got.SummarySource != SummarySourceAuto || got.SummaryModel != "summary-cheap" {
 		t.Fatalf("auto summary not persisted: %+v", got)
 	}
 }
@@ -242,7 +242,7 @@ func TestSummarizeMissingStampsEgressAt(t *testing.T) {
 	already := Memory{
 		ID: "d0000000-0000-0000-0000-000000000002", Content: long, Scope: scope,
 		Category: "convention", Source: "agent-inferred", Owner: "owner-D",
-		Summary: "already", SummarySource: "client", CreatedAt: time.Now().UTC(),
+		Summary: "already", SummarySource: SummarySourceClient, CreatedAt: time.Now().UTC(),
 	}
 	for _, m := range []Memory{filled, already} {
 		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
