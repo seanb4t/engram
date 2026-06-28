@@ -949,3 +949,4 @@ Run: `bd note engram-utdv "ui tests added to protect-main ruleset 17228701 as 8t
 - **Test count reconciles:** 37 browser (6+2+2+5+3+3+7+9) + 26 node (2+3+4+4+4+4+ app.css-loop 5) = 63. Matches the spec's runtime count.
 - **Type/signature consistency:** every component task uses `await render(C, directProps)`, `await expect.element(locator).matcher()`, locator `.click()` — no `userEvent`, no `{ props }`, no `within`. `rerender` is async with direct props (Task 6). Locator chaining `meta.getByText` (Task 9). All consistent with the pre-flight reference table.
 - **No placeholders:** every code step shows full file contents or exact diffs; every run step shows the command + expected pass count.
+<!-- adr-capture: sha256=01435934be8260c6; session=cli; ts=2026-06-28T00:52:43Z; adrs=engram-1h3k,engram-om5b -->
