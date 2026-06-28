@@ -27,19 +27,51 @@ def _build_context(spine: str, overlay: str | None) -> str:
     lines = [f"Memory spine scope: {spine}"]
     if overlay:
         lines.append(f"Memory workspace scope: {overlay}")
-    which = "spine, and the workspace overlay if present" if overlay else "the spine"
+    which = "the spine, and the workspace overlay if present" if overlay else "the spine"
     lines.append("")
     lines.append(
-        "To recall durable memories for this session, call "
-        f"mcp__engram__list_memory once per scope above ({which}), merge "
-        "results (prefer the spine record on duplicate ids), and surface them "
-        'grouped as "Repo-wide memories" and "This workspace\'s memories" — '
-        "silently omitting any group that returns nothing. Recall returns compact "
-        "summaries by default (this is what keeps the spine bootstrap small); "
-        "full content is one get_memory call away. If engram "
-        "returns 401/403 it is not authenticated: say once that memories are "
-        "unavailable and the user can authenticate via /mcp (engram -> "
-        "Authenticate), then continue without blocking."
+        "REQUIRED FIRST ACTION — recall durable memory before your first "
+        f"substantive response: call mcp__engram__list_memory once per scope above "
+        f"({which}) with limit 10 (most recent first) and read the results. This "
+        "is a hard prerequisite, not background context, and it is NOT satisfied "
+        "by any other store: even if beads (`bd prime`) has already printed its "
+        "own memories into this session, those are a DIFFERENT store — engram is "
+        "empty in your context until you pull it, and you cannot search-before-"
+        "store against a spine you have never read. Do not skip or defer this "
+        "because the user's request feels urgent or self-contained, and do not "
+        "assume memory is \"already loaded\" because something else injected some "
+        "at startup. A one-shot list_memory call is cheap; working blind against a "
+        "populated engram spine is the exact failure this hook exists to prevent. "
+        "Render the results as a visible, bounded digest — one terse bullet per "
+        "record (its compact summary as returned, not expanded to full content), "
+        "preferring the spine record on duplicate ids, grouped as \"Repo-wide "
+        "memories\" and \"This workspace's memories\", and silently omitting any "
+        "group that returns nothing. This digest is the most recent ~10 per scope, "
+        "not the whole store; printing it doubles as proof you actually recalled. "
+        "If a scope comes back full (10 records), add a one-line footer noting "
+        "older memories remain and are reachable via search_memory or a higher "
+        "list_memory limit. Recall returns compact summaries by "
+        "default (this is what keeps the spine bootstrap small); full content is "
+        "one get_memory call away. If engram returns 401/403 it is not "
+        "authenticated: say once that memories are unavailable and the user can "
+        "authenticate via /mcp (engram -> Authenticate), then continue without "
+        "blocking — and in that case only, fall back to `bd memories <keyword>` if "
+        "a beads memory store is present."
+    )
+    lines.append("")
+    lines.append(
+        "Memory store precedence — engram is the preferred durable-memory store "
+        "for this repo, including over beads. If a beads memory store (`bd "
+        "remember` / `bd memories`) is also active here, do NOT treat its "
+        "auto-injected memories as sufficient or as the place to write: route "
+        "every durable project fact — decisions, conventions, preferences, "
+        "gotchas — to engram, search engram first, and treat beads memories as a "
+        "read-only fallback only when engram is unavailable (401/403). Never split "
+        "durable memory across both stores, and never \"lift\" facts into engram as "
+        "an afterthought — capture them in engram the moment they are established. "
+        "(Beads *issues* — `bd create` / `bd ready` — are unrelated: they track "
+        "work to *do*, not memory; route actionable work items there, never to "
+        "engram.)"
     )
     lines.append("")
     lines.append(
