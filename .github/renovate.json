@@ -43,6 +43,16 @@
         ],
         "executionMode": "branch"
       }
+    },
+    {
+      "description": "Block cookie major bumps: cookie v2 is an ESM-only API rewrite (parse→parseCookie, serialize→stringifyCookie) that @sveltejs/kit 2.68.0 does not support — a v2 bump breaks the SPA build at the pnpm build step (caught by the 'ui vendored-asset drift' check). The ui/pnpm-workspace.yaml override forces cookie up only to clear GHSA-pxg6-pf52-xh8x (cookie <0.7.0); ^1.0.0 already clears it, so v2 adds no security value. Minor/patch within 1.x remain allowed.",
+      "matchPackageNames": [
+        "cookie"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
     }
   ]
 }
