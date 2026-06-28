@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.16](https://github.com/seanb4t/engram/compare/v0.7.15...v0.7.16) (2026-06-28)
+
+
+### Features
+
+* **engram-skill:** prefer engram over beads for durable memory (engram-g9rj) ([#237](https://github.com/seanb4t/engram/issues/237)) ([9aafa74](https://github.com/seanb4t/engram/commit/9aafa7418059d9dfec13d00e3aab41325dffb4a2))
+
 ## [0.7.15](https://github.com/seanb4t/engram/compare/v0.7.14...v0.7.15) (2026-06-28)
 
 
