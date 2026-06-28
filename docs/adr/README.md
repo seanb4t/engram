@@ -13,6 +13,8 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-1h3k](engram-1h3k-adopt-two-tier-vitest-config-node-real-chromium-browser.md) | 2026-06-28 | Accepted | Adopt two-tier vitest config: node + real-Chromium browser |
+| [engram-om5b](engram-om5b-node-test-tier-environment-node-drop-happy-dom.md) | 2026-06-28 | Accepted | Node test tier on environment:node, drop happy-dom |
 | [engram-3nas](engram-3nas-render-user-memory-content-via-marked-dompurify-allowlist.md) | 2026-06-27 | Accepted | Render user memory content via marked + DOMPurify allowlist |
 | [engram-4y7p](engram-4y7p-explicit-first-memory-summary-offline-operator-auto-fill.md) | 2026-06-26 | Accepted | Explicit-first memory summary with offline operator auto-fill |
 | [engram-ambu](engram-ambu-recall-returns-summary-by-default-full-content-opt.md) | 2026-06-26 | Accepted | Recall returns summary by default with full-content opt-in |
