@@ -382,7 +382,7 @@ func TestUpdateMemoryStaleSummaryGuard(t *testing.T) {
 	m := store.Memory{
 		ID: id, Content: "original content", Scope: scope,
 		Category: "convention", Source: "agent-inferred",
-		Owner: "sub-stale", Summary: "hand-written", SummarySource: "client",
+		Owner: "sub-stale", Summary: "hand-written", SummarySource: store.SummarySourceClient,
 		CreatedAt: timeNow(),
 	}
 	if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
@@ -1133,12 +1133,12 @@ func TestStoreAndEmbedderFromEnvNoEnsureLoadsConfigOnce(t *testing.T) {
 func TestToMemorySetsClientSummarySource(t *testing.T) {
 	withSummary := storeArgs{Content: "c", Scope: "s", Source: "user-said", Category: "decision", Summary: "terse"}
 	m := withSummary.toMemory("owner", "actor", time.Now())
-	if m.Summary != "terse" || m.SummarySource != "client" {
+	if m.Summary != "terse" || m.SummarySource != store.SummarySourceClient {
 		t.Fatalf("client summary not mapped: summary=%q source=%q", m.Summary, m.SummarySource)
 	}
 	noSummary := storeArgs{Content: "c", Scope: "s", Source: "user-said", Category: "decision"}
 	m2 := noSummary.toMemory("owner", "actor", time.Now())
-	if m2.Summary != "" || m2.SummarySource != "" {
+	if m2.Summary != "" || m2.SummarySource != store.SummarySourceNone {
 		t.Fatalf("absent summary must leave source empty: %+v", m2)
 	}
 }

@@ -2020,19 +2020,19 @@ func TestPayloadRoundTripSummaryProvenance(t *testing.T) {
 	m := Memory{
 		ID: "11111111-1111-1111-1111-111111111111", Content: "long original content",
 		Scope: "repo:x", Category: "convention", Source: "agent-inferred",
-		Summary: "terse line", SummarySource: "auto", SummaryModel: "summary-cheap",
+		Summary: "terse line", SummarySource: SummarySourceAuto, SummaryModel: "summary-cheap",
 		CreatedAt: time.Now().UTC().Truncate(time.Second),
 	}
 	vm := qdrant.NewValueMap(payload(m))
 	got := fromPayload(m.ID, vm)
-	if got.Summary != "terse line" || got.SummarySource != "auto" || got.SummaryModel != "summary-cheap" {
+	if got.Summary != "terse line" || got.SummarySource != SummarySourceAuto || got.SummaryModel != "summary-cheap" {
 		t.Fatalf("summary provenance not round-tripped: %+v", got)
 	}
 
 	// A curated record with no summary must still round-trip cleanly (empty source).
 	plain := Memory{ID: "22222222-2222-2222-2222-222222222222", Content: "c", Category: "gotcha"}
 	g2 := fromPayload(plain.ID, qdrant.NewValueMap(payload(plain)))
-	if g2.Summary != "" || g2.SummarySource != "" || g2.SummaryModel != "" {
+	if g2.Summary != "" || g2.SummarySource != SummarySourceNone || g2.SummaryModel != "" {
 		t.Fatalf("empty-summary record drifted: %+v", g2)
 	}
 }

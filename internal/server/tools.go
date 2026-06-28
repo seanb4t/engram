@@ -442,9 +442,9 @@ func validCitationKind(k string) bool {
 // value. Both store_memory and schedule_memory funnel through here so their
 // record shape stays aligned.
 func (a storeArgs) toMemory(owner, actor string, createdAt time.Time) store.Memory {
-	src := ""
+	src := store.SummarySourceNone
 	if a.Summary != "" {
-		src = "client"
+		src = store.SummarySourceClient
 	}
 	return store.Memory{
 		ID:            uuid.NewString(),

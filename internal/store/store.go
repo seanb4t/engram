@@ -42,6 +42,28 @@ var ErrNotFound = errors.New("not found")
 // in an authorization path is a compile error rather than a silent gate bypass.
 const visibilityShared = "shared"
 
+// SummarySource records the provenance of a record's summary. It is persisted
+// to Qdrant (payload/fromPayload) and crosses the Connect proto and MCP recall
+// boundaries as a bare string, so its values are contract-locked — use the
+// constants below. The named type is a convention aid, not enforcement: Go's
+// untyped string constants still assign to it, so a stray "Client" would
+// compile, persist, and silently miss the stale-summary guard's
+// == SummarySourceClient check. Prefer the constants.
+type SummarySource string
+
+const (
+	// SummarySourceNone marks a record with no summary provenance. It is the
+	// zero value so an unconfigured Memory reads as none without assignment.
+	SummarySourceNone SummarySource = ""
+	// SummarySourceClient marks a caller-authored summary (set by store_memory
+	// and schedule_memory via toMemory, and re-stamped by update_memory) — the
+	// trust signal the stale-summary guard protects.
+	SummarySourceClient SummarySource = "client"
+	// SummarySourceAuto marks a sweep-generated summary (regenerable,
+	// auto-clears on content change).
+	SummarySourceAuto SummarySource = "auto"
+)
+
 // Memory is the unit of storage. Fields map 1:1 to Qdrant payload keys.
 type Memory struct {
 	ID        string   `json:"id"`
@@ -78,8 +100,9 @@ type Memory struct {
 	// path. Authored by the caller (SummarySource "client") or filled by the
 	// offline summarize-missing sweep ("auto"); "" means none.
 	Summary string `json:"summary,omitempty"`
-	// SummarySource is the trust signal: "client" | "auto" | "" (none).
-	SummarySource string `json:"summary_source,omitempty"`
+	// SummarySource records summary provenance: client | auto | none. See the
+	// named type and prefer its constants.
+	SummarySource SummarySource `json:"summary_source,omitempty"`
 	// SummaryModel names the model that produced an "auto" summary (diagnostics);
 	// empty otherwise.
 	SummaryModel string `json:"summary_model,omitempty"`
@@ -187,7 +210,7 @@ func payload(m Memory) map[string]any {
 		p["not_after"] = m.NotAfter.Unix()
 	}
 	p["summary"] = m.Summary
-	p["summary_source"] = m.SummarySource
+	p["summary_source"] = string(m.SummarySource)
 	if m.SummaryModel != "" {
 		p["summary_model"] = m.SummaryModel
 	}
@@ -270,7 +293,7 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 		m.Summary = v.GetStringValue()
 	}
 	if v, ok := p["summary_source"]; ok {
-		m.SummarySource = v.GetStringValue()
+		m.SummarySource = SummarySource(v.GetStringValue())
 	}
 	if v, ok := p["summary_model"]; ok {
 		m.SummaryModel = v.GetStringValue()
@@ -955,9 +978,9 @@ func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *
 	if summary != nil {
 		cur.Summary = *summary
 		if *summary == "" {
-			cur.SummarySource, cur.SummaryModel = "", ""
+			cur.SummarySource, cur.SummaryModel = SummarySourceNone, ""
 		} else {
-			cur.SummarySource, cur.SummaryModel = "client", ""
+			cur.SummarySource, cur.SummaryModel = SummarySourceClient, ""
 		}
 		// A client-authored or cleared summary is no longer auto-egressed
 		// provenance, so the egress stamp is invalidated.
