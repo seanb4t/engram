@@ -2032,7 +2032,7 @@ func TestPayloadRoundTripSummaryProvenance(t *testing.T) {
 	// A curated record with no summary must still round-trip cleanly (empty source).
 	plain := Memory{ID: "22222222-2222-2222-2222-222222222222", Content: "c", Category: "gotcha"}
 	g2 := fromPayload(plain.ID, qdrant.NewValueMap(payload(plain)))
-	if g2.Summary != "" || g2.SummarySource != "" || g2.SummaryModel != "" {
+	if g2.Summary != "" || g2.SummarySource != SummarySourceNone || g2.SummaryModel != "" {
 		t.Fatalf("empty-summary record drifted: %+v", g2)
 	}
 }

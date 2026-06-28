@@ -5,12 +5,8 @@ package store
 
 import "testing"
 
-// TestSummarySourceConstants pins the canonical wire/payload strings a named
-// SummarySource type must emit. These literals are persisted to Qdrant
-// (toPayload) and read back (fromPayload), cross the Connect proto boundary
-// (memoryToProto), and are matched by the server's stale-summary guard. A drift
-// here breaks round-trips and recall semantics silently, so the values are
-// contract-locked: client/auto are the only trust signals; "" means none.
+// TestSummarySourceConstants pins the canonical wire/payload strings the
+// SummarySource constants emit (see the type doc for why they are locked).
 func TestSummarySourceConstants(t *testing.T) {
 	cases := []struct {
 		name string

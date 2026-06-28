@@ -53,7 +53,7 @@ func TestUpdateSummaryPersists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetReadable after clear: %v", err)
 	}
-	if cleared.Summary != "" || cleared.SummarySource != "" || cleared.SummaryModel != "" {
+	if cleared.Summary != "" || cleared.SummarySource != SummarySourceNone || cleared.SummaryModel != "" {
 		t.Fatalf("summary not cleared: Summary=%q SummarySource=%q SummaryModel=%q",
 			cleared.Summary, cleared.SummarySource, cleared.SummaryModel)
 	}

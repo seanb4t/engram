@@ -42,24 +42,22 @@ var ErrNotFound = errors.New("not found")
 // in an authorization path is a compile error rather than a silent gate bypass.
 const visibilityShared = "shared"
 
-// SummarySource is the trust signal for a record's summary provenance. It is
-// persisted to Qdrant (toPayload) and read back (fromPayload), and crosses the
-// Connect proto boundary as a bare string, so its values are contract-locked.
-//
-//   - SummarySourceClient: authored by the caller (store_memory / update_memory).
-//     The stale-summary guard refuses to silently strand it across a content
-//     change.
-//   - SummarySourceAuto: filled by the offline summarize-missing sweep.
-//     Regenerable; auto-clears across a content change.
-//   - SummarySourceNone (the zero value): no summary provenance.
+// SummarySource records the provenance of a record's summary. It is persisted
+// to Qdrant (payload/fromPayload) and crosses the Connect proto and MCP recall
+// boundaries as a bare string, so its values are contract-locked — use the
+// constants below. The named type is a convention aid, not enforcement: Go's
+// untyped string constants still assign to it, so a stray "Client" would
+// compile, persist, and silently miss the stale-summary guard's
+// == SummarySourceClient check. Prefer the constants.
 type SummarySource string
 
 const (
 	// SummarySourceNone marks a record with no summary provenance. It is the
 	// zero value so an unconfigured Memory reads as none without assignment.
 	SummarySourceNone SummarySource = ""
-	// SummarySourceClient marks a caller-authored summary — the trust signal
-	// the stale-summary guard protects.
+	// SummarySourceClient marks a caller-authored summary (set by store_memory
+	// and schedule_memory via toMemory, and re-stamped by update_memory) — the
+	// trust signal the stale-summary guard protects.
 	SummarySourceClient SummarySource = "client"
 	// SummarySourceAuto marks a sweep-generated summary (regenerable,
 	// auto-clears on content change).
@@ -102,8 +100,8 @@ type Memory struct {
 	// path. Authored by the caller (SummarySource "client") or filled by the
 	// offline summarize-missing sweep ("auto"); "" means none.
 	Summary string `json:"summary,omitempty"`
-	// SummarySource is the trust signal: client | auto | none. See the named
-	// type's constants — never a bare string literal.
+	// SummarySource records summary provenance: client | auto | none. See the
+	// named type and prefer its constants.
 	SummarySource SummarySource `json:"summary_source,omitempty"`
 	// SummaryModel names the model that produced an "auto" summary (diagnostics);
 	// empty otherwise.
