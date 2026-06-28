@@ -26,9 +26,8 @@ export default defineConfig({
           name: 'node',
           include: ['src/**/*.test.ts'],
           exclude: ['src/**/*.browser.test.ts'],
-          environment: 'happy-dom',
-          setupFiles: ['./vitest-setup.ts'],
-          environmentOptions: { happyDOM: { url: 'http://localhost/' } }
+          environment: 'node',
+          setupFiles: ['./vitest-setup.ts']
         }
       },
       {
