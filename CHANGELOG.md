@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.15](https://github.com/seanb4t/engram/compare/v0.7.14...v0.7.15) (2026-06-28)
+
+
+### Features
+
+* **summarize:** harden summarize-missing egress (engram-uhwd) ([#231](https://github.com/seanb4t/engram/issues/231)) ([95207f8](https://github.com/seanb4t/engram/commit/95207f871a680af982a448e606dcbc1f365214d4))
+
 ## [0.7.14](https://github.com/seanb4t/engram/compare/v0.7.13...v0.7.14) (2026-06-27)
 
 
