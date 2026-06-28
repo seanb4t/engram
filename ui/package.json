@@ -7,6 +7,8 @@
     "dev": "vite dev",
     "build": "vite build",
     "test": "vitest run",
+    "test:browser": "vitest run --project browser",
+    "test:node": "vitest run --project node",
     "check": "svelte-check --tsconfig ./tsconfig.json"
   },
   "devDependencies": {
