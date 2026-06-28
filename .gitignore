@@ -44,3 +44,7 @@ docs-site/.astro/
 ui/node_modules/
 ui/.svelte-kit/
 ui/build/
+
+# Vitest browser-mode failure artifacts (written next to tests / under ui on a failed run)
+ui/.vitest-attachments/
+ui/**/__screenshots__/
