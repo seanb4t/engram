@@ -41,31 +41,46 @@ type idVerifier interface {
 // Verifier wraps an OIDC token verifier discovered from an issuer's well-known
 // configuration (which yields the JWKS used to check signatures).
 type Verifier struct {
-	idv idVerifier
+	idv        idVerifier
+	ownerClaim string
 }
 
 // New performs OIDC discovery against issuer and returns a Verifier. If audience
 // is non-empty it becomes the required `aud` claim; empty disables the audience
-// check (signature + issuer + expiry are always enforced). The supplied ctx
-// bounds only the one-time discovery fetch — per-request JWKS refresh uses the
-// request context at verification time.
-func New(ctx context.Context, issuer, audience string) (*Verifier, error) {
+// check (signature + issuer + expiry are always enforced). ownerClaim names the
+// OIDC claim whose value becomes a record's owner (default "email"). The supplied
+// ctx bounds only the one-time discovery fetch — per-request JWKS refresh uses
+// the request context at verification time.
+func New(ctx context.Context, issuer, audience, ownerClaim string) (*Verifier, error) {
 	provider, err := oidc.NewProvider(ctx, issuer)
 	if err != nil {
 		return nil, fmt.Errorf("oidc discovery %q: %w", issuer, err)
 	}
-	return &Verifier{idv: provider.Verifier(&oidc.Config{
-		ClientID:          audience,
-		SkipClientIDCheck: audience == "",
-	})}, nil
+	return &Verifier{
+		idv: provider.Verifier(&oidc.Config{
+			ClientID:          audience,
+			SkipClientIDCheck: audience == "",
+		}),
+		ownerClaim: ownerClaim,
+	}, nil
 }
 
-// identityClaims are the optional human-readable identity fields Authentik emits
-// under the profile/email scopes. Subject is always present and is the stable
-// fallback when neither is available.
-type identityClaims struct {
-	Email             string `json:"email"`
-	PreferredUsername string `json:"preferred_username"`
+// ClaimIdentity extracts identity fields from a decoded ID-token payload and
+// enforces email_verified when ownerClaim=="email". Pure (no I/O) so both auth
+// lanes share and unit-test it from a map. owner MAY be "" (caller decides if
+// fatal; the read seam SubjectFromTokenInfo defers rejection of an empty owner to
+// Task 3). A non-nil error means reject (currently only the email_verified gate).
+// Absent email_verified => false => reject.
+func ClaimIdentity(raw map[string]any, ownerClaim string) (owner, email, username string, err error) {
+	email, _ = raw["email"].(string)
+	username, _ = raw["preferred_username"].(string)
+	owner, _ = raw[ownerClaim].(string)
+	if ownerClaim == "email" {
+		if verified, _ := raw["email_verified"].(bool); !verified {
+			return "", "", "", fmt.Errorf("email not verified")
+		}
+	}
+	return owner, email, username, nil
 }
 
 // TokenVerifier adapts this Verifier to the go-sdk's auth.TokenVerifier contract.
@@ -97,15 +112,21 @@ func (v *Verifier) TokenVerifier() mcpauth.TokenVerifier {
 			err = errors.Join(mcpauth.ErrInvalidToken, verr)
 			return nil, err
 		}
-		var claims identityClaims
-		// Identity is best-effort: a token may carry only `sub` (no profile/email
-		// scope). Subject still uniquely identifies the user, so a Claims decode
-		// error must not fail an otherwise-valid token.
-		_ = idt.Claims(&claims)
+		// Decode the full payload so the configured owner-claim can be read by
+		// name. ClaimIdentity enforces email_verified; identity (UserID) stays
+		// best-effort. owner-claim value may be empty here — SubjectFromTokenInfo
+		// fails closed on an empty owner_claim downstream.
+		var raw map[string]any
+		_ = idt.Claims(&raw)
+		ownerVal, email, username, cerr := ClaimIdentity(raw, v.ownerClaim)
+		if cerr != nil {
+			err = errors.Join(mcpauth.ErrInvalidToken, cerr)
+			return nil, err
+		}
 		return &mcpauth.TokenInfo{
-			UserID:     identity(idt.Subject, claims.Email, claims.PreferredUsername),
+			UserID:     identity(idt.Subject, email, username),
 			Expiration: idt.Expiry,
-			Extra:      map[string]any{"sub": idt.Subject, "email": claims.Email},
+			Extra:      map[string]any{"sub": idt.Subject, "email": email, "owner_claim": ownerVal},
 		}, nil
 	}
 }

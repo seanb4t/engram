@@ -216,7 +216,7 @@ func withAuth(handler http.Handler, oidc config.OIDCConfig) (http.Handler, error
 		return handler, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	verifier, err := auth.New(ctx, oidc.Issuer, oidc.Audience)
+	verifier, err := auth.New(ctx, oidc.Issuer, oidc.Audience, oidc.OwnerClaim)
 	cancel()
 	if err != nil {
 		return nil, fmt.Errorf("oidc verifier init: %w", err)
