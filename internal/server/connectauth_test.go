@@ -13,7 +13,7 @@ import (
 )
 
 func TestSubjectFromConnectContext(t *testing.T) {
-	// injected authenticated sub — key present, ti non-nil.
+	// injected authenticated owner-claim value — key present, ti non-nil.
 	ctx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "sub-A"}})
 	if got, err := subjectFromConnectContext(ctx); err != nil || got.Owner() != "sub-A" {
 		t.Errorf("authed: got (%v,%v), want Authenticated(sub-A)", got, err)

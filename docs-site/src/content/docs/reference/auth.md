@@ -110,6 +110,16 @@ claim, stored as the record's `owner`. The owner claim is set via
 closed when the claim is absent from the token. When the claim is `email`,
 `email_verified` is also required.
 
+:::caution[Operator lockout risk]
+Because the default claim is `email`, every token **must** carry
+`email_verified: true` (a JSON boolean — a string `"true"` does **not** count and
+fails closed). An IdP that omits `email_verified`, emits it as a string, or does
+not issue the configured claim at all will cause **every** request to be rejected
+(401) after upgrade. Before enabling, confirm your IdP emits the configured claim
+with `email_verified` as a boolean, or set `ENGRAM_OWNER_CLAIM` to a different
+stable claim your IdP does emit (e.g. `preferred_username` or `sub`).
+:::
+
 ### Read access
 
 | Caller type | What is readable |

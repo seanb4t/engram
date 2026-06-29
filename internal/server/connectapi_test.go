@@ -63,7 +63,7 @@ func TestConnectCrossActorIsolation(t *testing.T) {
 	shared, priv := seedCrossActorRecords(t, d, scope)
 	ctx := context.Background()
 
-	// caller B (distinct authed sub) injected via the test seam.
+	// caller B (distinct authed owner-claim value) injected via the test seam.
 	bctx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-B"}})
 
 	t.Run("ListMemories_negative_no_private_leak", func(t *testing.T) {

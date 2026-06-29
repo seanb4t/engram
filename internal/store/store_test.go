@@ -2066,6 +2066,43 @@ func TestRemapOwner(t *testing.T) {
 	if got, _ := s.Get(ctx, emailID); got.Owner != "new@example.com" {
 		t.Errorf("email->email owner = %q", got.Owner)
 	}
+
+	// Seed an owner-less (missing key, pre-isolation) record and an explicit
+	// anonymous-bucket (owner=="") record to prove the Missing (IsEmpty) vs Anon
+	// (Match "") filters target DIFFERENT record sets.
+	missingID := "e0e0e0e0-0000-0000-0000-000000000003"
+	pm := payload(Memory{ID: missingID, Content: "legacy", Scope: scope, CreatedAt: time.Now().UTC()})
+	delete(pm, "owner")
+	if _, err := s.client.Upsert(ctx, &qdrant.UpsertPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Points: []*qdrant.PointStruct{{
+			Id: qdrant.NewID(missingID), Vectors: qdrant.NewVectors(0.1, 0.2, 0.3),
+			Payload: qdrant.NewValueMap(pm),
+		}},
+	}); err != nil {
+		t.Fatalf("raw upsert owner-less record: %v", err)
+	}
+	anonID := "e0e0e0e0-0000-0000-0000-000000000004"
+	mk(anonID, "") // explicit owner==""
+
+	// Missing matches ONLY the owner-less record, not the owner=="" bucket.
+	if n, err = s.RemapOwner(ctx, OwnerRemapSource{Missing: true}, "backfill@example.com", false); err != nil || n != 1 {
+		t.Fatalf("missing->email: n=%d err=%v (want exactly 1; owner=='' must not match IsEmpty)", n, err)
+	}
+	if got, _ := s.Get(ctx, missingID); got.Owner != "backfill@example.com" {
+		t.Errorf("missing->email owner = %q", got.Owner)
+	}
+	if got, _ := s.Get(ctx, anonID); got.Owner != "" {
+		t.Errorf("anon bucket hijacked by Missing remap: owner=%q, want \"\"", got.Owner)
+	}
+
+	// Anon matches ONLY the explicit owner=="" record.
+	if n, err = s.RemapOwner(ctx, OwnerRemapSource{Anon: true}, "claimed@example.com", false); err != nil || n != 1 {
+		t.Fatalf("anon->email: n=%d err=%v (want exactly 1)", n, err)
+	}
+	if got, _ := s.Get(ctx, anonID); got.Owner != "claimed@example.com" {
+		t.Errorf("anon->email owner = %q", got.Owner)
+	}
 }
 
 func TestRemapOwnerHonorsCancel(t *testing.T) {

@@ -52,14 +52,15 @@ Tools: `store_memory` / `schedule_memory` / `search_memory` / `list_memory` /
 `scope`, repo/workspace/worktree/base_dir, `source`, `category`, `tags`,
 `summary`/`summary_source` (client-authored or auto-generated digest; omit for none),
 `actor` (verified caller — server-set, never client-supplied), `owner` (caller's
-stable OIDC `sub`, the authz key — server-set), `visibility` (`private` default |
+configured owner-claim value — `ENGRAM_OWNER_CLAIM`, default `email`, the authz
+key — server-set), `visibility` (`private` default |
 `shared`), `created_at`. Recall returns summaries by default with `full=true` opt-in;
 full content via `get_memory`. Design intent: explicit, zero-junk, correctable. Do not
 add auto-extraction.
 
 **Isolation (authz):** each actor sees/mutates only their own records; `shared`
 records are readable (never writable) by any **authenticated** caller — the
-shared read grant requires a non-empty `sub`. No issuer → single anonymous
+shared read grant requires a non-empty owner-claim value. No issuer → single anonymous
 bucket (`owner==""`); anonymous callers (auth disabled) see only that bucket and
 cannot read other actors' `shared` records. The `set_visibility` tool and
 `update_memory`'s `shared` field toggle sharing; `update_memory`'s `tags` field
@@ -68,7 +69,9 @@ and `list_memory` accept an optional `tags` filter — records must carry **all*
 listed tags (AND); on `search_memory` it is a hard pre-filter applied before
 vector ranking. Pre-isolation records (missing
 `owner` key) are invisible to every read until you backfill them with `engram
-migrate-set-owner --owner <sub>`.
+migrate-remap-owner --from-missing --to <owner>` (the `migrate-set-owner` command
+is a deprecated alias). To re-stamp records after an IdP `sub`/claim change, use
+`engram migrate-remap-owner --from <old> --to <new>`.
 
 Scheduled tools: `schedule_memory` stores a memory with a temporal validity
 window — `not_before` (RFC3339; deferred reveal: hidden from recall until then)

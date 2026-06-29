@@ -64,7 +64,7 @@ func TestNewSessionCodecRejectsBadKey(t *testing.T) {
 }
 
 // TestOldSubKeyedCookieRejected verifies that a session cookie sealed with the
-// old "sub" JSON key (pre-Task-3 format) is rejected by the resolver — callers
+// old "sub" JSON key (the pre-owner-claim cookie format) is rejected by the resolver — callers
 // are forced to re-login on upgrade (expected behaviour; documented in release
 // notes). The sealed cookie decodes to Session{Owner: ""} which the resolver
 // rejects with "session has empty owner".

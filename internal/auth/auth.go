@@ -67,10 +67,12 @@ func New(ctx context.Context, issuer, audience, ownerClaim string) (*Verifier, e
 
 // ClaimIdentity extracts identity fields from a decoded ID-token payload and
 // enforces email_verified when ownerClaim=="email". Pure (no I/O) so both auth
-// lanes share and unit-test it from a map. owner MAY be "" (caller decides if
-// fatal; the read seam SubjectFromTokenInfo defers rejection of an empty owner to
-// Task 3). A non-nil error means reject (currently only the email_verified gate).
-// Absent email_verified => false => reject.
+// lanes share and unit-test it from a map. owner MAY be "" — this helper does
+// not treat an empty owner as fatal; the caller does (the bearer lane stamps it
+// into Extra["owner_claim"] and the read seam SubjectFromTokenInfo rejects an
+// empty value; the cookie lane rejects it at login). A non-nil error means
+// reject (currently only the email_verified gate). Absent email_verified =>
+// false => reject.
 func ClaimIdentity(raw map[string]any, ownerClaim string) (owner, email, username string, err error) {
 	email, _ = raw["email"].(string)
 	username, _ = raw["preferred_username"].(string)
