@@ -57,6 +57,12 @@ memory:
     issuer: "" # set → enables bearer-token enforcement (signature/issuer/expiry)
     audience: "" # ENGRAM_OIDC_AUDIENCE (optional aud pin)
     resourceMetadata: "" # ENGRAM_OIDC_RESOURCE_METADATA (optional)
+    # ENGRAM_OWNER_CLAIM: OIDC claim whose value becomes the record owner (authz
+    # key). Empty → engram defaults to "email". Set to e.g. "sub" to use the
+    # stable subject claim instead (never changes with IdP profile updates, but
+    # harder to read in stored records). Changing this claim after records are
+    # written requires migrate-remap-owner and forces a web-console re-login.
+    ownerClaim: ""
     # Web-UI confidential-client credentials. Consumed only when the UI lane is
     # on (memory.ui below). clientID is plain; the client secret is secret-backed
     # via secretKeyRef (cluster supplies the Secret).

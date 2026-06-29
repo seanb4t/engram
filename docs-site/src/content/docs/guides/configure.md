@@ -54,6 +54,7 @@ Setting `ENGRAM_OIDC_ISSUER` enables bearer-token enforcement (JWKS signature + 
 | `ENGRAM_OIDC_ISSUER` | `--oidc-issuer` | _(empty)_ | OIDC issuer URL; setting it enables bearer-token enforcement |
 | `ENGRAM_OIDC_AUDIENCE` | `--oidc-audience` | _(empty)_ | Expected `aud` claim (optional; omit to skip audience check) |
 | `ENGRAM_OIDC_RESOURCE_METADATA` | `--oidc-resource-metadata` | _(empty)_ | `WWW-Authenticate` resource metadata URL returned in 401 responses (optional) |
+| `ENGRAM_OWNER_CLAIM` | `--owner-claim` | `email` | OIDC claim whose value becomes the record `owner` (authz key); fail-closed if absent; requires `email_verified` when `email` |
 
 Source: `cmd/engram/serve.go` (`init()` flag registration and `withAuth`).
 

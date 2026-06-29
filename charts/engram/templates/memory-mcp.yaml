@@ -70,6 +70,9 @@ spec:
             {{- with .Values.memory.oidc.resourceMetadata }}
             - { name: ENGRAM_OIDC_RESOURCE_METADATA, value: "{{ . }}" }
             {{- end }}
+            {{- with .Values.memory.oidc.ownerClaim }}
+            - { name: ENGRAM_OWNER_CLAIM, value: "{{ . }}" }
+            {{- end }}
             {{- with .Values.memory.oidc.clientID }}
             - { name: ENGRAM_OIDC_CLIENT_ID, value: "{{ . }}" }
             {{- end }}
