@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.0](https://github.com/seanb4t/engram/compare/v0.7.17...v0.8.0) (2026-06-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* derive record owner from configurable OIDC claim + migrate-remap-owner (engram-8bsz) ([#248](https://github.com/seanb4t/engram/issues/248))
+
+### Features
+
+* derive record owner from configurable OIDC claim + migrate-remap-owner (engram-8bsz) ([#248](https://github.com/seanb4t/engram/issues/248)) ([d6ea507](https://github.com/seanb4t/engram/commit/d6ea507df6bbd3dd88948526df2239dc5032316f))
+
 ## [0.7.17](https://github.com/seanb4t/engram/compare/v0.7.16...v0.7.17) (2026-06-28)
 
 
