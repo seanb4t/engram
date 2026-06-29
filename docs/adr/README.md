@@ -13,6 +13,7 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-g37x](engram-g37x-use-configurable-oidc-claim-as-record-owner-default-email.md) | 2026-06-29 | Accepted | Use configurable OIDC claim as record owner (default: email) |
 | [engram-1h3k](engram-1h3k-adopt-two-tier-vitest-config-node-real-chromium-browser.md) | 2026-06-28 | Accepted | Adopt two-tier vitest config: node + real-Chromium browser |
 | [engram-om5b](engram-om5b-node-test-tier-environment-node-drop-happy-dom.md) | 2026-06-28 | Accepted | Node test tier on environment:node, drop happy-dom |
 | [engram-3nas](engram-3nas-render-user-memory-content-via-marked-dompurify-allowlist.md) | 2026-06-27 | Accepted | Render user memory content via marked + DOMPurify allowlist |
@@ -56,7 +57,7 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 | [engram-dwi](engram-dwi-export-telemetry-via-otlp-only-omit-prometheus-scrape-endpoi.md) | 2026-06-07 | Accepted | Export telemetry via OTLP only; omit a Prometheus scrape endpoint |
 | [engram-xa6](engram-xa6-return-404-not-found-unauthorized-id-addressed-operations.md) | 2026-06-06 | Accepted | Return 404 not-found for unauthorized id-addressed operations |
 | [engram-kyz](engram-kyz-sharing-grants-read-but-never-write-read-write-gate-asymmetr.md) | 2026-06-06 | Accepted | Sharing grants read but never write (read/write gate asymmetry) |
-| [engram-hvg](engram-hvg-use-stable-oidc-sub-as-authorization-key-new-owner-field.md) | 2026-06-06 | Accepted | Use the stable OIDC sub as the authorization key in a new owner field |
+| [engram-hvg](engram-hvg-use-stable-oidc-sub-as-authorization-key-new-owner-field.md) | 2026-06-06 | Superseded by engram-g37x | Use the stable OIDC sub as the authorization key in a new owner field |
 | [engram-cgb](engram-cgb-enforce-per-actor-authorization-store-layer-not-handlers.md) | 2026-06-06 | Accepted | Enforce per-actor authorization in the store layer, not in handlers |
 | [engram-3l0](engram-3l0-graceful-decay-over-binary-staleness-discovery-trust.md) | 2026-06-06 | Accepted | Graceful decay over binary staleness for discovery trust |
 | [engram-2bv](engram-2bv-discovery-is-5th-category-single-memory-collection.md) | 2026-06-06 | Accepted | Discovery is a 5th category in the single Memory collection |
