@@ -106,7 +106,7 @@ func ensureStoreFromConfig(cfg *config.Config) (*store.Store, error) {
 }
 
 // StoreFromEnv builds a Qdrant-backed Store from the ENGRAM_QDRANT_* / ENGRAM_EMBED_DIM
-// environment and ensures the collection exists. Used by the migrate-set-owner /
+// environment and ensures the collection exists. Used by the migrate-remap-owner /
 // prune-expired commands; the server bootstrap builds its store through
 // buildDepsFromEnv (sharing ensureStoreFromConfig) so config is loaded only once.
 func StoreFromEnv() (*store.Store, error) {
@@ -231,7 +231,7 @@ func StoreAndSummarizerFromEnv() (*store.Store, *summarize.Client, string, int, 
 
 // warnOwnerlessRecords loudly warns at startup when pre-isolation (owner-less)
 // records exist: they are invisible to every owner-scoped read and cannot be
-// cleared by delete_all until claimed via `engram migrate-set-owner --owner <sub>`.
+// cleared by delete_all until claimed via `engram migrate-remap-owner --from-missing --to <owner>`.
 // A count error is itself logged (best-effort; never blocks startup).
 func warnOwnerlessRecords(st *store.Store) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -241,7 +241,7 @@ func warnOwnerlessRecords(st *store.Store) {
 		slog.Warn("could not check for pre-isolation (owner-less) records", "err", err)
 	}
 	if err == nil && n > 0 {
-		slog.Warn("pre-isolation records have no owner — invisible to reads and not removable by delete_all until migrate-set-owner runs",
+		slog.Warn("pre-isolation records have no owner — invisible to reads and not removable by delete_all until you run: engram migrate-remap-owner --from-missing --to <owner>",
 			"count", n)
 	}
 
