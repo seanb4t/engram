@@ -58,6 +58,8 @@ func init() {
 	f.String("ui-cookie-key", config.FlagDefault("ui-cookie-key"), "32-byte AES-GCM key sealing the session cookie")
 	f.String("mcp-path", config.FlagDefault("mcp-path"),
 		"path for the MCP transport (empty=/mcp; '/'=legacy root catch-all)")
+	f.String("owner-claim", config.FlagDefault("owner-claim"),
+		"OIDC claim whose value becomes the record owner / authz key (default email)")
 }
 
 func runServe(cmd *cobra.Command) error {

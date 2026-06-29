@@ -40,6 +40,7 @@ var registry = []field{
 	{Key: "oidc.client_id", Env: "ENGRAM_OIDC_CLIENT_ID", Legacy: "MEM_OIDC_CLIENT_ID", Flag: "oidc-client-id"},
 	{Key: "oidc.client_secret", Env: "ENGRAM_OIDC_CLIENT_SECRET", Legacy: "MEM_OIDC_CLIENT_SECRET", Flag: "oidc-client-secret"},
 	{Key: "oidc.resource_metadata", Env: "ENGRAM_OIDC_RESOURCE_METADATA", Legacy: "MEM_OIDC_RESOURCE_METADATA", Flag: "oidc-resource-metadata"},
+	{Key: "oidc.owner_claim", Env: "ENGRAM_OWNER_CLAIM", Flag: "owner-claim", Default: "email"},
 	{Key: "ui.enabled", Env: "ENGRAM_UI_ENABLED", Legacy: "MEM_UI_ENABLED", Flag: "ui-enabled"},
 	{Key: "ui.issuer", Env: "ENGRAM_UI_ISSUER", Legacy: "MEM_UI_ISSUER", Flag: "ui-issuer"},
 	{Key: "ui.redirect_url", Env: "ENGRAM_UI_REDIRECT_URL", Legacy: "MEM_UI_REDIRECT_URL", Flag: "ui-redirect-url"},

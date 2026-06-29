@@ -133,6 +133,24 @@ func TestSummarizeMaxTokensAndTimeoutEnvOverride(t *testing.T) {
 	}
 }
 
+func TestOwnerClaimDefaultAndOverride(t *testing.T) {
+	c, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.OIDC.OwnerClaim != "email" {
+		t.Errorf("default owner_claim = %q, want %q", c.OIDC.OwnerClaim, "email")
+	}
+	t.Setenv("ENGRAM_OWNER_CLAIM", "preferred_username")
+	c, err = Load(nil)
+	if err != nil {
+		t.Fatalf("Load with env: %v", err)
+	}
+	if c.OIDC.OwnerClaim != "preferred_username" {
+		t.Errorf("env owner_claim = %q, want %q", c.OIDC.OwnerClaim, "preferred_username")
+	}
+}
+
 func TestValidateRejectsBadSummaryMaxCharsWhenEnabled(t *testing.T) {
 	c := &Config{
 		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "c"},
