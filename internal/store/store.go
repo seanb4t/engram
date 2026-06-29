@@ -79,9 +79,8 @@ type Memory struct {
 	// Actor is the verified caller identity (email/username/subject) taken from
 	// the validated OIDC token — never client-supplied. Empty when auth is off.
 	Actor string `json:"actor"`
-	// Owner is the stable OIDC subject (`sub`) of the caller — the authorization
-	// key. Server-set from the validated token, never client-supplied. Empty when
-	// auth is disabled (the single anonymous bucket).
+	// Owner is the caller's configured owner-claim value (default email) — the
+	// authorization key. Server-set, never client-supplied.
 	Owner string `json:"owner"`
 	// Visibility gates cross-actor reads: "" (private, default) or "shared"
 	// (readable by any authenticated caller). Writes always require ownership.
@@ -1237,6 +1236,86 @@ func (s *Store) MigrateSetOwner(ctx context.Context, owner string) (n uint64, er
 		PointsSelector: qdrant.NewPointsSelectorFilter(missing),
 	})
 	if err != nil {
+		return 0, err
+	}
+	return cnt, nil
+}
+
+// OwnerRemapSource selects which records RemapOwner re-stamps. Exactly one of
+// the three must be set (validated in RemapOwner): Missing matches owner-less
+// (pre-isolation) records via IsEmpty; Anon matches the explicit anonymous
+// bucket (owner==""); From matches a specific current owner value (a sub or an
+// email). Missing and Anon are distinct because IsEmpty("owner") and
+// Match("owner","") target different record sets.
+type OwnerRemapSource struct {
+	Missing bool
+	Anon    bool
+	From    string
+}
+
+// RemapOwner re-stamps owner=<selected source> -> owner=to across the WHOLE
+// collection (operator sweep; no subject authz, like PruneExpired). dryRun
+// returns the matched count without writing. Validation runs before any Qdrant
+// call. Non-transactional: the reported count is a best-effort snapshot taken
+// just before the filtered SetPayload (which is itself exact). Idempotent.
+func (s *Store) RemapOwner(ctx context.Context, src OwnerRemapSource, to string, dryRun bool) (n uint64, err error) {
+	ctx, span := tracer.Start(ctx, "store.RemapOwner")
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "RemapOwner", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int64("engram.result_count", int64(n)))
+		}
+	}()
+
+	if to == "" {
+		return 0, fmt.Errorf("to must be non-empty")
+	}
+	selected := 0
+	if src.Missing {
+		selected++
+	}
+	if src.Anon {
+		selected++
+	}
+	if src.From != "" {
+		selected++
+	}
+	if selected != 1 {
+		return 0, fmt.Errorf("exactly one source required (Missing | Anon | From)")
+	}
+	if src.From != "" && src.From == to {
+		return 0, fmt.Errorf("from and to are identical (%q)", to)
+	}
+
+	var filter *qdrant.Filter
+	switch {
+	case src.Missing:
+		filter = ownerlessFilter()
+	case src.Anon:
+		filter = &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatch("owner", "")}}
+	default:
+		filter = &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatch("owner", src.From)}}
+	}
+
+	cnt, err := s.client.Count(ctx, &qdrant.CountPoints{
+		CollectionName: s.collection, Filter: filter, Exact: qdrant.PtrOf(true),
+	})
+	if err != nil {
+		return 0, err
+	}
+	if cnt == 0 || dryRun {
+		return cnt, nil
+	}
+	if _, err = s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload:        qdrant.NewValueMap(map[string]any{"owner": to}),
+		PointsSelector: qdrant.NewPointsSelectorFilter(filter),
+	}); err != nil {
 		return 0, err
 	}
 	return cnt, nil
