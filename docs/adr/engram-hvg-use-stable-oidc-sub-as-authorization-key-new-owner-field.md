@@ -4,7 +4,7 @@
 # Use the stable OIDC sub as the authorization key in a new owner field
 
 **Date:** 2026-06-06
-**Status:** Accepted
+**Status:** Superseded by engram-g37x
 **Decision:** engram-hvg
 **Deciders:** Sean Brandt
 
@@ -35,3 +35,7 @@ A new server-set `owner` field carries the verified token's `sub` claim (already
 **Negative:** operators must supply their actual sub (not email) when running the migration; existing records have no owner and need a one-time backfill.
 
 **Neutral:** both fields are server-set and never client-supplied, consistent with the existing actor governance rule.
+
+## References
+
+- Superseded by: engram-g37x
