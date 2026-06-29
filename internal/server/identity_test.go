@@ -11,18 +11,35 @@ import (
 )
 
 func TestSubjectFromTokenInfo(t *testing.T) {
-	// nil TokenInfo (auth disabled) -> anonymous bucket.
-	if got, err := SubjectFromTokenInfo(nil); err != nil || got.Owner() != "" {
-		t.Errorf("nil: got (%v, %v), want (Anonymous, nil)", got, err)
+	// Authenticated: owner_claim present → Authenticated(value).
+	ti := &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "u1@example.com"}}
+	subj, err := SubjectFromTokenInfo(ti)
+	if err != nil {
+		t.Fatalf("authenticated: %v", err)
 	}
-	// valid sub -> authenticated.
-	ti := &mcpauth.TokenInfo{Extra: map[string]any{"sub": "sub-A"}}
-	if got, err := SubjectFromTokenInfo(ti); err != nil || got.Owner() != "sub-A" {
-		t.Errorf("sub-A: got (%v, %v), want (Authenticated(sub-A), nil)", got, err)
+	if subj.Owner() != "u1@example.com" {
+		t.Errorf("Owner() = %q, want u1@example.com", subj.Owner())
 	}
-	// present token, missing/empty sub -> error (fail closed, never anonymous).
-	if _, err := SubjectFromTokenInfo(&mcpauth.TokenInfo{Extra: map[string]any{}}); err == nil {
-		t.Error("empty sub: expected error, got nil")
+
+	// Missing/empty owner_claim → fail closed.
+	for name, ex := range map[string]map[string]any{
+		"absent": {"sub": "x"},
+		"empty":  {"owner_claim": ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := SubjectFromTokenInfo(&mcpauth.TokenInfo{Extra: ex}); err == nil {
+				t.Error("expected fail-closed error")
+			}
+		})
+	}
+
+	// nil TokenInfo (auth disabled) → anonymous.
+	subj, err = SubjectFromTokenInfo(nil)
+	if err != nil {
+		t.Fatalf("nil: %v", err)
+	}
+	if subj.Owner() != "" {
+		t.Errorf("anonymous Owner() = %q, want \"\"", subj.Owner())
 	}
 	_ = store.Anonymous() // store import anchor
 }

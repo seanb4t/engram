@@ -20,16 +20,16 @@ func resolverReq(t *testing.T, cookie string) connect.AnyRequest {
 	return req
 }
 
-func TestResolverValidCookieYieldsSub(t *testing.T) {
+func TestResolverValidCookieYieldsOwnerClaim(t *testing.T) {
 	codec, _ := NewSessionCodec(testKey())
 	r := NewResolver(codec)
-	sealed, _ := codec.Seal(Session{Sub: "user-9", Expiry: nowUTC().Add(time.Hour)})
+	sealed, _ := codec.Seal(Session{Owner: "user-9", Expiry: nowUTC().Add(time.Hour)})
 	ti, err := r.Resolve(context.Background(), resolverReq(t, sealed))
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if ti == nil || ti.Extra["sub"] != "user-9" {
-		t.Fatalf("got %+v want sub=user-9", ti)
+	if ti == nil || ti.Extra["owner_claim"] != "user-9" {
+		t.Fatalf("got %+v want owner_claim=user-9", ti)
 	}
 }
 
@@ -43,7 +43,7 @@ func TestResolverRejectsMissingCookie(t *testing.T) {
 func TestResolverRejectsExpiredSession(t *testing.T) {
 	codec := mustCodec(t)
 	r := NewResolver(codec)
-	sealed, _ := codec.Seal(Session{Sub: "u", Expiry: nowUTC().Add(-time.Minute)})
+	sealed, _ := codec.Seal(Session{Owner: "u", Expiry: nowUTC().Add(-time.Minute)})
 	if _, err := r.Resolve(context.Background(), resolverReq(t, sealed)); err == nil {
 		t.Fatal("expected error for expired session")
 	}
@@ -52,7 +52,7 @@ func TestResolverRejectsExpiredSession(t *testing.T) {
 func TestResolverRejectsTamperedCookie(t *testing.T) {
 	codec := mustCodec(t)
 	r := NewResolver(codec)
-	sealed, _ := codec.Seal(Session{Sub: "u", Expiry: nowUTC().Add(time.Hour)})
+	sealed, _ := codec.Seal(Session{Owner: "u", Expiry: nowUTC().Add(time.Hour)})
 	b := []byte(sealed)
 	b[len(b)-1] ^= 0xff // flip a byte of the ciphertext/tag (matches TestUnsealRejectsTamper)
 	bad := string(b)
@@ -64,18 +64,18 @@ func TestResolverRejectsTamperedCookie(t *testing.T) {
 func TestResolverRejectsZeroExpiry(t *testing.T) {
 	codec := mustCodec(t)
 	r := NewResolver(codec)
-	sealed, _ := codec.Seal(Session{Sub: "u"})
+	sealed, _ := codec.Seal(Session{Owner: "u"})
 	if _, err := r.Resolve(context.Background(), resolverReq(t, sealed)); err == nil {
 		t.Fatal("expected error for zero-expiry session")
 	}
 }
 
-func TestResolverRejectsEmptySub(t *testing.T) {
+func TestResolverRejectsEmptyOwner(t *testing.T) {
 	codec := mustCodec(t)
 	r := NewResolver(codec)
-	sealed, _ := codec.Seal(Session{Sub: "", Expiry: nowUTC().Add(time.Hour)})
+	sealed, _ := codec.Seal(Session{Owner: "", Expiry: nowUTC().Add(time.Hour)})
 	if _, err := r.Resolve(context.Background(), resolverReq(t, sealed)); err == nil {
-		t.Fatal("expected error for empty-sub session")
+		t.Fatal("expected error for empty-owner session")
 	}
 }
 

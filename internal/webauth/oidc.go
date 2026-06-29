@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/seanb4t/engram/internal/auth"
 	"golang.org/x/oauth2"
 )
 
@@ -18,14 +19,16 @@ type Authenticator struct {
 	clientID     string
 	clientSecret string
 	redirectURL  string
+	ownerClaim   string
 	endpoint     oauth2.Endpoint
 	verifier     *oidc.IDTokenVerifier
 }
 
 // NewAuthenticator performs OIDC discovery against issuer and returns an
-// Authenticator. The ID-token verifier checks signature, issuer, and audience
-// (== clientID for the auth-code flow).
-func NewAuthenticator(ctx context.Context, issuer, clientID, clientSecret, redirectURL string) (*Authenticator, error) {
+// Authenticator. ownerClaim selects which ID-token claim becomes the record
+// owner (authz key); the ID-token verifier checks signature, issuer, and
+// audience (== clientID for the auth-code flow).
+func NewAuthenticator(ctx context.Context, issuer, clientID, clientSecret, redirectURL, ownerClaim string) (*Authenticator, error) {
 	provider, err := oidc.NewProvider(ctx, issuer)
 	if err != nil {
 		return nil, fmt.Errorf("oidc discovery: %w", err)
@@ -34,6 +37,7 @@ func NewAuthenticator(ctx context.Context, issuer, clientID, clientSecret, redir
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		redirectURL:  redirectURL,
+		ownerClaim:   ownerClaim,
 		endpoint:     provider.Endpoint(),
 		verifier:     provider.Verifier(&oidc.Config{ClientID: clientID}),
 	}, nil
@@ -51,8 +55,9 @@ func (a *Authenticator) oauthConfig() *oauth2.Config {
 	}
 }
 
-// exchange trades an auth code (with its PKCE verifier) for tokens and verifies
-// the returned ID token, returning the verified subject.
+// exchange trades an auth code (with its PKCE verifier) for tokens, verifies the
+// ID token, and returns the configured owner-claim value (the authz key sealed
+// into the session cookie).
 func (a *Authenticator) exchange(ctx context.Context, code, verifier string) (*oauth2.Token, string, error) {
 	tok, err := a.oauthConfig().Exchange(ctx, code, oauth2.VerifierOption(verifier))
 	if err != nil {
@@ -66,8 +71,18 @@ func (a *Authenticator) exchange(ctx context.Context, code, verifier string) (*o
 	if err != nil {
 		return nil, "", fmt.Errorf("verify id_token: %w", err)
 	}
-	if idTok.Subject == "" {
-		return nil, "", fmt.Errorf("verified id_token has empty subject")
+	var raw map[string]any
+	_ = idTok.Claims(&raw)
+	// Reuse the bearer lane's pure helper for claim selection + email_verified
+	// enforcement (no import cycle: auth does not import webauth).
+	owner, _, _, err := auth.ClaimIdentity(raw, a.ownerClaim)
+	if err != nil {
+		return nil, "", err
 	}
-	return tok, idTok.Subject, nil
+	// Unlike the bearer lane (which defers to SubjectFromTokenInfo), the cookie
+	// lane seals identity now, so an empty owner must fail closed here.
+	if owner == "" {
+		return nil, "", fmt.Errorf("verified id_token missing owner claim %q", a.ownerClaim)
+	}
+	return tok, owner, nil
 }

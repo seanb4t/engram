@@ -86,6 +86,9 @@ type OIDCConfig struct {
 	ClientID         string `koanf:"client_id"`
 	ClientSecret     string `koanf:"client_secret"`
 	ResourceMetadata string `koanf:"resource_metadata"`
+	// OwnerClaim is the OIDC claim whose value becomes a record's owner (the
+	// authz key) when auth is enabled. Shared by both auth lanes. Default "email".
+	OwnerClaim string `koanf:"owner_claim"`
 }
 
 // UIConfig holds the web-console lane settings (enable tri-state, login issuer,

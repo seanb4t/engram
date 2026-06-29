@@ -125,6 +125,50 @@ func TestTokenVerifierSpanError(t *testing.T) {
 	}
 }
 
+func TestClaimIdentity(t *testing.T) {
+	owner, email, user, err := ClaimIdentity(map[string]any{
+		"email": "u1@example.com", "email_verified": true, "preferred_username": "u1",
+	}, "email")
+	if err != nil || owner != "u1@example.com" || email != "u1@example.com" || user != "u1" {
+		t.Fatalf("verified email: owner=%q email=%q user=%q err=%v", owner, email, user, err)
+	}
+	for name, raw := range map[string]map[string]any{
+		"explicit false": {"email": "u@e.com", "email_verified": false},
+		"absent":         {"email": "u@e.com"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, _, _, err := ClaimIdentity(raw, "email"); err == nil {
+				t.Error("expected rejection when email_verified is not true")
+			}
+		})
+	}
+	owner, _, _, err = ClaimIdentity(map[string]any{"preferred_username": "alice"}, "preferred_username")
+	if err != nil || owner != "alice" {
+		t.Fatalf("custom claim: owner=%q err=%v", owner, err)
+	}
+	if _, _, _, err = ClaimIdentity(map[string]any{"preferred_username": "x"}, "email"); err == nil {
+		t.Error("email claim with no email_verified: expected rejection")
+	}
+	owner, _, _, err = ClaimIdentity(map[string]any{}, "some_claim")
+	if err != nil || owner != "" {
+		t.Fatalf("missing non-email claim: owner=%q err=%v, want \"\",nil", owner, err)
+	}
+}
+
+func TestTokenVerifierStampsOwnerClaimKey(t *testing.T) {
+	v := &Verifier{idv: fakeIDV{tok: &oidc.IDToken{Subject: "user-1"}}, ownerClaim: ""}
+	info, err := v.TokenVerifier()(context.Background(), "tok", nil)
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if _, ok := info.Extra["owner_claim"]; !ok {
+		t.Error("Extra must carry an owner_claim key")
+	}
+	if info.Extra["sub"] != "user-1" {
+		t.Errorf("sub = %v, want user-1 (preserved)", info.Extra["sub"])
+	}
+}
+
 func attr(s sdktrace.ReadOnlySpan, key string) string {
 	for _, kv := range s.Attributes() {
 		if string(kv.Key) == key {

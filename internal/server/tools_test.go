@@ -211,7 +211,7 @@ func authedContext(t *testing.T, sub string) context.Context {
 	verifier := func(context.Context, string, *http.Request) (*mcpauth.TokenInfo, error) {
 		return &mcpauth.TokenInfo{
 			Expiration: timeNow().Add(time.Hour),
-			Extra:      map[string]any{"sub": sub},
+			Extra:      map[string]any{"owner_claim": sub},
 		}, nil
 	}
 	var captured context.Context

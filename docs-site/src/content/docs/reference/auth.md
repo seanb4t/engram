@@ -104,26 +104,38 @@ with neither issuer set is a fail-fast startup error.
 
 ## Isolation model
 
-Each authenticated caller is identified by the stable OIDC `sub` claim, stored
-as the record's `owner`. The `sub` does not change when the user's email changes,
-so access is never revoked by an identity provider profile update.
+Each authenticated caller is identified by the value of the configured owner
+claim, stored as the record's `owner`. The owner claim is set via
+`ENGRAM_OWNER_CLAIM` / `--owner-claim` (default `email`). Authentication fails
+closed when the claim is absent from the token. When the claim is `email`,
+`email_verified` is also required.
+
+:::caution[Operator lockout risk]
+Because the default claim is `email`, every token **must** carry
+`email_verified: true` (a JSON boolean — a string `"true"` does **not** count and
+fails closed). An IdP that omits `email_verified`, emits it as a string, or does
+not issue the configured claim at all will cause **every** request to be rejected
+(401) after upgrade. Before enabling, confirm your IdP emits the configured claim
+with `email_verified` as a boolean, or set `ENGRAM_OWNER_CLAIM` to a different
+stable claim your IdP does emit (e.g. `preferred_username` or `sub`).
+:::
 
 ### Read access
 
 | Caller type | What is readable |
 |-------------|-----------------|
-| Authenticated (`sub` present) | Own records (`owner == sub`) **plus** records where `visibility == "shared"` |
+| Authenticated (owner claim present) | Own records **plus** records where `visibility == "shared"` |
 | Anonymous (no issuer, or auth disabled) | Only ownerless records (`owner == ""`) — **cannot** read shared records |
 
-The shared read grant explicitly requires an authenticated `sub`. Anonymous
-callers cannot read other actors' shared records even when `visibility` is set
-to `"shared"`.
+The shared read grant explicitly requires an authenticated caller with a
+resolved owner claim. Anonymous callers cannot read other actors' shared records
+even when `visibility` is set to `"shared"`.
 
 ### Write access
 
 Writes (update, delete, set_visibility) always require **ownership**:
 
-- Authenticated callers: must be the record's `owner` (`owner == sub`)
+- Authenticated callers: must be the record's `owner`
 - Anonymous callers: may only mutate records where `owner == ""`
 
 Sharing (`visibility == "shared"`) grants **read only** — it never grants write
@@ -135,8 +147,8 @@ access to any other caller.
   (ownership never leaks across actors)
 - An unknown or nil subject fails closed, returning zero results rather than
   over-returning
-- A validated token with a missing or empty `sub` is rejected (fails closed
-  rather than collapsing to anonymous)
+- A validated token with a missing or absent owner claim is rejected (fails
+  closed rather than collapsing to anonymous)
 
 ---
 
@@ -147,27 +159,35 @@ Records written before per-actor isolation was introduced carry no `owner` key
 **pre-isolation records are invisible to every read** and cannot be cleared by
 `delete_all`.
 
-The server logs a startup warning when owner-less records exist. Claim them
-once with:
+The server logs a startup warning when owner-less records exist. Claim them with
+`migrate-remap-owner` (`migrate-set-owner` is a deprecated alias for
+`--from-missing`):
 
 ```sh
-engram migrate-set-owner --owner <your-oidc-sub>
+# Backfill pre-isolation records that have no owner set
+engram migrate-remap-owner --from-missing --to <owner-claim-value>
+
+# Re-stamp records that were written when owner was derived from sub
+# (e.g. after switching ENGRAM_OWNER_CLAIM from "sub" to "email")
+engram migrate-remap-owner --from <old-sub-value> --to <email-value>
 ```
 
-The `--owner` flag also reads from `ENGRAM_MIGRATE_OWNER`. The command is
-**idempotent** — re-running when no owner-less records remain reports `0`.
+Both forms accept `--dry-run` to preview changes and `--timeout` to cap the
+operation. The command is **idempotent** — re-running when no matching records
+remain reports `0`.
 
-The `migrate-set-owner` subcommand is implemented in `cmd/engram/migrate.go` and
-is registered as a cobra subcommand (`Use: "migrate-set-owner"`).
+> **Note:** changing `ENGRAM_OWNER_CLAIM` (including upgrading from an older
+> binary that always used `sub`) invalidates existing web-console session
+> cookies. Users see a one-time re-login prompt on their next console visit.
 
 ### Disabling auth after it was enabled
 
 Records written while authenticated carry a non-empty `owner`. If you remove
 `--oidc-issuer`, callers fall into the anonymous bucket and can no longer read
 those records — including ones marked `shared` (the shared read grant requires
-an authenticated `sub`). The records are **not lost and not deleted**; they
+an authenticated caller). The records are **not lost and not deleted**; they
 become readable again once authentication is re-enabled.
 
-`migrate-set-owner` only backfills pre-isolation records (those missing an
-`owner` key entirely). It cannot move owner-stamped records into the anonymous
-bucket and requires a non-empty `--owner`, so it is safe to re-run.
+`migrate-remap-owner --from-missing` only backfills pre-isolation records (those
+missing an `owner` key entirely). It requires a non-empty `--to`, so it is safe
+to re-run.

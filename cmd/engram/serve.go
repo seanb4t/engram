@@ -58,6 +58,8 @@ func init() {
 	f.String("ui-cookie-key", config.FlagDefault("ui-cookie-key"), "32-byte AES-GCM key sealing the session cookie")
 	f.String("mcp-path", config.FlagDefault("mcp-path"),
 		"path for the MCP transport (empty=/mcp; '/'=legacy root catch-all)")
+	f.String("owner-claim", config.FlagDefault("owner-claim"),
+		"OIDC claim whose value becomes the record owner / authz key (default email)")
 }
 
 func runServe(cmd *cobra.Command) error {
@@ -123,7 +125,7 @@ func runServe(cmd *cobra.Command) error {
 			return fmt.Errorf("session cookie key: %w", err)
 		}
 		oidcCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		authr, err := webauth.NewAuthenticator(oidcCtx, uiCfg.Issuer, uiCfg.ClientID, uiCfg.ClientSecret, uiCfg.RedirectURL)
+		authr, err := webauth.NewAuthenticator(oidcCtx, uiCfg.Issuer, uiCfg.ClientID, uiCfg.ClientSecret, uiCfg.RedirectURL, cfg.OIDC.OwnerClaim)
 		cancel()
 		if err != nil {
 			return fmt.Errorf("web UI OIDC discovery: %w", err)
@@ -214,7 +216,7 @@ func withAuth(handler http.Handler, oidc config.OIDCConfig) (http.Handler, error
 		return handler, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	verifier, err := auth.New(ctx, oidc.Issuer, oidc.Audience)
+	verifier, err := auth.New(ctx, oidc.Issuer, oidc.Audience, oidc.OwnerClaim)
 	cancel()
 	if err != nil {
 		return nil, fmt.Errorf("oidc verifier init: %w", err)

@@ -44,9 +44,9 @@ func TestConnectCookieLaneIsolation(t *testing.T) {
 	resolve := func(_ context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, error) {
 		switch req.Header().Get("X-Test-Actor") {
 		case "A":
-			return &mcpauth.TokenInfo{Extra: map[string]any{"sub": "actor-A"}}, nil
+			return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}}, nil
 		case "B":
-			return &mcpauth.TokenInfo{Extra: map[string]any{"sub": "actor-B"}}, nil
+			return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-B"}}, nil
 		default:
 			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("no identity"))
 		}

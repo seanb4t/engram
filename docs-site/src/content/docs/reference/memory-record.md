@@ -25,7 +25,7 @@ documents every field, its serialized JSON name, allowed values, and who sets it
 | Summary Source | `summary_source` | string | client/server | How the summary was produced: `client` (caller-authored), `auto` (offline-generated), or `""` (none) |
 | Summary Model | `summary_model` | string | server | Name of the model used when `summary_source=auto` (e.g. `gpt-4o-mini`); empty when source is `client` or none |
 | Actor | `actor` | string | **server** | Verified caller identity extracted from the OIDC token (email, username, or subject); never client-supplied; empty when auth is disabled |
-| Owner | `owner` | string | **server** | Stable OIDC `sub` of the caller — the authorization key; never client-supplied; empty string when auth is disabled (anonymous bucket) |
+| Owner | `owner` | string | **server** | Value of the configured owner claim (`ENGRAM_OWNER_CLAIM`, default `email`) — the authorization key; never client-supplied; empty string when auth is disabled (anonymous bucket) |
 | Visibility | `visibility` | string | client/server | `""` (private, default) or `"shared"` — see [Visibility](#visibility) |
 | Created at | `created_at` | string (RFC3339) | server | UTC timestamp of creation |
 
@@ -141,8 +141,10 @@ These match the README's description (`repo`/`workspace`/`worktree_path`/`base_d
 
 `actor` and `owner` are always server-set. The `actor` is extracted from the
 token's `UserID` (email, username, or subject claim, in priority order). The
-`owner` is always the stable OIDC `sub` claim — it does not change when the
-user's email changes.
+`owner` is the value of the configured owner claim (`ENGRAM_OWNER_CLAIM`,
+default `email`); it changes only if the chosen claim is not stable across IdP
+profile updates (e.g. `email` changes when the user renames their account; `sub`
+never changes).
 
 When authentication is disabled (no `--oidc-issuer`), both `actor` and `owner`
 are empty strings, and all callers share one anonymous bucket.
