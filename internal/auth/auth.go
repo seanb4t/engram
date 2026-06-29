@@ -76,6 +76,10 @@ func ClaimIdentity(raw map[string]any, ownerClaim string) (owner, email, usernam
 	username, _ = raw["preferred_username"].(string)
 	owner, _ = raw[ownerClaim].(string)
 	if ownerClaim == "email" {
+		// email_verified is read strictly as a JSON bool (the OIDC spec type, and
+		// what Authentik emits). A provider sending the string "true" fails this
+		// assertion -> false -> reject: fail-closed, but note this if a future IdP
+		// emits a non-bool and users get locked out unexpectedly.
 		if verified, _ := raw["email_verified"].(bool); !verified {
 			return "", "", "", fmt.Errorf("email not verified")
 		}

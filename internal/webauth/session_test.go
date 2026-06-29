@@ -4,6 +4,7 @@
 package webauth
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -82,5 +83,9 @@ func TestOldSubKeyedCookieRejected(t *testing.T) {
 	}
 	if sess.Owner != "" {
 		t.Fatalf("expected empty Owner from old sub-keyed cookie, got %q", sess.Owner)
+	}
+	// End-to-end: the resolver must reject the old-format cookie (forced re-login).
+	if _, err := NewResolver(codec).Resolve(context.Background(), resolverReq(t, sealed)); err == nil {
+		t.Fatal("expected Resolve to reject an old sub-keyed cookie (empty owner)")
 	}
 }

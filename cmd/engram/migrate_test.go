@@ -22,6 +22,7 @@ func TestRemapOwnerFlagValidation(t *testing.T) {
 		{"two sources", "old", true, false, "x", true},
 		{"empty to", "", true, false, "", true},
 		{"ambiguous empty from", "", false, false, "x", true},
+		{"from==to", "x", false, false, "x", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

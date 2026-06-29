@@ -84,6 +84,11 @@ func buildRemapSource(from string, missing, anon bool, to string) (store.OwnerRe
 	if selected != 1 {
 		return store.OwnerRemapSource{}, fmt.Errorf("exactly one source required: --from <value> | --from-missing | --from-anon")
 	}
+	// Mirror RemapOwner's check here so a no-op --from X --to X fails fast with a
+	// friendly error before opening a Qdrant connection.
+	if from != "" && from == to {
+		return store.OwnerRemapSource{}, fmt.Errorf("--from and --to are identical (%q)", to)
+	}
 	return store.OwnerRemapSource{Missing: missing, Anon: anon, From: from}, nil
 }
 
