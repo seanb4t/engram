@@ -5,8 +5,9 @@ package store
 
 // Subject is the verified caller identity used for authorization. It is a sealed
 // sum: exactly Anonymous (auth disabled — the owner=="" bucket) or Authenticated
-// (a verified, non-empty OIDC sub). The concrete variants are unexported, so the
-// union cannot be extended or constructed outside this package; callers use the
+// (a verified, non-empty resolved owner-claim value, default email — not
+// necessarily the OIDC sub). The concrete variants are unexported, so the union
+// cannot be extended or constructed outside this package; callers use the
 // Anonymous()/Authenticated() constructors. The zero value is nil (not
 // Anonymous): a discarded extraction error yields nil, which fails closed at the
 // store default arm rather than silently granting the anonymous bucket.
@@ -33,14 +34,15 @@ func (a authenticated) Owner() string { return a.sub }
 // Anonymous is the caller when auth is disabled (the owner=="" bucket).
 func Anonymous() Subject { return anonymous{} }
 
-// Authenticated is a caller carrying a verified, non-empty OIDC sub. It panics
-// on an empty sub: an authenticated subject must never collapse into the
-// owner=="" anonymous bucket by an empty-string slip. subjectFromContext already
-// guards this at the extraction boundary; the panic makes the invariant loud for
-// any other in-package caller or test, consistent with Owner()-on-nil panicking.
+// Authenticated wraps the caller's resolved owner-claim value (default email),
+// the authorization key written onto Memory.Owner. It panics on an empty value:
+// an authenticated subject must never collapse into the owner=="" anonymous
+// bucket by an empty-string slip. SubjectFromTokenInfo already guards this at
+// the extraction boundary; the panic makes the invariant loud for any other
+// in-package caller or test, consistent with Owner()-on-nil panicking.
 func Authenticated(sub string) Subject {
 	if sub == "" {
-		panic("store.Authenticated: sub must be non-empty")
+		panic("store.Authenticated: owner value must be non-empty")
 	}
 	return authenticated{sub: sub}
 }

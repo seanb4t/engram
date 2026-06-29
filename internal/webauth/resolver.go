@@ -16,7 +16,8 @@ import (
 // *mcpauth.TokenInfo the Connect interceptor seam expects. It is the single
 // authz entry for the Connect lane (R2): no cookie / expired / tampered → error
 // → the interceptor maps it to CodeUnauthenticated. There is no anonymous
-// fallthrough — the cookie's verified sub is the only identity this lane grants.
+// fallthrough — the cookie's verified owner-claim value is the only identity
+// this lane grants.
 type Resolver struct {
 	codec *SessionCodec
 }
@@ -46,8 +47,8 @@ func (r *Resolver) Resolve(_ context.Context, req connect.AnyRequest) (*mcpauth.
 	if sess.Expiry.IsZero() || nowUTC().After(sess.Expiry) {
 		return nil, fmt.Errorf("session expired")
 	}
-	if sess.Sub == "" {
-		return nil, fmt.Errorf("session has empty subject")
+	if sess.Owner == "" {
+		return nil, fmt.Errorf("session has empty owner")
 	}
-	return &mcpauth.TokenInfo{Extra: map[string]any{"sub": sess.Sub}}, nil
+	return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": sess.Owner}}, nil
 }

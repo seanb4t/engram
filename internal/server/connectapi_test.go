@@ -64,7 +64,7 @@ func TestConnectCrossActorIsolation(t *testing.T) {
 	ctx := context.Background()
 
 	// caller B (distinct authed sub) injected via the test seam.
-	bctx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"sub": "actor-B"}})
+	bctx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-B"}})
 
 	t.Run("ListMemories_negative_no_private_leak", func(t *testing.T) {
 		resp, err := api.ListMemories(bctx, connect.NewRequest(&engramv1.ListMemoriesRequest{Scope: scope, Limit: 10}))
@@ -174,7 +174,7 @@ func TestListMemoriesHandlerPagesAndIsolates(t *testing.T) {
 		_ = d.st.Delete(ctx, seed[2].ID, store.Authenticated("owner-B"))
 	}()
 	api := &engramAPI{d: d}
-	actx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"sub": "owner-A"}})
+	actx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "owner-A"}})
 
 	// A with category=convention -> only A's convention record; total 1.
 	resp, err := api.ListMemories(actx, connect.NewRequest(&engramv1.ListMemoriesRequest{
@@ -211,7 +211,7 @@ func TestConnectTagsFilter(t *testing.T) {
 		}
 	}()
 	api := &engramAPI{d: d}
-	actx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"sub": "owner-A"}})
+	actx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "owner-A"}})
 
 	ids := func(ms []*engramv1.Memory) map[string]bool {
 		out := map[string]bool{}

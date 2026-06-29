@@ -135,7 +135,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, sub, err := h.auth.exchange(r.Context(), code, fs.Verifier)
+	_, owner, err := h.auth.exchange(r.Context(), code, fs.Verifier)
 	if err != nil {
 		slog.WarnContext(r.Context(), "oauth callback exchange failed", "err", err)
 		http.Error(w, "authentication failed", http.StatusUnauthorized)
@@ -143,7 +143,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sealed, err := h.codec.Seal(Session{
-		Sub:    sub,
+		Owner:  owner,
 		Expiry: nowUTC().Add(sessionTTL),
 	})
 	if err != nil {

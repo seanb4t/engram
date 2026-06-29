@@ -125,7 +125,7 @@ func runServe(cmd *cobra.Command) error {
 			return fmt.Errorf("session cookie key: %w", err)
 		}
 		oidcCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		authr, err := webauth.NewAuthenticator(oidcCtx, uiCfg.Issuer, uiCfg.ClientID, uiCfg.ClientSecret, uiCfg.RedirectURL)
+		authr, err := webauth.NewAuthenticator(oidcCtx, uiCfg.Issuer, uiCfg.ClientID, uiCfg.ClientSecret, uiCfg.RedirectURL, cfg.OIDC.OwnerClaim)
 		cancel()
 		if err != nil {
 			return fmt.Errorf("web UI OIDC discovery: %w", err)

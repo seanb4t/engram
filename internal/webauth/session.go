@@ -18,12 +18,13 @@ import (
 	"time"
 )
 
-// Session is the decrypted payload of the engram session cookie. Sub is the
-// authz key (OIDC subject); Expiry bounds the session lifetime. The payload is
-// deliberately minimal: the future write phase will reintroduce token handling
-// server-side rather than shipping credentials to the browser.
+// Session is the decrypted payload of the engram session cookie. Owner is the
+// authz key (the configured owner-claim value, default email); Expiry bounds the
+// session lifetime. The payload is deliberately minimal: the future write phase
+// will reintroduce token handling server-side rather than shipping credentials to
+// the browser.
 type Session struct {
-	Sub    string    `json:"sub"`
+	Owner  string    `json:"owner"`
 	Expiry time.Time `json:"exp"`
 }
 
