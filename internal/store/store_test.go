@@ -2275,3 +2275,65 @@ func TestSearchDateWindow(t *testing.T) {
 		t.Errorf("search window: got %v want [..002]", got)
 	}
 }
+
+// TestListCursorTraversal pins order-independent cursor paging at limit=1: N
+// records sharing ONE timestamp plus M with distinct timestamps, paged to
+// exhaustion, must yield the full set with no duplicates and no skips. At limit=1
+// this only passes if resume over-fetches limit+len(seen).
+func TestListCursorTraversal(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "cursor-test:project:x"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	tie := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
+	want := map[string]bool{}
+	mk := func(id string, at time.Time) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A", CreatedAt: at}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("Upsert %s: %v", id, err)
+		}
+		want[id] = true
+	}
+	mk("d0000000-0000-0000-0000-000000000001", tie)
+	mk("d0000000-0000-0000-0000-000000000002", tie)
+	mk("d0000000-0000-0000-0000-000000000003", tie)
+	mk("d0000000-0000-0000-0000-000000000004", tie)
+	mk("d0000000-0000-0000-0000-000000000005", tie.Add(-time.Hour))
+	mk("d0000000-0000-0000-0000-000000000006", tie.Add(-2*time.Hour))
+
+	subj := Authenticated("sub-A")
+	seen := map[string]int{}
+	cursor := ""
+	for steps := 0; steps < 100; steps++ {
+		// CursorMode:true makes page 1 (Cursor:"") route through listByCursor, which
+		// emits a nextCursor; without it the offset path runs and returns "" → break.
+		items, _, next, err := s.List(ctx, scope, subj, ListOptions{Limit: 1, Cursor: cursor, CursorMode: true})
+		if err != nil {
+			t.Fatalf("List page: %v", err)
+		}
+		for _, m := range items {
+			seen[m.ID]++
+		}
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+	if len(seen) != len(want) {
+		t.Errorf("traversal coverage: got %d distinct want %d", len(seen), len(want))
+	}
+	for id, nn := range seen {
+		if nn != 1 {
+			t.Errorf("record %s returned %d times (want 1) — dup/skip bug", id, nn)
+		}
+		if !want[id] {
+			t.Errorf("unexpected id %s", id)
+		}
+	}
+	for id := range want {
+		if seen[id] == 0 {
+			t.Errorf("record %s never returned — skip bug", id)
+		}
+	}
+}

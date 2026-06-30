@@ -595,6 +595,7 @@ type ListOptions struct {
 	CreatedAfter  time.Time
 	CreatedBefore time.Time
 	Cursor        string // "" = offset mode; non-empty = cursor mode (Task 4). Mutually exclusive with Offset>0.
+	CursorMode    bool   // true = boundary-id-set cursor paging (MCP default); false = offset paging (UI)
 }
 
 // createdRangeCondition builds a half-open [after, before) DatetimeRange on the
@@ -695,7 +696,7 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		return nil, 0, "", err
 	}
 
-	if opts.Cursor != "" {
+	if opts.Cursor != "" || (opts.Offset == 0 && opts.Limit > 0 && opts.CursorMode) {
 		items, nextCursor, err = s.listByCursor(ctx, f, opts) // Task 4
 		return items, total, nextCursor, err
 	}
@@ -726,9 +727,99 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 	return all[opts.Offset:], total, "", nil
 }
 
-// listByCursor is replaced in Task 4 with the boundary-id-set cursor.
-func (s *Store) listByCursor(_ context.Context, _ *qdrant.Filter, _ ListOptions) ([]Memory, string, error) {
-	return nil, "", fmt.Errorf("cursor mode not yet implemented")
+// listByCursor implements boundary-id-set keyset paging over the already-built
+// filter f. opts.Cursor may be empty (first page); a non-empty cursor resumes at
+// its created_at boundary, dropping ids already emitted at that exact timestamp.
+func (s *Store) listByCursor(ctx context.Context, f *qdrant.Filter, opts ListOptions) ([]Memory, string, error) {
+	limit := opts.Limit
+	if limit == 0 {
+		limit = 20
+	}
+	var startFrom *qdrant.StartFrom
+	seen := map[string]bool{}
+	var boundary string
+	if opts.Cursor != "" {
+		c, err := decodeCursor(opts.Cursor)
+		if err != nil {
+			return nil, "", err
+		}
+		boundary = c.C
+		startFrom = qdrant.NewStartFromDatetime(c.C)
+		for _, id := range c.Seen {
+			seen[id] = true
+		}
+	}
+
+	// Over-fetch by len(seen) so >= limit fresh candidates survive the drop.
+	fetch := limit + uint64(len(seen)) + 1
+	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: s.collection,
+		Filter:         f,
+		Limit:          qdrant.PtrOf(uint32(fetch)),
+		OrderBy: &qdrant.OrderBy{
+			Key:       "created_at",
+			Direction: qdrant.PtrOf(qdrant.Direction_Desc),
+			StartFrom: startFrom,
+		},
+		WithPayload: qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+
+	out := make([]Memory, 0, limit)
+	for _, p := range pts {
+		m := fromPayload(p.Id.GetUuid(), p.Payload)
+		ts := m.CreatedAt.UTC().Format(time.RFC3339)
+		if ts == boundary && seen[m.ID] {
+			continue // already emitted at this exact timestamp
+		}
+		out = append(out, m)
+		if uint64(len(out)) == limit {
+			break
+		}
+	}
+
+	if uint64(len(out)) < limit {
+		return out, "", nil // exhausted: no next page
+	}
+
+	// Build next cursor from the last emitted record: c = its created_at, seen =
+	// every emitted id sharing that timestamp (so the next page drops them).
+	last := out[len(out)-1]
+	nextC := last.CreatedAt.UTC().Format(time.RFC3339)
+	nextSeen := make([]string, 0, 4)
+	// Carry forward prior seen ids if the boundary did not advance.
+	if nextC == boundary {
+		nextSeen = append(nextSeen, idsAtBoundary(seen)...)
+	}
+	for _, m := range out {
+		if m.CreatedAt.UTC().Format(time.RFC3339) == nextC {
+			nextSeen = append(nextSeen, m.ID)
+		}
+	}
+	return out, encodeCursor(listCursor{C: nextC, Seen: dedup(nextSeen)}), nil
+}
+
+// idsAtBoundary returns the keys of a seen-set as a slice (order irrelevant).
+func idsAtBoundary(seen map[string]bool) []string {
+	out := make([]string, 0, len(seen))
+	for id := range seen {
+		out = append(out, id)
+	}
+	return out
+}
+
+func dedup(in []string) []string {
+	m := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if !m[s] {
+			m[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // ScheduledState selects which hidden-by-the-recall-gate records ListScheduled
