@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/seanb4t/engram/compare/v0.8.1...v0.8.2) (2026-06-30)
+
+
+### Features
+
+* **connect:** cursor_mode opt-in for ListMemories first-page bootstrap (engram-3hp9) ([#255](https://github.com/seanb4t/engram/issues/255)) ([42ef01c](https://github.com/seanb4t/engram/commit/42ef01c1cf6caedf7d5071a04bb9c5f972824237))
+
 ## [0.8.1](https://github.com/seanb4t/engram/compare/v0.8.0...v0.8.1) (2026-06-30)
 
 
