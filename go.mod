@@ -11,7 +11,7 @@ require (
 	github.com/knadh/koanf/providers/env/v2 v2.0.0
 	github.com/knadh/koanf/v2 v2.3.5
 	github.com/modelcontextprotocol/go-sdk v1.6.1
-	github.com/qdrant/go-client v1.18.2
+	github.com/qdrant/go-client v1.18.3
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/testcontainers/testcontainers-go/modules/qdrant v0.43.0
