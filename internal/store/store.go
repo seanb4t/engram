@@ -656,10 +656,11 @@ func listFilter(scope string, subj Subject, opts ListOptions) *qdrant.Filter {
 }
 
 // List returns a CreatedAt-desc page of the caller's readable records in scope,
-// the pre-page total (matched within scanCap), and an approximate flag (true
-// when the match count hit scanCap). When Offset >= total, the page is empty
-// (clamped, never a slice panic) and total is still the real matched count.
-func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListOptions) (items []Memory, total uint64, more bool, err error) {
+// the exact matched total (server-side Count), and a nextCursor (empty in offset
+// mode; populated only by cursor-mode paging). Ordering and the total are computed
+// server-side. When Offset >= total, the page is empty (clamped, never a slice
+// panic) and total is still the real matched count.
+func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListOptions) (items []Memory, total uint64, nextCursor string, err error) {
 	ctx, span := tracer.Start(ctx, "store.List", trace.WithAttributes(
 		attribute.String("engram.scope", scope),
 		attribute.String("engram.owner", ownerOf(subj)),
@@ -676,36 +677,58 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		}
 	}()
 
-	const scanCap = 1000
+	if opts.Cursor != "" && opts.Offset > 0 {
+		return nil, 0, "", fmt.Errorf("list: cursor and offset are mutually exclusive")
+	}
+
 	f := listFilter(scope, subj, opts)
 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
 	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
 		f.Must = append(f.Must, c)
 	}
+
+	// Exact total over the filtered set (replaces the scanCap approximation).
+	total, err = s.client.Count(ctx, &qdrant.CountPoints{
+		CollectionName: s.collection, Filter: f, Exact: qdrant.PtrOf(true),
+	})
+	if err != nil {
+		return nil, 0, "", err
+	}
+
+	if opts.Cursor != "" {
+		items, nextCursor, err = s.listByCursor(ctx, f, opts) // Task 4
+		return items, total, nextCursor, err
+	}
+
+	// Offset mode: Qdrant has no numeric OFFSET, so scroll offset+limit ordered
+	// records and return the trailing limit.
+	fetch := opts.Offset + opts.Limit
+	if opts.Limit == 0 {
+		fetch = total // limit 0 = "all" (preserves prior behavior)
+	}
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
 		Filter:         f,
-		Limit:          qdrant.PtrOf(uint32(scanCap)),
+		Limit:          qdrant.PtrOf(uint32(fetch)),
+		OrderBy:        &qdrant.OrderBy{Key: "created_at", Direction: qdrant.PtrOf(qdrant.Direction_Desc)},
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
 	if err != nil {
-		return nil, 0, false, err
+		return nil, 0, "", err
 	}
 	all := make([]Memory, 0, len(pts))
 	for _, p := range pts {
 		all = append(all, fromPayload(p.Id.GetUuid(), p.Payload))
 	}
-	sort.Slice(all, func(i, j int) bool { return all[i].CreatedAt.After(all[j].CreatedAt) })
-	total = uint64(len(all))
-	approximate := len(all) == scanCap
-	if opts.Offset >= total {
-		return []Memory{}, total, approximate, nil
+	if opts.Offset >= uint64(len(all)) {
+		return []Memory{}, total, "", nil
 	}
-	end := opts.Offset + opts.Limit
-	if opts.Limit == 0 || end > total {
-		end = total
-	}
-	return all[opts.Offset:end], total, approximate, nil
+	return all[opts.Offset:], total, "", nil
+}
+
+// listByCursor is replaced in Task 4 with the boundary-id-set cursor.
+func (s *Store) listByCursor(_ context.Context, _ *qdrant.Filter, _ ListOptions) ([]Memory, string, error) {
+	return nil, "", fmt.Errorf("cursor mode not yet implemented")
 }
 
 // ScheduledState selects which hidden-by-the-recall-gate records ListScheduled

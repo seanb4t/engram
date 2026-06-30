@@ -1489,12 +1489,12 @@ func TestListPagination(t *testing.T) {
 	subj := Authenticated("owner-A")
 
 	// Page 1: limit 2, offset 0 -> 2 records, total 5.
-	got, total, approx, err := s.List(ctx, scope, subj, ListOptions{Limit: 2, Offset: 0})
+	got, total, _, err := s.List(ctx, scope, subj, ListOptions{Limit: 2, Offset: 0})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if total != 5 || approx {
-		t.Fatalf("total=%d approx=%v, want 5/false", total, approx)
+	if total != 5 {
+		t.Fatalf("total=%d, want 5", total)
 	}
 	if len(got) != 2 || got[0].Content != "rec 0" {
 		t.Fatalf("page1 = %d records, first=%q", len(got), got[0].Content)
@@ -1508,6 +1508,38 @@ func TestListPagination(t *testing.T) {
 	got, total, _, err = s.List(ctx, scope, subj, ListOptions{Limit: 2, Offset: 99})
 	if err != nil || len(got) != 0 || total != 5 {
 		t.Fatalf("oob: err=%v len=%d total=%d, want nil/0/5", err, len(got), total)
+	}
+}
+
+// TestListExactTotalPastOldCap proves the scanCap ceiling is gone: with > 1000
+// readable records, List returns an exact total (Count), not a capped 1000.
+func TestListExactTotalPastOldCap(t *testing.T) {
+	if testing.Short() {
+		t.Skip("writes 1001 points; skipped in -short")
+	}
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "cap-test:project:x"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	base := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	const n = 1001
+	for i := 0; i < n; i++ {
+		m := Memory{
+			ID:        fmt.Sprintf("c0000000-0000-0000-0000-%012d", i),
+			Content:   "c", Scope: scope, Owner: "sub-A",
+			CreatedAt: base.Add(time.Duration(i) * time.Second),
+		}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("Upsert %d: %v", i, err)
+		}
+	}
+	_, total, _, err := s.List(ctx, scope, Authenticated("sub-A"), ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if total != n {
+		t.Errorf("exact total: got %d want %d (scanCap not retired?)", total, n)
 	}
 }
 

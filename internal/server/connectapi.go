@@ -87,7 +87,7 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	ms, total, approximate, err := a.d.st.List(ctx, req.Msg.Scope, subj, store.ListOptions{
+	ms, total, _, err := a.d.st.List(ctx, req.Msg.Scope, subj, store.ListOptions{
 		Limit:      req.Msg.Limit,
 		Offset:     req.Msg.Offset,
 		Categories: req.Msg.Categories,
@@ -98,7 +98,7 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&engramv1.ListMemoriesResponse{
-		Memories: shapeProtoMemories(ms, req.Msg.Full, a.d.summaryMaxChars), Total: total, Approximate: approximate,
+		Memories: shapeProtoMemories(ms, req.Msg.Full, a.d.summaryMaxChars), Total: total, Approximate: false,
 	}), nil
 }
 
