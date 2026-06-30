@@ -272,6 +272,31 @@ func TestShapeProtoMemoriesFullFlag(t *testing.T) {
 // Coverage is skipped here because discovery-scope seeding requires a separate
 // collection setup and discovery-specific Upsert path not yet exposed from testDeps.
 
+func TestListMemoriesRejectsBadCreatedAfter(t *testing.T) {
+	api := &engramAPI{d: testDeps(t)}
+	ctx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "sub-A"}})
+	_, err := api.ListMemories(ctx, connect.NewRequest(&engramv1.ListMemoriesRequest{
+		Scope: "s:project:x", CreatedAfter: "not-a-date",
+	}))
+	if err == nil || connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("bad created_after: got %v want InvalidArgument", err)
+	}
+}
+
+// TestListMemoriesRejectsMalformedPageToken pins the error-code taxonomy
+// (g0ne.2/.6/.10): a garbage page token is a CLIENT error (CodeInvalidArgument
+// via store.ErrInvalidArgument), not a CodeInternal infra failure.
+func TestListMemoriesRejectsMalformedPageToken(t *testing.T) {
+	api := &engramAPI{d: testDeps(t)}
+	ctx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "sub-A"}})
+	_, err := api.ListMemories(ctx, connect.NewRequest(&engramv1.ListMemoriesRequest{
+		Scope: "s:project:x", PageToken: "!!!garbage!!!",
+	}))
+	if err == nil || connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("malformed page_token: got %v want InvalidArgument", err)
+	}
+}
+
 func TestMountConnectSkipsWhenResolverNil(t *testing.T) {
 	d := &deps{} // no store needed; we never serve a request
 	mux := http.NewServeMux()

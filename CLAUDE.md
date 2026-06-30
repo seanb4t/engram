@@ -67,7 +67,11 @@ cannot read other actors' `shared` records. The `set_visibility` tool and
 replaces the tag set (omit to preserve, empty array to clear). `search_memory`
 and `list_memory` accept an optional `tags` filter — records must carry **all**
 listed tags (AND); on `search_memory` it is a hard pre-filter applied before
-vector ranking. Pre-isolation records (missing
+vector ranking. `search_memory` / `list_memory` / `list_scheduled` also accept
+optional `created_after` / `created_before` (RFC3339, half-open `[after, before)`)
+to window recall by creation time; `list_memory` paginates via an opaque `cursor`
+arg and returns `{memories, next_cursor}` (empty `next_cursor` = last page).
+Pre-isolation records (missing
 `owner` key) are invisible to every read until you backfill them with `engram
 migrate-remap-owner --from-missing --to <owner>` (the `migrate-set-owner` command
 is a deprecated alias). To re-stamp records after an IdP `sub`/claim change, use

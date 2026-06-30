@@ -17,6 +17,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	grpccodes "google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // tracer is the package-level OTel tracer for store-layer spans. It delegates to
@@ -36,6 +39,13 @@ func ownerOf(subj Subject) string {
 // ErrNotFound is returned when an id is absent OR not visible to the caller —
 // the two are indistinguishable by design, so ownership never leaks across actors.
 var ErrNotFound = errors.New("not found")
+
+// ErrInvalidArgument tags errors caused by a malformed caller request (a bad
+// cursor, mutually exclusive paging options) as opposed to a Qdrant/infra
+// failure. The Connect layer maps it to CodeInvalidArgument and everything else
+// to CodeInternal, so a Count/Scroll outage is no longer mislabeled as a client
+// error.
+var ErrInvalidArgument = errors.New("invalid argument")
 
 // visibilityShared is the Visibility sentinel for a record readable by any
 // authenticated caller. Sharing grants read, never write. Defined once so a typo
@@ -164,22 +174,63 @@ func (s *Store) EnsureCollection(ctx context.Context, dim uint64) (err error) {
 }
 
 // ensureCollection idempotently creates a named collection at the given vector
-// size (distance Cosine) if absent. Factored out of EnsureCollection so reindex
-// can provision a *target* collection distinct from s.collection.
+// size (distance Cosine) if absent, then ensures the recall payload indexes on
+// every call. Factored out of EnsureCollection so reindex can provision a
+// *target* collection distinct from s.collection.
 func (s *Store) ensureCollection(ctx context.Context, name string, dim uint64) error {
 	exists, err := s.client.CollectionExists(ctx, name)
 	if err != nil {
 		return err
 	}
-	if exists {
-		return nil
+	if !exists {
+		if err := s.client.CreateCollection(ctx, &qdrant.CreateCollection{
+			CollectionName: name,
+			VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
+				Size: dim, Distance: qdrant.Distance_Cosine,
+			}),
+		}); err != nil {
+			return err
+		}
 	}
-	return s.client.CreateCollection(ctx, &qdrant.CreateCollection{
-		CollectionName: name,
-		VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
-			Size: dim, Distance: qdrant.Distance_Cosine,
-		}),
-	})
+	// Indexes are ensured on every boot (idempotently) so existing collections
+	// gain them without a data migration: Qdrant backfills the index over the
+	// already-stored RFC3339 created_at strings and keyword payloads.
+	return s.ensureIndexes(ctx, name)
+}
+
+// ensureIndexes idempotently creates the recall payload indexes. owner is a
+// tenant-optimized keyword (authz key), scope a keyword, created_at a datetime
+// (enables server-side DatetimeRange + order_by). Re-creating an existing index
+// is idempotent in Qdrant; the AlreadyExists check defends against versions/races
+// that return it instead of succeeding silently.
+func (s *Store) ensureIndexes(ctx context.Context, name string) error {
+	type idx struct {
+		field  string
+		typ    qdrant.FieldType
+		params *qdrant.PayloadIndexParams
+	}
+	idxs := []idx{
+		{"owner", qdrant.FieldType_FieldTypeKeyword,
+			qdrant.NewPayloadIndexParamsKeyword(&qdrant.KeywordIndexParams{IsTenant: qdrant.PtrOf(true)})},
+		{"scope", qdrant.FieldType_FieldTypeKeyword, nil},
+		{"created_at", qdrant.FieldType_FieldTypeDatetime, nil},
+	}
+	for _, ix := range idxs {
+		req := &qdrant.CreateFieldIndexCollection{
+			CollectionName:   name,
+			FieldName:        ix.field,
+			FieldType:        qdrant.PtrOf(ix.typ),
+			FieldIndexParams: ix.params,
+			Wait:             qdrant.PtrOf(true),
+		}
+		if _, err := s.client.CreateFieldIndex(ctx, req); err != nil {
+			if st, ok := status.FromError(err); ok && st.Code() == grpccodes.AlreadyExists {
+				continue
+			}
+			return fmt.Errorf("ensure index %q: %w", ix.field, err)
+		}
+	}
+	return nil
 }
 
 func payload(m Memory) map[string]any {
@@ -449,7 +500,7 @@ func activeWindowConditions(now time.Time) []*qdrant.Condition {
 // Search returns the k nearest readable memories to vec within scope.
 // Authenticated callers see their own records plus shared records; anonymous
 // callers see only the ownerless bucket.
-func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []float32, k uint64, tags []string) (out []Memory, err error) {
+func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []float32, k uint64, tags []string, after, before time.Time) (out []Memory, err error) {
 	ctx, span := tracer.Start(ctx, "store.Search", trace.WithAttributes(
 		attribute.String("engram.scope", scope),
 		attribute.Int64("engram.k", int64(k)),
@@ -470,6 +521,9 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 	f := s.ownerScopeFilter(scope, subj)
 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
 	f.Must = append(f.Must, tagMatchConditions(tags)...)
+	if c := createdRangeCondition(after, before); c != nil {
+		f.Must = append(f.Must, c)
+	}
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
 		Filter: f, Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
@@ -543,6 +597,33 @@ type ListOptions struct {
 	Categories []string // empty = all
 	Visibility string   // "" = all | "private" | "shared"
 	Tags       []string // empty = all; non-empty = records carrying ALL listed tags. Honored by List (and Search via its tags param); ListScheduled ignores it.
+	// Half-open creation-time window. Zero value = unbounded on that side.
+	// CreatedAfter is inclusive (gte); CreatedBefore is exclusive (lt).
+	CreatedAfter  time.Time
+	CreatedBefore time.Time
+	// Cursor carries an opaque keyset token to resume from; "" starts at the
+	// first page. Cursor mode is selected by Cursor != "" || CursorMode (a non-empty
+	// Cursor alone is enough, even with CursorMode false). Mutually exclusive with
+	// Offset > 0.
+	Cursor     string
+	CursorMode bool // true = boundary-id-set cursor paging (MCP default); false = offset paging (UI)
+}
+
+// createdRangeCondition builds a half-open [after, before) DatetimeRange on the
+// created_at datetime index: after→Gte (inclusive), before→Lt (exclusive). A
+// zero bound is omitted. Returns nil when both bounds are zero (no filter).
+func createdRangeCondition(after, before time.Time) *qdrant.Condition {
+	if after.IsZero() && before.IsZero() {
+		return nil
+	}
+	dr := &qdrant.DatetimeRange{}
+	if !after.IsZero() {
+		dr.Gte = timestamppb.New(after.UTC())
+	}
+	if !before.IsZero() {
+		dr.Lt = timestamppb.New(before.UTC())
+	}
+	return qdrant.NewDatetimeRange("created_at", dr)
 }
 
 // listFilter builds the Qdrant filter for List: scope + per-actor authz (outer
@@ -587,10 +668,11 @@ func listFilter(scope string, subj Subject, opts ListOptions) *qdrant.Filter {
 }
 
 // List returns a CreatedAt-desc page of the caller's readable records in scope,
-// the pre-page total (matched within scanCap), and an approximate flag (true
-// when the match count hit scanCap). When Offset >= total, the page is empty
-// (clamped, never a slice panic) and total is still the real matched count.
-func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListOptions) (items []Memory, total uint64, more bool, err error) {
+// the exact matched total (server-side Count), and a nextCursor (empty in offset
+// mode; populated only by cursor-mode paging). Ordering and the total are computed
+// server-side. When Offset >= total, the page is empty (clamped, never a slice
+// panic) and total is still the real matched count.
+func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListOptions) (items []Memory, total uint64, nextCursor string, err error) {
 	ctx, span := tracer.Start(ctx, "store.List", trace.WithAttributes(
 		attribute.String("engram.scope", scope),
 		attribute.String("engram.owner", ownerOf(subj)),
@@ -607,33 +689,146 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		}
 	}()
 
-	const scanCap = 1000
+	if (opts.Cursor != "" || opts.CursorMode) && opts.Offset > 0 {
+		return nil, 0, "", fmt.Errorf("list: cursor mode and offset are mutually exclusive: %w", ErrInvalidArgument)
+	}
+
 	f := listFilter(scope, subj, opts)
 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
+	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
+		f.Must = append(f.Must, c)
+	}
+
+	// Exact total over the filtered set (replaces the scanCap approximation).
+	total, err = s.client.Count(ctx, &qdrant.CountPoints{
+		CollectionName: s.collection, Filter: f, Exact: qdrant.PtrOf(true),
+	})
+	if err != nil {
+		return nil, 0, "", err
+	}
+
+	if opts.Cursor != "" || (opts.Offset == 0 && opts.Limit > 0 && opts.CursorMode) {
+		items, nextCursor, err = s.listByCursor(ctx, f, opts)
+		return items, total, nextCursor, err
+	}
+
+	// Offset mode: Qdrant has no numeric OFFSET, so scroll offset+limit ordered
+	// records and return the trailing limit.
+	fetch := opts.Offset + opts.Limit
+	if opts.Limit == 0 {
+		fetch = total // limit 0 = "all" (preserves prior behavior)
+	}
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
 		Filter:         f,
-		Limit:          qdrant.PtrOf(uint32(scanCap)),
+		Limit:          qdrant.PtrOf(uint32(fetch)),
+		OrderBy:        &qdrant.OrderBy{Key: "created_at", Direction: qdrant.PtrOf(qdrant.Direction_Desc)},
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
 	if err != nil {
-		return nil, 0, false, err
+		return nil, 0, "", err
 	}
 	all := make([]Memory, 0, len(pts))
 	for _, p := range pts {
 		all = append(all, fromPayload(p.Id.GetUuid(), p.Payload))
 	}
-	sort.Slice(all, func(i, j int) bool { return all[i].CreatedAt.After(all[j].CreatedAt) })
-	total = uint64(len(all))
-	approximate := len(all) == scanCap
-	if opts.Offset >= total {
-		return []Memory{}, total, approximate, nil
+	if opts.Offset >= uint64(len(all)) {
+		return []Memory{}, total, "", nil
 	}
-	end := opts.Offset + opts.Limit
-	if opts.Limit == 0 || end > total {
-		end = total
+	return all[opts.Offset:], total, "", nil
+}
+
+// maxListLimit caps a single cursor page (and bounds a decoded cursor's seen
+// set), so neither a large Limit nor a crafted cursor can drive an unbounded
+// Scroll over-fetch.
+const maxListLimit = 1000
+
+// listByCursor implements boundary-id-set keyset paging over the already-built
+// filter f. opts.Cursor may be empty (first page); a non-empty cursor resumes at
+// its created_at boundary, dropping ids already emitted at that exact timestamp.
+func (s *Store) listByCursor(ctx context.Context, f *qdrant.Filter, opts ListOptions) ([]Memory, string, error) {
+	limit := opts.Limit
+	if limit == 0 {
+		limit = 20
 	}
-	return all[opts.Offset:end], total, approximate, nil
+	if limit > maxListLimit {
+		limit = maxListLimit
+	}
+	var startFrom *qdrant.StartFrom
+	seen := map[string]bool{}
+	var boundary string
+	if opts.Cursor != "" {
+		c, err := decodeCursor(opts.Cursor)
+		if err != nil {
+			return nil, "", fmt.Errorf("list cursor: %w: %w", err, ErrInvalidArgument)
+		}
+		if len(c.Seen) > maxListLimit {
+			return nil, "", fmt.Errorf("list cursor: seen set too large: %w", ErrInvalidArgument)
+		}
+		boundary = c.C
+		startFrom = qdrant.NewStartFromDatetime(c.C)
+		for _, id := range c.Seen {
+			seen[id] = true
+		}
+	}
+
+	// Over-fetch limit + len(seen) + 1: len(seen) covers the boundary ids dropped
+	// at resume, and the +1 guarantees forward progress (a full page yields a
+	// usable next cursor rather than silently terminating).
+	fetch := limit + uint64(len(seen)) + 1
+	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: s.collection,
+		Filter:         f,
+		Limit:          qdrant.PtrOf(uint32(fetch)),
+		OrderBy: &qdrant.OrderBy{
+			Key:       "created_at",
+			Direction: qdrant.PtrOf(qdrant.Direction_Desc),
+			StartFrom: startFrom,
+		},
+		WithPayload: qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+
+	out := make([]Memory, 0, limit)
+	for _, p := range pts {
+		m := fromPayload(p.Id.GetUuid(), p.Payload)
+		ts := m.CreatedAt.UTC().Format(time.RFC3339)
+		if ts == boundary && seen[m.ID] {
+			continue // already emitted at this exact timestamp
+		}
+		out = append(out, m)
+		if uint64(len(out)) == limit {
+			break
+		}
+	}
+
+	if uint64(len(out)) < limit {
+		return out, "", nil // exhausted: no next page
+	}
+
+	// Build next cursor from the last emitted record: c = its created_at, seen =
+	// every emitted id sharing that timestamp (so the next page drops them).
+	last := out[len(out)-1]
+	nextC := last.CreatedAt.UTC().Format(time.RFC3339)
+	nextSeen := make([]string, 0, 4)
+	// Carry forward prior seen ids if the boundary did not advance. These are
+	// disjoint from the emitted ids appended below: any emitted record at the
+	// boundary timestamp passed the seen[m.ID] drop, so it was never in seen.
+	if nextC == boundary {
+		for id := range seen {
+			nextSeen = append(nextSeen, id)
+		}
+	}
+	// Emitted records are distinct point ids, so appending those at nextC adds no
+	// duplicate — the next seen set is duplicate-free by construction.
+	for _, m := range out {
+		if m.CreatedAt.UTC().Format(time.RFC3339) == nextC {
+			nextSeen = append(nextSeen, m.ID)
+		}
+	}
+	return out, encodeCursor(listCursor{C: nextC, Seen: nextSeen}), nil
 }
 
 // ScheduledState selects which hidden-by-the-recall-gate records ListScheduled
@@ -684,8 +879,9 @@ func scheduledStateCondition(state ScheduledState, now time.Time) *qdrant.Condit
 // shared-read grant): a `shared` scheduled/expired record belonging to another
 // actor stays invisible here until it becomes active, preserving the deferred-
 // reveal guarantee. It does not reuse List (whose gate would exclude exactly
-// these records). CreatedAt-desc, bounded by the same scanCap as List. Only
-// opts.Limit is honored; opts.Offset is ignored — paginates by Limit alone.
+// these records). Server-side order_by created_at desc bounded directly by
+// opts.Limit (default 20); the created_at window (opts.CreatedAfter/Before) is
+// applied as a DatetimeRange. opts.Offset is ignored — paginates by Limit alone.
 func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, state ScheduledState, opts ListOptions) (items []Memory, err error) {
 	if !state.valid() {
 		return nil, fmt.Errorf("invalid scheduled state %q (want scheduled|expired|all)", state)
@@ -707,28 +903,32 @@ func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, s
 		}
 	}()
 
-	const scanCap = 1000
+	limit := opts.Limit
+	if limit == 0 {
+		limit = 20
+	}
 	f := &qdrant.Filter{Must: []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),
 		ownerOnlyCondition(subj),
 		scheduledStateCondition(state, s.now()),
 	}}
+	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
+		f.Must = append(f.Must, c)
+	}
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection, Filter: f,
-		Limit: qdrant.PtrOf(uint32(scanCap)), WithPayload: qdrant.NewWithPayload(true),
+		Limit:       qdrant.PtrOf(uint32(limit)),
+		OrderBy:     &qdrant.OrderBy{Key: "created_at", Direction: qdrant.PtrOf(qdrant.Direction_Desc)},
+		WithPayload: qdrant.NewWithPayload(true),
 	})
 	if err != nil {
 		return nil, err
 	}
-	all := make([]Memory, 0, len(pts))
+	items = make([]Memory, 0, len(pts))
 	for _, p := range pts {
-		all = append(all, fromPayload(p.Id.GetUuid(), p.Payload))
+		items = append(items, fromPayload(p.Id.GetUuid(), p.Payload))
 	}
-	sort.Slice(all, func(i, j int) bool { return all[i].CreatedAt.After(all[j].CreatedAt) })
-	if opts.Limit > 0 && uint64(len(all)) > opts.Limit {
-		all = all[:opts.Limit]
-	}
-	return all, nil
+	return items, nil
 }
 
 // ScopeCount is a scope plus the number of records in it the caller can read.

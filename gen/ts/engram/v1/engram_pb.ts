@@ -15,7 +15,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file engram/v1/engram.proto.
  */
 export const file_engram_v1_engram: GenFile = /*@__PURE__*/
-  fileDesc("ChZlbmdyYW0vdjEvZW5ncmFtLnByb3RvEgllbmdyYW0udjEitAIKBk1lbW9yeRIKCgJpZBgBIAEoCRIPCgdjb250ZW50GAIgASgJEg0KBXNjb3BlGAMgASgJEgwKBHJlcG8YBCABKAkSEQoJd29ya3NwYWNlGAUgASgJEhAKCHdvcmt0cmVlGAYgASgJEhAKCGJhc2VfZGlyGAcgASgJEg4KBnNvdXJjZRgIIAEoCRIQCghjYXRlZ29yeRgJIAEoCRIMCgR0YWdzGAogAygJEg0KBWFjdG9yGAsgASgJEg0KBW93bmVyGAwgASgJEhIKCnZpc2liaWxpdHkYDSABKAkSLgoKY3JlYXRlZF9hdBgOIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDwoHc3VtbWFyeRgPIAEoCRIWCg5zdW1tYXJ5X3NvdXJjZRgQIAEoCSIqCgpTY29wZUNvdW50Eg0KBXNjb3BlGAEgASgJEg0KBWNvdW50GAIgASgEIhMKEUxpc3RTY29wZXNSZXF1ZXN0IlAKEkxpc3RTY29wZXNSZXNwb25zZRIlCgZzY29wZXMYASADKAsyFS5lbmdyYW0udjEuU2NvcGVDb3VudBITCgthcHByb3hpbWF0ZRgCIAEoCCKHAQoTTGlzdE1lbW9yaWVzUmVxdWVzdBINCgVzY29wZRgBIAEoCRINCgVsaW1pdBgCIAEoBBIOCgZvZmZzZXQYAyABKAQSEgoKY2F0ZWdvcmllcxgEIAMoCRISCgp2aXNpYmlsaXR5GAUgASgJEgwKBHRhZ3MYBiADKAkSDAoEZnVsbBgHIAEoCCJfChRMaXN0TWVtb3JpZXNSZXNwb25zZRIjCghtZW1vcmllcxgBIAMoCzIRLmVuZ3JhbS52MS5NZW1vcnkSDQoFdG90YWwYAiABKAQSEwoLYXBwcm94aW1hdGUYAyABKAgiXAoVU2VhcmNoTWVtb3JpZXNSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEg0KBXNjb3BlGAIgASgJEgkKAWsYAyABKAQSDAoEdGFncxgEIAMoCRIMCgRmdWxsGAUgASgIIj0KFlNlYXJjaE1lbW9yaWVzUmVzcG9uc2USIwoIbWVtb3JpZXMYASADKAsyES5lbmdyYW0udjEuTWVtb3J5Ih4KEEdldE1lbW9yeVJlcXVlc3QSCgoCaWQYASABKAkiNgoRR2V0TWVtb3J5UmVzcG9uc2USIQoGbWVtb3J5GAEgASgLMhEuZW5ncmFtLnYxLk1lbW9yeSJDChhTZWFyY2hEaXNjb3Zlcmllc1JlcXVlc3QSDQoFcXVlcnkYASABKAkSDQoFc2NvcGUYAiABKAkSCQoBaxgDIAEoBCJDChlTZWFyY2hEaXNjb3Zlcmllc1Jlc3BvbnNlEiYKC2Rpc2NvdmVyaWVzGAEgAygLMhEuZW5ncmFtLnYxLk1lbW9yeTKqAwoNRW5ncmFtU2VydmljZRJJCgpMaXN0U2NvcGVzEhwuZW5ncmFtLnYxLkxpc3RTY29wZXNSZXF1ZXN0Gh0uZW5ncmFtLnYxLkxpc3RTY29wZXNSZXNwb25zZRJPCgxMaXN0TWVtb3JpZXMSHi5lbmdyYW0udjEuTGlzdE1lbW9yaWVzUmVxdWVzdBofLmVuZ3JhbS52MS5MaXN0TWVtb3JpZXNSZXNwb25zZRJVCg5TZWFyY2hNZW1vcmllcxIgLmVuZ3JhbS52MS5TZWFyY2hNZW1vcmllc1JlcXVlc3QaIS5lbmdyYW0udjEuU2VhcmNoTWVtb3JpZXNSZXNwb25zZRJGCglHZXRNZW1vcnkSGy5lbmdyYW0udjEuR2V0TWVtb3J5UmVxdWVzdBocLmVuZ3JhbS52MS5HZXRNZW1vcnlSZXNwb25zZRJeChFTZWFyY2hEaXNjb3ZlcmllcxIjLmVuZ3JhbS52MS5TZWFyY2hEaXNjb3Zlcmllc1JlcXVlc3QaJC5lbmdyYW0udjEuU2VhcmNoRGlzY292ZXJpZXNSZXNwb25zZUKWAQoNY29tLmVuZ3JhbS52MUILRW5ncmFtUHJvdG9QAVozZ2l0aHViLmNvbS9zZWFuYjR0L2VuZ3JhbS9nZW4vZ28vZW5ncmFtL3YxO2VuZ3JhbXYxogIDRVhYqgIJRW5ncmFtLlYxygIJRW5ncmFtXFYx4gIVRW5ncmFtXFYxXEdQQk1ldGFkYXRh6gIKRW5ncmFtOjpWMWIGcHJvdG8z", [file_google_protobuf_timestamp]);
+  fileDesc("ChZlbmdyYW0vdjEvZW5ncmFtLnByb3RvEgllbmdyYW0udjEitAIKBk1lbW9yeRIKCgJpZBgBIAEoCRIPCgdjb250ZW50GAIgASgJEg0KBXNjb3BlGAMgASgJEgwKBHJlcG8YBCABKAkSEQoJd29ya3NwYWNlGAUgASgJEhAKCHdvcmt0cmVlGAYgASgJEhAKCGJhc2VfZGlyGAcgASgJEg4KBnNvdXJjZRgIIAEoCRIQCghjYXRlZ29yeRgJIAEoCRIMCgR0YWdzGAogAygJEg0KBWFjdG9yGAsgASgJEg0KBW93bmVyGAwgASgJEhIKCnZpc2liaWxpdHkYDSABKAkSLgoKY3JlYXRlZF9hdBgOIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDwoHc3VtbWFyeRgPIAEoCRIWCg5zdW1tYXJ5X3NvdXJjZRgQIAEoCSIqCgpTY29wZUNvdW50Eg0KBXNjb3BlGAEgASgJEg0KBWNvdW50GAIgASgEIhMKEUxpc3RTY29wZXNSZXF1ZXN0IlAKEkxpc3RTY29wZXNSZXNwb25zZRIlCgZzY29wZXMYASADKAsyFS5lbmdyYW0udjEuU2NvcGVDb3VudBITCgthcHByb3hpbWF0ZRgCIAEoCCLKAQoTTGlzdE1lbW9yaWVzUmVxdWVzdBINCgVzY29wZRgBIAEoCRINCgVsaW1pdBgCIAEoBBIOCgZvZmZzZXQYAyABKAQSEgoKY2F0ZWdvcmllcxgEIAMoCRISCgp2aXNpYmlsaXR5GAUgASgJEgwKBHRhZ3MYBiADKAkSDAoEZnVsbBgHIAEoCBIVCg1jcmVhdGVkX2FmdGVyGAggASgJEhYKDmNyZWF0ZWRfYmVmb3JlGAkgASgJEhIKCnBhZ2VfdG9rZW4YCiABKAkifAoUTGlzdE1lbW9yaWVzUmVzcG9uc2USIwoIbWVtb3JpZXMYASADKAsyES5lbmdyYW0udjEuTWVtb3J5Eg0KBXRvdGFsGAIgASgEEhcKC2FwcHJveGltYXRlGAMgASgIQgIYARIXCg9uZXh0X3BhZ2VfdG9rZW4YBCABKAkiiwEKFVNlYXJjaE1lbW9yaWVzUmVxdWVzdBINCgVxdWVyeRgBIAEoCRINCgVzY29wZRgCIAEoCRIJCgFrGAMgASgEEgwKBHRhZ3MYBCADKAkSDAoEZnVsbBgFIAEoCBIVCg1jcmVhdGVkX2FmdGVyGAYgASgJEhYKDmNyZWF0ZWRfYmVmb3JlGAcgASgJIj0KFlNlYXJjaE1lbW9yaWVzUmVzcG9uc2USIwoIbWVtb3JpZXMYASADKAsyES5lbmdyYW0udjEuTWVtb3J5Ih4KEEdldE1lbW9yeVJlcXVlc3QSCgoCaWQYASABKAkiNgoRR2V0TWVtb3J5UmVzcG9uc2USIQoGbWVtb3J5GAEgASgLMhEuZW5ncmFtLnYxLk1lbW9yeSJDChhTZWFyY2hEaXNjb3Zlcmllc1JlcXVlc3QSDQoFcXVlcnkYASABKAkSDQoFc2NvcGUYAiABKAkSCQoBaxgDIAEoBCJDChlTZWFyY2hEaXNjb3Zlcmllc1Jlc3BvbnNlEiYKC2Rpc2NvdmVyaWVzGAEgAygLMhEuZW5ncmFtLnYxLk1lbW9yeTKqAwoNRW5ncmFtU2VydmljZRJJCgpMaXN0U2NvcGVzEhwuZW5ncmFtLnYxLkxpc3RTY29wZXNSZXF1ZXN0Gh0uZW5ncmFtLnYxLkxpc3RTY29wZXNSZXNwb25zZRJPCgxMaXN0TWVtb3JpZXMSHi5lbmdyYW0udjEuTGlzdE1lbW9yaWVzUmVxdWVzdBofLmVuZ3JhbS52MS5MaXN0TWVtb3JpZXNSZXNwb25zZRJVCg5TZWFyY2hNZW1vcmllcxIgLmVuZ3JhbS52MS5TZWFyY2hNZW1vcmllc1JlcXVlc3QaIS5lbmdyYW0udjEuU2VhcmNoTWVtb3JpZXNSZXNwb25zZRJGCglHZXRNZW1vcnkSGy5lbmdyYW0udjEuR2V0TWVtb3J5UmVxdWVzdBocLmVuZ3JhbS52MS5HZXRNZW1vcnlSZXNwb25zZRJeChFTZWFyY2hEaXNjb3ZlcmllcxIjLmVuZ3JhbS52MS5TZWFyY2hEaXNjb3Zlcmllc1JlcXVlc3QaJC5lbmdyYW0udjEuU2VhcmNoRGlzY292ZXJpZXNSZXNwb25zZUKWAQoNY29tLmVuZ3JhbS52MUILRW5ncmFtUHJvdG9QAVozZ2l0aHViLmNvbS9zZWFuYjR0L2VuZ3JhbS9nZW4vZ28vZW5ncmFtL3YxO2VuZ3JhbXYxogIDRVhYqgIJRW5ncmFtLlYxygIJRW5ncmFtXFYx4gIVRW5ncmFtXFYxXEdQQk1ldGFkYXRh6gIKRW5ncmFtOjpWMWIGcHJvdG8z", [file_google_protobuf_timestamp]);
 
 /**
  * A single memory record (mirrors internal/store.Memory's readable fields).
@@ -216,6 +216,27 @@ export type ListMemoriesRequest = Message<"engram.v1.ListMemoriesRequest"> & {
    * @generated from field: bool full = 7;
    */
   full: boolean;
+
+  /**
+   * RFC3339; inclusive lower bound on created_at
+   *
+   * @generated from field: string created_after = 8;
+   */
+  createdAfter: string;
+
+  /**
+   * RFC3339; exclusive upper bound on created_at
+   *
+   * @generated from field: string created_before = 9;
+   */
+  createdBefore: string;
+
+  /**
+   * opaque cursor; when set, cursor paging (ignores offset)
+   *
+   * @generated from field: string page_token = 10;
+   */
+  pageToken: string;
 };
 
 /**
@@ -235,18 +256,24 @@ export type ListMemoriesResponse = Message<"engram.v1.ListMemoriesResponse"> & {
   memories: Memory[];
 
   /**
-   * readable records matching scope + filters (pre-page)
-   *
    * @generated from field: uint64 total = 2;
    */
   total: bigint;
 
   /**
-   * true when total hit the scanCap ceiling
+   * always false since totals are now exact (Count)
    *
-   * @generated from field: bool approximate = 3;
+   * @generated from field: bool approximate = 3 [deprecated = true];
+   * @deprecated
    */
   approximate: boolean;
+
+  /**
+   * empty when no further pages (cursor paging)
+   *
+   * @generated from field: string next_page_token = 4;
+   */
+  nextPageToken: string;
 };
 
 /**
@@ -288,6 +315,20 @@ export type SearchMemoriesRequest = Message<"engram.v1.SearchMemoriesRequest"> &
    * @generated from field: bool full = 5;
    */
   full: boolean;
+
+  /**
+   * RFC3339; inclusive lower bound on created_at
+   *
+   * @generated from field: string created_after = 6;
+   */
+  createdAfter: string;
+
+  /**
+   * RFC3339; exclusive upper bound on created_at
+   *
+   * @generated from field: string created_before = 7;
+   */
+  createdBefore: string;
 };
 
 /**

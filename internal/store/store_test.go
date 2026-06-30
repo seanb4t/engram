@@ -355,7 +355,7 @@ func TestSearchAndDeleteAll(t *testing.T) {
 		t.Fatalf("upsert mForeign: %v", err)
 	}
 
-	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5, nil)
+	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5, nil, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -374,7 +374,7 @@ func TestSearchAndDeleteAll(t *testing.T) {
 		t.Fatalf("delete_all: %v", err)
 	}
 
-	hits2, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5, nil)
+	hits2, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5, nil, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("search after delete_all: %v", err)
 	}
@@ -383,7 +383,7 @@ func TestSearchAndDeleteAll(t *testing.T) {
 	}
 	// DeleteAll is owner-scoped: the foreign-owned record must survive an
 	// anonymous DeleteAll.
-	survivors, err := s.Search(ctx, scope, Authenticated("sub-foreign"), []float32{0.9, 0.1, 0.0}, 5, nil)
+	survivors, err := s.Search(ctx, scope, Authenticated("sub-foreign"), []float32{0.9, 0.1, 0.0}, 5, nil, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("search as foreign owner after delete_all: %v", err)
 	}
@@ -456,7 +456,7 @@ func TestSearchAndListTagsFilter(t *testing.T) {
 		}},
 	}
 	for _, tc := range cases {
-		hits, err := s.Search(ctx, scope, Anonymous(), q, 10, tc.tags)
+		hits, err := s.Search(ctx, scope, Anonymous(), q, 10, tc.tags, time.Time{}, time.Time{})
 		if err != nil {
 			t.Fatalf("Search %s: %v", tc.name, err)
 		}
@@ -501,7 +501,7 @@ func TestTagsFilterComposesWithWindow(t *testing.T) {
 	mk(expiredID, expired)
 
 	// Tag "go" matches both records, but the window gate must drop the expired one.
-	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10, []string{"go"})
+	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10, []string{"go"}, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -535,7 +535,7 @@ func TestSearchListOwnerIsolation(t *testing.T) {
 	mk("bbbbbbbb-0000-0000-0000-000000000003", "sub-B", "shared") // B shared
 
 	// A sees only A-private + B-shared (2), never B-private.
-	hits, err := s.Search(ctx, scope, Authenticated("sub-A"), []float32{0.1, 0.2, 0.3}, 10, nil)
+	hits, err := s.Search(ctx, scope, Authenticated("sub-A"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -1114,7 +1114,7 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 	}
 
 	// Search: anonymous caller sees only the anonymous-bucket record (owner=="").
-	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10, nil)
+	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("Search anon: %v", err)
 	}
@@ -1174,14 +1174,14 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 	}
 
 	// Authenticated Search: sub-owner sees own private + own shared (2), sub-other sees own (0) + shared (1).
-	ownerHits, err := s.Search(ctx, scope, Authenticated("sub-owner"), []float32{0.1, 0.2, 0.3}, 10, nil)
+	ownerHits, err := s.Search(ctx, scope, Authenticated("sub-owner"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("Search sub-owner: %v", err)
 	}
 	if len(ownerHits) != 2 {
 		t.Errorf("Search sub-owner: got %d want 2 (private+shared)", len(ownerHits))
 	}
-	otherHits, err := s.Search(ctx, scope, Authenticated("sub-other"), []float32{0.1, 0.2, 0.3}, 10, nil)
+	otherHits, err := s.Search(ctx, scope, Authenticated("sub-other"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("Search sub-other: %v", err)
 	}
@@ -1345,7 +1345,7 @@ func TestNilSubjectFailsClosed(t *testing.T) {
 	var nilSubj Subject // zero value == nil: the discarded-error case
 
 	// Reads return nothing.
-	if hits, err := s.Search(ctx, scope, nilSubj, []float32{0.1, 0.2, 0.3}, 10, nil); err != nil || len(hits) != 0 {
+	if hits, err := s.Search(ctx, scope, nilSubj, []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{}); err != nil || len(hits) != 0 {
 		t.Errorf("Search(nil): want 0 hits nil err, got %d hits, %v", len(hits), err)
 	}
 	if mems, _, _, err := s.List(ctx, scope, nilSubj, ListOptions{Limit: 20}); err != nil || len(mems) != 0 {
@@ -1489,12 +1489,12 @@ func TestListPagination(t *testing.T) {
 	subj := Authenticated("owner-A")
 
 	// Page 1: limit 2, offset 0 -> 2 records, total 5.
-	got, total, approx, err := s.List(ctx, scope, subj, ListOptions{Limit: 2, Offset: 0})
+	got, total, _, err := s.List(ctx, scope, subj, ListOptions{Limit: 2, Offset: 0})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if total != 5 || approx {
-		t.Fatalf("total=%d approx=%v, want 5/false", total, approx)
+	if total != 5 {
+		t.Fatalf("total=%d, want 5", total)
 	}
 	if len(got) != 2 || got[0].Content != "rec 0" {
 		t.Fatalf("page1 = %d records, first=%q", len(got), got[0].Content)
@@ -1508,6 +1508,38 @@ func TestListPagination(t *testing.T) {
 	got, total, _, err = s.List(ctx, scope, subj, ListOptions{Limit: 2, Offset: 99})
 	if err != nil || len(got) != 0 || total != 5 {
 		t.Fatalf("oob: err=%v len=%d total=%d, want nil/0/5", err, len(got), total)
+	}
+}
+
+// TestListExactTotalPastOldCap proves the scanCap ceiling is gone: with > 1000
+// readable records, List returns an exact total (Count), not a capped 1000.
+func TestListExactTotalPastOldCap(t *testing.T) {
+	if testing.Short() {
+		t.Skip("writes 1001 points; skipped in -short")
+	}
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "cap-test:project:x"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	base := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	const n = 1001
+	for i := 0; i < n; i++ {
+		m := Memory{
+			ID:      fmt.Sprintf("c0000000-0000-0000-0000-%012d", i),
+			Content: "c", Scope: scope, Owner: "sub-A",
+			CreatedAt: base.Add(time.Duration(i) * time.Second),
+		}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("Upsert %d: %v", i, err)
+		}
+	}
+	_, total, _, err := s.List(ctx, scope, Authenticated("sub-A"), ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if total != n {
+		t.Errorf("exact total: got %d want %d (scanCap not retired?)", total, n)
 	}
 }
 
@@ -1741,7 +1773,7 @@ func TestRecallWindowGate(t *testing.T) {
 		}
 	}
 
-	hits, err := s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10, nil)
+	hits, err := s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -2132,5 +2164,274 @@ func TestPayloadRoundTripSummaryProvenance(t *testing.T) {
 	g2 := fromPayload(plain.ID, qdrant.NewValueMap(payload(plain)))
 	if g2.Summary != "" || g2.SummarySource != SummarySourceNone || g2.SummaryModel != "" {
 		t.Fatalf("empty-summary record drifted: %+v", g2)
+	}
+}
+
+// TestEnsureCollectionCreatesIndexes pins that EnsureCollection provisions the
+// owner/scope/created_at payload indexes and is idempotent on a second call.
+func TestEnsureCollectionCreatesIndexes(t *testing.T) {
+	s := testStore(t) // testStore already calls EnsureCollection(ctx, 3) once
+	ctx := context.Background()
+
+	info, err := s.client.GetCollectionInfo(ctx, s.collection)
+	if err != nil {
+		t.Fatalf("GetCollectionInfo: %v", err)
+	}
+	schema := info.GetPayloadSchema()
+	for _, field := range []string{"owner", "scope", "created_at"} {
+		if _, ok := schema[field]; !ok {
+			t.Errorf("payload index missing for %q; have %v", field, keysOf(schema))
+		}
+	}
+
+	// Idempotent: a second EnsureCollection must not error on existing indexes.
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("second EnsureCollection: %v", err)
+	}
+}
+
+func keysOf[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// recordIDs extracts ids in slice order — a shared id-extraction helper for
+// table assertions. The existing TestSearchAndListTagsFilter defines a local
+// `ids` closure; there is no package-level `ids`, so this lives here.
+func recordIDs(ms []Memory) []string {
+	out := make([]string, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, m.ID)
+	}
+	return out
+}
+
+// TestListDateWindow pins half-open [after, before): a record AT created_after is
+// included (gte); a record AT created_before is excluded (lt).
+func TestListDateWindow(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "win-test:project:list"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	t0 := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
+	mk := func(id string, at time.Time) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A", CreatedAt: at}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("Upsert %s: %v", id, err)
+		}
+	}
+	mk("a0000000-0000-0000-0000-000000000001", t0.Add(-time.Hour))  // before window
+	mk("a0000000-0000-0000-0000-000000000002", t0)                  // == after  -> included
+	mk("a0000000-0000-0000-0000-000000000003", t0.Add(time.Hour))   // inside
+	mk("a0000000-0000-0000-0000-000000000004", t0.Add(2*time.Hour)) // == before -> excluded
+
+	subj := Authenticated("sub-A")
+	items, total, _, err := s.List(ctx, scope, subj, ListOptions{
+		Limit: 10, CreatedAfter: t0, CreatedBefore: t0.Add(2 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	got := recordIDs(items)
+	want := []string{
+		"a0000000-0000-0000-0000-000000000003",
+		"a0000000-0000-0000-0000-000000000002",
+	} // CreatedAt desc
+	if !slices.Equal(got, want) {
+		t.Errorf("window: got %v want %v", got, want)
+	}
+	if total != 2 {
+		t.Errorf("window total: got %d want 2", total)
+	}
+}
+
+// TestSearchDateWindow pins the same half-open window as a Search pre-filter.
+func TestSearchDateWindow(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "win-test:project:search"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	t0 := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
+	mk := func(id string, at time.Time) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A", CreatedAt: at}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("Upsert %s: %v", id, err)
+		}
+	}
+	mk("b0000000-0000-0000-0000-000000000001", t0.Add(-time.Hour))
+	mk("b0000000-0000-0000-0000-000000000002", t0.Add(time.Hour))
+
+	hits, err := s.Search(ctx, scope, Authenticated("sub-A"),
+		[]float32{0.1, 0.2, 0.3}, 10, nil, t0, time.Time{})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if got := recordIDs(hits); !slices.Equal(got, []string{"b0000000-0000-0000-0000-000000000002"}) {
+		t.Errorf("search window: got %v want [..002]", got)
+	}
+}
+
+// TestListCursorTraversal pins order-independent cursor paging at limit=1: N
+// records sharing ONE timestamp plus M with distinct timestamps, paged to
+// exhaustion, must yield the full set with no duplicates and no skips. At limit=1
+// this only passes if resume over-fetches limit+len(seen).
+func TestListCursorTraversal(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "cursor-test:project:x"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	tie := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
+	want := map[string]bool{}
+	mk := func(id string, at time.Time) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A", CreatedAt: at}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("Upsert %s: %v", id, err)
+		}
+		want[id] = true
+	}
+	mk("d0000000-0000-0000-0000-000000000001", tie)
+	mk("d0000000-0000-0000-0000-000000000002", tie)
+	mk("d0000000-0000-0000-0000-000000000003", tie)
+	mk("d0000000-0000-0000-0000-000000000004", tie)
+	mk("d0000000-0000-0000-0000-000000000005", tie.Add(-time.Hour))
+	mk("d0000000-0000-0000-0000-000000000006", tie.Add(-2*time.Hour))
+
+	subj := Authenticated("sub-A")
+	seen := map[string]int{}
+	cursor := ""
+	for steps := 0; steps < 100; steps++ {
+		// CursorMode:true makes page 1 (Cursor:"") route through listByCursor, which
+		// emits a nextCursor; without it the offset path runs and returns "" → break.
+		items, _, next, err := s.List(ctx, scope, subj, ListOptions{Limit: 1, Cursor: cursor, CursorMode: true})
+		if err != nil {
+			t.Fatalf("List page: %v", err)
+		}
+		for _, m := range items {
+			seen[m.ID]++
+		}
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+	if len(seen) != len(want) {
+		t.Errorf("traversal coverage: got %d distinct want %d", len(seen), len(want))
+	}
+	for id, nn := range seen {
+		if nn != 1 {
+			t.Errorf("record %s returned %d times (want 1) — dup/skip bug", id, nn)
+		}
+		if !want[id] {
+			t.Errorf("unexpected id %s", id)
+		}
+	}
+	for id := range want {
+		if seen[id] == 0 {
+			t.Errorf("record %s never returned — skip bug", id)
+		}
+	}
+}
+
+// TestListScheduledDateWindow pins the created_at window on the scheduled view.
+func TestListScheduledDateWindow(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "sched-win:project:x"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	future := s.now().Add(48 * time.Hour)
+	t0 := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
+	mk := func(id string, created time.Time) {
+		nb := future
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A",
+			NotBefore: &nb, CreatedAt: created}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("Upsert %s: %v", id, err)
+		}
+	}
+	mk("e0000000-0000-0000-0000-000000000001", t0.Add(-time.Hour)) // before window
+	mk("e0000000-0000-0000-0000-000000000002", t0.Add(time.Hour))  // inside
+
+	got, err := s.ListScheduled(ctx, scope, Authenticated("sub-A"),
+		ScheduledPending, ListOptions{Limit: 10, CreatedAfter: t0})
+	if err != nil {
+		t.Fatalf("ListScheduled: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "e0000000-0000-0000-0000-000000000002" {
+		t.Errorf("scheduled window: got %v want just ..002", recordIDs(got))
+	}
+}
+
+// TestListOffsetCursorMutuallyExclusive pins the guard: a List that sets both a
+// resume Cursor and a positive Offset is a client error tagged ErrInvalidArgument
+// (so the Connect layer maps it to CodeInvalidArgument, not CodeInternal).
+func TestListOffsetCursorMutuallyExclusive(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tok := encodeCursor(listCursor{C: "2026-06-27T12:00:00Z", Seen: []string{"x"}})
+	_, _, _, err := s.List(ctx, "iso:project:x", Authenticated("sub-A"), ListOptions{
+		Cursor: tok, Offset: 1, Limit: 10,
+	})
+	if err == nil {
+		t.Fatal("List with both Cursor and Offset accepted; want error")
+	}
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("want ErrInvalidArgument, got %v", err)
+	}
+}
+
+// TestDatetimeIndexBackfillsExistingRecords proves the no-migration claim: records
+// written as RFC3339 strings BEFORE the created_at datetime index exists become
+// range-filterable AFTER the index is created (Qdrant backfills; no re-stamp).
+func TestDatetimeIndexBackfillsExistingRecords(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	coll := "migration-realism-" + t.Name() // unique bare collection
+	// 1. Bare collection — NO indexes.
+	if err := s.client.CreateCollection(ctx, &qdrant.CreateCollection{
+		CollectionName: coll,
+		VectorsConfig:  qdrant.NewVectorsConfig(&qdrant.VectorParams{Size: 3, Distance: qdrant.Distance_Cosine}),
+	}); err != nil {
+		t.Fatalf("create bare collection: %v", err)
+	}
+	t.Cleanup(func() { _ = s.client.DeleteCollection(ctx, coll) })
+	// 2. Insert RFC3339-string created_at records BEFORE any index exists.
+	old := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
+	for i, at := range []time.Time{old.Add(-time.Hour), old, old.Add(time.Hour)} {
+		if _, err := s.client.Upsert(ctx, &qdrant.UpsertPoints{
+			CollectionName: coll, Wait: qdrant.PtrOf(true),
+			Points: []*qdrant.PointStruct{{
+				Id:      qdrant.NewID(fmt.Sprintf("a0000000-0000-0000-0000-00000000000%d", i+1)),
+				Vectors: qdrant.NewVectors(0.1, 0.2, 0.3),
+				Payload: qdrant.NewValueMap(map[string]any{"created_at": at.Format(time.RFC3339)}),
+			}},
+		}); err != nil {
+			t.Fatalf("upsert pre-index %d: %v", i, err)
+		}
+	}
+	// 3. NOW create the datetime index over the already-written string records.
+	if _, err := s.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+		CollectionName: coll, FieldName: "created_at",
+		FieldType: qdrant.PtrOf(qdrant.FieldType_FieldTypeDatetime), Wait: qdrant.PtrOf(true),
+	}); err != nil {
+		t.Fatalf("create datetime index post-insert: %v", err)
+	}
+	// 4. A DatetimeRange query now returns the pre-index records — proves backfill, no migration.
+	got, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: coll,
+		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{createdRangeCondition(old, time.Time{})}},
+		Limit:          qdrant.PtrOf(uint32(10)), WithPayload: qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		t.Fatalf("range scroll post-index: %v", err)
+	}
+	if len(got) != 2 { // old (==after, gte) and old+1h; the -1h record is excluded
+		t.Errorf("post-index range query: got %d records want 2 (pre-index records must be range-filterable)", len(got))
 	}
 }

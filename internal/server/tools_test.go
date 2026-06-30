@@ -305,7 +305,7 @@ func TestScheduleMemoryValidation(t *testing.T) {
 		t.Fatalf("valid schedule: %v", err)
 	}
 	t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
-	hits, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
+	hits, _, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
 	for _, h := range hits {
 		m, ok := h.(store.Memory)
 		if !ok {
@@ -325,7 +325,7 @@ func TestScheduleMemoryValidation(t *testing.T) {
 		t.Fatalf("past not_before should be accepted (immediately active): %v", err)
 	}
 	t.Cleanup(func() { _ = d.st.Delete(context.Background(), activeID, store.Authenticated("sub-A")) })
-	active, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
+	active, _, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
 	found := false
 	for _, h := range active {
 		m, ok := h.(store.Memory)
@@ -501,7 +501,7 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	}
 
 	// list_memory handler with anonymous context must return ownerless, not shared.
-	mems, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Full: true})
+	mems, _, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Full: true})
 	if err != nil {
 		t.Fatalf("listMemory: %v", err)
 	}
@@ -721,7 +721,7 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	if g := ids(hits); !g[alphaID] || !g[bothID] || g[plainID] {
 		t.Errorf("searchMemory alpha wrong: %v", g)
 	}
-	mems, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Tags: []string{"alpha"}, Full: true})
+	mems, _, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Tags: []string{"alpha"}, Full: true})
 	if err != nil {
 		t.Fatalf("listMemory alpha: %v", err)
 	}
@@ -746,7 +746,7 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	if g := ids(hits); !g[alphaID] || !g[bothID] || !g[plainID] {
 		t.Errorf("searchMemory passthrough wrong: %v", g)
 	}
-	mems, err = d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Full: true})
+	mems, _, err = d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Full: true})
 	if err != nil {
 		t.Fatalf("listMemory passthrough: %v", err)
 	}
@@ -961,7 +961,7 @@ func TestAuthedCrossActorSharedReadHandlers(t *testing.T) {
 	assertVisibility(t, "searchMemory", hits, sharedID, privateID)
 
 	// listMemory: same guarantee through the no-query handler path.
-	mems, err := d.listMemory(bctx, listArgs{Scope: scope, Limit: 10, Full: true})
+	mems, _, err := d.listMemory(bctx, listArgs{Scope: scope, Limit: 10, Full: true})
 	if err != nil {
 		t.Fatalf("listMemory: %v", err)
 	}
@@ -1140,5 +1140,76 @@ func TestToMemorySetsClientSummarySource(t *testing.T) {
 	m2 := noSummary.toMemory("owner", "actor", time.Now())
 	if m2.Summary != "" || m2.SummarySource != store.SummarySourceNone {
 		t.Fatalf("absent summary must leave source empty: %+v", m2)
+	}
+}
+
+// recallID extracts the id from a default (summary-shaped) recall element.
+func recallID(t *testing.T, v any) string {
+	t.Helper()
+	rv, ok := v.(recallView)
+	if !ok {
+		t.Fatalf("recall element is %T, want recallView", v)
+	}
+	return rv.ID
+}
+
+func TestListMemoryReturnsNextCursorField(t *testing.T) {
+	d := testDeps(t) // skips without Qdrant
+	ctx := authedContext(t, "sub-A")
+	scope := "tool:project:nextcursor"
+	ids := []string{
+		"f0000000-0000-0000-0000-000000000001",
+		"f0000000-0000-0000-0000-000000000002",
+	}
+	// Distinct created_at so paging crosses a boundary deterministically.
+	base := d.clock().UTC().Truncate(time.Second)
+	for i, id := range ids {
+		if err := d.st.Upsert(ctx, store.Memory{ID: id, Content: "c", Scope: scope,
+			Owner: "sub-A", CreatedAt: base.Add(time.Duration(i) * time.Hour)}, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+		t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
+	}
+
+	// Page 1: a full page (limit 1, two records) MUST issue a cursor.
+	page1, next, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 1})
+	if err != nil {
+		t.Fatalf("listMemory page 1: %v", err)
+	}
+	if len(page1) != 1 {
+		t.Fatalf("page 1: got %d records want 1", len(page1))
+	}
+	if next == "" {
+		t.Fatal("page 1: empty next_cursor on a full page; want a resume token")
+	}
+
+	// Page 2: resuming with that cursor returns the OTHER record.
+	page2, _, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 1, Cursor: next})
+	if err != nil {
+		t.Fatalf("listMemory page 2: %v", err)
+	}
+	if len(page2) != 1 {
+		t.Fatalf("page 2: got %d records want 1", len(page2))
+	}
+	id1, id2 := recallID(t, page1[0]), recallID(t, page2[0])
+	if id1 == id2 {
+		t.Errorf("page 2 returned the same record as page 1 (%s); cursor did not advance", id1)
+	}
+}
+
+// TestListMemoryRejectsMalformedCursor pins g0ne.8 at the MCP boundary: a garbage
+// cursor surfaces an error rather than silently returning the first page.
+func TestListMemoryRejectsMalformedCursor(t *testing.T) {
+	d := testDeps(t) // skips without Qdrant
+	ctx := authedContext(t, "sub-A")
+	if _, _, err := d.listMemory(ctx, listArgs{Scope: "tool:project:badcursor", Limit: 1, Cursor: "!!!garbage!!!"}); err == nil {
+		t.Error("malformed cursor accepted; want error")
+	}
+}
+
+func TestListMemoryRejectsBadWindow(t *testing.T) {
+	d := &deps{} // no Qdrant: parseRFC3339("nope") fails before any store call
+	if _, _, err := d.listMemory(context.Background(), listArgs{Scope: "tool:project:x", CreatedAfter: "nope"}); err == nil {
+		t.Error("bad created_after accepted; want error")
 	}
 }

@@ -335,10 +335,13 @@ type ListMemoriesRequest struct {
 	Scope         string                 `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
 	Limit         uint64                 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
 	Offset        uint64                 `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
-	Categories    []string               `protobuf:"bytes,4,rep,name=categories,proto3" json:"categories,omitempty"` // empty = all categories
-	Visibility    string                 `protobuf:"bytes,5,opt,name=visibility,proto3" json:"visibility,omitempty"` // "" = all | "private" | "shared"
-	Tags          []string               `protobuf:"bytes,6,rep,name=tags,proto3" json:"tags,omitempty"`             // empty = all; non-empty = records carrying ALL listed tags (AND)
-	Full          bool                   `protobuf:"varint,7,opt,name=full,proto3" json:"full,omitempty"`            // false (default) returns summary-shaped memories (content cleared); true returns full content
+	Categories    []string               `protobuf:"bytes,4,rep,name=categories,proto3" json:"categories,omitempty"`                            // empty = all categories
+	Visibility    string                 `protobuf:"bytes,5,opt,name=visibility,proto3" json:"visibility,omitempty"`                            // "" = all | "private" | "shared"
+	Tags          []string               `protobuf:"bytes,6,rep,name=tags,proto3" json:"tags,omitempty"`                                        // empty = all; non-empty = records carrying ALL listed tags (AND)
+	Full          bool                   `protobuf:"varint,7,opt,name=full,proto3" json:"full,omitempty"`                                       // false (default) returns summary-shaped memories (content cleared); true returns full content
+	CreatedAfter  string                 `protobuf:"bytes,8,opt,name=created_after,json=createdAfter,proto3" json:"created_after,omitempty"`    // RFC3339; inclusive lower bound on created_at
+	CreatedBefore string                 `protobuf:"bytes,9,opt,name=created_before,json=createdBefore,proto3" json:"created_before,omitempty"` // RFC3339; exclusive upper bound on created_at
+	PageToken     string                 `protobuf:"bytes,10,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`            // opaque cursor; when set, cursor paging (ignores offset)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -422,11 +425,34 @@ func (x *ListMemoriesRequest) GetFull() bool {
 	return false
 }
 
+func (x *ListMemoriesRequest) GetCreatedAfter() string {
+	if x != nil {
+		return x.CreatedAfter
+	}
+	return ""
+}
+
+func (x *ListMemoriesRequest) GetCreatedBefore() string {
+	if x != nil {
+		return x.CreatedBefore
+	}
+	return ""
+}
+
+func (x *ListMemoriesRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
 type ListMemoriesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Memories      []*Memory              `protobuf:"bytes,1,rep,name=memories,proto3" json:"memories,omitempty"`
-	Total         uint64                 `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`             // readable records matching scope + filters (pre-page)
-	Approximate   bool                   `protobuf:"varint,3,opt,name=approximate,proto3" json:"approximate,omitempty"` // true when total hit the scanCap ceiling
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Memories []*Memory              `protobuf:"bytes,1,rep,name=memories,proto3" json:"memories,omitempty"`
+	Total    uint64                 `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	// Deprecated: Marked as deprecated in engram/v1/engram.proto.
+	Approximate   bool   `protobuf:"varint,3,opt,name=approximate,proto3" json:"approximate,omitempty"`                           // always false since totals are now exact (Count)
+	NextPageToken string `protobuf:"bytes,4,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"` // empty when no further pages (cursor paging)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -475,6 +501,7 @@ func (x *ListMemoriesResponse) GetTotal() uint64 {
 	return 0
 }
 
+// Deprecated: Marked as deprecated in engram/v1/engram.proto.
 func (x *ListMemoriesResponse) GetApproximate() bool {
 	if x != nil {
 		return x.Approximate
@@ -482,13 +509,22 @@ func (x *ListMemoriesResponse) GetApproximate() bool {
 	return false
 }
 
+func (x *ListMemoriesResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
 type SearchMemoriesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Query         string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
 	Scope         string                 `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
 	K             uint64                 `protobuf:"varint,3,opt,name=k,proto3" json:"k,omitempty"`
-	Tags          []string               `protobuf:"bytes,4,rep,name=tags,proto3" json:"tags,omitempty"`  // empty = all; non-empty = records carrying ALL listed tags (AND)
-	Full          bool                   `protobuf:"varint,5,opt,name=full,proto3" json:"full,omitempty"` // false (default) returns summary-shaped memories (content cleared); true returns full content
+	Tags          []string               `protobuf:"bytes,4,rep,name=tags,proto3" json:"tags,omitempty"`                                        // empty = all; non-empty = records carrying ALL listed tags (AND)
+	Full          bool                   `protobuf:"varint,5,opt,name=full,proto3" json:"full,omitempty"`                                       // false (default) returns summary-shaped memories (content cleared); true returns full content
+	CreatedAfter  string                 `protobuf:"bytes,6,opt,name=created_after,json=createdAfter,proto3" json:"created_after,omitempty"`    // RFC3339; inclusive lower bound on created_at
+	CreatedBefore string                 `protobuf:"bytes,7,opt,name=created_before,json=createdBefore,proto3" json:"created_before,omitempty"` // RFC3339; exclusive upper bound on created_at
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -556,6 +592,20 @@ func (x *SearchMemoriesRequest) GetFull() bool {
 		return x.Full
 	}
 	return false
+}
+
+func (x *SearchMemoriesRequest) GetCreatedAfter() string {
+	if x != nil {
+		return x.CreatedAfter
+	}
+	return ""
+}
+
+func (x *SearchMemoriesRequest) GetCreatedBefore() string {
+	if x != nil {
+		return x.CreatedBefore
+	}
+	return ""
 }
 
 type SearchMemoriesResponse struct {
@@ -827,7 +877,7 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\x11ListScopesRequest\"e\n" +
 	"\x12ListScopesResponse\x12-\n" +
 	"\x06scopes\x18\x01 \x03(\v2\x15.engram.v1.ScopeCountR\x06scopes\x12 \n" +
-	"\vapproximate\x18\x02 \x01(\bR\vapproximate\"\xc1\x01\n" +
+	"\vapproximate\x18\x02 \x01(\bR\vapproximate\"\xac\x02\n" +
 	"\x13ListMemoriesRequest\x12\x14\n" +
 	"\x05scope\x18\x01 \x01(\tR\x05scope\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x04R\x05limit\x12\x16\n" +
@@ -839,17 +889,25 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"visibility\x18\x05 \x01(\tR\n" +
 	"visibility\x12\x12\n" +
 	"\x04tags\x18\x06 \x03(\tR\x04tags\x12\x12\n" +
-	"\x04full\x18\a \x01(\bR\x04full\"}\n" +
+	"\x04full\x18\a \x01(\bR\x04full\x12#\n" +
+	"\rcreated_after\x18\b \x01(\tR\fcreatedAfter\x12%\n" +
+	"\x0ecreated_before\x18\t \x01(\tR\rcreatedBefore\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\n" +
+	" \x01(\tR\tpageToken\"\xa9\x01\n" +
 	"\x14ListMemoriesResponse\x12-\n" +
 	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x04R\x05total\x12 \n" +
-	"\vapproximate\x18\x03 \x01(\bR\vapproximate\"y\n" +
+	"\x05total\x18\x02 \x01(\x04R\x05total\x12$\n" +
+	"\vapproximate\x18\x03 \x01(\bB\x02\x18\x01R\vapproximate\x12&\n" +
+	"\x0fnext_page_token\x18\x04 \x01(\tR\rnextPageToken\"\xc5\x01\n" +
 	"\x15SearchMemoriesRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
 	"\x05scope\x18\x02 \x01(\tR\x05scope\x12\f\n" +
 	"\x01k\x18\x03 \x01(\x04R\x01k\x12\x12\n" +
 	"\x04tags\x18\x04 \x03(\tR\x04tags\x12\x12\n" +
-	"\x04full\x18\x05 \x01(\bR\x04full\"G\n" +
+	"\x04full\x18\x05 \x01(\bR\x04full\x12#\n" +
+	"\rcreated_after\x18\x06 \x01(\tR\fcreatedAfter\x12%\n" +
+	"\x0ecreated_before\x18\a \x01(\tR\rcreatedBefore\"G\n" +
 	"\x16SearchMemoriesResponse\x12-\n" +
 	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\"\"\n" +
 	"\x10GetMemoryRequest\x12\x0e\n" +
