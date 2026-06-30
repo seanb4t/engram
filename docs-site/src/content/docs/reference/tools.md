@@ -91,6 +91,8 @@ memories. By default returns compact summaries; pass `full=true` for complete co
 | `scope` | string | yes | Scope to search within |
 | `k` | uint64 | no | Number of results to return (default 8) |
 | `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter. Applied as a hard pre-filter, then results are ranked by vector similarity |
+| `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
+| `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
 | `full` | bool | no | Return full `content` instead of compact summaries (default `false`) |
 
 Returns a list of matching memory records.
@@ -108,9 +110,12 @@ pass `full=true` for complete content.
 | `scope` | string | yes | The scope to list memories from |
 | `limit` | uint64 | no | Maximum memories to return (default 20) |
 | `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter |
+| `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
+| `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
+| `cursor` | string | no | Opaque pagination cursor from a previous response's `next_cursor`. Omit for the first page. Mutually exclusive with `offset` |
 | `full` | bool | no | Return full `content` instead of compact summaries (default `false`) |
 
-Returns a list of memory records.
+Returns `{ "memories": [...], "next_cursor": "<token>" }`. An empty or absent `next_cursor` indicates the last page.
 
 ---
 
@@ -124,6 +129,8 @@ surface via `list_memory`/`search_memory`, not here.
 | `scope` | string | yes | The scope to list scheduled/expired memories from |
 | `state` | string | no | `scheduled` (default, not yet active), `expired`, or `all` |
 | `limit` | uint64 | no | Maximum memories to return (default 20) |
+| `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
+| `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
 
 Returns the matching hidden windowed records.
 

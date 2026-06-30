@@ -52,6 +52,13 @@ records carrying **all** listed tags (AND), and `update_memory` can correct a
 record's tag set after the fact. So tag deliberately — a tag is only useful for
 recall if it is applied **consistently** across the records that share it.
 
+`search_memory`, `list_memory`, and `list_scheduled` also accept optional
+`created_after` / `created_before` (RFC3339, half-open `[after, before)`) to
+window recall by creation time. `list_memory` additionally accepts a `cursor`
+arg (opaque, from `next_cursor`) for deterministic pagination and returns
+`{ "memories": [...], "next_cursor": "<token>" }` — an empty `next_cursor`
+signals the last page.
+
 Stay semantic-first, though: tags **complement** vector recall, they don't
 replace it. Reach for a tag when you want a precise, boolean axis the content
 text can't express (e.g. a project/component label, a `decision` vs `gotcha`

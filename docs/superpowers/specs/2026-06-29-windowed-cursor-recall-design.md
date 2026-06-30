@@ -54,7 +54,7 @@ cursor paging surfaced on every recall tool.
 - **The MCP `list_memory` tool returns a bare array** (`shapeRecall` → `[]any`).
   Returning a cursor requires reshaping the tool output (see §6).
 - **go-client v1.18.2 has every primitive needed** (verified): `CreateFieldIndex`
-  + `FieldType_FieldTypeDatetime`/`Keyword`; `FieldCondition.DatetimeRange`
+  - `FieldType_FieldTypeDatetime`/`Keyword`; `FieldCondition.DatetimeRange`
   (gt/gte/lt/lte); `ScrollPoints.OrderBy` + `OrderBy.StartFrom`
   (`NewStartFromDatetime`/`NewStartFromTimestamp`); `Count` (already used 5× in
   `store.go`).
@@ -84,7 +84,7 @@ cursor paging surfaced on every recall tool.
 
 Three layers, bottom-up — each only pays off because the one above queries it:
 
-```
+```text
 Qdrant payload indexes   →   Store recall rebuild        →   Surfaces
 owner / scope / created_at   List/Search/ListScheduled       Connect + MCP tools
 (keyword/keyword/datetime)   indexed filter + range +        date window +
@@ -223,9 +223,9 @@ group — a property Qdrant does not contractually guarantee.
 ### 6. MCP tool surface changes
 
 - **`list_memory`** args: `+ created_after`, `+ created_before` (RFC3339 strings),
-  `+ cursor` (opaque). Output reshapes from a **bare array** to
-  **`{ "memories": [...], "next_cursor": "<token|empty>" }`**. This is the one
-  non-additive surface change; it is documented in the memory contract. The MCP
+  `+ cursor` (opaque). Output adds `next_cursor` to the structured
+  `{ "memories": [...] }` object list_memory already returned — this is
+  **additive** (no breaking reshape); it is documented in the memory contract. The MCP
   `cursor`/`next_cursor` and the wire `page_token`/`next_page_token` (§5) carry the
   **identical** `base64url(JSON{c, seen})` token — **one encoder/decoder** shared
   by both surfaces, not two codecs.

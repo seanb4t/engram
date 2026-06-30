@@ -1526,8 +1526,8 @@ func TestListExactTotalPastOldCap(t *testing.T) {
 	const n = 1001
 	for i := 0; i < n; i++ {
 		m := Memory{
-			ID:        fmt.Sprintf("c0000000-0000-0000-0000-%012d", i),
-			Content:   "c", Scope: scope, Owner: "sub-A",
+			ID:      fmt.Sprintf("c0000000-0000-0000-0000-%012d", i),
+			Content: "c", Scope: scope, Owner: "sub-A",
 			CreatedAt: base.Add(time.Duration(i) * time.Second),
 		}
 		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
@@ -2224,9 +2224,9 @@ func TestListDateWindow(t *testing.T) {
 			t.Fatalf("Upsert %s: %v", id, err)
 		}
 	}
-	mk("a0000000-0000-0000-0000-000000000001", t0.Add(-time.Hour)) // before window
-	mk("a0000000-0000-0000-0000-000000000002", t0)                 // == after  -> included
-	mk("a0000000-0000-0000-0000-000000000003", t0.Add(time.Hour))  // inside
+	mk("a0000000-0000-0000-0000-000000000001", t0.Add(-time.Hour))  // before window
+	mk("a0000000-0000-0000-0000-000000000002", t0)                  // == after  -> included
+	mk("a0000000-0000-0000-0000-000000000003", t0.Add(time.Hour))   // inside
 	mk("a0000000-0000-0000-0000-000000000004", t0.Add(2*time.Hour)) // == before -> excluded
 
 	subj := Authenticated("sub-A")

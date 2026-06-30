@@ -90,9 +90,10 @@ func (s *Store) FillSummary(ctx context.Context, m Memory, summarize SummarizeFu
 }
 
 // SummarizeMissing scrolls records (optionally scoped) and fills empty summaries
-// best-effort. created_at age filtering is applied in-code (created_at is stored
-// as an RFC3339 string, not a Qdrant-rangeable number). Per-record errors are
-// counted, not fatal.
+// best-effort. created_at age filtering is applied in-code here for simplicity; note that
+// created_at IS server-side rangeable via the datetime payload index (see
+// ensureIndexes) — recall paths use DatetimeRange, this sweep just keeps its
+// in-code filter. Per-record errors are counted, not fatal.
 func (s *Store) SummarizeMissing(ctx context.Context, opts SummarizeOptions, summarize SummarizeFunc) (res SummarizeResult, err error) {
 	ctx, span := tracer.Start(ctx, "store.SummarizeMissing")
 	defer span.End()
