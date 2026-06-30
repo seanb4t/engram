@@ -893,28 +893,32 @@ func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, s
 		}
 	}()
 
-	const scanCap = 1000
+	limit := opts.Limit
+	if limit == 0 {
+		limit = 20
+	}
 	f := &qdrant.Filter{Must: []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),
 		ownerOnlyCondition(subj),
 		scheduledStateCondition(state, s.now()),
 	}}
+	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
+		f.Must = append(f.Must, c)
+	}
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection, Filter: f,
-		Limit: qdrant.PtrOf(uint32(scanCap)), WithPayload: qdrant.NewWithPayload(true),
+		Limit:       qdrant.PtrOf(uint32(limit)),
+		OrderBy:     &qdrant.OrderBy{Key: "created_at", Direction: qdrant.PtrOf(qdrant.Direction_Desc)},
+		WithPayload: qdrant.NewWithPayload(true),
 	})
 	if err != nil {
 		return nil, err
 	}
-	all := make([]Memory, 0, len(pts))
+	items = make([]Memory, 0, len(pts))
 	for _, p := range pts {
-		all = append(all, fromPayload(p.Id.GetUuid(), p.Payload))
+		items = append(items, fromPayload(p.Id.GetUuid(), p.Payload))
 	}
-	sort.Slice(all, func(i, j int) bool { return all[i].CreatedAt.After(all[j].CreatedAt) })
-	if opts.Limit > 0 && uint64(len(all)) > opts.Limit {
-		all = all[:opts.Limit]
-	}
-	return all, nil
+	return items, nil
 }
 
 // ScopeCount is a scope plus the number of records in it the caller can read.

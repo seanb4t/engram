@@ -2337,3 +2337,33 @@ func TestListCursorTraversal(t *testing.T) {
 		}
 	}
 }
+
+// TestListScheduledDateWindow pins the created_at window on the scheduled view.
+func TestListScheduledDateWindow(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "sched-win:project:x"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	future := s.now().Add(48 * time.Hour)
+	t0 := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
+	mk := func(id string, created time.Time) {
+		nb := future
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A",
+			NotBefore: &nb, CreatedAt: created}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("Upsert %s: %v", id, err)
+		}
+	}
+	mk("e0000000-0000-0000-0000-000000000001", t0.Add(-time.Hour)) // before window
+	mk("e0000000-0000-0000-0000-000000000002", t0.Add(time.Hour))  // inside
+
+	got, err := s.ListScheduled(ctx, scope, Authenticated("sub-A"),
+		ScheduledPending, ListOptions{Limit: 10, CreatedAfter: t0})
+	if err != nil {
+		t.Fatalf("ListScheduled: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "e0000000-0000-0000-0000-000000000002" {
+		t.Errorf("scheduled window: got %v want just ..002", recordIDs(got))
+	}
+}
