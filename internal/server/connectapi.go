@@ -49,6 +49,14 @@ func memoriesToProto(ms []store.Memory) []*engramv1.Memory {
 	return out
 }
 
+// parseRFC3339 maps an optional RFC3339 string to a time.Time; empty → zero.
+func parseRFC3339(s string) (time.Time, error) {
+	if s == "" {
+		return time.Time{}, nil
+	}
+	return time.Parse(time.RFC3339, s)
+}
+
 // shapeProtoMemories mirrors the MCP recall contract over the Connect wire: when
 // not full, clear Content and surface a summary-or-truncation so default callers
 // pay summary-sized payloads. Callers opt into full content with full=true.
@@ -87,18 +95,33 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	ms, total, _, err := a.d.st.List(ctx, req.Msg.Scope, subj, store.ListOptions{
-		Limit:      req.Msg.Limit,
-		Offset:     req.Msg.Offset,
-		Categories: req.Msg.Categories,
-		Visibility: req.Msg.Visibility,
-		Tags:       req.Msg.Tags,
+	after, err := parseRFC3339(req.Msg.CreatedAfter)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_after: %w", err))
+	}
+	before, err := parseRFC3339(req.Msg.CreatedBefore)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_before: %w", err))
+	}
+	ms, total, nextToken, err := a.d.st.List(ctx, req.Msg.Scope, subj, store.ListOptions{
+		Limit:         req.Msg.Limit,
+		Offset:        req.Msg.Offset,
+		Categories:    req.Msg.Categories,
+		Visibility:    req.Msg.Visibility,
+		Tags:          req.Msg.Tags,
+		CreatedAfter:  after,
+		CreatedBefore: before,
+		Cursor:        req.Msg.PageToken,
+		CursorMode:    req.Msg.PageToken != "",
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	return connect.NewResponse(&engramv1.ListMemoriesResponse{
-		Memories: shapeProtoMemories(ms, req.Msg.Full, a.d.summaryMaxChars), Total: total, Approximate: false,
+		Memories:      shapeProtoMemories(ms, req.Msg.Full, a.d.summaryMaxChars),
+		Total:         total,
+		Approximate:   false,
+		NextPageToken: nextToken,
 	}), nil
 }
 
@@ -115,7 +138,15 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	if k == 0 {
 		k = 20
 	}
-	ms, err := a.d.st.Search(ctx, req.Msg.Scope, subj, vec, k, req.Msg.Tags, time.Time{}, time.Time{})
+	after, err := parseRFC3339(req.Msg.CreatedAfter)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_after: %w", err))
+	}
+	before, err := parseRFC3339(req.Msg.CreatedBefore)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_before: %w", err))
+	}
+	ms, err := a.d.st.Search(ctx, req.Msg.Scope, subj, vec, k, req.Msg.Tags, after, before)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
