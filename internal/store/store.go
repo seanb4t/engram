@@ -870,8 +870,9 @@ func scheduledStateCondition(state ScheduledState, now time.Time) *qdrant.Condit
 // shared-read grant): a `shared` scheduled/expired record belonging to another
 // actor stays invisible here until it becomes active, preserving the deferred-
 // reveal guarantee. It does not reuse List (whose gate would exclude exactly
-// these records). CreatedAt-desc, bounded by the same scanCap as List. Only
-// opts.Limit is honored; opts.Offset is ignored — paginates by Limit alone.
+// these records). Server-side order_by created_at desc bounded directly by
+// opts.Limit (default 20); the created_at window (opts.CreatedAfter/Before) is
+// applied as a DatetimeRange. opts.Offset is ignored — paginates by Limit alone.
 func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, state ScheduledState, opts ListOptions) (items []Memory, err error) {
 	if !state.valid() {
 		return nil, fmt.Errorf("invalid scheduled state %q (want scheduled|expired|all)", state)
