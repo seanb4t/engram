@@ -192,8 +192,8 @@ github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 h1:o4JXh1EVt
 github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55/go.mod h1:OmDBASR4679mdNQnz2pUhc2G8CO2JrUAVFDRBDP/hJE=
 github.com/protocolbuffers/protoscope v0.0.0-20221109213918-8e7a6aafa2c9 h1:arwj11zP0yJIxIRiDn22E0H8PxfF7TsTrc2wIPFIsf4=
 github.com/protocolbuffers/protoscope v0.0.0-20221109213918-8e7a6aafa2c9/go.mod h1:SKZx6stCn03JN3BOWTwvVIO2ajMkb/zQdTceXYhKw/4=
-github.com/qdrant/go-client v1.18.2 h1:7ViiXB/fB4vfzdUtEYZ7g2vSG+yMU6EMu8CaNWF1g1c=
-github.com/qdrant/go-client v1.18.2/go.mod h1:Xkfp+r89uNOgSbvilVAhCZ3wKI4G+hB/r9Zr2m4zifI=
+github.com/qdrant/go-client v1.18.3 h1:jWVjf+O2nlqHyLDo4UF8zUjPokGk7r9+GY1jS+jq49Y=
+github.com/qdrant/go-client v1.18.3/go.mod h1:BdfsUDNhN7GsClHQ6r2gkqwspWlN4h24DXaRaYfVJJ8=
 github.com/quic-go/go-ossfuzz-seeds v0.1.0 h1:APacT+iIaNF6fd8AGEiN3bT/Jtkd2jz4v4TzM7MFjy0=
 github.com/quic-go/go-ossfuzz-seeds v0.1.0/go.mod h1:3IOHRbJIc+L6YKMwfDtJAM9Vj9k0YY4muhuyUYk5tbk=
 github.com/quic-go/qpack v0.6.0 h1:g7W+BMYynC1LbYLSqRt8PBg5Tgwxn214ZZR34VIOjz8=
