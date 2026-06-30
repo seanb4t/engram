@@ -46,12 +46,16 @@ message ListMemoriesRequest {
   string visibility = 5;          // "" = all | "private" | "shared"
   repeated string tags = 6;       // empty = all; non-empty = records carrying ALL listed tags (AND)
   bool full = 7;                  // false (default) returns summary-shaped memories (content cleared); true returns full content
+  string created_after = 8;       // RFC3339; inclusive lower bound on created_at
+  string created_before = 9;      // RFC3339; exclusive upper bound on created_at
+  string page_token = 10;         // opaque cursor; when set, cursor paging (ignores offset)
 }
 
 message ListMemoriesResponse {
   repeated Memory memories = 1;
-  uint64 total = 2;       // readable records matching scope + filters (pre-page)
-  bool approximate = 3;   // true when total hit the scanCap ceiling
+  uint64 total = 2;
+  bool approximate = 3 [deprecated = true]; // always false since totals are now exact (Count)
+  string next_page_token = 4;               // empty when no further pages (cursor paging)
 }
 
 message SearchMemoriesRequest {
@@ -60,6 +64,8 @@ message SearchMemoriesRequest {
   uint64 k = 3;
   repeated string tags = 4; // empty = all; non-empty = records carrying ALL listed tags (AND)
   bool full = 5;            // false (default) returns summary-shaped memories (content cleared); true returns full content
+  string created_after = 6;  // RFC3339; inclusive lower bound on created_at
+  string created_before = 7; // RFC3339; exclusive upper bound on created_at
 }
 message SearchMemoriesResponse { repeated Memory memories = 1; }
 
