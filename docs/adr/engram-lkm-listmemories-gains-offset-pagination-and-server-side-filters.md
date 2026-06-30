@@ -4,7 +4,7 @@
 # ListMemories gains offset pagination and server-side filters
 
 **Date:** 2026-06-11
-**Status:** Accepted
+**Status:** Superseded by engram-1frj
 **Decision:** engram-lkm
 **Deciders:** Sean
 
@@ -27,3 +27,7 @@ Extend ListMemoriesRequest with uint64 offset, repeated string categories, strin
 ## Consequences
 
 Positive: footer count accurate for any filter; non-breaking proto (MCP/CLI unaffected); store stays scroll-and-slice (no cursor state). Negative: offset can duplicate/skip records if data changes between page fetches; approximate needs a UI affordance. Neutral: cursor pagination + free-text server filters deferred.
+
+## References
+
+- Superseded by: engram-1frj

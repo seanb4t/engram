@@ -13,6 +13,8 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-ef28](engram-ef28-index-owner-scope-created-at-as-qdrant-payload-indexes.md) | 2026-06-30 | Accepted | Index owner/scope/created_at as Qdrant payload indexes |
+| [engram-1frj](engram-1frj-boundary-id-set-cursor-half-open-date-window-recall.md) | 2026-06-30 | Accepted | Boundary id-set cursor with half-open date window for recall |
 | [engram-g37x](engram-g37x-use-configurable-oidc-claim-as-record-owner-default-email.md) | 2026-06-29 | Accepted | Use configurable OIDC claim as record owner (default: email) |
 | [engram-1h3k](engram-1h3k-adopt-two-tier-vitest-config-node-real-chromium-browser.md) | 2026-06-28 | Accepted | Adopt two-tier vitest config: node + real-Chromium browser |
 | [engram-om5b](engram-om5b-node-test-tier-environment-node-drop-happy-dom.md) | 2026-06-28 | Accepted | Node test tier on environment:node, drop happy-dom |
@@ -39,7 +41,7 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 | [engram-2xl](engram-2xl-use-tanstack-svelte-query-as-spa-data-layer.md) | 2026-06-11 | Accepted | Use @tanstack/svelte-query as the SPA data layer |
 | [engram-c4y](engram-c4y-drive-spa-shell-state-via-url-parameters.md) | 2026-06-11 | Accepted | Drive SPA shell state via URL parameters |
 | [engram-vxk](engram-vxk-spa-fallback-static-handler-serve-index-html-client-routes.md) | 2026-06-11 | Accepted | SPA-fallback static handler: serve index.html for client routes |
-| [engram-lkm](engram-lkm-listmemories-gains-offset-pagination-and-server-side-filters.md) | 2026-06-11 | Accepted | ListMemories gains offset pagination and server-side filters |
+| [engram-lkm](engram-lkm-listmemories-gains-offset-pagination-and-server-side-filters.md) | 2026-06-11 | Superseded by engram-1frj | ListMemories gains offset pagination and server-side filters |
 | [engram-8q3](engram-8q3-session-cookie-seals-only-sub-expiry-no-oidc-tokens-stored-c.md) | 2026-06-10 | Accepted | Session cookie seals only sub+expiry; no OIDC tokens stored client-side |
 | [engram-u5h](engram-u5h-host-docs-site-inside-engram-monorepo-at-docs-site.md) | 2026-06-10 | Accepted | Host the docs site inside the engram monorepo at docs-site/ |
 | [engram-ttb](engram-ttb-deploy-docs-site-via-workers-static-assets-without-ssr-adapt.md) | 2026-06-10 | Accepted | Deploy docs-site via Workers Static Assets without an SSR adapter |
