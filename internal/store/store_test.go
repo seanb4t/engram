@@ -2198,9 +2198,9 @@ func keysOf[V any](m map[string]V) []string {
 	return out
 }
 
-// recordIDs extracts ids in slice order. The existing TestSearchAndListTagsFilter
-// defines a local `ids` closure — there is no package-level `ids`, so this shared
-// helper is added here for later tasks.
+// recordIDs extracts ids in slice order — a shared id-extraction helper for
+// table assertions. The existing TestSearchAndListTagsFilter defines a local
+// `ids` closure; there is no package-level `ids`, so this lives here.
 func recordIDs(ms []Memory) []string {
 	out := make([]string, 0, len(ms))
 	for _, m := range ms {
@@ -2365,5 +2365,73 @@ func TestListScheduledDateWindow(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].ID != "e0000000-0000-0000-0000-000000000002" {
 		t.Errorf("scheduled window: got %v want just ..002", recordIDs(got))
+	}
+}
+
+// TestListOffsetCursorMutuallyExclusive pins the guard: a List that sets both a
+// resume Cursor and a positive Offset is a client error tagged ErrInvalidArgument
+// (so the Connect layer maps it to CodeInvalidArgument, not CodeInternal).
+func TestListOffsetCursorMutuallyExclusive(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tok := encodeCursor(listCursor{C: "2026-06-27T12:00:00Z", Seen: []string{"x"}})
+	_, _, _, err := s.List(ctx, "iso:project:x", Authenticated("sub-A"), ListOptions{
+		Cursor: tok, Offset: 1, Limit: 10,
+	})
+	if err == nil {
+		t.Fatal("List with both Cursor and Offset accepted; want error")
+	}
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("want ErrInvalidArgument, got %v", err)
+	}
+}
+
+// TestDatetimeIndexBackfillsExistingRecords proves the no-migration claim: records
+// written as RFC3339 strings BEFORE the created_at datetime index exists become
+// range-filterable AFTER the index is created (Qdrant backfills; no re-stamp).
+func TestDatetimeIndexBackfillsExistingRecords(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	coll := "migration-realism-" + t.Name() // unique bare collection
+	// 1. Bare collection — NO indexes.
+	if err := s.client.CreateCollection(ctx, &qdrant.CreateCollection{
+		CollectionName: coll,
+		VectorsConfig:  qdrant.NewVectorsConfig(&qdrant.VectorParams{Size: 3, Distance: qdrant.Distance_Cosine}),
+	}); err != nil {
+		t.Fatalf("create bare collection: %v", err)
+	}
+	t.Cleanup(func() { _ = s.client.DeleteCollection(ctx, coll) })
+	// 2. Insert RFC3339-string created_at records BEFORE any index exists.
+	old := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
+	for i, at := range []time.Time{old.Add(-time.Hour), old, old.Add(time.Hour)} {
+		if _, err := s.client.Upsert(ctx, &qdrant.UpsertPoints{
+			CollectionName: coll, Wait: qdrant.PtrOf(true),
+			Points: []*qdrant.PointStruct{{
+				Id:      qdrant.NewID(fmt.Sprintf("a0000000-0000-0000-0000-00000000000%d", i+1)),
+				Vectors: qdrant.NewVectors(0.1, 0.2, 0.3),
+				Payload: qdrant.NewValueMap(map[string]any{"created_at": at.Format(time.RFC3339)}),
+			}},
+		}); err != nil {
+			t.Fatalf("upsert pre-index %d: %v", i, err)
+		}
+	}
+	// 3. NOW create the datetime index over the already-written string records.
+	if _, err := s.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+		CollectionName: coll, FieldName: "created_at",
+		FieldType: qdrant.PtrOf(qdrant.FieldType_FieldTypeDatetime), Wait: qdrant.PtrOf(true),
+	}); err != nil {
+		t.Fatalf("create datetime index post-insert: %v", err)
+	}
+	// 4. A DatetimeRange query now returns the pre-index records — proves backfill, no migration.
+	got, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: coll,
+		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{createdRangeCondition(old, time.Time{})}},
+		Limit:          qdrant.PtrOf(uint32(10)), WithPayload: qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		t.Fatalf("range scroll post-index: %v", err)
+	}
+	if len(got) != 2 { // old (==after, gte) and old+1h; the -1h record is excluded
+		t.Errorf("post-index range query: got %d records want 2 (pre-index records must be range-filterable)", len(got))
 	}
 }

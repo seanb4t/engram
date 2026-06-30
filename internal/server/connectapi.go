@@ -115,7 +115,10 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 		CursorMode:    req.Msg.PageToken != "",
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		if errors.Is(err, store.ErrInvalidArgument) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&engramv1.ListMemoriesResponse{
 		Memories:      shapeProtoMemories(ms, req.Msg.Full, a.d.summaryMaxChars),

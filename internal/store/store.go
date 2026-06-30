@@ -40,6 +40,13 @@ func ownerOf(subj Subject) string {
 // the two are indistinguishable by design, so ownership never leaks across actors.
 var ErrNotFound = errors.New("not found")
 
+// ErrInvalidArgument tags errors caused by a malformed caller request (a bad
+// cursor, mutually exclusive paging options) as opposed to a Qdrant/infra
+// failure. The Connect layer maps it to CodeInvalidArgument and everything else
+// to CodeInternal, so a Count/Scroll outage is no longer mislabeled as a client
+// error.
+var ErrInvalidArgument = errors.New("invalid argument")
+
 // visibilityShared is the Visibility sentinel for a record readable by any
 // authenticated caller. Sharing grants read, never write. Defined once so a typo
 // in an authorization path is a compile error rather than a silent gate bypass.
@@ -193,9 +200,9 @@ func (s *Store) ensureCollection(ctx context.Context, name string, dim uint64) e
 
 // ensureIndexes idempotently creates the recall payload indexes. owner is a
 // tenant-optimized keyword (authz key), scope a keyword, created_at a datetime
-// (enables server-side DatetimeRange + order_by). A re-create of an existing
-// index with identical schema is a no-op in Qdrant; we additionally tolerate an
-// "already exists" error defensively so boot never fails on a pre-indexed field.
+// (enables server-side DatetimeRange + order_by). Re-creating an existing index
+// is idempotent in Qdrant; the AlreadyExists check defends against versions/races
+// that return it instead of succeeding silently.
 func (s *Store) ensureIndexes(ctx context.Context, name string) error {
 	type idx struct {
 		field  string
@@ -217,7 +224,7 @@ func (s *Store) ensureIndexes(ctx context.Context, name string) error {
 			Wait:             qdrant.PtrOf(true),
 		}
 		if _, err := s.client.CreateFieldIndex(ctx, req); err != nil {
-			if st, ok := status.FromError(errors.Unwrap(err)); ok && st.Code() == grpccodes.AlreadyExists {
+			if st, ok := status.FromError(err); ok && st.Code() == grpccodes.AlreadyExists {
 				continue
 			}
 			return fmt.Errorf("ensure index %q: %w", ix.field, err)
@@ -594,8 +601,12 @@ type ListOptions struct {
 	// CreatedAfter is inclusive (gte); CreatedBefore is exclusive (lt).
 	CreatedAfter  time.Time
 	CreatedBefore time.Time
-	Cursor        string // "" = offset mode; non-empty = cursor mode (Task 4). Mutually exclusive with Offset>0.
-	CursorMode    bool   // true = boundary-id-set cursor paging (MCP default); false = offset paging (UI)
+	// Cursor carries an opaque keyset token to resume from; "" starts at the
+	// first page. Cursor mode is selected by Cursor != "" || CursorMode (a non-empty
+	// Cursor alone is enough, even with CursorMode false). Mutually exclusive with
+	// Offset > 0.
+	Cursor     string
+	CursorMode bool // true = boundary-id-set cursor paging (MCP default); false = offset paging (UI)
 }
 
 // createdRangeCondition builds a half-open [after, before) DatetimeRange on the
@@ -678,8 +689,8 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		}
 	}()
 
-	if opts.Cursor != "" && opts.Offset > 0 {
-		return nil, 0, "", fmt.Errorf("list: cursor and offset are mutually exclusive")
+	if (opts.Cursor != "" || opts.CursorMode) && opts.Offset > 0 {
+		return nil, 0, "", fmt.Errorf("list: cursor mode and offset are mutually exclusive: %w", ErrInvalidArgument)
 	}
 
 	f := listFilter(scope, subj, opts)
@@ -697,7 +708,7 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 	}
 
 	if opts.Cursor != "" || (opts.Offset == 0 && opts.Limit > 0 && opts.CursorMode) {
-		items, nextCursor, err = s.listByCursor(ctx, f, opts) // Task 4
+		items, nextCursor, err = s.listByCursor(ctx, f, opts)
 		return items, total, nextCursor, err
 	}
 
@@ -727,6 +738,11 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 	return all[opts.Offset:], total, "", nil
 }
 
+// maxListLimit caps a single cursor page (and bounds a decoded cursor's seen
+// set), so neither a large Limit nor a crafted cursor can drive an unbounded
+// Scroll over-fetch.
+const maxListLimit = 1000
+
 // listByCursor implements boundary-id-set keyset paging over the already-built
 // filter f. opts.Cursor may be empty (first page); a non-empty cursor resumes at
 // its created_at boundary, dropping ids already emitted at that exact timestamp.
@@ -735,13 +751,19 @@ func (s *Store) listByCursor(ctx context.Context, f *qdrant.Filter, opts ListOpt
 	if limit == 0 {
 		limit = 20
 	}
+	if limit > maxListLimit {
+		limit = maxListLimit
+	}
 	var startFrom *qdrant.StartFrom
 	seen := map[string]bool{}
 	var boundary string
 	if opts.Cursor != "" {
 		c, err := decodeCursor(opts.Cursor)
 		if err != nil {
-			return nil, "", err
+			return nil, "", fmt.Errorf("list cursor: %w: %w", err, ErrInvalidArgument)
+		}
+		if len(c.Seen) > maxListLimit {
+			return nil, "", fmt.Errorf("list cursor: seen set too large: %w", ErrInvalidArgument)
 		}
 		boundary = c.C
 		startFrom = qdrant.NewStartFromDatetime(c.C)
@@ -750,7 +772,9 @@ func (s *Store) listByCursor(ctx context.Context, f *qdrant.Filter, opts ListOpt
 		}
 	}
 
-	// Over-fetch by len(seen) so >= limit fresh candidates survive the drop.
+	// Over-fetch limit + len(seen) + 1: len(seen) covers the boundary ids dropped
+	// at resume, and the +1 guarantees forward progress (a full page yields a
+	// usable next cursor rather than silently terminating).
 	fetch := limit + uint64(len(seen)) + 1
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
@@ -789,37 +813,22 @@ func (s *Store) listByCursor(ctx context.Context, f *qdrant.Filter, opts ListOpt
 	last := out[len(out)-1]
 	nextC := last.CreatedAt.UTC().Format(time.RFC3339)
 	nextSeen := make([]string, 0, 4)
-	// Carry forward prior seen ids if the boundary did not advance.
+	// Carry forward prior seen ids if the boundary did not advance. These are
+	// disjoint from the emitted ids appended below: any emitted record at the
+	// boundary timestamp passed the seen[m.ID] drop, so it was never in seen.
 	if nextC == boundary {
-		nextSeen = append(nextSeen, idsAtBoundary(seen)...)
+		for id := range seen {
+			nextSeen = append(nextSeen, id)
+		}
 	}
+	// Emitted records are distinct point ids, so appending those at nextC adds no
+	// duplicate — the next seen set is duplicate-free by construction.
 	for _, m := range out {
 		if m.CreatedAt.UTC().Format(time.RFC3339) == nextC {
 			nextSeen = append(nextSeen, m.ID)
 		}
 	}
-	return out, encodeCursor(listCursor{C: nextC, Seen: dedup(nextSeen)}), nil
-}
-
-// idsAtBoundary returns the keys of a seen-set as a slice (order irrelevant).
-func idsAtBoundary(seen map[string]bool) []string {
-	out := make([]string, 0, len(seen))
-	for id := range seen {
-		out = append(out, id)
-	}
-	return out
-}
-
-func dedup(in []string) []string {
-	m := make(map[string]bool, len(in))
-	out := make([]string, 0, len(in))
-	for _, s := range in {
-		if !m[s] {
-			m[s] = true
-			out = append(out, s)
-		}
-	}
-	return out
+	return out, encodeCursor(listCursor{C: nextC, Seen: nextSeen}), nil
 }
 
 // ScheduledState selects which hidden-by-the-recall-gate records ListScheduled

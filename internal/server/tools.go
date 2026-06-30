@@ -341,14 +341,6 @@ type listScheduledArgs struct {
 	CreatedBefore string `json:"created_before,omitempty" jsonschema:"optional RFC3339; exclusive upper bound on created_at"`
 }
 
-// parseToolTime maps an optional RFC3339 arg to time.Time; empty → zero.
-func parseToolTime(s string) (time.Time, error) {
-	if s == "" {
-		return time.Time{}, nil
-	}
-	return time.Parse(time.RFC3339, s)
-}
-
 type idArgs struct {
 	ID string `json:"id"`
 }
@@ -585,11 +577,11 @@ func (d *deps) listMemory(ctx context.Context, a listArgs) ([]any, string, error
 	if a.Limit == 0 {
 		a.Limit = 20
 	}
-	after, err := parseToolTime(a.CreatedAfter)
+	after, err := parseRFC3339(a.CreatedAfter)
 	if err != nil {
 		return nil, "", fmt.Errorf("created_after: %w", err)
 	}
-	before, err := parseToolTime(a.CreatedBefore)
+	before, err := parseRFC3339(a.CreatedBefore)
 	if err != nil {
 		return nil, "", fmt.Errorf("created_before: %w", err)
 	}
@@ -615,11 +607,11 @@ func (d *deps) listScheduled(ctx context.Context, a listScheduledArgs) ([]store.
 	if a.Limit == 0 {
 		a.Limit = 20
 	}
-	after, err := parseToolTime(a.CreatedAfter)
+	after, err := parseRFC3339(a.CreatedAfter)
 	if err != nil {
 		return nil, fmt.Errorf("created_after: %w", err)
 	}
-	before, err := parseToolTime(a.CreatedBefore)
+	before, err := parseRFC3339(a.CreatedBefore)
 	if err != nil {
 		return nil, fmt.Errorf("created_before: %w", err)
 	}
@@ -646,11 +638,11 @@ func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]any, error) {
 	if a.K == 0 {
 		a.K = 8
 	}
-	after, err := parseToolTime(a.CreatedAfter)
+	after, err := parseRFC3339(a.CreatedAfter)
 	if err != nil {
 		return nil, fmt.Errorf("created_after: %w", err)
 	}
-	before, err := parseToolTime(a.CreatedBefore)
+	before, err := parseRFC3339(a.CreatedBefore)
 	if err != nil {
 		return nil, fmt.Errorf("created_before: %w", err)
 	}
