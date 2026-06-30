@@ -350,6 +350,67 @@ func TestReindexProgressCallback(t *testing.T) {
 	}
 }
 
+// TestReindexResumeSkipsUnchanged pins engram-irhg: with Resume, a point already
+// present in the target with identical content is skipped (counted Unchanged)
+// instead of re-embedded, so an interrupted reindex resumes cheaply — while a
+// point whose source content changed is re-embedded.
+func TestReindexResumeSkipsUnchanged(t *testing.T) {
+	c := dialTestClient(t)
+	ctx := context.Background()
+	const src, tgt = "reindex_resume_src", "reindex_resume_tgt"
+	_ = c.DeleteCollection(ctx, src)
+	_ = c.DeleteCollection(ctx, tgt)
+	t.Cleanup(func() {
+		_ = c.DeleteCollection(context.Background(), src)
+		_ = c.DeleteCollection(context.Background(), tgt)
+	})
+	_, rawID := seedSource(t, c, src) // two points
+
+	s := New(c, src)
+	// First run: fresh target, nothing to skip — both re-embedded.
+	res1, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Resume: true}, embed4)
+	if err != nil {
+		t.Fatalf("run1: %v", err)
+	}
+	if res1.Upserted != 2 || res1.Unchanged != 0 {
+		t.Errorf("run1: want upserted=2 unchanged=0, got %+v", res1)
+	}
+
+	// Second run: every point present with identical content — all skipped.
+	res2, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Resume: true}, embed4)
+	if err != nil {
+		t.Fatalf("run2: %v", err)
+	}
+	if res2.Scanned != 2 || res2.Upserted != 0 || res2.Unchanged != 2 {
+		t.Errorf("run2: want scanned=2 upserted=0 unchanged=2, got %+v", res2)
+	}
+
+	// Mutate one source point's content; resume must re-embed only that one.
+	if _, err := c.Upsert(ctx, &qdrant.UpsertPoints{
+		CollectionName: src, Wait: qdrant.PtrOf(true),
+		Points: []*qdrant.PointStruct{{
+			Id:      qdrant.NewID(rawID),
+			Vectors: qdrant.NewVectors(0.4, 0.5, 0.6),
+			Payload: qdrant.NewValueMap(map[string]any{
+				"content": "bravo-changed", "scope": "eval-test:project:demo", "legacy_field": "keep-me-verbatim",
+			}),
+		}},
+	}); err != nil {
+		t.Fatalf("mutate source: %v", err)
+	}
+
+	res3, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Resume: true}, embed4)
+	if err != nil {
+		t.Fatalf("run3: %v", err)
+	}
+	if res3.Upserted != 1 || res3.Unchanged != 1 {
+		t.Errorf("run3: want upserted=1 unchanged=1, got %+v", res3)
+	}
+	if got := scrollPoints(t, c, tgt); got[rawID].payload["content"].GetStringValue() != "bravo-changed" {
+		t.Errorf("changed point's target content not updated: %q", got[rawID].payload["content"].GetStringValue())
+	}
+}
+
 func TestReindexDryRunWritesNothing(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()

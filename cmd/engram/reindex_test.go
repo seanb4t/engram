@@ -23,12 +23,12 @@ func TestReindexSummary(t *testing.T) {
 		}
 	})
 
-	t.Run("real run reports upserted/scanned, skipped, and the cutover hint", func(t *testing.T) {
-		got := reindexSummary(store.ReindexResult{Scanned: 5, Upserted: 4, Skipped: 1}, "new_coll", 1536, false)
+	t.Run("real run reports upserted/scanned, skipped, unchanged, and the cutover hint", func(t *testing.T) {
+		got := reindexSummary(store.ReindexResult{Scanned: 5, Upserted: 2, Skipped: 1, Unchanged: 2}, "new_coll", 1536, false)
 		if strings.HasPrefix(got, "dry-run:") {
 			t.Errorf("non-dry-run summary must not be marked dry-run: %q", got)
 		}
-		for _, want := range []string{"4/5 record", "1 skipped", "at dim 1536", "ENGRAM_QDRANT_COLLECTION=new_coll"} {
+		for _, want := range []string{"2/5 record", "1 skipped", "2 unchanged", "at dim 1536", "ENGRAM_QDRANT_COLLECTION=new_coll"} {
 			if !strings.Contains(got, want) {
 				t.Errorf("summary %q missing %q", got, want)
 			}
