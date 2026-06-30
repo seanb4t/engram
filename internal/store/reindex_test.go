@@ -193,6 +193,7 @@ func TestReindexRejectsInvalidArgs(t *testing.T) {
 		{"empty target", ReindexOptions{Target: "", Dim: 4}, embed4},
 		{"zero dim", ReindexOptions{Target: "tgt", Dim: 0}, embed4},
 		{"target equals source", ReindexOptions{Target: "src", Dim: 4}, embed4},
+		{"target equals source override", ReindexOptions{Target: "ov", Source: "ov", Dim: 4}, embed4},
 		{"nil embed", ReindexOptions{Target: "tgt", Dim: 4}, nil},
 	}
 	for _, tc := range cases {
@@ -273,6 +274,41 @@ func TestReindexRoundtrip(t *testing.T) {
 	}
 	if got := srcAfter[rawID].vec; len(got) != 3 {
 		t.Errorf("source vector dim changed: want 3, got %d", len(got))
+	}
+}
+
+// TestReindexSourceOverride pins engram-orve: ReindexOptions.Source overrides the
+// store's configured collection as the read source. The store is built pointing at
+// a NON-EXISTENT env collection; with Source set to the real (seeded) collection,
+// Reindex must read the override and succeed — proving it does not fall back to
+// s.collection.
+func TestReindexSourceOverride(t *testing.T) {
+	c := dialTestClient(t)
+	ctx := context.Background()
+	const realSrc, envSrc, tgt = "reindex_srcov_real", "reindex_srcov_env", "reindex_srcov_tgt"
+	cols := []string{realSrc, envSrc, tgt}
+	for _, col := range cols {
+		_ = c.DeleteCollection(ctx, col)
+	}
+	t.Cleanup(func() {
+		for _, col := range cols {
+			_ = c.DeleteCollection(context.Background(), col)
+		}
+	})
+
+	seedSource(t, c, realSrc) // create + seed the override source only
+
+	// Store points at envSrc, which is never created; Source=realSrc must win.
+	s := New(c, envSrc)
+	res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Source: realSrc, Dim: 4}, embed4)
+	if err != nil {
+		t.Fatalf("reindex with source override: %v", err)
+	}
+	if res.Scanned != 2 || res.Upserted != 2 {
+		t.Errorf("counts: want scanned=2 upserted=2, got %+v", res)
+	}
+	if got := scrollPoints(t, c, tgt); len(got) != 2 {
+		t.Fatalf("target point count: want 2, got %d", len(got))
 	}
 }
 

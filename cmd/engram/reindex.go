@@ -19,6 +19,7 @@ import (
 
 var (
 	reindexTarget  string
+	reindexSource  string
 	reindexDryRun  bool
 	reindexTimeout time.Duration
 )
@@ -62,6 +63,7 @@ var reindexCmd = &cobra.Command{
 
 		res, err := st.Reindex(ctx, store.ReindexOptions{
 			Target: reindexTarget,
+			Source: reindexSource,
 			Dim:    dim,
 			DryRun: reindexDryRun,
 		}, em.Embed)
@@ -90,6 +92,8 @@ func init() {
 	reindexCmd.Flags().StringVar(&reindexTarget, "target",
 		os.Getenv("ENGRAM_REINDEX_TARGET"),
 		"target collection to create and populate (required)")
+	reindexCmd.Flags().StringVar(&reindexSource, "source", "",
+		"source collection to read from (default: ENGRAM_QDRANT_COLLECTION)")
 	reindexCmd.Flags().BoolVar(&reindexDryRun, "dry-run", false,
 		"scan and count without creating the target or writing")
 	reindexCmd.Flags().DurationVar(&reindexTimeout, "timeout", 30*time.Minute,

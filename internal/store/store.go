@@ -1532,6 +1532,11 @@ type EmbedFunc func(ctx context.Context, content string) ([]float32, error)
 // default). DryRun scans and counts without creating the target or writing.
 type ReindexOptions struct {
 	Target string
+	// Source overrides the collection Reindex reads from. Empty (the default)
+	// means the store's configured collection (s.collection, i.e.
+	// ENGRAM_QDRANT_COLLECTION) — so operators get the env default for free and
+	// only set Source to reindex an arbitrary collection without mutating env.
+	Source string
 	Dim    uint64
 	Batch  uint32
 	DryRun bool
@@ -1563,7 +1568,8 @@ type ReindexResult struct {
 // reindexBatch is the default scroll page size when ReindexOptions.Batch is 0.
 const reindexBatch = 256
 
-// Reindex re-embeds every point in the source collection (s.collection) into a
+// Reindex re-embeds every point in the source collection (opts.Source, or
+// s.collection when unset) into a
 // new Target collection, enabling a migration to an embedder with a different
 // output dimension (Qdrant vector size is immutable, so a new collection is the
 // only path). It scrolls the source for (id, payload), re-embeds the payload's
@@ -1611,7 +1617,14 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 	if err = opts.Validate(); err != nil {
 		return res, err
 	}
-	if opts.Target == s.collection {
+	// The read source is the override when set, else the store's configured
+	// collection (engram-orve). All source reads and the target-differs guard
+	// below key off this effective source, not s.collection directly.
+	source := opts.Source
+	if source == "" {
+		source = s.collection
+	}
+	if opts.Target == source {
 		return res, fmt.Errorf("reindex: target collection %q must differ from source", opts.Target)
 	}
 	if embed == nil {
@@ -1626,12 +1639,12 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 	// (or a not-yet-created collection) would scroll zero points and report a
 	// misleading success — especially since the caller's StoreFromEnv may have
 	// just created an empty source at the wrong dimension.
-	srcExists, err := s.client.CollectionExists(ctx, s.collection)
+	srcExists, err := s.client.CollectionExists(ctx, source)
 	if err != nil {
-		return res, fmt.Errorf("reindex: check source %q: %w", s.collection, err)
+		return res, fmt.Errorf("reindex: check source %q: %w", source, err)
 	}
 	if !srcExists {
-		return res, fmt.Errorf("reindex: source collection %q does not exist", s.collection)
+		return res, fmt.Errorf("reindex: source collection %q does not exist", source)
 	}
 
 	if !opts.DryRun {
@@ -1645,7 +1658,7 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 		var pts []*qdrant.RetrievedPoint
 		var next *qdrant.PointId
 		pts, next, err = s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
-			CollectionName: s.collection,
+			CollectionName: source,
 			Limit:          qdrant.PtrOf(batch),
 			Offset:         offset,
 			WithPayload:    qdrant.NewWithPayload(true),
