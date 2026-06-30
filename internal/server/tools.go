@@ -615,7 +615,7 @@ func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	ms, err := d.st.Search(ctx, a.Scope, subj, vec, a.K, a.Tags)
+	ms, err := d.st.Search(ctx, a.Scope, subj, vec, a.K, a.Tags, time.Time{}, time.Time{})
 	if err != nil {
 		return nil, err
 	}

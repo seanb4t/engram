@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	grpccodes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // tracer is the package-level OTel tracer for store-layer spans. It delegates to
@@ -492,7 +493,7 @@ func activeWindowConditions(now time.Time) []*qdrant.Condition {
 // Search returns the k nearest readable memories to vec within scope.
 // Authenticated callers see their own records plus shared records; anonymous
 // callers see only the ownerless bucket.
-func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []float32, k uint64, tags []string) (out []Memory, err error) {
+func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []float32, k uint64, tags []string, after, before time.Time) (out []Memory, err error) {
 	ctx, span := tracer.Start(ctx, "store.Search", trace.WithAttributes(
 		attribute.String("engram.scope", scope),
 		attribute.Int64("engram.k", int64(k)),
@@ -513,6 +514,9 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 	f := s.ownerScopeFilter(scope, subj)
 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
 	f.Must = append(f.Must, tagMatchConditions(tags)...)
+	if c := createdRangeCondition(after, before); c != nil {
+		f.Must = append(f.Must, c)
+	}
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
 		Filter: f, Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
@@ -586,6 +590,28 @@ type ListOptions struct {
 	Categories []string // empty = all
 	Visibility string   // "" = all | "private" | "shared"
 	Tags       []string // empty = all; non-empty = records carrying ALL listed tags. Honored by List (and Search via its tags param); ListScheduled ignores it.
+	// Half-open creation-time window. Zero value = unbounded on that side.
+	// CreatedAfter is inclusive (gte); CreatedBefore is exclusive (lt).
+	CreatedAfter  time.Time
+	CreatedBefore time.Time
+	Cursor        string // "" = offset mode; non-empty = cursor mode (Task 4). Mutually exclusive with Offset>0.
+}
+
+// createdRangeCondition builds a half-open [after, before) DatetimeRange on the
+// created_at datetime index: after→Gte (inclusive), before→Lt (exclusive). A
+// zero bound is omitted. Returns nil when both bounds are zero (no filter).
+func createdRangeCondition(after, before time.Time) *qdrant.Condition {
+	if after.IsZero() && before.IsZero() {
+		return nil
+	}
+	dr := &qdrant.DatetimeRange{}
+	if !after.IsZero() {
+		dr.Gte = timestamppb.New(after.UTC())
+	}
+	if !before.IsZero() {
+		dr.Lt = timestamppb.New(before.UTC())
+	}
+	return qdrant.NewDatetimeRange("created_at", dr)
 }
 
 // listFilter builds the Qdrant filter for List: scope + per-actor authz (outer
@@ -653,6 +679,9 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 	const scanCap = 1000
 	f := listFilter(scope, subj, opts)
 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
+	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
+		f.Must = append(f.Must, c)
+	}
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
 		Filter:         f,

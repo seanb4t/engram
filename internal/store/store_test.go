@@ -355,7 +355,7 @@ func TestSearchAndDeleteAll(t *testing.T) {
 		t.Fatalf("upsert mForeign: %v", err)
 	}
 
-	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5, nil)
+	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5, nil, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -374,7 +374,7 @@ func TestSearchAndDeleteAll(t *testing.T) {
 		t.Fatalf("delete_all: %v", err)
 	}
 
-	hits2, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5, nil)
+	hits2, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5, nil, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("search after delete_all: %v", err)
 	}
@@ -383,7 +383,7 @@ func TestSearchAndDeleteAll(t *testing.T) {
 	}
 	// DeleteAll is owner-scoped: the foreign-owned record must survive an
 	// anonymous DeleteAll.
-	survivors, err := s.Search(ctx, scope, Authenticated("sub-foreign"), []float32{0.9, 0.1, 0.0}, 5, nil)
+	survivors, err := s.Search(ctx, scope, Authenticated("sub-foreign"), []float32{0.9, 0.1, 0.0}, 5, nil, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("search as foreign owner after delete_all: %v", err)
 	}
@@ -456,7 +456,7 @@ func TestSearchAndListTagsFilter(t *testing.T) {
 		}},
 	}
 	for _, tc := range cases {
-		hits, err := s.Search(ctx, scope, Anonymous(), q, 10, tc.tags)
+		hits, err := s.Search(ctx, scope, Anonymous(), q, 10, tc.tags, time.Time{}, time.Time{})
 		if err != nil {
 			t.Fatalf("Search %s: %v", tc.name, err)
 		}
@@ -501,7 +501,7 @@ func TestTagsFilterComposesWithWindow(t *testing.T) {
 	mk(expiredID, expired)
 
 	// Tag "go" matches both records, but the window gate must drop the expired one.
-	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10, []string{"go"})
+	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10, []string{"go"}, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -535,7 +535,7 @@ func TestSearchListOwnerIsolation(t *testing.T) {
 	mk("bbbbbbbb-0000-0000-0000-000000000003", "sub-B", "shared") // B shared
 
 	// A sees only A-private + B-shared (2), never B-private.
-	hits, err := s.Search(ctx, scope, Authenticated("sub-A"), []float32{0.1, 0.2, 0.3}, 10, nil)
+	hits, err := s.Search(ctx, scope, Authenticated("sub-A"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -1114,7 +1114,7 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 	}
 
 	// Search: anonymous caller sees only the anonymous-bucket record (owner=="").
-	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10, nil)
+	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("Search anon: %v", err)
 	}
@@ -1174,14 +1174,14 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 	}
 
 	// Authenticated Search: sub-owner sees own private + own shared (2), sub-other sees own (0) + shared (1).
-	ownerHits, err := s.Search(ctx, scope, Authenticated("sub-owner"), []float32{0.1, 0.2, 0.3}, 10, nil)
+	ownerHits, err := s.Search(ctx, scope, Authenticated("sub-owner"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("Search sub-owner: %v", err)
 	}
 	if len(ownerHits) != 2 {
 		t.Errorf("Search sub-owner: got %d want 2 (private+shared)", len(ownerHits))
 	}
-	otherHits, err := s.Search(ctx, scope, Authenticated("sub-other"), []float32{0.1, 0.2, 0.3}, 10, nil)
+	otherHits, err := s.Search(ctx, scope, Authenticated("sub-other"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("Search sub-other: %v", err)
 	}
@@ -1345,7 +1345,7 @@ func TestNilSubjectFailsClosed(t *testing.T) {
 	var nilSubj Subject // zero value == nil: the discarded-error case
 
 	// Reads return nothing.
-	if hits, err := s.Search(ctx, scope, nilSubj, []float32{0.1, 0.2, 0.3}, 10, nil); err != nil || len(hits) != 0 {
+	if hits, err := s.Search(ctx, scope, nilSubj, []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{}); err != nil || len(hits) != 0 {
 		t.Errorf("Search(nil): want 0 hits nil err, got %d hits, %v", len(hits), err)
 	}
 	if mems, _, _, err := s.List(ctx, scope, nilSubj, ListOptions{Limit: 20}); err != nil || len(mems) != 0 {
@@ -1741,7 +1741,7 @@ func TestRecallWindowGate(t *testing.T) {
 		}
 	}
 
-	hits, err := s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10, nil)
+	hits, err := s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -2175,4 +2175,71 @@ func recordIDs(ms []Memory) []string {
 		out = append(out, m.ID)
 	}
 	return out
+}
+
+// TestListDateWindow pins half-open [after, before): a record AT created_after is
+// included (gte); a record AT created_before is excluded (lt).
+func TestListDateWindow(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "win-test:project:list"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	t0 := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
+	mk := func(id string, at time.Time) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A", CreatedAt: at}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("Upsert %s: %v", id, err)
+		}
+	}
+	mk("a0000000-0000-0000-0000-000000000001", t0.Add(-time.Hour)) // before window
+	mk("a0000000-0000-0000-0000-000000000002", t0)                 // == after  -> included
+	mk("a0000000-0000-0000-0000-000000000003", t0.Add(time.Hour))  // inside
+	mk("a0000000-0000-0000-0000-000000000004", t0.Add(2*time.Hour)) // == before -> excluded
+
+	subj := Authenticated("sub-A")
+	items, total, _, err := s.List(ctx, scope, subj, ListOptions{
+		Limit: 10, CreatedAfter: t0, CreatedBefore: t0.Add(2 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	got := recordIDs(items)
+	want := []string{
+		"a0000000-0000-0000-0000-000000000003",
+		"a0000000-0000-0000-0000-000000000002",
+	} // CreatedAt desc
+	if !slices.Equal(got, want) {
+		t.Errorf("window: got %v want %v", got, want)
+	}
+	if total != 2 {
+		t.Errorf("window total: got %d want 2", total)
+	}
+}
+
+// TestSearchDateWindow pins the same half-open window as a Search pre-filter.
+func TestSearchDateWindow(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "win-test:project:search"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	t0 := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
+	mk := func(id string, at time.Time) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A", CreatedAt: at}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("Upsert %s: %v", id, err)
+		}
+	}
+	mk("b0000000-0000-0000-0000-000000000001", t0.Add(-time.Hour))
+	mk("b0000000-0000-0000-0000-000000000002", t0.Add(time.Hour))
+
+	hits, err := s.Search(ctx, scope, Authenticated("sub-A"),
+		[]float32{0.1, 0.2, 0.3}, 10, nil, t0, time.Time{})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if got := recordIDs(hits); !slices.Equal(got, []string{"b0000000-0000-0000-0000-000000000002"}) {
+		t.Errorf("search window: got %v want [..002]", got)
+	}
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"connectrpc.com/connect"
 	"connectrpc.com/otelconnect"
@@ -114,7 +115,7 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	if k == 0 {
 		k = 20
 	}
-	ms, err := a.d.st.Search(ctx, req.Msg.Scope, subj, vec, k, req.Msg.Tags)
+	ms, err := a.d.st.Search(ctx, req.Msg.Scope, subj, vec, k, req.Msg.Tags, time.Time{}, time.Time{})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
