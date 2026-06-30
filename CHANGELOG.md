@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/seanb4t/engram/compare/v0.8.0...v0.8.1) (2026-06-30)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/qdrant/go-client to v1.18.3 ([#251](https://github.com/seanb4t/engram/issues/251)) ([bc924c6](https://github.com/seanb4t/engram/commit/bc924c6d220b4d96feaf3733c0bd49719913072a))
+
 ## [0.8.0](https://github.com/seanb4t/engram/compare/v0.7.17...v0.8.0) (2026-06-29)
 
 
