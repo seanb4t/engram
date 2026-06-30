@@ -17,6 +17,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	grpccodes "google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // tracer is the package-level OTel tracer for store-layer spans. It delegates to
@@ -164,22 +166,63 @@ func (s *Store) EnsureCollection(ctx context.Context, dim uint64) (err error) {
 }
 
 // ensureCollection idempotently creates a named collection at the given vector
-// size (distance Cosine) if absent. Factored out of EnsureCollection so reindex
-// can provision a *target* collection distinct from s.collection.
+// size (distance Cosine) if absent, then ensures the recall payload indexes on
+// every call. Factored out of EnsureCollection so reindex can provision a
+// *target* collection distinct from s.collection.
 func (s *Store) ensureCollection(ctx context.Context, name string, dim uint64) error {
 	exists, err := s.client.CollectionExists(ctx, name)
 	if err != nil {
 		return err
 	}
-	if exists {
-		return nil
+	if !exists {
+		if err := s.client.CreateCollection(ctx, &qdrant.CreateCollection{
+			CollectionName: name,
+			VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
+				Size: dim, Distance: qdrant.Distance_Cosine,
+			}),
+		}); err != nil {
+			return err
+		}
 	}
-	return s.client.CreateCollection(ctx, &qdrant.CreateCollection{
-		CollectionName: name,
-		VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
-			Size: dim, Distance: qdrant.Distance_Cosine,
-		}),
-	})
+	// Indexes are ensured on every boot (idempotently) so existing collections
+	// gain them without a data migration: Qdrant backfills the index over the
+	// already-stored RFC3339 created_at strings and keyword payloads.
+	return s.ensureIndexes(ctx, name)
+}
+
+// ensureIndexes idempotently creates the recall payload indexes. owner is a
+// tenant-optimized keyword (authz key), scope a keyword, created_at a datetime
+// (enables server-side DatetimeRange + order_by). A re-create of an existing
+// index with identical schema is a no-op in Qdrant; we additionally tolerate an
+// "already exists" error defensively so boot never fails on a pre-indexed field.
+func (s *Store) ensureIndexes(ctx context.Context, name string) error {
+	type idx struct {
+		field  string
+		typ    qdrant.FieldType
+		params *qdrant.PayloadIndexParams
+	}
+	idxs := []idx{
+		{"owner", qdrant.FieldType_FieldTypeKeyword,
+			qdrant.NewPayloadIndexParamsKeyword(&qdrant.KeywordIndexParams{IsTenant: qdrant.PtrOf(true)})},
+		{"scope", qdrant.FieldType_FieldTypeKeyword, nil},
+		{"created_at", qdrant.FieldType_FieldTypeDatetime, nil},
+	}
+	for _, ix := range idxs {
+		req := &qdrant.CreateFieldIndexCollection{
+			CollectionName:   name,
+			FieldName:        ix.field,
+			FieldType:        qdrant.PtrOf(ix.typ),
+			FieldIndexParams: ix.params,
+			Wait:             qdrant.PtrOf(true),
+		}
+		if _, err := s.client.CreateFieldIndex(ctx, req); err != nil {
+			if st, ok := status.FromError(errors.Unwrap(err)); ok && st.Code() == grpccodes.AlreadyExists {
+				continue
+			}
+			return fmt.Errorf("ensure index %q: %w", ix.field, err)
+		}
+	}
+	return nil
 }
 
 func payload(m Memory) map[string]any {

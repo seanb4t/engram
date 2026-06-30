@@ -2134,3 +2134,45 @@ func TestPayloadRoundTripSummaryProvenance(t *testing.T) {
 		t.Fatalf("empty-summary record drifted: %+v", g2)
 	}
 }
+
+// TestEnsureCollectionCreatesIndexes pins that EnsureCollection provisions the
+// owner/scope/created_at payload indexes and is idempotent on a second call.
+func TestEnsureCollectionCreatesIndexes(t *testing.T) {
+	s := testStore(t) // testStore already calls EnsureCollection(ctx, 3) once
+	ctx := context.Background()
+
+	info, err := s.client.GetCollectionInfo(ctx, s.collection)
+	if err != nil {
+		t.Fatalf("GetCollectionInfo: %v", err)
+	}
+	schema := info.GetPayloadSchema()
+	for _, field := range []string{"owner", "scope", "created_at"} {
+		if _, ok := schema[field]; !ok {
+			t.Errorf("payload index missing for %q; have %v", field, keysOf(schema))
+		}
+	}
+
+	// Idempotent: a second EnsureCollection must not error on existing indexes.
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("second EnsureCollection: %v", err)
+	}
+}
+
+func keysOf[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// recordIDs extracts ids in slice order. The existing TestSearchAndListTagsFilter
+// defines a local `ids` closure — there is no package-level `ids`, so this shared
+// helper is added here for later tasks.
+func recordIDs(ms []Memory) []string {
+	out := make([]string, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, m.ID)
+	}
+	return out
+}
