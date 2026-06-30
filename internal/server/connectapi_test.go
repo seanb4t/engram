@@ -188,6 +188,94 @@ func TestListMemoriesHandlerPagesAndIsolates(t *testing.T) {
 	}
 }
 
+// TestListMemoriesCursorModeBootstrap pins engram-3hp9: a pure-Connect client
+// opts into cursor paging via cursor_mode=true on a tokenless first page and
+// receives a usable next_page_token, then resumes with it to drain the rest —
+// with no overlap and full coverage. The UI's default (cursor_mode=false, no
+// page_token) stays in offset mode and never emits a token (ADR engram-1frj).
+func TestListMemoriesCursorModeBootstrap(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "hdl-cursor:project:x"
+	// Three owner-A records with staggered CreatedAt so the created_at-desc
+	// keyset boundary is deterministic (newest first: c3, c2, c1).
+	base := timeNow()
+	seed := []store.Memory{
+		{ID: "a3000000-0000-0000-0000-000000000001", Content: "c1", Scope: scope, Owner: "owner-A", Category: "convention", Source: "agent-inferred", CreatedAt: base.Add(-2 * time.Minute)},
+		{ID: "a3000000-0000-0000-0000-000000000002", Content: "c2", Scope: scope, Owner: "owner-A", Category: "convention", Source: "agent-inferred", CreatedAt: base.Add(-1 * time.Minute)},
+		{ID: "a3000000-0000-0000-0000-000000000003", Content: "c3", Scope: scope, Owner: "owner-A", Category: "convention", Source: "agent-inferred", CreatedAt: base},
+	}
+	for _, m := range seed {
+		if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	defer func() {
+		for _, m := range seed {
+			_ = d.st.Delete(ctx, m.ID, store.Authenticated("owner-A"))
+		}
+	}()
+	api := &engramAPI{d: d}
+	actx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "owner-A"}})
+
+	// Page 1: cursor_mode=true, no page_token (bootstrap). Limit 2 of 3 ->
+	// a full page that MUST yield a next_page_token.
+	p1, err := api.ListMemories(actx, connect.NewRequest(&engramv1.ListMemoriesRequest{
+		Scope: scope, Limit: 2, CursorMode: true,
+	}))
+	if err != nil {
+		t.Fatalf("ListMemories page1: %v", err)
+	}
+	if p1.Msg.Total != 3 {
+		t.Errorf("page1 total: got %d want 3", p1.Msg.Total)
+	}
+	if len(p1.Msg.Memories) != 2 {
+		t.Fatalf("page1 len: got %d want 2", len(p1.Msg.Memories))
+	}
+	if p1.Msg.NextPageToken == "" {
+		t.Fatal("page1 cursor_mode bootstrap returned empty next_page_token (engram-3hp9 regression)")
+	}
+
+	// Page 2: resume with the token. Drains the final record, token empties.
+	p2, err := api.ListMemories(actx, connect.NewRequest(&engramv1.ListMemoriesRequest{
+		Scope: scope, Limit: 2, PageToken: p1.Msg.NextPageToken,
+	}))
+	if err != nil {
+		t.Fatalf("ListMemories page2: %v", err)
+	}
+	if len(p2.Msg.Memories) != 1 {
+		t.Fatalf("page2 len: got %d want 1", len(p2.Msg.Memories))
+	}
+	if p2.Msg.NextPageToken != "" {
+		t.Errorf("page2 should be the last page (empty token), got %q", p2.Msg.NextPageToken)
+	}
+
+	// Union of both pages = all 3 ids, no overlap.
+	got := map[string]bool{}
+	for _, m := range append(p1.Msg.Memories, p2.Msg.Memories...) {
+		if got[m.Id] {
+			t.Errorf("duplicate id across pages: %s", m.Id)
+		}
+		got[m.Id] = true
+	}
+	for _, m := range seed {
+		if !got[m.ID] {
+			t.Errorf("record %s missing across paged results", m.ID)
+		}
+	}
+
+	// UI default: cursor_mode=false, no page_token -> offset mode, never a token.
+	off, err := api.ListMemories(actx, connect.NewRequest(&engramv1.ListMemoriesRequest{
+		Scope: scope, Limit: 2,
+	}))
+	if err != nil {
+		t.Fatalf("ListMemories offset: %v", err)
+	}
+	if off.Msg.NextPageToken != "" {
+		t.Errorf("offset-mode default must not emit a cursor, got %q", off.Msg.NextPageToken)
+	}
+}
+
 // TestConnectTagsFilter pins tag-filter parity on the Connect read API: both
 // ListMemories and SearchMemories honor the optional tags filter (AND — records
 // must carry all listed tags), matching the MCP search_memory/list_memory tools.
@@ -294,6 +382,23 @@ func TestListMemoriesRejectsMalformedPageToken(t *testing.T) {
 	}))
 	if err == nil || connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("malformed page_token: got %v want InvalidArgument", err)
+	}
+}
+
+// TestListMemoriesRejectsCursorModeWithOffset pins the contract documented on
+// the cursor_mode field (engram-3hp9): cursor_mode and offset>0 are mutually
+// exclusive. The store enforces this (store.go) and the handler maps
+// store.ErrInvalidArgument to CodeInvalidArgument — this test pins that mapping
+// at the Connect boundary for the new flag so a future error-mapping refactor
+// can't silently regress it.
+func TestListMemoriesRejectsCursorModeWithOffset(t *testing.T) {
+	api := &engramAPI{d: testDeps(t)}
+	ctx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "sub-A"}})
+	_, err := api.ListMemories(ctx, connect.NewRequest(&engramv1.ListMemoriesRequest{
+		Scope: "s:project:x", Limit: 10, Offset: 5, CursorMode: true,
+	}))
+	if err == nil || connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("cursor_mode + offset>0: got %v want InvalidArgument", err)
 	}
 }
 

@@ -103,6 +103,13 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_before: %w", err))
 	}
+	// Enforce the cursor_mode/offset mutual exclusion (documented on the proto
+	// field) at the handler, alongside the created_after/before validation above.
+	// store.List also rejects this, but a fail-fast guard keeps the wire contract
+	// self-evident at its boundary.
+	if req.Msg.CursorMode && req.Msg.Offset > 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cursor_mode is mutually exclusive with offset"))
+	}
 	ms, total, nextToken, err := a.d.st.List(ctx, req.Msg.Scope, subj, store.ListOptions{
 		Limit:         req.Msg.Limit,
 		Offset:        req.Msg.Offset,
@@ -112,7 +119,11 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 		CreatedAfter:  after,
 		CreatedBefore: before,
 		Cursor:        req.Msg.PageToken,
-		CursorMode:    req.Msg.PageToken != "",
+		// CursorMode is the explicit opt-in (engram-3hp9): a pure-Connect client
+		// sets cursor_mode=true to bootstrap cursor paging on the tokenless first
+		// page. PageToken != "" keeps resume working whether or not the flag is
+		// re-sent. Default (both false) stays offset-for-UI (ADR engram-1frj).
+		CursorMode: req.Msg.CursorMode || req.Msg.PageToken != "",
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrInvalidArgument) {

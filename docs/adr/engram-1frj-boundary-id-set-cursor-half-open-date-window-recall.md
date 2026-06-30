@@ -37,3 +37,11 @@ Cursor is the default paging mode for the MCP list_memory path: an opaque base64
 - Positive: MCP callers get deterministic O(limit)-per-page traversal of arbitrarily large scopes; date-windowed recall ("memories from June 27") is a first-class query, not a client-side post-filter; supersedes the deferred-cursor decision in engram-lkm and retires the scanCap ceiling for List.
 - Negative: the cursor token carries a seen id-set that grows while traversing large same-timestamp groups; callers must treat the token as opaque and never construct one manually.
 - Neutral: list_memory gains next_cursor additively (the tool already returns a structured {memories} object); offset pagination is retained for the operator-console UI with documented O(offset+limit) cost; nanosecond-precision timestamps for new writes are an optional additive mitigation, while existing second-precision records are handled correctly by the id-set without re-stamping.
+
+## Addenda
+
+- PR #255 (engram-3hp9) made the Connect wire's cursor path reachable for non-UI clients. The offset-for-UI default stands, but ListMemoriesRequest now carries an additive 'bool cursor_mode = 11': a pure-Connect client sets it true to bootstrap cursor paging on the tokenless first page (handler: CursorMode = cursor_mode || page_token != ''), so page_token/next_page_token are no longer unreachable on page 1. No store change — store.List already supported tokenless bootstrap (Offset==0 && Limit>0 && CursorMode). cursor_mode is mutually exclusive with offset>0 (store rejects → CodeInvalidArgument). So the surface is now three explicit modes, not two: MCP cursor (default), Connect offset-for-UI (default), and Connect opt-in cursor.
+
+## References
+
+- Supersedes: engram-lkm

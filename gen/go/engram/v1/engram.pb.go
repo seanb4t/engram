@@ -342,6 +342,7 @@ type ListMemoriesRequest struct {
 	CreatedAfter  string                 `protobuf:"bytes,8,opt,name=created_after,json=createdAfter,proto3" json:"created_after,omitempty"`    // RFC3339; inclusive lower bound on created_at
 	CreatedBefore string                 `protobuf:"bytes,9,opt,name=created_before,json=createdBefore,proto3" json:"created_before,omitempty"` // RFC3339; exclusive upper bound on created_at
 	PageToken     string                 `protobuf:"bytes,10,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`            // opaque cursor; when set, cursor paging (ignores offset)
+	CursorMode    bool                   `protobuf:"varint,11,opt,name=cursor_mode,json=cursorMode,proto3" json:"cursor_mode,omitempty"`        // opt into cursor paging on the first (tokenless) page; default false = offset-for-UI (ADR engram-1frj). Mutually exclusive with offset>0.
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -444,6 +445,13 @@ func (x *ListMemoriesRequest) GetPageToken() string {
 		return x.PageToken
 	}
 	return ""
+}
+
+func (x *ListMemoriesRequest) GetCursorMode() bool {
+	if x != nil {
+		return x.CursorMode
+	}
+	return false
 }
 
 type ListMemoriesResponse struct {
@@ -877,7 +885,7 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\x11ListScopesRequest\"e\n" +
 	"\x12ListScopesResponse\x12-\n" +
 	"\x06scopes\x18\x01 \x03(\v2\x15.engram.v1.ScopeCountR\x06scopes\x12 \n" +
-	"\vapproximate\x18\x02 \x01(\bR\vapproximate\"\xac\x02\n" +
+	"\vapproximate\x18\x02 \x01(\bR\vapproximate\"\xcd\x02\n" +
 	"\x13ListMemoriesRequest\x12\x14\n" +
 	"\x05scope\x18\x01 \x01(\tR\x05scope\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x04R\x05limit\x12\x16\n" +
@@ -894,7 +902,9 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\x0ecreated_before\x18\t \x01(\tR\rcreatedBefore\x12\x1d\n" +
 	"\n" +
 	"page_token\x18\n" +
-	" \x01(\tR\tpageToken\"\xa9\x01\n" +
+	" \x01(\tR\tpageToken\x12\x1f\n" +
+	"\vcursor_mode\x18\v \x01(\bR\n" +
+	"cursorMode\"\xa9\x01\n" +
 	"\x14ListMemoriesResponse\x12-\n" +
 	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x04R\x05total\x12$\n" +

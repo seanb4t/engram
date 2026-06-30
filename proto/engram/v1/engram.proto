@@ -49,6 +49,7 @@ message ListMemoriesRequest {
   string created_after = 8;       // RFC3339; inclusive lower bound on created_at
   string created_before = 9;      // RFC3339; exclusive upper bound on created_at
   string page_token = 10;         // opaque cursor; when set, cursor paging (ignores offset)
+  bool cursor_mode = 11;          // opt into cursor paging on the first (tokenless) page; default false = offset-for-UI (ADR engram-1frj). Mutually exclusive with offset>0.
 }
 
 message ListMemoriesResponse {
