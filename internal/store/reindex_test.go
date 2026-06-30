@@ -312,6 +312,44 @@ func TestReindexSourceOverride(t *testing.T) {
 	}
 }
 
+// TestReindexProgressCallback pins engram-xddn: ReindexOptions.Progress is
+// invoked once per scanned batch with the running totals, so a long reindex can
+// surface incremental feedback. Batch:1 over two points forces multiple pages.
+func TestReindexProgressCallback(t *testing.T) {
+	c := dialTestClient(t)
+	ctx := context.Background()
+	const src, tgt = "reindex_prog_src", "reindex_prog_tgt"
+	_ = c.DeleteCollection(ctx, src)
+	_ = c.DeleteCollection(ctx, tgt)
+	t.Cleanup(func() {
+		_ = c.DeleteCollection(context.Background(), src)
+		_ = c.DeleteCollection(context.Background(), tgt)
+	})
+	seedSource(t, c, src) // two points
+
+	s := New(c, src)
+	var snaps []ReindexResult
+	res, err := s.Reindex(ctx, ReindexOptions{
+		Target: tgt, Dim: 4, Batch: 1,
+		Progress: func(r ReindexResult) { snaps = append(snaps, r) },
+	}, embed4)
+	if err != nil {
+		t.Fatalf("reindex: %v", err)
+	}
+	if len(snaps) < 2 {
+		t.Fatalf("want >=2 progress callbacks (Batch:1 over 2 points), got %d", len(snaps))
+	}
+	for i := 1; i < len(snaps); i++ {
+		if snaps[i].Scanned < snaps[i-1].Scanned {
+			t.Errorf("progress Scanned went backwards: %+v", snaps)
+		}
+	}
+	last := snaps[len(snaps)-1]
+	if last.Scanned != res.Scanned || last.Scanned != 2 {
+		t.Errorf("final progress %+v must match result %+v (scanned 2)", last, res)
+	}
+}
+
 func TestReindexDryRunWritesNothing(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()

@@ -61,11 +61,17 @@ var reindexCmd = &cobra.Command{
 			defer cancel()
 		}
 
+		// Per-batch progress goes to stderr so it never pollutes the single
+		// parseable summary line on stdout (engram-xddn).
 		res, err := st.Reindex(ctx, store.ReindexOptions{
 			Target: reindexTarget,
 			Source: reindexSource,
 			Dim:    dim,
 			DryRun: reindexDryRun,
+			Progress: func(r store.ReindexResult) {
+				cmd.PrintErrf("reindex progress: scanned %d, upserted %d, skipped %d\n",
+					r.Scanned, r.Upserted, r.Skipped)
+			},
 		}, em.Embed)
 		if err != nil {
 			return err

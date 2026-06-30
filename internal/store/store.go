@@ -1540,6 +1540,12 @@ type ReindexOptions struct {
 	Dim    uint64
 	Batch  uint32
 	DryRun bool
+	// Progress, when non-nil, is called once after each scanned batch with the
+	// running ReindexResult totals, so a long reindex can surface incremental
+	// feedback. It is a callback (not store-side I/O) to keep the store
+	// embedder- and output-agnostic — the caller owns rendering, matching how
+	// EmbedFunc keeps embedding out of the store.
+	Progress func(ReindexResult)
 }
 
 // Validate checks the options that depend only on the options themselves. The
@@ -1699,6 +1705,10 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 				}
 				res.Upserted++
 			}
+		}
+		// Surface running totals after each scanned page (engram-xddn).
+		if opts.Progress != nil {
+			opts.Progress(res)
 		}
 		if next == nil {
 			break
