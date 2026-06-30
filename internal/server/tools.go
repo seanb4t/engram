@@ -314,24 +314,39 @@ func parseWindow(a scheduleArgs, now time.Time) (nb, na *time.Time, err error) {
 }
 
 type searchArgs struct {
-	Query string   `json:"query"`
-	Scope string   `json:"scope"`
-	K     uint64   `json:"k,omitempty"`
-	Tags  []string `json:"tags,omitempty" jsonschema:"optional; restrict to records carrying ALL listed tags"`
-	Full  bool     `json:"full,omitempty" jsonschema:"return full content instead of summaries (default false → compact summary view)"`
+	Query         string   `json:"query"`
+	Scope         string   `json:"scope"`
+	K             uint64   `json:"k,omitempty"`
+	Tags          []string `json:"tags,omitempty" jsonschema:"optional; restrict to records carrying ALL listed tags"`
+	Full          bool     `json:"full,omitempty" jsonschema:"return full content instead of summaries (default false → compact summary view)"`
+	CreatedAfter  string   `json:"created_after,omitempty" jsonschema:"optional RFC3339; inclusive lower bound on created_at"`
+	CreatedBefore string   `json:"created_before,omitempty" jsonschema:"optional RFC3339; exclusive upper bound on created_at"`
 }
 
 type listArgs struct {
-	Scope string   `json:"scope" jsonschema:"the scope to list memories from"`
-	Limit uint64   `json:"limit,omitempty" jsonschema:"max memories to return (default 20)"`
-	Tags  []string `json:"tags,omitempty" jsonschema:"optional; restrict to records carrying ALL listed tags"`
-	Full  bool     `json:"full,omitempty" jsonschema:"return full content instead of summaries (default false → compact summary view)"`
+	Scope         string   `json:"scope" jsonschema:"the scope to list memories from"`
+	Limit         uint64   `json:"limit,omitempty" jsonschema:"max memories to return (default 20)"`
+	Tags          []string `json:"tags,omitempty" jsonschema:"optional; restrict to records carrying ALL listed tags"`
+	Full          bool     `json:"full,omitempty" jsonschema:"return full content instead of summaries (default false → compact summary view)"`
+	CreatedAfter  string   `json:"created_after,omitempty" jsonschema:"optional RFC3339; inclusive lower bound on created_at"`
+	CreatedBefore string   `json:"created_before,omitempty" jsonschema:"optional RFC3339; exclusive upper bound on created_at"`
+	Cursor        string   `json:"cursor,omitempty" jsonschema:"opaque pagination cursor from a prior next_cursor; omit for the first page"`
 }
 
 type listScheduledArgs struct {
-	Scope string `json:"scope" jsonschema:"the scope to list scheduled/expired memories from"`
-	State string `json:"state,omitempty" jsonschema:"scheduled (default, not yet active) | expired | all"`
-	Limit uint64 `json:"limit,omitempty" jsonschema:"max memories to return (default 20)"`
+	Scope         string `json:"scope" jsonschema:"the scope to list scheduled/expired memories from"`
+	State         string `json:"state,omitempty" jsonschema:"scheduled (default, not yet active) | expired | all"`
+	Limit         uint64 `json:"limit,omitempty" jsonschema:"max memories to return (default 20)"`
+	CreatedAfter  string `json:"created_after,omitempty" jsonschema:"optional RFC3339; inclusive lower bound on created_at"`
+	CreatedBefore string `json:"created_before,omitempty" jsonschema:"optional RFC3339; exclusive upper bound on created_at"`
+}
+
+// parseToolTime maps an optional RFC3339 arg to time.Time; empty → zero.
+func parseToolTime(s string) (time.Time, error) {
+	if s == "" {
+		return time.Time{}, nil
+	}
+	return time.Parse(time.RFC3339, s)
 }
 
 type idArgs struct {
@@ -566,24 +581,47 @@ func subjectFromContext(ctx context.Context) (store.Subject, error) {
 	return SubjectFromTokenInfo(mcpauth.TokenInfoFromContext(ctx))
 }
 
-func (d *deps) listMemory(ctx context.Context, a listArgs) ([]any, error) {
+func (d *deps) listMemory(ctx context.Context, a listArgs) ([]any, string, error) {
 	if a.Limit == 0 {
 		a.Limit = 20
 	}
+	after, err := parseToolTime(a.CreatedAfter)
+	if err != nil {
+		return nil, "", fmt.Errorf("created_after: %w", err)
+	}
+	before, err := parseToolTime(a.CreatedBefore)
+	if err != nil {
+		return nil, "", fmt.Errorf("created_before: %w", err)
+	}
 	subj, err := subjectFromContext(ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	ms, _, _, err := d.st.List(ctx, a.Scope, subj, store.ListOptions{Limit: a.Limit, Tags: a.Tags})
+	ms, _, next, err := d.st.List(ctx, a.Scope, subj, store.ListOptions{
+		Limit:         a.Limit,
+		Tags:          a.Tags,
+		CreatedAfter:  after,
+		CreatedBefore: before,
+		Cursor:        a.Cursor,
+		CursorMode:    true,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return shapeRecall(ms, a.Full, d.summaryMaxChars), nil
+	return shapeRecall(ms, a.Full, d.summaryMaxChars), next, nil
 }
 
 func (d *deps) listScheduled(ctx context.Context, a listScheduledArgs) ([]store.Memory, error) {
 	if a.Limit == 0 {
 		a.Limit = 20
+	}
+	after, err := parseToolTime(a.CreatedAfter)
+	if err != nil {
+		return nil, fmt.Errorf("created_after: %w", err)
+	}
+	before, err := parseToolTime(a.CreatedBefore)
+	if err != nil {
+		return nil, fmt.Errorf("created_before: %w", err)
 	}
 	var state store.ScheduledState
 	switch a.State {
@@ -600,12 +638,21 @@ func (d *deps) listScheduled(ctx context.Context, a listScheduledArgs) ([]store.
 	if err != nil {
 		return nil, err
 	}
-	return d.st.ListScheduled(ctx, a.Scope, subj, state, store.ListOptions{Limit: a.Limit})
+	return d.st.ListScheduled(ctx, a.Scope, subj, state,
+		store.ListOptions{Limit: a.Limit, CreatedAfter: after, CreatedBefore: before})
 }
 
 func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]any, error) {
 	if a.K == 0 {
 		a.K = 8
+	}
+	after, err := parseToolTime(a.CreatedAfter)
+	if err != nil {
+		return nil, fmt.Errorf("created_after: %w", err)
+	}
+	before, err := parseToolTime(a.CreatedBefore)
+	if err != nil {
+		return nil, fmt.Errorf("created_before: %w", err)
 	}
 	subj, err := subjectFromContext(ctx)
 	if err != nil {
@@ -615,7 +662,7 @@ func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	ms, err := d.st.Search(ctx, a.Scope, subj, vec, a.K, a.Tags, time.Time{}, time.Time{})
+	ms, err := d.st.Search(ctx, a.Scope, subj, vec, a.K, a.Tags, after, before)
 	if err != nil {
 		return nil, err
 	}
@@ -723,10 +770,10 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"memories": hits}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List recent memories in a scope without a query (session bootstrap). Most-recent first. Optionally pass `tags` to restrict to records carrying all listed tags (AND). Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory."},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List memories in a scope without a query. Most-recent first. Optional `created_after`/`created_before` (RFC3339) window and `cursor` for paging (use the returned next_cursor). Optional `tags` (AND). Returns {memories, next_cursor}; compact summaries by default, `full=true` for full content."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listArgs) (*mcp.CallToolResult, any, error) {
-			mems, err := d.listMemory(ctx, a)
-			return textResult(fmt.Sprintf("%d memories", len(mems))), map[string]any{"memories": mems}, err
+			mems, next, err := d.listMemory(ctx, a)
+			return textResult(fmt.Sprintf("%d memories", len(mems))), map[string]any{"memories": mems, "next_cursor": next}, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "list_scheduled", Description: "List your windowed memories the recall gate is hiding: state=scheduled (not yet active, default) | expired | all. Active memories surface via list_memory/search_memory."},

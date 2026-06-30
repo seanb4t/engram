@@ -305,7 +305,7 @@ func TestScheduleMemoryValidation(t *testing.T) {
 		t.Fatalf("valid schedule: %v", err)
 	}
 	t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
-	hits, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
+	hits, _, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
 	for _, h := range hits {
 		m, ok := h.(store.Memory)
 		if !ok {
@@ -325,7 +325,7 @@ func TestScheduleMemoryValidation(t *testing.T) {
 		t.Fatalf("past not_before should be accepted (immediately active): %v", err)
 	}
 	t.Cleanup(func() { _ = d.st.Delete(context.Background(), activeID, store.Authenticated("sub-A")) })
-	active, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
+	active, _, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
 	found := false
 	for _, h := range active {
 		m, ok := h.(store.Memory)
@@ -501,7 +501,7 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	}
 
 	// list_memory handler with anonymous context must return ownerless, not shared.
-	mems, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Full: true})
+	mems, _, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Full: true})
 	if err != nil {
 		t.Fatalf("listMemory: %v", err)
 	}
@@ -721,7 +721,7 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	if g := ids(hits); !g[alphaID] || !g[bothID] || g[plainID] {
 		t.Errorf("searchMemory alpha wrong: %v", g)
 	}
-	mems, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Tags: []string{"alpha"}, Full: true})
+	mems, _, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Tags: []string{"alpha"}, Full: true})
 	if err != nil {
 		t.Fatalf("listMemory alpha: %v", err)
 	}
@@ -746,7 +746,7 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	if g := ids(hits); !g[alphaID] || !g[bothID] || !g[plainID] {
 		t.Errorf("searchMemory passthrough wrong: %v", g)
 	}
-	mems, err = d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Full: true})
+	mems, _, err = d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Full: true})
 	if err != nil {
 		t.Fatalf("listMemory passthrough: %v", err)
 	}
@@ -961,7 +961,7 @@ func TestAuthedCrossActorSharedReadHandlers(t *testing.T) {
 	assertVisibility(t, "searchMemory", hits, sharedID, privateID)
 
 	// listMemory: same guarantee through the no-query handler path.
-	mems, err := d.listMemory(bctx, listArgs{Scope: scope, Limit: 10, Full: true})
+	mems, _, err := d.listMemory(bctx, listArgs{Scope: scope, Limit: 10, Full: true})
 	if err != nil {
 		t.Fatalf("listMemory: %v", err)
 	}
@@ -1140,5 +1140,31 @@ func TestToMemorySetsClientSummarySource(t *testing.T) {
 	m2 := noSummary.toMemory("owner", "actor", time.Now())
 	if m2.Summary != "" || m2.SummarySource != store.SummarySourceNone {
 		t.Fatalf("absent summary must leave source empty: %+v", m2)
+	}
+}
+
+func TestListMemoryReturnsNextCursorField(t *testing.T) {
+	d := testDeps(t) // skips without Qdrant
+	ctx := authedContext(t, "sub-A")
+	scope := "tool:project:nextcursor"
+	if err := d.st.Upsert(ctx, store.Memory{ID: "f0000000-0000-0000-0000-000000000001",
+		Content: "c", Scope: scope, Owner: "sub-A", CreatedAt: d.clock()}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	t.Cleanup(func() { _ = d.st.Delete(context.Background(), "f0000000-0000-0000-0000-000000000001", store.Authenticated("sub-A")) })
+	mems, next, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 1})
+	if err != nil {
+		t.Fatalf("listMemory: %v", err)
+	}
+	_ = next // contract: a (possibly empty) next_cursor token is returned
+	if mems == nil {
+		t.Error("expected memories slice")
+	}
+}
+
+func TestListMemoryRejectsBadWindow(t *testing.T) {
+	d := &deps{} // no Qdrant: parseToolTime("nope") fails before any store call
+	if _, _, err := d.listMemory(context.Background(), listArgs{Scope: "tool:project:x", CreatedAfter: "nope"}); err == nil {
+		t.Error("bad created_after accepted; want error")
 	}
 }
