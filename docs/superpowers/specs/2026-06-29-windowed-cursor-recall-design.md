@@ -300,3 +300,4 @@ the new request/tool fields are additive and default to today's behavior when
 unset. A client that ignores `next_cursor` and sends no window behaves exactly as
 before — except `list_memory`'s output is now the wrapped object (the one
 documented break).
+<!-- adr-capture: sha256=e1ef80f3ec73e55c; session=cli; ts=2026-06-30T00:50:38Z; adrs=engram-ef28,engram-1frj -->

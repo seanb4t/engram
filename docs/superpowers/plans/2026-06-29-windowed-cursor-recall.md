@@ -1379,3 +1379,4 @@ Commit any fixups with a `chore`/`fix` conventional message and the Co-Authored-
 - **Spec coverage:** indexes (T1), date window all tools (T2,T5,T8), List server-side rebuild + Count/scanCap retirement (T3), cursor + tie-break (T4), ListScheduled (T5), proto additive (T6), Connect handlers (T7), MCP tools + next_cursor (T8), docs/skill/comment + ADRs context (T9), full gate (T10). ListScopes correctly excluded per spec.
 - **Type consistency:** `List` returns `(items, total, nextCursor string, err)` everywhere (T3 handler, T8 tool, tests); `Search` takes `(…, tags, after, before)` everywhere (T2,T7,T8); `ListOptions` carries `CreatedAfter/CreatedBefore/Cursor/CursorMode` (T2,T4); `listCursor{C, Seen}` codec shared (T4).
 - **No placeholders:** every code step shows real code; every run step shows the command + expected result.
+<!-- adr-capture: sha256=a6a3f01e03350dfd; session=cli; ts=2026-06-30T00:50:38Z; adrs=engram-ef28,engram-1frj -->
