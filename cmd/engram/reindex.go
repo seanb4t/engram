@@ -92,7 +92,7 @@ func reindexSummary(res store.ReindexResult, target string, dim uint64, dryRun b
 			res.Scanned, target, dim)
 	}
 	return fmt.Sprintf("re-embedded %d/%d record(s) into %q at dim %d "+
-		"(%d skipped no content, %d unchanged); "+
+		"(%d skipped, no content; %d unchanged); "+
 		"source left untouched — verify, then set ENGRAM_QDRANT_COLLECTION=%s and restart to cut over",
 		res.Upserted, res.Scanned, target, dim, res.Skipped, res.Unchanged, target)
 }

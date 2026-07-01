@@ -162,8 +162,10 @@ func TestReindexOptionsValidate(t *testing.T) {
 		wantErr bool
 	}{
 		{"valid", ReindexOptions{Target: "tgt", Dim: 4}, false},
+		{"valid with source override", ReindexOptions{Target: "tgt", Source: "src", Dim: 4}, false},
 		{"empty target", ReindexOptions{Target: "", Dim: 4}, true},
 		{"zero dim", ReindexOptions{Target: "tgt", Dim: 0}, true},
+		{"explicit source equals target", ReindexOptions{Target: "same", Source: "same", Dim: 4}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -353,7 +355,9 @@ func TestReindexProgressCallback(t *testing.T) {
 // TestReindexResumeSkipsUnchanged pins engram-irhg: with Resume, a point already
 // present in the target with identical content is skipped (counted Unchanged)
 // instead of re-embedded, so an interrupted reindex resumes cheaply — while a
-// point whose source content changed is re-embedded.
+// point whose source content changed is re-embedded. Batch:1 forces the resume
+// target lookup to run per page (one Get per point here), exercising the
+// per-page scoping across a page boundary rather than in a single batch.
 func TestReindexResumeSkipsUnchanged(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()
@@ -368,7 +372,7 @@ func TestReindexResumeSkipsUnchanged(t *testing.T) {
 
 	s := New(c, src)
 	// First run: fresh target, nothing to skip — both re-embedded.
-	res1, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Resume: true}, embed4)
+	res1, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Batch: 1, Resume: true}, embed4)
 	if err != nil {
 		t.Fatalf("run1: %v", err)
 	}
@@ -377,7 +381,7 @@ func TestReindexResumeSkipsUnchanged(t *testing.T) {
 	}
 
 	// Second run: every point present with identical content — all skipped.
-	res2, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Resume: true}, embed4)
+	res2, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Batch: 1, Resume: true}, embed4)
 	if err != nil {
 		t.Fatalf("run2: %v", err)
 	}
@@ -399,7 +403,7 @@ func TestReindexResumeSkipsUnchanged(t *testing.T) {
 		t.Fatalf("mutate source: %v", err)
 	}
 
-	res3, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Resume: true}, embed4)
+	res3, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Batch: 1, Resume: true}, embed4)
 	if err != nil {
 		t.Fatalf("run3: %v", err)
 	}

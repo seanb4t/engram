@@ -1557,15 +1557,20 @@ type ReindexOptions struct {
 	Resume bool
 }
 
-// Validate checks the options that depend only on the options themselves. The
-// target-differs-from-source and non-nil-embed preconditions are checked by
-// Reindex, which alone has the source collection and the embed callback.
+// Validate checks the options that depend only on the options themselves,
+// including the target-differs-from-source guard for an EXPLICIT Source (both
+// fields are then in opts). The default-source case (Source=="" → s.collection)
+// and the non-nil-embed precondition are checked by Reindex, which alone has the
+// store's collection and the embed callback.
 func (o ReindexOptions) Validate() error {
 	if o.Target == "" {
 		return errors.New("reindex: target collection is required")
 	}
 	if o.Dim == 0 {
 		return errors.New("reindex: target dimension must be > 0")
+	}
+	if o.Source != "" && o.Target == o.Source {
+		return errors.New("reindex: target collection must differ from source")
 	}
 	return nil
 }
@@ -1629,6 +1634,7 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 				attribute.Int64("engram.scanned", int64(res.Scanned)),
 				attribute.Int64("engram.upserted", int64(res.Upserted)),
 				attribute.Int64("engram.skipped", int64(res.Skipped)),
+				attribute.Int64("engram.unchanged", int64(res.Unchanged)),
 			)
 		}
 	}()
@@ -1643,6 +1649,9 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 	if source == "" {
 		source = s.collection
 	}
+	// Record the effective source (may differ from the store's collection under
+	// --source) so a reindex trace names both endpoints.
+	span.SetAttributes(attribute.String("engram.source", source))
 	if opts.Target == source {
 		return res, fmt.Errorf("reindex: target collection %q must differ from source", opts.Target)
 	}
