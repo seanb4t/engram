@@ -162,8 +162,10 @@ func TestReindexOptionsValidate(t *testing.T) {
 		wantErr bool
 	}{
 		{"valid", ReindexOptions{Target: "tgt", Dim: 4}, false},
+		{"valid with source override", ReindexOptions{Target: "tgt", Source: "src", Dim: 4}, false},
 		{"empty target", ReindexOptions{Target: "", Dim: 4}, true},
 		{"zero dim", ReindexOptions{Target: "tgt", Dim: 0}, true},
+		{"explicit source equals target", ReindexOptions{Target: "same", Source: "same", Dim: 4}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -193,6 +195,7 @@ func TestReindexRejectsInvalidArgs(t *testing.T) {
 		{"empty target", ReindexOptions{Target: "", Dim: 4}, embed4},
 		{"zero dim", ReindexOptions{Target: "tgt", Dim: 0}, embed4},
 		{"target equals source", ReindexOptions{Target: "src", Dim: 4}, embed4},
+		{"target equals source override", ReindexOptions{Target: "ov", Source: "ov", Dim: 4}, embed4},
 		{"nil embed", ReindexOptions{Target: "tgt", Dim: 4}, nil},
 	}
 	for _, tc := range cases {
@@ -273,6 +276,142 @@ func TestReindexRoundtrip(t *testing.T) {
 	}
 	if got := srcAfter[rawID].vec; len(got) != 3 {
 		t.Errorf("source vector dim changed: want 3, got %d", len(got))
+	}
+}
+
+// TestReindexSourceOverride pins engram-orve: ReindexOptions.Source overrides the
+// store's configured collection as the read source. The store is built pointing at
+// a NON-EXISTENT env collection; with Source set to the real (seeded) collection,
+// Reindex must read the override and succeed — proving it does not fall back to
+// s.collection.
+func TestReindexSourceOverride(t *testing.T) {
+	c := dialTestClient(t)
+	ctx := context.Background()
+	const realSrc, envSrc, tgt = "reindex_srcov_real", "reindex_srcov_env", "reindex_srcov_tgt"
+	cols := []string{realSrc, envSrc, tgt}
+	for _, col := range cols {
+		_ = c.DeleteCollection(ctx, col)
+	}
+	t.Cleanup(func() {
+		for _, col := range cols {
+			_ = c.DeleteCollection(context.Background(), col)
+		}
+	})
+
+	seedSource(t, c, realSrc) // create + seed the override source only
+
+	// Store points at envSrc, which is never created; Source=realSrc must win.
+	s := New(c, envSrc)
+	res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Source: realSrc, Dim: 4}, embed4)
+	if err != nil {
+		t.Fatalf("reindex with source override: %v", err)
+	}
+	if res.Scanned != 2 || res.Upserted != 2 {
+		t.Errorf("counts: want scanned=2 upserted=2, got %+v", res)
+	}
+	if got := scrollPoints(t, c, tgt); len(got) != 2 {
+		t.Fatalf("target point count: want 2, got %d", len(got))
+	}
+}
+
+// TestReindexProgressCallback pins engram-xddn: ReindexOptions.Progress is
+// invoked once per scanned batch with the running totals, so a long reindex can
+// surface incremental feedback. Batch:1 over two points forces multiple pages.
+func TestReindexProgressCallback(t *testing.T) {
+	c := dialTestClient(t)
+	ctx := context.Background()
+	const src, tgt = "reindex_prog_src", "reindex_prog_tgt"
+	_ = c.DeleteCollection(ctx, src)
+	_ = c.DeleteCollection(ctx, tgt)
+	t.Cleanup(func() {
+		_ = c.DeleteCollection(context.Background(), src)
+		_ = c.DeleteCollection(context.Background(), tgt)
+	})
+	seedSource(t, c, src) // two points
+
+	s := New(c, src)
+	var snaps []ReindexResult
+	res, err := s.Reindex(ctx, ReindexOptions{
+		Target: tgt, Dim: 4, Batch: 1,
+		Progress: func(r ReindexResult) { snaps = append(snaps, r) },
+	}, embed4)
+	if err != nil {
+		t.Fatalf("reindex: %v", err)
+	}
+	if len(snaps) < 2 {
+		t.Fatalf("want >=2 progress callbacks (Batch:1 over 2 points), got %d", len(snaps))
+	}
+	for i := 1; i < len(snaps); i++ {
+		if snaps[i].Scanned < snaps[i-1].Scanned {
+			t.Errorf("progress Scanned went backwards: %+v", snaps)
+		}
+	}
+	last := snaps[len(snaps)-1]
+	if last.Scanned != res.Scanned || last.Scanned != 2 {
+		t.Errorf("final progress %+v must match result %+v (scanned 2)", last, res)
+	}
+}
+
+// TestReindexResumeSkipsUnchanged pins engram-irhg: with Resume, a point already
+// present in the target with identical content is skipped (counted Unchanged)
+// instead of re-embedded, so an interrupted reindex resumes cheaply — while a
+// point whose source content changed is re-embedded. Batch:1 forces the resume
+// target lookup to run per page (one Get per point here), exercising the
+// per-page scoping across a page boundary rather than in a single batch.
+func TestReindexResumeSkipsUnchanged(t *testing.T) {
+	c := dialTestClient(t)
+	ctx := context.Background()
+	const src, tgt = "reindex_resume_src", "reindex_resume_tgt"
+	_ = c.DeleteCollection(ctx, src)
+	_ = c.DeleteCollection(ctx, tgt)
+	t.Cleanup(func() {
+		_ = c.DeleteCollection(context.Background(), src)
+		_ = c.DeleteCollection(context.Background(), tgt)
+	})
+	_, rawID := seedSource(t, c, src) // two points
+
+	s := New(c, src)
+	// First run: fresh target, nothing to skip — both re-embedded.
+	res1, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Batch: 1, Resume: true}, embed4)
+	if err != nil {
+		t.Fatalf("run1: %v", err)
+	}
+	if res1.Upserted != 2 || res1.Unchanged != 0 {
+		t.Errorf("run1: want upserted=2 unchanged=0, got %+v", res1)
+	}
+
+	// Second run: every point present with identical content — all skipped.
+	res2, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Batch: 1, Resume: true}, embed4)
+	if err != nil {
+		t.Fatalf("run2: %v", err)
+	}
+	if res2.Scanned != 2 || res2.Upserted != 0 || res2.Unchanged != 2 {
+		t.Errorf("run2: want scanned=2 upserted=0 unchanged=2, got %+v", res2)
+	}
+
+	// Mutate one source point's content; resume must re-embed only that one.
+	if _, err := c.Upsert(ctx, &qdrant.UpsertPoints{
+		CollectionName: src, Wait: qdrant.PtrOf(true),
+		Points: []*qdrant.PointStruct{{
+			Id:      qdrant.NewID(rawID),
+			Vectors: qdrant.NewVectors(0.4, 0.5, 0.6),
+			Payload: qdrant.NewValueMap(map[string]any{
+				"content": "bravo-changed", "scope": "eval-test:project:demo", "legacy_field": "keep-me-verbatim",
+			}),
+		}},
+	}); err != nil {
+		t.Fatalf("mutate source: %v", err)
+	}
+
+	res3, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Batch: 1, Resume: true}, embed4)
+	if err != nil {
+		t.Fatalf("run3: %v", err)
+	}
+	if res3.Upserted != 1 || res3.Unchanged != 1 {
+		t.Errorf("run3: want upserted=1 unchanged=1, got %+v", res3)
+	}
+	if got := scrollPoints(t, c, tgt); got[rawID].payload["content"].GetStringValue() != "bravo-changed" {
+		t.Errorf("changed point's target content not updated: %q", got[rawID].payload["content"].GetStringValue())
 	}
 }
 

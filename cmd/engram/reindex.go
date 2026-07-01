@@ -19,7 +19,9 @@ import (
 
 var (
 	reindexTarget  string
+	reindexSource  string
 	reindexDryRun  bool
+	reindexResume  bool
 	reindexTimeout time.Duration
 )
 
@@ -60,10 +62,18 @@ var reindexCmd = &cobra.Command{
 			defer cancel()
 		}
 
+		// Per-batch progress goes to stderr so it never pollutes the single
+		// parseable summary line on stdout (engram-xddn).
 		res, err := st.Reindex(ctx, store.ReindexOptions{
 			Target: reindexTarget,
+			Source: reindexSource,
 			Dim:    dim,
 			DryRun: reindexDryRun,
+			Resume: reindexResume,
+			Progress: func(r store.ReindexResult) {
+				cmd.PrintErrf("reindex progress: scanned %d, upserted %d, skipped %d, unchanged %d\n",
+					r.Scanned, r.Upserted, r.Skipped, r.Unchanged)
+			},
 		}, em.Embed)
 		if err != nil {
 			return err
@@ -81,17 +91,22 @@ func reindexSummary(res store.ReindexResult, target string, dim uint64, dryRun b
 		return fmt.Sprintf("dry-run: %d record(s) would be re-embedded into %q at dim %d",
 			res.Scanned, target, dim)
 	}
-	return fmt.Sprintf("re-embedded %d/%d record(s) into %q at dim %d (%d skipped, no content); "+
+	return fmt.Sprintf("re-embedded %d/%d record(s) into %q at dim %d "+
+		"(%d skipped, no content; %d unchanged); "+
 		"source left untouched — verify, then set ENGRAM_QDRANT_COLLECTION=%s and restart to cut over",
-		res.Upserted, res.Scanned, target, dim, res.Skipped, target)
+		res.Upserted, res.Scanned, target, dim, res.Skipped, res.Unchanged, target)
 }
 
 func init() {
 	reindexCmd.Flags().StringVar(&reindexTarget, "target",
 		os.Getenv("ENGRAM_REINDEX_TARGET"),
 		"target collection to create and populate (required)")
+	reindexCmd.Flags().StringVar(&reindexSource, "source", "",
+		"source collection to read from (default: ENGRAM_QDRANT_COLLECTION)")
 	reindexCmd.Flags().BoolVar(&reindexDryRun, "dry-run", false,
 		"scan and count without creating the target or writing")
+	reindexCmd.Flags().BoolVar(&reindexResume, "resume", false,
+		"skip points already present in the target with identical content (cheap restart of an interrupted reindex)")
 	reindexCmd.Flags().DurationVar(&reindexTimeout, "timeout", 30*time.Minute,
 		"max wall-clock for the reindex; 0 means no deadline (Ctrl-C or SIGTERM aborts either way)")
 	rootCmd.AddCommand(reindexCmd)

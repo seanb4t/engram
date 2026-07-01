@@ -1532,14 +1532,36 @@ type EmbedFunc func(ctx context.Context, content string) ([]float32, error)
 // default). DryRun scans and counts without creating the target or writing.
 type ReindexOptions struct {
 	Target string
+	// Source overrides the collection Reindex reads from. Empty (the default)
+	// means the store's configured collection (s.collection, i.e.
+	// ENGRAM_QDRANT_COLLECTION) — so operators get the env default for free and
+	// only set Source to reindex an arbitrary collection without mutating env.
+	Source string
 	Dim    uint64
 	Batch  uint32
 	DryRun bool
+	// Progress, when non-nil, is called once after each scanned batch with the
+	// running ReindexResult totals, so a long reindex can surface incremental
+	// feedback. It is a callback (not store-side I/O) to keep the store
+	// embedder- and output-agnostic — the caller owns rendering, matching how
+	// EmbedFunc keeps embedding out of the store.
+	Progress func(ReindexResult)
+	// Resume makes an interrupted reindex cheap to restart: before embedding a
+	// source point, the target is checked for that id, and a point already
+	// present with IDENTICAL content is skipped (counted Unchanged) instead of
+	// re-embedded. The skip predicate is content equality — equal content yields
+	// an equal embedding under a fixed embedder, which is the whole point of
+	// resuming — so no separate hash is persisted and the target payload stays
+	// verbatim. Ignored on a dry run (nothing is written). When false, every
+	// point is re-embedded (the prior idempotent-overwrite behavior).
+	Resume bool
 }
 
-// Validate checks the options that depend only on the options themselves. The
-// target-differs-from-source and non-nil-embed preconditions are checked by
-// Reindex, which alone has the source collection and the embed callback.
+// Validate checks the options that depend only on the options themselves,
+// including the target-differs-from-source guard for an EXPLICIT Source (both
+// fields are then in opts). The default-source case (Source=="" → s.collection)
+// and the non-nil-embed precondition are checked by Reindex, which alone has the
+// store's collection and the embed callback.
 func (o ReindexOptions) Validate() error {
 	if o.Target == "" {
 		return errors.New("reindex: target collection is required")
@@ -1547,23 +1569,29 @@ func (o ReindexOptions) Validate() error {
 	if o.Dim == 0 {
 		return errors.New("reindex: target dimension must be > 0")
 	}
+	if o.Source != "" && o.Target == o.Source {
+		return errors.New("reindex: target collection must differ from source")
+	}
 	return nil
 }
 
 // ReindexResult reports what Reindex did: points scanned from the source,
-// points re-embedded and upserted into the target (0 on a dry run), and points
-// skipped because they carried no content to embed (Scanned == Upserted +
-// Skipped on a successful non-dry run).
+// points re-embedded and upserted into the target (0 on a dry run), points
+// skipped because they carried no content to embed, and (resume only) points
+// left unchanged because the target already held them with identical content.
+// On a successful non-dry run, Scanned == Upserted + Skipped + Unchanged.
 type ReindexResult struct {
-	Scanned  uint64
-	Upserted uint64
-	Skipped  uint64
+	Scanned   uint64
+	Upserted  uint64
+	Skipped   uint64
+	Unchanged uint64
 }
 
 // reindexBatch is the default scroll page size when ReindexOptions.Batch is 0.
 const reindexBatch = 256
 
-// Reindex re-embeds every point in the source collection (s.collection) into a
+// Reindex re-embeds every point in the source collection (opts.Source, or
+// s.collection when unset) into a
 // new Target collection, enabling a migration to an embedder with a different
 // output dimension (Qdrant vector size is immutable, so a new collection is the
 // only path). It scrolls the source for (id, payload), re-embeds the payload's
@@ -1589,6 +1617,8 @@ const reindexBatch = 256
 // part-way through leaves the target partially populated (ReindexResult reports
 // how many landed). Because upsert is keyed by point id, re-running Reindex with
 // the same target is idempotent and safe — it overwrites and completes the set.
+// opts.Resume makes that re-run cheap: points already present in the target with
+// identical content are skipped (counted Unchanged) instead of re-embedded.
 func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFunc) (res ReindexResult, err error) {
 	ctx, span := tracer.Start(ctx, "store.Reindex",
 		trace.WithAttributes(attribute.String("engram.target", opts.Target)))
@@ -1604,6 +1634,7 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 				attribute.Int64("engram.scanned", int64(res.Scanned)),
 				attribute.Int64("engram.upserted", int64(res.Upserted)),
 				attribute.Int64("engram.skipped", int64(res.Skipped)),
+				attribute.Int64("engram.unchanged", int64(res.Unchanged)),
 			)
 		}
 	}()
@@ -1611,7 +1642,17 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 	if err = opts.Validate(); err != nil {
 		return res, err
 	}
-	if opts.Target == s.collection {
+	// The read source is the override when set, else the store's configured
+	// collection (engram-orve). All source reads and the target-differs guard
+	// below key off this effective source, not s.collection directly.
+	source := opts.Source
+	if source == "" {
+		source = s.collection
+	}
+	// Record the effective source (may differ from the store's collection under
+	// --source) so a reindex trace names both endpoints.
+	span.SetAttributes(attribute.String("engram.source", source))
+	if opts.Target == source {
 		return res, fmt.Errorf("reindex: target collection %q must differ from source", opts.Target)
 	}
 	if embed == nil {
@@ -1626,12 +1667,12 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 	// (or a not-yet-created collection) would scroll zero points and report a
 	// misleading success — especially since the caller's StoreFromEnv may have
 	// just created an empty source at the wrong dimension.
-	srcExists, err := s.client.CollectionExists(ctx, s.collection)
+	srcExists, err := s.client.CollectionExists(ctx, source)
 	if err != nil {
-		return res, fmt.Errorf("reindex: check source %q: %w", s.collection, err)
+		return res, fmt.Errorf("reindex: check source %q: %w", source, err)
 	}
 	if !srcExists {
-		return res, fmt.Errorf("reindex: source collection %q does not exist", s.collection)
+		return res, fmt.Errorf("reindex: source collection %q does not exist", source)
 	}
 
 	if !opts.DryRun {
@@ -1645,7 +1686,7 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 		var pts []*qdrant.RetrievedPoint
 		var next *qdrant.PointId
 		pts, next, err = s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
-			CollectionName: s.collection,
+			CollectionName: source,
 			Limit:          qdrant.PtrOf(batch),
 			Offset:         offset,
 			WithPayload:    qdrant.NewWithPayload(true),
@@ -1659,6 +1700,16 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 		if opts.DryRun {
 			res.Scanned += uint64(len(pts))
 		} else {
+			// Resume: fetch this batch's ids from the target once so a point already
+			// embedded with identical content can be skipped (engram-irhg). One Get
+			// per page keeps the lookup O(pages), not O(points).
+			var targetContent map[string]string
+			if opts.Resume {
+				targetContent, err = s.reindexTargetContents(ctx, opts.Target, pts)
+				if err != nil {
+					return res, fmt.Errorf("reindex: resume lookup in %q: %w", opts.Target, err)
+				}
+			}
 			for _, p := range pts {
 				res.Scanned++
 				content := p.Payload["content"].GetStringValue()
@@ -1666,6 +1717,12 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 					// Nothing to embed — skip rather than write a meaningless vector
 					// for an empty string. Surfaced via ReindexResult.Skipped.
 					res.Skipped++
+					continue
+				}
+				if tc, ok := targetContent[p.Id.GetUuid()]; ok && tc == content {
+					// Target already holds this id with identical content — equal
+					// content re-embeds to an equal vector, so skip the embed+upsert.
+					res.Unchanged++
 					continue
 				}
 				var vec []float32
@@ -1687,10 +1744,42 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 				res.Upserted++
 			}
 		}
+		// Surface running totals after each scanned page (engram-xddn).
+		if opts.Progress != nil {
+			opts.Progress(res)
+		}
 		if next == nil {
 			break
 		}
 		offset = next
 	}
 	return res, nil
+}
+
+// reindexTargetContents fetches the content payload of the given source points'
+// ids from the target collection, returning id→content only for ids that already
+// exist there. It backs Reindex's resume skip: a fresh or partially-populated
+// target simply yields fewer (or no) entries, so a first run skips nothing.
+func (s *Store) reindexTargetContents(ctx context.Context, target string, pts []*qdrant.RetrievedPoint) (map[string]string, error) {
+	if len(pts) == 0 {
+		return nil, nil
+	}
+	ids := make([]*qdrant.PointId, 0, len(pts))
+	for _, p := range pts {
+		ids = append(ids, p.Id)
+	}
+	got, err := s.client.Get(ctx, &qdrant.GetPoints{
+		CollectionName: target,
+		Ids:            ids,
+		WithPayload:    qdrant.NewWithPayload(true),
+		WithVectors:    qdrant.NewWithVectors(false),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(got))
+	for _, p := range got {
+		out[p.Id.GetUuid()] = p.Payload["content"].GetStringValue()
+	}
+	return out, nil
 }
