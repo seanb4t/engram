@@ -46,6 +46,9 @@ type recallView struct {
 	Category      string    `json:"category"`
 	Tags          []string  `json:"tags,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
+	// Score is the Qdrant similarity score on search results (higher = closer);
+	// omitted (zero) on list results, which are not ranked.
+	Score float32 `json:"score,omitempty"`
 }
 
 // summaryOrTruncation is the value the recall path shows in place of content:
@@ -87,5 +90,6 @@ func toRecallView(m store.Memory, maxChars int) recallView {
 	return recallView{
 		ID: m.ID, Summary: summary, SummarySource: string(m.SummarySource), Truncated: truncated,
 		Scope: m.Scope, Category: m.Category, Tags: m.Tags, CreatedAt: m.CreatedAt,
+		Score: m.Score,
 	}
 }

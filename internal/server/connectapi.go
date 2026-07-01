@@ -38,6 +38,7 @@ func memoryToProto(m store.Memory) *engramv1.Memory {
 		CreatedAt:     timestamppb.New(m.CreatedAt),
 		Summary:       m.Summary,
 		SummarySource: string(m.SummarySource),
+		Score:         m.Score,
 	}
 }
 
@@ -144,7 +145,7 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	vec, err := a.d.em.Embed(ctx, req.Msg.Query)
+	vec, err := a.d.em.EmbedQuery(ctx, req.Msg.Query)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -189,7 +190,7 @@ func (a *engramAPI) SearchDiscoveries(ctx context.Context, req *connect.Request[
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	vec, err := a.d.em.Embed(ctx, req.Msg.Query)
+	vec, err := a.d.em.EmbedQuery(ctx, req.Msg.Query)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

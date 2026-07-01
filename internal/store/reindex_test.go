@@ -243,10 +243,11 @@ func TestReindexRoundtrip(t *testing.T) {
 		}
 		// Payload preserved verbatim.
 		payloadKeysEqual(t, "id="+id, want.payload, tp.payload)
-		// Vector re-embedded at the new dimension. Qdrant stores Cosine-distance
-		// vectors L2-normalized, so compare against the normalized embedder output.
-		content := tp.payload["content"].GetStringValue()
-		wantVec := l2normalize(embed4Vec(content))
+		// Vector re-embedded at the new dimension from content+tags (EmbedText).
+		// Qdrant stores Cosine-distance vectors L2-normalized, so compare against
+		// the normalized embedder output for the composed document text.
+		m := fromPayload(id, tp.payload)
+		wantVec := l2normalize(embed4Vec(EmbedText(m.Content, m.Tags)))
 		if len(tp.vec) != 4 {
 			t.Errorf("id=%s: target vector dim: want 4, got %d", id, len(tp.vec))
 		}

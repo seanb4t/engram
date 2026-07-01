@@ -49,6 +49,11 @@ type QdrantConfig struct {
 type EmbedConfig struct {
 	Model string `koanf:"model"`
 	Dim   string `koanf:"dim"`
+	// QueryInstruction is prepended to search-query embeddings for
+	// instruction-tuned asymmetric models (e.g. Qwen3-Embedding). Empty (default)
+	// keeps queries raw. Documents are never wrapped, so setting this needs no
+	// reindex.
+	QueryInstruction string `koanf:"query_instruction"`
 }
 
 // SummarizeConfig selects the recall-summary model and the character cap shared

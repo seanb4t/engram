@@ -151,6 +151,10 @@ func (fakeEmbedder) Embed(context.Context, string) ([]float32, error) {
 	return []float32{0.1, 0.2, 0.3}, nil
 }
 
+func (fakeEmbedder) EmbedQuery(context.Context, string) ([]float32, error) {
+	return []float32{0.1, 0.2, 0.3}, nil
+}
+
 // countingEmbedder wraps fakeEmbedder and records how many Embed calls were made.
 // Used to assert that the embedder is NOT called when the ownership pre-check
 // rejects the request early (cost-amplification hardening, eu8.4/eu8.2).
@@ -159,6 +163,11 @@ type countingEmbedder struct {
 }
 
 func (e *countingEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+	e.calls++
+	return fakeEmbedder{}.Embed(ctx, text)
+}
+
+func (e *countingEmbedder) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
 	e.calls++
 	return fakeEmbedder{}.Embed(ctx, text)
 }

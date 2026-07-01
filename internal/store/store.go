@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/qdrant/go-client/qdrant"
@@ -120,6 +121,23 @@ type Memory struct {
 	// not on the Connect wire. Zero if never egressed or the summary was
 	// client-authored/cleared.
 	SummaryEgressAt time.Time `json:"summary_egress_at"`
+	// Score is the Qdrant similarity score of this record for the query that
+	// returned it (higher = closer). Set only on Search results; zero on
+	// list/get. Lets callers see how close a near-miss ranked (GH#261).
+	Score float32 `json:"score,omitempty"`
+}
+
+// EmbedText builds the text sent to the embedder for a record. Tags are folded
+// into the embedded document so curated keywords contribute to vector recall
+// (they are otherwise only a hard AND pre-filter). Documents are embedded via
+// this helper at store, update, and reindex time; the query side is embedded
+// separately (optionally with an instruction prefix) so re-embedding an existing
+// corpus with `engram reindex` applies the same composition uniformly.
+func EmbedText(content string, tags []string) string {
+	if len(tags) == 0 {
+		return content
+	}
+	return content + "\n\ntags: " + strings.Join(tags, ", ")
 }
 
 // Citation anchors a discovery to a source so it can be verified and aged.
@@ -538,7 +556,9 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 	out := make([]Memory, 0, len(res))
 	for _, p := range res {
-		out = append(out, fromPayload(p.Id.GetUuid(), p.Payload))
+		m := fromPayload(p.Id.GetUuid(), p.Payload)
+		m.Score = p.Score
+		out = append(out, m)
 	}
 	return out
 }
@@ -1712,7 +1732,8 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 			}
 			for _, p := range pts {
 				res.Scanned++
-				content := p.Payload["content"].GetStringValue()
+				m := fromPayload(p.Id.GetUuid(), p.Payload)
+				content := m.Content
 				if content == "" {
 					// Nothing to embed — skip rather than write a meaningless vector
 					// for an empty string. Surfaced via ReindexResult.Skipped.
@@ -1721,12 +1742,15 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 				}
 				if tc, ok := targetContent[p.Id.GetUuid()]; ok && tc == content {
 					// Target already holds this id with identical content — equal
-					// content re-embeds to an equal vector, so skip the embed+upsert.
+					// content (and, from the same source payload, equal tags) re-embeds
+					// to an equal vector, so skip the embed+upsert.
 					res.Unchanged++
 					continue
 				}
 				var vec []float32
-				vec, err = embed(ctx, content)
+				// Embed content + tags (EmbedText) so a re-embed folds curated tags
+				// into the vector exactly as the store path does.
+				vec, err = embed(ctx, EmbedText(m.Content, m.Tags))
 				if err != nil {
 					return res, fmt.Errorf("reindex: embed point %s: %w", p.Id.GetUuid(), err)
 				}
