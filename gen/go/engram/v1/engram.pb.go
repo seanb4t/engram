@@ -44,6 +44,9 @@ type Memory struct {
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	Summary       string                 `protobuf:"bytes,15,opt,name=summary,proto3" json:"summary,omitempty"`
 	SummarySource string                 `protobuf:"bytes,16,opt,name=summary_source,json=summarySource,proto3" json:"summary_source,omitempty"`
+	// Qdrant similarity score on search results (higher = closer); 0 on
+	// list/get results, which are not ranked.
+	Score         float32 `protobuf:"fixed32,17,opt,name=score,proto3" json:"score,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -188,6 +191,13 @@ func (x *Memory) GetSummarySource() string {
 		return x.SummarySource
 	}
 	return ""
+}
+
+func (x *Memory) GetScore() float32 {
+	if x != nil {
+		return x.Score
+	}
+	return 0
 }
 
 type ScopeCount struct {
@@ -856,7 +866,7 @@ var File_engram_v1_engram_proto protoreflect.FileDescriptor
 
 const file_engram_v1_engram_proto_rawDesc = "" +
 	"\n" +
-	"\x16engram/v1/engram.proto\x12\tengram.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc1\x03\n" +
+	"\x16engram/v1/engram.proto\x12\tengram.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd7\x03\n" +
 	"\x06Memory\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x14\n" +
@@ -877,7 +887,8 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x18\n" +
 	"\asummary\x18\x0f \x01(\tR\asummary\x12%\n" +
-	"\x0esummary_source\x18\x10 \x01(\tR\rsummarySource\"8\n" +
+	"\x0esummary_source\x18\x10 \x01(\tR\rsummarySource\x12\x14\n" +
+	"\x05score\x18\x11 \x01(\x02R\x05score\"8\n" +
 	"\n" +
 	"ScopeCount\x12\x14\n" +
 	"\x05scope\x18\x01 \x01(\tR\x05scope\x12\x14\n" +

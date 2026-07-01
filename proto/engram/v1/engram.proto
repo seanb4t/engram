@@ -25,6 +25,9 @@ message Memory {
   google.protobuf.Timestamp created_at = 14;
   string summary = 15;
   string summary_source = 16;
+  // Qdrant similarity score on search results (higher = closer); 0 on
+  // list/get results, which are not ranked.
+  float score = 17;
 }
 
 message ScopeCount {

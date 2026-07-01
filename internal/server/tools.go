@@ -32,7 +32,10 @@ import (
 type deps struct {
 	st *store.Store
 	em interface {
+		// Embed embeds a document (raw). EmbedQuery embeds a search query,
+		// optionally with an instruction prefix (asymmetric embedding).
 		Embed(context.Context, string) ([]float32, error)
+		EmbedQuery(context.Context, string) ([]float32, error)
 	}
 	// now is the handler time source for schedule_memory window validation. Nil
 	// means wall-clock time.Now (see clock); tests inject a fixed clock to pin
@@ -198,7 +201,8 @@ func summaryTimeout(cfg *config.Config) time.Duration {
 // config.
 func embedderFromConfig(cfg *config.Config) *embed.Client {
 	return embed.New(cfg.OpenAI.BaseURL, cfg.OpenAI.APIKey, cfg.Embed.Model,
-		embed.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)))
+		embed.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)),
+		embed.WithQueryInstruction(cfg.Embed.QueryInstruction))
 }
 
 // summarizerFromConfig builds the chat-completions summarizer from config.
@@ -477,11 +481,11 @@ func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	vec, err := d.em.Embed(ctx, a.Content)
+	m := a.toMemory(subj.Owner(), actorFromContext(ctx), d.clock())
+	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 	if err != nil {
 		return "", err
 	}
-	m := a.toMemory(subj.Owner(), actorFromContext(ctx), d.clock())
 	return m.ID, d.st.Upsert(ctx, m, vec)
 }
 
@@ -505,13 +509,13 @@ func (d *deps) scheduleMemory(ctx context.Context, a scheduleArgs) (string, erro
 	if err != nil {
 		return "", err
 	}
-	vec, err := d.em.Embed(ctx, a.Content)
-	if err != nil {
-		return "", err
-	}
 	m := a.toMemory(subj.Owner(), actorFromContext(ctx), now)
 	m.NotBefore = nb
 	m.NotAfter = na
+	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
+	if err != nil {
+		return "", err
+	}
 	return m.ID, d.st.Upsert(ctx, m, vec)
 }
 
@@ -528,7 +532,7 @@ func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string
 			return "", err
 		}
 	}
-	vec, err := d.em.Embed(ctx, a.Content)
+	vec, err := d.em.Embed(ctx, store.EmbedText(a.Content, a.Tags))
 	if err != nil {
 		return "", err
 	}
@@ -650,7 +654,7 @@ func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	vec, err := d.em.Embed(ctx, a.Query)
+	vec, err := d.em.EmbedQuery(ctx, a.Query)
 	if err != nil {
 		return nil, err
 	}
@@ -691,7 +695,7 @@ func (d *deps) searchDiscovery(ctx context.Context, a searchDiscoveryArgs) ([]st
 	if err != nil {
 		return nil, err
 	}
-	vec, err := d.em.Embed(ctx, a.Query)
+	vec, err := d.em.EmbedQuery(ctx, a.Query)
 	if err != nil {
 		return nil, err
 	}
@@ -720,7 +724,14 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 	if apply {
 		sumArg = &value
 	}
-	vec, err := d.em.Embed(ctx, a.Content)
+	// Tags are part of the embedded document (EmbedText), so re-embed with the
+	// tag set that will persist: the replacement when supplied, else the current
+	// tags. This re-embeds even on a tags-only change.
+	tags := cur.Tags
+	if a.Tags != nil {
+		tags = *a.Tags
+	}
+	vec, err := d.em.Embed(ctx, store.EmbedText(a.Content, tags))
 	if err != nil {
 		return err
 	}

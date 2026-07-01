@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/seanb4t/engram/internal/telemetry"
@@ -28,10 +29,23 @@ type Client struct {
 	apiKey  string
 	model   string
 	http    *http.Client
+	// queryInstruction, when non-empty, is prepended to query text by EmbedQuery
+	// as "Instruct: <instruction>\nQuery: <text>". Documents (Embed) are never
+	// wrapped. Empty = symmetric embedding (queries sent raw), preserving prior
+	// behavior for embedders that do not use instructions.
+	queryInstruction string
 }
 
 // Option customizes a Client.
 type Option func(*Client)
+
+// WithQueryInstruction sets the instruction prepended to query embeddings
+// (EmbedQuery). Instruction-tuned asymmetric models (e.g. Qwen3-Embedding)
+// retrieve markedly better when the query carries a task instruction while
+// documents stay raw. Empty (the default) keeps queries raw.
+func WithQueryInstruction(instruction string) Option {
+	return func(c *Client) { c.queryInstruction = instruction }
+}
 
 // WithHTTPTransport sets the underlying RoundTripper (e.g. otelhttp.NewTransport)
 // so embedder HTTP calls can be traced. The 30s timeout is preserved.
@@ -59,8 +73,43 @@ type embedResp struct {
 	} `json:"data"`
 }
 
-// Embed returns the embedding vector for text.
-func (c *Client) Embed(ctx context.Context, text string) (vec []float32, err error) {
+// Embed returns the embedding vector for a document (raw text, never wrapped
+// with a query instruction). Use at store/update/reindex time.
+func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
+	return c.embed(ctx, text)
+}
+
+// queryPlaceholder, when present in the configured query instruction, is
+// replaced by the raw query text — letting prefix-style models supply their own
+// wrapping (e.g. "Represent this sentence for searching relevant passages:
+// {query}"). Without it, the instruction is wrapped in the Qwen3-family
+// "Instruct: <instruction>\nQuery: <text>" template.
+const queryPlaceholder = "{query}"
+
+// EmbedQuery returns the embedding vector for a search query. Behavior by
+// configured query instruction:
+//   - empty: query sent raw (symmetric embedding; prior behavior).
+//   - contains "{query}": used as a literal template with the placeholder
+//     replaced by the query (prefix-style models, e.g. bge-*-v1.5).
+//   - otherwise: wrapped as "Instruct: <instruction>\nQuery: <text>"
+//     (Qwen3-family instruct embedders).
+//
+// Only the query side is wrapped, so stored document vectors need no reindex.
+func (c *Client) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
+	switch {
+	case c.queryInstruction == "":
+		// raw
+	case strings.Contains(c.queryInstruction, queryPlaceholder):
+		text = strings.ReplaceAll(c.queryInstruction, queryPlaceholder, text)
+	default:
+		text = "Instruct: " + c.queryInstruction + "\nQuery: " + text
+	}
+	return c.embed(ctx, text)
+}
+
+// embed performs the OpenAI-compatible /v1/embeddings call for a fully-formed
+// input string (document or query, already wrapped as needed).
+func (c *Client) embed(ctx context.Context, text string) (vec []float32, err error) {
 	ctx, span := tracer.Start(ctx, "embed.Embed",
 		trace.WithAttributes(attribute.String("engram.embed.model", c.model)))
 	defer span.End()

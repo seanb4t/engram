@@ -34,6 +34,9 @@ spec:
             - { name: ENGRAM_OPENAI_BASE_URL, value: "{{ .Values.memory.openai.baseURL }}" }
             - { name: ENGRAM_EMBED_MODEL, value: "{{ .Values.memory.embed.model }}" }
             - { name: ENGRAM_EMBED_DIM, value: "{{ .Values.memory.embed.dim }}" }
+            {{- with .Values.memory.embed.queryInstruction }}
+            - { name: ENGRAM_EMBED_QUERY_INSTRUCTION, value: {{ . | quote }} }
+            {{- end }}
             {{- if .Values.memory.openai.apiKeySecret.name }}
             - name: ENGRAM_OPENAI_API_KEY
               valueFrom:
