@@ -12,7 +12,7 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 
 | Path | Responsibility |
 |------|----------------|
-| `cmd/engram/` | cobra CLI: `root`, `serve`, `version` (entrypoint only) |
+| `cmd/engram/` | cobra CLI: `root`, `serve`, `version` + operator commands (`reindex` embedder migration — see docs-site `guides/reindex`; `migrate-remap-owner`; `prune-expired`; `summarize-missing`) (entrypoint only) |
 | `internal/server/` | MCP tool registration + handlers (`Register`, `EnvOr`) |
 | `internal/store/` | Qdrant-backed memory store |
 | `internal/embed/` | embedder (OpenAI-compatible) |
