@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -1224,8 +1225,19 @@ func TestListMemoryRejectsBadWindow(t *testing.T) {
 }
 
 func TestEmbedderFromConfigPassesParamsAndInstructions(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"embedding": []float32{0.1}}},
+		})
+	}))
+	defer srv.Close()
+
 	cfg := &config.Config{
-		OpenAI: config.OpenAIConfig{BaseURL: "http://x", APIKey: "k"},
+		OpenAI: config.OpenAIConfig{BaseURL: srv.URL, APIKey: "k"},
 		Embed: config.EmbedConfig{
 			Model:               "m",
 			QueryParams:         `{"input_type":"search_query"}`,
@@ -1233,12 +1245,26 @@ func TestEmbedderFromConfigPassesParamsAndInstructions(t *testing.T) {
 			DocumentInstruction: "passage: ",
 		},
 	}
-	// Must construct without panic and yield a usable client (smoke: nil-safe).
 	em, err := embedderFromConfig(cfg)
 	if err != nil {
 		t.Fatalf("embedderFromConfig: %v", err)
 	}
 	if em == nil {
 		t.Fatal("embedderFromConfig returned nil")
+	}
+
+	if _, err := em.EmbedQuery(context.Background(), "q"); err != nil {
+		t.Fatalf("EmbedQuery: %v", err)
+	}
+	if got["input_type"] != "search_query" || got["input"] != "q" {
+		t.Errorf("EmbedQuery body = %v; want input_type=search_query, input=q", got)
+	}
+
+	got = nil
+	if _, err := em.Embed(context.Background(), "d"); err != nil {
+		t.Fatalf("Embed: %v", err)
+	}
+	if got["input_type"] != "search_document" || got["input"] != "passage: d" {
+		t.Errorf("Embed body = %v; want input_type=search_document, input=%q", got, "passage: d")
 	}
 }
