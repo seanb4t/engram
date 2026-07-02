@@ -27,6 +27,15 @@ memory:
     # (prefix-style models); otherwise the value is wrapped as
     # "Instruct: <value>\nQuery: <text>". See guides/embedding-instructions.
     queryInstruction: ""
+    # JSON strings merged into the /v1/embeddings request body for query vs
+    # document embeds (cloud models: input_type / task_type). Empty = none.
+    # e.g. queryParams: '{"input_type":"search_query"}'
+    queryParams: ""
+    documentParams: ""
+    # Document-side text prefix for both-side-prefix models (E5/nomic), e.g.
+    # "passage: " or "search_document: {document}". Empty = raw. Changing it
+    # requires a reindex.
+    documentInstruction: ""
   openai:
     baseURL: "" # cluster supplies, e.g. http://embeddings.internal:4000
     apiKeySecret:

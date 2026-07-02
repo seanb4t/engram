@@ -37,6 +37,15 @@ spec:
             {{- with .Values.memory.embed.queryInstruction }}
             - { name: ENGRAM_EMBED_QUERY_INSTRUCTION, value: {{ . | quote }} }
             {{- end }}
+            {{- with .Values.memory.embed.queryParams }}
+            - { name: ENGRAM_EMBED_QUERY_PARAMS, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .Values.memory.embed.documentParams }}
+            - { name: ENGRAM_EMBED_DOCUMENT_PARAMS, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .Values.memory.embed.documentInstruction }}
+            - { name: ENGRAM_EMBED_DOCUMENT_INSTRUCTION, value: {{ . | quote }} }
+            {{- end }}
             {{- if .Values.memory.openai.apiKeySecret.name }}
             - name: ENGRAM_OPENAI_API_KEY
               valueFrom:
