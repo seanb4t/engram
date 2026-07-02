@@ -187,6 +187,19 @@ func TestEmbedParamsMergedIntoBody(t *testing.T) {
 			t.Errorf("body = %v; model/input must be authoritative", got)
 		}
 	})
+
+	t.Run("no params configured produces exactly model+input", func(t *testing.T) {
+		var got map[string]any
+		srv := captureBody(t, &got)
+		defer srv.Close()
+		c := New(srv.URL, "k", "m") // no WithQueryParams/WithDocumentParams
+		if _, err := c.Embed(context.Background(), "doc"); err != nil {
+			t.Fatalf("Embed: %v", err)
+		}
+		if len(got) != 2 || got["model"] != "m" || got["input"] != "doc" {
+			t.Errorf("body = %v; want exactly {model: m, input: doc}", got)
+		}
+	})
 }
 
 func TestEmbedDocumentInstruction(t *testing.T) {
