@@ -13,6 +13,7 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-zyhq](engram-zyhq-generic-param-map-passthrough-over-embedder-profiles-asymmet.md) | 2026-07-01 | Accepted | Generic param-map passthrough over embedder profiles for asymmetric/cloud embedders |
 | [engram-ef28](engram-ef28-index-owner-scope-created-at-as-qdrant-payload-indexes.md) | 2026-06-30 | Accepted | Index owner/scope/created_at as Qdrant payload indexes |
 | [engram-1frj](engram-1frj-boundary-id-set-cursor-half-open-date-window-recall.md) | 2026-06-30 | Accepted | Boundary id-set cursor with half-open date window for recall |
 | [engram-g37x](engram-g37x-use-configurable-oidc-claim-as-record-owner-default-email.md) | 2026-06-29 | Accepted | Use configurable OIDC claim as record owner (default: email) |
