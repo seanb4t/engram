@@ -189,6 +189,47 @@ func TestEmbedParamsMergedIntoBody(t *testing.T) {
 	})
 }
 
+func TestEmbedDocumentInstruction(t *testing.T) {
+	t.Run("placeholder substituted", func(t *testing.T) {
+		var got string
+		srv := captureInput(t, &got)
+		defer srv.Close()
+		c := New(srv.URL, "k", "m", WithDocumentInstruction("search_document: {document}"))
+		if _, err := c.Embed(context.Background(), "the fox"); err != nil {
+			t.Fatalf("Embed: %v", err)
+		}
+		if got != "search_document: the fox" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("no placeholder is a prefix", func(t *testing.T) {
+		var got string
+		srv := captureInput(t, &got)
+		defer srv.Close()
+		c := New(srv.URL, "k", "m", WithDocumentInstruction("passage: "))
+		if _, err := c.Embed(context.Background(), "the fox"); err != nil {
+			t.Fatalf("Embed: %v", err)
+		}
+		if got != "passage: the fox" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("empty leaves document raw and queries are never wrapped by it", func(t *testing.T) {
+		var got string
+		srv := captureInput(t, &got)
+		defer srv.Close()
+		c := New(srv.URL, "k", "m", WithDocumentInstruction("passage: "))
+		if _, err := c.EmbedQuery(context.Background(), "a query"); err != nil {
+			t.Fatalf("EmbedQuery: %v", err)
+		}
+		if got != "a query" {
+			t.Errorf("document instruction must not affect queries; got %q", got)
+		}
+	})
+}
+
 func TestEmbedEmitsSpan(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

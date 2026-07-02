@@ -34,8 +34,12 @@ type Client struct {
 	// wrapped. Empty = symmetric embedding (queries sent raw), preserving prior
 	// behavior for embedders that do not use instructions.
 	queryInstruction string
-	queryParams      map[string]any
-	documentParams   map[string]any
+	// documentInstruction, when non-empty, wraps document text in Embed per the
+	// same rules as queryInstruction: literal "{document}" template if present,
+	// otherwise a prefix. Empty = raw document text (prior behavior).
+	documentInstruction string
+	queryParams         map[string]any
+	documentParams      map[string]any
 }
 
 // Option customizes a Client.
@@ -88,9 +92,23 @@ type embedResp struct {
 	} `json:"data"`
 }
 
-// Embed returns the embedding vector for a document (raw text, never wrapped
-// with a query instruction). Use at store/update/reindex time.
+// Embed returns the embedding vector for a document. Behavior by configured
+// document instruction:
+//   - empty: document sent raw (prior behavior).
+//   - contains "{document}": used as a literal template with the placeholder
+//     replaced by the document text.
+//   - otherwise: the instruction is prepended as a prefix.
+//
+// Use at store/update/reindex time. This never affects EmbedQuery.
 func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
+	switch {
+	case c.documentInstruction == "":
+		// raw
+	case strings.Contains(c.documentInstruction, documentPlaceholder):
+		text = strings.ReplaceAll(c.documentInstruction, documentPlaceholder, text)
+	default:
+		text = c.documentInstruction + text
+	}
 	return c.embed(ctx, text, c.documentParams, "document")
 }
 
@@ -100,6 +118,19 @@ func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
 // {query}"). Without it, the instruction is wrapped in the Qwen3-family
 // "Instruct: <instruction>\nQuery: <text>" template.
 const queryPlaceholder = "{query}"
+
+// documentPlaceholder, when present in the document instruction, is replaced by
+// the raw document text (e.g. "search_document: {document}"); otherwise the
+// instruction is prepended as a prefix.
+const documentPlaceholder = "{document}"
+
+// WithDocumentInstruction sets the document-side text applied by Embed: empty =
+// raw; contains "{document}" = literal template; otherwise prepended as a prefix
+// (e.g. "passage: "). For both-side-prefix models like E5 / nomic. Changing it
+// alters stored document vectors, so it requires a reindex to take effect.
+func WithDocumentInstruction(instruction string) Option {
+	return func(c *Client) { c.documentInstruction = instruction }
+}
 
 // EmbedQuery returns the embedding vector for a search query. Behavior by
 // configured query instruction:
