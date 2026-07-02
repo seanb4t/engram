@@ -2064,20 +2064,22 @@ func TestRemapOwner(t *testing.T) {
 	mk(subID, "old-sub-123")
 	mk(emailID, "old@example.com")
 
-	if _, err := s.RemapOwner(ctx, OwnerRemapSource{From: "x"}, "", false); err == nil {
+	if _, err := s.RemapOwner(ctx, RemapFrom("x"), "", false); err == nil {
 		t.Error("empty to: expected error")
 	}
-	if _, err := s.RemapOwner(ctx, OwnerRemapSource{From: "a"}, "a", false); err == nil {
+	if _, err := s.RemapOwner(ctx, RemapFrom("a"), "a", false); err == nil {
 		t.Error("From==to: expected error")
 	}
-	if _, err := s.RemapOwner(ctx, OwnerRemapSource{}, "to", false); err == nil {
-		t.Error("zero-value source: expected error")
-	}
-	if _, err := s.RemapOwner(ctx, OwnerRemapSource{Missing: true, From: "x"}, "to", false); err == nil {
-		t.Error("multi-select source: expected error")
+	// Sealing eliminates the old multi-select combination (e.g. the former
+	// OwnerRemapSource{Missing: true, From: "x"}) at compile time — there is
+	// no way to construct it via RemapMissing()/RemapAnon()/RemapFrom(). The
+	// interface's own zero value (nil) is still trivially constructible,
+	// though, and RemapOwner's type switch must still reject it explicitly.
+	if _, err := s.RemapOwner(ctx, nil, "to", false); err == nil {
+		t.Error("nil source: expected error")
 	}
 
-	n, err := s.RemapOwner(ctx, OwnerRemapSource{From: "old-sub-123"}, "sean@example.com", true)
+	n, err := s.RemapOwner(ctx, RemapFrom("old-sub-123"), "sean@example.com", true)
 	if err != nil || n != 1 {
 		t.Fatalf("dry-run: n=%d err=%v, want 1,nil", n, err)
 	}
@@ -2085,14 +2087,14 @@ func TestRemapOwner(t *testing.T) {
 		t.Errorf("dry-run mutated owner to %q", got.Owner)
 	}
 
-	if n, err = s.RemapOwner(ctx, OwnerRemapSource{From: "old-sub-123"}, "sean@example.com", false); err != nil || n != 1 {
+	if n, err = s.RemapOwner(ctx, RemapFrom("old-sub-123"), "sean@example.com", false); err != nil || n != 1 {
 		t.Fatalf("sub->email: n=%d err=%v", n, err)
 	}
 	if got, _ := s.Get(ctx, subID); got.Owner != "sean@example.com" {
 		t.Errorf("sub->email owner = %q", got.Owner)
 	}
 
-	if n, err = s.RemapOwner(ctx, OwnerRemapSource{From: "old@example.com"}, "new@example.com", false); err != nil || n != 1 {
+	if n, err = s.RemapOwner(ctx, RemapFrom("old@example.com"), "new@example.com", false); err != nil || n != 1 {
 		t.Fatalf("email->email: n=%d err=%v", n, err)
 	}
 	if got, _ := s.Get(ctx, emailID); got.Owner != "new@example.com" {
@@ -2118,7 +2120,7 @@ func TestRemapOwner(t *testing.T) {
 	mk(anonID, "") // explicit owner==""
 
 	// Missing matches ONLY the owner-less record, not the owner=="" bucket.
-	if n, err = s.RemapOwner(ctx, OwnerRemapSource{Missing: true}, "backfill@example.com", false); err != nil || n != 1 {
+	if n, err = s.RemapOwner(ctx, RemapMissing(), "backfill@example.com", false); err != nil || n != 1 {
 		t.Fatalf("missing->email: n=%d err=%v (want exactly 1; owner=='' must not match IsEmpty)", n, err)
 	}
 	if got, _ := s.Get(ctx, missingID); got.Owner != "backfill@example.com" {
@@ -2129,7 +2131,7 @@ func TestRemapOwner(t *testing.T) {
 	}
 
 	// Anon matches ONLY the explicit owner=="" record.
-	if n, err = s.RemapOwner(ctx, OwnerRemapSource{Anon: true}, "claimed@example.com", false); err != nil || n != 1 {
+	if n, err = s.RemapOwner(ctx, RemapAnon(), "claimed@example.com", false); err != nil || n != 1 {
 		t.Fatalf("anon->email: n=%d err=%v (want exactly 1)", n, err)
 	}
 	if got, _ := s.Get(ctx, anonID); got.Owner != "claimed@example.com" {
@@ -2137,11 +2139,116 @@ func TestRemapOwner(t *testing.T) {
 	}
 }
 
+func TestRemapFromPanicsOnEmptyValue(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("RemapFrom(\"\") did not panic; an empty From must fail at construction, not silently collapse into a different source")
+		}
+	}()
+	RemapFrom("")
+}
+
+// TestRemapOwnerIdempotentRerun verifies re-running an IDENTICAL RemapOwner
+// call is a safe no-op: after the first run re-stamps the matching record, the
+// From value no longer matches anything, so the rerun counts and mutates
+// nothing rather than erroring or double-applying.
+func TestRemapOwnerIdempotentRerun(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:remap-idempotent"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	id := "e0e0e0e0-0000-0000-0000-000000000005"
+	if err := s.Upsert(ctx, Memory{ID: id, Content: "c", Scope: scope, Owner: "old-sub", CreatedAt: time.Now().UTC()}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	src := RemapFrom("old-sub")
+	n1, err := s.RemapOwner(ctx, src, "new@example.com", false)
+	if err != nil || n1 != 1 {
+		t.Fatalf("first remap: n=%d err=%v, want 1,nil", n1, err)
+	}
+
+	n2, err := s.RemapOwner(ctx, src, "new@example.com", false)
+	if err != nil || n2 != 0 {
+		t.Fatalf("rerun: n=%d err=%v, want 0,nil (idempotent no-op)", n2, err)
+	}
+	if got, _ := s.Get(ctx, id); got.Owner != "new@example.com" {
+		t.Errorf("owner drifted on rerun: %q, want unchanged from first remap", got.Owner)
+	}
+}
+
+// TestMigrateSetOwnerEquivalentToRemapOwnerMissing pins the "deprecated alias"
+// claim in migrateSetOwnerCmd.Deprecated ("use: migrate-remap-owner
+// --from-missing --to <owner>"): MigrateSetOwner and
+// RemapOwner(RemapMissing(), ...) are two independent store-layer
+// implementations, so this regression-tests that they produce identical
+// results against identical fixtures rather than assuming the doc comment
+// stays true by construction.
+func TestMigrateSetOwnerEquivalentToRemapOwnerMissing(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:migrate-alias"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	seedOwnerless := func(id string) {
+		p := payload(Memory{ID: id, Content: "legacy", Scope: scope, CreatedAt: time.Now().UTC()})
+		delete(p, "owner")
+		if _, err := s.client.Upsert(ctx, &qdrant.UpsertPoints{
+			CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+			Points: []*qdrant.PointStruct{{
+				Id: qdrant.NewID(id), Vectors: qdrant.NewVectors(0.1, 0.2, 0.3),
+				Payload: qdrant.NewValueMap(p),
+			}},
+		}); err != nil {
+			t.Fatalf("raw upsert owner-less record %s: %v", id, err)
+		}
+	}
+
+	// Both sweeps match owner-less records across the WHOLE collection (no
+	// scope filter — see ownerlessFilter), so the two fixtures cannot coexist:
+	// each is seeded, swept, and verified before the next is created.
+	viaMigrateID := "e0e0e0e0-0000-0000-0000-000000000006"
+	seedOwnerless(viaMigrateID)
+	nMigrate, err := s.MigrateSetOwner(ctx, "backfill@example.com")
+	if err != nil {
+		t.Fatalf("MigrateSetOwner: %v", err)
+	}
+	if nMigrate != 1 {
+		t.Fatalf("MigrateSetOwner stamped %d, want exactly 1", nMigrate)
+	}
+	gotMigrate, err := s.Get(ctx, viaMigrateID)
+	if err != nil {
+		t.Fatalf("Get viaMigrate: %v", err)
+	}
+
+	viaRemapID := "e0e0e0e0-0000-0000-0000-000000000007"
+	seedOwnerless(viaRemapID)
+	nRemap, err := s.RemapOwner(ctx, RemapMissing(), "backfill@example.com", false)
+	if err != nil {
+		t.Fatalf("RemapOwner(RemapMissing()): %v", err)
+	}
+	if nRemap != 1 {
+		t.Fatalf("RemapOwner(RemapMissing()) stamped %d, want exactly 1", nRemap)
+	}
+	gotRemap, err := s.Get(ctx, viaRemapID)
+	if err != nil {
+		t.Fatalf("Get viaRemap: %v", err)
+	}
+
+	if nMigrate != nRemap {
+		t.Errorf("migrate-set-owner stamped %d, migrate-remap-owner --from-missing stamped %d, want equal", nMigrate, nRemap)
+	}
+	if gotMigrate.Owner != gotRemap.Owner {
+		t.Errorf("owner mismatch: migrate-set-owner=%q, migrate-remap-owner --from-missing=%q", gotMigrate.Owner, gotRemap.Owner)
+	}
+}
+
 func TestRemapOwnerHonorsCancel(t *testing.T) {
 	s := testStore(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := s.RemapOwner(ctx, OwnerRemapSource{From: "x"}, "y", false); err == nil {
+	if _, err := s.RemapOwner(ctx, RemapFrom("x"), "y", false); err == nil {
 		t.Error("cancelled context: expected error")
 	}
 }

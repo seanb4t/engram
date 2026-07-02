@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
+	"github.com/seanb4t/engram/internal/auth"
 	"github.com/seanb4t/engram/internal/store"
 )
 
@@ -21,7 +22,7 @@ func SubjectFromTokenInfo(ti *mcpauth.TokenInfo) (store.Subject, error) {
 	if ti == nil {
 		return store.Anonymous(), nil
 	}
-	if v, ok := ti.Extra["owner_claim"].(string); ok && v != "" {
+	if v, ok := ti.Extra[auth.OwnerClaimExtraKey].(string); ok && v != "" {
 		return store.Authenticated(v), nil
 	}
 	return nil, fmt.Errorf("validated token missing owner claim")

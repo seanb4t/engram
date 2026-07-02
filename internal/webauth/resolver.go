@@ -10,6 +10,7 @@ import (
 
 	"connectrpc.com/connect"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
+	"github.com/seanb4t/engram/internal/auth"
 )
 
 // Resolver turns the engram session cookie on a Connect request into the
@@ -50,5 +51,5 @@ func (r *Resolver) Resolve(_ context.Context, req connect.AnyRequest) (*mcpauth.
 	if sess.Owner == "" {
 		return nil, fmt.Errorf("session has empty owner")
 	}
-	return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": sess.Owner}}, nil
+	return &mcpauth.TokenInfo{Extra: map[string]any{auth.OwnerClaimExtraKey: sess.Owner}}, nil
 }

@@ -110,6 +110,10 @@ func runServe(cmd *cobra.Command) error {
 		slog.Error("web UI config invalid", "err", err)
 		return err
 	}
+	if err := ownerClaimGuard(cfg.OIDC.Issuer, uiCfg.Enabled, cfg.OIDC.OwnerClaim); err != nil {
+		slog.Error("owner-claim config invalid", "err", err)
+		return err
+	}
 
 	var connectResolve func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)
 	var webHandler *webauth.Handler
@@ -204,6 +208,30 @@ func runServe(cmd *cobra.Command) error {
 		defer cancel()
 		return httpSrv.Shutdown(shutdownCtx)
 	}
+}
+
+// ownerClaimGuard fails fast if any auth lane would run with an empty
+// owner-claim. ENGRAM_OWNER_CLAIM defaults to "email" and an empty env var
+// preserves that default (config.Load), so the only way to reach "" here is
+// an explicit --owner-claim="" — but if it happens, every authenticated
+// request/login fails with "missing owner claim" (SubjectFromTokenInfo /
+// Authenticator.exchange), which is better caught at startup than discovered
+// as a fleet-wide outage. It also warns when a non-default claim is
+// configured: only ownerClaim=="email" gets the email_verified enforcement in
+// auth.ClaimIdentity, so a different claim's uniqueness and verification
+// become the operator's IdP-side responsibility.
+func ownerClaimGuard(bearerIssuer string, uiEnabled bool, ownerClaim string) error {
+	if bearerIssuer == "" && !uiEnabled {
+		return nil // no auth lane active; owner-claim is inert
+	}
+	if ownerClaim == "" {
+		return fmt.Errorf("ENGRAM_OWNER_CLAIM (or --owner-claim) is empty while an OIDC lane is enabled: every authenticated request would fail with a missing-owner-claim error")
+	}
+	if ownerClaim != "email" {
+		slog.Warn("non-default owner-claim configured; the email_verified enforcement only applies to \"email\" — ensure your IdP guarantees this claim is unique, stable, and verified",
+			"owner_claim", ownerClaim)
+	}
+	return nil
 }
 
 // withAuth wraps the MCP handler with OIDC bearer-token validation when an issuer
