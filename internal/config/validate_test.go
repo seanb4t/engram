@@ -116,6 +116,44 @@ func TestValidateIgnoresSummaryTokensAndTimeoutWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestValidateEmbedParams(t *testing.T) {
+	// Empty (the default) is valid — validConfig leaves these unset.
+	if err := validConfig().Validate(); err != nil {
+		t.Fatalf("empty embed params: Validate() = %v, want nil", err)
+	}
+
+	cases := []struct {
+		name   string
+		mutate func(*Config)
+		want   string
+	}{
+		{"query_params not an object", func(c *Config) { c.Embed.QueryParams = `"nope"` }, "ENGRAM_EMBED_QUERY_PARAMS"},
+		{"query_params invalid json", func(c *Config) { c.Embed.QueryParams = `{bad` }, "ENGRAM_EMBED_QUERY_PARAMS"},
+		{"query_params reserved key", func(c *Config) { c.Embed.QueryParams = `{"model":"x"}` }, "reserved key"},
+		{"document_params not an object", func(c *Config) { c.Embed.DocumentParams = `[1]` }, "ENGRAM_EMBED_DOCUMENT_PARAMS"},
+		{"document_params valid is ok", func(c *Config) { c.Embed.DocumentParams = `{"input_type":"search_document"}` }, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := validConfig()
+			tc.mutate(c)
+			err := c.Validate()
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Validate() = nil, want error containing %q", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("Validate() error = %q, want substring %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestValidateAggregatesAllFailures(t *testing.T) {
 	c := validConfig()
 	c.Qdrant.Addr = ""

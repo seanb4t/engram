@@ -54,6 +54,16 @@ type EmbedConfig struct {
 	// keeps queries raw. Documents are never wrapped, so setting this needs no
 	// reindex.
 	QueryInstruction string `koanf:"query_instruction"`
+	// QueryParams / DocumentParams are JSON objects (as raw strings) merged into
+	// the /v1/embeddings request body for query vs document embeds respectively —
+	// e.g. {"input_type":"search_query"}. Empty = none. Parsed/validated in
+	// Config.Validate() and again in the embedder builder (cf. Dim), never
+	// coerced by the koanf unmarshal.
+	QueryParams    string `koanf:"query_params"`
+	DocumentParams string `koanf:"document_params"`
+	// DocumentInstruction is the document-side mirror of QueryInstruction: a text
+	// prefix/template applied to documents at store + reindex (empty = raw).
+	DocumentInstruction string `koanf:"document_instruction"`
 }
 
 // SummarizeConfig selects the recall-summary model and the character cap shared

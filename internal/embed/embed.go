@@ -34,6 +34,12 @@ type Client struct {
 	// wrapped. Empty = symmetric embedding (queries sent raw), preserving prior
 	// behavior for embedders that do not use instructions.
 	queryInstruction string
+	// documentInstruction, when non-empty, wraps document text in Embed per the
+	// same rules as queryInstruction: literal "{document}" template if present,
+	// otherwise a prefix. Empty = raw document text (prior behavior).
+	documentInstruction string
+	queryParams         map[string]any
+	documentParams      map[string]any
 }
 
 // Option customizes a Client.
@@ -45,6 +51,19 @@ type Option func(*Client)
 // documents stay raw. Empty (the default) keeps queries raw.
 func WithQueryInstruction(instruction string) Option {
 	return func(c *Client) { c.queryInstruction = instruction }
+}
+
+// WithQueryParams sets request-body params merged into query embeds (EmbedQuery),
+// e.g. {"input_type":"search_query"} for OpenRouter/Cohere. Reserved keys
+// "model"/"input" in the map are ignored (applied last, always authoritative).
+func WithQueryParams(params map[string]any) Option {
+	return func(c *Client) { c.queryParams = params }
+}
+
+// WithDocumentParams sets request-body params merged into document embeds (Embed),
+// e.g. {"input_type":"search_document"}.
+func WithDocumentParams(params map[string]any) Option {
+	return func(c *Client) { c.documentParams = params }
 }
 
 // WithHTTPTransport sets the underlying RoundTripper (e.g. otelhttp.NewTransport)
@@ -73,10 +92,24 @@ type embedResp struct {
 	} `json:"data"`
 }
 
-// Embed returns the embedding vector for a document (raw text, never wrapped
-// with a query instruction). Use at store/update/reindex time.
+// Embed returns the embedding vector for a document. Behavior by configured
+// document instruction:
+//   - empty: document sent raw (prior behavior).
+//   - contains "{document}": used as a literal template with the placeholder
+//     replaced by the document text.
+//   - otherwise: the instruction is prepended as a prefix.
+//
+// Use at store/update/reindex time. This never affects EmbedQuery.
 func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
-	return c.embed(ctx, text)
+	switch {
+	case c.documentInstruction == "":
+		// raw
+	case strings.Contains(c.documentInstruction, documentPlaceholder):
+		text = strings.ReplaceAll(c.documentInstruction, documentPlaceholder, text)
+	default:
+		text = c.documentInstruction + text
+	}
+	return c.embed(ctx, text, c.documentParams, "document")
 }
 
 // queryPlaceholder, when present in the configured query instruction, is
@@ -85,6 +118,19 @@ func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
 // {query}"). Without it, the instruction is wrapped in the Qwen3-family
 // "Instruct: <instruction>\nQuery: <text>" template.
 const queryPlaceholder = "{query}"
+
+// documentPlaceholder, when present in the document instruction, is replaced by
+// the raw document text (e.g. "search_document: {document}"); otherwise the
+// instruction is prepended as a prefix.
+const documentPlaceholder = "{document}"
+
+// WithDocumentInstruction sets the document-side text applied by Embed: empty =
+// raw; contains "{document}" = literal template; otherwise prepended as a prefix
+// (e.g. "passage: "). For both-side-prefix models like E5 / nomic. Changing it
+// alters stored document vectors, so it requires a reindex to take effect.
+func WithDocumentInstruction(instruction string) Option {
+	return func(c *Client) { c.documentInstruction = instruction }
+}
 
 // EmbedQuery returns the embedding vector for a search query. Behavior by
 // configured query instruction:
@@ -104,14 +150,16 @@ func (c *Client) EmbedQuery(ctx context.Context, text string) ([]float32, error)
 	default:
 		text = "Instruct: " + c.queryInstruction + "\nQuery: " + text
 	}
-	return c.embed(ctx, text)
+	return c.embed(ctx, text, c.queryParams, "query")
 }
 
 // embed performs the OpenAI-compatible /v1/embeddings call for a fully-formed
 // input string (document or query, already wrapped as needed).
-func (c *Client) embed(ctx context.Context, text string) (vec []float32, err error) {
-	ctx, span := tracer.Start(ctx, "embed.Embed",
-		trace.WithAttributes(attribute.String("engram.embed.model", c.model)))
+func (c *Client) embed(ctx context.Context, text string, params map[string]any, kind string) (vec []float32, err error) {
+	ctx, span := tracer.Start(ctx, "embed.Embed", trace.WithAttributes(
+		attribute.String("engram.embed.model", c.model),
+		attribute.String("engram.embed.kind", kind),
+	))
 	defer span.End()
 	start := time.Now()
 	defer func() {
@@ -124,7 +172,22 @@ func (c *Client) embed(ctx context.Context, text string) (vec []float32, err err
 		}
 	}()
 
-	body, _ := json.Marshal(embedReq{Model: c.model, Input: text})
+	// Empty params → marshal the struct (exact prior wire bytes; default path).
+	// Non-empty → merge params first, then set model/input last so they are
+	// always authoritative. Go sorts map keys on marshal; that is JSON-
+	// semantically identical, so callers compare decoded objects, not raw bytes.
+	var body []byte
+	if len(params) == 0 {
+		body, _ = json.Marshal(embedReq{Model: c.model, Input: text})
+	} else {
+		m := make(map[string]any, len(params)+2)
+		for k, v := range params {
+			m[k] = v
+		}
+		m["model"] = c.model
+		m["input"] = text
+		body, _ = json.Marshal(m)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/embeddings", bytes.NewReader(body))
 	if err != nil {
 		return nil, err

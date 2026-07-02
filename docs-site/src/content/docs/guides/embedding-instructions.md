@@ -1,6 +1,6 @@
 ---
 title: Embedding query instructions
-description: Tune recall quality with ENGRAM_EMBED_QUERY_INSTRUCTION — when to set a query-side instruction, and the exact value for Qwen3, BGE, E5, nomic, OpenAI, Google, Cohere, Voyage, and Jina embedders.
+description: Tune recall quality with ENGRAM_EMBED_QUERY_INSTRUCTION/ENGRAM_EMBED_DOCUMENT_INSTRUCTION and ENGRAM_EMBED_QUERY_PARAMS/ENGRAM_EMBED_DOCUMENT_PARAMS — when to set each, and the exact value for Qwen3, BGE, E5, nomic, OpenAI, Google, Cohere, Voyage, and Jina embedders.
 ---
 
 Many retrieval embedders are **asymmetric**: they expect the search *query* to be
@@ -11,13 +11,23 @@ query is phrased.
 
 `ENGRAM_EMBED_QUERY_INSTRUCTION` fixes this for text-prefix embedders. It changes
 only the **query** embedding, so documents are untouched and **no reindex is
-needed** to adopt it.
+needed** to adopt it. For models that need a prefix on both sides, and for cloud
+providers whose asymmetry is an API parameter rather than a text prefix,
+`ENGRAM_EMBED_DOCUMENT_INSTRUCTION` and `ENGRAM_EMBED_QUERY_PARAMS`/
+`ENGRAM_EMBED_DOCUMENT_PARAMS` cover the rest — see the sections below.
+
+## Hot vs reindex-gated
+
+- **Hot (no reindex):** `ENGRAM_EMBED_QUERY_INSTRUCTION`, `ENGRAM_EMBED_QUERY_PARAMS` — they change only the query vector at search time.
+- **Reindex-gated:** `ENGRAM_EMBED_DOCUMENT_INSTRUCTION`, `ENGRAM_EMBED_DOCUMENT_PARAMS` (and tags-in-vector) — they change the stored document vector, so existing records need `engram reindex` + a collection cutover (see [Reindex](/guides/reindex/)).
 
 ## How the knob behaves
 
 `ENGRAM_EMBED_QUERY_INSTRUCTION` is applied by `EmbedQuery` (used by
-`search_memory` and `search_discovery`); the store/update/reindex paths always
-embed documents raw. Three modes, chosen by the value:
+`search_memory` and `search_discovery`); it never affects the store/update/reindex
+paths, which embed documents per `ENGRAM_EMBED_DOCUMENT_INSTRUCTION` (raw by
+default — see the "both-side prefix" section below). Three modes, chosen by the
+`ENGRAM_EMBED_QUERY_INSTRUCTION` value:
 
 - **Empty (default):** the query is embedded raw — symmetric behavior, unchanged
   from before. Correct for symmetric models.
@@ -60,32 +70,41 @@ These are trained without a query instruction; adding one *hurts*. Leave
 | mistral-embed | symmetric |
 | Amazon Titan Text Embeddings v2 | symmetric |
 
-### Both-side prefix models — not yet supported
+### Both-side prefix models — both sides required
 
 These require a prefix on **both** the query and the document (and a query-only
-prefix is *worse* than none). The document side needs a reindex, which this knob
-does not do — leave it empty until that lands (`engram-wd89.1`).
+prefix is *worse* than none). Set `ENGRAM_EMBED_QUERY_INSTRUCTION` (hot — takes
+effect immediately) and `ENGRAM_EMBED_DOCUMENT_INSTRUCTION` (changes stored
+vectors — set it before indexing, or run `engram reindex` afterward; see
+[Reindex](/guides/reindex/)).
 
-| Model | Query / document prefix |
-| --- | --- |
-| intfloat/e5-\* (e5-base/large, multilingual-e5-large) | `query: ` / `passage: ` |
-| nomic-embed-text-v1 / v1.5 | `search_query: ` / `search_document: ` |
+| Model | `ENGRAM_EMBED_QUERY_INSTRUCTION` (hot) | `ENGRAM_EMBED_DOCUMENT_INSTRUCTION` (needs reindex) |
+| --- | --- | --- |
+| intfloat/e5-\* (e5-base/large, multilingual-e5-large) | `query: {query}` | `passage: {document}` |
+| nomic-embed-text-v1 / v1.5 | `search_query: {query}` | `search_document: {document}` |
 
 ### Cloud models — asymmetry is an API parameter, not a text prefix
 
-Google, Cohere, Voyage, and Jina do not take the instruction as text — they take
-a **request field** (`task_type` / `input_type` / `task`) that engram's
-text-prefix knob cannot set. **Leave `ENGRAM_EMBED_QUERY_INSTRUCTION` empty** and
-inject the retrieval parameter at your OpenAI-compatible gateway (e.g. LiteLLM
-per-call `input_type`), which is the only place that field can be added today.
-Native passthrough is tracked in `engram-wd89.1`.
+Google, Cohere, Voyage, and Jina take the query/document asymmetry as a
+**request field** (`task_type` / `input_type` / `task`), not a text prefix.
+`ENGRAM_EMBED_QUERY_PARAMS` and `ENGRAM_EMBED_DOCUMENT_PARAMS` set this natively:
+each is a JSON object merged into the `/v1/embeddings` request body (query params
+into `EmbedQuery` calls, document params into `Embed` calls); the reserved keys
+`model` and `input` are rejected since engram sets those authoritatively.
+Alternatively, you can still inject the field at your OpenAI-compatible gateway
+(e.g. a LiteLLM per-call mapping) if you'd rather not set it in engram.
 
-| Provider / model | Request field — query vs document |
+| Provider / model | `ENGRAM_EMBED_QUERY_PARAMS` / `ENGRAM_EMBED_DOCUMENT_PARAMS` |
 | --- | --- |
-| Google Gemini / Vertex (gemini-embedding-001, text-embedding-004/005, text-multilingual-embedding-002) | `task_type=RETRIEVAL_QUERY` / `RETRIEVAL_DOCUMENT` |
-| Cohere embed v3 (embed-english-v3.0, embed-multilingual-v3.0) | `input_type=search_query` / `search_document` (**required**) |
-| Voyage (voyage-3, voyage-3-lite, voyage-large-2-instruct) | `input_type=query` / `document` (optional) |
-| Jina embeddings v3 | `task=retrieval.query` / `retrieval.passage` |
+| Cohere embed v3 | `{"input_type":"search_query"}` / `{"input_type":"search_document"}` (**required**) |
+| Voyage (voyage-3, voyage-3-lite, voyage-large-2-instruct) | `{"input_type":"query"}` / `{"input_type":"document"}` (optional) |
+| OpenRouter | forwards whichever field name/value the backend model expects — see its row above |
+| Jina embeddings v3 | `{"task":"retrieval.query"}` / `{"task":"retrieval.passage"}` |
+| Google Gemini / Vertex | `{"task_type":"RETRIEVAL_QUERY"}` / `{"task_type":"RETRIEVAL_DOCUMENT"}` |
+
+The gateway forwards these fields to the provider (OpenRouter accepts
+`input_type` natively; LiteLLM maps provider params per model). The **document**
+side changes stored vectors, so set it before indexing or run a reindex.
 
 ## Tags are part of the document vector
 
