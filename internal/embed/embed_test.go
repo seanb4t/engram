@@ -229,7 +229,7 @@ func TestEmbedDocumentInstruction(t *testing.T) {
 		}
 	})
 
-	t.Run("empty leaves document raw and queries are never wrapped by it", func(t *testing.T) {
+	t.Run("document instruction does not affect EmbedQuery", func(t *testing.T) {
 		var got string
 		srv := captureInput(t, &got)
 		defer srv.Close()
@@ -239,6 +239,19 @@ func TestEmbedDocumentInstruction(t *testing.T) {
 		}
 		if got != "a query" {
 			t.Errorf("document instruction must not affect queries; got %q", got)
+		}
+	})
+
+	t.Run("no document instruction leaves document raw", func(t *testing.T) {
+		var got string
+		srv := captureInput(t, &got)
+		defer srv.Close()
+		c := New(srv.URL, "k", "m") // no WithDocumentInstruction
+		if _, err := c.Embed(context.Background(), "the fox"); err != nil {
+			t.Fatalf("Embed: %v", err)
+		}
+		if got != "the fox" {
+			t.Errorf("got %q", got)
 		}
 	})
 }
