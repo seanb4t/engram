@@ -96,7 +96,9 @@ Alternatively, you can still inject the field at your OpenAI-compatible gateway
 
 | Provider / model | `ENGRAM_EMBED_QUERY_PARAMS` / `ENGRAM_EMBED_DOCUMENT_PARAMS` |
 | --- | --- |
-| OpenRouter, Cohere embed v3, Voyage | `{"input_type":"search_query"}` / `{"input_type":"search_document"}` |
+| Cohere embed v3 | `{"input_type":"search_query"}` / `{"input_type":"search_document"}` (**required**) |
+| Voyage (voyage-3, voyage-3-lite, voyage-large-2-instruct) | `{"input_type":"query"}` / `{"input_type":"document"}` (optional) |
+| OpenRouter | forwards whichever field name/value the backend model expects — see its row above |
 | Jina embeddings v3 | `{"task":"retrieval.query"}` / `{"task":"retrieval.passage"}` |
 | Google Gemini / Vertex | `{"task_type":"RETRIEVAL_QUERY"}` / `{"task_type":"RETRIEVAL_DOCUMENT"}` |
 
