@@ -1234,7 +1234,11 @@ func TestEmbedderFromConfigPassesParamsAndInstructions(t *testing.T) {
 		},
 	}
 	// Must construct without panic and yield a usable client (smoke: nil-safe).
-	if em := embedderFromConfig(cfg); em == nil {
+	em, err := embedderFromConfig(cfg)
+	if err != nil {
+		t.Fatalf("embedderFromConfig: %v", err)
+	}
+	if em == nil {
 		t.Fatal("embedderFromConfig returned nil")
 	}
 }

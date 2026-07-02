@@ -135,7 +135,11 @@ func StoreAndEmbedderFromEnvNoEnsure() (*store.Store, uint64, *embed.Client, err
 	if err != nil {
 		return nil, 0, nil, err
 	}
-	return st, dim, embedderFromConfig(cfg), nil
+	em, err := embedderFromConfig(cfg)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	return st, dim, em, nil
 }
 
 // buildDepsFromEnv wires up the store and embedder from the environment with a
@@ -151,7 +155,11 @@ func buildDepsFromEnv() (*deps, error) {
 		return nil, err
 	}
 	warnOwnerlessRecords(st)
-	return &deps{st: st, em: embedderFromConfig(cfg), summaryMaxChars: summaryMaxChars(cfg)}, nil
+	em, err := embedderFromConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &deps{st: st, em: em, summaryMaxChars: summaryMaxChars(cfg)}, nil
 }
 
 // summaryMaxChars parses the recall cap, defaulting to 280 on empty/invalid.
@@ -199,17 +207,24 @@ func summaryTimeout(cfg *config.Config) time.Duration {
 
 // embedderFromConfig builds the OpenAI-compatible embedder from an already-loaded
 // config.
-func embedderFromConfig(cfg *config.Config) *embed.Client {
-	// Validated upstream in loadAndValidate → Config.Validate(); errors are
-	// unreachable here (same pattern as storeFromConfig for Dim).
-	queryParams, _ := config.ParseEmbedParams("ENGRAM_EMBED_QUERY_PARAMS", cfg.Embed.QueryParams)
-	documentParams, _ := config.ParseEmbedParams("ENGRAM_EMBED_DOCUMENT_PARAMS", cfg.Embed.DocumentParams)
+func embedderFromConfig(cfg *config.Config) (*embed.Client, error) {
+	// ParseEmbedParams errors are surfaced here (not discarded) so a malformed
+	// ENGRAM_EMBED_QUERY_PARAMS / ENGRAM_EMBED_DOCUMENT_PARAMS value fails
+	// startup instead of silently disabling the params.
+	queryParams, err := config.ParseEmbedParams("ENGRAM_EMBED_QUERY_PARAMS", cfg.Embed.QueryParams)
+	if err != nil {
+		return nil, err
+	}
+	documentParams, err := config.ParseEmbedParams("ENGRAM_EMBED_DOCUMENT_PARAMS", cfg.Embed.DocumentParams)
+	if err != nil {
+		return nil, err
+	}
 	return embed.New(cfg.OpenAI.BaseURL, cfg.OpenAI.APIKey, cfg.Embed.Model,
 		embed.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)),
 		embed.WithQueryInstruction(cfg.Embed.QueryInstruction),
 		embed.WithDocumentInstruction(cfg.Embed.DocumentInstruction),
 		embed.WithQueryParams(queryParams),
-		embed.WithDocumentParams(documentParams))
+		embed.WithDocumentParams(documentParams)), nil
 }
 
 // summarizerFromConfig builds the chat-completions summarizer from config.
