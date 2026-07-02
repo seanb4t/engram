@@ -71,6 +71,16 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("ENGRAM_OPENAI_BASE_URL %q: missing host", c.OpenAI.BaseURL))
 	}
 
+	// Query/document params: empty is a valid no-op (self-gated); a non-empty
+	// value must be a JSON object with no reserved keys. Only well-formedness is
+	// checked here — Load stays assembly-only (ADR engram-wtw).
+	if _, err := ParseEmbedParams("ENGRAM_EMBED_QUERY_PARAMS", c.Embed.QueryParams); err != nil {
+		errs = append(errs, err)
+	}
+	if _, err := ParseEmbedParams("ENGRAM_EMBED_DOCUMENT_PARAMS", c.Embed.DocumentParams); err != nil {
+		errs = append(errs, err)
+	}
+
 	if c.Summarize.Model != "" {
 		switch n, err := strconv.ParseUint(c.Summarize.MaxChars, 10, 64); {
 		case err != nil:
