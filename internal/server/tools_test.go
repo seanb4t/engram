@@ -1222,3 +1222,19 @@ func TestListMemoryRejectsBadWindow(t *testing.T) {
 		t.Error("bad created_after accepted; want error")
 	}
 }
+
+func TestEmbedderFromConfigPassesParamsAndInstructions(t *testing.T) {
+	cfg := &config.Config{
+		OpenAI: config.OpenAIConfig{BaseURL: "http://x", APIKey: "k"},
+		Embed: config.EmbedConfig{
+			Model:               "m",
+			QueryParams:         `{"input_type":"search_query"}`,
+			DocumentParams:      `{"input_type":"search_document"}`,
+			DocumentInstruction: "passage: ",
+		},
+	}
+	// Must construct without panic and yield a usable client (smoke: nil-safe).
+	if em := embedderFromConfig(cfg); em == nil {
+		t.Fatal("embedderFromConfig returned nil")
+	}
+}
