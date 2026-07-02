@@ -5,6 +5,8 @@ package main
 
 import (
 	"testing"
+
+	"github.com/seanb4t/engram/internal/store"
 )
 
 func TestRemapOwnerFlagValidation(t *testing.T) {
@@ -26,9 +28,28 @@ func TestRemapOwnerFlagValidation(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := buildRemapSource(c.from, c.missing, c.anon, c.to)
+			src, err := buildRemapSource(c.from, c.missing, c.anon, c.to)
 			if (err != nil) != c.wantErr {
 				t.Errorf("buildRemapSource(%+v) err=%v, wantErr=%v", c, err, c.wantErr)
+			}
+			// On success, pin which concrete store.OwnerRemapSource
+			// buildRemapSource wired the flags to — comparable structs, so a
+			// plain == against the exported constructors both confirms the
+			// variant AND its wrapped value (e.g. RemapFrom("old")), unlike a
+			// type-name-only check.
+			if err == nil {
+				var want store.OwnerRemapSource
+				switch {
+				case c.missing:
+					want = store.RemapMissing()
+				case c.anon:
+					want = store.RemapAnon()
+				default:
+					want = store.RemapFrom(c.from)
+				}
+				if src != want {
+					t.Errorf("buildRemapSource(%+v) = %v, want %v", c, src, want)
+				}
 			}
 		})
 	}

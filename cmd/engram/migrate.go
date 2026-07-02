@@ -65,12 +65,12 @@ var (
 	remapTimeout time.Duration
 )
 
-// buildRemapSource validates the mutually-exclusive source flags and required
-// --to, returning the store source. Pure (no I/O) so it is unit-testable.
+// buildRemapSource validates the mutually-exclusive source flags, constructs
+// the sealed store.OwnerRemapSource, and runs the shared
+// store.ValidateOwnerRemap (--to non-empty, no-op --from X --to X) so both
+// fail fast before opening a Qdrant connection. Pure (no I/O) so it is
+// unit-testable.
 func buildRemapSource(from string, missing, anon bool, to string) (store.OwnerRemapSource, error) {
-	if to == "" {
-		return store.OwnerRemapSource{}, fmt.Errorf("--to is required and must be non-empty")
-	}
 	selected := 0
 	if missing {
 		selected++
@@ -82,14 +82,21 @@ func buildRemapSource(from string, missing, anon bool, to string) (store.OwnerRe
 		selected++
 	}
 	if selected != 1 {
-		return store.OwnerRemapSource{}, fmt.Errorf("exactly one source required: --from <value> | --from-missing | --from-anon")
+		return nil, fmt.Errorf("exactly one source required: --from <value> | --from-missing | --from-anon")
 	}
-	// Mirror RemapOwner's check here so a no-op --from X --to X fails fast with a
-	// friendly error before opening a Qdrant connection.
-	if from != "" && from == to {
-		return store.OwnerRemapSource{}, fmt.Errorf("--from and --to are identical (%q)", to)
+	var src store.OwnerRemapSource
+	switch {
+	case missing:
+		src = store.RemapMissing()
+	case anon:
+		src = store.RemapAnon()
+	default:
+		src = store.RemapFrom(from)
 	}
-	return store.OwnerRemapSource{Missing: missing, Anon: anon, From: from}, nil
+	if err := store.ValidateOwnerRemap(src, to); err != nil {
+		return nil, err
+	}
+	return src, nil
 }
 
 var migrateRemapOwnerCmd = &cobra.Command{

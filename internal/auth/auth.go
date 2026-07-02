@@ -31,6 +31,13 @@ import (
 
 var tracer = otel.Tracer("github.com/seanb4t/engram/internal/auth")
 
+// OwnerClaimExtraKey is the mcpauth.TokenInfo.Extra key carrying the resolved
+// owner-claim value. Both auth lanes stamp it (the bearer lane here, the
+// Connect cookie lane in internal/webauth) so internal/server's
+// SubjectFromTokenInfo has one contract to read instead of three ad hoc
+// string literals.
+const OwnerClaimExtraKey = "owner_claim"
+
 // idVerifier is the subset of *oidc.IDTokenVerifier that TokenVerifier needs.
 // Extracting it as an interface lets tests inject a stub — the concrete oidc
 // verifier is hard to fake.
@@ -132,7 +139,7 @@ func (v *Verifier) TokenVerifier() mcpauth.TokenVerifier {
 		return &mcpauth.TokenInfo{
 			UserID:     identity(idt.Subject, email, username),
 			Expiration: idt.Expiry,
-			Extra:      map[string]any{"sub": idt.Subject, "email": email, "owner_claim": ownerVal},
+			Extra:      map[string]any{"sub": idt.Subject, "email": email, OwnerClaimExtraKey: ownerVal},
 		}, nil
 	}
 }

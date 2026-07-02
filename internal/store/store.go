@@ -1461,16 +1461,70 @@ func (s *Store) MigrateSetOwner(ctx context.Context, owner string) (n uint64, er
 	return cnt, nil
 }
 
-// OwnerRemapSource selects which records RemapOwner re-stamps. Exactly one of
-// the three must be set (validated in RemapOwner): Missing matches owner-less
-// (pre-isolation) records via IsEmpty; Anon matches the explicit anonymous
-// bucket (owner==""); From matches a specific current owner value (a sub or an
-// email). Missing and Anon are distinct because IsEmpty("owner") and
-// Match("owner","") target different record sets.
-type OwnerRemapSource struct {
-	Missing bool
-	Anon    bool
-	From    string
+// OwnerRemapSource selects which records RemapOwner re-stamps. It is a sealed
+// sum, like Subject: exactly RemapMissing() (owner-less, pre-isolation records
+// via IsEmpty), RemapAnon() (the explicit anonymous bucket, owner==""), or
+// RemapFrom(sub) (a specific current owner value, a sub or an email). Missing
+// and Anon are distinct because IsEmpty("owner") and Match("owner","") target
+// different record sets. Sealing (the unexported marker method) makes "which
+// source" a compile-time-exhaustive choice instead of a runtime field-count
+// check. Like Subject's enforcement gates, dispatch happens via a single
+// exhaustive type switch in RemapOwner rather than per-variant interface
+// methods, so an unhandled/nil source is nil-safe by construction — a type
+// switch's default arm matches a nil interface value without panicking.
+// OwnerRemapSource has no Subject-style accessor method (Subject's Owner())
+// because nothing outside RemapOwner's own switch needs a value out of the
+// source; ValidateOwnerRemap gets what it needs (remapFrom.from) the same way.
+type OwnerRemapSource interface {
+	isOwnerRemapSource()
+}
+
+type remapMissing struct{}
+
+func (remapMissing) isOwnerRemapSource() {}
+
+type remapAnon struct{}
+
+func (remapAnon) isOwnerRemapSource() {}
+
+type remapFrom struct{ from string }
+
+func (remapFrom) isOwnerRemapSource() {}
+
+// RemapMissing selects owner-less (pre-isolation) records.
+func RemapMissing() OwnerRemapSource { return remapMissing{} }
+
+// RemapAnon selects the explicit anonymous bucket (owner=="").
+func RemapAnon() OwnerRemapSource { return remapAnon{} }
+
+// RemapFrom selects records currently stamped with the given owner value (a
+// sub or an email). It panics on an empty value, consistent with
+// Authenticated's empty-owner panic: an empty From must never silently
+// collapse into a different source.
+func RemapFrom(from string) OwnerRemapSource {
+	if from == "" {
+		panic("store.RemapFrom: from value must be non-empty")
+	}
+	return remapFrom{from: from}
+}
+
+// ValidateOwnerRemap reports whether src and to are well-formed for a remap:
+// src must be non-nil, to must be non-empty, and (for a RemapFrom source)
+// remapping a value onto itself is a no-op the caller almost certainly didn't
+// intend. It is a free function, not an OwnerRemapSource method, because `to`
+// is not a property of the source — shared by RemapOwner and the CLI's
+// buildRemapSource so this check lives in one place.
+func ValidateOwnerRemap(src OwnerRemapSource, to string) error {
+	if src == nil {
+		return errors.New("owner remap source is required")
+	}
+	if to == "" {
+		return errors.New("to must be non-empty")
+	}
+	if f, ok := src.(remapFrom); ok && f.from == to {
+		return fmt.Errorf("from and to are identical (%q)", to)
+	}
+	return nil
 }
 
 // RemapOwner re-stamps owner=<selected source> -> owner=to across the WHOLE
@@ -1492,34 +1546,23 @@ func (s *Store) RemapOwner(ctx context.Context, src OwnerRemapSource, to string,
 		}
 	}()
 
-	if to == "" {
-		return 0, fmt.Errorf("to must be non-empty")
+	if err = ValidateOwnerRemap(src, to); err != nil {
+		return 0, err
 	}
-	selected := 0
-	if src.Missing {
-		selected++
-	}
-	if src.Anon {
-		selected++
-	}
-	if src.From != "" {
-		selected++
-	}
-	if selected != 1 {
-		return 0, fmt.Errorf("exactly one source required (Missing | Anon | From)")
-	}
-	if src.From != "" && src.From == to {
-		return 0, fmt.Errorf("from and to are identical (%q)", to)
-	}
-
 	var filter *qdrant.Filter
-	switch {
-	case src.Missing:
+	switch sj := src.(type) {
+	case remapMissing:
 		filter = ownerlessFilter()
-	case src.Anon:
+	case remapAnon:
 		filter = &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatch("owner", "")}}
+	case remapFrom:
+		filter = &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatch("owner", sj.from)}}
 	default:
-		filter = &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatch("owner", src.From)}}
+		// ValidateOwnerRemap already rejected nil above, so reaching here
+		// means a non-nil src of a sealed variant this switch doesn't
+		// recognize — a future OwnerRemapSource variant added without a
+		// corresponding case, not a caller-input problem.
+		return 0, fmt.Errorf("owner remap: unrecognized source type %T", sj)
 	}
 
 	cnt, err := s.client.Count(ctx, &qdrant.CountPoints{
