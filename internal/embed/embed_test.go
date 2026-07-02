@@ -132,6 +132,63 @@ func TestEmbedQueryInstruction(t *testing.T) {
 	})
 }
 
+// captureBody records the full decoded request body of each embeddings request.
+func captureBody(t *testing.T, got *map[string]any) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		*got = body
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"embedding": []float32{0.1}}},
+		})
+	}))
+}
+
+func TestEmbedParamsMergedIntoBody(t *testing.T) {
+	t.Run("query params merged by EmbedQuery", func(t *testing.T) {
+		var got map[string]any
+		srv := captureBody(t, &got)
+		defer srv.Close()
+		c := New(srv.URL, "k", "m", WithQueryParams(map[string]any{"input_type": "search_query"}))
+		if _, err := c.EmbedQuery(context.Background(), "hello"); err != nil {
+			t.Fatalf("EmbedQuery: %v", err)
+		}
+		if got["input_type"] != "search_query" || got["model"] != "m" || got["input"] != "hello" {
+			t.Errorf("body = %v; want input_type=search_query, model=m, input=hello", got)
+		}
+	})
+
+	t.Run("document params merged by Embed", func(t *testing.T) {
+		var got map[string]any
+		srv := captureBody(t, &got)
+		defer srv.Close()
+		c := New(srv.URL, "k", "m", WithDocumentParams(map[string]any{"input_type": "search_document"}))
+		if _, err := c.Embed(context.Background(), "doc"); err != nil {
+			t.Fatalf("Embed: %v", err)
+		}
+		if got["input_type"] != "search_document" || got["input"] != "doc" {
+			t.Errorf("body = %v; want input_type=search_document, input=doc", got)
+		}
+	})
+
+	t.Run("reserved keys cannot be clobbered by params", func(t *testing.T) {
+		var got map[string]any
+		srv := captureBody(t, &got)
+		defer srv.Close()
+		// Even a caller that bypasses config validation cannot override model/input.
+		c := New(srv.URL, "k", "m", WithQueryParams(map[string]any{"model": "evil", "input": "evil"}))
+		if _, err := c.EmbedQuery(context.Background(), "real"); err != nil {
+			t.Fatalf("EmbedQuery: %v", err)
+		}
+		if got["model"] != "m" || got["input"] != "real" {
+			t.Errorf("body = %v; model/input must be authoritative", got)
+		}
+	})
+}
+
 func TestEmbedEmitsSpan(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

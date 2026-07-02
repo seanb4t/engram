@@ -34,6 +34,8 @@ type Client struct {
 	// wrapped. Empty = symmetric embedding (queries sent raw), preserving prior
 	// behavior for embedders that do not use instructions.
 	queryInstruction string
+	queryParams      map[string]any
+	documentParams   map[string]any
 }
 
 // Option customizes a Client.
@@ -45,6 +47,19 @@ type Option func(*Client)
 // documents stay raw. Empty (the default) keeps queries raw.
 func WithQueryInstruction(instruction string) Option {
 	return func(c *Client) { c.queryInstruction = instruction }
+}
+
+// WithQueryParams sets request-body params merged into query embeds (EmbedQuery),
+// e.g. {"input_type":"search_query"} for OpenRouter/Cohere. Reserved keys
+// "model"/"input" in the map are ignored (applied last, always authoritative).
+func WithQueryParams(params map[string]any) Option {
+	return func(c *Client) { c.queryParams = params }
+}
+
+// WithDocumentParams sets request-body params merged into document embeds (Embed),
+// e.g. {"input_type":"search_document"}.
+func WithDocumentParams(params map[string]any) Option {
+	return func(c *Client) { c.documentParams = params }
 }
 
 // WithHTTPTransport sets the underlying RoundTripper (e.g. otelhttp.NewTransport)
@@ -76,7 +91,7 @@ type embedResp struct {
 // Embed returns the embedding vector for a document (raw text, never wrapped
 // with a query instruction). Use at store/update/reindex time.
 func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
-	return c.embed(ctx, text)
+	return c.embed(ctx, text, c.documentParams, "document")
 }
 
 // queryPlaceholder, when present in the configured query instruction, is
@@ -104,14 +119,16 @@ func (c *Client) EmbedQuery(ctx context.Context, text string) ([]float32, error)
 	default:
 		text = "Instruct: " + c.queryInstruction + "\nQuery: " + text
 	}
-	return c.embed(ctx, text)
+	return c.embed(ctx, text, c.queryParams, "query")
 }
 
 // embed performs the OpenAI-compatible /v1/embeddings call for a fully-formed
 // input string (document or query, already wrapped as needed).
-func (c *Client) embed(ctx context.Context, text string) (vec []float32, err error) {
-	ctx, span := tracer.Start(ctx, "embed.Embed",
-		trace.WithAttributes(attribute.String("engram.embed.model", c.model)))
+func (c *Client) embed(ctx context.Context, text string, params map[string]any, kind string) (vec []float32, err error) {
+	ctx, span := tracer.Start(ctx, "embed.Embed", trace.WithAttributes(
+		attribute.String("engram.embed.model", c.model),
+		attribute.String("engram.embed.kind", kind),
+	))
 	defer span.End()
 	start := time.Now()
 	defer func() {
@@ -124,7 +141,22 @@ func (c *Client) embed(ctx context.Context, text string) (vec []float32, err err
 		}
 	}()
 
-	body, _ := json.Marshal(embedReq{Model: c.model, Input: text})
+	// Empty params → marshal the struct (exact prior wire bytes; default path).
+	// Non-empty → merge params first, then set model/input last so they are
+	// always authoritative. Go sorts map keys on marshal; that is JSON-
+	// semantically identical, so callers compare decoded objects, not raw bytes.
+	var body []byte
+	if len(params) == 0 {
+		body, _ = json.Marshal(embedReq{Model: c.model, Input: text})
+	} else {
+		m := make(map[string]any, len(params)+2)
+		for k, v := range params {
+			m[k] = v
+		}
+		m["model"] = c.model
+		m["input"] = text
+		body, _ = json.Marshal(m)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/embeddings", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
