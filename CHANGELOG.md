@@ -1,5 +1,93 @@
 # Changelog
 
+## [0.5.0](https://github.com/seanb4t/engram/compare/v0.8.2...v0.5.0) (2026-07-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* derive record owner from configurable OIDC claim + migrate-remap-owner (engram-8bsz) ([#248](https://github.com/seanb4t/engram/issues/248))
+* **serve:** configurable MCP transport path (MEM_MCP_PATH); console at root when UI enabled ([#108](https://github.com/seanb4t/engram/issues/108)) (#111)
+* cookie/OIDC auth lane for the Connect web UI (R1–R4) ([#67](https://github.com/seanb4t/engram/issues/67))
+
+### Features
+
+* **api:** tag filter parity on Connect EngramService ([#166](https://github.com/seanb4t/engram/issues/166)) ([6e6d626](https://github.com/seanb4t/engram/commit/6e6d626004fa4383e663f259bfadb07302696a1b))
+* asymmetric/cloud embedder param passthrough (engram-0qed) ([#264](https://github.com/seanb4t/engram/issues/264)) ([7f376db](https://github.com/seanb4t/engram/commit/7f376db412232922bb8fcb1902b36c9bac654481))
+* **auth:** decouple web-UI OIDC issuer from MCP bearer issuer (MEM_UI_ISSUER) ([#105](https://github.com/seanb4t/engram/issues/105)) ([e8f7a4b](https://github.com/seanb4t/engram/commit/e8f7a4b743bb7651b99c3fe852940dd24b754be1))
+* **chart:** allow custom PVC annotations (for deletion protection) ([#13](https://github.com/seanb4t/engram/issues/13)) ([30a90bd](https://github.com/seanb4t/engram/commit/30a90bda133111c3439b1711cde5a20200ab0203))
+* **chart:** engram Helm chart (qdrant + memory-mcp) ([0f3c483](https://github.com/seanb4t/engram/commit/0f3c483cda6b9a4e6d519105a9bf635104a81b2f))
+* **chart:** expose web-UI lane env vars (MEM_UI_*/MEM_OIDC_CLIENT_*) ([#91](https://github.com/seanb4t/engram/issues/91)) ([16253f5](https://github.com/seanb4t/engram/commit/16253f5585ec5d71669c5f3c24e3f96054d00cd0))
+* **chart:** internal-CA trust for embedder + secret-backed OTLP headers ([#48](https://github.com/seanb4t/engram/issues/48)) ([e93d3d0](https://github.com/seanb4t/engram/commit/e93d3d06d53a3db6d1d57ae748f5247af4e82b24))
+* **chart:** optional Ingress / Gateway API HTTPRoute to expose the console ([#99](https://github.com/seanb4t/engram/issues/99)) ([42178a9](https://github.com/seanb4t/engram/commit/42178a9f592c4c8123869977e0027d6c88084540))
+* **chart:** optional native S3 snapshot storage for Qdrant ([#12](https://github.com/seanb4t/engram/issues/12)) ([6d3a116](https://github.com/seanb4t/engram/commit/6d3a116bde70f5eba03d2463d5c44c92a6065e4e))
+* **chart:** surface auto-summary config (ENGRAM_SUMMARY_MODEL/_MAX_CHARS) ([#215](https://github.com/seanb4t/engram/issues/215)) ([c641523](https://github.com/seanb4t/engram/commit/c64152305c9d3af3999020890a896c8a0257b423))
+* **cmd:** add 'engram reindex' for embedder/model migration ([#117](https://github.com/seanb4t/engram/issues/117)) ([#123](https://github.com/seanb4t/engram/issues/123)) ([987045c](https://github.com/seanb4t/engram/commit/987045c42aaeb4ef69abb1a2792f10c8801bc6e7))
+* cobra CLI (engram serve/version) ([9d2c97e](https://github.com/seanb4t/engram/commit/9d2c97e9db44c56a0bac0f7b2b5937cae29e606a))
+* **config:** centralized Config.Validate for data-plane well-formedness ([#143](https://github.com/seanb4t/engram/issues/143)) ([eed8963](https://github.com/seanb4t/engram/commit/eed8963558777ecad112d5e6a6e392de2ffbf67a))
+* **connect:** cursor_mode opt-in for ListMemories first-page bootstrap (engram-3hp9) ([#255](https://github.com/seanb4t/engram/issues/255)) ([42ef01c](https://github.com/seanb4t/engram/commit/42ef01c1cf6caedf7d5071a04bb9c5f972824237))
+* cookie/OIDC auth lane for the Connect web UI (R1–R4) ([#67](https://github.com/seanb4t/engram/issues/67)) ([5ee3982](https://github.com/seanb4t/engram/commit/5ee39827eafb53f78b164596e5c9e3e3ce55c02f))
+* derive record owner from configurable OIDC claim + migrate-remap-owner (engram-8bsz) ([#248](https://github.com/seanb4t/engram/issues/248)) ([d6ea507](https://github.com/seanb4t/engram/commit/d6ea507df6bbd3dd88948526df2239dc5032316f))
+* discovery memory type (citation-backed, aging-aware) ([#27](https://github.com/seanb4t/engram/issues/27)) ([77bc40a](https://github.com/seanb4t/engram/commit/77bc40af86048a876f2e179daf714b9b644c5468))
+* **docs-site:** landing-page redesign — sidebar, hero, cards, footer (engram-45i) ([#133](https://github.com/seanb4t/engram/issues/133)) ([4dbc5ff](https://github.com/seanb4t/engram/commit/4dbc5ff365543a37c48ce9587cf5e185a28af759))
+* **embed:** asymmetric query instruction + tags-in-vector + expose score (engram-wd89) ([#262](https://github.com/seanb4t/engram/issues/262)) ([08a0b97](https://github.com/seanb4t/engram/commit/08a0b9793150c78f1c166278cd9c44c058544f8c))
+* engram brand system — console identity + docs-site unification ([#127](https://github.com/seanb4t/engram/issues/127)) ([9b55779](https://github.com/seanb4t/engram/commit/9b55779c0936d4dba5731d1abafdf5da01e4839a))
+* engram operator-console SPA (v1 observe) ([#79](https://github.com/seanb4t/engram/issues/79)) ([54ede5e](https://github.com/seanb4t/engram/commit/54ede5ec183be026281c2116e7fdde56a72bb3d6))
+* engram web UI v1 backend API foundation (EngramService Connect) ([#62](https://github.com/seanb4t/engram/issues/62)) ([97b22ff](https://github.com/seanb4t/engram/commit/97b22ff663d893ccaa11af267cb89cb0044c8a9f))
+* **engram-skill:** prefer engram over beads for durable memory (engram-g9rj) ([#237](https://github.com/seanb4t/engram/issues/237)) ([9aafa74](https://github.com/seanb4t/engram/commit/9aafa7418059d9dfec13d00e3aab41325dffb4a2))
+* import memory MCP server (cmd/engram + internal) ([ef27d79](https://github.com/seanb4t/engram/commit/ef27d791d748d9977307a135b798449d85d5de9c))
+* **memory:** tag-filtered recall on search_memory and list_memory ([#164](https://github.com/seanb4t/engram/issues/164)) ([475884b](https://github.com/seanb4t/engram/commit/475884b186beb20e47305b074be791856ba98c69))
+* **memory:** update_memory can replace a record's tag set ([#147](https://github.com/seanb4t/engram/issues/147)) ([f145275](https://github.com/seanb4t/engram/commit/f1452758cd9ec8878cf12722901fac08f97a8f9f))
+* **migrate:** harden migrate-set-owner (timeout/cancel) + isolation test hardening ([#58](https://github.com/seanb4t/engram/issues/58)) ([8710b70](https://github.com/seanb4t/engram/commit/8710b70cd359fc1e875b72ab39aa244b0421302e))
+* **observability:** structured slog logging + OpenTelemetry (engram-ew7) ([#44](https://github.com/seanb4t/engram/issues/44)) ([0b074e3](https://github.com/seanb4t/engram/commit/0b074e387baa5026817d610b2aa885ae76e7a7d1))
+* per-actor memory isolation (authn → authz) (engram-99z) ([#38](https://github.com/seanb4t/engram/issues/38)) ([bfa6470](https://github.com/seanb4t/engram/commit/bfa6470e144878bdf57c95334cae85c6b35c8736))
+* **reindex:** --source, per-batch progress, and resumable --resume (engram-orve/xddn/irhg) ([#258](https://github.com/seanb4t/engram/issues/258)) ([bb57383](https://github.com/seanb4t/engram/commit/bb573831a0b93570a2aa95152655e9d5b534fe05))
+* scheduled/future memories (temporal validity window) ([#119](https://github.com/seanb4t/engram/issues/119)) ([74b1247](https://github.com/seanb4t/engram/commit/74b1247872d55a33ce1235d82237f66b552b1120))
+* **serve:** configurable MCP transport path (MEM_MCP_PATH); console at root when UI enabled ([#108](https://github.com/seanb4t/engram/issues/108)) ([#111](https://github.com/seanb4t/engram/issues/111)) ([a4e4c62](https://github.com/seanb4t/engram/commit/a4e4c62072a48ca9b50482b58906ae48d68e5362))
+* server-side windowed + cursor recall (engram-nx2t) ([#253](https://github.com/seanb4t/engram/issues/253)) ([8f8382d](https://github.com/seanb4t/engram/commit/8f8382d0b89ff5c368da4f61f1f08adb3a03fb0a))
+* **skill:** relocate memory-curator into engram as the engram bundled skill-plugin ([#9](https://github.com/seanb4t/engram/issues/9)) ([ec85a9d](https://github.com/seanb4t/engram/commit/ec85a9d6ae7d67c2584d7daac09a455e7b8cc38d))
+* **summarize:** harden summarize-missing egress (engram-uhwd) ([#231](https://github.com/seanb4t/engram/issues/231)) ([95207f8](https://github.com/seanb4t/engram/commit/95207f871a680af982a448e606dcbc1f365214d4))
+* **summary:** auto-summary for curated memories (engram-cly5) ([#207](https://github.com/seanb4t/engram/issues/207)) ([d84ec95](https://github.com/seanb4t/engram/commit/d84ec95633c737718444785b970731699eb1d045))
+* **telemetry:** finer low-end histogram buckets for engram.*.duration (engram-e1kh) ([#193](https://github.com/seanb4t/engram/issues/193)) ([560e5d1](https://github.com/seanb4t/engram/commit/560e5d19a6ea4e69ae682f943320cca715de18c2))
+* **telemetry:** include trace_id/span_id in stdout logs ([#52](https://github.com/seanb4t/engram/issues/52)) ([0fefc14](https://github.com/seanb4t/engram/commit/0fefc1467df1bfb705fd1accc4cbeb11b3d70ab5))
+* **telemetry:** instrumentation depth at every seam ([#88](https://github.com/seanb4t/engram/issues/88)) ([09659de](https://github.com/seanb4t/engram/commit/09659de2c5e9aaf60506c77317c18b9537a25b28))
+* **ui:** memory display + auto-summary UX (epic engram-gyo7) ([#221](https://github.com/seanb4t/engram/issues/221)) ([49309b2](https://github.com/seanb4t/engram/commit/49309b2eaf67c20e0f870a8b57464eb81db1644a))
+* **ui:** operator console redesign — shadcn-forward shell, components, routes (engram-kco) ([#113](https://github.com/seanb4t/engram/issues/113)) ([b9353df](https://github.com/seanb4t/engram/commit/b9353df82b96ddf12740e93aa0a8702ee9a4e963))
+
+
+### Bug Fixes
+
+* **authz:** fail-closed hardening for the anonymous bucket (epic engram-dg5) ([#54](https://github.com/seanb4t/engram/issues/54)) ([fb44bf0](https://github.com/seanb4t/engram/commit/fb44bf028aa60e757cc0b1305b17dea4b70676c9))
+* **brand:** --cat-discovery token, dark-scheme favicon tuning, light/dark docs logo, accent dedupe ([#129](https://github.com/seanb4t/engram/issues/129)) ([7e61303](https://github.com/seanb4t/engram/commit/7e61303c2e2233ea6a36f99f6869d8581328769c))
+* **config:** drop test-only MEM_QDRANT_TEST_ADDR from legacy runtime guard ([#142](https://github.com/seanb4t/engram/issues/142)) ([4622ac7](https://github.com/seanb4t/engram/commit/4622ac7aeccf1c065003dc2b32b5a88090f40749))
+* **deps:** migrate @tanstack/svelte-query to v6 (runes API) ([#98](https://github.com/seanb4t/engram/issues/98)) ([68dbe59](https://github.com/seanb4t/engram/commit/68dbe59402b774b1d54b321e6548c52d00e4fe9a))
+* **deps:** update dependency @astrojs/starlight to ^0.41.0 ([#212](https://github.com/seanb4t/engram/issues/212)) ([4afb026](https://github.com/seanb4t/engram/commit/4afb026727f14867202a9121b715d4dc00279faa))
+* **deps:** update module github.com/coreos/go-oidc/v3 to v3.19.0 ([#176](https://github.com/seanb4t/engram/issues/176)) ([7718af6](https://github.com/seanb4t/engram/commit/7718af684428ba35a01e17dbaec9e1d98965cfc5))
+* **deps:** update module github.com/qdrant/go-client to v1.18.3 ([#251](https://github.com/seanb4t/engram/issues/251)) ([bc924c6](https://github.com/seanb4t/engram/commit/bc924c6d220b4d96feaf3733c0bd49719913072a))
+* **deps:** update module github.com/testcontainers/testcontainers-go/modules/qdrant to v0.43.0 ([#181](https://github.com/seanb4t/engram/issues/181)) ([0e4e905](https://github.com/seanb4t/engram/commit/0e4e90562045ff2a661065c99aa2e41ea8e1745a))
+* **deps:** update opentelemetry-go-contrib monorepo to v0.69.0 ([#46](https://github.com/seanb4t/engram/issues/46)) ([3cae175](https://github.com/seanb4t/engram/commit/3cae175851087c671b37a34120661e73aa637b17))
+* **discovery:** harden citation validation + payload read (engram-f7h themes 1 & 3) ([#28](https://github.com/seanb4t/engram/issues/28)) ([dc1d29a](https://github.com/seanb4t/engram/commit/dc1d29a07c3c6d07b128cee3bfbce8fc672b3f89))
+* **discovery:** size limits, scope-prefix, log hygiene, handler tests (engram-f7h) ([#29](https://github.com/seanb4t/engram/issues/29)) ([5abd623](https://github.com/seanb4t/engram/commit/5abd623c49c60533aa6cba4a098c6d0f1fd6c0d9))
+* **engram-skill:** route explicit time-bound 'remember' requests via an engram-vs-beads gate ([#135](https://github.com/seanb4t/engram/issues/135)) ([d7f1d72](https://github.com/seanb4t/engram/commit/d7f1d72314d1b111065134df6e31837805c581fa))
+* gate Helm OpenAI-key secret, bump cookie to 0.7.2, clear docs-site lint ([#171](https://github.com/seanb4t/engram/issues/171)) ([ac47513](https://github.com/seanb4t/engram/commit/ac475137f12169590deb7fd2285daf639999d2d4))
+* **plugin:** drop manifest hooks key so hooks/hooks.json auto-loads without duplicate-load failure ([#17](https://github.com/seanb4t/engram/issues/17)) ([37a947f](https://github.com/seanb4t/engram/commit/37a947f8100b808ca784d2b23037a1fff7aef61c))
+* **plugin:** remove bundled .mcp.json so /engram-setup is the canonical registration ([#16](https://github.com/seanb4t/engram/issues/16)) ([a355f41](https://github.com/seanb4t/engram/commit/a355f41dc2d646d750298e90807a59dc1cf1054f))
+* **renovate:** block cookie major bumps (v2 breaks SvelteKit 2.68.0 build) ([#241](https://github.com/seanb4t/engram/issues/241)) ([2d59af0](https://github.com/seanb4t/engram/commit/2d59af0dc62c021266629a4c9120288fa6295787))
+* **server:** store_discovery jsonschema tag crashes server at startup ([#41](https://github.com/seanb4t/engram/issues/41)) ([234df4c](https://github.com/seanb4t/engram/commit/234df4cabd590351edcf9bbdb32a38c346a0208e))
+* **summarize:** configurable max_tokens + HTTP timeout for reasoning models ([#218](https://github.com/seanb4t/engram/issues/218)) ([c45f0a2](https://github.com/seanb4t/engram/commit/c45f0a2563d171feba8fd44d5c56b4f503838556))
+* **telemetry:** tolerate partial OTel resource detection on distroless ([#103](https://github.com/seanb4t/engram/issues/103)) ([8cec041](https://github.com/seanb4t/engram/commit/8cec04136ad1e861b0c52fbdaf269a1da39a6f5e))
+* **test:** exclude .pytest_cache from bundle branding scan (false-positive on re-run) ([#20](https://github.com/seanb4t/engram/issues/20)) ([a8fdfe9](https://github.com/seanb4t/engram/commit/a8fdfe9116970cdf01c3443c692ee7fef4df2a7a))
+* **ui:** cap app shell to viewport so detail pane stays fixed (engram-ecdj) ([#243](https://github.com/seanb4t/engram/issues/243)) ([6ea5867](https://github.com/seanb4t/engram/commit/6ea5867765f79d855b2ca03278fad64e90b2b3d2))
+* **ui:** distinct 'select a scope' empty state + console test coverage (engram-2b0) ([#120](https://github.com/seanb4t/engram/issues/120)) ([8443cb8](https://github.com/seanb4t/engram/commit/8443cb82fc7cedd888cd198bbf08fcc822542b39))
+* **ui:** rebuild vendored SPA after svelte 5.56.4 bump ([#214](https://github.com/seanb4t/engram/issues/214)) ([efe5447](https://github.com/seanb4t/engram/commit/efe5447aaf9b660249ce4e8e7c62b526cbbcabcc))
+* **webauth:** embed SvelteKit _app assets via //go:embed all: ([#106](https://github.com/seanb4t/engram/issues/106)) ([#109](https://github.com/seanb4t/engram/issues/109)) ([aa663e2](https://github.com/seanb4t/engram/commit/aa663e2714680087e21e289e4f8d5c783d524404))
+* **webauth:** nil-dependency guards in NewHandler/NewResolver ([#92](https://github.com/seanb4t/engram/issues/92)) ([d96477a](https://github.com/seanb4t/engram/commit/d96477a6718bd091b76c9e82b66686f855ad39f7))
+
+
+### Miscellaneous Chores
+
+* release 0.5.0 ([#47](https://github.com/seanb4t/engram/issues/47)) ([35ab973](https://github.com/seanb4t/engram/commit/35ab973984e04a11d2201639e9fd00829330a2eb))
+* release v0.4.1 ([#34](https://github.com/seanb4t/engram/issues/34)) ([692c941](https://github.com/seanb4t/engram/commit/692c941dca5fbd800bb9883e328aeeac7b58f557))
+
 ## [0.8.2](https://github.com/seanb4t/engram/compare/v0.8.1...v0.8.2) (2026-06-30)
 
 
