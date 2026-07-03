@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.3](https://github.com/seanb4t/engram/compare/v0.8.2...v0.8.3) (2026-07-02)
+
+
+### Features
+
+* asymmetric/cloud embedder param passthrough (engram-0qed) ([#264](https://github.com/seanb4t/engram/issues/264)) ([7f376db](https://github.com/seanb4t/engram/commit/7f376db412232922bb8fcb1902b36c9bac654481))
+* **embed:** asymmetric query instruction + tags-in-vector + expose score (engram-wd89) ([#262](https://github.com/seanb4t/engram/issues/262)) ([08a0b97](https://github.com/seanb4t/engram/commit/08a0b9793150c78f1c166278cd9c44c058544f8c))
+* **reindex:** --source, per-batch progress, and resumable --resume (engram-orve/xddn/irhg) ([#258](https://github.com/seanb4t/engram/issues/258)) ([bb57383](https://github.com/seanb4t/engram/commit/bb573831a0b93570a2aa95152655e9d5b534fe05))
+
 ## [0.8.2](https://github.com/seanb4t/engram/compare/v0.8.1...v0.8.2) (2026-06-30)
 
 
