@@ -212,7 +212,7 @@ at session start.
 | `scope` | string | yes | Must start with `discovery:`, e.g. `discovery:repo:my-repo` |
 | `tags` | string[] | no | Free-form labels |
 | `summary` | string | no | Short human-readable summary |
-| `id` | string | no | Omit to create; supply to replace in place |
+| `id` | string | no | Omit to create; supply the UUID **or `short_id`** to replace in place |
 
 Each **citation** object:
 

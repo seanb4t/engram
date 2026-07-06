@@ -561,19 +561,16 @@ func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string
 	carriedShortID := "" // existing handle to preserve across replace
 	if a.ID != "" {
 		resolved, rerr := d.st.ResolvePointID(ctx, a.ID)
-		switch {
-		case errors.Is(rerr, store.ErrNotFound):
-			// ResolvePointID's fast path accepts any well-formed UUID without
-			// an existence check, so ErrNotFound here always means a failed
-			// short-id lookup. A fresh client-supplied UUID seeds a new point
-			// via that fast path plus OwnedOrAbsent's absent permission; a
-			// nonexistent short id cannot seed one.
-			return "", "", fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
-		case rerr != nil:
+		if rerr != nil {
+			// ResolvePointID's errors already echo the caller's own input, so
+			// they propagate as-is. Its fast path accepts any well-formed UUID
+			// without an existence check — ErrNotFound here always means a
+			// failed short-id lookup: a fresh client-supplied UUID seeds a new
+			// point via that fast path plus OwnedOrAbsent's absent permission;
+			// a nonexistent short id cannot seed one.
 			return "", "", rerr
-		default:
-			pointID = resolved
 		}
+		pointID = resolved
 		if err := d.st.OwnedOrAbsent(ctx, pointID, subj); err != nil {
 			// Re-wrap not-found with the caller's ORIGINAL input: pointID may
 			// be another owner's record resolved from their short id, and

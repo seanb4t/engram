@@ -1451,9 +1451,10 @@ func (s *Store) CountOwnerless(ctx context.Context) (n uint64, err error) {
 // MintShortID returns a short id not currently present on any record, retrying
 // on the (astronomically unlikely at 50 bits) global collision. When seen is
 // non-nil, ids it returns are recorded there and candidates already in it are
-// skipped — for a batch (backfill) that mints many ids before any is
-// count-visible. The global Count is authoritative; seen covers the not-yet-
-// flushed same-run window only.
+// skipped — a defensive same-run guard for batch callers (backfill), so that
+// intra-run uniqueness never depends on the backend's read-after-write
+// visibility between a mint and its subsequent write. The global Count is
+// authoritative.
 func (s *Store) MintShortID(ctx context.Context, seen map[string]struct{}) (id string, err error) {
 	ctx, span := tracer.Start(ctx, "store.MintShortID")
 	defer span.End()

@@ -86,8 +86,8 @@ See the [MCP Tools reference](/reference/tools/) for full argument docs and the
 Every memory now carries an additive `short_id` field — a 10-character lowercase
 Crockford base32 handle (case-insensitive; confusable glyphs are folded on input).
 It is minted on creation alongside the UUID and can be used anywhere an `id` is
-accepted: `get_memory`, `update_memory`, `delete_memory`, `set_visibility`, and
-the Connect `GetMemory` RPC.
+accepted: `get_memory`, `update_memory`, `delete_memory`, `set_visibility`,
+`store_discovery` (replace-in-place), and the Connect `GetMemory` RPC.
 
 Recall output (`search_memory`, `list_memory`) includes both `id` and `short_id`.
 
