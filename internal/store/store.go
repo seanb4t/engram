@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
+	"github.com/seanb4t/engram/internal/shortid"
 	"github.com/seanb4t/engram/internal/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -47,6 +49,11 @@ var ErrNotFound = errors.New("not found")
 // to CodeInternal, so a Count/Scroll outage is no longer mislabeled as a client
 // error.
 var ErrInvalidArgument = errors.New("invalid argument")
+
+// ErrAmbiguousShortID means a short id matched more than one record — an
+// invariant violation (MintShortID enforces global uniqueness), surfaced rather
+// than silently resolving to an arbitrary point.
+var ErrAmbiguousShortID = errors.New("ambiguous short id")
 
 // visibilityShared is the Visibility sentinel for a record readable by any
 // authenticated caller. Sharing grants read, never write. Defined once so a typo
@@ -1035,6 +1042,50 @@ func (s *Store) Get(ctx context.Context, id string) (m Memory, err error) {
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	return fromPayload(id, pts[0].Payload), nil
+}
+
+// ResolvePointID maps a caller-supplied identifier — a full UUID (any form
+// uuid.Parse accepts) or a short id — to the canonical Qdrant point UUID. It is
+// owner-agnostic and applies NO authz: the caller's downstream ownership gate
+// (GetReadable / OwnedOrAbsent / getWritable) still governs access. Trims before
+// the UUID check because uuid.Parse is length-strict and rejects whitespace.
+func (s *Store) ResolvePointID(ctx context.Context, idOrShort string) (id string, err error) {
+	ctx, span := tracer.Start(ctx, "store.ResolvePointID")
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "ResolvePointID", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
+	t := strings.TrimSpace(idOrShort)
+	if t == "" {
+		return "", fmt.Errorf("%w: empty id", ErrInvalidArgument)
+	}
+	if u, perr := uuid.Parse(t); perr == nil {
+		return u.String(), nil // canonicalize URN / braced / raw-hex forms to hyphenated
+	}
+	canonical := shortid.Canonical(t)
+	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: s.collection,
+		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatch("short_id", canonical)}},
+		Limit:          qdrant.PtrOf(uint32(2)),
+		WithPayload:    qdrant.NewWithPayload(false),
+	})
+	if err != nil {
+		return "", err
+	}
+	switch len(pts) {
+	case 0:
+		return "", fmt.Errorf("%w: %s", ErrNotFound, idOrShort)
+	case 1:
+		return pts[0].Id.GetUuid(), nil
+	default:
+		return "", fmt.Errorf("%w: %s", ErrAmbiguousShortID, canonical)
+	}
 }
 
 // GetReadable returns the record only if the caller may READ it; otherwise

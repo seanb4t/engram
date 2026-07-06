@@ -2570,3 +2570,55 @@ func TestDatetimeIndexBackfillsExistingRecords(t *testing.T) {
 		t.Errorf("post-index range query: got %d records want 2 (pre-index records must be range-filterable)", len(got))
 	}
 }
+
+func TestResolvePointID(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	defer func() { cleanupErr(t, "DeleteAllRaw s", st.DeleteAllRaw(ctx, "s")) }()
+	vec := []float32{0.1, 0.2, 0.3}
+	u := "a0000000-0000-0000-0000-000000000010"
+	if err := st.Upsert(ctx, Memory{ID: u, ShortID: "j7k2m9p4x0", Content: "c", Scope: "s", Owner: "o"}, vec); err != nil {
+		t.Fatal(err)
+	}
+	u2 := "a0000000-0000-0000-0000-000000000011"
+	if err := st.Upsert(ctx, Memory{ID: u2, ShortID: "1a0bcdef23", Content: "c", Scope: "s", Owner: "o"}, vec); err != nil {
+		t.Fatal(err)
+	}
+
+	check := func(name, in, wantID string, wantErr error) {
+		got, err := st.ResolvePointID(ctx, in)
+		if wantErr != nil {
+			if !errors.Is(err, wantErr) {
+				t.Fatalf("%s: err=%v want %v", name, err, wantErr)
+			}
+			return
+		}
+		if err != nil || got != wantID {
+			t.Fatalf("%s: got %q err %v want %q", name, got, err, wantID)
+		}
+	}
+	check("uuid fast path", u, u, nil)
+	check("raw-hex uuid canonicalized", "a0000000000000000000000000000010", u, nil)
+	check("short id exact", "j7k2m9p4x0", u, nil)
+	check("short id upper+glyph+space", " IaObcdef23 ", u2, nil)                                   // I->1, O->0
+	check("padded canonical uuid → fast path", "  a0000000-0000-0000-0000-000000000010  ", u, nil) // item 30
+	check("nonexistent short id", "zzzzzzzzzz", "", ErrNotFound)
+	check("8-char uuid prefix (original bug)", "a0000000", "", ErrNotFound)
+	check("empty", "   ", "", ErrInvalidArgument)
+}
+
+func TestResolvePointIDAmbiguous(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	defer func() { cleanupErr(t, "DeleteAllRaw s", st.DeleteAllRaw(ctx, "s")) }()
+	vec := []float32{0.1, 0.2, 0.3}
+	// Force two records sharing a short id by writing them directly (bypassing MintShortID).
+	for _, id := range []string{"a0000000-0000-0000-0000-000000000020", "a0000000-0000-0000-0000-000000000021"} {
+		if err := st.Upsert(ctx, Memory{ID: id, ShortID: "dupdupdup0", Content: "c", Scope: "s", Owner: "o"}, vec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := st.ResolvePointID(ctx, "dupdupdup0"); !errors.Is(err, ErrAmbiguousShortID) {
+		t.Fatalf("want ErrAmbiguousShortID, got %v", err)
+	}
+}
