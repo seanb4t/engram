@@ -26,6 +26,7 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/seanb4t/engram/internal/config"
+	"github.com/seanb4t/engram/internal/shortid"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/telemetry"
 )
@@ -249,7 +250,7 @@ func TestScheduleMemoryUsesInjectedClock(t *testing.T) {
 	ctx := authedContext(t, "sub-A")
 	a := scheduleArgs{storeArgs: storeArgs{Content: "x", Scope: "clock:project:x",
 		Source: "user-said", Category: "decision"}, NotAfter: "2099-01-01T00:00:00Z"}
-	if _, err := d.scheduleMemory(ctx, a); err == nil {
+	if _, _, err := d.scheduleMemory(ctx, a); err == nil {
 		t.Error("not_after before the injected now should be rejected; the handler must read the deps clock, not the wall clock")
 	}
 }
@@ -262,7 +263,7 @@ func TestStoreMemoryUsesInjectedClock(t *testing.T) {
 	fixed := time.Date(2055, 3, 4, 5, 6, 7, 0, time.UTC)
 	d.now = func() time.Time { return fixed }
 	ctx := authedContext(t, "sub-A")
-	id, err := d.storeMemory(ctx, storeArgs{Content: "x", Scope: "clock:project:store",
+	id, _, err := d.storeMemory(ctx, storeArgs{Content: "x", Scope: "clock:project:store",
 		Source: "user-said", Category: "decision"})
 	if err != nil {
 		t.Fatalf("storeMemory: %v", err)
@@ -284,33 +285,33 @@ func TestScheduleMemoryValidation(t *testing.T) {
 		Scope: "sched:project:x", Source: "user-said", Category: "decision"}}
 
 	// No window at all -> rejected.
-	if _, err := d.scheduleMemory(ctx, base); err == nil {
+	if _, _, err := d.scheduleMemory(ctx, base); err == nil {
 		t.Error("missing window: want error, got nil")
 	}
 	// not_after already in the past -> rejected.
 	past := base
 	past.NotAfter = "2000-01-01T00:00:00Z"
-	if _, err := d.scheduleMemory(ctx, past); err == nil {
+	if _, _, err := d.scheduleMemory(ctx, past); err == nil {
 		t.Error("past not_after: want error, got nil")
 	}
 	// Inverted window (not_before >= not_after) -> rejected.
 	inv := base
 	inv.NotBefore = "2031-01-01T00:00:00Z"
 	inv.NotAfter = "2030-01-01T00:00:00Z"
-	if _, err := d.scheduleMemory(ctx, inv); err == nil {
+	if _, _, err := d.scheduleMemory(ctx, inv); err == nil {
 		t.Error("inverted window: want error, got nil")
 	}
 	// discovery category -> rejected.
 	disc := base
 	disc.Category = "discovery"
 	disc.NotBefore = "2030-01-01T00:00:00Z"
-	if _, err := d.scheduleMemory(ctx, disc); err == nil {
+	if _, _, err := d.scheduleMemory(ctx, disc); err == nil {
 		t.Error("discovery category: want error, got nil")
 	}
 	// Valid future-scheduled memory -> stored, hidden from normal recall.
 	ok := base
 	ok.NotBefore = "2030-01-01T00:00:00Z"
-	id, err := d.scheduleMemory(ctx, ok)
+	id, _, err := d.scheduleMemory(ctx, ok)
 	if err != nil {
 		t.Fatalf("valid schedule: %v", err)
 	}
@@ -330,7 +331,7 @@ func TestScheduleMemoryValidation(t *testing.T) {
 	// is immediately active, so it surfaces through normal list_memory.
 	activeNow := base
 	activeNow.NotBefore = "2000-01-01T00:00:00Z"
-	activeID, err := d.scheduleMemory(ctx, activeNow)
+	activeID, _, err := d.scheduleMemory(ctx, activeNow)
 	if err != nil {
 		t.Fatalf("past not_before should be accepted (immediately active): %v", err)
 	}
@@ -364,7 +365,7 @@ func TestStoreMemoryStampsOwnerHandler(t *testing.T) {
 		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-stamp")))
 	}()
 
-	id, err := d.storeMemory(ctx, storeArgs{
+	id, _, err := d.storeMemory(ctx, storeArgs{
 		Content: "owned via handler", Scope: scope,
 		Source: "user-said", Category: "preference",
 	})
@@ -377,6 +378,24 @@ func TestStoreMemoryStampsOwnerHandler(t *testing.T) {
 	}
 	if got.Owner != "sub-stamp" {
 		t.Errorf("storeMemory did not stamp owner from subject: owner=%q, want %q", got.Owner, "sub-stamp")
+	}
+}
+
+// TestStoreMemoryMintsAndReturnsShortID pins that storeMemory mints a short_id
+// (after embed) and both returns it and persists it on the record.
+func TestStoreMemoryMintsAndReturnsShortID(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "owner-A")
+	id, sid, err := d.storeMemory(ctx, storeArgs{Content: "hello", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sid) != shortid.Length {
+		t.Fatalf("short id %q", sid)
+	}
+	got, err := d.st.Get(context.Background(), id)
+	if err != nil || got.ShortID != sid {
+		t.Fatalf("persisted short id %q != returned %q (err %v)", got.ShortID, sid, err)
 	}
 }
 
@@ -1040,7 +1059,7 @@ func TestListScheduledTool(t *testing.T) {
 	d := testDeps(t)
 	ctx := authedContext(t, "sub-A")
 	// A far-future scheduled memory is hidden from normal recall but shows in list_scheduled.
-	id, err := d.scheduleMemory(ctx, scheduleArgs{storeArgs: storeArgs{Content: "future",
+	id, _, err := d.scheduleMemory(ctx, scheduleArgs{storeArgs: storeArgs{Content: "future",
 		Scope: "ls:project:x", Source: "user-said", Category: "decision"},
 		NotBefore: "2099-01-01T00:00:00Z"})
 	if err != nil {

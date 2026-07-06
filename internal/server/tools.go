@@ -498,17 +498,20 @@ func (a storeArgs) toMemory(owner, actor string, createdAt time.Time) store.Memo
 	}
 }
 
-func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
+func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, string, error) {
 	subj, err := subjectFromContext(ctx)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	m := a.toMemory(subj.Owner(), actorFromContext(ctx), d.clock())
 	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 	if err != nil {
-		return "", err
+		return "", "", err // embed first: on error we never touch the store
 	}
-	return m.ID, d.st.Upsert(ctx, m, vec)
+	if m.ShortID, err = d.st.MintShortID(ctx, nil); err != nil {
+		return "", "", err
+	}
+	return m.ID, m.ShortID, d.st.Upsert(ctx, m, vec)
 }
 
 // clock returns the handler's current time in UTC, defaulting to wall-clock
@@ -521,24 +524,27 @@ func (d *deps) clock() time.Time {
 	return time.Now().UTC()
 }
 
-func (d *deps) scheduleMemory(ctx context.Context, a scheduleArgs) (string, error) {
+func (d *deps) scheduleMemory(ctx context.Context, a scheduleArgs) (string, string, error) {
 	subj, err := subjectFromContext(ctx)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	now := d.clock()
 	nb, na, err := parseWindow(a, now)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	m := a.toMemory(subj.Owner(), actorFromContext(ctx), now)
 	m.NotBefore = nb
 	m.NotAfter = na
 	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 	if err != nil {
-		return "", err
+		return "", "", err // embed first: on error we never touch the store
 	}
-	return m.ID, d.st.Upsert(ctx, m, vec)
+	if m.ShortID, err = d.st.MintShortID(ctx, nil); err != nil {
+		return "", "", err
+	}
+	return m.ID, m.ShortID, d.st.Upsert(ctx, m, vec)
 }
 
 func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string, error) {
@@ -779,14 +785,14 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 
 	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps. Optionally pass `summary`: a one-line recall summary shown in place of content (keep negations/identifiers verbatim)."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeArgs) (*mcp.CallToolResult, any, error) {
-			id, err := d.storeMemory(ctx, a)
-			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id}, err
+			id, sid, err := d.storeMemory(ctx, a)
+			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "schedule_memory", Description: "Persist a memory with a validity window (not_before defers recall; not_after expires it). At least one bound (RFC3339) is required; use store_memory for unscheduled records."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a scheduleArgs) (*mcp.CallToolResult, any, error) {
-			id, err := d.scheduleMemory(ctx, a)
-			return textResult(fmt.Sprintf("scheduled %s", id)), map[string]string{"id": id}, err
+			id, sid, err := d.scheduleMemory(ctx, a)
+			return textResult(fmt.Sprintf("scheduled %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory."},

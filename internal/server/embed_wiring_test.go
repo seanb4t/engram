@@ -49,7 +49,7 @@ func TestSearchMemoryUsesEmbedQuery(t *testing.T) {
 func TestStoreMemoryEmbedsContentPlusTags(t *testing.T) {
 	rec := &recordingEmbedder{}
 	d := &deps{em: rec}
-	_, err := d.storeMemory(context.Background(), storeArgs{
+	_, _, err := d.storeMemory(context.Background(), storeArgs{
 		Content:  "musl getaddrinfo fails on NODATA",
 		Scope:    "s",
 		Source:   "user-said",
