@@ -1404,4 +1404,42 @@ func TestShortIDCrossOwnerVisibility(t *testing.T) {
 	if got, err := d.getMemory(ctxB, idArgs{ID: sharedSid}); err != nil || got.ID != sharedID {
 		t.Fatalf("cross-owner shared must be readable, got %q err %v", got.ID, err)
 	}
+	// updateMemory: same no-leak re-wrap as getMemory.
+	err = d.updateMemory(ctxB, updateArgs{ID: privSid, Content: "x"})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("cross-owner update must be ErrNotFound, got %v", err)
+	}
+	if strings.Contains(err.Error(), privID) {
+		t.Fatalf("update error leaks resolved UUID: %v", err)
+	}
+	if !strings.Contains(err.Error(), privSid) {
+		t.Fatalf("update error should echo caller-supplied short id only: %v", err)
+	}
+	// deleteMemory: same no-leak re-wrap as getMemory.
+	err = d.deleteMemory(ctxB, idArgs{ID: privSid})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("cross-owner delete must be ErrNotFound, got %v", err)
+	}
+	if strings.Contains(err.Error(), privID) {
+		t.Fatalf("delete error leaks resolved UUID: %v", err)
+	}
+	if !strings.Contains(err.Error(), privSid) {
+		t.Fatalf("delete error should echo caller-supplied short id only: %v", err)
+	}
+	// setVisibility: same no-leak re-wrap as getMemory.
+	err = d.setVisibility(ctxB, setVisibilityArgs{ID: privSid, Shared: true})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("cross-owner set_visibility must be ErrNotFound, got %v", err)
+	}
+	if strings.Contains(err.Error(), privID) {
+		t.Fatalf("set_visibility error leaks resolved UUID: %v", err)
+	}
+	if !strings.Contains(err.Error(), privSid) {
+		t.Fatalf("set_visibility error should echo caller-supplied short id only: %v", err)
+	}
+	// the record must be unchanged/still present for owner-A after all three attempts.
+	after, err := d.st.Get(context.Background(), privID)
+	if err != nil || after.Content != "secret" || after.ShortID != privSid {
+		t.Fatalf("cross-owner attempts mutated owner-A's record: content=%q short=%q err=%v", after.Content, after.ShortID, err)
+	}
 }
