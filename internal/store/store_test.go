@@ -2274,6 +2274,19 @@ func TestPayloadRoundTripSummaryProvenance(t *testing.T) {
 	}
 }
 
+func TestPayloadRoundTripsShortID(t *testing.T) {
+	m := Memory{ID: "a0000000-0000-0000-0000-000000000001", ShortID: "j7k2m9p4x0", Content: "c", Scope: "s"}
+	got := fromPayload(m.ID, qdrant.NewValueMap(payload(m)))
+	if got.ShortID != "j7k2m9p4x0" {
+		t.Fatalf("round-trip short_id = %q", got.ShortID)
+	}
+	// Empty ShortID MUST be omitted (not stamped as an explicit ""), so legacy /
+	// reindexed records stay key-absent and the NewIsEmpty backfill filter matches them.
+	if _, ok := payload(Memory{ID: "x"})["short_id"]; ok {
+		t.Fatal("empty ShortID must be omitted from payload")
+	}
+}
+
 // TestEnsureCollectionCreatesIndexes pins that EnsureCollection provisions the
 // owner/scope/created_at payload indexes and is idempotent on a second call.
 func TestEnsureCollectionCreatesIndexes(t *testing.T) {

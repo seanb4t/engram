@@ -77,7 +77,12 @@ const (
 
 // Memory is the unit of storage. Fields map 1:1 to Qdrant payload keys.
 type Memory struct {
-	ID        string   `json:"id"`
+	ID string `json:"id"`
+	// ShortID is a short, case-insensitive Crockford base32 handle (see
+	// internal/shortid) minted alongside ID and usable anywhere an id is
+	// accepted. Stable: never rotated once assigned. Empty only for
+	// pre-backfill legacy records.
+	ShortID   string   `json:"short_id,omitempty"`
 	Content   string   `json:"content"`
 	Scope     string   `json:"scope"` // run:tier:repo, e.g. eval-2026-05:project:selfhosted-cluster
 	Repo      string   `json:"repo"`
@@ -285,6 +290,9 @@ func payload(m Memory) map[string]any {
 	if !m.SummaryEgressAt.IsZero() {
 		p["summary_egress_at"] = m.SummaryEgressAt.Format(time.RFC3339)
 	}
+	if m.ShortID != "" {
+		p["short_id"] = m.ShortID
+	}
 	if m.Category == "discovery" {
 		p["kind"] = m.Kind
 		cites := make([]any, len(m.Citations))
@@ -306,6 +314,9 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	}
 	if v, ok := p["scope"]; ok {
 		m.Scope = v.GetStringValue()
+	}
+	if v, ok := p["short_id"]; ok {
+		m.ShortID = v.GetStringValue()
 	}
 	if v, ok := p["repo"]; ok {
 		m.Repo = v.GetStringValue()
