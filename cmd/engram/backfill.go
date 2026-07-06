@@ -37,6 +37,9 @@ var backfillShortIDsCmd = &cobra.Command{
 		}
 		n, err := st.BackfillShortIDs(ctx, backfillDryRun)
 		if err != nil {
+			if n > 0 {
+				cmd.PrintErrf("aborted after backfilling %d record(s)\n", n)
+			}
 			return err
 		}
 		if backfillDryRun {
