@@ -995,3 +995,4 @@ set_visibility(id=<that id>, shared=false)                    # → rejected: "r
 | `ENGRAM_PROJECT` client-side project scope | Task 7 |
 | Docs (tools ref, CLAUDE.md) + user-blessed contract (curating-memory) | Task 8 |
 | short_id in index + by-id correction loop | Prerequisite (engram-c0yl) + Tasks 4/6 |
+<!-- adr-capture: sha256=b267ee133b37007f; session=cli; ts=2026-07-06T22:18:41Z; adrs=engram-iedk,engram-d386,engram-m4s8 -->

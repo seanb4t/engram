@@ -309,3 +309,4 @@ change the rendered contract later.)
   in `preference`.
 - **Silently normalizing multi-line summaries.** Rejected: explicit,
   correctable — reject with a clear error instead of munging.
+<!-- adr-capture: sha256=a5c1d39cedf53dd4; session=cli; ts=2026-07-06T22:18:41Z; adrs=engram-iedk,engram-d386,engram-m4s8 -->
