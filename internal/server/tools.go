@@ -6,6 +6,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -547,33 +548,70 @@ func (d *deps) scheduleMemory(ctx context.Context, a scheduleArgs) (string, stri
 	return m.ID, m.ShortID, d.st.Upsert(ctx, m, vec)
 }
 
-func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string, error) {
+func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string, string, error) {
 	if err := validateStoreDiscovery(a); err != nil {
-		return "", err
+		return "", "", err
 	}
 	subj, err := subjectFromContext(ctx)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
+
+	pointID := ""        // resolved UUID for replace; "" for a fresh create
+	carriedShortID := "" // existing handle to preserve across replace
 	if a.ID != "" {
-		if err := d.st.OwnedOrAbsent(ctx, a.ID, subj); err != nil {
-			return "", err
+		resolved, rerr := d.st.ResolvePointID(ctx, a.ID)
+		switch {
+		case errors.Is(rerr, store.ErrNotFound):
+			// ResolvePointID's fast path accepts any well-formed UUID without
+			// an existence check, so ErrNotFound here always means a failed
+			// short-id lookup. A fresh client-supplied UUID seeds a new point
+			// via that fast path plus OwnedOrAbsent's absent permission; a
+			// nonexistent short id cannot seed one.
+			return "", "", fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
+		case rerr != nil:
+			return "", "", rerr
+		default:
+			pointID = resolved
+		}
+		if err := d.st.OwnedOrAbsent(ctx, pointID, subj); err != nil {
+			// Re-wrap not-found with the caller's ORIGINAL input: pointID may
+			// be another owner's record resolved from their short id, and
+			// echoing the resolved UUID would leak existence and identity.
+			if errors.Is(err, store.ErrNotFound) {
+				return "", "", fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
+			}
+			return "", "", err
+		}
+		if existing, gerr := d.st.Get(ctx, pointID); gerr == nil {
+			carriedShortID = existing.ShortID
+		} else if !errors.Is(gerr, store.ErrNotFound) {
+			return "", "", gerr
 		}
 	}
+
 	vec, err := d.em.Embed(ctx, store.EmbedText(a.Content, a.Tags))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	cites := make([]store.Citation, len(a.Citations))
 	for i, c := range a.Citations {
 		cites[i] = store.Citation{Kind: c.Kind, Ref: c.Ref, Locator: c.Locator, Pin: c.Pin, Excerpt: c.Excerpt}
 	}
-	id := a.ID
+
+	id := pointID
 	if id == "" {
 		id = uuid.NewString()
 	}
+	shortID := carriedShortID
+	if shortID == "" {
+		if shortID, err = d.st.MintShortID(ctx, nil); err != nil {
+			return "", "", err
+		}
+	}
 	m := store.Memory{
 		ID:        id,
+		ShortID:   shortID,
 		Content:   a.Content,
 		Scope:     a.Scope,
 		Source:    "agent-inferred",
@@ -584,9 +622,9 @@ func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string
 		Tags:      a.Tags,
 		Actor:     actorFromContext(ctx),
 		Owner:     subj.Owner(),
-		CreatedAt: time.Now().UTC(),
+		CreatedAt: d.clock(),
 	}
-	return m.ID, d.st.Upsert(ctx, m, vec)
+	return m.ID, m.ShortID, d.st.Upsert(ctx, m, vec)
 }
 
 // actorFromContext returns the verified caller identity injected by the
@@ -851,8 +889,8 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 
 	mcp.AddTool(s, &mcp.Tool{Name: "store_discovery", Description: "Cache agent-earned codebase understanding with citations. kind=map|fact; >=1 citation; scope discovery:repo:<repo>."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeDiscoveryArgs) (*mcp.CallToolResult, any, error) {
-			id, err := d.storeDiscovery(ctx, a)
-			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id}, err
+			id, sid, err := d.storeDiscovery(ctx, a)
+			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "search_discovery", Description: "Semantic search over the discovery pool. scope required unless cross_spine=true; optional kind=map|fact. Results carry citations + created_at (aging signals)."},

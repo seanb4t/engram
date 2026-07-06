@@ -649,7 +649,7 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
 
 	// create
-	id, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
+	id, _, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
 		Content: "auth flow maps token -> jwks -> actor", Kind: "fact", Scope: scope,
 		Summary:   "auth flow",
 		Citations: []citationArg{{Kind: "file", Ref: "internal/auth/auth.go", Locator: "1-50", Pin: "sha:abc", Excerpt: "verify(token)"}},
@@ -672,7 +672,7 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	}
 
 	// id-replace branch: same id replaces in place
-	id2, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
+	id2, _, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
 		ID: id, Content: "updated understanding", Kind: "map", Scope: scope,
 		Citations: []citationArg{{Kind: "repo", Ref: "github.com/x/y", Pin: "@v1"}},
 	})
@@ -705,6 +705,60 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	// cross_spine path (with a scope present, the ignore-warn branch) must not error
 	if _, err := d.searchDiscovery(ctx, searchDiscoveryArgs{Query: "x", CrossSpine: true, Scope: scope}); err != nil {
 		t.Errorf("cross_spine search errored: %v", err)
+	}
+}
+
+func TestStoreDiscoveryMintsThenReplacePreservesShortID(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "owner-A")
+	cites := []citationArg{{Kind: "file", Ref: "a.go", Pin: "abc"}}
+	id, sid, err := d.storeDiscovery(ctx, storeDiscoveryArgs{Content: "map1", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
+	if err != nil || len(sid) != shortid.Length {
+		t.Fatalf("create: sid=%q err=%v", sid, err)
+	}
+	// Replace by UUID → same point, same short id.
+	id2, sid2, err := d.storeDiscovery(ctx, storeDiscoveryArgs{ID: id, Content: "map1b", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
+	if err != nil || id2 != id || sid2 != sid {
+		t.Fatalf("replace-by-uuid: id %q->%q sid %q->%q err %v", id, id2, sid, sid2, err)
+	}
+	// Replace by SHORT ID → resolves to the same point, still same short id.
+	id3, sid3, err := d.storeDiscovery(ctx, storeDiscoveryArgs{ID: sid, Content: "map1c", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
+	if err != nil || id3 != id || sid3 != sid {
+		t.Fatalf("replace-by-shortid: id %q->%q sid %q->%q err %v", id, id3, sid, sid3, err)
+	}
+}
+
+func TestStoreDiscoveryRejectsNonexistentShortIDAsNew(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "owner-A")
+	_, _, err := d.storeDiscovery(ctx, storeDiscoveryArgs{ID: "zzzzzzzzzz", Content: "x", Kind: "fact", Scope: "discovery:repo:x", Citations: []citationArg{{Kind: "file", Ref: "a", Pin: "p"}}})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
+// TestStoreDiscoveryCrossOwnerShortIDDoesNotLeakUUID pins that a replace attempt
+// against another owner's short id fails with an error echoing only the
+// caller-supplied input — never the resolved point UUID, which would leak the
+// private record's existence and identity.
+func TestStoreDiscoveryCrossOwnerShortIDDoesNotLeakUUID(t *testing.T) {
+	d := testDeps(t)
+	ctxA := authedContext(t, "owner-A")
+	cites := []citationArg{{Kind: "file", Ref: "a.go", Pin: "abc"}}
+	id, sid, err := d.storeDiscovery(ctxA, storeDiscoveryArgs{Content: "m", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctxB := authedContext(t, "owner-B")
+	_, _, err = d.storeDiscovery(ctxB, storeDiscoveryArgs{ID: sid, Content: "m2", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+	if strings.Contains(err.Error(), id) {
+		t.Fatalf("error leaks resolved UUID: %v", err)
+	}
+	if !strings.Contains(err.Error(), sid) {
+		t.Fatalf("error should echo caller-supplied id only: %v", err)
 	}
 }
 
