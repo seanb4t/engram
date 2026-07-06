@@ -237,6 +237,7 @@ func (s *Store) ensureIndexes(ctx context.Context, name string) error {
 			qdrant.NewPayloadIndexParamsKeyword(&qdrant.KeywordIndexParams{IsTenant: qdrant.PtrOf(true)})},
 		{"scope", qdrant.FieldType_FieldTypeKeyword, nil},
 		{"created_at", qdrant.FieldType_FieldTypeDatetime, nil},
+		{"short_id", qdrant.FieldType_FieldTypeKeyword, nil},
 	}
 	for _, ix := range idxs {
 		req := &qdrant.CreateFieldIndexCollection{

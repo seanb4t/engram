@@ -121,6 +121,21 @@ func cleanupErr(t *testing.T, what string, err error) {
 	}
 }
 
+func TestEnsureIndexesCreatesShortIDIndex(t *testing.T) {
+	st := testStore(t) // ensureIndexes ran during construction
+	info, err := st.client.GetCollectionInfo(context.Background(), st.collection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := info.GetPayloadSchema()["short_id"]; !ok {
+		t.Fatalf("short_id payload index not created; schema keys: %v", info.GetPayloadSchema())
+	}
+	// Idempotence: a second ensureIndexes is AlreadyExists-tolerant.
+	if err := st.ensureIndexes(context.Background(), st.collection); err != nil {
+		t.Fatalf("second ensureIndexes: %v", err)
+	}
+}
+
 func TestUpsertGetDeleteRoundtrip(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
