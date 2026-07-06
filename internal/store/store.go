@@ -166,6 +166,10 @@ type Store struct {
 	client     *qdrant.Client
 	collection string
 	now        func() time.Time
+
+	// mintCandidate generates a short_id candidate; nil defaults to shortid.New.
+	// Overridable in tests to force MintShortID's collision-retry branch.
+	mintCandidate func() (string, error)
 }
 
 // Option configures a Store at construction.
@@ -1442,6 +1446,58 @@ func (s *Store) CountOwnerless(ctx context.Context) (n uint64, err error) {
 	return s.client.Count(ctx, &qdrant.CountPoints{
 		CollectionName: s.collection, Filter: ownerlessFilter(), Exact: qdrant.PtrOf(true),
 	})
+}
+
+// MintShortID returns a short id not currently present on any record, retrying
+// on the (astronomically unlikely at 50 bits) global collision. When seen is
+// non-nil, ids it returns are recorded there and candidates already in it are
+// skipped — for a batch (backfill) that mints many ids before any is
+// count-visible. The global Count is authoritative; seen covers the not-yet-
+// flushed same-run window only.
+func (s *Store) MintShortID(ctx context.Context, seen map[string]struct{}) (id string, err error) {
+	ctx, span := tracer.Start(ctx, "store.MintShortID")
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "MintShortID", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
+	gen := s.mintCandidate
+	if gen == nil {
+		gen = shortid.New
+	}
+	for {
+		cand, genErr := gen()
+		if genErr != nil {
+			err = genErr
+			return "", err
+		}
+		if seen != nil {
+			if _, dup := seen[cand]; dup {
+				continue
+			}
+		}
+		n, countErr := s.client.Count(ctx, &qdrant.CountPoints{
+			CollectionName: s.collection,
+			Filter:         &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatch("short_id", cand)}},
+			Exact:          qdrant.PtrOf(true),
+		})
+		if countErr != nil {
+			err = countErr
+			return "", err
+		}
+		if n == 0 {
+			if seen != nil {
+				seen[cand] = struct{}{}
+			}
+			id = cand
+			return id, nil
+		}
+	}
 }
 
 // CountAnonymousBucket returns the number of records in the auth-disabled

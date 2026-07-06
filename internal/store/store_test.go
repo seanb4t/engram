@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/qdrant/go-client/qdrant"
+	"github.com/seanb4t/engram/internal/shortid"
 	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
 )
 
@@ -2620,5 +2621,44 @@ func TestResolvePointIDAmbiguous(t *testing.T) {
 	}
 	if _, err := st.ResolvePointID(ctx, "dupdupdup0"); !errors.Is(err, ErrAmbiguousShortID) {
 		t.Fatalf("want ErrAmbiguousShortID, got %v", err)
+	}
+}
+
+func TestMintShortIDUnique(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	defer func() { cleanupErr(t, "DeleteAllRaw s", st.DeleteAllRaw(ctx, "s")) }()
+	a, err := st.MintShortID(ctx, nil)
+	if err != nil || len(a) != shortid.Length {
+		t.Fatalf("mint a: %q err %v", a, err)
+	}
+	if err := st.Upsert(ctx, Memory{ID: "a0000000-0000-0000-0000-000000000030", ShortID: a, Content: "c", Scope: "s", Owner: "o"}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := st.MintShortID(ctx, nil)
+	if err != nil || b == a {
+		t.Fatalf("mint b collided/errored: %q err %v", b, err)
+	}
+}
+
+func TestMintShortIDRetriesOnCollision(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	defer func() { cleanupErr(t, "DeleteAllRaw s", st.DeleteAllRaw(ctx, "s")) }()
+	// Persist "collidecol" so the first candidate collides, forcing the retry branch.
+	if err := st.Upsert(ctx, Memory{ID: "a0000000-0000-0000-0000-000000000031", ShortID: "collidecol", Content: "c", Scope: "s", Owner: "o"}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	st.mintCandidate = func() (string, error) {
+		calls++
+		if calls == 1 {
+			return "collidecol", nil // taken → must retry
+		}
+		return "freshfresh", nil
+	}
+	got, err := st.MintShortID(ctx, nil)
+	if err != nil || got != "freshfresh" || calls != 2 {
+		t.Fatalf("got %q err %v calls %d (want freshfresh / 2)", got, err, calls)
 	}
 }
