@@ -13,6 +13,8 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-zzq0](engram-zzq0-encode-short-id-as-10-char-crockford-base32.md) | 2026-07-06 | Accepted | Encode short_id as 10-char Crockford base32 |
+| [engram-02ta](engram-02ta-resolve-short-id-at-handler-layer-not-inside-store-methods.md) | 2026-07-06 | Accepted | Resolve short_id at the handler layer, not inside store methods |
 | [engram-zyhq](engram-zyhq-generic-param-map-passthrough-over-embedder-profiles-asymmet.md) | 2026-07-01 | Accepted | Generic param-map passthrough over embedder profiles for asymmetric/cloud embedders |
 | [engram-ef28](engram-ef28-index-owner-scope-created-at-as-qdrant-payload-indexes.md) | 2026-06-30 | Accepted | Index owner/scope/created_at as Qdrant payload indexes |
 | [engram-1frj](engram-1frj-boundary-id-set-cursor-half-open-date-window-recall.md) | 2026-06-30 | Accepted | Boundary id-set cursor with half-open date window for recall |
