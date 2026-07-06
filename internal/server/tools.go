@@ -369,11 +369,11 @@ type listScheduledArgs struct {
 }
 
 type idArgs struct {
-	ID string `json:"id"`
+	ID string `json:"id" jsonschema:"the memory's full UUID or its short_id"`
 }
 
 type updateArgs struct {
-	ID      string    `json:"id"`
+	ID      string    `json:"id" jsonschema:"the memory's full UUID or its short_id"`
 	Content string    `json:"content"`
 	Shared  *bool     `json:"shared,omitempty" jsonschema:"omit to keep current visibility; true=shared, false=private"`
 	Tags    *[]string `json:"tags,omitempty" jsonschema:"omit to keep current tags; supply to replace the full set (empty array clears)"`
@@ -399,7 +399,7 @@ type storeDiscoveryArgs struct {
 	Scope     string        `json:"scope" jsonschema:"discovery scope, must start with discovery: (e.g. discovery:repo:<repo>)"`
 	Tags      []string      `json:"tags,omitempty"`
 	Summary   string        `json:"summary,omitempty"`
-	ID        string        `json:"id,omitempty" jsonschema:"omit to create; supply to replace in place"`
+	ID        string        `json:"id,omitempty" jsonschema:"omit to create; supply the full UUID or short_id to replace in place"`
 }
 
 // store_discovery size bounds (resource-exhaustion guards). Generous enough not
@@ -420,7 +420,7 @@ type searchDiscoveryArgs struct {
 }
 
 type setVisibilityArgs struct {
-	ID     string `json:"id"`
+	ID     string `json:"id" jsonschema:"the memory's full UUID or its short_id"`
 	Shared bool   `json:"shared" jsonschema:"true = readable by any authenticated caller; false = private"`
 }
 
@@ -891,13 +891,13 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 
 	s.AddReceivingMiddleware(instrumentTools(tm.Record))
 
-	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps. Optionally pass `summary`: a one-line recall summary shown in place of content (keep negations/identifiers verbatim)."},
+	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps. Optionally pass `summary`: a one-line recall summary shown in place of content (keep negations/identifiers verbatim). The result includes the memory's id and short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeArgs) (*mcp.CallToolResult, any, error) {
 			id, sid, err := d.storeMemory(ctx, a)
 			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "schedule_memory", Description: "Persist a memory with a validity window (not_before defers recall; not_after expires it). At least one bound (RFC3339) is required; use store_memory for unscheduled records."},
+	mcp.AddTool(s, &mcp.Tool{Name: "schedule_memory", Description: "Persist a memory with a validity window (not_before defers recall; not_after expires it). At least one bound (RFC3339) is required; use store_memory for unscheduled records. The result includes the memory's id and short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a scheduleArgs) (*mcp.CallToolResult, any, error) {
 			id, sid, err := d.scheduleMemory(ctx, a)
 			return textResult(fmt.Sprintf("scheduled %s", id)), map[string]string{"id": id, "short_id": sid}, err
@@ -921,19 +921,19 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			return textResult(fmt.Sprintf("%d scheduled", len(mems))), map[string]any{"memories": mems}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id. Unlike search_memory/list_memory, fetch-by-id is NOT recall-gated: it returns scheduled (not-yet-active) and expired records too."},
+	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id. Unlike search_memory/list_memory, fetch-by-id is NOT recall-gated: it returns scheduled (not-yet-active) and expired records too. The id may be the full UUID or the short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
 			m, err := d.getMemory(ctx, a)
 			return textResult(m.Content), m, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "update_memory", Description: "Replace a memory's content in place (re-embeds). Optionally set `shared` to toggle visibility (true=shared, false=private); omit to keep current visibility. Optionally set `tags` to replace the full tag set (empty array clears); omit to keep current tags. Optionally set `summary` to replace the recall summary (empty string clears); omit to keep current. If you change content while a caller-authored summary exists, you must address the summary (re-send, update, or clear) or the update is rejected."},
+	mcp.AddTool(s, &mcp.Tool{Name: "update_memory", Description: "Replace a memory's content in place (re-embeds). Optionally set `shared` to toggle visibility (true=shared, false=private); omit to keep current visibility. Optionally set `tags` to replace the full tag set (empty array clears); omit to keep current tags. Optionally set `summary` to replace the recall summary (empty string clears); omit to keep current. If you change content while a caller-authored summary exists, you must address the summary (re-send, update, or clear) or the update is rejected. The id may be the full UUID or the short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a updateArgs) (*mcp.CallToolResult, any, error) {
 			err := d.updateMemory(ctx, a)
 			return textResult("updated"), nil, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "delete_memory", Description: "Delete one memory by id."},
+	mcp.AddTool(s, &mcp.Tool{Name: "delete_memory", Description: "Delete one memory by id. The id may be the full UUID or the short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
 			err := d.deleteMemory(ctx, a)
 			return textResult("deleted"), nil, err
@@ -949,7 +949,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			return textResult("scope cleared"), nil, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "store_discovery", Description: "Cache agent-earned codebase understanding with citations. kind=map|fact; >=1 citation; scope discovery:repo:<repo>."},
+	mcp.AddTool(s, &mcp.Tool{Name: "store_discovery", Description: "Cache agent-earned codebase understanding with citations. kind=map|fact; >=1 citation; scope discovery:repo:<repo>. The result includes the discovery's id and short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeDiscoveryArgs) (*mcp.CallToolResult, any, error) {
 			id, sid, err := d.storeDiscovery(ctx, a)
 			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id, "short_id": sid}, err
@@ -961,7 +961,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"discoveries": hits}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "set_visibility", Description: "Share or unshare a memory you own. shared=true → readable by any authenticated caller (never writable by others); false → private."},
+	mcp.AddTool(s, &mcp.Tool{Name: "set_visibility", Description: "Share or unshare a memory you own. shared=true → readable by any authenticated caller (never writable by others); false → private. The id may be the full UUID or the short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a setVisibilityArgs) (*mcp.CallToolResult, any, error) {
 			err := d.setVisibility(ctx, a)
 			return textResult("visibility updated"), nil, err

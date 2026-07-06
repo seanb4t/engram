@@ -47,13 +47,13 @@ and ageable. For each citation capture:
 
 1. **search-before-store.** Run `search_discovery` for the area first (a
    natural-language description — it is semantic). If a near-duplicate exists,
-   call `store_discovery` with that record's `id` to replace it rather than
-   adding a duplicate.
+   call `store_discovery` with that record's `id` (or `short_id`) to replace it
+   rather than adding a duplicate.
 2. Explore breadth-first; for each meaningful unit decide map vs fact.
 3. Capture citations (pins + excerpts) as you read.
 4. `store_discovery(content, kind, citations[], scope="discovery:repo:<repo>", summary?, tags?, id?)`
-   — omit `id` to create; pass the near-duplicate's `id` (from step 1) to replace
-   it in place rather than adding a new record.
+   — omit `id` to create; pass the near-duplicate's `id` or `short_id` (from
+   step 1) to replace it in place rather than adding a new record.
 
 ## Recall (the other half)
 
