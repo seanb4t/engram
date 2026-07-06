@@ -1341,3 +1341,67 @@ func TestEmbedderFromConfigPassesParamsAndInstructions(t *testing.T) {
 		t.Errorf("Embed body = %v; want input_type=search_document, input=%q", got, "passage: d")
 	}
 }
+
+func TestByIDToolsAcceptShortID(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "owner-A")
+	id, sid, err := d.storeMemory(ctx, storeArgs{Content: "hi", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := d.getMemory(ctx, idArgs{ID: sid})
+	if err != nil || got.ID != id {
+		t.Fatalf("get by short id → %q (err %v)", got.ID, err)
+	}
+	if err := d.updateMemory(ctx, updateArgs{ID: sid, Content: "hi-edited"}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := d.st.Get(context.Background(), id)
+	if err != nil || after.ShortID != sid || after.Content != "hi-edited" {
+		t.Fatalf("update via short id: content=%q short=%q err=%v", after.Content, after.ShortID, err)
+	}
+	if err := d.setVisibility(ctx, setVisibilityArgs{ID: sid, Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.deleteMemory(ctx, idArgs{ID: sid}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.st.Get(context.Background(), id); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("record not deleted (err %v)", err)
+	}
+}
+
+func TestShortIDCrossOwnerVisibility(t *testing.T) {
+	d := testDeps(t)
+	ctxA := authedContext(t, "owner-A")
+	privID, privSid, err := d.storeMemory(ctxA, storeArgs{Content: "secret", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sharedID, sharedSid, err := d.storeMemory(ctxA, storeArgs{Content: "public", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.setVisibility(ctxA, setVisibilityArgs{ID: sharedID, Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	// owner-B: resolution is owner-agnostic, the read gate governs.
+	ctxB := authedContext(t, "owner-B")
+	// item 4: another owner's private record → ErrNotFound (404, not 403; no leak)
+	_, err = d.getMemory(ctxB, idArgs{ID: privSid})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("cross-owner private must be ErrNotFound, got %v", err)
+	}
+	// no-leak: the gate resolved privSid to another owner's real UUID; the error
+	// must echo only the caller-supplied short id, never that resolved UUID.
+	if strings.Contains(err.Error(), privID) {
+		t.Fatalf("error leaks resolved UUID: %v", err)
+	}
+	if !strings.Contains(err.Error(), privSid) {
+		t.Fatalf("error should echo caller-supplied short id only: %v", err)
+	}
+	// item 5: another owner's shared record → readable
+	if got, err := d.getMemory(ctxB, idArgs{ID: sharedSid}); err != nil || got.ID != sharedID {
+		t.Fatalf("cross-owner shared must be readable, got %q err %v", got.ID, err)
+	}
+}

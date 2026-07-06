@@ -773,10 +773,20 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 	if err != nil {
 		return err
 	}
+	// Resolve id or short id to the point UUID (owner-agnostic; the gate governs).
+	pid, err := d.st.ResolvePointID(ctx, a.ID)
+	if err != nil {
+		return err
+	}
 	// Ownership gate before embedding: one authoritative Get. A non-owner (or
 	// missing record) gets ErrNotFound here, before the billable embed or write.
-	cur, err := d.st.FetchForUpdate(ctx, a.ID, subj)
+	// Re-wrap not-found with the caller's ORIGINAL input so a resolved short id
+	// never leaks another owner's real UUID.
+	cur, err := d.st.FetchForUpdate(ctx, pid, subj)
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
+		}
 		return err
 	}
 	// Resolve the summary BEFORE embedding so a stale-summary rejection costs no
@@ -802,6 +812,66 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 		return err
 	}
 	return d.st.Update(ctx, cur, a.Content, a.Shared, a.Tags, sumArg, vec)
+}
+
+// getMemory fetches one record by id or short id. Resolution is owner-agnostic;
+// the GetReadable gate governs visibility. A not-found from the gate is re-wrapped
+// with the caller's ORIGINAL input so a resolved short id never leaks another
+// owner's real UUID.
+func (d *deps) getMemory(ctx context.Context, a idArgs) (store.Memory, error) {
+	subj, err := subjectFromContext(ctx)
+	if err != nil {
+		return store.Memory{}, err
+	}
+	pid, err := d.st.ResolvePointID(ctx, a.ID)
+	if err != nil {
+		return store.Memory{}, err
+	}
+	m, err := d.st.GetReadable(ctx, pid, subj)
+	if errors.Is(err, store.ErrNotFound) {
+		return store.Memory{}, fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
+	}
+	return m, err
+}
+
+// deleteMemory deletes one record by id or short id. Same no-leak re-wrap as
+// getMemory: the Delete gate's not-found echoes only the caller's input.
+func (d *deps) deleteMemory(ctx context.Context, a idArgs) error {
+	subj, err := subjectFromContext(ctx)
+	if err != nil {
+		return err
+	}
+	pid, err := d.st.ResolvePointID(ctx, a.ID)
+	if err != nil {
+		return err
+	}
+	if err := d.st.Delete(ctx, pid, subj); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
+		}
+		return err
+	}
+	return nil
+}
+
+// setVisibility shares/unshares one record by id or short id. Same no-leak
+// re-wrap: the SetVisibility gate's not-found echoes only the caller's input.
+func (d *deps) setVisibility(ctx context.Context, a setVisibilityArgs) error {
+	subj, err := subjectFromContext(ctx)
+	if err != nil {
+		return err
+	}
+	pid, err := d.st.ResolvePointID(ctx, a.ID)
+	if err != nil {
+		return err
+	}
+	if err := d.st.SetVisibility(ctx, pid, subj, a.Shared); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
+		}
+		return err
+	}
+	return nil
 }
 
 // Register wires the memory tools onto the MCP server. It accepts a pre-built
@@ -853,11 +923,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 
 	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id. Unlike search_memory/list_memory, fetch-by-id is NOT recall-gated: it returns scheduled (not-yet-active) and expired records too."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-			subj, err := subjectFromContext(ctx)
-			if err != nil {
-				return nil, nil, err
-			}
-			m, err := d.st.GetReadable(ctx, a.ID, subj)
+			m, err := d.getMemory(ctx, a)
 			return textResult(m.Content), m, err
 		})
 
@@ -869,11 +935,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 
 	mcp.AddTool(s, &mcp.Tool{Name: "delete_memory", Description: "Delete one memory by id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-			subj, err := subjectFromContext(ctx)
-			if err != nil {
-				return nil, nil, err
-			}
-			err = d.st.Delete(ctx, a.ID, subj)
+			err := d.deleteMemory(ctx, a)
 			return textResult("deleted"), nil, err
 		})
 
@@ -901,11 +963,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 
 	mcp.AddTool(s, &mcp.Tool{Name: "set_visibility", Description: "Share or unshare a memory you own. shared=true → readable by any authenticated caller (never writable by others); false → private."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a setVisibilityArgs) (*mcp.CallToolResult, any, error) {
-			subj, err := subjectFromContext(ctx)
-			if err != nil {
-				return nil, nil, err
-			}
-			err = d.st.SetVisibility(ctx, a.ID, subj, a.Shared)
+			err := d.setVisibility(ctx, a)
 			return textResult("visibility updated"), nil, err
 		})
 	return nil
