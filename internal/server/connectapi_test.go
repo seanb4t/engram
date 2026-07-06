@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -431,5 +432,57 @@ func TestMountConnectMountsWhenResolverPresent(t *testing.T) {
 	// Mounted: connect-go responds (415/400 for a malformed body), NOT 404.
 	if rec.Code == http.StatusNotFound {
 		t.Fatal("Connect path should be mounted when a resolver is present")
+	}
+}
+
+// TestConnectGetMemoryByShortIDAndProtoField pins that Connect's GetMemory
+// resolves a short id to its point UUID (mirroring the MCP by-id tools) and
+// that the resolved record's short id round-trips on the wire via the new
+// Memory.short_id proto field.
+func TestConnectGetMemoryByShortIDAndProtoField(t *testing.T) {
+	d := testDeps(t)
+	ctxA := authedContext(t, "owner-A")
+	id, sid, err := d.storeMemory(ctxA, storeArgs{Content: "hello", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := &engramAPI{d: d}
+	actx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "owner-A"}})
+	resp, err := api.GetMemory(actx, connect.NewRequest(&engramv1.GetMemoryRequest{Id: sid}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Msg.Memory.Id != id {
+		t.Fatalf("short id resolved to %q, want %q", resp.Msg.Memory.Id, id)
+	}
+	if resp.Msg.Memory.ShortId != sid {
+		t.Fatalf("proto ShortId = %q, want %q", resp.Msg.Memory.ShortId, sid)
+	}
+}
+
+// TestConnectGetMemoryCrossOwnerShortIDDoesNotLeakUUID pins that a cross-owner
+// GetMemory-by-short-id failure never leaks the resolved point UUID: the gate
+// resolves the short id to another owner's real UUID before the ownership
+// check runs, so the CodeNotFound error must echo only the caller-supplied
+// short id, never that resolved UUID (mirrors tools_test.go's
+// TestShortIDCrossOwnerVisibility no-leak assertion).
+func TestConnectGetMemoryCrossOwnerShortIDDoesNotLeakUUID(t *testing.T) {
+	d := testDeps(t)
+	ctxA := authedContext(t, "owner-A")
+	id, sid, err := d.storeMemory(ctxA, storeArgs{Content: "secret", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := &engramAPI{d: d}
+	bctx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "owner-B"}})
+	_, err = api.GetMemory(bctx, connect.NewRequest(&engramv1.GetMemoryRequest{Id: sid}))
+	if err == nil || connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("cross-owner short id: got %v, want CodeNotFound", err)
+	}
+	if strings.Contains(err.Error(), id) {
+		t.Fatalf("error leaks resolved UUID: %v", err)
+	}
+	if !strings.Contains(err.Error(), sid) {
+		t.Fatalf("error should echo caller-supplied short id only: %v", err)
 	}
 }

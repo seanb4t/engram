@@ -28,6 +28,7 @@ message Memory {
   // Qdrant similarity score on search results (higher = closer); 0 on
   // list/get results, which are not ranked.
   float score = 17;
+  string short_id = 18;
 }
 
 message ScopeCount {
