@@ -12,6 +12,7 @@ documents every field, its serialized JSON name, allowed values, and who sets it
 | Field | JSON key | Type | Set by | Description |
 |-------|----------|------|--------|-------------|
 | ID | `id` | string (UUID) | server | Unique record identifier, generated on creation |
+| Short ID | `short_id` | string (Crockford base32) | server | Short, case-insensitive handle; accepted anywhere an id is, minted on creation |
 | Content | `content` | string | client | The memory text; also the text that is embedded |
 | Scope | `scope` | string | client | `run:tier:repo` identifier, e.g. `eval-2026-05:project:selfhosted-cluster` |
 | Repo | `repo` | string | client | Repository name or URL (optional context) |
