@@ -2662,3 +2662,120 @@ func TestMintShortIDRetriesOnCollision(t *testing.T) {
 		t.Fatalf("got %q err %v calls %d (want freshfresh / 2)", got, err, calls)
 	}
 }
+
+// floatsEqual reports whether two float32 slices are element-wise equal.
+func floatsEqual(a, b []float32) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// upsertRawNoOwner writes a point straight through the client whose payload omits
+// the owner key (mirrors seedSource's raw point). It exists to prove the
+// absent-owner-key invariant survives BackfillShortIDs' payload-only SetPayload.
+func upsertRawNoOwner(t *testing.T, s *Store, id string, vec []float32) error {
+	t.Helper()
+	_, err := s.client.Upsert(context.Background(), &qdrant.UpsertPoints{
+		CollectionName: s.collection,
+		Wait:           qdrant.PtrOf(true),
+		Points: []*qdrant.PointStruct{{
+			Id:      qdrant.NewID(id),
+			Vectors: qdrant.NewVectors(vec...),
+			Payload: qdrant.NewValueMap(map[string]any{"content": "c", "scope": "s"}),
+		}},
+	})
+	return err
+}
+
+func TestBackfillShortIDs(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	defer func() { cleanupErr(t, "DeleteAllRaw s", st.DeleteAllRaw(ctx, "s")) }()
+	vec := []float32{0.1, 0.2, 0.3}
+	// >reindexBatch records so the cursor loop pages more than once (item 25).
+	const total = 300
+	for i := 0; i < total; i++ {
+		id := fmt.Sprintf("a0000000-0000-0000-0000-%012d", i)
+		if err := st.Upsert(ctx, Memory{ID: id, Content: "c", Scope: "s", Owner: "o"}, vec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// One extra record written WITHOUT an owner key, to prove the absent-owner
+	// invariant survives the payload-only SetPayload.
+	rawID := "b0000000-0000-0000-0000-000000000000"
+	if err := upsertRawNoOwner(t, st, rawID, vec); err != nil { // helper below
+		t.Fatal(err)
+	}
+
+	// dry-run counts, writes nothing
+	n, err := st.BackfillShortIDs(ctx, true)
+	if err != nil || n != total+1 {
+		t.Fatalf("dry-run n=%d err=%v", n, err)
+	}
+	pts := scrollPoints(t, st.client, st.collection)
+	if pts["a0000000-0000-0000-0000-000000000000"].payload["short_id"].GetStringValue() != "" {
+		t.Fatal("dry-run wrote a short id")
+	}
+	// The collection is Cosine-distance, so Qdrant stores vectors L2-normalized —
+	// the read-back vector never equals the raw input. Snapshot the stored vector
+	// now (dry-run wrote nothing) so the post-apply check can prove the
+	// payload-only SetPayload left it untouched.
+	rawVec := pts[rawID].vec
+
+	// apply, then assert every record got a distinct short id
+	n, err = st.BackfillShortIDs(ctx, false)
+	if err != nil || n != total+1 {
+		t.Fatalf("apply n=%d err=%v", n, err)
+	}
+	pts = scrollPoints(t, st.client, st.collection)
+	uniq := map[string]struct{}{}
+	for id, p := range pts {
+		sid := p.payload["short_id"].GetStringValue()
+		if len(sid) != shortid.Length {
+			t.Fatalf("%s short id %q", id, sid)
+		}
+		uniq[sid] = struct{}{}
+	}
+	if len(uniq) != total+1 {
+		t.Fatalf("short ids not globally unique: %d distinct of %d", len(uniq), total+1)
+	}
+	// vector preserved (no re-embed) + absent-owner invariant preserved
+	if !floatsEqual(pts[rawID].vec, rawVec) {
+		t.Fatal("backfill changed a vector")
+	}
+	if _, ok := pts[rawID].payload["owner"]; ok {
+		t.Fatal("backfill synthesized an owner key on the raw point")
+	}
+
+	// idempotent: second run finds nothing to do
+	if n, err = st.BackfillShortIDs(ctx, false); err != nil || n != 0 {
+		t.Fatalf("idempotent run n=%d err=%v", n, err)
+	}
+}
+
+// TestBackfillShortIDsHonorsCancel verifies the backfill propagates context
+// cancellation to its Qdrant calls instead of running to completion — the
+// property the CLI relies on for its --timeout / Ctrl-C bound.
+func TestBackfillShortIDsHonorsCancel(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	defer func() { cleanupErr(t, "DeleteAllRaw s", st.DeleteAllRaw(ctx, "s")) }()
+	vec := []float32{0.1, 0.2, 0.3}
+	for i := 0; i < 3; i++ {
+		id := fmt.Sprintf("c0000000-0000-0000-0000-%012d", i)
+		if err := st.Upsert(ctx, Memory{ID: id, Content: "c", Scope: "s", Owner: "o"}, vec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := st.BackfillShortIDs(cctx, false); err == nil {
+		t.Error("cancelled context: expected error")
+	}
+}
