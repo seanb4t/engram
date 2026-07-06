@@ -2779,3 +2779,73 @@ func TestBackfillShortIDsHonorsCancel(t *testing.T) {
 		t.Error("cancelled context: expected error")
 	}
 }
+
+// TestBackfillShortIDsResumesAfterMidRunFailure exercises the scenario the
+// global short_id==candidate Count check (vs. the in-run "seen" map alone)
+// exists for: a backfill interrupted partway through (OOM, pod restart,
+// Ctrl-C) after some records are already stamped, then re-run. Unlike
+// TestBackfillShortIDsHonorsCancel (which cancels before any work happens),
+// this forces mintCandidate to fail after K successful mints so the run
+// aborts MID-run with some records already committed, then proves a second
+// run resumes on exactly the unstamped remainder without touching or
+// colliding with the already-stamped ones.
+func TestBackfillShortIDsResumesAfterMidRunFailure(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	defer func() { cleanupErr(t, "DeleteAllRaw s", st.DeleteAllRaw(ctx, "s")) }()
+	vec := []float32{0.1, 0.2, 0.3}
+	const total = 10
+	const stampBeforeFailure = 4
+	for i := 0; i < total; i++ {
+		id := fmt.Sprintf("d0000000-0000-0000-0000-%012d", i)
+		if err := st.Upsert(ctx, Memory{ID: id, Content: "c", Scope: "s", Owner: "o"}, vec); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// First run: mint stampBeforeFailure valid, distinct handles, then fail.
+	mintErr := errors.New("injected mint failure")
+	calls := 0
+	st.mintCandidate = func() (string, error) {
+		calls++
+		if calls > stampBeforeFailure {
+			return "", mintErr
+		}
+		return fmt.Sprintf("firstrun%02d", calls), nil
+	}
+	n, err := st.BackfillShortIDs(ctx, false)
+	if !errors.Is(err, mintErr) {
+		t.Fatalf("first run err = %v, want %v", err, mintErr)
+	}
+	if n != stampBeforeFailure {
+		t.Fatalf("first run n = %d, want %d", n, stampBeforeFailure)
+	}
+
+	// Second run: real minting, resuming on the unstamped remainder.
+	st.mintCandidate = nil
+	n, err = st.BackfillShortIDs(ctx, false)
+	if err != nil {
+		t.Fatalf("resume run: %v", err)
+	}
+	if n != total-stampBeforeFailure {
+		t.Fatalf("resume run n = %d, want %d", n, total-stampBeforeFailure)
+	}
+
+	pts := scrollPoints(t, st.client, st.collection)
+	uniq := map[string]struct{}{}
+	for id, p := range pts {
+		sid := p.payload["short_id"].GetStringValue()
+		if len(sid) != shortid.Length {
+			t.Fatalf("%s short id %q", id, sid)
+		}
+		uniq[sid] = struct{}{}
+	}
+	if len(uniq) != total {
+		t.Fatalf("short ids not globally unique: %d distinct of %d", len(uniq), total)
+	}
+
+	// Third run: nothing left to do.
+	if n, err = st.BackfillShortIDs(ctx, false); err != nil || n != 0 {
+		t.Fatalf("third run n=%d err=%v", n, err)
+	}
+}
