@@ -112,6 +112,9 @@ def test_rules_index_instruction_present(git_repo: Path, monkeypatch):
     # Rules-index instruction names list_rules and the rule scope for the spine.
     assert "list_rules" in ctx
     assert "rule:repo:github.com/org/repo" in ctx
+    # Ordering lock (ADR engram-d386): the index must render ABOVE the recall
+    # digest. Pin the directive so a future reword cannot silently drop it.
+    assert "ABOVE the recall digest" in ctx
     # No project scope when ENGRAM_PROJECT is unset.
     assert "rule:project:" not in ctx
 
