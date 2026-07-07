@@ -157,6 +157,38 @@ func TestListRulesHandler(t *testing.T) {
 	}
 }
 
+func TestSetVisibilityRejectsRule(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "rule:repo:set-vis-rule-test"
+	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) })
+
+	id, _, err := d.storeRule(ctx, storeRuleArgs{
+		Content: "some rule", Scope: scope, Summary: "some rule",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// The set_visibility handler must reject any visibility change on a rule.
+	err = d.setVisibility(ctx, setVisibilityArgs{ID: id, Shared: false})
+	if err == nil {
+		t.Fatal("expected set_visibility on a rule to be rejected")
+	}
+	if !strings.Contains(err.Error(), "always shared") {
+		t.Errorf("expected 'always shared' message, got %v", err)
+	}
+
+	// The rule is untouched: still shared.
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Visibility != "shared" {
+		t.Errorf("rule visibility mutated to %q", got.Visibility)
+	}
+}
+
 func TestUpdateMemoryRuleGuard(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()

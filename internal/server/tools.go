@@ -870,6 +870,25 @@ func (d *deps) setVisibility(ctx context.Context, a setVisibilityArgs) error {
 	if err != nil {
 		return err
 	}
+	// Rules are always shared: reject any visibility change on a rule. Read the
+	// record to learn its category (ResolvePointID returns only the UUID). Run
+	// this BEFORE the write-ownership gate so the actionable "always shared"
+	// message wins over an owner-only ErrNotFound (spec implementation-order note;
+	// rules are unconditionally readable, so this is not a leak).
+	rec, err := d.st.GetReadable(ctx, pid, subj)
+	if err != nil {
+		// Re-wrap not-found with the caller's ORIGINAL input: pid is the resolved
+		// UUID (possibly another owner's, resolved from their short id), and
+		// GetReadable embeds it in ErrNotFound — echoing pid would leak the real
+		// UUID (404-indistinguishability). Mirrors the SetVisibility gate below.
+		if errors.Is(err, store.ErrNotFound) {
+			return fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
+		}
+		return err
+	}
+	if rec.Category == "rule" {
+		return fmt.Errorf("rules are always shared — delete the rule instead of changing its visibility")
+	}
 	if err := d.st.SetVisibility(ctx, pid, subj, a.Shared); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
