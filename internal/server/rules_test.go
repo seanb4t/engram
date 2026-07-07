@@ -156,3 +156,40 @@ func TestListRulesHandler(t *testing.T) {
 		t.Error("expected rejection of non-rule scope")
 	}
 }
+
+func TestUpdateMemoryRuleGuard(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "rule:repo:update-rule-guard-test"
+	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) })
+
+	id, _, err := d.storeRule(ctx, storeRuleArgs{
+		Content: "original rule text", Scope: scope, Summary: "original summary",
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	newline := "bad\nsummary"
+	long := strings.Repeat("a", maxRuleSummaryBytes+1)
+	empty := ""
+	cases := []struct {
+		name string
+		a    updateArgs
+	}{
+		{"newline summary", updateArgs{ID: id, Content: "original rule text", Summary: &newline}},
+		{"oversize summary", updateArgs{ID: id, Content: "original rule text", Summary: &long}},
+		{"clear summary", updateArgs{ID: id, Content: "original rule text", Summary: &empty}},
+	}
+	for _, tc := range cases {
+		if err := d.updateMemory(ctx, tc.a); err == nil {
+			t.Errorf("%s: expected rejection, got nil", tc.name)
+		}
+	}
+
+	// A valid single-line summary replacement still succeeds.
+	okSummary := "revised summary"
+	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "revised rule text", Summary: &okSummary}); err != nil {
+		t.Errorf("valid rule update rejected: %v", err)
+	}
+}

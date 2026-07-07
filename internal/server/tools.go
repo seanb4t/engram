@@ -786,6 +786,14 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 		}
 		return err
 	}
+	// Rule guard: a rule's summary is its index line — it must stay a non-empty
+	// single line. Reject a clearing/newline/oversize summary before embed/write.
+	// (cur.Category is known for free from the fetch above.)
+	if cur.Category == "rule" && a.Summary != nil {
+		if err := validateRuleSummary(*a.Summary); err != nil {
+			return err
+		}
+	}
 	// Resolve the summary BEFORE embedding so a stale-summary rejection costs no
 	// embed call. The owner gate has already run, so a rejected caller never
 	// reaches here and never learns whether a summary exists.
