@@ -786,12 +786,19 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 		}
 		return err
 	}
-	// Rule guard: a rule's summary is its index line — it must stay a non-empty
-	// single line. Reject a clearing/newline/oversize summary before embed/write.
-	// (cur.Category is known for free from the fetch above.)
-	if cur.Category == "rule" && a.Summary != nil {
-		if err := validateRuleSummary(*a.Summary); err != nil {
-			return err
+	// Rule guard (cur.Category is known for free from the fetch above): a rule's
+	// summary is its index line — it must stay a non-empty single line; and a
+	// rule is always shared — reject an un-share here too, mirroring
+	// set_visibility, so update_memory cannot be used to bypass that gate. Both
+	// checks run before the embed/write.
+	if cur.Category == "rule" {
+		if a.Summary != nil {
+			if err := validateRuleSummary(*a.Summary); err != nil {
+				return err
+			}
+		}
+		if a.Shared != nil && !*a.Shared {
+			return fmt.Errorf("rules are always shared — delete the rule instead of making it private")
 		}
 	}
 	// Resolve the summary BEFORE embedding so a stale-summary rejection costs no

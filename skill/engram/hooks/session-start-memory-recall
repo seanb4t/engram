@@ -111,9 +111,10 @@ def _build_context(spine: str, overlay: str | None) -> str:
         lines.append("")
         joined = ", ".join(rule_scopes)
         lines.append(
-            "Repository rules (normative ground truth) — after the recall digest, "
-            f"call mcp__engram__list_rules once with scopes=[{joined}] and render a "
-            "compact Rules index: one line per rule as `short_id — summary [tags]`. "
+            "Repository rules (normative ground truth) — as a distinct Rules "
+            f"index section ABOVE the recall digest, call mcp__engram__list_rules "
+            f"once with scopes=[{joined}] and render one line per rule as "
+            "`short_id — summary [tags]`. "
             "This is an INDEX only, not the full rules: do NOT fetch or inline rule "
             "content at startup. When you are about to act in a rule's concern area, "
             "fetch that one rule's full text on demand via get_memory(<short_id>). "

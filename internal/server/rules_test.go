@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -223,5 +224,159 @@ func TestUpdateMemoryRuleGuard(t *testing.T) {
 	okSummary := "revised summary"
 	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "revised rule text", Summary: &okSummary}); err != nil {
 		t.Errorf("valid rule update rejected: %v", err)
+	}
+}
+
+// TestUpdateMemoryRuleGuardRejectsUnshare pins that update_memory cannot be used
+// to un-share a rule — the rules-are-always-shared invariant set_visibility
+// enforces must hold on the update path too.
+func TestUpdateMemoryRuleGuardRejectsUnshare(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "rule:repo:update-rule-unshare-test"
+	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) })
+
+	id, _, err := d.storeRule(ctx, storeRuleArgs{Content: "some rule", Scope: scope, Summary: "some rule"})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	no := false
+	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "some rule", Shared: &no}); err == nil {
+		t.Fatal("expected update_memory(shared=false) on a rule to be rejected")
+	}
+	// The rule is untouched: still shared.
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Visibility != "shared" {
+		t.Errorf("rule visibility mutated to %q", got.Visibility)
+	}
+}
+
+// TestStoreRuleReplacePreservesShortID mirrors the storeDiscovery replace test:
+// replacing a rule by its UUID or its short_id resolves to the same point and
+// preserves the minted short_id.
+func TestStoreRuleReplacePreservesShortID(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "owner-rule-A")
+	scope := "rule:repo:store-rule-replace-test"
+	t.Cleanup(func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("owner-rule-A")))
+	})
+
+	id, sid, err := d.storeRule(ctx, storeRuleArgs{Content: "r1", Scope: scope, Summary: "r1"})
+	if err != nil || sid == "" {
+		t.Fatalf("create: sid=%q err=%v", sid, err)
+	}
+	// Replace by UUID → same point, same short id.
+	id2, sid2, err := d.storeRule(ctx, storeRuleArgs{ID: id, Content: "r1b", Scope: scope, Summary: "r1b"})
+	if err != nil || id2 != id || sid2 != sid {
+		t.Fatalf("replace-by-uuid: id %q->%q sid %q->%q err %v", id, id2, sid, sid2, err)
+	}
+	// Replace by SHORT ID → resolves to the same point, still same short id.
+	id3, sid3, err := d.storeRule(ctx, storeRuleArgs{ID: sid, Content: "r1c", Scope: scope, Summary: "r1c"})
+	if err != nil || id3 != id || sid3 != sid {
+		t.Fatalf("replace-by-shortid: id %q->%q sid %q->%q err %v", id, id3, sid, sid3, err)
+	}
+}
+
+// TestStoreRuleCrossOwnerShortIDDoesNotLeakUUID pins that a replace attempt
+// against another owner's rule short_id fails with an error echoing only the
+// caller-supplied input — never the resolved point UUID (404-indistinguishability,
+// mirroring the storeDiscovery guard).
+func TestStoreRuleCrossOwnerShortIDDoesNotLeakUUID(t *testing.T) {
+	d := testDeps(t)
+	scope := "rule:repo:store-rule-crossowner-test"
+	ctxA := authedContext(t, "owner-rule-A")
+	t.Cleanup(func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctxA, scope, store.Authenticated("owner-rule-A")))
+	})
+	id, sid, err := d.storeRule(ctxA, storeRuleArgs{Content: "r", Scope: scope, Summary: "r"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctxB := authedContext(t, "owner-rule-B")
+	_, _, err = d.storeRule(ctxB, storeRuleArgs{ID: sid, Content: "r2", Scope: scope, Summary: "r2"})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+	if strings.Contains(err.Error(), id) {
+		t.Fatalf("error leaks resolved UUID: %v", err)
+	}
+	if !strings.Contains(err.Error(), sid) {
+		t.Fatalf("error should echo caller-supplied id only: %v", err)
+	}
+}
+
+// TestRuleCrossActorSharedRead: a rule stored by one authenticated actor is
+// readable via list_rules by any other authenticated actor — rules are always
+// shared (spec Testing: cross-actor shared read).
+func TestRuleCrossActorSharedRead(t *testing.T) {
+	d := testDeps(t)
+	scope := "rule:repo:rule-crossactor-read-test"
+	ctxA := authedContext(t, "owner-rule-A")
+	t.Cleanup(func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctxA, scope, store.Authenticated("owner-rule-A")))
+	})
+	if _, _, err := d.storeRule(ctxA, storeRuleArgs{Content: "r", Scope: scope, Summary: "shared rule"}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	rules, _, err := d.listRules(authedContext(t, "owner-rule-B"), listRulesArgs{Scopes: []string{scope}})
+	if err != nil {
+		t.Fatalf("listRules(B): %v", err)
+	}
+	if len(rules) != 1 {
+		t.Fatalf("actor B should see the shared rule, got %d", len(rules))
+	}
+}
+
+// TestRuleAnonBucketIsolation: an authenticated actor's rule (owner!="") is not
+// visible to an anonymous caller, which sees only the owner=="" bucket (spec
+// Testing: anon-bucket isolation).
+func TestRuleAnonBucketIsolation(t *testing.T) {
+	d := testDeps(t)
+	scope := "rule:repo:rule-anon-iso-test"
+	ctxA := authedContext(t, "owner-rule-A")
+	t.Cleanup(func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctxA, scope, store.Authenticated("owner-rule-A")))
+	})
+	if _, _, err := d.storeRule(ctxA, storeRuleArgs{Content: "r", Scope: scope, Summary: "A's rule"}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	rules, _, err := d.listRules(context.Background(), listRulesArgs{Scopes: []string{scope}})
+	if err != nil {
+		t.Fatalf("listRules(anon): %v", err)
+	}
+	if len(rules) != 0 {
+		t.Fatalf("anonymous caller must not see an owned rule, got %d", len(rules))
+	}
+}
+
+// TestRuleOrdinaryScopeIsolation: a rule in a rule:* scope does not leak into an
+// ordinary list of a different (non-rule) scope (spec Testing: ordinary-scope
+// isolation).
+func TestRuleOrdinaryScopeIsolation(t *testing.T) {
+	d := testDeps(t)
+	ruleScope := "rule:repo:rule-scope-iso-test"
+	memScope := "iso-test:repo:rule-scope-iso-test"
+	ctxA := authedContext(t, "owner-rule-A")
+	t.Cleanup(func() {
+		cleanupErr(t, "DeleteAll rule", d.st.DeleteAll(ctxA, ruleScope, store.Authenticated("owner-rule-A")))
+		cleanupErr(t, "DeleteAll mem", d.st.DeleteAll(ctxA, memScope, store.Authenticated("owner-rule-A")))
+	})
+	if _, _, err := d.storeRule(ctxA, storeRuleArgs{Content: "r", Scope: ruleScope, Summary: "the rule"}); err != nil {
+		t.Fatalf("seed rule: %v", err)
+	}
+	rules, _, err := d.listRules(ctxA, listRulesArgs{Scopes: []string{ruleScope}})
+	if err != nil || len(rules) != 1 {
+		t.Fatalf("listRules(ruleScope): n=%d err=%v", len(rules), err)
+	}
+	got, _, _, err := d.st.List(context.Background(), memScope, store.Authenticated("owner-rule-A"), store.ListOptions{})
+	if err != nil {
+		t.Fatalf("List(memScope): %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("rule leaked into ordinary scope list: got %d", len(got))
 	}
 }

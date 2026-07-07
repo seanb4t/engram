@@ -715,11 +715,12 @@ func listFilter(scope string, subj Subject, opts ListOptions) *qdrant.Filter {
 	return &qdrant.Filter{Must: must}
 }
 
-// List returns a CreatedAt-desc page of the caller's readable records in scope,
-// the exact matched total (server-side Count), and a nextCursor (empty in offset
-// mode; populated only by cursor-mode paging). Ordering and the total are computed
-// server-side. When Offset >= total, the page is empty (clamped, never a slice
-// panic) and total is still the real matched count.
+// List returns a CreatedAt-ordered page of the caller's readable records in scope
+// — descending by default, ascending when ListOptions.Ascending is set (offset/all
+// mode only) — the exact matched total (server-side Count), and a nextCursor (empty
+// in offset mode; populated only by cursor-mode paging). Ordering and the total are
+// computed server-side. When Offset >= total, the page is empty (clamped, never a
+// slice panic) and total is still the real matched count.
 func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListOptions) (items []Memory, total uint64, nextCursor string, err error) {
 	ctx, span := tracer.Start(ctx, "store.List", trace.WithAttributes(
 		attribute.String("engram.scope", scope),
@@ -739,6 +740,9 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 
 	if (opts.Cursor != "" || opts.CursorMode) && opts.Offset > 0 {
 		return nil, 0, "", fmt.Errorf("list: cursor mode and offset are mutually exclusive: %w", ErrInvalidArgument)
+	}
+	if opts.Ascending && (opts.Cursor != "" || opts.CursorMode) {
+		return nil, 0, "", fmt.Errorf("list: ascending ordering is honored only in offset/all mode, not cursor mode: %w", ErrInvalidArgument)
 	}
 
 	f := listFilter(scope, subj, opts)
@@ -767,9 +771,9 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		fetch = total // limit 0 = "all" (preserves prior behavior)
 	}
 	if fetch == 0 {
-		// Qdrant's Scroll rejects Limit=0 outright ("must be 1 or larger"), and
-		// there is nothing to fetch anyway (total==0 or an explicit zero-width
-		// request) — short-circuit rather than round-trip for an empty page.
+		// Reached only when Limit==0 ("all") and the filtered set is empty
+		// (total==0): Qdrant's Scroll rejects Limit=0 ("must be 1 or larger")
+		// and there is nothing to fetch — short-circuit to an empty page.
 		return []Memory{}, total, "", nil
 	}
 	dir := qdrant.Direction_Desc

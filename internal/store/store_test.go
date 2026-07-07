@@ -2510,6 +2510,19 @@ func TestListAscendingOrder(t *testing.T) {
 	}
 }
 
+// TestListAscendingRejectedInCursorMode pins that Ascending is honored only in
+// offset/all mode: combining it with cursor paging is a hard ErrInvalidArgument
+// (mirroring the Cursor/Offset mutual-exclusion guard), not a silent desc order.
+func TestListAscendingRejectedInCursorMode(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	_, _, _, err := s.List(ctx, "rule:repo:asc-cursor-guard", Authenticated("owner-x"),
+		ListOptions{Ascending: true, CursorMode: true})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("want ErrInvalidArgument for Ascending+CursorMode, got %v", err)
+	}
+}
+
 // TestListScheduledDateWindow pins the created_at window on the scheduled view.
 func TestListScheduledDateWindow(t *testing.T) {
 	s := testStore(t)
