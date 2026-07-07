@@ -13,6 +13,9 @@ workflow; edit the bead, then re-render — do not hand-edit the rendered files.
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-iedk](engram-iedk-rules-are-always-shared-server-set-immutable-visibility-set.md) | 2026-07-06 | Accepted | Rules are always-shared with server-set immutable visibility; set_visibility rejects rules |
+| [engram-d386](engram-d386-session-start-surfaces-rules-as-progressive-disclosure-index.md) | 2026-07-06 | Accepted | Session-start surfaces rules as a progressive-disclosure index, not full-content injection |
+| [engram-m4s8](engram-m4s8-reject-malformed-rule-summaries-newline-oversize-cleared-nev.md) | 2026-07-06 | Accepted | Reject malformed rule summaries (newline/oversize/cleared); never silently normalize |
 | [engram-zzq0](engram-zzq0-encode-short-id-as-10-char-crockford-base32.md) | 2026-07-06 | Accepted | Encode short_id as 10-char Crockford base32 |
 | [engram-02ta](engram-02ta-resolve-short-id-at-handler-layer-not-inside-store-methods.md) | 2026-07-06 | Accepted | Resolve short_id at the handler layer, not inside store methods |
 | [engram-zyhq](engram-zyhq-generic-param-map-passthrough-over-embedder-profiles-asymmet.md) | 2026-07-01 | Accepted | Generic param-map passthrough over embedder profiles for asymmetric/cloud embedders |
