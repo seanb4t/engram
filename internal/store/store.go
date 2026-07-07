@@ -650,6 +650,11 @@ type ListOptions struct {
 	// Offset > 0.
 	Cursor     string
 	CursorMode bool // true = boundary-id-set cursor paging (MCP default); false = offset paging (UI)
+	// Ascending flips the offset-mode created_at ordering from the default
+	// descending (recency-first recall) to ascending (oldest-first). Honored
+	// only on the offset/all path used by list_rules; cursor mode is unaffected
+	// (rules do not paginate). Zero value preserves the existing desc behavior.
+	Ascending bool
 }
 
 // createdRangeCondition builds a half-open [after, before) DatetimeRange on the
@@ -761,11 +766,15 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 	if opts.Limit == 0 {
 		fetch = total // limit 0 = "all" (preserves prior behavior)
 	}
+	dir := qdrant.Direction_Desc
+	if opts.Ascending {
+		dir = qdrant.Direction_Asc
+	}
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
 		Filter:         f,
 		Limit:          qdrant.PtrOf(uint32(fetch)),
-		OrderBy:        &qdrant.OrderBy{Key: "created_at", Direction: qdrant.PtrOf(qdrant.Direction_Desc)},
+		OrderBy:        &qdrant.OrderBy{Key: "created_at", Direction: qdrant.PtrOf(dir)},
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
 	if err != nil {

@@ -2474,6 +2474,42 @@ func TestListCursorTraversal(t *testing.T) {
 	}
 }
 
+func TestListAscendingOrder(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "rule:repo:asc-order-test"
+	subj := Authenticated("owner-asc")
+	// Three records with distinct, increasing created_at.
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	mk := func(id string, mins int) {
+		m := Memory{
+			ID: id, Content: "c", Scope: scope, Category: "rule",
+			Owner: "owner-asc", Visibility: "shared",
+			Source: "user-said", Summary: "s", SummarySource: SummarySourceClient,
+			CreatedAt: base.Add(time.Duration(mins) * time.Minute),
+		}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+	}
+	mk("c1000000-0000-0000-0000-000000000001", 0)
+	mk("c1000000-0000-0000-0000-000000000002", 10)
+	mk("c1000000-0000-0000-0000-000000000003", 20)
+	t.Cleanup(func() { cleanupErr(t, "DeleteAll", s.DeleteAll(ctx, scope, subj)) })
+
+	got, _, _, err := s.List(ctx, scope, subj, ListOptions{Ascending: true})
+	if err != nil {
+		t.Fatalf("List ascending: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("got %d records, want 3", len(got))
+	}
+	if got[0].ID != "c1000000-0000-0000-0000-000000000001" ||
+		got[2].ID != "c1000000-0000-0000-0000-000000000003" {
+		t.Errorf("not ascending by created_at: first=%s last=%s", got[0].ID, got[2].ID)
+	}
+}
+
 // TestListScheduledDateWindow pins the created_at window on the scheduled view.
 func TestListScheduledDateWindow(t *testing.T) {
 	s := testStore(t)
