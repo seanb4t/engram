@@ -90,6 +90,16 @@ func TestToolArgSchemasDoNotPanic(t *testing.T) {
 			return noop()
 		})
 	})
+	check("store_rule", func(s *mcp.Server) {
+		mcp.AddTool(s, &mcp.Tool{Name: "store_rule", Description: "x"}, func(context.Context, *mcp.CallToolRequest, storeRuleArgs) (*mcp.CallToolResult, any, error) {
+			return noop()
+		})
+	})
+	check("list_rules", func(s *mcp.Server) {
+		mcp.AddTool(s, &mcp.Tool{Name: "list_rules", Description: "x"}, func(context.Context, *mcp.CallToolRequest, listRulesArgs) (*mcp.CallToolResult, any, error) {
+			return noop()
+		})
+	})
 	check("schedule_memory", func(s *mcp.Server) {
 		mcp.AddTool(s, &mcp.Tool{Name: "schedule_memory", Description: "x"}, func(context.Context, *mcp.CallToolRequest, scheduleArgs) (*mcp.CallToolResult, any, error) {
 			return noop()

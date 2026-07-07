@@ -44,6 +44,17 @@ project-specific facts that outlive the session.
 **DO NOT STORE:** transient state, current activity/progress, secrets or API
 keys, timestamps, one-off tool output, or anything trivially re-derivable.
 
+## Rules (user-blessed ground truth)
+
+A **rule** is normative ground truth for the repo/project — a MUST-follow
+constraint, always shared, stored via `store_rule` in a `rule:repo:*` /
+`rule:project:*` scope. Store a rule **only on explicit user instruction**: if
+you believe something should be a rule, propose it to the user and let them
+bless it — never promote one unilaterally. A rule's `summary` is a single line
+(the session-start index entry). This complements — it does not replace — the
+decision / preference / convention / gotcha routing above; a rule is the
+narrower, user-blessed, normative case.
+
 ## Tagging
 
 `tags` are now a recall dimension, not just display metadata: `search_memory`

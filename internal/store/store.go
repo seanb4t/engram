@@ -650,6 +650,11 @@ type ListOptions struct {
 	// Offset > 0.
 	Cursor     string
 	CursorMode bool // true = boundary-id-set cursor paging (MCP default); false = offset paging (UI)
+	// Ascending flips the offset-mode created_at ordering from the default
+	// descending (recency-first recall) to ascending (oldest-first). Honored
+	// only on the offset/all path used by list_rules; cursor mode is unaffected
+	// (rules do not paginate). Zero value preserves the existing desc behavior.
+	Ascending bool
 }
 
 // createdRangeCondition builds a half-open [after, before) DatetimeRange on the
@@ -710,11 +715,12 @@ func listFilter(scope string, subj Subject, opts ListOptions) *qdrant.Filter {
 	return &qdrant.Filter{Must: must}
 }
 
-// List returns a CreatedAt-desc page of the caller's readable records in scope,
-// the exact matched total (server-side Count), and a nextCursor (empty in offset
-// mode; populated only by cursor-mode paging). Ordering and the total are computed
-// server-side. When Offset >= total, the page is empty (clamped, never a slice
-// panic) and total is still the real matched count.
+// List returns a CreatedAt-ordered page of the caller's readable records in scope
+// — descending by default, ascending when ListOptions.Ascending is set (offset/all
+// mode only) — the exact matched total (server-side Count), and a nextCursor (empty
+// in offset mode; populated only by cursor-mode paging). Ordering and the total are
+// computed server-side. When Offset >= total, the page is empty (clamped, never a
+// slice panic) and total is still the real matched count.
 func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListOptions) (items []Memory, total uint64, nextCursor string, err error) {
 	ctx, span := tracer.Start(ctx, "store.List", trace.WithAttributes(
 		attribute.String("engram.scope", scope),
@@ -734,6 +740,9 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 
 	if (opts.Cursor != "" || opts.CursorMode) && opts.Offset > 0 {
 		return nil, 0, "", fmt.Errorf("list: cursor mode and offset are mutually exclusive: %w", ErrInvalidArgument)
+	}
+	if opts.Ascending && (opts.Cursor != "" || opts.CursorMode) {
+		return nil, 0, "", fmt.Errorf("list: ascending ordering is honored only in offset/all mode, not cursor mode: %w", ErrInvalidArgument)
 	}
 
 	f := listFilter(scope, subj, opts)
@@ -761,11 +770,21 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 	if opts.Limit == 0 {
 		fetch = total // limit 0 = "all" (preserves prior behavior)
 	}
+	if fetch == 0 {
+		// Reached only when Limit==0 ("all") and the filtered set is empty
+		// (total==0): Qdrant's Scroll rejects Limit=0 ("must be 1 or larger")
+		// and there is nothing to fetch — short-circuit to an empty page.
+		return []Memory{}, total, "", nil
+	}
+	dir := qdrant.Direction_Desc
+	if opts.Ascending {
+		dir = qdrant.Direction_Asc
+	}
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
 		Filter:         f,
 		Limit:          qdrant.PtrOf(uint32(fetch)),
-		OrderBy:        &qdrant.OrderBy{Key: "created_at", Direction: qdrant.PtrOf(qdrant.Direction_Desc)},
+		OrderBy:        &qdrant.OrderBy{Key: "created_at", Direction: qdrant.PtrOf(dir)},
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
 	if err != nil {

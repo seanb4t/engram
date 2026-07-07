@@ -102,3 +102,28 @@ def test_malformed_stdin_is_silent():
     )
     assert proc.returncode == 0
     assert proc.stdout.strip() == ""
+
+
+def test_rules_index_instruction_present(git_repo: Path, monkeypatch):
+    monkeypatch.delenv("ENGRAM_PROJECT", raising=False)
+    result = run_hook(str(git_repo))
+    assert result.returncode == 0
+    ctx = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+    # Rules-index instruction names list_rules and the rule scope for the spine.
+    assert "list_rules" in ctx
+    assert "rule:repo:github.com/org/repo" in ctx
+    # Ordering lock (ADR engram-d386): the index must render ABOVE the recall
+    # digest. Pin the directive so a future reword cannot silently drop it.
+    assert "ABOVE the recall digest" in ctx
+    # No project scope when ENGRAM_PROJECT is unset.
+    assert "rule:project:" not in ctx
+
+
+def test_rules_index_includes_project_scope_when_configured(
+    git_repo: Path, monkeypatch
+):
+    monkeypatch.setenv("ENGRAM_PROJECT", "selfhosted-cluster")
+    ctx = json.loads(run_hook(str(git_repo)).stdout)["hookSpecificOutput"][
+        "additionalContext"
+    ]
+    assert "rule:project:selfhosted-cluster" in ctx

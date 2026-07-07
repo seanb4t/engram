@@ -786,6 +786,21 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 		}
 		return err
 	}
+	// Rule guard (cur.Category is known for free from the fetch above): a rule's
+	// summary is its index line — it must stay a non-empty single line; and a
+	// rule is always shared — reject an un-share here too, mirroring
+	// set_visibility, so update_memory cannot be used to bypass that gate. Both
+	// checks run before the embed/write.
+	if cur.Category == "rule" {
+		if a.Summary != nil {
+			if err := validateRuleSummary(*a.Summary); err != nil {
+				return err
+			}
+		}
+		if a.Shared != nil && !*a.Shared {
+			return fmt.Errorf("rules are always shared — delete the rule instead of making it private")
+		}
+	}
 	// Resolve the summary BEFORE embedding so a stale-summary rejection costs no
 	// embed call. The owner gate has already run, so a rejected caller never
 	// reaches here and never learns whether a summary exists.
@@ -861,6 +876,25 @@ func (d *deps) setVisibility(ctx context.Context, a setVisibilityArgs) error {
 	pid, err := d.st.ResolvePointID(ctx, a.ID)
 	if err != nil {
 		return err
+	}
+	// Rules are always shared: reject any visibility change on a rule. Read the
+	// record to learn its category (ResolvePointID returns only the UUID). Run
+	// this BEFORE the write-ownership gate so the actionable "always shared"
+	// message wins over an owner-only ErrNotFound (spec implementation-order note;
+	// rules are unconditionally readable, so this is not a leak).
+	rec, err := d.st.GetReadable(ctx, pid, subj)
+	if err != nil {
+		// Re-wrap not-found with the caller's ORIGINAL input: pid is the resolved
+		// UUID (possibly another owner's, resolved from their short id), and
+		// GetReadable embeds it in ErrNotFound — echoing pid would leak the real
+		// UUID (404-indistinguishability). Mirrors the SetVisibility gate below.
+		if errors.Is(err, store.ErrNotFound) {
+			return fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
+		}
+		return err
+	}
+	if rec.Category == "rule" {
+		return fmt.Errorf("rules are always shared — delete the rule instead of changing its visibility")
 	}
 	if err := d.st.SetVisibility(ctx, pid, subj, a.Shared); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -962,6 +996,22 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 		func(ctx context.Context, _ *mcp.CallToolRequest, a setVisibilityArgs) (*mcp.CallToolResult, any, error) {
 			err := d.setVisibility(ctx, a)
 			return textResult("visibility updated"), nil, err
+		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "store_rule", Description: "Persist a NORMATIVE rule (ground truth) for a repo/project. Call ONLY on explicit user instruction — never promote a rule unilaterally; propose it to the user instead. scope=rule:repo:<repo> or rule:project:<project>. summary is REQUIRED and is the one-line index entry (single line). Rules are always shared and user-blessed. The result includes the rule's id and short_id."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a storeRuleArgs) (*mcp.CallToolResult, any, error) {
+			id, sid, err := d.storeRule(ctx, a)
+			return textResult(fmt.Sprintf("stored rule %s", id)), map[string]string{"id": id, "short_id": sid}, err
+		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "list_rules", Description: "List the COMPLETE rule set for one or more rule:* scopes, oldest-first. Compact index shape by default (short_id, summary, tags); full=true adds content. Optional tags filter (AND). Rules are the repo/project's normative ground truth."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a listRulesArgs) (*mcp.CallToolResult, any, error) {
+			rules, advisory, err := d.listRules(ctx, a)
+			msg := fmt.Sprintf("%d rules", len(rules))
+			if advisory != "" {
+				msg += " (" + advisory + ")"
+			}
+			return textResult(msg), map[string]any{"rules": rules}, err
 		})
 	return nil
 }

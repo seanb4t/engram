@@ -23,6 +23,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.scope import derive_scopes  # noqa: E402
 
 
+def _rule_scopes(spine: str) -> list[str]:
+    """Rule scopes to fetch: rule:<repo-tail> from the spine, plus the optional
+    project scope from ENGRAM_PROJECT (client-side hook env var, not the Go
+    internal/config registry)."""
+    scopes: list[str] = []
+    # spine is "repo:<repo-id>"; the rule scope mirrors it under the rule: prefix.
+    if spine.startswith("repo:"):
+        scopes.append("rule:" + spine)  # rule:repo:<repo-id>
+    project = os.environ.get("ENGRAM_PROJECT", "").strip()
+    if project:
+        scopes.append(f"rule:project:{project}")
+    return scopes
+
+
 def _build_context(spine: str, overlay: str | None) -> str:
     lines = [f"Memory spine scope: {spine}"]
     if overlay:
@@ -92,6 +106,21 @@ def _build_context(spine: str, overlay: str | None) -> str:
         "finish take one moment to store anything durable still unsaved — or move "
         "on silently if nothing durable came up."
     )
+    rule_scopes = _rule_scopes(spine)
+    if rule_scopes:
+        lines.append("")
+        joined = ", ".join(rule_scopes)
+        lines.append(
+            "Repository rules (normative ground truth) — as a distinct Rules "
+            f"index section ABOVE the recall digest, call mcp__engram__list_rules "
+            f"once with scopes=[{joined}] and render one line per rule as "
+            "`short_id — summary [tags]`. "
+            "This is an INDEX only, not the full rules: do NOT fetch or inline rule "
+            "content at startup. When you are about to act in a rule's concern area, "
+            "fetch that one rule's full text on demand via get_memory(<short_id>). "
+            "If list_rules returns nothing, omit the Rules section entirely. Rules "
+            "are always-shared, user-blessed constraints — treat them as MUST-follow."
+        )
     return "\n".join(lines)
 
 
