@@ -26,6 +26,7 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/seanb4t/engram/internal/config"
+	"github.com/seanb4t/engram/internal/shortid"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/telemetry"
 )
@@ -249,7 +250,7 @@ func TestScheduleMemoryUsesInjectedClock(t *testing.T) {
 	ctx := authedContext(t, "sub-A")
 	a := scheduleArgs{storeArgs: storeArgs{Content: "x", Scope: "clock:project:x",
 		Source: "user-said", Category: "decision"}, NotAfter: "2099-01-01T00:00:00Z"}
-	if _, err := d.scheduleMemory(ctx, a); err == nil {
+	if _, _, err := d.scheduleMemory(ctx, a); err == nil {
 		t.Error("not_after before the injected now should be rejected; the handler must read the deps clock, not the wall clock")
 	}
 }
@@ -262,7 +263,7 @@ func TestStoreMemoryUsesInjectedClock(t *testing.T) {
 	fixed := time.Date(2055, 3, 4, 5, 6, 7, 0, time.UTC)
 	d.now = func() time.Time { return fixed }
 	ctx := authedContext(t, "sub-A")
-	id, err := d.storeMemory(ctx, storeArgs{Content: "x", Scope: "clock:project:store",
+	id, _, err := d.storeMemory(ctx, storeArgs{Content: "x", Scope: "clock:project:store",
 		Source: "user-said", Category: "decision"})
 	if err != nil {
 		t.Fatalf("storeMemory: %v", err)
@@ -284,33 +285,33 @@ func TestScheduleMemoryValidation(t *testing.T) {
 		Scope: "sched:project:x", Source: "user-said", Category: "decision"}}
 
 	// No window at all -> rejected.
-	if _, err := d.scheduleMemory(ctx, base); err == nil {
+	if _, _, err := d.scheduleMemory(ctx, base); err == nil {
 		t.Error("missing window: want error, got nil")
 	}
 	// not_after already in the past -> rejected.
 	past := base
 	past.NotAfter = "2000-01-01T00:00:00Z"
-	if _, err := d.scheduleMemory(ctx, past); err == nil {
+	if _, _, err := d.scheduleMemory(ctx, past); err == nil {
 		t.Error("past not_after: want error, got nil")
 	}
 	// Inverted window (not_before >= not_after) -> rejected.
 	inv := base
 	inv.NotBefore = "2031-01-01T00:00:00Z"
 	inv.NotAfter = "2030-01-01T00:00:00Z"
-	if _, err := d.scheduleMemory(ctx, inv); err == nil {
+	if _, _, err := d.scheduleMemory(ctx, inv); err == nil {
 		t.Error("inverted window: want error, got nil")
 	}
 	// discovery category -> rejected.
 	disc := base
 	disc.Category = "discovery"
 	disc.NotBefore = "2030-01-01T00:00:00Z"
-	if _, err := d.scheduleMemory(ctx, disc); err == nil {
+	if _, _, err := d.scheduleMemory(ctx, disc); err == nil {
 		t.Error("discovery category: want error, got nil")
 	}
 	// Valid future-scheduled memory -> stored, hidden from normal recall.
 	ok := base
 	ok.NotBefore = "2030-01-01T00:00:00Z"
-	id, err := d.scheduleMemory(ctx, ok)
+	id, _, err := d.scheduleMemory(ctx, ok)
 	if err != nil {
 		t.Fatalf("valid schedule: %v", err)
 	}
@@ -330,7 +331,7 @@ func TestScheduleMemoryValidation(t *testing.T) {
 	// is immediately active, so it surfaces through normal list_memory.
 	activeNow := base
 	activeNow.NotBefore = "2000-01-01T00:00:00Z"
-	activeID, err := d.scheduleMemory(ctx, activeNow)
+	activeID, _, err := d.scheduleMemory(ctx, activeNow)
 	if err != nil {
 		t.Fatalf("past not_before should be accepted (immediately active): %v", err)
 	}
@@ -364,7 +365,7 @@ func TestStoreMemoryStampsOwnerHandler(t *testing.T) {
 		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-stamp")))
 	}()
 
-	id, err := d.storeMemory(ctx, storeArgs{
+	id, _, err := d.storeMemory(ctx, storeArgs{
 		Content: "owned via handler", Scope: scope,
 		Source: "user-said", Category: "preference",
 	})
@@ -377,6 +378,24 @@ func TestStoreMemoryStampsOwnerHandler(t *testing.T) {
 	}
 	if got.Owner != "sub-stamp" {
 		t.Errorf("storeMemory did not stamp owner from subject: owner=%q, want %q", got.Owner, "sub-stamp")
+	}
+}
+
+// TestStoreMemoryMintsAndReturnsShortID pins that storeMemory mints a short_id
+// (after embed) and both returns it and persists it on the record.
+func TestStoreMemoryMintsAndReturnsShortID(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "owner-A")
+	id, sid, err := d.storeMemory(ctx, storeArgs{Content: "hello", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sid) != shortid.Length {
+		t.Fatalf("short id %q", sid)
+	}
+	got, err := d.st.Get(context.Background(), id)
+	if err != nil || got.ShortID != sid {
+		t.Fatalf("persisted short id %q != returned %q (err %v)", got.ShortID, sid, err)
 	}
 }
 
@@ -630,7 +649,7 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
 
 	// create
-	id, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
+	id, _, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
 		Content: "auth flow maps token -> jwks -> actor", Kind: "fact", Scope: scope,
 		Summary:   "auth flow",
 		Citations: []citationArg{{Kind: "file", Ref: "internal/auth/auth.go", Locator: "1-50", Pin: "sha:abc", Excerpt: "verify(token)"}},
@@ -653,7 +672,7 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	}
 
 	// id-replace branch: same id replaces in place
-	id2, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
+	id2, _, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
 		ID: id, Content: "updated understanding", Kind: "map", Scope: scope,
 		Citations: []citationArg{{Kind: "repo", Ref: "github.com/x/y", Pin: "@v1"}},
 	})
@@ -686,6 +705,60 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	// cross_spine path (with a scope present, the ignore-warn branch) must not error
 	if _, err := d.searchDiscovery(ctx, searchDiscoveryArgs{Query: "x", CrossSpine: true, Scope: scope}); err != nil {
 		t.Errorf("cross_spine search errored: %v", err)
+	}
+}
+
+func TestStoreDiscoveryMintsThenReplacePreservesShortID(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "owner-A")
+	cites := []citationArg{{Kind: "file", Ref: "a.go", Pin: "abc"}}
+	id, sid, err := d.storeDiscovery(ctx, storeDiscoveryArgs{Content: "map1", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
+	if err != nil || len(sid) != shortid.Length {
+		t.Fatalf("create: sid=%q err=%v", sid, err)
+	}
+	// Replace by UUID → same point, same short id.
+	id2, sid2, err := d.storeDiscovery(ctx, storeDiscoveryArgs{ID: id, Content: "map1b", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
+	if err != nil || id2 != id || sid2 != sid {
+		t.Fatalf("replace-by-uuid: id %q->%q sid %q->%q err %v", id, id2, sid, sid2, err)
+	}
+	// Replace by SHORT ID → resolves to the same point, still same short id.
+	id3, sid3, err := d.storeDiscovery(ctx, storeDiscoveryArgs{ID: sid, Content: "map1c", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
+	if err != nil || id3 != id || sid3 != sid {
+		t.Fatalf("replace-by-shortid: id %q->%q sid %q->%q err %v", id, id3, sid, sid3, err)
+	}
+}
+
+func TestStoreDiscoveryRejectsNonexistentShortIDAsNew(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "owner-A")
+	_, _, err := d.storeDiscovery(ctx, storeDiscoveryArgs{ID: "zzzzzzzzzz", Content: "x", Kind: "fact", Scope: "discovery:repo:x", Citations: []citationArg{{Kind: "file", Ref: "a", Pin: "p"}}})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
+// TestStoreDiscoveryCrossOwnerShortIDDoesNotLeakUUID pins that a replace attempt
+// against another owner's short id fails with an error echoing only the
+// caller-supplied input — never the resolved point UUID, which would leak the
+// private record's existence and identity.
+func TestStoreDiscoveryCrossOwnerShortIDDoesNotLeakUUID(t *testing.T) {
+	d := testDeps(t)
+	ctxA := authedContext(t, "owner-A")
+	cites := []citationArg{{Kind: "file", Ref: "a.go", Pin: "abc"}}
+	id, sid, err := d.storeDiscovery(ctxA, storeDiscoveryArgs{Content: "m", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctxB := authedContext(t, "owner-B")
+	_, _, err = d.storeDiscovery(ctxB, storeDiscoveryArgs{ID: sid, Content: "m2", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+	if strings.Contains(err.Error(), id) {
+		t.Fatalf("error leaks resolved UUID: %v", err)
+	}
+	if !strings.Contains(err.Error(), sid) {
+		t.Fatalf("error should echo caller-supplied id only: %v", err)
 	}
 }
 
@@ -1040,7 +1113,7 @@ func TestListScheduledTool(t *testing.T) {
 	d := testDeps(t)
 	ctx := authedContext(t, "sub-A")
 	// A far-future scheduled memory is hidden from normal recall but shows in list_scheduled.
-	id, err := d.scheduleMemory(ctx, scheduleArgs{storeArgs: storeArgs{Content: "future",
+	id, _, err := d.scheduleMemory(ctx, scheduleArgs{storeArgs: storeArgs{Content: "future",
 		Scope: "ls:project:x", Source: "user-said", Category: "decision"},
 		NotBefore: "2099-01-01T00:00:00Z"})
 	if err != nil {
@@ -1266,5 +1339,107 @@ func TestEmbedderFromConfigPassesParamsAndInstructions(t *testing.T) {
 	}
 	if got["input_type"] != "search_document" || got["input"] != "passage: d" {
 		t.Errorf("Embed body = %v; want input_type=search_document, input=%q", got, "passage: d")
+	}
+}
+
+func TestByIDToolsAcceptShortID(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "owner-A")
+	id, sid, err := d.storeMemory(ctx, storeArgs{Content: "hi", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := d.getMemory(ctx, idArgs{ID: sid})
+	if err != nil || got.ID != id {
+		t.Fatalf("get by short id → %q (err %v)", got.ID, err)
+	}
+	if err := d.updateMemory(ctx, updateArgs{ID: sid, Content: "hi-edited"}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := d.st.Get(context.Background(), id)
+	if err != nil || after.ShortID != sid || after.Content != "hi-edited" {
+		t.Fatalf("update via short id: content=%q short=%q err=%v", after.Content, after.ShortID, err)
+	}
+	if err := d.setVisibility(ctx, setVisibilityArgs{ID: sid, Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.deleteMemory(ctx, idArgs{ID: sid}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.st.Get(context.Background(), id); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("record not deleted (err %v)", err)
+	}
+}
+
+func TestShortIDCrossOwnerVisibility(t *testing.T) {
+	d := testDeps(t)
+	ctxA := authedContext(t, "owner-A")
+	privID, privSid, err := d.storeMemory(ctxA, storeArgs{Content: "secret", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sharedID, sharedSid, err := d.storeMemory(ctxA, storeArgs{Content: "public", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.setVisibility(ctxA, setVisibilityArgs{ID: sharedID, Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	// owner-B: resolution is owner-agnostic, the read gate governs.
+	ctxB := authedContext(t, "owner-B")
+	// item 4: another owner's private record → ErrNotFound (404, not 403; no leak)
+	_, err = d.getMemory(ctxB, idArgs{ID: privSid})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("cross-owner private must be ErrNotFound, got %v", err)
+	}
+	// no-leak: the gate resolved privSid to another owner's real UUID; the error
+	// must echo only the caller-supplied short id, never that resolved UUID.
+	if strings.Contains(err.Error(), privID) {
+		t.Fatalf("error leaks resolved UUID: %v", err)
+	}
+	if !strings.Contains(err.Error(), privSid) {
+		t.Fatalf("error should echo caller-supplied short id only: %v", err)
+	}
+	// item 5: another owner's shared record → readable
+	if got, err := d.getMemory(ctxB, idArgs{ID: sharedSid}); err != nil || got.ID != sharedID {
+		t.Fatalf("cross-owner shared must be readable, got %q err %v", got.ID, err)
+	}
+	// updateMemory: same no-leak re-wrap as getMemory.
+	err = d.updateMemory(ctxB, updateArgs{ID: privSid, Content: "x"})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("cross-owner update must be ErrNotFound, got %v", err)
+	}
+	if strings.Contains(err.Error(), privID) {
+		t.Fatalf("update error leaks resolved UUID: %v", err)
+	}
+	if !strings.Contains(err.Error(), privSid) {
+		t.Fatalf("update error should echo caller-supplied short id only: %v", err)
+	}
+	// deleteMemory: same no-leak re-wrap as getMemory.
+	err = d.deleteMemory(ctxB, idArgs{ID: privSid})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("cross-owner delete must be ErrNotFound, got %v", err)
+	}
+	if strings.Contains(err.Error(), privID) {
+		t.Fatalf("delete error leaks resolved UUID: %v", err)
+	}
+	if !strings.Contains(err.Error(), privSid) {
+		t.Fatalf("delete error should echo caller-supplied short id only: %v", err)
+	}
+	// setVisibility: same no-leak re-wrap as getMemory.
+	err = d.setVisibility(ctxB, setVisibilityArgs{ID: privSid, Shared: true})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("cross-owner set_visibility must be ErrNotFound, got %v", err)
+	}
+	if strings.Contains(err.Error(), privID) {
+		t.Fatalf("set_visibility error leaks resolved UUID: %v", err)
+	}
+	if !strings.Contains(err.Error(), privSid) {
+		t.Fatalf("set_visibility error should echo caller-supplied short id only: %v", err)
+	}
+	// the record must be unchanged/still present for owner-A after all three attempts.
+	after, err := d.st.Get(context.Background(), privID)
+	if err != nil || after.Content != "secret" || after.ShortID != privSid {
+		t.Fatalf("cross-owner attempts mutated owner-A's record: content=%q short=%q err=%v", after.Content, after.ShortID, err)
 	}
 }

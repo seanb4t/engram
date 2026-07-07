@@ -46,8 +46,9 @@ Run it once per repo at adoption, not on a schedule.
    the original so the fact lives in one store, not two. If the engram write
    failed, leave the beads copy in place and report it — never `bd forget` a
    record you could not store.
-5. Report a summary: each beads key → engram id (or "deduped into <id>" /
-   "dropped"), and confirm which beads keys were forgotten.
+5. Report a summary: each beads key → engram id (cite its `short_id` as the
+   compact handle), or "deduped into <id>" / "dropped", and confirm which
+   beads keys were forgotten.
 
 ## Why move, not copy
 

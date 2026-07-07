@@ -39,6 +39,7 @@ func memoryToProto(m store.Memory) *engramv1.Memory {
 		Summary:       m.Summary,
 		SummarySource: string(m.SummarySource),
 		Score:         m.Score,
+		ShortId:       m.ShortID,
 	}
 }
 
@@ -175,10 +176,24 @@ func (a *engramAPI) GetMemory(ctx context.Context, req *connect.Request[engramv1
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	m, err := a.d.st.GetReadable(ctx, req.Msg.Id, subj)
+	// Resolve id or short id to the point UUID (owner-agnostic; the read gate
+	// below governs visibility), mirroring the MCP by-id tools' getMemory.
+	pid, err := a.d.st.ResolvePointID(ctx, req.Msg.Id)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
+		if errors.Is(err, store.ErrInvalidArgument) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	m, err := a.d.st.GetReadable(ctx, pid, subj)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			// Re-wrap with the caller's ORIGINAL input so a resolved short id
+			// never leaks another owner's real UUID into the error message.
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("%w: %s", store.ErrNotFound, req.Msg.Id))
 		}
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

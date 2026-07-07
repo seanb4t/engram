@@ -107,8 +107,9 @@ A windowed record inside its active window surfaces normally through
 and `list_scheduled` lists only those hidden records (`state`: `scheduled`
 default | `expired` | `all`) — never the active ones, so an in-window record
 absent from `list_scheduled` is reached through ordinary recall, not missing.
-Recall is gated, but fetch-by-id (`get_memory`) is not. Operators reclaim lapsed
-records with the `engram prune-expired [--older-than DUR]` CLI.
+Recall is gated, but fetch-by-id (`get_memory`) is not — it accepts either the
+full id or the short_id. Operators reclaim lapsed records with the `engram
+prune-expired [--older-than DUR]` CLI.
 
 ## Summaries
 

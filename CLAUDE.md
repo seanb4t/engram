@@ -12,7 +12,7 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 
 | Path | Responsibility |
 |------|----------------|
-| `cmd/engram/` | cobra CLI: `root`, `serve`, `version` + operator commands (`reindex` embedder migration — see docs-site `guides/reindex`; `migrate-remap-owner`; `prune-expired`; `summarize-missing`) (entrypoint only) |
+| `cmd/engram/` | cobra CLI: `root`, `serve`, `version` + operator commands (`reindex` embedder migration — see docs-site `guides/reindex`; `migrate-remap-owner`; `prune-expired`; `summarize-missing`; `backfill-short-ids`) (entrypoint only) |
 | `internal/server/` | MCP tool registration + handlers (`Register`, `EnvOr`) |
 | `internal/store/` | Qdrant-backed memory store |
 | `internal/embed/` | embedder (OpenAI-compatible) |
@@ -54,7 +54,9 @@ Tools: `store_memory` / `schedule_memory` / `search_memory` / `list_memory` /
 `actor` (verified caller — server-set, never client-supplied), `owner` (caller's
 configured owner-claim value — `ENGRAM_OWNER_CLAIM`, default `email`, the authz
 key — server-set), `visibility` (`private` default |
-`shared`), `created_at`. Recall returns summaries by default with `full=true` opt-in;
+`shared`), `created_at`, and a server-minted `short_id` (10-char Crockford
+base32 handle, accepted anywhere an id is accepted; legacy records gain one via
+`engram backfill-short-ids`). Recall returns summaries by default with `full=true` opt-in;
 full content via `get_memory`. Design intent: explicit, zero-junk, correctable. Do not
 add auto-extraction.
 

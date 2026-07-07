@@ -78,3 +78,29 @@ engram summarize-missing --dry-run   # preview without writing
 See the [MCP Tools reference](/reference/tools/) for full argument docs and the
 [Memory Record reference](/reference/memory-record/) for the `summary` /
 `summary_source` fields.
+
+---
+
+## v0.8.4 — Memories now carry a `short_id` handle
+
+Every memory now carries an additive `short_id` field — a 10-character lowercase
+Crockford base32 handle (case-insensitive; confusable glyphs are folded on input).
+It is minted on creation alongside the UUID and can be used anywhere an `id` is
+accepted: `get_memory`, `update_memory`, `delete_memory`, `set_visibility`,
+`store_discovery` (replace-in-place), and the Connect `GetMemory` RPC.
+
+Recall output (`search_memory`, `list_memory`) includes both `id` and `short_id`.
+
+### Backfilling existing records
+
+Memories created before this feature was enabled do not have a `short_id`. Backfill
+them with the operator command. Preview first, then apply:
+
+```sh
+engram backfill-short-ids --dry-run          # run this first: preview without writing
+engram backfill-short-ids                    # apply to all memories
+engram backfill-short-ids --timeout 5m       # custom wall-clock limit
+```
+
+No re-embedding or data migration — the UUID is unchanged and still valid everywhere.
+The backfill is payload-only and can safely run alongside read traffic.

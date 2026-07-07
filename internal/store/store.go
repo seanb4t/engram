@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
+	"github.com/seanb4t/engram/internal/shortid"
 	"github.com/seanb4t/engram/internal/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -48,6 +50,11 @@ var ErrNotFound = errors.New("not found")
 // error.
 var ErrInvalidArgument = errors.New("invalid argument")
 
+// ErrAmbiguousShortID means a short id matched more than one record — an
+// invariant violation (MintShortID enforces global uniqueness), surfaced rather
+// than silently resolving to an arbitrary point.
+var ErrAmbiguousShortID = errors.New("ambiguous short id")
+
 // visibilityShared is the Visibility sentinel for a record readable by any
 // authenticated caller. Sharing grants read, never write. Defined once so a typo
 // in an authorization path is a compile error rather than a silent gate bypass.
@@ -77,7 +84,12 @@ const (
 
 // Memory is the unit of storage. Fields map 1:1 to Qdrant payload keys.
 type Memory struct {
-	ID        string   `json:"id"`
+	ID string `json:"id"`
+	// ShortID is a short, case-insensitive Crockford base32 handle (see
+	// internal/shortid) minted alongside ID and usable anywhere an id is
+	// accepted. Stable: never rotated once assigned. Empty only for
+	// pre-backfill legacy records.
+	ShortID   string   `json:"short_id,omitempty"`
 	Content   string   `json:"content"`
 	Scope     string   `json:"scope"` // run:tier:repo, e.g. eval-2026-05:project:selfhosted-cluster
 	Repo      string   `json:"repo"`
@@ -154,6 +166,10 @@ type Store struct {
 	client     *qdrant.Client
 	collection string
 	now        func() time.Time
+
+	// mintCandidate generates a short_id candidate; nil defaults to shortid.New.
+	// Overridable in tests to force MintShortID's collision-retry branch.
+	mintCandidate func() (string, error)
 }
 
 // Option configures a Store at construction.
@@ -232,6 +248,7 @@ func (s *Store) ensureIndexes(ctx context.Context, name string) error {
 			qdrant.NewPayloadIndexParamsKeyword(&qdrant.KeywordIndexParams{IsTenant: qdrant.PtrOf(true)})},
 		{"scope", qdrant.FieldType_FieldTypeKeyword, nil},
 		{"created_at", qdrant.FieldType_FieldTypeDatetime, nil},
+		{"short_id", qdrant.FieldType_FieldTypeKeyword, nil},
 	}
 	for _, ix := range idxs {
 		req := &qdrant.CreateFieldIndexCollection{
@@ -285,6 +302,9 @@ func payload(m Memory) map[string]any {
 	if !m.SummaryEgressAt.IsZero() {
 		p["summary_egress_at"] = m.SummaryEgressAt.Format(time.RFC3339)
 	}
+	if m.ShortID != "" {
+		p["short_id"] = m.ShortID
+	}
 	if m.Category == "discovery" {
 		p["kind"] = m.Kind
 		cites := make([]any, len(m.Citations))
@@ -306,6 +326,9 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	}
 	if v, ok := p["scope"]; ok {
 		m.Scope = v.GetStringValue()
+	}
+	if v, ok := p["short_id"]; ok {
+		m.ShortID = v.GetStringValue()
 	}
 	if v, ok := p["repo"]; ok {
 		m.Repo = v.GetStringValue()
@@ -1025,6 +1048,50 @@ func (s *Store) Get(ctx context.Context, id string) (m Memory, err error) {
 	return fromPayload(id, pts[0].Payload), nil
 }
 
+// ResolvePointID maps a caller-supplied identifier — a full UUID (any form
+// uuid.Parse accepts) or a short id — to the canonical Qdrant point UUID. It is
+// owner-agnostic and applies NO authz: the caller's downstream ownership gate
+// (GetReadable / OwnedOrAbsent / getWritable) still governs access. Trims before
+// the UUID check because uuid.Parse is length-strict and rejects whitespace.
+func (s *Store) ResolvePointID(ctx context.Context, idOrShort string) (id string, err error) {
+	ctx, span := tracer.Start(ctx, "store.ResolvePointID")
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "ResolvePointID", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
+	t := strings.TrimSpace(idOrShort)
+	if t == "" {
+		return "", fmt.Errorf("%w: empty id", ErrInvalidArgument)
+	}
+	if u, perr := uuid.Parse(t); perr == nil {
+		return u.String(), nil // canonicalize URN / braced / raw-hex forms to hyphenated
+	}
+	canonical := shortid.Canonical(t)
+	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: s.collection,
+		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatch("short_id", canonical)}},
+		Limit:          qdrant.PtrOf(uint32(2)),
+		WithPayload:    qdrant.NewWithPayload(false),
+	})
+	if err != nil {
+		return "", err
+	}
+	switch len(pts) {
+	case 0:
+		return "", fmt.Errorf("%w: %s", ErrNotFound, idOrShort)
+	case 1:
+		return pts[0].Id.GetUuid(), nil
+	default:
+		return "", fmt.Errorf("%w: %s", ErrAmbiguousShortID, canonical)
+	}
+}
+
 // GetReadable returns the record only if the caller may READ it; otherwise
 // ErrNotFound, so ownership never leaks across actors.
 //
@@ -1379,6 +1446,132 @@ func (s *Store) CountOwnerless(ctx context.Context) (n uint64, err error) {
 	return s.client.Count(ctx, &qdrant.CountPoints{
 		CollectionName: s.collection, Filter: ownerlessFilter(), Exact: qdrant.PtrOf(true),
 	})
+}
+
+// MintShortID returns a short id not currently present on any record, retrying
+// on the (astronomically unlikely at 50 bits) global collision. When seen is
+// non-nil, ids it returns are recorded there and candidates already in it are
+// skipped — a defensive same-run guard for batch callers (backfill), so that
+// intra-run uniqueness never depends on the backend's read-after-write
+// visibility between a mint and its subsequent write. The global Count is
+// authoritative.
+func (s *Store) MintShortID(ctx context.Context, seen map[string]struct{}) (id string, err error) {
+	ctx, span := tracer.Start(ctx, "store.MintShortID")
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "MintShortID", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
+	gen := s.mintCandidate
+	if gen == nil {
+		gen = shortid.New
+	}
+	for {
+		cand, genErr := gen()
+		if genErr != nil {
+			err = genErr
+			return "", err
+		}
+		if seen != nil {
+			if _, dup := seen[cand]; dup {
+				continue
+			}
+		}
+		n, countErr := s.client.Count(ctx, &qdrant.CountPoints{
+			CollectionName: s.collection,
+			Filter:         &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatch("short_id", cand)}},
+			Exact:          qdrant.PtrOf(true),
+		})
+		if countErr != nil {
+			err = countErr
+			return "", err
+		}
+		if n == 0 {
+			if seen != nil {
+				seen[cand] = struct{}{}
+			}
+			id = cand
+			return id, nil
+		}
+	}
+}
+
+// missingShortIDFilter matches records with no short_id key (pre-backfill legacy
+// rows). NewIsEmpty matches missing/null/empty — NOT a non-empty value — so
+// already-backfilled records are excluded (idempotent). Mirrors ownerlessFilter.
+func missingShortIDFilter() *qdrant.Filter {
+	return &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewIsEmpty("short_id")}}
+}
+
+// BackfillShortIDs assigns a globally-unique short id to every record lacking
+// one, writing it with a payload-only SetPayload (no re-embed; vectors and the
+// absent-owner-key invariant are preserved). Writing the filtered field while
+// paging is safe because ScrollAndOffset's next_page_offset is a point-ID
+// forward watermark (a continuation point-id, not an ordinal skip-count):
+// stamping already-visited points shrinks the NewIsEmpty("short_id") matched
+// set but can never skip a not-yet-visited point. The offset=next loop matches
+// SummarizeMissing mechanically. dryRun counts without writing.
+func (s *Store) BackfillShortIDs(ctx context.Context, dryRun bool) (n uint64, err error) {
+	ctx, span := tracer.Start(ctx, "store.BackfillShortIDs")
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "BackfillShortIDs", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int64("engram.result_count", int64(n)))
+		}
+	}()
+
+	if dryRun {
+		n, err = s.client.Count(ctx, &qdrant.CountPoints{
+			CollectionName: s.collection, Filter: missingShortIDFilter(), Exact: qdrant.PtrOf(true),
+		})
+		return n, err
+	}
+
+	seen := map[string]struct{}{}
+	var offset *qdrant.PointId
+	for {
+		pts, next, serr := s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
+			CollectionName: s.collection,
+			Filter:         missingShortIDFilter(),
+			Limit:          qdrant.PtrOf(uint32(reindexBatch)),
+			Offset:         offset,
+			WithPayload:    qdrant.NewWithPayload(false),
+		})
+		if serr != nil {
+			err = serr
+			return n, err
+		}
+		for _, p := range pts {
+			sid, merr := s.MintShortID(ctx, seen)
+			if merr != nil {
+				err = merr
+				return n, err
+			}
+			if _, perr := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+				CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+				Payload:        qdrant.NewValueMap(map[string]any{"short_id": sid}),
+				PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{p.Id}),
+			}); perr != nil {
+				err = perr
+				return n, err
+			}
+			n++
+		}
+		if next == nil {
+			return n, nil
+		}
+		offset = next
+	}
 }
 
 // CountAnonymousBucket returns the number of records in the auth-disabled

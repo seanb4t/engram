@@ -24,7 +24,9 @@ user/model-mediated — there is no automatic merge-triggered migration.
    - **Promote** — now true repo-wide. `…__search_memory(<spine>, …)` first for a
      duplicate/contradiction; then `…__store_memory(<spine>, …)` (or
      `…__update_memory` the spine record on contradiction); then
-     `…__delete_memory` the overlay copy.
+     `…__delete_memory` the overlay copy. When confirming the promotion, cite
+     the resulting spine record's `short_id` — the compact handle for future
+     `…__get_memory`/`…__update_memory` calls.
    - **Keep** — still genuinely work-local (rare once merged); leave it.
    - **Drop** — no longer relevant; `…__delete_memory`.
 4. Once the workspace is being retired, offer `…__delete_all(<overlay scope>)` as

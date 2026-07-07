@@ -6,6 +6,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -368,11 +369,11 @@ type listScheduledArgs struct {
 }
 
 type idArgs struct {
-	ID string `json:"id"`
+	ID string `json:"id" jsonschema:"the memory's full UUID or its short_id"`
 }
 
 type updateArgs struct {
-	ID      string    `json:"id"`
+	ID      string    `json:"id" jsonschema:"the memory's full UUID or its short_id"`
 	Content string    `json:"content"`
 	Shared  *bool     `json:"shared,omitempty" jsonschema:"omit to keep current visibility; true=shared, false=private"`
 	Tags    *[]string `json:"tags,omitempty" jsonschema:"omit to keep current tags; supply to replace the full set (empty array clears)"`
@@ -398,7 +399,7 @@ type storeDiscoveryArgs struct {
 	Scope     string        `json:"scope" jsonschema:"discovery scope, must start with discovery: (e.g. discovery:repo:<repo>)"`
 	Tags      []string      `json:"tags,omitempty"`
 	Summary   string        `json:"summary,omitempty"`
-	ID        string        `json:"id,omitempty" jsonschema:"omit to create; supply to replace in place"`
+	ID        string        `json:"id,omitempty" jsonschema:"omit to create; supply the full UUID or short_id to replace in place"`
 }
 
 // store_discovery size bounds (resource-exhaustion guards). Generous enough not
@@ -419,7 +420,7 @@ type searchDiscoveryArgs struct {
 }
 
 type setVisibilityArgs struct {
-	ID     string `json:"id"`
+	ID     string `json:"id" jsonschema:"the memory's full UUID or its short_id"`
 	Shared bool   `json:"shared" jsonschema:"true = readable by any authenticated caller; false = private"`
 }
 
@@ -498,17 +499,20 @@ func (a storeArgs) toMemory(owner, actor string, createdAt time.Time) store.Memo
 	}
 }
 
-func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, error) {
+func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, string, error) {
 	subj, err := subjectFromContext(ctx)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	m := a.toMemory(subj.Owner(), actorFromContext(ctx), d.clock())
 	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 	if err != nil {
-		return "", err
+		return "", "", err // embed first: on error we never touch the store
 	}
-	return m.ID, d.st.Upsert(ctx, m, vec)
+	if m.ShortID, err = d.st.MintShortID(ctx, nil); err != nil {
+		return "", "", err
+	}
+	return m.ID, m.ShortID, d.st.Upsert(ctx, m, vec)
 }
 
 // clock returns the handler's current time in UTC, defaulting to wall-clock
@@ -521,53 +525,90 @@ func (d *deps) clock() time.Time {
 	return time.Now().UTC()
 }
 
-func (d *deps) scheduleMemory(ctx context.Context, a scheduleArgs) (string, error) {
+func (d *deps) scheduleMemory(ctx context.Context, a scheduleArgs) (string, string, error) {
 	subj, err := subjectFromContext(ctx)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	now := d.clock()
 	nb, na, err := parseWindow(a, now)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	m := a.toMemory(subj.Owner(), actorFromContext(ctx), now)
 	m.NotBefore = nb
 	m.NotAfter = na
 	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 	if err != nil {
-		return "", err
+		return "", "", err // embed first: on error we never touch the store
 	}
-	return m.ID, d.st.Upsert(ctx, m, vec)
+	if m.ShortID, err = d.st.MintShortID(ctx, nil); err != nil {
+		return "", "", err
+	}
+	return m.ID, m.ShortID, d.st.Upsert(ctx, m, vec)
 }
 
-func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string, error) {
+func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string, string, error) {
 	if err := validateStoreDiscovery(a); err != nil {
-		return "", err
+		return "", "", err
 	}
 	subj, err := subjectFromContext(ctx)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
+
+	pointID := ""        // resolved UUID for replace; "" for a fresh create
+	carriedShortID := "" // existing handle to preserve across replace
 	if a.ID != "" {
-		if err := d.st.OwnedOrAbsent(ctx, a.ID, subj); err != nil {
-			return "", err
+		resolved, rerr := d.st.ResolvePointID(ctx, a.ID)
+		if rerr != nil {
+			// ResolvePointID's errors already echo the caller's own input, so
+			// they propagate as-is. Its fast path accepts any well-formed UUID
+			// without an existence check — ErrNotFound here always means a
+			// failed short-id lookup: a fresh client-supplied UUID seeds a new
+			// point via that fast path plus OwnedOrAbsent's absent permission;
+			// a nonexistent short id cannot seed one.
+			return "", "", rerr
+		}
+		pointID = resolved
+		if err := d.st.OwnedOrAbsent(ctx, pointID, subj); err != nil {
+			// Re-wrap not-found with the caller's ORIGINAL input: pointID may
+			// be another owner's record resolved from their short id, and
+			// echoing the resolved UUID would leak existence and identity.
+			if errors.Is(err, store.ErrNotFound) {
+				return "", "", fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
+			}
+			return "", "", err
+		}
+		if existing, gerr := d.st.Get(ctx, pointID); gerr == nil {
+			carriedShortID = existing.ShortID
+		} else if !errors.Is(gerr, store.ErrNotFound) {
+			return "", "", gerr
 		}
 	}
+
 	vec, err := d.em.Embed(ctx, store.EmbedText(a.Content, a.Tags))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	cites := make([]store.Citation, len(a.Citations))
 	for i, c := range a.Citations {
 		cites[i] = store.Citation{Kind: c.Kind, Ref: c.Ref, Locator: c.Locator, Pin: c.Pin, Excerpt: c.Excerpt}
 	}
-	id := a.ID
+
+	id := pointID
 	if id == "" {
 		id = uuid.NewString()
 	}
+	shortID := carriedShortID
+	if shortID == "" {
+		if shortID, err = d.st.MintShortID(ctx, nil); err != nil {
+			return "", "", err
+		}
+	}
 	m := store.Memory{
 		ID:        id,
+		ShortID:   shortID,
 		Content:   a.Content,
 		Scope:     a.Scope,
 		Source:    "agent-inferred",
@@ -578,9 +619,9 @@ func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string
 		Tags:      a.Tags,
 		Actor:     actorFromContext(ctx),
 		Owner:     subj.Owner(),
-		CreatedAt: time.Now().UTC(),
+		CreatedAt: d.clock(),
 	}
-	return m.ID, d.st.Upsert(ctx, m, vec)
+	return m.ID, m.ShortID, d.st.Upsert(ctx, m, vec)
 }
 
 // actorFromContext returns the verified caller identity injected by the
@@ -729,10 +770,20 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 	if err != nil {
 		return err
 	}
+	// Resolve id or short id to the point UUID (owner-agnostic; the gate governs).
+	pid, err := d.st.ResolvePointID(ctx, a.ID)
+	if err != nil {
+		return err
+	}
 	// Ownership gate before embedding: one authoritative Get. A non-owner (or
 	// missing record) gets ErrNotFound here, before the billable embed or write.
-	cur, err := d.st.FetchForUpdate(ctx, a.ID, subj)
+	// Re-wrap not-found with the caller's ORIGINAL input so a resolved short id
+	// never leaks another owner's real UUID.
+	cur, err := d.st.FetchForUpdate(ctx, pid, subj)
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
+		}
 		return err
 	}
 	// Resolve the summary BEFORE embedding so a stale-summary rejection costs no
@@ -760,6 +811,66 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 	return d.st.Update(ctx, cur, a.Content, a.Shared, a.Tags, sumArg, vec)
 }
 
+// getMemory fetches one record by id or short id. Resolution is owner-agnostic;
+// the GetReadable gate governs visibility. A not-found from the gate is re-wrapped
+// with the caller's ORIGINAL input so a resolved short id never leaks another
+// owner's real UUID.
+func (d *deps) getMemory(ctx context.Context, a idArgs) (store.Memory, error) {
+	subj, err := subjectFromContext(ctx)
+	if err != nil {
+		return store.Memory{}, err
+	}
+	pid, err := d.st.ResolvePointID(ctx, a.ID)
+	if err != nil {
+		return store.Memory{}, err
+	}
+	m, err := d.st.GetReadable(ctx, pid, subj)
+	if errors.Is(err, store.ErrNotFound) {
+		return store.Memory{}, fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
+	}
+	return m, err
+}
+
+// deleteMemory deletes one record by id or short id. Same no-leak re-wrap as
+// getMemory: the Delete gate's not-found echoes only the caller's input.
+func (d *deps) deleteMemory(ctx context.Context, a idArgs) error {
+	subj, err := subjectFromContext(ctx)
+	if err != nil {
+		return err
+	}
+	pid, err := d.st.ResolvePointID(ctx, a.ID)
+	if err != nil {
+		return err
+	}
+	if err := d.st.Delete(ctx, pid, subj); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
+		}
+		return err
+	}
+	return nil
+}
+
+// setVisibility shares/unshares one record by id or short id. Same no-leak
+// re-wrap: the SetVisibility gate's not-found echoes only the caller's input.
+func (d *deps) setVisibility(ctx context.Context, a setVisibilityArgs) error {
+	subj, err := subjectFromContext(ctx)
+	if err != nil {
+		return err
+	}
+	pid, err := d.st.ResolvePointID(ctx, a.ID)
+	if err != nil {
+		return err
+	}
+	if err := d.st.SetVisibility(ctx, pid, subj, a.Shared); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
+		}
+		return err
+	}
+	return nil
+}
+
 // Register wires the memory tools onto the MCP server. It accepts a pre-built
 // *telemetry.ToolMetrics (constructed once in runServe and reused for both tool
 // instrumentation and auth-failure recording) so there is a single instrument
@@ -777,16 +888,16 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 
 	s.AddReceivingMiddleware(instrumentTools(tm.Record))
 
-	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps. Optionally pass `summary`: a one-line recall summary shown in place of content (keep negations/identifiers verbatim)."},
+	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps. Optionally pass `summary`: a one-line recall summary shown in place of content (keep negations/identifiers verbatim). The result includes the memory's id and short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeArgs) (*mcp.CallToolResult, any, error) {
-			id, err := d.storeMemory(ctx, a)
-			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id}, err
+			id, sid, err := d.storeMemory(ctx, a)
+			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "schedule_memory", Description: "Persist a memory with a validity window (not_before defers recall; not_after expires it). At least one bound (RFC3339) is required; use store_memory for unscheduled records."},
+	mcp.AddTool(s, &mcp.Tool{Name: "schedule_memory", Description: "Persist a memory with a validity window (not_before defers recall; not_after expires it). At least one bound (RFC3339) is required; use store_memory for unscheduled records. The result includes the memory's id and short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a scheduleArgs) (*mcp.CallToolResult, any, error) {
-			id, err := d.scheduleMemory(ctx, a)
-			return textResult(fmt.Sprintf("scheduled %s", id)), map[string]string{"id": id}, err
+			id, sid, err := d.scheduleMemory(ctx, a)
+			return textResult(fmt.Sprintf("scheduled %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory."},
@@ -807,29 +918,21 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			return textResult(fmt.Sprintf("%d scheduled", len(mems))), map[string]any{"memories": mems}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id. Unlike search_memory/list_memory, fetch-by-id is NOT recall-gated: it returns scheduled (not-yet-active) and expired records too."},
+	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id. Unlike search_memory/list_memory, fetch-by-id is NOT recall-gated: it returns scheduled (not-yet-active) and expired records too. The id may be the full UUID or the short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-			subj, err := subjectFromContext(ctx)
-			if err != nil {
-				return nil, nil, err
-			}
-			m, err := d.st.GetReadable(ctx, a.ID, subj)
+			m, err := d.getMemory(ctx, a)
 			return textResult(m.Content), m, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "update_memory", Description: "Replace a memory's content in place (re-embeds). Optionally set `shared` to toggle visibility (true=shared, false=private); omit to keep current visibility. Optionally set `tags` to replace the full tag set (empty array clears); omit to keep current tags. Optionally set `summary` to replace the recall summary (empty string clears); omit to keep current. If you change content while a caller-authored summary exists, you must address the summary (re-send, update, or clear) or the update is rejected."},
+	mcp.AddTool(s, &mcp.Tool{Name: "update_memory", Description: "Replace a memory's content in place (re-embeds). Optionally set `shared` to toggle visibility (true=shared, false=private); omit to keep current visibility. Optionally set `tags` to replace the full tag set (empty array clears); omit to keep current tags. Optionally set `summary` to replace the recall summary (empty string clears); omit to keep current. If you change content while a caller-authored summary exists, you must address the summary (re-send, update, or clear) or the update is rejected. The id may be the full UUID or the short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a updateArgs) (*mcp.CallToolResult, any, error) {
 			err := d.updateMemory(ctx, a)
 			return textResult("updated"), nil, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "delete_memory", Description: "Delete one memory by id."},
+	mcp.AddTool(s, &mcp.Tool{Name: "delete_memory", Description: "Delete one memory by id. The id may be the full UUID or the short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-			subj, err := subjectFromContext(ctx)
-			if err != nil {
-				return nil, nil, err
-			}
-			err = d.st.Delete(ctx, a.ID, subj)
+			err := d.deleteMemory(ctx, a)
 			return textResult("deleted"), nil, err
 		})
 
@@ -843,10 +946,10 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			return textResult("scope cleared"), nil, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "store_discovery", Description: "Cache agent-earned codebase understanding with citations. kind=map|fact; >=1 citation; scope discovery:repo:<repo>."},
+	mcp.AddTool(s, &mcp.Tool{Name: "store_discovery", Description: "Cache agent-earned codebase understanding with citations. kind=map|fact; >=1 citation; scope discovery:repo:<repo>. The result includes the discovery's id and short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeDiscoveryArgs) (*mcp.CallToolResult, any, error) {
-			id, err := d.storeDiscovery(ctx, a)
-			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id}, err
+			id, sid, err := d.storeDiscovery(ctx, a)
+			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "search_discovery", Description: "Semantic search over the discovery pool. scope required unless cross_spine=true; optional kind=map|fact. Results carry citations + created_at (aging signals)."},
@@ -855,13 +958,9 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"discoveries": hits}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "set_visibility", Description: "Share or unshare a memory you own. shared=true → readable by any authenticated caller (never writable by others); false → private."},
+	mcp.AddTool(s, &mcp.Tool{Name: "set_visibility", Description: "Share or unshare a memory you own. shared=true → readable by any authenticated caller (never writable by others); false → private. The id may be the full UUID or the short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a setVisibilityArgs) (*mcp.CallToolResult, any, error) {
-			subj, err := subjectFromContext(ctx)
-			if err != nil {
-				return nil, nil, err
-			}
-			err = d.st.SetVisibility(ctx, a.ID, subj, a.Shared)
+			err := d.setVisibility(ctx, a)
 			return textResult("visibility updated"), nil, err
 		})
 	return nil

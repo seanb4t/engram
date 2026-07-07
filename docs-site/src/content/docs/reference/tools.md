@@ -48,7 +48,7 @@ or timestamps.
 | `base_dir` | string | no | Base directory for the project |
 | `summary` | string | no | Short human-readable summary (caller-authored, `summary_source=client`). Omit for no summary. |
 
-Returns the stored record's `id`.
+Returns the stored record's `id` and `short_id`.
 
 ---
 
@@ -75,7 +75,7 @@ normally via `search_memory`/`list_memory`.
 | `not_before` | string | no | RFC3339; hide from recall until this time |
 | `not_after` | string | no | RFC3339; drop from recall at this time |
 
-Returns the scheduled record's `id`. At least one bound is required. Operators
+Returns the scheduled record's `id` and `short_id`. At least one bound is required. Operators
 reclaim lapsed records with the `engram prune-expired [--older-than DUR]` CLI command.
 
 ---
@@ -142,7 +142,7 @@ Fetch one memory by id.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `id` | string | yes | The UUID of the memory to fetch |
+| `id` | string | yes | The UUID **or `short_id`** of the memory to fetch |
 
 Returns the full memory record. Authenticated callers can read their own records
 plus any `shared` records. Anonymous callers can only read ownerless records.
@@ -163,7 +163,7 @@ summary), or clear it (empty `summary`) — or the update is rejected.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `id` | string | yes | The UUID of the memory to update |
+| `id` | string | yes | The UUID **or `short_id`** of the memory to update |
 | `content` | string | yes | The replacement text (re-embedded) |
 | `shared` | bool | no | `true` = shared, `false` = private; omit to keep current visibility |
 | `tags` | string[] | no | Replaces the full tag set; an empty array clears all tags. Omit to keep the current tags |
@@ -179,7 +179,7 @@ Delete one memory by id.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `id` | string | yes | The UUID of the memory to delete |
+| `id` | string | yes | The UUID **or `short_id`** of the memory to delete |
 
 Only the record owner can delete. Returns `"deleted"` on success.
 
@@ -212,7 +212,7 @@ at session start.
 | `scope` | string | yes | Must start with `discovery:`, e.g. `discovery:repo:my-repo` |
 | `tags` | string[] | no | Free-form labels |
 | `summary` | string | no | Short human-readable summary |
-| `id` | string | no | Omit to create; supply to replace in place |
+| `id` | string | no | Omit to create; supply the UUID **or `short_id`** to replace in place |
 
 Each **citation** object:
 
@@ -227,7 +227,7 @@ Each **citation** object:
 The `source` field is always `agent-inferred` and `category` is always
 `discovery` — both are server-set; do not supply them.
 
-Returns the stored discovery's `id`.
+Returns the stored discovery's `id` and `short_id`.
 
 ---
 
@@ -255,7 +255,7 @@ flag.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `id` | string | yes | The UUID of the memory |
+| `id` | string | yes | The UUID **or `short_id`** of the memory |
 | `shared` | bool | yes | `true` = readable by any authenticated caller; `false` = private |
 
 Only the record owner can change visibility. Sharing grants read, never write.

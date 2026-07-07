@@ -41,6 +41,13 @@ func TestShapeRecallFullVsSummary(t *testing.T) {
 	}
 }
 
+func TestRecallViewCarriesShortID(t *testing.T) {
+	v := toRecallView(store.Memory{ID: "u", ShortID: "j7k2m9p4x0", Content: "hello", Scope: "s", Category: "gotcha"}, 8)
+	if v.ShortID != "j7k2m9p4x0" {
+		t.Fatalf("recallView.ShortID = %q", v.ShortID)
+	}
+}
+
 func TestResolveSummaryUpdate(t *testing.T) {
 	clientSum := store.Memory{Summary: "hand-written", SummarySource: store.SummarySourceClient}
 	autoSum := store.Memory{Summary: "machine", SummarySource: store.SummarySourceAuto}

@@ -39,6 +39,7 @@ func resolveSummaryUpdate(cur store.Memory, contentChanged bool, arg *string) (v
 // recallView is the compact, summary-shaped recall result.
 type recallView struct {
 	ID            string    `json:"id"`
+	ShortID       string    `json:"short_id,omitempty"`
 	Summary       string    `json:"summary"`
 	SummarySource string    `json:"summary_source,omitempty"`
 	Truncated     bool      `json:"truncated,omitempty"`
@@ -88,7 +89,7 @@ func shapeRecall(ms []store.Memory, full bool, maxChars int) []any {
 func toRecallView(m store.Memory, maxChars int) recallView {
 	summary, truncated := summaryOrTruncation(m, maxChars)
 	return recallView{
-		ID: m.ID, Summary: summary, SummarySource: string(m.SummarySource), Truncated: truncated,
+		ID: m.ID, ShortID: m.ShortID, Summary: summary, SummarySource: string(m.SummarySource), Truncated: truncated,
 		Scope: m.Scope, Category: m.Category, Tags: m.Tags, CreatedAt: m.CreatedAt,
 		Score: m.Score,
 	}
