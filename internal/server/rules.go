@@ -4,8 +4,12 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/google/uuid"
 
 	"github.com/seanb4t/engram/internal/store"
 )
@@ -81,6 +85,70 @@ func validateRuleSummary(summary string) error {
 	return nil
 }
 
-// ensure the store import is used even before handlers land (removed once
-// storeRule/listRules reference store types in later tasks).
-var _ = store.SummarySourceClient
+// storeRule persists a normative rule, mirroring storeDiscovery: it resolves
+// and validates ownership for an in-place replace (a.ID set), mints or
+// carries forward the short_id, and returns (id, short_id, error).
+func (d *deps) storeRule(ctx context.Context, a storeRuleArgs) (string, string, error) {
+	if err := validateStoreRule(a); err != nil {
+		return "", "", err
+	}
+	subj, err := subjectFromContext(ctx)
+	if err != nil {
+		return "", "", err
+	}
+
+	pointID := ""        // resolved UUID for replace; "" for a fresh create
+	carriedShortID := "" // existing handle to preserve across replace
+	if a.ID != "" {
+		resolved, rerr := d.st.ResolvePointID(ctx, a.ID)
+		if rerr != nil {
+			return "", "", rerr
+		}
+		pointID = resolved
+		if err := d.st.OwnedOrAbsent(ctx, pointID, subj); err != nil {
+			// Re-wrap not-found with the caller's ORIGINAL input: pointID may be
+			// another owner's record resolved from their short id, and echoing the
+			// resolved UUID would leak existence/identity (404-indistinguishability).
+			if errors.Is(err, store.ErrNotFound) {
+				return "", "", fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
+			}
+			return "", "", err
+		}
+		if existing, gerr := d.st.Get(ctx, pointID); gerr == nil {
+			carriedShortID = existing.ShortID
+		} else if !errors.Is(gerr, store.ErrNotFound) {
+			return "", "", gerr
+		}
+	}
+
+	vec, err := d.em.Embed(ctx, store.EmbedText(a.Content, a.Tags))
+	if err != nil {
+		return "", "", err
+	}
+	id := pointID
+	if id == "" {
+		id = uuid.NewString()
+	}
+	shortID := carriedShortID
+	if shortID == "" {
+		if shortID, err = d.st.MintShortID(ctx, nil); err != nil {
+			return "", "", err
+		}
+	}
+	m := store.Memory{
+		ID:            id,
+		ShortID:       shortID,
+		Content:       a.Content,
+		Scope:         a.Scope,
+		Source:        "user-said",
+		Category:      "rule",
+		Visibility:    "shared",
+		Tags:          a.Tags,
+		Summary:       a.Summary,
+		SummarySource: store.SummarySourceClient,
+		Actor:         actorFromContext(ctx),
+		Owner:         subj.Owner(),
+		CreatedAt:     d.clock(),
+	}
+	return m.ID, m.ShortID, d.st.Upsert(ctx, m, vec)
+}
