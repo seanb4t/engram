@@ -24,6 +24,8 @@ records created.
 | `store_discovery` | Cache citation-backed codebase understanding |
 | `search_discovery` | Semantic search over the discovery pool |
 | `set_visibility` | Share or unshare a memory you own |
+| `store_rule` | Persist a normative, user-blessed rule (ground truth) |
+| `list_rules` | List the complete rule set for one or more scopes |
 
 **`actor` and `owner` are always server-set.** They come from the validated OIDC
 token and are never accepted as client input.
@@ -260,6 +262,49 @@ flag.
 
 Only the record owner can change visibility. Sharing grants read, never write.
 Returns `"visibility updated"` on success.
+
+---
+
+## store_rule
+
+Persist a **normative rule** (repository/project ground truth) that agents must
+follow. Call **only on explicit user instruction** — never promote a rule
+unilaterally; propose it to the user instead. Rules live in a dedicated
+`rule:repo:*` / `rule:project:*` scope, are always shared, and surface as a
+session-start index.
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `content` | string | yes | The full rule text (normative constraint); max 8 KiB |
+| `scope` | string | yes | `rule:repo:<repo>` or `rule:project:<project>` |
+| `summary` | string | yes | One-line index entry: a single physical line (no newlines), max 256 bytes |
+| `tags` | string[] | no | Concern-area labels, e.g. `vcs`, `deploy`, `authz` |
+| `id` | string | no | Omit to create; supply the UUID **or `short_id`** to replace in place |
+
+`category` (`rule`), `source` (`user-said`), and `visibility` (`shared`) are all
+server-set; do not supply them. The summary is stored as a client-authored
+summary. `set_visibility` is rejected for rules — they are always shared.
+
+Returns the stored rule's `id` and `short_id`.
+
+---
+
+## list_rules
+
+List the **complete** rule set for one or more `rule:*` scopes, oldest-first.
+Rules are the repository/project's normative ground truth.
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `scopes` | string[] | yes | One or more `rule:*` scopes to fetch the complete rule set from |
+| `tags` | string[] | no | Restrict to rules carrying **all** listed tags (AND) |
+| `full` | bool | no | `true` adds full content; default returns the compact index shape |
+
+The default compact shape is a `ruleView` (`short_id`, `id`, `summary`, `tags`,
+`scope`, `created_at`); `full=true` returns the full records. Ordering is
+oldest-first (this ascending order is specific to `list_rules`). A per-scope
+count above 50 adds a curation-smell advisory to the text result only — the
+returned rules payload is unaffected.
 
 ---
 

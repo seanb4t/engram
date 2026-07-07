@@ -93,6 +93,17 @@ Discovery tools: `store_discovery` / `search_discovery`. A discovery is a 5th
 demand (never at session start), and is captured via the `discovering` skill.
 Design intent unchanged: explicit, citation-backed, no auto-extraction.
 
+Rule tools: `store_rule` / `list_rules`. A rule is a 6th `category`: normative,
+user-blessed, always-shared ground truth in a dedicated `rule:repo:*` /
+`rule:project:*` scope. `store_rule` is invoked only on explicit user
+instruction (never promoted unilaterally); its `summary` must be a single line
+(the index entry). `list_rules` returns the complete set for one or more
+`rule:*` scopes, oldest-first, compact index shape by default (`full` for
+content). Rules surface at session start as a progressive-disclosure index (one
+line per rule; full text fetched on demand via `get_memory`). `set_visibility`
+is rejected for rules — delete the rule instead. Design intent unchanged:
+explicit, user-blessed, no auto-extraction.
+
 ## Auth
 
 `--oidc-issuer`/`ENGRAM_OIDC_ISSUER` enables bearer-token enforcement (JWKS
