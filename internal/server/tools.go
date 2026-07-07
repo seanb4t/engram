@@ -969,6 +969,16 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			id, sid, err := d.storeRule(ctx, a)
 			return textResult(fmt.Sprintf("stored rule %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "list_rules", Description: "List the COMPLETE rule set for one or more rule:* scopes, oldest-first. Compact index shape by default (short_id, summary, tags); full=true adds content. Optional tags filter (AND). Rules are the repo/project's normative ground truth."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a listRulesArgs) (*mcp.CallToolResult, any, error) {
+			rules, advisory, err := d.listRules(ctx, a)
+			msg := fmt.Sprintf("%d rules", len(rules))
+			if advisory != "" {
+				msg += " (" + advisory + ")"
+			}
+			return textResult(msg), map[string]any{"rules": rules}, err
+		})
 	return nil
 }
 

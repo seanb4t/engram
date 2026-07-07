@@ -766,6 +766,12 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 	if opts.Limit == 0 {
 		fetch = total // limit 0 = "all" (preserves prior behavior)
 	}
+	if fetch == 0 {
+		// Qdrant's Scroll rejects Limit=0 outright ("must be 1 or larger"), and
+		// there is nothing to fetch anyway (total==0 or an explicit zero-width
+		// request) — short-circuit rather than round-trip for an empty page.
+		return []Memory{}, total, "", nil
+	}
 	dir := qdrant.Direction_Desc
 	if opts.Ascending {
 		dir = qdrant.Direction_Asc

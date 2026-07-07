@@ -7,6 +7,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/seanb4t/engram/internal/store"
 )
@@ -84,6 +85,74 @@ func TestStoreRuleHandler(t *testing.T) {
 
 	// Invalid args are rejected before any write.
 	if _, _, err := d.storeRule(ctx, storeRuleArgs{Content: "x", Scope: "repo:x", Summary: "s"}); err == nil {
+		t.Error("expected rejection of non-rule scope")
+	}
+}
+
+func TestListRulesHandler(t *testing.T) {
+	d := testDeps(t)
+	// Advancing clock: created_at is stored at RFC3339 seconds precision, so
+	// three sub-second-apart wall-clock seeds would tie and make the ascending
+	// assertion flaky. A 1s-per-call tick gives distinct, increasing created_at.
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	var tick int64
+	d.now = func() time.Time { tick++; return base.Add(time.Duration(tick) * time.Second) }
+
+	ctx := context.Background()
+	scope := "rule:repo:list-rules-test"
+	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) })
+
+	// Seed three rules; the injected clock makes A<B<C by created_at.
+	for i, s := range []string{"rule A", "rule B", "rule C"} {
+		if _, _, err := d.storeRule(ctx, storeRuleArgs{
+			Content: s, Scope: scope, Summary: s, Tags: []string{"x"},
+		}); err != nil {
+			t.Fatalf("seed %d: %v", i, err)
+		}
+	}
+
+	// Compact (default) shape: complete set, ascending, ruleView fields.
+	rules, advisory, err := d.listRules(ctx, listRulesArgs{Scopes: []string{scope}})
+	if err != nil {
+		t.Fatalf("listRules: %v", err)
+	}
+	if len(rules) != 3 {
+		t.Fatalf("got %d rules, want 3", len(rules))
+	}
+	first, ok := rules[0].(ruleView)
+	if !ok {
+		t.Fatalf("compact shape is not ruleView: %T", rules[0])
+	}
+	if first.Summary != "rule A" {
+		t.Errorf("not ascending oldest-first: first summary=%q want %q", first.Summary, "rule A")
+	}
+	if first.ShortID == "" {
+		t.Error("ruleView.ShortID should be populated (store_rule mints it)")
+	}
+	if advisory != "" {
+		t.Errorf("unexpected advisory under threshold: %q", advisory)
+	}
+
+	// Tags AND filter: all carry "x", none carry "y".
+	none, _, err := d.listRules(ctx, listRulesArgs{Scopes: []string{scope}, Tags: []string{"y"}})
+	if err != nil {
+		t.Fatalf("listRules tags: %v", err)
+	}
+	if len(none) != 0 {
+		t.Errorf("tags=[y] should match nothing, got %d", len(none))
+	}
+
+	// Full shape returns store.Memory (carries content).
+	full, _, err := d.listRules(ctx, listRulesArgs{Scopes: []string{scope}, Full: true})
+	if err != nil {
+		t.Fatalf("listRules full: %v", err)
+	}
+	if _, ok := full[0].(store.Memory); !ok {
+		t.Errorf("full shape is not store.Memory: %T", full[0])
+	}
+
+	// Invalid scope rejected.
+	if _, _, err := d.listRules(ctx, listRulesArgs{Scopes: []string{"repo:x"}}); err == nil {
 		t.Error("expected rejection of non-rule scope")
 	}
 }

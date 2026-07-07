@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -151,4 +152,73 @@ func (d *deps) storeRule(ctx context.Context, a storeRuleArgs) (string, string, 
 		CreatedAt:     d.clock(),
 	}
 	return m.ID, m.ShortID, d.st.Upsert(ctx, m, vec)
+}
+
+// ruleThreshold is the soft rule-count ceiling per scope above which listRules
+// returns a curation-smell advisory (textResult only; the {rules} payload is
+// unaffected). A rule set is definitionally small.
+const ruleThreshold = 50
+
+// ruleView is the compact list_rules result: the one-line index entry plus the
+// short handle callers paste into get_memory.
+type ruleView struct {
+	ShortID   string    `json:"short_id,omitempty"`
+	ID        string    `json:"id"`
+	Summary   string    `json:"summary"`
+	Tags      []string  `json:"tags,omitempty"`
+	Scope     string    `json:"scope"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func toRuleView(m store.Memory) ruleView {
+	return ruleView{
+		ShortID: m.ShortID, ID: m.ID, Summary: m.Summary,
+		Tags: m.Tags, Scope: m.Scope, CreatedAt: m.CreatedAt,
+	}
+}
+
+// listRules returns the complete rule set across the given rule:* scopes,
+// oldest-first, as compact ruleView values (or full store.Memory when full).
+// The second return is a human-readable curation advisory for the tool's
+// textResult (empty when under threshold); it never changes the {rules} payload.
+func (d *deps) listRules(ctx context.Context, a listRulesArgs) (out []any, advisory string, err error) {
+	if len(a.Scopes) == 0 {
+		return nil, "", fmt.Errorf("at least one rule scope is required")
+	}
+	for _, sc := range a.Scopes {
+		if !validRuleScope(sc) {
+			return nil, "", fmt.Errorf("scope must be rule:repo:<repo> or rule:project:<project>, got %q", sc)
+		}
+	}
+	subj, err := subjectFromContext(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	var over []string
+	for _, sc := range a.Scopes {
+		// Limit:0 = all; Ascending = oldest-first; Categories pins the rule kind.
+		ms, _, _, lerr := d.st.List(ctx, sc, subj, store.ListOptions{
+			Limit:      0,
+			Ascending:  true,
+			Categories: []string{"rule"},
+			Tags:       a.Tags,
+		})
+		if lerr != nil {
+			return nil, "", lerr
+		}
+		if len(ms) > ruleThreshold {
+			over = append(over, fmt.Sprintf("%d rules in %s", len(ms), sc))
+		}
+		for _, m := range ms {
+			if a.Full {
+				out = append(out, m)
+			} else {
+				out = append(out, toRuleView(m))
+			}
+		}
+	}
+	if len(over) > 0 {
+		advisory = "curation smell — " + strings.Join(over, "; ") + " — consider consolidating"
+	}
+	return out, advisory, nil
 }
