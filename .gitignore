@@ -48,3 +48,6 @@ ui/build/
 # Vitest browser-mode failure artifacts (written next to tests / under ui on a failed run)
 ui/.vitest-attachments/
 ui/**/__screenshots__/
+
+# GSD ingest staging (regenerable per-doc classifications; synthesized intel is tracked)
+.planning/intel/classifications/

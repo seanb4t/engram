@@ -1,0 +1,128 @@
+# Requirements: engram
+
+**Defined:** 2026-07-07 (retrospective baseline — v0.8.x shipped)
+**Core Value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
+
+> **Retrospective note.** engram is already shipped. IDs are reused verbatim from the ingest
+> intel (`.planning/intel/requirements.md`). Requirements marked `[x]` are **implemented and
+> merged to main** (Phases 1–7). `REQ-connect-auth-posture` (R1–R4) is **DEFERRED** — the
+> observe-lane Connect API currently mounts anonymously; full cookie/OIDC auth is future work
+> (Phase 8, not started).
+
+## v1 Requirements
+
+Shipped in the v0.8.x baseline. Each maps to exactly one roadmap phase.
+
+### Authorization & Isolation
+
+- [x] **REQ-per-actor-isolation**: Authorization layer over engram — per-actor read isolation, write gating, opt-in sharing, a stable owner key, and record migration for pre-isolation records. *(realized-by DEC-cgb, DEC-kyz, DEC-xa6, DEC-y1g, DEC-g37x, DEC-12c)*
+- [x] **REQ-typed-subject-authz**: Typed `Subject` sum replacing bare `sub string`, making anonymous/authenticated states and the fail-closed branch explicit with store-layer exhaustive default-deny. *(realized-by DEC-12c)*
+- [x] **REQ-configurable-claim-owner**: Owner key moved from OIDC `sub` to a configurable identity claim (default `email`) plus a general owner-remap migration to survive IdP `sub` rotation. *(realized-by DEC-g37x)*
+
+### Recall & Windowing
+
+- [x] **REQ-scheduled-memories**: Time-gated recall via `not_before`/`not_after` temporal window fields stored as epoch-second Qdrant payloads; `store_memory` stays windowless. *(realized-by DEC-90w, DEC-y1g)*
+- [x] **REQ-windowed-cursor-recall**: Server-side indexed filtering, `created_at` half-open range windows, and opaque cursor pagination across recall tools; scanCap/approximate retired. *(realized-by DEC-1frj, DEC-ef28)*
+- [x] **REQ-auto-summary**: Recall-time summary shaping — explicit submitter-authored summaries with an operator-invoked cheap-model auto-summary fallback, `summary_source` provenance, and a `summarize` backfill CLI. *(realized-by DEC-ambu)*
+
+### Memory Kinds & Handles
+
+- [x] **REQ-discovery-memory-type**: Citation-backed, aging-aware "discovery" memory kind caching earned code understanding; recalled on demand, never at session start. *(realized-by DEC-2bv)*
+- [x] **REQ-rule-memory-kind**: Normative `rule` memory category in a `rule:*` scope with session-start one-line index surfacing, `store_rule`/`list_rules` tools, and short_id support. *(realized-by DEC-iedk)*
+- [x] **REQ-short-id-handle**: 10-char Crockford base32 `short_id` handle round-tripping through by-id tools alongside the primary UUID, resolved at the handler layer. *(realized-by DEC-zzq0, DEC-02ta)*
+
+### Embedder
+
+- [x] **REQ-asymmetric-embedder-params**: Provider-agnostic query-vs-document embedder request-body param maps plus a document-side text instruction for asymmetric/both-side-prefix models; reindex boundary respected. *(realized-by DEC-zyhq; connection vars renamed by DEC-378)*
+
+### Config & Validation
+
+- [x] **REQ-config-prefix-koanf**: `MEM_*` → `ENGRAM_*` rename, provider-neutral embedder keys, and a koanf-backed typed `internal/config` package consumed at every entrypoint. *(realized-by DEC-jgq, DEC-irq, DEC-378)*
+- [x] **REQ-config-validation**: A single pure `Config.Validate()` asserting well-formedness of data-plane config, run loudly and early at serve/reindex/migrate/prune entrypoints. *(registry-driven)*
+
+### Telemetry & Observability
+
+- [x] **REQ-observability-telemetry**: Structured `slog` logging plus OpenTelemetry metrics and traces over OTLP, instrumented at HTTP, MCP, and downstream-client seams, with Helm knobs. *(realized-by DEC-dwi, DEC-uxh)*
+- [x] **REQ-telemetry-seams**: OTel spans and domain-latency metrics across store, embed, and auth layers plus a complete OTel resource. *(realized-by DEC-dwi, DEC-uxh)*
+
+### Web UI & Operator Console
+
+- [x] **REQ-web-ui-console**: Authenticated operator web console over the memory store — Svelte SPA + Go BFF over ConnectRPC, OIDC auth, v1 read-only observe lane, discovery search. *(realized-by DEC-8xe, DEC-0lu, DEC-bj6)*
+- [x] **REQ-operator-console-spa**: Implementation-ready v1 read-only SvelteKit operator console consuming the Connect `EngramService` API; adapter-static + `go:embed` serving. *(realized-by DEC-0lu, DEC-8xe)*
+- [x] **REQ-operator-console-redesign**: Migrate the SvelteKit UI onto shadcn-svelte components and semantic theme tokens (svelte-query, redesigned AppShell/ScopeRail/MemoryList/MemoryDetail/SearchPalette).
+- [x] **REQ-memory-display-ux**: Surface real `summary`/`summary_source` fields and redesign the memory display with safe markdown rendering. *(realized-by DEC-ambu)*
+- [x] **REQ-ui-test-unification**: Replace jsdom/happy-dom emulators with vitest 4 browser mode (real Chromium) for unified UI/sanitizer testing; CI test gate green.
+
+### Docs Site & Brand
+
+- [x] **REQ-docs-site**: Static Astro Starlight documentation site deployed to Cloudflare Workers as engram's canonical docs home. *(realized-by DEC-ttb)*
+- [x] **REQ-docs-landing-redesign**: Redesign the Astro/Starlight docs landing page into a navigational product hub.
+- [x] **REQ-brand-identity**: Unified engram brand visual system (logo/wordmark/favicon, neural violet accent #6E56CF) applied across the operator console SPA and the docs site.
+
+### Packaging
+
+- [x] **REQ-relocate-memory-curator**: Relocate the memory-curator client plugin into the engram repo under a bundled skill/engram layout with a marketplace entry, MCP server id rebrand, and SessionStart/PostToolUse hooks.
+
+## Deferred Requirements
+
+Acknowledged and carried forward into a future milestone. Not part of the v0.8.x shipped scope.
+
+### Connect Auth Posture (R1–R4)
+
+- [ ] **REQ-connect-auth-posture**: Replace the interim anonymous Connect API mount with full cookie/OIDC observe-lane authentication (deferred requirements **R1–R4**), so the read API serves real per-actor identities. Interim disposition (anonymous mount into the single empty-owner bucket) is documented and shipped; the auth hardening is **not started**. Maps to Phase 8. *(source: docs/superpowers/specs/2026-06-09-connect-auth-posture-addendum.md)*
+
+## Out of Scope
+
+Explicitly excluded. Documented to prevent scope creep.
+
+| Feature | Reason |
+|---------|--------|
+| Auto-extraction of memories | Core invariant — capture is explicit and user-blessed; keeps recall zero-junk |
+| Prometheus `/metrics` scrape endpoint | Telemetry is OTLP-gRPC only (DEC-dwi) |
+| SSR (console or docs) | Adapter-static SPA + static docs only (DEC-0lu, DEC-ttb) |
+| viper / config files / `MEM_*` vars | ENGRAM_ koanf only; `MEM_*` is a fatal startup guard (DEC-jgq, DEC-irq) |
+| Separate Qdrant collection per memory kind | Discovery/rule/scheduled live in the single Memory collection (DEC-2bv) |
+| Client-config generalization + `/engram-setup` | Superseded by out-of-set ADR engram-50b; historical context only |
+| Database migrations, cocogitto | Not used in this project |
+
+## Traceability
+
+Which phase covers which requirement. Retrospective — completed requirements are `Complete`.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| REQ-per-actor-isolation | Phase 1 | Complete |
+| REQ-typed-subject-authz | Phase 1 | Complete |
+| REQ-configurable-claim-owner | Phase 1 | Complete |
+| REQ-scheduled-memories | Phase 2 | Complete |
+| REQ-windowed-cursor-recall | Phase 2 | Complete |
+| REQ-auto-summary | Phase 2 | Complete |
+| REQ-discovery-memory-type | Phase 3 | Complete |
+| REQ-rule-memory-kind | Phase 3 | Complete |
+| REQ-short-id-handle | Phase 3 | Complete |
+| REQ-asymmetric-embedder-params | Phase 4 | Complete |
+| REQ-config-prefix-koanf | Phase 5 | Complete |
+| REQ-config-validation | Phase 5 | Complete |
+| REQ-observability-telemetry | Phase 6 | Complete |
+| REQ-telemetry-seams | Phase 6 | Complete |
+| REQ-web-ui-console | Phase 7 | Complete |
+| REQ-operator-console-spa | Phase 7 | Complete |
+| REQ-operator-console-redesign | Phase 7 | Complete |
+| REQ-memory-display-ux | Phase 7 | Complete |
+| REQ-ui-test-unification | Phase 7 | Complete |
+| REQ-docs-site | Phase 7 | Complete |
+| REQ-docs-landing-redesign | Phase 7 | Complete |
+| REQ-brand-identity | Phase 7 | Complete |
+| REQ-relocate-memory-curator | Phase 7 | Complete |
+| REQ-connect-auth-posture | Phase 8 | Deferred |
+
+**Coverage:**
+- Routed requirements: 24 total
+- Mapped to phases: 24 ✓
+- Unmapped: 0 ✓
+- Complete (v0.8.x baseline): 23
+- Deferred (future milestone): 1 (REQ-connect-auth-posture / R1–R4)
+
+---
+*Requirements defined: 2026-07-07*
+*Last updated: 2026-07-07 after retrospective baseline ingest*

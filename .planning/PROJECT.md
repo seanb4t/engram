@@ -1,0 +1,240 @@
+# engram
+
+## What This Is
+
+engram is a self-hosted, correctable, OAuth-secured memory MCP server for coding agents,
+backed by Qdrant. It exposes an explicit, zero-junk memory contract (store / schedule /
+search / list / get / update / delete plus discovery and rule kinds) over MCP, with a
+ConnectRPC read API, a SvelteKit operator console, and an Astro Starlight docs site. It is
+distributed as a container image and a Helm chart (server + Qdrant) for Kubernetes.
+
+This is a **retrospective baseline**: engram is already shipped (current release line
+**v0.8.x**). Every locked decision and every routed requirement below is **implemented and
+merged to main**. This document records the as-built state so future milestones build on an
+accurate foundation.
+
+## Core Value
+
+**Correctable recall precision** — a coding agent gets back the RIGHT memory for its context,
+and wrong or stale memories can be corrected or superseded, so recall stays trustworthy as the
+store grows. Everything ladders up to this: relevant/correct/current recall, explicit
+zero-junk capture (no auto-extraction), and per-actor isolation that keeps each agent's recall
+clean.
+
+## Requirements
+
+### Validated
+
+Shipped in the v0.8.x baseline and relied upon. Full IDs and phase mapping in
+`.planning/REQUIREMENTS.md`.
+
+- ✓ **Authorization & Isolation** — per-actor isolation, typed Subject authz, configurable-claim owner (Phase 1)
+- ✓ **Recall Semantics** — scheduled/windowed recall, cursor paging, summary-by-default (Phase 2)
+- ✓ **Memory Kinds & Tools** — discovery kind, rule kind, short_id handle, schedule tools (Phase 3)
+- ✓ **Embedder** — protocol-named vars, asymmetric query/document param passthrough (Phase 4)
+- ✓ **Config & Transport** — ENGRAM_ koanf config, Config.Validate, fatal legacy guard, MCP path (Phase 5)
+- ✓ **Telemetry & Observability** — slog + OTel over OTLP at every seam, non-blocking (Phase 6)
+- ✓ **Web UI, Docs Site & Distribution** — operator console SPA, docs site, brand, bundled client plugin (Phase 7)
+
+### Active
+
+Deferred follow-up carried forward into a future milestone:
+
+- [ ] **REQ-connect-auth-posture (R1–R4)** — replace the interim anonymous Connect API mount
+  with full cookie/OIDC observe-lane authentication (Phase 8, not started)
+
+### Out of Scope
+
+- **Auto-extraction of memories** — explicit, user-blessed capture is a core design invariant; automatic memory harvesting is deliberately excluded to keep recall zero-junk.
+- **Prometheus `/metrics` scrape endpoint** — telemetry is OTLP-gRPC only (DEC-dwi).
+- **Server-side rendering (SSR)** — the operator console is an adapter-static SPA and the docs site is static-only (DEC-0lu, DEC-ttb).
+- **viper / config files / `MEM_*` env vars** — config is ENGRAM_-prefixed koanf only; `MEM_*` is a fatal startup guard (DEC-jgq, DEC-irq).
+- **Database migrations, cocogitto** — not used in this project.
+- **Separate Qdrant collections per memory kind** — discovery/rule/scheduled all live in the single Memory collection (DEC-2bv).
+
+## Context
+
+- **Ecosystem:** Go 1.26 static binary (`CGO_ENABLED=0`, distroless), Qdrant gRPC vector store, OpenAI-compatible embeddings/chat gateway. UI/docs built with pnpm + Node (not in the server image).
+- **Surfaces:** MCP tool server (primary, StreamableHTTP at `/mcp`), ConnectRPC `EngramService` v1 read API, SvelteKit adapter-static operator console vendored via `go:embed`, Astro Starlight docs site on Cloudflare Workers.
+- **Identity:** OIDC bearer tokens on the MCP lane become the memory `actor`; the authz `owner` key is a configurable claim (default `email`). No issuer → single anonymous empty-owner bucket.
+- **VCS/build:** jj-colocated git; `task` runner; buf-generated `gen/` tree committed and CI-checked; release-please-driven releases (binary + image via goreleaser, OCI Helm chart).
+- **Known as-built gap:** the Connect observe lane currently mounts anonymously into the empty-owner bucket (interim); full cookie/OIDC auth (R1–R4) is deferred — see `.planning/codebase/CONCERNS.md`.
+
+## Constraints
+
+- **Tech stack**: Go + Qdrant + MCP go-sdk + koanf + connect-go + go-oidc — Established, ADR-locked; the memory contract and authz model depend on them.
+- **Security**: Authorization is enforced in `internal/store` (Qdrant read filters + owner gates), never in handlers — Prevents handler-level authz drift; store is the single default-deny chokepoint (DEC-cgb, DEC-12c).
+- **Security**: Unauthorized id-addressed ops return the same not-found as a missing id — Prevents cross-actor existence leaks (DEC-xa6).
+- **Compatibility**: `short_id` is 10-char Crockford base32, accepted anywhere an id is — Stable public handle; legacy records backfilled via `engram backfill-short-ids` (DEC-zzq0, DEC-02ta).
+- **Observability**: Telemetry is OTLP-gRPC only and never a hard startup dependency — No Prometheus scrape; missing collector yields no-op providers (DEC-dwi, DEC-uxh).
+- **Config**: Single ENGRAM_ field registry via koanf; retired `MEM_*` vars are a fatal guard — No silent fallback or dual-read shim (DEC-jgq, DEC-irq).
+- **Frontend**: Operator console is adapter-static + `go:embed`; docs site is static-only — SSR dropped end-to-end (DEC-0lu, DEC-ttb).
+- **Testing**: UI/sanitizer tests run under vitest 4 browser mode (real Chromium) — jsdom/happy-dom retired so DOMPurify + bits-ui exercise a real DOM.
+
+## Decisions
+
+All 25 ADRs are **LOCKED** (precedence 0) and cannot be auto-overridden by any lower-precedence
+source. Source of record: `docs/adr/engram-*.md`. Grouped by the phase that delivered them.
+
+<decisions>
+
+### Phase 1 — Authorization & Isolation
+
+#### DEC-cgb — Enforce per-actor authorization in the store layer, not in handlers — [LOCKED]
+- **Source:** docs/adr/engram-cgb-enforce-per-actor-authorization-store-layer-not-handlers.md
+- **Decision:** Per-actor authorization is enforced inside `internal/store` via Qdrant read filters and owner-gate primitives, not in MCP handlers.
+- **Scope:** internal/store, Qdrant read filters, authorization, MCP tool handlers, owner isolation
+
+#### DEC-g37x — Use configurable OIDC claim as record owner (default: email) — [LOCKED]
+- **Source:** docs/adr/engram-g37x-use-configurable-oidc-claim-as-record-owner-default-email.md
+- **Decision:** The record authz owner key is a configurable OIDC claim (default `email`, via `ENGRAM_OWNER_CLAIM`) so ownership survives IdP `sub` rotation.
+- **Scope:** owner authz key, ENGRAM_OWNER_CLAIM, OIDC claim resolution, migrate-remap-owner, session cookie sealing
+
+#### DEC-kyz — Sharing grants read but never write (read/write gate asymmetry) — [LOCKED]
+- **Source:** docs/adr/engram-kyz-sharing-grants-read-but-never-write-read-write-gate-asymmetr.md
+- **Decision:** Access primitives are asymmetric — sharing grants read access only; owners retain exclusive write/delete/visibility control.
+- **Scope:** getReadable, getWritable, ownedOrAbsent, DeleteAll, shared visibility, id-addressed store ops, authz gates
+
+#### DEC-xa6 — Return 404 not-found for unauthorized id-addressed operations — [LOCKED]
+- **Source:** docs/adr/engram-xa6-return-404-not-found-unauthorized-id-addressed-operations.md
+- **Decision:** All owner/visibility mismatches return the same not-found error as a missing id, preventing cross-actor existence leaks.
+- **Scope:** get_memory, update_memory, delete_memory, set_visibility, discovery overwrite, ownership authz, ErrNotFound
+
+#### DEC-12c — Represent authz Subject as a sealed Go interface — [LOCKED]
+- **Source:** docs/adr/engram-12c-represent-authz-subject-as-sealed-go-interface.md
+- **Decision:** Authz caller identity is modeled as a sealed Go interface with default-deny exhaustive type switches in the store layer.
+- **Scope:** internal/store, authz Subject, anonymous/authenticated variants, store enforcement gates, Qdrant owner payload
+
+### Phase 2 — Recall Semantics
+
+#### DEC-ambu — Recall returns summary by default with full-content opt-in — [LOCKED]
+- **Source:** docs/adr/engram-ambu-recall-returns-summary-by-default-full-content-opt.md
+- **Decision:** Search/list recall returns summary-shaped output by default with a `full=true` opt-in for full content; `get_memory` is unchanged.
+- **Scope:** search_memory, list_memory, get_memory, Connect SearchMemories/ListMemories, memory contract, web UI
+
+#### DEC-4xt7 — Tag-filtered recall: hard Qdrant filter, AND-default — [LOCKED]
+- **Source:** docs/adr/engram-4xt7-tag-filtered-recall-hard-qdrant-filter-and-default.md
+- **Decision:** The optional `tags` filter on search_memory/list_memory is a hard AND (contains-all) Qdrant pre-filter composed onto the authz envelope.
+- **Scope:** search_memory, list_memory, Store.Search, Store.List, Qdrant tag filter, tags recall dimension
+
+#### DEC-y1g — Gate recall via Qdrant filter; leave get_memory ungated — [LOCKED]
+- **Source:** docs/adr/engram-y1g-gate-recall-via-qdrant-filter-leave-get-memory-ungated.md
+- **Decision:** Temporal validity is enforced as Qdrant filter conditions on Search/List, while get_memory and by-id paths stay ungated for record management.
+- **Scope:** Qdrant filter, Search, List, get_memory, temporal validity gate, store layer
+
+#### DEC-1frj — Boundary id-set cursor with half-open date window for recall — [LOCKED]
+- **Source:** docs/adr/engram-1frj-boundary-id-set-cursor-half-open-date-window-recall.md
+- **Decision:** Adopt an opaque boundary id-set cursor over `created_at` with a half-open date window for deterministic O(limit)-per-page recall paging.
+- **Scope:** list_memory, MCP recall paging, cursor pagination, date-window recall, Connect ListMemories API, Qdrant ordering
+
+#### DEC-ef28 — Index owner/scope/created_at as Qdrant payload indexes — [LOCKED]
+- **Source:** docs/adr/engram-ef28-index-owner-scope-created-at-as-qdrant-payload-indexes.md
+- **Decision:** Create keyword and datetime Qdrant payload indexes on owner/scope/created_at, retiring scanCap and the approximate flag for exact server-side Count and filtering.
+- **Scope:** Qdrant payload indexes, List/ListScheduled/ListScopes, ensureCollection, owner authz filtering, created_at date-range queries
+
+### Phase 3 — Memory Kinds & Tools
+
+#### DEC-2bv — Discovery is a 5th category in the single Memory collection — [LOCKED]
+- **Source:** docs/adr/engram-2bv-discovery-is-5th-category-single-memory-collection.md
+- **Decision:** Discovery is added as a 5th category on the existing Memory record in one Qdrant collection rather than a separate collection.
+- **Scope:** discovery category, Memory record, Qdrant collection, internal/store/store.go, query-time isolation filter
+
+#### DEC-90w — Add schedule_memory/list_scheduled tools; keep store_memory windowless — [LOCKED]
+- **Source:** docs/adr/engram-90w-add-schedule-memory-list-scheduled-tools-keep-store-memory-w.md
+- **Decision:** Add dedicated `schedule_memory` and `list_scheduled` MCP tools rather than adding temporal window params to `store_memory`.
+- **Scope:** schedule_memory, list_scheduled, store_memory, MCP tool surface, temporal validity windows
+
+#### DEC-iedk — Rules are always-shared with server-set immutable visibility; set_visibility rejects rules — [LOCKED]
+- **Source:** docs/adr/engram-iedk-rules-are-always-shared-server-set-immutable-visibility-set.md
+- **Decision:** Rule-category memories are server-set to `shared` and immutable; the `set_visibility` handler rejects any call targeting a rule.
+- **Scope:** rule memory kind, set_visibility MCP handler, visibility, shared-read grant, GetReadable
+- **Relates to:** DEC-kyz
+
+#### DEC-zzq0 — Encode short_id as 10-char Crockford base32 — [LOCKED]
+- **Source:** docs/adr/engram-zzq0-encode-short-id-as-10-char-crockford-base32.md
+- **Decision:** Encode memory record `short_id` as a 10-char lowercase Crockford base32 token instead of ULID or Sqids.
+- **Scope:** short_id, memory records, Crockford base32 encoding, Qdrant lookup
+
+#### DEC-02ta — Resolve short_id at the handler layer, not inside store methods — [LOCKED]
+- **Source:** docs/adr/engram-02ta-resolve-short-id-at-handler-layer-not-inside-store-methods.md
+- **Decision:** Resolve `short_id` to UUID via a shared `Store.ResolvePointID` method called from each by-id handler rather than inside store methods.
+- **Scope:** short_id resolution, Store.ResolvePointID, MCP by-id tools, Connect GetMemory RPC, ownership gates
+
+### Phase 4 — Embedder
+
+#### DEC-378 — Name embedder connection vars by protocol, not implementation — [LOCKED]
+- **Source:** docs/adr/engram-378-name-embedder-connection-vars-by-protocol-not-implementation.md
+- **Decision:** Rename embedder connection env vars from `MEM_LITELLM_*` to `ENGRAM_OPENAI_BASE_URL`/`ENGRAM_OPENAI_API_KEY`, naming the wire protocol not the vendor.
+- **Scope:** embedder, environment variables, ENGRAM_OPENAI_BASE_URL, ENGRAM_OPENAI_API_KEY, OpenAI-compatible /v1/embeddings API, embed.New
+- **Note:** Also realizes the embedder half of REQ-config-prefix-koanf (Phase 5).
+
+#### DEC-zyhq — Generic param-map passthrough over embedder profiles for asymmetric/cloud embedders — [LOCKED]
+- **Source:** docs/adr/engram-zyhq-generic-param-map-passthrough-over-embedder-profiles-asymmet.md
+- **Decision:** Expose query/document embedding params as raw provider-agnostic JSON maps (`ENGRAM_EMBED_QUERY_PARAMS`/`ENGRAM_EMBED_DOCUMENT_PARAMS`) merged into the /v1/embeddings body, instead of per-provider profiles.
+- **Scope:** embedder, embed.Client, ENGRAM_EMBED_QUERY_PARAMS, ENGRAM_EMBED_DOCUMENT_PARAMS, /v1/embeddings request body, cloud/gateway embedders
+
+### Phase 5 — Config & Transport
+
+#### DEC-jgq — Unify config under ENGRAM_ prefix via koanf internal/config — [LOCKED]
+- **Source:** docs/adr/engram-jgq-unify-config-under-engram-prefix-via-koanf-internal-config.md
+- **Decision:** Introduce `internal/config` (koanf v2) with a single field registry owning all `ENGRAM_` keys, retiring scattered EnvOr/getenv reads and the `MEM_` prefix.
+- **Scope:** internal/config, koanf, ENGRAM_ env vars, cmd/engram, server.EnvOr, CLI flags
+
+#### DEC-irq — Breaking config renames ship with a fatal legacy-env startup guard — [LOCKED]
+- **Source:** docs/adr/engram-irq-breaking-config-renames-ship-fatal-legacy-env-startup-guard.md
+- **Decision:** Retired `MEM_*` env vars trigger a fatal registry-derived startup guard (`config.CheckLegacy`) rather than a silent fallback or dual-read shim.
+- **Scope:** config.CheckLegacy, field registry, MEM_* env vars, PersistentPreRunE, startup guard
+
+#### DEC-bj6 — MCP transport at explicit configurable path; console at root when UI enabled — [LOCKED]
+- **Source:** docs/adr/engram-bj6-mcp-transport-at-explicit-configurable-path-mem-mcp-path-con.md
+- **Decision:** Mount the MCP StreamableHTTP transport at an explicit configurable path (default `/mcp`) instead of the root catch-all; the console takes root when the UI is enabled.
+- **Scope:** MCP transport, MEM_MCP_PATH, HTTP routing, web console/UI, Helm chart memory.mcpPath, mountMCPRoutes seam
+
+### Phase 6 — Telemetry & Observability
+
+#### DEC-dwi — Export telemetry via OTLP only; omit a Prometheus scrape endpoint — [LOCKED]
+- **Source:** docs/adr/engram-dwi-export-telemetry-via-otlp-only-omit-prometheus-scrape-endpoi.md
+- **Decision:** Export metrics, traces, and logs exclusively over OTLP gRPC to a collector; add no Prometheus `/metrics` scrape endpoint.
+- **Scope:** telemetry, OTLP gRPC exporter, OpenTelemetry Collector, Prometheus /metrics endpoint, Grafana LGTM backend, Helm chart
+
+#### DEC-uxh — Telemetry is never a hard server startup dependency — [LOCKED]
+- **Source:** docs/adr/engram-uxh-telemetry-is-never-hard-server-startup-dependency.md
+- **Decision:** A telemetry setup failure or missing OTLP endpoint yields no-op providers and never aborts engram server startup.
+- **Scope:** telemetry, OTLP exporter, server startup, Helm chart defaults, observability subsystem
+
+### Phase 7 — Web UI, Docs Site & Distribution
+
+#### DEC-8xe — Adopt ConnectRPC and protobuf/buf for the web UI API — [LOCKED]
+- **Source:** docs/adr/engram-8xe-adopt-connectrpc-and-protobuf-buf-web-ui-api.md
+- **Decision:** Adopt ConnectRPC with the protobuf/buf toolchain scoped to the web-UI API, reversing the prior "no protobuf" convention. MCP core stays as-is.
+- **Scope:** ConnectRPC, protobuf, buf toolchain, web-UI API, connect-go, connect-es, MCP core
+
+#### DEC-0lu — SvelteKit adapter-static SPA vendored via go:embed, SSR dropped — [LOCKED]
+- **Source:** docs/adr/engram-0lu-sveltekit-adapter-static-spa-vendored-via-go-embed-ssr-dropp.md
+- **Decision:** Build the engram frontend as a SvelteKit adapter-static SPA vendored via `go:embed`, dropping SSR entirely.
+- **Scope:** frontend, SvelteKit, go:embed, SPA, BFF, engram binary, connect-es client
+
+#### DEC-ttb — Deploy docs-site via Workers Static Assets without an SSR adapter — [LOCKED]
+- **Source:** docs/adr/engram-ttb-deploy-docs-site-via-workers-static-assets-without-ssr-adapt.md
+- **Decision:** Serve the Astro Starlight docs-site as static assets via a Cloudflare Workers assets binding, with no SSR adapter or worker script.
+- **Scope:** docs-site, Cloudflare Workers Static Assets, Astro Starlight, wrangler.jsonc, @astrojs/cloudflare adapter
+
+</decisions>
+
+## Key Decisions
+
+| Decision | Rationale | Outcome |
+|----------|-----------|---------|
+| Authz enforced in store layer, not handlers (DEC-cgb, DEC-12c) | Single default-deny chokepoint; no handler-level authz drift | ✓ Good — shipped |
+| Configurable-claim owner key, default email (DEC-g37x) | Ownership survives IdP `sub` rotation | ✓ Good — shipped |
+| 404-uniform not-found for unauthorized id ops (DEC-xa6) | Prevents cross-actor existence leaks | ✓ Good — shipped |
+| Summary-by-default recall with full opt-in (DEC-ambu) | Cuts recall token cost while preserving correctable full content | ✓ Good — shipped |
+| Discovery/rule as extra categories in one collection (DEC-2bv, DEC-iedk) | Avoids collection sprawl; one authz/recall path | ✓ Good — shipped |
+| 10-char Crockford base32 short_id (DEC-zzq0, DEC-02ta) | Stable, human-usable handle over ULID/Sqids | ✓ Good — shipped |
+| ENGRAM_ koanf config + fatal legacy guard (DEC-jgq, DEC-irq) | One config surface; no silent fallback | ✓ Good — shipped |
+| OTLP-only, non-blocking telemetry (DEC-dwi, DEC-uxh) | Observability without a hard startup dependency | ✓ Good — shipped |
+| ConnectRPC + adapter-static SPA + static docs (DEC-8xe, DEC-0lu, DEC-ttb) | Read API + embeddable console without SSR complexity | ✓ Good — shipped |
+| Interim anonymous Connect mount; R1–R4 deferred | Ship the observe lane read-only before hardening auth | ⚠️ Revisit — Phase 8 deferred |
+
+---
+*Last updated: 2026-07-07 after retrospective baseline ingest (v0.8.x shipped)*
