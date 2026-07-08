@@ -5,8 +5,10 @@
 This is a **retrospective / as-built roadmap**. engram is already shipped (current release line
 **v0.8.x**). Phases 1–7 group the already-completed work by synthesis area — Authorization &
 Isolation, Recall Semantics, Memory Kinds & Tools, Embedder, Config & Transport, Telemetry &
-Observability, and Web UI / Docs Site / Distribution. All 25 ADR-locked decisions and 23 of 24
-routed requirements are implemented and merged to main. Phase 8 is a **deferred forward stub**
+Observability, and Web UI / Docs Site / Distribution. All 56 ADR-locked decisions (25 core + 31
+companion refinements, folded 2026-07-08) and 23 of 24 routed requirements are implemented and
+merged to main. Per-phase implementation plans are cross-referenced in
+`.planning/intel/merge-plans/context.md`. Phase 8 is a **deferred forward stub**
 capturing the one known follow-up (Connect observe-lane auth hardening, R1–R4) so future
 `/gsd-new-milestone` and `/gsd-plan-phase` runs have a clean anchor. Success criteria are stated
 as observable truths that hold in the shipped baseline (or, for Phase 8, targets when undertaken).
@@ -138,7 +140,7 @@ as observable truths that hold in the shipped baseline (or, for Phase 8, targets
   2. Deferred requirements R1–R4 are satisfied before the observe lane is exposed to real identities.
   3. Store isolation applies to Connect-lane callers by their resolved owner, consistent with the MCP lane.
 **Status**: Deferred — not started (future milestone)
-**Plans**: TBD
+**Plans**: TBD — implementation plan already captured: `docs/superpowers/plans/2026-06-09-engram-web-ui-cookie-oidc-auth-lane.md` (cookie/OIDC BFF auth lane, sealed session, cookie→Subject resolver, mount-gating; ingested 2026-07-08). Design: `docs/superpowers/specs/2026-06-09-connect-auth-posture-addendum.md`.
 
 ## Progress
 
