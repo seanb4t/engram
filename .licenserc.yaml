@@ -24,6 +24,14 @@ header:
     - "AGENTS.md"
     - "**/*.golden"
     - "**/.gitkeep"
+    # Python test/lint caches (created by `task test:python` under skill/**);
+    # the root .pytest_cache/.ruff_cache are already git-ignored, but the tools
+    # also drop nested caches (e.g. skill/engram/hooks/.pytest_cache) that a
+    # local `task license:check` would otherwise flag. CI is unaffected (clean
+    # checkouts), so these are ignored to match the root-cache posture.
+    - "**/.pytest_cache/**"
+    - "**/.ruff_cache/**"
+    - "**/__pycache__/**"
     - "skill/**/*.json"
     - "skill/**/.gitignore"
     # SKILL.md and slash-command markdown must open with YAML frontmatter on

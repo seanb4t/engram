@@ -167,6 +167,32 @@ func TestUpsertGetDeleteRoundtrip(t *testing.T) {
 	}
 }
 
+// TestListAllLimitEmptyScope pins the offset-mode fetch==0 short-circuit
+// (engram-3jo0.4): List with Limit:0 ("all") over a scope with no matching
+// records must NOT hand Qdrant's Scroll a Limit=0 (which Qdrant rejects with
+// "must be 1 or larger") — it returns an empty page cleanly. Previously covered
+// only indirectly via the server package's list_rules test; this pins it in the
+// store package where the fix lives.
+func TestListAllLimitEmptyScope(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "eval-test:project:list-all-empty-scope"
+
+	items, total, next, err := s.List(ctx, scope, Anonymous(), ListOptions{Limit: 0})
+	if err != nil {
+		t.Fatalf("List(all) over empty scope: %v", err)
+	}
+	if len(items) != 0 {
+		t.Errorf("got %d items over empty scope, want 0", len(items))
+	}
+	if total != 0 {
+		t.Errorf("got total=%d over empty scope, want 0", total)
+	}
+	if next != "" {
+		t.Errorf("got nextCursor=%q over empty scope, want empty", next)
+	}
+}
+
 func TestDiscoveryRoundtrip(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
