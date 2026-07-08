@@ -61,7 +61,7 @@ claude mcp remove engram --scope user
 
 ## SessionStart hook — memory recall
 
-At the start of every session the `session-start-memory-recall` hook computes the two-tier memory scope (spine + optional workspace overlay) from the local git/jj context and injects an instruction for Claude to call `list_memory` over its own OAuth-authenticated MCP connection. Recall is model-mediated because hooks cannot hold OAuth tokens.
+At the start of every session the `session-start-memory-recall` hook computes the two-tier memory scope (spine + optional workspace overlay) from the local git context and injects an instruction for Claude to call `list_memory` over its own OAuth-authenticated MCP connection. Recall is model-mediated because hooks cannot hold OAuth tokens.
 
 If engram returns `401`/`403`, Claude reports once that memories are unavailable and continues — it does not block.
 

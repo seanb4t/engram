@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Sean Brandt
 
-"""Two-tier memory scope derivation (local git/jj only — no network, no auth).
+"""Two-tier memory scope derivation (local git only — no network, no auth).
 
 Public API: derive_scopes(cwd) -> Scopes(spine, overlay).
   spine   = "repo:<repo-id>"                      (always, when in a repo)
@@ -27,15 +27,15 @@ def _run(args: list[str], cwd: str) -> str | None:
     """Run a command; return stripped stdout, or None when the probe doesn't resolve.
 
     Two None cases are deliberately collapsed and treated the same by callers:
-    a clean negative (nonzero exit — e.g. ``jj root`` outside a jj repo) and a
-    failure (missing binary, timeout, permission error). They are indistinguishable
-    at a bare ``root``/``rev-parse`` probe, so the safe contract is to degrade
-    conservatively (no scope, or spine-only) rather than guess a tier.
+    a clean negative (nonzero exit — e.g. ``git rev-parse`` outside a git repo)
+    and a failure (missing binary, timeout, permission error). They are
+    indistinguishable at a bare ``rev-parse`` probe, so the safe contract is to
+    degrade conservatively (no scope, or spine-only) rather than guess a tier.
 
     Abnormal failures (the exception branch) are logged to stderr because they are
-    rare and worth diagnosing — a jj/git timeout silently dropping the overlay is
+    rare and worth diagnosing — a git timeout silently dropping the overlay is
     otherwise invisible. Nonzero exits are NOT logged: they are the expected
-    "not this VCS" negative and would spam every session.
+    "not a git repo" negative and would spam every session.
     """
     try:
         proc = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=5)
@@ -85,48 +85,8 @@ def _normalize_remote(url: str) -> str:
     return u.strip("/")
 
 
-def _origin_from_jj(remotes: str | None) -> str | None:
-    if not remotes:
-        return None
-    for line in remotes.splitlines():
-        parts = line.split()
-        if len(parts) >= 2 and parts[0] == "origin":
-            return parts[1]
-    return None
-
-
-def _jj_primary_root(workspace_root: str | None) -> str | None:
-    """Resolve the primary workspace root via the .jj/repo store pointer."""
-    if not workspace_root:
-        return None
-    pointer = Path(workspace_root) / ".jj" / "repo"
-    if pointer.is_dir():
-        return workspace_root  # default workspace: .jj/repo is the store dir
-    if pointer.is_file():
-        try:
-            target = pointer.read_text().strip()
-        except OSError:
-            return None
-        tp = Path(target)
-        if not tp.is_absolute():
-            tp = (pointer.parent / target).resolve()
-        if tp.name == "repo" and tp.parent.name == ".jj":
-            return str(tp.parent.parent)
-    return None
-
-
 def _repo_id(cwd: str) -> str | None:
-    # jj-first: a jj workspace is NOT a git repo, so git remote fails there.
-    jj_root = _run(["jj", "--no-pager", "root"], cwd)
-    if jj_root is not None:
-        origin = _origin_from_jj(
-            _run(["jj", "--no-pager", "git", "remote", "list"], cwd)
-        )
-        if origin:
-            return _normalize_remote(origin)
-        primary = _jj_primary_root(jj_root)
-        return Path(primary).name if primary else None
-    # pure git (including linked worktrees, which share origin)
+    # git origin, incl. linked worktrees (which share the origin remote)
     origin = _run(["git", "remote", "get-url", "origin"], cwd)
     if origin:
         return _normalize_remote(origin)
@@ -140,29 +100,10 @@ def _repo_id(cwd: str) -> str | None:
 
 
 def _workspace(cwd: str) -> str | None:
-    """Per-workspace name for the overlay; None for the primary checkout."""
-    jj_root = _run(["jj", "--no-pager", "root"], cwd)
-    if jj_root is not None:
-        wc = _run(
-            [
-                "jj",
-                "--no-pager",
-                "log",
-                "-r",
-                "@",
-                "--no-graph",
-                "-T",
-                "working_copies",
-            ],
-            cwd,
-        )
-        if wc:
-            parts = wc.split("@")[0].split()
-            name = parts[0] if parts else ""
-            if name and name != "default":
-                return name
-        return None
-    # git worktree: primary -> None; linked -> toplevel basename
+    """Per-workspace name for the overlay; None for the primary checkout.
+
+    git worktree: primary -> None; linked -> toplevel basename.
+    """
     common = _run(["git", "rev-parse", "--git-common-dir"], cwd)
     toplevel = _run(["git", "rev-parse", "--show-toplevel"], cwd)
     if common and toplevel:

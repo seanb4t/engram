@@ -21,7 +21,7 @@ engram is a self-hosted, correctable, OAuth-secured memory MCP server written in
 
 ## Key conventions
 
-**VCS — jj-colocated.** Use `jj` for all VCS operations; never push directly to `main`.
+**VCS — git.** Use `git` for all VCS operations; branch and open a PR — never push directly to `main`.
 
 **Task runner.** `task` (see `Taskfile.yaml`) is the single entry point. Running `task` alone runs lint + test. Use `task proto:lint` / `task proto:gen` for protobuf work.
 

@@ -6,8 +6,8 @@
 # Architecture Decision Records
 
 Each ADR is backed by a `bd` decision record (the bead id prefixes the
-filename). ADRs are generated and indexed by the `dev-flow:capture-adrs`
-workflow; edit the bead, then re-render — do not hand-edit the rendered files.
+filename). ADRs are generated and indexed from their backing `bd` decision
+records; edit the bead, then re-render — do not hand-edit the rendered files.
 
 <!-- BEGIN INDEX -->
 

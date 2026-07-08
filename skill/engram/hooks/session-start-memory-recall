@@ -7,7 +7,7 @@
 # ///
 """SessionStart hook: surface memory scopes + a recall instruction.
 
-Computes the two-tier memory scope locally (git/jj) and emits additionalContext
+Computes the two-tier memory scope locally (git) and emits additionalContext
 instructing Claude to call list_memory over its own OAuth-authenticated MCP
 connection. Hooks cannot hold the OAuth token, so recall is model-mediated.
 """

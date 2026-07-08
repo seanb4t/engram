@@ -1,6 +1,6 @@
 ---
 name: promoting-memory
-description: Use when a line of work completes (merges, lands, or is abandoned) to graduate a workspace's overlay memories into the repo spine and clean up. Trigger on "promote memories", "merge workspace memories", "clean up this workspace's memories", or when finishing/merging a branch. Pairs with dev-flow:finishing-a-development-branch.
+description: Use when a line of work completes (merges, lands, or is abandoned) to graduate a workspace's overlay memories into the repo spine and clean up. Trigger on "promote memories", "merge workspace memories", "clean up this workspace's memories", or when finishing/merging a branch.
 ---
 
 # Promoting Memory

@@ -50,40 +50,9 @@ def test_normalize_remote_explicit_port_dropped():
     )
 
 
-def test_origin_from_jj_picks_origin_when_not_first(monkeypatch):
-    """origin must be found even when it is not the first remote listed."""
-    fake = make_fake_run(
-        [
-            (["jj", "--no-pager", "root"], "/repo"),
-            (
-                ["jj", "--no-pager", "git", "remote", "list"],
-                "upstream git@github.com:upstream/repo.git\norigin git@github.com:org/repo.git",
-            ),
-        ]
-    )
-    monkeypatch.setattr(scope, "_run", fake)
-    assert scope._repo_id("/repo") == "github.com/org/repo"
-
-
-def test_jj_repo_uses_jj_remote_never_git(monkeypatch):
-    fake = make_fake_run(
-        [
-            (["jj", "--no-pager", "root"], "/repo"),
-            (
-                ["jj", "--no-pager", "git", "remote", "list"],
-                "origin git@github.com:org/repo.git",
-            ),
-        ]
-    )
-    monkeypatch.setattr(scope, "_run", fake)
-    assert scope._repo_id("/repo") == "github.com/org/repo"
-    assert not any(a and a[0] == "git" for a in fake.calls)
-
-
 def test_git_repo_uses_origin(monkeypatch):
     fake = make_fake_run(
         [
-            (["jj", "--no-pager", "root"], None),
             (["git", "remote", "get-url", "origin"], "https://github.com/org/repo.git"),
         ]
     )
@@ -91,32 +60,16 @@ def test_git_repo_uses_origin(monkeypatch):
     assert scope._repo_id("/x") == "github.com/org/repo"
 
 
-def test_remoteless_jj_default_workspace_uses_basename(monkeypatch, tmp_path):
-    (tmp_path / ".jj" / "repo").mkdir(parents=True)  # default ws: repo is a dir
+def test_repo_id_prefers_origin_over_common_dir(monkeypatch):
+    # When origin resolves, the common-dir fallback must not be consulted.
     fake = make_fake_run(
         [
-            (["jj", "--no-pager", "root"], str(tmp_path)),
-            (["jj", "--no-pager", "git", "remote", "list"], ""),
+            (["git", "remote", "get-url", "origin"], "git@github.com:org/repo.git"),
+            (["git", "rev-parse", "--git-common-dir"], "/wrong/.git"),
         ]
     )
     monkeypatch.setattr(scope, "_run", fake)
-    assert scope._repo_id(str(tmp_path)) == tmp_path.name
-
-
-def test_remoteless_jj_secondary_workspace_resolves_pointer(monkeypatch, tmp_path):
-    primary = tmp_path / "myrepo"
-    (primary / ".jj").mkdir(parents=True)
-    ws = tmp_path / "myrepo_worktrees" / "feat"
-    (ws / ".jj").mkdir(parents=True)
-    (ws / ".jj" / "repo").write_text("../../../myrepo/.jj/repo")  # pointer file
-    fake = make_fake_run(
-        [
-            (["jj", "--no-pager", "root"], str(ws)),
-            (["jj", "--no-pager", "git", "remote", "list"], ""),
-        ]
-    )
-    monkeypatch.setattr(scope, "_run", fake)
-    assert scope._repo_id(str(ws)) == "myrepo"
+    assert scope._repo_id("/repo") == "github.com/org/repo"
 
 
 def test_no_repo_returns_none(monkeypatch):
@@ -125,73 +78,15 @@ def test_no_repo_returns_none(monkeypatch):
     assert scope._repo_id("/nowhere") is None
 
 
-def test_jj_named_workspace_overlay(monkeypatch):
-    fake = make_fake_run(
-        [
-            (["jj", "--no-pager", "root"], "/repo/_wt/feat"),
-            (
-                ["jj", "--no-pager", "git", "remote", "list"],
-                "origin git@github.com:org/repo.git",
-            ),
-            (["jj", "--no-pager", "log", "-r", "@"], "worktree-feat@"),
-        ]
-    )
-    monkeypatch.setattr(scope, "_run", fake)
-    spine, overlay = scope.derive_scopes("/repo/_wt/feat")
-    assert spine == "repo:github.com/org/repo"
-    assert overlay == "repo:github.com/org/repo:ws:worktree-feat"
-
-
-def test_jj_default_workspace_spine_only(monkeypatch):
-    fake = make_fake_run(
-        [
-            (["jj", "--no-pager", "root"], "/repo"),
-            (
-                ["jj", "--no-pager", "git", "remote", "list"],
-                "origin git@github.com:org/repo.git",
-            ),
-            (["jj", "--no-pager", "log", "-r", "@"], "default@"),
-        ]
-    )
-    monkeypatch.setattr(scope, "_run", fake)
-    spine, overlay = scope.derive_scopes("/repo")
-    assert spine == "repo:github.com/org/repo"
-    assert overlay is None
-
-
-def test_spine_identical_across_workspaces(monkeypatch):
-    # Same repo, two different workspaces -> same spine, different/None overlay.
-    def fake_for(ws_name):
-        return make_fake_run(
-            [
-                (["jj", "--no-pager", "root"], "/repo"),
-                (
-                    ["jj", "--no-pager", "git", "remote", "list"],
-                    "origin git@github.com:org/repo.git",
-                ),
-                (["jj", "--no-pager", "log", "-r", "@"], ws_name),
-            ]
-        )
-
-    monkeypatch.setattr(scope, "_run", fake_for("default@"))
-    spine_default, ov_default = scope.derive_scopes("/repo")
-    monkeypatch.setattr(scope, "_run", fake_for("worktree-feat@"))
-    spine_feat, ov_feat = scope.derive_scopes("/repo")
-    assert spine_default == spine_feat
-    assert ov_default is None
-    assert ov_feat == "repo:github.com/org/repo:ws:worktree-feat"
-
-
 def test_non_repo_returns_none_pair(monkeypatch):
     monkeypatch.setattr(scope, "_run", make_fake_run([]))
     assert scope.derive_scopes("/nowhere") == (None, None)
 
 
 def test_remoteless_git_uses_common_dir_parent(monkeypatch):
-    # jj absent, no origin -> fall back to parent of the shared .git.
+    # No origin -> fall back to the parent of the shared .git.
     fake = make_fake_run(
         [
-            (["jj", "--no-pager", "root"], None),
             (["git", "remote", "get-url", "origin"], None),
             (["git", "rev-parse", "--git-common-dir"], ".git"),
         ]
@@ -203,7 +98,6 @@ def test_remoteless_git_uses_common_dir_parent(monkeypatch):
 def test_git_primary_worktree_no_overlay(monkeypatch):
     fake = make_fake_run(
         [
-            (["jj", "--no-pager", "root"], None),
             (["git", "remote", "get-url", "origin"], "git@github.com:org/repo.git"),
             (["git", "rev-parse", "--git-common-dir"], "/repo/.git"),
             (["git", "rev-parse", "--show-toplevel"], "/repo"),
@@ -216,7 +110,6 @@ def test_git_primary_worktree_no_overlay(monkeypatch):
 def test_git_linked_worktree_overlay_basename(monkeypatch):
     fake = make_fake_run(
         [
-            (["jj", "--no-pager", "root"], None),
             (["git", "remote", "get-url", "origin"], "git@github.com:org/repo.git"),
             (["git", "rev-parse", "--git-common-dir"], "/repo/.git"),
             (["git", "rev-parse", "--show-toplevel"], "/repo/_wt/feat"),
@@ -228,15 +121,36 @@ def test_git_linked_worktree_overlay_basename(monkeypatch):
     assert overlay == "repo:github.com/org/repo:ws:feat"
 
 
+def test_spine_identical_across_worktrees(monkeypatch):
+    # Same repo, primary checkout vs a linked worktree -> identical spine,
+    # None vs basename overlay. The spine must be stable across worktrees.
+    def fake_for(toplevel):
+        return make_fake_run(
+            [
+                (["git", "remote", "get-url", "origin"], "git@github.com:org/repo.git"),
+                (["git", "rev-parse", "--git-common-dir"], "/repo/.git"),
+                (["git", "rev-parse", "--show-toplevel"], toplevel),
+            ]
+        )
+
+    monkeypatch.setattr(scope, "_run", fake_for("/repo"))
+    spine_primary, ov_primary = scope.derive_scopes("/repo")
+    monkeypatch.setattr(scope, "_run", fake_for("/repo/_wt/feat"))
+    spine_feat, ov_feat = scope.derive_scopes("/repo/_wt/feat")
+    assert spine_primary == spine_feat
+    assert ov_primary is None
+    assert ov_feat == "repo:github.com/org/repo:ws:feat"
+
+
 def test_run_logs_abnormal_failure(capsys, tmp_path):
     # A missing binary (OSError) is an abnormal failure: return None AND log, so a
-    # silent jj/git timeout that drops the scope is diagnosable.
+    # silent git timeout that drops the scope is diagnosable.
     assert scope._run(["engram-no-such-binary-xyz"], str(tmp_path)) is None
     assert "probe failed" in capsys.readouterr().err
 
 
 def test_run_silent_on_clean_nonzero(capsys, tmp_path):
-    # A real tool exiting nonzero (git outside a repo) is the expected "not this
-    # VCS" negative — it must return None WITHOUT logging, or every session spams.
+    # A real tool exiting nonzero (git outside a repo) is the expected "not a git
+    # repo" negative — it must return None WITHOUT logging, or every session spams.
     assert scope._run(["git", "rev-parse", "--show-toplevel"], str(tmp_path)) is None
     assert capsys.readouterr().err == ""

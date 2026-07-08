@@ -24,7 +24,7 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 
 ## Conventions
 
-- **VCS:** jj-colocated. Use jj for VCS ops; never push to `main` directly.
+- **VCS:** git. Branch + PR; never push to `main` directly (protect-main ruleset). Planning/workflow via GSD (`.planning/`, `/gsd-*`).
 - **Task runner:** `task` (see `Taskfile.yaml`). `task` = lint + test.
 - **Protobuf/buf:** the `EngramService` Connect API is defined in `proto/` and
   generated via `go tool buf` (`task proto:lint` / `task proto:gen`); the
