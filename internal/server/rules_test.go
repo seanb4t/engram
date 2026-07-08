@@ -6,10 +6,12 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/seanb4t/engram/internal/store"
 )
 
@@ -378,5 +380,110 @@ func TestRuleOrdinaryScopeIsolation(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("rule leaked into ordinary scope list: got %d", len(got))
+	}
+}
+
+// TestListRulesHandlerMultiScope: listRules aggregates across multiple rule:*
+// scopes, in scope-argument order with each scope's rules ascending by
+// created_at (engram-sysc.8 follow-up: the single-scope test never exercised the
+// multi-scope aggregation loop).
+func TestListRulesHandlerMultiScope(t *testing.T) {
+	d := testDeps(t)
+	// Distinct, increasing created_at per seed (seconds precision — see the note
+	// in TestListRulesHandler) so the ascending assertion is stable.
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	var tick int64
+	d.now = func() time.Time { tick++; return base.Add(time.Duration(tick) * time.Second) }
+
+	ctx := context.Background()
+	scopeA := "rule:repo:multi-scope-a"
+	scopeB := "rule:project:multi-scope-b"
+	t.Cleanup(func() {
+		cleanupErr(t, "DeleteAll "+scopeA, d.st.DeleteAll(ctx, scopeA, store.Anonymous()))
+		cleanupErr(t, "DeleteAll "+scopeB, d.st.DeleteAll(ctx, scopeB, store.Anonymous()))
+	})
+
+	// A gets two rules (a1<a2), B gets one (b1); tick order is a1,a2,b1.
+	for _, s := range []string{"a1", "a2"} {
+		if _, _, err := d.storeRule(ctx, storeRuleArgs{Content: s, Scope: scopeA, Summary: s}); err != nil {
+			t.Fatalf("seed A %q: %v", s, err)
+		}
+	}
+	if _, _, err := d.storeRule(ctx, storeRuleArgs{Content: "b1", Scope: scopeB, Summary: "b1"}); err != nil {
+		t.Fatalf("seed B: %v", err)
+	}
+
+	rules, advisory, err := d.listRules(ctx, listRulesArgs{Scopes: []string{scopeA, scopeB}})
+	if err != nil {
+		t.Fatalf("listRules multi-scope: %v", err)
+	}
+	if len(rules) != 3 {
+		t.Fatalf("got %d rules across 2 scopes, want 3", len(rules))
+	}
+	// Aggregation order: scope-arg order, ascending within each scope.
+	wantSummary := []string{"a1", "a2", "b1"}
+	wantScope := []string{scopeA, scopeA, scopeB}
+	for i, r := range rules {
+		rv, ok := r.(ruleView)
+		if !ok {
+			t.Fatalf("rules[%d] not ruleView: %T", i, r)
+		}
+		if rv.Summary != wantSummary[i] {
+			t.Errorf("rules[%d].Summary=%q want %q", i, rv.Summary, wantSummary[i])
+		}
+		if rv.Scope != wantScope[i] {
+			t.Errorf("rules[%d].Scope=%q want %q", i, rv.Scope, wantScope[i])
+		}
+	}
+	if advisory != "" {
+		t.Errorf("unexpected advisory under threshold: %q", advisory)
+	}
+}
+
+// TestListRulesHandlerCurationAdvisory: crossing ruleThreshold in a scope returns
+// the curation-smell advisory (naming the scope + count) without altering the
+// {rules} payload. Seeds via direct store.Upsert (skips per-rule MintShortID
+// Count round-trips); the advisory keys only off the count, so short_ids are
+// irrelevant here.
+func TestListRulesHandlerCurationAdvisory(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "rule:repo:curation-advisory-test"
+	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) })
+
+	n := ruleThreshold + 1
+	vec := []float32{0.1, 0.2, 0.3}
+	for i := range n {
+		m := store.Memory{
+			ID:            uuid.NewString(),
+			Content:       fmt.Sprintf("rule %d", i),
+			Summary:       fmt.Sprintf("rule %d", i),
+			Scope:         scope,
+			Source:        "user-said",
+			Category:      "rule",
+			Visibility:    "shared",
+			SummarySource: store.SummarySourceClient,
+			CreatedAt:     time.Unix(int64(i), 0).UTC(),
+		}
+		if err := d.st.Upsert(ctx, m, vec); err != nil {
+			t.Fatalf("seed %d: %v", i, err)
+		}
+	}
+
+	rules, advisory, err := d.listRules(ctx, listRulesArgs{Scopes: []string{scope}})
+	if err != nil {
+		t.Fatalf("listRules: %v", err)
+	}
+	if len(rules) != n {
+		t.Fatalf("got %d rules, want %d", len(rules), n)
+	}
+	if !strings.Contains(advisory, "curation smell") {
+		t.Errorf("expected curation-smell advisory over threshold, got %q", advisory)
+	}
+	if !strings.Contains(advisory, scope) {
+		t.Errorf("advisory should name the over-threshold scope %q, got %q", scope, advisory)
+	}
+	if !strings.Contains(advisory, fmt.Sprintf("%d rules", n)) {
+		t.Errorf("advisory should report the count %d, got %q", n, advisory)
 	}
 }
