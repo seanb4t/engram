@@ -23,7 +23,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 Phase: 7 of 7 complete (v0.8.x baseline) — Phase 8 deferred to a future milestone
 Plan: N/A (retrospective baseline — phases shipped before GSD planning)
 Status: Milestone complete (shipped v0.8.x). No active phase.
-Last activity: 2026-07-07 — retrospective baseline ingested; PROJECT/REQUIREMENTS/ROADMAP/STATE authored from 50 planning docs (25 ADR + 25 SPEC).
+Last activity: 2026-07-08 — folded 31 companion ADRs + 24 implementation plans into the baseline via `/gsd-ingest-docs --mode merge` (2 passes, 0 blockers); decision record now 56 ADRs. Prior: 2026-07-07 retrospective baseline (50 docs).
 
 Progress: [██████████] 100% (v0.8.x baseline)
 
@@ -52,7 +52,7 @@ Progress: [██████████] 100% (v0.8.x baseline)
 
 ### Decisions
 
-25 ADR-locked decisions logged in PROJECT.md `<decisions>` block (all LOCKED, source `docs/adr/engram-*.md`). Foundational for all future work:
+56 ADR-locked decisions (25 core + 31 companion refinements, folded 2026-07-08) logged in PROJECT.md `<decisions>` block (all LOCKED, source `docs/adr/engram-*.md`). Foundational for all future work:
 
 - [Phase 1]: Authz enforced in store layer (DEC-cgb, DEC-12c); configurable-claim owner (DEC-g37x); 404-uniform not-found (DEC-xa6).
 - [Phase 2]: Summary-by-default recall (DEC-ambu); AND tag pre-filter (DEC-4xt7); cursor+date-window paging (DEC-1frj, DEC-ef28).

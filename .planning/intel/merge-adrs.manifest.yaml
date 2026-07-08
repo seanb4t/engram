@@ -1,0 +1,96 @@
+# GSD merge manifest — Pass A: remaining active ADRs (fine-grained companions to the 25 core locks)
+# Excludes: 25 baseline core ADRs, README.md, 4 superseded (lkm/hvg/e38/1xv).
+docs:
+  - path: docs/adr/engram-0gy-dedicated-store-discovery-search-discovery-tools-not-overloa.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-1h3k-adopt-two-tier-vitest-config-node-real-chromium-browser.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-1w7-deploy-docs-site-via-repo-github-actions-wrangler-workflow.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-2xl-use-tanstack-svelte-query-as-spa-data-layer.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-3l0-graceful-decay-over-binary-staleness-discovery-trust.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-3nas-render-user-memory-content-via-marked-dompurify-allowlist.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-4ag-gate-dashboard-category-breakdown-bar-listscopes-api-extensi.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-4y7p-explicit-first-memory-summary-offline-operator-auto-fill.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-50b-engram-plugin-ships-no-bundled-mcp-server-engram-setup-is-so.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-6gb-instrument-store-embed-auth-inline-spans-not-decorator-layer.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-7qd-reuse-otel-standard-env-vars-sampler-and-export-interval-add.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-8q3-session-cookie-seals-only-sub-expiry-no-oidc-tokens-stored-c.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-9tj-inject-k8s-resource-attributes-via-chart-downward-api-not-go.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-bgj-embed-bff-engram-go-binary-not-node-runtime.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-c0m-inject-store-clock-via-withclock-option-keep-public-signatur.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-c4y-drive-spa-shell-state-via-url-parameters.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-d24-validate-data-plane-fields-only-listen-addr-is-serve-local-g.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-d386-session-start-surfaces-rules-as-progressive-disclosure-index.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-ddiw-reject-update-memory-content-change-unaddressed-client-summa.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-f7p-instrument-at-three-seams-http-mcp-method-and-downstream-cli.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-lzz-adopt-shadcn-semantic-tokens-retire-bespoke-eg-cat-layer.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-m4s8-reject-malformed-rule-summaries-newline-oversize-cleared-nev.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-no3-ship-engram-wordmark-as-outlined-svg-paths-not-webfont.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-om5b-node-test-tier-environment-node-drop-happy-dom.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-tdk-instrument-mcp-tools-via-addreceivingmiddleware-not-per-hand.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-u5h-host-docs-site-inside-engram-monorepo-at-docs-site.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-u9v-stateless-encrypted-cookie-session-no-server-side-store.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-ufz-soft-hide-expired-records-at-recall-opt-prune-expired-storag.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-vxk-spa-fallback-static-handler-serve-index-html-client-routes.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-wot-spans-carry-engram-owner-only-exclude-actor-and-email-as-pii.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-wtw-keep-config-load-assembly-only-validate-via-separate-config.md
+    type: ADR
+    precedence: 0

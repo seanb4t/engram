@@ -55,3 +55,22 @@ to resolve. All SPEC↔ADR overlaps resolve cleanly by precedence (see INFO).
     engram-lkm, engram-3hp9, engram-cv92, engram-50b.
   Note: Recorded for traceability in intel/context.md; none block synthesis. If any encode a
     still-active decision, add them to a follow-up ingest via --manifest.
+
+---
+
+## Follow-up merge — 2026-07-08 (`/gsd-ingest-docs --mode merge`)
+
+Folded the docs left out of the original 50-doc bootstrap. Two passes, both conflict-clean;
+no destination file was blocked.
+
+**Pass A — 31 companion ADRs** (precedence 0, all LOCKED): 0 BLOCKERS, 0 WARNINGS, 11 INFO
+(all auto-resolved as refinements of the 25 baseline locks). engram-50b adjudicated CONSISTENT
+with the bundled skill/engram plugin (removes only the auto-registering .mcp.json). No cross-ref
+cycles. Detail: `.planning/intel/merge-adrs/INGEST-CONFLICTS.md`.
+
+**Pass B — 24 implementation plans** (precedence 3, DOC/context): 0 BLOCKERS, 0 WARNINGS, 0 INFO;
+24 traceability context topics grouped by phase (including the deferred Phase 8 cookie/OIDC
+auth-lane plan). Detail: `.planning/intel/merge-plans/INGEST-CONFLICTS.md`.
+
+Manifests: `.planning/intel/merge-adrs.manifest.yaml`, `.planning/intel/merge-plans.manifest.yaml`.
+Superseded ADRs (engram-lkm / engram-hvg / engram-e38 / engram-1xv) remain deliberately excluded.
