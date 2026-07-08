@@ -1,0 +1,156 @@
+# GSD ingest manifest — engram bootstrap
+# 25 curated core ADRs (precedence 0) + 25 design specs (precedence 1).
+# Superseded ADRs (lkm, hvg, e38, 1xv) deliberately excluded.
+docs:
+  # --- Core ADRs (locked decisions, highest precedence) ---
+  - path: docs/adr/engram-cgb-enforce-per-actor-authorization-store-layer-not-handlers.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-g37x-use-configurable-oidc-claim-as-record-owner-default-email.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-kyz-sharing-grants-read-but-never-write-read-write-gate-asymmetr.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-xa6-return-404-not-found-unauthorized-id-addressed-operations.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-y1g-gate-recall-via-qdrant-filter-leave-get-memory-ungated.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-12c-represent-authz-subject-as-sealed-go-interface.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-2bv-discovery-is-5th-category-single-memory-collection.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-90w-add-schedule-memory-list-scheduled-tools-keep-store-memory-w.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-ambu-recall-returns-summary-by-default-full-content-opt.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-iedk-rules-are-always-shared-server-set-immutable-visibility-set.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-1frj-boundary-id-set-cursor-half-open-date-window-recall.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-4xt7-tag-filtered-recall-hard-qdrant-filter-and-default.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-ef28-index-owner-scope-created-at-as-qdrant-payload-indexes.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-zzq0-encode-short-id-as-10-char-crockford-base32.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-02ta-resolve-short-id-at-handler-layer-not-inside-store-methods.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-378-name-embedder-connection-vars-by-protocol-not-implementation.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-zyhq-generic-param-map-passthrough-over-embedder-profiles-asymmet.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-jgq-unify-config-under-engram-prefix-via-koanf-internal-config.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-irq-breaking-config-renames-ship-fatal-legacy-env-startup-guard.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-8xe-adopt-connectrpc-and-protobuf-buf-web-ui-api.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-bj6-mcp-transport-at-explicit-configurable-path-mem-mcp-path-con.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-dwi-export-telemetry-via-otlp-only-omit-prometheus-scrape-endpoi.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-uxh-telemetry-is-never-hard-server-startup-dependency.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-0lu-sveltekit-adapter-static-spa-vendored-via-go-embed-ssr-dropp.md
+    type: ADR
+    precedence: 0
+  - path: docs/adr/engram-ttb-deploy-docs-site-via-workers-static-assets-without-ssr-adapt.md
+    type: ADR
+    precedence: 0
+  # --- Design specs (WHAT/context, lower precedence) ---
+  - path: docs/superpowers/specs/2026-06-02-generalize-engram-client-config-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-02-relocate-memory-curator-into-engram-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-05-discovery-memory-type-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-06-per-actor-memory-isolation-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-07-observability-logging-telemetry-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-08-typed-subject-authz-core-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-09-connect-auth-posture-addendum.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-09-docs-site-astro-starlight-cloudflare-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-09-engram-web-ui-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-10-engram-operator-console-spa-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-11-telemetry-at-every-seam-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-12-operator-console-redesign-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-12-scheduled-memories-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-13-docs-site-landing-redesign-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-13-engram-brand-identity-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-14-config-validation-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-14-engram-config-prefix-koanf-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-25-auto-summary-curated-memories-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-26-memory-display-summary-ux-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-27-vitest-browser-mode-ui-test-unification-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-29-configurable-claim-owner-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-06-29-windowed-cursor-recall-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-07-01-asymmetric-cloud-embedder-params-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-07-06-rule-memory-kind-design.md
+    type: SPEC
+    precedence: 1
+  - path: docs/superpowers/specs/2026-07-06-short-id-handle-design.md
+    type: SPEC
+    precedence: 1
