@@ -6,14 +6,14 @@ current_phase: 9
 current_phase_name: Retrieval Eval Harness & Ranking Precision
 status: executing
 stopped_at: Phase 9 planned + cross-AI reviewed x2 (3 plans, 2 waves) — verified 3x by gsd-plan-checker
-last_updated: "2026-07-09T23:45:01.598Z"
+last_updated: "2026-07-09T23:50:37.237Z"
 last_activity: 2026-07-09
 last_activity_desc: Phase 9 execution started
 progress:
   total_phases: 12
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-09)
 ## Current Position
 
 Phase: 9 (Retrieval Eval Harness & Ranking Precision) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-09 — Phase 9 execution started
 
@@ -54,6 +54,7 @@ Progress: [░░░░░░░░░░] 0% (v0.9.x — 1/4 phases planned, 0/
 
 **Shipped (v0.8.x baseline):** Phases 1–8 complete (24 requirements). See ROADMAP.md Progress table.
 | Phase 09-retrieval-eval-harness-ranking-precision P01 | 20min | 2 tasks | 4 files |
+| Phase 09-retrieval-eval-harness-ranking-precision P02 | 15min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -66,6 +67,8 @@ Progress: [░░░░░░░░░░] 0% (v0.9.x — 1/4 phases planned, 0/
 - [Phase 6]: OTLP-only non-blocking telemetry (DEC-dwi, DEC-uxh) — Phases 9 (eval) and 12 (usage signals) reuse the OTLP → ClickStack seam.
 - [Phase 9]: Reused server.StoreAndEmbedderFromEnvNoEnsure() for the *embed.Client only (full prod parity); built the eval Store directly from testQdrantAddr to avoid ambient ENGRAM_QDRANT_ADDR leakage (round-2 finding 1)
 - [Phase 9]: seedRecord uses a fixture-local key (not the Qdrant point ID) because Qdrant point IDs must be UUIDs; a key->UUID map resolves rank lookups
+- [Phase 9]: D-04 supersession: ROADMAP Phase-9 success-criterion 2 'similarity score (opt-in)' wording is superseded by the shipped always-on search_memory score behavior (accepted as correct/better DX).
+- [Phase 9]: search_memory score docs (09-02) stay order-agnostic: score FIELD only, not result ORDER — the post-rerank order caveat for reference/tools.md:95 is deliberately deferred to 09-03.
 
 ### Pending Todos
 
@@ -87,6 +90,6 @@ Carried to v0.10.x. NOT part of v0.9.x scope.
 
 ## Session Continuity
 
-Last session: 2026-07-09T23:44:26.954Z
+Last session: 2026-07-09T23:50:09.311Z
 Stopped at: Phase 9 context gathered
 Resume file: .planning/phases/09-retrieval-eval-harness-ranking-precision/09-CONTEXT.md
