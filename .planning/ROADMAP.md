@@ -6,17 +6,19 @@ This is a **retrospective / as-built roadmap**. engram is already shipped (curre
 **v0.8.x**). Phases 1–7 group the already-completed work by synthesis area — Authorization &
 Isolation, Recall Semantics, Memory Kinds & Tools, Embedder, Config & Transport, Telemetry &
 Observability, and Web UI / Docs Site / Distribution. All 56 ADR-locked decisions (25 core + 31
-companion refinements, folded 2026-07-08) and 23 of 24 routed requirements are implemented and
+companion refinements, folded 2026-07-08) and all 24 routed requirements are implemented and
 merged to main. Per-phase implementation plans are cross-referenced in
-`.planning/intel/merge-plans/context.md`. Phase 8 is a **deferred forward stub**
-capturing the one known follow-up (Connect observe-lane auth hardening, R1–R4) so future
-`/gsd-new-milestone` and `/gsd-plan-phase` runs have a clean anchor. Success criteria are stated
-as observable truths that hold in the shipped baseline (or, for Phase 8, targets when undertaken).
+`.planning/intel/merge-plans/context.md`. Phase 8 (Connect observe-lane auth hardening, R1–R4)
+was **found already shipped** during a 2026-07-08 reconciliation — the cookie/OIDC lane landed
+opportunistically inside PR #248 and was hardened in PR #266, before this retrospective baseline
+was authored; the earlier "deferred stub" framing (ingested from the 2026-06-09 plan/spec, which
+described the interim anonymous state as current) was stale. Success criteria are stated as
+observable truths that hold in the shipped baseline.
 
 ## Milestones
 
 - ✅ **v0.8.x Baseline** — Phases 1–7 (shipped)
-- 📋 **Connect Auth Hardening** — Phase 8 (deferred, R1–R4)
+- ✅ **Connect Auth Hardening** — Phase 8 (shipped; R1–R4 verified 2026-07-08)
 
 ## Phases
 
@@ -31,7 +33,7 @@ as observable truths that hold in the shipped baseline (or, for Phase 8, targets
 - [x] **Phase 5: Config & Transport** - ENGRAM_ koanf config, Config.Validate, fatal legacy guard, explicit MCP path
 - [x] **Phase 6: Telemetry & Observability** - slog + OTel over OTLP at every seam, never blocking startup
 - [x] **Phase 7: Web UI, Docs Site & Distribution** - Operator console SPA, docs site, brand system, bundled client plugin
-- [ ] **Phase 8: Connect Observe-Lane Auth Hardening** - DEFERRED — replace interim anonymous mount with cookie/OIDC (R1–R4)
+- [x] **Phase 8: Connect Observe-Lane Auth Hardening** - Cookie/OIDC observe lane replaces the interim anonymous mount (R1–R4); shipped in PR #248/#266
 
 ## Phase Details
 
@@ -133,18 +135,18 @@ as observable truths that hold in the shipped baseline (or, for Phase 8, targets
 ### Phase 8: Connect Observe-Lane Auth Hardening
 **Goal**: Replace the interim anonymous Connect API mount with full cookie/OIDC observe-lane authentication so the read API serves real per-actor identities.
 **Depends on**: Phase 7
-**Requirements**: REQ-connect-auth-posture (DEFERRED — R1–R4)
-**Decisions**: (none locked — forward work; interim disposition documented in the connect-auth-posture addendum)
-**Success Criteria** (target, when undertaken):
-  1. The Connect observe lane authenticates callers via cookie/OIDC instead of mounting anonymously into the single empty-owner bucket.
-  2. Deferred requirements R1–R4 are satisfied before the observe lane is exposed to real identities.
-  3. Store isolation applies to Connect-lane callers by their resolved owner, consistent with the MCP lane.
-**Status**: Deferred — not started (future milestone)
-**Plans**: TBD — implementation plan already captured: `docs/superpowers/plans/2026-06-09-engram-web-ui-cookie-oidc-auth-lane.md` (cookie/OIDC BFF auth lane, sealed session, cookie→Subject resolver, mount-gating; ingested 2026-07-08). Design: `docs/superpowers/specs/2026-06-09-connect-auth-posture-addendum.md`.
+**Requirements**: REQ-connect-auth-posture (R1–R4 — satisfied)
+**Decisions**: interim disposition + acceptance criteria R1–R4 (+R1a) documented in the connect-auth-posture addendum
+**Success Criteria** (what is TRUE):
+  1. The Connect observe lane authenticates callers via cookie/OIDC (sealed AES-GCM session → verified `sub`) instead of mounting anonymously; when the UI is disabled (headless default) the Connect handler is not mounted at all (R1: `mountConnect` returns nil-not-mounted for a nil resolver).
+  2. R1–R4 are satisfied: mount-gating (R1), cookie→Subject as the sole authz entry with no anonymous fallthrough (R2), observability parity via `otelconnect` + access-log interceptors (R3), and same-origin posture with no permissive CORS (R4).
+  3. Store isolation applies to Connect-lane callers by their resolved owner, consistent with the MCP lane (verified: `TestConnectCrossActorIsolation`, `TestConnectCookieLaneIsolation`).
+**Status**: Complete — shipped in PR #248 (webauth lane) + PR #266 (owner-claim hardening); R1–R4 verified green on main 2026-07-08. Config folded into the Phase-5 `ENGRAM_UI_*` koanf registry (not the plan's original `MEM_*`).
+**Plans**: N/A (shipped before GSD planning). Reference implementation plan: `docs/superpowers/plans/2026-06-09-engram-web-ui-cookie-oidc-auth-lane.md`; design/acceptance criteria: `docs/superpowers/specs/2026-06-09-connect-auth-posture-addendum.md`. Out-of-scope follow-ups remain (Connect write-lane RPCs + CSRF hardening; session refresh-token rotation) — candidates for a future milestone.
 
 ## Progress
 
-**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → (8 deferred)
+**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (all shipped)
 
 | Phase | Milestone | Requirements | Status | Completed |
 |-------|-----------|--------------|--------|-----------|
@@ -155,4 +157,4 @@ as observable truths that hold in the shipped baseline (or, for Phase 8, targets
 | 5. Config & Transport | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
 | 6. Telemetry & Observability | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
 | 7. Web UI, Docs Site & Distribution | v0.8.x | 9/9 | Complete | shipped (v0.8.x) |
-| 8. Connect Auth Hardening | (future) | 0/1 | Deferred | - |
+| 8. Connect Auth Hardening | v0.8.x | 1/1 | Complete | shipped (PR #248/#266) |

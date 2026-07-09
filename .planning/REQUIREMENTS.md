@@ -5,9 +5,10 @@
 
 > **Retrospective note.** engram is already shipped. IDs are reused verbatim from the ingest
 > intel (`.planning/intel/requirements.md`). Requirements marked `[x]` are **implemented and
-> merged to main** (Phases 1–7). `REQ-connect-auth-posture` (R1–R4) is **DEFERRED** — the
-> observe-lane Connect API currently mounts anonymously; full cookie/OIDC auth is future work
-> (Phase 8, not started).
+> merged to main** (Phases 1–8). `REQ-connect-auth-posture` (R1–R4) was found **already shipped**
+> during a 2026-07-08 reconciliation — the cookie/OIDC observe lane landed in PR #248/#266; the
+> earlier "deferred / not started" note (ingested from the 2026-06-09 plan/spec, which described
+> the interim anonymous state as current) was stale.
 
 ## v1 Requirements
 
@@ -63,13 +64,18 @@ Shipped in the v0.8.x baseline. Each maps to exactly one roadmap phase.
 
 - [x] **REQ-relocate-memory-curator**: Relocate the memory-curator client plugin into the engram repo under a bundled skill/engram layout with a marketplace entry, MCP server id rebrand, and SessionStart/PostToolUse hooks.
 
-## Deferred Requirements
-
-Acknowledged and carried forward into a future milestone. Not part of the v0.8.x shipped scope.
+## Connect Auth Posture (R1–R4) — shipped
 
 ### Connect Auth Posture (R1–R4)
 
-- [ ] **REQ-connect-auth-posture**: Replace the interim anonymous Connect API mount with full cookie/OIDC observe-lane authentication (deferred requirements **R1–R4**), so the read API serves real per-actor identities. Interim disposition (anonymous mount into the single empty-owner bucket) is documented and shipped; the auth hardening is **not started**. Maps to Phase 8. *(source: docs/superpowers/specs/2026-06-09-connect-auth-posture-addendum.md)*
+- [x] **REQ-connect-auth-posture**: Replace the interim anonymous Connect API mount with full cookie/OIDC observe-lane authentication (**R1–R4**), so the read API serves real per-actor identities. **Shipped** in PR #248 (webauth lane) + PR #266 (owner-claim hardening); R1–R4 verified green on main 2026-07-08 (`internal/webauth/*`, `mountConnect` gating, `TestConnect*` isolation/obs/CORS tests). Maps to Phase 8. *(source: docs/superpowers/specs/2026-06-09-connect-auth-posture-addendum.md)*
+
+### Deferred follow-ups (not yet routed to a phase)
+
+Carried forward for a future milestone — genuine remaining work beyond R1–R4:
+
+- Connect **write-lane** RPCs (`StoreMemory`/`StoreDiscovery`) + CSRF-token hardening (plan §"Out of scope").
+- Session **refresh-token rotation** / re-seal on access-token expiry (v1 trusts the sealed cookie's `sub` until the session TTL).
 
 ## Out of Scope
 
@@ -114,15 +120,15 @@ Which phase covers which requirement. Retrospective — completed requirements a
 | REQ-docs-landing-redesign | Phase 7 | Complete |
 | REQ-brand-identity | Phase 7 | Complete |
 | REQ-relocate-memory-curator | Phase 7 | Complete |
-| REQ-connect-auth-posture | Phase 8 | Deferred |
+| REQ-connect-auth-posture | Phase 8 | Complete |
 
 **Coverage:**
 - Routed requirements: 24 total
 - Mapped to phases: 24 ✓
 - Unmapped: 0 ✓
-- Complete (v0.8.x baseline): 23
-- Deferred (future milestone): 1 (REQ-connect-auth-posture / R1–R4)
+- Complete: 24 (all routed requirements shipped)
+- Deferred (future milestone): 0 routed — genuine follow-ups (Connect write-lane + CSRF, session refresh rotation) are unrouted, pending a new milestone.
 
 ---
 *Requirements defined: 2026-07-07*
-*Last updated: 2026-07-07 after retrospective baseline ingest*
+*Last updated: 2026-07-08 — Phase 8 (REQ-connect-auth-posture / R1–R4) reconciled to shipped*
