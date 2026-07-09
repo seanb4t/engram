@@ -13,6 +13,12 @@ This is a **retrospective baseline**: engram is already shipped (current release
 merged to main**. This document records the as-built state so future milestones build on an
 accurate foundation.
 
+**Active milestone — v0.9.x — Recall Quality** (opened 2026-07-09): make recall measurably
+trustworthy as the store grows, so `search-before-store` stops producing duplicates. Four
+phases (9–12): retrieval eval + ranking precision (#261), embedder query/document asymmetry
+(#305), async-on-write summaries (#320), and per-memory usage signals (#317). See
+`.planning/ROADMAP.md` and the `## v0.9.x Requirements` section of `.planning/REQUIREMENTS.md`.
+
 ## Core Value
 
 **Correctable recall precision** — a coding agent gets back the RIGHT memory for its context,
@@ -38,10 +44,20 @@ Shipped in the v0.8.x baseline and relied upon. Full IDs and phase mapping in
 
 ### Active
 
-Deferred follow-ups carried forward into a future milestone (unrouted):
+**v0.9.x — Recall Quality** (routed to Phases 9–12; full text in `.planning/REQUIREMENTS.md`):
 
-- [ ] **Connect write-lane RPCs** — `StoreMemory`/`StoreDiscovery` over Connect + CSRF-token hardening
-- [ ] **Session refresh-token rotation** — re-seal on access-token expiry (v1 trusts the sealed cookie's `sub` until the session TTL)
+- [ ] **REQ-retrieval-eval** — reproducible retrieval-quality eval (labeled dataset, recall@k/MRR, #261 fixture) (Phase 9)
+- [ ] **REQ-search-similarity-scores** — `search_memory` optionally returns per-result similarity scores (Phase 9)
+- [ ] **REQ-ranking-precision** — kill phrasing-sensitivity / sticky-neighbor crowding via hybrid or rerank, chosen by the eval (Phase 9)
+- [ ] **REQ-embedder-native-params** — native API-param passthrough (cloud) + document-side prefix (E5/nomic) for query≠document embeds (Phase 10)
+- [ ] **REQ-async-summaries** — async-on-write summary fill off the synchronous write path, eval-gated (Phase 11)
+- [ ] **REQ-usage-signals** — strong per-record usage counters (get/update), hybrid OTLP+payload, never affects ranking (Phase 12)
+
+### Deferred (v0.10.x candidates — not in v0.9.x)
+
+- [ ] **Connect write-lane RPCs** — `StoreMemory`/`StoreDiscovery` over Connect + CSRF-token hardening (GitHub #322)
+- [ ] **Session refresh-token rotation** — re-seal on access-token expiry (v1 trusts the sealed cookie's `sub` until the session TTL) (GitHub #323)
+- [ ] **Consolidation tail** — short_id polish (cluster C), embed refactors (#302/#304), summarize CronJob (#269), SearchDiscoveries proto fidelity (#307)
 
 > **REQ-connect-auth-posture (R1–R4)** was found **already shipped** (PR #248/#266) and reconciled to Phase 8 = Complete on 2026-07-08 — no longer active.
 
