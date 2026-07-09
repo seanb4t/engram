@@ -1,6 +1,7 @@
 ---
 title: "Reject malformed rule summaries (newline/oversize/cleared); never silently normalize"
 ---
+
 <!-- markdownlint-disable MD013 -->
 <!-- adr-render: source=bd:engram-m4s8; do not edit manually; use `/adr update engram-m4s8` -->
 

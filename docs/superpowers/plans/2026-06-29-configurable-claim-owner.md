@@ -19,7 +19,7 @@
 
 ---
 
-### Task 1: Config field `ENGRAM_OWNER_CLAIM`
+## Task 1: Config field `ENGRAM_OWNER_CLAIM`
 
 **Files:**
 
@@ -518,6 +518,7 @@ Run: `rg -n 'Extra.*"sub"' internal/**/*_test.go`
 Run: `rg -n '\.Sub\b|"sub"|Session\{' internal/webauth/*_test.go`
 
 Migrate (current sites — treat the `rg` output as authoritative, new tests may have landed):
+
 - `internal/server/tools_test.go:214` — the `authedContext()` helper: `Extra: map[string]any{"owner_claim": sub}` (backs ~20 handler tests; fix once here).
 - `internal/server/connectauth_test.go:17`, `internal/server/connectapi_test.go:67,177,214`, `internal/server/connectapi_cookie_test.go:47,49` — change the injected key `"sub"` → `"owner_claim"`.
 - `internal/webauth/*_test.go` — `Session{Sub:…}` → `Session{Owner:…}`; resolver tests asserting `Extra["sub"]` → `Extra["owner_claim"]`; `exchange` tests now assert the returned owner value + `email_verified` rejection; add a test that an old `"sub"`-keyed sealed cookie is rejected (forced re-login).

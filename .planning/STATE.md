@@ -30,6 +30,7 @@ Progress: [██████████] 100% (v0.8.x baseline)
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0 (as-built; no GSD-tracked plans)
 - Average duration: n/a
 - Total execution time: n/a

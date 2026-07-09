@@ -967,6 +967,7 @@ if err != nil {
 ```
 
 Replace remaining package-var references:
+
 - `resolveMCPPath(mcpPath)` → `resolveMCPPath(cfg.Server.MCPPath)`
 - `withAuth(handler)` → `withAuth(handler, cfg.OIDC)` (see Step 3)
 - `httpSrv.Addr: listenAddr` → `cfg.Server.ListenAddr`
@@ -1156,6 +1157,7 @@ Identify the `memory.litellm.url` key and the API-key secret block.
 - [ ] **Step 2: Rename env var names in the template**
 
 In `charts/engram/templates/memory-mcp.yaml`, apply the mapping table to every `name: MEM_*`. Specifically (per current line numbers):
+
 - `MEM_LISTEN_ADDR` → `ENGRAM_LISTEN_ADDR`
 - `MEM_QDRANT_ADDR` → `ENGRAM_QDRANT_ADDR`
 - `MEM_QDRANT_COLLECTION` → `ENGRAM_QDRANT_COLLECTION`
@@ -1237,6 +1239,7 @@ Apply the mapping table to `skill/engram/commands/engram-setup.md` and the `MEM_
 - [ ] **Step 3: Update CLAUDE.md**
 
 In `/Volumes/Code/github.com/seanb4t/engram/CLAUDE.md`:
+
 - The Conventions bullet "CLI: cobra; no viper — config is env-first (`MEM_*`) with flag overrides." → "CLI: cobra; config is loaded by `internal/config` (koanf): env-first via the `ENGRAM_` prefix with `--flag` overrides; no viper."
 - Replace `MEM_*` mentions in the Memory-contract and Auth sections (`MEM_OIDC_ISSUER` → `ENGRAM_OIDC_ISSUER`) and the layout table if it cites env vars.
 - Add `internal/config/` to the layout table: "koanf config loader + field registry (single source of truth for ENGRAM_ vars)".

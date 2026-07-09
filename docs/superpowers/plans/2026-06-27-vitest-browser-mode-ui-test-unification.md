@@ -53,6 +53,7 @@ Every component-test rewrite follows the **same mechanical transform** (grounded
 **This is a GO/NO-GO gate.** The engram-s2ao spike proved the `sveltekit()` Vite plugin stalls browser-session startup (60s timeout) when present. The whole component migration rests on resolving this. Do NOT proceed to Task 2+ until a SvelteKit-compiled component renders in browser mode.
 
 **Files:**
+
 - Modify: `ui/package.json` (add browser-mode devDeps)
 - Modify: `ui/vite.config.ts` (two-project config)
 - Create: `ui/vitest-setup.browser.ts` (jest-dom matchers for the browser tier)
@@ -61,15 +62,18 @@ Every component-test rewrite follows the **same mechanical transform** (grounded
 - [ ] **Step 1: Install the browser-mode devDependencies**
 
 Run (from `ui/`):
-```
+
+```text
 pnpm add -D @vitest/browser@4.1.9 @vitest/browser-playwright@4.1.9 playwright vitest-browser-svelte
 pnpm exec playwright install chromium
 ```
+
 Expected: 4 devDeps added; Chromium downloaded (~190MB headless shell, may be cached).
 
 - [ ] **Step 2: Create the browser-tier setup file**
 
 Create `ui/vitest-setup.browser.ts`:
+
 ```ts
 // Browser-tier setup: jest-dom matchers attach to vitest's expect, usable on
 // locators via expect.element(...). The node tier's localStorage stub is NOT
@@ -80,6 +84,7 @@ import '@testing-library/jest-dom/vitest';
 - [ ] **Step 3: Rewrite `ui/vite.config.ts` as a two-project config**
 
 Replace the entire file with:
+
 ```ts
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
@@ -121,11 +126,13 @@ export default defineConfig({
   }
 });
 ```
+
 Note: the node tier keeps `happy-dom` for now (the `environment: 'node'` + drop-happy-dom decision is deferred to Task 11, gated on the logic tests passing). `svelteTesting()` is intentionally dropped from `plugins` — its removal pairs with the `@testing-library/svelte` removal in Task 10.
 
 - [ ] **Step 4: Write a throwaway probe test that renders a SvelteKit-compiled component in the browser**
 
 Create `ui/src/lib/components/ScopeChip.browser.test.ts`:
+
 ```ts
 import { render } from 'vitest-browser-svelte';
 import { describe, it, expect } from 'vitest';
@@ -143,10 +150,11 @@ describe('browser-mode smoke (spike-gate)', () => {
 
 Run (from `ui/`): `pnpm exec vitest run --project browser`
 Expected: **1 passed.** If it hangs ~60s then reports "no tests" / "Failed to connect to the browser session", the SvelteKit-plugin stall is reproducing. Resolution levers, in order:
-  1. Add `optimizeDeps: { include: ['bits-ui', 'svelte', '@testing-library/jest-dom'] }` to the config root.
-  2. Add `test.server: { deps: { inline: [/svelte/, /bits-ui/] } }` to the browser project.
-  3. Pin `test.browser.headless: true` (already set) and try `test.browser.isolate: false`.
-  4. Consult context7 `/vitest-dev/vitest` "browser mode sveltekit" + the SvelteKit `vitest-browser` recipe.
+
+1. Add `optimizeDeps: { include: ['bits-ui', 'svelte', '@testing-library/jest-dom'] }` to the config root.
+2. Add `test.server: { deps: { inline: [/svelte/, /bits-ui/] } }` to the browser project.
+3. Pin `test.browser.headless: true` (already set) and try `test.browser.isolate: false`.
+4. Consult context7 `/vitest-dev/vitest` "browser mode sveltekit" + the SvelteKit `vitest-browser` recipe.
 
 **NO-GO fallback:** if no lever resolves the stall within reasonable effort, STOP. Re-scope to engram-s2ao-only (sanitizer in browser, components stay happy-dom) — file that as a finding on engram-utdv and convert this plan to the sanitizer-only subset (Tasks 1, 2, 10-partial, 12, 13). The remaining tasks assume GO.
 
@@ -157,7 +165,7 @@ Run (from `ui/`): `rm src/lib/components/ScopeChip.browser.test.ts`
 
 - [ ] **Step 7: Commit**
 
-```
+```text
 jj describe -m "test(ui): two-project vitest config + browser-tier spike-gate (engram-utdv)
 
 Stand up node + browser test projects in one vite.config.ts; resolve the
@@ -175,6 +183,7 @@ jj new
 The safest first real migration — no `.svelte`, no component API, just drop the jsdom pragma and rename.
 
 **Files:**
+
 - Rename: `ui/src/lib/markdown.test.ts` → `ui/src/lib/markdown.browser.test.ts`
 - Test: the same file
 
@@ -182,12 +191,14 @@ The safest first real migration — no `.svelte`, no component API, just drop th
 
 Run (from `ui/`): `jj file move src/lib/markdown.test.ts src/lib/markdown.browser.test.ts` (or `mv` + let jj track).
 Then edit the new file to remove lines 1-4 (the `// @vitest-environment jsdom` block + its explanatory comment). The new file head becomes:
+
 ```ts
 import { describe, it, expect } from 'vitest';
 import { renderMarkdown } from './markdown';
 
 describe('renderMarkdown', () => {
 ```
+
 The 6 `it()` bodies are pure string assertions (`expect(html).toContain(...)`) on the return of `renderMarkdown` — **no DOM queries, no change needed.**
 
 - [ ] **Step 2: Run the sanitizer test in the browser tier**
@@ -197,7 +208,7 @@ Expected: **6 passed.** Critically, the `javascript:`-link and fenced-code asser
 
 - [ ] **Step 3: Commit**
 
-```
+```text
 jj describe -m "test(ui): run DOMPurify sanitizer tests in real Chromium (engram-utdv)
 
 markdown.test.ts -> markdown.browser.test.ts; drop the jsdom @vitest-environment
@@ -214,6 +225,7 @@ jj new
 First component migration — render-only, no interaction, establishes the locator pattern.
 
 **Files:**
+
 - Rename: `ui/src/lib/components/AppShell.test.ts` → `AppShell.browser.test.ts`
 
 - [ ] **Step 1: Rename the file**
@@ -223,6 +235,7 @@ Run (from `ui/`): `jj file move src/lib/components/AppShell.test.ts src/lib/comp
 - [ ] **Step 2: Rewrite the file contents**
 
 Replace the file with:
+
 ```ts
 import { render } from 'vitest-browser-svelte';
 import { describe, it, expect } from 'vitest';
@@ -250,7 +263,7 @@ Expected: **2 passed.**
 
 - [ ] **Step 4: Commit**
 
-```
+```text
 jj describe -m "test(ui): migrate AppShell test to browser tier (engram-utdv)
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
@@ -262,6 +275,7 @@ jj new
 ## Task 4: Migrate ScopeChip (render-only, getByTitle)
 
 **Files:**
+
 - Rename: `ui/src/lib/components/ScopeChip.test.ts` → `ScopeChip.browser.test.ts`
 
 - [ ] **Step 1: Rename the file**
@@ -271,6 +285,7 @@ Run (from `ui/`): `jj file move src/lib/components/ScopeChip.test.ts src/lib/com
 - [ ] **Step 2: Rewrite the file contents**
 
 Replace the file with:
+
 ```ts
 import { render } from 'vitest-browser-svelte';
 import { describe, it, expect } from 'vitest';
@@ -296,7 +311,7 @@ Expected: **2 passed.**
 
 - [ ] **Step 4: Commit**
 
-```
+```text
 jj describe -m "test(ui): migrate ScopeChip test to browser tier (engram-utdv)
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
@@ -308,6 +323,7 @@ jj new
 ## Task 5: Migrate MemoryList (render-only, getByTestId, queryByText→absence)
 
 **Files:**
+
 - Rename: `ui/src/lib/components/MemoryList.test.ts` → `MemoryList.browser.test.ts`
 
 - [ ] **Step 1: Rename the file**
@@ -317,6 +333,7 @@ Run (from `ui/`): `jj file move src/lib/components/MemoryList.test.ts src/lib/co
 - [ ] **Step 2: Rewrite the file contents**
 
 Replace the file with:
+
 ```ts
 import { render } from 'vitest-browser-svelte';
 import { describe, it, expect } from 'vitest';
@@ -362,6 +379,7 @@ describe('MemoryList', () => {
   });
 });
 ```
+
 Note: `render(MemoryList, baseProps({...}))` — `baseProps()` returns the props object passed **directly** (no `{ props: ... }` wrapper).
 
 - [ ] **Step 3: Run it**
@@ -371,7 +389,7 @@ Expected: **5 passed.**
 
 - [ ] **Step 4: Commit**
 
-```
+```text
 jj describe -m "test(ui): migrate MemoryList test to browser tier (engram-utdv)
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
@@ -385,6 +403,7 @@ jj new
 First interaction migration — `userEvent.click` → locator `.click()`, and `rerender`.
 
 **Files:**
+
 - Rename: `ui/src/lib/components/MemoryRow.test.ts` → `MemoryRow.browser.test.ts`
 
 - [ ] **Step 1: Rename the file**
@@ -394,6 +413,7 @@ Run (from `ui/`): `jj file move src/lib/components/MemoryRow.test.ts src/lib/com
 - [ ] **Step 2: Rewrite the file contents**
 
 Replace the file with:
+
 ```ts
 import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi } from 'vitest';
@@ -434,6 +454,7 @@ describe('MemoryRow', () => {
   });
 });
 ```
+
 Changes: props passed directly; `getByLabelText`→`getByLabel`; `rerender` is now `await screen.rerender(directProps)`; `userEvent.setup()`/`user.click(el)` → `await screen.getByRole('button').click()`.
 
 - [ ] **Step 3: Run it**
@@ -443,7 +464,7 @@ Expected: **3 passed.**
 
 - [ ] **Step 4: Commit**
 
-```
+```text
 jj describe -m "test(ui): migrate MemoryRow test to browser tier (engram-utdv)
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
@@ -455,6 +476,7 @@ jj new
 ## Task 7: Migrate CommandPalette (cmdk option interaction)
 
 **Files:**
+
 - Rename: `ui/src/lib/components/CommandPalette.test.ts` → `CommandPalette.browser.test.ts`
 
 - [ ] **Step 1: Rename the file**
@@ -464,6 +486,7 @@ Run (from `ui/`): `jj file move src/lib/components/CommandPalette.test.ts src/li
 - [ ] **Step 2: Rewrite the file contents**
 
 Replace the file with:
+
 ```ts
 import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi } from 'vitest';
@@ -492,6 +515,7 @@ describe('CommandPalette', () => {
   });
 });
 ```
+
 Changes: props direct; `getByPlaceholderText`→`getByPlaceholder`; `userEvent` clicks → locator `.click()`.
 
 - [ ] **Step 3: Run it**
@@ -501,7 +525,7 @@ Expected: **3 passed.**
 
 - [ ] **Step 4: Commit**
 
-```
+```text
 jj describe -m "test(ui): migrate CommandPalette test to browser tier (engram-utdv)
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
@@ -513,6 +537,7 @@ jj new
 ## Task 8: Migrate ScopesSidebar (getAllByRole, checkbox, retire stale Select comment)
 
 **Files:**
+
 - Rename: `ui/src/lib/components/ScopesSidebar.test.ts` → `ScopesSidebar.browser.test.ts`
 
 - [ ] **Step 1: Rename the file**
@@ -522,6 +547,7 @@ Run (from `ui/`): `jj file move src/lib/components/ScopesSidebar.test.ts src/lib
 - [ ] **Step 2: Rewrite the file contents**
 
 Replace the file with:
+
 ```ts
 import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi } from 'vitest';
@@ -593,6 +619,7 @@ describe('ScopesSidebar', () => {
   });
 });
 ```
+
 Changes: `getAllByRole(...)[0]` → `getByRole(...).first()`; the stale "Select popover cannot be reliably opened under the test DOM env" comment is retired (browser mode opens it); `userEvent` → locator clicks; props direct.
 
 - [ ] **Step 3: Run it**
@@ -602,7 +629,7 @@ Expected: **7 passed.**
 
 - [ ] **Step 4: Commit**
 
-```
+```text
 jj describe -m "test(ui): migrate ScopesSidebar test to browser tier (engram-utdv)
 
 Retire the stale 'Select popover cannot be reliably opened' comment — the
@@ -619,6 +646,7 @@ jj new
 The richest migration: tab clicks + `within(tabpanel)` scoping.
 
 **Files:**
+
 - Rename: `ui/src/lib/components/MemoryDetail.test.ts` → `MemoryDetail.browser.test.ts`
 
 - [ ] **Step 1: Rename the file**
@@ -628,6 +656,7 @@ Run (from `ui/`): `jj file move src/lib/components/MemoryDetail.test.ts src/lib/
 - [ ] **Step 2: Rewrite the file contents**
 
 Replace the file with:
+
 ```ts
 import { render } from 'vitest-browser-svelte';
 import { describe, it, expect } from 'vitest';
@@ -709,6 +738,7 @@ describe('MemoryDetail', () => {
   });
 });
 ```
+
 Changes: `within(meta).getByText(...)` → `meta.getByText(...)` (locator chaining); the `within` import is dropped; tab click via locator; props direct. `const meta = screen.getByRole('tabpanel')` is a lazy locator re-resolved on each `expect.element`, so it correctly points at whichever panel is un-hidden after the Meta click.
 
 - [ ] **Step 3: Run it**
@@ -723,7 +753,7 @@ Expected: **37 passed** (6 markdown + 2 AppShell + 2 ScopeChip + 5 MemoryList + 
 
 - [ ] **Step 5: Commit**
 
-```
+```text
 jj describe -m "test(ui): migrate MemoryDetail test to browser tier (engram-utdv)
 
 Completes the browser-tier migration: within(tabpanel) -> locator chaining.
@@ -740,6 +770,7 @@ jj new
 All browser-tier files now use `vitest-browser-svelte`; no file imports `@testing-library/svelte`, `@testing-library/user-event`, or relies on `jsdom`.
 
 **Files:**
+
 - Modify: `ui/package.json`
 - Modify: `ui/vite.config.ts` (already drops `svelteTesting()` from Task 1 — verify)
 
@@ -765,7 +796,7 @@ Expected: **37 passed.**
 
 - [ ] **Step 5: Commit**
 
-```
+```text
 jj describe -m "chore(ui): drop testing-library + jsdom test deps (engram-utdv)
 
 Browser tier uses vitest-browser-svelte; jsdom (+transitive undici),
@@ -783,6 +814,7 @@ jj new
 Spec §5 deferred decision: prefer `environment: 'node'` + drop `happy-dom`; fall back to `happy-dom` only if a logic test transitively needs a DOM global.
 
 **Files:**
+
 - Modify: `ui/vite.config.ts` (node project `environment`)
 - Modify: `ui/vitest-setup.ts` (the localStorage stub)
 - Possibly modify: `ui/package.json` (drop `happy-dom`)
@@ -808,7 +840,7 @@ Revert `ui/vite.config.ts` to `environment: 'happy-dom'` + the `environmentOptio
 
 - [ ] **Step 4: Commit**
 
-```
+```text
 jj describe -m "chore(ui): node test tier runs on <node|happy-dom> (engram-utdv)
 
 <If 3a: drop happy-dom — the 6 logic tests + app.css need no DOM, only the
@@ -824,11 +856,13 @@ jj new
 ## Task 12: Wire pnpm scripts + run the whole suite
 
 **Files:**
+
 - Modify: `ui/package.json` (`scripts`)
 
 - [ ] **Step 1: Confirm the default `test` script runs both tiers**
 
 `ui/package.json` already has `"test": "vitest run"`. With the `projects[]` config, a bare `vitest run` executes BOTH the node and browser projects in one pass. No script change is strictly required, but add an explicit browser-only escape hatch for fast local iteration:
+
 ```json
   "scripts": {
     "dev": "vite dev",
@@ -847,7 +881,7 @@ Expected: **63 passed** (37 browser + 26 node), with the reporter showing `node`
 
 - [ ] **Step 3: Commit**
 
-```
+```text
 jj describe -m "chore(ui): add test:browser / test:node project scripts (engram-utdv)
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
@@ -859,11 +893,13 @@ jj new
 ## Task 13: Add the `ui-test` CI job (Playwright-cached)
 
 **Files:**
+
 - Modify: `.github/workflows/ci.yaml`
 
 - [ ] **Step 1: Add the `ui-test` job after the `ui-drift` job**
 
 In `.github/workflows/ci.yaml`, add this job (mirrors the `ui-drift` setup pattern: pnpm/action-setup pointed at `ui/package.json`, node 24, pnpm cache):
+
 ```yaml
   ui-test:
     name: ui tests
@@ -896,6 +932,7 @@ In `.github/workflows/ci.yaml`, add this job (mirrors the `ui-drift` setup patte
         if: steps.pw-cache.outputs.cache-hit == 'true'
       - run: cd ui && pnpm test
 ```
+
 Note: on a cache hit the binaries are restored but OS-level shared libs are not cached, so `install-deps` (apt packages only, fast) still runs. On a miss, `install --with-deps` fetches both.
 
 - [ ] **Step 2: Verify the workflow is valid YAML / actionlint-clean**
@@ -905,7 +942,7 @@ Expected: no errors on the new job.
 
 - [ ] **Step 3: Commit**
 
-```
+```text
 jj describe -m "ci: add ui-test job running both vitest tiers (engram-utdv)
 
 New job runs the node + browser test projects; Playwright Chromium binaries
@@ -928,9 +965,11 @@ The job `name:` is `ui tests` (from Task 13 Step 1). The ruleset must reference 
 - [ ] **Step 2: Add `ui tests` to the protect-main ruleset (id 17228701)**
 
 After this plan's PR is merged to `main` and the `ui-test` job has reported at least one green run, add `ui tests` to the required status checks of ruleset 17228701 (integration_id 15368 — same GitHub Actions app as the existing 7 checks):
-```
+
+```text
 gh api -X PATCH repos/seanb4t/engram/rulesets/17228701 --input <patch.json>
 ```
+
 where `<patch.json>` adds `{ "context": "ui tests", "integration_id": 15368 }` to the existing `required_status_checks` array (the current 7: test, golangci-lint, commit-lint, license headers, helm chart, actionlint, python). **Do not remove or rename** any existing entry. Verify first with `gh api repos/seanb4t/engram/rulesets/17228701` to capture the current array.
 
 - [ ] **Step 3: Verify a fresh PR shows `ui tests` as required**

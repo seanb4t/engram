@@ -101,6 +101,7 @@ The category palette already in `app.css` (convention/gotcha/decision/preference
 fixes, each traceable to a production screenshot:
 
 **Top bar / shell**
+
 - `AppShell.svelte:21` `<span>◆ engram</span>` → `<BrandMark />` (inline SVG mark +
   outlined wordmark; header gets the optional dark-mode glow).
 - Search input gains a violet focus ring (`--ring`).
@@ -108,6 +109,7 @@ fixes, each traceable to a production screenshot:
   Discovery keeps its count badge.
 
 **Scope rail (Observe)** — fixes truncation + cramping:
+
 - Scope name on line 1 (ellipsis, never clipped at panel edge), owner on line 2 in
   muted; type badge (`PROJ`/`REPO`) as a flex-none chip; **count in a consistent pill
   badge**, right-aligned.
@@ -116,6 +118,7 @@ fixes, each traceable to a production screenshot:
 - Filters: category checkboxes gain a colored **dot swatch** per category.
 
 **Dashboard** — fixes id-truncation + dead space:
+
 - Scope-id **wraps** (no clip); tighter responsive grid (`minmax(215px,1fr)` →
   more cards per row).
 - Each card: count + a **category-breakdown bar** (stacked proportions) + a violet
@@ -124,6 +127,7 @@ fixes, each traceable to a production screenshot:
   bare empty state.
 
 **Memory list + detail**
+
 - List rows: category dot, title (ellipsis), 2-line snippet, metadata row
   (category tag, visibility lock/globe, relative time); selected row gets a violet
   inset bar.
@@ -178,6 +182,7 @@ files resolve under `%sveltekit.assets%`).
 
 **Console (Child A)** — governed by the `ui vendored-asset drift` CI gate (repo
 memory):
+
 1. `cd ui && pnpm install && pnpm build && pnpm test`
 2. `task ui:build` → re-vendor into `internal/webauth/static/` (go:embed `all:` — the
    `_app/` underscore-dir rule, GH #106).

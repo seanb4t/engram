@@ -1,4 +1,4 @@
-## Conflict Detection Report
+# Conflict Detection Report
 
 Ingest set: 31 companion ADRs (all LOCKED, precedence 0, high confidence).
 Checked against the 25 already-LOCKED baseline decisions in `.planning/PROJECT.md`
@@ -8,7 +8,7 @@ Cycle detection: no cycles (in-set edges 8q3→u9v, m4s8→ddiw are terminal).
 No UNKNOWN/low-confidence docs. No LOCKED-vs-LOCKED contradictions. No competing
 acceptance variants (these are ADRs, not PRDs).
 
-### BLOCKERS (0)
+## BLOCKERS (0)
 
 None. No ingest decision sets a mutually-exclusive knob to a value incompatible
 with an existing locked decision on the same axis.

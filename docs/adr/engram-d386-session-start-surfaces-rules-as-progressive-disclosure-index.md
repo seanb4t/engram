@@ -1,6 +1,7 @@
 ---
 title: "Session-start surfaces rules as a progressive-disclosure index, not full-content injection"
 ---
+
 <!-- markdownlint-disable MD013 -->
 <!-- adr-render: source=bd:engram-d386; do not edit manually; use `/adr update engram-d386` -->
 

@@ -1,6 +1,7 @@
 ---
 title: "Encode short_id as 10-char Crockford base32"
 ---
+
 <!-- markdownlint-disable MD013 -->
 <!-- adr-render: source=bd:engram-zzq0; do not edit manually; use `/adr update engram-zzq0` -->
 

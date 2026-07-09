@@ -53,6 +53,7 @@ SPDX-License-Identifier: Apache-2.0
 ### Task 1: Brand mark SVG assets
 
 **Files:**
+
 - Create: `brand/engram-mark.svg`
 - Create: `brand/engram-lockup.svg`
 
@@ -77,6 +78,7 @@ Commit with `jj commit -m` (message: `feat(brand): add engram mark + lockup SVG 
 ### Task 2: Favicon + app-icon set
 
 **Files:**
+
 - Create: `ui/static/favicon.svg`, `ui/static/favicon-16.png`, `ui/static/favicon-32.png`, `ui/static/apple-touch-icon.png`
 
 - [ ] **Step 1: Create `ui/static/` and the SVG favicon** — `ui/static/favicon.svg` (fixed violet, since a favicon has no `currentColor` context):
@@ -110,6 +112,7 @@ Expected: four files present. Verify: `ls ui/static/` shows `favicon.svg favicon
 ### Task 3: Wire favicons into `app.html`
 
 **Files:**
+
 - Modify: `ui/src/app.html:6`
 
 - [ ] **Step 1: Add the favicon links** after the `<title>` line (`ui/src/app.html`, currently line 6). Insert:
@@ -132,6 +135,7 @@ Expected: prints `/ui/favicon.svg`.
 ### Task 4: Palette token swap (`app.css`)
 
 **Files:**
+
 - Modify: `ui/src/app.css:9,13,15` (`:root`) and the `.dark` block
 
 - [ ] **Step 1: Swap light-mode tokens** in the `:root` block of `ui/src/app.css`:
@@ -159,6 +163,7 @@ Expected: prints `/ui/favicon.svg`.
 ### Task 5: `BrandMark.svelte` + AppShell wiring + test
 
 **Files:**
+
 - Create: `ui/src/lib/assets/engram-lockup.svg`
 - Create: `ui/src/lib/components/BrandMark.svelte`
 - Modify: `ui/src/lib/components/AppShell.svelte:21,28-33`
@@ -244,6 +249,7 @@ Expected: PASS. (If `?raw` import path resolution fails in vitest, confirm `vite
 ### Task 6: Scope count pill (`ScopeChip.svelte`)
 
 **Files:**
+
 - Modify: `ui/src/lib/components/ScopeChip.svelte:30`
 
 - [ ] **Step 1: Replace the count span** (line 30) so the count is a consistent pill badge instead of muted text:
@@ -261,6 +267,7 @@ Expected: PASS. (If `?raw` import path resolution fails in vitest, confirm `vite
 ### Task 7: Selected-scope violet + width (`ScopesSidebar.svelte`)
 
 **Files:**
+
 - Modify: `ui/src/lib/components/ScopesSidebar.svelte:28`
 
 - [ ] **Step 1: Constrain row width + violet selection.** Replace the scope `<Button>` (line 28) so the selected row reads violet (not the generic `bg-accent`) and the chip can't overflow:
@@ -280,6 +287,7 @@ Expected: PASS. (If `?raw` import path resolution fails in vitest, confirm `vite
 ### Task 8: Category dot on rows + dashboard upstyling
 
 **Files:**
+
 - Modify: `ui/src/lib/components/MemoryRow.svelte:20-23`
 - Modify: `ui/src/routes/+page.svelte:26-33`
 
@@ -322,6 +330,7 @@ Add the import in the dashboard `<script>` (after the MemoryList import, line 7)
 ### Task 9: Re-vendor the SPA bundle + Go gate
 
 **Files:**
+
 - Modify: `internal/webauth/static/**` (generated)
 
 - [ ] **Step 1: Run unit tests + lint**
@@ -355,6 +364,7 @@ Expected: PASS (`TestStaticHandlerServesAppAssets` etc.).
 ### Task 10: Docs accent ramp (Starlight)
 
 **Files:**
+
 - Create: `docs-site/src/styles/brand.css`
 - Modify: `docs-site/astro.config.mjs`
 
@@ -391,6 +401,7 @@ Expected: exits 0; build output under `dist/`.
 ### Task 11: Docs logo + favicon
 
 **Files:**
+
 - Create: `docs-site/src/assets/engram-mark.svg`
 - Modify: `docs-site/public/favicon.svg`
 - Modify: `docs-site/astro.config.mjs`
@@ -420,6 +431,7 @@ Expected: header shows the engram lockup (not the bare title); tab favicon is th
 ### Task 12: Docs feature-card icon harmonization
 
 **Files:**
+
 - Modify: `docs-site/src/content/docs/index.mdx:18-31`
 
 - [ ] **Step 1: Confirm parity is automatic.** The four `<Card>` icons (`pencil`, `approve-check`, `setting`, `rocket`) already inherit `--sl-color-accent` (now violet), so the hero + cards match the console with no markup change. Verify in the Task 11 preview that the card icons render violet.

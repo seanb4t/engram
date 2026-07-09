@@ -73,6 +73,7 @@ process that mounts three HTTP protocols (MCP, Connect, web login/SPA) over one
 Qdrant and an external embeddings endpoint.
 
 **Key Characteristics:**
+
 - Single binary, single process, single listener; protocols multiplexed by path.
 - Env-first config via a single field registry (`registry.go`) — no config file, no viper.
 - Identity is never client-asserted; a verified `Subject` sum type drives authz.
@@ -82,6 +83,7 @@ Qdrant and an external embeddings endpoint.
 ## Layers
 
 **CLI / Command layer:**
+
 - Purpose: Parse flags, load config, dispatch to serve or operator commands.
 - Location: `cmd/engram/`
 - Contains: cobra commands (`serve`, `version`, `reindex`, `migrate`, `prune`, `summarize`, `backfill`).
@@ -89,6 +91,7 @@ Qdrant and an external embeddings endpoint.
 - Used by: process `main` (`main.go`).
 
 **Transport / Handler layer:**
+
 - Purpose: Register MCP tools, serve Connect read API, serve web-auth endpoints.
 - Location: `internal/server/`, `internal/webauth/`
 - Contains: tool registration, request shaping, identity extraction, Connect service impl.
@@ -96,6 +99,7 @@ Qdrant and an external embeddings endpoint.
 - Used by: `cmd/engram/serve.go`.
 
 **Domain / Store layer:**
+
 - Purpose: Persist and query memories with per-actor authorization and recall gating.
 - Location: `internal/store/`
 - Contains: `Store`, `Subject` sum type, cursor paging, payload mapping, subject filters.
@@ -103,6 +107,7 @@ Qdrant and an external embeddings endpoint.
 - Used by: server + Connect handlers, operator commands.
 
 **Adapter layer:**
+
 - Purpose: External I/O — embeddings endpoint and Qdrant gRPC.
 - Location: `internal/embed/`, Qdrant client (`github.com/qdrant/go-client`).
 - Depends on: `net/http`, gRPC.
@@ -133,37 +138,44 @@ Qdrant and an external embeddings endpoint.
 3. Connect handler (`internal/server/connectapi.go`) queries the same store, read-only, and shapes proto responses.
 
 **State Management:**
+
 - All durable state lives in Qdrant; the process is stateless apart from OIDC verifier caches and sealed session/flow cookies (`internal/webauth/session.go`).
 
 ## Key Abstractions
 
 **Subject (sealed sum type):**
+
 - Purpose: Verified caller identity that drives authorization.
 - Examples: `internal/store/subject.go`
 - Pattern: Unexported variants (`anonymous`, `authenticated`); zero value is nil to fail closed. Read filters and write gates use an exhaustive type switch with a default-deny arm, never `Owner()`.
 
 **deps (handler context):**
+
 - Purpose: Bundles the store, embedder interface, clock, and recall truncation cap for tool handlers.
 - Examples: `internal/server/tools.go` (`type deps struct`).
 - Pattern: Constructor-injected dependencies; tests override `configLoad`, `now`.
 
 **Field registry (config):**
+
 - Purpose: Single source of truth for every `ENGRAM_` var, its default, legacy name, and flag.
 - Examples: `internal/config/registry.go`.
 - Pattern: Table-driven — defaults layer, env layer, and changed-flags overlay all derive from the same slice.
 
 **SummarySource (contract-locked string):**
+
 - Purpose: Records provenance of a memory's summary across proto/MCP/Qdrant boundaries.
 - Examples: `internal/store/store.go`.
 
 ## Entry Points
 
 **`engram serve`:**
+
 - Location: `cmd/engram/serve.go` (runServe).
 - Triggers: operator/Helm start.
 - Responsibilities: build telemetry, mux, MCP server + tools, auth lanes, Connect handler, and HTTP server.
 
 **Operator commands:**
+
 - Location: `cmd/engram/reindex.go`, `migrate.go`, `prune.go`, `summarize.go`, `backfill.go`.
 - Triggers: manual operator invocation.
 - Responsibilities: embedder migration, owner remap, expiry prune, summary backfill, short-id backfill.
@@ -201,6 +213,7 @@ Qdrant and an external embeddings endpoint.
 **Strategy:** Sentinel errors classified at the store boundary, mapped to transport codes at the Connect/MCP edge.
 
 **Patterns:**
+
 - `store.ErrNotFound` deliberately conflates "absent" and "not visible" so ownership never leaks (`internal/store/store.go`).
 - `store.ErrInvalidArgument` distinguishes malformed client requests from infra failures; Connect maps it to `CodeInvalidArgument`, everything else to `CodeInternal`.
 - Fail-fast config validation before any client is built (`loadAndValidate` in `internal/server/tools.go`).
