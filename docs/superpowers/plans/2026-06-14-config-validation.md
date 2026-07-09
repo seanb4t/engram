@@ -218,7 +218,7 @@ Expected: `ok` and `0 issues`.
 
 - [ ] **Step 6: Commit**
 
-```
+```text
 jj commit -m "feat(config): add Config.Validate for data-plane well-formedness (engram-syt)"
 ```
 
@@ -295,7 +295,7 @@ Expected: `ok` (integration tests needing Qdrant auto-skip) and `0 issues`.
 
 - [ ] **Step 6: Commit**
 
-```
+```text
 jj commit -m "feat(server): validate config in StoreFromEnvNoEnsure startup path (engram-syt)"
 ```
 
@@ -345,7 +345,7 @@ Expected: clean build, `0 issues`.
 
 - [ ] **Step 4: Commit**
 
-```
+```text
 jj commit -m "feat(serve): fail fast on empty listen address (engram-syt)"
 ```
 

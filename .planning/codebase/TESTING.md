@@ -5,13 +5,16 @@
 ## Test Framework
 
 **Runner:**
+
 - Go standard library `testing` — no testify, no assertion DSL
 - Python hooks tested with `pytest` (via `uv`) under `skill/engram/hooks/tests`
 
 **Assertion Library:**
+
 - None. Plain `if got != want { t.Errorf(...) }` / `t.Fatalf(...)` checks throughout (`internal/server/rules_test.go`)
 
 **Run Commands:**
+
 ```bash
 task test              # go + python unit tests (task test:go + test:python)
 task test:go           # go test ./...
@@ -20,6 +23,7 @@ task test:coverage     # go test -coverprofile=cover.out ./...
 task bench             # go test -run '^$' -bench=. -benchmem ./...
 task test:python       # uv run --with pytest pytest skill/engram/hooks/tests -q
 ```
+
 `task` (default) runs `lint` then `test`. CI runs each as a separate job in `.github/workflows/ci.yaml` (`test`, `golangci-lint`, `license headers`, `helm chart`, `actionlint`, `python`, `buf`, ui drift/tests, commit-lint).
 
 ## Test File Organization
@@ -29,17 +33,20 @@ task test:python       # uv run --with pytest pytest skill/engram/hooks/tests -q
 **Naming:** `<source>_test.go`; test funcs `TestXxx`, benchmarks `BenchmarkXxx` (`internal/store/bench_test.go`), package `TestMain` for integration setup.
 
 **Structure:**
-```
+
+```text
 internal/server/rules.go          # implementation
 internal/server/rules_test.go     # tests for that file
 internal/store/store_test.go      # TestMain provisions Qdrant
 internal/store/bench_test.go      # microbenchmarks
 ```
+
 No `testdata/` directories or golden files in the Go tree (license config references `**/*.golden` but none are checked in).
 
 ## Test Structure
 
 **Suite Organization (table-driven):**
+
 ```go
 func TestValidateStoreRule(t *testing.T) {
 	// happy-path assertions first
@@ -65,6 +72,7 @@ func TestValidateStoreRule(t *testing.T) {
 ```
 
 **Patterns:**
+
 - Table-driven with a `name` field on each case; loop variable `tc`
 - `t.Fatalf` for setup/precondition failures, `t.Errorf` for assertion failures (test continues)
 - `t.Cleanup(...)` for teardown (preferred over defer) — e.g. `t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) })`
@@ -75,6 +83,7 @@ func TestValidateStoreRule(t *testing.T) {
 **Framework:** None — no gomock/mockgen. Real dependencies via testcontainers; hand-written stub functions for narrow seams.
 
 **Patterns:**
+
 ```go
 // Stub verifier injected through the real go-sdk middleware to produce an
 // authenticated context (the only way to set the unexported TokenInfo key).
@@ -84,9 +93,11 @@ verifier := func(context.Context, string, *http.Request) (*mcpauth.TokenInfo, er
 ```
 
 **What to Mock:**
+
 - Auth token verification (function-value stub through real middleware)
 
 **What NOT to Mock:**
+
 - Qdrant — use a real instance via testcontainers (integration-first). The store's fail-closed contracts are only meaningful against real Qdrant.
 
 ## Fixtures and Factories
@@ -100,6 +111,7 @@ verifier := func(context.Context, string, *http.Request) (*mcpauth.TokenInfo, er
 ## Integration Test Provisioning
 
 Packages needing Qdrant define `TestMain(m *testing.M)` (`internal/server/tools_test.go`, `internal/store/store_test.go`):
+
 1. If `ENGRAM_QDRANT_TEST_ADDR` is set, use that instance (fast path / CI override)
 2. Otherwise boot an ephemeral Qdrant via `testcontainers-go/modules/qdrant` and tear it down after
 3. If neither Docker nor the env addr is available, integration tests `t.Skip` (with an actionable message) rather than fail
@@ -111,6 +123,7 @@ This makes `go test ./...` pass on a machine without Docker (integration tests s
 **Requirements:** No enforced threshold. Recent commits explicitly backfill coverage (e.g. `list_rules`/`store.List`).
 
 **View Coverage:**
+
 ```bash
 task test:coverage     # writes cover.out
 go tool cover -html=cover.out
@@ -131,6 +144,7 @@ go tool cover -html=cover.out
 ## Common Patterns
 
 **Skip-when-unavailable:**
+
 ```go
 if testQdrantAddr == "" {
 	t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
@@ -138,6 +152,7 @@ if testQdrantAddr == "" {
 ```
 
 **Error Testing:**
+
 ```go
 if err := validateStoreRule(tc.a); err == nil {
 	t.Errorf("%s: expected error, got nil", tc.name)

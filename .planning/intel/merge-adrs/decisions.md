@@ -12,6 +12,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 ## Discovery Tools & Trust
 
 ### DEC-0gy — Dedicated store_discovery/search_discovery tools, not overloaded store_memory
+
 - source: docs/adr/engram-0gy-dedicated-store-discovery-search-discovery-tools-not-overloa.md
 - status: LOCKED
 - decision: Introduce dedicated `store_discovery`/`search_discovery` MCP tools that enforce
@@ -20,6 +21,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - scope: store_discovery, search_discovery, store_memory, search_memory, discovery records, citations, MCP tool signatures
 
 ### DEC-3l0 — Graceful decay over binary staleness for discovery trust
+
 - source: docs/adr/engram-3l0-graceful-decay-over-binary-staleness-discovery-trust.md
 - status: LOCKED
 - decision: The server stores and surfaces citation pins and `created_at` as raw aging signals
@@ -31,6 +33,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 ## Memory Summary & Update Contract
 
 ### DEC-4y7p — Explicit-first memory summary with offline operator auto-fill
+
 - source: docs/adr/engram-4y7p-explicit-first-memory-summary-offline-operator-auto-fill.md
 - status: LOCKED
 - decision: Submitters may author memory summaries at write time; missing ones are filled by an
@@ -38,6 +41,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - scope: memory summary field, summary_source, store_memory write path, engram summarize-missing, FillSummary, ENGRAM_SUMMARY_MODEL, recall
 
 ### DEC-ddiw — Reject update_memory on content change with unaddressed client summary
+
 - source: docs/adr/engram-ddiw-reject-update-memory-content-change-unaddressed-client-summa.md
 - status: LOCKED
 - decision: Atomically reject an `update_memory` write when content changes but an existing
@@ -49,6 +53,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 ## Rules
 
 ### DEC-d386 — Session-start surfaces rules as a progressive-disclosure index
+
 - source: docs/adr/engram-d386-session-start-surfaces-rules-as-progressive-disclosure-index.md
 - status: LOCKED
 - decision: The session-start hook renders a one-line-per-rule index via `list_rules` with full
@@ -57,6 +62,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - refines: engram-iedk, engram-ambu (baseline rule locks)
 
 ### DEC-m4s8 — Reject malformed rule summaries; never silently normalize
+
 - source: docs/adr/engram-m4s8-reject-malformed-rule-summaries-newline-oversize-cleared-nev.md
 - status: LOCKED
 - decision: `store_rule` and the `update_memory` rule-guard reject any rule summary containing a
@@ -69,6 +75,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 ## Temporal / Scheduled Recall
 
 ### DEC-ufz — Soft-hide expired records at recall; opt-in prune-expired for storage reclaim
+
 - source: docs/adr/engram-ufz-soft-hide-expired-records-at-recall-opt-prune-expired-storag.md
 - status: LOCKED
 - decision: Expired records are soft-hidden by the Qdrant recall gate and never auto-destroyed;
@@ -77,6 +84,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - refines: engram-y1g (baseline temporal gate lock)
 
 ### DEC-c0m — Inject Store clock via WithClock option; keep public signatures stable
+
 - source: docs/adr/engram-c0m-inject-store-clock-via-withclock-option-keep-public-signatur.md
 - status: LOCKED
 - decision: `Store` gains an unexported `now` func field defaulting to `time.Now`, injectable via
@@ -90,6 +98,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 ## Config Validation
 
 ### DEC-wtw — Keep config.Load assembly-only; validate via a separate Config.Validate()
+
 - source: docs/adr/engram-wtw-keep-config-load-assembly-only-validate-via-separate-config.md
 - status: LOCKED
 - decision: Keep `config.Load` assembly-only (never validating operator values) and check
@@ -98,6 +107,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - cross-refs (dangling): engram-edv, engram-mbnw
 
 ### DEC-d24 — Validate data-plane fields only; listen_addr is a serve-local guard
+
 - source: docs/adr/engram-d24-validate-data-plane-fields-only-listen-addr-is-serve-local-g.md
 - status: LOCKED
 - decision: `Config.Validate` checks only the five universal data-plane fields; `server.listen_addr`
@@ -110,6 +120,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 ## Telemetry / Observability
 
 ### DEC-6gb — Instrument store/embed/auth with inline spans, not a decorator layer
+
 - source: docs/adr/engram-6gb-instrument-store-embed-auth-inline-spans-not-decorator-layer.md
 - status: LOCKED
 - decision: Each public method in store, embed, and auth creates its own OpenTelemetry span inline
@@ -118,6 +129,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - refines: engram-dwi, engram-uxh (baseline telemetry locks)
 
 ### DEC-f7p — Instrument at three seams: HTTP, MCP method, and downstream clients
+
 - source: docs/adr/engram-f7p-instrument-at-three-seams-http-mcp-method-and-downstream-cli.md
 - status: LOCKED
 - decision: Instrument all three request-path boundaries — HTTP (otelhttp + auth-failure
@@ -127,6 +139,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - refines: engram-dwi, engram-uxh
 
 ### DEC-tdk — Instrument MCP tools via AddReceivingMiddleware, not per-handler
+
 - source: docs/adr/engram-tdk-instrument-mcp-tools-via-addreceivingmiddleware-not-per-hand.md
 - status: LOCKED
 - decision: All MCP tool calls are instrumented from a single `srv.AddReceivingMiddleware` seam
@@ -136,6 +149,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - refines: engram-dwi, engram-uxh; cross-refs (dangling): engram-ew7
 
 ### DEC-wot — Spans carry engram.owner only; exclude actor and email as PII
+
 - source: docs/adr/engram-wot-spans-carry-engram-owner-only-exclude-actor-and-email-as-pii.md
 - status: LOCKED
 - decision: Span attributes carry only the opaque OIDC `sub` (`engram.owner`) and never `actor`,
@@ -144,6 +158,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - refines: engram-dwi, engram-uxh
 
 ### DEC-7qd — Reuse OTel-standard env vars for sampler and export interval; no MEM_* equivalents
+
 - source: docs/adr/engram-7qd-reuse-otel-standard-env-vars-sampler-and-export-interval-add.md
 - status: LOCKED
 - decision: Configure the OTel sampler and metric export interval exclusively via OTel-standard
@@ -152,6 +167,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - refines: engram-dwi
 
 ### DEC-9tj — Inject k8s resource attributes via chart Downward API, not Go SDK detectors
+
 - source: docs/adr/engram-9tj-inject-k8s-resource-attributes-via-chart-downward-api-not-go.md
 - status: LOCKED
 - decision: Kubernetes OTel resource attributes are injected by the Helm chart via the Downward
@@ -164,6 +180,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 ## BFF / Session / Auth (operator console)
 
 ### DEC-bgj — Embed the BFF in the engram Go binary, not a Node runtime
+
 - source: docs/adr/engram-bgj-embed-bff-engram-go-binary-not-node-runtime.md
 - status: LOCKED
 - decision: Implement the backend-for-frontend (OIDC login/callback, session seal/unseal, static
@@ -172,6 +189,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - refines: engram-0lu, engram-8xe (baseline SPA/console locks)
 
 ### DEC-u9v — Stateless encrypted-cookie session, no server-side store
+
 - source: docs/adr/engram-u9v-stateless-encrypted-cookie-session-no-server-side-store.md
 - status: LOCKED
 - decision: After OIDC login engram seals `{access, refresh, sub}` into an httpOnly, SameSite,
@@ -180,6 +198,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - refines: engram-g37x (baseline session-cookie lock)
 
 ### DEC-8q3 — Session cookie seals only sub+expiry; no OIDC tokens stored client-side
+
 - source: docs/adr/engram-8q3-session-cookie-seals-only-sub-expiry-no-oidc-tokens-stored-c.md
 - status: LOCKED
 - decision: The session cookie seals only `{sub, expiry}`; no OIDC access or refresh token is
@@ -195,6 +214,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 ## SPA / Operator Console Internals
 
 ### DEC-2xl — Use @tanstack/svelte-query as the SPA data layer
+
 - source: docs/adr/engram-2xl-use-tanstack-svelte-query-as-spa-data-layer.md
 - status: LOCKED
 - decision: Adopt `@tanstack/svelte-query` as the operator-console SPA's sole async data layer,
@@ -203,6 +223,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - refines: engram-0lu
 
 ### DEC-c4y — Drive SPA shell state via URL parameters
+
 - source: docs/adr/engram-c4y-drive-spa-shell-state-via-url-parameters.md
 - status: LOCKED
 - decision: Encode SPA shell state (scope, category/visibility filters, query, selected id) in
@@ -211,6 +232,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - refines: engram-0lu
 
 ### DEC-3nas — Render user memory content via marked + DOMPurify allowlist
+
 - source: docs/adr/engram-3nas-render-user-memory-content-via-marked-dompurify-allowlist.md
 - status: LOCKED
 - decision: Render user-authored memory content by piping it through `marked` then `DOMPurify`
@@ -219,6 +241,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - refines: engram-0lu; cross-refs (dangling): engram-kyz
 
 ### DEC-vxk — SPA-fallback static handler: serve index.html for client routes
+
 - source: docs/adr/engram-vxk-spa-fallback-static-handler-serve-index-html-client-routes.md
 - status: LOCKED
 - decision: Wrap `StaticHandler` with SPA-fallback logic that serves `index.html` (200) for
@@ -227,6 +250,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - refines: engram-0lu
 
 ### DEC-4ag — Gate dashboard category-breakdown bar on a listScopes API extension
+
 - source: docs/adr/engram-4ag-gate-dashboard-category-breakdown-bar-listscopes-api-extensi.md
 - status: LOCKED
 - decision: Drop the dashboard category-breakdown bar and defer per-category counts until a future
@@ -235,6 +259,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - refines: engram-0lu, engram-8xe
 
 ### DEC-lzz — Adopt shadcn semantic tokens; retire bespoke eg-*/--cat-* layer
+
 - source: docs/adr/engram-lzz-adopt-shadcn-semantic-tokens-retire-bespoke-eg-cat-layer.md
 - status: LOCKED
 - decision: Replace `app.css` with shadcn's standard semantic token set and remove bespoke `eg-*`
@@ -243,6 +268,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - refines: engram-0lu; cross-refs (dangling): engram-e38
 
 ### DEC-no3 — Ship engram wordmark as outlined SVG paths, not a webfont
+
 - source: docs/adr/engram-no3-ship-engram-wordmark-as-outlined-svg-paths-not-webfont.md
 - status: LOCKED
 - decision: The engram wordmark ships as outlined SVG paths embedded in the lockup asset and
@@ -255,6 +281,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 ## Test Tiers
 
 ### DEC-1h3k — Adopt two-tier vitest config: node + real-Chromium browser
+
 - source: docs/adr/engram-1h3k-adopt-two-tier-vitest-config-node-real-chromium-browser.md
 - status: LOCKED
 - decision: Adopt a two-project vitest 4 config splitting pure-logic tests onto a node tier and
@@ -263,6 +290,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - refines: vitest-browser direction; cross-refs (dangling): engram-s2ao
 
 ### DEC-om5b — Node test tier on environment:node, drop happy-dom
+
 - source: docs/adr/engram-om5b-node-test-tier-environment-node-drop-happy-dom.md
 - status: LOCKED
 - decision: Run the vitest node project on `environment:'node'` and drop happy-dom, falling back
@@ -275,6 +303,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 ## Docs Site
 
 ### DEC-u5h — Host the docs site inside the engram monorepo at docs-site/
+
 - source: docs/adr/engram-u5h-host-docs-site-inside-engram-monorepo-at-docs-site.md
 - status: LOCKED
 - decision: Place the Astro Starlight docs site at `docs-site/` within the engram monorepo with
@@ -283,6 +312,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 - refines: engram-ttb (baseline docs-site lock)
 
 ### DEC-1w7 — Deploy docs-site via an in-repo GitHub Actions wrangler workflow
+
 - source: docs/adr/engram-1w7-deploy-docs-site-via-repo-github-actions-wrangler-workflow.md
 - status: LOCKED
 - decision: Deploy the docs-site through a dedicated non-required GitHub Actions workflow using
@@ -295,6 +325,7 @@ in intent with full source provenance. Cross-refs to out-of-set ids are dangling
 ## Plugin Packaging
 
 ### DEC-50b — engram plugin ships no bundled MCP server; /engram-setup is the sole registration path
+
 - source: docs/adr/engram-50b-engram-plugin-ships-no-bundled-mcp-server-engram-setup-is-so.md
 - status: LOCKED
 - decision: Remove the bundled `.mcp.json` from the engram plugin, making `/engram-setup` the

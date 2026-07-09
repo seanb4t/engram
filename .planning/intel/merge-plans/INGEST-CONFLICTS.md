@@ -1,7 +1,7 @@
 <!--
 SPDX-License-Identifier: Apache-2.0
 -->
-## Conflict Detection Report
+# Conflict Detection Report
 
 All 24 ingested docs are classified DOC (precedence 3 — the lowest tier). By
 construction a DOC cannot override any decision, requirement, or constraint, so
@@ -12,7 +12,7 @@ traceability references, not edges into the plan set). One intra-set reference
 exists (rule-memory-kind plan -> short-id-handle plan) as a single directed
 edge with no back-edge — acyclic.
 
-### BLOCKERS (0)
+## BLOCKERS (0)
 
 (none)
 

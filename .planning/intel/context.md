@@ -9,6 +9,7 @@ ADR↔SPEC design-doc pairing map, and dangling cross-references to out-of-set d
 ## Historical / superseded
 
 ### CTX-client-config-generalize — Client config generalization (HISTORICAL)
+
 - source: docs/superpowers/specs/2026-06-02-generalize-engram-client-config-design.md
 - note: Design to make the bundled engram client MCP config deployment-neutral and add an
   `/engram-setup` command covering four auth postures (OIDC OAuth, bearer/headers, litellm
@@ -17,12 +18,14 @@ ADR↔SPEC design-doc pairing map, and dangling cross-references to out-of-set d
   not a competing locked decision and must not be routed as an active requirement.
 
 ### CTX-configurable-claim-supersession — SPEC supersedes out-of-set ADR engram-hvg
+
 - source: docs/superpowers/specs/2026-06-29-configurable-claim-owner-design.md
 - note: This SPEC states it supersedes ADR engram-hvg (not in set). The in-set locked ADR
   DEC-g37x (`engram-g37x`) encodes the same configurable-claim owner decision, so SPEC and
   in-set ADR agree. engram-hvg content is historical.
 
 ### CTX-vitest-supersession — SPEC supersedes out-of-set decision engram-cv92
+
 - source: docs/superpowers/specs/2026-06-27-vitest-browser-mode-ui-test-unification-design.md
 - note: SPEC (Status DRAFT) references and supersedes decision engram-cv92 (not in set).
   Historical; the active direction is real-Chromium vitest browser mode (see

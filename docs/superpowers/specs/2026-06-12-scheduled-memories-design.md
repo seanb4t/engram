@@ -88,7 +88,7 @@ NotAfter *time.Time `json:"not_after,omitempty"`
 
 **Active predicate.** A record is *active* at instant `now` iff:
 
-```
+```text
 (NotBefore == nil || NotBefore <= now) && (NotAfter == nil || NotAfter > now)
 ```
 
@@ -99,7 +99,7 @@ NotAfter *time.Time `json:"not_after,omitempty"`
 `Store.Search` and `Store.List` append two composable `Must` conditions to the
 existing authz filter, using a server-supplied `now` (epoch seconds):
 
-```
+```text
 Must += Should[ NewRange("not_before", {Lte: now}), NewIsEmpty("not_before") ]  // not deferred
 Must += Should[ NewRange("not_after",  {Gt:  now}), NewIsEmpty("not_after")  ]  // not expired
 ```

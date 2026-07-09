@@ -1,6 +1,7 @@
 ---
 title: "Rules are always-shared with server-set immutable visibility; set_visibility rejects rules"
 ---
+
 <!-- markdownlint-disable MD013 -->
 <!-- adr-render: source=bd:engram-iedk; do not edit manually; use `/adr update engram-iedk` -->
 

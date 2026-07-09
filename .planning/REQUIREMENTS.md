@@ -123,6 +123,7 @@ Which phase covers which requirement. Retrospective — completed requirements a
 | REQ-connect-auth-posture | Phase 8 | Complete |
 
 **Coverage:**
+
 - Routed requirements: 24 total
 - Mapped to phases: 24 ✓
 - Unmapped: 0 ✓
@@ -130,5 +131,6 @@ Which phase covers which requirement. Retrospective — completed requirements a
 - Deferred (future milestone): 0 routed — genuine follow-ups (Connect write-lane + CSRF, session refresh rotation) are unrouted, pending a new milestone.
 
 ---
+
 *Requirements defined: 2026-07-07*
 *Last updated: 2026-07-08 — Phase 8 (REQ-connect-auth-posture / R1–R4) reconciled to shipped*

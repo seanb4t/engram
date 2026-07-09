@@ -1,6 +1,7 @@
 ---
 title: "Resolve short_id at the handler layer, not inside store methods"
 ---
+
 <!-- markdownlint-disable MD013 -->
 <!-- adr-render: source=bd:engram-02ta; do not edit manually; use `/adr update engram-02ta` -->
 

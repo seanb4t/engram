@@ -21,7 +21,7 @@ SPDX-License-Identifier: Apache-2.0
 
 ---
 
-### Task 1: Add `marked` + `dompurify` dependencies
+## Task 1: Add `marked` + `dompurify` dependencies
 
 **Model:** haiku (mechanical)
 

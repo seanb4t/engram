@@ -1,10 +1,10 @@
-## Conflict Detection Report
+# Conflict Detection Report
 
 Ingest of 50 classified planning docs (25 ADR @ precedence 0, all LOCKED; 25 SPEC @
 precedence 1). Cross-ref graph checked for cycles (3-color DFS, depth cap 50) — none found.
 No UNKNOWN/low-confidence docs. No PRDs (no competing acceptance variants possible).
 
-### BLOCKERS (0)
+## BLOCKERS (0)
 
 None. No two LOCKED ADRs contradict on a shared scope; the 25 ADRs cover disjoint decision
 scopes. Mode is `new` with no existing locked CONTEXT.md, so no ingest-vs-existing lock

@@ -87,6 +87,7 @@ No commit (prep only).
 Create the StarlightPage route with page-scoped tokens + width and a minimal hero, delete the splash MDX. After this task the homepage already has the sidebar — the core defect is fixed; later tasks add richness.
 
 **Files:**
+
 - Create: `docs-site/src/pages/index.astro`
 - Delete: `docs-site/src/content/docs/index.mdx`
 
@@ -185,6 +186,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"`
 ## Task 2: Neural-trace underlay
 
 **Files:**
+
 - Create: `docs-site/src/components/landing/NeuralTrace.astro`
 
 - [ ] **Step 1: Create the component**
@@ -241,6 +243,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"`
 ## Task 3: RunCommand (copy-to-clipboard island)
 
 **Files:**
+
 - Create: `docs-site/src/components/landing/RunCommand.astro`
 
 - [ ] **Step 1: Write the failing assertion**
@@ -344,6 +347,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"`
 Replaces the minimal hero from Task 1 with the full component, and wires the version badge from the release manifest at build time.
 
 **Files:**
+
 - Create: `docs-site/src/components/landing/Hero.astro`
 - Modify: `docs-site/src/pages/index.astro` (import + render Hero; remove inline hero markup)
 
@@ -520,6 +524,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"`
 ## Task 5: ConsoleShot (synthetic-data illustration)
 
 **Files:**
+
 - Create: `docs-site/src/components/landing/ConsoleShot.astro`
 - Modify: `docs-site/src/pages/index.astro` (render after Hero)
 
@@ -633,6 +638,7 @@ Add the import and place after `<Hero />`:
 ```astro
 import ConsoleShot from '../components/landing/ConsoleShot.astro';
 ```
+
 ```astro
     <Hero />
     <ConsoleShot />
@@ -654,6 +660,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"`
 ## Task 6: PathCards (3 audience LinkCards)
 
 **Files:**
+
 - Create: `docs-site/src/components/landing/PathCards.astro`
 - Modify: `docs-site/src/pages/index.astro`
 
@@ -725,6 +732,7 @@ const paths = [
 ```astro
 import PathCards from '../components/landing/PathCards.astro';
 ```
+
 ```astro
     <ConsoleShot />
     <PathCards />
@@ -746,6 +754,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"`
 ## Task 7: SeeItWork (store → search → result snippet)
 
 **Files:**
+
 - Create: `docs-site/src/components/landing/SeeItWork.astro`
 - Modify: `docs-site/src/pages/index.astro`
 
@@ -797,6 +806,7 @@ Create `docs-site/src/components/landing/SeeItWork.astro`:
 ```astro
 import SeeItWork from '../components/landing/SeeItWork.astro';
 ```
+
 ```astro
     <PathCards />
     <SeeItWork />
@@ -818,6 +828,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"`
 ## Task 8: FeatureCards (4 clickable LinkCards)
 
 **Files:**
+
 - Create: `docs-site/src/components/landing/FeatureCards.astro`
 - Modify: `docs-site/src/pages/index.astro`
 
@@ -889,6 +900,7 @@ const features = [
 ```astro
 import FeatureCards from '../components/landing/FeatureCards.astro';
 ```
+
 ```astro
     <SeeItWork />
     <FeatureCards />
@@ -910,6 +922,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"`
 ## Task 9: SiteFooter
 
 **Files:**
+
 - Create: `docs-site/src/components/landing/SiteFooter.astro`
 - Modify: `docs-site/src/pages/index.astro`
 
@@ -957,6 +970,7 @@ const links = [
 ```astro
 import SiteFooter from '../components/landing/SiteFooter.astro';
 ```
+
 ```astro
     <FeatureCards />
     <SiteFooter />
@@ -989,7 +1003,8 @@ Expected: green, no warnings about a duplicate `/` route or missing imports.
 Confirm every internal target rendered on the landing exists as a built route:
 
 Run:
-```
+
+```text
 cd docs-site
 for p in guides/quickstart guides/configure guides/deploy guides/plugin \
          reference/tools reference/auth reference/memory-record \
@@ -998,6 +1013,7 @@ for p in guides/quickstart guides/configure guides/deploy guides/plugin \
 done
 rg -o 'href="(/[^"]*)"' dist/index.html | sort -u
 ```
+
 Expected: every landing `href` to an internal route maps to an existing `dist/.../index.html`. No `MISSING`.
 
 - [ ] **Step 3: Sidebar present on the homepage, splash gone**
@@ -1008,11 +1024,14 @@ Expected: sidebar link present (`≥ 1`); `no-splash-ok`.
 - [ ] **Step 4: Visual + a11y pass in both themes (agent-browser)**
 
 Run (two terminals or background the first):
-```
+
+```text
 cd docs-site && pnpm preview   # serves dist at http://localhost:4321
 ```
+
 Then:
-```
+
+```text
 agent-browser open http://localhost:4321
 agent-browser snapshot            # confirm: sidebar groups visible; path/feature cards expose /url; Copy button present
 agent-browser eval "document.documentElement.dataset.theme='light'"
@@ -1020,6 +1039,7 @@ agent-browser screenshot /tmp/engram-landing-light.png
 agent-browser eval "document.documentElement.dataset.theme='dark'"
 agent-browser screenshot /tmp/engram-landing-dark.png
 ```
+
 Expected: in the snapshot, the four feature cards and three path cards are `link` nodes with real `/url`s (the original defect is gone); the neural-trace underlay and console illustration render legibly in **both** themes; content is capped/centered, not full-bleed; Copy button is keyboard-focusable.
 
 - [ ] **Step 5: Confirm inner-page width is unaffected (scope check)**
@@ -1034,10 +1054,12 @@ gofmt, actionlint, yamlfmt) — irrelevant to a docs-site-only change and they w
 not catch Astro issues. For this change run the docs-relevant gates instead:
 
 Run:
-```
+
+```text
 task fmt:dprint                 # dprint over the repo (formats .md/.astro/.css/.json per dprint.json)
 cd docs-site && pnpm astro check   # Astro/TS diagnostics for the new components
 ```
+
 Expected: both clean. If `dprint` reflows any landing file, re-run the relevant
 build assertion to confirm no markup regressed, then include the formatting in the
 final commit. (If `dprint.json` does not glob `.astro`, that's acceptable — `pnpm
@@ -1074,4 +1096,5 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"`
 | Accessibility (real links, aria-hidden decor, copy a11y) | 2,3,5,6,8,10§4 |
 | No broken links | 10§2 |
 | Build + lint green | 0, 10 |
+
 <!-- adr-capture: sha256=3fafbe6585b95c92; session=cli; ts=2026-06-13T21:40:50Z; adrs= -->

@@ -1,6 +1,7 @@
 ---
 title: "Generic param-map passthrough over embedder profiles for asymmetric/cloud embedders"
 ---
+
 <!-- markdownlint-disable MD013 -->
 <!-- adr-render: source=bd:engram-zyhq; do not edit manually; use `/adr update engram-zyhq` -->
 

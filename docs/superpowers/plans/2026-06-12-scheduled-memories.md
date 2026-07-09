@@ -22,10 +22,12 @@
 
 - **VCS:** jj-colocated. Commit with `jj commit -m "<conventional-commit>"` (see `references/vcs-preamble.md`). One logical change per commit.
 - **License header:** every new `.go` file MUST start with the two-line SPDX header (copy from any existing file):
+
   ```go
   // SPDX-License-Identifier: Apache-2.0
   // Copyright 2026 Sean Brandt
   ```
+
 - **Run store/server tests** against a live Qdrant: `export MEM_QDRANT_TEST_ADDR=localhost:6334` (or have Docker running for testcontainers). Tests `t.Skip` without one.
 - **Format/lint gate before each commit:** `task fmt && task lint` must be clean.
 
@@ -34,6 +36,7 @@
 ## Task 1: Add `NotBefore` / `NotAfter` fields and payload round-trip
 
 **Files:**
+
 - Modify: `internal/store/store.go` (`Memory` struct ~line 66; `payload` ~line 122; `fromPayload` ~line 199)
 - Test: `internal/store/store_test.go`
 
@@ -126,6 +129,7 @@ Expected: PASS.
 ## Task 2: Injectable `Store.now` clock via functional option
 
 **Files:**
+
 - Modify: `internal/store/store.go` (`Store` struct ~line 84; `New` ~line 90)
 - Test: `internal/store/store_test.go`
 
@@ -203,6 +207,7 @@ Expected: PASS. (No existing caller breaks — `New(c, coll)` still compiles via
 ## Task 3: Active-window recall gate in `Search` and `List`
 
 **Files:**
+
 - Modify: `internal/store/store.go` (`Search` ~line 319; `List` ~line 454; add helper near `ownerScopeFilter` ~line 296)
 - Test: `internal/store/store_test.go`
 
@@ -350,6 +355,7 @@ Expected: PASS (existing isolation tests use unwindowed records → all match vi
 ## Task 4: `Store.ListScheduled` — the inverse-window management view
 
 **Files:**
+
 - Modify: `internal/store/store.go` (add method + state constants after `List` ~line 479)
 - Test: `internal/store/store_test.go`
 
@@ -497,6 +503,7 @@ Expected: PASS.
 ## Task 5: `Store.PruneExpired` — operator filter-delete
 
 **Files:**
+
 - Modify: `internal/store/store.go` (add method near `DeleteAll` ~line 820)
 - Test: `internal/store/store_test.go`
 
@@ -605,6 +612,7 @@ Expected: PASS.
 ## Task 6: `schedule_memory` MCP tool
 
 **Files:**
+
 - Modify: `internal/server/tools.go` (add `scheduleArgs` + validation near `storeArgs` ~line 141; handler near `storeMemory` ~line 279; registration near line 444)
 - Test: `internal/server/tools_test.go`
 
@@ -801,6 +809,7 @@ Expected: PASS.
 ## Task 7: `list_scheduled` MCP tool
 
 **Files:**
+
 - Modify: `internal/server/tools.go` (add `listScheduledArgs` near `listArgs` ~line 152; handler near `listMemory` ~line 349; registration near line 456)
 - Test: `internal/server/tools_test.go`
 
@@ -917,6 +926,7 @@ Expected: PASS.
 ## Task 8: `engram prune-expired` CLI command
 
 **Files:**
+
 - Create: `cmd/engram/prune.go`
 - Test: covered by Task 5's `TestPruneExpired` (store layer). CLI wiring is validated by build + `engram prune-expired --help`.
 
@@ -1003,6 +1013,7 @@ Expected: PASS (already green from Task 5; confirms the method the CLI calls).
 ## Task 9: Documentation — memory contract + docs-site
 
 **Files:**
+
 - Modify: `CLAUDE.md` ("Memory contract (stable)" section)
 - Modify: `docs-site/src/content/docs/reference/tools.md` (tool summary table ~line 13 + per-tool `##` sections)
 

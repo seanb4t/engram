@@ -5,6 +5,7 @@
 3-color DFS cycle detection run over the `cross_refs` of all 31 ADRs (depth cap 50).
 
 **In-set edges** (both endpoints among the 31 ingested ADRs):
+
 - engram-8q3 → engram-u9v
 - engram-m4s8 → engram-ddiw
 
@@ -53,6 +54,7 @@ the sole registration path (remove the bundled `.mcp.json`). The Phase-7 baselin
 memory-curator client plugin was relocated into the repo as the *bundled* `skill/engram` plugin.
 
 These operate on different axes and are consistent:
+
 - "bundled plugin" = the `skill/engram` plugin is vendored/shipped inside the repo (packaging).
 - "no bundled MCP server" = that plugin does not ship a `.mcp.json` that auto-registers the MCP
   server; registration is performed explicitly by `/engram-setup` via `claude mcp add`.

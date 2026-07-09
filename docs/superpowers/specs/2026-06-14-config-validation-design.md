@@ -168,7 +168,7 @@ The plan picks one; this spec does not, and does not fix the double-load.
 
 ### Error shape (illustrative)
 
-```
+```text
 invalid configuration:
   ENGRAM_QDRANT_ADDR "": must be host:port
   ENGRAM_OPENAI_BASE_URL "ftp://x": must be an http(s) URL

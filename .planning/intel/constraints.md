@@ -10,6 +10,7 @@ the constraint here records the technical shape.
 ## api-contract
 
 ### CON-embedder-body-params — Query/document embedder request-body params
+
 - source: docs/superpowers/specs/2026-07-01-asymmetric-cloud-embedder-params-design.md
 - type: api-contract
 - content: Query and document embedding params are provider-agnostic JSON maps merged into
@@ -19,6 +20,7 @@ the constraint here records the technical shape.
 - governed-by: DEC-zyhq, DEC-378
 
 ### CON-engramservice-read-rpcs — EngramService Connect read API
+
 - source: docs/superpowers/specs/2026-06-09-engram-web-ui-design.md; docs/superpowers/specs/2026-06-10-engram-operator-console-spa-design.md
 - type: api-contract
 - content: The web console consumes a ConnectRPC `EngramService` v1 read API (Search/List/Get
@@ -27,6 +29,7 @@ the constraint here records the technical shape.
 - governed-by: DEC-8xe, DEC-0lu, DEC-bj6
 
 ### CON-recall-shape — Summary-by-default recall output
+
 - source: docs/superpowers/specs/2026-06-25-auto-summary-curated-memories-design.md
 - type: api-contract
 - content: search_memory/list_memory and Connect SearchMemories/ListMemories return
@@ -35,6 +38,7 @@ the constraint here records the technical shape.
 - governed-by: DEC-ambu
 
 ### CON-recall-paging — Cursor + date-window recall params
+
 - source: docs/superpowers/specs/2026-06-29-windowed-cursor-recall-design.md
 - type: api-contract
 - content: list_memory/search_memory/list_scheduled accept optional
@@ -43,6 +47,7 @@ the constraint here records the technical shape.
 - governed-by: DEC-1frj, DEC-ef28
 
 ### CON-tag-filter — AND-default tag pre-filter
+
 - source: (locked) docs/adr/engram-4xt7-tag-filtered-recall-hard-qdrant-filter-and-default.md
 - type: api-contract
 - content: The optional `tags` filter is a hard AND (contains-all) Qdrant pre-filter applied
@@ -54,6 +59,7 @@ the constraint here records the technical shape.
 ## schema
 
 ### CON-short-id-field — 10-char Crockford base32 short_id
+
 - source: docs/superpowers/specs/2026-07-06-short-id-handle-design.md
 - type: schema
 - content: Each memory record carries a server-minted `short_id`: a 10-char lowercase
@@ -62,6 +68,7 @@ the constraint here records the technical shape.
 - governed-by: DEC-zzq0, DEC-02ta
 
 ### CON-temporal-window — not_before / not_after epoch payloads
+
 - source: docs/superpowers/specs/2026-06-12-scheduled-memories-design.md
 - type: schema
 - content: Temporal validity is stored as epoch-second Qdrant payload fields `not_before`
@@ -70,6 +77,7 @@ the constraint here records the technical shape.
 - governed-by: DEC-90w, DEC-y1g
 
 ### CON-owner-payload — Owner authz key on every record
+
 - source: docs/superpowers/specs/2026-06-06-per-actor-memory-isolation-design.md; docs/superpowers/specs/2026-06-29-configurable-claim-owner-design.md
 - type: schema
 - content: Each record carries an `owner` payload set from a configurable OIDC claim (default
@@ -79,6 +87,7 @@ the constraint here records the technical shape.
 - governed-by: DEC-g37x, DEC-cgb
 
 ### CON-qdrant-payload-indexes — owner/scope/created_at indexes
+
 - source: docs/superpowers/specs/2026-06-29-windowed-cursor-recall-design.md
 - type: schema
 - content: Keyword indexes on owner/scope and a datetime index on created_at are created in
@@ -87,6 +96,7 @@ the constraint here records the technical shape.
 - governed-by: DEC-ef28
 
 ### CON-discovery-category — Discovery as 5th category, one collection
+
 - source: docs/superpowers/specs/2026-06-05-discovery-memory-type-design.md
 - type: schema
 - content: Discovery is a 5th category on the existing Memory record in the single Qdrant
@@ -99,6 +109,7 @@ the constraint here records the technical shape.
 ## protocol
 
 ### CON-authz-store-layer — Store-layer default-deny enforcement
+
 - source: docs/superpowers/specs/2026-06-06-per-actor-memory-isolation-design.md; docs/superpowers/specs/2026-06-08-typed-subject-authz-core-design.md
 - type: protocol
 - content: Authorization is enforced in internal/store via Qdrant read filters and owner-gate
@@ -107,6 +118,7 @@ the constraint here records the technical shape.
 - governed-by: DEC-cgb, DEC-12c
 
 ### CON-read-write-asymmetry — Shared grants read, never write
+
 - source: docs/superpowers/specs/2026-06-06-per-actor-memory-isolation-design.md
 - type: protocol
 - content: Sharing grants read access only; owners keep exclusive write/delete/visibility
@@ -115,6 +127,7 @@ the constraint here records the technical shape.
 - governed-by: DEC-kyz, DEC-iedk
 
 ### CON-not-found-uniformity — 404 for unauthorized id ops
+
 - source: docs/superpowers/specs/2026-06-06-per-actor-memory-isolation-design.md
 - type: protocol
 - content: All owner/visibility mismatches on id-addressed operations return the same
@@ -122,6 +135,7 @@ the constraint here records the technical shape.
 - governed-by: DEC-xa6
 
 ### CON-recall-gate-asymmetry — Recall gated, get_memory ungated
+
 - source: docs/superpowers/specs/2026-06-12-scheduled-memories-design.md
 - type: protocol
 - content: Temporal validity and isolation are enforced as Qdrant filter conditions on
@@ -129,6 +143,7 @@ the constraint here records the technical shape.
 - governed-by: DEC-y1g
 
 ### CON-mcp-transport-path — MCP at explicit path
+
 - source: (locked) docs/adr/engram-bj6-mcp-transport-at-explicit-configurable-path-mem-mcp-path-con.md
 - type: protocol
 - content: MCP StreamableHTTP transport mounts at an explicit configurable path (default
@@ -136,6 +151,7 @@ the constraint here records the technical shape.
 - governed-by: DEC-bj6
 
 ### CON-connect-auth-deferred — Interim anonymous Connect mount; deferred R1–R4
+
 - source: docs/superpowers/specs/2026-06-09-connect-auth-posture-addendum.md
 - type: protocol
 - content: The Connect API is mounted interim-anonymous into the single empty-owner bucket;
@@ -147,6 +163,7 @@ the constraint here records the technical shape.
 ## nfr
 
 ### CON-telemetry-otlp-only — OTLP-only export, no Prometheus scrape
+
 - source: docs/superpowers/specs/2026-06-07-observability-logging-telemetry-design.md
 - type: nfr
 - content: Metrics, traces, and logs export exclusively over OTLP gRPC to a collector (Grafana
@@ -154,6 +171,7 @@ the constraint here records the technical shape.
 - governed-by: DEC-dwi
 
 ### CON-telemetry-nonblocking — Telemetry never blocks startup
+
 - source: docs/superpowers/specs/2026-06-07-observability-logging-telemetry-design.md; docs/superpowers/specs/2026-06-11-telemetry-at-every-seam-design.md
 - type: nfr
 - content: Telemetry setup failure or a missing OTLP endpoint yields no-op providers; the
@@ -162,6 +180,7 @@ the constraint here records the technical shape.
 - governed-by: DEC-uxh, DEC-dwi
 
 ### CON-config-fatal-legacy — Fatal legacy-env guard, no silent fallback
+
 - source: docs/superpowers/specs/2026-06-14-engram-config-prefix-koanf-design.md; docs/superpowers/specs/2026-06-14-config-validation-design.md
 - type: nfr
 - content: Config is unified under `ENGRAM_` via koanf with a single field registry; retired
@@ -170,6 +189,7 @@ the constraint here records the technical shape.
 - governed-by: DEC-jgq, DEC-irq
 
 ### CON-ui-real-dom-tests — Real-Chromium UI test gate
+
 - source: docs/superpowers/specs/2026-06-27-vitest-browser-mode-ui-test-unification-design.md
 - type: nfr
 - content: UI/sanitizer tests run under vitest 4 browser mode (real Chromium via Playwright),
@@ -178,6 +198,7 @@ the constraint here records the technical shape.
 - status-note: SPEC Status DRAFT.
 
 ### CON-docs-static-only — Docs site static, no SSR
+
 - source: docs/superpowers/specs/2026-06-09-docs-site-astro-starlight-cloudflare-design.md
 - type: nfr
 - content: The Astro Starlight docs-site ships as static assets via a Cloudflare Workers

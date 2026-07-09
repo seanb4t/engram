@@ -35,7 +35,7 @@ inventory and will be re-materialized as implementation beads by `plan-to-beads`
   the four category hues as accents; retire `eg-*`, raw inline styles, and the
   custom `--cat-*` layer.
 - Preserve the existing data architecture: svelte-query v6 (runes) + URL-as-state
-  + the Connect API (`listScopes` / `listMemories` / `getMemory`), and the
+  - the Connect API (`listScopes` / `listMemories` / `getMemory`), and the
   server's existing offset pagination.
 - No backend/proto changes.
 

@@ -73,7 +73,7 @@ would too. There is no single place that owns "what are engram's config keys."
 
 ### The `internal/config` package
 
-```
+```text
 internal/config/
   config.go      // Config struct (+ sub-structs), Load(), Unmarshal
   registry.go    // the field registry: the single source of truth
@@ -194,7 +194,7 @@ func CheckLegacy(environ []string) error
 Derived from `registry` (the `Legacy` column) plus the command-local extras. On any
 hit it returns a multi-line error:
 
-```
+```text
 Error: retired environment variables are set and no longer read:
   MEM_LITELLM_URL  → ENGRAM_OPENAI_BASE_URL
   MEM_QDRANT_ADDR  → ENGRAM_QDRANT_ADDR
@@ -207,7 +207,7 @@ surfaces cleanly. The whole guard is deleted at 1.0 by removing the `Legacy` col
 
 ## Data flow
 
-```
+```text
                 ┌─ defaults (registry) ─┐
 ENGRAM_* env ───┤  env.Provider         ├─ koanf ─ Unmarshal ─→ *config.Config
 --flags ────────┘  posflag.Provider     ┘                          │

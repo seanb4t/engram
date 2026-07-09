@@ -119,7 +119,7 @@ after the read seam starts reading `Extra["owner_claim"]`:
 
 The read seam `SubjectFromTokenInfo` itself changes as:
 
-```
+```text
 ti == nil                        -> Anonymous()                  // auth disabled; unchanged
 owner-claim present & non-empty  -> Authenticated(claimValue)
 owner-claim missing or empty     -> error  (FAIL CLOSED -> 401/403)
@@ -359,7 +359,7 @@ be surfaced everywhere a human or agent reads the history:
 - **Conventional-commit footer** on the implementing commit(s) and the squash-
   merge title body MUST carry a `BREAKING CHANGE:` trailer, e.g.:
 
-  ```
+  ```text
   BREAKING CHANGE: owner (authz key) now derives from a configurable OIDC claim
   (ENGRAM_OWNER_CLAIM, default `email`) instead of `sub`. Existing records keyed
   on the old sub become invisible until you run:

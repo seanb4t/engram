@@ -19,12 +19,14 @@ Copyright 2026 Sean Brandt
 ## Conventions (read before Task 1)
 
 **New Go files** start with the two-line header:
+
 ```go
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sean Brandt
 ```
 
 **Real test harness — use these, do NOT invent names:**
+
 - `testStore(t) *Store` (`internal/store/store_test.go:105`) — a live scratch-collection store. Store tests skip without a reachable Qdrant, same as the existing store tests.
 - `testDeps(t) *deps` (`internal/server/tools_test.go:179`) — server `deps` with a real store + embedder.
 - `authedContext(t, sub string) context.Context` (`internal/server/tools_test.go:219`) — context carrying a verified subject/owner.
@@ -45,6 +47,7 @@ Copyright 2026 Sean Brandt
 **Model:** haiku
 
 **Files:**
+
 - Create: `internal/shortid/shortid.go`
 - Test: `internal/shortid/shortid_test.go`
 
@@ -176,6 +179,7 @@ Run: `go test ./internal/shortid/...` → PASS
 **Model:** haiku
 
 **Files:**
+
 - Modify: `internal/store/store.go` (Memory struct :79, `payload()` :254, `fromPayload()` :302)
 - Test: `internal/store/store_test.go`
 
@@ -205,6 +209,7 @@ Expected: FAIL — `m.ShortID` undefined (compile error).
 - [ ] **Step 3: Implement**
 
 In the `Memory` struct (store.go:79), after the `ID` field:
+
 ```go
 	// ShortID is a short, case-insensitive Crockford base32 handle (see
 	// internal/shortid) minted alongside ID and usable anywhere an id is
@@ -214,14 +219,17 @@ In the `Memory` struct (store.go:79), after the `ID` field:
 ```
 
 In `payload()` (store.go:254), add a **guarded** write after the map literal (near the `SummaryModel` guard, store.go:282) — NOT an unconditional entry in the literal:
+
 ```go
 	if m.ShortID != "" {
 		p["short_id"] = m.ShortID
 	}
 ```
+
 > **Why guarded:** `qdrant.NewValueMap` turns a Go `""` into an explicit `StringValue("")`, which `NewIsEmpty` treats as *present* (see `ownerlessFilter` store.go:1354 + the separate `CountAnonymousBucket`). An unconditional `short_id: ""` would make `BackfillShortIDs`' `NewIsEmpty("short_id")` filter **miss** every legacy record — including a legacy record reindexed *before* backfill. Omitting the empty key keeps such records genuinely key-absent and therefore matchable.
 
 In `fromPayload()` (store.go:302), after the `scope` block:
+
 ```go
 	if v, ok := p["short_id"]; ok {
 		m.ShortID = v.GetStringValue()
@@ -238,6 +246,7 @@ In `fromPayload()` (store.go:302), after the `scope` block:
 **Model:** haiku
 
 **Files:**
+
 - Modify: `internal/store/store.go` (`ensureIndexes()` :224)
 - Test: `internal/store/store_test.go`
 
@@ -271,6 +280,7 @@ Expected: FAIL — `short_id` absent from the payload schema.
 - [ ] **Step 3: Implement**
 
 In `ensureIndexes()` (store.go:230), add to the `idxs` slice:
+
 ```go
 		{"short_id", qdrant.FieldType_FieldTypeKeyword, nil},
 ```
@@ -285,6 +295,7 @@ In `ensureIndexes()` (store.go:230), add to the `idxs` slice:
 **Model:** sonnet
 
 **Files:**
+
 - Modify: `internal/store/store.go` (sentinel near other `Err*`; method near `Get` :1003; add imports `strings`, `github.com/google/uuid`, `github.com/seanb4t/engram/internal/shortid` if absent)
 - Test: `internal/store/store_test.go`
 
@@ -351,6 +362,7 @@ Expected: FAIL — `ResolvePointID` / `ErrAmbiguousShortID` undefined.
 - [ ] **Step 3: Implement**
 
 Add the sentinel beside `ErrNotFound` / `ErrInvalidArgument`:
+
 ```go
 // ErrAmbiguousShortID means a short id matched more than one record — an
 // invariant violation (MintShortID enforces global uniqueness), surfaced rather
@@ -359,6 +371,7 @@ var ErrAmbiguousShortID = errors.New("ambiguous short id")
 ```
 
 Add the method near `Get` (store.go:1003):
+
 ```go
 // ResolvePointID maps a caller-supplied identifier — a full UUID (any form
 // uuid.Parse accepts) or a short id — to the canonical Qdrant point UUID. It is
@@ -407,6 +420,7 @@ func (s *Store) ResolvePointID(ctx context.Context, idOrShort string) (id string
 **Model:** sonnet
 
 **Files:**
+
 - Modify: `internal/store/store.go` (add `mintCandidate` field to the `Store` struct; add `MintShortID` near `CountOwnerless` :1365)
 - Test: `internal/store/store_test.go`
 
@@ -460,6 +474,7 @@ Expected: FAIL — `MintShortID` / `Store.mintCandidate` undefined.
 - [ ] **Step 3: Implement**
 
 Add a field to the `Store` struct (near the `client` field, store.go:154):
+
 ```go
 	// mintCandidate generates a short_id candidate; nil defaults to shortid.New.
 	// Overridable in tests to force MintShortID's collision-retry branch.
@@ -467,6 +482,7 @@ Add a field to the `Store` struct (near the `client` field, store.go:154):
 ```
 
 Add the method:
+
 ```go
 // MintShortID returns a short id not currently present on any record, retrying
 // on the (astronomically unlikely at 50 bits) global collision. When seen is
@@ -517,6 +533,7 @@ func (s *Store) MintShortID(ctx context.Context, seen map[string]struct{}) (stri
 **Model:** sonnet
 
 **Files:**
+
 - Modify: `internal/server/tools.go` (`storeMemory` :501, `scheduleMemory` :524, the two tool handlers ~:780-789)
 - Modify (call-site ripple — REQUIRED, else the `internal/server` test build breaks): `internal/server/embed_wiring_test.go:52`; `internal/server/tools_test.go:252,265,287,293,300,307,313,333,367,1043`
 - Test: `internal/server/tools_test.go`
@@ -552,6 +569,7 @@ Expected: FAIL — `storeMemory` returns 2 values (compile error against the 3-v
 - [ ] **Step 3: Implement production change**
 
 `storeMemory` (tools.go:501):
+
 ```go
 func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, string, error) {
 	subj, err := subjectFromContext(ctx)
@@ -573,11 +591,13 @@ func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, string, er
 Apply the same shape to `scheduleMemory` (tools.go:524): signature `(string, string, error)`; embed, then `m.NotBefore/NotAfter` are already set before embed in the current code — keep window parsing first, embed, then mint, then `return m.ID, m.ShortID, d.st.Upsert(...)`.
 
 Tool handlers (tools.go ~:783,789):
+
 ```go
 	// store_memory
 	id, sid, err := d.storeMemory(ctx, a)
 	return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id, "short_id": sid}, err
 ```
+
 ```go
 	// schedule_memory
 	id, sid, err := d.scheduleMemory(ctx, a)
@@ -587,6 +607,7 @@ Tool handlers (tools.go ~:783,789):
 - [ ] **Step 4: Fix the existing call sites (ripple)**
 
 Update each 2-value call to discard the new short id:
+
 - `embed_wiring_test.go:52`: `_, err := d.storeMemory(...)` → `_, _, err := d.storeMemory(...)`
 - `tools_test.go:252,287,293,300,307`: `if _, err := d.scheduleMemory(...)` → `if _, _, err := d.scheduleMemory(...)`
 - `tools_test.go:265,367`: `id, err := d.storeMemory(...)` → `id, _, err := d.storeMemory(...)`
@@ -608,6 +629,7 @@ Expected: PASS; the whole `internal/server` package compiles (ripple fixed).
 **Model:** opus
 
 **Files:**
+
 - Modify: `internal/server/tools.go` (`storeDiscovery` :544, its tool handler ~:848; add `"errors"` to the import block if absent — `uuid`/`strings` are already imported)
 - Modify (ripple): `internal/server/tools_test.go:633,656` (`id, err :=` / `id2, err :=` → 3-value)
 - Test: `internal/server/tools_test.go`
@@ -656,6 +678,7 @@ Expected: FAIL — `storeDiscovery` returns 2 values (compile error); no resolve
 - [ ] **Step 3: Implement**
 
 Rewrite `storeDiscovery` (tools.go:544) to `(id, shortID string, err error)`:
+
 ```go
 func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string, string, error) {
 	if err := validateStoreDiscovery(a); err != nil {
@@ -722,9 +745,11 @@ func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string
 	return m.ID, m.ShortID, d.st.Upsert(ctx, m, vec)
 }
 ```
+
 (This also switches the discovery timestamp to `d.clock()`, matching `storeMemory`.)
 
 Tool handler (tools.go ~:848):
+
 ```go
 	id, sid, err := d.storeDiscovery(ctx, a)
 	return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id, "short_id": sid}, err
@@ -742,6 +767,7 @@ Tool handler (tools.go ~:848):
 **Model:** opus
 
 **Files:**
+
 - Modify: `internal/server/tools.go` (`get_memory` :810, `delete_memory` :826, `set_visibility` :858, `updateMemory` :727)
 - Test: `internal/server/tools_test.go`
 
@@ -856,16 +882,19 @@ func (d *deps) setVisibility(ctx context.Context, a setVisibilityArgs) error {
 ```
 
 Rewire the three closures to delegate (they become one-liners), e.g. `get_memory`:
+
 ```go
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
 			m, err := d.getMemory(ctx, a)
 			return textResult(m.Content), m, err
 		})
 ```
+
 `delete_memory` → `err := d.deleteMemory(ctx, a); return textResult("deleted"), nil, err`.
 `set_visibility` → `err := d.setVisibility(ctx, a); return textResult("visibility updated"), nil, err`.
 
 `updateMemory` (:727) — immediately after the existing `subjectFromContext(ctx)` call and before `FetchForUpdate`, resolve and use `pid` everywhere the body currently uses `a.ID`:
+
 ```go
 	pid, err := d.st.ResolvePointID(ctx, a.ID)
 	if err != nil {
@@ -885,6 +914,7 @@ Rewire the three closures to delegate (they become one-liners), e.g. `get_memory
 **Model:** sonnet
 
 **Files:**
+
 - Modify: `proto/engram/v1/engram.proto` (Memory message)
 - Regenerate: `gen/` (via `task proto:gen`)
 - Modify: `internal/server/connectapi.go` (`GetMemory` :173, `memoryToProto`)
@@ -924,12 +954,15 @@ Expected: FAIL — `Memory.ShortId` undefined in generated types; GetMemory does
 - [ ] **Step 3: Implement**
 
 `proto/engram/v1/engram.proto`, in `message Memory` after `float score = 17;`:
+
 ```proto
   string short_id = 18;
 ```
+
 Regenerate + verify no drift: `task proto:gen`.
 
 `connectapi.go` `GetMemory` (:173) — resolve before the read:
+
 ```go
 	pid, err := a.d.st.ResolvePointID(ctx, req.Msg.Id)
 	if err != nil {
@@ -945,6 +978,7 @@ Regenerate + verify no drift: `task proto:gen`.
 ```
 
 `memoryToProto` (connectapi.go) — add to the constructed `*engramv1.Memory`:
+
 ```go
 		ShortId: m.ShortID,
 ```
@@ -959,6 +993,7 @@ Regenerate + verify no drift: `task proto:gen`.
 **Model:** haiku
 
 **Files:**
+
 - Modify: `internal/server/summary.go` (`recallView` :40, `toRecallView` :88)
 - Test: `internal/server/summary_test.go`
 
@@ -979,10 +1014,13 @@ func TestRecallViewCarriesShortID(t *testing.T) {
 - [ ] **Step 3: Implement**
 
 `recallView` (summary.go:40), after `ID`:
+
 ```go
 	ShortID string `json:"short_id,omitempty"`
 ```
+
 `toRecallView` (summary.go:88), in the returned literal:
+
 ```go
 		ID: m.ID, ShortID: m.ShortID, Summary: summary, SummarySource: string(m.SummarySource), Truncated: truncated,
 ```
@@ -997,6 +1035,7 @@ func TestRecallViewCarriesShortID(t *testing.T) {
 **Model:** opus
 
 **Files:**
+
 - Modify: `internal/store/store.go` (`missingShortIDFilter` + `BackfillShortIDs`, near `RemapOwner` :1535)
 - Create: `cmd/engram/backfill.go`
 - Test: `internal/store/store_test.go`, `cmd/engram/backfill_test.go`
@@ -1215,6 +1254,7 @@ func init() {
 **Model:** sonnet
 
 **Files:**
+
 - Modify: `internal/server/tools.go` (tool `Description` strings + `idArgs.ID` jsonschema)
 - Modify: `skill/engram/hooks/session-start-memory-recall`
 - Modify: `skill/engram/skills/curating-memory/SKILL.md`, `.../discovering/SKILL.md`, `.../migrating-from-beads/SKILL.md`, `.../promoting-memory/SKILL.md`
@@ -1239,11 +1279,13 @@ func init() {
 **Model:** haiku
 
 **Files:**
+
 - Modify: `docs-site/src/content/docs/reference/tools.md`, `.../reference/memory-record.md`, `.../guides/upgrade.md`
 
 - [ ] **Step 1: `reference/tools.md`.** `get_memory`/`update_memory`/`delete_memory` id-argument rows: "The UUID **or short_id** of the memory…". `store_memory`/`schedule_memory`/`store_discovery` returns: note the response includes `short_id` alongside `id`.
 
 - [ ] **Step 2: `reference/memory-record.md`.** Add a field row next to the ID row:
+
 ```markdown
 | Short ID | `short_id` | string (Crockford base32) | server | Short, case-insensitive handle; accepted anywhere an id is, minted on creation |
 ```

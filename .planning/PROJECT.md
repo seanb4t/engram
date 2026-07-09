@@ -87,26 +87,31 @@ Implementation plans behind each phase are cross-referenced in
 ### Phase 1 — Authorization & Isolation
 
 #### DEC-cgb — Enforce per-actor authorization in the store layer, not in handlers — [LOCKED]
+
 - **Source:** docs/adr/engram-cgb-enforce-per-actor-authorization-store-layer-not-handlers.md
 - **Decision:** Per-actor authorization is enforced inside `internal/store` via Qdrant read filters and owner-gate primitives, not in MCP handlers.
 - **Scope:** internal/store, Qdrant read filters, authorization, MCP tool handlers, owner isolation
 
 #### DEC-g37x — Use configurable OIDC claim as record owner (default: email) — [LOCKED]
+
 - **Source:** docs/adr/engram-g37x-use-configurable-oidc-claim-as-record-owner-default-email.md
 - **Decision:** The record authz owner key is a configurable OIDC claim (default `email`, via `ENGRAM_OWNER_CLAIM`) so ownership survives IdP `sub` rotation.
 - **Scope:** owner authz key, ENGRAM_OWNER_CLAIM, OIDC claim resolution, migrate-remap-owner, session cookie sealing
 
 #### DEC-kyz — Sharing grants read but never write (read/write gate asymmetry) — [LOCKED]
+
 - **Source:** docs/adr/engram-kyz-sharing-grants-read-but-never-write-read-write-gate-asymmetr.md
 - **Decision:** Access primitives are asymmetric — sharing grants read access only; owners retain exclusive write/delete/visibility control.
 - **Scope:** getReadable, getWritable, ownedOrAbsent, DeleteAll, shared visibility, id-addressed store ops, authz gates
 
 #### DEC-xa6 — Return 404 not-found for unauthorized id-addressed operations — [LOCKED]
+
 - **Source:** docs/adr/engram-xa6-return-404-not-found-unauthorized-id-addressed-operations.md
 - **Decision:** All owner/visibility mismatches return the same not-found error as a missing id, preventing cross-actor existence leaks.
 - **Scope:** get_memory, update_memory, delete_memory, set_visibility, discovery overwrite, ownership authz, ErrNotFound
 
 #### DEC-12c — Represent authz Subject as a sealed Go interface — [LOCKED]
+
 - **Source:** docs/adr/engram-12c-represent-authz-subject-as-sealed-go-interface.md
 - **Decision:** Authz caller identity is modeled as a sealed Go interface with default-deny exhaustive type switches in the store layer.
 - **Scope:** internal/store, authz Subject, anonymous/authenticated variants, store enforcement gates, Qdrant owner payload
@@ -114,26 +119,31 @@ Implementation plans behind each phase are cross-referenced in
 ### Phase 2 — Recall Semantics
 
 #### DEC-ambu — Recall returns summary by default with full-content opt-in — [LOCKED]
+
 - **Source:** docs/adr/engram-ambu-recall-returns-summary-by-default-full-content-opt.md
 - **Decision:** Search/list recall returns summary-shaped output by default with a `full=true` opt-in for full content; `get_memory` is unchanged.
 - **Scope:** search_memory, list_memory, get_memory, Connect SearchMemories/ListMemories, memory contract, web UI
 
 #### DEC-4xt7 — Tag-filtered recall: hard Qdrant filter, AND-default — [LOCKED]
+
 - **Source:** docs/adr/engram-4xt7-tag-filtered-recall-hard-qdrant-filter-and-default.md
 - **Decision:** The optional `tags` filter on search_memory/list_memory is a hard AND (contains-all) Qdrant pre-filter composed onto the authz envelope.
 - **Scope:** search_memory, list_memory, Store.Search, Store.List, Qdrant tag filter, tags recall dimension
 
 #### DEC-y1g — Gate recall via Qdrant filter; leave get_memory ungated — [LOCKED]
+
 - **Source:** docs/adr/engram-y1g-gate-recall-via-qdrant-filter-leave-get-memory-ungated.md
 - **Decision:** Temporal validity is enforced as Qdrant filter conditions on Search/List, while get_memory and by-id paths stay ungated for record management.
 - **Scope:** Qdrant filter, Search, List, get_memory, temporal validity gate, store layer
 
 #### DEC-1frj — Boundary id-set cursor with half-open date window for recall — [LOCKED]
+
 - **Source:** docs/adr/engram-1frj-boundary-id-set-cursor-half-open-date-window-recall.md
 - **Decision:** Adopt an opaque boundary id-set cursor over `created_at` with a half-open date window for deterministic O(limit)-per-page recall paging.
 - **Scope:** list_memory, MCP recall paging, cursor pagination, date-window recall, Connect ListMemories API, Qdrant ordering
 
 #### DEC-ef28 — Index owner/scope/created_at as Qdrant payload indexes — [LOCKED]
+
 - **Source:** docs/adr/engram-ef28-index-owner-scope-created-at-as-qdrant-payload-indexes.md
 - **Decision:** Create keyword and datetime Qdrant payload indexes on owner/scope/created_at, retiring scanCap and the approximate flag for exact server-side Count and filtering.
 - **Scope:** Qdrant payload indexes, List/ListScheduled/ListScopes, ensureCollection, owner authz filtering, created_at date-range queries
@@ -141,27 +151,32 @@ Implementation plans behind each phase are cross-referenced in
 ### Phase 3 — Memory Kinds & Tools
 
 #### DEC-2bv — Discovery is a 5th category in the single Memory collection — [LOCKED]
+
 - **Source:** docs/adr/engram-2bv-discovery-is-5th-category-single-memory-collection.md
 - **Decision:** Discovery is added as a 5th category on the existing Memory record in one Qdrant collection rather than a separate collection.
 - **Scope:** discovery category, Memory record, Qdrant collection, internal/store/store.go, query-time isolation filter
 
 #### DEC-90w — Add schedule_memory/list_scheduled tools; keep store_memory windowless — [LOCKED]
+
 - **Source:** docs/adr/engram-90w-add-schedule-memory-list-scheduled-tools-keep-store-memory-w.md
 - **Decision:** Add dedicated `schedule_memory` and `list_scheduled` MCP tools rather than adding temporal window params to `store_memory`.
 - **Scope:** schedule_memory, list_scheduled, store_memory, MCP tool surface, temporal validity windows
 
 #### DEC-iedk — Rules are always-shared with server-set immutable visibility; set_visibility rejects rules — [LOCKED]
+
 - **Source:** docs/adr/engram-iedk-rules-are-always-shared-server-set-immutable-visibility-set.md
 - **Decision:** Rule-category memories are server-set to `shared` and immutable; the `set_visibility` handler rejects any call targeting a rule.
 - **Scope:** rule memory kind, set_visibility MCP handler, visibility, shared-read grant, GetReadable
 - **Relates to:** DEC-kyz
 
 #### DEC-zzq0 — Encode short_id as 10-char Crockford base32 — [LOCKED]
+
 - **Source:** docs/adr/engram-zzq0-encode-short-id-as-10-char-crockford-base32.md
 - **Decision:** Encode memory record `short_id` as a 10-char lowercase Crockford base32 token instead of ULID or Sqids.
 - **Scope:** short_id, memory records, Crockford base32 encoding, Qdrant lookup
 
 #### DEC-02ta — Resolve short_id at the handler layer, not inside store methods — [LOCKED]
+
 - **Source:** docs/adr/engram-02ta-resolve-short-id-at-handler-layer-not-inside-store-methods.md
 - **Decision:** Resolve `short_id` to UUID via a shared `Store.ResolvePointID` method called from each by-id handler rather than inside store methods.
 - **Scope:** short_id resolution, Store.ResolvePointID, MCP by-id tools, Connect GetMemory RPC, ownership gates
@@ -169,12 +184,14 @@ Implementation plans behind each phase are cross-referenced in
 ### Phase 4 — Embedder
 
 #### DEC-378 — Name embedder connection vars by protocol, not implementation — [LOCKED]
+
 - **Source:** docs/adr/engram-378-name-embedder-connection-vars-by-protocol-not-implementation.md
 - **Decision:** Rename embedder connection env vars from `MEM_LITELLM_*` to `ENGRAM_OPENAI_BASE_URL`/`ENGRAM_OPENAI_API_KEY`, naming the wire protocol not the vendor.
 - **Scope:** embedder, environment variables, ENGRAM_OPENAI_BASE_URL, ENGRAM_OPENAI_API_KEY, OpenAI-compatible /v1/embeddings API, embed.New
 - **Note:** Also realizes the embedder half of REQ-config-prefix-koanf (Phase 5).
 
 #### DEC-zyhq — Generic param-map passthrough over embedder profiles for asymmetric/cloud embedders — [LOCKED]
+
 - **Source:** docs/adr/engram-zyhq-generic-param-map-passthrough-over-embedder-profiles-asymmet.md
 - **Decision:** Expose query/document embedding params as raw provider-agnostic JSON maps (`ENGRAM_EMBED_QUERY_PARAMS`/`ENGRAM_EMBED_DOCUMENT_PARAMS`) merged into the /v1/embeddings body, instead of per-provider profiles.
 - **Scope:** embedder, embed.Client, ENGRAM_EMBED_QUERY_PARAMS, ENGRAM_EMBED_DOCUMENT_PARAMS, /v1/embeddings request body, cloud/gateway embedders
@@ -182,16 +199,19 @@ Implementation plans behind each phase are cross-referenced in
 ### Phase 5 — Config & Transport
 
 #### DEC-jgq — Unify config under ENGRAM_ prefix via koanf internal/config — [LOCKED]
+
 - **Source:** docs/adr/engram-jgq-unify-config-under-engram-prefix-via-koanf-internal-config.md
 - **Decision:** Introduce `internal/config` (koanf v2) with a single field registry owning all `ENGRAM_` keys, retiring scattered EnvOr/getenv reads and the `MEM_` prefix.
 - **Scope:** internal/config, koanf, ENGRAM_ env vars, cmd/engram, server.EnvOr, CLI flags
 
 #### DEC-irq — Breaking config renames ship with a fatal legacy-env startup guard — [LOCKED]
+
 - **Source:** docs/adr/engram-irq-breaking-config-renames-ship-fatal-legacy-env-startup-guard.md
 - **Decision:** Retired `MEM_*` env vars trigger a fatal registry-derived startup guard (`config.CheckLegacy`) rather than a silent fallback or dual-read shim.
 - **Scope:** config.CheckLegacy, field registry, MEM_* env vars, PersistentPreRunE, startup guard
 
 #### DEC-bj6 — MCP transport at explicit configurable path; console at root when UI enabled — [LOCKED]
+
 - **Source:** docs/adr/engram-bj6-mcp-transport-at-explicit-configurable-path-mem-mcp-path-con.md
 - **Decision:** Mount the MCP StreamableHTTP transport at an explicit configurable path (default `/mcp`) instead of the root catch-all; the console takes root when the UI is enabled.
 - **Scope:** MCP transport, MEM_MCP_PATH, HTTP routing, web console/UI, Helm chart memory.mcpPath, mountMCPRoutes seam
@@ -199,11 +219,13 @@ Implementation plans behind each phase are cross-referenced in
 ### Phase 6 — Telemetry & Observability
 
 #### DEC-dwi — Export telemetry via OTLP only; omit a Prometheus scrape endpoint — [LOCKED]
+
 - **Source:** docs/adr/engram-dwi-export-telemetry-via-otlp-only-omit-prometheus-scrape-endpoi.md
 - **Decision:** Export metrics, traces, and logs exclusively over OTLP gRPC to a collector; add no Prometheus `/metrics` scrape endpoint.
 - **Scope:** telemetry, OTLP gRPC exporter, OpenTelemetry Collector, Prometheus /metrics endpoint, Grafana LGTM backend, Helm chart
 
 #### DEC-uxh — Telemetry is never a hard server startup dependency — [LOCKED]
+
 - **Source:** docs/adr/engram-uxh-telemetry-is-never-hard-server-startup-dependency.md
 - **Decision:** A telemetry setup failure or missing OTLP endpoint yields no-op providers and never aborts engram server startup.
 - **Scope:** telemetry, OTLP exporter, server startup, Helm chart defaults, observability subsystem
@@ -211,16 +233,19 @@ Implementation plans behind each phase are cross-referenced in
 ### Phase 7 — Web UI, Docs Site & Distribution
 
 #### DEC-8xe — Adopt ConnectRPC and protobuf/buf for the web UI API — [LOCKED]
+
 - **Source:** docs/adr/engram-8xe-adopt-connectrpc-and-protobuf-buf-web-ui-api.md
 - **Decision:** Adopt ConnectRPC with the protobuf/buf toolchain scoped to the web-UI API, reversing the prior "no protobuf" convention. MCP core stays as-is.
 - **Scope:** ConnectRPC, protobuf, buf toolchain, web-UI API, connect-go, connect-es, MCP core
 
 #### DEC-0lu — SvelteKit adapter-static SPA vendored via go:embed, SSR dropped — [LOCKED]
+
 - **Source:** docs/adr/engram-0lu-sveltekit-adapter-static-spa-vendored-via-go-embed-ssr-dropp.md
 - **Decision:** Build the engram frontend as a SvelteKit adapter-static SPA vendored via `go:embed`, dropping SSR entirely.
 - **Scope:** frontend, SvelteKit, go:embed, SPA, BFF, engram binary, connect-es client
 
 #### DEC-ttb — Deploy docs-site via Workers Static Assets without an SSR adapter — [LOCKED]
+
 - **Source:** docs/adr/engram-ttb-deploy-docs-site-via-workers-static-assets-without-ssr-adapt.md
 - **Decision:** Serve the Astro Starlight docs-site as static assets via a Cloudflare Workers assets binding, with no SSR adapter or worker script.
 - **Scope:** docs-site, Cloudflare Workers Static Assets, Astro Starlight, wrangler.jsonc, @astrojs/cloudflare adapter
@@ -232,22 +257,26 @@ grain by a core decision above — they add no new product scope. Full text live
 and `.planning/intel/merge-adrs/decisions.md`; the `refines →` note names the core lock elaborated.
 
 **Phase 2 — Recall Semantics**
+
 - **DEC-4y7p** — Explicit-first memory summary; missing ones filled by an offline `engram summarize-missing` sweep, never on the write path. *(refines DEC-ambu)* — `docs/adr/engram-4y7p-explicit-first-memory-summary-offline-operator-auto-fill.md`
 - **DEC-ddiw** — Reject `update_memory` on content change when a client-authored summary is left unaddressed; auto-clear an auto summary instead. *(refines DEC-ambu)* — `docs/adr/engram-ddiw-reject-update-memory-content-change-unaddressed-client-summa.md`
 - **DEC-ufz** — Soft-hide expired records at the recall gate; reclaim storage only via explicit `engram prune-expired`. *(refines DEC-y1g)* — `docs/adr/engram-ufz-soft-hide-expired-records-at-recall-opt-prune-expired-storag.md`
 - **DEC-c0m** — Inject the `Store` clock via a `WithClock` functional option; keep public signatures stable. *(refines DEC-y1g)* — `docs/adr/engram-c0m-inject-store-clock-via-withclock-option-keep-public-signatur.md`
 
 **Phase 3 — Memory Kinds & Tools**
+
 - **DEC-0gy** — Dedicated `store_discovery`/`search_discovery` tools rather than overloading `store_memory`. *(refines DEC-2bv)* — `docs/adr/engram-0gy-dedicated-store-discovery-search-discovery-tools-not-overloa.md`
 - **DEC-3l0** — Surface raw citation-pin/`created_at` aging signals for discovery trust; no server-computed freshness verdict. *(refines DEC-2bv)* — `docs/adr/engram-3l0-graceful-decay-over-binary-staleness-discovery-trust.md`
 - **DEC-d386** — Session-start surfaces rules as a one-line-per-rule progressive-disclosure index via `list_rules`. *(refines DEC-iedk/DEC-ambu)* — `docs/adr/engram-d386-session-start-surfaces-rules-as-progressive-disclosure-index.md`
 - **DEC-m4s8** — Reject malformed rule summaries (newline / >256 B / cleared); never silently normalize. *(refines DEC-iedk, DEC-ddiw)* — `docs/adr/engram-m4s8-reject-malformed-rule-summaries-newline-oversize-cleared-nev.md`
 
 **Phase 5 — Config & Transport**
+
 - **DEC-wtw** — Keep `config.Load` assembly-only; check well-formedness via a separate pure `Config.Validate()`. *(refines DEC-jgq)* — `docs/adr/engram-wtw-keep-config-load-assembly-only-validate-via-separate-config.md`
 - **DEC-d24** — `Config.Validate` checks only the five data-plane fields; `listen_addr` is a serve-local guard. *(refines DEC-wtw)* — `docs/adr/engram-d24-validate-data-plane-fields-only-listen-addr-is-serve-local-g.md`
 
 **Phase 6 — Telemetry & Observability**
+
 - **DEC-6gb** — Instrument store/embed/auth with inline OTel spans, not a decorator layer. *(refines DEC-dwi/DEC-uxh)* — `docs/adr/engram-6gb-instrument-store-embed-auth-inline-spans-not-decorator-layer.md`
 - **DEC-f7p** — Instrument three seams: HTTP, MCP method (`AddReceivingMiddleware`), downstream clients. *(refines DEC-dwi/DEC-uxh)* — `docs/adr/engram-f7p-instrument-at-three-seams-http-mcp-method-and-downstream-cli.md`
 - **DEC-tdk** — Instrument MCP tools from one `AddReceivingMiddleware` seam, not per-handler. *(refines DEC-dwi/DEC-uxh)* — `docs/adr/engram-tdk-instrument-mcp-tools-via-addreceivingmiddleware-not-per-hand.md`
@@ -256,6 +285,7 @@ and `.planning/intel/merge-adrs/decisions.md`; the `refines →` note names the 
 - **DEC-9tj** — Inject k8s resource attributes via the Helm chart Downward API, not a Go SDK detector. *(refines DEC-dwi)* — `docs/adr/engram-9tj-inject-k8s-resource-attributes-via-chart-downward-api-not-go.md`
 
 **Phase 7 — Web UI, Docs Site & Distribution**
+
 - **DEC-bgj** — Embed the BFF (OIDC login/callback, session, static serving) in the engram Go binary, not a Node runtime. *(refines DEC-0lu/DEC-8xe)* — `docs/adr/engram-bgj-embed-bff-engram-go-binary-not-node-runtime.md`
 - **DEC-8q3** — Operator-console session cookie seals only `{sub, expiry}`; no OIDC tokens client-side (read-only v1 lane). *(refines DEC-g37x)* — `docs/adr/engram-8q3-session-cookie-seals-only-sub-expiry-no-oidc-tokens-stored-c.md`
 - **DEC-u9v** — Stateless AES-GCM encrypted-cookie session, no server-side store (eventual write-phase custody). *(refines DEC-g37x)* — `docs/adr/engram-u9v-stateless-encrypted-cookie-session-no-server-side-store.md`
@@ -291,4 +321,5 @@ and `.planning/intel/merge-adrs/decisions.md`; the `refines →` note names the 
 | Fold 31 companion ADRs + 24 plans into baseline (2026-07-08) | Complete the decision record; the original 50-doc bootstrap capped out | ✓ Good — merged, 0 conflicts |
 
 ---
+
 *Last updated: 2026-07-08 after folding 31 companion ADRs + 24 implementation plans into the baseline (`/gsd-ingest-docs --mode merge`, 0 blockers). Prior: 2026-07-07 retrospective baseline ingest (v0.8.x shipped).*
