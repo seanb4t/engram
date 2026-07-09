@@ -137,8 +137,9 @@ research/planning, honoring the leanings below:
   fail to surface record T within default `k`). **PR #262** (`08a0b979`) shipped a
   first mitigation (asymmetric query-side instruction); read it to understand what
   is already addressed vs what ranking work remains.
-- `docs-site/guides/embedding-instructions` — per-model query-instruction guidance
-  (from PR #262); relevant to how the eval configures the query side.
+- `docs-site/src/content/docs/guides/embedding-instructions.md` — per-model
+  query-instruction guidance (from PR #262); relevant to how the eval configures
+  the query side.
 
 ### Retrieval code touchpoints (verified baseline)
 - `internal/embed/embed.go` — `EmbedQuery` (asymmetric query-side instruction,
