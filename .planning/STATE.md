@@ -16,11 +16,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.8.x baseline shipped — between milestones. Next candidate: Phase 8 (Connect auth hardening, R1–R4).
+**Current focus:** v0.8.x baseline shipped — between milestones. Phase 8 (Connect auth hardening, R1–R4) was found already shipped (PR #248/#266) and reconciled 2026-07-08; no routed phase open.
 
 ## Current Position
 
-Phase: 7 of 7 complete (v0.8.x baseline) — Phase 8 deferred to a future milestone
+Phase: 8 of 8 complete — Phase 8 (Connect auth hardening, R1–R4) found already shipped (PR #248/#266), reconciled 2026-07-08
 Plan: N/A (retrospective baseline — phases shipped before GSD planning)
 Status: Milestone complete (shipped v0.8.x). No active phase.
 Last activity: 2026-07-08 — folded 31 companion ADRs + 24 implementation plans into the baseline via `/gsd-ingest-docs --mode merge` (2 passes, 0 blockers); decision record now 56 ADRs. Prior: 2026-07-07 retrospective baseline (50 docs).
@@ -66,18 +66,21 @@ None yet.
 
 ### Blockers/Concerns
 
-- Connect observe lane currently mounts anonymously into the single empty-owner bucket (interim). Not a blocker for the shipped read-only baseline; tracked as the Phase 8 deferred item. See .planning/codebase/CONCERNS.md.
+- None. (The earlier "Connect observe lane mounts anonymously" concern was stale — the cookie/OIDC lane shipped in PR #248/#266; reconciled 2026-07-08.)
 
 ## Deferred Items
 
-Acknowledged and carried forward. NOT part of the shipped v0.8.x count.
+Acknowledged and carried forward. NOT part of the shipped scope.
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| Auth | REQ-connect-auth-posture (R1–R4) — replace interim anonymous Connect mount with full cookie/OIDC observe-lane auth (Phase 8) | Not started | 2026-07-07 (baseline ingest) |
+| Auth | Connect **write-lane** RPCs (StoreMemory/StoreDiscovery) + CSRF hardening | Not started (unrouted) | 2026-07-08 |
+| Auth | Session **refresh-token rotation** / re-seal on access-token expiry | Not started (unrouted) | 2026-07-08 |
+
+> Note: REQ-connect-auth-posture (R1–R4) was previously listed here as deferred; it was found **already shipped** (PR #248/#266) and reconciled to Phase 8 = Complete on 2026-07-08.
 
 ## Session Continuity
 
-Last session: 2026-07-07
-Stopped at: Retrospective baseline authored — 7 completed phases (v0.8.x) recorded, Phase 8 (R1–R4) deferred.
-Resume file: None. Next step: `/gsd-new-milestone` to open the auth-hardening milestone, or `/gsd-plan-phase 8` to plan the deferred Connect auth work.
+Last session: 2026-07-08
+Stopped at: Phase 8 (Connect observe-lane auth, R1–R4) reconciled — found already shipped (PR #248/#266), verified green, ROADMAP/REQUIREMENTS/STATE/PROJECT + engram memory updated to Phase 8 = Complete.
+Resume file: None. Next step: `/gsd-new-milestone` to open a new milestone (candidate scope: Connect write-lane RPCs + CSRF, session refresh rotation).

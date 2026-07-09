@@ -38,10 +38,12 @@ Shipped in the v0.8.x baseline and relied upon. Full IDs and phase mapping in
 
 ### Active
 
-Deferred follow-up carried forward into a future milestone:
+Deferred follow-ups carried forward into a future milestone (unrouted):
 
-- [ ] **REQ-connect-auth-posture (R1–R4)** — replace the interim anonymous Connect API mount
-  with full cookie/OIDC observe-lane authentication (Phase 8, not started)
+- [ ] **Connect write-lane RPCs** — `StoreMemory`/`StoreDiscovery` over Connect + CSRF-token hardening
+- [ ] **Session refresh-token rotation** — re-seal on access-token expiry (v1 trusts the sealed cookie's `sub` until the session TTL)
+
+> **REQ-connect-auth-posture (R1–R4)** was found **already shipped** (PR #248/#266) and reconciled to Phase 8 = Complete on 2026-07-08 — no longer active.
 
 ### Out of Scope
 
@@ -58,7 +60,7 @@ Deferred follow-up carried forward into a future milestone:
 - **Surfaces:** MCP tool server (primary, StreamableHTTP at `/mcp`), ConnectRPC `EngramService` v1 read API, SvelteKit adapter-static operator console vendored via `go:embed`, Astro Starlight docs site on Cloudflare Workers.
 - **Identity:** OIDC bearer tokens on the MCP lane become the memory `actor`; the authz `owner` key is a configurable claim (default `email`). No issuer → single anonymous empty-owner bucket.
 - **VCS/build:** git (branch + PR; never push to `main` directly); `task` runner; buf-generated `gen/` tree committed and CI-checked; release-please-driven releases (binary + image via goreleaser, OCI Helm chart).
-- **Known as-built gap:** the Connect observe lane currently mounts anonymously into the empty-owner bucket (interim); full cookie/OIDC auth (R1–R4) is deferred — see `.planning/codebase/CONCERNS.md`.
+- **Connect observe lane:** authenticated via the cookie/OIDC lane (sealed session → verified `sub`); mounted only when the UI is enabled, headless by default (R1–R4 shipped in PR #248/#266, reconciled 2026-07-08). The MCP lane's no-issuer anonymous empty-owner bucket is unaffected.
 
 ## Constraints
 
@@ -285,7 +287,7 @@ and `.planning/intel/merge-adrs/decisions.md`; the `refines →` note names the 
 | ENGRAM_ koanf config + fatal legacy guard (DEC-jgq, DEC-irq) | One config surface; no silent fallback | ✓ Good — shipped |
 | OTLP-only, non-blocking telemetry (DEC-dwi, DEC-uxh) | Observability without a hard startup dependency | ✓ Good — shipped |
 | ConnectRPC + adapter-static SPA + static docs (DEC-8xe, DEC-0lu, DEC-ttb) | Read API + embeddable console without SSR complexity | ✓ Good — shipped |
-| Interim anonymous Connect mount; R1–R4 deferred | Ship the observe lane read-only before hardening auth | ⚠️ Revisit — Phase 8 deferred |
+| Cookie/OIDC Connect observe lane (R1–R4) | Mount-gated, cookie-only authz, obs parity, same-origin | ✓ Good — shipped (PR #248/#266) |
 | Fold 31 companion ADRs + 24 plans into baseline (2026-07-08) | Complete the decision record; the original 50-doc bootstrap capped out | ✓ Good — merged, 0 conflicts |
 
 ---
