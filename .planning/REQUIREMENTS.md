@@ -1,6 +1,7 @@
 # Requirements: engram
 
 **Defined:** 2026-07-07 (retrospective baseline — v0.8.x shipped)
+**Active milestone:** v0.9.x — Recall Quality (opened 2026-07-09; see `## v0.9.x Requirements` and Phases 9–12 in ROADMAP.md)
 **Core Value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
 
 > **Retrospective note.** engram is already shipped. IDs are reused verbatim from the ingest
@@ -70,12 +71,37 @@ Shipped in the v0.8.x baseline. Each maps to exactly one roadmap phase.
 
 - [x] **REQ-connect-auth-posture**: Replace the interim anonymous Connect API mount with full cookie/OIDC observe-lane authentication (**R1–R4**), so the read API serves real per-actor identities. **Shipped** in PR #248 (webauth lane) + PR #266 (owner-claim hardening); R1–R4 verified green on main 2026-07-08 (`internal/webauth/*`, `mountConnect` gating, `TestConnect*` isolation/obs/CORS tests). Maps to Phase 8. *(source: docs/superpowers/specs/2026-06-09-connect-auth-posture-addendum.md)*
 
-### Deferred follow-ups (not yet routed to a phase)
+### Deferred follow-ups (v0.10.x candidates — not routed to a v0.9.x phase)
 
-Carried forward for a future milestone — genuine remaining work beyond R1–R4:
+Genuine remaining work beyond R1–R4; carried to a later milestone (not part of v0.9.x Recall Quality):
 
-- Connect **write-lane** RPCs (`StoreMemory`/`StoreDiscovery`) + CSRF-token hardening (plan §"Out of scope").
-- Session **refresh-token rotation** / re-seal on access-token expiry (v1 trusts the sealed cookie's `sub` until the session TTL).
+- Connect **write-lane** RPCs (`StoreMemory`/`StoreDiscovery`) + CSRF-token hardening (plan §"Out of scope") — GitHub #322.
+- Session **refresh-token rotation** / re-seal on access-token expiry (v1 trusts the sealed cookie's `sub` until the session TTL) — GitHub #323.
+
+## v0.9.x Requirements — Recall Quality
+
+**Milestone opened:** 2026-07-09 (`/gsd-new-milestone`). **Theme:** make recall measurably
+trustworthy as the store grows, so `search-before-store` stops producing duplicates. Scoped
+from the promoted backlog (GitHub milestone `v0.9.x`); the consolidation/write-lane remainder is
+deferred to v0.10.x. Each requirement maps to exactly one phase (9–12).
+
+### Retrieval Ranking & Evaluation (Phase 9)
+
+- [ ] **REQ-retrieval-eval**: A reproducible retrieval-quality evaluation harness — a labeled query→expected-record dataset (including the #261 miss as a regression fixture), `recall@k` / MRR metrics, runnable via a `task eval:retrieval` target — so ranking and embedding changes are measured, not guessed. *(GitHub #261; foundational for Phases 9–11)*
+- [ ] **REQ-search-similarity-scores**: `search_memory` optionally returns a per-result similarity score so callers/agents can gauge how close a near-miss was (and so the eval harness can assert score separation). *(GitHub #261)*
+- [ ] **REQ-ranking-precision**: Eliminate phrasing-sensitive ranking and "sticky topical neighbor" crowding so a near-verbatim restatement of a record surfaces that record within default `k` — via hybrid dense+lexical (BM25) fusion and/or a higher-`k`+rerank strategy, **selected by the REQ-retrieval-eval numbers**. *(GitHub #261)*
+
+### Embedder Query/Document Asymmetry (Phase 10)
+
+- [ ] **REQ-embedder-native-params**: Query-vs-document embedding asymmetry via the embedder's **native** mechanism, extending the shipped text-prefix `REQ-asymmetric-embedder-params`: (1) per-call API-field passthrough (`ENGRAM_EMBED_QUERY_PARAM` / `ENGRAM_EMBED_DOCUMENT_PARAM`, e.g. `input_type=search_query`) for cloud embedders (Cohere/Google/Voyage/Jina); (2) a document-side prefix knob (`ENGRAM_EMBED_DOCUMENT_INSTRUCTION`) for both-side-prefix models (E5/nomic) applied at store **and** reindex, respecting the reindex boundary. Documented per-model in `guides/embedding-instructions`. *(GitHub #305; extends DEC-zyhq — phase planning verifies the exact shipped baseline against the code)*
+
+### Recall Surface Completeness (Phase 11)
+
+- [ ] **REQ-async-summaries**: Async-on-write summary fill — after a successful `store_memory` upsert, enqueue the record id; an in-process worker pool drains it via the idempotent, vector-preserving `Store.FillSummary`, so new summary-less records gain summaries without an operator sweep and **without** putting the summarizer on the synchronous write path (a gateway outage must never fail `store_memory`). Broad enablement gated on the summary-fidelity eval (`task eval:summary`). *(GitHub #320; builds on DEC-ambu / the shipped `summarize-missing` CLI)*
+
+### Curation Telemetry (Phase 12)
+
+- [ ] **REQ-usage-signals**: Strong per-record usage signals to inform curation — increment counters **only** on `get_memory` fetch-by-id and `update_memory` (never search/list result-set membership); hybrid storage (recall ids on OTLP spans → ClickStack for analytics; a payload `access_count` on get/update for MCP-visible curation tools); server-set operational metadata that **never silently affects ranking** (usage-weighted recall would be its own deliberate future decision). *(GitHub #317; design-first)*
 
 ## Out of Scope
 
@@ -90,6 +116,8 @@ Explicitly excluded. Documented to prevent scope creep.
 | Separate Qdrant collection per memory kind | Discovery/rule/scheduled live in the single Memory collection (DEC-2bv) |
 | Client-config generalization + `/engram-setup` | Superseded by out-of-set ADR engram-50b; historical context only |
 | Database migrations, cocogitto | Not used in this project |
+| Usage-weighted recall (ranking by `access_count`) | Out of scope for v0.9.x — usage signals (REQ-usage-signals) are curation metadata only; letting them affect ranking is a separate deliberate decision |
+| Connect write-lane + session rotation | Deferred to v0.10.x (GitHub #322/#323); v0.9.x is recall-quality-only |
 
 ## Traceability
 
@@ -121,16 +149,23 @@ Which phase covers which requirement. Retrospective — completed requirements a
 | REQ-brand-identity | Phase 7 | Complete |
 | REQ-relocate-memory-curator | Phase 7 | Complete |
 | REQ-connect-auth-posture | Phase 8 | Complete |
+| REQ-retrieval-eval | Phase 9 | Planned (v0.9.x) |
+| REQ-search-similarity-scores | Phase 9 | Planned (v0.9.x) |
+| REQ-ranking-precision | Phase 9 | Planned (v0.9.x) |
+| REQ-embedder-native-params | Phase 10 | Planned (v0.9.x) |
+| REQ-async-summaries | Phase 11 | Planned (v0.9.x) |
+| REQ-usage-signals | Phase 12 | Planned (v0.9.x) |
 
 **Coverage:**
 
-- Routed requirements: 24 total
-- Mapped to phases: 24 ✓
+- Routed requirements: 30 total (24 shipped v0.8.x + 6 planned v0.9.x)
+- Mapped to phases: 30 ✓
 - Unmapped: 0 ✓
-- Complete: 24 (all routed requirements shipped)
-- Deferred (future milestone): 0 routed — genuine follow-ups (Connect write-lane + CSRF, session refresh rotation) are unrouted, pending a new milestone.
+- Complete: 24 (all v0.8.x requirements shipped)
+- Planned (v0.9.x Recall Quality): 6 across Phases 9–12
+- Deferred (v0.10.x): Connect write-lane + CSRF (#322), session refresh rotation (#323), and the consolidation tail (short_id polish, embed refactors, summarize CronJob, proto fidelity) — unrouted.
 
 ---
 
 *Requirements defined: 2026-07-07*
-*Last updated: 2026-07-08 — Phase 8 (REQ-connect-auth-posture / R1–R4) reconciled to shipped*
+*Last updated: 2026-07-09 — opened milestone v0.9.x (Recall Quality); routed 6 requirements to Phases 9–12*
