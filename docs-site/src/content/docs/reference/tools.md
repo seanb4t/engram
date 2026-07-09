@@ -97,7 +97,9 @@ memories. By default returns compact summaries; pass `full=true` for complete co
 | `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
 | `full` | bool | no | Return full `content` instead of compact summaries (default `false`) |
 
-Returns a list of matching memory records.
+Returns a list of matching memory records. Each result carries a `score`: the
+raw Qdrant cosine similarity for this query (higher = closer), present when
+non-zero. Unranked `list_memory`/`get_memory` results have a zero/omitted score.
 
 ---
 

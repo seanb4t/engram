@@ -57,7 +57,9 @@ key — server-set), `visibility` (`private` default |
 `shared`), `created_at`, and a server-minted `short_id` (10-char Crockford
 base32 handle, accepted anywhere an id is accepted; legacy records gain one via
 `engram backfill-short-ids`). Recall returns summaries by default with `full=true` opt-in;
-full content via `get_memory`. Design intent: explicit, zero-junk, correctable. Do not
+full content via `get_memory`. `search_memory` results carry an always-on per-result
+`score` (raw Qdrant cosine similarity, higher = closer; zero/omitted on unranked
+`list_memory`/`get_memory` results). Design intent: explicit, zero-junk, correctable. Do not
 add auto-extraction.
 
 **Isolation (authz):** each actor sees/mutates only their own records; `shared`
