@@ -69,6 +69,20 @@ document-and-test task, not new API surface.
 
 ### Ranking-Fix Appetite & Guardrails (REQ-ranking-precision)
 
+**Prior #261 work already shipped (verified baseline — do NOT re-solve blindly):**
+PR #262 (commit `08a0b979`) landed a *first* #261 phrasing-sensitivity
+mitigation: `embed.go` `EmbedQuery` now applies an **asymmetric query-side
+instruction** (`ENGRAM_EMBED_QUERY_INSTRUCTION`; empty = raw; `{query}` = literal
+template; else `Instruct:<v>\nQuery:<t>`), **query-only so no reindex**. Production
+embeds via **qwen3-embedding-8b @4096** (NOT the bge-m3 chart default). #261 was
+still deemed open enough to warrant this phase's eval + ranking work. Implication:
+
+- **D-05a:** The eval must **baseline against the current prod config** (qwen3
+  @4096, with the query instruction already applied), so it measures the
+  *remaining* ranking gap after PR #262 — not a naive symmetric baseline. Any
+  ranking fix is judged as an *increment over* the shipped query-instruction
+  mitigation, not a from-scratch solution.
+
 - **D-05:** The ranking approach is **chosen by the eval numbers**, per ROADMAP —
   nothing is added speculatively. Every escalation below is **gated on eval
   evidence** (the eval must first show the lighter lever is insufficient).
@@ -120,9 +134,16 @@ research/planning, honoring the leanings below:
 - `.planning/REQUIREMENTS.md` — `REQ-retrieval-eval`, `REQ-search-similarity-scores`,
   `REQ-ranking-precision` (lines ~90-92).
 - GitHub issue **#261** — the source failure (query A/B near-verbatim restatements
-  fail to surface record T within default `k`).
+  fail to surface record T within default `k`). **PR #262** (`08a0b979`) shipped a
+  first mitigation (asymmetric query-side instruction); read it to understand what
+  is already addressed vs what ranking work remains.
+- `docs-site/guides/embedding-instructions` — per-model query-instruction guidance
+  (from PR #262); relevant to how the eval configures the query side.
 
 ### Retrieval code touchpoints (verified baseline)
+- `internal/embed/embed.go` — `EmbedQuery` (asymmetric query-side instruction,
+  `ENGRAM_EMBED_QUERY_INSTRUCTION`, query-only, PR #262) vs the symmetric document
+  path; the eval's query embedding MUST go through `EmbedQuery` for realism.
 - `internal/store/store.go` — `Store.Search` (Qdrant `Query`), `memoriesFromPoints`
   (`m.Score = p.Score`), `Memory.Score` field (~line 136-139), `CreateCollection`
   (dense-only `VectorParams`, ~line 220-223), `EmbedText` (tags folded into the
