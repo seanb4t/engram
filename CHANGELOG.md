@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.4](https://github.com/seanb4t/engram/compare/v0.8.3...v0.8.4) (2026-07-09)
+
+
+### Features
+
+* add rule memory kind (store_rule/list_rules) ([#290](https://github.com/seanb4t/engram/issues/290)) ([306467d](https://github.com/seanb4t/engram/commit/306467d3a2be6b79c9b9fedc59f9ef657d820c74))
+* short_id handles for memory records (engram-c0yl) ([#288](https://github.com/seanb4t/engram/issues/288)) ([92a6f61](https://github.com/seanb4t/engram/commit/92a6f610e9592014df09470f864af81a75c030ca))
+
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/grpc to v1.82.0 ([#274](https://github.com/seanb4t/engram/issues/274)) ([59c21a3](https://github.com/seanb4t/engram/commit/59c21a3890d7de5feeaf37f0a5cb1c84f71029f2))
+
 ## [0.8.3](https://github.com/seanb4t/engram/compare/v0.8.2...v0.8.3) (2026-07-02)
 
 
