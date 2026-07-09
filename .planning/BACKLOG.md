@@ -22,7 +22,7 @@ Reviewed after v0.8.4 shipped (milestone v0.8.x complete). Outcome:
   this milestone is the promotion target the issues are grouped under.
 - **Maintenance — fixing now, outside any milestone** (cluster A, reddens main on every PR):
   **#314** (local lint gate: rumdl + yamlfmt), **#311** (svelte-check errors in vendored
-  shadcn primitives), **#301** (Renovate vendored-SPA drift — root cause is the *external*
+  shadcn primitives), **#301** (Renovate vendored-SPA drift — root cause is the _external_
   homelab Renovate instance; in-repo self-healing fallback deferred, not a quick fix).
 - **Removed:** none.
 
@@ -69,4 +69,3 @@ Pre-existing open issues folded into `v0.9.x` in the same review:
 - [x] [#269](https://github.com/seanb4t/engram/issues/269) chart: ship the summarize-missing sweep CronJob in the Helm chart → **v0.9.x**
 
 _(#155 Dependency Dashboard is a Renovate bot artifact — not tracked here.)_
-
