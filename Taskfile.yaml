@@ -53,6 +53,10 @@ tasks:
     desc: Score whether the configured summary model preserves caveats (needs a live gateway+model)
     cmds:
       - ENGRAM_SUMMARY_EVAL=1 go test ./internal/summarize/ -run TestSummaryFidelity -v
+  eval:retrieval:
+    desc: Measure recall@k/MRR incl. the #261 regression fixture (needs a live Qdrant + gateway)
+    cmds:
+      - ENGRAM_RETRIEVAL_EVAL=1 go test ./internal/retrievaleval/ -run TestRetrievalEval -v
 
   lint:
     desc: Run all linters
