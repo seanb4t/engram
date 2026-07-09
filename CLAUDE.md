@@ -126,7 +126,7 @@ Subordinate to explicit user, repository, and orchestrator instructions.
 
 1. **File follow-ups** — open GitHub issues for remaining work.
 2. **Run quality gates** (if code changed) — `task` (lint + test).
-3. **Git policy (conservative default)** — do not commit, push, or open PRs unless asked; at
-   handoff report changed files, validation, and the exact proposed commands. Never push to
-   `main` — branch + PR (protect-main ruleset).
+3. **Commit as you go** — commit in coherent groups of related work; don't wait to be asked.
+   Conventional Commits are **required** (`type(scope): description`; PR titles are CI-validated).
+   `main` is protected — branch + PR, never push to `main` directly.
 4. **Hand off** — summarize changes, validation, and any blocked step with its exact command and error.
