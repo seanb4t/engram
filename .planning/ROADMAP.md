@@ -180,7 +180,11 @@ observable truths that hold in the shipped baseline.
 2. `search_memory` can return a per-result similarity score (opt-in), and the eval asserts score separation between the target record and its sticky topical neighbors.
 3. Phrasing-sensitive misses are eliminated: Query A/B from #261 (near-verbatim restatements) surface Record T within default `k`, via hybrid dense+lexical fusion and/or higher-`k`+rerank — the approach chosen by the eval numbers, not assumed.
 **Status**: Planned (v0.9.x)
-**Plans**: TBD — `/gsd-plan-phase 9`. Source: GitHub #261.
+**Plans**: 3 plans (planned 2026-07-09). Source: GitHub #261.
+
+- [ ] 09-01-PLAN.md — Retrieval eval harness (`task eval:retrieval`, env-gated Go test, #261 regression fixture, recall@k/MRR) [Wave 1]
+- [ ] 09-02-PLAN.md — Document the always-on `search_memory` similarity score (tools.go Description, CLAUDE.md, docs-site); record D-04 supersession [Wave 1]
+- [ ] 09-03-PLAN.md — Eval-gated ranking precision: D-06 heuristic rerank first; D-07 hybrid / D-08 cross-encoder as conditional escalations chosen by the eval numbers [Wave 2]
 
 ### Phase 10: Asymmetric Query/Document Embeddings
 
