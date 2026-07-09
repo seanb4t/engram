@@ -21,9 +21,14 @@
 
 <script lang="ts">
 	import { cn } from "$lib/utils.js";
-	import type { ComponentProps } from "svelte";
-	import { Button } from "$lib/components/ui/button/index.js";
+	import type { Snippet } from "svelte";
+	import type { HTMLButtonAttributes } from "svelte/elements";
+	import { Button, type ButtonVariant } from "$lib/components/ui/button/index.js";
 
+	// Typed on HTMLButtonAttributes (button mode) rather than
+	// ComponentProps<typeof Button>: the latter is the bits-ui anchor+button
+	// prop union, and Omit-ing over it trips svelte-check's TS2590
+	// "union type too complex to represent" (engram #311).
 	let {
 		ref = $bindable(null),
 		class: className,
@@ -32,7 +37,10 @@
 		variant = "ghost",
 		size = "xs",
 		...restProps
-	}: Omit<ComponentProps<typeof Button>, "href" | "size"> & {
+	}: Omit<HTMLButtonAttributes, "size"> & {
+		ref?: HTMLElement | null;
+		children?: Snippet;
+		variant?: ButtonVariant;
 		size?: InputGroupButtonSize;
 	} = $props();
 </script>
@@ -43,7 +51,7 @@
 	data-size={size}
 	{variant}
 	class={cn(inputGroupButtonVariants({ size }), className)}
-	{...restProps}
+	{...(restProps as HTMLButtonAttributes)}
 >
 	{@render children?.()}
 </Button>

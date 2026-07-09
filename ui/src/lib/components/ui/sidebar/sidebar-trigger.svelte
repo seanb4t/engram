@@ -3,6 +3,7 @@
 	import PanelLeftIcon from '@lucide/svelte/icons/panel-left';
 	import { cn } from "$lib/utils.js";
 	import type { ComponentProps } from "svelte";
+	import type { HTMLButtonAttributes } from "svelte/elements";
 	import { useSidebar } from "./context.svelte.js";
 
 	let {
@@ -29,7 +30,7 @@
 		onclick?.(e);
 		sidebar.toggle();
 	}}
-	{...restProps}
+	{...(restProps as HTMLButtonAttributes)}
 >
 	<PanelLeftIcon  />
 	<span class="sr-only">Toggle Sidebar</span>
