@@ -5,10 +5,10 @@ milestone_name: "- [ ] **Phase 9: Retrieval Eval Harness & Ranking Precision** -
 current_phase: 9
 current_phase_name: Retrieval Eval Harness & Ranking Precision
 status: ready_to_execute
-stopped_at: Phase 9 planned + cross-AI reviewed (3 plans, 2 waves) — verified twice by gsd-plan-checker
+stopped_at: Phase 9 planned + cross-AI reviewed x2 (3 plans, 2 waves) — verified 3x by gsd-plan-checker
 last_updated: "2026-07-09"
 last_activity: 2026-07-09
-last_activity_desc: "planned Phase 9 via `/gsd-plan-phase 9 --research` (3 plans/2 waves, VERIFICATION PASSED), then `/gsd-review --phase 9 --codex` (source-grounded Codex review → 09-REVIEWS.md, 4 HIGH findings) and `/gsd-plan-phase 9 --reviews`: all 8 findings incorporated (TestMain gate-before-Docker, shared store.SearchReranked helper covering MCP+Connect, D-03 assertion reframed to rank, fixture floor ≥ defaultK+1), re-verified PASSED. Decision coverage 9/9, requirements 3/3."
+last_activity_desc: "Phase 9 hardened through two review→replan cycles. Round 1: /gsd-review --codex → 4 HIGH (TestMain gate-before-Docker, shared store.SearchReranked across MCP+Connect, rank-based #261 bar, fixture floor ≥defaultK+1). Round 2: /gsd-review --codex (gemini ineligible/tier-deprecated) confirmed round-1 fixes correct + 8 MEDIUM/LOW refinements (eval Qdrant-addr isolation, exact seed sequence, real MCP+Connect behavioral tests replacing grep, D-03 explicit supersession, docs-site rerank caveat, k==0 contract, store-narrow). Both --reviews passes re-verified PASSED. Decision coverage 9/9, requirements 3/3."
 progress:
   total_phases: 12
   completed_phases: 0
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-07-09)
 ## Current Position
 
 Phase: 9 of 12 — **Retrieval Eval Harness & Ranking Precision** (planned — 3 plans, 2 waves)
-Plan: 3 plans verified twice (planned + cross-AI reviewed). Next: `/gsd-execute-phase 9`.
-Status: Phase 9 planned, Codex-reviewed & re-verified. Wave 1 = 09-01 eval harness ‖ 09-02 score docs; Wave 2 = 09-03 eval-gated ranking (autonomous:false, D-07/D-08 conditional, D-06 rerank now behind shared store.SearchReranked covering MCP+Connect). v0.8.x baseline (Phases 1–8) complete and shipped.
-Last activity: 2026-07-09 — `/gsd-plan-phase 9 --reviews`: incorporated all 8 Codex findings from 09-REVIEWS.md (3 HIGH: TestMain gate-before-Docker, Connect recall coverage via shared helper, rank-based #261 bar); re-verified PASSED; decision coverage 9/9, requirements 3/3.
+Plan: 3 plans, verified 3× (initial + 2 Codex review→replan cycles). Next: `/gsd-execute-phase 9`.
+Status: Phase 9 planned, Codex-reviewed twice & re-verified. Wave 1 = 09-01 eval harness ‖ 09-02 score docs; Wave 2 = 09-03 eval-gated ranking (autonomous:false, D-07/D-08 conditional, D-06 rerank behind shared store.SearchReranked covering MCP+Connect with real behavioral tests). v0.8.x baseline (Phases 1–8) complete and shipped.
+Last activity: 2026-07-09 — round-2 `/gsd-plan-phase 9 --reviews`: incorporated all 8 round-2 Codex refinements (eval Qdrant-addr isolation, exact seed sequence, real MCP+Connect tests replacing grep, D-03 supersession, docs rerank caveat, k==0 contract); re-verified PASSED; decisions 9/9, requirements 3/3.
 
 Progress: [░░░░░░░░░░] 0% (v0.9.x — 1/4 phases planned, 0/4 executed)
 
