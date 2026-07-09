@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 milestone: v0.9.x — Recall Quality
 milestone_name: "- [ ] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval"
 current_phase: 9
-current_phase_name: not yet planned
-status: planning
-stopped_at: Phase 9 context gathered
-last_updated: "2026-07-09T17:43:01.996Z"
+current_phase_name: Retrieval Eval Harness & Ranking Precision
+status: ready_to_execute
+stopped_at: Phase 9 planned (3 plans, 2 waves) — verified by gsd-plan-checker
+last_updated: "2026-07-09"
 last_activity: 2026-07-09
-last_activity_desc: "opened milestone v0.9.x via `/gsd-new-milestone`: routed 6 requirements to Phases 9–12 (REQUIREMENTS.md), added phase details (ROADMAP.md), updated PROJECT.md Active section. Theme = Recall Quality, focused scope (consolidation + write-lane deferred to v0.10.x)."
+last_activity_desc: "planned Phase 9 via `/gsd-plan-phase 9 --research`: research (HIGH) + Nyquist validation + pattern map, then 3 plans across 2 waves (Wave 1: 09-01 eval harness ‖ 09-02 score docs; Wave 2: 09-03 eval-gated ranking). Plan-checker: VERIFICATION PASSED first pass. Decision coverage 9/9, requirements 3/3."
 progress:
   total_phases: 12
   completed_phases: 0
-  total_plans: 0
+  total_plans: 3
   completed_plans: 0
   percent: 0
 ---
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-09)
 
 ## Current Position
 
-Phase: 9 of 12 — **Retrieval Eval Harness & Ranking Precision** (not yet planned)
-Plan: None. Next: `/gsd-plan-phase 9`.
-Status: Milestone v0.9.x opened; requirements + roadmap written. v0.8.x baseline (Phases 1–8) complete and shipped.
-Last activity: 2026-07-09 — opened milestone v0.9.x via `/gsd-new-milestone`: routed 6 requirements to Phases 9–12 (REQUIREMENTS.md), added phase details (ROADMAP.md), updated PROJECT.md Active section. Theme = Recall Quality, focused scope (consolidation + write-lane deferred to v0.10.x).
+Phase: 9 of 12 — **Retrieval Eval Harness & Ranking Precision** (planned — 3 plans, 2 waves)
+Plan: 3 plans verified (VERIFICATION PASSED). Next: `/gsd-execute-phase 9`.
+Status: Phase 9 planned & verified. Wave 1 = 09-01 eval harness ‖ 09-02 score docs; Wave 2 = 09-03 eval-gated ranking (autonomous:false, D-07/D-08 conditional). v0.8.x baseline (Phases 1–8) complete and shipped.
+Last activity: 2026-07-09 — planned Phase 9 via `/gsd-plan-phase 9 --research`: research (HIGH confidence) + Nyquist validation + pattern map → 3 plans; plan-checker passed first pass; decision coverage 9/9, requirements 3/3.
 
-Progress: [░░░░░░░░░░] 0% (v0.9.x — 0/4 phases planned)
+Progress: [░░░░░░░░░░] 0% (v0.9.x — 1/4 phases planned, 0/4 executed)
 
 ## Performance Metrics
 
