@@ -1,185 +1,188 @@
 ---
 phase: 9
 reviewers: [codex]
-reviewed_at: 2026-07-09T19:00:59Z
+failed_reviewers: [gemini]
+reviewed_at: 2026-07-09T20:56:47Z
+review_round: 2
 plans_reviewed: [09-01-PLAN.md, 09-02-PLAN.md, 09-03-PLAN.md]
 ---
 
-# Cross-AI Plan Review — Phase 9
+# Cross-AI Plan Review — Phase 9 (Round 2)
 
-> Reviewer: **Codex** (`codex-cli 0.143.0`, default model) — source-grounded (opened repo files, cited `file:line`).
+> Round 2 reviews the plans as revised after round 1's Codex findings. Requested reviewers: `--codex --gemini`.
+> **Codex** ran (source-grounded). **Gemini** failed — see note below.
 
 ## Codex Review
 
-**Overall Assessment**
+I verified the referenced source directly. No `.codegraph/` index exists in this checkout, so this is based on `rg`/line reads.
 
-The phase strategy is sound: eval first, document the already-shipped score, then gate ranking changes on measured recall. The biggest risks are in execution details: Plan 09-01’s proposed `TestMain` can accidentally put Docker/Qdrant on the required CI path even when the eval is “skipped”; Plan 09-03’s hard “raw score separation” assertion may conflict with a post-search heuristic reranker; and the ranking fix only wires MCP `search_memory`, leaving Connect search unchanged.
+## 09-01 Summary
+Good eval-first shape. The revised TestMain gate, fixture floor, and full embedder-parity intent address the prior review direction, but the plan still needs sharper implementation constraints around Qdrant testcontainer wiring and document embedding.
 
-## 09-01-PLAN.md
+## 09-01 Strengths
+- The env-gated eval mirrors existing precedent: `TestSummaryFidelity` skips unless `ENGRAM_SUMMARY_EVAL=1` in [fidelity_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/summarize/fidelity_test.go:38).
+- The plan correctly requires gating before testcontainer startup. Existing Qdrant TestMain starts Docker at [store_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store_test.go:48), so putting `ENGRAM_RETRIEVAL_EVAL` first is the right fix for a new eval package.
+- Full embedder parity is source-backed: `embedderFromConfig` is reached through `StoreAndEmbedderFromEnvNoEnsure` at [tools.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:130), and `EmbedQuery` is the real search path at [tools.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:720).
 
-**Summary**
+## 09-01 Concerns
+- **MEDIUM:** `StoreAndEmbedderFromEnvNoEnsure` also constructs a Qdrant store from normal env config, not just an embedder. It loads config and calls `storeFromConfig` at [tools.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:130), and `storeFromConfig` dials `cfg.Qdrant.Addr` at [tools.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:76). If a developer runs the eval with prod-like env, this can point at the configured Qdrant rather than the testcontainer unless the plan requires `ENGRAM_QDRANT_ADDR=testQdrantAddr` before calling the builder, or avoids the builder for store construction entirely.
+- **MEDIUM:** “Seed via the store’s document embedding path” is imprecise. `Store.Upsert` accepts a precomputed vector and does not call `EmbedText` ([store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:419)). The document embedding path is in the server handler: `Embed(ctx, store.EmbedText(...))` then `Upsert` at [tools.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:507). Since `retrievaleval` cannot call unexported `storeMemory`, the plan should explicitly require `em.Embed(ctx, store.EmbedText(m.Content, m.Tags))`.
+- **LOW:** “CI pays zero Docker/Qdrant cost” is overbroad. Existing `internal/store` and `internal/server` tests already start Qdrant testcontainers in `go test ./...` at [store_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store_test.go:48) and [tools_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools_test.go:125). The accurate claim is “zero additional Docker cost from the eval package when gated off.”
 
-Good eval-first plan, and it matches existing repository patterns, but it needs two corrections before execution: gate Qdrant startup in `TestMain` before starting Docker, and make the #261 fixture large enough to fail meaningfully against default `k=8`.
+## 09-01 Suggestions
+- Add an acceptance criterion that the eval store is always created from `testQdrantAddr` with a unique collection, never from ambient `ENGRAM_QDRANT_ADDR`.
+- Replace “store’s document embedding path” with the exact call sequence: `store.EmbedText` -> `em.Embed` -> `st.Upsert`.
+- Treat “baseline starts failing” as expected evidence, not a hard precondition. If PR #262 already passes the fixture, the eval should record that honestly.
 
-**Strengths**
+## 09-01 Risk Assessment
+**MEDIUM.** The eval architecture is sound, but an ambiguous builder/store setup could accidentally measure or touch the wrong Qdrant.
 
-- Correctly mirrors the existing env-gated eval pattern: `TestSummaryFidelity` skips unless `ENGRAM_SUMMARY_EVAL=1` in [internal/summarize/fidelity_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/summarize/fidelity_test.go:38).
-- Correctly identifies the production search path: MCP `searchMemory` defaults `k` to 8, calls `EmbedQuery`, then `Store.Search` in [internal/server/tools.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:704).
-- Correctly uses the existing Qdrant testcontainer precedent from [internal/store/store_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store_test.go:48).
-- Correctly keeps fixtures inline; I found no existing `testdata/` tree.
+## 09-02 Summary
+This plan is appropriately narrow and source-backed. The score is already on the wire; docs are the right scope.
 
-**Concerns**
+## 09-02 Strengths
+- Score plumbing is real: `Memory.Score` is documented as Qdrant similarity at [store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:136), populated from `ScoredPoint.Score` at [store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:579), shaped into MCP compact recall at [summary.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/summary.go:89), and mapped to Connect at [connectapi.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go:32).
+- The docs gap is real: `search_memory` docs currently just say “Returns a list” at [tools.md](/Volumes/Code/github.com/seanb4t/engram/docs-site/src/content/docs/reference/tools.md:100), while the embedding guide already mentions score at [embedding-instructions.md](/Volumes/Code/github.com/seanb4t/engram/docs-site/src/content/docs/guides/embedding-instructions.md:124).
+- Avoiding output-schema work is correct. Current tool registration uses `(*mcp.CallToolResult, any, error)` at [tools.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:937), matching the plan’s prose-only approach.
 
-- **HIGH:** Copying `store_test.go`/`server` `TestMain` literally means Qdrant starts before `TestRetrievalEval` can call `t.Skip`. CI runs `go test ./...` in [ci.yaml](/Volumes/Code/github.com/seanb4t/engram/.github/workflows/ci.yaml:32), and existing `TestMain` starts testcontainers at [internal/server/tools_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools_test.go:125). The new eval package must check `ENGRAM_RETRIEVAL_EVAL` inside `TestMain` before Docker startup.
-- **HIGH:** Acceptance only requires ≥2 distractors, but default `k` is 8 in [internal/server/tools.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:705). With fewer than 8 distractors, “target within default k” is nearly trivial and may not catch #261.
-- **MEDIUM:** A new `internal/retrievaleval` package cannot call unexported `deps`, `searchArgs`, or `searchMemory`; these are package-private in [internal/server/tools.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:33) and [internal/server/tools.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:704). It can only mimic the handler unless moved into `package server` or a shared exported helper is added.
-- **MEDIUM:** Prod embedder parity is incomplete if the eval only reads query instruction. Production also wires query params, document params, and document instruction in [internal/server/tools.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:215), with env registry entries in [internal/config/registry.go](/Volumes/Code/github.com/seanb4t/engram/internal/config/registry.go:32).
+## 09-02 Concerns
+- **MEDIUM:** If 09-03 lands reranking, `reference/tools.md` line 95 will become misleading because it says tag-filtered search is “ranked by vector similarity” ([tools.md](/Volumes/Code/github.com/seanb4t/engram/docs-site/src/content/docs/reference/tools.md:95)). After rerank, ordering may include lexical policy while `score` remains raw Qdrant similarity. 09-03 should include a docs follow-up.
+- **LOW:** The `CLAUDE.md` memory contract currently says recall returns summaries but does not mention score at [CLAUDE.md](/Volumes/Code/github.com/seanb4t/engram/CLAUDE.md:59). The plan fixes this, but the wording should stay terse to avoid making the stable contract read like tuning docs.
 
-**Suggestions**
+## 09-02 Suggestions
+- Add a 09-03 doc task or note now: “Final order may include reranking; `score` remains the raw vector similarity and may not be monotonic after rerank.”
+- Keep `omitempty` wording exactly as planned; that matches `Score float32 json:"score,omitempty"` at [store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:139).
 
-- Add an early `if os.Getenv("ENGRAM_RETRIEVAL_EVAL") != "1" { os.Exit(m.Run()) }` branch in the eval package `TestMain`.
-- Require at least `defaultK + 1` sticky neighbors, preferably 12-20, and require the baseline run to record the pre-fix miss or poor target rank.
-- Either move the eval into `internal/server` as `package server`, or extract a shared search helper so the eval and MCP handler cannot drift.
-- Use the same config parsing as production, including `ENGRAM_EMBED_QUERY_PARAMS`, `ENGRAM_EMBED_DOCUMENT_PARAMS`, and `ENGRAM_EMBED_DOCUMENT_INSTRUCTION`.
+## 09-02 Risk Assessment
+**LOW.** Documentation-only and well aligned with current code. Main risk is becoming stale immediately after 09-03.
 
-**Risk Assessment: MEDIUM**
+## 09-03 Summary
+The revised plan fixes the biggest prior issue: both MCP and Connect must share the ranking path. It correctly threads query text and vector into a shared helper. Remaining risks are behavioral test coverage, documentation after rerank, and a still-murky D-03 “score separation” reconciliation.
 
-The concept is low-risk, but the CI/TestMain issue and weak fixture floor could undermine the whole eval gate.
+## 09-03 Strengths
+- The shared-helper requirement is source-backed. MCP currently embeds and calls `Store.Search` at [tools.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:720), while Connect separately embeds and calls `Store.Search` at [connectapi.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go:149). A shared `SearchReranked` helper is the right way to avoid drift.
+- Query text is available at both call sites, so the proposed signature is feasible: MCP has `a.Query` at [tools.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:704), Connect has `req.Msg.Query` at [connectapi.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go:144), and `Store.Search` already accepts the vector at [store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:544).
+- Authz remains preservable if implemented as planned: `Store.Search` builds `ownerScopeFilter` before querying Qdrant at [store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:562), so over-fetching inside that same filter does not widen visibility.
 
-## 09-02-PLAN.md
+## 09-03 Concerns
+- **MEDIUM:** Grep-based acceptance is not enough for a behavior-changing shared helper. Existing Connect tests cover search isolation and tag filtering at [connectapi_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi_test.go:118) and [connectapi_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi_test.go:331), but the plan should require tests proving MCP and Connect both preserve `k`, tags, created windows, and no private leaks through `SearchReranked`.
+- **MEDIUM:** The D-03 reconciliation is internally inconsistent. The plan says raw-score separation is diagnostic, then says “score separation stays asserted/reported.” Since `Score` is raw Qdrant score ([store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:136)) and reranking can promote lower-score hits, rank-based acceptance is correct for #261, but the plan should explicitly supersede or narrow D-03 rather than claim a diagnostic is an assertion.
+- **MEDIUM:** Docs need to change when reranking lands. `score` will still be raw Qdrant similarity, but result order may no longer be score-descending. Current docs say vector ranking at [tools.md](/Volumes/Code/github.com/seanb4t/engram/docs-site/src/content/docs/reference/tools.md:95), and 09-03 does not include docs files.
+- **LOW:** The exported helper should define `k==0` behavior. Handlers currently default before search, MCP to 8 at [tools.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:704) and Connect to 20 at [connectapi.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go:153), but an exported store helper should not silently overfetch then truncate to zero.
+- **LOW:** Putting lexical ranking policy in `internal/store` is acceptable because it must reuse store filters, but it broadens store responsibility. Keep the API narrow and pure; avoid importing embed/server concepts into `store`.
 
-**Summary**
+## 09-03 Suggestions
+- Add MCP and Connect integration tests that seed records and assert identical reranked IDs for the same query, plus no leakage across owners.
+- Add a unit test for `candidateK` bounds, including small `k`, large `k`, and `k==0`.
+- Add docs edits to 09-03 or make 09-02 depend on final ranking wording.
+- Make the D-03 decision explicit: “Phase 9 acceptance is rank-based; raw score gap is diagnostic because score remains first-stage dense similarity.”
 
-This is the strongest plan. The “score already shipped always-on” claim is true in the current code, and the proposed doc-only change is the right scope.
+## 09-03 Risk Assessment
+**MEDIUM.** The direction is right and prior high-risk gaps are mostly fixed, but this changes production ordering across two APIs. It needs stronger behavioral tests and clearer docs/decision language before execution.
 
-**Strengths**
+---
 
-- `Memory.Score` exists and is documented as Qdrant similarity, search-only, in [internal/store/store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:136).
-- Qdrant scores are copied into memories in [internal/store/store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:578).
-- Compact recall preserves `Score` in [internal/server/summary.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/summary.go:89).
-- Connect maps `Score` onto the proto response in [internal/server/connectapi.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go:32).
-- The tool description currently omits score in [internal/server/tools.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:937), and docs reference only says “Returns a list” in [docs-site/src/content/docs/reference/tools.md](/Volumes/Code/github.com/seanb4t/engram/docs-site/src/content/docs/reference/tools.md:85).
-- The output-schema caveat is correct: MCP SDK omits output schema when `Out` is `any` in [/Users/sean/go/pkg/mod/github.com/modelcontextprotocol/go-sdk@v1.6.1/mcp/server.go](/Users/sean/go/pkg/mod/github.com/modelcontextprotocol/go-sdk@v1.6.1/mcp/server.go:495).
+## Gemini Review
 
-**Concerns**
-
-- **LOW:** “present on ranked hits only” should be worded carefully because `omitempty` will omit an actual zero score in compact JSON. The field is populated in Go, but JSON visibility depends on non-zero value.
-
-**Suggestions**
-
-- Document it as “search results carry `score` when non-zero in JSON; unranked list/get results have zero/omitted score.”
-- Add or update a small doc/test assertion if there is already a schema/prose registration test nearby; current `TestToolArgSchemasDoNotPanic` covers AddTool shape in [internal/server/tools_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools_test.go:34), not description content.
-
-**Risk Assessment: LOW**
-
-It is documentation-only and matches current behavior.
-
-## 09-03-PLAN.md
-
-**Summary**
-
-The eval-gated escalation structure is good, but the concrete D-06 wiring has two important gaps: it bypasses Connect search, and its raw-score separation acceptance may be impossible for a heuristic reranker that changes order without changing Qdrant similarity scores.
-
-**Strengths**
-
-- Good constraint that usage signals must not affect ranking; store search currently filters by owner/scope/tags before returning results in [internal/store/store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:562).
-- Good choice to start with a hermetic reranker unit test before hybrid/cross-encoder work.
-- Conditional D-07/D-08 avoids speculative schema and gateway work.
-
-**Concerns**
-
-- **HIGH:** The hard assertion “Record T’s score is strictly above every sticky neighbor” conflicts with D-06 reranking. `Score` is raw Qdrant similarity copied from `ScoredPoint.Score` in [internal/store/store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:582). A lexical post-reranker can promote T while its raw vector score remains below a sticky neighbor. Failing the plan on that would reject a valid D-06 ranking fix or tempt changing score semantics.
-- **HIGH:** Connect search is not covered. Connect `SearchMemories` embeds and calls `Store.Search` directly in [internal/server/connectapi.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go:153), so a reranker wired only into MCP `searchMemory` leaves another recall surface unfixed.
-- **MEDIUM:** The over-fetch strategy is underspecified. “limit ≥ k” can become no effective over-fetch, while an unbounded factor can amplify latency for large caller-supplied `k`; current `Store.Search` passes `Limit: k` directly to Qdrant in [internal/store/store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:568).
-- **MEDIUM:** If reranking changes result order, score descending is no longer guaranteed. Any eval assertion that assumes non-increasing raw scores after rerank will be wrong.
-
-**Suggestions**
-
-- Treat raw Qdrant score separation as diagnostic for D-06. If strict raw-score separation is truly required, then D-06 may be insufficient and should trigger D-07/D-08 rather than redefining `score`.
-- Put reranking behind a shared helper used by MCP and Connect, or move it into a store/search service that receives both query text and vector.
-- Define candidate over-fetch explicitly, e.g. `candidateK = min(max(k*4, 32), 100)`, then evaluate that latency/quality tradeoff.
-- Make the fixture strong enough to prove promotion: target initially outside top 8 or below sticky neighbors, then inside top 8 after accepted ranking.
-
-**Risk Assessment: MEDIUM-HIGH**
-
-The escalation discipline is good, but the acceptance criteria need tightening to avoid either false failure or partial product behavior.
+**FAILED — not run.** `gemini-cli 0.46.0` returned `IneligibleTierError: UNSUPPORTED_CLIENT`:
+the free "Gemini Code Assist for individuals" tier is no longer supported by this client;
+Google directs users to migrate to the Antigravity suite (<https://antigravity.google>).
+This is an account/product deprecation, not a transient failure — a flag cannot bypass it.
+For a second independent reviewer, use `--agy` (Antigravity) or `--claude` / `--qwen`.
 
 ---
 
 ## Consensus Summary
 
-Single external reviewer (**Codex**, `codex-cli 0.143.0`), so this is a synthesis of Codex's
-source-grounded findings rather than a multi-reviewer consensus. Codex opened the referenced
-files and cited `file:line` evidence, so these findings are weighted as verified, not
-impressionistic.
+**Round 2** of cross-AI review, on the plans as revised after round 1. Two reviewers were
+requested (`--codex --gemini`); **only Codex ran** — Gemini failed with a hard
+`IneligibleTierError` (`gemini-cli 0.46.0` on the free individual tier is no longer supported by
+Google; it directs users to migrate to the Antigravity suite). This is an account/product
+deprecation, not a transient error, so this round is effectively single-reviewer. To get a second
+independent opinion, re-run with `--agy` (Antigravity, Google's named replacement) or `--claude` /
+`--qwen`.
 
-### Verified TRUE (de-risks the plans — no action needed)
+Codex again verified against source (`rg` + line reads; no `.codegraph/` index present) and cited
+`file:line` evidence, so findings are weighted as verified.
 
-- **09-02's core claim holds:** the similarity `score` is already shipped always-on end-to-end —
-  `store.go:136/578` (`Memory.Score` ← `ScoredPoint.Score`) → `summary.go:89` (compact recall
-  preserves it) → `connectapi.go:32` (Connect maps it). The tool `Description` (`tools.go:937`)
-  and docs (`reference/tools.md:85`) genuinely omit it. Doc-only scope confirmed correct.
-- **`Out=any` → no output schema** verified against the go-sdk (`server.go:495`); documenting via
-  `Description` prose (not a jsonschema) is the right channel.
-- **Inline fixtures** are correct — no existing `testdata/` tree.
-- **Eval-first / eval-gated escalation discipline** is sound; conditional D-07/D-08 correctly
-  avoids speculative schema + gateway work.
+### Round-1 HIGH fixes — CONFIRMED correct (not just present)
 
-### Agreed Concerns (priority order for `--reviews` replanning)
+- **TestMain gate (09-01):** gating `ENGRAM_RETRIEVAL_EVAL` before testcontainer startup is the
+  right fix; existing Qdrant TestMain starts Docker at `store_test.go:48`.
+- **Shared helper covers both surfaces (09-03):** MCP (`tools.go:720`) and Connect
+  (`connectapi.go:149`) both embed + call `Store.Search` today; a shared `SearchReranked` is the
+  correct anti-drift move. The proposed signature is feasible — query text is available at both
+  call sites (`tools.go:704` `a.Query`, `connectapi.go:144` `req.Msg.Query`) and `Store.Search`
+  already takes the vector (`store.go:544`). Authz is preserved: over-fetch happens inside the
+  existing `ownerScopeFilter` (`store.go:562`), so it does not widen visibility.
+- **Rank-based #261 bar (09-03):** correct — `Score` is raw Qdrant similarity (`store.go:136`), and
+  reranking can promote a lower-raw-score hit, so rank position is the right acceptance signal.
+- **Always-on score (09-02):** re-confirmed end-to-end (`store.go:136/579` → `summary.go:89` →
+  `connectapi.go:32`); docs gap real (`tools.md:100` "Returns a list"); prose-only correct
+  (`Out=any` at `tools.go:937`).
 
-1. **[HIGH · 09-01] `TestMain` boots Qdrant before `t.Skip` can fire.** Copying the
-   `store_test.go` / `tools_test.go:125` `TestMain` literally starts a testcontainer
-   unconditionally; CI runs `go test ./...` (`ci.yaml:32`), so the required `test` job pays the
-   Docker/Qdrant cost even when the eval is "skipped." **This partially undermines the
-   zero-CI-cost claim.** Fix: `if os.Getenv("ENGRAM_RETRIEVAL_EVAL") != "1" { os.Exit(m.Run()) }`
-   at the top of the eval package's `TestMain`, before any Docker startup.
+### New / remaining concerns (priority order for a potential round-2 `--reviews`)
 
-2. **[HIGH · 09-03] Connect recall surface left unfixed.** Connect `SearchMemories`
-   (`connectapi.go:153`) embeds and calls `Store.Search` directly, so a reranker wired only into
-   MCP `searchMemory` (`tools.go:704`) fixes one of two recall paths. Wire D-06 behind a shared
-   helper used by **both** MCP and Connect (this also resolves concern #5).
+1. **[MEDIUM · 09-01] Eval could touch the WRONG Qdrant.** `StoreAndEmbedderFromEnvNoEnsure`
+   (added for embedder parity) also builds a store from ambient env — it calls `storeFromConfig`
+   which dials `cfg.Qdrant.Addr` (`tools.go:130`, `:76`). Running the eval with prod-like env could
+   point it at the configured Qdrant instead of the testcontainer. **Fix:** require the eval to pin
+   `ENGRAM_QDRANT_ADDR=<testQdrantAddr>` (unique collection) before calling the builder, or build
+   the store from `testQdrantAddr` directly and use the builder for the embedder only. Add an
+   acceptance criterion asserting the eval store is always the testcontainer, never ambient
+   `ENGRAM_QDRANT_ADDR`.
 
-3. **[HIGH · 09-03] D-03 score-separation assertion conflicts with D-06 reranking.** `Score` is
-   raw Qdrant similarity (`store.go:582`); a lexical post-reranker can promote Record T while its
-   raw vector score stays below a sticky neighbor. A hard "T's raw score strictly above every
-   neighbor" gate would reject a valid D-06 fix or tempt redefining `score` semantics. Treat raw
-   score separation as **diagnostic**; if strict separation is truly required, that is evidence
-   D-06 is insufficient → escalate to D-07/D-08, per the phase's own eval-gated logic. Also: once
-   rerank changes order, results are no longer score-descending — drop any assertion assuming
-   non-increasing raw scores.
+2. **[MEDIUM · 09-01] "Document embedding path" is imprecise.** `Store.Upsert` takes a precomputed
+   vector and does NOT call `EmbedText` (`store.go:419`); the real doc-embed path is the handler's
+   `em.Embed(ctx, store.EmbedText(content, tags))` then `Upsert` (`tools.go:507`). Since
+   `retrievaleval` can't call unexported `storeMemory`, the plan should spell out the exact seed
+   sequence: `store.EmbedText` → `em.Embed` → `st.Upsert` (so tag-folding matches prod).
 
-4. **[HIGH · 09-01 / 09-03] Fixture floor too weak to catch #261.** Default `k` is 8
-   (`tools.go:705`); requiring only ≥2 distractors makes "target within default k" nearly trivial.
-   Require ≥ `defaultK + 1` (ideally 12–20) sticky neighbors, and have the baseline run record the
-   pre-fix miss / poor target rank so the fixture proves a real promotion.
+3. **[MEDIUM · 09-03] Grep acceptance is too weak for a behavior-changing shared helper.** "both
+   files call `SearchReranked`" (grep) does not prove both behave correctly. Require MCP + Connect
+   integration tests that seed records and assert identical reranked IDs for the same query, plus
+   preserved `k` / tags / created-windows and no cross-owner leakage — existing
+   `connectapi_test.go:118/331` are the precedent to extend.
 
-5. **[MEDIUM · 09-01] Package boundary.** A new `internal/retrievaleval` package cannot reach the
-   unexported `deps` / `searchArgs` / `searchMemory` (`tools.go:33/704`). Either make the eval
-   `package server`, or extract a shared exported search helper (dovetails with concern #2 — one
-   helper serves MCP handler, Connect, and eval, preventing drift).
+4. **[MEDIUM · 09-03] D-03 language is internally inconsistent.** The plan says raw-score
+   separation is "diagnostic" but also that "score separation stays asserted/reported." Pick one:
+   make the rank bar the assertion and raw-score separation a `t.Logf` diagnostic, and **explicitly
+   supersede/narrow D-03** in the plan text rather than have a diagnostic masquerade as an
+   assertion.
 
-6. **[MEDIUM · 09-01] Prod embedder parity.** Production wires query params, document params, and
-   document instruction (`tools.go:215`, `registry.go:32`), not just the query instruction. For a
-   faithful baseline the eval should mirror `ENGRAM_EMBED_QUERY_PARAMS`,
-   `ENGRAM_EMBED_DOCUMENT_PARAMS`, `ENGRAM_EMBED_DOCUMENT_INSTRUCTION` — else it measures a
-   different embedding than prod. (Note: query/doc asymmetry is Phase 10 #305 territory; keep the
-   eval config-faithful without pulling Phase-10 scope forward.)
+5. **[MEDIUM · 09-02/09-03] Docs go stale when rerank lands.** `reference/tools.md:95` says
+   tag-filtered search is "ranked by vector similarity" — after rerank, order may reflect lexical
+   policy while `score` stays raw Qdrant similarity (no longer monotonic with order). 09-03 touches
+   no docs files. **Fix:** add a docs task to 09-03 (or have 09-02 depend on final ranking wording):
+   "Final order may include reranking; `score` remains first-stage dense similarity and may be
+   non-monotonic after rerank."
 
-7. **[MEDIUM · 09-03] Over-fetch underspecified.** "limit ≥ k" can collapse to no over-fetch,
-   while an unbounded factor amplifies latency for large caller `k` (`Store.Search` passes
-   `Limit: k` straight to Qdrant, `store.go:568`). Define it explicitly, e.g.
-   `candidateK = min(max(k*4, 32), 100)`.
+6. **[LOW · 09-03] Define `k==0` for the exported helper.** Handlers default before search (MCP→8
+   `tools.go:704`, Connect→20 `connectapi.go:153`); an exported `SearchReranked` should not silently
+   over-fetch then truncate to zero. Specify its `k==0` contract.
 
-- **09-02 (LOW):** word the score doc as "search results carry `score` when non-zero in JSON;
-  unranked list/get results have zero/omitted score" (`omitempty` omits an actual zero).
+7. **[LOW · 09-03] Keep `internal/store` narrow.** Housing lexical rerank in `store` is acceptable
+   (it must reuse store filters) but broadens store's responsibility — keep the helper API pure;
+   don't import `embed`/`server` concepts into `store`.
+
+8. **[LOW · 09-01 wording] "zero Docker cost" is overbroad.** Other tests already start Qdrant
+   testcontainers in `go test ./...` (`store_test.go:48`, `tools_test.go:125`). The accurate claim
+   is **"zero *additional* Docker cost from the eval package when gated off."** Tighten the plan/
+   threat wording.
 
 ### Divergent Views
 
-None — single reviewer.
+None available — single successful reviewer (Gemini ineligible this round).
 
 ### Recommended Disposition
 
-Concerns 1–4 are worth a targeted replan before execution — 1 and 2 are correctness/coverage gaps,
-3 is a real acceptance-criteria conflict, 4 sharpens the regression fixture that is the whole point
-of the phase. Run: `/gsd-plan-phase 9 --reviews`. Concerns 5–7 can be handled at plan-revision or
-left as executor guidance in the affected tasks' `<read_first>` / `<action>`.
+The round-1 HIGH fixes hold up. The remaining findings are mostly MEDIUM refinements, not
+correctness blockers — concerns 1 and 3 are the most execution-relevant (wrong-Qdrant isolation;
+real behavioral tests for the two-surface helper). Reasonable options:
+
+- **Tighten now:** `/gsd-plan-phase 9 --reviews` once more to fold in 1–5 (env isolation, exact
+  seed sequence, real MCP+Connect tests, D-03 supersession language, docs task). Cheap insurance
+  before execution changes production ordering across two APIs.
+- **Or proceed:** these are refinements an attentive executor can honor from this REVIEWS.md; 6–8
+  are fine as executor guidance. If proceeding, run `/gsd-execute-phase 9` and treat this file as
+  the executor's checklist.
