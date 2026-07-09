@@ -16,4 +16,6 @@ exclude:
   - bin/
   - charts/engram/templates/ # Helm templates ({{ }}) are not plain YAML
   - docs-site/ # Astro/pnpm project (its own YAML/JSONC config, generated output)
+  - node_modules/ # never lint installed dep trees (top-level, if present)
+  - ui/node_modules/ # pnpm writes .modules.yaml / .pnpm/lock.yaml that fail formatting
   - ui/pnpm-lock.yaml # generated lockfile (pnpm-owned; long dependency lines fail max_line_length)
