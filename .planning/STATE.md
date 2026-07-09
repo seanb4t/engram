@@ -1,9 +1,16 @@
 ---
-gsd_state_version: '1.0'  # placeholder; syncStateFrontmatter overwrites on first state.* call
-status: planning
+gsd_state_version: 1.0
 milestone: v0.9.x — Recall Quality
+milestone_name: "- [ ] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval"
+current_phase: 9
+current_phase_name: not yet planned
+status: planning
+stopped_at: Phase 9 context gathered
+last_updated: "2026-07-09T17:43:01.996Z"
+last_activity: 2026-07-09
+last_activity_desc: "opened milestone v0.9.x via `/gsd-new-milestone`: routed 6 requirements to Phases 9–12 (REQUIREMENTS.md), added phase details (ROADMAP.md), updated PROJECT.md Active section. Theme = Recall Quality, focused scope (consolidation + write-lane deferred to v0.10.x)."
 progress:
-  total_phases: 4
+  total_phases: 12
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -77,6 +84,6 @@ Carried to v0.10.x. NOT part of v0.9.x scope.
 
 ## Session Continuity
 
-Last session: 2026-07-09
-Stopped at: Opened milestone v0.9.x (Recall Quality) — PROJECT.md / REQUIREMENTS.md / ROADMAP.md / STATE.md written; 6 requirements routed to Phases 9–12.
-Resume file: None. Next step: `/gsd-plan-phase 9` to plan the retrieval eval harness + ranking precision phase.
+Last session: 2026-07-09T17:43:01.990Z
+Stopped at: Phase 9 context gathered
+Resume file: .planning/phases/09-retrieval-eval-harness-ranking-precision/09-CONTEXT.md
