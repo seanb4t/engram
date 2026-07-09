@@ -144,3 +144,5 @@ Without these, `task eval:retrieval` self-skips cleanly (`t.Skip`), matching `ev
 ---
 *Phase: 09-retrieval-eval-harness-ranking-precision*
 *Completed: 2026-07-09*
+
+## Self-Check: PASSED

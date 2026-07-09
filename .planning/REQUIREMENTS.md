@@ -87,8 +87,8 @@ deferred to v0.10.x. Each requirement maps to exactly one phase (9–12).
 
 ### Retrieval Ranking & Evaluation (Phase 9)
 
-- [ ] **REQ-retrieval-eval**: A reproducible retrieval-quality evaluation harness — a labeled query→expected-record dataset (including the #261 miss as a regression fixture), `recall@k` / MRR metrics, runnable via a `task eval:retrieval` target — so ranking and embedding changes are measured, not guessed. *(GitHub #261; foundational for Phases 9–11)*
-- [ ] **REQ-search-similarity-scores**: `search_memory` optionally returns a per-result similarity score so callers/agents can gauge how close a near-miss was (and so the eval harness can assert score separation). *(GitHub #261)*
+- [x] **REQ-retrieval-eval**: A reproducible retrieval-quality evaluation harness — a labeled query→expected-record dataset (including the #261 miss as a regression fixture), `recall@k` / MRR metrics, runnable via a `task eval:retrieval` target — so ranking and embedding changes are measured, not guessed. *(GitHub #261; foundational for Phases 9–11)*
+- [x] **REQ-search-similarity-scores**: `search_memory` optionally returns a per-result similarity score so callers/agents can gauge how close a near-miss was (and so the eval harness can assert score separation). *(GitHub #261)*
 - [ ] **REQ-ranking-precision**: Eliminate phrasing-sensitive ranking and "sticky topical neighbor" crowding so a near-verbatim restatement of a record surfaces that record within default `k` — via hybrid dense+lexical (BM25) fusion and/or a higher-`k`+rerank strategy, **selected by the REQ-retrieval-eval numbers**. *(GitHub #261)*
 
 ### Embedder Query/Document Asymmetry (Phase 10)

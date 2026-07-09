@@ -4,16 +4,16 @@ milestone: v0.9.x — Recall Quality
 milestone_name: "- [ ] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval"
 current_phase: 9
 current_phase_name: Retrieval Eval Harness & Ranking Precision
-status: ready_to_execute
+status: executing
 stopped_at: Phase 9 planned + cross-AI reviewed x2 (3 plans, 2 waves) — verified 3x by gsd-plan-checker
-last_updated: "2026-07-09"
+last_updated: "2026-07-09T23:45:01.598Z"
 last_activity: 2026-07-09
-last_activity_desc: "Phase 9 hardened through two review→replan cycles. Round 1: /gsd-review --codex → 4 HIGH (TestMain gate-before-Docker, shared store.SearchReranked across MCP+Connect, rank-based #261 bar, fixture floor ≥defaultK+1). Round 2: /gsd-review --codex (gemini ineligible/tier-deprecated) confirmed round-1 fixes correct + 8 MEDIUM/LOW refinements (eval Qdrant-addr isolation, exact seed sequence, real MCP+Connect behavioral tests replacing grep, D-03 explicit supersession, docs-site rerank caveat, k==0 contract, store-narrow). Both --reviews passes re-verified PASSED. Decision coverage 9/9, requirements 3/3."
+last_activity_desc: Phase 9 execution started
 progress:
   total_phases: 12
   completed_phases: 0
   total_plans: 3
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-09)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.9.x — Recall Quality (opened 2026-07-09). Four phases (9–12): retrieval eval + ranking precision (#261), embedder query/document asymmetry (#305), async-on-write summaries (#320), per-memory usage signals (#317). No phase planned yet — next step `/gsd-plan-phase 9`.
+**Current focus:** Phase 9 — Retrieval Eval Harness & Ranking Precision
 
 ## Current Position
 
-Phase: 9 of 12 — **Retrieval Eval Harness & Ranking Precision** (planned — 3 plans, 2 waves)
-Plan: 3 plans, verified 3× (initial + 2 Codex review→replan cycles). Next: `/gsd-execute-phase 9`.
-Status: Phase 9 planned, Codex-reviewed twice & re-verified. Wave 1 = 09-01 eval harness ‖ 09-02 score docs; Wave 2 = 09-03 eval-gated ranking (autonomous:false, D-07/D-08 conditional, D-06 rerank behind shared store.SearchReranked covering MCP+Connect with real behavioral tests). v0.8.x baseline (Phases 1–8) complete and shipped.
-Last activity: 2026-07-09 — round-2 `/gsd-plan-phase 9 --reviews`: incorporated all 8 round-2 Codex refinements (eval Qdrant-addr isolation, exact seed sequence, real MCP+Connect tests replacing grep, D-03 supersession, docs rerank caveat, k==0 contract); re-verified PASSED; decisions 9/9, requirements 3/3.
+Phase: 9 (Retrieval Eval Harness & Ranking Precision) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-07-09 — Phase 9 execution started
 
 Progress: [░░░░░░░░░░] 0% (v0.9.x — 1/4 phases planned, 0/4 executed)
 
@@ -53,6 +53,7 @@ Progress: [░░░░░░░░░░] 0% (v0.9.x — 1/4 phases planned, 0/
 | 12. Per-Memory Usage Signals | 0/1 | Planned |
 
 **Shipped (v0.8.x baseline):** Phases 1–8 complete (24 requirements). See ROADMAP.md Progress table.
+| Phase 09-retrieval-eval-harness-ranking-precision P01 | 20min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,8 @@ Progress: [░░░░░░░░░░] 0% (v0.9.x — 1/4 phases planned, 0/
 - [Phase 2]: Summary-by-default recall (DEC-ambu) — Phase 11 async summaries build on the `FillSummary` seam.
 - [Phase 4]: Asymmetric embedder text-prefix knobs (DEC-zyhq) — Phase 10 extends these with native API params + doc-side prefix.
 - [Phase 6]: OTLP-only non-blocking telemetry (DEC-dwi, DEC-uxh) — Phases 9 (eval) and 12 (usage signals) reuse the OTLP → ClickStack seam.
+- [Phase 9]: Reused server.StoreAndEmbedderFromEnvNoEnsure() for the *embed.Client only (full prod parity); built the eval Store directly from testQdrantAddr to avoid ambient ENGRAM_QDRANT_ADDR leakage (round-2 finding 1)
+- [Phase 9]: seedRecord uses a fixture-local key (not the Qdrant point ID) because Qdrant point IDs must be UUIDs; a key->UUID map resolves rank lookups
 
 ### Pending Todos
 
@@ -84,6 +87,6 @@ Carried to v0.10.x. NOT part of v0.9.x scope.
 
 ## Session Continuity
 
-Last session: 2026-07-09T17:43:01.990Z
+Last session: 2026-07-09T23:44:26.954Z
 Stopped at: Phase 9 context gathered
 Resume file: .planning/phases/09-retrieval-eval-harness-ranking-precision/09-CONTEXT.md
