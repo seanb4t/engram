@@ -93,3 +93,54 @@ func TestRerankHitsTruncatesToK(t *testing.T) {
 		t.Fatalf("RerankHits(k>len(hits)) should return every hit, got %d want %d", len(got), len(hits))
 	}
 }
+
+// TestRerankHitsIgnoresAccessCount is a genuine negative-space guard for the
+// D-08 hard invariant: usage counters MUST NEVER affect ranking or the recall
+// gate — not a rerank signal, tiebreaker, filter, or gate input. Two input
+// sets are constructed identical in every rank-relevant field (Content, Tags,
+// Score, ID) EXCEPT AccessCount, assigned wildly divergent values in an order
+// that WOULD reorder the output if the reranker ever consulted the counter.
+// If a future edit adds an AccessCount read to RerankHits' tie-break chain,
+// this test fails.
+func TestRerankHitsIgnoresAccessCount(t *testing.T) {
+	t.Parallel()
+	// Identical Content/Tags/Score/ID across both sets — only AccessCount
+	// diverges. hot's AccessCount values are neither ascending nor descending
+	// in ID order (b > a > c), so a reranker that consulted AccessCount as
+	// even a secondary tiebreaker — in EITHER sort direction — would visibly
+	// reorder the output away from the baseline's ID-ascending order.
+	baseline := []Memory{
+		{ID: "a", Content: "shared content shared content", Score: 0.5, AccessCount: 0},
+		{ID: "b", Content: "shared content shared content", Score: 0.5, AccessCount: 0},
+		{ID: "c", Content: "shared content shared content", Score: 0.5, AccessCount: 0},
+	}
+	hot := []Memory{
+		{ID: "a", Content: "shared content shared content", Score: 0.5, AccessCount: 500_000},
+		{ID: "b", Content: "shared content shared content", Score: 0.5, AccessCount: 1_000_000},
+		{ID: "c", Content: "shared content shared content", Score: 0.5, AccessCount: 1},
+	}
+
+	query := "shared content"
+	baselineOut := RerankHits(query, baseline, 3)
+	hotOut := RerankHits(query, hot, 3)
+
+	if len(baselineOut) != len(hotOut) {
+		t.Fatalf("output length differs: baseline=%d hot=%d", len(baselineOut), len(hotOut))
+	}
+	for i := range baselineOut {
+		if baselineOut[i].ID != hotOut[i].ID {
+			t.Fatalf("RerankHits output order is NOT invariant under AccessCount (D-08 violation): "+
+				"position %d: baseline=%s hot=%s (full baseline order=%v, hot order=%v)",
+				i, baselineOut[i].ID, hotOut[i].ID, idsOf(baselineOut), idsOf(hotOut))
+		}
+	}
+}
+
+// idsOf extracts IDs in order for a readable test failure message.
+func idsOf(hits []Memory) []string {
+	ids := make([]string, len(hits))
+	for i, h := range hits {
+		ids[i] = h.ID
+	}
+	return ids
+}
