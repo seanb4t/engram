@@ -45,6 +45,29 @@ When `ENGRAM_SUMMARY_MODEL` is set, the server digests memories that lack a summ
 
 Source: `internal/config` (registry) + `internal/server/tools.go` (`summarizerFromConfig`).
 
+### Async-on-write summaries
+
+By default, `store_memory`/`schedule_memory` records without a client-authored `summary` stay unsummarized until the next `engram summarize-missing` sweep. Setting `ENGRAM_SUMMARY_ON_WRITE=true` enables a bounded in-process worker pool that fills the summary asynchronously right after each successful write — a memory typically gets a summary within seconds instead of waiting for the next sweep.
+
+**Two-step opt-in.** Enabling this is a two-step, per-deployment decision, not a single flag flip:
+
+1. Set `ENGRAM_SUMMARY_MODEL` and run `task eval:summary` (`ENGRAM_SUMMARY_EVAL=1 go test ./internal/summarize/ -run TestSummaryFidelity -v`) to judge whether your configured model preserves caveats/negations well enough for your data. This is a **manual, per-deployment gate** — it is intentionally **not** run in CI, since it needs a live gateway + model and its verdict is judgment, not a pass/fail regression test.
+2. Once you're satisfied with fidelity, set `ENGRAM_SUMMARY_ON_WRITE=true` to turn the worker pool on.
+
+Both switches must be true at once for the pool to start (`ENGRAM_SUMMARY_MODEL` non-empty AND `ENGRAM_SUMMARY_ON_WRITE` parsing true) — setting `ENGRAM_SUMMARY_MODEL` alone only enables the `summarize-missing` sweep, not the async worker.
+
+| Environment variable | Flag | Default | Description |
+|---------------------|------|---------|-------------|
+| `ENGRAM_SUMMARY_ON_WRITE` | — | `false` | Enables the async-on-write summary worker pool (requires `ENGRAM_SUMMARY_MODEL` also set) |
+| `ENGRAM_SUMMARY_WORKERS` | — | `2` | Worker goroutine pool size draining the enqueue channel |
+| `ENGRAM_SUMMARY_QUEUE_SIZE` | — | `256` | Bounded enqueue channel capacity |
+
+**Bounded and non-blocking.** The enqueue channel is bounded (`ENGRAM_SUMMARY_QUEUE_SIZE`); a full queue drops the id and logs a warning instead of blocking the write — the next `engram summarize-missing` sweep reclaims any dropped or in-flight-at-shutdown records as a backstop. `store_memory`/`schedule_memory` always return success once the record is persisted, even when the summarizer is down, slow, or the queue is full: summarization is never on the synchronous write path.
+
+**Degradation.** If the summary gateway is unreachable or erroring, the write still succeeds and the record simply has no summary yet ("no summary yet") until a later fill (retry, or the next `summarize-missing` sweep) succeeds. Recall never fails because of a missing summary — it falls back to truncated content.
+
+Source: `internal/config` (registry) + `internal/server/tools.go` (`buildSummaryQueue`, the D-01 AND-gate) + `internal/server/summaryqueue.go` (worker pool).
+
 ## OIDC / Auth
 
 Setting `ENGRAM_OIDC_ISSUER` enables bearer-token enforcement (JWKS signature + issuer + expiry validation). Without it, all requests are accepted and a loud warning is logged.

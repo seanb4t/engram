@@ -62,6 +62,14 @@ full content via `get_memory`. `search_memory` results carry an always-on per-re
 `list_memory`/`get_memory` results). Design intent: explicit, zero-junk, correctable. Do not
 add auto-extraction.
 
+With `ENGRAM_SUMMARY_ON_WRITE=true` (and `ENGRAM_SUMMARY_MODEL` set), auto-generated
+summaries are filled **asynchronously** shortly after `store_memory`/`schedule_memory`
+returns, by a bounded background worker pool — never on the synchronous write path. A
+write always succeeds once persisted, even if the summarizer is down, slow, or the
+queue is full; an unfilled record just has "no summary yet" until a later async fill or
+the next `engram summarize-missing` sweep reclaims it. See `guides/configure.md`
+(Auto-summary → Async-on-write summaries) for the opt-in gate and knobs.
+
 **Isolation (authz):** each actor sees/mutates only their own records; `shared`
 records are readable (never writable) by any **authenticated** caller — the
 shared read grant requires a non-empty owner-claim value. No issuer → single anonymous

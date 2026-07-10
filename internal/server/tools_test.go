@@ -15,6 +15,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -209,6 +211,25 @@ func testDeps(t *testing.T) *deps {
 		t.Fatalf("ensure: %v", err)
 	}
 	return &deps{st: st, em: fakeEmbedder{}}
+}
+
+// testDepsWithSummaryQueue builds the same Qdrant-backed deps as testDeps plus
+// a live, test-controlled *summaryQueue (workers/queueSize/fill all injected),
+// wired onto deps.summaryQueue so enqueue-on-success tests can drive the queue
+// through the real storeMemory/scheduleMemory/storeDiscovery/storeRule
+// handlers without a live summarizer. The queue is shut down via t.Cleanup.
+func testDepsWithSummaryQueue(t *testing.T, workers, queueSize int, fill func(ctx context.Context, id string) error) *deps {
+	t.Helper()
+	d := testDeps(t)
+	q := newSummaryQueue(workers, queueSize, 5*time.Second, nil, fill)
+	q.Start(context.Background())
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		q.Shutdown(ctx)
+	})
+	d.summaryQueue = q
+	return d
 }
 
 // cleanupErr surfaces a deferred-cleanup failure so leftover records can't
@@ -406,6 +427,112 @@ func TestStoreMemoryMintsAndReturnsShortID(t *testing.T) {
 	got, err := d.st.Get(context.Background(), id)
 	if err != nil || got.ShortID != sid {
 		t.Fatalf("persisted short id %q != returned %q (err %v)", got.ShortID, sid, err)
+	}
+}
+
+// TestStoreMemoryEnqueuesOnSuccess pins SC#1: a successful storeMemory
+// enqueues the record id for async summary fill, and the worker drains it —
+// asserted deterministically via the Wait() drain seam (no time.Sleep).
+func TestStoreMemoryEnqueuesOnSuccess(t *testing.T) {
+	var mu sync.Mutex
+	var handled []string
+	d := testDepsWithSummaryQueue(t, 2, 8, func(_ context.Context, id string) error {
+		mu.Lock()
+		handled = append(handled, id)
+		mu.Unlock()
+		return nil
+	})
+	ctx := authedContext(t, "sub-enqueue")
+	scope := "iso-test:project:store-enqueue"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Authenticated("sub-enqueue")))
+	}()
+
+	id, _, err := d.storeMemory(ctx, storeArgs{Content: "enqueue me", Scope: scope, Source: "user-said", Category: "gotcha"})
+	if err != nil {
+		t.Fatalf("storeMemory: %v", err)
+	}
+	d.summaryQueue.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(handled) != 1 || handled[0] != id {
+		t.Fatalf("fill handled %v, want exactly [%q]", handled, id)
+	}
+}
+
+// TestStoreMemoryReturnsWhenSummarizerHangs pins SC#2: the write path is
+// never on the synchronous summarizer path. With a fill that blocks
+// indefinitely, storeMemory must still return success promptly — enqueue is a
+// fire-and-forget, non-blocking tryEnqueue.
+func TestStoreMemoryReturnsWhenSummarizerHangs(t *testing.T) {
+	block := make(chan struct{})
+	defer close(block)
+	d := testDepsWithSummaryQueue(t, 1, 4, func(ctx context.Context, _ string) error {
+		select {
+		case <-block:
+		case <-ctx.Done():
+		}
+		return ctx.Err()
+	})
+	ctx := authedContext(t, "sub-hang")
+	scope := "iso-test:project:store-hang"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Authenticated("sub-hang")))
+	}()
+
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := d.storeMemory(ctx, storeArgs{Content: "hangs summarizer", Scope: scope, Source: "user-said", Category: "gotcha"})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("storeMemory: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("storeMemory did not return promptly while the summarizer fill hung (SC#2)")
+	}
+}
+
+// TestDiscoveryAndRuleNeverEnqueue pins D-06: store_discovery and store_rule
+// own their own summaries and must never enqueue for async fill, even with a
+// live queue wired in.
+func TestDiscoveryAndRuleNeverEnqueue(t *testing.T) {
+	var enqueued atomic.Int64
+	d := testDepsWithSummaryQueue(t, 1, 8, func(context.Context, string) error {
+		enqueued.Add(1)
+		return nil
+	})
+
+	discCtx := context.Background()
+	discScope := "discovery:repo:negative-space-test"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+discScope, d.st.DeleteAll(discCtx, discScope, store.Anonymous()))
+	}()
+	if _, _, err := d.storeDiscovery(discCtx, storeDiscoveryArgs{
+		Content: "never enqueues a discovery", Kind: "fact", Scope: discScope,
+		Citations: []citationArg{{Kind: "file", Ref: "a.go"}},
+	}); err != nil {
+		t.Fatalf("storeDiscovery: %v", err)
+	}
+
+	ruleCtx := authedContext(t, "sub-rule-no-enqueue")
+	ruleScope := "rule:project:negative-space-test"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+ruleScope, d.st.DeleteAll(ruleCtx, ruleScope, store.Authenticated("sub-rule-no-enqueue")))
+	}()
+	if _, _, err := d.storeRule(ruleCtx, storeRuleArgs{
+		Content: "never enqueue rules", Scope: ruleScope, Summary: "no enqueue",
+	}); err != nil {
+		t.Fatalf("storeRule: %v", err)
+	}
+
+	d.summaryQueue.Wait()
+	if n := enqueued.Load(); n != 0 {
+		t.Errorf("discovery/rule enqueued %d fills, want 0 (D-06 negative space)", n)
 	}
 }
 
