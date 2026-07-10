@@ -491,7 +491,9 @@ type SummaryQueueMetrics struct {
 | A3 | Passing only the record id through the channel (per SC#1's literal wording) and re-fetching via `Get` inside the worker is preferred over passing the full `Memory` | Common Pitfalls #4 | Low — safe either way; re-fetching is strictly more correct against a concurrent update, at the cost of one extra Qdrant round-trip per item |
 | A4 | The new worker-pool code should live in `internal/server/summaryqueue.go` rather than a new `internal/summaryqueue` package | Recommended Project Structure | Low — a structural/style call; either works, no functional risk |
 
-## Open Questions
+## Open Questions (RESOLVED during planning)
+
+> Both questions below were closed by the finalized plans (2026-07-09). Retained for provenance.
 
 1. **Exact `WithMaxTries` / backoff interval defaults for D-04's bounded retry**
    - What we know: must be short/bounded so a sustained brownout drains-to-failure
@@ -506,6 +508,9 @@ type SummaryQueueMetrics struct {
      for longer-running network operations; verify with a forced-failure test
      (see Validation Architecture) that N failing items don't stall the pool
      past a few seconds each.
+   - **RESOLVED (Plan 11-02):** the planner locked an explicit low `WithMaxTries`
+     + low `MaxInterval` (not library defaults), verified by
+     `TestSummaryQueueRetryGivesUp` bounding worst-case wall time (T-11-03).
 
 2. **Where do the new OTel instruments live — a new `SummaryQueueMetrics` type in `internal/telemetry`, or fields on the queue struct in `internal/server`?**
    - What we know: `telemetry.NewToolMetrics` / `telemetry.InitLayerMetrics`
@@ -517,6 +522,8 @@ type SummaryQueueMetrics struct {
    - Recommendation: follow the existing `ToolMetrics` pattern for consistency
      (construct in `serve.go`, pass into `Register`) — this is a style
      consistency call for the planner, not a functional risk either way.
+   - **RESOLVED (Plan 11-01):** instruments live in a `telemetry.SummaryQueueMetrics`
+     type constructed from the shared meter, mirroring `ToolMetrics` (D-09).
 
 ## Environment Availability
 
