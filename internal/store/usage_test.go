@@ -143,3 +143,42 @@ func TestUpdateBumpsAccessCountByOne(t *testing.T) {
 		t.Error("LastAccessedAt after Update is zero, want a non-zero stamp")
 	}
 }
+
+// TestIncrementAccess proves the get-path primitive (D-01/D-04/D-05): two
+// sequential IncrementAccess calls on a seeded record raise its access_count
+// by 2 (no concurrency, so exact) and set a non-zero last_accessed_at, via a
+// vector-preserving SetPayload — no ownership re-check.
+func TestIncrementAccess(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:usage-increment"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	id := "b0000000-0000-0000-0000-000000000004"
+	m := Memory{ID: id, Content: "v", Scope: scope, Owner: "sub-usage", CreatedAt: time.Now().UTC()}
+	vec := []float32{0.1, 0.2, 0.3}
+	if err := s.Upsert(ctx, m, vec); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	if err := s.IncrementAccess(ctx, id); err != nil {
+		t.Fatalf("first IncrementAccess: %v", err)
+	}
+	if err := s.IncrementAccess(ctx, id); err != nil {
+		t.Fatalf("second IncrementAccess: %v", err)
+	}
+
+	got, err := s.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("get after increments: %v", err)
+	}
+	if got.AccessCount != 2 {
+		t.Errorf("AccessCount after two IncrementAccess calls = %d, want 2", got.AccessCount)
+	}
+	if got.LastAccessedAt.IsZero() {
+		t.Error("LastAccessedAt after IncrementAccess is zero, want a non-zero stamp")
+	}
+	if got.Content != "v" {
+		t.Errorf("Content = %q, want unchanged %q", got.Content, "v")
+	}
+}

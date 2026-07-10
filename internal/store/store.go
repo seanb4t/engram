@@ -1384,6 +1384,42 @@ func (s *Store) SetVisibility(ctx context.Context, id string, subj Subject, shar
 	return err
 }
 
+// IncrementAccess bumps a record's access_count by 1 and stamps
+// last_accessed_at, without re-embedding (uses SetPayload, preserving the
+// vector). It is a store-layer primitive fired only by handler-boundary
+// callers that already gated ownership (D-01) — it deliberately does NOT
+// re-run getWritable/GetReadable; the internal Get here is purely a
+// read-modify-write of the counter value, not a re-authorization. The RMW is
+// last-writer-wins: concurrent bumps on the same record may lose an
+// increment, which is an accepted tradeoff for a soft curation signal (D-05,
+// no mutex/singleflight/optimistic-retry).
+func (s *Store) IncrementAccess(ctx context.Context, id string) (err error) {
+	ctx, span := tracer.Start(ctx, "store.IncrementAccess")
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "IncrementAccess", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
+	cur, err := s.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	_, err = s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload: qdrant.NewValueMap(map[string]any{
+			"access_count":     cur.AccessCount + 1,
+			"last_accessed_at": s.now().Format(time.RFC3339),
+		}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
+	})
+	return err
+}
+
 // Delete removes the memory with the given id, only if owned by subj.
 func (s *Store) Delete(ctx context.Context, id string, subj Subject) (err error) {
 	ctx, span := tracer.Start(ctx, "store.Delete",
