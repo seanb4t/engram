@@ -586,6 +586,35 @@ func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 	return out
 }
 
+// SearchReranked is the shared search-with-rerank helper: it over-fetches
+// candidateK(k) raw hits via the existing owner/scope-filtered Search, applies
+// the pure RerankHits lexical-overlap reorder, and truncates to the caller's
+// already-defaulted k. deps.searchMemory (MCP), engramAPI.SearchMemories
+// (Connect), and the retrieval eval all call this — the ONE ranking path for
+// every recall surface (review finding 2/5) — so no surface can drift from the
+// shipped rerank behavior, and reranking runs strictly AFTER
+// ownerScopeFilter's authz-scoped Query, never widening visibility.
+//
+// k == 0 is rejected with ErrInvalidArgument (round-2 finding 6): callers MUST
+// pass the already-defaulted effective k (MCP defaults 8 at tools.go, Connect
+// defaults 20 at connectapi.go — BEFORE calling this helper) — a zero k never
+// silently over-fetches candidateK then truncates to an empty result.
+//
+// SearchReranked takes plain inputs (query text, query vector, k) and does NOT
+// import internal/embed or internal/server (round-2 finding 7): embedding
+// happens in the caller before this is invoked; this helper only reorders an
+// already-fetched, already-authorized []Memory.
+func (s *Store) SearchReranked(ctx context.Context, scope string, subj Subject, query string, vec []float32, k uint64, tags []string, after, before time.Time) ([]Memory, error) {
+	if k == 0 {
+		return nil, fmt.Errorf("%w: SearchReranked requires k > 0 (caller must apply its default before calling)", ErrInvalidArgument)
+	}
+	hits, err := s.Search(ctx, scope, subj, vec, candidateK(k), tags, after, before)
+	if err != nil {
+		return nil, err
+	}
+	return RerankHits(query, hits, int(k)), nil
+}
+
 // SearchDiscovery runs a top-k vector search constrained to discovery records.
 // Empty scope spans all discovery scopes (the cross_spine case); empty kind
 // matches both map and fact. subj restricts results via ownerOrSharedCondition:

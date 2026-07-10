@@ -92,7 +92,7 @@ memories. By default returns compact summaries; pass `full=true` for complete co
 | `query` | string | yes | Natural-language search query |
 | `scope` | string | yes | Scope to search within |
 | `k` | uint64 | no | Number of results to return (default 8) |
-| `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter. Applied as a hard pre-filter, then results are ranked by vector similarity |
+| `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter. Applied as a hard pre-filter, then results are ranked by vector similarity and reranking (see below) |
 | `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
 | `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
 | `full` | bool | no | Return full `content` instead of compact summaries (default `false`) |
@@ -100,6 +100,8 @@ memories. By default returns compact summaries; pass `full=true` for complete co
 Returns a list of matching memory records. Each result carries a `score`: the
 raw Qdrant cosine similarity for this query (higher = closer), present when
 non-zero. Unranked `list_memory`/`get_memory` results have a zero/omitted score.
+Final order may include reranking; `score` remains first-stage dense
+similarity and may be non-monotonic after rerank.
 
 ---
 

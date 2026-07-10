@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -336,6 +337,163 @@ func TestConnectTagsFilter(t *testing.T) {
 	if g := ids(sresp.Msg.Memories); !g[seed[0].ID] || !g[seed[1].ID] || g[seed[2].ID] {
 		t.Errorf("SearchMemories go: ids=%v", g)
 	}
+}
+
+// TestRerankParityMCPAndConnect proves the shared store.SearchReranked helper
+// (round-2 finding 3 — a grep is not proof for a behavior-changing shared
+// helper) is the ONE ranking path for both recall surfaces: MCP
+// deps.searchMemory and Connect engramAPI.SearchMemories return the IDENTICAL
+// reranked memory-ID order for the same query, honor k / a tags AND-filter /
+// a created-window identically, and leak no cross-owner private records
+// through the reranked path. Extends seedCrossActorRecords (:37),
+// SearchMemories_no_private_leak (:118), and the tag-filter precedent (:331).
+//
+// Seeded records use testDeps's fakeEmbedder, which returns a FIXED vector
+// regardless of input — so every record's raw Qdrant score ties exactly, and
+// the reranked ORDER asserted below is entirely RerankHits's lexical-overlap
+// logic, never raw vector similarity (the deterministic differentiator this
+// test needs).
+func TestRerankParityMCPAndConnect(t *testing.T) {
+	d := testDeps(t)
+	api := &engramAPI{d: d}
+	scope := "rerank-parity:project:test"
+	ctx := context.Background()
+	now := timeNow()
+
+	// recTHigh is the high-lexical-overlap record (a #261-style near-verbatim
+	// target); recFmt/recCI are topical-but-lexically-distinct neighbors;
+	// recOldPython is tagged/dated differently for the tag- and window-filter
+	// subtests.
+	recTHigh := store.Memory{
+		ID: "e3333333-0000-0000-0000-000000000001",
+		Content: "Run task lint before every commit; golangci-lint config lives in " +
+			".golangci.yaml and must stay clean.",
+		Scope: scope, Owner: "actor-A", Tags: []string{"lint", "task", "golangci-lint"}, CreatedAt: now,
+	}
+	recFmt := store.Memory{
+		ID:      "e3333333-0000-0000-0000-000000000002",
+		Content: "Run task fmt before committing; it applies gofmt, dprint, and yamlfmt.",
+		Scope:   scope, Owner: "actor-A", Tags: []string{"fmt", "task"}, CreatedAt: now,
+	}
+	recCI := store.Memory{
+		ID:      "e3333333-0000-0000-0000-000000000003",
+		Content: "The bare task target runs lint then test; CI invokes it directly.",
+		Scope:   scope, Owner: "actor-A", Tags: []string{"task", "ci"}, CreatedAt: now,
+	}
+	recOldPython := store.Memory{
+		ID:      "e3333333-0000-0000-0000-000000000004",
+		Content: "Old python linting notes, unrelated tooling, tagged for filter tests.",
+		Scope:   scope, Owner: "actor-A", Tags: []string{"python"}, CreatedAt: now.Add(-48 * time.Hour),
+	}
+	records := []store.Memory{recTHigh, recFmt, recCI, recOldPython}
+	for _, m := range records {
+		if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", m.ID, err)
+		}
+	}
+	t.Cleanup(func() {
+		for _, m := range records {
+			cleanupErr(t, "Delete "+m.ID, d.st.Delete(ctx, m.ID, store.Authenticated("actor-A")))
+		}
+	})
+
+	const query = "Before committing, run task lint; golangci-lint config is .golangci.yaml"
+	mcpCtx := authedContext(t, "actor-A")
+	actx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}})
+
+	mcpIDs := func(a searchArgs) []string {
+		t.Helper()
+		out, err := d.searchMemory(mcpCtx, a)
+		if err != nil {
+			t.Fatalf("MCP searchMemory: %v", err)
+		}
+		ids := make([]string, len(out))
+		for i, v := range out {
+			view, ok := v.(recallView)
+			if !ok {
+				t.Fatalf("MCP result %d unexpected type %T (want recallView)", i, v)
+			}
+			ids[i] = view.ID
+		}
+		return ids
+	}
+	connectIDs := func(req *engramv1.SearchMemoriesRequest) []string {
+		t.Helper()
+		resp, err := api.SearchMemories(actx, connect.NewRequest(req))
+		if err != nil {
+			t.Fatalf("Connect SearchMemories: %v", err)
+		}
+		ids := make([]string, len(resp.Msg.Memories))
+		for i, m := range resp.Msg.Memories {
+			ids[i] = m.Id
+		}
+		return ids
+	}
+
+	t.Run("identical_reranked_order", func(t *testing.T) {
+		got := mcpIDs(searchArgs{Query: query, Scope: scope, K: 4})
+		want := connectIDs(&engramv1.SearchMemoriesRequest{Query: query, Scope: scope, K: 4})
+		if !slices.Equal(got, want) {
+			t.Fatalf("MCP/Connect reranked order mismatch:\n MCP:     %v\n Connect: %v", got, want)
+		}
+		if len(got) == 0 || got[0] != recTHigh.ID {
+			t.Errorf("expected the high-lexical-overlap record %s ranked first, got order %v", recTHigh.ID, got)
+		}
+	})
+
+	t.Run("honors_k", func(t *testing.T) {
+		got := mcpIDs(searchArgs{Query: query, Scope: scope, K: 2})
+		want := connectIDs(&engramv1.SearchMemoriesRequest{Query: query, Scope: scope, K: 2})
+		if len(got) != 2 || len(want) != 2 {
+			t.Fatalf("k=2 not honored: MCP returned %d, Connect returned %d", len(got), len(want))
+		}
+		if !slices.Equal(got, want) {
+			t.Fatalf("MCP/Connect order mismatch at k=2:\n MCP:     %v\n Connect: %v", got, want)
+		}
+	})
+
+	t.Run("honors_tags_and_filter", func(t *testing.T) {
+		got := mcpIDs(searchArgs{Query: query, Scope: scope, K: 4, Tags: []string{"task"}})
+		want := connectIDs(&engramv1.SearchMemoriesRequest{Query: query, Scope: scope, K: 4, Tags: []string{"task"}})
+		if !slices.Equal(got, want) {
+			t.Fatalf("MCP/Connect tag-filtered order mismatch:\n MCP:     %v\n Connect: %v", got, want)
+		}
+		if slices.Contains(got, recOldPython.ID) {
+			t.Errorf("tags=[task] filter leaked the python-tagged record %s through the reranked path", recOldPython.ID)
+		}
+	})
+
+	t.Run("honors_created_window", func(t *testing.T) {
+		after := now.Add(-1 * time.Hour).Format(time.RFC3339)
+		got := mcpIDs(searchArgs{Query: query, Scope: scope, K: 4, CreatedAfter: after})
+		want := connectIDs(&engramv1.SearchMemoriesRequest{Query: query, Scope: scope, K: 4, CreatedAfter: after})
+		if !slices.Equal(got, want) {
+			t.Fatalf("MCP/Connect created-window order mismatch:\n MCP:     %v\n Connect: %v", got, want)
+		}
+		if slices.Contains(got, recOldPython.ID) {
+			t.Errorf("created_after=%s should exclude the 48h-old record %s through the reranked path", after, recOldPython.ID)
+		}
+	})
+
+	t.Run("no_cross_owner_leak_through_reranked_path", func(t *testing.T) {
+		bctx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-B"}})
+		resp, err := api.SearchMemories(bctx, connect.NewRequest(&engramv1.SearchMemoriesRequest{Query: query, Scope: scope, K: 4}))
+		if err != nil {
+			t.Fatalf("Connect SearchMemories(actor-B): %v", err)
+		}
+		if len(resp.Msg.Memories) != 0 {
+			t.Errorf("actor-B saw %d of actor-A's private records via Connect through the reranked path: %+v", len(resp.Msg.Memories), resp.Msg.Memories)
+		}
+
+		bMcpCtx := authedContext(t, "actor-B")
+		mcpOut, err := d.searchMemory(bMcpCtx, searchArgs{Query: query, Scope: scope, K: 4})
+		if err != nil {
+			t.Fatalf("MCP searchMemory(actor-B): %v", err)
+		}
+		if len(mcpOut) != 0 {
+			t.Errorf("actor-B saw %d of actor-A's private records via MCP through the reranked path: %+v", len(mcpOut), mcpOut)
+		}
+	})
 }
 
 func TestMemoryToProtoMapsSummary(t *testing.T) {

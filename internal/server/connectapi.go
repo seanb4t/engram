@@ -162,7 +162,7 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_before: %w", err))
 	}
-	ms, err := a.d.st.Search(ctx, req.Msg.Scope, subj, vec, k, req.Msg.Tags, after, before)
+	ms, err := a.d.st.SearchReranked(ctx, req.Msg.Scope, subj, req.Msg.Query, vec, k, req.Msg.Tags, after, before)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
