@@ -28,6 +28,7 @@ type Config struct {
 	OIDC      OIDCConfig      `koanf:"oidc"`
 	UI        UIConfig        `koanf:"ui"`
 	Log       LogConfig       `koanf:"log"`
+	Usage     UsageConfig     `koanf:"usage"`
 }
 
 // ServerConfig is engram's HTTP-listener surface: where the process binds and
@@ -129,6 +130,16 @@ type LogConfig struct {
 	Level  string `koanf:"level"`
 	Format string `koanf:"format"`
 	Stdout string `koanf:"stdout"`
+}
+
+// UsageConfig gates the payload access_count write on get/update (D-09).
+// Signals defaults to "true" — unlike summarize.on_write, this is local,
+// non-egressing curation metadata, so it is on by default. Parsed with
+// strconv.ParseBool at point of use in buildUsageQueue, never a native bool
+// at Load() time (mirrors ui.enabled / summarize.on_write). The D-06 OTLP
+// recall-id spans are independent of this flag.
+type UsageConfig struct {
+	Signals string `koanf:"signals"`
 }
 
 // Load builds Config from registry defaults, the ENGRAM_ env layer, and — when

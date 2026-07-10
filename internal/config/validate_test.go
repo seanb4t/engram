@@ -16,6 +16,7 @@ func validConfig() *Config {
 		Embed:     EmbedConfig{Model: "ollama/bge-m3", Dim: "1024"},
 		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
 		Summarize: SummarizeConfig{OnWrite: "false", Workers: "2", QueueSize: "256"},
+		Usage:     UsageConfig{Signals: "true"},
 	}
 }
 
@@ -48,6 +49,7 @@ func TestValidateFieldRules(t *testing.T) {
 		{"summary workers zero", func(c *Config) { c.Summarize.Workers = "0" }, "ENGRAM_SUMMARY_WORKERS"},
 		{"summary queue_size non-numeric", func(c *Config) { c.Summarize.QueueSize = "abc" }, "ENGRAM_SUMMARY_QUEUE_SIZE"},
 		{"summary queue_size zero", func(c *Config) { c.Summarize.QueueSize = "0" }, "ENGRAM_SUMMARY_QUEUE_SIZE"},
+		{"usage signals non-bool", func(c *Config) { c.Usage.Signals = "yes" }, "ENGRAM_USAGE_SIGNALS"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -122,6 +124,14 @@ func TestValidateIgnoresSummaryTokensAndTimeoutWhenDisabled(t *testing.T) {
 	c.Summarize.Timeout = "not-a-duration"
 	if err := c.Validate(); err != nil {
 		t.Fatalf("disabled summarize must not validate token/timeout: %v", err)
+	}
+}
+
+func TestValidateUsageSignalsFalseAccepted(t *testing.T) {
+	c := validConfig()
+	c.Usage.Signals = "false"
+	if err := c.Validate(); err != nil {
+		t.Fatalf("Validate(usage.signals=false) = %v, want nil", err)
 	}
 }
 

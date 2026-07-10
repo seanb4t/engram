@@ -110,6 +110,10 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_ON_WRITE %q: must be a boolean: %w", c.Summarize.OnWrite, err))
 	}
 
+	if _, err := strconv.ParseBool(c.Usage.Signals); err != nil {
+		errs = append(errs, fmt.Errorf("ENGRAM_USAGE_SIGNALS %q: must be a boolean: %w", c.Usage.Signals, err))
+	}
+
 	switch n, err := strconv.ParseUint(c.Summarize.Workers, 10, 64); {
 	case err != nil:
 		errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_WORKERS %q: must be a positive integer: %w", c.Summarize.Workers, err))

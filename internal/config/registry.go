@@ -55,6 +55,7 @@ var registry = []field{
 	{Key: "log.level", Env: "ENGRAM_LOG_LEVEL", Legacy: "MEM_LOG_LEVEL", Default: "info"},
 	{Key: "log.format", Env: "ENGRAM_LOG_FORMAT", Legacy: "MEM_LOG_FORMAT", Default: "json"},
 	{Key: "log.stdout", Env: "ENGRAM_LOG_STDOUT", Legacy: "MEM_LOG_STDOUT", Default: "true"},
+	{Key: "usage.signals", Env: "ENGRAM_USAGE_SIGNALS", Default: "true"},
 }
 
 // envToKey maps each ENGRAM_* env var to its koanf key.
