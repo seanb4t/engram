@@ -132,7 +132,13 @@ type LogConfig struct {
 	Stdout string `koanf:"stdout"`
 }
 
-// UsageConfig gates the payload access_count write on get/update (D-09).
+// UsageConfig gates the get-path async access_count / last_accessed_at payload
+// write (D-09) — its purpose is to eliminate read-path write amplification, not
+// to disable all counting. When false, buildUsageQueue returns a nil usageQueue
+// so get_memory performs zero extra writes. The update_memory bump in
+// store.Update is intentionally NOT gated: it piggybacks the already-in-flight
+// Upsert (D-04), adds no extra store round-trip, and so causes no read-path
+// amplification regardless of this flag.
 // Signals defaults to "true" — unlike summarize.on_write, this is local,
 // non-egressing curation metadata, so it is on by default. Parsed with
 // strconv.ParseBool at point of use in buildUsageQueue, never a native bool
