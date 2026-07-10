@@ -50,6 +50,13 @@ type deps struct {
 	// true (D-01 AND-gate, decided in buildDepsFromEnv). Its methods are
 	// nil-safe no-ops, so call sites never branch on whether it's enabled.
 	summaryQueue *summaryQueue
+	// usageQueue is the async get-path access-count incrementer (Phase 12,
+	// D-01/D-10). nil (disabled) unless ENGRAM_USAGE_SIGNALS parses true
+	// (default true; decided in buildUsageQueue). The D-06 OTLP recall-span
+	// analytics are independent of this flag. Its methods are nil-safe
+	// no-ops, so getMemory/Connect GetMemory never branch on whether it's
+	// enabled.
+	usageQueue *usageQueue
 }
 
 // configLoad is the indirection seam for loading koanf config from the process
@@ -155,8 +162,10 @@ func StoreAndEmbedderFromEnvNoEnsure() (*store.Store, uint64, *embed.Client, err
 // is the pre-built static SummaryQueueMetrics (from serve.go, threaded through
 // Register); it is used only when the D-01 AND-gate enables the async summary
 // worker (buildSummaryQueue), and may be nil in tests exercising the disabled
-// path.
-func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics) (*deps, error) {
+// path. uqm is the pre-built static UsageQueueMetrics (also from serve.go),
+// used only when ENGRAM_USAGE_SIGNALS enables the async usage-signal worker
+// (buildUsageQueue); may also be nil in tests exercising the disabled path.
+func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQueueMetrics) (*deps, error) {
 	cfg, err := loadAndValidate()
 	if err != nil {
 		return nil, err
@@ -175,6 +184,7 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics) (*deps, error) {
 		em:              em,
 		summaryMaxChars: summaryMaxChars(cfg),
 		summaryQueue:    buildSummaryQueue(cfg, st, sqm),
+		usageQueue:      buildUsageQueue(cfg, st, uqm),
 	}, nil
 }
 
@@ -220,6 +230,31 @@ func buildSummaryQueue(cfg *config.Config, st *store.Store, sqm *telemetry.Summa
 	q.Start(context.Background())
 	telemetry.RegisterSummaryQueueDepth(otel.Meter("github.com/seanb4t/engram"), q.depth)
 	slog.Info("async-on-write summaries enabled", "workers", workers, "queue_size", queueSize)
+	return q
+}
+
+// buildUsageQueue constructs and starts the async get-path access-count
+// incrementer (Phase 12, D-01/D-04/D-10) when ENGRAM_USAGE_SIGNALS parses
+// true (default "true" — on by default, D-09). False/unparseable returns nil
+// (disabled; every usageQueue method becomes a nil-safe no-op, so the
+// getMemory/Connect GetMemory call sites never branch). The D-06 OTLP
+// recall-span analytics are independent of this flag. Unlike
+// buildSummaryQueue there are no dedicated env-configurable worker/queue-size
+// knobs this phase — a small fixed pool is sufficient for a lightweight,
+// single-attempt, drop-on-full best-effort counter bump.
+func buildUsageQueue(cfg *config.Config, st *store.Store, uqm *telemetry.UsageQueueMetrics) *usageQueue {
+	signals, err := strconv.ParseBool(cfg.Usage.Signals)
+	if err != nil || !signals {
+		return nil
+	}
+	const workers = 2
+	const queueSize = 256
+	fill := func(ctx context.Context, id string) error {
+		return st.IncrementAccess(ctx, id)
+	}
+	q := newUsageQueue(workers, queueSize, uqm, fill)
+	q.Start(context.Background())
+	slog.Info("usage signals enabled", "workers", workers, "queue_size", queueSize)
 	return q
 }
 
@@ -983,15 +1018,16 @@ func (d *deps) setVisibility(ctx context.Context, a setVisibilityArgs) error {
 // Register wires the memory tools onto the MCP server. It accepts a pre-built
 // *telemetry.ToolMetrics (constructed once in runServe and reused for both tool
 // instrumentation and auth-failure recording) so there is a single instrument
-// instance rather than two disjoint ones, and a pre-built
-// *telemetry.SummaryQueueMetrics (also built once in runServe) threaded into
-// buildDepsFromEnv so the async summary queue's static instruments share the
-// same meter. Returns a shutdown closure the caller invokes on shutdown to
-// drain the summary queue — a no-op when the queue is disabled (nil) — and an
-// error if dependency construction (store/embedder) fails, so the caller can
-// flush telemetry and exit cleanly rather than aborting via log.Fatal.
-func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm *telemetry.SummaryQueueMetrics, resolve connectResolver) (shutdown func(context.Context), err error) {
-	d, err := buildDepsFromEnv(sqm)
+// instance rather than two disjoint ones, and pre-built
+// *telemetry.SummaryQueueMetrics / *telemetry.UsageQueueMetrics (also built
+// once in runServe) threaded into buildDepsFromEnv so each async queue's
+// static instruments share the same meter. Returns a shutdown closure the
+// caller invokes on shutdown to drain BOTH the summary queue and the usage
+// queue — a no-op for either queue that is disabled (nil) — and an error if
+// dependency construction (store/embedder) fails, so the caller can flush
+// telemetry and exit cleanly rather than aborting via log.Fatal.
+func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQueueMetrics, resolve connectResolver) (shutdown func(context.Context), err error) {
+	d, err := buildDepsFromEnv(sqm, uqm)
 	if err != nil {
 		return nil, fmt.Errorf("build deps: %w", err)
 	}
@@ -1092,7 +1128,14 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			}
 			return textResult(msg), map[string]any{"rules": rules}, err
 		})
-	return d.summaryQueue.Shutdown, nil
+	// Compose both queues' shutdown into a single closure: the caller
+	// (serve.go) invokes this once, strictly after httpSrv.Shutdown returns,
+	// draining the summary queue then the usage queue (both nil-safe no-ops
+	// when disabled).
+	return func(ctx context.Context) {
+		d.summaryQueue.Shutdown(ctx)
+		d.usageQueue.Shutdown(ctx)
+	}, nil
 }
 
 func textResult(s string) *mcp.CallToolResult {

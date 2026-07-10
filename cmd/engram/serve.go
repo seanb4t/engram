@@ -97,6 +97,11 @@ func runServe(cmd *cobra.Command) error {
 	// buildDepsFromEnv, via telemetry.RegisterSummaryQueueDepth(meter,
 	// q.depth), once a live queue exists to sample (D-09, Codex finding #1).
 	sqm := telemetry.NewSummaryQueueMetrics(otel.Meter("github.com/seanb4t/engram"))
+	// UsageQueueMetrics mirrors sqm: only the static enqueue/drop/fail
+	// instruments are built here (no queue exists yet); the queue itself is
+	// constructed later inside buildDepsFromEnv (buildUsageQueue) once
+	// ENGRAM_USAGE_SIGNALS is resolved.
+	uqm := telemetry.NewUsageQueueMetrics(otel.Meter("github.com/seanb4t/engram"))
 	// Install the store/embed/auth latency instruments as telemetry package
 	// state so the layer Record* helpers emit (no-op until this runs).
 	telemetry.InitLayerMetrics(otel.Meter("github.com/seanb4t/engram"))
@@ -148,7 +153,7 @@ func runServe(cmd *cobra.Command) error {
 	}
 
 	srv := mcp.NewServer(&mcp.Implementation{Name: "engram", Version: version}, nil)
-	drainSummaries, err := server.Register(srv, mux, tm, sqm, connectResolve)
+	drain, err := server.Register(srv, mux, tm, sqm, uqm, connectResolve)
 	if err != nil {
 		slog.Error("server registration failed", "err", err)
 		return err
@@ -214,13 +219,14 @@ func runServe(cmd *cobra.Command) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		shutdownErr := httpSrv.Shutdown(shutdownCtx)
-		// Drain the summary queue STRICTLY after httpSrv.Shutdown returns —
-		// never in parallel — so nearly all handlers have finished before the
-		// enqueue channel is closed (D-08, RESEARCH Pitfall 1). Necessary but
-		// not sufficient: Shutdown can return via deadline with a handler still
-		// in flight, so summaryQueue self-guards the close vs a late enqueue (CR-01).
-		slog.Info("draining summary queue")
-		drainSummaries(shutdownCtx)
+		// Drain the summary and usage queues STRICTLY after httpSrv.Shutdown
+		// returns — never in parallel — so nearly all handlers have finished
+		// before either enqueue channel is closed (D-08, RESEARCH Pitfall 1).
+		// Necessary but not sufficient: Shutdown can return via deadline with a
+		// handler still in flight, so both queues self-guard the close vs a
+		// late enqueue (CR-01).
+		slog.Info("draining summary and usage queues")
+		drain(shutdownCtx)
 		return shutdownErr
 	}
 }
