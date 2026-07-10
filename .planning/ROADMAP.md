@@ -251,7 +251,7 @@ observable truths that hold in the shipped baseline.
 3. Usage counters are server-set and **never** silently affect ranking; any usage-weighted recall remains an explicit, out-of-scope future decision.
 
 **Status**: Planned (v0.9.x) — design-first
-**Plans**: 3/6 plans executed
+**Plans**: 4/6 plans executed
 
 **Wave 1** *(parallel — disjoint files)*
 
@@ -261,7 +261,7 @@ observable truths that hold in the shipped baseline.
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 12-04-PLAN.md — D-06 recall-id analytics: bounded `engram.recall.ids`/`engram.recall.count` on `store.Search`/`List`/`Get` spans + span-recorder tests [Wave 2]
+- [x] 12-04-PLAN.md — D-06 recall-id analytics: bounded `engram.recall.ids`/`engram.recall.count` on `store.Search`/`List`/`Get` spans + span-recorder tests [Wave 2]
 - [ ] 12-05-PLAN.md — D-10 async get-path incrementer `usagequeue.go`: CR-01 shutdown-safety kernel minus retry, drop-on-full, Qdrant-free tests [Wave 2]
 
 **Wave 3** *(blocked on Wave 2)*
@@ -285,4 +285,4 @@ observable truths that hold in the shipped baseline.
 | 9. Retrieval Eval & Ranking Precision | v0.9.x | 3/3 | Complete    | 2026-07-10 |
 | 10. Asymmetric Query/Document Embeddings | v0.9.x | 0/1 | Planned | — |
 | 11. Async-on-Write Summaries | v0.9.x | 3/3 | Complete   | 2026-07-10 |
-| 12. Per-Memory Usage Signals | v0.9.x | 3/6 | In Progress|  |
+| 12. Per-Memory Usage Signals | v0.9.x | 4/6 | In Progress|  |
