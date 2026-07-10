@@ -40,6 +40,18 @@ const (
 type summaryQueue struct {
 	ch chan string
 
+	// mu guards ch's closed state so a late tryEnqueue can never send on a
+	// closed channel and panic (CR-01). The D-08 ordering invariant
+	// (serve.go drains only AFTER httpSrv.Shutdown returns) is necessary but
+	// NOT sufficient: net/http.Server.Shutdown does NOT force-terminate active
+	// handlers when its context deadline expires — it just stops waiting — so
+	// a slow store_memory/schedule_memory handler (exactly the gateway-brownout
+	// case this feature targets) can still be running when Shutdown closes ch.
+	// tryEnqueue takes RLock and checks closed before sending; Shutdown takes
+	// Lock before close, making send and close mutually exclusive.
+	mu     sync.RWMutex
+	closed bool
+
 	// wg tracks worker goroutine lifecycle: Add in Start, Done when a
 	// worker's `range ch` loop exits (i.e. ch has been closed by Shutdown).
 	wg sync.WaitGroup
@@ -124,13 +136,30 @@ func (q *summaryQueue) tryEnqueue(id string) {
 	if q == nil {
 		return
 	}
+	// RLock serializes only against Shutdown's close (concurrent enqueues still
+	// proceed in parallel); it guarantees the closed-check and the send below
+	// cannot straddle Shutdown's close(ch), so a late enqueue drops instead of
+	// panicking on send-to-closed (CR-01).
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+	if q.closed {
+		if q.metrics != nil {
+			q.metrics.Dropped(context.Background())
+		}
+		slog.Warn("summary queue closed; dropped, will be reclaimed by summarize-missing", "id", id)
+		return
+	}
+	// Reserve the in-flight slot BEFORE the send so a fast worker cannot run
+	// itemDone (inFlight.Done) before this Add and drive the WaitGroup negative;
+	// the drop branch releases the reservation to stay balanced.
+	q.inFlight.Add(1)
 	select {
 	case q.ch <- id:
-		q.inFlight.Add(1)
 		if q.metrics != nil {
 			q.metrics.Enqueued(context.Background())
 		}
 	default:
+		q.inFlight.Done()
 		if q.metrics != nil {
 			q.metrics.Dropped(context.Background())
 		}
@@ -228,18 +257,27 @@ func newRetryBackOff() *backoff.ExponentialBackOff {
 }
 
 // Shutdown stops accepting new work and waits for in-flight fills to finish,
-// bounded by ctx. It follows the RESEARCH Pattern 3 CORRECTED ordering: it
-// does NOT itself guard against a concurrent send racing the channel close —
-// the caller (serve.go) MUST guarantee httpSrv.Shutdown(ctx) has already
-// returned before calling this, which in turn guarantees no in-flight HTTP
-// handler can still call tryEnqueue. Given that invariant, closing the
-// channel here is safe. Never hangs past ctx's deadline. Nil-safe no-op on a
-// disabled queue.
+// bounded by ctx. Two layers protect the channel close from a concurrent send:
+// (1) the caller (serve.go) drains only AFTER httpSrv.Shutdown(ctx) returns, so
+// most handlers have already finished, and (2) this method takes mu.Lock
+// (mutually exclusive with tryEnqueue's RLock) and flips closed before
+// close(ch), so even a handler that outlived Shutdown's grace window — Go's
+// net/http does NOT force-terminate handlers when Shutdown's context expires —
+// is dropped by tryEnqueue rather than panicking on send-to-closed (CR-01).
+// Idempotent, and never hangs past ctx's deadline. Nil-safe no-op on a disabled
+// queue.
 func (q *summaryQueue) Shutdown(ctx context.Context) {
 	if q == nil {
 		return
 	}
+	q.mu.Lock()
+	if q.closed {
+		q.mu.Unlock()
+		return // idempotent: a second Shutdown must not double-close ch
+	}
+	q.closed = true
 	close(q.ch)
+	q.mu.Unlock()
 	done := make(chan struct{})
 	go func() {
 		q.wg.Wait()

@@ -311,6 +311,30 @@ func TestSummaryQueueDepthReflectsChannelOccupancy(t *testing.T) {
 	}
 }
 
+// TestSummaryQueueEnqueueAfterShutdownIsDroppedNotPanic proves a late
+// tryEnqueue — from an HTTP handler that outlived httpSrv.Shutdown's grace
+// window (net/http does not force-terminate handlers on Shutdown-ctx expiry) —
+// is dropped-and-counted rather than panicking with "send on closed channel"
+// (CR-01). Run with -race.
+func TestSummaryQueueEnqueueAfterShutdownIsDroppedNotPanic(t *testing.T) {
+	metrics, reader := newTestMetrics(t)
+	q := newSummaryQueue(1, 4, time.Second, metrics, func(context.Context, string) error { return nil })
+	q.Start(context.Background())
+	shutdownWithinBudget(t, q, 2*time.Second)
+
+	// The channel is now closed. A straggler handler calling tryEnqueue must
+	// not panic; it drops-and-counts (summarize-missing reclaims it later).
+	q.tryEnqueue("late-after-close") // must not panic
+	q.Wait()                         // returns immediately: the late id was never enqueued
+
+	if got := counterSum(t, reader, "engram.summary_queue.dropped"); got != 1 {
+		t.Errorf("dropped count = %d, want 1 (late enqueue dropped after shutdown)", got)
+	}
+	if got := counterSum(t, reader, "engram.summary_queue.enqueued"); got != 0 {
+		t.Errorf("enqueued count = %d, want 0 (nothing accepted after shutdown)", got)
+	}
+}
+
 // TestStoreFillFillsEligibleRecord exercises the production fill-builder
 // (storeFill, wired into the queue by Wave 3) end-to-end against a live
 // Qdrant-backed store: an eligible record (long content, no summary) is

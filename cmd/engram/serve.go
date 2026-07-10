@@ -215,10 +215,10 @@ func runServe(cmd *cobra.Command) error {
 		defer cancel()
 		shutdownErr := httpSrv.Shutdown(shutdownCtx)
 		// Drain the summary queue STRICTLY after httpSrv.Shutdown returns —
-		// never in parallel. Once Shutdown returns, no in-flight HTTP handler
-		// can still call tryEnqueue, so closing the enqueue channel here is
-		// safe; doing it any earlier risks a send-on-closed-channel panic
-		// (D-08, RESEARCH Pitfall 1). No-op when the queue is disabled.
+		// never in parallel — so nearly all handlers have finished before the
+		// enqueue channel is closed (D-08, RESEARCH Pitfall 1). Necessary but
+		// not sufficient: Shutdown can return via deadline with a handler still
+		// in flight, so summaryQueue self-guards the close vs a late enqueue (CR-01).
 		slog.Info("draining summary queue")
 		drainSummaries(shutdownCtx)
 		return shutdownErr
