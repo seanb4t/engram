@@ -335,6 +335,20 @@ func TestSummaryQueueEnqueueAfterShutdownIsDroppedNotPanic(t *testing.T) {
 	}
 }
 
+// TestSummaryQueueRetryBudgetAccommodatesFullTryCount is the WR-02 regression:
+// the total retry wall-time budget must be able to hold summaryQueueMaxTries
+// attempts each lasting up to the full per-attempt timeout. A hardcoded budget
+// shorter than the per-attempt timeout (the old 20s vs a 30s
+// ENGRAM_SUMMARY_TIMEOUT) fires the elapsed cap after one slow attempt and
+// silently collapses the 3-try budget to one.
+func TestSummaryQueueRetryBudgetAccommodatesFullTryCount(t *testing.T) {
+	attemptTimeout := 30 * time.Second
+	q := newSummaryQueue(1, 1, attemptTimeout, nil, func(context.Context, string) error { return nil })
+	if want := attemptTimeout * time.Duration(summaryQueueMaxTries); q.maxElapsed < want {
+		t.Errorf("maxElapsed = %v; want >= attemptTimeout*maxTries (%v) so the elapsed cap cannot pre-empt the try count", q.maxElapsed, want)
+	}
+}
+
 // TestStoreFillFillsEligibleRecord exercises the production fill-builder
 // (storeFill, wired into the queue by Wave 3) end-to-end against a live
 // Qdrant-backed store: an eligible record (long content, no summary) is

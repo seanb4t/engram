@@ -19,11 +19,11 @@ const (
 	// summaryQueueMaxTries bounds the retry attempt COUNT per id — an
 	// explicit low value (not the library's implicit unbounded-by-count
 	// default) so a sustained gateway brownout drains-to-failure fast (D-04).
+	// This is the PRIMARY, binding retry bound; the wall-time budget
+	// (maxElapsed, a per-queue field derived from attemptTimeout) is only a
+	// coherent backstop that can never fire before this count is reached
+	// (WR-02).
 	summaryQueueMaxTries = 3
-	// summaryQueueMaxElapsed bounds total retry wall time per id, well under
-	// the summarizer's own per-request timeout, so a single stuck id cannot
-	// compound across retries into a multi-minute stall (RESEARCH Pitfall 3).
-	summaryQueueMaxElapsed = 20 * time.Second
 	// summaryQueueMaxInterval caps the exponential backoff sleep between
 	// attempts — an explicit low ceiling, not the library's 60s
 	// ExponentialBackOff default (tuned for longer-running network
@@ -74,6 +74,15 @@ type summaryQueue struct {
 	// see worker/process below (Codex finding #2).
 	attemptTimeout time.Duration
 
+	// maxElapsed is the total retry wall-time budget per id, DERIVED from
+	// attemptTimeout in newSummaryQueue rather than hardcoded, so it is always
+	// large enough to accommodate summaryQueueMaxTries attempts at the
+	// configured per-attempt timeout. A hardcoded budget shorter than the
+	// per-attempt timeout (the old 20s vs a 30s ENGRAM_SUMMARY_TIMEOUT) would
+	// let the elapsed cap fire after a single slow attempt and silently
+	// collapse the intended try count to one (WR-02).
+	maxElapsed time.Duration
+
 	workers int
 	metrics *telemetry.SummaryQueueMetrics
 }
@@ -90,8 +99,12 @@ func newSummaryQueue(workers, queueSize int, attemptTimeout time.Duration, metri
 		ch:             make(chan string, queueSize),
 		fill:           fill,
 		attemptTimeout: attemptTimeout,
-		workers:        workers,
-		metrics:        metrics,
+		// Derive the wall-time budget so it can never pre-empt the try count:
+		// maxTries attempts, each up to attemptTimeout, plus one capped backoff
+		// sleep apiece (WR-02). maxTries stays the primary, binding bound.
+		maxElapsed: (attemptTimeout + summaryQueueMaxInterval) * time.Duration(summaryQueueMaxTries),
+		workers:    workers,
+		metrics:    metrics,
 	}
 }
 
@@ -218,7 +231,7 @@ func (q *summaryQueue) process(ctx context.Context, id string) {
 	},
 		backoff.WithBackOff(newRetryBackOff()),
 		backoff.WithMaxTries(summaryQueueMaxTries),
-		backoff.WithMaxElapsedTime(summaryQueueMaxElapsed),
+		backoff.WithMaxElapsedTime(q.maxElapsed),
 		backoff.WithNotify(func(err error, d time.Duration) {
 			if q.metrics != nil {
 				q.metrics.Retried(context.Background())
