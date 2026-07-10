@@ -154,7 +154,7 @@ Which phase covers which requirement. Retrospective — completed requirements a
 | REQ-ranking-precision | Phase 9 | Planned (v0.9.x) |
 | REQ-embedder-native-params | Phase 10 | Complete (already shipped) |
 | REQ-async-summaries | Phase 11 | Complete (v0.9.x) |
-| REQ-usage-signals | Phase 12 | Planned (v0.9.x) |
+| REQ-usage-signals | Phase 12 | Complete (v0.9.x) |
 
 **Coverage:**
 

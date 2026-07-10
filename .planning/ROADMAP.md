@@ -285,4 +285,4 @@ observable truths that hold in the shipped baseline.
 | 9. Retrieval Eval & Ranking Precision | v0.9.x | 3/3 | Complete    | 2026-07-10 |
 | 10. Asymmetric Query/Document Embeddings | v0.9.x | 0/1 | Planned | — |
 | 11. Async-on-Write Summaries | v0.9.x | 3/3 | Complete   | 2026-07-10 |
-| 12. Per-Memory Usage Signals | v0.9.x | 6/6 | Complete   | 2026-07-10 |
+| 12. Per-Memory Usage Signals | v0.9.x | 6/6 | Complete    | 2026-07-10 |
