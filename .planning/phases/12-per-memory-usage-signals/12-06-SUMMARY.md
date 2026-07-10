@@ -170,3 +170,11 @@ None - no external service configuration required. `ENGRAM_USAGE_SIGNALS` defaul
 ---
 *Phase: 12-per-memory-usage-signals*
 *Completed: 2026-07-10*
+
+## Self-Check: PASSED
+
+- FOUND: .planning/phases/12-per-memory-usage-signals/12-06-SUMMARY.md
+- FOUND: 2a70a1c5 (Task 1 commit)
+- FOUND: 4a43b9d2 (Task 2 commit)
+- FOUND: cecbca38 (Task 3 commit)
+- FOUND: 7ce84889 (SUMMARY commit)
