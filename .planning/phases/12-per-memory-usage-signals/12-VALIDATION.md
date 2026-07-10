@@ -1,8 +1,8 @@
 ---
 phase: 12
 slug: per-memory-usage-signals
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-10
 ---
@@ -36,16 +36,20 @@ created: 2026-07-10
 
 ## Per-Task Verification Map
 
-> Populated once PLAN.md tasks exist. Anchored to the research's Validation Architecture seams:
-> injectable clock (`store.WithClock`, store.go~181), a Wait/Idle drain seam on the async
-> incrementer (mirrors `summaryqueue.go`), and Qdrant-free negative-space tests.
+> Finalized against the 6 committed plans (12-01..12-06, commit 38ae1cff). Anchored to the
+> research's Validation Architecture seams: injectable clock (`store.WithClock`, store.go~181),
+> a Wait/Idle drain seam on the async incrementer (mirrors `summaryqueue.go`), and Qdrant-free
+> negative-space tests. Each row's command is package-scoped for quick per-task feedback; the
+> terminal gate is `task` (lint + test) in 12-06.
 
-| Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
-|---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 12-01-01 | 01 | 1 | REQ-usage-signals | T-12-* / — | `access_count`/`last_accessed_at` round-trip through `payload()`/`fromPayload()` losslessly (uint64 → Qdrant IntegerValue) | unit | `go test ./internal/store/...` | ❌ W0 | ⬜ pending |
-| 12-0x-xx | — | — | REQ-usage-signals | — | get-by-id + update increment; **search/list/list_scheduled do NOT** (negative-space) | unit | `go test ./internal/server/...` | ❌ W0 | ⬜ pending |
-| 12-0x-xx | — | — | REQ-usage-signals | — | reranker output invariant under `access_count` (D-08 ranking isolation) | unit | `go test ./internal/store/...` | ❌ W0 | ⬜ pending |
-| 12-0x-xx | — | — | REQ-usage-signals | — | async get-path incrementer: drop-on-full, no `get_memory` error under Qdrant outage; deterministic via Wait/Idle drain seam | unit | `go test ./internal/server/...` | ❌ W0 | ⬜ pending |
+| Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | Status |
+|------|------|-------------|------------|-----------------|-----------|-------------------|--------|
+| 12-01 | 1 | REQ-usage-signals | T-12-01/02 | `access_count`/`last_accessed_at` round-trip through `payload()`/`fromPayload()` losslessly (uint64 → Qdrant IntegerValue); `IncrementAccess` via `SetPayload`; free `Update` bump; **`RerankHits` invariant under `access_count`** (D-08) | unit | `go test ./internal/store/...` | ⬜ pending |
+| 12-02 | 1 | REQ-usage-signals | — | `ENGRAM_USAGE_SIGNALS` parses (default on); `UsageQueueMetrics` instruments construct | unit | `go test ./internal/config/... ./internal/telemetry/...` | ⬜ pending |
+| 12-03 | 1 | REQ-usage-signals | T-12-SC | proto `Memory` fields 19/20 additive; `gen/` regenerated & committed (CI drift-check reproduced) | build/gen | `task proto:lint && task proto:gen && git diff --exit-code -- gen/` | ⬜ pending |
+| 12-04 | 2 | REQ-usage-signals | — | `engram.recall.ids` (bounded slice) + `engram.recall.count` on `store.Search`/`List`/`Get` spans; **not** `instrumentTools` | unit | `go test ./internal/store/...` | ⬜ pending |
+| 12-05 | 2 | REQ-usage-signals | T-12-04/05 | async incrementer: drop-on-full, no retry, no `get_memory` error under Qdrant outage; CR-01 closed-guard; deterministic via Wait/Idle drain seam (Qdrant-free) | unit | `go test ./internal/server/...` | ⬜ pending |
+| 12-06 | 3 | REQ-usage-signals | T-12-11 | get + Connect `GetMemory` enqueue (call-and-ignore); D-07 `recallView`/`memoryToProto` exposure; **D-02 negative-space: zero enqueues from search/list/list_scheduled** | unit + e2e | `go test ./internal/server/...` then `task` | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -73,11 +77,11 @@ created: 2026-07-10
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 120s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies (confirmed by plan-checker across 12-01..12-06)
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (no MISSING refs — existing `go test` infra + `store.WithClock` suffice)
+- [x] No watch-mode flags
+- [x] Feedback latency < 120s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-07-10 (plan-checker VERIFICATION PASSED; Dimension 8 satisfied in substance by the finalized plans)
