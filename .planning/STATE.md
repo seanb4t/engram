@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v0.9.x — Recall Quality
 milestone_name: "- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval"
 current_phase: 11
-current_phase_name: Async-on-Write Summaries
-status: ready_to_plan
+current_phase_name: async-on-write-summaries
+status: executing
 stopped_at: Phase 11 context gathered
-last_updated: "2026-07-10T02:17:59.360Z"
+last_updated: "2026-07-10T12:57:44.963Z"
 last_activity: 2026-07-10
-last_activity_desc: "Phase 10 reconciled as already-shipped (#305 closed); advanced to Phase 11"
+last_activity_desc: Phase 11 execution started
 progress:
   total_phases: 12
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 6
+  completed_plans: 4
   percent: 8
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-09)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 11 — Async-on-Write Summaries (#320). Phase 9 shipped; Phase 10 (#305) reconciled as already-shipped.
+**Current focus:** Phase 11 — async-on-write-summaries
 
 ## Current Position
 
-Phase: 11 — Async-on-Write Summaries
-Plan: Not started
-Status: Ready to plan. Phase 10 (#305) closed as already-shipped (verified under Phase 4); next is Phase 11.
-Last activity: 2026-07-10 — Phase 10 reconciled as already-shipped (#305 closed); advanced to Phase 11
+Phase: 11 (async-on-write-summaries) — EXECUTING
+Plan: 2 of 3
+Status: Plan 01 complete (config knobs, backoff/v5 promotion, SummaryQueueMetrics); Plan 02 (queue core) ready to execute
+Last activity: 2026-07-10 — Plan 11-01 executed
 
 Progress: [█████░░░░░] 50% (v0.9.x — 2/4 phases done: Phase 9 executed, Phase 10 already-shipped)
 
@@ -56,6 +56,7 @@ Progress: [█████░░░░░] 50% (v0.9.x — 2/4 phases done: Phas
 | Phase 09-retrieval-eval-harness-ranking-precision P01 | 20min | 2 tasks | 4 files |
 | Phase 09-retrieval-eval-harness-ranking-precision P02 | 15min | 2 tasks | 3 files |
 | Phase 09-retrieval-eval-harness-ranking-precision P03 | 35min | 3 tasks | 8 files |
+| Phase 11 P01 | 15min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,7 @@ Progress: [█████░░░░░] 50% (v0.9.x — 2/4 phases done: Phas
 - [Phase 9]: D-04 supersession: ROADMAP Phase-9 success-criterion 2 'similarity score (opt-in)' wording is superseded by the shipped always-on search_memory score behavior (accepted as correct/better DX).
 - [Phase 9]: search_memory score docs (09-02) stay order-agnostic: score FIELD only, not result ORDER — the post-rerank order caveat for reference/tools.md:95 is deliberately deferred to 09-03.
 - [Phase 9]: D-06 reranker: pure lexical-overlap term-set-intersection boost (stdlib only), tie-broken by raw Score then ID; shared via Store.SearchReranked (candidateK=min(max(k*4,32),100), k<=0 rejected) called by MCP deps.searchMemory, Connect engramAPI.SearchMemories, and the retrieval eval
+- [Phase 11]: backoff/v5 promoted to direct via a go.mod-only text edit (moved require block) rather than go get/go mod tidy; Wave 2 (11-02) adds the actual import
 
 ### Pending Todos
 
@@ -93,6 +95,6 @@ Carried to v0.10.x. NOT part of v0.9.x scope.
 
 ## Session Continuity
 
-Last session: 2026-07-10T02:17:59.354Z
+Last session: 2026-07-10T12:57:16.951Z
 Stopped at: Phase 11 context gathered
 Resume file: .planning/phases/11-async-on-write-summaries/11-CONTEXT.md

@@ -97,7 +97,7 @@ deferred to v0.10.x. Each requirement maps to exactly one phase (9–12).
 
 ### Recall Surface Completeness (Phase 11)
 
-- [ ] **REQ-async-summaries**: Async-on-write summary fill — after a successful `store_memory` upsert, enqueue the record id; an in-process worker pool drains it via the idempotent, vector-preserving `Store.FillSummary`, so new summary-less records gain summaries without an operator sweep and **without** putting the summarizer on the synchronous write path (a gateway outage must never fail `store_memory`). Broad enablement gated on the summary-fidelity eval (`task eval:summary`). *(GitHub #320; builds on DEC-ambu / the shipped `summarize-missing` CLI)*
+- [x] **REQ-async-summaries**: Async-on-write summary fill — after a successful `store_memory` upsert, enqueue the record id; an in-process worker pool drains it via the idempotent, vector-preserving `Store.FillSummary`, so new summary-less records gain summaries without an operator sweep and **without** putting the summarizer on the synchronous write path (a gateway outage must never fail `store_memory`). Broad enablement gated on the summary-fidelity eval (`task eval:summary`). *(GitHub #320; builds on DEC-ambu / the shipped `summarize-missing` CLI)*
 
 ### Curation Telemetry (Phase 12)
 

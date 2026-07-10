@@ -225,11 +225,11 @@ observable truths that hold in the shipped baseline.
 3. Broad auto-enablement is gated behind the summary-fidelity eval (`task eval:summary`); the queue is bounded and observable (depth/latency on OTLP).
 
 **Status**: Planned (v0.9.x)
-**Plans**: 3 plans. Source: GitHub #320 (spec/plan `docs/superpowers/{specs,plans}/2026-06-25-auto-summary-curated-memories*`).
+**Plans**: 1/3 plans executed
 
 **Wave 1**
 
-- [ ] 11-01-PLAN.md — Foundation: `ENGRAM_SUMMARY_ON_WRITE`/`_WORKERS`/`_QUEUE_SIZE` config knobs + `Validate()`, `cenkalti/backoff/v5` direct promotion, `telemetry.SummaryQueueMetrics` instruments [Wave 1]
+- [x] 11-01-PLAN.md — Foundation: `ENGRAM_SUMMARY_ON_WRITE`/`_WORKERS`/`_QUEUE_SIZE` config knobs + `Validate()`, `cenkalti/backoff/v5` direct promotion, `telemetry.SummaryQueueMetrics` instruments [Wave 1]
 
 **Wave 2** *(blocked on Wave 1)*
 
@@ -269,5 +269,5 @@ observable truths that hold in the shipped baseline.
 | 8. Connect Auth Hardening | v0.8.x | 1/1 | Complete | shipped (PR #248/#266) |
 | 9. Retrieval Eval & Ranking Precision | v0.9.x | 3/3 | Complete    | 2026-07-10 |
 | 10. Asymmetric Query/Document Embeddings | v0.9.x | 0/1 | Planned | — |
-| 11. Async-on-Write Summaries | v0.9.x | 0/1 | Planned | — |
+| 11. Async-on-Write Summaries | v0.9.x | 1/3 | In Progress|  |
 | 12. Per-Memory Usage Signals | v0.9.x | 0/1 | Planned | — |
