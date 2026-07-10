@@ -115,6 +115,15 @@ type Memory struct {
 	// NotAfter gates expiry: the record drops out of recall once now >= NotAfter.
 	// nil = never expires.
 	NotAfter *time.Time `json:"not_after,omitempty"`
+	// AccessCount is the monotonic total of strong-signal touches (get-by-id +
+	// update; never search/list result-set membership, D-02). Server-set only —
+	// no client-writable tool argument sets it. A legacy record missing the
+	// payload key reads 0, no backfill required (D-03). MUST NOT be read by the
+	// reranker or any recall gate (D-08).
+	AccessCount uint64 `json:"access_count"`
+	// LastAccessedAt is the timestamp of the most recent strong-signal touch
+	// (get-by-id or update). Zero when the record has never been accessed.
+	LastAccessedAt time.Time `json:"last_accessed_at,omitempty"`
 	// Discovery-only (zero-valued for the curated four categories).
 	Kind      string     `json:"kind,omitempty"`      // "map" | "fact"
 	Citations []Citation `json:"citations,omitempty"` // >= 1 for discoveries
@@ -294,6 +303,10 @@ func payload(m Memory) map[string]any {
 	if m.NotAfter != nil {
 		p["not_after"] = m.NotAfter.Unix()
 	}
+	p["access_count"] = m.AccessCount
+	if !m.LastAccessedAt.IsZero() {
+		p["last_accessed_at"] = m.LastAccessedAt.Format(time.RFC3339)
+	}
 	p["summary"] = m.Summary
 	p["summary_source"] = string(m.SummarySource)
 	if m.SummaryModel != "" {
@@ -376,6 +389,14 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	if v, ok := p["not_after"]; ok {
 		t := time.Unix(v.GetIntegerValue(), 0).UTC()
 		m.NotAfter = &t
+	}
+	if v, ok := p["access_count"]; ok {
+		m.AccessCount = uint64(v.GetIntegerValue())
+	}
+	if v, ok := p["last_accessed_at"]; ok {
+		if t, err := time.Parse(time.RFC3339, v.GetStringValue()); err == nil {
+			m.LastAccessedAt = t
+		}
 	}
 	if v, ok := p["kind"]; ok {
 		m.Kind = v.GetStringValue()
@@ -1299,6 +1320,10 @@ func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *
 	}()
 
 	cur.Content = content
+	// D-04: the bump piggybacks the already-in-flight Upsert below — zero extra
+	// store round-trip.
+	cur.AccessCount++
+	cur.LastAccessedAt = s.now()
 	if shared != nil {
 		if *shared {
 			cur.Visibility = visibilityShared
