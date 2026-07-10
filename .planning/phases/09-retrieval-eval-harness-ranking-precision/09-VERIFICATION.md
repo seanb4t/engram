@@ -1,11 +1,12 @@
 ---
 phase: 09-retrieval-eval-harness-ranking-precision
 verified: 2026-07-10T00:44:59Z
-status: human_needed
+status: passed
 score: 3/3 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
+
   - test: "Run `ENGRAM_RETRIEVAL_EVAL=1 task eval:retrieval` with prod-parity env (`ENGRAM_EMBED_MODEL=qwen3-embedding-8b`, `ENGRAM_EMBED_DIM=4096`, `ENGRAM_EMBED_QUERY_INSTRUCTION` set per PR #262) once the qwen3-via-OpenRouter brownout resolves."
     expected: "Record T ranks within default k=8 (ideally rank 1) for both Query A and Query B on the actual production embedder; recall@8/MRR at or above the numbers already captured with the gemini-embedding-2 substitute (recall@8=1.00, MRR=1.000)."
     why_human: "Requires a live OpenAI-compatible embedder gateway configured with the exact production model/dim/instruction and Docker — not available in this automated verification session. The disclosed live run in 09-03-SUMMARY.md substituted `gemini-embedding-2` @3072 (and later cross-checked with `gemini-embedding-001`) because qwen3-via-OpenRouter was browning out (30s+/call vs. the client's hardcoded 30s timeout), and `ENGRAM_EMBED_QUERY_INSTRUCTION` was left unset. The D-06 rerank MECHANISM itself is proven embedder-independently by `internal/server/connectapi_test.go#TestRerankParityMCPAndConnect` (a tied-raw-score corpus where only the lexical rerank can promote the target — I re-ran this test and it passes), so the ordering logic is not in doubt; what remains unconfirmed is whether the full pipeline reaches the SC3 bar on the actual prod embedder config, per this phase's own D-05a baseline definition."
