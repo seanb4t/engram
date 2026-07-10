@@ -6,14 +6,14 @@ current_phase: 12
 current_phase_name: Per-Memory Usage Signals
 status: executing
 stopped_at: Completed 12-03-PLAN.md
-last_updated: "2026-07-10T17:27:04.131Z"
+last_updated: "2026-07-10T17:33:52.291Z"
 last_activity: 2026-07-10
 last_activity_desc: Phase 12 execution started
 progress:
   total_phases: 12
   completed_phases: 2
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
   percent: 17
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-09)
 ## Current Position
 
 Phase: 12 (Per-Memory Usage Signals) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-07-10 — Phase 12 execution started
 
@@ -63,6 +63,7 @@ Progress: [████████░░] 75% (v0.9.x — 3/4 phases done: Phas
 | Phase 12 P02 | 12min | 2 tasks | 6 files |
 | Phase 12-per-memory-usage-signals P03 | 6min | 1 tasks | 3 files |
 | Phase 12 P04 | 20min | 2 tasks | 2 files |
+| Phase 12-per-memory-usage-signals P05 | 15min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,7 @@ Progress: [████████░░] 75% (v0.9.x — 3/4 phases done: Phas
 - [Phase 12-02]: UsageQueueMetrics has no retried counter or latency histogram — D-10 mandates single-attempt, no retry
 - [Phase 12-03]: last_accessed_at uses google.protobuf.Timestamp (not string) matching created_at=14's type analog
 - [Phase 12-04]: recall-span analytics (D-06): recallIDCap=50 bounded const; store.Get gains engram.recall.ids/count for ClickStack data-completeness
+- [Phase 12-05]: usageQueue reuses summaryQueue's CR-01 kernel field/method names verbatim (fill, itemDone, depth) rather than renaming, per PATTERNS.md exact-analog guidance; no attemptTimeout/maxElapsed param since D-10 rules out a retry budget entirely
 
 ### Pending Todos
 
@@ -111,6 +113,6 @@ Carried to v0.10.x. NOT part of v0.9.x scope.
 
 ## Session Continuity
 
-Last session: 2026-07-10T17:22:13.043Z
+Last session: 2026-07-10T17:31:19.666Z
 Stopped at: Completed 12-03-PLAN.md
 Resume file: None
