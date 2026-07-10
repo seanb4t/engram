@@ -87,21 +87,21 @@ deferred to v0.10.x. Each requirement maps to exactly one phase (9–12).
 
 ### Retrieval Ranking & Evaluation (Phase 9)
 
-- [ ] **REQ-retrieval-eval**: A reproducible retrieval-quality evaluation harness — a labeled query→expected-record dataset (including the #261 miss as a regression fixture), `recall@k` / MRR metrics, runnable via a `task eval:retrieval` target — so ranking and embedding changes are measured, not guessed. *(GitHub #261; foundational for Phases 9–11)*
-- [ ] **REQ-search-similarity-scores**: `search_memory` optionally returns a per-result similarity score so callers/agents can gauge how close a near-miss was (and so the eval harness can assert score separation). *(GitHub #261)*
-- [ ] **REQ-ranking-precision**: Eliminate phrasing-sensitive ranking and "sticky topical neighbor" crowding so a near-verbatim restatement of a record surfaces that record within default `k` — via hybrid dense+lexical (BM25) fusion and/or a higher-`k`+rerank strategy, **selected by the REQ-retrieval-eval numbers**. *(GitHub #261)*
+- [x] **REQ-retrieval-eval**: A reproducible retrieval-quality evaluation harness — a labeled query→expected-record dataset (including the #261 miss as a regression fixture), `recall@k` / MRR metrics, runnable via a `task eval:retrieval` target — so ranking and embedding changes are measured, not guessed. *(GitHub #261; foundational for Phases 9–11)*
+- [x] **REQ-search-similarity-scores**: `search_memory` optionally returns a per-result similarity score so callers/agents can gauge how close a near-miss was (and so the eval harness can assert score separation). *(GitHub #261)*
+- [x] **REQ-ranking-precision**: Eliminate phrasing-sensitive ranking and "sticky topical neighbor" crowding so a near-verbatim restatement of a record surfaces that record within default `k` — via hybrid dense+lexical (BM25) fusion and/or a higher-`k`+rerank strategy, **selected by the REQ-retrieval-eval numbers**. *(GitHub #261)*
 
 ### Embedder Query/Document Asymmetry (Phase 10)
 
-- [ ] **REQ-embedder-native-params**: Query-vs-document embedding asymmetry via the embedder's **native** mechanism, extending the shipped text-prefix `REQ-asymmetric-embedder-params`: (1) per-call API-field passthrough (`ENGRAM_EMBED_QUERY_PARAM` / `ENGRAM_EMBED_DOCUMENT_PARAM`, e.g. `input_type=search_query`) for cloud embedders (Cohere/Google/Voyage/Jina); (2) a document-side prefix knob (`ENGRAM_EMBED_DOCUMENT_INSTRUCTION`) for both-side-prefix models (E5/nomic) applied at store **and** reindex, respecting the reindex boundary. Documented per-model in `guides/embedding-instructions`. *(GitHub #305; extends DEC-zyhq — phase planning verifies the exact shipped baseline against the code)*
+- [x] **REQ-embedder-native-params**: Query-vs-document embedding asymmetry via the embedder's **native** mechanism, extending the shipped text-prefix `REQ-asymmetric-embedder-params`: (1) per-call API-field passthrough (`ENGRAM_EMBED_QUERY_PARAM` / `ENGRAM_EMBED_DOCUMENT_PARAM`, e.g. `input_type=search_query`) for cloud embedders (Cohere/Google/Voyage/Jina); (2) a document-side prefix knob (`ENGRAM_EMBED_DOCUMENT_INSTRUCTION`) for both-side-prefix models (E5/nomic) applied at store **and** reindex, respecting the reindex boundary. Documented per-model in `guides/embedding-instructions`. *(GitHub #305; extends DEC-zyhq — VERIFIED ALREADY SHIPPED under Phase 4 on 2026-07-10; #305 closed; evidence in phases/10-.../10-VERIFICATION.md)*
 
 ### Recall Surface Completeness (Phase 11)
 
-- [ ] **REQ-async-summaries**: Async-on-write summary fill — after a successful `store_memory` upsert, enqueue the record id; an in-process worker pool drains it via the idempotent, vector-preserving `Store.FillSummary`, so new summary-less records gain summaries without an operator sweep and **without** putting the summarizer on the synchronous write path (a gateway outage must never fail `store_memory`). Broad enablement gated on the summary-fidelity eval (`task eval:summary`). *(GitHub #320; builds on DEC-ambu / the shipped `summarize-missing` CLI)*
+- [x] **REQ-async-summaries**: Async-on-write summary fill — after a successful `store_memory` upsert, enqueue the record id; an in-process worker pool drains it via the idempotent, vector-preserving `Store.FillSummary`, so new summary-less records gain summaries without an operator sweep and **without** putting the summarizer on the synchronous write path (a gateway outage must never fail `store_memory`). Broad enablement gated on the summary-fidelity eval (`task eval:summary`). *(GitHub #320; builds on DEC-ambu / the shipped `summarize-missing` CLI)*
 
 ### Curation Telemetry (Phase 12)
 
-- [ ] **REQ-usage-signals**: Strong per-record usage signals to inform curation — increment counters **only** on `get_memory` fetch-by-id and `update_memory` (never search/list result-set membership); hybrid storage (recall ids on OTLP spans → ClickStack for analytics; a payload `access_count` on get/update for MCP-visible curation tools); server-set operational metadata that **never silently affects ranking** (usage-weighted recall would be its own deliberate future decision). *(GitHub #317; design-first)*
+- [x] **REQ-usage-signals**: Strong per-record usage signals to inform curation — increment counters **only** on `get_memory` fetch-by-id and `update_memory` (never search/list result-set membership); hybrid storage (recall ids on OTLP spans → ClickStack for analytics; a payload `access_count` on get/update for MCP-visible curation tools); server-set operational metadata that **never silently affects ranking** (usage-weighted recall would be its own deliberate future decision). *(GitHub #317; design-first)*
 
 ## Out of Scope
 
@@ -152,9 +152,9 @@ Which phase covers which requirement. Retrospective — completed requirements a
 | REQ-retrieval-eval | Phase 9 | Planned (v0.9.x) |
 | REQ-search-similarity-scores | Phase 9 | Planned (v0.9.x) |
 | REQ-ranking-precision | Phase 9 | Planned (v0.9.x) |
-| REQ-embedder-native-params | Phase 10 | Planned (v0.9.x) |
-| REQ-async-summaries | Phase 11 | Planned (v0.9.x) |
-| REQ-usage-signals | Phase 12 | Planned (v0.9.x) |
+| REQ-embedder-native-params | Phase 10 | Complete (already shipped) |
+| REQ-async-summaries | Phase 11 | Complete (v0.9.x) |
+| REQ-usage-signals | Phase 12 | Complete (v0.9.x) |
 
 **Coverage:**
 

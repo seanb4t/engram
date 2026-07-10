@@ -28,6 +28,7 @@ type Config struct {
 	OIDC      OIDCConfig      `koanf:"oidc"`
 	UI        UIConfig        `koanf:"ui"`
 	Log       LogConfig       `koanf:"log"`
+	Usage     UsageConfig     `koanf:"usage"`
 }
 
 // ServerConfig is engram's HTTP-listener surface: where the process binds and
@@ -84,6 +85,14 @@ type SummarizeConfig struct {
 	MaxChars  string `koanf:"max_chars"`
 	MaxTokens string `koanf:"max_tokens"`
 	Timeout   string `koanf:"timeout"`
+	// OnWrite enables the async-on-write summary worker (default "false"),
+	// parsed with strconv.ParseBool at point of use. Runtime enablement is an
+	// AND-gate with Model being non-empty (D-01), decided in buildDepsFromEnv.
+	OnWrite string `koanf:"on_write"`
+	// Workers is the async summary worker pool size (default "2").
+	Workers string `koanf:"workers"`
+	// QueueSize is the async summary enqueue channel bound (default "256").
+	QueueSize string `koanf:"queue_size"`
 }
 
 // OpenAIConfig is the OpenAI-compatible /v1/embeddings endpoint engram calls to
@@ -121,6 +130,22 @@ type LogConfig struct {
 	Level  string `koanf:"level"`
 	Format string `koanf:"format"`
 	Stdout string `koanf:"stdout"`
+}
+
+// UsageConfig gates the get-path async access_count / last_accessed_at payload
+// write (D-09) — its purpose is to eliminate read-path write amplification, not
+// to disable all counting. When false, buildUsageQueue returns a nil usageQueue
+// so get_memory performs zero extra writes. The update_memory bump in
+// store.Update is intentionally NOT gated: it piggybacks the already-in-flight
+// Upsert (D-04), adds no extra store round-trip, and so causes no read-path
+// amplification regardless of this flag.
+// Signals defaults to "true" — unlike summarize.on_write, this is local,
+// non-egressing curation metadata, so it is on by default. Parsed with
+// strconv.ParseBool at point of use in buildUsageQueue, never a native bool
+// at Load() time (mirrors ui.enabled / summarize.on_write). The D-06 OTLP
+// recall-id spans are independent of this flag.
+type UsageConfig struct {
+	Signals string `koanf:"signals"`
 }
 
 // Load builds Config from registry defaults, the ENGRAM_ env layer, and — when

@@ -30,16 +30,24 @@ type engramAPI struct {
 }
 
 func memoryToProto(m store.Memory) *engramv1.Memory {
+	// LastAccessedAt is nil for never-accessed records; leave the proto field
+	// unset rather than emitting a year-1 (0001-01-01) Timestamp.
+	var lastAccessed *timestamppb.Timestamp
+	if m.LastAccessedAt != nil {
+		lastAccessed = timestamppb.New(*m.LastAccessedAt)
+	}
 	return &engramv1.Memory{
 		Id: m.ID, Content: m.Content, Scope: m.Scope,
 		Repo: m.Repo, Workspace: m.Workspace, Worktree: m.Worktree, BaseDir: m.BaseDir,
 		Source: m.Source, Category: m.Category, Tags: m.Tags,
 		Actor: m.Actor, Owner: m.Owner, Visibility: m.Visibility,
-		CreatedAt:     timestamppb.New(m.CreatedAt),
-		Summary:       m.Summary,
-		SummarySource: string(m.SummarySource),
-		Score:         m.Score,
-		ShortId:       m.ShortID,
+		CreatedAt:      timestamppb.New(m.CreatedAt),
+		Summary:        m.Summary,
+		SummarySource:  string(m.SummarySource),
+		Score:          m.Score,
+		ShortId:        m.ShortID,
+		AccessCount:    m.AccessCount,
+		LastAccessedAt: lastAccessed,
 	}
 }
 
@@ -162,7 +170,7 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_before: %w", err))
 	}
-	ms, err := a.d.st.Search(ctx, req.Msg.Scope, subj, vec, k, req.Msg.Tags, after, before)
+	ms, err := a.d.st.SearchReranked(ctx, req.Msg.Scope, subj, req.Msg.Query, vec, k, req.Msg.Tags, after, before)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -197,6 +205,9 @@ func (a *engramAPI) GetMemory(ctx context.Context, req *connect.Request[engramv1
 		}
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	// D-01: count only on a successful fetch-by-id; call-and-ignore — mirrors
+	// the MCP getMemory handler.
+	a.d.usageQueue.tryEnqueue(pid)
 	return connect.NewResponse(&engramv1.GetMemoryResponse{Memory: memoryToProto(m)}), nil
 }
 

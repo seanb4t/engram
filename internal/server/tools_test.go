@@ -15,6 +15,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -209,6 +211,67 @@ func testDeps(t *testing.T) *deps {
 		t.Fatalf("ensure: %v", err)
 	}
 	return &deps{st: st, em: fakeEmbedder{}}
+}
+
+// testDepsWithSummaryQueue builds the same Qdrant-backed deps as testDeps plus
+// a live, test-controlled *summaryQueue (workers/queueSize/fill all injected),
+// wired onto deps.summaryQueue so enqueue-on-success tests can drive the queue
+// through the real storeMemory/scheduleMemory/storeDiscovery/storeRule
+// handlers without a live summarizer. The queue is shut down via t.Cleanup.
+func testDepsWithSummaryQueue(t *testing.T, workers, queueSize int, fill func(ctx context.Context, id string) error) *deps {
+	t.Helper()
+	d := testDeps(t)
+	q := newSummaryQueue(workers, queueSize, 5*time.Second, nil, fill)
+	q.Start(context.Background())
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		q.Shutdown(ctx)
+	})
+	d.summaryQueue = q
+	return d
+}
+
+// usageQueueRecorder is a test-injectable fill that records every id it
+// receives (thread-safe), used to assert D-01/D-02 enqueue behavior without a
+// live Qdrant IncrementAccess call.
+type usageQueueRecorder struct {
+	mu  sync.Mutex
+	ids []string
+}
+
+func (r *usageQueueRecorder) fill(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ids = append(r.ids, id)
+	return nil
+}
+
+func (r *usageQueueRecorder) recorded() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.ids)
+}
+
+// testDepsWithUsageQueue builds the same Qdrant-backed deps as testDeps plus a
+// live, test-controlled *usageQueue wired onto deps.usageQueue and a
+// *usageQueueRecorder capturing every id the queue's fill receives, so
+// D-01/D-02 enqueue-on-success (and enqueue-never) tests can drive the queue
+// through the real getMemory/Connect GetMemory handlers. The queue is shut
+// down via t.Cleanup.
+func testDepsWithUsageQueue(t *testing.T, workers, queueSize int) (*deps, *usageQueueRecorder) {
+	t.Helper()
+	d := testDeps(t)
+	rec := &usageQueueRecorder{}
+	q := newUsageQueue(workers, queueSize, nil, rec.fill)
+	q.Start(context.Background())
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		q.Shutdown(ctx)
+	})
+	d.usageQueue = q
+	return d, rec
 }
 
 // cleanupErr surfaces a deferred-cleanup failure so leftover records can't
@@ -406,6 +469,112 @@ func TestStoreMemoryMintsAndReturnsShortID(t *testing.T) {
 	got, err := d.st.Get(context.Background(), id)
 	if err != nil || got.ShortID != sid {
 		t.Fatalf("persisted short id %q != returned %q (err %v)", got.ShortID, sid, err)
+	}
+}
+
+// TestStoreMemoryEnqueuesOnSuccess pins SC#1: a successful storeMemory
+// enqueues the record id for async summary fill, and the worker drains it —
+// asserted deterministically via the Wait() drain seam (no time.Sleep).
+func TestStoreMemoryEnqueuesOnSuccess(t *testing.T) {
+	var mu sync.Mutex
+	var handled []string
+	d := testDepsWithSummaryQueue(t, 2, 8, func(_ context.Context, id string) error {
+		mu.Lock()
+		handled = append(handled, id)
+		mu.Unlock()
+		return nil
+	})
+	ctx := authedContext(t, "sub-enqueue")
+	scope := "iso-test:project:store-enqueue"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Authenticated("sub-enqueue")))
+	}()
+
+	id, _, err := d.storeMemory(ctx, storeArgs{Content: "enqueue me", Scope: scope, Source: "user-said", Category: "gotcha"})
+	if err != nil {
+		t.Fatalf("storeMemory: %v", err)
+	}
+	d.summaryQueue.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(handled) != 1 || handled[0] != id {
+		t.Fatalf("fill handled %v, want exactly [%q]", handled, id)
+	}
+}
+
+// TestStoreMemoryReturnsWhenSummarizerHangs pins SC#2: the write path is
+// never on the synchronous summarizer path. With a fill that blocks
+// indefinitely, storeMemory must still return success promptly — enqueue is a
+// fire-and-forget, non-blocking tryEnqueue.
+func TestStoreMemoryReturnsWhenSummarizerHangs(t *testing.T) {
+	block := make(chan struct{})
+	defer close(block)
+	d := testDepsWithSummaryQueue(t, 1, 4, func(ctx context.Context, _ string) error {
+		select {
+		case <-block:
+		case <-ctx.Done():
+		}
+		return ctx.Err()
+	})
+	ctx := authedContext(t, "sub-hang")
+	scope := "iso-test:project:store-hang"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Authenticated("sub-hang")))
+	}()
+
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := d.storeMemory(ctx, storeArgs{Content: "hangs summarizer", Scope: scope, Source: "user-said", Category: "gotcha"})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("storeMemory: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("storeMemory did not return promptly while the summarizer fill hung (SC#2)")
+	}
+}
+
+// TestDiscoveryAndRuleNeverEnqueue pins D-06: store_discovery and store_rule
+// own their own summaries and must never enqueue for async fill, even with a
+// live queue wired in.
+func TestDiscoveryAndRuleNeverEnqueue(t *testing.T) {
+	var enqueued atomic.Int64
+	d := testDepsWithSummaryQueue(t, 1, 8, func(context.Context, string) error {
+		enqueued.Add(1)
+		return nil
+	})
+
+	discCtx := context.Background()
+	discScope := "discovery:repo:negative-space-test"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+discScope, d.st.DeleteAll(discCtx, discScope, store.Anonymous()))
+	}()
+	if _, _, err := d.storeDiscovery(discCtx, storeDiscoveryArgs{
+		Content: "never enqueues a discovery", Kind: "fact", Scope: discScope,
+		Citations: []citationArg{{Kind: "file", Ref: "a.go"}},
+	}); err != nil {
+		t.Fatalf("storeDiscovery: %v", err)
+	}
+
+	ruleCtx := authedContext(t, "sub-rule-no-enqueue")
+	ruleScope := "rule:project:negative-space-test"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+ruleScope, d.st.DeleteAll(ruleCtx, ruleScope, store.Authenticated("sub-rule-no-enqueue")))
+	}()
+	if _, _, err := d.storeRule(ruleCtx, storeRuleArgs{
+		Content: "never enqueue rules", Scope: ruleScope, Summary: "no enqueue",
+	}); err != nil {
+		t.Fatalf("storeRule: %v", err)
+	}
+
+	d.summaryQueue.Wait()
+	if n := enqueued.Load(); n != 0 {
+		t.Errorf("discovery/rule enqueued %d fills, want 0 (D-06 negative space)", n)
 	}
 }
 
@@ -1096,7 +1265,7 @@ func TestRegisterReturnsErrorOnStoreInitFailure(t *testing.T) {
 	t.Setenv("ENGRAM_EMBED_DIM", "not-a-number") // forces StoreFromEnv error pre-dial
 	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
 	tm := telemetry.NewToolMetrics(otel.Meter("test"))
-	if err := Register(s, http.NewServeMux(), tm, nil); err == nil {
+	if _, err := Register(s, http.NewServeMux(), tm, nil, nil, nil); err == nil {
 		t.Fatal("Register must return an error when store init fails, not exit")
 	}
 }
@@ -1182,7 +1351,7 @@ func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
 	}
 	t.Cleanup(func() { configLoad = orig })
 
-	if _, err := buildDepsFromEnv(); err != nil {
+	if _, err := buildDepsFromEnv(nil, nil); err != nil {
 		t.Fatalf("buildDepsFromEnv: %v", err)
 	}
 
@@ -1451,5 +1620,135 @@ func TestShortIDCrossOwnerVisibility(t *testing.T) {
 	after, err := d.st.Get(context.Background(), privID)
 	if err != nil || after.Content != "secret" || after.ShortID != privSid {
 		t.Fatalf("cross-owner attempts mutated owner-A's record: content=%q short=%q err=%v", after.Content, after.ShortID, err)
+	}
+}
+
+// TestGetMemoryEnqueuesUsageSignalOnSuccessOnly pins the D-01 counting
+// boundary end-to-end: a successful get_memory enqueues exactly the fetched
+// point id; a denied/ErrNotFound get_memory enqueues nothing.
+func TestGetMemoryEnqueuesUsageSignalOnSuccessOnly(t *testing.T) {
+	d, rec := testDepsWithUsageQueue(t, 2, 16)
+	ctxA := authedContext(t, "owner-A")
+	id, _, err := d.storeMemory(ctxA, storeArgs{Content: "hi", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.getMemory(ctxA, idArgs{ID: id}); err != nil {
+		t.Fatal(err)
+	}
+	d.usageQueue.Wait()
+	if got := rec.recorded(); len(got) != 1 || got[0] != id {
+		t.Fatalf("successful get enqueued %v, want exactly [%s]", got, id)
+	}
+
+	// Denied: owner-B fetching owner-A's private record must not enqueue.
+	ctxB := authedContext(t, "owner-B")
+	if _, err := d.getMemory(ctxB, idArgs{ID: id}); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("cross-owner get must be ErrNotFound, got %v", err)
+	}
+	d.usageQueue.Wait()
+	if got := rec.recorded(); len(got) != 1 {
+		t.Fatalf("denied get must not enqueue; recorded = %v", got)
+	}
+}
+
+// TestSearchListMemoryDoNotEnqueueUsageSignal pins the D-02 hard invariant:
+// result-set membership in search_memory/list_memory/list_scheduled never
+// increments the usage-signal payload counter, even when the same record that
+// was just get-fetched (and did enqueue) appears in the result set.
+func TestSearchListMemoryDoNotEnqueueUsageSignal(t *testing.T) {
+	d, rec := testDepsWithUsageQueue(t, 2, 16)
+	ctx := authedContext(t, "owner-A")
+	scope := "usage-d02-scope"
+	if _, _, err := d.storeMemory(ctx, storeArgs{Content: "hi", Scope: scope, Category: "gotcha", Source: "user-said"}); err != nil {
+		t.Fatal(err)
+	}
+	future := timeNow().Add(time.Hour).Format(time.RFC3339)
+	if _, _, err := d.scheduleMemory(ctx, scheduleArgs{
+		storeArgs: storeArgs{Content: "later", Scope: scope, Category: "gotcha", Source: "user-said"},
+		NotBefore: future,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := d.searchMemory(ctx, searchArgs{Query: "hi", Scope: scope}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := d.listMemory(ctx, listArgs{Scope: scope}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.listScheduled(ctx, listScheduledArgs{Scope: scope}); err != nil {
+		t.Fatal(err)
+	}
+	d.usageQueue.Wait()
+	if got := rec.recorded(); len(got) != 0 {
+		t.Fatalf("search/list/list_scheduled must never enqueue usage signals (D-02); recorded = %v", got)
+	}
+}
+
+// TestUpdateMemoryIncrementsAccessCountOnceNoAsyncEnqueue pins D-04: the
+// update path bumps access_count exactly once, synchronously, free inside
+// store.Update — it does NOT also fire a usageQueue enqueue (that would
+// double-count a single update as both a "get" and an "update").
+func TestUpdateMemoryIncrementsAccessCountOnceNoAsyncEnqueue(t *testing.T) {
+	d, rec := testDepsWithUsageQueue(t, 2, 16)
+	ctx := authedContext(t, "owner-A")
+	id, _, err := d.storeMemory(ctx, storeArgs{Content: "v1", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "v2"}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := d.st.Get(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.AccessCount != 1 {
+		t.Fatalf("access_count after one update = %d, want 1", after.AccessCount)
+	}
+	d.usageQueue.Wait()
+	if got := rec.recorded(); len(got) != 0 {
+		t.Fatalf("update_memory must not enqueue an async usage signal (free bump only); recorded = %v", got)
+	}
+}
+
+// TestBuildUsageQueueConfigGate pins D-09: ENGRAM_USAGE_SIGNALS (parsed at
+// point-of-use as cfg.Usage.Signals) false/unparseable disables the queue
+// (nil, zero read-path counter writes); true builds and starts a live queue.
+// A nil usageQueue must still let get_memory return the record (nil-safe
+// no-op call site).
+func TestBuildUsageQueueConfigGate(t *testing.T) {
+	if q := buildUsageQueue(&config.Config{Usage: config.UsageConfig{Signals: "false"}}, nil, nil); q != nil {
+		t.Fatalf("Signals=false must disable the queue, got %v", q)
+	}
+	if q := buildUsageQueue(&config.Config{Usage: config.UsageConfig{Signals: "not-a-bool"}}, nil, nil); q != nil {
+		t.Fatalf("unparseable Signals must disable the queue, got %v", q)
+	}
+
+	d := testDeps(t)
+	q := buildUsageQueue(&config.Config{Usage: config.UsageConfig{Signals: "true"}}, d.st, nil)
+	if q == nil {
+		t.Fatal("Signals=true must build a live queue")
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		q.Shutdown(ctx)
+	})
+
+	// Nil-safe call site: deps.usageQueue is nil by default (testDeps), and
+	// get_memory must still return the record with zero counter writes.
+	ctx := authedContext(t, "owner-A")
+	id, _, err := d.storeMemory(ctx, storeArgs{Content: "hi", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := d.getMemory(ctx, idArgs{ID: id})
+	if err != nil || got.ID != id {
+		t.Fatalf("get with disabled usage queue: got %q err %v", got.ID, err)
+	}
+	if got.AccessCount != 0 {
+		t.Fatalf("disabled usage queue must perform zero counter writes; access_count = %d", got.AccessCount)
 	}
 }

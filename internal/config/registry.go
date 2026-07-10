@@ -37,6 +37,9 @@ var registry = []field{
 	{Key: "summarize.max_chars", Env: "ENGRAM_SUMMARY_MAX_CHARS", Default: "280"},
 	{Key: "summarize.max_tokens", Env: "ENGRAM_SUMMARY_MAX_TOKENS", Default: "1024"},
 	{Key: "summarize.timeout", Env: "ENGRAM_SUMMARY_TIMEOUT", Default: "30s"},
+	{Key: "summarize.on_write", Env: "ENGRAM_SUMMARY_ON_WRITE", Default: "false"},
+	{Key: "summarize.workers", Env: "ENGRAM_SUMMARY_WORKERS", Default: "2"},
+	{Key: "summarize.queue_size", Env: "ENGRAM_SUMMARY_QUEUE_SIZE", Default: "256"},
 	{Key: "openai.base_url", Env: "ENGRAM_OPENAI_BASE_URL", Legacy: "MEM_LITELLM_URL", Default: "http://localhost:4000"},
 	{Key: "openai.api_key", Env: "ENGRAM_OPENAI_API_KEY", Legacy: "MEM_LITELLM_KEY"},
 	{Key: "oidc.issuer", Env: "ENGRAM_OIDC_ISSUER", Legacy: "MEM_OIDC_ISSUER", Flag: "oidc-issuer"},
@@ -52,6 +55,7 @@ var registry = []field{
 	{Key: "log.level", Env: "ENGRAM_LOG_LEVEL", Legacy: "MEM_LOG_LEVEL", Default: "info"},
 	{Key: "log.format", Env: "ENGRAM_LOG_FORMAT", Legacy: "MEM_LOG_FORMAT", Default: "json"},
 	{Key: "log.stdout", Env: "ENGRAM_LOG_STDOUT", Legacy: "MEM_LOG_STDOUT", Default: "true"},
+	{Key: "usage.signals", Env: "ENGRAM_USAGE_SIGNALS", Default: "true"},
 }
 
 // envToKey maps each ENGRAM_* env var to its koanf key.

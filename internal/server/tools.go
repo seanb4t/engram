@@ -21,6 +21,7 @@ import (
 	"github.com/qdrant/go-client/qdrant"
 	otelgrpc "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 
 	"github.com/seanb4t/engram/internal/config"
@@ -44,6 +45,18 @@ type deps struct {
 	now func() time.Time
 	// summaryMaxChars is the recall truncation cap (ENGRAM_SUMMARY_MAX_CHARS).
 	summaryMaxChars int
+	// summaryQueue is the async-on-write summary worker pool. nil (disabled)
+	// unless ENGRAM_SUMMARY_MODEL is set AND ENGRAM_SUMMARY_ON_WRITE parses
+	// true (D-01 AND-gate, decided in buildDepsFromEnv). Its methods are
+	// nil-safe no-ops, so call sites never branch on whether it's enabled.
+	summaryQueue *summaryQueue
+	// usageQueue is the async get-path access-count incrementer (Phase 12,
+	// D-01/D-10). nil (disabled) unless ENGRAM_USAGE_SIGNALS parses true
+	// (default true; decided in buildUsageQueue). The D-06 OTLP recall-span
+	// analytics are independent of this flag. Its methods are nil-safe
+	// no-ops, so getMemory/Connect GetMemory never branch on whether it's
+	// enabled.
+	usageQueue *usageQueue
 }
 
 // configLoad is the indirection seam for loading koanf config from the process
@@ -145,8 +158,14 @@ func StoreAndEmbedderFromEnvNoEnsure() (*store.Store, uint64, *embed.Client, err
 
 // buildDepsFromEnv wires up the store and embedder from the environment with a
 // single config load: it loads + validates once, then builds both the
-// collection-ensured store and the embedder from that one *config.Config.
-func buildDepsFromEnv() (*deps, error) {
+// collection-ensured store and the embedder from that one *config.Config. sqm
+// is the pre-built static SummaryQueueMetrics (from serve.go, threaded through
+// Register); it is used only when the D-01 AND-gate enables the async summary
+// worker (buildSummaryQueue), and may be nil in tests exercising the disabled
+// path. uqm is the pre-built static UsageQueueMetrics (also from serve.go),
+// used only when ENGRAM_USAGE_SIGNALS enables the async usage-signal worker
+// (buildUsageQueue); may also be nil in tests exercising the disabled path.
+func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQueueMetrics) (*deps, error) {
 	cfg, err := loadAndValidate()
 	if err != nil {
 		return nil, err
@@ -160,7 +179,83 @@ func buildDepsFromEnv() (*deps, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &deps{st: st, em: em, summaryMaxChars: summaryMaxChars(cfg)}, nil
+	return &deps{
+		st:              st,
+		em:              em,
+		summaryMaxChars: summaryMaxChars(cfg),
+		summaryQueue:    buildSummaryQueue(cfg, st, sqm),
+		usageQueue:      buildUsageQueue(cfg, st, uqm),
+	}, nil
+}
+
+// buildSummaryQueue constructs and starts the async-on-write summary worker
+// pool when the D-01 two-switch AND-gate is satisfied: ENGRAM_SUMMARY_MODEL is
+// non-empty AND ENGRAM_SUMMARY_ON_WRITE parses true. This is where the AND-gate
+// actually lives — Config.Validate() checks the three fields unconditionally
+// but does not decide runtime enablement. Either switch off returns nil
+// (disabled; every summaryQueue method becomes a nil-safe no-op, so call
+// sites never branch). Reuses summarizerFromConfig so the async worker shares
+// the identical summarizer construction as the summarize-missing sweep — no
+// parallel summarizer. Registers the D-09 queue-depth gauge immediately after
+// the queue is constructed and started: this is the only place q.depth() has
+// a live queue to close over (Codex finding #1; serve.go only builds the
+// static SummaryQueueMetrics instruments and never touches the queue).
+func buildSummaryQueue(cfg *config.Config, st *store.Store, sqm *telemetry.SummaryQueueMetrics) *summaryQueue {
+	if cfg.Summarize.Model == "" {
+		return nil
+	}
+	onWrite, err := strconv.ParseBool(cfg.Summarize.OnWrite)
+	if err != nil || !onWrite {
+		return nil
+	}
+	workers, err := strconv.Atoi(cfg.Summarize.Workers)
+	if err != nil || workers <= 0 {
+		if cfg.Summarize.Workers != "" {
+			slog.Warn("ENGRAM_SUMMARY_WORKERS is set but unparseable or non-positive; using default 2",
+				"value", cfg.Summarize.Workers)
+		}
+		workers = 2
+	}
+	queueSize, err := strconv.Atoi(cfg.Summarize.QueueSize)
+	if err != nil || queueSize <= 0 {
+		if cfg.Summarize.QueueSize != "" {
+			slog.Warn("ENGRAM_SUMMARY_QUEUE_SIZE is set but unparseable or non-positive; using default 256",
+				"value", cfg.Summarize.QueueSize)
+		}
+		queueSize = 256
+	}
+	summarizer := summarizerFromConfig(cfg)
+	fill := storeFill(st, summarizer.Summarize, cfg.Summarize.Model, summaryMaxChars(cfg))
+	q := newSummaryQueue(workers, queueSize, summaryTimeout(cfg), sqm, fill)
+	q.Start(context.Background())
+	telemetry.RegisterSummaryQueueDepth(otel.Meter("github.com/seanb4t/engram"), q.depth)
+	slog.Info("async-on-write summaries enabled", "workers", workers, "queue_size", queueSize)
+	return q
+}
+
+// buildUsageQueue constructs and starts the async get-path access-count
+// incrementer (Phase 12, D-01/D-04/D-10) when ENGRAM_USAGE_SIGNALS parses
+// true (default "true" — on by default, D-09). False/unparseable returns nil
+// (disabled; every usageQueue method becomes a nil-safe no-op, so the
+// getMemory/Connect GetMemory call sites never branch). The D-06 OTLP
+// recall-span analytics are independent of this flag. Unlike
+// buildSummaryQueue there are no dedicated env-configurable worker/queue-size
+// knobs this phase — a small fixed pool is sufficient for a lightweight,
+// single-attempt, drop-on-full best-effort counter bump.
+func buildUsageQueue(cfg *config.Config, st *store.Store, uqm *telemetry.UsageQueueMetrics) *usageQueue {
+	signals, err := strconv.ParseBool(cfg.Usage.Signals)
+	if err != nil || !signals {
+		return nil
+	}
+	const workers = 2
+	const queueSize = 256
+	fill := func(ctx context.Context, id string) error {
+		return st.IncrementAccess(ctx, id)
+	}
+	q := newUsageQueue(workers, queueSize, uqm, fill)
+	q.Start(context.Background())
+	slog.Info("usage signals enabled", "workers", workers, "queue_size", queueSize)
+	return q
 }
 
 // summaryMaxChars parses the recall cap, defaulting to 280 on empty/invalid.
@@ -512,7 +607,13 @@ func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, string, er
 	if m.ShortID, err = d.st.MintShortID(ctx, nil); err != nil {
 		return "", "", err
 	}
-	return m.ID, m.ShortID, d.st.Upsert(ctx, m, vec)
+	if err := d.st.Upsert(ctx, m, vec); err != nil {
+		return "", "", err
+	}
+	// Enqueue only after a confirmed-successful Upsert; never blocks/errors
+	// the write path even when the queue is disabled or full (SC#1, SC#2).
+	d.summaryQueue.tryEnqueue(m.ID)
+	return m.ID, m.ShortID, nil
 }
 
 // clock returns the handler's current time in UTC, defaulting to wall-clock
@@ -545,9 +646,18 @@ func (d *deps) scheduleMemory(ctx context.Context, a scheduleArgs) (string, stri
 	if m.ShortID, err = d.st.MintShortID(ctx, nil); err != nil {
 		return "", "", err
 	}
-	return m.ID, m.ShortID, d.st.Upsert(ctx, m, vec)
+	if err := d.st.Upsert(ctx, m, vec); err != nil {
+		return "", "", err
+	}
+	// Enqueue only after a confirmed-successful Upsert; never blocks/errors
+	// the write path even when the queue is disabled or full (SC#1, SC#2).
+	d.summaryQueue.tryEnqueue(m.ID)
+	return m.ID, m.ShortID, nil
 }
 
+// storeDiscovery persists a client-authored discovery. It deliberately never
+// enqueues for async summary fill: discoveries own their own summaries (D-06
+// negative space) — see TestDiscoveryAndRuleNeverEnqueue.
 func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string, string, error) {
 	if err := validateStoreDiscovery(a); err != nil {
 		return "", "", err
@@ -721,7 +831,7 @@ func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	ms, err := d.st.Search(ctx, a.Scope, subj, vec, a.K, a.Tags, after, before)
+	ms, err := d.st.SearchReranked(ctx, a.Scope, subj, a.Query, vec, a.K, a.Tags, after, before)
 	if err != nil {
 		return nil, err
 	}
@@ -843,6 +953,11 @@ func (d *deps) getMemory(ctx context.Context, a idArgs) (store.Memory, error) {
 	if errors.Is(err, store.ErrNotFound) {
 		return store.Memory{}, fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
 	}
+	if err == nil {
+		// D-01: count only on a successful fetch-by-id; call-and-ignore — the
+		// read's latency/success is never coupled to the counter write.
+		d.usageQueue.tryEnqueue(pid)
+	}
 	return m, err
 }
 
@@ -908,16 +1023,21 @@ func (d *deps) setVisibility(ctx context.Context, a setVisibilityArgs) error {
 // Register wires the memory tools onto the MCP server. It accepts a pre-built
 // *telemetry.ToolMetrics (constructed once in runServe and reused for both tool
 // instrumentation and auth-failure recording) so there is a single instrument
-// instance rather than two disjoint ones. Returns an error if dependency
-// construction (store/embedder) fails, so the caller can flush telemetry and
-// exit cleanly rather than aborting via log.Fatal.
-func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, resolve connectResolver) error {
-	d, err := buildDepsFromEnv()
+// instance rather than two disjoint ones, and pre-built
+// *telemetry.SummaryQueueMetrics / *telemetry.UsageQueueMetrics (also built
+// once in runServe) threaded into buildDepsFromEnv so each async queue's
+// static instruments share the same meter. Returns a shutdown closure the
+// caller invokes on shutdown to drain BOTH the summary queue and the usage
+// queue — a no-op for either queue that is disabled (nil) — and an error if
+// dependency construction (store/embedder) fails, so the caller can flush
+// telemetry and exit cleanly rather than aborting via log.Fatal.
+func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQueueMetrics, resolve connectResolver) (shutdown func(context.Context), err error) {
+	d, err := buildDepsFromEnv(sqm, uqm)
 	if err != nil {
-		return fmt.Errorf("build deps: %w", err)
+		return nil, fmt.Errorf("build deps: %w", err)
 	}
 	if err := d.mountConnect(mux, resolve); err != nil {
-		return fmt.Errorf("mount connect: %w", err)
+		return nil, fmt.Errorf("mount connect: %w", err)
 	}
 
 	s.AddReceivingMiddleware(instrumentTools(tm.Record))
@@ -934,7 +1054,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			return textResult(fmt.Sprintf("scheduled %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory."},
+	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory. Each result carries a `score`: the raw Qdrant cosine similarity for this query (higher = closer), present when non-zero; unranked list_memory/get_memory results have a zero/omitted score."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a searchArgs) (*mcp.CallToolResult, any, error) {
 			hits, err := d.searchMemory(ctx, a)
 			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"memories": hits}, err
@@ -1013,7 +1133,14 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			}
 			return textResult(msg), map[string]any{"rules": rules}, err
 		})
-	return nil
+	// Compose both queues' shutdown into a single closure: the caller
+	// (serve.go) invokes this once, strictly after httpSrv.Shutdown returns,
+	// draining the summary queue then the usage queue (both nil-safe no-ops
+	// when disabled).
+	return func(ctx context.Context) {
+		d.summaryQueue.Shutdown(ctx)
+		d.usageQueue.Shutdown(ctx)
+	}, nil
 }
 
 func textResult(s string) *mcp.CallToolResult {

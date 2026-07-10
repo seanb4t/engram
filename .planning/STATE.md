@@ -1,13 +1,20 @@
 ---
-gsd_state_version: '1.0'  # placeholder; syncStateFrontmatter overwrites on first state.* call
-status: planning
+gsd_state_version: 1.0
 milestone: v0.9.x — Recall Quality
+milestone_name: "- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval"
+current_phase: 12
+current_phase_name: Per-Memory Usage Signals
+status: "Milestone v0.9.x shipped — PR #336"
+stopped_at: Completed 12-06-PLAN.md
+last_updated: "2026-07-10T22:11:13.389Z"
+last_activity: 2026-07-10
+last_activity_desc: Phase 12 complete + verified
 progress:
-  total_phases: 4
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 12
+  completed_phases: 3
+  total_plans: 12
+  completed_plans: 12
+  percent: 25
 ---
 
 # Project State
@@ -17,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-09)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.9.x — Recall Quality (opened 2026-07-09). Four phases (9–12): retrieval eval + ranking precision (#261), embedder query/document asymmetry (#305), async-on-write summaries (#320), per-memory usage signals (#317). No phase planned yet — next step `/gsd-plan-phase 9`.
+**Current focus:** Phase 12 — Per-Memory Usage Signals
 
 ## Current Position
 
-Phase: 9 of 12 — **Retrieval Eval Harness & Ranking Precision** (not yet planned)
-Plan: None. Next: `/gsd-plan-phase 9`.
-Status: Milestone v0.9.x opened; requirements + roadmap written. v0.8.x baseline (Phases 1–8) complete and shipped.
-Last activity: 2026-07-09 — opened milestone v0.9.x via `/gsd-new-milestone`: routed 6 requirements to Phases 9–12 (REQUIREMENTS.md), added phase details (ROADMAP.md), updated PROJECT.md Active section. Theme = Recall Quality, focused scope (consolidation + write-lane deferred to v0.10.x).
+Phase: 12 (Per-Memory Usage Signals) — COMPLETE & VERIFIED
+Plan: 6 of 6 complete
+Status: Milestone v0.9.x shipped — PR #336
+Last activity: 2026-07-10 — Phase 12 complete + verified
 
-Progress: [░░░░░░░░░░] 0% (v0.9.x — 0/4 phases planned)
+Progress: [██████████] 100% (v0.9.x — all 4 phases done: Phase 9 executed, Phase 10 already-shipped, Phase 11 executed, Phase 12 executed + verified). Milestone v0.9.x — Recall Quality complete pending ship/PR.
 
 ## Performance Metrics
 
@@ -40,12 +47,24 @@ Progress: [░░░░░░░░░░] 0% (v0.9.x — 0/4 phases planned)
 
 | Phase | Requirements | Status |
 |-------|--------------|--------|
-| 9. Retrieval Eval & Ranking Precision | 0/3 | Planned |
+| 9. Retrieval Eval & Ranking Precision | 3/3 | Complete |
 | 10. Asymmetric Query/Document Embeddings | 0/1 | Planned |
-| 11. Async-on-Write Summaries | 0/1 | Planned |
+| 11. Async-on-Write Summaries | 1/1 | Complete |
 | 12. Per-Memory Usage Signals | 0/1 | Planned |
 
 **Shipped (v0.8.x baseline):** Phases 1–8 complete (24 requirements). See ROADMAP.md Progress table.
+| Phase 09-retrieval-eval-harness-ranking-precision P01 | 20min | 2 tasks | 4 files |
+| Phase 09-retrieval-eval-harness-ranking-precision P02 | 15min | 2 tasks | 3 files |
+| Phase 09-retrieval-eval-harness-ranking-precision P03 | 35min | 3 tasks | 8 files |
+| Phase 11 P01 | 15min | 2 tasks | 7 files |
+| Phase 11 P02 | 15min | 2 tasks | 3 files |
+| Phase 11 P03 | 45min | 3 tasks | 5 files |
+| Phase 12-per-memory-usage-signals P01 | 8min | 3 tasks | 3 files |
+| Phase 12 P02 | 12min | 2 tasks | 6 files |
+| Phase 12-per-memory-usage-signals P03 | 6min | 1 tasks | 3 files |
+| Phase 12 P04 | 20min | 2 tasks | 2 files |
+| Phase 12-per-memory-usage-signals P05 | 15min | 2 tasks | 2 files |
+| Phase 12 P06 | 12min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -56,6 +75,25 @@ Progress: [░░░░░░░░░░] 0% (v0.9.x — 0/4 phases planned)
 - [Phase 2]: Summary-by-default recall (DEC-ambu) — Phase 11 async summaries build on the `FillSummary` seam.
 - [Phase 4]: Asymmetric embedder text-prefix knobs (DEC-zyhq) — Phase 10 extends these with native API params + doc-side prefix.
 - [Phase 6]: OTLP-only non-blocking telemetry (DEC-dwi, DEC-uxh) — Phases 9 (eval) and 12 (usage signals) reuse the OTLP → ClickStack seam.
+- [Phase 9]: Reused server.StoreAndEmbedderFromEnvNoEnsure() for the *embed.Client only (full prod parity); built the eval Store directly from testQdrantAddr to avoid ambient ENGRAM_QDRANT_ADDR leakage (round-2 finding 1)
+- [Phase 9]: seedRecord uses a fixture-local key (not the Qdrant point ID) because Qdrant point IDs must be UUIDs; a key->UUID map resolves rank lookups
+- [Phase 9]: D-04 supersession: ROADMAP Phase-9 success-criterion 2 'similarity score (opt-in)' wording is superseded by the shipped always-on search_memory score behavior (accepted as correct/better DX).
+- [Phase 9]: search_memory score docs (09-02) stay order-agnostic: score FIELD only, not result ORDER — the post-rerank order caveat for reference/tools.md:95 is deliberately deferred to 09-03.
+- [Phase 9]: D-06 reranker: pure lexical-overlap term-set-intersection boost (stdlib only), tie-broken by raw Score then ID; shared via Store.SearchReranked (candidateK=min(max(k*4,32),100), k<=0 rejected) called by MCP deps.searchMemory, Connect engramAPI.SearchMemories, and the retrieval eval
+- [Phase 11]: backoff/v5 promoted to direct via a go.mod-only text edit (moved require block) rather than go get/go mod tidy; Wave 2 (11-02) adds the actual import
+- [Phase 11]: LogSummaryEgress called for all three terminal outcomes (filled/skipped/failed) in the async worker's storeFill; SummarizeMissing keeps its pre-existing filled/failed-only call sites since it pre-filters eligibility before calling FillSummary
+- [Phase 11]: WithMaxElapsedTime(20s) is a fixed package constant decoupled from the injected attemptTimeout, so a tiny test attemptTimeout can't race the elapsed-time ceiling; WithMaxTries(3) is the primary retry bound
+- [Phase 11]: buildSummaryQueue runtime AND-gate (deps.summaryQueue) lives in tools.go, separate from Validate()'s unconditional parseability checks; an unparseable ENGRAM_SUMMARY_ON_WRITE is treated as disabled
+- [Phase 11]: Register grew to return a shutdown closure (drainSummaries), invoked strictly after httpSrv.Shutdown(shutdownCtx) returns in serve.go's SIGTERM branch (D-08 ordering)
+- [Phase 12-per-memory-usage-signals]: IncrementAccess deliberately skips getWritable/GetReadable — the handler-boundary caller already gated ownership (D-01/D-04)
+- [Phase 12-per-memory-usage-signals]: No payload index registered for access_count, keeping D-08's ranking boundary honest
+- [Phase 12-02]: usage.signals defaults to true (on) — unlike summarize.on_write's false — D-09: usage signals are local, non-egressing curation metadata
+- [Phase 12-02]: UsageQueueMetrics has no retried counter or latency histogram — D-10 mandates single-attempt, no retry
+- [Phase 12-03]: last_accessed_at uses google.protobuf.Timestamp (not string) matching created_at=14's type analog
+- [Phase 12-04]: recall-span analytics (D-06): recallIDCap=50 bounded const; store.Get gains engram.recall.ids/count for ClickStack data-completeness
+- [Phase 12-05]: usageQueue reuses summaryQueue's CR-01 kernel field/method names verbatim (fill, itemDone, depth) rather than renaming, per PATTERNS.md exact-analog guidance; no attemptTimeout/maxElapsed param since D-10 rules out a retry budget entirely
+- [Phase 12-06]: Config-gated buildUsageQueue mirrors buildSummaryQueue's point-of-use strconv.ParseBool gate; fixed worker pool (2 workers, queueSize=256), no new env knobs
+- [Phase 12-06]: usageQueue.tryEnqueue is call-and-ignore, success-only, only at get_memory/Connect GetMemory handler boundaries -- never inside reused store primitives, never on search/list/list_scheduled
 
 ### Pending Todos
 
@@ -63,7 +101,8 @@ Progress: [░░░░░░░░░░] 0% (v0.9.x — 0/4 phases planned)
 
 ### Blockers/Concerns
 
-- **Phase 10 baseline ambiguity**: `REQ-asymmetric-embedder-params` (Phase 4, shipped) describes query/doc param maps + doc-side instruction, but GitHub #305 reports those classes (cloud native API params; E5/nomic doc-side prefix) are NOT covered by the shipped text-prefix knob. Phase-10 planning must verify the exact shipped baseline against `internal/embed/` before scoping.
+- ~~**Phase 10 baseline ambiguity**~~ RESOLVED 2026-07-10: baseline verified against `internal/embed/` during `/gsd-discuss-phase 10`. `REQ-embedder-native-params` (#305) is **already fully shipped** under Phase 4 — `embed.go` `WithQueryParams`/`WithDocumentParams` (native `input_type`/`task_type` map passthrough) + `WithDocumentInstruction` (E5/nomic doc prefix), config `ENGRAM_EMBED_*_PARAMS`/`_DOCUMENT_INSTRUCTION` (validated + wired in `embedderFromConfig`), tests, and per-model docs all present. Phase 10 reconciled to Complete; #305 closed. (Echoed the Phase 8 already-shipped surprise.)
+- ~~Phase 9 Plan 03 Task 3 checkpoint~~ RESOLVED: **accept-d06**. Live eval (gemini-embedding-2 @3072 via OpenRouter) clears the #261 rank bar — query-a/b both rank 1/8, recall@8=1.00, MRR=1.000. D-07/D-08 evaluated and not needed. Follow-up: run the qwen3-embedding-8b @4096 prod-parity eval (with PR#262 query instruction) once OpenRouter recovers.
 
 ## Deferred Items
 
@@ -77,6 +116,6 @@ Carried to v0.10.x. NOT part of v0.9.x scope.
 
 ## Session Continuity
 
-Last session: 2026-07-09
-Stopped at: Opened milestone v0.9.x (Recall Quality) — PROJECT.md / REQUIREMENTS.md / ROADMAP.md / STATE.md written; 6 requirements routed to Phases 9–12.
-Resume file: None. Next step: `/gsd-plan-phase 9` to plan the retrieval eval harness + ranking precision phase.
+Last session: 2026-07-10T17:48:33.044Z
+Stopped at: Completed 12-06-PLAN.md
+Resume file: None

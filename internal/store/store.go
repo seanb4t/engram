@@ -115,6 +115,17 @@ type Memory struct {
 	// NotAfter gates expiry: the record drops out of recall once now >= NotAfter.
 	// nil = never expires.
 	NotAfter *time.Time `json:"not_after,omitempty"`
+	// AccessCount is the monotonic total of strong-signal touches (get-by-id +
+	// update; never search/list result-set membership, D-02). Server-set only —
+	// no client-writable tool argument sets it. A legacy record missing the
+	// payload key reads 0, no backfill required (D-03). MUST NOT be read by the
+	// reranker or any recall gate (D-08).
+	AccessCount uint64 `json:"access_count"`
+	// LastAccessedAt is the timestamp of the most recent strong-signal touch
+	// (get-by-id or update). nil when the record has never been accessed — a
+	// pointer (like NotBefore/NotAfter) so json omitempty actually fires and a
+	// never-accessed record omits the field rather than emitting 0001-01-01.
+	LastAccessedAt *time.Time `json:"last_accessed_at,omitempty"`
 	// Discovery-only (zero-valued for the curated four categories).
 	Kind      string     `json:"kind,omitempty"`      // "map" | "fact"
 	Citations []Citation `json:"citations,omitempty"` // >= 1 for discoveries
@@ -294,6 +305,10 @@ func payload(m Memory) map[string]any {
 	if m.NotAfter != nil {
 		p["not_after"] = m.NotAfter.Unix()
 	}
+	p["access_count"] = m.AccessCount
+	if m.LastAccessedAt != nil {
+		p["last_accessed_at"] = m.LastAccessedAt.Format(time.RFC3339)
+	}
 	p["summary"] = m.Summary
 	p["summary_source"] = string(m.SummarySource)
 	if m.SummaryModel != "" {
@@ -376,6 +391,14 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	if v, ok := p["not_after"]; ok {
 		t := time.Unix(v.GetIntegerValue(), 0).UTC()
 		m.NotAfter = &t
+	}
+	if v, ok := p["access_count"]; ok {
+		m.AccessCount = uint64(v.GetIntegerValue())
+	}
+	if v, ok := p["last_accessed_at"]; ok {
+		if t, err := time.Parse(time.RFC3339, v.GetStringValue()); err == nil {
+			m.LastAccessedAt = &t
+		}
 	}
 	if v, ok := p["kind"]; ok {
 		m.Kind = v.GetStringValue()
@@ -538,6 +561,28 @@ func activeWindowConditions(now time.Time) []*qdrant.Condition {
 	}
 }
 
+// recallIDCap bounds the number of record ids attached to a recall span
+// (engram.recall.ids) so that a large-k recall cannot drive unbounded span
+// attribute cardinality (D-06, T-12-11 mitigation). It is analytics-only: it
+// never reads or writes access_count and has no effect on ranking or the
+// recall gate (D-02/D-08).
+const recallIDCap = 50
+
+// recallIDs returns up to limit record ids from out, preserving order. Used
+// solely to populate the engram.recall.ids span attribute on the
+// store.Search/List/Get recall spans.
+func recallIDs(out []Memory, limit int) []string {
+	n := len(out)
+	if n > limit {
+		n = limit
+	}
+	ids := make([]string, n)
+	for i := 0; i < n; i++ {
+		ids[i] = out[i].ID
+	}
+	return ids
+}
+
 // Search returns the k nearest readable memories to vec within scope.
 // Authenticated callers see their own records plus shared records; anonymous
 // callers see only the ownerless bucket.
@@ -555,7 +600,11 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 		} else {
-			span.SetAttributes(attribute.Int("engram.result_count", len(out)))
+			span.SetAttributes(
+				attribute.Int("engram.result_count", len(out)),
+				attribute.StringSlice("engram.recall.ids", recallIDs(out, recallIDCap)),
+				attribute.Int("engram.recall.count", len(out)),
+			)
 		}
 	}()
 
@@ -584,6 +633,35 @@ func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 		out = append(out, m)
 	}
 	return out
+}
+
+// SearchReranked is the shared search-with-rerank helper: it over-fetches
+// candidateK(k) raw hits via the existing owner/scope-filtered Search, applies
+// the pure RerankHits lexical-overlap reorder, and truncates to the caller's
+// already-defaulted k. deps.searchMemory (MCP), engramAPI.SearchMemories
+// (Connect), and the retrieval eval all call this — the ONE ranking path for
+// every recall surface (review finding 2/5) — so no surface can drift from the
+// shipped rerank behavior, and reranking runs strictly AFTER
+// ownerScopeFilter's authz-scoped Query, never widening visibility.
+//
+// k == 0 is rejected with ErrInvalidArgument (round-2 finding 6): callers MUST
+// pass the already-defaulted effective k (MCP defaults 8 at tools.go, Connect
+// defaults 20 at connectapi.go — BEFORE calling this helper) — a zero k never
+// silently over-fetches candidateK then truncates to an empty result.
+//
+// SearchReranked takes plain inputs (query text, query vector, k) and does NOT
+// import internal/embed or internal/server (round-2 finding 7): embedding
+// happens in the caller before this is invoked; this helper only reorders an
+// already-fetched, already-authorized []Memory.
+func (s *Store) SearchReranked(ctx context.Context, scope string, subj Subject, query string, vec []float32, k uint64, tags []string, after, before time.Time) ([]Memory, error) {
+	if k == 0 {
+		return nil, fmt.Errorf("%w: SearchReranked requires k > 0 (caller must apply its default before calling)", ErrInvalidArgument)
+	}
+	hits, err := s.Search(ctx, scope, subj, vec, candidateK(k), tags, after, before)
+	if err != nil {
+		return nil, err
+	}
+	return RerankHits(query, hits, int(k)), nil
 }
 
 // SearchDiscovery runs a top-k vector search constrained to discovery records.
@@ -734,7 +812,11 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 		} else {
-			span.SetAttributes(attribute.Int("engram.result_count", len(items)))
+			span.SetAttributes(
+				attribute.Int("engram.result_count", len(items)),
+				attribute.StringSlice("engram.recall.ids", recallIDs(items, recallIDCap)),
+				attribute.Int("engram.recall.count", len(items)),
+			)
 		}
 	}()
 
@@ -1064,6 +1146,10 @@ func (s *Store) Get(ctx context.Context, id string) (m Memory, err error) {
 	if len(pts) == 0 {
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
+	span.SetAttributes(
+		attribute.StringSlice("engram.recall.ids", []string{id}),
+		attribute.Int("engram.recall.count", 1),
+	)
 	return fromPayload(id, pts[0].Payload), nil
 }
 
@@ -1270,6 +1356,11 @@ func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *
 	}()
 
 	cur.Content = content
+	// D-04: the bump piggybacks the already-in-flight Upsert below — zero extra
+	// store round-trip.
+	cur.AccessCount++
+	now := s.now()
+	cur.LastAccessedAt = &now
 	if shared != nil {
 		if *shared {
 			cur.Visibility = visibilityShared
@@ -1325,6 +1416,42 @@ func (s *Store) SetVisibility(ctx context.Context, id string, subj Subject, shar
 	_, err = s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
 		Payload:        qdrant.NewValueMap(map[string]any{"visibility": vis}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
+	})
+	return err
+}
+
+// IncrementAccess bumps a record's access_count by 1 and stamps
+// last_accessed_at, without re-embedding (uses SetPayload, preserving the
+// vector). It is a store-layer primitive fired only by handler-boundary
+// callers that already gated ownership (D-01) — it deliberately does NOT
+// re-run getWritable/GetReadable; the internal Get here is purely a
+// read-modify-write of the counter value, not a re-authorization. The RMW is
+// last-writer-wins: concurrent bumps on the same record may lose an
+// increment, which is an accepted tradeoff for a soft curation signal (D-05,
+// no mutex/singleflight/optimistic-retry).
+func (s *Store) IncrementAccess(ctx context.Context, id string) (err error) {
+	ctx, span := tracer.Start(ctx, "store.IncrementAccess")
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "IncrementAccess", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
+	cur, err := s.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	_, err = s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload: qdrant.NewValueMap(map[string]any{
+			"access_count":     cur.AccessCount + 1,
+			"last_accessed_at": s.now().Format(time.RFC3339),
+		}),
 		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
 	})
 	return err

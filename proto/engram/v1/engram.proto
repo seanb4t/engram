@@ -29,6 +29,10 @@ message Memory {
   // list/get results, which are not ranked.
   float score = 17;
   string short_id = 18;
+  // Monotonic count of strong-signal touches (get-by-id + update).
+  uint64 access_count = 19;
+  // Recency of the last strong-signal touch.
+  google.protobuf.Timestamp last_accessed_at = 20;
 }
 
 message ScopeCount {

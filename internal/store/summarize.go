@@ -44,6 +44,29 @@ func shouldSummarize(m Memory, maxChars int) bool {
 	return m.Summary == "" && len([]rune(m.Content)) > maxChars
 }
 
+// LogSummaryEgress emits a content-free audit line for one summary-fill
+// attempt that reached a terminal outcome — id/scope/visibility/owner/
+// content_len/model/outcome, plus err when non-nil (content_len via
+// utf8.RuneCountInString; never the content itself). Logs at info for a
+// successful/skipped attempt, warn on failure. Shared by SummarizeMissing
+// (below) and the async-on-write summary worker
+// (internal/server/summaryqueue.go's storeFill) so the two gateway egress
+// paths cannot drift (k1oe.2, Codex finding #3, T-11-06).
+func LogSummaryEgress(ctx context.Context, m Memory, model, outcome string, err error) {
+	attrs := []slog.Attr{
+		slog.String("id", m.ID), slog.String("scope", m.Scope),
+		slog.String("visibility", m.Visibility), slog.String("owner", m.Owner),
+		slog.Int("content_len", utf8.RuneCountInString(m.Content)),
+		slog.String("model", model), slog.String("outcome", outcome),
+	}
+	level := slog.LevelInfo
+	if err != nil {
+		level = slog.LevelWarn
+		attrs = append(attrs, slog.String("err", err.Error()))
+	}
+	slog.LogAttrs(ctx, level, "summarize-missing: egress", attrs...)
+}
+
 // SetSummary writes summary + provenance via a vector-preserving SetPayload
 // (mirrors SetVisibility). Used by the auto path; always stamps source "auto".
 func (s *Store) SetSummary(ctx context.Context, id, summary, model string) (err error) {
@@ -148,23 +171,15 @@ func (s *Store) SummarizeMissing(ctx context.Context, opts SummarizeOptions, sum
 				continue
 			}
 			filled, ferr := s.FillSummary(ctx, m, summarize, opts.Model, opts.MaxChars)
-			// k1oe.2: per-record egress audit (content_len only, never content).
-			auditAttrs := func(outcome string, extra ...slog.Attr) []slog.Attr {
-				return append([]slog.Attr{
-					slog.String("id", m.ID), slog.String("scope", m.Scope),
-					slog.String("visibility", m.Visibility), slog.String("owner", m.Owner),
-					slog.Int("content_len", utf8.RuneCountInString(m.Content)),
-					slog.String("model", opts.Model), slog.String("outcome", outcome),
-				}, extra...)
-			}
+			// k1oe.2: per-record egress audit (content_len only, never
+			// content) via the shared helper (Codex finding #3).
 			if ferr != nil {
-				slog.LogAttrs(ctx, slog.LevelWarn, "summarize-missing: egress",
-					auditAttrs("failed", slog.String("err", ferr.Error()))...)
+				LogSummaryEgress(ctx, m, opts.Model, "failed", ferr)
 				res.Failed++
 				continue
 			}
 			if filled {
-				slog.LogAttrs(ctx, slog.LevelInfo, "summarize-missing: egress", auditAttrs("filled")...)
+				LogSummaryEgress(ctx, m, opts.Model, "filled", nil)
 			}
 			res.Filled++
 		}
