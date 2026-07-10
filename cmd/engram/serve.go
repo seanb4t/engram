@@ -91,6 +91,12 @@ func runServe(cmd *cobra.Command) error {
 	// the auth-failure recorder (accessLog), so all counters/histograms share
 	// the same instrument objects and export together.
 	tm := telemetry.NewToolMetrics(otel.Meter("github.com/seanb4t/engram"))
+	// SummaryQueueMetrics builds ONLY the static instruments (counters +
+	// fill-latency histogram) here — no queue exists yet at this point in
+	// startup. The queue-depth observable gauge is registered later, inside
+	// buildDepsFromEnv, via telemetry.RegisterSummaryQueueDepth(meter,
+	// q.depth), once a live queue exists to sample (D-09, Codex finding #1).
+	sqm := telemetry.NewSummaryQueueMetrics(otel.Meter("github.com/seanb4t/engram"))
 	// Install the store/embed/auth latency instruments as telemetry package
 	// state so the layer Record* helpers emit (no-op until this runs).
 	telemetry.InitLayerMetrics(otel.Meter("github.com/seanb4t/engram"))
@@ -142,7 +148,8 @@ func runServe(cmd *cobra.Command) error {
 	}
 
 	srv := mcp.NewServer(&mcp.Implementation{Name: "engram", Version: version}, nil)
-	if err := server.Register(srv, mux, tm, connectResolve); err != nil {
+	drainSummaries, err := server.Register(srv, mux, tm, sqm, connectResolve)
+	if err != nil {
 		slog.Error("server registration failed", "err", err)
 		return err
 	}
@@ -206,7 +213,15 @@ func runServe(cmd *cobra.Command) error {
 		slog.Info("shutdown signal received; draining")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		return httpSrv.Shutdown(shutdownCtx)
+		shutdownErr := httpSrv.Shutdown(shutdownCtx)
+		// Drain the summary queue STRICTLY after httpSrv.Shutdown returns —
+		// never in parallel. Once Shutdown returns, no in-flight HTTP handler
+		// can still call tryEnqueue, so closing the enqueue channel here is
+		// safe; doing it any earlier risks a send-on-closed-channel panic
+		// (D-08, RESEARCH Pitfall 1). No-op when the queue is disabled.
+		slog.Info("draining summary queue")
+		drainSummaries(shutdownCtx)
+		return shutdownErr
 	}
 }
 
