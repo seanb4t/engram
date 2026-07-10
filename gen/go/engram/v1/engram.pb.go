@@ -46,10 +46,14 @@ type Memory struct {
 	SummarySource string                 `protobuf:"bytes,16,opt,name=summary_source,json=summarySource,proto3" json:"summary_source,omitempty"`
 	// Qdrant similarity score on search results (higher = closer); 0 on
 	// list/get results, which are not ranked.
-	Score         float32 `protobuf:"fixed32,17,opt,name=score,proto3" json:"score,omitempty"`
-	ShortId       string  `protobuf:"bytes,18,opt,name=short_id,json=shortId,proto3" json:"short_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Score   float32 `protobuf:"fixed32,17,opt,name=score,proto3" json:"score,omitempty"`
+	ShortId string  `protobuf:"bytes,18,opt,name=short_id,json=shortId,proto3" json:"short_id,omitempty"`
+	// Monotonic count of strong-signal touches (get-by-id + update).
+	AccessCount uint64 `protobuf:"varint,19,opt,name=access_count,json=accessCount,proto3" json:"access_count,omitempty"`
+	// Recency of the last strong-signal touch.
+	LastAccessedAt *timestamppb.Timestamp `protobuf:"bytes,20,opt,name=last_accessed_at,json=lastAccessedAt,proto3" json:"last_accessed_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Memory) Reset() {
@@ -206,6 +210,20 @@ func (x *Memory) GetShortId() string {
 		return x.ShortId
 	}
 	return ""
+}
+
+func (x *Memory) GetAccessCount() uint64 {
+	if x != nil {
+		return x.AccessCount
+	}
+	return 0
+}
+
+func (x *Memory) GetLastAccessedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastAccessedAt
+	}
+	return nil
 }
 
 type ScopeCount struct {
@@ -874,7 +892,7 @@ var File_engram_v1_engram_proto protoreflect.FileDescriptor
 
 const file_engram_v1_engram_proto_rawDesc = "" +
 	"\n" +
-	"\x16engram/v1/engram.proto\x12\tengram.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf2\x03\n" +
+	"\x16engram/v1/engram.proto\x12\tengram.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xdb\x04\n" +
 	"\x06Memory\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x14\n" +
@@ -897,7 +915,9 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\asummary\x18\x0f \x01(\tR\asummary\x12%\n" +
 	"\x0esummary_source\x18\x10 \x01(\tR\rsummarySource\x12\x14\n" +
 	"\x05score\x18\x11 \x01(\x02R\x05score\x12\x19\n" +
-	"\bshort_id\x18\x12 \x01(\tR\ashortId\"8\n" +
+	"\bshort_id\x18\x12 \x01(\tR\ashortId\x12!\n" +
+	"\faccess_count\x18\x13 \x01(\x04R\vaccessCount\x12D\n" +
+	"\x10last_accessed_at\x18\x14 \x01(\v2\x1a.google.protobuf.TimestampR\x0elastAccessedAt\"8\n" +
 	"\n" +
 	"ScopeCount\x12\x14\n" +
 	"\x05scope\x18\x01 \x01(\tR\x05scope\x12\x14\n" +
@@ -990,26 +1010,27 @@ var file_engram_v1_engram_proto_goTypes = []any{
 }
 var file_engram_v1_engram_proto_depIdxs = []int32{
 	12, // 0: engram.v1.Memory.created_at:type_name -> google.protobuf.Timestamp
-	1,  // 1: engram.v1.ListScopesResponse.scopes:type_name -> engram.v1.ScopeCount
-	0,  // 2: engram.v1.ListMemoriesResponse.memories:type_name -> engram.v1.Memory
-	0,  // 3: engram.v1.SearchMemoriesResponse.memories:type_name -> engram.v1.Memory
-	0,  // 4: engram.v1.GetMemoryResponse.memory:type_name -> engram.v1.Memory
-	0,  // 5: engram.v1.SearchDiscoveriesResponse.discoveries:type_name -> engram.v1.Memory
-	2,  // 6: engram.v1.EngramService.ListScopes:input_type -> engram.v1.ListScopesRequest
-	4,  // 7: engram.v1.EngramService.ListMemories:input_type -> engram.v1.ListMemoriesRequest
-	6,  // 8: engram.v1.EngramService.SearchMemories:input_type -> engram.v1.SearchMemoriesRequest
-	8,  // 9: engram.v1.EngramService.GetMemory:input_type -> engram.v1.GetMemoryRequest
-	10, // 10: engram.v1.EngramService.SearchDiscoveries:input_type -> engram.v1.SearchDiscoveriesRequest
-	3,  // 11: engram.v1.EngramService.ListScopes:output_type -> engram.v1.ListScopesResponse
-	5,  // 12: engram.v1.EngramService.ListMemories:output_type -> engram.v1.ListMemoriesResponse
-	7,  // 13: engram.v1.EngramService.SearchMemories:output_type -> engram.v1.SearchMemoriesResponse
-	9,  // 14: engram.v1.EngramService.GetMemory:output_type -> engram.v1.GetMemoryResponse
-	11, // 15: engram.v1.EngramService.SearchDiscoveries:output_type -> engram.v1.SearchDiscoveriesResponse
-	11, // [11:16] is the sub-list for method output_type
-	6,  // [6:11] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	12, // 1: engram.v1.Memory.last_accessed_at:type_name -> google.protobuf.Timestamp
+	1,  // 2: engram.v1.ListScopesResponse.scopes:type_name -> engram.v1.ScopeCount
+	0,  // 3: engram.v1.ListMemoriesResponse.memories:type_name -> engram.v1.Memory
+	0,  // 4: engram.v1.SearchMemoriesResponse.memories:type_name -> engram.v1.Memory
+	0,  // 5: engram.v1.GetMemoryResponse.memory:type_name -> engram.v1.Memory
+	0,  // 6: engram.v1.SearchDiscoveriesResponse.discoveries:type_name -> engram.v1.Memory
+	2,  // 7: engram.v1.EngramService.ListScopes:input_type -> engram.v1.ListScopesRequest
+	4,  // 8: engram.v1.EngramService.ListMemories:input_type -> engram.v1.ListMemoriesRequest
+	6,  // 9: engram.v1.EngramService.SearchMemories:input_type -> engram.v1.SearchMemoriesRequest
+	8,  // 10: engram.v1.EngramService.GetMemory:input_type -> engram.v1.GetMemoryRequest
+	10, // 11: engram.v1.EngramService.SearchDiscoveries:input_type -> engram.v1.SearchDiscoveriesRequest
+	3,  // 12: engram.v1.EngramService.ListScopes:output_type -> engram.v1.ListScopesResponse
+	5,  // 13: engram.v1.EngramService.ListMemories:output_type -> engram.v1.ListMemoriesResponse
+	7,  // 14: engram.v1.EngramService.SearchMemories:output_type -> engram.v1.SearchMemoriesResponse
+	9,  // 15: engram.v1.EngramService.GetMemory:output_type -> engram.v1.GetMemoryResponse
+	11, // 16: engram.v1.EngramService.SearchDiscoveries:output_type -> engram.v1.SearchDiscoveriesResponse
+	12, // [12:17] is the sub-list for method output_type
+	7,  // [7:12] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_engram_v1_engram_proto_init() }
