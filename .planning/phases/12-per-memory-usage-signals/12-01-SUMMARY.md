@@ -142,3 +142,7 @@ The store-layer foundation (`Memory` fields, payload round-trip, `IncrementAcces
 ---
 *Phase: 12-per-memory-usage-signals*
 *Completed: 2026-07-10*
+
+## Self-Check: PASSED
+
+All created/modified files and all four task/docs commit hashes (9f9693d, 4a9c2a4, 1663bbe, dab2251) verified present.

@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v0.9.x — Recall Quality
 milestone_name: "- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval"
 current_phase: 12
-current_phase_name: per-memory-usage-signals
-status: ready_to_plan
-stopped_at: Phase 12 context gathered
-last_updated: "2026-07-10T15:00:42.137Z"
+current_phase_name: Per-Memory Usage Signals
+status: executing
+stopped_at: Completed 12-01-PLAN.md
+last_updated: "2026-07-10T16:59:05.436Z"
 last_activity: 2026-07-10
-last_activity_desc: Phase 11 executed, verified, code-review fixes applied
+last_activity_desc: Phase 12 execution started
 progress:
   total_phases: 12
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 12
+  completed_plans: 7
   percent: 17
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-09)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 12 — Per-Memory Usage Signals (#317)
+**Current focus:** Phase 12 — Per-Memory Usage Signals
 
 ## Current Position
 
-Phase: 12 (per-memory-usage-signals) — not started
-Plan: none yet
-Status: Phase 11 (async-on-write-summaries) COMPLETE — verified 9/9 goal-backward; code-review found + fixed CR-01 (send-on-closed-channel on shutdown-timeout) and WR-02 (retry-budget coherence). Next: discuss or plan Phase 12 (#317; get/update usage counters only, never affects ranking).
-Last activity: 2026-07-10 — Phase 11 executed, verified, code-review fixes applied
+Phase: 12 (Per-Memory Usage Signals) — EXECUTING
+Plan: 2 of 6
+Status: Ready to execute
+Last activity: 2026-07-10 — Phase 12 execution started
 
 Progress: [████████░░] 75% (v0.9.x — 3/4 phases done: Phase 9 executed, Phase 10 already-shipped, Phase 11 executed; Phase 12 remains)
 
@@ -59,6 +59,7 @@ Progress: [████████░░] 75% (v0.9.x — 3/4 phases done: Phas
 | Phase 11 P01 | 15min | 2 tasks | 7 files |
 | Phase 11 P02 | 15min | 2 tasks | 3 files |
 | Phase 11 P03 | 45min | 3 tasks | 5 files |
+| Phase 12-per-memory-usage-signals P01 | 8min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,8 @@ Progress: [████████░░] 75% (v0.9.x — 3/4 phases done: Phas
 - [Phase 11]: WithMaxElapsedTime(20s) is a fixed package constant decoupled from the injected attemptTimeout, so a tiny test attemptTimeout can't race the elapsed-time ceiling; WithMaxTries(3) is the primary retry bound
 - [Phase 11]: buildSummaryQueue runtime AND-gate (deps.summaryQueue) lives in tools.go, separate from Validate()'s unconditional parseability checks; an unparseable ENGRAM_SUMMARY_ON_WRITE is treated as disabled
 - [Phase 11]: Register grew to return a shutdown closure (drainSummaries), invoked strictly after httpSrv.Shutdown(shutdownCtx) returns in serve.go's SIGTERM branch (D-08 ordering)
+- [Phase 12-per-memory-usage-signals]: IncrementAccess deliberately skips getWritable/GetReadable — the handler-boundary caller already gated ownership (D-01/D-04)
+- [Phase 12-per-memory-usage-signals]: No payload index registered for access_count, keeping D-08's ranking boundary honest
 
 ### Pending Todos
 
@@ -101,6 +104,6 @@ Carried to v0.10.x. NOT part of v0.9.x scope.
 
 ## Session Continuity
 
-Last session: 2026-07-10T15:00:42.130Z
-Stopped at: Phase 12 context gathered
-Resume file: .planning/phases/12-per-memory-usage-signals/12-CONTEXT.md
+Last session: 2026-07-10T16:59:05.428Z
+Stopped at: Completed 12-01-PLAN.md
+Resume file: None
