@@ -232,6 +232,48 @@ func testDepsWithSummaryQueue(t *testing.T, workers, queueSize int, fill func(ct
 	return d
 }
 
+// usageQueueRecorder is a test-injectable fill that records every id it
+// receives (thread-safe), used to assert D-01/D-02 enqueue behavior without a
+// live Qdrant IncrementAccess call.
+type usageQueueRecorder struct {
+	mu  sync.Mutex
+	ids []string
+}
+
+func (r *usageQueueRecorder) fill(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ids = append(r.ids, id)
+	return nil
+}
+
+func (r *usageQueueRecorder) recorded() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.ids)
+}
+
+// testDepsWithUsageQueue builds the same Qdrant-backed deps as testDeps plus a
+// live, test-controlled *usageQueue wired onto deps.usageQueue and a
+// *usageQueueRecorder capturing every id the queue's fill receives, so
+// D-01/D-02 enqueue-on-success (and enqueue-never) tests can drive the queue
+// through the real getMemory/Connect GetMemory handlers. The queue is shut
+// down via t.Cleanup.
+func testDepsWithUsageQueue(t *testing.T, workers, queueSize int) (*deps, *usageQueueRecorder) {
+	t.Helper()
+	d := testDeps(t)
+	rec := &usageQueueRecorder{}
+	q := newUsageQueue(workers, queueSize, nil, rec.fill)
+	q.Start(context.Background())
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		q.Shutdown(ctx)
+	})
+	d.usageQueue = q
+	return d, rec
+}
+
 // cleanupErr surfaces a deferred-cleanup failure so leftover records can't
 // silently contaminate later tests in the run. store.ErrNotFound is tolerated:
 // the record is already gone, which is exactly what cleanup wanted.
@@ -1578,5 +1620,135 @@ func TestShortIDCrossOwnerVisibility(t *testing.T) {
 	after, err := d.st.Get(context.Background(), privID)
 	if err != nil || after.Content != "secret" || after.ShortID != privSid {
 		t.Fatalf("cross-owner attempts mutated owner-A's record: content=%q short=%q err=%v", after.Content, after.ShortID, err)
+	}
+}
+
+// TestGetMemoryEnqueuesUsageSignalOnSuccessOnly pins the D-01 counting
+// boundary end-to-end: a successful get_memory enqueues exactly the fetched
+// point id; a denied/ErrNotFound get_memory enqueues nothing.
+func TestGetMemoryEnqueuesUsageSignalOnSuccessOnly(t *testing.T) {
+	d, rec := testDepsWithUsageQueue(t, 2, 16)
+	ctxA := authedContext(t, "owner-A")
+	id, _, err := d.storeMemory(ctxA, storeArgs{Content: "hi", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.getMemory(ctxA, idArgs{ID: id}); err != nil {
+		t.Fatal(err)
+	}
+	d.usageQueue.Wait()
+	if got := rec.recorded(); len(got) != 1 || got[0] != id {
+		t.Fatalf("successful get enqueued %v, want exactly [%s]", got, id)
+	}
+
+	// Denied: owner-B fetching owner-A's private record must not enqueue.
+	ctxB := authedContext(t, "owner-B")
+	if _, err := d.getMemory(ctxB, idArgs{ID: id}); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("cross-owner get must be ErrNotFound, got %v", err)
+	}
+	d.usageQueue.Wait()
+	if got := rec.recorded(); len(got) != 1 {
+		t.Fatalf("denied get must not enqueue; recorded = %v", got)
+	}
+}
+
+// TestSearchListMemoryDoNotEnqueueUsageSignal pins the D-02 hard invariant:
+// result-set membership in search_memory/list_memory/list_scheduled never
+// increments the usage-signal payload counter, even when the same record that
+// was just get-fetched (and did enqueue) appears in the result set.
+func TestSearchListMemoryDoNotEnqueueUsageSignal(t *testing.T) {
+	d, rec := testDepsWithUsageQueue(t, 2, 16)
+	ctx := authedContext(t, "owner-A")
+	scope := "usage-d02-scope"
+	if _, _, err := d.storeMemory(ctx, storeArgs{Content: "hi", Scope: scope, Category: "gotcha", Source: "user-said"}); err != nil {
+		t.Fatal(err)
+	}
+	future := timeNow().Add(time.Hour).Format(time.RFC3339)
+	if _, _, err := d.scheduleMemory(ctx, scheduleArgs{
+		storeArgs: storeArgs{Content: "later", Scope: scope, Category: "gotcha", Source: "user-said"},
+		NotBefore: future,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := d.searchMemory(ctx, searchArgs{Query: "hi", Scope: scope}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := d.listMemory(ctx, listArgs{Scope: scope}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.listScheduled(ctx, listScheduledArgs{Scope: scope}); err != nil {
+		t.Fatal(err)
+	}
+	d.usageQueue.Wait()
+	if got := rec.recorded(); len(got) != 0 {
+		t.Fatalf("search/list/list_scheduled must never enqueue usage signals (D-02); recorded = %v", got)
+	}
+}
+
+// TestUpdateMemoryIncrementsAccessCountOnceNoAsyncEnqueue pins D-04: the
+// update path bumps access_count exactly once, synchronously, free inside
+// store.Update — it does NOT also fire a usageQueue enqueue (that would
+// double-count a single update as both a "get" and an "update").
+func TestUpdateMemoryIncrementsAccessCountOnceNoAsyncEnqueue(t *testing.T) {
+	d, rec := testDepsWithUsageQueue(t, 2, 16)
+	ctx := authedContext(t, "owner-A")
+	id, _, err := d.storeMemory(ctx, storeArgs{Content: "v1", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "v2"}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := d.st.Get(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.AccessCount != 1 {
+		t.Fatalf("access_count after one update = %d, want 1", after.AccessCount)
+	}
+	d.usageQueue.Wait()
+	if got := rec.recorded(); len(got) != 0 {
+		t.Fatalf("update_memory must not enqueue an async usage signal (free bump only); recorded = %v", got)
+	}
+}
+
+// TestBuildUsageQueueConfigGate pins D-09: ENGRAM_USAGE_SIGNALS (parsed at
+// point-of-use as cfg.Usage.Signals) false/unparseable disables the queue
+// (nil, zero read-path counter writes); true builds and starts a live queue.
+// A nil usageQueue must still let get_memory return the record (nil-safe
+// no-op call site).
+func TestBuildUsageQueueConfigGate(t *testing.T) {
+	if q := buildUsageQueue(&config.Config{Usage: config.UsageConfig{Signals: "false"}}, nil, nil); q != nil {
+		t.Fatalf("Signals=false must disable the queue, got %v", q)
+	}
+	if q := buildUsageQueue(&config.Config{Usage: config.UsageConfig{Signals: "not-a-bool"}}, nil, nil); q != nil {
+		t.Fatalf("unparseable Signals must disable the queue, got %v", q)
+	}
+
+	d := testDeps(t)
+	q := buildUsageQueue(&config.Config{Usage: config.UsageConfig{Signals: "true"}}, d.st, nil)
+	if q == nil {
+		t.Fatal("Signals=true must build a live queue")
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		q.Shutdown(ctx)
+	})
+
+	// Nil-safe call site: deps.usageQueue is nil by default (testDeps), and
+	// get_memory must still return the record with zero counter writes.
+	ctx := authedContext(t, "owner-A")
+	id, _, err := d.storeMemory(ctx, storeArgs{Content: "hi", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := d.getMemory(ctx, idArgs{ID: id})
+	if err != nil || got.ID != id {
+		t.Fatalf("get with disabled usage queue: got %q err %v", got.ID, err)
+	}
+	if got.AccessCount != 0 {
+		t.Fatalf("disabled usage queue must perform zero counter writes; access_count = %d", got.AccessCount)
 	}
 }

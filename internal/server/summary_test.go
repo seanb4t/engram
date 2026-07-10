@@ -6,6 +6,7 @@ package server
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/seanb4t/engram/internal/store"
 )
@@ -45,6 +46,25 @@ func TestRecallViewCarriesShortID(t *testing.T) {
 	v := toRecallView(store.Memory{ID: "u", ShortID: "j7k2m9p4x0", Content: "hello", Scope: "s", Category: "gotcha"}, 8)
 	if v.ShortID != "j7k2m9p4x0" {
 		t.Fatalf("recallView.ShortID = %q", v.ShortID)
+	}
+}
+
+// TestToRecallViewSurfacesUsageSignals is a Phase 12 D-07 regression guard:
+// recallView is a hand-written allow-list, so a store.Memory carrying
+// AccessCount/LastAccessedAt is not enough on its own — toRecallView must
+// explicitly copy both fields onto the compact list/search shape.
+func TestToRecallViewSurfacesUsageSignals(t *testing.T) {
+	last := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	m := store.Memory{
+		ID: "u", Content: "hello", Scope: "s", Category: "gotcha",
+		AccessCount: 5, LastAccessedAt: last,
+	}
+	v := toRecallView(m, 8)
+	if v.AccessCount != 5 {
+		t.Fatalf("recallView.AccessCount = %d, want 5", v.AccessCount)
+	}
+	if !v.LastAccessedAt.Equal(last) {
+		t.Fatalf("recallView.LastAccessedAt = %v, want %v", v.LastAccessedAt, last)
 	}
 }
 
