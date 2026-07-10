@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.9.x — Recall Quality
-milestone_name: "- [ ] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval"
+milestone_name: "- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval"
 current_phase: 9
 current_phase_name: Retrieval Eval Harness & Ranking Precision
-status: executing
-stopped_at: "Phase 9 Plan 03: Task 1+2 executed (D-06 reranker wired into MCP+Connect, eval flipped to hard rank bar); paused at Task 3 blocking checkpoint:decision (accept-d06/escalate-d07/escalate-d08)"
-last_updated: "2026-07-10T00:03:57.409Z"
+status: verifying
+stopped_at: "Phase 9 Plan 03 complete (accept-d06): D-06 reranker shipped on MCP+Connect; live eval clears #261 rank bar (recall@8=1.00, MRR=1.000). Phase 9 all 3 plans done — ready for verification."
+last_updated: "2026-07-10T00:38:30.321Z"
 last_activity: 2026-07-09
 last_activity_desc: Phase 9 execution started
 progress:
   total_phases: 12
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 0
+  completed_plans: 3
+  percent: 8
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-09)
 
 ## Current Position
 
-Phase: 9 (Retrieval Eval Harness & Ranking Precision) — EXECUTING
-Plan: 3 of 3
-Status: Ready to execute
-Last activity: 2026-07-09 — Phase 9 execution started
+Phase: 9 (Retrieval Eval Harness & Ranking Precision) — COMPLETE (ready for verification)
+Plan: 3 of 3 (all complete)
+Status: Phase complete — ready for verification
+Last activity: 2026-07-09 — Phase 9 Plan 03 complete (accept-d06)
 
-Progress: [░░░░░░░░░░] 0% (v0.9.x — 1/4 phases planned, 0/4 executed)
+Progress: [██▌░░░░░░░] 25% (v0.9.x — 1/4 phases executed: Phase 9 complete)
 
 ## Performance Metrics
 
@@ -47,7 +47,7 @@ Progress: [░░░░░░░░░░] 0% (v0.9.x — 1/4 phases planned, 0/
 
 | Phase | Requirements | Status |
 |-------|--------------|--------|
-| 9. Retrieval Eval & Ranking Precision | 0/3 | Planned |
+| 9. Retrieval Eval & Ranking Precision | 3/3 | Complete |
 | 10. Asymmetric Query/Document Embeddings | 0/1 | Planned |
 | 11. Async-on-Write Summaries | 0/1 | Planned |
 | 12. Per-Memory Usage Signals | 0/1 | Planned |
@@ -55,6 +55,7 @@ Progress: [░░░░░░░░░░] 0% (v0.9.x — 1/4 phases planned, 0/
 **Shipped (v0.8.x baseline):** Phases 1–8 complete (24 requirements). See ROADMAP.md Progress table.
 | Phase 09-retrieval-eval-harness-ranking-precision P01 | 20min | 2 tasks | 4 files |
 | Phase 09-retrieval-eval-harness-ranking-precision P02 | 15min | 2 tasks | 3 files |
+| Phase 09-retrieval-eval-harness-ranking-precision P03 | 35min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -78,7 +79,7 @@ Progress: [░░░░░░░░░░] 0% (v0.9.x — 1/4 phases planned, 0/
 ### Blockers/Concerns
 
 - **Phase 10 baseline ambiguity**: `REQ-asymmetric-embedder-params` (Phase 4, shipped) describes query/doc param maps + doc-side instruction, but GitHub #305 reports those classes (cloud native API params; E5/nomic doc-side prefix) are NOT covered by the shipped text-prefix knob. Phase-10 planning must verify the exact shipped baseline against `internal/embed/` before scoping.
-- Phase 9 Plan 03 paused at Task 3 (blocking checkpoint:decision): accept-d06 vs escalate-d07 vs escalate-d08. Awaiting user selection; live eval numbers unavailable this session (no gateway creds) - D-06 unit/behavioral-tested and wired on both MCP+Connect surfaces.
+- ~~Phase 9 Plan 03 Task 3 checkpoint~~ RESOLVED: **accept-d06**. Live eval (gemini-embedding-2 @3072 via OpenRouter) clears the #261 rank bar — query-a/b both rank 1/8, recall@8=1.00, MRR=1.000. D-07/D-08 evaluated and not needed. Follow-up: run the qwen3-embedding-8b @4096 prod-parity eval (with PR#262 query instruction) once OpenRouter recovers.
 
 ## Deferred Items
 
@@ -92,6 +93,6 @@ Carried to v0.10.x. NOT part of v0.9.x scope.
 
 ## Session Continuity
 
-Last session: 2026-07-10T00:03:57.403Z
-Stopped at: Phase 9 Plan 03: Task 1+2 executed (D-06 reranker wired into MCP+Connect, eval flipped to hard rank bar); paused at Task 3 blocking checkpoint:decision (accept-d06/escalate-d07/escalate-d08)
-Resume file: .planning/phases/09-retrieval-eval-harness-ranking-precision/09-03-PLAN.md
+Last session: 2026-07-10T00:38:30.316Z
+Stopped at: Phase 9 Plan 03 complete (accept-d06): D-06 reranker shipped on MCP+Connect; live eval clears #261 rank bar (recall@8=1.00, MRR=1.000). Phase 9 all 3 plans done — ready for verification.
+Resume file: None

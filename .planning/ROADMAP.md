@@ -39,7 +39,7 @@ observable truths that hold in the shipped baseline.
 
 ### v0.9.x — Recall Quality
 
-- [ ] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval (recall@k/MRR), similarity scores in `search_memory`, hybrid/rerank to kill phrasing-sensitivity — chosen by the eval numbers
+- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval (recall@k/MRR), similarity scores in `search_memory`, hybrid/rerank to kill phrasing-sensitivity — chosen by the eval numbers (completed 2026-07-10)
 - [ ] **Phase 10: Asymmetric Query/Document Embeddings** - Native API-param passthrough (cloud) + document-side prefix (E5/nomic) for query≠document embeds; measured on the Phase 9 harness
 - [ ] **Phase 11: Async-on-Write Summaries** - In-process worker drains `FillSummary` after upsert, off the synchronous write path; eval-gated
 - [ ] **Phase 12: Per-Memory Usage Signals** - Strong-signal counters (get/update) via hybrid OTLP + payload `access_count`; never affects ranking
@@ -189,7 +189,7 @@ observable truths that hold in the shipped baseline.
 3. Phrasing-sensitive misses are eliminated: Query A/B from #261 (near-verbatim restatements) surface Record T within default `k`, via hybrid dense+lexical fusion and/or higher-`k`+rerank — the approach chosen by the eval numbers, not assumed.
 
 **Status**: Planned (v0.9.x)
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans complete
 **Wave 1**
 
 - [x] 09-01-PLAN.md — Retrieval eval harness (`task eval:retrieval`, env-gated Go test, #261 regression fixture, recall@k/MRR) [Wave 1]
@@ -197,7 +197,7 @@ observable truths that hold in the shipped baseline.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 09-03-PLAN.md — Eval-gated ranking precision: D-06 heuristic rerank first; D-07 hybrid / D-08 cross-encoder as conditional escalations chosen by the eval numbers [Wave 2]
+- [x] 09-03-PLAN.md — Eval-gated ranking precision: D-06 heuristic rerank first; D-07 hybrid / D-08 cross-encoder as conditional escalations chosen by the eval numbers [Wave 2]
 
 ### Phase 10: Asymmetric Query/Document Embeddings
 
@@ -255,7 +255,7 @@ observable truths that hold in the shipped baseline.
 | 6. Telemetry & Observability | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
 | 7. Web UI, Docs Site & Distribution | v0.8.x | 9/9 | Complete | shipped (v0.8.x) |
 | 8. Connect Auth Hardening | v0.8.x | 1/1 | Complete | shipped (PR #248/#266) |
-| 9. Retrieval Eval & Ranking Precision | v0.9.x | 2/3 | In Progress|  |
+| 9. Retrieval Eval & Ranking Precision | v0.9.x | 3/3 | Complete   | 2026-07-10 |
 | 10. Asymmetric Query/Document Embeddings | v0.9.x | 0/1 | Planned | — |
 | 11. Async-on-Write Summaries | v0.9.x | 0/1 | Planned | — |
 | 12. Per-Memory Usage Signals | v0.9.x | 0/1 | Planned | — |
