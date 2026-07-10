@@ -5,15 +5,15 @@ milestone_name: "- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** -
 current_phase: 12
 current_phase_name: Per-Memory Usage Signals
 status: executing
-stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-07-10T17:09:25.827Z"
+stopped_at: Completed 12-03-PLAN.md
+last_updated: "2026-07-10T17:16:12.321Z"
 last_activity: 2026-07-10
 last_activity_desc: Phase 12 execution started
 progress:
   total_phases: 12
   completed_phases: 2
   total_plans: 12
-  completed_plans: 8
+  completed_plans: 9
   percent: 17
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-09)
 ## Current Position
 
 Phase: 12 (Per-Memory Usage Signals) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-07-10 — Phase 12 execution started
 
@@ -61,6 +61,7 @@ Progress: [████████░░] 75% (v0.9.x — 3/4 phases done: Phas
 | Phase 11 P03 | 45min | 3 tasks | 5 files |
 | Phase 12-per-memory-usage-signals P01 | 8min | 3 tasks | 3 files |
 | Phase 12 P02 | 12min | 2 tasks | 6 files |
+| Phase 12-per-memory-usage-signals P03 | 6min | 1 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -85,6 +86,7 @@ Progress: [████████░░] 75% (v0.9.x — 3/4 phases done: Phas
 - [Phase 12-per-memory-usage-signals]: No payload index registered for access_count, keeping D-08's ranking boundary honest
 - [Phase 12-02]: usage.signals defaults to true (on) — unlike summarize.on_write's false — D-09: usage signals are local, non-egressing curation metadata
 - [Phase 12-02]: UsageQueueMetrics has no retried counter or latency histogram — D-10 mandates single-attempt, no retry
+- [Phase 12-03]: last_accessed_at uses google.protobuf.Timestamp (not string) matching created_at=14's type analog
 
 ### Pending Todos
 
@@ -107,6 +109,6 @@ Carried to v0.10.x. NOT part of v0.9.x scope.
 
 ## Session Continuity
 
-Last session: 2026-07-10T17:04:26.586Z
-Stopped at: Completed 12-01-PLAN.md
+Last session: 2026-07-10T17:16:12.314Z
+Stopped at: Completed 12-03-PLAN.md
 Resume file: None
