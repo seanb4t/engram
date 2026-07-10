@@ -251,7 +251,22 @@ observable truths that hold in the shipped baseline.
 3. Usage counters are server-set and **never** silently affect ranking; any usage-weighted recall remains an explicit, out-of-scope future decision.
 
 **Status**: Planned (v0.9.x) — design-first
-**Plans**: TBD — `/gsd-plan-phase 12`. Source: GitHub #317.
+**Plans**: 6 plans. Source: GitHub #317.
+
+**Wave 1** *(parallel — disjoint files)*
+
+- [ ] 12-01-PLAN.md — Store foundation: `Memory.AccessCount`/`LastAccessedAt` + payload round-trip, `IncrementAccess` (SetPayload, no re-auth), free `Update` bump, D-08 rerank invariance test [Wave 1]
+- [ ] 12-02-PLAN.md — Config gate `ENGRAM_USAGE_SIGNALS` (default on) + `telemetry.UsageQueueMetrics` (enqueued/dropped/failed, no retry) [Wave 1]
+- [ ] 12-03-PLAN.md — Proto `Memory` fields 19/20 (`access_count`/`last_accessed_at`) + `task proto:gen` + commit `gen/` (isolated, blocking) [Wave 1]
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 12-04-PLAN.md — D-06 recall-id analytics: bounded `engram.recall.ids`/`engram.recall.count` on `store.Search`/`List`/`Get` spans + span-recorder tests [Wave 2]
+- [ ] 12-05-PLAN.md — D-10 async get-path incrementer `usagequeue.go`: CR-01 shutdown-safety kernel minus retry, drop-on-full, Qdrant-free tests [Wave 2]
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 12-06-PLAN.md — Wiring + lifecycle + exposure: config-gated `buildUsageQueue`, get/Connect-GetMemory `tryEnqueue` (D-01, call-and-ignore), D-07 `recallView`/`memoryToProto`, D-02 negative-space e2e, `task` green [Wave 3]
 
 ## Progress
 
@@ -270,4 +285,4 @@ observable truths that hold in the shipped baseline.
 | 9. Retrieval Eval & Ranking Precision | v0.9.x | 3/3 | Complete    | 2026-07-10 |
 | 10. Asymmetric Query/Document Embeddings | v0.9.x | 0/1 | Planned | — |
 | 11. Async-on-Write Summaries | v0.9.x | 3/3 | Complete   | 2026-07-10 |
-| 12. Per-Memory Usage Signals | v0.9.x | 0/1 | Planned | — |
+| 12. Per-Memory Usage Signals | v0.9.x | 0/1 | Planned (6 plans) | — |
