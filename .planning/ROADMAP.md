@@ -225,7 +225,19 @@ observable truths that hold in the shipped baseline.
 3. Broad auto-enablement is gated behind the summary-fidelity eval (`task eval:summary`); the queue is bounded and observable (depth/latency on OTLP).
 
 **Status**: Planned (v0.9.x)
-**Plans**: TBD — `/gsd-plan-phase 11`. Source: GitHub #320 (spec/plan `docs/superpowers/{specs,plans}/2026-06-25-auto-summary-curated-memories*`).
+**Plans**: 3 plans. Source: GitHub #320 (spec/plan `docs/superpowers/{specs,plans}/2026-06-25-auto-summary-curated-memories*`).
+
+**Wave 1**
+
+- [ ] 11-01-PLAN.md — Foundation: `ENGRAM_SUMMARY_ON_WRITE`/`_WORKERS`/`_QUEUE_SIZE` config knobs + `Validate()`, `cenkalti/backoff/v5` direct promotion, `telemetry.SummaryQueueMetrics` instruments [Wave 1]
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 11-02-PLAN.md — Queue core: `internal/server/summaryqueue.go` bounded non-blocking worker pool (drop-and-count, bounded backoff retry, best-effort drain) + deterministic Qdrant-free tests [Wave 2]
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 11-03-PLAN.md — Wiring + lifecycle + docs: enqueue in `store_memory`/`schedule_memory` behind the D-01 AND-gate, `Register` drain returned + drained after `httpSrv.Shutdown`, depth gauge wired, docs/CLAUDE.md [Wave 3]
 
 ### Phase 12: Per-Memory Usage Signals
 
