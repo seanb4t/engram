@@ -12,9 +12,10 @@ import (
 // Tests mutate one field to exercise a single rule.
 func validConfig() *Config {
 	return &Config{
-		Qdrant: QdrantConfig{Addr: "localhost:6334", Collection: "mem_eval"},
-		Embed:  EmbedConfig{Model: "ollama/bge-m3", Dim: "1024"},
-		OpenAI: OpenAIConfig{BaseURL: "http://localhost:4000"},
+		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "mem_eval"},
+		Embed:     EmbedConfig{Model: "ollama/bge-m3", Dim: "1024"},
+		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
+		Summarize: SummarizeConfig{OnWrite: "false", Workers: "2", QueueSize: "256"},
 	}
 }
 
@@ -42,6 +43,11 @@ func TestValidateFieldRules(t *testing.T) {
 		{"openai base_url empty", func(c *Config) { c.OpenAI.BaseURL = "" }, "ENGRAM_OPENAI_BASE_URL"},
 		{"openai base_url bad scheme", func(c *Config) { c.OpenAI.BaseURL = "ftp://x" }, "scheme must be http"},
 		{"openai base_url scheme only, no host", func(c *Config) { c.OpenAI.BaseURL = "http://" }, "missing host"},
+		{"summary on_write non-bool", func(c *Config) { c.Summarize.OnWrite = "yes" }, "ENGRAM_SUMMARY_ON_WRITE"},
+		{"summary workers non-numeric", func(c *Config) { c.Summarize.Workers = "abc" }, "ENGRAM_SUMMARY_WORKERS"},
+		{"summary workers zero", func(c *Config) { c.Summarize.Workers = "0" }, "ENGRAM_SUMMARY_WORKERS"},
+		{"summary queue_size non-numeric", func(c *Config) { c.Summarize.QueueSize = "abc" }, "ENGRAM_SUMMARY_QUEUE_SIZE"},
+		{"summary queue_size zero", func(c *Config) { c.Summarize.QueueSize = "0" }, "ENGRAM_SUMMARY_QUEUE_SIZE"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -62,7 +68,10 @@ func TestValidateFieldRules(t *testing.T) {
 // can mutate a single summarize field to exercise one rule.
 func summarizeEnabled() *Config {
 	c := validConfig()
-	c.Summarize = SummarizeConfig{Model: "summary-cheap", MaxChars: "280", MaxTokens: "1024", Timeout: "30s"}
+	c.Summarize = SummarizeConfig{
+		Model: "summary-cheap", MaxChars: "280", MaxTokens: "1024", Timeout: "30s",
+		OnWrite: "false", Workers: "2", QueueSize: "256",
+	}
 	return c
 }
 

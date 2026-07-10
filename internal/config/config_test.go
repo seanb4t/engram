@@ -168,7 +168,7 @@ func TestValidateIgnoresSummaryWhenDisabled(t *testing.T) {
 		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "c"},
 		Embed:     EmbedConfig{Model: "m", Dim: "1024"},
 		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
-		Summarize: SummarizeConfig{Model: "", MaxChars: "garbage"},
+		Summarize: SummarizeConfig{Model: "", MaxChars: "garbage", OnWrite: "false", Workers: "2", QueueSize: "256"},
 	}
 	if err := c.Validate(); err != nil {
 		t.Fatalf("disabled summarize must not fail validation: %v", err)

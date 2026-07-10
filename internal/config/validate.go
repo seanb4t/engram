@@ -103,6 +103,27 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// These three run unconditionally (not gated by Summarize.Model), since the
+	// fields carry safe defaults and the runtime "both model set AND on_write
+	// true" AND-gate (D-01) is decided later in buildDepsFromEnv, not here.
+	if _, err := strconv.ParseBool(c.Summarize.OnWrite); err != nil {
+		errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_ON_WRITE %q: must be a boolean: %w", c.Summarize.OnWrite, err))
+	}
+
+	switch n, err := strconv.ParseUint(c.Summarize.Workers, 10, 64); {
+	case err != nil:
+		errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_WORKERS %q: must be a positive integer: %w", c.Summarize.Workers, err))
+	case n == 0:
+		errs = append(errs, errors.New("ENGRAM_SUMMARY_WORKERS must be greater than 0"))
+	}
+
+	switch n, err := strconv.ParseUint(c.Summarize.QueueSize, 10, 64); {
+	case err != nil:
+		errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_QUEUE_SIZE %q: must be a positive integer: %w", c.Summarize.QueueSize, err))
+	case n == 0:
+		errs = append(errs, errors.New("ENGRAM_SUMMARY_QUEUE_SIZE must be greater than 0"))
+	}
+
 	if len(errs) == 0 {
 		return nil
 	}

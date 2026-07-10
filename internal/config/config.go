@@ -84,6 +84,14 @@ type SummarizeConfig struct {
 	MaxChars  string `koanf:"max_chars"`
 	MaxTokens string `koanf:"max_tokens"`
 	Timeout   string `koanf:"timeout"`
+	// OnWrite enables the async-on-write summary worker (default "false"),
+	// parsed with strconv.ParseBool at point of use. Runtime enablement is an
+	// AND-gate with Model being non-empty (D-01), decided in buildDepsFromEnv.
+	OnWrite string `koanf:"on_write"`
+	// Workers is the async summary worker pool size (default "2").
+	Workers string `koanf:"workers"`
+	// QueueSize is the async summary enqueue channel bound (default "256").
+	QueueSize string `koanf:"queue_size"`
 }
 
 // OpenAIConfig is the OpenAI-compatible /v1/embeddings endpoint engram calls to
