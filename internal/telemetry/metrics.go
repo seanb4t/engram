@@ -185,3 +185,41 @@ func RegisterSummaryQueueDepth(m metric.Meter, depth func() int64) {
 		}),
 	)
 }
+
+// UsageQueueMetrics holds the STATIC instruments for the async get-path
+// usage-signal incrementer (D-10): per-outcome counters only. Built once from
+// the global meter in serve.go, mirroring NewSummaryQueueMetrics. Deliberately
+// has NO retried counter — D-10 mandates single-attempt, no retry, so a failed
+// increment is simply lost (Failed is incremented and the record is dropped).
+type UsageQueueMetrics struct {
+	enqueued metric.Int64Counter
+	dropped  metric.Int64Counter
+	failed   metric.Int64Counter
+}
+
+// NewUsageQueueMetrics constructs the static enqueue/drop/fail counters from
+// m. Instrument creation errors are ignored: a nil instrument from the no-op
+// provider still records safely (same idiom as NewSummaryQueueMetrics).
+func NewUsageQueueMetrics(m metric.Meter) *UsageQueueMetrics {
+	enqueued, _ := m.Int64Counter("engram.usage_queue.enqueued")
+	dropped, _ := m.Int64Counter("engram.usage_queue.dropped")
+	failed, _ := m.Int64Counter("engram.usage_queue.failed")
+	return &UsageQueueMetrics{enqueued: enqueued, dropped: dropped, failed: failed}
+}
+
+// Enqueued counts one record successfully enqueued for async access-count
+// increment.
+func (u *UsageQueueMetrics) Enqueued(ctx context.Context) {
+	u.enqueued.Add(ctx, 1)
+}
+
+// Dropped counts one record that could not be enqueued (queue full or closed).
+func (u *UsageQueueMetrics) Dropped(ctx context.Context) {
+	u.dropped.Add(ctx, 1)
+}
+
+// Failed counts one increment attempt that errored. There is no retry (D-10):
+// the attempt is simply lost.
+func (u *UsageQueueMetrics) Failed(ctx context.Context) {
+	u.failed.Add(ctx, 1)
+}
