@@ -5,16 +5,16 @@ milestone_name: "- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** -
 current_phase: 11
 current_phase_name: async-on-write-summaries
 status: executing
-stopped_at: Completed 11-02-PLAN.md
-last_updated: "2026-07-10T13:12:40.017Z"
+stopped_at: Completed 11-03-PLAN.md (phase 11 complete)
+last_updated: "2026-07-10T13:27:15.431Z"
 last_activity: 2026-07-10
-last_activity_desc: Plan 11-01 executed
+last_activity_desc: Plan 11-03 executed (phase 11 complete)
 progress:
   total_phases: 12
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 5
-  percent: 8
+  completed_plans: 6
+  percent: 17
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-09)
 
 ## Current Position
 
-Phase: 11 (async-on-write-summaries) — EXECUTING
+Phase: 11 (async-on-write-summaries) — COMPLETE
 Plan: 3 of 3
-Status: Plan 01 complete (config knobs, backoff/v5 promotion, SummaryQueueMetrics); Plan 02 complete (summaryQueue worker-pool core, LogSummaryEgress); Plan 03 (server wiring) ready to execute
-Last activity: 2026-07-10 — Plan 11-02 executed
+Status: Plan 01 complete (config knobs, backoff/v5 promotion, SummaryQueueMetrics); Plan 02 complete (summaryQueue worker-pool core, LogSummaryEgress); Plan 03 complete (server wiring, lifecycle, docs) — phase 11 done
+Last activity: 2026-07-10 — Plan 11-03 executed
 
-Progress: [█████░░░░░] 50% (v0.9.x — 2/4 phases done: Phase 9 executed, Phase 10 already-shipped)
+Progress: [██████░░░░] 62% (v0.9.x — 2.5/4 phases done: Phase 9 executed, Phase 10 already-shipped, Phase 11 executed)
 
 ## Performance Metrics
 
@@ -49,7 +49,7 @@ Progress: [█████░░░░░] 50% (v0.9.x — 2/4 phases done: Phas
 |-------|--------------|--------|
 | 9. Retrieval Eval & Ranking Precision | 3/3 | Complete |
 | 10. Asymmetric Query/Document Embeddings | 0/1 | Planned |
-| 11. Async-on-Write Summaries | 0/1 | Planned |
+| 11. Async-on-Write Summaries | 1/1 | Complete |
 | 12. Per-Memory Usage Signals | 0/1 | Planned |
 
 **Shipped (v0.8.x baseline):** Phases 1–8 complete (24 requirements). See ROADMAP.md Progress table.
@@ -58,6 +58,7 @@ Progress: [█████░░░░░] 50% (v0.9.x — 2/4 phases done: Phas
 | Phase 09-retrieval-eval-harness-ranking-precision P03 | 35min | 3 tasks | 8 files |
 | Phase 11 P01 | 15min | 2 tasks | 7 files |
 | Phase 11 P02 | 15min | 2 tasks | 3 files |
+| Phase 11 P03 | 45min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -76,6 +77,8 @@ Progress: [█████░░░░░] 50% (v0.9.x — 2/4 phases done: Phas
 - [Phase 11]: backoff/v5 promoted to direct via a go.mod-only text edit (moved require block) rather than go get/go mod tidy; Wave 2 (11-02) adds the actual import
 - [Phase 11]: LogSummaryEgress called for all three terminal outcomes (filled/skipped/failed) in the async worker's storeFill; SummarizeMissing keeps its pre-existing filled/failed-only call sites since it pre-filters eligibility before calling FillSummary
 - [Phase 11]: WithMaxElapsedTime(20s) is a fixed package constant decoupled from the injected attemptTimeout, so a tiny test attemptTimeout can't race the elapsed-time ceiling; WithMaxTries(3) is the primary retry bound
+- [Phase 11]: buildSummaryQueue runtime AND-gate (deps.summaryQueue) lives in tools.go, separate from Validate()'s unconditional parseability checks; an unparseable ENGRAM_SUMMARY_ON_WRITE is treated as disabled
+- [Phase 11]: Register grew to return a shutdown closure (drainSummaries), invoked strictly after httpSrv.Shutdown(shutdownCtx) returns in serve.go's SIGTERM branch (D-08 ordering)
 
 ### Pending Todos
 
@@ -98,6 +101,6 @@ Carried to v0.10.x. NOT part of v0.9.x scope.
 
 ## Session Continuity
 
-Last session: 2026-07-10T13:12:40.010Z
-Stopped at: Completed 11-02-PLAN.md
+Last session: 2026-07-10T13:27:15.425Z
+Stopped at: Completed 11-03-PLAN.md (phase 11 complete)
 Resume file: None

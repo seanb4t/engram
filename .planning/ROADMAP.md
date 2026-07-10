@@ -41,7 +41,7 @@ observable truths that hold in the shipped baseline.
 
 - [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval (recall@k/MRR), similarity scores in `search_memory`, hybrid/rerank to kill phrasing-sensitivity — chosen by the eval numbers (completed 2026-07-10)
 - [x] **Phase 10: Asymmetric Query/Document Embeddings** - Native API-param passthrough (cloud) + document-side prefix (E5/nomic) for query≠document embeds — found ALREADY SHIPPED under Phase 4 (verified 2026-07-10; #305 closed; no plans built)
-- [ ] **Phase 11: Async-on-Write Summaries** - In-process worker drains `FillSummary` after upsert, off the synchronous write path; eval-gated
+- [x] **Phase 11: Async-on-Write Summaries** - In-process worker drains `FillSummary` after upsert, off the synchronous write path; eval-gated (completed 2026-07-10)
 - [ ] **Phase 12: Per-Memory Usage Signals** - Strong-signal counters (get/update) via hybrid OTLP + payload `access_count`; never affects ranking
 
 ## Phase Details
@@ -225,7 +225,7 @@ observable truths that hold in the shipped baseline.
 3. Broad auto-enablement is gated behind the summary-fidelity eval (`task eval:summary`); the queue is bounded and observable (depth/latency on OTLP).
 
 **Status**: Planned (v0.9.x)
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans complete
 
 **Wave 1**
 
@@ -237,7 +237,7 @@ observable truths that hold in the shipped baseline.
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 11-03-PLAN.md — Wiring + lifecycle + docs: enqueue in `store_memory`/`schedule_memory` behind the D-01 AND-gate, `Register` drain returned + drained after `httpSrv.Shutdown`, depth gauge wired, docs/CLAUDE.md [Wave 3]
+- [x] 11-03-PLAN.md — Wiring + lifecycle + docs: enqueue in `store_memory`/`schedule_memory` behind the D-01 AND-gate, `Register` drain returned + drained after `httpSrv.Shutdown`, depth gauge wired, docs/CLAUDE.md [Wave 3]
 
 ### Phase 12: Per-Memory Usage Signals
 
@@ -269,5 +269,5 @@ observable truths that hold in the shipped baseline.
 | 8. Connect Auth Hardening | v0.8.x | 1/1 | Complete | shipped (PR #248/#266) |
 | 9. Retrieval Eval & Ranking Precision | v0.9.x | 3/3 | Complete    | 2026-07-10 |
 | 10. Asymmetric Query/Document Embeddings | v0.9.x | 0/1 | Planned | — |
-| 11. Async-on-Write Summaries | v0.9.x | 2/3 | In Progress|  |
+| 11. Async-on-Write Summaries | v0.9.x | 3/3 | Complete   | 2026-07-10 |
 | 12. Per-Memory Usage Signals | v0.9.x | 0/1 | Planned | — |
