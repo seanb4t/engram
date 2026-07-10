@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v0.9.x — Recall Quality
 milestone_name: "- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval"
 current_phase: 12
-status: verifying
+current_phase_name: Per-Memory Usage Signals
+status: "Milestone v0.9.x shipped — PR #336"
 stopped_at: Completed 12-06-PLAN.md
-last_updated: "2026-07-10T18:01:55.576Z"
+last_updated: "2026-07-10T22:11:13.389Z"
 last_activity: 2026-07-10
-last_activity_desc: Phase 12 complete
+last_activity_desc: Phase 12 complete + verified
 progress:
   total_phases: 12
   completed_phases: 3
   total_plans: 12
   completed_plans: 12
   percent: 25
-current_phase_name: Per-Memory Usage Signals
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-09)
 
 Phase: 12 (Per-Memory Usage Signals) — COMPLETE & VERIFIED
 Plan: 6 of 6 complete
-Status: Verification PASSED (initial verify found 1 lint regression from 12-04; fixed inline via badd4a5d, re-verified `task lint:go` = 0 issues)
+Status: Milestone v0.9.x shipped — PR #336
 Last activity: 2026-07-10 — Phase 12 complete + verified
 
 Progress: [██████████] 100% (v0.9.x — all 4 phases done: Phase 9 executed, Phase 10 already-shipped, Phase 11 executed, Phase 12 executed + verified). Milestone v0.9.x — Recall Quality complete pending ship/PR.
