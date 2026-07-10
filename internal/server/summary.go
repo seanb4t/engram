@@ -50,6 +50,13 @@ type recallView struct {
 	// Score is the Qdrant similarity score on search results (higher = closer);
 	// omitted (zero) on list results, which are not ranked.
 	Score float32 `json:"score,omitempty"`
+	// AccessCount / LastAccessedAt are the D-07 read-only usage-signal curation
+	// fields (Phase 12). recallView is a hand-written allow-list — these must
+	// be explicitly added here AND populated in toRecallView to surface on the
+	// compact list/search shape; store.Memory carrying the fields alone is not
+	// enough.
+	AccessCount    uint64    `json:"access_count"`
+	LastAccessedAt time.Time `json:"last_accessed_at,omitempty"`
 }
 
 // summaryOrTruncation is the value the recall path shows in place of content:
@@ -91,6 +98,8 @@ func toRecallView(m store.Memory, maxChars int) recallView {
 	return recallView{
 		ID: m.ID, ShortID: m.ShortID, Summary: summary, SummarySource: string(m.SummarySource), Truncated: truncated,
 		Scope: m.Scope, Category: m.Category, Tags: m.Tags, CreatedAt: m.CreatedAt,
-		Score: m.Score,
+		Score:          m.Score,
+		AccessCount:    m.AccessCount,
+		LastAccessedAt: m.LastAccessedAt,
 	}
 }

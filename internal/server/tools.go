@@ -953,6 +953,11 @@ func (d *deps) getMemory(ctx context.Context, a idArgs) (store.Memory, error) {
 	if errors.Is(err, store.ErrNotFound) {
 		return store.Memory{}, fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
 	}
+	if err == nil {
+		// D-01: count only on a successful fetch-by-id; call-and-ignore — the
+		// read's latency/success is never coupled to the counter write.
+		d.usageQueue.tryEnqueue(pid)
+	}
 	return m, err
 }
 

@@ -35,11 +35,13 @@ func memoryToProto(m store.Memory) *engramv1.Memory {
 		Repo: m.Repo, Workspace: m.Workspace, Worktree: m.Worktree, BaseDir: m.BaseDir,
 		Source: m.Source, Category: m.Category, Tags: m.Tags,
 		Actor: m.Actor, Owner: m.Owner, Visibility: m.Visibility,
-		CreatedAt:     timestamppb.New(m.CreatedAt),
-		Summary:       m.Summary,
-		SummarySource: string(m.SummarySource),
-		Score:         m.Score,
-		ShortId:       m.ShortID,
+		CreatedAt:      timestamppb.New(m.CreatedAt),
+		Summary:        m.Summary,
+		SummarySource:  string(m.SummarySource),
+		Score:          m.Score,
+		ShortId:        m.ShortID,
+		AccessCount:    m.AccessCount,
+		LastAccessedAt: timestamppb.New(m.LastAccessedAt),
 	}
 }
 
@@ -197,6 +199,9 @@ func (a *engramAPI) GetMemory(ctx context.Context, req *connect.Request[engramv1
 		}
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	// D-01: count only on a successful fetch-by-id; call-and-ignore — mirrors
+	// the MCP getMemory handler.
+	a.d.usageQueue.tryEnqueue(pid)
 	return connect.NewResponse(&engramv1.GetMemoryResponse{Memory: memoryToProto(m)}), nil
 }
 
