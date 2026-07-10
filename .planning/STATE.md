@@ -5,16 +5,16 @@ milestone_name: "- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** -
 current_phase: 11
 current_phase_name: Async-on-Write Summaries
 status: ready_to_plan
-stopped_at: "Phase 10 (#305) found ALREADY SHIPPED under Phase 4 during /gsd-discuss-phase baseline verification — reconciled to Complete, #305 closed, no plans built. Next: Phase 11 (#320 async-on-write summaries)."
-last_updated: "2026-07-10"
+stopped_at: Phase 11 context gathered
+last_updated: "2026-07-10T02:17:59.360Z"
 last_activity: 2026-07-10
 last_activity_desc: "Phase 10 reconciled as already-shipped (#305 closed); advanced to Phase 11"
 progress:
   total_phases: 12
-  completed_phases: 2
+  completed_phases: 1
   total_plans: 3
   completed_plans: 3
-  percent: 17
+  percent: 8
 ---
 
 # Project State
@@ -93,6 +93,6 @@ Carried to v0.10.x. NOT part of v0.9.x scope.
 
 ## Session Continuity
 
-Last session: 2026-07-10T00:38:30.316Z
-Stopped at: Phase 9 Plan 03 complete (accept-d06): D-06 reranker shipped on MCP+Connect; live eval clears #261 rank bar (recall@8=1.00, MRR=1.000). Phase 9 all 3 plans done — ready for verification.
-Resume file: None
+Last session: 2026-07-10T02:17:59.354Z
+Stopped at: Phase 11 context gathered
+Resume file: .planning/phases/11-async-on-write-summaries/11-CONTEXT.md
