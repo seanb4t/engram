@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.9.x — Recall Quality
 milestone_name: "- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval"
-current_phase: 9
-current_phase_name: Retrieval Eval Harness & Ranking Precision
+current_phase: 10
+current_phase_name: Asymmetric Query/Document Embeddings
 status: verifying
 stopped_at: "Phase 9 Plan 03 complete (accept-d06): D-06 reranker shipped on MCP+Connect; live eval clears #261 rank bar (recall@8=1.00, MRR=1.000). Phase 9 all 3 plans done — ready for verification."
-last_updated: "2026-07-10T00:38:30.321Z"
-last_activity: 2026-07-09
-last_activity_desc: Phase 9 execution started
+last_updated: "2026-07-10T01:05:35.822Z"
+last_activity: 2026-07-10
+last_activity_desc: Phase 9 complete, transitioned to Phase 10
 progress:
   total_phases: 12
   completed_phases: 1
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-09)
 
 ## Current Position
 
-Phase: 9 (Retrieval Eval Harness & Ranking Precision) — COMPLETE (ready for verification)
-Plan: 3 of 3 (all complete)
+Phase: 10 — Asymmetric Query/Document Embeddings
+Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-07-09 — Phase 9 Plan 03 complete (accept-d06)
+Last activity: 2026-07-10 — Phase 9 complete, transitioned to Phase 10
 
 Progress: [██▌░░░░░░░] 25% (v0.9.x — 1/4 phases executed: Phase 9 complete)
 
