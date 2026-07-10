@@ -122,8 +122,10 @@ type Memory struct {
 	// reranker or any recall gate (D-08).
 	AccessCount uint64 `json:"access_count"`
 	// LastAccessedAt is the timestamp of the most recent strong-signal touch
-	// (get-by-id or update). Zero when the record has never been accessed.
-	LastAccessedAt time.Time `json:"last_accessed_at,omitempty"`
+	// (get-by-id or update). nil when the record has never been accessed — a
+	// pointer (like NotBefore/NotAfter) so json omitempty actually fires and a
+	// never-accessed record omits the field rather than emitting 0001-01-01.
+	LastAccessedAt *time.Time `json:"last_accessed_at,omitempty"`
 	// Discovery-only (zero-valued for the curated four categories).
 	Kind      string     `json:"kind,omitempty"`      // "map" | "fact"
 	Citations []Citation `json:"citations,omitempty"` // >= 1 for discoveries
@@ -304,7 +306,7 @@ func payload(m Memory) map[string]any {
 		p["not_after"] = m.NotAfter.Unix()
 	}
 	p["access_count"] = m.AccessCount
-	if !m.LastAccessedAt.IsZero() {
+	if m.LastAccessedAt != nil {
 		p["last_accessed_at"] = m.LastAccessedAt.Format(time.RFC3339)
 	}
 	p["summary"] = m.Summary
@@ -395,7 +397,7 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	}
 	if v, ok := p["last_accessed_at"]; ok {
 		if t, err := time.Parse(time.RFC3339, v.GetStringValue()); err == nil {
-			m.LastAccessedAt = t
+			m.LastAccessedAt = &t
 		}
 	}
 	if v, ok := p["kind"]; ok {
@@ -1357,7 +1359,8 @@ func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *
 	// D-04: the bump piggybacks the already-in-flight Upsert below — zero extra
 	// store round-trip.
 	cur.AccessCount++
-	cur.LastAccessedAt = s.now()
+	now := s.now()
+	cur.LastAccessedAt = &now
 	if shared != nil {
 		if *shared {
 			cur.Visibility = visibilityShared

@@ -30,6 +30,12 @@ type engramAPI struct {
 }
 
 func memoryToProto(m store.Memory) *engramv1.Memory {
+	// LastAccessedAt is nil for never-accessed records; leave the proto field
+	// unset rather than emitting a year-1 (0001-01-01) Timestamp.
+	var lastAccessed *timestamppb.Timestamp
+	if m.LastAccessedAt != nil {
+		lastAccessed = timestamppb.New(*m.LastAccessedAt)
+	}
 	return &engramv1.Memory{
 		Id: m.ID, Content: m.Content, Scope: m.Scope,
 		Repo: m.Repo, Workspace: m.Workspace, Worktree: m.Worktree, BaseDir: m.BaseDir,
@@ -41,7 +47,7 @@ func memoryToProto(m store.Memory) *engramv1.Memory {
 		Score:          m.Score,
 		ShortId:        m.ShortID,
 		AccessCount:    m.AccessCount,
-		LastAccessedAt: timestamppb.New(m.LastAccessedAt),
+		LastAccessedAt: lastAccessed,
 	}
 }
 

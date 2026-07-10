@@ -26,7 +26,7 @@ func TestUsageAccessCountRoundtrip(t *testing.T) {
 	lastAccessed := time.Now().UTC().Truncate(time.Second)
 	m := Memory{
 		ID: id, Content: "v", Scope: scope, Owner: "sub-usage",
-		CreatedAt: time.Now().UTC(), AccessCount: 3, LastAccessedAt: lastAccessed,
+		CreatedAt: time.Now().UTC(), AccessCount: 3, LastAccessedAt: &lastAccessed,
 	}
 	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("upsert: %v", err)
@@ -40,7 +40,7 @@ func TestUsageAccessCountRoundtrip(t *testing.T) {
 	if got.AccessCount != 3 {
 		t.Errorf("AccessCount = %d, want 3", got.AccessCount)
 	}
-	if !got.LastAccessedAt.Equal(lastAccessed) {
+	if got.LastAccessedAt == nil || !got.LastAccessedAt.Equal(lastAccessed) {
 		t.Errorf("LastAccessedAt = %v, want %v", got.LastAccessedAt, lastAccessed)
 	}
 
@@ -70,7 +70,8 @@ func TestUsageAccessCountRoundtrip(t *testing.T) {
 
 // TestUsageLegacyRecordReadsZero proves a record whose payload predates D-03
 // (missing both access_count and last_accessed_at keys) reads back
-// AccessCount==0 and LastAccessedAt.IsZero()==true — no backfill required.
+// AccessCount==0 and a nil LastAccessedAt (never accessed → field omitted, no
+// bogus 0001-01-01 stamp) — no backfill required.
 func TestUsageLegacyRecordReadsZero(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -103,8 +104,8 @@ func TestUsageLegacyRecordReadsZero(t *testing.T) {
 	if got.AccessCount != 0 {
 		t.Errorf("legacy record AccessCount = %d, want 0", got.AccessCount)
 	}
-	if !got.LastAccessedAt.IsZero() {
-		t.Errorf("legacy record LastAccessedAt = %v, want zero", got.LastAccessedAt)
+	if got.LastAccessedAt != nil {
+		t.Errorf("legacy record LastAccessedAt = %v, want nil (omitted)", got.LastAccessedAt)
 	}
 }
 
@@ -139,8 +140,8 @@ func TestUpdateBumpsAccessCountByOne(t *testing.T) {
 	if got.AccessCount != 6 {
 		t.Errorf("AccessCount after one Update = %d, want 6 (5+1)", got.AccessCount)
 	}
-	if got.LastAccessedAt.IsZero() {
-		t.Error("LastAccessedAt after Update is zero, want a non-zero stamp")
+	if got.LastAccessedAt == nil || got.LastAccessedAt.IsZero() {
+		t.Error("LastAccessedAt after Update is nil/zero, want a non-zero stamp")
 	}
 }
 
@@ -175,8 +176,8 @@ func TestIncrementAccess(t *testing.T) {
 	if got.AccessCount != 2 {
 		t.Errorf("AccessCount after two IncrementAccess calls = %d, want 2", got.AccessCount)
 	}
-	if got.LastAccessedAt.IsZero() {
-		t.Error("LastAccessedAt after IncrementAccess is zero, want a non-zero stamp")
+	if got.LastAccessedAt == nil || got.LastAccessedAt.IsZero() {
+		t.Error("LastAccessedAt after IncrementAccess is nil/zero, want a non-zero stamp")
 	}
 	if got.Content != "v" {
 		t.Errorf("Content = %q, want unchanged %q", got.Content, "v")

@@ -57,14 +57,21 @@ func TestToRecallViewSurfacesUsageSignals(t *testing.T) {
 	last := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
 	m := store.Memory{
 		ID: "u", Content: "hello", Scope: "s", Category: "gotcha",
-		AccessCount: 5, LastAccessedAt: last,
+		AccessCount: 5, LastAccessedAt: &last,
 	}
 	v := toRecallView(m, 8)
 	if v.AccessCount != 5 {
 		t.Fatalf("recallView.AccessCount = %d, want 5", v.AccessCount)
 	}
-	if !v.LastAccessedAt.Equal(last) {
+	if v.LastAccessedAt == nil || !v.LastAccessedAt.Equal(last) {
 		t.Fatalf("recallView.LastAccessedAt = %v, want %v", v.LastAccessedAt, last)
+	}
+
+	// A never-accessed record must leave LastAccessedAt nil so the
+	// json:",omitempty" tag actually omits it (no bogus 0001-01-01 stamp).
+	nv := toRecallView(store.Memory{ID: "n", Content: "x", Scope: "s", Category: "gotcha"}, 8)
+	if nv.LastAccessedAt != nil {
+		t.Fatalf("never-accessed recallView.LastAccessedAt = %v, want nil (omitted)", nv.LastAccessedAt)
 	}
 }
 

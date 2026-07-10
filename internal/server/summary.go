@@ -55,8 +55,8 @@ type recallView struct {
 	// be explicitly added here AND populated in toRecallView to surface on the
 	// compact list/search shape; store.Memory carrying the fields alone is not
 	// enough.
-	AccessCount    uint64    `json:"access_count"`
-	LastAccessedAt time.Time `json:"last_accessed_at,omitempty"`
+	AccessCount    uint64     `json:"access_count"`
+	LastAccessedAt *time.Time `json:"last_accessed_at,omitempty"`
 }
 
 // summaryOrTruncation is the value the recall path shows in place of content:
