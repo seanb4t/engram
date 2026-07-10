@@ -225,7 +225,7 @@ observable truths that hold in the shipped baseline.
 3. Broad auto-enablement is gated behind the summary-fidelity eval (`task eval:summary`); the queue is bounded and observable (depth/latency on OTLP).
 
 **Status**: Planned (v0.9.x)
-**Plans**: 1/3 plans executed
+**Plans**: 2/3 plans executed
 
 **Wave 1**
 
@@ -233,7 +233,7 @@ observable truths that hold in the shipped baseline.
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 11-02-PLAN.md — Queue core: `internal/server/summaryqueue.go` bounded non-blocking worker pool (drop-and-count, bounded backoff retry, best-effort drain) + deterministic Qdrant-free tests [Wave 2]
+- [x] 11-02-PLAN.md — Queue core: `internal/server/summaryqueue.go` bounded non-blocking worker pool (drop-and-count, bounded backoff retry, best-effort drain) + deterministic Qdrant-free tests [Wave 2]
 
 **Wave 3** *(blocked on Wave 2)*
 
@@ -269,5 +269,5 @@ observable truths that hold in the shipped baseline.
 | 8. Connect Auth Hardening | v0.8.x | 1/1 | Complete | shipped (PR #248/#266) |
 | 9. Retrieval Eval & Ranking Precision | v0.9.x | 3/3 | Complete    | 2026-07-10 |
 | 10. Asymmetric Query/Document Embeddings | v0.9.x | 0/1 | Planned | — |
-| 11. Async-on-Write Summaries | v0.9.x | 1/3 | In Progress|  |
+| 11. Async-on-Write Summaries | v0.9.x | 2/3 | In Progress|  |
 | 12. Per-Memory Usage Signals | v0.9.x | 0/1 | Planned | — |

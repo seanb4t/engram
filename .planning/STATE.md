@@ -5,15 +5,15 @@ milestone_name: "- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** -
 current_phase: 11
 current_phase_name: async-on-write-summaries
 status: executing
-stopped_at: Phase 11 context gathered
-last_updated: "2026-07-10T12:57:44.963Z"
+stopped_at: Completed 11-02-PLAN.md
+last_updated: "2026-07-10T13:12:40.017Z"
 last_activity: 2026-07-10
-last_activity_desc: Phase 11 execution started
+last_activity_desc: Plan 11-01 executed
 progress:
   total_phases: 12
   completed_phases: 1
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
   percent: 8
 ---
 
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-07-09)
 ## Current Position
 
 Phase: 11 (async-on-write-summaries) — EXECUTING
-Plan: 2 of 3
-Status: Plan 01 complete (config knobs, backoff/v5 promotion, SummaryQueueMetrics); Plan 02 (queue core) ready to execute
-Last activity: 2026-07-10 — Plan 11-01 executed
+Plan: 3 of 3
+Status: Plan 01 complete (config knobs, backoff/v5 promotion, SummaryQueueMetrics); Plan 02 complete (summaryQueue worker-pool core, LogSummaryEgress); Plan 03 (server wiring) ready to execute
+Last activity: 2026-07-10 — Plan 11-02 executed
 
 Progress: [█████░░░░░] 50% (v0.9.x — 2/4 phases done: Phase 9 executed, Phase 10 already-shipped)
 
@@ -57,6 +57,7 @@ Progress: [█████░░░░░] 50% (v0.9.x — 2/4 phases done: Phas
 | Phase 09-retrieval-eval-harness-ranking-precision P02 | 15min | 2 tasks | 3 files |
 | Phase 09-retrieval-eval-harness-ranking-precision P03 | 35min | 3 tasks | 8 files |
 | Phase 11 P01 | 15min | 2 tasks | 7 files |
+| Phase 11 P02 | 15min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -73,6 +74,8 @@ Progress: [█████░░░░░] 50% (v0.9.x — 2/4 phases done: Phas
 - [Phase 9]: search_memory score docs (09-02) stay order-agnostic: score FIELD only, not result ORDER — the post-rerank order caveat for reference/tools.md:95 is deliberately deferred to 09-03.
 - [Phase 9]: D-06 reranker: pure lexical-overlap term-set-intersection boost (stdlib only), tie-broken by raw Score then ID; shared via Store.SearchReranked (candidateK=min(max(k*4,32),100), k<=0 rejected) called by MCP deps.searchMemory, Connect engramAPI.SearchMemories, and the retrieval eval
 - [Phase 11]: backoff/v5 promoted to direct via a go.mod-only text edit (moved require block) rather than go get/go mod tidy; Wave 2 (11-02) adds the actual import
+- [Phase 11]: LogSummaryEgress called for all three terminal outcomes (filled/skipped/failed) in the async worker's storeFill; SummarizeMissing keeps its pre-existing filled/failed-only call sites since it pre-filters eligibility before calling FillSummary
+- [Phase 11]: WithMaxElapsedTime(20s) is a fixed package constant decoupled from the injected attemptTimeout, so a tiny test attemptTimeout can't race the elapsed-time ceiling; WithMaxTries(3) is the primary retry bound
 
 ### Pending Todos
 
@@ -95,6 +98,6 @@ Carried to v0.10.x. NOT part of v0.9.x scope.
 
 ## Session Continuity
 
-Last session: 2026-07-10T12:57:16.951Z
-Stopped at: Phase 11 context gathered
-Resume file: .planning/phases/11-async-on-write-summaries/11-CONTEXT.md
+Last session: 2026-07-10T13:12:40.010Z
+Stopped at: Completed 11-02-PLAN.md
+Resume file: None
