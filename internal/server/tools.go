@@ -21,6 +21,7 @@ import (
 	"github.com/qdrant/go-client/qdrant"
 	otelgrpc "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 
 	"github.com/seanb4t/engram/internal/config"
@@ -44,6 +45,11 @@ type deps struct {
 	now func() time.Time
 	// summaryMaxChars is the recall truncation cap (ENGRAM_SUMMARY_MAX_CHARS).
 	summaryMaxChars int
+	// summaryQueue is the async-on-write summary worker pool. nil (disabled)
+	// unless ENGRAM_SUMMARY_MODEL is set AND ENGRAM_SUMMARY_ON_WRITE parses
+	// true (D-01 AND-gate, decided in buildDepsFromEnv). Its methods are
+	// nil-safe no-ops, so call sites never branch on whether it's enabled.
+	summaryQueue *summaryQueue
 }
 
 // configLoad is the indirection seam for loading koanf config from the process
@@ -145,8 +151,12 @@ func StoreAndEmbedderFromEnvNoEnsure() (*store.Store, uint64, *embed.Client, err
 
 // buildDepsFromEnv wires up the store and embedder from the environment with a
 // single config load: it loads + validates once, then builds both the
-// collection-ensured store and the embedder from that one *config.Config.
-func buildDepsFromEnv() (*deps, error) {
+// collection-ensured store and the embedder from that one *config.Config. sqm
+// is the pre-built static SummaryQueueMetrics (from serve.go, threaded through
+// Register); it is used only when the D-01 AND-gate enables the async summary
+// worker (buildSummaryQueue), and may be nil in tests exercising the disabled
+// path.
+func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics) (*deps, error) {
 	cfg, err := loadAndValidate()
 	if err != nil {
 		return nil, err
@@ -160,7 +170,57 @@ func buildDepsFromEnv() (*deps, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &deps{st: st, em: em, summaryMaxChars: summaryMaxChars(cfg)}, nil
+	return &deps{
+		st:              st,
+		em:              em,
+		summaryMaxChars: summaryMaxChars(cfg),
+		summaryQueue:    buildSummaryQueue(cfg, st, sqm),
+	}, nil
+}
+
+// buildSummaryQueue constructs and starts the async-on-write summary worker
+// pool when the D-01 two-switch AND-gate is satisfied: ENGRAM_SUMMARY_MODEL is
+// non-empty AND ENGRAM_SUMMARY_ON_WRITE parses true. This is where the AND-gate
+// actually lives — Config.Validate() checks the three fields unconditionally
+// but does not decide runtime enablement. Either switch off returns nil
+// (disabled; every summaryQueue method becomes a nil-safe no-op, so call
+// sites never branch). Reuses summarizerFromConfig so the async worker shares
+// the identical summarizer construction as the summarize-missing sweep — no
+// parallel summarizer. Registers the D-09 queue-depth gauge immediately after
+// the queue is constructed and started: this is the only place q.depth() has
+// a live queue to close over (Codex finding #1; serve.go only builds the
+// static SummaryQueueMetrics instruments and never touches the queue).
+func buildSummaryQueue(cfg *config.Config, st *store.Store, sqm *telemetry.SummaryQueueMetrics) *summaryQueue {
+	if cfg.Summarize.Model == "" {
+		return nil
+	}
+	onWrite, err := strconv.ParseBool(cfg.Summarize.OnWrite)
+	if err != nil || !onWrite {
+		return nil
+	}
+	workers, err := strconv.Atoi(cfg.Summarize.Workers)
+	if err != nil || workers <= 0 {
+		if cfg.Summarize.Workers != "" {
+			slog.Warn("ENGRAM_SUMMARY_WORKERS is set but unparseable or non-positive; using default 2",
+				"value", cfg.Summarize.Workers)
+		}
+		workers = 2
+	}
+	queueSize, err := strconv.Atoi(cfg.Summarize.QueueSize)
+	if err != nil || queueSize <= 0 {
+		if cfg.Summarize.QueueSize != "" {
+			slog.Warn("ENGRAM_SUMMARY_QUEUE_SIZE is set but unparseable or non-positive; using default 256",
+				"value", cfg.Summarize.QueueSize)
+		}
+		queueSize = 256
+	}
+	summarizer := summarizerFromConfig(cfg)
+	fill := storeFill(st, summarizer.Summarize, cfg.Summarize.Model, summaryMaxChars(cfg))
+	q := newSummaryQueue(workers, queueSize, summaryTimeout(cfg), sqm, fill)
+	q.Start(context.Background())
+	telemetry.RegisterSummaryQueueDepth(otel.Meter("github.com/seanb4t/engram"), q.depth)
+	slog.Info("async-on-write summaries enabled", "workers", workers, "queue_size", queueSize)
+	return q
 }
 
 // summaryMaxChars parses the recall cap, defaulting to 280 on empty/invalid.
@@ -512,7 +572,13 @@ func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, string, er
 	if m.ShortID, err = d.st.MintShortID(ctx, nil); err != nil {
 		return "", "", err
 	}
-	return m.ID, m.ShortID, d.st.Upsert(ctx, m, vec)
+	if err := d.st.Upsert(ctx, m, vec); err != nil {
+		return "", "", err
+	}
+	// Enqueue only after a confirmed-successful Upsert; never blocks/errors
+	// the write path even when the queue is disabled or full (SC#1, SC#2).
+	d.summaryQueue.tryEnqueue(m.ID)
+	return m.ID, m.ShortID, nil
 }
 
 // clock returns the handler's current time in UTC, defaulting to wall-clock
@@ -545,9 +611,18 @@ func (d *deps) scheduleMemory(ctx context.Context, a scheduleArgs) (string, stri
 	if m.ShortID, err = d.st.MintShortID(ctx, nil); err != nil {
 		return "", "", err
 	}
-	return m.ID, m.ShortID, d.st.Upsert(ctx, m, vec)
+	if err := d.st.Upsert(ctx, m, vec); err != nil {
+		return "", "", err
+	}
+	// Enqueue only after a confirmed-successful Upsert; never blocks/errors
+	// the write path even when the queue is disabled or full (SC#1, SC#2).
+	d.summaryQueue.tryEnqueue(m.ID)
+	return m.ID, m.ShortID, nil
 }
 
+// storeDiscovery persists a client-authored discovery. It deliberately never
+// enqueues for async summary fill: discoveries own their own summaries (D-06
+// negative space) — see TestDiscoveryAndRuleNeverEnqueue.
 func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string, string, error) {
 	if err := validateStoreDiscovery(a); err != nil {
 		return "", "", err
@@ -908,16 +983,20 @@ func (d *deps) setVisibility(ctx context.Context, a setVisibilityArgs) error {
 // Register wires the memory tools onto the MCP server. It accepts a pre-built
 // *telemetry.ToolMetrics (constructed once in runServe and reused for both tool
 // instrumentation and auth-failure recording) so there is a single instrument
-// instance rather than two disjoint ones. Returns an error if dependency
-// construction (store/embedder) fails, so the caller can flush telemetry and
-// exit cleanly rather than aborting via log.Fatal.
-func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, resolve connectResolver) error {
-	d, err := buildDepsFromEnv()
+// instance rather than two disjoint ones, and a pre-built
+// *telemetry.SummaryQueueMetrics (also built once in runServe) threaded into
+// buildDepsFromEnv so the async summary queue's static instruments share the
+// same meter. Returns a shutdown closure the caller invokes on shutdown to
+// drain the summary queue — a no-op when the queue is disabled (nil) — and an
+// error if dependency construction (store/embedder) fails, so the caller can
+// flush telemetry and exit cleanly rather than aborting via log.Fatal.
+func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm *telemetry.SummaryQueueMetrics, resolve connectResolver) (shutdown func(context.Context), err error) {
+	d, err := buildDepsFromEnv(sqm)
 	if err != nil {
-		return fmt.Errorf("build deps: %w", err)
+		return nil, fmt.Errorf("build deps: %w", err)
 	}
 	if err := d.mountConnect(mux, resolve); err != nil {
-		return fmt.Errorf("mount connect: %w", err)
+		return nil, fmt.Errorf("mount connect: %w", err)
 	}
 
 	s.AddReceivingMiddleware(instrumentTools(tm.Record))
@@ -1013,7 +1092,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, reso
 			}
 			return textResult(msg), map[string]any{"rules": rules}, err
 		})
-	return nil
+	return d.summaryQueue.Shutdown, nil
 }
 
 func textResult(s string) *mcp.CallToolResult {
