@@ -101,7 +101,7 @@ deferred to v0.10.x. Each requirement maps to exactly one phase (9–12).
 
 ### Curation Telemetry (Phase 12)
 
-- [ ] **REQ-usage-signals**: Strong per-record usage signals to inform curation — increment counters **only** on `get_memory` fetch-by-id and `update_memory` (never search/list result-set membership); hybrid storage (recall ids on OTLP spans → ClickStack for analytics; a payload `access_count` on get/update for MCP-visible curation tools); server-set operational metadata that **never silently affects ranking** (usage-weighted recall would be its own deliberate future decision). *(GitHub #317; design-first)*
+- [x] **REQ-usage-signals**: Strong per-record usage signals to inform curation — increment counters **only** on `get_memory` fetch-by-id and `update_memory` (never search/list result-set membership); hybrid storage (recall ids on OTLP spans → ClickStack for analytics; a payload `access_count` on get/update for MCP-visible curation tools); server-set operational metadata that **never silently affects ranking** (usage-weighted recall would be its own deliberate future decision). *(GitHub #317; design-first)*
 
 ## Out of Scope
 
