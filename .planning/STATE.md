@@ -5,16 +5,16 @@ milestone_name: "- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** -
 current_phase: 12
 current_phase_name: per-memory-usage-signals
 status: ready_to_plan
-stopped_at: Phase 11 complete (verified 9/9) + code-review fixes CR-01/WR-02; advanced to Phase 12
-last_updated: "2026-07-10T14:30:00.000Z"
+stopped_at: Phase 12 context gathered
+last_updated: "2026-07-10T15:00:42.137Z"
 last_activity: 2026-07-10
-last_activity_desc: Phase 11 executed, verified 9/9, code-review CR-01/WR-02 fixed; advanced to Phase 12
+last_activity_desc: Phase 11 executed, verified, code-review fixes applied
 progress:
   total_phases: 12
-  completed_phases: 3
+  completed_phases: 2
   total_plans: 6
   completed_plans: 6
-  percent: 25
+  percent: 17
 ---
 
 # Project State
@@ -101,6 +101,6 @@ Carried to v0.10.x. NOT part of v0.9.x scope.
 
 ## Session Continuity
 
-Last session: 2026-07-10T13:27:15.425Z
-Stopped at: Completed 11-03-PLAN.md (phase 11 complete)
-Resume file: None
+Last session: 2026-07-10T15:00:42.130Z
+Stopped at: Phase 12 context gathered
+Resume file: .planning/phases/12-per-memory-usage-signals/12-CONTEXT.md
