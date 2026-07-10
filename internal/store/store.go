@@ -559,9 +559,6 @@ func activeWindowConditions(now time.Time) []*qdrant.Condition {
 	}
 }
 
-// Search returns the k nearest readable memories to vec within scope.
-// Authenticated callers see their own records plus shared records; anonymous
-// callers see only the ownerless bucket.
 // recallIDCap bounds the number of record ids attached to a recall span
 // (engram.recall.ids) so that a large-k recall cannot drive unbounded span
 // attribute cardinality (D-06, T-12-11 mitigation). It is analytics-only: it
@@ -569,13 +566,13 @@ func activeWindowConditions(now time.Time) []*qdrant.Condition {
 // recall gate (D-02/D-08).
 const recallIDCap = 50
 
-// recallIDs returns up to max record ids from out, preserving order. Used
+// recallIDs returns up to limit record ids from out, preserving order. Used
 // solely to populate the engram.recall.ids span attribute on the
 // store.Search/List/Get recall spans.
-func recallIDs(out []Memory, max int) []string {
+func recallIDs(out []Memory, limit int) []string {
 	n := len(out)
-	if n > max {
-		n = max
+	if n > limit {
+		n = limit
 	}
 	ids := make([]string, n)
 	for i := 0; i < n; i++ {
@@ -584,6 +581,9 @@ func recallIDs(out []Memory, max int) []string {
 	return ids
 }
 
+// Search returns the k nearest readable memories to vec within scope.
+// Authenticated callers see their own records plus shared records; anonymous
+// callers see only the ownerless bucket.
 func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []float32, k uint64, tags []string, after, before time.Time) (out []Memory, err error) {
 	ctx, span := tracer.Start(ctx, "store.Search", trace.WithAttributes(
 		attribute.String("engram.scope", scope),
