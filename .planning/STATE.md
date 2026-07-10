@@ -4,17 +4,17 @@ milestone: v0.9.x — Recall Quality
 milestone_name: "- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval"
 current_phase: 12
 current_phase_name: Per-Memory Usage Signals
-status: executing
-stopped_at: Completed 12-03-PLAN.md
-last_updated: "2026-07-10T17:33:52.291Z"
+status: verifying
+stopped_at: Completed 12-06-PLAN.md
+last_updated: "2026-07-10T17:48:33.051Z"
 last_activity: 2026-07-10
 last_activity_desc: Phase 12 execution started
 progress:
   total_phases: 12
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 12
-  completed_plans: 11
-  percent: 17
+  completed_plans: 12
+  percent: 25
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-09)
 
 Phase: 12 (Per-Memory Usage Signals) — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-10 — Phase 12 execution started
 
 Progress: [████████░░] 75% (v0.9.x — 3/4 phases done: Phase 9 executed, Phase 10 already-shipped, Phase 11 executed; Phase 12 remains)
@@ -64,6 +64,7 @@ Progress: [████████░░] 75% (v0.9.x — 3/4 phases done: Phas
 | Phase 12-per-memory-usage-signals P03 | 6min | 1 tasks | 3 files |
 | Phase 12 P04 | 20min | 2 tasks | 2 files |
 | Phase 12-per-memory-usage-signals P05 | 15min | 2 tasks | 2 files |
+| Phase 12 P06 | 12min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,8 @@ Progress: [████████░░] 75% (v0.9.x — 3/4 phases done: Phas
 - [Phase 12-03]: last_accessed_at uses google.protobuf.Timestamp (not string) matching created_at=14's type analog
 - [Phase 12-04]: recall-span analytics (D-06): recallIDCap=50 bounded const; store.Get gains engram.recall.ids/count for ClickStack data-completeness
 - [Phase 12-05]: usageQueue reuses summaryQueue's CR-01 kernel field/method names verbatim (fill, itemDone, depth) rather than renaming, per PATTERNS.md exact-analog guidance; no attemptTimeout/maxElapsed param since D-10 rules out a retry budget entirely
+- [Phase 12-06]: Config-gated buildUsageQueue mirrors buildSummaryQueue's point-of-use strconv.ParseBool gate; fixed worker pool (2 workers, queueSize=256), no new env knobs
+- [Phase 12-06]: usageQueue.tryEnqueue is call-and-ignore, success-only, only at get_memory/Connect GetMemory handler boundaries -- never inside reused store primitives, never on search/list/list_scheduled
 
 ### Pending Todos
 
@@ -113,6 +116,6 @@ Carried to v0.10.x. NOT part of v0.9.x scope.
 
 ## Session Continuity
 
-Last session: 2026-07-10T17:31:19.666Z
-Stopped at: Completed 12-03-PLAN.md
+Last session: 2026-07-10T17:48:33.044Z
+Stopped at: Completed 12-06-PLAN.md
 Resume file: None

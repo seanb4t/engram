@@ -42,7 +42,7 @@ observable truths that hold in the shipped baseline.
 - [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval (recall@k/MRR), similarity scores in `search_memory`, hybrid/rerank to kill phrasing-sensitivity — chosen by the eval numbers (completed 2026-07-10)
 - [x] **Phase 10: Asymmetric Query/Document Embeddings** - Native API-param passthrough (cloud) + document-side prefix (E5/nomic) for query≠document embeds — found ALREADY SHIPPED under Phase 4 (verified 2026-07-10; #305 closed; no plans built)
 - [x] **Phase 11: Async-on-Write Summaries** - In-process worker drains `FillSummary` after upsert, off the synchronous write path; eval-gated (completed 2026-07-10)
-- [ ] **Phase 12: Per-Memory Usage Signals** - Strong-signal counters (get/update) via hybrid OTLP + payload `access_count`; never affects ranking
+- [x] **Phase 12: Per-Memory Usage Signals** - Strong-signal counters (get/update) via hybrid OTLP + payload `access_count`; never affects ranking (completed 2026-07-10)
 
 ## Phase Details
 
@@ -251,7 +251,7 @@ observable truths that hold in the shipped baseline.
 3. Usage counters are server-set and **never** silently affect ranking; any usage-weighted recall remains an explicit, out-of-scope future decision.
 
 **Status**: Planned (v0.9.x) — design-first
-**Plans**: 5/6 plans executed
+**Plans**: 6/6 plans complete
 
 **Wave 1** *(parallel — disjoint files)*
 
@@ -266,7 +266,7 @@ observable truths that hold in the shipped baseline.
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 12-06-PLAN.md — Wiring + lifecycle + exposure: config-gated `buildUsageQueue`, get/Connect-GetMemory `tryEnqueue` (D-01, call-and-ignore), D-07 `recallView`/`memoryToProto`, D-02 negative-space e2e, `task` green [Wave 3]
+- [x] 12-06-PLAN.md — Wiring + lifecycle + exposure: config-gated `buildUsageQueue`, get/Connect-GetMemory `tryEnqueue` (D-01, call-and-ignore), D-07 `recallView`/`memoryToProto`, D-02 negative-space e2e, `task` green [Wave 3]
 
 ## Progress
 
@@ -285,4 +285,4 @@ observable truths that hold in the shipped baseline.
 | 9. Retrieval Eval & Ranking Precision | v0.9.x | 3/3 | Complete    | 2026-07-10 |
 | 10. Asymmetric Query/Document Embeddings | v0.9.x | 0/1 | Planned | — |
 | 11. Async-on-Write Summaries | v0.9.x | 3/3 | Complete   | 2026-07-10 |
-| 12. Per-Memory Usage Signals | v0.9.x | 5/6 | In Progress|  |
+| 12. Per-Memory Usage Signals | v0.9.x | 6/6 | Complete   | 2026-07-10 |
