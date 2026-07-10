@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.9.x — Recall Quality
 milestone_name: "- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval"
-current_phase: 10
-current_phase_name: Asymmetric Query/Document Embeddings
-status: verifying
-stopped_at: "Phase 9 Plan 03 complete (accept-d06): D-06 reranker shipped on MCP+Connect; live eval clears #261 rank bar (recall@8=1.00, MRR=1.000). Phase 9 all 3 plans done — ready for verification."
-last_updated: "2026-07-10T01:05:35.822Z"
+current_phase: 11
+current_phase_name: Async-on-Write Summaries
+status: ready_to_plan
+stopped_at: "Phase 10 (#305) found ALREADY SHIPPED under Phase 4 during /gsd-discuss-phase baseline verification — reconciled to Complete, #305 closed, no plans built. Next: Phase 11 (#320 async-on-write summaries)."
+last_updated: "2026-07-10"
 last_activity: 2026-07-10
-last_activity_desc: Phase 9 complete, transitioned to Phase 10
+last_activity_desc: "Phase 10 reconciled as already-shipped (#305 closed); advanced to Phase 11"
 progress:
   total_phases: 12
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 3
   completed_plans: 3
-  percent: 8
+  percent: 17
 ---
 
 # Project State
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-09)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 9 — Retrieval Eval Harness & Ranking Precision
+**Current focus:** Phase 11 — Async-on-Write Summaries (#320). Phase 9 shipped; Phase 10 (#305) reconciled as already-shipped.
 
 ## Current Position
 
-Phase: 10 — Asymmetric Query/Document Embeddings
+Phase: 11 — Async-on-Write Summaries
 Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-07-10 — Phase 9 complete, transitioned to Phase 10
+Status: Ready to plan. Phase 10 (#305) closed as already-shipped (verified under Phase 4); next is Phase 11.
+Last activity: 2026-07-10 — Phase 10 reconciled as already-shipped (#305 closed); advanced to Phase 11
 
-Progress: [██▌░░░░░░░] 25% (v0.9.x — 1/4 phases executed: Phase 9 complete)
+Progress: [█████░░░░░] 50% (v0.9.x — 2/4 phases done: Phase 9 executed, Phase 10 already-shipped)
 
 ## Performance Metrics
 
@@ -78,7 +78,7 @@ Progress: [██▌░░░░░░░] 25% (v0.9.x — 1/4 phases executed: 
 
 ### Blockers/Concerns
 
-- **Phase 10 baseline ambiguity**: `REQ-asymmetric-embedder-params` (Phase 4, shipped) describes query/doc param maps + doc-side instruction, but GitHub #305 reports those classes (cloud native API params; E5/nomic doc-side prefix) are NOT covered by the shipped text-prefix knob. Phase-10 planning must verify the exact shipped baseline against `internal/embed/` before scoping.
+- ~~**Phase 10 baseline ambiguity**~~ RESOLVED 2026-07-10: baseline verified against `internal/embed/` during `/gsd-discuss-phase 10`. `REQ-embedder-native-params` (#305) is **already fully shipped** under Phase 4 — `embed.go` `WithQueryParams`/`WithDocumentParams` (native `input_type`/`task_type` map passthrough) + `WithDocumentInstruction` (E5/nomic doc prefix), config `ENGRAM_EMBED_*_PARAMS`/`_DOCUMENT_INSTRUCTION` (validated + wired in `embedderFromConfig`), tests, and per-model docs all present. Phase 10 reconciled to Complete; #305 closed. (Echoed the Phase 8 already-shipped surprise.)
 - ~~Phase 9 Plan 03 Task 3 checkpoint~~ RESOLVED: **accept-d06**. Live eval (gemini-embedding-2 @3072 via OpenRouter) clears the #261 rank bar — query-a/b both rank 1/8, recall@8=1.00, MRR=1.000. D-07/D-08 evaluated and not needed. Follow-up: run the qwen3-embedding-8b @4096 prod-parity eval (with PR#262 query instruction) once OpenRouter recovers.
 
 ## Deferred Items

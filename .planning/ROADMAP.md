@@ -40,7 +40,7 @@ observable truths that hold in the shipped baseline.
 ### v0.9.x — Recall Quality
 
 - [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval (recall@k/MRR), similarity scores in `search_memory`, hybrid/rerank to kill phrasing-sensitivity — chosen by the eval numbers (completed 2026-07-10)
-- [x] **Phase 10: Asymmetric Query/Document Embeddings** - Native API-param passthrough (cloud) + document-side prefix (E5/nomic) for query≠document embeds; measured on the Phase 9 harness (completed 2026-07-10)
+- [x] **Phase 10: Asymmetric Query/Document Embeddings** - Native API-param passthrough (cloud) + document-side prefix (E5/nomic) for query≠document embeds — found ALREADY SHIPPED under Phase 4 (verified 2026-07-10; #305 closed; no plans built)
 - [ ] **Phase 11: Async-on-Write Summaries** - In-process worker drains `FillSummary` after upsert, off the synchronous write path; eval-gated
 - [ ] **Phase 12: Per-Memory Usage Signals** - Strong-signal counters (get/update) via hybrid OTLP + payload `access_count`; never affects ranking
 
@@ -210,8 +210,8 @@ observable truths that hold in the shipped baseline.
 2. Both-side-prefix models (E5/nomic) get a `ENGRAM_EMBED_DOCUMENT_INSTRUCTION` document-side prefix applied at store **and** reindex, honoring the reindex boundary (a doc-prefix change requires a reindex).
 3. Behavior is documented per-model in `guides/embedding-instructions`, and the Phase 9 eval shows a non-regression (ideally improvement) for at least one asymmetric model configuration.
 
-**Status**: Planned (v0.9.x)
-**Plans**: TBD — `/gsd-plan-phase 10`. Source: GitHub #305 (extends shipped REQ-asymmetric-embedder-params; phase planning verifies the exact baseline against the code).
+**Status**: Complete — ALREADY SHIPPED (verified 2026-07-10; see `10-VERIFICATION.md`)
+**Plans**: None built. `/gsd-discuss-phase 10` baseline verification found `REQ-embedder-native-params` fully implemented under Phase 4: `embed.go` `WithQueryParams`/`WithDocumentParams`/`WithDocumentInstruction` (native `input_type`/`task_type` map passthrough + E5/nomic doc prefix), config `ENGRAM_EMBED_QUERY_PARAMS`/`_DOCUMENT_PARAMS`/`_DOCUMENT_INSTRUCTION` (validated, wired in `embedderFromConfig`), tests, and per-model docs. GitHub #305 closed as already-shipped. Optional follow-up: eval demonstration of retrieval benefit for an asymmetric config (rides on #334).
 
 ### Phase 11: Async-on-Write Summaries
 

@@ -93,7 +93,7 @@ deferred to v0.10.x. Each requirement maps to exactly one phase (9–12).
 
 ### Embedder Query/Document Asymmetry (Phase 10)
 
-- [ ] **REQ-embedder-native-params**: Query-vs-document embedding asymmetry via the embedder's **native** mechanism, extending the shipped text-prefix `REQ-asymmetric-embedder-params`: (1) per-call API-field passthrough (`ENGRAM_EMBED_QUERY_PARAM` / `ENGRAM_EMBED_DOCUMENT_PARAM`, e.g. `input_type=search_query`) for cloud embedders (Cohere/Google/Voyage/Jina); (2) a document-side prefix knob (`ENGRAM_EMBED_DOCUMENT_INSTRUCTION`) for both-side-prefix models (E5/nomic) applied at store **and** reindex, respecting the reindex boundary. Documented per-model in `guides/embedding-instructions`. *(GitHub #305; extends DEC-zyhq — phase planning verifies the exact shipped baseline against the code)*
+- [x] **REQ-embedder-native-params**: Query-vs-document embedding asymmetry via the embedder's **native** mechanism, extending the shipped text-prefix `REQ-asymmetric-embedder-params`: (1) per-call API-field passthrough (`ENGRAM_EMBED_QUERY_PARAM` / `ENGRAM_EMBED_DOCUMENT_PARAM`, e.g. `input_type=search_query`) for cloud embedders (Cohere/Google/Voyage/Jina); (2) a document-side prefix knob (`ENGRAM_EMBED_DOCUMENT_INSTRUCTION`) for both-side-prefix models (E5/nomic) applied at store **and** reindex, respecting the reindex boundary. Documented per-model in `guides/embedding-instructions`. *(GitHub #305; extends DEC-zyhq — VERIFIED ALREADY SHIPPED under Phase 4 on 2026-07-10; #305 closed; evidence in phases/10-.../10-VERIFICATION.md)*
 
 ### Recall Surface Completeness (Phase 11)
 
@@ -152,7 +152,7 @@ Which phase covers which requirement. Retrospective — completed requirements a
 | REQ-retrieval-eval | Phase 9 | Planned (v0.9.x) |
 | REQ-search-similarity-scores | Phase 9 | Planned (v0.9.x) |
 | REQ-ranking-precision | Phase 9 | Planned (v0.9.x) |
-| REQ-embedder-native-params | Phase 10 | Planned (v0.9.x) |
+| REQ-embedder-native-params | Phase 10 | Complete (already shipped) |
 | REQ-async-summaries | Phase 11 | Planned (v0.9.x) |
 | REQ-usage-signals | Phase 12 | Planned (v0.9.x) |
 
