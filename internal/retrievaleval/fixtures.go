@@ -60,9 +60,11 @@ var gh261Distractors = []seedRecord{
 
 // gh261Case is the permanent GitHub #261 regression fixture: Record T plus the
 // 15 sticky topical-neighbor distractors above, and two queries (A/B) that are
-// near-verbatim restatements of Record T. This plan captures Record T's
-// pre-fix rank as the baseline (t.Logf); Plan 03 flips "T within default k" to
-// a hard rank assertion once the eval-selected ranking fix lands.
+// near-verbatim restatements of Record T. Plan 01 captured Record T's pre-fix
+// rank as a t.Logf baseline; Plan 03 flips "T within default k" to a hard,
+// RANK-based t.Errorf acceptance bar against the shipped D-06 reranker (the
+// same shared store.SearchReranked helper deps.searchMemory/
+// engramAPI.SearchMemories call) — a permanent regression guard.
 var gh261Case = retrievalCase{
 	name: "gh261-sticky-neighbor-crowding",
 	seedRecords: append([]seedRecord{

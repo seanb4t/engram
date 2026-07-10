@@ -109,30 +109,32 @@ func TestRetrievalEval(t *testing.T) {
 
 			var recallHits, mrrSum float64
 			for _, q := range tc.queries {
-				// Production query path: EmbedQuery (prod-parity instruction +
-				// params) -> Store.Search at the production default k.
+				// The SHIPPED ranking path (review finding 2/5): EmbedQuery
+				// (prod-parity instruction + params) -> Store.SearchReranked at
+				// the production default k — the SAME shared helper
+				// deps.searchMemory (MCP) and engramAPI.SearchMemories (Connect)
+				// call, so this measures exactly what ships and cannot drift
+				// from a raw Store.Search shortcut.
 				vec, err := em.EmbedQuery(ctx, q.text)
 				if err != nil {
 					t.Fatalf("%s: embed query: %v", q.name, err)
 				}
-				ranked, err := st.Search(ctx, scope, subj, vec, defaultK, nil, time.Time{}, time.Time{})
+				ranked, err := st.SearchReranked(ctx, scope, subj, q.text, vec, defaultK, nil, time.Time{}, time.Time{})
 				if err != nil {
 					t.Fatalf("%s: search: %v", q.name, err)
 				}
 
-				// Harness-correctness assertions (hard, this plan): the RAW
-				// Store.Search output is score-populated and non-increasing.
-				// Scoped to raw output only — Plan 03 drops the descending
-				// assumption post-rerank (review finding 3).
+				// Harness-correctness assertions (hard): non-empty and
+				// score-populated. NOT asserted non-increasing / score-descending
+				// here (review finding 3): reranking legitimately promotes a
+				// higher-lexical-overlap hit ahead of a higher-raw-score one, so
+				// the reranked result set is not guaranteed score-descending.
 				if len(ranked) == 0 {
 					t.Errorf("%s: search returned no results", q.name)
 				}
 				for i, m := range ranked {
 					if m.Score == 0 {
 						t.Errorf("%s: result %d (%s) has zero score", q.name, i, m.ID)
-					}
-					if i > 0 && ranked[i-1].Score < m.Score {
-						t.Errorf("%s: raw results not non-increasing at index %d: %f < %f", q.name, i, ranked[i-1].Score, m.Score)
 					}
 				}
 
@@ -147,11 +149,14 @@ func TestRetrievalEval(t *testing.T) {
 				}
 				mrrSum += rr
 
-				// Diagnostic-only baseline capture (review finding 3): report,
-				// never assert, Record T's pre-fix rank and its raw score versus
-				// the best distractor's score. For #261's crowding case T's score
-				// may legitimately sit BELOW its sticky neighbors by
-				// construction — that is exactly the gap Plan 03 must close.
+				// THE #261 ACCEPTANCE BAR (hard, RANK-based — review finding
+				// 3/4, D-03 supersession per round-2 finding 4): Record T MUST
+				// surface within default k, by POSITION, for this query. Raw-
+				// score separation is reported below as a t.Logf DIAGNOSTIC
+				// ONLY — never a hard gate — because a lexical reranker can
+				// promote T's rank without necessarily raising its raw Qdrant
+				// score above every sticky neighbor (Score is raw first-stage
+				// dense similarity, store.go, unchanged by rerank).
 				var wantScore, bestOtherScore float32
 				rank := 0
 				for i, m := range ranked {
@@ -163,17 +168,18 @@ func TestRetrievalEval(t *testing.T) {
 					}
 				}
 				if rank == 0 {
-					t.Logf("%s/%s: MISS within default k=%d (baseline pre-fix: not recalled)", tc.name, q.name, defaultK)
+					t.Errorf("%s/%s: Record T did NOT surface within default k=%d (hard rank bar FAILED — D-06 insufficient for this query, evidence for a D-07/D-08 escalation)", tc.name, q.name, defaultK)
 				} else {
-					t.Logf("%s/%s: rank=%d/%d (baseline pre-fix rank Plan 03 must improve)", tc.name, q.name, rank, defaultK)
+					t.Logf("%s/%s: rank=%d/%d (hard rank bar: PASS)", tc.name, q.name, rank, defaultK)
 				}
-				t.Logf("%s/%s: score(T)=%f best-distractor-score=%f gap=%f (diagnostic only, not a hard gate)",
+				t.Logf("%s/%s: score(T)=%f best-distractor-score=%f gap=%f (diagnostic only, never a hard gate — review finding 3)",
 					tc.name, q.name, wantScore, bestOtherScore, wantScore-bestOtherScore)
 
 				// Prove the harness itself can find T with a generous ceiling —
-				// this is NOT the #261 quality bar (that stays a Plan 03 hard
-				// gate on default k); it only proves the fixture/harness are
-				// sound, independent of ranking quality.
+				// this is NOT the #261 quality bar (that is the hard rank
+				// assertion above); it only proves the fixture/harness are
+				// sound, independent of ranking quality, so it deliberately
+				// uses raw Store.Search rather than the reranked path.
 				ceiling, err := st.Search(ctx, scope, subj, vec, ceilingK, nil, time.Time{}, time.Time{})
 				if err != nil {
 					t.Fatalf("%s: ceiling search: %v", q.name, err)
@@ -189,7 +195,7 @@ func TestRetrievalEval(t *testing.T) {
 
 			recallAtDefaultK := recallHits / float64(len(tc.queries))
 			mrr := mrrSum / float64(len(tc.queries))
-			t.Logf("%s: recall@%d=%.2f MRR=%.3f (post-#262 baseline; Plan 03's ranking fix must improve this)",
+			t.Logf("%s: recall@%d=%.2f MRR=%.3f (post-D-06-fix; compare against the 09-01 post-#262 baseline)",
 				tc.name, defaultK, recallAtDefaultK, mrr)
 		})
 	}
