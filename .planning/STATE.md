@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.9.x — Recall Quality
 milestone_name: "- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval"
-current_phase: 11
-current_phase_name: async-on-write-summaries
-status: executing
-stopped_at: Completed 11-03-PLAN.md (phase 11 complete)
-last_updated: "2026-07-10T13:27:15.431Z"
+current_phase: 12
+current_phase_name: per-memory-usage-signals
+status: ready_to_plan
+stopped_at: Phase 11 complete (verified 9/9) + code-review fixes CR-01/WR-02; advanced to Phase 12
+last_updated: "2026-07-10T14:30:00.000Z"
 last_activity: 2026-07-10
-last_activity_desc: Plan 11-03 executed (phase 11 complete)
+last_activity_desc: Phase 11 executed, verified 9/9, code-review CR-01/WR-02 fixed; advanced to Phase 12
 progress:
   total_phases: 12
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 6
   completed_plans: 6
-  percent: 17
+  percent: 25
 ---
 
 # Project State
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-09)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 11 — async-on-write-summaries
+**Current focus:** Phase 12 — Per-Memory Usage Signals (#317)
 
 ## Current Position
 
-Phase: 11 (async-on-write-summaries) — COMPLETE
-Plan: 3 of 3
-Status: Plan 01 complete (config knobs, backoff/v5 promotion, SummaryQueueMetrics); Plan 02 complete (summaryQueue worker-pool core, LogSummaryEgress); Plan 03 complete (server wiring, lifecycle, docs) — phase 11 done
-Last activity: 2026-07-10 — Plan 11-03 executed
+Phase: 12 (per-memory-usage-signals) — not started
+Plan: none yet
+Status: Phase 11 (async-on-write-summaries) COMPLETE — verified 9/9 goal-backward; code-review found + fixed CR-01 (send-on-closed-channel on shutdown-timeout) and WR-02 (retry-budget coherence). Next: discuss or plan Phase 12 (#317; get/update usage counters only, never affects ranking).
+Last activity: 2026-07-10 — Phase 11 executed, verified, code-review fixes applied
 
-Progress: [██████░░░░] 62% (v0.9.x — 2.5/4 phases done: Phase 9 executed, Phase 10 already-shipped, Phase 11 executed)
+Progress: [████████░░] 75% (v0.9.x — 3/4 phases done: Phase 9 executed, Phase 10 already-shipped, Phase 11 executed; Phase 12 remains)
 
 ## Performance Metrics
 

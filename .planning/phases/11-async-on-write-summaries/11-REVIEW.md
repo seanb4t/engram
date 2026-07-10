@@ -21,7 +21,7 @@ findings:
   warning: 3
   info: 2
   total: 6
-status: issues_found
+status: resolved
 ---
 
 # Phase 11: Code Review Report
@@ -293,3 +293,22 @@ used in `config_test.go`'s `TestLoadDefaults`.
 _Reviewed: 2026-07-10T00:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+
+## Resolution (2026-07-10)
+
+Reviewed and dispositioned during `/gsd-execute-phase 11` (fix-now on branch):
+
+- **CR-01 (blocker) — FIXED** in `c2075697`. Verified real: `net/http.Server.Shutdown`
+  does not force-terminate handlers on ctx-deadline, so a slow store/schedule handler
+  could `tryEnqueue` after `close(q.ch)`. Guarded the close with `sync.RWMutex` + `closed`
+  flag (send and close now mutually exclusive; Shutdown idempotent); reserve the inFlight
+  slot before the send. Added `-race` regression `TestSummaryQueueEnqueueAfterShutdownIsDroppedNotPanic`.
+- **WR-02 (warning) — FIXED** in `40ac40ca`. Verified real: hardcoded `maxElapsed` (20s) < per-attempt
+  `attemptTimeout` (30s) collapsed the 3-try budget. `maxElapsed` is now derived per-queue from
+  `attemptTimeout` so it can never pre-empt `summaryQueueMaxTries`. Regression `TestSummaryQueueRetryBudgetAccommodatesFullTryCount`.
+- **WR-01 — ACCEPTED (non-issue in practice).** Workers run under `context.Background()`, but
+  `serve.go` returns (process exits) immediately after `drainSummaries`, so workers are reaped at
+  exit; the per-attempt `context.WithTimeout` still bounds each fill. Not fixed to preserve the
+  best-effort graceful-drain semantics (D-08).
+- **WR-03 / IN-01 / IN-02 — DEFERRED** to a follow-up issue (latent test-only `Wait()` misuse hazard;
+  minor storeMemory/scheduleMemory duplication; `TestBuildDepsFromEnvLoadsConfigOnce` env-hermeticity).

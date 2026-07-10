@@ -50,7 +50,7 @@ Shipped in the v0.8.x baseline and relied upon. Full IDs and phase mapping in
 - [ ] **REQ-search-similarity-scores** — `search_memory` optionally returns per-result similarity scores (Phase 9)
 - [ ] **REQ-ranking-precision** — kill phrasing-sensitivity / sticky-neighbor crowding via hybrid or rerank, chosen by the eval (Phase 9)
 - [ ] **REQ-embedder-native-params** — native API-param passthrough (cloud) + document-side prefix (E5/nomic) for query≠document embeds (Phase 10)
-- [ ] **REQ-async-summaries** — async-on-write summary fill off the synchronous write path, eval-gated (Phase 11)
+- [x] **REQ-async-summaries** — async-on-write summary fill off the synchronous write path, eval-gated (Phase 11) — completed 2026-07-10
 - [ ] **REQ-usage-signals** — strong per-record usage counters (get/update), hybrid OTLP+payload, never affects ranking (Phase 12)
 
 ### Deferred (v0.10.x candidates — not in v0.9.x)

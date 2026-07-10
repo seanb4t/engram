@@ -153,7 +153,7 @@ Which phase covers which requirement. Retrospective — completed requirements a
 | REQ-search-similarity-scores | Phase 9 | Planned (v0.9.x) |
 | REQ-ranking-precision | Phase 9 | Planned (v0.9.x) |
 | REQ-embedder-native-params | Phase 10 | Complete (already shipped) |
-| REQ-async-summaries | Phase 11 | Planned (v0.9.x) |
+| REQ-async-summaries | Phase 11 | Complete (v0.9.x) |
 | REQ-usage-signals | Phase 12 | Planned (v0.9.x) |
 
 **Coverage:**
