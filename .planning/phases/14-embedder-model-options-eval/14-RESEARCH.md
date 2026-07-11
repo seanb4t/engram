@@ -383,7 +383,12 @@ follows the analogous `{document}`-contains branch in `Embed()`.
 | A2 | `gemini-embedding-001`'s `task_type` field is unsupported (not merely undocumented) through the OpenAI-compat `/embeddings` endpoint | Common Pitfalls #1 | If wrong (i.e. it IS silently accepted and applied), the recipe recommendation to avoid `*_PARAMS` for Gemini-001 is overly conservative but not unsafe — worst case is a documented-but-unused capability, not a correctness bug |
 | A3 | The OpenAI-compat page's `gemini-embedding-2-preview` example reflects doc staleness rather than the compat endpoint genuinely requiring the `-preview` suffix | Standard Stack open flag; Common Pitfalls #2 | If wrong, the shipped recipe's model id 404s until corrected — mitigated by the recommended `checkpoint:human-verify` task before finalizing |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All three resolved during Phase 14 planning (plans committed `1648b12c`):
+> - **Q1** (exact Gemini compat model-id) → RESOLVED by 14-03's `checkpoint:human-verify` live-curl task, which locks the exact string in both the eval fixture and the docs recipe.
+> - **Q2** (differ-case dataset shape) → RESOLVED by 14-01's minimal 2-record/1-string probe (`TestEmbedAsymmetryDiffer`).
+> - **Q3** (eval-evidence artifact location) → RESOLVED by 14-03's committed `14-EVAL-EVIDENCE.md`.
 
 1. **Exact model-id string the OpenAI-compat endpoint accepts for the GA Gemini model**
    - What we know: the native embeddings guide calls `gemini-embedding-2` (no suffix) Stable/GA;

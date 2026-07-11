@@ -6,8 +6,9 @@ current_phase: 14
 current_phase_name: Embedder Model Options & Eval
 status: "Phase 13 shipped — PR #348"
 stopped_at: Phase 14 context gathered
-last_updated: "2026-07-11T14:29:37.607Z"
+last_updated: "2026-07-11T15:10:33.811Z"
 last_activity: 2026-07-11
+last_activity_desc: Phase 14 planning complete
 progress:
   total_phases: 2
   completed_phases: 1
@@ -30,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 13)
 Phase: 14 — Embedder Model Options & Eval
 Plan: Not started (needs discuss + plan)
 Status: Phase 13 shipped — PR #348
-Last activity: 2026-07-11
+Last activity: 2026-07-11 — Phase 14 planning complete
 
 ## Deferred Items
 
