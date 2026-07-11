@@ -36,6 +36,37 @@ memory:
     # "passage: " or "search_document: {document}". Empty = raw. Changing it
     # requires a reindex.
     documentInstruction: ""
+    # --- Recipes (commented; equal operator choices, none is a blessed
+    # default) --- Full details + copy-paste env blocks: see
+    # guides/embedding-models. Switching to any of these (or back) changes
+    # the stored vector space — run `engram reindex` before cutover; see
+    # guides/reindex.
+    #
+    # OpenRouter (qwen/qwen3-embedding-8b) — also the eval/CI reference
+    # config for task eval:retrieval's recall@k run:
+    #   model: "qwen/qwen3-embedding-8b"
+    #   dim: 4096
+    #   queryInstruction: "Given a web search query, retrieve relevant
+    #     passages that answer the query"
+    #   # memory.openai.baseURL: "https://openrouter.ai/api/v1"
+    #   # memory.openai.apiKeySecret: point at your OpenRouter key secret
+    #
+    # Gemini (gemini-embedding-2) — instruction-prefix mechanism, NOT
+    # queryParams/documentParams (task_type is a no-op on the OpenAI-compat
+    # endpoint):
+    #   model: "gemini-embedding-2"
+    #   dim: 3072
+    #   queryInstruction: "task: search result | query: {query}"
+    #   documentInstruction: "title: none | text: {document}"
+    #   # memory.openai.baseURL: "https://generativelanguage.googleapis.com/v1beta/openai"
+    #   # memory.openai.apiKeySecret: point at your Gemini API key secret
+    #
+    # OpenAI (text-embedding-3-large) — symmetric, no instruction:
+    #   model: "text-embedding-3-large"
+    #   dim: 3072
+    #   queryInstruction: ""
+    #   # memory.openai.baseURL: "https://api.openai.com/v1"
+    #   # memory.openai.apiKeySecret: point at your OpenAI key secret
   openai:
     baseURL: "" # cluster supplies, e.g. http://embeddings.internal:4000
     apiKeySecret:
