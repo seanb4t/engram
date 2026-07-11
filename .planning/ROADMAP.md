@@ -243,7 +243,10 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 4. A slow or unreachable embedder fails within the configured timeout instead of hanging the calling MCP tool call (`store_memory`/`update_memory`/`search_memory`) indefinitely.
 
 **Status**: Not started
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 13-01-PLAN.md — Embed client hardening: ENGRAM_EMBED_TIMEOUT + shape-aware base-URL join/override (SC1/SC2/SC4)
+- [ ] 13-02-PLAN.md — Embedder-config-identity helper + payload codec + clean write-site stamping (SC3, 4 sites + rule)
+- [ ] 13-03-PLAN.md — Reindex identity stamping: verbatim-payload landmine + StoreAndEmbedderFromEnvNoEnsure signature ripple (SC3, 5th site)
 
 ### Phase 14: Embedder Model Options & Eval
 
