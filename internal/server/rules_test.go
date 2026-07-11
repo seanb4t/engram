@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -89,6 +90,49 @@ func TestStoreRuleHandler(t *testing.T) {
 	// Invalid args are rejected before any write.
 	if _, _, err := d.storeRule(ctx, storeRuleArgs{Content: "x", Scope: "repo:x", Summary: "s"}); err == nil {
 		t.Error("expected rejection of non-rule scope")
+	}
+}
+
+// TestListRulesFullNeverSurfacesEmbedderIdentity is a D-06 regression guard
+// (review round-1 HIGH blocker): listRules appends the raw store.Memory
+// verbatim when Full=true — one of the three verbatim full-response wire
+// paths. With d.embedderIdentity set to a sentinel, a stored rule round-trips
+// through a real storeRule + listRules(Full:true) call, and the marshaled
+// result must carry no embedder_identity key.
+func TestListRulesFullNeverSurfacesEmbedderIdentity(t *testing.T) {
+	d := testDeps(t)
+	d.embedderIdentity = "v1:deadbeefdeadbeef"
+	ctx := context.Background()
+	scope := "rule:repo:list-rules-identity-wire"
+	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) })
+
+	if _, _, err := d.storeRule(ctx, storeRuleArgs{
+		Content: "wire check rule", Scope: scope, Summary: "wire check rule",
+	}); err != nil {
+		t.Fatalf("storeRule: %v", err)
+	}
+
+	full, _, err := d.listRules(ctx, listRulesArgs{Scopes: []string{scope}, Full: true})
+	if err != nil {
+		t.Fatalf("listRules full: %v", err)
+	}
+	if len(full) != 1 {
+		t.Fatalf("got %d full rules, want 1", len(full))
+	}
+	m, ok := full[0].(store.Memory)
+	if !ok {
+		t.Fatalf("full shape is not store.Memory: %T", full[0])
+	}
+	if m.EmbedderIdentity != "v1:deadbeefdeadbeef" {
+		t.Fatalf("sanity: persisted identity = %q, want sentinel (store layer must have stamped it)", m.EmbedderIdentity)
+	}
+
+	wire, err := json.Marshal(full[0])
+	if err != nil {
+		t.Fatalf("marshal listRules(full=true) result: %v", err)
+	}
+	if strings.Contains(string(wire), "embedder_identity") || strings.Contains(string(wire), "deadbeefdeadbeef") {
+		t.Fatalf("listRules(full=true) leaked embedder identity onto the wire: %s", wire)
 	}
 }
 

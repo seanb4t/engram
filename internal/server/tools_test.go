@@ -1351,12 +1351,25 @@ func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
 	}
 	t.Cleanup(func() { configLoad = orig })
 
-	if _, err := buildDepsFromEnv(nil, nil); err != nil {
+	d, err := buildDepsFromEnv(nil, nil)
+	if err != nil {
 		t.Fatalf("buildDepsFromEnv: %v", err)
 	}
 
 	if loads != 1 {
 		t.Errorf("buildDepsFromEnv loaded config %d times, want exactly 1", loads)
+	}
+
+	// Review round-2 MEDIUM: prove the PRODUCTION builder actually computes a
+	// non-empty identity — Task 4's sentinel tests set d.embedderIdentity
+	// directly, which proves handlers PERSIST a provided identity but not
+	// that buildDepsFromEnv COMPUTES one. A missed builder assignment would
+	// ship an empty identity while every sentinel test stays green.
+	if d.embedderIdentity == "" {
+		t.Error("buildDepsFromEnv did not compute a non-empty embedderIdentity")
+	}
+	if !strings.HasPrefix(d.embedderIdentity, "v1:") {
+		t.Errorf("buildDepsFromEnv embedderIdentity = %q, want v1: prefix", d.embedderIdentity)
 	}
 }
 
@@ -1626,6 +1639,44 @@ func TestShortIDCrossOwnerVisibility(t *testing.T) {
 // TestGetMemoryEnqueuesUsageSignalOnSuccessOnly pins the D-01 counting
 // boundary end-to-end: a successful get_memory enqueues exactly the fetched
 // point id; a denied/ErrNotFound get_memory enqueues nothing.
+// TestGetMemoryNeverSurfacesEmbedderIdentity is a D-06 regression guard
+// (review round-1 HIGH blocker): get_memory's AddTool handler emits the raw
+// store.Memory getMemory returns as its structured MCP result — one of the
+// three verbatim full-response wire paths. With d.embedderIdentity set to a
+// sentinel, the record round-trips through a real storeMemory + getMemory
+// call, and the marshaled result must carry no embedder_identity key (the
+// json:"-" struct tag on store.Memory.EmbedderIdentity is what makes this
+// structurally impossible, not handler-level filtering).
+func TestGetMemoryNeverSurfacesEmbedderIdentity(t *testing.T) {
+	d := testDeps(t)
+	d.embedderIdentity = "v1:deadbeefdeadbeef"
+	ctx := authedContext(t, "sub-identity-wire")
+	scope := "iso-test:project:identity-wire"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Authenticated("sub-identity-wire")))
+	}()
+
+	id, _, err := d.storeMemory(ctx, storeArgs{Content: "wire check", Scope: scope, Source: "user-said", Category: "gotcha"})
+	if err != nil {
+		t.Fatalf("storeMemory: %v", err)
+	}
+	got, err := d.getMemory(ctx, idArgs{ID: id})
+	if err != nil {
+		t.Fatalf("getMemory: %v", err)
+	}
+	if got.EmbedderIdentity != "v1:deadbeefdeadbeef" {
+		t.Fatalf("sanity: persisted identity = %q, want sentinel (store layer must have stamped it)", got.EmbedderIdentity)
+	}
+
+	wire, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("marshal get_memory structured result: %v", err)
+	}
+	if strings.Contains(string(wire), "embedder_identity") || strings.Contains(string(wire), "deadbeefdeadbeef") {
+		t.Fatalf("get_memory leaked embedder identity onto the wire: %s", wire)
+	}
+}
+
 func TestGetMemoryEnqueuesUsageSignalOnSuccessOnly(t *testing.T) {
 	d, rec := testDepsWithUsageQueue(t, 2, 16)
 	ctxA := authedContext(t, "owner-A")

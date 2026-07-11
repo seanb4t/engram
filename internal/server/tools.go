@@ -57,6 +57,14 @@ type deps struct {
 	// no-ops, so getMemory/Connect GetMemory never branch on whether it's
 	// enabled.
 	usageQueue *usageQueue
+	// embedderIdentity is the computed embedder-config-identity stamp
+	// (config.EmbedderIdentity), computed ONCE at deps construction
+	// (buildDepsFromEnv) and stamped on every document-embed write site
+	// before Upsert/Update (Phase 13 D-05). Empty is acceptable for a bare
+	// &deps{} test literal — the field is payload-only (store.Memory.
+	// EmbedderIdentity is json:"-"), so an empty value there just persists
+	// as an empty stamp, never surfacing on any wire path.
+	embedderIdentity string
 }
 
 // configLoad is the indirection seam for loading koanf config from the process
@@ -179,12 +187,17 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 	if err != nil {
 		return nil, err
 	}
+	identity, err := config.EmbedderIdentity(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("embedder identity: %w", err)
+	}
 	return &deps{
-		st:              st,
-		em:              em,
-		summaryMaxChars: summaryMaxChars(cfg),
-		summaryQueue:    buildSummaryQueue(cfg, st, sqm),
-		usageQueue:      buildUsageQueue(cfg, st, uqm),
+		st:               st,
+		em:               em,
+		summaryMaxChars:  summaryMaxChars(cfg),
+		summaryQueue:     buildSummaryQueue(cfg, st, sqm),
+		usageQueue:       buildUsageQueue(cfg, st, uqm),
+		embedderIdentity: identity,
 	}, nil
 }
 
@@ -617,6 +630,7 @@ func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, string, er
 		return "", "", err
 	}
 	m := a.toMemory(subj.Owner(), actorFromContext(ctx), d.clock())
+	m.EmbedderIdentity = d.embedderIdentity
 	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 	if err != nil {
 		return "", "", err // embed first: on error we never touch the store
@@ -656,6 +670,7 @@ func (d *deps) scheduleMemory(ctx context.Context, a scheduleArgs) (string, stri
 	m := a.toMemory(subj.Owner(), actorFromContext(ctx), now)
 	m.NotBefore = nb
 	m.NotAfter = na
+	m.EmbedderIdentity = d.embedderIdentity
 	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 	if err != nil {
 		return "", "", err // embed first: on error we never touch the store
@@ -734,19 +749,20 @@ func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string
 		}
 	}
 	m := store.Memory{
-		ID:        id,
-		ShortID:   shortID,
-		Content:   a.Content,
-		Scope:     a.Scope,
-		Source:    "agent-inferred",
-		Category:  "discovery",
-		Kind:      a.Kind,
-		Citations: cites,
-		Summary:   a.Summary,
-		Tags:      a.Tags,
-		Actor:     actorFromContext(ctx),
-		Owner:     subj.Owner(),
-		CreatedAt: d.clock(),
+		ID:               id,
+		ShortID:          shortID,
+		Content:          a.Content,
+		Scope:            a.Scope,
+		Source:           "agent-inferred",
+		Category:         "discovery",
+		Kind:             a.Kind,
+		Citations:        cites,
+		Summary:          a.Summary,
+		Tags:             a.Tags,
+		Actor:            actorFromContext(ctx),
+		Owner:            subj.Owner(),
+		CreatedAt:        d.clock(),
+		EmbedderIdentity: d.embedderIdentity,
 	}
 	return m.ID, m.ShortID, d.st.Upsert(ctx, m, vec)
 }
@@ -950,6 +966,10 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 	if err != nil {
 		return err
 	}
+	// Re-stamp on every re-embed: Store.Update re-Upserts cur through
+	// payload(), so this persists the CURRENT identity even if the embedder
+	// config changed since the record was first written (D-05).
+	cur.EmbedderIdentity = d.embedderIdentity
 	return d.st.Update(ctx, cur, a.Content, a.Shared, a.Tags, sumArg, vec)
 }
 
