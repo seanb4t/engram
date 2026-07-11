@@ -422,7 +422,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 | 12. Per-Memory Usage Signals | v0.9.x | 1/1 | Complete | 2026-07-10 (PR #336) |
 | 13. Embedder Reliability Foundation | v0.10.x | 3/3 | Complete    | 2026-07-11 |
 | 14. Embedder Model Options & Eval | v0.10.x | 3/3 | Complete    | 2026-07-11 |
-| 15. Additive Proto + Stub Write Handlers | v0.10.x | 4/4 | Complete   | 2026-07-11 |
+| 15. Additive Proto + Stub Write Handlers | v0.10.x | 4/4 | Complete    | 2026-07-11 |
 | 16. CSRF Interceptor | v0.10.x | 0/1 | Not started | - |
 | 17. Wired Write Handlers (Full CRUD + Schedule) | v0.10.x | 0/1 | Not started | - |
 | 18. Stateless Session Rotation | v0.10.x | 0/1 | Not started | - |
