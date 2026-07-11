@@ -148,7 +148,24 @@ type Memory struct {
 	// returned it (higher = closer). Set only on Search results; zero on
 	// list/get. Lets callers see how close a near-miss ranked (GH#261).
 	Score float32 `json:"score,omitempty"`
+	// EmbedderIdentity is a server-set audit stamp (config.EmbedderIdentity)
+	// of the embedder config that produced this record's stored document
+	// vector, so a future reindex-boundary audit can detect mixed-embedding-
+	// space records (D-05). A legacy record missing the payload key reads ""
+	// — no backfill. The `json:"-"` tag is deliberate and load-bearing: this
+	// field is payload-only, persisted EXCLUSIVELY through the manual
+	// payload()/fromPayload() codec below, and must NEVER cross any JSON
+	// wire — store.Memory is returned verbatim on the full-response MCP
+	// paths (shapeRecall full, get_memory, listRules full), so a normal json
+	// tag here would leak the audit field onto the wire (D-06).
+	EmbedderIdentity string `json:"-"`
 }
+
+// embedderIdentityKey is the shared Qdrant payload key for
+// Memory.EmbedderIdentity, written by payload() and read by fromPayload().
+// Reused verbatim by Store.Reindex's divergent raw-map write (13-03) — defined
+// once here so the two sites cannot drift.
+const embedderIdentityKey = "embedder_identity"
 
 // EmbedText builds the text sent to the embedder for a record. Tags are folded
 // into the embedded document so curated keywords contribute to vector recall
@@ -306,6 +323,7 @@ func payload(m Memory) map[string]any {
 		p["not_after"] = m.NotAfter.Unix()
 	}
 	p["access_count"] = m.AccessCount
+	p[embedderIdentityKey] = m.EmbedderIdentity
 	if m.LastAccessedAt != nil {
 		p["last_accessed_at"] = m.LastAccessedAt.Format(time.RFC3339)
 	}
@@ -394,6 +412,9 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	}
 	if v, ok := p["access_count"]; ok {
 		m.AccessCount = uint64(v.GetIntegerValue())
+	}
+	if v, ok := p[embedderIdentityKey]; ok {
+		m.EmbedderIdentity = v.GetStringValue()
 	}
 	if v, ok := p["last_accessed_at"]; ok {
 		if t, err := time.Parse(time.RFC3339, v.GetStringValue()); err == nil {
@@ -1950,13 +1971,23 @@ type ReindexOptions struct {
 	Progress func(ReindexResult)
 	// Resume makes an interrupted reindex cheap to restart: before embedding a
 	// source point, the target is checked for that id, and a point already
-	// present with IDENTICAL content is skipped (counted Unchanged) instead of
-	// re-embedded. The skip predicate is content equality — equal content yields
-	// an equal embedding under a fixed embedder, which is the whole point of
-	// resuming — so no separate hash is persisted and the target payload stays
-	// verbatim. Ignored on a dry run (nothing is written). When false, every
-	// point is re-embedded (the prior idempotent-overwrite behavior).
+	// present with IDENTICAL content AND a matching embedder_identity (or no
+	// Identity configured) is skipped (counted Unchanged) instead of
+	// re-embedded. A target whose content matches but whose stamped identity
+	// is absent or differs from Identity is NOT skipped — it is re-embedded so
+	// the stamp below rewrites it, keeping the resume path from silently
+	// leaving a record untraceable to its embedder config (Phase 13 SC3). No
+	// separate content hash is persisted; the target payload stays verbatim
+	// aside from the identity key. Ignored on a dry run (nothing is written).
+	// When false, every point is re-embedded (the prior idempotent-overwrite
+	// behavior).
 	Resume bool
+	// Identity is the embedder-config-identity (config.EmbedderIdentity) to
+	// stamp onto every reindexed record's payload under embedderIdentityKey,
+	// via a guarded additive raw-map write — see the Reindex doc comment.
+	// Empty means no stamp is written (e.g. an unstamped source or a caller
+	// that has not computed one).
+	Identity string
 }
 
 // Validate checks the options that depend only on the options themselves,
@@ -2009,6 +2040,12 @@ const reindexBatch = 256
 // `engram migrate-set-owner` sets it, whereas owner=="" is the anonymous bucket.
 // A Memory round-trip would synthesize an explicit owner=="" and silently
 // relocate the record into that bucket.
+//
+// The one intentional exception to "payload preserved VERBATIM": when
+// opts.Identity is non-empty, the single embedderIdentityKey is added/
+// overwritten on the payload map immediately before the upsert (Phase 13
+// SC3). This is a guarded additive raw-map write, not a Memory/payload()
+// round-trip, so it does not touch the owner key or any other field.
 //
 // Fail-closed: an embed error aborts immediately and is returned wrapped; no
 // zero/garbage vector is ever written. A point carrying no content is skipped
@@ -2103,11 +2140,12 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 			res.Scanned += uint64(len(pts))
 		} else {
 			// Resume: fetch this batch's ids from the target once so a point already
-			// embedded with identical content can be skipped (engram-irhg). One Get
-			// per page keeps the lookup O(pages), not O(points).
-			var targetContent map[string]string
+			// embedded with identical content (AND a matching stamped identity) can
+			// be skipped (engram-irhg; identity-awareness per Phase 13 SC3 review).
+			// One Get per page keeps the lookup O(pages), not O(points).
+			var targetInfo map[string]reindexTarget
 			if opts.Resume {
-				targetContent, err = s.reindexTargetContents(ctx, opts.Target, pts)
+				targetInfo, err = s.reindexTargetContents(ctx, opts.Target, pts)
 				if err != nil {
 					return res, fmt.Errorf("reindex: resume lookup in %q: %w", opts.Target, err)
 				}
@@ -2122,10 +2160,15 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 					res.Skipped++
 					continue
 				}
-				if tc, ok := targetContent[p.Id.GetUuid()]; ok && tc == content {
+				if ti, ok := targetInfo[p.Id.GetUuid()]; ok && ti.content == content &&
+					(opts.Identity == "" || ti.identity == opts.Identity) {
 					// Target already holds this id with identical content — equal
 					// content (and, from the same source payload, equal tags) re-embeds
-					// to an equal vector, so skip the embed+upsert.
+					// to an equal vector, so skip the embed+upsert. But only when no
+					// Identity is being enforced, or the target already carries the
+					// matching stamp: a content match with an absent/stale identity
+					// falls through and gets re-embedded+restamped below, so resume
+					// never leaves a record untraceable to its embedder config.
 					res.Unchanged++
 					continue
 				}
@@ -2135,6 +2178,12 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 				vec, err = embed(ctx, EmbedText(m.Content, m.Tags))
 				if err != nil {
 					return res, fmt.Errorf("reindex: embed point %s: %w", p.Id.GetUuid(), err)
+				}
+				if opts.Identity != "" {
+					// The one intentional additive exception to the verbatim-payload
+					// invariant: a single guarded raw-map key write, never a
+					// Memory/payload() round-trip (see the Reindex doc comment).
+					p.Payload[embedderIdentityKey] = qdrant.NewValueString(opts.Identity)
 				}
 				if _, err = s.client.Upsert(ctx, &qdrant.UpsertPoints{
 					CollectionName: opts.Target,
@@ -2162,11 +2211,22 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 	return res, nil
 }
 
-// reindexTargetContents fetches the content payload of the given source points'
-// ids from the target collection, returning id→content only for ids that already
-// exist there. It backs Reindex's resume skip: a fresh or partially-populated
-// target simply yields fewer (or no) entries, so a first run skips nothing.
-func (s *Store) reindexTargetContents(ctx context.Context, target string, pts []*qdrant.RetrievedPoint) (map[string]string, error) {
+// reindexTarget is the per-id resume lookup shape: the target point's content
+// (for the content-equality skip check) and its stamped embedder_identity (a
+// missing key reads as the zero-value "", per fromPayload's convention).
+type reindexTarget struct {
+	content  string
+	identity string
+}
+
+// reindexTargetContents fetches the content and stamped embedder_identity of
+// the given source points' ids from the target collection, returning id→
+// reindexTarget only for ids that already exist there. It backs Reindex's
+// resume skip: a fresh or partially-populated target simply yields fewer (or
+// no) entries, so a first run skips nothing. The identity is read so the
+// resume skip predicate can be identity-aware (Phase 13 SC3): a content match
+// with a missing/mismatched identity must NOT be treated as unchanged.
+func (s *Store) reindexTargetContents(ctx context.Context, target string, pts []*qdrant.RetrievedPoint) (map[string]reindexTarget, error) {
 	if len(pts) == 0 {
 		return nil, nil
 	}
@@ -2183,9 +2243,12 @@ func (s *Store) reindexTargetContents(ctx context.Context, target string, pts []
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]string, len(got))
+	out := make(map[string]reindexTarget, len(got))
 	for _, p := range got {
-		out[p.Id.GetUuid()] = p.Payload["content"].GetStringValue()
+		out[p.Id.GetUuid()] = reindexTarget{
+			content:  p.Payload["content"].GetStringValue(),
+			identity: p.Payload[embedderIdentityKey].GetStringValue(),
+		}
 	}
 	return out, nil
 }

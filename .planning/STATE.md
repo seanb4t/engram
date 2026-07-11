@@ -1,33 +1,36 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.10.x
-milestone_name: Hardening & Write Lane
-status: roadmapped
-last_updated: "2026-07-10T00:00:00.000Z"
-last_activity: 2026-07-10
+milestone_name: — Hardening & Write Lane
+current_phase: 14
+current_phase_name: Embedder Model Options & Eval
+status: "Phase 13 shipped — PR #348"
+stopped_at: Phase 13 complete — ready to plan Phase 14
+last_updated: "2026-07-11T13:45:05.035Z"
+last_activity: 2026-07-11
 progress:
-  total_phases: 9
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 1
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-10 after v0.9.x milestone)
+See: .planning/PROJECT.md (updated 2026-07-11 after Phase 13)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.10.x — Hardening & Write Lane (opened 2026-07-10): roadmap created — 9 phases (13–21), 20/20 requirements mapped. Embedder reliability & options (13–14), Connect write lane + CSRF + session rotation (15–19), correctness/CI backlog (20–21).
+**Current focus:** Phase 14 — Embedder Model Options & Eval (Phase 13 shipped 2026-07-11)
 
 ## Current Position
 
-Phase: Phase 13 (Embedder Reliability Foundation) — not yet started
-Plan: —
-Status: Roadmap complete; ready for `/gsd-plan-phase 13`
-Last activity: 2026-07-10 — Roadmap created for v0.10.x (Phases 13–21)
+Phase: 14 — Embedder Model Options & Eval
+Plan: Not started (needs discuss + plan)
+Status: Phase 13 shipped — PR #348
+Last activity: 2026-07-11
 
 ## Deferred Items
 
@@ -50,6 +53,7 @@ shutdown-safety (RWMutex+closed guard); `*time.Time` for optional timestamps (ne
 `time.Time`+`omitempty`).
 
 **v0.10.x milestone decisions (resolved at scoping, 2026-07-10 — full text in REQUIREMENTS.md):**
+
 - DECISION 1 — Write-lane CRUD scope: full CRUD + Schedule (all six write RPCs ship this milestone).
 - DECISION 2 — Session rotation: stateless sliding-expiry re-seal, no server-side state (honors DEC-u9v); a new ADR is required in Phase 18 documenting the no-revocation trade-off.
 - DECISION 3 — Reindex boundary: document AND payload-stamp embedder-config identity (Phase 13).
@@ -61,6 +65,13 @@ rotation (18) → console UX (19). Correctness/polish (20) and CI hygiene (21) a
 both tracks. Phases 16–18 are flagged for `/gsd-secure-phase` (18 mandatory — changes the
 cookie-auth security posture).
 
+- [Phase 13]: Task 1+2 committed together (shared embed.New Option seam + koanf config trio); Task 3 (D-09 regression) committed separately.
+- [Phase 13]: Query/fragment base-URL join left non-canonicalizing (operator-error scope, T-13-01 trust boundary parity).
+- [Phase 13]: Memory.EmbedderIdentity tagged json:"-" (not a normal json tag) — store.Memory serializes verbatim on 3 full-response MCP wire paths, so a normal tag would leak the audit field (round-1 review HIGH blocker).
+- [Phase 13]: document_params empty-form canonicalization (len(params)==0 -> map[string]any{}) so "" and "{}" hash identically — prevents false null vs {} provenance drift (round-2 review MEDIUM).
+- [Phase 13]: Reindex identity-aware resume — reindexTargetContents returns map[string]reindexTarget{content, identity}; a content match with an absent/stale embedder_identity falls through to re-embed+restamp instead of being skipped as Unchanged.
+- [Phase 13]: StoreAndEmbedderFromEnvNoEnsure returns the computed embedder identity as a 5th value from its single config load; all 3 callers updated to the new arity.
+
 ### Blockers/Concerns
 
 - **Env restore (non-blocking):** repo-local `commit.gpgsign=false` is still set (1Password SSH-signing was flaky during the v0.9.x milestone; those commits were unsigned and `main` had no required-signatures). Restore when 1Password is stable: `git config --local --unset commit.gpgsign`. Also sync local `main` past the squash merge (`658795e9`).
@@ -70,6 +81,14 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-10 — `/gsd-new-project` roadmap phase — created ROADMAP.md Phases 13–21 for v0.10.x, filled REQUIREMENTS.md traceability (20/20 mapped)
-Stopped at: Roadmap approved and written; awaiting `/gsd-plan-phase 13` to begin execution
+Last session: 2026-07-11
+Stopped at: Phase 13 complete (3/3 plans, verified + code-reviewed), ready to plan Phase 14
 Resume file: None
+
+## Performance Metrics
+
+| Phase | Plan | Duration | Notes |
+|-------|------|----------|-------|
+| Phase 13 P01 | 21min | 3 tasks | 9 files |
+| Phase 13 P02 | 15min | 4 tasks | 9 files |
+| Phase 13 P03 | 20min | 3 tasks | 6 files |

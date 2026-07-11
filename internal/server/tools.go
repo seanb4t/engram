@@ -57,6 +57,14 @@ type deps struct {
 	// no-ops, so getMemory/Connect GetMemory never branch on whether it's
 	// enabled.
 	usageQueue *usageQueue
+	// embedderIdentity is the computed embedder-config-identity stamp
+	// (config.EmbedderIdentity), computed ONCE at deps construction
+	// (buildDepsFromEnv) and stamped on every document-embed write site
+	// before Upsert/Update (Phase 13 D-05). Empty is acceptable for a bare
+	// &deps{} test literal — the field is payload-only (store.Memory.
+	// EmbedderIdentity is json:"-"), so an empty value there just persists
+	// as an empty stamp, never surfacing on any wire path.
+	embedderIdentity string
 }
 
 // configLoad is the indirection seam for loading koanf config from the process
@@ -135,25 +143,32 @@ func StoreFromEnv() (*store.Store, error) {
 }
 
 // StoreAndEmbedderFromEnvNoEnsure builds the no-ensure source Store (with its
-// configured embed dimension) and the matching embedder from a SINGLE config
+// configured embed dimension), the matching embedder, and the computed
+// embedder-config-identity (config.EmbedderIdentity) from a SINGLE config
 // load. reindex uses it so the source collection must already exist (no-ensure)
-// rather than being silently created at the new dimension, and so config is
-// parsed exactly once — the engram-635 single-load invariant, applied to the
-// reindex path the same way buildDepsFromEnv applies it to serve.
-func StoreAndEmbedderFromEnvNoEnsure() (*store.Store, uint64, *embed.Client, error) {
+// rather than being silently created at the new dimension, config is parsed
+// exactly once — the engram-635 single-load invariant, applied to the reindex
+// path the same way buildDepsFromEnv applies it to serve — and reindex has a
+// path to the identity string to stamp onto reindexed records (Phase 13 SC3,
+// ReindexOptions.Identity).
+func StoreAndEmbedderFromEnvNoEnsure() (*store.Store, uint64, *embed.Client, string, error) {
 	cfg, err := loadAndValidate()
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, 0, nil, "", err
 	}
 	st, dim, err := storeFromConfig(cfg)
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, 0, nil, "", err
 	}
 	em, err := embedderFromConfig(cfg)
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, 0, nil, "", err
 	}
-	return st, dim, em, nil
+	identity, err := config.EmbedderIdentity(cfg)
+	if err != nil {
+		return nil, 0, nil, "", fmt.Errorf("embedder identity: %w", err)
+	}
+	return st, dim, em, identity, nil
 }
 
 // buildDepsFromEnv wires up the store and embedder from the environment with a
@@ -179,12 +194,17 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 	if err != nil {
 		return nil, err
 	}
+	identity, err := config.EmbedderIdentity(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("embedder identity: %w", err)
+	}
 	return &deps{
-		st:              st,
-		em:              em,
-		summaryMaxChars: summaryMaxChars(cfg),
-		summaryQueue:    buildSummaryQueue(cfg, st, sqm),
-		usageQueue:      buildUsageQueue(cfg, st, uqm),
+		st:               st,
+		em:               em,
+		summaryMaxChars:  summaryMaxChars(cfg),
+		summaryQueue:     buildSummaryQueue(cfg, st, sqm),
+		usageQueue:       buildUsageQueue(cfg, st, uqm),
+		embedderIdentity: identity,
 	}, nil
 }
 
@@ -301,6 +321,21 @@ func summaryTimeout(cfg *config.Config) time.Duration {
 	return d
 }
 
+// embedTimeout parses the per-request embed HTTP client timeout, defaulting to
+// 30s on empty/invalid. 0 is honored (disables the timeout); negatives fall
+// back to the default. Mirrors summaryTimeout.
+func embedTimeout(cfg *config.Config) time.Duration {
+	d, err := time.ParseDuration(cfg.Embed.Timeout)
+	if err != nil || d < 0 {
+		if cfg.Embed.Timeout != "" {
+			slog.Warn("ENGRAM_EMBED_TIMEOUT is set but unparseable or negative; using default 30s",
+				"value", cfg.Embed.Timeout)
+		}
+		return 30 * time.Second
+	}
+	return d
+}
+
 // embedderFromConfig builds the OpenAI-compatible embedder from an already-loaded
 // config.
 func embedderFromConfig(cfg *config.Config) (*embed.Client, error) {
@@ -320,7 +355,9 @@ func embedderFromConfig(cfg *config.Config) (*embed.Client, error) {
 		embed.WithQueryInstruction(cfg.Embed.QueryInstruction),
 		embed.WithDocumentInstruction(cfg.Embed.DocumentInstruction),
 		embed.WithQueryParams(queryParams),
-		embed.WithDocumentParams(documentParams)), nil
+		embed.WithDocumentParams(documentParams),
+		embed.WithTimeout(embedTimeout(cfg)),
+		embed.WithEmbeddingsURL(cfg.OpenAI.EmbeddingsURL)), nil
 }
 
 // summarizerFromConfig builds the chat-completions summarizer from config.
@@ -600,6 +637,7 @@ func (d *deps) storeMemory(ctx context.Context, a storeArgs) (string, string, er
 		return "", "", err
 	}
 	m := a.toMemory(subj.Owner(), actorFromContext(ctx), d.clock())
+	m.EmbedderIdentity = d.embedderIdentity
 	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 	if err != nil {
 		return "", "", err // embed first: on error we never touch the store
@@ -639,6 +677,7 @@ func (d *deps) scheduleMemory(ctx context.Context, a scheduleArgs) (string, stri
 	m := a.toMemory(subj.Owner(), actorFromContext(ctx), now)
 	m.NotBefore = nb
 	m.NotAfter = na
+	m.EmbedderIdentity = d.embedderIdentity
 	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 	if err != nil {
 		return "", "", err // embed first: on error we never touch the store
@@ -717,19 +756,20 @@ func (d *deps) storeDiscovery(ctx context.Context, a storeDiscoveryArgs) (string
 		}
 	}
 	m := store.Memory{
-		ID:        id,
-		ShortID:   shortID,
-		Content:   a.Content,
-		Scope:     a.Scope,
-		Source:    "agent-inferred",
-		Category:  "discovery",
-		Kind:      a.Kind,
-		Citations: cites,
-		Summary:   a.Summary,
-		Tags:      a.Tags,
-		Actor:     actorFromContext(ctx),
-		Owner:     subj.Owner(),
-		CreatedAt: d.clock(),
+		ID:               id,
+		ShortID:          shortID,
+		Content:          a.Content,
+		Scope:            a.Scope,
+		Source:           "agent-inferred",
+		Category:         "discovery",
+		Kind:             a.Kind,
+		Citations:        cites,
+		Summary:          a.Summary,
+		Tags:             a.Tags,
+		Actor:            actorFromContext(ctx),
+		Owner:            subj.Owner(),
+		CreatedAt:        d.clock(),
+		EmbedderIdentity: d.embedderIdentity,
 	}
 	return m.ID, m.ShortID, d.st.Upsert(ctx, m, vec)
 }
@@ -933,6 +973,10 @@ func (d *deps) updateMemory(ctx context.Context, a updateArgs) error {
 	if err != nil {
 		return err
 	}
+	// Re-stamp on every re-embed: Store.Update re-Upserts cur through
+	// payload(), so this persists the CURRENT identity even if the embedder
+	// config changed since the record was first written (D-05).
+	cur.EmbedderIdentity = d.embedderIdentity
 	return d.st.Update(ctx, cur, a.Content, a.Shared, a.Tags, sumArg, vec)
 }
 

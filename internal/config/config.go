@@ -65,6 +65,11 @@ type EmbedConfig struct {
 	// DocumentInstruction is the document-side mirror of QueryInstruction: a text
 	// prefix/template applied to documents at store + reindex (empty = raw).
 	DocumentInstruction string `koanf:"document_instruction"`
+	// Timeout is the per-request embed HTTP client timeout (ENGRAM_EMBED_TIMEOUT,
+	// default "30s"); "0" disables it (no timeout). Validated unconditionally in
+	// Config.Validate — the embedder is always active, unlike Summarize.Timeout
+	// which is gated on Summarize.Model.
+	Timeout string `koanf:"timeout"`
 }
 
 // SummarizeConfig selects the recall-summary model and the character cap shared
@@ -100,6 +105,10 @@ type SummarizeConfig struct {
 type OpenAIConfig struct {
 	BaseURL string `koanf:"base_url"`
 	APIKey  string `koanf:"api_key"`
+	// EmbeddingsURL is the ENGRAM_OPENAI_EMBEDDINGS_URL full-URL override that
+	// bypasses joinEmbeddingsURL's shape-aware heuristic and is used verbatim as
+	// the embeddings endpoint (D-11). Empty (the default) keeps the heuristic.
+	EmbeddingsURL string `koanf:"embeddings_url"`
 }
 
 // OIDCConfig holds the MCP bearer-token issuer settings and the web-UI

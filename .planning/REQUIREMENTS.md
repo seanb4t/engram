@@ -16,9 +16,11 @@
 - **DECISION 1 — Write-lane CRUD scope: FULL CRUD + Schedule.** All six write RPCs
   (StoreMemory, StoreDiscovery, UpdateMemory, DeleteMemory, SetVisibility, ScheduleMemory) ship
   over Connect this milestone.
+
 - **DECISION 2 — Session rotation: STATELESS sliding-expiry re-seal.** Re-seal the existing
   AES-GCM `{owner, expiry}` cookie with a fresh expiry on each authenticated request. No
   server-side state; honors DEC-u9v (no new ADR for a token store). Revocation limits documented.
+
 - **DECISION 3 — Reindex boundary: DOCUMENT + payload-stamp embedder identity.** Docs/Helm
   recipes pair every `ENGRAM_EMBED_*` change with a reindex callout **and** each record is
   stamped with an embedder-config-identity hash, enabling future mismatch audit/enforcement.
@@ -29,12 +31,12 @@ Grouped by category. Each maps to exactly one phase (filled in the ROADMAP trace
 
 ### Embedder Reliability & Options
 
-- [ ] **REQ-embed-timeout**: The embedder HTTP client timeout is operator-configurable via `ENGRAM_EMBED_TIMEOUT` (koanf, validated), replacing the hardcoded 30s that browned out under provider 529s. Raising it must not silently break the async summary-queue backoff budget (re-derive from the new timeout). *(GitHub #333)*
-- [ ] **REQ-embed-baseurl-join**: `ENGRAM_OPENAI_BASE_URL` joins to the embeddings path correctly across all provider base-URL shapes — trailing `/v1` (OpenRouter → no `/v1/v1` 404), no trailing `/v1` (OpenAI), and the `/v1beta/openai` Gemini shape — proven by a provider-shape table test. *(GitHub #332)*
+- [x] **REQ-embed-timeout**: The embedder HTTP client timeout is operator-configurable via `ENGRAM_EMBED_TIMEOUT` (koanf, validated), replacing the hardcoded 30s that browned out under provider 529s. Raising it must not silently break the async summary-queue backoff budget (re-derive from the new timeout). *(GitHub #333)*
+- [x] **REQ-embed-baseurl-join**: `ENGRAM_OPENAI_BASE_URL` joins to the embeddings path correctly across all provider base-URL shapes — trailing `/v1` (OpenRouter → no `/v1/v1` 404), no trailing `/v1` (OpenAI), and the `/v1beta/openai` Gemini shape — proven by a provider-shape table test. *(GitHub #332)*
 - [ ] **REQ-embed-gemini-direct**: engram can embed against the Google Gemini embeddings API via its OpenAI-compatibility endpoint, with the exact wire shape verified against live docs and the `task_type`/dimension behavior confirmed by a Phase-9 eval-harness run (a silent `task_type` no-op is a recall regression with no error to catch it — this is a correctness gate, not a docs note). *(GitHub #331)*
 - [ ] **REQ-embed-prod-parity-eval**: The #261 rank bar is re-confirmed on the prod-parity `qwen3-embedding-8b` @4096 config (with `ENGRAM_EMBED_QUERY_INSTRUCTION`) once the embed-timeout knob makes the run reliable — closing the last v0.9.x follow-up. *(GitHub #334; closes #261)*
 - [ ] **REQ-embed-model-docs**: A docs-site guide + commented Helm `values.yaml` recipes document the supported embedding models (OpenRouter / Gemini / OpenAI / local TEI-Ollama-vLLM), each pairing base URL + model + vector dim + query instruction, and every model/dim change is called out as requiring `engram reindex` (cross-linking `guides/reindex`). *(GitHub #337)*
-- [ ] **REQ-embed-config-identity**: Each stored record is stamped with an embedder-config-identity hash (model + dim + relevant params) so a later `reindex`-boundary audit can detect records written under a different embedding configuration. *(DECISION 3; guards the reindex boundary the three new embed levers make easier to violate)*
+- [x] **REQ-embed-config-identity**: Each stored record is stamped with an embedder-config-identity hash (model + dim + relevant params) so a later `reindex`-boundary audit can detect records written under a different embedding configuration. *(DECISION 3; guards the reindex boundary the three new embed levers make easier to violate)*
 
 ### Connect Write Lane
 

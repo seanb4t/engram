@@ -4,7 +4,9 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -72,6 +74,36 @@ func TestToRecallViewSurfacesUsageSignals(t *testing.T) {
 	nv := toRecallView(store.Memory{ID: "n", Content: "x", Scope: "s", Category: "gotcha"}, 8)
 	if nv.LastAccessedAt != nil {
 		t.Fatalf("never-accessed recallView.LastAccessedAt = %v, want nil (omitted)", nv.LastAccessedAt)
+	}
+}
+
+// TestEmbedderIdentityNeverOnRecallWire is a D-06 regression guard (review
+// round-1 HIGH blocker + round-2 confirmation): store.Memory.EmbedderIdentity
+// is payload-only (json:"-") and must NEVER surface on the recall wire — at
+// shapeRecall's full=true path (which returns store.Memory verbatim) AND at
+// the compact toRecallView shape (whose recallView allow-list must not gain
+// the field). A toRecallView-only assertion would be insufficient on its
+// own — this test also covers the verbatim full path.
+func TestEmbedderIdentityNeverOnRecallWire(t *testing.T) {
+	sentinel := "v1:deadbeefdeadbeef"
+	m := store.Memory{ID: "u", Content: "hello", Scope: "s", Category: "gotcha", EmbedderIdentity: sentinel}
+
+	full := shapeRecall([]store.Memory{m}, true, 8)
+	fullJSON, err := json.Marshal(full[0])
+	if err != nil {
+		t.Fatalf("marshal shapeRecall(full=true) result: %v", err)
+	}
+	if strings.Contains(string(fullJSON), "embedder_identity") || strings.Contains(string(fullJSON), sentinel) {
+		t.Fatalf("shapeRecall(full=true) leaked embedder identity onto the wire: %s", fullJSON)
+	}
+
+	compact := toRecallView(m, 8)
+	compactJSON, err := json.Marshal(compact)
+	if err != nil {
+		t.Fatalf("marshal toRecallView result: %v", err)
+	}
+	if strings.Contains(string(compactJSON), "embedder_identity") || strings.Contains(string(compactJSON), sentinel) {
+		t.Fatalf("toRecallView leaked embedder identity onto the wire: %s", compactJSON)
 	}
 }
 

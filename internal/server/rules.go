@@ -137,19 +137,20 @@ func (d *deps) storeRule(ctx context.Context, a storeRuleArgs) (string, string, 
 		}
 	}
 	m := store.Memory{
-		ID:            id,
-		ShortID:       shortID,
-		Content:       a.Content,
-		Scope:         a.Scope,
-		Source:        "user-said",
-		Category:      "rule",
-		Visibility:    "shared",
-		Tags:          a.Tags,
-		Summary:       a.Summary,
-		SummarySource: store.SummarySourceClient,
-		Actor:         actorFromContext(ctx),
-		Owner:         subj.Owner(),
-		CreatedAt:     d.clock(),
+		ID:               id,
+		ShortID:          shortID,
+		Content:          a.Content,
+		Scope:            a.Scope,
+		Source:           "user-said",
+		Category:         "rule",
+		Visibility:       "shared",
+		Tags:             a.Tags,
+		Summary:          a.Summary,
+		SummarySource:    store.SummarySourceClient,
+		Actor:            actorFromContext(ctx),
+		Owner:            subj.Owner(),
+		CreatedAt:        d.clock(),
+		EmbedderIdentity: d.embedderIdentity,
 	}
 	return m.ID, m.ShortID, d.st.Upsert(ctx, m, vec)
 }

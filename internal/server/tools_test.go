@@ -454,6 +454,117 @@ func TestStoreMemoryStampsOwnerHandler(t *testing.T) {
 	}
 }
 
+// TestStoreMemoryStampsEmbedderIdentityHandler is a Task 4 positive
+// persistence guard: a missed d.embedderIdentity assignment in storeMemory
+// would compile and pass every other test, so this re-reads the persisted
+// record via d.st.Get and asserts the sentinel identity round-tripped.
+func TestStoreMemoryStampsEmbedderIdentityHandler(t *testing.T) {
+	d := testDeps(t)
+	d.embedderIdentity = "v1:deadbeefdeadbeef"
+	ctx := authedContext(t, "sub-identity-store")
+	scope := "iso-test:project:identity-store"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-identity-store")))
+	}()
+
+	id, _, err := d.storeMemory(ctx, storeArgs{Content: "identity check", Scope: scope, Source: "user-said", Category: "gotcha"})
+	if err != nil {
+		t.Fatalf("storeMemory: %v", err)
+	}
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get after storeMemory: %v", err)
+	}
+	if got.EmbedderIdentity != "v1:deadbeefdeadbeef" {
+		t.Errorf("storeMemory did not stamp embedder identity: got %q, want %q", got.EmbedderIdentity, "v1:deadbeefdeadbeef")
+	}
+}
+
+// TestScheduleMemoryStampsEmbedderIdentityHandler mirrors
+// TestStoreMemoryStampsEmbedderIdentityHandler for scheduleMemory.
+func TestScheduleMemoryStampsEmbedderIdentityHandler(t *testing.T) {
+	d := testDeps(t)
+	d.embedderIdentity = "v1:deadbeefdeadbeef"
+	ctx := authedContext(t, "sub-identity-schedule")
+	scope := "iso-test:project:identity-schedule"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-identity-schedule")))
+	}()
+
+	id, _, err := d.scheduleMemory(ctx, scheduleArgs{
+		storeArgs: storeArgs{Content: "identity check", Scope: scope, Source: "user-said", Category: "decision"},
+		NotAfter:  timeNow().Add(time.Hour).Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("scheduleMemory: %v", err)
+	}
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get after scheduleMemory: %v", err)
+	}
+	if got.EmbedderIdentity != "v1:deadbeefdeadbeef" {
+		t.Errorf("scheduleMemory did not stamp embedder identity: got %q, want %q", got.EmbedderIdentity, "v1:deadbeefdeadbeef")
+	}
+}
+
+// TestStoreDiscoveryStampsEmbedderIdentityHandler mirrors
+// TestStoreMemoryStampsEmbedderIdentityHandler for storeDiscovery.
+func TestStoreDiscoveryStampsEmbedderIdentityHandler(t *testing.T) {
+	d := testDeps(t)
+	d.embedderIdentity = "v1:deadbeefdeadbeef"
+	ctx := context.Background()
+	scope := "discovery:repo:identity-discovery"
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
+
+	id, _, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
+		Content: "identity check discovery", Kind: "fact", Scope: scope,
+		Citations: []citationArg{{Kind: "file", Ref: "f.go"}},
+	})
+	if err != nil {
+		t.Fatalf("storeDiscovery: %v", err)
+	}
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get after storeDiscovery: %v", err)
+	}
+	if got.EmbedderIdentity != "v1:deadbeefdeadbeef" {
+		t.Errorf("storeDiscovery did not stamp embedder identity: got %q, want %q", got.EmbedderIdentity, "v1:deadbeefdeadbeef")
+	}
+}
+
+// TestUpdateMemoryReStampsEmbedderIdentityHandler proves the re-embed path
+// (updateMemory -> Store.Update -> Upsert) RE-stamps the identity, not only
+// the initial write: the seed record carries a stale identity, and after
+// updateMemory runs with a new d.embedderIdentity, the persisted record must
+// carry the NEW value.
+func TestUpdateMemoryReStampsEmbedderIdentityHandler(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:identity-update"
+	id := "e7e7e7e7-0000-0000-0000-000000000001"
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
+
+	seed := store.Memory{
+		ID: id, Content: "v1", Scope: scope, Owner: "", CreatedAt: timeNow(),
+		EmbedderIdentity: "v1:stalestalestale0",
+	}
+	if err := d.st.Upsert(ctx, seed, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	d.embedderIdentity = "v1:deadbeefdeadbeef"
+	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "v2"}); err != nil {
+		t.Fatalf("updateMemory: %v", err)
+	}
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get after updateMemory: %v", err)
+	}
+	if got.EmbedderIdentity != "v1:deadbeefdeadbeef" {
+		t.Errorf("updateMemory did not re-stamp embedder identity on re-embed: got %q, want %q", got.EmbedderIdentity, "v1:deadbeefdeadbeef")
+	}
+}
+
 // TestStoreMemoryMintsAndReturnsShortID pins that storeMemory mints a short_id
 // (after embed) and both returns it and persists it on the record.
 func TestStoreMemoryMintsAndReturnsShortID(t *testing.T) {
@@ -1320,7 +1431,7 @@ func TestStoreAndEmbedderFromEnvNoEnsureValidatesConfig(t *testing.T) {
 	// StoreAndEmbedderFromEnvNoEnsure's loadAndValidate. Validation runs BEFORE any
 	// Qdrant client construction, so this returns fast and needs no live Qdrant.
 	t.Setenv("ENGRAM_OPENAI_BASE_URL", "ftp://nope")
-	_, _, _, err := StoreAndEmbedderFromEnvNoEnsure()
+	_, _, _, _, err := StoreAndEmbedderFromEnvNoEnsure()
 	if err == nil {
 		t.Fatal("StoreAndEmbedderFromEnvNoEnsure with bad ENGRAM_OPENAI_BASE_URL = nil, want validation error")
 	}
@@ -1351,12 +1462,25 @@ func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
 	}
 	t.Cleanup(func() { configLoad = orig })
 
-	if _, err := buildDepsFromEnv(nil, nil); err != nil {
+	d, err := buildDepsFromEnv(nil, nil)
+	if err != nil {
 		t.Fatalf("buildDepsFromEnv: %v", err)
 	}
 
 	if loads != 1 {
 		t.Errorf("buildDepsFromEnv loaded config %d times, want exactly 1", loads)
+	}
+
+	// Review round-2 MEDIUM: prove the PRODUCTION builder actually computes a
+	// non-empty identity — Task 4's sentinel tests set d.embedderIdentity
+	// directly, which proves handlers PERSIST a provided identity but not
+	// that buildDepsFromEnv COMPUTES one. A missed builder assignment would
+	// ship an empty identity while every sentinel test stays green.
+	if d.embedderIdentity == "" {
+		t.Error("buildDepsFromEnv did not compute a non-empty embedderIdentity")
+	}
+	if !strings.HasPrefix(d.embedderIdentity, "v1:") {
+		t.Errorf("buildDepsFromEnv embedderIdentity = %q, want v1: prefix", d.embedderIdentity)
 	}
 }
 
@@ -1379,7 +1503,7 @@ func TestStoreAndEmbedderFromEnvNoEnsureLoadsConfigOnce(t *testing.T) {
 	}
 	t.Cleanup(func() { configLoad = orig })
 
-	st, dim, em, err := StoreAndEmbedderFromEnvNoEnsure()
+	st, dim, em, identity, err := StoreAndEmbedderFromEnvNoEnsure()
 	if err != nil {
 		t.Fatalf("StoreAndEmbedderFromEnvNoEnsure: %v", err)
 	}
@@ -1389,6 +1513,29 @@ func TestStoreAndEmbedderFromEnvNoEnsureLoadsConfigOnce(t *testing.T) {
 
 	if loads != 1 {
 		t.Errorf("StoreAndEmbedderFromEnvNoEnsure loaded config %d times, want exactly 1", loads)
+	}
+
+	// Review round-2 MEDIUM: behavior-test the returned identity, not just its
+	// arity — a helper that returned an empty identity would still pass an
+	// arity-only compile check. Load the expected cfg via the unwrapped
+	// loader (orig) so this expected-value load does not inflate the loads
+	// counter asserted above.
+	expectedCfg, err := orig(nil)
+	if err != nil {
+		t.Fatalf("orig config load: %v", err)
+	}
+	wantIdentity, err := config.EmbedderIdentity(expectedCfg)
+	if err != nil {
+		t.Fatalf("config.EmbedderIdentity: %v", err)
+	}
+	if identity == "" {
+		t.Error("StoreAndEmbedderFromEnvNoEnsure did not compute a non-empty embedder identity")
+	}
+	if !strings.HasPrefix(identity, "v1:") {
+		t.Errorf("StoreAndEmbedderFromEnvNoEnsure identity = %q, want v1: prefix", identity)
+	}
+	if identity != wantIdentity {
+		t.Errorf("StoreAndEmbedderFromEnvNoEnsure identity = %q, want %q (config.EmbedderIdentity for the same config)", identity, wantIdentity)
 	}
 }
 
@@ -1626,6 +1773,44 @@ func TestShortIDCrossOwnerVisibility(t *testing.T) {
 // TestGetMemoryEnqueuesUsageSignalOnSuccessOnly pins the D-01 counting
 // boundary end-to-end: a successful get_memory enqueues exactly the fetched
 // point id; a denied/ErrNotFound get_memory enqueues nothing.
+// TestGetMemoryNeverSurfacesEmbedderIdentity is a D-06 regression guard
+// (review round-1 HIGH blocker): get_memory's AddTool handler emits the raw
+// store.Memory getMemory returns as its structured MCP result — one of the
+// three verbatim full-response wire paths. With d.embedderIdentity set to a
+// sentinel, the record round-trips through a real storeMemory + getMemory
+// call, and the marshaled result must carry no embedder_identity key (the
+// json:"-" struct tag on store.Memory.EmbedderIdentity is what makes this
+// structurally impossible, not handler-level filtering).
+func TestGetMemoryNeverSurfacesEmbedderIdentity(t *testing.T) {
+	d := testDeps(t)
+	d.embedderIdentity = "v1:deadbeefdeadbeef"
+	ctx := authedContext(t, "sub-identity-wire")
+	scope := "iso-test:project:identity-wire"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Authenticated("sub-identity-wire")))
+	}()
+
+	id, _, err := d.storeMemory(ctx, storeArgs{Content: "wire check", Scope: scope, Source: "user-said", Category: "gotcha"})
+	if err != nil {
+		t.Fatalf("storeMemory: %v", err)
+	}
+	got, err := d.getMemory(ctx, idArgs{ID: id})
+	if err != nil {
+		t.Fatalf("getMemory: %v", err)
+	}
+	if got.EmbedderIdentity != "v1:deadbeefdeadbeef" {
+		t.Fatalf("sanity: persisted identity = %q, want sentinel (store layer must have stamped it)", got.EmbedderIdentity)
+	}
+
+	wire, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("marshal get_memory structured result: %v", err)
+	}
+	if strings.Contains(string(wire), "embedder_identity") || strings.Contains(string(wire), "deadbeefdeadbeef") {
+		t.Fatalf("get_memory leaked embedder identity onto the wire: %s", wire)
+	}
+}
+
 func TestGetMemoryEnqueuesUsageSignalOnSuccessOnly(t *testing.T) {
 	d, rec := testDepsWithUsageQueue(t, 2, 16)
 	ctxA := authedContext(t, "owner-A")

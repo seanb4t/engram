@@ -58,7 +58,7 @@ func TestRetrievalEval(t *testing.T) {
 	// ambient ENGRAM_QDRANT_ADDR), which is NEVER where this eval seeds/searches
 	// (round-2 finding 1) — the eval store below is built directly from
 	// testQdrantAddr instead.
-	_, dim, em, err := server.StoreAndEmbedderFromEnvNoEnsure()
+	_, dim, em, _, err := server.StoreAndEmbedderFromEnvNoEnsure()
 	if err != nil {
 		t.Fatalf("build prod-parity embedder: %v", err)
 	}

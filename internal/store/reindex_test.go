@@ -593,6 +593,177 @@ func TestReindexPartialWriteOnLateEmbedError(t *testing.T) {
 	}
 }
 
+// sentinelIdentity is a fixed embedder-config-identity used by the
+// reindex-stamps-identity tests below; it never needs to be a real
+// config.EmbedderIdentity() output since Reindex just writes whatever
+// opts.Identity carries.
+const sentinelIdentity = "v1:deadbeefdeadbeef"
+
+// staleIdentity is a different sentinel used to prove the resume path
+// restamps a mismatched (not just an absent) identity.
+const staleIdentity = "v1:oldoldoldoldold0"
+
+// TestReindexStampsEmbedderIdentity pins Phase 13 SC3: Reindex writes
+// opts.Identity onto every reindexed record's payload under
+// embedderIdentityKey via the guarded additive raw-map write, without
+// disturbing the verbatim-payload owner-key invariant, and leaves the target
+// free of the key when Identity is empty.
+func TestReindexStampsEmbedderIdentity(t *testing.T) {
+	c := dialTestClient(t)
+	ctx := context.Background()
+	const src, tgtStamped, tgtUnstamped = "reindex_identity_src", "reindex_identity_tgt", "reindex_identity_tgt_none"
+	cols := []string{src, tgtStamped, tgtUnstamped}
+	for _, col := range cols {
+		_ = c.DeleteCollection(ctx, col)
+	}
+	t.Cleanup(func() {
+		for _, col := range cols {
+			_ = c.DeleteCollection(context.Background(), col)
+		}
+	})
+
+	fullID, rawID := seedSource(t, c, src)
+
+	s := New(c, src)
+	res, err := s.Reindex(ctx, ReindexOptions{Target: tgtStamped, Dim: 4, Identity: sentinelIdentity}, embed4)
+	if err != nil {
+		t.Fatalf("reindex with identity: %v", err)
+	}
+	if res.Scanned != 2 || res.Upserted != 2 {
+		t.Errorf("counts: want scanned=2 upserted=2, got %+v", res)
+	}
+
+	got := scrollPoints(t, c, tgtStamped)
+	for _, id := range []string{fullID, rawID} {
+		gotIdentity := got[id].payload[embedderIdentityKey].GetStringValue()
+		if gotIdentity != sentinelIdentity {
+			t.Errorf("id=%s: embedder_identity = %q, want %q", id, gotIdentity, sentinelIdentity)
+		}
+	}
+	// The verbatim owner-key invariant holds alongside the additive stamp: the
+	// raw point (no owner in the source) still has no owner in the target, and
+	// the full point's owner survives untouched.
+	if _, ok := got[rawID].payload["owner"]; ok {
+		t.Errorf("raw point gained a synthesized owner key from the identity stamp")
+	}
+	if got[fullID].payload["owner"].GetStringValue() != "sub-123" {
+		t.Errorf("full point owner not preserved: %q", got[fullID].payload["owner"].GetStringValue())
+	}
+
+	// Identity: "" (the default) never ADDS the key. rawID is a raw source
+	// point with no embedder_identity key at all (seedSource writes it
+	// straight through the client, bypassing payload()), so it proves the
+	// no-op case cleanly. fullID went through the normal Upsert/payload()
+	// path when seeded, which writes embedder_identity UNCONDITIONALLY
+	// (D-05's "unconditional write, conditional read" precedent) — so its
+	// source payload already carries the key as "" and the verbatim copy
+	// preserves that as-is; it is not a case where Identity:"" ADDS the key.
+	res2, err := s.Reindex(ctx, ReindexOptions{Target: tgtUnstamped, Dim: 4}, embed4)
+	if err != nil {
+		t.Fatalf("reindex without identity: %v", err)
+	}
+	if res2.Scanned != 2 || res2.Upserted != 2 {
+		t.Errorf("counts: want scanned=2 upserted=2, got %+v", res2)
+	}
+	gotNone := scrollPoints(t, c, tgtUnstamped)
+	if _, ok := gotNone[rawID].payload[embedderIdentityKey]; ok {
+		t.Errorf("id=%s: embedder_identity key present with empty opts.Identity (Reindex added it)", rawID)
+	}
+	if v := gotNone[fullID].payload[embedderIdentityKey].GetStringValue(); v != "" {
+		t.Errorf("id=%s: embedder_identity = %q, want unchanged empty value from source", fullID, v)
+	}
+}
+
+// TestReindexResumeRestampsStaleIdentity pins the review MEDIUM fix: under
+// Resume:true, a target point whose content matches the source but whose
+// embedder_identity is absent or mismatched must be re-embedded and
+// restamped, not skipped as Unchanged — otherwise resume silently leaves a
+// record untraceable to its embedder config (Phase 13 SC3).
+func TestReindexResumeRestampsStaleIdentity(t *testing.T) {
+	c := dialTestClient(t)
+	ctx := context.Background()
+	const src, tgt = "reindex_restamp_src", "reindex_restamp_tgt"
+	_ = c.DeleteCollection(ctx, src)
+	_ = c.DeleteCollection(ctx, tgt)
+	t.Cleanup(func() {
+		_ = c.DeleteCollection(context.Background(), src)
+		_ = c.DeleteCollection(context.Background(), tgt)
+	})
+
+	fullID, rawID := seedSource(t, c, src)
+
+	// Pre-create the target collection at the reindex dimension so the raw
+	// pre-population upserts below have somewhere to land (normally Reindex
+	// itself ensures the target; here we're seeding state that predates it).
+	if err := New(c, tgt).EnsureCollection(ctx, 4); err != nil {
+		t.Fatalf("pre-create target collection: %v", err)
+	}
+
+	// Pre-populate the target directly (bypassing Reindex) with points whose
+	// CONTENT matches the source but whose embedder_identity is ABSENT
+	// (fullID) or MISMATCHED (rawID) — the two ways a stamp can be stale.
+	if err := s2Upsert(ctx, c, tgt, fullID, "alpha content", map[string]any{
+		"content": "alpha content", "scope": "eval-test:project:demo",
+	}); err != nil {
+		t.Fatalf("pre-populate target (absent identity): %v", err)
+	}
+	if err := s2Upsert(ctx, c, tgt, rawID, "bravo", map[string]any{
+		"content": "bravo", "legacy_field": "keep-me-verbatim", embedderIdentityKey: staleIdentity,
+	}); err != nil {
+		t.Fatalf("pre-populate target (mismatched identity): %v", err)
+	}
+
+	s := New(c, src)
+	res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Resume: true, Identity: sentinelIdentity}, embed4)
+	if err != nil {
+		t.Fatalf("reindex resume-restamp: %v", err)
+	}
+	// Both points have matching content but a stale/absent stamp, so BOTH must
+	// be re-embedded+restamped (Upserted), not skipped (Unchanged).
+	if res.Upserted != 2 || res.Unchanged != 0 {
+		t.Errorf("resume-restamp counts: want upserted=2 unchanged=0, got %+v", res)
+	}
+
+	got := scrollPoints(t, c, tgt)
+	for _, id := range []string{fullID, rawID} {
+		gotIdentity := got[id].payload[embedderIdentityKey].GetStringValue()
+		if gotIdentity != sentinelIdentity {
+			t.Errorf("id=%s: embedder_identity = %q after resume-restamp, want %q", id, gotIdentity, sentinelIdentity)
+		}
+	}
+
+	// Complementary case: run again with the target now carrying the matching
+	// identity — this time both points must be skipped as Unchanged.
+	res2, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Resume: true, Identity: sentinelIdentity}, embed4)
+	if err != nil {
+		t.Fatalf("reindex resume (already stamped): %v", err)
+	}
+	if res2.Upserted != 0 || res2.Unchanged != 2 {
+		t.Errorf("resume (already stamped) counts: want upserted=0 unchanged=2, got %+v", res2)
+	}
+}
+
+// s2Upsert writes a single raw point directly into collection, merging an
+// explicit content field with extra payload keys (which may include a
+// pre-set embedder_identity) — used to pre-populate a reindex target outside
+// the Reindex path itself, simulating a prior run's leftover state.
+func s2Upsert(ctx context.Context, c *qdrant.Client, collection, id, content string, extra map[string]any) error {
+	payload := map[string]any{"content": content}
+	for k, v := range extra {
+		payload[k] = v
+	}
+	_, err := c.Upsert(ctx, &qdrant.UpsertPoints{
+		CollectionName: collection,
+		Wait:           qdrant.PtrOf(true),
+		Points: []*qdrant.PointStruct{{
+			Id:      qdrant.NewID(id),
+			Vectors: qdrant.NewVectors(0.1, 0.1, 0.1, 0.1),
+			Payload: qdrant.NewValueMap(payload),
+		}},
+	})
+	return err
+}
+
 func TestReindexFailsClosedOnEmbedError(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()

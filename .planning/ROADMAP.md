@@ -73,7 +73,7 @@ Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
 <details open>
 <summary>🚧 v0.10.x — Hardening & Write Lane (Phases 13–21) — IN PROGRESS</summary>
 
-- [ ] **Phase 13: Embedder Reliability Foundation** - Configurable HTTP timeout (re-derived backoff budget) + base-URL `/v1` join fix across every provider shape + embedder-config-identity payload stamp
+- [x] **Phase 13: Embedder Reliability Foundation** - Configurable HTTP timeout (re-derived backoff budget) + base-URL `/v1` join fix across every provider shape + embedder-config-identity payload stamp (completed 2026-07-11)
 - [ ] **Phase 14: Embedder Model Options & Eval** - Direct Gemini embeddings (eval-verified task_type behavior) + #261 prod-parity re-confirm on qwen3 + docs-site/Helm model recipes
 - [ ] **Phase 15: Additive Proto + Stub Write Handlers** - Six new write RPCs (additive-only, buf-generated), CI lint gate against `idempotency_level`, safe `CodeUnimplemented` stubs
 - [ ] **Phase 16: CSRF Interceptor** - Origin/Sec-Fetch-Site primary defense + session-bound double-submit token on every write RPC; read lane untouched
@@ -243,7 +243,18 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 4. A slow or unreachable embedder fails within the configured timeout instead of hanging the calling MCP tool call (`store_memory`/`update_memory`/`search_memory`) indefinitely.
 
 **Status**: Not started
-**Plans**: TBD
+**Plans**: 3/3 plans complete
+**Wave 1**
+
+- [x] 13-01-PLAN.md — Embed client hardening: ENGRAM_EMBED_TIMEOUT + shape-aware base-URL join/override (SC1/SC2/SC4)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 13-02-PLAN.md — Embedder-config-identity helper + payload codec + clean write-site stamping (SC3, 4 sites + rule)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 13-03-PLAN.md — Reindex identity stamping: verbatim-payload landmine + StoreAndEmbedderFromEnvNoEnsure signature ripple (SC3, 5th site)
 
 ### Phase 14: Embedder Model Options & Eval
 
@@ -387,7 +398,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 | 10. Asymmetric Query/Document Embeddings | v0.9.x | 1/1 | Complete (already shipped) | 2026-07-10 (#305) |
 | 11. Async-on-Write Summaries | v0.9.x | 1/1 | Complete | 2026-07-10 (PR #336) |
 | 12. Per-Memory Usage Signals | v0.9.x | 1/1 | Complete | 2026-07-10 (PR #336) |
-| 13. Embedder Reliability Foundation | v0.10.x | 0/3 | Not started | - |
+| 13. Embedder Reliability Foundation | v0.10.x | 3/3 | Complete    | 2026-07-11 |
 | 14. Embedder Model Options & Eval | v0.10.x | 0/3 | Not started | - |
 | 15. Additive Proto + Stub Write Handlers | v0.10.x | 0/1 | Not started | - |
 | 16. CSRF Interceptor | v0.10.x | 0/1 | Not started | - |
