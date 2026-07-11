@@ -1,9 +1,0 @@
-{
-  "content": "OpenRouter Qwen3-Embedding-8B model id: qwen/qwen3-embedding-8b, base URL https://openrouter.ai/api/v1, 32K context. Native embedding dimension is 4096 (Matryoshka/MRL support 32-4096; 4096 is the ceiling/native max, not a truncation). Query instruction format: 'Instruct: {task}\\nQuery:{text}', documents embedded raw (no instruction). Source: openrouter.ai/qwen/qwen3-embedding-8b, huggingface.co/Qwen/Qwen3-Embedding-8B.",
-  "source": "web",
-  "provider": "websearch",
-  "confidence": "HIGH",
-  "fetched_at": "2026-07-11T14:46:26.813Z",
-  "ttl": 86400000,
-  "kind": "docs"
-}
