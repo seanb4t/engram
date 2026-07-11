@@ -5,7 +5,9 @@ syntax = "proto3";
 
 package engram.v1;
 
+import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
+import "buf/validate/validate.proto";
 
 // A single memory record (mirrors internal/store.Memory's readable fields).
 message Memory {
@@ -88,10 +90,147 @@ message SearchDiscoveriesRequest {
 }
 message SearchDiscoveriesResponse { repeated Memory discoveries = 1; }
 
+// --- write RPC messages (additive, this phase — stubs only; Phase 17 wires handlers) ---
+
+// Visibility mirrors the Memory.visibility string enum ("private"/"shared") as a
+// typed enum for SetVisibility (D-07); the zero value is rejected by buf.validate
+// so a caller cannot silently no-op a visibility change.
+enum Visibility {
+  VISIBILITY_UNSPECIFIED = 0;
+  VISIBILITY_PRIVATE = 1;
+  VISIBILITY_SHARED = 2;
+}
+
+message StoreMemoryRequest {
+  string content = 1 [(buf.validate.field).string.min_len = 1];
+  string scope = 2 [(buf.validate.field).string.min_len = 1];
+  string source = 3;
+  string category = 4 [(buf.validate.field).string = {in: ["decision", "preference", "convention", "gotcha"]}];
+  repeated string tags = 5;
+  string repo = 6;
+  string workspace = 7;
+  string worktree = 8;
+  string base_dir = 9;
+  string summary = 10;
+}
+message StoreMemoryResponse {
+  string id = 1;
+  string short_id = 2;
+}
+
+// Citation mirrors internal/server/tools.go's citationArg (a store_discovery source anchor).
+message Citation {
+  string kind = 1 [(buf.validate.field).string = {in: ["file", "commit", "url", "repo"]}];
+  string ref = 2 [(buf.validate.field).string.min_len = 1];
+  string locator = 3;
+  string pin = 4;
+  string excerpt = 5 [(buf.validate.field).string.max_bytes = 16384];
+}
+
+message StoreDiscoveryRequest {
+  string content = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_bytes: 65536
+  }];
+  string kind = 2 [(buf.validate.field).string = {in: ["map", "fact"]}];
+  repeated Citation citations = 3 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 50
+  }];
+  string scope = 4 [(buf.validate.field).string.prefix = "discovery:"];
+  repeated string tags = 5;
+  string summary = 6;
+  string id = 7; // optional; supply to replace an existing discovery in place
+}
+message StoreDiscoveryResponse {
+  string id = 1;
+  string short_id = 2;
+}
+
+// UpdateMemoryRequest.update_mask is the sole presence mechanism (D-01/D-02): no
+// proto3 `optional` keyword is used on content/shared/tags/summary. This phase
+// enforces the mask's STRUCTURE only — presence (field rule below), non-empty
+// paths, and an allowlist of {content, shared, tags, summary} (message-level CEL
+// below) — via the Plan 03 protovalidate interceptor. `content`, `shared`, `tags`,
+// and `summary` are each independently updatable via their own mask path (e.g. a
+// tags-only update that does not touch content and therefore does not re-embed).
+// The SEMANTIC application of the mask (the deps/store partial-update path that
+// actually updates only the named fields, plus DEC-ddiw summary reconciliation) is
+// Phase 17 scope.
+message UpdateMemoryRequest {
+  option (buf.validate.message).cel = {
+    id: "update_memory.mask"
+    message: "update_mask must contain at least one path, each of: content, shared, tags, summary"
+    expression: "has(this.update_mask) && size(this.update_mask.paths) > 0 && this.update_mask.paths.all(p, p in ['content', 'shared', 'tags', 'summary'])"
+  };
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+  string content = 2;
+  bool shared = 3;
+  repeated string tags = 4;
+  string summary = 5;
+  google.protobuf.FieldMask update_mask = 6 [(buf.validate.field).required = true];
+}
+message UpdateMemoryResponse {
+  string id = 1;
+  string short_id = 2;
+}
+
+message DeleteMemoryRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+message DeleteMemoryResponse {}
+
+message SetVisibilityRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+  Visibility visibility = 2 [(buf.validate.field).enum = {not_in: [0]}];
+}
+message SetVisibilityResponse {
+  string id = 1;
+  string short_id = 2;
+}
+
+// ScheduleMemoryRequest is FLATTENED (D-05: no nested StoreMemoryRequest) — it
+// duplicates the StoreMemoryRequest fields inline plus the typed temporal window
+// (D-06). The message-level CEL below mirrors parseWindow's two SHAPE rules (at
+// least one bound set; not_after strictly after not_before when both are set).
+// It deliberately does NOT encode "not_after must be in the future" — that rule
+// is wall-clock/time-of-check dependent and is left to the Phase 17 handler,
+// matching parseWindow's own split between shape and clock validation.
+message ScheduleMemoryRequest {
+  option (buf.validate.message).cel = {
+    id: "schedule_memory.window"
+    message: "schedule_memory requires not_before and/or not_after, and not_after must be strictly after not_before when both are set"
+    expression: "(has(this.not_before) || has(this.not_after)) && (!has(this.not_before) || !has(this.not_after) || this.not_after > this.not_before)"
+  };
+  string content = 1 [(buf.validate.field).string.min_len = 1];
+  string scope = 2 [(buf.validate.field).string.min_len = 1];
+  string source = 3;
+  string category = 4 [(buf.validate.field).string = {in: ["decision", "preference", "convention", "gotcha"]}];
+  repeated string tags = 5;
+  string repo = 6;
+  string workspace = 7;
+  string worktree = 8;
+  string base_dir = 9;
+  string summary = 10;
+  google.protobuf.Timestamp not_before = 11;
+  google.protobuf.Timestamp not_after = 12;
+}
+message ScheduleMemoryResponse {
+  string id = 1;
+  string short_id = 2;
+}
+
 service EngramService {
   rpc ListScopes(ListScopesRequest) returns (ListScopesResponse);
   rpc ListMemories(ListMemoriesRequest) returns (ListMemoriesResponse);
   rpc SearchMemories(SearchMemoriesRequest) returns (SearchMemoriesResponse);
   rpc GetMemory(GetMemoryRequest) returns (GetMemoryResponse);
   rpc SearchDiscoveries(SearchDiscoveriesRequest) returns (SearchDiscoveriesResponse);
+  // --- new write RPCs (additive, this phase — stubs only) ---
+  rpc StoreMemory(StoreMemoryRequest) returns (StoreMemoryResponse);
+  rpc StoreDiscovery(StoreDiscoveryRequest) returns (StoreDiscoveryResponse);
+  rpc UpdateMemory(UpdateMemoryRequest) returns (UpdateMemoryResponse);
+  rpc DeleteMemory(DeleteMemoryRequest) returns (DeleteMemoryResponse);
+  rpc SetVisibility(SetVisibilityRequest) returns (SetVisibilityResponse);
+  rpc ScheduleMemory(ScheduleMemoryRequest) returns (ScheduleMemoryResponse);
 }
