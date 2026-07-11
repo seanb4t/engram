@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: "v0.9.x — Recall Quality (shipped + archived)"
-milestone_name: "v0.9.x — Recall Quality"
-current_phase: null
-current_phase_name: "Between milestones — v0.10.x not yet scoped"
-status: "Milestone v0.9.x complete + archived; ready for /gsd-new-milestone"
-stopped_at: "v0.9.x milestone close (archived, override_closeout)"
-last_updated: "2026-07-10"
-last_activity: 2026-07-10
-last_activity_desc: "v0.9.x — Recall Quality archived via /gsd-complete-milestone"
+milestone: v0.10.x
+milestone_name: Hardening & Write Lane
+status: planning
+last_updated: "2026-07-11T00:51:58.464Z"
+last_activity: 2026-07-11
 progress:
-  total_phases: 12
-  completed_phases: 12
-  total_plans: 12
-  completed_plans: 12
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,16 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-10 after v0.9.x milestone)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Between milestones — v0.9.x shipped + archived; scope v0.10.x next via `/gsd-new-milestone`.
+**Current focus:** v0.10.x — Hardening & Write Lane (opened 2026-07-10): defining requirements. Embedder reliability, Connect write lane + auth, correctness/CI backlog. (#337 pulled into scope here — theme B.)
 
 ## Current Position
 
-Milestone: v0.9.x — Recall Quality — ✅ SHIPPED 2026-07-10 (PR #336) + ARCHIVED 2026-07-10
-Phases: 9–12 complete (4/4 verified; Phase 10 already-shipped)
-Requirements: 6/6 satisfied; milestone audit PASSED (`milestones/v0.9.x-MILESTONE-AUDIT.md`)
-Closeout: override_closeout — 1 acknowledged deferral (docs todo → GitHub #337)
-
-Next: `/gsd-new-milestone` to scope v0.10.x (deferred candidates: #322 Connect write-lane + CSRF, #323 session refresh-token rotation).
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-07-11 — Milestone v0.10.x started
 
 ## Deferred Items
 
