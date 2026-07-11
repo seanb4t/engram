@@ -124,3 +124,8 @@ None - no external service configuration required for this plan's automated task
 ---
 *Phase: 14-embedder-model-options-eval*
 *Completed: 2026-07-11*
+
+## Self-Check: PASSED
+
+- FOUND: .planning/phases/14-embedder-model-options-eval/14-EVAL-EVIDENCE.md
+- FOUND: 0a1372f0

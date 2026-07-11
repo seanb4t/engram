@@ -268,7 +268,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 3. The docs site and Helm `values.yaml` document each supported embedding model (OpenRouter/Gemini/OpenAI/local TEI-Ollama-vLLM), pairing base URL + model + vector dim + query instruction, with every model/dim change explicitly called out as requiring `engram reindex` (cross-linking `guides/reindex`).
 
 **Status**: Not started
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans complete
 
 **Wave 1** *(parallel — no file overlap)*
 
@@ -277,7 +277,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 14-03-PLAN.md — Model-id lock checkpoint + live eval runs (Gemini differ + qwen3@4096 recall@8) + committed `14-EVAL-EVIDENCE.md` (REQ-embed-gemini-direct, REQ-embed-prod-parity-eval; closes #261/#334)
+- [x] 14-03-PLAN.md — Model-id lock checkpoint + live eval runs (Gemini differ + qwen3@4096 recall@8) + committed `14-EVAL-EVIDENCE.md` (REQ-embed-gemini-direct, REQ-embed-prod-parity-eval; closes #261/#334)
 
 ### Phase 15: Additive Proto + Stub Write Handlers
 
@@ -408,7 +408,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 | 11. Async-on-Write Summaries | v0.9.x | 1/1 | Complete | 2026-07-10 (PR #336) |
 | 12. Per-Memory Usage Signals | v0.9.x | 1/1 | Complete | 2026-07-10 (PR #336) |
 | 13. Embedder Reliability Foundation | v0.10.x | 3/3 | Complete    | 2026-07-11 |
-| 14. Embedder Model Options & Eval | v0.10.x | 2/3 | In Progress|  |
+| 14. Embedder Model Options & Eval | v0.10.x | 3/3 | Complete   | 2026-07-11 |
 | 15. Additive Proto + Stub Write Handlers | v0.10.x | 0/1 | Not started | - |
 | 16. CSRF Interceptor | v0.10.x | 0/1 | Not started | - |
 | 17. Wired Write Handlers (Full CRUD + Schedule) | v0.10.x | 0/1 | Not started | - |
