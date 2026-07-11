@@ -20,8 +20,23 @@ embedder query/document asymmetry (#305, already shipped under Phase 4), async-o
 summaries (#320), and per-memory usage signals (#317). 6/6 requirements satisfied; audit
 PASSED. Full detail in `.planning/milestones/v0.9.x-ROADMAP.md`.
 
-**Next milestone — v0.10.x — not yet scoped.** Run `/gsd-new-milestone` to define it. Deferred
-candidates: Connect write-lane + CSRF (#322), session refresh-token rotation (#323).
+**Active milestone — v0.10.x — Hardening & Write Lane** (opened 2026-07-10): harden the
+operational surfaces that bit us in v0.9.x (embedder reliability), add the deferred Connect
+**write lane** with proper auth (CSRF + session rotation), and pay down the promoted-but-unbuilt
+correctness/CI backlog — so engram is production-solid and writable over Connect. See
+`.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`.
+
+## Current Milestone: v0.10.x — Hardening & Write Lane
+
+**Goal:** Make engram production-solid and writable over Connect — fix the embedder-reliability
+gaps surfaced by the v0.9.x eval brownouts, ship the deferred Connect write lane with CSRF +
+session-rotation hardening, and clear the correctness/CI backlog.
+
+**Target features:**
+- **Embedder reliability & options** — configurable HTTP timeout (#333), base-URL `/v1` join fix (#332), Gemini direct (#331), prod-parity #261 re-confirm on qwen3 (#334, closes #261), embedding-model docs + Helm recipes (#337).
+- **Connect write lane + auth hardening** — StoreMemory/StoreDiscovery write RPCs + CSRF (#322), session refresh-token rotation (#323). Security-sensitive centerpiece (threat-modeled).
+- **Correctness & polish tail** — SearchDiscoveries proto fidelity (#307), MintShortID bounded cap (#308), embed/discovery polish (#302/#303/#304), summarize-missing CronJob in Helm (#269), from-beads refactor cluster.
+- **CI / maintenance hygiene** — Renovate vendored-SPA drift (#301), Phase-11 review residuals (#335), `.rumdl.toml` `.planning` exclude.
 
 ## Core Value
 
@@ -61,8 +76,12 @@ pre-close `REQUIREMENTS.md` snapshot).
 
 ### Active
 
-**None — v0.10.x is not yet scoped.** Run `/gsd-new-milestone` to define the next milestone's
-requirements. Candidate seeds are in `.planning/BACKLOG.md` and the Deferred list below.
+**v0.10.x — Hardening & Write Lane** (being scoped; full text in `.planning/REQUIREMENTS.md`):
+
+- Embedder reliability & options (#333/#332/#331/#334/#337; closes #261)
+- Connect write lane + auth hardening (#322 write RPCs + CSRF, #323 session rotation)
+- Correctness & polish tail (#307/#308/#302/#303/#304/#269 + from-beads refactors)
+- CI / maintenance hygiene (#301/#335, `.rumdl.toml` `.planning` exclude)
 
 ### Deferred (v0.10.x candidates — not in v0.9.x)
 
@@ -352,6 +371,23 @@ and `.planning/intel/merge-adrs/decisions.md`; the `refines →` note names the 
 | Async-on-write summaries via bounded worker pool off the write path (D-01/D-08, v0.9.x) | A gateway outage must never fail `store_memory`; drain-after-shutdown under CR-01 kernel | ✓ Good — shipped (#320); residuals #335 |
 | Usage signals never affect ranking (D-08 invariant, v0.9.x) | Curation metadata, not a ranking input; usage-weighted recall is a separate future decision | ✓ Good — negative-space test enforced |
 
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd-transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd-complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
 
-*Last updated: 2026-07-10 after shipping + archiving milestone v0.9.x — Recall Quality (`/gsd-complete-milestone`; PR #336). Prior: 2026-07-08 folded 31 companion ADRs + 24 plans into the baseline; 2026-07-07 retrospective baseline ingest (v0.8.x shipped).*
+*Last updated: 2026-07-10 — opened milestone v0.10.x — Hardening & Write Lane (`/gsd-new-milestone`). Prior: 2026-07-10 shipped + archived v0.9.x — Recall Quality (PR #336/#338); 2026-07-08 folded 31 companion ADRs + 24 plans into the baseline; 2026-07-07 retrospective baseline ingest (v0.8.x shipped).*
