@@ -4,15 +4,15 @@ milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 15
 current_phase_name: Additive Proto + Stub Write Handlers
-status: ready-to-plan
-stopped_at: Phase 15 context gathered
-last_updated: "2026-07-11T19:03:00.628Z"
+status: ready-to-execute
+stopped_at: Phase 15 planned — ready to execute
+last_updated: "2026-07-11T20:30:00.000Z"
 last_activity: 2026-07-11
-last_activity_desc: "Phase 14 shipped (PR #352); follow-ups #353/#354/#355 filed"
+last_activity_desc: "Phase 15 planned (4 plans / 3 waves); research, patterns, validation captured; plan-checker passed"
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 6
+  total_plans: 10
   completed_plans: 6
   percent: 67
 ---
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 ## Current Position
 
 Phase: 15 — Additive Proto + Stub Write Handlers
-Plan: Not started
-Status: Ready to plan Phase 15 (Phase 14 shipped via PR #352 — secured + code-reviewed at ship time; awaiting merge)
-Last activity: 2026-07-11 — Phase 14 shipped (PR #352); follow-ups #353/#354/#355 filed
+Plan: 4 plans / 3 waves (15-01 proto+gen, 15-02 idempotency ban gate, 15-03 protovalidate interceptor, 15-04 descriptor + negative-matrix tests)
+Status: Ready to execute Phase 15 (planned + checker-verified 2026-07-11; PR #352 merged as f2a16e92)
+Last activity: 2026-07-11 — Phase 15 planned (research → patterns → 4 plans → checker passed after 1 revision)
 
 ## Deferred Items
 
@@ -86,9 +86,9 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-11T19:03:00.621Z
-Stopped at: Phase 15 context gathered
-Resume file: .planning/phases/15-additive-proto-stub-write-handlers/15-CONTEXT.md
+Last session: 2026-07-11T20:30:00.000Z
+Stopped at: Phase 15 planned — next /gsd-execute-phase 15
+Resume file: .planning/phases/15-additive-proto-stub-write-handlers/15-01-PLAN.md
 
 ## Performance Metrics
 
