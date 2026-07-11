@@ -10,8 +10,10 @@
 package engramv1
 
 import (
+	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -24,6 +26,58 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
+
+// Visibility mirrors the Memory.visibility string enum ("private"/"shared") as a
+// typed enum for SetVisibility (D-07); the zero value is rejected by buf.validate
+// so a caller cannot silently no-op a visibility change.
+type Visibility int32
+
+const (
+	Visibility_VISIBILITY_UNSPECIFIED Visibility = 0
+	Visibility_VISIBILITY_PRIVATE     Visibility = 1
+	Visibility_VISIBILITY_SHARED      Visibility = 2
+)
+
+// Enum value maps for Visibility.
+var (
+	Visibility_name = map[int32]string{
+		0: "VISIBILITY_UNSPECIFIED",
+		1: "VISIBILITY_PRIVATE",
+		2: "VISIBILITY_SHARED",
+	}
+	Visibility_value = map[string]int32{
+		"VISIBILITY_UNSPECIFIED": 0,
+		"VISIBILITY_PRIVATE":     1,
+		"VISIBILITY_SHARED":      2,
+	}
+)
+
+func (x Visibility) Enum() *Visibility {
+	p := new(Visibility)
+	*p = x
+	return p
+}
+
+func (x Visibility) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Visibility) Descriptor() protoreflect.EnumDescriptor {
+	return file_engram_v1_engram_proto_enumTypes[0].Descriptor()
+}
+
+func (Visibility) Type() protoreflect.EnumType {
+	return &file_engram_v1_engram_proto_enumTypes[0]
+}
+
+func (x Visibility) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Visibility.Descriptor instead.
+func (Visibility) EnumDescriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{0}
+}
 
 // A single memory record (mirrors internal/store.Memory's readable fields).
 type Memory struct {
@@ -888,11 +942,921 @@ func (x *SearchDiscoveriesResponse) GetDiscoveries() []*Memory {
 	return nil
 }
 
+type StoreMemoryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Content       string                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
+	Scope         string                 `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
+	Source        string                 `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
+	Category      string                 `protobuf:"bytes,4,opt,name=category,proto3" json:"category,omitempty"`
+	Tags          []string               `protobuf:"bytes,5,rep,name=tags,proto3" json:"tags,omitempty"`
+	Repo          string                 `protobuf:"bytes,6,opt,name=repo,proto3" json:"repo,omitempty"`
+	Workspace     string                 `protobuf:"bytes,7,opt,name=workspace,proto3" json:"workspace,omitempty"`
+	Worktree      string                 `protobuf:"bytes,8,opt,name=worktree,proto3" json:"worktree,omitempty"`
+	BaseDir       string                 `protobuf:"bytes,9,opt,name=base_dir,json=baseDir,proto3" json:"base_dir,omitempty"`
+	Summary       string                 `protobuf:"bytes,10,opt,name=summary,proto3" json:"summary,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StoreMemoryRequest) Reset() {
+	*x = StoreMemoryRequest{}
+	mi := &file_engram_v1_engram_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StoreMemoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StoreMemoryRequest) ProtoMessage() {}
+
+func (x *StoreMemoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StoreMemoryRequest.ProtoReflect.Descriptor instead.
+func (*StoreMemoryRequest) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *StoreMemoryRequest) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *StoreMemoryRequest) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
+}
+
+func (x *StoreMemoryRequest) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *StoreMemoryRequest) GetCategory() string {
+	if x != nil {
+		return x.Category
+	}
+	return ""
+}
+
+func (x *StoreMemoryRequest) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
+func (x *StoreMemoryRequest) GetRepo() string {
+	if x != nil {
+		return x.Repo
+	}
+	return ""
+}
+
+func (x *StoreMemoryRequest) GetWorkspace() string {
+	if x != nil {
+		return x.Workspace
+	}
+	return ""
+}
+
+func (x *StoreMemoryRequest) GetWorktree() string {
+	if x != nil {
+		return x.Worktree
+	}
+	return ""
+}
+
+func (x *StoreMemoryRequest) GetBaseDir() string {
+	if x != nil {
+		return x.BaseDir
+	}
+	return ""
+}
+
+func (x *StoreMemoryRequest) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+type StoreMemoryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	ShortId       string                 `protobuf:"bytes,2,opt,name=short_id,json=shortId,proto3" json:"short_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StoreMemoryResponse) Reset() {
+	*x = StoreMemoryResponse{}
+	mi := &file_engram_v1_engram_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StoreMemoryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StoreMemoryResponse) ProtoMessage() {}
+
+func (x *StoreMemoryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StoreMemoryResponse.ProtoReflect.Descriptor instead.
+func (*StoreMemoryResponse) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *StoreMemoryResponse) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *StoreMemoryResponse) GetShortId() string {
+	if x != nil {
+		return x.ShortId
+	}
+	return ""
+}
+
+// Citation mirrors internal/server/tools.go's citationArg (a store_discovery source anchor).
+type Citation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Kind          string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
+	Ref           string                 `protobuf:"bytes,2,opt,name=ref,proto3" json:"ref,omitempty"`
+	Locator       string                 `protobuf:"bytes,3,opt,name=locator,proto3" json:"locator,omitempty"`
+	Pin           string                 `protobuf:"bytes,4,opt,name=pin,proto3" json:"pin,omitempty"`
+	Excerpt       string                 `protobuf:"bytes,5,opt,name=excerpt,proto3" json:"excerpt,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Citation) Reset() {
+	*x = Citation{}
+	mi := &file_engram_v1_engram_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Citation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Citation) ProtoMessage() {}
+
+func (x *Citation) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Citation.ProtoReflect.Descriptor instead.
+func (*Citation) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *Citation) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *Citation) GetRef() string {
+	if x != nil {
+		return x.Ref
+	}
+	return ""
+}
+
+func (x *Citation) GetLocator() string {
+	if x != nil {
+		return x.Locator
+	}
+	return ""
+}
+
+func (x *Citation) GetPin() string {
+	if x != nil {
+		return x.Pin
+	}
+	return ""
+}
+
+func (x *Citation) GetExcerpt() string {
+	if x != nil {
+		return x.Excerpt
+	}
+	return ""
+}
+
+type StoreDiscoveryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Content       string                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
+	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	Citations     []*Citation            `protobuf:"bytes,3,rep,name=citations,proto3" json:"citations,omitempty"`
+	Scope         string                 `protobuf:"bytes,4,opt,name=scope,proto3" json:"scope,omitempty"`
+	Tags          []string               `protobuf:"bytes,5,rep,name=tags,proto3" json:"tags,omitempty"`
+	Summary       string                 `protobuf:"bytes,6,opt,name=summary,proto3" json:"summary,omitempty"`
+	Id            string                 `protobuf:"bytes,7,opt,name=id,proto3" json:"id,omitempty"` // optional; supply to replace an existing discovery in place
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StoreDiscoveryRequest) Reset() {
+	*x = StoreDiscoveryRequest{}
+	mi := &file_engram_v1_engram_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StoreDiscoveryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StoreDiscoveryRequest) ProtoMessage() {}
+
+func (x *StoreDiscoveryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StoreDiscoveryRequest.ProtoReflect.Descriptor instead.
+func (*StoreDiscoveryRequest) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *StoreDiscoveryRequest) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *StoreDiscoveryRequest) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *StoreDiscoveryRequest) GetCitations() []*Citation {
+	if x != nil {
+		return x.Citations
+	}
+	return nil
+}
+
+func (x *StoreDiscoveryRequest) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
+}
+
+func (x *StoreDiscoveryRequest) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
+func (x *StoreDiscoveryRequest) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *StoreDiscoveryRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type StoreDiscoveryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	ShortId       string                 `protobuf:"bytes,2,opt,name=short_id,json=shortId,proto3" json:"short_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StoreDiscoveryResponse) Reset() {
+	*x = StoreDiscoveryResponse{}
+	mi := &file_engram_v1_engram_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StoreDiscoveryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StoreDiscoveryResponse) ProtoMessage() {}
+
+func (x *StoreDiscoveryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StoreDiscoveryResponse.ProtoReflect.Descriptor instead.
+func (*StoreDiscoveryResponse) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *StoreDiscoveryResponse) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *StoreDiscoveryResponse) GetShortId() string {
+	if x != nil {
+		return x.ShortId
+	}
+	return ""
+}
+
+// UpdateMemoryRequest.update_mask is the sole presence mechanism (D-01/D-02): no
+// proto3 `optional` keyword is used on content/shared/tags/summary. This phase
+// enforces the mask's STRUCTURE only — presence (field rule below), non-empty
+// paths, and an allowlist of {content, shared, tags, summary} (message-level CEL
+// below) — via the Plan 03 protovalidate interceptor. `content`, `shared`, `tags`,
+// and `summary` are each independently updatable via their own mask path (e.g. a
+// tags-only update that does not touch content and therefore does not re-embed).
+// The SEMANTIC application of the mask (the deps/store partial-update path that
+// actually updates only the named fields, plus DEC-ddiw summary reconciliation) is
+// Phase 17 scope.
+type UpdateMemoryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Content       string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+	Shared        bool                   `protobuf:"varint,3,opt,name=shared,proto3" json:"shared,omitempty"`
+	Tags          []string               `protobuf:"bytes,4,rep,name=tags,proto3" json:"tags,omitempty"`
+	Summary       string                 `protobuf:"bytes,5,opt,name=summary,proto3" json:"summary,omitempty"`
+	UpdateMask    *fieldmaskpb.FieldMask `protobuf:"bytes,6,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateMemoryRequest) Reset() {
+	*x = UpdateMemoryRequest{}
+	mi := &file_engram_v1_engram_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateMemoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateMemoryRequest) ProtoMessage() {}
+
+func (x *UpdateMemoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateMemoryRequest.ProtoReflect.Descriptor instead.
+func (*UpdateMemoryRequest) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *UpdateMemoryRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *UpdateMemoryRequest) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *UpdateMemoryRequest) GetShared() bool {
+	if x != nil {
+		return x.Shared
+	}
+	return false
+}
+
+func (x *UpdateMemoryRequest) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
+func (x *UpdateMemoryRequest) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *UpdateMemoryRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
+	if x != nil {
+		return x.UpdateMask
+	}
+	return nil
+}
+
+type UpdateMemoryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	ShortId       string                 `protobuf:"bytes,2,opt,name=short_id,json=shortId,proto3" json:"short_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateMemoryResponse) Reset() {
+	*x = UpdateMemoryResponse{}
+	mi := &file_engram_v1_engram_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateMemoryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateMemoryResponse) ProtoMessage() {}
+
+func (x *UpdateMemoryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateMemoryResponse.ProtoReflect.Descriptor instead.
+func (*UpdateMemoryResponse) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *UpdateMemoryResponse) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *UpdateMemoryResponse) GetShortId() string {
+	if x != nil {
+		return x.ShortId
+	}
+	return ""
+}
+
+type DeleteMemoryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteMemoryRequest) Reset() {
+	*x = DeleteMemoryRequest{}
+	mi := &file_engram_v1_engram_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteMemoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteMemoryRequest) ProtoMessage() {}
+
+func (x *DeleteMemoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteMemoryRequest.ProtoReflect.Descriptor instead.
+func (*DeleteMemoryRequest) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *DeleteMemoryRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type DeleteMemoryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteMemoryResponse) Reset() {
+	*x = DeleteMemoryResponse{}
+	mi := &file_engram_v1_engram_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteMemoryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteMemoryResponse) ProtoMessage() {}
+
+func (x *DeleteMemoryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteMemoryResponse.ProtoReflect.Descriptor instead.
+func (*DeleteMemoryResponse) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{20}
+}
+
+type SetVisibilityRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Visibility    Visibility             `protobuf:"varint,2,opt,name=visibility,proto3,enum=engram.v1.Visibility" json:"visibility,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetVisibilityRequest) Reset() {
+	*x = SetVisibilityRequest{}
+	mi := &file_engram_v1_engram_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetVisibilityRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetVisibilityRequest) ProtoMessage() {}
+
+func (x *SetVisibilityRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetVisibilityRequest.ProtoReflect.Descriptor instead.
+func (*SetVisibilityRequest) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *SetVisibilityRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *SetVisibilityRequest) GetVisibility() Visibility {
+	if x != nil {
+		return x.Visibility
+	}
+	return Visibility_VISIBILITY_UNSPECIFIED
+}
+
+type SetVisibilityResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	ShortId       string                 `protobuf:"bytes,2,opt,name=short_id,json=shortId,proto3" json:"short_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetVisibilityResponse) Reset() {
+	*x = SetVisibilityResponse{}
+	mi := &file_engram_v1_engram_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetVisibilityResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetVisibilityResponse) ProtoMessage() {}
+
+func (x *SetVisibilityResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetVisibilityResponse.ProtoReflect.Descriptor instead.
+func (*SetVisibilityResponse) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *SetVisibilityResponse) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *SetVisibilityResponse) GetShortId() string {
+	if x != nil {
+		return x.ShortId
+	}
+	return ""
+}
+
+// ScheduleMemoryRequest is FLATTENED (D-05: no nested StoreMemoryRequest) — it
+// duplicates the StoreMemoryRequest fields inline plus the typed temporal window
+// (D-06). The message-level CEL below mirrors parseWindow's two SHAPE rules (at
+// least one bound set; not_after strictly after not_before when both are set).
+// It deliberately does NOT encode "not_after must be in the future" — that rule
+// is wall-clock/time-of-check dependent and is left to the Phase 17 handler,
+// matching parseWindow's own split between shape and clock validation.
+type ScheduleMemoryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Content       string                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
+	Scope         string                 `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
+	Source        string                 `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
+	Category      string                 `protobuf:"bytes,4,opt,name=category,proto3" json:"category,omitempty"`
+	Tags          []string               `protobuf:"bytes,5,rep,name=tags,proto3" json:"tags,omitempty"`
+	Repo          string                 `protobuf:"bytes,6,opt,name=repo,proto3" json:"repo,omitempty"`
+	Workspace     string                 `protobuf:"bytes,7,opt,name=workspace,proto3" json:"workspace,omitempty"`
+	Worktree      string                 `protobuf:"bytes,8,opt,name=worktree,proto3" json:"worktree,omitempty"`
+	BaseDir       string                 `protobuf:"bytes,9,opt,name=base_dir,json=baseDir,proto3" json:"base_dir,omitempty"`
+	Summary       string                 `protobuf:"bytes,10,opt,name=summary,proto3" json:"summary,omitempty"`
+	NotBefore     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=not_before,json=notBefore,proto3" json:"not_before,omitempty"`
+	NotAfter      *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=not_after,json=notAfter,proto3" json:"not_after,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ScheduleMemoryRequest) Reset() {
+	*x = ScheduleMemoryRequest{}
+	mi := &file_engram_v1_engram_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScheduleMemoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScheduleMemoryRequest) ProtoMessage() {}
+
+func (x *ScheduleMemoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScheduleMemoryRequest.ProtoReflect.Descriptor instead.
+func (*ScheduleMemoryRequest) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *ScheduleMemoryRequest) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *ScheduleMemoryRequest) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
+}
+
+func (x *ScheduleMemoryRequest) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *ScheduleMemoryRequest) GetCategory() string {
+	if x != nil {
+		return x.Category
+	}
+	return ""
+}
+
+func (x *ScheduleMemoryRequest) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
+func (x *ScheduleMemoryRequest) GetRepo() string {
+	if x != nil {
+		return x.Repo
+	}
+	return ""
+}
+
+func (x *ScheduleMemoryRequest) GetWorkspace() string {
+	if x != nil {
+		return x.Workspace
+	}
+	return ""
+}
+
+func (x *ScheduleMemoryRequest) GetWorktree() string {
+	if x != nil {
+		return x.Worktree
+	}
+	return ""
+}
+
+func (x *ScheduleMemoryRequest) GetBaseDir() string {
+	if x != nil {
+		return x.BaseDir
+	}
+	return ""
+}
+
+func (x *ScheduleMemoryRequest) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *ScheduleMemoryRequest) GetNotBefore() *timestamppb.Timestamp {
+	if x != nil {
+		return x.NotBefore
+	}
+	return nil
+}
+
+func (x *ScheduleMemoryRequest) GetNotAfter() *timestamppb.Timestamp {
+	if x != nil {
+		return x.NotAfter
+	}
+	return nil
+}
+
+type ScheduleMemoryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	ShortId       string                 `protobuf:"bytes,2,opt,name=short_id,json=shortId,proto3" json:"short_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ScheduleMemoryResponse) Reset() {
+	*x = ScheduleMemoryResponse{}
+	mi := &file_engram_v1_engram_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScheduleMemoryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScheduleMemoryResponse) ProtoMessage() {}
+
+func (x *ScheduleMemoryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScheduleMemoryResponse.ProtoReflect.Descriptor instead.
+func (*ScheduleMemoryResponse) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *ScheduleMemoryResponse) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ScheduleMemoryResponse) GetShortId() string {
+	if x != nil {
+		return x.ShortId
+	}
+	return ""
+}
+
 var File_engram_v1_engram_proto protoreflect.FileDescriptor
 
 const file_engram_v1_engram_proto_rawDesc = "" +
 	"\n" +
-	"\x16engram/v1/engram.proto\x12\tengram.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xdb\x04\n" +
+	"\x16engram/v1/engram.proto\x12\tengram.v1\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bbuf/validate/validate.proto\"\xdb\x04\n" +
 	"\x06Memory\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x14\n" +
@@ -969,14 +1933,105 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\x05scope\x18\x02 \x01(\tR\x05scope\x12\f\n" +
 	"\x01k\x18\x03 \x01(\x04R\x01k\"P\n" +
 	"\x19SearchDiscoveriesResponse\x123\n" +
-	"\vdiscoveries\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\vdiscoveries2\xaa\x03\n" +
+	"\vdiscoveries\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\vdiscoveries\"\xd2\x02\n" +
+	"\x12StoreMemoryRequest\x12!\n" +
+	"\acontent\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\acontent\x12\x1d\n" +
+	"\x05scope\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05scope\x12\x16\n" +
+	"\x06source\x18\x03 \x01(\tR\x06source\x12K\n" +
+	"\bcategory\x18\x04 \x01(\tB/\xbaH,r*R\bdecisionR\n" +
+	"preferenceR\n" +
+	"conventionR\x06gotchaR\bcategory\x12\x12\n" +
+	"\x04tags\x18\x05 \x03(\tR\x04tags\x12\x12\n" +
+	"\x04repo\x18\x06 \x01(\tR\x04repo\x12\x1c\n" +
+	"\tworkspace\x18\a \x01(\tR\tworkspace\x12\x1a\n" +
+	"\bworktree\x18\b \x01(\tR\bworktree\x12\x19\n" +
+	"\bbase_dir\x18\t \x01(\tR\abaseDir\x12\x18\n" +
+	"\asummary\x18\n" +
+	" \x01(\tR\asummary\"@\n" +
+	"\x13StoreMemoryResponse\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
+	"\bshort_id\x18\x02 \x01(\tR\ashortId\"\xaa\x01\n" +
+	"\bCitation\x122\n" +
+	"\x04kind\x18\x01 \x01(\tB\x1e\xbaH\x1br\x19R\x04fileR\x06commitR\x03urlR\x04repoR\x04kind\x12\x19\n" +
+	"\x03ref\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x03ref\x12\x18\n" +
+	"\alocator\x18\x03 \x01(\tR\alocator\x12\x10\n" +
+	"\x03pin\x18\x04 \x01(\tR\x03pin\x12#\n" +
+	"\aexcerpt\x18\x05 \x01(\tB\t\xbaH\x06r\x04(\x80\x80\x01R\aexcerpt\"\x8a\x02\n" +
+	"\x15StoreDiscoveryRequest\x12%\n" +
+	"\acontent\x18\x01 \x01(\tB\v\xbaH\br\x06\x10\x01(\x80\x80\x04R\acontent\x12$\n" +
+	"\x04kind\x18\x02 \x01(\tB\x10\xbaH\rr\vR\x03mapR\x04factR\x04kind\x12=\n" +
+	"\tcitations\x18\x03 \x03(\v2\x13.engram.v1.CitationB\n" +
+	"\xbaH\a\x92\x01\x04\b\x01\x102R\tcitations\x12'\n" +
+	"\x05scope\x18\x04 \x01(\tB\x11\xbaH\x0er\f:\n" +
+	"discovery:R\x05scope\x12\x12\n" +
+	"\x04tags\x18\x05 \x03(\tR\x04tags\x12\x18\n" +
+	"\asummary\x18\x06 \x01(\tR\asummary\x12\x0e\n" +
+	"\x02id\x18\a \x01(\tR\x02id\"C\n" +
+	"\x16StoreDiscoveryResponse\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
+	"\bshort_id\x18\x02 \x01(\tR\ashortId\"\xd2\x03\n" +
+	"\x13UpdateMemoryRequest\x12\x17\n" +
+	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12\x18\n" +
+	"\acontent\x18\x02 \x01(\tR\acontent\x12\x16\n" +
+	"\x06shared\x18\x03 \x01(\bR\x06shared\x12\x12\n" +
+	"\x04tags\x18\x04 \x03(\tR\x04tags\x12\x18\n" +
+	"\asummary\x18\x05 \x01(\tR\asummary\x12C\n" +
+	"\vupdate_mask\x18\x06 \x01(\v2\x1a.google.protobuf.FieldMaskB\x06\xbaH\x03\xc8\x01\x01R\n" +
+	"updateMask:\xfc\x01\xbaH\xf8\x01\x1a\xf5\x01\n" +
+	"\x12update_memory.mask\x12Supdate_mask must contain at least one path, each of: content, shared, tags, summary\x1a\x89\x01has(this.update_mask) && size(this.update_mask.paths) > 0 && this.update_mask.paths.all(p, p in ['content', 'shared', 'tags', 'summary'])\"A\n" +
+	"\x14UpdateMemoryResponse\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
+	"\bshort_id\x18\x02 \x01(\tR\ashortId\".\n" +
+	"\x13DeleteMemoryRequest\x12\x17\n" +
+	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\"\x16\n" +
+	"\x14DeleteMemoryResponse\"p\n" +
+	"\x14SetVisibilityRequest\x12\x17\n" +
+	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12?\n" +
+	"\n" +
+	"visibility\x18\x02 \x01(\x0e2\x15.engram.v1.VisibilityB\b\xbaH\x05\x82\x01\x02 \x00R\n" +
+	"visibility\"B\n" +
+	"\x15SetVisibilityResponse\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
+	"\bshort_id\x18\x02 \x01(\tR\ashortId\"\xeb\x05\n" +
+	"\x15ScheduleMemoryRequest\x12!\n" +
+	"\acontent\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\acontent\x12\x1d\n" +
+	"\x05scope\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05scope\x12\x16\n" +
+	"\x06source\x18\x03 \x01(\tR\x06source\x12K\n" +
+	"\bcategory\x18\x04 \x01(\tB/\xbaH,r*R\bdecisionR\n" +
+	"preferenceR\n" +
+	"conventionR\x06gotchaR\bcategory\x12\x12\n" +
+	"\x04tags\x18\x05 \x03(\tR\x04tags\x12\x12\n" +
+	"\x04repo\x18\x06 \x01(\tR\x04repo\x12\x1c\n" +
+	"\tworkspace\x18\a \x01(\tR\tworkspace\x12\x1a\n" +
+	"\bworktree\x18\b \x01(\tR\bworktree\x12\x19\n" +
+	"\bbase_dir\x18\t \x01(\tR\abaseDir\x12\x18\n" +
+	"\asummary\x18\n" +
+	" \x01(\tR\asummary\x129\n" +
+	"\n" +
+	"not_before\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tnotBefore\x127\n" +
+	"\tnot_after\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\bnotAfter:\x9f\x02\xbaH\x9b\x02\x1a\x98\x02\n" +
+	"\x16schedule_memory.window\x12wschedule_memory requires not_before and/or not_after, and not_after must be strictly after not_before when both are set\x1a\x84\x01(has(this.not_before) || has(this.not_after)) && (!has(this.not_before) || !has(this.not_after) || this.not_after > this.not_before)\"C\n" +
+	"\x16ScheduleMemoryResponse\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
+	"\bshort_id\x18\x02 \x01(\tR\ashortId*W\n" +
+	"\n" +
+	"Visibility\x12\x1a\n" +
+	"\x16VISIBILITY_UNSPECIFIED\x10\x00\x12\x16\n" +
+	"\x12VISIBILITY_PRIVATE\x10\x01\x12\x15\n" +
+	"\x11VISIBILITY_SHARED\x10\x022\x9c\a\n" +
 	"\rEngramService\x12I\n" +
 	"\n" +
 	"ListScopes\x12\x1c.engram.v1.ListScopesRequest\x1a\x1d.engram.v1.ListScopesResponse\x12O\n" +
 	"\fListMemories\x12\x1e.engram.v1.ListMemoriesRequest\x1a\x1f.engram.v1.ListMemoriesResponse\x12U\n" +
 	"\x0eSearchMemories\x12 .engram.v1.SearchMemoriesRequest\x1a!.engram.v1.SearchMemoriesResponse\x12F\n" +
 	"\tGetMemory\x12\x1b.engram.v1.GetMemoryRequest\x1a\x1c.engram.v1.GetMemoryResponse\x12^\n" +
-	"\x11SearchDiscoveries\x12#.engram.v1.SearchDiscoveriesRequest\x1a$.engram.v1.SearchDiscoveriesResponseB\x96\x01\n" +
+	"\x11SearchDiscoveries\x12#.engram.v1.SearchDiscoveriesRequest\x1a$.engram.v1.SearchDiscoveriesResponse\x12L\n" +
+	"\vStoreMemory\x12\x1d.engram.v1.StoreMemoryRequest\x1a\x1e.engram.v1.StoreMemoryResponse\x12U\n" +
+	"\x0eStoreDiscovery\x12 .engram.v1.StoreDiscoveryRequest\x1a!.engram.v1.StoreDiscoveryResponse\x12O\n" +
+	"\fUpdateMemory\x12\x1e.engram.v1.UpdateMemoryRequest\x1a\x1f.engram.v1.UpdateMemoryResponse\x12O\n" +
+	"\fDeleteMemory\x12\x1e.engram.v1.DeleteMemoryRequest\x1a\x1f.engram.v1.DeleteMemoryResponse\x12R\n" +
+	"\rSetVisibility\x12\x1f.engram.v1.SetVisibilityRequest\x1a .engram.v1.SetVisibilityResponse\x12U\n" +
+	"\x0eScheduleMemory\x12 .engram.v1.ScheduleMemoryRequest\x1a!.engram.v1.ScheduleMemoryResponseB\x96\x01\n" +
 	"\rcom.engram.v1B\vEngramProtoP\x01Z3github.com/seanb4t/engram/gen/go/engram/v1;engramv1\xa2\x02\x03EXX\xaa\x02\tEngram.V1\xca\x02\tEngram\\V1\xe2\x02\x15Engram\\V1\\GPBMetadata\xea\x02\n" +
 	"Engram::V1b\x06proto3"
 
@@ -992,45 +2047,78 @@ func file_engram_v1_engram_proto_rawDescGZIP() []byte {
 	return file_engram_v1_engram_proto_rawDescData
 }
 
-var file_engram_v1_engram_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_engram_v1_engram_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_engram_v1_engram_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_engram_v1_engram_proto_goTypes = []any{
-	(*Memory)(nil),                    // 0: engram.v1.Memory
-	(*ScopeCount)(nil),                // 1: engram.v1.ScopeCount
-	(*ListScopesRequest)(nil),         // 2: engram.v1.ListScopesRequest
-	(*ListScopesResponse)(nil),        // 3: engram.v1.ListScopesResponse
-	(*ListMemoriesRequest)(nil),       // 4: engram.v1.ListMemoriesRequest
-	(*ListMemoriesResponse)(nil),      // 5: engram.v1.ListMemoriesResponse
-	(*SearchMemoriesRequest)(nil),     // 6: engram.v1.SearchMemoriesRequest
-	(*SearchMemoriesResponse)(nil),    // 7: engram.v1.SearchMemoriesResponse
-	(*GetMemoryRequest)(nil),          // 8: engram.v1.GetMemoryRequest
-	(*GetMemoryResponse)(nil),         // 9: engram.v1.GetMemoryResponse
-	(*SearchDiscoveriesRequest)(nil),  // 10: engram.v1.SearchDiscoveriesRequest
-	(*SearchDiscoveriesResponse)(nil), // 11: engram.v1.SearchDiscoveriesResponse
-	(*timestamppb.Timestamp)(nil),     // 12: google.protobuf.Timestamp
+	(Visibility)(0),                   // 0: engram.v1.Visibility
+	(*Memory)(nil),                    // 1: engram.v1.Memory
+	(*ScopeCount)(nil),                // 2: engram.v1.ScopeCount
+	(*ListScopesRequest)(nil),         // 3: engram.v1.ListScopesRequest
+	(*ListScopesResponse)(nil),        // 4: engram.v1.ListScopesResponse
+	(*ListMemoriesRequest)(nil),       // 5: engram.v1.ListMemoriesRequest
+	(*ListMemoriesResponse)(nil),      // 6: engram.v1.ListMemoriesResponse
+	(*SearchMemoriesRequest)(nil),     // 7: engram.v1.SearchMemoriesRequest
+	(*SearchMemoriesResponse)(nil),    // 8: engram.v1.SearchMemoriesResponse
+	(*GetMemoryRequest)(nil),          // 9: engram.v1.GetMemoryRequest
+	(*GetMemoryResponse)(nil),         // 10: engram.v1.GetMemoryResponse
+	(*SearchDiscoveriesRequest)(nil),  // 11: engram.v1.SearchDiscoveriesRequest
+	(*SearchDiscoveriesResponse)(nil), // 12: engram.v1.SearchDiscoveriesResponse
+	(*StoreMemoryRequest)(nil),        // 13: engram.v1.StoreMemoryRequest
+	(*StoreMemoryResponse)(nil),       // 14: engram.v1.StoreMemoryResponse
+	(*Citation)(nil),                  // 15: engram.v1.Citation
+	(*StoreDiscoveryRequest)(nil),     // 16: engram.v1.StoreDiscoveryRequest
+	(*StoreDiscoveryResponse)(nil),    // 17: engram.v1.StoreDiscoveryResponse
+	(*UpdateMemoryRequest)(nil),       // 18: engram.v1.UpdateMemoryRequest
+	(*UpdateMemoryResponse)(nil),      // 19: engram.v1.UpdateMemoryResponse
+	(*DeleteMemoryRequest)(nil),       // 20: engram.v1.DeleteMemoryRequest
+	(*DeleteMemoryResponse)(nil),      // 21: engram.v1.DeleteMemoryResponse
+	(*SetVisibilityRequest)(nil),      // 22: engram.v1.SetVisibilityRequest
+	(*SetVisibilityResponse)(nil),     // 23: engram.v1.SetVisibilityResponse
+	(*ScheduleMemoryRequest)(nil),     // 24: engram.v1.ScheduleMemoryRequest
+	(*ScheduleMemoryResponse)(nil),    // 25: engram.v1.ScheduleMemoryResponse
+	(*timestamppb.Timestamp)(nil),     // 26: google.protobuf.Timestamp
+	(*fieldmaskpb.FieldMask)(nil),     // 27: google.protobuf.FieldMask
 }
 var file_engram_v1_engram_proto_depIdxs = []int32{
-	12, // 0: engram.v1.Memory.created_at:type_name -> google.protobuf.Timestamp
-	12, // 1: engram.v1.Memory.last_accessed_at:type_name -> google.protobuf.Timestamp
-	1,  // 2: engram.v1.ListScopesResponse.scopes:type_name -> engram.v1.ScopeCount
-	0,  // 3: engram.v1.ListMemoriesResponse.memories:type_name -> engram.v1.Memory
-	0,  // 4: engram.v1.SearchMemoriesResponse.memories:type_name -> engram.v1.Memory
-	0,  // 5: engram.v1.GetMemoryResponse.memory:type_name -> engram.v1.Memory
-	0,  // 6: engram.v1.SearchDiscoveriesResponse.discoveries:type_name -> engram.v1.Memory
-	2,  // 7: engram.v1.EngramService.ListScopes:input_type -> engram.v1.ListScopesRequest
-	4,  // 8: engram.v1.EngramService.ListMemories:input_type -> engram.v1.ListMemoriesRequest
-	6,  // 9: engram.v1.EngramService.SearchMemories:input_type -> engram.v1.SearchMemoriesRequest
-	8,  // 10: engram.v1.EngramService.GetMemory:input_type -> engram.v1.GetMemoryRequest
-	10, // 11: engram.v1.EngramService.SearchDiscoveries:input_type -> engram.v1.SearchDiscoveriesRequest
-	3,  // 12: engram.v1.EngramService.ListScopes:output_type -> engram.v1.ListScopesResponse
-	5,  // 13: engram.v1.EngramService.ListMemories:output_type -> engram.v1.ListMemoriesResponse
-	7,  // 14: engram.v1.EngramService.SearchMemories:output_type -> engram.v1.SearchMemoriesResponse
-	9,  // 15: engram.v1.EngramService.GetMemory:output_type -> engram.v1.GetMemoryResponse
-	11, // 16: engram.v1.EngramService.SearchDiscoveries:output_type -> engram.v1.SearchDiscoveriesResponse
-	12, // [12:17] is the sub-list for method output_type
-	7,  // [7:12] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	26, // 0: engram.v1.Memory.created_at:type_name -> google.protobuf.Timestamp
+	26, // 1: engram.v1.Memory.last_accessed_at:type_name -> google.protobuf.Timestamp
+	2,  // 2: engram.v1.ListScopesResponse.scopes:type_name -> engram.v1.ScopeCount
+	1,  // 3: engram.v1.ListMemoriesResponse.memories:type_name -> engram.v1.Memory
+	1,  // 4: engram.v1.SearchMemoriesResponse.memories:type_name -> engram.v1.Memory
+	1,  // 5: engram.v1.GetMemoryResponse.memory:type_name -> engram.v1.Memory
+	1,  // 6: engram.v1.SearchDiscoveriesResponse.discoveries:type_name -> engram.v1.Memory
+	15, // 7: engram.v1.StoreDiscoveryRequest.citations:type_name -> engram.v1.Citation
+	27, // 8: engram.v1.UpdateMemoryRequest.update_mask:type_name -> google.protobuf.FieldMask
+	0,  // 9: engram.v1.SetVisibilityRequest.visibility:type_name -> engram.v1.Visibility
+	26, // 10: engram.v1.ScheduleMemoryRequest.not_before:type_name -> google.protobuf.Timestamp
+	26, // 11: engram.v1.ScheduleMemoryRequest.not_after:type_name -> google.protobuf.Timestamp
+	3,  // 12: engram.v1.EngramService.ListScopes:input_type -> engram.v1.ListScopesRequest
+	5,  // 13: engram.v1.EngramService.ListMemories:input_type -> engram.v1.ListMemoriesRequest
+	7,  // 14: engram.v1.EngramService.SearchMemories:input_type -> engram.v1.SearchMemoriesRequest
+	9,  // 15: engram.v1.EngramService.GetMemory:input_type -> engram.v1.GetMemoryRequest
+	11, // 16: engram.v1.EngramService.SearchDiscoveries:input_type -> engram.v1.SearchDiscoveriesRequest
+	13, // 17: engram.v1.EngramService.StoreMemory:input_type -> engram.v1.StoreMemoryRequest
+	16, // 18: engram.v1.EngramService.StoreDiscovery:input_type -> engram.v1.StoreDiscoveryRequest
+	18, // 19: engram.v1.EngramService.UpdateMemory:input_type -> engram.v1.UpdateMemoryRequest
+	20, // 20: engram.v1.EngramService.DeleteMemory:input_type -> engram.v1.DeleteMemoryRequest
+	22, // 21: engram.v1.EngramService.SetVisibility:input_type -> engram.v1.SetVisibilityRequest
+	24, // 22: engram.v1.EngramService.ScheduleMemory:input_type -> engram.v1.ScheduleMemoryRequest
+	4,  // 23: engram.v1.EngramService.ListScopes:output_type -> engram.v1.ListScopesResponse
+	6,  // 24: engram.v1.EngramService.ListMemories:output_type -> engram.v1.ListMemoriesResponse
+	8,  // 25: engram.v1.EngramService.SearchMemories:output_type -> engram.v1.SearchMemoriesResponse
+	10, // 26: engram.v1.EngramService.GetMemory:output_type -> engram.v1.GetMemoryResponse
+	12, // 27: engram.v1.EngramService.SearchDiscoveries:output_type -> engram.v1.SearchDiscoveriesResponse
+	14, // 28: engram.v1.EngramService.StoreMemory:output_type -> engram.v1.StoreMemoryResponse
+	17, // 29: engram.v1.EngramService.StoreDiscovery:output_type -> engram.v1.StoreDiscoveryResponse
+	19, // 30: engram.v1.EngramService.UpdateMemory:output_type -> engram.v1.UpdateMemoryResponse
+	21, // 31: engram.v1.EngramService.DeleteMemory:output_type -> engram.v1.DeleteMemoryResponse
+	23, // 32: engram.v1.EngramService.SetVisibility:output_type -> engram.v1.SetVisibilityResponse
+	25, // 33: engram.v1.EngramService.ScheduleMemory:output_type -> engram.v1.ScheduleMemoryResponse
+	23, // [23:34] is the sub-list for method output_type
+	12, // [12:23] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_engram_v1_engram_proto_init() }
@@ -1043,13 +2131,14 @@ func file_engram_v1_engram_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_engram_v1_engram_proto_rawDesc), len(file_engram_v1_engram_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   12,
+			NumEnums:      1,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_engram_v1_engram_proto_goTypes,
 		DependencyIndexes: file_engram_v1_engram_proto_depIdxs,
+		EnumInfos:         file_engram_v1_engram_proto_enumTypes,
 		MessageInfos:      file_engram_v1_engram_proto_msgTypes,
 	}.Build()
 	File_engram_v1_engram_proto = out.File
