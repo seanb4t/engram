@@ -8,16 +8,20 @@ search / list / get / update / delete plus discovery and rule kinds) over MCP, w
 ConnectRPC read API, a SvelteKit operator console, and an Astro Starlight docs site. It is
 distributed as a container image and a Helm chart (server + Qdrant) for Kubernetes.
 
-This is a **retrospective baseline**: engram is already shipped (current release line
-**v0.8.x**). Every locked decision and every routed requirement below is **implemented and
-merged to main**. This document records the as-built state so future milestones build on an
-accurate foundation.
+This is a **retrospective baseline** extended by GSD-tracked milestones: engram is already
+shipped. Every locked decision and every routed requirement below is **implemented and merged
+to main**. This document records the as-built state so future milestones build on an accurate
+foundation.
 
-**Active milestone — v0.9.x — Recall Quality** (opened 2026-07-09): make recall measurably
-trustworthy as the store grows, so `search-before-store` stops producing duplicates. Four
-phases (9–12): retrieval eval + ranking precision (#261), embedder query/document asymmetry
-(#305), async-on-write summaries (#320), and per-memory usage signals (#317). See
-`.planning/ROADMAP.md` and the `## v0.9.x Requirements` section of `.planning/REQUIREMENTS.md`.
+**Latest milestone — v0.9.x — Recall Quality — ✅ SHIPPED 2026-07-10** (PR #336; opened
+2026-07-09): made recall measurably trustworthy as the store grows, so `search-before-store`
+stops producing duplicates. Four phases (9–12): retrieval eval + ranking precision (#261),
+embedder query/document asymmetry (#305, already shipped under Phase 4), async-on-write
+summaries (#320), and per-memory usage signals (#317). 6/6 requirements satisfied; audit
+PASSED. Full detail in `.planning/milestones/v0.9.x-ROADMAP.md`.
+
+**Next milestone — v0.10.x — not yet scoped.** Run `/gsd-new-milestone` to define it. Deferred
+candidates: Connect write-lane + CSRF (#322), session refresh-token rotation (#323).
 
 ## Core Value
 
@@ -31,8 +35,11 @@ clean.
 
 ### Validated
 
-Shipped in the v0.8.x baseline and relied upon. Full IDs and phase mapping in
-`.planning/REQUIREMENTS.md`.
+Shipped and relied upon. Baseline IDs/phase mapping and the full v0.9.x requirement
+text are archived in `.planning/milestones/v0.9.x-REQUIREMENTS.md` (which embeds the full
+pre-close `REQUIREMENTS.md` snapshot).
+
+**v0.8.x baseline (Phases 1–7):**
 
 - ✓ **Authorization & Isolation** — per-actor isolation, typed Subject authz, configurable-claim owner (Phase 1)
 - ✓ **Recall Semantics** — scheduled/windowed recall, cursor paging, summary-by-default (Phase 2)
@@ -41,17 +48,21 @@ Shipped in the v0.8.x baseline and relied upon. Full IDs and phase mapping in
 - ✓ **Config & Transport** — ENGRAM_ koanf config, Config.Validate, fatal legacy guard, MCP path (Phase 5)
 - ✓ **Telemetry & Observability** — slog + OTel over OTLP at every seam, non-blocking (Phase 6)
 - ✓ **Web UI, Docs Site & Distribution** — operator console SPA, docs site, brand, bundled client plugin (Phase 7)
+- ✓ **Connect Observe-Lane Auth Hardening** — cookie/OIDC observe lane (R1–R4) (Phase 8; PR #248/#266)
+
+**v0.9.x — Recall Quality (Phases 9–12; shipped 2026-07-10, PR #336):**
+
+- ✓ **REQ-retrieval-eval** — reproducible retrieval eval (`task eval:retrieval`, #261 fixture, recall@k/MRR) — v0.9.x
+- ✓ **REQ-search-similarity-scores** — always-on per-result similarity score in `search_memory` — v0.9.x
+- ✓ **REQ-ranking-precision** — dependency-free reranker kills phrasing-sensitivity (recall@8=1.00 on #261) — v0.9.x
+- ✓ **REQ-embedder-native-params** — native query/document param passthrough + doc-side prefix — v0.9.x (already shipped under Phase 4)
+- ✓ **REQ-async-summaries** — async-on-write summary fill off the write path, eval-gated — v0.9.x
+- ✓ **REQ-usage-signals** — per-record usage counters (get/update), hybrid OTLP+payload, never affects ranking — v0.9.x
 
 ### Active
 
-**v0.9.x — Recall Quality** (routed to Phases 9–12; full text in `.planning/REQUIREMENTS.md`):
-
-- [ ] **REQ-retrieval-eval** — reproducible retrieval-quality eval (labeled dataset, recall@k/MRR, #261 fixture) (Phase 9)
-- [ ] **REQ-search-similarity-scores** — `search_memory` optionally returns per-result similarity scores (Phase 9)
-- [ ] **REQ-ranking-precision** — kill phrasing-sensitivity / sticky-neighbor crowding via hybrid or rerank, chosen by the eval (Phase 9)
-- [ ] **REQ-embedder-native-params** — native API-param passthrough (cloud) + document-side prefix (E5/nomic) for query≠document embeds (Phase 10)
-- [x] **REQ-async-summaries** — async-on-write summary fill off the synchronous write path, eval-gated (Phase 11) — completed 2026-07-10
-- [ ] **REQ-usage-signals** — strong per-record usage counters (get/update), hybrid OTLP+payload, never affects ranking (Phase 12)
+**None — v0.10.x is not yet scoped.** Run `/gsd-new-milestone` to define the next milestone's
+requirements. Candidate seeds are in `.planning/BACKLOG.md` and the Deferred list below.
 
 ### Deferred (v0.10.x candidates — not in v0.9.x)
 
@@ -77,6 +88,7 @@ Shipped in the v0.8.x baseline and relied upon. Full IDs and phase mapping in
 - **Identity:** OIDC bearer tokens on the MCP lane become the memory `actor`; the authz `owner` key is a configurable claim (default `email`). No issuer → single anonymous empty-owner bucket.
 - **VCS/build:** git (branch + PR; never push to `main` directly); `task` runner; buf-generated `gen/` tree committed and CI-checked; release-please-driven releases (binary + image via goreleaser, OCI Helm chart).
 - **Connect observe lane:** authenticated via the cookie/OIDC lane (sealed session → verified `sub`); mounted only when the UI is enabled, headless by default (R1–R4 shipped in PR #248/#266, reconciled 2026-07-08). The MCP lane's no-issuer anonymous empty-owner bucket is unaffected.
+- **Recall quality (v0.9.x, shipped 2026-07-10):** a labeled retrieval eval harness (`task eval:retrieval`, `internal/retrievaleval`) with a permanent #261 regression fixture; an always-on `search_memory` similarity score; a stdlib-only lexical-overlap reranker shared via `store.SearchReranked` (MCP + Connect); async-on-write summary fill via a bounded worker pool (`internal/server/summaryqueue.go`) off the write path; and per-record usage signals (`access_count`/`last_accessed_at`, `usagequeue.go`) that never affect ranking. Two reusable Go kernels: CR-01 shutdown-safety (RWMutex+closed) and `*time.Time` for optional timestamps.
 
 ## Constraints
 
@@ -335,7 +347,11 @@ and `.planning/intel/merge-adrs/decisions.md`; the `refines →` note names the 
 | ConnectRPC + adapter-static SPA + static docs (DEC-8xe, DEC-0lu, DEC-ttb) | Read API + embeddable console without SSR complexity | ✓ Good — shipped |
 | Cookie/OIDC Connect observe lane (R1–R4) | Mount-gated, cookie-only authz, obs parity, same-origin | ✓ Good — shipped (PR #248/#266) |
 | Fold 31 companion ADRs + 24 plans into baseline (2026-07-08) | Complete the decision record; the original 50-doc bootstrap capped out | ✓ Good — merged, 0 conflicts |
+| Eval-chosen ranking lever — stdlib lexical reranker over hybrid/cross-encoder (D-06, v0.9.x) | The #261 regression eval cleared the bar on the lightest lever; no new dep, no reindex | ✓ Good — recall@8=1.00; D-07/D-08 not needed |
+| Always-on `search_memory` similarity score (D-04 supersession, v0.9.x) | Better DX than an opt-in flag; eval can assert score separation | ✓ Good — shipped |
+| Async-on-write summaries via bounded worker pool off the write path (D-01/D-08, v0.9.x) | A gateway outage must never fail `store_memory`; drain-after-shutdown under CR-01 kernel | ✓ Good — shipped (#320); residuals #335 |
+| Usage signals never affect ranking (D-08 invariant, v0.9.x) | Curation metadata, not a ranking input; usage-weighted recall is a separate future decision | ✓ Good — negative-space test enforced |
 
 ---
 
-*Last updated: 2026-07-08 after folding 31 companion ADRs + 24 implementation plans into the baseline (`/gsd-ingest-docs --mode merge`, 0 blockers). Prior: 2026-07-07 retrospective baseline ingest (v0.8.x shipped).*
+*Last updated: 2026-07-10 after shipping + archiving milestone v0.9.x — Recall Quality (`/gsd-complete-milestone`; PR #336). Prior: 2026-07-08 folded 31 companion ADRs + 24 plans into the baseline; 2026-07-07 retrospective baseline ingest (v0.8.x shipped).*

@@ -1,121 +1,67 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.9.x — Recall Quality
-milestone_name: "- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval"
-current_phase: 12
-current_phase_name: Per-Memory Usage Signals
-status: "Milestone v0.9.x shipped — PR #336"
-stopped_at: Completed 12-06-PLAN.md
-last_updated: "2026-07-10T22:11:13.389Z"
+milestone: "v0.9.x — Recall Quality (shipped + archived)"
+milestone_name: "v0.9.x — Recall Quality"
+current_phase: null
+current_phase_name: "Between milestones — v0.10.x not yet scoped"
+status: "Milestone v0.9.x complete + archived; ready for /gsd-new-milestone"
+stopped_at: "v0.9.x milestone close (archived, override_closeout)"
+last_updated: "2026-07-10"
 last_activity: 2026-07-10
-last_activity_desc: Phase 12 complete + verified
+last_activity_desc: "v0.9.x — Recall Quality archived via /gsd-complete-milestone"
 progress:
   total_phases: 12
-  completed_phases: 3
+  completed_phases: 12
   total_plans: 12
   completed_plans: 12
-  percent: 25
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-09)
+See: .planning/PROJECT.md (updated 2026-07-10 after v0.9.x milestone)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 12 — Per-Memory Usage Signals
+**Current focus:** Between milestones — v0.9.x shipped + archived; scope v0.10.x next via `/gsd-new-milestone`.
 
 ## Current Position
 
-Phase: 12 (Per-Memory Usage Signals) — COMPLETE & VERIFIED
-Plan: 6 of 6 complete
-Status: Milestone v0.9.x shipped — PR #336
-Last activity: 2026-07-10 — Phase 12 complete + verified
+Milestone: v0.9.x — Recall Quality — ✅ SHIPPED 2026-07-10 (PR #336) + ARCHIVED 2026-07-10
+Phases: 9–12 complete (4/4 verified; Phase 10 already-shipped)
+Requirements: 6/6 satisfied; milestone audit PASSED (`milestones/v0.9.x-MILESTONE-AUDIT.md`)
+Closeout: override_closeout — 1 acknowledged deferral (docs todo → GitHub #337)
 
-Progress: [██████████] 100% (v0.9.x — all 4 phases done: Phase 9 executed, Phase 10 already-shipped, Phase 11 executed, Phase 12 executed + verified). Milestone v0.9.x — Recall Quality complete pending ship/PR.
+Next: `/gsd-new-milestone` to scope v0.10.x (deferred candidates: #322 Connect write-lane + CSRF, #323 session refresh-token rotation).
 
-## Performance Metrics
+## Deferred Items
 
-**Velocity:**
+Items acknowledged and deferred at milestone close on 2026-07-10:
 
-- Total plans completed: 0 (v0.9.x just opened)
-- Average duration: n/a
-- Total execution time: n/a
-
-**v0.9.x Phases:**
-
-| Phase | Requirements | Status |
-|-------|--------------|--------|
-| 9. Retrieval Eval & Ranking Precision | 3/3 | Complete |
-| 10. Asymmetric Query/Document Embeddings | 0/1 | Planned |
-| 11. Async-on-Write Summaries | 1/1 | Complete |
-| 12. Per-Memory Usage Signals | 0/1 | Planned |
-
-**Shipped (v0.8.x baseline):** Phases 1–8 complete (24 requirements). See ROADMAP.md Progress table.
-| Phase 09-retrieval-eval-harness-ranking-precision P01 | 20min | 2 tasks | 4 files |
-| Phase 09-retrieval-eval-harness-ranking-precision P02 | 15min | 2 tasks | 3 files |
-| Phase 09-retrieval-eval-harness-ranking-precision P03 | 35min | 3 tasks | 8 files |
-| Phase 11 P01 | 15min | 2 tasks | 7 files |
-| Phase 11 P02 | 15min | 2 tasks | 3 files |
-| Phase 11 P03 | 45min | 3 tasks | 5 files |
-| Phase 12-per-memory-usage-signals P01 | 8min | 3 tasks | 3 files |
-| Phase 12 P02 | 12min | 2 tasks | 6 files |
-| Phase 12-per-memory-usage-signals P03 | 6min | 1 tasks | 3 files |
-| Phase 12 P04 | 20min | 2 tasks | 2 files |
-| Phase 12-per-memory-usage-signals P05 | 15min | 2 tasks | 2 files |
-| Phase 12 P06 | 12min | 3 tasks | 7 files |
+| Category | Item | Status |
+|----------|------|--------|
+| pending_todo | document-embedding-model-options (docs-site + Helm embedding-model guide) | Deferred → filed as GitHub #337 |
 
 ## Accumulated Context
 
 ### Decisions
 
-56 ADR-locked decisions (25 core + 31 companion refinements) logged in PROJECT.md `<decisions>` block (all LOCKED, source `docs/adr/engram-*.md`). Foundational for v0.9.x:
-
-- [Phase 2]: Summary-by-default recall (DEC-ambu) — Phase 11 async summaries build on the `FillSummary` seam.
-- [Phase 4]: Asymmetric embedder text-prefix knobs (DEC-zyhq) — Phase 10 extends these with native API params + doc-side prefix.
-- [Phase 6]: OTLP-only non-blocking telemetry (DEC-dwi, DEC-uxh) — Phases 9 (eval) and 12 (usage signals) reuse the OTLP → ClickStack seam.
-- [Phase 9]: Reused server.StoreAndEmbedderFromEnvNoEnsure() for the *embed.Client only (full prod parity); built the eval Store directly from testQdrantAddr to avoid ambient ENGRAM_QDRANT_ADDR leakage (round-2 finding 1)
-- [Phase 9]: seedRecord uses a fixture-local key (not the Qdrant point ID) because Qdrant point IDs must be UUIDs; a key->UUID map resolves rank lookups
-- [Phase 9]: D-04 supersession: ROADMAP Phase-9 success-criterion 2 'similarity score (opt-in)' wording is superseded by the shipped always-on search_memory score behavior (accepted as correct/better DX).
-- [Phase 9]: search_memory score docs (09-02) stay order-agnostic: score FIELD only, not result ORDER — the post-rerank order caveat for reference/tools.md:95 is deliberately deferred to 09-03.
-- [Phase 9]: D-06 reranker: pure lexical-overlap term-set-intersection boost (stdlib only), tie-broken by raw Score then ID; shared via Store.SearchReranked (candidateK=min(max(k*4,32),100), k<=0 rejected) called by MCP deps.searchMemory, Connect engramAPI.SearchMemories, and the retrieval eval
-- [Phase 11]: backoff/v5 promoted to direct via a go.mod-only text edit (moved require block) rather than go get/go mod tidy; Wave 2 (11-02) adds the actual import
-- [Phase 11]: LogSummaryEgress called for all three terminal outcomes (filled/skipped/failed) in the async worker's storeFill; SummarizeMissing keeps its pre-existing filled/failed-only call sites since it pre-filters eligibility before calling FillSummary
-- [Phase 11]: WithMaxElapsedTime(20s) is a fixed package constant decoupled from the injected attemptTimeout, so a tiny test attemptTimeout can't race the elapsed-time ceiling; WithMaxTries(3) is the primary retry bound
-- [Phase 11]: buildSummaryQueue runtime AND-gate (deps.summaryQueue) lives in tools.go, separate from Validate()'s unconditional parseability checks; an unparseable ENGRAM_SUMMARY_ON_WRITE is treated as disabled
-- [Phase 11]: Register grew to return a shutdown closure (drainSummaries), invoked strictly after httpSrv.Shutdown(shutdownCtx) returns in serve.go's SIGTERM branch (D-08 ordering)
-- [Phase 12-per-memory-usage-signals]: IncrementAccess deliberately skips getWritable/GetReadable — the handler-boundary caller already gated ownership (D-01/D-04)
-- [Phase 12-per-memory-usage-signals]: No payload index registered for access_count, keeping D-08's ranking boundary honest
-- [Phase 12-02]: usage.signals defaults to true (on) — unlike summarize.on_write's false — D-09: usage signals are local, non-egressing curation metadata
-- [Phase 12-02]: UsageQueueMetrics has no retried counter or latency histogram — D-10 mandates single-attempt, no retry
-- [Phase 12-03]: last_accessed_at uses google.protobuf.Timestamp (not string) matching created_at=14's type analog
-- [Phase 12-04]: recall-span analytics (D-06): recallIDCap=50 bounded const; store.Get gains engram.recall.ids/count for ClickStack data-completeness
-- [Phase 12-05]: usageQueue reuses summaryQueue's CR-01 kernel field/method names verbatim (fill, itemDone, depth) rather than renaming, per PATTERNS.md exact-analog guidance; no attemptTimeout/maxElapsed param since D-10 rules out a retry budget entirely
-- [Phase 12-06]: Config-gated buildUsageQueue mirrors buildSummaryQueue's point-of-use strconv.ParseBool gate; fixed worker pool (2 workers, queueSize=256), no new env knobs
-- [Phase 12-06]: usageQueue.tryEnqueue is call-and-ignore, success-only, only at get_memory/Connect GetMemory handler boundaries -- never inside reused store primitives, never on search/list/list_scheduled
-
-### Pending Todos
-
-- `/gsd-plan-phase 9` — plan the retrieval eval harness + ranking precision phase.
+Full decision record (56 ADR-locked baseline decisions + v0.9.x milestone decisions) in
+PROJECT.md. v0.9.x headline decisions: D-04 always-on `search_memory` score; D-06 stdlib
+lexical reranker (`store.SearchReranked`); D-01/D-08 async summaries off the write path
+drained after shutdown under the CR-01 kernel; D-08 usage signals never affect ranking;
+D-09 `ENGRAM_USAGE_SIGNALS` defaults on (non-egressing). Reusable Go conventions: CR-01
+shutdown-safety (RWMutex+closed guard); `*time.Time` for optional timestamps (never
+`time.Time`+`omitempty`).
 
 ### Blockers/Concerns
 
-- ~~**Phase 10 baseline ambiguity**~~ RESOLVED 2026-07-10: baseline verified against `internal/embed/` during `/gsd-discuss-phase 10`. `REQ-embedder-native-params` (#305) is **already fully shipped** under Phase 4 — `embed.go` `WithQueryParams`/`WithDocumentParams` (native `input_type`/`task_type` map passthrough) + `WithDocumentInstruction` (E5/nomic doc prefix), config `ENGRAM_EMBED_*_PARAMS`/`_DOCUMENT_INSTRUCTION` (validated + wired in `embedderFromConfig`), tests, and per-model docs all present. Phase 10 reconciled to Complete; #305 closed. (Echoed the Phase 8 already-shipped surprise.)
-- ~~Phase 9 Plan 03 Task 3 checkpoint~~ RESOLVED: **accept-d06**. Live eval (gemini-embedding-2 @3072 via OpenRouter) clears the #261 rank bar — query-a/b both rank 1/8, recall@8=1.00, MRR=1.000. D-07/D-08 evaluated and not needed. Follow-up: run the qwen3-embedding-8b @4096 prod-parity eval (with PR#262 query instruction) once OpenRouter recovers.
-
-## Deferred Items
-
-Carried to v0.10.x. NOT part of v0.9.x scope.
-
-| Category | Item | Status | Deferred At |
-|----------|------|--------|-------------|
-| Auth | Connect **write-lane** RPCs (StoreMemory/StoreDiscovery) + CSRF hardening (#322) | Not started | 2026-07-09 |
-| Auth | Session **refresh-token rotation** / re-seal on access-token expiry (#323) | Not started | 2026-07-09 |
-| Cleanup | short_id polish (cluster C: 10 issues), embed refactors (#302/#304), summarize CronJob (#269), proto fidelity (#307), PR #62 cleanups (#306) | Not started | 2026-07-09 |
+- **Env restore (non-blocking):** repo-local `commit.gpgsign=false` is still set (1Password SSH-signing was flaky during the milestone; v0.9.x commits were unsigned and `main` had no required-signatures). Restore when 1Password is stable: `git config --local --unset commit.gpgsign`. Also sync local `main` past the squash merge (`658795e9`).
+- **Tracked tech debt (all filed):** #334 (prod-parity #261 re-confirm on qwen3 @4096, blocked by #333), #335 (P11 review residuals), #333/#332/#331 (embed subsystem), #337 (embedding-model docs). Systemic: `.rumdl.toml` lacks a `.planning` exclude (331 markdown-lint failures on planning docs only; `task lint:go` + `task test` clean).
 
 ## Session Continuity
 
-Last session: 2026-07-10T17:48:33.044Z
-Stopped at: Completed 12-06-PLAN.md
+Last session: 2026-07-10 — /gsd-complete-milestone v0.9.x
+Stopped at: v0.9.x archived (milestones/); ROADMAP + PROJECT evolved; REQUIREMENTS.md removed for next milestone
 Resume file: None

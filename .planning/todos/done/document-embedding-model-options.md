@@ -1,3 +1,5 @@
+> **Deferred at v0.9.x milestone close (2026-07-10) → filed as GitHub #337:** https://github.com/seanb4t/engram/issues/337
+
 ---
 title: Document embedding model options in docs-site + Helm chart
 date: 2026-07-09
