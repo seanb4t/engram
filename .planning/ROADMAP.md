@@ -268,11 +268,11 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 3. The docs site and Helm `values.yaml` document each supported embedding model (OpenRouter/Gemini/OpenAI/local TEI-Ollama-vLLM), pairing base URL + model + vector dim + query instruction, with every model/dim change explicitly called out as requiring `engram reindex` (cross-linking `guides/reindex`).
 
 **Status**: Not started
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 **Wave 1** *(parallel — no file overlap)*
 
-- [ ] 14-01-PLAN.md — Gemini differ-case eval fixture: skip-gated `TestRetrievalEval_AsymmetryDiffer` (named so `task eval:retrieval` reaches it) proving instruction-prefix asymmetry takes effect (Pitfall-12 gate, REQ-embed-gemini-direct)
+- [x] 14-01-PLAN.md — Gemini differ-case eval fixture: skip-gated `TestRetrievalEval_AsymmetryDiffer` (named so `task eval:retrieval` reaches it) proving instruction-prefix asymmetry takes effect (Pitfall-12 gate, REQ-embed-gemini-direct)
 - [ ] 14-02-PLAN.md — Model & recipe docs: new `guides/embedding-models.md` + Helm `values.yaml` commented recipes + cross-links/reindex callouts (REQ-embed-model-docs)
 
 **Wave 2** *(blocked on Wave 1)*
@@ -408,7 +408,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 | 11. Async-on-Write Summaries | v0.9.x | 1/1 | Complete | 2026-07-10 (PR #336) |
 | 12. Per-Memory Usage Signals | v0.9.x | 1/1 | Complete | 2026-07-10 (PR #336) |
 | 13. Embedder Reliability Foundation | v0.10.x | 3/3 | Complete    | 2026-07-11 |
-| 14. Embedder Model Options & Eval | v0.10.x | 0/3 | Not started | - |
+| 14. Embedder Model Options & Eval | v0.10.x | 1/3 | In Progress|  |
 | 15. Additive Proto + Stub Write Handlers | v0.10.x | 0/1 | Not started | - |
 | 16. CSRF Interceptor | v0.10.x | 0/1 | Not started | - |
 | 17. Wired Write Handlers (Full CRUD + Schedule) | v0.10.x | 0/1 | Not started | - |
