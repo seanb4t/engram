@@ -121,6 +121,12 @@ jobs:
         run: |
           go tool buf generate
           git diff --exit-code -- gen/ || (echo "gen/ is stale; run 'task proto:gen'"; exit 1)
+      - name: idempotency ban (no side-effect-free RPC)
+        run: |
+          if grep -rEn 'idempotency_level[[:space:]]*=[[:space:]]*NO_SIDE_EFFECTS' proto/; then
+            echo "::error::NO_SIDE_EFFECTS idempotency_level found in proto/ — see PITFALLS.md Pitfall 2"
+            exit 1
+          fi
 
   ui-drift:
     name: ui vendored-asset drift
