@@ -1,8 +1,8 @@
 ---
 phase: 13
 slug: embedder-reliability-foundation
-status: draft
-nyquist_compliant: false
+status: ready
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-10
 ---
@@ -38,20 +38,21 @@ created: 2026-07-10
 
 ## Per-Task Verification Map
 
-> Populated after planning assigns task IDs. Source requirement→test rows below
-> come from `13-RESEARCH.md` § Phase Requirements → Test Map.
+> Task IDs assigned post-planning (positional `13-PP-TT`). The plan-checker
+> verified each row maps 1:1 to a task's `<automated>` command in 13-01/02/03.
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| {13-NN-NN} | {NN} | {W} | REQ-embed-timeout | — | timeout override honored; `0`=infinite; negative rejected | unit | `go test ./internal/config/... -run TestValidate -v` | ✅ extend | ⬜ pending |
-| {13-NN-NN} | {NN} | {W} | REQ-embed-timeout | — | slow/hung embed call cut short by configured timeout | unit (httptest+sleep) | `go test ./internal/embed/... -run TestEmbedTimeout -v` | ❌ W0 | ⬜ pending |
-| {13-NN-NN} | {NN} | {W} | REQ-embed-timeout | — | D-09: `maxElapsed` derives from `ENGRAM_SUMMARY_TIMEOUT`, independent of embed | regression | `go test ./internal/server/... -run TestSummaryQueue -v` | ✅ confirm | ⬜ pending |
-| {13-NN-NN} | {NN} | {W} | REQ-embed-baseurl-join | — | provider-shape table (OpenRouter/OpenAI `/v1`/OpenAI bare/trailing-slash/Gemini/override) | unit (table) | `go test ./internal/embed/... -run TestJoinEmbeddingsURL -v` | ❌ W0 | ⬜ pending |
-| {13-NN-NN} | {NN} | {W} | REQ-embed-baseurl-join | — | override escape hatch wins over heuristic; validated at load | unit | `go test ./internal/config/... -run TestValidate -v` | ❌ W0 | ⬜ pending |
-| {13-NN-NN} | {NN} | {W} | REQ-embed-config-identity | — | `embedderIdentity(cfg)` deterministic; excludes query-side/base_url/api_key/timeout (D-01) | unit (table) | `go test ./internal/config/... -run TestEmbedderIdentity -v` | ❌ W0 | ⬜ pending |
-| {13-NN-NN} | {NN} | {W} | REQ-embed-config-identity | — | `Memory.EmbedderIdentity` round-trips payload; legacy-missing reads `""` | unit | `go test ./internal/store/... -run TestPayload -v` | ✅ extend | ⬜ pending |
-| {13-NN-NN} | {NN} | {W} | REQ-embed-config-identity | — | all 5 doc-embed write sites (store/update/discovery/rule/reindex) stamp identity | integration (qdrant) | `go test ./internal/server/... -run TestStore -v` + `go test ./internal/store/... -run TestReindex -v` | ✅ extend | ⬜ pending |
-| {13-NN-NN} | {NN} | {W} | REQ-embed-config-identity | — | D-06: `recallView` does NOT surface the identity field | unit (negative) | `go test ./internal/server/... -run TestRecallView -v` | ❌ W0 | ⬜ pending |
+| 13-01-01 | 01 | 1 | REQ-embed-timeout | — | timeout override honored; `0`=infinite; negative rejected (UNGATED) | unit | `go test ./internal/config/... -run TestValidate -v` | ✅ extend | ⬜ pending |
+| 13-01-01 | 01 | 1 | REQ-embed-timeout | — | slow/hung embed call cut short by configured timeout | unit (httptest+sleep) | `go test ./internal/embed/... -run TestEmbedTimeout -v` | ❌ W0 | ⬜ pending |
+| 13-01-03 | 01 | 1 | REQ-embed-timeout | — | D-09: `maxElapsed` derives from `ENGRAM_SUMMARY_TIMEOUT`, independent of embed | regression | `go test ./internal/server/... -run TestSummaryQueue -v` | ✅ confirm | ⬜ pending |
+| 13-01-02 | 01 | 1 | REQ-embed-baseurl-join | — | provider-shape table (OpenRouter/OpenAI `/v1`/OpenAI bare/trailing-slash/Gemini/override) | unit (table) | `go test ./internal/embed/... -run TestJoinEmbeddingsURL -v` | ❌ W0 | ⬜ pending |
+| 13-01-02 | 01 | 1 | REQ-embed-baseurl-join | — | override escape hatch wins over heuristic; validated at load | unit | `go test ./internal/config/... -run TestValidate -v` | ❌ W0 | ⬜ pending |
+| 13-02-01 | 02 | 2 | REQ-embed-config-identity | — | `EmbedderIdentity(cfg)` deterministic; excludes query-side/base_url/api_key/timeout (D-01) | unit (table) | `go test ./internal/config/... -run TestEmbedderIdentity -v` | ❌ W0 | ⬜ pending |
+| 13-02-02 | 02 | 2 | REQ-embed-config-identity | — | `Memory.EmbedderIdentity` round-trips payload; legacy-missing reads `""` | unit | `go test ./internal/store/... -run TestPayload -v` | ✅ extend | ⬜ pending |
+| 13-02-03 | 02 | 2 | REQ-embed-config-identity | — | 4 non-reindex write sites (store/update/discovery/rule) stamp identity | unit+integration | `go test ./internal/server/... -run 'TestRecallView\|TestStore' -v` | ✅ extend | ⬜ pending |
+| 13-03-01 | 03 | 3 | REQ-embed-config-identity | — | 5th write site: reindex raw-map stamp (verbatim-payload landmine) | integration (qdrant) | `go test ./internal/store/... -run TestReindex -v` | ✅ extend | ⬜ pending |
+| 13-02-03 | 02 | 2 | REQ-embed-config-identity | — | D-06: `recallView` does NOT surface the identity field | unit (negative) | `go test ./internal/server/... -run TestRecallView -v` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -80,11 +81,11 @@ created: 2026-07-10
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 90s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags (`go test`, no watch)
+- [x] Feedback latency < 90s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-07-10 — plan-checker verified each test-map row maps 1:1 to a task `<automated>` command across 13-01/02/03 (`wave_0_complete` flips true when the Wave-0 stubs land during execution).
