@@ -4,17 +4,17 @@ milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 13
 current_phase_name: embedder-reliability-foundation
-status: executing
+status: verifying
 stopped_at: Completed 13-01-PLAN.md
-last_updated: "2026-07-11T12:41:46.609Z"
+last_updated: "2026-07-11T12:51:03.541Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 13 execution started
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 0
+  completed_plans: 3
+  percent: 100
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-10 after v0.9.x milestone)
 
 Phase: 13 (embedder-reliability-foundation) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-11 — Phase 13 execution started
 
 ## Deferred Items
@@ -70,6 +70,8 @@ cookie-auth security posture).
 - [Phase 13]: Query/fragment base-URL join left non-canonicalizing (operator-error scope, T-13-01 trust boundary parity).
 - [Phase 13]: Memory.EmbedderIdentity tagged json:"-" (not a normal json tag) — store.Memory serializes verbatim on 3 full-response MCP wire paths, so a normal tag would leak the audit field (round-1 review HIGH blocker).
 - [Phase 13]: document_params empty-form canonicalization (len(params)==0 -> map[string]any{}) so "" and "{}" hash identically — prevents false null vs {} provenance drift (round-2 review MEDIUM).
+- [Phase 13]: Reindex identity-aware resume — reindexTargetContents returns map[string]reindexTarget{content, identity}; a content match with an absent/stale embedder_identity falls through to re-embed+restamp instead of being skipped as Unchanged.
+- [Phase 13]: StoreAndEmbedderFromEnvNoEnsure returns the computed embedder identity as a 5th value from its single config load; all 3 callers updated to the new arity.
 
 ### Blockers/Concerns
 
@@ -80,7 +82,7 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-11T12:39:11.296Z
+Last session: 2026-07-11T12:50:08.105Z
 Stopped at: Completed 13-01-PLAN.md
 Resume file: 13-02-PLAN.md
 
@@ -90,3 +92,4 @@ Resume file: 13-02-PLAN.md
 |-------|------|----------|-------|
 | Phase 13 P01 | 21min | 3 tasks | 9 files |
 | Phase 13 P02 | 15min | 4 tasks | 9 files |
+| Phase 13 P03 | 20min | 3 tasks | 6 files |
