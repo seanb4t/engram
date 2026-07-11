@@ -88,33 +88,31 @@ Explicitly excluded (anti-features surfaced by research — several conflict wit
 
 ## Traceability
 
-Filled by the roadmap (phase mapping). All rows start Planned.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REQ-embed-timeout | — | Planned |
-| REQ-embed-baseurl-join | — | Planned |
-| REQ-embed-gemini-direct | — | Planned |
-| REQ-embed-prod-parity-eval | — | Planned |
-| REQ-embed-model-docs | — | Planned |
-| REQ-embed-config-identity | — | Planned |
-| REQ-connect-write-rpcs | — | Planned |
-| REQ-connect-write-authz-parity | — | Planned |
-| REQ-connect-csrf | — | Planned |
-| REQ-session-rotation | — | Planned |
-| REQ-console-write-ux | — | Planned |
-| REQ-discovery-proto-fidelity | — | Planned |
-| REQ-shortid-mint-cap | — | Planned |
-| REQ-embed-param-key-sharing | — | Planned |
-| REQ-embed-body-build-collapse | — | Planned |
-| REQ-discovery-shortid-schema | — | Planned |
-| REQ-summarize-cronjob | — | Planned |
-| REQ-ci-renovate-spa-drift | — | Planned |
-| REQ-p11-review-residuals | — | Planned |
-| REQ-lint-planning-exclude | — | Planned |
+| REQ-embed-timeout | Phase 13 | Planned |
+| REQ-embed-baseurl-join | Phase 13 | Planned |
+| REQ-embed-config-identity | Phase 13 | Planned |
+| REQ-embed-gemini-direct | Phase 14 | Planned |
+| REQ-embed-prod-parity-eval | Phase 14 | Planned |
+| REQ-embed-model-docs | Phase 14 | Planned |
+| REQ-connect-write-rpcs | Phase 15 | Planned |
+| REQ-connect-csrf | Phase 16 | Planned |
+| REQ-connect-write-authz-parity | Phase 17 | Planned |
+| REQ-session-rotation | Phase 18 | Planned |
+| REQ-console-write-ux | Phase 19 | Planned |
+| REQ-discovery-proto-fidelity | Phase 20 | Planned |
+| REQ-shortid-mint-cap | Phase 20 | Planned |
+| REQ-embed-param-key-sharing | Phase 20 | Planned |
+| REQ-embed-body-build-collapse | Phase 20 | Planned |
+| REQ-discovery-shortid-schema | Phase 20 | Planned |
+| REQ-summarize-cronjob | Phase 20 | Planned |
+| REQ-ci-renovate-spa-drift | Phase 21 | Planned |
+| REQ-p11-review-residuals | Phase 21 | Planned |
+| REQ-lint-planning-exclude | Phase 21 | Planned |
 
-**Coverage:** 20 requirements across 6 categories. Mapped to phases: 0/20 (roadmap pending).
+**Coverage:** 20 requirements across 6 categories. Mapped to phases: 20/20 (roadmap complete — Phases 13–21).
 
 ---
 
-*Requirements defined: 2026-07-10 — milestone v0.10.x — Hardening & Write Lane. Research: `.planning/research/SUMMARY.md`.*
+*Requirements defined: 2026-07-10 — milestone v0.10.x — Hardening & Write Lane. Research: `.planning/research/SUMMARY.md`. Roadmap: `.planning/ROADMAP.md` (Phases 13–21, created 2026-07-10).*
