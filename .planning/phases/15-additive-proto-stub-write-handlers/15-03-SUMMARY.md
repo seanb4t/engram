@@ -139,3 +139,12 @@ None - no external service configuration required.
 ---
 *Phase: 15-additive-proto-stub-write-handlers*
 *Completed: 2026-07-11*
+
+## Self-Check: PASSED
+
+All created files and task commit hashes verified present:
+- internal/server/connectvalidate.go — FOUND
+- internal/server/connectvalidate_test.go — FOUND
+- .planning/phases/15-additive-proto-stub-write-handlers/15-03-SUMMARY.md — FOUND
+- d1166ccd (Task 1) — FOUND
+- a8e0f6da (Task 2) — FOUND
