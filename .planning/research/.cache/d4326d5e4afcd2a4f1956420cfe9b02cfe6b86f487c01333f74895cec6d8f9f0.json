@@ -1,0 +1,9 @@
+{
+  "content": "Gemini task_type via OpenAI-compat /embeddings endpoint: gemini-embedding-2 does NOT support task_type at all (native or compat) -- task must be a TEXT PREFIX on the input string (e.g. 'task: search result | query: {content}' for queries, 'title: {title} | text: {content}' for documents). gemini-embedding-001 supports task_type only via the native embedContent method; the OpenAI-compat page's extra_body allowlist table has zero rows for the Embeddings endpoint, so task_type passthrough via JSON params is unsupported/undocumented through the compat endpoint for either model. Confirms PITFALLS.md Pitfall 12. Source: ai.google.dev/gemini-api/docs/embeddings, ai.google.dev/gemini-api/docs/openai (scraped 2026-07-11).",
+  "source": "web",
+  "provider": "websearch",
+  "confidence": "HIGH",
+  "fetched_at": "2026-07-11T14:46:26.740Z",
+  "ttl": 86400000,
+  "kind": "docs"
+}

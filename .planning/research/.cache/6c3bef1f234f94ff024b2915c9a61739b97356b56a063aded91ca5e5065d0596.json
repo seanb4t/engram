@@ -1,0 +1,9 @@
+{
+  "content": "Gemini current-GA text embedding model is gemini-embedding-2 (Stable, latest update April 2026), native output dim 3072 (flexible MRL 128-3072, recommended 768/1536/3072). Predecessor gemini-embedding-001 also Stable (June 2025). Both exposed via OpenAI-compat /v1beta/openai/embeddings endpoint. Source: ai.google.dev/gemini-api/docs/embeddings, ai.google.dev/gemini-api/docs/openai (scraped 2026-07-11).",
+  "source": "web",
+  "provider": "websearch",
+  "confidence": "HIGH",
+  "fetched_at": "2026-07-11T14:46:26.666Z",
+  "ttl": 86400000,
+  "kind": "docs"
+}

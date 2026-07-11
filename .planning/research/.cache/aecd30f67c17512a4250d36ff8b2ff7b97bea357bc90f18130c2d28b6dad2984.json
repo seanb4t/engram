@@ -1,0 +1,9 @@
+{
+  "content": "OpenAI current GA embedding models: text-embedding-3-small (default dim 1536), text-embedding-3-large (default dim 3072), text-embedding-ada-002 (dim 1536, legacy, no dimensions param). The 'dimensions' request param truncates -3-small/-3-large output (e.g. -3-large can be reduced to 256 dims). Source: developers.openai.com/api/docs/guides/embeddings.",
+  "source": "web",
+  "provider": "websearch",
+  "confidence": "HIGH",
+  "fetched_at": "2026-07-11T14:46:26.889Z",
+  "ttl": 86400000,
+  "kind": "docs"
+}
