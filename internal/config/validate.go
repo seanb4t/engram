@@ -58,6 +58,16 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.New("ENGRAM_EMBED_DIM must be greater than 0"))
 	}
 
+	// embed.timeout runs UNCONDITIONALLY (unlike summarize.timeout, which is
+	// gated on Summarize.Model) — the embedder is always active, there is no
+	// disabled state. 0 = no timeout (infinite), the explicit D-08 escape hatch.
+	switch d, err := time.ParseDuration(c.Embed.Timeout); {
+	case err != nil:
+		errs = append(errs, fmt.Errorf("ENGRAM_EMBED_TIMEOUT %q: must be a Go duration (e.g. 30s, 2m): %w", c.Embed.Timeout, err))
+	case d < 0:
+		errs = append(errs, fmt.Errorf("ENGRAM_EMBED_TIMEOUT %q: must not be negative", c.Embed.Timeout))
+	}
+
 	switch u, err := url.Parse(c.OpenAI.BaseURL); {
 	case c.OpenAI.BaseURL == "":
 		errs = append(errs, errors.New("ENGRAM_OPENAI_BASE_URL is empty: must be an http(s) URL"))
@@ -69,6 +79,20 @@ func (c *Config) Validate() error {
 		// url.Parse accepts scheme-only inputs like "http://"; reject them — a
 		// hostless base URL is not a usable embeddings endpoint.
 		errs = append(errs, fmt.Errorf("ENGRAM_OPENAI_BASE_URL %q: missing host", c.OpenAI.BaseURL))
+	}
+
+	// EmbeddingsURL is the D-11 operator override: self-gated no-op when empty
+	// (the default — the join heuristic applies), validated the same way as
+	// ENGRAM_OPENAI_BASE_URL when set.
+	if c.OpenAI.EmbeddingsURL != "" {
+		switch u, err := url.Parse(c.OpenAI.EmbeddingsURL); {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("ENGRAM_OPENAI_EMBEDDINGS_URL %q: must be a valid URL: %w", c.OpenAI.EmbeddingsURL, err))
+		case u.Scheme != "http" && u.Scheme != "https":
+			errs = append(errs, fmt.Errorf("ENGRAM_OPENAI_EMBEDDINGS_URL %q: scheme must be http or https", c.OpenAI.EmbeddingsURL))
+		case u.Host == "":
+			errs = append(errs, fmt.Errorf("ENGRAM_OPENAI_EMBEDDINGS_URL %q: missing host", c.OpenAI.EmbeddingsURL))
+		}
 	}
 
 	// Query/document params: empty is a valid no-op (self-gated); a non-empty

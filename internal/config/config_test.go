@@ -154,7 +154,7 @@ func TestOwnerClaimDefaultAndOverride(t *testing.T) {
 func TestValidateRejectsBadSummaryMaxCharsWhenEnabled(t *testing.T) {
 	c := &Config{
 		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "c"},
-		Embed:     EmbedConfig{Model: "m", Dim: "1024"},
+		Embed:     EmbedConfig{Model: "m", Dim: "1024", Timeout: "30s"},
 		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
 		Summarize: SummarizeConfig{Model: "summary-cheap", MaxChars: "0"},
 	}
@@ -166,7 +166,7 @@ func TestValidateRejectsBadSummaryMaxCharsWhenEnabled(t *testing.T) {
 func TestValidateIgnoresSummaryWhenDisabled(t *testing.T) {
 	c := &Config{
 		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "c"},
-		Embed:     EmbedConfig{Model: "m", Dim: "1024"},
+		Embed:     EmbedConfig{Model: "m", Dim: "1024", Timeout: "30s"},
 		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
 		Summarize: SummarizeConfig{Model: "", MaxChars: "garbage", OnWrite: "false", Workers: "2", QueueSize: "256"},
 		Usage:     UsageConfig{Signals: "true"},

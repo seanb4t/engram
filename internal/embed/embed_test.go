@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -21,6 +22,133 @@ func TestWithHTTPTransportIsApplied(t *testing.T) {
 	if c.http.Transport != marker {
 		t.Fatal("WithHTTPTransport did not set the client transport")
 	}
+}
+
+// TestEmbedWithTimeoutCancelsSlowRequest proves a slow/unreachable embedder
+// call is cut short within the configured WithTimeout bound instead of hanging
+// the calling MCP tool (SC4), mirroring
+// summarize.TestSummarizeWithTimeoutCancelsSlowRequest.
+func TestEmbedWithTimeoutCancelsSlowRequest(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		<-release // never responds before the client's timeout elapses
+	}))
+	// Defers run LIFO: close(release) first unblocks the handler, then Close()
+	// returns promptly instead of waiting on the still-running request.
+	defer srv.Close()
+	defer close(release)
+
+	start := time.Now()
+	_, err := New(srv.URL, "k", "m", WithTimeout(20*time.Millisecond)).Embed(context.Background(), "x")
+	if err == nil {
+		t.Fatal("want timeout error from slow embedder, got nil")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("Embed took %v; want bounded by the tiny WithTimeout, not an unbounded hang", elapsed)
+	}
+}
+
+// TestWithTimeoutComposesWithHTTPTransport locks that WithTimeout survives
+// WithHTTPTransport (both mutate the shared c.http), regardless of option
+// order — addresses review round-1 LOW (option composition).
+func TestWithTimeoutComposesWithHTTPTransport(t *testing.T) {
+	marker := &markerTransport{}
+	want := 42 * time.Millisecond
+
+	t.Run("transport then timeout", func(t *testing.T) {
+		c := New("http://x", "k", "m", WithHTTPTransport(marker), WithTimeout(want))
+		if c.http.Timeout != want {
+			t.Errorf("c.http.Timeout = %v, want %v", c.http.Timeout, want)
+		}
+		if c.http.Transport != marker {
+			t.Error("WithHTTPTransport did not survive composition with WithTimeout")
+		}
+	})
+
+	t.Run("timeout then transport", func(t *testing.T) {
+		c := New("http://x", "k", "m", WithTimeout(want), WithHTTPTransport(marker))
+		if c.http.Timeout != want {
+			t.Errorf("c.http.Timeout = %v, want %v", c.http.Timeout, want)
+		}
+		if c.http.Transport != marker {
+			t.Error("WithHTTPTransport did not survive composition with WithTimeout")
+		}
+	})
+}
+
+// TestJoinEmbeddingsURL covers every documented provider base-URL shape (D-12)
+// plus the query/fragment edge case, which is pinned as accepted operator-error
+// scope (review round-2 LOW — see joinEmbeddingsURL's doc comment).
+func TestJoinEmbeddingsURL(t *testing.T) {
+	cases := []struct {
+		name    string
+		baseURL string
+		want    string
+	}{
+		{"OpenRouter /v1", "https://openrouter.ai/api/v1", "https://openrouter.ai/api/v1/embeddings"},
+		{"OpenAI /v1", "https://api.openai.com/v1", "https://api.openai.com/v1/embeddings"},
+		{"OpenAI bare host, no /v1", "https://api.openai.com", "https://api.openai.com/v1/embeddings"},
+		{"trailing slash", "http://localhost:4000/", "http://localhost:4000/v1/embeddings"},
+		{"Gemini /v1beta/openai", "https://generativelanguage.googleapis.com/v1beta/openai", "https://generativelanguage.googleapis.com/v1beta/openai/embeddings"},
+		// Operator-error scope (accepted, not canonicalized — T-13-01 trust
+		// boundary parity with ENGRAM_OPENAI_BASE_URL validation): a
+		// query/fragment-bearing base URL is not stripped before the suffix
+		// check, so it never matches "/v1" and falls through to the
+		// "/v1/embeddings" append, producing a URL with the query string stuck
+		// mid-path. No documented provider shape carries a query/fragment.
+		{"query/fragment base URL (operator-error scope, pinned)", "http://localhost:4000/v1?debug=1", "http://localhost:4000/v1?debug=1/v1/embeddings"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := joinEmbeddingsURL(tc.baseURL); got != tc.want {
+				t.Errorf("joinEmbeddingsURL(%q) = %q, want %q", tc.baseURL, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestEmbedRequestPathUsesResolvedEmbeddingsURL proves the resolved-once
+// Client.embeddingsURL field is what Embed actually POSTs to on a live
+// request, not merely what the pure joinEmbeddingsURL helper returns —
+// addresses review round-1 LOW (live request path).
+func TestEmbedRequestPathUsesResolvedEmbeddingsURL(t *testing.T) {
+	t.Run("heuristic join", func(t *testing.T) {
+		var gotPath string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotPath = r.URL.Path
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"embedding": []float32{0.1}}},
+			})
+		}))
+		defer srv.Close()
+
+		c := New(srv.URL+"/v1", "k", "m")
+		if _, err := c.Embed(context.Background(), "hello"); err != nil {
+			t.Fatalf("Embed: %v", err)
+		}
+		if gotPath != "/v1/embeddings" {
+			t.Errorf("request path = %q, want /v1/embeddings", gotPath)
+		}
+	})
+
+	t.Run("WithEmbeddingsURL override bypasses the heuristic", func(t *testing.T) {
+		var gotPath string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotPath = r.URL.Path
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"embedding": []float32{0.1}}},
+			})
+		}))
+		defer srv.Close()
+
+		c := New(srv.URL+"/v1", "k", "m", WithEmbeddingsURL(srv.URL+"/custom/path"))
+		if _, err := c.Embed(context.Background(), "hello"); err != nil {
+			t.Fatalf("Embed: %v", err)
+		}
+		if gotPath != "/custom/path" {
+			t.Errorf("request path = %q, want /custom/path (override verbatim)", gotPath)
+		}
+	})
 }
 
 type markerTransport struct{}

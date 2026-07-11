@@ -13,7 +13,7 @@ import (
 func validConfig() *Config {
 	return &Config{
 		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "mem_eval"},
-		Embed:     EmbedConfig{Model: "ollama/bge-m3", Dim: "1024"},
+		Embed:     EmbedConfig{Model: "ollama/bge-m3", Dim: "1024", Timeout: "30s"},
 		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
 		Summarize: SummarizeConfig{OnWrite: "false", Workers: "2", QueueSize: "256"},
 		Usage:     UsageConfig{Signals: "true"},
@@ -44,6 +44,11 @@ func TestValidateFieldRules(t *testing.T) {
 		{"openai base_url empty", func(c *Config) { c.OpenAI.BaseURL = "" }, "ENGRAM_OPENAI_BASE_URL"},
 		{"openai base_url bad scheme", func(c *Config) { c.OpenAI.BaseURL = "ftp://x" }, "scheme must be http"},
 		{"openai base_url scheme only, no host", func(c *Config) { c.OpenAI.BaseURL = "http://" }, "missing host"},
+		{"embed timeout not a duration", func(c *Config) { c.Embed.Timeout = "30" }, "ENGRAM_EMBED_TIMEOUT"},
+		{"embed timeout negative", func(c *Config) { c.Embed.Timeout = "-5s" }, "ENGRAM_EMBED_TIMEOUT"},
+		{"embed timeout garbage", func(c *Config) { c.Embed.Timeout = "garbage" }, "ENGRAM_EMBED_TIMEOUT"},
+		{"openai embeddings_url bad scheme", func(c *Config) { c.OpenAI.EmbeddingsURL = "ftp://x/embeddings" }, "ENGRAM_OPENAI_EMBEDDINGS_URL"},
+		{"openai embeddings_url no host", func(c *Config) { c.OpenAI.EmbeddingsURL = "http://" }, "ENGRAM_OPENAI_EMBEDDINGS_URL"},
 		{"summary on_write non-bool", func(c *Config) { c.Summarize.OnWrite = "yes" }, "ENGRAM_SUMMARY_ON_WRITE"},
 		{"summary workers non-numeric", func(c *Config) { c.Summarize.Workers = "abc" }, "ENGRAM_SUMMARY_WORKERS"},
 		{"summary workers zero", func(c *Config) { c.Summarize.Workers = "0" }, "ENGRAM_SUMMARY_WORKERS"},
@@ -151,6 +156,78 @@ func TestValidateEmbedParams(t *testing.T) {
 		{"query_params reserved key", func(c *Config) { c.Embed.QueryParams = `{"model":"x"}` }, "reserved key"},
 		{"document_params not an object", func(c *Config) { c.Embed.DocumentParams = `[1]` }, "ENGRAM_EMBED_DOCUMENT_PARAMS"},
 		{"document_params valid is ok", func(c *Config) { c.Embed.DocumentParams = `{"input_type":"search_document"}` }, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := validConfig()
+			tc.mutate(c)
+			err := c.Validate()
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Validate() = nil, want error containing %q", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("Validate() error = %q, want substring %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestValidateEmbedTimeoutUngated proves the embed.timeout check fires (and
+// accepts valid values) regardless of ENGRAM_SUMMARY_MODEL — it is NOT gated
+// like summarize.timeout, since the embedder is always active.
+func TestValidateEmbedTimeoutUngated(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*Config)
+		want   string
+	}{
+		{"valid 30s", func(c *Config) { c.Embed.Timeout = "30s" }, ""},
+		{"valid 2m", func(c *Config) { c.Embed.Timeout = "2m" }, ""},
+		{"zero accepted (infinite)", func(c *Config) { c.Embed.Timeout = "0" }, ""},
+		{"negative rejected", func(c *Config) { c.Embed.Timeout = "-1s" }, "ENGRAM_EMBED_TIMEOUT"},
+		{"garbage rejected", func(c *Config) { c.Embed.Timeout = "not-a-duration" }, "ENGRAM_EMBED_TIMEOUT"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := validConfig()
+			c.Summarize.Model = "" // proves the check is unconditional
+			tc.mutate(c)
+			err := c.Validate()
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Validate() = nil, want error containing %q", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("Validate() error = %q, want substring %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestValidateEmbeddingsURLOverride covers the D-11 operator override: empty
+// is a self-gated no-op, a valid http(s) URL is accepted, malformed values are
+// rejected.
+func TestValidateEmbeddingsURLOverride(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*Config)
+		want   string
+	}{
+		{"empty accepted (no-op)", func(c *Config) { c.OpenAI.EmbeddingsURL = "" }, ""},
+		{"valid https URL accepted", func(c *Config) { c.OpenAI.EmbeddingsURL = "https://api.openai.com/v1/embeddings" }, ""},
+		{"hostless rejected", func(c *Config) { c.OpenAI.EmbeddingsURL = "http://" }, "ENGRAM_OPENAI_EMBEDDINGS_URL"},
+		{"non-http(s) scheme rejected", func(c *Config) { c.OpenAI.EmbeddingsURL = "ftp://x/embeddings" }, "ENGRAM_OPENAI_EMBEDDINGS_URL"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

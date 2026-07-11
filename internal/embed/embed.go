@@ -23,12 +23,20 @@ import (
 
 var tracer = otel.Tracer("github.com/seanb4t/engram/internal/embed")
 
+// defaultEmbedTimeout is the per-request HTTP client timeout applied at
+// construction when WithTimeout is not supplied (preserves prior behavior).
+const defaultEmbedTimeout = 30 * time.Second
+
 // Client embeds text via an OpenAI-compatible embeddings API.
 type Client struct {
 	baseURL string
 	apiKey  string
 	model   string
 	http    *http.Client
+	// embeddingsURL is the fully-resolved /embeddings endpoint, computed once
+	// in New (verbatim from WithEmbeddingsURL if set, else joinEmbeddingsURL(baseURL)).
+	// embed() always uses this field, never baseURL + "/v1/embeddings" directly.
+	embeddingsURL string
 	// queryInstruction, when non-empty, is prepended to query text by EmbedQuery
 	// as "Instruct: <instruction>\nQuery: <text>". Documents (Embed) are never
 	// wrapped. Empty = symmetric embedding (queries sent raw), preserving prior
@@ -67,18 +75,62 @@ func WithDocumentParams(params map[string]any) Option {
 }
 
 // WithHTTPTransport sets the underlying RoundTripper (e.g. otelhttp.NewTransport)
-// so embedder HTTP calls can be traced. The 30s timeout is preserved.
+// so embedder HTTP calls can be traced. The configured timeout is preserved.
 func WithHTTPTransport(rt http.RoundTripper) Option {
 	return func(c *Client) { c.http.Transport = rt }
 }
 
+// WithTimeout sets the per-request HTTP client timeout. d <= 0 disables it
+// (Go's http.Client treats a zero Timeout as no bound), the explicit D-08
+// operator escape hatch for very slow local models. Composes with
+// WithHTTPTransport regardless of option order — both mutate the shared
+// c.http, and this is the last field either touches.
+func WithTimeout(d time.Duration) Option {
+	return func(c *Client) { c.http.Timeout = d }
+}
+
+// WithEmbeddingsURL sets the fully-resolved /embeddings endpoint verbatim,
+// bypassing joinEmbeddingsURL's heuristic entirely. Empty (the default) keeps
+// the heuristic. The operator override escape hatch (D-11) for provider shapes
+// the heuristic does not anticipate (e.g. Azure deployment URLs).
+func WithEmbeddingsURL(u string) Option {
+	return func(c *Client) { c.embeddingsURL = u }
+}
+
 // New returns an embedding Client for the given base URL, API key, and model.
 func New(baseURL, apiKey, model string, opts ...Option) *Client {
-	c := &Client{baseURL: baseURL, apiKey: apiKey, model: model, http: &http.Client{Timeout: 30 * time.Second}}
+	c := &Client{baseURL: baseURL, apiKey: apiKey, model: model, http: &http.Client{Timeout: defaultEmbedTimeout}}
 	for _, o := range opts {
 		o(c)
 	}
+	// Resolve the embeddings URL exactly once, after options are applied: the
+	// override (WithEmbeddingsURL) wins verbatim when set; otherwise the
+	// shape-aware heuristic runs against baseURL (D-12).
+	if c.embeddingsURL == "" {
+		c.embeddingsURL = joinEmbeddingsURL(c.baseURL)
+	}
 	return c
+}
+
+// joinEmbeddingsURL resolves baseURL to its OpenAI-compatible /embeddings
+// endpoint, shape-aware across documented provider bases: trims a trailing
+// slash, then appends "/embeddings" directly if the path already terminates at
+// an OpenAI-compat root ("/v1" or "/v1beta/openai" — Gemini's shape), else
+// appends "/v1/embeddings" (the prior naive-concat behavior, still correct for
+// bare-host gateways like a plain OpenAI or LiteLLM base URL). Does not
+// canonicalize query/fragment-bearing base URLs — see the
+// TestJoinEmbeddingsURL query/fragment case for the accepted, operator-error-
+// scope behavior (T-13-01 trust boundary).
+func joinEmbeddingsURL(baseURL string) string {
+	trimmed := strings.TrimRight(baseURL, "/")
+	switch {
+	case strings.HasSuffix(trimmed, "/v1beta/openai"):
+		return trimmed + "/embeddings"
+	case strings.HasSuffix(trimmed, "/v1"):
+		return trimmed + "/embeddings"
+	default:
+		return trimmed + "/v1/embeddings"
+	}
 }
 
 type embedReq struct {
@@ -188,7 +240,7 @@ func (c *Client) embed(ctx context.Context, text string, params map[string]any, 
 		m["input"] = text
 		body, _ = json.Marshal(m)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/embeddings", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.embeddingsURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

@@ -301,6 +301,21 @@ func summaryTimeout(cfg *config.Config) time.Duration {
 	return d
 }
 
+// embedTimeout parses the per-request embed HTTP client timeout, defaulting to
+// 30s on empty/invalid. 0 is honored (disables the timeout); negatives fall
+// back to the default. Mirrors summaryTimeout.
+func embedTimeout(cfg *config.Config) time.Duration {
+	d, err := time.ParseDuration(cfg.Embed.Timeout)
+	if err != nil || d < 0 {
+		if cfg.Embed.Timeout != "" {
+			slog.Warn("ENGRAM_EMBED_TIMEOUT is set but unparseable or negative; using default 30s",
+				"value", cfg.Embed.Timeout)
+		}
+		return 30 * time.Second
+	}
+	return d
+}
+
 // embedderFromConfig builds the OpenAI-compatible embedder from an already-loaded
 // config.
 func embedderFromConfig(cfg *config.Config) (*embed.Client, error) {
@@ -320,7 +335,9 @@ func embedderFromConfig(cfg *config.Config) (*embed.Client, error) {
 		embed.WithQueryInstruction(cfg.Embed.QueryInstruction),
 		embed.WithDocumentInstruction(cfg.Embed.DocumentInstruction),
 		embed.WithQueryParams(queryParams),
-		embed.WithDocumentParams(documentParams)), nil
+		embed.WithDocumentParams(documentParams),
+		embed.WithTimeout(embedTimeout(cfg)),
+		embed.WithEmbeddingsURL(cfg.OpenAI.EmbeddingsURL)), nil
 }
 
 // summarizerFromConfig builds the chat-completions summarizer from config.
