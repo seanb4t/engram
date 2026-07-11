@@ -1,12 +1,16 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.10.x
-milestone_name: Hardening & Write Lane
+milestone_name: — Hardening & Write Lane
+current_phase: 13
+current_phase_name: Embedder Reliability Foundation
 status: roadmapped
-last_updated: "2026-07-10T00:00:00.000Z"
+stopped_at: Phase 13 context gathered
+last_updated: "2026-07-11T02:23:38.848Z"
 last_activity: 2026-07-10
+last_activity_desc: Roadmap created for v0.10.x (Phases 13–21)
 progress:
-  total_phases: 9
+  total_phases: 1
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -50,6 +54,7 @@ shutdown-safety (RWMutex+closed guard); `*time.Time` for optional timestamps (ne
 `time.Time`+`omitempty`).
 
 **v0.10.x milestone decisions (resolved at scoping, 2026-07-10 — full text in REQUIREMENTS.md):**
+
 - DECISION 1 — Write-lane CRUD scope: full CRUD + Schedule (all six write RPCs ship this milestone).
 - DECISION 2 — Session rotation: stateless sliding-expiry re-seal, no server-side state (honors DEC-u9v); a new ADR is required in Phase 18 documenting the no-revocation trade-off.
 - DECISION 3 — Reindex boundary: document AND payload-stamp embedder-config identity (Phase 13).
@@ -70,6 +75,6 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-10 — `/gsd-new-project` roadmap phase — created ROADMAP.md Phases 13–21 for v0.10.x, filled REQUIREMENTS.md traceability (20/20 mapped)
-Stopped at: Roadmap approved and written; awaiting `/gsd-plan-phase 13` to begin execution
-Resume file: None
+Last session: 2026-07-11T02:23:38.842Z
+Stopped at: Phase 13 context gathered
+Resume file: .planning/phases/13-embedder-reliability-foundation/13-CONTEXT.md
