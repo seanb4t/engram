@@ -292,11 +292,11 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 4. The five existing read RPCs are unaffected — identical wire format and behavior, verified by a regression test.
 
 **Status**: Not started
-**Plans**: 4 plans
+**Plans**: 1/4 plans executed
 
 **Wave 1** *(parallel — no file overlap)*
 
-- [ ] 15-01-PLAN.md — Additive proto contract (6 write RPCs + messages + Visibility enum + FieldMask/Timestamp + buf.validate) + protovalidate BSR dep + `buf.lock` + gen/ regenerate (SC1)
+- [x] 15-01-PLAN.md — Additive proto contract (6 write RPCs + messages + Visibility enum + FieldMask/Timestamp + buf.validate) + protovalidate BSR dep + `buf.lock` + gen/ regenerate (SC1)
 - [ ] 15-02-PLAN.md — Idempotency-level ban gate: `task proto:lint` grep-ban + mirrored CI `buf` job step (SC2)
 
 **Wave 2** *(blocked on 15-01)*
@@ -422,7 +422,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 | 12. Per-Memory Usage Signals | v0.9.x | 1/1 | Complete | 2026-07-10 (PR #336) |
 | 13. Embedder Reliability Foundation | v0.10.x | 3/3 | Complete    | 2026-07-11 |
 | 14. Embedder Model Options & Eval | v0.10.x | 3/3 | Complete    | 2026-07-11 |
-| 15. Additive Proto + Stub Write Handlers | v0.10.x | 0/1 | Planned (4 plans) | - |
+| 15. Additive Proto + Stub Write Handlers | v0.10.x | 1/4 | In Progress|  |
 | 16. CSRF Interceptor | v0.10.x | 0/1 | Not started | - |
 | 17. Wired Write Handlers (Full CRUD + Schedule) | v0.10.x | 0/1 | Not started | - |
 | 18. Stateless Session Rotation | v0.10.x | 0/1 | Not started | - |
