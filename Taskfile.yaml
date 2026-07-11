@@ -137,6 +137,11 @@ tasks:
     desc: Lint protobuf schema
     cmds:
       - go tool buf lint
+      - |
+        if grep -rEn 'idempotency_level[[:space:]]*=[[:space:]]*NO_SIDE_EFFECTS' proto/; then
+          echo "engram.proto: NO_SIDE_EFFECTS idempotency_level is banned (GET-reachable + CSRF risk — PITFALLS.md Pitfall 2)"
+          exit 1
+        fi
   proto:gen:
     desc: Regenerate connect stubs (Go + TS) from proto
     cmds:
