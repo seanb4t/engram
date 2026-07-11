@@ -4,17 +4,17 @@ milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 15
 current_phase_name: additive-proto-stub-write-handlers
-status: executing
-stopped_at: Completed 15-03-PLAN.md
-last_updated: "2026-07-11T22:23:30.257Z"
+status: verifying
+stopped_at: Completed 15-04-PLAN.md (phase 15 complete)
+last_updated: "2026-07-11T22:37:38.695Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 15 execution started
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 10
-  completed_plans: 9
-  percent: 67
+  completed_plans: 10
+  percent: 100
 ---
 
 # Project State
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 ## Current Position
 
-Phase: 15 (additive-proto-stub-write-handlers) — EXECUTING
+Phase: 15 (additive-proto-stub-write-handlers) — COMPLETE
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-11 — Phase 15 execution started
 
 ## Deferred Items
@@ -80,6 +80,8 @@ cookie-auth security posture).
 - [Phase 15]: Duplicated the idempotency-ban grep regex verbatim between Taskfile.yaml and .github/workflows/ci.yaml (no shared script) — matches this repo's bare-runner CI convention of mirroring Taskfile commands inline; Plan 04's descriptor test is the defense-in-depth backstop against regex drift
 - [Phase 15]: go mod tidy in Plan 03 (not Plan 01) promotes buf.build/go/protovalidate indirect->direct, since connectvalidate.go is the first code to import the runtime package (review finding #4)
 - [Phase 15]: validate interceptor's CodeInternal branch (non-ValidationError) is covered via a fake protovalidate.Validator since a real validator over generated constraints only returns nil or *ValidationError (review finding #5)
+- [Phase 15]: Descriptor test pins per-field wire-shape tables (number/name/kind/cardinality/message-type) on Memory/ScopeCount/read messages, not just message names, per cross-AI review finding #6 (SC4)
+- [Phase 15]: Negative matrix uses a generic callWrite[Req, Resp] helper to keep the six write-RPC table uniform, and asserts GET-405 via generated engramv1connect Procedure constants rather than hardcoded paths (finding #6)
 
 ### Blockers/Concerns
 
@@ -90,9 +92,9 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-11T22:23:18.265Z
-Stopped at: Completed 15-03-PLAN.md
-Resume file: .planning/phases/15-additive-proto-stub-write-handlers/15-04-PLAN.md
+Last session: 2026-07-11T22:37:38.690Z
+Stopped at: Completed 15-04-PLAN.md (phase 15 complete)
+Resume file: None
 
 ## Performance Metrics
 
@@ -107,3 +109,4 @@ Resume file: .planning/phases/15-additive-proto-stub-write-handlers/15-04-PLAN.m
 | Phase 15 P01 | 7min | 3 tasks | 8 files |
 | Phase 15 P02 | 6min | 2 tasks | 2 files |
 | Phase 15 P03 | 12min | 2 tasks | 4 files |
+| Phase 15 P04 | 12min | 2 tasks | 2 files |
