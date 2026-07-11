@@ -2329,6 +2329,28 @@ func TestPayloadRoundTripsShortID(t *testing.T) {
 	}
 }
 
+// TestPayloadRoundTripsEmbedderIdentity pins D-05/D-06: EmbedderIdentity
+// round-trips through payload()/fromPayload() under the shared
+// embedderIdentityKey despite its `json:"-"` tag (the manual codec is the
+// ONLY persistence path for this field), and a legacy payload missing the
+// key decodes to the zero value with no backfill.
+func TestPayloadRoundTripsEmbedderIdentity(t *testing.T) {
+	m := Memory{ID: "a0000000-0000-0000-0000-000000000002", Content: "c", Scope: "s", EmbedderIdentity: "v1:deadbeefdeadbeef"}
+	got := fromPayload(m.ID, qdrant.NewValueMap(payload(m)))
+	if got.EmbedderIdentity != "v1:deadbeefdeadbeef" {
+		t.Fatalf("round-trip embedder_identity = %q, want %q", got.EmbedderIdentity, "v1:deadbeefdeadbeef")
+	}
+
+	// A payload map missing the key (legacy record) must decode to "", not panic.
+	legacy := map[string]*qdrant.Value{
+		"content": qdrant.NewValueString("c"),
+	}
+	gotLegacy := fromPayload("legacy-id", legacy)
+	if gotLegacy.EmbedderIdentity != "" {
+		t.Fatalf("legacy payload missing embedder_identity must decode to \"\", got %q", gotLegacy.EmbedderIdentity)
+	}
+}
+
 // TestEnsureCollectionCreatesIndexes pins that EnsureCollection provisions the
 // owner/scope/created_at payload indexes and is idempotent on a second call.
 func TestEnsureCollectionCreatesIndexes(t *testing.T) {

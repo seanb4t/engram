@@ -148,7 +148,24 @@ type Memory struct {
 	// returned it (higher = closer). Set only on Search results; zero on
 	// list/get. Lets callers see how close a near-miss ranked (GH#261).
 	Score float32 `json:"score,omitempty"`
+	// EmbedderIdentity is a server-set audit stamp (config.EmbedderIdentity)
+	// of the embedder config that produced this record's stored document
+	// vector, so a future reindex-boundary audit can detect mixed-embedding-
+	// space records (D-05). A legacy record missing the payload key reads ""
+	// — no backfill. The `json:"-"` tag is deliberate and load-bearing: this
+	// field is payload-only, persisted EXCLUSIVELY through the manual
+	// payload()/fromPayload() codec below, and must NEVER cross any JSON
+	// wire — store.Memory is returned verbatim on the full-response MCP
+	// paths (shapeRecall full, get_memory, listRules full), so a normal json
+	// tag here would leak the audit field onto the wire (D-06).
+	EmbedderIdentity string `json:"-"`
 }
+
+// embedderIdentityKey is the shared Qdrant payload key for
+// Memory.EmbedderIdentity, written by payload() and read by fromPayload().
+// Reused verbatim by Store.Reindex's divergent raw-map write (13-03) — defined
+// once here so the two sites cannot drift.
+const embedderIdentityKey = "embedder_identity"
 
 // EmbedText builds the text sent to the embedder for a record. Tags are folded
 // into the embedded document so curated keywords contribute to vector recall
@@ -306,6 +323,7 @@ func payload(m Memory) map[string]any {
 		p["not_after"] = m.NotAfter.Unix()
 	}
 	p["access_count"] = m.AccessCount
+	p[embedderIdentityKey] = m.EmbedderIdentity
 	if m.LastAccessedAt != nil {
 		p["last_accessed_at"] = m.LastAccessedAt.Format(time.RFC3339)
 	}
@@ -394,6 +412,9 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	}
 	if v, ok := p["access_count"]; ok {
 		m.AccessCount = uint64(v.GetIntegerValue())
+	}
+	if v, ok := p[embedderIdentityKey]; ok {
+		m.EmbedderIdentity = v.GetStringValue()
 	}
 	if v, ok := p["last_accessed_at"]; ok {
 		if t, err := time.Parse(time.RFC3339, v.GetStringValue()); err == nil {
