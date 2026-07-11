@@ -93,6 +93,32 @@ func TestStoreRuleHandler(t *testing.T) {
 	}
 }
 
+// TestStoreRuleStampsEmbedderIdentityHandler is a Task 4 positive persistence
+// guard: a missed d.embedderIdentity assignment in storeRule would compile
+// and pass every other test, so this re-reads the persisted record via
+// d.st.Get and asserts the sentinel identity round-tripped.
+func TestStoreRuleStampsEmbedderIdentityHandler(t *testing.T) {
+	d := testDeps(t)
+	d.embedderIdentity = "v1:deadbeefdeadbeef"
+	ctx := context.Background()
+	scope := "rule:repo:identity-store-rule"
+	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) })
+
+	id, _, err := d.storeRule(ctx, storeRuleArgs{
+		Content: "identity check rule", Scope: scope, Summary: "identity check rule",
+	})
+	if err != nil {
+		t.Fatalf("storeRule: %v", err)
+	}
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get after storeRule: %v", err)
+	}
+	if got.EmbedderIdentity != "v1:deadbeefdeadbeef" {
+		t.Errorf("storeRule did not stamp embedder identity: got %q, want %q", got.EmbedderIdentity, "v1:deadbeefdeadbeef")
+	}
+}
+
 // TestListRulesFullNeverSurfacesEmbedderIdentity is a D-06 regression guard
 // (review round-1 HIGH blocker): listRules appends the raw store.Memory
 // verbatim when Full=true — one of the three verbatim full-response wire

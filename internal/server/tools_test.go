@@ -454,6 +454,117 @@ func TestStoreMemoryStampsOwnerHandler(t *testing.T) {
 	}
 }
 
+// TestStoreMemoryStampsEmbedderIdentityHandler is a Task 4 positive
+// persistence guard: a missed d.embedderIdentity assignment in storeMemory
+// would compile and pass every other test, so this re-reads the persisted
+// record via d.st.Get and asserts the sentinel identity round-tripped.
+func TestStoreMemoryStampsEmbedderIdentityHandler(t *testing.T) {
+	d := testDeps(t)
+	d.embedderIdentity = "v1:deadbeefdeadbeef"
+	ctx := authedContext(t, "sub-identity-store")
+	scope := "iso-test:project:identity-store"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-identity-store")))
+	}()
+
+	id, _, err := d.storeMemory(ctx, storeArgs{Content: "identity check", Scope: scope, Source: "user-said", Category: "gotcha"})
+	if err != nil {
+		t.Fatalf("storeMemory: %v", err)
+	}
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get after storeMemory: %v", err)
+	}
+	if got.EmbedderIdentity != "v1:deadbeefdeadbeef" {
+		t.Errorf("storeMemory did not stamp embedder identity: got %q, want %q", got.EmbedderIdentity, "v1:deadbeefdeadbeef")
+	}
+}
+
+// TestScheduleMemoryStampsEmbedderIdentityHandler mirrors
+// TestStoreMemoryStampsEmbedderIdentityHandler for scheduleMemory.
+func TestScheduleMemoryStampsEmbedderIdentityHandler(t *testing.T) {
+	d := testDeps(t)
+	d.embedderIdentity = "v1:deadbeefdeadbeef"
+	ctx := authedContext(t, "sub-identity-schedule")
+	scope := "iso-test:project:identity-schedule"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-identity-schedule")))
+	}()
+
+	id, _, err := d.scheduleMemory(ctx, scheduleArgs{
+		storeArgs: storeArgs{Content: "identity check", Scope: scope, Source: "user-said", Category: "decision"},
+		NotAfter:  timeNow().Add(time.Hour).Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("scheduleMemory: %v", err)
+	}
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get after scheduleMemory: %v", err)
+	}
+	if got.EmbedderIdentity != "v1:deadbeefdeadbeef" {
+		t.Errorf("scheduleMemory did not stamp embedder identity: got %q, want %q", got.EmbedderIdentity, "v1:deadbeefdeadbeef")
+	}
+}
+
+// TestStoreDiscoveryStampsEmbedderIdentityHandler mirrors
+// TestStoreMemoryStampsEmbedderIdentityHandler for storeDiscovery.
+func TestStoreDiscoveryStampsEmbedderIdentityHandler(t *testing.T) {
+	d := testDeps(t)
+	d.embedderIdentity = "v1:deadbeefdeadbeef"
+	ctx := context.Background()
+	scope := "discovery:repo:identity-discovery"
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
+
+	id, _, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
+		Content: "identity check discovery", Kind: "fact", Scope: scope,
+		Citations: []citationArg{{Kind: "file", Ref: "f.go"}},
+	})
+	if err != nil {
+		t.Fatalf("storeDiscovery: %v", err)
+	}
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get after storeDiscovery: %v", err)
+	}
+	if got.EmbedderIdentity != "v1:deadbeefdeadbeef" {
+		t.Errorf("storeDiscovery did not stamp embedder identity: got %q, want %q", got.EmbedderIdentity, "v1:deadbeefdeadbeef")
+	}
+}
+
+// TestUpdateMemoryReStampsEmbedderIdentityHandler proves the re-embed path
+// (updateMemory -> Store.Update -> Upsert) RE-stamps the identity, not only
+// the initial write: the seed record carries a stale identity, and after
+// updateMemory runs with a new d.embedderIdentity, the persisted record must
+// carry the NEW value.
+func TestUpdateMemoryReStampsEmbedderIdentityHandler(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:identity-update"
+	id := "e7e7e7e7-0000-0000-0000-000000000001"
+	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
+
+	seed := store.Memory{
+		ID: id, Content: "v1", Scope: scope, Owner: "", CreatedAt: timeNow(),
+		EmbedderIdentity: "v1:stalestalestale0",
+	}
+	if err := d.st.Upsert(ctx, seed, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	d.embedderIdentity = "v1:deadbeefdeadbeef"
+	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "v2"}); err != nil {
+		t.Fatalf("updateMemory: %v", err)
+	}
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get after updateMemory: %v", err)
+	}
+	if got.EmbedderIdentity != "v1:deadbeefdeadbeef" {
+		t.Errorf("updateMemory did not re-stamp embedder identity on re-embed: got %q, want %q", got.EmbedderIdentity, "v1:deadbeefdeadbeef")
+	}
+}
+
 // TestStoreMemoryMintsAndReturnsShortID pins that storeMemory mints a short_id
 // (after embed) and both returns it and persists it on the record.
 func TestStoreMemoryMintsAndReturnsShortID(t *testing.T) {
