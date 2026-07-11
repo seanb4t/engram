@@ -243,14 +243,14 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 4. A slow or unreachable embedder fails within the configured timeout instead of hanging the calling MCP tool call (`store_memory`/`update_memory`/`search_memory`) indefinitely.
 
 **Status**: Not started
-**Plans**: 1/3 plans executed
+**Plans**: 2/3 plans executed
 **Wave 1**
 
 - [x] 13-01-PLAN.md — Embed client hardening: ENGRAM_EMBED_TIMEOUT + shape-aware base-URL join/override (SC1/SC2/SC4)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 13-02-PLAN.md — Embedder-config-identity helper + payload codec + clean write-site stamping (SC3, 4 sites + rule)
+- [x] 13-02-PLAN.md — Embedder-config-identity helper + payload codec + clean write-site stamping (SC3, 4 sites + rule)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -398,7 +398,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 | 10. Asymmetric Query/Document Embeddings | v0.9.x | 1/1 | Complete (already shipped) | 2026-07-10 (#305) |
 | 11. Async-on-Write Summaries | v0.9.x | 1/1 | Complete | 2026-07-10 (PR #336) |
 | 12. Per-Memory Usage Signals | v0.9.x | 1/1 | Complete | 2026-07-10 (PR #336) |
-| 13. Embedder Reliability Foundation | v0.10.x | 1/3 | In Progress|  |
+| 13. Embedder Reliability Foundation | v0.10.x | 2/3 | In Progress|  |
 | 14. Embedder Model Options & Eval | v0.10.x | 0/3 | Not started | - |
 | 15. Additive Proto + Stub Write Handlers | v0.10.x | 0/1 | Not started | - |
 | 16. CSRF Interceptor | v0.10.x | 0/1 | Not started | - |

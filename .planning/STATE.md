@@ -6,14 +6,14 @@ current_phase: 13
 current_phase_name: embedder-reliability-foundation
 status: executing
 stopped_at: Completed 13-01-PLAN.md
-last_updated: "2026-07-11T12:28:20.051Z"
+last_updated: "2026-07-11T12:41:46.609Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 13 execution started
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-10 after v0.9.x milestone)
 ## Current Position
 
 Phase: 13 (embedder-reliability-foundation) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-11 — Phase 13 execution started
 
@@ -68,6 +68,8 @@ cookie-auth security posture).
 
 - [Phase 13]: Task 1+2 committed together (shared embed.New Option seam + koanf config trio); Task 3 (D-09 regression) committed separately.
 - [Phase 13]: Query/fragment base-URL join left non-canonicalizing (operator-error scope, T-13-01 trust boundary parity).
+- [Phase 13]: Memory.EmbedderIdentity tagged json:"-" (not a normal json tag) — store.Memory serializes verbatim on 3 full-response MCP wire paths, so a normal tag would leak the audit field (round-1 review HIGH blocker).
+- [Phase 13]: document_params empty-form canonicalization (len(params)==0 -> map[string]any{}) so "" and "{}" hash identically — prevents false null vs {} provenance drift (round-2 review MEDIUM).
 
 ### Blockers/Concerns
 
@@ -78,7 +80,7 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-11T12:28:20.045Z
+Last session: 2026-07-11T12:39:11.296Z
 Stopped at: Completed 13-01-PLAN.md
 Resume file: 13-02-PLAN.md
 
@@ -87,3 +89,4 @@ Resume file: 13-02-PLAN.md
 | Phase | Plan | Duration | Notes |
 |-------|------|----------|-------|
 | Phase 13 P01 | 21min | 3 tasks | 9 files |
+| Phase 13 P02 | 15min | 4 tasks | 9 files |
