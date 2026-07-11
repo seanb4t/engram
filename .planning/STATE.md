@@ -8,7 +8,7 @@ status: ready-to-execute
 stopped_at: Phase 15 planned — ready to execute
 last_updated: "2026-07-11T20:30:00.000Z"
 last_activity: 2026-07-11
-last_activity_desc: "Phase 15 planned (4 plans / 3 waves); research, patterns, validation captured; plan-checker passed"
+last_activity_desc: "Phase 15 cross-AI reviewed (codex+agy) + reviews replan incorporated (4e9f9dae); checker re-passed 10/10 dispositions"
 progress:
   total_phases: 3
   completed_phases: 2
@@ -30,8 +30,8 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 Phase: 15 — Additive Proto + Stub Write Handlers
 Plan: 4 plans / 3 waves (15-01 proto+gen, 15-02 idempotency ban gate, 15-03 protovalidate interceptor, 15-04 descriptor + negative-matrix tests)
-Status: Ready to execute Phase 15 (planned + checker-verified 2026-07-11; PR #352 merged as f2a16e92)
-Last activity: 2026-07-11 — Phase 15 planned (research → patterns → 4 plans → checker passed after 1 revision)
+Status: Ready to execute Phase 15 (planned + cross-AI reviewed + reviews replan checker-verified 2026-07-11)
+Last activity: 2026-07-11 — Phase 15 reviews replan (codex+agy round 1: 8 incorporated, 1 deferred, 1 rejected vs locked D-01; checker verified 10/10)
 
 ## Deferred Items
 
