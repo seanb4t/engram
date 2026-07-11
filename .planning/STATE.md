@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 13
-current_phase_name: Embedder Reliability Foundation
-status: planned
-stopped_at: Phase 13 planned (3 plans, 3 waves)
-last_updated: "2026-07-11T03:07:02.000Z"
-last_activity: 2026-07-10
-last_activity_desc: Phase 13 planned — 3 plans across 3 waves
+current_phase_name: embedder-reliability-foundation
+status: executing
+stopped_at: Completed 13-01-PLAN.md
+last_updated: "2026-07-11T12:28:20.051Z"
+last_activity: 2026-07-11
+last_activity_desc: Phase 13 execution started
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 3
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-10 after v0.9.x milestone)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.10.x — Hardening & Write Lane (opened 2026-07-10): roadmap created — 9 phases (13–21), 20/20 requirements mapped. Embedder reliability & options (13–14), Connect write lane + CSRF + session rotation (15–19), correctness/CI backlog (20–21).
+**Current focus:** Phase 13 — embedder-reliability-foundation
 
 ## Current Position
 
-Phase: Phase 13 (Embedder Reliability Foundation) — planned (3 plans, 3 waves)
-Plan: 13-01 (Wave 1) → 13-02 (Wave 2) → 13-03 (Wave 3)
-Status: Planning complete; ready for `/gsd-execute-phase 13`
-Last activity: 2026-07-10 — Phase 13 planned (research + validation + pattern map; 3 plans, 3 waves)
+Phase: 13 (embedder-reliability-foundation) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-07-11 — Phase 13 execution started
 
 ## Deferred Items
 
@@ -66,6 +66,9 @@ rotation (18) → console UX (19). Correctness/polish (20) and CI hygiene (21) a
 both tracks. Phases 16–18 are flagged for `/gsd-secure-phase` (18 mandatory — changes the
 cookie-auth security posture).
 
+- [Phase 13]: Task 1+2 committed together (shared embed.New Option seam + koanf config trio); Task 3 (D-09 regression) committed separately.
+- [Phase 13]: Query/fragment base-URL join left non-canonicalizing (operator-error scope, T-13-01 trust boundary parity).
+
 ### Blockers/Concerns
 
 - **Env restore (non-blocking):** repo-local `commit.gpgsign=false` is still set (1Password SSH-signing was flaky during the v0.9.x milestone; those commits were unsigned and `main` had no required-signatures). Restore when 1Password is stable: `git config --local --unset commit.gpgsign`. Also sync local `main` past the squash merge (`658795e9`).
@@ -75,6 +78,12 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-11T03:07:02.000Z
-Stopped at: Phase 13 planned (3 plans)
-Resume file: .planning/phases/13-embedder-reliability-foundation/13-01-PLAN.md
+Last session: 2026-07-11T12:28:20.045Z
+Stopped at: Completed 13-01-PLAN.md
+Resume file: 13-02-PLAN.md
+
+## Performance Metrics
+
+| Phase | Plan | Duration | Notes |
+|-------|------|----------|-------|
+| Phase 13 P01 | 21min | 3 tasks | 9 files |
