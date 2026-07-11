@@ -5,15 +5,15 @@ milestone_name: — Hardening & Write Lane
 current_phase: 14
 current_phase_name: Embedder Model Options & Eval
 status: "Phase 13 shipped — PR #348"
-stopped_at: Phase 13 complete — ready to plan Phase 14
-last_updated: "2026-07-11T13:45:05.035Z"
+stopped_at: Phase 14 context gathered
+last_updated: "2026-07-11T14:29:37.607Z"
 last_activity: 2026-07-11
 progress:
-  total_phases: 1
+  total_phases: 2
   completed_phases: 1
   total_plans: 3
   completed_plans: 3
-  percent: 100
+  percent: 50
 ---
 
 # Project State
@@ -81,9 +81,9 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-11
-Stopped at: Phase 13 complete (3/3 plans, verified + code-reviewed), ready to plan Phase 14
-Resume file: None
+Last session: 2026-07-11T14:29:37.600Z
+Stopped at: Phase 14 context gathered
+Resume file: .planning/phases/14-embedder-model-options-eval/14-CONTEXT.md
 
 ## Performance Metrics
 
