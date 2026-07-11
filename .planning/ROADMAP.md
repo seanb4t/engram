@@ -268,7 +268,16 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 3. The docs site and Helm `values.yaml` document each supported embedding model (OpenRouter/Gemini/OpenAI/local TEI-Ollama-vLLM), pairing base URL + model + vector dim + query instruction, with every model/dim change explicitly called out as requiring `engram reindex` (cross-linking `guides/reindex`).
 
 **Status**: Not started
-**Plans**: TBD
+**Plans**: 3 plans
+
+**Wave 1** *(parallel — no file overlap)*
+
+- [ ] 14-01-PLAN.md — Gemini differ-case eval fixture: skip-gated `TestEmbedAsymmetryDiffer` proving instruction-prefix asymmetry takes effect (Pitfall-12 gate, REQ-embed-gemini-direct)
+- [ ] 14-02-PLAN.md — Model & recipe docs: new `guides/embedding-models.md` + Helm `values.yaml` commented recipes + cross-links/reindex callouts (REQ-embed-model-docs)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 14-03-PLAN.md — Model-id lock checkpoint + live eval runs (Gemini differ + qwen3@4096 recall@8) + committed `14-EVAL-EVIDENCE.md` (REQ-embed-gemini-direct, REQ-embed-prod-parity-eval; closes #261/#334)
 
 ### Phase 15: Additive Proto + Stub Write Handlers
 

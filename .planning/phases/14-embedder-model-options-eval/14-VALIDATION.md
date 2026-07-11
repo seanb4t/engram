@@ -1,8 +1,8 @@
 ---
 phase: 14
 slug: embedder-model-options-eval
-status: draft
-nyquist_compliant: false
+status: planned
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-11
 ---
@@ -41,9 +41,9 @@ created: 2026-07-11
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 14-??-?? | ?? | ? | REQ-embed-gemini-direct | T-14-01 (info-disclosure: no real keys/content) | Gemini query vector ≠ document vector for identical text (instruction-prefix takes effect; Pitfall 12 guard) | integration (live gateway) | `ENGRAM_RETRIEVAL_EVAL=1 ENGRAM_EMBED_MODEL=gemini-embedding-2 … go test ./internal/retrievaleval/ -run TestRetrievalEval -v` | ❌ W0 — new differ-case in `fixtures.go`/`retrieval_eval_test.go` | ⬜ pending |
-| 14-??-?? | ?? | ? | REQ-embed-prod-parity-eval | — | `gh261Case` Record T within default k=8 against qwen3@4096 | integration (hard rank assertion, already implemented) | `ENGRAM_RETRIEVAL_EVAL=1 ENGRAM_EMBED_MODEL=qwen/qwen3-embedding-8b ENGRAM_EMBED_DIM=4096 … task eval:retrieval` | ✅ existing gate — env-only change, no new test code | ⬜ pending |
-| 14-??-?? | ?? | ? | REQ-embed-model-docs | T-14-01 | Recipes render/lint + cross-link `guides/reindex`; placeholder secrets only | manual-only (docs correctness not unit-testable) | `task lint` (structure/lint only) | ❌ W0 — new `embedding-models.md` | ⬜ pending |
+| 14-01-T1/T2 | 14-01 | 1 | REQ-embed-gemini-direct | T-14-01 (info-disclosure: synthetic probe, no keys) | Skip-gated `TestEmbedAsymmetryDiffer` compiles + zero-cost skips by default; live PASS = query vec ≠ document vec (instruction-prefix takes effect; Pitfall 12 guard) | unit compile/skip (default gate) → integration live (14-03) | `go test ./internal/retrievaleval/ -run TestEmbedAsymmetryDiffer -count=1` (skips clean); live: `ENGRAM_RETRIEVAL_EVAL=1 … go test … -run TestEmbedAsymmetryDiffer -v` | ❌ W0 — new differ-case in `fixtures.go`/`retrieval_eval_test.go` (built by 14-01) | ⬜ pending |
+| 14-02-T1/T2/T3 | 14-02 | 1 | REQ-embed-model-docs | T-14-01 | Recipes render/lint + cross-link `guides/reindex`; instruction-prefix Gemini recipe; placeholder secrets only | positive grep + lint (docs correctness manual) | `grep -q 'v1beta/openai' … && grep -q '/guides/reindex/' …` + `task lint` + `helm lint charts/engram` | ❌ W0 — new `embedding-models.md` (built by 14-02) | ⬜ pending |
+| 14-03-T1/T2 | 14-03 | 2 | REQ-embed-gemini-direct, REQ-embed-prod-parity-eval | T-14-01 | Live differ PASS + `gh261Case` Record T within default k=8 on qwen3@4096, captured in redacted committed evidence | integration (live gateway; human-verify checkpoint) → evidence grep | `task eval:retrieval` (both recipe envs, manual/local D-06); evidence: `grep -qi 'recall@8' … && grep -q '261' …` | ❌ W0 — new `14-EVAL-EVIDENCE.md` (built by 14-03) | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -71,11 +71,11 @@ created: 2026-07-11
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < default-gate seconds
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies (14-03 T1 is a `checkpoint:human-verify`, Nyquist-exempt; its live evals are documented Wave 0 manual deps captured by 14-03 T2's evidence grep)
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (differ-case fixture → 14-01; `embedding-models.md` → 14-02; `14-EVAL-EVIDENCE.md` → 14-03)
+- [x] No watch-mode flags
+- [x] Feedback latency < default-gate seconds
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** planned 2026-07-11 (task IDs mapped to 14-01/14-02/14-03)
