@@ -11,6 +11,29 @@
 > (1,037 issues incl. 1,017 closed + the migrated `bd remember` memories) is archived at
 > `.planning/archive/beads-export-engram-2026-07-08.jsonl`.
 
+## Backlog review — 2026-07-11 (`/gsd-review-backlog`)
+
+Reviewed after Phase 13 (Embedder Reliability Foundation) merged to `main` (PR #348).
+GitHub Issues + the `v0.10.x` milestone are the source of truth; this is a log snapshot.
+
+- **Closed — delivered by Phase 13 (PR #348):** **#333** (`ENGRAM_EMBED_TIMEOUT` + re-derived
+  summary-queue backoff) and **#332** (shape-aware base-URL → `/embeddings` join). #332's
+  remaining operator-error edge cases (doubled `/embeddings`, query-string bases) live on in **#346**.
+- **Promoted → `v0.10.x`** (12 issues):
+  - Phase-13 code-review follow-ups: **#345** (reindex `--resume` skips tag-only changes → stale
+    vector), **#346** (base-URL join malformed edge cases), **#347** (embed non-2xx discards
+    provider error body).
+  - from-beads code-quality leftovers folded into the correctness/CI tail (Phase 20/21): **#306,
+    #309, #310, #312, #313, #315, #316, #318, #319**. These were marked `[x] → v0.9.x` in the
+    2026-07-09 review below but were never actually completed (still open) — re-promoted here.
+- **Deferred → next milestone (`v0.11.x` candidates, left un-milestoned)** — 5 newer feature ideas
+  beyond v0.10.x's hardening/write-lane goal: **#340** (idempotency/upsert on `store_memory`),
+  **#341** (structured provenance/citations on curated memories), **#342** (supersession links),
+  **#343** (headless client transport), **#344** (`cross_spine` on `search_memory`). Surface at the
+  next `/gsd-new-milestone`.
+- **Untouched maintenance:** #301 (already `v0.10.x` → Phase 21), #311 / #314 (un-milestoned).
+- **Removed:** none. (#155 Dependency Dashboard is a Renovate bot artifact — not tracked.)
+
 ## Backlog review — 2026-07-09 (`/gsd-review-backlog`)
 
 Reviewed after v0.8.4 shipped (milestone v0.8.x complete). Outcome:
