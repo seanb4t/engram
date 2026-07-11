@@ -4,15 +4,15 @@ milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 13
 current_phase_name: Embedder Reliability Foundation
-status: roadmapped
-stopped_at: Phase 13 context gathered
-last_updated: "2026-07-11T02:23:38.848Z"
+status: planned
+stopped_at: Phase 13 planned (3 plans, 3 waves)
+last_updated: "2026-07-11T03:07:02.000Z"
 last_activity: 2026-07-10
-last_activity_desc: Roadmap created for v0.10.x (Phases 13–21)
+last_activity_desc: Phase 13 planned — 3 plans across 3 waves
 progress:
   total_phases: 1
   completed_phases: 0
-  total_plans: 0
+  total_plans: 3
   completed_plans: 0
   percent: 0
 ---
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-10 after v0.9.x milestone)
 
 ## Current Position
 
-Phase: Phase 13 (Embedder Reliability Foundation) — not yet started
-Plan: —
-Status: Roadmap complete; ready for `/gsd-plan-phase 13`
-Last activity: 2026-07-10 — Roadmap created for v0.10.x (Phases 13–21)
+Phase: Phase 13 (Embedder Reliability Foundation) — planned (3 plans, 3 waves)
+Plan: 13-01 (Wave 1) → 13-02 (Wave 2) → 13-03 (Wave 3)
+Status: Planning complete; ready for `/gsd-execute-phase 13`
+Last activity: 2026-07-10 — Phase 13 planned (research + validation + pattern map; 3 plans, 3 waves)
 
 ## Deferred Items
 
@@ -75,6 +75,6 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-11T02:23:38.842Z
-Stopped at: Phase 13 context gathered
-Resume file: .planning/phases/13-embedder-reliability-foundation/13-CONTEXT.md
+Last session: 2026-07-11T03:07:02.000Z
+Stopped at: Phase 13 planned (3 plans)
+Resume file: .planning/phases/13-embedder-reliability-foundation/13-01-PLAN.md

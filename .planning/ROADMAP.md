@@ -244,8 +244,16 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 
 **Status**: Not started
 **Plans**: 3 plans
+**Wave 1**
+
 - [ ] 13-01-PLAN.md — Embed client hardening: ENGRAM_EMBED_TIMEOUT + shape-aware base-URL join/override (SC1/SC2/SC4)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 13-02-PLAN.md — Embedder-config-identity helper + payload codec + clean write-site stamping (SC3, 4 sites + rule)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 13-03-PLAN.md — Reindex identity stamping: verbatim-payload landmine + StoreAndEmbedderFromEnvNoEnsure signature ripple (SC3, 5th site)
 
 ### Phase 14: Embedder Model Options & Eval
