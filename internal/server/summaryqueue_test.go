@@ -349,6 +349,34 @@ func TestSummaryQueueRetryBudgetAccommodatesFullTryCount(t *testing.T) {
 	}
 }
 
+// TestSummaryQueueBackoffBudgetIndependentOfEmbedTimeout is the D-09
+// assert-only regression: the summary-queue backoff budget (maxElapsed) is
+// derived exclusively from the attemptTimeout argument the caller passes —
+// which the production wiring (tools.go: newSummaryQueue(..., summaryTimeout(cfg), ...))
+// sources from ENGRAM_SUMMARY_TIMEOUT, never from ENGRAM_EMBED_TIMEOUT or any
+// other embed-derived value. Two queues built with distinct attemptTimeout
+// values must see maxElapsed scale proportionally with attemptTimeout, not
+// collapse to a shared embed-derived 30s literal.
+func TestSummaryQueueBackoffBudgetIndependentOfEmbedTimeout(t *testing.T) {
+	short := newSummaryQueue(1, 1, 5*time.Second, nil, func(context.Context, string) error { return nil })
+	long := newSummaryQueue(1, 1, 60*time.Second, nil, func(context.Context, string) error { return nil })
+
+	if long.maxElapsed <= short.maxElapsed {
+		t.Fatalf("maxElapsed did not scale with attemptTimeout: short(5s)=%v, long(60s)=%v; want long > short", short.maxElapsed, long.maxElapsed)
+	}
+
+	// Pin the exact derivation so a future refactor cannot silently reintroduce
+	// a fixed/embed-derived constant.
+	wantShort := (5*time.Second + summaryQueueMaxInterval) * time.Duration(summaryQueueMaxTries)
+	wantLong := (60*time.Second + summaryQueueMaxInterval) * time.Duration(summaryQueueMaxTries)
+	if short.maxElapsed != wantShort {
+		t.Errorf("short.maxElapsed = %v, want %v", short.maxElapsed, wantShort)
+	}
+	if long.maxElapsed != wantLong {
+		t.Errorf("long.maxElapsed = %v, want %v", long.maxElapsed, wantLong)
+	}
+}
+
 // TestStoreFillFillsEligibleRecord exercises the production fill-builder
 // (storeFill, wired into the queue by Wave 3) end-to-end against a live
 // Qdrant-backed store: an eligible record (long content, no summary) is
