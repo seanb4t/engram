@@ -4,11 +4,10 @@ milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 14
 current_phase_name: Embedder Model Options & Eval
-status: planning
+status: "Phase 13 shipped — PR #348"
 stopped_at: Phase 13 complete — ready to plan Phase 14
-last_updated: "2026-07-11T13:04:18.945Z"
+last_updated: "2026-07-11T13:45:05.035Z"
 last_activity: 2026-07-11
-last_activity_desc: Phase 13 complete, transitioned to Phase 14
 progress:
   total_phases: 1
   completed_phases: 1
@@ -30,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 13)
 
 Phase: 14 — Embedder Model Options & Eval
 Plan: Not started (needs discuss + plan)
-Status: Phase 13 complete + verified (8/8) + code-reviewed (0 blockers, 3 warnings filed); Phase 14 ready to plan
-Last activity: 2026-07-11 — Phase 13 shipped, transitioned to Phase 14
+Status: Phase 13 shipped — PR #348
+Last activity: 2026-07-11
 
 ## Deferred Items
 
