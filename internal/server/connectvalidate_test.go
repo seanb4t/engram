@@ -33,7 +33,7 @@ func TestConnectValidateInterceptor(t *testing.T) {
 			t.Fatalf("protovalidate.New: %v", err)
 		}
 		nextCalled := false
-		next := connect.UnaryFunc(func(ctx context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
+		next := connect.UnaryFunc(func(_ context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
 			nextCalled = true
 			return nil, nil
 		})
@@ -59,7 +59,7 @@ func TestConnectValidateInterceptor(t *testing.T) {
 			t.Fatalf("protovalidate.New: %v", err)
 		}
 		nextCalled := false
-		next := connect.UnaryFunc(func(ctx context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
+		next := connect.UnaryFunc(func(_ context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
 			nextCalled = true
 			return nil, nil
 		})
@@ -83,7 +83,7 @@ func TestConnectValidateInterceptor(t *testing.T) {
 
 	t.Run("non_validation_error_maps_to_internal", func(t *testing.T) {
 		nextCalled := false
-		next := connect.UnaryFunc(func(ctx context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
+		next := connect.UnaryFunc(func(_ context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
 			nextCalled = true
 			return nil, nil
 		})
@@ -112,7 +112,7 @@ func TestConnectValidateInterceptor(t *testing.T) {
 			t.Fatalf("protovalidate.New: %v", err)
 		}
 		nextCalled := false
-		next := connect.UnaryFunc(func(ctx context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
+		next := connect.UnaryFunc(func(_ context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
 			nextCalled = true
 			return nil, nil
 		})
