@@ -5,15 +5,15 @@ milestone_name: — Hardening & Write Lane
 current_phase: 15
 current_phase_name: additive-proto-stub-write-handlers
 status: executing
-stopped_at: Completed 15-01-PLAN.md
-last_updated: "2026-07-11T22:10:10.230Z"
+stopped_at: Completed 15-02-PLAN.md
+last_updated: "2026-07-11T22:18:15.516Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 15 execution started
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 10
-  completed_plans: 7
+  completed_plans: 8
   percent: 67
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 ## Current Position
 
 Phase: 15 (additive-proto-stub-write-handlers) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-07-11 — Phase 15 execution started
 
@@ -77,6 +77,7 @@ cookie-auth security posture).
 - [Phase 14]: Local TEI/Ollama/vLLM recipes in guides/embedding-models.md documented as concrete complete rows (exact model id/dim/base URL/empty instruction) rather than operator-chosen placeholders (review B7)
 - [Phase 14]: Gemini compat model-id confirmed unchanged (gemini-embedding-2, 3072-dim); embedding-models.md and values.yaml left untouched
 - [Phase 15]: buf.gen.yaml gained a managed-mode disable rule scoped to buf.build/bufbuild/protovalidate so go_package_prefix override doesn't break the BSR dependency's generated import path (Plan 01, Rule 3)
+- [Phase 15]: Duplicated the idempotency-ban grep regex verbatim between Taskfile.yaml and .github/workflows/ci.yaml (no shared script) — matches this repo's bare-runner CI convention of mirroring Taskfile commands inline; Plan 04's descriptor test is the defense-in-depth backstop against regex drift
 
 ### Blockers/Concerns
 
@@ -87,9 +88,9 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-11T22:10:10.224Z
-Stopped at: Completed 15-01-PLAN.md
-Resume file: .planning/phases/15-additive-proto-stub-write-handlers/15-02-PLAN.md
+Last session: 2026-07-11T22:18:15.508Z
+Stopped at: Completed 15-02-PLAN.md
+Resume file: .planning/phases/15-additive-proto-stub-write-handlers/15-03-PLAN.md
 
 ## Performance Metrics
 
@@ -102,3 +103,4 @@ Resume file: .planning/phases/15-additive-proto-stub-write-handlers/15-02-PLAN.m
 | Phase 14 P02 | 12min | 3 tasks | 3 files |
 | Phase 14-embedder-model-options-eval P03 | 8min | 2 tasks | 1 files |
 | Phase 15 P01 | 7min | 3 tasks | 8 files |
+| Phase 15 P02 | 6min | 2 tasks | 2 files |
