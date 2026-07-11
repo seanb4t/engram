@@ -86,12 +86,16 @@ pre-close `REQUIREMENTS.md` snapshot).
 - ✓ **REQ-embed-prod-parity-eval** — #261 recall@8=1.00 re-confirmed live on the prod-parity `qwen3-embedding-8b`@4096 config; committed fail-closed eval evidence (`14-EVAL-EVIDENCE.md`); closes #261/#334 — Phase 14
 - ✓ **REQ-embed-model-docs** — `docs-site` `guides/embedding-models.md` + Helm `values.yaml` commented recipes for OpenRouter/Gemini/OpenAI/local (TEI/Ollama/vLLM), each pairing base URL + model + dim + query instruction with an `engram reindex` callout (#337) — Phase 14
 
+**v0.10.x — Hardening & Write Lane (Phase 15 complete 2026-07-11):**
+
+- ✓ **REQ-connect-write-rpcs** — the six additive write RPCs (`StoreMemory`/`StoreDiscovery`/`UpdateMemory`/`DeleteMemory`/`SetVisibility`/`ScheduleMemory`) exist in the Connect `EngramService` wire contract with `buf.validate` annotations (UpdateMemory FieldMask allowlist CEL, category enum, SetVisibility zero-value rejection) + a hand-rolled `protovalidate` interceptor ordered after auth (401 before 400); additive-only (`buf breaking` clean), and provably unreachable over an unauthenticated GET (embedded `UnimplementedEngramServiceHandler` stubs + a `idempotency_level = NO_SIDE_EFFECTS` build gate mirrored in CI + descriptor & negative-matrix regression tests). Handler bodies deferred to Phases 16–19 (#322) — Phase 15
+
 ### Active
 
 **v0.10.x — Hardening & Write Lane** (being scoped; full text in `.planning/REQUIREMENTS.md`):
 
 - ✓ Embedder reliability & options — shipped: #333/#332 (Phase 13), #331/#334/#337 + #261 (Phase 14)
-- Connect write lane + auth hardening (#322 write RPCs + CSRF, #323 session rotation)
+- Connect write lane + auth hardening — proto contract + stub RPCs shipped Phase 15 (REQ-connect-write-rpcs); remaining: CSRF gate (16), wired handlers (17), session rotation (18) (#322/#323)
 - Correctness & polish tail (#307/#308/#302/#303/#304/#269 + from-beads refactors)
 - CI / maintenance hygiene (#301/#335, `.rumdl.toml` `.planning` exclude)
 
@@ -402,4 +406,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-07-11 after Phase 14 (Embedder Model Options & Eval) — validated REQ-embed-gemini-direct / REQ-embed-prod-parity-eval / REQ-embed-model-docs via live differ + qwen3@4096 recall@8=1.00 evidence (closes #261/#334/#331). Prior: 2026-07-11 after Phase 13 (Embedder Reliability Foundation) — shipped REQ-embed-timeout / REQ-embed-baseurl-join / REQ-embed-config-identity. Prior: 2026-07-10 opened milestone v0.10.x — Hardening & Write Lane (`/gsd-new-milestone`); 2026-07-10 shipped + archived v0.9.x — Recall Quality (PR #336/#338); 2026-07-08 folded 31 companion ADRs + 24 plans into the baseline; 2026-07-07 retrospective baseline ingest (v0.8.x shipped).*
+*Last updated: 2026-07-11 after Phase 15 (Additive Proto + Stub Write Handlers) — validated REQ-connect-write-rpcs: the six additive write RPCs now exist in the Connect wire contract (buf.validate + hand-rolled protovalidate interceptor, auth 401 → validate 400), additive-only, provably GET-unreachable via `UnimplementedEngramServiceHandler` stubs + the `NO_SIDE_EFFECTS` idempotency-ban gate + descriptor/negative-matrix tests; handler bodies deferred to Phases 16–19 (#322). Prior: 2026-07-11 after Phase 14 (Embedder Model Options & Eval) — validated REQ-embed-gemini-direct / REQ-embed-prod-parity-eval / REQ-embed-model-docs via live differ + qwen3@4096 recall@8=1.00 evidence (closes #261/#334/#331). Prior: 2026-07-11 after Phase 13 (Embedder Reliability Foundation) — shipped REQ-embed-timeout / REQ-embed-baseurl-join / REQ-embed-config-identity. Prior: 2026-07-10 opened milestone v0.10.x — Hardening & Write Lane (`/gsd-new-milestone`); 2026-07-10 shipped + archived v0.9.x — Recall Quality (PR #336/#338); 2026-07-08 folded 31 companion ADRs + 24 plans into the baseline; 2026-07-07 retrospective baseline ingest (v0.8.x shipped).*
