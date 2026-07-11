@@ -1431,7 +1431,7 @@ func TestStoreAndEmbedderFromEnvNoEnsureValidatesConfig(t *testing.T) {
 	// StoreAndEmbedderFromEnvNoEnsure's loadAndValidate. Validation runs BEFORE any
 	// Qdrant client construction, so this returns fast and needs no live Qdrant.
 	t.Setenv("ENGRAM_OPENAI_BASE_URL", "ftp://nope")
-	_, _, _, err := StoreAndEmbedderFromEnvNoEnsure()
+	_, _, _, _, err := StoreAndEmbedderFromEnvNoEnsure()
 	if err == nil {
 		t.Fatal("StoreAndEmbedderFromEnvNoEnsure with bad ENGRAM_OPENAI_BASE_URL = nil, want validation error")
 	}
@@ -1503,7 +1503,7 @@ func TestStoreAndEmbedderFromEnvNoEnsureLoadsConfigOnce(t *testing.T) {
 	}
 	t.Cleanup(func() { configLoad = orig })
 
-	st, dim, em, err := StoreAndEmbedderFromEnvNoEnsure()
+	st, dim, em, identity, err := StoreAndEmbedderFromEnvNoEnsure()
 	if err != nil {
 		t.Fatalf("StoreAndEmbedderFromEnvNoEnsure: %v", err)
 	}
@@ -1513,6 +1513,29 @@ func TestStoreAndEmbedderFromEnvNoEnsureLoadsConfigOnce(t *testing.T) {
 
 	if loads != 1 {
 		t.Errorf("StoreAndEmbedderFromEnvNoEnsure loaded config %d times, want exactly 1", loads)
+	}
+
+	// Review round-2 MEDIUM: behavior-test the returned identity, not just its
+	// arity — a helper that returned an empty identity would still pass an
+	// arity-only compile check. Load the expected cfg via the unwrapped
+	// loader (orig) so this expected-value load does not inflate the loads
+	// counter asserted above.
+	expectedCfg, err := orig(nil)
+	if err != nil {
+		t.Fatalf("orig config load: %v", err)
+	}
+	wantIdentity, err := config.EmbedderIdentity(expectedCfg)
+	if err != nil {
+		t.Fatalf("config.EmbedderIdentity: %v", err)
+	}
+	if identity == "" {
+		t.Error("StoreAndEmbedderFromEnvNoEnsure did not compute a non-empty embedder identity")
+	}
+	if !strings.HasPrefix(identity, "v1:") {
+		t.Errorf("StoreAndEmbedderFromEnvNoEnsure identity = %q, want v1: prefix", identity)
+	}
+	if identity != wantIdentity {
+		t.Errorf("StoreAndEmbedderFromEnvNoEnsure identity = %q, want %q (config.EmbedderIdentity for the same config)", identity, wantIdentity)
 	}
 }
 

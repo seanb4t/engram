@@ -143,25 +143,32 @@ func StoreFromEnv() (*store.Store, error) {
 }
 
 // StoreAndEmbedderFromEnvNoEnsure builds the no-ensure source Store (with its
-// configured embed dimension) and the matching embedder from a SINGLE config
+// configured embed dimension), the matching embedder, and the computed
+// embedder-config-identity (config.EmbedderIdentity) from a SINGLE config
 // load. reindex uses it so the source collection must already exist (no-ensure)
-// rather than being silently created at the new dimension, and so config is
-// parsed exactly once — the engram-635 single-load invariant, applied to the
-// reindex path the same way buildDepsFromEnv applies it to serve.
-func StoreAndEmbedderFromEnvNoEnsure() (*store.Store, uint64, *embed.Client, error) {
+// rather than being silently created at the new dimension, config is parsed
+// exactly once — the engram-635 single-load invariant, applied to the reindex
+// path the same way buildDepsFromEnv applies it to serve — and reindex has a
+// path to the identity string to stamp onto reindexed records (Phase 13 SC3,
+// ReindexOptions.Identity).
+func StoreAndEmbedderFromEnvNoEnsure() (*store.Store, uint64, *embed.Client, string, error) {
 	cfg, err := loadAndValidate()
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, 0, nil, "", err
 	}
 	st, dim, err := storeFromConfig(cfg)
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, 0, nil, "", err
 	}
 	em, err := embedderFromConfig(cfg)
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, 0, nil, "", err
 	}
-	return st, dim, em, nil
+	identity, err := config.EmbedderIdentity(cfg)
+	if err != nil {
+		return nil, 0, nil, "", fmt.Errorf("embedder identity: %w", err)
+	}
+	return st, dim, em, identity, nil
 }
 
 // buildDepsFromEnv wires up the store and embedder from the environment with a

@@ -47,7 +47,7 @@ var reindexCmd = &cobra.Command{
 		// one at the new dimension. dim is the currently-configured embedder's
 		// ENGRAM_EMBED_DIM — reused as the target collection's dimension. Store and
 		// embedder come from a single config load.
-		st, dim, em, err := server.StoreAndEmbedderFromEnvNoEnsure()
+		st, dim, em, identity, err := server.StoreAndEmbedderFromEnvNoEnsure()
 		if err != nil {
 			return err
 		}
@@ -65,11 +65,12 @@ var reindexCmd = &cobra.Command{
 		// Per-batch progress goes to stderr so it never pollutes the single
 		// parseable summary line on stdout (engram-xddn).
 		res, err := st.Reindex(ctx, store.ReindexOptions{
-			Target: reindexTarget,
-			Source: reindexSource,
-			Dim:    dim,
-			DryRun: reindexDryRun,
-			Resume: reindexResume,
+			Target:   reindexTarget,
+			Source:   reindexSource,
+			Dim:      dim,
+			DryRun:   reindexDryRun,
+			Resume:   reindexResume,
+			Identity: identity,
 			Progress: func(r store.ReindexResult) {
 				cmd.PrintErrf("reindex progress: scanned %d, upserted %d, skipped %d, unchanged %d\n",
 					r.Scanned, r.Upserted, r.Skipped, r.Unchanged)
