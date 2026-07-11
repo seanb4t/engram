@@ -80,11 +80,17 @@ pre-close `REQUIREMENTS.md` snapshot).
 - ✓ **REQ-embed-baseurl-join** — shape-aware base-URL → `/embeddings` join across OpenAI/OpenRouter/Gemini shapes with operator override (#332) — Phase 13
 - ✓ **REQ-embed-config-identity** — `v1:`-prefixed embedder-config-identity stamp on all 5 document-embed write sites (incl. `engram reindex`), payload-only (`json:"-"`, no wire leak), identity-aware reindex resume (DECISION 3) — Phase 13
 
+**v0.10.x — Hardening & Write Lane (Phase 14 complete 2026-07-11):**
+
+- ✓ **REQ-embed-gemini-direct** — direct Gemini embeddings via the OpenAI-compat `/v1beta/openai` endpoint using the instruction-prefix asymmetry (`ENGRAM_EMBED_QUERY/DOCUMENT_INSTRUCTION`, not the silent-no-op `task_type`); proven live by the skip-gated `TestRetrievalEval_AsymmetryDiffer` differ-case (query≠document @3072) with the confirmed `gemini-embedding-2` model-id (#331) — Phase 14
+- ✓ **REQ-embed-prod-parity-eval** — #261 recall@8=1.00 re-confirmed live on the prod-parity `qwen3-embedding-8b`@4096 config; committed fail-closed eval evidence (`14-EVAL-EVIDENCE.md`); closes #261/#334 — Phase 14
+- ✓ **REQ-embed-model-docs** — `docs-site` `guides/embedding-models.md` + Helm `values.yaml` commented recipes for OpenRouter/Gemini/OpenAI/local (TEI/Ollama/vLLM), each pairing base URL + model + dim + query instruction with an `engram reindex` callout (#337) — Phase 14
+
 ### Active
 
 **v0.10.x — Hardening & Write Lane** (being scoped; full text in `.planning/REQUIREMENTS.md`):
 
-- Embedder reliability & options (#333/#332/#331/#334/#337; closes #261)
+- ✓ Embedder reliability & options — shipped: #333/#332 (Phase 13), #331/#334/#337 + #261 (Phase 14)
 - Connect write lane + auth hardening (#322 write RPCs + CSRF, #323 session rotation)
 - Correctness & polish tail (#307/#308/#302/#303/#304/#269 + from-beads refactors)
 - CI / maintenance hygiene (#301/#335, `.rumdl.toml` `.planning` exclude)
@@ -396,4 +402,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-07-11 after Phase 13 (Embedder Reliability Foundation) — shipped REQ-embed-timeout / REQ-embed-baseurl-join / REQ-embed-config-identity. Prior: 2026-07-10 opened milestone v0.10.x — Hardening & Write Lane (`/gsd-new-milestone`); 2026-07-10 shipped + archived v0.9.x — Recall Quality (PR #336/#338); 2026-07-08 folded 31 companion ADRs + 24 plans into the baseline; 2026-07-07 retrospective baseline ingest (v0.8.x shipped).*
+*Last updated: 2026-07-11 after Phase 14 (Embedder Model Options & Eval) — validated REQ-embed-gemini-direct / REQ-embed-prod-parity-eval / REQ-embed-model-docs via live differ + qwen3@4096 recall@8=1.00 evidence (closes #261/#334/#331). Prior: 2026-07-11 after Phase 13 (Embedder Reliability Foundation) — shipped REQ-embed-timeout / REQ-embed-baseurl-join / REQ-embed-config-identity. Prior: 2026-07-10 opened milestone v0.10.x — Hardening & Write Lane (`/gsd-new-milestone`); 2026-07-10 shipped + archived v0.9.x — Recall Quality (PR #336/#338); 2026-07-08 folded 31 companion ADRs + 24 plans into the baseline; 2026-07-07 retrospective baseline ingest (v0.8.x shipped).*
