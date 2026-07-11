@@ -19,7 +19,8 @@ observable truths that hold in the shipped baseline.
 
 - ✅ **v0.8.x Baseline** — Phases 1–7 (shipped)
 - ✅ **Connect Auth Hardening** — Phase 8 (shipped; R1–R4 verified 2026-07-08)
-- 🚧 **v0.9.x — Recall Quality** — Phases 9–12 (opened 2026-07-09): retrieval eval + ranking precision (#261), embedder query/document asymmetry (#305), async-on-write summaries (#320), per-memory usage signals (#317)
+- ✅ **v0.9.x — Recall Quality** — Phases 9–12 (shipped 2026-07-10, PR #336): retrieval eval + ranking precision (#261), embedder query/document asymmetry (#305), async-on-write summaries (#320), per-memory usage signals (#317). Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
+- 📋 **v0.10.x** — not yet planned. Run `/gsd-new-milestone` to scope it. Deferred candidates: Connect write-lane + CSRF (#322), session refresh-token rotation (#323).
 
 ## Phases
 
@@ -28,6 +29,9 @@ observable truths that hold in the shipped baseline.
 - Integer phases (1, 2, 3): milestone work
 - Decimal phases (2.1, 2.2): urgent insertions (marked INSERTED)
 
+<details>
+<summary>✅ v0.8.x Baseline (Phases 1–7) — SHIPPED</summary>
+
 - [x] **Phase 1: Authorization & Isolation** - Per-actor read isolation, write gating, opt-in sharing, configurable owner key
 - [x] **Phase 2: Recall Semantics** - Summary-by-default, tag/temporal gating, windowed cursor paging, payload indexes
 - [x] **Phase 3: Memory Kinds & Tools** - Discovery + rule kinds, schedule tools, short_id handle
@@ -35,14 +39,27 @@ observable truths that hold in the shipped baseline.
 - [x] **Phase 5: Config & Transport** - ENGRAM_ koanf config, Config.Validate, fatal legacy guard, explicit MCP path
 - [x] **Phase 6: Telemetry & Observability** - slog + OTel over OTLP at every seam, never blocking startup
 - [x] **Phase 7: Web UI, Docs Site & Distribution** - Operator console SPA, docs site, brand system, bundled client plugin
+
+</details>
+
+<details>
+<summary>✅ Connect Auth Hardening (Phase 8) — SHIPPED (PR #248/#266)</summary>
+
 - [x] **Phase 8: Connect Observe-Lane Auth Hardening** - Cookie/OIDC observe lane replaces the interim anonymous mount (R1–R4); shipped in PR #248/#266
 
-### v0.9.x — Recall Quality
+</details>
 
-- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval (recall@k/MRR), similarity scores in `search_memory`, hybrid/rerank to kill phrasing-sensitivity — chosen by the eval numbers (completed 2026-07-10)
+<details>
+<summary>✅ v0.9.x — Recall Quality (Phases 9–12) — SHIPPED 2026-07-10 (PR #336)</summary>
+
+Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
+
+- [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval (recall@k/MRR), always-on similarity scores in `search_memory`, dependency-free reranker to kill phrasing-sensitivity — chosen by the eval numbers (completed 2026-07-10)
 - [x] **Phase 10: Asymmetric Query/Document Embeddings** - Native API-param passthrough (cloud) + document-side prefix (E5/nomic) for query≠document embeds — found ALREADY SHIPPED under Phase 4 (verified 2026-07-10; #305 closed; no plans built)
 - [x] **Phase 11: Async-on-Write Summaries** - In-process worker drains `FillSummary` after upsert, off the synchronous write path; eval-gated (completed 2026-07-10)
 - [x] **Phase 12: Per-Memory Usage Signals** - Strong-signal counters (get/update) via hybrid OTLP + payload `access_count`; never affects ranking (completed 2026-07-10)
+
+</details>
 
 ## Phase Details
 
@@ -177,100 +194,21 @@ observable truths that hold in the shipped baseline.
 **Status**: Complete — shipped in PR #248 (webauth lane) + PR #266 (owner-claim hardening); R1–R4 verified green on main 2026-07-08. Config folded into the Phase-5 `ENGRAM_UI_*` koanf registry (not the plan's original `MEM_*`).
 **Plans**: N/A (shipped before GSD planning). Reference implementation plan: `docs/superpowers/plans/2026-06-09-engram-web-ui-cookie-oidc-auth-lane.md`; design/acceptance criteria: `docs/superpowers/specs/2026-06-09-connect-auth-posture-addendum.md`. Out-of-scope follow-ups remain (Connect write-lane RPCs + CSRF hardening; session refresh-token rotation) — candidates for a future milestone.
 
-### Phase 9: Retrieval Eval Harness & Ranking Precision
+### Phases 9–12 (v0.9.x — Recall Quality) — ✅ SHIPPED 2026-07-10
 
-**Goal**: A near-verbatim restatement of a record reliably surfaces that record within default `k`, and recall changes are measurable — so `search-before-store` stops producing duplicates (the #261 failure).
-**Depends on**: Phase 2 (recall semantics), Phase 6 (telemetry — eval reuses OTLP seams)
-**Requirements**: REQ-retrieval-eval, REQ-search-similarity-scores, REQ-ranking-precision
-**Success Criteria** (what is TRUE):
+Full phase details (goals, success criteria, plans, decisions, tech debt) are archived at
+[`milestones/v0.9.x-ROADMAP.md`](milestones/v0.9.x-ROADMAP.md). Requirements outcomes at
+[`milestones/v0.9.x-REQUIREMENTS.md`](milestones/v0.9.x-REQUIREMENTS.md). Audit (PASSED) at
+[`milestones/v0.9.x-MILESTONE-AUDIT.md`](milestones/v0.9.x-MILESTONE-AUDIT.md).
 
-1. A reproducible retrieval eval (`task eval:retrieval`) runs a labeled query→expected-record dataset — including the #261 miss as a regression fixture — and reports `recall@k` / MRR; CI or a make target can detect regressions.
-2. `search_memory` can return a per-result similarity score (opt-in), and the eval asserts score separation between the target record and its sticky topical neighbors.
-3. Phrasing-sensitive misses are eliminated: Query A/B from #261 (near-verbatim restatements) surface Record T within default `k`, via hybrid dense+lexical fusion and/or higher-`k`+rerank — the approach chosen by the eval numbers, not assumed.
-
-**Status**: Planned (v0.9.x)
-**Plans**: 3/3 plans complete
-**Wave 1**
-
-- [x] 09-01-PLAN.md — Retrieval eval harness (`task eval:retrieval`, env-gated Go test, #261 regression fixture, recall@k/MRR) [Wave 1]
-- [x] 09-02-PLAN.md — Document the always-on `search_memory` similarity score (tools.go Description, CLAUDE.md, docs-site); record D-04 supersession [Wave 1]
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 09-03-PLAN.md — Eval-gated ranking precision: D-06 heuristic rerank first; D-07 hybrid / D-08 cross-encoder as conditional escalations chosen by the eval numbers [Wave 2]
-
-### Phase 10: Asymmetric Query/Document Embeddings
-
-**Goal**: Query and document embeddings can diverge via the embedder's native mechanism, improving retrieval for asymmetric models — measured against the Phase 9 harness.
-**Depends on**: Phase 9 (eval harness to prove the gain), Phase 4 (shipped embedder text-prefix knobs)
-**Requirements**: REQ-embedder-native-params
-**Success Criteria** (what is TRUE):
-
-1. Cloud embedders receive a distinct native API field per call — `ENGRAM_EMBED_QUERY_PARAM` on `EmbedQuery`, `ENGRAM_EMBED_DOCUMENT_PARAM` on `Embed` (e.g. Cohere `input_type=search_query|search_document`, Google `task_type`, Voyage/Jina equivalents).
-2. Both-side-prefix models (E5/nomic) get a `ENGRAM_EMBED_DOCUMENT_INSTRUCTION` document-side prefix applied at store **and** reindex, honoring the reindex boundary (a doc-prefix change requires a reindex).
-3. Behavior is documented per-model in `guides/embedding-instructions`, and the Phase 9 eval shows a non-regression (ideally improvement) for at least one asymmetric model configuration.
-
-**Status**: Complete — ALREADY SHIPPED (verified 2026-07-10; see `10-VERIFICATION.md`)
-**Plans**: None built. `/gsd-discuss-phase 10` baseline verification found `REQ-embedder-native-params` fully implemented under Phase 4: `embed.go` `WithQueryParams`/`WithDocumentParams`/`WithDocumentInstruction` (native `input_type`/`task_type` map passthrough + E5/nomic doc prefix), config `ENGRAM_EMBED_QUERY_PARAMS`/`_DOCUMENT_PARAMS`/`_DOCUMENT_INSTRUCTION` (validated, wired in `embedderFromConfig`), tests, and per-model docs. GitHub #305 closed as already-shipped. Optional follow-up: eval demonstration of retrieval benefit for an asymmetric config (rides on #334).
-
-### Phase 11: Async-on-Write Summaries
-
-**Goal**: New summary-less records gain summaries automatically, without an operator sweep and without risking the write path.
-**Depends on**: Phase 2 (auto-summary / `FillSummary` seam)
-**Requirements**: REQ-async-summaries
-**Success Criteria** (what is TRUE):
-
-1. After a successful `store_memory` upsert, the record id is enqueued and an in-process worker pool drains it via the idempotent, vector-preserving `Store.FillSummary`.
-2. The summarizer is never on the synchronous write path — a gateway/embedder outage degrades to "no summary yet" and **never** fails `store_memory`.
-3. Broad auto-enablement is gated behind the summary-fidelity eval (`task eval:summary`); the queue is bounded and observable (depth/latency on OTLP).
-
-**Status**: Planned (v0.9.x)
-**Plans**: 3/3 plans complete
-
-**Wave 1**
-
-- [x] 11-01-PLAN.md — Foundation: `ENGRAM_SUMMARY_ON_WRITE`/`_WORKERS`/`_QUEUE_SIZE` config knobs + `Validate()`, `cenkalti/backoff/v5` direct promotion, `telemetry.SummaryQueueMetrics` instruments [Wave 1]
-
-**Wave 2** *(blocked on Wave 1)*
-
-- [x] 11-02-PLAN.md — Queue core: `internal/server/summaryqueue.go` bounded non-blocking worker pool (drop-and-count, bounded backoff retry, best-effort drain) + deterministic Qdrant-free tests [Wave 2]
-
-**Wave 3** *(blocked on Wave 2)*
-
-- [x] 11-03-PLAN.md — Wiring + lifecycle + docs: enqueue in `store_memory`/`schedule_memory` behind the D-01 AND-gate, `Register` drain returned + drained after `httpSrv.Shutdown`, depth gauge wired, docs/CLAUDE.md [Wave 3]
-
-### Phase 12: Per-Memory Usage Signals
-
-**Goal**: Track strong per-record usage to inform curation, as operational metadata that never silently changes what recall returns.
-**Depends on**: Phase 6 (OTLP → ClickStack), Phase 3 (by-id tools)
-**Requirements**: REQ-usage-signals
-**Success Criteria** (what is TRUE):
-
-1. Counters increment **only** on `get_memory` fetch-by-id and `update_memory` — never on search/list result-set membership (avoids noisy, write-amplifying, racy updates).
-2. Storage is hybrid: recall ids ride OTLP spans → ClickStack for analytics (zero storage change), and a payload `access_count` is maintained on get/update for MCP-visible curation tools.
-3. Usage counters are server-set and **never** silently affect ranking; any usage-weighted recall remains an explicit, out-of-scope future decision.
-
-**Status**: Planned (v0.9.x) — design-first
-**Plans**: 6/6 plans complete
-
-**Wave 1** *(parallel — disjoint files)*
-
-- [x] 12-01-PLAN.md — Store foundation: `Memory.AccessCount`/`LastAccessedAt` + payload round-trip, `IncrementAccess` (SetPayload, no re-auth), free `Update` bump, D-08 rerank invariance test [Wave 1]
-- [x] 12-02-PLAN.md — Config gate `ENGRAM_USAGE_SIGNALS` (default on) + `telemetry.UsageQueueMetrics` (enqueued/dropped/failed, no retry) [Wave 1]
-- [x] 12-03-PLAN.md — Proto `Memory` fields 19/20 (`access_count`/`last_accessed_at`) + `task proto:gen` + commit `gen/` (isolated, blocking) [Wave 1]
-
-**Wave 2** *(blocked on Wave 1)*
-
-- [x] 12-04-PLAN.md — D-06 recall-id analytics: bounded `engram.recall.ids`/`engram.recall.count` on `store.Search`/`List`/`Get` spans + span-recorder tests [Wave 2]
-- [x] 12-05-PLAN.md — D-10 async get-path incrementer `usagequeue.go`: CR-01 shutdown-safety kernel minus retry, drop-on-full, Qdrant-free tests [Wave 2]
-
-**Wave 3** *(blocked on Wave 2)*
-
-- [x] 12-06-PLAN.md — Wiring + lifecycle + exposure: config-gated `buildUsageQueue`, get/Connect-GetMemory `tryEnqueue` (D-01, call-and-ignore), D-07 `recallView`/`memoryToProto`, D-02 negative-space e2e, `task` green [Wave 3]
+- Phase 9 — Retrieval Eval Harness & Ranking Precision (3 plans): eval harness + always-on similarity score + dependency-free reranker (#261; recall@8=1.00)
+- Phase 10 — Asymmetric Query/Document Embeddings: already shipped under Phase 4 (#305 closed; no plans)
+- Phase 11 — Async-on-Write Summaries (3 plans): bounded worker pool off the write path (#320)
+- Phase 12 — Per-Memory Usage Signals (6 plans): get/update counters, hybrid OTLP+payload, never affects ranking (#317)
 
 ## Progress
 
-**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (shipped) · 9 → 10 → 11 → 12 (v0.9.x, planned)
+**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · v0.10.x not yet planned
 
 | Phase | Milestone | Requirements | Status | Completed |
 |-------|-----------|--------------|--------|-----------|
@@ -282,7 +220,9 @@ observable truths that hold in the shipped baseline.
 | 6. Telemetry & Observability | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
 | 7. Web UI, Docs Site & Distribution | v0.8.x | 9/9 | Complete | shipped (v0.8.x) |
 | 8. Connect Auth Hardening | v0.8.x | 1/1 | Complete | shipped (PR #248/#266) |
-| 9. Retrieval Eval & Ranking Precision | v0.9.x | 3/3 | Complete    | 2026-07-10 |
-| 10. Asymmetric Query/Document Embeddings | v0.9.x | 0/1 | Planned | — |
-| 11. Async-on-Write Summaries | v0.9.x | 3/3 | Complete   | 2026-07-10 |
-| 12. Per-Memory Usage Signals | v0.9.x | 6/6 | Complete    | 2026-07-10 |
+| 9. Retrieval Eval & Ranking Precision | v0.9.x | 3/3 | Complete | 2026-07-10 (PR #336) |
+| 10. Asymmetric Query/Document Embeddings | v0.9.x | 1/1 | Complete (already shipped) | 2026-07-10 (#305) |
+| 11. Async-on-Write Summaries | v0.9.x | 1/1 | Complete | 2026-07-10 (PR #336) |
+| 12. Per-Memory Usage Signals | v0.9.x | 1/1 | Complete | 2026-07-10 (PR #336) |
+
+**v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.** Next: `/gsd-new-milestone` to scope v0.10.x.
