@@ -5,16 +5,16 @@ milestone_name: — Hardening & Write Lane
 current_phase: 15
 current_phase_name: Additive Proto + Stub Write Handlers
 status: ready-to-plan
-stopped_at: Phase 14 shipped — PR #352 (secured + reviewed at ship time); ready to plan Phase 15
-last_updated: "2026-07-11T18:05:29.000Z"
+stopped_at: Phase 15 context gathered
+last_updated: "2026-07-11T19:03:00.628Z"
 last_activity: 2026-07-11
-last_activity_desc: Phase 14 shipped via PR #352; Phase 15 ready to plan
+last_activity_desc: "Phase 14 shipped (PR #352); follow-ups #353/#354/#355 filed"
 progress:
-  total_phases: 2
+  total_phases: 3
   completed_phases: 2
   total_plans: 6
   completed_plans: 6
-  percent: 100
+  percent: 67
 ---
 
 # Project State
@@ -86,9 +86,9 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-11
-Stopped at: Phase 14 shipped via PR #352 (secured + code-reviewed at ship time; awaiting merge); ready to plan Phase 15
-Resume file: None
+Last session: 2026-07-11T19:03:00.621Z
+Stopped at: Phase 15 context gathered
+Resume file: .planning/phases/15-additive-proto-stub-write-handlers/15-CONTEXT.md
 
 ## Performance Metrics
 
