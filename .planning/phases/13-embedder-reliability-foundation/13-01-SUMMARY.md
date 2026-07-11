@@ -151,5 +151,12 @@ None — no external service configuration required. `ENGRAM_EMBED_TIMEOUT` and 
 
 ---
 
+## Self-Check: PASSED
+
+All created/modified artifact files exist on disk and all task commit hashes
+(`b87eadc7`, `385ac5e9`, `d965e20c`) are present in git log.
+
+---
+
 *Phase: 13-embedder-reliability-foundation*
 *Completed: 2026-07-11*
