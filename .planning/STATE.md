@@ -4,8 +4,8 @@ milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 15
 current_phase_name: Additive Proto + Stub Write Handlers
-status: verifying
-stopped_at: Completed 14-01-PLAN.md
+status: ready-to-plan
+stopped_at: Phase 14 complete + verified (3/3 plans); ready to plan Phase 15
 last_updated: "2026-07-11T17:27:26.006Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 14 complete, transitioned to Phase 15
@@ -21,17 +21,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-11 after Phase 13)
+See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 14 — embedder-model-options-eval
+**Current focus:** Phase 15 — Additive Proto + Stub Write Handlers
 
 ## Current Position
 
 Phase: 15 — Additive Proto + Stub Write Handlers
 Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-07-11 — Phase 14 complete, transitioned to Phase 15
+Status: Ready to plan Phase 15 (Phase 14 complete + verified 3/3; awaiting ship of the phase-14 branch)
+Last activity: 2026-07-11 — Phase 14 complete + verified, transitioned to Phase 15
 
 ## Deferred Items
 
@@ -86,9 +86,9 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-11T17:20:38.411Z
-Stopped at: Completed 14-01-PLAN.md
-Resume file: .planning/phases/14-embedder-model-options-eval/14-CONTEXT.md
+Last session: 2026-07-11
+Stopped at: Phase 14 complete + verified (3/3 plans); ready to plan Phase 15 (ship phase-14 branch first)
+Resume file: None
 
 ## Performance Metrics
 
