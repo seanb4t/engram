@@ -9,6 +9,11 @@ Sending both sides through the identical raw path — which engram did before
 `v0.9` — leaves recall quality on the table and makes ranking sensitive to how a
 query is phrased.
 
+This page covers instruction/param tuning mechanics for a model you've already
+chosen. For which model to run and how to connect to it (base URL, dim, and a
+copy-paste env block per provider), see
+[Embedding model recipes](/guides/embedding-models/).
+
 `ENGRAM_EMBED_QUERY_INSTRUCTION` fixes this for text-prefix embedders. It changes
 only the **query** embedding, so documents are untouched and **no reindex is
 needed** to adopt it. For models that need a prefix on both sides, and for cloud
@@ -100,11 +105,19 @@ Alternatively, you can still inject the field at your OpenAI-compatible gateway
 | Voyage (voyage-3, voyage-3-lite, voyage-large-2-instruct) | `{"input_type":"query"}` / `{"input_type":"document"}` (optional) |
 | OpenRouter | forwards whichever field name/value the backend model expects — see its row above |
 | Jina embeddings v3 | `{"task":"retrieval.query"}` / `{"task":"retrieval.passage"}` |
-| Google Gemini / Vertex | `{"task_type":"RETRIEVAL_QUERY"}` / `{"task_type":"RETRIEVAL_DOCUMENT"}` |
 
 The gateway forwards these fields to the provider (OpenRouter accepts
 `input_type` natively; LiteLLM maps provider params per model). The **document**
 side changes stored vectors, so set it before indexing or run a reindex.
+
+**Google Gemini is not in this table.** `task_type` is a parameter of Gemini's
+native `embedContent` method — the OpenAI-compat `/v1/embeddings` endpoint
+engram calls does not honor it for `gemini-embedding-2`, so
+`ENGRAM_EMBED_QUERY_PARAMS`/`ENGRAM_EMBED_DOCUMENT_PARAMS` are a silent no-op
+there. Gemini's asymmetry instead rides the **instruction-prefix** mechanism
+(`ENGRAM_EMBED_QUERY_INSTRUCTION`/`ENGRAM_EMBED_DOCUMENT_INSTRUCTION`, same as
+the both-side-prefix models above) — see the Gemini recipe in
+[Embedding model recipes](/guides/embedding-models/) for the exact values.
 
 ## Tags are part of the document vector
 

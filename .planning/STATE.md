@@ -2,17 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
-current_phase: 14
-current_phase_name: Embedder Model Options & Eval
-status: "Phase 13 shipped — PR #348"
-stopped_at: Phase 13 complete — ready to plan Phase 14
-last_updated: "2026-07-11T13:45:05.035Z"
+current_phase: 15
+current_phase_name: Additive Proto + Stub Write Handlers
+status: ready-to-plan
+stopped_at: Phase 14 shipped — PR #352 (secured + reviewed at ship time); ready to plan Phase 15
+last_updated: "2026-07-11T18:05:29.000Z"
 last_activity: 2026-07-11
+last_activity_desc: Phase 14 shipped via PR #352; Phase 15 ready to plan
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_phases: 2
+  completed_phases: 2
+  total_plans: 6
+  completed_plans: 6
   percent: 100
 ---
 
@@ -20,17 +21,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-11 after Phase 13)
+See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 14 — Embedder Model Options & Eval (Phase 13 shipped 2026-07-11)
+**Current focus:** Phase 15 — Additive Proto + Stub Write Handlers
 
 ## Current Position
 
-Phase: 14 — Embedder Model Options & Eval
-Plan: Not started (needs discuss + plan)
-Status: Phase 13 shipped — PR #348
-Last activity: 2026-07-11
+Phase: 15 — Additive Proto + Stub Write Handlers
+Plan: Not started
+Status: Ready to plan Phase 15 (Phase 14 shipped via PR #352 — secured + code-reviewed at ship time; awaiting merge)
+Last activity: 2026-07-11 — Phase 14 shipped (PR #352); follow-ups #353/#354/#355 filed
 
 ## Deferred Items
 
@@ -71,6 +72,10 @@ cookie-auth security posture).
 - [Phase 13]: document_params empty-form canonicalization (len(params)==0 -> map[string]any{}) so "" and "{}" hash identically — prevents false null vs {} provenance drift (round-2 review MEDIUM).
 - [Phase 13]: Reindex identity-aware resume — reindexTargetContents returns map[string]reindexTarget{content, identity}; a content match with an absent/stale embedder_identity falls through to re-embed+restamp instead of being skipped as Unchanged.
 - [Phase 13]: StoreAndEmbedderFromEnvNoEnsure returns the computed embedder identity as a 5th value from its single config load; all 3 callers updated to the new arity.
+- [Phase 14]: Named the differ test TestRetrievalEval_AsymmetryDiffer so task eval:retrieval's -run TestRetrievalEval regex substring-matches it without any Taskfile change
+- [Phase 14]: Gemini asymmetry rides ENGRAM_EMBED_QUERY_INSTRUCTION/ENGRAM_EMBED_DOCUMENT_INSTRUCTION (text-prefix), never the *_PARAMS/task_type mechanism
+- [Phase 14]: Local TEI/Ollama/vLLM recipes in guides/embedding-models.md documented as concrete complete rows (exact model id/dim/base URL/empty instruction) rather than operator-chosen placeholders (review B7)
+- [Phase 14]: Gemini compat model-id confirmed unchanged (gemini-embedding-2, 3072-dim); embedding-models.md and values.yaml left untouched
 
 ### Blockers/Concerns
 
@@ -82,7 +87,7 @@ cookie-auth security posture).
 ## Session Continuity
 
 Last session: 2026-07-11
-Stopped at: Phase 13 complete (3/3 plans, verified + code-reviewed), ready to plan Phase 14
+Stopped at: Phase 14 shipped via PR #352 (secured + code-reviewed at ship time; awaiting merge); ready to plan Phase 15
 Resume file: None
 
 ## Performance Metrics
@@ -92,3 +97,6 @@ Resume file: None
 | Phase 13 P01 | 21min | 3 tasks | 9 files |
 | Phase 13 P02 | 15min | 4 tasks | 9 files |
 | Phase 13 P03 | 20min | 3 tasks | 6 files |
+| Phase 14 P01 | 11min | 2 tasks | 2 files |
+| Phase 14 P02 | 12min | 3 tasks | 3 files |
+| Phase 14-embedder-model-options-eval P03 | 8min | 2 tasks | 1 files |

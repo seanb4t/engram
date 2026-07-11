@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
@@ -199,6 +200,81 @@ func TestRetrievalEval(t *testing.T) {
 				tc.name, defaultK, recallAtDefaultK, mrr)
 		})
 	}
+}
+
+// TestRetrievalEval_AsymmetryDiffer is the Pitfall-12 correctness gate
+// (REQ-embed-gemini-direct): it embeds differProbe through BOTH the
+// query-side (em.EmbedQuery) and document-side (em.Embed) production paths
+// and asserts the two vectors differ. The "TestRetrievalEval" prefix is
+// load-bearing — task eval:retrieval's `go test -run TestRetrievalEval`
+// substring-matches this name too, so the documented eval command genuinely
+// reaches the differ assertion without any Taskfile change.
+//
+// It never touches Qdrant (no testQdrantAddr / seedRecord involved), but it
+// still gates on ENGRAM_RETRIEVAL_EVAL as its first statement (defense in
+// depth mirroring TestRetrievalEval, even though TestMain already
+// short-circuits before Docker startup when the gate is unset). NOTE
+// (accepted, not fixed — review B9): TestMain always starts the Qdrant
+// testcontainer when ENGRAM_RETRIEVAL_EVAL=1, even for a -run selection that
+// only exercises this Qdrant-free test, because TestMain cannot cheaply
+// inspect the active -run selection. A live run of this test therefore still
+// requires Docker (or ENGRAM_QDRANT_TEST_ADDR) as a package-level
+// prerequisite; documented here and in plan 14-03.
+func TestRetrievalEval_AsymmetryDiffer(t *testing.T) {
+	if os.Getenv("ENGRAM_RETRIEVAL_EVAL") != "1" {
+		t.Skip("set ENGRAM_RETRIEVAL_EVAL=1 (and the gateway/model env) to run the retrieval eval")
+	}
+
+	// Symmetric-config guard (review B3): a symmetric embedder config (all
+	// four instruction/params env vars empty) legitimately produces
+	// query==document — e.g. OpenAI text-embedding-3-small, bare bge-m3. The
+	// inequality assertion below does not apply to those configs, so skip it
+	// rather than fail the suite for a valid symmetric setup.
+	if os.Getenv("ENGRAM_EMBED_QUERY_INSTRUCTION") == "" &&
+		os.Getenv("ENGRAM_EMBED_DOCUMENT_INSTRUCTION") == "" &&
+		os.Getenv("ENGRAM_EMBED_QUERY_PARAMS") == "" &&
+		os.Getenv("ENGRAM_EMBED_DOCUMENT_PARAMS") == "" {
+		t.Skip("symmetric embedder config (no QUERY/DOCUMENT instruction or params set): query == document is valid here, asymmetry assertion does not apply")
+	}
+
+	ctx := context.Background()
+
+	// Prod-parity embedder — the SAME builder/path TestRetrievalEval uses
+	// (D-03: never a bespoke embed shortcut). Its own store is discarded; this
+	// test never touches Qdrant. dim is KEPT (not discarded) to assert the
+	// vectors are correctly sized, not just non-empty (review B4).
+	_, dim, em, _, err := server.StoreAndEmbedderFromEnvNoEnsure()
+	if err != nil {
+		t.Fatalf("build prod-parity embedder: %v", err)
+	}
+
+	queryVec, err := em.EmbedQuery(ctx, differProbe)
+	if err != nil {
+		t.Fatalf("embed query-side: %v", err)
+	}
+	documentVec, err := em.Embed(ctx, differProbe)
+	if err != nil {
+		t.Fatalf("embed document-side: %v", err)
+	}
+
+	// Dimension contract (review B4): reject an empty or wrong-sized vector
+	// before comparing — embed.go only checks a `data` entry exists, so a
+	// naive inequality check alone could pass on two malformed vectors.
+	if len(queryVec) == 0 || len(documentVec) == 0 ||
+		len(queryVec) != int(dim) || len(documentVec) != int(dim) {
+		t.Fatalf("asymmetry differ: vector dimension contract violated: query=%d document=%d want=%d (empty or wrong-sized vector)",
+			len(queryVec), len(documentVec), dim)
+	}
+
+	// THE Pitfall-12 correctness gate (D-04, hard t.Fatal — not t.Errorf — so
+	// this stops immediately and cannot be obscured by later output, review
+	// B4): the query-side and document-side vectors of the SAME string MUST
+	// differ once asymmetric embedding is correctly configured.
+	if reflect.DeepEqual(queryVec, documentVec) {
+		t.Fatalf("asymmetry differ FAIL: query vector == document vector (dim=%d) — the asymmetric instruction-prefix had no effect; the operator likely wired the no-op ENGRAM_EMBED_QUERY_PARAMS/ENGRAM_EMBED_DOCUMENT_PARAMS/task_type mechanism instead of ENGRAM_EMBED_QUERY_INSTRUCTION/ENGRAM_EMBED_DOCUMENT_INSTRUCTION", dim)
+	}
+
+	t.Logf("asymmetry differ PASS: query vector != document vector (dim=%d) — instruction-prefix took effect", dim)
 }
 
 // newTestcontainerStore builds a *store.Store pinned to addr — the eval's

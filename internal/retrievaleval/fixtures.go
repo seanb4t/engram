@@ -84,6 +84,29 @@ var gh261Case = retrievalCase{
 // retrievalCases is the full labeled dataset TestRetrievalEval runs.
 var retrievalCases = []retrievalCase{gh261Case}
 
+// differProbe is the synthetic single-string fixture for
+// TestRetrievalEval_AsymmetryDiffer (the Pitfall-12 correctness gate). It is
+// embedded TWICE through the production embedder — query-side via
+// em.EmbedQuery, document-side via em.Embed — and the two resulting vectors
+// MUST differ once asymmetric embedding is correctly configured. Content is
+// synthetic public-tooling text (mirrors the gh261Distractors "no secrets, no
+// private content" convention): it names no real repo, person, or credential,
+// so nothing sensitive leaves for the third-party embedding API during a live
+// eval run (T-14-01).
+//
+// The differ probe is never seeded into Qdrant (no seedRecord/retrievalCase
+// wrapper) — it only compares two in-memory vectors, so it lives here as a
+// permanent sibling fixture to gh261Case per D-05, not inside retrievalCases.
+//
+// Correct mechanism: ENGRAM_EMBED_QUERY_INSTRUCTION / ENGRAM_EMBED_DOCUMENT_INSTRUCTION
+// (the text-prefix path gemini-embedding-2 actually honors). The differ-case
+// exists specifically to catch an operator wiring the no-op
+// ENGRAM_EMBED_QUERY_PARAMS / ENGRAM_EMBED_DOCUMENT_PARAMS / task_type
+// mechanism instead (D-03, research supersession) — that misconfiguration
+// sends the same raw string both sides, so query and document vectors come
+// back identical.
+const differProbe = "Run `task lint` before every commit; golangci-lint's config lives in .golangci.yaml."
+
 // recallAtK reports whether wantID appears anywhere in results (results is
 // assumed already limited to k by the caller's Search call).
 func recallAtK(results []string, wantID string) bool {
