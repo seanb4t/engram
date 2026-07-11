@@ -73,7 +73,7 @@ Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
 <details open>
 <summary>🚧 v0.10.x — Hardening & Write Lane (Phases 13–21) — IN PROGRESS</summary>
 
-- [ ] **Phase 13: Embedder Reliability Foundation** - Configurable HTTP timeout (re-derived backoff budget) + base-URL `/v1` join fix across every provider shape + embedder-config-identity payload stamp
+- [x] **Phase 13: Embedder Reliability Foundation** - Configurable HTTP timeout (re-derived backoff budget) + base-URL `/v1` join fix across every provider shape + embedder-config-identity payload stamp (completed 2026-07-11)
 - [ ] **Phase 14: Embedder Model Options & Eval** - Direct Gemini embeddings (eval-verified task_type behavior) + #261 prod-parity re-confirm on qwen3 + docs-site/Helm model recipes
 - [ ] **Phase 15: Additive Proto + Stub Write Handlers** - Six new write RPCs (additive-only, buf-generated), CI lint gate against `idempotency_level`, safe `CodeUnimplemented` stubs
 - [ ] **Phase 16: CSRF Interceptor** - Origin/Sec-Fetch-Site primary defense + session-bound double-submit token on every write RPC; read lane untouched
@@ -398,7 +398,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 | 10. Asymmetric Query/Document Embeddings | v0.9.x | 1/1 | Complete (already shipped) | 2026-07-10 (#305) |
 | 11. Async-on-Write Summaries | v0.9.x | 1/1 | Complete | 2026-07-10 (PR #336) |
 | 12. Per-Memory Usage Signals | v0.9.x | 1/1 | Complete | 2026-07-10 (PR #336) |
-| 13. Embedder Reliability Foundation | v0.10.x | 3/3 | Complete   | 2026-07-11 |
+| 13. Embedder Reliability Foundation | v0.10.x | 3/3 | Complete    | 2026-07-11 |
 | 14. Embedder Model Options & Eval | v0.10.x | 0/3 | Not started | - |
 | 15. Additive Proto + Stub Write Handlers | v0.10.x | 0/1 | Not started | - |
 | 16. CSRF Interceptor | v0.10.x | 0/1 | Not started | - |

@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
-current_phase: 13
-current_phase_name: embedder-reliability-foundation
+current_phase: 14
+current_phase_name: Embedder Model Options & Eval
 status: verifying
 stopped_at: Completed 13-01-PLAN.md
-last_updated: "2026-07-11T12:51:03.541Z"
+last_updated: "2026-07-11T13:04:18.945Z"
 last_activity: 2026-07-11
-last_activity_desc: Phase 13 execution started
+last_activity_desc: Phase 13 complete, transitioned to Phase 14
 progress:
   total_phases: 1
   completed_phases: 1
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-10 after v0.9.x milestone)
 
 ## Current Position
 
-Phase: 13 (embedder-reliability-foundation) — EXECUTING
-Plan: 3 of 3
+Phase: 14 — Embedder Model Options & Eval
+Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-07-11 — Phase 13 execution started
+Last activity: 2026-07-11 — Phase 13 complete, transitioned to Phase 14
 
 ## Deferred Items
 
