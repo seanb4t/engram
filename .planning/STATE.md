@@ -4,8 +4,8 @@ milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 14
 current_phase_name: Embedder Model Options & Eval
-status: verifying
-stopped_at: Completed 13-01-PLAN.md
+status: planning
+stopped_at: Phase 13 complete — ready to plan Phase 14
 last_updated: "2026-07-11T13:04:18.945Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 13 complete, transitioned to Phase 14
@@ -21,17 +21,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-10 after v0.9.x milestone)
+See: .planning/PROJECT.md (updated 2026-07-11 after Phase 13)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 13 — embedder-reliability-foundation
+**Current focus:** Phase 14 — Embedder Model Options & Eval (Phase 13 shipped 2026-07-11)
 
 ## Current Position
 
 Phase: 14 — Embedder Model Options & Eval
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-07-11 — Phase 13 complete, transitioned to Phase 14
+Plan: Not started (needs discuss + plan)
+Status: Phase 13 complete + verified (8/8) + code-reviewed (0 blockers, 3 warnings filed); Phase 14 ready to plan
+Last activity: 2026-07-11 — Phase 13 shipped, transitioned to Phase 14
 
 ## Deferred Items
 
@@ -82,9 +82,9 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-11T12:50:08.105Z
-Stopped at: Completed 13-01-PLAN.md
-Resume file: 13-02-PLAN.md
+Last session: 2026-07-11
+Stopped at: Phase 13 complete (3/3 plans, verified + code-reviewed), ready to plan Phase 14
+Resume file: None
 
 ## Performance Metrics
 

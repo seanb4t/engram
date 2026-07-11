@@ -74,6 +74,12 @@ pre-close `REQUIREMENTS.md` snapshot).
 - ✓ **REQ-async-summaries** — async-on-write summary fill off the write path, eval-gated — v0.9.x
 - ✓ **REQ-usage-signals** — per-record usage counters (get/update), hybrid OTLP+payload, never affects ranking — v0.9.x
 
+**v0.10.x — Hardening & Write Lane (Phase 13 shipped 2026-07-11):**
+
+- ✓ **REQ-embed-timeout** — operator-tunable `ENGRAM_EMBED_TIMEOUT` replaces the hardcoded 30s embed HTTP timeout; summary-queue backoff budget re-derived from it (#333) — Phase 13
+- ✓ **REQ-embed-baseurl-join** — shape-aware base-URL → `/embeddings` join across OpenAI/OpenRouter/Gemini shapes with operator override (#332) — Phase 13
+- ✓ **REQ-embed-config-identity** — `v1:`-prefixed embedder-config-identity stamp on all 5 document-embed write sites (incl. `engram reindex`), payload-only (`json:"-"`, no wire leak), identity-aware reindex resume (DECISION 3) — Phase 13
+
 ### Active
 
 **v0.10.x — Hardening & Write Lane** (being scoped; full text in `.planning/REQUIREMENTS.md`):
@@ -390,4 +396,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-07-10 — opened milestone v0.10.x — Hardening & Write Lane (`/gsd-new-milestone`). Prior: 2026-07-10 shipped + archived v0.9.x — Recall Quality (PR #336/#338); 2026-07-08 folded 31 companion ADRs + 24 plans into the baseline; 2026-07-07 retrospective baseline ingest (v0.8.x shipped).*
+*Last updated: 2026-07-11 after Phase 13 (Embedder Reliability Foundation) — shipped REQ-embed-timeout / REQ-embed-baseurl-join / REQ-embed-config-identity. Prior: 2026-07-10 opened milestone v0.10.x — Hardening & Write Lane (`/gsd-new-milestone`); 2026-07-10 shipped + archived v0.9.x — Recall Quality (PR #336/#338); 2026-07-08 folded 31 companion ADRs + 24 plans into the baseline; 2026-07-07 retrospective baseline ingest (v0.8.x shipped).*
