@@ -272,7 +272,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 
 **Wave 1** *(parallel — no file overlap)*
 
-- [ ] 14-01-PLAN.md — Gemini differ-case eval fixture: skip-gated `TestEmbedAsymmetryDiffer` proving instruction-prefix asymmetry takes effect (Pitfall-12 gate, REQ-embed-gemini-direct)
+- [ ] 14-01-PLAN.md — Gemini differ-case eval fixture: skip-gated `TestRetrievalEval_AsymmetryDiffer` (named so `task eval:retrieval` reaches it) proving instruction-prefix asymmetry takes effect (Pitfall-12 gate, REQ-embed-gemini-direct)
 - [ ] 14-02-PLAN.md — Model & recipe docs: new `guides/embedding-models.md` + Helm `values.yaml` commented recipes + cross-links/reindex callouts (REQ-embed-model-docs)
 
 **Wave 2** *(blocked on Wave 1)*

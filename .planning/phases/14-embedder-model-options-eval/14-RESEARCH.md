@@ -387,7 +387,7 @@ follows the analogous `{document}`-contains branch in `Embed()`.
 
 > All three resolved during Phase 14 planning (plans committed `1648b12c`):
 > - **Q1** (exact Gemini compat model-id) → RESOLVED by 14-03's `checkpoint:human-verify` live-curl task, which locks the exact string in both the eval fixture and the docs recipe.
-> - **Q2** (differ-case dataset shape) → RESOLVED by 14-01's minimal 2-record/1-string probe (`TestEmbedAsymmetryDiffer`).
+> - **Q2** (differ-case dataset shape) → RESOLVED by 14-01's minimal 2-record/1-string probe (`TestRetrievalEval_AsymmetryDiffer`; renamed from `TestEmbedAsymmetryDiffer` in the reviews pass so `task eval:retrieval`'s `-run TestRetrievalEval` regex reaches it).
 > - **Q3** (eval-evidence artifact location) → RESOLVED by 14-03's committed `14-EVAL-EVIDENCE.md`.
 
 1. **Exact model-id string the OpenAI-compat endpoint accepts for the GA Gemini model**
