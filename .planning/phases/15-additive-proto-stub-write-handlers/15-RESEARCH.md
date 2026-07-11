@@ -632,9 +632,9 @@ recommended patterns for this exact problem shape.
 verifiable by running `go tool buf dep update && go mod tidy` early in Wave 0 and inspecting the
 diff before building out message shapes.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Exact protovalidate constraint set per field (mirroring `parseWindow`/discovery bounds)**
+1. **Exact protovalidate constraint set per field (mirroring `parseWindow`/discovery bounds)** — **RESOLVED** (Plan 15-01 Task 2): encode CEL *shape* constraints only (≥1 of `not_before`/`not_after` set, `not_after > not_before` when both set, discovery citation count, kind enum); the wall-clock "`not_after` in the future" check is deferred to the Phase 17 handler, matching `parseWindow`'s split of concerns, with an explicit proto comment on `ScheduleMemoryRequest` recording the exclusion.
    - What we know: `parseWindow` (tools.go:443-472) requires ≥1 of `not_before`/`not_after`,
      `not_after` strictly in the future, and `not_before` strictly before `not_after` when both are
      set — all CEL-expressible via `(buf.validate.message).cel`. `storeDiscoveryArgs` requires
@@ -650,7 +650,7 @@ diff before building out message shapes.
      explicitly in the proto field comments so Phase 17 doesn't assume protovalidate already covers
      it.
 
-2. **Whether the Taskfile gate should also assert the six write RPC names literally exist**
+2. **Whether the Taskfile gate should also assert the six write RPC names literally exist** — **RESOLVED** (Plan 15-02): skip the RPC-name grep. The descriptor test (D-12, Plan 04) already asserts the RPC count (11) and catches a missing/typo'd RPC far more precisely than a proto-source name grep could, so the belt-and-suspenders name check adds no coverage.
    - What we know: CONTEXT.md flags this as Claude's Discretion — "belt-and-suspenders vs pure
      ban."
    - What's unclear: No strong signal either way from research; a name-existence check adds a
