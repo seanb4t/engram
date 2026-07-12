@@ -222,7 +222,11 @@ func TestNoAnonymousWrite(t *testing.T) {
 // stub; a missing header, a cookie/header mismatch, and a cookie minted for
 // a different owner are all rejected with PermissionDenied.
 func TestConnectCSRFTokenMatrix(t *testing.T) {
-	d := &deps{} // no Qdrant: the happy-path cell reaches the still-Unimplemented stub
+	// Spy-backed (non-nil store + non-nil embedder, round-5 HIGH Codex+grok):
+	// once StoreMemory is wired (17-04 Task 2) the happy-path cell passes CSRF
+	// and reaches the real handler, which would nil-panic on d.st/d.em with the
+	// old bare &deps{}.
+	d, _ := newSpyDeps()
 	mux := http.NewServeMux()
 	if err := d.mountConnect(mux, csrfStubResolve, csrfTestVerify); err != nil {
 		t.Fatal(err)

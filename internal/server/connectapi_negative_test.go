@@ -61,7 +61,10 @@ type writeRPCCase struct {
 // covers the UpdateMemory mask cells (D-03) and the category allowlist cells
 // (StoreMemory/ScheduleMemory) called out in the phase's cross-AI review.
 func TestWriteRPCNegativeMatrix(t *testing.T) {
-	d := &deps{} // no Qdrant: stubs return CodeUnimplemented before any store access
+	// Spy-backed (non-nil store + non-nil embedder): landmine 1 defused (17-04
+	// Task 1). Once the six write RPCs are wired (Task 2) an authenticated+valid
+	// call reaches the real handler body instead of nil-panicking on d.st/d.em.
+	d, _ := newSpyDeps()
 	resolve := func(_ context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, error) {
 		if req.Header().Get("X-Test-Actor") == "" {
 			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("no identity"))
