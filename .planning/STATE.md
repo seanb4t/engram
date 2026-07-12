@@ -5,15 +5,15 @@ milestone_name: — Hardening & Write Lane
 current_phase: 17
 current_phase_name: wired-write-handlers-full-crud-schedule
 status: executing
-stopped_at: Completed 17-06-PLAN.md
-last_updated: "2026-07-12T23:34:58.328Z"
+stopped_at: Completed 17-04-PLAN.md
+last_updated: "2026-07-12T23:58:21.734Z"
 last_activity: 2026-07-12
 last_activity_desc: Phase 17 execution started
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 19
-  completed_plans: 17
+  completed_plans: 18
   percent: 80
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 ## Current Position
 
 Phase: 17 (wired-write-handlers-full-crud-schedule) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-07-12 — Phase 17 execution started
 
@@ -99,6 +99,9 @@ cookie-auth security posture).
 - [Phase 17]: [Phase 17 P06] deps.searchDiscovery intentionally retains its internal k=8 default (MCP lane only, with a retention comment) since the Connect SearchDiscoveries adapter (17-04) pre-applies k=20
 - [Phase 17]: [Phase 17 P06] MCP recall shaping (shapeRecall -> []any) moved out of deps.listMemory/searchMemory into the MCP list_memory/search_memory tool closures; the list closure explicitly sets CursorMode: true to preserve today's unconditional MCP cursor-mode pagination
 - [Phase 17]: [Phase 17 P06] TestListMemoryRejectsBadWindow relocated to assert parseRFC3339 directly (the exact call the MCP closures make) since the typed core's CreatedAfter/CreatedBefore are time.Time and cannot carry an invalid string
+- [Phase 17]: [Phase 17 P04] connectError(ctx, err) is the single production error mapper matching typed sentinels (ErrNotFound/ErrInvalidArgument/errRuleImmutable/errStaleSummary/ErrAmbiguousShortID/context.Canceled/context.DeadlineExceeded); no CodeAborted arm since no distinct conflict sentinel exists
+- [Phase 17]: [Phase 17 P04] spyStore is a scripted-spy memStore (records method+owner+args, non-nil embedder) rather than a full store-authz reimplementation; the real Qdrant isolation suite remains the authz gate
+- [Phase 17]: [Phase 17 P04] SearchDiscoveries maps an empty Connect scope to CrossSpine=true so it still spans all discovery scopes after the read-lane rewire; GetMemory's handler-level usage-enqueue call is removed since deps.getMemory is now the sole enqueue point
 
 ### Blockers/Concerns
 
@@ -109,8 +112,8 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-12T23:34:58.322Z
-Stopped at: Completed 17-06-PLAN.md
+Last session: 2026-07-12T23:58:21.727Z
+Stopped at: Completed 17-04-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -134,3 +137,4 @@ Resume file: None
 | Phase 17 P02 | 25min | 3 tasks | 14 files |
 | Phase 17 P03 | 10min | 2 tasks | 2 files |
 | Phase 17 P06 | 27min | 2 tasks | 4 files |
+| Phase 17 P04 | 17min | 3 tasks | 7 files |

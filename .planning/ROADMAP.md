@@ -349,7 +349,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 5. **Invariant**: no write RPC carries `idempotency_level = NO_SIDE_EFFECTS` — re-asserted by the Phase 15 CI gate now that real logic exists behind these RPCs.
 
 **Status**: Planned (revised after cross-AI review round 2 — 6 plans, 4 waves)
-**Plans**: 4/6 plans executed
+**Plans**: 5/6 plans executed
 **Wave 1**
 
 - [x] 17-01-PLAN.md — Ordered owner-claim list + HARDENED injective namespace encoding (D-04/D-05/D-06) [wave 1]
@@ -362,7 +362,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 17-04-PLAN.md — connectError mapper + scripted-spy fake + six write handlers + read-lane rewire + negative-matrix fix (D-07/D-10/D-11) [wave 3]
+- [x] 17-04-PLAN.md — connectError mapper + scripted-spy fake + six write handlers + read-lane rewire + negative-matrix fix (D-07/D-10/D-11) [wave 3]
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -454,7 +454,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 | 14. Embedder Model Options & Eval | v0.10.x | 3/3 | Complete    | 2026-07-11 |
 | 15. Additive Proto + Stub Write Handlers | v0.10.x | 4/4 | Complete    | 2026-07-11 |
 | 16. CSRF Interceptor | v0.10.x | 3/3 | Complete    | 2026-07-12 |
-| 17. Wired Write Handlers (Full CRUD + Schedule) | v0.10.x | 4/6 | In Progress|  |
+| 17. Wired Write Handlers (Full CRUD + Schedule) | v0.10.x | 5/6 | In Progress|  |
 | 18. Stateless Session Rotation | v0.10.x | 0/1 | Not started | - |
 | 19. Console Write UX | v0.10.x | 0/1 | Not started | - |
 | 20. Correctness & Polish | v0.10.x | 0/6 | Not started | - |
