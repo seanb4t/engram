@@ -4,6 +4,7 @@
 package config
 
 import (
+	"slices"
 	"testing"
 
 	flag "github.com/spf13/pflag"
@@ -148,6 +149,40 @@ func TestOwnerClaimDefaultAndOverride(t *testing.T) {
 	}
 	if c.OIDC.OwnerClaim != "preferred_username" {
 		t.Errorf("env owner_claim = %q, want %q", c.OIDC.OwnerClaim, "preferred_username")
+	}
+}
+
+func TestParseOwnerClaims(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		want    []string
+		wantErr bool
+	}{
+		{"empty", "", nil, false},
+		{"lone comma", ",", nil, false},
+		{"multi comma", ",,", nil, false},
+		{"whitespace only", "  ", nil, false},
+		{"single claim", "email", []string{"email"}, false},
+		{"ordered pair with spacing", "email, sub", []string{"email", "sub"}, false},
+		{"duplicate rejected, not deduped", "email,email", nil, true},
+		{"interior empty rejected, not dropped", "email,,sub", nil, true},
+		{"claim name with colon rejected", "email,sub:x", nil, true},
+		{"claim name starting with digit rejected", "email,1sub", nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseOwnerClaims(tt.raw)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ParseOwnerClaims(%q) err = %v, wantErr = %v", tt.raw, err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("ParseOwnerClaims(%q) = %v, want %v", tt.raw, got, tt.want)
+			}
+		})
 	}
 }
 
