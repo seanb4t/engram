@@ -4,17 +4,17 @@ milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 16
 current_phase_name: CSRF Interceptor
-status: executing
-stopped_at: Phase 16 context gathered
-last_updated: "2026-07-12T01:42:12.798Z"
+status: verifying
+stopped_at: Completed 16-03-PLAN.md
+last_updated: "2026-07-12T01:52:28.714Z"
 last_activity: 2026-07-12
 last_activity_desc: Phase 16 execution started
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 13
-  completed_plans: 12
-  percent: 75
+  completed_plans: 13
+  percent: 100
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 Phase: 16 (CSRF Interceptor) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-12 — Phase 16 execution started
 
 ## Deferred Items
@@ -86,6 +86,7 @@ cookie-auth security posture).
 - [Phase 16 P02]: TestWriteRPCNegativeMatrix's callWrite auto-attaches a matching CSRF cookie/header pair for authenticated calls (stub csrfVerify always true) so the pre-existing four-cell matrix stays green alongside the new CSRF interceptor
 - [Phase 16 P02]: TestReadRPCsCSRFExempt uses testDeps(t) (real Qdrant) instead of a bare deps{} -- read handlers dereference deps.st/em directly, unlike the still-Unimplemented write stubs
 - [Phase 16 P02]: connectcsrf_test.go's token-matrix verify is a local inline HMAC replica, not an internal/webauth import -- preserves the internal/server -> internal/webauth layering boundary
+- [Phase 16]: Minted the engram_csrf cookie in webauth.Handler.Callback this phase (not deferred to Phase 19) — SC2 is live end-to-end via a real fake-OIDC Callback test, per RESEARCH.md's resolved Open Question 1
 
 ### Blockers/Concerns
 
@@ -96,8 +97,8 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-12T01:39:33.204Z
-Stopped at: Phase 16 context gathered
+Last session: 2026-07-12T01:52:28.708Z
+Stopped at: Completed 16-03-PLAN.md
 Resume file: .planning/phases/16-csrf-interceptor/16-CONTEXT.md
 
 ## Performance Metrics
@@ -116,3 +117,4 @@ Resume file: .planning/phases/16-csrf-interceptor/16-CONTEXT.md
 | Phase 15 P04 | 12min | 2 tasks | 2 files |
 | Phase 16 P01 | 10min | 2 tasks | 2 files |
 | Phase 16 P02 | 25min | 3 tasks | 9 files |
+| Phase 16 P03 | 20min | 3 tasks | 5 files |
