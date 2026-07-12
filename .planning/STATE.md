@@ -5,15 +5,15 @@ milestone_name: — Hardening & Write Lane
 current_phase: 17
 current_phase_name: wired-write-handlers-full-crud-schedule
 status: executing
-stopped_at: Completed 17-03-PLAN.md
-last_updated: "2026-07-12T23:16:55.998Z"
+stopped_at: Completed 17-06-PLAN.md
+last_updated: "2026-07-12T23:34:58.328Z"
 last_activity: 2026-07-12
 last_activity_desc: Phase 17 execution started
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 19
-  completed_plans: 16
+  completed_plans: 17
   percent: 80
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 ## Current Position
 
 Phase: 17 (wired-write-handlers-full-crud-schedule) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-07-12 — Phase 17 execution started
 
@@ -95,6 +95,10 @@ cookie-auth security posture).
 - [Phase 17]: [Phase 17 P02] errRuleImmutable is a NEW sentinel; errStaleSummary is REUSED unchanged (not redeclared)
 - [Phase 17]: [Phase 17 P03] Visibility enum<->bool mapping is used ONLY by SetVisibility; UpdateMemory shared maps &req.Shared (proto bool) directly to *bool, never the enum mapper (round-8 MED)
 - [Phase 17]: [Phase 17 P03] windowBoundFloor/windowBoundCeil round scheduling bounds OUTWARD to whole seconds before RFC3339Nano formatting so a sub-second not_after cannot persist as immediately-expired after the store's .Unix() flooring (round-8 MED)
+- [Phase 17]: [Phase 17 P06] coreListRequest/coreListResult/coreSearchRequest defined as a superset of both lanes (offset, categories, visibility, exact total, cursor/cursor_mode, tags, created window); no internal Limit/K default lives in deps.listMemory/searchMemory — each lane applies its own (MCP 20/8 in the tool closures, Connect leaves limit=0 as 'all' and applies k=20 in 17-04)
+- [Phase 17]: [Phase 17 P06] deps.searchDiscovery intentionally retains its internal k=8 default (MCP lane only, with a retention comment) since the Connect SearchDiscoveries adapter (17-04) pre-applies k=20
+- [Phase 17]: [Phase 17 P06] MCP recall shaping (shapeRecall -> []any) moved out of deps.listMemory/searchMemory into the MCP list_memory/search_memory tool closures; the list closure explicitly sets CursorMode: true to preserve today's unconditional MCP cursor-mode pagination
+- [Phase 17]: [Phase 17 P06] TestListMemoryRejectsBadWindow relocated to assert parseRFC3339 directly (the exact call the MCP closures make) since the typed core's CreatedAfter/CreatedBefore are time.Time and cannot carry an invalid string
 
 ### Blockers/Concerns
 
@@ -105,8 +109,8 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-12T23:16:55.992Z
-Stopped at: Completed 17-03-PLAN.md
+Last session: 2026-07-12T23:34:58.322Z
+Stopped at: Completed 17-06-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -129,3 +133,4 @@ Resume file: None
 | Phase 17 P01 | 35min | 3 tasks | 13 files |
 | Phase 17 P02 | 25min | 3 tasks | 14 files |
 | Phase 17 P03 | 10min | 2 tasks | 2 files |
+| Phase 17 P06 | 27min | 2 tasks | 4 files |
