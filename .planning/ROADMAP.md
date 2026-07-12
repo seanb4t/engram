@@ -319,8 +319,11 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 3. The five existing read RPCs are provably unaffected — no CSRF header is required for them, verified by a regression test enumerating each read RPC against the CSRF interceptor's write-only allowlist.
 4. `TestConnectNoCORSHeaders` (or equivalent) remains green — no `Access-Control-Allow-Origin` is ever emitted from the Connect mux — preserved as a permanent CI gate, since same-origin (not `SameSite` alone) is the load-bearing CSRF mitigation.
 
-**Status**: Not started
-**Plans**: TBD
+**Status**: Planned
+**Plans**: 3 plans
+- [ ] 16-01-PLAN.md — webauth CSRF signer: HKDF sub-key of ui.cookie_key + HMAC-over-Owner double-submit signer (D-08)
+- [ ] 16-02-PLAN.md — Connect write-only CSRF token interceptor (D-02/D-03/D-05/D-07) + Register/mountConnect wiring + D-06/SC2/SC3 regression matrix
+- [ ] 16-03-PLAN.md — CrossOriginProtection whole-server wrap + Connect-shaped deny handler (D-04/D-07) + engram_csrf cookie minting (SC1)
 **Flag for /gsd-secure-phase.**
 
 ### Phase 17: Wired Write Handlers (Full CRUD + Schedule)
