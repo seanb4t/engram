@@ -1,322 +1,669 @@
 ---
 phase: 17
+round: 5
 reviewers: [codex, opencode, antigravity]
-reviewed_at: 2026-07-12T17:08:01Z
+reviewed_at: 2026-07-12T18:02:18Z
 plans_reviewed: [17-01-PLAN.md, 17-02-PLAN.md, 17-03-PLAN.md, 17-04-PLAN.md, 17-05-PLAN.md, 17-06-PLAN.md]
-review_round: 4
-supersedes_round: 3
-opencode_model: openrouter/x-ai/grok-4.5
-antigravity_prompt: trimmed (RESEARCH.md + CONTEXT.md dropped after full-prompt timeout; artifact-file output)
+models:
+  codex: gpt-5.x (codex-cli 0.144.1)
+  opencode: openrouter/x-ai/grok-4.5
+  antigravity: agy 1.1.1 (model selected internally)
+caveats:
+  antigravity:
+    - "Prompt was 300KB/2688 lines; agy truncated the tail — it reports 17-06 as \"missing\" and 17-05 as \"truncated\" though both were fully present. Same artifact as round 2."
+    - "Not source-grounded: all 7 file citations resolve to /Users/sean/.gemini/antigravity-cli/internal/... (agy's own cache dir), not the real repo. Findings re-derived from plan text, not verified against source."
+    - "Every agy finding duplicates an already-incorporated round 1-4 fix. Weighted ~zero for plan-level consensus."
+verified_against_source: true   # codex + opencode/grok-4.5 cites spot-checked against the live tree by the orchestrator; all confirmed
 ---
 
-# Cross-AI Plan Review — Phase 17 (Round 4)
+# Cross-AI Plan Review — Phase 17 (Round 5)
 
-Reviewers: **Codex** (codex-cli 0.144.1, model `gpt-5.6-sol`), **OpenCode** (opencode 1.17.15, model `openrouter/x-ai/grok-4.5`), and **Antigravity** (`agy 1.1.1`). This is the **fourth** review round — it re-reviews the six plans after the round-3 revision (commit `a8243820`) that fixed two Codex HIGH regressions. All three ran source-grounded inside the git working tree; the plans are not yet executed, so cited code reflects the pre-change state.
-
-> **Verdict split:** Codex rates **HIGH** (three confirmed defects, two of them introduced/left by the round-3 edits). OpenCode/grok-4.5 rates **LOW–MEDIUM** ("implementation-ready" + two MEDIUM deltas). Antigravity rates **LOW** (endorsement + two LOW vigilance items). The orchestrator adjudicated Codex's three HIGH items against the actual plan text and confirmed all three — see the Consensus Summary. Weight Codex's HIGH findings.
-
----
+Round 5 of adversarial cross-AI review. Rounds 1-4 fixes are incorporated (commit 23ba8077,
+plan-checker PASSED). Both source-grounded reviewers (Codex, OpenCode/grok-4.5) independently
+confirm the architecture is sound and prior-round fixes are well integrated; the phase's
+remaining risk is **entirely a set of unlisted test call sites that break the build/CI when the
+planned signatures and handlers land** — no design flaws found.
 
 ## Codex Review
+*(codex-cli 0.144.1, source-grounded — all cites orchestrator-verified against the live tree)*
 
-## Summary
+# Round 5 Plan Review
 
-The plans are substantially stronger after three review rounds: the shared `deps` seam, injective owner encoding, session-version rollout, partial-update split, typed read core, production error mapper, and per-RPC parity strategy are all well grounded in the current source. However, Round 4 still surfaces three material issues: malformed non-email claims can fall through to a different authorization bucket, the Plan 17-06 pagination acceptance test is impossible under the store’s offset semantics, and the `SearchDiscoveries` rewire can regress empty-scope cross-spine searches. Overall, the plans are not execution-ready until those are corrected.
+## Overall assessment
 
-## Strengths
+The architecture is strong and the previous review fixes are well integrated: explicit caller threading, typed read convergence, vector-preserving partial updates, a production error mapper, and structural parity tests collectively address the phase’s main risk.
 
-- The owner encoding correctly treats collisions as authorization vulnerabilities. Store authorization compares owner strings directly in both readable and owner-only filters ([internal/store/store.go:487](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:487), [internal/store/store.go:514](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:514)). The proposed length-prefixed `(claim,value)` encoding plus reserved-prefix email guard is therefore appropriate.
+However, three unlisted test call sites will break once the planned signatures and handlers land, and the sub-second scheduling fix stops at validation rather than persistence. Overall risk remains **HIGH until the compile/test blockers are added to the plans**.
 
-- `ClaimIdentity` is genuinely the right shared choke point. Both bearer verification and browser OIDC currently call it ([internal/auth/auth.go:83](/Volumes/Code/github.com/seanb4t/engram/internal/auth/auth.go:83), [internal/auth/auth.go:134](/Volumes/Code/github.com/seanb4t/engram/internal/auth/auth.go:134), [internal/webauth/oidc.go:78](/Volumes/Code/github.com/seanb4t/engram/internal/webauth/oidc.go:78)). Evolving it in place avoids lane-specific claim-selection drift.
+---
 
-- Session invalidation addresses a real rollout hazard. Existing cookies contain only the resolved owner ([internal/webauth/session.go:21](/Volumes/Code/github.com/seanb4t/engram/internal/webauth/session.go:21)), and the resolver currently forwards it verbatim ([internal/webauth/resolver.go:44](/Volumes/Code/github.com/seanb4t/engram/internal/webauth/resolver.go:44)). Auto-versioning in `Seal` and rejecting version-zero payloads prevents stale bare service owners from surviving the encoding change.
+## 17-01 — Ordered owner claims and rollout migration
 
-- The payload-only update design is necessary and correctly motivated. `store.Update` always replaces content and upserts a supplied vector ([internal/store/store.go:1367](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1367)), while `Get` does not retrieve vectors ([internal/store/store.go:1160](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1160)). A separate `SetPayload` operation is the correct mechanism for shared/summary-only updates.
+### Summary
 
-- The plans correctly preserve summary provenance and usage signals. Full updates clear auto-summary metadata and increment access state ([internal/store/store.go:1379](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1379), [internal/store/store.go:1395](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1395)); explicitly reproducing those effects in the payload-only path prevents subtle metadata drift.
+The authorization-key migration is thoughtfully hardened. Ordered claims, malformed-value rejection, injective owner encoding, legacy-cookie invalidation, and an operator migration runbook form a coherent security story.
 
-- The read-core correction is directionally sound. Current MCP list/search methods return transport-shaped `[]any` and discard list totals ([internal/server/tools.go:793](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:793), [internal/server/tools.go:854](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:854)), while Connect exposes offset, filters, exact totals, and cursor mode ([internal/server/connectapi.go:104](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go:104)). A typed superset is required for genuine convergence.
+### Strengths
 
-- The plans correctly preserve separate search defaults and MCP cursor behavior. Connect currently defaults search to 20 ([internal/server/connectapi.go:162](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go:162)); MCP defaults to 8 ([internal/server/tools.go:854](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:854)); and MCP list currently forces cursor mode ([internal/server/tools.go:809](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:809)).
+- The plan correctly treats owner strings as authorization keys. Store filters compare the owner directly at `internal/store/store.go:497` and `internal/store/store.go:517`, so injectivity and namespace disjointness are security requirements.
+- Session-version invalidation is well placed. Existing sessions contain only the old bare owner (`internal/webauth/session.go:26-29`), and the resolver forwards it unchanged (`internal/webauth/resolver.go:44-54`).
+- Auto-stamping the version inside `SessionCodec.Seal` covers the real mint site at `internal/webauth/handlers.go:172-175` and avoids per-call-site drift.
 
-## Concerns
+### Concerns
 
-- **HIGH — Malformed non-email claims can still fall through to another authz bucket.** Plan 17-01 rejects a present non-string `email`, but for every other configured claim it only selects a non-empty string and otherwise continues ([17-01-PLAN.md:168](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-01-PLAN.md:168)). Thus `[sub,client_id]` with a present malformed `sub` and valid `client_id` resolves to the later bucket. Before this refactor, a non-string selected claim becomes empty and fails closed downstream ([internal/auth/auth.go:83](/Volumes/Code/github.com/seanb4t/engram/internal/auth/auth.go:83), [internal/server/identity.go:21](/Volumes/Code/github.com/seanb4t/engram/internal/server/identity.go:21)). Ordered fallback would change that security behavior. Presence/type checking should apply to every candidate claim, not only `email`; `email` additionally requires `email_verified`.
+- **HIGH — `NewAuthenticator` signature changes omit two compiling test files.** The plan changes the final argument from `string` to `[]string`, but:
 
-- **HIGH — Plan 17-06 specifies an impossible pagination test.** It requires an `Offset>0` request to return a `NextToken` ([17-06-PLAN.md:116](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-06-PLAN.md:116), [17-06-PLAN.md:138](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-06-PLAN.md:138)). The store emits tokens only in cursor mode; offset mode deliberately returns an empty token ([internal/store/store.go:817](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:817), [internal/store/store.go:844](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:844), [internal/store/store.go:865](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:865)). Existing Connect tests explicitly pin that behavior ([internal/server/connectapi_test.go:269](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi_test.go:269)). As written, execution must either fail or accidentally change the established paging contract.
+  - `internal/webauth/handlers_test.go:159` passes `"email"`.
+  - `internal/webauth/oidc_exchange_test.go:148` passes `tc.ownerClaim`.
+  - The latter’s cases are themselves modeled as scalar `ownerClaim` values at `internal/webauth/oidc_exchange_test.go:107-138`.
 
-- **HIGH — `SearchDiscoveries` empty-scope behavior will regress unless the adapter sets `CrossSpine`.** The current Connect handler passes an empty scope directly to `Store.SearchDiscovery`, where empty means all discovery scopes ([internal/server/connectapi.go:215](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go:215), [internal/store/store.go:688](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:688)). The shared MCP method rejects empty scope unless `CrossSpine=true` ([internal/server/tools.go:884](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:884)). Plan 17-04 mentions mapping `k=20`, but not mapping `req.Scope==""` to `CrossSpine=true` ([17-04-PLAN.md:187](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-04-PLAN.md:187)). The proto does not require a non-empty scope ([proto/engram/v1/engram.proto:86](/Volumes/Code/github.com/seanb4t/engram/proto/engram/v1/engram.proto:86)).
+  Neither file appears in `files_modified` or the task file lists. `go test ./internal/webauth/...` therefore cannot compile as written.
 
-- **MEDIUM — The GetMemory rewire risks double-counting usage.** `deps.getMemory` already enqueues a usage event after a successful fetch ([internal/server/tools.go:996](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:996)). The current Connect handler also enqueues directly ([internal/server/connectapi.go:209](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go:209)). Plan 17-04 says both “GetMemory → deps.getMemory” and “Preserve GetMemory’s usage-queue enqueue” ([17-04-PLAN.md:187](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-04-PLAN.md:187)). It must explicitly remove the handler-level enqueue and rely solely on `deps.getMemory`.
+### Suggestions
 
-- **MEDIUM — Equal actor values across lanes are not a valid parity invariant.** Bearer tokens set `UserID` to `email`, username, or subject ([internal/auth/auth.go:139](/Volumes/Code/github.com/seanb4t/engram/internal/auth/auth.go:139), [internal/auth/auth.go:149](/Volumes/Code/github.com/seanb4t/engram/internal/auth/auth.go:149)). Cookie resolution sets no `UserID` at all ([internal/webauth/resolver.go:54](/Volumes/Code/github.com/seanb4t/engram/internal/webauth/resolver.go:54)), so the planned fallback produces the owner string. Plan 17-05 nevertheless asks for equal `Memory.Actor` values across lanes ([17-05-PLAN.md:136](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-05-PLAN.md:136)). For a non-email owner claim, legitimate values may differ: MCP actor could be a human-readable email while Connect actor is the encoded owner. The correct invariant is non-empty, verified, lane-appropriate attribution—not equality.
+- Add `internal/webauth/handlers_test.go` and `internal/webauth/oidc_exchange_test.go` to Plan 17-01.
+- Update the exchange test table to carry `ownerClaims []string`, including at least one ordered fallback case such as `[]string{"email", "sub"}`.
 
-- **MEDIUM — The typed core leaves time/error ownership ambiguous.** Plan 17-06 allows `CreatedAfter/Before` to be either strings or `time.Time` ([17-06-PLAN.md:92](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-06-PLAN.md:92)). Current Connect handlers map parse failures to `CodeInvalidArgument` at the boundary ([internal/server/connectapi.go:109](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go:109)), while current MCP methods parse strings internally ([internal/server/tools.go:797](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:797)). If raw strings enter the core and parse errors are not wrapped with `store.ErrInvalidArgument`, `connectError` will misclassify them as Internal.
+### Risk Assessment
 
-- **LOW — The migration runbook should warn that remapping is global and non-transactional.** `RemapOwner` matches every record with the old owner and rewrites them together ([internal/store/store.go:1890](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1890), [internal/store/store.go:1918](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1918)); it cannot distinguish claim provenance if historical claim configurations collided. The runbook should recommend backup/audit and `--dry-run` before applying the mapping.
+**HIGH** until the omitted call sites are included; otherwise **MEDIUM** because this changes the persisted authorization namespace and session compatibility.
 
-## Suggestions
+---
 
-- Generalize the round-3 malformed-email fix: for every ordered claim, distinguish absent, empty string, valid non-empty string, and present malformed type. Only absent/empty string may fall through; malformed-present values must reject.
+## 17-02 — Store seam, caller threading, and partial updates
 
-- Split the Plan 17-06 regression test into:
+### Summary
 
-  - offset-mode request: assert filters, exact total, page contents, and empty `NextToken`;
-  - cursor-mode request: assert non-empty `NextToken` on a full first page.
+This is a sound foundation plan. It resolves the concrete-store interface blocker, preserves vectors for payload-only updates, retains usage signals, and gives downstream handlers typed results and errors.
 
-- In the Connect discovery adapter, set `CrossSpine: req.Msg.Scope == ""`, preserve `Scope`, and add an empty-scope regression test alongside the `k=20` test.
+### Strengths
 
-- State explicitly that Connect `GetMemory` removes its direct `usageQueue.tryEnqueue`; the shared `deps.getMemory` call is the sole enqueue point.
+- The payload-only method is necessary: `Store.Update` always overwrites content and upserts a supplied vector (`internal/store/store.go:1367-1406`), while `SetVisibility` demonstrates the vector-preserving `SetPayload` pattern (`internal/store/store.go:1417-1442`).
+- Explicitly clearing summary provenance is correct. Full payload encoding omits empty provenance keys (`internal/store/store.go:332-336`), but the decoder consumes them whenever present (`internal/store/store.go:433-439`), so a partial payload write must overwrite or delete stale keys.
+- Including `DeleteAll` and `ListScopes` in `memStore` is source-grounded: both remain direct interface calls at `internal/server/tools.go:1143` and `internal/server/connectapi.go:93`.
 
-- Replace actor-equality assertions with separate expectations: MCP uses `TokenInfo.UserID` when populated; Connect falls back to the resolved owner when it is not.
+### Concerns
 
-- Make core request times `time.Time`, not `string|time.Time`. Each transport should parse its own wire representation and return its native invalid-argument error before invoking the core.
+- **HIGH — caller-signature changes omit `embed_wiring_test.go`.** This file directly calls both methods being refactored:
 
-- Extend the migration documentation with `--dry-run`, backup guidance, and a warning that `--from` selects all records carrying that exact historical owner string.
+  - `d.searchMemory(...)` at `internal/server/embed_wiring_test.go:38`
+  - `d.storeMemory(...)` at `internal/server/embed_wiring_test.go:52`
 
-## Risk Assessment
+  Plan 17-02 changes `storeMemory` to require a caller, while Plan 17-06 changes `searchMemory`. Neither plan lists this file. The server test package will fail to compile.
 
-**HIGH.** The overall architecture is sound, but the remaining malformed-claim fallback changes authorization-bucket selection, the discovery rewire can break an existing cross-scope read contract, and one mandatory pagination test contradicts the store’s implemented semantics. These are localized plan corrections, not reasons to redesign the phase, but execution should remain blocked until they are resolved.
+### Suggestions
+
+- Add `internal/server/embed_wiring_test.go` to Plan 17-02 or 17-06, with ownership clearly assigned.
+- Preserve these tests’ stop-before-store intent by supplying an explicit anonymous caller; they deliberately construct `deps` without a store and return from the embedder first (`internal/server/embed_wiring_test.go:13-30`).
+
+### Risk Assessment
+
+**HIGH** until the omitted test is assigned. The production design itself is **MEDIUM** risk due to the new payload-only mutation path.
+
+---
+
+## 17-03 — Proto conversion layer
+
+### Summary
+
+The dedicated conversion layer is well scoped and keeps handlers thin. Exact-mapping tests are a better fit than artificial round-trip assertions.
+
+### Strengths
+
+- Mask-aware pointer mapping directly prevents the current content-blanking hazard: `updateArgs.Content` is presently unconditional (`internal/server/tools.go:507-512`), and `Store.Update` always applies it (`internal/store/store.go:1379`).
+- `RFC3339Nano` is correct for preserving protobuf timestamp precision through `parseWindow`, which accepts RFC3339 fractional seconds (`internal/server/tools.go:452-470`).
+
+### Concerns
+
+- **MEDIUM — sub-second precision is preserved only through validation, not persistence.** The plan specifically tests a `not_after` less than one second in the future. That value may pass `parseWindow`, but storage floors both bounds to Unix seconds:
+
+  - Encoding: `internal/store/store.go:319-323`
+  - Decoding: `internal/store/store.go:405-411`
+
+  A bound 500ms in the future can therefore be persisted as the start of the current second and become immediately expired. The RFC3339Nano adapter test would pass while end-to-end behavior remains wrong.
+
+### Suggestions
+
+- Either add a backward-compatible nanosecond-precision store representation and an end-to-end scheduling test, or explicitly state that scheduling persistence remains second-granular and avoid the `<1s future` correctness claim.
+- Prefer a real `ScheduleMemory → persisted Memory → recall gate` test if precision is intended as part of the Connect contract.
+
+### Risk Assessment
+
+**MEDIUM**, due to a mismatch between the adapter’s precision guarantee and the actual persisted behavior.
+
+---
+
+## 17-04 — Connect handlers, reads, and error mapping
+
+### Summary
+
+The handler and read-lane wiring is structurally correct, but an existing CSRF test still assumes the write handlers are unimplemented and will break immediately.
+
+### Strengths
+
+- Removing the duplicate Connect usage enqueue is necessary: the current handler enqueues at `internal/server/connectapi.go:209-211`, while `deps.getMemory` already does so at `internal/server/tools.go:1000-1003`.
+- Preserving Connect-specific defaults at the adapter is correct. Existing Connect search defaults to 20 (`internal/server/connectapi.go:162-165` and `:224-227`), while MCP defaults to 8 (`internal/server/tools.go:854-857` and `:904-906`).
+- Empty-scope discovery handling is correctly identified: the current store treats empty scope as cross-scope, whereas `effectiveDiscoveryScope` rejects it unless `CrossSpine` is set (`internal/server/tools.go:881-891`).
+
+### Concerns
+
+- **HIGH — `connectcsrf_test.go` still expects an unimplemented handler and uses nil dependencies.** `TestConnectCSRFTokenMatrix` constructs `d := &deps{}` at `internal/server/connectcsrf_test.go:225` and expects a valid CSRF request to return `CodeUnimplemented` at `:247-250`. Once `StoreMemory` is wired, that request reaches `d.em.Embed`/`d.st` and will panic or return a different result. Plan 17-04 updates only the negative matrix, not this CSRF matrix.
+- **LOW — the `CodeAborted` must-have has no current typed sentinel.** The current relevant sentinel set is `ErrNotFound`, `ErrInvalidArgument`, and `ErrAmbiguousShortID` (`internal/store/store.go:42-56`), plus `errStaleSummary` (`internal/server/summary.go:14-18`). The action qualifies Aborted with “if a distinct sentinel exists,” while the must-have states it unconditionally.
+
+### Suggestions
+
+- Add `internal/server/connectcsrf_test.go` to Plan 17-04.
+- Back `TestConnectCSRFTokenMatrix` with the same spy/non-nil embedder fixture and change the matching-token cell to a real success or deterministic domain result.
+- Remove the unconditional Aborted claim or introduce a specifically defined conflict sentinel and test.
+
+### Risk Assessment
+
+**HIGH** because the existing CSRF suite will fail as soon as real handlers replace the stubs.
+
+---
+
+## 17-05 — Parity and existence-leak gates
+
+### Summary
+
+This is a strong acceptance plan. Independent fixtures, production error mapping, spy traces, AST delegation checks, and split leak assertions cover both behavioral and structural parity.
+
+### Strengths
+
+- Independent per-lane fixtures correctly prevent mutation-order contamination.
+- Mapping direct domain errors through the production mapper avoids comparing `connect.CodeOf(domainError) == Unknown` against a mapped handler error.
+- Split short-ID and UUID assertions accurately encode the leak boundary. Existing GetMemory coverage establishes the intended rule at `internal/server/connectapi_test.go:621-645`.
+- The AST assertion closes the real ambiguity that `storeMemory` and `scheduleMemory` share similar store traces.
+
+### Concerns
+
+- No net-new blocking issue found in round 5.
+
+### Suggestions
+
+- Keep AST checks narrowly limited to named delegation calls so harmless handler refactors do not make the test unnecessarily brittle.
+- Ensure the actor assertion checks exact expected values per lane, as the plan now specifies, rather than merely non-empty values.
+
+### Risk Assessment
+
+**LOW to MEDIUM**. The plan is test-heavy, but appropriately so for the milestone’s primary authorization-parity requirement.
+
+---
+
+## 17-06 — Typed read core
+
+### Summary
+
+The typed superset read core is the correct response to the earlier field-loss risk. Per-lane defaults, typed timestamps, and separate cursor/offset tests preserve existing transport contracts.
+
+### Strengths
+
+- The plan correctly models the full Connect list contract currently passed to `store.List` at `internal/server/connectapi.go:124-138`.
+- Removing shared defaults is source-consistent: `Store.List` deliberately treats `Limit==0` as all records (`internal/store/store.go:870-880`), while `SearchReranked` rejects `k==0` (`internal/store/store.go:677-679`).
+- Separate offset and cursor assertions match the actual mutual-exclusion check and branch behavior at `internal/store/store.go:844-867`.
+
+### Concerns
+
+- **HIGH — shared with Plan 17-02: `embed_wiring_test.go` is absent.** Its direct `searchMemory` call at `internal/server/embed_wiring_test.go:38` must change to the new caller/core-request signature. Plan 17-06’s `files_modified` lists only `tools.go`, `tools_test.go`, and `connectapi_test.go`.
+
+### Suggestions
+
+- Assign `internal/server/embed_wiring_test.go` to Plan 17-06 for the search-path update, while Plan 17-02 handles its store-path update, or place both edits in 17-06 after 17-02.
+- Add a repository-wide `rg` acceptance check for direct calls to every changed `deps.*` method rather than enumerating only two test files.
+
+### Risk Assessment
+
+**HIGH** until all signature call sites are covered; otherwise **MEDIUM** because read-contract regressions would be externally visible.
+
+---
+
+## Required round-5 changes
+
+1. Add `internal/webauth/handlers_test.go` and `internal/webauth/oidc_exchange_test.go` to 17-01.
+2. Add `internal/server/embed_wiring_test.go` to 17-02/17-06.
+3. Add and update `internal/server/connectcsrf_test.go` in 17-04.
+4. Resolve or explicitly document the sub-second scheduling persistence mismatch.
+5. Reconcile the unconditional `CodeAborted` must-have with the absence of a conflict sentinel.
+
+With those corrections, the six-plan wave structure should achieve the phase goal without reopening the authz or existence-leak risks.
 
 ---
 
 ## OpenCode Review
+*(openrouter/x-ai/grok-4.5, source-grounded — real repo reads observed; cites orchestrator-verified)*
 
-> Model: `openrouter/x-ai/grok-4.5` (swapped in for round 3's gemini-3.5-flash for reviewer diversity). Source-grounded via codegraph_explore; two leading narration lines elided.
+I'll verify the plans against current source — checking identity, store update paths, Connect handlers, and the test landmines called out in research.
+# Phase 17 Plan Review — Round 5
 
-# Cross-AI Plan Review — Round 4  
-**Phase 17: Wired Write Handlers (Full CRUD + Schedule)**
-
-## Summary
-
-After independente verification against current source, the six-plan, four-wave design is **implementation-ready**. Rounds 1–3 closed the real compile/authz/kernel risks (D-06 injectivity, session-version rollout, malformed-email fallthrough, `errStaleSummary` reuse, memStore `DeleteAll`/`ListScopes`, payload provenance, RFC3339Nano, CursorMode, connectError taxonomy, spy parity mechanics). Round-4 re-checks match the cited mechanisms. Residual issues are **local executor hazards**, not design rewrites — mainly double usage enqueue on GetMemory rewire, and an underspecified shared `listMemory` limit default that can mimic the already-fixed k-default regression. overall residual risk is **LOW–MEDIUM**.
+Verified against live source under `/Volumes/Code/github.com/seanb4t/engram` (no CodeGraph index; file:line cites from direct reads). Round 1–4 items that the plans still implement and still match code are **not** re-litigated.
 
 ---
 
-## Strengths
+## Overall
 
-- **Authz key path is source-true.** Owner is compared as a raw string in `ownerOrSharedCondition` / `ownerOnlyCondition` (`internal/store/store.go:497`, `:517`). Length-prefixed D-06 encoding, reserved-namespace email guard, and session payload versioning correctly treat encoding as a migration of the authz key, not cosmetic formatting.
-- **Malformed-present-email (HIGH-1) is real and correctly specified.** Today `ClaimIdentity` does `raw["email"].(string)` (`internal/auth/auth.go:84-86`), so a present non-string becomes `""`. With ordered `[email,sub]`, that is a fallthrough to `sub` unless presence is checked separately — plan Task 1 states the right rejection table.
-- **Cookie-lane Actor gap is real.** `Resolver.Resolve` only sets `Extra[owner_claim]` (`internal/webauth/resolver.go:54`); no `UserID`. Actor←owner fallback is required or Connect writes stamp `Actor==""`.
-- **Partial-update landmine is real.** `updateArgs.Content` is a plain `string` (`tools.go:509`); `updateMemory` always embeds/writes it (`tools.go:957`, `:972`); `Store.Update` always sets `cur.Content` (`store.go:1379`). `*string` + payload-only path is the only correct respect for the mask.
-- **SetPayload provenance / usage fixes are correct.** Full `Update` clears model/egress in-memory then Upserts whole payload (`store.go:1395-1404`); encoder omits empty keys (`store.go:332-336`); decoder still reads.present keys (`store.go:433-439`); `SetPayload` is merge-only (`SetVisibility`, `IncrementAccess`, `SetSummary`). Explicit clear + AccessCount bump mirror live code.
-- **Vector preservation test is forced correctly.** `Store.Get` requests payload only (`store.go:1160-1162`); plan’s raw-client `WithVectors(true)` is necessary.
-- **`errStaleSummary` already exists** (`summary.go:16-18`, returned at `:34`) — reusing it avoids the BLOCKER 2 compile err.
-- **`ErrAmbiguousShortID` is real** (`store.go:56`, returned at `ResolvePointID` `:1217`); mapping to `FailedPrecondition` is better than today’s fall-through to Internal in `GetMemory` (`connectapi.go:191-198`).
-- **CursorMode HIGH-2 is source-true.** MCP hardcodes `CursorMode: true` (`tools.go:815`). Store only emits first-page cursor when `CursorMode` (or resume token) is set (`store.go:865`). Leaving the flag false in the neutral core would silently kill MCP next_cursor.
-- **SearchDiscoveries k=20 is source-true** (`connectapi.go:224-226` vs `searchDiscovery` k=8 at `tools.go:904-905`).
-- **Negative-matrix landmine is source-true** (`d := &deps{}` at `connectapi_negative_test.go:64`) — wire order with spy+embedder is mandatory.
-- **Wave graph is coherent:** 17-01 ∥ 17-02 → 17-03 ∥ 17-06 → 17-04 → 17-05; fake/store iface before bodies; parity last.
+The six-plan wave structure still hits REQ-connect-write-authz-parity: shared `caller` + `deps.*`, injectable `memStore`, mask-safe update, injective owner encoding with session versioning, typed read core, thin Connect adapters, and spy/AST parity. Round-4 fixes (malformed-claim generalization, CrossSpine empty-scope, usage double-count, pagination split, lane-appropriate Actor) remain grounded.
+
+**One net-new HIGH test landmine** is still open: `connectcsrf_test.go` (not only `connectapi_negative_test.go`). A few MEDIUM/LOW implementation notes remain around SetPayload provenance clearing and executor precision.
+
+**Risk: MEDIUM** (was trending LOW after round-4) solely because the CSRF happy-path CI break will fire when 17-04 wires handlers unless fixed in the same plan.
 
 ---
 
-## Concerns
+## 17-01 — Ordered owner claims + injective encoding + session versioning
 
-### HIGH
-*None remaining that re-block design.* Prior HIGHs (encoding collision, rollout split-bucket, malformed email, CursorMode, compile blockers) are closed in plan text with matching evidence.
+### Summary
+Authz-key change is correctly treated as migration+encoder work, not a rename. Still sound against `ClaimIdentity` (`internal/auth/auth.go:83-97`), `resolver.go:54`, and `handlers.go:172-175`.
 
-### MEDIUM
+### Strengths
+- D-05 fail-closed + round-4 present-but-non-string reject for **every** ordered claim still matches today’s coercion hazard: `owner, _ = raw[ownerClaim].(string)` (`auth.go:86`) that turns non-strings into `""` and can fall through later claims.
+- Length-prefixed encoding is necessary: store authz is exact string match at `ownerOrSharedCondition` / `ownerOnlyCondition` (`store.go:497`, `:517`).
+- Session version in `Seal` is right: only mint is `handlers.go:172-175`; version field on `Session` (`session.go:26-29`) is zero today, so unversioned cookies naturally unseal as `V==0`.
+- Empty-ENV vs CLI flag is correctly grounded: `config.go:179-184` empty ENV preserves default.
 
-1. **GetMemory usage double-count after D-07 rewire**  
-   Behavior lives twice today: `deps.getMemory` enqueues (`tools.go:1000-1003`) and Connect `GetMemory` also enqueues (`connectapi.go:209-211`).  
-   17-04 says “Preserve GetMemory’s usage-queue enqueue” without saying **exactly once**. A handler that rewires to `getMemory` *and* keeps its own `tryEnqueue` will double-increment AccessCount on every Connect get.  
-   **Fix:** state that after rewire only `deps.getMemory` enqueues; the Connect handler must not add a second call.
+### Concerns
+- **[LOW]** Empty-string email + `email_verified=false` + list `[email,sub]`: plan falls through; today with claim=`email` always hits the verified gate (`auth.go:87-94`). Fail-closed still holds for list=`[email]`; for `[email,sub]` this is an intentional widening. Document in secure-phase.
+- **[LOW]** No residual open item from prior rounds.
 
-2. **`deps.listMemory` Limit 0→20 default is not explicitly removed (same class as k-default)**  
-   MCP defaults limit inside deps (`tools.go:794-796`). Connect passes limit through to store; store treats `Limit==0` as “all” (`store.go:873-874`).  
-   17-06 moves k out of `searchMemory` and has the MCP closure set limit=20, but never says to **delete** the shared `if Limit==0 { Limit=20 }` from `deps.listMemory`. Leaving it makes Connect limit=0 mean 20 after rewire — silent contract change (isolation tests often omit Limit).  
-   **Fix:** same pattern as k — no default inside deps; MCP adapter sets 20; Connect leaves 0 as “all”.
+### Suggestions
+- Keep one unit case for empty-string email under `[email,sub]` so the fall-through semantics are deliberate, not accidental.
 
-3. **Empty-string summary provenance via SetPayload**  
-   Plan allows write-empty *or* delete. Empty `summary_egress_at` string fails `time.Parse` and yields zero (`store.go:436-439`) — OK functionally, but leaves cruft keys. Prefer explicit empty/`""` for both keys (or DeletePayload) and assert decoded model empty + egress zero as already planned — executor should not skip the write-empty path.
-
-### LOW
-
-4. **Session mint site mislabeled in 17-01**  
-  Plan text talks about “oidc.go Callback”; the actual seal is `handlers.go:172-175` (OIDC exchange is `oidc.go` only). Seal auto-inject still covers this mint site — doc nit only.
-
-5. **`subjectFromContext` / `actorFromContext` must remain after write rewiring**  
-   Still used by `identityForLog` (`instrument.go:80-84`) and will remain needed until tools log via `caller`. Plan “retire as write-method internals” is fine if helpers stay exported to package scope; do not delete blindly.
-
-6. **ErrAmbiguousShortID code change is user-visible**  
-   Today Connect GetMemory maps non-NotFound/InvalidArgument Resolve failures to Internal. Mapping Ambiguous→FailedPrecondition is better and intentional; worth a one-line note; in connectError acceptance so ops don’t treat it as a regression surprise.
-
-7. **AST assertion path detail**  
-   Under `go test ./internal/server`, package cwd is that package — `connectapi.go` (basename) works; `internal/server/connectapi.go` does not. Plan already prefers `go/parser` / `runtime.Caller` — keep that explicit in the test template.
+### Risk
+**LOW** for this plan alone.
 
 ---
 
-## Suggestions
+## 17-02 — memStore, payload-only update, caller, update *string
 
-1. In **17-04 Task 3**, replace “Preserve GetMemory’s usage-queue enqueue” with: *“Do not enqueue in the handler; deps.getMemory already does (single enqueue).”*
-2. In **17-06 Task 1**, explicitly **remove** `if Limit==0 { Limit=20 }` from `deps.listMemory` / core list path; put the default only in the MCP list_memory closure; add a Connect regression cell: limit=0 still returns all / full declarative total (same spirit as Missing k tests).
-3. Prefer writing `summary_model: ""` and clearing egress in the Same SetPayload map for UpdatePayload (matches Update’s in-memory clear semantics).
-4. Correct 17-01 mint-site cite to `handlers.go` Seal (keep auto-inject in Seal as the real control).
-5. Keep `/gsd-secure-phase` after 17-01 at least: owner encoding + email gate + session version are the authz-key surface; write-handler secure pass can stay phase-wide as flagged.
+### Summary
+Still the correct foundation wave. Ceiling claims (DeleteAll/ListScopes signatures, `errStaleSummary` at `summary.go:16`, `storeFill`/`buildUsageQueue` concrete `*store.Store`, tags re-embed in `tools.go:965-972`) match the tree.
+
+### Strengths
+- Acknowledge real `Update` always takes `content string` + vec + Upsert (`store.go:1367-1406`) and always re-embeds from MCP path (`tools.go:972-980`).
+- Payload-only path correctly modeled on `SetVisibility` SetPayload (`store.go:1417-1442`) while adding AccessCount bump from `Update` (`:1379-1384`).
+- `ListScopes` return `([]ScopeCount, bool, error)` at `store.go:1110` and `DeleteAll` at `:1508` still force interface inclusion.
+- Reusing `errStaleSummary` is mandatory — redeclaring would not compile.
+
+### Concerns
+- **[MEDIUM]** Provenance clear via SetPayload is underspecified for `summary_egress_at`. Full upsert omits zero egress (`store.go:335-336`); SetPayload only overwrites supplied keys. Writing `time.Time{}.Format(RFC3339)` would store a `0001-01-01…` string that `time.Parse` accepts (`store.go:436-438`) → non-zero egress again. Spec: **delete** `summary_egress_at` (or set a value the decoder treats as zero), not blank-format zero time. Same for relying on encoder map semantics.
+- **[LOW]** `listScheduled` invalid `state` stays bare `fmt.Errorf` (`tools.go:844`); no Connect RPC today — OK, but if ever exposed it maps Internal unless wrapped.
+
+### Suggestions
+- In Task 1 store test (c), assert decoder sees zero `SummaryEgressAt` **and** that the payload key is absent (raw Get), not just struct field.
+- Explicit note in action: use Qdrant overwrite/delete for provenance keys; do not marshal zero-time.
+
+### Risk
+**LOW–MEDIUM** (payload provenance edge if executor is sloppy).
+
+---
+
+## 17-03 — protoconv
+
+### Summary
+Still a clean, complete D-09 layer. RFC3339Nano + nil Content residual are correct relative to `parseWindow` (`tools.go:445-473`) and `*string` Content from 17-02.
+
+### Strengths
+- Sub-second future/`not_before < not_after` risk is real for RFC3339 truncation.
+- Exact-mapping (not false round-trip) fits optional FieldMask → pointer fields.
+
+### Concerns
+None net-new. Round-2 “no 17-03 findings” still holds.
+
+### Suggestions
+None required.
+
+### Risk
+**LOW**
+
+---
+
+## 17-04 — Handlers, connectError, spy, read rewire
+
+### Summary
+Wiring design still closes Pitfall 1. CrossSpine empty-scope (`tools.go:884-892` + `SearchDiscovery` empty=all `store.go:688-716`), dual-enqueue (`connectapi.go:211` + `tools.go:1000-1003`), and k=20 vs MCP k=8 (`connectapi.go:162-165`, `:224-227` vs `tools.go:855-856`, `:904-905`) are correctly handled. **Missed comprehensive “nil deps / Unimplemented flip” across the full CSRF suite.**
+
+### Strengths
+- `engramAPI` still has only five read methods; writes still use `UnimplementedEngramServiceHandler` (`connectapi.go:88-233`) — “author six methods” remains true.
+- `ErrAmbiguousShortID` at `store.go:56` / `:1217`; GetMemory today falls through to Internal (`connectapi.go:191-198`) — mapping to FailedPrecondition is a justified read+write improvement.
+- `usageQueue.tryEnqueue` is nil-safe (`usagequeue.go:72-73`), so spy deps without a queue is fine.
+- ListScopes-as-exception still correct (no MCP counterpart).
+
+### Concerns
+- **[HIGH] `TestConnectCSRFTokenMatrix` happy path will break when writes are real.**  
+  - `connectcsrf_test.go:225` — `d := &deps{}`  
+  - `:248-250` — matching cookie+header expects **`CodeUnimplemented`**  
+  - Once `StoreMemory` is wired, request hits nil `d.st` → panic, or a real error/success — **not** Unimplemented.  
+  - Plan 17-04 only lists `connectapi_negative_test.go` (`:64`, `:169`) in landmine-1 and `files_modified`. CSRF suite is a permanent Phase-16 gate and will redden CI in the same commit sequence.
+- **[MEDIUM]** SearchMemories / SearchDiscoveries rewrite must **replace** handler-local `EmbedQuery` (`connectapi.go:158`, `:220`) with deps-only embed. Easy to leave a double-embed or dead vec if body is patched rather than replaced. Action implies thin adapter but doesn’t say “delete EmbedQuery from handlers.”
+- **[LOW]** Happy-path CSRF cell fix options: spy+non-nil embedder + expect success/InvalidArgument, or “any code ≠ PermissionDenied” credential for CSRF-pass-through.
+
+### Suggestions
+1. Add `internal/server/connectcsrf_test.go` to 17-04 `files_modified` and must_haves.
+2. Happy path: spy-backed deps + real success (or assert Code ≠ PermissionDenied ∧ ≠ Unimplemented if you only care about CSRF pass-through).
+3. Explicit action line: remove handler EmbedQuery on Search* rewires.
+4. Keep asserted k=0→20 **and** CrossSpine for empty scope (already present — keep as-is).
+
+### Risk
+**MEDIUM–HIGH** until CSRF happy path is in scope of the same wave-3 commit set as handler wiring.
+
+---
+
+## 17-05 — Parity + leak tables + idempotency re-assert
+
+### Summary
+Acceptance-gate plan still matches SC2/SC4/SC5. Round-4 lane-appropriate Actor (`resolver.go:54` vs MCP UserID) and connectError code normalization for direct deps errors are correct.
+
+### Strengths
+- Per-lane fixtures for mutating rows (Delete/update) remain necessary.
+- AST assertion via `go/parser`/`runtime.Caller` (not relative ReadFile under `go test` cwd) remains right.
+- Split short_id vs UUID leak tables match GetMemory template (`connectapi.go:203-205`) / deps re-wrap (`tools.go:934-935`, `:1020-1021`).
+
+### Concerns
+- **[LOW]** Spy authz drift already mitigated by keeping Qdrant isolation as gate — no reopen.
+- Depends on 17-04 spy + connectError existing; sequencing is correct.
+
+### Suggestions
+- Optional: one parity row that stresses `ErrAmbiguousShortID` if spy can script it — nice but not required for #322.
+
+### Risk
+**LOW** (assuming 17-04 CSRF fix lands first).
+
+---
+
+## 17-06 — Typed read core (D-07 hardened)
+
+### Summary
+Still the right answer to the naive rewire regression. Live code confirms: MCP list always `CursorMode: true` and discards total (`tools.go:809-820`); list default Limit 20 (`:794-796`); search k=8 (`:855-856`); Connect list carries offset/categories/visibility/total/token (`connectapi.go:124-149`). Offset vs cursor mutual exclusion (`store.go:844-845`, token only in cursor mode).
+
+### Strengths
+- Removing shared `Limit==0→20` preserves Connect `limit=0` = all (`store.go` Limit semantics at list path).
+- Keeping `searchDiscovery` internal k=8 with comment + Connect pre-default in 17-04 avoids 20→8 regression.
+- Keeping `subjectFromContext` for `identityForLog` (`instrument.go:81-82`) avoids a false “delete helpers” cleanup.
+
+### Concerns
+None net-new vs round-4.
+
+### Suggestions
+None required.
+
+### Risk
+**LOW**
+
+---
+
+## Cross-cutting
+
+| Check | Verdict |
+|--------|---------|
+| Wave order 01+02 → 03∥06 → 04 → 05 | Sound; 04 depends on 03+06 |
+| Phase goals SC1–SC5 | Covered if “thin adapter” + parity + leak tables land |
+| SECURE-phase flag | Still warranted (owner encoding + claim list) |
+| Scope creep | Acceptable; identity+read rewire bundling was user-locked |
+| Zero new deps | Still true |
+| Double-count usage on Connect Get | Addressed (remove `connectapi.go:211`) |
+| CSRF/negative nil-store landmines | **Partial** — negative matrix yes, CSRF matrix no |
+
+---
+
+## Must-fix before execute (rank ordered)
+
+1. **HIGH — 17-04:** Include `connectcsrf_test.go` happy path well beyond “not PermissionDenied while Unimplemented.”  
+   Evidence: `connectcsrf_test.go:225`, `:248-250`. Same wave as wiring or CI fails mid-phase.
+
+2. **MEDIUM — 17-02:** Specify SetPayload provenance clear: delete/absent `summary_egress_at`, do not write zero-time RFC3339.  
+   Evidence: `store.go:335-336` vs `:436-438`.
+
+3. **MEDIUM — 17-04:** Explicit “delete handler EmbedQuery; only deps embeds” on Search rewires.  
+   Evidence: `connectapi.go:158`, `:220` vs `tools.go:870`, `:911`.
 
 ---
 
 ## Risk Assessment
 
-| Area | Risk | Why |
-|------|------|-----|
-| Owner encoding / D-05 / D-06 / session version | **LOW** after plans | Mechanisms match source; tests specified |
-| memStore / payload update / caller / write path | **LOW** | Blockers closed; TestDepsWithStore addresses concrete*store.Store callers |
-| Read-lane typed core | **LOW–MEDIUM** | CursorMode + k fixed; **list Limit default** still underspecified |
-| Handler wiring / parity | **LOW** | Spy + AST + per-lane fixtures address prior false-pass modes |
-| Residual R4 | **MEDIUM items only** | Double usage enqueue, list Limit default |
+| Plan | Risk |
+|------|------|
+| 17-01 | LOW |
+| 17-02 | LOW–MEDIUM (payload clear detail) |
+| 17-03 | LOW |
+| 17-04 | **MEDIUM–HIGH** (CSRF happy path omitted) |
+| 17-05 | LOW |
+| 17-06 | LOW |
+| **Phase overall** | **MEDIUM** — architecture solid; unfixed CSRF test will block green merge at wave 3 |
 
-**Overall residual risk: LOW–MEDIUM** — safe to execute with the two MEDIUM clarifications applied as plan deltas (or as first-task acceptance comments). No need for a fifth full redesign pass unless those two are left ambiguous and an executor guesses wrong.
-
----
-
-## Phase-goal fit
-
-Plans still deliver REQ-connect-write-authz-parity:
-
-| SC | Coverage |
-|----|----------|
-| SC1 explicit caller | 17-02 (+ reads in 17-06) |
-| SC2 thin deps adapters | 17-03 + 17-04 + spy/AST 17-05 |
-| SC3 E2E write + rules immutable | 17-04/17-05 rows |
-| SC4 original-input re-wrap | already in deps; split tables 17-05 |
-| SC5 no NO_SIDE_EFFECTS | existing Taskfile/CI gate re-asserted |
-
-Ready for execute-phase after folding MEDIUM #1–#2 into 17-04/17-06.
+After the CSRF landmine is written into 17-04 (and provenance wording tightened in 17-02), this set is ready to execute without another full replan.
 
 ---
 
 ## Antigravity Review
+*(agy 1.1.1 — SEE CAVEATS: prompt-tail truncated + citations point at agy's cache dir, not the repo. Findings duplicate already-incorporated round 1-4 fixes; retained for completeness, not weighted in consensus.)*
 
-> `agy 1.1.1`. The full-prompt (277 KB) run timed out under `--print-timeout 300s` (known large-prompt failure mode, ref memory `wqykwd4m8w`); a retry on a trimmed 189 KB prompt (RESEARCH.md + CONTEXT.md dropped — agy can read them from disk) succeeded and wrote the review to an artifact file (`analysis_results.md`), inlined below. Endorsement-only; it did not surface any of Codex's three HIGH items.
+# Cross-AI Plan Review: Phase 17 — Wired Write Handlers (Full CRUD & Schedule)
 
-# Cross-AI Plan Review (Round 4): Phase 17 — Wired Write Handlers & Full CRUD Schedule
-
-This document presents a comprehensive, source-grounded review of the six implementation plans (`17-01-PLAN.md` through `17-06-PLAN.md`) for Phase 17. The review is conducted against the current codebase state in the working tree.
-
----
-
-## 1. Summary
-
-The implementation plans for Phase 17 are highly detailed, complete, and structurally sound. They successfully build upon the decisions established in previous review rounds and address the critical vulnerabilities and regressions identified in Round 3 (including the malformed email claim authorization fallback and the MCP `CursorMode: true` pagination requirements).
-
-The dependency topology of the plans is cleanly ordered:
-- **Wave 1 (Foundational Write & Identity)**: [17-01-PLAN.md](file:///Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-01-PLAN.md) and [17-02-PLAN.md](file:///Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-02-PLAN.md) establish injective encoding, token claim ordering, session cookie versioning, the narrow [memStore](file:///Volumes/Code/github.com/seanb4t/engram/internal/server/store_iface.go) interface, the payload-only vector-preserving update method, and the `caller` context structures.
-- **Wave 2 (Translation & Core Reads)**: [17-03-PLAN.md](file:///Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-03-PLAN.md) and [17-06-PLAN.md](file:///Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-06-PLAN.md) define the protobuf conversion layer ([protoconv.go](file:///Volumes/Code/github.com/seanb4t/engram/internal/server/protoconv.go)) and refactor the transport-neutral read handlers onto a typed core.
-- **Wave 3 (Connect Handlers & Error Mapping)**: [17-04-PLAN.md](file:///Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-04-PLAN.md) wires the write RPCs and the centralized error mapping.
-- **Wave 4 (Verification & Parity)**: [17-05-PLAN.md](file:///Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-05-PLAN.md) enforces MCP-to-Connect parity, leak prevention, and idempotency assertions.
+This document provides structured, critical feedback on the implementation plans for **Phase 17** of the `engram` project. It evaluates the plan quality, completeness, and risks, highlighting gaps between the proposed tasks and the target requirements.
 
 ---
 
-## 2. Strengths
+## 1. Architectural & Sequence Overview
 
-The plans exhibit several outstanding design decisions that guarantee security, maintainability, and correctness:
+The phase is structured in a four-wave dependency graph designed to transition `engram`'s Connect write lane from unimplemented stubs into production-ready endpoints sharing a unified code path with the MCP tool handlers. 
 
-*   **Robust Security Invariant (D-05, D-06)**: The injective owner key encoding (`len:claim:len:value`) in [auth.go](file:///Volumes/Code/github.com/seanb4t/engram/internal/auth/auth.go) avoids delimiter collision attacks. Furthermore, checking `email_verified` separately from the string type check prevents malformed-but-present emails from falling through to the `sub` claim.
-*   **Stateless Session Versioning**: Introducing `V int json:"v"` into [Session](file:///Volumes/Code/github.com/seanb4t/engram/internal/webauth/session.go) ensures that pre-encoding cookies (which would deserialize `v=0`) are immediately invalidated. This prevents bare-claim leaks into the namespaced owner slots.
-*   **Vector Preservation and Usage Curation (Finding 6)**: The introduction of a dedicated payload-only update path in [store.go](file:///Volumes/Code/github.com/seanb4t/engram/internal/store/store.go) avoids unnecessary vector embedding, while still incrementing `AccessCount` and updating `LastAccessedAt` payload keys. This preserves the soft curation signals for shared or metadata-only edits.
-*   **Auto-Summary Cleansing (Round-3 MED-3)**: The payload-only update explicitly clears auto-summary keys (`summary_model` and `summary_egress_at`) when a client summary replaces or clears an auto-generated one.
-*   **Sub-second Timestamp Precision**: Utilizing `time.RFC3339Nano` (rather than the default second-precision `time.RFC3339`) prevents the collapse of valid sub-second boundaries in scheduling windows.
-*   **AST-Level Delegation Assertions (Finding 8)**: Parity testing does not rely solely on store side-effects. It uses `go/parser` to scan [connectapi.go](file:///Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go) and textually verify that each Connect handler invokes the corresponding `deps.*` method, resolving the ambiguity of handlers that trigger identical database trace footprints.
-*   **Independent Test Fixtures (Finding 4)**: The dual-closure parity tests in [connectapi_write_parity_test.go](file:///Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi_write_parity_test.go) use independent store fixtures per lane. This eliminates test flakiness due to state mutations from the first-running lane.
+### Core Plan Gaps
+* **Missing Plan File**: The roadmap specifies `17-06-PLAN.md — Read-lane transport-neutral typed core convergence (D-07 hardened)` as a Wave 2 task. However, the plan content for `17-06-PLAN.md` is omitted from the plans provided for review. This represents a significant gap in planning completeness.
+* **Wave 1 Circular & Compilation Dependencies**: Retyping `deps.st` in `17-02-PLAN.md` to `memStore` without including [DeleteAll](file:///Users/sean/.gemini/antigravity-cli/internal/store/store.go#L1508) and `ListScopes` will immediately break compilation in `tools.go` and `connectapi.go`. 
 
 ---
 
-## 3. Concerns
+## 2. Plan-by-Plan Analysis
 
-Because all major high-severity blocks and duplicate errors were successfully resolved in previous review cycles, no severe vulnerabilities remain in the current plans. The following low-severity vigilance items should be monitored during execution:
+### 17-01-PLAN.md: Ordered Owner-Claim List & Namespacing
+This plan implements the multi-claim identity resolution ([ClaimIdentity](file:///Users/sean/.gemini/antigravity-cli/internal/auth/auth.go#L83)) and namespacing (D-04, D-05, D-06).
 
-### [LOW] AST Path Resolution in Tests
-*   **Component**: [connectapi_write_parity_test.go](file:///Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi_write_parity_test.go) (Task 1 / Source Delegation)
-*   **Context**: The parity test must parse [connectapi.go](file:///Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go) to verify method delegation.
-*   **Concern**: Reading a hardcoded relative path like `"connectapi.go"` works when running `go test` from `internal/server`, but can fail when running `go test ./...` from the repository root, as the working directory of the test process changes.
-*   **Vigilance/Mitigation**: The test should resolve the file path dynamically using `runtime.Caller` to find the absolute directory of the test file itself, then locate `connectapi.go` relative to that directory.
-
-### [LOW] Qdrant SetPayload Key Deletion Behavior
-*   **Component**: [store.go](file:///Volumes/Code/github.com/seanb4t/engram/internal/store/store.go) (Task 1 / Payload-only update)
-*   **Context**: In Qdrant, a `SetPayload` request overwrites keys that are supplied. To clear a key, simply sending a payload without it does not remove it (it keeps the old value).
-*   **Concern**: To delete `summary_model` and `summary_egress_at` from a point's payload, the Qdrant Go client must explicitly send empty values or invoke a separate `DeletePayload` operation.
-*   **Vigilance/Mitigation**: The plan handles this by explicitly writing empty values (`""` for model, zero time for egress) in the `SetPayload` payload map, which matches the payload decoder's behavior of treating them as empty. Ensure this mapping is thoroughly tested.
-
----
-
-## 4. Suggestions
-
-*   **Helper for AST-Parsing**: Define a clean, reuseable helper in [connectapi_write_parity_test.go](file:///Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi_write_parity_test.go) for fetching the absolute path of `connectapi.go` using:
-    ```go
-    _, filename, _, ok := runtime.Caller(0)
-    if !ok {
-        t.Fatal("unable to get caller info")
-    }
-    dir := filepath.Dir(filename)
-    targetFile := filepath.Join(dir, "connectapi.go")
-    ```
-    This ensures clean path resolution regardless of test invoking location.
+#### Critical Deficiencies & Risks
+1. **Non-Injective Encoding Collision (STRIDE: Elevation of Privilege)**:
+   * **The Issue**: The plan implements naive namespacing in the format `<claim>:<value>` (e.g. `sub:x`). This is not injection-safe. For example, `(claim: "sub", value: "x:y")` and `(claim: "sub:x", value: "y")` serialize to the identical owner string `sub:x:y`. Since the owner string is compared directly in store authorization filters, this allows cross-user access/hijacking.
+   * **Mitigation**: Implement a provably injective length-prefixed encoding format: `fmt.Sprintf("%d:%s:%d:%s", len(claim), claim, len(value), value)`.
+2. **Missing Reserved-Namespace Email Guard**:
+   * **The Issue**: An email value containing length prefixes and colons (e.g., `3:sub:5:svc-1`) could be registered to impersonate a namespaced service token.
+   * **Mitigation**: Add a validation guard rejecting email values matching `^[0-9]+:`.
+3. **No Rollout/Session Cookie Invalidation Strategy (Migration Blocker)**:
+   * **The Issue**: Existing active UI session cookies store raw, un-namespaced owner strings. If unresolved on rollout, legacy sessions will write bare records, splitting user identity and leaving collisions active.
+   * **Mitigation**: Add a version field (e.g., `V int json:"v"`) to [Session](file:///Users/sean/.gemini/antigravity-cli/internal/webauth/session.go#L20). Have [SessionCodec.Seal](file:///Users/sean/.gemini/antigravity-cli/internal/webauth/session.go) auto-inject the current version, and reject legacy (version 0 / unversioned) cookies in [Resolver.Resolve](file:///Users/sean/.gemini/antigravity-cli/internal/webauth/resolver.go#L36) to force re-login.
+4. **Permissive Claim-Parsing Rules**:
+   * **The Issue**: Comma-splitting `ENGRAM_OWNER_CLAIM` without validation could allow duplicates, empty interior entries, or invalid characters (like `:` or `,`) to silently resolve.
+   * **Mitigation**: Enforce a strict parser contract rejecting duplicates, interior-empty values, and claim names starting with digits or containing delimiters.
+5. **Type Coercion Vulnerability (T-17-03 / HIGH-1)**:
+   * **The Issue**: Checking claim presence without checking the type (e.g., if a JSON payload includes a non-string `email` like `null` or a number) can result in silent fall-through to a later claim (like `sub`), routing the user to a different authz bucket.
+   * **Mitigation**: Explicitly assert that the claim value is a string; if present but non-string, reject immediately rather than falling through.
 
 ---
 
-## 5. Risk Assessment
+### 17-02-PLAN.md: Interface Extraction & Caller Seam
+This plan refactors `deps` to take an explicit `caller` parameter and extracts a database interface.
 
-*   **Overall Risk**: **LOW**
-*   **Rationale**: The implementation strategy uses test-driven development (TDD) with explicit "RED" and "GREEN" phases, structured mock spies, and robust type-checking compile-time guards (such as `var _ memStore = (*store.Store)(nil)` and `var _ memStore = (*spyStore)(nil)`). The thorough verification plans make code regressions highly unlikely.
+#### Critical Deficiencies & Risks
+1. **Compilation Blockers (DeleteAll / ListScopes)**:
+   * **The Issue**: Retyping `deps.st` to `memStore` without including `DeleteAll` and `ListScopes` causes build errors since `tools.go` and `connectapi.go` call them. Additionally, server tests (`storeFill` and `buildUsageQueue`) expect `*store.Store` but receive the interface.
+   * **Mitigation**: Add `DeleteAll` and `ListScopes` to the [memStore](file:///Users/sean/.gemini/antigravity-cli/internal/server/store_iface.go) interface definition. Introduce a `testDepsWithStore` helper in tests to return a concrete store pointer.
+2. **Missing Vector-Preserving Payload Update (`SetPayload`)**:
+   * **The Issue**: `store.Update` requires document vectors to upsert. The fetched memory in `updateMemory` contains no vector. Without a payload-only update pathway, tags-only or summary-only edits will silently overwrite vectors with null values.
+   * **Mitigation**: Add a database method leveraging Qdrant's `SetPayload` to write metadata updates without modifying vectors. Preserve the update usage signal by incrementing `AccessCount` and updating `LastAccessedAt`.
+3. **Stale Auto-Summary Provenance Leak (MED-3)**:
+   * **The Issue**: `SetPayload` only overwrites provided keys. If a user provides a client-written summary, the database's `summary_model` and `summary_egress_at` fields will persist, leading the decoder to misclassify the source as an auto-summary.
+   * **Mitigation**: Explicitly delete or write-empty the `summary_model` and `summary_egress_at` keys when writing client-sourced summaries.
+4. **Lack of Typed Sentinels**:
+   * **The Issue**: The plan lacks an `errRuleImmutable` sentinel and fails to declare the reuse of the existing [errStaleSummary](file:///Users/sean/.gemini/antigravity-cli/internal/server/summary.go#L16).
+   * **Mitigation**: Declare a new typed error sentinel for rule immutability and reuse the existing summary error to prevent string-matching in the handler mapper.
 
 ---
+
+### 17-03-PLAN.md: protoconv Adapter
+This plan implements request and response conversion helpers.
+
+#### Critical Deficiencies & Risks
+1. **Timestamp Precision Loss**:
+   * **The Issue**: Converting `google.protobuf.Timestamp` into `RFC3339` strings drops sub-second/nanosecond precision, creating window boundary drift for scheduled memories.
+   * **Mitigation**: Utilize `time.RFC3339Nano` or map directly to native Go `time.Time` structures.
+2. **Undocumented mutationResult Mapping**:
+   * **The Issue**: The response conversion details are sparse on mapping the [mutationResult](file:///Users/sean/.gemini/antigravity-cli/internal/server/identity.go) (containing ID and ShortID) to response stubs.
+   * **Mitigation**: Include explicit helper functions in `protoconv` to populate response messages from `mutationResult`.
+
+---
+
+### 17-04-PLAN.md: Handler Wiring & Fake Store
+This plan implements the thin-adapter Connect handlers and a mock store.
+
+#### Critical Deficiencies & Risks
+1. **Duplicate Inline Error Mapping**:
+   * **The Issue**: Error mapping to Connect codes (`CodeNotFound`, `CodeInvalidArgument`) is mapped inline across all six write RPCs, increasing duplication and drift risk.
+   * **Mitigation**: Implement a central [connectError](file:///Users/sean/.gemini/antigravity-cli/internal/server/connectapi.go) mapper helper to streamline handler bodies and ensure error taxonomy consistency.
+
+---
+
+### 17-05-PLAN.md: Parity Tests (Truncated)
+This plan tests lane parity and prevents existence leaks.
+
+#### Critical Deficiencies & Risks
+1. **Truncated File Contents**:
+   * **The Issue**: The file is cut off at the end (from Task 2 onwards), hiding validation constraints, threat modeling, and verification steps.
+2. **Connect Actor Verification Gaps**:
+   * **The Issue**: Parity tests must verify that `Actor` is set correctly for cookies (falling back to owner when `UserID` is missing).
+   * **Mitigation**: Add a test row in the parity table verifying non-empty, equal `Actor` metadata across MCP and Connect paths.
+
+---
+
+## 3. Summary Risk Register
+
+| Risk ID | Category | Component | Description | Mitigation Plan |
+|---|---|---|---|---|
+| **R-17-01** | **Compile Blocker** | `17-02` (Interface Retype) | Omitting `DeleteAll` and `ListScopes` from `memStore` breaks `tools.go` and `connectapi.go`. Retype breaks tests passing `d.st` to functions expecting `*store.Store`. | Include `DeleteAll` and `ListScopes` in `memStore`. Implement `testDepsWithStore` to retrieve concrete stores for tests. |
+| **R-17-02** | **Security Risk (Access Bypass)** | `17-01` (Namespacing) | Naive `<claim>:<value>` formatting allows collisions (e.g. `sub:x:y`), bypassing authorization. | Implement a provably injective length-prefixed format (`%d:%s:%d:%s`). |
+| **R-17-03** | **Security Risk (Data Split)** | `17-01` (Session cookies) | Rollout changes owner key formats but leaves old active session cookies unchanged, splitting identities. | Version the session cookie payload; reject unversioned/legacy cookies to force re-login. |
+| **R-17-04** | **Data Loss** | `17-02` (Update Path) | Calling `store.Update` with an empty vector (missing from fetched records) overwrites the Qdrant document vector. | Implement a payload-only update pathway (`SetPayload`) preserving existing vectors. |
+| **R-17-05** | **Logic Bug** | `17-02` (Auto-Summary) | Updating a document with a client summary leaves stale auto-summary metadata in Qdrant. | Programmatically clean out `summary_model` and `summary_egress_at` fields on client update. |
+| **R-17-06** | **Security Risk (Type Spoofing)** | `17-01` (Type coercion) | Non-string claim values (like `null` or numbers) may bypass checks and fall through to subsequent claims. | Assert claim value types explicitly; reject if present but not a string. |
+
+---
+
+## 4. Recommendations & Next Steps
+
+1. **Reject Plan 17-01**: Reject until the non-injective namespacing is replaced by the length-prefixed scheme, the session versioning is introduced, and type coercion rejections are added.
+2. **Reject Plan 17-02**: Reject until `DeleteAll`/`ListScopes` are included in `memStore`, the test concrete store references are handled via `testDepsWithStore`, and the vector-preserving `UpdatePayload` is implemented.
+3. **Request 17-06-PLAN.md**: Request that the missing read-lane core convergence plan is written and reviewed as part of Wave 2 before proceeding.
+4. **Standardize Error Handling**: Mandate a central `connectError` helper in `17-04` instead of inline handlers.
 
 ---
 
 ## Consensus Summary
 
-Three independent source-grounded reviewers re-reviewed the six round-3-hardened plans (post-commit `a8243820`). All three confirm the round-1/2/3 fixes are correct and the architecture is sound. They **diverge sharply on residual risk**:
+Two source-grounded reviewers (Codex, OpenCode/grok-4.5) reviewed against the live tree; every
+`file:line` cite below was independently re-verified by the orchestrator and **confirmed**.
+Antigravity is excluded from consensus (truncated + non-grounded — see caveats).
 
-- **Codex** (`gpt-5.6-sol`, adversarial, source-grounded) rates **HIGH — not execution-ready**: it found three genuinely-new/incomplete defects, two of them *in the round-3 fixes themselves*, plus three mediums.
-- **OpenCode / grok-4.5** (`openrouter/x-ai/grok-4.5`, large-context) rates **LOW–MEDIUM — "implementation-ready" with two MEDIUM plan deltas**: it re-confirmed every prior fix but surfaced only local executor hazards; it explicitly declared Codex's two HIGH items "closed."
-- **Antigravity** (`agy 1.1.1`, run on a trimmed prompt) rates **LOW**: endorsement-only, two LOW vigilance items; it missed all three Codex HIGHs.
+**Verdict: HIGH risk — but narrowly and mechanically.** The design is done; the blockers are
+all *unlisted test call sites* that will fail `go build`/CI the moment the planned signatures and
+handlers land. No new design flaws. Both reviewers agree: add the omitted test files + tighten
+two MEDIUM implementation details and the six-plan set is execute-ready **without another full replan**.
 
-As in rounds 2 and 3, the **adversarial source-grounded reviewer (Codex) carries the higher weight on residual defects**; the positive reviewers contribute endorsement + ergonomic polish. The orchestrator adjudicated Codex's three HIGH items against the actual plan text (see below) and confirms all three are real.
+### Agreed Strengths (2+ reviewers)
+- Owner-key change is correctly treated as migration + injective-encoding + session-versioning
+  work, not a rename (Codex, grok). Grounded on `store.go:497/517` (exact-match authz),
+  `session.go:26-29`, `handlers.go:172-175`, `resolver.go:44-54`.
+- Payload-only update (`SetPayload`, vector-preserving) is the right answer to `Store.Update`
+  always upserting a vector (`store.go:1367-1406` vs `:1417-1442`) (Codex, grok).
+- `memStore` must include `DeleteAll` (`tools.go:1143`) + `ListScopes` (`connectapi.go:93`);
+  reuse `errStaleSummary` (`summary.go:16`) — redeclaring won't compile (Codex, grok).
+- Typed read core (17-06) correctly preserves per-lane defaults: Connect list keeps offset/
+  categories/visibility/total/cursor; MCP search k=8 vs Connect k=20; `Limit==0`=all vs
+  `k==0` rejected (`connectapi.go:124-149`, `tools.go:855-856`, `store.go:870-880/677-679`) (Codex, grok).
+- Removing the duplicate Connect usage enqueue is necessary (`connectapi.go:209-211` double-counts
+  vs `tools.go:1000-1003`) (Codex, grok).
+- 17-05 parity/leak-table plan is strong: per-lane fixtures, production error mapper, AST
+  delegation assertion, split short_id/UUID leak tables (Codex, grok — no net-new issue).
 
-### Orchestrator adjudication of the Codex HIGH items (verified against plan source)
+### Agreed Concerns (highest priority)
 
-1. **[HIGH — CONFIRMED] Malformed *non-email* claims still fall through.** The round-3 fix generalized correctly only for `email`. `17-01-PLAN.md` Task 1 `<action>` checks presence-vs-string-type for the `email` claim, but for every **non-email** claim it says only "if `raw[claim]` is a non-empty string, that claim WINS" — a present-but-non-string `sub` in `[sub, client_id]` fails the "non-empty string" test, is treated as absent, and falls through to `client_id` (a different authz bucket). D-05 fail-closed should apply to *every* ordered claim, not just `email`. grok read the `[email,sub]` table and called this "correctly specified" — it did not inspect the non-email path.
-2. **[HIGH — CONFIRMED] 17-06's superset pagination test is self-contradictory.** `17-06-PLAN.md:116` asserts a `coreListRequest` with `Offset>0` returns a non-empty `NextToken`. But the store emits a next token only in cursor mode (`store.go:865`); offset mode deliberately leaves it empty (`store.go:817`), and the plan's own 17-04 guard treats offset and cursor as mutually exclusive. Against live-Qdrant the assertion fails; against the fake store it passes only because the fake fabricates a token — false confidence. (Note: the *separate* round-3 HIGH-2 fix — the MCP list closure setting `CursorMode: true` + tokenless-first-page test at 17-06:119 — is correct and endorsed by all three; the defect is the Task-1 superset test at :116 pairing `Offset>0` with a `NextToken` assertion.)
-3. **[HIGH — CONFIRMED] SearchDiscoveries empty-scope will regress.** `17-04-PLAN.md:187` rewires Connect `SearchDiscoveries` onto `deps.searchDiscovery` and pre-applies `k=20`, but says nothing about scope. Today's Connect handler passes an empty scope straight to `Store.SearchDiscovery` (empty = all discovery scopes, `store.go:688`); the shared MCP `deps.searchDiscovery` rejects an empty scope unless `CrossSpine=true` (`tools.go:884`). Rewiring without mapping `req.Scope=="" → CrossSpine=true` breaks cross-scope discovery search. The proto does not require a non-empty scope. Not covered by any plan.
+**[HIGH — CONVERGENT, both reviewers, orchestrator-CONFIRMED] 17-04: `connectcsrf_test.go` breaks when writes are wired.**
+`TestConnectCSRFTokenMatrix` constructs `d := &deps{}` (`connectcsrf_test.go:225`, also `:194`, `:372`)
+and the happy-path cell expects `want: connect.CodeUnimplemented` (`:250`, guard at `:212-213`). Once
+`StoreMemory` is wired, a CSRF-passing request reaches nil `d.em`/`d.st` → panic or a non-Unimplemented
+result → red CI **in the same commit that wires the handlers**. This is a permanent Phase-16 gate.
+Plan 17-04's landmine-1 + `files_modified` name only `connectapi_negative_test.go`; **`connectcsrf_test.go`
+is absent from all six plans** (verified). Both reviewers found this independently via real source reads.
+→ *Fix:* add `connectcsrf_test.go` to 17-04 `files_modified`/must-haves; back the happy-path cell with a
+spy + non-nil embedder and expect real success (or assert Code ∉ {PermissionDenied, Unimplemented} if only
+CSRF pass-through matters).
 
-### Agreed Strengths (all three reviewers, verified against source)
+### Codex-only HIGH (net-new, orchestrator-CONFIRMED — grok & agy missed)
 
-All round-1/2/3 fixes re-confirmed correct: length-prefixed injective owner encoding (`auth.go`), reserved-namespace email guard, stateless session-version rollout auto-injected in `Seal` (`session.go:26-29`, round-3 LOW-9), `testDepsWithStore` for the `memStore` retype, vector-preserving `UpdatePayload` via `SetPayload` with `WithVectors(true)` test, auto-summary provenance clearing, RFC3339Nano, `errStaleSummary` reuse, `ErrAmbiguousShortID → FailedPrecondition` (round-3 MED-5), the source/AST delegation assertion via `go/parser`/`runtime.Caller`, per-lane parity fixtures, and the typed superset read core preserving offset/categories/visibility/total/cursor + per-lane k default (MCP 8 / Connect 20).
+**[HIGH] 17-01: `NewAuthenticator` `string → []string` omits two webauth test files.**
+`handlers_test.go:159` passes scalar `"email"`; `oidc_exchange_test.go:148` passes `tc.ownerClaim`,
+whose cases are scalar `string` (`:99`, `:107-138`). Neither file is in any plan (verified).
+`go test ./internal/webauth/...` will not compile.
+→ *Fix:* add both files to 17-01; convert the exchange test table to `ownerClaims []string`, incl. one
+ordered-fallback case (`[]string{"email","sub"}`).
 
-### Agreed Concerns (2+ reviewers)
+**[HIGH] 17-02 / 17-06: caller-signature change omits `embed_wiring_test.go`.**
+`embed_wiring_test.go:38` calls `d.searchMemory(...)`, `:52` calls `d.storeMemory(...)`, both via
+`d := &deps{em: rec}` with no store (`:37/:51`, intentional stop-before-store at `:13-30`). 17-02 adds a
+caller to `storeMemory`; 17-06 adds one to `searchMemory`. The file is in no plan (verified). Server test
+package won't compile.
+→ *Fix:* assign `embed_wiring_test.go` — store-path edit to 17-02, search-path edit to 17-06 (or both in
+17-06 after 17-02); preserve the stop-before-store intent with an explicit anonymous caller. Codex also
+recommends a repo-wide `rg` acceptance check for direct calls to every changed `deps.*` method rather than
+enumerating files by hand.
 
-- **[MEDIUM — CONSENSUS: Codex + grok] GetMemory usage double-count after the D-07 rewire.** `deps.getMemory` already enqueues a usage event (`tools.go:1000-1003`) and the Connect `GetMemory` handler enqueues again (`connectapi.go:209-211`). `17-04-PLAN.md:187` says "Preserve GetMemory's usage-queue enqueue" without "exactly once" — an executor that rewires to `deps.getMemory` *and* keeps the handler-level `tryEnqueue` double-increments `AccessCount` on every Connect get. Fix: state that after the rewire only `deps.getMemory` enqueues; the handler must not add a second call.
-- **[LOW — CONSENSUS: Codex + grok + agy] AST-assertion path resolution** must use `runtime.Caller`/`go/parser`, not a relative `os.ReadFile("connectapi.go")` that breaks under `go test ./...` from repo root. (Already the plan's stated preference at 17-05; keep it explicit in the test template. agy supplied a concrete `runtime.Caller(0)` helper snippet.)
+### Codex-only MEDIUM (net-new, orchestrator-CONFIRMED)
 
-### Divergent / single-reviewer findings
+**[MEDIUM] 17-03: sub-second scheduling precision is preserved only through validation, not persistence.**
+`parseWindow` accepts RFC3339Nano (`tools.go:452-470`), but storage floors both bounds to integer Unix
+seconds: encode `store.go:320` (`m.NotBefore.Unix()`) / `:323` (`m.NotAfter.Unix()`), decode `:406`/`:410`
+(`time.Unix(sec,0)`). A `not_after` 500ms in the future persists as the start of the current second → the
+record is immediately expired, yet the RFC3339Nano *adapter* test (17-03) passes. The adapter's precision
+guarantee is contradicted by end-to-end behavior.
+→ *Fix:* either add a backward-compatible nanosecond store representation + a real
+`ScheduleMemory → persisted → recall-gate` E2E test, **or** drop the `<1s future` correctness claim and
+state persistence is second-granular.
 
-- **[MEDIUM — Codex only] Actor-equality is the wrong parity invariant.** `17-05-PLAN.md:136` asks for equal `Memory.Actor` across lanes, but bearer tokens set `UserID` to email/username/subject (`auth.go:139,:149`) while cookie resolution sets no `UserID` (`resolver.go:54`) → the owner-fallback yields the encoded owner. For a non-email owner claim the legitimate MCP actor (email) and Connect actor (encoded owner) differ. Correct invariant: non-empty, verified, lane-appropriate attribution — not equality.
-- **[MEDIUM — Codex only] Typed-core time/error ownership ambiguous.** `17-06` allows `CreatedAfter/Before` as `string|time.Time`. If raw strings enter the core and parse errors are not wrapped with `store.ErrInvalidArgument`, `connectError` misclassifies them as `Internal`. Fix: make core times `time.Time`; each transport parses its own wire form and returns its native invalid-argument error before calling the core.
-- **[MEDIUM — grok only] `deps.listMemory` `Limit 0→20` default not explicitly removed** (same class as the round-1 k-default fix). 17-06 removes the internal `searchMemory` k=8 default and has the MCP list closure set `limit=20`, but never says to delete a shared `Limit==0 → 20` default from the list core; leaving it makes a Connect `limit=0` (today "all") silently mean 20. Fix: no default inside the core; MCP adapter sets 20; Connect leaves 0 as "all"; add a Connect `limit=0` regression cell.
-- **[LOW — Codex only] Migration runbook** should warn that `RemapOwner` is global and non-transactional (`store.go:1890,:1918`) and recommend `--dry-run`/backup before applying.
-- **[LOW — grok only] Doc/label nits:** 17-01 cites the session mint site as "oidc.go Callback" but the actual `Seal` is at `handlers.go:172-175` (doc nit; auto-inject in `Seal` is the real control); `subjectFromContext`/`actorFromContext` must remain (still used by `identityForLog` at `instrument.go:80-84`) — do not delete blindly.
+### grok-4.5-only MEDIUM (net-new, orchestrator-CONFIRMED)
 
-### Recommended disposition for `/gsd-plan-phase 17 --reviews` (round 4)
+**[MEDIUM] 17-02: SetPayload provenance clear must DELETE the key, not blank-format zero-time.**
+Full upsert omits `summary_egress_at` when zero (`store.go:335-336`, guarded `!IsZero()`), but the decoder
+consumes the key whenever *present* (`:436-438`). A partial `SetPayload` that writes
+`time.Time{}.Format(RFC3339)` stores `"0001-01-01T00:00:00Z"`, which `time.Parse` accepts → a non-zero
+`SummaryEgressAt` reappears, misclassifying a client summary as auto-generated. (Full path handles this by
+setting the field to `time.Time{}` at `:1404`, which then omits on re-encode — a partial write cannot omit.)
+→ *Fix:* spec Qdrant key **deletion** (or a decoder-treated-as-zero sentinel) for `summary_egress_at` /
+`summary_model` on client-sourced summaries; assert in the store test that a raw `Get` shows the key
+*absent*, not merely that the struct field is zero.
 
-Another targeted revision round is warranted — the residual HIGH items are real but narrow plan corrections, not a redesign.
+**[MEDIUM] 17-04: on the Search rewire, DELETE handler-local `EmbedQuery`, don't just patch.**
+`connectapi.go:158`/`:220` embed in the handler today; a thin-adapter rewire that patches rather than
+replaces risks a double-embed or dead vec.
+→ *Fix:* add an explicit "remove handler `EmbedQuery`; only `deps.*` embeds" action line to 17-04.
 
-**Incorporate (must — Codex HIGH, confirmed against source):**
-1. **17-01** — generalize the malformed-claim rejection to *every* ordered claim: for each candidate, distinguish absent / empty-string (may fall through) from present-but-non-string (must reject); `email` additionally requires `email_verified`. Add a `[sub, client_id]` malformed-`sub` test proving it rejects and does NOT fall through to `client_id`.
-2. **17-06** — split the superset pagination assertion (:116) into an **offset-mode** case (assert filters + exact `Total` + **empty** `NextToken`) and a **cursor-mode** case (assert non-empty `NextToken` on a full first page). Keep the round-3 MCP-closure `CursorMode: true` + tokenless-first-page test unchanged (it is correct).
-3. **17-04** — in the Connect `SearchDiscoveries` adapter set `CrossSpine: req.Msg.Scope == ""`, preserve `Scope`, and add an empty-scope regression test alongside the `k=20` test.
+### Lower-priority (single reviewer, confirmed)
+- **[LOW — Codex] 17-04:** the `CodeAborted` must-have is stated unconditionally, but no conflict sentinel
+  exists today (sentinels are `ErrNotFound`/`ErrInvalidArgument`/`ErrAmbiguousShortID` at `store.go:42-56`
+  + `errStaleSummary` at `summary.go:14-18`); the action itself qualifies "if a distinct sentinel exists."
+  → Reconcile: drop the unconditional claim or define + test a real conflict sentinel.
+- **[LOW — grok] 17-01:** empty-string `email` + `email_verified=false` under list `[email, sub]` falls
+  through to `sub` — an intentional widening vs the fail-closed `[email]` case. Document the deliberate
+  semantics in secure-phase and keep one unit case pinning it.
 
-**Incorporate (should):**
-4. **17-04** — state explicitly that Connect `GetMemory` removes its handler-level `usageQueue.tryEnqueue`; `deps.getMemory` is the sole enqueue point (consensus MED).
-5. **17-05** — replace the actor-equality assertion with lane-appropriate expectations (MCP uses `TokenInfo.UserID` when populated; Connect falls back to the resolved owner).
-6. **17-06** — make core request times `time.Time` (parse at each transport boundary → native `InvalidArgument`), OR require raw strings entering the core to be wrapped with `store.ErrInvalidArgument`.
-7. **17-06** — remove any shared `Limit==0 → 20` default from the list core; put the default only in the MCP list closure; add a Connect `limit=0` regression cell (grok).
-8. **17-05** — keep the AST source-assertion path on `runtime.Caller`/`go/parser` explicit in the test template (all three).
-9. **17-01** — migration runbook: note `RemapOwner` is global/non-transactional; recommend `--dry-run`/backup. Fix the `Seal` mint-site cite to `handlers.go`.
+### Divergent Views
+None contradictory. Codex and grok-4.5 are **complementary, not conflicting** — each surfaced net-new
+compile/CI blockers the other missed, and they converged exactly on the CSRF landmine. Both rate overall
+risk HIGH *solely* on the unlisted test call sites, and both agree the design and round-1-4 fixes are sound.
+Antigravity diverges only by re-raising already-fixed items (a truncation/grounding artifact, not a real
+disagreement).
 
-Everything the prior three rounds changed remains endorsed by all reviewers. The trend is still converging (round 1 ~8 HIGH → round 2 2 blockers+HIGH → round 3 2 HIGH → round 4 3 narrow HIGH, two of them regressions introduced by the round-3 edits). Once these land, residual risk should drop to MEDIUM/LOW. Alternatively the phase could be executed accepting the documented risk on the non-email-claim and offset-token items if the deployment uses only the default single `email` claim and cursor-mode pagination — but the SearchDiscoveries empty-scope regression (HIGH-3) should be fixed regardless.
+### Required round-5 changes (rank-ordered, all orchestrator-CONFIRMED)
+1. **HIGH** — Add + fix `internal/server/connectcsrf_test.go` in 17-04 (nil-deps happy-path cell). *[Codex + grok]*
+2. **HIGH** — Add `internal/webauth/handlers_test.go` + `oidc_exchange_test.go` to 17-01; convert table to `[]string`. *[Codex]*
+3. **HIGH** — Assign `internal/server/embed_wiring_test.go` to 17-02 (store) / 17-06 (search); anonymous caller. *[Codex]*
+4. **MEDIUM** — 17-03: resolve or explicitly document the sub-second scheduling persistence mismatch (drop `<1s` claim or add nanosecond repr + E2E). *[Codex]*
+5. **MEDIUM** — 17-02: spec `summary_egress_at`/`summary_model` **key deletion** on client summaries + raw-Get test. *[grok]*
+6. **MEDIUM** — 17-04: explicit "delete handler `EmbedQuery` on Search rewire" action. *[grok]*
+7. **LOW** — 17-04: reconcile unconditional `CodeAborted` must-have with absent conflict sentinel. *[Codex]*
+8. **LOW** — 17-01: document intentional empty-email `[email,sub]` widening in secure-phase. *[grok]*
 
-### Reviewer-invocation notes
-
-- **Antigravity** was invoked twice. The first run on the full 277 KB prompt timed out under `--print-timeout 300s` (its agentic Cascade looped on the many `file:line` references — the known large-prompt failure mode, ref `wqykwd4m8w`). A second run on a trimmed 189 KB prompt (RESEARCH.md + CONTEXT.md dropped; agy can read them from disk) succeeded but wrote the full review to an artifact file (`analysis_results.md`) and emitted only a stdout pointer — its content is inlined above. Weight it as an endorsement reviewer; it did not surface any of the three Codex HIGH items.
-- **OpenCode** used `openrouter/x-ai/grok-4.5` (per the invocation), swapped in for round 3's `gemini-3.5-flash` for reviewer diversity; it source-grounded via `codegraph_explore`.
+With items 1-6 landed, both grounded reviewers judge the six-plan set execute-ready without another full replan.
