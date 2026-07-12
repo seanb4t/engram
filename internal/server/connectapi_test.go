@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -761,5 +762,179 @@ func TestConnectSetVisibilityResponseCarriesCanonicalID(t *testing.T) {
 	}
 	if resp.Msg.ShortId != sid {
 		t.Errorf("SetVisibility response short_id = %q, want %q", resp.Msg.ShortId, sid)
+	}
+}
+
+// --- 17-04 Task 3: read-lane rewire regression tests ---
+
+// TestConnectListMemoriesLimitZeroReturnsAll pins round-4 finding-7: after
+// 17-06 removed the shared Limit==0->20 default from the typed core, the
+// Connect ListMemories adapter must pass limit=0 through as "all"
+// (store.go:873-874), not silently cap it at 20.
+func TestConnectListMemoriesLimitZeroReturnsAll(t *testing.T) {
+	d := testDeps(t)
+	api := &engramAPI{d: d}
+	scope := "limit-zero:project:x"
+	ctx := context.Background()
+	seed := make([]store.Memory, 0, 25)
+	for i := range 25 {
+		seed = append(seed, store.Memory{
+			ID: fmt.Sprintf("f4000000-0000-0000-0000-%012d", i), Content: fmt.Sprintf("record %d", i),
+			Scope: scope, Owner: "actor-LZ", Category: "convention", Source: "agent-inferred", CreatedAt: timeNow(),
+		})
+	}
+	for _, m := range seed {
+		if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	t.Cleanup(func() {
+		for _, m := range seed {
+			cleanupErr(t, "Delete", d.st.Delete(ctx, m.ID, store.Authenticated("actor-LZ")))
+		}
+	})
+	actx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-LZ"}})
+	resp, err := api.ListMemories(actx, connect.NewRequest(&engramv1.ListMemoriesRequest{Scope: scope}))
+	if err != nil {
+		t.Fatalf("ListMemories: %v", err)
+	}
+	if resp.Msg.Total != 25 || len(resp.Msg.Memories) != 25 {
+		t.Fatalf("limit=0: got total=%d len=%d, want 25/25 (all, not capped to 20 — round-4 finding-7)", resp.Msg.Total, len(resp.Msg.Memories))
+	}
+}
+
+// TestListMemoriesRejectsBadCreatedBefore mirrors
+// TestListMemoriesRejectsBadCreatedAfter for created_before (round-4 MED-6):
+// a malformed value is parsed and rejected AT THE CONNECT BOUNDARY, so it
+// never reaches the typed core to be misclassified as CodeInternal.
+func TestListMemoriesRejectsBadCreatedBefore(t *testing.T) {
+	api := &engramAPI{d: testDeps(t)}
+	ctx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "sub-A"}})
+	_, err := api.ListMemories(ctx, connect.NewRequest(&engramv1.ListMemoriesRequest{
+		Scope: "s:project:x", CreatedBefore: "not-a-date",
+	}))
+	if err == nil || connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("bad created_before: got %v want InvalidArgument", err)
+	}
+}
+
+// TestConnectGetMemoryEnqueuesUsageSignalExactlyOnce pins round-4 MED
+// (consensus Codex+grok): after the GetMemory rewire onto deps.getMemory
+// (which already enqueues on success), the handler's own former enqueue call
+// is removed, so a Connect GetMemory bumps AccessCount exactly once, not
+// twice.
+func TestConnectGetMemoryEnqueuesUsageSignalExactlyOnce(t *testing.T) {
+	d, rec := testDepsWithUsageQueue(t, 2, 16)
+	api := &engramAPI{d: d}
+	ctxA := authedContext(t, "actor-GM")
+	id, _, err := d.storeMemory(ctxA, callerFor(ctxA, t), storeArgs{Content: "hi", Scope: "s:gm", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete", d.st.Delete(context.Background(), id, store.Authenticated("actor-GM")))
+	})
+
+	actx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-GM"}})
+	if _, err := api.GetMemory(actx, connect.NewRequest(&engramv1.GetMemoryRequest{Id: id})); err != nil {
+		t.Fatalf("GetMemory: %v", err)
+	}
+	d.usageQueue.Wait()
+	if got := rec.recorded(); len(got) != 1 || got[0] != id {
+		t.Fatalf("Connect GetMemory enqueued %v, want exactly [%s] (deps.getMemory is the sole enqueue point)", got, id)
+	}
+}
+
+// seedDiscoveries upserts n discovery records (Category "discovery") in scope
+// and returns them, registering per-record cleanup. Mirrors deps.
+// storeDiscovery's record shape closely enough for SearchDiscoveries
+// coverage without going through the full store_discovery validation path.
+func seedDiscoveries(t *testing.T, d *deps, scope, owner string, n int, idPrefix string) []store.Memory {
+	t.Helper()
+	ctx := context.Background()
+	out := make([]store.Memory, 0, n)
+	for i := range n {
+		m := store.Memory{
+			ID:      fmt.Sprintf("%s-0000-0000-0000-%012d", idPrefix, i),
+			Content: fmt.Sprintf("discovery %d about repo layout", i),
+			Scope:   scope, Owner: owner, Category: "discovery", Kind: "fact",
+			Source: "agent-inferred", CreatedAt: timeNow(),
+		}
+		if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed discovery %s: %v", m.ID, err)
+		}
+		out = append(out, m)
+	}
+	t.Cleanup(func() {
+		for _, m := range out {
+			cleanupErr(t, "Delete "+m.ID, d.st.Delete(ctx, m.ID, store.Authenticated(owner)))
+		}
+	})
+	return out
+}
+
+// TestConnectSearchDiscoveriesDefaultsK20 pins finding 7: the rewire onto
+// deps.searchDiscovery must NOT regress the Connect discovery-search default
+// from 20 to the MCP-lane's internal default of 8 — the adapter pre-applies
+// k=20 before calling deps.searchDiscovery.
+func TestConnectSearchDiscoveriesDefaultsK20(t *testing.T) {
+	d := testDeps(t)
+	api := &engramAPI{d: d}
+	scope := "discovery:k-default:project:x"
+	seed := seedDiscoveries(t, d, scope, "actor-K2", 12, "f2000000") // 8 < 12 <= 20
+
+	actx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-K2"}})
+	resp, err := api.SearchDiscoveries(actx, connect.NewRequest(&engramv1.SearchDiscoveriesRequest{Scope: scope, Query: "repo layout"}))
+	if err != nil {
+		t.Fatalf("SearchDiscoveries: %v", err)
+	}
+	if len(resp.Msg.Discoveries) != len(seed) {
+		t.Fatalf("k==0 default: got %d results, want all %d (Connect default 20, not MCP's 8 — finding 7)", len(resp.Msg.Discoveries), len(seed))
+	}
+}
+
+// TestConnectSearchDiscoveriesEmptyScopeSpansAll pins round-4 HIGH-3: an
+// empty Connect request scope must map to CrossSpine=true (preserving any
+// non-empty caller scope) so it still spans ALL discovery scopes, matching
+// the pre-rewire Store.SearchDiscovery(empty scope = all) contract — the
+// shared deps.searchDiscovery otherwise rejects an empty scope outright. A
+// non-empty scope still filters to that scope alone.
+func TestConnectSearchDiscoveriesEmptyScopeSpansAll(t *testing.T) {
+	d := testDeps(t)
+	api := &engramAPI{d: d}
+	scopeA := "discovery:cross-spine:project:a"
+	scopeB := "discovery:cross-spine:project:b"
+	recA := seedDiscoveries(t, d, scopeA, "actor-CS", 1, "f3000001")[0]
+	recB := seedDiscoveries(t, d, scopeB, "actor-CS", 1, "f3000002")[0]
+
+	actx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-CS"}})
+
+	all, err := api.SearchDiscoveries(actx, connect.NewRequest(&engramv1.SearchDiscoveriesRequest{Query: "repo layout"}))
+	if err != nil {
+		t.Fatalf("SearchDiscoveries(empty scope): %v", err)
+	}
+	ids := map[string]bool{}
+	for _, m := range all.Msg.Discoveries {
+		ids[m.Id] = true
+	}
+	if !ids[recA.ID] || !ids[recB.ID] {
+		t.Fatalf("empty-scope search did not span all discovery scopes: got %+v", all.Msg.Discoveries)
+	}
+
+	scoped, err := api.SearchDiscoveries(actx, connect.NewRequest(&engramv1.SearchDiscoveriesRequest{Scope: scopeA, Query: "repo layout"}))
+	if err != nil {
+		t.Fatalf("SearchDiscoveries(scope=%s): %v", scopeA, err)
+	}
+	found := false
+	for _, m := range scoped.Msg.Discoveries {
+		if m.Id == recB.ID {
+			t.Fatalf("scoped search leaked record %s from a different scope", recB.ID)
+		}
+		if m.Id == recA.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("scoped search did not return the in-scope record %s", recA.ID)
 	}
 }

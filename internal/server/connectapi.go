@@ -5,7 +5,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -85,6 +84,9 @@ func shapeProtoMemories(ms []store.Memory, full bool, maxChars int) []*engramv1.
 	return out
 }
 
+// ListScopes is the ONE documented D-07 exception: no MCP-side
+// deps.listScopes counterpart exists (read-only scope-count listing —
+// research OQ2), so this handler still calls a.d.st.ListScopes directly.
 func (a *engramAPI) ListScopes(ctx context.Context, _ *connect.Request[engramv1.ListScopesRequest]) (*connect.Response[engramv1.ListScopesResponse], error) {
 	subj, err := subjectFromConnectContext(ctx)
 	if err != nil {
@@ -92,7 +94,7 @@ func (a *engramAPI) ListScopes(ctx context.Context, _ *connect.Request[engramv1.
 	}
 	scopes, approx, err := a.d.st.ListScopes(ctx, subj)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, connectError(ctx, err)
 	}
 	resp := &engramv1.ListScopesResponse{Approximate: approx}
 	for _, sc := range scopes {
@@ -101,8 +103,17 @@ func (a *engramAPI) ListScopes(ctx context.Context, _ *connect.Request[engramv1.
 	return connect.NewResponse(resp), nil
 }
 
+// ListMemories is rewired onto the 17-06 typed core deps.listMemory (D-07):
+// every Connect field (offset/categories/visibility/exact total/cursor/
+// cursor_mode/tags/created window) survives, and Limit is passed through
+// UNCHANGED — limit=0 means "all" (store.go:873-874), NOT silently capped to
+// 20 (round-4 finding-7; 17-06 removed the shared Limit==0->20 default from
+// the core, so no lane may re-introduce it here). created_after/before are
+// parsed to time.Time AT THIS BOUNDARY so a malformed value returns
+// CodeInvalidArgument directly, never reaching the typed core to be
+// misclassified as CodeInternal by connectError (round-4 MED-6).
 func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engramv1.ListMemoriesRequest]) (*connect.Response[engramv1.ListMemoriesResponse], error) {
-	subj, err := subjectFromConnectContext(ctx)
+	c, err := callerFromConnectContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
@@ -121,8 +132,9 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 	if req.Msg.CursorMode && req.Msg.Offset > 0 {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cursor_mode is mutually exclusive with offset"))
 	}
-	ms, total, nextToken, err := a.d.st.List(ctx, req.Msg.Scope, subj, store.ListOptions{
-		Limit:         req.Msg.Limit,
+	res, err := a.d.listMemory(ctx, c, coreListRequest{
+		Scope:         req.Msg.Scope,
+		Limit:         req.Msg.Limit, // 0 = "all" — no default re-introduced here (round-4 finding-7)
 		Offset:        req.Msg.Offset,
 		Categories:    req.Msg.Categories,
 		Visibility:    req.Msg.Visibility,
@@ -137,27 +149,25 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 		CursorMode: req.Msg.CursorMode || req.Msg.PageToken != "",
 	})
 	if err != nil {
-		if errors.Is(err, store.ErrInvalidArgument) {
-			return nil, connect.NewError(connect.CodeInvalidArgument, err)
-		}
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, connectError(ctx, err)
 	}
 	return connect.NewResponse(&engramv1.ListMemoriesResponse{
-		Memories:      shapeProtoMemories(ms, req.Msg.Full, a.d.summaryMaxChars),
-		Total:         total,
+		Memories:      shapeProtoMemories(res.Memories, req.Msg.Full, a.d.summaryMaxChars),
+		Total:         res.Total,
 		Approximate:   false,
-		NextPageToken: nextToken,
+		NextPageToken: res.NextToken,
 	}), nil
 }
 
+// SearchMemories is rewired onto the 17-06 typed core deps.searchMemory
+// (D-07). The Connect k=20 default is applied HERE, before the call —
+// deps.searchMemory carries no internal default. The handler no longer
+// embeds the query itself (round-5 MED, grok): deps.searchMemory embeds the
+// query internally, so a handler-local embed step would double-embed.
 func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[engramv1.SearchMemoriesRequest]) (*connect.Response[engramv1.SearchMemoriesResponse], error) {
-	subj, err := subjectFromConnectContext(ctx)
+	c, err := callerFromConnectContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
-	}
-	vec, err := a.d.em.EmbedQuery(ctx, req.Msg.Query)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	k := req.Msg.K
 	if k == 0 {
@@ -171,63 +181,65 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_before: %w", err))
 	}
-	ms, err := a.d.st.SearchReranked(ctx, req.Msg.Scope, subj, req.Msg.Query, vec, k, req.Msg.Tags, after, before)
+	ms, err := a.d.searchMemory(ctx, c, coreSearchRequest{
+		Scope: req.Msg.Scope, Query: req.Msg.Query, K: k, Tags: req.Msg.Tags,
+		CreatedAfter: after, CreatedBefore: before,
+	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, connectError(ctx, err)
 	}
 	return connect.NewResponse(&engramv1.SearchMemoriesResponse{
 		Memories: shapeProtoMemories(ms, req.Msg.Full, a.d.summaryMaxChars),
 	}), nil
 }
 
+// GetMemory is rewired onto deps.getMemory (D-07); the ErrNotFound
+// original-input re-wrap already lives inside deps.getMemory, so the handler
+// does not duplicate it (D-11). deps.getMemory is now the SOLE
+// usage-enqueue point (tools.go:1000-1003) — the handler-level enqueue call
+// this method used to make is REMOVED so AccessCount increments exactly
+// once per Connect get, not twice (round-4 MED, consensus Codex+grok).
 func (a *engramAPI) GetMemory(ctx context.Context, req *connect.Request[engramv1.GetMemoryRequest]) (*connect.Response[engramv1.GetMemoryResponse], error) {
-	subj, err := subjectFromConnectContext(ctx)
+	c, err := callerFromConnectContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	// Resolve id or short id to the point UUID (owner-agnostic; the read gate
-	// below governs visibility), mirroring the MCP by-id tools' getMemory.
-	pid, err := a.d.st.ResolvePointID(ctx, req.Msg.Id)
+	m, err := a.d.getMemory(ctx, c, idArgs{ID: req.Msg.GetId()})
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return nil, connect.NewError(connect.CodeNotFound, err)
-		}
-		if errors.Is(err, store.ErrInvalidArgument) {
-			return nil, connect.NewError(connect.CodeInvalidArgument, err)
-		}
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, connectError(ctx, err)
 	}
-	m, err := a.d.st.GetReadable(ctx, pid, subj)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			// Re-wrap with the caller's ORIGINAL input so a resolved short id
-			// never leaks another owner's real UUID into the error message.
-			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("%w: %s", store.ErrNotFound, req.Msg.Id))
-		}
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-	// D-01: count only on a successful fetch-by-id; call-and-ignore — mirrors
-	// the MCP getMemory handler.
-	a.d.usageQueue.tryEnqueue(pid)
 	return connect.NewResponse(&engramv1.GetMemoryResponse{Memory: memoryToProto(m)}), nil
 }
 
+// SearchDiscoveries is rewired onto deps.searchDiscovery (D-07). Two
+// adaptations preserve today's Connect contract across the rewire (round-4
+// HIGH-3, finding 7): an EMPTY request scope maps to CrossSpine=true (while
+// preserving any non-empty caller Scope) so an empty Connect scope still
+// spans ALL discovery scopes — deps.searchDiscovery's effectiveDiscoveryScope
+// rejects an empty scope unless CrossSpine=true, whereas the old direct
+// Store.SearchDiscovery call treated empty as "all" implicitly; and the
+// Connect k=20 default is applied HERE, before the call — deps.
+// searchDiscovery's internal default (8) is MCP-lane only. The handler no
+// longer embeds the query itself (round-5 MED, grok): deps.searchDiscovery
+// embeds the query internally, so a handler-local embed step would
+// double-embed.
 func (a *engramAPI) SearchDiscoveries(ctx context.Context, req *connect.Request[engramv1.SearchDiscoveriesRequest]) (*connect.Response[engramv1.SearchDiscoveriesResponse], error) {
-	subj, err := subjectFromConnectContext(ctx)
+	c, err := callerFromConnectContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
-	}
-	vec, err := a.d.em.EmbedQuery(ctx, req.Msg.Query)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	k := req.Msg.K
 	if k == 0 {
 		k = 20
 	}
-	ms, err := a.d.st.SearchDiscovery(ctx, req.Msg.Scope, "", subj, vec, k)
+	ms, err := a.d.searchDiscovery(ctx, c, searchDiscoveryArgs{
+		Query:      req.Msg.Query,
+		Scope:      req.Msg.Scope,
+		K:          k,
+		CrossSpine: req.Msg.Scope == "",
+	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, connectError(ctx, err)
 	}
 	return connect.NewResponse(&engramv1.SearchDiscoveriesResponse{Discoveries: memoriesToProto(ms)}), nil
 }
@@ -236,7 +248,7 @@ func (a *engramAPI) SearchDiscoveries(ctx context.Context, req *connect.Request[
 // via callerFromConnectContext, convert the proto request to args via the
 // 17-03 protoconv layer, call the SAME deps.* method the MCP tool calls, map
 // the result via protoconv, and map any error via the single connectError
-// mapper (D-11) — never a.d.st.* directly, never a hand-rolled per-handler
+// mapper (D-11) — never the store directly, never a hand-rolled per-handler
 // error mapping, never an ownership comparison (DEC-cgb).
 
 func (a *engramAPI) StoreMemory(ctx context.Context, req *connect.Request[engramv1.StoreMemoryRequest]) (*connect.Response[engramv1.StoreMemoryResponse], error) {
