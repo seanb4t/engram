@@ -428,12 +428,8 @@ func TestScheduleMemoryValidation(t *testing.T) {
 		t.Fatalf("valid schedule: %v", err)
 	}
 	t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
-	hits, _, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
-	for _, h := range hits {
-		m, ok := h.(store.Memory)
-		if !ok {
-			t.Fatalf("got element of type %T, want store.Memory", h)
-		}
+	hits, _ := d.listMemory(ctx, callerFor(ctx, t), coreListRequest{Scope: "sched:project:x"})
+	for _, m := range hits.Memories {
 		if m.ID == id {
 			t.Error("future-scheduled memory leaked into normal list_memory")
 		}
@@ -448,13 +444,9 @@ func TestScheduleMemoryValidation(t *testing.T) {
 		t.Fatalf("past not_before should be accepted (immediately active): %v", err)
 	}
 	t.Cleanup(func() { _ = d.st.Delete(context.Background(), activeID, store.Authenticated("sub-A")) })
-	active, _, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
+	active, _ := d.listMemory(ctx, callerFor(ctx, t), coreListRequest{Scope: "sched:project:x"})
 	found := false
-	for _, h := range active {
-		m, ok := h.(store.Memory)
-		if !ok {
-			t.Fatalf("got element of type %T, want store.Memory", h)
-		}
+	for _, m := range active.Memories {
 		if m.ID == activeID {
 			found = true
 		}
@@ -833,17 +825,15 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, store.Authenticated("sub-owner")))
 	}()
 
+	anonCaller := callerFor(ctx, t)
+
 	// searchMemory with anonymous context must return ownerless, not shared.
-	hits, err := d.searchMemory(ctx, searchArgs{Query: "content", Scope: scope, K: 10, Full: true})
+	hits, err := d.searchMemory(ctx, anonCaller, coreSearchRequest{Query: "content", Scope: scope, K: 10})
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}
 	foundOwnerless, foundShared := false, false
-	for _, h := range hits {
-		m, ok := h.(store.Memory)
-		if !ok {
-			t.Fatalf("got element of type %T, want store.Memory", h)
-		}
+	for _, m := range hits {
 		if m.ID == ownerlessID {
 			foundOwnerless = true
 		}
@@ -859,16 +849,12 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	}
 
 	// list_memory handler with anonymous context must return ownerless, not shared.
-	mems, _, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Full: true})
+	res, err := d.listMemory(ctx, anonCaller, coreListRequest{Scope: scope, Limit: 10})
 	if err != nil {
 		t.Fatalf("listMemory: %v", err)
 	}
 	foundOwnerless, foundShared = false, false
-	for _, m := range mems {
-		mem, ok := m.(store.Memory)
-		if !ok {
-			t.Fatalf("got element of type %T, want store.Memory", m)
-		}
+	for _, mem := range res.Memories {
 		if mem.ID == ownerlessID {
 			foundOwnerless = true
 		}
@@ -931,7 +917,7 @@ func TestAnonReadIsolationDiscoveryHandler(t *testing.T) {
 		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, store.Authenticated("sub-owner")))
 	}()
 
-	hits, err := d.searchDiscovery(ctx, searchDiscoveryArgs{Query: "discovery", Scope: scope, K: 10})
+	hits, err := d.searchDiscovery(ctx, callerFor(ctx, t), searchDiscoveryArgs{Query: "discovery", Scope: scope, K: 10})
 	if err != nil {
 		t.Fatalf("searchDiscovery: %v", err)
 	}
@@ -1020,7 +1006,7 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	}
 
 	// scope-constrained search finds it
-	hits, err := d.searchDiscovery(ctx, searchDiscoveryArgs{Query: "understanding", Scope: scope})
+	hits, err := d.searchDiscovery(ctx, callerFor(ctx, t), searchDiscoveryArgs{Query: "understanding", Scope: scope})
 	if err != nil {
 		t.Fatalf("searchDiscovery: %v", err)
 	}
@@ -1028,11 +1014,11 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 		t.Fatal("expected >= 1 hit")
 	}
 	// scope required unless cross_spine
-	if _, err := d.searchDiscovery(ctx, searchDiscoveryArgs{Query: "x"}); err == nil {
+	if _, err := d.searchDiscovery(ctx, callerFor(ctx, t), searchDiscoveryArgs{Query: "x"}); err == nil {
 		t.Error("expected error: scope required when cross_spine=false")
 	}
 	// cross_spine path (with a scope present, the ignore-warn branch) must not error
-	if _, err := d.searchDiscovery(ctx, searchDiscoveryArgs{Query: "x", CrossSpine: true, Scope: scope}); err != nil {
+	if _, err := d.searchDiscovery(ctx, callerFor(ctx, t), searchDiscoveryArgs{Query: "x", CrossSpine: true, Scope: scope}); err != nil {
 		t.Errorf("cross_spine search errored: %v", err)
 	}
 }
@@ -1113,36 +1099,33 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 			t.Fatalf("seed %s: %v", m.ID, err)
 		}
 	}
-	ids := func(ms []any) map[string]bool {
+	ids := func(ms []store.Memory) map[string]bool {
 		out := map[string]bool{}
-		for _, h := range ms {
-			m, ok := h.(store.Memory)
-			if !ok {
-				t.Fatalf("ids: got element of type %T, want store.Memory", h)
-			}
+		for _, m := range ms {
 			out[m.ID] = true
 		}
 		return out
 	}
+	c := callerFor(ctx, t)
 
 	// Single tag: both alpha-carrying records, never the untagged one — on both handlers.
-	hits, err := d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha"}, Full: true})
+	hits, err := d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha"}})
 	if err != nil {
 		t.Fatalf("searchMemory alpha: %v", err)
 	}
 	if g := ids(hits); !g[alphaID] || !g[bothID] || g[plainID] {
 		t.Errorf("searchMemory alpha wrong: %v", g)
 	}
-	mems, _, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Tags: []string{"alpha"}, Full: true})
+	mems, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 10, Tags: []string{"alpha"}})
 	if err != nil {
 		t.Fatalf("listMemory alpha: %v", err)
 	}
-	if g := ids(mems); !g[alphaID] || !g[bothID] || g[plainID] {
+	if g := ids(mems.Memories); !g[alphaID] || !g[bothID] || g[plainID] {
 		t.Errorf("listMemory alpha wrong: %v", g)
 	}
 
 	// AND of two tags: only the record carrying both; the alpha-only record is excluded.
-	hits, err = d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha", "beta"}, Full: true})
+	hits, err = d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha", "beta"}})
 	if err != nil {
 		t.Fatalf("searchMemory AND: %v", err)
 	}
@@ -1151,18 +1134,18 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	}
 
 	// Omitted tags: passthrough returns all three — on both handlers.
-	hits, err = d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Full: true})
+	hits, err = d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10})
 	if err != nil {
 		t.Fatalf("searchMemory passthrough: %v", err)
 	}
 	if g := ids(hits); !g[alphaID] || !g[bothID] || !g[plainID] {
 		t.Errorf("searchMemory passthrough wrong: %v", g)
 	}
-	mems, _, err = d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Full: true})
+	mems, err = d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 10})
 	if err != nil {
 		t.Fatalf("listMemory passthrough: %v", err)
 	}
-	if g := ids(mems); !g[alphaID] || !g[bothID] || !g[plainID] {
+	if g := ids(mems.Memories); !g[alphaID] || !g[bothID] || !g[plainID] {
 		t.Errorf("listMemory passthrough wrong: %v", g)
 	}
 }
@@ -1424,31 +1407,28 @@ func TestAuthedCrossActorSharedReadHandlers(t *testing.T) {
 
 	// Caller B: a distinct authenticated subject.
 	bctx := authedContext(t, "actor-B")
+	bCaller := callerFor(bctx, t)
 
 	// searchMemory: B sees A's shared, not A's private.
-	hits, err := d.searchMemory(bctx, searchArgs{Query: "content", Scope: scope, K: 10, Full: true})
+	hits, err := d.searchMemory(bctx, bCaller, coreSearchRequest{Query: "content", Scope: scope, K: 10})
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}
 	assertVisibility(t, "searchMemory", hits, sharedID, privateID)
 
 	// listMemory: same guarantee through the no-query handler path.
-	mems, _, err := d.listMemory(bctx, listArgs{Scope: scope, Limit: 10, Full: true})
+	mems, err := d.listMemory(bctx, bCaller, coreListRequest{Scope: scope, Limit: 10})
 	if err != nil {
 		t.Fatalf("listMemory: %v", err)
 	}
-	assertVisibility(t, "listMemory", mems, sharedID, privateID)
+	assertVisibility(t, "listMemory", mems.Memories, sharedID, privateID)
 }
 
 // assertVisibility checks that wantID appears in got and denyID does not.
-func assertVisibility(t *testing.T, where string, got []any, wantID, denyID string) {
+func assertVisibility(t *testing.T, where string, got []store.Memory, wantID, denyID string) {
 	t.Helper()
 	var sawWant, sawDeny bool
-	for _, h := range got {
-		m, ok := h.(store.Memory)
-		if !ok {
-			t.Fatalf("%s: assertVisibility: got element of type %T, want store.Memory", where, h)
-		}
+	for _, m := range got {
 		switch m.ID {
 		case wantID:
 			sawWant = true
@@ -1510,7 +1490,7 @@ func TestListScheduledTool(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
 
-	got, err := d.listScheduled(ctx, listScheduledArgs{Scope: "ls:project:x"}) // default state=scheduled
+	got, err := d.listScheduled(ctx, callerFor(ctx, t), listScheduledArgs{Scope: "ls:project:x"}) // default state=scheduled
 	if err != nil {
 		t.Fatalf("list_scheduled: %v", err)
 	}
@@ -1651,19 +1631,10 @@ func TestToMemorySetsClientSummarySource(t *testing.T) {
 	}
 }
 
-// recallID extracts the id from a default (summary-shaped) recall element.
-func recallID(t *testing.T, v any) string {
-	t.Helper()
-	rv, ok := v.(recallView)
-	if !ok {
-		t.Fatalf("recall element is %T, want recallView", v)
-	}
-	return rv.ID
-}
-
 func TestListMemoryReturnsNextCursorField(t *testing.T) {
 	d := testDeps(t) // skips without Qdrant
 	ctx := authedContext(t, "sub-A")
+	c := callerFor(ctx, t)
 	scope := "tool:project:nextcursor"
 	ids := []string{
 		"f0000000-0000-0000-0000-000000000001",
@@ -1679,30 +1650,126 @@ func TestListMemoryReturnsNextCursorField(t *testing.T) {
 		t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
 	}
 
-	// Page 1: a full page (limit 1, two records) MUST issue a cursor.
-	page1, next, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 1})
+	// Page 1: a full page (limit 1, two records) MUST issue a cursor. The core
+	// no longer hard-codes cursor mode (round-6 MED, grok) — this deps-level
+	// call sets CursorMode explicitly, mirroring the MCP list_memory closure.
+	page1, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 1, CursorMode: true})
 	if err != nil {
 		t.Fatalf("listMemory page 1: %v", err)
 	}
-	if len(page1) != 1 {
-		t.Fatalf("page 1: got %d records want 1", len(page1))
+	if len(page1.Memories) != 1 {
+		t.Fatalf("page 1: got %d records want 1", len(page1.Memories))
 	}
-	if next == "" {
+	if page1.NextToken == "" {
 		t.Fatal("page 1: empty next_cursor on a full page; want a resume token")
 	}
 
 	// Page 2: resuming with that cursor returns the OTHER record.
-	page2, _, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 1, Cursor: next})
+	page2, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 1, Cursor: page1.NextToken, CursorMode: true})
 	if err != nil {
 		t.Fatalf("listMemory page 2: %v", err)
 	}
-	if len(page2) != 1 {
-		t.Fatalf("page 2: got %d records want 1", len(page2))
+	if len(page2.Memories) != 1 {
+		t.Fatalf("page 2: got %d records want 1", len(page2.Memories))
 	}
-	id1, id2 := recallID(t, page1[0]), recallID(t, page2[0])
+	id1, id2 := page1.Memories[0].ID, page2.Memories[0].ID
 	if id1 == id2 {
 		t.Errorf("page 2 returned the same record as page 1 (%s); cursor did not advance", id1)
 	}
+}
+
+// TestListMemorySupersetOffsetAndCursorModes proves the typed core list
+// contract (D-07) preserves the FULL Connect list superset — offset,
+// categories, visibility, and the exact matched total — on the shared path,
+// not just the MCP-shaped subset. Round-4 HIGH-2: offset mode and cursor mode
+// are mutually exclusive in the store (store.go:817/:865), so this SPLITS the
+// assertion into two subtests rather than pairing Offset>0 with a
+// non-empty-NextToken assertion (impossible against the live store; the prior
+// combined assertion passed only against a token-fabricating fake).
+func TestListMemorySupersetOffsetAndCursorModes(t *testing.T) {
+	d := testDeps(t) // skips without Qdrant
+	ctx := authedContext(t, "sub-A")
+	c := callerFor(ctx, t)
+	base := d.clock().UTC().Truncate(time.Second)
+
+	t.Run("offset_mode_exact_total_no_next_token", func(t *testing.T) {
+		scope := "tool:project:superset-offset"
+		// Three private "decision" records (the matched set) plus one "gotcha"
+		// record the category filter must exclude.
+		decisionIDs := []string{
+			"c0000000-0000-0000-0000-000000000001",
+			"c0000000-0000-0000-0000-000000000002",
+			"c0000000-0000-0000-0000-000000000003",
+		}
+		for i, id := range decisionIDs {
+			if err := d.st.Upsert(ctx, store.Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A",
+				Category: "decision", Visibility: "private", CreatedAt: base.Add(time.Duration(i) * time.Hour)},
+				[]float32{0.1, 0.2, 0.3}); err != nil {
+				t.Fatalf("seed %s: %v", id, err)
+			}
+			t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
+		}
+		gotchaID := "c0000000-0000-0000-0000-000000000004"
+		if err := d.st.Upsert(ctx, store.Memory{ID: gotchaID, Content: "c", Scope: scope, Owner: "sub-A",
+			Category: "gotcha", Visibility: "private", CreatedAt: base}, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", gotchaID, err)
+		}
+		t.Cleanup(func() { _ = d.st.Delete(context.Background(), gotchaID, store.Authenticated("sub-A")) })
+
+		// Offset + Categories + Visibility, a small Limit — Total must reflect
+		// the full matched set (3 "decision" records), not the page length (1);
+		// NextToken must be EMPTY (offset mode emits no token, store.go:817).
+		res, err := d.listMemory(ctx, c, coreListRequest{
+			Scope: scope, Offset: 1, Limit: 1, Categories: []string{"decision"}, Visibility: "private",
+		})
+		if err != nil {
+			t.Fatalf("listMemory offset mode: %v", err)
+		}
+		if len(res.Memories) != 1 {
+			t.Fatalf("offset mode: got %d records want 1 (page size)", len(res.Memories))
+		}
+		if res.Total != 3 {
+			t.Errorf("offset mode: Total = %d, want 3 (exact matched count, not page length)", res.Total)
+		}
+		if res.NextToken != "" {
+			t.Errorf("offset mode: NextToken = %q, want empty (offset and cursor mode are mutually exclusive)", res.NextToken)
+		}
+	})
+
+	t.Run("cursor_mode_first_page_issues_next_token", func(t *testing.T) {
+		scope := "tool:project:superset-cursor"
+		ids := []string{
+			"c1000000-0000-0000-0000-000000000001",
+			"c1000000-0000-0000-0000-000000000002",
+		}
+		for i, id := range ids {
+			if err := d.st.Upsert(ctx, store.Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A",
+				CreatedAt: base.Add(time.Duration(i) * time.Hour)}, []float32{0.1, 0.2, 0.3}); err != nil {
+				t.Fatalf("seed %s: %v", id, err)
+			}
+			t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
+		}
+
+		// A full first page in cursor mode MUST issue a non-empty NextToken
+		// (store.go:865) that resumes to the OTHER record on page 2.
+		page1, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 1, CursorMode: true})
+		if err != nil {
+			t.Fatalf("listMemory cursor mode page 1: %v", err)
+		}
+		if len(page1.Memories) != 1 {
+			t.Fatalf("cursor mode page 1: got %d records want 1", len(page1.Memories))
+		}
+		if page1.NextToken == "" {
+			t.Fatal("cursor mode page 1: empty NextToken on a full page; want a resume token")
+		}
+		page2, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 1, Cursor: page1.NextToken, CursorMode: true})
+		if err != nil {
+			t.Fatalf("listMemory cursor mode page 2: %v", err)
+		}
+		if len(page2.Memories) != 1 || page2.Memories[0].ID == page1.Memories[0].ID {
+			t.Errorf("cursor mode page 2 did not advance: page1=%v page2=%v", page1.Memories, page2.Memories)
+		}
+	})
 }
 
 // TestListMemoryRejectsMalformedCursor pins g0ne.8 at the MCP boundary: a garbage
@@ -1710,14 +1777,21 @@ func TestListMemoryReturnsNextCursorField(t *testing.T) {
 func TestListMemoryRejectsMalformedCursor(t *testing.T) {
 	d := testDeps(t) // skips without Qdrant
 	ctx := authedContext(t, "sub-A")
-	if _, _, err := d.listMemory(ctx, listArgs{Scope: "tool:project:badcursor", Limit: 1, Cursor: "!!!garbage!!!"}); err == nil {
+	if _, err := d.listMemory(ctx, callerFor(ctx, t), coreListRequest{Scope: "tool:project:badcursor", Limit: 1, Cursor: "!!!garbage!!!"}); err == nil {
 		t.Error("malformed cursor accepted; want error")
 	}
 }
 
+// TestListMemoryRejectsBadWindow pins the transport-boundary time parse
+// (round-4 MED-6; relocated round-6 MED, grok): the typed core's
+// CreatedAfter/CreatedBefore are time.Time and structurally cannot carry an
+// invalid RFC3339 string, so the bad-window rejection now lives at
+// parseRFC3339 — the exact call the MCP list_memory/search_memory tool
+// closures make to build a coreListRequest/coreSearchRequest — not on
+// deps.listMemory/deps.searchMemory. No test hands an invalid time string to
+// the typed core.
 func TestListMemoryRejectsBadWindow(t *testing.T) {
-	d := &deps{} // no Qdrant: parseRFC3339("nope") fails before any store call
-	if _, _, err := d.listMemory(context.Background(), listArgs{Scope: "tool:project:x", CreatedAfter: "nope"}); err == nil {
+	if _, err := parseRFC3339("nope"); err == nil {
 		t.Error("bad created_after accepted; want error")
 	}
 }
@@ -1774,7 +1848,7 @@ func TestByIDToolsAcceptShortID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := d.getMemory(ctx, idArgs{ID: sid})
+	got, err := d.getMemory(ctx, callerFor(ctx, t), idArgs{ID: sid})
 	if err != nil || got.ID != id {
 		t.Fatalf("get by short id → %q (err %v)", got.ID, err)
 	}
@@ -1812,8 +1886,9 @@ func TestShortIDCrossOwnerVisibility(t *testing.T) {
 	}
 	// owner-B: resolution is owner-agnostic, the read gate governs.
 	ctxB := authedContext(t, "owner-B")
+	cB := callerFor(ctxB, t)
 	// item 4: another owner's private record → ErrNotFound (404, not 403; no leak)
-	_, err = d.getMemory(ctxB, idArgs{ID: privSid})
+	_, err = d.getMemory(ctxB, cB, idArgs{ID: privSid})
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("cross-owner private must be ErrNotFound, got %v", err)
 	}
@@ -1826,7 +1901,7 @@ func TestShortIDCrossOwnerVisibility(t *testing.T) {
 		t.Fatalf("error should echo caller-supplied short id only: %v", err)
 	}
 	// item 5: another owner's shared record → readable
-	if got, err := d.getMemory(ctxB, idArgs{ID: sharedSid}); err != nil || got.ID != sharedID {
+	if got, err := d.getMemory(ctxB, cB, idArgs{ID: sharedSid}); err != nil || got.ID != sharedID {
 		t.Fatalf("cross-owner shared must be readable, got %q err %v", got.ID, err)
 	}
 	// updateMemory: same no-leak re-wrap as getMemory.
@@ -1893,7 +1968,7 @@ func TestGetMemoryNeverSurfacesEmbedderIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("storeMemory: %v", err)
 	}
-	got, err := d.getMemory(ctx, idArgs{ID: id})
+	got, err := d.getMemory(ctx, callerFor(ctx, t), idArgs{ID: id})
 	if err != nil {
 		t.Fatalf("getMemory: %v", err)
 	}
@@ -1917,7 +1992,7 @@ func TestGetMemoryEnqueuesUsageSignalOnSuccessOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.getMemory(ctxA, idArgs{ID: id}); err != nil {
+	if _, err := d.getMemory(ctxA, callerFor(ctxA, t), idArgs{ID: id}); err != nil {
 		t.Fatal(err)
 	}
 	d.usageQueue.Wait()
@@ -1927,7 +2002,7 @@ func TestGetMemoryEnqueuesUsageSignalOnSuccessOnly(t *testing.T) {
 
 	// Denied: owner-B fetching owner-A's private record must not enqueue.
 	ctxB := authedContext(t, "owner-B")
-	if _, err := d.getMemory(ctxB, idArgs{ID: id}); !errors.Is(err, store.ErrNotFound) {
+	if _, err := d.getMemory(ctxB, callerFor(ctxB, t), idArgs{ID: id}); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("cross-owner get must be ErrNotFound, got %v", err)
 	}
 	d.usageQueue.Wait()
@@ -1955,13 +2030,16 @@ func TestSearchListMemoryDoNotEnqueueUsageSignal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := d.searchMemory(ctx, searchArgs{Query: "hi", Scope: scope}); err != nil {
+	c := callerFor(ctx, t)
+	// deps.searchMemory applies no internal k default (round-4 finding-7): the
+	// core rejects K==0, so this direct call supplies the MCP lane's k=8.
+	if _, err := d.searchMemory(ctx, c, coreSearchRequest{Query: "hi", Scope: scope, K: 8}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := d.listMemory(ctx, listArgs{Scope: scope}); err != nil {
+	if _, err := d.listMemory(ctx, c, coreListRequest{Scope: scope}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.listScheduled(ctx, listScheduledArgs{Scope: scope}); err != nil {
+	if _, err := d.listScheduled(ctx, c, listScheduledArgs{Scope: scope}); err != nil {
 		t.Fatal(err)
 	}
 	d.usageQueue.Wait()
@@ -2028,7 +2106,7 @@ func TestBuildUsageQueueConfigGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := d.getMemory(ctx, idArgs{ID: id})
+	got, err := d.getMemory(ctx, callerFor(ctx, t), idArgs{ID: id})
 	if err != nil || got.ID != id {
 		t.Fatalf("get with disabled usage queue: got %q err %v", got.ID, err)
 	}

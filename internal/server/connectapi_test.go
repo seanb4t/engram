@@ -401,19 +401,30 @@ func TestRerankParityMCPAndConnect(t *testing.T) {
 	mcpCtx := authedContext(t, "actor-A")
 	actx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}})
 
+	mcpCaller := callerFor(mcpCtx, t)
 	mcpIDs := func(a searchArgs) []string {
 		t.Helper()
-		out, err := d.searchMemory(mcpCtx, a)
+		after, err := parseRFC3339(a.CreatedAfter)
+		if err != nil {
+			t.Fatalf("created_after: %v", err)
+		}
+		before, err := parseRFC3339(a.CreatedBefore)
+		if err != nil {
+			t.Fatalf("created_before: %v", err)
+		}
+		// deps.searchMemory now returns typed []store.Memory directly (the
+		// recallView shaping moved into the MCP tool closure, which this
+		// direct-call parity test bypasses).
+		out, err := d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{
+			Scope: a.Scope, Query: a.Query, K: a.K, Tags: a.Tags,
+			CreatedAfter: after, CreatedBefore: before,
+		})
 		if err != nil {
 			t.Fatalf("MCP searchMemory: %v", err)
 		}
 		ids := make([]string, len(out))
-		for i, v := range out {
-			view, ok := v.(recallView)
-			if !ok {
-				t.Fatalf("MCP result %d unexpected type %T (want recallView)", i, v)
-			}
-			ids[i] = view.ID
+		for i, m := range out {
+			ids[i] = m.ID
 		}
 		return ids
 	}
@@ -486,7 +497,7 @@ func TestRerankParityMCPAndConnect(t *testing.T) {
 		}
 
 		bMcpCtx := authedContext(t, "actor-B")
-		mcpOut, err := d.searchMemory(bMcpCtx, searchArgs{Query: query, Scope: scope, K: 4})
+		mcpOut, err := d.searchMemory(bMcpCtx, callerFor(bMcpCtx, t), coreSearchRequest{Query: query, Scope: scope, K: 4})
 		if err != nil {
 			t.Fatalf("MCP searchMemory(actor-B): %v", err)
 		}
