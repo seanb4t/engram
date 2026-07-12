@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 17
-current_phase_name: Full CRUD + Schedule
-status: "Phase 16 shipped — PR #361"
-stopped_at: Phase 17 context gathered
-last_updated: "2026-07-12T12:52:47.320Z"
+current_phase_name: wired-write-handlers-full-crud-schedule
+status: executing
+stopped_at: Completed 17-01-PLAN.md
+last_updated: "2026-07-12T22:35:55.733Z"
 last_activity: 2026-07-12
-last_activity_desc: Phase 17 planning complete
+last_activity_desc: Phase 17 execution started
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 13
-  completed_plans: 13
-  percent: 80
+  total_plans: 19
+  completed_plans: 14
+  percent: 74
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 16 — CSRF Interceptor
+**Current focus:** Phase 17 — wired-write-handlers-full-crud-schedule
 
 ## Current Position
 
-Phase: 17 — Wired Write Handlers (Full CRUD + Schedule)
-Plan: Not started
-Status: Phase 16 shipped — PR #361
-Last activity: 2026-07-12 — Phase 17 planning complete
+Phase: 17 (wired-write-handlers-full-crud-schedule) — EXECUTING
+Plan: 2 of 6
+Status: Ready to execute
+Last activity: 2026-07-12 — Phase 17 execution started
 
 ## Deferred Items
 
@@ -87,6 +87,9 @@ cookie-auth security posture).
 - [Phase 16 P02]: TestReadRPCsCSRFExempt uses testDeps(t) (real Qdrant) instead of a bare deps{} -- read handlers dereference deps.st/em directly, unlike the still-Unimplemented write stubs
 - [Phase 16 P02]: connectcsrf_test.go's token-matrix verify is a local inline HMAC replica, not an internal/webauth import -- preserves the internal/server -> internal/webauth layering boundary
 - [Phase 16]: Minted the engram_csrf cookie in webauth.Handler.Callback this phase (not deferred to Phase 19) — SC2 is live end-to-end via a real fake-OIDC Callback test, per RESEARCH.md's resolved Open Question 1
+- [Phase 17]: [Phase 17 P01] Non-email owner encoding uses fmt.Sprintf("%d:%s:%d:%s", len(claim), claim, len(value), value) instead of the ambiguous claim:value form, closing the (sub,x:y)/(sub:x,y) collision (D-06 hardened)
+- [Phase 17]: [Phase 17 P01] Session cookie payload versioned (SessionCodec.Seal auto-injects); Resolve rejects any legacy/mismatched-version cookie with the same generic invalid-session error, forcing automatic re-login on the owner-encoding rollout without a manual --ui-cookie-key rotation
+- [Phase 17]: [Phase 17 P01] ENGRAM_OWNER_CLAIM parsing (config.ParseOwnerClaims) kept strictly separate from defaulting; registry still supplies default email when unset; malformed comma-lists (duplicate/interior-empty/bad claim name) fail fast rather than silently normalizing
 
 ### Blockers/Concerns
 
@@ -97,9 +100,9 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-12T12:06:26.005Z
-Stopped at: Phase 17 context gathered
-Resume file: .planning/phases/17-wired-write-handlers-full-crud-schedule/17-CONTEXT.md
+Last session: 2026-07-12T22:35:55.727Z
+Stopped at: Completed 17-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -118,3 +121,4 @@ Resume file: .planning/phases/17-wired-write-handlers-full-crud-schedule/17-CONT
 | Phase 16 P01 | 10min | 2 tasks | 2 files |
 | Phase 16 P02 | 25min | 3 tasks | 9 files |
 | Phase 16 P03 | 20min | 3 tasks | 5 files |
+| Phase 17 P01 | 35min | 3 tasks | 13 files |
