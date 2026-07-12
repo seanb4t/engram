@@ -348,8 +348,13 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 4. Every by-id write RPC re-wraps a `store.ErrNotFound` with the caller's original input (short_id or UUID as supplied), never the resolved UUID — verified by a cross-owner table test per RPC — so no existence leak (DEC-xa6) reopens via a browser-visible network tab.
 5. **Invariant**: no write RPC carries `idempotency_level = NO_SIDE_EFFECTS` — re-asserted by the Phase 15 CI gate now that real logic exists behind these RPCs.
 
-**Status**: Not started
-**Plans**: TBD
+**Status**: Planned
+**Plans**: 5 plans (4 waves)
+- [ ] 17-01-PLAN.md — Ordered owner-claim list + namespacing (D-04/D-05/D-06) [wave 1]
+- [ ] 17-02-PLAN.md — Store-interface extraction + caller-threaded deps.* refactor (D-01/D-02/D-03, landmines 1/2/3) [wave 1]
+- [ ] 17-03-PLAN.md — protoconv conversion layer + round-trip tests (D-09) [wave 2]
+- [ ] 17-04-PLAN.md — Fake store + six write handlers + read-lane rewire + negative-matrix fix (D-07/D-10/D-11) [wave 3]
+- [ ] 17-05-PLAN.md — MCP↔Connect parity table + cross-owner re-wrap tables + idempotency-ban re-assert (D-10/D-11/D-12) [wave 4]
 **Flag for /gsd-secure-phase.**
 
 ### Phase 18: Stateless Session Rotation
