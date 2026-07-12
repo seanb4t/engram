@@ -18,14 +18,29 @@ import (
 	"time"
 )
 
+// sessionPayloadVersion is the current session payload version.
+// SessionCodec.Seal auto-injects this into every minted session (below) so
+// every mint site is version-consistent by default with no per-site stamp.
+// Resolver.Resolve rejects any session whose version does not match, which
+// invalidates every pre-upgrade (legacy / version-0) cookie during the
+// owner-encoding rollout (T-17-14): no bare-owner cookie can be forwarded
+// into the new namespaced owner space. The field is additive and
+// forward-compatible with the Phase-18 sliding re-seal (D-08) — a re-seal
+// that goes through Seal stamps the current version by construction.
+const sessionPayloadVersion = 1
+
 // Session is the decrypted payload of the engram session cookie. Owner is the
 // authz key (the configured owner-claim value, default email); Expiry bounds the
-// session lifetime. The payload is deliberately minimal: the future write phase
-// will reintroduce token handling server-side rather than shipping credentials to
-// the browser.
+// session lifetime. V is the payload version (see sessionPayloadVersion) — Seal
+// always overwrites it, so callers never set it themselves; a cookie sealed
+// before this field existed decodes with V at its JSON zero value (0), which
+// Resolver.Resolve treats as legacy and rejects. The payload is otherwise
+// deliberately minimal: the future write phase will reintroduce token handling
+// server-side rather than shipping credentials to the browser.
 type Session struct {
 	Owner  string    `json:"owner"`
 	Expiry time.Time `json:"exp"`
+	V      int       `json:"v"`
 }
 
 // SessionCodec seals/unseals Session values with AES-256-GCM. The key MUST be
@@ -51,8 +66,12 @@ func NewSessionCodec(key []byte) (*SessionCodec, error) {
 }
 
 // Seal serializes and encrypts s. A fresh random nonce is prepended to the
-// ciphertext; the whole blob is base64url-encoded.
+// ciphertext; the whole blob is base64url-encoded. s.V is always overwritten
+// with the current sessionPayloadVersion before marshalling — every mint site
+// is version-consistent by default, with no per-site stamp required (round-3
+// LOW-9).
 func (c *SessionCodec) Seal(s Session) (string, error) {
+	s.V = sessionPayloadVersion
 	plain, err := json.Marshal(s)
 	if err != nil {
 		return "", fmt.Errorf("marshal session: %w", err)

@@ -106,9 +106,16 @@ with neither issuer set is a fail-fast startup error.
 
 Each authenticated caller is identified by the value of the configured owner
 claim, stored as the record's `owner`. The owner claim is set via
-`ENGRAM_OWNER_CLAIM` / `--owner-claim` (default `email`). Authentication fails
-closed when the claim is absent from the token. When the claim is `email`,
-`email_verified` is also required.
+`ENGRAM_OWNER_CLAIM` / `--owner-claim` (default `email`) and accepts an
+**ordered, comma-separated list** of claims tried in order — e.g. `email,sub`
+tries `email` first and falls back to `sub` for a service/machine token that
+has no `email` claim, instead of failing closed. Authentication fails closed
+when every claim in the list is absent from the token. A winning `email`
+claim always requires `email_verified`; a winning non-`email` claim is
+written as a namespaced owner string (see
+[Upgrading to namespaced service owners](#upgrading-to-namespaced-service-owners)
+below) so it can never collide with an `email` owner or another claim's
+owner.
 
 :::caution[Operator lockout risk]
 Because the default claim is `email`, every token **must** carry
@@ -191,3 +198,56 @@ become readable again once authentication is re-enabled.
 `migrate-remap-owner --from-missing` only backfills pre-isolation records (those
 missing an `owner` key entirely). It requires a non-empty `--to`, so it is safe
 to re-run.
+
+### Upgrading to namespaced service owners
+
+`ENGRAM_OWNER_CLAIM` accepts an ordered, comma-separated claim list (default
+`email`) so a service/machine token with no `email` claim can resolve to a
+stable owner instead of failing closed — e.g. `email,sub` tries `email` first
+and falls back to `sub` when `email` is absent or an empty string. A winning
+non-`email` claim's value is encoded into a **namespaced** owner string using
+a length-prefixed scheme,
+`<len(claim)>:<claim>:<len(value)>:<value>`, so two different (claim, value)
+pairs — and a bare `email` owner — can never collide.
+
+Moving from a single-value `email`-only deployment to a multi-claim list is a
+rollout **migration**, not just a config change, because the owner string
+**is** the authorization key compared directly on every read/write:
+
+- **Web-console sessions are invalidated automatically.** The session cookie
+  payload carries a version; upgrading to a release with this change rejects
+  every pre-upgrade cookie and forces a one-time re-login, so no bare-owner
+  cookie can be silently forwarded into the new namespaced owner space. This
+  is the same automatic re-login behavior already documented above for an
+  `ENGRAM_OWNER_CLAIM` change — no manual `--ui-cookie-key` rotation is
+  required.
+- **Existing non-`email` owner records need remapping.** If you previously ran
+  with `ENGRAM_OWNER_CLAIM` set to a non-`email` claim (`sub`, `client_id`,
+  etc.), those records still carry the OLD bare claim value as `owner`. Remap
+  them to the new encoded form with `engram migrate-remap-owner`, deriving the
+  encoded target yourself as `<len(claim)>:<claim>:<len(value)>:<value>`:
+
+  ```sh
+  # sub owner "svc-1" -> encoded target "3:sub:5:svc-1"
+  engram migrate-remap-owner --from svc-1 --to 3:sub:5:svc-1 --dry-run
+  engram migrate-remap-owner --from svc-1 --to 3:sub:5:svc-1
+
+  # client_id owner "app42" -> encoded target "9:client_id:5:app42"
+  engram migrate-remap-owner --from app42 --to 9:client_id:5:app42 --dry-run
+  engram migrate-remap-owner --from app42 --to 9:client_id:5:app42
+  ```
+
+  `email`-owned records need **no** migration — a winning `email` claim is
+  still written bare, byte-for-byte unchanged.
+
+  :::caution[Global, non-transactional rewrite]
+  `migrate-remap-owner` matches and rewrites **every** record carrying the
+  exact `--from` owner string together, in one non-transactional pass — it
+  cannot distinguish which claim originally produced that value if historical
+  claim configurations collided. Always run with `--dry-run` first and take a
+  backup of your Qdrant collection before applying the mapping.
+  :::
+
+Pre-1.0 self-hosted deployments that have never set `ENGRAM_OWNER_CLAIM` to a
+non-`email` claim have zero affected records — this section applies only to
+fleets that opted into a non-`email` owner claim before this release.
