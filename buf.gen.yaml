@@ -1,6 +1,13 @@
 version: v2
 managed:
   enabled: true
+  disable:
+    # Without this, managed mode rewrites go_package for buf/validate/validate.proto
+    # (from the buf.build/bufbuild/protovalidate BSR dep) to a nonexistent local
+    # gen/go/buf/validate package instead of leaving it at its published
+    # buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go go_package.
+    - file_option: go_package_prefix
+      module: buf.build/bufbuild/protovalidate
   override:
     - file_option: go_package_prefix
       value: github.com/seanb4t/engram/gen/go

@@ -2,18 +2,17 @@
 gsd_state_version: 1.0
 milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
-current_phase: 15
-current_phase_name: Additive Proto + Stub Write Handlers
-status: ready-to-plan
-stopped_at: Phase 14 shipped — PR #352 (secured + reviewed at ship time); ready to plan Phase 15
-last_updated: "2026-07-11T18:05:29.000Z"
+current_phase: 16
+current_phase_name: CSRF Interceptor
+status: "Phase 15 shipped — PR #359"
+stopped_at: Completed 15-04-PLAN.md (phase 15 complete)
+last_updated: "2026-07-12T00:01:15.022Z"
 last_activity: 2026-07-11
-last_activity_desc: Phase 14 shipped via PR #352; Phase 15 ready to plan
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_phases: 3
+  completed_phases: 3
+  total_plans: 10
+  completed_plans: 10
   percent: 100
 ---
 
@@ -24,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 15 — Additive Proto + Stub Write Handlers
+**Current focus:** Phase 16 — CSRF Interceptor (Phase 15 complete + verified)
 
 ## Current Position
 
-Phase: 15 — Additive Proto + Stub Write Handlers
+Phase: 16 — CSRF Interceptor
 Plan: Not started
-Status: Ready to plan Phase 15 (Phase 14 shipped via PR #352 — secured + code-reviewed at ship time; awaiting merge)
-Last activity: 2026-07-11 — Phase 14 shipped (PR #352); follow-ups #353/#354/#355 filed
+Status: Phase 15 shipped — PR #359
+Last activity: 2026-07-11
 
 ## Deferred Items
 
@@ -76,6 +75,12 @@ cookie-auth security posture).
 - [Phase 14]: Gemini asymmetry rides ENGRAM_EMBED_QUERY_INSTRUCTION/ENGRAM_EMBED_DOCUMENT_INSTRUCTION (text-prefix), never the *_PARAMS/task_type mechanism
 - [Phase 14]: Local TEI/Ollama/vLLM recipes in guides/embedding-models.md documented as concrete complete rows (exact model id/dim/base URL/empty instruction) rather than operator-chosen placeholders (review B7)
 - [Phase 14]: Gemini compat model-id confirmed unchanged (gemini-embedding-2, 3072-dim); embedding-models.md and values.yaml left untouched
+- [Phase 15]: buf.gen.yaml gained a managed-mode disable rule scoped to buf.build/bufbuild/protovalidate so go_package_prefix override doesn't break the BSR dependency's generated import path (Plan 01, Rule 3)
+- [Phase 15]: Duplicated the idempotency-ban grep regex verbatim between Taskfile.yaml and .github/workflows/ci.yaml (no shared script) — matches this repo's bare-runner CI convention of mirroring Taskfile commands inline; Plan 04's descriptor test is the defense-in-depth backstop against regex drift
+- [Phase 15]: go mod tidy in Plan 03 (not Plan 01) promotes buf.build/go/protovalidate indirect->direct, since connectvalidate.go is the first code to import the runtime package (review finding #4)
+- [Phase 15]: validate interceptor's CodeInternal branch (non-ValidationError) is covered via a fake protovalidate.Validator since a real validator over generated constraints only returns nil or *ValidationError (review finding #5)
+- [Phase 15]: Descriptor test pins per-field wire-shape tables (number/name/kind/cardinality/message-type) on Memory/ScopeCount/read messages, not just message names, per cross-AI review finding #6 (SC4)
+- [Phase 15]: Negative matrix uses a generic callWrite[Req, Resp] helper to keep the six write-RPC table uniform, and asserts GET-405 via generated engramv1connect Procedure constants rather than hardcoded paths (finding #6)
 
 ### Blockers/Concerns
 
@@ -86,8 +91,8 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-11
-Stopped at: Phase 14 shipped via PR #352 (secured + code-reviewed at ship time; awaiting merge); ready to plan Phase 15
+Last session: 2026-07-11T22:37:38.690Z
+Stopped at: Completed 15-04-PLAN.md (phase 15 complete)
 Resume file: None
 
 ## Performance Metrics
@@ -100,3 +105,7 @@ Resume file: None
 | Phase 14 P01 | 11min | 2 tasks | 2 files |
 | Phase 14 P02 | 12min | 3 tasks | 3 files |
 | Phase 14-embedder-model-options-eval P03 | 8min | 2 tasks | 1 files |
+| Phase 15 P01 | 7min | 3 tasks | 8 files |
+| Phase 15 P02 | 6min | 2 tasks | 2 files |
+| Phase 15 P03 | 12min | 2 tasks | 4 files |
+| Phase 15 P04 | 12min | 2 tasks | 2 files |

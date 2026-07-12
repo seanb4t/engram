@@ -5,17 +5,18 @@
 // @generated from file engram/v1/engram.proto (package engram.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
-import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { FieldMask, Timestamp } from "@bufbuild/protobuf/wkt";
+import { file_google_protobuf_field_mask, file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
+import { file_buf_validate_validate } from "../../buf/validate/validate_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file engram/v1/engram.proto.
  */
 export const file_engram_v1_engram: GenFile = /*@__PURE__*/
-  fileDesc("ChZlbmdyYW0vdjEvZW5ncmFtLnByb3RvEgllbmdyYW0udjEioQMKBk1lbW9yeRIKCgJpZBgBIAEoCRIPCgdjb250ZW50GAIgASgJEg0KBXNjb3BlGAMgASgJEgwKBHJlcG8YBCABKAkSEQoJd29ya3NwYWNlGAUgASgJEhAKCHdvcmt0cmVlGAYgASgJEhAKCGJhc2VfZGlyGAcgASgJEg4KBnNvdXJjZRgIIAEoCRIQCghjYXRlZ29yeRgJIAEoCRIMCgR0YWdzGAogAygJEg0KBWFjdG9yGAsgASgJEg0KBW93bmVyGAwgASgJEhIKCnZpc2liaWxpdHkYDSABKAkSLgoKY3JlYXRlZF9hdBgOIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDwoHc3VtbWFyeRgPIAEoCRIWCg5zdW1tYXJ5X3NvdXJjZRgQIAEoCRINCgVzY29yZRgRIAEoAhIQCghzaG9ydF9pZBgSIAEoCRIUCgxhY2Nlc3NfY291bnQYEyABKAQSNAoQbGFzdF9hY2Nlc3NlZF9hdBgUIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiKgoKU2NvcGVDb3VudBINCgVzY29wZRgBIAEoCRINCgVjb3VudBgCIAEoBCITChFMaXN0U2NvcGVzUmVxdWVzdCJQChJMaXN0U2NvcGVzUmVzcG9uc2USJQoGc2NvcGVzGAEgAygLMhUuZW5ncmFtLnYxLlNjb3BlQ291bnQSEwoLYXBwcm94aW1hdGUYAiABKAgi3wEKE0xpc3RNZW1vcmllc1JlcXVlc3QSDQoFc2NvcGUYASABKAkSDQoFbGltaXQYAiABKAQSDgoGb2Zmc2V0GAMgASgEEhIKCmNhdGVnb3JpZXMYBCADKAkSEgoKdmlzaWJpbGl0eRgFIAEoCRIMCgR0YWdzGAYgAygJEgwKBGZ1bGwYByABKAgSFQoNY3JlYXRlZF9hZnRlchgIIAEoCRIWCg5jcmVhdGVkX2JlZm9yZRgJIAEoCRISCgpwYWdlX3Rva2VuGAogASgJEhMKC2N1cnNvcl9tb2RlGAsgASgIInwKFExpc3RNZW1vcmllc1Jlc3BvbnNlEiMKCG1lbW9yaWVzGAEgAygLMhEuZW5ncmFtLnYxLk1lbW9yeRINCgV0b3RhbBgCIAEoBBIXCgthcHByb3hpbWF0ZRgDIAEoCEICGAESFwoPbmV4dF9wYWdlX3Rva2VuGAQgASgJIosBChVTZWFyY2hNZW1vcmllc1JlcXVlc3QSDQoFcXVlcnkYASABKAkSDQoFc2NvcGUYAiABKAkSCQoBaxgDIAEoBBIMCgR0YWdzGAQgAygJEgwKBGZ1bGwYBSABKAgSFQoNY3JlYXRlZF9hZnRlchgGIAEoCRIWCg5jcmVhdGVkX2JlZm9yZRgHIAEoCSI9ChZTZWFyY2hNZW1vcmllc1Jlc3BvbnNlEiMKCG1lbW9yaWVzGAEgAygLMhEuZW5ncmFtLnYxLk1lbW9yeSIeChBHZXRNZW1vcnlSZXF1ZXN0EgoKAmlkGAEgASgJIjYKEUdldE1lbW9yeVJlc3BvbnNlEiEKBm1lbW9yeRgBIAEoCzIRLmVuZ3JhbS52MS5NZW1vcnkiQwoYU2VhcmNoRGlzY292ZXJpZXNSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEg0KBXNjb3BlGAIgASgJEgkKAWsYAyABKAQiQwoZU2VhcmNoRGlzY292ZXJpZXNSZXNwb25zZRImCgtkaXNjb3ZlcmllcxgBIAMoCzIRLmVuZ3JhbS52MS5NZW1vcnkyqgMKDUVuZ3JhbVNlcnZpY2USSQoKTGlzdFNjb3BlcxIcLmVuZ3JhbS52MS5MaXN0U2NvcGVzUmVxdWVzdBodLmVuZ3JhbS52MS5MaXN0U2NvcGVzUmVzcG9uc2USTwoMTGlzdE1lbW9yaWVzEh4uZW5ncmFtLnYxLkxpc3RNZW1vcmllc1JlcXVlc3QaHy5lbmdyYW0udjEuTGlzdE1lbW9yaWVzUmVzcG9uc2USVQoOU2VhcmNoTWVtb3JpZXMSIC5lbmdyYW0udjEuU2VhcmNoTWVtb3JpZXNSZXF1ZXN0GiEuZW5ncmFtLnYxLlNlYXJjaE1lbW9yaWVzUmVzcG9uc2USRgoJR2V0TWVtb3J5EhsuZW5ncmFtLnYxLkdldE1lbW9yeVJlcXVlc3QaHC5lbmdyYW0udjEuR2V0TWVtb3J5UmVzcG9uc2USXgoRU2VhcmNoRGlzY292ZXJpZXMSIy5lbmdyYW0udjEuU2VhcmNoRGlzY292ZXJpZXNSZXF1ZXN0GiQuZW5ncmFtLnYxLlNlYXJjaERpc2NvdmVyaWVzUmVzcG9uc2VClgEKDWNvbS5lbmdyYW0udjFCC0VuZ3JhbVByb3RvUAFaM2dpdGh1Yi5jb20vc2VhbmI0dC9lbmdyYW0vZ2VuL2dvL2VuZ3JhbS92MTtlbmdyYW12MaICA0VYWKoCCUVuZ3JhbS5WMcoCCUVuZ3JhbVxWMeICFUVuZ3JhbVxWMVxHUEJNZXRhZGF0YeoCCkVuZ3JhbTo6VjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+  fileDesc("ChZlbmdyYW0vdjEvZW5ncmFtLnByb3RvEgllbmdyYW0udjEioQMKBk1lbW9yeRIKCgJpZBgBIAEoCRIPCgdjb250ZW50GAIgASgJEg0KBXNjb3BlGAMgASgJEgwKBHJlcG8YBCABKAkSEQoJd29ya3NwYWNlGAUgASgJEhAKCHdvcmt0cmVlGAYgASgJEhAKCGJhc2VfZGlyGAcgASgJEg4KBnNvdXJjZRgIIAEoCRIQCghjYXRlZ29yeRgJIAEoCRIMCgR0YWdzGAogAygJEg0KBWFjdG9yGAsgASgJEg0KBW93bmVyGAwgASgJEhIKCnZpc2liaWxpdHkYDSABKAkSLgoKY3JlYXRlZF9hdBgOIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDwoHc3VtbWFyeRgPIAEoCRIWCg5zdW1tYXJ5X3NvdXJjZRgQIAEoCRINCgVzY29yZRgRIAEoAhIQCghzaG9ydF9pZBgSIAEoCRIUCgxhY2Nlc3NfY291bnQYEyABKAQSNAoQbGFzdF9hY2Nlc3NlZF9hdBgUIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiKgoKU2NvcGVDb3VudBINCgVzY29wZRgBIAEoCRINCgVjb3VudBgCIAEoBCITChFMaXN0U2NvcGVzUmVxdWVzdCJQChJMaXN0U2NvcGVzUmVzcG9uc2USJQoGc2NvcGVzGAEgAygLMhUuZW5ncmFtLnYxLlNjb3BlQ291bnQSEwoLYXBwcm94aW1hdGUYAiABKAgi3wEKE0xpc3RNZW1vcmllc1JlcXVlc3QSDQoFc2NvcGUYASABKAkSDQoFbGltaXQYAiABKAQSDgoGb2Zmc2V0GAMgASgEEhIKCmNhdGVnb3JpZXMYBCADKAkSEgoKdmlzaWJpbGl0eRgFIAEoCRIMCgR0YWdzGAYgAygJEgwKBGZ1bGwYByABKAgSFQoNY3JlYXRlZF9hZnRlchgIIAEoCRIWCg5jcmVhdGVkX2JlZm9yZRgJIAEoCRISCgpwYWdlX3Rva2VuGAogASgJEhMKC2N1cnNvcl9tb2RlGAsgASgIInwKFExpc3RNZW1vcmllc1Jlc3BvbnNlEiMKCG1lbW9yaWVzGAEgAygLMhEuZW5ncmFtLnYxLk1lbW9yeRINCgV0b3RhbBgCIAEoBBIXCgthcHByb3hpbWF0ZRgDIAEoCEICGAESFwoPbmV4dF9wYWdlX3Rva2VuGAQgASgJIosBChVTZWFyY2hNZW1vcmllc1JlcXVlc3QSDQoFcXVlcnkYASABKAkSDQoFc2NvcGUYAiABKAkSCQoBaxgDIAEoBBIMCgR0YWdzGAQgAygJEgwKBGZ1bGwYBSABKAgSFQoNY3JlYXRlZF9hZnRlchgGIAEoCRIWCg5jcmVhdGVkX2JlZm9yZRgHIAEoCSI9ChZTZWFyY2hNZW1vcmllc1Jlc3BvbnNlEiMKCG1lbW9yaWVzGAEgAygLMhEuZW5ncmFtLnYxLk1lbW9yeSIeChBHZXRNZW1vcnlSZXF1ZXN0EgoKAmlkGAEgASgJIjYKEUdldE1lbW9yeVJlc3BvbnNlEiEKBm1lbW9yeRgBIAEoCzIRLmVuZ3JhbS52MS5NZW1vcnkiQwoYU2VhcmNoRGlzY292ZXJpZXNSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEg0KBXNjb3BlGAIgASgJEgkKAWsYAyABKAQiQwoZU2VhcmNoRGlzY292ZXJpZXNSZXNwb25zZRImCgtkaXNjb3ZlcmllcxgBIAMoCzIRLmVuZ3JhbS52MS5NZW1vcnki/QEKElN0b3JlTWVtb3J5UmVxdWVzdBIYCgdjb250ZW50GAEgASgJQge6SARyAhABEhYKBXNjb3BlGAIgASgJQge6SARyAhABEg4KBnNvdXJjZRgDIAEoCRJBCghjYXRlZ29yeRgEIAEoCUIvukgscipSCGRlY2lzaW9uUgpwcmVmZXJlbmNlUgpjb252ZW50aW9uUgZnb3RjaGESDAoEdGFncxgFIAMoCRIMCgRyZXBvGAYgASgJEhEKCXdvcmtzcGFjZRgHIAEoCRIQCgh3b3JrdHJlZRgIIAEoCRIQCghiYXNlX2RpchgJIAEoCRIPCgdzdW1tYXJ5GAogASgJIjMKE1N0b3JlTWVtb3J5UmVzcG9uc2USCgoCaWQYASABKAkSEAoIc2hvcnRfaWQYAiABKAkiiAEKCENpdGF0aW9uEiwKBGtpbmQYASABKAlCHrpIG3IZUgRmaWxlUgZjb21taXRSA3VybFIEcmVwbxIUCgNyZWYYAiABKAlCB7pIBHICEAESDwoHbG9jYXRvchgDIAEoCRILCgNwaW4YBCABKAkSGgoHZXhjZXJwdBgFIAEoCUIJukgGcgQogIABItYBChVTdG9yZURpc2NvdmVyeVJlcXVlc3QSHAoHY29udGVudBgBIAEoCUILukgIcgYQASiAgAQSHgoEa2luZBgCIAEoCUIQukgNcgtSA21hcFIEZmFjdBIyCgljaXRhdGlvbnMYAyADKAsyEy5lbmdyYW0udjEuQ2l0YXRpb25CCrpIB5IBBAgBEDISIAoFc2NvcGUYBCABKAlCEbpIDnIMOgpkaXNjb3Zlcnk6EgwKBHRhZ3MYBSADKAkSDwoHc3VtbWFyeRgGIAEoCRIKCgJpZBgHIAEoCSI2ChZTdG9yZURpc2NvdmVyeVJlc3BvbnNlEgoKAmlkGAEgASgJEhAKCHNob3J0X2lkGAIgASgJIqIDChNVcGRhdGVNZW1vcnlSZXF1ZXN0EhMKAmlkGAEgASgJQge6SARyAhABEg8KB2NvbnRlbnQYAiABKAkSDgoGc2hhcmVkGAMgASgIEgwKBHRhZ3MYBCADKAkSDwoHc3VtbWFyeRgFIAEoCRI3Cgt1cGRhdGVfbWFzaxgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5GaWVsZE1hc2tCBrpIA8gBATr8AbpI+AEa9QEKEnVwZGF0ZV9tZW1vcnkubWFzaxJTdXBkYXRlX21hc2sgbXVzdCBjb250YWluIGF0IGxlYXN0IG9uZSBwYXRoLCBlYWNoIG9mOiBjb250ZW50LCBzaGFyZWQsIHRhZ3MsIHN1bW1hcnkaiQFoYXModGhpcy51cGRhdGVfbWFzaykgJiYgc2l6ZSh0aGlzLnVwZGF0ZV9tYXNrLnBhdGhzKSA+IDAgJiYgdGhpcy51cGRhdGVfbWFzay5wYXRocy5hbGwocCwgcCBpbiBbJ2NvbnRlbnQnLCAnc2hhcmVkJywgJ3RhZ3MnLCAnc3VtbWFyeSddKSI0ChRVcGRhdGVNZW1vcnlSZXNwb25zZRIKCgJpZBgBIAEoCRIQCghzaG9ydF9pZBgCIAEoCSIqChNEZWxldGVNZW1vcnlSZXF1ZXN0EhMKAmlkGAEgASgJQge6SARyAhABIhYKFERlbGV0ZU1lbW9yeVJlc3BvbnNlImAKFFNldFZpc2liaWxpdHlSZXF1ZXN0EhMKAmlkGAEgASgJQge6SARyAhABEjMKCnZpc2liaWxpdHkYAiABKA4yFS5lbmdyYW0udjEuVmlzaWJpbGl0eUIIukgFggECIAAiNQoVU2V0VmlzaWJpbGl0eVJlc3BvbnNlEgoKAmlkGAEgASgJEhAKCHNob3J0X2lkGAIgASgJIoEFChVTY2hlZHVsZU1lbW9yeVJlcXVlc3QSGAoHY29udGVudBgBIAEoCUIHukgEcgIQARIWCgVzY29wZRgCIAEoCUIHukgEcgIQARIOCgZzb3VyY2UYAyABKAkSQQoIY2F0ZWdvcnkYBCABKAlCL7pILHIqUghkZWNpc2lvblIKcHJlZmVyZW5jZVIKY29udmVudGlvblIGZ290Y2hhEgwKBHRhZ3MYBSADKAkSDAoEcmVwbxgGIAEoCRIRCgl3b3Jrc3BhY2UYByABKAkSEAoId29ya3RyZWUYCCABKAkSEAoIYmFzZV9kaXIYCSABKAkSDwoHc3VtbWFyeRgKIAEoCRIuCgpub3RfYmVmb3JlGAsgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBItCglub3RfYWZ0ZXIYDCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wOp8CukibAhqYAgoWc2NoZWR1bGVfbWVtb3J5LndpbmRvdxJ3c2NoZWR1bGVfbWVtb3J5IHJlcXVpcmVzIG5vdF9iZWZvcmUgYW5kL29yIG5vdF9hZnRlciwgYW5kIG5vdF9hZnRlciBtdXN0IGJlIHN0cmljdGx5IGFmdGVyIG5vdF9iZWZvcmUgd2hlbiBib3RoIGFyZSBzZXQahAEoaGFzKHRoaXMubm90X2JlZm9yZSkgfHwgaGFzKHRoaXMubm90X2FmdGVyKSkgJiYgKCFoYXModGhpcy5ub3RfYmVmb3JlKSB8fCAhaGFzKHRoaXMubm90X2FmdGVyKSB8fCB0aGlzLm5vdF9hZnRlciA+IHRoaXMubm90X2JlZm9yZSkiNgoWU2NoZWR1bGVNZW1vcnlSZXNwb25zZRIKCgJpZBgBIAEoCRIQCghzaG9ydF9pZBgCIAEoCSpXCgpWaXNpYmlsaXR5EhoKFlZJU0lCSUxJVFlfVU5TUEVDSUZJRUQQABIWChJWSVNJQklMSVRZX1BSSVZBVEUQARIVChFWSVNJQklMSVRZX1NIQVJFRBACMpwHCg1FbmdyYW1TZXJ2aWNlEkkKCkxpc3RTY29wZXMSHC5lbmdyYW0udjEuTGlzdFNjb3Blc1JlcXVlc3QaHS5lbmdyYW0udjEuTGlzdFNjb3Blc1Jlc3BvbnNlEk8KDExpc3RNZW1vcmllcxIeLmVuZ3JhbS52MS5MaXN0TWVtb3JpZXNSZXF1ZXN0Gh8uZW5ncmFtLnYxLkxpc3RNZW1vcmllc1Jlc3BvbnNlElUKDlNlYXJjaE1lbW9yaWVzEiAuZW5ncmFtLnYxLlNlYXJjaE1lbW9yaWVzUmVxdWVzdBohLmVuZ3JhbS52MS5TZWFyY2hNZW1vcmllc1Jlc3BvbnNlEkYKCUdldE1lbW9yeRIbLmVuZ3JhbS52MS5HZXRNZW1vcnlSZXF1ZXN0GhwuZW5ncmFtLnYxLkdldE1lbW9yeVJlc3BvbnNlEl4KEVNlYXJjaERpc2NvdmVyaWVzEiMuZW5ncmFtLnYxLlNlYXJjaERpc2NvdmVyaWVzUmVxdWVzdBokLmVuZ3JhbS52MS5TZWFyY2hEaXNjb3Zlcmllc1Jlc3BvbnNlEkwKC1N0b3JlTWVtb3J5Eh0uZW5ncmFtLnYxLlN0b3JlTWVtb3J5UmVxdWVzdBoeLmVuZ3JhbS52MS5TdG9yZU1lbW9yeVJlc3BvbnNlElUKDlN0b3JlRGlzY292ZXJ5EiAuZW5ncmFtLnYxLlN0b3JlRGlzY292ZXJ5UmVxdWVzdBohLmVuZ3JhbS52MS5TdG9yZURpc2NvdmVyeVJlc3BvbnNlEk8KDFVwZGF0ZU1lbW9yeRIeLmVuZ3JhbS52MS5VcGRhdGVNZW1vcnlSZXF1ZXN0Gh8uZW5ncmFtLnYxLlVwZGF0ZU1lbW9yeVJlc3BvbnNlEk8KDERlbGV0ZU1lbW9yeRIeLmVuZ3JhbS52MS5EZWxldGVNZW1vcnlSZXF1ZXN0Gh8uZW5ncmFtLnYxLkRlbGV0ZU1lbW9yeVJlc3BvbnNlElIKDVNldFZpc2liaWxpdHkSHy5lbmdyYW0udjEuU2V0VmlzaWJpbGl0eVJlcXVlc3QaIC5lbmdyYW0udjEuU2V0VmlzaWJpbGl0eVJlc3BvbnNlElUKDlNjaGVkdWxlTWVtb3J5EiAuZW5ncmFtLnYxLlNjaGVkdWxlTWVtb3J5UmVxdWVzdBohLmVuZ3JhbS52MS5TY2hlZHVsZU1lbW9yeVJlc3BvbnNlQpYBCg1jb20uZW5ncmFtLnYxQgtFbmdyYW1Qcm90b1ABWjNnaXRodWIuY29tL3NlYW5iNHQvZW5ncmFtL2dlbi9nby9lbmdyYW0vdjE7ZW5ncmFtdjGiAgNFWFiqAglFbmdyYW0uVjHKAglFbmdyYW1cVjHiAhVFbmdyYW1cVjFcR1BCTWV0YWRhdGHqAgpFbmdyYW06OlYxYgZwcm90bzM", [file_google_protobuf_field_mask, file_google_protobuf_timestamp, file_buf_validate_validate]);
 
 /**
  * A single memory record (mirrors internal/store.Memory's readable fields).
@@ -468,6 +469,481 @@ export const SearchDiscoveriesResponseSchema: GenMessage<SearchDiscoveriesRespon
   messageDesc(file_engram_v1_engram, 11);
 
 /**
+ * @generated from message engram.v1.StoreMemoryRequest
+ */
+export type StoreMemoryRequest = Message<"engram.v1.StoreMemoryRequest"> & {
+  /**
+   * @generated from field: string content = 1;
+   */
+  content: string;
+
+  /**
+   * @generated from field: string scope = 2;
+   */
+  scope: string;
+
+  /**
+   * @generated from field: string source = 3;
+   */
+  source: string;
+
+  /**
+   * @generated from field: string category = 4;
+   */
+  category: string;
+
+  /**
+   * @generated from field: repeated string tags = 5;
+   */
+  tags: string[];
+
+  /**
+   * @generated from field: string repo = 6;
+   */
+  repo: string;
+
+  /**
+   * @generated from field: string workspace = 7;
+   */
+  workspace: string;
+
+  /**
+   * @generated from field: string worktree = 8;
+   */
+  worktree: string;
+
+  /**
+   * @generated from field: string base_dir = 9;
+   */
+  baseDir: string;
+
+  /**
+   * @generated from field: string summary = 10;
+   */
+  summary: string;
+};
+
+/**
+ * Describes the message engram.v1.StoreMemoryRequest.
+ * Use `create(StoreMemoryRequestSchema)` to create a new message.
+ */
+export const StoreMemoryRequestSchema: GenMessage<StoreMemoryRequest> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 12);
+
+/**
+ * @generated from message engram.v1.StoreMemoryResponse
+ */
+export type StoreMemoryResponse = Message<"engram.v1.StoreMemoryResponse"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string short_id = 2;
+   */
+  shortId: string;
+};
+
+/**
+ * Describes the message engram.v1.StoreMemoryResponse.
+ * Use `create(StoreMemoryResponseSchema)` to create a new message.
+ */
+export const StoreMemoryResponseSchema: GenMessage<StoreMemoryResponse> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 13);
+
+/**
+ * Citation mirrors internal/server/tools.go's citationArg (a store_discovery source anchor).
+ *
+ * @generated from message engram.v1.Citation
+ */
+export type Citation = Message<"engram.v1.Citation"> & {
+  /**
+   * @generated from field: string kind = 1;
+   */
+  kind: string;
+
+  /**
+   * @generated from field: string ref = 2;
+   */
+  ref: string;
+
+  /**
+   * @generated from field: string locator = 3;
+   */
+  locator: string;
+
+  /**
+   * @generated from field: string pin = 4;
+   */
+  pin: string;
+
+  /**
+   * @generated from field: string excerpt = 5;
+   */
+  excerpt: string;
+};
+
+/**
+ * Describes the message engram.v1.Citation.
+ * Use `create(CitationSchema)` to create a new message.
+ */
+export const CitationSchema: GenMessage<Citation> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 14);
+
+/**
+ * @generated from message engram.v1.StoreDiscoveryRequest
+ */
+export type StoreDiscoveryRequest = Message<"engram.v1.StoreDiscoveryRequest"> & {
+  /**
+   * @generated from field: string content = 1;
+   */
+  content: string;
+
+  /**
+   * @generated from field: string kind = 2;
+   */
+  kind: string;
+
+  /**
+   * @generated from field: repeated engram.v1.Citation citations = 3;
+   */
+  citations: Citation[];
+
+  /**
+   * @generated from field: string scope = 4;
+   */
+  scope: string;
+
+  /**
+   * @generated from field: repeated string tags = 5;
+   */
+  tags: string[];
+
+  /**
+   * @generated from field: string summary = 6;
+   */
+  summary: string;
+
+  /**
+   * optional; supply to replace an existing discovery in place
+   *
+   * @generated from field: string id = 7;
+   */
+  id: string;
+};
+
+/**
+ * Describes the message engram.v1.StoreDiscoveryRequest.
+ * Use `create(StoreDiscoveryRequestSchema)` to create a new message.
+ */
+export const StoreDiscoveryRequestSchema: GenMessage<StoreDiscoveryRequest> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 15);
+
+/**
+ * @generated from message engram.v1.StoreDiscoveryResponse
+ */
+export type StoreDiscoveryResponse = Message<"engram.v1.StoreDiscoveryResponse"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string short_id = 2;
+   */
+  shortId: string;
+};
+
+/**
+ * Describes the message engram.v1.StoreDiscoveryResponse.
+ * Use `create(StoreDiscoveryResponseSchema)` to create a new message.
+ */
+export const StoreDiscoveryResponseSchema: GenMessage<StoreDiscoveryResponse> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 16);
+
+/**
+ * UpdateMemoryRequest.update_mask is the sole presence mechanism (D-01/D-02): no
+ * proto3 `optional` keyword is used on content/shared/tags/summary. This phase
+ * enforces the mask's STRUCTURE only — presence (field rule below), non-empty
+ * paths, and an allowlist of {content, shared, tags, summary} (message-level CEL
+ * below) — via the Plan 03 protovalidate interceptor. `content`, `shared`, `tags`,
+ * and `summary` are each independently updatable via their own mask path (e.g. a
+ * tags-only update that does not touch content and therefore does not re-embed).
+ * The SEMANTIC application of the mask (the deps/store partial-update path that
+ * actually updates only the named fields, plus DEC-ddiw summary reconciliation) is
+ * Phase 17 scope.
+ *
+ * @generated from message engram.v1.UpdateMemoryRequest
+ */
+export type UpdateMemoryRequest = Message<"engram.v1.UpdateMemoryRequest"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string content = 2;
+   */
+  content: string;
+
+  /**
+   * @generated from field: bool shared = 3;
+   */
+  shared: boolean;
+
+  /**
+   * @generated from field: repeated string tags = 4;
+   */
+  tags: string[];
+
+  /**
+   * @generated from field: string summary = 5;
+   */
+  summary: string;
+
+  /**
+   * @generated from field: google.protobuf.FieldMask update_mask = 6;
+   */
+  updateMask?: FieldMask | undefined;
+};
+
+/**
+ * Describes the message engram.v1.UpdateMemoryRequest.
+ * Use `create(UpdateMemoryRequestSchema)` to create a new message.
+ */
+export const UpdateMemoryRequestSchema: GenMessage<UpdateMemoryRequest> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 17);
+
+/**
+ * @generated from message engram.v1.UpdateMemoryResponse
+ */
+export type UpdateMemoryResponse = Message<"engram.v1.UpdateMemoryResponse"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string short_id = 2;
+   */
+  shortId: string;
+};
+
+/**
+ * Describes the message engram.v1.UpdateMemoryResponse.
+ * Use `create(UpdateMemoryResponseSchema)` to create a new message.
+ */
+export const UpdateMemoryResponseSchema: GenMessage<UpdateMemoryResponse> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 18);
+
+/**
+ * @generated from message engram.v1.DeleteMemoryRequest
+ */
+export type DeleteMemoryRequest = Message<"engram.v1.DeleteMemoryRequest"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+};
+
+/**
+ * Describes the message engram.v1.DeleteMemoryRequest.
+ * Use `create(DeleteMemoryRequestSchema)` to create a new message.
+ */
+export const DeleteMemoryRequestSchema: GenMessage<DeleteMemoryRequest> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 19);
+
+/**
+ * @generated from message engram.v1.DeleteMemoryResponse
+ */
+export type DeleteMemoryResponse = Message<"engram.v1.DeleteMemoryResponse"> & {
+};
+
+/**
+ * Describes the message engram.v1.DeleteMemoryResponse.
+ * Use `create(DeleteMemoryResponseSchema)` to create a new message.
+ */
+export const DeleteMemoryResponseSchema: GenMessage<DeleteMemoryResponse> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 20);
+
+/**
+ * @generated from message engram.v1.SetVisibilityRequest
+ */
+export type SetVisibilityRequest = Message<"engram.v1.SetVisibilityRequest"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: engram.v1.Visibility visibility = 2;
+   */
+  visibility: Visibility;
+};
+
+/**
+ * Describes the message engram.v1.SetVisibilityRequest.
+ * Use `create(SetVisibilityRequestSchema)` to create a new message.
+ */
+export const SetVisibilityRequestSchema: GenMessage<SetVisibilityRequest> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 21);
+
+/**
+ * @generated from message engram.v1.SetVisibilityResponse
+ */
+export type SetVisibilityResponse = Message<"engram.v1.SetVisibilityResponse"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string short_id = 2;
+   */
+  shortId: string;
+};
+
+/**
+ * Describes the message engram.v1.SetVisibilityResponse.
+ * Use `create(SetVisibilityResponseSchema)` to create a new message.
+ */
+export const SetVisibilityResponseSchema: GenMessage<SetVisibilityResponse> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 22);
+
+/**
+ * ScheduleMemoryRequest is FLATTENED (D-05: no nested StoreMemoryRequest) — it
+ * duplicates the StoreMemoryRequest fields inline plus the typed temporal window
+ * (D-06). The message-level CEL below mirrors parseWindow's two SHAPE rules (at
+ * least one bound set; not_after strictly after not_before when both are set).
+ * It deliberately does NOT encode "not_after must be in the future" — that rule
+ * is wall-clock/time-of-check dependent and is left to the Phase 17 handler,
+ * matching parseWindow's own split between shape and clock validation.
+ *
+ * @generated from message engram.v1.ScheduleMemoryRequest
+ */
+export type ScheduleMemoryRequest = Message<"engram.v1.ScheduleMemoryRequest"> & {
+  /**
+   * @generated from field: string content = 1;
+   */
+  content: string;
+
+  /**
+   * @generated from field: string scope = 2;
+   */
+  scope: string;
+
+  /**
+   * @generated from field: string source = 3;
+   */
+  source: string;
+
+  /**
+   * @generated from field: string category = 4;
+   */
+  category: string;
+
+  /**
+   * @generated from field: repeated string tags = 5;
+   */
+  tags: string[];
+
+  /**
+   * @generated from field: string repo = 6;
+   */
+  repo: string;
+
+  /**
+   * @generated from field: string workspace = 7;
+   */
+  workspace: string;
+
+  /**
+   * @generated from field: string worktree = 8;
+   */
+  worktree: string;
+
+  /**
+   * @generated from field: string base_dir = 9;
+   */
+  baseDir: string;
+
+  /**
+   * @generated from field: string summary = 10;
+   */
+  summary: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp not_before = 11;
+   */
+  notBefore?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp not_after = 12;
+   */
+  notAfter?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message engram.v1.ScheduleMemoryRequest.
+ * Use `create(ScheduleMemoryRequestSchema)` to create a new message.
+ */
+export const ScheduleMemoryRequestSchema: GenMessage<ScheduleMemoryRequest> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 23);
+
+/**
+ * @generated from message engram.v1.ScheduleMemoryResponse
+ */
+export type ScheduleMemoryResponse = Message<"engram.v1.ScheduleMemoryResponse"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string short_id = 2;
+   */
+  shortId: string;
+};
+
+/**
+ * Describes the message engram.v1.ScheduleMemoryResponse.
+ * Use `create(ScheduleMemoryResponseSchema)` to create a new message.
+ */
+export const ScheduleMemoryResponseSchema: GenMessage<ScheduleMemoryResponse> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 24);
+
+/**
+ * Visibility mirrors the Memory.visibility string enum ("private"/"shared") as a
+ * typed enum for SetVisibility (D-07); the zero value is rejected by buf.validate
+ * so a caller cannot silently no-op a visibility change.
+ *
+ * @generated from enum engram.v1.Visibility
+ */
+export enum Visibility {
+  /**
+   * @generated from enum value: VISIBILITY_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: VISIBILITY_PRIVATE = 1;
+   */
+  PRIVATE = 1,
+
+  /**
+   * @generated from enum value: VISIBILITY_SHARED = 2;
+   */
+  SHARED = 2,
+}
+
+/**
+ * Describes the enum engram.v1.Visibility.
+ */
+export const VisibilitySchema: GenEnum<Visibility> = /*@__PURE__*/
+  enumDesc(file_engram_v1_engram, 0);
+
+/**
  * @generated from service engram.v1.EngramService
  */
 export const EngramService: GenService<{
@@ -510,6 +986,56 @@ export const EngramService: GenService<{
     methodKind: "unary";
     input: typeof SearchDiscoveriesRequestSchema;
     output: typeof SearchDiscoveriesResponseSchema;
+  },
+  /**
+   * --- new write RPCs (additive, this phase — stubs only) ---
+   *
+   * @generated from rpc engram.v1.EngramService.StoreMemory
+   */
+  storeMemory: {
+    methodKind: "unary";
+    input: typeof StoreMemoryRequestSchema;
+    output: typeof StoreMemoryResponseSchema;
+  },
+  /**
+   * @generated from rpc engram.v1.EngramService.StoreDiscovery
+   */
+  storeDiscovery: {
+    methodKind: "unary";
+    input: typeof StoreDiscoveryRequestSchema;
+    output: typeof StoreDiscoveryResponseSchema;
+  },
+  /**
+   * @generated from rpc engram.v1.EngramService.UpdateMemory
+   */
+  updateMemory: {
+    methodKind: "unary";
+    input: typeof UpdateMemoryRequestSchema;
+    output: typeof UpdateMemoryResponseSchema;
+  },
+  /**
+   * @generated from rpc engram.v1.EngramService.DeleteMemory
+   */
+  deleteMemory: {
+    methodKind: "unary";
+    input: typeof DeleteMemoryRequestSchema;
+    output: typeof DeleteMemoryResponseSchema;
+  },
+  /**
+   * @generated from rpc engram.v1.EngramService.SetVisibility
+   */
+  setVisibility: {
+    methodKind: "unary";
+    input: typeof SetVisibilityRequestSchema;
+    output: typeof SetVisibilityResponseSchema;
+  },
+  /**
+   * @generated from rpc engram.v1.EngramService.ScheduleMemory
+   */
+  scheduleMemory: {
+    methodKind: "unary";
+    input: typeof ScheduleMemoryRequestSchema;
+    output: typeof ScheduleMemoryResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_engram_v1_engram, 0);

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
 	"connectrpc.com/otelconnect"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
@@ -245,14 +246,21 @@ func (d *deps) mountConnect(mux *http.ServeMux, resolve connectResolver) error {
 	if err != nil {
 		return fmt.Errorf("otelconnect interceptor: %w", err)
 	}
+	validator, err := protovalidate.New()
+	if err != nil {
+		return fmt.Errorf("protovalidate.New: %w", err)
+	}
 	path, h := engramv1connect.NewEngramServiceHandler(
 		&engramAPI{d: d},
 		// Order: otel outermost (spans cover auth + logging), then access-log,
-		// then the subject interceptor that resolves identity.
+		// then the subject interceptor that resolves identity (401), then the
+		// validate interceptor (400) — auth must run before validation (D-10)
+		// so an unauthenticated caller never sees field-level request detail.
 		connect.WithInterceptors(
 			otelIc,
 			newConnectAccessLogInterceptor(slog.Default()),
 			newConnectSubjectInterceptor(resolve),
+			newConnectValidateInterceptor(validator),
 		),
 	)
 	mux.Handle(path, h)
