@@ -1,108 +1,113 @@
 ---
 phase: 17
-round: 6
+round: 7
 reviewers: [codex, opencode, antigravity]
-reviewed_at: 2026-07-12T18:44:08Z
+reviewed_at: 2026-07-12T20:02:23Z
 plans_reviewed: [17-01-PLAN.md, 17-02-PLAN.md, 17-03-PLAN.md, 17-04-PLAN.md, 17-05-PLAN.md, 17-06-PLAN.md]
 models:
   codex: gpt-5.x (codex-cli 0.144.1)
   opencode: openrouter/x-ai/grok-4.5
   antigravity: agy 1.1.1 (model selected internally)
-reviewed_commit: e47c59b6   # round-5-incorporated plans
+reviewed_commit: cdd04f75   # round-6-incorporated plans
+result: HIGH_REOPENED   # the round-6 OverwritePayload fix introduced a worse concurrency hazard
 caveats:
+  opencode:
+    - "grok-4.5 was attempted 3x; opencode failed to flush the final review to stdout ALL THREE times (only the opening narration line was captured, exit 0). This is a tooling/flush issue on a heavy tool-use session, NOT a review-content failure. Its stated verification targets (stderr) matched the round-6 edits exactly: 'OverwritePayload, TestMain Qdrant gating, Task-1 isolation gates, CSRF/success-code assertions'. The orchestrator independently pursued grok's central target (the OverwritePayload payload round-trip) and it CONFIRMS Codex's HIGH."
   antigravity:
-    - "Prompt was 333KB; agy truncated the tail again — it reviewed only 17-01 through 17-05 (17-06 missing)."
-    - "agy split output: a stdout summary + interactive questions, with the substance written to an artifact under its brain dir. It DID read some real repo files this round (3 real-repo cites), but its findings re-raise the round-5 test-file omissions (handlers_test.go/oidc_exchange_test.go/embed_wiring_test.go) AS IF STILL OPEN — those were fixed in commit e47c59b6 and now appear in files_modified. It reviewed a stale/pre-round-5 mental model."
-    - "Every agy finding duplicates an already-incorporated round 1-5 fix. Weighted ~zero for consensus."
-verified_against_source: true   # every codex + opencode/grok-4.5 net-new cite spot-checked against the live tree by the orchestrator; all confirmed
+    - "agy gave a clean bill this round (LOW-MEDIUM, zero high-severity), reviewed all 6 plans with real-repo cites, substance in an artifact file. But it MISSED the content/vector desync HIGH that Codex caught — it accepted OverwritePayload as a strict improvement. Its clean bill is CONTRADICTED by Codex's orchestrator-verified HIGH; weighted accordingly (advisory only)."
+verified_against_source: true
 ---
 
-# Cross-AI Plan Review — Phase 17 (Round 6)
+# Cross-AI Plan Review — Phase 17 (Round 7)
 
-Round 6 reviews the ROUND-5-INCORPORATED plans (commit e47c59b6). Both source-grounded reviewers
-(Codex, OpenCode/grok-4.5) independently VERIFIED that all six round-5 fixes are sound and that no
-round 1-4 disposition was regressed. No HIGH-severity issue remains. The residual findings are
-execution-mechanics refinements (task sequencing, payload-write atomicity, CI test-enforcement,
-test-intent preservation) — not design flaws.
+Round 7 reviews the ROUND-6-INCORPORATED plans (commit cdd04f75). **It reopens a HIGH:** the round-6
+change that replaced 17-02's targeted two-op `SetPayload`+`DeletePayload` with a single whole-payload
+`OverwritePayload(payload(cur))` fixed a minor non-atomicity but INTRODUCED a serious content/vector
+desync hazard under concurrent writes. Codex found it; the orchestrator independently confirmed it against
+source (and against the codebase's own `SetVisibility`, which deliberately uses targeted `SetPayload`).
+The other round-6 fixes (17-01 gate rescope, 17-05 fail-closed CI design, 17-06 test relocation, gen-ts,
+CSRF `err==nil`) are verified sound. One MEDIUM + one LOW task-fidelity gap remain in 17-05.
 
 ## Codex Review
 *(codex-cli 0.144.1, source-grounded — all net-new cites orchestrator-verified against the live tree)*
 
-# Round 6 Plan Review
+# Round 7 Plan Review
 
-## Summary
+## Overall assessment
 
-The plans are technically strong and now cover the phase’s main correctness and security risks well. The round-5 changes are largely sound: the anonymous-caller embed tests still stop before store access, the added CSRF and webauth call sites are genuine compile/runtime dependencies, key deletion avoids zero-time provenance corruption, and the RFC3339Nano claim is now correctly limited to validation rather than persisted scheduling. I found three substantive unresolved issues: Plan 17-01’s first task cannot pass its own repository-wide lint gate before Task 2 updates external call sites; Plan 17-02’s two-operation payload mutation can partially succeed; and Plan 17-05 does not actually guarantee that real-Qdrant tests run in CI. There is also one generated-file scope omission.
+The round-6 revisions are mostly coherent and materially improve execution safety. The isolated auth gate, fail-closed Qdrant CI strategy, test relocations, generated TypeScript inclusion, and CSRF success assertion all match the current source.
 
-Overall risk: **MEDIUM** until those issues are corrected.
-
----
-
-## 17-01 — Ordered owner claims and migration
-
-### Summary
-
-The authorization-key design is careful and substantially complete. Injective namespacing, malformed-claim rejection, email verification, legacy-cookie invalidation, and the migration runbook address the important privilege-boundary risks. The only material issue is task sequencing.
-
-### Strengths
-
-- The injective namespace is justified by the actual authorization mechanism: owner values are compared directly in read and write filters at [internal/store/store.go:493](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:493) and [internal/store/store.go:514](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:514). Treating encoding collisions as authorization collisions is correct.
-
-- Session version injection belongs in `Seal`, because the actual callback mint site passes only owner and expiry at [internal/webauth/handlers.go:172](/Volumes/Code/github.com/seanb4t/engram/internal/webauth/handlers.go:172). The round-5 placement prevents future mint sites from omitting the version.
-
-- Rejecting legacy cookies closes a real rollout split: the current resolver forwards the sealed owner verbatim at [internal/webauth/resolver.go:44](/Volumes/Code/github.com/seanb4t/engram/internal/webauth/resolver.go:44) and [internal/webauth/resolver.go:54](/Volumes/Code/github.com/seanb4t/engram/internal/webauth/resolver.go:54).
-
-- The migration runbook is backed by a real dry-run-capable command. `RemapOwner` counts without writing when `dryRun` is true and documents its collection-wide, non-transactional behavior at [internal/store/store.go:1890](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1890).
-
-### Concerns
-
-- **MEDIUM — Task 1 cannot pass its own lint/acceptance gate before Task 2.** Task 1 changes both `auth.New` and `ClaimIdentity` to take `[]string`, but limits its files to `internal/auth` and says only “in-package” call sites are updated ([17-01-PLAN.md:173](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-01-PLAN.md:173), [17-01-PLAN.md:197](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-01-PLAN.md:197)). External scalar call sites remain in [cmd/engram/serve.go:152](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/serve.go:152), [cmd/engram/serve.go:284](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/serve.go:284), and [internal/webauth/oidc.go:78](/Volumes/Code/github.com/seanb4t/engram/internal/webauth/oidc.go:78). Yet Task 1 requires `task lint:go`, which runs `golangci-lint run ./...` across the entire module at [Taskfile.yaml:64](/Volumes/Code/github.com/seanb4t/engram/Taskfile.yaml:64). It also requires a repository-wide grep showing every call already uses a slice at [17-01-PLAN.md:207](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-01-PLAN.md:207). That state is only achievable after Task 2.
-
-### Suggestions
-
-- Make Tasks 1 and 2 one atomic compiling task, or move the public signature changes and all external call-site updates into Task 2.
-
-- If the split is retained, remove repository-wide lint and grep from Task 1 and run only `go test ./internal/auth/...`; make Task 2 the first full-module compile/lint gate.
-
-### Risk Assessment
-
-**MEDIUM.** The security design is strong, but the current task boundary creates a deterministic execution/commit failure.
+One new high-severity issue remains: Plan 17-02’s whole-payload `OverwritePayload(payload(cur))` can overwrite newer concurrent payload state while preserving the newer vector, creating a content/vector mismatch. Plan 17-05 also has a smaller task-file and verification mismatch.
 
 ---
 
-## 17-02 — Store seam, caller threading, partial updates
+## 17-01 — Ordered owner claims and session migration
 
 ### Summary
 
-This plan correctly solves the hardest architectural prerequisites: the interface seam, explicit caller threading, partial content semantics, typed errors, and by-ID results. The round-5 key-deletion correction is semantically right, but implementing it as two separate Qdrant mutations introduces a partial-write failure mode.
+The round-6 Task-1 gate rescope is correct. `internal/auth` can compile independently after its internal call sites change, while the external callers are properly deferred to Task 2.
 
 ### Strengths
 
-- `updateArgs.Content -> *string` is necessary: the existing store update always assigns content and then upserts at [internal/store/store.go:1379](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1379) and [internal/store/store.go:1406](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1406).
-
-- The usage-signal preservation mirrors the existing update semantics exactly: `AccessCount` and `LastAccessedAt` are updated at [internal/store/store.go:1382](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1382).
-
-- The round-5 stop-before-store fix is sound. `storeMemory` calls the embedder before `MintShortID` or `Upsert` at [internal/server/tools.go:641](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:641), matching the test double’s intentional error at [internal/server/embed_wiring_test.go:23](/Volumes/Code/github.com/seanb4t/engram/internal/server/embed_wiring_test.go:23). An explicit anonymous caller does not reach storage.
-
-- Key deletion is required if `SetPayload` remains the update primitive: the decoder considers provenance present whenever the keys exist at [internal/store/store.go:433](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:433), while the full encoder omits zero/empty provenance at [internal/store/store.go:332](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:332).
+- `ClaimIdentity`’s only in-package production caller is `TokenVerifier` in [auth.go](/Volumes/Code/github.com/seanb4t/engram/internal/auth/auth.go:134). The remaining callers are external importers in [serve.go](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/serve.go:152), [serve.go](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/serve.go:284), and [oidc.go](/Volumes/Code/github.com/seanb4t/engram/internal/webauth/oidc.go:78). Therefore `go test ./internal/auth/...` is a valid isolated Task-1 gate.
+- Task 2 now includes the two webauth test constructors that currently pass scalar claim names: [handlers_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/webauth/handlers_test.go:159) and [oidc_exchange_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/webauth/oidc_exchange_test.go:148).
+- Auto-stamping the session version inside `SessionCodec.Seal` is the right centralized seam. All session serialization currently passes through [session.go](/Volumes/Code/github.com/seanb4t/engram/internal/webauth/session.go:55).
+- Rejecting legacy cookies before `Resolver` forwards `sess.Owner` closes the precise rollout hazard at [resolver.go](/Volumes/Code/github.com/seanb4t/engram/internal/webauth/resolver.go:44).
 
 ### Concerns
 
-- **MEDIUM — `SetPayload` plus `DeletePayload` is a non-atomic partial-write path.** The plan explicitly mandates distinct operations at [17-02-PLAN.md:179](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-02-PLAN.md:179). They are separate RPCs in the pinned Qdrant client: `SetPayload` at [points.go:140](/Users/sean/go/pkg/mod/github.com/qdrant/go-client@v1.18.3/qdrant/points.go:140) and `DeletePayload` at [points.go:174](/Users/sean/go/pkg/mod/github.com/qdrant/go-client@v1.18.3/qdrant/points.go:174). If the first succeeds and the second fails, the method returns an error after visibility, summary, access count, and timestamp have already changed while stale provenance remains. Retrying may repair it, but the caller has observed a failed mutation that partially committed.
-
-- **LOW — regenerated TypeScript is omitted from `files_modified`.** The plan changes a proto source comment and runs full `buf generate`, but lists only the Go protobuf output at [17-02-PLAN.md:7](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-02-PLAN.md:7). Buf also generates TypeScript at [buf.gen.yaml:21](/Volumes/Code/github.com/seanb4t/engram/buf.gen.yaml:21), and the exact comment being changed exists in [gen/ts/engram/v1/engram_pb.ts:665](/Volumes/Code/github.com/seanb4t/engram/gen/ts/engram/v1/engram_pb.ts:665). CI checks all of `gen/` for drift at [.github/workflows/ci.yaml:120](/Volumes/Code/github.com/seanb4t/engram/.github/workflows/ci.yaml:120).
+None net-new.
 
 ### Suggestions
 
-- Prefer one `OverwritePayload` request using the fully updated `cur` payload. The pinned client supports whole-payload overwrite at [points.go:148](/Users/sean/go/pkg/mod/github.com/qdrant/go-client@v1.18.3/qdrant/points.go:148), and `toPayload(cur)` already omits cleared provenance keys while retaining all other fields at [internal/store/store.go:304](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:304). This preserves the vector and avoids a two-request partial commit.
-
-- If two operations are retained, explicitly document non-atomic semantics and add a fault-injection test for failure between `SetPayload` and `DeletePayload`.
-
-- Add `gen/ts/engram/v1/engram_pb.ts` to `files_modified`.
+- Keep the round-6 sequencing exactly as written: isolated auth tests after Task 1; first module-wide build and lint only after Task 2.
 
 ### Risk Assessment
 
-**MEDIUM.** The architecture is correct, but payload mutation durability should be fixed before execution.
+**LOW.** The revised task boundaries align with Go package compilation and all known external call sites are explicitly covered.
+
+---
+
+## 17-02 — Store interface, caller seam, and payload-only updates
+
+### Summary
+
+The interface extraction and caller work remain sound, but the round-6 switch to whole-payload overwrite introduces a serious lost-update hazard.
+
+### Strengths
+
+- `payload(cur)` does omit empty `summary_model` and zero `summary_egress_at` at [store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:332), while the decoder treats those fields as present only when their keys exist at [store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:433). Therefore a true whole-payload overwrite will clear provenance by key absence.
+- A payload-only Qdrant operation does not supply a vector, and the plan’s raw `WithVectors(true)` before/after test is the correct way to prove preservation. `Store.Get` requests payload but not vectors at [store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1160).
+- Preserving the usage bump matches existing `Store.Update` semantics at [store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1379).
+- Including both `DeleteAll` and `ListScopes` in `memStore` is necessary for current direct call sites to compile.
+
+### Concerns
+
+- **HIGH — Whole-payload overwrite can revert concurrent content while preserving the newer vector.**
+
+  The planned operation reconstructs every payload field from a previously fetched `Memory`; `payload(cur)` includes content, tags, owner, visibility, and all other modeled fields at [store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:299). Consider this interleaving:
+
+  1. Visibility-only request fetches old `cur`.
+  2. A concurrent content update changes `cur.Content` and upserts the matching new vector through [store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1367).
+  3. The visibility request executes `OverwritePayload(payload(oldCur))`.
+
+  The last operation restores the old content/tags payload but leaves the new vector intact. Recall can then rank using a vector that no longer corresponds to the stored content—directly violating the project’s core recall-precision value.
+
+  A single Qdrant operation is atomic as an operation, but it is not a compare-and-swap against the snapshot returned by `FetchForUpdate`. It also deletes unknown payload keys. The repository explicitly recognizes that `Memory` round-trips lose forward/backward-schema keys in [store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:2035).
+
+### Suggestions
+
+- Do not use `OverwritePayload(payload(cur))` for shared/summary-only mutations based on a stale `Memory` snapshot.
+- Prefer the targeted `SetPayload` plus targeted provenance deletion design, documenting its partial-failure behavior, unless an actual optimistic-concurrency/version mechanism is introduced.
+- If whole-payload overwrite is retained, it needs at minimum:
+  - a concurrency test interleaving content update and payload-only visibility update;
+  - an assertion that content and vector remain matched;
+  - preservation testing for an unknown raw payload key.
+- An immediate raw-payload re-read reduces unknown-key loss but does not solve the race without compare-and-swap semantics.
+
+### Risk Assessment
+
+**HIGH.** The new atomic-overwrite approach can create durable content/vector inconsistency under ordinary concurrent writes.
 
 ---
 
@@ -110,422 +115,238 @@ This plan correctly solves the hardest architectural prerequisites: the interfac
 
 ### Summary
 
-This plan is well scoped and source-consistent. I found no net-new concern.
+The plan is sound, and the round-5/6 precision framing remains accurate.
 
 ### Strengths
 
-- Mask-driven `Content == nil` cleanly closes the content-blanking risk.
-
-- RFC3339Nano is correctly scoped to adapter validation. The proto accepts timestamp bounds at [proto/engram/v1/engram.proto:199](/Volumes/Code/github.com/seanb4t/engram/proto/engram/v1/engram.proto:199), while persisted window values are deliberately reduced to Unix seconds at [internal/store/store.go:319](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:319) and reconstructed at [internal/store/store.go:405](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:405). The round-5 wording no longer overclaims persistence precision.
-
-- Exact-mapping tests are a better contract than pretending lossy proto-to-args conversion round-trips symmetrically.
+- `RFC3339Nano` is appropriate at the adapter/validation boundary.
+- The plan correctly stops claiming end-to-end nanosecond scheduling: persistence floors both bounds via `.Unix()` at [store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:320), and decoding restores whole seconds at [store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:405).
+- Exact-mapping tests are a better contract than claiming symmetric round trips for mask-driven optional fields.
+- Mapping absent `content` to `nil` directly addresses the content-blanking hazard.
 
 ### Concerns
 
-- None net-new.
+None net-new.
 
 ### Suggestions
 
-- Retain the explicit test that two nanosecond-distinct bounds produce distinct adapter strings, while avoiding any persisted sub-second assertion.
+- Keep the `<1s future` test explicitly limited to `parseWindow` acceptance, as currently specified.
 
 ### Risk Assessment
 
-**LOW.**
+**LOW.** The conversion boundary and test scope are precise.
 
 ---
 
-## 17-04 — Connect handlers and read convergence
+## 17-04 — Connect handlers, error mapping, and read rewire
 
 ### Summary
 
-The handler plan now has the right layering and regression coverage. The round-5 CSRF and double-embedding fixes are valid. I found no net-new blocker.
+The round-6 CSRF correction is sound, and the plan explicitly covers the current stale test fixture.
 
 ### Strengths
 
-- The CSRF test assignment is necessary: the current happy path uses a bare `deps` and expects `CodeUnimplemented` at [internal/server/connectcsrf_test.go:219](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectcsrf_test.go:219). Once `StoreMemory` is real, that path reaches storage.
-
-- Removing handler-local query embedding is correct because current Connect searches embed directly at [internal/server/connectapi.go:158](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go:158) and [internal/server/connectapi.go:220](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go:220), while the shared dependency methods already embed at [internal/server/tools.go:870](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:870) and [internal/server/tools.go:911](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:911).
-
-- Removing the Connect-side usage enqueue is necessary: it currently enqueues at [internal/server/connectapi.go:211](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go:211), while `deps.getMemory` already enqueues on success at [internal/server/tools.go:1003](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:1003).
-
-- Empty-scope discovery mapping is correctly identified: the current Connect handler passes empty scope directly to the store at [internal/server/connectapi.go:228](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go:228), whereas the shared helper rejects it unless `CrossSpine` is set at [internal/server/tools.go:884](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:884).
+- `TestConnectCSRFTokenMatrix` currently constructs an empty `deps` and expects `CodeUnimplemented` at [connectcsrf_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectcsrf_test.go:224). Replacing it with spy-backed dependencies and asserting `err == nil` is necessary when `StoreMemory` becomes real.
+- Using `err == nil`, rather than treating `connect.CodeOf(nil)` as a success code, is correct.
+- The plan removes handler-local search embedding instead of leaving dead/double work.
+- The read-lane plan preserves the existing intentional `ListScopes` exception while routing the other handlers through typed `deps` methods.
 
 ### Concerns
 
-- None net-new.
+None net-new.
 
 ### Suggestions
 
-- In the CSRF happy-path cell, assert `err == nil` for scripted success rather than describing `connect.CodeOf(nil)` as a “success code”; Connect’s `CodeOf` returns `CodeUnknown` for non-Connect errors, including nil.
+- Keep the CSRF success branch structurally separate from code-based error assertions, so future tests do not regress to `CodeOf(nil)` comparisons.
 
 ### Risk Assessment
 
-**LOW**, with normal implementation complexity from touching all transport handlers.
+**LOW.** The handler and permanent-gate updates are correctly coupled.
 
 ---
 
-## 17-05 — Parity and existence-leak gates
+## 17-05 — Parity, cross-owner leakage, and fail-closed Qdrant CI
 
 ### Summary
 
-The parity design is strong: independent lane fixtures, production error mapping, spy traces, AST delegation checks, and split short-ID/UUID leak cases complement each other. The remaining issue is that the claimed real-store CI gate is not guaranteed to run.
+The fail-closed design is coherent against the current harness, but Task 2’s declared file scope and automated verification do not fully cover the new round-6 work.
 
 ### Strengths
 
-- The original-input error invariant is grounded in the existing Connect implementation, which re-wraps a cross-owner result using the supplied ID at [internal/server/connectapi.go:200](/Volumes/Code/github.com/seanb4t/engram/internal/server/connectapi.go:200). Splitting short-ID and direct-UUID assertions is correct.
-
-- Independent fixtures are essential for mutating operations and prevent order-dependent parity failures.
-
-- The AST check closes a real blind spot in store-level spy traces where different dependency methods may call identical store primitives.
-
-- Lane-appropriate actor checks correctly avoid asserting false equality between bearer `UserID` attribution and cookie-owner fallback.
+- The current testcontainer failure branch explicitly continues into `m.Run()` at [tools_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools_test.go:135), while `testDeps` skips when no address is available at [tools_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools_test.go:192). The proposed flag closes a real silent-green path.
+- CI currently runs plain `go test ./...` without the flag at [ci.yaml](/Volumes/Code/github.com/seanb4t/engram/.github/workflows/ci.yaml:32). Setting `ENGRAM_REQUIRE_QDRANT: "1"` on that step is sufficient to activate the planned failure behavior.
+- A supplied but unreachable `ENGRAM_QDRANT_TEST_ADDR` already fails later through `EnsureCollection`, so the proposed TestMain change correctly targets provisioning absence/failure.
+- Local behavior remains unchanged when the flag is unset.
 
 ### Concerns
 
-- **MEDIUM — “not skipped in CI” is not enforced.** The plan requires the real Qdrant suite to be “not skipped in CI” at [17-05-PLAN.md:188](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-05-PLAN.md:188), but CI merely runs `go test ./...` at [.github/workflows/ci.yaml:23](/Volumes/Code/github.com/seanb4t/engram/.github/workflows/ci.yaml:23). `TestMain` explicitly continues with integration tests skipped whenever the container fails to start at [internal/server/tools_test.go:123](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools_test.go:123) and [internal/server/tools_test.go:135](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools_test.go:135). A Docker or image-pull failure therefore produces a green CI run without the real-store authorization gate.
+- **MEDIUM — Task 2’s `<files>` declaration omits two files it explicitly modifies.**
+
+  Task 2 declares only `internal/server/connectapi_crossowner_test.go` in [17-05-PLAN.md](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/17-wired-write-handlers-full-crud-schedule/17-05-PLAN.md:182), but its action requires edits to both [tools_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools_test.go:127) and [ci.yaml](/Volumes/Code/github.com/seanb4t/engram/.github/workflows/ci.yaml:32). The plan-level frontmatter lists them, but task-scoped execution or commit tooling may omit them.
+
+- **LOW — The Task-2 automated verifier does not exercise the fail-closed change.**
+
+  Its verifier runs the cross-owner test and `task lint`, while the acceptance criteria require `task test` and a non-skipped real-Qdrant isolation run. A broken `ENGRAM_REQUIRE_QDRANT` branch could therefore survive the task’s automated gate.
 
 ### Suggestions
 
-- In CI, either provision Qdrant as an explicit service and set `ENGRAM_QDRANT_TEST_ADDR`, or make `TestMain` fail rather than skip when a dedicated CI-required environment flag is set.
-
-- Add the relevant CI/test-harness file to this plan’s `files_modified`, since the present file list cannot establish the stated acceptance criterion.
+- Add `internal/server/tools_test.go` and `.github/workflows/ci.yaml` to Task 2’s `<files>`.
+- Expand Task 2 verification to include:
+  - `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/server/... -run TestConnectCookieLaneIsolation -v`
+  - `task test`
+- Add a small unit-testable helper such as `requireQdrant()` for parsing the environment flag; keep `TestMain` responsible only for acting on it.
 
 ### Risk Assessment
 
-**MEDIUM.** The parity tests are excellent, but the real authorization implementation can still go untested in a green CI run.
+**MEDIUM.** The design is correct, but the task metadata and verifier could fail to deliver or validate the round-6 CI hardening.
 
 ---
 
-## 17-06 — Typed read core
+## 17-06 — Typed read core and test migration
 
 ### Summary
 
-The typed read-core plan correctly preserves both transport contracts and addresses the previously identified pagination, limit, time parsing, and query-default differences. No net-new concern found.
+The round-6 test-intent fixes accurately address the current source and close the compile-but-meaningless-test risk.
 
 ### Strengths
 
-- The offset/cursor split matches store behavior: the store rejects mixed modes at [internal/store/store.go:844](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:844), emits cursors only in cursor mode at [internal/store/store.go:865](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:865), and treats `limit=0` as all records at [internal/store/store.go:873](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:873).
-
-- Parsing time strings at each transport boundary avoids Connect error-code misclassification and keeps the core transport-neutral.
-
-- The round-5 search test assignment is correct: `searchMemory` invokes `EmbedQuery` before touching the store at [internal/server/tools.go:870](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:870), so an anonymous caller preserves the existing stop-before-store test intent.
-
-- Retaining the discovery-search MCP default while applying Connect’s default at its adapter is the right per-lane-default pattern.
+- `TestListMemoryRejectsBadWindow` currently sends `"nope"` directly into `deps.listMemory` at [tools_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools_test.go:1619). Once the core accepts `time.Time`, relocating this assertion to the MCP parsing boundary is necessary.
+- Explicitly adding `CursorMode: true` to direct core tests preserves the existing cursor semantics instead of merely making signatures compile.
+- Separating offset-mode and cursor-mode assertions matches the store behavior.
+- Updating the store-less embedding test with an anonymous caller preserves its stop-before-store intent.
 
 ### Concerns
 
-- None net-new.
+None net-new.
 
 ### Suggestions
 
-- Keep separate regression tests for MCP’s tokenless cursor first page and Connect’s `limit=0` all-record behavior; they validate different adapter contracts over the same core.
+- Ensure the relocated malformed-window test invokes the actual registered MCP closure or the exact boundary helper used by it, rather than testing `parseRFC3339` in isolation.
 
 ### Risk Assessment
 
-**LOW.**
+**LOW.** The revised test migrations preserve behavior and intent.
 
 ---
 
-## Final Risk Assessment
+## Final risk assessment
 
-**Overall: MEDIUM.**
+**Overall: HIGH until 17-02 is revised.**
 
-No high-severity design flaw remains, and the phase goals are achievable. Before execution:
-
-1. Make Plan 17-01’s signature change and external call-site updates atomic.
-2. Replace or explicitly harden Plan 17-02’s two-operation payload mutation.
-3. Include the generated TypeScript output.
-4. Make the real-Qdrant CI gate fail closed instead of silently skipping.
-
-The other round-5 revisions are source-consistent and do not regress the earlier review fixes.
+The round-6 changes are otherwise strong. The Qdrant fail-closed wiring is coherent, the auth task rescope is executable, and Plans 17-03/04/06 are clean. The blocking issue is the stale-snapshot whole-payload overwrite: it can restore old content without restoring its vector, producing internally inconsistent recall data.
 
 ---
 
 ## OpenCode Review
-*(openrouter/x-ai/grok-4.5, source-grounded — real repo reads observed; cites orchestrator-verified)*
+*(openrouter/x-ai/grok-4.5 — SEE CAVEAT: 3 attempts, opencode failed to flush the review body to stdout each time. Only the preamble was captured; reproduced below. Its investigation direction is recorded in the consensus.)*
 
-# Phase 17 Plan Review — Round 6
+> **Attempt 1:** "Verifying round-6 claims against the live codebase before scoring the plans." *(stderr showed it grepping `store.go`/`reindex_test.go`, investigating: "FetchForUpdate / Get — do they populate all fields payload() would re-write? Does store.Get return full Memory from payload?")*
+>
+> **Attempt 3:** "I'll verify the round-6 claims against the live code: OverwritePayload, TestMain Qdrant gating, Task-1 isolation gates, and the CSRF/success-code assertions."
 
-Verified against live sources (`internal/auth/auth.go`, `internal/webauth/{session,resolver,oidc,handlers_test,oidc_exchange_test}.go`, `internal/server/{tools,connectapi,connectcsrf_test,embed_wiring_test,summary}.go`, `internal/store/store.go`, proto). Round-5 call-site and semantics fixes check out; no regression of earlier security/parity dispositions.
-
----
-
-## Overall
-
-**Synopsis:** Six-plan, four-wave design still meets REQ-connect-write-authz-parity: ordered injective owner claims + session migration (17-01), `memStore` + `caller` + content-mask/payload path (17-02), protoconv (17-03), typed-read core (17-06), thin Connect writers + `connectError` + spy (17-04), spy parity + leak tables (17-05). Round-5 mechanical compile gates (csrf/webauth/embed tests), `DeletePayload` provenance clear, second-granular scheduling scope, and dropped `CodeAborted` are consistent with the code.
-
-**Risk: LOW–MEDIUM** — residual risk is mostly executor enumeration of signature call sites and post-deploy non-email remapping, not plan design holes.
-
----
-
-## 17-01 — Owner-claim list + injective encoding + session versioning
-
-### Strengths
-- Landing in `ClaimIdentity` (`auth.go:83-97`) correctly fans out to MCP + cookie (`TokenVerifier` + `webauth` exchange).
-- Injectivity + reserved-namespace email guard are correct given store match on owner (`store.go:497/517`).
-- Session version in `Seal` + legacy cookie reject matches `Session`/`Resolve` shape (`session.go:26-29`, `resolver.go:54`).
-- `handlers_test.go:159` / `oidc_exchange_test.go:148` call-site coverage is real and required for compile.
-- `RemapOwner(..., dryRun bool)` (`store.go:1895`) + dry-run docs match implementation.
-
-### Concerns
-- **LOW** — Empty-string email fallthrough under `[email,sub]` (T-17-15) widens fail-closed `[email]` empty+unverified from hard reject to empty→next claim. Documented and safe; keep the unit pin.
-- **LOW** — `ownerClaimGuard` must take `[]string` and warn when `email` is *absent* (today: `ownerClaim != "email"`, `serve.go:260-270`). Fine, but update `serve_test.go` with the list form so the warning/empty semantics stay green.
-
-### Suggestions
-- Explicit acceptance: `[email]`-only deployments still end fail-closed (empty owner → login/`SubjectFromTokenInfo` reject), even if `ClaimIdentity` no longer errors on empty+unverified email.
-
-### Risk
-**MEDIUM** (authz-key migration); mitigations in-plan.
-
----
-
-## 17-02 — memStore, payload update, caller seam, write-path rewire
-
-### Strengths
-- `deps.st *store.Store` (`tools.go:35`) is still concrete → interface extraction is real.
-- `storeFill` / `buildUsageQueue` stay `*store.Store` (`summaryqueue.go:119`, `tools.go:265`); test break at `summaryqueue_test.go:402/422`, `tools_test.go:1915` is correctly fixed via `testDepsWithStore`.
-- `errStaleSummary` already at `summary.go:16` — reuse, no redeclare.
-- Content landmine: plain `Content string` + unconditional embed (`tools.go:507-513,972-980`) vs proto tags-only “does not re-embed” (`engram.proto:150-156`) — `*string` + vector vs payload split is the right fix.
-- Provenance clear must be `DeletePayload` (decoder re-parses zero-time / present keys, `store.go:433-439`); round-5 wording is correct.
-- `embed_wiring_test.go:52` store-path caller update is needed; anonymous + stop-before-store matches the recording embedder.
-
-### Concerns
-- **LOW** — Payload-only = two Qdrant ops (`SetPayload` + `DeletePayload`); last-writer triage with async summarizer is acceptable if documented in the store method comment.
-- No net-new HIGH issues.
-
-### Suggestions
-- Acceptance grep for production write callers is already implied; keep the repo-wide `rg` gate from the plan as the compile proof.
-
-### Risk
-**MEDIUM** (subtle store semantics); well-specified.
-
----
-
-## 17-03 — protoconv (RFC3339Nano, mask → nil Content)
-
-### Strengths
-- `parseWindow` uses `time.Parse(time.RFC3339, ...)` (`tools.go:452-470`); Go accepts fractional input under that layout — RFC3339Nano at the adapter is correct for validation-boundary precision only.
-- Store still floors windows via `.Unix()` (`store.go:320-323,406-410`) — second-granular scheduling scope is accurate; round-5 framing avoids overclaiming.
-- Exact-mapping (not naive round-trip) fits optional-field lossiness.
-
-### Concerns
-None net-new.
-
-### Risk
-**LOW**
-
----
-
-## 17-06 — Typed read core (superset; per-lane defaults)
-
-### Strengths
-- Today’s list core drops total/offset/categories/visibility and hardcodes `CursorMode: true` + `Limit==0→20` (`tools.go:793-820`); naïve rewire would regress Connect. Superset + per-lane defaults is right.
-- Search k: Connect 20 vs deps 8 (`connectapi.go:162-164` vs `tools.go:855-856`); discovery k retention with 17-04 adapter default matches code.
-- `identityForLog` still needs `subjectFromContext` (`instrument.go:80-82`) — keep helpers.
-
-### Concerns
-- **MEDIUM (net-new residual)** — Direct test call sites still use `listArgs`/`searchArgs` and rely on *internal* string parse + hard-coded cursor mode:
-  - `TestListMemoryRejectsBadWindow` (`tools_test.go:1619-1623`) expects `parseRFC3339` inside `listMemory` — will not compile / lose intent after core takes `time.Time`.
-  - Cursor page tests (`tools_test.go:1584+`, tag/list tests) assume internal `CursorMode: true`; without `CursorMode: true` on every direct `coreListRequest` that asserts `next`, they go red or silently empty `next`.
-  - Plan says “update call sites” and MCP-closure `CursorMode: true`, but does **not** enumerate relocating the bad-window test to the MCP/parse boundary or forcing `CursorMode: true` on existing deps-level list tests.
-
-### Suggestions
-- In 17-06 Task 2, name: (1) rewrite/move `TestListMemoryRejectsBadWindow` to the transport/parse boundary; (2) any deps-level list test that expects `next` must set `CursorMode: true` (mirror MCP).
-
-### Risk
-**MEDIUM** until Task 2 explicitly covers those tests; then LOW.
-
----
-
-## 17-04 — Handlers, connectError, spy, CSRF matrix
-
-### Strengths
-- No write methods on `engramAPI` today; stub → real body is correct.
-- Landmines verified: `TestWriteRPCNegativeMatrix` `d := &deps{}` (`connectapi_negative_test.go:64`); CSRF happy path expects `CodeUnimplemented` (`connectcsrf_test.go:225,250`).
-- Read rewires match bugs: double usage enqueue (`connectapi.go:211` + `tools.go:1000-1003`); double `EmbedQuery` (`connectapi.go:158/220` vs deps embed); empty discovery scope vs `effectiveDiscoveryScope` (`tools.go:884-892` vs `connectapi.go:228`); Connect list `limit=0` = all.
-- `ErrAmbiguousShortID` (`store.go:56,1217`) → FailedPrecondition is good; no CodeAborted is correct (no conflict sentinel today).
-- Leaving `TestNoAnonymousWrite` / empty-owner CSRF on bare `&deps{}` is safe (interceptor rejects pre-handler).
-
-### Concerns
-- None beyond sequencing (depends on 17-03 + 17-06 already stated).
-
-### Risk
-**MEDIUM** (large surface); gates are sound.
-
----
-
-## 17-05 — Parity + cross-owner tables + idempotency re-assert
-
-### Strengths
-- Spy delegation + AST/source assertion closes storeMemory/scheduleMemory trace aliasing.
-- Per-lane fixtures prevent order-dependent false parity.
-- Actor assertion is lane-appropriate (MCP `UserID` aka `auth.go:139` vsConnect owner fallback `resolver.go:54`) — not false cross-lane equality.
-- Split short_id vs UUID leak tables match D-11.
-- Idempotency ban still live (`Taskfile.yaml:141-142`, `ci.yaml:126-127`).
-
-### Concerns
-None net-new.
-
-### Risk
-**LOW**
-
----
-
-## Cross-plan / round-5 integrity
-
-| Round-5 claim | Source check | Status |
-|---|---|---|
-| CSRF matrix files_modified + flip Unimplemented | `connectcsrf_test.go:225,250` | Sound |
-| webauth test NewAuthenticator lists | `handlers_test.go:159`, `oidc_exchange_test.go:148` | Sound |
-| embed_wiring store (02) + search (06) | `:52` / `:38` | Sound; wave order correct |
-| DeletePayload vs zero-time | `store.go:436-438` re-parses present keys | Sound |
-| Second-granular schedule | `store.go:320-323` | Sound |
-| No CodeAborted | sentinels `store.go:42-56`, `summary.go:16` | Sound |
-
-No round-1–4 security disposition is broken by these edits.
-
----
-
-## Summary verdict
-
-**Executable as written for execution**, with **one medium residual**: tighten **17-06 Task 2** so existing list/search unit tests (`CursorMode`, bad `created_after`) are named and migrated, not only MCP registration + embed_wiring.
-
-Phase goals are achievable: one shared `deps.*` path, authz parity under test, SC4/SC5 covered, secure-phase hooks for owner-encoding intact.
-
-**Overall risk: LOW–MEDIUM** — plan quality is high after five revision rounds; remaining work is disciplined execution + 17-06 test enumeration.
+grok's stated targets are precisely the round-6 edits. The orchestrator pursued its central one (the OverwritePayload payload round-trip) to conclusion — see Consensus; it corroborates Codex's HIGH.
 
 ---
 
 ## Antigravity Review
-*(agy 1.1.1 — SEE CAVEATS: tail-truncated to 17-01..17-05, substance in an artifact file, and its findings re-raise round-5 fixes as if still open. The stdout capture below is a summary + clarifying questions, not a grounded plan verdict. Retained for completeness; not weighted in consensus.)*
+*(agy 1.1.1 — clean bill this round: LOW-MEDIUM, zero high-severity design flaws, all 6 plans reviewed with real-repo cites; substance in an artifact file. Stdout summary below. NOTE: agy MISSED the content/vector desync HIGH — see caveat; advisory weight only.)*
 
-I have reviewed the Phase 17 implementation plans (`17-01-PLAN.md` through `17-05-PLAN.md`) in detail. 
+I have completed the structured review of the Phase 17 implementation plans (`17-01-PLAN.md` through `17-06-PLAN.md`) against the codebase structure and requirements.
 
-The complete structured feedback, highlighting compile blockers, security vulnerabilities, and logic regressions, has been compiled into the following artifact:
-*   [plan_review_feedback.md](file:///Users/sean/.gemini/antigravity-cli/brain/612d2365-3f64-4de2-a2e6-ccdf8db60456/plan_review_feedback.md)
+The complete review report is saved as an artifact at:
+*   [plan_review_feedback.md](file:///Users/sean/.gemini/antigravity-cli/brain/656f783e-c8b4-42cc-ad1b-c7dc1b24c08d/plan_review_feedback.md)
 
-### Key Decisions / Actions Requiring Your Input:
+### Key Takeaways from the Review:
+- **Ready for Execution:** With the Round 6 revisions incorporated in commit `cdd04f75`, there are no remaining high-severity design flaws. 
+- **Defused Landmines:** 
+  - The task sequencing circular dependency in 17-01 has been cleanly resolved.
+  - The non-atomic update path in 17-02 has been replaced with an atomic `OverwritePayload` write (with an explicit fallback path and unit testing).
+  - The silent skip in CI for real Qdrant tests has been plugged using a fail-closed `ENGRAM_REQUIRE_QDRANT` flag in the test harness and CI configuration.
+  - Read-path test intent is preserved under the new typed-core signatures.
 
-1.  **Strict Parser Config Contract & Plural Key:** Do you prefer using the singular `ENGRAM_OWNER_CLAIM` as a comma-separated list or defining a new plural `ENGRAM_OWNER_CLAIMS` key? (We recommend reusing the singular key to maintain compatibility with single-value deployments without changing the config surface).
-2.  **`memStore` Complete RETYPE (Blockers):** Will you approve adding [DeleteAll](file:///Volumes/Code/github.com/seanb4t/engram/internal/store/store.go#L1508) and [ListScopes](file:///Volumes/Code/github.com/seanb4t/engram/internal/store/store.go#L1110) to the [memStore](file:///Users/sean/.gemini/antigravity-cli/scratch/untruncated_user_prompt.md#L1656) interface in Plan 02? This is required to prevent compile errors.
-3.  **Unified Error Mapping:** Should we adopt a centralized [connectError](file:///Users/sean/.gemini/antigravity-cli/scratch/untruncated_user_prompt.md#L1969) mapper in Plan 04 rather than inline error mapping inside the handlers?
-4.  **Active Workspace Recommendation:** You do not have an active workspace set. I recommend setting `/Volumes/Code/github.com/seanb4t/engram` as your active workspace for implementing these changes.
-
-***
-
-### Summary of Work
-*   **Inspected codebase structure** at `/Volumes/Code/github.com/seanb4t/engram` to check `ClaimIdentity` and Connect read/write handlers.
-*   **Identified and verified** multiple compile blockers, security vulnerabilities (unverified email bypass, non-injective namespace collisions, unversioned cookie migration risk), and logic regressions in `K` defaulting.
-*   **Created the review feedback report** at [plan_review_feedback.md](file:///Users/sean/.gemini/antigravity-cli/brain/612d2365-3f64-4de2-a2e6-ccdf8db60456/plan_review_feedback.md).
+You are fully equipped to begin the execution phase. Feel free to invoke the `/goal` command when you are ready to kick off the execution of the wave tasks automatically!
 
 ---
 
 ## Consensus Summary
 
-Two source-grounded reviewers (Codex, OpenCode/grok-4.5) reviewed the round-5-incorporated plans
-(commit e47c59b6) against the live tree; every net-new `file:line` cite below was independently
-re-verified by the orchestrator and **confirmed**. Antigravity is excluded (truncated + stale — see caveats).
+Codex reviewed the round-6-incorporated plans (commit cdd04f75) against the live tree; every net-new
+`file:line` cite below was independently re-verified by the orchestrator and **confirmed**. grok-4.5 was
+unavailable (opencode stdout-flush failure ×3 — its investigation direction is folded in below).
+Antigravity gave a clean bill but missed the HIGH (see caveat) — advisory only.
 
-**Verdict: MEDIUM — execution-mechanics refinements only, no design flaws, round-5 fixes verified sound.**
-Both reviewers confirm the six-plan design still meets REQ-connect-write-authz-parity and that the round-5
-edits (new test-file assignments, anonymous-caller stop-before-store, SetPayload key-deletion,
-second-granular scheduling doc, dropped CodeAborted, T-17-15) are all source-consistent and regress nothing
-from rounds 1-4. The 4 MEDIUM + 2 LOW residuals are about *how* the work executes (task boundaries, atomicity,
-CI enforcement, test intent), not *what* it builds.
+**Verdict: HIGH REOPENED.** The round-4→5→6 trend was HIGH→MEDIUM→0-open, but round 7 shows the round-6
+fix for the 17-02 payload-atomicity MEDIUM **introduced a worse HIGH**: whole-payload
+`OverwritePayload(payload(cur))` from a stale `FetchForUpdate` snapshot can revert content while a concurrent
+write's new vector survives → durable content/vector desync → corrupted recall. The fix is to **revert 17-02
+to the round-5 targeted `SetPayload`+`DeletePayload` design** (the pattern the codebase's own `SetVisibility`
+already uses), accepting its minor, recoverable non-atomicity. Plus two 17-05 task-fidelity gaps.
 
-**Notable: zero convergence this round.** Codex and grok-4.5 found entirely DIFFERENT net-new issues —
-complementary coverage, not conflicting verdicts. The round-4→5→6 trend is HIGH→MEDIUM: round 5 had 3 HIGH
-compile blockers; round 6 has 0 HIGH. This is convergence toward execute-ready.
+### THE headline finding
 
-### Agreed Strengths (both reviewers, verified)
-- Round-5 integrity confirmed end-to-end: CSRF matrix flip (`connectcsrf_test.go:225,250`), webauth `NewAuthenticator`
-  `[]string` call sites (`handlers_test.go:159`, `oidc_exchange_test.go:148`), `embed_wiring_test.go` store(02)/search(06)
-  split with anonymous stop-before-store caller (`:52`/`:38`, embedder errors first at `:23`), `DeletePayload`
-  vs zero-time provenance (`store.go:433-439`), second-granular scheduling (`store.go:319-323/405-411`), no
-  `CodeAborted` (sentinels `store.go:42-56` + `summary.go:16`). All "Sound."
-- Injective owner encoding + session-version-in-`Seal` + legacy-cookie reject are grounded on the real authz
-  mechanism (`store.go:493/514`, `handlers.go:172`, `resolver.go:44/54`) and the dry-run `RemapOwner` runbook (`store.go:1890`).
-- 17-06 typed superset read-core correctly preserves per-lane defaults (offset/cursor split `store.go:844/865`,
-  `limit=0`=all `store.go:873`, MCP k=8 vs Connect k=20, transport-boundary time parsing).
-- 17-04 read rewires match real bugs (double usage enqueue `connectapi.go:211`, double `EmbedQuery` `:158/:220`,
-  empty-scope discovery `tools.go:884`), and 17-05 parity/leak/AST design is strong.
+**[HIGH — 17-02, Codex, orchestrator-CONFIRMED] Whole-payload `OverwritePayload(payload(cur))` causes content/vector desync under concurrency.**
+`payload(cur)` writes the ENTIRE payload including `"content"` and `"tags"` (`store.go:304-305`). The
+payload-only update fetches `cur` via `FetchForUpdate`, then later runs `OverwritePayload(payload(cur))`. Interleaving:
+1. Visibility-only request fetches `oldCur`.
+2. A concurrent content update writes new content **+ new re-embedded vector** via `store.Update`→`Upsert` (`store.go:1367,1406`).
+3. The visibility request runs `OverwritePayload(payload(oldCur))` → restores **old content/tags**, but a payload-only op does **not** touch the vector → the **new vector survives with old content**.
+Recall then ranks by a vector that no longer matches the stored content — directly violating engram's core
+recall-precision value. `OverwritePayload` is atomic *as one op* but is **not** a compare-and-swap against the
+`FetchForUpdate` snapshot; it also deletes unknown/forward-schema payload keys (`store.go:2035` acknowledges
+`Memory` round-trips lose keys).
+**Decisive corroboration:** the existing `SetVisibility` (`store.go:1417`) deliberately uses a **targeted**
+`SetPayload` (only the mutated keys) — it never rewrites the whole payload from a stale snapshot. The round-6
+change diverged from the codebase's own established pattern and reintroduced exactly the hazard `SetVisibility` avoids.
+→ *Fix:* **revert to the round-5 design** — targeted `SetPayload` writing only the visibility/summary/access/
+last-accessed keys, plus targeted `DeletePayload` for `summary_model`/`summary_egress_at` — and document the
+non-atomic provenance-clear as a minor, recoverable concern (a failed second op leaves stale provenance *metadata*
+only, which merely mislabels a summary's source; it never corrupts content or the vector). This is strictly safer
+than whole-payload overwrite. If atomic overwrite is ever retained, it needs a real optimistic-concurrency/version
+(CAS) mechanism + a concurrency test interleaving a content update with a payload-only update asserting content↔vector
+stay matched + an unknown-key preservation test.
 
-### Agreed Concerns
-None convergent — each reviewer's net-new findings are disjoint (see below). Both agree overall risk is MEDIUM
-and no finding blocks the phase goal.
+**Note on the round-5→6→7 arc:** round-5 (grok) proposed targeted `SetPayload`+`DeletePayload`; round-6 (Codex)
+proposed whole-payload `OverwritePayload` to fix that pair's non-atomicity; round-7 (Codex) found `OverwritePayload`
+is worse. The round-5 targeted two-op was the safer design all along — its non-atomicity is metadata-only and
+recoverable, whereas whole-payload overwrite risks content/vector desync. **agy, the round-6 planner/checker, and the
+orchestrator's own round-6 verification all missed the concurrency angle** — this is the value of a further adversarial pass.
 
-### Codex net-new (grounded, all orchestrator-CONFIRMED)
+### Other net-new (Codex, orchestrator-CONFIRMED)
 
-**[MEDIUM] 17-01: Task 1 cannot pass its own lint/acceptance gate before Task 2 (sequencing bug).**
-Task 1 `<files>` is only `internal/auth/{auth,auth_test}.go` and it updates "in-package" call sites, but it
-changes `auth.New`/`ClaimIdentity` to `[]string` while external scalar call sites remain in
-`cmd/engram/serve.go:152`, `:284`, and `internal/webauth/oidc.go:78`. Task 1's own acceptance requires
-module-wide `task lint:go` (`golangci-lint run ./...`, Taskfile.yaml:64) AND `grep -rn 'ClaimIdentity(' internal/ cmd/`
-showing every call uses a slice (17-01-PLAN.md:38-39) — a state only reachable after Task 2. → deterministic
-Task-1 commit failure.
-→ *Fix:* make the public signature change + all external call-site updates atomic (one task/commit), OR scope
-Task 1's gate to `go test ./internal/auth/...` and make Task 2 the first full-module lint/grep gate.
+**[MEDIUM — 17-05] Task 2's `<files>` omits two files its own action modifies.**
+Frontmatter `files_modified` correctly lists `internal/server/tools_test.go` + `.github/workflows/ci.yaml`
+(lines 10-11), but Task 2's task-scoped `<files>` (17-05-PLAN.md:182) declares only
+`connectapi_crossowner_test.go` — even though Task 2's action is where the `ENGRAM_REQUIRE_QDRANT` TestMain change
+and the CI-flag wiring happen. A task-scoped executor / commit tooling could edit only the cross-owner test and
+**silently drop the fail-closed CI gate** (the very round-6 fix). → *Fix:* add `internal/server/tools_test.go` and
+`.github/workflows/ci.yaml` to Task 2's `<files>`.
 
-**[MEDIUM] 17-02: `SetPayload` + `DeletePayload` is a non-atomic partial-write path.**
-The action mandates the provenance clear as "a distinct op alongside the SetPayload" (17-02-PLAN.md:179) — two
-separate Qdrant RPCs. If `SetPayload` succeeds and `DeletePayload` fails, visibility/summary/access-count/timestamp
-have already changed while stale provenance remains; the caller observes a failed mutation that partially committed.
-→ *Fix:* prefer a single `OverwritePayload(toPayload(cur))` request — `toPayload` (`store.go:304`) already omits
-cleared provenance keys while retaining all other fields, and whole-payload overwrite preserves the vector
-(one RPC, atomic). If two ops are retained, document non-atomic semantics + add a fault-injection test for
-failure between the two.
+**[LOW — 17-05] Task 2's verifier doesn't exercise the fail-closed change.**
+The verifier runs the cross-owner test + `task lint`, but the acceptance requires `task test` + a non-skipped
+real-Qdrant run — so a broken `ENGRAM_REQUIRE_QDRANT` branch could survive the task's automated gate. → *Fix:* add
+`ENGRAM_REQUIRE_QDRANT=1 go test ./internal/server/... -run TestConnectCookieLaneIsolation -v` and `task test` to
+Task 2 verification; extract a unit-testable `requireQdrant()` env-parse helper (keep `TestMain` responsible only for acting on it).
 
-**[MEDIUM] 17-05: "not skipped in CI" is not enforced — the real-Qdrant authz gate can silently no-op.**
-17-05 asserts the isolation suite is "not skipped in CI" (17-05-PLAN.md:188), but CI merely runs `go test ./...`
-(ci.yaml:33), and the integration harness calls `t.Skip("no Qdrant available…")` (`tools_test.go:195`, `:1449`)
-whenever the container fails to start. A Docker/image-pull failure therefore produces a GREEN CI run without the
-real-store authorization gate — the phase's primary parity guarantee.
-→ *Fix:* provision Qdrant as an explicit CI service + set `ENGRAM_QDRANT_TEST_ADDR`, OR make the harness FAIL
-(not skip) when a CI-required env flag is set; add the CI/harness file to 17-05 `files_modified` (the current file
-list cannot establish the stated acceptance criterion).
-
-**[LOW] 17-02: regenerated TypeScript omitted from `files_modified`.**
-The plan changes a proto-source comment and runs full `buf generate`, but lists only `gen/go/engram/v1/engram.pb.go`
-(17-02-PLAN.md:11). buf also emits TypeScript (buf.gen.yaml:21-23, `out: gen/ts`); the exact comment exists at
-`gen/ts/engram/v1/engram_pb.ts:665`; and CI drift-checks ALL of `gen/` (`git diff --exit-code -- gen/`, ci.yaml:123).
-→ *Fix:* add `gen/ts/engram/v1/engram_pb.ts` to `files_modified`.
-
-**[LOW — suggestion] 17-04:** in the CSRF happy-path cell, assert `err == nil` for scripted success rather than
-treating `connect.CodeOf(nil)` as a "success code" — `CodeOf` returns `CodeUnknown` for nil / non-Connect errors.
-
-### grok-4.5 net-new (grounded, orchestrator-CONFIRMED)
-
-**[MEDIUM] 17-06 Task 2: existing list-test intent is lost, not just recompiled.**
-`TestListMemoryRejectsBadWindow` (`tools_test.go:1619-1623`) passes `CreatedAfter: "nope"` (a string) expecting the
-core's internal `parseRFC3339` to reject it — but after the core takes `time.Time` (round-4 MED-6 moves parsing to
-the transport boundary), that test can't compile *and its intent evaporates* (an invalid window can't be handed to a
-`time.Time` field). Likewise, existing deps-level cursor-page tests assume the core's hard-coded `CursorMode: true`;
-once the core carries the flag from the request, any direct `coreListRequest` asserting `next` must set
-`CursorMode: true` or it goes red / silently empties `next`. 17-06 says "update any direct call sites" generically
-but never *names* relocating the bad-window rejection to the MCP/parse boundary nor forcing `CursorMode: true` on the
-existing deps-level list tests — a mechanical signature fix would make them compile-but-meaningless.
-→ *Fix:* in 17-06 Task 2, name (1) rewrite/move `TestListMemoryRejectsBadWindow` to the transport/parse boundary
-where `parseRFC3339` now lives; (2) any deps-level list test that asserts `next` must set `CursorMode: true` (mirror MCP).
-
-**[LOW] 17-01:** T-17-15 empty-string-email `[email,sub]` widening is documented and safe — keep the unit pin
-(no change needed). grok also flagged `serve_test.go` for the `ownerClaimGuard` `[]string` change — **already covered**:
-`cmd/engram/serve_test.go` is in 17-01's `files_modified` (line 13) and its Task 2 `<files>`/action (lines 218/224).
-No action (grok false-negative).
+### Verified sound (round-6 fixes that hold — Codex confirmed, no net-new)
+- **17-01** gate rescope: `ClaimIdentity`'s only in-package caller is `TokenVerifier` (`auth.go:134`); external callers
+  (`serve.go:152/:284`, `oidc.go:78`) are deferred to Task 2 → `go test ./internal/auth/...` is a valid isolated Task-1 gate. Session-version-in-`Seal` (`session.go:55`) + legacy-cookie reject (`resolver.go:44`) sound. **LOW.**
+- **17-03** protoconv: RFC3339Nano at the adapter, second-granular persistence (`store.go:320/405`) accurately framed. **LOW.**
+- **17-04** CSRF: `err == nil` assertion (not `CodeOf(nil)`) correct; empty-`deps` fixture flip necessary (`connectcsrf_test.go:224`). **LOW.**
+- **17-06** test migration: `TestListMemoryRejectsBadWindow` relocation to the parse boundary + `CursorMode:true` on direct core tests preserve intent, not just compile (`tools_test.go:1619`). **LOW.**
+- **17-05 design** (separate from the task-fidelity gaps): fail-closed via `ENGRAM_REQUIRE_QDRANT` is coherent — CI runs plain `go test ./...` (ci.yaml:32) so setting the flag on that step activates the fail behavior; local runs unchanged when unset. **MEDIUM** (only because of the task-fidelity gaps above).
 
 ### Divergent Views
-No contradictions. The two grounded reviewers found disjoint net-new issues (Codex: 17-01 sequencing / 17-02
-atomicity / 17-05 CI enforcement / gen-ts; grok: 17-06 test-intent), which is complementary coverage. Both rate
-overall risk MEDIUM/LOW-MEDIUM and agree the design is sound and round-5 fixes hold. Antigravity's apparent
-"divergence" (re-raising fixed test-file omissions) is a truncation/staleness artifact, not a real disagreement.
+**Real divergence:** agy (clean bill, "zero high-severity design flaws", endorsed `OverwritePayload`) vs Codex (HIGH).
+Codex is correct — orchestrator-verified against source and against the codebase's own `SetVisibility` pattern. agy
+missed the concurrency hazard entirely; it treated the atomic single-RPC as a strict win. This reinforces weighting
+Codex highest and agy as advisory. grok did not emit a verdict (tooling), but its recorded investigation targeted
+exactly this mechanism.
 
-### Required round-6 changes (rank-ordered, all orchestrator-CONFIRMED)
-1. **MEDIUM — 17-01:** make the `[]string` signature change + all external call-site updates atomic (or rescope Task 1's lint/grep gate to `internal/auth`). *[Codex]*
-2. **MEDIUM — 17-02:** replace two-op `SetPayload`+`DeletePayload` with a single atomic `OverwritePayload(toPayload(cur))` (or document non-atomicity + fault-injection test). *[Codex]*
-3. **MEDIUM — 17-05:** make the real-Qdrant CI gate fail-closed (Qdrant service + `ENGRAM_QDRANT_TEST_ADDR`, or fail-not-skip under a CI flag); add the CI/harness file to `files_modified`. *[Codex]*
-4. **MEDIUM — 17-06:** in Task 2, explicitly relocate `TestListMemoryRejectsBadWindow` to the parse boundary + force `CursorMode: true` on existing deps-level list tests asserting `next`. *[grok]*
-5. **LOW — 17-02:** add `gen/ts/engram/v1/engram_pb.ts` to `files_modified`. *[Codex]*
-6. **LOW — 17-04:** CSRF happy-path cell asserts `err == nil`, not `CodeOf(nil)` as a success code. *[Codex]*
+### Required round-7 changes (rank-ordered, all orchestrator-CONFIRMED)
+1. **HIGH — 17-02:** revert whole-payload `OverwritePayload(payload(cur))` → targeted `SetPayload` + targeted `DeletePayload` (match existing `SetVisibility` at `store.go:1417`); document the non-atomic provenance-clear as minor/recoverable. *[Codex]*
+2. **MEDIUM — 17-05:** add `internal/server/tools_test.go` + `.github/workflows/ci.yaml` to Task 2's `<files>`. *[Codex]*
+3. **LOW — 17-05:** expand Task 2 verification to run the flagged real-Qdrant isolation test + `task test`; extract a unit-testable `requireQdrant()` helper. *[Codex]*
 
-None of these block the phase goal or indicate a design flaw. They can be landed in one more targeted
-`/gsd-plan-phase 17 --reviews` pass, or accepted as executor-time refinements — the six-plan design is
-otherwise execute-ready.
+Item 1 is a genuine blocker (durable recall corruption under ordinary concurrent writes) and **reverses a round-6
+decision** — land it before execution. Items 2-3 close execution-fidelity gaps in the round-6 CI hardening.
+Everything else in the six-plan set is verified sound.
