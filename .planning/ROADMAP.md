@@ -348,24 +348,25 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 4. Every by-id write RPC re-wraps a `store.ErrNotFound` with the caller's original input (short_id or UUID as supplied), never the resolved UUID — verified by a cross-owner table test per RPC — so no existence leak (DEC-xa6) reopens via a browser-visible network tab.
 5. **Invariant**: no write RPC carries `idempotency_level = NO_SIDE_EFFECTS` — re-asserted by the Phase 15 CI gate now that real logic exists behind these RPCs.
 
-**Status**: Planned
-**Plans**: 5 plans (4 waves)
+**Status**: Planned (revised after cross-AI review — 6 plans, 4 waves)
+**Plans**: 6 plans (4 waves) — replanned to incorporate REVIEWS.md (D-06 injective encoding; D-07 transport-neutral typed read core; memStore DeleteAll/ListScopes; connectError mapper; vector-preserving payload update; by-id results; RFC3339Nano; spy parity)
 **Wave 1**
 
-- [ ] 17-01-PLAN.md — Ordered owner-claim list + namespacing (D-04/D-05/D-06) [wave 1]
-- [ ] 17-02-PLAN.md — Store-interface extraction + caller-threaded deps.* refactor (D-01/D-02/D-03, landmines 1/2/3) [wave 1]
+- [ ] 17-01-PLAN.md — Ordered owner-claim list + HARDENED injective namespace encoding (D-04/D-05/D-06) [wave 1]
+- [ ] 17-02-PLAN.md — Store payload-only update + memStore interface (incl DeleteAll/ListScopes) + caller seam + write-lane single-path + by-id results + sentinels (D-01/D-02/D-03/D-10) [wave 1]
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 17-03-PLAN.md — protoconv conversion layer + round-trip tests (D-09) [wave 2]
+- [ ] 17-03-PLAN.md — protoconv conversion layer + RFC3339Nano + result mapping + exact-mapping tests (D-09) [wave 2]
+- [ ] 17-06-PLAN.md — Read-lane transport-neutral typed core convergence (D-07 hardened) [wave 2]
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 17-04-PLAN.md — Fake store + six write handlers + read-lane rewire + negative-matrix fix (D-07/D-10/D-11) [wave 3]
+- [ ] 17-04-PLAN.md — connectError mapper + scripted-spy fake + six write handlers + read-lane rewire + negative-matrix fix (D-07/D-10/D-11) [wave 3]
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 17-05-PLAN.md — MCP↔Connect parity table + cross-owner re-wrap tables + idempotency-ban re-assert (D-10/D-11/D-12) [wave 4]
+- [ ] 17-05-PLAN.md — Per-RPC spy parity table + split cross-owner leak tables + idempotency-ban re-assert (D-10/D-11/D-12) [wave 4]
 
 **Flag for /gsd-secure-phase.**
 
