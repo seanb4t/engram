@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
@@ -54,3 +55,75 @@ func subjectFromConnectContext(ctx context.Context) (store.Subject, error) {
 	}
 	return SubjectFromTokenInfo(ti)
 }
+
+// caller is the verified caller identity threaded explicitly through every
+// write deps.* method (and storeRule/listRules), replacing the internal
+// subjectFromContext/actorFromContext ctx reads (SC1/D-01). Subj is the
+// authorization key (store.Subject); Actor is the attribution value stamped
+// onto Memory.Actor.
+type caller struct {
+	Subj  store.Subject
+	Actor string
+}
+
+// callerFromTokenInfo is the single choke point that builds a caller for both
+// auth lanes (MCP via callerFromContext, Connect via callerFromConnectContext)
+// from one verified TokenInfo. Subj resolves exactly as SubjectFromTokenInfo
+// does. Actor resolves to ti.UserID, falling back to the resolved owner
+// (Subj.Owner()) when UserID is empty — the Connect cookie lane's TokenInfo
+// carries only Extra[owner_claim], never UserID (landmine 3), so without this
+// fallback every Connect-attributed Memory.Actor would be permanently empty.
+//
+// callerFromTokenInfo(nil) yields the anonymous caller (owner "", actor ""),
+// no error — the "non-empty actor" guarantee below applies only to
+// authenticated callers, preserving the existing anonymous bucket. A present
+// token with a missing/empty owner claim fails closed (mirrors
+// SubjectFromTokenInfo).
+func callerFromTokenInfo(ti *mcpauth.TokenInfo) (caller, error) {
+	subj, err := SubjectFromTokenInfo(ti)
+	if err != nil {
+		return caller{}, err
+	}
+	actor := ""
+	if ti != nil {
+		actor = ti.UserID
+	}
+	if actor == "" {
+		actor = subj.Owner()
+	}
+	return caller{Subj: subj, Actor: actor}, nil
+}
+
+// callerFromContext resolves the caller for an MCP request (the bearer-token
+// lane), mirroring subjectFromContext's TokenInfo source.
+func callerFromContext(ctx context.Context) (caller, error) {
+	return callerFromTokenInfo(mcpauth.TokenInfoFromContext(ctx))
+}
+
+// callerFromConnectContext resolves the caller for a Connect request (the
+// cookie lane), mirroring subjectFromConnectContext's fail-closed behavior
+// when the interceptor was never installed.
+func callerFromConnectContext(ctx context.Context) (caller, error) {
+	ti, ok := ctx.Value(connectSubjectKey{}).(*mcpauth.TokenInfo)
+	if !ok {
+		return caller{}, fmt.Errorf("connect subject key absent: interceptor not installed")
+	}
+	return callerFromTokenInfo(ti)
+}
+
+// mutationResult is the typed by-id mutation outcome deps.updateMemory and
+// deps.setVisibility return alongside error, so their Connect responses can
+// populate id/short_id from the already-fetched record without a re-fetch.
+// deps.deleteMemory stays error-only: DeleteMemoryResponse carries no fields.
+type mutationResult struct {
+	ID      string
+	ShortID string
+}
+
+// errRuleImmutable is the typed sentinel for the rule-immutability rejections
+// (a rule cannot be made private, un-shared, or content-summary-broken via
+// update_memory/set_visibility — delete it instead). errors.Is-matchable so
+// the Connect error mapper (17-04) maps it without string-matching. Distinct
+// from the pre-existing errStaleSummary (summary.go:16), which is REUSED
+// unchanged, not redeclared here (review round-2 BLOCKER 2).
+var errRuleImmutable = errors.New("rules are always shared")
