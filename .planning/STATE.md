@@ -5,15 +5,15 @@ milestone_name: — Hardening & Write Lane
 current_phase: 17
 current_phase_name: Full CRUD + Schedule
 status: "Phase 16 shipped — PR #361"
-stopped_at: Completed 16-03-PLAN.md
-last_updated: "2026-07-12T11:16:02.382Z"
+stopped_at: Phase 17 context gathered
+last_updated: "2026-07-12T12:06:26.013Z"
 last_activity: 2026-07-12
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 4
   total_plans: 13
   completed_plans: 13
-  percent: 100
+  percent: 80
 ---
 
 # Project State
@@ -96,9 +96,9 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-12T01:52:28.708Z
-Stopped at: Completed 16-03-PLAN.md
-Resume file: .planning/phases/16-csrf-interceptor/16-CONTEXT.md
+Last session: 2026-07-12T12:06:26.005Z
+Stopped at: Phase 17 context gathered
+Resume file: .planning/phases/17-wired-write-handlers-full-crud-schedule/17-CONTEXT.md
 
 ## Performance Metrics
 
