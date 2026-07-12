@@ -232,6 +232,89 @@ func (a *engramAPI) SearchDiscoveries(ctx context.Context, req *connect.Request[
 	return connect.NewResponse(&engramv1.SearchDiscoveriesResponse{Discoveries: memoriesToProto(ms)}), nil
 }
 
+// The six Connect write RPCs below are thin adapters (SC2): resolve the caller
+// via callerFromConnectContext, convert the proto request to args via the
+// 17-03 protoconv layer, call the SAME deps.* method the MCP tool calls, map
+// the result via protoconv, and map any error via the single connectError
+// mapper (D-11) — never a.d.st.* directly, never a hand-rolled per-handler
+// error mapping, never an ownership comparison (DEC-cgb).
+
+func (a *engramAPI) StoreMemory(ctx context.Context, req *connect.Request[engramv1.StoreMemoryRequest]) (*connect.Response[engramv1.StoreMemoryResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	id, shortID, err := a.d.storeMemory(ctx, c, storeMemoryRequestToArgs(req.Msg))
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(idsToStoreMemoryResponse(id, shortID)), nil
+}
+
+func (a *engramAPI) StoreDiscovery(ctx context.Context, req *connect.Request[engramv1.StoreDiscoveryRequest]) (*connect.Response[engramv1.StoreDiscoveryResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	id, shortID, err := a.d.storeDiscovery(ctx, c, storeDiscoveryRequestToArgs(req.Msg))
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(idsToStoreDiscoveryResponse(id, shortID)), nil
+}
+
+// UpdateMemory maps the returned mutationResult{ID, ShortID} into the response
+// WITHOUT a re-fetch — deps.updateMemory already resolved the canonical id/
+// short_id from the fetched record (17-REVIEWS.md response-conversion finding).
+func (a *engramAPI) UpdateMemory(ctx context.Context, req *connect.Request[engramv1.UpdateMemoryRequest]) (*connect.Response[engramv1.UpdateMemoryResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	res, err := a.d.updateMemory(ctx, c, updateMemoryRequestToArgs(req.Msg))
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(mutationResultToUpdateMemoryResponse(res)), nil
+}
+
+func (a *engramAPI) DeleteMemory(ctx context.Context, req *connect.Request[engramv1.DeleteMemoryRequest]) (*connect.Response[engramv1.DeleteMemoryResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	if err := a.d.deleteMemory(ctx, c, idArgs{ID: req.Msg.GetId()}); err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(&engramv1.DeleteMemoryResponse{}), nil
+}
+
+// SetVisibility maps the returned mutationResult{ID, ShortID} into the
+// response WITHOUT a re-fetch, mirroring UpdateMemory.
+func (a *engramAPI) SetVisibility(ctx context.Context, req *connect.Request[engramv1.SetVisibilityRequest]) (*connect.Response[engramv1.SetVisibilityResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	res, err := a.d.setVisibility(ctx, c, setVisibilityRequestToArgs(req.Msg))
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(mutationResultToSetVisibilityResponse(res)), nil
+}
+
+func (a *engramAPI) ScheduleMemory(ctx context.Context, req *connect.Request[engramv1.ScheduleMemoryRequest]) (*connect.Response[engramv1.ScheduleMemoryResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	id, shortID, err := a.d.scheduleMemory(ctx, c, scheduleMemoryRequestToArgs(req.Msg))
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(idsToScheduleMemoryResponse(id, shortID)), nil
+}
+
 // connectResolver supplies the per-request identity TokenInfo for the Connect
 // lane. The webauth cookie/OIDC resolver is passed in by the caller (serve.go)
 // when the web UI is enabled. A nil resolver means Connect is NOT mounted at

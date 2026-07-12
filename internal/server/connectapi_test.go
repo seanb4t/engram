@@ -14,6 +14,8 @@ import (
 
 	"connectrpc.com/connect"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
+
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/internal/store"
 )
@@ -653,5 +655,111 @@ func TestConnectGetMemoryCrossOwnerShortIDDoesNotLeakUUID(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), sid) {
 		t.Fatalf("error should echo caller-supplied short id only: %v", err)
+	}
+}
+
+// TestConnectStoreMemoryThenReadBack (SC3, 17-04 Task 2) creates a memory over
+// Connect StoreMemory and reads it back via both Connect GetMemory and
+// Connect ListMemories, asserting the content is present — proving the six
+// write RPCs are thin adapters onto the SAME deps.* path the MCP tools use,
+// not merely stub-passing.
+func TestConnectStoreMemoryThenReadBack(t *testing.T) {
+	d := testDeps(t)
+	api := &engramAPI{d: d}
+	scope := "sc3-connect-write:project:test"
+	actx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}})
+
+	storeResp, err := api.StoreMemory(actx, connect.NewRequest(&engramv1.StoreMemoryRequest{
+		Content: "hello from connect StoreMemory", Scope: scope, Source: "user-said", Category: "gotcha",
+	}))
+	if err != nil {
+		t.Fatalf("StoreMemory: %v", err)
+	}
+	if storeResp.Msg.Id == "" || storeResp.Msg.ShortId == "" {
+		t.Fatalf("StoreMemory response missing id/short_id: %+v", storeResp.Msg)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete", d.st.Delete(context.Background(), storeResp.Msg.Id, store.Authenticated("actor-A")))
+	})
+
+	getResp, err := api.GetMemory(actx, connect.NewRequest(&engramv1.GetMemoryRequest{Id: storeResp.Msg.Id}))
+	if err != nil {
+		t.Fatalf("GetMemory: %v", err)
+	}
+	if getResp.Msg.Memory.Content != "hello from connect StoreMemory" {
+		t.Fatalf("GetMemory content = %q, want the stored content", getResp.Msg.Memory.Content)
+	}
+
+	listResp, err := api.ListMemories(actx, connect.NewRequest(&engramv1.ListMemoriesRequest{Scope: scope, Limit: 10, Full: true}))
+	if err != nil {
+		t.Fatalf("ListMemories: %v", err)
+	}
+	found := false
+	for _, m := range listResp.Msg.Memories {
+		if m.Id == storeResp.Msg.Id && m.Content == "hello from connect StoreMemory" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("ListMemories did not surface the Connect-written record %s", storeResp.Msg.Id)
+	}
+}
+
+// TestConnectUpdateMemoryResponseCarriesCanonicalID pins that UpdateMemory's
+// response carries the canonical UUID + short_id from the mutationResult (not
+// a re-fetch), even when the caller addressed the record by its short id.
+func TestConnectUpdateMemoryResponseCarriesCanonicalID(t *testing.T) {
+	d := testDeps(t)
+	api := &engramAPI{d: d}
+	ctxA := authedContext(t, "actor-A")
+	id, sid, err := d.storeMemory(ctxA, callerFor(ctxA, t), storeArgs{Content: "before", Scope: "s:update", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete", d.st.Delete(context.Background(), id, store.Authenticated("actor-A")))
+	})
+
+	actx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}})
+	resp, err := api.UpdateMemory(actx, connect.NewRequest(&engramv1.UpdateMemoryRequest{
+		Id: sid, Content: "after", UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"content"}},
+	}))
+	if err != nil {
+		t.Fatalf("UpdateMemory: %v", err)
+	}
+	if resp.Msg.Id != id {
+		t.Errorf("UpdateMemory response id = %q, want canonical UUID %q", resp.Msg.Id, id)
+	}
+	if resp.Msg.ShortId != sid {
+		t.Errorf("UpdateMemory response short_id = %q, want %q", resp.Msg.ShortId, sid)
+	}
+}
+
+// TestConnectSetVisibilityResponseCarriesCanonicalID mirrors
+// TestConnectUpdateMemoryResponseCarriesCanonicalID for SetVisibility.
+func TestConnectSetVisibilityResponseCarriesCanonicalID(t *testing.T) {
+	d := testDeps(t)
+	api := &engramAPI{d: d}
+	ctxA := authedContext(t, "actor-A")
+	id, sid, err := d.storeMemory(ctxA, callerFor(ctxA, t), storeArgs{Content: "share me", Scope: "s:visibility", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete", d.st.Delete(context.Background(), id, store.Authenticated("actor-A")))
+	})
+
+	actx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}})
+	resp, err := api.SetVisibility(actx, connect.NewRequest(&engramv1.SetVisibilityRequest{
+		Id: sid, Visibility: engramv1.Visibility_VISIBILITY_SHARED,
+	}))
+	if err != nil {
+		t.Fatalf("SetVisibility: %v", err)
+	}
+	if resp.Msg.Id != id {
+		t.Errorf("SetVisibility response id = %q, want canonical UUID %q", resp.Msg.Id, id)
+	}
+	if resp.Msg.ShortId != sid {
+		t.Errorf("SetVisibility response short_id = %q, want %q", resp.Msg.ShortId, sid)
 	}
 }
