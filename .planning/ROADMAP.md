@@ -348,8 +348,8 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 4. Every by-id write RPC re-wraps a `store.ErrNotFound` with the caller's original input (short_id or UUID as supplied), never the resolved UUID — verified by a cross-owner table test per RPC — so no existence leak (DEC-xa6) reopens via a browser-visible network tab.
 5. **Invariant**: no write RPC carries `idempotency_level = NO_SIDE_EFFECTS` — re-asserted by the Phase 15 CI gate now that real logic exists behind these RPCs.
 
-**Status**: Planned (revised after cross-AI review — 6 plans, 4 waves)
-**Plans**: 6 plans (4 waves) — replanned to incorporate REVIEWS.md (D-06 injective encoding; D-07 transport-neutral typed read core; memStore DeleteAll/ListScopes; connectError mapper; vector-preserving payload update; by-id results; RFC3339Nano; spy parity)
+**Status**: Planned (revised after cross-AI review round 2 — 6 plans, 4 waves)
+**Plans**: 6 plans (4 waves) — replanned to incorporate REVIEWS.md round 1 (D-06 injective encoding; D-07 transport-neutral typed read core; memStore DeleteAll/ListScopes; connectError mapper; vector-preserving payload update; by-id results; RFC3339Nano; spy parity) AND round 2 (owner-encoding rollout migration + versioned session cookie; concrete-store test fix for storeFill/buildUsageQueue; errStaleSummary reuse; payload-only usage signal; store.ErrInvalidArgument taxonomy; SearchDiscoveries k=20; per-lane parity fixtures + source/AST delegation assertion; connectError(ctx,err))
 **Wave 1**
 
 - [ ] 17-01-PLAN.md — Ordered owner-claim list + HARDENED injective namespace encoding (D-04/D-05/D-06) [wave 1]
