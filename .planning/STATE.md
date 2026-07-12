@@ -5,16 +5,16 @@ milestone_name: — Hardening & Write Lane
 current_phase: 17
 current_phase_name: wired-write-handlers-full-crud-schedule
 status: executing
-stopped_at: Completed 17-01-PLAN.md
-last_updated: "2026-07-12T23:03:00.808Z"
+stopped_at: Completed 17-03-PLAN.md
+last_updated: "2026-07-12T23:16:55.998Z"
 last_activity: 2026-07-12
 last_activity_desc: Phase 17 execution started
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 19
-  completed_plans: 15
-  percent: 79
+  completed_plans: 16
+  percent: 80
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 ## Current Position
 
 Phase: 17 (wired-write-handlers-full-crud-schedule) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-07-12 — Phase 17 execution started
 
@@ -93,6 +93,8 @@ cookie-auth security posture).
 - [Phase 17]: [Phase 17 P02] UpdatePayload uses a targeted two-op SetPayload+DeletePayload (not a whole-payload OverwritePayload) to avoid content/vector desync from a stale FetchForUpdate snapshot with no CAS
 - [Phase 17]: [Phase 17 P02] callerFromTokenInfo is the single choke point for both auth lanes; Actor falls back to the resolved owner when TokenInfo.UserID is empty (Connect cookie lane never sets it)
 - [Phase 17]: [Phase 17 P02] errRuleImmutable is a NEW sentinel; errStaleSummary is REUSED unchanged (not redeclared)
+- [Phase 17]: [Phase 17 P03] Visibility enum<->bool mapping is used ONLY by SetVisibility; UpdateMemory shared maps &req.Shared (proto bool) directly to *bool, never the enum mapper (round-8 MED)
+- [Phase 17]: [Phase 17 P03] windowBoundFloor/windowBoundCeil round scheduling bounds OUTWARD to whole seconds before RFC3339Nano formatting so a sub-second not_after cannot persist as immediately-expired after the store's .Unix() flooring (round-8 MED)
 
 ### Blockers/Concerns
 
@@ -103,8 +105,8 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-12T23:02:25.441Z
-Stopped at: Completed 17-01-PLAN.md
+Last session: 2026-07-12T23:16:55.992Z
+Stopped at: Completed 17-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -126,3 +128,4 @@ Resume file: None
 | Phase 16 P03 | 20min | 3 tasks | 5 files |
 | Phase 17 P01 | 35min | 3 tasks | 13 files |
 | Phase 17 P02 | 25min | 3 tasks | 14 files |
+| Phase 17 P03 | 10min | 2 tasks | 2 files |
