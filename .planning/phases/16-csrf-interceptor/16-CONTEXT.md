@@ -101,8 +101,7 @@ Requirement: **REQ-connect-csrf** (GitHub #322; security-critical —
 
 ### Defense topology *(user deferred → locked to recommended default)*
 
-- **D-07 — `CrossOriginProtection` wraps the whole top-level server handler;
-  the token interceptor is write-only.** CrossOriginProtection is installed
+- **D-07 — `CrossOriginProtection` wraps the whole top-level server handler; the token interceptor is write-only.** CrossOriginProtection is installed
   around the top-level `http.Handler` chain (serve.go:177-195), so every browser
   POST — Connect reads and writes, and `/auth/logout` — is origin-gated as the
   broad primary defense. GET routes (`/auth/callback`, `/ui/` static assets) are
