@@ -320,10 +320,10 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 4. `TestConnectNoCORSHeaders` (or equivalent) remains green — no `Access-Control-Allow-Origin` is ever emitted from the Connect mux — preserved as a permanent CI gate, since same-origin (not `SameSite` alone) is the load-bearing CSRF mitigation.
 
 **Status**: Planned
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 **Wave 1**
 
-- [ ] 16-01-PLAN.md — webauth CSRF signer: HKDF sub-key of ui.cookie_key + HMAC-over-Owner double-submit signer (D-08)
+- [x] 16-01-PLAN.md — webauth CSRF signer: HKDF sub-key of ui.cookie_key + HMAC-over-Owner double-submit signer (D-08)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -435,7 +435,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 | 13. Embedder Reliability Foundation | v0.10.x | 3/3 | Complete    | 2026-07-11 |
 | 14. Embedder Model Options & Eval | v0.10.x | 3/3 | Complete    | 2026-07-11 |
 | 15. Additive Proto + Stub Write Handlers | v0.10.x | 4/4 | Complete    | 2026-07-11 |
-| 16. CSRF Interceptor | v0.10.x | 0/1 | Not started | - |
+| 16. CSRF Interceptor | v0.10.x | 1/3 | In Progress|  |
 | 17. Wired Write Handlers (Full CRUD + Schedule) | v0.10.x | 0/1 | Not started | - |
 | 18. Stateless Session Rotation | v0.10.x | 0/1 | Not started | - |
 | 19. Console Write UX | v0.10.x | 0/1 | Not started | - |

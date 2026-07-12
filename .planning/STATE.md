@@ -4,16 +4,16 @@ milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 16
 current_phase_name: CSRF Interceptor
-status: "Phase 15 shipped — PR #359"
+status: executing
 stopped_at: Phase 16 context gathered
-last_updated: "2026-07-12T01:17:16.613Z"
+last_updated: "2026-07-12T01:27:01.096Z"
 last_activity: 2026-07-12
-last_activity_desc: Phase 16 planning complete
+last_activity_desc: Phase 16 execution started
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 10
-  completed_plans: 10
+  total_plans: 13
+  completed_plans: 11
   percent: 75
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 16 — CSRF Interceptor (Phase 15 complete + verified)
+**Current focus:** Phase 16 — CSRF Interceptor
 
 ## Current Position
 
-Phase: 16 — CSRF Interceptor
-Plan: Not started
-Status: Phase 15 shipped — PR #359
-Last activity: 2026-07-12 — Phase 16 planning complete
+Phase: 16 (CSRF Interceptor) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-07-12 — Phase 16 execution started
 
 ## Deferred Items
 
@@ -82,6 +82,7 @@ cookie-auth security posture).
 - [Phase 15]: validate interceptor's CodeInternal branch (non-ValidationError) is covered via a fake protovalidate.Validator since a real validator over generated constraints only returns nil or *ValidationError (review finding #5)
 - [Phase 15]: Descriptor test pins per-field wire-shape tables (number/name/kind/cardinality/message-type) on Memory/ScopeCount/read messages, not just message names, per cross-AI review finding #6 (SC4)
 - [Phase 15]: Negative matrix uses a generic callWrite[Req, Resp] helper to keep the six write-RPC table uniform, and asserts GET-405 via generated engramv1connect Procedure constants rather than hardcoded paths (finding #6)
+- [Phase 16]: NewCSRFSigner returns (*CSRFSigner, error) rather than a bare *CSRFSigner, mirroring NewSessionCodec's fail-fast convention (D-08)
 
 ### Blockers/Concerns
 
@@ -92,7 +93,7 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-12T00:39:28.877Z
+Last session: 2026-07-12T01:24:30.114Z
 Stopped at: Phase 16 context gathered
 Resume file: .planning/phases/16-csrf-interceptor/16-CONTEXT.md
 
@@ -110,3 +111,4 @@ Resume file: .planning/phases/16-csrf-interceptor/16-CONTEXT.md
 | Phase 15 P02 | 6min | 2 tasks | 2 files |
 | Phase 15 P03 | 12min | 2 tasks | 4 files |
 | Phase 15 P04 | 12min | 2 tasks | 2 files |
+| Phase 16 P01 | 10min | 2 tasks | 2 files |
