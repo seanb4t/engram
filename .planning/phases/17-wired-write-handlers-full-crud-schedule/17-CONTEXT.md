@@ -104,7 +104,7 @@ the #1 milestone risk). This is the RPC after which #322 finally closes.
 
 ### Refactor scope *(discussed)*
 
-- **D-07 — Rewire reads through `deps.*` too (full uniform deps API).** Not just
+- **D-07 — Rewire reads through the `deps` layer too (full uniform deps API).** Not just
   the six write methods: the existing Connect **read** handlers that call
   `a.d.st.*` directly today (e.g. `GetMemory` connectapi.go:183-212) are rewired
   to call the refactored `deps.*` read methods, which now take a `caller`. This

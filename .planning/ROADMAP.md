@@ -350,11 +350,23 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 
 **Status**: Planned
 **Plans**: 5 plans (4 waves)
+**Wave 1**
+
 - [ ] 17-01-PLAN.md — Ordered owner-claim list + namespacing (D-04/D-05/D-06) [wave 1]
 - [ ] 17-02-PLAN.md — Store-interface extraction + caller-threaded deps.* refactor (D-01/D-02/D-03, landmines 1/2/3) [wave 1]
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 17-03-PLAN.md — protoconv conversion layer + round-trip tests (D-09) [wave 2]
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 17-04-PLAN.md — Fake store + six write handlers + read-lane rewire + negative-matrix fix (D-07/D-10/D-11) [wave 3]
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 17-05-PLAN.md — MCP↔Connect parity table + cross-owner re-wrap tables + idempotency-ban re-assert (D-10/D-11/D-12) [wave 4]
+
 **Flag for /gsd-secure-phase.**
 
 ### Phase 18: Stateless Session Rotation
