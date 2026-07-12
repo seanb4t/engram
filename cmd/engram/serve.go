@@ -127,6 +127,7 @@ func runServe(cmd *cobra.Command) error {
 	}
 
 	var connectResolve func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)
+	var connectCSRFVerify func(owner, token string) bool
 	var webHandler *webauth.Handler
 	if uiCfg.Enabled {
 		// resolveUIConfig guarantees uiCfg.Issuer is non-empty here (it defaults
@@ -139,6 +140,14 @@ func runServe(cmd *cobra.Command) error {
 		if err != nil {
 			return fmt.Errorf("session cookie key: %w", err)
 		}
+		kcsrf, err := webauth.DeriveCSRFKey(key)
+		if err != nil {
+			return fmt.Errorf("derive csrf key: %w", err)
+		}
+		csrfSigner, err := webauth.NewCSRFSigner(kcsrf)
+		if err != nil {
+			return fmt.Errorf("csrf signer: %w", err)
+		}
 		oidcCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		authr, err := webauth.NewAuthenticator(oidcCtx, uiCfg.Issuer, uiCfg.ClientID, uiCfg.ClientSecret, uiCfg.RedirectURL, cfg.OIDC.OwnerClaim)
 		cancel()
@@ -147,13 +156,14 @@ func runServe(cmd *cobra.Command) error {
 		}
 		webHandler = webauth.NewHandler(authr, codec, true)
 		connectResolve = webauth.NewResolver(codec).Resolve
+		connectCSRFVerify = csrfSigner.Verify
 		slog.Info("web UI auth lane enabled", "issuer", uiCfg.Issuer, "redirect", uiCfg.RedirectURL)
 	} else {
 		slog.Info("web UI disabled (headless); Connect API not mounted")
 	}
 
 	srv := mcp.NewServer(&mcp.Implementation{Name: "engram", Version: version}, nil)
-	drain, err := server.Register(srv, mux, tm, sqm, uqm, connectResolve)
+	drain, err := server.Register(srv, mux, tm, sqm, uqm, connectResolve, connectCSRFVerify)
 	if err != nil {
 		slog.Error("server registration failed", "err", err)
 		return err
