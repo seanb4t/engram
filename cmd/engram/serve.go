@@ -127,6 +127,7 @@ func runServe(cmd *cobra.Command) error {
 	}
 
 	var connectResolve func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)
+	var connectCSRFVerify func(owner, token string) bool
 	var webHandler *webauth.Handler
 	if uiCfg.Enabled {
 		// resolveUIConfig guarantees uiCfg.Issuer is non-empty here (it defaults
@@ -139,21 +140,30 @@ func runServe(cmd *cobra.Command) error {
 		if err != nil {
 			return fmt.Errorf("session cookie key: %w", err)
 		}
+		kcsrf, err := webauth.DeriveCSRFKey(key)
+		if err != nil {
+			return fmt.Errorf("derive csrf key: %w", err)
+		}
+		csrfSigner, err := webauth.NewCSRFSigner(kcsrf)
+		if err != nil {
+			return fmt.Errorf("csrf signer: %w", err)
+		}
 		oidcCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		authr, err := webauth.NewAuthenticator(oidcCtx, uiCfg.Issuer, uiCfg.ClientID, uiCfg.ClientSecret, uiCfg.RedirectURL, cfg.OIDC.OwnerClaim)
 		cancel()
 		if err != nil {
 			return fmt.Errorf("web UI OIDC discovery: %w", err)
 		}
-		webHandler = webauth.NewHandler(authr, codec, true)
+		webHandler = webauth.NewHandler(authr, codec, true, csrfSigner)
 		connectResolve = webauth.NewResolver(codec).Resolve
+		connectCSRFVerify = csrfSigner.Verify
 		slog.Info("web UI auth lane enabled", "issuer", uiCfg.Issuer, "redirect", uiCfg.RedirectURL)
 	} else {
 		slog.Info("web UI disabled (headless); Connect API not mounted")
 	}
 
 	srv := mcp.NewServer(&mcp.Implementation{Name: "engram", Version: version}, nil)
-	drain, err := server.Register(srv, mux, tm, sqm, uqm, connectResolve)
+	drain, err := server.Register(srv, mux, tm, sqm, uqm, connectResolve, connectCSRFVerify)
 	if err != nil {
 		slog.Error("server registration failed", "err", err)
 		return err
@@ -194,8 +204,14 @@ func runServe(cmd *cobra.Command) error {
 	// indefinitely and the go-sdk never clears write deadlines, so either
 	// timeout would sever long-lived SSE streams.
 	httpSrv := &http.Server{
-		Addr:              cfg.Server.ListenAddr,
-		Handler:           mux,
+		Addr: cfg.Server.ListenAddr,
+		// CrossOriginProtection wraps the fully-assembled mux (D-07 whole-
+		// server wrap, verified safe): it covers the Connect handler,
+		// /auth/*, /ui/, and the MCP transport in one place. Safe-method GET
+		// and no-Origin/no-Sec-Fetch-Site traffic (the MCP transport) pass
+		// Check() untouched; only cross-origin unsafe-method requests are
+		// rejected, before Connect ever parses them.
+		Handler:           newCrossOriginProtection().Handler(mux),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

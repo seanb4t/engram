@@ -564,7 +564,7 @@ func TestListMemoriesRejectsCursorModeWithOffset(t *testing.T) {
 func TestMountConnectSkipsWhenResolverNil(t *testing.T) {
 	d := &deps{} // no store needed; we never serve a request
 	mux := http.NewServeMux()
-	if err := d.mountConnect(mux, nil); err != nil {
+	if err := d.mountConnect(mux, nil, nil); err != nil {
 		t.Fatalf("mountConnect(nil): %v", err)
 	}
 	// With no resolver, the EngramService path must NOT be registered: a request
@@ -581,7 +581,7 @@ func TestMountConnectMountsWhenResolverPresent(t *testing.T) {
 	d := &deps{}
 	mux := http.NewServeMux()
 	resolve := func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error) { return nil, nil }
-	if err := d.mountConnect(mux, resolve); err != nil {
+	if err := d.mountConnect(mux, resolve, nil); err != nil {
 		t.Fatalf("mountConnect: %v", err)
 	}
 	rec := httptest.NewRecorder()

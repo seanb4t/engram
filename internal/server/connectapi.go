@@ -238,7 +238,7 @@ func (a *engramAPI) SearchDiscoveries(ctx context.Context, req *connect.Request[
 // all (R1): mountConnect returns immediately without registering any handler.
 type connectResolver func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)
 
-func (d *deps) mountConnect(mux *http.ServeMux, resolve connectResolver) error {
+func (d *deps) mountConnect(mux *http.ServeMux, resolve connectResolver, csrfVerify func(owner, token string) bool) error {
 	if resolve == nil {
 		return nil // R1: no resolver => UI disabled => Connect not mounted at all.
 	}
@@ -254,12 +254,16 @@ func (d *deps) mountConnect(mux *http.ServeMux, resolve connectResolver) error {
 		&engramAPI{d: d},
 		// Order: otel outermost (spans cover auth + logging), then access-log,
 		// then the subject interceptor that resolves identity (401), then the
-		// validate interceptor (400) — auth must run before validation (D-10)
-		// so an unauthenticated caller never sees field-level request detail.
+		// CSRF double-submit token interceptor (PermissionDenied, write-only,
+		// D-02), then the validate interceptor (400) — auth must run before
+		// CSRF and CSRF before validation (D-10/D-02) so neither an
+		// unauthenticated nor a CSRF-forged caller ever sees field-level
+		// request detail.
 		connect.WithInterceptors(
 			otelIc,
 			newConnectAccessLogInterceptor(slog.Default()),
 			newConnectSubjectInterceptor(resolve),
+			newConnectCSRFInterceptor(csrfVerify),
 			newConnectValidateInterceptor(validator),
 		),
 	)

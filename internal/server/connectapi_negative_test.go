@@ -22,11 +22,18 @@ import (
 
 // callWrite invokes a generated write-RPC client method with msg, optionally
 // stamping the X-Test-Actor header (actor == "" means unauthenticated), and
-// returns the resulting error (nil on success).
+// returns the resulting error (nil on success). An authenticated call also
+// carries a matching CSRF cookie/header pair so this matrix's existing
+// Unimplemented/Unauthenticated/InvalidArgument assertions stay unaffected
+// by the CSRF interceptor's insertion (Task 2) — the stub csrfVerify this
+// file's tests install always returns true, so any matching pair suffices;
+// CSRF-specific rejection behavior is exercised in connectcsrf_test.go.
 func callWrite[Req, Resp any](ctx context.Context, fn func(context.Context, *connect.Request[Req]) (*connect.Response[Resp], error), msg *Req, actor string) error {
 	req := connect.NewRequest(msg)
 	if actor != "" {
 		req.Header().Set("X-Test-Actor", actor)
+		req.Header().Set("Cookie", CSRFCookieName+"=test-token")
+		req.Header().Set(CSRFHeaderName, "test-token")
 	}
 	_, err := fn(ctx, req)
 	return err
@@ -62,8 +69,14 @@ func TestWriteRPCNegativeMatrix(t *testing.T) {
 		return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}}, nil
 	}
 
+	// TestWriteRPCNegativeMatrix pins the pre-CSRF negative matrix (Unimplemented
+	// / Unauthenticated / 405 / InvalidArgument): stub csrfVerify always
+	// returns true so the new CSRF layer never fires here, leaving these
+	// assertions unaffected by the CSRF interceptor's insertion (Task 2).
+	csrfVerify := func(_, _ string) bool { return true }
+
 	mux := http.NewServeMux()
-	if err := d.mountConnect(mux, resolve); err != nil {
+	if err := d.mountConnect(mux, resolve, csrfVerify); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(mux)

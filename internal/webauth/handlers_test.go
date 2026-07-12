@@ -4,6 +4,7 @@
 package webauth
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -25,16 +26,34 @@ func testHandler(t *testing.T) *Handler {
 		redirectURL: "https://x/auth/callback",
 		endpoint:    oauth2.Endpoint{AuthURL: "https://issuer/auth", TokenURL: "https://issuer/token"},
 	}
-	return NewHandler(a, codec, true /* secureCookies */)
+	return NewHandler(a, codec, true /* secureCookies */, testSigner(t))
+}
+
+// testSigner builds a CSRFSigner over a fixed, deterministic 32-byte key
+// (derived from testKey() via DeriveCSRFKey, mirroring how serve.go derives
+// k_csrf from ui.cookie_key) so tests can assert against a known token.
+func testSigner(t *testing.T) *CSRFSigner {
+	t.Helper()
+	k, err := DeriveCSRFKey(testKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewCSRFSigner(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
 }
 
 func TestNewHandlerPanicsOnNilDeps(t *testing.T) {
 	cases := map[string]struct {
-		auth  *Authenticator
-		codec *SessionCodec
+		auth   *Authenticator
+		codec  *SessionCodec
+		signer *CSRFSigner
 	}{
-		"nil auth":  {nil, mustCodec(t)},
-		"nil codec": {&Authenticator{}, nil},
+		"nil auth":   {nil, mustCodec(t), &CSRFSigner{}},
+		"nil codec":  {&Authenticator{}, nil, &CSRFSigner{}},
+		"nil signer": {&Authenticator{}, mustCodec(t), nil},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -43,7 +62,7 @@ func TestNewHandlerPanicsOnNilDeps(t *testing.T) {
 					t.Fatal("NewHandler did not panic on a nil dependency; nil must fail at construction, not first request")
 				}
 			}()
-			NewHandler(tc.auth, tc.codec, true)
+			NewHandler(tc.auth, tc.codec, true, tc.signer)
 		})
 	}
 }
@@ -123,6 +142,73 @@ func TestCallbackRejectsMissingCode(t *testing.T) {
 	h.Callback(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d want 400 (missing code)", rec.Code)
+	}
+}
+
+// TestCallbackMintsCSRFCookie proves the cookie-mint shape (SC2, D-08): a
+// successful Callback issues an engram_csrf Set-Cookie alongside the session
+// cookie, non-HttpOnly, Secure, SameSite=Lax, valued exactly
+// signer.Token(owner) — the same value the Connect CSRF interceptor's verify
+// closure independently re-derives.
+func TestCallbackMintsCSRFCookie(t *testing.T) {
+	const clientID = "test-client"
+	const owner = "user@example.com"
+	issuer := newFakeOIDCServer(t, clientID, map[string]any{"email": owner, "email_verified": true}, fakeOIDCOpts{})
+
+	ctx := context.Background()
+	a, err := NewAuthenticator(ctx, issuer, clientID, "secret", "https://engram.example/auth/callback", "email")
+	if err != nil {
+		t.Fatalf("NewAuthenticator: %v", err)
+	}
+	codec, err := NewSessionCodec(testKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := testSigner(t)
+	h := NewHandler(a, codec, true, signer)
+
+	fs, err := json.Marshal(flowState{State: "good", Verifier: "test-verifier"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := codec.sealBytes(fs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/auth/callback?code=test-code&state=good", nil)
+	req.AddCookie(&http.Cookie{Name: flowCookieName, Value: sealed})
+	h.Callback(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status=%d want %d; body=%s", rec.Code, http.StatusFound, rec.Body.String())
+	}
+
+	res := rec.Result()
+	defer res.Body.Close()
+	var csrfCookie *http.Cookie
+	for _, c := range res.Cookies() {
+		if c.Name == CSRFCookieName {
+			csrfCookie = c
+			break
+		}
+	}
+	if csrfCookie == nil {
+		t.Fatalf("no %s cookie in response: %q", CSRFCookieName, rec.Header().Get("Set-Cookie"))
+	}
+	if csrfCookie.HttpOnly {
+		t.Fatal("engram_csrf cookie must NOT be HttpOnly (SC2 — JS must read it to echo the header)")
+	}
+	if !csrfCookie.Secure {
+		t.Fatal("engram_csrf cookie must be Secure")
+	}
+	if csrfCookie.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("SameSite=%v want SameSiteLaxMode", csrfCookie.SameSite)
+	}
+	want := signer.Token(owner)
+	if csrfCookie.Value != want {
+		t.Fatalf("csrf cookie value=%q want %q", csrfCookie.Value, want)
 	}
 }
 

@@ -27,18 +27,25 @@ type Handler struct {
 	auth   *Authenticator
 	codec  *SessionCodec
 	secure bool // Secure attribute on Set-Cookie (false only for plaintext local dev)
+	signer *CSRFSigner
 }
 
-// NewHandler builds a Handler over an Authenticator and SessionCodec; secure
-// sets the Secure attribute on issued cookies (false only for plaintext dev).
-func NewHandler(auth *Authenticator, codec *SessionCodec, secure bool) *Handler {
+// NewHandler builds a Handler over an Authenticator, SessionCodec, and
+// CSRFSigner; secure sets the Secure attribute on issued cookies (false only
+// for plaintext dev). signer must be the SAME instance whose Verify is wired
+// into the Connect CSRF interceptor (server.Register) — issuance (Callback)
+// and verification MUST compute the same HMAC(k_csrf, Owner).
+func NewHandler(auth *Authenticator, codec *SessionCodec, secure bool, signer *CSRFSigner) *Handler {
 	if auth == nil {
 		panic("webauth: NewHandler requires a non-nil Authenticator")
 	}
 	if codec == nil {
 		panic("webauth: NewHandler requires a non-nil SessionCodec")
 	}
-	return &Handler{auth: auth, codec: codec, secure: secure}
+	if signer == nil {
+		panic("webauth: NewHandler requires a non-nil CSRFSigner")
+	}
+	return &Handler{auth: auth, codec: codec, secure: secure, signer: signer}
 }
 
 // flowState is sealed into the flow cookie so state+verifier survive the
@@ -81,6 +88,26 @@ func (h *Handler) setCookie(w http.ResponseWriter, name, value string, ttl time.
 		Value:    value,
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   h.secure,
+		SameSite: http.SameSiteLaxMode,
+		Expires:  nowUTC().Add(ttl),
+		MaxAge:   int(ttl.Seconds()),
+	})
+}
+
+// setReadableCookie writes a Secure, SameSite=Lax cookie scoped to "/" that
+// is deliberately NOT HttpOnly (unlike setCookie): same-origin browser JS
+// must be able to read it and echo its value as the X-CSRF-Token header
+// (SC2). Non-HttpOnly is the load-bearing double-submit property here, not a
+// leak — the cookie never crosses plaintext (Secure) and same-origin secrecy
+// (an attacker page cannot read another origin's cookies) is what makes the
+// echoed header prove same-origin JS ran (D-08).
+func (h *Handler) setReadableCookie(w http.ResponseWriter, name, value string, ttl time.Duration) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     name,
+		Value:    value,
+		Path:     "/",
+		HttpOnly: false,
 		Secure:   h.secure,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  nowUTC().Add(ttl),
@@ -152,6 +179,11 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.setCookie(w, sessionCookieName, sealed, sessionTTL)
+	// Mint the double-submit CSRF cookie alongside the session cookie (SC2
+	// live end-to-end this phase, not deferred to the Phase-19 client — see
+	// RESEARCH.md Pitfall 5). Value is HMAC(k_csrf, Owner) only, so it
+	// survives the Phase-18 sliding session re-seal without rotating (D-08).
+	h.setReadableCookie(w, CSRFCookieName, h.signer.Token(owner), sessionTTL)
 	http.Redirect(w, r, "/ui/", http.StatusFound)
 }
 

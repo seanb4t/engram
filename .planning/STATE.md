@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
-current_phase: 16
-current_phase_name: CSRF Interceptor
-status: "Phase 15 shipped — PR #359"
-stopped_at: Completed 15-04-PLAN.md (phase 15 complete)
-last_updated: "2026-07-12T00:01:15.022Z"
-last_activity: 2026-07-11
+current_phase: 17
+current_phase_name: Full CRUD + Schedule
+status: "Phase 16 shipped — PR #361"
+stopped_at: Completed 16-03-PLAN.md
+last_updated: "2026-07-12T11:16:02.382Z"
+last_activity: 2026-07-12
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 10
-  completed_plans: 10
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 13
+  completed_plans: 13
   percent: 100
 ---
 
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 16 — CSRF Interceptor (Phase 15 complete + verified)
+**Current focus:** Phase 16 — CSRF Interceptor
 
 ## Current Position
 
-Phase: 16 — CSRF Interceptor
+Phase: 17 — Wired Write Handlers (Full CRUD + Schedule)
 Plan: Not started
-Status: Phase 15 shipped — PR #359
-Last activity: 2026-07-11
+Status: Phase 16 shipped — PR #361
+Last activity: 2026-07-12
 
 ## Deferred Items
 
@@ -81,6 +81,11 @@ cookie-auth security posture).
 - [Phase 15]: validate interceptor's CodeInternal branch (non-ValidationError) is covered via a fake protovalidate.Validator since a real validator over generated constraints only returns nil or *ValidationError (review finding #5)
 - [Phase 15]: Descriptor test pins per-field wire-shape tables (number/name/kind/cardinality/message-type) on Memory/ScopeCount/read messages, not just message names, per cross-AI review finding #6 (SC4)
 - [Phase 15]: Negative matrix uses a generic callWrite[Req, Resp] helper to keep the six write-RPC table uniform, and asserts GET-405 via generated engramv1connect Procedure constants rather than hardcoded paths (finding #6)
+- [Phase 16]: NewCSRFSigner returns (*CSRFSigner, error) rather than a bare *CSRFSigner, mirroring NewSessionCodec's fail-fast convention (D-08)
+- [Phase 16 P02]: TestWriteRPCNegativeMatrix's callWrite auto-attaches a matching CSRF cookie/header pair for authenticated calls (stub csrfVerify always true) so the pre-existing four-cell matrix stays green alongside the new CSRF interceptor
+- [Phase 16 P02]: TestReadRPCsCSRFExempt uses testDeps(t) (real Qdrant) instead of a bare deps{} -- read handlers dereference deps.st/em directly, unlike the still-Unimplemented write stubs
+- [Phase 16 P02]: connectcsrf_test.go's token-matrix verify is a local inline HMAC replica, not an internal/webauth import -- preserves the internal/server -> internal/webauth layering boundary
+- [Phase 16]: Minted the engram_csrf cookie in webauth.Handler.Callback this phase (not deferred to Phase 19) — SC2 is live end-to-end via a real fake-OIDC Callback test, per RESEARCH.md's resolved Open Question 1
 
 ### Blockers/Concerns
 
@@ -91,9 +96,9 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-11T22:37:38.690Z
-Stopped at: Completed 15-04-PLAN.md (phase 15 complete)
-Resume file: None
+Last session: 2026-07-12T01:52:28.708Z
+Stopped at: Completed 16-03-PLAN.md
+Resume file: .planning/phases/16-csrf-interceptor/16-CONTEXT.md
 
 ## Performance Metrics
 
@@ -109,3 +114,6 @@ Resume file: None
 | Phase 15 P02 | 6min | 2 tasks | 2 files |
 | Phase 15 P03 | 12min | 2 tasks | 4 files |
 | Phase 15 P04 | 12min | 2 tasks | 2 files |
+| Phase 16 P01 | 10min | 2 tasks | 2 files |
+| Phase 16 P02 | 25min | 3 tasks | 9 files |
+| Phase 16 P03 | 20min | 3 tasks | 5 files |
