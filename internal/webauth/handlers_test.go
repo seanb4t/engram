@@ -25,16 +25,34 @@ func testHandler(t *testing.T) *Handler {
 		redirectURL: "https://x/auth/callback",
 		endpoint:    oauth2.Endpoint{AuthURL: "https://issuer/auth", TokenURL: "https://issuer/token"},
 	}
-	return NewHandler(a, codec, true /* secureCookies */)
+	return NewHandler(a, codec, true /* secureCookies */, testSigner(t))
+}
+
+// testSigner builds a CSRFSigner over a fixed, deterministic 32-byte key
+// (derived from testKey() via DeriveCSRFKey, mirroring how serve.go derives
+// k_csrf from ui.cookie_key) so tests can assert against a known token.
+func testSigner(t *testing.T) *CSRFSigner {
+	t.Helper()
+	k, err := DeriveCSRFKey(testKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewCSRFSigner(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
 }
 
 func TestNewHandlerPanicsOnNilDeps(t *testing.T) {
 	cases := map[string]struct {
-		auth  *Authenticator
-		codec *SessionCodec
+		auth   *Authenticator
+		codec  *SessionCodec
+		signer *CSRFSigner
 	}{
-		"nil auth":  {nil, mustCodec(t)},
-		"nil codec": {&Authenticator{}, nil},
+		"nil auth":   {nil, mustCodec(t), &CSRFSigner{}},
+		"nil codec":  {&Authenticator{}, nil, &CSRFSigner{}},
+		"nil signer": {&Authenticator{}, mustCodec(t), nil},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -43,7 +61,7 @@ func TestNewHandlerPanicsOnNilDeps(t *testing.T) {
 					t.Fatal("NewHandler did not panic on a nil dependency; nil must fail at construction, not first request")
 				}
 			}()
-			NewHandler(tc.auth, tc.codec, true)
+			NewHandler(tc.auth, tc.codec, true, tc.signer)
 		})
 	}
 }

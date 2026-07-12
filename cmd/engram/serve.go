@@ -154,7 +154,7 @@ func runServe(cmd *cobra.Command) error {
 		if err != nil {
 			return fmt.Errorf("web UI OIDC discovery: %w", err)
 		}
-		webHandler = webauth.NewHandler(authr, codec, true)
+		webHandler = webauth.NewHandler(authr, codec, true, csrfSigner)
 		connectResolve = webauth.NewResolver(codec).Resolve
 		connectCSRFVerify = csrfSigner.Verify
 		slog.Info("web UI auth lane enabled", "issuer", uiCfg.Issuer, "redirect", uiCfg.RedirectURL)
