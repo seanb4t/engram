@@ -76,7 +76,7 @@ Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
 - [x] **Phase 13: Embedder Reliability Foundation** - Configurable HTTP timeout (re-derived backoff budget) + base-URL `/v1` join fix across every provider shape + embedder-config-identity payload stamp (completed 2026-07-11)
 - [x] **Phase 14: Embedder Model Options & Eval** - Direct Gemini embeddings (eval-verified task_type behavior) + #261 prod-parity re-confirm on qwen3 + docs-site/Helm model recipes (completed 2026-07-11)
 - [x] **Phase 15: Additive Proto + Stub Write Handlers** - Six new write RPCs (additive-only, buf-generated), CI lint gate against `idempotency_level`, safe `CodeUnimplemented` stubs (completed 2026-07-11)
-- [ ] **Phase 16: CSRF Interceptor** - Origin/Sec-Fetch-Site primary defense + session-bound double-submit token on every write RPC; read lane untouched
+- [x] **Phase 16: CSRF Interceptor** - Origin/Sec-Fetch-Site primary defense + session-bound double-submit token on every write RPC; read lane untouched (completed 2026-07-12)
 - [ ] **Phase 17: Wired Write Handlers (Full CRUD + Schedule)** - deps.* subject/actor refactor + all six write RPCs delegating to the shared MCP business-logic layer, MCP/Connect parity-tested
 - [ ] **Phase 18: Stateless Session Rotation** - Sliding-expiry cookie re-seal on every authenticated request, new ADR for the no-revocation trade-off, no server-side state
 - [ ] **Phase 19: Console Write UX** - Create/edit/delete/re-share/schedule from the operator console over the write lane, with CSRF + silent re-seal retry
@@ -435,7 +435,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 | 13. Embedder Reliability Foundation | v0.10.x | 3/3 | Complete    | 2026-07-11 |
 | 14. Embedder Model Options & Eval | v0.10.x | 3/3 | Complete    | 2026-07-11 |
 | 15. Additive Proto + Stub Write Handlers | v0.10.x | 4/4 | Complete    | 2026-07-11 |
-| 16. CSRF Interceptor | v0.10.x | 3/3 | Complete   | 2026-07-12 |
+| 16. CSRF Interceptor | v0.10.x | 3/3 | Complete    | 2026-07-12 |
 | 17. Wired Write Handlers (Full CRUD + Schedule) | v0.10.x | 0/1 | Not started | - |
 | 18. Stateless Session Rotation | v0.10.x | 0/1 | Not started | - |
 | 19. Console Write UX | v0.10.x | 0/1 | Not started | - |
