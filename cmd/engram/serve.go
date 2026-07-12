@@ -204,8 +204,14 @@ func runServe(cmd *cobra.Command) error {
 	// indefinitely and the go-sdk never clears write deadlines, so either
 	// timeout would sever long-lived SSE streams.
 	httpSrv := &http.Server{
-		Addr:              cfg.Server.ListenAddr,
-		Handler:           mux,
+		Addr: cfg.Server.ListenAddr,
+		// CrossOriginProtection wraps the fully-assembled mux (D-07 whole-
+		// server wrap, verified safe): it covers the Connect handler,
+		// /auth/*, /ui/, and the MCP transport in one place. Safe-method GET
+		// and no-Origin/no-Sec-Fetch-Site traffic (the MCP transport) pass
+		// Check() untouched; only cross-origin unsafe-method requests are
+		// rejected, before Connect ever parses them.
+		Handler:           newCrossOriginProtection().Handler(mux),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
