@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.8.5](https://github.com/seanb4t/engram/compare/v0.8.4...v0.8.5) (2026-07-12)
+
+
+### Features
+
+* **api:** additive Connect write-RPC wire contract + protovalidate interceptor ([#322](https://github.com/seanb4t/engram/issues/322)) ([#359](https://github.com/seanb4t/engram/issues/359)) ([7d17c53](https://github.com/seanb4t/engram/commit/7d17c5346e4c70c287ebd289e5e0165f2ee4c264))
+* **embed:** phase 13 — embedder reliability foundation (timeout, base-URL join, config-identity) ([#348](https://github.com/seanb4t/engram/issues/348)) ([3acd662](https://github.com/seanb4t/engram/commit/3acd662db49d34ad50a7f4fdf794f89ebdd8b4bd))
+* **server:** write-lane CSRF defense (CrossOriginProtection + double-submit interceptor) ([#322](https://github.com/seanb4t/engram/issues/322)) ([#361](https://github.com/seanb4t/engram/issues/361)) ([fed9050](https://github.com/seanb4t/engram/commit/fed9050c9c6e1819e267b6a3cf3b313493563e46))
+* v0.9.x recall-quality milestone (eval harness, async summaries, usage signals) ([#336](https://github.com/seanb4t/engram/issues/336)) ([658795e](https://github.com/seanb4t/engram/commit/658795e97852448bc792a20c2f1a020d59743000))
+
+
+### Bug Fixes
+
+* **lint:** exclude node_modules from yamlfmt (follow-up to [#314](https://github.com/seanb4t/engram/issues/314)) ([#329](https://github.com/seanb4t/engram/issues/329)) ([a52162a](https://github.com/seanb4t/engram/commit/a52162a2152f75b26b317f828744ef7f13aa0437))
+* **lint:** green up local rumdl + yamlfmt gate ([#314](https://github.com/seanb4t/engram/issues/314)) ([#325](https://github.com/seanb4t/engram/issues/325)) ([fc045d7](https://github.com/seanb4t/engram/commit/fc045d714ed97d3b32996b83e7c63aca8f424975))
+* **ui:** clear svelte-check TS2590 in vendored shadcn primitives ([#311](https://github.com/seanb4t/engram/issues/311)) ([#326](https://github.com/seanb4t/engram/issues/326)) ([68db077](https://github.com/seanb4t/engram/commit/68db0777e09639f2fcb1c902f0c73cc51537bf63))
+
 ## [0.8.4](https://github.com/seanb4t/engram/compare/v0.8.3...v0.8.4) (2026-07-09)
 
 
