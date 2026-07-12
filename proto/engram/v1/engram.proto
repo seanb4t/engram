@@ -152,11 +152,15 @@ message StoreDiscoveryResponse {
 // enforces the mask's STRUCTURE only — presence (field rule below), non-empty
 // paths, and an allowlist of {content, shared, tags, summary} (message-level CEL
 // below) — via the Plan 03 protovalidate interceptor. `content`, `shared`, `tags`,
-// and `summary` are each independently updatable via their own mask path (e.g. a
-// tags-only update that does not touch content and therefore does not re-embed).
-// The SEMANTIC application of the mask (the deps/store partial-update path that
-// actually updates only the named fields, plus DEC-ddiw summary reconciliation) is
-// Phase 17 scope.
+// and `summary` are each independently updatable via their own mask path. Only a
+// shared-only and/or summary-only update (neither `content` nor `tags` in the
+// mask) skips the re-embed and routes to a payload-only, vector-preserving store
+// write — a `tags`-only update DOES re-embed, because tags are folded into the
+// embedded document text (store.EmbedText) alongside content, so a tag change
+// changes what was embedded (17-02 landmine 2/round-2 review MEDIUM reconcile
+// item 6). The SEMANTIC application of the mask (the deps/store partial-update
+// path that actually updates only the named fields, plus DEC-ddiw summary
+// reconciliation) is Phase 17 scope.
 message UpdateMemoryRequest {
   option (buf.validate.message).cel = {
     id: "update_memory.mask"

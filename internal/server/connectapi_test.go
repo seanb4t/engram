@@ -600,7 +600,7 @@ func TestMountConnectMountsWhenResolverPresent(t *testing.T) {
 func TestConnectGetMemoryByShortIDAndProtoField(t *testing.T) {
 	d := testDeps(t)
 	ctxA := authedContext(t, "owner-A")
-	id, sid, err := d.storeMemory(ctxA, storeArgs{Content: "hello", Scope: "s", Category: "gotcha", Source: "user-said"})
+	id, sid, err := d.storeMemory(ctxA, callerFor(ctxA, t), storeArgs{Content: "hello", Scope: "s", Category: "gotcha", Source: "user-said"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -627,7 +627,7 @@ func TestConnectGetMemoryByShortIDAndProtoField(t *testing.T) {
 func TestConnectGetMemoryCrossOwnerShortIDDoesNotLeakUUID(t *testing.T) {
 	d := testDeps(t)
 	ctxA := authedContext(t, "owner-A")
-	id, sid, err := d.storeMemory(ctxA, storeArgs{Content: "secret", Scope: "s", Category: "gotcha", Source: "user-said"})
+	id, sid, err := d.storeMemory(ctxA, callerFor(ctxA, t), storeArgs{Content: "secret", Scope: "s", Category: "gotcha", Source: "user-said"})
 	if err != nil {
 		t.Fatal(err)
 	}

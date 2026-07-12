@@ -73,15 +73,18 @@ func validateStoreRule(a storeRuleArgs) error {
 
 // validateRuleSummary enforces the shared summary contract for rules: non-empty,
 // single physical line, within the byte cap. Reused by the update_memory guard.
+// Every rejection is wrapped with the existing store.ErrInvalidArgument (review
+// finding 5) so a Connect UpdateMemory call violating the rule-summary contract
+// maps to CodeInvalidArgument, not CodeInternal, once 17-04 wires connectError.
 func validateRuleSummary(summary string) error {
 	if summary == "" {
-		return fmt.Errorf("summary is required for a rule (it is the one-line index entry)")
+		return fmt.Errorf("summary is required for a rule (it is the one-line index entry): %w", store.ErrInvalidArgument)
 	}
 	if strings.ContainsAny(summary, "\r\n") {
-		return fmt.Errorf("rule summary must be a single line (no newlines); it is the index entry")
+		return fmt.Errorf("rule summary must be a single line (no newlines); it is the index entry: %w", store.ErrInvalidArgument)
 	}
 	if len(summary) > maxRuleSummaryBytes {
-		return fmt.Errorf("summary too long: %d bytes (max %d)", len(summary), maxRuleSummaryBytes)
+		return fmt.Errorf("summary too long: %d bytes (max %d): %w", len(summary), maxRuleSummaryBytes, store.ErrInvalidArgument)
 	}
 	return nil
 }
@@ -89,12 +92,8 @@ func validateRuleSummary(summary string) error {
 // storeRule persists a normative rule, mirroring storeDiscovery: it resolves
 // and validates ownership for an in-place replace (a.ID set), mints or
 // carries forward the short_id, and returns (id, short_id, error).
-func (d *deps) storeRule(ctx context.Context, a storeRuleArgs) (string, string, error) {
+func (d *deps) storeRule(ctx context.Context, c caller, a storeRuleArgs) (string, string, error) {
 	if err := validateStoreRule(a); err != nil {
-		return "", "", err
-	}
-	subj, err := subjectFromContext(ctx)
-	if err != nil {
 		return "", "", err
 	}
 
@@ -106,7 +105,7 @@ func (d *deps) storeRule(ctx context.Context, a storeRuleArgs) (string, string, 
 			return "", "", rerr
 		}
 		pointID = resolved
-		if err := d.st.OwnedOrAbsent(ctx, pointID, subj); err != nil {
+		if err := d.st.OwnedOrAbsent(ctx, pointID, c.Subj); err != nil {
 			// Re-wrap not-found with the caller's ORIGINAL input: pointID may be
 			// another owner's record resolved from their short id, and echoing the
 			// resolved UUID would leak existence/identity (404-indistinguishability).
@@ -147,8 +146,8 @@ func (d *deps) storeRule(ctx context.Context, a storeRuleArgs) (string, string, 
 		Tags:             a.Tags,
 		Summary:          a.Summary,
 		SummarySource:    store.SummarySourceClient,
-		Actor:            actorFromContext(ctx),
-		Owner:            subj.Owner(),
+		Actor:            c.Actor,
+		Owner:            c.Subj.Owner(),
 		CreatedAt:        d.clock(),
 		EmbedderIdentity: d.embedderIdentity,
 	}
@@ -182,7 +181,7 @@ func toRuleView(m store.Memory) ruleView {
 // oldest-first, as compact ruleView values (or full store.Memory when full).
 // The second return is a human-readable curation advisory for the tool's
 // textResult (empty when under threshold); it never changes the {rules} payload.
-func (d *deps) listRules(ctx context.Context, a listRulesArgs) (out []any, advisory string, err error) {
+func (d *deps) listRules(ctx context.Context, c caller, a listRulesArgs) (out []any, advisory string, err error) {
 	if len(a.Scopes) == 0 {
 		return nil, "", fmt.Errorf("at least one rule scope is required")
 	}
@@ -191,14 +190,10 @@ func (d *deps) listRules(ctx context.Context, a listRulesArgs) (out []any, advis
 			return nil, "", fmt.Errorf("scope must be rule:repo:<repo> or rule:project:<project>, got %q", sc)
 		}
 	}
-	subj, err := subjectFromContext(ctx)
-	if err != nil {
-		return nil, "", err
-	}
 	var over []string
 	for _, sc := range a.Scopes {
 		// Limit:0 = all; Ascending = oldest-first; Categories pins the rule kind.
-		ms, _, _, lerr := d.st.List(ctx, sc, subj, store.ListOptions{
+		ms, _, _, lerr := d.st.List(ctx, sc, c.Subj, store.ListOptions{
 			Limit:      0,
 			Ascending:  true,
 			Categories: []string{"rule"},
