@@ -4,11 +4,10 @@ milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 16
 current_phase_name: CSRF Interceptor
-status: verifying
+status: "Phase 15 shipped — PR #359"
 stopped_at: Completed 15-04-PLAN.md (phase 15 complete)
-last_updated: "2026-07-11T22:53:12.308Z"
+last_updated: "2026-07-12T00:01:15.022Z"
 last_activity: 2026-07-11
-last_activity_desc: Phase 15 complete, transitioned to Phase 16
 progress:
   total_phases: 3
   completed_phases: 3
@@ -30,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 Phase: 16 — CSRF Interceptor
 Plan: Not started
-Status: Phase 15 complete + verified (4/4 must-haves) — Phase 16 not started
-Last activity: 2026-07-11 — Phase 15 complete + verified, transitioned to Phase 16
+Status: Phase 15 shipped — PR #359
+Last activity: 2026-07-11
 
 ## Deferred Items
 
