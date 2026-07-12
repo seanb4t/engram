@@ -6,15 +6,15 @@ current_phase: 17
 current_phase_name: wired-write-handlers-full-crud-schedule
 status: executing
 stopped_at: Completed 17-01-PLAN.md
-last_updated: "2026-07-12T22:35:55.733Z"
+last_updated: "2026-07-12T23:03:00.808Z"
 last_activity: 2026-07-12
 last_activity_desc: Phase 17 execution started
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 19
-  completed_plans: 14
-  percent: 74
+  completed_plans: 15
+  percent: 79
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 ## Current Position
 
 Phase: 17 (wired-write-handlers-full-crud-schedule) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-07-12 — Phase 17 execution started
 
@@ -90,6 +90,9 @@ cookie-auth security posture).
 - [Phase 17]: [Phase 17 P01] Non-email owner encoding uses fmt.Sprintf("%d:%s:%d:%s", len(claim), claim, len(value), value) instead of the ambiguous claim:value form, closing the (sub,x:y)/(sub:x,y) collision (D-06 hardened)
 - [Phase 17]: [Phase 17 P01] Session cookie payload versioned (SessionCodec.Seal auto-injects); Resolve rejects any legacy/mismatched-version cookie with the same generic invalid-session error, forcing automatic re-login on the owner-encoding rollout without a manual --ui-cookie-key rotation
 - [Phase 17]: [Phase 17 P01] ENGRAM_OWNER_CLAIM parsing (config.ParseOwnerClaims) kept strictly separate from defaulting; registry still supplies default email when unset; malformed comma-lists (duplicate/interior-empty/bad claim name) fail fast rather than silently normalizing
+- [Phase 17]: [Phase 17 P02] UpdatePayload uses a targeted two-op SetPayload+DeletePayload (not a whole-payload OverwritePayload) to avoid content/vector desync from a stale FetchForUpdate snapshot with no CAS
+- [Phase 17]: [Phase 17 P02] callerFromTokenInfo is the single choke point for both auth lanes; Actor falls back to the resolved owner when TokenInfo.UserID is empty (Connect cookie lane never sets it)
+- [Phase 17]: [Phase 17 P02] errRuleImmutable is a NEW sentinel; errStaleSummary is REUSED unchanged (not redeclared)
 
 ### Blockers/Concerns
 
@@ -100,7 +103,7 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-12T22:35:55.727Z
+Last session: 2026-07-12T23:02:25.441Z
 Stopped at: Completed 17-01-PLAN.md
 Resume file: None
 
@@ -122,3 +125,4 @@ Resume file: None
 | Phase 16 P02 | 25min | 3 tasks | 9 files |
 | Phase 16 P03 | 20min | 3 tasks | 5 files |
 | Phase 17 P01 | 35min | 3 tasks | 13 files |
+| Phase 17 P02 | 25min | 3 tasks | 14 files |
