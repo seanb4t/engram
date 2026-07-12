@@ -6,14 +6,14 @@ current_phase: 16
 current_phase_name: CSRF Interceptor
 status: executing
 stopped_at: Phase 16 context gathered
-last_updated: "2026-07-12T01:27:01.096Z"
+last_updated: "2026-07-12T01:42:12.798Z"
 last_activity: 2026-07-12
 last_activity_desc: Phase 16 execution started
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 13
-  completed_plans: 11
+  completed_plans: 12
   percent: 75
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 ## Current Position
 
 Phase: 16 (CSRF Interceptor) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-12 — Phase 16 execution started
 
@@ -83,6 +83,9 @@ cookie-auth security posture).
 - [Phase 15]: Descriptor test pins per-field wire-shape tables (number/name/kind/cardinality/message-type) on Memory/ScopeCount/read messages, not just message names, per cross-AI review finding #6 (SC4)
 - [Phase 15]: Negative matrix uses a generic callWrite[Req, Resp] helper to keep the six write-RPC table uniform, and asserts GET-405 via generated engramv1connect Procedure constants rather than hardcoded paths (finding #6)
 - [Phase 16]: NewCSRFSigner returns (*CSRFSigner, error) rather than a bare *CSRFSigner, mirroring NewSessionCodec's fail-fast convention (D-08)
+- [Phase 16 P02]: TestWriteRPCNegativeMatrix's callWrite auto-attaches a matching CSRF cookie/header pair for authenticated calls (stub csrfVerify always true) so the pre-existing four-cell matrix stays green alongside the new CSRF interceptor
+- [Phase 16 P02]: TestReadRPCsCSRFExempt uses testDeps(t) (real Qdrant) instead of a bare deps{} -- read handlers dereference deps.st/em directly, unlike the still-Unimplemented write stubs
+- [Phase 16 P02]: connectcsrf_test.go's token-matrix verify is a local inline HMAC replica, not an internal/webauth import -- preserves the internal/server -> internal/webauth layering boundary
 
 ### Blockers/Concerns
 
@@ -93,7 +96,7 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-12T01:24:30.114Z
+Last session: 2026-07-12T01:39:33.204Z
 Stopped at: Phase 16 context gathered
 Resume file: .planning/phases/16-csrf-interceptor/16-CONTEXT.md
 
@@ -112,3 +115,4 @@ Resume file: .planning/phases/16-csrf-interceptor/16-CONTEXT.md
 | Phase 15 P03 | 12min | 2 tasks | 4 files |
 | Phase 15 P04 | 12min | 2 tasks | 2 files |
 | Phase 16 P01 | 10min | 2 tasks | 2 files |
+| Phase 16 P02 | 25min | 3 tasks | 9 files |
