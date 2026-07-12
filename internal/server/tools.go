@@ -794,37 +794,85 @@ func subjectFromContext(ctx context.Context) (store.Subject, error) {
 	return SubjectFromTokenInfo(mcpauth.TokenInfoFromContext(ctx))
 }
 
-func (d *deps) listMemory(ctx context.Context, a listArgs) ([]any, string, error) {
-	if a.Limit == 0 {
-		a.Limit = 20
-	}
-	after, err := parseRFC3339(a.CreatedAfter)
-	if err != nil {
-		return nil, "", fmt.Errorf("created_after: %w", err)
-	}
-	before, err := parseRFC3339(a.CreatedBefore)
-	if err != nil {
-		return nil, "", fmt.Errorf("created_before: %w", err)
-	}
-	subj, err := subjectFromContext(ctx)
-	if err != nil {
-		return nil, "", err
-	}
-	ms, _, next, err := d.st.List(ctx, a.Scope, subj, store.ListOptions{
-		Limit:         a.Limit,
-		Tags:          a.Tags,
-		CreatedAfter:  after,
-		CreatedBefore: before,
-		Cursor:        a.Cursor,
-		CursorMode:    true,
-	})
-	if err != nil {
-		return nil, "", err
-	}
-	return shapeRecall(ms, a.Full, d.summaryMaxChars), next, nil
+// coreListRequest is the transport-neutral list request: a SUPERSET of both the
+// MCP list_memory args and the Connect ListMemories fields (D-07). It carries
+// every Connect field (Offset, Categories, Visibility, exact Total via the
+// result) so the Connect read rewire (17-04) drops nothing. CreatedAfter/
+// CreatedBefore are time.Time (round-4 MED-6): each transport parses its own
+// wire form (RFC3339 string for MCP, proto Timestamp for Connect) at its own
+// boundary BEFORE building this request, so a parse failure is owned by the
+// transport and never misclassified by connectError as CodeInternal. Limit==0
+// carries NO "default to 20" meaning here (round-4 finding-7): each adapter
+// applies its own default (MCP 20, Connect leaves 0 = "all", store.go:873-874)
+// before calling deps.listMemory. CursorMode is carried from the request, not
+// hardcoded (round-3 HIGH-2) — the MCP list_memory closure sets it true to
+// preserve today's unconditional MCP cursor-mode pagination.
+type coreListRequest struct {
+	Scope         string
+	Limit         uint64
+	Offset        uint64
+	Categories    []string
+	Visibility    string
+	Tags          []string
+	CreatedAfter  time.Time
+	CreatedBefore time.Time
+	Cursor        string
+	CursorMode    bool
 }
 
-func (d *deps) listScheduled(ctx context.Context, a listScheduledArgs) ([]store.Memory, error) {
+// coreListResult is the typed list result: raw []store.Memory (no []any, no
+// MCP/Connect-specific shaping — each transport shapes its own presentation),
+// the exact matched Total (store.go's server-side Count, not a page-size
+// approximation), and NextToken (empty in offset mode; populated only by a
+// full first page in cursor mode — store.go:817/:865).
+type coreListResult struct {
+	Memories  []store.Memory
+	Total     uint64
+	NextToken string
+}
+
+// coreSearchRequest is the transport-neutral search request: a SUPERSET
+// carrying every field either lane needs. K carries NO internal default
+// (round-4 finding-7 discipline, same as the list Limit): each adapter applies
+// its own default (MCP 8, Connect 20) before calling deps.searchMemory —
+// store.SearchReranked rejects K==0 with ErrInvalidArgument. CreatedAfter/
+// CreatedBefore are time.Time for the same reason as coreListRequest.
+type coreSearchRequest struct {
+	Scope         string
+	Query         string
+	K             uint64
+	Tags          []string
+	CreatedAfter  time.Time
+	CreatedBefore time.Time
+}
+
+// listMemory returns a page of the caller's readable records in scope on the
+// transport-neutral typed core contract (D-07): every Connect list field
+// (offset/categories/visibility/exact total/cursor/cursor_mode) survives the
+// shared path, and the result is raw []store.Memory — no MCP-shaped []any.
+// deps.listMemory applies NO Limit/CursorMode default; each transport adapter
+// applies its own (MCP closure: limit=20, CursorMode=true; Connect: limit=0
+// means "all", CursorMode carried from the request) before calling here
+// (round-3 HIGH-2, round-4 finding-7).
+func (d *deps) listMemory(ctx context.Context, c caller, req coreListRequest) (coreListResult, error) {
+	ms, total, next, err := d.st.List(ctx, req.Scope, c.Subj, store.ListOptions{
+		Limit:         req.Limit,
+		Offset:        req.Offset,
+		Categories:    req.Categories,
+		Visibility:    req.Visibility,
+		Tags:          req.Tags,
+		CreatedAfter:  req.CreatedAfter,
+		CreatedBefore: req.CreatedBefore,
+		Cursor:        req.Cursor,
+		CursorMode:    req.CursorMode,
+	})
+	if err != nil {
+		return coreListResult{}, err
+	}
+	return coreListResult{Memories: ms, Total: total, NextToken: next}, nil
+}
+
+func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs) ([]store.Memory, error) {
 	if a.Limit == 0 {
 		a.Limit = 20
 	}
@@ -847,39 +895,21 @@ func (d *deps) listScheduled(ctx context.Context, a listScheduledArgs) ([]store.
 	default:
 		return nil, fmt.Errorf("state must be one of scheduled|expired|all, got %q", a.State)
 	}
-	subj, err := subjectFromContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return d.st.ListScheduled(ctx, a.Scope, subj, state,
+	return d.st.ListScheduled(ctx, a.Scope, c.Subj, state,
 		store.ListOptions{Limit: a.Limit, CreatedAfter: after, CreatedBefore: before})
 }
 
-func (d *deps) searchMemory(ctx context.Context, a searchArgs) ([]any, error) {
-	if a.K == 0 {
-		a.K = 8
-	}
-	after, err := parseRFC3339(a.CreatedAfter)
-	if err != nil {
-		return nil, fmt.Errorf("created_after: %w", err)
-	}
-	before, err := parseRFC3339(a.CreatedBefore)
-	if err != nil {
-		return nil, fmt.Errorf("created_before: %w", err)
-	}
-	subj, err := subjectFromContext(ctx)
+// searchMemory runs the shared rerank search on the transport-neutral typed
+// core contract (D-07): raw []store.Memory, no MCP-shaped []any. It applies NO
+// internal k default (round-4 finding-7, same discipline as listMemory's
+// Limit) — store.SearchReranked rejects K==0, so each adapter (MCP closure: 8;
+// Connect: 20) must apply its own default before calling here.
+func (d *deps) searchMemory(ctx context.Context, c caller, req coreSearchRequest) ([]store.Memory, error) {
+	vec, err := d.em.EmbedQuery(ctx, req.Query)
 	if err != nil {
 		return nil, err
 	}
-	vec, err := d.em.EmbedQuery(ctx, a.Query)
-	if err != nil {
-		return nil, err
-	}
-	ms, err := d.st.SearchReranked(ctx, a.Scope, subj, a.Query, vec, a.K, a.Tags, after, before)
-	if err != nil {
-		return nil, err
-	}
-	return shapeRecall(ms, a.Full, d.summaryMaxChars), nil
+	return d.st.SearchReranked(ctx, req.Scope, c.Subj, req.Query, vec, req.K, req.Tags, req.CreatedAfter, req.CreatedBefore)
 }
 
 // effectiveDiscoveryScope resolves the scope filter for a discovery search:
@@ -895,7 +925,7 @@ func effectiveDiscoveryScope(a searchDiscoveryArgs) (string, error) {
 	return a.Scope, nil
 }
 
-func (d *deps) searchDiscovery(ctx context.Context, a searchDiscoveryArgs) ([]store.Memory, error) {
+func (d *deps) searchDiscovery(ctx context.Context, c caller, a searchDiscoveryArgs) ([]store.Memory, error) {
 	scope, err := effectiveDiscoveryScope(a)
 	if err != nil {
 		return nil, err
@@ -905,18 +935,19 @@ func (d *deps) searchDiscovery(ctx context.Context, a searchDiscoveryArgs) ([]st
 		// unbounded/sensitive scope strings reaching log aggregation).
 		slog.InfoContext(ctx, "search_discovery: cross_spine=true; ignoring supplied scope")
 	}
+	// Retained MCP-lane default (round-2 finding 7): the Connect
+	// SearchDiscoveries adapter (17-04) pre-applies k=20 before calling this
+	// method, so this internal default governs ONLY the MCP lane. Do NOT
+	// remove — deleting it would regress the Connect discovery-search default
+	// from 20 to 8.
 	if a.K == 0 {
 		a.K = 8
-	}
-	subj, err := subjectFromContext(ctx)
-	if err != nil {
-		return nil, err
 	}
 	vec, err := d.em.EmbedQuery(ctx, a.Query)
 	if err != nil {
 		return nil, err
 	}
-	return d.st.SearchDiscovery(ctx, scope, a.Kind, subj, vec, a.K)
+	return d.st.SearchDiscovery(ctx, scope, a.Kind, c.Subj, vec, a.K)
 }
 
 // updateMemory applies a partial update to one record by id or short id.
@@ -1008,16 +1039,12 @@ func (d *deps) updateMemory(ctx context.Context, c caller, a updateArgs) (mutati
 // the GetReadable gate governs visibility. A not-found from the gate is re-wrapped
 // with the caller's ORIGINAL input so a resolved short id never leaks another
 // owner's real UUID.
-func (d *deps) getMemory(ctx context.Context, a idArgs) (store.Memory, error) {
-	subj, err := subjectFromContext(ctx)
-	if err != nil {
-		return store.Memory{}, err
-	}
+func (d *deps) getMemory(ctx context.Context, c caller, a idArgs) (store.Memory, error) {
 	pid, err := d.st.ResolvePointID(ctx, a.ID)
 	if err != nil {
 		return store.Memory{}, err
 	}
-	m, err := d.st.GetReadable(ctx, pid, subj)
+	m, err := d.st.GetReadable(ctx, pid, c.Subj)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.Memory{}, fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
 	}
@@ -1124,25 +1151,95 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 
 	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory. Each result carries a `score`: the raw Qdrant cosine similarity for this query (higher = closer), present when non-zero; unranked list_memory/get_memory results have a zero/omitted score."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a searchArgs) (*mcp.CallToolResult, any, error) {
-			hits, err := d.searchMemory(ctx, a)
-			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"memories": hits}, err
+			c, err := callerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			// MCP lane default (round-4 finding-7 discipline): the core applies
+			// no internal k default, so this closure supplies MCP's 8 before
+			// calling deps.searchMemory (Connect supplies 20 in 17-04).
+			k := a.K
+			if k == 0 {
+				k = 8
+			}
+			after, err := parseRFC3339(a.CreatedAfter)
+			if err != nil {
+				return nil, nil, fmt.Errorf("created_after: %w", err)
+			}
+			before, err := parseRFC3339(a.CreatedBefore)
+			if err != nil {
+				return nil, nil, fmt.Errorf("created_before: %w", err)
+			}
+			ms, err := d.searchMemory(ctx, c, coreSearchRequest{
+				Scope: a.Scope, Query: a.Query, K: k, Tags: a.Tags,
+				CreatedAfter: after, CreatedBefore: before,
+			})
+			if err != nil {
+				return nil, nil, err
+			}
+			// MCP-specific recall shaping lives here, not in the shared core
+			// (D-07): the core returns raw []store.Memory.
+			hits := shapeRecall(ms, a.Full, d.summaryMaxChars)
+			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"memories": hits}, nil
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List memories in a scope without a query. Most-recent first. Optional `created_after`/`created_before` (RFC3339) window and `cursor` for paging (use the returned next_cursor). Optional `tags` (AND). Returns {memories, next_cursor}; compact summaries by default, `full=true` for full content."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listArgs) (*mcp.CallToolResult, any, error) {
-			mems, next, err := d.listMemory(ctx, a)
-			return textResult(fmt.Sprintf("%d memories", len(mems))), map[string]any{"memories": mems, "next_cursor": next}, err
+			c, err := callerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			// MCP lane default (round-4 finding-7 discipline): the core applies
+			// no internal Limit default (Connect leaves 0 = "all").
+			limit := a.Limit
+			if limit == 0 {
+				limit = 20
+			}
+			after, err := parseRFC3339(a.CreatedAfter)
+			if err != nil {
+				return nil, nil, fmt.Errorf("created_after: %w", err)
+			}
+			before, err := parseRFC3339(a.CreatedBefore)
+			if err != nil {
+				return nil, nil, fmt.Errorf("created_before: %w", err)
+			}
+			res, err := d.listMemory(ctx, c, coreListRequest{
+				Scope: a.Scope, Limit: limit, Tags: a.Tags,
+				CreatedAfter: after, CreatedBefore: before,
+				Cursor: a.Cursor,
+				// Preserves today's UNCONDITIONAL MCP cursor-mode pagination
+				// (round-3 HIGH-2): the neutral core does NOT hardcode this, so
+				// without an explicit true here the tokenless first page would
+				// silently stop cursoring (offset mode leaves next_cursor empty,
+				// store.go:817).
+				CursorMode: true,
+			})
+			if err != nil {
+				return nil, nil, err
+			}
+			// MCP-specific recall shaping lives here, not in the shared core
+			// (D-07): the core returns raw []store.Memory.
+			mems := shapeRecall(res.Memories, a.Full, d.summaryMaxChars)
+			return textResult(fmt.Sprintf("%d memories", len(mems))), map[string]any{"memories": mems, "next_cursor": res.NextToken}, nil
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "list_scheduled", Description: "List your windowed memories the recall gate is hiding: state=scheduled (not yet active, default) | expired | all. Active memories surface via list_memory/search_memory."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listScheduledArgs) (*mcp.CallToolResult, any, error) {
-			mems, err := d.listScheduled(ctx, a)
+			c, err := callerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			mems, err := d.listScheduled(ctx, c, a)
 			return textResult(fmt.Sprintf("%d scheduled", len(mems))), map[string]any{"memories": mems}, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id. Unlike search_memory/list_memory, fetch-by-id is NOT recall-gated: it returns scheduled (not-yet-active) and expired records too. The id may be the full UUID or the short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-			m, err := d.getMemory(ctx, a)
+			c, err := callerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			m, err := d.getMemory(ctx, c, a)
 			return textResult(m.Content), m, err
 		})
 
@@ -1191,7 +1288,11 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 
 	mcp.AddTool(s, &mcp.Tool{Name: "search_discovery", Description: "Semantic search over the discovery pool. scope required unless cross_spine=true; optional kind=map|fact. Results carry citations + created_at (aging signals)."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a searchDiscoveryArgs) (*mcp.CallToolResult, any, error) {
-			hits, err := d.searchDiscovery(ctx, a)
+			c, err := callerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			hits, err := d.searchDiscovery(ctx, c, a)
 			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"discoveries": hits}, err
 		})
 
