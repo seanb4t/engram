@@ -4,17 +4,17 @@ milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 18
 current_phase_name: stateless-session-rotation
-status: executing
+status: verifying
 stopped_at: Completed 18-02-PLAN.md
-last_updated: "2026-07-13T18:16:51.752Z"
+last_updated: "2026-07-13T18:29:29.291Z"
 last_activity: 2026-07-13
 last_activity_desc: Phase 18 execution started
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 22
-  completed_plans: 21
-  percent: 83
+  completed_plans: 22
+  percent: 100
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 Phase: 18 (stateless-session-rotation) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-13 — Phase 18 execution started
 
 ## Deferred Items
@@ -110,6 +110,8 @@ cookie-auth security posture).
 - [Phase ?]: resealSkew scoped exclusively to Reseal threshold comparison; resolver.go hard-expiry check untouched, pinned by TestResolveHardExpiryHasNoSkewTolerance (D-07/SC4)
 - [Phase 18]: engram-slr8 ADR (Accepted) authored hand-written, omitting the bd-render provenance comment (beads retired 2026-07-08)
 - [Phase 18]: ADR names ENGRAM_UI_COOKIE_KEY (registry.go:56) as the sole kill-switch, never the phantom ENGRAM_SESSION_KEY
+- [Phase ?]: newConnectResealInterceptor appended LAST (innermost, after validate) in mountConnect so it only re-seals a fully-authorized, valid, successful response (D-04).
+- [Phase ?]: The reseal interceptor never inspects req.Spec(), so D-03 (fires on read AND write, no allowlist) holds by construction rather than an inverse allowlist.
 
 ### Blockers/Concerns
 
@@ -120,7 +122,7 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-13T18:16:51.747Z
+Last session: 2026-07-13T18:26:19.662Z
 Stopped at: Completed 18-02-PLAN.md
 Resume file: None
 
@@ -149,3 +151,4 @@ Resume file: None
 | Phase 17 P05 | 20min | 2 tasks | 4 files |
 | Phase 18-stateless-session-rotation P01 | 20min | 2 tasks | 3 files |
 | Phase 18 P02 | 5min | 2 tasks | 2 files |
+| Phase 18-stateless-session-rotation P03 | 20min | 2 tasks | 10 files |

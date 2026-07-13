@@ -383,7 +383,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 4. Hard expiry stays strict and fail-closed; a documented, bounded clock-skew budget applies only to the rotation-threshold comparison, never to the hard expiry check itself.
 
 **Status**: Planned
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans complete
 
 **Wave 1** *(parallel — no file overlap)*
 
@@ -392,7 +392,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 
 **Wave 2** *(blocked on 18-01)*
 
-- [ ] 18-03-PLAN.md — Connect reseal interceptor (innermost, best-effort, read AND write) + mountConnect/Register/serve.go DI ripple (webHandler.Reseal), interceptor-contract tests
+- [x] 18-03-PLAN.md — Connect reseal interceptor (innermost, best-effort, read AND write) + mountConnect/Register/serve.go DI ripple (webHandler.Reseal), interceptor-contract tests
 
 **Flag for /gsd-secure-phase — mandatory** (changes the security posture of the whole cookie-auth model).
 
@@ -465,7 +465,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 | 15. Additive Proto + Stub Write Handlers | v0.10.x | 4/4 | Complete    | 2026-07-11 |
 | 16. CSRF Interceptor | v0.10.x | 3/3 | Complete    | 2026-07-12 |
 | 17. Wired Write Handlers (Full CRUD + Schedule) | v0.10.x | 6/6 | Complete    | 2026-07-13 |
-| 18. Stateless Session Rotation | v0.10.x | 2/3 | In Progress|  |
+| 18. Stateless Session Rotation | v0.10.x | 3/3 | Complete   | 2026-07-13 |
 | 19. Console Write UX | v0.10.x | 0/1 | Not started | - |
 | 20. Correctness & Polish | v0.10.x | 0/6 | Not started | - |
 | 21. CI / Maintenance Hygiene | v0.10.x | 0/3 | Not started | - |
