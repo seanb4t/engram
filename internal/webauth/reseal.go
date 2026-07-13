@@ -52,9 +52,20 @@ func (h *Handler) Reseal(respHeader http.Header, r *http.Request) {
 	if err != nil {
 		return
 	}
+	// Defense-in-depth: never re-seal a payload Resolver.Resolve would reject.
+	// Reseal is innermost in the interceptor chain and today is only reached
+	// after the resolver has already validated the same cookie (resolver.go:
+	// 49-66), but mirroring those guards here means Reseal fails closed on
+	// its own — independent of interceptor ordering — matching the
+	// connectcsrf.go D-05 precedent. In particular this must not resurrect an
+	// already-expired session, launder a legacy-version cookie into the
+	// current version, or re-issue a CSRF token for an empty owner.
+	if sess.V != sessionPayloadVersion || sess.Owner == "" {
+		return
+	}
 	remaining := sess.Expiry.Sub(nowUTC())
-	if remaining >= resealThreshold+resealSkew {
-		return // not yet due
+	if remaining <= 0 || remaining >= resealThreshold+resealSkew {
+		return // expired (hard, zero-skew) or not yet due
 	}
 	sealed, err := h.codec.Seal(Session{
 		Owner:  sess.Owner,

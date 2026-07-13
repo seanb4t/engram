@@ -4,6 +4,7 @@
 package webauth
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -157,5 +158,98 @@ func TestResealForwardMonotonicUnderConcurrency(t *testing.T) {
 		if !e.Equal(want) {
 			t.Errorf("goroutine %d expiry = %v, want exactly nowUTC()+sessionTTL = %v (absolute, never a delta)", i, e, want)
 		}
+	}
+}
+
+// TestResealNoopOnLegacyVersionCookie proves WR-01 guard 1: a cookie whose
+// payload version does not match sessionPayloadVersion must never be
+// re-sealed, even though it is well within the reseal threshold window — a
+// re-seal would launder a legacy/version-mismatched cookie into a current-
+// version session (Seal always auto-stamps the current version), defeating
+// the T-17-14 rollout-invalidation seam that Resolver.Resolve enforces
+// (TestResolverRejectsLegacyVersionCookie). Seal always overwrites V with the
+// current version, so a legacy (V==0) payload is forged the same way
+// resolver_test.go does: bypass Seal and go through the raw sealBytes path
+// directly.
+func TestResealNoopOnLegacyVersionCookie(t *testing.T) {
+	h := testHandler(t)
+	fixedNow := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
+	orig := nowUTC
+	nowUTC = func() time.Time { return fixedNow }
+	defer func() { nowUTC = orig }()
+
+	legacy, err := json.Marshal(map[string]any{
+		"owner": "user-1",
+		"exp":   fixedNow.Add(1 * time.Hour), // well within resealThreshold (6h)
+		// "v" intentionally omitted: decodes to the JSON zero value (0).
+	})
+	if err != nil {
+		t.Fatalf("marshal legacy payload: %v", err)
+	}
+	sealed, err := h.codec.sealBytes(legacy)
+	if err != nil {
+		t.Fatalf("sealBytes: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sealed})
+
+	hdr := http.Header{}
+	h.Reseal(hdr, req)
+
+	if got := hdr.Values("Set-Cookie"); len(got) != 0 {
+		t.Fatalf("Reseal laundered a legacy-version cookie into a current-version session, emitted Set-Cookie: %v", got)
+	}
+}
+
+// TestResealNoopOnExpiredCookie proves WR-01 guard 2 (the hard-expiry lower
+// bound, corroborated HIGH by Codex as a mid-flight-expiry TOCTOU path): a
+// session that has already lapsed (remaining <= 0) must never be resurrected
+// with a fresh full-TTL expiry, mirroring Resolver.Resolve's zero-skew hard
+// expiry check (resolver.go:49, TestResolveHardExpiryHasNoSkewTolerance).
+func TestResealNoopOnExpiredCookie(t *testing.T) {
+	h := testHandler(t)
+	fixedNow := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
+	orig := nowUTC
+	nowUTC = func() time.Time { return fixedNow }
+	defer func() { nowUTC = orig }()
+
+	sealed, err := h.codec.Seal(Session{Owner: "user-1", Expiry: fixedNow.Add(-1 * time.Minute)})
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sealed})
+
+	hdr := http.Header{}
+	h.Reseal(hdr, req)
+
+	if got := hdr.Values("Set-Cookie"); len(got) != 0 {
+		t.Fatalf("Reseal resurrected an already-expired session, emitted Set-Cookie: %v", got)
+	}
+}
+
+// TestResealNoopOnEmptyOwnerCookie proves WR-01 guard 3: a near-expiry
+// session with an empty Owner must never be re-sealed — doing so would
+// re-issue a CSRF token bound to HMAC(k_csrf, ""), mirroring
+// Resolver.Resolve's empty-owner rejection (TestResolverRejectsEmptyOwner).
+func TestResealNoopOnEmptyOwnerCookie(t *testing.T) {
+	h := testHandler(t)
+	fixedNow := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
+	orig := nowUTC
+	nowUTC = func() time.Time { return fixedNow }
+	defer func() { nowUTC = orig }()
+
+	sealed, err := h.codec.Seal(Session{Owner: "", Expiry: fixedNow.Add(1 * time.Hour)})
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sealed})
+
+	hdr := http.Header{}
+	h.Reseal(hdr, req)
+
+	if got := hdr.Values("Set-Cookie"); len(got) != 0 {
+		t.Fatalf("Reseal re-sealed an empty-owner session, emitted Set-Cookie: %v", got)
 	}
 }
