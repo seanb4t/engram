@@ -111,6 +111,26 @@ func TestResolverRejectsLegacyVersionCookie(t *testing.T) {
 	}
 }
 
+// TestResolveHardExpiryHasNoSkewTolerance (D-07, SC4): a session expired by
+// exactly 1 nanosecond — well inside any plausible resealSkew (60s, see
+// reseal.go) — must still be rejected. This pins resolver.go's hard-expiry
+// check (sess.Expiry.IsZero() || nowUTC().After(sess.Expiry)) as
+// byte-for-byte strict: resealSkew is scoped to Reseal's threshold
+// comparison only and must NEVER be reused here (Pitfall 4). A sub-skew
+// expiry catches a future "helpful" reuse of resealSkew inside Resolve that
+// a 1-minute-expired case (TestResolverRejectsExpiredSession) would not.
+func TestResolveHardExpiryHasNoSkewTolerance(t *testing.T) {
+	codec := mustCodec(t)
+	r := NewResolver(codec)
+	sealed, err := codec.Seal(Session{Owner: "u", Expiry: nowUTC().Add(-1 * time.Nanosecond)})
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	if _, err := r.Resolve(context.Background(), resolverReq(t, sealed)); err == nil {
+		t.Fatal("Resolve accepted a session expired by 1ns — hard expiry must have ZERO skew tolerance (D-07)")
+	}
+}
+
 func mustCodec(t *testing.T) *SessionCodec {
 	t.Helper()
 	c, err := NewSessionCodec(testKey())
