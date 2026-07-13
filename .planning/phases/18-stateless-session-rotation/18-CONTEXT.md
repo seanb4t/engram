@@ -47,10 +47,10 @@ milestone); the console client that silently retries through a re-seal
 
 ### Re-seal seam & mechanics *(auto → recommended)*
 
-- **D-01 — A dedicated best-effort re-seal Connect interceptor, backed by a
+- **D-01:** A dedicated best-effort re-seal Connect interceptor, backed by a
   `webauth`-provided reseal function injected into `mountConnect` (mirrors the
   `csrfVerify func(owner, token string) bool` DI already threaded through
-  `mountConnect`).** Rationale forced by types: `webauth.Resolver.Resolve`
+  `mountConnect`). Rationale forced by types: `webauth.Resolver.Resolve`
   returns only `*mcpauth.TokenInfo` from a `connect.AnyRequest` — it has **no**
   `http.ResponseWriter`, so it cannot emit `Set-Cookie`. Only a Connect
   interceptor holds `connect.AnyResponse`, whose `.Header()` can set the
@@ -58,7 +58,7 @@ milestone); the console client that silently retries through a re-seal
   the resolver — cleanly separating the 401 identity gate from the best-effort
   cookie refresh.
 
-- **D-02 — Re-seal logic lives in `internal/webauth`, not `internal/server`.**
+- **D-02:** Re-seal logic lives in `internal/webauth`, not `internal/server`.
   It reuses the encapsulated cookie machinery there: `SessionCodec` (Seal),
   `sessionTTL` (12h), the `nowUTC` clock seam (`handlers.go:191`), the
   `setCookie`/`setReadableCookie` attribute helpers, and the `CSRFSigner`.
@@ -68,15 +68,15 @@ milestone); the console client that silently retries through a re-seal
   request header itself (the subject interceptor discards `Expiry`), mirroring
   how the CSRF interceptor re-reads its own cookie.
 
-- **D-03 — Re-seal applies to ALL authenticated Connect requests (read AND
-  write), NOT gated to the write-only allowlist.** SC1 says "read or write."
+- **D-03:** Re-seal applies to ALL authenticated Connect requests (read AND
+  write), NOT gated to the write-only allowlist. SC1 says "read or write."
   This is the deliberate opposite of the CSRF interceptor (Phase 16 D-07:
   write-only): keeping a session alive during active *reading* is exactly what
   prevents a write, arriving after a long read-heavy session, from hitting a
   dead cookie.
 
-- **D-04 — Best-effort, innermost placement; re-seal only successful,
-  fully-authorized, valid requests.** Place the re-seal interceptor **innermost**
+- **D-04:** Best-effort, innermost placement; re-seal only successful,
+  fully-authorized, valid requests. Place the re-seal interceptor **innermost**
   (after `validate`, wrapping the handler), so it fires only for requests that
   passed subject(401) → CSRF(403) → validate(400) and whose handler returned a
   response. It sets `Set-Cookie` on that response. On any upstream rejection or
@@ -87,7 +87,7 @@ milestone); the console client that silently retries through a re-seal
 
 ### Threshold policy — SC1 "documented threshold" *(auto → recommended)*
 
-- **D-05 — Re-seal only when remaining lifetime has dropped below half the TTL**
+- **D-05:** Re-seal only when remaining lifetime has dropped below half the TTL
   (`remaining < sessionTTL/2` → less than 6h left on the 12h session). A named
   constant (recommend `resealThreshold = sessionTTL / 2`). Computable from
   `Expiry` alone (stateless — no issue-time needed): `remaining = Expiry - now`.
@@ -97,8 +97,8 @@ milestone); the console client that silently retries through a re-seal
 
 ### Forward-monotonic expiry under concurrency — SC3 *(locked by SC)*
 
-- **D-06 — New expiry is absolute `nowUTC().Add(sessionTTL)`, NEVER
-  `oldExpiry + delta`.** Under concurrent near-expiry requests, last-writer-wins
+- **D-06:** New expiry is absolute `nowUTC().Add(sessionTTL)`, NEVER
+  `oldExpiry + delta`. Under concurrent near-expiry requests, last-writer-wins
   across the several `Set-Cookie`s is safe: every candidate expiry is
   `now + TTL` with each `now` within milliseconds of the others, so each is
   `≥` the pre-re-seal expiry — the session is never shortened. **Mandate a
@@ -108,8 +108,8 @@ milestone); the console client that silently retries through a re-seal
 
 ### Clock-skew budget — SC4 *(auto → recommended)*
 
-- **D-07 — Hard expiry stays byte-for-byte strict; skew budget is
-  threshold-only.** The hard-expiry check in `Resolver.Resolve`
+- **D-07:** Hard expiry stays byte-for-byte strict; skew budget is
+  threshold-only. The hard-expiry check in `Resolver.Resolve`
   (`sess.Expiry.IsZero() || nowUTC().After(sess.Expiry)`, resolver.go:49-51)
   is **untouched** — no skew tolerance, still fail-closed. A small **named
   constant** bounded skew budget (recommend `resealSkew = 60s`) applies **only**
@@ -120,8 +120,8 @@ milestone); the console client that silently retries through a re-seal
 
 ### CSRF-cookie coordination *(auto → recommended)*
 
-- **D-08 — Re-seal re-issues BOTH cookies: the sealed session cookie (fresh
-  expiry) AND the readable `engram_csrf` cookie (refreshed `Max-Age`).** The
+- **D-08:** Re-seal re-issues BOTH cookies: the sealed session cookie (fresh
+  expiry) AND the readable `engram_csrf` cookie (refreshed `Max-Age`). The
   CSRF cookie is minted at login (`Callback`) with `MaxAge = sessionTTL`. If the
   session slides forward but the CSRF cookie keeps its original 12h expiry, it
   lapses out from under a still-live session and silently breaks writes. The
@@ -148,10 +148,10 @@ milestone); the console client that silently retries through a re-seal
 
 ### New ADR — SC2 *(auto → recommended)*
 
-- **D-09 — Author a hand-written ADR at
+- **D-09:** Author a hand-written ADR at
   `docs/adr/engram-<id>-stateless-sliding-session-reseal.md` matching the
   existing rendered ADR visual format but OMITTING the `source=bd:` /
-  "do not edit manually; use `/adr update …`" provenance header.** **Gotcha:**
+  "do not edit manually; use `/adr update …`" provenance header. **Gotcha:**
   all 60 existing ADRs render from `bd` (beads) decision records, but **beads
   was retired 2026-07-08** and the `/adr` command no longer exists — the
   bd→render pipeline is dead. The new ADR is therefore authored directly as
@@ -160,7 +160,7 @@ milestone); the console client that silently retries through a re-seal
   already dropped tokens from the cookie) and references engram-8q3 and
   engram-1xv.
 
-- **D-10 — ADR content MUST cover three things:**
+- **D-10:** ADR content MUST cover three things:
   1. **"Rotation" under statelessness** = sliding-expiry re-seal of the
      `{owner, expiry}` cookie with **zero server-side state** (honors DEC-u9v);
      it is NOT a token store and NOT server-side revocation.
