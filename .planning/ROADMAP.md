@@ -407,8 +407,17 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 2. The console attaches the CSRF token to every write request automatically, mirroring the server-side double-submit pattern.
 3. A write that fails because the session needed rotation is silently retried once through a re-seal; if that also fails, the operator is prompted to re-authenticate without losing their in-flight input.
 
-**Status**: Not started
-**Plans**: TBD
+**Status**: Planned
+**Plans**: 6 plans
+
+Plans:
+- [ ] 19-01-PLAN.md — Foundation: re-vendor console gen client (6 write RPCs) + `--destructive` design token
+- [ ] 19-02-PLAN.md — Write transport: CSRF-attach + retry-once interceptors, `engramWrite` client
+- [ ] 19-03-PLAN.md — Destructive/action affordances: delete confirm dialog, share warning, row/detail actions
+- [ ] 19-04-PLAN.md — Mutation hooks: memory + discovery create/edit/delete/visibility/schedule (optimistic rollback)
+- [ ] 19-05-PLAN.md — Slide-over create/edit sheets (memory + discovery) with in-form share warning + inline re-auth
+- [ ] 19-06-PLAN.md — Route integration: WriteSurfaces host + New entry points wired into observe/search/discovery
+
 **UI hint**: yes
 
 ### Phase 20: Correctness & Polish
