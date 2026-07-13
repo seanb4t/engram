@@ -117,14 +117,62 @@ func TestToolArgSchemasDoNotPanic(t *testing.T) {
 // testQdrantAddr is the gRPC host:port the integration tests run against. Set by
 // TestMain: ENGRAM_QDRANT_TEST_ADDR if provided (fast path / override), else an
 // ephemeral testcontainer. Empty when neither is available (Docker absent), in
-// which case the integration tests skip.
+// which case the integration tests skip — unless ENGRAM_REQUIRE_QDRANT is set,
+// in which case they fail (see requireQdrant).
 var testQdrantAddr string
+
+// requireQdrant is the SOLE place ENGRAM_REQUIRE_QDRANT is read/parsed
+// (round-6 MED, round-7 LOW + round-8 LOW, Codex): TestMain and
+// failOrSkipNoQdrant act only on its result, never parsing the env var
+// themselves. Unset/empty -> (false, nil): local dev ergonomics unchanged
+// (integration tests still skip without Qdrant). A truthy/falsey value
+// parses via strconv.ParseBool. Any NON-EMPTY INVALID value (a CI typo like
+// "treu") returns a NON-NIL error rather than being coerced to false
+// (round-8 LOW) — coercing a parse error to false would silently re-enable
+// skipping and defeat the fail-closed gate the CI `test` job relies on.
+func requireQdrant() (bool, error) {
+	v := os.Getenv("ENGRAM_REQUIRE_QDRANT")
+	if v == "" {
+		return false, nil
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, fmt.Errorf("ENGRAM_REQUIRE_QDRANT: invalid value %q: %w", v, err)
+	}
+	return b, nil
+}
+
+// failOrSkipNoQdrant is the shared "no Qdrant available" handler for every
+// per-test integration call site (testDepsWithStore and the sibling
+// TestBuildDepsFromEnvLoadsConfigOnce gate). Under ENGRAM_REQUIRE_QDRANT it
+// t.Fatal's (fail-closed, round-6 MED) instead of skipping, so CI cannot go
+// green with the real-store authz/parity gate silently skipped; otherwise it
+// preserves today's t.Skip (local dev ergonomics unchanged).
+func failOrSkipNoQdrant(t *testing.T) {
+	t.Helper()
+	required, err := requireQdrant()
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if required {
+		t.Fatal("no Qdrant available and ENGRAM_REQUIRE_QDRANT is set: failing instead of skipping (round-6 MED)")
+	}
+	t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
+}
 
 // TestMain provisions Qdrant for this package's integration tests. It prefers an
 // existing instance via ENGRAM_QDRANT_TEST_ADDR; otherwise it boots an ephemeral
 // Qdrant via testcontainers and tears it down afterward. If neither is available
-// the suite still runs — the integration tests skip with a clear message.
+// the suite still runs and the integration tests skip with a clear message —
+// UNLESS ENGRAM_REQUIRE_QDRANT is set (round-6 MED, Codex: the CI `test` job
+// sets it), in which case TestMain exits non-zero instead of letting the
+// suite run with the real-store authz gate silently skipped.
 func TestMain(m *testing.M) {
+	required, err := requireQdrant()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+		os.Exit(1)
+	}
 	if addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR"); addr != "" {
 		testQdrantAddr = addr
 		os.Exit(m.Run())
@@ -132,17 +180,26 @@ func TestMain(m *testing.M) {
 	// Bound startup so an unreachable daemon or a stalled image pull fails fast
 	// instead of hanging the suite. os.Exit skips defers, so cancel explicitly.
 	startCtx, startCancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	container, err := tcqdrant.Run(startCtx, "qdrant/qdrant:v1.18.2")
-	if err != nil {
+	container, cerr := tcqdrant.Run(startCtx, "qdrant/qdrant:v1.18.2")
+	if cerr != nil {
 		startCancel()
-		fmt.Fprintf(os.Stderr, "qdrant testcontainer unavailable (%v); integration tests will skip — set ENGRAM_QDRANT_TEST_ADDR or start Docker\n", err)
+		fmt.Fprintf(os.Stderr, "qdrant testcontainer unavailable (%v); integration tests will skip — set ENGRAM_QDRANT_TEST_ADDR or start Docker\n", cerr)
+		if required {
+			fmt.Fprintln(os.Stderr, "fatal: ENGRAM_REQUIRE_QDRANT is set — failing instead of skipping (round-6 MED)")
+			os.Exit(1)
+		}
 		os.Exit(m.Run())
 	}
-	testQdrantAddr, err = container.GRPCEndpoint(startCtx)
+	testQdrantAddr, cerr = container.GRPCEndpoint(startCtx)
 	startCancel()
-	if err != nil {
+	if cerr != nil {
 		terminateQdrant(container)
-		fmt.Fprintf(os.Stderr, "qdrant grpc endpoint: %v\n", err)
+		fmt.Fprintf(os.Stderr, "qdrant grpc endpoint: %v\n", cerr)
+		os.Exit(1)
+	}
+	if required && testQdrantAddr == "" {
+		terminateQdrant(container)
+		fmt.Fprintln(os.Stderr, "fatal: ENGRAM_REQUIRE_QDRANT is set but no Qdrant address resolved")
 		os.Exit(1)
 	}
 	code := m.Run()
@@ -156,6 +213,46 @@ func terminateQdrant(c *tcqdrant.QdrantContainer) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_ = c.Terminate(ctx)
+}
+
+// TestRequireQdrant pins requireQdrant's parse contract (round-7 LOW + round-8
+// LOW, Codex): unset/empty and recognized truthy/falsey values parse cleanly,
+// and — the round-8 fix — a malformed value (a CI typo like "treu") returns a
+// NON-NIL error rather than being silently coerced to false, which would
+// re-enable skipping and defeat the fail-closed gate. Driven entirely via
+// t.Setenv; needs no Qdrant.
+func TestRequireQdrant(t *testing.T) {
+	cases := []struct {
+		name    string
+		val     string
+		want    bool
+		wantErr bool
+	}{
+		{name: "unset_or_empty", val: "", want: false},
+		{name: "truthy_true", val: "true", want: true},
+		{name: "truthy_1", val: "1", want: true},
+		{name: "falsey_false", val: "false", want: false},
+		{name: "falsey_0", val: "0", want: false},
+		{name: "malformed", val: "treu", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("ENGRAM_REQUIRE_QDRANT", tc.val)
+			got, err := requireQdrant()
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("requireQdrant() with %q = (%v, nil), want a non-nil error (must not coerce to false)", tc.val, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("requireQdrant() with %q: unexpected error: %v", tc.val, err)
+			}
+			if got != tc.want {
+				t.Errorf("requireQdrant() with %q = %v, want %v", tc.val, got, tc.want)
+			}
+		})
+	}
 }
 
 // fakeEmbedder returns a fixed vector so handler tests don't need a live embedder.
@@ -188,11 +285,24 @@ func (e *countingEmbedder) EmbedQuery(ctx context.Context, text string) ([]float
 
 // testDeps builds a deps backed by a live Qdrant (skip-gated, same posture as the
 // store integration tests) and the fake embedder. deps.em is an interface so the
-// embedder is fakeable; deps.st is concrete, hence the Qdrant gate.
+// embedder is fakeable; deps.st is the memStore interface backed by a concrete
+// *store.Store, hence the Qdrant gate. Delegates to testDepsWithStore and
+// discards the concrete store — existing `d := testDeps(t)` call sites are
+// unaffected by the deps.st retype (review round-2 BLOCKER 1).
 func testDeps(t *testing.T) *deps {
 	t.Helper()
+	d, _ := testDepsWithStore(t)
+	return d
+}
+
+// testDepsWithStore builds the same Qdrant-backed deps as testDeps AND returns
+// the concrete *store.Store it wraps, for the handful of call sites that need
+// a concrete store (storeFill/buildUsageQueue take *store.Store, not the
+// narrower memStore deps.st now is — review round-2 BLOCKER 1).
+func testDepsWithStore(t *testing.T) (*deps, *store.Store) {
+	t.Helper()
 	if testQdrantAddr == "" {
-		t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
+		failOrSkipNoQdrant(t)
 	}
 	host, portStr, err := net.SplitHostPort(testQdrantAddr)
 	if err != nil {
@@ -210,7 +320,7 @@ func testDeps(t *testing.T) *deps {
 	if err := st.EnsureCollection(context.Background(), 3); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
-	return &deps{st: st, em: fakeEmbedder{}}
+	return &deps{st: st, em: fakeEmbedder{}}, st
 }
 
 // testDepsWithSummaryQueue builds the same Qdrant-backed deps as testDeps plus
@@ -311,6 +421,25 @@ func authedContext(t *testing.T, sub string) context.Context {
 	return captured
 }
 
+// strp returns a pointer to s — a small literal-construction helper for the
+// presence-signaled updateArgs.Content field (landmine 2), used across test
+// call sites that need a non-nil *string content literal.
+func strp(s string) *string { return &s }
+
+// callerFor resolves the caller for a context carrying (or not carrying)
+// TokenInfo exactly as callerFromContext does, failing the test on an
+// unexpected error. The write-method test call sites this task retyped use
+// this helper to keep passing a single ctx while supplying the new explicit
+// caller argument.
+func callerFor(ctx context.Context, t *testing.T) caller {
+	t.Helper()
+	c, err := callerFromContext(ctx)
+	if err != nil {
+		t.Fatalf("callerFromContext: %v", err)
+	}
+	return c
+}
+
 // TestScheduleMemoryUsesInjectedClock pins hr2.3/7: schedule_memory window
 // validation reads the deps clock, not the wall clock, so tests can pin "now"
 // deterministically. With the clock pinned to the year 2100, a not_after in 2099
@@ -323,7 +452,7 @@ func TestScheduleMemoryUsesInjectedClock(t *testing.T) {
 	ctx := authedContext(t, "sub-A")
 	a := scheduleArgs{storeArgs: storeArgs{Content: "x", Scope: "clock:project:x",
 		Source: "user-said", Category: "decision"}, NotAfter: "2099-01-01T00:00:00Z"}
-	if _, _, err := d.scheduleMemory(ctx, a); err == nil {
+	if _, _, err := d.scheduleMemory(ctx, callerFor(ctx, t), a); err == nil {
 		t.Error("not_after before the injected now should be rejected; the handler must read the deps clock, not the wall clock")
 	}
 }
@@ -336,7 +465,7 @@ func TestStoreMemoryUsesInjectedClock(t *testing.T) {
 	fixed := time.Date(2055, 3, 4, 5, 6, 7, 0, time.UTC)
 	d.now = func() time.Time { return fixed }
 	ctx := authedContext(t, "sub-A")
-	id, _, err := d.storeMemory(ctx, storeArgs{Content: "x", Scope: "clock:project:store",
+	id, _, err := d.storeMemory(ctx, callerFor(ctx, t), storeArgs{Content: "x", Scope: "clock:project:store",
 		Source: "user-said", Category: "decision"})
 	if err != nil {
 		t.Fatalf("storeMemory: %v", err)
@@ -358,43 +487,46 @@ func TestScheduleMemoryValidation(t *testing.T) {
 		Scope: "sched:project:x", Source: "user-said", Category: "decision"}}
 
 	// No window at all -> rejected.
-	if _, _, err := d.scheduleMemory(ctx, base); err == nil {
+	if _, _, err := d.scheduleMemory(ctx, callerFor(ctx, t), base); err == nil {
 		t.Error("missing window: want error, got nil")
 	}
 	// not_after already in the past -> rejected.
 	past := base
 	past.NotAfter = "2000-01-01T00:00:00Z"
-	if _, _, err := d.scheduleMemory(ctx, past); err == nil {
+	_, _, err := d.scheduleMemory(ctx, callerFor(ctx, t), past)
+	if err == nil {
 		t.Error("past not_after: want error, got nil")
+	}
+	// finding 5: parseWindow's rejections are wrapped with the existing
+	// store.ErrInvalidArgument so a Connect ScheduleMemory call maps to
+	// CodeInvalidArgument, not CodeInternal.
+	if !errors.Is(err, store.ErrInvalidArgument) {
+		t.Errorf("past not_after: want store.ErrInvalidArgument, got %v", err)
 	}
 	// Inverted window (not_before >= not_after) -> rejected.
 	inv := base
 	inv.NotBefore = "2031-01-01T00:00:00Z"
 	inv.NotAfter = "2030-01-01T00:00:00Z"
-	if _, _, err := d.scheduleMemory(ctx, inv); err == nil {
+	if _, _, err := d.scheduleMemory(ctx, callerFor(ctx, t), inv); err == nil {
 		t.Error("inverted window: want error, got nil")
 	}
 	// discovery category -> rejected.
 	disc := base
 	disc.Category = "discovery"
 	disc.NotBefore = "2030-01-01T00:00:00Z"
-	if _, _, err := d.scheduleMemory(ctx, disc); err == nil {
+	if _, _, err := d.scheduleMemory(ctx, callerFor(ctx, t), disc); err == nil {
 		t.Error("discovery category: want error, got nil")
 	}
 	// Valid future-scheduled memory -> stored, hidden from normal recall.
 	ok := base
 	ok.NotBefore = "2030-01-01T00:00:00Z"
-	id, _, err := d.scheduleMemory(ctx, ok)
+	id, _, err := d.scheduleMemory(ctx, callerFor(ctx, t), ok)
 	if err != nil {
 		t.Fatalf("valid schedule: %v", err)
 	}
 	t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
-	hits, _, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
-	for _, h := range hits {
-		m, ok := h.(store.Memory)
-		if !ok {
-			t.Fatalf("got element of type %T, want store.Memory", h)
-		}
+	hits, _ := d.listMemory(ctx, callerFor(ctx, t), coreListRequest{Scope: "sched:project:x"})
+	for _, m := range hits.Memories {
 		if m.ID == id {
 			t.Error("future-scheduled memory leaked into normal list_memory")
 		}
@@ -404,18 +536,14 @@ func TestScheduleMemoryValidation(t *testing.T) {
 	// is immediately active, so it surfaces through normal list_memory.
 	activeNow := base
 	activeNow.NotBefore = "2000-01-01T00:00:00Z"
-	activeID, _, err := d.scheduleMemory(ctx, activeNow)
+	activeID, _, err := d.scheduleMemory(ctx, callerFor(ctx, t), activeNow)
 	if err != nil {
 		t.Fatalf("past not_before should be accepted (immediately active): %v", err)
 	}
 	t.Cleanup(func() { _ = d.st.Delete(context.Background(), activeID, store.Authenticated("sub-A")) })
-	active, _, _ := d.listMemory(ctx, listArgs{Scope: "sched:project:x", Full: true})
+	active, _ := d.listMemory(ctx, callerFor(ctx, t), coreListRequest{Scope: "sched:project:x"})
 	found := false
-	for _, h := range active {
-		m, ok := h.(store.Memory)
-		if !ok {
-			t.Fatalf("got element of type %T, want store.Memory", h)
-		}
+	for _, m := range active.Memories {
 		if m.ID == activeID {
 			found = true
 		}
@@ -438,7 +566,7 @@ func TestStoreMemoryStampsOwnerHandler(t *testing.T) {
 		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-stamp")))
 	}()
 
-	id, _, err := d.storeMemory(ctx, storeArgs{
+	id, _, err := d.storeMemory(ctx, callerFor(ctx, t), storeArgs{
 		Content: "owned via handler", Scope: scope,
 		Source: "user-said", Category: "preference",
 	})
@@ -467,7 +595,7 @@ func TestStoreMemoryStampsEmbedderIdentityHandler(t *testing.T) {
 		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-identity-store")))
 	}()
 
-	id, _, err := d.storeMemory(ctx, storeArgs{Content: "identity check", Scope: scope, Source: "user-said", Category: "gotcha"})
+	id, _, err := d.storeMemory(ctx, callerFor(ctx, t), storeArgs{Content: "identity check", Scope: scope, Source: "user-said", Category: "gotcha"})
 	if err != nil {
 		t.Fatalf("storeMemory: %v", err)
 	}
@@ -491,7 +619,7 @@ func TestScheduleMemoryStampsEmbedderIdentityHandler(t *testing.T) {
 		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-identity-schedule")))
 	}()
 
-	id, _, err := d.scheduleMemory(ctx, scheduleArgs{
+	id, _, err := d.scheduleMemory(ctx, callerFor(ctx, t), scheduleArgs{
 		storeArgs: storeArgs{Content: "identity check", Scope: scope, Source: "user-said", Category: "decision"},
 		NotAfter:  timeNow().Add(time.Hour).Format(time.RFC3339),
 	})
@@ -516,7 +644,7 @@ func TestStoreDiscoveryStampsEmbedderIdentityHandler(t *testing.T) {
 	scope := "discovery:repo:identity-discovery"
 	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
 
-	id, _, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
+	id, _, err := d.storeDiscovery(ctx, callerFor(ctx, t), storeDiscoveryArgs{
 		Content: "identity check discovery", Kind: "fact", Scope: scope,
 		Citations: []citationArg{{Kind: "file", Ref: "f.go"}},
 	})
@@ -553,7 +681,7 @@ func TestUpdateMemoryReStampsEmbedderIdentityHandler(t *testing.T) {
 	}
 
 	d.embedderIdentity = "v1:deadbeefdeadbeef"
-	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "v2"}); err != nil {
+	if _, err := d.updateMemory(ctx, callerFor(ctx, t), updateArgs{ID: id, Content: strp("v2")}); err != nil {
 		t.Fatalf("updateMemory: %v", err)
 	}
 	got, err := d.st.Get(ctx, id)
@@ -570,7 +698,7 @@ func TestUpdateMemoryReStampsEmbedderIdentityHandler(t *testing.T) {
 func TestStoreMemoryMintsAndReturnsShortID(t *testing.T) {
 	d := testDeps(t)
 	ctx := authedContext(t, "owner-A")
-	id, sid, err := d.storeMemory(ctx, storeArgs{Content: "hello", Scope: "s", Category: "gotcha", Source: "user-said"})
+	id, sid, err := d.storeMemory(ctx, callerFor(ctx, t), storeArgs{Content: "hello", Scope: "s", Category: "gotcha", Source: "user-said"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -601,7 +729,7 @@ func TestStoreMemoryEnqueuesOnSuccess(t *testing.T) {
 		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Authenticated("sub-enqueue")))
 	}()
 
-	id, _, err := d.storeMemory(ctx, storeArgs{Content: "enqueue me", Scope: scope, Source: "user-said", Category: "gotcha"})
+	id, _, err := d.storeMemory(ctx, callerFor(ctx, t), storeArgs{Content: "enqueue me", Scope: scope, Source: "user-said", Category: "gotcha"})
 	if err != nil {
 		t.Fatalf("storeMemory: %v", err)
 	}
@@ -636,7 +764,7 @@ func TestStoreMemoryReturnsWhenSummarizerHangs(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, _, err := d.storeMemory(ctx, storeArgs{Content: "hangs summarizer", Scope: scope, Source: "user-said", Category: "gotcha"})
+		_, _, err := d.storeMemory(ctx, callerFor(ctx, t), storeArgs{Content: "hangs summarizer", Scope: scope, Source: "user-said", Category: "gotcha"})
 		done <- err
 	}()
 
@@ -665,7 +793,7 @@ func TestDiscoveryAndRuleNeverEnqueue(t *testing.T) {
 	defer func() {
 		cleanupErr(t, "DeleteAll "+discScope, d.st.DeleteAll(discCtx, discScope, store.Anonymous()))
 	}()
-	if _, _, err := d.storeDiscovery(discCtx, storeDiscoveryArgs{
+	if _, _, err := d.storeDiscovery(discCtx, callerFor(discCtx, t), storeDiscoveryArgs{
 		Content: "never enqueues a discovery", Kind: "fact", Scope: discScope,
 		Citations: []citationArg{{Kind: "file", Ref: "a.go"}},
 	}); err != nil {
@@ -677,7 +805,7 @@ func TestDiscoveryAndRuleNeverEnqueue(t *testing.T) {
 	defer func() {
 		cleanupErr(t, "DeleteAll "+ruleScope, d.st.DeleteAll(ruleCtx, ruleScope, store.Authenticated("sub-rule-no-enqueue")))
 	}()
-	if _, _, err := d.storeRule(ruleCtx, storeRuleArgs{
+	if _, _, err := d.storeRule(ruleCtx, callerFor(ruleCtx, t), storeRuleArgs{
 		Content: "never enqueue rules", Scope: ruleScope, Summary: "no enqueue",
 	}); err != nil {
 		t.Fatalf("storeRule: %v", err)
@@ -712,9 +840,9 @@ func TestUpdateMemoryStaleSummaryGuard(t *testing.T) {
 	})
 
 	// Change content but omit summary — must be rejected with errStaleSummary.
-	err := d.updateMemory(ctx, updateArgs{
+	_, err := d.updateMemory(ctx, callerFor(ctx, t), updateArgs{
 		ID:      id,
-		Content: "changed content",
+		Content: strp("changed content"),
 	})
 	if !errors.Is(err, errStaleSummary) {
 		t.Errorf("updateMemory with changed content + unaddressed client summary: want errStaleSummary, got %v", err)
@@ -794,17 +922,15 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, store.Authenticated("sub-owner")))
 	}()
 
+	anonCaller := callerFor(ctx, t)
+
 	// searchMemory with anonymous context must return ownerless, not shared.
-	hits, err := d.searchMemory(ctx, searchArgs{Query: "content", Scope: scope, K: 10, Full: true})
+	hits, err := d.searchMemory(ctx, anonCaller, coreSearchRequest{Query: "content", Scope: scope, K: 10})
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}
 	foundOwnerless, foundShared := false, false
-	for _, h := range hits {
-		m, ok := h.(store.Memory)
-		if !ok {
-			t.Fatalf("got element of type %T, want store.Memory", h)
-		}
+	for _, m := range hits {
 		if m.ID == ownerlessID {
 			foundOwnerless = true
 		}
@@ -820,16 +946,12 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	}
 
 	// list_memory handler with anonymous context must return ownerless, not shared.
-	mems, _, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Full: true})
+	res, err := d.listMemory(ctx, anonCaller, coreListRequest{Scope: scope, Limit: 10})
 	if err != nil {
 		t.Fatalf("listMemory: %v", err)
 	}
 	foundOwnerless, foundShared = false, false
-	for _, m := range mems {
-		mem, ok := m.(store.Memory)
-		if !ok {
-			t.Fatalf("got element of type %T, want store.Memory", m)
-		}
+	for _, mem := range res.Memories {
 		if mem.ID == ownerlessID {
 			foundOwnerless = true
 		}
@@ -892,7 +1014,7 @@ func TestAnonReadIsolationDiscoveryHandler(t *testing.T) {
 		cleanupErr(t, "Delete "+sharedID, d.st.Delete(ctx, sharedID, store.Authenticated("sub-owner")))
 	}()
 
-	hits, err := d.searchDiscovery(ctx, searchDiscoveryArgs{Query: "discovery", Scope: scope, K: 10})
+	hits, err := d.searchDiscovery(ctx, callerFor(ctx, t), searchDiscoveryArgs{Query: "discovery", Scope: scope, K: 10})
 	if err != nil {
 		t.Fatalf("searchDiscovery: %v", err)
 	}
@@ -939,7 +1061,7 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
 
 	// create
-	id, _, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
+	id, _, err := d.storeDiscovery(ctx, callerFor(ctx, t), storeDiscoveryArgs{
 		Content: "auth flow maps token -> jwks -> actor", Kind: "fact", Scope: scope,
 		Summary:   "auth flow",
 		Citations: []citationArg{{Kind: "file", Ref: "internal/auth/auth.go", Locator: "1-50", Pin: "sha:abc", Excerpt: "verify(token)"}},
@@ -962,7 +1084,7 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	}
 
 	// id-replace branch: same id replaces in place
-	id2, _, err := d.storeDiscovery(ctx, storeDiscoveryArgs{
+	id2, _, err := d.storeDiscovery(ctx, callerFor(ctx, t), storeDiscoveryArgs{
 		ID: id, Content: "updated understanding", Kind: "map", Scope: scope,
 		Citations: []citationArg{{Kind: "repo", Ref: "github.com/x/y", Pin: "@v1"}},
 	})
@@ -981,7 +1103,7 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 	}
 
 	// scope-constrained search finds it
-	hits, err := d.searchDiscovery(ctx, searchDiscoveryArgs{Query: "understanding", Scope: scope})
+	hits, err := d.searchDiscovery(ctx, callerFor(ctx, t), searchDiscoveryArgs{Query: "understanding", Scope: scope})
 	if err != nil {
 		t.Fatalf("searchDiscovery: %v", err)
 	}
@@ -989,11 +1111,11 @@ func TestStoreAndSearchDiscoveryHandlers(t *testing.T) {
 		t.Fatal("expected >= 1 hit")
 	}
 	// scope required unless cross_spine
-	if _, err := d.searchDiscovery(ctx, searchDiscoveryArgs{Query: "x"}); err == nil {
+	if _, err := d.searchDiscovery(ctx, callerFor(ctx, t), searchDiscoveryArgs{Query: "x"}); err == nil {
 		t.Error("expected error: scope required when cross_spine=false")
 	}
 	// cross_spine path (with a scope present, the ignore-warn branch) must not error
-	if _, err := d.searchDiscovery(ctx, searchDiscoveryArgs{Query: "x", CrossSpine: true, Scope: scope}); err != nil {
+	if _, err := d.searchDiscovery(ctx, callerFor(ctx, t), searchDiscoveryArgs{Query: "x", CrossSpine: true, Scope: scope}); err != nil {
 		t.Errorf("cross_spine search errored: %v", err)
 	}
 }
@@ -1002,17 +1124,17 @@ func TestStoreDiscoveryMintsThenReplacePreservesShortID(t *testing.T) {
 	d := testDeps(t)
 	ctx := authedContext(t, "owner-A")
 	cites := []citationArg{{Kind: "file", Ref: "a.go", Pin: "abc"}}
-	id, sid, err := d.storeDiscovery(ctx, storeDiscoveryArgs{Content: "map1", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
+	id, sid, err := d.storeDiscovery(ctx, callerFor(ctx, t), storeDiscoveryArgs{Content: "map1", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
 	if err != nil || len(sid) != shortid.Length {
 		t.Fatalf("create: sid=%q err=%v", sid, err)
 	}
 	// Replace by UUID → same point, same short id.
-	id2, sid2, err := d.storeDiscovery(ctx, storeDiscoveryArgs{ID: id, Content: "map1b", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
+	id2, sid2, err := d.storeDiscovery(ctx, callerFor(ctx, t), storeDiscoveryArgs{ID: id, Content: "map1b", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
 	if err != nil || id2 != id || sid2 != sid {
 		t.Fatalf("replace-by-uuid: id %q->%q sid %q->%q err %v", id, id2, sid, sid2, err)
 	}
 	// Replace by SHORT ID → resolves to the same point, still same short id.
-	id3, sid3, err := d.storeDiscovery(ctx, storeDiscoveryArgs{ID: sid, Content: "map1c", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
+	id3, sid3, err := d.storeDiscovery(ctx, callerFor(ctx, t), storeDiscoveryArgs{ID: sid, Content: "map1c", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
 	if err != nil || id3 != id || sid3 != sid {
 		t.Fatalf("replace-by-shortid: id %q->%q sid %q->%q err %v", id, id3, sid, sid3, err)
 	}
@@ -1021,7 +1143,7 @@ func TestStoreDiscoveryMintsThenReplacePreservesShortID(t *testing.T) {
 func TestStoreDiscoveryRejectsNonexistentShortIDAsNew(t *testing.T) {
 	d := testDeps(t)
 	ctx := authedContext(t, "owner-A")
-	_, _, err := d.storeDiscovery(ctx, storeDiscoveryArgs{ID: "zzzzzzzzzz", Content: "x", Kind: "fact", Scope: "discovery:repo:x", Citations: []citationArg{{Kind: "file", Ref: "a", Pin: "p"}}})
+	_, _, err := d.storeDiscovery(ctx, callerFor(ctx, t), storeDiscoveryArgs{ID: "zzzzzzzzzz", Content: "x", Kind: "fact", Scope: "discovery:repo:x", Citations: []citationArg{{Kind: "file", Ref: "a", Pin: "p"}}})
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
@@ -1035,12 +1157,12 @@ func TestStoreDiscoveryCrossOwnerShortIDDoesNotLeakUUID(t *testing.T) {
 	d := testDeps(t)
 	ctxA := authedContext(t, "owner-A")
 	cites := []citationArg{{Kind: "file", Ref: "a.go", Pin: "abc"}}
-	id, sid, err := d.storeDiscovery(ctxA, storeDiscoveryArgs{Content: "m", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
+	id, sid, err := d.storeDiscovery(ctxA, callerFor(ctxA, t), storeDiscoveryArgs{Content: "m", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctxB := authedContext(t, "owner-B")
-	_, _, err = d.storeDiscovery(ctxB, storeDiscoveryArgs{ID: sid, Content: "m2", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
+	_, _, err = d.storeDiscovery(ctxB, callerFor(ctxB, t), storeDiscoveryArgs{ID: sid, Content: "m2", Kind: "map", Scope: "discovery:repo:x", Citations: cites})
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
@@ -1074,36 +1196,33 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 			t.Fatalf("seed %s: %v", m.ID, err)
 		}
 	}
-	ids := func(ms []any) map[string]bool {
+	ids := func(ms []store.Memory) map[string]bool {
 		out := map[string]bool{}
-		for _, h := range ms {
-			m, ok := h.(store.Memory)
-			if !ok {
-				t.Fatalf("ids: got element of type %T, want store.Memory", h)
-			}
+		for _, m := range ms {
 			out[m.ID] = true
 		}
 		return out
 	}
+	c := callerFor(ctx, t)
 
 	// Single tag: both alpha-carrying records, never the untagged one — on both handlers.
-	hits, err := d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha"}, Full: true})
+	hits, err := d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha"}})
 	if err != nil {
 		t.Fatalf("searchMemory alpha: %v", err)
 	}
 	if g := ids(hits); !g[alphaID] || !g[bothID] || g[plainID] {
 		t.Errorf("searchMemory alpha wrong: %v", g)
 	}
-	mems, _, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Tags: []string{"alpha"}, Full: true})
+	mems, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 10, Tags: []string{"alpha"}})
 	if err != nil {
 		t.Fatalf("listMemory alpha: %v", err)
 	}
-	if g := ids(mems); !g[alphaID] || !g[bothID] || g[plainID] {
+	if g := ids(mems.Memories); !g[alphaID] || !g[bothID] || g[plainID] {
 		t.Errorf("listMemory alpha wrong: %v", g)
 	}
 
 	// AND of two tags: only the record carrying both; the alpha-only record is excluded.
-	hits, err = d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha", "beta"}, Full: true})
+	hits, err = d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha", "beta"}})
 	if err != nil {
 		t.Fatalf("searchMemory AND: %v", err)
 	}
@@ -1112,18 +1231,18 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	}
 
 	// Omitted tags: passthrough returns all three — on both handlers.
-	hits, err = d.searchMemory(ctx, searchArgs{Query: "x", Scope: scope, K: 10, Full: true})
+	hits, err = d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10})
 	if err != nil {
 		t.Fatalf("searchMemory passthrough: %v", err)
 	}
 	if g := ids(hits); !g[alphaID] || !g[bothID] || !g[plainID] {
 		t.Errorf("searchMemory passthrough wrong: %v", g)
 	}
-	mems, _, err = d.listMemory(ctx, listArgs{Scope: scope, Limit: 10, Full: true})
+	mems, err = d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 10})
 	if err != nil {
 		t.Fatalf("listMemory passthrough: %v", err)
 	}
-	if g := ids(mems); !g[alphaID] || !g[bothID] || !g[plainID] {
+	if g := ids(mems.Memories); !g[alphaID] || !g[bothID] || !g[plainID] {
 		t.Errorf("listMemory passthrough wrong: %v", g)
 	}
 }
@@ -1141,7 +1260,7 @@ func TestUpdateMemoryPreservesSharingHandler(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 	// Content-only update (Shared nil) must preserve "shared".
-	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "v2"}); err != nil {
+	if _, err := d.updateMemory(ctx, callerFor(ctx, t), updateArgs{ID: id, Content: strp("v2")}); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	got, err := d.st.Get(ctx, id)
@@ -1150,6 +1269,66 @@ func TestUpdateMemoryPreservesSharingHandler(t *testing.T) {
 	}
 	if got.Content != "v2" || got.Visibility != "shared" {
 		t.Errorf("handler content-only update lost sharing: content=%q visibility=%q", got.Content, got.Visibility)
+	}
+}
+
+// TestUpdateMemoryReturnsMutationResult pins that deps.updateMemory returns a
+// typed mutationResult sourced from the already-fetched record (review HIGH):
+// the ID is always the canonical UUID and the ShortID is the persisted handle
+// — even when the caller supplied the short_id as a.ID (resolved, not echoed).
+func TestUpdateMemoryReturnsMutationResult(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-mutresult")
+	id, sid, err := d.storeMemory(ctx, callerFor(ctx, t), storeArgs{Content: "v1", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cleanupErr(t, "Delete "+id, d.st.Delete(ctx, id, store.Authenticated("sub-mutresult"))) })
+
+	// Call by SHORT ID: mutationResult.ID must be the canonical UUID, not the
+	// caller-supplied short id.
+	mr, err := d.updateMemory(ctx, callerFor(ctx, t), updateArgs{ID: sid, Content: strp("v2")})
+	if err != nil {
+		t.Fatalf("updateMemory: %v", err)
+	}
+	if mr.ID != id {
+		t.Errorf("mutationResult.ID = %q, want canonical UUID %q", mr.ID, id)
+	}
+	if mr.ShortID != sid {
+		t.Errorf("mutationResult.ShortID = %q, want %q", mr.ShortID, sid)
+	}
+
+	// Same contract on the payload-only (shared/summary-only) route.
+	shared := true
+	mr2, err := d.updateMemory(ctx, callerFor(ctx, t), updateArgs{ID: sid, Shared: &shared})
+	if err != nil {
+		t.Fatalf("updateMemory (payload-only): %v", err)
+	}
+	if mr2.ID != id || mr2.ShortID != sid {
+		t.Errorf("payload-only mutationResult = %+v, want ID=%q ShortID=%q", mr2, id, sid)
+	}
+}
+
+// TestSetVisibilityReturnsMutationResult mirrors
+// TestUpdateMemoryReturnsMutationResult for deps.setVisibility.
+func TestSetVisibilityReturnsMutationResult(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-mutresult-vis")
+	id, sid, err := d.storeMemory(ctx, callerFor(ctx, t), storeArgs{Content: "v1", Scope: "s", Category: "gotcha", Source: "user-said"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cleanupErr(t, "Delete "+id, d.st.Delete(ctx, id, store.Authenticated("sub-mutresult-vis"))) })
+
+	mr, err := d.setVisibility(ctx, callerFor(ctx, t), setVisibilityArgs{ID: sid, Shared: true})
+	if err != nil {
+		t.Fatalf("setVisibility: %v", err)
+	}
+	if mr.ID != id {
+		t.Errorf("mutationResult.ID = %q, want canonical UUID %q", mr.ID, id)
+	}
+	if mr.ShortID != sid {
+		t.Errorf("mutationResult.ShortID = %q, want %q", mr.ShortID, sid)
 	}
 }
 
@@ -1177,7 +1356,7 @@ func TestUpdateMemoryTagsHandler(t *testing.T) {
 
 	// Supplying tags replaces them; id and created_at are preserved.
 	newTags := []string{"alpha", "beta"}
-	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "v2", Tags: &newTags}); err != nil {
+	if _, err := d.updateMemory(ctx, callerFor(ctx, t), updateArgs{ID: id, Content: strp("v2"), Tags: &newTags}); err != nil {
 		t.Fatalf("update with tags: %v", err)
 	}
 	got, err := d.st.Get(ctx, id)
@@ -1196,7 +1375,7 @@ func TestUpdateMemoryTagsHandler(t *testing.T) {
 	}
 
 	// Omitting tags (nil) preserves the existing set.
-	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "v3"}); err != nil {
+	if _, err := d.updateMemory(ctx, callerFor(ctx, t), updateArgs{ID: id, Content: strp("v3")}); err != nil {
 		t.Fatalf("update without tags: %v", err)
 	}
 	got, err = d.st.Get(ctx, id)
@@ -1214,7 +1393,7 @@ func TestUpdateMemoryTagsHandler(t *testing.T) {
 	// guards the boundary: if the store gated on len(*tags)>0 instead of
 	// tags!=nil, clear would silently degrade to preserve.
 	empty := []string{}
-	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "v4", Tags: &empty}); err != nil {
+	if _, err := d.updateMemory(ctx, callerFor(ctx, t), updateArgs{ID: id, Content: strp("v4"), Tags: &empty}); err != nil {
 		t.Fatalf("update with empty tags: %v", err)
 	}
 	got, err = d.st.Get(ctx, id)
@@ -1255,7 +1434,7 @@ func TestUpdateMemoryEmbedNotCalledForNonOwner(t *testing.T) {
 	d.em = counter
 
 	// Non-owner call (anonymous ctx → sub=="" ≠ "sub-owner") must fail without embedding.
-	err := d.updateMemory(ctx, updateArgs{ID: stampedID, Content: "hijack"})
+	_, err := d.updateMemory(ctx, callerFor(ctx, t), updateArgs{ID: stampedID, Content: strp("hijack")})
 	if err == nil {
 		t.Fatal("non-owner updateMemory: expected error, got nil")
 	}
@@ -1280,7 +1459,7 @@ func TestUpdateMemoryEmbedNotCalledForNonOwner(t *testing.T) {
 	defer func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) }()
 
 	counter.calls = 0
-	if err := d.updateMemory(ctx, updateArgs{ID: ownerlessID, Content: "v2"}); err != nil {
+	if _, err := d.updateMemory(ctx, callerFor(ctx, t), updateArgs{ID: ownerlessID, Content: strp("v2")}); err != nil {
 		t.Fatalf("ownerless updateMemory: unexpected error: %v", err)
 	}
 	if counter.calls != 1 {
@@ -1325,31 +1504,28 @@ func TestAuthedCrossActorSharedReadHandlers(t *testing.T) {
 
 	// Caller B: a distinct authenticated subject.
 	bctx := authedContext(t, "actor-B")
+	bCaller := callerFor(bctx, t)
 
 	// searchMemory: B sees A's shared, not A's private.
-	hits, err := d.searchMemory(bctx, searchArgs{Query: "content", Scope: scope, K: 10, Full: true})
+	hits, err := d.searchMemory(bctx, bCaller, coreSearchRequest{Query: "content", Scope: scope, K: 10})
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}
 	assertVisibility(t, "searchMemory", hits, sharedID, privateID)
 
 	// listMemory: same guarantee through the no-query handler path.
-	mems, _, err := d.listMemory(bctx, listArgs{Scope: scope, Limit: 10, Full: true})
+	mems, err := d.listMemory(bctx, bCaller, coreListRequest{Scope: scope, Limit: 10})
 	if err != nil {
 		t.Fatalf("listMemory: %v", err)
 	}
-	assertVisibility(t, "listMemory", mems, sharedID, privateID)
+	assertVisibility(t, "listMemory", mems.Memories, sharedID, privateID)
 }
 
 // assertVisibility checks that wantID appears in got and denyID does not.
-func assertVisibility(t *testing.T, where string, got []any, wantID, denyID string) {
+func assertVisibility(t *testing.T, where string, got []store.Memory, wantID, denyID string) {
 	t.Helper()
 	var sawWant, sawDeny bool
-	for _, h := range got {
-		m, ok := h.(store.Memory)
-		if !ok {
-			t.Fatalf("%s: assertVisibility: got element of type %T, want store.Memory", where, h)
-		}
+	for _, m := range got {
 		switch m.ID {
 		case wantID:
 			sawWant = true
@@ -1403,7 +1579,7 @@ func TestListScheduledTool(t *testing.T) {
 	d := testDeps(t)
 	ctx := authedContext(t, "sub-A")
 	// A far-future scheduled memory is hidden from normal recall but shows in list_scheduled.
-	id, _, err := d.scheduleMemory(ctx, scheduleArgs{storeArgs: storeArgs{Content: "future",
+	id, _, err := d.scheduleMemory(ctx, callerFor(ctx, t), scheduleArgs{storeArgs: storeArgs{Content: "future",
 		Scope: "ls:project:x", Source: "user-said", Category: "decision"},
 		NotBefore: "2099-01-01T00:00:00Z"})
 	if err != nil {
@@ -1411,7 +1587,7 @@ func TestListScheduledTool(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
 
-	got, err := d.listScheduled(ctx, listScheduledArgs{Scope: "ls:project:x"}) // default state=scheduled
+	got, err := d.listScheduled(ctx, callerFor(ctx, t), listScheduledArgs{Scope: "ls:project:x"}) // default state=scheduled
 	if err != nil {
 		t.Fatalf("list_scheduled: %v", err)
 	}
@@ -1446,7 +1622,7 @@ func TestStoreAndEmbedderFromEnvNoEnsureValidatesConfig(t *testing.T) {
 // per dependency. The configLoad seam counts loads across the whole build.
 func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
 	if testQdrantAddr == "" {
-		t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
+		failOrSkipNoQdrant(t)
 	}
 	// buildDepsFromEnv reads the data-plane config from the process env; point it
 	// at the test Qdrant with a dedicated collection so EnsureCollection succeeds.
@@ -1552,19 +1728,10 @@ func TestToMemorySetsClientSummarySource(t *testing.T) {
 	}
 }
 
-// recallID extracts the id from a default (summary-shaped) recall element.
-func recallID(t *testing.T, v any) string {
-	t.Helper()
-	rv, ok := v.(recallView)
-	if !ok {
-		t.Fatalf("recall element is %T, want recallView", v)
-	}
-	return rv.ID
-}
-
 func TestListMemoryReturnsNextCursorField(t *testing.T) {
 	d := testDeps(t) // skips without Qdrant
 	ctx := authedContext(t, "sub-A")
+	c := callerFor(ctx, t)
 	scope := "tool:project:nextcursor"
 	ids := []string{
 		"f0000000-0000-0000-0000-000000000001",
@@ -1580,30 +1747,126 @@ func TestListMemoryReturnsNextCursorField(t *testing.T) {
 		t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
 	}
 
-	// Page 1: a full page (limit 1, two records) MUST issue a cursor.
-	page1, next, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 1})
+	// Page 1: a full page (limit 1, two records) MUST issue a cursor. The core
+	// no longer hard-codes cursor mode (round-6 MED, grok) — this deps-level
+	// call sets CursorMode explicitly, mirroring the MCP list_memory closure.
+	page1, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 1, CursorMode: true})
 	if err != nil {
 		t.Fatalf("listMemory page 1: %v", err)
 	}
-	if len(page1) != 1 {
-		t.Fatalf("page 1: got %d records want 1", len(page1))
+	if len(page1.Memories) != 1 {
+		t.Fatalf("page 1: got %d records want 1", len(page1.Memories))
 	}
-	if next == "" {
+	if page1.NextToken == "" {
 		t.Fatal("page 1: empty next_cursor on a full page; want a resume token")
 	}
 
 	// Page 2: resuming with that cursor returns the OTHER record.
-	page2, _, err := d.listMemory(ctx, listArgs{Scope: scope, Limit: 1, Cursor: next})
+	page2, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 1, Cursor: page1.NextToken, CursorMode: true})
 	if err != nil {
 		t.Fatalf("listMemory page 2: %v", err)
 	}
-	if len(page2) != 1 {
-		t.Fatalf("page 2: got %d records want 1", len(page2))
+	if len(page2.Memories) != 1 {
+		t.Fatalf("page 2: got %d records want 1", len(page2.Memories))
 	}
-	id1, id2 := recallID(t, page1[0]), recallID(t, page2[0])
+	id1, id2 := page1.Memories[0].ID, page2.Memories[0].ID
 	if id1 == id2 {
 		t.Errorf("page 2 returned the same record as page 1 (%s); cursor did not advance", id1)
 	}
+}
+
+// TestListMemorySupersetOffsetAndCursorModes proves the typed core list
+// contract (D-07) preserves the FULL Connect list superset — offset,
+// categories, visibility, and the exact matched total — on the shared path,
+// not just the MCP-shaped subset. Round-4 HIGH-2: offset mode and cursor mode
+// are mutually exclusive in the store (store.go:817/:865), so this SPLITS the
+// assertion into two subtests rather than pairing Offset>0 with a
+// non-empty-NextToken assertion (impossible against the live store; the prior
+// combined assertion passed only against a token-fabricating fake).
+func TestListMemorySupersetOffsetAndCursorModes(t *testing.T) {
+	d := testDeps(t) // skips without Qdrant
+	ctx := authedContext(t, "sub-A")
+	c := callerFor(ctx, t)
+	base := d.clock().UTC().Truncate(time.Second)
+
+	t.Run("offset_mode_exact_total_no_next_token", func(t *testing.T) {
+		scope := "tool:project:superset-offset"
+		// Three private "decision" records (the matched set) plus one "gotcha"
+		// record the category filter must exclude.
+		decisionIDs := []string{
+			"c0000000-0000-0000-0000-000000000001",
+			"c0000000-0000-0000-0000-000000000002",
+			"c0000000-0000-0000-0000-000000000003",
+		}
+		for i, id := range decisionIDs {
+			if err := d.st.Upsert(ctx, store.Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A",
+				Category: "decision", Visibility: "private", CreatedAt: base.Add(time.Duration(i) * time.Hour)},
+				[]float32{0.1, 0.2, 0.3}); err != nil {
+				t.Fatalf("seed %s: %v", id, err)
+			}
+			t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
+		}
+		gotchaID := "c0000000-0000-0000-0000-000000000004"
+		if err := d.st.Upsert(ctx, store.Memory{ID: gotchaID, Content: "c", Scope: scope, Owner: "sub-A",
+			Category: "gotcha", Visibility: "private", CreatedAt: base}, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", gotchaID, err)
+		}
+		t.Cleanup(func() { _ = d.st.Delete(context.Background(), gotchaID, store.Authenticated("sub-A")) })
+
+		// Offset + Categories + Visibility, a small Limit — Total must reflect
+		// the full matched set (3 "decision" records), not the page length (1);
+		// NextToken must be EMPTY (offset mode emits no token, store.go:817).
+		res, err := d.listMemory(ctx, c, coreListRequest{
+			Scope: scope, Offset: 1, Limit: 1, Categories: []string{"decision"}, Visibility: "private",
+		})
+		if err != nil {
+			t.Fatalf("listMemory offset mode: %v", err)
+		}
+		if len(res.Memories) != 1 {
+			t.Fatalf("offset mode: got %d records want 1 (page size)", len(res.Memories))
+		}
+		if res.Total != 3 {
+			t.Errorf("offset mode: Total = %d, want 3 (exact matched count, not page length)", res.Total)
+		}
+		if res.NextToken != "" {
+			t.Errorf("offset mode: NextToken = %q, want empty (offset and cursor mode are mutually exclusive)", res.NextToken)
+		}
+	})
+
+	t.Run("cursor_mode_first_page_issues_next_token", func(t *testing.T) {
+		scope := "tool:project:superset-cursor"
+		ids := []string{
+			"c1000000-0000-0000-0000-000000000001",
+			"c1000000-0000-0000-0000-000000000002",
+		}
+		for i, id := range ids {
+			if err := d.st.Upsert(ctx, store.Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A",
+				CreatedAt: base.Add(time.Duration(i) * time.Hour)}, []float32{0.1, 0.2, 0.3}); err != nil {
+				t.Fatalf("seed %s: %v", id, err)
+			}
+			t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
+		}
+
+		// A full first page in cursor mode MUST issue a non-empty NextToken
+		// (store.go:865) that resumes to the OTHER record on page 2.
+		page1, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 1, CursorMode: true})
+		if err != nil {
+			t.Fatalf("listMemory cursor mode page 1: %v", err)
+		}
+		if len(page1.Memories) != 1 {
+			t.Fatalf("cursor mode page 1: got %d records want 1", len(page1.Memories))
+		}
+		if page1.NextToken == "" {
+			t.Fatal("cursor mode page 1: empty NextToken on a full page; want a resume token")
+		}
+		page2, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 1, Cursor: page1.NextToken, CursorMode: true})
+		if err != nil {
+			t.Fatalf("listMemory cursor mode page 2: %v", err)
+		}
+		if len(page2.Memories) != 1 || page2.Memories[0].ID == page1.Memories[0].ID {
+			t.Errorf("cursor mode page 2 did not advance: page1=%v page2=%v", page1.Memories, page2.Memories)
+		}
+	})
 }
 
 // TestListMemoryRejectsMalformedCursor pins g0ne.8 at the MCP boundary: a garbage
@@ -1611,14 +1874,21 @@ func TestListMemoryReturnsNextCursorField(t *testing.T) {
 func TestListMemoryRejectsMalformedCursor(t *testing.T) {
 	d := testDeps(t) // skips without Qdrant
 	ctx := authedContext(t, "sub-A")
-	if _, _, err := d.listMemory(ctx, listArgs{Scope: "tool:project:badcursor", Limit: 1, Cursor: "!!!garbage!!!"}); err == nil {
+	if _, err := d.listMemory(ctx, callerFor(ctx, t), coreListRequest{Scope: "tool:project:badcursor", Limit: 1, Cursor: "!!!garbage!!!"}); err == nil {
 		t.Error("malformed cursor accepted; want error")
 	}
 }
 
+// TestListMemoryRejectsBadWindow pins the transport-boundary time parse
+// (round-4 MED-6; relocated round-6 MED, grok): the typed core's
+// CreatedAfter/CreatedBefore are time.Time and structurally cannot carry an
+// invalid RFC3339 string, so the bad-window rejection now lives at
+// parseRFC3339 — the exact call the MCP list_memory/search_memory tool
+// closures make to build a coreListRequest/coreSearchRequest — not on
+// deps.listMemory/deps.searchMemory. No test hands an invalid time string to
+// the typed core.
 func TestListMemoryRejectsBadWindow(t *testing.T) {
-	d := &deps{} // no Qdrant: parseRFC3339("nope") fails before any store call
-	if _, _, err := d.listMemory(context.Background(), listArgs{Scope: "tool:project:x", CreatedAfter: "nope"}); err == nil {
+	if _, err := parseRFC3339("nope"); err == nil {
 		t.Error("bad created_after accepted; want error")
 	}
 }
@@ -1671,25 +1941,25 @@ func TestEmbedderFromConfigPassesParamsAndInstructions(t *testing.T) {
 func TestByIDToolsAcceptShortID(t *testing.T) {
 	d := testDeps(t)
 	ctx := authedContext(t, "owner-A")
-	id, sid, err := d.storeMemory(ctx, storeArgs{Content: "hi", Scope: "s", Category: "gotcha", Source: "user-said"})
+	id, sid, err := d.storeMemory(ctx, callerFor(ctx, t), storeArgs{Content: "hi", Scope: "s", Category: "gotcha", Source: "user-said"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := d.getMemory(ctx, idArgs{ID: sid})
+	got, err := d.getMemory(ctx, callerFor(ctx, t), idArgs{ID: sid})
 	if err != nil || got.ID != id {
 		t.Fatalf("get by short id → %q (err %v)", got.ID, err)
 	}
-	if err := d.updateMemory(ctx, updateArgs{ID: sid, Content: "hi-edited"}); err != nil {
+	if _, err := d.updateMemory(ctx, callerFor(ctx, t), updateArgs{ID: sid, Content: strp("hi-edited")}); err != nil {
 		t.Fatal(err)
 	}
 	after, err := d.st.Get(context.Background(), id)
 	if err != nil || after.ShortID != sid || after.Content != "hi-edited" {
 		t.Fatalf("update via short id: content=%q short=%q err=%v", after.Content, after.ShortID, err)
 	}
-	if err := d.setVisibility(ctx, setVisibilityArgs{ID: sid, Shared: true}); err != nil {
+	if _, err := d.setVisibility(ctx, callerFor(ctx, t), setVisibilityArgs{ID: sid, Shared: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := d.deleteMemory(ctx, idArgs{ID: sid}); err != nil {
+	if err := d.deleteMemory(ctx, callerFor(ctx, t), idArgs{ID: sid}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := d.st.Get(context.Background(), id); !errors.Is(err, store.ErrNotFound) {
@@ -1700,21 +1970,22 @@ func TestByIDToolsAcceptShortID(t *testing.T) {
 func TestShortIDCrossOwnerVisibility(t *testing.T) {
 	d := testDeps(t)
 	ctxA := authedContext(t, "owner-A")
-	privID, privSid, err := d.storeMemory(ctxA, storeArgs{Content: "secret", Scope: "s", Category: "gotcha", Source: "user-said"})
+	privID, privSid, err := d.storeMemory(ctxA, callerFor(ctxA, t), storeArgs{Content: "secret", Scope: "s", Category: "gotcha", Source: "user-said"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	sharedID, sharedSid, err := d.storeMemory(ctxA, storeArgs{Content: "public", Scope: "s", Category: "gotcha", Source: "user-said"})
+	sharedID, sharedSid, err := d.storeMemory(ctxA, callerFor(ctxA, t), storeArgs{Content: "public", Scope: "s", Category: "gotcha", Source: "user-said"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := d.setVisibility(ctxA, setVisibilityArgs{ID: sharedID, Shared: true}); err != nil {
+	if _, err := d.setVisibility(ctxA, callerFor(ctxA, t), setVisibilityArgs{ID: sharedID, Shared: true}); err != nil {
 		t.Fatal(err)
 	}
 	// owner-B: resolution is owner-agnostic, the read gate governs.
 	ctxB := authedContext(t, "owner-B")
+	cB := callerFor(ctxB, t)
 	// item 4: another owner's private record → ErrNotFound (404, not 403; no leak)
-	_, err = d.getMemory(ctxB, idArgs{ID: privSid})
+	_, err = d.getMemory(ctxB, cB, idArgs{ID: privSid})
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("cross-owner private must be ErrNotFound, got %v", err)
 	}
@@ -1727,11 +1998,11 @@ func TestShortIDCrossOwnerVisibility(t *testing.T) {
 		t.Fatalf("error should echo caller-supplied short id only: %v", err)
 	}
 	// item 5: another owner's shared record → readable
-	if got, err := d.getMemory(ctxB, idArgs{ID: sharedSid}); err != nil || got.ID != sharedID {
+	if got, err := d.getMemory(ctxB, cB, idArgs{ID: sharedSid}); err != nil || got.ID != sharedID {
 		t.Fatalf("cross-owner shared must be readable, got %q err %v", got.ID, err)
 	}
 	// updateMemory: same no-leak re-wrap as getMemory.
-	err = d.updateMemory(ctxB, updateArgs{ID: privSid, Content: "x"})
+	_, err = d.updateMemory(ctxB, callerFor(ctxB, t), updateArgs{ID: privSid, Content: strp("x")})
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("cross-owner update must be ErrNotFound, got %v", err)
 	}
@@ -1742,7 +2013,7 @@ func TestShortIDCrossOwnerVisibility(t *testing.T) {
 		t.Fatalf("update error should echo caller-supplied short id only: %v", err)
 	}
 	// deleteMemory: same no-leak re-wrap as getMemory.
-	err = d.deleteMemory(ctxB, idArgs{ID: privSid})
+	err = d.deleteMemory(ctxB, callerFor(ctxB, t), idArgs{ID: privSid})
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("cross-owner delete must be ErrNotFound, got %v", err)
 	}
@@ -1753,7 +2024,7 @@ func TestShortIDCrossOwnerVisibility(t *testing.T) {
 		t.Fatalf("delete error should echo caller-supplied short id only: %v", err)
 	}
 	// setVisibility: same no-leak re-wrap as getMemory.
-	err = d.setVisibility(ctxB, setVisibilityArgs{ID: privSid, Shared: true})
+	_, err = d.setVisibility(ctxB, callerFor(ctxB, t), setVisibilityArgs{ID: privSid, Shared: true})
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("cross-owner set_visibility must be ErrNotFound, got %v", err)
 	}
@@ -1790,11 +2061,11 @@ func TestGetMemoryNeverSurfacesEmbedderIdentity(t *testing.T) {
 		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Authenticated("sub-identity-wire")))
 	}()
 
-	id, _, err := d.storeMemory(ctx, storeArgs{Content: "wire check", Scope: scope, Source: "user-said", Category: "gotcha"})
+	id, _, err := d.storeMemory(ctx, callerFor(ctx, t), storeArgs{Content: "wire check", Scope: scope, Source: "user-said", Category: "gotcha"})
 	if err != nil {
 		t.Fatalf("storeMemory: %v", err)
 	}
-	got, err := d.getMemory(ctx, idArgs{ID: id})
+	got, err := d.getMemory(ctx, callerFor(ctx, t), idArgs{ID: id})
 	if err != nil {
 		t.Fatalf("getMemory: %v", err)
 	}
@@ -1814,11 +2085,11 @@ func TestGetMemoryNeverSurfacesEmbedderIdentity(t *testing.T) {
 func TestGetMemoryEnqueuesUsageSignalOnSuccessOnly(t *testing.T) {
 	d, rec := testDepsWithUsageQueue(t, 2, 16)
 	ctxA := authedContext(t, "owner-A")
-	id, _, err := d.storeMemory(ctxA, storeArgs{Content: "hi", Scope: "s", Category: "gotcha", Source: "user-said"})
+	id, _, err := d.storeMemory(ctxA, callerFor(ctxA, t), storeArgs{Content: "hi", Scope: "s", Category: "gotcha", Source: "user-said"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.getMemory(ctxA, idArgs{ID: id}); err != nil {
+	if _, err := d.getMemory(ctxA, callerFor(ctxA, t), idArgs{ID: id}); err != nil {
 		t.Fatal(err)
 	}
 	d.usageQueue.Wait()
@@ -1828,7 +2099,7 @@ func TestGetMemoryEnqueuesUsageSignalOnSuccessOnly(t *testing.T) {
 
 	// Denied: owner-B fetching owner-A's private record must not enqueue.
 	ctxB := authedContext(t, "owner-B")
-	if _, err := d.getMemory(ctxB, idArgs{ID: id}); !errors.Is(err, store.ErrNotFound) {
+	if _, err := d.getMemory(ctxB, callerFor(ctxB, t), idArgs{ID: id}); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("cross-owner get must be ErrNotFound, got %v", err)
 	}
 	d.usageQueue.Wait()
@@ -1845,24 +2116,27 @@ func TestSearchListMemoryDoNotEnqueueUsageSignal(t *testing.T) {
 	d, rec := testDepsWithUsageQueue(t, 2, 16)
 	ctx := authedContext(t, "owner-A")
 	scope := "usage-d02-scope"
-	if _, _, err := d.storeMemory(ctx, storeArgs{Content: "hi", Scope: scope, Category: "gotcha", Source: "user-said"}); err != nil {
+	if _, _, err := d.storeMemory(ctx, callerFor(ctx, t), storeArgs{Content: "hi", Scope: scope, Category: "gotcha", Source: "user-said"}); err != nil {
 		t.Fatal(err)
 	}
 	future := timeNow().Add(time.Hour).Format(time.RFC3339)
-	if _, _, err := d.scheduleMemory(ctx, scheduleArgs{
+	if _, _, err := d.scheduleMemory(ctx, callerFor(ctx, t), scheduleArgs{
 		storeArgs: storeArgs{Content: "later", Scope: scope, Category: "gotcha", Source: "user-said"},
 		NotBefore: future,
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := d.searchMemory(ctx, searchArgs{Query: "hi", Scope: scope}); err != nil {
+	c := callerFor(ctx, t)
+	// deps.searchMemory applies no internal k default (round-4 finding-7): the
+	// core rejects K==0, so this direct call supplies the MCP lane's k=8.
+	if _, err := d.searchMemory(ctx, c, coreSearchRequest{Query: "hi", Scope: scope, K: 8}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := d.listMemory(ctx, listArgs{Scope: scope}); err != nil {
+	if _, err := d.listMemory(ctx, c, coreListRequest{Scope: scope}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.listScheduled(ctx, listScheduledArgs{Scope: scope}); err != nil {
+	if _, err := d.listScheduled(ctx, c, listScheduledArgs{Scope: scope}); err != nil {
 		t.Fatal(err)
 	}
 	d.usageQueue.Wait()
@@ -1878,11 +2152,11 @@ func TestSearchListMemoryDoNotEnqueueUsageSignal(t *testing.T) {
 func TestUpdateMemoryIncrementsAccessCountOnceNoAsyncEnqueue(t *testing.T) {
 	d, rec := testDepsWithUsageQueue(t, 2, 16)
 	ctx := authedContext(t, "owner-A")
-	id, _, err := d.storeMemory(ctx, storeArgs{Content: "v1", Scope: "s", Category: "gotcha", Source: "user-said"})
+	id, _, err := d.storeMemory(ctx, callerFor(ctx, t), storeArgs{Content: "v1", Scope: "s", Category: "gotcha", Source: "user-said"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "v2"}); err != nil {
+	if _, err := d.updateMemory(ctx, callerFor(ctx, t), updateArgs{ID: id, Content: strp("v2")}); err != nil {
 		t.Fatal(err)
 	}
 	after, err := d.st.Get(context.Background(), id)
@@ -1911,8 +2185,8 @@ func TestBuildUsageQueueConfigGate(t *testing.T) {
 		t.Fatalf("unparseable Signals must disable the queue, got %v", q)
 	}
 
-	d := testDeps(t)
-	q := buildUsageQueue(&config.Config{Usage: config.UsageConfig{Signals: "true"}}, d.st, nil)
+	d, st := testDepsWithStore(t)
+	q := buildUsageQueue(&config.Config{Usage: config.UsageConfig{Signals: "true"}}, st, nil)
 	if q == nil {
 		t.Fatal("Signals=true must build a live queue")
 	}
@@ -1925,11 +2199,11 @@ func TestBuildUsageQueueConfigGate(t *testing.T) {
 	// Nil-safe call site: deps.usageQueue is nil by default (testDeps), and
 	// get_memory must still return the record with zero counter writes.
 	ctx := authedContext(t, "owner-A")
-	id, _, err := d.storeMemory(ctx, storeArgs{Content: "hi", Scope: "s", Category: "gotcha", Source: "user-said"})
+	id, _, err := d.storeMemory(ctx, callerFor(ctx, t), storeArgs{Content: "hi", Scope: "s", Category: "gotcha", Source: "user-said"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := d.getMemory(ctx, idArgs{ID: id})
+	got, err := d.getMemory(ctx, callerFor(ctx, t), idArgs{ID: id})
 	if err != nil || got.ID != id {
 		t.Fatalf("get with disabled usage queue: got %q err %v", got.ID, err)
 	}

@@ -384,7 +384,7 @@ func TestSummaryQueueBackoffBudgetIndependentOfEmbedTimeout(t *testing.T) {
 // re-reading it back shows the persisted summary. Integration: needs Qdrant
 // (skip-gated via testDeps, same posture as the rest of this package).
 func TestStoreFillFillsEligibleRecord(t *testing.T) {
-	d := testDeps(t)
+	d, st := testDepsWithStore(t)
 	ctx := context.Background()
 	id := "10000000-0000-0000-0000-000000000001"
 	long := "this is a long body well over the tiny cap used by this integration test"
@@ -399,7 +399,7 @@ func TestStoreFillFillsEligibleRecord(t *testing.T) {
 	t.Cleanup(func() { cleanupErr(t, "delete", d.st.Delete(ctx, id, store.Authenticated("owner-Q"))) })
 
 	summarize := func(context.Context, string) (string, error) { return "queue fill summary", nil }
-	fill := storeFill(d.st, summarize, "test-model", 8)
+	fill := storeFill(st, summarize, "test-model", 8)
 	if err := fill(ctx, id); err != nil {
 		t.Fatalf("storeFill: %v", err)
 	}
@@ -417,9 +417,9 @@ func TestStoreFillFillsEligibleRecord(t *testing.T) {
 // error is wrapped via backoff.Permanent so the retry loop never retries a
 // not-found id (RESEARCH Pattern 2). Integration: needs Qdrant.
 func TestStoreFillReturnsPermanentOnNotFound(t *testing.T) {
-	d := testDeps(t)
+	_, st := testDepsWithStore(t)
 	summarize := func(context.Context, string) (string, error) { return "unused", nil }
-	fill := storeFill(d.st, summarize, "test-model", 8)
+	fill := storeFill(st, summarize, "test-model", 8)
 
 	err := fill(context.Background(), "20000000-0000-0000-0000-000000000099")
 	if err == nil {

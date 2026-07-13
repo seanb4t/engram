@@ -9,6 +9,36 @@ import (
 	"time"
 )
 
+// TestSealAutoInjectsVersion proves Seal always stamps the current
+// sessionPayloadVersion regardless of what the caller supplies (round-3
+// LOW-9): a Session with V left unset round-trips through Seal/Unseal to the
+// current version, and Resolve accepts it and yields the owner.
+func TestSealAutoInjectsVersion(t *testing.T) {
+	c, err := NewSessionCodec(testKey())
+	if err != nil {
+		t.Fatalf("NewSessionCodec: %v", err)
+	}
+	in := Session{Owner: "user-123", Expiry: nowUTC().Add(time.Hour)} // V left unset
+	sealed, err := c.Seal(in)
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	out, err := c.Unseal(sealed)
+	if err != nil {
+		t.Fatalf("Unseal: %v", err)
+	}
+	if out.V != sessionPayloadVersion {
+		t.Fatalf("Unseal V = %d, want %d (Seal must auto-inject the current version)", out.V, sessionPayloadVersion)
+	}
+	ti, err := NewResolver(c).Resolve(context.Background(), resolverReq(t, sealed))
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if ti.Extra["owner_claim"] != "user-123" {
+		t.Fatalf("owner_claim = %v, want user-123", ti.Extra["owner_claim"])
+	}
+}
+
 func testKey() []byte {
 	k := make([]byte, 32)
 	for i := range k {

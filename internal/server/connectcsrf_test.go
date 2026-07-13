@@ -218,11 +218,17 @@ func TestNoAnonymousWrite(t *testing.T) {
 
 // TestConnectCSRFTokenMatrix (SC2) proves the double-submit token is both
 // required and validated against the resolved Subject on a write RPC:
-// matching cookie+header passes CSRF and reaches the still-Unimplemented
-// stub; a missing header, a cookie/header mismatch, and a cookie minted for
-// a different owner are all rejected with PermissionDenied.
+// matching cookie+header passes CSRF and reaches the now-wired StoreMemory
+// handler, which succeeds against the spy-backed deps (round-5 HIGH,
+// Codex+grok — the permanent Phase-16 CSRF gate stays green through the
+// wiring, 17-04 Task 2); a missing header, a cookie/header mismatch, and a
+// cookie minted for a different owner are all rejected with
+// PermissionDenied, before ever reaching the handler.
 func TestConnectCSRFTokenMatrix(t *testing.T) {
-	d := &deps{} // no Qdrant: the happy-path cell reaches the still-Unimplemented stub
+	// Spy-backed (non-nil store + non-nil embedder, round-5 HIGH Codex+grok):
+	// the happy-path cell passes CSRF and reaches the real StoreMemory
+	// handler, which needs a working store + embedder.
+	d, _ := newSpyDeps()
 	mux := http.NewServeMux()
 	if err := d.mountConnect(mux, csrfStubResolve, csrfTestVerify); err != nil {
 		t.Fatal(err)
@@ -240,14 +246,20 @@ func TestConnectCSRFTokenMatrix(t *testing.T) {
 	tokenOtherOwner := csrfTestToken("actor-B")
 
 	tests := []struct {
-		name string
-		h    csrfHeaders
-		want connect.Code
+		name        string
+		h           csrfHeaders
+		wantSuccess bool // CSRF passed AND the scripted StoreMemory outcome succeeded
+		want        connect.Code
 	}{
 		{
-			name: "matching cookie and header",
-			h:    csrfHeaders{actor: ownerA, hasCookie: true, cookieValue: tokenA, hasHeader: true, headerValue: tokenA},
-			want: connect.CodeUnimplemented, // passed CSRF, reached the still-stub handler
+			// Passed CSRF, reached the now-wired StoreMemory handler, which
+			// succeeds against the spy-backed deps. round-6 LOW, Codex: assert
+			// err == nil directly — connect.CodeOf(nil) is CodeUnknown, not a
+			// success code, so a code-equality check on success would be
+			// meaningless.
+			name:        "matching cookie and header",
+			h:           csrfHeaders{actor: ownerA, hasCookie: true, cookieValue: tokenA, hasHeader: true, headerValue: tokenA},
+			wantSuccess: true,
 		},
 		{
 			name: "cookie present, header missing",
@@ -268,6 +280,12 @@ func TestConnectCSRFTokenMatrix(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			err := call(ctx, client, tc.h)
+			if tc.wantSuccess {
+				if err != nil {
+					t.Errorf("got err %v, want success (CSRF passed, reached the wired StoreMemory handler)", err)
+				}
+				return
+			}
 			if connect.CodeOf(err) != tc.want {
 				t.Errorf("got code %v (%v), want %v", connect.CodeOf(err), err, tc.want)
 			}

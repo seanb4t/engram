@@ -2946,3 +2946,203 @@ func TestBackfillShortIDsResumesAfterMidRunFailure(t *testing.T) {
 		t.Fatalf("third run n=%d err=%v", n, err)
 	}
 }
+
+// TestUpdatePayloadPreservesVectorBumpsUsageAndClearsProvenance is the
+// round-3/5/7/8 payload-only-update regression guard. It seeds a record with
+// stale auto-summary provenance (SummarySourceAuto + a non-empty SummaryModel
+// + a non-zero SummaryEgressAt) and asserts, across two UpdatePayload calls
+// (a client-summary write, then a summary clear):
+//
+//	(a) the stored vector is byte-identical before/after, verified via the raw
+//	    Qdrant client with WithVectors(true) (Store.Get omits vectors, so it
+//	    cannot prove preservation — round-3 MED-4);
+//	(b) AccessCount increments and LastAccessedAt advances on every call (the
+//	    usage-signal regression guard, review finding 6);
+//	(c) summary_model/summary_egress_at are DELETED from the raw payload (not
+//	    merely zeroed in the decoded struct) after both the client-summary
+//	    write and the summary clear (round-3 MED-3, round-5 MED grok, round-7
+//	    HIGH — the targeted DeletePayload, not a whole-payload overwrite).
+func TestUpdatePayloadPreservesVectorBumpsUsageAndClearsProvenance(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:update-payload"
+	owner := "sub-updatepayload"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, st.DeleteAllRaw(ctx, scope)) }()
+
+	id := "c0000000-0000-0000-0000-000000000001"
+	vec := []float32{0.3, 0.4, 0.5}
+	seeded := Memory{
+		ID: id, Content: "v", Scope: scope, Owner: owner,
+		CreatedAt:       time.Now().UTC(),
+		Summary:         "auto summary",
+		SummarySource:   SummarySourceAuto,
+		SummaryModel:    "gpt-x",
+		SummaryEgressAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	if err := st.Upsert(ctx, seeded, vec); err != nil {
+		t.Fatalf("seed upsert: %v", err)
+	}
+
+	before := scrollPoints(t, st.client, st.collection)[id]
+	if len(before.vec) == 0 {
+		t.Fatal("seed: no vector persisted")
+	}
+	for _, k := range provenanceKeys {
+		if _, ok := before.payload[k]; !ok {
+			t.Fatalf("seed: expected provenance key %q present", k)
+		}
+	}
+
+	// --- Call 1: shared=true + a CLIENT summary write. ---
+	cur, err := st.FetchForUpdate(ctx, id, Authenticated(owner))
+	if err != nil {
+		t.Fatalf("FetchForUpdate: %v", err)
+	}
+	shared := true
+	clientSummary := "client summary"
+	if err := st.UpdatePayload(ctx, cur, &shared, &clientSummary); err != nil {
+		t.Fatalf("UpdatePayload (client summary): %v", err)
+	}
+
+	afterClient := scrollPoints(t, st.client, st.collection)[id]
+	if !floatsEqual(before.vec, afterClient.vec) {
+		t.Errorf("vector changed after UpdatePayload: before=%v after=%v", before.vec, afterClient.vec)
+	}
+	for _, k := range provenanceKeys {
+		if _, ok := afterClient.payload[k]; ok {
+			t.Errorf("raw payload still carries provenance key %q after client-summary write", k)
+		}
+	}
+
+	got, err := st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.AccessCount != 1 {
+		t.Errorf("AccessCount = %d, want 1", got.AccessCount)
+	}
+	if got.LastAccessedAt == nil {
+		t.Error("LastAccessedAt not stamped")
+	}
+	if got.Visibility != visibilityShared {
+		t.Errorf("Visibility = %q, want %q", got.Visibility, visibilityShared)
+	}
+	if got.Summary != clientSummary || got.SummarySource != SummarySourceClient {
+		t.Errorf("summary not persisted as client: summary=%q source=%q", got.Summary, got.SummarySource)
+	}
+	if got.SummaryModel != "" || !got.SummaryEgressAt.IsZero() {
+		t.Errorf("decoded provenance not cleared: model=%q egress=%v", got.SummaryModel, got.SummaryEgressAt)
+	}
+
+	// Re-seed auto-provenance directly via the raw client (simulating a later
+	// auto-fill sweep) so call 2 can prove a summary CLEAR also deletes it.
+	if _, err := st.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: st.collection, Wait: qdrant.PtrOf(true),
+		Payload: qdrant.NewValueMap(map[string]any{
+			"summary_source":    string(SummarySourceAuto),
+			"summary_model":     "gpt-y",
+			"summary_egress_at": time.Now().UTC().Format(time.RFC3339),
+		}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
+	}); err != nil {
+		t.Fatalf("re-seed provenance: %v", err)
+	}
+
+	// --- Call 2: summary CLEAR (empty string). ---
+	cur2, err := st.FetchForUpdate(ctx, id, Authenticated(owner))
+	if err != nil {
+		t.Fatalf("FetchForUpdate 2: %v", err)
+	}
+	empty := ""
+	if err := st.UpdatePayload(ctx, cur2, nil, &empty); err != nil {
+		t.Fatalf("UpdatePayload (clear): %v", err)
+	}
+
+	got2, err := st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get 2: %v", err)
+	}
+	if got2.Summary != "" || got2.SummarySource != SummarySourceNone {
+		t.Errorf("summary not cleared: summary=%q source=%q", got2.Summary, got2.SummarySource)
+	}
+	if got2.AccessCount != 2 {
+		t.Errorf("AccessCount = %d, want 2 (bumped again)", got2.AccessCount)
+	}
+
+	afterClear := scrollPoints(t, st.client, st.collection)[id]
+	for _, k := range provenanceKeys {
+		if _, ok := afterClear.payload[k]; ok {
+			t.Errorf("raw payload still carries provenance key %q after summary clear", k)
+		}
+	}
+	if !floatsEqual(before.vec, afterClear.vec) {
+		t.Errorf("vector changed after second UpdatePayload: before=%v after=%v", before.vec, afterClear.vec)
+	}
+}
+
+// TestUpdatePayloadInjectedDeletePayloadFailure is the round-8 injected-failure
+// test: it forces the SECOND op (DeletePayload, the provenance clear) to fail
+// via the deletePayloadKeys function-var seam (the real *qdrant.Client has no
+// interface seam, so this mirrors the existing mintCandidate override
+// pattern) while the FIRST op (SetPayload) has already succeeded, and asserts
+// the documented partial-success contract: the exact injected error is
+// surfaced, the primary mutation (summary/summary_source/access_count/
+// last_accessed_at) is COMMITTED (readable on a fresh Get), and the
+// provenance keys remain STALE (present, not deleted) — never content/vector
+// corruption.
+func TestUpdatePayloadInjectedDeletePayloadFailure(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:update-payload-fail"
+	owner := "sub-updatepayload-fail"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, st.DeleteAllRaw(ctx, scope)) }()
+
+	id := "c0000000-0000-0000-0000-000000000002"
+	seeded := Memory{
+		ID: id, Content: "v", Scope: scope, Owner: owner,
+		CreatedAt:       time.Now().UTC(),
+		Summary:         "auto summary",
+		SummarySource:   SummarySourceAuto,
+		SummaryModel:    "gpt-x",
+		SummaryEgressAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	if err := st.Upsert(ctx, seeded, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	cur, err := st.FetchForUpdate(ctx, id, Authenticated(owner))
+	if err != nil {
+		t.Fatalf("FetchForUpdate: %v", err)
+	}
+
+	injected := errors.New("injected DeletePayload failure")
+	st.deletePayloadKeys = func(context.Context, string, []string) error { return injected }
+	t.Cleanup(func() { st.deletePayloadKeys = nil })
+
+	clientSummary := "new client summary"
+	if err := st.UpdatePayload(ctx, cur, nil, &clientSummary); !errors.Is(err, injected) {
+		t.Fatalf("UpdatePayload error = %v, want the exact injected error %v", err, injected)
+	}
+
+	// Primary mutation COMMITTED despite the DeletePayload failure (documented
+	// partial success).
+	got, err := st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Summary != clientSummary || got.SummarySource != SummarySourceClient {
+		t.Errorf("primary mutation not committed: summary=%q source=%q", got.Summary, got.SummarySource)
+	}
+	if got.AccessCount != 1 {
+		t.Errorf("AccessCount not bumped despite committed primary mutation: %d", got.AccessCount)
+	}
+
+	// Provenance keys remain STALE: the injected failure means DeletePayload
+	// never actually ran against Qdrant.
+	raw := scrollPoints(t, st.client, st.collection)[id]
+	for _, k := range provenanceKeys {
+		if _, ok := raw.payload[k]; !ok {
+			t.Errorf("expected stale provenance key %q to remain after the injected DeletePayload failure", k)
+		}
+	}
+}

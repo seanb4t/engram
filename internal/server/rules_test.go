@@ -60,7 +60,7 @@ func TestStoreRuleHandler(t *testing.T) {
 	scope := "rule:repo:store-rule-handler-test"
 	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) })
 
-	id, sid, err := d.storeRule(ctx, storeRuleArgs{
+	id, sid, err := d.storeRule(ctx, callerFor(ctx, t), storeRuleArgs{
 		Content: "never force-push shared branches",
 		Scope:   scope,
 		Summary: "no force-push on shared branches",
@@ -88,7 +88,7 @@ func TestStoreRuleHandler(t *testing.T) {
 	}
 
 	// Invalid args are rejected before any write.
-	if _, _, err := d.storeRule(ctx, storeRuleArgs{Content: "x", Scope: "repo:x", Summary: "s"}); err == nil {
+	if _, _, err := d.storeRule(ctx, callerFor(ctx, t), storeRuleArgs{Content: "x", Scope: "repo:x", Summary: "s"}); err == nil {
 		t.Error("expected rejection of non-rule scope")
 	}
 }
@@ -104,7 +104,7 @@ func TestStoreRuleStampsEmbedderIdentityHandler(t *testing.T) {
 	scope := "rule:repo:identity-store-rule"
 	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) })
 
-	id, _, err := d.storeRule(ctx, storeRuleArgs{
+	id, _, err := d.storeRule(ctx, callerFor(ctx, t), storeRuleArgs{
 		Content: "identity check rule", Scope: scope, Summary: "identity check rule",
 	})
 	if err != nil {
@@ -132,13 +132,13 @@ func TestListRulesFullNeverSurfacesEmbedderIdentity(t *testing.T) {
 	scope := "rule:repo:list-rules-identity-wire"
 	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) })
 
-	if _, _, err := d.storeRule(ctx, storeRuleArgs{
+	if _, _, err := d.storeRule(ctx, callerFor(ctx, t), storeRuleArgs{
 		Content: "wire check rule", Scope: scope, Summary: "wire check rule",
 	}); err != nil {
 		t.Fatalf("storeRule: %v", err)
 	}
 
-	full, _, err := d.listRules(ctx, listRulesArgs{Scopes: []string{scope}, Full: true})
+	full, _, err := d.listRules(ctx, callerFor(ctx, t), listRulesArgs{Scopes: []string{scope}, Full: true})
 	if err != nil {
 		t.Fatalf("listRules full: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestListRulesHandler(t *testing.T) {
 
 	// Seed three rules; the injected clock makes A<B<C by created_at.
 	for i, s := range []string{"rule A", "rule B", "rule C"} {
-		if _, _, err := d.storeRule(ctx, storeRuleArgs{
+		if _, _, err := d.storeRule(ctx, callerFor(ctx, t), storeRuleArgs{
 			Content: s, Scope: scope, Summary: s, Tags: []string{"x"},
 		}); err != nil {
 			t.Fatalf("seed %d: %v", i, err)
@@ -185,7 +185,7 @@ func TestListRulesHandler(t *testing.T) {
 	}
 
 	// Compact (default) shape: complete set, ascending, ruleView fields.
-	rules, advisory, err := d.listRules(ctx, listRulesArgs{Scopes: []string{scope}})
+	rules, advisory, err := d.listRules(ctx, callerFor(ctx, t), listRulesArgs{Scopes: []string{scope}})
 	if err != nil {
 		t.Fatalf("listRules: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestListRulesHandler(t *testing.T) {
 	}
 
 	// Tags AND filter: all carry "x", none carry "y".
-	none, _, err := d.listRules(ctx, listRulesArgs{Scopes: []string{scope}, Tags: []string{"y"}})
+	none, _, err := d.listRules(ctx, callerFor(ctx, t), listRulesArgs{Scopes: []string{scope}, Tags: []string{"y"}})
 	if err != nil {
 		t.Fatalf("listRules tags: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestListRulesHandler(t *testing.T) {
 	}
 
 	// Full shape returns store.Memory (carries content).
-	full, _, err := d.listRules(ctx, listRulesArgs{Scopes: []string{scope}, Full: true})
+	full, _, err := d.listRules(ctx, callerFor(ctx, t), listRulesArgs{Scopes: []string{scope}, Full: true})
 	if err != nil {
 		t.Fatalf("listRules full: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestListRulesHandler(t *testing.T) {
 	}
 
 	// Invalid scope rejected.
-	if _, _, err := d.listRules(ctx, listRulesArgs{Scopes: []string{"repo:x"}}); err == nil {
+	if _, _, err := d.listRules(ctx, callerFor(ctx, t), listRulesArgs{Scopes: []string{"repo:x"}}); err == nil {
 		t.Error("expected rejection of non-rule scope")
 	}
 }
@@ -236,7 +236,7 @@ func TestSetVisibilityRejectsRule(t *testing.T) {
 	scope := "rule:repo:set-vis-rule-test"
 	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) })
 
-	id, _, err := d.storeRule(ctx, storeRuleArgs{
+	id, _, err := d.storeRule(ctx, callerFor(ctx, t), storeRuleArgs{
 		Content: "some rule", Scope: scope, Summary: "some rule",
 	})
 	if err != nil {
@@ -244,12 +244,15 @@ func TestSetVisibilityRejectsRule(t *testing.T) {
 	}
 
 	// The set_visibility handler must reject any visibility change on a rule.
-	err = d.setVisibility(ctx, setVisibilityArgs{ID: id, Shared: false})
+	_, err = d.setVisibility(ctx, callerFor(ctx, t), setVisibilityArgs{ID: id, Shared: false})
 	if err == nil {
 		t.Fatal("expected set_visibility on a rule to be rejected")
 	}
 	if !strings.Contains(err.Error(), "always shared") {
 		t.Errorf("expected 'always shared' message, got %v", err)
+	}
+	if !errors.Is(err, errRuleImmutable) {
+		t.Errorf("want errRuleImmutable, got %v", err)
 	}
 
 	// The rule is untouched: still shared.
@@ -268,7 +271,7 @@ func TestUpdateMemoryRuleGuard(t *testing.T) {
 	scope := "rule:repo:update-rule-guard-test"
 	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) })
 
-	id, _, err := d.storeRule(ctx, storeRuleArgs{
+	id, _, err := d.storeRule(ctx, callerFor(ctx, t), storeRuleArgs{
 		Content: "original rule text", Scope: scope, Summary: "original summary",
 	})
 	if err != nil {
@@ -282,19 +285,27 @@ func TestUpdateMemoryRuleGuard(t *testing.T) {
 		name string
 		a    updateArgs
 	}{
-		{"newline summary", updateArgs{ID: id, Content: "original rule text", Summary: &newline}},
-		{"oversize summary", updateArgs{ID: id, Content: "original rule text", Summary: &long}},
-		{"clear summary", updateArgs{ID: id, Content: "original rule text", Summary: &empty}},
+		{"newline summary", updateArgs{ID: id, Content: strp("original rule text"), Summary: &newline}},
+		{"oversize summary", updateArgs{ID: id, Content: strp("original rule text"), Summary: &long}},
+		{"clear summary", updateArgs{ID: id, Content: strp("original rule text"), Summary: &empty}},
 	}
 	for _, tc := range cases {
-		if err := d.updateMemory(ctx, tc.a); err == nil {
+		_, err := d.updateMemory(ctx, callerFor(ctx, t), tc.a)
+		if err == nil {
 			t.Errorf("%s: expected rejection, got nil", tc.name)
+			continue
+		}
+		// finding 5: validateRuleSummary's rejections are wrapped with the
+		// existing store.ErrInvalidArgument so a Connect update_memory call
+		// maps to CodeInvalidArgument, not CodeInternal.
+		if !errors.Is(err, store.ErrInvalidArgument) {
+			t.Errorf("%s: want store.ErrInvalidArgument, got %v", tc.name, err)
 		}
 	}
 
 	// A valid single-line summary replacement still succeeds.
 	okSummary := "revised summary"
-	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "revised rule text", Summary: &okSummary}); err != nil {
+	if _, err := d.updateMemory(ctx, callerFor(ctx, t), updateArgs{ID: id, Content: strp("revised rule text"), Summary: &okSummary}); err != nil {
 		t.Errorf("valid rule update rejected: %v", err)
 	}
 }
@@ -308,13 +319,17 @@ func TestUpdateMemoryRuleGuardRejectsUnshare(t *testing.T) {
 	scope := "rule:repo:update-rule-unshare-test"
 	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) })
 
-	id, _, err := d.storeRule(ctx, storeRuleArgs{Content: "some rule", Scope: scope, Summary: "some rule"})
+	id, _, err := d.storeRule(ctx, callerFor(ctx, t), storeRuleArgs{Content: "some rule", Scope: scope, Summary: "some rule"})
 	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	no := false
-	if err := d.updateMemory(ctx, updateArgs{ID: id, Content: "some rule", Shared: &no}); err == nil {
+	_, err = d.updateMemory(ctx, callerFor(ctx, t), updateArgs{ID: id, Content: strp("some rule"), Shared: &no})
+	if err == nil {
 		t.Fatal("expected update_memory(shared=false) on a rule to be rejected")
+	}
+	if !errors.Is(err, errRuleImmutable) {
+		t.Errorf("want errRuleImmutable, got %v", err)
 	}
 	// The rule is untouched: still shared.
 	got, err := d.st.Get(ctx, id)
@@ -337,17 +352,17 @@ func TestStoreRuleReplacePreservesShortID(t *testing.T) {
 		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("owner-rule-A")))
 	})
 
-	id, sid, err := d.storeRule(ctx, storeRuleArgs{Content: "r1", Scope: scope, Summary: "r1"})
+	id, sid, err := d.storeRule(ctx, callerFor(ctx, t), storeRuleArgs{Content: "r1", Scope: scope, Summary: "r1"})
 	if err != nil || sid == "" {
 		t.Fatalf("create: sid=%q err=%v", sid, err)
 	}
 	// Replace by UUID → same point, same short id.
-	id2, sid2, err := d.storeRule(ctx, storeRuleArgs{ID: id, Content: "r1b", Scope: scope, Summary: "r1b"})
+	id2, sid2, err := d.storeRule(ctx, callerFor(ctx, t), storeRuleArgs{ID: id, Content: "r1b", Scope: scope, Summary: "r1b"})
 	if err != nil || id2 != id || sid2 != sid {
 		t.Fatalf("replace-by-uuid: id %q->%q sid %q->%q err %v", id, id2, sid, sid2, err)
 	}
 	// Replace by SHORT ID → resolves to the same point, still same short id.
-	id3, sid3, err := d.storeRule(ctx, storeRuleArgs{ID: sid, Content: "r1c", Scope: scope, Summary: "r1c"})
+	id3, sid3, err := d.storeRule(ctx, callerFor(ctx, t), storeRuleArgs{ID: sid, Content: "r1c", Scope: scope, Summary: "r1c"})
 	if err != nil || id3 != id || sid3 != sid {
 		t.Fatalf("replace-by-shortid: id %q->%q sid %q->%q err %v", id, id3, sid, sid3, err)
 	}
@@ -364,12 +379,12 @@ func TestStoreRuleCrossOwnerShortIDDoesNotLeakUUID(t *testing.T) {
 	t.Cleanup(func() {
 		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctxA, scope, store.Authenticated("owner-rule-A")))
 	})
-	id, sid, err := d.storeRule(ctxA, storeRuleArgs{Content: "r", Scope: scope, Summary: "r"})
+	id, sid, err := d.storeRule(ctxA, callerFor(ctxA, t), storeRuleArgs{Content: "r", Scope: scope, Summary: "r"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctxB := authedContext(t, "owner-rule-B")
-	_, _, err = d.storeRule(ctxB, storeRuleArgs{ID: sid, Content: "r2", Scope: scope, Summary: "r2"})
+	_, _, err = d.storeRule(ctxB, callerFor(ctxB, t), storeRuleArgs{ID: sid, Content: "r2", Scope: scope, Summary: "r2"})
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
@@ -391,10 +406,11 @@ func TestRuleCrossActorSharedRead(t *testing.T) {
 	t.Cleanup(func() {
 		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctxA, scope, store.Authenticated("owner-rule-A")))
 	})
-	if _, _, err := d.storeRule(ctxA, storeRuleArgs{Content: "r", Scope: scope, Summary: "shared rule"}); err != nil {
+	if _, _, err := d.storeRule(ctxA, callerFor(ctxA, t), storeRuleArgs{Content: "r", Scope: scope, Summary: "shared rule"}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	rules, _, err := d.listRules(authedContext(t, "owner-rule-B"), listRulesArgs{Scopes: []string{scope}})
+	ctxB := authedContext(t, "owner-rule-B")
+	rules, _, err := d.listRules(ctxB, callerFor(ctxB, t), listRulesArgs{Scopes: []string{scope}})
 	if err != nil {
 		t.Fatalf("listRules(B): %v", err)
 	}
@@ -413,10 +429,10 @@ func TestRuleAnonBucketIsolation(t *testing.T) {
 	t.Cleanup(func() {
 		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctxA, scope, store.Authenticated("owner-rule-A")))
 	})
-	if _, _, err := d.storeRule(ctxA, storeRuleArgs{Content: "r", Scope: scope, Summary: "A's rule"}); err != nil {
+	if _, _, err := d.storeRule(ctxA, callerFor(ctxA, t), storeRuleArgs{Content: "r", Scope: scope, Summary: "A's rule"}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	rules, _, err := d.listRules(context.Background(), listRulesArgs{Scopes: []string{scope}})
+	rules, _, err := d.listRules(context.Background(), callerFor(context.Background(), t), listRulesArgs{Scopes: []string{scope}})
 	if err != nil {
 		t.Fatalf("listRules(anon): %v", err)
 	}
@@ -437,10 +453,10 @@ func TestRuleOrdinaryScopeIsolation(t *testing.T) {
 		cleanupErr(t, "DeleteAll rule", d.st.DeleteAll(ctxA, ruleScope, store.Authenticated("owner-rule-A")))
 		cleanupErr(t, "DeleteAll mem", d.st.DeleteAll(ctxA, memScope, store.Authenticated("owner-rule-A")))
 	})
-	if _, _, err := d.storeRule(ctxA, storeRuleArgs{Content: "r", Scope: ruleScope, Summary: "the rule"}); err != nil {
+	if _, _, err := d.storeRule(ctxA, callerFor(ctxA, t), storeRuleArgs{Content: "r", Scope: ruleScope, Summary: "the rule"}); err != nil {
 		t.Fatalf("seed rule: %v", err)
 	}
-	rules, _, err := d.listRules(ctxA, listRulesArgs{Scopes: []string{ruleScope}})
+	rules, _, err := d.listRules(ctxA, callerFor(ctxA, t), listRulesArgs{Scopes: []string{ruleScope}})
 	if err != nil || len(rules) != 1 {
 		t.Fatalf("listRules(ruleScope): n=%d err=%v", len(rules), err)
 	}
@@ -475,15 +491,15 @@ func TestListRulesHandlerMultiScope(t *testing.T) {
 
 	// A gets two rules (a1<a2), B gets one (b1); tick order is a1,a2,b1.
 	for _, s := range []string{"a1", "a2"} {
-		if _, _, err := d.storeRule(ctx, storeRuleArgs{Content: s, Scope: scopeA, Summary: s}); err != nil {
+		if _, _, err := d.storeRule(ctx, callerFor(ctx, t), storeRuleArgs{Content: s, Scope: scopeA, Summary: s}); err != nil {
 			t.Fatalf("seed A %q: %v", s, err)
 		}
 	}
-	if _, _, err := d.storeRule(ctx, storeRuleArgs{Content: "b1", Scope: scopeB, Summary: "b1"}); err != nil {
+	if _, _, err := d.storeRule(ctx, callerFor(ctx, t), storeRuleArgs{Content: "b1", Scope: scopeB, Summary: "b1"}); err != nil {
 		t.Fatalf("seed B: %v", err)
 	}
 
-	rules, advisory, err := d.listRules(ctx, listRulesArgs{Scopes: []string{scopeA, scopeB}})
+	rules, advisory, err := d.listRules(ctx, callerFor(ctx, t), listRulesArgs{Scopes: []string{scopeA, scopeB}})
 	if err != nil {
 		t.Fatalf("listRules multi-scope: %v", err)
 	}
@@ -540,7 +556,7 @@ func TestListRulesHandlerCurationAdvisory(t *testing.T) {
 		}
 	}
 
-	rules, advisory, err := d.listRules(ctx, listRulesArgs{Scopes: []string{scope}})
+	rules, advisory, err := d.listRules(ctx, callerFor(ctx, t), listRulesArgs{Scopes: []string{scope}})
 	if err != nil {
 		t.Fatalf("listRules: %v", err)
 	}

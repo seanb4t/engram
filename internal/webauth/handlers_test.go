@@ -156,7 +156,7 @@ func TestCallbackMintsCSRFCookie(t *testing.T) {
 	issuer := newFakeOIDCServer(t, clientID, map[string]any{"email": owner, "email_verified": true}, fakeOIDCOpts{})
 
 	ctx := context.Background()
-	a, err := NewAuthenticator(ctx, issuer, clientID, "secret", "https://engram.example/auth/callback", "email")
+	a, err := NewAuthenticator(ctx, issuer, clientID, "secret", "https://engram.example/auth/callback", []string{"email"})
 	if err != nil {
 		t.Fatalf("NewAuthenticator: %v", err)
 	}

@@ -198,6 +198,15 @@ type Store struct {
 	// mintCandidate generates a short_id candidate; nil defaults to shortid.New.
 	// Overridable in tests to force MintShortID's collision-retry branch.
 	mintCandidate func() (string, error)
+
+	// deletePayloadKeys issues the targeted Qdrant DeletePayload op removing the
+	// given keys from one point; nil defaults to defaultDeletePayloadKeys
+	// (s.client.DeletePayload). *qdrant.Client is a concrete type with no
+	// interface seam, so this function-var field (mirroring mintCandidate) is
+	// how UpdatePayload's two-op provenance-clear partial-failure path is
+	// injected in tests (round-8 injected-failure test) without a broader
+	// client-interface refactor.
+	deletePayloadKeys func(ctx context.Context, id string, keys []string) error
 }
 
 // Option configures a Store at construction.
@@ -1404,6 +1413,135 @@ func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *
 		cur.SummaryEgressAt = time.Time{}
 	}
 	return s.Upsert(ctx, cur, vec)
+}
+
+// provenanceKeys are the auto-summary provenance payload keys UpdatePayload
+// deletes (never blank-writes) when a client summary replaces or clears an
+// existing auto-summary. Shared by UpdatePayload and its tests.
+var provenanceKeys = []string{"summary_model", "summary_egress_at"}
+
+// UpdatePayload applies a shared/summary-only change to a record previously
+// fetched and ownership-verified via FetchForUpdate — it mirrors Update's cur
+// contract exactly: it does NOT re-fetch (cur is authoritative) and it does
+// NOT re-gate ownership (the FetchForUpdate gate already ran). Unlike Update,
+// it never touches content, tags, or the vector: it persists via a TARGETED
+// SetPayload that writes ONLY the keys this method owns (visibility, summary,
+// summary_source, plus the access_count/last_accessed_at usage-signal keys),
+// so the record's existing vector is preserved untouched — no re-embed, no
+// vector argument.
+//
+// This is deliberately NOT a whole-payload OverwritePayload(payload(cur)): a
+// whole-payload write against a stale FetchForUpdate snapshot is not a
+// compare-and-swap, and under ordinary concurrency it can revert a concurrent
+// content update's content/tags while that write's new re-embedded vector
+// survives — a durable content/vector desync that corrupts recall (round-7
+// HIGH). It matches this package's own SetVisibility, which likewise writes
+// only the mutated key rather than rewriting the whole payload from a
+// snapshot. Do not reintroduce a whole-payload write here unless a real
+// optimistic-concurrency/version (CAS) mechanism is added first.
+//
+// shared/summary follow store.Update's exact presence-signal contract: nil
+// leaves the field unchanged, non-nil sets it (empty-string summary clears).
+// Like Update, the usage signal is bumped unconditionally: cur.AccessCount++
+// and cur.LastAccessedAt is stamped to now, mirroring Update's own bump
+// (store.go:1379-1384) so a shared/summary-only update still counts as an
+// update (review finding 6).
+//
+// When the summary write is a CLIENT summary (set OR cleared — summary
+// non-nil either way), stale auto-summary provenance (summary_model,
+// summary_egress_at) is cleared via a SEPARATE, targeted Qdrant DeletePayload
+// op on those two keys — never a blank/zero-time write, which would re-parse
+// non-absent at the payload decoder (fromPayload, store.go:433-439) and
+// misclassify the client summary as auto-generated.
+//
+// Partial-failure contract (round-8 — documented, not "fixed": the two-op
+// SetPayload+DeletePayload sequence is deliberately NOT atomic, matching
+// SetVisibility's own non-transactional single SetPayload). If the
+// DeletePayload provenance-clear fails AFTER the SetPayload has already
+// committed, the caller sees TWO consequences, both accepted and recoverable:
+//  1. Partial success: this method returns that error even though the
+//     primary mutation (visibility/summary/access-count bump) already
+//     landed — a caller-visible "mutation committed but RPC failed" outcome.
+//     A retry re-applies the mutation and re-increments AccessCount again
+//     (the usage counter is not idempotent across retries, same as any bump).
+//  2. Soft last-writer-wins RMW: AccessCount+1 is computed from the
+//     FetchForUpdate snapshot with no compare-and-swap, so concurrent updates
+//     on the same record can lose/regress increments — exactly the same
+//     accepted tradeoff as IncrementAccess (store.go:1445-1453).
+//
+// The record is NEVER left with corrupted content or vector: only the
+// summary_model/summary_egress_at provenance keys are potentially stale,
+// which mislabels a summary's source until a later write reconciles it.
+func (s *Store) UpdatePayload(ctx context.Context, cur Memory, shared *bool, summary *string) (err error) {
+	ctx, span := tracer.Start(ctx, "store.UpdatePayload")
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "UpdatePayload", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
+	clearProvenance := false
+	if shared != nil {
+		if *shared {
+			cur.Visibility = visibilityShared
+		} else {
+			cur.Visibility = ""
+		}
+	}
+	if summary != nil {
+		cur.Summary = *summary
+		if *summary == "" {
+			cur.SummarySource, cur.SummaryModel = SummarySourceNone, ""
+		} else {
+			cur.SummarySource, cur.SummaryModel = SummarySourceClient, ""
+		}
+		// A client-authored or cleared summary is no longer auto-egressed
+		// provenance; the in-memory struct is cleared to zero here (mirroring
+		// Update), and the persisted keys are DELETED below — never
+		// blank-written (round-5 MED, grok).
+		cur.SummaryEgressAt = time.Time{}
+		clearProvenance = true
+	}
+	cur.AccessCount++
+	now := s.now()
+	cur.LastAccessedAt = &now
+
+	if _, err = s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload: qdrant.NewValueMap(map[string]any{
+			"visibility":       cur.Visibility,
+			"summary":          cur.Summary,
+			"summary_source":   string(cur.SummarySource),
+			"access_count":     cur.AccessCount,
+			"last_accessed_at": now.Format(time.RFC3339),
+		}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(cur.ID)}),
+	}); err != nil {
+		return err
+	}
+	if !clearProvenance {
+		return nil
+	}
+	del := s.deletePayloadKeys
+	if del == nil {
+		del = s.defaultDeletePayloadKeys
+	}
+	return del(ctx, cur.ID, provenanceKeys)
+}
+
+// defaultDeletePayloadKeys is the production deletePayloadKeys implementation:
+// a targeted Qdrant DeletePayload op removing the given keys from one point.
+func (s *Store) defaultDeletePayloadKeys(ctx context.Context, id string, keys []string) error {
+	_, err := s.client.DeletePayload(ctx, &qdrant.DeletePayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Keys:           keys,
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
+	})
+	return err
 }
 
 // SetVisibility flips a record's shared flag without re-embedding (uses

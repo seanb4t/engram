@@ -9,6 +9,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/env/v2"
@@ -215,4 +216,58 @@ func Load(flags *flag.FlagSet) (*Config, error) {
 		return nil, fmt.Errorf("config unmarshal: %w", err)
 	}
 	return &c, nil
+}
+
+// ParseOwnerClaims comma-splits and trims raw into an ordered list of OIDC
+// claim names tried, in order, to resolve a record's owner (see
+// auth.ClaimIdentity). Parsing is deliberately separated from defaulting: the
+// registry already supplies "email" when ENGRAM_OWNER_CLAIM is unset (and an
+// empty ENV var preserves that default via Load's TransformFunc guard) — this
+// function only parses whatever string reaches it. A wholly-empty (or
+// after-trim-empty, e.g. ",", ",,", whitespace) value returns an EMPTY list
+// with a nil error — it does NOT default to ["email"] — so a caller's startup
+// guard can still observe an operator's explicit --owner-claim="".
+//
+// A malformed non-empty list is a fail-fast error, never silently normalized
+// (this is an auth key): a duplicate claim name is rejected (not deduped), an
+// empty entry among non-empty ones (e.g. "email,,sub") is rejected (not
+// dropped), and a claim name containing ':' or ',' or starting with a digit
+// is rejected (both would break or spoof the length-prefixed namespace
+// encoding in auth.ClaimIdentity).
+func ParseOwnerClaims(raw string) ([]string, error) {
+	fields := strings.Split(raw, ",")
+	trimmed := make([]string, len(fields))
+	allEmpty := true
+	anyEmpty := false
+	for i, f := range fields {
+		trimmed[i] = strings.TrimSpace(f)
+		if trimmed[i] == "" {
+			anyEmpty = true
+		} else {
+			allEmpty = false
+		}
+	}
+	if allEmpty {
+		return nil, nil
+	}
+	if anyEmpty {
+		return nil, fmt.Errorf("owner-claim list %q has an empty entry", raw)
+	}
+
+	seen := make(map[string]bool, len(trimmed))
+	claims := make([]string, 0, len(trimmed))
+	for _, c := range trimmed {
+		if seen[c] {
+			return nil, fmt.Errorf("owner-claim list %q has a duplicate claim %q", raw, c)
+		}
+		seen[c] = true
+		if strings.ContainsAny(c, ":,") {
+			return nil, fmt.Errorf("owner-claim %q must not contain ':' or ','", c)
+		}
+		if first := c[0]; first >= '0' && first <= '9' {
+			return nil, fmt.Errorf("owner-claim %q must not start with a digit", c)
+		}
+		claims = append(claims, c)
+	}
+	return claims, nil
 }

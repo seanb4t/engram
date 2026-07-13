@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	"fmt"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -94,58 +95,70 @@ func newFakeOIDCServer(t *testing.T, clientID string, claims map[string]any, opt
 // intentionally stub around by injecting a pre-built Authenticator.
 func TestAuthenticatorExchange(t *testing.T) {
 	const clientID = "test-client"
+	// namespacedOwner mirrors auth.namespacedOwner's unexported length-prefixed
+	// encoding so this cross-package test can compute the expected owner for a
+	// non-email winning claim without exporting the encoder.
+	namespacedOwner := func(claim, value string) string {
+		return fmt.Sprintf("%d:%s:%d:%s", len(claim), claim, len(value), value)
+	}
 	cases := []struct {
 		name          string
-		ownerClaim    string
+		ownerClaims   []string
 		claims        map[string]any
 		opts          fakeOIDCOpts
 		wantOwner     string
 		wantErrSubstr string
 	}{
 		{
-			name:       "default email claim, verified",
-			ownerClaim: "email",
-			claims:     map[string]any{"email": "user@example.com", "email_verified": true},
-			wantOwner:  "user@example.com",
+			name:        "default email claim, verified",
+			ownerClaims: []string{"email"},
+			claims:      map[string]any{"email": "user@example.com", "email_verified": true},
+			wantOwner:   "user@example.com",
 		},
 		{
 			name:          "email not verified is rejected",
-			ownerClaim:    "email",
+			ownerClaims:   []string{"email"},
 			claims:        map[string]any{"email": "user@example.com", "email_verified": false},
 			wantErrSubstr: "email not verified",
 		},
 		{
-			name:       "non-email claim skips email_verified enforcement",
-			ownerClaim: "preferred_username",
-			claims:     map[string]any{"preferred_username": "alice", "email": "alice@example.com", "email_verified": false},
-			wantOwner:  "alice",
+			name:        "non-email claim skips email_verified enforcement",
+			ownerClaims: []string{"preferred_username"},
+			claims:      map[string]any{"preferred_username": "alice", "email": "alice@example.com", "email_verified": false},
+			wantOwner:   namespacedOwner("preferred_username", "alice"),
 		},
 		{
 			name:          "empty owner-claim value is rejected (empty-owner guard)",
-			ownerClaim:    "preferred_username",
+			ownerClaims:   []string{"preferred_username"},
 			claims:        map[string]any{"email": "user@example.com", "email_verified": true},
-			wantErrSubstr: `missing owner claim "preferred_username"`,
+			wantErrSubstr: `missing owner claim(s) [preferred_username]`,
 		},
 		{
 			name:          "token endpoint failure is wrapped",
-			ownerClaim:    "email",
+			ownerClaims:   []string{"email"},
 			claims:        map[string]any{"email": "user@example.com", "email_verified": true},
 			opts:          fakeOIDCOpts{tokenEndpointFails: true},
 			wantErrSubstr: "code exchange",
 		},
 		{
 			name:          "missing id_token in token response",
-			ownerClaim:    "email",
+			ownerClaims:   []string{"email"},
 			claims:        map[string]any{"email": "user@example.com", "email_verified": true},
 			opts:          fakeOIDCOpts{omitIDToken: true},
 			wantErrSubstr: "missing id_token",
+		},
+		{
+			name:        "ordered fallback: email absent, sub present resolves to encoded sub owner",
+			ownerClaims: []string{"email", "sub"},
+			claims:      map[string]any{"sub": "svc-1"},
+			wantOwner:   namespacedOwner("sub", "svc-1"),
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			issuer := newFakeOIDCServer(t, clientID, tc.claims, tc.opts)
 			ctx := context.Background()
-			a, err := NewAuthenticator(ctx, issuer, clientID, "secret", "https://engram.example/auth/callback", tc.ownerClaim)
+			a, err := NewAuthenticator(ctx, issuer, clientID, "secret", "https://engram.example/auth/callback", tc.ownerClaims)
 			if err != nil {
 				t.Fatalf("NewAuthenticator: %v", err)
 			}

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
@@ -121,7 +122,16 @@ func runServe(cmd *cobra.Command) error {
 		slog.Error("web UI config invalid", "err", err)
 		return err
 	}
-	if err := ownerClaimGuard(cfg.OIDC.Issuer, uiCfg.Enabled, cfg.OIDC.OwnerClaim); err != nil {
+	// Parse the comma-list once (parsing is separate from defaulting: the
+	// registry already supplies "email" when unset). A malformed list
+	// (duplicate/interior-empty/bad claim name) fails startup immediately
+	// rather than surfacing as a runtime auth failure.
+	ownerClaims, err := config.ParseOwnerClaims(cfg.OIDC.OwnerClaim)
+	if err != nil {
+		slog.Error("owner-claim config invalid", "err", err)
+		return err
+	}
+	if err := ownerClaimGuard(cfg.OIDC.Issuer, uiCfg.Enabled, ownerClaims); err != nil {
 		slog.Error("owner-claim config invalid", "err", err)
 		return err
 	}
@@ -149,7 +159,7 @@ func runServe(cmd *cobra.Command) error {
 			return fmt.Errorf("csrf signer: %w", err)
 		}
 		oidcCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		authr, err := webauth.NewAuthenticator(oidcCtx, uiCfg.Issuer, uiCfg.ClientID, uiCfg.ClientSecret, uiCfg.RedirectURL, cfg.OIDC.OwnerClaim)
+		authr, err := webauth.NewAuthenticator(oidcCtx, uiCfg.Issuer, uiCfg.ClientID, uiCfg.ClientSecret, uiCfg.RedirectURL, ownerClaims)
 		cancel()
 		if err != nil {
 			return fmt.Errorf("web UI OIDC discovery: %w", err)
@@ -186,7 +196,7 @@ func runServe(cmd *cobra.Command) error {
 
 	var handler http.Handler = mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return srv }, nil)
-	handler, err = withAuth(handler, cfg.OIDC)
+	handler, err = withAuth(handler, cfg.OIDC, ownerClaims)
 	if err != nil {
 		slog.Error("oidc verifier init failed", "err", err, "issuer", cfg.OIDC.Issuer)
 		return err
@@ -248,25 +258,25 @@ func runServe(cmd *cobra.Command) error {
 }
 
 // ownerClaimGuard fails fast if any auth lane would run with an empty
-// owner-claim. ENGRAM_OWNER_CLAIM defaults to "email" and an empty env var
-// preserves that default (config.Load), so the only way to reach "" here is
-// an explicit --owner-claim="" — but if it happens, every authenticated
-// request/login fails with "missing owner claim" (SubjectFromTokenInfo /
-// Authenticator.exchange), which is better caught at startup than discovered
-// as a fleet-wide outage. It also warns when a non-default claim is
-// configured: only ownerClaim=="email" gets the email_verified enforcement in
-// auth.ClaimIdentity, so a different claim's uniqueness and verification
-// become the operator's IdP-side responsibility.
-func ownerClaimGuard(bearerIssuer string, uiEnabled bool, ownerClaim string) error {
+// owner-claim list. ENGRAM_OWNER_CLAIM defaults to "email" and an empty env
+// var preserves that default (config.Load), so the only way to reach an empty
+// list here is an explicit --owner-claim="" — but if it happens, every
+// authenticated request/login fails with "missing owner claim" (
+// SubjectFromTokenInfo / Authenticator.exchange), which is better caught at
+// startup than discovered as a fleet-wide outage. It also warns when "email"
+// is absent from the list: only a winning "email" claim gets the
+// email_verified enforcement in auth.ClaimIdentity, so a different claim's
+// uniqueness and verification become the operator's IdP-side responsibility.
+func ownerClaimGuard(bearerIssuer string, uiEnabled bool, ownerClaims []string) error {
 	if bearerIssuer == "" && !uiEnabled {
 		return nil // no auth lane active; owner-claim is inert
 	}
-	if ownerClaim == "" {
+	if len(ownerClaims) == 0 {
 		return fmt.Errorf("ENGRAM_OWNER_CLAIM (or --owner-claim) is empty while an OIDC lane is enabled: every authenticated request would fail with a missing-owner-claim error")
 	}
-	if ownerClaim != "email" {
-		slog.Warn("non-default owner-claim configured; the email_verified enforcement only applies to \"email\" — ensure your IdP guarantees this claim is unique, stable, and verified",
-			"owner_claim", ownerClaim)
+	if !slices.Contains(ownerClaims, "email") {
+		slog.Warn("owner-claim list does not include \"email\"; the email_verified enforcement only applies to a winning \"email\" claim — ensure your IdP guarantees the configured claim(s) are unique and stable",
+			"owner_claims", ownerClaims)
 	}
 	return nil
 }
@@ -275,13 +285,13 @@ func ownerClaimGuard(bearerIssuer string, uiEnabled bool, ownerClaim string) err
 // is configured. The upstream embedding/auth gateway forwards the caller's token
 // untouched; engram verifies it and exposes the caller identity to tool handlers.
 // No issuer → validation disabled (all requests accepted), logged loudly.
-func withAuth(handler http.Handler, oidc config.OIDCConfig) (http.Handler, error) {
+func withAuth(handler http.Handler, oidc config.OIDCConfig, ownerClaims []string) (http.Handler, error) {
 	if oidc.Issuer == "" {
 		slog.Warn("OIDC validation DISABLED (no --oidc-issuer / ENGRAM_OIDC_ISSUER); all requests accepted")
 		return handler, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	verifier, err := auth.New(ctx, oidc.Issuer, oidc.Audience, oidc.OwnerClaim)
+	verifier, err := auth.New(ctx, oidc.Issuer, oidc.Audience, ownerClaims)
 	cancel()
 	if err != nil {
 		return nil, fmt.Errorf("oidc verifier init: %w", err)

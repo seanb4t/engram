@@ -5,6 +5,7 @@ package webauth
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -76,6 +77,37 @@ func TestResolverRejectsEmptyOwner(t *testing.T) {
 	sealed, _ := codec.Seal(Session{Owner: "", Expiry: nowUTC().Add(time.Hour)})
 	if _, err := r.Resolve(context.Background(), resolverReq(t, sealed)); err == nil {
 		t.Fatal("expected error for empty-owner session")
+	}
+}
+
+// TestResolverRejectsLegacyVersionCookie proves the rollout invalidation seam
+// (T-17-14, round-2 finding 3): a cookie forged by BYPASSING Seal (sealing a
+// version-0/absent payload directly via the raw sealBytes path) is rejected by
+// Resolve, so no legacy bare-owner session can be forwarded into the new
+// namespaced owner space during the encoding rollout. The client-facing error
+// is the SAME generic string Resolve already uses for other invalid-session
+// conditions and must not disclose the payload version (round-8 LOW, Codex).
+func TestResolverRejectsLegacyVersionCookie(t *testing.T) {
+	codec := mustCodec(t)
+	r := NewResolver(codec)
+	legacy, err := json.Marshal(map[string]any{
+		"owner": "legacy-owner",
+		"exp":   nowUTC().Add(time.Hour),
+		// "v" intentionally omitted: decodes to the JSON zero value (0).
+	})
+	if err != nil {
+		t.Fatalf("marshal legacy payload: %v", err)
+	}
+	sealed, err := codec.sealBytes(legacy)
+	if err != nil {
+		t.Fatalf("sealBytes: %v", err)
+	}
+	_, err = r.Resolve(context.Background(), resolverReq(t, sealed))
+	if err == nil {
+		t.Fatal("expected rejection of a legacy (unversioned) session cookie")
+	}
+	if err.Error() != "invalid session cookie" {
+		t.Fatalf("error = %q, want the generic \"invalid session cookie\" (must not disclose the payload version)", err.Error())
 	}
 }
 

@@ -77,7 +77,7 @@ Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
 - [x] **Phase 14: Embedder Model Options & Eval** - Direct Gemini embeddings (eval-verified task_type behavior) + #261 prod-parity re-confirm on qwen3 + docs-site/Helm model recipes (completed 2026-07-11)
 - [x] **Phase 15: Additive Proto + Stub Write Handlers** - Six new write RPCs (additive-only, buf-generated), CI lint gate against `idempotency_level`, safe `CodeUnimplemented` stubs (completed 2026-07-11)
 - [x] **Phase 16: CSRF Interceptor** - Origin/Sec-Fetch-Site primary defense + session-bound double-submit token on every write RPC; read lane untouched (completed 2026-07-12)
-- [ ] **Phase 17: Wired Write Handlers (Full CRUD + Schedule)** - deps.* subject/actor refactor + all six write RPCs delegating to the shared MCP business-logic layer, MCP/Connect parity-tested
+- [x] **Phase 17: Wired Write Handlers (Full CRUD + Schedule)** - deps.* subject/actor refactor + all six write RPCs delegating to the shared MCP business-logic layer, MCP/Connect parity-tested (completed 2026-07-13)
 - [ ] **Phase 18: Stateless Session Rotation** - Sliding-expiry cookie re-seal on every authenticated request, new ADR for the no-revocation trade-off, no server-side state
 - [ ] **Phase 19: Console Write UX** - Create/edit/delete/re-share/schedule from the operator console over the write lane, with CSRF + silent re-seal retry
 - [ ] **Phase 20: Correctness & Polish** - Discovery proto fidelity, MintShortID collision cap, embed param-key/body-build cleanup, discovery short_id schema, summarize-missing CronJob
@@ -348,8 +348,26 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 4. Every by-id write RPC re-wraps a `store.ErrNotFound` with the caller's original input (short_id or UUID as supplied), never the resolved UUID — verified by a cross-owner table test per RPC — so no existence leak (DEC-xa6) reopens via a browser-visible network tab.
 5. **Invariant**: no write RPC carries `idempotency_level = NO_SIDE_EFFECTS` — re-asserted by the Phase 15 CI gate now that real logic exists behind these RPCs.
 
-**Status**: Not started
-**Plans**: TBD
+**Status**: Planned (revised after cross-AI review round 2 — 6 plans, 4 waves)
+**Plans**: 6/6 plans complete
+**Wave 1**
+
+- [x] 17-01-PLAN.md — Ordered owner-claim list + HARDENED injective namespace encoding (D-04/D-05/D-06) [wave 1]
+- [x] 17-02-PLAN.md — Store payload-only update + memStore interface (incl DeleteAll/ListScopes) + caller seam + write-lane single-path + by-id results + sentinels (D-01/D-02/D-03/D-10) [wave 1]
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 17-03-PLAN.md — protoconv conversion layer + RFC3339Nano + result mapping + exact-mapping tests (D-09) [wave 2]
+- [x] 17-06-PLAN.md — Read-lane transport-neutral typed core convergence (D-07 hardened) [wave 2]
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 17-04-PLAN.md — connectError mapper + scripted-spy fake + six write handlers + read-lane rewire + negative-matrix fix (D-07/D-10/D-11) [wave 3]
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 17-05-PLAN.md — Per-RPC spy parity table + split cross-owner leak tables + idempotency-ban re-assert (D-10/D-11/D-12) [wave 4]
+
 **Flag for /gsd-secure-phase.**
 
 ### Phase 18: Stateless Session Rotation
@@ -436,7 +454,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 | 14. Embedder Model Options & Eval | v0.10.x | 3/3 | Complete    | 2026-07-11 |
 | 15. Additive Proto + Stub Write Handlers | v0.10.x | 4/4 | Complete    | 2026-07-11 |
 | 16. CSRF Interceptor | v0.10.x | 3/3 | Complete    | 2026-07-12 |
-| 17. Wired Write Handlers (Full CRUD + Schedule) | v0.10.x | 0/1 | Not started | - |
+| 17. Wired Write Handlers (Full CRUD + Schedule) | v0.10.x | 6/6 | Complete    | 2026-07-13 |
 | 18. Stateless Session Rotation | v0.10.x | 0/1 | Not started | - |
 | 19. Console Write UX | v0.10.x | 0/1 | Not started | - |
 | 20. Correctness & Polish | v0.10.x | 0/6 | Not started | - |

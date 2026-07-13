@@ -6,6 +6,7 @@ package webauth
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"connectrpc.com/connect"
@@ -33,7 +34,7 @@ func NewResolver(codec *SessionCodec) *Resolver {
 
 // Resolve matches the connectResolver signature consumed by
 // server.newConnectSubjectInterceptor.
-func (r *Resolver) Resolve(_ context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, error) {
+func (r *Resolver) Resolve(ctx context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, error) {
 	// connect.AnyRequest.Header() already returns http.Header; wrap it in a
 	// throwaway *http.Request to reuse the stdlib cookie parser.
 	dummy := &http.Request{Header: req.Header()}
@@ -47,6 +48,18 @@ func (r *Resolver) Resolve(_ context.Context, req connect.AnyRequest) (*mcpauth.
 	}
 	if sess.Expiry.IsZero() || nowUTC().After(sess.Expiry) {
 		return nil, fmt.Errorf("session expired")
+	}
+	// Reject a legacy (pre-versioning) or otherwise-stale session payload
+	// before it can be forwarded as a bare owner into the new namespaced owner
+	// space (T-17-14, round-2 finding 3). The client-facing error is the SAME
+	// generic "invalid session cookie" Unseal already returns above — the
+	// payload version is deliberately NOT disclosed on the browser-visible
+	// surface (round-8 LOW, Codex); operators can still see it in this log
+	// line.
+	if sess.V != sessionPayloadVersion {
+		slog.WarnContext(ctx, "rejecting session with unsupported payload version",
+			"session_version", sess.V, "current_version", sessionPayloadVersion)
+		return nil, fmt.Errorf("invalid session cookie")
 	}
 	if sess.Owner == "" {
 		return nil, fmt.Errorf("session has empty owner")

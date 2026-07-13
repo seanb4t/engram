@@ -19,16 +19,17 @@ type Authenticator struct {
 	clientID     string
 	clientSecret string
 	redirectURL  string
-	ownerClaim   string
+	ownerClaims  []string
 	endpoint     oauth2.Endpoint
 	verifier     *oidc.IDTokenVerifier
 }
 
 // NewAuthenticator performs OIDC discovery against issuer and returns an
-// Authenticator. ownerClaim selects which ID-token claim becomes the record
-// owner (authz key); the ID-token verifier checks signature, issuer, and
-// audience (== clientID for the auth-code flow).
-func NewAuthenticator(ctx context.Context, issuer, clientID, clientSecret, redirectURL, ownerClaim string) (*Authenticator, error) {
+// Authenticator. ownerClaims is the ordered list of ID-token claims tried, in
+// order, to resolve the record owner (authz key) — see auth.ClaimIdentity;
+// the ID-token verifier checks signature, issuer, and audience (== clientID
+// for the auth-code flow).
+func NewAuthenticator(ctx context.Context, issuer, clientID, clientSecret, redirectURL string, ownerClaims []string) (*Authenticator, error) {
 	provider, err := oidc.NewProvider(ctx, issuer)
 	if err != nil {
 		return nil, fmt.Errorf("oidc discovery: %w", err)
@@ -37,7 +38,7 @@ func NewAuthenticator(ctx context.Context, issuer, clientID, clientSecret, redir
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		redirectURL:  redirectURL,
-		ownerClaim:   ownerClaim,
+		ownerClaims:  ownerClaims,
 		endpoint:     provider.Endpoint(),
 		verifier:     provider.Verifier(&oidc.Config{ClientID: clientID}),
 	}, nil
@@ -73,16 +74,17 @@ func (a *Authenticator) exchange(ctx context.Context, code, verifier string) (*o
 	}
 	var raw map[string]any
 	_ = idTok.Claims(&raw)
-	// Reuse the bearer lane's pure helper for claim selection + email_verified
-	// enforcement (no import cycle: auth does not import webauth).
-	owner, _, _, err := auth.ClaimIdentity(raw, a.ownerClaim)
+	// Reuse the bearer lane's pure helper for ordered claim selection +
+	// email_verified enforcement (no import cycle: auth does not import
+	// webauth).
+	owner, _, _, err := auth.ClaimIdentity(raw, a.ownerClaims)
 	if err != nil {
 		return nil, "", err
 	}
 	// Unlike the bearer lane (which defers to SubjectFromTokenInfo), the cookie
 	// lane seals identity now, so an empty owner must fail closed here.
 	if owner == "" {
-		return nil, "", fmt.Errorf("verified id_token missing owner claim %q", a.ownerClaim)
+		return nil, "", fmt.Errorf("verified id_token missing owner claim(s) %v", a.ownerClaims)
 	}
 	return tok, owner, nil
 }

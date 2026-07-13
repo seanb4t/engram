@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
-current_phase: 17
-current_phase_name: Full CRUD + Schedule
-status: "Phase 16 shipped — PR #361"
-stopped_at: Completed 16-03-PLAN.md
-last_updated: "2026-07-12T11:16:02.382Z"
-last_activity: 2026-07-12
+current_phase: 18
+current_phase_name: Stateless Session Rotation
+status: "Phase 17 shipped — PR #363"
+stopped_at: Completed 17-05-PLAN.md
+last_updated: "2026-07-13T15:20:01.334Z"
+last_activity: 2026-07-13
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 13
-  completed_plans: 13
+  total_phases: 5
+  completed_phases: 5
+  total_plans: 19
+  completed_plans: 19
   percent: 100
 ---
 
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 16 — CSRF Interceptor
+**Current focus:** Phase 17 — wired-write-handlers-full-crud-schedule
 
 ## Current Position
 
-Phase: 17 — Wired Write Handlers (Full CRUD + Schedule)
+Phase: 18 — Stateless Session Rotation
 Plan: Not started
-Status: Phase 16 shipped — PR #361
-Last activity: 2026-07-12
+Status: Phase 17 shipped — PR #363
+Last activity: 2026-07-13
 
 ## Deferred Items
 
@@ -86,6 +86,25 @@ cookie-auth security posture).
 - [Phase 16 P02]: TestReadRPCsCSRFExempt uses testDeps(t) (real Qdrant) instead of a bare deps{} -- read handlers dereference deps.st/em directly, unlike the still-Unimplemented write stubs
 - [Phase 16 P02]: connectcsrf_test.go's token-matrix verify is a local inline HMAC replica, not an internal/webauth import -- preserves the internal/server -> internal/webauth layering boundary
 - [Phase 16]: Minted the engram_csrf cookie in webauth.Handler.Callback this phase (not deferred to Phase 19) — SC2 is live end-to-end via a real fake-OIDC Callback test, per RESEARCH.md's resolved Open Question 1
+- [Phase 17]: [Phase 17 P01] Non-email owner encoding uses fmt.Sprintf("%d:%s:%d:%s", len(claim), claim, len(value), value) instead of the ambiguous claim:value form, closing the (sub,x:y)/(sub:x,y) collision (D-06 hardened)
+- [Phase 17]: [Phase 17 P01] Session cookie payload versioned (SessionCodec.Seal auto-injects); Resolve rejects any legacy/mismatched-version cookie with the same generic invalid-session error, forcing automatic re-login on the owner-encoding rollout without a manual --ui-cookie-key rotation
+- [Phase 17]: [Phase 17 P01] ENGRAM_OWNER_CLAIM parsing (config.ParseOwnerClaims) kept strictly separate from defaulting; registry still supplies default email when unset; malformed comma-lists (duplicate/interior-empty/bad claim name) fail fast rather than silently normalizing
+- [Phase 17]: [Phase 17 P02] UpdatePayload uses a targeted two-op SetPayload+DeletePayload (not a whole-payload OverwritePayload) to avoid content/vector desync from a stale FetchForUpdate snapshot with no CAS
+- [Phase 17]: [Phase 17 P02] callerFromTokenInfo is the single choke point for both auth lanes; Actor falls back to the resolved owner when TokenInfo.UserID is empty (Connect cookie lane never sets it)
+- [Phase 17]: [Phase 17 P02] errRuleImmutable is a NEW sentinel; errStaleSummary is REUSED unchanged (not redeclared)
+- [Phase 17]: [Phase 17 P03] Visibility enum<->bool mapping is used ONLY by SetVisibility; UpdateMemory shared maps &req.Shared (proto bool) directly to *bool, never the enum mapper (round-8 MED)
+- [Phase 17]: [Phase 17 P03] windowBoundFloor/windowBoundCeil round scheduling bounds OUTWARD to whole seconds before RFC3339Nano formatting so a sub-second not_after cannot persist as immediately-expired after the store's .Unix() flooring (round-8 MED)
+- [Phase 17]: [Phase 17 P06] coreListRequest/coreListResult/coreSearchRequest defined as a superset of both lanes (offset, categories, visibility, exact total, cursor/cursor_mode, tags, created window); no internal Limit/K default lives in deps.listMemory/searchMemory — each lane applies its own (MCP 20/8 in the tool closures, Connect leaves limit=0 as 'all' and applies k=20 in 17-04)
+- [Phase 17]: [Phase 17 P06] deps.searchDiscovery intentionally retains its internal k=8 default (MCP lane only, with a retention comment) since the Connect SearchDiscoveries adapter (17-04) pre-applies k=20
+- [Phase 17]: [Phase 17 P06] MCP recall shaping (shapeRecall -> []any) moved out of deps.listMemory/searchMemory into the MCP list_memory/search_memory tool closures; the list closure explicitly sets CursorMode: true to preserve today's unconditional MCP cursor-mode pagination
+- [Phase 17]: [Phase 17 P06] TestListMemoryRejectsBadWindow relocated to assert parseRFC3339 directly (the exact call the MCP closures make) since the typed core's CreatedAfter/CreatedBefore are time.Time and cannot carry an invalid string
+- [Phase 17]: [Phase 17 P04] connectError(ctx, err) is the single production error mapper matching typed sentinels (ErrNotFound/ErrInvalidArgument/errRuleImmutable/errStaleSummary/ErrAmbiguousShortID/context.Canceled/context.DeadlineExceeded); no CodeAborted arm since no distinct conflict sentinel exists
+- [Phase 17]: [Phase 17 P04] spyStore is a scripted-spy memStore (records method+owner+args, non-nil embedder) rather than a full store-authz reimplementation; the real Qdrant isolation suite remains the authz gate
+- [Phase 17]: [Phase 17 P04] SearchDiscoveries maps an empty Connect scope to CrossSpine=true so it still spans all discovery scopes after the read-lane rewire; GetMemory's handler-level usage-enqueue call is removed since deps.getMemory is now the sole enqueue point
+- [Phase 17]: [Phase 17 P05] assertCodeParity maps the direct MCP-lane domain error through the production connectError(ctx, err) before connect.CodeOf, compared against connect.CodeOf(handlerErr) on the Connect lane — never a hand-rolled test oracle (round-3 MED-6)
+- [Phase 17]: [Phase 17 P05] Store-trace comparison uses two granularities: Method+Owner only for CREATE rows (fresh UUID per lane by design) vs full Method+Owner+Args for by-id rows (same pre-seeded id both lanes)
+- [Phase 17]: [Phase 17 P05] StoreMemory parity row asserts a non-empty, lane-appropriate Memory.Actor per lane (MCP bearer TokenInfo.UserID vs Connect resolved-owner fallback), never cross-lane byte equality — a false invariant for a non-email owner (round-4 MED)
+- [Phase 17]: [Phase 17 P05] requireQdrant() is the sole ENGRAM_REQUIRE_QDRANT read/parse point; a malformed value returns a non-nil error rather than coercing to false, closing the last silent-skip path (round-8 LOW)
 
 ### Blockers/Concerns
 
@@ -96,9 +115,9 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-12T01:52:28.708Z
-Stopped at: Completed 16-03-PLAN.md
-Resume file: .planning/phases/16-csrf-interceptor/16-CONTEXT.md
+Last session: 2026-07-13T00:19:13.617Z
+Stopped at: Completed 17-05-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -117,3 +136,9 @@ Resume file: .planning/phases/16-csrf-interceptor/16-CONTEXT.md
 | Phase 16 P01 | 10min | 2 tasks | 2 files |
 | Phase 16 P02 | 25min | 3 tasks | 9 files |
 | Phase 16 P03 | 20min | 3 tasks | 5 files |
+| Phase 17 P01 | 35min | 3 tasks | 13 files |
+| Phase 17 P02 | 25min | 3 tasks | 14 files |
+| Phase 17 P03 | 10min | 2 tasks | 2 files |
+| Phase 17 P06 | 27min | 2 tasks | 4 files |
+| Phase 17 P04 | 17min | 3 tasks | 7 files |
+| Phase 17 P05 | 20min | 2 tasks | 4 files |

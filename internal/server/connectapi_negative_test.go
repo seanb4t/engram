@@ -39,29 +39,40 @@ func callWrite[Req, Resp any](ctx context.Context, fn func(context.Context, *con
 	return err
 }
 
-// writeRPCCase drives the core four-cell matrix (Unimplemented / Unauthenticated
-// / 405 / InvalidArgument) for one write RPC. validCall must succeed protovalidate
-// (so the only remaining outcome from the stub handler is CodeUnimplemented);
+// writeRPCCase drives the core four-cell matrix (authenticated+valid /
+// Unauthenticated / 405 / InvalidArgument) for one write RPC. validCall must
+// succeed protovalidate. wantValidNotFound selects the authenticated+valid
+// outcome (Task 2): the three by-id RPCs (UpdateMemory/DeleteMemory/
+// SetVisibility) address a scripted id ("some-id") the spy store has never
+// seen, which deps.* resolves to store.ErrNotFound -> CodeNotFound via
+// connectError; the three create RPCs (StoreMemory/StoreDiscovery/
+// ScheduleMemory) succeed outright (err == nil — round-6 LOW, Codex: do NOT
+// treat connect.CodeOf(nil) as a "success code", it returns CodeUnknown).
 // invalidCall must violate at least one buf.validate rule.
 type writeRPCCase struct {
-	name        string
-	procedure   string
-	validCall   func(ctx context.Context, c engramv1connect.EngramServiceClient, actor string) error
-	invalidCall func(ctx context.Context, c engramv1connect.EngramServiceClient, actor string) error
+	name              string
+	procedure         string
+	validCall         func(ctx context.Context, c engramv1connect.EngramServiceClient, actor string) error
+	invalidCall       func(ctx context.Context, c engramv1connect.EngramServiceClient, actor string) error
+	wantValidNotFound bool
 }
 
 // TestWriteRPCNegativeMatrix drives the REAL interceptor chain (otel ->
 // access-log -> subject/401 -> validate/400) over an httptest server for all
 // six write RPCs, asserting the exact Connect code for every request shape:
-// authenticated+valid -> Unimplemented (stub proves the RPC exists and no
-// handler body runs), unauthenticated -> Unauthenticated (even with an
-// invalid payload, proving auth precedes validation per D-10), GET -> 405
-// (proving no write RPC is GET-reachable), and authenticated+invalid ->
-// InvalidArgument (proving the protovalidate interceptor is wired). It also
-// covers the UpdateMemory mask cells (D-03) and the category allowlist cells
-// (StoreMemory/ScheduleMemory) called out in the phase's cross-AI review.
+// authenticated+valid -> the real wired outcome (success, or CodeNotFound for
+// a by-id RPC against a scripted-absent id — Task 2, landmine 1 defused),
+// unauthenticated -> Unauthenticated (even with an invalid payload, proving
+// auth precedes validation per D-10), GET -> 405 (proving no write RPC is
+// GET-reachable), and authenticated+invalid -> InvalidArgument (proving the
+// protovalidate interceptor is wired). It also covers the UpdateMemory mask
+// cells (D-03) and the category allowlist cells (StoreMemory/ScheduleMemory)
+// called out in the phase's cross-AI review.
 func TestWriteRPCNegativeMatrix(t *testing.T) {
-	d := &deps{} // no Qdrant: stubs return CodeUnimplemented before any store access
+	// Spy-backed (non-nil store + non-nil embedder): landmine 1 defused (17-04
+	// Task 1). Once the six write RPCs are wired (Task 2) an authenticated+valid
+	// call reaches the real handler body instead of nil-panicking on d.st/d.em.
+	d, _ := newSpyDeps()
 	resolve := func(_ context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, error) {
 		if req.Header().Get("X-Test-Actor") == "" {
 			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("no identity"))
@@ -126,6 +137,7 @@ func TestWriteRPCNegativeMatrix(t *testing.T) {
 			invalidCall: func(ctx context.Context, c engramv1connect.EngramServiceClient, actor string) error {
 				return callWrite(ctx, c.UpdateMemory, &engramv1.UpdateMemoryRequest{}, actor) // empty id + absent mask
 			},
+			wantValidNotFound: true, // "some-id" is not a UUID and unseen by the spy -> ErrNotFound
 		},
 		{
 			name:      "DeleteMemory",
@@ -136,6 +148,7 @@ func TestWriteRPCNegativeMatrix(t *testing.T) {
 			invalidCall: func(ctx context.Context, c engramv1connect.EngramServiceClient, actor string) error {
 				return callWrite(ctx, c.DeleteMemory, &engramv1.DeleteMemoryRequest{}, actor) // empty id violates min_len=1
 			},
+			wantValidNotFound: true,
 		},
 		{
 			name:      "SetVisibility",
@@ -146,6 +159,7 @@ func TestWriteRPCNegativeMatrix(t *testing.T) {
 			invalidCall: func(ctx context.Context, c engramv1connect.EngramServiceClient, actor string) error {
 				return callWrite(ctx, c.SetVisibility, &engramv1.SetVisibilityRequest{}, actor) // empty id + unspecified visibility
 			},
+			wantValidNotFound: true,
 		},
 		{
 			name:      "ScheduleMemory",
@@ -166,8 +180,18 @@ func TestWriteRPCNegativeMatrix(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := tc.validCall(ctx, client, "actor-A"); connect.CodeOf(err) != connect.CodeUnimplemented {
-				t.Errorf("authenticated valid: got code %v (%v), want Unimplemented", connect.CodeOf(err), err)
+			err := tc.validCall(ctx, client, "actor-A")
+			switch {
+			case tc.wantValidNotFound:
+				if connect.CodeOf(err) != connect.CodeNotFound {
+					t.Errorf("authenticated valid (by-id, scripted-absent): got code %v (%v), want NotFound", connect.CodeOf(err), err)
+				}
+			default:
+				// round-6 LOW, Codex: connect.CodeOf(nil) is CodeUnknown, not a
+				// success code — assert err == nil directly.
+				if err != nil {
+					t.Errorf("authenticated valid: got err %v, want success", err)
+				}
 			}
 			if err := tc.invalidCall(ctx, client, ""); connect.CodeOf(err) != connect.CodeUnauthenticated {
 				t.Errorf("unauthenticated invalid: got code %v (%v), want Unauthenticated (auth must precede validation, D-10)", connect.CodeOf(err), err)

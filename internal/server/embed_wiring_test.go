@@ -8,6 +8,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/seanb4t/engram/internal/store"
 )
 
 // recordingEmbedder captures which embed method the handler called and with what
@@ -35,7 +37,11 @@ func (r *recordingEmbedder) EmbedQuery(_ context.Context, text string) ([]float3
 func TestSearchMemoryUsesEmbedQuery(t *testing.T) {
 	rec := &recordingEmbedder{}
 	d := &deps{em: rec}
-	_, err := d.searchMemory(context.Background(), searchArgs{Query: "why did pushover fail", Scope: "s"})
+	// Explicit anonymous caller (round-5 HIGH, Codex): the recordingEmbedder
+	// returns errStopBeforeStore before any store access, so the anonymous
+	// subject is never used for authz — the store-less stop-before-store
+	// intent is preserved.
+	_, err := d.searchMemory(context.Background(), caller{Subj: store.Anonymous()}, coreSearchRequest{Query: "why did pushover fail", Scope: "s"})
 	if !errors.Is(err, errStopBeforeStore) {
 		t.Fatalf("expected stop-before-store error, got %v", err)
 	}
@@ -49,7 +55,11 @@ func TestSearchMemoryUsesEmbedQuery(t *testing.T) {
 func TestStoreMemoryEmbedsContentPlusTags(t *testing.T) {
 	rec := &recordingEmbedder{}
 	d := &deps{em: rec}
-	_, _, err := d.storeMemory(context.Background(), storeArgs{
+	// Explicit anonymous caller (round-5 HIGH, Codex): the recordingEmbedder
+	// returns errStopBeforeStore before any store access, so the anonymous
+	// subject is never used for authz — the store-less stop-before-store
+	// intent is preserved.
+	_, _, err := d.storeMemory(context.Background(), caller{Subj: store.Anonymous()}, storeArgs{
 		Content:  "musl getaddrinfo fails on NODATA",
 		Scope:    "s",
 		Source:   "user-said",
