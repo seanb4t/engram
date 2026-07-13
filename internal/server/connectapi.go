@@ -333,7 +333,7 @@ func (a *engramAPI) ScheduleMemory(ctx context.Context, req *connect.Request[eng
 // all (R1): mountConnect returns immediately without registering any handler.
 type connectResolver func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)
 
-func (d *deps) mountConnect(mux *http.ServeMux, resolve connectResolver, csrfVerify func(owner, token string) bool) error {
+func (d *deps) mountConnect(mux *http.ServeMux, resolve connectResolver, csrfVerify func(owner, token string) bool, reseal resealFunc) error {
 	if resolve == nil {
 		return nil // R1: no resolver => UI disabled => Connect not mounted at all.
 	}
@@ -353,13 +353,18 @@ func (d *deps) mountConnect(mux *http.ServeMux, resolve connectResolver, csrfVer
 		// D-02), then the validate interceptor (400) — auth must run before
 		// CSRF and CSRF before validation (D-10/D-02) so neither an
 		// unauthenticated nor a CSRF-forged caller ever sees field-level
-		// request detail.
+		// request detail. The reseal interceptor runs LAST/innermost, after
+		// validate: it wraps the handler itself, so it only ever touches a
+		// fully-authorized, valid, successful response (D-04) and — unlike
+		// every interceptor above it — is NOT procedure-gated: it re-seals
+		// both read and write responses (D-03).
 		connect.WithInterceptors(
 			otelIc,
 			newConnectAccessLogInterceptor(slog.Default()),
 			newConnectSubjectInterceptor(resolve),
 			newConnectCSRFInterceptor(csrfVerify),
 			newConnectValidateInterceptor(validator),
+			newConnectResealInterceptor(reseal),
 		),
 	)
 	mux.Handle(path, h)

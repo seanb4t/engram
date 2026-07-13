@@ -2,17 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
-current_phase: 18
-current_phase_name: Stateless Session Rotation
-status: "Phase 17 shipped — PR #363"
-stopped_at: Completed 17-05-PLAN.md
-last_updated: "2026-07-13T15:20:01.334Z"
+current_phase: 19
+current_phase_name: Console Write UX
+status: verifying
+stopped_at: Completed 18-02-PLAN.md
+last_updated: "2026-07-13T18:36:52.153Z"
 last_activity: 2026-07-13
+last_activity_desc: Phase 18 complete, transitioned to Phase 19
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 19
-  completed_plans: 19
+  total_phases: 6
+  completed_phases: 6
+  total_plans: 22
+  completed_plans: 22
   percent: 100
 ---
 
@@ -23,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 17 — wired-write-handlers-full-crud-schedule
+**Current focus:** Phase 18 — stateless-session-rotation
 
 ## Current Position
 
-Phase: 18 — Stateless Session Rotation
+Phase: 19 — Console Write UX
 Plan: Not started
-Status: Phase 17 shipped — PR #363
-Last activity: 2026-07-13
+Status: Phase complete — ready for verification
+Last activity: 2026-07-13 — Phase 18 complete, transitioned to Phase 19
 
 ## Deferred Items
 
@@ -105,6 +106,12 @@ cookie-auth security posture).
 - [Phase 17]: [Phase 17 P05] Store-trace comparison uses two granularities: Method+Owner only for CREATE rows (fresh UUID per lane by design) vs full Method+Owner+Args for by-id rows (same pre-seeded id both lanes)
 - [Phase 17]: [Phase 17 P05] StoreMemory parity row asserts a non-empty, lane-appropriate Memory.Actor per lane (MCP bearer TokenInfo.UserID vs Connect resolved-owner fallback), never cross-lane byte equality — a false invariant for a non-email owner (round-4 MED)
 - [Phase 17]: [Phase 17 P05] requireQdrant() is the sole ENGRAM_REQUIRE_QDRANT read/parse point; a malformed value returns a non-nil error rather than coercing to false, closing the last silent-skip path (round-8 LOW)
+- [Phase ?]: New expiry always absolute nowUTC().Add(sessionTTL), never oldExpiry+delta (D-06), proven forward-monotonic under 50-goroutine -race test
+- [Phase ?]: resealSkew scoped exclusively to Reseal threshold comparison; resolver.go hard-expiry check untouched, pinned by TestResolveHardExpiryHasNoSkewTolerance (D-07/SC4)
+- [Phase 18]: engram-slr8 ADR (Accepted) authored hand-written, omitting the bd-render provenance comment (beads retired 2026-07-08)
+- [Phase 18]: ADR names ENGRAM_UI_COOKIE_KEY (registry.go:56) as the sole kill-switch, never the phantom ENGRAM_SESSION_KEY
+- [Phase ?]: newConnectResealInterceptor appended LAST (innermost, after validate) in mountConnect so it only re-seals a fully-authorized, valid, successful response (D-04).
+- [Phase ?]: The reseal interceptor never inspects req.Spec(), so D-03 (fires on read AND write, no allowlist) holds by construction rather than an inverse allowlist.
 
 ### Blockers/Concerns
 
@@ -115,8 +122,8 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-13T00:19:13.617Z
-Stopped at: Completed 17-05-PLAN.md
+Last session: 2026-07-13T18:26:19.662Z
+Stopped at: Completed 18-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -142,3 +149,6 @@ Resume file: None
 | Phase 17 P06 | 27min | 2 tasks | 4 files |
 | Phase 17 P04 | 17min | 3 tasks | 7 files |
 | Phase 17 P05 | 20min | 2 tasks | 4 files |
+| Phase 18-stateless-session-rotation P01 | 20min | 2 tasks | 3 files |
+| Phase 18 P02 | 5min | 2 tasks | 2 files |
+| Phase 18-stateless-session-rotation P03 | 20min | 2 tasks | 10 files |

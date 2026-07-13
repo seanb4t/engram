@@ -46,7 +46,7 @@ Grouped by category. Each maps to exactly one phase (filled in the ROADMAP trace
 
 ### Session Hardening
 
-- [ ] **REQ-session-rotation**: Authenticated sessions renew via stateless sliding-expiry re-seal — the AES-GCM `{owner, expiry}` cookie is re-sealed with a fresh forward-only expiry on each authenticated request — keeping a write-capable session alive without dropping an in-flight write, introducing no server-side state (honors DEC-u9v). The no-revocation limitation of a stateless cookie is explicitly documented; hard expiry stays strict with a bounded clock-skew budget. *(GitHub #323; DECISION 2; security-sensitive — `/gsd-secure-phase`)*
+- [x] **REQ-session-rotation**: Authenticated sessions renew via stateless sliding-expiry re-seal — the AES-GCM `{owner, expiry}` cookie is re-sealed with a fresh forward-only expiry on each authenticated request — keeping a write-capable session alive without dropping an in-flight write, introducing no server-side state (honors DEC-u9v). The no-revocation limitation of a stateless cookie is explicitly documented; hard expiry stays strict with a bounded clock-skew budget. *(GitHub #323; DECISION 2; security-sensitive — `/gsd-secure-phase`)*
 
 ### Console Write UX
 

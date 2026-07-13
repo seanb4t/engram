@@ -1118,12 +1118,12 @@ func (d *deps) setVisibility(ctx context.Context, c caller, a setVisibilityArgs)
 // queue — a no-op for either queue that is disabled (nil) — and an error if
 // dependency construction (store/embedder) fails, so the caller can flush
 // telemetry and exit cleanly rather than aborting via log.Fatal.
-func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQueueMetrics, resolve connectResolver, csrfVerify func(owner, token string) bool) (shutdown func(context.Context), err error) {
+func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQueueMetrics, resolve connectResolver, csrfVerify func(owner, token string) bool, reseal resealFunc) (shutdown func(context.Context), err error) {
 	d, err := buildDepsFromEnv(sqm, uqm)
 	if err != nil {
 		return nil, fmt.Errorf("build deps: %w", err)
 	}
-	if err := d.mountConnect(mux, resolve, csrfVerify); err != nil {
+	if err := d.mountConnect(mux, resolve, csrfVerify, reseal); err != nil {
 		return nil, fmt.Errorf("mount connect: %w", err)
 	}
 

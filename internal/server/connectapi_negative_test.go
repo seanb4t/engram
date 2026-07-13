@@ -87,7 +87,7 @@ func TestWriteRPCNegativeMatrix(t *testing.T) {
 	csrfVerify := func(_, _ string) bool { return true }
 
 	mux := http.NewServeMux()
-	if err := d.mountConnect(mux, resolve, csrfVerify); err != nil {
+	if err := d.mountConnect(mux, resolve, csrfVerify, nil); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(mux)
