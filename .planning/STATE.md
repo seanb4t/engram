@@ -5,15 +5,15 @@ milestone_name: — Hardening & Write Lane
 current_phase: 18
 current_phase_name: stateless-session-rotation
 status: executing
-stopped_at: Phase 18 context gathered
-last_updated: "2026-07-13T18:13:12.930Z"
+stopped_at: Completed 18-02-PLAN.md
+last_updated: "2026-07-13T18:16:51.752Z"
 last_activity: 2026-07-13
 last_activity_desc: Phase 18 execution started
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 22
-  completed_plans: 20
+  completed_plans: 21
   percent: 83
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 ## Current Position
 
 Phase: 18 (stateless-session-rotation) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-13 — Phase 18 execution started
 
@@ -108,6 +108,8 @@ cookie-auth security posture).
 - [Phase 17]: [Phase 17 P05] requireQdrant() is the sole ENGRAM_REQUIRE_QDRANT read/parse point; a malformed value returns a non-nil error rather than coercing to false, closing the last silent-skip path (round-8 LOW)
 - [Phase ?]: New expiry always absolute nowUTC().Add(sessionTTL), never oldExpiry+delta (D-06), proven forward-monotonic under 50-goroutine -race test
 - [Phase ?]: resealSkew scoped exclusively to Reseal threshold comparison; resolver.go hard-expiry check untouched, pinned by TestResolveHardExpiryHasNoSkewTolerance (D-07/SC4)
+- [Phase 18]: engram-slr8 ADR (Accepted) authored hand-written, omitting the bd-render provenance comment (beads retired 2026-07-08)
+- [Phase 18]: ADR names ENGRAM_UI_COOKIE_KEY (registry.go:56) as the sole kill-switch, never the phantom ENGRAM_SESSION_KEY
 
 ### Blockers/Concerns
 
@@ -118,9 +120,9 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-13T18:12:32.675Z
-Stopped at: Phase 18 context gathered
-Resume file: .planning/phases/18-stateless-session-rotation/18-CONTEXT.md
+Last session: 2026-07-13T18:16:51.747Z
+Stopped at: Completed 18-02-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -146,3 +148,4 @@ Resume file: .planning/phases/18-stateless-session-rotation/18-CONTEXT.md
 | Phase 17 P04 | 17min | 3 tasks | 7 files |
 | Phase 17 P05 | 20min | 2 tasks | 4 files |
 | Phase 18-stateless-session-rotation P01 | 20min | 2 tasks | 3 files |
+| Phase 18 P02 | 5min | 2 tasks | 2 files |
