@@ -55,7 +55,7 @@ func TestConnectCookieLaneIsolation(t *testing.T) {
 	mux := http.NewServeMux()
 	// TestConnectCookieLaneIsolation only exercises reads (ListMemories),
 	// which the CSRF interceptor never gates (SC3) — nil is fine.
-	if err := d.mountConnect(mux, resolve, nil); err != nil {
+	if err := d.mountConnect(mux, resolve, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(mux)
@@ -101,7 +101,7 @@ func TestConnectNoCORSHeaders(t *testing.T) {
 	resolve := func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error) { return nil, nil }
 	// TestConnectNoCORSHeaders only exercises an OPTIONS preflight, never a
 	// write RPC, so csrfVerify is never invoked — nil is fine.
-	if err := d.mountConnect(mux, resolve, nil); err != nil {
+	if err := d.mountConnect(mux, resolve, nil, nil); err != nil {
 		t.Fatalf("mountConnect: %v", err)
 	}
 	srv := httptest.NewServer(mux)

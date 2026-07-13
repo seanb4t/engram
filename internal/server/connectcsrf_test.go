@@ -193,7 +193,7 @@ func TestCSRFWriteProcedureAllowlist(t *testing.T) {
 func TestNoAnonymousWrite(t *testing.T) {
 	d := &deps{} // no Qdrant: stubs return before any store access
 	mux := http.NewServeMux()
-	if err := d.mountConnect(mux, csrfStubResolve, csrfTestVerify); err != nil {
+	if err := d.mountConnect(mux, csrfStubResolve, csrfTestVerify, nil); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(mux)
@@ -230,7 +230,7 @@ func TestConnectCSRFTokenMatrix(t *testing.T) {
 	// handler, which needs a working store + embedder.
 	d, _ := newSpyDeps()
 	mux := http.NewServeMux()
-	if err := d.mountConnect(mux, csrfStubResolve, csrfTestVerify); err != nil {
+	if err := d.mountConnect(mux, csrfStubResolve, csrfTestVerify, nil); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(mux)
@@ -302,7 +302,7 @@ func TestConnectCSRFTokenMatrix(t *testing.T) {
 func TestReadRPCsCSRFExempt(t *testing.T) {
 	d := testDeps(t)
 	mux := http.NewServeMux()
-	if err := d.mountConnect(mux, csrfStubResolve, csrfTestVerify); err != nil {
+	if err := d.mountConnect(mux, csrfStubResolve, csrfTestVerify, nil); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(mux)
@@ -392,7 +392,7 @@ func TestConnectCSRFInterceptor_EmptyOwner(t *testing.T) {
 		return nil, nil
 	}
 	mux := http.NewServeMux()
-	if err := d.mountConnect(mux, resolve, csrfTestVerify); err != nil {
+	if err := d.mountConnect(mux, resolve, csrfTestVerify, nil); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(mux)

@@ -108,7 +108,7 @@ func TestNewConnectResealInterceptor_SkipsOnError(t *testing.T) {
 	if gotResp != nil {
 		t.Fatalf("expected nil response on error, got %v", gotResp)
 	}
-	if !errors.Is(gotErr, wantErr) && gotErr != wantErr {
+	if !errors.Is(gotErr, wantErr) {
 		t.Fatalf("interceptor must return next's error unchanged, got %v want %v", gotErr, wantErr)
 	}
 }
