@@ -30,6 +30,13 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Test
+        env:
+          # Fail-closed real-Qdrant authz/parity gate (round-6 MED, Codex):
+          # ubuntu-latest ships Docker, so the existing testcontainers boot
+          # path provisions Qdrant; with this flag a boot/pull failure FAILS
+          # the job instead of letting TestMain silently skip the integration
+          # suite (see internal/server/tools_test.go requireQdrant/TestMain).
+          ENGRAM_REQUIRE_QDRANT: "1"
         run: go test ./...
       # Enforce go.mod/go.sum tidiness here, not via a GoReleaser hook: release
       # builds use the exact tagged module files (tag = source of truth).
