@@ -8,11 +8,15 @@
 Each ADR is backed by a `bd` decision record (the bead id prefixes the
 filename). ADRs are generated and indexed from their backing `bd` decision
 records; edit the bead, then re-render — do not hand-edit the rendered files.
+Beads was retired 2026-07-08, so this pipeline is now dead: ADRs dated after
+that point are hand-authored Markdown instead, with no backing bead and no
+render step.
 
 <!-- BEGIN INDEX -->
 
 | ADR | Date | Status | Title |
 |-----|------|--------|-------|
+| [engram-slr8](engram-slr8-stateless-sliding-session-reseal.md) | 2026-07-13 | Accepted | Stateless sliding-expiry session re-seal |
 | [engram-iedk](engram-iedk-rules-are-always-shared-server-set-immutable-visibility-set.md) | 2026-07-06 | Accepted | Rules are always-shared with server-set immutable visibility; set_visibility rejects rules |
 | [engram-d386](engram-d386-session-start-surfaces-rules-as-progressive-disclosure-index.md) | 2026-07-06 | Accepted | Session-start surfaces rules as a progressive-disclosure index, not full-content injection |
 | [engram-m4s8](engram-m4s8-reject-malformed-rule-summaries-newline-oversize-cleared-nev.md) | 2026-07-06 | Accepted | Reject malformed rule summaries (newline/oversize/cleared); never silently normalize |
