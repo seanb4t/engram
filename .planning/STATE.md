@@ -4,17 +4,17 @@ milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 17
 current_phase_name: wired-write-handlers-full-crud-schedule
-status: executing
-stopped_at: Completed 17-04-PLAN.md
-last_updated: "2026-07-12T23:58:21.734Z"
+status: verifying
+stopped_at: Completed 17-05-PLAN.md
+last_updated: "2026-07-13T00:19:13.623Z"
 last_activity: 2026-07-12
 last_activity_desc: Phase 17 execution started
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 19
-  completed_plans: 18
-  percent: 80
+  completed_plans: 19
+  percent: 100
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 Phase: 17 (wired-write-handlers-full-crud-schedule) — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-12 — Phase 17 execution started
 
 ## Deferred Items
@@ -102,6 +102,10 @@ cookie-auth security posture).
 - [Phase 17]: [Phase 17 P04] connectError(ctx, err) is the single production error mapper matching typed sentinels (ErrNotFound/ErrInvalidArgument/errRuleImmutable/errStaleSummary/ErrAmbiguousShortID/context.Canceled/context.DeadlineExceeded); no CodeAborted arm since no distinct conflict sentinel exists
 - [Phase 17]: [Phase 17 P04] spyStore is a scripted-spy memStore (records method+owner+args, non-nil embedder) rather than a full store-authz reimplementation; the real Qdrant isolation suite remains the authz gate
 - [Phase 17]: [Phase 17 P04] SearchDiscoveries maps an empty Connect scope to CrossSpine=true so it still spans all discovery scopes after the read-lane rewire; GetMemory's handler-level usage-enqueue call is removed since deps.getMemory is now the sole enqueue point
+- [Phase 17]: [Phase 17 P05] assertCodeParity maps the direct MCP-lane domain error through the production connectError(ctx, err) before connect.CodeOf, compared against connect.CodeOf(handlerErr) on the Connect lane — never a hand-rolled test oracle (round-3 MED-6)
+- [Phase 17]: [Phase 17 P05] Store-trace comparison uses two granularities: Method+Owner only for CREATE rows (fresh UUID per lane by design) vs full Method+Owner+Args for by-id rows (same pre-seeded id both lanes)
+- [Phase 17]: [Phase 17 P05] StoreMemory parity row asserts a non-empty, lane-appropriate Memory.Actor per lane (MCP bearer TokenInfo.UserID vs Connect resolved-owner fallback), never cross-lane byte equality — a false invariant for a non-email owner (round-4 MED)
+- [Phase 17]: [Phase 17 P05] requireQdrant() is the sole ENGRAM_REQUIRE_QDRANT read/parse point; a malformed value returns a non-nil error rather than coercing to false, closing the last silent-skip path (round-8 LOW)
 
 ### Blockers/Concerns
 
@@ -112,8 +116,8 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-12T23:58:21.727Z
-Stopped at: Completed 17-04-PLAN.md
+Last session: 2026-07-13T00:19:13.617Z
+Stopped at: Completed 17-05-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -138,3 +142,4 @@ Resume file: None
 | Phase 17 P03 | 10min | 2 tasks | 2 files |
 | Phase 17 P06 | 27min | 2 tasks | 4 files |
 | Phase 17 P04 | 17min | 3 tasks | 7 files |
+| Phase 17 P05 | 20min | 2 tasks | 4 files |
