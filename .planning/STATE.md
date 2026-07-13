@@ -4,11 +4,10 @@ milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 18
 current_phase_name: Stateless Session Rotation
-status: verifying
+status: "Phase 17 shipped — PR #363"
 stopped_at: Completed 17-05-PLAN.md
-last_updated: "2026-07-13T00:28:59.386Z"
+last_updated: "2026-07-13T15:20:01.334Z"
 last_activity: 2026-07-13
-last_activity_desc: Phase 17 complete, transitioned to Phase 18
 progress:
   total_phases: 5
   completed_phases: 5
@@ -30,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 Phase: 18 — Stateless Session Rotation
 Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-07-13 — Phase 17 complete, transitioned to Phase 18
+Status: Phase 17 shipped — PR #363
+Last activity: 2026-07-13
 
 ## Deferred Items
 
