@@ -78,7 +78,7 @@ Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
 - [x] **Phase 15: Additive Proto + Stub Write Handlers** - Six new write RPCs (additive-only, buf-generated), CI lint gate against `idempotency_level`, safe `CodeUnimplemented` stubs (completed 2026-07-11)
 - [x] **Phase 16: CSRF Interceptor** - Origin/Sec-Fetch-Site primary defense + session-bound double-submit token on every write RPC; read lane untouched (completed 2026-07-12)
 - [x] **Phase 17: Wired Write Handlers (Full CRUD + Schedule)** - deps.* subject/actor refactor + all six write RPCs delegating to the shared MCP business-logic layer, MCP/Connect parity-tested (completed 2026-07-13)
-- [ ] **Phase 18: Stateless Session Rotation** - Sliding-expiry cookie re-seal on every authenticated request, new ADR for the no-revocation trade-off, no server-side state
+- [x] **Phase 18: Stateless Session Rotation** - Sliding-expiry cookie re-seal on every authenticated request, new ADR for the no-revocation trade-off, no server-side state (completed 2026-07-13)
 - [ ] **Phase 19: Console Write UX** - Create/edit/delete/re-share/schedule from the operator console over the write lane, with CSRF + silent re-seal retry
 - [ ] **Phase 20: Correctness & Polish** - Discovery proto fidelity, MintShortID collision cap, embed param-key/body-build cleanup, discovery short_id schema, summarize-missing CronJob
 - [ ] **Phase 21: CI / Maintenance Hygiene** - Renovate vendored-SPA drift fix, Phase-11 review residuals, `.rumdl.toml` `.planning` exclude
@@ -465,7 +465,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 | 15. Additive Proto + Stub Write Handlers | v0.10.x | 4/4 | Complete    | 2026-07-11 |
 | 16. CSRF Interceptor | v0.10.x | 3/3 | Complete    | 2026-07-12 |
 | 17. Wired Write Handlers (Full CRUD + Schedule) | v0.10.x | 6/6 | Complete    | 2026-07-13 |
-| 18. Stateless Session Rotation | v0.10.x | 3/3 | Complete   | 2026-07-13 |
+| 18. Stateless Session Rotation | v0.10.x | 3/3 | Complete    | 2026-07-13 |
 | 19. Console Write UX | v0.10.x | 0/1 | Not started | - |
 | 20. Correctness & Polish | v0.10.x | 0/6 | Not started | - |
 | 21. CI / Maintenance Hygiene | v0.10.x | 0/3 | Not started | - |
