@@ -382,8 +382,18 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 3. Concurrent requests carrying the same near-expiry cookie all produce forward-monotonic expiries (`nowUTC().Add(sessionTTL)`, not a delta from the old value) — no re-seal race silently shortens a session.
 4. Hard expiry stays strict and fail-closed; a documented, bounded clock-skew budget applies only to the rotation-threshold comparison, never to the hard expiry check itself.
 
-**Status**: Not started
-**Plans**: TBD
+**Status**: Planned
+**Plans**: 3 plans
+
+**Wave 1** *(parallel — no file overlap)*
+
+- [ ] 18-01-PLAN.md — webauth reseal core: Handler.Reseal (absolute forward-only expiry past ½-TTL+skew threshold, dual-cookie D-08) + headerOnlyWriter shim + resealThreshold/resealSkew constants; SC3 forward-monotonic concurrency + SC4 hard-expiry guard
+- [ ] 18-02-PLAN.md — SC2 ADR engram-slr8 (rotation-under-statelessness, no-revocation limitation, ENGRAM_UI_COOKIE_KEY kill-switch, hard-expiry vs threshold-skew split) + docs/adr/README.md index/prose
+
+**Wave 2** *(blocked on 18-01)*
+
+- [ ] 18-03-PLAN.md — Connect reseal interceptor (innermost, best-effort, read AND write) + mountConnect/Register/serve.go DI ripple (webHandler.Reseal), interceptor-contract tests
+
 **Flag for /gsd-secure-phase — mandatory** (changes the security posture of the whole cookie-auth model).
 
 ### Phase 19: Console Write UX
@@ -455,7 +465,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 | 15. Additive Proto + Stub Write Handlers | v0.10.x | 4/4 | Complete    | 2026-07-11 |
 | 16. CSRF Interceptor | v0.10.x | 3/3 | Complete    | 2026-07-12 |
 | 17. Wired Write Handlers (Full CRUD + Schedule) | v0.10.x | 6/6 | Complete    | 2026-07-13 |
-| 18. Stateless Session Rotation | v0.10.x | 0/1 | Not started | - |
+| 18. Stateless Session Rotation | v0.10.x | 0/1 | Planned | - |
 | 19. Console Write UX | v0.10.x | 0/1 | Not started | - |
 | 20. Correctness & Polish | v0.10.x | 0/6 | Not started | - |
 | 21. CI / Maintenance Hygiene | v0.10.x | 0/3 | Not started | - |
