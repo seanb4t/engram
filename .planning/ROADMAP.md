@@ -411,11 +411,25 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 **Plans**: 6 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 19-01-PLAN.md — Foundation: re-vendor console gen client (6 write RPCs) + `--destructive` design token
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 19-02-PLAN.md — Write transport: CSRF-attach + retry-once interceptors, `engramWrite` client
 - [ ] 19-03-PLAN.md — Destructive/action affordances: delete confirm dialog, share warning, row/detail actions
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 19-04-PLAN.md — Mutation hooks: memory + discovery create/edit/delete/visibility/schedule (optimistic rollback)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 19-05-PLAN.md — Slide-over create/edit sheets (memory + discovery) with in-form share warning + inline re-auth
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 19-06-PLAN.md — Route integration: WriteSurfaces host + New entry points wired into observe/search/discovery
 
 **UI hint**: yes
