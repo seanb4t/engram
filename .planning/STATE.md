@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 18
-current_phase_name: Stateless Session Rotation
-status: "Phase 17 shipped — PR #363"
+current_phase_name: stateless-session-rotation
+status: executing
 stopped_at: Phase 18 context gathered
-last_updated: "2026-07-13T18:05:42.403Z"
+last_updated: "2026-07-13T18:13:12.930Z"
 last_activity: 2026-07-13
-last_activity_desc: Phase 18 planning complete
+last_activity_desc: Phase 18 execution started
 progress:
   total_phases: 6
   completed_phases: 5
-  total_plans: 19
-  completed_plans: 19
+  total_plans: 22
+  completed_plans: 20
   percent: 83
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 17 — wired-write-handlers-full-crud-schedule
+**Current focus:** Phase 18 — stateless-session-rotation
 
 ## Current Position
 
-Phase: 18 — Stateless Session Rotation
-Plan: Not started
-Status: Phase 17 shipped — PR #363
-Last activity: 2026-07-13 — Phase 18 planning complete
+Phase: 18 (stateless-session-rotation) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-07-13 — Phase 18 execution started
 
 ## Deferred Items
 
@@ -106,6 +106,8 @@ cookie-auth security posture).
 - [Phase 17]: [Phase 17 P05] Store-trace comparison uses two granularities: Method+Owner only for CREATE rows (fresh UUID per lane by design) vs full Method+Owner+Args for by-id rows (same pre-seeded id both lanes)
 - [Phase 17]: [Phase 17 P05] StoreMemory parity row asserts a non-empty, lane-appropriate Memory.Actor per lane (MCP bearer TokenInfo.UserID vs Connect resolved-owner fallback), never cross-lane byte equality — a false invariant for a non-email owner (round-4 MED)
 - [Phase 17]: [Phase 17 P05] requireQdrant() is the sole ENGRAM_REQUIRE_QDRANT read/parse point; a malformed value returns a non-nil error rather than coercing to false, closing the last silent-skip path (round-8 LOW)
+- [Phase ?]: New expiry always absolute nowUTC().Add(sessionTTL), never oldExpiry+delta (D-06), proven forward-monotonic under 50-goroutine -race test
+- [Phase ?]: resealSkew scoped exclusively to Reseal threshold comparison; resolver.go hard-expiry check untouched, pinned by TestResolveHardExpiryHasNoSkewTolerance (D-07/SC4)
 
 ### Blockers/Concerns
 
@@ -116,7 +118,7 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-13T17:28:30.724Z
+Last session: 2026-07-13T18:12:32.675Z
 Stopped at: Phase 18 context gathered
 Resume file: .planning/phases/18-stateless-session-rotation/18-CONTEXT.md
 
@@ -143,3 +145,4 @@ Resume file: .planning/phases/18-stateless-session-rotation/18-CONTEXT.md
 | Phase 17 P06 | 27min | 2 tasks | 4 files |
 | Phase 17 P04 | 17min | 3 tasks | 7 files |
 | Phase 17 P05 | 20min | 2 tasks | 4 files |
+| Phase 18-stateless-session-rotation P01 | 20min | 2 tasks | 3 files |
