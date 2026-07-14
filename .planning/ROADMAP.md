@@ -79,7 +79,7 @@ Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
 - [x] **Phase 16: CSRF Interceptor** - Origin/Sec-Fetch-Site primary defense + session-bound double-submit token on every write RPC; read lane untouched (completed 2026-07-12)
 - [x] **Phase 17: Wired Write Handlers (Full CRUD + Schedule)** - deps.* subject/actor refactor + all six write RPCs delegating to the shared MCP business-logic layer, MCP/Connect parity-tested (completed 2026-07-13)
 - [x] **Phase 18: Stateless Session Rotation** - Sliding-expiry cookie re-seal on every authenticated request, new ADR for the no-revocation trade-off, no server-side state (completed 2026-07-13)
-- [ ] **Phase 19: Console Write UX** - Create/edit/delete/re-share/schedule from the operator console over the write lane, with CSRF + silent re-seal retry
+- [ ] **Phase 19: Console Write UX** - Create/edit/delete/re-share/schedule from the operator console over the write lane, with CSRF + a silent opportunistic auth-race retry
 - [ ] **Phase 20: Correctness & Polish** - Discovery proto fidelity, MintShortID collision cap, embed param-key/body-build cleanup, discovery short_id schema, summarize-missing CronJob
 - [ ] **Phase 21: CI / Maintenance Hygiene** - Renovate vendored-SPA drift fix, Phase-11 review residuals, `.rumdl.toml` `.planning` exclude
 
@@ -405,7 +405,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 
 1. An operator can create, edit, delete, change visibility, and schedule a memory or discovery from the console UI, backed by the Connect write lane.
 2. The console attaches the CSRF token to every write request automatically, mirroring the server-side double-submit pattern.
-3. A write that fails because the session needed rotation is silently retried once through a re-seal; if that also fails, the operator is prompted to re-authenticate without losing their in-flight input.
+3. A write that fails with an auth-class error is silently retried once — an opportunistic auth-race retry that re-reads the current session/CSRF cookie to recover a cookie-freshness race (the server does not re-seal a failed request, so this is not a rotation recovery); if that also fails, the operator is prompted to re-authenticate without losing their in-flight input, which is preserved across the `/auth/login` OIDC redirect via a `sessionStorage` resume envelope.
 
 **Status**: Planned
 **Plans**: 6 plans

@@ -67,16 +67,27 @@ invariant); new server-side session state or revocation (DEC-u9v holds).
 
 ### Failure & Re-Auth UX (SC3)
 - **D-08:** A **transport-level Connect interceptor** silently **retries a failed
-  write once** — Phase 18 re-seals the session server-side on the retry request,
-  so a write that failed purely because the session needed rotation succeeds on
+  write once** on an auth-class error (`Unauthenticated`/`PermissionDenied`) — an
+  **opportunistic auth-race retry** that re-reads the current `engram_session`/
+  `engram_csrf` cookie, so a write that failed purely on a cookie-freshness race
+  (a concurrent re-seal refreshed the cookie between attach and send) succeeds on
   the second attempt. The retry is invisible to the operator (no flash, no toast).
+  *(Corrected after Phase-19 cross-AI review: the server does **not** re-seal a
+  failed/errored request — `internal/server/connectreseal.go` skips resealing when
+  the response errored — and an expired session is rejected pre-handler, so there
+  is no server "needs rotation" recovery on retry. The retry recovers only the
+  cookie-freshness race, not a genuinely expired session; the original
+  "re-seal-on-retry" premise was infeasible.)*
 - **D-09:** If the retry **also fails** (session truly expired / re-auth required):
   keep the create/edit **sheet open** with the operator's values intact, surface an
   **inline "session expired — re-authenticate" prompt**, and **resubmit the same
   values** after re-auth. Input is never dropped. (Draft-to-storage persistence
-  across a full `/auth/login` redirect was considered and **deferred** — see
-  Deferred Ideas — because keeping the form live avoids a redirect for the common
-  re-seal case.)
+  across a full `/auth/login` OIDC redirect is **now required, not deferred** —
+  corrected after Phase-19 cross-AI review: `/auth/login` redirects to the IdP and
+  the callback returns to `/ui/`, destroying in-memory component `$state`, so a
+  keep-the-form-live approach cannot survive the round-trip. A versioned
+  `sessionStorage` **resume envelope** persists the in-flight values before the
+  redirect and restores them on the `/ui/` landing — see `ui/src/lib/resume.ts`.)
 - **D-10:** List/detail updates are **optimistic**, and the optimistic mutation is
   **rolled back on error** (including after a failed retry) so the UI never shows a
   write that didn't land.
@@ -159,7 +170,7 @@ implementation-level and consistent with the decisions above:
 ## Deferred Ideas
 
 - **Discovery edit UX** (citations/kind/summary) — no `update_discovery` RPC exists; would need a new write RPC + a citation-editing surface. Own follow-up (backlog / future phase), not Phase 19.
-- **Draft persistence across a full page redirect** (sessionStorage-backed form restore after `/auth/login`) — D-09 keeps the form live instead, which covers the common re-seal case. Revisit only if the redirect-losing-input scenario proves real in practice.
+- ~~**Draft persistence across a full page redirect**~~ — **no longer deferred** (moved into D-09). Phase-19 cross-AI review proved the `/auth/login` OIDC redirect destroys in-memory `$state` (the callback returns to `/ui/`), so the keep-the-form-live approach cannot survive it. A versioned `sessionStorage` resume envelope (`ui/src/lib/resume.ts`) is now part of D-09.
 - **Optimistic-undo (delete with undo toast)** — rejected for delete (D-06) in favor of a pre-confirm dialog; could be reconsidered project-wide later, but adds deferred-commit complexity.
 - **Rule authoring from the console** — permanently out (memory contract: explicit-instruction-only, no `set_visibility`); not a deferred idea so much as a locked non-goal, noted here so no one re-opens it.
 
