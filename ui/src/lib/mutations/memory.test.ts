@@ -237,6 +237,29 @@ describe('applyUpdateOptimistic / snapshot / restore', () => {
     expect(qc.getQueryData(listKey)).toEqual({ memories: [memory({})], total: 1n });
     expect(qc.getQueryData(searchKey)).toEqual({ memories: [memory({})] });
   });
+
+  it('DROPS the record from a visibility-filtered list page on a private→shared edit (WR-01)', () => {
+    const qc = new QueryClient();
+    const unfilteredKey = ['listMemories', 's', [], '', 50, 0];
+    const privateFilteredKey = ['listMemories', 's', [], 'private', 50, 0];
+    qc.setQueryData(unfilteredKey, { memories: [memory({ visibility: 'private' })], total: 1n });
+    qc.setQueryData(privateFilteredKey, { memories: [memory({ visibility: 'private' })], total: 1n });
+    qc.setQueryData(['getMemory', 'm1'], { memory: memory({ visibility: 'private' }) });
+
+    const snapshot = snapshotMemoryQueries(qc, 'm1');
+    applyUpdateOptimistic(qc, { id: 'm1', shared: true });
+
+    // Unfiltered page keeps the record, now patched to shared.
+    expect((qc.getQueryData(unfilteredKey) as any).memories[0].visibility).toBe('shared');
+    // Private-filtered page drops the now-shared record and decrements total.
+    expect((qc.getQueryData(privateFilteredKey) as any).memories).toEqual([]);
+    expect((qc.getQueryData(privateFilteredKey) as any).total).toBe(0n);
+    // getMemory (not a list page) still reflects the new visibility.
+    expect((qc.getQueryData(['getMemory', 'm1']) as any).memory.visibility).toBe('shared');
+
+    restoreMemoryQueries(qc, snapshot);
+    expect((qc.getQueryData(privateFilteredKey) as any).memories[0].visibility).toBe('private');
+  });
 });
 
 describe('applyDeleteOptimistic', () => {

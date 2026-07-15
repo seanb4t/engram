@@ -231,13 +231,21 @@ function applyToMemoryCaches(
 }
 
 export function applyUpdateOptimistic(queryClient: QueryClient, vars: UpdateMemoryVars): void {
-  applyToMemoryCaches(queryClient, vars.id, (m) => ({
-    ...m,
-    ...(vars.content !== undefined ? { content: vars.content } : {}),
-    ...(vars.tags !== undefined ? { tags: vars.tags } : {}),
-    ...(vars.summary !== undefined ? { summary: vars.summary } : {}),
-    ...(vars.shared !== undefined ? { visibility: vars.shared ? 'shared' : 'private' } : {})
-  }));
+  applyToMemoryCaches(queryClient, vars.id, (m, ctx) => {
+    const nextVisibility =
+      vars.shared !== undefined ? (vars.shared ? 'shared' : 'private') : m.visibility;
+    // Drop from a filtered list page whose visibility filter no longer matches
+    // the record's new visibility (private→shared edit), mirroring
+    // applySetVisibilityOptimistic's filtered-cache-membership rule (WR-01).
+    if (ctx.isListPage && ctx.visibilityFilter && ctx.visibilityFilter !== nextVisibility) return null;
+    return {
+      ...m,
+      ...(vars.content !== undefined ? { content: vars.content } : {}),
+      ...(vars.tags !== undefined ? { tags: vars.tags } : {}),
+      ...(vars.summary !== undefined ? { summary: vars.summary } : {}),
+      ...(vars.shared !== undefined ? { visibility: nextVisibility } : {})
+    };
+  });
 }
 
 export function applyDeleteOptimistic(queryClient: QueryClient, id: string): void {
