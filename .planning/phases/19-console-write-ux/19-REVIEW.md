@@ -1,7 +1,7 @@
 ---
 phase: 19-console-write-ux
-reviewed: 2026-07-15T15:26:58Z
-depth: standard
+reviewed: 2026-07-15T00:00:00Z
+depth: deep
 files_reviewed: 42
 files_reviewed_list:
   - .github/workflows/ci.yaml
@@ -46,152 +46,159 @@ files_reviewed_list:
   - ui/src/routes/search/search.browser.test.ts
 findings:
   critical: 0
-  warning: 1
-  info: 4
-  total: 5
+  warning: 2
+  info: 2
+  total: 4
 status: issues_found
 ---
 
 # Phase 19: Code Review Report
 
-**Reviewed:** 2026-07-15T15:26:58Z
-**Depth:** standard
+**Reviewed:** 2026-07-15T00:00:00Z
+**Depth:** deep
 **Files Reviewed:** 42
 **Status:** issues_found
 
 ## Summary
 
-Reviewed the Phase 19 console write-UX slice: Connect-ES write transport
-(`retryOnce` + `attachCsrf` interceptors), TanStack Query mutation hooks for
-memory/discovery (create/schedule/update/delete/set-visibility), the
-create-as-shared composite, the D-09 re-auth resume envelope, and the Svelte 5
-write-surface components/routes.
+Deep pass over the console write-UX slice: the interceptor stack
+(`retryOnce` → `attachCsrf`), the two write clients, the memory/discovery
+mutation hooks (optimistic apply/rollback across filtered query caches), the
+create-as-shared composites, the form sheets, the `WriteSurfaces` host, the
+resume envelope, and the four route hosts.
 
-The code is unusually well-hardened (five cross-AI review rounds), and each of
-the five review-hardened invariants I was asked to verify holds against the
-actual source:
+The core round-1..5 hardened invariants hold as documented and were verified
+against the actual call chains:
 
-1. **Write transport composition** — `client.ts:23` composes
-   `[retryOnce, attachCsrf]` (retryOnce outer, attachCsrf inner), so a retry
-   re-enters `attachCsrf` and re-reads `document.cookie` fresh. `retryOnce.ts`
-   performs exactly one retry gated on `Unauthenticated`/`PermissionDenied`. Correct.
-2. **Create-as-shared composite** — `shareIfRequested`
-   (`memory.ts:125-137`) and `createDiscoveryComposite` (`discovery.ts:75-87`)
-   catch *all* secondary `setVisibility` failures (including auth codes) and
-   resolve to `created_private`, never rethrow — so the form's D-09 resubmit
-   tier is never reached and no duplicate create is possible. Correct.
-3. **DeleteConfirmDialog host-authoritative** — the dialog never self-closes on
-   Delete; `WriteSurfaces.confirmDelete` clears the target only on success and
-   retains it (with the re-auth CTA) on terminal auth failure. Correct.
-4. **Resume envelope single owner** — forms only `persistResume`; `/ui/` peeks,
-   the destination route consumes via `onresumeapplied → consumeResume`. Correct.
-5. **Edit-visibility read-only for shared** — `isEditSharedReadOnly`
-   (`MemoryFormSheet.svelte:79,98`) keeps `shared` out of the dirty mask, and
-   `buildUpdateMemoryRequest` only adds `shared` when present, so `shared:false`
-   is never emitted. Correct.
+- Transport composes `[retryOnce, attachCsrf]` with `retryOnce` OUTER; the CSRF
+  header is re-read fresh on the single retry. Server encodes the token with
+  `base64.RawURLEncoding` (`internal/webauth/csrf.go:62`, no `=` padding), so the
+  `split('=')[1]` cookie parse in `csrf.ts` cannot truncate the token.
+- The create/schedule-as-shared composites catch a secondary `SetVisibility`
+  failure and resolve to `created_private` — they never rethrow into the form's
+  whole-create D-09 resubmit tier, so there is no duplicate-create path.
+- `DeleteConfirmDialog` is host-authoritative (no self-close on Delete; stays
+  open with the re-auth CTA on terminal auth); `ShareWarningInline` is
+  host-rendered.
+- Resume envelope has a single owner: routes peek→goto, forms persist + ack via
+  `onresumeapplied`, the host relays consume; no two-owner deletion race.
+- Edit-visibility is read-only for already-shared records; `shared` enters the
+  update mask only as `true` on a currently-private record, never `false`.
+- Root-page open-redirect guard (`isAllowedDestination`) rejects
+  protocol-relative and off-route `returnPath`s before `goto`.
 
-Security surfaces are sound: `MemoryDetail`'s `{@html}` sink is fed by
-`renderMarkdown`, which routes through `marked` (no HTML passthrough) → a tight
-DOMPurify allowlist with a scheme-hardening link hook — no XSS. The CSRF
-double-submit interceptor only echoes the server-minted, non-HttpOnly cookie.
-The resume `returnPath` open-redirect surface is gated by `isAllowedDestination`
-(protocol-relative `//evil` and cross-route targets are rejected; all `goto`
-targets remain same-origin). No hardcoded secrets, no debug artifacts, no
-`as any`, no empty error-swallowing catches (the composite's `catch {}` is
-deliberate control flow with a user-visible toast).
+Two real defects surfaced that only the cross-file pass reveals: an
+optimistic-cache asymmetry between the update and set-visibility paths, and a
+spurious global error banner produced by the delete→`getMemory`-invalidation
+interaction with the layout's `QueryCache.onError`. Plus one dead data-flow and
+the one known/accepted WR-03 nav item.
 
-Findings below are one UX-robustness gap in the re-auth flow and four minor
-maintainability/defensive items.
+## Narrative Findings (AI reviewer)
 
 ## Warnings
 
-### WR-01: Inline delete/share re-auth discards route + action context
+### WR-01: `applyUpdateOptimistic` leaves a private→shared record on visibility-filtered list pages
 
-**File:** `ui/src/lib/components/WriteSurfaces.svelte:188-190,222-224`
-**Issue:** On a terminal auth failure of an inline **delete** or **share**, the
-re-auth CTA calls `handleDeleteReauth` / `handleShareReauth`, which invoke
-`redirectToLogin()` directly **without** persisting any resume envelope. The
-form flows (`MemoryFormSheet`/`DiscoveryFormSheet`) instead call `persistResume`
-with a `returnPath`, so after the OIDC round-trip (`/auth/callback → /ui/`) the
-`/ui/` root routes the user back to their originating filtered route and
-reopens the sheet. The delete/share paths persist nothing, so the user lands on
-the console home (`/ui/`) — losing their scope/filter/selection context and the
-pending action entirely. This is an asymmetry in the phase's central re-auth
-UX: two of the four write surfaces recover their location, two do not.
-**Fix:** Persist a navigation-only envelope (no mutation auto-replay) before
-redirecting, so `/ui/` returns the user to where they were. Reuse the existing
-`ResumeDraft` with empty `values`, or add a lightweight returnPath-only path:
+**File:** `ui/src/lib/mutations/memory.ts:233-241` (compare `applySetVisibilityOptimistic`, `252-261`)
+**Issue:** In edit mode a currently-private record can be moved to `shared`
+(one-way), so `useUpdateMemory` sends `shared:true` and `applyUpdateOptimistic`
+patches `visibility: 'shared'` **in place** on every matching cache entry —
+including a `listMemories` page whose `key[3]` visibility filter is `'private'`.
+That page now optimistically shows a record whose visibility no longer matches
+the page's own filter. `applySetVisibilityOptimistic` was written specifically
+to fix exactly this (it drops the record from a filtered page whose filter no
+longer matches — round-2 MED), but the update path re-introduces the same class
+of bug for the private→shared transition. It is transient (the `onSettled`
+`invalidateQueries(['listMemories'])` refetch corrects it), but it is a visible
+optimistic inconsistency the sibling path already guards against.
+**Fix:** Make `applyUpdateOptimistic` visibility-filter-aware for the `shared`
+transition, mirroring `applySetVisibilityOptimistic`. `applyToMemoryCaches`
+already passes `ctx` with `isListPage`/`visibilityFilter` — no signature change
+is required:
+
 ```ts
-function handleDeleteReauth(): void {
-  const returnPath = normalizeReturnPath(window.location.pathname + window.location.search);
-  if (isAllowedDestination(returnPath)) {
-    persistResume({ returnPath, kind, mode: 'create', recordId: null, values: {} });
-  }
-  redirectToLogin();
+export function applyUpdateOptimistic(queryClient: QueryClient, vars: UpdateMemoryVars): void {
+  applyToMemoryCaches(queryClient, vars.id, (m, ctx) => {
+    const nextVisibility =
+      vars.shared !== undefined ? (vars.shared ? 'shared' : 'private') : m.visibility;
+    // Drop from a filtered list page whose visibility filter no longer matches.
+    if (ctx.isListPage && ctx.visibilityFilter && ctx.visibilityFilter !== nextVisibility) return null;
+    return {
+      ...m,
+      ...(vars.content !== undefined ? { content: vars.content } : {}),
+      ...(vars.tags !== undefined ? { tags: vars.tags } : {}),
+      ...(vars.summary !== undefined ? { summary: vars.summary } : {}),
+      ...(vars.shared !== undefined ? { visibility: nextVisibility } : {})
+    };
+  });
 }
 ```
-(Destination routes already no-op `reopenFromResume` on an empty/create
-envelope with no restorable draft, so no sheet is spuriously opened — only the
-navigation is restored. Confirm the empty-`values` reopen is a true no-op, or
-gate the reopen on non-empty values.) If dropping the user at home is the
-intended design, document it explicitly so the asymmetry is a decision, not a gap.
+
+### WR-02: Deleting the selected record raises a spurious global error banner via the `getMemory` invalidation
+
+**File:** `ui/src/lib/mutations/memory.ts:340-345` and `ui/src/lib/mutations/discovery.ts:194-198`; cross-file with `ui/src/routes/observe/+page.svelte:34-37`, `ui/src/routes/search/+page.svelte:20-23`, `ui/src/routes/discovery/+page.svelte:26-29`, and `ui/src/routes/+layout.svelte:18-24`
+**Issue:** On a successful delete, `onSettled` runs
+`invalidateQueries({ queryKey: ['getMemory', vars.id] })`. When the deleted
+record is the one currently selected in the detail pane (the common
+"open detail → Delete" flow), the detail `createQuery` is still enabled
+(`enabled: !!sel`, `sel` still points at the deleted id), so the invalidation
+triggers a background refetch of `getMemory(deletedId)`, which returns
+`NotFound`. That error reaches the layout's `QueryCache.onError`; `mapAuthError`
+returns `null` for `NotFound`, so `reportError` fires and a global `error: …`
+banner appears — even though `MemoryDetail` already renders a graceful inline
+"record not found". Net effect: every delete of the selected record flashes a
+false top-level error banner. (`retry: false` guarantees the single refetch
+error reaches `onError`.)
+**Fix (route-level, safe):** Clear the selected id when the deleted record is the
+selected one, so the detail query disables and never refetches a tombstone. Add
+an `ondeleted` relay from `WriteSurfaces.confirmDelete`'s `onSuccess` up to each
+route, and in the route clear `sel`. Concretely: in `observe/+page.svelte`, wire
+`ondeleted={(id) => { if (id === params.selectedId) navigate({ selectedId: '' }); }}`
+(threaded through `WriteSurfaces` alongside `requestDelete`); in
+`search/+page.svelte` and `discovery/+page.svelte` clear the `sel` search param
+the same way (rebuild `URLSearchParams` without `sel`, then `goto`). Do NOT
+simply drop the `getMemory` invalidation or swap it for `removeQueries` — an
+active detail observer with `enabled: !!sel` re-creates and refetches the
+tombstone regardless, so the fix must disable the query by clearing `sel`.
 
 ## Info
 
-### IN-01: Fragile cookie-value parse in `attachCsrf`
+### WR-03 (IN): Inline delete/share re-auth performs a bare `redirectToLogin()` with no navigation resume (KNOWN / accepted — round-5 scope decision)
 
-**File:** `ui/src/lib/interceptors/csrf.ts:15-18`
-**Issue:** The token is extracted with `...split('=')[1]`, which returns only
-the substring up to the *first* `=` after the cookie name. This is currently
-safe because `CSRFSigner.Token` uses `base64.RawURLEncoding`
-(`internal/webauth/csrf.go:62`), which never emits `=`. But the parse silently
-truncates the token if the encoding ever changes to padded base64 or the value
-otherwise contains `=`, which would fail every write with a CSRF mismatch that
-is hard to diagnose.
-**Fix:** Split only on the first `=`:
-```ts
-const raw = document.cookie.split('; ').find((c) => c.startsWith('engram_csrf='));
-const token = raw?.slice('engram_csrf='.length);
-```
+**File:** `ui/src/lib/components/WriteSurfaces.svelte:188-190,222-224`
+**Issue:** `handleDeleteReauth` / `handleShareReauth` call `redirectToLogin()`
+without persisting any resume state, so after OIDC the operator lands on the
+`/ui/` home rather than the originating filtered route. This is the deliberate
+round-5 decision: delete/share are id-idempotent, input-free actions the
+operator re-initiates, and an action-carrying envelope was explicitly rejected
+to avoid auto-replaying a destructive action. Recorded here only for
+traceability; classified info, not a defect.
+**Fix (optional, navigation-only — never action-replaying):** If route
+continuity is later desired, persist a **navigation-only** envelope carrying
+ONLY a `returnPath` (no `kind`/`mode`/`recordId`/`action`), consumed purely to
+restore the route on the `/ui/` landing so the operator returns to the same
+filtered list. It MUST NOT carry or replay the delete/share action itself. If a
+safe nav-only envelope cannot be expressed within the existing
+`ResumeEnvelope`/`isAllowedDestination` machinery without risking auto-replay,
+leave this as accepted/wontfix.
 
-### IN-02: Hand-written query key duplicates `listMemoriesKey` shape
+### IN-01: `dirtyPaths` / `resumeDirtyPaths` is persisted and threaded but never consumed on restore
 
-**File:** `ui/src/routes/+page.svelte:16`
-**Issue:** `recentQ` hand-writes `queryKey: ['listMemories', '', [], '', PAGE_LIMIT, 0]`
-instead of calling `listMemoriesKey('', [], '', PAGE_LIMIT, 0)`. If the key
-shape in `queries.ts:34` ever changes (e.g. field reorder), this key silently
-drifts out of sync with the optimistic-cache transforms in `memory.ts`
-(`applyToMemoryCaches` reads `key[3]` as the visibility filter), and the root
-page's recent list would stop matching invalidations/patches.
-**Fix:** Use the shared helper: `queryKey: listMemoriesKey('', [], '', PAGE_LIMIT, 0)`.
-
-### IN-03: Partial optional chaining on repeated-field `.length`
-
-**File:** `ui/src/routes/discovery/+page.svelte:58`, `ui/src/routes/search/+page.svelte:50`
-**Issue:** `total={BigInt(discQ.data?.discoveries.length ?? 0)}` (and the search
-equivalent) short-circuits on `data` but then reads `.discoveries.length`
-unguarded. This is safe *only* because protobuf-es always initializes repeated
-fields to `[]`; it is also inconsistent with the sibling `memories={discQ.data?.discoveries ?? []}`
-prop on the same element, which treats the field as possibly undefined. The
-mixed treatment invites a real `TypeError` if the response shape ever loosens.
-**Fix:** Make it consistent: `total={BigInt(discQ.data?.discoveries?.length ?? 0)}`.
-
-### IN-04: Resume `values.citations` applied without element validation
-
-**File:** `ui/src/lib/components/DiscoveryFormSheet.svelte:176`, `ui/src/lib/resume.ts:101-104`
-**Issue:** `peekResume`'s `isValidShape` validates the envelope frame but leaves
-`values` opaque (`typeof o.values === 'object'`). `DiscoveryFormSheet` then
-restores `citations = rv.citations as DiscoveryCitationInput[]` with only an
-`Array.isArray` guard — element `kind`/`ref` shape is unchecked before the
-values reach `buildStoreDiscoveryRequest`. The blast radius is limited (the
-envelope lives in the user's own sessionStorage, not attacker-controlled input,
-and `create()` coerces field types), so this is defense-in-depth rather than an
-exploitable flaw.
-**Fix:** Validate citation elements on restore (drop entries missing a valid
-`kind`/string `ref`) so a corrupted envelope can't seed malformed citation rows.
+**File:** `ui/src/lib/resume.ts:34` (`dirtyPaths`), `ui/src/lib/components/WriteSurfaces.svelte:55,141,145,236`, `ui/src/lib/components/MemoryFormSheet.svelte:35,43` (`_resumeDirtyPaths`)
+**Issue:** `MemoryFormSheet.handleReauthenticate` persists
+`dirtyPaths: Object.keys(dirty)` and the host threads `resumeDirtyPaths` into
+the form, but the restore `$effect` applies **all** of `resumeValues`
+unconditionally and never reads `dirtyPaths` (it is destructured as
+`_resumeDirtyPaths` and ignored). For edit mode `values` is already exactly the
+dirty subset, so `dirtyPaths` is redundant; this is dead data flow that implies
+a selective-restore contract the form does not actually honor.
+**Fix:** Either drop `dirtyPaths` from the persisted envelope and the
+`WriteSurfaces`/`MemoryFormSheet` prop chain, or gate the restore on
+`resumeDirtyPaths` (apply only keys present in it). Prefer removal unless
+selective-merge semantics are intended.
 
 ---
 
-_Reviewed: 2026-07-15T15:26:58Z_
+_Reviewed: 2026-07-15T00:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
-_Depth: standard_
+_Depth: deep_
