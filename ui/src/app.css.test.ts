@@ -35,3 +35,25 @@ describe('category color tokens', () => {
     });
   }
 });
+
+describe('destructive tokens', () => {
+  it('defines --destructive and --destructive-foreground in :root and .dark', () => {
+    expect(root).toContain('--destructive:');
+    expect(root).toContain('--destructive-foreground:');
+    expect(dark).toContain('--destructive:');
+    expect(dark).toContain('--destructive-foreground:');
+  });
+
+  it('bridges --color-destructive and --color-destructive-foreground in @theme', () => {
+    expect(theme).toContain('--color-destructive:');
+    expect(theme).toContain('--color-destructive-foreground:');
+  });
+
+  it('sets .dark --destructive-foreground per-theme (var(--background)), not hardcoded white', () => {
+    // Round-2 contrast fix: dark-mode --cat-gotcha is a light orange (#ffa657)
+    // where white text reads weak. --destructive-foreground must resolve via
+    // var(--background) in both blocks, not a literal #ffffff in .dark.
+    expect(dark).toContain('--destructive-foreground: var(--background);');
+    expect(dark).not.toMatch(/--destructive-foreground:\s*#fff/i);
+  });
+});

@@ -9,7 +9,8 @@
         default: 'bg-primary text-primary-foreground hover:opacity-90',
         outline: 'border border-border bg-background text-foreground hover:bg-accent',
         ghost: 'text-foreground hover:bg-accent',
-        surface: 'bg-secondary text-secondary-foreground border border-border hover:bg-accent'
+        surface: 'bg-secondary text-secondary-foreground border border-border hover:bg-accent',
+        destructive: 'bg-destructive text-destructive-foreground hover:opacity-90'
       },
       size: {
         default: 'h-8 px-3 py-1',
