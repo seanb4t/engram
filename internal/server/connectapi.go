@@ -29,6 +29,20 @@ type engramAPI struct {
 	d *deps
 }
 
+// citationsToProto maps store-layer discovery citations to their proto
+// counterpart. Returns nil (not an empty slice) for empty input so
+// non-discovery memories round-trip with Citations == nil.
+func citationsToProto(cs []store.Citation) []*engramv1.Citation {
+	if len(cs) == 0 {
+		return nil
+	}
+	out := make([]*engramv1.Citation, len(cs))
+	for i, c := range cs {
+		out[i] = &engramv1.Citation{Kind: c.Kind, Ref: c.Ref, Locator: c.Locator, Pin: c.Pin, Excerpt: c.Excerpt}
+	}
+	return out
+}
+
 func memoryToProto(m store.Memory) *engramv1.Memory {
 	// LastAccessedAt is nil for never-accessed records; leave the proto field
 	// unset rather than emitting a year-1 (0001-01-01) Timestamp.
@@ -48,6 +62,8 @@ func memoryToProto(m store.Memory) *engramv1.Memory {
 		ShortId:        m.ShortID,
 		AccessCount:    m.AccessCount,
 		LastAccessedAt: lastAccessed,
+		Kind:           m.Kind,
+		Citations:      citationsToProto(m.Citations),
 	}
 }
 
