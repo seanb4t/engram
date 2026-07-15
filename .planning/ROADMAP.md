@@ -449,7 +449,11 @@ Plans:
 6. The Helm chart ships `engram summarize-missing` as a `batch/v1` CronJob reusing the Deployment's image/env plumbing via a shared `_helpers.tpl` block.
 
 **Status**: Not started
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 20-01-PLAN.md — proto + discovery: extend Memory (kind=21/citations=22) + regen, populate memoryToProto, pin storeDiscoveryArgs.ID schema (#307, #303)
+- [ ] 20-02-PLAN.md — embed cleanups: single map-based embed() body path + shared embed.ReservedParamKeys consumed by config (#302, #304)
+- [ ] 20-03-PLAN.md — store/shortid: bound MintShortID at 16 real collision checks + ErrShortIDExhausted sentinel (#308)
+- [ ] 20-04-PLAN.md — helm: summarize-missing batch/v1 CronJob + shared _helpers.tpl env + chart:validate (#269)
 
 ### Phase 21: CI / Maintenance Hygiene
 
