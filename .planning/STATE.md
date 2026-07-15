@@ -5,15 +5,15 @@ milestone_name: — Hardening & Write Lane
 current_phase: 19
 current_phase_name: console-write-ux
 status: "Phase 19 shipped — PR #367 (live UAT deferred → #366)"
-stopped_at: Completed 19-06-PLAN.md
-last_updated: "2026-07-15T17:30:43.172Z"
+stopped_at: Phase 20 context gathered
+last_updated: "2026-07-15T21:54:16.670Z"
 last_activity: 2026-07-15
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 7
   total_plans: 28
   completed_plans: 28
-  percent: 100
+  percent: 88
 ---
 
 # Project State
@@ -139,9 +139,9 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-15T15:18:15.781Z
-Stopped at: Completed 19-06-PLAN.md
-Resume file: None
+Last session: 2026-07-15T21:54:16.663Z
+Stopped at: Phase 20 context gathered
+Resume file: .planning/phases/20-correctness-polish/20-CONTEXT.md
 
 ## Performance Metrics
 
