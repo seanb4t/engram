@@ -10,7 +10,7 @@ Give the SvelteKit adapter-static operator console **write** capabilities over t
 already-wired Connect write lane: an operator can **create, edit, delete, change
 visibility, and schedule** memories, and **create, delete, and change visibility**
 of discoveries — directly from the console UI. Every write attaches the CSRF token
-client-side, tolerates a mid-write session re-seal via a single silent retry, and
+client-side, tolerates a mid-write cookie-freshness race via a single silent opportunistic retry, and
 falls back to a re-authenticate prompt **without losing the operator's in-flight
 input**.
 
@@ -124,7 +124,7 @@ implementation-level and consistent with the decisions above:
 ### Write lane / CSRF / re-seal contracts (locked upstream)
 - `internal/webauth/csrf.go` — **wire-contract constants**: `CSRFCookieName = "engram_csrf"` (non-HttpOnly, Secure, JS-readable), `CSRFHeaderName = "X-CSRF-Token"`. The console MUST echo the cookie value in this header on writes.
 - `internal/server/connectcsrf.go` — server-side double-submit interceptor (token bound to `Subject.Owner`, gated to the 6 write Procedures; 5 read RPCs exempt). Defines what a valid write request looks like.
-- `internal/server/connectreseal.go` + `internal/webauth/reseal.go` — Phase 18 best-effort re-seal on every authenticated request; sets fresh `engram_session` + refreshed `engram_csrf` cookies. Explains why "retry once" resolves rotation failures.
+- `internal/server/connectreseal.go` + `internal/webauth/reseal.go` — Phase 18 best-effort re-seal on every authenticated (successful) request; sets fresh `engram_session` + refreshed `engram_csrf` cookies. The Phase-19 retry-once is an opportunistic **auth-race** retry that re-reads the refreshed session/CSRF cookie — NOT a reseal-triggered rotation recovery (the server does **not** re-seal an errored request; see D-08).
 - `ui/src/lib/client.ts` — current same-origin Connect client + `mapAuthError` (Unauthenticated → `/auth/login`). The write client/interceptor extends this.
 - `.planning/phases/16-csrf-interceptor/16-CONTEXT.md`, `.planning/phases/17-wired-write-handlers-full-crud-schedule/17-CONTEXT.md`, `.planning/phases/18-stateless-session-rotation/18-CONTEXT.md` — decisions behind the three upstream phases this UX consumes.
 
@@ -162,7 +162,7 @@ implementation-level and consistent with the decisions above:
 <specifics>
 ## Specific Ideas
 
-- Retry-once is a **transport interceptor** concern (D-08), not per-call boilerplate — one place to get the re-seal semantics right, mirroring how the server centralizes re-seal in one interceptor.
+- Retry-once is a **transport interceptor** concern (D-08), not per-call boilerplate — one place to get the auth-race retry semantics right, mirroring how the server centralizes re-seal in one interceptor.
 - The private→shared warning (D-07) should state the **irreversibility** ("can't be narrowed back to hidden"), not just "this will be shared" — the exposure is one-way in practical terms.
 </specifics>
 
