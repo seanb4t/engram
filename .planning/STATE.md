@@ -5,15 +5,15 @@ milestone_name: — Hardening & Write Lane
 current_phase: 20
 current_phase_name: correctness-polish
 status: executing
-stopped_at: Completed 20-01-PLAN.md
-last_updated: "2026-07-15T23:47:54.794Z"
+stopped_at: Completed 20-02-PLAN.md
+last_updated: "2026-07-15T23:57:34.133Z"
 last_activity: 2026-07-15
-last_activity_desc: Phase 20 execution started
+last_activity_desc: Phase 20 Plan 02 complete
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 32
-  completed_plans: 29
+  completed_plans: 30
   percent: 88
 ---
 
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 ## Current Position
 
 Phase: 20 (correctness-polish) — EXECUTING
-Plan: 2 of 4
-Status: Plan 01 complete (#307 discovery proto fidelity, #303 short_id schema) — Plan 02 next
-Last activity: 2026-07-15 — Phase 20 Plan 01 complete
+Plan: 3 of 4
+Status: Plan 02 complete (#304 embed param-key sharing, #302 embed body-build collapse) — Plan 03 next
+Last activity: 2026-07-15 — Phase 20 Plan 02 complete
 
 ## Deferred Items
 
@@ -132,6 +132,7 @@ cookie-auth security posture).
 - [Phase 19]: [Phase 19 P06] Browser tests use vitest-browser-svelte's wrapper/wrapperProps render option with a real QueryClientProvider + fresh QueryClient per test instead of a bespoke test-harness .svelte file
 - [Phase 20]: [Phase 20 P01] citationsToProto placed in connectapi.go (read path) beside memoryToProto, not protoconv.go (write path) -- naming-symmetric with memoriesToProto, per 20-PATTERNS.md
 - [Phase 20]: [Phase 20 P01] Memory proto fields kind=21/citations=22 additive-only; TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs (Phase-15 SC4 wire-shape pin) updated 20->22 fields as expected fallout
+- [Phase 20]: [Phase 20 P02] Reversed config<->embed import direction (config owns ReservedEmbedParamKeys, embed aliases it) to avoid a real import cycle through internal/telemetry that RESEARCH.md missed — go build failed with an import cycle; config has no internal dependents so it is the safe direction
 
 ### Blockers/Concerns
 
@@ -142,8 +143,8 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-15T23:47:54.789Z
-Stopped at: Completed 20-01-PLAN.md
+Last session: 2026-07-15T23:57:34.127Z
+Stopped at: Completed 20-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -179,3 +180,4 @@ Resume file: None
 | Phase 19 P05 | 35min | 2 tasks | 6 files |
 | Phase 19 P06 | 62min | 3 tasks | 12 files |
 | Phase 20-correctness-polish P01 | 12min | 3 tasks | 9 files |
+| Phase 20-correctness-polish P02 | 20 | 2 tasks | 3 files |

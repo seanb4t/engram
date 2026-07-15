@@ -449,10 +449,10 @@ Plans:
 6. The Helm chart ships `engram summarize-missing` as a `batch/v1` CronJob reusing the Deployment's image/env plumbing via a shared `_helpers.tpl` block.
 
 **Status**: In Progress
-**Plans**: 1/4 plans executed
+**Plans**: 2/4 plans executed
 
 - [x] 20-01-PLAN.md — proto + discovery: extend Memory (kind=21/citations=22) + regen, populate memoryToProto, pin storeDiscoveryArgs.ID schema (#307, #303)
-- [ ] 20-02-PLAN.md — embed cleanups: single map-based embed() body path + shared embed.ReservedParamKeys consumed by config (#302, #304)
+- [x] 20-02-PLAN.md — embed cleanups: single map-based embed() body path + shared embed.ReservedParamKeys consumed by config (#302, #304)
 - [ ] 20-03-PLAN.md — store/shortid: bound MintShortID at 16 real collision checks + ErrShortIDExhausted sentinel (#308)
 - [ ] 20-04-PLAN.md — helm: summarize-missing batch/v1 CronJob + shared _helpers.tpl env + chart:validate (#269)
 
@@ -495,7 +495,7 @@ Plans:
 | 17. Wired Write Handlers (Full CRUD + Schedule) | v0.10.x | 6/6 | Complete    | 2026-07-13 |
 | 18. Stateless Session Rotation | v0.10.x | 3/3 | Complete    | 2026-07-13 |
 | 19. Console Write UX | v0.10.x | 6/6 | Complete   | 2026-07-15 |
-| 20. Correctness & Polish | v0.10.x | 1/4 | In Progress|  |
+| 20. Correctness & Polish | v0.10.x | 2/4 | In Progress|  |
 | 21. CI / Maintenance Hygiene | v0.10.x | 0/3 | Not started | - |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
