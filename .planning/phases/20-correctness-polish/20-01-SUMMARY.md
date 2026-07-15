@@ -157,3 +157,11 @@ None - no external service configuration required.
 ---
 *Phase: 20-correctness-polish*
 *Completed: 2026-07-15*
+
+## Self-Check: PASSED
+
+All claimed files (proto/engram/v1/engram.proto, internal/server/connectapi.go,
+internal/server/connectapi_test.go, internal/server/tools_test.go,
+internal/server/connectdescriptor_test.go, gen/go/engram/v1/engram.pb.go,
+20-01-SUMMARY.md, deferred-items.md) and all claimed commit hashes (2aab7385,
+f7e7e5bc, d6b9f2db, 5bc1d8b4, e836e463, cb96437a) verified present.
