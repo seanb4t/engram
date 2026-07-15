@@ -4,17 +4,17 @@ milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 19
 current_phase_name: console-write-ux
-status: executing
-stopped_at: Completed 19-05-PLAN.md
-last_updated: "2026-07-15T14:53:51.457Z"
+status: verifying
+stopped_at: Completed 19-06-PLAN.md
+last_updated: "2026-07-15T15:18:15.786Z"
 last_activity: 2026-07-15
 last_activity_desc: Phase 19 execution started
 progress:
   total_phases: 7
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 28
-  completed_plans: 27
-  percent: 86
+  completed_plans: 28
+  percent: 100
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 Phase: 19 (console-write-ux) — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-15 — Phase 19 execution started
 
 ## Deferred Items
@@ -127,6 +127,9 @@ cookie-auth security posture).
 - [Phase 19]: [Phase 19 P04] Set-visibility/update/delete optimistic cache writes iterate getQueriesData + per-key setQueryData (not setQueriesData's key-less updater) so listMemoriesKey's visibility filter can be read and a now-mismatched record dropped from filtered pages
 - [Phase 19]: [Phase 19 P05] redirectToLogin() seam added to resume.ts (not an inline window.location.assign call) -- window.location.assign is a non-configurable own property on real browser Location instances and cannot be vi.spyOn'd directly; browser-mode component tests mock this one function via vi.mock('$lib/resume', ...) instead of touching global navigation
 - [Phase 19]: [Phase 19 P05] Scope rendered as a free-text Input (not Select) in both MemoryFormSheet and DiscoveryFormSheet -- scope is a hierarchical string (repo:x, discovery:repo:x), not a bounded enum
+- [Phase 19]: [Phase 19 P06] WriteSurfaces mounts ONE MemoryFormSheet instance for both create and edit, remounted via {#key mode-recordId-instanceKey} on every open
+- [Phase 19]: [Phase 19 P06] Delete/share confirm handlers use the .mutate(vars, {onSuccess, onError}) callback-pair pattern wrapped in a Promise, matching the mocked-hook testing convention from Plan 05
+- [Phase 19]: [Phase 19 P06] Browser tests use vitest-browser-svelte's wrapper/wrapperProps render option with a real QueryClientProvider + fresh QueryClient per test instead of a bespoke test-harness .svelte file
 
 ### Blockers/Concerns
 
@@ -137,8 +140,8 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-15T14:53:51.451Z
-Stopped at: Completed 19-05-PLAN.md
+Last session: 2026-07-15T15:18:15.781Z
+Stopped at: Completed 19-06-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -172,3 +175,4 @@ Resume file: None
 | Phase 19 P03 | 20min | 3 tasks | 9 files |
 | Phase 19 P04 | 25min | 2 tasks | 4 files |
 | Phase 19 P05 | 35min | 2 tasks | 6 files |
+| Phase 19 P06 | 62min | 3 tasks | 12 files |
