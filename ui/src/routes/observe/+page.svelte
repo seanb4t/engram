@@ -68,6 +68,7 @@
           kind="memory"
           scope={params.scope}
           onresumeapplied={consumeResume}
+          ondeleted={(id) => { if (id === params.selectedId) navigate({ selectedId: '' }); }}
         />
       </div>
       <div class="flex-1 overflow-y-auto">

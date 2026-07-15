@@ -28,6 +28,9 @@
     return { queryKey: ['getMemory', s], queryFn: () => engram.getMemory({ id: s }), enabled: !!s };
   });
   function select(id: string) { const sp = new URLSearchParams(page.url.searchParams); sp.set('sel', id); goto(`${base}/discovery?${sp}`); }
+  // Clear the selection (WR-02): drops the ?sel param so the detail query
+  // disables and never refetches a just-deleted tombstone.
+  function clearSelection() { const sp = new URLSearchParams(page.url.searchParams); sp.delete('sel'); goto(`${base}/discovery?${sp}`); }
 
   // WriteSurfaces host (Plan 06): kind=discovery -- D-04 fence, no onedit
   // wired below (discovery has no edit surface).
@@ -50,6 +53,7 @@
           kind="discovery"
           scope={createScope}
           onresumeapplied={consumeResume}
+          ondeleted={(id) => { if (id === sel) clearSelection(); }}
         />
       </div>
       <div class="flex-1 overflow-y-auto">

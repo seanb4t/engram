@@ -23,11 +23,13 @@
   let {
     kind,
     scope,
-    onresumeapplied
+    onresumeapplied,
+    ondeleted
   }: {
     kind: 'memory' | 'discovery';
     scope: string;
     onresumeapplied?: () => void;
+    ondeleted?: (id: string) => void;
   } = $props();
 
   const queryClient = useQueryClient();
@@ -165,6 +167,10 @@
             deleteTarget = undefined;
             deleteAuthFailure = false;
             deleteDialogOpen = false;
+            // Relay the deleted id up so the route can clear its selection
+            // (WR-02): otherwise the still-enabled detail query refetches the
+            // tombstone and NotFound raises a spurious global error banner.
+            ondeleted?.(id);
             resolve();
           },
           onError: (err: unknown) => {

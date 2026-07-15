@@ -80,7 +80,11 @@ function fakeMemory(
 }
 
 let qc: QueryClient;
-function renderWS(props: { kind: 'memory' | 'discovery'; scope: string }) {
+function renderWS(props: {
+  kind: 'memory' | 'discovery';
+  scope: string;
+  ondeleted?: (id: string) => void;
+}) {
   return render(WriteSurfaces, props, { wrapper: QueryClientProvider, wrapperProps: { client: qc } });
 }
 
@@ -149,6 +153,29 @@ describe('WriteSurfaces — requestDelete', () => {
     expect(deleteMemoryMutateSpy).toHaveBeenCalledTimes(1);
     expect(deleteMemoryMutateSpy.mock.calls[0][0]).toEqual({ id: 'm1' });
     await expect.element(screen.getByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('relays the deleted id to ondeleted on delete success (WR-02: lets the route clear its selection)', async () => {
+    deleteMemoryMutateSpy.mockImplementation((_vars, opts) => {
+      opts.onSuccess();
+    });
+    const ondeleted = vi.fn();
+    const screen = await renderWS({ kind: 'memory', scope: 'repo:x', ondeleted });
+    await screen.component.requestDelete('m1', 'memory');
+    await screen.getByRole('button', { name: 'Delete' }).click();
+    expect(ondeleted).toHaveBeenCalledTimes(1);
+    expect(ondeleted).toHaveBeenCalledWith('m1');
+  });
+
+  it('does NOT relay to ondeleted when the delete fails (terminal auth retention)', async () => {
+    deleteMemoryMutateSpy.mockImplementation((_vars, opts) => {
+      opts.onError(new ConnectError('session expired', Code.Unauthenticated));
+    });
+    const ondeleted = vi.fn();
+    const screen = await renderWS({ kind: 'memory', scope: 'repo:x', ondeleted });
+    await screen.component.requestDelete('m1', 'memory');
+    await screen.getByRole('button', { name: 'Delete' }).click();
+    expect(ondeleted).not.toHaveBeenCalled();
   });
 
   it('requestDelete(id, "discovery") invokes the discovery delete mutation, not the memory one', async () => {

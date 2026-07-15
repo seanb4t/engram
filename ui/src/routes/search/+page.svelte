@@ -22,6 +22,9 @@
     return { queryKey: ['getMemory', s], queryFn: () => engram.getMemory({ id: s }), enabled: !!s };
   });
   function select(id: string) { const sp = new URLSearchParams(page.url.searchParams); sp.set('sel', id); goto(`${base}/search?${sp}`); }
+  // Clear the selection (WR-02): drops the ?sel param so the detail query
+  // disables and never refetches a just-deleted tombstone.
+  function clearSelection() { const sp = new URLSearchParams(page.url.searchParams); sp.delete('sel'); goto(`${base}/search?${sp}`); }
 
   // WriteSurfaces host (Plan 06): kind=memory, defaulting New memory's scope
   // to the current ?scope param (empty/manual entry when absent).
@@ -44,6 +47,7 @@
           kind="memory"
           scope={currentScope}
           onresumeapplied={consumeResume}
+          ondeleted={(id) => { if (id === sel) clearSelection(); }}
         />
       </div>
       <div class="flex-1 overflow-y-auto">
