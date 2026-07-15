@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 19
-current_phase_name: Console Write UX
+current_phase_name: console-write-ux
 status: executing
-stopped_at: Phase 19 UI-SPEC approved
-last_updated: "2026-07-13T22:37:48.511Z"
-last_activity: 2026-07-13
-last_activity_desc: Phase 18 complete, transitioned to Phase 19
+stopped_at: Completed 19-01-PLAN.md
+last_updated: "2026-07-15T13:42:24.779Z"
+last_activity: 2026-07-15
+last_activity_desc: Phase 19 execution started
 progress:
   total_phases: 7
   completed_phases: 6
-  total_plans: 22
-  completed_plans: 22
-  percent: 86
+  total_plans: 28
+  completed_plans: 23
+  percent: 82
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 18 — stateless-session-rotation
+**Current focus:** Phase 19 — console-write-ux
 
 ## Current Position
 
-Phase: 19 — Console Write UX
-Plan: Not started
+Phase: 19 (console-write-ux) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-07-13 — Phase 18 complete, transitioned to Phase 19
+Last activity: 2026-07-15 — Phase 19 execution started
 
 ## Deferred Items
 
@@ -112,6 +112,9 @@ cookie-auth security posture).
 - [Phase 18]: ADR names ENGRAM_UI_COOKIE_KEY (registry.go:56) as the sole kill-switch, never the phantom ENGRAM_SESSION_KEY
 - [Phase ?]: newConnectResealInterceptor appended LAST (innermost, after validate) in mountConnect so it only re-seals a fully-authorized, valid, successful response (D-04).
 - [Phase ?]: The reseal interceptor never inspects req.Spec(), so D-03 (fires on read AND write, no allowlist) holds by construction rather than an inverse allowlist.
+- [Phase ?]: include_imports:true scoped to the ES plugin only in buf.gen.yaml (not a global flag), preserving gen/go/ output
+- [Phase ?]: destructive-foreground aliases var(background) per theme, not a hardcoded hex-white, for correct dark-mode contrast
+- [Phase ?]: The destructive-foreground token aliases var(background) per theme (light burnt-orange in light mode, dark near-black in dark mode), not a hardcoded white, for correct contrast against cat-gotcha in both themes
 
 ### Blockers/Concerns
 
@@ -122,9 +125,9 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-13T21:41:25.932Z
-Stopped at: Phase 19 UI-SPEC approved
-Resume file: .planning/phases/19-console-write-ux/19-UI-SPEC.md
+Last session: 2026-07-15T13:42:24.774Z
+Stopped at: Completed 19-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -152,3 +155,4 @@ Resume file: .planning/phases/19-console-write-ux/19-UI-SPEC.md
 | Phase 18-stateless-session-rotation P01 | 20min | 2 tasks | 3 files |
 | Phase 18 P02 | 5min | 2 tasks | 2 files |
 | Phase 18-stateless-session-rotation P03 | 20min | 2 tasks | 10 files |
+| Phase 19 P01 | 25min | 3 tasks | 11 files |

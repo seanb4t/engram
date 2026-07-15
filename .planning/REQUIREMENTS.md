@@ -50,7 +50,7 @@ Grouped by category. Each maps to exactly one phase (filled in the ROADMAP trace
 
 ### Console Write UX
 
-- [ ] **REQ-console-write-ux**: The operator console can create, edit, delete, re-share (visibility), and schedule memories/discoveries over the Connect write lane, attaching the CSRF token client-side and silently retrying once on an auth-class failure (an opportunistic auth-race retry that re-reads the session/CSRF cookie; falling back to re-auth) without losing the in-flight write's input — preserved across the `/auth/login` redirect via a `sessionStorage` resume envelope.
+- [x] **REQ-console-write-ux**: The operator console can create, edit, delete, re-share (visibility), and schedule memories/discoveries over the Connect write lane, attaching the CSRF token client-side and silently retrying once on an auth-class failure (an opportunistic auth-race retry that re-reads the session/CSRF cookie; falling back to re-auth) without losing the in-flight write's input — preserved across the `/auth/login` redirect via a `sessionStorage` resume envelope.
 
 ### Correctness & Polish
 
