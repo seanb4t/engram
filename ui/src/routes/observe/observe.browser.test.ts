@@ -1,19 +1,24 @@
 import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { create } from '@bufbuild/protobuf';
-import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
+import { QueryClient, QueryClientProvider, QueryCache } from '@tanstack/svelte-query';
 import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
 import { persistResume, RESUME_KEY } from '$lib/resume';
+import { errorBanner, reportError } from '$lib/errors';
+import { mapAuthError } from '$lib/client';
 import ObservePage from './+page.svelte';
+import DeleteBannerHarness from './DeleteBannerHarness.svelte';
 
-const { gotoSpy, pageState, listScopesSpy, listMemoriesSpy, getMemorySpy, consumeResumeSpy } = vi.hoisted(() => ({
-  gotoSpy: vi.fn(),
-  pageState: { url: new URL('http://localhost/observe') },
-  listScopesSpy: vi.fn(),
-  listMemoriesSpy: vi.fn(),
-  getMemorySpy: vi.fn(),
-  consumeResumeSpy: vi.fn()
-}));
+const { gotoSpy, pageState, listScopesSpy, listMemoriesSpy, getMemorySpy, deleteMemorySpy, consumeResumeSpy } =
+  vi.hoisted(() => ({
+    gotoSpy: vi.fn(),
+    pageState: { url: new URL('http://localhost/observe') },
+    listScopesSpy: vi.fn(),
+    listMemoriesSpy: vi.fn(),
+    getMemorySpy: vi.fn(),
+    deleteMemorySpy: vi.fn(),
+    consumeResumeSpy: vi.fn()
+  }));
 
 vi.mock('$app/navigation', () => ({ goto: gotoSpy }));
 vi.mock('$app/paths', () => ({ base: '/ui' }));
@@ -28,6 +33,10 @@ vi.mock('$lib/client', async (importOriginal) => {
       listScopes: listScopesSpy,
       listMemories: listMemoriesSpy,
       getMemory: getMemorySpy
+    },
+    engramWrite: {
+      ...actual.engramWrite,
+      deleteMemory: deleteMemorySpy
     }
   };
 });
@@ -79,7 +88,9 @@ beforeEach(() => {
   listScopesSpy.mockReset().mockResolvedValue({ scopes: [], approximate: false });
   listMemoriesSpy.mockReset().mockResolvedValue({ memories: [], total: 0n, approximate: false });
   getMemorySpy.mockReset();
+  deleteMemorySpy.mockReset().mockResolvedValue({});
   consumeResumeSpy.mockReset();
+  errorBanner.set(null);
   sessionStorage.clear();
   pageState.url = new URL('http://localhost/observe');
   qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -164,5 +175,58 @@ describe('observe route — re-auth landing recovery (Codex round-3 HIGH/MEDIUM)
     expect(consumeResumeSpy).not.toHaveBeenCalled();
     // Envelope is left for the actual discovery route to consume.
     expect(sessionStorage.getItem(RESUME_KEY)).not.toBeNull();
+  });
+});
+
+describe('observe route — deleting the selected record never flashes a NotFound banner (WR-04)', () => {
+  it('does not refetch the tombstone or surface a role="alert" banner after deleting the selected record', async () => {
+    // The layout wires QueryCache.onError -> (auth ? redirect : reportError).
+    // Reproduce it exactly so a regression that re-invalidates ['getMemory', id]
+    // on delete would refetch the deleted id, resolve NotFound, and set the
+    // banner the harness renders.
+    qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+      queryCache: new QueryCache({
+        onError: (err) => {
+          const target = mapAuthError(err);
+          if (target) return;
+          reportError(err);
+        }
+      })
+    });
+
+    // Select m1: the detail query fetches the full record once.
+    pageState.url = new URL('http://localhost/observe?scope=repo:x&sel=m1');
+    listMemoriesSpy.mockResolvedValue({
+      memories: [fakeMemory({ id: 'm1', content: '', summary: 'row summary', scope: 'repo:x' })],
+      total: 1n,
+      approximate: false
+    });
+    getMemorySpy.mockResolvedValue({ memory: fakeMemory({ id: 'm1', content: 'the full body', scope: 'repo:x' }) });
+
+    const screen = render(DeleteBannerHarness, { client: qc });
+
+    // Detail pane resolved: the record-actions menu is available.
+    await expect.element(screen.getByRole('button', { name: 'record actions' })).toBeInTheDocument();
+    expect(getMemorySpy).toHaveBeenCalledTimes(1);
+
+    await screen.getByRole('button', { name: 'record actions' }).click();
+    await screen.getByRole('menuitem', { name: 'Delete' }).click();
+
+    // Confirm dialog is host-authoritative; confirm the delete.
+    await expect.element(screen.getByText('Delete this memory?')).toBeInTheDocument();
+    await screen.getByRole('button', { name: 'Delete', exact: true }).click();
+
+    // Delete succeeded: the deleted id is relayed up (ondeleted -> navigate).
+    await expect.poll(() => deleteMemorySpy.mock.calls.length).toBe(1);
+    await expect.poll(() => gotoSpy.mock.calls.length).toBeGreaterThan(0);
+
+    // goto is async/mocked: `?sel` still equals the deleted id, so the detail
+    // observer stays enabled. With the getMemory invalidation dropped, no
+    // tombstone refetch occurs — getMemory is never re-called for the deleted id.
+    await expect.poll(() => getMemorySpy.mock.calls.length).toBe(1);
+
+    // And the global error banner never appears.
+    await expect.element(screen.getByRole('alert')).not.toBeInTheDocument();
   });
 });

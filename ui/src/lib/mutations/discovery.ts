@@ -191,9 +191,11 @@ export function useDeleteDiscovery() {
     onSuccess: () => {
       toast.success('deleted');
     },
-    onSettled: (_data, _err, vars) => {
+    onSettled: (_data, _err, _vars) => {
+      // Do NOT invalidate ['getMemory', id] on delete: the record is gone, so a
+      // refetch can only return NotFound. The detail pane is cleared by the
+      // route's ondeleted->clearSelection relay (WR-02), not by reconciliation.
       queryClient.invalidateQueries({ queryKey: ['searchDiscoveries'] });
-      queryClient.invalidateQueries({ queryKey: ['getMemory', vars.id] });
       queryClient.invalidateQueries({ queryKey: ['listScopes'] });
     }
   }));

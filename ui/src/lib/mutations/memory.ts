@@ -345,8 +345,10 @@ export function useDeleteMemory() {
     onSuccess: () => {
       toast.success('deleted');
     },
-    onSettled: (_data, _err, vars) => {
-      queryClient.invalidateQueries({ queryKey: ['getMemory', vars.id] });
+    onSettled: (_data, _err, _vars) => {
+      // Do NOT invalidate ['getMemory', id] on delete: the record is gone, so a
+      // refetch can only return NotFound. The detail pane is cleared by the
+      // route's ondeleted->clearSelection relay (WR-02), not by reconciliation.
       queryClient.invalidateQueries({ queryKey: ['listMemories'] });
       queryClient.invalidateQueries({ queryKey: ['searchMemories'] });
       queryClient.invalidateQueries({ queryKey: ['listScopes'] });
