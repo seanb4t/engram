@@ -21,3 +21,8 @@ plugins:
   - remote: buf.build/bufbuild/es
     out: gen/ts
     opt: target=ts
+    # Scoped to this plugin only (not a global --include-imports flag): the ES
+    # plugin's engram_pb.ts imports buf/validate/validate_pb, which is not
+    # otherwise emitted. The two Go plugins above carry no include_imports, so
+    # gen/go/ stays unaffected.
+    include_imports: true

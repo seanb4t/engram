@@ -143,9 +143,11 @@ tasks:
           exit 1
         fi
   proto:gen:
-    desc: Regenerate connect stubs (Go + TS) from proto
+    desc: Regenerate connect stubs (Go + TS) and re-vendor the console gen client tree
     cmds:
       - go tool buf generate
+      - rm -rf ui/src/lib/gen/engram ui/src/lib/gen/buf
+      - cp -R gen/ts/. ui/src/lib/gen/
 
   deps:
     cmds:
