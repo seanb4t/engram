@@ -5,15 +5,15 @@ milestone_name: — Hardening & Write Lane
 current_phase: 19
 current_phase_name: console-write-ux
 status: executing
-stopped_at: Completed 19-02-PLAN.md
-last_updated: "2026-07-15T14:13:31.362Z"
+stopped_at: Completed 19-04-PLAN.md
+last_updated: "2026-07-15T14:28:42.747Z"
 last_activity: 2026-07-15
 last_activity_desc: Phase 19 execution started
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 28
-  completed_plans: 25
+  completed_plans: 26
   percent: 86
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 ## Current Position
 
 Phase: 19 (console-write-ux) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-07-15 — Phase 19 execution started
 
@@ -122,6 +122,9 @@ cookie-auth security posture).
 - [Phase 19]: [Phase 19 P03] Cancel in DeleteConfirmDialog is wrapped in bits-ui's Dialog.Close (asChild), not a plain onclick — Cancel/Escape/overlay all funnel through the same onOpenChange(false) -> oncancel() path, while Delete is a bare Button that never touches bits-ui's internal open state, making self-close-on-confirm structurally impossible
 - [Phase 19]: [Phase 19 P03] MemoryDetail's Edit/Delete/Share collapse into one icon-sm ghost kebab DropdownMenu (mirroring MemoryRow) rather than 3 separate outline/sm buttons, per UI-SPEC's overflow-note alternative for the 360px pane; copy button untouched
 - [Phase 19]: [Phase 19 P03] In the {#snippet child({ props })} asChild pattern, {...props} must precede an explicit prop override (e.g. disabled={pending}) or the primitive's own undefined value silently wins
+- [Phase 19]: [Phase 19 P04] Composite functions (createMemoryComposite/scheduleMemoryComposite/createDiscoveryComposite) take the engramWrite client as an explicit parameter rather than a closed-over import, so tests assert exact RPC call counts against a createRouterTransport fake client
+- [Phase 19]: [Phase 19 P04] Partial-success (created_private) toast uses svelte-sonner's toast.warning, not toast.error/toast.success -- the record landed but sharing did not
+- [Phase 19]: [Phase 19 P04] Set-visibility/update/delete optimistic cache writes iterate getQueriesData + per-key setQueryData (not setQueriesData's key-less updater) so listMemoriesKey's visibility filter can be read and a now-mismatched record dropped from filtered pages
 
 ### Blockers/Concerns
 
@@ -132,8 +135,8 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-15T14:12:01.587Z
-Stopped at: Completed 19-02-PLAN.md
+Last session: 2026-07-15T14:28:23.219Z
+Stopped at: Completed 19-04-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -165,3 +168,4 @@ Resume file: None
 | Phase 19 P01 | 25min | 3 tasks | 11 files |
 | Phase 19 P02 | 15min | 3 tasks | 6 files |
 | Phase 19 P03 | 20min | 3 tasks | 9 files |
+| Phase 19 P04 | 25min | 2 tasks | 4 files |
