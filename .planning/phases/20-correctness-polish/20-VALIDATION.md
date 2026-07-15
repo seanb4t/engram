@@ -1,8 +1,8 @@
 ---
 phase: 20
 slug: correctness-polish
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-15
 ---
@@ -38,18 +38,18 @@ created: 2026-07-15
 
 ## Per-Task Verification Map
 
-> Task IDs (`20-NN-MM`) are assigned when the planner writes PLAN.md files. Rows below are keyed
-> by requirement so the planner/`gsd-nyquist-auditor` can bind each to a concrete task.
+> Task IDs are positional (`20-<plan>-<task>`) per the finalized PLAN.md files. Wave-0 test files are
+> authored during execution; `wave_0_complete` flips true once they exist.
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| TBD (Plan A) | A | — | REQ-discovery-proto-fidelity | — | New `kind`/`citations` ride existing authz-gated `SearchDiscoveries` (no new read surface) | unit | `go test ./internal/server/... -run TestMemoryToProto -v` (assert `Kind`/`Citations` round-trip) | ❌ W0 | ⬜ pending |
-| TBD (Plan A) | A | — | REQ-discovery-proto-fidelity | — | proto/gen drift stays clean | ci-gate | `go tool buf lint && go tool buf breaking --against '.git#branch=main' && go tool buf generate && git diff --exit-code -- gen/` | ✅ existing `buf` CI job | ⬜ pending |
-| TBD (Plan A) | A | — | REQ-discovery-shortid-schema | — | `storeDiscoveryArgs.ID` jsonschema contains `short_id` (verification-only — already correct since `92a6f610`) | unit | `go test ./internal/server/... -run TestStoreDiscoveryArgsSchema -v` (new — pins the literal tag string) | ❌ W0 | ⬜ pending |
-| TBD (Plan B) | B | — | REQ-embed-param-key-sharing | — | `config.ParseEmbedParams` rejects reserved keys sourced from `embed.ReservedParamKeys` (single shared list) | unit | `go test ./internal/config/... -run TestEmbedParams -v` (extend to reference shared symbol) | ✅ extend | ⬜ pending |
-| TBD (Plan B) | B | — | REQ-embed-body-build-collapse | — | single-path `embed()` decodes to correct body for empty AND non-empty params | unit | `go test ./internal/embed/... -run TestEmbedParamsMergedIntoBody -v` (existing, decode-based) | ✅ existing | ⬜ pending |
-| TBD (Plan C) | C | — | REQ-shortid-mint-cap | — | `MintShortID` returns `ErrShortIDExhausted` after 16 real collision checks; `seen`-map dups do not consume budget | unit | `go test ./internal/store/... -run TestMintShortIDExhaust -v` (new; mirrors `TestMintShortIDRetriesOnCollision` store_test.go:2741) | ❌ W0 | ⬜ pending |
-| TBD (Plan D) | D | — | REQ-summarize-cronjob | — | `helm template` renders a valid `batch/v1` CronJob when enabled; Deployment env unchanged (no-op diff) | integration/render | chart validation script: assert no `kind: CronJob` when disabled, `kind: CronJob` + `schedule`/`concurrencyPolicy` when enabled, and byte-identical Deployment env pre/post `_helpers.tpl` | ❌ W0 | ⬜ pending |
+| 20-01-02 | 20-01 | 1 | REQ-discovery-proto-fidelity | — | New `kind`/`citations` ride existing authz-gated `SearchDiscoveries` (no new read surface) | unit | `go test ./internal/server/... -run TestMemoryToProto -v` (assert `Kind`/`Citations` round-trip) | ❌ W0 | ⬜ pending |
+| 20-01-01 | 20-01 | 1 | REQ-discovery-proto-fidelity | — | proto/gen drift stays clean | ci-gate | `go tool buf lint && go tool buf breaking --against '.git#branch=main' && go tool buf generate && git diff --exit-code -- gen/` | ✅ existing `buf` CI job | ⬜ pending |
+| 20-01-03 | 20-01 | 1 | REQ-discovery-shortid-schema | — | `storeDiscoveryArgs.ID` jsonschema contains `short_id` (verification-only — already correct since `92a6f610`) | unit | `go test ./internal/server/... -run TestStoreDiscoveryArgsSchema -v` (new — pins the literal tag string) | ❌ W0 | ⬜ pending |
+| 20-02-02 | 20-02 | 1 | REQ-embed-param-key-sharing | — | `config.ParseEmbedParams` rejects reserved keys sourced from `embed.ReservedParamKeys` (single shared list) | unit | `go test ./internal/config/... -run TestEmbedParams -v` (extend to reference shared symbol) | ✅ extend | ⬜ pending |
+| 20-02-01 | 20-02 | 1 | REQ-embed-body-build-collapse | — | single-path `embed()` decodes to correct body for empty AND non-empty params | unit | `go test ./internal/embed/... -run TestEmbedParamsMergedIntoBody -v` (existing, decode-based) | ✅ existing | ⬜ pending |
+| 20-03-01 | 20-03 | 1 | REQ-shortid-mint-cap | — | `MintShortID` returns `ErrShortIDExhausted` after 16 real collision checks; `seen`-map dups do not consume budget | unit | `go test ./internal/store/... -run TestMintShortIDExhaust -v` (new; mirrors `TestMintShortIDRetriesOnCollision` store_test.go:2741) | ❌ W0 | ⬜ pending |
+| 20-04-03 | 20-04 | 1 | REQ-summarize-cronjob | — | `helm template` renders a valid `batch/v1` CronJob when enabled; Deployment env unchanged (no-op diff) | integration/render | `task chart:validate` — assert no `kind: CronJob` when disabled, `kind: CronJob` + `schedule`/`concurrencyPolicy` when enabled, and `engram.containerEnv` block drift pin (rendered via 20-04-01/02) | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -76,11 +76,12 @@ created: 2026-07-15
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references (4 new/extended test files above)
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 120s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies (verified by gsd-plan-checker)
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (4 new/extended test files above)
+- [x] No watch-mode flags
+- [x] Feedback latency < 120s
+- [x] `nyquist_compliant: true` set in frontmatter
+- [ ] `wave_0_complete: true` — flips during execution once the 4 Wave-0 test files exist
 
-**Approval:** pending
+**Approval:** approved 2026-07-15 (plans verified by gsd-plan-checker; Wave-0 test files authored at execution)
