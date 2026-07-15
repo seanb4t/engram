@@ -6,14 +6,14 @@ current_phase: 19
 current_phase_name: console-write-ux
 status: executing
 stopped_at: Completed 19-02-PLAN.md
-last_updated: "2026-07-15T13:51:50.038Z"
+last_updated: "2026-07-15T14:13:31.362Z"
 last_activity: 2026-07-15
 last_activity_desc: Phase 19 execution started
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 28
-  completed_plans: 24
+  completed_plans: 25
   percent: 86
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 ## Current Position
 
 Phase: 19 (console-write-ux) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-07-15 — Phase 19 execution started
 
@@ -119,6 +119,9 @@ cookie-auth security posture).
 - [Phase 19]: [Phase 19] Retry is a SINGLE OPPORTUNISTIC AUTH-RACE RETRY (session-cookie freshness race), never 're-seal on retry'/'rotation' — connectreseal.go:39 skips re-sealing on errored responses; tests/comments named 'auth-race retry'
 - [Phase 19]: [Phase 19] engramWrite is a separate client/transport from the read client engram (not shared interceptors) — cleaner, more auditable, read path unaffected
 - [Phase 19]: [Phase 19] Interceptor array is [retryOnce, attachCsrf] (retryOnce outer), verified by an rg order-gate AND a composed test that mutates document.cookie mid-flight and asserts the retry reads the refreshed value
+- [Phase 19]: [Phase 19 P03] Cancel in DeleteConfirmDialog is wrapped in bits-ui's Dialog.Close (asChild), not a plain onclick — Cancel/Escape/overlay all funnel through the same onOpenChange(false) -> oncancel() path, while Delete is a bare Button that never touches bits-ui's internal open state, making self-close-on-confirm structurally impossible
+- [Phase 19]: [Phase 19 P03] MemoryDetail's Edit/Delete/Share collapse into one icon-sm ghost kebab DropdownMenu (mirroring MemoryRow) rather than 3 separate outline/sm buttons, per UI-SPEC's overflow-note alternative for the 360px pane; copy button untouched
+- [Phase 19]: [Phase 19 P03] In the {#snippet child({ props })} asChild pattern, {...props} must precede an explicit prop override (e.g. disabled={pending}) or the primitive's own undefined value silently wins
 
 ### Blockers/Concerns
 
@@ -129,7 +132,7 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-15T13:51:50.032Z
+Last session: 2026-07-15T14:12:01.587Z
 Stopped at: Completed 19-02-PLAN.md
 Resume file: None
 
@@ -161,3 +164,4 @@ Resume file: None
 | Phase 18-stateless-session-rotation P03 | 20min | 2 tasks | 10 files |
 | Phase 19 P01 | 25min | 3 tasks | 11 files |
 | Phase 19 P02 | 15min | 3 tasks | 6 files |
+| Phase 19 P03 | 20min | 3 tasks | 9 files |
