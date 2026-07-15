@@ -54,11 +54,11 @@ Grouped by category. Each maps to exactly one phase (filled in the ROADMAP trace
 
 ### Correctness & Polish
 
-- [ ] **REQ-discovery-proto-fidelity**: `SearchDiscoveries` carries `kind` / `citations` / `summary` on the Connect wire instead of silently dropping them. *(GitHub #307)*
+- [x] **REQ-discovery-proto-fidelity**: `SearchDiscoveries` carries `kind` / `citations` / `summary` on the Connect wire instead of silently dropping them. *(GitHub #307)*
 - [ ] **REQ-shortid-mint-cap**: `MintShortID` has a bounded collision-retry attempt cap and returns an explicit exhaustion error instead of looping. *(GitHub #308)*
 - [ ] **REQ-embed-param-key-sharing**: The embed package exports a single shared reserved-param-key list so `config.ParseEmbedParams` cannot silently desync from `embedReq`'s wire contract. *(GitHub #304)*
 - [ ] **REQ-embed-body-build-collapse**: The `embed.Client.embed()` two-path body build (struct-marshal vs map-merge) is collapsed into a single map-based path. *(GitHub #302)*
-- [ ] **REQ-discovery-shortid-schema**: `storeDiscoveryArgs.ID` jsonschema advertises `short_id` support, matching the skill docs. *(GitHub #303)*
+- [x] **REQ-discovery-shortid-schema**: `storeDiscoveryArgs.ID` jsonschema advertises `short_id` support, matching the skill docs. *(GitHub #303)*
 - [ ] **REQ-summarize-cronjob**: The Helm chart ships the `engram summarize-missing` sweep as a `batch/v1` CronJob, reusing the Deployment's image/env plumbing (factor the shared env block into `_helpers.tpl`). *(GitHub #269)*
 
 ### CI / Maintenance Hygiene

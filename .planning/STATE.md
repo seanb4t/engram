@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
-current_phase: 19
-current_phase_name: console-write-ux
-status: "Phase 19 shipped — PR #367 (live UAT deferred → #366)"
-stopped_at: Phase 20 context gathered
-last_updated: "2026-07-15T23:01:40.225Z"
+current_phase: 20
+current_phase_name: correctness-polish
+status: executing
+stopped_at: Completed 20-01-PLAN.md
+last_updated: "2026-07-15T23:47:54.794Z"
 last_activity: 2026-07-15
-last_activity_desc: Phase 20 planning complete
+last_activity_desc: Phase 20 execution started
 progress:
   total_phases: 8
   completed_phases: 7
-  total_plans: 28
-  completed_plans: 28
+  total_plans: 32
+  completed_plans: 29
   percent: 88
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 19 — console-write-ux
+**Current focus:** Phase 20 — correctness-polish
 
 ## Current Position
 
-Phase: 19 (console-write-ux) — EXECUTING
-Plan: 6 of 6
-Status: Phase 19 shipped — PR #367 (live UAT deferred → #366)
-Last activity: 2026-07-15 — Phase 20 planning complete
+Phase: 20 (correctness-polish) — EXECUTING
+Plan: 2 of 4
+Status: Plan 01 complete (#307 discovery proto fidelity, #303 short_id schema) — Plan 02 next
+Last activity: 2026-07-15 — Phase 20 Plan 01 complete
 
 ## Deferred Items
 
@@ -130,6 +130,8 @@ cookie-auth security posture).
 - [Phase 19]: [Phase 19 P06] WriteSurfaces mounts ONE MemoryFormSheet instance for both create and edit, remounted via {#key mode-recordId-instanceKey} on every open
 - [Phase 19]: [Phase 19 P06] Delete/share confirm handlers use the .mutate(vars, {onSuccess, onError}) callback-pair pattern wrapped in a Promise, matching the mocked-hook testing convention from Plan 05
 - [Phase 19]: [Phase 19 P06] Browser tests use vitest-browser-svelte's wrapper/wrapperProps render option with a real QueryClientProvider + fresh QueryClient per test instead of a bespoke test-harness .svelte file
+- [Phase 20]: [Phase 20 P01] citationsToProto placed in connectapi.go (read path) beside memoryToProto, not protoconv.go (write path) -- naming-symmetric with memoriesToProto, per 20-PATTERNS.md
+- [Phase 20]: [Phase 20 P01] Memory proto fields kind=21/citations=22 additive-only; TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs (Phase-15 SC4 wire-shape pin) updated 20->22 fields as expected fallout
 
 ### Blockers/Concerns
 
@@ -140,9 +142,9 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-15T21:54:16.663Z
-Stopped at: Phase 20 context gathered
-Resume file: .planning/phases/20-correctness-polish/20-CONTEXT.md
+Last session: 2026-07-15T23:47:54.789Z
+Stopped at: Completed 20-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -176,3 +178,4 @@ Resume file: .planning/phases/20-correctness-polish/20-CONTEXT.md
 | Phase 19 P04 | 25min | 2 tasks | 4 files |
 | Phase 19 P05 | 35min | 2 tasks | 6 files |
 | Phase 19 P06 | 62min | 3 tasks | 12 files |
+| Phase 20-correctness-polish P01 | 12min | 3 tasks | 9 files |
