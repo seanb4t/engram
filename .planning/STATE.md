@@ -5,16 +5,16 @@ milestone_name: — Hardening & Write Lane
 current_phase: 19
 current_phase_name: console-write-ux
 status: executing
-stopped_at: Completed 19-01-PLAN.md
-last_updated: "2026-07-15T13:42:24.779Z"
+stopped_at: Completed 19-02-PLAN.md
+last_updated: "2026-07-15T13:51:50.038Z"
 last_activity: 2026-07-15
 last_activity_desc: Phase 19 execution started
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 28
-  completed_plans: 23
-  percent: 82
+  completed_plans: 24
+  percent: 86
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 ## Current Position
 
 Phase: 19 (console-write-ux) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-07-15 — Phase 19 execution started
 
@@ -115,6 +115,10 @@ cookie-auth security posture).
 - [Phase ?]: include_imports:true scoped to the ES plugin only in buf.gen.yaml (not a global flag), preserving gen/go/ output
 - [Phase ?]: destructive-foreground aliases var(background) per theme, not a hardcoded hex-white, for correct dark-mode contrast
 - [Phase ?]: The destructive-foreground token aliases var(background) per theme (light burnt-orange in light mode, dark near-black in dark mode), not a hardcoded white, for correct contrast against cat-gotcha in both themes
+- [Phase 19]: [Phase 19] retryOnce's retry set is exactly {Unauthenticated, PermissionDenied} — client-side interpretation (Pitfall 1); no dedicated server 'needs rotation' signal exists
+- [Phase 19]: [Phase 19] Retry is a SINGLE OPPORTUNISTIC AUTH-RACE RETRY (session-cookie freshness race), never 're-seal on retry'/'rotation' — connectreseal.go:39 skips re-sealing on errored responses; tests/comments named 'auth-race retry'
+- [Phase 19]: [Phase 19] engramWrite is a separate client/transport from the read client engram (not shared interceptors) — cleaner, more auditable, read path unaffected
+- [Phase 19]: [Phase 19] Interceptor array is [retryOnce, attachCsrf] (retryOnce outer), verified by an rg order-gate AND a composed test that mutates document.cookie mid-flight and asserts the retry reads the refreshed value
 
 ### Blockers/Concerns
 
@@ -125,8 +129,8 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-15T13:42:24.774Z
-Stopped at: Completed 19-01-PLAN.md
+Last session: 2026-07-15T13:51:50.032Z
+Stopped at: Completed 19-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -156,3 +160,4 @@ Resume file: None
 | Phase 18 P02 | 5min | 2 tasks | 2 files |
 | Phase 18-stateless-session-rotation P03 | 20min | 2 tasks | 10 files |
 | Phase 19 P01 | 25min | 3 tasks | 11 files |
+| Phase 19 P02 | 15min | 3 tasks | 6 files |
