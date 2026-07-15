@@ -5,15 +5,15 @@ milestone_name: — Hardening & Write Lane
 current_phase: 19
 current_phase_name: console-write-ux
 status: executing
-stopped_at: Completed 19-04-PLAN.md
-last_updated: "2026-07-15T14:28:42.747Z"
+stopped_at: Completed 19-05-PLAN.md
+last_updated: "2026-07-15T14:53:51.457Z"
 last_activity: 2026-07-15
 last_activity_desc: Phase 19 execution started
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 28
-  completed_plans: 26
+  completed_plans: 27
   percent: 86
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 ## Current Position
 
 Phase: 19 (console-write-ux) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-07-15 — Phase 19 execution started
 
@@ -125,6 +125,8 @@ cookie-auth security posture).
 - [Phase 19]: [Phase 19 P04] Composite functions (createMemoryComposite/scheduleMemoryComposite/createDiscoveryComposite) take the engramWrite client as an explicit parameter rather than a closed-over import, so tests assert exact RPC call counts against a createRouterTransport fake client
 - [Phase 19]: [Phase 19 P04] Partial-success (created_private) toast uses svelte-sonner's toast.warning, not toast.error/toast.success -- the record landed but sharing did not
 - [Phase 19]: [Phase 19 P04] Set-visibility/update/delete optimistic cache writes iterate getQueriesData + per-key setQueryData (not setQueriesData's key-less updater) so listMemoriesKey's visibility filter can be read and a now-mismatched record dropped from filtered pages
+- [Phase 19]: [Phase 19 P05] redirectToLogin() seam added to resume.ts (not an inline window.location.assign call) -- window.location.assign is a non-configurable own property on real browser Location instances and cannot be vi.spyOn'd directly; browser-mode component tests mock this one function via vi.mock('$lib/resume', ...) instead of touching global navigation
+- [Phase 19]: [Phase 19 P05] Scope rendered as a free-text Input (not Select) in both MemoryFormSheet and DiscoveryFormSheet -- scope is a hierarchical string (repo:x, discovery:repo:x), not a bounded enum
 
 ### Blockers/Concerns
 
@@ -135,8 +137,8 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-15T14:28:23.219Z
-Stopped at: Completed 19-04-PLAN.md
+Last session: 2026-07-15T14:53:51.451Z
+Stopped at: Completed 19-05-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -169,3 +171,4 @@ Resume file: None
 | Phase 19 P02 | 15min | 3 tasks | 6 files |
 | Phase 19 P03 | 20min | 3 tasks | 9 files |
 | Phase 19 P04 | 25min | 2 tasks | 4 files |
+| Phase 19 P05 | 35min | 2 tasks | 6 files |

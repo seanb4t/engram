@@ -408,7 +408,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 3. A write that fails with an auth-class error is silently retried once — an opportunistic auth-race retry that re-reads the current session/CSRF cookie to recover a cookie-freshness race (the server does not re-seal a failed request, so this is not a rotation recovery); if that also fails, the operator is prompted to re-authenticate without losing their in-flight input, which is preserved across the `/auth/login` OIDC redirect via a `sessionStorage` resume envelope.
 
 **Status**: Planned
-**Plans**: 4/6 plans executed
+**Plans**: 5/6 plans executed
 
 Plans:
 **Wave 1**
@@ -426,7 +426,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 19-05-PLAN.md — Slide-over create/edit sheets (memory + discovery) with in-form share warning + inline re-auth
+- [x] 19-05-PLAN.md — Slide-over create/edit sheets (memory + discovery) with in-form share warning + inline re-auth
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -489,7 +489,7 @@ Plans:
 | 16. CSRF Interceptor | v0.10.x | 3/3 | Complete    | 2026-07-12 |
 | 17. Wired Write Handlers (Full CRUD + Schedule) | v0.10.x | 6/6 | Complete    | 2026-07-13 |
 | 18. Stateless Session Rotation | v0.10.x | 3/3 | Complete    | 2026-07-13 |
-| 19. Console Write UX | v0.10.x | 4/6 | In Progress|  |
+| 19. Console Write UX | v0.10.x | 5/6 | In Progress|  |
 | 20. Correctness & Polish | v0.10.x | 0/6 | Not started | - |
 | 21. CI / Maintenance Hygiene | v0.10.x | 0/3 | Not started | - |
 
