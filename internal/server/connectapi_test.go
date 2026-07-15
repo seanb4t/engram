@@ -517,6 +517,39 @@ func TestMemoryToProtoMapsSummary(t *testing.T) {
 	}
 }
 
+func TestMemoryToProtoMapsKindAndCitations(t *testing.T) {
+	m := store.Memory{
+		ID: "d1", Kind: "map",
+		Citations: []store.Citation{
+			{Kind: "file", Ref: "internal/store/store.go", Locator: "1-10", Pin: "abc123", Excerpt: "package store"},
+			{Kind: "url", Ref: "https://example.com/doc", Locator: "", Pin: "", Excerpt: ""},
+		},
+	}
+	pb := memoryToProto(m)
+	if pb.Kind != "map" {
+		t.Fatalf("Kind not mapped: got %q, want %q", pb.Kind, "map")
+	}
+	if len(pb.Citations) != 2 {
+		t.Fatalf("Citations not mapped: got %d, want 2", len(pb.Citations))
+	}
+	want := m.Citations[0]
+	got := pb.Citations[0]
+	if got.Kind != want.Kind || got.Ref != want.Ref || got.Locator != want.Locator ||
+		got.Pin != want.Pin || got.Excerpt != want.Excerpt {
+		t.Fatalf("Citations[0] fields not 1:1 mapped: got %+v, want %+v", got, want)
+	}
+}
+
+func TestMemoryToProtoZeroValueKindAndCitations(t *testing.T) {
+	pb := memoryToProto(store.Memory{ID: "1"})
+	if pb.Kind != "" {
+		t.Fatalf("Kind zero-value: got %q, want \"\"", pb.Kind)
+	}
+	if pb.Citations != nil {
+		t.Fatalf("Citations zero-value: got %+v, want nil (not empty slice)", pb.Citations)
+	}
+}
+
 func TestShapeProtoMemoriesFullFlag(t *testing.T) {
 	ms := []store.Memory{{ID: "1", Content: "long body over the cap here", Summary: "kept", SummarySource: store.SummarySourceClient}}
 	full := shapeProtoMemories(ms, true, 4)
