@@ -4,13 +4,37 @@
   import { ConnectError, Code } from '@connectrpc/connect';
   import { Badge } from '$lib/components/ui/badge';
   import { Button } from '$lib/components/ui/button';
+  import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import { ScrollArea } from '$lib/components/ui/scroll-area';
   import * as Tabs from '$lib/components/ui/tabs';
   import { toast } from 'svelte-sonner';
   import { relativeTime, fullTimestamp } from '$lib/time';
   import { renderMarkdown } from '$lib/markdown';
   import CopyIcon from '@lucide/svelte/icons/copy';
-  let { memory, loading, error }: { memory: Memory | undefined; loading: boolean; error: unknown } = $props();
+  import EllipsisVerticalIcon from '@lucide/svelte/icons/ellipsis-vertical';
+  import PencilIcon from '@lucide/svelte/icons/pencil';
+  import Trash2Icon from '@lucide/svelte/icons/trash-2';
+  import ShareIcon from '@lucide/svelte/icons/share';
+  let {
+    memory,
+    loading,
+    error,
+    onedit,
+    ondelete,
+    onshare
+  }: {
+    memory: Memory | undefined;
+    loading: boolean;
+    error: unknown;
+    onedit?: (id: string) => void;
+    ondelete?: (id: string) => void;
+    onshare?: (memory: Memory) => void;
+  } = $props();
+  // D-05 rule fence (mechanical, not "parent omits callbacks") + visibility
+  // gate on Share (locked D-07: private->shared is one-way, no unshare item).
+  const isRule = $derived(memory?.category === 'rule');
+  const isShared = $derived(memory?.visibility === 'shared');
+  const showMenu = $derived(!!memory && !isRule && !!(onedit || ondelete || (onshare && !isShared)));
   const notFound = $derived(error instanceof ConnectError && error.code === Code.NotFound);
   const created = $derived(memory?.createdAt ? timestampDate(memory.createdAt) : undefined);
   const hasSummary = $derived(!!memory?.summary?.trim());
@@ -44,6 +68,28 @@
       <Badge variant="outline" class="text-[10px] uppercase" style="color:var(--cat-{memory.category})">{memory.category}</Badge>
       {#if created}<span class="text-[11px] text-muted-foreground" title={fullTimestamp(created)}>{relativeTime(created)}</span>{/if}
       <Button variant="outline" size="sm" class="ml-auto" aria-label="copy content" onclick={copy}><CopyIcon data-icon="inline-start" /> copy</Button>
+      {#if showMenu}
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger>
+            {#snippet child({ props })}
+              <Button variant="ghost" size="icon-sm" aria-label="record actions" {...props}>
+                <EllipsisVerticalIcon />
+              </Button>
+            {/snippet}
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content align="end">
+            {#if onedit}
+              <DropdownMenu.Item onSelect={() => memory && onedit?.(memory.id)}><PencilIcon /> Edit</DropdownMenu.Item>
+            {/if}
+            {#if ondelete}
+              <DropdownMenu.Item variant="destructive" onSelect={() => memory && ondelete?.(memory.id)}><Trash2Icon /> Delete</DropdownMenu.Item>
+            {/if}
+            {#if onshare && !isShared}
+              <DropdownMenu.Item onSelect={() => memory && onshare?.(memory)}><ShareIcon /> Share</DropdownMenu.Item>
+            {/if}
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+      {/if}
     </div>
     <Tabs.Root value={defaultTab} class="flex-1 flex flex-col min-h-0">
       <Tabs.List class="mx-3 mt-2">
