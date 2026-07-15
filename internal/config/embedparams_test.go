@@ -35,7 +35,7 @@ func TestParseEmbedParams(t *testing.T) {
 		})
 	}
 
-	for _, k := range []string{"model", "input"} {
+	for _, k := range ReservedEmbedParamKeys {
 		t.Run("rejects reserved key "+k, func(t *testing.T) {
 			if _, err := ParseEmbedParams("ENGRAM_EMBED_QUERY_PARAMS", `{"`+k+`":"x"}`); err == nil {
 				t.Errorf("reserved key %s: expected error, got nil", k)

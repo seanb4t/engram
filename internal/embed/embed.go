@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -135,8 +136,12 @@ func joinEmbeddingsURL(baseURL string) string {
 
 // ReservedParamKeys are the request-body keys the embedder sets authoritatively;
 // operator-supplied params (ENGRAM_EMBED_*_PARAMS) must never override them.
-// Exported so internal/config.ParseEmbedParams shares this exact list (#304).
-var ReservedParamKeys = []string{"model", "input"}
+// Aliases internal/config.ReservedEmbedParamKeys, the canonical single source
+// consumed by both this package's wire contract and
+// internal/config.ParseEmbedParams (#304). The list lives in internal/config
+// rather than here to avoid an import cycle: internal/embed already imports
+// internal/telemetry, which imports internal/config.
+var ReservedParamKeys = config.ReservedEmbedParamKeys
 
 type embedResp struct {
 	Data []struct {
