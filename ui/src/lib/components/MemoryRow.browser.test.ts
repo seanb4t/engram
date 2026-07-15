@@ -12,6 +12,10 @@ const autoMem = create(MemorySchema, {
   tags: ['mcp', 'routing']
 });
 
+const sharedMem = create(MemorySchema, { id: '9', summary: 'already shared record', category: 'decision', visibility: 'shared' });
+const privateEmptyVis = create(MemorySchema, { id: '10', summary: 'legacy no-visibility record', category: 'decision', visibility: '' });
+const ruleMem = create(MemorySchema, { id: '11', summary: 'a normative rule', category: 'rule' });
+
 describe('MemoryRow', () => {
   it('renders the real summary (category prefix stripped) and tags', async () => {
     const screen = await render(MemoryRow, { memory: autoMem, selected: false, onselect: () => {} });
@@ -34,5 +38,78 @@ describe('MemoryRow', () => {
     const screen = await render(MemoryRow, { memory: autoMem, selected: false, onselect });
     await screen.getByRole('button').click();
     expect(onselect).toHaveBeenCalledWith('42');
+  });
+
+  it('root is not a <button> and no kebab renders when no write callbacks are passed', async () => {
+    const screen = await render(MemoryRow, { memory: autoMem, selected: false, onselect: () => {} });
+    expect(screen.container.firstElementChild?.tagName).not.toBe('BUTTON');
+    await expect.element(screen.getByRole('button', { name: 'row actions' })).not.toBeInTheDocument();
+  });
+
+  it('renders a hover kebab exposing Edit/Delete/Share that fire without triggering onselect', async () => {
+    const onselect = vi.fn();
+    const onedit = vi.fn();
+    const ondelete = vi.fn();
+    const onshare = vi.fn();
+    const screen = await render(MemoryRow, { memory: autoMem, selected: false, onselect, onedit, ondelete, onshare });
+    const trigger = screen.getByRole('button', { name: 'row actions' });
+    await expect.element(trigger).toBeInTheDocument();
+    // Sibling structure, never a nested button-in-button.
+    expect(trigger.element().closest('button')).toBe(trigger.element());
+
+    await trigger.click();
+    await screen.getByRole('menuitem', { name: 'Edit' }).click();
+    expect(onedit).toHaveBeenCalledWith('42');
+
+    await trigger.click();
+    await screen.getByRole('menuitem', { name: 'Delete' }).click();
+    expect(ondelete).toHaveBeenCalledWith('42');
+
+    await trigger.click();
+    await screen.getByRole('menuitem', { name: 'Share' }).click();
+    expect(onshare).toHaveBeenCalledWith(autoMem);
+
+    expect(onselect).not.toHaveBeenCalled();
+  });
+
+  it('suppresses the kebab entirely for rule records even with all callbacks supplied', async () => {
+    const screen = await render(MemoryRow, {
+      memory: ruleMem,
+      selected: false,
+      onselect: () => {},
+      onedit: vi.fn(),
+      ondelete: vi.fn(),
+      onshare: vi.fn()
+    });
+    await expect.element(screen.getByRole('button', { name: 'row actions' })).not.toBeInTheDocument();
+  });
+
+  it('hides the Share item when the record is already shared (Delete still shows)', async () => {
+    const onshare = vi.fn();
+    const ondelete = vi.fn();
+    // Also pass ondelete so the kebab still has something to show for an
+    // already-shared record (an onshare-only row would have no menu at all).
+    const screen = await render(MemoryRow, { memory: sharedMem, selected: false, onselect: () => {}, ondelete, onshare });
+    await screen.getByRole('button', { name: 'row actions' }).click();
+    await expect.element(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument();
+    await expect.element(screen.getByRole('menuitem', { name: 'Share' })).not.toBeInTheDocument();
+  });
+
+  it('shows the Share item when private, including a stored empty-string visibility', async () => {
+    const onshare = vi.fn();
+    const ondelete = vi.fn();
+    const screen = await render(MemoryRow, { memory: privateEmptyVis, selected: false, onselect: () => {}, ondelete, onshare });
+    await screen.getByRole('button', { name: 'row actions' }).click();
+    await expect.element(screen.getByRole('menuitem', { name: 'Share' })).toBeInTheDocument();
+  });
+
+  it('gates each menu item on its own callback — discovery-route shape (ondelete+onshare, no onedit) never shows Edit', async () => {
+    const ondelete = vi.fn();
+    const onshare = vi.fn();
+    const screen = await render(MemoryRow, { memory: autoMem, selected: false, onselect: () => {}, ondelete, onshare });
+    await screen.getByRole('button', { name: 'row actions' }).click();
+    await expect.element(screen.getByRole('menuitem', { name: 'Edit' })).not.toBeInTheDocument();
+    await expect.element(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument();
+    await expect.element(screen.getByRole('menuitem', { name: 'Share' })).toBeInTheDocument();
   });
 });

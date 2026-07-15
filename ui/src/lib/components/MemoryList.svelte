@@ -3,8 +3,9 @@
   import { Skeleton } from '$lib/components/ui/skeleton';
   import * as Empty from '$lib/components/ui/empty';
   import MemoryRow from './MemoryRow.svelte';
-  let { memories, total, approximate = false, loading, error, selectedId, onselect, showScope = false, scopeSelected = true }: {
+  let { memories, total, approximate = false, loading, error, selectedId, onselect, showScope = false, scopeSelected = true, onedit, ondelete, onshare }: {
     memories: Memory[]; total: bigint; approximate?: boolean; loading: boolean; error: unknown; selectedId: string; onselect: (id: string) => void; showScope?: boolean; scopeSelected?: boolean;
+    onedit?: (id: string) => void; ondelete?: (id: string) => void; onshare?: (memory: Memory) => void;
   } = $props();
 </script>
 
@@ -18,7 +19,7 @@
   <Empty.Root class="p-8"><Empty.Title>no memories</Empty.Title><Empty.Description>nothing in this scope / filter</Empty.Description></Empty.Root>
 {:else}
   {#each memories as m (m.id)}
-    <MemoryRow memory={m} selected={m.id === selectedId} {showScope} {onselect} />
+    <MemoryRow memory={m} selected={m.id === selectedId} {showScope} {onselect} {onedit} {ondelete} {onshare} />
   {/each}
   <div class="px-3 py-2 text-center text-muted-foreground text-[11px]">{memories.length} of {total}{approximate ? ' (approximate)' : ''}</div>
 {/if}
