@@ -79,7 +79,7 @@ Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
 - [x] **Phase 16: CSRF Interceptor** - Origin/Sec-Fetch-Site primary defense + session-bound double-submit token on every write RPC; read lane untouched (completed 2026-07-12)
 - [x] **Phase 17: Wired Write Handlers (Full CRUD + Schedule)** - deps.* subject/actor refactor + all six write RPCs delegating to the shared MCP business-logic layer, MCP/Connect parity-tested (completed 2026-07-13)
 - [x] **Phase 18: Stateless Session Rotation** - Sliding-expiry cookie re-seal on every authenticated request, new ADR for the no-revocation trade-off, no server-side state (completed 2026-07-13)
-- [ ] **Phase 19: Console Write UX** - Create/edit/delete/re-share/schedule from the operator console over the write lane, with CSRF + silent re-seal retry
+- [ ] **Phase 19: Console Write UX** - Create/edit/delete/re-share/schedule from the operator console over the write lane, with CSRF + a silent opportunistic auth-race retry
 - [ ] **Phase 20: Correctness & Polish** - Discovery proto fidelity, MintShortID collision cap, embed param-key/body-build cleanup, discovery short_id schema, summarize-missing CronJob
 - [ ] **Phase 21: CI / Maintenance Hygiene** - Renovate vendored-SPA drift fix, Phase-11 review residuals, `.rumdl.toml` `.planning` exclude
 
@@ -405,10 +405,33 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 
 1. An operator can create, edit, delete, change visibility, and schedule a memory or discovery from the console UI, backed by the Connect write lane.
 2. The console attaches the CSRF token to every write request automatically, mirroring the server-side double-submit pattern.
-3. A write that fails because the session needed rotation is silently retried once through a re-seal; if that also fails, the operator is prompted to re-authenticate without losing their in-flight input.
+3. A write that fails with an auth-class error is silently retried once — an opportunistic auth-race retry that re-reads the current session/CSRF cookie to recover a cookie-freshness race (the server does not re-seal a failed request, so this is not a rotation recovery); if that also fails, the operator is prompted to re-authenticate without losing their in-flight input, which is preserved across the `/auth/login` OIDC redirect via a `sessionStorage` resume envelope.
 
-**Status**: Not started
-**Plans**: TBD
+**Status**: Planned
+**Plans**: 6/6 plans complete
+
+Plans:
+**Wave 1**
+
+- [x] 19-01-PLAN.md — Foundation: re-vendor console gen client (6 write RPCs) + `--destructive` design token
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 19-02-PLAN.md — Write transport: CSRF-attach + retry-once interceptors, `engramWrite` client
+- [x] 19-03-PLAN.md — Destructive/action affordances: delete confirm dialog, share warning, row/detail actions
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 19-04-PLAN.md — Mutation hooks: memory + discovery create/edit/delete/visibility/schedule (optimistic rollback)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 19-05-PLAN.md — Slide-over create/edit sheets (memory + discovery) with in-form share warning + inline re-auth
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 19-06-PLAN.md — Route integration: WriteSurfaces host + New entry points wired into observe/search/discovery
+
 **UI hint**: yes
 
 ### Phase 20: Correctness & Polish
@@ -466,7 +489,7 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 | 16. CSRF Interceptor | v0.10.x | 3/3 | Complete    | 2026-07-12 |
 | 17. Wired Write Handlers (Full CRUD + Schedule) | v0.10.x | 6/6 | Complete    | 2026-07-13 |
 | 18. Stateless Session Rotation | v0.10.x | 3/3 | Complete    | 2026-07-13 |
-| 19. Console Write UX | v0.10.x | 0/1 | Not started | - |
+| 19. Console Write UX | v0.10.x | 6/6 | Complete   | 2026-07-15 |
 | 20. Correctness & Polish | v0.10.x | 0/6 | Not started | - |
 | 21. CI / Maintenance Hygiene | v0.10.x | 0/3 | Not started | - |
 

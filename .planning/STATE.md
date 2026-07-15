@@ -3,17 +3,16 @@ gsd_state_version: 1.0
 milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 19
-current_phase_name: Console Write UX
-status: verifying
-stopped_at: Completed 18-02-PLAN.md
-last_updated: "2026-07-13T18:36:52.153Z"
-last_activity: 2026-07-13
-last_activity_desc: Phase 18 complete, transitioned to Phase 19
+current_phase_name: console-write-ux
+status: "Phase 19 shipped — PR #367 (live UAT deferred → #366)"
+stopped_at: Completed 19-06-PLAN.md
+last_updated: "2026-07-15T17:30:43.172Z"
+last_activity: 2026-07-15
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 22
-  completed_plans: 22
+  total_phases: 7
+  completed_phases: 7
+  total_plans: 28
+  completed_plans: 28
   percent: 100
 ---
 
@@ -24,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 18 — stateless-session-rotation
+**Current focus:** Phase 19 — console-write-ux
 
 ## Current Position
 
-Phase: 19 — Console Write UX
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-07-13 — Phase 18 complete, transitioned to Phase 19
+Phase: 19 (console-write-ux) — EXECUTING
+Plan: 6 of 6
+Status: Phase 19 shipped — PR #367 (live UAT deferred → #366)
+Last activity: 2026-07-15
 
 ## Deferred Items
 
@@ -112,6 +111,24 @@ cookie-auth security posture).
 - [Phase 18]: ADR names ENGRAM_UI_COOKIE_KEY (registry.go:56) as the sole kill-switch, never the phantom ENGRAM_SESSION_KEY
 - [Phase ?]: newConnectResealInterceptor appended LAST (innermost, after validate) in mountConnect so it only re-seals a fully-authorized, valid, successful response (D-04).
 - [Phase ?]: The reseal interceptor never inspects req.Spec(), so D-03 (fires on read AND write, no allowlist) holds by construction rather than an inverse allowlist.
+- [Phase ?]: include_imports:true scoped to the ES plugin only in buf.gen.yaml (not a global flag), preserving gen/go/ output
+- [Phase ?]: destructive-foreground aliases var(background) per theme, not a hardcoded hex-white, for correct dark-mode contrast
+- [Phase ?]: The destructive-foreground token aliases var(background) per theme (light burnt-orange in light mode, dark near-black in dark mode), not a hardcoded white, for correct contrast against cat-gotcha in both themes
+- [Phase 19]: [Phase 19] retryOnce's retry set is exactly {Unauthenticated, PermissionDenied} — client-side interpretation (Pitfall 1); no dedicated server 'needs rotation' signal exists
+- [Phase 19]: [Phase 19] Retry is a SINGLE OPPORTUNISTIC AUTH-RACE RETRY (session-cookie freshness race), never 're-seal on retry'/'rotation' — connectreseal.go:39 skips re-sealing on errored responses; tests/comments named 'auth-race retry'
+- [Phase 19]: [Phase 19] engramWrite is a separate client/transport from the read client engram (not shared interceptors) — cleaner, more auditable, read path unaffected
+- [Phase 19]: [Phase 19] Interceptor array is [retryOnce, attachCsrf] (retryOnce outer), verified by an rg order-gate AND a composed test that mutates document.cookie mid-flight and asserts the retry reads the refreshed value
+- [Phase 19]: [Phase 19 P03] Cancel in DeleteConfirmDialog is wrapped in bits-ui's Dialog.Close (asChild), not a plain onclick — Cancel/Escape/overlay all funnel through the same onOpenChange(false) -> oncancel() path, while Delete is a bare Button that never touches bits-ui's internal open state, making self-close-on-confirm structurally impossible
+- [Phase 19]: [Phase 19 P03] MemoryDetail's Edit/Delete/Share collapse into one icon-sm ghost kebab DropdownMenu (mirroring MemoryRow) rather than 3 separate outline/sm buttons, per UI-SPEC's overflow-note alternative for the 360px pane; copy button untouched
+- [Phase 19]: [Phase 19 P03] In the {#snippet child({ props })} asChild pattern, {...props} must precede an explicit prop override (e.g. disabled={pending}) or the primitive's own undefined value silently wins
+- [Phase 19]: [Phase 19 P04] Composite functions (createMemoryComposite/scheduleMemoryComposite/createDiscoveryComposite) take the engramWrite client as an explicit parameter rather than a closed-over import, so tests assert exact RPC call counts against a createRouterTransport fake client
+- [Phase 19]: [Phase 19 P04] Partial-success (created_private) toast uses svelte-sonner's toast.warning, not toast.error/toast.success -- the record landed but sharing did not
+- [Phase 19]: [Phase 19 P04] Set-visibility/update/delete optimistic cache writes iterate getQueriesData + per-key setQueryData (not setQueriesData's key-less updater) so listMemoriesKey's visibility filter can be read and a now-mismatched record dropped from filtered pages
+- [Phase 19]: [Phase 19 P05] redirectToLogin() seam added to resume.ts (not an inline window.location.assign call) -- window.location.assign is a non-configurable own property on real browser Location instances and cannot be vi.spyOn'd directly; browser-mode component tests mock this one function via vi.mock('$lib/resume', ...) instead of touching global navigation
+- [Phase 19]: [Phase 19 P05] Scope rendered as a free-text Input (not Select) in both MemoryFormSheet and DiscoveryFormSheet -- scope is a hierarchical string (repo:x, discovery:repo:x), not a bounded enum
+- [Phase 19]: [Phase 19 P06] WriteSurfaces mounts ONE MemoryFormSheet instance for both create and edit, remounted via {#key mode-recordId-instanceKey} on every open
+- [Phase 19]: [Phase 19 P06] Delete/share confirm handlers use the .mutate(vars, {onSuccess, onError}) callback-pair pattern wrapped in a Promise, matching the mocked-hook testing convention from Plan 05
+- [Phase 19]: [Phase 19 P06] Browser tests use vitest-browser-svelte's wrapper/wrapperProps render option with a real QueryClientProvider + fresh QueryClient per test instead of a bespoke test-harness .svelte file
 
 ### Blockers/Concerns
 
@@ -122,8 +139,8 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-13T18:26:19.662Z
-Stopped at: Completed 18-02-PLAN.md
+Last session: 2026-07-15T15:18:15.781Z
+Stopped at: Completed 19-06-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -152,3 +169,9 @@ Resume file: None
 | Phase 18-stateless-session-rotation P01 | 20min | 2 tasks | 3 files |
 | Phase 18 P02 | 5min | 2 tasks | 2 files |
 | Phase 18-stateless-session-rotation P03 | 20min | 2 tasks | 10 files |
+| Phase 19 P01 | 25min | 3 tasks | 11 files |
+| Phase 19 P02 | 15min | 3 tasks | 6 files |
+| Phase 19 P03 | 20min | 3 tasks | 9 files |
+| Phase 19 P04 | 25min | 2 tasks | 4 files |
+| Phase 19 P05 | 35min | 2 tasks | 6 files |
+| Phase 19 P06 | 62min | 3 tasks | 12 files |

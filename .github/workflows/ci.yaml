@@ -128,6 +128,11 @@ jobs:
         run: |
           go tool buf generate
           git diff --exit-code -- gen/ || (echo "gen/ is stale; run 'task proto:gen'"; exit 1)
+      - name: vendored console gen client drift
+        run: |
+          rm -rf ui/src/lib/gen/engram ui/src/lib/gen/buf
+          cp -R gen/ts/. ui/src/lib/gen/
+          git diff --exit-code -- ui/src/lib/gen/ || (echo "ui/src/lib/gen/ is stale; run 'task proto:gen'"; exit 1)
       - name: idempotency ban (no side-effect-free RPC)
         run: |
           if grep -rEn 'idempotency_level[[:space:]]*=[[:space:]]*NO_SIDE_EFFECTS' proto/; then

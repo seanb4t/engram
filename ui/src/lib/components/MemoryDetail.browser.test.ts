@@ -1,5 +1,5 @@
 import { render } from 'vitest-browser-svelte';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { ConnectError, Code } from '@connectrpc/connect';
 import MemoryDetail from './MemoryDetail.svelte';
 import { create } from '@bufbuild/protobuf';
@@ -23,6 +23,14 @@ const clientSummary = create(MemorySchema, {
 const unsourcedSummary = create(MemorySchema, {
   id: '4', content: 'body', summary: 'sourceless digest', summarySource: '',
   category: 'gotcha', scope: 'repo:z', source: 'user-said', actor: 'sean', visibility: 'private'
+});
+const sharedMem = create(MemorySchema, {
+  id: '5', content: 'body', summary: 'already shared', category: 'decision', scope: 'repo:x',
+  source: 'user-said', actor: 'sean', visibility: 'shared'
+});
+const ruleMem = create(MemorySchema, {
+  id: '6', content: 'body', summary: 'a normative rule', category: 'rule', scope: 'rule:repo:x',
+  source: 'user-said', actor: 'sean', visibility: 'private'
 });
 
 describe('MemoryDetail', () => {
@@ -75,5 +83,71 @@ describe('MemoryDetail', () => {
   it('shows a generic failure message for a non-NotFound error', async () => {
     const screen = await render(MemoryDetail, { memory: undefined, loading: false, error: new Error('boom') });
     await expect.element(screen.getByText(/failed to load record/i)).toBeInTheDocument();
+  });
+
+  it('no actions kebab renders when no write callbacks are supplied', async () => {
+    const screen = await render(MemoryDetail, { memory: withSummary, loading: false, error: null });
+    await expect.element(screen.getByRole('button', { name: 'record actions' })).not.toBeInTheDocument();
+  });
+
+  it('exposes Edit/Delete/Share firing with the memory id / full memory, without disturbing the copy button', async () => {
+    const onedit = vi.fn();
+    const ondelete = vi.fn();
+    const onshare = vi.fn();
+    const screen = await render(MemoryDetail, { memory: withSummary, loading: false, error: null, onedit, ondelete, onshare });
+    const trigger = screen.getByRole('button', { name: 'record actions' });
+    await expect.element(trigger).toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: /copy content/i })).toBeInTheDocument();
+
+    await trigger.click();
+    await screen.getByRole('menuitem', { name: 'Edit' }).click();
+    expect(onedit).toHaveBeenCalledWith(withSummary.id);
+
+    await trigger.click();
+    await screen.getByRole('menuitem', { name: 'Delete' }).click();
+    expect(ondelete).toHaveBeenCalledWith(withSummary.id);
+
+    await trigger.click();
+    await screen.getByRole('menuitem', { name: 'Share' }).click();
+    expect(onshare).toHaveBeenCalledWith(withSummary);
+  });
+
+  it('suppresses the actions kebab entirely for rule records even with all callbacks supplied', async () => {
+    const screen = await render(MemoryDetail, {
+      memory: ruleMem,
+      loading: false,
+      error: null,
+      onedit: vi.fn(),
+      ondelete: vi.fn(),
+      onshare: vi.fn()
+    });
+    await expect.element(screen.getByRole('button', { name: 'record actions' })).not.toBeInTheDocument();
+  });
+
+  it('hides the Share item when the record is already shared (Delete still shows)', async () => {
+    const screen = await render(MemoryDetail, {
+      memory: sharedMem,
+      loading: false,
+      error: null,
+      ondelete: vi.fn(),
+      onshare: vi.fn()
+    });
+    await screen.getByRole('button', { name: 'record actions' }).click();
+    await expect.element(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument();
+    await expect.element(screen.getByRole('menuitem', { name: 'Share' })).not.toBeInTheDocument();
+  });
+
+  it('gates each item on its own callback — discovery-route shape (ondelete+onshare, no onedit) never shows Edit', async () => {
+    const screen = await render(MemoryDetail, {
+      memory: withSummary,
+      loading: false,
+      error: null,
+      ondelete: vi.fn(),
+      onshare: vi.fn()
+    });
+    await screen.getByRole('button', { name: 'record actions' }).click();
+    await expect.element(screen.getByRole('menuitem', { name: 'Edit' })).not.toBeInTheDocument();
+    await expect.element(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument();
+    await expect.element(screen.getByRole('menuitem', { name: 'Share' })).toBeInTheDocument();
   });
 });

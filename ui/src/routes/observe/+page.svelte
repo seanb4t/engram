@@ -2,15 +2,18 @@
   // svelte-query v6: reactive queries take an options FUNCTION (re-run via runes);
   // `page` is the runes form from $app/state (no derived store); results are read
   // directly off the query object (no $).
+  import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { createQuery } from '@tanstack/svelte-query';
   import { engram } from '$lib/client';
   import { parseObserveParams, observeSearch, listMemoriesKey, PAGE_LIMIT, type ObserveParams } from '$lib/queries';
+  import { peekResume, consumeResume } from '$lib/resume';
   import ScopesSidebar from '$lib/components/ScopesSidebar.svelte';
   import MemoryList from '$lib/components/MemoryList.svelte';
   import MemoryDetail from '$lib/components/MemoryDetail.svelte';
+  import WriteSurfaces from '$lib/components/WriteSurfaces.svelte';
   import * as Resizable from '$lib/components/ui/resizable';
   import * as Pagination from '$lib/components/ui/pagination';
 
@@ -32,6 +35,21 @@
     const sel = parseObserveParams(page.url.searchParams).selectedId;
     return { queryKey: ['getMemory', sel], queryFn: () => engram.getMemory({ id: sel }), enabled: !!sel };
   });
+
+  // WriteSurfaces host (Plan 06): kind=memory, current scope default for New
+  // memory. bind:this reaches the exact exported-method contract Task 1
+  // shipped (openEdit/requestDelete/requestShare/reopenFromResume).
+  let writeSurfaces: ReturnType<typeof WriteSurfaces> | undefined = $state();
+
+  // Re-auth landing recovery (Codex round-3 HIGH): on mount, peek the
+  // envelope the /ui/ root just routed back here for; only reopen when its
+  // kind matches this route's write surface (memory). consumeResume() fires
+  // ONLY via WriteSurfaces' onresumeapplied passthrough below -- i.e. only
+  // after the form has applied the restored values -- never here directly.
+  onMount(() => {
+    const env = peekResume();
+    if (env && env.kind === 'memory') writeSurfaces?.reopenFromResume(env);
+  });
 </script>
 
 <div class="flex h-full min-h-0">
@@ -44,11 +62,23 @@
   />
   <Resizable.PaneGroup direction="horizontal" class="flex-1 min-w-0">
     <Resizable.Pane defaultSize={60} minSize={35} class="flex flex-col min-h-0">
+      <div class="flex items-center justify-end px-3 py-2 border-b border-border">
+        <WriteSurfaces
+          bind:this={writeSurfaces}
+          kind="memory"
+          scope={params.scope}
+          onresumeapplied={consumeResume}
+          ondeleted={(id) => { if (id === params.selectedId) navigate({ selectedId: '' }); }}
+        />
+      </div>
       <div class="flex-1 overflow-y-auto">
         <MemoryList memories={listQ.data?.memories ?? []} total={listQ.data?.total ?? 0n}
           approximate={listQ.data?.approximate ?? false} loading={listQ.isLoading} error={listQ.error}
           scopeSelected={!!params.scope}
-          selectedId={params.selectedId} onselect={(id) => navigate({ selectedId: id })} />
+          selectedId={params.selectedId} onselect={(id) => navigate({ selectedId: id })}
+          onedit={(id) => writeSurfaces?.openEdit(id)}
+          ondelete={(id) => writeSurfaces?.requestDelete(id, 'memory')}
+          onshare={(memory) => writeSurfaces?.requestShare(memory, 'memory')} />
       </div>
       <Pagination.Root
         count={Number(listQ.data?.total ?? 0n)}
@@ -73,7 +103,10 @@
     </Resizable.Pane>
     <Resizable.Handle />
     <Resizable.Pane defaultSize={40} minSize={25} class="min-h-0">
-      <MemoryDetail memory={detailQ.data?.memory} loading={detailQ.isLoading} error={detailQ.error} />
+      <MemoryDetail memory={detailQ.data?.memory} loading={detailQ.isLoading} error={detailQ.error}
+        onedit={(id) => writeSurfaces?.openEdit(id)}
+        ondelete={(id) => writeSurfaces?.requestDelete(id, 'memory')}
+        onshare={(memory) => writeSurfaces?.requestShare(memory, 'memory')} />
     </Resizable.Pane>
   </Resizable.PaneGroup>
 </div>
