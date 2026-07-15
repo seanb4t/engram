@@ -133,10 +133,10 @@ func joinEmbeddingsURL(baseURL string) string {
 	}
 }
 
-type embedReq struct {
-	Model string `json:"model"`
-	Input string `json:"input"`
-}
+// ReservedParamKeys are the request-body keys the embedder sets authoritatively;
+// operator-supplied params (ENGRAM_EMBED_*_PARAMS) must never override them.
+// Exported so internal/config.ParseEmbedParams shares this exact list (#304).
+var ReservedParamKeys = []string{"model", "input"}
 
 type embedResp struct {
 	Data []struct {
@@ -224,22 +224,17 @@ func (c *Client) embed(ctx context.Context, text string, params map[string]any, 
 		}
 	}()
 
-	// Empty params → marshal the struct (exact prior wire bytes; default path).
-	// Non-empty → merge params first, then set model/input last so they are
-	// always authoritative. Go sorts map keys on marshal; that is JSON-
-	// semantically identical, so callers compare decoded objects, not raw bytes.
-	var body []byte
-	if len(params) == 0 {
-		body, _ = json.Marshal(embedReq{Model: c.model, Input: text})
-	} else {
-		m := make(map[string]any, len(params)+2)
-		for k, v := range params {
-			m[k] = v
-		}
-		m["model"] = c.model
-		m["input"] = text
-		body, _ = json.Marshal(m)
+	// Single map-based body build: merge operator params first, then set
+	// model/input last so they are always authoritative. Go sorts map keys on
+	// marshal; that is JSON-semantically identical, so callers compare decoded
+	// objects, not raw bytes.
+	m := make(map[string]any, len(params)+2)
+	for k, v := range params {
+		m[k] = v
 	}
+	m["model"] = c.model
+	m["input"] = text
+	body, _ := json.Marshal(m)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.embeddingsURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
