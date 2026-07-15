@@ -84,8 +84,7 @@ describe('resume', () => {
     ['bad mode', { ...baseDraft, v: 1, ts: Date.now(), mode: 'delete' }],
     ['non-object values', { ...baseDraft, v: 1, ts: Date.now(), values: 'nope' }],
     ['array values', { ...baseDraft, v: 1, ts: Date.now(), values: [] }],
-    ['bad recordId type', { ...baseDraft, v: 1, ts: Date.now(), recordId: 42 }],
-    ['non-string dirtyPaths entries', { ...baseDraft, v: 1, ts: Date.now(), dirtyPaths: [1, 2] }]
+    ['bad recordId type', { ...baseDraft, v: 1, ts: Date.now(), recordId: 42 }]
   ])('peeks null on a structurally-invalid envelope: %s', (_name, malformed) => {
     sessionStorage.setItem(RESUME_KEY, JSON.stringify(malformed));
     expect(peekResume()).toBeNull();

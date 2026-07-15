@@ -5,9 +5,9 @@
 // DiscoveryFormSheet) call ONLY `persistResume` before navigating to
 // `/auth/login`; the route/host (Plan 06) is the SOLE owner of
 // `peekResume`/`consumeResume`, and passes the restored values back into the
-// form as props (`resumeValues`/`resumeDirtyPaths`) rather than the form
-// reading sessionStorage itself. This kills the two-owner deletion race a
-// component-scoped mount-restore would have.
+// form as props (`resumeValues`) rather than the form reading sessionStorage
+// itself. This kills the two-owner deletion race a component-scoped
+// mount-restore would have.
 //
 // This reverses CONTEXT.md's "sessionStorage deferred" note for D-09 — the
 // real OIDC redirect (`/auth/login` -> IdP -> `/auth/callback` ->
@@ -31,7 +31,6 @@ export interface ResumeEnvelope {
   mode: 'create' | 'edit';
   recordId: string | null;
   values: Record<string, unknown>;
-  dirtyPaths?: string[];
 }
 
 // The caller-supplied shape -- WITHOUT `v`/`ts`, which `persistResume` stamps
@@ -99,9 +98,6 @@ function isValidShape(x: unknown): x is ResumeEnvelope {
   if (o.mode !== 'create' && o.mode !== 'edit') return false;
   if (!(o.recordId === null || typeof o.recordId === 'string')) return false;
   if (typeof o.values !== 'object' || o.values === null || Array.isArray(o.values)) return false;
-  if (o.dirtyPaths !== undefined) {
-    if (!Array.isArray(o.dirtyPaths) || !o.dirtyPaths.every((p) => typeof p === 'string')) return false;
-  }
   return true;
 }
 

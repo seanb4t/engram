@@ -116,8 +116,7 @@ describe('observe route — re-auth landing recovery (Codex round-3 HIGH/MEDIUM)
       kind: 'memory',
       mode: 'edit',
       recordId: 'm1',
-      values: { content: 'edited-and-restored content' },
-      dirtyPaths: ['content']
+      values: { content: 'edited-and-restored content' }
     });
 
     const screen = await renderObserve();

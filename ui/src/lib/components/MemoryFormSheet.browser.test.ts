@@ -297,7 +297,7 @@ describe('MemoryFormSheet — D-09 inline re-auth + resume', () => {
     expect(envelope.values.content).toBe('at-risk content');
   });
 
-  it('applies resumeValues/resumeDirtyPaths PROPS to $state and fires onresumeapplied, without the form touching sessionStorage itself', async () => {
+  it('applies resumeValues PROPS to $state and fires onresumeapplied, without the form touching sessionStorage itself', async () => {
     const onresumeapplied = vi.fn();
     sessionStorage.setItem(RESUME_KEY, 'untouched-marker');
     const screen = await render(MemoryFormSheet, {

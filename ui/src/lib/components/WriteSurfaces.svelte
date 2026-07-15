@@ -50,11 +50,10 @@
 
   // Resume-envelope restore props, threaded into whichever sheet is open
   // (Codex round-3 HIGH: WriteSurfaces never peeks/deletes the envelope
-  // itself -- it only forwards resumeValues/dirtyPaths and relays the
-  // form's onresumeapplied acknowledgement up to the route via the exact
+  // itself -- it only forwards resumeValues and relays the form's
+  // onresumeapplied acknowledgement up to the route via the exact
   // `onresumeapplied` prop, which the route wires to consumeResume()).
   let formResumeValues = $state<Record<string, unknown> | undefined>(undefined);
-  let formResumeDirtyPaths = $state<string[] | undefined>(undefined);
 
   // Inline delete/share targets -- host-authoritative closure (Codex
   // round-5 HIGH, symmetric across both surfaces): DeleteConfirmDialog never
@@ -77,7 +76,6 @@
 
   function handleFormResumeApplied() {
     formResumeValues = undefined;
-    formResumeDirtyPaths = undefined;
     onresumeapplied?.();
   }
 
@@ -86,7 +84,6 @@
     editMemory = undefined;
     createScope = scope;
     formResumeValues = undefined;
-    formResumeDirtyPaths = undefined;
     sheetInstanceKey += 1;
     sheetOpen = true;
   }
@@ -106,7 +103,6 @@
       editMemory = resp.memory;
       sheetMode = 'edit';
       formResumeValues = undefined;
-      formResumeDirtyPaths = undefined;
       sheetInstanceKey += 1;
       sheetOpen = true;
     } catch (err) {
@@ -140,11 +136,9 @@
     if (env.mode === 'edit' && env.recordId) {
       await openEdit(env.recordId);
       formResumeValues = env.values;
-      formResumeDirtyPaths = env.dirtyPaths;
     } else {
       openCreate();
       formResumeValues = env.values;
-      formResumeDirtyPaths = env.dirtyPaths;
     }
   }
 
@@ -239,7 +233,6 @@
       memory={editMemory}
       scope={createScope}
       resumeValues={formResumeValues}
-      resumeDirtyPaths={formResumeDirtyPaths}
       onresumeapplied={handleFormResumeApplied}
     />
   {/key}

@@ -23,16 +23,15 @@
   // MemoryFormSheet ONLY persists a resume envelope on a hard PRIMARY-write
   // auth failure (via persistResume, Codex round-3 HIGH) -- it never reads or
   // deletes sessionStorage itself. Restoration is entirely PROP-driven:
-  // `resumeValues`/`resumeDirtyPaths` are supplied by the route/host (Plan
-  // 06), which owns peek/consume/delete. This form applies the props to
-  // $state once and fires `onresumeapplied` so the host can consumeResume().
+  // `resumeValues` is supplied by the route/host (Plan 06), which owns
+  // peek/consume/delete. This form applies the props to $state once and fires
+  // `onresumeapplied` so the host can consumeResume().
   let {
     open = $bindable(false),
     mode,
     memory,
     scope: defaultScope,
     resumeValues,
-    resumeDirtyPaths: _resumeDirtyPaths,
     onresumeapplied
   }: {
     open?: boolean;
@@ -40,7 +39,6 @@
     memory?: Memory;
     scope: string;
     resumeValues?: Record<string, unknown>;
-    resumeDirtyPaths?: string[];
     onresumeapplied?: () => void;
   } = $props();
 
@@ -227,8 +225,7 @@
         kind: 'memory',
         mode: 'edit',
         recordId: memory.id,
-        values: dirty,
-        dirtyPaths: Object.keys(dirty)
+        values: dirty
       });
     } else {
       persistResume({
