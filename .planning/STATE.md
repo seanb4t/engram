@@ -4,11 +4,10 @@ milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 21
 current_phase_name: ci-maintenance-hygiene
-status: paused
+status: verifying
 stopped_at: "BLOCKED: 21-03 Task 3 human checkpoint (GitHub App provisioning)"
-last_updated: "2026-07-16T15:04:55.271Z"
+last_updated: "2026-07-16T16:44:49.306Z"
 last_activity: 2026-07-16
-last_activity_desc: 21-03 Tasks 1-2 committed; Task 3 checkpoint returned to human
 progress:
   total_phases: 9
   completed_phases: 9
@@ -30,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 Phase: 21 (ci-maintenance-hygiene) — BLOCKED
 Plan: 3 of 3
-Status: Stopped — 21-03 Task 3 human checkpoint pending (GitHub App provisioning for ci.yaml ui-drift self-heal). Tasks 1-2 committed; see 21-03-SUMMARY.md.
-Last activity: 2026-07-16 — 21-03 Tasks 1-2 committed; Task 3 checkpoint returned to human
+Status: Phase 21 shipped — PR #371 (verification human_needed by design; #369 live obs post-merge)
+Last activity: 2026-07-16
 
 ## Deferred Items
 
