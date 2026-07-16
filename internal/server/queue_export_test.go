@@ -5,7 +5,7 @@ package server
 
 // This file holds test-only escape hatches for the async worker-pool queue
 // types (summaryQueue, usageQueue). Wait is test-only (WR-03): moved out of
-// production reach because every one of its 10 call sites in the repo is a
+// production reach because every one of its call sites in the repo is a
 // _test.go file, so there is no production caller to preserve. Blocking on
 // an in-flight WaitGroup is safe only in tests; a hypothetical production
 // caller could deadlock the write path. The _test.go suffix alone is a
