@@ -211,7 +211,15 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-        run: echo "user-id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)" >> "$GITHUB_OUTPUT"
+        # Assign on its own line so `set -e` (bash default for run:) aborts the
+        # step if `gh api` fails — a nested $() inside echo's argument would let
+        # echo exit 0 and emit an empty user-id, degrading the self-heal commit
+        # to a malformed committer email. On failure here the self-heal step is
+        # skipped (its `if` carries an implicit success()), so no bad commit is
+        # pushed; the job goes red and is retryable.
+        run: |
+          user_id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)
+          echo "user-id=$user_id" >> "$GITHUB_OUTPUT"
       - name: self-heal vendored SPA on renovate PR
         if: steps.app-token.outcome == 'success'
         env:
