@@ -302,17 +302,6 @@ func (q *summaryQueue) Shutdown(ctx context.Context) {
 	}
 }
 
-// Wait blocks until every enqueued (non-dropped) id currently in flight has
-// reached a terminal fill outcome (success, exhausted retries, or a
-// recovered panic) — the deterministic drain seam tests use instead of
-// time.Sleep polling. Nil-safe no-op on a disabled queue.
-func (q *summaryQueue) Wait() {
-	if q == nil {
-		return
-	}
-	q.inFlight.Wait()
-}
-
 // depth samples the current enqueue channel occupancy for the D-09 OTel
 // queue-depth gauge (registered separately, by Wave-3 buildDepsFromEnv, via
 // telemetry.RegisterSummaryQueueDepth — this queue does not construct the
