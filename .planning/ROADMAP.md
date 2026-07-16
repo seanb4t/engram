@@ -464,8 +464,8 @@ Plans:
 **Success Criteria** (what is TRUE):
 
 1. A Renovate bump to the vendored SPA no longer reddens `main` — an in-repo self-healing fallback replaces the inert `postUpgradeTasks` rule.
-2. The Phase-11 async-summary code-review residuals are resolved: WR-03 (`Wait` misuse), IN-01 (duplicate depth-gauge registration), IN-02 (test hermeticity).
-3. `task lint:markdown` passes with `.planning/**` excluded from `.rumdl.toml`, while shipped Markdown outside `.planning/` is still linted (the systemic 331-failure planning-doc noise is gone).
+2. The Phase-11 async-summary code-review residuals are resolved: WR-03 (`Wait` misuse), IN-01 (`storeMemory`/`scheduleMemory` duplicated Upsert-then-enqueue block), IN-02 (test hermeticity).
+3. `task lint:markdown` passes with `.planning` excluded from `.rumdl.toml`, while shipped Markdown outside `.planning/` is still linted (the systemic planning-doc noise is gone).
 
 **Status**: Not started
 **Plans**: 0/3 plans complete

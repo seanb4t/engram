@@ -64,8 +64,8 @@ Grouped by category. Each maps to exactly one phase (filled in the ROADMAP trace
 ### CI / Maintenance Hygiene
 
 - [ ] **REQ-ci-renovate-spa-drift**: The vendored-SPA drift that reddens `main` on Renovate bumps is resolved (in-repo self-healing fallback for the inert `postUpgradeTasks` rule). *(GitHub #301)*
-- [ ] **REQ-p11-review-residuals**: The Phase-11 async-summary code-review residuals are resolved — WR-03 (`Wait` misuse), IN-01 (duplicate depth-gauge registration), IN-02 (test hermeticity). *(GitHub #335)*
-- [ ] **REQ-lint-planning-exclude**: `.rumdl.toml` excludes `.planning/**` so `task lint:markdown` stops failing on planning docs (the systemic 331-failure noise), while still linting shipped Markdown.
+- [ ] **REQ-p11-review-residuals**: The Phase-11 async-summary code-review residuals are resolved — WR-03 (`Wait` misuse), IN-01 (`storeMemory`/`scheduleMemory` duplicated Upsert-then-enqueue block), IN-02 (test hermeticity). *(GitHub #335)*
+- [ ] **REQ-lint-planning-exclude**: `.rumdl.toml` excludes `.planning` so `task lint:markdown` stops failing on planning docs (the systemic planning-doc noise), while still linting shipped Markdown.
 
 ## Future Requirements (deferred beyond v0.10.x)
 
