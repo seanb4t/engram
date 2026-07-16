@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
-current_phase: 20
-current_phase_name: correctness-polish
-status: executing
+current_phase: 21
+current_phase_name: CI / Maintenance Hygiene
+status: completed
 stopped_at: Completed 20-04-PLAN.md
-last_updated: "2026-07-16T00:11:00.467Z"
+last_updated: "2026-07-16T00:17:55.546Z"
 last_activity: 2026-07-16
-last_activity_desc: Phase 20 Plan 03 complete
+last_activity_desc: Phase 20 complete, transitioned to Phase 21
 progress:
   total_phases: 8
   completed_phases: 8
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 ## Current Position
 
-Phase: 20 (correctness-polish) — EXECUTING
-Plan: 4 of 4
+Phase: 21 — CI / Maintenance Hygiene
+Plan: Not started
 Status: Plan 03 complete (#308 MintShortID collision cap) — Plan 04 next
-Last activity: 2026-07-16 — Phase 20 Plan 03 complete
+Last activity: 2026-07-16 — Phase 20 complete, transitioned to Phase 21
 
 ## Deferred Items
 
