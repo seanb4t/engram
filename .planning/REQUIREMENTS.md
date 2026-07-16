@@ -55,7 +55,7 @@ Grouped by category. Each maps to exactly one phase (filled in the ROADMAP trace
 ### Correctness & Polish
 
 - [x] **REQ-discovery-proto-fidelity**: `SearchDiscoveries` carries `kind` / `citations` / `summary` on the Connect wire instead of silently dropping them. *(GitHub #307)*
-- [ ] **REQ-shortid-mint-cap**: `MintShortID` has a bounded collision-retry attempt cap and returns an explicit exhaustion error instead of looping. *(GitHub #308)*
+- [x] **REQ-shortid-mint-cap**: `MintShortID` has a bounded collision-retry attempt cap and returns an explicit exhaustion error instead of looping. *(GitHub #308)*
 - [x] **REQ-embed-param-key-sharing**: The embed package exports a single shared reserved-param-key list so `config.ParseEmbedParams` cannot silently desync from `embedReq`'s wire contract. *(GitHub #304)*
 - [x] **REQ-embed-body-build-collapse**: The `embed.Client.embed()` two-path body build (struct-marshal vs map-merge) is collapsed into a single map-based path. *(GitHub #302)*
 - [x] **REQ-discovery-shortid-schema**: `storeDiscoveryArgs.ID` jsonschema advertises `short_id` support, matching the skill docs. *(GitHub #303)*

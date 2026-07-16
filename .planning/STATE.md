@@ -5,15 +5,15 @@ milestone_name: — Hardening & Write Lane
 current_phase: 20
 current_phase_name: correctness-polish
 status: executing
-stopped_at: Completed 20-02-PLAN.md
-last_updated: "2026-07-15T23:57:34.133Z"
-last_activity: 2026-07-15
-last_activity_desc: Phase 20 Plan 02 complete
+stopped_at: Completed 20-03-PLAN.md
+last_updated: "2026-07-16T00:02:10.276Z"
+last_activity: 2026-07-16
+last_activity_desc: Phase 20 Plan 03 complete
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 32
-  completed_plans: 30
+  completed_plans: 31
   percent: 88
 ---
 
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 ## Current Position
 
 Phase: 20 (correctness-polish) — EXECUTING
-Plan: 3 of 4
-Status: Plan 02 complete (#304 embed param-key sharing, #302 embed body-build collapse) — Plan 03 next
-Last activity: 2026-07-15 — Phase 20 Plan 02 complete
+Plan: 4 of 4
+Status: Plan 03 complete (#308 MintShortID collision cap) — Plan 04 next
+Last activity: 2026-07-16 — Phase 20 Plan 03 complete
 
 ## Deferred Items
 
@@ -133,6 +133,7 @@ cookie-auth security posture).
 - [Phase 20]: [Phase 20 P01] citationsToProto placed in connectapi.go (read path) beside memoryToProto, not protoconv.go (write path) -- naming-symmetric with memoriesToProto, per 20-PATTERNS.md
 - [Phase 20]: [Phase 20 P01] Memory proto fields kind=21/citations=22 additive-only; TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs (Phase-15 SC4 wire-shape pin) updated 20->22 fields as expected fallout
 - [Phase 20]: [Phase 20 P02] Reversed config<->embed import direction (config owns ReservedEmbedParamKeys, embed aliases it) to avoid a real import cycle through internal/telemetry that RESEARCH.md missed — go build failed with an import cycle; config has no internal dependents so it is the safe direction
+- [Phase 20]: [Phase 20 P03] MintShortID cap set to 16 real Qdrant Count() checks (D-04); seen-map dedup hits do not consume the budget (D-05); exhaustion rides existing telemetry wrapper, no new metric (D-06)
 
 ### Blockers/Concerns
 
@@ -143,8 +144,8 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-15T23:57:34.127Z
-Stopped at: Completed 20-02-PLAN.md
+Last session: 2026-07-16T00:01:44.982Z
+Stopped at: Completed 20-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -181,3 +182,4 @@ Resume file: None
 | Phase 19 P06 | 62min | 3 tasks | 12 files |
 | Phase 20-correctness-polish P01 | 12min | 3 tasks | 9 files |
 | Phase 20-correctness-polish P02 | 20 | 2 tasks | 3 files |
+| Phase 20-correctness-polish P03 | 25min | 1 tasks | 2 files |

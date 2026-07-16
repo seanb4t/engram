@@ -116,3 +116,8 @@ None - no external service configuration required.
 ---
 *Phase: 20-correctness-polish*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+- FOUND: internal/store/store.go, internal/store/store_test.go changes present
+- FOUND: commit 8b75d7b0 (task commit)
+- FOUND: commit 0814677f (summary commit)
