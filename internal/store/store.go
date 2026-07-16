@@ -55,6 +55,17 @@ var ErrInvalidArgument = errors.New("invalid argument")
 // than silently resolving to an arbitrary point.
 var ErrAmbiguousShortID = errors.New("ambiguous short id")
 
+// ErrShortIDExhausted means MintShortID gave up after maxMintAttempts real
+// Qdrant collision checks — a pathological Qdrant state (or a broken mint
+// generator) surfaces as a normal write failure instead of hanging the
+// request indefinitely.
+var ErrShortIDExhausted = errors.New("short id mint exhausted")
+
+// maxMintAttempts bounds MintShortID's real (Qdrant Count-checked) collision
+// attempts. 16 is extra headroom over the ~8 that is already astronomically
+// safe in a 32^10 Crockford base32 space (D-04).
+const maxMintAttempts = 16
+
 // visibilityShared is the Visibility sentinel for a record readable by any
 // authenticated caller. Sharing grants read, never write. Defined once so a typo
 // in an authorization path is a compile error rather than a silent gate bypass.
@@ -1776,7 +1787,7 @@ func (s *Store) MintShortID(ctx context.Context, seen map[string]struct{}) (id s
 	if gen == nil {
 		gen = shortid.New
 	}
-	for {
+	for attempts := 0; attempts < maxMintAttempts; attempts++ {
 		cand, genErr := gen()
 		if genErr != nil {
 			err = genErr
@@ -1784,6 +1795,7 @@ func (s *Store) MintShortID(ctx context.Context, seen map[string]struct{}) (id s
 		}
 		if seen != nil {
 			if _, dup := seen[cand]; dup {
+				attempts-- // D-05: seen-map hits don't consume the real-collision-check budget
 				continue
 			}
 		}
@@ -1804,6 +1816,8 @@ func (s *Store) MintShortID(ctx context.Context, seen map[string]struct{}) (id s
 			return id, nil
 		}
 	}
+	err = fmt.Errorf("%w: after %d attempts", ErrShortIDExhausted, maxMintAttempts)
+	return "", err
 }
 
 // missingShortIDFilter matches records with no short_id key (pre-backfill legacy

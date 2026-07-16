@@ -2760,6 +2760,65 @@ func TestMintShortIDRetriesOnCollision(t *testing.T) {
 	}
 }
 
+// TestMintShortIDExhaustsAfterCap forces every candidate to collide (a real
+// Qdrant Count() check on each attempt) and asserts MintShortID gives up with
+// an errors.Is-checkable ErrShortIDExhausted after exactly maxMintAttempts
+// real collision checks (D-04).
+func TestMintShortIDExhaustsAfterCap(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	defer func() { cleanupErr(t, "DeleteAllRaw s", st.DeleteAllRaw(ctx, "s")) }()
+	if err := st.Upsert(ctx, Memory{ID: "a0000000-0000-0000-0000-000000000032", ShortID: "alwaystaken", Content: "c", Scope: "s", Owner: "o"}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	st.mintCandidate = func() (string, error) {
+		calls++
+		return "alwaystaken", nil // every candidate collides — forces exhaustion
+	}
+	_, err := st.MintShortID(ctx, nil)
+	if !errors.Is(err, ErrShortIDExhausted) {
+		t.Fatalf("err = %v, want ErrShortIDExhausted", err)
+	}
+	if calls != maxMintAttempts {
+		t.Fatalf("calls = %d, want %d", calls, maxMintAttempts)
+	}
+}
+
+// TestMintShortIDSeenMapDoesNotConsumeBudget proves (D-05) that seen-map dup
+// hits are skipped for free — a pre-populated seen map does not shrink the
+// real-collision-check budget below maxMintAttempts before exhaustion.
+func TestMintShortIDSeenMapDoesNotConsumeBudget(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	defer func() { cleanupErr(t, "DeleteAllRaw s", st.DeleteAllRaw(ctx, "s")) }()
+	if err := st.Upsert(ctx, Memory{ID: "a0000000-0000-0000-0000-000000000033", ShortID: "alwaystaken", Content: "c", Scope: "s", Owner: "o"}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]struct{}{
+		"dup1": {}, "dup2": {}, "dup3": {},
+	}
+	dups := []string{"dup1", "dup2", "dup3"}
+	genIdx := 0
+	calls := 0
+	st.mintCandidate = func() (string, error) {
+		if genIdx < len(dups) {
+			c := dups[genIdx]
+			genIdx++
+			return c, nil // seen-map hit — must not consume the real-check budget
+		}
+		calls++
+		return "alwaystaken", nil // every real candidate collides — forces exhaustion
+	}
+	_, err := st.MintShortID(ctx, seen)
+	if !errors.Is(err, ErrShortIDExhausted) {
+		t.Fatalf("err = %v, want ErrShortIDExhausted", err)
+	}
+	if calls != maxMintAttempts {
+		t.Fatalf("real collision-check calls = %d, want %d (seen-map dups must not consume the budget)", calls, maxMintAttempts)
+	}
+}
+
 // floatsEqual reports whether two float32 slices are element-wise equal.
 func floatsEqual(a, b []float32) bool {
 	if len(a) != len(b) {
