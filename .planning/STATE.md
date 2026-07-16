@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 21
-current_phase_name: CI / Maintenance Hygiene
-status: "Phase 20 shipped — PR #368"
-stopped_at: Phase 21 context gathered
-last_updated: "2026-07-16T14:36:54.499Z"
+current_phase_name: ci-maintenance-hygiene
+status: executing
+stopped_at: Completed 21-01-PLAN.md
+last_updated: "2026-07-16T14:44:07.931Z"
 last_activity: 2026-07-16
-last_activity_desc: Phase 21 planning complete
+last_activity_desc: Phase 21 execution started
 progress:
   total_phases: 9
   completed_phases: 8
-  total_plans: 32
-  completed_plans: 32
+  total_plans: 35
+  completed_plans: 33
   percent: 89
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 20 — correctness-polish
+**Current focus:** Phase 21 — ci-maintenance-hygiene
 
 ## Current Position
 
-Phase: 21 — CI / Maintenance Hygiene
-Plan: Not started
-Status: Phase 20 shipped — PR #368
-Last activity: 2026-07-16 — Phase 21 planning complete
+Phase: 21 (ci-maintenance-hygiene) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-07-16 — Phase 21 execution started
 
 ## Deferred Items
 
@@ -137,6 +137,8 @@ cookie-auth security posture).
 - [Phase ?]: engram.containerEnv extracted byte-identical (D-09) via mechanical sed dedent + before/after helm template diff (empty)
 - [Phase ?]: CronJob disabled by default (D-07); daily schedule + Forbid + OnFailure + history limits 3/1, all values-overridable (D-08)
 - [Phase ?]: chart:validate pins engram.containerEnv against drift via sha256 checksum, proven to fail on manual toggle/edit during execution
+- [Phase 21]: D-09: plain .planning rumdl exclude entry (not .planning/** glob), matching convention of .beads/.agents/docs-site neighbors
+- [Phase 21]: D-00b/D-12: SC3 stale 331-failure figure replaced with qualitative language (systemic planning-doc noise) instead of a new hardcoded count, since the real count drifts daily
 
 ### Blockers/Concerns
 
@@ -147,9 +149,9 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-16T01:25:35.488Z
-Stopped at: Phase 21 context gathered
-Resume file: .planning/phases/21-ci-maintenance-hygiene/21-CONTEXT.md
+Last session: 2026-07-16T14:44:07.925Z
+Stopped at: Completed 21-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -187,3 +189,4 @@ Resume file: .planning/phases/21-ci-maintenance-hygiene/21-CONTEXT.md
 | Phase 20-correctness-polish P02 | 20 | 2 tasks | 3 files |
 | Phase 20-correctness-polish P03 | 25min | 1 tasks | 2 files |
 | Phase 20 P04 | 3min | 3 tasks | 5 files |
+| Phase 21 P01 | 6min | 2 tasks | 3 files |
