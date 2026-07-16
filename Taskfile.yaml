@@ -111,9 +111,49 @@ tasks:
 
   chart:lint:
     desc: Lint + render the Helm chart
+    # chart:validate runs the D-07/D-08 CronJob invariants + the D-09
+    # engram.containerEnv drift-pin, so a direct `task chart:lint` also
+    # exercises the guardrail locally (CI runs chart:validate on every PR too).
+    deps: [chart:validate]
     cmds:
       - helm lint charts/engram
       - helm template charts/engram
+  chart:validate:
+    desc: "Proportional CronJob + engram.containerEnv drift guardrails (bash grep/diff, no helm-unittest)"
+    cmds:
+      - |
+        set -e
+        if helm template charts/engram | grep -q 'kind: CronJob'; then
+          echo "chart:validate: default render must NOT emit a CronJob (cronjob.enabled defaults false, D-07)"
+          exit 1
+        fi
+        ENABLED_RENDER=$(helm template charts/engram --set memory.summarize.cronjob.enabled=true)
+        if ! echo "$ENABLED_RENDER" | grep -q 'kind: CronJob'; then
+          echo "chart:validate: --set memory.summarize.cronjob.enabled=true must emit a CronJob"
+          exit 1
+        fi
+        if ! echo "$ENABLED_RENDER" | grep -q 'concurrencyPolicy: Forbid'; then
+          echo "chart:validate: enabled CronJob render must default to concurrencyPolicy: Forbid (D-08)"
+          exit 1
+        fi
+        if ! echo "$ENABLED_RENDER" | grep -q 'schedule: "0 3 \* \* \*"'; then
+          echo "chart:validate: enabled CronJob render must default to the daily schedule '0 3 * * *' (D-08)"
+          exit 1
+        fi
+        helm lint charts/engram
+        # Drift pin: engram.containerEnv is the single source of the
+        # Deployment+CronJob container env (D-09). Any edit to this block
+        # must be a deliberate, verified change (re-run the byte-identical
+        # Deployment render diff manually) — this checksum guards against
+        # silent drift. Recorded 2026-07-16 at plan 20-04.
+        EXPECTED_CHECKSUM="0a35aae002adcb17f647e23d274602e677ee6ecadfc2b5090b346be6bc7366f9"
+        ACTUAL_CHECKSUM=$(awk '/define "engram.containerEnv"/{f=1} f{print} f && /^\{\{- end -\}\}$/{exit}' charts/engram/templates/_helpers.tpl | shasum -a 256 | awk '{print $1}')
+        if [ "$ACTUAL_CHECKSUM" != "$EXPECTED_CHECKSUM" ]; then
+          echo "chart:validate: engram.containerEnv block in _helpers.tpl has drifted (checksum $ACTUAL_CHECKSUM != expected $EXPECTED_CHECKSUM)."
+          echo "  If this is a deliberate change, re-verify the Deployment env render stays correct, then update EXPECTED_CHECKSUM in this target."
+          exit 1
+        fi
+        echo "chart:validate: OK"
   chart:push:
     desc: Package + push the OCI Helm chart (VERSION required)
     cmds:

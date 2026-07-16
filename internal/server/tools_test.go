@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -2209,5 +2210,21 @@ func TestBuildUsageQueueConfigGate(t *testing.T) {
 	}
 	if got.AccessCount != 0 {
 		t.Fatalf("disabled usage queue must perform zero counter writes; access_count = %d", got.AccessCount)
+	}
+}
+
+// TestStoreDiscoveryArgsIDSchemaAdvertisesShortID pins storeDiscoveryArgs.ID's
+// jsonschema tag so a future silent drop of the short_id wording is caught —
+// exactly how #303 was originally filed. Verification-only (#303): the field
+// has already advertised short_id support since commit 92a6f610 (PR #288);
+// this test asserts the existing wording, no production code change.
+func TestStoreDiscoveryArgsIDSchemaAdvertisesShortID(t *testing.T) {
+	f, ok := reflect.TypeOf(storeDiscoveryArgs{}).FieldByName("ID")
+	if !ok {
+		t.Fatal("storeDiscoveryArgs has no ID field")
+	}
+	tag := f.Tag.Get("jsonschema")
+	if !strings.Contains(tag, "short_id") {
+		t.Fatalf("storeDiscoveryArgs.ID jsonschema tag = %q, want it to mention short_id", tag)
 	}
 }

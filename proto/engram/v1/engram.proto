@@ -35,6 +35,10 @@ message Memory {
   uint64 access_count = 19;
   // Recency of the last strong-signal touch.
   google.protobuf.Timestamp last_accessed_at = 20;
+  // Discovery-only fields; empty on plain memories (never set by
+  // store_memory/schedule_memory, only by store_discovery).
+  string kind = 21;
+  repeated Citation citations = 22;
 }
 
 message ScopeCount {

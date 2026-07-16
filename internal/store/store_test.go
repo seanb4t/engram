@@ -2760,6 +2760,90 @@ func TestMintShortIDRetriesOnCollision(t *testing.T) {
 	}
 }
 
+// TestMintShortIDExhaustsAfterCap forces every candidate to collide (a real
+// Qdrant Count() check on each attempt) and asserts MintShortID gives up with
+// an errors.Is-checkable ErrShortIDExhausted after exactly maxMintAttempts
+// real collision checks (D-04).
+func TestMintShortIDExhaustsAfterCap(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	defer func() { cleanupErr(t, "DeleteAllRaw s", st.DeleteAllRaw(ctx, "s")) }()
+	if err := st.Upsert(ctx, Memory{ID: "a0000000-0000-0000-0000-000000000032", ShortID: "alwaystaken", Content: "c", Scope: "s", Owner: "o"}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	st.mintCandidate = func() (string, error) {
+		calls++
+		return "alwaystaken", nil // every candidate collides — forces exhaustion
+	}
+	_, err := st.MintShortID(ctx, nil)
+	if !errors.Is(err, ErrShortIDExhausted) {
+		t.Fatalf("err = %v, want ErrShortIDExhausted", err)
+	}
+	if calls != maxMintAttempts {
+		t.Fatalf("calls = %d, want %d", calls, maxMintAttempts)
+	}
+}
+
+// TestMintShortIDSeenMapDoesNotConsumeBudget proves (D-05) that seen-map dup
+// hits are skipped for free — a pre-populated seen map does not shrink the
+// real-collision-check budget below maxMintAttempts before exhaustion.
+func TestMintShortIDSeenMapDoesNotConsumeBudget(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	defer func() { cleanupErr(t, "DeleteAllRaw s", st.DeleteAllRaw(ctx, "s")) }()
+	if err := st.Upsert(ctx, Memory{ID: "a0000000-0000-0000-0000-000000000033", ShortID: "alwaystaken", Content: "c", Scope: "s", Owner: "o"}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]struct{}{
+		"dup1": {}, "dup2": {}, "dup3": {},
+	}
+	dups := []string{"dup1", "dup2", "dup3"}
+	genIdx := 0
+	calls := 0
+	st.mintCandidate = func() (string, error) {
+		if genIdx < len(dups) {
+			c := dups[genIdx]
+			genIdx++
+			return c, nil // seen-map hit — must not consume the real-check budget
+		}
+		calls++
+		return "alwaystaken", nil // every real candidate collides — forces exhaustion
+	}
+	_, err := st.MintShortID(ctx, seen)
+	if !errors.Is(err, ErrShortIDExhausted) {
+		t.Fatalf("err = %v, want ErrShortIDExhausted", err)
+	}
+	if calls != maxMintAttempts {
+		t.Fatalf("real collision-check calls = %d, want %d (seen-map dups must not consume the budget)", calls, maxMintAttempts)
+	}
+}
+
+// TestMintShortIDDegenerateGeneratorTerminates proves the absolute spin cap
+// (maxMintSpins) guarantees termination even when the injectable mintCandidate
+// seam returns ONLY already-seen candidates forever. Because seen-map skips do
+// not consume the maxMintAttempts real-collision-check budget (D-05), without
+// the spin cap this loop would never terminate. The real Qdrant Count() check
+// is never reached (every candidate is a seen-map hit), so this exercises the
+// spin cap in isolation.
+func TestMintShortIDDegenerateGeneratorTerminates(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	seen := map[string]struct{}{"onlyvalue0": {}}
+	calls := 0
+	st.mintCandidate = func() (string, error) {
+		calls++
+		return "onlyvalue0", nil // always a seen-map hit — never reaches the real Count check
+	}
+	_, err := st.MintShortID(ctx, seen)
+	if !errors.Is(err, ErrShortIDExhausted) {
+		t.Fatalf("err = %v, want ErrShortIDExhausted (spin cap must halt a seen-only generator)", err)
+	}
+	if calls != maxMintSpins {
+		t.Fatalf("generator called %d times, want maxMintSpins=%d (spin cap must bound and terminate the seen-only loop)", calls, maxMintSpins)
+	}
+}
+
 // floatsEqual reports whether two float32 slices are element-wise equal.
 func floatsEqual(a, b []float32) bool {
 	if len(a) != len(b) {

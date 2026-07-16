@@ -1,0 +1,37 @@
+{{- if .Values.memory.summarize.cronjob.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: memory-mcp-summarize
+spec:
+  schedule: {{ .Values.memory.summarize.cronjob.schedule | quote }}
+  concurrencyPolicy: {{ .Values.memory.summarize.cronjob.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.memory.summarize.cronjob.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.memory.summarize.cronjob.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: {{ .Values.memory.summarize.cronjob.restartPolicy }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets: {{ toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: summarize-missing
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              args: ["summarize-missing", "--all-scopes"]
+              env: {{- include "engram.containerEnv" . | nindent 16 }}
+              {{- if .Values.memory.openai.caBundle.configMapName }}
+              volumeMounts:
+                - name: ca-bundle
+                  mountPath: /etc/ssl/ca-bundle
+                  readOnly: true
+              {{- end }}
+          {{- if .Values.memory.openai.caBundle.configMapName }}
+          volumes:
+            - name: ca-bundle
+              configMap:
+                name: "{{ .Values.memory.openai.caBundle.configMapName }}"
+          {{- end }}
+{{- end }}

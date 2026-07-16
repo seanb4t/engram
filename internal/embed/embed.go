@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -133,10 +134,14 @@ func joinEmbeddingsURL(baseURL string) string {
 	}
 }
 
-type embedReq struct {
-	Model string `json:"model"`
-	Input string `json:"input"`
-}
+// ReservedParamKeys are the request-body keys the embedder sets authoritatively;
+// operator-supplied params (ENGRAM_EMBED_*_PARAMS) must never override them.
+// Aliases internal/config.ReservedEmbedParamKeys, the canonical single source
+// consumed by both this package's wire contract and
+// internal/config.ParseEmbedParams (#304). The list lives in internal/config
+// rather than here to avoid an import cycle: internal/embed already imports
+// internal/telemetry, which imports internal/config.
+var ReservedParamKeys = config.ReservedEmbedParamKeys
 
 type embedResp struct {
 	Data []struct {
@@ -224,21 +229,19 @@ func (c *Client) embed(ctx context.Context, text string, params map[string]any, 
 		}
 	}()
 
-	// Empty params → marshal the struct (exact prior wire bytes; default path).
-	// Non-empty → merge params first, then set model/input last so they are
-	// always authoritative. Go sorts map keys on marshal; that is JSON-
-	// semantically identical, so callers compare decoded objects, not raw bytes.
-	var body []byte
-	if len(params) == 0 {
-		body, _ = json.Marshal(embedReq{Model: c.model, Input: text})
-	} else {
-		m := make(map[string]any, len(params)+2)
-		for k, v := range params {
-			m[k] = v
-		}
-		m["model"] = c.model
-		m["input"] = text
-		body, _ = json.Marshal(m)
+	// Single map-based body build: merge operator params first, then set
+	// model/input last so they are always authoritative. Go sorts map keys on
+	// marshal; that is JSON-semantically identical, so callers compare decoded
+	// objects, not raw bytes.
+	m := make(map[string]any, len(params)+2)
+	for k, v := range params {
+		m[k] = v
+	}
+	m["model"] = c.model
+	m["input"] = text
+	body, err := json.Marshal(m)
+	if err != nil {
+		return nil, fmt.Errorf("embeddings: marshal request body: %w", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.embeddingsURL, bytes.NewReader(body))
 	if err != nil {

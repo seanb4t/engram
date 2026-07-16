@@ -136,13 +136,15 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 	// payload/request/response messages plus Memory and ScopeCount, so an
 	// accidental additive/renamed/retyped read field fails this test even
 	// though it wouldn't change the RPC count or req/resp message names.
-	assertFields(t, fd, "Memory", 20, map[protoreflect.FieldNumber]fieldSpec{
+	assertFields(t, fd, "Memory", 22, map[protoreflect.FieldNumber]fieldSpec{
 		1:  {name: "id", kind: protoreflect.StringKind},
 		14: {name: "created_at", kind: protoreflect.MessageKind, msgType: "google.protobuf.Timestamp"},
 		17: {name: "score", kind: protoreflect.FloatKind},
 		18: {name: "short_id", kind: protoreflect.StringKind},
 		19: {name: "access_count", kind: protoreflect.Uint64Kind},
 		20: {name: "last_accessed_at", kind: protoreflect.MessageKind, msgType: "google.protobuf.Timestamp"},
+		21: {name: "kind", kind: protoreflect.StringKind},
+		22: {name: "citations", kind: protoreflect.MessageKind, repeated: true, msgType: "engram.v1.Citation"},
 	})
 	assertFields(t, fd, "ScopeCount", 2, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "scope", kind: protoreflect.StringKind},

@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
-current_phase: 19
-current_phase_name: console-write-ux
-status: "Phase 19 shipped — PR #367 (live UAT deferred → #366)"
-stopped_at: Completed 19-06-PLAN.md
-last_updated: "2026-07-15T17:30:43.172Z"
-last_activity: 2026-07-15
+current_phase: 21
+current_phase_name: CI / Maintenance Hygiene
+status: "Phase 20 shipped — PR #368"
+stopped_at: Completed 20-04-PLAN.md
+last_updated: "2026-07-16T01:03:28.378Z"
+last_activity: 2026-07-16
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 28
-  completed_plans: 28
+  total_phases: 8
+  completed_phases: 8
+  total_plans: 32
+  completed_plans: 32
   percent: 100
 ---
 
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 19 — console-write-ux
+**Current focus:** Phase 20 — correctness-polish
 
 ## Current Position
 
-Phase: 19 (console-write-ux) — EXECUTING
-Plan: 6 of 6
-Status: Phase 19 shipped — PR #367 (live UAT deferred → #366)
-Last activity: 2026-07-15
+Phase: 21 — CI / Maintenance Hygiene
+Plan: Not started
+Status: Phase 20 shipped — PR #368
+Last activity: 2026-07-16
 
 ## Deferred Items
 
@@ -129,6 +129,13 @@ cookie-auth security posture).
 - [Phase 19]: [Phase 19 P06] WriteSurfaces mounts ONE MemoryFormSheet instance for both create and edit, remounted via {#key mode-recordId-instanceKey} on every open
 - [Phase 19]: [Phase 19 P06] Delete/share confirm handlers use the .mutate(vars, {onSuccess, onError}) callback-pair pattern wrapped in a Promise, matching the mocked-hook testing convention from Plan 05
 - [Phase 19]: [Phase 19 P06] Browser tests use vitest-browser-svelte's wrapper/wrapperProps render option with a real QueryClientProvider + fresh QueryClient per test instead of a bespoke test-harness .svelte file
+- [Phase 20]: [Phase 20 P01] citationsToProto placed in connectapi.go (read path) beside memoryToProto, not protoconv.go (write path) -- naming-symmetric with memoriesToProto, per 20-PATTERNS.md
+- [Phase 20]: [Phase 20 P01] Memory proto fields kind=21/citations=22 additive-only; TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs (Phase-15 SC4 wire-shape pin) updated 20->22 fields as expected fallout
+- [Phase 20]: [Phase 20 P02] Reversed config<->embed import direction (config owns ReservedEmbedParamKeys, embed aliases it) to avoid a real import cycle through internal/telemetry that RESEARCH.md missed — go build failed with an import cycle; config has no internal dependents so it is the safe direction
+- [Phase 20]: [Phase 20 P03] MintShortID cap set to 16 real Qdrant Count() checks (D-04); seen-map dedup hits do not consume the budget (D-05); exhaustion rides existing telemetry wrapper, no new metric (D-06)
+- [Phase ?]: engram.containerEnv extracted byte-identical (D-09) via mechanical sed dedent + before/after helm template diff (empty)
+- [Phase ?]: CronJob disabled by default (D-07); daily schedule + Forbid + OnFailure + history limits 3/1, all values-overridable (D-08)
+- [Phase ?]: chart:validate pins engram.containerEnv against drift via sha256 checksum, proven to fail on manual toggle/edit during execution
 
 ### Blockers/Concerns
 
@@ -139,8 +146,8 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-15T15:18:15.781Z
-Stopped at: Completed 19-06-PLAN.md
+Last session: 2026-07-16T00:11:00.462Z
+Stopped at: Completed 20-04-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -175,3 +182,7 @@ Resume file: None
 | Phase 19 P04 | 25min | 2 tasks | 4 files |
 | Phase 19 P05 | 35min | 2 tasks | 6 files |
 | Phase 19 P06 | 62min | 3 tasks | 12 files |
+| Phase 20-correctness-polish P01 | 12min | 3 tasks | 9 files |
+| Phase 20-correctness-polish P02 | 20 | 2 tasks | 3 files |
+| Phase 20-correctness-polish P03 | 25min | 1 tasks | 2 files |
+| Phase 20 P04 | 3min | 3 tasks | 5 files |
