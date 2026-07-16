@@ -1,0 +1,120 @@
+name: Feature request
+description: Propose a new user-facing capability (new tool, RPC, CLI command, console surface, ...).
+title: "feat: "
+labels: ["feature-request", "needs-review"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A **feature** adds a genuinely new capability. engram is deliberately explicit and
+        zero-junk — new surface area needs a clear problem, scope, and acceptance criteria.
+        This issue starts in `needs-review`; a maintainer adds `approved-feature` before an
+        implementing PR is opened (issue-first gate).
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I searched existing issues/discussions and this is not a duplicate.
+          required: true
+        - label: This is a new capability — not an improvement to an existing one (that's an enhancement).
+          required: true
+        - label: This fits engram's design intent (explicit, correctable, no auto-extraction of memory).
+          required: true
+        - label: I understand this needs maintainer approval (`approved-feature`) before a PR is opened.
+          required: true
+  - type: input
+    id: name
+    attributes:
+      label: Feature name
+      placeholder: "e.g. category filter on search_memory"
+    validations:
+      required: true
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type of addition
+      options:
+        - New MCP tool
+        - New Connect/gRPC RPC
+        - New CLI command / flag
+        - Web console surface
+        - New config (ENGRAM_ var)
+        - Other (describe below)
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What can't be done today? Who hits this and when?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What is being added
+      description: Describe the capability with concrete examples (tool args, CLI invocation, RPC shape).
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Full scope of changes
+      description: Which packages/files/surfaces change? (server, store, embed, auth, config, cmd, proto/gen, ui, charts,
+        docs-site)
+    validations:
+      required: true
+  - type: textarea
+    id: stories
+    attributes:
+      label: User stories (at least 2)
+      placeholder: |
+        - As an agent, I want ... so that ...
+        - As an operator, I want ... so that ...
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Testable conditions that mean "done".
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: checkboxes
+    id: surfaces
+    attributes:
+      label: Surfaces affected
+      options:
+        - label: MCP tools (server)
+        - label: Connect API (proto/gen)
+        - label: CLI (cmd/engram)
+        - label: Store (Qdrant)
+        - label: Embedder
+        - label: Auth (OIDC)
+        - label: Web console (ui)
+        - label: Helm chart / docs-site
+  - type: textarea
+    id: breaking
+    attributes:
+      label: Breaking changes
+      description: Does this alter the stable memory contract, proto wire format, or existing behavior? "None" if not.
+    validations:
+      required: true
+  - type: textarea
+    id: maintenance
+    attributes:
+      label: Maintenance burden
+      description: Ongoing cost — new deps, config surface, test/CI surface, docs to keep current.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches, and why this one. What happens if we do nothing?
+    validations:
+      required: true

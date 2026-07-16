@@ -1,0 +1,82 @@
+name: Chore / maintenance
+description: Non-user-facing maintenance — deps, CI, refactors, tests, tooling, hygiene.
+title: "chore: "
+labels: ["chore", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A **chore** is internal maintenance with no user-facing behavior change: dependency
+        bumps, CI/tooling, refactors, test coverage, docs plumbing, cleanup.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: This has NO user-facing behavior change (otherwise file a bug/enhancement/feature).
+          required: true
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+  - type: textarea
+    id: task
+    attributes:
+      label: What is the maintenance task?
+      description: One or two sentences on what needs doing.
+    validations:
+      required: true
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type of maintenance
+      options:
+        - Dependency update
+        - CI / release tooling
+        - Refactor (no behavior change)
+        - Test coverage
+        - Docs / comments
+        - Cleanup / tech debt
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current state
+      description: What's there now? Cite specific files/paths/versions.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed work
+      description: What should change.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - [ ] ...
+        - [ ] `task` (lint + test) stays green
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area affected
+      options:
+        - server
+        - store
+        - embed
+        - auth
+        - config
+        - cmd
+        - proto/gen
+        - ui
+        - charts
+        - docs-site
+        - ci / release
+        - repo-wide
+    validations:
+      required: true

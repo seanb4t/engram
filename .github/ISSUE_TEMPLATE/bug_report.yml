@@ -1,0 +1,116 @@
+name: Bug report
+description: Report incorrect or unexpected behavior in engram (server, CLI, store, embedder, auth, console).
+title: "bug: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Version, a minimal reproduction, and expected-vs-actual are
+        the most useful things you can give. Redact secrets and PII before submitting.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I can reproduce this on a supported engram version.
+          required: true
+        - label: This is a bug — not a feature request, enhancement, or question.
+          required: true
+        - label: I have removed secrets/credentials/PII from the logs and config below.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: engram version
+      description: Output of `engram version`, or the image/chart tag you deployed.
+      placeholder: "v0.10.x  ·  ghcr.io/seanb4t/engram:...  ·  chart 0.x.y"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How are you running engram?
+      options:
+        - Prebuilt binary (goreleaser release)
+        - Docker / OCI image
+        - Helm chart (charts/engram)
+        - Built from source
+        - Other (describe below)
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / architecture
+      placeholder: "linux/amd64, darwin/arm64, ..."
+    validations:
+      required: true
+  - type: input
+    id: qdrant
+    attributes:
+      label: Qdrant version
+      description: The Qdrant server engram is pointed at (if relevant to the bug).
+      placeholder: "v1.x.y"
+  - type: dropdown
+    id: auth
+    attributes:
+      label: Auth mode
+      options:
+        - OIDC enabled (--oidc-issuer / ENGRAM_OIDC_ISSUER set)
+        - Disabled / anonymous (no issuer)
+        - Not sure
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you observe? Include the exact error text or tool/RPC response.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps. Include the MCP tool call, CLI command, or Connect RPC used.
+      placeholder: |
+        1. Configure engram with ...
+        2. Call store_memory / search_memory (or run `engram ...`)
+        3. Observe ...
+    validations:
+      required: true
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Frequency
+      options:
+        - Always
+        - Intermittent
+        - Happened once
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity / impact
+      options:
+        - Data loss or corruption (memories lost/wrong/leaked across actors)
+        - Blocks core memory operations (store/recall broken)
+        - Degraded but usable (workaround exists)
+        - Minor / cosmetic
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / config (secrets redacted)
+      description: Server logs, stack traces, or the ENGRAM_ config in effect. This is rendered as a code block.
+      render: text

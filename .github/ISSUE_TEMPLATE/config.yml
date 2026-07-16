@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: engram documentation
+    url: https://engram.seanb4t.dev/
+    about: Configuration, guides, and the memory contract — check here first.
+  - name: Contributing guide (architecture & conventions)
+    url: https://engram.seanb4t.dev/contributing/architecture/
+    about: Codebase architecture, conventions, and code style before opening a PR.
