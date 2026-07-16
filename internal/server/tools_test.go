@@ -1698,9 +1698,16 @@ func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
 	}
 	// buildDepsFromEnv reads the data-plane config from the process env; point it
 	// at the test Qdrant with a dedicated collection so EnsureCollection succeeds.
+	// Also isolate from ambient ENGRAM_SUMMARY_* in the dev/CI shell (IN-02):
+	// empty values preserve the registry default (the documented empty-env
+	// invariant), so an ambient summary-on-write env can never start a real
+	// summary queue this test never shuts down — that would leak 2 worker
+	// goroutines for the test binary's lifetime.
 	t.Setenv("ENGRAM_QDRANT_ADDR", testQdrantAddr)
 	t.Setenv("ENGRAM_QDRANT_COLLECTION", "mem_load_once_test")
 	t.Setenv("ENGRAM_EMBED_DIM", "3")
+	t.Setenv("ENGRAM_SUMMARY_MODEL", "")
+	t.Setenv("ENGRAM_SUMMARY_ON_WRITE", "")
 
 	loads := 0
 	orig := configLoad
