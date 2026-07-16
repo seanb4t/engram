@@ -985,9 +985,9 @@ func TestConnectSearchDiscoveriesCitationsRoundTrip(t *testing.T) {
 	ctx := context.Background()
 
 	rec := store.Memory{
-		ID:       "f4000000-0000-0000-0000-000000000001",
-		Content:  "discovery about repo layout with citations",
-		Scope:    scope, Owner: owner, Category: "discovery", Kind: "map",
+		ID:      "f4000000-0000-0000-0000-000000000001",
+		Content: "discovery about repo layout with citations",
+		Scope:   scope, Owner: owner, Category: "discovery", Kind: "map",
 		Source: "agent-inferred", CreatedAt: timeNow(),
 		Citations: []store.Citation{
 			{Kind: "file", Ref: "internal/store/store.go", Locator: "1790-1821", Pin: "abc123", Excerpt: "MintShortID"},
