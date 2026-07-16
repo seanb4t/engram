@@ -1,0 +1,91 @@
+name: Enhancement
+description: Improve an existing engram capability (better behavior, ergonomics, coverage, hardening).
+title: "enhancement: "
+labels: ["enhancement", "needs-review"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        An **enhancement** improves something that already exists (a feature does not exist yet).
+        This issue starts in `needs-review`; a maintainer adds `approved-enhancement` before an
+        implementing PR is opened (issue-first gate).
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: This improves an EXISTING capability (not a brand-new feature).
+          required: true
+        - label: This preserves engram's design intent (explicit, correctable, no auto-extraction).
+          required: true
+        - label: I understand this needs maintainer approval (`approved-enhancement`) before a PR is opened.
+          required: true
+  - type: input
+    id: what
+    attributes:
+      label: What existing feature is being improved?
+      placeholder: "e.g. search_memory tag filtering, reindex --resume, summarize-missing"
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current behavior
+      description: How it works today, with a concrete example.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed behavior
+      description: How it should work instead, with a concrete example.
+    validations:
+      required: true
+  - type: textarea
+    id: reason
+    attributes:
+      label: Reason and benefit
+      description: Why is this worth doing? Who benefits and how? (Not "it would be nice".)
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope of changes
+      description: Which packages/files change?
+    validations:
+      required: true
+  - type: textarea
+    id: breaking
+    attributes:
+      label: Breaking changes
+      description: Any change to the stable memory contract, wire format, or observable behavior? "None" if not.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area affected
+      options:
+        - server (MCP tools / handlers)
+        - store (Qdrant)
+        - embed (embedder)
+        - auth (OIDC)
+        - config (koanf / ENGRAM_ vars)
+        - cmd (CLI)
+        - proto/gen (Connect API)
+        - ui (web console)
+        - charts (Helm)
+        - docs-site
+        - ci / release
+        - other
+    validations:
+      required: true
