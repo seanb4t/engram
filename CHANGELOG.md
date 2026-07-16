@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.7](https://github.com/seanb4t/engram/compare/v0.8.6...v0.8.7) (2026-07-16)
+
+
+### Bug Fixes
+
+* CI & maintenance hygiene — renovate self-heal, phase-11 residuals, rumdl exclude (phase 21) ([#371](https://github.com/seanb4t/engram/issues/371)) ([4c94033](https://github.com/seanb4t/engram/commit/4c9403396957b09b4c5d4007e4bec562375f10b8))
+
 ## [0.8.6](https://github.com/seanb4t/engram/compare/v0.8.5...v0.8.6) (2026-07-16)
 
 
