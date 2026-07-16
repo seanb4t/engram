@@ -559,7 +559,26 @@ library API.
 | A1 | Once auto-merge is enabled on a PR by Renovate (native GitHub `platformAutomerge`), it remains enabled as a PR-level setting even if Renovate itself later "stops managing" that branch (after our self-heal push) — i.e., re-triggering checks alone is sufficient to let a previously-enabled auto-merge complete, without Renovate re-issuing the enable call. | Summary, Architecture Diagram | If wrong, the PR still needs a human (or a second Renovate action) to click "merge" after checks go green — a strictly weaker failure mode than the "wedged forever" scenario, i.e. not silently broken, just not fully automatic. Verify empirically on the first real Renovate PR this ships against. |
 | A2 | The exact literal App slug/bot username/App ID for the new self-heal GitHub App (used in the `git config user.name/user.email` step) cannot be known until a human creates that App — this research uses `engram-ci-bot[bot]` as a placeholder name only. | Code Examples, Architecture Patterns | None if the planner treats the literal string as a human-provisioning-time detail (it must — the App doesn't exist yet). Risk only if a plan hardcodes a *specific* fabricated identity and ships it uncorrected. |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> **Both questions were resolved during planning (2026-07-15) — see resolution notes inline below.**
+> Retained as-authored for the audit trail; the resolutions live in `21-03-PLAN.md`.
+>
+> Additionally, **Assumption A2 is RESOLVED**: no placeholder bot identity is needed. Context7 confirmed
+> `actions/create-github-app-token` exposes an `app-slug` output plus an official
+> `gh api /users/<slug>[bot] --jq .id` recipe, so the workflow derives the bot identity at runtime and
+> ships with zero fabricated provisioning-time literals.
+>
+> **Assumption A1 remains an open observation item** (not a blocker): whether native auto-merge survives
+> Renovate abandoning the branch after the self-heal push. Its failure mode is strictly weaker than the
+> wedge — a human clicks merge; the PR is not stuck — so it does not gate shipping. Verify on the first
+> live Renovate PR.
+>
+> **A bug in this document's own `ci.yaml` sketch was caught during planning** and is corrected in
+> `21-03-PLAN.md` `<scope_corrections>` item 2: the sketch's `git push HEAD:${{ github.head_ref }}` runs
+> from the default `pull_request` checkout, which is `refs/pull/N/merge` — a merge commit of head into
+> base. Pushing it would silently merge `main` into the Renovate branch. The plan mandates committing
+> onto the true PR head branch (guarded shallow-clone) instead. **Do not copy the sketch below verbatim.**
 
 1. **Does the newly-created App's token need the fork PR write-restriction workaround at all?**
    Verified: fork PRs never reach the guarded step (three-signal guard rejects them before the
