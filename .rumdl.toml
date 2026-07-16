@@ -26,6 +26,7 @@ exclude = [
   "vendor",
   "CHANGELOG.md", # generated + owned by release-please (re-dirtied each release; MD012)
   "docs-site", # Astro/Starlight site — MDX + generated output, not plain prose
+  ".planning", # GSD planning artifacts — agent-generated working docs, not shipped prose
 ]
 
 respect-gitignore = true
