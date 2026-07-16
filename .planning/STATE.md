@@ -4,11 +4,10 @@ milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 21
 current_phase_name: CI / Maintenance Hygiene
-status: completed
+status: "Phase 20 shipped — PR #368"
 stopped_at: Completed 20-04-PLAN.md
-last_updated: "2026-07-16T00:17:55.546Z"
+last_updated: "2026-07-16T01:03:28.378Z"
 last_activity: 2026-07-16
-last_activity_desc: Phase 20 complete, transitioned to Phase 21
 progress:
   total_phases: 8
   completed_phases: 8
@@ -30,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 Phase: 21 — CI / Maintenance Hygiene
 Plan: Not started
-Status: Plan 03 complete (#308 MintShortID collision cap) — Plan 04 next
-Last activity: 2026-07-16 — Phase 20 complete, transitioned to Phase 21
+Status: Phase 20 shipped — PR #368
+Last activity: 2026-07-16
 
 ## Deferred Items
 
