@@ -97,6 +97,18 @@ memory:
     maxChars: 280 # ENGRAM_SUMMARY_MAX_CHARS
     maxTokens: 1024 # ENGRAM_SUMMARY_MAX_TOKENS; generation ceiling (0 = gateway default). Raise for reasoning models.
     timeout: 30s # ENGRAM_SUMMARY_TIMEOUT; per-request HTTP timeout (0 = none)
+    # Scheduled `engram summarize-missing --all-scopes` sweep, run as a
+    # batch/v1 CronJob that reuses the Deployment's image + env (via the
+    # engram.containerEnv named template). Opt-in: only meaningful once
+    # summarize.model above is set, so it defaults off to avoid a no-op
+    # scheduled pod on every install.
+    cronjob:
+      enabled: false # opt-in; set true once summarize.model is configured
+      schedule: "0 3 * * *" # daily at 03:00
+      concurrencyPolicy: Forbid # never overlap sweeps
+      restartPolicy: OnFailure
+      successfulJobsHistoryLimit: 3
+      failedJobsHistoryLimit: 1
   qdrant:
     collection: "memory"
   oidc:
