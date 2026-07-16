@@ -29,7 +29,7 @@ Details below for the full per-phase rationale, decisions, and pitfall cross-ref
 - ✅ **v0.8.x Baseline** — Phases 1–7 (shipped)
 - ✅ **Connect Auth Hardening** — Phase 8 (shipped; R1–R4 verified 2026-07-08)
 - ✅ **v0.9.x — Recall Quality** — Phases 9–12 (shipped 2026-07-10, PR #336): retrieval eval + ranking precision (#261), embedder query/document asymmetry (#305), async-on-write summaries (#320), per-memory usage signals (#317). Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
-- 🚧 **v0.10.x — Hardening & Write Lane** — Phases 13–21 (planned 2026-07-10): embedder reliability & options (#333/#332/#331/#334/#337, closes #261), Connect write lane + CSRF + stateless session rotation (#322/#323), correctness & polish tail, CI/maintenance hygiene. See `.planning/REQUIREMENTS.md` and `.planning/research/SUMMARY.md`.
+- ✅ **v0.10.x — Hardening & Write Lane** — Phases 13–21 (shipped 2026-07-16): embedder reliability & options (#333/#332/#331/#334/#337, closes #261), Connect write lane + CSRF + stateless session rotation (#322/#323), correctness & polish tail, CI/maintenance hygiene. 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge only → #369). Full detail archived at `milestones/v0.10.x-ROADMAP.md`.
 
 ## Phases
 
@@ -70,8 +70,10 @@ Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
 
 </details>
 
-<details open>
-<summary>🚧 v0.10.x — Hardening & Write Lane (Phases 13–21) — IN PROGRESS</summary>
+<details>
+<summary>✅ v0.10.x — Hardening & Write Lane (Phases 13–21) — SHIPPED 2026-07-16</summary>
+
+Full detail archived at `milestones/v0.10.x-ROADMAP.md`.
 
 - [x] **Phase 13: Embedder Reliability Foundation** - Configurable HTTP timeout (re-derived backoff budget) + base-URL `/v1` join fix across every provider shape + embedder-config-identity payload stamp (completed 2026-07-11)
 - [x] **Phase 14: Embedder Model Options & Eval** - Direct Gemini embeddings (eval-verified task_type behavior) + #261 prod-parity re-confirm on qwen3 + docs-site/Helm model recipes (completed 2026-07-11)
@@ -79,9 +81,9 @@ Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
 - [x] **Phase 16: CSRF Interceptor** - Origin/Sec-Fetch-Site primary defense + session-bound double-submit token on every write RPC; read lane untouched (completed 2026-07-12)
 - [x] **Phase 17: Wired Write Handlers (Full CRUD + Schedule)** - deps.* subject/actor refactor + all six write RPCs delegating to the shared MCP business-logic layer, MCP/Connect parity-tested (completed 2026-07-13)
 - [x] **Phase 18: Stateless Session Rotation** - Sliding-expiry cookie re-seal on every authenticated request, new ADR for the no-revocation trade-off, no server-side state (completed 2026-07-13)
-- [ ] **Phase 19: Console Write UX** - Create/edit/delete/re-share/schedule from the operator console over the write lane, with CSRF + a silent opportunistic auth-race retry
+- [x] **Phase 19: Console Write UX** - Create/edit/delete/re-share/schedule from the operator console over the write lane, with CSRF + a silent opportunistic auth-race retry (completed 2026-07-15; live browser E2E UAT deferred → #366)
 - [x] **Phase 20: Correctness & Polish** - Discovery proto fidelity, MintShortID collision cap, embed param-key/body-build cleanup, discovery short_id schema, summarize-missing CronJob (completed 2026-07-16)
-- [ ] **Phase 21: CI / Maintenance Hygiene** - Renovate vendored-SPA drift fix, Phase-11 review residuals, `.rumdl.toml` `.planning` exclude
+- [x] **Phase 21: CI / Maintenance Hygiene** - Renovate vendored-SPA self-heal, Phase-11 review residuals, `.rumdl.toml` `.planning` exclude (completed 2026-07-16; #301 live self-heal observation deferred, post-merge only → #369)
 
 </details>
 
@@ -230,253 +232,27 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 - Phase 11 — Async-on-Write Summaries (3 plans): bounded worker pool off the write path (#320)
 - Phase 12 — Per-Memory Usage Signals (6 plans): get/update counters, hybrid OTLP+payload, never affects ranking (#317)
 
-### Phase 13: Embedder Reliability Foundation
+### Phases 13–21 (v0.10.x — Hardening & Write Lane) — ✅ SHIPPED 2026-07-16
+
+Full phase details (goals, success criteria, plans, decisions, tech debt) are archived at
+[`milestones/v0.10.x-ROADMAP.md`](milestones/v0.10.x-ROADMAP.md). Requirements outcomes at
+[`milestones/v0.10.x-REQUIREMENTS.md`](milestones/v0.10.x-REQUIREMENTS.md). Audit (tech_debt — 19/20 requirements, 1 deferred) at
+[`milestones/v0.10.x-MILESTONE-AUDIT.md`](milestones/v0.10.x-MILESTONE-AUDIT.md).
+
+- Phase 13 — Embedder Reliability Foundation (3 plans): configurable timeout + base-URL join fix + embedder-config-identity stamp (#333/#332)
+- Phase 14 — Embedder Model Options & Eval (3 plans): direct Gemini + prod-parity re-confirm + model recipes (#331/#334/#337, closes #261)
+- Phase 15 — Additive Proto + Stub Write Handlers (4 plans): 6 additive write RPCs, idempotency-annotation CI gate (#322)
+- Phase 16 — CSRF Interceptor (3 plans): Origin/Sec-Fetch-Site + session-bound double-submit token (#322)
+- Phase 17 — Wired Write Handlers (6 plans): deps.* refactor, MCP↔Connect authz parity (#322)
+- Phase 18 — Stateless Session Rotation (3 plans): sliding-expiry cookie re-seal, no server state (#323)
+- Phase 19 — Console Write UX (6 plans): create/edit/delete/re-share/schedule over the write lane, CSRF + auth-race retry (live browser E2E UAT deferred → #366)
+- Phase 20 — Correctness & Polish (4 plans): discovery proto fidelity, MintShortID cap, embed cleanups, summarize CronJob (#307/#308/#304/#302/#303/#269)
+- Phase 21 — CI / Maintenance Hygiene (3 plans): rumdl `.planning` exclude, phase-11 residuals (#335), Renovate self-heal (#301 — live observation deferred, post-merge only → #369)
 
-**Goal**: The embedder client survives provider brownouts and joins base URLs correctly across every documented provider shape, with each record traceable to the embedder config that produced it.
-**Depends on**: Nothing (fully isolated — zero import-graph overlap with the write-lane track; ships first as low-risk throughput)
-**Requirements**: REQ-embed-timeout, REQ-embed-baseurl-join, REQ-embed-config-identity
-**Success Criteria** (what is TRUE):
-
-1. Operators can set `ENGRAM_EMBED_TIMEOUT` (koanf, validated) to override the previously-hardcoded 30s HTTP client timeout, and the async summary-queue's backoff budget is re-derived from the new value — no stale `30 * time.Second` literal survives in `summaryqueue.go`.
-2. `ENGRAM_OPENAI_BASE_URL` values shaped like OpenRouter (trailing `/v1`), OpenAI (no trailing `/v1`), a trailing-slash variant, and the Gemini `/v1beta/openai` shape all resolve to the correct embeddings path — proven by a provider-shape table test, not just the one reported OpenRouter case.
-3. Every newly stored record carries an embedder-config-identity hash (model + dim + relevant params) in its payload, so a future reindex-boundary audit has the data it needs to detect mixed-embedding-space records.
-4. A slow or unreachable embedder fails within the configured timeout instead of hanging the calling MCP tool call (`store_memory`/`update_memory`/`search_memory`) indefinitely.
-
-**Status**: Not started
-**Plans**: 3/3 plans complete
-**Wave 1**
-
-- [x] 13-01-PLAN.md — Embed client hardening: ENGRAM_EMBED_TIMEOUT + shape-aware base-URL join/override (SC1/SC2/SC4)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 13-02-PLAN.md — Embedder-config-identity helper + payload codec + clean write-site stamping (SC3, 4 sites + rule)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 13-03-PLAN.md — Reindex identity stamping: verbatim-payload landmine + StoreAndEmbedderFromEnvNoEnsure signature ripple (SC3, 5th site)
-
-### Phase 14: Embedder Model Options & Eval
-
-**Goal**: Operators can point engram at Gemini's embeddings API and trust that the documented model recipes (OpenRouter/Gemini/OpenAI/local) actually deliver working asymmetric query/document embeddings, with the last v0.9.x eval follow-up closed.
-**Depends on**: Phase 13 (the timeout knob makes eval runs reliable)
-**Requirements**: REQ-embed-gemini-direct, REQ-embed-prod-parity-eval, REQ-embed-model-docs
-**Success Criteria** (what is TRUE):
-
-1. engram can embed queries and documents against Google's Gemini embeddings API with the wire shape verified against live docs, and `task_type`/dimension behavior is confirmed — not assumed — by a `task eval:retrieval` run asserting the shipped Gemini config's query and document vectors actually differ (silent `task_type` no-op is a recall regression with no error to catch it, per PITFALLS.md Pitfall 12 — this is a correctness gate, not a docs note).
-2. The #261 regression fixture re-confirms recall@8 parity on the prod-parity `qwen3-embedding-8b`@4096 config with `ENGRAM_EMBED_QUERY_INSTRUCTION`, closing GitHub #261 and #334 for good.
-3. The docs site and Helm `values.yaml` document each supported embedding model (OpenRouter/Gemini/OpenAI/local TEI-Ollama-vLLM), pairing base URL + model + vector dim + query instruction, with every model/dim change explicitly called out as requiring `engram reindex` (cross-linking `guides/reindex`).
-
-**Status**: Not started
-**Plans**: 3/3 plans complete
-
-**Wave 1** *(parallel — no file overlap)*
-
-- [x] 14-01-PLAN.md — Gemini differ-case eval fixture: skip-gated `TestRetrievalEval_AsymmetryDiffer` (named so `task eval:retrieval` reaches it) proving instruction-prefix asymmetry takes effect (Pitfall-12 gate, REQ-embed-gemini-direct)
-- [x] 14-02-PLAN.md — Model & recipe docs: new `guides/embedding-models.md` + Helm `values.yaml` commented recipes + cross-links/reindex callouts (REQ-embed-model-docs)
-
-**Wave 2** *(blocked on Wave 1)*
-
-- [x] 14-03-PLAN.md — Model-id lock checkpoint + live eval runs (Gemini differ + qwen3@4096 recall@8) + committed `14-EVAL-EVIDENCE.md` (REQ-embed-gemini-direct, REQ-embed-prod-parity-eval; closes #261/#334)
-
-### Phase 15: Additive Proto + Stub Write Handlers
-
-**Goal**: The Connect wire contract for all six write RPCs exists, is additive-only, and is provably impossible to reach over an unauthenticated GET — before any business logic is wired behind it.
-**Depends on**: Nothing (independent of the embedder track; establishes the write-lane's wire contract before any handler logic exists)
-**Requirements**: REQ-connect-write-rpcs
-**Success Criteria** (what is TRUE):
-
-1. `EngramService` exposes `StoreMemory`, `StoreDiscovery`, `UpdateMemory`, `DeleteMemory`, `SetVisibility`, `ScheduleMemory` as additive proto RPCs (no field renumbering), with `gen/go` and `gen/ts` regenerated and CI's `buf` drift check green.
-2. A CI lint/grep gate fails the build if any RPC in `engram.proto` carries `idempotency_level = NO_SIDE_EFFECTS` — asserted for all six new write RPCs (this option would make a mutating RPC GET-reachable and CSRF-exploitable, PITFALLS.md Pitfall 2).
-3. Calling any of the six write RPCs today returns `CodeUnimplemented` (the safe default via the embedded `Unimplemented...Handler`), not a panic or 500; a raw HTTP GET against any write RPC's path returns non-2xx.
-4. The five existing read RPCs are unaffected — identical wire format and behavior, verified by a regression test.
-
-**Status**: Not started
-**Plans**: 4/4 plans complete
-
-**Wave 1** *(parallel — no file overlap)*
-
-- [x] 15-01-PLAN.md — Additive proto contract (6 write RPCs + messages + Visibility enum + FieldMask/Timestamp + buf.validate) + protovalidate BSR dep + `buf.lock` + gen/ regenerate (SC1)
-- [x] 15-02-PLAN.md — Idempotency-level ban gate: `task proto:lint` grep-ban + mirrored CI `buf` job step (SC2)
-
-**Wave 2** *(blocked on 15-01)*
-
-- [x] 15-03-PLAN.md — Hand-rolled protovalidate interceptor (`connectvalidate.go`) + `mountConnect` wiring, auth-before-validate order (D-08/D-10)
-
-**Wave 3** *(blocked on 15-01 + 15-03)*
-
-- [x] 15-04-PLAN.md — Descriptor regression test (D-12, SC2/SC4) + full negative-path matrix across all six write RPCs (D-11, SC3)
-
-### Phase 16: CSRF Interceptor
-
-**Goal**: The write lane's primary defense against cross-site request forgery exists in the Connect interceptor chain before any write RPC does real work.
-**Depends on**: Phase 15 (needs the write-procedure names to gate on)
-**Requirements**: REQ-connect-csrf
-**Success Criteria** (what is TRUE):
-
-1. Every state-changing Connect RPC rejects a request whose Origin/Sec-Fetch-Site indicates a cross-origin caller, via Go 1.26 stdlib `net/http.CrossOriginProtection` as the primary defense.
-2. A session-bound double-submit CSRF token (HMAC over session identity, non-HttpOnly cookie, echoed as a request header) is required and validated on every write RPC before any handler logic runs; the token is never a bare random value and never checked without reference to the resolved `Subject`.
-3. The five existing read RPCs are provably unaffected — no CSRF header is required for them, verified by a regression test enumerating each read RPC against the CSRF interceptor's write-only allowlist.
-4. `TestConnectNoCORSHeaders` (or equivalent) remains green — no `Access-Control-Allow-Origin` is ever emitted from the Connect mux — preserved as a permanent CI gate, since same-origin (not `SameSite` alone) is the load-bearing CSRF mitigation.
-
-**Status**: Planned
-**Plans**: 3/3 plans complete
-**Wave 1**
-
-- [x] 16-01-PLAN.md — webauth CSRF signer: HKDF sub-key of ui.cookie_key + HMAC-over-Owner double-submit signer (D-08)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 16-02-PLAN.md — Connect write-only CSRF token interceptor (D-02/D-03/D-05/D-07) + Register/mountConnect wiring + D-06/SC2/SC3 regression matrix
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 16-03-PLAN.md — CrossOriginProtection whole-server wrap + Connect-shaped deny handler (D-04/D-07) + engram_csrf cookie minting (SC1)
-
-**Flag for /gsd-secure-phase.**
-
-### Phase 17: Wired Write Handlers (Full CRUD + Schedule)
-
-**Goal**: A caller on the Connect write lane can create, update, delete, re-share, and schedule memories/discoveries with exactly the same authorization and business-logic guarantees as the MCP lane, because both lanes run through the identical code path.
-**Depends on**: Phase 15 (proto contract), Phase 16 (CSRF gate already in place before any handler does real work)
-**Requirements**: REQ-connect-write-authz-parity
-**Success Criteria** (what is TRUE):
-
-1. `deps.storeMemory`/`updateMemory`/`deleteMemory`/`setVisibility`/`scheduleMemory`/`storeDiscovery` accept an explicit `subj store.Subject, actor string` — no ctx-derived resolution internally — and the MCP tool call sites are updated to pass them explicitly with unchanged MCP behavior (verified: existing MCP test suite stays green).
-2. **Invariant**: every Connect write handler is a thin proto/args adapter that calls the same `deps.*` method the MCP tool calls — never `store.*` directly — proven by an MCP/Connect parity test per RPC asserting identical rejections (rule un-share attempt, stale-summary conflict, cross-owner id) on both lanes.
-3. A caller can `StoreMemory`/`StoreDiscovery`/`UpdateMemory`/`DeleteMemory`/`SetVisibility`/`ScheduleMemory` over Connect and see the effect reflected in subsequent reads; a rule record remains immutable/un-shareable over Connect exactly as over MCP (DEC-iedk preserved on both lanes).
-4. Every by-id write RPC re-wraps a `store.ErrNotFound` with the caller's original input (short_id or UUID as supplied), never the resolved UUID — verified by a cross-owner table test per RPC — so no existence leak (DEC-xa6) reopens via a browser-visible network tab.
-5. **Invariant**: no write RPC carries `idempotency_level = NO_SIDE_EFFECTS` — re-asserted by the Phase 15 CI gate now that real logic exists behind these RPCs.
-
-**Status**: Planned (revised after cross-AI review round 2 — 6 plans, 4 waves)
-**Plans**: 6/6 plans complete
-**Wave 1**
-
-- [x] 17-01-PLAN.md — Ordered owner-claim list + HARDENED injective namespace encoding (D-04/D-05/D-06) [wave 1]
-- [x] 17-02-PLAN.md — Store payload-only update + memStore interface (incl DeleteAll/ListScopes) + caller seam + write-lane single-path + by-id results + sentinels (D-01/D-02/D-03/D-10) [wave 1]
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 17-03-PLAN.md — protoconv conversion layer + RFC3339Nano + result mapping + exact-mapping tests (D-09) [wave 2]
-- [x] 17-06-PLAN.md — Read-lane transport-neutral typed core convergence (D-07 hardened) [wave 2]
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 17-04-PLAN.md — connectError mapper + scripted-spy fake + six write handlers + read-lane rewire + negative-matrix fix (D-07/D-10/D-11) [wave 3]
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 17-05-PLAN.md — Per-RPC spy parity table + split cross-owner leak tables + idempotency-ban re-assert (D-10/D-11/D-12) [wave 4]
-
-**Flag for /gsd-secure-phase.**
-
-### Phase 18: Stateless Session Rotation
-
-**Goal**: An operator's authenticated session stays alive across a long working session without ever dropping an in-flight write, without introducing any server-side session state.
-**Depends on**: Phase 17 (rotation's value is keeping write-capable sessions alive; sequenced after the write lane exists so this review doesn't conflate "does the write lane work" with "is the cookie security model still sound")
-**Requirements**: REQ-session-rotation
-**Success Criteria** (what is TRUE):
-
-1. Every authenticated Connect request (read or write) re-seals the `{owner, expiry}` cookie with a fresh, forward-only expiry once the session crosses a documented re-seal threshold — with no new server-side state (honors DEC-u9v).
-2. A new ADR documents what "rotation" means under statelessness and records the explicit no-revocation limitation (a stolen sealed cookie is valid for at most the session TTL; the only kill-switch is rotating `ENGRAM_SESSION_KEY`) rather than letting the trade-off drift past DEC-u9v silently.
-3. Concurrent requests carrying the same near-expiry cookie all produce forward-monotonic expiries (`nowUTC().Add(sessionTTL)`, not a delta from the old value) — no re-seal race silently shortens a session.
-4. Hard expiry stays strict and fail-closed; a documented, bounded clock-skew budget applies only to the rotation-threshold comparison, never to the hard expiry check itself.
-
-**Status**: Planned
-**Plans**: 3/3 plans complete
-
-**Wave 1** *(parallel — no file overlap)*
-
-- [x] 18-01-PLAN.md — webauth reseal core: Handler.Reseal (absolute forward-only expiry past ½-TTL+skew threshold, dual-cookie D-08) + headerOnlyWriter shim + resealThreshold/resealSkew constants; SC3 forward-monotonic concurrency + SC4 hard-expiry guard
-- [x] 18-02-PLAN.md — SC2 ADR engram-slr8 (rotation-under-statelessness, no-revocation limitation, ENGRAM_UI_COOKIE_KEY kill-switch, hard-expiry vs threshold-skew split) + docs/adr/README.md index/prose
-
-**Wave 2** *(blocked on 18-01)*
-
-- [x] 18-03-PLAN.md — Connect reseal interceptor (innermost, best-effort, read AND write) + mountConnect/Register/serve.go DI ripple (webHandler.Reseal), interceptor-contract tests
-
-**Flag for /gsd-secure-phase — mandatory** (changes the security posture of the whole cookie-auth model).
-
-### Phase 19: Console Write UX
-
-**Goal**: An operator can create, edit, delete, re-share, and schedule memories/discoveries directly from the console, with write failures handled gracefully rather than losing their input.
-**Depends on**: Phase 17 (write lane must exist), Phase 16 (CSRF token pattern), Phase 18 (rotation UX stable)
-**Requirements**: REQ-console-write-ux
-**Success Criteria** (what is TRUE):
-
-1. An operator can create, edit, delete, change visibility, and schedule a memory or discovery from the console UI, backed by the Connect write lane.
-2. The console attaches the CSRF token to every write request automatically, mirroring the server-side double-submit pattern.
-3. A write that fails with an auth-class error is silently retried once — an opportunistic auth-race retry that re-reads the current session/CSRF cookie to recover a cookie-freshness race (the server does not re-seal a failed request, so this is not a rotation recovery); if that also fails, the operator is prompted to re-authenticate without losing their in-flight input, which is preserved across the `/auth/login` OIDC redirect via a `sessionStorage` resume envelope.
-
-**Status**: Planned
-**Plans**: 6/6 plans complete
-
-Plans:
-**Wave 1**
-
-- [x] 19-01-PLAN.md — Foundation: re-vendor console gen client (6 write RPCs) + `--destructive` design token
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 19-02-PLAN.md — Write transport: CSRF-attach + retry-once interceptors, `engramWrite` client
-- [x] 19-03-PLAN.md — Destructive/action affordances: delete confirm dialog, share warning, row/detail actions
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 19-04-PLAN.md — Mutation hooks: memory + discovery create/edit/delete/visibility/schedule (optimistic rollback)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 19-05-PLAN.md — Slide-over create/edit sheets (memory + discovery) with in-form share warning + inline re-auth
-
-**Wave 5** *(blocked on Wave 4 completion)*
-
-- [x] 19-06-PLAN.md — Route integration: WriteSurfaces host + New entry points wired into observe/search/discovery
-
-**UI hint**: yes
-
-### Phase 20: Correctness & Polish
-
-**Goal**: A cluster of independent correctness gaps identified during v0.9.x code review are closed, each removing a specific silent-failure or drift risk.
-**Depends on**: Nothing (independent of the write-lane and embedder tracks; can be scheduled flexibly)
-**Requirements**: REQ-discovery-proto-fidelity, REQ-shortid-mint-cap, REQ-embed-param-key-sharing, REQ-embed-body-build-collapse, REQ-discovery-shortid-schema, REQ-summarize-cronjob
-**Success Criteria** (what is TRUE):
-
-1. `SearchDiscoveries` returns `kind`, `citations`, and `summary` over the Connect wire instead of silently dropping them.
-2. `MintShortID` gives up with an explicit exhaustion error after a bounded number of collision-retry attempts instead of looping indefinitely.
-3. `config.ParseEmbedParams` and `embedReq`'s wire contract share a single reserved-param-key list, so they cannot silently desync.
-4. `embed.Client.embed()` builds its request body via a single map-based code path (no separate struct-marshal vs. map-merge branches).
-5. `storeDiscoveryArgs.ID`'s jsonschema advertises `short_id` support, matching the skill docs.
-6. The Helm chart ships `engram summarize-missing` as a `batch/v1` CronJob reusing the Deployment's image/env plumbing via a shared `_helpers.tpl` block.
-
-**Status**: In Progress
-**Plans**: 4/4 plans complete
-
-- [x] 20-01-PLAN.md — proto + discovery: extend Memory (kind=21/citations=22) + regen, populate memoryToProto, pin storeDiscoveryArgs.ID schema (#307, #303)
-- [x] 20-02-PLAN.md — embed cleanups: single map-based embed() body path + shared embed.ReservedParamKeys consumed by config (#302, #304)
-- [x] 20-03-PLAN.md — store/shortid: bound MintShortID at 16 real collision checks + ErrShortIDExhausted sentinel (#308)
-- [x] 20-04-PLAN.md — helm: summarize-missing batch/v1 CronJob + shared _helpers.tpl env + chart:validate (#269)
-
-### Phase 21: CI / Maintenance Hygiene
-
-**Goal**: The CI pipeline and planning tooling stop generating false-positive red builds so real signal isn't drowned out by noise.
-**Depends on**: Nothing (independent; can land any time)
-**Requirements**: REQ-ci-renovate-spa-drift, REQ-p11-review-residuals, REQ-lint-planning-exclude
-**Success Criteria** (what is TRUE):
-
-1. A Renovate bump to the vendored SPA no longer reddens `main` — an in-repo self-healing fallback replaces the inert `postUpgradeTasks` rule.
-2. The Phase-11 async-summary code-review residuals are resolved: WR-03 (`Wait` misuse), IN-01 (`storeMemory`/`scheduleMemory` duplicated Upsert-then-enqueue block), IN-02 (test hermeticity).
-3. `task lint:markdown` passes with `.planning` excluded from `.rumdl.toml`, while shipped Markdown outside `.planning/` is still linted (the systemic planning-doc noise is gone).
-
-**Status**: Not started
-**Plans**: 3/3 plans complete
-
-- [x] 21-01-PLAN.md — rumdl: exclude `.planning` so `task lint:markdown` (and `task` default) passes, + correct SC2/SC3 above (REQ-lint-planning-exclude)
-- [x] 21-02-PLAN.md — phase-11 residuals: test-only `Wait()` on both queues, shared `persistAndEnqueue`, hermetic env test (#335)
-- [x] 21-03-PLAN.md — renovate self-heal: guarded App-token push of the regenerated SPA on `ui-drift` drift (#301)
 
 ## Progress
 
-**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · 13 → 14 (embedder track, independent) · 15 → 16 → 17 → 18 → 19 (write-lane track, strict order) · 20 → 21 (independent, flexible scheduling) — v0.10.x in progress
+**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · 13 → 14 (embedder track) · 15 → 16 → 17 → 18 → 19 (write-lane track, strict order) · 20 → 21 (independent) — v0.10.x shipped 2026-07-16
 
 | Phase | Milestone | Requirements | Status | Completed |
 |-------|-----------|--------------|--------|-----------|
@@ -503,4 +279,4 @@ Plans:
 | 21. CI / Maintenance Hygiene | v0.10.x | 3/3 | Complete   | 2026-07-16 |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
-**v0.10.x — Hardening & Write Lane: roadmap created 2026-07-10 · 9 phases (13–21) · 0/20 requirements complete.** Next: `/gsd-plan-phase 13`.
+**v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.

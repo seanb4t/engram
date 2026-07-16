@@ -1,19 +1,19 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.10.x
-milestone_name: — Hardening & Write Lane
-current_phase: 21
-current_phase_name: ci-maintenance-hygiene
-status: verifying
-stopped_at: "BLOCKED: 21-03 Task 3 human checkpoint (GitHub App provisioning)"
-last_updated: "2026-07-16T16:44:49.306Z"
+milestone_name: Hardening & Write Lane
+status: Awaiting next milestone
+stopped_at: BLOCKED — 21-03 Task 3 human checkpoint (GitHub App provisioning for ci.yaml ui-drift self-heal)
+last_updated: "2026-07-16T19:52:53.956Z"
 last_activity: 2026-07-16
+last_activity_desc: Milestone v0.10.x completed and archived
 progress:
   total_phases: 9
   completed_phases: 9
   total_plans: 35
   completed_plans: 35
-  percent: 100
+current_phase: 21
+current_phase_name: ci-maintenance-hygiene
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 ## Current Position
 
-Phase: 21 (ci-maintenance-hygiene) — BLOCKED
-Plan: 3 of 3
-Status: Phase 21 shipped — PR #371 (verification human_needed by design; #369 live obs post-merge)
-Last activity: 2026-07-16
+Phase: Milestone v0.10.x complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-07-16 — Milestone v0.10.x completed and archived
 
 ## Deferred Items
 
@@ -192,3 +192,7 @@ Resume file: 21-03-SUMMARY.md
 | Phase 20 P04 | 3min | 3 tasks | 5 files |
 | Phase 21 P01 | 6min | 2 tasks | 3 files |
 | Phase 21 P02 | 15min | 3 tasks | 5 files |
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
