@@ -109,7 +109,8 @@ change**. Independent of every other track; can land any time.
   `t.Setenv("ENGRAM_SUMMARY_ON_WRITE", "")` alongside the existing `t.Setenv` calls, matching
   the pattern in `config_test.go`'s `TestLoadDefaults`, so an ambient env can never start an
   unshut-down queue (2 leaked worker goroutines for the test binary's lifetime).
-- **D-07: WR-01 stays closed.** The worker pool's `context.Background()` was reviewed and
+- **D-07 [informational]:** WR-01 stays closed — a decision to take **no action**, so no plan
+  covers it (nothing to implement). The worker pool's `context.Background()` was reviewed and
   **accepted as a non-issue** in #335 (`serve.go` exits immediately after `drainSummaries`;
   each fill is bounded by a per-attempt `context.WithTimeout`). Do not reopen it.
 - **D-08: line numbers in #335 and 11-REVIEW.md have drifted** — the review cites

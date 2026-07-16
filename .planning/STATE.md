@@ -6,8 +6,9 @@ current_phase: 21
 current_phase_name: CI / Maintenance Hygiene
 status: "Phase 20 shipped — PR #368"
 stopped_at: Phase 21 context gathered
-last_updated: "2026-07-16T01:25:35.507Z"
+last_updated: "2026-07-16T14:36:54.499Z"
 last_activity: 2026-07-16
+last_activity_desc: Phase 21 planning complete
 progress:
   total_phases: 9
   completed_phases: 8
@@ -30,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 Phase: 21 — CI / Maintenance Hygiene
 Plan: Not started
 Status: Phase 20 shipped — PR #368
-Last activity: 2026-07-16
+Last activity: 2026-07-16 — Phase 21 planning complete
 
 ## Deferred Items
 
