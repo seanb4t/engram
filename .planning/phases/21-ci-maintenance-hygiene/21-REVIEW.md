@@ -16,7 +16,7 @@ findings:
   warning: 1
   info: 1
   total: 2
-status: issues_found
+status: resolved  # all findings fixed — see 21-REVIEW-FIX.md
 ---
 
 # Phase 21: Code Review Report
