@@ -81,16 +81,81 @@ fill via a bounded worker pool off the write path; and per-record usage signals
 
 ---
 
+## Milestone: v0.10.x — Hardening & Write Lane
+
+**Shipped:** 2026-07-16
+**Phases:** 9 (13–21) | **Plans:** 35 | **Tasks:** 88
+
+### What Was Built
+
+Embedder reliability (configurable timeout, base-URL join fix, config-identity stamp) + options
+(direct Gemini, prod-parity eval, model docs). The full Connect **write lane** in strict order:
+6 additive write RPCs → CSRF (Origin + double-submit) → wired handlers with MCP↔Connect authz
+parity → stateless sliding-expiry session rotation → console write UX. Plus a correctness/polish
+tail (discovery proto fidelity, MintShortID cap, embed cleanups, summarize CronJob) and CI/maintenance
+hygiene (rumdl exclude, Phase-11 residuals, Renovate self-heal).
+
+### What Worked
+
+- **Dependency-ordered write lane.** Building proto → CSRF → handlers → session → console in strict
+  order meant each phase wired cleanly onto verified foundations; the integration audit found the
+  whole spine WIRED with zero gaps.
+- **The #1 risk got a real artifact.** MCP↔Connect authz parity (research Pitfall 1) was backed by
+  an actual per-RPC parity test (`connectapi_write_parity_test.go`), not a SUMMARY claim.
+- **Honesty gates held end-to-end.** REQ-ci-renovate-spa-drift stayed open from planning through
+  merge because its self-heal can only be observed post-merge — no automated gate closed it early.
+- **Verify-against-toolchain caught phantoms.** Stale gopls `DuplicateMethod` diagnostics (Phase 21)
+  were disproven by a real `go build`; the recurring lesson held.
+
+### What Was Inefficient
+
+- **Recurring 1Password signing lock** (d8rjr4zqva et al.) stalled the plan chain mid-run in both
+  Phase 20 and Phase 21 at the same point — a per-session friction that keeps recurring.
+- **VALIDATION.md bookkeeping drift.** Phases 16 & 19 shipped with unflipped/unfilled VALIDATION.md
+  (16 `draft`, 19 an unfilled template) despite full test coverage — reconciled retroactively at
+  milestone close (0 real gaps). The signoff flag should flip at execution time.
+- **Milestone-close tooling assumed a different repo shape.** The GSD workflow wanted to `git tag`
+  and push to `main`; this repo uses release-please for tags and protects `main` — required adapting
+  the archival to a branch+PR with no tag.
+
+### Patterns Established
+
+- **Post-merge-only verification is legitimate** — some requirements (a self-heal that only fires on
+  a real bot PR after the workflow is on `main`) can't be observed before shipping; ship with the
+  observation deferred and tracked by an issue, don't block the merge.
+- **GitHub App installation token for CI self-push** — the only credential that re-triggers required
+  checks under branch protection (`GITHUB_TOKEN` pushes don't).
+- **`set -e` command-substitution swallow** — `echo "x=$(cmd)"` never fails the step; assign on its
+  own line.
+
+### Key Lessons
+
+- Distinguish `partial`/deferred from `unsatisfied`/failed at audit time — the FAIL gate should only
+  fire on real failures, not honest post-merge deferrals (v0.10.x = `tech_debt`, not `gaps_found`).
+- Don't hardcode drift-prone numbers in docs (the rumdl failure count drifted 1505→1566 in a day;
+  dropped the number entirely).
+
+### Cost Observations
+
+- Model mix: opus for planning, sonnet for research/execution/verification/review.
+- Worktrees degraded to sequential main-tree throughout (#683) — the same known condition as v0.9.x.
+- Per-phase lifecycle ran fully (discuss→plan→execute→verify→secure→review→ship) with per-phase PRs,
+  unlike v0.9.x's single all-phases PR.
+
+---
+
 ## Cross-Milestone Trends
 
 Populated as milestones accumulate.
 
-| Trend | v0.9.x | Notes |
-|-------|--------|-------|
-| Already-shipped surprises | 1 (Phase 10) | Also Phase 8 in the baseline — baseline-verify before planning |
-| Worktree isolation | degraded (#683) | Stacked unmerged branch; cleared post-merge |
-| Reusable kernels extracted | 2 (CR-01 shutdown, `*time.Time`) | Applied across Phases 11–12 |
-| Requirements satisfied | 6/6 | 3-source cross-referenced; audit PASSED |
+| Trend | v0.9.x | v0.10.x | Notes |
+|-------|--------|---------|-------|
+| Already-shipped surprises | 1 (Phase 10) | 0 | v0.9.x also had Phase 8 in the baseline — baseline-verify before planning |
+| Worktree isolation | degraded (#683) | degraded (#683) | Stacked unmerged branch both times; cleared post-merge |
+| Reusable kernels extracted | 2 (CR-01 shutdown, `*time.Time`) | App-token self-push, `set -e` sub-swallow, post-merge-defer | Applied within-milestone and captured for reuse |
+| Requirements satisfied | 6/6 | 19/20 (1 post-merge-deferred) | 3-source cross-referenced |
+| Audit verdict | PASSED | tech_debt (0 blockers) | v0.10.x: 1 deferred obs + bookkeeping, no defects |
+| Merge shape | 1 PR (all phases) | per-phase PRs | v0.10.x shipped each phase independently |
 
 ---
 
