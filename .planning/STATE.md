@@ -4,17 +4,17 @@ milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 21
 current_phase_name: ci-maintenance-hygiene
-status: executing
-stopped_at: Completed 21-01-PLAN.md
-last_updated: "2026-07-16T14:52:56.750Z"
+status: paused
+stopped_at: "BLOCKED: 21-03 Task 3 human checkpoint (GitHub App provisioning)"
+last_updated: "2026-07-16T15:04:55.271Z"
 last_activity: 2026-07-16
-last_activity_desc: Phase 21 execution started
+last_activity_desc: 21-03 Tasks 1-2 committed; Task 3 checkpoint returned to human
 progress:
   total_phases: 9
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 35
-  completed_plans: 34
-  percent: 89
+  completed_plans: 35
+  percent: 100
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 ## Current Position
 
-Phase: 21 (ci-maintenance-hygiene) — EXECUTING
+Phase: 21 (ci-maintenance-hygiene) — BLOCKED
 Plan: 3 of 3
-Status: Ready to execute
-Last activity: 2026-07-16 — Phase 21 execution started
+Status: Stopped — 21-03 Task 3 human checkpoint pending (GitHub App provisioning for ci.yaml ui-drift self-heal). Tasks 1-2 committed; see 21-03-SUMMARY.md.
+Last activity: 2026-07-16 — 21-03 Tasks 1-2 committed; Task 3 checkpoint returned to human
 
 ## Deferred Items
 
@@ -147,12 +147,13 @@ cookie-auth security posture).
 - **Research Pitfall 1 (highest risk this milestone):** a Connect write RPC that bypasses `deps.*` and calls `store.*` directly would silently reintroduce the handler-vs-store authz split DEC-cgb rejected, one layer up (business logic, e.g. rule immutability DEC-iedk). Phase 17's success criteria make MCP/Connect parity tests a hard gate, not optional.
 - **Research Pitfall 7 (session rotation):** stateless rotation has no revocation mechanism; Phase 18 requires a new ADR explicitly documenting this trade-off before implementation, not a silent drift past DEC-u9v.
 - Tracked tech debt now scoped into v0.10.x phases: #334→Phase 14, #335→Phase 21, #333/#332/#331→Phase 13/14, #337→Phase 14. Systemic `.rumdl.toml` `.planning` exclude → Phase 21.
+- 21-03 Task 3 checkpoint: GitHub App provisioning for ci.yaml ui-drift self-heal requires human GitHub admin action (create app, install on seanb4t/engram, set vars.CI_BOT_APP_CLIENT_ID + secrets.CI_BOT_APP_PRIVATE_KEY). See 21-03-SUMMARY.md 'Checkpoint: Task 3'.
 
 ## Session Continuity
 
-Last session: 2026-07-16T14:52:13.908Z
-Stopped at: Completed 21-01-PLAN.md
-Resume file: None
+Last session: 2026-07-16T15:02:30.943Z
+Stopped at: BLOCKED — 21-03 Task 3 human checkpoint (GitHub App provisioning for ci.yaml ui-drift self-heal)
+Resume file: 21-03-SUMMARY.md
 
 ## Performance Metrics
 
