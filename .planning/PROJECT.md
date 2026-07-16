@@ -13,17 +13,19 @@ shipped. Every locked decision and every routed requirement below is **implement
 to main**. This document records the as-built state so future milestones build on an accurate
 foundation.
 
-**Latest milestone — v0.9.x — Recall Quality — ✅ SHIPPED 2026-07-10** (PR #336; opened
-2026-07-09): made recall measurably trustworthy as the store grows, so `search-before-store`
-stops producing duplicates. Four phases (9–12): retrieval eval + ranking precision (#261),
-embedder query/document asymmetry (#305, already shipped under Phase 4), async-on-write
-summaries (#320), and per-memory usage signals (#317). 6/6 requirements satisfied; audit
-PASSED. Full detail in `.planning/milestones/v0.9.x-ROADMAP.md`.
+**Latest milestone — v0.10.x — Hardening & Write Lane — ✅ SHIPPED 2026-07-16** (archival
+PR #375; opened 2026-07-10): hardened embedder reliability, shipped the Connect **write lane**
+end-to-end (6 additive write RPCs + CSRF + stateless session rotation + full MCP↔Connect authz
+parity + console write UX), and cleared the correctness/CI backlog. Nine phases (13–21); 19/20
+requirements verified (the one deferred — REQ-ci-renovate-spa-drift's live self-heal observation —
+is post-merge-only, tracked #369). Full detail in `.planning/milestones/v0.10.x-ROADMAP.md`.
 
-**Active milestone — v0.10.x — Hardening & Write Lane** (opened 2026-07-10): harden the
-operational surfaces that bit us in v0.9.x (embedder reliability), add the deferred Connect
-**write lane** with proper auth (CSRF + session rotation), and pay down the promoted-but-unbuilt
-correctness/CI backlog — so engram is production-solid and writable over Connect. See
+**Active milestone — v0.11.x — Capture & Service Identity** (opened 2026-07-16): make
+programmatic capture correct and re-runnable — idempotency/upsert (#340), history-preserving
+supersession (#342), structured provenance/citations on curated memories (#341), category
+filtering over MCP (#374) — and give headless service principals a first-class, isolated identity
+via pluggable service auth (OIDC client-credentials + static-token fallback, #362) with a
+tenancy-isolation guarantee (#373); plus per-lane embedder/chat base URLs (#350). See
 `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`.
 
 ## Current State: v0.10.x — Hardening & Write Lane ✅ SHIPPED (2026-07-16)
@@ -41,12 +43,29 @@ Full detail archived at `milestones/v0.10.x-{ROADMAP,REQUIREMENTS,MILESTONE-AUDI
 - **Correctness & polish** — SearchDiscoveries proto fidelity (#307), MintShortID cap (#308), embed/discovery polish (#302/#303/#304), summarize CronJob (#269).
 - **CI / maintenance hygiene** — Renovate vendored-SPA self-heal (#301, live obs pending #369), Phase-11 review residuals (#335), `.rumdl.toml` `.planning` exclude.
 
-## Next Milestone
+## Current Milestone: v0.11.x — Capture & Service Identity
 
-**TBD** — start with `/gsd-new-milestone` (questioning → research → requirements → roadmap).
-Open carry-forward items for scoping: REQ-ci-renovate-spa-drift live observation (#369), the
-full-stack e2e harness for console UAT (#366), the `Taskfile.yaml` yamlfmt/CI gate reconciliation
-(#370), and the remaining from-beads refactor cluster.
+**Goal:** Make programmatic capture correct and re-runnable, and give headless service principals
+a first-class, isolated identity — so agents can write memory mechanically and safely into shared
+stores.
+
+**Target features:**
+
+- **Capture ergonomics & correctness** — idempotency/upsert on `store_memory` (#340), supersession
+  links / correct-with-history (#342), structured provenance/citations on curated memories (#341),
+  category filter over the MCP surface (#374)
+- **Service-principal access & isolation** — pluggable service auth (OIDC client-credentials +
+  static-token fallback, #362), tenancy-isolation guarantee for headless service principals (#373)
+- **Embedder config** — distinct base URLs for the embedder vs the chat/summarize client (#350)
+
+**Key context:** builds on the existing `owner`-claim authz model and the v0.10.x Connect write
+lane; must preserve the core invariant (explicit, zero-junk capture — no auto-extraction). Pluggable
+service auth (both OIDC client-credentials and static tokens) is the largest design surface, so
+research runs first to ground the tenancy/isolation and idempotency/supersession design.
+
+**Explicitly out of scope this milestone** — see `### Deferred` below (console e2e harness #366,
+Taskfile yamlfmt/CI #370, renovate self-heal live obs #369, runtime reindex-boundary enforcement,
+from-beads refactor cluster).
 
 ## Core Value
 
@@ -115,7 +134,9 @@ pre-close `REQUIREMENTS.md` snapshot).
 
 ### Active
 
-No active milestone — v0.10.x shipped 2026-07-16. Start the next milestone with `/gsd-new-milestone`.
+**v0.11.x — Capture & Service Identity** (opened 2026-07-16). Requirements are scoped in
+`.planning/REQUIREMENTS.md` across three categories: capture ergonomics & correctness
+(#340/#341/#342/#374), service-principal access & isolation (#362/#373), and embedder config (#350).
 
 ### Deferred (carry-forward for next milestone)
 
@@ -426,4 +447,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-07-16 — CLOSED milestone v0.10.x — Hardening & Write Lane (`/gsd-complete-milestone`): 9 phases (13–21) shipped, 19/20 requirements verified (REQ-ci-renovate-spa-drift's live self-heal observation deferred post-merge → #369), audit `tech_debt` (9/9 Nyquist, 0 blockers), archived to `milestones/v0.10.x-*`. Prior: 2026-07-13 after Phase 18 (Stateless Session Rotation) — validated REQ-session-rotation: stateless sliding-expiry re-seal (`webauth.Handler.Reseal` + `newConnectResealInterceptor`, innermost, read+write, absolute `now+TTL`, dual-cookie refresh, zero server-side state, no new `ENGRAM_` var), hard-expiry stays byte-for-byte strict (skew threshold-only, SC4), 50-goroutine `-race` forward-monotonic proof (SC3), and hand-authored ADR `engram-slr8` naming the real `ENGRAM_UI_COOKIE_KEY` kill-switch (not the phantom `ENGRAM_SESSION_KEY`); verified 5/5 must-haves (#323); mandatory `/gsd-secure-phase 18` pending. Prior: 2026-07-13 after Phase 17 (Wired Write Handlers — Full CRUD + Schedule) — validated REQ-connect-write-authz-parity: all six Connect write RPCs are thin adapters delegating to the shared `deps.*` MCP business-logic layer via an explicit `caller` seam + single `protoconv` conversion + single `connectError` mapper (with `context.Canceled`/`DeadlineExceeded` arms), read handlers rewired onto the typed single-path core (D-07); proven by per-RPC MCP↔Connect `TestWriteParity` (identical rejections + AST delegation sub-test) and `TestCrossOwnerRewrap` (no existence leak, DEC-xa6), the `NO_SIDE_EFFECTS` idempotency ban re-asserted in CI, and a fail-closed `requireQdrant` gate pinned to Qdrant v1.18.2; verified 5/5 must-haves (#322). Prior: 2026-07-11 after Phase 16 (CSRF Interceptor) — validated REQ-connect-csrf: the write lane's two-layer transport CSRF defense (Go 1.26 `net/http.CrossOriginProtection` whole-server wrap + Connect-shaped `permission_denied` deny handler; double-submit HMAC-over-Owner token interceptor placed `subject → CSRF → validate`, write-only allowlist on generated Procedure constants, non-HttpOnly `engram_csrf` cookie minted in `Callback`) verified 9/9 must-haves; flagged for `/gsd-secure-phase` (#322). Prior: 2026-07-11 after Phase 15 (Additive Proto + Stub Write Handlers) — validated REQ-connect-write-rpcs: the six additive write RPCs now exist in the Connect wire contract (buf.validate + hand-rolled protovalidate interceptor, auth 401 → validate 400), additive-only, provably GET-unreachable via `UnimplementedEngramServiceHandler` stubs + the `NO_SIDE_EFFECTS` idempotency-ban gate + descriptor/negative-matrix tests; handler bodies deferred to Phases 16–19 (#322). Prior: 2026-07-11 after Phase 14 (Embedder Model Options & Eval) — validated REQ-embed-gemini-direct / REQ-embed-prod-parity-eval / REQ-embed-model-docs via live differ + qwen3@4096 recall@8=1.00 evidence (closes #261/#334/#331). Prior: 2026-07-11 after Phase 13 (Embedder Reliability Foundation) — shipped REQ-embed-timeout / REQ-embed-baseurl-join / REQ-embed-config-identity. Prior: 2026-07-10 opened milestone v0.10.x — Hardening & Write Lane (`/gsd-new-milestone`); 2026-07-10 shipped + archived v0.9.x — Recall Quality (PR #336/#338); 2026-07-08 folded 31 companion ADRs + 24 plans into the baseline; 2026-07-07 retrospective baseline ingest (v0.8.x shipped).*
+*Last updated: 2026-07-16 — OPENED milestone v0.11.x — Capture & Service Identity (`/gsd-new-milestone`): scoped capture ergonomics & correctness (#340 idempotency/upsert, #341 provenance/citations, #342 supersession links, #374 category filter over MCP) + service-principal access & isolation (#362 pluggable service auth — OIDC client-credentials + static-token fallback, #373 tenancy isolation) + per-lane embedder/chat base URLs (#350); milestone name "Capture & Service Identity", pluggable-auth leaning, research-first. Prior: 2026-07-16 — CLOSED milestone v0.10.x — Hardening & Write Lane (`/gsd-complete-milestone`): 9 phases (13–21) shipped, 19/20 requirements verified (REQ-ci-renovate-spa-drift's live self-heal observation deferred post-merge → #369), audit `tech_debt` (9/9 Nyquist, 0 blockers), archived to `milestones/v0.10.x-*`. Prior: 2026-07-13 after Phase 18 (Stateless Session Rotation) — validated REQ-session-rotation: stateless sliding-expiry re-seal (`webauth.Handler.Reseal` + `newConnectResealInterceptor`, innermost, read+write, absolute `now+TTL`, dual-cookie refresh, zero server-side state, no new `ENGRAM_` var), hard-expiry stays byte-for-byte strict (skew threshold-only, SC4), 50-goroutine `-race` forward-monotonic proof (SC3), and hand-authored ADR `engram-slr8` naming the real `ENGRAM_UI_COOKIE_KEY` kill-switch (not the phantom `ENGRAM_SESSION_KEY`); verified 5/5 must-haves (#323); mandatory `/gsd-secure-phase 18` pending. Prior: 2026-07-13 after Phase 17 (Wired Write Handlers — Full CRUD + Schedule) — validated REQ-connect-write-authz-parity: all six Connect write RPCs are thin adapters delegating to the shared `deps.*` MCP business-logic layer via an explicit `caller` seam + single `protoconv` conversion + single `connectError` mapper (with `context.Canceled`/`DeadlineExceeded` arms), read handlers rewired onto the typed single-path core (D-07); proven by per-RPC MCP↔Connect `TestWriteParity` (identical rejections + AST delegation sub-test) and `TestCrossOwnerRewrap` (no existence leak, DEC-xa6), the `NO_SIDE_EFFECTS` idempotency ban re-asserted in CI, and a fail-closed `requireQdrant` gate pinned to Qdrant v1.18.2; verified 5/5 must-haves (#322). Prior: 2026-07-11 after Phase 16 (CSRF Interceptor) — validated REQ-connect-csrf: the write lane's two-layer transport CSRF defense (Go 1.26 `net/http.CrossOriginProtection` whole-server wrap + Connect-shaped `permission_denied` deny handler; double-submit HMAC-over-Owner token interceptor placed `subject → CSRF → validate`, write-only allowlist on generated Procedure constants, non-HttpOnly `engram_csrf` cookie minted in `Callback`) verified 9/9 must-haves; flagged for `/gsd-secure-phase` (#322). Prior: 2026-07-11 after Phase 15 (Additive Proto + Stub Write Handlers) — validated REQ-connect-write-rpcs: the six additive write RPCs now exist in the Connect wire contract (buf.validate + hand-rolled protovalidate interceptor, auth 401 → validate 400), additive-only, provably GET-unreachable via `UnimplementedEngramServiceHandler` stubs + the `NO_SIDE_EFFECTS` idempotency-ban gate + descriptor/negative-matrix tests; handler bodies deferred to Phases 16–19 (#322). Prior: 2026-07-11 after Phase 14 (Embedder Model Options & Eval) — validated REQ-embed-gemini-direct / REQ-embed-prod-parity-eval / REQ-embed-model-docs via live differ + qwen3@4096 recall@8=1.00 evidence (closes #261/#334/#331). Prior: 2026-07-11 after Phase 13 (Embedder Reliability Foundation) — shipped REQ-embed-timeout / REQ-embed-baseurl-join / REQ-embed-config-identity. Prior: 2026-07-10 opened milestone v0.10.x — Hardening & Write Lane (`/gsd-new-milestone`); 2026-07-10 shipped + archived v0.9.x — Recall Quality (PR #336/#338); 2026-07-08 folded 31 companion ADRs + 24 plans into the baseline; 2026-07-07 retrospective baseline ingest (v0.8.x shipped).*

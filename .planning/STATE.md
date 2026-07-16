@@ -1,19 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.10.x
-milestone_name: Hardening & Write Lane
-status: Awaiting next milestone
-stopped_at: BLOCKED — 21-03 Task 3 human checkpoint (GitHub App provisioning for ci.yaml ui-drift self-heal)
-last_updated: "2026-07-16T19:52:53.956Z"
+milestone: v0.11.x
+milestone_name: Capture & Service Identity
+status: planning
+last_updated: "2026-07-16T22:00:55.941Z"
 last_activity: 2026-07-16
-last_activity_desc: Milestone v0.10.x completed and archived
 progress:
-  total_phases: 9
-  completed_phases: 9
-  total_plans: 35
-  completed_plans: 35
-current_phase: 21
-current_phase_name: ci-maintenance-hygiene
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -27,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 ## Current Position
 
-Phase: Milestone v0.10.x complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-07-16 — Milestone v0.10.x completed and archived
+Status: Defining requirements
+Last activity: 2026-07-16 — Milestone v0.11.x started
 
 ## Deferred Items
 
