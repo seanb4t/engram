@@ -111,6 +111,10 @@ tasks:
 
   chart:lint:
     desc: Lint + render the Helm chart
+    # chart:validate runs the D-07/D-08 CronJob invariants + the D-09
+    # engram.containerEnv drift-pin, so a direct `task chart:lint` also
+    # exercises the guardrail locally (CI runs chart:validate on every PR too).
+    deps: [chart:validate]
     cmds:
       - helm lint charts/engram
       - helm template charts/engram

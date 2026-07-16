@@ -79,9 +79,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
       - name: helm lint
         run: helm lint charts/engram
+      # Run the D-07/D-08 CronJob invariants + the D-09 engram.containerEnv
+      # drift-pin on every PR. Task is installed via `go install` (mirroring the
+      # actionlint job) since the runner is bare; without this step the
+      # chart:validate guardrail never executes and containerEnv drift stays
+      # green.
+      - name: chart validate
+        run: |
+          go install github.com/go-task/task/v3/cmd/task@latest
+          "$(go env GOPATH)/bin/task" chart:validate
 
   workflows:
     name: actionlint
