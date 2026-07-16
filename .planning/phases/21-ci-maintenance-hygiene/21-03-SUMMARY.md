@@ -28,27 +28,28 @@ key-files:
     - .github/workflows/ci.yaml
 
 key-decisions:
-  - "Task 1 (ci.yaml self-heal) and Task 2 (tracking issue) executed and committed. Task 3 (GitHub App provisioning) is a blocking-human checkpoint — NOT auto-approved, NOT completed. This plan does not close out."
+  - "Task 1 (ci.yaml self-heal) and Task 2 (tracking issue) executed and committed. Task 3 (GitHub App provisioning) was a blocking-human checkpoint — the human provisioned the App and both credentials on 2026-07-16 and approved; the plan then closed out."
+  - "Client ID stored as a repo SECRET (not a variable) to match how the human provisioned it AND the in-repo `release.yaml` precedent (`app-id: secrets.RELEASE_APP`). ci.yaml:203 was changed from `vars.CI_BOT_APP_CLIENT_ID` to `secrets.CI_BOT_APP_CLIENT_ID` (commit 10c9c5f1) — the plan's variable-vs-secret choice was the outlier; storing a non-sensitive Client ID as a secret is mild over-classification but harmless and convention-consistent. Verified both secrets exist via `gh secret list` and actionlint stays green."
   - "permission-contents: 'write' (quoted) used on the App-token mint step per Task 1's requirement to additionally self-scope the minted token — quoted specifically so it does not collide with the plan's own `contents: write` regex-based escalation guard (grep matches literal 'contents: write' substrings; 'permission-contents: write' unquoted would false-positive that check)."
   - "head_ref/repository/app-slug/bot-user-id passed via `env:` in the self-heal run step rather than interpolated with ${{ }} directly into the shell script — a Rule 2 (missing critical security control) auto-fix triggered by this repo's own PreToolUse workflow-injection guidance, since github.head_ref is attacker-influenceable and GitHub Actions substitutes ${{ }} as literal text before bash parses the script."
 
 requirements-completed: []  # REQ-ci-renovate-spa-drift is explicitly NOT complete — see <requirement_completion_honesty> in 21-03-PLAN.md. It stays open until a live Renovate PR is observed self-healing end-to-end (tracked by issue #369).
 
 # Metrics
-duration: ~9min (Tasks 1-2; Task 3 is an open blocking-human checkpoint, not yet resolved)
+duration: ~9min (Tasks 1-2); Task 3 checkpoint resolved 2026-07-16 (human provisioned App + credentials)
 completed: 2026-07-16
-status: blocked
+status: complete
 ---
 
-# Phase 21 Plan 03: Renovate vendored-SPA self-heal (Tasks 1-2 of 3) Summary
+# Phase 21 Plan 03: Renovate vendored-SPA self-heal Summary
 
-**GitHub App-token self-heal path shipped in `ci.yaml`'s `ui-drift` job (Closes #301); App provisioning is an open blocking-human checkpoint (#369 tracks live confirmation) — plan is NOT complete.**
+**GitHub App-token self-heal path shipped in `ci.yaml`'s `ui-drift` job; the human provisioned the self-heal App + both credentials and the credential-source was aligned to `secrets.` (10c9c5f1) — all 3 tasks complete. REQ-ci-renovate-spa-drift remains formally OPEN until a live Renovate PR is observed self-healing end-to-end (tracked by #369) — code and infra are done, only the live observation remains.**
 
 ## Performance
 
 - **Started:** ~2026-07-16T14:52Z
 - **Completed (Tasks 1-2):** 2026-07-16T15:01Z
-- **Tasks:** 2 of 3 (Task 3 is a blocking-human checkpoint, pending)
+- **Tasks:** 3 of 3 (Task 3 blocking-human checkpoint resolved — App + credentials provisioned by the human 2026-07-16)
 - **Files modified:** 1 (`.github/workflows/ci.yaml`)
 
 ## Accomplishments
@@ -63,7 +64,7 @@ status: blocked
 
 1. **Task 1: Rework the ui-drift job with a guarded self-heal path (D-01, D-03)** — `d12ca3e3` (ci)
 2. **Task 2: Open the live-observation follow-up issue** — no repo files modified; issue [#369](https://github.com/seanb4t/engram/issues/369) created via `gh issue create`. No commit (nothing to commit — the deliverable is the GitHub issue itself).
-3. **Task 3: Provision the self-heal GitHub App (human-only)** — **NOT STARTED.** Blocking-human checkpoint, returned to the orchestrator for human action. See "Checkpoint: Task 3" below.
+3. **Task 3: Provision the self-heal GitHub App (human-only)** — **COMPLETE.** The human created the App (scoped `Contents: Read & write`, installed on `seanb4t/engram` only) and added `CI_BOT_APP_CLIENT_ID` + `CI_BOT_APP_PRIVATE_KEY` on 2026-07-16. Both credentials landed as repo secrets; ci.yaml:203 was aligned from `vars.` to `secrets.` to match (commit `10c9c5f1`), verified via `gh secret list` + actionlint.
 
 **Plan metadata:** this commit (`docs(21-03): record blocked checkpoint status`)
 
