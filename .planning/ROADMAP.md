@@ -468,7 +468,11 @@ Plans:
 3. `task lint:markdown` passes with `.planning/**` excluded from `.rumdl.toml`, while shipped Markdown outside `.planning/` is still linted (the systemic 331-failure planning-doc noise is gone).
 
 **Status**: Not started
-**Plans**: TBD
+**Plans**: 0/3 plans complete
+
+- [ ] 21-01-PLAN.md — rumdl: exclude `.planning` so `task lint:markdown` (and `task` default) passes, + correct SC2/SC3 above (REQ-lint-planning-exclude)
+- [ ] 21-02-PLAN.md — phase-11 residuals: test-only `Wait()` on both queues, shared `persistAndEnqueue`, hermetic env test (#335)
+- [ ] 21-03-PLAN.md — renovate self-heal: guarded App-token push of the regenerated SPA on `ui-drift` drift (#301)
 
 ## Progress
 
