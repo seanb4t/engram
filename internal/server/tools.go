@@ -654,6 +654,20 @@ func (d *deps) storeMemory(ctx context.Context, c caller, a storeArgs) (string, 
 	if err != nil {
 		return "", "", err // embed first: on error we never touch the store
 	}
+	return d.persistAndEnqueue(ctx, m, vec)
+}
+
+// persistAndEnqueue is the shared MintShortID -> Upsert -> tryEnqueue tail
+// shared by storeMemory and scheduleMemory (IN-01/D-05): the two handlers
+// duplicated this sequence verbatim, which let the write-path invariant
+// silently diverge. Callers must have already built m and vec (embed done,
+// owner/actor stamped, any schedule window applied) before calling this.
+// Enqueue only happens after a confirmed-successful Upsert; never
+// blocks/errors the write path even when the queue is disabled or full
+// (SC#1, SC#2). storeDiscovery and storeRule deliberately do NOT call this —
+// discoveries and rules own their own summaries (see storeDiscovery's
+// doc-comment) — do not fold them in.
+func (d *deps) persistAndEnqueue(ctx context.Context, m store.Memory, vec []float32) (id, shortID string, err error) {
 	if m.ShortID, err = d.st.MintShortID(ctx, nil); err != nil {
 		return "", "", err
 	}
@@ -690,16 +704,7 @@ func (d *deps) scheduleMemory(ctx context.Context, c caller, a scheduleArgs) (st
 	if err != nil {
 		return "", "", err // embed first: on error we never touch the store
 	}
-	if m.ShortID, err = d.st.MintShortID(ctx, nil); err != nil {
-		return "", "", err
-	}
-	if err := d.st.Upsert(ctx, m, vec); err != nil {
-		return "", "", err
-	}
-	// Enqueue only after a confirmed-successful Upsert; never blocks/errors
-	// the write path even when the queue is disabled or full (SC#1, SC#2).
-	d.summaryQueue.tryEnqueue(m.ID)
-	return m.ID, m.ShortID, nil
+	return d.persistAndEnqueue(ctx, m, vec)
 }
 
 // storeDiscovery persists a client-authored discovery. It deliberately never
