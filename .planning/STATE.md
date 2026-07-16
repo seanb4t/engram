@@ -6,14 +6,14 @@ current_phase: 21
 current_phase_name: ci-maintenance-hygiene
 status: executing
 stopped_at: Completed 21-01-PLAN.md
-last_updated: "2026-07-16T14:44:07.931Z"
+last_updated: "2026-07-16T14:52:56.750Z"
 last_activity: 2026-07-16
 last_activity_desc: Phase 21 execution started
 progress:
   total_phases: 9
   completed_phases: 8
   total_plans: 35
-  completed_plans: 33
+  completed_plans: 34
   percent: 89
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 ## Current Position
 
 Phase: 21 (ci-maintenance-hygiene) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-16 — Phase 21 execution started
 
@@ -139,6 +139,7 @@ cookie-auth security posture).
 - [Phase ?]: chart:validate pins engram.containerEnv against drift via sha256 checksum, proven to fail on manual toggle/edit during execution
 - [Phase 21]: D-09: plain .planning rumdl exclude entry (not .planning/** glob), matching convention of .beads/.agents/docs-site neighbors
 - [Phase 21]: D-00b/D-12: SC3 stale 331-failure figure replaced with qualitative language (systemic planning-doc noise) instead of a new hardcoded count, since the real count drifts daily
+- [Phase ?]: [Phase 21 P02] Wait() relocated to a single new internal/server/queue_export_test.go (both queues, D-04); persistAndEnqueue(ctx, m, vec) extracted for storeMemory/scheduleMemory (D-05, storeDiscovery/storeRule excluded); TestBuildDepsFromEnvLoadsConfigOnce hermetic against ambient ENGRAM_SUMMARY_* env (D-06)
 
 ### Blockers/Concerns
 
@@ -149,7 +150,7 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-16T14:44:07.925Z
+Last session: 2026-07-16T14:52:13.908Z
 Stopped at: Completed 21-01-PLAN.md
 Resume file: None
 
@@ -190,3 +191,4 @@ Resume file: None
 | Phase 20-correctness-polish P03 | 25min | 1 tasks | 2 files |
 | Phase 20 P04 | 3min | 3 tasks | 5 files |
 | Phase 21 P01 | 6min | 2 tasks | 3 files |
+| Phase 21 P02 | 15min | 3 tasks | 5 files |

@@ -468,10 +468,10 @@ Plans:
 3. `task lint:markdown` passes with `.planning` excluded from `.rumdl.toml`, while shipped Markdown outside `.planning/` is still linted (the systemic planning-doc noise is gone).
 
 **Status**: Not started
-**Plans**: 1/3 plans executed
+**Plans**: 2/3 plans executed
 
 - [x] 21-01-PLAN.md — rumdl: exclude `.planning` so `task lint:markdown` (and `task` default) passes, + correct SC2/SC3 above (REQ-lint-planning-exclude)
-- [ ] 21-02-PLAN.md — phase-11 residuals: test-only `Wait()` on both queues, shared `persistAndEnqueue`, hermetic env test (#335)
+- [x] 21-02-PLAN.md — phase-11 residuals: test-only `Wait()` on both queues, shared `persistAndEnqueue`, hermetic env test (#335)
 - [ ] 21-03-PLAN.md — renovate self-heal: guarded App-token push of the regenerated SPA on `ui-drift` drift (#301)
 
 ## Progress
@@ -500,7 +500,7 @@ Plans:
 | 18. Stateless Session Rotation | v0.10.x | 3/3 | Complete    | 2026-07-13 |
 | 19. Console Write UX | v0.10.x | 6/6 | Complete   | 2026-07-15 |
 | 20. Correctness & Polish | v0.10.x | 4/4 | Complete    | 2026-07-16 |
-| 21. CI / Maintenance Hygiene | v0.10.x | 1/3 | In Progress|  |
+| 21. CI / Maintenance Hygiene | v0.10.x | 2/3 | In Progress|  |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: roadmap created 2026-07-10 · 9 phases (13–21) · 0/20 requirements complete.** Next: `/gsd-plan-phase 13`.

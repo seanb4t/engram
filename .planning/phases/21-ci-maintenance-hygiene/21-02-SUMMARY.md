@@ -136,3 +136,7 @@ None - no external service configuration required.
 ---
 *Phase: 21-ci-maintenance-hygiene*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+
+All created/modified files confirmed present on disk; all 4 commits (7c16e56b, 01a27606, 298c4239, d8dd87ab) confirmed in `git log`.
