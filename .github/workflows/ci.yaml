@@ -200,7 +200,7 @@ jobs:
           github.event.pull_request.head.repo.full_name == github.repository
         continue-on-error: true
         with:
-          client-id: ${{ vars.CI_BOT_APP_CLIENT_ID }}
+          client-id: ${{ secrets.CI_BOT_APP_CLIENT_ID }}
           private-key: ${{ secrets.CI_BOT_APP_PRIVATE_KEY }}
           permission-contents: 'write'
       # Derive the bot's git identity at runtime (app-slug output + bot user
