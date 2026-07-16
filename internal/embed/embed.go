@@ -239,7 +239,10 @@ func (c *Client) embed(ctx context.Context, text string, params map[string]any, 
 	}
 	m["model"] = c.model
 	m["input"] = text
-	body, _ := json.Marshal(m)
+	body, err := json.Marshal(m)
+	if err != nil {
+		return nil, fmt.Errorf("embeddings: marshal request body: %w", err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.embeddingsURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
