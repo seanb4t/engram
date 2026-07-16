@@ -2819,6 +2819,31 @@ func TestMintShortIDSeenMapDoesNotConsumeBudget(t *testing.T) {
 	}
 }
 
+// TestMintShortIDDegenerateGeneratorTerminates proves the absolute spin cap
+// (maxMintSpins) guarantees termination even when the injectable mintCandidate
+// seam returns ONLY already-seen candidates forever. Because seen-map skips do
+// not consume the maxMintAttempts real-collision-check budget (D-05), without
+// the spin cap this loop would never terminate. The real Qdrant Count() check
+// is never reached (every candidate is a seen-map hit), so this exercises the
+// spin cap in isolation.
+func TestMintShortIDDegenerateGeneratorTerminates(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	seen := map[string]struct{}{"onlyvalue0": {}}
+	calls := 0
+	st.mintCandidate = func() (string, error) {
+		calls++
+		return "onlyvalue0", nil // always a seen-map hit — never reaches the real Count check
+	}
+	_, err := st.MintShortID(ctx, seen)
+	if !errors.Is(err, ErrShortIDExhausted) {
+		t.Fatalf("err = %v, want ErrShortIDExhausted (spin cap must halt a seen-only generator)", err)
+	}
+	if calls != maxMintSpins {
+		t.Fatalf("generator called %d times, want maxMintSpins=%d (spin cap must bound and terminate the seen-only loop)", calls, maxMintSpins)
+	}
+}
+
 // floatsEqual reports whether two float32 slices are element-wise equal.
 func floatsEqual(a, b []float32) bool {
 	if len(a) != len(b) {

@@ -66,6 +66,17 @@ var ErrShortIDExhausted = errors.New("short id mint exhausted")
 // safe in a 32^10 Crockford base32 space (D-04).
 const maxMintAttempts = 16
 
+// maxMintSpins is an absolute upper bound on total loop iterations in
+// MintShortID — including seen-map skips, which deliberately do NOT consume the
+// maxMintAttempts real-collision-check budget (D-05). It exists purely as a
+// belt-and-suspenders termination guarantee for the injectable mintCandidate
+// seam: a degenerate generator that returns only already-seen candidates would
+// otherwise spin forever (each seen hit nets zero against attempts). The
+// production shortid.New generator draws from a 32^10 space, so this cap is
+// unreachable in practice; a generous multiple of maxMintAttempts keeps it
+// clear of any legitimate seen-map churn.
+const maxMintSpins = maxMintAttempts * 100
+
 // visibilityShared is the Visibility sentinel for a record readable by any
 // authenticated caller. Sharing grants read, never write. Defined once so a typo
 // in an authorization path is a compile error rather than a silent gate bypass.
@@ -1787,7 +1798,16 @@ func (s *Store) MintShortID(ctx context.Context, seen map[string]struct{}) (id s
 	if gen == nil {
 		gen = shortid.New
 	}
-	for attempts := 0; attempts < maxMintAttempts; attempts++ {
+	for attempts, spins := 0, 0; attempts < maxMintAttempts; spins++ {
+		// Absolute termination guarantee: seen-map skips don't consume the
+		// maxMintAttempts budget (D-05), so a degenerate generator returning
+		// only already-seen candidates could otherwise loop forever. The
+		// separate spin cap makes termination unconditional without changing
+		// the real-collision-check budget.
+		if spins >= maxMintSpins {
+			err = fmt.Errorf("%w: generator degenerate after %d spins (only seen candidates)", ErrShortIDExhausted, spins)
+			return "", err
+		}
 		cand, genErr := gen()
 		if genErr != nil {
 			err = genErr
@@ -1795,10 +1815,10 @@ func (s *Store) MintShortID(ctx context.Context, seen map[string]struct{}) (id s
 		}
 		if seen != nil {
 			if _, dup := seen[cand]; dup {
-				attempts-- // D-05: seen-map hits don't consume the real-collision-check budget
-				continue
+				continue // D-05: seen-map hits don't consume the real-collision-check budget
 			}
 		}
+		attempts++
 		n, countErr := s.client.Count(ctx, &qdrant.CountPoints{
 			CollectionName: s.collection,
 			Filter:         &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatch("short_id", cand)}},
