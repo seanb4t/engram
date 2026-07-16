@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.6](https://github.com/seanb4t/engram/compare/v0.8.5...v0.8.6) (2026-07-16)
+
+
+### Features
+
+* **console:** add memory & discovery write UX (create/edit/delete/re-share/schedule) ([#367](https://github.com/seanb4t/engram/issues/367)) ([72a8011](https://github.com/seanb4t/engram/commit/72a80119945e5a41b397ac18c0fea3dac772984f))
+* Phase 20 — correctness & polish (discovery proto fidelity, MintShortID cap, embed cleanup, summarize CronJob) ([#368](https://github.com/seanb4t/engram/issues/368)) ([4a5def8](https://github.com/seanb4t/engram/commit/4a5def82e9e4b844e901a16a9a4ed9bae5a313ab))
+* **server:** wire Connect write handlers with MCP authz parity (full CRUD + schedule) ([#322](https://github.com/seanb4t/engram/issues/322)) ([#363](https://github.com/seanb4t/engram/issues/363)) ([a95d3b3](https://github.com/seanb4t/engram/commit/a95d3b3e5f25e9006f7426d6f69cb8ed69e4c704))
+* **webauth:** stateless sliding-expiry session rotation ([#323](https://github.com/seanb4t/engram/issues/323)) ([#365](https://github.com/seanb4t/engram/issues/365)) ([8ba5e42](https://github.com/seanb4t/engram/commit/8ba5e4290883a9e3557dbba99a8bca230292b275))
+
 ## [0.8.5](https://github.com/seanb4t/engram/compare/v0.8.4...v0.8.5) (2026-07-12)
 
 
