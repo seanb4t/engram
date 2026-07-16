@@ -971,3 +971,63 @@ func TestConnectSearchDiscoveriesEmptyScopeSpansAll(t *testing.T) {
 		t.Fatalf("scoped search did not return the in-scope record %s", recA.ID)
 	}
 }
+
+// TestConnectSearchDiscoveriesCitationsRoundTrip pins #307 end-to-end: a stored
+// discovery's kind/citations must survive the full SearchDiscoveries handler ->
+// memoriesToProto -> Connect wire path, not just the memoryToProto unit mapping.
+// It seeds a discovery carrying citations (the shared seedDiscoveries helper
+// leaves Citations empty) and asserts the response preserves them field-for-field.
+func TestConnectSearchDiscoveriesCitationsRoundTrip(t *testing.T) {
+	d := testDeps(t)
+	api := &engramAPI{d: d}
+	scope := "discovery:citations-roundtrip:project:x"
+	owner := "actor-CR"
+	ctx := context.Background()
+
+	rec := store.Memory{
+		ID:       "f4000000-0000-0000-0000-000000000001",
+		Content:  "discovery about repo layout with citations",
+		Scope:    scope, Owner: owner, Category: "discovery", Kind: "map",
+		Source: "agent-inferred", CreatedAt: timeNow(),
+		Citations: []store.Citation{
+			{Kind: "file", Ref: "internal/store/store.go", Locator: "1790-1821", Pin: "abc123", Excerpt: "MintShortID"},
+			{Kind: "url", Ref: "https://example.com/doc", Locator: "", Pin: "", Excerpt: ""},
+		},
+	}
+	if err := d.st.Upsert(ctx, rec, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed discovery %s: %v", rec.ID, err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete "+rec.ID, d.st.Delete(ctx, rec.ID, store.Authenticated(owner)))
+	})
+
+	actx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": owner}})
+	resp, err := api.SearchDiscoveries(actx, connect.NewRequest(&engramv1.SearchDiscoveriesRequest{Scope: scope, Query: "repo layout"}))
+	if err != nil {
+		t.Fatalf("SearchDiscoveries: %v", err)
+	}
+
+	var got *engramv1.Memory
+	for _, m := range resp.Msg.Discoveries {
+		if m.Id == rec.ID {
+			got = m
+			break
+		}
+	}
+	if got == nil {
+		t.Fatalf("seeded discovery %s not returned by SearchDiscoveries: %+v", rec.ID, resp.Msg.Discoveries)
+	}
+	if got.Kind != "map" {
+		t.Fatalf("Kind did not round-trip on the Connect wire: got %q, want %q", got.Kind, "map")
+	}
+	if len(got.Citations) != len(rec.Citations) {
+		t.Fatalf("Citations did not round-trip on the Connect wire: got %d, want %d", len(got.Citations), len(rec.Citations))
+	}
+	for i, want := range rec.Citations {
+		c := got.Citations[i]
+		if c.Kind != want.Kind || c.Ref != want.Ref || c.Locator != want.Locator ||
+			c.Pin != want.Pin || c.Excerpt != want.Excerpt {
+			t.Fatalf("Citations[%d] not field-equal through the wire: got %+v, want %+v", i, c, want)
+		}
+	}
+}
