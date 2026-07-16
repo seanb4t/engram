@@ -5,15 +5,15 @@ milestone_name: — Hardening & Write Lane
 current_phase: 21
 current_phase_name: CI / Maintenance Hygiene
 status: "Phase 20 shipped — PR #368"
-stopped_at: Completed 20-04-PLAN.md
-last_updated: "2026-07-16T01:03:28.378Z"
+stopped_at: Phase 21 context gathered
+last_updated: "2026-07-16T01:25:35.507Z"
 last_activity: 2026-07-16
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 8
   total_plans: 32
   completed_plans: 32
-  percent: 100
+  percent: 89
 ---
 
 # Project State
@@ -146,9 +146,9 @@ cookie-auth security posture).
 
 ## Session Continuity
 
-Last session: 2026-07-16T00:11:00.462Z
-Stopped at: Completed 20-04-PLAN.md
-Resume file: None
+Last session: 2026-07-16T01:25:35.488Z
+Stopped at: Phase 21 context gathered
+Resume file: .planning/phases/21-ci-maintenance-hygiene/21-CONTEXT.md
 
 ## Performance Metrics
 
