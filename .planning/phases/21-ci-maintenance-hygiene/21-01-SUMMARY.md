@@ -122,3 +122,10 @@ None - no external service configuration required.
 ---
 *Phase: 21-ci-maintenance-hygiene*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+
+- FOUND: `.planning/phases/21-ci-maintenance-hygiene/21-01-SUMMARY.md`
+- FOUND: `6dbfa8bb` (Task 1 commit)
+- FOUND: `5a4bd691` (Task 2 commit)
+- FOUND: `9fd5884e` (SUMMARY commit)
