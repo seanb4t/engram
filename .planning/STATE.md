@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 milestone: v0.10.x
 milestone_name: — Hardening & Write Lane
 current_phase: 21
-current_phase_name: CI / Maintenance Hygiene
-status: "Phase 20 shipped — PR #368"
-stopped_at: Completed 20-04-PLAN.md
-last_updated: "2026-07-16T01:03:28.378Z"
+current_phase_name: ci-maintenance-hygiene
+status: verifying
+stopped_at: "BLOCKED: 21-03 Task 3 human checkpoint (GitHub App provisioning)"
+last_updated: "2026-07-16T16:44:49.306Z"
 last_activity: 2026-07-16
 progress:
-  total_phases: 8
-  completed_phases: 8
-  total_plans: 32
-  completed_plans: 32
+  total_phases: 9
+  completed_phases: 9
+  total_plans: 35
+  completed_plans: 35
   percent: 100
 ---
 
@@ -23,13 +23,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11 after Phase 14)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 20 — correctness-polish
+**Current focus:** Phase 21 — ci-maintenance-hygiene
 
 ## Current Position
 
-Phase: 21 — CI / Maintenance Hygiene
-Plan: Not started
-Status: Phase 20 shipped — PR #368
+Phase: 21 (ci-maintenance-hygiene) — BLOCKED
+Plan: 3 of 3
+Status: Phase 21 shipped — PR #371 (verification human_needed by design; #369 live obs post-merge)
 Last activity: 2026-07-16
 
 ## Deferred Items
@@ -136,6 +136,9 @@ cookie-auth security posture).
 - [Phase ?]: engram.containerEnv extracted byte-identical (D-09) via mechanical sed dedent + before/after helm template diff (empty)
 - [Phase ?]: CronJob disabled by default (D-07); daily schedule + Forbid + OnFailure + history limits 3/1, all values-overridable (D-08)
 - [Phase ?]: chart:validate pins engram.containerEnv against drift via sha256 checksum, proven to fail on manual toggle/edit during execution
+- [Phase 21]: D-09: plain .planning rumdl exclude entry (not .planning/** glob), matching convention of .beads/.agents/docs-site neighbors
+- [Phase 21]: D-00b/D-12: SC3 stale 331-failure figure replaced with qualitative language (systemic planning-doc noise) instead of a new hardcoded count, since the real count drifts daily
+- [Phase ?]: [Phase 21 P02] Wait() relocated to a single new internal/server/queue_export_test.go (both queues, D-04); persistAndEnqueue(ctx, m, vec) extracted for storeMemory/scheduleMemory (D-05, storeDiscovery/storeRule excluded); TestBuildDepsFromEnvLoadsConfigOnce hermetic against ambient ENGRAM_SUMMARY_* env (D-06)
 
 ### Blockers/Concerns
 
@@ -143,12 +146,13 @@ cookie-auth security posture).
 - **Research Pitfall 1 (highest risk this milestone):** a Connect write RPC that bypasses `deps.*` and calls `store.*` directly would silently reintroduce the handler-vs-store authz split DEC-cgb rejected, one layer up (business logic, e.g. rule immutability DEC-iedk). Phase 17's success criteria make MCP/Connect parity tests a hard gate, not optional.
 - **Research Pitfall 7 (session rotation):** stateless rotation has no revocation mechanism; Phase 18 requires a new ADR explicitly documenting this trade-off before implementation, not a silent drift past DEC-u9v.
 - Tracked tech debt now scoped into v0.10.x phases: #334→Phase 14, #335→Phase 21, #333/#332/#331→Phase 13/14, #337→Phase 14. Systemic `.rumdl.toml` `.planning` exclude → Phase 21.
+- 21-03 Task 3 checkpoint: GitHub App provisioning for ci.yaml ui-drift self-heal requires human GitHub admin action (create app, install on seanb4t/engram, set vars.CI_BOT_APP_CLIENT_ID + secrets.CI_BOT_APP_PRIVATE_KEY). See 21-03-SUMMARY.md 'Checkpoint: Task 3'.
 
 ## Session Continuity
 
-Last session: 2026-07-16T00:11:00.462Z
-Stopped at: Completed 20-04-PLAN.md
-Resume file: None
+Last session: 2026-07-16T15:02:30.943Z
+Stopped at: BLOCKED — 21-03 Task 3 human checkpoint (GitHub App provisioning for ci.yaml ui-drift self-heal)
+Resume file: 21-03-SUMMARY.md
 
 ## Performance Metrics
 
@@ -186,3 +190,5 @@ Resume file: None
 | Phase 20-correctness-polish P02 | 20 | 2 tasks | 3 files |
 | Phase 20-correctness-polish P03 | 25min | 1 tasks | 2 files |
 | Phase 20 P04 | 3min | 3 tasks | 5 files |
+| Phase 21 P01 | 6min | 2 tasks | 3 files |
+| Phase 21 P02 | 15min | 3 tasks | 5 files |

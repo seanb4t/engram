@@ -173,8 +173,89 @@ jobs:
           cd ui && pnpm install --frozen-lockfile && pnpm build
           rm -rf ../internal/webauth/static && mkdir -p ../internal/webauth/static
           cp -R build/. ../internal/webauth/static/
-      - run: git diff --exit-code internal/webauth/static/ || { echo "::error::vendored SPA is stale — run 'task ui:build'
-          and commit"; exit 1; }
+      - id: drift
+        run: |
+          if git diff --exit-code internal/webauth/static/; then
+            echo "drifted=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "drifted=true" >> "$GITHUB_OUTPUT"
+          fi
+      # Renovate's postUpgradeTasks rule is inert on the homelab runner (#301),
+      # so every Renovate ui/ bump lands here with drift. Self-heal instead of
+      # failing on a same-repo Renovate PR branch: a GITHUB_TOKEN push would
+      # never re-trigger `pull_request: synchronize` (GitHub's anti-recursion
+      # guard), leaving the pushed SHA with zero check runs and stalling the
+      # protect-main ruleset's required checks on "Expected" forever — see
+      # 21-RESEARCH.md. A GitHub App installation token DOES re-trigger it.
+      # continue-on-error degrades safely to the fail-with-guidance step below
+      # when the App isn't provisioned (missing var/secret) or the guard
+      # rejects the branch — both fall through, unchanged from today.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        id: app-token
+        if: >-
+          steps.drift.outputs.drifted == 'true' &&
+          github.event_name == 'pull_request' &&
+          startsWith(github.head_ref, 'renovate/') &&
+          github.actor == 'fzymgc-renovate[bot]' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        with:
+          client-id: ${{ secrets.CI_BOT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CI_BOT_APP_PRIVATE_KEY }}
+          permission-contents: 'write'
+      # Derive the bot's git identity at runtime (app-slug output + bot user
+      # id) rather than hardcoding a provisioning-time literal that doesn't
+      # exist until a human creates the App.
+      - id: get-user-id
+        if: steps.app-token.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        # Assign on its own line so `set -e` (bash default for run:) aborts the
+        # step if `gh api` fails — a nested $() inside echo's argument would let
+        # echo exit 0 and emit an empty user-id, degrading the self-heal commit
+        # to a malformed committer email. On failure here the self-heal step is
+        # skipped (its `if` carries an implicit success()), so no bad commit is
+        # pushed; the job goes red and is retryable.
+        run: |
+          user_id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)
+          echo "user-id=$user_id" >> "$GITHUB_OUTPUT"
+      - name: self-heal vendored SPA on renovate PR
+        if: steps.app-token.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          # Pass attacker-influenceable/derived context via env instead of
+          # interpolating ${{ }} directly into the shell script — GitHub
+          # Actions substitutes expressions as literal text before bash
+          # parses the script, so a hostile branch/slug value interpolated
+          # inline could break out of quoting and inject commands.
+          HEAD_REF: ${{ github.head_ref }}
+          REPO: ${{ github.repository }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          BOT_USER_ID: ${{ steps.get-user-id.outputs.user-id }}
+        run: |
+          gh auth setup-git
+          # Commit onto the true PR head branch, not this job's checked-out
+          # merge ref — a `pull_request` checkout is refs/pull/N/merge, and
+          # pushing that HEAD would silently merge main into the Renovate
+          # branch. Shallow-clone the actual head branch, copy the already-
+          # rebuilt SPA into it, and commit + push from there instead.
+          rm -rf /tmp/ui-drift-heal
+          git clone --depth 1 --branch "$HEAD_REF" \
+            "https://github.com/${REPO}.git" /tmp/ui-drift-heal
+          rm -rf /tmp/ui-drift-heal/internal/webauth/static
+          cp -R internal/webauth/static /tmp/ui-drift-heal/internal/webauth/
+          cd /tmp/ui-drift-heal
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${BOT_USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
+          git add internal/webauth/static/
+          git commit -m "fix(ui): regenerate vendored spa (renovate drift self-heal)"
+          git push origin "HEAD:${HEAD_REF}"
+      - name: fail with guidance (non-renovate drift)
+        if: steps.drift.outputs.drifted == 'true' && steps.app-token.outcome != 'success'
+        run: |
+          echo "::error::vendored SPA is stale — run 'task ui:build' and commit"
+          exit 1
 
   ui-test:
     name: ui tests

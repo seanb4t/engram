@@ -818,6 +818,77 @@ func TestDiscoveryAndRuleNeverEnqueue(t *testing.T) {
 	}
 }
 
+// upsertFailStore wraps a memStore and overrides only Upsert to return an
+// injected error — every other method delegates to the embedded store. It
+// exists to make the Upsert-failure branch reachable in tests: spyStore's
+// Upsert (fakestore_test.go) always returns nil and has no error-injection
+// hook.
+type upsertFailStore struct {
+	memStore
+	err error
+}
+
+func (s *upsertFailStore) Upsert(context.Context, store.Memory, []float32) error {
+	return s.err
+}
+
+// TestPersistAndEnqueueSkipsEnqueueOnUpsertFailure pins the IN-01 (D-05)
+// ordering invariant: an enqueue happens only after a confirmed-successful
+// Upsert, and never on a failed one, for BOTH storeMemory and
+// scheduleMemory. Qdrant-free (spyStore-backed): asserts absence
+// deterministically via the Wait() drain seam, no time.Sleep.
+//
+// This is a characterization test (behavior-preserving refactor, not
+// RED->GREEN): it was written and confirmed passing against the
+// UN-refactored duplicated-block code before the persistAndEnqueue
+// extraction landed, and re-confirmed passing after — see
+// 21-02-SUMMARY.md.
+func TestPersistAndEnqueueSkipsEnqueueOnUpsertFailure(t *testing.T) {
+	injectedErr := errors.New("upsert boom")
+
+	var enqueued atomic.Int64
+	q := newSummaryQueue(1, 8, 5*time.Second, nil, func(context.Context, string) error {
+		enqueued.Add(1)
+		return nil
+	})
+	q.Start(context.Background())
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		q.Shutdown(ctx)
+	})
+
+	_, sp := newSpyDeps()
+	failing := &upsertFailStore{memStore: sp, err: injectedErr}
+	d := &deps{st: failing, em: fakeEmbedder{}, summaryQueue: q}
+
+	c := caller{Subj: store.Authenticated("actor-fail"), Actor: "actor-fail"}
+
+	t.Run("storeMemory", func(t *testing.T) {
+		_, _, err := d.storeMemory(context.Background(), c, storeArgs{
+			Content: "should not persist", Scope: "s", Category: "gotcha", Source: "user-said",
+		})
+		if !errors.Is(err, injectedErr) {
+			t.Fatalf("storeMemory error = %v, want %v", err, injectedErr)
+		}
+	})
+
+	t.Run("scheduleMemory", func(t *testing.T) {
+		_, _, err := d.scheduleMemory(context.Background(), c, scheduleArgs{
+			storeArgs: storeArgs{Content: "should not persist", Scope: "s", Category: "decision", Source: "user-said"},
+			NotAfter:  timeNow().Add(time.Hour).Format(time.RFC3339),
+		})
+		if !errors.Is(err, injectedErr) {
+			t.Fatalf("scheduleMemory error = %v, want %v", err, injectedErr)
+		}
+	})
+
+	q.Wait()
+	if n := enqueued.Load(); n != 0 {
+		t.Fatalf("enqueued %d fills after a failing Upsert, want 0 (D-05 ordering invariant)", n)
+	}
+}
+
 // TestUpdateMemoryStaleSummaryGuard pins that updateMemory rejects a content
 // change when a caller-authored summary would go stale and the caller did not
 // address it (errStaleSummary). Integration: needs Qdrant.
@@ -1627,9 +1698,16 @@ func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
 	}
 	// buildDepsFromEnv reads the data-plane config from the process env; point it
 	// at the test Qdrant with a dedicated collection so EnsureCollection succeeds.
+	// Also isolate from ambient ENGRAM_SUMMARY_* in the dev/CI shell (IN-02):
+	// empty values preserve the registry default (the documented empty-env
+	// invariant), so an ambient summary-on-write env can never start a real
+	// summary queue this test never shuts down — that would leak 2 worker
+	// goroutines for the test binary's lifetime.
 	t.Setenv("ENGRAM_QDRANT_ADDR", testQdrantAddr)
 	t.Setenv("ENGRAM_QDRANT_COLLECTION", "mem_load_once_test")
 	t.Setenv("ENGRAM_EMBED_DIM", "3")
+	t.Setenv("ENGRAM_SUMMARY_MODEL", "")
+	t.Setenv("ENGRAM_SUMMARY_ON_WRITE", "")
 
 	loads := 0
 	orig := configLoad

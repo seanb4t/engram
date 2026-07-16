@@ -464,11 +464,15 @@ Plans:
 **Success Criteria** (what is TRUE):
 
 1. A Renovate bump to the vendored SPA no longer reddens `main` — an in-repo self-healing fallback replaces the inert `postUpgradeTasks` rule.
-2. The Phase-11 async-summary code-review residuals are resolved: WR-03 (`Wait` misuse), IN-01 (duplicate depth-gauge registration), IN-02 (test hermeticity).
-3. `task lint:markdown` passes with `.planning/**` excluded from `.rumdl.toml`, while shipped Markdown outside `.planning/` is still linted (the systemic 331-failure planning-doc noise is gone).
+2. The Phase-11 async-summary code-review residuals are resolved: WR-03 (`Wait` misuse), IN-01 (`storeMemory`/`scheduleMemory` duplicated Upsert-then-enqueue block), IN-02 (test hermeticity).
+3. `task lint:markdown` passes with `.planning` excluded from `.rumdl.toml`, while shipped Markdown outside `.planning/` is still linted (the systemic planning-doc noise is gone).
 
 **Status**: Not started
-**Plans**: TBD
+**Plans**: 3/3 plans complete
+
+- [x] 21-01-PLAN.md — rumdl: exclude `.planning` so `task lint:markdown` (and `task` default) passes, + correct SC2/SC3 above (REQ-lint-planning-exclude)
+- [x] 21-02-PLAN.md — phase-11 residuals: test-only `Wait()` on both queues, shared `persistAndEnqueue`, hermetic env test (#335)
+- [x] 21-03-PLAN.md — renovate self-heal: guarded App-token push of the regenerated SPA on `ui-drift` drift (#301)
 
 ## Progress
 
@@ -496,7 +500,7 @@ Plans:
 | 18. Stateless Session Rotation | v0.10.x | 3/3 | Complete    | 2026-07-13 |
 | 19. Console Write UX | v0.10.x | 6/6 | Complete   | 2026-07-15 |
 | 20. Correctness & Polish | v0.10.x | 4/4 | Complete    | 2026-07-16 |
-| 21. CI / Maintenance Hygiene | v0.10.x | 0/3 | Not started | - |
+| 21. CI / Maintenance Hygiene | v0.10.x | 3/3 | Complete   | 2026-07-16 |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: roadmap created 2026-07-10 · 9 phases (13–21) · 0/20 requirements complete.** Next: `/gsd-plan-phase 13`.
