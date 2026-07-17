@@ -14,15 +14,23 @@ opportunistically inside PR #248 and was hardened in PR #266, before this retros
 was authored; the earlier "deferred stub" framing (ingested from the 2026-06-09 plan/spec, which
 described the interim anonymous state as current) was stale. Phases 9–12 (v0.9.x — Recall
 Quality) shipped 2026-07-10 (PR #336); full detail archived at `milestones/v0.9.x-ROADMAP.md`.
-Success criteria are stated as observable truths that hold when each phase completes.
+Phases 13–21 (v0.10.x — Hardening & Write Lane) shipped 2026-07-16; full detail archived at
+`milestones/v0.10.x-ROADMAP.md`. Success criteria are stated as observable truths that hold when
+each phase completes.
 
-**Active milestone — v0.10.x — Hardening & Write Lane** (Phases 13–21, planned 2026-07-10): makes
-engram production-solid and writable over Connect. Research (`.planning/research/SUMMARY.md`,
-`ARCHITECTURE.md`, `PITFALLS.md`) converged on a dependency-ordered build sequence — embedder
-reliability first (fully isolated), then the write-lane track in strict order (additive proto +
-stub handlers → CSRF interceptor → deps.* refactor + wired handlers → session rotation → console
-UX), with correctness/polish and CI hygiene running independently of both tracks. See Phase
-Details below for the full per-phase rationale, decisions, and pitfall cross-references.
+**Active milestone — v0.11.x — Capture & Service Identity** (Phases 22–26, planned 2026-07-16):
+makes programmatic capture correct/re-runnable and gives headless service principals a
+first-class, isolated identity. Research (`.planning/research/{SUMMARY,ARCHITECTURE,CEDAR}.md`)
+converged on a dependency-ordered build sequence — the Cedar authz foundation must land first (it
+is the trust anchor every other phase's isolation depends on, and is a behavior-preserving
+refactor of `internal/store`'s existing filter/gate functions, refining LOCKED `DEC-cgb` via a new
+ADR rather than overriding it), then service-auth-chain + tenancy isolation (where the milestone's
+#1 risk — a service principal silently resolving to `owner==""` — must be proven fail-closed as
+the first test), then the capture trio in strict internal order (idempotency → supersession →
+citations, since supersession reuses idempotency's re-Upsert mechanism), with category filter and
+the chat/summarize base-URL split bundled as a low-risk, independent tail. Zero new store-layer
+authz **primitive** and (except `cedar-go`) zero new dependencies are required — every feature
+extends an existing seam. See Phase Details below for full per-phase rationale and decisions.
 
 ## Milestones
 
@@ -30,6 +38,7 @@ Details below for the full per-phase rationale, decisions, and pitfall cross-ref
 - ✅ **Connect Auth Hardening** — Phase 8 (shipped; R1–R4 verified 2026-07-08)
 - ✅ **v0.9.x — Recall Quality** — Phases 9–12 (shipped 2026-07-10, PR #336): retrieval eval + ranking precision (#261), embedder query/document asymmetry (#305), async-on-write summaries (#320), per-memory usage signals (#317). Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
 - ✅ **v0.10.x — Hardening & Write Lane** — Phases 13–21 (shipped 2026-07-16): embedder reliability & options (#333/#332/#331/#334/#337, closes #261), Connect write lane + CSRF + stateless session rotation (#322/#323), correctness & polish tail, CI/maintenance hygiene. 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge only → #369). Full detail archived at `milestones/v0.10.x-ROADMAP.md`.
+- 📋 **v0.11.x — Capture & Service Identity** — Phases 22–26 (planned 2026-07-16): Cedar authz foundation (#362/#373 trust anchor), service auth chain + tenancy isolation (#362/#373), idempotent capture (#340), supersession with history (#342), structured citations + category filter + chat base URL (#341/#374/#350).
 
 ## Phases
 
@@ -86,6 +95,18 @@ Full detail archived at `milestones/v0.10.x-ROADMAP.md`.
 - [x] **Phase 21: CI / Maintenance Hygiene** - Renovate vendored-SPA self-heal, Phase-11 review residuals, `.rumdl.toml` `.planning` exclude (completed 2026-07-16; #301 live self-heal observation deferred, post-merge only → #369)
 
 </details>
+
+### 📋 v0.11.x — Capture & Service Identity (Planned)
+
+**Milestone Goal:** Make programmatic capture correct and re-runnable, and give headless service
+principals a first-class, isolated identity — so agents can write memory mechanically and safely
+into shared stores.
+
+- [ ] **Phase 22: Cedar Authz Foundation & Store Enforcement** - Cedar (cedar-go v1.8.0) PDP decides authorization over enumerable buckets; `internal/store` compiles decisions into the Qdrant filter — behavior-preserving refinement of DEC-cgb
+- [ ] **Phase 23: Service Auth Chain & Tenancy Isolation** - Pluggable verifier chain (OIDC user → OIDC client-credentials → static token); a service principal never resolves to the anonymous bucket
+- [ ] **Phase 24: Idempotent Capture** - `store_memory` accepts an idempotency key with strict, owner-scoped, race-safe replay-safety
+- [ ] **Phase 25: Supersession with History** - A memory can supersede another via additive links; superseded records are soft-hidden from recall but stay fetchable by id
+- [ ] **Phase 26: Structured Citations, Category Filter & Chat Base URL** - Optional provenance on curated memories, MCP↔Connect category-filter parity, and a distinct chat/summarize base URL
 
 ## Phase Details
 
@@ -249,10 +270,164 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 - Phase 20 — Correctness & Polish (4 plans): discovery proto fidelity, MintShortID cap, embed cleanups, summarize CronJob (#307/#308/#304/#302/#303/#269)
 - Phase 21 — CI / Maintenance Hygiene (3 plans): rumdl `.planning` exclude, phase-11 residuals (#335), Renovate self-heal (#301 — live observation deferred, post-merge only → #369)
 
+### Phase 22: Cedar Authz Foundation & Store Enforcement
+
+**Goal**: engram gains a real ABAC policy engine (`internal/authz`, cedar-go v1.8.0) that decides
+authorization over a small enumerable set of buckets, and `internal/store` becomes the sole place
+that decision is compiled into a Qdrant filter or gate check — a behavior-preserving refinement of
+`DEC-cgb`, not a new authz primitive, and the trust anchor every later phase's isolation depends on.
+**Depends on**: Nothing (first phase of v0.11.x)
+**Requirements**: REQ-cedar-pdp-foundation, REQ-cedar-store-enforcement
+**Decisions**: refines DEC-cgb (new ADR, working id DEC-cdr1 — "Cedar PDP decides the predicate;
+the store enforces it as the Qdrant filter"); reaffirms DEC-xa6 (uniform not-found), DEC-kyz
+(sharing grants read, never write), DEC-12c (`Subject` stays a sealed 2-variant sum — Cedar's
+`Principal` is a thin entity wrapper over the existing owner string, not a parallel identity system)
+**Success Criteria** (what must be TRUE):
+
+1. Every existing recall/authz behavior is unchanged for human callers — the full pre-existing
+   isolation/sharing test suite passes byte-for-byte after the refactor (behavior-preserving,
+   per cedar-go's default-deny-on-error semantics matching `DEC-12c`'s discipline).
+2. A `go:embed`-compiled default policy corpus (own-record read/write, shared-read, tenant-isolate,
+   plus a defense-in-depth `forbid ... unless principal.owner != ""` policy) is provably correct via
+   permanent regression tests evaluated against the policy text itself — own-record allow,
+   shared-read allow (never write/delete/share/schedule), cross-owner write deny, empty-owner deny.
+3. `internal/store`'s bulk-recall filter-builder (Search/List) and its id-addressed gate functions
+   (`getWritable`/`GetReadable`/`OwnedOrAbsent`) consult `internal/authz.Decide` for the
+   authorization decision over enumerable buckets (own/shared/tenant) and translate it into the
+   same Qdrant filter/gate shape they build today — Cedar decides, the store still enforces; no
+   per-record Cedar evaluation on the hot recall path.
+4. A Cedar `Deny` on a get/update/delete/share/schedule target maps to the exact same not-found
+   error already used for a genuinely missing id (`DEC-xa6` preserved); `internal/authz`'s
+   `Diagnostic` never leaks into a caller-facing error.
+5. The `Principal`/`Memory` entity schema reserves `tenant`/`roles` attributes and hierarchy fields
+   (`memberOfTypes`/`parents`) as present-but-unpopulated, so a later full tenant/group/role ABAC
+   milestone can extend it with no breaking schema change.
+
+**Note**: research flags the OIDC client-credentials owner-claim source (`client_id` vs `azp` vs a
+custom claim) and the `shared`-visibility cross-tenant policy question as open items for Phase 23,
+not this phase — this phase's policies encode exactly today's rules (own + global shared-read).
+**Plans**: TBD
+
+### Phase 23: Service Auth Chain & Tenancy Isolation
+
+**Goal**: Headless service principals — OIDC client-credentials or operator-provisioned static
+tokens — authenticate through a pluggable, config-selectable verifier chain and are isolated to
+their own owner bucket by default, never the anonymous bucket and never colliding with a human
+owner. The milestone's #1 risk (a service principal silently resolving to `owner==""`) is proven
+fail-closed as the first test of this phase.
+**Depends on**: Phase 22 (Cedar foundation — the bucket-decision seam this phase's principals flow through)
+**Requirements**: REQ-service-auth-chain, REQ-static-token-auth, REQ-service-owner-failclosed, REQ-service-principal-isolation
+**Decisions**: reuses DEC-g37x's `namespacedOwner` injective encoding (no new owner-encoding
+scheme); reaffirms DEC-12c's anti-pattern guard — no 3rd `Subject` variant for service principals
+(a service principal resolves to the existing `authenticated{sub}` variant with a namespaced owner,
+exactly like any other non-email claim already does)
+**Success Criteria** (what must be TRUE):
+
+1. A caller authenticates through a defined-order chain — OIDC user token, then OIDC
+   client-credentials, then static provisioned token — and each mechanism resolves to the same
+   `TokenInfo{Extra[owner]}`/`Subject` contract the store already gates on; which mechanisms are
+   enabled is config-selectable via ENGRAM_ koanf.
+2. An authenticated service principal (client-credentials or static token) whose configured owner
+   claim cannot be resolved is REJECTED with an explicit fail-closed error, never silently mapped
+   to the anonymous empty-owner bucket — this is the FIRST test proven in this phase, before any
+   other service-auth behavior is considered done.
+3. An operator can provision a static bearer token mapped to exactly one owner via ENGRAM_ config;
+   the token is verified with a constant-time compare (`crypto/subtle`) and never appears in logs,
+   spans, or error messages.
+4. A headless service principal is isolated to its own owner bucket by default — it cannot read
+   another human's or another service principal's private records, and does not collide with the
+   anonymous bucket or a human owner.
+5. The `shared`-visibility cross-tenant question (does a service principal's global `shared`-read
+   grant cross tenant boundaries, or is it scoped) is resolved as an explicit, written, tested
+   policy decision — not left implicit.
+
+**Note**: this phase's tenancy isolation is largely a *verification* phase once the auth chain
+exists — it proves namespaced-owner isolation against the store filters Phase 22 wired, per the
+research-converged build order (`#362` requires `#373` to ship together or first).
+**Plans**: TBD
+
+### Phase 24: Idempotent Capture
+
+**Goal**: `store_memory` is safely re-runnable — a repeat call with the same idempotency key and
+owner returns the original record unchanged, a repeat with the same key but different content is
+explicitly rejected, and concurrent retries never produce duplicate Qdrant records.
+**Depends on**: Nothing (orthogonal to the auth/tenancy track; can run in parallel with Phases 22–23)
+**Requirements**: REQ-idempotent-capture
+**Decisions**: none yet — the same-key/different-content contract (reject vs. explicit upsert) is
+locked as REQUIREMENTS.md's decision to reject; a deterministic point-ID derivation
+(`uuid.NewSHA1` over `(owner, scope, key)`) replaces `uuid.NewString()` only when a key is supplied
+**Success Criteria** (what must be TRUE):
+
+1. A `store_memory` call with an idempotency key, repeated with identical content, returns the
+   original record/result unchanged — no duplicate is created.
+2. A repeat call with the same key but different content is rejected with an explicit, distinct
+   mismatch error rather than silently overwriting or duplicating.
+3. An idempotency key is scoped per-owner — two different owners can use the identical key value
+   without colliding.
+4. Concurrent repeat calls with the same key resolve to exactly one record in Qdrant (race-safe via
+   deterministic-ID upsert, not a search-then-insert check).
+5. Omitting the idempotency key preserves today's behavior exactly — a fresh record is created
+   every time.
+
+**Plans**: TBD
+
+### Phase 25: Supersession with History
+
+**Goal**: A memory can supersede another via additive `supersedes`/`superseded_by` links —
+correction is explicit and preserves history, never deleting or silently overwriting. Superseded
+records are soft-hidden from recall but remain fetchable by id.
+**Depends on**: Phase 24 (reuses idempotency's payload-only re-Upsert mechanism to stamp the
+superseded record)
+**Requirements**: REQ-supersession-links
+**Decisions**: reuses DEC-y1g/DEC-ufz's soft-hide-at-recall-gate pattern (Search/List exclude,
+`get_memory` stays ungated); follows the DEC-90w precedent of a dedicated tool/verb over
+overloading `store_memory`; routes through the existing DEC-kyz write gate (`getWritable`/
+`OwnedOrAbsent`), never a read grant
+**Success Criteria** (what must be TRUE):
+
+1. Storing a memory with a `supersedes` link to an existing record stamps that record's
+   `superseded_by` link back, without deleting or overwriting its content.
+2. A superseded record no longer appears in `search_memory`/`list_memory` results (soft-hidden at
+   the recall gate) but remains fully fetchable via `get_memory`.
+3. Superseding an existing record is only possible through the ownership write gate — a caller with
+   only read/shared access cannot supersede another owner's record (no DEC-xa6/DEC-kyz regression).
+4. Correction is explicit — no automatic superseding happens on any similarity threshold or
+   write-through path; a single-hop supersession model rejects cycles at write time.
+
+**Plans**: TBD
+
+### Phase 26: Structured Citations, Category Filter & Chat Base URL
+
+**Goal**: Three small, independent extensions of existing seams close out the milestone — curated
+memories can optionally carry structured provenance, `search_memory`/`list_memory` gain
+MCP↔Connect category-filter parity, and the chat/summarize client can target a base URL distinct
+from the embedder's.
+**Depends on**: Phase 25 (citations continues the capture trio's additive-payload pattern; category
+filter and the chat base-URL split are independent additions bundled here for pacing, not blocked
+by or blocking the capture/auth spine)
+**Requirements**: REQ-memory-citations, REQ-category-filter, REQ-chat-base-url
+**Decisions**: relaxes the discovery-only `payload()` citations write-gate to any category (`Kind`
+stays discovery-specific) without violating DEC-2bv (single collection, no new authz surface);
+mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
+**Success Criteria** (what must be TRUE):
+
+1. A `memory`-category record can optionally be stored with structured citations (the existing
+   discovery `Citation` shape, reused verbatim) — citations are never auto-populated.
+2. `search_memory` and `list_memory` accept an optional `category` filter over the MCP surface,
+   composing as a hard Qdrant pre-filter alongside the existing owner/scope/tags filters (applied
+   before vector ranking on search), at parity with Connect's `ListMemories` (which already
+   supports it).
+3. An operator can configure `ENGRAM_OPENAI_CHAT_BASE_URL` distinct from the embedder's base URL;
+   when unset, the summarizer falls back to the shared `ENGRAM_OPENAI_BASE_URL` with zero
+   configuration-change behavior impact.
+4. None of the three additions introduces new store-layer authz surface — citations and category
+   filtering compose onto the existing authz-outer-`Must` invariant untouched.
+
+**Plans**: TBD
 
 ## Progress
 
-**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · 13 → 14 (embedder track) · 15 → 16 → 17 → 18 → 19 (write-lane track, strict order) · 20 → 21 (independent) — v0.10.x shipped 2026-07-16
+**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · 13 → 14 (embedder track) · 15 → 16 → 17 → 18 → 19 (write-lane track, strict order) · 20 → 21 (independent) — v0.10.x shipped 2026-07-16 · 22 → 23 (Cedar foundation → service auth/tenancy, strict order) · 24 → 25 → 26 (capture trio + recall/config tail, strict order; 24 can start in parallel with 22–23) — v0.11.x planned 2026-07-16
 
 | Phase | Milestone | Requirements | Status | Completed |
 |-------|-----------|--------------|--------|-----------|
@@ -277,6 +452,12 @@ Full phase details (goals, success criteria, plans, decisions, tech debt) are ar
 | 19. Console Write UX | v0.10.x | 6/6 | Complete   | 2026-07-15 |
 | 20. Correctness & Polish | v0.10.x | 4/4 | Complete    | 2026-07-16 |
 | 21. CI / Maintenance Hygiene | v0.10.x | 3/3 | Complete   | 2026-07-16 |
+| 22. Cedar Authz Foundation & Store Enforcement | v0.11.x | 0/2 | Not started | - |
+| 23. Service Auth Chain & Tenancy Isolation | v0.11.x | 0/4 | Not started | - |
+| 24. Idempotent Capture | v0.11.x | 0/1 | Not started | - |
+| 25. Supersession with History | v0.11.x | 0/1 | Not started | - |
+| 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 0/3 | Not started | - |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.
+**v0.11.x — Capture & Service Identity: 📋 planned 2026-07-16 · 5 phases (22–26) · 11/11 requirements mapped, 0 unmapped.** Research: `.planning/research/{SUMMARY,ARCHITECTURE,CEDAR}.md`.

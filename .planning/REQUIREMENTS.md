@@ -118,23 +118,23 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REQ-service-auth-chain | TBD | Pending |
-| REQ-static-token-auth | TBD | Pending |
-| REQ-service-owner-failclosed | TBD | Pending |
-| REQ-cedar-pdp-foundation | TBD | Pending |
-| REQ-cedar-store-enforcement | TBD | Pending |
-| REQ-service-principal-isolation | TBD | Pending |
-| REQ-idempotent-capture | TBD | Pending |
-| REQ-supersession-links | TBD | Pending |
-| REQ-memory-citations | TBD | Pending |
-| REQ-category-filter | TBD | Pending |
-| REQ-chat-base-url | TBD | Pending |
+| REQ-cedar-pdp-foundation | Phase 22 | Pending |
+| REQ-cedar-store-enforcement | Phase 22 | Pending |
+| REQ-service-auth-chain | Phase 23 | Pending |
+| REQ-static-token-auth | Phase 23 | Pending |
+| REQ-service-owner-failclosed | Phase 23 | Pending |
+| REQ-service-principal-isolation | Phase 23 | Pending |
+| REQ-idempotent-capture | Phase 24 | Pending |
+| REQ-supersession-links | Phase 25 | Pending |
+| REQ-memory-citations | Phase 26 | Pending |
+| REQ-category-filter | Phase 26 | Pending |
+| REQ-chat-base-url | Phase 26 | Pending |
 
 **Coverage:**
 - v0.11.x requirements: 11 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 11 ⚠️ (resolved when the roadmapper runs)
+- Mapped to phases: 11 (Phases 22–26)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-07-16*
-*Last updated: 2026-07-16 after initial definition (`/gsd-new-milestone`)*
+*Last updated: 2026-07-16 after roadmap creation (`/gsd-new-project` roadmapper) — mapped all 11 requirements to Phases 22–26; 100% coverage, no orphans.*
