@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-07-16 — opened milestone v0.11.x)
 Phase: 22 of 26 (Cedar Authz Foundation & Store Enforcement) — v0.11.x, phase 1/5
 Plan: — (not yet planned)
 Status: Ready to plan
-Last activity: 2026-07-16 — Roadmap created for v0.11.x (Phases 22–26, 11/11 requirements mapped, 0 unmapped)
+Last activity: 2026-07-17 — Completed quick task 260717-g1r: triage + fix #301 (Renovate ui/ postUpgradeTasks via bash -c)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -103,6 +103,12 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 - **v0.11.x open product question (Phase 23):** whether `shared` visibility (DEC-kyz, "readable by any authenticated caller") crosses service-tenant boundaries once multiple isolated service-principal owners exist — must be an explicit, tested policy decision, not an assumption.
 - **v0.11.x requirements-clarification (Phase 24):** the same-key/different-content idempotency contract (reject vs. explicit upsert) must be locked before Phase 24 planning proceeds past its first test.
 - Tracked tech debt from v0.10.x: #369 (Renovate self-heal live observation, post-merge only), #366 (console e2e harness), #370 (Taskfile yamlfmt/CI reconciliation) — carried forward, not in v0.11.x scope.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260717-g1r | Triage + fix #301 — Renovate ui/ postUpgradeTasks via `bash -c` (shell-free); branch unmerged, gated on a cluster-first allowlist update | 2026-07-17 | 1462da20 | [260717-g1r-renovate-ui-vendor-shell](./quick/260717-g1r-renovate-ui-vendor-shell/) |
 
 ## Session Continuity
 

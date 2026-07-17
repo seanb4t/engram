@@ -30,14 +30,17 @@
       "minimumReleaseAge": "3 days"
     },
     {
-      "description": "Rebuild and commit the vendored SvelteKit SPA whenever a ui/ dependency changes, so the 'ui vendored-asset drift' check stays green (the UI analog of gomodTidy). Requires the self-hosted bot to allow this command via allowedPostUpgradeCommands and to have node + pnpm available.",
+      "description": "Rebuild and commit the vendored SvelteKit SPA whenever a ui/ dependency changes, so the 'ui vendored-asset drift' check stays green (the UI analog of gomodTidy). Renovate runs postUpgradeTasks shell-free (it shlex-splits the string and spawns argv[0] directly), so the recipe is wrapped in a single `bash -c '…'`: the whole `&&` chain then runs in one bash process — `cd` works as a builtin, and a failed `pnpm build` short-circuits before `rm -rf`, preserving the build→vendor interlock (a bare array of commands would NOT short-circuit and could commit the deletion). `installTools.pnpm` installs pnpm at the repo's packageManager major (the runner's bundled pnpm is older). CROSS-REPO: the self-hosted bot pins this exact command string by anchored exact-match allowlist, so any edit here needs a paired selfhosted-cluster allowedCommands update landed cluster-first.",
       "matchFileNames": [
         "ui/package.json"
       ],
       "postUpgradeTasks": {
         "commands": [
-          "cd ui && pnpm install --frozen-lockfile && pnpm build && rm -rf ../internal/webauth/static && mkdir -p ../internal/webauth/static && cp -R build/. ../internal/webauth/static/"
+          "bash -c 'cd ui && pnpm install --frozen-lockfile && pnpm build && rm -rf ../internal/webauth/static && mkdir -p ../internal/webauth/static && cp -R build/. ../internal/webauth/static/'"
         ],
+        "installTools": {
+          "pnpm": {}
+        },
         "fileFilters": [
           "internal/webauth/static/**"
         ],
