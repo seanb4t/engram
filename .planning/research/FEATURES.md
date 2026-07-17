@@ -1,348 +1,206 @@
 # Feature Research
 
-**Domain:** Self-hosted MCP memory server — v0.10.x "Hardening & Write Lane" milestone
-**Researched:** 2026-07-10
-**Confidence:** HIGH (write-lane mechanics, CSRF/rotation UX, embedder config are well-established patterns) / MEDIUM (Gemini-direct embeddings specifics — verify against current API before implementation)
+**Domain:** Milestone v0.11.x — Capture & Service Identity (self-hosted memory MCP server)
+**Researched:** 2026-07-16
+**Confidence:** MEDIUM (web ecosystem patterns cross-checked across 3+ independent sources per topic; HIGH on PROV-O primary spec; no vendor-lock-in claims taken at face value)
 
-This file scopes ONLY the NEW v0.10.x capabilities. It assumes the existing MCP write
-contract (`store_memory`/`schedule_memory`/`update_memory`/`delete_memory`/`set_visibility`/
-`store_discovery`) and its store-layer authz (DEC-cgb, DEC-12c, DEC-xa6, DEC-kyz) are locked
-and must be reused, not reimplemented, by the Connect write lane.
+This is **feature-landscape research for four target capabilities**, not a general product survey:
+(a) idempotency/upsert on `store_memory`, (b) supersession/correct-with-history, (c) structured
+provenance/citations on curated memories, (d) pluggable service-principal auth + tenancy isolation.
+Category filter (#374) and per-lane embedder base URLs (#350) are trivial/mechanical and not
+covered here (no meaningful "landscape" to research — see PITFALLS.md/ARCHITECTURE.md for those).
 
 ## Feature Landscape
 
 ### Table Stakes (Users Expect These)
 
-Features an operator/console-user expects once "Connect can write" is advertised. Missing
-these makes the write lane feel unsafe or half-built.
-
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| **StoreMemory RPC** (Connect) mirrors `store_memory` exactly | Console "add memory" form is the whole point of the write lane | LOW | Thin proto+handler wrapper around the existing `(d *deps) storeMemory` — same embed-first-then-Upsert-then-enqueue-summary sequencing (`internal/server/tools.go:597`). Do not duplicate authz or embed logic; call the same `*deps` methods the MCP tool calls. |
-| **StoreDiscovery RPC** (Connect) mirrors `store_discovery` | Discoveries are console-visible (SearchDiscoveries already shipped read-side); a write-capable console without discovery capture is incomplete | LOW-MEDIUM | Reuse `(d *deps) storeDiscovery`, including its replace-by-id path (`ResolvePointID` + `OwnedOrAbsent` + short_id carry-over). This path already has more edge cases than plain store — see idempotency note below. |
-| **Field-level input validation with `CodeInvalidArgument`** | A malformed write from a browser form must fail fast and legibly, not 500 | LOW | Mirror the existing Connect read-lane pattern already in `connectapi.go` (`parseRFC3339` → `connect.NewError(connect.CodeInvalidArgument, ...)`) for every new write RPC. Empty `content`, malformed `not_before`/`not_after`, and discovery's `validateStoreDiscovery` checks must map the same way. |
-| **Consistent error-code mapping (`ErrNotFound`→`CodeNotFound`, `ErrInvalidArgument`→`CodeInvalidArgument`, else `CodeInternal`)** | Console error toasts need to distinguish "not found / not yours" from "bad input" from "server broke" | LOW | Copy the `errors.Is(err, store.ErrNotFound)` / `store.ErrInvalidArgument` switch already used in every read RPC (`GetMemory`, `ListMemories`) verbatim for Update/Delete/SetVisibility/Schedule RPCs. |
-| **404-uniform not-found for unauthorized id-addressed write ops** | DEC-xa6 is a locked invariant; a write lane that leaks "exists but not yours" via a 403 on Update/Delete/SetVisibility violates it | LOW (already built into store layer) | The Connect write handlers get this for free by calling `FetchForUpdate`/`OwnedOrAbsent`/`GetReadable` exactly as the MCP handlers do — do NOT add a handler-level ownership pre-check, or you reintroduce a second authz surface (contradicts DEC-cgb). |
-| **CSRF token issuance + verification on every state-changing RPC** | Cookie-authenticated same-origin write endpoints are CSRF's classic target; shipping writes without this is the textbook mistake | MEDIUM | See dedicated CSRF section below. This is the centerpiece "security-sensitive" surface called out in PROJECT.md for #322. |
-| **Idempotent-by-id semantics for Update/SetVisibility/Delete** (repeat-safe on retry) | Browser network retries (fetch auto-retry, double-click) must not double-apply or error confusingly | LOW | `Update`/`SetVisibility`/`Delete` are naturally idempotent (last-write-wins on the same id; delete-of-already-deleted returns not-found, which is an acceptable idempotent-delete signal per REST convention — engram should NOT special-case a 2xx-on-repeat-delete, since DEC-xa6 already unifies "gone" and "never existed"). `StoreMemory`/`StoreDiscovery`-as-create are NOT naturally idempotent (each call mints a new id) — that's expected create-endpoint behavior, not a defect; only `StoreDiscovery`'s explicit `id`-supplied replace path is idempotent by construction. |
-| **Update-summary reconciliation parity** | DEC-ddiw (reject content-change with an unaddressed client summary; auto-clear an auto summary) is a locked invariant already enforced by `resolveSummaryUpdate` inside `(d *deps) updateMemory` | LOW (already built) | The Connect `UpdateMemory` RPC must call the *same* `d.updateMemory` (or an equivalent shared helper), not reimplement the summary-resolution branch — this is exactly the kind of authz/business-logic duplication the whole write lane must avoid. |
-| **Rule-guard parity on Connect UpdateMemory/SetVisibility** | Rules are always-shared and immutable-visibility (DEC-iedk); `set_visibility` rejects rule targets and `update_memory` blocks un-sharing a rule via the `Shared` field | LOW (already built) | Same call-the-shared-helper argument — this guard lives inside `updateMemory`/`setVisibility` today; the Connect RPC gets it for free only if it delegates instead of re-deriving `cur.Category == "rule"` logic. |
-| **Session refresh on access-token expiry without dropping the in-flight write** | A console user mid-edit should not lose their draft because the access token aged out under them | MEDIUM | See dedicated rotation section below. |
-| **Async summary enqueue parity for Connect-originated writes** | `store_memory`/`schedule_memory` already enqueue async summary fill (D-01/D-08, v0.9.x); a Connect-originated store that skips this silently regresses summary coverage for console-created memories | LOW (already built, must not be dropped) | `tryEnqueue` is inside the shared `storeMemory`/`scheduleMemory` methods — again, delegate, don't reimplement. |
-| **Operator-facing embedding-model choice docs** (model ↔ vector-dim ↔ reindex) | Anyone changing `ENGRAM_OPENAI_*`/embedding model needs to know before they do it that a dimension change requires `engram reindex`, or they will corrupt/orphan their Qdrant collection | LOW-MEDIUM (docs + Helm values examples only, no new code path) | This is a documentation-and-recipe deliverable (#337), not a feature; but it is table-stakes because the existing `reindex` CLI command already exists and is currently under-discoverable. Must state the dimension-mismatch failure mode explicitly (Qdrant collection is dimension-locked at creation). |
-| **Configurable embedder HTTP timeout** | A hung embedding gateway currently has no operator-tunable ceiling; v0.9.x eval "brownouts" surfaced this gap directly | LOW | Add `ENGRAM_EMBED_TIMEOUT` (or similar) to the `internal/config` field registry with a sane default (e.g. 30s) and wire it into the embed HTTP client's `http.Client.Timeout` / per-request context deadline. Must follow the existing koanf field-registry pattern (DEC-jgq) — no ad hoc `os.Getenv`. |
-| **Robust base-URL joining for the embedder endpoint** | `ENGRAM_OPENAI_BASE_URL` + `/v1/embeddings` string-concatenation currently breaks when the base URL already carries a trailing slash or an existing `/v1` suffix (#332) | LOW | Use `net/url` `JoinPath`/`ResolveReference` (or equivalent) instead of naive string concatenation; add table-driven tests for trailing-slash / with-and-without-`/v1` base URL variants. |
+| Idempotency key scoped to (owner, operation, key) | Every idempotency implementation surveyed (Stripe, AWS EC2, IETF draft-ietf-httpapi-idempotency-key-header) scopes the key — a bare global key is a known anti-pattern (cross-tenant/cross-actor collision) | LOW | engram already has the scope for free: `owner` is the authz key. `dedup_scope = owner + "store_memory" + idempotency_key` |
+| Request-fingerprint mismatch detection | Stripe/AWS both special-case "same key, different params" as a **hard error** (409/422), never a silent replay of the wrong content | LOW-MEDIUM | Canonical hash (sha256) over normalized `{content, scope, category, tags}` — must NOT include volatile server-set fields (short_id, created_at) |
+| Atomic reservation (no check-then-insert race) | The universal correctness bug across every source: two concurrent requests with the same key both pass a "does it exist" check and both write | MEDIUM | Qdrant has no native `INSERT ... ON CONFLICT`; needs either a payload-indexed idempotency-key field with a pre-write existence check under the store's existing per-owner lock discipline, or an in-process/keyed lock for the reservation window. Concurrency correctness is the hard part, not the API shape |
+| Deterministic replay response (return the matched-existing record, not a duplicate) | This is the entire point of idempotency — Stripe replays the original result for the retry window | LOW | `store_memory` response shape needs a `matched_existing: bool` (or equivalent) alongside the (possibly pre-existing) record, so callers can tell "created" from "matched" |
+| Bounded retention / no permanent idempotency-key table growth | Stripe (24h v1 / 30d v2), PayPal, AWS all bound the window — unbounded growth is a known operational problem | LOW-MEDIUM | Simplest fit for engram: don't add a separate idempotency-key table at all — the **idempotency key IS the dedup key against the memory record itself** (store it as a payload field on the memory, scoped by owner); no key ever needs separate reaping since it lives on the record it produced |
+| Supersession preserves the old record, never deletes it | Every corrections-with-history source (event sourcing, bi-temporal DBs, Areev/memnos/lore memory systems) agrees: correction = new record + link, not UPDATE-in-place or DELETE | LOW-MEDIUM | engram already has the harder half solved: `update_memory` already does supersede-on-contradiction at the app level (per CLAUDE.md). #342 promotes this to the store/record model: old record retained + linked, not replaced |
+| `superseded_by` (old→new) and/or `supersedes` (new→old) link field | Universal shape across every source surveyed (Areev `superseded_by`, memnos `semantic.superseded_by`, agentkitai/lore `invalidated_by`/`superseded_by`, SQL temporal-property pattern) | LOW | A nullable id-valued field (short_id, matching engram's existing id convention) on `Memory`; symmetric link is a nice-to-have (see Differentiators) |
+| Superseded records excluded from default recall, fetchable by id | Matches engram's existing `DEC-ufz` pattern (soft-hide expired records at the recall gate) — this is the same shape applied to a new gate | LOW | Reuse the existing recall-gate mechanism (Qdrant filter), not a new one — `get_memory` by id/short_id stays ungated per `DEC-y1g` |
+| Citation fields: source-kind + ref/locator + optional excerpt | The minimal shape every source (PROV-O's `wasDerivedFrom`, engram's own existing discovery `Citation{Kind,Ref,Locator,Pin,Excerpt}`) converges on | LOW | engram already has this exact struct for discoveries — #341 is "extend an existing, proven struct to curated `memory`-category records," not invent a new model |
+| Category filter (`category` in search_memory/list_memory args) | Table stakes for any tool that already has a `category` field but no way to slice recall by it — `tags` filter already precedent-setting (DEC-4xt7) | LOW | Mechanically identical to the existing `tags` hard-AND Qdrant pre-filter (#374 is the smallest item in this milestone) |
+| OAuth2 client-credentials grant (RFC 6749 §4.4) as the primary service-auth path | Universal consensus across every 2025-2026 source surveyed: client-credentials is *the* standard for M2M/service-account auth, displacing bare API keys as the default recommendation | MEDIUM | engram already has an OIDC bearer-token verifier (go-oidc); client-credentials is the same JWT-verification code path on the resource-server side — the server doesn't care how the token was minted, only that it validates. The complexity is the token-endpoint-config surface (issuer discovery, audience), not new verification logic |
+| Static provisioned-token fallback, explicitly scoped and rotatable | Multiple sources agree static tokens remain acceptable for environments that cannot do OIDC (legacy CI, air-gapped), provided they are scoped, hashed-at-rest, and revocable | LOW-MEDIUM | Needs: per-token stable owner binding (so it isn't the anonymous bucket), hashed storage (never plaintext), and a config-level on/off switch — do NOT reinvent bearer-JWT semantics for it |
+| Every service-account/service-principal gets a distinct, stable `owner` | Every isolation source (AWS SaaS Tenant Isolation, Scalekit, Zylos) states the same invariant: tenant/owner ID is mandatory, indexed, and resolved *before* business logic runs — never inferred or defaulted | LOW-MEDIUM | This directly extends engram's existing `owner`-claim model (DEC-g37x) — a service principal's owner value must be as stable as a human's configured claim (e.g., client_id or a dedicated claim), never falling through to the anonymous empty-owner bucket |
 
 ### Differentiators (Competitive Advantage)
 
-Not required for "Connect can write" to be minimally true, but meaningfully raise the bar
-for a self-hosted, single-operator memory server's write lane.
-
 | Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| **Direct Google Gemini embeddings support** | Lets an operator standardize on Gemini for both chat and embeddings without running an OpenAI-compatible shim/gateway in front of it | MEDIUM | Gemini's embedding API is not OpenAI-wire-compatible (different request/response shape, no `/v1/embeddings` verb) — this is a second embedder client, not a param tweak. Scope it as an additional `embed.Client` implementation selected by config (e.g. `ENGRAM_EMBED_PROVIDER=gemini`), sharing the `EmbedText`/asymmetric-params abstraction already established by DEC-zyhq. **Verify the current Gemini embeddings endpoint/model names against Google's docs before implementation — this space moves fast.** |
-| **CSRF token silently refreshed alongside session rotation** | A console session that never surfaces a "please retry your action" CSRF-mismatch error, even across long idle periods, feels like a native web app rather than a bolted-on API client | MEDIUM | Only a differentiator if the token-rotation design (below) explicitly re-issues the CSRF token in the same response that rotates the session, so the SPA never has to special-case "CSRF failed, go refetch a token, then retry the original write." |
-| **Structured, typed Connect error details (not just a code+message string)** | Lets the SPA render field-specific validation errors (e.g. highlight the `content` textarea) instead of a generic toast | MEDIUM | Connect supports `connect.Error.Detail`-style structured error payloads (protobuf `google.rpc.ErrorDetails`-style). Optional polish; not required for v0.10.x scope, but cheap to add while already touching every write RPC's error path. |
-| **Bulk/batch write RPCs (e.g. batch StoreMemory)** | Reduces round trips for console power-users importing many memories at once | HIGH | Explicitly defer — no batch endpoint exists in the MCP contract either; adding one to Connect first would create contract asymmetry. Treat as a future MCP+Connect co-design, not a v0.10.x differentiator. |
+|---------|--------------------|------------|-------|
+| Full bidirectional version chain (`supersedes` + `superseded_by`, walkable both directions) | Lets an agent ask "what did we used to believe about X and when did it change" without re-deriving the reverse pointer by search | LOW (once one direction exists) | Areev's docs specifically call out backward-chain walking as their compliance/audit story — cheap to add as a second field once the first exists |
+| Idempotency replay marker on response (e.g., a boolean/field akin to Stripe's `Idempotent-Replayed: true`) | Lets the calling agent's harness distinguish "this call actually wrote" from "this call was a no-op replay" without diffing content, improving observability of re-run capture scripts | LOW | Directly answers the downstream-consumer's (a) question about return shape: `created` vs `matched-existing` should be a first-class field, not something the caller infers from timestamps |
+| Idempotency-key TTL/expiry surfaced to the caller (not silently infinite) | IETF draft + Stripe both treat replay windows as finite and documented; making this explicit avoids "why didn't my retry with an old key create a new record" support questions | LOW | Given the "key lives on the record" design (see Table Stakes), TTL is really "how long does an idempotency key stay attached to a live record" — natural fit with existing `not_after`/schedule machinery, no new subsystem |
+| Attribution/agent field on curated-memory citations (who/what asserted this citation) | PROV-O's `wasAttributedTo` — useful when multiple agents/service-principals write into a shared store and a human wants to know "which agent claimed this citation" | LOW-MEDIUM | Natural fit once service-principal identity (#362/#373) exists — the citation's implicit attribution is just the record's own `actor`/`owner`, so this may need no new field at all if actor already flows through |
+| Workload-identity federation for service principals (SPIFFE/SPIRE-style JWT exchange, no static secret ever provisioned) | The 2025-2026 state-of-the-art beyond plain client-credentials — removes the standing secret entirely by trusting the platform's own attested identity (e.g., Kubernetes ServiceAccount JWT exchanged via RFC 7523) | HIGH | Explicitly **out of scope for this milestone** per the "pluggable service auth" framing (OIDC client-credentials + static-token fallback only) — flag as a natural v0.12.x+ follow-on once client-credentials ships and a real federation need appears |
+| Per-scope/per-service-principal token TTL policy (short for write scopes, longer for read-only) | SSOJet/Scalekit best practice: bind token lifetime to blast radius, not a single global value | LOW | Only matters if engram's OIDC verifier starts caring about scope-specific TTL; likely deferred until there's a concrete multi-scope service-auth need beyond "is this token valid + what's its owner" |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
-Features that would seem like natural additions to a "write lane" milestone but conflict
-with engram's locked design invariants (PROJECT.md "Out of Scope", memory contract).
-
 | Feature | Why Requested | Why Problematic | Alternative |
-|---------|---------------|------------------|-------------|
-| **Auto-extraction / auto-capture of memories from console activity** | "Since the console can now write, why not have it suggest/auto-save memories from browsing?" | Directly violates the core zero-junk, explicit-capture invariant (PROJECT.md "Out of Scope": auto-extraction) — this is not a v0.10.x scoping question, it's permanently excluded | Keep all console writes explicit, user-initiated form submissions — exactly mirroring the MCP tool contract's explicitness |
-| **Usage-weighted ranking fed by Connect write-lane traffic** | Once writes flow through Connect, it's tempting to fold Connect-observed access patterns into `access_count`/ranking | Usage signals are locked as curation metadata only, never a ranking input (D-08 invariant, v0.9.x, negative-space tested) — extending their influence via a new write surface would silently break that invariant | Continue treating Connect `GetMemory` reads as usage-signal-eligible (already true, `tryEnqueue` in `connectapi.go:210`) but never let write-lane telemetry feed back into search ranking |
-| **Handler-level (Connect-interceptor) authorization checks duplicating store-layer gates** | Feels natural to "double check" ownership at the Connect interceptor before calling into `*deps`, especially for a security-sensitive new surface | Reintroduces exactly the handler-vs-store authz split DEC-cgb/DEC-12c were adopted to prevent; two authz surfaces drift over time and one gets forgotten on the next new RPC | All Connect write RPCs resolve `Subject` (already done via `subjectFromConnectContext`) and then delegate straight into the same `*deps` methods (`storeMemory`, `updateMemory`, etc.) that already enforce authz in `internal/store` |
-| **Long-lived (non-rotating) refresh tokens for console "remember me" convenience** | Users dislike re-authenticating; a long-lived refresh token feels like better UX | Long-lived non-rotating refresh tokens are the exact anti-pattern refresh-token-rotation exists to prevent — a stolen long-lived token gives a silent, undetectable, indefinite write foothold into the memory store | Short session TTL + rotating refresh (see rotation section) with reuse detection; accept the (rare) re-login as the cost of write-capable security |
-| **Custom/bespoke CSRF scheme instead of stdlib/well-trodden middleware** | Temptation to hand-roll a minimal token check "since it's just one endpoint family" | Hand-rolled CSRF defenses are a classic source of subtle bypasses (missing `SameSite`, token comparison timing, origin-header spoofing edge cases) | Use Go's `net/http` `CrossOriginProtection` (Origin/Sec-Fetch-Site validation, stdlib as of recent Go) layered with `SameSite=Strict` session cookies, matching the "Modern Approach to Preventing CSRF in Go" pattern — see CSRF section |
-| **Per-provider embedding profile explosion (a bespoke struct per vendor)** | Adding Gemini support could tempt a return to per-provider config structs | DEC-zyhq deliberately rejected embedder profiles in favor of generic param-map passthrough; reintroducing profiles for Gemini alone breaks that consistency for no real gain | Gemini gets its own `embed.Client` implementation (different wire protocol, unavoidable) but keeps the same generic query/document param-map surface (`ENGRAM_EMBED_QUERY_PARAMS`/`ENGRAM_EMBED_DOCUMENT_PARAMS`) wherever Gemini's API accepts equivalent knobs |
-
-## (a) Connect Write-Lane Behaviors — Detail
-
-**RPCs to expose (v0.10.x scope per #322):** `StoreMemory`, `StoreDiscovery` are the named
-targets. Given the console already needs full CRUD parity to be useful as a write surface,
-`UpdateMemory`, `DeleteMemory`, `SetVisibility`, and (lower priority) `ScheduleMemory` are the
-natural completion set — flag these as in-scope-if-time / early-v0.11.x-candidate rather than
-silently deferred, since a console that can create but not edit/delete memories is a confusing
-half-write-lane.
-
-**Validation:** every new write RPC must front-validate at the Connect handler boundary
-exactly like the existing read RPCs already do (`parseRFC3339`, the `cursor_mode`/`offset`
-mutual-exclusion guard) — fail fast with `CodeInvalidArgument` before touching the store or
-spending an embed call. Reuse `validateStoreDiscovery`/`validateRuleSummary`/`parseWindow`
-directly rather than re-deriving equivalent checks in the Connect layer.
-
-**Idempotency:**
-- `StoreMemory`/`StoreDiscovery`-without-`id` are creates — not idempotent, and should not be
-  made so (no client-supplied idempotency-key concept exists in the MCP contract; do not
-  invent one Connect-only, or the two lanes diverge).
-- `StoreDiscovery`-with-`id` (replace path) is idempotent by construction — repeating the
-  same replace call is safe and expected.
-- `UpdateMemory`/`SetVisibility`/`DeleteMemory` are naturally idempotent on retry (same
-  end-state on repeat), modulo the update-summary-reconciliation rejection (DEC-ddiw), which
-  is content-dependent, not retry-dependent — a repeated identical Update call with an
-  unaddressed stale summary will keep rejecting deterministically, which is correct behavior,
-  not a broken idempotency guarantee.
-
-**Error mapping:** `store.ErrNotFound` → `connect.CodeNotFound`; `store.ErrInvalidArgument` →
-`connect.CodeInvalidArgument`; everything else → `connect.CodeInternal`. This is already the
-exact pattern in every read RPC in `connectapi.go` — copy it, don't reinterpret it.
-
-**Delete semantics:** `DeleteMemory` over Connect must preserve DEC-xa6 (unauthorized
-id-addressed op → same not-found as missing id) and must re-wrap `ErrNotFound` with the
-caller's *original* input (short_id or UUID) exactly as `deleteMemory`/`updateMemory`/
-`GetMemory` already do — never let a resolved-but-not-owned UUID leak into a Connect error
-message.
-
-**Update-summary reconciliation:** delegate entirely to the existing `resolveSummaryUpdate`
-path inside `(d *deps) updateMemory`; the Connect `UpdateMemory` RPC's job is argument
-marshaling (proto `UpdateMemoryRequest` → `updateArgs`) plus error-code mapping, nothing more.
-
-## (b) CSRF UX for a Cookie-Authenticated Same-Origin SPA
-
-**Threat model:** the console authenticates via a sealed session cookie (DEC-u9v, DEC-8q3);
-any cross-origin page can trigger a same-site cookie-bearing browser request to engram's
-write endpoints unless explicitly blocked. The read lane was safe without CSRF defenses
-because GET-shaped reads have no state-changing side effect; the write lane changes that.
-
-**Recommended shape (grounded in current Go stdlib + OWASP guidance):**
-1. **Primary defense — Origin/Sec-Fetch-Site validation** on every state-changing Connect
-   RPC: reject any write request whose `Origin` header (or `Sec-Fetch-Site` when present)
-   does not match engram's own origin. This single check defeats the overwhelming majority
-   of CSRF attempts and requires no token issuance/rotation machinery at all. Go's stdlib
-   `net/http` now ships a `CrossOriginProtection` middleware doing exactly this — prefer it
-   over a hand-rolled check.
-2. **Defense-in-depth — signed double-submit CSRF token** for the write RPCs specifically
-   (belt-and-suspenders beyond Origin checks, since Origin-header spoofing via non-browser
-   clients is out of scope but header-stripping proxies are a real deployment risk): the
-   server issues a short-lived, session-bound CSRF token (e.g. as a *readable*, non-HttpOnly
-   cookie or via a small `GetCsrfToken`-style bootstrap RPC) the SPA must echo back in a
-   request header (`X-Csrf-Token` or a custom Connect-metadata header) on every write call.
-   The token is tied to the session (e.g. HMAC over the session id) so a stolen token from a
-   different session is useless.
-3. **SameSite=Strict (or Lax at minimum) on the session cookie** — already implied by the
-   existing observe-lane cookie design; confirm the write lane doesn't loosen this.
-4. **SPA attachment pattern:** the connect-es generated client wraps every write call with
-   an interceptor that reads the CSRF token (from a small in-memory cache populated on
-   session bootstrap / page load, refreshed alongside token rotation — see below) and sets it
-   as a request header before dispatch. This is a client-side interceptor mirroring the
-   server-side `newConnectSubjectInterceptor` pattern already in `connectauth.go` — same
-   shape, opposite side of the wire.
-5. **Failure UX:** a CSRF-token mismatch should surface as `connect.CodePermissionDenied` (or
-   `CodeUnauthenticated` if you want to trigger the client's existing re-auth/refresh flow) —
-   *not* a silent write-drop — with a UI treatment that prompts a page reload/session refresh
-   rather than a cryptic error, since the common real-world trigger is a stale tab left open
-   across a session rotation.
-
-## (c) Session Refresh-Token Rotation — User-Visible Behavior
-
-**Current baseline (v1, per PROJECT.md "Deferred"):** the sealed session cookie carries
-`{sub, expiry}` only (DEC-8q3) and is trusted until the session TTL — there is no rotation
-today; the session simply expires and the user re-authenticates via the OIDC flow from
-scratch.
-
-**What rotation adds:** a background "silent renewal" so a long-lived console session (open
-tab across a workday) doesn't force a full OIDC redirect just because the underlying
-access-token TTL is short. Standard shape:
-
-- **Access token:** short-lived (minutes), used to mint/verify the sealed session cookie's
-  claims.
-- **Refresh token:** longer-lived (hours/days), stored server-side or in a second
-  more-tightly-scoped cookie (HttpOnly, not readable by JS), used only by the server's BFF
-  layer (DEC-bgj — the BFF is embedded in the Go binary) to silently mint a new access token
-  and re-seal the session cookie without any user-visible interruption.
-- **Rotation-on-use:** each refresh exchange invalidates the refresh token used and issues a
-  new one (standard OAuth refresh-token-rotation practice) — this bounds the blast radius of
-  a stolen refresh token to a single use before reuse-detection fires.
-- **Reuse detection:** if a refresh token is presented a second time (replay of a stolen
-  token, or a race from a rotated-but-not-yet-updated client), the server should invalidate
-  the entire token family and force full re-login rather than silently accepting the stale
-  token — this is the standard mitigation for the "silent replay" failure mode called out in
-  refresh-rotation literature, and is worth stating explicitly in the threat model since it's
-  the part implementers most often skip under UX pressure.
-
-**User-visible behavior — what "good" looks like:**
-- **Silent renewal (the common case):** the user notices nothing. The BFF refreshes the
-  session in the background (e.g. on any authenticated request within some window of
-  expiry, or via a lightweight periodic heartbeat from the SPA) and the write lane keeps
-  working uninterrupted.
-- **Forced re-login (the rare/edge case):** only when the refresh token itself has expired
-  (session TTL fully lapsed) or reuse-detection fires (possible compromise) should the user
-  see an explicit "session expired, please sign in again" state — and this must not silently
-  swallow an in-flight write. The SPA should detect a `CodeUnauthenticated` on a write RPC,
-  attempt one silent-refresh retry, and only then surface the re-login prompt with the
-  original write's input preserved (not lost) so the user can resubmit after re-auth.
-- **Anti-pattern to avoid:** collision-prone refresh races (multiple in-flight requests
-  triggering concurrent refresh attempts) causing spurious logouts — a documented real-world
-  failure mode. Mitigate with a single in-flight-refresh guard (dedupe concurrent refresh
-  attempts to one outstanding request) in the BFF or SPA client, not by disabling reuse
-  detection.
-
-## (d) Embedder Reliability & Operator-Facing Documentation Expectations
-
-**Configurable timeout — what operators expect:**
-- A single `ENGRAM_EMBED_TIMEOUT`-style knob (following the existing `ENGRAM_`/koanf
-  registry pattern, not a bespoke env var) with a documented, sane default — operators
-  should never have to guess why a slow gateway hangs `store_memory` indefinitely, which is
-  precisely the v0.9.x eval-brownout root cause this milestone targets.
-- The timeout should bound the whole embed request (connect+read), not just connection
-  setup — use `context.WithTimeout` around the HTTP call or `http.Client.Timeout`, and
-  surface a distinguishable error (e.g. wrapping `context.DeadlineExceeded`) so operators can
-  tell "gateway is down" from "gateway is slow" from "bad response" in logs/traces (existing
-  OTel spans, DEC-6gb/DEC-f7p, should already carry this if the error is returned normally
-  rather than swallowed).
-
-**Base-URL join fix — what operators expect:**
-- `ENGRAM_OPENAI_BASE_URL` should accept both `https://host` and `https://host/` and both
-  `https://host/v1` and `https://host` (auto-appending `/v1/embeddings` only when the base
-  doesn't already carry a version segment, or documenting unambiguously which form is
-  expected) — the current bug (#332) is exactly the naive-string-concat failure mode; fix
-  with `net/url` path joining plus table-driven tests across the trailing-slash / with-or-
-  without-`/v1` matrix.
-
-**Embedding-model documentation — what operators expect (table stakes, not optional):**
-- A docs-site guide (alongside the existing `guides/reindex`) that states, explicitly and
-  up front: **changing the embedding model or provider changes the vector dimension, which is
-  locked into the Qdrant collection at creation time — switching models requires `engram
-  reindex`, and skipping that step corrupts search silently (wrong-dimension writes either
-  fail loudly if Qdrant enforces dimension, or — worse — succeed if a proxy/gateway pads/
-  truncates vectors, producing garbage similarity scores).**
-- Concrete Helm `values.yaml` recipe snippets for the supported embedder shapes (OpenAI-
-  compatible gateway, direct Gemini once shipped, and the existing param-map passthrough for
-  asymmetric query/document embedding) — operators expect copy-pasteable config, not just
-  prose explaining the concept.
-- A short decision table (model name → typical vector dimension → notes) so an operator
-  picking a model doesn't have to reverse-engineer the dimension from the provider's own
-  docs before wiring it in.
+|---------|----------------|------------------|-------------|
+| Content-hash-only dedup (no explicit idempotency key) | Feels simpler — "just hash the content and skip if it matches" | Silently drops legitimately-repeated but intentional memories (e.g., "confirmed: X is still true" re-asserted on purpose); conflates "same request retried" with "same fact restated" — violates explicit zero-junk capture, since the caller loses control over whether a resend is a no-op | Client-supplied idempotency key is opt-in and explicit; content-based fingerprint is used ONLY to *validate* a matching key, never as the sole dedup signal (per the Stripe/AWS lesson: key answers "which retry", fingerprint answers "is this actually the same request") |
+| Auto-superseding on any content similarity above a threshold (fuzzy-match auto-correction) | Looks convenient — "the system should just figure out this is an update to the old memory" | This is exactly the auto-extraction/auto-inference the project's core invariant forbids; memnos-style near-neighbor negation close-out is a system that's *designed* around implicit extraction — the wrong model for a store whose contract is explicit, user/agent-directed correction | Supersession is only created when the caller explicitly says "this supersedes record X" (an explicit link argument), mirroring how `update_memory`'s existing supersede-on-contradiction already works at the app level — extend that explicit mechanism, don't add inference |
+| Hard delete/purge on supersede (old record physically removed) | Reduces storage, "why keep dead data" | Destroys the audit/correction trail that's the entire value proposition of #342 ("correct WITH history"); conflates supersession with erasure (GDPR-style forget is a distinct, separate operation already out of scope) | Soft-exclude from default recall (reuse the existing `DEC-ufz` gate pattern); keep `delete_memory` as the separate, deliberate, existing erasure path |
+| Rich PROV-O-style provenance graph (full entities/activities/agents/qualified-relations ontology) on every curated memory | "More provenance is more trustworthy," and PROV-O is the authoritative W3C model | Massive over-engineering for engram's scope — PROV-O is designed for cross-system RDF interchange of complex derivation graphs; engram's curated memories need "where did this fact come from," not a queryable provenance ontology. Building this now adds a new subsystem no consumer asked for | Reuse the existing discovery `Citation{Kind,Ref,Locator,Pin,Excerpt}` struct verbatim for curated memories (#341) — it's already a pragmatic PROV-inspired subset; extend fields only if a concrete gap appears (e.g., attribution), don't import the full ontology |
+| Free-text/unstructured "source" string field instead of structured citations | Simpler to implement, no schema to design | Unstructured text can't be validated, can't be filtered/searched, and re-derives the exact problem discoveries already solved with a structured `Citation` type — inconsistent with the existing discovery precedent | Structured `Citation` (same shape, same validation rules) shared across discovery and curated-memory categories |
+| Single shared OAuth client-credentials registration for all service principals | Fastest to stand up — one client_id/secret, done | Directly violates the tenancy-isolation requirement (#373): every isolation source surveyed says the credential/registration boundary IS the tenant boundary; one shared client means every service principal is indistinguishable at the token layer, defeating "stable isolated owner, never anonymous bucket" | One OIDC client registration (or equivalent distinguishable claim, e.g. `azp`/`client_id`) per service principal, mapped 1:1 to a stable owner value — mirrors the existing configurable owner-claim model, just sourced from a machine-identity claim instead of `email` |
+| Static tokens stored/compared in plaintext | Simplest to implement, "it's just a shared secret" | Every source treats static secrets as "hash at rest, never store plaintext, never log" — plaintext storage is the textbook secret-sprawl failure mode this whole design is meant to avoid | Store only a salted hash of the static token (same posture as a password), compare via constant-time hash comparison, never round-trip the plaintext after issuance |
+| Refresh tokens for the client-credentials grant | Some IdPs technically support it; looks like "better UX, fewer round trips" | Off-spec for RFC 6749 §4.4 (no user in the loop, no reason to refresh — the client just re-authenticates with its own credential); several sources explicitly flag providers that do this as non-standard and note it undermines the short-lived-token security model | Let the client re-request a fresh access token via client-credentials each time its cached token nears expiry — standard, stateless, no extra revocation surface |
 
 ## Feature Dependencies
 
 ```
-Connect write-lane RPCs (StoreMemory/StoreDiscovery, #322)
-    └──requires──> Existing store-layer authz (DEC-cgb/DEC-12c/DEC-xa6/DEC-kyz) [ALREADY BUILT]
-    └──requires──> Existing MCP write handlers as the delegation target (storeMemory/storeDiscovery/updateMemory/deleteMemory/setVisibility in tools.go) [ALREADY BUILT]
-    └──requires──> CSRF protection (Origin validation + token) [NEW, this milestone]
-    └──enhanced-by──> Session refresh-token rotation (silent renewal keeps long console sessions writable without re-login friction)
+Idempotency key on store_memory (#340)
+    └──requires──> owner-scoped dedup key (existing owner-claim authz model)
+    └──enhances──> Supersession links (#342) — a caller can safely retry a
+                    store that might also need to supersede, without double-writing
 
-CSRF protection (#322)
-    └──requires──> Cookie/OIDC observe-lane session cookie (DEC-8q3/DEC-u9v) [ALREADY BUILT]
-    └──enhances──> Connect write-lane RPCs (defense against the write lane's specific new attack surface)
+Supersession links / correct-with-history (#342)
+    └──requires──> the existing update_memory supersede-on-contradiction
+                    app-level behavior (already shipped) — this milestone
+                    promotes it to a first-class record-level link + retained history
+    └──enhances──> Structured citations (#341) — a superseding record can cite
+                    *why* it corrects the old one (a citation IS often the
+                    justification for a correction)
 
-Session refresh-token rotation (#323)
-    └──requires──> Existing sealed-cookie session model (DEC-8q3: {sub, expiry} only, no OIDC tokens client-side) [ALREADY BUILT, being extended]
-    └──enhances──> Connect write-lane RPCs (long sessions stay write-capable without forced re-login)
+Structured provenance/citations on curated memories (#341)
+    └──requires──> the existing discovery Citation{Kind,Ref,Locator,Pin,Excerpt}
+                    struct (already shipped, store.Citation) — reuse, don't reinvent
+    └──conflicts with──> auto-extraction (out of scope) — citations must be
+                    caller-supplied, never inferred from content
 
-Embedder configurable timeout / base-URL fix (#333/#332)
-    └──independent of──> Connect write lane (pure reliability fix, no dependency either direction)
+Category filter over MCP (#374)
+    └──requires──> nothing new — mechanically identical to the existing
+                    tags hard-AND Qdrant pre-filter (DEC-4xt7)
 
-Direct Gemini embeddings support (#331)
-    └──requires──> DEC-zyhq generic param-map abstraction (extend, don't replace) [ALREADY BUILT]
-    └──enhanced-by──> Embedding-model documentation (#337) (Gemini needs its own dimension/recipe entry)
+Pluggable service auth (#362)
+    └──requires──> the existing OIDC bearer-token verifier (go-oidc) for the
+                    client-credentials path; a new static-token verification
+                    path for the fallback
+    └──requires──> Tenancy-isolation guarantee (#373) — a service principal
+                    is worthless without a stable, non-anonymous owner
 
-Embedding-model documentation + Helm recipes (#337)
-    └──requires──> Existing `engram reindex` CLI command [ALREADY BUILT] and whichever embedder options ship this milestone (timeout/base-URL fix, Gemini)
+Tenancy-isolation guarantee for service principals (#373)
+    └──requires──> the existing configurable owner-claim model (DEC-g37x) —
+                    extended to source the owner value from a machine-identity
+                    claim (client_id/azp) instead of (or alongside) email
+    └──conflicts with──> the existing "no issuer → anonymous empty-owner
+                    bucket" fallback — #373 must ensure this fallback path is
+                    NEVER reachable for an authenticated service principal
 ```
 
 ### Dependency Notes
 
-- **Connect write-lane RPCs require the existing store-layer authz and MCP write handlers:**
-  this is the single most important dependency in this milestone. The write lane's job is a
-  thin proto+handler translation layer; it must call into `*deps.storeMemory`,
-  `*deps.updateMemory`, etc. exactly as the MCP tools do. Any temptation to re-derive
-  ownership checks, summary-reconciliation logic, or rule guards at the Connect layer is a
-  regression risk (duplicated logic that can drift) and should be treated as an anti-feature,
-  not a design choice.
-- **CSRF protection requires the cookie/OIDC session model** already shipped in Phase 8 — it
-  adds a new check on top of, not instead of, the existing session-cookie authentication.
-- **Session rotation requires and extends DEC-8q3** — the sealed cookie today is
-  intentionally minimal (`{sub, expiry}`, no OIDC tokens client-side); rotation needs to add
-  *server-side* (BFF-embedded, per DEC-bgj) refresh-token custody without violating the
-  "no OIDC tokens client-side" invariant — the refresh token belongs in a separate, more
-  tightly scoped HttpOnly cookie or server-side store, never surfaced to the SPA's JS.
-- **Embedder reliability fixes are independent of the write lane** — they can ship in
-  parallel or in either order; no phase-ordering constraint between them.
-- **Gemini support depends on the existing generic param-map abstraction (DEC-zyhq)** being
-  extended (a second `embed.Client` implementation) rather than reintroducing per-provider
-  profiles — and its documentation entry depends on the embedding-model-docs deliverable
-  landing in the same milestone.
+- **Idempotency (#340) enhances Supersession (#342):** a capture script that mechanically re-runs
+  `store_memory` calls needs both guarantees together — idempotency prevents duplicate writes on
+  retry, supersession prevents silent overwrite when the *content itself* changes between runs.
+  They solve adjacent but distinct problems and should be designed with a shared mental model
+  (both are "don't destroy information, make correction explicit and traceable").
+- **Structured citations (#341) requires the existing discovery Citation struct:** this is a reuse
+  decision, not a new-feature decision — the research strongly suggests extending `store.Citation`
+  (already proven, tested, wire-mapped) to the four curated categories rather than designing a
+  parallel structure. The only open design question is whether `Pin` (an aging/freshness anchor,
+  DEC-3l0) makes sense outside discoveries, or whether curated-memory citations need a narrower
+  field set.
+- **Tenancy isolation (#373) conflicts with the existing anonymous-bucket fallback:** the current
+  "no issuer → single anonymous owner" behavior is a deliberate, locked decision (DEC-g37x) for the
+  no-auth case. Pluggable service auth must NOT let an authenticated-but-misconfigured service
+  principal silently fall into that bucket — this is the sharpest edge case in the whole milestone
+  and should be a hard-fail (reject the token/config), not a soft fallback.
+- **Pluggable service auth (#362) requires tenancy isolation (#373) to ship together or #362 first:**
+  standing up client-credentials support without also guaranteeing isolated ownership creates a
+  window where service principals share a bucket — sequence #373's isolation guarantee no later
+  than #362's auth paths, ideally landing in the same phase.
 
 ## MVP Definition
 
-### Launch With (v1 of this milestone)
+### Launch With (v1 — this milestone)
 
-- [ ] `StoreMemory` + `StoreDiscovery` Connect write RPCs, delegating to existing `*deps`
-      methods — the named #322 scope
-- [ ] CSRF protection (Origin/Sec-Fetch-Site validation as primary defense, double-submit
-      token as defense-in-depth) on all write RPCs
-- [ ] Session refresh-token rotation with reuse detection (#323)
-- [ ] `ENGRAM_EMBED_TIMEOUT` configurable knob (#333)
-- [ ] Base-URL join fix for the embedder endpoint (#332)
-- [ ] Embedding-model documentation + Helm values recipes, including the dimension/reindex
-      warning (#337)
+- [ ] **Idempotency key on `store_memory`, scoped to (owner, key), with fingerprint-mismatch rejection** — the core correctness gap (#340); without it, mechanical re-runnable capture is unsafe
+- [ ] **`created` vs `matched-existing` in the store_memory response shape** — the smallest change that makes idempotency actually usable by a calling harness
+- [ ] **`superseded_by` link + soft-exclude-from-recall gate for superseded records** — the minimum viable "correct with history" (#342); bidirectional chain and richer audit views can follow
+- [ ] **Structured `Citation` (reused struct) available on curated `memory`-category records, caller-supplied only** — (#341); no server-side inference
+- [ ] **`category` filter on search_memory/list_memory** — (#374); trivial, ship it, no reason to defer
+- [ ] **OIDC client-credentials as a selectable service-auth mode, verified through the existing OIDC verifier** — (#362)
+- [ ] **Static-token fallback with hashed-at-rest storage, config-selectable** — (#362)
+- [ ] **Every service principal (either auth mode) resolves to a stable, non-anonymous owner; misconfiguration hard-fails rather than falling into the anonymous bucket** — (#373)
 
-### Add After Validation (v1.x / same-milestone stretch if time allows)
+### Add After Validation (v1.x)
 
-- [ ] `UpdateMemory`/`DeleteMemory`/`SetVisibility` Connect write RPCs (completes CRUD parity
-      for the console; currently only implied, not explicitly named in #322's scope — flag
-      for explicit scoping decision rather than silent omission)
-- [ ] Direct Google Gemini embeddings support (#331) — verify current API shape before commit
-- [ ] `ScheduleMemory` Connect write RPC (lower priority than plain store/update/delete)
+- [ ] **Bidirectional `supersedes` pointer** — trigger: once the version-chain UX is validated and an operator/agent asks "what did this used to say" more than a few times, add the reverse link instead of re-deriving it from search
+- [ ] **Idempotency replay marker on the response** — trigger: once real capture scripts are re-run against a live store and it becomes useful to distinguish "wrote" from "no-op" in logs/telemetry
+- [ ] **Attribution field on citations (who/what asserted this citation)** — trigger: once multiple service principals are writing into a shared store and a human asks "which agent cited this"
 
-### Future Consideration (v2+ / explicitly out of this milestone)
+### Future Consideration (v2+)
 
-- [ ] Batch/bulk write RPCs — no MCP-side precedent; would need co-design across both lanes
-- [ ] Structured per-field Connect error details for richer SPA form validation — polish, not
-      correctness
-- [ ] Any usage-signal feedback from write-lane traffic into ranking — anti-feature, do not
-      build (D-08 invariant)
+- [ ] **Workload-identity federation (SPIFFE/SPIRE-style, no provisioned secret at all)** — defer until client-credentials + static-token ship and a concrete need for zero-standing-secret auth appears (e.g., a Kubernetes-native deployment wanting to eliminate the static-token fallback entirely)
+- [ ] **Per-scope token TTL policy** — defer until engram's service-auth surface grows beyond a single "is this token valid, what's its owner" check into genuine scope-differentiated operations
 
 ## Feature Prioritization Matrix
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|----------------------|----------|
-| StoreMemory/StoreDiscovery Connect RPCs | HIGH | LOW-MEDIUM | P1 |
-| CSRF protection (Origin check + token) | HIGH (security-blocking) | MEDIUM | P1 |
-| Session refresh-token rotation | HIGH (UX + security) | MEDIUM | P1 |
-| `ENGRAM_EMBED_TIMEOUT` | HIGH (fixes a real production brownout) | LOW | P1 |
-| Base-URL join fix | MEDIUM (narrow but real bug) | LOW | P1 |
-| Embedding-model docs + Helm recipes | MEDIUM-HIGH (prevents silent corruption) | LOW-MEDIUM | P1 |
-| UpdateMemory/DeleteMemory/SetVisibility Connect RPCs | HIGH (console completeness) | LOW-MEDIUM | P2 |
-| Direct Gemini embeddings | MEDIUM (single-vendor operators) | MEDIUM | P2 |
-| ScheduleMemory Connect RPC | LOW-MEDIUM | LOW | P3 |
-| Batch write RPCs | LOW (no current demand signal) | HIGH | P3 (defer) |
-| Structured Connect error details | LOW-MEDIUM (polish) | MEDIUM | P3 |
+| Idempotency key + fingerprint mismatch | HIGH | MEDIUM | P1 |
+| Supersession link + recall exclusion | HIGH | MEDIUM | P1 |
+| Structured citations on curated memories | MEDIUM | LOW | P1 |
+| Category filter over MCP | MEDIUM | LOW | P1 |
+| OIDC client-credentials service auth | HIGH | MEDIUM | P1 |
+| Static-token fallback | MEDIUM | LOW-MEDIUM | P1 |
+| Tenancy-isolation hard-fail guarantee | HIGH | MEDIUM | P1 |
+| Bidirectional supersession chain | LOW-MEDIUM | LOW | P2 |
+| Idempotency replay marker | LOW-MEDIUM | LOW | P2 |
+| Citation attribution field | LOW | LOW | P3 |
+| Workload-identity federation | MEDIUM | HIGH | P3 (defer) |
 
 **Priority key:**
-- P1: Must have for this milestone's stated scope (#322/#323/#333/#332/#337)
-- P2: Should have if the write lane is to feel complete; explicitly flag for scoping decision
-- P3: Nice to have, defer to a later milestone
+- P1: Must have for launch (this milestone)
+- P2: Should have, add when possible (next milestone if a real need surfaces)
+- P3: Nice to have, future consideration
+
+## Competitor / Prior-Art Feature Analysis
+
+| Feature | Stripe (idempotency) | Areev / memnos / lore (memory supersession) | PROV-O (provenance) | Engram's Approach |
+|---------|------------------------|----------------------------------------------|----------------------|--------------------|
+| Idempotency key scope | Per-account, header, 255 chars max, UUIDv4 recommended | N/A | N/A | Per-owner (existing authz key), likely a `store_memory` arg, no new header concept needed (MCP tool args, not HTTP headers) |
+| Fingerprint mismatch | 409 `idempotency_error` | N/A | N/A | Reject with a clear error distinguishing "this is a genuine retry" from "you reused a key for a different memory" |
+| Correction model | N/A (not applicable to payments) | `superseded_by` pointer, excluded from default recall, walkable chain | `wasDerivedFrom`/`wasRevisionOf` (derivation, not supersession per se) | `superseded_by` link + existing soft-exclude recall gate (reuse `DEC-ufz` pattern) |
+| Citation/source shape | N/A | N/A | Rich ontology: entities/activities/agents/qualified relations | Reuse existing `Citation{Kind,Ref,Locator,Pin,Excerpt}` — deliberately lighter than PROV-O |
+| Service auth | N/A | N/A | N/A | OIDC client-credentials (primary) + static-token (fallback), both resolving to a stable non-anonymous `owner` |
 
 ## Sources
 
-- Codebase ground truth: `.planning/PROJECT.md`, `CLAUDE.md` (Memory contract section),
-  `proto/engram/v1/engram.proto`, `internal/server/connectapi.go`, `internal/server/
-  connectauth.go`, `internal/server/tools.go` (storeMemory/storeDiscovery/updateMemory/
-  deleteMemory/setVisibility handlers) — read directly this session; HIGH confidence (primary
-  source, own codebase).
-- [Cross-Site Request Forgery Prevention — OWASP Cheat Sheet Series](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html) — HIGH confidence (canonical reference).
-- [A Modern Approach to Preventing CSRF in Go](https://www.alexedwards.net/blog/preventing-csrf-in-go) — MEDIUM-HIGH confidence (respected Go community source; describes stdlib `net/http` Origin/Sec-Fetch-Site cross-origin protection).
-- [Cross-site request forgery (CSRF) — The Copenhagen Book](https://thecopenhagenbook.com/csrf) — MEDIUM confidence (community reference, cross-checked against OWASP).
-- [connectrpc/authn-go](https://github.com/connectrpc/authn-go) — MEDIUM confidence (official Connect ecosystem project; confirms Connect has no built-in CSRF layer, auth is middleware-composed).
-- [Token Expiration & Refresh Best Practices for APIs — Duende](https://duendesoftware.com/learn/best-practices-managing-token-expiration-refresh-revocation-in-web-apis) — MEDIUM-HIGH confidence (established IdentityServer/OAuth vendor).
-- [Refresh Token Rotation — Auth0 Docs](https://auth0.com/docs/secure/tokens/refresh-tokens/refresh-token-rotation) — HIGH confidence (major IdP vendor documentation, canonical rotation/reuse-detection description).
-- [Refresh access tokens and rotate refresh tokens — Okta Developer](https://developer.okta.com/docs/guides/refresh-tokens/main/) — HIGH confidence (major IdP vendor documentation, cross-checks Auth0).
-- [What Are Refresh Tokens and How to Use Them Securely — Auth0](https://auth0.com/blog/refresh-tokens-what-are-they-and-when-to-use-them/) — MEDIUM-HIGH confidence.
-- Refresh-token reuse-race / collision UX failure mode — synthesized from cross-checked
-  vendor guidance (Auth0/Okta/Duende agree on rotation + reuse detection; the "collision
-  causes spurious logout" failure mode is repeatedly cited across these sources) — MEDIUM
-  confidence, treat as a design-review flag rather than a settled implementation detail.
-- Google Gemini embeddings API shape — NOT independently verified this session (no direct
-  fetch of current Gemini API docs); flagged explicitly as MEDIUM confidence / verify-before-
-  build in the table above. Recommend a dedicated `find-docs`/Context7 lookup against the
-  current Gemini embeddings API during phase planning for #331, not at research time.
+- [Designing Idempotent REST Mutations Without Turning Every Request Into a Global Lock](https://blog.ipuau.com/en/posts/20250210-designing-idempotent-rest-mutations-without-turning-every-request-into-a-global-lock.html) — MEDIUM confidence
+- [Stripe: Idempotency for Payment Reliability](https://sujeet.pro/articles/stripe-idempotency-reliability) — MEDIUM confidence
+- [The API Idempotency Threat Model: Safely Handling Retries](https://newsletter.securepatterns.dev/p/designing-api-idempotency-keys-to-prevent-duplicate-writes) — MEDIUM confidence
+- [Supersede — Areev Docs](https://areev.ai/docs/guides/supersede/) — MEDIUM confidence (vendor docs, cross-checked against independent sources below)
+- [Temporal Modeling in Event-Driven Systems — NILUS](https://www.nilus.be/blog/temporal_modeling_in_event-driven_systems/) — MEDIUM confidence
+- [Our Experience with Bi-temporal Event Sourcing — planetgeek.ch](https://www.planetgeek.ch/2023/12/04/our-experience-with-bi-temporal-event-sourcing/) — MEDIUM confidence
+- [Event Sourcing — Martin Fowler](https://martinfowler.com/eaaDev/EventSourcing.html) — HIGH confidence (canonical reference)
+- [Event Sourcing Pattern — Azure Architecture Center](https://learn.microsoft.com/en-us/azure/architecture/patterns/event-sourcing) — MEDIUM-HIGH confidence
+- [Bi-temporal facts: valid-time vs ingestion-time, supersede-not-delete — agentkitai/lore #67](https://github.com/agentkitai/lore/issues/67) — MEDIUM confidence (design-doc issue, not shipped)
+- [supersession: bi-temporal write path — memnos commit](https://github.com/thameema/memnos/commit/bf78b2e14d11091548a9779b17196e381a084a8b) — MEDIUM confidence (real shipped code, single project)
+- [PROV-O: The PROV Ontology — W3C](https://www.w3.org/TR/prov-o/) — HIGH confidence (W3C Recommendation)
+- [PROV-DM: The PROV Data Model — W3C](https://www.w3.org/TR/prov-dm/) — HIGH confidence (W3C Recommendation)
+- [PROV Model Primer — W3C](https://www.w3.org/TR/prov-primer/) — HIGH confidence
+- [Service Account Authentication Best Practices — SSOJet](https://ssojet.com/blog/service-account-authentication-best-practices-api-keys-oauth) — MEDIUM confidence
+- [OAuth vs API Keys vs mTLS for AI Agents — STOA Docs](https://docs.gostoa.dev/blog/ai-agent-security-authentication-patterns) — MEDIUM confidence
+- [Designing API Authentication for B2B SaaS — Let's Build](https://letsbuildsolutions.com/blog/web-engineering/designing-api-authentication-for-b2b-saas-api-keys-oauth-client-credentials-and-scoped-access-tokens/) — MEDIUM confidence
+- [OAuth vs mTLS for M2M authentication — Scalekit](https://www.scalekit.com/blog/oauth-client-credentials-vs-mtls) — MEDIUM confidence (vendor blog, cross-checked)
+- [Token Management and Credential Rotation in Multi-Tenant SaaS — Zylos Research](https://zylos.ai/research/2026-02-24-token-management-credential-rotation-multi-tenant-saas) — MEDIUM confidence
+- [Why You Should Migrate to OAuth 2.0 From API Keys — Auth0](https://auth0.com/blog/why-migrate-from-api-keys-to-oauth2-access-tokens/) — MEDIUM-HIGH confidence (established vendor, widely cited)
+- [Should organisations use API keys or OAuth 2.0 for machine access? — NHIMG](https://nhimg.org/faq/should-organisations-use-api-keys-or-oauth-20-for-machine-access/) — MEDIUM confidence
+- [Securing OAuth 2.0 M2M tokens in B2B SaaS — Scalekit](https://www.scalekit.com/blog/securing-m2m-tokens-b2b-saas) — MEDIUM confidence
+- [OAuth 2.0 client credentials flow — Microsoft identity platform](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow) — HIGH confidence (primary vendor docs, first-party protocol implementation)
+- [Workload Identity Practices — IETF draft-ietf-wimse-workload-identity-practices](https://www.ietf.org/archive/id/draft-ietf-wimse-workload-identity-practices-03.html) — MEDIUM-HIGH confidence (active IETF draft)
+- Internal: `internal/store/store.go` (existing `Memory`/`Citation` structs, `DEC-ufz`/`DEC-y1g`/`DEC-4xt7`/`DEC-g37x` recall-gate and authz patterns) — HIGH confidence (source of truth, own codebase)
 
 ---
-*Feature research for: engram v0.10.x Hardening & Write Lane*
-*Researched: 2026-07-10*
+*Feature research for: engram v0.11.x — Capture & Service Identity*
+*Researched: 2026-07-16*
