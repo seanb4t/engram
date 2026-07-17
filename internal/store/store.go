@@ -253,6 +253,15 @@ type Store struct {
 	// without a broader authz-interface refactor.
 	decideBucketHook func(owner, kind string, action authz.Action, bucket authz.Bucket) authz.Decision
 
+	// decideRecordHook routes the id-addressed gates' (GetReadable/getWritable/
+	// OwnedOrAbsent) per-record authz decisions; nil defaults to
+	// s.authz.DecideRecord (via the decideRecord method below). Same sealed-type
+	// rationale as decideBucketHook: *authz.PDP has no exported constructor
+	// besides MustDefault, so this function-var field is how tests inject an
+	// all-deny probe to prove a Cedar Deny maps to the uniform ErrNotFound (SC4)
+	// without a broader authz-interface refactor.
+	decideRecordHook func(owner, kind string, action authz.Action, memoryOwner, category, visibility, scope string) authz.Decision
+
 	// mintCandidate generates a short_id candidate; nil defaults to shortid.New.
 	// Overridable in tests to force MintShortID's collision-retry branch.
 	mintCandidate func() (string, error)
@@ -618,6 +627,17 @@ func (s *Store) decideBucket(owner, kind string, action authz.Action, bucket aut
 		return s.decideBucketHook(owner, kind, action, bucket)
 	}
 	return s.authz.DecideBucket(owner, kind, action, bucket)
+}
+
+// decideRecord is the single call-site indirection GetReadable/getWritable/
+// OwnedOrAbsent use to reach the PDP for a per-record (id-addressed) decision.
+// It defaults to s.authz.DecideRecord; decideRecordHook (nil in production)
+// lets tests inject an all-deny probe without a real *authz.PDP construction.
+func (s *Store) decideRecord(owner, kind string, action authz.Action, memoryOwner, category, visibility, scope string) authz.Decision {
+	if s.decideRecordHook != nil {
+		return s.decideRecordHook(owner, kind, action, memoryOwner, category, visibility, scope)
+	}
+	return s.authz.DecideRecord(owner, kind, action, memoryOwner, category, visibility, scope)
 }
 
 // matchNothing returns a condition no record can satisfy (owner==x AND owner!=x).
@@ -1340,20 +1360,14 @@ func (s *Store) GetReadable(ctx context.Context, id string, subj Subject) (out M
 	if err != nil {
 		return Memory{}, err
 	}
-	switch sj := subj.(type) {
-	case authenticated:
-		if m.Owner != sj.sub && m.Visibility != visibilityShared {
-			return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
-		}
-		return m, nil
-	case anonymous:
-		if m.Owner != "" {
-			return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
-		}
-		return m, nil
-	default:
+	owner, kind, ok := principalParams(subj)
+	if !ok {
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
+	if !s.decideRecord(owner, kind, authz.ActionRead, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
+		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	return m, nil
 }
 
 // getWritable returns the record only if the caller OWNS it (shared does NOT
@@ -1370,20 +1384,14 @@ func (s *Store) getWritable(ctx context.Context, id string, subj Subject) (Memor
 	if err != nil {
 		return Memory{}, err
 	}
-	switch sj := subj.(type) {
-	case authenticated:
-		if m.Owner != sj.sub {
-			return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
-		}
-		return m, nil
-	case anonymous:
-		if m.Owner != "" {
-			return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
-		}
-		return m, nil
-	default:
+	owner, kind, ok := principalParams(subj)
+	if !ok {
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
+	if !s.decideRecord(owner, kind, authz.ActionWrite, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
+		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	return m, nil
 }
 
 // OwnedOrAbsent permits a client-supplied-id write: nil if the id is absent (new
@@ -1411,20 +1419,14 @@ func (s *Store) OwnedOrAbsent(ctx context.Context, id string, subj Subject) (err
 	if err != nil {
 		return err
 	}
-	switch sj := subj.(type) {
-	case authenticated:
-		if m.Owner != sj.sub {
-			return fmt.Errorf("%w: %s", ErrNotFound, id)
-		}
-		return nil
-	case anonymous:
-		if m.Owner != "" {
-			return fmt.Errorf("%w: %s", ErrNotFound, id)
-		}
-		return nil
-	default:
+	owner, kind, ok := principalParams(subj)
+	if !ok {
 		return fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
+	if !s.decideRecord(owner, kind, authz.ActionWrite, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
+		return fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	return nil
 }
 
 // FetchForUpdate returns the record iff it exists and is owned by the subject
