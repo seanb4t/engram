@@ -208,3 +208,8 @@ None — no external service configuration required.
 ---
 *Phase: 22-cedar-authz-foundation-store-enforcement*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+All 10 claimed created files verified present on disk; all 4 claimed commit hashes
+(`bf4df27e`, `9e8ea8e9`, `fedf3a09`, `78616ff3`) verified present in `git log --oneline --all`.
