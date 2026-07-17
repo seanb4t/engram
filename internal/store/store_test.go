@@ -3411,3 +3411,72 @@ func TestBulkFilterOrderIndependent(t *testing.T) {
 		t.Errorf("order-independence: got %v, want %v (unchanged regardless of decision order)", got, want)
 	}
 }
+
+// TestGetReadableDenyMapsToNotFound proves a Cedar Deny on an id-addressed
+// gate is indistinguishable from a genuinely missing id: even though the
+// record EXISTS and is owned by the caller, an all-deny decideRecordHook
+// forces GetReadable to return the exact same fmt.Errorf ErrNotFound form
+// used for an absent id (DEC-xa6) — the error carries no policy-id/reason
+// text and its message equals the plain missing-id form, proving the
+// authz.Decision's unexported Diagnostic never leaks into the caller-facing
+// error (SC4, T-22-08). *authz.PDP is a sealed concrete type with no
+// exported constructor besides MustDefault, so the all-deny probe is
+// injected via decideRecordHook (mirroring decideBucketHook), not a custom
+// *authz.PDP built through WithAuthz.
+func TestGetReadableDenyMapsToNotFound(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "authz-test:project:record-deny"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	m := Memory{
+		ID: "11111111-2222-0000-0000-000000000001", Content: "owned",
+		Scope: scope, Owner: "sub-record-deny", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	s.decideRecordHook = func(_, _ string, _ authz.Action, _, _, _, _ string) authz.Decision {
+		return authz.Decision{Allow: false}
+	}
+	t.Cleanup(func() { s.decideRecordHook = nil })
+
+	_, err := s.GetReadable(ctx, m.ID, Authenticated("sub-record-deny"))
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetReadable with all-deny PDP: want ErrNotFound, got %v", err)
+	}
+	want := fmt.Errorf("%w: %s", ErrNotFound, m.ID).Error()
+	if err.Error() != want {
+		t.Errorf("GetReadable error leaked non-uniform content: got %q, want %q (plain missing-id form, no Diagnostic)", err.Error(), want)
+	}
+}
+
+// TestIdAddressedAbsentShortCircuit proves the s.Get -> ErrNotFound
+// short-circuit precedes DecideRecord for every id-addressed gate: even
+// under an all-deny PDP, an id that does NOT exist yields the SAME
+// GetReadable/getWritable ErrNotFound and OwnedOrAbsent's absent->nil
+// contract, because Cedar is never consulted for a record that was never
+// fetched (Pattern 4, T-22-10). A Deny-everything decideRecordHook must not
+// change the absent-id contract.
+func TestIdAddressedAbsentShortCircuit(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	s.decideRecordHook = func(_, _ string, _ authz.Action, _, _, _, _ string) authz.Decision {
+		return authz.Decision{Allow: false}
+	}
+	t.Cleanup(func() { s.decideRecordHook = nil })
+
+	const missing = "11111111-2222-0000-0000-00000000dead"
+
+	if _, err := s.GetReadable(ctx, missing, Authenticated("sub-absent")); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetReadable absent id under all-deny PDP: want ErrNotFound, got %v", err)
+	}
+	if _, err := s.getWritable(ctx, missing, Authenticated("sub-absent")); !errors.Is(err, ErrNotFound) {
+		t.Errorf("getWritable absent id under all-deny PDP: want ErrNotFound, got %v", err)
+	}
+	if err := s.OwnedOrAbsent(ctx, missing, Authenticated("sub-absent")); err != nil {
+		t.Errorf("OwnedOrAbsent absent id under all-deny PDP: want nil, got %v", err)
+	}
+}
