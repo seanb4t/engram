@@ -310,7 +310,7 @@ the store enforces it as the Qdrant filter"); reaffirms DEC-xa6 (uniform not-fou
 **Note**: research flags the OIDC client-credentials owner-claim source (`client_id` vs `azp` vs a
 custom claim) and the `shared`-visibility cross-tenant policy question as open items for Phase 23,
 not this phase — this phase's policies encode exactly today's rules (own + global shared-read).
-**Plans**: 1/3 plans executed
+**Plans**: 2/3 plans executed
 
 Plans:
 **Wave 1**
@@ -319,7 +319,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 22-02-PLAN.md — store bulk-recall wiring: inject PDP, PDP-back ownerOrSharedCondition/ownerOnlyCondition via DecideBucket, behavior-preserving + per-bucket call-count tests (REQ-cedar-store-enforcement)
+- [x] 22-02-PLAN.md — store bulk-recall wiring: inject PDP, PDP-back ownerOrSharedCondition/ownerOnlyCondition via DecideBucket, behavior-preserving + per-bucket call-count tests (REQ-cedar-store-enforcement)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 

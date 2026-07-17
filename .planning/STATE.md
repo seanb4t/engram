@@ -5,15 +5,15 @@ milestone_name: Capture & Service Identity
 current_phase: 22
 current_phase_name: Cedar Authz Foundation & Store Enforcement
 status: executing
-stopped_at: Completed 22-01-PLAN.md
-last_updated: "2026-07-17T22:36:40.082Z"
+stopped_at: Completed 22-02-PLAN.md
+last_updated: "2026-07-17T22:46:34.299Z"
 last_activity: 2026-07-17
 last_activity_desc: Phase 22 execution started
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-07-16 — opened milestone v0.11.x)
 ## Current Position
 
 Phase: 22 (Cedar Authz Foundation & Store Enforcement) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-17 — Phase 22 execution started
 
-Progress: [███░░░░░░░] 33%
+Progress: [███████░░░] 67%
 
 ## Deferred Items
 
@@ -101,6 +101,7 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 - [Phase 21]: D-09: plain .planning rumdl exclude entry (not .planning/** glob), matching convention of .beads/.agents/docs-site neighbors
 - [Phase 22 P01]: A1/A2 confirmed (kind hardcoded 'human'; MustDefault panics on parse failure, not New() error return)
 - [Phase 22 P01]: TestPolicyCorpus_ForbidOverridesPermit proven via a synthetic inline permit-all/forbid-all PolicySet (white-box &PDP{policies:ps}) since the shipped 4-policy corpus has no naturally-overlapping permit+forbid request
+- [Phase 22 P02]: decideBucketHook function-var test seam (mirrors mintCandidate/deletePayloadKeys) added to store.go since *authz.PDP is a sealed concrete type with no test constructor; zero new exported API
 
 ### Blockers/Concerns
 
@@ -118,8 +119,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-17T22:36:40.075Z
-Stopped at: Completed 22-01-PLAN.md
+Last session: 2026-07-17T22:46:34.293Z
+Stopped at: Completed 22-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -165,6 +166,7 @@ Resume file: None
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 22 P01 | 8min | 3 tasks | 13 files |
+| Phase 22 P02 | 5min | 3 tasks | 2 files |
 
 ## Operator Next Steps
 
