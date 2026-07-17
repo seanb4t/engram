@@ -763,9 +763,13 @@ generation of the same tool). The one relevant fact: cedar-go itself has moved f
 **If this table is empty:** N/A — see entries above. Confirm A1 and A2 explicitly during planning
 (neither is dictated by CONTEXT.md's locked decisions; both are this research's synthesis).
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Should `Store.authz` be a concrete `*authz.PDP` field or a small interface seam?**
+> Both questions were resolved at planning time: Plan 02 adopts the concrete `*authz.PDP`
+> field + `WithAuthz` Option (Q1, per the recommendation below); Plan 01 adopts typed
+> `Action`/`Bucket` enums (Q2, Claude's Discretion per CONTEXT.md).
+
+1. **Should `Store.authz` be a concrete `*authz.PDP` field or a small interface seam?** (RESOLVED — concrete field)
    - What we know: the existing `mintCandidate`/`deletePayloadKeys` fields use the
      function-var-injection pattern specifically to enable failure-injection tests without a
      broader client-interface refactor.

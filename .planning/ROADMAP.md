@@ -287,18 +287,22 @@ the store enforces it as the Qdrant filter"); reaffirms DEC-xa6 (uniform not-fou
 1. Every existing recall/authz behavior is unchanged for human callers — the full pre-existing
    isolation/sharing test suite passes byte-for-byte after the refactor (behavior-preserving,
    per cedar-go's default-deny-on-error semantics matching `DEC-12c`'s discipline).
+
 2. A `go:embed`-compiled default policy corpus (own-record read/write, shared-read, tenant-isolate,
    plus a defense-in-depth `forbid ... unless principal.owner != ""` policy) is provably correct via
    permanent regression tests evaluated against the policy text itself — own-record allow,
    shared-read allow (never write/delete/share/schedule), cross-owner write deny, empty-owner deny.
+
 3. `internal/store`'s bulk-recall filter-builder (Search/List) and its id-addressed gate functions
    (`getWritable`/`GetReadable`/`OwnedOrAbsent`) consult `internal/authz.Decide` for the
    authorization decision over enumerable buckets (own/shared/tenant) and translate it into the
    same Qdrant filter/gate shape they build today — Cedar decides, the store still enforces; no
    per-record Cedar evaluation on the hot recall path.
+
 4. A Cedar `Deny` on a get/update/delete/share/schedule target maps to the exact same not-found
    error already used for a genuinely missing id (`DEC-xa6` preserved); `internal/authz`'s
    `Diagnostic` never leaks into a caller-facing error.
+
 5. The `Principal`/`Memory` entity schema reserves `tenant`/`roles` attributes and hierarchy fields
    (`memberOfTypes`/`parents`) as present-but-unpopulated, so a later full tenant/group/role ABAC
    milestone can extend it with no breaking schema change.
@@ -309,8 +313,16 @@ not this phase — this phase's policies encode exactly today's rules (own + glo
 **Plans**: 3 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 22-01-PLAN.md — internal/authz PDP foundation: cedar-go v1.8.0, four embedded policies, DecideBucket/DecideRecord API, D-08 policy-corpus regression suite (REQ-cedar-pdp-foundation)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 22-02-PLAN.md — store bulk-recall wiring: inject PDP, PDP-back ownerOrSharedCondition/ownerOnlyCondition via DecideBucket, behavior-preserving + per-bucket call-count tests (REQ-cedar-store-enforcement)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 22-03-PLAN.md — store id-addressed gate wiring (GetReadable/getWritable/OwnedOrAbsent via DecideRecord, Deny→ErrNotFound, no Diagnostic leak) + DEC-cdr1 ADR (REQ-cedar-store-enforcement)
 
 ### Phase 23: Service Auth Chain & Tenancy Isolation
@@ -332,16 +344,20 @@ exactly like any other non-email claim already does)
    client-credentials, then static provisioned token — and each mechanism resolves to the same
    `TokenInfo{Extra[owner]}`/`Subject` contract the store already gates on; which mechanisms are
    enabled is config-selectable via ENGRAM_ koanf.
+
 2. An authenticated service principal (client-credentials or static token) whose configured owner
    claim cannot be resolved is REJECTED with an explicit fail-closed error, never silently mapped
    to the anonymous empty-owner bucket — this is the FIRST test proven in this phase, before any
    other service-auth behavior is considered done.
+
 3. An operator can provision a static bearer token mapped to exactly one owner via ENGRAM_ config;
    the token is verified with a constant-time compare (`crypto/subtle`) and never appears in logs,
    spans, or error messages.
+
 4. A headless service principal is isolated to its own owner bucket by default — it cannot read
    another human's or another service principal's private records, and does not collide with the
    anonymous bucket or a human owner.
+
 5. The `shared`-visibility cross-tenant question (does a service principal's global `shared`-read
    grant cross tenant boundaries, or is it scoped) is resolved as an explicit, written, tested
    policy decision — not left implicit.
@@ -365,12 +381,16 @@ locked as REQUIREMENTS.md's decision to reject; a deterministic point-ID derivat
 
 1. A `store_memory` call with an idempotency key, repeated with identical content, returns the
    original record/result unchanged — no duplicate is created.
+
 2. A repeat call with the same key but different content is rejected with an explicit, distinct
    mismatch error rather than silently overwriting or duplicating.
+
 3. An idempotency key is scoped per-owner — two different owners can use the identical key value
    without colliding.
+
 4. Concurrent repeat calls with the same key resolve to exactly one record in Qdrant (race-safe via
    deterministic-ID upsert, not a search-then-insert check).
+
 5. Omitting the idempotency key preserves today's behavior exactly — a fresh record is created
    every time.
 
@@ -392,10 +412,13 @@ overloading `store_memory`; routes through the existing DEC-kyz write gate (`get
 
 1. Storing a memory with a `supersedes` link to an existing record stamps that record's
    `superseded_by` link back, without deleting or overwriting its content.
+
 2. A superseded record no longer appears in `search_memory`/`list_memory` results (soft-hidden at
    the recall gate) but remains fully fetchable via `get_memory`.
+
 3. Superseding an existing record is only possible through the ownership write gate — a caller with
    only read/shared access cannot supersede another owner's record (no DEC-xa6/DEC-kyz regression).
+
 4. Correction is explicit — no automatic superseding happens on any similarity threshold or
    write-through path; a single-hop supersession model rejects cycles at write time.
 
@@ -418,13 +441,16 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 
 1. A `memory`-category record can optionally be stored with structured citations (the existing
    discovery `Citation` shape, reused verbatim) — citations are never auto-populated.
+
 2. `search_memory` and `list_memory` accept an optional `category` filter over the MCP surface,
    composing as a hard Qdrant pre-filter alongside the existing owner/scope/tags filters (applied
    before vector ranking on search), at parity with Connect's `ListMemories` (which already
    supports it).
+
 3. An operator can configure `ENGRAM_OPENAI_CHAT_BASE_URL` distinct from the embedder's base URL;
    when unset, the summarizer falls back to the shared `ENGRAM_OPENAI_BASE_URL` with zero
    configuration-change behavior impact.
+
 4. None of the three additions introduces new store-layer authz surface — citations and category
    filtering compose onto the existing authz-outer-`Must` invariant untouched.
 
