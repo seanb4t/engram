@@ -245,6 +245,14 @@ type Store struct {
 	// it is owned by the store, the single default-deny chokepoint (DEC-cgb).
 	authz *authz.PDP
 
+	// decideBucket routes the read-filter builders' bucket-authz decisions;
+	// nil defaults to s.authz.DecideBucket (via the decideBucket method below).
+	// *authz.PDP is a sealed concrete type with no exported constructor besides
+	// MustDefault, so this function-var field (mirroring mintCandidate/
+	// deletePayloadKeys) is how tests inject a call-counting probe (SC3)
+	// without a broader authz-interface refactor.
+	decideBucketHook func(owner, kind string, action authz.Action, bucket authz.Bucket) authz.Decision
+
 	// mintCandidate generates a short_id candidate; nil defaults to shortid.New.
 	// Overridable in tests to force MintShortID's collision-retry branch.
 	mintCandidate func() (string, error)
@@ -569,8 +577,8 @@ func (s *Store) ownerOrSharedCondition(subj Subject) *qdrant.Condition {
 	if !ok {
 		return matchNothing()
 	}
-	ownAllowed := s.authz.DecideBucket(owner, kind, authz.ActionRead, authz.BucketOwn).Allow
-	sharedAllowed := s.authz.DecideBucket(owner, kind, authz.ActionRead, authz.BucketShared).Allow
+	ownAllowed := s.decideBucket(owner, kind, authz.ActionRead, authz.BucketOwn).Allow
+	sharedAllowed := s.decideBucket(owner, kind, authz.ActionRead, authz.BucketShared).Allow
 	var should []*qdrant.Condition
 	if ownAllowed {
 		should = append(should, qdrant.NewMatch("owner", owner))
@@ -596,10 +604,20 @@ func (s *Store) ownerOnlyCondition(subj Subject) *qdrant.Condition {
 	if !ok {
 		return matchNothing()
 	}
-	if s.authz.DecideBucket(owner, kind, authz.ActionRead, authz.BucketOwn).Allow {
+	if s.decideBucket(owner, kind, authz.ActionRead, authz.BucketOwn).Allow {
 		return qdrant.NewMatch("owner", owner)
 	}
 	return matchNothing()
+}
+
+// decideBucket is the single call-site indirection ownerOrSharedCondition and
+// ownerOnlyCondition use to reach the PDP. It defaults to s.authz.DecideBucket;
+// decideBucketHook (nil in production) lets tests observe/count invocations.
+func (s *Store) decideBucket(owner, kind string, action authz.Action, bucket authz.Bucket) authz.Decision {
+	if s.decideBucketHook != nil {
+		return s.decideBucketHook(owner, kind, action, bucket)
+	}
+	return s.authz.DecideBucket(owner, kind, action, bucket)
 }
 
 // matchNothing returns a condition no record can satisfy (owner==x AND owner!=x).

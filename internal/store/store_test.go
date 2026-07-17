@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/qdrant/go-client/qdrant"
+	"github.com/seanb4t/engram/internal/authz"
 	"github.com/seanb4t/engram/internal/shortid"
 	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
 )
@@ -3228,5 +3229,185 @@ func TestUpdatePayloadInjectedDeletePayloadFailure(t *testing.T) {
 		if _, ok := raw.payload[k]; !ok {
 			t.Errorf("expected stale provenance key %q to remain after the injected DeletePayload failure", k)
 		}
+	}
+}
+
+// TestSearchAuthzCallCount proves the bulk recall path calls DecideBucket
+// O(buckets-per-request) — at most one per candidate bucket (own, shared) —
+// and NEVER a count that scales with the number of stored/returned records
+// (SC3, no per-record Cedar evaluation on the hot path). *authz.PDP is a
+// sealed concrete type with no exported constructor besides MustDefault, so
+// the counting probe is injected via decideBucketHook (a same-package field,
+// mirroring the deletePayloadKeys injection above) rather than a custom PDP.
+func TestSearchAuthzCallCount(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "authz-test:project:call-count"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	var calls int
+	s.decideBucketHook = func(owner, kind string, action authz.Action, bucket authz.Bucket) authz.Decision {
+		calls++
+		return s.authz.DecideBucket(owner, kind, action, bucket)
+	}
+	t.Cleanup(func() { s.decideBucketHook = nil })
+
+	const n = 12
+	for i := 0; i < n; i++ {
+		m := Memory{
+			ID: fmt.Sprintf("cccccccc-0000-0000-0000-%012d", i), Content: "x",
+			Scope: scope, Owner: "sub-count", CreatedAt: time.Now().UTC(),
+		}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %d: %v", i, err)
+		}
+	}
+
+	calls = 0
+	hits, err := s.Search(ctx, scope, Authenticated("sub-count"), []float32{0.1, 0.2, 0.3}, uint64(n), nil, time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) != n {
+		t.Fatalf("search: got %d hits, want %d", len(hits), n)
+	}
+	// Exactly one DecideBucket call per candidate bucket (own, shared) — bounded
+	// by bucket count, never by the 12 stored/returned records.
+	if calls != 2 {
+		t.Errorf("Search: DecideBucket called %d times, want 2 (own+shared, not per-record)", calls)
+	}
+}
+
+// TestBulkFilterOwnAndSharedAdjacency (edge 1) proves a record that is
+// simultaneously owner==caller AND visibility=="shared" is returned exactly
+// once for the authenticated owner — the own and shared bucket clauses
+// compose as Should conditions, never a conflict or a duplicate.
+func TestBulkFilterOwnAndSharedAdjacency(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "authz-test:project:adjacency"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	m := Memory{
+		ID: "dddddddd-0000-0000-0000-000000000001", Content: "own+shared",
+		Scope: scope, Owner: "sub-adj", Visibility: "shared", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	hits, err := s.Search(ctx, scope, Authenticated("sub-adj"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("Search: got %d hits, want exactly 1 (own+shared record returned once)", len(hits))
+	}
+	if hits[0].ID != m.ID {
+		t.Errorf("Search: got record %q, want %q", hits[0].ID, m.ID)
+	}
+}
+
+// TestBulkFilterZeroBucketFailsClosed (edge 5) proves that a decision
+// allowing zero buckets — an all-deny PDP injected via decideBucketHook —
+// compiles to a match-nothing filter, never an unfiltered Qdrant query, for
+// an authenticated caller who owns records under the scope.
+func TestBulkFilterZeroBucketFailsClosed(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "authz-test:project:zero-bucket"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	m := Memory{
+		ID: "eeeeeeee-0000-0000-0000-000000000001", Content: "owned",
+		Scope: scope, Owner: "sub-deny", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	s.decideBucketHook = func(_, _ string, _ authz.Action, _ authz.Bucket) authz.Decision {
+		return authz.Decision{Allow: false}
+	}
+	t.Cleanup(func() { s.decideBucketHook = nil })
+
+	hits, err := s.Search(ctx, scope, Authenticated("sub-deny"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Errorf("Search with all-deny PDP: got %d hits, want 0 (fail-closed, never unfiltered)", len(hits))
+	}
+
+	lst, _, _, err := s.List(ctx, scope, Authenticated("sub-deny"), ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(lst) != 0 {
+		t.Errorf("List with all-deny PDP: got %d items, want 0 (fail-closed, never unfiltered)", len(lst))
+	}
+}
+
+// TestBulkFilterOrderIndependent (edge 6) proves the composed filter result
+// is stable regardless of which bucket decision is evaluated first — the
+// authz condition stays the outer Must in every composed filter, and the
+// authenticated own+shared result is identical whether own or shared is
+// decided first.
+func TestBulkFilterOrderIndependent(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "authz-test:project:order-independent"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	own := Memory{
+		ID: "ffffffff-0000-0000-0000-000000000001", Content: "own",
+		Scope: scope, Owner: "sub-order", CreatedAt: time.Now().UTC(),
+	}
+	shared := Memory{
+		ID: "ffffffff-0000-0000-0000-000000000002", Content: "shared",
+		Scope: scope, Owner: "sub-other-order", Visibility: "shared", CreatedAt: time.Now().UTC(),
+	}
+	for _, m := range []Memory{own, shared} {
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", m.ID, err)
+		}
+	}
+
+	search := func() map[string]bool {
+		hits, err := s.Search(ctx, scope, Authenticated("sub-order"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		got := make(map[string]bool, len(hits))
+		for _, h := range hits {
+			got[h.ID] = true
+		}
+		return got
+	}
+
+	// Default (own decided before shared, per s.decideBucket call order).
+	want := search()
+	if len(want) != 2 || !want[own.ID] || !want[shared.ID] {
+		t.Fatalf("baseline: got %v, want {own, shared}", want)
+	}
+
+	// Force the SIBLING bucket to be decided first on every call (regardless of
+	// the production code's fixed own-then-shared call order), then return the
+	// requested bucket's decision. If DecideBucket held any hidden state shared
+	// across calls, this interleaved reversal would perturb the result; it must
+	// not — decisions are a pure function of (owner, kind, action, bucket).
+	s.decideBucketHook = func(owner, kind string, action authz.Action, bucket authz.Bucket) authz.Decision {
+		sibling := authz.BucketOwn
+		if bucket == authz.BucketOwn {
+			sibling = authz.BucketShared
+		}
+		_ = s.authz.DecideBucket(owner, kind, action, sibling)
+		return s.authz.DecideBucket(owner, kind, action, bucket)
+	}
+	t.Cleanup(func() { s.decideBucketHook = nil })
+
+	got := search()
+	if len(got) != len(want) || !got[own.ID] || !got[shared.ID] {
+		t.Errorf("order-independence: got %v, want %v (unchanged regardless of decision order)", got, want)
 	}
 }
