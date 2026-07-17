@@ -44,7 +44,7 @@ store-layer authz **primitive**, and the memory contract stays additive.
   (own-records, shared-read, tenant-isolate) plus a defense-in-depth `forbid ... unless
   principal.owner != ""` policy; default policies are compiled in via `go:embed`.
 
-- [ ] **REQ-cedar-store-enforcement**: The PDP decides authorization over an enumerable set of
+- [x] **REQ-cedar-store-enforcement**: The PDP decides authorization over an enumerable set of
   buckets (own / shared / tenant), and `internal/store` compiles those decisions into the Qdrant
   read filter and remains the single enforcement point — recall stays filter-based with no
   per-record Cedar evaluation. This refines LOCKED `DEC-cgb` (authz enforced in the store) via a
@@ -127,7 +127,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | REQ-cedar-pdp-foundation | Phase 22 | Complete |
-| REQ-cedar-store-enforcement | Phase 22 | Pending |
+| REQ-cedar-store-enforcement | Phase 22 | Complete |
 | REQ-service-auth-chain | Phase 23 | Pending |
 | REQ-static-token-auth | Phase 23 | Pending |
 | REQ-service-owner-failclosed | Phase 23 | Pending |

@@ -310,7 +310,7 @@ the store enforces it as the Qdrant filter"); reaffirms DEC-xa6 (uniform not-fou
 **Note**: research flags the OIDC client-credentials owner-claim source (`client_id` vs `azp` vs a
 custom claim) and the `shared`-visibility cross-tenant policy question as open items for Phase 23,
 not this phase — this phase's policies encode exactly today's rules (own + global shared-read).
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans executed
 
 Plans:
 **Wave 1**
@@ -323,7 +323,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 22-03-PLAN.md — store id-addressed gate wiring (GetReadable/getWritable/OwnedOrAbsent via DecideRecord, Deny→ErrNotFound, no Diagnostic leak) + DEC-cdr1 ADR (REQ-cedar-store-enforcement)
+- [x] 22-03-PLAN.md — store id-addressed gate wiring (GetReadable/getWritable/OwnedOrAbsent via DecideRecord, Deny→ErrNotFound, no Diagnostic leak) + DEC-cdr1 ADR (REQ-cedar-store-enforcement)
 
 ### Phase 23: Service Auth Chain & Tenancy Isolation
 
