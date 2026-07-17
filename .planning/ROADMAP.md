@@ -306,7 +306,12 @@ the store enforces it as the Qdrant filter"); reaffirms DEC-xa6 (uniform not-fou
 **Note**: research flags the OIDC client-credentials owner-claim source (`client_id` vs `azp` vs a
 custom claim) and the `shared`-visibility cross-tenant policy question as open items for Phase 23,
 not this phase — this phase's policies encode exactly today's rules (own + global shared-read).
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 22-01-PLAN.md — internal/authz PDP foundation: cedar-go v1.8.0, four embedded policies, DecideBucket/DecideRecord API, D-08 policy-corpus regression suite (REQ-cedar-pdp-foundation)
+- [ ] 22-02-PLAN.md — store bulk-recall wiring: inject PDP, PDP-back ownerOrSharedCondition/ownerOnlyCondition via DecideBucket, behavior-preserving + per-bucket call-count tests (REQ-cedar-store-enforcement)
+- [ ] 22-03-PLAN.md — store id-addressed gate wiring (GetReadable/getWritable/OwnedOrAbsent via DecideRecord, Deny→ErrNotFound, no Diagnostic leak) + DEC-cdr1 ADR (REQ-cedar-store-enforcement)
 
 ### Phase 23: Service Auth Chain & Tenancy Isolation
 
