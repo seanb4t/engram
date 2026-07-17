@@ -23,10 +23,12 @@ store-layer authz **primitive**, and the memory contract stays additive.
   contract the store already gates on. Which mechanisms are enabled is config-selectable
   (ENGRAM_ koanf), and the chain composes in front of the existing `mcpauth.TokenVerifier` seam
   without changing store-layer authz.
+
 - [ ] **REQ-static-token-auth**: An operator can provision static bearer tokens, each mapped to a
   fixed `owner`, via ENGRAM_ config. Tokens are verified with a constant-time compare
   (`crypto/subtle`), a token maps to exactly one owner (never a single shared owner for all
   tokens), and a token value never appears in logs, spans, or error messages.
+
 - [ ] **REQ-service-owner-failclosed**: An authenticated caller whose configured owner claim
   cannot be resolved is **rejected** (fail-closed error), never silently mapped to the anonymous
   empty-owner bucket. This holds for OIDC client-credentials tokens (which carry no `email`) and
@@ -35,12 +37,13 @@ store-layer authz **primitive**, and the memory contract stays additive.
 
 ### Tenancy & Authorization — Cedar foundation
 
-- [ ] **REQ-cedar-pdp-foundation**: A new `internal/authz` package embeds a cedar-go (v1.8.0,
+- [x] **REQ-cedar-pdp-foundation**: A new `internal/authz` package embeds a cedar-go (v1.8.0,
   Apache-2.0) policy decision point with a single forward-compatible `Principal` entity (`owner`
   required; `tenant` and `roles` present as reserved-optional attributes so full tenant/group/role
   ABAC can be added later with no breaking schema change). It ships three core policies
   (own-records, shared-read, tenant-isolate) plus a defense-in-depth `forbid ... unless
   principal.owner != ""` policy; default policies are compiled in via `go:embed`.
+
 - [ ] **REQ-cedar-store-enforcement**: The PDP decides authorization over an enumerable set of
   buckets (own / shared / tenant), and `internal/store` compiles those decisions into the Qdrant
   read filter and remains the single enforcement point — recall stays filter-based with no
@@ -48,6 +51,7 @@ store-layer authz **primitive**, and the memory contract stays additive.
   new ADR ("PDP decides the predicate; the store enforces it as the Qdrant filter"), and preserves
   `DEC-xa6` (no existence leak) and `DEC-kyz` (sharing grants read, never write). The change is
   behavior-preserving for existing human callers.
+
 - [ ] **REQ-service-principal-isolation**: A headless service principal is isolated to its own
   `owner` bucket by default (never the anonymous bucket, never colliding with a human owner), and
   the Cedar schema + PDP seam are demonstrably forward-compatible to a full tenant/group/role ABAC
@@ -60,11 +64,13 @@ store-layer authz **primitive**, and the memory contract stays additive.
   result unchanged, and a repeat with the same key but different content is rejected with an
   explicit mismatch error. Idempotency is owner-scoped (a key never collides across owners) and
   race-safe (concurrent retries do not produce duplicate records in Qdrant).
+
 - [ ] **REQ-supersession-links**: A memory can supersede another via additive `supersedes` /
   `superseded_by` payload links. Superseded records are soft-hidden from recall (reusing the
   `DEC-ufz` recall gate) but remain fetchable by id (`get_memory`), and the supersede operation
   routes through the ownership **write** gate (`getWritable`/`OwnedOrAbsent`), never a read grant.
   Correction is explicit and preserves history — it never deletes or silently overwrites.
+
 - [ ] **REQ-memory-citations**: A curated `memory`-category record may optionally carry structured
   provenance/citations using the existing discovery `Citation` shape verbatim (no new struct). The
   `payload()` write gate is relaxed from discovery-only to any category; `kind` stays
@@ -93,9 +99,11 @@ Tracked, acknowledged, not in the v0.11.x roadmap.
 
 - **Operator-editable / hot-reload Cedar policies** — v0.11.x ships embedded default policies; an
   ENGRAM_ policy-override path + reload is a later admin-UX addition.
+
 - **Full tenant/group/role ABAC** — per-tenant `shared` scoping, group/role attributes, and
   richer policy sets. The v0.11.x foundation reserves the `tenant`/`roles` attributes so this
   layers on without rework.
+
 - **Idempotency / citations on the Connect write lane & other write RPCs** — v0.11.x lands these
   on the MCP `store_memory` path first; Connect parity follows.
 
@@ -118,7 +126,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REQ-cedar-pdp-foundation | Phase 22 | Pending |
+| REQ-cedar-pdp-foundation | Phase 22 | Complete |
 | REQ-cedar-store-enforcement | Phase 22 | Pending |
 | REQ-service-auth-chain | Phase 23 | Pending |
 | REQ-static-token-auth | Phase 23 | Pending |
@@ -131,6 +139,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | REQ-chat-base-url | Phase 26 | Pending |
 
 **Coverage:**
+
 - v0.11.x requirements: 11 total
 - Mapped to phases: 11 (Phases 22–26)
 - Unmapped: 0 ✓

@@ -5,15 +5,15 @@ milestone_name: Capture & Service Identity
 current_phase: 22
 current_phase_name: Cedar Authz Foundation & Store Enforcement
 status: executing
-stopped_at: Phase 22 context gathered
-last_updated: "2026-07-17T22:25:01.458Z"
+stopped_at: Completed 22-01-PLAN.md
+last_updated: "2026-07-17T22:36:40.082Z"
 last_activity: 2026-07-17
-last_activity_desc: "Completed quick task 260717-g1r: triage + fix #301 (Renovate ui/ postUpgradeTasks via bash -c)"
+last_activity_desc: Phase 22 execution started
 progress:
   total_phases: 8
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 3
+  completed_plans: 1
   percent: 0
 ---
 
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-16 — opened milestone v0.11.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 22 — cedar-authz-foundation-store-enforcement
+**Current focus:** Phase 22 — Cedar Authz Foundation & Store Enforcement
 
 ## Current Position
 
-Phase: 22 of 26 (Cedar Authz Foundation & Store Enforcement) — v0.11.x, phase 1/5
-Plan: — (not yet planned)
+Phase: 22 (Cedar Authz Foundation & Store Enforcement) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-07-17 — Completed quick task 260717-g1r: triage + fix #301 (Renovate ui/ postUpgradeTasks via bash -c)
+Last activity: 2026-07-17 — Phase 22 execution started
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 33%
 
 ## Deferred Items
 
@@ -99,6 +99,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 - [Phase 19]: retryOnce's retry set is exactly {Unauthenticated, PermissionDenied} — client-side interpretation; a SINGLE OPPORTUNISTIC AUTH-RACE RETRY, never 're-seal on retry'/'rotation'
 - [Phase 20]: Reversed config<->embed import direction (config owns ReservedEmbedParamKeys, embed aliases it) to avoid a real import cycle through internal/telemetry
 - [Phase 21]: D-09: plain .planning rumdl exclude entry (not .planning/** glob), matching convention of .beads/.agents/docs-site neighbors
+- [Phase 22 P01]: A1/A2 confirmed (kind hardcoded 'human'; MustDefault panics on parse failure, not New() error return)
+- [Phase 22 P01]: TestPolicyCorpus_ForbidOverridesPermit proven via a synthetic inline permit-all/forbid-all PolicySet (white-box &PDP{policies:ps}) since the shipped 4-policy corpus has no naturally-overlapping permit+forbid request
 
 ### Blockers/Concerns
 
@@ -116,9 +118,9 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-17T21:44:29.901Z
-Stopped at: Phase 22 context gathered
-Resume file: .planning/phases/22-cedar-authz-foundation-store-enforcement/22-CONTEXT.md
+Last session: 2026-07-17T22:36:40.075Z
+Stopped at: Completed 22-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -158,6 +160,11 @@ Resume file: .planning/phases/22-cedar-authz-foundation-store-enforcement/22-CON
 | Phase 20 P04 | 3min | 3 tasks | 5 files |
 | Phase 21 P01 | 6min | 2 tasks | 3 files |
 | Phase 21 P02 | 15min | 3 tasks | 5 files |
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 22 P01 | 8min | 3 tasks | 13 files |
 
 ## Operator Next Steps
 

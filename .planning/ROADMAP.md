@@ -310,12 +310,12 @@ the store enforces it as the Qdrant filter"); reaffirms DEC-xa6 (uniform not-fou
 **Note**: research flags the OIDC client-credentials owner-claim source (`client_id` vs `azp` vs a
 custom claim) and the `shared`-visibility cross-tenant policy question as open items for Phase 23,
 not this phase — this phase's policies encode exactly today's rules (own + global shared-read).
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 22-01-PLAN.md — internal/authz PDP foundation: cedar-go v1.8.0, four embedded policies, DecideBucket/DecideRecord API, D-08 policy-corpus regression suite (REQ-cedar-pdp-foundation)
+- [x] 22-01-PLAN.md — internal/authz PDP foundation: cedar-go v1.8.0, four embedded policies, DecideBucket/DecideRecord API, D-08 policy-corpus regression suite (REQ-cedar-pdp-foundation)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -483,7 +483,7 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 | 19. Console Write UX | v0.10.x | 6/6 | Complete   | 2026-07-15 |
 | 20. Correctness & Polish | v0.10.x | 4/4 | Complete    | 2026-07-16 |
 | 21. CI / Maintenance Hygiene | v0.10.x | 3/3 | Complete   | 2026-07-16 |
-| 22. Cedar Authz Foundation & Store Enforcement | v0.11.x | 0/2 | Not started | - |
+| 22. Cedar Authz Foundation & Store Enforcement | v0.11.x | 0/2 | In Progress|  |
 | 23. Service Auth Chain & Tenancy Isolation | v0.11.x | 0/4 | Not started | - |
 | 24. Idempotent Capture | v0.11.x | 0/1 | Not started | - |
 | 25. Supersession with History | v0.11.x | 0/1 | Not started | - |
