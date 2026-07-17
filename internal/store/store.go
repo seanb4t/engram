@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
+	"github.com/seanb4t/engram/internal/authz"
 	"github.com/seanb4t/engram/internal/shortid"
 	"github.com/seanb4t/engram/internal/telemetry"
 	"go.opentelemetry.io/otel"
@@ -37,6 +38,25 @@ func ownerOf(subj Subject) string {
 		return ""
 	}
 	return subj.Owner()
+}
+
+// principalParams converts a Subject into the primitives the authz PDP takes
+// (owner, kind). It is the ONLY Subject->primitives converter and lives here
+// (not internal/authz) to avoid an import cycle. kind is hardcoded "human"
+// (A1 — no policy conditions on it this phase). The nil/unknown default arm
+// returns ok=false: this is the fail-closed signal read-filter builders use
+// to return matchNothing() WITHOUT calling the PDP, because own_records
+// deliberately grants owner=="" for the legitimate anonymous bucket, so an
+// owner=="" principal must never be conflated with a nil Subject.
+func principalParams(subj Subject) (owner, kind string, ok bool) {
+	switch s := subj.(type) {
+	case authenticated:
+		return s.sub, "human", true
+	case anonymous:
+		return "", "human", true
+	default:
+		return "", "", false
+	}
 }
 
 // ErrNotFound is returned when an id is absent OR not visible to the caller —
@@ -217,6 +237,14 @@ type Store struct {
 	collection string
 	now        func() time.Time
 
+	// authz is the policy decision point consulted by the bulk read-filter
+	// builders (ownerOrSharedCondition/ownerOnlyCondition) to decide which
+	// buckets (own/shared) a caller may read. Defaulted to authz.MustDefault()
+	// in New(), mirroring how `now` defaults to time.Now — WithAuthz overrides
+	// it in tests. The PDP is never consulted from internal/server handlers;
+	// it is owned by the store, the single default-deny chokepoint (DEC-cgb).
+	authz *authz.PDP
+
 	// mintCandidate generates a short_id candidate; nil defaults to shortid.New.
 	// Overridable in tests to force MintShortID's collision-retry branch.
 	mintCandidate func() (string, error)
@@ -241,9 +269,16 @@ func WithClock(fn func() time.Time) Option {
 	return func(s *Store) { s.now = fn }
 }
 
+// WithAuthz overrides the store's policy decision point. Defaults to
+// authz.MustDefault(). Tests inject an all-deny or call-counting PDP to
+// exercise Deny paths and prove per-bucket call counts.
+func WithAuthz(pdp *authz.PDP) Option {
+	return func(s *Store) { s.authz = pdp }
+}
+
 // New returns a Store backed by the given Qdrant client and collection.
 func New(c *qdrant.Client, collection string, opts ...Option) *Store {
-	s := &Store{client: c, collection: collection, now: time.Now}
+	s := &Store{client: c, collection: collection, now: time.Now, authz: authz.MustDefault()}
 	for _, opt := range opts {
 		opt(s)
 	}
