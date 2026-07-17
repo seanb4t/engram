@@ -550,42 +550,56 @@ func (s *Store) Upsert(ctx context.Context, m Memory, vec []float32) (err error)
 	return err
 }
 
-// ownerOrSharedCondition matches records the subject may READ.
+// ownerOrSharedCondition matches records the subject may READ. The own/shared
+// bucket decisions are policy-derived (s.authz.DecideBucket), but the emitted
+// filter shape is numerically identical to the pre-Cedar hardcoded switch
+// (D-11):
 //
-// Authenticated: owner==sub OR visibility=="shared".
-// Anonymous: owner=="" ONLY — shared records require an authenticated subject;
-// the anonymous bucket is not a back-door to all shared records.
-// nil/unknown (a discarded extraction error): matchNothing — fail closed.
-func ownerOrSharedCondition(subj Subject) *qdrant.Condition {
-	switch s := subj.(type) {
-	case authenticated:
-		return qdrant.NewFilterAsCondition(&qdrant.Filter{Should: []*qdrant.Condition{
-			qdrant.NewMatch("owner", s.sub),
-			qdrant.NewMatch("visibility", visibilityShared),
-		}})
-	case anonymous:
-		return qdrant.NewFilterAsCondition(&qdrant.Filter{Must: []*qdrant.Condition{
-			qdrant.NewMatch("owner", ""),
-		}})
-	default:
+// Authenticated: owner==sub OR visibility=="shared" (both buckets normally
+// allowed — a Should composition, so an own+shared record still matches once).
+// Anonymous: owner=="" ONLY — shared records require an authenticated subject
+// (DecideBucket(BucketShared) denies the anonymous principal); the anonymous
+// bucket is not a back-door to all shared records.
+// nil/unknown (a discarded extraction error): matchNothing — fail closed,
+// WITHOUT consulting the PDP (principalParams returns ok=false).
+// A decision allowing zero buckets (e.g. an all-deny PDP) also compiles to
+// matchNothing — never an unfiltered query.
+func (s *Store) ownerOrSharedCondition(subj Subject) *qdrant.Condition {
+	owner, kind, ok := principalParams(subj)
+	if !ok {
 		return matchNothing()
 	}
+	ownAllowed := s.authz.DecideBucket(owner, kind, authz.ActionRead, authz.BucketOwn).Allow
+	sharedAllowed := s.authz.DecideBucket(owner, kind, authz.ActionRead, authz.BucketShared).Allow
+	var should []*qdrant.Condition
+	if ownAllowed {
+		should = append(should, qdrant.NewMatch("owner", owner))
+	}
+	if sharedAllowed {
+		should = append(should, qdrant.NewMatch("visibility", visibilityShared))
+	}
+	if len(should) == 0 {
+		return matchNothing()
+	}
+	return qdrant.NewFilterAsCondition(&qdrant.Filter{Should: should})
 }
 
 // ownerOnlyCondition restricts to records the caller OWNS — no shared-read grant.
 // It backs management views (ListScheduled) where a `shared` record belonging to
 // another actor must stay invisible: a shared+scheduled memory is hidden from
 // everyone but its owner until it becomes active (then normal recall surfaces it).
-// Fail-closed for nil/unknown Subjects, exactly like ownerOrSharedCondition.
-func ownerOnlyCondition(subj Subject) *qdrant.Condition {
-	switch s := subj.(type) {
-	case authenticated:
-		return qdrant.NewMatch("owner", s.sub)
-	case anonymous:
-		return qdrant.NewMatch("owner", "")
-	default:
+// The own-bucket decision is policy-derived (s.authz.DecideBucket); fail-closed
+// for nil/unknown Subjects and a denied own bucket, exactly like
+// ownerOrSharedCondition — WITHOUT consulting the PDP for nil/unknown.
+func (s *Store) ownerOnlyCondition(subj Subject) *qdrant.Condition {
+	owner, kind, ok := principalParams(subj)
+	if !ok {
 		return matchNothing()
 	}
+	if s.authz.DecideBucket(owner, kind, authz.ActionRead, authz.BucketOwn).Allow {
+		return qdrant.NewMatch("owner", owner)
+	}
+	return matchNothing()
 }
 
 // matchNothing returns a condition no record can satisfy (owner==x AND owner!=x).
@@ -604,7 +618,7 @@ func matchNothing() *qdrant.Condition {
 func (s *Store) ownerScopeFilter(scope string, subj Subject) *qdrant.Filter {
 	return &qdrant.Filter{Must: []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),
-		ownerOrSharedCondition(subj),
+		s.ownerOrSharedCondition(subj),
 	}}
 }
 
@@ -784,7 +798,7 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Su
 	if kind != "" {
 		must = append(must, qdrant.NewMatch("kind", kind))
 	}
-	must = append(must, ownerOrSharedCondition(subj))
+	must = append(must, s.ownerOrSharedCondition(subj))
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
 		Filter: &qdrant.Filter{Must: must}, Limit: qdrant.PtrOf(k),
@@ -851,10 +865,10 @@ func createdRangeCondition(after, before time.Time) *qdrant.Condition {
 //     private representation — the store only ever writes "" or "shared"). This
 //     is expressed as MustNot(visibility=="shared") so that an empty-string match
 //     in Qdrant is reliable across payload-key-absent and empty-value cases.
-func listFilter(scope string, subj Subject, opts ListOptions) *qdrant.Filter {
+func (s *Store) listFilter(scope string, subj Subject, opts ListOptions) *qdrant.Filter {
 	must := []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),
-		ownerOrSharedCondition(subj),
+		s.ownerOrSharedCondition(subj),
 	}
 	if len(opts.Categories) > 0 {
 		should := make([]*qdrant.Condition, 0, len(opts.Categories))
@@ -914,7 +928,7 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		return nil, 0, "", fmt.Errorf("list: ascending ordering is honored only in offset/all mode, not cursor mode: %w", ErrInvalidArgument)
 	}
 
-	f := listFilter(scope, subj, opts)
+	f := s.listFilter(scope, subj, opts)
 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
 	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
 		f.Must = append(f.Must, c)
@@ -1140,7 +1154,7 @@ func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, s
 	}
 	f := &qdrant.Filter{Must: []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),
-		ownerOnlyCondition(subj),
+		s.ownerOnlyCondition(subj),
 		scheduledStateCondition(state, s.now()),
 	}}
 	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
@@ -1191,7 +1205,7 @@ func (s *Store) ListScopes(ctx context.Context, subj Subject) (out []ScopeCount,
 	const scanCap = 1000
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
-		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{ownerOrSharedCondition(subj)}},
+		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{s.ownerOrSharedCondition(subj)}},
 		Limit:          qdrant.PtrOf(uint32(scanCap)),
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
