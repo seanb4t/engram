@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.8](https://github.com/seanb4t/engram/compare/v0.8.7...v0.8.8) (2026-07-17)
+
+
+### Bug Fixes
+
+* **ci:** run renovate ui/ postUpgradeTasks via bash -c (shell-free) ([#301](https://github.com/seanb4t/engram/issues/301)) ([#392](https://github.com/seanb4t/engram/issues/392)) ([5218eb6](https://github.com/seanb4t/engram/commit/5218eb6af16b5c25542b79b9619f51aa5ff74a24))
+* **deps:** update all non-major dependencies ([#380](https://github.com/seanb4t/engram/issues/380)) ([4533872](https://github.com/seanb4t/engram/commit/45338720d291fdb8ecbe188cf8171aa16b841f62))
+* **deps:** update all non-major dependencies ([#382](https://github.com/seanb4t/engram/issues/382)) ([d91024c](https://github.com/seanb4t/engram/commit/d91024c79bc29d67192e0bbbba87a4f16ff9e7cd))
+
 ## [0.8.7](https://github.com/seanb4t/engram/compare/v0.8.6...v0.8.7) (2026-07-16)
 
 
