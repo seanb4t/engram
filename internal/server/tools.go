@@ -752,11 +752,15 @@ func (d *deps) clock() time.Time {
 }
 
 func (d *deps) scheduleMemory(ctx context.Context, c caller, a scheduleArgs) (string, string, error) {
-	now := d.clock()
-	nb, na, err := parseWindow(a, now)
-	if err != nil {
-		return "", "", err
-	}
+	// checkIdempotentReplay runs BEFORE parseWindow's future-only validation
+	// (WR-02): the window is deliberately excluded from the D-07 content
+	// fingerprint precisely so a retry doesn't need to resend a still-valid
+	// window. If parseWindow ran first, a delayed retry of an
+	// already-successful schedule_memory call with the SAME not_after value
+	// could be rejected with ErrInvalidArgument (now no longer in the
+	// future) before checkIdempotentReplay ever got a chance to recognize it
+	// as a no-op replay. parseWindow only needs to run on the non-replay
+	// (create) path below.
 	owner := c.Subj.Owner()
 	replay, id, shortID, pointID, err := d.checkIdempotentReplay(ctx, owner, a.storeArgs)
 	if err != nil {
@@ -768,6 +772,11 @@ func (d *deps) scheduleMemory(ctx context.Context, c caller, a scheduleArgs) (st
 		// CHANGED not_before/not_after still returns the original record with
 		// its ORIGINAL window unchanged.
 		return id, shortID, nil
+	}
+	now := d.clock()
+	nb, na, err := parseWindow(a, now)
+	if err != nil {
+		return "", "", err
 	}
 	m := a.toMemory(owner, c.Actor, now)
 	m.NotBefore = nb

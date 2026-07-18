@@ -976,6 +976,48 @@ func TestScheduleMemoryIdempotentIgnoresWindowChange(t *testing.T) {
 	}
 }
 
+// TestScheduleMemoryIdempotentRetryAfterWindowLapses pins WR-02: a delayed
+// retry of an already-successful schedule_memory call must be recognized as
+// a replay even when its (unchanged) not_after value is no longer in the
+// future by the time the retry lands — checkIdempotentReplay must run BEFORE
+// parseWindow's future-only check, not after, or the retry is wrongly
+// rejected with ErrInvalidArgument instead of returning the original record.
+func TestScheduleMemoryIdempotentRetryAfterWindowLapses(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "owner-retry")
+	scope := "iso-test:project:idempotency-retry-lapse"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-retry")))
+	}()
+
+	clockNow := time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
+	d.now = func() time.Time { return clockNow }
+
+	base := storeArgs{
+		Content: "retry after window lapses", Scope: scope, Source: "user-said", Category: "gotcha",
+		IdempotencyKey: "retry-lapse-key",
+	}
+	notAfter := clockNow.Add(1 * time.Hour).Format(time.RFC3339)
+
+	id1, sid1, err := d.scheduleMemory(ctx, callerFor(ctx, t), scheduleArgs{storeArgs: base, NotAfter: notAfter})
+	if err != nil {
+		t.Fatalf("scheduleMemory (first): %v", err)
+	}
+
+	// Advance the injected clock PAST the original not_after — the client's
+	// retry (lost response, network partition, etc.) lands late enough that
+	// the SAME not_after value is no longer in the future.
+	clockNow = clockNow.Add(2 * time.Hour)
+
+	id2, sid2, err := d.scheduleMemory(ctx, callerFor(ctx, t), scheduleArgs{storeArgs: base, NotAfter: notAfter})
+	if err != nil {
+		t.Fatalf("scheduleMemory (delayed retry, same not_after now in the past): %v (WR-02: must resolve as a replay, not a parseWindow rejection)", err)
+	}
+	if id2 != id1 || sid2 != sid1 {
+		t.Fatalf("delayed retry minted a different record: (id=%q,sid=%q), want (id=%q,sid=%q)", id2, sid2, id1, sid1)
+	}
+}
+
 // TestStoreMemoryEnqueuesOnSuccess pins SC#1: a successful storeMemory
 // enqueues the record id for async summary fill, and the worker drains it —
 // asserted deterministically via the Wait() drain seam (no time.Sleep).
