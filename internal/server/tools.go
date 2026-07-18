@@ -742,8 +742,18 @@ func (d *deps) persistAndEnqueue(ctx context.Context, m store.Memory, vec []floa
 	// racer wrote last owns the point's short_id going forward; a failed
 	// re-Get here is non-fatal — fall back to the locally-minted value rather
 	// than fail an otherwise-successful write.
-	if persisted, gerr := d.st.Get(ctx, m.ID); gerr == nil {
-		m.ShortID = persisted.ShortID
+	//
+	// Gated to the keyed path only (WR-01): m.IdempotencyFingerprint is only
+	// ever non-empty when this write used a deterministic pointID (set in
+	// storeMemory/scheduleMemory right before calling persistAndEnqueue). On
+	// a keyless write, m.ID is a fresh uuid.NewString() that no concurrent
+	// request can ever target, so the race this re-Get resolves is
+	// structurally impossible there — skip the extra Qdrant round trip on
+	// the overwhelmingly common (keyless) case.
+	if m.IdempotencyFingerprint != "" {
+		if persisted, gerr := d.st.Get(ctx, m.ID); gerr == nil {
+			m.ShortID = persisted.ShortID
+		}
 	}
 	// Enqueue only after a confirmed-successful Upsert; never blocks/errors
 	// the write path even when the queue is disabled or full (SC#1, SC#2).
