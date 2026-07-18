@@ -3,10 +3,11 @@ phase: 23
 slug: service-auth-chain-tenancy-isolation
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
 # audit-milestone §5.5 distinguishes NOT-VALIDATED (draft) from PARTIAL (validated + nyquist_compliant: false) (#2117)
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-07-17
+validated: 2026-07-17
 ---
 
 # Phase 23 — Validation Strategy
@@ -42,22 +43,33 @@ created: 2026-07-17
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 23-01-01 | 01 | 1 | REQ-service-owner-failclosed | T-23-01 | Authenticated service principal with unresolvable owner claim → explicit fail-closed error (never `owner==""` / anonymous bucket) | unit | `go test ./internal/auth/... -run FailClosed` | ❌ W0 | ⬜ pending |
+| 23-01 | 01 | 1 | REQ-service-owner-failclosed | T-23-01 | Authenticated service principal with unresolvable owner claim → explicit fail-closed error (never `owner==""` / anonymous bucket) — the FIRST test | unit | `go test ./internal/auth/... -run TestFailClosedRejectsEmptyOwner` | ✅ | ✅ green |
+| 23-01 | 01 | 1 | REQ-service-auth-chain | T-23-05 | `NewService` per-lane audience independent of the human lane | unit | `go test ./internal/auth/... -run TestNewServiceIndependentAudience` | ✅ | ✅ green |
+| 23-02 | 02 | 1 | REQ-static-token-auth | T-23-03/04/07 | Constant-time full-value compare, per-owner map, token never in error/log/span | unit | `go test ./internal/auth/... -run TestStaticToken` | ✅ | ✅ green |
+| 23-03 | 03 | 1 | REQ-service-auth-chain | T-23-02/08 | JWT-vs-opaque discriminator routes before verify; deny-by-default; nil-lane guard | unit | `go test ./internal/auth/... -run TestChainVerifier` | ✅ | ✅ green |
+| 23-04 | 04 | 1 | REQ-static-token-auth / REQ-service-auth-chain | T-23-09/10 | Service owner-claims default `client_id,azp`; fatal-when-malformed static-tokens config; two-dot guard | unit | `go test ./internal/config/... -run TestServiceAuth` | ✅ | ✅ green |
+| 23-05 | 05 | 1 | REQ-service-principal-isolation | T-23-11/06 | Cross-owner private isolation; cross-tenant `shared`-read intended (D-15) | integration (Qdrant) | `go test ./internal/store/... -run 'TestServicePrincipalIsolation|TestSharedCrossTenantReadIntended'` | ✅ | ✅ green |
+| 23-06 | 06 | 2 | REQ-service-auth-chain / REQ-service-principal-isolation | T-23-01/12 | Chain wired at `withAuth`; fail-closed survives composition; human-only path preserved; static-token lane authenticates end-to-end from config | integration | `go test ./cmd/engram/... -run TestWithAuth; go test ./internal/server/... -run TestServiceAuthChainParity` | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
-*Full per-task map is authored by the planner across the phase's PLAN.md files; the FIRST test
-(the fail-closed empty-owner proof, SC2 / D-08 / D-10) MUST precede all other service-auth tasks.*
+*The FIRST test (the fail-closed empty-owner proof, SC2 / D-08 / D-10) precedes all other
+service-auth tasks and passes. All 4 phase REQ IDs are covered by green automated tests; the
+CR-01 code-review fix added the `cmd/engram/serve_test.go` config→withAuth→live-verify wiring
+test that closes the parse→wire→verify seam.*
 
 ---
 
 ## Wave 0 Requirements
 
-- [ ] `internal/auth/chain_test.go` (or equivalent) — fail-closed empty-owner proof + chain-discriminator + isolation-parity stubs for REQ-service-auth-chain / REQ-service-owner-failclosed
-- [ ] `internal/auth/statictoken_test.go` — constant-time compare + no-leak + per-owner-map stubs for REQ-static-token-auth
-- [ ] `internal/store/store_test.go` — extend the existing isolation/sharing suite with the service-principal cross-tenant private-isolation + `shared`-cross-tenant (D-15/D-16) proofs for REQ-service-principal-isolation
+- [x] `internal/auth/service_owner_failclosed_test.go` — fail-closed empty-owner proof (the FIRST test) + `NewService` audience for REQ-service-owner-failclosed / REQ-service-auth-chain
+- [x] `internal/auth/chain_test.go` — chain discriminator/order/deny-by-default/nil-guard for REQ-service-auth-chain
+- [x] `internal/auth/static_token_test.go` — constant-time compare + no-leak + per-owner (token→owner) map + rotation for REQ-static-token-auth
+- [x] `internal/config/service_auth_test.go` — config parse + fatal-when-malformed validation + two-dot guard for REQ-static-token-auth / REQ-service-auth-chain
+- [x] `internal/store/service_principal_isolation_test.go` — service-principal cross-owner private isolation + `shared`-cross-tenant (D-15/D-16) for REQ-service-principal-isolation
+- [x] `cmd/engram/serve_test.go` + `internal/server/connectapi_service_auth_parity_test.go` — end-to-end withAuth wiring + chain-parity for REQ-service-auth-chain
 
-*Existing `go test` infrastructure covers the framework; no install needed.*
+*All Wave 0 test files exist and pass. Existing `go test` infrastructure covered the framework; no install needed.*
 
 ---
 
@@ -71,13 +83,28 @@ created: 2026-07-17
 
 ---
 
+## Validation Audit 2026-07-17
+
+| Metric | Count |
+|--------|-------|
+| Requirements (phase) | 4 |
+| Covered (green automated tests) | 4 |
+| Partial | 0 |
+| Missing | 0 |
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated (manual-only) | 0 |
+
+All 4 phase requirements are COVERED by green automated tests (7 test files); no gaps to fill —
+no `gsd-nyquist-auditor` spawn required. State A audit run by `/gsd-validate-phase 23`.
+
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 120s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (none — all covered)
+- [x] No watch-mode flags
+- [x] Feedback latency < 120s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** verified 2026-07-17
