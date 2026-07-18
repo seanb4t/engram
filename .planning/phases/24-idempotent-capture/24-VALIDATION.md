@@ -45,7 +45,11 @@ created: 2026-07-18
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| {N}-01-01 | 01 | 1 | REQ-idempotent-capture | T-24-01 / — | {expected secure behavior or "N/A"} | unit | `{command}` | ✅ / ❌ W0 | ⬜ pending |
+| 24-01-01 | 01 | 1 | REQ-idempotent-capture | T-24-02 | Payload-only fingerprint round-trips wire-invisibly; distinct ErrIdempotencyConflict sentinel (not ErrNotFound) | unit | `go test -run 'TestPayloadRoundTripsIdempotencyFingerprint' ./internal/store/...` | ❌ W0 | ⬜ pending |
+| 24-01-02 | 01 | 1 | REQ-idempotent-capture | T-24-01 / T-24-03 | Deterministic + injective + owner-scoped ID (T-24-01); determinism underpins race-safe Upsert (T-24-03); fingerprint tag-order-stable + key-independent | unit | `go test -run 'TestIdempotencyPointID\|TestContentFingerprint' ./internal/server/...` | ❌ W0 | ⬜ pending |
+| 24-02-01 | 02 | 2 | REQ-idempotent-capture (SC5) | — | No-key path unchanged: two keyless repeats mint two distinct random ids | integration | `go test -run 'TestStoreMemoryNoKeyAlwaysFresh' ./internal/server/...` | ❌ W0 | ⬜ pending |
+| 24-02-02 | 02 | 2 | REQ-idempotent-capture (SC1, SC2) | T-24-02 | SC1 replay→original (zero side-effect); SC2 mismatch→ErrIdempotencyConflict before embed, no silent overwrite | integration | `go test -run 'TestStoreMemoryIdempotentReplayReturnsOriginal\|TestStoreMemoryIdempotentReplayRejectsMismatch' ./internal/server/...` | ❌ W0 | ⬜ pending |
+| 24-02-03 | 02 | 2 | REQ-idempotent-capture (SC3, SC4) | T-24-01 / T-24-03 | SC3 two-owner matrix → two independent records (T-24-01); SC4 concurrent identical → exactly one point, no-duplicate invariant only (T-24-03, D-12) | integration + `-race` | `go test -race -run 'TestStoreMemoryIdempotentKeyScopedPerOwner\|TestStoreMemoryIdempotentConcurrentIdenticalOnePoint\|TestScheduleMemoryIdempotentIgnoresWindowChange' ./internal/server/...` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -53,20 +57,25 @@ created: 2026-07-18
 
 ## Wave 0 Requirements
 
-- [ ] {test file(s)} — stubs for REQ-idempotent-capture
-- [ ] {shared fixtures if needed}
+All SC tests are net-new but co-located with the behavior they verify (each task writes its own
+tests, TDD-style where noted). No separate Wave 0 plan is needed — the existing harness covers
+every fixture requirement:
 
-*If none: "Existing infrastructure covers all phase requirements."*
+- [ ] `internal/store/store_test.go` — `TestPayloadRoundTripsIdempotencyFingerprint` (mirror of `TestPayloadRoundTripsEmbedderIdentity`, pure, no Qdrant)
+- [ ] `internal/server/idempotency_test.go` — pure-fn unit tests for `idempotencyPointID` / `contentFingerprint` (new file, no Qdrant)
+- [ ] `internal/server/tools_test.go` — SC1–SC5 + schedule-window tests via existing `testDepsWithStore` / `requireQdrant` / `failOrSkipNoQdrant` harness; SC4 uses the `TestStoreMemoryReturnsWhenSummarizerHangs` goroutine fan-out pattern under `go test -race`
+- Shared fixtures: none new — existing harness sufficient.
+
+*Note:* SC4 is the first `-race` invocation in this repo — flag as new CI-invocation surface (not an
+existing convention). Race detector needs `CGO_ENABLED=1` for the test binary only (does not affect
+the `CGO_ENABLED=0` distroless release build).
 
 ---
 
 ## Manual-Only Verifications
 
-| Behavior | Requirement | Why Manual | Test Instructions |
-|----------|-------------|------------|-------------------|
-| {behavior} | REQ-idempotent-capture | {reason} | {steps} |
-
-*If none: "All phase behaviors have automated verification."*
+All phase behaviors have automated verification (SC1–SC5 + the schedule-window decision are all
+`go test` assertions; SC4 runs under `-race`). No manual-only verifications.
 
 ---
 

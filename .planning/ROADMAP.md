@@ -407,7 +407,15 @@ locked as REQUIREMENTS.md's decision to reject; a deterministic point-ID derivat
 5. Omitting the idempotency key preserves today's behavior exactly — a fresh record is created
    every time.
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+**Wave 1**
+
+- [ ] 24-01-PLAN.md — internal/store fingerprint payload field + ErrIdempotencyConflict sentinel + connectError row; internal/server idempotencyPointID + contentFingerprint pure helpers (D-02/D-03/D-04/D-06/D-10) (REQ-idempotent-capture)
+
+**Wave 2** *(depends on 24-01)*
+
+- [ ] 24-02-PLAN.md — storeArgs.idempotency_key + tool descriptions + checkIdempotentReplay check-before-embed branch in store_memory/schedule_memory; SC1–SC5 tests incl. two-owner matrix + `-race` concurrency (D-08/D-09/D-11/D-12/D-13) (REQ-idempotent-capture)
 
 ### Phase 25: Supersession with History
 
