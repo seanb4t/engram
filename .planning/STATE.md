@@ -5,15 +5,15 @@ milestone_name: Capture & Service Identity
 current_phase: 23
 current_phase_name: Service Auth Chain & Tenancy Isolation
 status: executing
-stopped_at: Completed 23-04-PLAN.md
-last_updated: "2026-07-18T02:22:06.448Z"
+stopped_at: Completed 23-05-PLAN.md
+last_updated: "2026-07-18T02:28:58.754Z"
 last_activity: 2026-07-17
 last_activity_desc: Phase 23 execution started
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
   percent: 13
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-07-16 — opened milestone v0.11.x)
 ## Current Position
 
 Phase: 23 (Service Auth Chain & Tenancy Isolation) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-07-17 — Phase 23 execution started
 
-Progress: [████████░░] 78%
+Progress: [█████████░] 89%
 
 ## Deferred Items
 
@@ -109,6 +109,7 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 - [Phase 23 P02]: empty configured static-token candidates are structurally excluded from matching (never eligible), independent of the empty-input-token guard
 - [Phase 23 P03]: chainVerifier's D-02 order and D-03 nil-mechanism guards are intrinsic to a correct routing closure; Task 2's tests landed as test-only against Task 1's already-complete implementation rather than driving new production code
 - [Phase ?]: service_auth.owner_claims defaults to client_id,azp (D-05), never email; static_tokens has no cobra flag (ENGRAM_-only secret map)
+- [Phase ?]: SC4/SC5 (tenancy isolation + cross-tenant shared-read) proven with two permanent store-package tests, zero new production code
 
 ### Blockers/Concerns
 
@@ -126,8 +127,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-18T02:22:06.440Z
-Stopped at: Completed 23-04-PLAN.md
+Last session: 2026-07-18T02:28:58.747Z
+Stopped at: Completed 23-05-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -179,6 +180,7 @@ Resume file: None
 | Phase 23 P02 | 12min | 2 tasks | 2 files |
 | Phase 23 P03 | 12min | 2 tasks | 2 files |
 | Phase 23 P04 | 25min | 2 tasks | 4 files |
+| Phase 23 P05 | 20min | 2 tasks | 1 files |
 
 ## Operator Next Steps
 

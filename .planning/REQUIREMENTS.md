@@ -52,7 +52,7 @@ store-layer authz **primitive**, and the memory contract stays additive.
   `DEC-xa6` (no existence leak) and `DEC-kyz` (sharing grants read, never write). The change is
   behavior-preserving for existing human callers.
 
-- [ ] **REQ-service-principal-isolation**: A headless service principal is isolated to its own
+- [x] **REQ-service-principal-isolation**: A headless service principal is isolated to its own
   `owner` bucket by default (never the anonymous bucket, never colliding with a human owner), and
   the Cedar schema + PDP seam are demonstrably forward-compatible to a full tenant/group/role ABAC
   model without reworking the foundation.
@@ -131,7 +131,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | REQ-service-auth-chain | Phase 23 | Complete |
 | REQ-static-token-auth | Phase 23 | Complete |
 | REQ-service-owner-failclosed | Phase 23 | Complete |
-| REQ-service-principal-isolation | Phase 23 | Pending |
+| REQ-service-principal-isolation | Phase 23 | Complete |
 | REQ-idempotent-capture | Phase 24 | Pending |
 | REQ-supersession-links | Phase 25 | Pending |
 | REQ-memory-citations | Phase 26 | Pending |
