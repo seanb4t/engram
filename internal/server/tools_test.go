@@ -738,6 +738,27 @@ func TestStoreMemoryNoKeyAlwaysFresh(t *testing.T) {
 	}
 }
 
+// TestStoreMemoryIdempotencyKeyTooLarge pins IN-01: an oversized
+// idempotency_key is rejected before it is ever hashed into the point ID or
+// touches the store — no Qdrant/embedder round trip needed, consistent with
+// the size-bound discipline storeDiscoveryArgs already enforces for other
+// client-supplied strings in this file.
+func TestStoreMemoryIdempotencyKeyTooLarge(t *testing.T) {
+	d := &deps{}
+	ctx := authedContext(t, "sub-A")
+	a := storeArgs{
+		Content: "x", Scope: "cap:project:x", Source: "user-said", Category: "decision",
+		IdempotencyKey: strings.Repeat("k", maxIdempotencyKeyBytes+1),
+	}
+	_, _, err := d.storeMemory(ctx, callerFor(ctx, t), a)
+	if err == nil {
+		t.Fatal("oversized idempotency_key should be rejected, got nil error")
+	}
+	if !errors.Is(err, store.ErrInvalidArgument) {
+		t.Fatalf("error = %v, want wrapping store.ErrInvalidArgument", err)
+	}
+}
+
 // TestStoreMemoryIdempotentReplayReturnsOriginal pins SC1: a keyed store_memory
 // call, repeated with identical content, returns the ORIGINAL (id, short_id)
 // unchanged — no duplicate point, and zero side-effects (no second Embed).

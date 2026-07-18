@@ -563,6 +563,13 @@ const (
 	maxDiscoveryCitations    = 50
 )
 
+// maxIdempotencyKeyBytes bounds storeArgs.IdempotencyKey (IN-01): it is a
+// short opaque client-generated retry token, not free-form content, so a
+// modest cap is defense-in-depth against oversized payloads — consistent
+// with the size-bound discipline the store_discovery fields above already
+// establish for other client-supplied strings in this file.
+const maxIdempotencyKeyBytes = 512
+
 type searchDiscoveryArgs struct {
 	Query      string `json:"query"`
 	Scope      string `json:"scope,omitempty" jsonschema:"required unless cross_spine"`
@@ -671,6 +678,9 @@ func (a storeArgs) toMemory(owner, actor string, createdAt time.Time) store.Memo
 func (d *deps) checkIdempotentReplay(ctx context.Context, owner string, a storeArgs) (replay bool, id, shortID, pointID string, err error) {
 	if a.IdempotencyKey == "" {
 		return false, "", "", "", nil
+	}
+	if len(a.IdempotencyKey) > maxIdempotencyKeyBytes {
+		return false, "", "", "", fmt.Errorf("idempotency_key too large: %d bytes (max %d): %w", len(a.IdempotencyKey), maxIdempotencyKeyBytes, store.ErrInvalidArgument)
 	}
 	pointID = idempotencyPointID(owner, a.Scope, a.IdempotencyKey)
 	existing, gerr := d.st.Get(ctx, pointID)
