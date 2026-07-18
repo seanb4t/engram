@@ -195,6 +195,34 @@ func TestServiceAuthValidate_StaticTokensMalformedIsFatal(t *testing.T) {
 	}
 }
 
+// TestServiceAuthValidate_StaticTokenTwoDotsRejected pins WR-02: a configured
+// static-token value containing exactly two "." characters is JWT-shaped per
+// auth.chain's D-04 structural discriminator (looksLikeJWT), so it would
+// always route to the OIDC lane at runtime and never reach the static
+// comparator — Validate must reject it fast, naming the env var, rather than
+// let it ship as a silently-dead credential.
+func TestServiceAuthValidate_StaticTokenTwoDotsRejected(t *testing.T) {
+	cfg := validConfigForServiceAuthTests()
+	cfg.ServiceAuth.StaticTokens = "ci=header.payload.signature"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate(): want error for a static token shaped like a JWT (two dots), got nil")
+	}
+	if !strings.Contains(err.Error(), "ENGRAM_SERVICE_AUTH_STATIC_TOKENS") {
+		t.Fatalf("Validate() error %v does not name ENGRAM_SERVICE_AUTH_STATIC_TOKENS", err)
+	}
+
+	// One dot, three dots, and no dots must all pass — only exactly two dots
+	// collides with the JWT-shape discriminator.
+	for _, tok := range []string{"ci=ci.deploy-v2", "ci=a.b.c.d", "ci=plain-token"} {
+		cfg := validConfigForServiceAuthTests()
+		cfg.ServiceAuth.StaticTokens = tok
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("Validate() with static token %q: unexpected error: %v", tok, err)
+		}
+	}
+}
+
 // TestServiceAuthValidate_EnablementSubsets pins D-03: none / static-only /
 // client-creds-only / all-three must all validate cleanly.
 func TestServiceAuthValidate_EnablementSubsets(t *testing.T) {

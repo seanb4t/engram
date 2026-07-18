@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -123,8 +124,21 @@ func (c *Config) Validate() error {
 	// validation error — a bad token map must fail startup, not silently
 	// partial-load (T-23-10, ASVS V5).
 	if c.ServiceAuth.StaticTokens != "" {
-		if _, err := ParseServiceStaticTokens(c.ServiceAuth.StaticTokens); err != nil {
+		if tokens, err := ParseServiceStaticTokens(c.ServiceAuth.StaticTokens); err != nil {
 			errs = append(errs, fmt.Errorf("ENGRAM_SERVICE_AUTH_STATIC_TOKENS: %w", err))
+		} else {
+			// auth.chain's D-04 structural discriminator (looksLikeJWT) routes
+			// any bearer with exactly two "." characters to the OIDC lane,
+			// never the static lane. A configured static token shaped that way
+			// can never reach the static comparator and would always be
+			// rejected at runtime with no diagnostic pointing at the real
+			// cause — so fail fast here instead (mirrors the duplicate-token
+			// fail-fast discipline above).
+			for token := range tokens {
+				if strings.Count(token, ".") == 2 {
+					errs = append(errs, fmt.Errorf("ENGRAM_SERVICE_AUTH_STATIC_TOKENS: token %q has exactly two \".\" characters, which the auth chain's JWT-shape discriminator routes to the OIDC lane, not the static-token lane — it would never authenticate; choose a token value without exactly two dots", token))
+				}
+			}
 		}
 	}
 
