@@ -125,8 +125,7 @@ mismatch detection.
   arg spells out "owner-scoped; omit for a fresh record every time."
 
 ### Concurrency honesty (SC4 vs SC2 boundary)
-- **D-12 (no-duplicate is absolute; strict-reject is best-effort under a simultaneous mismatch
-  race):** The deterministic-ID `Upsert` guarantees **no duplicate is ever created** under arbitrary
+- **D-12 (no-duplicate absolute; strict-reject best-effort under a simultaneous mismatch race):** The deterministic-ID `Upsert` guarantees **no duplicate is ever created** under arbitrary
   concurrency (SC4 holds unconditionally). The mismatch **reject** (SC2) is a read-compare: two
   *truly simultaneous* same-key/**different**-content calls can both see "absent" and both upsert the
   same point (last-writer-wins → still exactly one record), so that one exact race converges without

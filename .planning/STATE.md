@@ -4,9 +4,9 @@ milestone: v0.11.x
 milestone_name: Capture & Service Identity
 current_phase: 24
 current_phase_name: Idempotent Capture
-status: planning
+status: executing
 stopped_at: Phase 24 context gathered
-last_updated: "2026-07-18T19:05:22.824Z"
+last_updated: "2026-07-18T19:37:15.268Z"
 last_activity: 2026-07-17
 last_activity_desc: Phase 23 complete, transitioned to Phase 24
 progress:
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-16 — opened milestone v0.11.x)
 
 Phase: 24 — Idempotent Capture
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-07-17 — Phase 23 complete, transitioned to Phase 24
 
 Progress: [██████████] 100%
