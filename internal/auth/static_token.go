@@ -26,11 +26,13 @@ var errStaticTokenNotRecognized = errors.New("static token not recognized")
 // rotation with no flag-day cutover: both remain valid at once. An empty map
 // disables the mechanism entirely (every verify rejects).
 type StaticTokenVerifier struct {
-	tokens map[string]string // ownerID -> token
+	tokens map[string]string // token -> ownerID
 }
 
-// NewStaticTokenVerifier builds a StaticTokenVerifier from an ownerID->token
-// map.
+// NewStaticTokenVerifier builds a StaticTokenVerifier from a token->ownerID
+// map (the orientation config.ParseServiceStaticTokens already produces —
+// the presented bearer token is the map key, since verification looks up by
+// the presented token).
 func NewStaticTokenVerifier(tokens map[string]string) *StaticTokenVerifier {
 	return &StaticTokenVerifier{tokens: tokens}
 }
@@ -49,11 +51,11 @@ func (v *StaticTokenVerifier) TokenVerifier() mcpauth.TokenVerifier {
 		}
 		var matchedOwner string
 		matched := false
-		for ownerID, candidate := range v.tokens {
-			if candidate == "" {
+		for candidateToken, ownerID := range v.tokens {
+			if candidateToken == "" {
 				continue
 			}
-			if subtle.ConstantTimeCompare([]byte(token), []byte(candidate)) == 1 {
+			if subtle.ConstantTimeCompare([]byte(token), []byte(candidateToken)) == 1 {
 				matchedOwner = ownerID
 				matched = true
 			}
@@ -66,6 +68,8 @@ func (v *StaticTokenVerifier) TokenVerifier() mcpauth.TokenVerifier {
 		return &mcpauth.TokenInfo{
 			UserID: matchedOwner,
 			Extra:  map[string]any{OwnerClaimExtraKey: namespacedOwner("static_token", matchedOwner)},
+			// No Expiration: static tokens are long-lived by design; revoke by
+			// removing the token from ENGRAM_SERVICE_AUTH_STATIC_TOKENS.
 		}, nil
 	}
 }

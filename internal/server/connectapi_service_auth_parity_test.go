@@ -82,7 +82,7 @@ func TestServiceAuthChainParity(t *testing.T) {
 	clientCredsOwner := wantNamespacedOwner("client_id", clientCredsUser)
 	staticOwner := wantNamespacedOwner("static_token", staticOwnerID)
 
-	static := auth.NewStaticTokenVerifier(map[string]string{staticOwnerID: staticToken}).TokenVerifier()
+	static := auth.NewStaticTokenVerifier(map[string]string{staticToken: staticOwnerID}).TokenVerifier()
 
 	tests := []struct {
 		name      string
