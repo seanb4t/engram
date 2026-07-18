@@ -147,3 +147,48 @@ func TestServicePrincipalIsolation(t *testing.T) {
 		}
 	}
 }
+
+// TestSharedCrossTenantReadIntended pins the SC5/D-15/D-16 decision as a
+// PERMANENT test: global shared-read is the INTENDED, documented v0.11.x
+// behavior, so it can never be silently reinterpreted. Two distinct
+// service-tenant owners: tenant A upserts one `shared` record, tenant B owns
+// nothing. Tenant B's principal CAN read tenant A's shared record — this is a
+// positive/must-read assertion, NOT a leak. The tenancy-isolation guarantee
+// (#373, TestServicePrincipalIsolation above) is scoped to private/owner-
+// scoped records only; per-tenant `shared`-read scoping is genuinely-new authz
+// surface, explicitly deferred to a future full-ABAC milestone
+// (REQUIREMENTS.md Out of Scope). This test exists so that deferral is never
+// mistaken for "already fixed" or silently regressed to a different behavior.
+func TestSharedCrossTenantReadIntended(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:service-shared-cross-tenant"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	const (
+		tenantA = "9:client_id:6:svc-aa"
+		tenantB = "12:static_token:6:svc-bb"
+	)
+
+	m := Memory{ID: "eeeeeeee-0000-0000-0000-000000000001", Content: "x", Scope: scope,
+		Owner: tenantA, Visibility: "shared", CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	hits, err := s.Search(ctx, scope, Authenticated(tenantB), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) != 1 || hits[0].ID != m.ID {
+		t.Fatalf("tenant B must read tenant A's shared record (D-15 global shared-read, intended): got %d hits", len(hits))
+	}
+
+	lst, _, _, err := s.List(ctx, scope, Authenticated(tenantB), ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(lst) != 1 {
+		t.Fatalf("List(tenantB): got %d want 1 (cross-tenant shared read is intended, D-15)", len(lst))
+	}
+}
