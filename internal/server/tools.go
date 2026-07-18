@@ -725,6 +725,16 @@ func (d *deps) persistAndEnqueue(ctx context.Context, m store.Memory, vec []floa
 	if err := d.st.Upsert(ctx, m, vec); err != nil {
 		return "", "", err
 	}
+	// Re-read the point after Upsert so a concurrent keyed racer that lost the
+	// last-write-wins race (same deterministic pointID, independently minted
+	// short_id) returns the short_id that was ACTUALLY PERSISTED, not the one
+	// it discarded (CR-01). Upsert replaces the whole payload, so whichever
+	// racer wrote last owns the point's short_id going forward; a failed
+	// re-Get here is non-fatal — fall back to the locally-minted value rather
+	// than fail an otherwise-successful write.
+	if persisted, gerr := d.st.Get(ctx, m.ID); gerr == nil {
+		m.ShortID = persisted.ShortID
+	}
 	// Enqueue only after a confirmed-successful Upsert; never blocks/errors
 	// the write path even when the queue is disabled or full (SC#1, SC#2).
 	d.summaryQueue.tryEnqueue(m.ID)
