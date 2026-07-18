@@ -1760,6 +1760,25 @@ func TestWithClockOverridesNow(t *testing.T) {
 	}
 }
 
+// TestWithAuthzOption exercises the WithAuthz Option's wiring itself (IN-02):
+// it has no callers elsewhere in the repo (all authz-injection tests use the
+// decideBucketHook/decideRecordHook function-var seams instead, since
+// *authz.PDP has no exported constructor besides MustDefault, so WithAuthz
+// today can only reinstall the same default policy corpus). This proves the
+// Option correctly installs the given *authz.PDP rather than silently no-op'ing.
+func TestWithAuthzOption(t *testing.T) {
+	pdp := authz.MustDefault()
+	s := New(nil, "c", WithAuthz(pdp))
+	if s.authz != pdp {
+		t.Error("WithAuthz did not install the given *authz.PDP")
+	}
+	// Default (no WithAuthz) also installs a non-nil PDP via authz.MustDefault().
+	d := New(nil, "c")
+	if d.authz == nil {
+		t.Error("default authz is nil; want authz.MustDefault()")
+	}
+}
+
 func TestRecallWindowGate(t *testing.T) {
 	s := testStore(t)
 	fixed := time.Date(2030, 6, 15, 12, 0, 0, 0, time.UTC)
