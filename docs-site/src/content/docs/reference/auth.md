@@ -102,6 +102,97 @@ with neither issuer set is a fail-fast startup error.
 
 ---
 
+## Service principals (machine-to-machine auth)
+
+Beyond the human/no-issuer OIDC lane above, engram supports headless service
+principals — CI runners, batch jobs, other backend services — authenticating
+over a third, independently-configurable lane. All three mechanisms compose
+into a single verifier chain in front of the MCP bearer endpoint (`withAuth`,
+`cmd/engram/serve.go`):
+
+1. **Human OIDC** (`ENGRAM_OIDC_ISSUER`, above) — tried first for any
+   JWT-shaped bearer.
+2. **OIDC client-credentials** — tried second, only for a JWT-shaped bearer
+   the human lane didn't accept.
+3. **Static token** — tried for any non-JWT (opaque) bearer.
+
+A bearer is routed to lane 1+2 or lane 3 by shape alone (three dot-separated
+base64url segments = JWT-shaped, tried against the OIDC lanes; anything else
+is opaque, tried against the static-token lane) *before* any verifier runs —
+the two mechanism families never both attempt the same bearer.
+
+Each mechanism activates independently, based on its own config being
+present:
+
+| Environment variable | Default | Description |
+|----------------------|---------|--------------|
+| `ENGRAM_SERVICE_AUTH_OIDC_ISSUER` | _(empty — lane off)_ | Client-credentials OIDC issuer URL. May be the same IdP as `ENGRAM_OIDC_ISSUER` or a distinct one. |
+| `ENGRAM_SERVICE_AUTH_OIDC_AUDIENCE` | _(empty — audience not checked)_ | Expected `aud` claim for the service lane — configured **independently** of `ENGRAM_OIDC_AUDIENCE`; tightening or loosening one never affects the other. |
+| `ENGRAM_SERVICE_AUTH_OWNER_CLAIMS` | `client_id,azp` | Ordered, comma-separated claim list the service lane resolves an owner from. **Never** defaults to `email` — a client-credentials token has no human identity to protect from an accidental email-shaped owner collision. |
+| `ENGRAM_SERVICE_AUTH_STATIC_TOKENS` | _(empty — lane off)_ | Comma-separated `owner=token` pairs, e.g. `ci=tok-abc123,batch=tok-def456`. Each token maps to its own distinct owner — never a single shared "service" bucket. |
+
+A deployment with none of these set behaves byte-for-byte like today: only
+the human OIDC lane (or no auth at all) is active.
+
+### Owner resolution and fail-closed guarantee
+
+Every mechanism resolves to the SAME `store.Subject` contract the human lane
+uses — a service principal is isolated to its own `owner` bucket exactly like
+any other authenticated caller (see [Isolation model](#isolation-model)
+below), via the same namespaced-owner encoding used for any non-`email`
+claim.
+
+The client-credentials and static-token lanes are **fail-closed on an empty
+owner**: an authenticated service principal whose configured owner claim
+(`client_id`/`azp` by default) is absent from the token is **rejected**
+(401) at the verifier boundary — it never falls through to the anonymous
+`owner == ""` bucket the way the human lane does when auth is disabled. This
+is the opposite of the human lane's fail-open-to-anonymous behavior, and it
+is deliberate: an authenticated-but-unidentifiable service principal must
+never silently share the anonymous bucket with unauthenticated traffic.
+
+Before enabling the client-credentials lane, verify which claim your IdP
+actually emits for the client-credentials grant — some IdPs emit `client_id`,
+others `azp`, and some emit neither by default. `ENGRAM_SERVICE_AUTH_OWNER_CLAIMS`
+accepts an ordered list (default `client_id,azp`) so both are tried; if your
+IdP emits a different claim, add it to the list.
+
+### Static-token safety
+
+Static tokens are compared using a constant-time comparison
+(`crypto/subtle.ConstantTimeCompare`) over the full token value — never a
+prefix or substring match — and the raw token value is never written to a
+log line, error message, or trace span, on either the accept or reject path.
+
+Static tokens are stored as **plaintext** in config (consistent with how
+`ENGRAM_OIDC_CLIENT_SECRET` and `ENGRAM_UI_COOKIE_KEY` are already handled) —
+not hashed at rest. Treat `ENGRAM_SERVICE_AUTH_STATIC_TOKENS` as a secret the
+same way you already treat those variables.
+
+:::caution[No revocation — the kill-switch is config rotation]
+There is no revocation list for static tokens. The **only** way to invalidate
+a compromised or retired static token is to remove or rotate it out of
+`ENGRAM_SERVICE_AUTH_STATIC_TOKENS` and restart the server — the same
+limitation already documented for the web-console session cookie key
+(`ENGRAM_UI_COOKIE_KEY` rotation). Rotating a single principal's token means
+minting a NEW `owner=token` entry and removing the old one; because multiple
+tokens may map to the same owner, you can add the new token before removing
+the old one for a zero-downtime rotation.
+:::
+
+### Cross-tenant `shared` reads
+
+A `shared`-visibility record remains readable by **any** authenticated
+caller — including a service principal from a *different* service tenant —
+exactly as it already is for human callers. This is a deliberate, documented
+decision for v0.11.x, not an oversight: see
+[`docs/adr/engram-svct-service-tenant-global-shared-read.md`](https://github.com/seanb4t/engram/blob/main/docs/adr/engram-svct-service-tenant-global-shared-read.md)
+for the full rationale. Per-tenant `shared`-read scoping is deferred to a
+future full tenant/group/role ABAC milestone. The tenancy-isolation guarantee
+below applies to **private / owner-scoped** records only.
+
+---
+
 ## Isolation model
 
 Each authenticated caller is identified by the value of the configured owner
