@@ -892,7 +892,7 @@ func TestSetVisibilityTOCTOU(t *testing.T) {
 	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-	if _, err := s.getWritable(ctx, id, Authenticated("sub-owner")); err != nil {
+	if _, err := s.getWritable(ctx, id, Authenticated("sub-owner"), authz.ActionShare); err != nil {
 		t.Fatalf("getWritable pre-delete: %v", err)
 	}
 	// Concurrent delete: simulates what happens in the TOCTOU window.
@@ -1260,12 +1260,12 @@ func TestAnonBucketWriteSemantics(t *testing.T) {
 	}
 
 	// getWritable on ownerless record with Anonymous() → success (anon bucket mutually writable).
-	if _, err := s.getWritable(ctx, ownerless.ID, Anonymous()); err != nil {
+	if _, err := s.getWritable(ctx, ownerless.ID, Anonymous(), authz.ActionWrite); err != nil {
 		t.Errorf("getWritable anon on ownerless record: unexpected error: %v", err)
 	}
 
 	// getWritable on owner-stamped record with Anonymous() → ErrNotFound (fail-closed write isolation).
-	_, err := s.getWritable(ctx, stamped.ID, Anonymous())
+	_, err := s.getWritable(ctx, stamped.ID, Anonymous(), authz.ActionWrite)
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("getWritable anon on owner-stamped record: want ErrNotFound, got %v", err)
 	}
@@ -3473,7 +3473,7 @@ func TestIdAddressedAbsentShortCircuit(t *testing.T) {
 	if _, err := s.GetReadable(ctx, missing, Authenticated("sub-absent")); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetReadable absent id under all-deny PDP: want ErrNotFound, got %v", err)
 	}
-	if _, err := s.getWritable(ctx, missing, Authenticated("sub-absent")); !errors.Is(err, ErrNotFound) {
+	if _, err := s.getWritable(ctx, missing, Authenticated("sub-absent"), authz.ActionWrite); !errors.Is(err, ErrNotFound) {
 		t.Errorf("getWritable absent id under all-deny PDP: want ErrNotFound, got %v", err)
 	}
 	if err := s.OwnedOrAbsent(ctx, missing, Authenticated("sub-absent")); err != nil {

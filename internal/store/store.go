@@ -1371,7 +1371,11 @@ func (s *Store) GetReadable(ctx context.Context, id string, subj Subject) (out M
 }
 
 // getWritable returns the record only if the caller OWNS it (shared does NOT
-// grant write); otherwise ErrNotFound. The mutate primitive.
+// grant write); otherwise ErrNotFound. The mutate primitive. action is the
+// caller's actual verb (ActionWrite/ActionDelete/ActionShare) — getWritable
+// forwards it to the PDP unchanged rather than hardcoding ActionWrite, so a
+// future action-discriminating policy fires correctly for Delete/SetVisibility
+// as well as Update.
 //
 // Owner-only: anonymous requires owner=="", authenticated requires owner==sub.
 // shared visibility is irrelevant to the write gate — shared grants read, not
@@ -1379,7 +1383,7 @@ func (s *Store) GetReadable(ctx context.Context, id string, subj Subject) (out M
 // preserving fail-closed write isolation even in mixed-auth deployments.
 // Per-actor isolation requires authentication (see the package isolation contract
 // and README).
-func (s *Store) getWritable(ctx context.Context, id string, subj Subject) (Memory, error) {
+func (s *Store) getWritable(ctx context.Context, id string, subj Subject, action authz.Action) (Memory, error) {
 	m, err := s.Get(ctx, id)
 	if err != nil {
 		return Memory{}, err
@@ -1388,7 +1392,7 @@ func (s *Store) getWritable(ctx context.Context, id string, subj Subject) (Memor
 	if !ok {
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	if !s.decideRecord(owner, kind, authz.ActionWrite, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
+	if !s.decideRecord(owner, kind, action, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	return m, nil
@@ -1452,7 +1456,7 @@ func (s *Store) FetchForUpdate(ctx context.Context, id string, subj Subject) (ou
 		}
 	}()
 
-	return s.getWritable(ctx, id, subj)
+	return s.getWritable(ctx, id, subj, authz.ActionWrite)
 }
 
 // Update applies a content change (re-embedded via vec) to a record previously
@@ -1656,7 +1660,7 @@ func (s *Store) SetVisibility(ctx context.Context, id string, subj Subject, shar
 		}
 	}()
 
-	if _, err := s.getWritable(ctx, id, subj); err != nil {
+	if _, err := s.getWritable(ctx, id, subj, authz.ActionShare); err != nil {
 		return err
 	}
 	vis := ""
@@ -1721,7 +1725,7 @@ func (s *Store) Delete(ctx context.Context, id string, subj Subject) (err error)
 		}
 	}()
 
-	if _, err := s.getWritable(ctx, id, subj); err != nil {
+	if _, err := s.getWritable(ctx, id, subj, authz.ActionDelete); err != nil {
 		return err
 	}
 	_, err = s.client.Delete(ctx, &qdrant.DeletePoints{
