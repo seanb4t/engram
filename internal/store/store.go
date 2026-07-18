@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
+	"github.com/seanb4t/engram/internal/authz"
 	"github.com/seanb4t/engram/internal/shortid"
 	"github.com/seanb4t/engram/internal/telemetry"
 	"go.opentelemetry.io/otel"
@@ -37,6 +38,25 @@ func ownerOf(subj Subject) string {
 		return ""
 	}
 	return subj.Owner()
+}
+
+// principalParams converts a Subject into the primitives the authz PDP takes
+// (owner, kind). It is the ONLY Subject->primitives converter and lives here
+// (not internal/authz) to avoid an import cycle. kind is hardcoded "human"
+// (A1 — no policy conditions on it this phase). The nil/unknown default arm
+// returns ok=false: this is the fail-closed signal read-filter builders use
+// to return matchNothing() WITHOUT calling the PDP, because own_records
+// deliberately grants owner=="" for the legitimate anonymous bucket, so an
+// owner=="" principal must never be conflated with a nil Subject.
+func principalParams(subj Subject) (owner, kind string, ok bool) {
+	switch s := subj.(type) {
+	case authenticated:
+		return s.sub, "human", true
+	case anonymous:
+		return "", "human", true
+	default:
+		return "", "", false
+	}
 }
 
 // ErrNotFound is returned when an id is absent OR not visible to the caller —
@@ -217,6 +237,31 @@ type Store struct {
 	collection string
 	now        func() time.Time
 
+	// authz is the policy decision point consulted by the bulk read-filter
+	// builders (ownerOrSharedCondition/ownerOnlyCondition) to decide which
+	// buckets (own/shared) a caller may read. Defaulted to authz.MustDefault()
+	// in New(), mirroring how `now` defaults to time.Now — WithAuthz overrides
+	// it in tests. The PDP is never consulted from internal/server handlers;
+	// it is owned by the store, the single default-deny chokepoint (DEC-cgb).
+	authz *authz.PDP
+
+	// decideBucket routes the read-filter builders' bucket-authz decisions;
+	// nil defaults to s.authz.DecideBucket (via the decideBucket method below).
+	// *authz.PDP is a sealed concrete type with no exported constructor besides
+	// MustDefault, so this function-var field (mirroring mintCandidate/
+	// deletePayloadKeys) is how tests inject a call-counting probe (SC3)
+	// without a broader authz-interface refactor.
+	decideBucketHook func(owner, kind string, action authz.Action, bucket authz.Bucket) authz.Decision
+
+	// decideRecordHook routes the id-addressed gates' (GetReadable/getWritable/
+	// OwnedOrAbsent) per-record authz decisions; nil defaults to
+	// s.authz.DecideRecord (via the decideRecord method below). Same sealed-type
+	// rationale as decideBucketHook: *authz.PDP has no exported constructor
+	// besides MustDefault, so this function-var field is how tests inject an
+	// all-deny probe to prove a Cedar Deny maps to the uniform ErrNotFound (SC4)
+	// without a broader authz-interface refactor.
+	decideRecordHook func(owner, kind string, action authz.Action, memoryOwner, category, visibility, scope string) authz.Decision
+
 	// mintCandidate generates a short_id candidate; nil defaults to shortid.New.
 	// Overridable in tests to force MintShortID's collision-retry branch.
 	mintCandidate func() (string, error)
@@ -241,9 +286,16 @@ func WithClock(fn func() time.Time) Option {
 	return func(s *Store) { s.now = fn }
 }
 
+// WithAuthz overrides the store's policy decision point. Defaults to
+// authz.MustDefault(). Tests inject an all-deny or call-counting PDP to
+// exercise Deny paths and prove per-bucket call counts.
+func WithAuthz(pdp *authz.PDP) Option {
+	return func(s *Store) { s.authz = pdp }
+}
+
 // New returns a Store backed by the given Qdrant client and collection.
 func New(c *qdrant.Client, collection string, opts ...Option) *Store {
-	s := &Store{client: c, collection: collection, now: time.Now}
+	s := &Store{client: c, collection: collection, now: time.Now, authz: authz.MustDefault()}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -515,42 +567,77 @@ func (s *Store) Upsert(ctx context.Context, m Memory, vec []float32) (err error)
 	return err
 }
 
-// ownerOrSharedCondition matches records the subject may READ.
+// ownerOrSharedCondition matches records the subject may READ. The own/shared
+// bucket decisions are policy-derived (s.authz.DecideBucket), but the emitted
+// filter shape is numerically identical to the pre-Cedar hardcoded switch
+// (D-11):
 //
-// Authenticated: owner==sub OR visibility=="shared".
-// Anonymous: owner=="" ONLY — shared records require an authenticated subject;
-// the anonymous bucket is not a back-door to all shared records.
-// nil/unknown (a discarded extraction error): matchNothing — fail closed.
-func ownerOrSharedCondition(subj Subject) *qdrant.Condition {
-	switch s := subj.(type) {
-	case authenticated:
-		return qdrant.NewFilterAsCondition(&qdrant.Filter{Should: []*qdrant.Condition{
-			qdrant.NewMatch("owner", s.sub),
-			qdrant.NewMatch("visibility", visibilityShared),
-		}})
-	case anonymous:
-		return qdrant.NewFilterAsCondition(&qdrant.Filter{Must: []*qdrant.Condition{
-			qdrant.NewMatch("owner", ""),
-		}})
-	default:
+// Authenticated: owner==sub OR visibility=="shared" (both buckets normally
+// allowed — a Should composition, so an own+shared record still matches once).
+// Anonymous: owner=="" ONLY — shared records require an authenticated subject
+// (DecideBucket(BucketShared) denies the anonymous principal); the anonymous
+// bucket is not a back-door to all shared records.
+// nil/unknown (a discarded extraction error): matchNothing — fail closed,
+// WITHOUT consulting the PDP (principalParams returns ok=false).
+// A decision allowing zero buckets (e.g. an all-deny PDP) also compiles to
+// matchNothing — never an unfiltered query.
+func (s *Store) ownerOrSharedCondition(subj Subject) *qdrant.Condition {
+	owner, kind, ok := principalParams(subj)
+	if !ok {
 		return matchNothing()
 	}
+	ownAllowed := s.decideBucket(owner, kind, authz.ActionRead, authz.BucketOwn).Allow
+	sharedAllowed := s.decideBucket(owner, kind, authz.ActionRead, authz.BucketShared).Allow
+	var should []*qdrant.Condition
+	if ownAllowed {
+		should = append(should, qdrant.NewMatch("owner", owner))
+	}
+	if sharedAllowed {
+		should = append(should, qdrant.NewMatch("visibility", visibilityShared))
+	}
+	if len(should) == 0 {
+		return matchNothing()
+	}
+	return qdrant.NewFilterAsCondition(&qdrant.Filter{Should: should})
 }
 
 // ownerOnlyCondition restricts to records the caller OWNS — no shared-read grant.
 // It backs management views (ListScheduled) where a `shared` record belonging to
 // another actor must stay invisible: a shared+scheduled memory is hidden from
 // everyone but its owner until it becomes active (then normal recall surfaces it).
-// Fail-closed for nil/unknown Subjects, exactly like ownerOrSharedCondition.
-func ownerOnlyCondition(subj Subject) *qdrant.Condition {
-	switch s := subj.(type) {
-	case authenticated:
-		return qdrant.NewMatch("owner", s.sub)
-	case anonymous:
-		return qdrant.NewMatch("owner", "")
-	default:
+// The own-bucket decision is policy-derived (s.authz.DecideBucket); fail-closed
+// for nil/unknown Subjects and a denied own bucket, exactly like
+// ownerOrSharedCondition — WITHOUT consulting the PDP for nil/unknown.
+func (s *Store) ownerOnlyCondition(subj Subject) *qdrant.Condition {
+	owner, kind, ok := principalParams(subj)
+	if !ok {
 		return matchNothing()
 	}
+	if s.decideBucket(owner, kind, authz.ActionRead, authz.BucketOwn).Allow {
+		return qdrant.NewMatch("owner", owner)
+	}
+	return matchNothing()
+}
+
+// decideBucket is the single call-site indirection ownerOrSharedCondition and
+// ownerOnlyCondition use to reach the PDP. It defaults to s.authz.DecideBucket;
+// decideBucketHook (nil in production) lets tests observe/count invocations.
+func (s *Store) decideBucket(owner, kind string, action authz.Action, bucket authz.Bucket) authz.Decision {
+	if s.decideBucketHook != nil {
+		return s.decideBucketHook(owner, kind, action, bucket)
+	}
+	return s.authz.DecideBucket(owner, kind, action, bucket)
+}
+
+// decideRecord is the single call-site indirection GetReadable/getWritable/
+// OwnedOrAbsent use to reach the PDP for a per-record (id-addressed) decision.
+// It defaults to s.authz.DecideRecord; decideRecordHook (nil in production)
+// lets tests inject an all-deny probe without a real *authz.PDP construction.
+func (s *Store) decideRecord(owner, kind string, action authz.Action, memoryOwner, category, visibility, scope string) authz.Decision {
+	if s.decideRecordHook != nil {
+		return s.decideRecordHook(owner, kind, action, memoryOwner, category, visibility, scope)
+	}
+	return s.authz.DecideRecord(owner, kind, action, memoryOwner, category, visibility, scope)
 }
 
 // matchNothing returns a condition no record can satisfy (owner==x AND owner!=x).
@@ -569,7 +656,7 @@ func matchNothing() *qdrant.Condition {
 func (s *Store) ownerScopeFilter(scope string, subj Subject) *qdrant.Filter {
 	return &qdrant.Filter{Must: []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),
-		ownerOrSharedCondition(subj),
+		s.ownerOrSharedCondition(subj),
 	}}
 }
 
@@ -749,7 +836,7 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Su
 	if kind != "" {
 		must = append(must, qdrant.NewMatch("kind", kind))
 	}
-	must = append(must, ownerOrSharedCondition(subj))
+	must = append(must, s.ownerOrSharedCondition(subj))
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
 		Filter: &qdrant.Filter{Must: must}, Limit: qdrant.PtrOf(k),
@@ -816,10 +903,10 @@ func createdRangeCondition(after, before time.Time) *qdrant.Condition {
 //     private representation — the store only ever writes "" or "shared"). This
 //     is expressed as MustNot(visibility=="shared") so that an empty-string match
 //     in Qdrant is reliable across payload-key-absent and empty-value cases.
-func listFilter(scope string, subj Subject, opts ListOptions) *qdrant.Filter {
+func (s *Store) listFilter(scope string, subj Subject, opts ListOptions) *qdrant.Filter {
 	must := []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),
-		ownerOrSharedCondition(subj),
+		s.ownerOrSharedCondition(subj),
 	}
 	if len(opts.Categories) > 0 {
 		should := make([]*qdrant.Condition, 0, len(opts.Categories))
@@ -879,7 +966,7 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		return nil, 0, "", fmt.Errorf("list: ascending ordering is honored only in offset/all mode, not cursor mode: %w", ErrInvalidArgument)
 	}
 
-	f := listFilter(scope, subj, opts)
+	f := s.listFilter(scope, subj, opts)
 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
 	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
 		f.Must = append(f.Must, c)
@@ -1105,7 +1192,7 @@ func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, s
 	}
 	f := &qdrant.Filter{Must: []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),
-		ownerOnlyCondition(subj),
+		s.ownerOnlyCondition(subj),
 		scheduledStateCondition(state, s.now()),
 	}}
 	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
@@ -1156,7 +1243,7 @@ func (s *Store) ListScopes(ctx context.Context, subj Subject) (out []ScopeCount,
 	const scanCap = 1000
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
-		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{ownerOrSharedCondition(subj)}},
+		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{s.ownerOrSharedCondition(subj)}},
 		Limit:          qdrant.PtrOf(uint32(scanCap)),
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
@@ -1273,24 +1360,22 @@ func (s *Store) GetReadable(ctx context.Context, id string, subj Subject) (out M
 	if err != nil {
 		return Memory{}, err
 	}
-	switch sj := subj.(type) {
-	case authenticated:
-		if m.Owner != sj.sub && m.Visibility != visibilityShared {
-			return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
-		}
-		return m, nil
-	case anonymous:
-		if m.Owner != "" {
-			return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
-		}
-		return m, nil
-	default:
+	owner, kind, ok := principalParams(subj)
+	if !ok {
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
+	if !s.decideRecord(owner, kind, authz.ActionRead, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
+		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	return m, nil
 }
 
 // getWritable returns the record only if the caller OWNS it (shared does NOT
-// grant write); otherwise ErrNotFound. The mutate primitive.
+// grant write); otherwise ErrNotFound. The mutate primitive. action is the
+// caller's actual verb (ActionWrite/ActionDelete/ActionShare) — getWritable
+// forwards it to the PDP unchanged rather than hardcoding ActionWrite, so a
+// future action-discriminating policy fires correctly for Delete/SetVisibility
+// as well as Update.
 //
 // Owner-only: anonymous requires owner=="", authenticated requires owner==sub.
 // shared visibility is irrelevant to the write gate — shared grants read, not
@@ -1298,25 +1383,19 @@ func (s *Store) GetReadable(ctx context.Context, id string, subj Subject) (out M
 // preserving fail-closed write isolation even in mixed-auth deployments.
 // Per-actor isolation requires authentication (see the package isolation contract
 // and README).
-func (s *Store) getWritable(ctx context.Context, id string, subj Subject) (Memory, error) {
+func (s *Store) getWritable(ctx context.Context, id string, subj Subject, action authz.Action) (Memory, error) {
 	m, err := s.Get(ctx, id)
 	if err != nil {
 		return Memory{}, err
 	}
-	switch sj := subj.(type) {
-	case authenticated:
-		if m.Owner != sj.sub {
-			return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
-		}
-		return m, nil
-	case anonymous:
-		if m.Owner != "" {
-			return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
-		}
-		return m, nil
-	default:
+	owner, kind, ok := principalParams(subj)
+	if !ok {
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
+	if !s.decideRecord(owner, kind, action, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
+		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	return m, nil
 }
 
 // OwnedOrAbsent permits a client-supplied-id write: nil if the id is absent (new
@@ -1344,20 +1423,14 @@ func (s *Store) OwnedOrAbsent(ctx context.Context, id string, subj Subject) (err
 	if err != nil {
 		return err
 	}
-	switch sj := subj.(type) {
-	case authenticated:
-		if m.Owner != sj.sub {
-			return fmt.Errorf("%w: %s", ErrNotFound, id)
-		}
-		return nil
-	case anonymous:
-		if m.Owner != "" {
-			return fmt.Errorf("%w: %s", ErrNotFound, id)
-		}
-		return nil
-	default:
+	owner, kind, ok := principalParams(subj)
+	if !ok {
 		return fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
+	if !s.decideRecord(owner, kind, authz.ActionWrite, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
+		return fmt.Errorf("%w: %s", ErrNotFound, id)
+	}
+	return nil
 }
 
 // FetchForUpdate returns the record iff it exists and is owned by the subject
@@ -1383,7 +1456,7 @@ func (s *Store) FetchForUpdate(ctx context.Context, id string, subj Subject) (ou
 		}
 	}()
 
-	return s.getWritable(ctx, id, subj)
+	return s.getWritable(ctx, id, subj, authz.ActionWrite)
 }
 
 // Update applies a content change (re-embedded via vec) to a record previously
@@ -1587,7 +1660,7 @@ func (s *Store) SetVisibility(ctx context.Context, id string, subj Subject, shar
 		}
 	}()
 
-	if _, err := s.getWritable(ctx, id, subj); err != nil {
+	if _, err := s.getWritable(ctx, id, subj, authz.ActionShare); err != nil {
 		return err
 	}
 	vis := ""
@@ -1652,7 +1725,7 @@ func (s *Store) Delete(ctx context.Context, id string, subj Subject) (err error)
 		}
 	}()
 
-	if _, err := s.getWritable(ctx, id, subj); err != nil {
+	if _, err := s.getWritable(ctx, id, subj, authz.ActionDelete); err != nil {
 		return err
 	}
 	_, err = s.client.Delete(ctx, &qdrant.DeletePoints{
@@ -1664,7 +1737,11 @@ func (s *Store) Delete(ctx context.Context, id string, subj Subject) (err error)
 
 // DeleteAll removes the subject's OWN records in scope (never another owner's,
 // and never another owner's shared records). A nil/unknown Subject is rejected
-// without deleting anything — fail closed.
+// without deleting anything — fail closed. The own-bucket decision is
+// PDP-derived (s.decideBucket, ActionDelete/BucketOwn), matching how the read
+// filter builders route their bucket decisions, so a future per-category or
+// per-tenant delete restriction applies here too, not just to id-addressed
+// Delete.
 func (s *Store) DeleteAll(ctx context.Context, scope string, subj Subject) (err error) {
 	ctx, span := tracer.Start(ctx, "store.DeleteAll", trace.WithAttributes(
 		attribute.String("engram.scope", scope),
@@ -1680,14 +1757,12 @@ func (s *Store) DeleteAll(ctx context.Context, scope string, subj Subject) (err 
 		}
 	}()
 
-	var owner string
-	switch sj := subj.(type) {
-	case authenticated:
-		owner = sj.sub
-	case anonymous:
-		owner = ""
-	default:
+	owner, kind, ok := principalParams(subj)
+	if !ok {
 		return fmt.Errorf("%w: nil subject", ErrNotFound)
+	}
+	if !s.decideBucket(owner, kind, authz.ActionDelete, authz.BucketOwn).Allow {
+		return nil
 	}
 	filter := &qdrant.Filter{Must: []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),

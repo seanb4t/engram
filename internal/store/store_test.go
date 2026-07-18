@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/qdrant/go-client/qdrant"
+	"github.com/seanb4t/engram/internal/authz"
 	"github.com/seanb4t/engram/internal/shortid"
 	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
 )
@@ -891,7 +892,7 @@ func TestSetVisibilityTOCTOU(t *testing.T) {
 	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-	if _, err := s.getWritable(ctx, id, Authenticated("sub-owner")); err != nil {
+	if _, err := s.getWritable(ctx, id, Authenticated("sub-owner"), authz.ActionShare); err != nil {
 		t.Fatalf("getWritable pre-delete: %v", err)
 	}
 	// Concurrent delete: simulates what happens in the TOCTOU window.
@@ -1259,12 +1260,12 @@ func TestAnonBucketWriteSemantics(t *testing.T) {
 	}
 
 	// getWritable on ownerless record with Anonymous() → success (anon bucket mutually writable).
-	if _, err := s.getWritable(ctx, ownerless.ID, Anonymous()); err != nil {
+	if _, err := s.getWritable(ctx, ownerless.ID, Anonymous(), authz.ActionWrite); err != nil {
 		t.Errorf("getWritable anon on ownerless record: unexpected error: %v", err)
 	}
 
 	// getWritable on owner-stamped record with Anonymous() → ErrNotFound (fail-closed write isolation).
-	_, err := s.getWritable(ctx, stamped.ID, Anonymous())
+	_, err := s.getWritable(ctx, stamped.ID, Anonymous(), authz.ActionWrite)
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("getWritable anon on owner-stamped record: want ErrNotFound, got %v", err)
 	}
@@ -1756,6 +1757,25 @@ func TestWithClockOverridesNow(t *testing.T) {
 	d := New(nil, "c")
 	if d.now().IsZero() {
 		t.Error("default clock returned zero time")
+	}
+}
+
+// TestWithAuthzOption exercises the WithAuthz Option's wiring itself (IN-02):
+// it has no callers elsewhere in the repo (all authz-injection tests use the
+// decideBucketHook/decideRecordHook function-var seams instead, since
+// *authz.PDP has no exported constructor besides MustDefault, so WithAuthz
+// today can only reinstall the same default policy corpus). This proves the
+// Option correctly installs the given *authz.PDP rather than silently no-op'ing.
+func TestWithAuthzOption(t *testing.T) {
+	pdp := authz.MustDefault()
+	s := New(nil, "c", WithAuthz(pdp))
+	if s.authz != pdp {
+		t.Error("WithAuthz did not install the given *authz.PDP")
+	}
+	// Default (no WithAuthz) also installs a non-nil PDP via authz.MustDefault().
+	d := New(nil, "c")
+	if d.authz == nil {
+		t.Error("default authz is nil; want authz.MustDefault()")
 	}
 }
 
@@ -3228,5 +3248,340 @@ func TestUpdatePayloadInjectedDeletePayloadFailure(t *testing.T) {
 		if _, ok := raw.payload[k]; !ok {
 			t.Errorf("expected stale provenance key %q to remain after the injected DeletePayload failure", k)
 		}
+	}
+}
+
+// TestSearchAuthzCallCount proves the bulk recall path calls DecideBucket
+// O(buckets-per-request) — at most one per candidate bucket (own, shared) —
+// and NEVER a count that scales with the number of stored/returned records
+// (SC3, no per-record Cedar evaluation on the hot path). *authz.PDP is a
+// sealed concrete type with no exported constructor besides MustDefault, so
+// the counting probe is injected via decideBucketHook (a same-package field,
+// mirroring the deletePayloadKeys injection above) rather than a custom PDP.
+func TestSearchAuthzCallCount(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "authz-test:project:call-count"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	var calls int
+	s.decideBucketHook = func(owner, kind string, action authz.Action, bucket authz.Bucket) authz.Decision {
+		calls++
+		return s.authz.DecideBucket(owner, kind, action, bucket)
+	}
+	t.Cleanup(func() { s.decideBucketHook = nil })
+
+	const n = 12
+	for i := 0; i < n; i++ {
+		m := Memory{
+			ID: fmt.Sprintf("cccccccc-0000-0000-0000-%012d", i), Content: "x",
+			Scope: scope, Owner: "sub-count", CreatedAt: time.Now().UTC(),
+		}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %d: %v", i, err)
+		}
+	}
+
+	calls = 0
+	hits, err := s.Search(ctx, scope, Authenticated("sub-count"), []float32{0.1, 0.2, 0.3}, uint64(n), nil, time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) != n {
+		t.Fatalf("search: got %d hits, want %d", len(hits), n)
+	}
+	// Exactly one DecideBucket call per candidate bucket (own, shared) — bounded
+	// by bucket count, never by the 12 stored/returned records.
+	if calls != 2 {
+		t.Errorf("Search: DecideBucket called %d times, want 2 (own+shared, not per-record)", calls)
+	}
+}
+
+// TestBulkFilterOwnAndSharedAdjacency (edge 1) proves a record that is
+// simultaneously owner==caller AND visibility=="shared" is returned exactly
+// once for the authenticated owner — the own and shared bucket clauses
+// compose as Should conditions, never a conflict or a duplicate.
+func TestBulkFilterOwnAndSharedAdjacency(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "authz-test:project:adjacency"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	m := Memory{
+		ID: "dddddddd-0000-0000-0000-000000000001", Content: "own+shared",
+		Scope: scope, Owner: "sub-adj", Visibility: "shared", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	hits, err := s.Search(ctx, scope, Authenticated("sub-adj"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("Search: got %d hits, want exactly 1 (own+shared record returned once)", len(hits))
+	}
+	if hits[0].ID != m.ID {
+		t.Errorf("Search: got record %q, want %q", hits[0].ID, m.ID)
+	}
+}
+
+// TestBulkFilterZeroBucketFailsClosed (edge 5) proves that a decision
+// allowing zero buckets — an all-deny PDP injected via decideBucketHook —
+// compiles to a match-nothing filter, never an unfiltered Qdrant query, for
+// an authenticated caller who owns records under the scope.
+func TestBulkFilterZeroBucketFailsClosed(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "authz-test:project:zero-bucket"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	m := Memory{
+		ID: "eeeeeeee-0000-0000-0000-000000000001", Content: "owned",
+		Scope: scope, Owner: "sub-deny", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	s.decideBucketHook = func(_, _ string, _ authz.Action, _ authz.Bucket) authz.Decision {
+		return authz.Decision{Allow: false}
+	}
+	t.Cleanup(func() { s.decideBucketHook = nil })
+
+	hits, err := s.Search(ctx, scope, Authenticated("sub-deny"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Errorf("Search with all-deny PDP: got %d hits, want 0 (fail-closed, never unfiltered)", len(hits))
+	}
+
+	lst, _, _, err := s.List(ctx, scope, Authenticated("sub-deny"), ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(lst) != 0 {
+		t.Errorf("List with all-deny PDP: got %d items, want 0 (fail-closed, never unfiltered)", len(lst))
+	}
+}
+
+// TestBulkFilterOrderIndependent (edge 6) proves the composed filter result
+// is stable regardless of which bucket decision is evaluated first — the
+// authz condition stays the outer Must in every composed filter, and the
+// authenticated own+shared result is identical whether own or shared is
+// decided first.
+func TestBulkFilterOrderIndependent(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "authz-test:project:order-independent"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	own := Memory{
+		ID: "ffffffff-0000-0000-0000-000000000001", Content: "own",
+		Scope: scope, Owner: "sub-order", CreatedAt: time.Now().UTC(),
+	}
+	shared := Memory{
+		ID: "ffffffff-0000-0000-0000-000000000002", Content: "shared",
+		Scope: scope, Owner: "sub-other-order", Visibility: "shared", CreatedAt: time.Now().UTC(),
+	}
+	for _, m := range []Memory{own, shared} {
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", m.ID, err)
+		}
+	}
+
+	search := func() map[string]bool {
+		hits, err := s.Search(ctx, scope, Authenticated("sub-order"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		got := make(map[string]bool, len(hits))
+		for _, h := range hits {
+			got[h.ID] = true
+		}
+		return got
+	}
+
+	// Default (own decided before shared, per s.decideBucket call order).
+	want := search()
+	if len(want) != 2 || !want[own.ID] || !want[shared.ID] {
+		t.Fatalf("baseline: got %v, want {own, shared}", want)
+	}
+
+	// Force the SIBLING bucket to be decided first on every call (regardless of
+	// the production code's fixed own-then-shared call order), then return the
+	// requested bucket's decision. If DecideBucket held any hidden state shared
+	// across calls, this interleaved reversal would perturb the result; it must
+	// not — decisions are a pure function of (owner, kind, action, bucket).
+	s.decideBucketHook = func(owner, kind string, action authz.Action, bucket authz.Bucket) authz.Decision {
+		sibling := authz.BucketOwn
+		if bucket == authz.BucketOwn {
+			sibling = authz.BucketShared
+		}
+		_ = s.authz.DecideBucket(owner, kind, action, sibling)
+		return s.authz.DecideBucket(owner, kind, action, bucket)
+	}
+	t.Cleanup(func() { s.decideBucketHook = nil })
+
+	got := search()
+	if len(got) != len(want) || !got[own.ID] || !got[shared.ID] {
+		t.Errorf("order-independence: got %v, want %v (unchanged regardless of decision order)", got, want)
+	}
+}
+
+// TestGetReadableDenyMapsToNotFound proves a Cedar Deny on an id-addressed
+// gate is indistinguishable from a genuinely missing id: even though the
+// record EXISTS and is owned by the caller, an all-deny decideRecordHook
+// forces GetReadable to return the exact same fmt.Errorf ErrNotFound form
+// used for an absent id (DEC-xa6) — the error carries no policy-id/reason
+// text and its message equals the plain missing-id form, proving the
+// authz.Decision's unexported Diagnostic never leaks into the caller-facing
+// error (SC4, T-22-08). *authz.PDP is a sealed concrete type with no
+// exported constructor besides MustDefault, so the all-deny probe is
+// injected via decideRecordHook (mirroring decideBucketHook), not a custom
+// *authz.PDP built through WithAuthz.
+func TestGetReadableDenyMapsToNotFound(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "authz-test:project:record-deny"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	m := Memory{
+		ID: "11111111-2222-0000-0000-000000000001", Content: "owned",
+		Scope: scope, Owner: "sub-record-deny", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	s.decideRecordHook = func(_, _ string, _ authz.Action, _, _, _, _ string) authz.Decision {
+		return authz.Decision{Allow: false}
+	}
+	t.Cleanup(func() { s.decideRecordHook = nil })
+
+	_, err := s.GetReadable(ctx, m.ID, Authenticated("sub-record-deny"))
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetReadable with all-deny PDP: want ErrNotFound, got %v", err)
+	}
+	want := fmt.Errorf("%w: %s", ErrNotFound, m.ID).Error()
+	if err.Error() != want {
+		t.Errorf("GetReadable error leaked non-uniform content: got %q, want %q (plain missing-id form, no Diagnostic)", err.Error(), want)
+	}
+}
+
+// TestGetWritableAndOwnedOrAbsentDenyMapsToNotFound is the write-path analogue
+// of TestGetReadableDenyMapsToNotFound (WR-02): it proves the same D-10
+// Deny->ErrNotFound uniformity holds for getWritable and OwnedOrAbsent on an
+// owned, EXISTING record — not just the real-PDP cross-owner path exercised by
+// TestDeleteOwnerGate/TestSetVisibilityOwnerGate/TestUpdateOwnerGateAndSharedFlag,
+// and not just the absent-id short-circuit covered by
+// TestIdAddressedAbsentShortCircuit. Under the current policy corpus this
+// branch (an owner denied by Cedar on their own record) is unreachable in
+// production — own_records permits every action unconditionally for the
+// owner — but the injected all-deny decideRecordHook forces it, guarding
+// against a future write-path change that accidentally threads the
+// Diagnostic into the caller-facing error.
+func TestGetWritableAndOwnedOrAbsentDenyMapsToNotFound(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "authz-test:project:write-record-deny"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	m := Memory{
+		ID: "11111111-2222-0000-0000-000000000002", Content: "owned",
+		Scope: scope, Owner: "sub-write-record-deny", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	s.decideRecordHook = func(_, _ string, _ authz.Action, _, _, _, _ string) authz.Decision {
+		return authz.Decision{Allow: false}
+	}
+	t.Cleanup(func() { s.decideRecordHook = nil })
+
+	want := fmt.Errorf("%w: %s", ErrNotFound, m.ID).Error()
+
+	_, err := s.getWritable(ctx, m.ID, Authenticated("sub-write-record-deny"), authz.ActionWrite)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("getWritable with all-deny PDP: want ErrNotFound, got %v", err)
+	}
+	if err.Error() != want {
+		t.Errorf("getWritable error leaked non-uniform content: got %q, want %q (plain missing-id form, no Diagnostic)", err.Error(), want)
+	}
+
+	err = s.OwnedOrAbsent(ctx, m.ID, Authenticated("sub-write-record-deny"))
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("OwnedOrAbsent with all-deny PDP: want ErrNotFound, got %v", err)
+	}
+	if err.Error() != want {
+		t.Errorf("OwnedOrAbsent error leaked non-uniform content: got %q, want %q (plain missing-id form, no Diagnostic)", err.Error(), want)
+	}
+}
+
+// TestDeleteAllDeniedBucketDeletesNothing (WR-04) covers the new bucket-denial
+// branch the WR-01 fix added to DeleteAll: when decideBucket(ActionDelete,
+// BucketOwn) returns Deny, DeleteAll must return nil (nothing to delete)
+// rather than silently deleting or erroring. Under the current policy corpus
+// this branch is unreachable in production (own_records permits delete
+// unconditionally for the owner) — same accepted-risk class as the sibling
+// denial tests (TestBulkFilterZeroBucketFailsClosed via decideBucketHook) —
+// but it guards against a future edit that flips the nil-return to something
+// that silently deletes on Deny.
+func TestDeleteAllDeniedBucketDeletesNothing(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "authz-test:project:deleteall-deny"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	m := Memory{
+		ID: "abababab-0000-0000-0000-000000000001", Content: "owned",
+		Scope: scope, Owner: "sub-deleteall-deny", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	s.decideBucketHook = func(_, _ string, _ authz.Action, _ authz.Bucket) authz.Decision {
+		return authz.Decision{Allow: false}
+	}
+	t.Cleanup(func() { s.decideBucketHook = nil })
+
+	if err := s.DeleteAll(ctx, scope, Authenticated("sub-deleteall-deny")); err != nil {
+		t.Fatalf("DeleteAll with all-deny PDP: want nil (nothing to delete), got %v", err)
+	}
+	if _, err := s.Get(ctx, m.ID); err != nil {
+		t.Errorf("DeleteAll with all-deny PDP must not delete: record gone, %v", err)
+	}
+}
+
+// TestIdAddressedAbsentShortCircuit proves the s.Get -> ErrNotFound
+// short-circuit precedes DecideRecord for every id-addressed gate: even
+// under an all-deny PDP, an id that does NOT exist yields the SAME
+// GetReadable/getWritable ErrNotFound and OwnedOrAbsent's absent->nil
+// contract, because Cedar is never consulted for a record that was never
+// fetched (Pattern 4, T-22-10). A Deny-everything decideRecordHook must not
+// change the absent-id contract.
+func TestIdAddressedAbsentShortCircuit(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	s.decideRecordHook = func(_, _ string, _ authz.Action, _, _, _, _ string) authz.Decision {
+		return authz.Decision{Allow: false}
+	}
+	t.Cleanup(func() { s.decideRecordHook = nil })
+
+	const missing = "11111111-2222-0000-0000-00000000dead"
+
+	if _, err := s.GetReadable(ctx, missing, Authenticated("sub-absent")); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetReadable absent id under all-deny PDP: want ErrNotFound, got %v", err)
+	}
+	if _, err := s.getWritable(ctx, missing, Authenticated("sub-absent"), authz.ActionWrite); !errors.Is(err, ErrNotFound) {
+		t.Errorf("getWritable absent id under all-deny PDP: want ErrNotFound, got %v", err)
+	}
+	if err := s.OwnedOrAbsent(ctx, missing, Authenticated("sub-absent")); err != nil {
+		t.Errorf("OwnedOrAbsent absent id under all-deny PDP: want nil, got %v", err)
 	}
 }

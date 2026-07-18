@@ -198,7 +198,7 @@ func runServe(cmd *cobra.Command) error {
 
 	var handler http.Handler = mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return srv }, nil)
-	handler, err = withAuth(handler, cfg.OIDC, ownerClaims)
+	handler, err = withAuth(handler, cfg.OIDC, cfg.ServiceAuth, ownerClaims)
 	if err != nil {
 		slog.Error("oidc verifier init failed", "err", err, "issuer", cfg.OIDC.Issuer)
 		return err
@@ -283,23 +283,62 @@ func ownerClaimGuard(bearerIssuer string, uiEnabled bool, ownerClaims []string) 
 	return nil
 }
 
-// withAuth wraps the MCP handler with OIDC bearer-token validation when an issuer
-// is configured. The upstream embedding/auth gateway forwards the caller's token
-// untouched; engram verifies it and exposes the caller identity to tool handlers.
-// No issuer → validation disabled (all requests accepted), logged loudly.
-func withAuth(handler http.Handler, oidc config.OIDCConfig, ownerClaims []string) (http.Handler, error) {
-	if oidc.Issuer == "" {
-		slog.Warn("OIDC validation DISABLED (no --oidc-issuer / ENGRAM_OIDC_ISSUER); all requests accepted")
+// withAuth wraps the MCP handler with bearer-token validation, composing up to
+// three independently-enabled lanes into a single auth.ChainVerifier (D-01):
+// the human/no-issuer lane (auth.New, iff oidc.Issuer is set), the
+// client-credentials service lane (auth.NewService, iff
+// svcAuth.OIDCIssuer is set), and the static-token lane
+// (auth.NewStaticTokenVerifier, iff svcAuth.StaticTokens is non-empty). Each
+// lane is built ONLY when its own config is present (D-03) — a human-only
+// deployment (no service_auth.* config) constructs a chain containing only
+// the human verifier, byte-for-byte the pre-chain behavior. This is the ONE
+// call site that changes for the service-auth chain (SC1).
+// No lane configured → validation disabled (all requests accepted), logged loudly.
+func withAuth(handler http.Handler, oidc config.OIDCConfig, svcAuth config.ServiceAuthConfig, ownerClaims []string) (http.Handler, error) {
+	var humanVerifier, serviceVerifier, staticVerifier mcpauth.TokenVerifier
+
+	if oidc.Issuer != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		verifier, err := auth.New(ctx, oidc.Issuer, oidc.Audience, ownerClaims)
+		cancel()
+		if err != nil {
+			return nil, fmt.Errorf("oidc verifier init: %w", err)
+		}
+		humanVerifier = verifier.TokenVerifier()
+		slog.Info("OIDC bearer-token validation enabled", "issuer", oidc.Issuer)
+	}
+
+	if svcAuth.OIDCIssuer != "" {
+		svcOwnerClaims, err := config.ParseOwnerClaims(svcAuth.OwnerClaims)
+		if err != nil {
+			return nil, fmt.Errorf("service-auth owner-claim config invalid: %w", err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		verifier, err := auth.NewService(ctx, svcAuth.OIDCIssuer, svcAuth.OIDCAudience, svcOwnerClaims)
+		cancel()
+		if err != nil {
+			return nil, fmt.Errorf("service-auth oidc verifier init: %w", err)
+		}
+		serviceVerifier = verifier.TokenVerifier()
+		slog.Info("service OIDC client-credentials validation enabled", "issuer", svcAuth.OIDCIssuer, "owner_claims", svcOwnerClaims)
+	}
+
+	if svcAuth.StaticTokens != "" {
+		tokens, err := config.ParseServiceStaticTokens(svcAuth.StaticTokens)
+		if err != nil {
+			return nil, fmt.Errorf("service-auth static-tokens config invalid: %w", err)
+		}
+		staticVerifier = auth.NewStaticTokenVerifier(tokens).TokenVerifier()
+		slog.Info("service static-token validation enabled", "token_count", len(tokens))
+	}
+
+	if humanVerifier == nil && serviceVerifier == nil && staticVerifier == nil {
+		slog.Warn("bearer-token validation DISABLED (no --oidc-issuer / ENGRAM_OIDC_ISSUER, no ENGRAM_SERVICE_AUTH_* config); all requests accepted")
 		return handler, nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	verifier, err := auth.New(ctx, oidc.Issuer, oidc.Audience, ownerClaims)
-	cancel()
-	if err != nil {
-		return nil, fmt.Errorf("oidc verifier init: %w", err)
-	}
-	slog.Info("OIDC bearer-token validation enabled", "issuer", oidc.Issuer)
-	return mcpauth.RequireBearerToken(verifier.TokenVerifier(), &mcpauth.RequireBearerTokenOptions{
+
+	chain := auth.ChainVerifier(humanVerifier, serviceVerifier, staticVerifier)
+	return mcpauth.RequireBearerToken(chain, &mcpauth.RequireBearerTokenOptions{
 		ResourceMetadataURL: oidc.ResourceMetadata,
 	})(handler), nil
 }

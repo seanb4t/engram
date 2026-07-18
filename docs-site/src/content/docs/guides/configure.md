@@ -81,6 +81,21 @@ Setting `ENGRAM_OIDC_ISSUER` enables bearer-token enforcement (JWKS signature + 
 
 Source: `cmd/engram/serve.go` (`init()` flag registration and `withAuth`).
 
+### Service principals (machine-to-machine)
+
+A headless service principal (CI runner, batch job, another backend service) authenticates over a third lane composed alongside the human OIDC lane above — each mechanism activates independently, based on its own config being present. Env-only (secret-bearing, no `--flag` equivalents):
+
+| Environment variable | Default | Description |
+|----------------------|---------|-------------|
+| `ENGRAM_SERVICE_AUTH_OIDC_ISSUER` | _(empty — lane off)_ | Client-credentials OIDC issuer URL (may reuse `ENGRAM_OIDC_ISSUER`'s IdP or be distinct) |
+| `ENGRAM_SERVICE_AUTH_OIDC_AUDIENCE` | _(empty)_ | Expected `aud` claim for the service lane, independent of `ENGRAM_OIDC_AUDIENCE` |
+| `ENGRAM_SERVICE_AUTH_OWNER_CLAIMS` | `client_id,azp` | Ordered claim list the service lane resolves an owner from — never defaults to `email` |
+| `ENGRAM_SERVICE_AUTH_STATIC_TOKENS` | _(empty — lane off)_ | Comma-separated `owner=token` pairs, e.g. `ci=tok-abc,batch=tok-def` |
+
+A deployment with none of these set is unchanged: only the human OIDC lane (or no auth at all) is active. Static tokens have no revocation list — rotating means editing `ENGRAM_SERVICE_AUTH_STATIC_TOKENS` and restarting; see `reference/auth.md` (Service principals) for the fail-closed empty-owner guarantee, the no-revocation kill-switch, and the [global cross-tenant `shared`-read decision](/reference/auth/#cross-tenant-shared-reads) (`docs/adr/engram-svct-service-tenant-global-shared-read.md`).
+
+Source: `internal/config` (`ServiceAuthConfig`, `service_auth.*` registry rows) + `cmd/engram/serve.go` (`withAuth`).
+
 ## Logging
 
 | Environment variable | Default | Description |

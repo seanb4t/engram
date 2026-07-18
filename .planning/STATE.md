@@ -2,15 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.11.x
 milestone_name: Capture & Service Identity
+current_phase: 24
+current_phase_name: Idempotent Capture
 status: planning
-last_updated: "2026-07-16T22:00:55.941Z"
-last_activity: 2026-07-16
+stopped_at: Completed 23-06-PLAN.md
+last_updated: "2026-07-18T03:06:16.585Z"
+last_activity: 2026-07-18
+last_activity_desc: Phase 23 shipped — PR #396
 progress:
-  total_phases: 5
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 8
+  completed_phases: 2
+  total_plans: 9
+  completed_plans: 9
+  percent: 25
 ---
 
 # Project State
@@ -20,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-16 — opened milestone v0.11.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 22 — cedar-authz-foundation-store-enforcement
+**Current focus:** Phase 23 — Service Auth Chain & Tenancy Isolation
 
 ## Current Position
 
-Phase: 22 of 26 (Cedar Authz Foundation & Store Enforcement) — v0.11.x, phase 1/5
-Plan: — (not yet planned)
+Phase: 24 — Idempotent Capture
+Plan: Not started
 Status: Ready to plan
-Last activity: 2026-07-17 — Completed quick task 260717-g1r: triage + fix #301 (Renovate ui/ postUpgradeTasks via bash -c)
+Last activity: 2026-07-17 — Phase 23 complete, transitioned to Phase 24
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 ## Deferred Items
 
@@ -95,6 +99,19 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 - [Phase 19]: retryOnce's retry set is exactly {Unauthenticated, PermissionDenied} — client-side interpretation; a SINGLE OPPORTUNISTIC AUTH-RACE RETRY, never 're-seal on retry'/'rotation'
 - [Phase 20]: Reversed config<->embed import direction (config owns ReservedEmbedParamKeys, embed aliases it) to avoid a real import cycle through internal/telemetry
 - [Phase 21]: D-09: plain .planning rumdl exclude entry (not .planning/** glob), matching convention of .beads/.agents/docs-site neighbors
+- [Phase 22 P01]: A1/A2 confirmed (kind hardcoded 'human'; MustDefault panics on parse failure, not New() error return)
+- [Phase 22 P01]: TestPolicyCorpus_ForbidOverridesPermit proven via a synthetic inline permit-all/forbid-all PolicySet (white-box &PDP{policies:ps}) since the shipped 4-policy corpus has no naturally-overlapping permit+forbid request
+- [Phase 22 P02]: decideBucketHook function-var test seam (mirrors mintCandidate/deletePayloadKeys) added to store.go since *authz.PDP is a sealed concrete type with no test constructor; zero new exported API
+- [Phase 22 P03]: decideRecordHook function-var test seam (mirrors decideBucketHook) added to store.go since *authz.PDP is a sealed concrete type with no test constructor; zero new exported API
+- [Phase 23 P01]: oidctest.Server+SignIDToken (already used in internal/webauth) reused as the fail-closed test fixture — fakeIDV's stub cannot carry claims (oidc.IDToken.claims is unexported), so real signed tokens exercise the actual TokenVerifier/ClaimIdentity path instead.
+- [Phase 23 P01]: NewFromProvider same-issuer optimization skipped (planner discretion) — NewService does a plain second oidc.NewProvider discovery, zero new exported surface beyond NewService itself.
+- [Phase 23 P02]: TokenInfo.UserID is the non-namespaced ownerID; Extra[OwnerClaimExtraKey] carries namespacedOwner("static_token", ownerID) — matches PATTERNS.md shape
+- [Phase 23 P02]: empty configured static-token candidates are structurally excluded from matching (never eligible), independent of the empty-input-token guard
+- [Phase 23 P03]: chainVerifier's D-02 order and D-03 nil-mechanism guards are intrinsic to a correct routing closure; Task 2's tests landed as test-only against Task 1's already-complete implementation rather than driving new production code
+- [Phase ?]: service_auth.owner_claims defaults to client_id,azp (D-05), never email; static_tokens has no cobra flag (ENGRAM_-only secret map)
+- [Phase ?]: SC4/SC5 (tenancy isolation + cross-tenant shared-read) proven with two permanent store-package tests, zero new production code
+- [Phase ?]: Global cross-tenant shared-read (D-15) recorded as ADR engram-svct; per-tenant scoping deferred to a future full-ABAC milestone
+- [Phase ?]: Exported internal/auth's chainVerifier/newStaticTokenVerifier as ChainVerifier/NewStaticTokenVerifier so cmd/engram's withAuth can build the composed verifier chain
 
 ### Blockers/Concerns
 
@@ -112,8 +129,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-16T22:00:55.941Z
-Stopped at: Roadmap created for v0.11.x (Phases 22–26); ready for `/gsd-plan-phase 22`
+Last session: 2026-07-18T02:43:05.859Z
+Stopped at: Completed 23-06-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -154,6 +171,19 @@ Resume file: None
 | Phase 20 P04 | 3min | 3 tasks | 5 files |
 | Phase 21 P01 | 6min | 2 tasks | 3 files |
 | Phase 21 P02 | 15min | 3 tasks | 5 files |
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 22 P01 | 8min | 3 tasks | 13 files |
+| Phase 22 P02 | 5min | 3 tasks | 2 files |
+| Phase 22 P03 | 3min | 3 tasks | 3 files |
+| Phase 23 P01 | 14min | 2 tasks | 2 files |
+| Phase 23 P02 | 12min | 2 tasks | 2 files |
+| Phase 23 P03 | 12min | 2 tasks | 2 files |
+| Phase 23 P04 | 25min | 2 tasks | 4 files |
+| Phase 23 P05 | 20min | 2 tasks | 1 files |
+| Phase 23-service-auth-chain-tenancy-isolation P06 | 20min | 3 tasks | 9 files |
 
 ## Operator Next Steps
 

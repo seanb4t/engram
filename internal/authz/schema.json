@@ -1,0 +1,70 @@
+{
+  "//": "REFERENCE-ONLY Cedar JSON schema (D-06). Documents the Engram namespace entity/action model this package's Go code implements by hand; it is NOT parsed at runtime and NOT CI-gated — cedar-go's x/exp/schema validator is not production-ready. The hand-authored Go entity structs in entities.go are the actual runtime source of truth. tenant/roles are forward-compat reservations (SC5): declared here, unused until a later full tenant/group/role ABAC milestone.",
+  "Engram": {
+    "entityTypes": {
+      "Principal": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "owner": { "type": "String", "required": true },
+            "kind": { "type": "String", "required": true },
+            "tenant": { "type": "String", "required": false },
+            "roles": {
+              "type": "Set",
+              "element": { "type": "String" },
+              "required": false
+            }
+          }
+        },
+        "memberOfTypes": ["Tenant"]
+      },
+      "Tenant": {},
+      "Memory": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "owner": { "type": "String", "required": true },
+            "category": { "type": "String", "required": true },
+            "visibility": { "type": "String", "required": true },
+            "scope": { "type": "String", "required": true },
+            "tenant": { "type": "String", "required": false }
+          }
+        }
+      },
+      "OwnRecords": {},
+      "SharedRecords": {}
+    },
+    "actions": {
+      "read": {
+        "appliesTo": {
+          "principalTypes": ["Principal"],
+          "resourceTypes": ["Memory", "OwnRecords", "SharedRecords"]
+        }
+      },
+      "write": {
+        "appliesTo": {
+          "principalTypes": ["Principal"],
+          "resourceTypes": ["Memory", "OwnRecords", "SharedRecords"]
+        }
+      },
+      "delete": {
+        "appliesTo": {
+          "principalTypes": ["Principal"],
+          "resourceTypes": ["Memory", "OwnRecords", "SharedRecords"]
+        }
+      },
+      "share": {
+        "appliesTo": {
+          "principalTypes": ["Principal"],
+          "resourceTypes": ["Memory", "OwnRecords", "SharedRecords"]
+        }
+      },
+      "schedule": {
+        "appliesTo": {
+          "principalTypes": ["Principal"],
+          "resourceTypes": ["Memory", "OwnRecords", "SharedRecords"]
+        }
+      }
+    }
+  }
+}
