@@ -820,6 +820,162 @@ func TestStoreMemoryIdempotentReplayRejectsMismatch(t *testing.T) {
 	}
 }
 
+// TestStoreMemoryIdempotentKeyScopedPerOwner pins SC3 (Pitfall 2 matrix): two
+// distinct owners using the IDENTICAL idempotency_key value and identical
+// content get two independent records — owner is baked into the deterministic
+// point-ID hash, so cross-owner collision is structurally impossible, not
+// filter-enforced (D-09).
+func TestStoreMemoryIdempotentKeyScopedPerOwner(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	scope := "iso-test:project:idempotency-cross-owner"
+	ctxA := authedContext(t, "owner-idem-A")
+	ctxB := authedContext(t, "owner-idem-B")
+	defer func() {
+		cleanupErr(t, "DeleteAll A "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-idem-A")))
+		cleanupErr(t, "DeleteAll B "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-idem-B")))
+	}()
+
+	args := storeArgs{
+		Content: "shared key content", Scope: scope, Source: "user-said", Category: "gotcha",
+		IdempotencyKey: "same-key-both-owners",
+	}
+	idA, _, err := d.storeMemory(ctxA, callerFor(ctxA, t), args)
+	if err != nil {
+		t.Fatalf("storeMemory (owner A): %v", err)
+	}
+	idB, _, err := d.storeMemory(ctxB, callerFor(ctxB, t), args)
+	if err != nil {
+		t.Fatalf("storeMemory (owner B): %v", err)
+	}
+	if idA == idB {
+		t.Fatalf("two owners with the identical idempotency_key collided on id %q; want structurally distinct ids (SC3)", idA)
+	}
+
+	gotA, err := st.Get(context.Background(), idA)
+	if err != nil || gotA.Owner != "owner-idem-A" {
+		t.Fatalf("owner A record: owner=%q err=%v", gotA.Owner, err)
+	}
+	gotB, err := st.Get(context.Background(), idB)
+	if err != nil || gotB.Owner != "owner-idem-B" {
+		t.Fatalf("owner B record: owner=%q err=%v", gotB.Owner, err)
+	}
+
+	itemsA, _, _, err := st.List(ctxA, scope, store.Authenticated("owner-idem-A"), store.ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List (owner A): %v", err)
+	}
+	for _, m := range itemsA {
+		if m.ID == idB {
+			t.Fatalf("owner A's List leaked owner B's record %q", idB)
+		}
+	}
+}
+
+// TestStoreMemoryIdempotentConcurrentIdenticalOnePoint pins SC4 (Pitfall 3): N
+// concurrent identical (same key + same content) store_memory calls resolve to
+// exactly one Qdrant point — the deterministic-ID Upsert is the sole isolation
+// primitive, no application lock, no search-then-insert TOCTOU check. Must run
+// under `go test -race`. Per D-12, this asserts ONLY the no-duplicate
+// invariant, never reject-under-simultaneous-mismatch.
+func TestStoreMemoryIdempotentConcurrentIdenticalOnePoint(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "owner-concurrent")
+	scope := "iso-test:project:idempotency-concurrent"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-concurrent")))
+	}()
+	c := callerFor(ctx, t)
+
+	args := storeArgs{
+		Content: "concurrent identical", Scope: scope, Source: "user-said", Category: "gotcha",
+		IdempotencyKey: "concurrent-key",
+	}
+
+	const n = 20
+	type result struct {
+		id, shortID string
+		err         error
+	}
+	results := make(chan result, n)
+	var wg sync.WaitGroup
+	for range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			id, sid, err := d.storeMemory(ctx, c, args)
+			results <- result{id, sid, err}
+		}()
+	}
+	wg.Wait()
+	close(results)
+
+	var firstID string
+	for r := range results {
+		if r.err != nil {
+			t.Fatalf("storeMemory (concurrent): %v", r.err)
+		}
+		if firstID == "" {
+			firstID = r.id
+		} else if r.id != firstID {
+			t.Fatalf("concurrent identical keyed calls minted DIFFERENT ids: %q vs %q (SC4 no-duplicate invariant violated)", firstID, r.id)
+		}
+	}
+
+	_, total, _, err := st.List(ctx, scope, store.Authenticated("owner-concurrent"), store.ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("store holds %d points after %d concurrent identical keyed calls, want exactly 1 (SC4)", total, n)
+	}
+}
+
+// TestScheduleMemoryIdempotentIgnoresWindowChange documents and pins the
+// conscious resolution of RESEARCH Open Question 1: the schedule window
+// (not_before/not_after) is EXCLUDED from the D-07 content fingerprint. A
+// replay with the same key + identical storeArgs content but a CHANGED window
+// returns the original record with its ORIGINAL window unchanged — this is an
+// intentional, tested decision, not an oversight.
+func TestScheduleMemoryIdempotentIgnoresWindowChange(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "owner-window")
+	scope := "iso-test:project:idempotency-window"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-window")))
+	}()
+
+	base := storeArgs{
+		Content: "windowed content", Scope: scope, Source: "user-said", Category: "gotcha",
+		IdempotencyKey: "window-key",
+	}
+	firstNotAfter := timeNow().Add(1 * time.Hour).Format(time.RFC3339)
+	id1, sid1, err := d.scheduleMemory(ctx, callerFor(ctx, t), scheduleArgs{storeArgs: base, NotAfter: firstNotAfter})
+	if err != nil {
+		t.Fatalf("scheduleMemory (first): %v", err)
+	}
+
+	secondNotAfter := timeNow().Add(48 * time.Hour).Format(time.RFC3339)
+	id2, sid2, err := d.scheduleMemory(ctx, callerFor(ctx, t), scheduleArgs{storeArgs: base, NotAfter: secondNotAfter})
+	if err != nil {
+		t.Fatalf("scheduleMemory (replay with different window): %v", err)
+	}
+	if id2 != id1 || sid2 != sid1 {
+		t.Fatalf("replay with a changed window minted a different record: (id=%q,sid=%q), want (id=%q,sid=%q)", id2, sid2, id1, sid1)
+	}
+
+	got, err := st.Get(ctx, id1)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	wantNotAfter, perr := time.Parse(time.RFC3339, firstNotAfter)
+	if perr != nil {
+		t.Fatalf("parse firstNotAfter: %v", perr)
+	}
+	if got.NotAfter == nil || !got.NotAfter.Equal(wantNotAfter) {
+		t.Fatalf("original schedule window was overwritten by the replay: got NotAfter=%v, want %v (window excluded from replay fingerprint, D-07/Open Question 1)", got.NotAfter, wantNotAfter)
+	}
+}
+
 // TestStoreMemoryEnqueuesOnSuccess pins SC#1: a successful storeMemory
 // enqueues the record id for async summary fill, and the worker drains it —
 // asserted deterministically via the Wait() drain seam (no time.Sleep).
