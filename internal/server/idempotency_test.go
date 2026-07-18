@@ -43,10 +43,21 @@ func TestIdempotencyPointIDOwnerScoped(t *testing.T) {
 	}
 }
 
+// TestIdempotencyPointIDKeySensitive pins that differing only the key (same
+// owner+scope) yields different point IDs — the key is a real component of
+// the hash input, not a no-op.
+func TestIdempotencyPointIDKeySensitive(t *testing.T) {
+	a := idempotencyPointID("o", "s", "k1")
+	b := idempotencyPointID("o", "s", "k2")
+	if a == b {
+		t.Fatalf("idempotencyPointID did not scope by key: k1 and k2 both produced %q", a)
+	}
+}
+
 // TestIdempotencyPointIDValidUUID pins that idempotencyPointID's output is a
 // wire-valid UUID string — short-id/ResolvePointID downstream expect this.
 func TestIdempotencyPointIDValidUUID(t *testing.T) {
-	got := idempotencyPointID("o", "s", "k")
+	got := idempotencyPointID("o", "s", "check-uuid")
 	if _, err := uuid.Parse(got); err != nil {
 		t.Fatalf("idempotencyPointID(%q) is not a valid UUID: %v", got, err)
 	}
