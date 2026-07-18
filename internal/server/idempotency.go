@@ -29,7 +29,13 @@ var engramIdempotencyNS = uuid.MustParse("69fbe3e4-a53b-4d6e-971a-cad2f107e23c")
 // namespacedOwner discipline from two components to three — so a boundary
 // shift (owner="a",scope="bc" vs owner="ab",scope="c") can never collide
 // (D-04, T-24-01). Owner is part of the hash input, not a filter, so
-// cross-owner collision is structurally impossible (D-09).
+// cross-owner collision is structurally impossible (D-09) between two
+// AUTHENTICATED owners. This guarantee collapses to a single shared bucket
+// when no OIDC issuer is configured: every anonymous caller has owner=="",
+// so anonymous callers using the same scope+key CAN collide on this point ID
+// (IN-02) — consistent with the project's documented single-anonymous-bucket
+// invariant (CLAUDE.md: "No issuer → single anonymous bucket"), not a defect
+// specific to idempotency.
 func idempotencyPointID(owner, scope, key string) string {
 	name := fmt.Sprintf("%d:%s:%d:%s:%d:%s",
 		len(owner), owner, len(scope), scope, len(key), key)
