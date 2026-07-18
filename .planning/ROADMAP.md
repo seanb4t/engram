@@ -365,12 +365,12 @@ exactly like any other non-email claim already does)
 **Note**: this phase's tenancy isolation is largely a *verification* phase once the auth chain
 exists — it proves namespaced-owner isolation against the store filters Phase 22 wired, per the
 research-converged build order (`#362` requires `#373` to ship together or first).
-**Plans**: 6 plans
+**Plans**: 1/6 plans executed
 
 Plans:
 **Wave 1** *(parallel — zero file overlap; internal/auth is split across three files)*
 
-- [ ] 23-01-PLAN.md — internal/auth OIDC service lane: FIRST fail-closed empty-owner reject (SC2/D-08/D-10) + NewService per-lane audience (D-14) (REQ-service-owner-failclosed, REQ-service-auth-chain)
+- [x] 23-01-PLAN.md — internal/auth OIDC service lane: FIRST fail-closed empty-owner reject (SC2/D-08/D-10) + NewService per-lane audience (D-14) (REQ-service-owner-failclosed, REQ-service-auth-chain)
 - [ ] 23-02-PLAN.md — internal/auth static-token verifier: crypto/subtle constant-time compare, per-owner map, no-leak discipline (REQ-static-token-auth)
 - [ ] 23-03-PLAN.md — internal/auth chainVerifier combinator + JWT-shape discriminator: D-02 order, D-03 nil-guard, D-04 deny-by-default (REQ-service-auth-chain)
 - [ ] 23-04-PLAN.md — internal/config service_auth.* rows + ServiceAuthConfig + token→owner map parser + validation (REQ-service-auth-chain, REQ-static-token-auth)
@@ -497,7 +497,7 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 | 20. Correctness & Polish | v0.10.x | 4/4 | Complete    | 2026-07-16 |
 | 21. CI / Maintenance Hygiene | v0.10.x | 3/3 | Complete   | 2026-07-16 |
 | 22. Cedar Authz Foundation & Store Enforcement | v0.11.x | 0/2 | In Progress|  |
-| 23. Service Auth Chain & Tenancy Isolation | v0.11.x | 0/4 | Not started | - |
+| 23. Service Auth Chain & Tenancy Isolation | v0.11.x | 0/4 | In Progress|  |
 | 24. Idempotent Capture | v0.11.x | 0/1 | Not started | - |
 | 25. Supersession with History | v0.11.x | 0/1 | Not started | - |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 0/3 | Not started | - |

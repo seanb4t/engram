@@ -17,7 +17,7 @@ store-layer authz **primitive**, and the memory contract stays additive.
 
 ### Service Identity & Access
 
-- [ ] **REQ-service-auth-chain**: A pluggable verifier chain authenticates callers in a defined
+- [x] **REQ-service-auth-chain**: A pluggable verifier chain authenticates callers in a defined
   order — OIDC user tokens → OIDC client-credentials (service accounts) → static provisioned
   tokens — with each mechanism resolving to the same `TokenInfo{Extra[owner]}` / `Subject`
   contract the store already gates on. Which mechanisms are enabled is config-selectable
@@ -29,7 +29,7 @@ store-layer authz **primitive**, and the memory contract stays additive.
   (`crypto/subtle`), a token maps to exactly one owner (never a single shared owner for all
   tokens), and a token value never appears in logs, spans, or error messages.
 
-- [ ] **REQ-service-owner-failclosed**: An authenticated caller whose configured owner claim
+- [x] **REQ-service-owner-failclosed**: An authenticated caller whose configured owner claim
   cannot be resolved is **rejected** (fail-closed error), never silently mapped to the anonymous
   empty-owner bucket. This holds for OIDC client-credentials tokens (which carry no `email`) and
   is proven by a test asserting "an authenticated service principal never resolves to `owner==""`"
@@ -128,9 +128,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 |-------------|-------|--------|
 | REQ-cedar-pdp-foundation | Phase 22 | Complete |
 | REQ-cedar-store-enforcement | Phase 22 | Complete |
-| REQ-service-auth-chain | Phase 23 | Pending |
+| REQ-service-auth-chain | Phase 23 | Complete |
 | REQ-static-token-auth | Phase 23 | Pending |
-| REQ-service-owner-failclosed | Phase 23 | Pending |
+| REQ-service-owner-failclosed | Phase 23 | Complete |
 | REQ-service-principal-isolation | Phase 23 | Pending |
 | REQ-idempotent-capture | Phase 24 | Pending |
 | REQ-supersession-links | Phase 25 | Pending |

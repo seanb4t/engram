@@ -5,15 +5,15 @@ milestone_name: Capture & Service Identity
 current_phase: 23
 current_phase_name: Service Auth Chain & Tenancy Isolation
 status: executing
-stopped_at: Phase 23 context gathered
-last_updated: "2026-07-18T01:47:39.667Z"
+stopped_at: Completed 23-01-PLAN.md
+last_updated: "2026-07-18T02:02:36.797Z"
 last_activity: 2026-07-17
-last_activity_desc: Phase 22 complete, transitioned to Phase 23
+last_activity_desc: Phase 23 execution started
 progress:
   total_phases: 8
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 9
+  completed_plans: 4
   percent: 13
 ---
 
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-16 — opened milestone v0.11.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 22 — Cedar Authz Foundation & Store Enforcement
+**Current focus:** Phase 23 — Service Auth Chain & Tenancy Isolation
 
 ## Current Position
 
-Phase: 23 — Service Auth Chain & Tenancy Isolation
-Plan: Not started
+Phase: 23 (Service Auth Chain & Tenancy Isolation) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-07-17 — Phase 22 complete, transitioned to Phase 23
+Last activity: 2026-07-17 — Phase 23 execution started
 
-Progress: [██████████] 100%
+Progress: [████░░░░░░] 44%
 
 ## Deferred Items
 
@@ -103,6 +103,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 - [Phase 22 P01]: TestPolicyCorpus_ForbidOverridesPermit proven via a synthetic inline permit-all/forbid-all PolicySet (white-box &PDP{policies:ps}) since the shipped 4-policy corpus has no naturally-overlapping permit+forbid request
 - [Phase 22 P02]: decideBucketHook function-var test seam (mirrors mintCandidate/deletePayloadKeys) added to store.go since *authz.PDP is a sealed concrete type with no test constructor; zero new exported API
 - [Phase 22 P03]: decideRecordHook function-var test seam (mirrors decideBucketHook) added to store.go since *authz.PDP is a sealed concrete type with no test constructor; zero new exported API
+- [Phase 23 P01]: oidctest.Server+SignIDToken (already used in internal/webauth) reused as the fail-closed test fixture — fakeIDV's stub cannot carry claims (oidc.IDToken.claims is unexported), so real signed tokens exercise the actual TokenVerifier/ClaimIdentity path instead.
+- [Phase 23 P01]: NewFromProvider same-issuer optimization skipped (planner discretion) — NewService does a plain second oidc.NewProvider discovery, zero new exported surface beyond NewService itself.
 
 ### Blockers/Concerns
 
@@ -120,9 +122,9 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-18T01:11:36.357Z
-Stopped at: Phase 23 context gathered
-Resume file: .planning/phases/23-service-auth-chain-tenancy-isolation/23-CONTEXT.md
+Last session: 2026-07-18T02:02:36.790Z
+Stopped at: Completed 23-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -169,6 +171,7 @@ Resume file: .planning/phases/23-service-auth-chain-tenancy-isolation/23-CONTEXT
 | Phase 22 P01 | 8min | 3 tasks | 13 files |
 | Phase 22 P02 | 5min | 3 tasks | 2 files |
 | Phase 22 P03 | 3min | 3 tasks | 3 files |
+| Phase 23 P01 | 14min | 2 tasks | 2 files |
 
 ## Operator Next Steps
 
