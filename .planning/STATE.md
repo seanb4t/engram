@@ -5,8 +5,8 @@ milestone_name: Capture & Service Identity
 current_phase: 23
 current_phase_name: Service Auth Chain & Tenancy Isolation
 status: planning
-stopped_at: Completed 22-03-PLAN.md
-last_updated: "2026-07-17T23:41:25.462Z"
+stopped_at: Phase 23 context gathered
+last_updated: "2026-07-18T01:11:36.366Z"
 last_activity: 2026-07-17
 last_activity_desc: Phase 22 complete, transitioned to Phase 23
 progress:
@@ -120,9 +120,9 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-17T23:28:18.101Z
-Stopped at: Completed 22-03-PLAN.md
-Resume file: None
+Last session: 2026-07-18T01:11:36.357Z
+Stopped at: Phase 23 context gathered
+Resume file: .planning/phases/23-service-auth-chain-tenancy-isolation/23-CONTEXT.md
 
 ## Performance Metrics
 
