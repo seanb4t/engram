@@ -5,10 +5,10 @@ milestone_name: Capture & Service Identity
 current_phase: 24
 current_phase_name: Idempotent Capture
 status: planning
-stopped_at: Completed 23-06-PLAN.md
-last_updated: "2026-07-18T03:06:16.585Z"
-last_activity: 2026-07-18
-last_activity_desc: Phase 23 shipped — PR #396
+stopped_at: Phase 24 context gathered
+last_updated: "2026-07-18T19:05:22.824Z"
+last_activity: 2026-07-17
+last_activity_desc: Phase 23 complete, transitioned to Phase 24
 progress:
   total_phases: 8
   completed_phases: 2
@@ -129,9 +129,9 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-18T02:43:05.859Z
-Stopped at: Completed 23-06-PLAN.md
-Resume file: None
+Last session: 2026-07-18T19:05:22.815Z
+Stopped at: Phase 24 context gathered
+Resume file: .planning/phases/24-idempotent-capture/24-CONTEXT.md
 
 ## Performance Metrics
 
