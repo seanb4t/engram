@@ -95,6 +95,39 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// service_auth.oidc_issuer/oidc_audience: self-gated no-op when empty
+	// (D-03 — the client-credentials lane is simply not built), shape-checked
+	// when set (mirrors the ENGRAM_OPENAI_EMBEDDINGS_URL idiom above). Only the
+	// issuer is URL-shaped; the audience is an opaque string (client-id-shaped,
+	// not a URL).
+	if c.ServiceAuth.OIDCIssuer != "" {
+		switch u, err := url.Parse(c.ServiceAuth.OIDCIssuer); {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("ENGRAM_SERVICE_AUTH_OIDC_ISSUER %q: must be a valid URL: %w", c.ServiceAuth.OIDCIssuer, err))
+		case u.Scheme != "http" && u.Scheme != "https":
+			errs = append(errs, fmt.Errorf("ENGRAM_SERVICE_AUTH_OIDC_ISSUER %q: scheme must be http or https", c.ServiceAuth.OIDCIssuer))
+		case u.Host == "":
+			errs = append(errs, fmt.Errorf("ENGRAM_SERVICE_AUTH_OIDC_ISSUER %q: missing host", c.ServiceAuth.OIDCIssuer))
+		}
+	}
+
+	// service_auth.owner_claims: reuses ParseOwnerClaims's own fail-fast rules
+	// (D-05) — this runs unconditionally since the registry default
+	// ("client_id,azp") is always present.
+	if _, err := ParseOwnerClaims(c.ServiceAuth.OwnerClaims); err != nil {
+		errs = append(errs, fmt.Errorf("ENGRAM_SERVICE_AUTH_OWNER_CLAIMS: %w", err))
+	}
+
+	// service_auth.static_tokens: empty is a valid no-op (the static-token
+	// lane is off, D-03); a non-empty value that fails to parse is a fatal
+	// validation error — a bad token map must fail startup, not silently
+	// partial-load (T-23-10, ASVS V5).
+	if c.ServiceAuth.StaticTokens != "" {
+		if _, err := ParseServiceStaticTokens(c.ServiceAuth.StaticTokens); err != nil {
+			errs = append(errs, fmt.Errorf("ENGRAM_SERVICE_AUTH_STATIC_TOKENS: %w", err))
+		}
+	}
+
 	// Query/document params: empty is a valid no-op (self-gated); a non-empty
 	// value must be a JSON object with no reserved keys. Only well-formedness is
 	// checked here — Load stays assembly-only (ADR engram-wtw).
