@@ -53,19 +53,25 @@ type idVerifier interface {
 }
 
 // Verifier wraps an OIDC token verifier discovered from an issuer's well-known
-// configuration (which yields the JWKS used to check signatures).
+// configuration (which yields the JWKS used to check signatures). failClosed
+// distinguishes the human/no-issuer lane from the service lane: false (the
+// default zero value) preserves today's fail-open-to-anonymous behavior when
+// the owner claim resolves empty; true hard-rejects that same empty-owner
+// resolution at the TokenVerifier boundary instead (D-08/D-09/D-10).
 type Verifier struct {
 	idv         idVerifier
 	ownerClaims []string
+	failClosed  bool
 }
 
-// New performs OIDC discovery against issuer and returns a Verifier. If audience
-// is non-empty it becomes the required `aud` claim; empty disables the audience
-// check (signature + issuer + expiry are always enforced). ownerClaims is the
-// ordered list of OIDC claims tried, in order, to resolve a record's owner
-// (default ["email"]); see ClaimIdentity. The supplied ctx bounds only the
-// one-time discovery fetch — per-request JWKS refresh uses the request context
-// at verification time.
+// New performs OIDC discovery against issuer and returns a Verifier for the
+// human/no-issuer lane (failClosed=false — fail-open on an unresolved owner
+// claim, unchanged behavior). If audience is non-empty it becomes the required
+// `aud` claim; empty disables the audience check (signature + issuer + expiry
+// are always enforced). ownerClaims is the ordered list of OIDC claims tried,
+// in order, to resolve a record's owner (default ["email"]); see
+// ClaimIdentity. The supplied ctx bounds only the one-time discovery fetch —
+// per-request JWKS refresh uses the request context at verification time.
 func New(ctx context.Context, issuer, audience string, ownerClaims []string) (*Verifier, error) {
 	provider, err := oidc.NewProvider(ctx, issuer)
 	if err != nil {
@@ -194,13 +200,23 @@ func (v *Verifier) TokenVerifier() mcpauth.TokenVerifier {
 		}
 		// Decode the full payload so the configured owner-claim can be read by
 		// name. ClaimIdentity enforces email_verified; identity (UserID) stays
-		// best-effort. owner-claim value may be empty here — SubjectFromTokenInfo
-		// fails closed on an empty owner_claim downstream.
+		// best-effort. owner-claim value may be empty here: on the failClosed
+		// (service) lane that is rejected immediately below; on the human/
+		// no-issuer lane it flows through, and SubjectFromTokenInfo fails
+		// closed on an empty owner_claim downstream instead.
 		var raw map[string]any
 		_ = idt.Claims(&raw)
 		ownerVal, email, username, cerr := ClaimIdentity(raw, v.ownerClaims)
 		if cerr != nil {
 			err = errors.Join(mcpauth.ErrInvalidToken, cerr)
+			return nil, err
+		}
+		if v.failClosed && ownerVal == "" {
+			// D-08/D-09: the service lane never falls through to the
+			// anonymous owner=="" bucket — reject here, at the verifier
+			// boundary, for a clean 401. Never interpolate a token/claim
+			// value into this error (no leak of untrusted claim content).
+			err = errors.Join(mcpauth.ErrInvalidToken, errors.New("service principal: no resolvable owner claim"))
 			return nil, err
 		}
 		return &mcpauth.TokenInfo{
