@@ -24,7 +24,7 @@
     "playwright": "1.61.1",
     "shadcn-svelte": "1.4.2",
     "svelte": "5.56.5",
-    "svelte-check": "4.7.2",
+    "svelte-check": "4.7.3",
     "svelte-sonner": "1.1.1",
     "tailwindcss": "4.3.2",
     "typescript": "7.0.2",
