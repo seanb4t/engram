@@ -24,7 +24,7 @@ var (
 
 // lane is the outcome of the D-04 structural discriminator: which verifier
 // family owns a given bearer. It exists (rather than branching directly on
-// looksLikeJWT) so chainVerifier's routing switch has an explicit
+// looksLikeJWT) so ChainVerifier's routing switch has an explicit
 // deny-by-default arm for any bearer shape neither branch claims.
 type lane int
 
@@ -56,7 +56,7 @@ func discriminate(token string) lane {
 	return laneStatic
 }
 
-// chainVerifier composes up to three mcpauth.TokenVerifier lanes into the
+// ChainVerifier composes up to three mcpauth.TokenVerifier lanes into the
 // single verifier withAuth wraps in place of the lone human verifier today
 // (D-01). Each bearer is routed by shape BEFORE any verifier runs (D-04): a
 // JWT-shaped bearer tries oidcHuman then, on failure, oidcService, in that
@@ -71,7 +71,7 @@ func discriminate(token string) lane {
 // denies the same way. All three lanes are stateless closures, so the
 // returned verifier is safe for concurrent use and deterministic across
 // repeated calls with the same token.
-func chainVerifier(oidcHuman, oidcService, static mcpauth.TokenVerifier) mcpauth.TokenVerifier {
+func ChainVerifier(oidcHuman, oidcService, static mcpauth.TokenVerifier) mcpauth.TokenVerifier {
 	return func(ctx context.Context, token string, req *http.Request) (*mcpauth.TokenInfo, error) {
 		switch discriminate(token) {
 		case laneOIDC:

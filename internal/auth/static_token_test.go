@@ -15,7 +15,7 @@ import (
 )
 
 func TestStaticTokenDistinctOwnersResolveDistinctly(t *testing.T) {
-	v := newStaticTokenVerifier(map[string]string{
+	v := NewStaticTokenVerifier(map[string]string{
 		"owner-a": "token-aaaa",
 		"owner-b": "token-bbbb",
 	})
@@ -47,7 +47,7 @@ func TestStaticTokenDistinctOwnersResolveDistinctly(t *testing.T) {
 }
 
 func TestStaticTokenPrefixNotMatched(t *testing.T) {
-	v := newStaticTokenVerifier(map[string]string{"owner-a": "token-abcdef"})
+	v := NewStaticTokenVerifier(map[string]string{"owner-a": "token-abcdef"})
 	verify := v.TokenVerifier()
 
 	_, err := verify(context.Background(), "token-abc", nil)
@@ -61,7 +61,7 @@ func TestStaticTokenPrefixNotMatched(t *testing.T) {
 
 func TestStaticTokenEmptyRejected(t *testing.T) {
 	t.Run("empty input token", func(t *testing.T) {
-		v := newStaticTokenVerifier(map[string]string{"owner-a": "token-aaaa"})
+		v := NewStaticTokenVerifier(map[string]string{"owner-a": "token-aaaa"})
 		_, err := v.TokenVerifier()(context.Background(), "", nil)
 		if err == nil {
 			t.Fatal("expected empty token to be rejected")
@@ -72,7 +72,7 @@ func TestStaticTokenEmptyRejected(t *testing.T) {
 	})
 
 	t.Run("empty token map disables mechanism", func(t *testing.T) {
-		v := newStaticTokenVerifier(map[string]string{})
+		v := NewStaticTokenVerifier(map[string]string{})
 		_, err := v.TokenVerifier()(context.Background(), "anything", nil)
 		if err == nil {
 			t.Fatal("expected an empty token map to reject every verify")
@@ -83,7 +83,7 @@ func TestStaticTokenEmptyRejected(t *testing.T) {
 	})
 
 	t.Run("empty configured candidate never matches", func(t *testing.T) {
-		v := newStaticTokenVerifier(map[string]string{"owner-a": ""})
+		v := NewStaticTokenVerifier(map[string]string{"owner-a": ""})
 		_, err := v.TokenVerifier()(context.Background(), "", nil)
 		if err == nil {
 			t.Fatal("expected an empty configured candidate to never match, even an empty input token")
@@ -95,7 +95,7 @@ func TestStaticTokenRotationSameOwnerMultipleTokens(t *testing.T) {
 	// Two distinct ownerID keys mapping to the SAME target owner exercise
 	// rotation: both tokens must verify successfully and resolve to the same
 	// namespaced owner (no flag-day cutover).
-	v := newStaticTokenVerifier(map[string]string{
+	v := NewStaticTokenVerifier(map[string]string{
 		"owner-a-old": "token-old",
 		"owner-a-new": "token-new",
 	})
@@ -115,7 +115,7 @@ func TestStaticTokenRotationSameOwnerMultipleTokens(t *testing.T) {
 }
 
 func TestStaticTokenSuccessInfoShape(t *testing.T) {
-	v := newStaticTokenVerifier(map[string]string{"owner-a": "token-aaaa"})
+	v := NewStaticTokenVerifier(map[string]string{"owner-a": "token-aaaa"})
 	info, err := v.TokenVerifier()(context.Background(), "token-aaaa", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -138,7 +138,7 @@ func TestStaticTokenNoLeak(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	v := newStaticTokenVerifier(map[string]string{"owner-a": sentinelToken})
+	v := NewStaticTokenVerifier(map[string]string{"owner-a": sentinelToken})
 	verify := v.TokenVerifier()
 
 	// A non-matching verify (wrong token) exercises the rejection path.

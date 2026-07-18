@@ -69,7 +69,7 @@ func TestChainVerifier_RoutesJWTToOIDCBranchOnly(t *testing.T) {
 	human := okVerifier("human-owner")
 	static := failVerifier(errStubShouldNeverBeCalled)
 
-	chain := chainVerifier(human.verify, nil, static.verify)
+	chain := ChainVerifier(human.verify, nil, static.verify)
 	info, err := chain(context.Background(), jwtShapedToken, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -90,7 +90,7 @@ func TestChainVerifier_RoutesOpaqueToStaticBranchOnly(t *testing.T) {
 	service := failVerifier(errStubShouldNeverBeCalled)
 	static := okVerifier("static-owner")
 
-	chain := chainVerifier(human.verify, service.verify, static.verify)
+	chain := ChainVerifier(human.verify, service.verify, static.verify)
 	info, err := chain(context.Background(), opaqueToken, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -107,7 +107,7 @@ func TestChainVerifier_RoutesOpaqueToStaticBranchOnly(t *testing.T) {
 }
 
 func TestChainVerifier_UnrecognizedShapeDeniesByDefault(t *testing.T) {
-	chain := chainVerifier(nil, nil, nil)
+	chain := ChainVerifier(nil, nil, nil)
 	_, err := chain(context.Background(), "", nil)
 	if !errors.Is(err, mcpauth.ErrInvalidToken) {
 		t.Fatalf("expected ErrInvalidToken, got %v", err)
@@ -121,7 +121,7 @@ func TestChainVerifier_HumanTriedBeforeService(t *testing.T) {
 	human := okVerifier("human-owner")
 	service := failVerifier(errStubShouldNeverBeCalled)
 
-	chain := chainVerifier(human.verify, service.verify, nil)
+	chain := ChainVerifier(human.verify, service.verify, nil)
 	info, err := chain(context.Background(), jwtShapedToken, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -140,7 +140,7 @@ func TestChainVerifier_ServiceTriedAfterHumanFails(t *testing.T) {
 	human := failVerifier(errors.New("human rejects"))
 	service := okVerifier("service-owner")
 
-	chain := chainVerifier(human.verify, service.verify, nil)
+	chain := ChainVerifier(human.verify, service.verify, nil)
 	info, err := chain(context.Background(), jwtShapedToken, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -158,7 +158,7 @@ func TestChainVerifier_ServiceTriedAfterHumanFails(t *testing.T) {
 // nil (unconfigured) denies rather than panicking.
 func TestChainVerifier_NilServiceOnJWTBranchDenies(t *testing.T) {
 	human := failVerifier(errors.New("human rejects"))
-	chain := chainVerifier(human.verify, nil, nil)
+	chain := ChainVerifier(human.verify, nil, nil)
 	_, err := chain(context.Background(), jwtShapedToken, nil)
 	if !errors.Is(err, mcpauth.ErrInvalidToken) {
 		t.Fatalf("expected ErrInvalidToken, got %v", err)
@@ -169,7 +169,7 @@ func TestChainVerifier_NilServiceOnJWTBranchDenies(t *testing.T) {
 // on the static branch: an opaque bearer with no static verifier configured
 // denies rather than panicking.
 func TestChainVerifier_NilStaticOnOpaqueBranchDenies(t *testing.T) {
-	chain := chainVerifier(nil, nil, nil)
+	chain := ChainVerifier(nil, nil, nil)
 	_, err := chain(context.Background(), opaqueToken, nil)
 	if !errors.Is(err, mcpauth.ErrInvalidToken) {
 		t.Fatalf("expected ErrInvalidToken, got %v", err)
@@ -182,7 +182,7 @@ func TestChainVerifier_NilStaticOnOpaqueBranchDenies(t *testing.T) {
 // verifier alone, opaque bearers deny.
 func TestChainVerifier_HumanOnlyConfigMatchesPreChainBehavior(t *testing.T) {
 	human := okVerifier("human-owner")
-	chain := chainVerifier(human.verify, nil, nil)
+	chain := ChainVerifier(human.verify, nil, nil)
 
 	info, err := chain(context.Background(), jwtShapedToken, nil)
 	if err != nil {
@@ -201,7 +201,7 @@ func TestChainVerifier_HumanOnlyConfigMatchesPreChainBehavior(t *testing.T) {
 // the same token twice yields the same outcome.
 func TestChainVerifier_Deterministic(t *testing.T) {
 	human := okVerifier("human-owner")
-	chain := chainVerifier(human.verify, nil, nil)
+	chain := ChainVerifier(human.verify, nil, nil)
 
 	info1, err1 := chain(context.Background(), jwtShapedToken, nil)
 	info2, err2 := chain(context.Background(), jwtShapedToken, nil)
