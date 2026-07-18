@@ -4,17 +4,17 @@ milestone: v0.11.x
 milestone_name: Capture & Service Identity
 current_phase: 23
 current_phase_name: Service Auth Chain & Tenancy Isolation
-status: executing
-stopped_at: Completed 23-05-PLAN.md
-last_updated: "2026-07-18T02:28:58.754Z"
+status: verifying
+stopped_at: Completed 23-06-PLAN.md
+last_updated: "2026-07-18T02:43:05.867Z"
 last_activity: 2026-07-17
 last_activity_desc: Phase 23 execution started
 progress:
   total_phases: 8
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 9
-  completed_plans: 8
-  percent: 13
+  completed_plans: 9
+  percent: 25
 ---
 
 # Project State
@@ -30,10 +30,10 @@ See: .planning/PROJECT.md (updated 2026-07-16 — opened milestone v0.11.x)
 
 Phase: 23 (Service Auth Chain & Tenancy Isolation) — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-17 — Phase 23 execution started
 
-Progress: [█████████░] 89%
+Progress: [██████████] 100%
 
 ## Deferred Items
 
@@ -110,6 +110,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 - [Phase 23 P03]: chainVerifier's D-02 order and D-03 nil-mechanism guards are intrinsic to a correct routing closure; Task 2's tests landed as test-only against Task 1's already-complete implementation rather than driving new production code
 - [Phase ?]: service_auth.owner_claims defaults to client_id,azp (D-05), never email; static_tokens has no cobra flag (ENGRAM_-only secret map)
 - [Phase ?]: SC4/SC5 (tenancy isolation + cross-tenant shared-read) proven with two permanent store-package tests, zero new production code
+- [Phase ?]: Global cross-tenant shared-read (D-15) recorded as ADR engram-svct; per-tenant scoping deferred to a future full-ABAC milestone
+- [Phase ?]: Exported internal/auth's chainVerifier/newStaticTokenVerifier as ChainVerifier/NewStaticTokenVerifier so cmd/engram's withAuth can build the composed verifier chain
 
 ### Blockers/Concerns
 
@@ -127,8 +129,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-18T02:28:58.747Z
-Stopped at: Completed 23-05-PLAN.md
+Last session: 2026-07-18T02:43:05.859Z
+Stopped at: Completed 23-06-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -181,6 +183,7 @@ Resume file: None
 | Phase 23 P03 | 12min | 2 tasks | 2 files |
 | Phase 23 P04 | 25min | 2 tasks | 4 files |
 | Phase 23 P05 | 20min | 2 tasks | 1 files |
+| Phase 23-service-auth-chain-tenancy-isolation P06 | 20min | 3 tasks | 9 files |
 
 ## Operator Next Steps
 

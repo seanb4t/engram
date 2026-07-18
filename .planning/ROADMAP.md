@@ -365,7 +365,7 @@ exactly like any other non-email claim already does)
 **Note**: this phase's tenancy isolation is largely a *verification* phase once the auth chain
 exists — it proves namespaced-owner isolation against the store filters Phase 22 wired, per the
 research-converged build order (`#362` requires `#373` to ship together or first).
-**Plans**: 5/6 plans executed
+**Plans**: 6/6 plans executed
 
 Plans:
 **Wave 1** *(parallel — zero file overlap; internal/auth is split across three files)*
@@ -378,7 +378,7 @@ Plans:
 
 **Wave 2** *(depends on 23-01..23-04)*
 
-- [ ] 23-06-PLAN.md — cmd/engram/serve.go withAuth chain wiring (the ONE call site) + chain-parity integration test + docs (config guide, auth reference, cross-tenant shared-read ADR) (REQ-service-auth-chain, REQ-service-principal-isolation)
+- [x] 23-06-PLAN.md — cmd/engram/serve.go withAuth chain wiring (the ONE call site) + chain-parity integration test + docs (config guide, auth reference, cross-tenant shared-read ADR) (REQ-service-auth-chain, REQ-service-principal-isolation)
 
 ### Phase 24: Idempotent Capture
 
