@@ -1039,6 +1039,51 @@ func TestScheduleMemoryIdempotentRetryAfterWindowLapses(t *testing.T) {
 	}
 }
 
+// TestCheckIdempotentReplayCrossToolNamespaceShared pins IN-01: store_memory
+// and schedule_memory share the SAME idempotency-key namespace — the point ID
+// is derived from (owner, scope, key) alone, with no tool discriminator. A
+// store_memory call followed by a schedule_memory retry reusing the same
+// scope+key+content is a cross-tool replay: it returns the ORIGINAL
+// (unscheduled) record with no window ever applied, not an error and not a
+// newly scheduled record. This is intentional (D-07/D-08 lock the point-ID
+// hash input) — this test pins the CURRENT documented behavior so a future
+// change to either handler can't silently alter it unnoticed.
+func TestCheckIdempotentReplayCrossToolNamespaceShared(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "owner-cross-tool")
+	scope := "iso-test:project:idempotency-cross-tool"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-cross-tool")))
+	}()
+
+	base := storeArgs{
+		Content: "cross-tool shared key", Scope: scope, Source: "user-said", Category: "gotcha",
+		IdempotencyKey: "cross-tool-key",
+	}
+
+	storeID, storeSID, err := d.storeMemory(ctx, callerFor(ctx, t), base)
+	if err != nil {
+		t.Fatalf("storeMemory (first): %v", err)
+	}
+
+	notAfter := timeNow().Add(1 * time.Hour).Format(time.RFC3339)
+	schedID, schedSID, err := d.scheduleMemory(ctx, callerFor(ctx, t), scheduleArgs{storeArgs: base, NotAfter: notAfter})
+	if err != nil {
+		t.Fatalf("scheduleMemory (cross-tool replay of a store_memory key): %v", err)
+	}
+	if schedID != storeID || schedSID != storeSID {
+		t.Fatalf("cross-tool replay minted a different record: (id=%q,sid=%q), want the original store_memory record (id=%q,sid=%q)", schedID, schedSID, storeID, storeSID)
+	}
+
+	got, err := st.Get(ctx, storeID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.NotAfter != nil {
+		t.Fatalf("cross-tool replay applied a schedule window to a store_memory-created record: NotAfter=%v, want nil (original record has no window)", got.NotAfter)
+	}
+}
+
 // TestStoreMemoryEnqueuesOnSuccess pins SC#1: a successful storeMemory
 // enqueues the record id for async summary fill, and the worker drains it —
 // asserted deterministically via the Wait() drain seam (no time.Sleep).

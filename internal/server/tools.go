@@ -675,6 +675,19 @@ func (a storeArgs) toMemory(owner, actor string, createdAt time.Time) store.Memo
 //     zero side-effects: no re-embed, no new short_id, no summary re-enqueue).
 //   - fingerprint mismatch: replay=false, err wraps store.ErrIdempotencyConflict
 //     — surfaced BEFORE Embed (SC2), never a silent overwrite, never a 404.
+//
+// IN-01: the point ID is derived from (owner, scope, key) alone — there is no
+// tool discriminator, so store_memory and schedule_memory SHARE the same
+// idempotency-key namespace by design. A store_memory call with a given key
+// followed by a schedule_memory call reusing that same scope+key+content is a
+// cross-tool replay: it returns the ORIGINAL (unscheduled) record, with no
+// window ever applied, indistinguishable from a genuinely scheduled write.
+// This is intentional (see the D-07 fingerprint excluding the schedule
+// window, RESEARCH Open Question 1) and MUST NOT be changed unilaterally —
+// altering the point-ID hash input is a locked design decision (D-07/D-08)
+// that would silently un-dedup every previously keyed record on its next
+// replay. See TestCheckIdempotentReplayCrossToolNamespaceShared for the
+// pinned current behavior.
 func (d *deps) checkIdempotentReplay(ctx context.Context, owner string, a storeArgs) (replay bool, id, shortID, pointID string, err error) {
 	if a.IdempotencyKey == "" {
 		return false, "", "", "", nil
