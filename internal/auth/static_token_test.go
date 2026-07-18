@@ -4,8 +4,11 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
@@ -124,5 +127,44 @@ func TestStaticTokenSuccessInfoShape(t *testing.T) {
 	got, _ := info.Extra[OwnerClaimExtraKey].(string)
 	if got != want {
 		t.Errorf("Extra[%q] = %q, want %q", OwnerClaimExtraKey, got, want)
+	}
+}
+
+func TestStaticTokenNoLeak(t *testing.T) {
+	const sentinelToken = "sentinel-super-secret-token-value-zzz"
+
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	v := newStaticTokenVerifier(map[string]string{"owner-a": sentinelToken})
+	verify := v.TokenVerifier()
+
+	// A non-matching verify (wrong token) exercises the rejection path.
+	_, err := verify(context.Background(), "not-the-sentinel-token", nil)
+	if err == nil {
+		t.Fatal("expected rejection for a non-matching token")
+	}
+	if strings.Contains(err.Error(), sentinelToken) {
+		t.Errorf("rejection error leaked the raw token: %q", err.Error())
+	}
+	if strings.Contains(buf.String(), sentinelToken) {
+		t.Errorf("log output leaked the raw token: %q", buf.String())
+	}
+
+	// A successful verify must not carry the raw token anywhere in Extra —
+	// only the resolved owner claim.
+	info, err := verify(context.Background(), sentinelToken, nil)
+	if err != nil {
+		t.Fatalf("unexpected error on matching token: %v", err)
+	}
+	for k, val := range info.Extra {
+		if s, ok := val.(string); ok && strings.Contains(s, sentinelToken) {
+			t.Errorf("TokenInfo.Extra[%q] leaked the raw token: %q", k, s)
+		}
+	}
+	if strings.Contains(buf.String(), sentinelToken) {
+		t.Errorf("log output leaked the raw token after successful verify: %q", buf.String())
 	}
 }
