@@ -407,7 +407,7 @@ locked as REQUIREMENTS.md's decision to reject; a deterministic point-ID derivat
 5. Omitting the idempotency key preserves today's behavior exactly — a fresh record is created
    every time.
 
-**Plans**: 1/2 plans executed
+**Plans**: 2/2 plans executed
 
 **Wave 1**
 
@@ -415,7 +415,7 @@ locked as REQUIREMENTS.md's decision to reject; a deterministic point-ID derivat
 
 **Wave 2** *(depends on 24-01)*
 
-- [ ] 24-02-PLAN.md — storeArgs.idempotency_key + tool descriptions + checkIdempotentReplay check-before-embed branch in store_memory/schedule_memory; SC1–SC5 tests incl. two-owner matrix + `-race` concurrency (D-08/D-09/D-11/D-12/D-13) (REQ-idempotent-capture)
+- [x] 24-02-PLAN.md — storeArgs.idempotency_key + tool descriptions + checkIdempotentReplay check-before-embed branch in store_memory/schedule_memory; SC1–SC5 tests incl. two-owner matrix + `-race` concurrency (D-08/D-09/D-11/D-12/D-13) (REQ-idempotent-capture)
 
 ### Phase 25: Supersession with History
 

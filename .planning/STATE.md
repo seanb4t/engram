@@ -4,17 +4,17 @@ milestone: v0.11.x
 milestone_name: Capture & Service Identity
 current_phase: 24
 current_phase_name: idempotent-capture
-status: executing
-stopped_at: Completed 24-01-PLAN.md
-last_updated: "2026-07-18T19:44:58.500Z"
+status: verifying
+stopped_at: Completed 24-02-PLAN.md
+last_updated: "2026-07-18T19:54:22.084Z"
 last_activity: 2026-07-18
 last_activity_desc: Phase 24 execution started
 progress:
   total_phases: 8
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 11
-  completed_plans: 10
-  percent: 25
+  completed_plans: 11
+  percent: 38
 ---
 
 # Project State
@@ -30,10 +30,10 @@ See: .planning/PROJECT.md (updated 2026-07-16 — opened milestone v0.11.x)
 
 Phase: 24 (idempotent-capture) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-18 — Phase 24 execution started
 
-Progress: [█████████░] 91%
+Progress: [██████████] 100%
 
 ## Deferred Items
 
@@ -114,6 +114,7 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 - [Phase ?]: Exported internal/auth's chainVerifier/newStaticTokenVerifier as ChainVerifier/NewStaticTokenVerifier so cmd/engram's withAuth can build the composed verifier chain
 - [Phase ?]: [Phase 24 P01]: engramIdempotencyNS fixed at 69fbe3e4-a53b-4d6e-971a-cad2f107e23c (uuidgen); idempotencyPointID returns string not uuid.UUID per plan artifact signature
 - [Phase ?]: [Phase 24 P01]: Added TestIdempotencyPointIDKeySensitive to resolve golangci-lint unparam finding (key literal was constant "k" across all pre-wiring tests) — genuine coverage gain, no nolint directive
+- [Phase ?]: [Phase 24 P02]: checkIdempotentReplay wired before Embed in both handlers; scheduleMemory calls it after parseWindow (cheap validation stays first) but still before Embed; SC5 test uses testDeps(t) matching the adjacent sibling test convention
 
 ### Blockers/Concerns
 
@@ -131,8 +132,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-18T19:44:58.493Z
-Stopped at: Completed 24-01-PLAN.md
+Last session: 2026-07-18T19:54:22.076Z
+Stopped at: Completed 24-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -187,6 +188,7 @@ Resume file: None
 | Phase 23 P05 | 20min | 2 tasks | 1 files |
 | Phase 23-service-auth-chain-tenancy-isolation P06 | 20min | 3 tasks | 9 files |
 | Phase 24 P01 | 12min | 2 tasks | 5 files |
+| Phase 24 P02 | 9min | 3 tasks | 2 files |
 
 ## Operator Next Steps
 
