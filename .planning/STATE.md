@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.11.x
 milestone_name: Capture & Service Identity
-current_phase: 24
-current_phase_name: idempotent-capture
-status: verifying
+current_phase: 25
+current_phase_name: Supersession with History
+status: planning
 stopped_at: Completed 24-02-PLAN.md
-last_updated: "2026-07-18T19:54:22.084Z"
+last_updated: "2026-07-18T20:00:09.077Z"
 last_activity: 2026-07-18
-last_activity_desc: Phase 24 execution started
+last_activity_desc: Phase 24 complete, transitioned to Phase 25
 progress:
   total_phases: 8
   completed_phases: 3
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-16 — opened milestone v0.11.x)
 
 ## Current Position
 
-Phase: 24 (idempotent-capture) — EXECUTING
-Plan: 2 of 2
-Status: Phase complete — ready for verification
-Last activity: 2026-07-18 — Phase 24 execution started
+Phase: 25 — Supersession with History
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-07-18 — Phase 24 complete, transitioned to Phase 25
 
 Progress: [██████████] 100%
 
