@@ -738,6 +738,88 @@ func TestStoreMemoryNoKeyAlwaysFresh(t *testing.T) {
 	}
 }
 
+// TestStoreMemoryIdempotentReplayReturnsOriginal pins SC1: a keyed store_memory
+// call, repeated with identical content, returns the ORIGINAL (id, short_id)
+// unchanged — no duplicate point, and zero side-effects (no second Embed).
+func TestStoreMemoryIdempotentReplayReturnsOriginal(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	spy := &countingEmbedder{}
+	d.em = spy
+	ctx := authedContext(t, "owner-replay")
+	scope := "iso-test:project:idempotency-replay"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-replay")))
+	}()
+
+	args := storeArgs{
+		Content: "replay me", Scope: scope, Source: "user-said", Category: "gotcha",
+		IdempotencyKey: "key-1",
+	}
+	id1, sid1, err := d.storeMemory(ctx, callerFor(ctx, t), args)
+	if err != nil {
+		t.Fatalf("storeMemory (first): %v", err)
+	}
+	if spy.calls != 1 {
+		t.Fatalf("first call: embed calls = %d, want 1", spy.calls)
+	}
+
+	id2, sid2, err := d.storeMemory(ctx, callerFor(ctx, t), args)
+	if err != nil {
+		t.Fatalf("storeMemory (replay): %v", err)
+	}
+	if id2 != id1 || sid2 != sid1 {
+		t.Fatalf("replay returned a different record: (id=%q,sid=%q), want (id=%q,sid=%q)", id2, sid2, id1, sid1)
+	}
+	if spy.calls != 1 {
+		t.Fatalf("replay triggered an embed call: embed calls = %d, want still 1 (zero side-effects, SC1)", spy.calls)
+	}
+
+	_, total, _, err := st.List(ctx, scope, store.Authenticated("owner-replay"), store.ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("store holds %d points for scope %q, want exactly 1 (no duplicate, SC1)", total, scope)
+	}
+}
+
+// TestStoreMemoryIdempotentReplayRejectsMismatch pins SC2: same key + same
+// owner + different content is rejected with store.ErrIdempotencyConflict
+// (errors.Is true) — never a silent overwrite, never a 404 — and the original
+// record is left unchanged.
+func TestStoreMemoryIdempotentReplayRejectsMismatch(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "owner-mismatch")
+	scope := "iso-test:project:idempotency-mismatch"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-mismatch")))
+	}()
+
+	first := storeArgs{
+		Content: "original content", Scope: scope, Source: "user-said", Category: "gotcha",
+		IdempotencyKey: "key-mismatch",
+	}
+	id1, _, err := d.storeMemory(ctx, callerFor(ctx, t), first)
+	if err != nil {
+		t.Fatalf("storeMemory (first): %v", err)
+	}
+
+	second := first
+	second.Content = "DIFFERENT content"
+	_, _, err = d.storeMemory(ctx, callerFor(ctx, t), second)
+	if !errors.Is(err, store.ErrIdempotencyConflict) {
+		t.Fatalf("mismatch: want errors.Is(err, store.ErrIdempotencyConflict), got %v", err)
+	}
+
+	got, gerr := st.Get(ctx, id1)
+	if gerr != nil {
+		t.Fatalf("Get after mismatch: %v", gerr)
+	}
+	if got.Content != "original content" {
+		t.Fatalf("original record content was mutated by the rejected replay: got %q, want %q", got.Content, "original content")
+	}
+}
+
 // TestStoreMemoryEnqueuesOnSuccess pins SC#1: a successful storeMemory
 // enqueues the record id for async summary fill, and the worker drains it —
 // asserted deterministically via the Wait() drain seam (no time.Sleep).
