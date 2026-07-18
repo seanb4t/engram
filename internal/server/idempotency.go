@@ -51,9 +51,20 @@ func contentFingerprint(a storeArgs) string {
 	tags := slices.Clone(a.Tags)
 	slices.Sort(tags)
 
+	// Tags are encoded with the SAME per-element length-prefixed discipline
+	// idempotencyPointID uses for its own components (WR-01): a raw
+	// strings.Join is not injective over the tag slice — a tag containing a
+	// literal separator byte could collapse two distinct tag sets into the
+	// same joined string. Length-prefixing each tag individually before it
+	// ever reaches the outer field-length-prefix below closes that gap.
+	var tagsEnc strings.Builder
+	for _, t := range tags {
+		fmt.Fprintf(&tagsEnc, "%d:%s:", len(t), t)
+	}
+
 	var b strings.Builder
 	for _, f := range []string{
-		a.Content, a.Category, strings.Join(tags, "\x1f"),
+		a.Content, a.Category, tagsEnc.String(),
 		a.Source, a.Repo, a.Workspace, a.Worktree, a.BaseDir, a.Summary,
 	} {
 		fmt.Fprintf(&b, "%d:%s:", len(f), f)

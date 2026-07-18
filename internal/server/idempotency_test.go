@@ -123,3 +123,22 @@ func TestContentFingerprintFieldSensitivity(t *testing.T) {
 		t.Fatalf("contentFingerprint not deterministic across repeat calls on identical input")
 	}
 }
+
+// TestContentFingerprintTagsBoundaryShiftInjective pins WR-01: the tags
+// component must use the same injective length-prefixed encoding
+// idempotencyPointID uses, not a raw separator join — a single tag
+// containing a literal 0x1F byte must NOT fingerprint identically to two
+// separate tags split at that byte (tags=["a\x1fb"] vs tags=["a","b"]).
+func TestContentFingerprintTagsBoundaryShiftInjective(t *testing.T) {
+	base := storeArgs{Content: "c", Category: "decision", Source: "s"}
+
+	merged := base
+	merged.Tags = []string{"a\x1fb"}
+	split := base
+	split.Tags = []string{"a", "b"}
+
+	if contentFingerprint(merged) == contentFingerprint(split) {
+		t.Fatalf("contentFingerprint collided on tag boundary shift via 0x1F byte: tags=%q and tags=%q both produced %q",
+			merged.Tags, split.Tags, contentFingerprint(merged))
+	}
+}
