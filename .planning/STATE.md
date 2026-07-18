@@ -5,15 +5,15 @@ milestone_name: Capture & Service Identity
 current_phase: 23
 current_phase_name: Service Auth Chain & Tenancy Isolation
 status: executing
-stopped_at: Completed 23-02-PLAN.md
-last_updated: "2026-07-18T02:09:12.070Z"
+stopped_at: Completed 23-03-PLAN.md
+last_updated: "2026-07-18T02:16:12.125Z"
 last_activity: 2026-07-17
 last_activity_desc: Phase 23 execution started
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 9
-  completed_plans: 5
+  completed_plans: 6
   percent: 13
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-07-16 — opened milestone v0.11.x)
 ## Current Position
 
 Phase: 23 (Service Auth Chain & Tenancy Isolation) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-07-17 — Phase 23 execution started
 
-Progress: [██████░░░░] 56%
+Progress: [███████░░░] 67%
 
 ## Deferred Items
 
@@ -107,6 +107,7 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 - [Phase 23 P01]: NewFromProvider same-issuer optimization skipped (planner discretion) — NewService does a plain second oidc.NewProvider discovery, zero new exported surface beyond NewService itself.
 - [Phase 23 P02]: TokenInfo.UserID is the non-namespaced ownerID; Extra[OwnerClaimExtraKey] carries namespacedOwner("static_token", ownerID) — matches PATTERNS.md shape
 - [Phase 23 P02]: empty configured static-token candidates are structurally excluded from matching (never eligible), independent of the empty-input-token guard
+- [Phase 23 P03]: chainVerifier's D-02 order and D-03 nil-mechanism guards are intrinsic to a correct routing closure; Task 2's tests landed as test-only against Task 1's already-complete implementation rather than driving new production code
 
 ### Blockers/Concerns
 
@@ -124,8 +125,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-18T02:09:12.062Z
-Stopped at: Completed 23-02-PLAN.md
+Last session: 2026-07-18T02:16:12.118Z
+Stopped at: Completed 23-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -175,6 +176,7 @@ Resume file: None
 | Phase 22 P03 | 3min | 3 tasks | 3 files |
 | Phase 23 P01 | 14min | 2 tasks | 2 files |
 | Phase 23 P02 | 12min | 2 tasks | 2 files |
+| Phase 23 P03 | 12min | 2 tasks | 2 files |
 
 ## Operator Next Steps
 
