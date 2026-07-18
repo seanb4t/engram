@@ -1,6 +1,6 @@
 ---
 phase: 22-cedar-authz-foundation-store-enforcement
-reviewed: 2026-07-18T00:08:04Z
+reviewed: 2026-07-18T00:45:00Z
 depth: deep
 files_reviewed: 13
 files_reviewed_list:
@@ -19,199 +19,84 @@ files_reviewed_list:
   - internal/store/store_test.go
 findings:
   critical: 0
-  warning: 3
-  info: 2
-  total: 5
-status: issues_found
+  warning: 0
+  info: 0
+  total: 0
+status: clean
 ---
 
 # Phase 22: Code Review Report
 
-**Reviewed:** 2026-07-18T00:08:04Z
+**Reviewed:** 2026-07-18T00:45:00Z
 **Depth:** deep
 **Files Reviewed:** 13
-**Status:** issues_found
+**Status:** clean
 
 ## Summary
 
-The Cedar PDP foundation (`internal/authz`) and its wiring into `internal/store` are
-well-designed and the policy corpus is thoroughly regression-tested against the real
-embedded `.cedar` bytes (not mocks). I traced the full import graph
-(`rg -l "internal/authz"`) and confirmed the ADR's central invariant holds: **only**
-`internal/store` imports `internal/authz` — no `internal/server` handler, Connect
-handler, or `cmd/engram` command touches the PDP directly, and every owner-based
-Qdrant filter condition (`qdrant.NewMatch("owner", ...)`) lives in `store.go` alone.
-Both the MCP tool lane (`tools.go`/`rules.go`) and the Connect lane
-(`connectapi.go` → `deps.searchMemory`/`d.st.*`) route through the same shared
-`*store.Store`, so there is no lane divergence. `DecideBucket` is called with
-`authz.ActionRead` only, exactly matching the ADR's stated bulk-recall scope. The
-Cedar policy logic itself (forbid-wins, scoped empty-owner defense, shared-read-only,
-anonymous-bucket reachability) was traced by hand against all four `.cedar` files and
-matches the corpus tests in every case checked, including several edge combinations
-not directly asserted by an existing test (own+anonymous, cross-owner+shared,
-anonymous+shared-probe).
+This is iteration 3 (final) of the fix→re-review loop. Since iteration 2's review, exactly
+two commits landed, both of which resolve the two remaining items from that pass:
 
-Three issues carry forward from the standard-depth pass (tracked in GH#394); each was
-re-verified against the current code and either confirmed or refined below. One new
-cross-file finding emerged from tracing the `authz.Action` verb vocabulary end to end:
-`getWritable` — the single gate behind `Delete`, `SetVisibility`, and
-`FetchForUpdate`/`Update` — hardcodes `authz.ActionWrite` for what are, at the
-handler level, three distinct verbs (write, delete, share). This has zero behavioral
-effect under the current four-policy corpus (which is action-blind except for
-`shared_read`'s `action == Action::"read"` guard), but it defeats the ADR's stated
-purpose for shipping the full `Action` vocabulary "so later ABAC phases add policies,
-never actions" (D-05) — a future Phase 23 policy authored against `Action::"delete"`
-or `Action::"share"` will silently never fire for `Delete`/`SetVisibility` unless
-`store.go`'s call sites are also updated to pass the matching verb.
+- **WR-04** (`DeleteAll`'s denied-bucket branch had no regression test) — `d3f6c740` adds
+  `TestDeleteAllDeniedBucketDeletesNothing`, which injects an all-deny `decideBucketHook`,
+  calls `DeleteAll` for an owned, existing record, and asserts both that `DeleteAll` returns
+  `nil` (not an error) and that the record survives (`s.Get` still finds it). This is the exact
+  test iteration 2's review proposed, byte-for-byte. Verified: (a) it compiles and passes under
+  `-race` in isolation and as part of the full `internal/store` suite (`go test
+  ./internal/store/... -race`, 7.18s, all green); (b) it correctly targets the new branch added
+  by the WR-01 fix (`internal/store/store.go`'s `DeleteAll`, the `if
+  !s.decideBucket(...).Allow { return nil }` guard before the delete filter is built); (c) it
+  follows the same injected-hook idiom as its sibling tests
+  (`TestBulkFilterZeroBucketFailsClosed`, `TestGetWritableAndOwnedOrAbsentDenyMapsToNotFound`)
+  — `t.Cleanup` resets `decideBucketHook` to nil so the probe cannot leak into later tests, and
+  `defer s.DeleteAllRaw(...)` cleans up the real Qdrant collection state regardless of outcome.
+  With this test, every PDP-denial branch introduced by this phase now has a matching
+  regression test — no coverage gap remains.
+- **IN-03** (ADR's `DecideBucket` caller list omitted `DeleteAll`) — `4f3c108e` appends a
+  clause to the `DecideBucket` bullet in `docs/adr/engram-cdr1-...md` noting that `DeleteAll` —
+  "a bulk mutation, not a recall path" — asks the same `BucketOwn` question
+  (`ActionDelete`) before building its delete filter. Verified: the wording is accurate (matches
+  `DeleteAll`'s actual call `s.decideBucket(owner, kind, authz.ActionDelete,
+  authz.BucketOwn)`), correctly placed (end of the existing `DecideBucket` bullet, immediately
+  after the bulk-recall filter-builder description it extends), and does not contradict or
+  duplicate any other ADR section. Read the full ADR end-to-end; no other stale caller lists or
+  cross-references were introduced or left dangling by this edit.
 
-## Warnings
+IN-01 (`Decision.diag` unread) remains deliberately-skipped/no-action-this-phase per standing
+instruction and is not re-flagged.
 
-### WR-01: `Store.DeleteAll` bypasses the PDP entirely (carried from GH#394, reconfirmed)
+Full verification re-run at this pass, all clean:
 
-**File:** `internal/store/store.go:1737-1770`
-**Issue:** `DeleteAll` hand-rolls its own `Subject` type switch to derive `owner`
-and builds the delete filter directly (`qdrant.NewMatch("owner", owner)`), never
-calling `s.decideRecord`/`s.decideBucket` or consulting `internal/authz` at all. I
-confirmed via `rg -n 'qdrant.NewMatch\("owner"'` that every other owner-scoped
-condition in the package (`ownerOrSharedCondition`, `ownerOnlyCondition`,
-`matchNothing`) routes through the PDP, and `DeleteAll` is the sole caller-facing
-exception (the remaining raw `NewMatch("owner", ...)` sites — `CountAnonymousBucket`,
-`RemapOwner`, `MigrateSetOwner` — are documented operator sweeps with explicitly
-no-subject semantics, a different and accepted category, verified against their doc
-comments and `cmd/engram/migrate.go`/`prune.go` callers). This currently produces
-correct behavior because `own_records.cedar` permits every action unconditionally
-when `resource.owner == principal.owner`, so the duplicated type-switch and the PDP
-agree today. But it violates the ADR's stated invariant ("internal/store is the sole
-enforcement chokepoint: it asks authz for a decision and translates that decision")
-and means a future per-category or per-tenant delete restriction (Phase 23) would
-silently not apply to bulk `delete_all`, since this path never asks Cedar anything.
-**Fix:**
-```go
-func (s *Store) DeleteAll(ctx context.Context, scope string, subj Subject) (err error) {
-	...
-	owner, kind, ok := principalParams(subj)
-	if !ok {
-		return fmt.Errorf("%w: nil subject", ErrNotFound)
-	}
-	if !s.decideBucket(owner, kind, authz.ActionDelete, authz.BucketOwn).Allow {
-		return nil // or an explicit deny error, per product decision
-	}
-	filter := &qdrant.Filter{Must: []*qdrant.Condition{
-		qdrant.NewMatch("scope", scope),
-		qdrant.NewMatch("owner", owner),
-	}}
-	...
-}
-```
+- `go build ./...` — clean.
+- `go vet ./internal/authz/... ./internal/store/...` — clean.
+- `golangci-lint run ./internal/authz/... ./internal/store/...` — 0 issues.
+- `task license:check` — 0 invalid headers.
+- `go test ./internal/authz/... -race -v` — 11/11 pass.
+- `go test ./internal/store/... -race` — full suite green (7.18s), including
+  `TestDeleteAllDeniedBucketDeletesNothing`, `TestWithAuthzOption`,
+  `TestSearchAuthzCallCount`, `TestBulkFilterZeroBucketFailsClosed`, and
+  `TestGetWritableAndOwnedOrAbsentDenyMapsToNotFound` run individually and as part of the
+  whole-package run — no interaction/ordering regressions from the new test's hook
+  install/cleanup.
 
-### WR-02: Deny→ErrNotFound message-uniformity is unverified for `getWritable`/`OwnedOrAbsent` (carried from GH#394, refined)
+Cross-file invariants re-confirmed one final time:
 
-**File:** `internal/store/store.go:1382-1430`, `internal/store/store_test.go:3426-3482`
-**Issue:** Re-examined at depth: the *functional* Deny→`ErrNotFound` mapping for
-`getWritable`/`OwnedOrAbsent` IS exercised today — via real cross-owner scenarios in
-`TestDeleteOwnerGate`, `TestSetVisibilityOwnerGate`, `TestUpdateOwnerGateAndSharedFlag`,
-and `TestOwnedOrAbsent` — so the standard-pass framing ("untested") was broader than
-the actual gap. What is genuinely missing, and is the more precise restatement: none
-of those tests assert the exact error *string*, the way
-`TestGetReadableDenyMapsToNotFound` does (`err.Error() != want` against the plain
-`fmt.Errorf("%w: %s", ErrNotFound, id)` form) — they only check
-`errors.Is(err, ErrNotFound)`. `TestGetReadableDenyMapsToNotFound` is the sole
-regression guard for DEC-xa6's "Diagnostic never leaks into the caller-facing error"
-invariant (D-10), and it covers only the read gate. A future change that
-accidentally threaded `diag` into `getWritable`'s or `OwnedOrAbsent`'s error (e.g.
-for debug logging) would pass every existing write-path test while violating D-10,
-and nothing in the suite would catch it. There is also no `decideRecordHook`-injected
-all-deny test for `getWritable`/`OwnedOrAbsent` on an *owned* record (only the
-real-PDP cross-owner path and the absent-id short-circuit, `TestIdAddressedAbsentShortCircuit`,
-are covered) — under the current policy corpus this branch is unreachable in
-production (`own_records` permits every action unconditionally for the owner), but an
-injected-hook test would still catch a future write-path Diagnostic leak the same way
-`TestGetReadableDenyMapsToNotFound` catches it for reads.
-**Fix:** Add a `getWritable`/`OwnedOrAbsent` analogue of `TestGetReadableDenyMapsToNotFound`
-using `decideRecordHook` to force Deny on an owned/existing record, asserting the
-exact `err.Error()` equals the plain missing-id form.
+- Sole PDP consumer is `internal/store/store.go` (`rg -n "internal/authz"` outside
+  `internal/authz` itself returns exactly one hit) — no handler or CLI command touches the PDP
+  directly.
+- No per-record Cedar evaluation on any bulk-recall path — bucket decisions stay O(buckets),
+  never O(records).
+- The authz condition is always inside the outer `Must` of every composed filter
+  (`Search`/`List`/`SearchDiscovery`/`ListScheduled`/`ListScopes`), and now also gates
+  `DeleteAll`'s delete filter before it is built — no path can reach another owner's records.
+  `Decision.diag` never reaches a caller-facing error string.
 
-### WR-03 (new): `getWritable` conflates write/delete/share into a single `authz.ActionWrite` call — a Phase 23 landmine
-
-**File:** `internal/store/store.go:1382-1395` (definition), called from
-`store.go:1455` (`FetchForUpdate`), `store.go:1659` (`SetVisibility`), and
-`store.go:1724` (`Delete`)
-**Issue:** Traced every caller of `getWritable`: `FetchForUpdate` (backs `Update`,
-correctly a write), `SetVisibility` (a share/unshare toggle), and `Delete`. All
-three call `s.decideRecord(owner, kind, authz.ActionWrite, ...)` — `getWritable`
-hardcodes `authz.ActionWrite` regardless of which of these three verbs the caller
-actually represents. Confirmed by `rg` that `authz.ActionDelete` and
-`authz.ActionShare` are declared in `authz.go`'s five-verb vocabulary and exercised
-in `policy_corpus_test.go`, but are **never once constructed or passed** by
-`internal/store` in production code — `authz.ActionSchedule` is likewise dead (new
-scheduled records go through the same `OwnedOrAbsent`/write path as `store_memory`,
-never a distinct schedule verb; confirmed by tracing `scheduleMemory` in
-`internal/server/tools.go` back to the shared `storeMemory` write helper). Under the
-current four-policy corpus this is behaviorally invisible: `own_records.cedar`
-permits any action unconditionally for the owner and none of the four policies
-discriminate on `write` vs `delete` vs `share` vs `schedule`. But the ADR is explicit
-that D-05 ships "the full verb list ... so later ABAC phases add policies, never
-actions" — i.e. the intent is that a future Cedar policy authored against
-`action == Action::"delete"` (e.g. "only an admin role may hard-delete a shared
-record") should take effect by adding a `.cedar` file alone. As written today, that
-policy would silently never match for `Store.Delete`, `Store.SetVisibility`, or
-`Store.OwnedOrAbsent`'s cross-owner-write guard, because they all present themselves
-to Cedar as `Action::"write"`. This is exactly the kind of "kind/tenant placeholder
-assumption that could bite Phase 23" the review was asked to hunt for: the
-vocabulary is declared, but the store-side wiring that is supposed to make it
-load-bearing is incomplete for three of the five verbs.
-**Fix:** Either (a) thread the actual verb through `getWritable(ctx, id, subj, action)`
-and pass `authz.ActionDelete`/`authz.ActionShare`/`authz.ActionWrite` from each
-caller respectively, or (b) if collapsing write/delete/share onto one verb is an
-intentional simplification for this phase, document that decision explicitly next to
-the `Action` constants in `authz.go` (and in the ADR) so Phase 23 doesn't assume the
-verb is already correctly threaded when it starts authoring per-action policies.
-
-## Info
-
-### IN-01: `Decision.diag` is captured but never read anywhere (carried from GH#394, reconfirmed)
-
-**File:** `internal/authz/authz.go:44-51`, `internal/authz/authz.go:69-71`
-**Issue:** `rg -n '\.diag\b'` across both `internal/authz` and `internal/store`
-returns zero matches outside the struct field declaration itself — `Decision.diag`
-is populated on every `DecideRecord`/`DecideBucket` call and then discarded. The doc
-comment says it "exists solely for future debug-level logging / OTel span
-attachment by internal/store," which is a legitimate forward-compat placeholder, but
-as of this phase it is fully dead weight: no span attribute, no log line, no test
-reads it. This is lower risk than a typical unused-field finding because its
-un-exported status already prevents any accidental caller-facing leak (the property
-D-10 depends on), but it is worth flagging as effort spent with zero current payoff
-on a path this phase itself calls out as sensitive (two `DecideBucket` calls per
-`Search`/`List`/etc.).
-**Fix:** No action required this phase; if it remains unread by the time
-service-principal tenancy work (Phase 23) lands, either wire it into a `store.*` OTel
-span attribute on Deny (as originally intended) or remove the field until it has a
-consumer.
-
-### IN-02 (new): `store.WithAuthz` is exported but has zero callers anywhere in the repo
-
-**File:** `internal/store/store.go:289-294`
-**Issue:** `rg -n 'WithAuthz'` across the whole repo shows `WithAuthz` defined and
-referenced only in a doc comment (`store_test.go:3425`, "not a custom *authz.PDP
-built through WithAuthz") — no test or production code actually calls it. All
-authz-injection tests use the `decideBucketHook`/`decideRecordHook` function-var
-seams instead, which the code comments say exist specifically because `*authz.PDP`
-"has no exported constructor besides MustDefault." That's a slightly confusing
-combination: `WithAuthz` is a public `Option` that requires a `*authz.PDP` callers
-can currently only obtain via `MustDefault()` (i.e. it can only be used today to
-install another copy of the *same* default policy corpus), while the actually-useful
-test-injection mechanism (all-deny / call-counting probes) is the unexported hook
-fields. This isn't a bug, but it's unused public API surface with a narrower purpose
-than its name suggests ("override the PDP" reads as "inject a custom policy," which
-isn't possible without an exported policy-set constructor).
-**Fix:** Either exercise `WithAuthz` from a test (e.g. constructing a `Store` with a
-`MustDefault()`-backed PDP explicitly, to prove the `Option` wiring itself works) or
-note in its doc comment that, absent an exported way to build a non-default
-`*authz.PDP`, its only current use is re-installing the default corpus — the hook
-fields are the actual test-injection surface.
+No new findings were surfaced by this pass. Both landed commits are correct, complete, minimal,
+and exactly scoped to the two items they targeted — no unrelated changes, no regressions
+introduced. All reviewed files meet quality standards.
 
 ---
 
-_Reviewed: 2026-07-18T00:08:04Z_
+_Reviewed: 2026-07-18T00:45:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: deep_
