@@ -221,6 +221,16 @@ type Memory struct {
 	// must NEVER cross any JSON wire — store.Memory is returned verbatim on
 	// the full-response MCP paths, so a normal json tag here would leak the
 	// fingerprint onto the wire.
+	//
+	// Frozen at create time (IN-02): Store.Update re-Upserts the fetched
+	// record's existing IdempotencyFingerprint verbatim — it is never
+	// recomputed from the record's post-update Content. A future keyed
+	// store_memory replay using the ORIGINAL creation-time content will
+	// still fingerprint-match against a record whose current content has
+	// since diverged via update_memory. This is intentional (update_memory
+	// is a distinct, explicit mutation path outside the idempotent-capture
+	// contract, not a replay), but a reader should not assume this field
+	// tracks the record's current state.
 	IdempotencyFingerprint string `json:"-"`
 }
 
@@ -1493,7 +1503,10 @@ func (s *Store) FetchForUpdate(ctx context.Context, id string, subj Subject) (ou
 // fetched and ownership-verified via FetchForUpdate. It does NOT re-fetch: cur
 // is authoritative, so the update path gates ownership exactly once. When shared
 // is non-nil it also sets visibility (true → "shared", false → ""); nil leaves
-// visibility unchanged so a content edit never silently unshares. tags follows
+// visibility unchanged so a content edit never silently unshares. cur.IdempotencyFingerprint
+// is carried through UNCHANGED (IN-02, see the field's doc comment): Update
+// never recomputes it from the new content, since update_memory is a distinct
+// mutation path outside the keyed-replay contract. tags follows
 // the same presence-signal contract: non-nil replaces the full set (an empty
 // slice clears), nil leaves the existing tags untouched. summary follows the
 // same presence-signal contract: non-nil replaces the summary (empty string
