@@ -113,3 +113,105 @@ func TestChainVerifier_UnrecognizedShapeDeniesByDefault(t *testing.T) {
 		t.Fatalf("expected ErrInvalidToken, got %v", err)
 	}
 }
+
+// TestChainVerifier_HumanTriedBeforeService proves the D-02 order: when the
+// human verifier succeeds, the client-credentials verifier is never
+// consulted.
+func TestChainVerifier_HumanTriedBeforeService(t *testing.T) {
+	human := okVerifier("human-owner")
+	service := failVerifier(errStubShouldNeverBeCalled)
+
+	chain := chainVerifier(human.verify, service.verify, nil)
+	info, err := chain(context.Background(), jwtShapedToken, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.UserID != "human-owner" {
+		t.Errorf("UserID = %q, want human-owner", info.UserID)
+	}
+	if service.calls != 0 {
+		t.Errorf("service verifier must not be consulted when human succeeds, got %d calls", service.calls)
+	}
+}
+
+// TestChainVerifier_ServiceTriedAfterHumanFails proves the D-02 fallback:
+// only on the human verifier's failure is the service result returned.
+func TestChainVerifier_ServiceTriedAfterHumanFails(t *testing.T) {
+	human := failVerifier(errors.New("human rejects"))
+	service := okVerifier("service-owner")
+
+	chain := chainVerifier(human.verify, service.verify, nil)
+	info, err := chain(context.Background(), jwtShapedToken, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.UserID != "service-owner" {
+		t.Errorf("UserID = %q, want service-owner", info.UserID)
+	}
+	if human.calls != 1 || service.calls != 1 {
+		t.Errorf("expected both verifiers consulted in D-02 order: human=%d service=%d", human.calls, service.calls)
+	}
+}
+
+// TestChainVerifier_NilServiceOnJWTBranchDenies proves the D-03 nil-guard: a
+// JWT-shaped bearer whose human verifier fails and whose service verifier is
+// nil (unconfigured) denies rather than panicking.
+func TestChainVerifier_NilServiceOnJWTBranchDenies(t *testing.T) {
+	human := failVerifier(errors.New("human rejects"))
+	chain := chainVerifier(human.verify, nil, nil)
+	_, err := chain(context.Background(), jwtShapedToken, nil)
+	if !errors.Is(err, mcpauth.ErrInvalidToken) {
+		t.Fatalf("expected ErrInvalidToken, got %v", err)
+	}
+}
+
+// TestChainVerifier_NilStaticOnOpaqueBranchDenies proves the D-03 nil-guard
+// on the static branch: an opaque bearer with no static verifier configured
+// denies rather than panicking.
+func TestChainVerifier_NilStaticOnOpaqueBranchDenies(t *testing.T) {
+	chain := chainVerifier(nil, nil, nil)
+	_, err := chain(context.Background(), opaqueToken, nil)
+	if !errors.Is(err, mcpauth.ErrInvalidToken) {
+		t.Fatalf("expected ErrInvalidToken, got %v", err)
+	}
+}
+
+// TestChainVerifier_HumanOnlyConfigMatchesPreChainBehavior proves the
+// no-issuer/human-only deployment (nil service, nil static) is byte-for-byte
+// the pre-chain human-only behavior: JWT bearers verify via the human
+// verifier alone, opaque bearers deny.
+func TestChainVerifier_HumanOnlyConfigMatchesPreChainBehavior(t *testing.T) {
+	human := okVerifier("human-owner")
+	chain := chainVerifier(human.verify, nil, nil)
+
+	info, err := chain(context.Background(), jwtShapedToken, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.UserID != "human-owner" {
+		t.Errorf("UserID = %q, want human-owner", info.UserID)
+	}
+
+	if _, err := chain(context.Background(), opaqueToken, nil); !errors.Is(err, mcpauth.ErrInvalidToken) {
+		t.Fatalf("expected opaque bearer to deny with no static lane configured, got %v", err)
+	}
+}
+
+// TestChainVerifier_Deterministic proves the chain is stateless: verifying
+// the same token twice yields the same outcome.
+func TestChainVerifier_Deterministic(t *testing.T) {
+	human := okVerifier("human-owner")
+	chain := chainVerifier(human.verify, nil, nil)
+
+	info1, err1 := chain(context.Background(), jwtShapedToken, nil)
+	info2, err2 := chain(context.Background(), jwtShapedToken, nil)
+	if err1 != nil || err2 != nil {
+		t.Fatalf("unexpected errors: %v, %v", err1, err2)
+	}
+	if info1.UserID != info2.UserID {
+		t.Errorf("non-deterministic result: %q vs %q", info1.UserID, info2.UserID)
+	}
+	if human.calls != 2 {
+		t.Errorf("expected 2 calls (one per verification), got %d", human.calls)
+	}
+}
