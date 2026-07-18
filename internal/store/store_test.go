@@ -2371,6 +2371,29 @@ func TestPayloadRoundTripsEmbedderIdentity(t *testing.T) {
 	}
 }
 
+// TestPayloadRoundTripsIdempotencyFingerprint pins Phase 24 D-06:
+// IdempotencyFingerprint round-trips through payload()/fromPayload() under the
+// shared idempotencyFingerprintKey despite its `json:"-"` tag (the manual
+// codec is the ONLY persistence path for this field), and a legacy payload
+// missing the key decodes to the zero value with no backfill — the exact
+// mirror of TestPayloadRoundTripsEmbedderIdentity above.
+func TestPayloadRoundTripsIdempotencyFingerprint(t *testing.T) {
+	m := Memory{ID: "a0000000-0000-0000-0000-000000000003", Content: "c", Scope: "s", IdempotencyFingerprint: "deadbeefdeadbeef"}
+	got := fromPayload(m.ID, qdrant.NewValueMap(payload(m)))
+	if got.IdempotencyFingerprint != "deadbeefdeadbeef" {
+		t.Fatalf("round-trip idempotency_fingerprint = %q, want %q", got.IdempotencyFingerprint, "deadbeefdeadbeef")
+	}
+
+	// A payload map missing the key (legacy record) must decode to "", not panic.
+	legacy := map[string]*qdrant.Value{
+		"content": qdrant.NewValueString("c"),
+	}
+	gotLegacy := fromPayload("legacy-id", legacy)
+	if gotLegacy.IdempotencyFingerprint != "" {
+		t.Fatalf("legacy payload missing idempotency_fingerprint must decode to \"\", got %q", gotLegacy.IdempotencyFingerprint)
+	}
+}
+
 // TestEnsureCollectionCreatesIndexes pins that EnsureCollection provisions the
 // owner/scope/created_at payload indexes and is idempotent on a second call.
 func TestEnsureCollectionCreatesIndexes(t *testing.T) {
