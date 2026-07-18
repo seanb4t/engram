@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -15,9 +16,18 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/coreos/go-oidc/v3/oidc/oidctest"
+	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 
+	"github.com/seanb4t/engram/internal/auth"
 	"github.com/seanb4t/engram/internal/config"
 )
+
+// wantNamespacedOwner mirrors auth.go's DOCUMENTED namespacedOwner encoding
+// (`<len(claim)>:<claim>:<len(value)>:<value>`), used as an independent test
+// oracle rather than reaching into the unexported namespacedOwner helper.
+func wantNamespacedOwner(claim, value string) string {
+	return fmt.Sprintf("%d:%s:%d:%s", len(claim), claim, len(value), value)
+}
 
 func TestOwnerClaimGuard(t *testing.T) {
 	cases := []struct {
@@ -122,6 +132,53 @@ func newServeTestOIDCServer(t *testing.T) (issuer string) {
 	t.Cleanup(srv.Close)
 	discoveryAndKeys.SetIssuer(srv.URL)
 	return srv.URL
+}
+
+// TestWithAuth_StaticTokenLane_AuthenticatesConfiguredToken proves the
+// config-string -> withAuth -> live verify seam that CR-01 broke: it sets
+// svcAuth.StaticTokens to a real "owner=token" config STRING (not a
+// hand-constructed map), driving it through
+// config.ParseServiceStaticTokens exactly as withAuth does in production. A
+// request bearing the configured token must reach the inner handler and
+// resolve to the namespaced owner; an unrelated bearer must be rejected 401.
+func TestWithAuth_StaticTokenLane_AuthenticatesConfiguredToken(t *testing.T) {
+	var gotOwner string
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ti := mcpauth.TokenInfoFromContext(r.Context()); ti != nil {
+			gotOwner, _ = ti.Extra[auth.OwnerClaimExtraKey].(string)
+		}
+		w.WriteHeader(http.StatusTeapot)
+	})
+	svcAuth := config.ServiceAuthConfig{StaticTokens: "owner-x=secret-token-value"}
+	handler, err := withAuth(inner, config.OIDCConfig{}, svcAuth, nil)
+	if err != nil {
+		t.Fatalf("withAuth: %v", err)
+	}
+
+	t.Run("configured token authenticates", func(t *testing.T) {
+		gotOwner = ""
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Authorization", "Bearer secret-token-value")
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusTeapot {
+			t.Fatalf("expected the configured token to authenticate and reach the inner handler, got status %d", rec.Code)
+		}
+		want := wantNamespacedOwner("static_token", "owner-x")
+		if gotOwner != want {
+			t.Fatalf("resolved owner = %q, want %q", gotOwner, want)
+		}
+	})
+
+	t.Run("unrelated bearer rejected", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Authorization", "Bearer not-the-configured-token")
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected an unrelated bearer to be rejected 401, got %d", rec.Code)
+		}
+	})
 }
 
 // TestWithAuth_HumanOnlyConfig_RejectsUnauthenticated proves the human-only

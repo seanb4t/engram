@@ -8,9 +8,18 @@ import (
 	"crypto/subtle"
 	"errors"
 	"net/http"
+	"time"
 
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 )
+
+// staticTokenExpirationHorizon is a practically-permanent sentinel expiration
+// for static tokens. Static tokens are long-lived by design (revoked by
+// removing them from ENGRAM_SERVICE_AUTH_STATIC_TOKENS, never by natural
+// expiry), but mcpauth.RequireBearerToken hard-rejects any TokenInfo with a
+// zero Expiration ("token missing expiration") — so a genuinely unset
+// Expiration is not an option; this horizon is the closest equivalent.
+const staticTokenExpirationHorizon = 100 * 365 * 24 * time.Hour
 
 // errStaticTokenNotRecognized is a constant rejection message: it never
 // embeds the raw token or a configured candidate value (D-12/DEC-wot no-leak
@@ -66,10 +75,9 @@ func (v *StaticTokenVerifier) TokenVerifier() mcpauth.TokenVerifier {
 			return nil, errors.Join(mcpauth.ErrInvalidToken, errStaticTokenNotRecognized)
 		}
 		return &mcpauth.TokenInfo{
-			UserID: matchedOwner,
-			Extra:  map[string]any{OwnerClaimExtraKey: namespacedOwner("static_token", matchedOwner)},
-			// No Expiration: static tokens are long-lived by design; revoke by
-			// removing the token from ENGRAM_SERVICE_AUTH_STATIC_TOKENS.
+			UserID:     matchedOwner,
+			Extra:      map[string]any{OwnerClaimExtraKey: namespacedOwner("static_token", matchedOwner)},
+			Expiration: time.Now().Add(staticTokenExpirationHorizon),
 		}, nil
 	}
 }
