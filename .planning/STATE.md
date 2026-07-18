@@ -7,8 +7,8 @@ current_phase_name: Idempotent Capture
 status: planning
 stopped_at: Completed 23-06-PLAN.md
 last_updated: "2026-07-18T03:06:16.585Z"
-last_activity: 2026-07-17
-last_activity_desc: Phase 23 complete, transitioned to Phase 24
+last_activity: 2026-07-18
+last_activity_desc: Phase 23 shipped — PR #396
 progress:
   total_phases: 8
   completed_phases: 2
