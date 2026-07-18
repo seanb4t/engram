@@ -10,6 +10,16 @@
 // who they are, the IdP-signed JWT proves it. Validation covers signature
 // (JWKS), issuer, and expiry; the audience claim is checked only when an
 // expected value is configured.
+//
+// Two constructors build two independently-configured lanes: New for the
+// human/no-issuer lane (fail-open — an unresolved owner claim still yields a
+// TokenInfo, matching today's behavior) and NewService for the
+// client-credentials service lane (fail-closed — an authenticated service
+// principal that resolves to an empty owner is rejected at the verifier
+// boundary, never silently mapped to the anonymous bucket). Each lane's
+// audience check is baked into its own *Verifier at construction time
+// (go-oidc has no per-call audience override), so tightening or loosening one
+// lane's ENGRAM_*_AUDIENCE never affects the other.
 package auth
 
 import (
@@ -54,10 +64,11 @@ type idVerifier interface {
 
 // Verifier wraps an OIDC token verifier discovered from an issuer's well-known
 // configuration (which yields the JWKS used to check signatures). failClosed
-// distinguishes the human/no-issuer lane from the service lane: false (the
-// default zero value) preserves today's fail-open-to-anonymous behavior when
-// the owner claim resolves empty; true hard-rejects that same empty-owner
-// resolution at the TokenVerifier boundary instead (D-08/D-09/D-10).
+// distinguishes the two lanes New and NewService construct: false (human/
+// no-issuer lane, the default zero value) preserves today's fail-open-to-
+// anonymous behavior when the owner claim resolves empty; true (service lane,
+// set only by NewService) hard-rejects that same empty-owner resolution at
+// the TokenVerifier boundary instead (D-08/D-09/D-10).
 type Verifier struct {
 	idv         idVerifier
 	ownerClaims []string
@@ -83,6 +94,35 @@ func New(ctx context.Context, issuer, audience string, ownerClaims []string) (*V
 			SkipClientIDCheck: audience == "",
 		}),
 		ownerClaims: ownerClaims,
+	}, nil
+}
+
+// NewService performs OIDC discovery against issuer and returns a Verifier
+// for the client-credentials service lane (failClosed=true). It mirrors New
+// exactly, except a validated token that resolves to an empty owner is
+// hard-rejected by TokenVerifier instead of being returned as a fail-open
+// TokenInfo (D-08/D-09/D-10) — an authenticated service principal must never
+// land in the anonymous owner=="" bucket. audience is this lane's OWN
+// audience check, configured entirely independently of the human lane's (via
+// New) — go-oidc bakes the ClientID/SkipClientIDCheck check into the
+// *oidc.IDTokenVerifier at construction time, so the service lane always
+// needs its own Verifier, never a shared one (D-14). issuer may be the same
+// IdP as the human lane (a second discovery round-trip against it) or a
+// distinct service issuer. ownerClaims is this lane's OWN owner-claim order
+// (default ["client_id","azp"], never the human lane's "email" default,
+// D-05).
+func NewService(ctx context.Context, issuer, audience string, ownerClaims []string) (*Verifier, error) {
+	provider, err := oidc.NewProvider(ctx, issuer)
+	if err != nil {
+		return nil, fmt.Errorf("oidc discovery %q: %w", issuer, err)
+	}
+	return &Verifier{
+		idv: provider.Verifier(&oidc.Config{
+			ClientID:          audience,
+			SkipClientIDCheck: audience == "",
+		}),
+		ownerClaims: ownerClaims,
+		failClosed:  true,
 	}, nil
 }
 

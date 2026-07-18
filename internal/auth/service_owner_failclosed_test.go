@@ -138,3 +138,66 @@ func TestFailClosedDoesNotAffectHumanLane(t *testing.T) {
 		t.Errorf("Extra[owner_claim] = %q, want empty (fail-open behavior unchanged)", got)
 	}
 }
+
+// TestNewServiceSetsFailClosed white-box-asserts NewService always produces a
+// failClosed=true Verifier (D-14), so the service constructor cannot
+// accidentally construct a fail-open verifier.
+func TestNewServiceSetsFailClosed(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate RSA key: %v", err)
+	}
+	discoveryAndKeys := &oidctest.Server{
+		PublicKeys: []oidctest.PublicKey{{PublicKey: key.Public(), KeyID: failClosedTestKeyID, Algorithm: oidc.RS256}},
+	}
+	srv := httptest.NewServer(discoveryAndKeys)
+	t.Cleanup(srv.Close)
+	discoveryAndKeys.SetIssuer(srv.URL)
+
+	v, err := NewService(context.Background(), srv.URL, "svc-audience", []string{"client_id", "azp"})
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	if !v.failClosed {
+		t.Error("NewService must construct a failClosed=true Verifier")
+	}
+}
+
+// TestNewServiceIndependentAudienceFromHumanLane (D-14 backstop, verification
+// discipline: verified) confirms a human-lane New(...) Verifier and a
+// service-lane NewService(...) Verifier constructed against the SAME issuer
+// are still two distinct Verifier objects, each with its own failClosed
+// setting — proving the service lane never reuses/shares the human lane's
+// *Verifier (and therefore never shares its audience configuration either;
+// go-oidc bakes ClientID/SkipClientIDCheck into the Verifier at construction
+// time, so distinct objects is the only way distinct audiences can coexist).
+func TestNewServiceIndependentAudienceFromHumanLane(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate RSA key: %v", err)
+	}
+	discoveryAndKeys := &oidctest.Server{
+		PublicKeys: []oidctest.PublicKey{{PublicKey: key.Public(), KeyID: failClosedTestKeyID, Algorithm: oidc.RS256}},
+	}
+	srv := httptest.NewServer(discoveryAndKeys)
+	t.Cleanup(srv.Close)
+	discoveryAndKeys.SetIssuer(srv.URL)
+
+	human, err := New(context.Background(), srv.URL, "human-audience", []string{"email"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	service, err := NewService(context.Background(), srv.URL, "service-audience", []string{"client_id", "azp"})
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	if human == service {
+		t.Fatal("New and NewService must not return the same *Verifier")
+	}
+	if human.failClosed {
+		t.Error("New must construct a failClosed=false Verifier")
+	}
+	if !service.failClosed {
+		t.Error("NewService must construct a failClosed=true Verifier")
+	}
+}
