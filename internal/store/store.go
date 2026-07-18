@@ -1737,7 +1737,11 @@ func (s *Store) Delete(ctx context.Context, id string, subj Subject) (err error)
 
 // DeleteAll removes the subject's OWN records in scope (never another owner's,
 // and never another owner's shared records). A nil/unknown Subject is rejected
-// without deleting anything — fail closed.
+// without deleting anything — fail closed. The own-bucket decision is
+// PDP-derived (s.decideBucket, ActionDelete/BucketOwn), matching how the read
+// filter builders route their bucket decisions, so a future per-category or
+// per-tenant delete restriction applies here too, not just to id-addressed
+// Delete.
 func (s *Store) DeleteAll(ctx context.Context, scope string, subj Subject) (err error) {
 	ctx, span := tracer.Start(ctx, "store.DeleteAll", trace.WithAttributes(
 		attribute.String("engram.scope", scope),
@@ -1753,14 +1757,12 @@ func (s *Store) DeleteAll(ctx context.Context, scope string, subj Subject) (err 
 		}
 	}()
 
-	var owner string
-	switch sj := subj.(type) {
-	case authenticated:
-		owner = sj.sub
-	case anonymous:
-		owner = ""
-	default:
+	owner, kind, ok := principalParams(subj)
+	if !ok {
 		return fmt.Errorf("%w: nil subject", ErrNotFound)
+	}
+	if !s.decideBucket(owner, kind, authz.ActionDelete, authz.BucketOwn).Allow {
+		return nil
 	}
 	filter := &qdrant.Filter{Must: []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),
