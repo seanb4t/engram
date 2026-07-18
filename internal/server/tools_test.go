@@ -712,6 +712,32 @@ func TestStoreMemoryMintsAndReturnsShortID(t *testing.T) {
 	}
 }
 
+// TestStoreMemoryNoKeyAlwaysFresh pins SC5: omitting idempotency_key preserves
+// today's behavior byte-for-byte — two keyless calls with identical content
+// each mint a fresh, DISTINCT random uuid.NewString() id. Adding the
+// IdempotencyKey field must not perturb this.
+func TestStoreMemoryNoKeyAlwaysFresh(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "owner-nokey")
+	scope := "iso-test:project:idempotency-nokey"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Authenticated("owner-nokey")))
+	}()
+
+	args := storeArgs{Content: "no key here", Scope: scope, Source: "user-said", Category: "gotcha"}
+	id1, _, err := d.storeMemory(ctx, callerFor(ctx, t), args)
+	if err != nil {
+		t.Fatalf("storeMemory (first): %v", err)
+	}
+	id2, _, err := d.storeMemory(ctx, callerFor(ctx, t), args)
+	if err != nil {
+		t.Fatalf("storeMemory (second): %v", err)
+	}
+	if id1 == id2 {
+		t.Fatalf("two keyless store_memory calls with identical content minted the SAME id %q; want distinct fresh ids (SC5)", id1)
+	}
+}
+
 // TestStoreMemoryEnqueuesOnSuccess pins SC#1: a successful storeMemory
 // enqueues the record id for async summary fill, and the worker drains it —
 // asserted deterministically via the Wait() drain seam (no time.Sleep).
