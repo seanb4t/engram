@@ -50,6 +50,15 @@ var registry = []field{
 	{Key: "oidc.client_secret", Env: "ENGRAM_OIDC_CLIENT_SECRET", Legacy: "MEM_OIDC_CLIENT_SECRET", Flag: "oidc-client-secret"},
 	{Key: "oidc.resource_metadata", Env: "ENGRAM_OIDC_RESOURCE_METADATA", Legacy: "MEM_OIDC_RESOURCE_METADATA", Flag: "oidc-resource-metadata"},
 	{Key: "oidc.owner_claim", Env: "ENGRAM_OWNER_CLAIM", Flag: "owner-claim", Default: "email"},
+	// service_auth.* is the machine-to-machine lane (D-11): the client-credentials
+	// issuer/audience/owner-claims are independent of the human oidc.* lane
+	// (D-14 — never shared), and static_tokens is the operator-managed
+	// token→owner map (ENGRAM_-only, no Flag — it is a secret). No Legacy value:
+	// these are brand-new vars.
+	{Key: "service_auth.oidc_issuer", Env: "ENGRAM_SERVICE_AUTH_OIDC_ISSUER"},
+	{Key: "service_auth.oidc_audience", Env: "ENGRAM_SERVICE_AUTH_OIDC_AUDIENCE"},
+	{Key: "service_auth.owner_claims", Env: "ENGRAM_SERVICE_AUTH_OWNER_CLAIMS", Default: "client_id,azp"},
+	{Key: "service_auth.static_tokens", Env: "ENGRAM_SERVICE_AUTH_STATIC_TOKENS"},
 	{Key: "ui.enabled", Env: "ENGRAM_UI_ENABLED", Legacy: "MEM_UI_ENABLED", Flag: "ui-enabled"},
 	{Key: "ui.issuer", Env: "ENGRAM_UI_ISSUER", Legacy: "MEM_UI_ISSUER", Flag: "ui-issuer"},
 	{Key: "ui.redirect_url", Env: "ENGRAM_UI_REDIRECT_URL", Legacy: "MEM_UI_REDIRECT_URL", Flag: "ui-redirect-url"},

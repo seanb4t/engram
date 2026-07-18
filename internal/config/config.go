@@ -21,15 +21,16 @@ import (
 // where the consumer already validates them (e.g. embed.dim is parsed by the
 // store with a fail-fast error), so unmarshal never silently coerces.
 type Config struct {
-	Server    ServerConfig    `koanf:"server"`
-	Qdrant    QdrantConfig    `koanf:"qdrant"`
-	Embed     EmbedConfig     `koanf:"embed"`
-	Summarize SummarizeConfig `koanf:"summarize"`
-	OpenAI    OpenAIConfig    `koanf:"openai"`
-	OIDC      OIDCConfig      `koanf:"oidc"`
-	UI        UIConfig        `koanf:"ui"`
-	Log       LogConfig       `koanf:"log"`
-	Usage     UsageConfig     `koanf:"usage"`
+	Server      ServerConfig      `koanf:"server"`
+	Qdrant      QdrantConfig      `koanf:"qdrant"`
+	Embed       EmbedConfig       `koanf:"embed"`
+	Summarize   SummarizeConfig   `koanf:"summarize"`
+	OpenAI      OpenAIConfig      `koanf:"openai"`
+	OIDC        OIDCConfig        `koanf:"oidc"`
+	ServiceAuth ServiceAuthConfig `koanf:"service_auth"`
+	UI          UIConfig          `koanf:"ui"`
+	Log         LogConfig         `koanf:"log"`
+	Usage       UsageConfig       `koanf:"usage"`
 }
 
 // ServerConfig is engram's HTTP-listener surface: where the process binds and
@@ -123,6 +124,31 @@ type OIDCConfig struct {
 	// OwnerClaim is the OIDC claim whose value becomes a record's owner (the
 	// authz key) when auth is enabled. Shared by both auth lanes. Default "email".
 	OwnerClaim string `koanf:"owner_claim"`
+}
+
+// ServiceAuthConfig holds the machine-to-machine auth lane (D-11): the
+// client-credentials issuer/audience/owner-claims are wholly independent of
+// the human OIDCConfig lane (D-14 — distinct issuer/audience, never shared),
+// and StaticTokens is the operator-managed token→owner map for the
+// static-token lane (parsed by ParseServiceStaticTokens; ENGRAM_-only, no
+// CLI flag, since it carries secrets). Each lane is independently enabled by
+// config presence (D-03): empty OIDCIssuer/OIDCAudience means the
+// client-credentials lane is off; empty StaticTokens means the static-token
+// lane is off. Neither lane is required for the other.
+type ServiceAuthConfig struct {
+	OIDCIssuer   string `koanf:"oidc_issuer"`
+	OIDCAudience string `koanf:"oidc_audience"`
+	// OwnerClaims is a comma-separated ordered claim-name list parsed via
+	// ParseOwnerClaims, defaulting to "client_id,azp" (D-05) — the service
+	// lane's owner-claim precedence must NEVER default to "email", the human
+	// lane's default, so a client-credentials token cannot accidentally
+	// resolve an owner via a claim meant for a human identity.
+	OwnerClaims string `koanf:"owner_claims"`
+	// StaticTokens is the raw ENGRAM_SERVICE_AUTH_STATIC_TOKENS value: a
+	// comma-separated list of "owner=token" pairs (parsed by
+	// ParseServiceStaticTokens into a token→ownerID map). Empty disables the
+	// static-token lane entirely.
+	StaticTokens string `koanf:"static_tokens"`
 }
 
 // UIConfig holds the web-console lane settings (enable tri-state, login issuer,
@@ -270,4 +296,42 @@ func ParseOwnerClaims(raw string) ([]string, error) {
 		claims = append(claims, c)
 	}
 	return claims, nil
+}
+
+// ParseServiceStaticTokens parses ENGRAM_SERVICE_AUTH_STATIC_TOKENS (D-11):
+// a comma-separated list of "owner=token" pairs, returned as a token→ownerID
+// map (the token is the map key, since verification looks up by the
+// presented token). An empty raw value returns an empty map and a nil error
+// (the static-token lane is simply disabled — D-03).
+//
+// Parsing is fail-fast, mirroring ParseOwnerClaims's discipline (this is an
+// auth key): an entry missing the "=" separator, or with an empty owner or
+// empty token half, is rejected. A duplicate TOKEN is rejected (ambiguous —
+// which owner would it resolve to?). Two distinct tokens mapping to the SAME
+// owner are explicitly allowed (token rotation: an operator can mint a new
+// token for a principal before revoking the old one).
+func ParseServiceStaticTokens(raw string) (map[string]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return map[string]string{}, nil
+	}
+
+	pairs := strings.Split(raw, ",")
+	tokens := make(map[string]string, len(pairs))
+	for _, p := range pairs {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return nil, fmt.Errorf("static-tokens list %q has an empty entry", raw)
+		}
+		owner, token, ok := strings.Cut(p, "=")
+		owner = strings.TrimSpace(owner)
+		token = strings.TrimSpace(token)
+		if !ok || owner == "" || token == "" {
+			return nil, fmt.Errorf("static-tokens entry %q must be \"owner=token\" with both non-empty", p)
+		}
+		if _, dup := tokens[token]; dup {
+			return nil, fmt.Errorf("static-tokens list %q has a duplicate token", raw)
+		}
+		tokens[token] = owner
+	}
+	return tokens, nil
 }
