@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.11.x
 milestone_name: Capture & Service Identity
-current_phase: 23
-current_phase_name: Service Auth Chain & Tenancy Isolation
-status: verifying
+current_phase: 24
+current_phase_name: Idempotent Capture
+status: planning
 stopped_at: Completed 23-06-PLAN.md
-last_updated: "2026-07-18T02:43:05.867Z"
+last_updated: "2026-07-18T03:06:16.585Z"
 last_activity: 2026-07-17
-last_activity_desc: Phase 23 execution started
+last_activity_desc: Phase 23 complete, transitioned to Phase 24
 progress:
   total_phases: 8
   completed_phases: 2
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-16 — opened milestone v0.11.x)
 
 ## Current Position
 
-Phase: 23 (Service Auth Chain & Tenancy Isolation) — EXECUTING
-Plan: 6 of 6
-Status: Phase complete — ready for verification
-Last activity: 2026-07-17 — Phase 23 execution started
+Phase: 24 — Idempotent Capture
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-07-17 — Phase 23 complete, transitioned to Phase 24
 
 Progress: [██████████] 100%
 
