@@ -365,7 +365,20 @@ exactly like any other non-email claim already does)
 **Note**: this phase's tenancy isolation is largely a *verification* phase once the auth chain
 exists — it proves namespaced-owner isolation against the store filters Phase 22 wired, per the
 research-converged build order (`#362` requires `#373` to ship together or first).
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+**Wave 1** *(parallel — zero file overlap; internal/auth is split across three files)*
+
+- [ ] 23-01-PLAN.md — internal/auth OIDC service lane: FIRST fail-closed empty-owner reject (SC2/D-08/D-10) + NewService per-lane audience (D-14) (REQ-service-owner-failclosed, REQ-service-auth-chain)
+- [ ] 23-02-PLAN.md — internal/auth static-token verifier: crypto/subtle constant-time compare, per-owner map, no-leak discipline (REQ-static-token-auth)
+- [ ] 23-03-PLAN.md — internal/auth chainVerifier combinator + JWT-shape discriminator: D-02 order, D-03 nil-guard, D-04 deny-by-default (REQ-service-auth-chain)
+- [ ] 23-04-PLAN.md — internal/config service_auth.* rows + ServiceAuthConfig + token→owner map parser + validation (REQ-service-auth-chain, REQ-static-token-auth)
+- [ ] 23-05-PLAN.md — internal/store service-principal isolation + permanent cross-tenant shared-read decision test (SC4/SC5/D-07/D-15/D-16) (REQ-service-principal-isolation)
+
+**Wave 2** *(depends on 23-01..23-04)*
+
+- [ ] 23-06-PLAN.md — cmd/engram/serve.go withAuth chain wiring (the ONE call site) + chain-parity integration test + docs (config guide, auth reference, cross-tenant shared-read ADR) (REQ-service-auth-chain, REQ-service-principal-isolation)
 
 ### Phase 24: Idempotent Capture
 
