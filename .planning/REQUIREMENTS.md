@@ -24,7 +24,7 @@ store-layer authz **primitive**, and the memory contract stays additive.
   (ENGRAM_ koanf), and the chain composes in front of the existing `mcpauth.TokenVerifier` seam
   without changing store-layer authz.
 
-- [ ] **REQ-static-token-auth**: An operator can provision static bearer tokens, each mapped to a
+- [x] **REQ-static-token-auth**: An operator can provision static bearer tokens, each mapped to a
   fixed `owner`, via ENGRAM_ config. Tokens are verified with a constant-time compare
   (`crypto/subtle`), a token maps to exactly one owner (never a single shared owner for all
   tokens), and a token value never appears in logs, spans, or error messages.
@@ -129,7 +129,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | REQ-cedar-pdp-foundation | Phase 22 | Complete |
 | REQ-cedar-store-enforcement | Phase 22 | Complete |
 | REQ-service-auth-chain | Phase 23 | Complete |
-| REQ-static-token-auth | Phase 23 | Pending |
+| REQ-static-token-auth | Phase 23 | Complete |
 | REQ-service-owner-failclosed | Phase 23 | Complete |
 | REQ-service-principal-isolation | Phase 23 | Pending |
 | REQ-idempotent-capture | Phase 24 | Pending |
