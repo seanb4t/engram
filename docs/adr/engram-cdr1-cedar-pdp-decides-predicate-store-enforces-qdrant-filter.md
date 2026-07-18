@@ -34,6 +34,8 @@ both routed through the same `cedar.Authorize` call and the same embedded policy
   later, never O(records)), whether that bucket is reachable for the requested action. The
   store then composes the SAME `qdrant.NewMatch`/`matchNothing()` filter shapes it produced
   before Cedar existed — Cedar decides the predicate, the store still emits the Qdrant filter.
+  `DeleteAll` — a bulk mutation, not a recall path — asks the same `BucketOwn` question
+  (`ActionDelete`) before building its delete filter, so it never bypasses the PDP either.
 - **`DecideRecord(owner, kind, action, memoryOwner, category, visibility, scope)`** — the
   id-addressed gates (`GetReadable`/`getWritable`/`OwnedOrAbsent`, and `FetchForUpdate` via
   `getWritable`) ask Cedar a single per-record decision AFTER the record has already been
