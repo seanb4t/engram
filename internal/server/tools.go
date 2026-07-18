@@ -651,9 +651,56 @@ func (a storeArgs) toMemory(owner, actor string, createdAt time.Time) store.Memo
 	}
 }
 
+// checkIdempotentReplay resolves the D-08 check-before-embed branch for a
+// keyed store_memory/schedule_memory call — the same "resolve ID -> Get
+// existing -> decide -> THEN embed" shape storeDiscovery already uses, minus
+// its OwnedOrAbsent gate (D-09: owner is baked into the point-ID hash, so a
+// raw Get can only ever resolve to the caller's own record). Absent a key,
+// this is a no-op: the keyless path is untouched and toMemory keeps minting a
+// fresh uuid.NewString() (SC5). With a key it does a single point Get at the
+// deterministic ID — never a search/scroll (D-05) — and returns one of three
+// outcomes:
+//   - absent (store.ErrNotFound): replay=false, pointID set — fall through to
+//     create AT this resolved pointID; the caller MUST thread it into m.ID
+//     rather than recompute it independently (RESEARCH Pattern 2 anti-pattern).
+//   - fingerprint match: replay=true, id/shortID are the ORIGINAL record's —
+//     the caller returns immediately, before Embed/persistAndEnqueue (SC1
+//     zero side-effects: no re-embed, no new short_id, no summary re-enqueue).
+//   - fingerprint mismatch: replay=false, err wraps store.ErrIdempotencyConflict
+//     — surfaced BEFORE Embed (SC2), never a silent overwrite, never a 404.
+func (d *deps) checkIdempotentReplay(ctx context.Context, owner string, a storeArgs) (replay bool, id, shortID, pointID string, err error) {
+	if a.IdempotencyKey == "" {
+		return false, "", "", "", nil
+	}
+	pointID = idempotencyPointID(owner, a.Scope, a.IdempotencyKey)
+	existing, gerr := d.st.Get(ctx, pointID)
+	switch {
+	case errors.Is(gerr, store.ErrNotFound):
+		return false, "", "", pointID, nil
+	case gerr != nil:
+		return false, "", "", "", gerr
+	}
+	if contentFingerprint(a) == existing.IdempotencyFingerprint {
+		return true, existing.ID, existing.ShortID, "", nil
+	}
+	return false, "", "", "", fmt.Errorf("idempotency key %q reused with different content: %w", a.IdempotencyKey, store.ErrIdempotencyConflict)
+}
+
 func (d *deps) storeMemory(ctx context.Context, c caller, a storeArgs) (string, string, error) {
-	m := a.toMemory(c.Subj.Owner(), c.Actor, d.clock())
+	owner := c.Subj.Owner()
+	replay, id, shortID, pointID, err := d.checkIdempotentReplay(ctx, owner, a)
+	if err != nil {
+		return "", "", err
+	}
+	if replay {
+		return id, shortID, nil
+	}
+	m := a.toMemory(owner, c.Actor, d.clock())
 	m.EmbedderIdentity = d.embedderIdentity
+	if pointID != "" {
+		m.ID = pointID
+		m.IdempotencyFingerprint = contentFingerprint(a)
+	}
 	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 	if err != nil {
 		return "", "", err // embed first: on error we never touch the store
@@ -700,10 +747,26 @@ func (d *deps) scheduleMemory(ctx context.Context, c caller, a scheduleArgs) (st
 	if err != nil {
 		return "", "", err
 	}
-	m := a.toMemory(c.Subj.Owner(), c.Actor, now)
+	owner := c.Subj.Owner()
+	replay, id, shortID, pointID, err := d.checkIdempotentReplay(ctx, owner, a.storeArgs)
+	if err != nil {
+		return "", "", err
+	}
+	if replay {
+		// The schedule window is excluded from the D-07 content fingerprint
+		// (RESEARCH Open Question 1, deliberately resolved): a replay with a
+		// CHANGED not_before/not_after still returns the original record with
+		// its ORIGINAL window unchanged.
+		return id, shortID, nil
+	}
+	m := a.toMemory(owner, c.Actor, now)
 	m.NotBefore = nb
 	m.NotAfter = na
 	m.EmbedderIdentity = d.embedderIdentity
+	if pointID != "" {
+		m.ID = pointID
+		m.IdempotencyFingerprint = contentFingerprint(a.storeArgs)
+	}
 	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 	if err != nil {
 		return "", "", err // embed first: on error we never touch the store
