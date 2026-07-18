@@ -171,3 +171,7 @@ None - no external service configuration required.
 ---
 *Phase: 24-idempotent-capture*
 *Completed: 2026-07-18*
+
+## Self-Check: PASSED
+
+All created/modified files found on disk; all commit hashes (e210895e, 334b496c, bf1a4fa8, 34db9ac8) found in git log.

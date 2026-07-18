@@ -407,11 +407,11 @@ locked as REQUIREMENTS.md's decision to reject; a deterministic point-ID derivat
 5. Omitting the idempotency key preserves today's behavior exactly — a fresh record is created
    every time.
 
-**Plans**: 2 plans
+**Plans**: 1/2 plans executed
 
 **Wave 1**
 
-- [ ] 24-01-PLAN.md — internal/store fingerprint payload field + ErrIdempotencyConflict sentinel + connectError row; internal/server idempotencyPointID + contentFingerprint pure helpers (D-02/D-03/D-04/D-06/D-10) (REQ-idempotent-capture)
+- [x] 24-01-PLAN.md — internal/store fingerprint payload field + ErrIdempotencyConflict sentinel + connectError row; internal/server idempotencyPointID + contentFingerprint pure helpers (D-02/D-03/D-04/D-06/D-10) (REQ-idempotent-capture)
 
 **Wave 2** *(depends on 24-01)*
 
@@ -506,7 +506,7 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 | 21. CI / Maintenance Hygiene | v0.10.x | 3/3 | Complete   | 2026-07-16 |
 | 22. Cedar Authz Foundation & Store Enforcement | v0.11.x | 2/2 | Complete | 2026-07-17 |
 | 23. Service Auth Chain & Tenancy Isolation | v0.11.x | 4/4 | Complete | 2026-07-17 |
-| 24. Idempotent Capture | v0.11.x | 0/1 | Not started | - |
+| 24. Idempotent Capture | v0.11.x | 0/1 | In Progress|  |
 | 25. Supersession with History | v0.11.x | 0/1 | Not started | - |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 0/3 | Not started | - |
 
