@@ -496,8 +496,8 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 | 19. Console Write UX | v0.10.x | 6/6 | Complete   | 2026-07-15 |
 | 20. Correctness & Polish | v0.10.x | 4/4 | Complete    | 2026-07-16 |
 | 21. CI / Maintenance Hygiene | v0.10.x | 3/3 | Complete   | 2026-07-16 |
-| 22. Cedar Authz Foundation & Store Enforcement | v0.11.x | 0/2 | In Progress|  |
-| 23. Service Auth Chain & Tenancy Isolation | v0.11.x | 0/4 | In Progress|  |
+| 22. Cedar Authz Foundation & Store Enforcement | v0.11.x | 2/2 | Complete | 2026-07-17 |
+| 23. Service Auth Chain & Tenancy Isolation | v0.11.x | 4/4 | Complete | 2026-07-17 |
 | 24. Idempotent Capture | v0.11.x | 0/1 | Not started | - |
 | 25. Supersession with History | v0.11.x | 0/1 | Not started | - |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 0/3 | Not started | - |
