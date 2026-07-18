@@ -3452,6 +3452,56 @@ func TestGetReadableDenyMapsToNotFound(t *testing.T) {
 	}
 }
 
+// TestGetWritableAndOwnedOrAbsentDenyMapsToNotFound is the write-path analogue
+// of TestGetReadableDenyMapsToNotFound (WR-02): it proves the same D-10
+// Deny->ErrNotFound uniformity holds for getWritable and OwnedOrAbsent on an
+// owned, EXISTING record — not just the real-PDP cross-owner path exercised by
+// TestDeleteOwnerGate/TestSetVisibilityOwnerGate/TestUpdateOwnerGateAndSharedFlag,
+// and not just the absent-id short-circuit covered by
+// TestIdAddressedAbsentShortCircuit. Under the current policy corpus this
+// branch (an owner denied by Cedar on their own record) is unreachable in
+// production — own_records permits every action unconditionally for the
+// owner — but the injected all-deny decideRecordHook forces it, guarding
+// against a future write-path change that accidentally threads the
+// Diagnostic into the caller-facing error.
+func TestGetWritableAndOwnedOrAbsentDenyMapsToNotFound(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "authz-test:project:write-record-deny"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	m := Memory{
+		ID: "11111111-2222-0000-0000-000000000002", Content: "owned",
+		Scope: scope, Owner: "sub-write-record-deny", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	s.decideRecordHook = func(_, _ string, _ authz.Action, _, _, _, _ string) authz.Decision {
+		return authz.Decision{Allow: false}
+	}
+	t.Cleanup(func() { s.decideRecordHook = nil })
+
+	want := fmt.Errorf("%w: %s", ErrNotFound, m.ID).Error()
+
+	_, err := s.getWritable(ctx, m.ID, Authenticated("sub-write-record-deny"), authz.ActionWrite)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("getWritable with all-deny PDP: want ErrNotFound, got %v", err)
+	}
+	if err.Error() != want {
+		t.Errorf("getWritable error leaked non-uniform content: got %q, want %q (plain missing-id form, no Diagnostic)", err.Error(), want)
+	}
+
+	err = s.OwnedOrAbsent(ctx, m.ID, Authenticated("sub-write-record-deny"))
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("OwnedOrAbsent with all-deny PDP: want ErrNotFound, got %v", err)
+	}
+	if err.Error() != want {
+		t.Errorf("OwnedOrAbsent error leaked non-uniform content: got %q, want %q (plain missing-id form, no Diagnostic)", err.Error(), want)
+	}
+}
+
 // TestIdAddressedAbsentShortCircuit proves the s.Get -> ErrNotFound
 // short-circuit precedes DecideRecord for every id-addressed gate: even
 // under an all-deny PDP, an id that does NOT exist yields the SAME
