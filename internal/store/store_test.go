@@ -3521,6 +3521,42 @@ func TestGetWritableAndOwnedOrAbsentDenyMapsToNotFound(t *testing.T) {
 	}
 }
 
+// TestDeleteAllDeniedBucketDeletesNothing (WR-04) covers the new bucket-denial
+// branch the WR-01 fix added to DeleteAll: when decideBucket(ActionDelete,
+// BucketOwn) returns Deny, DeleteAll must return nil (nothing to delete)
+// rather than silently deleting or erroring. Under the current policy corpus
+// this branch is unreachable in production (own_records permits delete
+// unconditionally for the owner) — same accepted-risk class as the sibling
+// denial tests (TestBulkFilterZeroBucketFailsClosed via decideBucketHook) —
+// but it guards against a future edit that flips the nil-return to something
+// that silently deletes on Deny.
+func TestDeleteAllDeniedBucketDeletesNothing(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "authz-test:project:deleteall-deny"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	m := Memory{
+		ID: "abababab-0000-0000-0000-000000000001", Content: "owned",
+		Scope: scope, Owner: "sub-deleteall-deny", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	s.decideBucketHook = func(_, _ string, _ authz.Action, _ authz.Bucket) authz.Decision {
+		return authz.Decision{Allow: false}
+	}
+	t.Cleanup(func() { s.decideBucketHook = nil })
+
+	if err := s.DeleteAll(ctx, scope, Authenticated("sub-deleteall-deny")); err != nil {
+		t.Fatalf("DeleteAll with all-deny PDP: want nil (nothing to delete), got %v", err)
+	}
+	if _, err := s.Get(ctx, m.ID); err != nil {
+		t.Errorf("DeleteAll with all-deny PDP must not delete: record gone, %v", err)
+	}
+}
+
 // TestIdAddressedAbsentShortCircuit proves the s.Get -> ErrNotFound
 // short-circuit precedes DecideRecord for every id-addressed gate: even
 // under an all-deny PDP, an id that does NOT exist yields the SAME
