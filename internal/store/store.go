@@ -89,6 +89,13 @@ var ErrShortIDExhausted = errors.New("short id mint exhausted")
 // apart from "you reused a key with different content."
 var ErrIdempotencyConflict = errors.New("idempotency key reused with different content")
 
+// ErrAlreadySuperseded is returned when Store.Supersede's target already has a
+// non-empty SupersededBy — a single live head per chain (D-05). Forward chains
+// (superseding the current head) are allowed; only superseding a non-head
+// record is rejected, which makes a supersession cycle structurally
+// impossible (D-06).
+var ErrAlreadySuperseded = errors.New("target is already superseded")
+
 // maxMintAttempts bounds MintShortID's real (Qdrant Count-checked) collision
 // attempts. 16 is extra headroom over the ~8 that is already astronomically
 // safe in a 32^10 Crockford base32 space (D-04).
@@ -165,6 +172,16 @@ type Memory struct {
 	// NotAfter gates expiry: the record drops out of recall once now >= NotAfter.
 	// nil = never expires.
 	NotAfter *time.Time `json:"not_after,omitempty"`
+	// Supersedes is the id of the record this one corrects/replaces (D-04).
+	// nil on every record except a correcting one created via Store.Supersede.
+	// Plain json tag (not "-"): the caller must be able to observe this link on
+	// full=true recall and get_memory (D-08).
+	Supersedes *string `json:"supersedes,omitempty"`
+	// SupersededBy is the id of the record that superseded this one (D-01/D-04).
+	// Server-set only, via Store.Supersede's target back-stamp — nil until then.
+	// Non-nil excludes the record from Search/List recall (soft-hide, D-09) but
+	// never from Get (D-08). Plain json tag, matching Supersedes above.
+	SupersededBy *string `json:"superseded_by,omitempty"`
 	// AccessCount is the monotonic total of strong-signal touches (get-by-id +
 	// update; never search/list result-set membership, D-02). Server-set only —
 	// no client-writable tool argument sets it. A legacy record missing the
@@ -441,6 +458,12 @@ func payload(m Memory) map[string]any {
 	if m.NotAfter != nil {
 		p["not_after"] = m.NotAfter.Unix()
 	}
+	if m.Supersedes != nil {
+		p["supersedes"] = *m.Supersedes
+	}
+	if m.SupersededBy != nil {
+		p["superseded_by"] = *m.SupersededBy
+	}
 	p["access_count"] = m.AccessCount
 	p[embedderIdentityKey] = m.EmbedderIdentity
 	p[idempotencyFingerprintKey] = m.IdempotencyFingerprint
@@ -529,6 +552,14 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	if v, ok := p["not_after"]; ok {
 		t := time.Unix(v.GetIntegerValue(), 0).UTC()
 		m.NotAfter = &t
+	}
+	if v, ok := p["supersedes"]; ok {
+		s := v.GetStringValue()
+		m.Supersedes = &s
+	}
+	if v, ok := p["superseded_by"]; ok {
+		s := v.GetStringValue()
+		m.SupersededBy = &s
 	}
 	if v, ok := p["access_count"]; ok {
 		m.AccessCount = uint64(v.GetIntegerValue())
@@ -789,6 +820,10 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 
 	f := s.ownerScopeFilter(scope, subj)
 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
+	// Soft-hide superseded records from search recall (D-09) — sibling
+	// condition to activeWindowConditions, not folded into it (that helper is
+	// time-window-scoped only). get_memory (Store.Get) stays ungated.
+	f.Must = append(f.Must, qdrant.NewIsEmpty("superseded_by"))
 	f.Must = append(f.Must, tagMatchConditions(tags)...)
 	if c := createdRangeCondition(after, before); c != nil {
 		f.Must = append(f.Must, c)
@@ -1008,6 +1043,10 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 
 	f := s.listFilter(scope, subj, opts)
 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
+	// Soft-hide superseded records from list recall (D-09) — sibling
+	// condition to activeWindowConditions, not folded into it (that helper is
+	// time-window-scoped only). get_memory (Store.Get) stays ungated.
+	f.Must = append(f.Must, qdrant.NewIsEmpty("superseded_by"))
 	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
 		f.Must = append(f.Must, c)
 	}
