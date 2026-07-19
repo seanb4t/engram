@@ -1757,6 +1757,66 @@ func (s *Store) SetVisibility(ctx context.Context, id string, subj Subject, shar
 	return err
 }
 
+// Supersede stores newMem (a normal, caller-owned create — same shape as
+// Upsert) and back-stamps target's superseded_by link. newMem.Supersedes MUST
+// already be set to target's resolved id by the caller before this is
+// invoked (mirrors OwnedOrAbsent's contract: callers thread resolved ids in,
+// store methods do not resolve short ids).
+//
+// Ordering is load-bearing: the new record is created FIRST, the target is
+// back-stamped SECOND. This is only atomic-intent, not atomic — same
+// non-atomicity SetVisibility's own two-step SetPayload+DeletePayload
+// sequence accepts. If step 4 (the back-stamp) fails after step 3 (the new
+// record's create) succeeds, the new record persists as a valid, fetchable
+// record with a forward Supersedes link to a not-yet-back-stamped target —
+// an accepted, bounded orphan (no distributed-transaction primitive exists
+// in this codebase for a rollback).
+//
+// TOCTOU note (identical in spirit to SetVisibility's, store.go:1688-1692):
+// if the target is deleted between the getWritable ownership gate and the
+// back-stamp SetPayload, Qdrant's point-ID-selector SetPayload returns a
+// NotFound gRPC error that propagates unchanged — fail-closed, no re-fetch
+// needed (D-02).
+func (s *Store) Supersede(ctx context.Context, newMem Memory, vec []float32, target string, subj Subject) (err error) {
+	ctx, span := tracer.Start(ctx, "store.Supersede",
+		trace.WithAttributes(attribute.String("engram.owner", ownerOf(subj))))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "Supersede", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
+	// 1. Owner-only write gate on the TARGET (not the new record — that's a
+	//    normal create, already write-gated by construction).
+	targetRec, err := s.getWritable(ctx, target, subj, authz.ActionWrite)
+	if err != nil {
+		return err // ErrNotFound: not owner, or doesn't exist — fail-closed, no leak.
+	}
+	// 2. Single-hop / cycle rejection (D-05/D-06): reject if target is
+	//    already a non-head record.
+	if targetRec.SupersededBy != nil && *targetRec.SupersededBy != "" {
+		return fmt.Errorf("%w: %s", ErrAlreadySuperseded, target)
+	}
+	// 3. Store the new record (normal Upsert — fresh id, no concurrent-writer
+	//    risk since nothing else references it yet).
+	if err := s.Upsert(ctx, newMem, vec); err != nil {
+		return err
+	}
+	// 4. Back-stamp the target: single-key SetPayload, vector-preserving —
+	//    mirrors SetVisibility exactly, action swapped Share->Write, key
+	//    swapped visibility->superseded_by.
+	_, err = s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload:        qdrant.NewValueMap(map[string]any{"superseded_by": newMem.ID}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(target)}),
+	})
+	return err
+}
+
 // IncrementAccess bumps a record's access_count by 1 and stamps
 // last_accessed_at, without re-embedding (uses SetPayload, preserving the
 // vector). It is a store-layer primitive fired only by handler-boundary
