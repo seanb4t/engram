@@ -2746,6 +2746,66 @@ func TestSupersedeStamp(t *testing.T) {
 	}
 }
 
+// TestSupersedeVectorPreserved (IN-01) directly asserts the target's stored
+// VECTOR survives Supersede byte-identical — closing the gap between
+// Supersede's doc comment claim ("single-key SetPayload, vector-preserving")
+// and TestSupersedeStamp, which only asserts payload fields. Store.Get omits
+// vectors (WithPayload only), so this reads the raw Qdrant point directly
+// with WithVectors, before and after, mirroring reindex_test.go's
+// scrollPoints helper.
+func TestSupersedeVectorPreserved(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-test:project:vector-preserved"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	targetID := "d6000000-0000-0000-0000-000000000001"
+	newID := "d6000000-0000-0000-0000-000000000002"
+	targetVec := []float32{0.11, 0.22, 0.33}
+
+	target := Memory{ID: targetID, Content: "v", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, target, targetVec); err != nil {
+		t.Fatalf("upsert target: %v", err)
+	}
+
+	rawVector := func(id string) []float32 {
+		t.Helper()
+		pts, err := s.client.Get(ctx, &qdrant.GetPoints{
+			CollectionName: s.collection, Ids: []*qdrant.PointId{qdrant.NewID(id)},
+			WithVectors: qdrant.NewWithVectors(true),
+		})
+		if err != nil {
+			t.Fatalf("raw get %s: %v", id, err)
+		}
+		if len(pts) != 1 {
+			t.Fatalf("raw get %s: got %d points, want 1", id, len(pts))
+		}
+		return pts[0].GetVectors().GetVector().GetDense().GetData()
+	}
+
+	// Qdrant normalizes vectors on insert for Cosine-distance collections, so
+	// `before` is the normalized form of targetVec, not targetVec itself —
+	// only its non-zero length is asserted here; the real assertion is
+	// before == after below.
+	before := rawVector(targetID)
+	if len(before) == 0 {
+		t.Fatalf("target vector before Supersede is empty, want a %d-dim vector", len(targetVec))
+	}
+
+	newMem := Memory{
+		ID: newID, Content: "corrected", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: &targetID,
+	}
+	if err := s.Supersede(ctx, newMem, []float32{0.9, 0.8, 0.7}, targetID, Authenticated("sub-A")); err != nil {
+		t.Fatalf("Supersede: %v", err)
+	}
+
+	after := rawVector(targetID)
+	if !slices.Equal(after, before) {
+		t.Errorf("target vector after Supersede = %v, want unchanged %v", after, before)
+	}
+}
+
 // TestSupersedeOwnerGate (SC3) pins that a non-owner cannot supersede a
 // target they don't own — Supersede must use getWritable/ActionWrite (never
 // GetReadable), so a caller without a write grant gets the same ErrNotFound
