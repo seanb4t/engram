@@ -930,6 +930,9 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Su
 		must = append(must, qdrant.NewMatch("kind", kind))
 	}
 	must = append(must, s.ownerOrSharedCondition(subj))
+	// Soft-hide superseded discoveries from search recall (WR-01), the same
+	// gate Search/List already apply — get_memory stays ungated.
+	must = append(must, qdrant.NewIsEmpty("superseded_by"))
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
 		Filter: &qdrant.Filter{Must: must}, Limit: qdrant.PtrOf(k),

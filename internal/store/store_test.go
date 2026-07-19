@@ -344,6 +344,47 @@ func TestSearchDiscoveryOwnerIsolation(t *testing.T) {
 	}
 }
 
+// TestSearchDiscoverySupersededHidden (WR-01) pins that SearchDiscovery
+// applies the same superseded_by soft-hide gate Search/List already carry —
+// a superseded discovery must not remain visible via search_discovery.
+func TestSearchDiscoverySupersededHidden(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "discovery:repo:superseded-hidden"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	supersededID := "cd000000-0000-0000-0000-000000000001"
+	liveID := "cd000000-0000-0000-0000-000000000002"
+	newID := "cd000000-0000-0000-0000-000000000003"
+	vec := []float32{0.1, 0.2, 0.3}
+
+	superseded := Memory{
+		ID: supersededID, Content: "old discovery", Scope: scope, Category: "discovery",
+		Kind: "fact", Owner: "sub-A", CreatedAt: time.Now().UTC(), SupersededBy: &newID,
+	}
+	if err := s.Upsert(ctx, superseded, vec); err != nil {
+		t.Fatalf("upsert superseded: %v", err)
+	}
+	live := Memory{
+		ID: liveID, Content: "live discovery", Scope: scope, Category: "discovery",
+		Kind: "fact", Owner: "sub-A", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, live, vec); err != nil {
+		t.Fatalf("upsert live: %v", err)
+	}
+
+	hits, err := s.SearchDiscovery(ctx, scope, "", Authenticated("sub-A"), vec, 10)
+	if err != nil {
+		t.Fatalf("SearchDiscovery: %v", err)
+	}
+	if got := recordIDs(hits); slices.Contains(got, supersededID) {
+		t.Errorf("SearchDiscovery: superseded record %s present, want excluded: %v", supersededID, got)
+	}
+	if got := recordIDs(hits); !slices.Contains(got, liveID) {
+		t.Errorf("SearchDiscovery: live record %s absent, want present: %v", liveID, got)
+	}
+}
+
 func TestFromPayloadSkipsNonStructCitation(t *testing.T) {
 	// A malformed citations list (a stray non-struct item) must not yield an
 	// empty Citation{}; the struct items still read back. Pure unit test — no Qdrant.
