@@ -35,6 +35,10 @@ import (
 //     the read handlers thread the request ctx into d.em.Embed/store ops, so a
 //     client cancellation or request-deadline timeout must not be
 //     misclassified as CodeInternal.
+//   - store.ErrAlreadySuperseded -> CodeFailedPrecondition (Phase 25, Plan
+//     02): pre-positioning only — supersede_memory is MCP-only this phase, no
+//     Connect RPC exposes it yet — kept so the sentinel switch stays
+//     exhaustive, exactly like the ErrIdempotencyConflict case below.
 //
 // Everything else falls through to CodeInternal, which logs the underlying
 // error via slog.ErrorContext(ctx, ...) (request-scoped trace/log fields) and
@@ -63,6 +67,13 @@ func connectError(ctx context.Context, err error) error {
 		// (MCP-first per REQUIREMENTS Deferred), so this row cannot yet be
 		// triggered — kept here so the sentinel switch stays exhaustive.
 		return connect.NewError(connect.CodeAlreadyExists, err)
+	case errors.Is(err, store.ErrAlreadySuperseded):
+		// Pre-positioning only (Phase 25, Plan 02): supersede_memory is
+		// MCP-only this phase — no Connect RPC exposes it yet — so this row
+		// cannot yet be triggered from the Connect lane. Kept here so the
+		// sentinel switch stays exhaustive, exactly like the
+		// ErrIdempotencyConflict case above.
+		return connect.NewError(connect.CodeFailedPrecondition, err)
 	case errors.Is(err, context.Canceled):
 		return connect.NewError(connect.CodeCanceled, err)
 	case errors.Is(err, context.DeadlineExceeded):
