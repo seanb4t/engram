@@ -59,7 +59,7 @@ store-layer authz **primitive**, and the memory contract stays additive.
 
 ### Capture Ergonomics & Correctness
 
-- [ ] **REQ-idempotent-capture**: `store_memory` accepts an optional idempotency key and provides
+- [x] **REQ-idempotent-capture**: `store_memory` accepts an optional idempotency key and provides
   **strict replay-safety**: a repeat call with the same key + owner returns the original record /
   result unchanged, and a repeat with the same key but different content is rejected with an
   explicit mismatch error. Idempotency is owner-scoped (a key never collides across owners) and
@@ -132,7 +132,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | REQ-static-token-auth | Phase 23 | Complete |
 | REQ-service-owner-failclosed | Phase 23 | Complete |
 | REQ-service-principal-isolation | Phase 23 | Complete |
-| REQ-idempotent-capture | Phase 24 | Pending |
+| REQ-idempotent-capture | Phase 24 | Complete |
 | REQ-supersession-links | Phase 25 | Pending |
 | REQ-memory-citations | Phase 26 | Pending |
 | REQ-category-filter | Phase 26 | Pending |

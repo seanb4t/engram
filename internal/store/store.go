@@ -81,6 +81,14 @@ var ErrAmbiguousShortID = errors.New("ambiguous short id")
 // request indefinitely.
 var ErrShortIDExhausted = errors.New("short id mint exhausted")
 
+// ErrIdempotencyConflict is returned when a keyed store_memory/schedule_memory
+// replay is submitted with the same idempotency key but content that does not
+// match the stored IdempotencyFingerprint (Phase 24, D-10). It is a distinct,
+// reportable sentinel — deliberately NOT an alias of ErrNotFound and never
+// folded into the not-found path, so a coding agent can tell "no such record"
+// apart from "you reused a key with different content."
+var ErrIdempotencyConflict = errors.New("idempotency key reused with different content")
+
 // maxMintAttempts bounds MintShortID's real (Qdrant Count-checked) collision
 // attempts. 16 is extra headroom over the ~8 that is already astronomically
 // safe in a 32^10 Crockford base32 space (D-04).
@@ -201,6 +209,29 @@ type Memory struct {
 	// paths (shapeRecall full, get_memory, listRules full), so a normal json
 	// tag here would leak the audit field onto the wire (D-06).
 	EmbedderIdentity string `json:"-"`
+	// IdempotencyFingerprint is a server-set sha256 content fingerprint (see
+	// internal/server's contentFingerprint) of the client-authored fields
+	// submitted on a keyed store_memory/schedule_memory call (Phase 24, D-06/
+	// D-07). Empty for a keyless record. It is compared on replay to detect
+	// same-key/different-content (ErrIdempotencyConflict) and is NEVER
+	// recall-filtered or Qdrant-indexed — a point Get is the only reader. The
+	// `json:"-"` tag is deliberate and load-bearing, exactly like
+	// EmbedderIdentity above: this field is payload-only, persisted
+	// EXCLUSIVELY through the manual payload()/fromPayload() codec below, and
+	// must NEVER cross any JSON wire — store.Memory is returned verbatim on
+	// the full-response MCP paths, so a normal json tag here would leak the
+	// fingerprint onto the wire.
+	//
+	// Frozen at create time (IN-02): Store.Update re-Upserts the fetched
+	// record's existing IdempotencyFingerprint verbatim — it is never
+	// recomputed from the record's post-update Content. A future keyed
+	// store_memory replay using the ORIGINAL creation-time content will
+	// still fingerprint-match against a record whose current content has
+	// since diverged via update_memory. This is intentional (update_memory
+	// is a distinct, explicit mutation path outside the idempotent-capture
+	// contract, not a replay), but a reader should not assume this field
+	// tracks the record's current state.
+	IdempotencyFingerprint string `json:"-"`
 }
 
 // embedderIdentityKey is the shared Qdrant payload key for
@@ -208,6 +239,11 @@ type Memory struct {
 // Reused verbatim by Store.Reindex's divergent raw-map write (13-03) — defined
 // once here so the two sites cannot drift.
 const embedderIdentityKey = "embedder_identity"
+
+// idempotencyFingerprintKey is the shared Qdrant payload key for
+// Memory.IdempotencyFingerprint, written by payload() and read by
+// fromPayload() (Phase 24, D-06). Payload-only, unindexed (DEC-ef28 unchanged).
+const idempotencyFingerprintKey = "idempotency_fingerprint"
 
 // EmbedText builds the text sent to the embedder for a record. Tags are folded
 // into the embedded document so curated keywords contribute to vector recall
@@ -407,6 +443,7 @@ func payload(m Memory) map[string]any {
 	}
 	p["access_count"] = m.AccessCount
 	p[embedderIdentityKey] = m.EmbedderIdentity
+	p[idempotencyFingerprintKey] = m.IdempotencyFingerprint
 	if m.LastAccessedAt != nil {
 		p["last_accessed_at"] = m.LastAccessedAt.Format(time.RFC3339)
 	}
@@ -498,6 +535,9 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	}
 	if v, ok := p[embedderIdentityKey]; ok {
 		m.EmbedderIdentity = v.GetStringValue()
+	}
+	if v, ok := p[idempotencyFingerprintKey]; ok {
+		m.IdempotencyFingerprint = v.GetStringValue()
 	}
 	if v, ok := p["last_accessed_at"]; ok {
 		if t, err := time.Parse(time.RFC3339, v.GetStringValue()); err == nil {
@@ -1463,7 +1503,10 @@ func (s *Store) FetchForUpdate(ctx context.Context, id string, subj Subject) (ou
 // fetched and ownership-verified via FetchForUpdate. It does NOT re-fetch: cur
 // is authoritative, so the update path gates ownership exactly once. When shared
 // is non-nil it also sets visibility (true → "shared", false → ""); nil leaves
-// visibility unchanged so a content edit never silently unshares. tags follows
+// visibility unchanged so a content edit never silently unshares. cur.IdempotencyFingerprint
+// is carried through UNCHANGED (IN-02, see the field's doc comment): Update
+// never recomputes it from the new content, since update_memory is a distinct
+// mutation path outside the keyed-replay contract. tags follows
 // the same presence-signal contract: non-nil replaces the full set (an empty
 // slice clears), nil leaves the existing tags untouched. summary follows the
 // same presence-signal contract: non-nil replaces the summary (empty string

@@ -104,7 +104,7 @@ into shared stores.
 
 - [x] **Phase 22: Cedar Authz Foundation & Store Enforcement** - Cedar (cedar-go v1.8.0) PDP decides authorization over enumerable buckets; `internal/store` compiles decisions into the Qdrant filter — behavior-preserving refinement of DEC-cgb (completed 2026-07-17)
 - [x] **Phase 23: Service Auth Chain & Tenancy Isolation** - Pluggable verifier chain (OIDC user → OIDC client-credentials → static token); a service principal never resolves to the anonymous bucket (completed 2026-07-17)
-- [ ] **Phase 24: Idempotent Capture** - `store_memory` accepts an idempotency key with strict, owner-scoped, race-safe replay-safety
+- [x] **Phase 24: Idempotent Capture** - `store_memory` accepts an idempotency key with strict, owner-scoped, race-safe replay-safety (completed 2026-07-18)
 - [ ] **Phase 25: Supersession with History** - A memory can supersede another via additive links; superseded records are soft-hidden from recall but stay fetchable by id
 - [ ] **Phase 26: Structured Citations, Category Filter & Chat Base URL** - Optional provenance on curated memories, MCP↔Connect category-filter parity, and a distinct chat/summarize base URL
 
@@ -407,7 +407,15 @@ locked as REQUIREMENTS.md's decision to reject; a deterministic point-ID derivat
 5. Omitting the idempotency key preserves today's behavior exactly — a fresh record is created
    every time.
 
-**Plans**: TBD
+**Plans**: 2/2 plans executed
+
+**Wave 1**
+
+- [x] 24-01-PLAN.md — internal/store fingerprint payload field + ErrIdempotencyConflict sentinel + connectError row; internal/server idempotencyPointID + contentFingerprint pure helpers (D-02/D-03/D-04/D-06/D-10) (REQ-idempotent-capture)
+
+**Wave 2** *(depends on 24-01)*
+
+- [x] 24-02-PLAN.md — storeArgs.idempotency_key + tool descriptions + checkIdempotentReplay check-before-embed branch in store_memory/schedule_memory; SC1–SC5 tests incl. two-owner matrix + `-race` concurrency (D-08/D-09/D-11/D-12/D-13) (REQ-idempotent-capture)
 
 ### Phase 25: Supersession with History
 
@@ -498,7 +506,7 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 | 21. CI / Maintenance Hygiene | v0.10.x | 3/3 | Complete   | 2026-07-16 |
 | 22. Cedar Authz Foundation & Store Enforcement | v0.11.x | 2/2 | Complete | 2026-07-17 |
 | 23. Service Auth Chain & Tenancy Isolation | v0.11.x | 4/4 | Complete | 2026-07-17 |
-| 24. Idempotent Capture | v0.11.x | 0/1 | Not started | - |
+| 24. Idempotent Capture | v0.11.x | 2/2 | Complete | 2026-07-18 |
 | 25. Supersession with History | v0.11.x | 0/1 | Not started | - |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 0/3 | Not started | - |
 

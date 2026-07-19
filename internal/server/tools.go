@@ -432,6 +432,10 @@ type storeArgs struct {
 	Worktree  string   `json:"worktree_path,omitempty"`
 	BaseDir   string   `json:"base_dir,omitempty"`
 	Summary   string   `json:"summary,omitempty" jsonschema:"optional one-line recall summary shown in place of content; preserve negations/identifiers; omit to leave empty (operator backfill or truncation fills recall)"`
+	// IdempotencyKey is promoted onto scheduleArgs via Go field embedding
+	// (both store_memory and schedule_memory gain it from this single
+	// declaration, D-13) — do NOT declare it separately on scheduleArgs.
+	IdempotencyKey string `json:"idempotency_key,omitempty" jsonschema:"optional owner-scoped replay-safety key: a repeat call with the same key and identical content returns the original record unchanged (no duplicate, no side-effects); the same key with different content is rejected; omit for a fresh record every time"`
 }
 
 // scheduleArgs embeds storeArgs and adds the temporal window. The anonymous
@@ -559,6 +563,13 @@ const (
 	maxDiscoveryCitations    = 50
 )
 
+// maxIdempotencyKeyBytes bounds storeArgs.IdempotencyKey (IN-01): it is a
+// short opaque client-generated retry token, not free-form content, so a
+// modest cap is defense-in-depth against oversized payloads — consistent
+// with the size-bound discipline the store_discovery fields above already
+// establish for other client-supplied strings in this file.
+const maxIdempotencyKeyBytes = 512
+
 type searchDiscoveryArgs struct {
 	Query      string `json:"query"`
 	Scope      string `json:"scope,omitempty" jsonschema:"required unless cross_spine"`
@@ -647,9 +658,72 @@ func (a storeArgs) toMemory(owner, actor string, createdAt time.Time) store.Memo
 	}
 }
 
+// checkIdempotentReplay resolves the D-08 check-before-embed branch for a
+// keyed store_memory/schedule_memory call — the same "resolve ID -> Get
+// existing -> decide -> THEN embed" shape storeDiscovery already uses, minus
+// its OwnedOrAbsent gate (D-09: owner is baked into the point-ID hash, so a
+// raw Get can only ever resolve to the caller's own record). Absent a key,
+// this is a no-op: the keyless path is untouched and toMemory keeps minting a
+// fresh uuid.NewString() (SC5). With a key it does a single point Get at the
+// deterministic ID — never a search/scroll (D-05) — and returns one of three
+// outcomes:
+//   - absent (store.ErrNotFound): replay=false, pointID set — fall through to
+//     create AT this resolved pointID; the caller MUST thread it into m.ID
+//     rather than recompute it independently (RESEARCH Pattern 2 anti-pattern).
+//   - fingerprint match: replay=true, id/shortID are the ORIGINAL record's —
+//     the caller returns immediately, before Embed/persistAndEnqueue (SC1
+//     zero side-effects: no re-embed, no new short_id, no summary re-enqueue).
+//   - fingerprint mismatch: replay=false, err wraps store.ErrIdempotencyConflict
+//     — surfaced BEFORE Embed (SC2), never a silent overwrite, never a 404.
+//
+// IN-01: the point ID is derived from (owner, scope, key) alone — there is no
+// tool discriminator, so store_memory and schedule_memory SHARE the same
+// idempotency-key namespace by design. A store_memory call with a given key
+// followed by a schedule_memory call reusing that same scope+key+content is a
+// cross-tool replay: it returns the ORIGINAL (unscheduled) record, with no
+// window ever applied, indistinguishable from a genuinely scheduled write.
+// This is intentional (see the D-07 fingerprint excluding the schedule
+// window, RESEARCH Open Question 1) and MUST NOT be changed unilaterally —
+// altering the point-ID hash input is a locked design decision (D-07/D-08)
+// that would silently un-dedup every previously keyed record on its next
+// replay. See TestCheckIdempotentReplayCrossToolNamespaceShared for the
+// pinned current behavior.
+func (d *deps) checkIdempotentReplay(ctx context.Context, owner string, a storeArgs) (replay bool, id, shortID, pointID string, err error) {
+	if a.IdempotencyKey == "" {
+		return false, "", "", "", nil
+	}
+	if len(a.IdempotencyKey) > maxIdempotencyKeyBytes {
+		return false, "", "", "", fmt.Errorf("idempotency_key too large: %d bytes (max %d): %w", len(a.IdempotencyKey), maxIdempotencyKeyBytes, store.ErrInvalidArgument)
+	}
+	pointID = idempotencyPointID(owner, a.Scope, a.IdempotencyKey)
+	existing, gerr := d.st.Get(ctx, pointID)
+	switch {
+	case errors.Is(gerr, store.ErrNotFound):
+		return false, "", "", pointID, nil
+	case gerr != nil:
+		return false, "", "", "", gerr
+	}
+	if contentFingerprint(a) == existing.IdempotencyFingerprint {
+		return true, existing.ID, existing.ShortID, "", nil
+	}
+	return false, "", "", "", fmt.Errorf("idempotency key %q reused with different content: %w", a.IdempotencyKey, store.ErrIdempotencyConflict)
+}
+
 func (d *deps) storeMemory(ctx context.Context, c caller, a storeArgs) (string, string, error) {
-	m := a.toMemory(c.Subj.Owner(), c.Actor, d.clock())
+	owner := c.Subj.Owner()
+	replay, id, shortID, pointID, err := d.checkIdempotentReplay(ctx, owner, a)
+	if err != nil {
+		return "", "", err
+	}
+	if replay {
+		return id, shortID, nil
+	}
+	m := a.toMemory(owner, c.Actor, d.clock())
 	m.EmbedderIdentity = d.embedderIdentity
+	if pointID != "" {
+		m.ID = pointID
+		m.IdempotencyFingerprint = contentFingerprint(a)
+	}
 	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 	if err != nil {
 		return "", "", err // embed first: on error we never touch the store
@@ -674,6 +748,26 @@ func (d *deps) persistAndEnqueue(ctx context.Context, m store.Memory, vec []floa
 	if err := d.st.Upsert(ctx, m, vec); err != nil {
 		return "", "", err
 	}
+	// Re-read the point after Upsert so a concurrent keyed racer that lost the
+	// last-write-wins race (same deterministic pointID, independently minted
+	// short_id) returns the short_id that was ACTUALLY PERSISTED, not the one
+	// it discarded (CR-01). Upsert replaces the whole payload, so whichever
+	// racer wrote last owns the point's short_id going forward; a failed
+	// re-Get here is non-fatal — fall back to the locally-minted value rather
+	// than fail an otherwise-successful write.
+	//
+	// Gated to the keyed path only (WR-01): m.IdempotencyFingerprint is only
+	// ever non-empty when this write used a deterministic pointID (set in
+	// storeMemory/scheduleMemory right before calling persistAndEnqueue). On
+	// a keyless write, m.ID is a fresh uuid.NewString() that no concurrent
+	// request can ever target, so the race this re-Get resolves is
+	// structurally impossible there — skip the extra Qdrant round trip on
+	// the overwhelmingly common (keyless) case.
+	if m.IdempotencyFingerprint != "" {
+		if persisted, gerr := d.st.Get(ctx, m.ID); gerr == nil {
+			m.ShortID = persisted.ShortID
+		}
+	}
 	// Enqueue only after a confirmed-successful Upsert; never blocks/errors
 	// the write path even when the queue is disabled or full (SC#1, SC#2).
 	d.summaryQueue.tryEnqueue(m.ID)
@@ -691,15 +785,40 @@ func (d *deps) clock() time.Time {
 }
 
 func (d *deps) scheduleMemory(ctx context.Context, c caller, a scheduleArgs) (string, string, error) {
+	// checkIdempotentReplay runs BEFORE parseWindow's future-only validation
+	// (WR-02): the window is deliberately excluded from the D-07 content
+	// fingerprint precisely so a retry doesn't need to resend a still-valid
+	// window. If parseWindow ran first, a delayed retry of an
+	// already-successful schedule_memory call with the SAME not_after value
+	// could be rejected with ErrInvalidArgument (now no longer in the
+	// future) before checkIdempotentReplay ever got a chance to recognize it
+	// as a no-op replay. parseWindow only needs to run on the non-replay
+	// (create) path below.
+	owner := c.Subj.Owner()
+	replay, id, shortID, pointID, err := d.checkIdempotentReplay(ctx, owner, a.storeArgs)
+	if err != nil {
+		return "", "", err
+	}
+	if replay {
+		// The schedule window is excluded from the D-07 content fingerprint
+		// (RESEARCH Open Question 1, deliberately resolved): a replay with a
+		// CHANGED not_before/not_after still returns the original record with
+		// its ORIGINAL window unchanged.
+		return id, shortID, nil
+	}
 	now := d.clock()
 	nb, na, err := parseWindow(a, now)
 	if err != nil {
 		return "", "", err
 	}
-	m := a.toMemory(c.Subj.Owner(), c.Actor, now)
+	m := a.toMemory(owner, c.Actor, now)
 	m.NotBefore = nb
 	m.NotAfter = na
 	m.EmbedderIdentity = d.embedderIdentity
+	if pointID != "" {
+		m.ID = pointID
+		m.IdempotencyFingerprint = contentFingerprint(a.storeArgs)
+	}
 	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 	if err != nil {
 		return "", "", err // embed first: on error we never touch the store
@@ -1134,7 +1253,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 
 	s.AddReceivingMiddleware(instrumentTools(tm.Record))
 
-	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps. Optionally pass `summary`: a one-line recall summary shown in place of content (keep negations/identifiers verbatim). The result includes the memory's id and short_id."},
+	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps. Optionally pass `summary`: a one-line recall summary shown in place of content (keep negations/identifiers verbatim). Optionally pass `idempotency_key` for safe retries: same key + identical content returns the original id/short_id unchanged; same key + different content is rejected; omit for a fresh record every time. The result includes the memory's id and short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1144,7 +1263,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "schedule_memory", Description: "Persist a memory with a validity window (not_before defers recall; not_after expires it). At least one bound (RFC3339) is required; use store_memory for unscheduled records. The result includes the memory's id and short_id."},
+	mcp.AddTool(s, &mcp.Tool{Name: "schedule_memory", Description: "Persist a memory with a validity window (not_before defers recall; not_after expires it). At least one bound (RFC3339) is required; use store_memory for unscheduled records. Optionally pass `idempotency_key` for safe retries: same key + identical content returns the original id/short_id unchanged (the schedule window is NOT part of the replay check); same key + different content is rejected; omit for a fresh record every time. The result includes the memory's id and short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a scheduleArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {

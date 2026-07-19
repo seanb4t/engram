@@ -57,6 +57,12 @@ func connectError(ctx context.Context, err error) error {
 		return connect.NewError(connect.CodeFailedPrecondition, err)
 	case errors.Is(err, store.ErrAmbiguousShortID):
 		return connect.NewError(connect.CodeFailedPrecondition, err)
+	case errors.Is(err, store.ErrIdempotencyConflict):
+		// Pre-positioning only (Phase 24, Plan 01): idempotency_key is
+		// structurally unreachable from the Connect write lane this phase
+		// (MCP-first per REQUIREMENTS Deferred), so this row cannot yet be
+		// triggered — kept here so the sentinel switch stays exhaustive.
+		return connect.NewError(connect.CodeAlreadyExists, err)
 	case errors.Is(err, context.Canceled):
 		return connect.NewError(connect.CodeCanceled, err)
 	case errors.Is(err, context.DeadlineExceeded):

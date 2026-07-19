@@ -712,6 +712,457 @@ func TestStoreMemoryMintsAndReturnsShortID(t *testing.T) {
 	}
 }
 
+// TestStoreMemoryNoKeyAlwaysFresh pins SC5: omitting idempotency_key preserves
+// today's behavior byte-for-byte — two keyless calls with identical content
+// each mint a fresh, DISTINCT random uuid.NewString() id. Adding the
+// IdempotencyKey field must not perturb this.
+func TestStoreMemoryNoKeyAlwaysFresh(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "owner-nokey")
+	scope := "iso-test:project:idempotency-nokey"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Authenticated("owner-nokey")))
+	}()
+
+	args := storeArgs{Content: "no key here", Scope: scope, Source: "user-said", Category: "gotcha"}
+	id1, _, err := d.storeMemory(ctx, callerFor(ctx, t), args)
+	if err != nil {
+		t.Fatalf("storeMemory (first): %v", err)
+	}
+	id2, _, err := d.storeMemory(ctx, callerFor(ctx, t), args)
+	if err != nil {
+		t.Fatalf("storeMemory (second): %v", err)
+	}
+	if id1 == id2 {
+		t.Fatalf("two keyless store_memory calls with identical content minted the SAME id %q; want distinct fresh ids (SC5)", id1)
+	}
+}
+
+// TestStoreMemoryIdempotencyKeyTooLarge pins IN-01: an oversized
+// idempotency_key is rejected before it is ever hashed into the point ID or
+// touches the store — no Qdrant/embedder round trip needed, consistent with
+// the size-bound discipline storeDiscoveryArgs already enforces for other
+// client-supplied strings in this file.
+func TestStoreMemoryIdempotencyKeyTooLarge(t *testing.T) {
+	d := &deps{}
+	ctx := authedContext(t, "sub-A")
+	a := storeArgs{
+		Content: "x", Scope: "cap:project:x", Source: "user-said", Category: "decision",
+		IdempotencyKey: strings.Repeat("k", maxIdempotencyKeyBytes+1),
+	}
+	_, _, err := d.storeMemory(ctx, callerFor(ctx, t), a)
+	if err == nil {
+		t.Fatal("oversized idempotency_key should be rejected, got nil error")
+	}
+	if !errors.Is(err, store.ErrInvalidArgument) {
+		t.Fatalf("error = %v, want wrapping store.ErrInvalidArgument", err)
+	}
+}
+
+// TestStoreMemoryIdempotentReplayReturnsOriginal pins SC1: a keyed store_memory
+// call, repeated with identical content, returns the ORIGINAL (id, short_id)
+// unchanged — no duplicate point, and zero side-effects (no second Embed).
+func TestStoreMemoryIdempotentReplayReturnsOriginal(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	spy := &countingEmbedder{}
+	d.em = spy
+	ctx := authedContext(t, "owner-replay")
+	scope := "iso-test:project:idempotency-replay"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-replay")))
+	}()
+
+	args := storeArgs{
+		Content: "replay me", Scope: scope, Source: "user-said", Category: "gotcha",
+		IdempotencyKey: "key-1",
+	}
+	id1, sid1, err := d.storeMemory(ctx, callerFor(ctx, t), args)
+	if err != nil {
+		t.Fatalf("storeMemory (first): %v", err)
+	}
+	if spy.calls != 1 {
+		t.Fatalf("first call: embed calls = %d, want 1", spy.calls)
+	}
+
+	id2, sid2, err := d.storeMemory(ctx, callerFor(ctx, t), args)
+	if err != nil {
+		t.Fatalf("storeMemory (replay): %v", err)
+	}
+	if id2 != id1 || sid2 != sid1 {
+		t.Fatalf("replay returned a different record: (id=%q,sid=%q), want (id=%q,sid=%q)", id2, sid2, id1, sid1)
+	}
+	if spy.calls != 1 {
+		t.Fatalf("replay triggered an embed call: embed calls = %d, want still 1 (zero side-effects, SC1)", spy.calls)
+	}
+
+	_, total, _, err := st.List(ctx, scope, store.Authenticated("owner-replay"), store.ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("store holds %d points for scope %q, want exactly 1 (no duplicate, SC1)", total, scope)
+	}
+}
+
+// TestStoreMemoryIdempotentReplayRejectsMismatch pins SC2: same key + same
+// owner + different content is rejected with store.ErrIdempotencyConflict
+// (errors.Is true) — never a silent overwrite, never a 404 — and the original
+// record is left unchanged.
+func TestStoreMemoryIdempotentReplayRejectsMismatch(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "owner-mismatch")
+	scope := "iso-test:project:idempotency-mismatch"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-mismatch")))
+	}()
+
+	first := storeArgs{
+		Content: "original content", Scope: scope, Source: "user-said", Category: "gotcha",
+		IdempotencyKey: "key-mismatch",
+	}
+	id1, _, err := d.storeMemory(ctx, callerFor(ctx, t), first)
+	if err != nil {
+		t.Fatalf("storeMemory (first): %v", err)
+	}
+
+	second := first
+	second.Content = "DIFFERENT content"
+	_, _, err = d.storeMemory(ctx, callerFor(ctx, t), second)
+	if !errors.Is(err, store.ErrIdempotencyConflict) {
+		t.Fatalf("mismatch: want errors.Is(err, store.ErrIdempotencyConflict), got %v", err)
+	}
+
+	got, gerr := st.Get(ctx, id1)
+	if gerr != nil {
+		t.Fatalf("Get after mismatch: %v", gerr)
+	}
+	if got.Content != "original content" {
+		t.Fatalf("original record content was mutated by the rejected replay: got %q, want %q", got.Content, "original content")
+	}
+}
+
+// TestStoreMemoryIdempotentKeyScopedPerOwner pins SC3 (Pitfall 2 matrix): two
+// distinct owners using the IDENTICAL idempotency_key value and identical
+// content get two independent records — owner is baked into the deterministic
+// point-ID hash, so cross-owner collision is structurally impossible, not
+// filter-enforced (D-09).
+func TestStoreMemoryIdempotentKeyScopedPerOwner(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	scope := "iso-test:project:idempotency-cross-owner"
+	ctxA := authedContext(t, "owner-idem-A")
+	ctxB := authedContext(t, "owner-idem-B")
+	defer func() {
+		cleanupErr(t, "DeleteAll A "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-idem-A")))
+		cleanupErr(t, "DeleteAll B "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-idem-B")))
+	}()
+
+	args := storeArgs{
+		Content: "shared key content", Scope: scope, Source: "user-said", Category: "gotcha",
+		IdempotencyKey: "same-key-both-owners",
+	}
+	idA, _, err := d.storeMemory(ctxA, callerFor(ctxA, t), args)
+	if err != nil {
+		t.Fatalf("storeMemory (owner A): %v", err)
+	}
+	idB, _, err := d.storeMemory(ctxB, callerFor(ctxB, t), args)
+	if err != nil {
+		t.Fatalf("storeMemory (owner B): %v", err)
+	}
+	if idA == idB {
+		t.Fatalf("two owners with the identical idempotency_key collided on id %q; want structurally distinct ids (SC3)", idA)
+	}
+
+	gotA, err := st.Get(context.Background(), idA)
+	if err != nil || gotA.Owner != "owner-idem-A" {
+		t.Fatalf("owner A record: owner=%q err=%v", gotA.Owner, err)
+	}
+	gotB, err := st.Get(context.Background(), idB)
+	if err != nil || gotB.Owner != "owner-idem-B" {
+		t.Fatalf("owner B record: owner=%q err=%v", gotB.Owner, err)
+	}
+
+	itemsA, _, _, err := st.List(ctxA, scope, store.Authenticated("owner-idem-A"), store.ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List (owner A): %v", err)
+	}
+	for _, m := range itemsA {
+		if m.ID == idB {
+			t.Fatalf("owner A's List leaked owner B's record %q", idB)
+		}
+	}
+}
+
+// TestStoreMemoryIdempotentConcurrentIdenticalOnePoint pins SC4 (Pitfall 3): N
+// concurrent identical (same key + same content) store_memory calls resolve to
+// exactly one Qdrant point — the deterministic-ID Upsert is the sole isolation
+// primitive, no application lock, no search-then-insert TOCTOU check. Must run
+// under `go test -race`. Per D-12, this asserts ONLY the no-duplicate
+// invariant, never reject-under-simultaneous-mismatch.
+func TestStoreMemoryIdempotentConcurrentIdenticalOnePoint(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "owner-concurrent")
+	scope := "iso-test:project:idempotency-concurrent"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-concurrent")))
+	}()
+	c := callerFor(ctx, t)
+
+	args := storeArgs{
+		Content: "concurrent identical", Scope: scope, Source: "user-said", Category: "gotcha",
+		IdempotencyKey: "concurrent-key",
+	}
+
+	const n = 20
+	type result struct {
+		id, shortID string
+		err         error
+	}
+	results := make(chan result, n)
+	var wg sync.WaitGroup
+	for range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			id, sid, err := d.storeMemory(ctx, c, args)
+			results <- result{id, sid, err}
+		}()
+	}
+	wg.Wait()
+	close(results)
+
+	var firstID string
+	for r := range results {
+		if r.err != nil {
+			t.Fatalf("storeMemory (concurrent): %v", r.err)
+		}
+		if firstID == "" {
+			firstID = r.id
+		} else if r.id != firstID {
+			t.Fatalf("concurrent identical keyed calls minted DIFFERENT ids: %q vs %q (SC4 no-duplicate invariant violated)", firstID, r.id)
+		}
+	}
+
+	_, total, _, err := st.List(ctx, scope, store.Authenticated("owner-concurrent"), store.ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("store holds %d points after %d concurrent identical keyed calls, want exactly 1 (SC4)", total, n)
+	}
+}
+
+// TestStoreMemoryIdempotentConcurrentMismatchConvergesOnePoint pins the D-12
+// honest-concurrency boundary (fovea review, PR #404): under true simultaneity,
+// N keyed store_memory calls that share one idempotency key but carry DIFFERENT
+// content converge to exactly one Qdrant point — no duplicate, no corruption.
+// The mismatch reject is best-effort: a racer that observes the already-written
+// point rejects with store.ErrIdempotencyConflict, while racers that pass the
+// pre-write existence check before any Upsert land as last-writer-wins. The
+// safety invariant (one point, intact content) always holds. This is the
+// deliberately-accepted boundary documented as R-24-02 in 24-SECURITY.md; a
+// deterministic "reject always fires" guarantee would require per-point
+// locking/singleflight we intentionally did not add.
+func TestStoreMemoryIdempotentConcurrentMismatchConvergesOnePoint(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "owner-mismatch")
+	scope := "iso-test:project:idempotency-mismatch"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-mismatch")))
+	}()
+	c := callerFor(ctx, t)
+
+	const n = 20
+	type result struct {
+		id  string
+		err error
+	}
+	results := make(chan result, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			// Same key, DISTINCT content per racer — every fingerprint differs.
+			args := storeArgs{
+				Content: fmt.Sprintf("mismatch content %d", i), Scope: scope,
+				Source: "user-said", Category: "gotcha", IdempotencyKey: "mismatch-key",
+			}
+			id, _, err := d.storeMemory(ctx, c, args)
+			results <- result{id, err}
+		}(i)
+	}
+	wg.Wait()
+	close(results)
+
+	var winnerID string
+	successes := 0
+	for r := range results {
+		switch {
+		case r.err == nil:
+			successes++
+			// All racers share (owner, scope, key) → one deterministic point ID.
+			if winnerID == "" {
+				winnerID = r.id
+			} else if r.id != winnerID {
+				t.Fatalf("successful concurrent mismatch calls returned DIFFERENT ids: %q vs %q", winnerID, r.id)
+			}
+		case errors.Is(r.err, store.ErrIdempotencyConflict):
+			// Best-effort reject — acceptable under D-12.
+		default:
+			t.Fatalf("storeMemory (concurrent mismatch): unexpected error: %v", r.err)
+		}
+	}
+	if successes == 0 {
+		t.Fatal("no concurrent mismatch call succeeded — expected at least one last-writer-wins winner")
+	}
+
+	// Safety invariant: exactly one point, content intact (one of the submitted
+	// values, never a partial/corrupt/merged write).
+	items, total, _, err := st.List(ctx, scope, store.Authenticated("owner-mismatch"), store.ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if total != 1 || len(items) != 1 {
+		t.Fatalf("store holds %d points (len=%d) after %d concurrent mismatch keyed calls, want exactly 1 (D-12 converge-to-one)", total, len(items), n)
+	}
+	if got := items[0].Content; !strings.HasPrefix(got, "mismatch content ") {
+		t.Fatalf("stored content %q is not one of the submitted values — possible corruption (D-12 last-writer-wins expected)", got)
+	}
+}
+
+// TestScheduleMemoryIdempotentIgnoresWindowChange documents and pins the
+// conscious resolution of RESEARCH Open Question 1: the schedule window
+// (not_before/not_after) is EXCLUDED from the D-07 content fingerprint. A
+// replay with the same key + identical storeArgs content but a CHANGED window
+// returns the original record with its ORIGINAL window unchanged — this is an
+// intentional, tested decision, not an oversight.
+func TestScheduleMemoryIdempotentIgnoresWindowChange(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "owner-window")
+	scope := "iso-test:project:idempotency-window"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-window")))
+	}()
+
+	base := storeArgs{
+		Content: "windowed content", Scope: scope, Source: "user-said", Category: "gotcha",
+		IdempotencyKey: "window-key",
+	}
+	firstNotAfter := timeNow().Add(1 * time.Hour).Format(time.RFC3339)
+	id1, sid1, err := d.scheduleMemory(ctx, callerFor(ctx, t), scheduleArgs{storeArgs: base, NotAfter: firstNotAfter})
+	if err != nil {
+		t.Fatalf("scheduleMemory (first): %v", err)
+	}
+
+	secondNotAfter := timeNow().Add(48 * time.Hour).Format(time.RFC3339)
+	id2, sid2, err := d.scheduleMemory(ctx, callerFor(ctx, t), scheduleArgs{storeArgs: base, NotAfter: secondNotAfter})
+	if err != nil {
+		t.Fatalf("scheduleMemory (replay with different window): %v", err)
+	}
+	if id2 != id1 || sid2 != sid1 {
+		t.Fatalf("replay with a changed window minted a different record: (id=%q,sid=%q), want (id=%q,sid=%q)", id2, sid2, id1, sid1)
+	}
+
+	got, err := st.Get(ctx, id1)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	wantNotAfter, perr := time.Parse(time.RFC3339, firstNotAfter)
+	if perr != nil {
+		t.Fatalf("parse firstNotAfter: %v", perr)
+	}
+	if got.NotAfter == nil || !got.NotAfter.Equal(wantNotAfter) {
+		t.Fatalf("original schedule window was overwritten by the replay: got NotAfter=%v, want %v (window excluded from replay fingerprint, D-07/Open Question 1)", got.NotAfter, wantNotAfter)
+	}
+}
+
+// TestScheduleMemoryIdempotentRetryAfterWindowLapses pins WR-02: a delayed
+// retry of an already-successful schedule_memory call must be recognized as
+// a replay even when its (unchanged) not_after value is no longer in the
+// future by the time the retry lands — checkIdempotentReplay must run BEFORE
+// parseWindow's future-only check, not after, or the retry is wrongly
+// rejected with ErrInvalidArgument instead of returning the original record.
+func TestScheduleMemoryIdempotentRetryAfterWindowLapses(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "owner-retry")
+	scope := "iso-test:project:idempotency-retry-lapse"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-retry")))
+	}()
+
+	clockNow := time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
+	d.now = func() time.Time { return clockNow }
+
+	base := storeArgs{
+		Content: "retry after window lapses", Scope: scope, Source: "user-said", Category: "gotcha",
+		IdempotencyKey: "retry-lapse-key",
+	}
+	notAfter := clockNow.Add(1 * time.Hour).Format(time.RFC3339)
+
+	id1, sid1, err := d.scheduleMemory(ctx, callerFor(ctx, t), scheduleArgs{storeArgs: base, NotAfter: notAfter})
+	if err != nil {
+		t.Fatalf("scheduleMemory (first): %v", err)
+	}
+
+	// Advance the injected clock PAST the original not_after — the client's
+	// retry (lost response, network partition, etc.) lands late enough that
+	// the SAME not_after value is no longer in the future.
+	clockNow = clockNow.Add(2 * time.Hour)
+
+	id2, sid2, err := d.scheduleMemory(ctx, callerFor(ctx, t), scheduleArgs{storeArgs: base, NotAfter: notAfter})
+	if err != nil {
+		t.Fatalf("scheduleMemory (delayed retry, same not_after now in the past): %v (WR-02: must resolve as a replay, not a parseWindow rejection)", err)
+	}
+	if id2 != id1 || sid2 != sid1 {
+		t.Fatalf("delayed retry minted a different record: (id=%q,sid=%q), want (id=%q,sid=%q)", id2, sid2, id1, sid1)
+	}
+}
+
+// TestCheckIdempotentReplayCrossToolNamespaceShared pins IN-01: store_memory
+// and schedule_memory share the SAME idempotency-key namespace — the point ID
+// is derived from (owner, scope, key) alone, with no tool discriminator. A
+// store_memory call followed by a schedule_memory retry reusing the same
+// scope+key+content is a cross-tool replay: it returns the ORIGINAL
+// (unscheduled) record with no window ever applied, not an error and not a
+// newly scheduled record. This is intentional (D-07/D-08 lock the point-ID
+// hash input) — this test pins the CURRENT documented behavior so a future
+// change to either handler can't silently alter it unnoticed.
+func TestCheckIdempotentReplayCrossToolNamespaceShared(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "owner-cross-tool")
+	scope := "iso-test:project:idempotency-cross-tool"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-cross-tool")))
+	}()
+
+	base := storeArgs{
+		Content: "cross-tool shared key", Scope: scope, Source: "user-said", Category: "gotcha",
+		IdempotencyKey: "cross-tool-key",
+	}
+
+	storeID, storeSID, err := d.storeMemory(ctx, callerFor(ctx, t), base)
+	if err != nil {
+		t.Fatalf("storeMemory (first): %v", err)
+	}
+
+	notAfter := timeNow().Add(1 * time.Hour).Format(time.RFC3339)
+	schedID, schedSID, err := d.scheduleMemory(ctx, callerFor(ctx, t), scheduleArgs{storeArgs: base, NotAfter: notAfter})
+	if err != nil {
+		t.Fatalf("scheduleMemory (cross-tool replay of a store_memory key): %v", err)
+	}
+	if schedID != storeID || schedSID != storeSID {
+		t.Fatalf("cross-tool replay minted a different record: (id=%q,sid=%q), want the original store_memory record (id=%q,sid=%q)", schedID, schedSID, storeID, storeSID)
+	}
+
+	got, err := st.Get(ctx, storeID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.NotAfter != nil {
+		t.Fatalf("cross-tool replay applied a schedule window to a store_memory-created record: NotAfter=%v, want nil (original record has no window)", got.NotAfter)
+	}
+}
+
 // TestStoreMemoryEnqueuesOnSuccess pins SC#1: a successful storeMemory
 // enqueues the record id for async summary fill, and the worker drains it —
 // asserted deterministically via the Wait() drain seam (no time.Sleep).
