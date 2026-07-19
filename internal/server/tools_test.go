@@ -1855,6 +1855,107 @@ func TestSetVisibilityReturnsMutationResult(t *testing.T) {
 	}
 }
 
+// TestSupersedeMemory pins the supersede_memory handler contract (SC1-SC4):
+// storing with supersedes stamps the target's superseded_by, hides the target
+// from search_memory/list_memory while keeping it fetchable via get_memory,
+// and a non-owner caller supersede attempt on someone else's target is
+// rejected with store.ErrNotFound re-wrapped with the caller's ORIGINAL
+// unresolved a.Supersedes input (404-indistinguishability), never the
+// resolved target UUID.
+func TestSupersedeMemory(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-a")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-handler"
+
+	targetID, targetSID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original content", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete target", d.st.Delete(context.Background(), targetID, store.Authenticated("sub-supersede-a")))
+	})
+
+	newID, newSID, err := d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs:  storeArgs{Content: "corrected content", Scope: scope, Category: "gotcha", Source: "user-said"},
+		Supersedes: targetSID,
+	})
+	if err != nil {
+		t.Fatalf("supersedeMemory: %v", err)
+	}
+	if newID == "" || newSID == "" {
+		t.Fatalf("supersedeMemory returned empty id/short_id: id=%q short_id=%q", newID, newSID)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete new record", d.st.Delete(context.Background(), newID, store.Authenticated("sub-supersede-a")))
+	})
+
+	// The target must show superseded_by == new id, content untouched.
+	target, err := d.getMemory(ctx, c, idArgs{ID: targetID})
+	if err != nil {
+		t.Fatalf("get target: %v", err)
+	}
+	if target.SupersededBy == nil || *target.SupersededBy != newID {
+		t.Errorf("target.SupersededBy = %v, want %q", target.SupersededBy, newID)
+	}
+	if target.Content != "original content" {
+		t.Errorf("target content mutated: %q", target.Content)
+	}
+
+	// The new record must carry supersedes == target.
+	newRec, err := d.getMemory(ctx, c, idArgs{ID: newID})
+	if err != nil {
+		t.Fatalf("get new record: %v", err)
+	}
+	if newRec.Supersedes == nil || *newRec.Supersedes != targetID {
+		t.Errorf("newRec.Supersedes = %v, want %q", newRec.Supersedes, targetID)
+	}
+
+	// The target must be absent from list_memory.
+	listRes, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 50})
+	if err != nil {
+		t.Fatalf("listMemory: %v", err)
+	}
+	for _, m := range listRes.Memories {
+		if m.ID == targetID {
+			t.Errorf("target %s still present in list_memory after supersede", targetID)
+		}
+	}
+
+	// The target must be absent from search_memory.
+	hits, err := d.searchMemory(ctx, c, coreSearchRequest{Scope: scope, Query: "original content", K: 10})
+	if err != nil {
+		t.Fatalf("searchMemory: %v", err)
+	}
+	for _, m := range hits {
+		if m.ID == targetID {
+			t.Errorf("target %s still present in search_memory after supersede", targetID)
+		}
+	}
+
+	// Owner-gate re-wrap: a different owner cannot supersede sub-supersede-a's
+	// target; the error re-wraps store.ErrNotFound with the caller's ORIGINAL
+	// a.Supersedes input (the target's short_id), never the resolved UUID —
+	// mirrors setVisibility/storeDiscovery's 404-indistinguishability.
+	otherCtx := authedContext(t, "sub-supersede-b")
+	otherC := callerFor(otherCtx, t)
+	_, _, err = d.supersedeMemory(otherCtx, otherC, supersedeArgs{
+		storeArgs:  storeArgs{Content: "attacker content", Scope: scope, Category: "gotcha", Source: "user-said"},
+		Supersedes: targetSID,
+	})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("cross-owner supersede err = %v, want store.ErrNotFound", err)
+	}
+	if !strings.Contains(err.Error(), targetSID) {
+		t.Errorf("cross-owner err %v does not echo caller's original input %q", err, targetSID)
+	}
+	if strings.Contains(err.Error(), targetID) {
+		t.Errorf("cross-owner err %v leaks resolved target UUID %q (404-indistinguishability violation)", err, targetID)
+	}
+}
+
 // TestUpdateMemoryTagsHandler pins the full tag-mutation contract: supplying
 // tags replaces them, an empty slice clears them, omitting tags (nil) preserves
 // the existing set, and the record's id/created_at survive the update (no
