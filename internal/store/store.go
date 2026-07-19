@@ -1587,6 +1587,29 @@ func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *
 		}
 	}()
 
+	// CR-04: this method's whole-payload Upsert below would otherwise silently
+	// erase a concurrent Supersede's superseded_by/supersedes back-stamp if
+	// that Supersede lands between the caller's FetchForUpdate snapshot (cur)
+	// and this call — reproduced and confirmed against real Qdrant. Fix has
+	// two parts, mirroring Supersede's own CR-01 lock (store.go:1815-1862):
+	//   1. Serialize against a concurrent Supersede on the same target via the
+	//      same per-target lock, so the two writers can't interleave.
+	//   2. Re-read the record's current superseded_by/supersedes inside the
+	//      lock and carry them into cur, so even a just-landed back-stamp
+	//      survives this Upsert. A concurrent Delete (Get returns ErrNotFound)
+	//      is left as pre-existing, out-of-scope behavior: Update never
+	//      existence-checks cur, matching its behavior before this fix.
+	unlock, err := s.locker.Lock(ctx, cur.ID)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if fresh, gerr := s.Get(ctx, cur.ID); gerr == nil {
+		cur.Supersedes, cur.SupersededBy = fresh.Supersedes, fresh.SupersededBy
+	} else if !errors.Is(gerr, ErrNotFound) {
+		return gerr
+	}
+
 	cur.Content = content
 	// D-04: the bump piggybacks the already-in-flight Upsert below — zero extra
 	// store round-trip.

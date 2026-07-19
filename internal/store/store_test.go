@@ -2947,6 +2947,79 @@ func TestSupersedeConcurrent(t *testing.T) {
 	}
 }
 
+// TestSupersedeVsUpdateConcurrent (CR-04) pins that Store.Update's
+// whole-payload Upsert can no longer erase a concurrent Store.Supersede's
+// superseded_by back-stamp. Before the fix, Update re-Upserted a
+// FetchForUpdate snapshot taken BEFORE a racing Supersede landed its
+// back-stamp, silently reverting it (empirically confirmed against real
+// Qdrant: Get(target).SupersededBy went set->nil after the racing Update).
+// The fix makes Update take the SAME per-target lock Supersede uses and
+// re-read superseded_by/supersedes inside that lock before writing, so the
+// back-stamp survives regardless of which of the two racing calls wins the
+// lock first. Run with -race — the lock must also be free of data races.
+func TestSupersedeVsUpdateConcurrent(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-test:project:vs-update-concurrent"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+
+	targetID := "d6000000-0000-0000-0000-000000000001"
+	newID := "d6000000-0000-0000-0000-000000000002"
+
+	target := Memory{ID: targetID, Content: "v1", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, target, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert target: %v", err)
+	}
+
+	// The stale snapshot: fetched BEFORE the racing Supersede below lands its
+	// back-stamp, mirroring updateMemory's handler-layer FetchForUpdate call
+	// that happens before its network-bound re-embed.
+	cur, err := s.FetchForUpdate(ctx, targetID, subj)
+	if err != nil {
+		t.Fatalf("FetchForUpdate: %v", err)
+	}
+	if cur.SupersededBy != nil {
+		t.Fatalf("precondition: cur.SupersededBy = %v, want nil before the race", cur.SupersededBy)
+	}
+
+	newMem := Memory{
+		ID: newID, Content: "corrected", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: &targetID,
+	}
+
+	var wg sync.WaitGroup
+	var supersedeErr, updateErr error
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		supersedeErr = s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, targetID, subj)
+	}()
+	go func() {
+		defer wg.Done()
+		updateErr = s.Update(ctx, cur, "v2 content edit", nil, nil, nil, []float32{0.2, 0.3, 0.4})
+	}()
+	wg.Wait()
+
+	if supersedeErr != nil {
+		t.Fatalf("Supersede: %v", supersedeErr)
+	}
+	if updateErr != nil {
+		t.Fatalf("Update: %v", updateErr)
+	}
+
+	gotTarget, err := s.Get(ctx, targetID)
+	if err != nil {
+		t.Fatalf("Get target: %v", err)
+	}
+	if gotTarget.SupersededBy == nil || *gotTarget.SupersededBy != newID {
+		t.Fatalf("target.SupersededBy = %v, want %q (Update must not erase a concurrent Supersede's back-stamp)", gotTarget.SupersededBy, newID)
+	}
+	if gotTarget.Content != "v2 content edit" {
+		t.Errorf("target.Content = %q, want %q (Update's content edit must still land)", gotTarget.Content, "v2 content edit")
+	}
+}
+
 // TestSupersedeForwardChain (D-06) pins that forward chains are allowed: C
 // supersedes A which superseded B. All three remain fetchable by id; only A
 // and B (non-head records) are excluded from Search/List, C (the live head)
