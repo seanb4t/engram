@@ -2503,6 +2503,108 @@ func TestSearchDateWindow(t *testing.T) {
 	}
 }
 
+// TestSupersedeRecallGate pins the superseded_by IS EMPTY soft-hide gate at
+// BOTH recall call sites (Search and List, mirroring TestListDateWindow /
+// TestSearchDateWindow's dual-site pairing) — a record whose SupersededBy is
+// non-empty must be absent from both, yet still fetchable via Get with its
+// content intact. It also pins the Supersedes/SupersededBy payload codec
+// round-trip: non-nil pointers survive a Get, and nil pointers stay nil (no
+// panic on absent payload keys).
+func TestSupersedeRecallGate(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-test:project:recall-gate"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	supersededID := "c0000000-0000-0000-0000-000000000001"
+	liveID := "c0000000-0000-0000-0000-000000000002"
+	newID := "c0000000-0000-0000-0000-000000000003"
+
+	superseded := Memory{
+		ID: supersededID, Content: "old content", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), SupersededBy: &newID,
+	}
+	if err := s.Upsert(ctx, superseded, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert superseded: %v", err)
+	}
+	live := Memory{
+		ID: liveID, Content: "live content", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, live, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert live: %v", err)
+	}
+
+	subj := Authenticated("sub-A")
+
+	// Search: superseded record excluded, live record present.
+	hits, err := s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if got := recordIDs(hits); slices.Contains(got, supersededID) {
+		t.Errorf("Search: superseded record %s present, want excluded: %v", supersededID, got)
+	}
+	if got := recordIDs(hits); !slices.Contains(got, liveID) {
+		t.Errorf("Search: live record %s absent, want present: %v", liveID, got)
+	}
+
+	// List: same exclusion/inclusion pairing.
+	items, _, _, err := s.List(ctx, scope, subj, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if got := recordIDs(items); slices.Contains(got, supersededID) {
+		t.Errorf("List: superseded record %s present, want excluded: %v", supersededID, got)
+	}
+	if got := recordIDs(items); !slices.Contains(got, liveID) {
+		t.Errorf("List: live record %s absent, want present: %v", liveID, got)
+	}
+
+	// Get: superseded record still fetchable, content intact.
+	got, err := s.Get(ctx, supersededID)
+	if err != nil {
+		t.Fatalf("Get superseded: %v", err)
+	}
+	if got.Content != "old content" {
+		t.Errorf("Get superseded: content = %q, want %q (should be untouched)", got.Content, "old content")
+	}
+	if got.SupersededBy == nil || *got.SupersededBy != newID {
+		t.Errorf("Get superseded: SupersededBy = %v, want %q", got.SupersededBy, newID)
+	}
+
+	// Codec round-trip: nil pointers stay nil on the live record.
+	gotLive, err := s.Get(ctx, liveID)
+	if err != nil {
+		t.Fatalf("Get live: %v", err)
+	}
+	if gotLive.Supersedes != nil {
+		t.Errorf("Get live: Supersedes = %v, want nil", gotLive.Supersedes)
+	}
+	if gotLive.SupersededBy != nil {
+		t.Errorf("Get live: SupersededBy = %v, want nil", gotLive.SupersededBy)
+	}
+
+	// Codec round-trip: a record with Supersedes set (forward link) survives.
+	newRec := Memory{
+		ID: newID, Content: "new content", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: &supersededID,
+	}
+	if err := s.Upsert(ctx, newRec, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert new: %v", err)
+	}
+	gotNew, err := s.Get(ctx, newID)
+	if err != nil {
+		t.Fatalf("Get new: %v", err)
+	}
+	if gotNew.Supersedes == nil || *gotNew.Supersedes != supersededID {
+		t.Errorf("Get new: Supersedes = %v, want %q", gotNew.Supersedes, supersededID)
+	}
+	if gotNew.SupersededBy != nil {
+		t.Errorf("Get new: SupersededBy = %v, want nil", gotNew.SupersededBy)
+	}
+}
+
 // TestListCursorTraversal pins order-independent cursor paging at limit=1: N
 // records sharing ONE timestamp plus M with distinct timestamps, paged to
 // exhaustion, must yield the full set with no duplicates and no skips. At limit=1
