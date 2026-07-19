@@ -1259,7 +1259,7 @@ func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (
 		return "", "", err
 	}
 	owner := c.Subj.Owner()
-	m := a.storeArgs.toMemory(owner, c.Actor, d.clock())
+	m := a.toMemory(owner, c.Actor, d.clock())
 	m.EmbedderIdentity = d.embedderIdentity
 	m.Supersedes = &targetID
 	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
