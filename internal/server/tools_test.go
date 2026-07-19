@@ -2076,6 +2076,94 @@ func TestSupersedeMemorySchemaExcludesIdempotencyKey(t *testing.T) {
 	}
 }
 
+// TestSupersedeArgsDecodePopulatesPromotedIdempotencyKey (WR-04) pins the
+// wire-decode half of supersedeArgs' IdempotencyKey shadow that WR-03's
+// schema-only test did not cover: a json:"-" field has no JSON name, so it
+// never enters encoding/json's same-name shadowing contest — it excuses
+// itself, leaving the promoted storeArgs.IdempotencyKey
+// (json:"idempotency_key,omitempty") as the sole decode target. So a raw
+// idempotency_key on the wire STILL lands in a.storeArgs.IdempotencyKey,
+// contrary to what an earlier (now-corrected) doc comment claimed. This is
+// exactly why supersedeMemory defensively clears the field itself rather
+// than relying on the shadow — see TestSupersedeMemoryIgnoresIdempotencyKey.
+func TestSupersedeArgsDecodePopulatesPromotedIdempotencyKey(t *testing.T) {
+	var a supersedeArgs
+	in := `{"idempotency_key":"probe-key","content":"x","scope":"s","supersedes":"y"}`
+	if err := json.Unmarshal([]byte(in), &a); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if a.storeArgs.IdempotencyKey != "probe-key" {
+		t.Errorf("a.storeArgs.IdempotencyKey (promoted) = %q, want %q (the json:\"-\" shadow does not block wire decode)", a.storeArgs.IdempotencyKey, "probe-key")
+	}
+	if a.IdempotencyKey != "" {
+		t.Errorf("a.IdempotencyKey (outer json:\"-\" shadow) = %q, want empty (it has no JSON name to decode into)", a.IdempotencyKey)
+	}
+}
+
+// TestSupersedeMemoryIgnoresIdempotencyKey (WR-04) pins that a caller-sent
+// idempotency_key on supersede_memory is silently IGNORED end to end: no
+// replay lookup, no error, a normal supersede happens — the defensive clear
+// at the top of supersedeMemory (tools.go) is what makes the decoded-but-
+// unadvertised field inert, not the schema-only json:"-" shadow (see
+// TestSupersedeArgsDecodePopulatesPromotedIdempotencyKey above).
+func TestSupersedeMemoryIgnoresIdempotencyKey(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-idem")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-idempotency-ignored"
+
+	targetID, targetSID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original content", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete target", d.st.Delete(context.Background(), targetID, store.Authenticated("sub-supersede-idem")))
+	})
+
+	newID, newSID, err := d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs: storeArgs{
+			Content: "corrected content", Scope: scope, Category: "gotcha", Source: "user-said",
+			IdempotencyKey: "some-key-that-must-be-ignored",
+		},
+		Supersedes: targetSID,
+	})
+	if err != nil {
+		t.Fatalf("supersedeMemory with idempotency_key set: want a normal supersede (ignored key), got error: %v", err)
+	}
+	if newID == "" || newSID == "" {
+		t.Fatalf("supersedeMemory returned empty id/short_id: id=%q short_id=%q", newID, newSID)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete new record", d.st.Delete(context.Background(), newID, store.Authenticated("sub-supersede-idem")))
+	})
+
+	newRec, err := d.getMemory(ctx, c, idArgs{ID: newID})
+	if err != nil {
+		t.Fatalf("get new record: %v", err)
+	}
+	if newRec.Content != "corrected content" {
+		t.Errorf("newRec.Content = %q, want %q (a normal supersede, not a replay)", newRec.Content, "corrected content")
+	}
+
+	// Calling again with the SAME idempotency_key must NOT be treated as a
+	// replay: it is a brand-new supersede attempt against an
+	// already-superseded target, so it fails ErrAlreadySuperseded — never
+	// returns the first call's id, which would indicate the key was
+	// (incorrectly) honored as a replay key.
+	replayID, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs: storeArgs{
+			Content: "corrected content", Scope: scope, Category: "gotcha", Source: "user-said",
+			IdempotencyKey: "some-key-that-must-be-ignored",
+		},
+		Supersedes: targetSID,
+	})
+	if err == nil {
+		t.Errorf("second supersedeMemory with same idempotency_key + already-superseded target: want error, got id=%q (key was NOT ignored — looks like a replay)", replayID)
+	}
+}
+
 // TestSupersedeMemoryDiscoveryTarget (IN-02) exercises superseding a
 // discovery-category target (no category restriction analogous to CR-02's
 // rule guard applies to discoveries — D-07 allows it) and pins WR-01's

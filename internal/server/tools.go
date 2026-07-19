@@ -489,23 +489,33 @@ func parseWindow(a scheduleArgs, now time.Time) (nb, na *time.Time, err error) {
 // summary) without a hand-rolled parallel field list — the exact drift class
 // persistAndEnqueue's doc comment already flags (tools.go:734-736).
 //
-// idempotency_key is deliberately EXCLUDED (WR-03, plan T-25-10 deferred
-// scope): supersede's idempotency was never wired up
-// (deps.supersedeMemory never calls checkIdempotentReplay or stamps
-// IdempotencyFingerprint), so silently advertising the store_memory-flavored
-// "safe retry" schema description on this tool would be actively
-// misleading. IdempotencyKey below shadows the promoted storeArgs field —
-// both encoding/json's decode (typeFields dominant-field selection) and
-// jsonschema-go's reflect.VisibleFields-based schema inference resolve
-// same-name fields by shallowest-depth-wins, so this depth-0 `json:"-"`
-// field wins over storeArgs' depth-1 promoted one, removing idempotency_key
-// from supersede_memory's wire decode AND its advertised schema.
+// idempotency_key is intentionally NOT supported on supersede_memory this
+// phase (WR-03/WR-04, plan T-25-10 deferred scope): deps.supersedeMemory
+// never calls checkIdempotentReplay or stamps IdempotencyFingerprint, so any
+// idempotency_key a caller sends is silently IGNORED — a normal supersede
+// happens, no replay, no error (see the defensive clear in supersedeMemory
+// below). IdempotencyKey below (a depth-0 `json:"-"` field) DOES remove
+// idempotency_key from the advertised JSON schema: jsonschema-go's
+// reflect.VisibleFields-based inference applies Go's normal
+// shallowest-depth-wins shadowing rule, so this field wins over storeArgs'
+// depth-1 promoted one there (pinned by
+// TestSupersedeMemorySchemaExcludesIdempotencyKey).
+//
+// It does NOT, however, remove idempotency_key from the wire DECODE: a
+// `json:"-"` field has no JSON name, so it never enters encoding/json's
+// same-name shadowing contest — it just excuses itself, leaving the
+// promoted storeArgs.IdempotencyKey (json:"idempotency_key,omitempty") as
+// the sole decode target for that key. A caller that (incorrectly, since it
+// isn't advertised) sends idempotency_key on supersede_memory therefore
+// STILL populates a.storeArgs.IdempotencyKey on the wire (pinned by
+// TestSupersedeArgsDecodePopulatesPromotedIdempotencyKey) — the defensive
+// clear at the top of supersedeMemory is what actually makes it inert, not
+// this shadow.
 type supersedeArgs struct {
 	storeArgs
 	Supersedes string `json:"supersedes" jsonschema:"id (full UUID or short_id) of the memory this new record corrects/replaces"`
-	// IdempotencyKey shadows storeArgs.IdempotencyKey — see the type doc
-	// comment above. Never read; supersede_memory does not support
-	// idempotent replay this phase.
+	// IdempotencyKey shadows storeArgs.IdempotencyKey for schema purposes
+	// only — see the type doc comment above. Never read.
 	IdempotencyKey string `json:"-"`
 }
 
@@ -1272,6 +1282,14 @@ func (d *deps) setVisibility(ctx context.Context, c caller, a setVisibilityArgs)
 // correcting record is store_memory-shaped, so it is enqueued for async
 // summary-on-write like any other store_memory write.
 func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (string, string, error) {
+	// WR-04 defense-in-depth: a.storeArgs.IdempotencyKey can be populated on
+	// the wire despite supersedeArgs' json:"-" shadow field (see the
+	// supersedeArgs doc comment — the shadow only removes the field from the
+	// advertised schema, not the decode). Clearing it here — before it is
+	// ever read — guarantees a caller-supplied idempotency_key is silently
+	// ignored (no replay, no error) rather than being read by some future
+	// refactor that reuses storeArgs' idempotency helpers.
+	a.storeArgs.IdempotencyKey = ""
 	targetID, err := d.st.ResolvePointID(ctx, a.Supersedes)
 	if err != nil {
 		return "", "", err
