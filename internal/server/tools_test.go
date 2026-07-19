@@ -951,6 +951,85 @@ func TestStoreMemoryIdempotentConcurrentIdenticalOnePoint(t *testing.T) {
 	}
 }
 
+// TestStoreMemoryIdempotentConcurrentMismatchConvergesOnePoint pins the D-12
+// honest-concurrency boundary (fovea review, PR #404): under true simultaneity,
+// N keyed store_memory calls that share one idempotency key but carry DIFFERENT
+// content converge to exactly one Qdrant point — no duplicate, no corruption.
+// The mismatch reject is best-effort: a racer that observes the already-written
+// point rejects with store.ErrIdempotencyConflict, while racers that pass the
+// pre-write existence check before any Upsert land as last-writer-wins. The
+// safety invariant (one point, intact content) always holds. This is the
+// deliberately-accepted boundary documented as R-24-02 in 24-SECURITY.md; a
+// deterministic "reject always fires" guarantee would require per-point
+// locking/singleflight we intentionally did not add.
+func TestStoreMemoryIdempotentConcurrentMismatchConvergesOnePoint(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "owner-mismatch")
+	scope := "iso-test:project:idempotency-mismatch"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-mismatch")))
+	}()
+	c := callerFor(ctx, t)
+
+	const n = 20
+	type result struct {
+		id  string
+		err error
+	}
+	results := make(chan result, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			// Same key, DISTINCT content per racer — every fingerprint differs.
+			args := storeArgs{
+				Content: fmt.Sprintf("mismatch content %d", i), Scope: scope,
+				Source: "user-said", Category: "gotcha", IdempotencyKey: "mismatch-key",
+			}
+			id, _, err := d.storeMemory(ctx, c, args)
+			results <- result{id, err}
+		}(i)
+	}
+	wg.Wait()
+	close(results)
+
+	var winnerID string
+	successes := 0
+	for r := range results {
+		switch {
+		case r.err == nil:
+			successes++
+			// All racers share (owner, scope, key) → one deterministic point ID.
+			if winnerID == "" {
+				winnerID = r.id
+			} else if r.id != winnerID {
+				t.Fatalf("successful concurrent mismatch calls returned DIFFERENT ids: %q vs %q", winnerID, r.id)
+			}
+		case errors.Is(r.err, store.ErrIdempotencyConflict):
+			// Best-effort reject — acceptable under D-12.
+		default:
+			t.Fatalf("storeMemory (concurrent mismatch): unexpected error: %v", r.err)
+		}
+	}
+	if successes == 0 {
+		t.Fatal("no concurrent mismatch call succeeded — expected at least one last-writer-wins winner")
+	}
+
+	// Safety invariant: exactly one point, content intact (one of the submitted
+	// values, never a partial/corrupt/merged write).
+	items, total, _, err := st.List(ctx, scope, store.Authenticated("owner-mismatch"), store.ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if total != 1 || len(items) != 1 {
+		t.Fatalf("store holds %d points (len=%d) after %d concurrent mismatch keyed calls, want exactly 1 (D-12 converge-to-one)", total, len(items), n)
+	}
+	if got := items[0].Content; !strings.HasPrefix(got, "mismatch content ") {
+		t.Fatalf("stored content %q is not one of the submitted values — possible corruption (D-12 last-writer-wins expected)", got)
+	}
+}
+
 // TestScheduleMemoryIdempotentIgnoresWindowChange documents and pins the
 // conscious resolution of RESEARCH Open Question 1: the schedule window
 // (not_before/not_after) is EXCLUDED from the D-07 content fingerprint. A
