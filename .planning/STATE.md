@@ -5,8 +5,8 @@ milestone_name: Capture & Service Identity
 current_phase: 25
 current_phase_name: Supersession with History
 status: "Phase 24 shipped — PR #404"
-stopped_at: Completed 24-02-PLAN.md
-last_updated: "2026-07-19T14:19:40.787Z"
+stopped_at: Phase 25 context gathered
+last_updated: "2026-07-19T17:06:00.277Z"
 last_activity: 2026-07-19
 progress:
   total_phases: 8
@@ -132,9 +132,9 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-18T21:24:30Z
-Stopped at: Phase 24 complete (code review + auto-fix, UAT 10/10, threat-secure), ready to plan Phase 25
-Resume file: None
+Last session: 2026-07-19T17:06:00.267Z
+Stopped at: Phase 25 context gathered
+Resume file: .planning/phases/25-supersession-with-history/25-CONTEXT.md
 
 ## Performance Metrics
 
