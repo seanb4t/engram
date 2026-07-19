@@ -4,17 +4,17 @@ milestone: v0.11.x
 milestone_name: Capture & Service Identity
 current_phase: 25
 current_phase_name: Supersession with History
-status: planning
+status: "Phase 24 shipped — PR #404"
 stopped_at: Completed 24-02-PLAN.md
-last_updated: "2026-07-19T00:24:29.387Z"
-last_activity: 2026-07-18
-last_activity_desc: Phase 24 complete, transitioned to Phase 25
+last_updated: "2026-07-19T14:19:40.787Z"
+last_activity: 2026-07-19
 progress:
   total_phases: 8
   completed_phases: 3
   total_plans: 11
   completed_plans: 11
   percent: 38
+last_activity_desc: Phase 24 complete, transitioned to Phase 25
 ---
 
 # Project State
@@ -30,8 +30,8 @@ See: .planning/PROJECT.md (updated 2026-07-18 — after Phase 24)
 
 Phase: 25 — Supersession with History
 Plan: Not started
-Status: Ready to plan
-Last activity: 2026-07-18 — Phase 24 complete, transitioned to Phase 25
+Status: Phase 24 shipped — PR #404
+Last activity: 2026-07-19
 
 Progress: [████████████████████] 11/11 plans (100%) · 3/8 phases (38%)
 
