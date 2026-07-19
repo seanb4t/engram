@@ -6,7 +6,7 @@ current_phase: 25
 current_phase_name: Supersession with History
 status: planning
 stopped_at: Completed 24-02-PLAN.md
-last_updated: "2026-07-18T20:00:09.077Z"
+last_updated: "2026-07-19T00:24:29.387Z"
 last_activity: 2026-07-18
 last_activity_desc: Phase 24 complete, transitioned to Phase 25
 progress:
@@ -21,10 +21,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-16 — opened milestone v0.11.x)
+See: .planning/PROJECT.md (updated 2026-07-18 — after Phase 24)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 24 — idempotent-capture
+**Current focus:** Phase 25 — Supersession with History
 
 ## Current Position
 
@@ -33,7 +33,7 @@ Plan: Not started
 Status: Ready to plan
 Last activity: 2026-07-18 — Phase 24 complete, transitioned to Phase 25
 
-Progress: [██████████] 100%
+Progress: [████████████████████] 11/11 plans (100%) · 3/8 phases (38%)
 
 ## Deferred Items
 
@@ -132,8 +132,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-18T19:54:22.076Z
-Stopped at: Completed 24-02-PLAN.md
+Last session: 2026-07-18T21:24:30Z
+Stopped at: Phase 24 complete (code review + auto-fix, UAT 10/10, threat-secure), ready to plan Phase 25
 Resume file: None
 
 ## Performance Metrics
