@@ -40,7 +40,10 @@ created: 2026-07-19
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| TBD (planner fills) | — | — | REQ-supersession-links | T-25-XX | owner-only supersede; superseded soft-hidden but fetchable | unit | `go test ./internal/store/...` | ❌ W0 | ⬜ pending |
+| 25-01-T1 | 25-01 | 1 | REQ-supersession-links | T-25-06 | superseded record soft-hidden from Search AND List, still fetchable via Get; codec round-trips *string links | unit | `go test ./internal/store/... -run TestSupersedeRecallGate -count=1` | ❌ W0 | ⬜ pending |
+| 25-01-T2 | 25-01 | 1 | REQ-supersession-links | T-25-01/02/03/04/05 | owner-only supersede (ActionWrite); already-superseded rejected; back-stamp preserves content+vector; TOCTOU fail-closed; forward chains | unit | `go test ./internal/store/... -run 'TestSupersede(Stamp\|OwnerGate\|AlreadySuperseded\|ForwardChain\|TOCTOU)' -count=1` | ❌ W0 | ⬜ pending |
+| 25-02-T1 | 25-02 | 2 | REQ-supersession-links | T-25-07/08 | supersede_memory routes through the owner write gate; target-not-found re-wrapped with original input | unit | `go test ./internal/server/... -run TestSupersedeMemory -count=1` | ❌ W0 | ⬜ pending |
+| 25-02-T2 | 25-02 | 2 | REQ-supersession-links | T-25-09 | ErrAlreadySuperseded maps to CodeFailedPrecondition (sentinel switch exhaustive) | unit | `go test ./internal/server/... -run TestConnectError -count=1` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 *Planner populates concrete task rows from PLAN.md; validate-phase reconciles.*

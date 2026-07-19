@@ -443,7 +443,10 @@ overloading `store_memory`; routes through the existing DEC-kyz write gate (`get
 4. Correction is explicit — no automatic superseding happens on any similarity threshold or
    write-through path; a single-hop supersession model rejects cycles at write time.
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+- [ ] 25-01-PLAN.md — Store-layer supersede primitive: Memory link fields + codec, Store.Supersede (owner-gated, single-hop, vector-preserving back-stamp), recall-gate soft-hide, ErrAlreadySuperseded (Wave 1)
+- [ ] 25-02-PLAN.md — supersede_memory MCP tool: supersedeArgs + handler + registration, connectError exhaustiveness (Wave 2, depends on 25-01)
 
 ### Phase 26: Structured Citations, Category Filter & Chat Base URL
 
