@@ -483,6 +483,17 @@ func parseWindow(a scheduleArgs, now time.Time) (nb, na *time.Time, err error) {
 	return nb, na, nil
 }
 
+// supersedeArgs embeds storeArgs (mirroring scheduleArgs's embedding shape,
+// D-03/RESEARCH A4) so supersede_memory inherits the full store_memory field
+// set (content/scope/source/category/tags/repo/workspace/worktree/base_dir/
+// summary/idempotency_key) without a hand-rolled parallel field list — the
+// exact drift class persistAndEnqueue's doc comment already flags
+// (tools.go:734-736).
+type supersedeArgs struct {
+	storeArgs
+	Supersedes string `json:"supersedes" jsonschema:"id (full UUID or short_id) of the memory this new record corrects/replaces"`
+}
+
 type searchArgs struct {
 	Query         string   `json:"query"`
 	Scope         string   `json:"scope"`
@@ -1231,6 +1242,48 @@ func (d *deps) setVisibility(ctx context.Context, c caller, a setVisibilityArgs)
 	return mutationResult{ID: rec.ID, ShortID: rec.ShortID}, nil
 }
 
+// supersedeMemory corrects a memory the caller owns: it resolves the target,
+// embeds the correcting content, and delegates the create+back-stamp to
+// Store.Supersede — which owner-gates the target via getWritable/ActionWrite
+// (SC3: a caller with only read/shared access to the target cannot supersede
+// it; D-07: supersession only ever fires from this explicit call, never a
+// similarity-threshold or write-through path). On store.ErrNotFound the error
+// is re-wrapped with the caller's ORIGINAL a.Supersedes input, never the
+// resolved target id — same 404-indistinguishability discipline as
+// setVisibility/storeDiscovery (a non-owner cannot learn a target exists).
+// The new correcting record is store_memory-shaped, so it is enqueued for
+// async summary-on-write like any other store_memory write.
+func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (string, string, error) {
+	targetID, err := d.st.ResolvePointID(ctx, a.Supersedes)
+	if err != nil {
+		return "", "", err
+	}
+	owner := c.Subj.Owner()
+	m := a.storeArgs.toMemory(owner, c.Actor, d.clock())
+	m.EmbedderIdentity = d.embedderIdentity
+	m.Supersedes = &targetID
+	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
+	if err != nil {
+		return "", "", err // embed first: on error we never touch the store
+	}
+	if m.ShortID, err = d.st.MintShortID(ctx, nil); err != nil {
+		return "", "", err
+	}
+	if err := d.st.Supersede(ctx, m, vec, targetID, c.Subj); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			// Re-wrap with the caller's ORIGINAL input: targetID is the
+			// resolved UUID (possibly another owner's, resolved from their
+			// short id), and Supersede embeds it in ErrNotFound — echoing
+			// targetID would leak the real UUID (404-indistinguishability).
+			// Mirrors setVisibility/storeDiscovery.
+			return "", "", fmt.Errorf("%w: %s", store.ErrNotFound, a.Supersedes)
+		}
+		return "", "", err
+	}
+	d.summaryQueue.tryEnqueue(m.ID)
+	return m.ID, m.ShortID, nil
+}
+
 // Register wires the memory tools onto the MCP server. It accepts a pre-built
 // *telemetry.ToolMetrics (constructed once in runServe and reused for both tool
 // instrumentation and auth-failure recording) so there is a single instrument
@@ -1428,6 +1481,16 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			}
 			_, err = d.setVisibility(ctx, c, a)
 			return textResult("visibility updated"), nil, err
+		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "supersede_memory", Description: "Correct a memory you own by superseding it: stores a new record and marks the target superseded_by the new one. The target is soft-hidden from search_memory/list_memory but remains fetchable via get_memory — history is preserved, nothing is deleted or overwritten. Rejects if the target is already superseded (single live head per chain). The target id may be the full UUID or short_id."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a supersedeArgs) (*mcp.CallToolResult, any, error) {
+			c, err := callerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			id, sid, err := d.supersedeMemory(ctx, c, a)
+			return textResult(fmt.Sprintf("stored %s, superseding %s", id, a.Supersedes)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "store_rule", Description: "Persist a NORMATIVE rule (ground truth) for a repo/project. Call ONLY on explicit user instruction — never promote a rule unilaterally; propose it to the user instead. scope=rule:repo:<repo> or rule:project:<project>. summary is REQUIRED and is the one-line index entry (single line). Rules are always shared and user-blessed. The result includes the rule's id and short_id."},

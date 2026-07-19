@@ -206,6 +206,32 @@ func (s *spyStore) SetVisibility(_ context.Context, id string, subj store.Subjec
 	return nil
 }
 
+// Supersede mirrors Store.Supersede's shape: owner-only write gate on the
+// target, single-hop already-superseded rejection, create the new record,
+// then back-stamp the target's SupersededBy — same ordering (new record
+// first, back-stamp second) and same ErrNotFound ownership-gate semantics
+// the real store uses (store.go:1780).
+func (s *spyStore) Supersede(_ context.Context, newMem store.Memory, _ []float32, target string, subj store.Subject) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	owner := ownerOfSubject(subj)
+	s.record("Supersede", owner, target)
+	targetRec, ok := s.records[target]
+	if !ok || targetRec.Owner != owner {
+		return fmt.Errorf("%w: %s", store.ErrNotFound, target)
+	}
+	if targetRec.SupersededBy != nil && *targetRec.SupersededBy != "" {
+		return fmt.Errorf("%w: %s", store.ErrAlreadySuperseded, target)
+	}
+	s.records[newMem.ID] = newMem
+	if newMem.ShortID != "" {
+		s.shortIndex[shortid.Canonical(newMem.ShortID)] = newMem.ID
+	}
+	targetRec.SupersededBy = &newMem.ID
+	s.records[target] = targetRec
+	return nil
+}
+
 func (s *spyStore) Update(_ context.Context, cur store.Memory, content string, shared *bool, tags *[]string, summary *string, _ []float32) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
