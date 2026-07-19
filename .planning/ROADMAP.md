@@ -443,10 +443,10 @@ overloading `store_memory`; routes through the existing DEC-kyz write gate (`get
 4. Correction is explicit — no automatic superseding happens on any similarity threshold or
    write-through path; a single-hop supersession model rejects cycles at write time.
 
-**Plans**: 2 plans
+**Plans**: 1/2 plans executed
 **Wave 1**
 
-- [ ] 25-01-PLAN.md — Store-layer supersede primitive: Memory link fields + codec, Store.Supersede (owner-gated, single-hop, vector-preserving back-stamp), recall-gate soft-hide, ErrAlreadySuperseded (Wave 1)
+- [x] 25-01-PLAN.md — Store-layer supersede primitive: Memory link fields + codec, Store.Supersede (owner-gated, single-hop, vector-preserving back-stamp), recall-gate soft-hide, ErrAlreadySuperseded (Wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -514,7 +514,7 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 | 22. Cedar Authz Foundation & Store Enforcement | v0.11.x | 2/2 | Complete | 2026-07-17 |
 | 23. Service Auth Chain & Tenancy Isolation | v0.11.x | 4/4 | Complete | 2026-07-17 |
 | 24. Idempotent Capture | v0.11.x | 2/2 | Complete | 2026-07-18 |
-| 25. Supersession with History | v0.11.x | 0/1 | Not started | - |
+| 25. Supersession with History | v0.11.x | 0/1 | In Progress|  |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 0/3 | Not started | - |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
