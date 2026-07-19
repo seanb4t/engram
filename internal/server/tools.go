@@ -1243,20 +1243,44 @@ func (d *deps) setVisibility(ctx context.Context, c caller, a setVisibilityArgs)
 }
 
 // supersedeMemory corrects a memory the caller owns: it resolves the target,
-// embeds the correcting content, and delegates the create+back-stamp to
-// Store.Supersede — which owner-gates the target via getWritable/ActionWrite
-// (SC3: a caller with only read/shared access to the target cannot supersede
-// it; D-07: supersession only ever fires from this explicit call, never a
-// similarity-threshold or write-through path). On store.ErrNotFound the error
-// is re-wrapped with the caller's ORIGINAL a.Supersedes input, never the
-// resolved target id — same 404-indistinguishability discipline as
-// setVisibility/storeDiscovery (a non-owner cannot learn a target exists).
-// The new correcting record is store_memory-shaped, so it is enqueued for
-// async summary-on-write like any other store_memory write.
+// gates ownership (and rejects a rule target) BEFORE embedding, embeds the
+// correcting content, and delegates the create+back-stamp to Store.Supersede
+// — which re-gates the target via getWritable/ActionWrite under its own
+// per-target lock (SC3: a caller with only read/shared access to the target
+// cannot supersede it; D-07: supersession only ever fires from this explicit
+// call, never a similarity-threshold or write-through path; CR-01: the
+// store-level re-gate is what Store.Supersede's lock makes atomic against a
+// concurrent racing caller). On store.ErrNotFound the error is re-wrapped
+// with the caller's ORIGINAL a.Supersedes input, never the resolved target
+// id — same 404-indistinguishability discipline as setVisibility/
+// storeDiscovery (a non-owner cannot learn a target exists). The new
+// correcting record is store_memory-shaped, so it is enqueued for async
+// summary-on-write like any other store_memory write.
 func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (string, string, error) {
 	targetID, err := d.st.ResolvePointID(ctx, a.Supersedes)
 	if err != nil {
 		return "", "", err
+	}
+	// Ownership gate BEFORE the billable embed and the Qdrant-hitting
+	// MintShortID call (CR-03 cost-amplification hardening — mirrors
+	// updateMemory/storeDiscovery's ordering; TestUpdateMemoryEmbedNotCalledForNonOwner's
+	// pattern). FetchForUpdate is the same getWritable/ActionWrite gate
+	// Store.Supersede re-runs (under its per-target lock) below; a non-owner
+	// or nonexistent target is rejected here, before any spend.
+	targetRec, err := d.st.FetchForUpdate(ctx, targetID, c.Subj)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return "", "", fmt.Errorf("%w: %s", store.ErrNotFound, a.Supersedes)
+		}
+		return "", "", err
+	}
+	// Rule guard (CR-02): list_rules relies on Store.List's unconditional
+	// superseded_by gate to present the "complete rule set" — superseding a
+	// rule would silently vanish it from that index without going through
+	// the required delete flow. Mirrors updateMemory (tools.go:1116) /
+	// setVisibility (tools.go:1233).
+	if targetRec.Category == "rule" {
+		return "", "", fmt.Errorf("%w — delete the rule instead of superseding it", errRuleImmutable)
 	}
 	owner := c.Subj.Owner()
 	m := a.toMemory(owner, c.Actor, d.clock())

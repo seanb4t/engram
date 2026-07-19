@@ -1956,6 +1956,102 @@ func TestSupersedeMemory(t *testing.T) {
 	}
 }
 
+// TestSupersedeMemoryRejectsRule (CR-02) pins that supersede_memory rejects a
+// rule-category target with errRuleImmutable, mirroring
+// TestUpdateMemoryRuleGuardRejectsUnshare/TestSetVisibilityRejectsRule — a
+// rule must be deleted, never superseded, so it never silently vanishes from
+// list_rules' "complete rule set" index (Store.List's unconditional
+// superseded_by gate).
+func TestSupersedeMemoryRejectsRule(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "rule:repo:supersede-rule-guard-test"
+	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) })
+
+	id, sid, err := d.storeRule(ctx, callerFor(ctx, t), storeRuleArgs{
+		Content: "some rule", Scope: scope, Summary: "some rule",
+	})
+	if err != nil {
+		t.Fatalf("seed rule: %v", err)
+	}
+
+	_, _, err = d.supersedeMemory(ctx, callerFor(ctx, t), supersedeArgs{
+		storeArgs:  storeArgs{Content: "corrected rule text", Scope: scope, Category: "rule", Source: "user-said"},
+		Supersedes: sid,
+	})
+	if err == nil {
+		t.Fatal("expected supersede_memory on a rule to be rejected")
+	}
+	if !errors.Is(err, errRuleImmutable) {
+		t.Errorf("want errRuleImmutable, got %v", err)
+	}
+
+	// The rule is untouched: not back-stamped, and still present in list_rules.
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get rule: %v", err)
+	}
+	if got.SupersededBy != nil {
+		t.Errorf("rule.SupersededBy = %v, want nil (rejected supersede must not stamp)", got.SupersededBy)
+	}
+	rules, _, err := d.listRules(ctx, callerFor(ctx, t), listRulesArgs{Scopes: []string{scope}})
+	if err != nil {
+		t.Fatalf("listRules: %v", err)
+	}
+	found := false
+	for _, r := range rules {
+		if rv, ok := r.(ruleView); ok && rv.ID == id {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("rule %s missing from list_rules after rejected supersede: %+v", id, rules)
+	}
+}
+
+// TestSupersedeMemoryEmbedNotCalledForNonOwner (CR-03) mirrors
+// TestUpdateMemoryEmbedNotCalledForNonOwner: a caller superseding a target
+// they do not own must be rejected BEFORE the billable Embed call and the
+// Qdrant-hitting MintShortID call — reproducing update_memory's
+// cost-amplification hardening for supersede_memory.
+func TestSupersedeMemoryEmbedNotCalledForNonOwner(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:supersede-embed-gate"
+
+	stampedID := "a8a8a8a8-0000-0000-0000-000000000001"
+	stamped := store.Memory{
+		ID: stampedID, Content: "original", Scope: scope,
+		Owner: "sub-owner", Category: "convention",
+		Source: "agent-inferred", CreatedAt: timeNow(),
+	}
+	if err := d.st.Upsert(ctx, stamped, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed stamped record: %v", err)
+	}
+	defer func() {
+		cleanupErr(t, "Delete "+stampedID, d.st.Delete(ctx, stampedID, store.Authenticated("sub-owner")))
+	}()
+
+	counter := &countingEmbedder{}
+	d.em = counter
+
+	// Non-owner call (anonymous ctx -> sub=="" != "sub-owner") must fail
+	// without embedding or minting a short id.
+	_, _, err := d.supersedeMemory(ctx, callerFor(ctx, t), supersedeArgs{
+		storeArgs:  storeArgs{Content: "hijack", Scope: scope, Category: "convention", Source: "agent-inferred"},
+		Supersedes: stampedID,
+	})
+	if err == nil {
+		t.Fatal("non-owner supersedeMemory: expected error, got nil")
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("non-owner supersedeMemory: want ErrNotFound, got %v", err)
+	}
+	if counter.calls != 0 {
+		t.Errorf("non-owner supersedeMemory: embed must not be called; got %d call(s)", counter.calls)
+	}
+}
+
 // TestUpdateMemoryTagsHandler pins the full tag-mutation contract: supplying
 // tags replaces them, an empty slice clears them, omitting tags (nil) preserves
 // the existing set, and the record's id/created_at survive the update (no
