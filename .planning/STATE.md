@@ -4,17 +4,17 @@ milestone: v0.11.x
 milestone_name: Capture & Service Identity
 current_phase: 25
 current_phase_name: supersession-with-history
-status: executing
-stopped_at: Completed 25-01-PLAN.md
-last_updated: "2026-07-19T17:41:10.810Z"
+status: verifying
+stopped_at: Completed 25-02-PLAN.md
+last_updated: "2026-07-19T17:50:17.627Z"
 last_activity: 2026-07-19
 last_activity_desc: Phase 25 execution started
 progress:
   total_phases: 8
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 13
-  completed_plans: 12
-  percent: 38
+  completed_plans: 13
+  percent: 50
 ---
 
 # Project State
@@ -30,10 +30,10 @@ See: .planning/PROJECT.md (updated 2026-07-18 — after Phase 24)
 
 Phase: 25 (supersession-with-history) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-19 — Phase 25 execution started
 
-Progress: [████████████████████] 11/11 plans ([█████████░] 92%) · 3/8 phases (38%)
+Progress: [████████████████████] 11/11 plans ([██████████] 100%) · 3/8 phases (38%)
 
 ## Deferred Items
 
@@ -118,6 +118,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 - [Phase ?]: D-01 confirmed: target back-stamp uses SetPayload (single-key merge), not a full re-Upsert
 - [Phase ?]: Recall-gate condition added independently at both Search and List call sites, not folded into activeWindowConditions
 - [Phase ?]: Store.Get left deliberately ungated so superseded records stay fetchable by id
+- [Phase ?]: supersede_memory does not call checkIdempotentReplay despite storeArgs.IdempotencyKey riding along via embedding (plan's explicit handler steps omit it; accepted per RESEARCH Pitfall 2)
+- [Phase ?]: connectError maps store.ErrAlreadySuperseded to CodeFailedPrecondition, pre-positioning only (no Connect RPC exposes supersede_memory this phase)
 
 ### Blockers/Concerns
 
@@ -135,8 +137,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-19T17:41:10.802Z
-Stopped at: Completed 25-01-PLAN.md
+Last session: 2026-07-19T17:50:17.618Z
+Stopped at: Completed 25-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -193,6 +195,7 @@ Resume file: None
 | Phase 24 P01 | 12min | 2 tasks | 5 files |
 | Phase 24 P02 | 9min | 3 tasks | 2 files |
 | Phase 25 P01 | 4min | 2 tasks | 2 files |
+| Phase 25 P02 | 3min | 2 tasks | 6 files |
 
 ## Operator Next Steps
 
