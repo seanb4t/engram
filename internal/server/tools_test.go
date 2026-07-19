@@ -2076,6 +2076,57 @@ func TestSupersedeMemorySchemaExcludesIdempotencyKey(t *testing.T) {
 	}
 }
 
+// TestSupersedeMemoryDiscoveryTarget (IN-02) exercises superseding a
+// discovery-category target (no category restriction analogous to CR-02's
+// rule guard applies to discoveries — D-07 allows it) and pins WR-01's
+// SearchDiscovery soft-hide gate end to end through the handler.
+func TestSupersedeMemoryDiscoveryTarget(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-disc")
+	c := callerFor(ctx, t)
+	scope := "discovery:repo:supersede-disc-test"
+	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Anonymous())) })
+
+	targetID, targetSID, err := d.storeDiscovery(ctx, c, storeDiscoveryArgs{
+		Content: "original discovery", Kind: "fact", Scope: scope,
+		Citations: []citationArg{{Kind: "file", Ref: "f.go"}},
+	})
+	if err != nil {
+		t.Fatalf("seed storeDiscovery: %v", err)
+	}
+
+	newID, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs:  storeArgs{Content: "corrected discovery", Scope: scope, Category: "discovery", Source: "agent-inferred"},
+		Supersedes: targetSID,
+	})
+	if err != nil {
+		t.Fatalf("supersedeMemory on discovery target: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete new record", d.st.Delete(context.Background(), newID, store.Authenticated("sub-supersede-disc")))
+	})
+
+	// The target still fetchable (get_memory ungated) and back-stamped.
+	target, err := d.getMemory(ctx, c, idArgs{ID: targetID})
+	if err != nil {
+		t.Fatalf("get target: %v", err)
+	}
+	if target.SupersededBy == nil || *target.SupersededBy != newID {
+		t.Errorf("target.SupersededBy = %v, want %q", target.SupersededBy, newID)
+	}
+
+	// The superseded discovery must be soft-hidden from search_discovery (WR-01).
+	hits, err := d.searchDiscovery(ctx, c, searchDiscoveryArgs{Query: "original discovery", Scope: scope, K: 10})
+	if err != nil {
+		t.Fatalf("searchDiscovery: %v", err)
+	}
+	for _, h := range hits {
+		if h.ID == targetID {
+			t.Errorf("superseded discovery %s still present in search_discovery", targetID)
+		}
+	}
+}
+
 // TestUpdateMemoryTagsHandler pins the full tag-mutation contract: supplying
 // tags replaces them, an empty slice clears them, omitting tags (nil) preserves
 // the existing set, and the record's id/created_at survive the update (no
