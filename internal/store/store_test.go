@@ -1938,6 +1938,46 @@ func TestListScheduledStates(t *testing.T) {
 	}
 }
 
+// TestListScheduledSupersededHidden (WR-02) pins that ListScheduled applies
+// the same superseded_by soft-hide gate Search/List already carry: a
+// scheduled record that has since been superseded must not still surface in
+// the management view as a live pending/expired candidate.
+func TestListScheduledSupersededHidden(t *testing.T) {
+	s := testStore(t)
+	fixed := time.Date(2030, 6, 15, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return fixed }
+	ctx := context.Background()
+	scope := "sched-test:project:superseded-hidden"
+	subj := Authenticated("sub-A")
+	future := fixed.Add(24 * time.Hour)
+
+	supersededID := "b1000000-0000-0000-0000-000000000001"
+	liveID := "b1000000-0000-0000-0000-000000000002"
+	newID := "b1000000-0000-0000-0000-000000000003"
+
+	mk := func(id string, nb, na *time.Time, supersededBy *string) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A",
+			CreatedAt: fixed, NotBefore: nb, NotAfter: na, SupersededBy: supersededBy}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+		t.Cleanup(func() { cleanupErr(t, id, s.Delete(ctx, id, subj)) })
+	}
+	mk(supersededID, &future, nil, &newID) // scheduled but superseded -> excluded
+	mk(liveID, &future, nil, nil)          // scheduled, live -> included
+
+	sched, err := s.ListScheduled(ctx, scope, subj, ScheduledPending, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListScheduled: %v", err)
+	}
+	if got := recordIDs(sched); slices.Contains(got, supersededID) {
+		t.Errorf("ListScheduled: superseded record %s present, want excluded: %v", supersededID, got)
+	}
+	if got := recordIDs(sched); !slices.Contains(got, liveID) {
+		t.Errorf("ListScheduled: live record %s absent, want present: %v", liveID, got)
+	}
+}
+
 // TestListScheduledRejectsInvalidState pins the store-layer guard (hr2.5): an
 // unrecognized ScheduledState must be rejected outright, not silently treated as
 // ScheduledPending. The handler validates already; this defends direct callers

@@ -1294,6 +1294,10 @@ func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, s
 		qdrant.NewMatch("scope", scope),
 		s.ownerOnlyCondition(subj),
 		scheduledStateCondition(state, s.now()),
+		// Soft-hide superseded scheduled records from the management view
+		// (WR-02) — a corrected-away record shouldn't still surface as a
+		// live pending/expired candidate. get_memory stays ungated.
+		qdrant.NewIsEmpty("superseded_by"),
 	}}
 	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
 		f.Must = append(f.Must, c)
