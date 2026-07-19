@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/qdrant/go-client/qdrant"
@@ -2049,6 +2050,29 @@ func TestSupersedeMemoryEmbedNotCalledForNonOwner(t *testing.T) {
 	}
 	if counter.calls != 0 {
 		t.Errorf("non-owner supersedeMemory: embed must not be called; got %d call(s)", counter.calls)
+	}
+}
+
+// TestSupersedeMemorySchemaExcludesIdempotencyKey (WR-03) pins that
+// supersede_memory's advertised JSON schema does NOT include
+// idempotency_key: supersede's idempotency was deliberately deferred (plan
+// T-25-10), and deps.supersedeMemory never reads the field, so the field
+// must not be promoted onto the wire schema (it would silently mislead a
+// client into believing supersede retries are safe).
+func TestSupersedeMemorySchemaExcludesIdempotencyKey(t *testing.T) {
+	schema, err := jsonschema.For[supersedeArgs](nil)
+	if err != nil {
+		t.Fatalf("jsonschema.For[supersedeArgs]: %v", err)
+	}
+	if _, ok := schema.Properties["idempotency_key"]; ok {
+		t.Errorf("supersede_memory schema advertises idempotency_key, want it excluded (WR-03)")
+	}
+	// Sanity: the schema still carries the fields supersede_memory DOES
+	// support, proving the exclusion is targeted, not a broken reflection.
+	for _, want := range []string{"content", "scope", "supersedes"} {
+		if _, ok := schema.Properties[want]; !ok {
+			t.Errorf("supersede_memory schema missing expected field %q: %+v", want, schema.Properties)
+		}
 	}
 }
 

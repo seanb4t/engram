@@ -486,12 +486,27 @@ func parseWindow(a scheduleArgs, now time.Time) (nb, na *time.Time, err error) {
 // supersedeArgs embeds storeArgs (mirroring scheduleArgs's embedding shape,
 // D-03/RESEARCH A4) so supersede_memory inherits the full store_memory field
 // set (content/scope/source/category/tags/repo/workspace/worktree/base_dir/
-// summary/idempotency_key) without a hand-rolled parallel field list — the
-// exact drift class persistAndEnqueue's doc comment already flags
-// (tools.go:734-736).
+// summary) without a hand-rolled parallel field list — the exact drift class
+// persistAndEnqueue's doc comment already flags (tools.go:734-736).
+//
+// idempotency_key is deliberately EXCLUDED (WR-03, plan T-25-10 deferred
+// scope): supersede's idempotency was never wired up
+// (deps.supersedeMemory never calls checkIdempotentReplay or stamps
+// IdempotencyFingerprint), so silently advertising the store_memory-flavored
+// "safe retry" schema description on this tool would be actively
+// misleading. IdempotencyKey below shadows the promoted storeArgs field —
+// both encoding/json's decode (typeFields dominant-field selection) and
+// jsonschema-go's reflect.VisibleFields-based schema inference resolve
+// same-name fields by shallowest-depth-wins, so this depth-0 `json:"-"`
+// field wins over storeArgs' depth-1 promoted one, removing idempotency_key
+// from supersede_memory's wire decode AND its advertised schema.
 type supersedeArgs struct {
 	storeArgs
 	Supersedes string `json:"supersedes" jsonschema:"id (full UUID or short_id) of the memory this new record corrects/replaces"`
+	// IdempotencyKey shadows storeArgs.IdempotencyKey — see the type doc
+	// comment above. Never read; supersede_memory does not support
+	// idempotent replay this phase.
+	IdempotencyKey string `json:"-"`
 }
 
 type searchArgs struct {
