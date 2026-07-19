@@ -11,6 +11,7 @@ import (
 	"os"
 	"slices"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -2731,6 +2732,77 @@ func TestSupersedeAlreadySuperseded(t *testing.T) {
 	}
 	if err := s.Supersede(ctx, secondNew, []float32{0.3, 0.4, 0.5}, targetID, subj); !errors.Is(err, ErrAlreadySuperseded) {
 		t.Errorf("second Supersede on already-superseded target: want ErrAlreadySuperseded, got %v", err)
+	}
+}
+
+// TestSupersedeConcurrent (CR-01) pins Store.Supersede's per-target lock: two
+// goroutines racing to supersede the SAME target must not both succeed. Before
+// the fix, both could observe SupersededBy == nil before either back-stamped,
+// silently forking the correction chain with no error to either caller. Run
+// with -race — the lock must also be free of data races on the shared
+// sync.Map-backed *sync.Mutex.
+func TestSupersedeConcurrent(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-test:project:concurrent"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+
+	targetID := "d5000000-0000-0000-0000-000000000001"
+	firstNewID := "d5000000-0000-0000-0000-000000000002"
+	secondNewID := "d5000000-0000-0000-0000-000000000003"
+
+	target := Memory{ID: targetID, Content: "v", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, target, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert target: %v", err)
+	}
+
+	firstNew := Memory{
+		ID: firstNewID, Content: "first correction", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: &targetID,
+	}
+	secondNew := Memory{
+		ID: secondNewID, Content: "second correction", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: &targetID,
+	}
+
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		errs[0] = s.Supersede(ctx, firstNew, []float32{0.2, 0.3, 0.4}, targetID, subj)
+	}()
+	go func() {
+		defer wg.Done()
+		errs[1] = s.Supersede(ctx, secondNew, []float32{0.3, 0.4, 0.5}, targetID, subj)
+	}()
+	wg.Wait()
+
+	successes, conflicts := 0, 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, ErrAlreadySuperseded):
+			conflicts++
+		default:
+			t.Fatalf("unexpected Supersede error: %v", err)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("concurrent Supersede: got %d successes, %d ErrAlreadySuperseded conflicts (errs=%v), want exactly 1 success and 1 conflict", successes, conflicts, errs)
+	}
+
+	gotTarget, err := s.Get(ctx, targetID)
+	if err != nil {
+		t.Fatalf("Get target: %v", err)
+	}
+	if gotTarget.SupersededBy == nil || *gotTarget.SupersededBy == "" {
+		t.Fatalf("target.SupersededBy = %v, want set to the single winning correction's id", gotTarget.SupersededBy)
+	}
+	if *gotTarget.SupersededBy != firstNewID && *gotTarget.SupersededBy != secondNewID {
+		t.Fatalf("target.SupersededBy = %q, want one of %q/%q", *gotTarget.SupersededBy, firstNewID, secondNewID)
 	}
 }
 

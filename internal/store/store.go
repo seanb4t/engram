@@ -327,6 +327,12 @@ type Store struct {
 	// injected in tests (round-8 injected-failure test) without a broader
 	// client-interface refactor.
 	deletePayloadKeys func(ctx context.Context, id string, keys []string) error
+
+	// locker serializes Supersede's check-then-act (already-superseded guard
+	// through the back-stamp) per target id. Defaults to an in-process
+	// sync.Mutex-backed implementation in New(); WithTargetLocker overrides it
+	// (e.g. with a future distributed lock). See TargetLocker's doc comment.
+	locker TargetLocker
 }
 
 // Option configures a Store at construction.
@@ -346,9 +352,21 @@ func WithAuthz(pdp *authz.PDP) Option {
 	return func(s *Store) { s.authz = pdp }
 }
 
+// WithTargetLocker overrides Supersede's per-target lock. Defaults to an
+// in-process sync.Mutex-backed TargetLocker (single-instance atomicity only).
+// Provided so a future distributed lock can be swapped in without touching
+// Supersede's logic; tests also use this to inject a call-counting/blocking
+// probe.
+func WithTargetLocker(l TargetLocker) Option {
+	return func(s *Store) { s.locker = l }
+}
+
 // New returns a Store backed by the given Qdrant client and collection.
 func New(c *qdrant.Client, collection string, opts ...Option) *Store {
-	s := &Store{client: c, collection: collection, now: time.Now, authz: authz.MustDefault()}
+	s := &Store{
+		client: c, collection: collection, now: time.Now, authz: authz.MustDefault(),
+		locker: newInProcessTargetLocker(),
+	}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -1777,6 +1795,16 @@ func (s *Store) SetVisibility(ctx context.Context, id string, subj Subject, shar
 // back-stamp SetPayload, Qdrant's point-ID-selector SetPayload returns a
 // NotFound gRPC error that propagates unchanged — fail-closed, no re-fetch
 // needed (D-02).
+//
+// Concurrency note (CR-01): steps 2-4 (already-superseded check through the
+// back-stamp) are classic check-then-act with no Qdrant-side compare-and-swap.
+// Two concurrent Supersede calls against the SAME target could otherwise both
+// observe "not yet superseded" and both succeed, silently forking the
+// correction chain. s.locker.Lock(target) below serializes calls per target
+// id (different targets never contend) to make the check-then-act atomic
+// in-process. See TargetLocker's doc comment: this only guarantees
+// single-instance atomicity — a future distributed lock (swapped in via
+// WithTargetLocker) would be required for multi-replica atomicity.
 func (s *Store) Supersede(ctx context.Context, newMem Memory, vec []float32, target string, subj Subject) (err error) {
 	ctx, span := tracer.Start(ctx, "store.Supersede",
 		trace.WithAttributes(attribute.String("engram.owner", ownerOf(subj))))
@@ -1789,6 +1817,15 @@ func (s *Store) Supersede(ctx context.Context, newMem Memory, vec []float32, tar
 			span.SetStatus(codes.Error, err.Error())
 		}
 	}()
+
+	// 0. Per-target lock, held through the back-stamp (CR-01): serializes
+	//    concurrent Supersede calls against this target so the
+	//    already-superseded check-then-act below is atomic in-process.
+	unlock, err := s.locker.Lock(ctx, target)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	// 1. Owner-only write gate on the TARGET (not the new record — that's a
 	//    normal create, already write-gated by construction).
