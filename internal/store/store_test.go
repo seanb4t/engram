@@ -2605,6 +2605,272 @@ func TestSupersedeRecallGate(t *testing.T) {
 	}
 }
 
+// TestSupersedeStamp (SC1) pins Store.Supersede's core contract: the target's
+// SupersededBy is back-stamped to the new record's id via a single-key
+// SetPayload, and the target's other payload fields (Content/Tags/Visibility)
+// survive untouched — the proof that the back-stamp is a merge, not a
+// re-Upsert (D-01). The new record carries Supersedes == target id (D-04).
+func TestSupersedeStamp(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-test:project:stamp"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	targetID := "d0000000-0000-0000-0000-000000000001"
+	newID := "d0000000-0000-0000-0000-000000000002"
+
+	target := Memory{
+		ID: targetID, Content: "original content", Scope: scope, Owner: "sub-A",
+		Tags: []string{"t1"}, Visibility: "shared", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, target, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert target: %v", err)
+	}
+
+	newMem := Memory{
+		ID: newID, Content: "corrected content", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: &targetID,
+	}
+	if err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, targetID, Authenticated("sub-A")); err != nil {
+		t.Fatalf("Supersede: %v", err)
+	}
+
+	gotTarget, err := s.Get(ctx, targetID)
+	if err != nil {
+		t.Fatalf("Get target: %v", err)
+	}
+	if gotTarget.SupersededBy == nil || *gotTarget.SupersededBy != newID {
+		t.Errorf("target.SupersededBy = %v, want %q", gotTarget.SupersededBy, newID)
+	}
+	if gotTarget.Content != "original content" {
+		t.Errorf("target.Content = %q, want unchanged %q", gotTarget.Content, "original content")
+	}
+	if !slices.Equal(gotTarget.Tags, []string{"t1"}) {
+		t.Errorf("target.Tags = %v, want unchanged [t1]", gotTarget.Tags)
+	}
+	if gotTarget.Visibility != "shared" {
+		t.Errorf("target.Visibility = %q, want unchanged %q", gotTarget.Visibility, "shared")
+	}
+
+	gotNew, err := s.Get(ctx, newID)
+	if err != nil {
+		t.Fatalf("Get new: %v", err)
+	}
+	if gotNew.Content != "corrected content" {
+		t.Errorf("new.Content = %q, want %q", gotNew.Content, "corrected content")
+	}
+	if gotNew.Supersedes == nil || *gotNew.Supersedes != targetID {
+		t.Errorf("new.Supersedes = %v, want %q", gotNew.Supersedes, targetID)
+	}
+}
+
+// TestSupersedeOwnerGate (SC3) pins that a non-owner cannot supersede a
+// target they don't own — Supersede must use getWritable/ActionWrite (never
+// GetReadable), so a caller without a write grant gets the same ErrNotFound
+// as "doesn't exist" (no existence leak), and the target is left unstamped.
+func TestSupersedeOwnerGate(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-test:project:owner-gate"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	targetID := "d1000000-0000-0000-0000-000000000001"
+	newID := "d1000000-0000-0000-0000-000000000002"
+
+	target := Memory{ID: targetID, Content: "v", Scope: scope, Owner: "sub-B", CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, target, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert target: %v", err)
+	}
+
+	newMem := Memory{
+		ID: newID, Content: "corrected", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: &targetID,
+	}
+	if err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, targetID, Authenticated("sub-A")); !errors.Is(err, ErrNotFound) {
+		t.Errorf("non-owner Supersede: want ErrNotFound, got %v", err)
+	}
+
+	gotTarget, err := s.Get(ctx, targetID)
+	if err != nil {
+		t.Fatalf("Get target: %v", err)
+	}
+	if gotTarget.SupersededBy != nil {
+		t.Errorf("target.SupersededBy = %v, want nil (unauthorized supersede must not stamp)", gotTarget.SupersededBy)
+	}
+}
+
+// TestSupersedeAlreadySuperseded (SC4/D-05) pins the single-hop guard:
+// superseding a target whose SupersededBy is already non-empty is rejected
+// with store.ErrAlreadySuperseded, keeping a single live head per chain.
+func TestSupersedeAlreadySuperseded(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-test:project:already-superseded"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+
+	targetID := "d2000000-0000-0000-0000-000000000001"
+	firstNewID := "d2000000-0000-0000-0000-000000000002"
+	secondNewID := "d2000000-0000-0000-0000-000000000003"
+
+	target := Memory{ID: targetID, Content: "v", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, target, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert target: %v", err)
+	}
+	firstNew := Memory{
+		ID: firstNewID, Content: "first correction", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: &targetID,
+	}
+	if err := s.Supersede(ctx, firstNew, []float32{0.2, 0.3, 0.4}, targetID, subj); err != nil {
+		t.Fatalf("first Supersede: %v", err)
+	}
+
+	secondNew := Memory{
+		ID: secondNewID, Content: "second correction", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: &targetID,
+	}
+	if err := s.Supersede(ctx, secondNew, []float32{0.3, 0.4, 0.5}, targetID, subj); !errors.Is(err, ErrAlreadySuperseded) {
+		t.Errorf("second Supersede on already-superseded target: want ErrAlreadySuperseded, got %v", err)
+	}
+}
+
+// TestSupersedeForwardChain (D-06) pins that forward chains are allowed: C
+// supersedes A which superseded B. All three remain fetchable by id; only A
+// and B (non-head records) are excluded from Search/List, C (the live head)
+// stays present.
+func TestSupersedeForwardChain(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-test:project:forward-chain"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+	vec := []float32{0.1, 0.2, 0.3}
+
+	bID := "d3000000-0000-0000-0000-000000000001"
+	aID := "d3000000-0000-0000-0000-000000000002"
+	cID := "d3000000-0000-0000-0000-000000000003"
+
+	b := Memory{ID: bID, Content: "b", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, b, vec); err != nil {
+		t.Fatalf("upsert b: %v", err)
+	}
+	a := Memory{ID: aID, Content: "a", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC(), Supersedes: &bID}
+	if err := s.Supersede(ctx, a, vec, bID, subj); err != nil {
+		t.Fatalf("Supersede b->a: %v", err)
+	}
+	c := Memory{ID: cID, Content: "c", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC(), Supersedes: &aID}
+	if err := s.Supersede(ctx, c, vec, aID, subj); err != nil {
+		t.Fatalf("Supersede a->c: %v", err)
+	}
+
+	for _, id := range []string{bID, aID, cID} {
+		if _, err := s.Get(ctx, id); err != nil {
+			t.Errorf("Get %s: %v", id, err)
+		}
+	}
+
+	items, _, _, err := s.List(ctx, scope, subj, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if got := recordIDs(items); slices.Contains(got, bID) || slices.Contains(got, aID) {
+		t.Errorf("List: superseded records present, want excluded: %v", got)
+	} else if !slices.Contains(got, cID) {
+		t.Errorf("List: C %s absent, want present (head): %v", cID, got)
+	}
+
+	hits, err := s.Search(ctx, scope, subj, vec, 10, nil, time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if got := recordIDs(hits); slices.Contains(got, bID) || slices.Contains(got, aID) {
+		t.Errorf("Search: superseded records present, want excluded: %v", got)
+	} else if !slices.Contains(got, cID) {
+		t.Errorf("Search: C %s absent, want present (head): %v", cID, got)
+	}
+}
+
+// TestSupersedeTOCTOU (D-02) verifies Store.Supersede's TOCTOU behaviour: a
+// target deleted between the getWritable ownership gate and the back-stamp
+// SetPayload call must not cause Supersede to return nil. Mirrors
+// TestSetVisibilityTOCTOU's three-part structure (raw-protocol confirmation,
+// simulated TOCTOU window, end-to-end pre-entry-deletion), swapping the
+// "visibility" payload key for "superseded_by". The version guard is the
+// same qdrantTOCTOUVerifiedVersion coupling TestSetVisibilityTOCTOU enforces.
+func TestSupersedeTOCTOU(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	if os.Getenv("ENGRAM_QDRANT_TEST_ADDR") == "" {
+		hc, err := s.client.HealthCheck(ctx)
+		if err != nil {
+			t.Fatalf("qdrant health check: %v", err)
+		}
+		if v := hc.GetVersion(); v != qdrantTOCTOUVerifiedVersion {
+			t.Fatalf("Qdrant version %q != verified %q: re-verify SetPayload point-ID NotFound semantics, then update qdrantTOCTOUVerifiedVersion and qdrantImageTag together", v, qdrantTOCTOUVerifiedVersion)
+		}
+	}
+
+	scope := "supersede-test:project:toctou"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	// Part 1: raw SetPayload on a missing point-ID errors — the protocol
+	// contract Supersede's back-stamp relies on for fail-closed TOCTOU.
+	missingID := "d4000000-0000-0000-0000-000000000001"
+	_, rawErr := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload:        qdrant.NewValueMap(map[string]any{"superseded_by": "whatever"}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(missingID)}),
+	})
+	if rawErr == nil {
+		t.Fatal("qdrant SetPayload on missing point-ID returned nil — the fail-closed contract for Supersede's back-stamp is broken")
+	}
+
+	// Part 2: simulate the TOCTOU window — insert, gate passes, concurrent
+	// delete, then the raw SetPayload Supersede's back-stamp step would issue.
+	id := "d4000000-0000-0000-0000-000000000002"
+	m := Memory{ID: id, Content: "toctou-target", Scope: scope, Owner: "sub-owner", CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := s.getWritable(ctx, id, Authenticated("sub-owner"), authz.ActionWrite); err != nil {
+		t.Fatalf("getWritable pre-delete: %v", err)
+	}
+	if _, err := s.client.Delete(ctx, &qdrant.DeletePoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Points: qdrant.NewPointsSelector(qdrant.NewID(id)),
+	}); err != nil {
+		t.Fatalf("concurrent delete: %v", err)
+	}
+	_, setPayloadErr := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload:        qdrant.NewValueMap(map[string]any{"superseded_by": "whatever"}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
+	})
+	if setPayloadErr == nil {
+		t.Error("TOCTOU: SetPayload on deleted point-ID returned nil — the fail-closed contract for Supersede's back-stamp is broken")
+	}
+
+	// Part 3: end-to-end via Supersede — target deleted before the call, so
+	// the getWritable gate itself rejects it (pre-entry-deletion case).
+	id2 := "d4000000-0000-0000-0000-000000000003"
+	newID2 := "d4000000-0000-0000-0000-000000000004"
+	m2 := Memory{ID: id2, Content: "supersede-target", Scope: scope, Owner: "sub-owner", CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, m2, []float32{0.4, 0.5, 0.6}); err != nil {
+		t.Fatalf("upsert m2: %v", err)
+	}
+	if err := s.Delete(ctx, id2, Authenticated("sub-owner")); err != nil {
+		t.Fatalf("delete m2: %v", err)
+	}
+	newMem := Memory{
+		ID: newID2, Content: "correction", Scope: scope, Owner: "sub-owner",
+		CreatedAt: time.Now().UTC(), Supersedes: &id2,
+	}
+	if err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, id2, Authenticated("sub-owner")); err == nil {
+		t.Error("Supersede on deleted target returned nil — expected an error")
+	}
+}
+
 // TestListCursorTraversal pins order-independent cursor paging at limit=1: N
 // records sharing ONE timestamp plus M with distinct timestamps, paged to
 // exhaustion, must yield the full set with no duplicates and no skips. At limit=1
