@@ -3,15 +3,17 @@ phase: 25
 slug: supersession-with-history
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
 # audit-milestone §5.5 distinguishes NOT-VALIDATED (draft) from PARTIAL (validated + nyquist_compliant: false) (#2117)
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-07-19
 ---
 
 # Phase 25 — Validation Strategy
 
 > Per-phase validation contract for feedback sampling during execution.
+> **NYQUIST-COMPLIANT** — every requirement/success-criterion has automated verification;
+> coverage expanded by the deep code review (CR-01..CR-04, WR-01..WR-04, IN-01..IN-03).
 
 ---
 
@@ -20,7 +22,7 @@ created: 2026-07-19
 | Property | Value |
 |----------|-------|
 | **Framework** | go test (stdlib `testing`, `-race`) |
-| **Config file** | none — Go modules; requires CGO + real Qdrant for store integration tests (`ENGRAM_REQUIRE_QDRANT`) |
+| **Config file** | none — Go modules; store/server integration tests use testcontainers (Docker) or `ENGRAM_QDRANT_TEST_ADDR` |
 | **Quick run command** | `go test ./internal/store/... ./internal/server/...` |
 | **Full suite command** | `task test` |
 | **Estimated runtime** | ~30–90 seconds |
@@ -38,25 +40,41 @@ created: 2026-07-19
 
 ## Per-Task Verification Map
 
-| Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
-|---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 25-01-T1 | 25-01 | 1 | REQ-supersession-links | T-25-06 | superseded record soft-hidden from Search AND List, still fetchable via Get; codec round-trips *string links | unit | `go test ./internal/store/... -run TestSupersedeRecallGate -count=1` | ❌ W0 | ⬜ pending |
-| 25-01-T2 | 25-01 | 1 | REQ-supersession-links | T-25-01/02/03/04/05 | owner-only supersede (ActionWrite); already-superseded rejected; back-stamp preserves content+vector; TOCTOU fail-closed; forward chains | unit | `go test ./internal/store/... -run 'TestSupersede(Stamp\|OwnerGate\|AlreadySuperseded\|ForwardChain\|TOCTOU)' -count=1` | ❌ W0 | ⬜ pending |
-| 25-02-T1 | 25-02 | 2 | REQ-supersession-links | T-25-07/08 | supersede_memory routes through the owner write gate; target-not-found re-wrapped with original input | unit | `go test ./internal/server/... -run TestSupersedeMemory -count=1` | ❌ W0 | ⬜ pending |
-| 25-02-T2 | 25-02 | 2 | REQ-supersession-links | T-25-09 | ErrAlreadySuperseded maps to CodeFailedPrecondition (sentinel switch exhaustive) | unit | `go test ./internal/server/... -run TestConnectError -count=1` | ❌ W0 | ⬜ pending |
+| Task ID | Plan | Wave | Requirement | Secure Behavior | Test Type | Automated Command | Status |
+|---------|------|------|-------------|-----------------|-----------|-------------------|--------|
+| 25-01-T1 | 25-01 | 1 | REQ-supersession-links | superseded record soft-hidden from Search AND List, fetchable via Get; `*string` link codec round-trips | unit | `go test ./internal/store/... -run 'TestSupersedeRecallGate\|TestSupersedeStamp\|TestSupersedeVectorPreserved' -count=1` | ✅ green |
+| 25-01-T2 | 25-01 | 1 | REQ-supersession-links | owner-only supersede (ActionWrite); already-superseded rejected; back-stamp preserves content+vector; TOCTOU fail-closed; forward chains | unit | `go test ./internal/store/... -run 'TestSupersede(OwnerGate\|AlreadySuperseded\|ForwardChain\|TOCTOU\|Stamp)' -count=1` | ✅ green |
+| 25-02-T1 | 25-02 | 2 | REQ-supersession-links | `supersede_memory` routes through owner write gate; target-not-found re-wrapped 404-indistinguishable; rule/discovery targets handled | unit | `go test ./internal/server/... -run 'TestSupersedeMemory' -count=1` | ✅ green |
+| 25-02-T2 | 25-02 | 2 | REQ-supersession-links | `ErrAlreadySuperseded → CodeFailedPrecondition` (sentinel switch exhaustive) | unit | `go test ./internal/server/... -run TestConnectError -count=1` | ✅ green |
+
+### Review-added coverage (deep code review, all green under `-race`)
+
+| Finding | Test(s) | Package |
+|---------|---------|---------|
+| CR-01 concurrent-supersede race | `TestSupersedeConcurrent` | store |
+| CR-04 Update-erases-back-stamp race | `TestSupersedeVsUpdateConcurrent` | store |
+| CR-01/CR-04 lock primitive | `TestInProcessTargetLocker{CanceledContextRejected,SameKeySerializes,DifferentKeysDoNotBlock,ConcurrentDistinctKeys}` | store |
+| CR-02 rule-immutability | `TestSupersedeMemoryRejectsRule` | server |
+| CR-03 cost-amplification (gate before embed) | `TestSupersedeMemoryEmbedNotCalledForNonOwner` | server |
+| WR-01 SearchDiscovery soft-hide | `TestSearchDiscoverySupersededHidden` | store |
+| WR-02 ListScheduled soft-hide | `TestListScheduledSupersededHidden` | store |
+| WR-03 idempotency schema-excluded + ignored | `TestSupersedeMemorySchemaExcludesIdempotencyKey`, `TestSupersedeMemoryIgnoresIdempotencyKey` | server |
+| WR-04 idempotency decode-but-ignore | `TestSupersedeArgsDecodePopulatesPromotedIdempotencyKey` | server |
+| IN-01 vector preservation | `TestSupersedeVectorPreserved` | store |
+| IN-02 discovery-target handler | `TestSupersedeMemoryDiscoveryTarget` | server |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
-*Planner populates concrete task rows from PLAN.md; validate-phase reconciles.*
 
 ---
 
 ## Wave 0 Requirements
 
-- [ ] `internal/store/store_test.go` — supersede owner-gate + TOCTOU + already-superseded rejection (mirror `TestSetVisibilityOwnerGate` / `TestSetVisibilityTOCTOU`)
-- [ ] `internal/store/store_test.go` — recall-gate exclusion at BOTH Search and List call sites + `get_memory` still fetchable (mirror `TestSearchDateWindow` / `TestListDateWindow`)
-- [ ] Existing `go test -race` + real-Qdrant harness covers integration — no new framework install
+- [x] `internal/store/store_test.go` — supersede owner-gate + TOCTOU + already-superseded + recall-gate (both Search & List) + Get-still-fetchable
+- [x] `internal/store/locker_test.go` — TargetLocker unit tests (CR-01/IN-03)
+- [x] `internal/server/tools_test.go` — handler owner-gate, rule/discovery targets, cost path, idempotency-ignored
+- [x] Existing `go test -race` + real-Qdrant (testcontainers) harness covers integration — no new framework install
 
-*Existing infrastructure covers the framework; Wave 0 adds the supersede-specific stubs above.*
+*Existing infrastructure covered the framework; all Wave-0 stubs landed RED-first (tdd) then green.*
 
 ---
 
@@ -64,19 +82,33 @@ created: 2026-07-19
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| — | REQ-supersession-links | All behaviors are automatable via `go test` against real Qdrant | — |
+| — | REQ-supersession-links | All phase behaviors are automated via `go test` against real Qdrant | — |
 
 *All phase behaviors have automated verification.*
 
 ---
 
+## Validation Audit 2026-07-19
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 0 |
+
+REQ-supersession-links and all 4 Success Criteria are COVERED by automated `-race` tests; the deep code
+review expanded coverage to 24 supersession/locker test functions. No MISSING or PARTIAL requirements —
+`nyquist_compliant: true`.
+
+---
+
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 90s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 90s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** validated 2026-07-19
