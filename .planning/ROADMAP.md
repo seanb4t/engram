@@ -482,7 +482,28 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 4. None of the three additions introduces new store-layer authz surface — citations and category
    filtering compose onto the existing authz-outer-`Must` invariant untouched.
 
-**Plans**: TBD
+**Plans**: 6 plans
+
+**Wave 1**
+
+- [ ] 26-01-PLAN.md — Track B store layer: `store.SearchOptions` + `categoryMatchCondition`, `Search`/`SearchReranked` reshape across ~25 call sites, `coreSearchRequest.Categories`, OR/pre-ranking/SC4 store tests (Wave 1)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 26-02-PLAN.md — Track B MCP surface: `categories` argument on `search_memory`/`list_memory` with explicit OR wording, closure wiring, empty/unknown/ordering edge tests (Wave 2, depends on 26-01)
+
+**Wave 3** *(blocked on Wave 2; the two plans below are independent of each other)*
+
+- [ ] 26-03-PLAN.md — Track B Connect parity: `SearchMemoriesRequest.categories = 8` (one-way, checkpoint-gated), `task proto:gen` + committed `gen/`, handler wiring, MCP↔Connect parity test (Wave 3, depends on 26-02)
+- [ ] 26-04-PLAN.md — Track C chat base URL: `internal/openaiurl.Join` shared provider-shape join, `ENGRAM_OPENAI_CHAT_BASE_URL` config/registry/validate trio, `cmp.Or` at the summarizer construction site, Helm wiring (Wave 3, file-ownership serialization only)
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [ ] 26-05-PLAN.md — Track A citations: `payload()` gate split, `storeArgs.Citations` + the `toMemory` mapping, shared `validateCitations`, Connect compact-view fix, cross-write-path preservation suite (Wave 4, depends on 26-03 + 26-04)
+
+**Wave 5** *(blocked on Wave 4)*
+
+- [ ] 26-06-PLAN.md — Docs + skill: `curating-memory` citations guidance, memory-record/tools reference updates, `ENGRAM_OPENAI_CHAT_BASE_URL` configure guide (Wave 5, depends on 26-03 + 26-04 + 26-05)
 
 ## Progress
 
