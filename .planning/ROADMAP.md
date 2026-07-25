@@ -482,7 +482,7 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 4. None of the three additions introduces new store-layer authz surface — citations and category
    filtering compose onto the existing authz-outer-`Must` invariant untouched.
 
-**Plans**: 1/6 plans executed
+**Plans**: 2/6 plans executed
 
 **Wave 1**
 
@@ -490,7 +490,7 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 26-02-PLAN.md — Track B MCP surface: `categories` argument on `search_memory`/`list_memory` with explicit OR wording, closure wiring, empty/unknown/ordering edge tests (Wave 2, depends on 26-01)
+- [x] 26-02-PLAN.md — Track B MCP surface: `categories` argument on `search_memory`/`list_memory` with explicit OR wording, closure wiring, empty/unknown/ordering edge tests (Wave 2, depends on 26-01)
 
 **Wave 3** *(blocked on Wave 2; the two plans below are independent of each other)*
 

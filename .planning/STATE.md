@@ -5,15 +5,15 @@ milestone_name: Capture & Service Identity
 current_phase: 26
 current_phase_name: Structured Citations, Category Filter & Chat Base URL
 status: executing
-stopped_at: Completed 26-01-PLAN.md
-last_updated: "2026-07-25T23:10:46.536Z"
+stopped_at: Completed 26-02-PLAN.md
+last_updated: "2026-07-25T23:20:44.789Z"
 last_activity: 2026-07-25
 last_activity_desc: Phase 26 execution started
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 19
-  completed_plans: 14
+  completed_plans: 15
   percent: 50
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-07-18 — after Phase 24)
 ## Current Position
 
 Phase: 26 (Structured Citations, Category Filter & Chat Base URL) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-07-25 — Phase 26 execution started
 
-Progress: [████████████████████] 11/11 plans ([███████░░░] 74%) · 3/8 phases (38%)
+Progress: [████████████████████] 11/11 plans ([████████░░] 79%) · 3/8 phases (38%)
 
 ## Deferred Items
 
@@ -122,6 +122,7 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 - [Phase ?]: connectError maps store.ErrAlreadySuperseded to CodeFailedPrecondition, pre-positioning only (no Connect RPC exposes supersede_memory this phase)
 - [Phase ?]: [Phase 26 P01]: D-09 confirmed: SearchOptions{Tags,Categories,CreatedAfter,CreatedBefore} replaces Search/SearchReranked's positional tail; k stays positional so SearchReranked's k==0 ErrInvalidArgument guard is unweakened
 - [Phase ?]: [Phase 26 P01]: categoryMatchCondition extracted from listFilter's inline category loop, shared by list and search lanes; flagged tightening — empty-string category elements now skipped (mirrors tagMatchConditions), so categories:[""] becomes a passthrough
+- [Phase ?]: [Phase 26 P02]: D-08 confirmed shipped: categories arg is plural on searchArgs/listArgs with explicit ANY/OR jsonschema wording (distinct from tags' ALL/AND); 26-01 had already threaded coreSearchRequest.Categories/coreListRequest.Categories into the store, so this plan's only gap was the two MCP arg fields + two closure-literal wirings
 
 ### Blockers/Concerns
 
@@ -139,8 +140,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-25T23:10:46.528Z
-Stopped at: Completed 26-01-PLAN.md
+Last session: 2026-07-25T23:20:44.781Z
+Stopped at: Completed 26-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -199,6 +200,7 @@ Resume file: None
 | Phase 25 P01 | 4min | 2 tasks | 2 files |
 | Phase 25 P02 | 3min | 2 tasks | 6 files |
 | Phase 26 P01 | 10min | 2 tasks | 9 files |
+| Phase 26 P02 | 9min | 2 tasks | 2 files |
 
 ## Operator Next Steps
 
