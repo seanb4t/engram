@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -209,6 +210,47 @@ func TestSummarizeWithTimeoutCancelsSlowRequest(t *testing.T) {
 	_, err := New(srv.URL, "k", "m", 280, WithTimeout(20*time.Millisecond)).Summarize(context.Background(), "x")
 	if err == nil {
 		t.Fatal("want timeout error from slow gateway, got nil")
+	}
+}
+
+// TestSummarizeConcurrentSharedClientOneEndpoint pins the REQ-chat-base-url
+// concurrency edge: the base URL is resolved once at construction (Join is a
+// pure function holding no state), so concurrent async summary workers
+// sharing one *Client all issue requests to the identical endpoint — never a
+// torn or differing path.
+func TestSummarizeConcurrentSharedClientOneEndpoint(t *testing.T) {
+	var mu sync.Mutex
+	paths := make(map[string]int)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		paths[r.URL.Path]++
+		mu.Unlock()
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL+"/v1", "k", "m", 280)
+
+	const workers = 20
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer wg.Done()
+			if _, err := c.Summarize(context.Background(), "x"); err != nil {
+				t.Errorf("Summarize: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(paths) != 1 {
+		t.Fatalf("recorded %d distinct request paths, want exactly 1: %v", len(paths), paths)
+	}
+	if got := paths["/v1/chat/completions"]; got != workers {
+		t.Fatalf("path /v1/chat/completions recorded %d times, want %d: %v", got, workers, paths)
 	}
 }
 

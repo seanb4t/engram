@@ -49,6 +49,9 @@ func TestValidateFieldRules(t *testing.T) {
 		{"embed timeout garbage", func(c *Config) { c.Embed.Timeout = "garbage" }, "ENGRAM_EMBED_TIMEOUT"},
 		{"openai embeddings_url bad scheme", func(c *Config) { c.OpenAI.EmbeddingsURL = "ftp://x/embeddings" }, "ENGRAM_OPENAI_EMBEDDINGS_URL"},
 		{"openai embeddings_url no host", func(c *Config) { c.OpenAI.EmbeddingsURL = "http://" }, "ENGRAM_OPENAI_EMBEDDINGS_URL"},
+		{"openai chat_base_url unparseable", func(c *Config) { c.OpenAI.ChatBaseURL = "http://[::1" }, "ENGRAM_OPENAI_CHAT_BASE_URL"},
+		{"openai chat_base_url bad scheme", func(c *Config) { c.OpenAI.ChatBaseURL = "ftp://x/v1" }, "ENGRAM_OPENAI_CHAT_BASE_URL"},
+		{"openai chat_base_url no host", func(c *Config) { c.OpenAI.ChatBaseURL = "http://" }, "ENGRAM_OPENAI_CHAT_BASE_URL"},
 		{"summary on_write non-bool", func(c *Config) { c.Summarize.OnWrite = "yes" }, "ENGRAM_SUMMARY_ON_WRITE"},
 		{"summary workers non-numeric", func(c *Config) { c.Summarize.Workers = "abc" }, "ENGRAM_SUMMARY_WORKERS"},
 		{"summary workers zero", func(c *Config) { c.Summarize.Workers = "0" }, "ENGRAM_SUMMARY_WORKERS"},
@@ -228,6 +231,44 @@ func TestValidateEmbeddingsURLOverride(t *testing.T) {
 		{"valid https URL accepted", func(c *Config) { c.OpenAI.EmbeddingsURL = "https://api.openai.com/v1/embeddings" }, ""},
 		{"hostless rejected", func(c *Config) { c.OpenAI.EmbeddingsURL = "http://" }, "ENGRAM_OPENAI_EMBEDDINGS_URL"},
 		{"non-http(s) scheme rejected", func(c *Config) { c.OpenAI.EmbeddingsURL = "ftp://x/embeddings" }, "ENGRAM_OPENAI_EMBEDDINGS_URL"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := validConfig()
+			tc.mutate(c)
+			err := c.Validate()
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Validate() = nil, want error containing %q", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("Validate() error = %q, want substring %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestValidateChatBaseURLOverride covers the D-12/D-15 chat lane override:
+// empty is a self-gated no-op (means "inherit BaseURL"), a valid http(s) URL
+// is accepted, malformed values are rejected — mirroring
+// TestValidateEmbeddingsURLOverride, except empty is VALID here (unlike
+// ENGRAM_OPENAI_BASE_URL's own empty-string-is-an-error rule).
+func TestValidateChatBaseURLOverride(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*Config)
+		want   string
+	}{
+		{"empty accepted (no-op, inherits BaseURL)", func(c *Config) { c.OpenAI.ChatBaseURL = "" }, ""},
+		{"valid https URL accepted", func(c *Config) { c.OpenAI.ChatBaseURL = "https://api.openai.com/v1" }, ""},
+		{"unparseable rejected", func(c *Config) { c.OpenAI.ChatBaseURL = "http://[::1" }, "ENGRAM_OPENAI_CHAT_BASE_URL"},
+		{"hostless rejected", func(c *Config) { c.OpenAI.ChatBaseURL = "http://" }, "ENGRAM_OPENAI_CHAT_BASE_URL"},
+		{"non-http(s) scheme rejected", func(c *Config) { c.OpenAI.ChatBaseURL = "ftp://x/v1" }, "ENGRAM_OPENAI_CHAT_BASE_URL"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
