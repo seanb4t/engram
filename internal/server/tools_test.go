@@ -1771,6 +1771,111 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	}
 }
 
+// seedCategoryFixture seeds one "decision", one "preference", and one
+// "gotcha" record in scope (anonymous owner, matching this file's
+// context.Background()/store.Anonymous() unauthenticated-handler-test
+// convention). Shared by TestSearchMemoryCategoriesArg,
+// TestListMemoryCategoriesArg, and TestCategoriesArgEdges (Task 2) so all
+// three category-filter tests exercise an identical fixture.
+func seedCategoryFixture(t *testing.T, d *deps, ctx context.Context, scope string) (decisionID, preferenceID, gotchaID string) {
+	t.Helper()
+	decisionID = "ca000000-0000-0000-0000-000000000001"
+	preferenceID = "ca000000-0000-0000-0000-000000000002"
+	gotchaID = "ca000000-0000-0000-0000-000000000003"
+	t.Cleanup(func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Anonymous()))
+	})
+	for _, m := range []store.Memory{
+		{ID: decisionID, Content: "x", Scope: scope, Owner: "", Category: "decision", CreatedAt: timeNow()},
+		{ID: preferenceID, Content: "x", Scope: scope, Owner: "", Category: "preference", CreatedAt: timeNow()},
+		{ID: gotchaID, Content: "x", Scope: scope, Owner: "", Category: "gotcha", CreatedAt: timeNow()},
+	} {
+		if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", m.ID, err)
+		}
+	}
+	return decisionID, preferenceID, gotchaID
+}
+
+// TestSearchMemoryCategoriesArg pins D-08's OR semantics on the search_memory
+// closure's coreSearchRequest.Categories wiring (a.Categories -> the request
+// field this task adds): a single category narrows to that category only, and
+// two categories return the union, never a third excluded category.
+func TestSearchMemoryCategoriesArg(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:categories-search"
+	decisionID, preferenceID, gotchaID := seedCategoryFixture(t, d, ctx, scope)
+	c := callerFor(ctx, t)
+	ids := func(ms []store.Memory) map[string]bool {
+		out := map[string]bool{}
+		for _, m := range ms {
+			out[m.ID] = true
+		}
+		return out
+	}
+
+	// Single category: only the decision record, never preference or gotcha.
+	hits, err := d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: []string{"decision"}})
+	if err != nil {
+		t.Fatalf("searchMemory decision: %v", err)
+	}
+	if g := ids(hits); !g[decisionID] || g[preferenceID] || g[gotchaID] {
+		t.Errorf("searchMemory categories=[decision] wrong: %v", g)
+	}
+
+	// OR of two categories: decision and gotcha, never preference.
+	hits, err = d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: []string{"decision", "gotcha"}})
+	if err != nil {
+		t.Fatalf("searchMemory decision+gotcha: %v", err)
+	}
+	if g := ids(hits); !g[decisionID] || !g[gotchaID] || g[preferenceID] {
+		t.Errorf("searchMemory categories=[decision,gotcha] wrong: %v", g)
+	}
+}
+
+// TestListMemoryCategoriesArg pins D-08's OR semantics on the list_memory
+// closure's coreListRequest.Categories wiring: a single category narrows to
+// that category only, the CursorMode-true pagination path is untouched by the
+// added field, and omitting categories still returns every readable record.
+func TestListMemoryCategoriesArg(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:categories-list"
+	decisionID, preferenceID, gotchaID := seedCategoryFixture(t, d, ctx, scope)
+	c := callerFor(ctx, t)
+	ids := func(ms []store.Memory) map[string]bool {
+		out := map[string]bool{}
+		for _, m := range ms {
+			out[m.ID] = true
+		}
+		return out
+	}
+
+	// Single category, mirroring the list_memory MCP closure's CursorMode:
+	// true — only the preference record.
+	res, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 10, Categories: []string{"preference"}, CursorMode: true})
+	if err != nil {
+		t.Fatalf("listMemory preference: %v", err)
+	}
+	if g := ids(res.Memories); !g[preferenceID] || g[decisionID] || g[gotchaID] {
+		t.Errorf("listMemory categories=[preference] wrong: %v", g)
+	}
+	// coreListResult.NextToken is always a present struct field (empty or
+	// not) — accessing it here proves adding Categories didn't disturb the
+	// CursorMode result shape the MCP closure's next_cursor map key relies on.
+	_ = res.NextToken
+
+	// Omitted categories: passthrough returns every readable record.
+	res, err = d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 10, CursorMode: true})
+	if err != nil {
+		t.Fatalf("listMemory passthrough: %v", err)
+	}
+	if g := ids(res.Memories); !g[decisionID] || !g[preferenceID] || !g[gotchaID] {
+		t.Errorf("listMemory categories omitted wrong: %v", g)
+	}
+}
+
 func TestUpdateMemoryPreservesSharingHandler(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()

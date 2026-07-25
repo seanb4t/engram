@@ -524,6 +524,7 @@ type searchArgs struct {
 	Scope         string   `json:"scope"`
 	K             uint64   `json:"k,omitempty"`
 	Tags          []string `json:"tags,omitempty" jsonschema:"optional; restrict to records carrying ALL listed tags"`
+	Categories    []string `json:"categories,omitempty" jsonschema:"optional; restrict to records in ANY of the listed categories (OR) — unlike tags, which requires ALL"`
 	Full          bool     `json:"full,omitempty" jsonschema:"return full content instead of summaries (default false → compact summary view)"`
 	CreatedAfter  string   `json:"created_after,omitempty" jsonschema:"optional RFC3339; inclusive lower bound on created_at"`
 	CreatedBefore string   `json:"created_before,omitempty" jsonschema:"optional RFC3339; exclusive upper bound on created_at"`
@@ -533,6 +534,7 @@ type listArgs struct {
 	Scope         string   `json:"scope" jsonschema:"the scope to list memories from"`
 	Limit         uint64   `json:"limit,omitempty" jsonschema:"max memories to return (default 20)"`
 	Tags          []string `json:"tags,omitempty" jsonschema:"optional; restrict to records carrying ALL listed tags"`
+	Categories    []string `json:"categories,omitempty" jsonschema:"optional; restrict to records in ANY of the listed categories (OR) — unlike tags, which requires ALL"`
 	Full          bool     `json:"full,omitempty" jsonschema:"return full content instead of summaries (default false → compact summary view)"`
 	CreatedAfter  string   `json:"created_after,omitempty" jsonschema:"optional RFC3339; inclusive lower bound on created_at"`
 	CreatedBefore string   `json:"created_before,omitempty" jsonschema:"optional RFC3339; exclusive upper bound on created_at"`
@@ -1411,7 +1413,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 				return nil, nil, fmt.Errorf("created_before: %w", err)
 			}
 			ms, err := d.searchMemory(ctx, c, coreSearchRequest{
-				Scope: a.Scope, Query: a.Query, K: k, Tags: a.Tags,
+				Scope: a.Scope, Query: a.Query, K: k, Tags: a.Tags, Categories: a.Categories,
 				CreatedAfter: after, CreatedBefore: before,
 			})
 			if err != nil {
@@ -1444,7 +1446,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 				return nil, nil, fmt.Errorf("created_before: %w", err)
 			}
 			res, err := d.listMemory(ctx, c, coreListRequest{
-				Scope: a.Scope, Limit: limit, Tags: a.Tags,
+				Scope: a.Scope, Limit: limit, Tags: a.Tags, Categories: a.Categories,
 				CreatedAfter: after, CreatedBefore: before,
 				Cursor: a.Cursor,
 				// Preserves today's UNCONDITIONAL MCP cursor-mode pagination
