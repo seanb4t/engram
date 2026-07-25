@@ -4,16 +4,16 @@ milestone: v0.11.x
 milestone_name: Capture & Service Identity
 current_phase: 26
 current_phase_name: Structured Citations, Category Filter & Chat Base URL
-status: "Phase 25 shipped — PR #429"
-stopped_at: Phase 26 context gathered
-last_updated: "2026-07-25T22:58:23.939Z"
+status: executing
+stopped_at: Completed 26-01-PLAN.md
+last_updated: "2026-07-25T23:10:46.536Z"
 last_activity: 2026-07-25
-last_activity_desc: Phase 26 planning complete
+last_activity_desc: Phase 26 execution started
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 19
-  completed_plans: 13
+  completed_plans: 14
   percent: 50
 ---
 
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-18 — after Phase 24)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 25 — supersession-with-history
+**Current focus:** Phase 26 — Structured Citations, Category Filter & Chat Base URL
 
 ## Current Position
 
-Phase: 26 — Structured Citations, Category Filter & Chat Base URL
-Plan: Not started
-Status: Phase 25 shipped — PR #429
-Last activity: 2026-07-25 — Phase 26 planning complete
+Phase: 26 (Structured Citations, Category Filter & Chat Base URL) — EXECUTING
+Plan: 2 of 6
+Status: Ready to execute
+Last activity: 2026-07-25 — Phase 26 execution started
 
-Progress: [████████████████████] 11/11 plans ([██████████] 100%) · 3/8 phases (38%)
+Progress: [████████████████████] 11/11 plans ([███████░░░] 74%) · 3/8 phases (38%)
 
 ## Deferred Items
 
@@ -120,6 +120,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 - [Phase ?]: Store.Get left deliberately ungated so superseded records stay fetchable by id
 - [Phase ?]: supersede_memory does not call checkIdempotentReplay despite storeArgs.IdempotencyKey riding along via embedding (plan's explicit handler steps omit it; accepted per RESEARCH Pitfall 2)
 - [Phase ?]: connectError maps store.ErrAlreadySuperseded to CodeFailedPrecondition, pre-positioning only (no Connect RPC exposes supersede_memory this phase)
+- [Phase ?]: [Phase 26 P01]: D-09 confirmed: SearchOptions{Tags,Categories,CreatedAfter,CreatedBefore} replaces Search/SearchReranked's positional tail; k stays positional so SearchReranked's k==0 ErrInvalidArgument guard is unweakened
+- [Phase ?]: [Phase 26 P01]: categoryMatchCondition extracted from listFilter's inline category loop, shared by list and search lanes; flagged tightening — empty-string category elements now skipped (mirrors tagMatchConditions), so categories:[""] becomes a passthrough
 
 ### Blockers/Concerns
 
@@ -137,9 +139,9 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-25T22:12:28.066Z
-Stopped at: Phase 26 context gathered
-Resume file: .planning/phases/26-structured-citations-category-filter-chat-base-url/26-CONTEXT.md
+Last session: 2026-07-25T23:10:46.528Z
+Stopped at: Completed 26-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -196,6 +198,7 @@ Resume file: .planning/phases/26-structured-citations-category-filter-chat-base-
 | Phase 24 P02 | 9min | 3 tasks | 2 files |
 | Phase 25 P01 | 4min | 2 tasks | 2 files |
 | Phase 25 P02 | 3min | 2 tasks | 6 files |
+| Phase 26 P01 | 10min | 2 tasks | 9 files |
 
 ## Operator Next Steps
 

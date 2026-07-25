@@ -79,7 +79,7 @@ store-layer authz **primitive**, and the memory contract stays additive.
 
 ### Recall
 
-- [ ] **REQ-category-filter**: `search_memory` and `list_memory` accept an optional `category`
+- [x] **REQ-category-filter**: `search_memory` and `list_memory` accept an optional `category`
   filter over the MCP surface, at parity with the Connect `ListMemories` RPC (which already
   supports it). The filter composes onto the existing owner + scope + tags Qdrant pre-filter under
   the same authz-outer-`Must` invariant (mirrors the `DEC-4xt7` tag filter); on `search_memory` it
@@ -135,7 +135,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | REQ-idempotent-capture | Phase 24 | Complete |
 | REQ-supersession-links | Phase 25 | Complete |
 | REQ-memory-citations | Phase 26 | Pending |
-| REQ-category-filter | Phase 26 | Pending |
+| REQ-category-filter | Phase 26 | Complete |
 | REQ-chat-base-url | Phase 26 | Pending |
 
 **Coverage:**
