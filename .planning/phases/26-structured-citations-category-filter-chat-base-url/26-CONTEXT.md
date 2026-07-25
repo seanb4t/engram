@@ -174,8 +174,8 @@ no new Qdrant index.
   without breaking wire compatibility for any client that adopted it. Reserve-and-deprecate is the
   only retreat.
 
-- **D-11 (no server-side allowlist on filter values — unknown value yields an empty result, not an
-  error):** The filter passes the value through verbatim as an opaque Qdrant `Match` on the
+- **D-11 (no server-side allowlist on filter values):** An unknown value yields an empty result,
+  never an error. The filter passes the value through verbatim as an opaque Qdrant `Match` on the
   `category` payload key. Rationale: the legitimate *filter* domain is strictly larger than the
   *write* domain — `discovery` and `rule` are real stored categories (DEC-2bv makes discovery the
   5th category; rules are the 6th), so filtering `list_memory` by `category=rule` inside a `rule:*`
@@ -194,8 +194,8 @@ no new Qdrant index.
   faithful `"" = unset`; the embedder call site (`tools.go:357`) is not touched. This is exactly
   what SC3 and the REQ text ask for ("resolved only in the summarizer path").
 
-- **D-13 (port the shape-aware `/v1` join to the chat lane — REQ-chat-base-url is broken without
-  it):** `internal/summarize/summarize.go:155` builds its endpoint with a **naive concat**:
+- **D-13 (port the shape-aware `/v1` join to the chat lane):** REQ-chat-base-url is broken without
+  it. `internal/summarize/summarize.go:155` builds its endpoint with a **naive concat**:
   `c.baseURL + "/v1/chat/completions"`. The embedder got Phase 13's shape-aware
   `joinEmbeddingsURL` (`internal/embed/embed.go:125`) precisely because provider base URLs come in
   three shapes; the chat lane never did. This has been latent because every current deployment
