@@ -87,7 +87,7 @@ store-layer authz **primitive**, and the memory contract stays additive.
 
 ### Embedder / Chat Config
 
-- [ ] **REQ-chat-base-url**: The chat/summarize client can use a base URL distinct from the
+- [x] **REQ-chat-base-url**: The chat/summarize client can use a base URL distinct from the
   embedder's, via a new `ENGRAM_OPENAI_CHAT_BASE_URL` (koanf `openai.chat_base_url`) that defaults
   to the shared `ENGRAM_OPENAI_BASE_URL` when empty. Resolved only in the summarizer path; the
   embedder path is untouched. Unblocks per-lane providers (e.g. a local embedder + a hosted chat
@@ -136,7 +136,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | REQ-supersession-links | Phase 25 | Complete |
 | REQ-memory-citations | Phase 26 | Pending |
 | REQ-category-filter | Phase 26 | Complete |
-| REQ-chat-base-url | Phase 26 | Pending |
+| REQ-chat-base-url | Phase 26 | Complete |
 
 **Coverage:**
 
