@@ -1777,6 +1777,152 @@ func TestCategoryMatchConditionEdges(t *testing.T) {
 	}
 }
 
+// TestSearchCategoryFilterPreRanking makes SC2's "applied before vector
+// ranking" claim falsifiable rather than assumed: it first proves the
+// preference record really would win the unfiltered ranking (it is at index
+// 0), then proves the same search with Categories:["decision"] returns
+// exactly the decision record and never the higher-scored preference one —
+// the exclusion happens because Qdrant never returns the record to be
+// ranked, not because a post-hoc trim removed it.
+func TestSearchCategoryFilterPreRanking(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "search-category-preranking:project:x"
+	now := time.Now().UTC().Truncate(time.Second)
+	subj := Authenticated("owner-preranking")
+	q := []float32{1, 0, 0}
+	prefID := "f1000000-0000-0000-0000-000000000001"
+	decID := "f1000000-0000-0000-0000-000000000002"
+	pref := Memory{ID: prefID, Content: "near-exact match", Scope: scope, Owner: "owner-preranking", Category: "preference", Source: "agent-inferred", CreatedAt: now}
+	dec := Memory{ID: decID, Content: "weak match", Scope: scope, Owner: "owner-preranking", Category: "decision", Source: "agent-inferred", CreatedAt: now}
+	if err := s.Upsert(ctx, pref, []float32{1, 0, 0}); err != nil {
+		t.Fatalf("seed pref: %v", err)
+	}
+	if err := s.Upsert(ctx, dec, []float32{0.5, 0.5, 0}); err != nil {
+		t.Fatalf("seed dec: %v", err)
+	}
+	defer func() {
+		_ = s.Delete(ctx, prefID, subj)
+		_ = s.Delete(ctx, decID, subj)
+	}()
+
+	unfiltered, err := s.Search(ctx, scope, subj, q, 5, SearchOptions{})
+	if err != nil {
+		t.Fatalf("unfiltered Search: %v", err)
+	}
+	if len(unfiltered) == 0 || unfiltered[0].ID != prefID {
+		t.Fatalf("unfiltered Search: want preference record ranked first, got %v", recordIDs(unfiltered))
+	}
+
+	filtered, err := s.Search(ctx, scope, subj, q, 5, SearchOptions{Categories: []string{"decision"}})
+	if err != nil {
+		t.Fatalf("filtered Search: %v", err)
+	}
+	if got := recordIDs(filtered); !slices.Equal(got, []string{decID}) {
+		t.Errorf("filtered Search: got %v want [%s] (category pre-filter must exclude the higher-ranked preference record)", got, decID)
+	}
+}
+
+// TestCategoryFilterDoesNotWidenVisibility is the D-16/SC4 assertion: the
+// category filter composes strictly INSIDE ownerOrSharedCondition and can
+// only narrow, never widen, what a caller may read. It also proves a shared
+// read grant is not a write grant.
+func TestCategoryFilterDoesNotWidenVisibility(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "search-category-widen-test:project:x"
+	now := time.Now().UTC().Truncate(time.Second)
+	ownerA := Authenticated("owner-catA")
+	ownerB := Authenticated("owner-catB")
+	vec := []float32{0.1, 0.2, 0.3}
+
+	privID := "f2000000-0000-0000-0000-000000000001"
+	priv := Memory{ID: privID, Content: "private decision", Scope: scope, Owner: "owner-catA", Category: "decision", Source: "agent-inferred", CreatedAt: now}
+	if err := s.Upsert(ctx, priv, vec); err != nil {
+		t.Fatalf("seed priv: %v", err)
+	}
+	defer func() { _ = s.Delete(ctx, privID, ownerA) }()
+
+	// Owner B's category-filtered search must see zero results — the private
+	// record stays invisible; the category filter cannot widen visibility.
+	gotB, err := s.Search(ctx, scope, ownerB, vec, 10, SearchOptions{Categories: []string{"decision"}})
+	if err != nil {
+		t.Fatalf("owner B Search: %v", err)
+	}
+	if len(gotB) != 0 {
+		t.Fatalf("owner B category-filtered Search: got %d results, want 0 (private record must stay invisible)", len(gotB))
+	}
+
+	sharedID := "f2000000-0000-0000-0000-000000000002"
+	shared := Memory{ID: sharedID, Content: "shared decision", Scope: scope, Owner: "owner-catA", Visibility: "shared", Category: "decision", Source: "agent-inferred", CreatedAt: now}
+	if err := s.Upsert(ctx, shared, vec); err != nil {
+		t.Fatalf("seed shared: %v", err)
+	}
+	defer func() { _ = s.Delete(ctx, sharedID, ownerA) }()
+
+	gotB2, err := s.Search(ctx, scope, ownerB, vec, 10, SearchOptions{Categories: []string{"decision"}})
+	if err != nil {
+		t.Fatalf("owner B Search (after shared): %v", err)
+	}
+	if got := recordIDs(gotB2); !slices.Contains(got, sharedID) {
+		t.Fatalf("owner B category-filtered Search: got %v, want shared record %s present", got, sharedID)
+	}
+
+	// A readable record is not a writable one: owner B's write path must
+	// still fail with the not-found-shaped error.
+	if err := s.SetVisibility(ctx, sharedID, ownerB, false); !errors.Is(err, ErrNotFound) {
+		t.Errorf("owner B SetVisibility on shared record: err=%v, want ErrNotFound (read grant must not become a write grant)", err)
+	}
+}
+
+// TestSearchCategoryFilterOrderingUnchanged pins the ordering edge: a
+// Categories filter that excludes nothing (every seeded record shares the one
+// listed category) must not perturb the result order Search would otherwise
+// return.
+func TestSearchCategoryFilterOrderingUnchanged(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "search-category-ordering-test:project:x"
+	now := time.Now().UTC().Truncate(time.Second)
+	subj := Authenticated("owner-order-cat")
+	q := []float32{0.4, 0.3, 0.2}
+	vecs := [][]float32{
+		{0.4, 0.3, 0.2},
+		{0.35, 0.3, 0.25},
+		{0.3, 0.35, 0.2},
+		{0.2, 0.4, 0.3},
+	}
+	ids := []string{
+		"f3000000-0000-0000-0000-000000000001",
+		"f3000000-0000-0000-0000-000000000002",
+		"f3000000-0000-0000-0000-000000000003",
+		"f3000000-0000-0000-0000-000000000004",
+	}
+	for i, id := range ids {
+		m := Memory{ID: id, Content: "shared-category record", Scope: scope, Owner: "owner-order-cat", Category: "gotcha", Source: "agent-inferred", CreatedAt: now}
+		if err := s.Upsert(ctx, m, vecs[i]); err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+	}
+	defer func() {
+		for _, id := range ids {
+			_ = s.Delete(ctx, id, subj)
+		}
+	}()
+
+	unfiltered, err := s.Search(ctx, scope, subj, q, 10, SearchOptions{})
+	if err != nil {
+		t.Fatalf("unfiltered Search: %v", err)
+	}
+	filtered, err := s.Search(ctx, scope, subj, q, 10, SearchOptions{Categories: []string{"gotcha"}})
+	if err != nil {
+		t.Fatalf("filtered Search: %v", err)
+	}
+	if got, want := recordIDs(filtered), recordIDs(unfiltered); !slices.Equal(got, want) {
+		t.Errorf("filtered vs unfiltered Search ordering: got %v want %v (a filter matching everything must not reorder)", got, want)
+	}
+}
+
 // TestListPrivateFilterCrossActorIsolation verifies that the private visibility
 // filter preserves authz isolation: caller B must not see caller A's private
 // records even when Visibility=="private" is specified in ListOptions.
