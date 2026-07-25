@@ -111,6 +111,12 @@ type OpenAIConfig struct {
 	// bypasses joinEmbeddingsURL's shape-aware heuristic and is used verbatim as
 	// the embeddings endpoint (D-11). Empty (the default) keeps the heuristic.
 	EmbeddingsURL string `koanf:"embeddings_url"`
+	// ChatBaseURL is the ENGRAM_OPENAI_CHAT_BASE_URL base URL for the
+	// chat/summarize lane. Empty (the default; no registry default is set) means
+	// inherit BaseURL — the fallback is resolved once, at the summarizer
+	// construction site (cmp.Or in summarizerFromConfig), not here, so this
+	// field always faithfully reflects what the operator set (D-12).
+	ChatBaseURL string `koanf:"chat_base_url"`
 }
 
 // OIDCConfig holds the MCP bearer-token issuer settings and the web-UI

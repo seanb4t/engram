@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/seanb4t/engram/internal/config"
+	"github.com/seanb4t/engram/internal/openaiurl"
 	"github.com/seanb4t/engram/internal/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -114,24 +115,14 @@ func New(baseURL, apiKey, model string, opts ...Option) *Client {
 }
 
 // joinEmbeddingsURL resolves baseURL to its OpenAI-compatible /embeddings
-// endpoint, shape-aware across documented provider bases: trims a trailing
-// slash, then appends "/embeddings" directly if the path already terminates at
-// an OpenAI-compat root ("/v1" or "/v1beta/openai" — Gemini's shape), else
-// appends "/v1/embeddings" (the prior naive-concat behavior, still correct for
-// bare-host gateways like a plain OpenAI or LiteLLM base URL). Does not
-// canonicalize query/fragment-bearing base URLs — see the
-// TestJoinEmbeddingsURL query/fragment case for the accepted, operator-error-
-// scope behavior (T-13-01 trust boundary).
+// endpoint. The shape-aware provider-endpoint join itself now lives in
+// internal/openaiurl.Join (D-14) — the single shared copy of the heuristic —
+// so this wrapper just supplies the "embeddings" suffix. See
+// openaiurl.Join's doc comment for the shape rules and the query/fragment
+// operator-error-scope caveat (T-13-01 trust boundary), still pinned by
+// TestJoinEmbeddingsURL below.
 func joinEmbeddingsURL(baseURL string) string {
-	trimmed := strings.TrimRight(baseURL, "/")
-	switch {
-	case strings.HasSuffix(trimmed, "/v1beta/openai"):
-		return trimmed + "/embeddings"
-	case strings.HasSuffix(trimmed, "/v1"):
-		return trimmed + "/embeddings"
-	default:
-		return trimmed + "/v1/embeddings"
-	}
+	return openaiurl.Join(baseURL, "embeddings")
 }
 
 // ReservedParamKeys are the request-body keys the embedder sets authoritatively;

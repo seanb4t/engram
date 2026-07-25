@@ -23,6 +23,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/seanb4t/engram/internal/openaiurl"
 )
 
 var tracer = otel.Tracer("github.com/seanb4t/engram/internal/summarize")
@@ -152,7 +154,11 @@ func (c *Client) Summarize(ctx context.Context, content string) (sum string, err
 			{Role: "user", Content: fmt.Sprintf(userMessageTmpl, newFenceToken(), content)},
 		},
 	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/chat/completions", bytes.NewReader(reqBody))
+	// D-13: the endpoint is built by the shared shape-aware join, not a naive
+	// concat — a base URL already ending in /v1 (every hosted chat provider's
+	// documented shape) must not double it.
+	endpoint := openaiurl.Join(c.baseURL, "chat/completions")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(reqBody))
 	if err != nil {
 		return "", err
 	}
