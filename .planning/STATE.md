@@ -5,8 +5,8 @@ milestone_name: Capture & Service Identity
 current_phase: 26
 current_phase_name: Structured Citations, Category Filter & Chat Base URL
 status: "Phase 25 shipped — PR #429"
-stopped_at: Completed 25-02-PLAN.md
-last_updated: "2026-07-24T22:36:32.016Z"
+stopped_at: Phase 26 context gathered
+last_updated: "2026-07-25T22:12:28.076Z"
 last_activity: 2026-07-19
 progress:
   total_phases: 8
@@ -137,9 +137,9 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-19T17:50:17.618Z
-Stopped at: Completed 25-02-PLAN.md
-Resume file: None
+Last session: 2026-07-25T22:12:28.066Z
+Stopped at: Phase 26 context gathered
+Resume file: .planning/phases/26-structured-citations-category-filter-chat-base-url/26-CONTEXT.md
 
 ## Performance Metrics
 
