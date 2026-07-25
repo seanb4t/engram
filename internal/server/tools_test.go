@@ -2173,7 +2173,9 @@ func TestSupersedeMemoryDiscoveryTarget(t *testing.T) {
 	ctx := authedContext(t, "sub-supersede-disc")
 	c := callerFor(ctx, t)
 	scope := "discovery:repo:supersede-disc-test"
-	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Anonymous())) })
+	t.Cleanup(func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Anonymous()))
+	})
 
 	targetID, targetSID, err := d.storeDiscovery(ctx, c, storeDiscoveryArgs{
 		Content: "original discovery", Kind: "fact", Scope: scope,
