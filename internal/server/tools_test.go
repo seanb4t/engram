@@ -1876,6 +1876,118 @@ func TestListMemoryCategoriesArg(t *testing.T) {
 	}
 }
 
+// TestCategoriesArgEdges pins the empty, unknown-value, and ordering edges of
+// D-08's categories argument on both search_memory and list_memory: omitted /
+// empty-slice / empty-string-element are all an identical passthrough
+// (categoryMatchCondition's empty-element skipping, store.go), an unknown
+// value matches nothing with a nil error (D-11 — no allowlist, never
+// rejected), a prefix or whitespace-padded value is not a fuzzy match, and a
+// categories value listing every present category leaves ordering unchanged.
+func TestCategoriesArgEdges(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:categories-edges"
+	decisionID, preferenceID, gotchaID := seedCategoryFixture(t, d, ctx, scope)
+	c := callerFor(ctx, t)
+
+	searchIDsErr := func(cats []string) ([]string, error) {
+		hits, err := d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: cats})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]string, len(hits))
+		for i, m := range hits {
+			out[i] = m.ID
+		}
+		return out, nil
+	}
+	listIDsErr := func(cats []string) ([]string, error) {
+		res, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 10, Categories: cats, CursorMode: true})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]string, len(res.Memories))
+		for i, m := range res.Memories {
+			out[i] = m.ID
+		}
+		return out, nil
+	}
+
+	for _, tool := range []struct {
+		name   string
+		idsErr func(cats []string) ([]string, error)
+	}{
+		{"search_memory", searchIDsErr},
+		{"list_memory", listIDsErr},
+	} {
+		t.Run(tool.name, func(t *testing.T) {
+			ids := func(t *testing.T, cats []string) []string {
+				t.Helper()
+				got, err := tool.idsErr(cats)
+				if err != nil {
+					t.Fatalf("categories=%v: %v", cats, err)
+				}
+				return got
+			}
+
+			omitted := ids(t, nil)
+			omittedSet := map[string]bool{}
+			for _, id := range omitted {
+				omittedSet[id] = true
+			}
+			if len(omittedSet) != 3 || !omittedSet[decisionID] || !omittedSet[preferenceID] || !omittedSet[gotchaID] {
+				t.Fatalf("omitted: got %v, want all three seeded ids", omitted)
+			}
+
+			t.Run("empty_slice_is_passthrough", func(t *testing.T) {
+				got := ids(t, []string{})
+				if !slices.Equal(got, omitted) {
+					t.Errorf("categories=[] = %v, want identical to omitted %v", got, omitted)
+				}
+			})
+
+			t.Run("empty_string_element_is_passthrough", func(t *testing.T) {
+				got := ids(t, []string{""})
+				if !slices.Equal(got, omitted) {
+					t.Errorf(`categories=[""] = %v, want identical to omitted %v`, got, omitted)
+				}
+			})
+
+			t.Run("unknown_value_returns_zero_and_nil_error", func(t *testing.T) {
+				got, err := tool.idsErr([]string{"nope-not-a-category"})
+				if err != nil {
+					t.Errorf("categories=[nope-not-a-category] returned error %v, want nil (D-11: no allowlist)", err)
+				}
+				if len(got) != 0 {
+					t.Errorf("categories=[nope-not-a-category] = %v, want zero results", got)
+				}
+			})
+
+			t.Run("prefix_value_is_not_a_match", func(t *testing.T) {
+				// "decis" is a strict prefix of the seeded "decision" category.
+				got := ids(t, []string{"decis"})
+				if len(got) != 0 {
+					t.Errorf("categories=[decis] (prefix) = %v, want zero results (exact match only)", got)
+				}
+			})
+
+			t.Run("whitespace_padded_value_is_not_a_match", func(t *testing.T) {
+				got := ids(t, []string{" decision "})
+				if len(got) != 0 {
+					t.Errorf("categories=[\" decision \"] = %v, want zero results (exact match only)", got)
+				}
+			})
+
+			t.Run("all_categories_present_leaves_ordering_unchanged", func(t *testing.T) {
+				got := ids(t, []string{"decision", "preference", "gotcha"})
+				if !slices.Equal(got, omitted) {
+					t.Errorf("categories=[decision,preference,gotcha] order = %v, want identical order to omitted %v", got, omitted)
+				}
+			})
+		})
+	}
+}
+
 func TestUpdateMemoryPreservesSharingHandler(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()
