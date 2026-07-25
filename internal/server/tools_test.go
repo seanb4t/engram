@@ -1777,7 +1777,7 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 // convention). Shared by TestSearchMemoryCategoriesArg,
 // TestListMemoryCategoriesArg, and TestCategoriesArgEdges (Task 2) so all
 // three category-filter tests exercise an identical fixture.
-func seedCategoryFixture(t *testing.T, d *deps, ctx context.Context, scope string) (decisionID, preferenceID, gotchaID string) {
+func seedCategoryFixture(ctx context.Context, t *testing.T, d *deps, scope string) (decisionID, preferenceID, gotchaID string) {
 	t.Helper()
 	decisionID = "ca000000-0000-0000-0000-000000000001"
 	preferenceID = "ca000000-0000-0000-0000-000000000002"
@@ -1805,7 +1805,7 @@ func TestSearchMemoryCategoriesArg(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()
 	scope := "iso-test:project:categories-search"
-	decisionID, preferenceID, gotchaID := seedCategoryFixture(t, d, ctx, scope)
+	decisionID, preferenceID, gotchaID := seedCategoryFixture(ctx, t, d, scope)
 	c := callerFor(ctx, t)
 	ids := func(ms []store.Memory) map[string]bool {
 		out := map[string]bool{}
@@ -1842,7 +1842,7 @@ func TestListMemoryCategoriesArg(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()
 	scope := "iso-test:project:categories-list"
-	decisionID, preferenceID, gotchaID := seedCategoryFixture(t, d, ctx, scope)
+	decisionID, preferenceID, gotchaID := seedCategoryFixture(ctx, t, d, scope)
 	c := callerFor(ctx, t)
 	ids := func(ms []store.Memory) map[string]bool {
 		out := map[string]bool{}
@@ -1887,7 +1887,7 @@ func TestCategoriesArgEdges(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()
 	scope := "iso-test:project:categories-edges"
-	decisionID, preferenceID, gotchaID := seedCategoryFixture(t, d, ctx, scope)
+	decisionID, preferenceID, gotchaID := seedCategoryFixture(ctx, t, d, scope)
 	c := callerFor(ctx, t)
 
 	searchIDsErr := func(cats []string) ([]string, error) {
