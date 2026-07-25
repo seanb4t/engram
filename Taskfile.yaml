@@ -6,6 +6,10 @@ version: "3"
 vars:
   IMAGE: ghcr.io/seanb4t/engram
   CHART_REPO: oci://ghcr.io/seanb4t/charts
+  # Keep in sync with the `ruff==` pin in .github/workflows/ci.yaml (python job).
+  # Unpinned, `uv run --with ruff` floats to the newest release, so a new ruff
+  # rule breaks CI on an unrelated PR with no code change.
+  RUFF_VERSION: 0.16.0
 
 tasks:
   default:
@@ -77,8 +81,8 @@ tasks:
   lint:python:
     desc: Lint the engram skill-plugin hooks (ruff)
     cmds:
-      - uv run --with ruff ruff check skill/engram/hooks
-      - uv run --with ruff ruff format --check skill/engram/hooks
+      - uv run --with ruff=={{.RUFF_VERSION}} ruff check skill/engram/hooks
+      - uv run --with ruff=={{.RUFF_VERSION}} ruff format --check skill/engram/hooks
 
   fmt:
     desc: Format all sources
@@ -114,7 +118,7 @@ tasks:
     # chart:validate runs the D-07/D-08 CronJob invariants + the D-09
     # engram.containerEnv drift-pin, so a direct `task chart:lint` also
     # exercises the guardrail locally (CI runs chart:validate on every PR too).
-    deps: [chart:validate]
+    deps: ['chart:validate']
     cmds:
       - helm lint charts/engram
       - helm template charts/engram

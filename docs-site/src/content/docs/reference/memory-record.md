@@ -29,6 +29,24 @@ documents every field, its serialized JSON name, allowed values, and who sets it
 | Owner | `owner` | string | **server** | Value of the configured owner claim (`ENGRAM_OWNER_CLAIM`, default `email`) — the authorization key; never client-supplied; empty string when auth is disabled (anonymous bucket) |
 | Visibility | `visibility` | string | client/server | `""` (private, default) or `"shared"` — see [Visibility](#visibility) |
 | Created at | `created_at` | string (RFC3339) | server | UTC timestamp of creation |
+| Supersedes | `supersedes` | string (optional) | server | Set on a *correcting* record: the id of the memory it replaced — see [Supersession](#supersession) |
+| Superseded by | `superseded_by` | string (optional) | server | Set on a *corrected* record: the id of the memory that replaced it; its presence soft-hides the record from recall |
+
+### Supersession
+
+`supersede_memory` corrects a record without losing history. It stores the new
+record with a `supersedes` link to the target, and stamps `superseded_by` onto the
+target — both additive; the target's content, tags, and vector are untouched.
+
+A record carrying `superseded_by` is **soft-hidden from recall** (`search_memory`,
+`list_memory`, `search_discovery`, `list_scheduled`) but remains **fetchable by id**
+via `get_memory`, so the prior state is always auditable. Absent on every record
+that has never participated in a supersession — pre-feature records are unaffected.
+
+Chains run forward (C supersedes B supersedes A) with exactly one live head:
+superseding an already-superseded record is rejected, which makes cycles and
+self-supersession structurally impossible. See
+[`supersede_memory`](/reference/tools/#supersede_memory) for the full contract.
 
 ### Source values
 

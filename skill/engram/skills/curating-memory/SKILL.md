@@ -1,6 +1,6 @@
 ---
 name: curating-memory
-description: Use when storing or updating durable project memory via the engram MCP tools — enforces the engram-vs-beads routing gate (engram is preferred over `bd remember`/`bd memories` for durable facts), durable-only capture, search-before-store, supersede-on-contradiction, and the two-tier spine/overlay scope. Trigger when the user states a durable decision/preference/convention/gotcha, when the user explicitly asks to remember something (including a time-bound reminder, due date, or "not before"/expiry — even if it looks task-shaped), whenever you are about to record a durable fact and the repo also has a beads memory store (prefer engram; do not write it to `bd remember`), on the session-start recall and capture nudges, and before any mcp__engram__store_memory / schedule_memory / update_memory / delete_memory call.
+description: Use when storing or updating durable project memory via the engram MCP tools — enforces the engram-vs-beads routing gate (engram is preferred over `bd remember`/`bd memories` for durable facts), durable-only capture, search-before-store, supersede-on-contradiction, and the two-tier spine/overlay scope. Trigger when the user states a durable decision/preference/convention/gotcha, when the user explicitly asks to remember something (including a time-bound reminder, due date, or "not before"/expiry — even if it looks task-shaped), whenever you are about to record a durable fact and the repo also has a beads memory store (prefer engram; do not write it to `bd remember`), on the session-start recall and capture nudges, whenever a durable fact you are about to store contradicts or corrects one already in the store (supersede it, do not overwrite it), and before any mcp__engram__store_memory / schedule_memory / supersede_memory / update_memory / delete_memory call.
 ---
 
 # Curating Memory
@@ -86,10 +86,21 @@ content + semantic search and leave the record untagged.
    description of the fact (not keyword fragments) — it surfaces conceptually
    related records even when they share no exact wording. If a near-duplicate
    exists, update it instead of adding a new record.
-2. **Supersede on contradiction — within a tier.** When new info conflicts with
-   an existing memory, `update_memory` (preferred) or `delete_memory` the stale
-   record. Do **not** treat a spine fact and a divergent workspace-overlay fact
-   as a contradiction — they are parallel truths by design.
+2. **Supersede on contradiction — within a tier.** When new info *conflicts with*
+   an existing memory, call `supersede_memory` — it stores the correcting record
+   and links the stale one `superseded_by` it, so the old fact stops surfacing in
+   recall but stays fetchable by id. **Correction preserves history; it never
+   overwrites.** Pick the verb by what actually happened:
+
+   | Situation | Tool | Why |
+   |-----------|------|-----|
+   | The old fact *was* true and is now wrong — a decision reversed, a convention changed, a gotcha fixed | `supersede_memory` | keeps the audit trail of *what we used to believe and when it changed* |
+   | Same fact, better wording — a clearer summary, an added caveat, a tag fix, no contradiction | `update_memory` | in-place refinement; nothing to preserve |
+   | The record should never have existed — junk, transient state, a mistake | `delete_memory` | there is no history worth keeping |
+
+   Reach for `update_memory` only when you are *sharpening* a fact, not when you
+   are *reversing* one. Do **not** treat a spine fact and a divergent
+   workspace-overlay fact as a contradiction — they are parallel truths by design.
 3. **Tier selection.** Default to the **spine** (`Memory spine scope` from
    session start) — most durable facts are repo-wide and should follow the user
    into every workspace. Store to the **overlay** (`Memory workspace scope`)
@@ -122,6 +133,41 @@ Recall is gated, but fetch-by-id (`get_memory`) is not — it accepts either the
 full id or the short_id. Operators reclaim lapsed records with the `engram
 prune-expired [--older-than DUR]` CLI.
 
+## Supersession (correcting without losing history)
+
+`supersede_memory` is the correction verb. It takes the full `store_memory` field
+set (content, scope, tags, category, …) for the **new, correcting** record, plus
+`supersedes`: the id — full UUID or `short_id` — of the record it replaces. In one
+call it stores the new record and stamps `superseded_by` onto the old one.
+
+What that buys you:
+
+- The superseded record **stops surfacing** in `search_memory` / `list_memory` /
+  `search_discovery` / `list_scheduled` — recall stays clean and agents act on the
+  current truth.
+- It remains **fully fetchable by id** via `get_memory`, and the new record carries
+  a `supersedes` link back to it — so "what did we believe before, and what
+  replaced it" is always answerable. Nothing is deleted or overwritten.
+
+Rules that will bite you if ignored:
+
+- **Supersede the live head, not a link mid-chain.** Superseding an
+  already-superseded record is rejected (`already superseded`). A chain keeps one
+  live head: correcting C→B→A is fine, but you must always target the current
+  head. If you get that rejection, `search_memory` for the current record and
+  supersede *that*.
+- **You must own the target.** Supersession routes through the ownership *write*
+  gate — a `shared` record you can read is **not** one you can supersede. A target
+  you don't own is indistinguishable from one that doesn't exist (both 404).
+- **Rules can't be superseded.** `store_rule` records are normative ground truth;
+  delete the rule instead (same restriction as `set_visibility`).
+- **Never automatic.** Do not supersede on a similarity hunch or as a write-through
+  side effect. Supersession is an explicit correction of a *specific* record you
+  identified — if you're unsure which record is wrong, search first.
+- `idempotency_key` is **not** supported here — a retried supersede creates a
+  second correcting record rather than replaying the first. Retry only after
+  confirming the first call didn't land.
+
 ## Summaries
 
 Pass `summary` on `store_memory` or `update_memory` when you have explicit
@@ -138,8 +184,9 @@ re-send it (unchanged), update it (revised summary), or clear it (send empty
 ## Tools and auth
 
 All tools are on the `engram` server: `mcp__engram__store_memory`,
-`…__schedule_memory`, `…__search_memory`, `…__update_memory`,
-`…__delete_memory`, `…__list_memory`, `…__list_scheduled`, `…__get_memory`. If a
+`…__schedule_memory`, `…__search_memory`, `…__supersede_memory`,
+`…__update_memory`, `…__delete_memory`, `…__list_memory`, `…__list_scheduled`,
+`…__get_memory`. If a
 call returns 401/403 the server is not authenticated —
 tell the user to authenticate via `/mcp` (engram → Authenticate), and
 restate the durable fact so they can re-store it after authenticating; never

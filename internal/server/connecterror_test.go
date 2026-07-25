@@ -46,6 +46,7 @@ func TestConnectError(t *testing.T) {
 		{"stale_summary", errStaleSummary, connect.CodeFailedPrecondition},
 		{"ambiguous_short_id", fmt.Errorf("%w: abc123defg", store.ErrAmbiguousShortID), connect.CodeFailedPrecondition},
 		{"idempotency_conflict", fmt.Errorf("idempotency key %q reused with different content: %w", "k", store.ErrIdempotencyConflict), connect.CodeAlreadyExists},
+		{"already_superseded", fmt.Errorf("%w: some-id", store.ErrAlreadySuperseded), connect.CodeFailedPrecondition},
 		// Wrapped ctx sentinels: the arms must match via errors.Is against a
 		// wrapped error, not just the bare sentinel (round-8 MED).
 		{"canceled_wrapped", fmt.Errorf("embed: %w", context.Canceled), connect.CodeCanceled},

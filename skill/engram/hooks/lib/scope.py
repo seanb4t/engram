@@ -38,7 +38,9 @@ def _run(args: list[str], cwd: str) -> str | None:
     "not a git repo" negative and would spam every session.
     """
     try:
-        proc = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=5)
+        proc = subprocess.run(
+            args, cwd=cwd, capture_output=True, text=True, timeout=5, check=False
+        )
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         print(
             f"engram scope: {args[0]} probe failed ({exc}); degrading", file=sys.stderr
@@ -80,8 +82,7 @@ def _normalize_remote(url: str) -> str:
         else:
             # scp-style host:path → host/path
             u = u.replace(":", "/", 1)
-    if u.endswith(".git"):
-        u = u[:-4]
+    u = u.removesuffix(".git")
     return u.strip("/")
 
 

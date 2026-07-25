@@ -24,6 +24,7 @@ def run_hook(payload: dict) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         timeout=15,
+        check=False,
     )
 
 
@@ -138,6 +139,7 @@ def test_malformed_stdin_is_silent():
         capture_output=True,
         text=True,
         timeout=15,
+        check=False,
     )
     assert proc.returncode == 0
     assert proc.stdout.strip() == ""

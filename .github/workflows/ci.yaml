@@ -118,8 +118,8 @@ jobs:
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
       - name: ruff
         run: |
-          uv run --with ruff ruff check skill/engram/hooks
-          uv run --with ruff ruff format --check skill/engram/hooks
+          uv run --with ruff==0.16.0 ruff check skill/engram/hooks
+          uv run --with ruff==0.16.0 ruff format --check skill/engram/hooks
       - name: pytest
         run: uv run --with pytest pytest skill/engram/hooks/tests -q
 
@@ -193,11 +193,8 @@ jobs:
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         id: app-token
         if: >-
-          steps.drift.outputs.drifted == 'true' &&
-          github.event_name == 'pull_request' &&
-          startsWith(github.head_ref, 'renovate/') &&
-          github.actor == 'fzymgc-renovate[bot]' &&
-          github.event.pull_request.head.repo.full_name == github.repository
+          steps.drift.outputs.drifted == 'true' && github.event_name == 'pull_request' && startsWith(github.head_ref, 'renovate/')
+          && github.actor == 'fzymgc-renovate[bot]' && github.event.pull_request.head.repo.full_name == github.repository
         continue-on-error: true
         with:
           client-id: ${{ secrets.CI_BOT_APP_CLIENT_ID }}

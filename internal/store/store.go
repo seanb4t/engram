@@ -89,6 +89,13 @@ var ErrShortIDExhausted = errors.New("short id mint exhausted")
 // apart from "you reused a key with different content."
 var ErrIdempotencyConflict = errors.New("idempotency key reused with different content")
 
+// ErrAlreadySuperseded is returned when Store.Supersede's target already has a
+// non-empty SupersededBy — a single live head per chain (D-05). Forward chains
+// (superseding the current head) are allowed; only superseding a non-head
+// record is rejected, which makes a supersession cycle structurally
+// impossible (D-06).
+var ErrAlreadySuperseded = errors.New("target is already superseded")
+
 // maxMintAttempts bounds MintShortID's real (Qdrant Count-checked) collision
 // attempts. 16 is extra headroom over the ~8 that is already astronomically
 // safe in a 32^10 Crockford base32 space (D-04).
@@ -165,6 +172,16 @@ type Memory struct {
 	// NotAfter gates expiry: the record drops out of recall once now >= NotAfter.
 	// nil = never expires.
 	NotAfter *time.Time `json:"not_after,omitempty"`
+	// Supersedes is the id of the record this one corrects/replaces (D-04).
+	// nil on every record except a correcting one created via Store.Supersede.
+	// Plain json tag (not "-"): the caller must be able to observe this link on
+	// full=true recall and get_memory (D-08).
+	Supersedes *string `json:"supersedes,omitempty"`
+	// SupersededBy is the id of the record that superseded this one (D-01/D-04).
+	// Server-set only, via Store.Supersede's target back-stamp — nil until then.
+	// Non-nil excludes the record from Search/List recall (soft-hide, D-09) but
+	// never from Get (D-08). Plain json tag, matching Supersedes above.
+	SupersededBy *string `json:"superseded_by,omitempty"`
 	// AccessCount is the monotonic total of strong-signal touches (get-by-id +
 	// update; never search/list result-set membership, D-02). Server-set only —
 	// no client-writable tool argument sets it. A legacy record missing the
@@ -310,6 +327,12 @@ type Store struct {
 	// injected in tests (round-8 injected-failure test) without a broader
 	// client-interface refactor.
 	deletePayloadKeys func(ctx context.Context, id string, keys []string) error
+
+	// locker serializes Supersede's check-then-act (already-superseded guard
+	// through the back-stamp) per target id. Defaults to an in-process
+	// sync.Mutex-backed implementation in New(); WithTargetLocker overrides it
+	// (e.g. with a future distributed lock). See TargetLocker's doc comment.
+	locker TargetLocker
 }
 
 // Option configures a Store at construction.
@@ -329,9 +352,21 @@ func WithAuthz(pdp *authz.PDP) Option {
 	return func(s *Store) { s.authz = pdp }
 }
 
+// WithTargetLocker overrides Supersede's per-target lock. Defaults to an
+// in-process sync.Mutex-backed TargetLocker (single-instance atomicity only).
+// Provided so a future distributed lock can be swapped in without touching
+// Supersede's logic; tests also use this to inject a call-counting/blocking
+// probe.
+func WithTargetLocker(l TargetLocker) Option {
+	return func(s *Store) { s.locker = l }
+}
+
 // New returns a Store backed by the given Qdrant client and collection.
 func New(c *qdrant.Client, collection string, opts ...Option) *Store {
-	s := &Store{client: c, collection: collection, now: time.Now, authz: authz.MustDefault()}
+	s := &Store{
+		client: c, collection: collection, now: time.Now, authz: authz.MustDefault(),
+		locker: newInProcessTargetLocker(),
+	}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -441,6 +476,12 @@ func payload(m Memory) map[string]any {
 	if m.NotAfter != nil {
 		p["not_after"] = m.NotAfter.Unix()
 	}
+	if m.Supersedes != nil {
+		p["supersedes"] = *m.Supersedes
+	}
+	if m.SupersededBy != nil {
+		p["superseded_by"] = *m.SupersededBy
+	}
 	p["access_count"] = m.AccessCount
 	p[embedderIdentityKey] = m.EmbedderIdentity
 	p[idempotencyFingerprintKey] = m.IdempotencyFingerprint
@@ -529,6 +570,14 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	if v, ok := p["not_after"]; ok {
 		t := time.Unix(v.GetIntegerValue(), 0).UTC()
 		m.NotAfter = &t
+	}
+	if v, ok := p["supersedes"]; ok {
+		s := v.GetStringValue()
+		m.Supersedes = &s
+	}
+	if v, ok := p["superseded_by"]; ok {
+		s := v.GetStringValue()
+		m.SupersededBy = &s
 	}
 	if v, ok := p["access_count"]; ok {
 		m.AccessCount = uint64(v.GetIntegerValue())
@@ -789,6 +838,10 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 
 	f := s.ownerScopeFilter(scope, subj)
 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
+	// Soft-hide superseded records from search recall (D-09) — sibling
+	// condition to activeWindowConditions, not folded into it (that helper is
+	// time-window-scoped only). get_memory (Store.Get) stays ungated.
+	f.Must = append(f.Must, qdrant.NewIsEmpty("superseded_by"))
 	f.Must = append(f.Must, tagMatchConditions(tags)...)
 	if c := createdRangeCondition(after, before); c != nil {
 		f.Must = append(f.Must, c)
@@ -877,6 +930,9 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Su
 		must = append(must, qdrant.NewMatch("kind", kind))
 	}
 	must = append(must, s.ownerOrSharedCondition(subj))
+	// Soft-hide superseded discoveries from search recall (WR-01), the same
+	// gate Search/List already apply — get_memory stays ungated.
+	must = append(must, qdrant.NewIsEmpty("superseded_by"))
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
 		Filter: &qdrant.Filter{Must: must}, Limit: qdrant.PtrOf(k),
@@ -1008,6 +1064,10 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 
 	f := s.listFilter(scope, subj, opts)
 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
+	// Soft-hide superseded records from list recall (D-09) — sibling
+	// condition to activeWindowConditions, not folded into it (that helper is
+	// time-window-scoped only). get_memory (Store.Get) stays ungated.
+	f.Must = append(f.Must, qdrant.NewIsEmpty("superseded_by"))
 	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
 		f.Must = append(f.Must, c)
 	}
@@ -1234,6 +1294,10 @@ func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, s
 		qdrant.NewMatch("scope", scope),
 		s.ownerOnlyCondition(subj),
 		scheduledStateCondition(state, s.now()),
+		// Soft-hide superseded scheduled records from the management view
+		// (WR-02) — a corrected-away record shouldn't still surface as a
+		// live pending/expired candidate. get_memory stays ungated.
+		qdrant.NewIsEmpty("superseded_by"),
 	}}
 	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
 		f.Must = append(f.Must, c)
@@ -1523,6 +1587,29 @@ func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *
 		}
 	}()
 
+	// CR-04: this method's whole-payload Upsert below would otherwise silently
+	// erase a concurrent Supersede's superseded_by/supersedes back-stamp if
+	// that Supersede lands between the caller's FetchForUpdate snapshot (cur)
+	// and this call — reproduced and confirmed against real Qdrant. Fix has
+	// two parts, mirroring Supersede's own CR-01 lock (store.go:1815-1862):
+	//   1. Serialize against a concurrent Supersede on the same target via the
+	//      same per-target lock, so the two writers can't interleave.
+	//   2. Re-read the record's current superseded_by/supersedes inside the
+	//      lock and carry them into cur, so even a just-landed back-stamp
+	//      survives this Upsert. A concurrent Delete (Get returns ErrNotFound)
+	//      is left as pre-existing, out-of-scope behavior: Update never
+	//      existence-checks cur, matching its behavior before this fix.
+	unlock, err := s.locker.Lock(ctx, cur.ID)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if fresh, gerr := s.Get(ctx, cur.ID); gerr == nil {
+		cur.Supersedes, cur.SupersededBy = fresh.Supersedes, fresh.SupersededBy
+	} else if !errors.Is(gerr, ErrNotFound) {
+		return gerr
+	}
+
 	cur.Content = content
 	// D-04: the bump piggybacks the already-in-flight Upsert below — zero extra
 	// store round-trip.
@@ -1714,6 +1801,85 @@ func (s *Store) SetVisibility(ctx context.Context, id string, subj Subject, shar
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
 		Payload:        qdrant.NewValueMap(map[string]any{"visibility": vis}),
 		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
+	})
+	return err
+}
+
+// Supersede stores newMem (a normal, caller-owned create — same shape as
+// Upsert) and back-stamps target's superseded_by link. newMem.Supersedes MUST
+// already be set to target's resolved id by the caller before this is
+// invoked (mirrors OwnedOrAbsent's contract: callers thread resolved ids in,
+// store methods do not resolve short ids).
+//
+// Ordering is load-bearing: the new record is created FIRST, the target is
+// back-stamped SECOND. This is only atomic-intent, not atomic — same
+// non-atomicity SetVisibility's own two-step SetPayload+DeletePayload
+// sequence accepts. If step 4 (the back-stamp) fails after step 3 (the new
+// record's create) succeeds, the new record persists as a valid, fetchable
+// record with a forward Supersedes link to a not-yet-back-stamped target —
+// an accepted, bounded orphan (no distributed-transaction primitive exists
+// in this codebase for a rollback).
+//
+// TOCTOU note (identical in spirit to SetVisibility's, store.go:1688-1692):
+// if the target is deleted between the getWritable ownership gate and the
+// back-stamp SetPayload, Qdrant's point-ID-selector SetPayload returns a
+// NotFound gRPC error that propagates unchanged — fail-closed, no re-fetch
+// needed (D-02).
+//
+// Concurrency note (CR-01): steps 2-4 (already-superseded check through the
+// back-stamp) are classic check-then-act with no Qdrant-side compare-and-swap.
+// Two concurrent Supersede calls against the SAME target could otherwise both
+// observe "not yet superseded" and both succeed, silently forking the
+// correction chain. s.locker.Lock(target) below serializes calls per target
+// id (different targets never contend) to make the check-then-act atomic
+// in-process. See TargetLocker's doc comment: this only guarantees
+// single-instance atomicity — a future distributed lock (swapped in via
+// WithTargetLocker) would be required for multi-replica atomicity.
+func (s *Store) Supersede(ctx context.Context, newMem Memory, vec []float32, target string, subj Subject) (err error) {
+	ctx, span := tracer.Start(ctx, "store.Supersede",
+		trace.WithAttributes(attribute.String("engram.owner", ownerOf(subj))))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "Supersede", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
+	// 0. Per-target lock, held through the back-stamp (CR-01): serializes
+	//    concurrent Supersede calls against this target so the
+	//    already-superseded check-then-act below is atomic in-process.
+	unlock, err := s.locker.Lock(ctx, target)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	// 1. Owner-only write gate on the TARGET (not the new record — that's a
+	//    normal create, already write-gated by construction).
+	targetRec, err := s.getWritable(ctx, target, subj, authz.ActionWrite)
+	if err != nil {
+		return err // ErrNotFound: not owner, or doesn't exist — fail-closed, no leak.
+	}
+	// 2. Single-hop / cycle rejection (D-05/D-06): reject if target is
+	//    already a non-head record.
+	if targetRec.SupersededBy != nil && *targetRec.SupersededBy != "" {
+		return fmt.Errorf("%w: %s", ErrAlreadySuperseded, target)
+	}
+	// 3. Store the new record (normal Upsert — fresh id, no concurrent-writer
+	//    risk since nothing else references it yet).
+	if err := s.Upsert(ctx, newMem, vec); err != nil {
+		return err
+	}
+	// 4. Back-stamp the target: single-key SetPayload, vector-preserving —
+	//    mirrors SetVisibility exactly, action swapped Share->Write, key
+	//    swapped visibility->superseded_by.
+	_, err = s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload:        qdrant.NewValueMap(map[string]any{"superseded_by": newMem.ID}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(target)}),
 	})
 	return err
 }

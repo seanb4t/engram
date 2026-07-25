@@ -65,7 +65,7 @@ store-layer authz **primitive**, and the memory contract stays additive.
   explicit mismatch error. Idempotency is owner-scoped (a key never collides across owners) and
   race-safe (concurrent retries do not produce duplicate records in Qdrant).
 
-- [ ] **REQ-supersession-links**: A memory can supersede another via additive `supersedes` /
+- [x] **REQ-supersession-links**: A memory can supersede another via additive `supersedes` /
   `superseded_by` payload links. Superseded records are soft-hidden from recall (reusing the
   `DEC-ufz` recall gate) but remain fetchable by id (`get_memory`), and the supersede operation
   routes through the ownership **write** gate (`getWritable`/`OwnedOrAbsent`), never a read grant.
@@ -133,7 +133,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | REQ-service-owner-failclosed | Phase 23 | Complete |
 | REQ-service-principal-isolation | Phase 23 | Complete |
 | REQ-idempotent-capture | Phase 24 | Complete |
-| REQ-supersession-links | Phase 25 | Pending |
+| REQ-supersession-links | Phase 25 | Complete |
 | REQ-memory-citations | Phase 26 | Pending |
 | REQ-category-filter | Phase 26 | Pending |
 | REQ-chat-base-url | Phase 26 | Pending |

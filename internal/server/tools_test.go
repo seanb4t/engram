@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/qdrant/go-client/qdrant"
@@ -1852,6 +1853,367 @@ func TestSetVisibilityReturnsMutationResult(t *testing.T) {
 	}
 	if mr.ShortID != sid {
 		t.Errorf("mutationResult.ShortID = %q, want %q", mr.ShortID, sid)
+	}
+}
+
+// TestSupersedeMemory pins the supersede_memory handler contract (SC1-SC4):
+// storing with supersedes stamps the target's superseded_by, hides the target
+// from search_memory/list_memory while keeping it fetchable via get_memory,
+// and a non-owner caller supersede attempt on someone else's target is
+// rejected with store.ErrNotFound re-wrapped with the caller's ORIGINAL
+// unresolved a.Supersedes input (404-indistinguishability), never the
+// resolved target UUID.
+func TestSupersedeMemory(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-a")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-handler"
+
+	targetID, targetSID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original content", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete target", d.st.Delete(context.Background(), targetID, store.Authenticated("sub-supersede-a")))
+	})
+
+	newID, newSID, err := d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs:  storeArgs{Content: "corrected content", Scope: scope, Category: "gotcha", Source: "user-said"},
+		Supersedes: targetSID,
+	})
+	if err != nil {
+		t.Fatalf("supersedeMemory: %v", err)
+	}
+	if newID == "" || newSID == "" {
+		t.Fatalf("supersedeMemory returned empty id/short_id: id=%q short_id=%q", newID, newSID)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete new record", d.st.Delete(context.Background(), newID, store.Authenticated("sub-supersede-a")))
+	})
+
+	// The target must show superseded_by == new id, content untouched.
+	target, err := d.getMemory(ctx, c, idArgs{ID: targetID})
+	if err != nil {
+		t.Fatalf("get target: %v", err)
+	}
+	if target.SupersededBy == nil || *target.SupersededBy != newID {
+		t.Errorf("target.SupersededBy = %v, want %q", target.SupersededBy, newID)
+	}
+	if target.Content != "original content" {
+		t.Errorf("target content mutated: %q", target.Content)
+	}
+
+	// The new record must carry supersedes == target.
+	newRec, err := d.getMemory(ctx, c, idArgs{ID: newID})
+	if err != nil {
+		t.Fatalf("get new record: %v", err)
+	}
+	if newRec.Supersedes == nil || *newRec.Supersedes != targetID {
+		t.Errorf("newRec.Supersedes = %v, want %q", newRec.Supersedes, targetID)
+	}
+
+	// The target must be absent from list_memory.
+	listRes, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 50})
+	if err != nil {
+		t.Fatalf("listMemory: %v", err)
+	}
+	for _, m := range listRes.Memories {
+		if m.ID == targetID {
+			t.Errorf("target %s still present in list_memory after supersede", targetID)
+		}
+	}
+
+	// The target must be absent from search_memory.
+	hits, err := d.searchMemory(ctx, c, coreSearchRequest{Scope: scope, Query: "original content", K: 10})
+	if err != nil {
+		t.Fatalf("searchMemory: %v", err)
+	}
+	for _, m := range hits {
+		if m.ID == targetID {
+			t.Errorf("target %s still present in search_memory after supersede", targetID)
+		}
+	}
+
+	// Owner-gate re-wrap: a different owner cannot supersede sub-supersede-a's
+	// target; the error re-wraps store.ErrNotFound with the caller's ORIGINAL
+	// a.Supersedes input (the target's short_id), never the resolved UUID —
+	// mirrors setVisibility/storeDiscovery's 404-indistinguishability.
+	otherCtx := authedContext(t, "sub-supersede-b")
+	otherC := callerFor(otherCtx, t)
+	_, _, err = d.supersedeMemory(otherCtx, otherC, supersedeArgs{
+		storeArgs:  storeArgs{Content: "attacker content", Scope: scope, Category: "gotcha", Source: "user-said"},
+		Supersedes: targetSID,
+	})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("cross-owner supersede err = %v, want store.ErrNotFound", err)
+	}
+	if !strings.Contains(err.Error(), targetSID) {
+		t.Errorf("cross-owner err %v does not echo caller's original input %q", err, targetSID)
+	}
+	if strings.Contains(err.Error(), targetID) {
+		t.Errorf("cross-owner err %v leaks resolved target UUID %q (404-indistinguishability violation)", err, targetID)
+	}
+}
+
+// TestSupersedeMemoryRejectsRule (CR-02) pins that supersede_memory rejects a
+// rule-category target with errRuleImmutable, mirroring
+// TestUpdateMemoryRuleGuardRejectsUnshare/TestSetVisibilityRejectsRule — a
+// rule must be deleted, never superseded, so it never silently vanishes from
+// list_rules' "complete rule set" index (Store.List's unconditional
+// superseded_by gate).
+func TestSupersedeMemoryRejectsRule(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "rule:repo:supersede-rule-guard-test"
+	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Anonymous())) })
+
+	id, sid, err := d.storeRule(ctx, callerFor(ctx, t), storeRuleArgs{
+		Content: "some rule", Scope: scope, Summary: "some rule",
+	})
+	if err != nil {
+		t.Fatalf("seed rule: %v", err)
+	}
+
+	_, _, err = d.supersedeMemory(ctx, callerFor(ctx, t), supersedeArgs{
+		storeArgs:  storeArgs{Content: "corrected rule text", Scope: scope, Category: "rule", Source: "user-said"},
+		Supersedes: sid,
+	})
+	if err == nil {
+		t.Fatal("expected supersede_memory on a rule to be rejected")
+	}
+	if !errors.Is(err, errRuleImmutable) {
+		t.Errorf("want errRuleImmutable, got %v", err)
+	}
+
+	// The rule is untouched: not back-stamped, and still present in list_rules.
+	got, err := d.st.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get rule: %v", err)
+	}
+	if got.SupersededBy != nil {
+		t.Errorf("rule.SupersededBy = %v, want nil (rejected supersede must not stamp)", got.SupersededBy)
+	}
+	rules, _, err := d.listRules(ctx, callerFor(ctx, t), listRulesArgs{Scopes: []string{scope}})
+	if err != nil {
+		t.Fatalf("listRules: %v", err)
+	}
+	found := false
+	for _, r := range rules {
+		if rv, ok := r.(ruleView); ok && rv.ID == id {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("rule %s missing from list_rules after rejected supersede: %+v", id, rules)
+	}
+}
+
+// TestSupersedeMemoryEmbedNotCalledForNonOwner (CR-03) mirrors
+// TestUpdateMemoryEmbedNotCalledForNonOwner: a caller superseding a target
+// they do not own must be rejected BEFORE the billable Embed call and the
+// Qdrant-hitting MintShortID call — reproducing update_memory's
+// cost-amplification hardening for supersede_memory.
+func TestSupersedeMemoryEmbedNotCalledForNonOwner(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:supersede-embed-gate"
+
+	stampedID := "a8a8a8a8-0000-0000-0000-000000000001"
+	stamped := store.Memory{
+		ID: stampedID, Content: "original", Scope: scope,
+		Owner: "sub-owner", Category: "convention",
+		Source: "agent-inferred", CreatedAt: timeNow(),
+	}
+	if err := d.st.Upsert(ctx, stamped, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed stamped record: %v", err)
+	}
+	defer func() {
+		cleanupErr(t, "Delete "+stampedID, d.st.Delete(ctx, stampedID, store.Authenticated("sub-owner")))
+	}()
+
+	counter := &countingEmbedder{}
+	d.em = counter
+
+	// Non-owner call (anonymous ctx -> sub=="" != "sub-owner") must fail
+	// without embedding or minting a short id.
+	_, _, err := d.supersedeMemory(ctx, callerFor(ctx, t), supersedeArgs{
+		storeArgs:  storeArgs{Content: "hijack", Scope: scope, Category: "convention", Source: "agent-inferred"},
+		Supersedes: stampedID,
+	})
+	if err == nil {
+		t.Fatal("non-owner supersedeMemory: expected error, got nil")
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("non-owner supersedeMemory: want ErrNotFound, got %v", err)
+	}
+	if counter.calls != 0 {
+		t.Errorf("non-owner supersedeMemory: embed must not be called; got %d call(s)", counter.calls)
+	}
+}
+
+// TestSupersedeMemorySchemaExcludesIdempotencyKey (WR-03) pins that
+// supersede_memory's advertised JSON schema does NOT include
+// idempotency_key: supersede's idempotency was deliberately deferred (plan
+// T-25-10), and deps.supersedeMemory never reads the field, so the field
+// must not be promoted onto the wire schema (it would silently mislead a
+// client into believing supersede retries are safe).
+func TestSupersedeMemorySchemaExcludesIdempotencyKey(t *testing.T) {
+	schema, err := jsonschema.For[supersedeArgs](nil)
+	if err != nil {
+		t.Fatalf("jsonschema.For[supersedeArgs]: %v", err)
+	}
+	if _, ok := schema.Properties["idempotency_key"]; ok {
+		t.Errorf("supersede_memory schema advertises idempotency_key, want it excluded (WR-03)")
+	}
+	// Sanity: the schema still carries the fields supersede_memory DOES
+	// support, proving the exclusion is targeted, not a broken reflection.
+	for _, want := range []string{"content", "scope", "supersedes"} {
+		if _, ok := schema.Properties[want]; !ok {
+			t.Errorf("supersede_memory schema missing expected field %q: %+v", want, schema.Properties)
+		}
+	}
+}
+
+// TestSupersedeArgsDecodePopulatesPromotedIdempotencyKey (WR-04) pins the
+// wire-decode half of supersedeArgs' IdempotencyKey shadow that WR-03's
+// schema-only test did not cover: a json:"-" field has no JSON name, so it
+// never enters encoding/json's same-name shadowing contest — it excuses
+// itself, leaving the promoted storeArgs.IdempotencyKey
+// (json:"idempotency_key,omitempty") as the sole decode target. So a raw
+// idempotency_key on the wire STILL lands in a.storeArgs.IdempotencyKey,
+// contrary to what an earlier (now-corrected) doc comment claimed. This is
+// exactly why supersedeMemory defensively clears the field itself rather
+// than relying on the shadow — see TestSupersedeMemoryIgnoresIdempotencyKey.
+func TestSupersedeArgsDecodePopulatesPromotedIdempotencyKey(t *testing.T) {
+	var a supersedeArgs
+	in := `{"idempotency_key":"probe-key","content":"x","scope":"s","supersedes":"y"}`
+	if err := json.Unmarshal([]byte(in), &a); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if a.storeArgs.IdempotencyKey != "probe-key" {
+		t.Errorf("a.storeArgs.IdempotencyKey (promoted) = %q, want %q (the json:\"-\" shadow does not block wire decode)", a.storeArgs.IdempotencyKey, "probe-key")
+	}
+	if a.IdempotencyKey != "" {
+		t.Errorf("a.IdempotencyKey (outer json:\"-\" shadow) = %q, want empty (it has no JSON name to decode into)", a.IdempotencyKey)
+	}
+}
+
+// TestSupersedeMemoryIgnoresIdempotencyKey (WR-04) pins that a caller-sent
+// idempotency_key on supersede_memory is silently IGNORED end to end: no
+// replay lookup, no error, a normal supersede happens — the defensive clear
+// at the top of supersedeMemory (tools.go) is what makes the decoded-but-
+// unadvertised field inert, not the schema-only json:"-" shadow (see
+// TestSupersedeArgsDecodePopulatesPromotedIdempotencyKey above).
+func TestSupersedeMemoryIgnoresIdempotencyKey(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-idem")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-idempotency-ignored"
+
+	targetID, targetSID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original content", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete target", d.st.Delete(context.Background(), targetID, store.Authenticated("sub-supersede-idem")))
+	})
+
+	newID, newSID, err := d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs: storeArgs{
+			Content: "corrected content", Scope: scope, Category: "gotcha", Source: "user-said",
+			IdempotencyKey: "some-key-that-must-be-ignored",
+		},
+		Supersedes: targetSID,
+	})
+	if err != nil {
+		t.Fatalf("supersedeMemory with idempotency_key set: want a normal supersede (ignored key), got error: %v", err)
+	}
+	if newID == "" || newSID == "" {
+		t.Fatalf("supersedeMemory returned empty id/short_id: id=%q short_id=%q", newID, newSID)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete new record", d.st.Delete(context.Background(), newID, store.Authenticated("sub-supersede-idem")))
+	})
+
+	newRec, err := d.getMemory(ctx, c, idArgs{ID: newID})
+	if err != nil {
+		t.Fatalf("get new record: %v", err)
+	}
+	if newRec.Content != "corrected content" {
+		t.Errorf("newRec.Content = %q, want %q (a normal supersede, not a replay)", newRec.Content, "corrected content")
+	}
+
+	// Calling again with the SAME idempotency_key must NOT be treated as a
+	// replay: it is a brand-new supersede attempt against an
+	// already-superseded target, so it fails ErrAlreadySuperseded — never
+	// returns the first call's id, which would indicate the key was
+	// (incorrectly) honored as a replay key.
+	replayID, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs: storeArgs{
+			Content: "corrected content", Scope: scope, Category: "gotcha", Source: "user-said",
+			IdempotencyKey: "some-key-that-must-be-ignored",
+		},
+		Supersedes: targetSID,
+	})
+	if err == nil {
+		t.Errorf("second supersedeMemory with same idempotency_key + already-superseded target: want error, got id=%q (key was NOT ignored — looks like a replay)", replayID)
+	}
+}
+
+// TestSupersedeMemoryDiscoveryTarget (IN-02) exercises superseding a
+// discovery-category target (no category restriction analogous to CR-02's
+// rule guard applies to discoveries — D-07 allows it) and pins WR-01's
+// SearchDiscovery soft-hide gate end to end through the handler.
+func TestSupersedeMemoryDiscoveryTarget(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-disc")
+	c := callerFor(ctx, t)
+	scope := "discovery:repo:supersede-disc-test"
+	t.Cleanup(func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Anonymous()))
+	})
+
+	targetID, targetSID, err := d.storeDiscovery(ctx, c, storeDiscoveryArgs{
+		Content: "original discovery", Kind: "fact", Scope: scope,
+		Citations: []citationArg{{Kind: "file", Ref: "f.go"}},
+	})
+	if err != nil {
+		t.Fatalf("seed storeDiscovery: %v", err)
+	}
+
+	newID, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs:  storeArgs{Content: "corrected discovery", Scope: scope, Category: "discovery", Source: "agent-inferred"},
+		Supersedes: targetSID,
+	})
+	if err != nil {
+		t.Fatalf("supersedeMemory on discovery target: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete new record", d.st.Delete(context.Background(), newID, store.Authenticated("sub-supersede-disc")))
+	})
+
+	// The target still fetchable (get_memory ungated) and back-stamped.
+	target, err := d.getMemory(ctx, c, idArgs{ID: targetID})
+	if err != nil {
+		t.Fatalf("get target: %v", err)
+	}
+	if target.SupersededBy == nil || *target.SupersededBy != newID {
+		t.Errorf("target.SupersededBy = %v, want %q", target.SupersededBy, newID)
+	}
+
+	// The superseded discovery must be soft-hidden from search_discovery (WR-01).
+	hits, err := d.searchDiscovery(ctx, c, searchDiscoveryArgs{Query: "original discovery", Scope: scope, K: 10})
+	if err != nil {
+		t.Fatalf("searchDiscovery: %v", err)
+	}
+	for _, h := range hits {
+		if h.ID == targetID {
+			t.Errorf("superseded discovery %s still present in search_discovery", targetID)
+		}
 	}
 }
 

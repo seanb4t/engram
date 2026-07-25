@@ -105,7 +105,7 @@ into shared stores.
 - [x] **Phase 22: Cedar Authz Foundation & Store Enforcement** - Cedar (cedar-go v1.8.0) PDP decides authorization over enumerable buckets; `internal/store` compiles decisions into the Qdrant filter — behavior-preserving refinement of DEC-cgb (completed 2026-07-17)
 - [x] **Phase 23: Service Auth Chain & Tenancy Isolation** - Pluggable verifier chain (OIDC user → OIDC client-credentials → static token); a service principal never resolves to the anonymous bucket (completed 2026-07-17)
 - [x] **Phase 24: Idempotent Capture** - `store_memory` accepts an idempotency key with strict, owner-scoped, race-safe replay-safety (completed 2026-07-18)
-- [ ] **Phase 25: Supersession with History** - A memory can supersede another via additive links; superseded records are soft-hidden from recall but stay fetchable by id
+- [x] **Phase 25: Supersession with History** - A memory can supersede another via additive links; superseded records are soft-hidden from recall but stay fetchable by id (completed 2026-07-19)
 - [ ] **Phase 26: Structured Citations, Category Filter & Chat Base URL** - Optional provenance on curated memories, MCP↔Connect category-filter parity, and a distinct chat/summarize base URL
 
 ## Phase Details
@@ -443,7 +443,14 @@ overloading `store_memory`; routes through the existing DEC-kyz write gate (`get
 4. Correction is explicit — no automatic superseding happens on any similarity threshold or
    write-through path; a single-hop supersession model rejects cycles at write time.
 
-**Plans**: TBD
+**Plans**: 2/2 plans complete
+**Wave 1**
+
+- [x] 25-01-PLAN.md — Store-layer supersede primitive: Memory link fields + codec, Store.Supersede (owner-gated, single-hop, vector-preserving back-stamp), recall-gate soft-hide, ErrAlreadySuperseded (Wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 25-02-PLAN.md — supersede_memory MCP tool: supersedeArgs + handler + registration, connectError exhaustiveness (Wave 2, depends on 25-01)
 
 ### Phase 26: Structured Citations, Category Filter & Chat Base URL
 
@@ -507,7 +514,7 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 | 22. Cedar Authz Foundation & Store Enforcement | v0.11.x | 2/2 | Complete | 2026-07-17 |
 | 23. Service Auth Chain & Tenancy Isolation | v0.11.x | 4/4 | Complete | 2026-07-17 |
 | 24. Idempotent Capture | v0.11.x | 2/2 | Complete | 2026-07-18 |
-| 25. Supersession with History | v0.11.x | 0/1 | Not started | - |
+| 25. Supersession with History | v0.11.x | 0/1 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 0/3 | Not started | - |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**

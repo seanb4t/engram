@@ -47,8 +47,8 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 ## Memory contract (stable)
 
 Tools: `store_memory` / `schedule_memory` / `search_memory` / `list_memory` /
-`list_scheduled` / `get_memory` / `update_memory` / `delete_memory` /
-`delete_all`. A record carries `content`,
+`list_scheduled` / `get_memory` / `supersede_memory` / `update_memory` /
+`delete_memory` / `delete_all`. A record carries `content`,
 `scope`, repo/workspace/worktree/base_dir, `source`, `category`, `tags`,
 `summary`/`summary_source` (client-authored or auto-generated digest; omit for none),
 `actor` (verified caller — server-set, never client-supplied), `owner` (caller's
@@ -96,6 +96,20 @@ surfaces windowed records the recall gate is hiding (`state` = `scheduled` defau
 | `expired` | `all`); active windowed records surface normally via
 `search_memory`/`list_memory`. Recall is gated; fetch-by-id (`get_memory`) is not.
 Operators reclaim lapsed records with `engram prune-expired [--older-than DUR]`.
+
+Supersession: `supersede_memory` corrects a record without losing history. It takes
+the `store_memory` field set for the new/correcting record plus `supersedes` (the
+target's id or `short_id`), stores the new record, and stamps `superseded_by` onto
+the target — additive links, never a delete or an overwrite. A superseded record is
+soft-hidden from recall (`search_memory`/`list_memory`/`search_discovery`/
+`list_scheduled`) but stays fetchable by id via `get_memory`. Owner-only (the write
+gate — a `shared` record you can read is not one you can supersede; a non-owned
+target is 404-indistinguishable); rejects an already-superseded target so a chain
+keeps a single live head (cycles/self-supersession impossible); never automatic (no
+similarity or write-through path); rules cannot be superseded (delete instead);
+`idempotency_key` is not supported on this verb. Use it for *reversals* — prefer
+`update_memory` for in-place refinement and `delete_memory` for junk. Agent-facing
+guidance lives in the `curating-memory` skill.
 
 Discovery tools: `store_discovery` / `search_discovery`. A discovery is a 5th
 `category` carrying `kind` (`map`|`fact`), `citations` (with aging `pin`s), and

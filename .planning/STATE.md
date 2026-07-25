@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.11.x
 milestone_name: Capture & Service Identity
-current_phase: 25
-current_phase_name: Supersession with History
-status: "Phase 24 shipped — PR #404"
-stopped_at: Completed 24-02-PLAN.md
-last_updated: "2026-07-19T14:19:40.787Z"
+current_phase: 26
+current_phase_name: Structured Citations, Category Filter & Chat Base URL
+status: "Phase 25 shipped — PR #429"
+stopped_at: Completed 25-02-PLAN.md
+last_updated: "2026-07-24T22:36:32.016Z"
 last_activity: 2026-07-19
 progress:
   total_phases: 8
-  completed_phases: 3
-  total_plans: 11
-  completed_plans: 11
-  percent: 38
-last_activity_desc: Phase 24 complete, transitioned to Phase 25
+  completed_phases: 4
+  total_plans: 13
+  completed_plans: 13
+  percent: 50
+last_activity_desc: Phase 25 complete, transitioned to Phase 26
 ---
 
 # Project State
@@ -24,16 +24,16 @@ last_activity_desc: Phase 24 complete, transitioned to Phase 25
 See: .planning/PROJECT.md (updated 2026-07-18 — after Phase 24)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 25 — Supersession with History
+**Current focus:** Phase 25 — supersession-with-history
 
 ## Current Position
 
-Phase: 25 — Supersession with History
+Phase: 26 — Structured Citations, Category Filter & Chat Base URL
 Plan: Not started
-Status: Phase 24 shipped — PR #404
+Status: Phase 25 shipped — PR #429
 Last activity: 2026-07-19
 
-Progress: [████████████████████] 11/11 plans (100%) · 3/8 phases (38%)
+Progress: [████████████████████] 11/11 plans ([██████████] 100%) · 3/8 phases (38%)
 
 ## Deferred Items
 
@@ -115,6 +115,11 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 - [Phase ?]: [Phase 24 P01]: engramIdempotencyNS fixed at 69fbe3e4-a53b-4d6e-971a-cad2f107e23c (uuidgen); idempotencyPointID returns string not uuid.UUID per plan artifact signature
 - [Phase ?]: [Phase 24 P01]: Added TestIdempotencyPointIDKeySensitive to resolve golangci-lint unparam finding (key literal was constant "k" across all pre-wiring tests) — genuine coverage gain, no nolint directive
 - [Phase ?]: [Phase 24 P02]: checkIdempotentReplay wired before Embed in both handlers; scheduleMemory calls it after parseWindow (cheap validation stays first) but still before Embed; SC5 test uses testDeps(t) matching the adjacent sibling test convention
+- [Phase ?]: D-01 confirmed: target back-stamp uses SetPayload (single-key merge), not a full re-Upsert
+- [Phase ?]: Recall-gate condition added independently at both Search and List call sites, not folded into activeWindowConditions
+- [Phase ?]: Store.Get left deliberately ungated so superseded records stay fetchable by id
+- [Phase ?]: supersede_memory does not call checkIdempotentReplay despite storeArgs.IdempotencyKey riding along via embedding (plan's explicit handler steps omit it; accepted per RESEARCH Pitfall 2)
+- [Phase ?]: connectError maps store.ErrAlreadySuperseded to CodeFailedPrecondition, pre-positioning only (no Connect RPC exposes supersede_memory this phase)
 
 ### Blockers/Concerns
 
@@ -132,8 +137,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-18T21:24:30Z
-Stopped at: Phase 24 complete (code review + auto-fix, UAT 10/10, threat-secure), ready to plan Phase 25
+Last session: 2026-07-19T17:50:17.618Z
+Stopped at: Completed 25-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -189,6 +194,8 @@ Resume file: None
 | Phase 23-service-auth-chain-tenancy-isolation P06 | 20min | 3 tasks | 9 files |
 | Phase 24 P01 | 12min | 2 tasks | 5 files |
 | Phase 24 P02 | 9min | 3 tasks | 2 files |
+| Phase 25 P01 | 4min | 2 tasks | 2 files |
+| Phase 25 P02 | 3min | 2 tasks | 6 files |
 
 ## Operator Next Steps
 
