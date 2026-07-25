@@ -8,9 +8,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # hooks/
-from lib import scope  # noqa: E402
+from lib import scope
 
 
 def make_fake_run(table):
