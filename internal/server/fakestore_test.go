@@ -440,7 +440,7 @@ func (s *spyStore) MintShortID(_ context.Context, seen map[string]struct{}) (str
 	return "", errors.New("spyStore: could not mint a unique short id")
 }
 
-func (s *spyStore) SearchReranked(_ context.Context, scope string, subj store.Subject, _ string, _ []float32, k uint64, tags []string, after, before time.Time) ([]store.Memory, error) {
+func (s *spyStore) SearchReranked(_ context.Context, scope string, subj store.Subject, _ string, _ []float32, k uint64, opts store.SearchOptions) ([]store.Memory, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	owner := ownerOfSubject(subj)
@@ -450,13 +450,16 @@ func (s *spyStore) SearchReranked(_ context.Context, scope string, subj store.Su
 		if m.Scope != scope || !readableBy(m, owner) {
 			continue
 		}
-		if !hasAllTags(m.Tags, tags) {
+		if len(opts.Categories) > 0 && !slices.Contains(opts.Categories, m.Category) {
 			continue
 		}
-		if !after.IsZero() && m.CreatedAt.Before(after) {
+		if !hasAllTags(m.Tags, opts.Tags) {
 			continue
 		}
-		if !before.IsZero() && !m.CreatedAt.Before(before) {
+		if !opts.CreatedAfter.IsZero() && m.CreatedAt.Before(opts.CreatedAfter) {
+			continue
+		}
+		if !opts.CreatedBefore.IsZero() && !m.CreatedAt.Before(opts.CreatedBefore) {
 			continue
 		}
 		matched = append(matched, m)

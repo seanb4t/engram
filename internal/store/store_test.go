@@ -440,7 +440,7 @@ func TestSearchAndDeleteAll(t *testing.T) {
 		t.Fatalf("upsert mForeign: %v", err)
 	}
 
-	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -459,7 +459,7 @@ func TestSearchAndDeleteAll(t *testing.T) {
 		t.Fatalf("delete_all: %v", err)
 	}
 
-	hits2, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5, nil, time.Time{}, time.Time{})
+	hits2, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search after delete_all: %v", err)
 	}
@@ -468,7 +468,7 @@ func TestSearchAndDeleteAll(t *testing.T) {
 	}
 	// DeleteAll is owner-scoped: the foreign-owned record must survive an
 	// anonymous DeleteAll.
-	survivors, err := s.Search(ctx, scope, Authenticated("sub-foreign"), []float32{0.9, 0.1, 0.0}, 5, nil, time.Time{}, time.Time{})
+	survivors, err := s.Search(ctx, scope, Authenticated("sub-foreign"), []float32{0.9, 0.1, 0.0}, 5, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search as foreign owner after delete_all: %v", err)
 	}
@@ -541,7 +541,7 @@ func TestSearchAndListTagsFilter(t *testing.T) {
 		}},
 	}
 	for _, tc := range cases {
-		hits, err := s.Search(ctx, scope, Anonymous(), q, 10, tc.tags, time.Time{}, time.Time{})
+		hits, err := s.Search(ctx, scope, Anonymous(), q, 10, SearchOptions{Tags: tc.tags})
 		if err != nil {
 			t.Fatalf("Search %s: %v", tc.name, err)
 		}
@@ -586,7 +586,7 @@ func TestTagsFilterComposesWithWindow(t *testing.T) {
 	mk(expiredID, expired)
 
 	// Tag "go" matches both records, but the window gate must drop the expired one.
-	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10, []string{"go"}, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{Tags: []string{"go"}})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -620,7 +620,7 @@ func TestSearchListOwnerIsolation(t *testing.T) {
 	mk("bbbbbbbb-0000-0000-0000-000000000003", "sub-B", "shared") // B shared
 
 	// A sees only A-private + B-shared (2), never B-private.
-	hits, err := s.Search(ctx, scope, Authenticated("sub-A"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, Authenticated("sub-A"), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -1199,7 +1199,7 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 	}
 
 	// Search: anonymous caller sees only the anonymous-bucket record (owner=="").
-	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("Search anon: %v", err)
 	}
@@ -1259,14 +1259,14 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 	}
 
 	// Authenticated Search: sub-owner sees own private + own shared (2), sub-other sees own (0) + shared (1).
-	ownerHits, err := s.Search(ctx, scope, Authenticated("sub-owner"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	ownerHits, err := s.Search(ctx, scope, Authenticated("sub-owner"), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("Search sub-owner: %v", err)
 	}
 	if len(ownerHits) != 2 {
 		t.Errorf("Search sub-owner: got %d want 2 (private+shared)", len(ownerHits))
 	}
-	otherHits, err := s.Search(ctx, scope, Authenticated("sub-other"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	otherHits, err := s.Search(ctx, scope, Authenticated("sub-other"), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("Search sub-other: %v", err)
 	}
@@ -1430,7 +1430,7 @@ func TestNilSubjectFailsClosed(t *testing.T) {
 	var nilSubj Subject // zero value == nil: the discarded-error case
 
 	// Reads return nothing.
-	if hits, err := s.Search(ctx, scope, nilSubj, []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{}); err != nil || len(hits) != 0 {
+	if hits, err := s.Search(ctx, scope, nilSubj, []float32{0.1, 0.2, 0.3}, 10, SearchOptions{}); err != nil || len(hits) != 0 {
 		t.Errorf("Search(nil): want 0 hits nil err, got %d hits, %v", len(hits), err)
 	}
 	if mems, _, _, err := s.List(ctx, scope, nilSubj, ListOptions{Limit: 20}); err != nil || len(mems) != 0 {
@@ -1690,6 +1690,93 @@ func TestListCategoryAndVisibilityFilter(t *testing.T) {
 	}
 }
 
+// TestSearchCategoryFilter proves Store.Search's Categories filter (D-09):
+// OR-composed across multiple values, an unknown value matches nothing
+// (never an error, D-11), and nil/[""] are passthroughs — mirroring
+// TestListCategoryAndVisibilityFilter's list-lane assertions on the search
+// lane, since both now share categoryMatchCondition.
+func TestSearchCategoryFilter(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "search-category-test:project:x"
+	now := time.Now().UTC().Truncate(time.Second)
+	seed := []Memory{
+		{ID: "f0000000-0000-0000-0000-000000000001", Content: "a decision", Scope: scope, Owner: "owner-A", Category: "decision", Source: "agent-inferred", CreatedAt: now},
+		{ID: "f0000000-0000-0000-0000-000000000002", Content: "a preference", Scope: scope, Owner: "owner-A", Category: "preference", Source: "agent-inferred", CreatedAt: now},
+		{ID: "f0000000-0000-0000-0000-000000000003", Content: "a gotcha", Scope: scope, Owner: "owner-A", Category: "gotcha", Source: "agent-inferred", CreatedAt: now},
+	}
+	vecs := map[string][]float32{
+		seed[0].ID: {0.9, 0.1, 0.0},
+		seed[1].ID: {0.1, 0.9, 0.0},
+		seed[2].ID: {0.0, 0.1, 0.9},
+	}
+	for _, m := range seed {
+		if err := s.Upsert(ctx, m, vecs[m.ID]); err != nil {
+			t.Fatalf("seed %s: %v", m.ID, err)
+		}
+	}
+	defer func() {
+		for _, m := range seed {
+			_ = s.Delete(ctx, m.ID, Authenticated("owner-A"))
+		}
+	}()
+	subj := Authenticated("owner-A")
+	q := []float32{0.3, 0.3, 0.3}
+
+	sortedIDs := func(ms []Memory) []string {
+		out := recordIDs(ms)
+		slices.Sort(out)
+		return out
+	}
+
+	cases := []struct {
+		name string
+		cats []string
+		want []string
+	}{
+		{"single value", []string{"decision"}, []string{seed[0].ID}},
+		{"two-value OR", []string{"decision", "gotcha"}, []string{seed[0].ID, seed[2].ID}},
+		{"unknown value returns empty, not error", []string{"nonexistent"}, []string{}},
+		{"nil is passthrough", nil, []string{seed[0].ID, seed[1].ID, seed[2].ID}},
+		{"[\"\"] is passthrough", []string{""}, []string{seed[0].ID, seed[1].ID, seed[2].ID}},
+	}
+	for _, tc := range cases {
+		hits, err := s.Search(ctx, scope, subj, q, 10, SearchOptions{Categories: tc.cats})
+		if err != nil {
+			t.Fatalf("%s: Search: %v", tc.name, err)
+		}
+		want := slices.Clone(tc.want)
+		slices.Sort(want)
+		if got := sortedIDs(hits); !slices.Equal(got, want) {
+			t.Errorf("%s: got %v want %v", tc.name, got, want)
+		}
+	}
+}
+
+// TestCategoryMatchConditionEdges is a pure (no-Qdrant) unit test over
+// categoryMatchCondition's nil/empty/all-empty-string passthrough behavior
+// and its non-nil condition for a mixed list.
+func TestCategoryMatchConditionEdges(t *testing.T) {
+	t.Parallel()
+	if c := categoryMatchCondition(nil); c != nil {
+		t.Errorf("categoryMatchCondition(nil) = %v, want nil", c)
+	}
+	if c := categoryMatchCondition([]string{}); c != nil {
+		t.Errorf("categoryMatchCondition([]string{}) = %v, want nil", c)
+	}
+	if c := categoryMatchCondition([]string{""}); c != nil {
+		t.Errorf(`categoryMatchCondition([""]) = %v, want nil (empty-string element skipped)`, c)
+	}
+	got := categoryMatchCondition([]string{"decision", ""})
+	want := categoryMatchCondition([]string{"decision"})
+	if got == nil || want == nil {
+		t.Fatalf("categoryMatchCondition([\"decision\", \"\"]) or ([\"decision\"]) unexpectedly nil: got=%v want=%v", got, want)
+	}
+	if got.String() != want.String() {
+		t.Errorf("categoryMatchCondition([\"decision\", \"\"]) = %v, want same as ([\"decision\"]) = %v", got, want)
+	}
+}
+
 // TestListPrivateFilterCrossActorIsolation verifies that the private visibility
 // filter preserves authz isolation: caller B must not see caller A's private
 // records even when Visibility=="private" is specified in ListOptions.
@@ -1877,7 +1964,7 @@ func TestRecallWindowGate(t *testing.T) {
 		}
 	}
 
-	hits, err := s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -2576,7 +2663,7 @@ func TestSearchDateWindow(t *testing.T) {
 	mk("b0000000-0000-0000-0000-000000000002", t0.Add(time.Hour))
 
 	hits, err := s.Search(ctx, scope, Authenticated("sub-A"),
-		[]float32{0.1, 0.2, 0.3}, 10, nil, t0, time.Time{})
+		[]float32{0.1, 0.2, 0.3}, 10, SearchOptions{CreatedAfter: t0})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -2620,7 +2707,7 @@ func TestSupersedeRecallGate(t *testing.T) {
 	subj := Authenticated("sub-A")
 
 	// Search: superseded record excluded, live record present.
-	hits, err := s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -3065,7 +3152,7 @@ func TestSupersedeForwardChain(t *testing.T) {
 		t.Errorf("List: C %s absent, want present (head): %v", cID, got)
 	}
 
-	hits, err := s.Search(ctx, scope, subj, vec, 10, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, subj, vec, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -3960,7 +4047,7 @@ func TestSearchAuthzCallCount(t *testing.T) {
 	}
 
 	calls = 0
-	hits, err := s.Search(ctx, scope, Authenticated("sub-count"), []float32{0.1, 0.2, 0.3}, uint64(n), nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, Authenticated("sub-count"), []float32{0.1, 0.2, 0.3}, uint64(n), SearchOptions{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -3992,7 +4079,7 @@ func TestBulkFilterOwnAndSharedAdjacency(t *testing.T) {
 		t.Fatalf("upsert: %v", err)
 	}
 
-	hits, err := s.Search(ctx, scope, Authenticated("sub-adj"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, Authenticated("sub-adj"), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -4027,7 +4114,7 @@ func TestBulkFilterZeroBucketFailsClosed(t *testing.T) {
 	}
 	t.Cleanup(func() { s.decideBucketHook = nil })
 
-	hits, err := s.Search(ctx, scope, Authenticated("sub-deny"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, Authenticated("sub-deny"), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -4070,7 +4157,7 @@ func TestBulkFilterOrderIndependent(t *testing.T) {
 	}
 
 	search := func() map[string]bool {
-		hits, err := s.Search(ctx, scope, Authenticated("sub-order"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+		hits, err := s.Search(ctx, scope, Authenticated("sub-order"), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 		if err != nil {
 			t.Fatalf("search: %v", err)
 		}

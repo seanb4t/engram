@@ -5,7 +5,6 @@ package server
 
 import (
 	"context"
-	"time"
 
 	"github.com/seanb4t/engram/internal/store"
 )
@@ -35,7 +34,7 @@ type memStore interface {
 	OwnedOrAbsent(ctx context.Context, id string, subj store.Subject) error
 	ResolvePointID(ctx context.Context, idOrShort string) (string, error)
 	SearchDiscovery(ctx context.Context, scope, kind string, subj store.Subject, vec []float32, k uint64) ([]store.Memory, error)
-	SearchReranked(ctx context.Context, scope string, subj store.Subject, query string, vec []float32, k uint64, tags []string, after, before time.Time) ([]store.Memory, error)
+	SearchReranked(ctx context.Context, scope string, subj store.Subject, query string, vec []float32, k uint64, opts store.SearchOptions) ([]store.Memory, error)
 	SetVisibility(ctx context.Context, id string, subj store.Subject, shared bool) error
 	Supersede(ctx context.Context, newMem store.Memory, vec []float32, target string, subj store.Subject) error
 	Update(ctx context.Context, cur store.Memory, content string, shared *bool, tags *[]string, summary *string, vec []float32) error

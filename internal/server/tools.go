@@ -1002,6 +1002,7 @@ type coreSearchRequest struct {
 	Query         string
 	K             uint64
 	Tags          []string
+	Categories    []string
 	CreatedAfter  time.Time
 	CreatedBefore time.Time
 }
@@ -1069,7 +1070,12 @@ func (d *deps) searchMemory(ctx context.Context, c caller, req coreSearchRequest
 	if err != nil {
 		return nil, err
 	}
-	return d.st.SearchReranked(ctx, req.Scope, c.Subj, req.Query, vec, req.K, req.Tags, req.CreatedAfter, req.CreatedBefore)
+	return d.st.SearchReranked(ctx, req.Scope, c.Subj, req.Query, vec, req.K, store.SearchOptions{
+		Tags:          req.Tags,
+		Categories:    req.Categories,
+		CreatedAfter:  req.CreatedAfter,
+		CreatedBefore: req.CreatedBefore,
+	})
 }
 
 // effectiveDiscoveryScope resolves the scope filter for a discovery search:

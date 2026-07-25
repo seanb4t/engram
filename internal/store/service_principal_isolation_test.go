@@ -61,7 +61,7 @@ func TestServicePrincipalIsolation(t *testing.T) {
 
 	// A sees only its own private record + B's shared record (2), never B's
 	// or the human's private records.
-	hits, err := s.Search(ctx, scope, Authenticated(serviceA), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, Authenticated(serviceA), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestServicePrincipalIsolation(t *testing.T) {
 	mkEmpty("ffffffff-0000-0000-0000-000000000001", serviceA, "") // A private, no shared records in this scope
 	mkEmpty("ffffffff-0000-0000-0000-000000000002", human, "")    // human private
 
-	emptyHits, err := s.Search(ctx, emptyScope, Authenticated(serviceC), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	emptyHits, err := s.Search(ctx, emptyScope, Authenticated(serviceC), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search(serviceC): %v", err)
 	}
@@ -134,7 +134,7 @@ func TestServicePrincipalIsolation(t *testing.T) {
 	mk2("dddddddd-0000-0000-0000-000000000003", serviceB, "")       // B private
 	mk2("dddddddd-0000-0000-0000-000000000004", serviceA, "")       // A private, seeded LAST
 
-	reorderHits, err := s.Search(ctx, scope2, Authenticated(serviceA), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	reorderHits, err := s.Search(ctx, scope2, Authenticated(serviceA), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search(reorder): %v", err)
 	}
@@ -176,7 +176,7 @@ func TestSharedCrossTenantReadIntended(t *testing.T) {
 		t.Fatalf("upsert: %v", err)
 	}
 
-	hits, err := s.Search(ctx, scope, Authenticated(tenantB), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, Authenticated(tenantB), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}

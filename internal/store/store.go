@@ -768,6 +768,31 @@ func tagMatchConditions(tags []string) []*qdrant.Condition {
 	return conds
 }
 
+// categoryMatchCondition builds the OR-composed category filter shared by
+// listFilter and Search: unlike tagMatchConditions' AND semantics (every
+// listed tag must be present), a record matches if its category is ANY of
+// the listed values (D-08). Empty/nil categories yields nil — a passthrough,
+// never a contradiction. Empty-string elements are skipped, mirroring
+// tagMatchConditions, so [""] is a passthrough and ["decision", ""] is
+// equivalent to ["decision"]. There is no server-side allowlist on the
+// filter value (D-11): an unknown category (e.g. "nonexistent") is passed to
+// Qdrant as an opaque match that simply matches nothing, never an error —
+// the legitimate filter domain (which includes discovery and rule) is
+// strictly larger than the write domain.
+func categoryMatchCondition(categories []string) *qdrant.Condition {
+	should := make([]*qdrant.Condition, 0, len(categories))
+	for _, c := range categories {
+		if c == "" {
+			continue
+		}
+		should = append(should, qdrant.NewMatch("category", c))
+	}
+	if len(should) == 0 {
+		return nil
+	}
+	return qdrant.NewFilterAsCondition(&qdrant.Filter{Should: should})
+}
+
 // activeWindowConditions gates recall to records whose validity window is open
 // at now: (not_before absent OR <= now) AND (not_after absent OR > now). Stored
 // window keys are epoch-second integers; the Range bound is *float64 (Qdrant's
@@ -811,10 +836,27 @@ func recallIDs(out []Memory, limit int) []string {
 	return ids
 }
 
+// SearchOptions parameterizes Search/SearchReranked's request-supplied filter
+// set. k is deliberately NOT a field here (D-09): SearchReranked's k==0
+// ErrInvalidArgument guard is a caller-default-discipline check that a
+// buried-in-struct k would weaken, so k stays a positional parameter on both
+// Search and SearchReranked.
+type SearchOptions struct {
+	// Tags retains List's existing contains-ALL (AND) semantics: empty = all
+	// tags; non-empty = records carrying every listed tag.
+	Tags []string
+	// Categories: empty = all categories; non-empty = records in ANY of the
+	// listed categories (OR) — the opposite composition from Tags, per D-08.
+	Categories []string
+	// Half-open creation-time window. Zero value = unbounded on that side.
+	CreatedAfter  time.Time
+	CreatedBefore time.Time
+}
+
 // Search returns the k nearest readable memories to vec within scope.
 // Authenticated callers see their own records plus shared records; anonymous
 // callers see only the ownerless bucket.
-func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []float32, k uint64, tags []string, after, before time.Time) (out []Memory, err error) {
+func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []float32, k uint64, opts SearchOptions) (out []Memory, err error) {
 	ctx, span := tracer.Start(ctx, "store.Search", trace.WithAttributes(
 		attribute.String("engram.scope", scope),
 		attribute.Int64("engram.k", int64(k)),
@@ -842,8 +884,11 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 	// condition to activeWindowConditions, not folded into it (that helper is
 	// time-window-scoped only). get_memory (Store.Get) stays ungated.
 	f.Must = append(f.Must, qdrant.NewIsEmpty("superseded_by"))
-	f.Must = append(f.Must, tagMatchConditions(tags)...)
-	if c := createdRangeCondition(after, before); c != nil {
+	f.Must = append(f.Must, tagMatchConditions(opts.Tags)...)
+	if c := categoryMatchCondition(opts.Categories); c != nil {
+		f.Must = append(f.Must, c)
+	}
+	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
 		f.Must = append(f.Must, c)
 	}
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
@@ -885,11 +930,11 @@ func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 // import internal/embed or internal/server (round-2 finding 7): embedding
 // happens in the caller before this is invoked; this helper only reorders an
 // already-fetched, already-authorized []Memory.
-func (s *Store) SearchReranked(ctx context.Context, scope string, subj Subject, query string, vec []float32, k uint64, tags []string, after, before time.Time) ([]Memory, error) {
+func (s *Store) SearchReranked(ctx context.Context, scope string, subj Subject, query string, vec []float32, k uint64, opts SearchOptions) ([]Memory, error) {
 	if k == 0 {
 		return nil, fmt.Errorf("%w: SearchReranked requires k > 0 (caller must apply its default before calling)", ErrInvalidArgument)
 	}
-	hits, err := s.Search(ctx, scope, subj, vec, candidateK(k), tags, after, before)
+	hits, err := s.Search(ctx, scope, subj, vec, candidateK(k), opts)
 	if err != nil {
 		return nil, err
 	}
@@ -1004,12 +1049,8 @@ func (s *Store) listFilter(scope string, subj Subject, opts ListOptions) *qdrant
 		qdrant.NewMatch("scope", scope),
 		s.ownerOrSharedCondition(subj),
 	}
-	if len(opts.Categories) > 0 {
-		should := make([]*qdrant.Condition, 0, len(opts.Categories))
-		for _, c := range opts.Categories {
-			should = append(should, qdrant.NewMatch("category", c))
-		}
-		must = append(must, qdrant.NewFilterAsCondition(&qdrant.Filter{Should: should}))
+	if c := categoryMatchCondition(opts.Categories); c != nil {
+		must = append(must, c)
 	}
 	must = append(must, tagMatchConditions(opts.Tags)...)
 	switch opts.Visibility {

@@ -120,7 +120,7 @@ func TestRetrievalEval(t *testing.T) {
 				if err != nil {
 					t.Fatalf("%s: embed query: %v", q.name, err)
 				}
-				ranked, err := st.SearchReranked(ctx, scope, subj, q.text, vec, defaultK, nil, time.Time{}, time.Time{})
+				ranked, err := st.SearchReranked(ctx, scope, subj, q.text, vec, defaultK, store.SearchOptions{})
 				if err != nil {
 					t.Fatalf("%s: search: %v", q.name, err)
 				}
@@ -181,7 +181,7 @@ func TestRetrievalEval(t *testing.T) {
 				// assertion above); it only proves the fixture/harness are
 				// sound, independent of ranking quality, so it deliberately
 				// uses raw Store.Search rather than the reranked path.
-				ceiling, err := st.Search(ctx, scope, subj, vec, ceilingK, nil, time.Time{}, time.Time{})
+				ceiling, err := st.Search(ctx, scope, subj, vec, ceilingK, store.SearchOptions{})
 				if err != nil {
 					t.Fatalf("%s: ceiling search: %v", q.name, err)
 				}
