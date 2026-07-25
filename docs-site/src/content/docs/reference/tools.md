@@ -18,6 +18,7 @@ records created.
 | `list_memory` | Most-recent memories in a scope (no query — session bootstrap) |
 | `list_scheduled` | List windowed memories the recall gate is hiding |
 | `get_memory` | Fetch one memory by id |
+| `supersede_memory` | Correct a memory with a new record, preserving history |
 | `update_memory` | Replace a memory's content in place (re-embeds) |
 | `delete_memory` | Delete one memory by id |
 | `delete_all` | Delete your own memories in a scope (teardown) |
@@ -155,6 +156,50 @@ plus any `shared` records. Anonymous callers can only read ownerless records.
 Fetch-by-id is **not** recall-gated: a windowed record (set via `schedule_memory`)
 that `search_memory`/`list_memory` hide because it is scheduled or expired is still
 retrievable directly by id here.
+
+---
+
+## supersede_memory
+
+Correct a memory you own by **superseding** it: stores a new record and marks the
+target `superseded_by` the new one. Correction is explicit and preserves history —
+nothing is deleted or overwritten.
+
+Takes the full `store_memory` field set for the **new, correcting** record, plus:
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `supersedes` | string | yes | The UUID **or `short_id`** of the memory this new record corrects |
+
+Everything else (`content`, `scope`, `category`, `tags`, `summary`, repo/workspace/
+worktree/base_dir, `source`) describes the new record and behaves exactly as in
+[`store_memory`](#store_memory). `idempotency_key` is **not** supported on this
+verb — a retry creates a second correcting record rather than replaying the first.
+
+**What changes.** The new record is stored normally and carries a `supersedes` link
+to the target; the target gains a `superseded_by` link back. Both are additive
+payload links — the target's content, tags, and vector are untouched.
+
+**Recall behavior.** A superseded record is soft-hidden from `search_memory`,
+`list_memory`, `search_discovery`, and `list_scheduled`, so recall returns only the
+current truth. It stays **fully fetchable by id** via [`get_memory`](#get_memory),
+which is not recall-gated — so the superseded history remains auditable.
+
+**Constraints.**
+
+- **Owner-only.** Routes through the ownership *write* gate. A `shared` record you
+  can read is **not** one you can supersede; a target you do not own is
+  indistinguishable from one that does not exist (both return not-found).
+- **Single live head.** Superseding an already-superseded record is rejected
+  (Connect: `failed_precondition`). Always target the current head — forward chains
+  (C supersedes B supersedes A) are how history accumulates, and this makes cycles
+  and self-supersession structurally impossible.
+- **Never automatic.** No similarity threshold or write-through path ever
+  supersedes a record; it is only ever this explicit call.
+- **Rules are immutable.** A `store_rule` record cannot be superseded — delete the
+  rule instead (same restriction as [`set_visibility`](#set_visibility)).
+
+Returns the new record's `id` and `short_id`.
 
 ---
 
