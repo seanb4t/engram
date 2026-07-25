@@ -94,6 +94,11 @@ memory:
   # still truncated to maxChars).
   summarize:
     model: "" # ENGRAM_SUMMARY_MODEL, e.g. "gpt-4o-mini"; empty disables auto-summary
+    # ENGRAM_OPENAI_CHAT_BASE_URL; empty means the summarizer inherits
+    # memory.openai.baseURL. Set this to give the chat/summarize lane its own
+    # gateway (e.g. a hosted provider) while embeddings stay on a local one. A
+    # hosted provider URL should include its /v1 (or /v1beta/openai) suffix.
+    chatBaseURL: ""
     maxChars: 280 # ENGRAM_SUMMARY_MAX_CHARS
     maxTokens: 1024 # ENGRAM_SUMMARY_MAX_TOKENS; generation ceiling (0 = gateway default). Raise for reasoning models.
     timeout: 30s # ENGRAM_SUMMARY_TIMEOUT; per-request HTTP timeout (0 = none)
