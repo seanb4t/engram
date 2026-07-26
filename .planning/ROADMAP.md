@@ -482,7 +482,7 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 4. None of the three additions introduces new store-layer authz surface — citations and category
    filtering compose onto the existing authz-outer-`Must` invariant untouched.
 
-**Plans**: 4/6 plans executed
+**Plans**: 5/6 plans executed
 
 **Wave 1**
 
@@ -499,7 +499,7 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 
 **Wave 4** *(blocked on Wave 3)*
 
-- [ ] 26-05-PLAN.md — Track A citations: `payload()` gate split, `storeArgs.Citations` + the `toMemory` mapping, shared `validateCitations`, Connect compact-view fix, cross-write-path preservation suite (Wave 4, depends on 26-03 + 26-04)
+- [x] 26-05-PLAN.md — Track A citations: `payload()` gate split, `storeArgs.Citations` + the `toMemory` mapping, shared `validateCitations`, Connect compact-view fix, cross-write-path preservation suite (Wave 4, depends on 26-03 + 26-04)
 
 **Wave 5** *(blocked on Wave 4)*
 

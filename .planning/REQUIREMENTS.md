@@ -71,7 +71,7 @@ store-layer authz **primitive**, and the memory contract stays additive.
   routes through the ownership **write** gate (`getWritable`/`OwnedOrAbsent`), never a read grant.
   Correction is explicit and preserves history — it never deletes or silently overwrites.
 
-- [ ] **REQ-memory-citations**: A curated `memory`-category record may optionally carry structured
+- [x] **REQ-memory-citations**: A curated `memory`-category record may optionally carry structured
   provenance/citations using the existing discovery `Citation` shape verbatim (no new struct). The
   `payload()` write gate is relaxed from discovery-only to any category; `kind` stays
   discovery-specific. Citations are optional and never auto-populated (preserves the explicit
@@ -134,7 +134,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | REQ-service-principal-isolation | Phase 23 | Complete |
 | REQ-idempotent-capture | Phase 24 | Complete |
 | REQ-supersession-links | Phase 25 | Complete |
-| REQ-memory-citations | Phase 26 | Pending |
+| REQ-memory-citations | Phase 26 | Complete |
 | REQ-category-filter | Phase 26 | Complete |
 | REQ-chat-base-url | Phase 26 | Complete |
 
