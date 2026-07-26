@@ -1,8 +1,8 @@
 ---
 phase: 26-structured-citations-category-filter-chat-base-url
-reviewed: 2026-07-26T03:57:02Z
-depth: standard
-files_reviewed: 25
+reviewed: 2026-07-25T23:15:00Z
+depth: deep
+files_reviewed: 31
 files_reviewed_list:
   - internal/store/store.go
   - internal/store/store_test.go
@@ -11,6 +11,7 @@ files_reviewed_list:
   - internal/store/service_principal_isolation_test.go
   - internal/server/tools.go
   - internal/server/tools_test.go
+  - internal/server/idempotency.go
   - internal/server/connectapi.go
   - internal/server/connectapi_test.go
   - internal/server/connectdescriptor_test.go
@@ -30,97 +31,135 @@ files_reviewed_list:
   - proto/engram/v1/engram.proto
   - charts/engram/values.yaml
   - charts/engram/templates/_helpers.tpl
+  - docs-site/src/content/docs/reference/memory-record.md
+  - docs-site/src/content/docs/reference/tools.md
+  - docs-site/src/content/docs/guides/configure.md
+  - skill/engram/skills/curating-memory/SKILL.md
 findings:
-  critical: 1
+  critical: 0
   warning: 0
   info: 1
-  total: 2
+  total: 1
 status: issues_found
 ---
 
 # Phase 26: Code Review Report
 
-**Reviewed:** 2026-07-26T03:57:02Z
-**Depth:** standard
-**Files Reviewed:** 25
+**Reviewed:** 2026-07-25T23:15:00Z
+**Depth:** deep
+**Files Reviewed:** 31
 **Status:** issues_found
 
 ## Summary
 
-I traced the three changes independently against the high-signal areas called out for this phase.
+This is a second pass over Phase 26 (structured citations, category filter, per-lane chat
+base URL). A standard-depth pass already ran and found one Critical (CR-01) and one Info
+(IN-01); CR-01 was fixed in `c222c783` before this pass started. This pass verifies that fix,
+re-assesses IN-01 with fresh eyes, and spends the rest of the deep-depth budget on
+cross-file reachability analysis a per-file standard read cannot reach: every consumer of
+`storeArgs`/`coreSearchRequest`/`coreListRequest`, the `internal/openaiurl` import graph and
+behavior-preservation, MCP-vs-Connect shaping symmetry, and cross-track interaction between
+citations/category-filter/chat-base-url on the same records.
 
-- **Payload write-path integrity (citations):** verified clean. `citations` flows through `payload()`/`fromPayload()` only; every targeted `SetPayload`/`DeletePayload` writer (`UpdatePayload`, `SetVisibility`, `IncrementAccess`, `BackfillShortIDs`, `RemapOwner`/`MigrateSetOwner`, `Supersede`'s back-stamp) touches only its own key(s) and never the citations key. `Reindex` carries the raw payload map verbatim (citations included) except for the one guarded `embedder_identity` overwrite. `Store.Update`'s whole-payload `Upsert` carries `cur.Citations` forward from the `FetchForUpdate` snapshot untouched — and since no mutation path ever rewrites citations post-creation, there is no interleaving that can drop or resurrect them. This is the one area the phase brief flagged as highest-risk given Phase 25's real lost-write bug in the same class, and it holds up.
-- **Authz invariant on the category filter:** verified clean. `categoryMatchCondition` is appended to `f.Must` in both `Search` and `listFilter`, strictly *inside* the outer `ownerOrSharedCondition` Must — it can only narrow, never widen, visibility. `TestCategoryFilterDoesNotWidenVisibility` (store_test.go) proves this against live Qdrant, including the "shared read is not a write grant" corollary.
-- **`SearchOptions` refactor call sites:** no transpositions found across `internal/store`, `internal/server`, `internal/retrievaleval`. `Tags`/`Categories` and `CreatedAfter`/`CreatedBefore` map 1:1 at every call site I traced (tools.go's `searchMemory`/`listMemory`, connectapi.go's `ListMemories`/`SearchMemories`, retrievaleval's harness).
-- **Empty/nil category-filter semantics:** verified passthrough, not contradiction — `categoryMatchCondition(nil)`/`([]string{})`/`([""])` all return `nil`, mirrored by `TestCategoryMatchConditionEdges`.
-- **URL-join refactor:** `internal/openaiurl.Join` correctly rejects the `/v10` near-miss (`strings.HasSuffix` on the literal 3-byte `/v1` cannot match a 4-byte `/v10` suffix), and `internal/embed`/`internal/summarize` both delegate to it. `TestJoin` and `TestSummarizerFromConfigChatBaseURL` cover the shape matrix and the chat-lane-independent-of-embed-lane behavior.
-- **`validateCitations` extraction:** discovery's `minCount=1` behavior is preserved byte-for-byte (still rejects zero citations, same kind/ref/excerpt-size checks), and the memory path's `minCount=0` shares the same `maxDiscoveryCitations`/`maxCitationExcerptBytes` caps — no smuggling of an oversized citations payload via the memory lane that discovery wouldn't also allow.
-- **Proto field 8:** additive, no `buf.validate` constraint, no field-number collision; `connectdescriptor_test.go` pins the exact field table.
+**CR-01 verified fixed, correctly.** `contentFingerprint` (`internal/server/idempotency.go`)
+now folds `a.Citations` into its hash input, length-prefixed per field and **not** sorted
+(citations are an ordered, caller-authored list — unlike tags, which are a set and are sorted
+before hashing). This asymmetry is correct: two citation lists in different order really are
+different content and must not collide, whereas two tag sets differing only in order really
+are the same content. `TestStoreMemoryIdempotencyFingerprintCoversCitations` proves both
+directions (changed citations reject as `ErrIdempotencyConflict`; removed citations reject; a
+byte-identical replay still succeeds), and the previously-mis-asserting subtest (26-05's
+"citations sit outside the fingerprint" assumption) was corrected in the same commit rather
+than left stale. I traced every other reader of `storeArgs` looking for the same class of bug
+(a field-by-field consumer that silently omits a newly-added field) — `toMemory` (already
+covered `Citations` at the time CR-01 was filed), the Connect protoconv functions
+(`storeMemoryRequestToArgs`, `scheduleMemoryRequestToArgs`), and the `memStore`/`spyStore` test
+double surface — and found no second instance of the pattern.
 
-One real bug surfaced during this pass, in a file *outside* the six named high-signal areas but directly caused by this phase's `storeArgs.Citations` addition: the idempotency-replay content fingerprint was never updated to include citations, so a keyed retry that changes only its citations is silently treated as a no-op replay and the new citations are dropped without error.
+**IN-01 re-confirmed as Info, no correctness implication.** `summarize.Client.baseURL` is set
+once in `New` and has no setter/mutator anywhere in the package — there is no config-reload
+path that could make the endpoint drift across calls, so re-resolving `openaiurl.Join` inline
+in every `Summarize` call is a pure, harmless micro-inefficiency, not a latent bug. Kept as Info.
 
-## Critical Issues
+**Cross-file checks that came back clean (no new findings):**
+- Every call site that builds a `store.SearchOptions{}` (both production and the ~10 rewritten
+  test call sites across `internal/store/*_test.go` and `internal/retrievaleval`) maps
+  `Tags`/`Categories`/`CreatedAfter`/`CreatedBefore` correctly; no transposition.
+- `internal/openaiurl.Join` is a byte-identical extraction of the pre-phase
+  `joinEmbeddingsURL` heuristic (confirmed by diffing the old inline function against the new
+  one, and by `TestJoin`'s "shipped default is byte-identical to today" subtest). `internal/embed`'s
+  `joinEmbeddingsURL` is now a one-line wrapper. `go list -deps` confirms `internal/summarize`
+  depends on `internal/openaiurl` but not on `internal/embed` — no import cycle, no backwards edge.
+- `internal/server/store_iface.go`'s `memStore` interface and `fakestore_test.go`'s `spyStore` /
+  `store_test.go`'s Qdrant-backed fixtures were updated in lockstep with the `SearchOptions` and
+  `ListOptions.Categories` signature changes; `spyStore.SearchReranked`/`.List` apply the
+  correct OR-not-AND category semantics, matching `store.go`'s `categoryMatchCondition`. The
+  compile-time `var _ memStore = (*store.Store)(nil)` assertion keeps this from drifting silently.
+- MCP vs. Connect shaping symmetry: `shapeRecall`'s `recallView` (MCP) omits `citations` by
+  construction (hand-written allow-list struct with no citations field); `shapeProtoMemories`
+  (Connect) explicitly clears `pb.Citations`/`pb.Kind` in its non-full branch. Both are tested
+  (`TestSearchListMemoryCompactViewOmitsCitations`, `TestConnectCompactViewOmitsCitations`).
+  `get_memory`/Connect `GetMemory` are never shaped on either lane and both return citations in
+  full — consistent, no field an agent could observe as "sometimes visible" depending on lane.
+  Category filter has identical OR semantics and identical empty/nil passthrough on both lanes
+  (`TestMCPConnectCategoryFilterParity`).
+- Payload write-path: `payload()`'s citations write gate (`len(m.Citations) > 0`, independent of
+  the `kind` gate) is exercised by a live-Qdrant round trip; every targeted `SetPayload`/
+  `DeletePayload` write path (`Update`, `UpdatePayload`, `Supersede`'s back-stamp,
+  `IncrementAccess`, `RemapOwner`, `BackfillShortIDs`) never references the citations key, so
+  citations survive every existing mutation for free — confirmed structurally, not just by test.
+- Citations vs. the other Phase 26 tracks: category filter, supersession soft-hide, and
+  scheduled-window gating all operate on Qdrant filter conditions or the `superseded_by`/
+  `not_before`/`not_after` payload keys — none of them read or touch the `citations` key, so
+  there is no interaction surface between a citation-carrying record and any of the other three
+  tracks. `RerankHits` (rerank.go) reorders on lexical term overlap of `Content` only; it never
+  reads or mutates `Citations`. The category filter is applied server-side as part of the same
+  Qdrant `Query` call `SearchReranked`'s `candidateK` over-fetch already runs (pre-existing
+  mechanism, not changed by this phase) — the filter narrows the candidate set *before* the
+  over-fetch count is applied, the same as the pre-existing tag filter, so it introduces no new
+  fewer-than-k failure mode beyond what tag filtering already has.
+- The one place I expected a possible cross-lane gap — Connect's `StoreMemory`/`ScheduleMemory`
+  RPCs have no `citations` field on their proto messages, so a Connect write client cannot
+  attach citations at all (only MCP's `store_memory`/`schedule_memory`/`supersede_memory` can) —
+  is a **documented, deliberate scope decision**, not an oversight: `26-CONTEXT.md`'s "Explicitly
+  NOT this phase" section states "Citations / idempotency on the Connect write lane —
+  REQUIREMENTS.md Deferred is explicit: MCP-first, Connect parity follows," distinct from the
+  category filter's *read*-lane field (`SearchMemoriesRequest.categories`), which **was** shipped
+  on both lanes this phase. Confirmed this isn't accidentally contradicted anywhere in the docs:
+  `tools.md` and the `curating-memory` skill only ever describe the MCP tool schema for
+  citations, never claim Connect write-lane parity. Not reported as a finding.
+- Docs/skill accuracy: spot-checked every citation-related and chat-base-url-related claim in
+  `memory-record.md`, `tools.md`, `configure.md`, and `curating-memory/SKILL.md` against the
+  shipped code (categories OR vs. tags AND semantics, the 50-citation/16 KiB caps, `get_memory`
+  always returning citations in full, `ENGRAM_OPENAI_CHAT_BASE_URL`'s inherit-when-empty
+  semantics and the shared-API-key constraint). All statements verified accurate; the
+  `#field-reference` cross-reference anchor added to `memory-record.md` resolves to the actual
+  "## Field reference" heading.
 
-### CR-01: `contentFingerprint` omits `Citations`, so a keyed replay with different citations silently drops them (no error, no write)
-
-**File:** `internal/server/idempotency.go:56-80` (also implicated: `internal/server/tools.go:769-813` `checkIdempotentReplay`/`storeMemory`, `tools.go:868-911` `scheduleMemory`)
-
-**Issue:** Phase 26 added `Citations []citationArg` to `storeArgs` (tools.go:444-450), inherited by `store_memory` and `schedule_memory`. Both handlers gate a keyed write through `checkIdempotentReplay`, which compares the freshly-computed `contentFingerprint(a)` against the stored record's `IdempotencyFingerprint` to decide "same content, return the original unchanged" vs. "different content, reject." `contentFingerprint` hashes `Content, Category, tags, Source, Repo, Workspace, Worktree, BaseDir, Summary` — it was never extended to include `Citations`.
-
-Concrete failure path:
-1. `store_memory(idempotency_key="K", content="X", category="gotcha", citations=[])` → creates a record with no citations; fingerprint `F` is computed without any citations component.
-2. `store_memory(idempotency_key="K", content="X", category="gotcha", citations=[{kind:"file", ref:"f.go"}])` → `checkIdempotentReplay` computes the identical fingerprint `F` (citations still excluded), matches the stored `IdempotencyFingerprint`, classifies the call as `replay=true`, and returns the ORIGINAL record's id/short_id with **no error**. The caller's citations are never validated against the existing record and never written — the tool call reports success, but `get_memory` on the returned id shows zero citations.
-
-This contradicts the documented contract ("same key + identical content returns the original record unchanged... same key + different content is rejected") from the caller's point of view: two calls that genuinely differ (one carries source anchors, one doesn't) are silently collapsed into "identical," and the second caller has no signal that their citations were discarded. It is silent data loss, not merely a missed validation — the call succeeds and returns a plausible id.
-
-The same gap applies to `schedule_memory` via `checkIdempotentReplay(ctx, owner, a.storeArgs)` (tools.go:882). `supersede_memory` is unaffected — it explicitly never calls `checkIdempotentReplay` (idempotency_key is inert there by design).
-
-This is untested: `TestStoreMemoryIdempotentReplayRejectsMismatch` (tools_test.go:1104) only varies `Content`; no test in `tools_test.go` varies `Citations` under a shared `idempotency_key`.
-
-**Fix:** Fold citations into `contentFingerprint`'s hash input, deterministically (each citation's fields length-prefixed in a fixed order, matching the existing tag-encoding discipline, since a citation *list* is ordered and its fields can themselves contain the `:` separator):
-
-```go
-func contentFingerprint(a storeArgs) string {
-	tags := slices.Clone(a.Tags)
-	slices.Sort(tags)
-
-	var tagsEnc strings.Builder
-	for _, t := range tags {
-		fmt.Fprintf(&tagsEnc, "%d:%s:", len(t), t)
-	}
-
-	var citesEnc strings.Builder
-	for _, c := range a.Citations { // order-preserving: citations are a list, not a set
-		for _, f := range []string{c.Kind, c.Ref, c.Locator, c.Pin, c.Excerpt} {
-			fmt.Fprintf(&citesEnc, "%d:%s:", len(f), f)
-		}
-	}
-
-	var b strings.Builder
-	for _, f := range []string{
-		a.Content, a.Category, tagsEnc.String(),
-		a.Source, a.Repo, a.Workspace, a.Worktree, a.BaseDir, a.Summary,
-		citesEnc.String(),
-	} {
-		fmt.Fprintf(&b, "%d:%s:", len(f), f)
-	}
-	sum := sha256.Sum256([]byte(b.String()))
-	return hex.EncodeToString(sum[:])
-}
-```
-
-Note this is a **breaking change to the fingerprint** for any already-persisted `IdempotencyFingerprint` value computed under the old hash — every previously-stored keyed record's next replay will now see a "mismatch" (`ErrIdempotencyConflict`) instead of a match, even when citations genuinely didn't change, because the old stored fingerprint was computed without a citations component and the new code path always appends one (empty citations still contributes `"0::"` to the hash, changing the digest vs. the old scheme that omitted the field entirely). This needs either an explicit migration note/changelog entry, or the fix should be shaped so that an empty-citations record's fingerprint is byte-identical to the pre-fix fingerprint (e.g. only append the citations block when `len(a.Citations) > 0`), to avoid spuriously breaking in-flight retries across a deploy. Add a test that pins same-key/different-citations as a rejected mismatch, mirroring `TestStoreMemoryIdempotentReplayRejectsMismatch`.
+No new Critical or Warning findings surfaced at deep depth. The single outstanding item is the
+Info carried forward from the standard pass.
 
 ## Info
 
 ### IN-01: `internal/summarize.Client` re-resolves the chat endpoint on every `Summarize` call instead of once at construction
 
 **File:** `internal/summarize/summarize.go:160`
-**Issue:** `internal/embed.Client` resolves `embeddingsURL` once in `New` (embed.go:111-113) and reuses the cached field on every `Embed`/`EmbedQuery` call. `internal/summarize.Client` instead calls `openaiurl.Join(c.baseURL, "chat/completions")` inline inside `Summarize` (summarize.go:157-160), recomputing the same string on every invocation. Functionally harmless (the string is small and `baseURL` never changes post-construction), but it's an inconsistent pattern between the two packages that now share the exact same join primitive — a future reader may reasonably expect the same "resolve once" convention on both sides.
-**Fix:** Resolve `chatURL` once in `summarize.New` (mirroring `embed.New`'s `embeddingsURL` field) and reference it in `Summarize`, for consistency with the sibling package this phase explicitly unified the join logic with.
+**Issue:** `internal/embed.Client` resolves `embeddingsURL` once in `New` (embed.go) and reuses
+the cached field on every `Embed`/`EmbedQuery` call. `internal/summarize.Client` instead calls
+`openaiurl.Join(c.baseURL, "chat/completions")` inline inside `Summarize` on every invocation.
+Re-confirmed at deep depth: `c.baseURL` is set once in `New` and there is no setter/mutator or
+config-reload path anywhere in the package that could change it later, so this is a pure,
+harmless micro-inefficiency (recomputing a small string join per call), not a latent
+correctness or concurrency issue — `TestSummarizeConcurrentSharedClientOneEndpoint` already
+proves concurrent callers hit the identical endpoint. It is, however, an inconsistent pattern
+between two packages that now share the exact same join primitive.
+**Fix:** Resolve `chatURL` once in `summarize.New` (mirroring `embed.New`'s `embeddingsURL`
+field) and reference it in `Summarize`, for consistency with the sibling package this phase
+explicitly unified the join logic with. Safe to apply mechanically — no test depends on the
+per-call resolution.
 
 ---
 
-_Reviewed: 2026-07-26T03:57:02Z_
+_Reviewed: 2026-07-25T23:15:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
-_Depth: standard_
+_Depth: deep_
