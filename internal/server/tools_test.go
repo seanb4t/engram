@@ -2855,13 +2855,9 @@ func TestUpdateMemoryPreservesCitations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("storeMemory (first): %v", err)
 		}
-		// Repeat with the SAME key but DIFFERENT citations: citations are
-		// outside the idempotency fingerprint (a deliberate D-02/planner_assumption
-		// choice), so this must replay, not conflict, and the ORIGINAL
-		// citations must be what get_memory returns.
-		replay := args
-		replay.Citations = []citationArg{{Kind: "repo", Ref: "github.com/example/other"}}
-		id2, _, err := d.storeMemory(ctx, c, replay)
+		// A genuine replay — SAME key, byte-identical args including citations —
+		// returns the original record with its citations untouched.
+		id2, _, err := d.storeMemory(ctx, c, args)
 		if err != nil {
 			t.Fatalf("storeMemory (replay): %v", err)
 		}
@@ -2873,6 +2869,26 @@ func TestUpdateMemoryPreservesCitations(t *testing.T) {
 			t.Fatalf("getMemory: %v", err)
 		}
 		assertCitationsEqual(t, got.Citations, cites)
+
+		// SAME key but DIFFERENT citations is a same-key/different-content
+		// MISMATCH, not a replay. Citations are client-authored (D-04 put them
+		// on the shared storeArgs), so Phase 24's D-07 fingerprint covers them
+		// and D-10 requires a reject. Letting this replay would silently discard
+		// the caller's corrected citations and return success — the exact silent
+		// overwrite D-10 exists to prevent (26-REVIEW CR-01). An earlier planner
+		// assumption held that citations sat outside the fingerprint; it was
+		// wrong and is superseded here.
+		conflict := args
+		conflict.Citations = []citationArg{{Kind: "repo", Ref: "github.com/example/other"}}
+		if _, _, err := d.storeMemory(ctx, c, conflict); !errors.Is(err, store.ErrIdempotencyConflict) {
+			t.Fatalf("changed citations: want errors.Is(err, store.ErrIdempotencyConflict), got %v", err)
+		}
+		// The original record is left untouched by the rejected call.
+		after, err := d.getMemory(ctx, c, idArgs{ID: id1})
+		if err != nil {
+			t.Fatalf("getMemory (after conflict): %v", err)
+		}
+		assertCitationsEqual(t, after.Citations, cites)
 	})
 
 	t.Run("duplicate citations persist without deduplication, in order", func(t *testing.T) {
@@ -3835,5 +3851,50 @@ func TestStoreDiscoveryArgsIDSchemaAdvertisesShortID(t *testing.T) {
 	tag := f.Tag.Get("jsonschema")
 	if !strings.Contains(tag, "short_id") {
 		t.Fatalf("storeDiscoveryArgs.ID jsonschema tag = %q, want it to mention short_id", tag)
+	}
+}
+
+// TestStoreMemoryIdempotencyFingerprintCoversCitations pins that citations are
+// part of the client-authored identity the idempotency fingerprint hashes
+// (Phase 24 D-07, extended by Phase 26 D-04 which put Citations on the shared
+// storeArgs). Without this, a keyed retry that changes ONLY its citations
+// computes an identical fingerprint, is misclassified as a no-op replay, and
+// returns success while silently discarding the caller's citations — a silent
+// data-loss path that violates SC2's reject-on-mismatch contract.
+func TestStoreMemoryIdempotencyFingerprintCoversCitations(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "owner-cite-fp")
+	scope := "iso-test:project:idempotency-citations"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-cite-fp")))
+	}()
+
+	first := storeArgs{
+		Content: "same content", Scope: scope, Source: "user-said", Category: "gotcha",
+		IdempotencyKey: "key-citations",
+		Citations:      []citationArg{{Kind: "file", Ref: "internal/store/store.go"}},
+	}
+	if _, _, err := d.storeMemory(ctx, callerFor(ctx, t), first); err != nil {
+		t.Fatalf("storeMemory (first): %v", err)
+	}
+
+	// Same key, same content, DIFFERENT citations => different client-authored
+	// identity => must reject, not silently replay-and-discard.
+	second := first
+	second.Citations = []citationArg{{Kind: "file", Ref: "internal/server/tools.go"}}
+	if _, _, err := d.storeMemory(ctx, callerFor(ctx, t), second); !errors.Is(err, store.ErrIdempotencyConflict) {
+		t.Fatalf("changed citations: want errors.Is(err, store.ErrIdempotencyConflict), got %v", err)
+	}
+
+	// Adding a citation where there was none is likewise a mismatch.
+	third := first
+	third.Citations = nil
+	if _, _, err := d.storeMemory(ctx, callerFor(ctx, t), third); !errors.Is(err, store.ErrIdempotencyConflict) {
+		t.Fatalf("removed citations: want errors.Is(err, store.ErrIdempotencyConflict), got %v", err)
+	}
+
+	// A genuine replay (byte-identical citations) must still succeed as a replay.
+	if _, _, err := d.storeMemory(ctx, callerFor(ctx, t), first); err != nil {
+		t.Fatalf("identical replay must succeed, got %v", err)
 	}
 }
