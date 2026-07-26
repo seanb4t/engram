@@ -2606,6 +2606,215 @@ func TestSupersedeMemoryDiscoveryTarget(t *testing.T) {
 	}
 }
 
+// TestUpdateMemoryPreservesCitations is the phase's non-negotiable D-02
+// regression test: citations are written EXCLUSIVELY inside payload(), so
+// every whole-payload round trip (Update, Supersede's new-record Upsert)
+// preserves them for free, and every targeted SetPayload writer
+// (UpdatePayload, Supersede's back-stamp, IncrementAccess) never references
+// the citations key and so cannot erase it. Each sub-test names the specific
+// write path under test; a failure here means a citations write bypassed
+// payload() somewhere, and the fix is to route it back through payload() —
+// never to add preservation code to Update, UpdatePayload, Supersede, or
+// IncrementAccess (see this task's PLAN.md prohibitions). This task adds NO
+// production code: every sub-test failure is a Task 1 defect, not a signal
+// to patch the write paths under test.
+func TestUpdateMemoryPreservesCitations(t *testing.T) {
+	// testDepsWithStore also returns the concrete *store.Store: the
+	// access-count sub-test below calls st.IncrementAccess directly, which is
+	// not on the deps.st memStore interface (only usageQueue's fill closure
+	// holds a concrete *store.Store).
+	d, st := testDepsWithStore(t)
+	cites := citationFixture()
+
+	t.Run("content-changing update route (re-embeds, re-Upserts)", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-upd-content")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-upd-content"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-upd-content")))
+		}()
+
+		id, _, err := d.storeMemory(ctx, c, storeArgs{
+			Content: "v1", Scope: scope, Source: "user-said", Category: "decision", Citations: cites,
+		})
+		if err != nil {
+			t.Fatalf("storeMemory: %v", err)
+		}
+		if _, err := d.updateMemory(ctx, c, updateArgs{ID: id, Content: strp("v2, content changed")}); err != nil {
+			t.Fatalf("updateMemory (content change): %v", err)
+		}
+		got, err := d.getMemory(ctx, c, idArgs{ID: id})
+		if err != nil {
+			t.Fatalf("getMemory: %v", err)
+		}
+		if got.Content != "v2, content changed" {
+			t.Fatalf("content did not change: %q", got.Content)
+		}
+		assertCitationsEqual(t, got.Citations, cites)
+	})
+
+	t.Run("shared-only update route (payload-only, never re-embeds)", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-upd-shared")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-upd-shared"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-upd-shared")))
+		}()
+
+		id, _, err := d.storeMemory(ctx, c, storeArgs{
+			Content: "v1", Scope: scope, Source: "user-said", Category: "decision", Citations: cites,
+		})
+		if err != nil {
+			t.Fatalf("storeMemory: %v", err)
+		}
+		shared := true
+		// Content and Tags both nil: routes to Store.UpdatePayload, the
+		// targeted SetPayload that never re-embeds and never references
+		// "citations" (D-02).
+		if _, err := d.updateMemory(ctx, c, updateArgs{ID: id, Shared: &shared}); err != nil {
+			t.Fatalf("updateMemory (shared-only): %v", err)
+		}
+		got, err := d.getMemory(ctx, c, idArgs{ID: id})
+		if err != nil {
+			t.Fatalf("getMemory: %v", err)
+		}
+		if got.Visibility != "shared" {
+			t.Fatalf("visibility did not change: %q", got.Visibility)
+		}
+		assertCitationsEqual(t, got.Citations, cites)
+	})
+
+	t.Run("supersession back-stamp against a citation-carrying target", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-upd-supersede")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-upd-supersede"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-upd-supersede")))
+		}()
+
+		targetID, targetSID, err := d.storeMemory(ctx, c, storeArgs{
+			Content: "original, with citations", Scope: scope, Source: "user-said",
+			Category: "decision", Citations: cites,
+		})
+		if err != nil {
+			t.Fatalf("seed store: %v", err)
+		}
+		newID, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+			storeArgs:  storeArgs{Content: "corrected", Scope: scope, Source: "user-said", Category: "decision"},
+			Supersedes: targetSID,
+		})
+		if err != nil {
+			t.Fatalf("supersedeMemory: %v", err)
+		}
+		// The TARGET's citations must survive the single-key superseded_by
+		// back-stamp (SetPayload), and the back-stamp itself must have landed —
+		// neither write clobbered the other.
+		target, err := d.getMemory(ctx, c, idArgs{ID: targetID})
+		if err != nil {
+			t.Fatalf("getMemory (target): %v", err)
+		}
+		if target.SupersededBy == nil || *target.SupersededBy != newID {
+			t.Errorf("target.SupersededBy = %v, want %q", target.SupersededBy, newID)
+		}
+		assertCitationsEqual(t, target.Citations, cites)
+	})
+
+	t.Run("keyed idempotent replay returns original citations unchanged", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-upd-replay")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-upd-replay"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-upd-replay")))
+		}()
+
+		args := storeArgs{
+			Content: "replay me", Scope: scope, Source: "user-said", Category: "decision",
+			IdempotencyKey: "cite-replay-key", Citations: cites,
+		}
+		id1, _, err := d.storeMemory(ctx, c, args)
+		if err != nil {
+			t.Fatalf("storeMemory (first): %v", err)
+		}
+		// Repeat with the SAME key but DIFFERENT citations: citations are
+		// outside the idempotency fingerprint (a deliberate D-02/planner_assumption
+		// choice), so this must replay, not conflict, and the ORIGINAL
+		// citations must be what get_memory returns.
+		replay := args
+		replay.Citations = []citationArg{{Kind: "repo", Ref: "github.com/example/other"}}
+		id2, _, err := d.storeMemory(ctx, c, replay)
+		if err != nil {
+			t.Fatalf("storeMemory (replay): %v", err)
+		}
+		if id2 != id1 {
+			t.Fatalf("replay returned a different record: %q, want %q", id2, id1)
+		}
+		got, err := d.getMemory(ctx, c, idArgs{ID: id1})
+		if err != nil {
+			t.Fatalf("getMemory: %v", err)
+		}
+		assertCitationsEqual(t, got.Citations, cites)
+	})
+
+	t.Run("duplicate citations persist without deduplication, in order", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-upd-dup")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-upd-dup"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-upd-dup")))
+		}()
+
+		dup := []citationArg{
+			{Kind: "file", Ref: "f.go", Excerpt: "same"},
+			{Kind: "file", Ref: "f.go", Excerpt: "same"},
+		}
+		id, _, err := d.storeMemory(ctx, c, storeArgs{
+			Content: "dup citations", Scope: scope, Source: "user-said", Category: "decision", Citations: dup,
+		})
+		if err != nil {
+			t.Fatalf("storeMemory: %v", err)
+		}
+		got, err := d.getMemory(ctx, c, idArgs{ID: id})
+		if err != nil {
+			t.Fatalf("getMemory: %v", err)
+		}
+		assertCitationsEqual(t, got.Citations, dup)
+	})
+
+	t.Run("citations unaffected by the access-count SetPayload bump", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-upd-access")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-upd-access"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-upd-access")))
+		}()
+
+		id, _, err := d.storeMemory(ctx, c, storeArgs{
+			Content: "accessed repeatedly", Scope: scope, Source: "user-said", Category: "decision", Citations: cites,
+		})
+		if err != nil {
+			t.Fatalf("storeMemory: %v", err)
+		}
+		// Drive IncrementAccess directly, several times — the exact targeted
+		// SetPayload the async usage-signal queue fires on a real get_memory,
+		// simulated synchronously here for a deterministic assertion. It
+		// writes ONLY access_count/last_accessed_at and never references
+		// "citations".
+		for range 3 {
+			if err := st.IncrementAccess(ctx, id); err != nil {
+				t.Fatalf("IncrementAccess: %v", err)
+			}
+		}
+		got, err := d.getMemory(ctx, c, idArgs{ID: id})
+		if err != nil {
+			t.Fatalf("getMemory: %v", err)
+		}
+		if got.AccessCount != 3 {
+			t.Fatalf("access_count = %d, want 3", got.AccessCount)
+		}
+		assertCitationsEqual(t, got.Citations, cites)
+	})
+}
+
 // TestUpdateMemoryTagsHandler pins the full tag-mutation contract: supplying
 // tags replaces them, an empty slice clears them, omitting tags (nil) preserves
 // the existing set, and the record's id/created_at survive the update (no
