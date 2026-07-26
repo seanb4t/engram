@@ -45,7 +45,7 @@ of every named regression test). Blocking threshold: `high`.
 | Threat ID | Category | Component | Severity | Disposition | Mitigation | Status |
 |-----------|----------|-----------|----------|-------------|------------|--------|
 | T-26-01 | Elevation of Privilege | `Store.Search` filter assembly (`internal/store/store.go`) | high | mitigate | **Verified.** `store.go:888` assembles `f := s.ownerScopeFilter(scope, subj)` *first*; the category condition is appended to `f.Must` only at `:895`. `categoryMatchCondition` (`:789-801`) returns a nested `Should` wrapped as a single `Must` condition, so the filter can only narrow — set intersection, never union with the authz predicate. `TestCategoryFilterDoesNotWidenVisibility` (`store_test.go:1900`) passes. | closed |
-| T-26-02 | Tampering | `Search` / `SearchReranked` call sites (~25) | medium | mitigate | **Verified.** `store.SearchOptions` (`store.go:851`) replaces the adjacent-`[]string` positional params the compiler could not distinguish; transposition is now a type error. `go vet ./...` makes call-site coverage exhaustive by construction. | closed |
+| T-26-02 | Tampering | `Search` / `SearchReranked` call sites (~25) | medium | mitigate | **Verified.** `store.SearchOptions` (`store.go:851`) replaces the adjacent-`[]string` positional params the compiler could not distinguish; transposition is now a type error. `go vet ./...` **executed clean at this audit**, making call-site coverage exhaustive by construction across all ~25 sites — including `internal/retrievaleval`, the call site outside the two obvious packages. | closed |
 | T-26-03 | Information Disclosure | caller-supplied `categories` values | low | accept | D-11: an unknown value passes through as an opaque Qdrant match and matches nothing. No error surface, so no existence oracle — a caller cannot distinguish "no such category" from "no records you may read". See ACC-26-01. | closed |
 | T-26-04 | Denial of Service | unbounded `categories` slice length | low | accept | Each element is one `Should` match on an unindexed payload key — the same cost profile as the shipped `tags` AND-filter — and every query stays bounded by `k`. See ACC-26-02. | closed |
 | T-26-05 | Elevation of Privilege | `search_memory` / `list_memory` MCP closures | high | mitigate | **Verified.** The closures pass `a.Categories` through verbatim and make no scope, owner, or subject decision; the authz filter is assembled downstream in the store (DEC-cgb). `TestSearchMemoryCategoriesArg` (`tools_test.go:2096`) passes under a real `Subject` fixture. | closed |
@@ -116,9 +116,19 @@ go test ./internal/store/ ./internal/server/ ./internal/config/ \
         ./internal/openaiurl/ ./internal/embed/ ./internal/summarize/ -count=1
   ok  internal/store  ok  internal/server  ok  internal/config
   ok  internal/openaiurl  ok  internal/embed  ok  internal/summarize
+go vet ./...                                       → clean
 go tool buf breaking --against '.git#branch=main'   → clean
 git diff main...HEAD -- go.mod go.sum buf.gen.yaml ui/package*.json → empty
 ```
+
+**Depth caveat (recorded deliberately).** ASVS L1 means the structural evidence
+above is grep-depth plus test execution. It does **not** include an L2
+boundary-placement review or an L3 end-to-end trace. The three judgment-call
+threats — T-26-22, T-26-23, T-26-24 (documentation and skill guidance) — are
+closed by *reading the shipped prose*, since no test can assert that a warning
+is adequately worded. If this phase's ASVS level is ever raised to 2+, re-run
+`/gsd-secure-phase 26`: the short-circuit will not fire and a
+`gsd-security-auditor` subagent will perform the deeper passes.
 
 ### Out-of-register finding (resolved before this audit)
 
