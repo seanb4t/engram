@@ -315,6 +315,16 @@ OpenAI-compatible embedder, three records across `decision` / `gotcha` /
 This exercises Track A (citations) and Track B (category filter) through the
 real MCP transport — the deployed shape, not a test harness.
 
+**Promoted to a committed test tier.** The ad-hoc rig above was rebuilt as
+`internal/e2e` (commit `4d7206ee`) so the coverage is durable rather than a
+one-off: it builds the binary, runs `engram serve` as a subprocess, and drives
+it through the official MCP go-sdk client. This follows GSD's `/gsd-add-tests`
+shape — test files plus a `test(...)` commit against the completed phase, not a
+new PLAN/SUMMARY pair — so no phase artifact describes it by design. It is test
+infrastructure, mapped to no REQ, and therefore deliberately absent from every
+SUMMARY `coverage:` block. Test strategy and the two Qdrant traps above are
+documented in CONTRIBUTING.md § Testing.
+
 ## Coverage Block Schema Errors
 
 These do not change any verdict — the fail-safe routed each affected deliverable
