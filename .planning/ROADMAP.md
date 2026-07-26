@@ -482,7 +482,7 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 4. None of the three additions introduces new store-layer authz surface — citations and category
    filtering compose onto the existing authz-outer-`Must` invariant untouched.
 
-**Plans**: 3/6 plans executed
+**Plans**: 4/6 plans executed
 
 **Wave 1**
 
@@ -494,7 +494,7 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 
 **Wave 3** *(blocked on Wave 2; the two plans below are independent of each other)*
 
-- [ ] 26-03-PLAN.md — Track B Connect parity: `SearchMemoriesRequest.categories = 8` (one-way, checkpoint-gated), `task proto:gen` + committed `gen/`, handler wiring, MCP↔Connect parity test (Wave 3, depends on 26-02)
+- [x] 26-03-PLAN.md — Track B Connect parity: `SearchMemoriesRequest.categories = 8` (one-way, checkpoint-gated), `task proto:gen` + committed `gen/`, handler wiring, MCP↔Connect parity test (Wave 3, depends on 26-02)
 - [x] 26-04-PLAN.md — Track C chat base URL: `internal/openaiurl.Join` shared provider-shape join, `ENGRAM_OPENAI_CHAT_BASE_URL` config/registry/validate trio, `cmp.Or` at the summarizer construction site, Helm wiring (Wave 3, file-ownership serialization only)
 
 **Wave 4** *(blocked on Wave 3)*

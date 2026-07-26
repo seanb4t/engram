@@ -5,15 +5,15 @@ milestone_name: Capture & Service Identity
 current_phase: 26
 current_phase_name: Structured Citations, Category Filter & Chat Base URL
 status: executing
-stopped_at: Completed 26-04-PLAN.md
-last_updated: "2026-07-25T23:32:31.416Z"
+stopped_at: Completed 26-03-PLAN.md
+last_updated: "2026-07-26T03:19:35.036Z"
 last_activity: 2026-07-25
 last_activity_desc: Phase 26 execution started
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 19
-  completed_plans: 16
+  completed_plans: 17
   percent: 50
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-18 — after Phase 24)
 ## Current Position
 
 Phase: 26 (Structured Citations, Category Filter & Chat Base URL) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-07-25 — Phase 26 execution started
 
@@ -126,6 +126,7 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 - [Phase ?]: [Phase 26 P04]: D-12 confirmed add-alongside — ENGRAM_OPENAI_CHAT_BASE_URL is an optional cmp.Or override resolved once at summarizerFromConfig, not a config redesign; embedderFromConfig untouched
 - [Phase ?]: [Phase 26 P04]: D-14 hoisted the provider-shape join into internal/openaiurl (stdlib-only leaf, imports only strings) so internal/embed and internal/summarize share one implementation with no import-cycle risk
 - [Phase ?]: [Phase 26 P04]: Chart coverage for chatBaseURL placed under memory.summarize (not memory.openai) since ENGRAM_OPENAI_EMBEDDINGS_URL — the cited precedent — was never actually wired into charts/engram
+- [Phase ?]: [Phase 26 P03]: D-10 checkpoint resolved by human as ship-field-8 (genuine decision, not auto-approved) — SearchMemoriesRequest.categories = 8 shipped additive, no buf.validate (D-11), closing SC2's Connect-side parity gap
 
 ### Blockers/Concerns
 
@@ -143,8 +144,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-25T23:32:31.408Z
-Stopped at: Completed 26-04-PLAN.md
+Last session: 2026-07-26T03:19:35.028Z
+Stopped at: Completed 26-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -205,6 +206,7 @@ Resume file: None
 | Phase 26 P01 | 10min | 2 tasks | 9 files |
 | Phase 26 P02 | 9min | 2 tasks | 2 files |
 | Phase 26 P04 | 25min | 3 tasks | 13 files |
+| Phase 26 P03 | 12min | 2 tasks | 7 files |
 
 ## Operator Next Steps
 
