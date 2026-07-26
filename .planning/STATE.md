@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v0.11.x
 milestone_name: Capture & Service Identity
 current_phase: 26
-current_phase_name: Structured Citations, Category Filter & Chat Base URL
-status: "Phase 25 shipped — PR #429"
-stopped_at: Completed 25-02-PLAN.md
-last_updated: "2026-07-24T22:36:32.016Z"
-last_activity: 2026-07-19
+status: "Phase 26 shipped — PR #432"
+stopped_at: Completed 26-06-PLAN.md — Phase 26 complete
+last_updated: "2026-07-26T17:46:44.404Z"
+last_activity: 2026-07-26
 progress:
   total_phases: 8
-  completed_phases: 4
-  total_plans: 13
-  completed_plans: 13
-  percent: 50
-last_activity_desc: Phase 25 complete, transitioned to Phase 26
+  completed_phases: 5
+  total_plans: 19
+  completed_plans: 19
+  percent: 63
+current_phase_name: Structured Citations, Category Filter & Chat Base URL
+last_activity_desc: Phase 26 complete
 ---
 
 # Project State
@@ -24,14 +24,14 @@ last_activity_desc: Phase 25 complete, transitioned to Phase 26
 See: .planning/PROJECT.md (updated 2026-07-18 — after Phase 24)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 25 — supersession-with-history
+**Current focus:** Phase 26 — Structured Citations, Category Filter & Chat Base URL
 
 ## Current Position
 
-Phase: 26 — Structured Citations, Category Filter & Chat Base URL
+Phase: 26
 Plan: Not started
-Status: Phase 25 shipped — PR #429
-Last activity: 2026-07-19
+Status: Phase 26 shipped — PR #432
+Last activity: 2026-07-26
 
 Progress: [████████████████████] 11/11 plans ([██████████] 100%) · 3/8 phases (38%)
 
@@ -120,6 +120,17 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 - [Phase ?]: Store.Get left deliberately ungated so superseded records stay fetchable by id
 - [Phase ?]: supersede_memory does not call checkIdempotentReplay despite storeArgs.IdempotencyKey riding along via embedding (plan's explicit handler steps omit it; accepted per RESEARCH Pitfall 2)
 - [Phase ?]: connectError maps store.ErrAlreadySuperseded to CodeFailedPrecondition, pre-positioning only (no Connect RPC exposes supersede_memory this phase)
+- [Phase ?]: [Phase 26 P01]: D-09 confirmed: SearchOptions{Tags,Categories,CreatedAfter,CreatedBefore} replaces Search/SearchReranked's positional tail; k stays positional so SearchReranked's k==0 ErrInvalidArgument guard is unweakened
+- [Phase ?]: [Phase 26 P01]: categoryMatchCondition extracted from listFilter's inline category loop, shared by list and search lanes; flagged tightening — empty-string category elements now skipped (mirrors tagMatchConditions), so categories:[""] becomes a passthrough
+- [Phase ?]: [Phase 26 P02]: D-08 confirmed shipped: categories arg is plural on searchArgs/listArgs with explicit ANY/OR jsonschema wording (distinct from tags' ALL/AND); 26-01 had already threaded coreSearchRequest.Categories/coreListRequest.Categories into the store, so this plan's only gap was the two MCP arg fields + two closure-literal wirings
+- [Phase ?]: [Phase 26 P04]: D-12 confirmed add-alongside — ENGRAM_OPENAI_CHAT_BASE_URL is an optional cmp.Or override resolved once at summarizerFromConfig, not a config redesign; embedderFromConfig untouched
+- [Phase ?]: [Phase 26 P04]: D-14 hoisted the provider-shape join into internal/openaiurl (stdlib-only leaf, imports only strings) so internal/embed and internal/summarize share one implementation with no import-cycle risk
+- [Phase ?]: [Phase 26 P04]: Chart coverage for chatBaseURL placed under memory.summarize (not memory.openai) since ENGRAM_OPENAI_EMBEDDINGS_URL — the cited precedent — was never actually wired into charts/engram
+- [Phase ?]: [Phase 26 P03]: D-10 checkpoint resolved by human as ship-field-8 (genuine decision, not auto-approved) — SearchMemoriesRequest.categories = 8 shipped additive, no buf.validate (D-11), closing SC2's Connect-side parity gap
+- [Phase ?]: [Phase 26 P05]: D-02 confirmed: citations write exclusively inside payload(); zero preservation code added to Update/UpdatePayload/Supersede/IncrementAccess, proven by a six-sub-test regression suite
+- [Phase ?]: [Phase 26 P05]: validateStoreDiscovery's ref-required check was already shipped pre-phase (PR #28); the validateCitations extraction preserved it verbatim, no new discovery-path behavior change
+- [Phase ?]: [Phase 26 P06]: Skill path corrected — actual repo path is skill/engram/skills/curating-memory/SKILL.md, not skill/engram/curating-memory/SKILL.md as the plan's files_modified stated
+- [Phase ?]: [Phase 26 P06]: ENGRAM_OPENAI_CHAT_BASE_URL row placed once in the Embedder/OpenAI table; Auto-summary section carries narrative prose + cross-reference instead of a duplicate row
 
 ### Blockers/Concerns
 
@@ -137,8 +148,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-19T17:50:17.618Z
-Stopped at: Completed 25-02-PLAN.md
+Last session: 2026-07-26T03:48:22.018Z
+Stopped at: Completed 26-06-PLAN.md — Phase 26 complete
 Resume file: None
 
 ## Performance Metrics
@@ -196,6 +207,12 @@ Resume file: None
 | Phase 24 P02 | 9min | 3 tasks | 2 files |
 | Phase 25 P01 | 4min | 2 tasks | 2 files |
 | Phase 25 P02 | 3min | 2 tasks | 6 files |
+| Phase 26 P01 | 10min | 2 tasks | 9 files |
+| Phase 26 P02 | 9min | 2 tasks | 2 files |
+| Phase 26 P04 | 25min | 3 tasks | 13 files |
+| Phase 26 P03 | 12min | 2 tasks | 7 files |
+| Phase 26 P05 | 6min | 3 tasks | 6 files |
+| Phase 26 P06 | 18min | 3 tasks | 4 files |
 
 ## Operator Next Steps
 

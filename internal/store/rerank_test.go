@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 )
 
 func TestCandidateK(t *testing.T) {
@@ -40,7 +39,7 @@ func TestSearchRerankedRejectsZeroK(t *testing.T) {
 	t.Parallel()
 	s := New(nil, "unused-hermetic-collection")
 	_, err := s.SearchReranked(context.Background(), "scope", Authenticated("actor"),
-		"query", []float32{0.1, 0.2}, 0, nil, time.Time{}, time.Time{})
+		"query", []float32{0.1, 0.2}, 0, SearchOptions{})
 	if err == nil {
 		t.Fatal("SearchReranked(k=0) should error, not silently over-fetch-then-truncate-to-empty")
 	}

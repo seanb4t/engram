@@ -90,7 +90,7 @@ func TestStoreSearchEmitsSpan(t *testing.T) {
 
 	// testStore ensures a 3-dim collection (store_test.go: EnsureCollection(ctx, 3)).
 	before := len(sr.Ended()) // scope the lookup to the span this call produces
-	_, err := st.Search(context.Background(), "repo:spans", anonymous{}, make([]float32, 3), 5, nil, time.Time{}, time.Time{})
+	_, err := st.Search(context.Background(), "repo:spans", anonymous{}, make([]float32, 3), 5, SearchOptions{})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestStoreSearchEmitsRecallIDs(t *testing.T) {
 
 	sr := withSpanRecorder(t)
 	before := len(sr.Ended())
-	out, err := s.Search(context.Background(), scope, subj, []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	out, err := s.Search(context.Background(), scope, subj, []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}

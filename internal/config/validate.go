@@ -96,6 +96,23 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// ChatBaseURL (D-12/D-15) is a self-gated no-op when empty — unlike
+	// ENGRAM_OPENAI_BASE_URL above, empty here is the documented, supported
+	// "inherit the shared base URL" state, not an error. Do NOT copy
+	// ENGRAM_OPENAI_BASE_URL's empty-string-is-an-error branch onto this field;
+	// doing so would break every existing deployment on upgrade. When set, it is
+	// validated the same way as ENGRAM_OPENAI_EMBEDDINGS_URL above.
+	if c.OpenAI.ChatBaseURL != "" {
+		switch u, err := url.Parse(c.OpenAI.ChatBaseURL); {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("ENGRAM_OPENAI_CHAT_BASE_URL %q: must be a valid URL: %w", c.OpenAI.ChatBaseURL, err))
+		case u.Scheme != "http" && u.Scheme != "https":
+			errs = append(errs, fmt.Errorf("ENGRAM_OPENAI_CHAT_BASE_URL %q: scheme must be http or https", c.OpenAI.ChatBaseURL))
+		case u.Host == "":
+			errs = append(errs, fmt.Errorf("ENGRAM_OPENAI_CHAT_BASE_URL %q: missing host", c.OpenAI.ChatBaseURL))
+		}
+	}
+
 	// service_auth.oidc_issuer/oidc_audience: self-gated no-op when empty
 	// (D-03 — the client-credentials lane is simply not built), shape-checked
 	// when set (mirrors the ENGRAM_OPENAI_EMBEDDINGS_URL idiom above). Only the

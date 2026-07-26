@@ -662,6 +662,298 @@ func TestStoreDiscoveryStampsEmbedderIdentityHandler(t *testing.T) {
 	}
 }
 
+// citationFixture returns two distinct, field-complete citations for reuse
+// across the citations test suite — the fixture TestUpdateMemoryPreservesCitations
+// (Task 2) also reuses per the plan's read_first pointer.
+func citationFixture() []citationArg {
+	return []citationArg{
+		{Kind: "file", Ref: "internal/auth/verifier.go", Locator: "10-40", Pin: "sha256:abc", Excerpt: "jose.NewVerifier(...)"},
+		{Kind: "url", Ref: "https://pkg.go.dev/github.com/go-jose/go-jose/v4"},
+	}
+}
+
+// assertCitationsEqual compares two []store.Citation slices field by field, in
+// order — asserting only the length would let a path that preserved the count
+// while corrupting the contents pass (Task 2's non-negotiable requirement).
+func assertCitationsEqual(t *testing.T, got []store.Citation, want []citationArg) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("citations: got %d want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		g, w := got[i], want[i]
+		if g.Kind != w.Kind || g.Ref != w.Ref || g.Locator != w.Locator || g.Pin != w.Pin || g.Excerpt != w.Excerpt {
+			t.Errorf("citation[%d] mismatch: got %+v want %+v", i, g, w)
+		}
+	}
+}
+
+// TestStoreMemoryCitationsRoundTrip is the GAP 1 non-negotiable proof (D-04's
+// research gap): storeArgs.Citations must survive toMemory's mapping,
+// payload()'s write gate, and fromPayload()'s decode, for all three write
+// tools that embed storeArgs (store_memory, schedule_memory,
+// supersede_memory) — via the single declaration on storeArgs, never
+// re-declared on the embedding structs. Asserting only that the call succeeds
+// would miss the exact failure this test exists to catch: toMemory silently
+// dropping the field before Upsert ever sees it.
+func TestStoreMemoryCitationsRoundTrip(t *testing.T) {
+	d := testDeps(t)
+	cites := citationFixture()
+
+	t.Run("store_memory", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-store")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-store"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-store")))
+		}()
+
+		id, _, err := d.storeMemory(ctx, c, storeArgs{
+			Content: "use jose for JWT, not golang-jwt", Scope: scope, Source: "agent-inferred",
+			Category: "decision", Citations: cites,
+		})
+		if err != nil {
+			t.Fatalf("storeMemory: %v", err)
+		}
+		got, err := d.getMemory(ctx, c, idArgs{ID: id})
+		if err != nil {
+			t.Fatalf("getMemory: %v", err)
+		}
+		assertCitationsEqual(t, got.Citations, cites)
+	})
+
+	t.Run("schedule_memory", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-schedule")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-schedule"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-schedule")))
+		}()
+
+		id, _, err := d.scheduleMemory(ctx, c, scheduleArgs{
+			storeArgs: storeArgs{
+				Content: "temp note with citations", Scope: scope, Source: "agent-inferred",
+				Category: "decision", Citations: cites,
+			},
+			NotBefore: timeNow().Add(-time.Hour).Format(time.RFC3339), // already active
+		})
+		if err != nil {
+			t.Fatalf("scheduleMemory: %v", err)
+		}
+		got, err := d.getMemory(ctx, c, idArgs{ID: id})
+		if err != nil {
+			t.Fatalf("getMemory: %v", err)
+		}
+		assertCitationsEqual(t, got.Citations, cites)
+	})
+
+	t.Run("supersede_memory", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-supersede")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-supersede"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-supersede")))
+		}()
+
+		targetID, targetSID, err := d.storeMemory(ctx, c, storeArgs{
+			Content: "original, no citations", Scope: scope, Source: "user-said", Category: "gotcha",
+		})
+		if err != nil {
+			t.Fatalf("seed store: %v", err)
+		}
+		newID, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+			storeArgs: storeArgs{
+				Content: "corrected, WITH citations", Scope: scope, Source: "user-said",
+				Category: "gotcha", Citations: cites,
+			},
+			Supersedes: targetSID,
+		})
+		if err != nil {
+			t.Fatalf("supersedeMemory: %v", err)
+		}
+		_ = targetID
+		got, err := d.getMemory(ctx, c, idArgs{ID: newID})
+		if err != nil {
+			t.Fatalf("getMemory: %v", err)
+		}
+		assertCitationsEqual(t, got.Citations, cites)
+	})
+}
+
+// TestCitationsValidation pins D-05: the shared validateCitations helper
+// enforces kind membership, non-empty ref, the 50-citation cap, and the 16
+// KiB excerpt cap identically whether called with minCount 0 (the memory
+// write handlers) or minCount 1 (store_discovery, unchanged). Pure unit test:
+// validateCitations touches neither Qdrant nor the embedder.
+func TestCitationsValidation(t *testing.T) {
+	good := []citationArg{{Kind: "file", Ref: "f.go"}}
+	if err := validateCitations(nil, 0); err != nil {
+		t.Errorf("zero citations with minCount 0 (memory path) rejected: %v", err)
+	}
+	if err := validateCitations(good, 0); err != nil {
+		t.Errorf("valid single citation rejected: %v", err)
+	}
+	if err := validateCitations(nil, 1); err == nil {
+		t.Error("zero citations with minCount 1 (discovery path) accepted, want rejection")
+	}
+
+	cases := []struct {
+		name string
+		cs   []citationArg
+	}{
+		{"bad kind", []citationArg{{Kind: "blob", Ref: "f"}}},
+		{"empty kind", []citationArg{{Kind: "", Ref: "f"}}},
+		{"empty ref", []citationArg{{Kind: "file", Ref: ""}}},
+		{"51 citations", make([]citationArg, maxDiscoveryCitations+1)},
+		{"oversized excerpt", []citationArg{{Kind: "file", Ref: "f", Excerpt: strings.Repeat("a", maxCitationExcerptBytes+1)}}},
+		{"second citation bad", []citationArg{{Kind: "file", Ref: "ok"}, {Kind: "url", Ref: ""}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := validateCitations(tc.cs, 0); err == nil {
+				t.Errorf("%s: expected rejection at minCount 0, got nil", tc.name)
+			}
+			// A citation malformed enough to fail at minCount 0 must also fail
+			// at minCount 1 — the discovery path is a strict superset of the
+			// memory path's per-entry checks, differing only in the floor.
+			if err := validateCitations(tc.cs, 1); err == nil {
+				t.Errorf("%s: expected rejection at minCount 1, got nil", tc.name)
+			}
+		})
+	}
+
+	// The handler-level rejection: a malformed citation on store_memory is
+	// rejected before any embed or store work (validateCitations runs first).
+	d := &deps{} // no embedder/store wired — a call that reached Embed would panic
+	ctx := authedContext(t, "sub-cite-invalid")
+	if _, _, err := d.storeMemory(ctx, callerFor(ctx, t), storeArgs{
+		Content: "x", Scope: "s", Source: "user-said", Category: "gotcha",
+		Citations: []citationArg{{Kind: "not-a-kind", Ref: "f"}},
+	}); err == nil {
+		t.Error("storeMemory with an invalid citation kind: want error, got nil")
+	}
+}
+
+// TestSearchListMemoryCompactViewOmitsCitations is the MCP-side companion to
+// TestConnectCompactViewOmitsCitations (D-07). It currently holds by
+// construction — recallView (summary.go) is a hand-written allow-list struct
+// with no citations field, so shapeRecall's full=false branch cannot leak
+// citations no matter what store.Memory carries — but this test is what
+// keeps a future field added to recallView from silently reintroducing the
+// Connect-side leak this phase just closed on the other transport. Drives
+// the exact shapeRecall call the search_memory/list_memory tool closures use
+// (tools.go), over real search_memory/list_memory handler results.
+func TestSearchListMemoryCompactViewOmitsCitations(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-mcp-compact-cites")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:mcp-compact-cites"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-mcp-compact-cites")))
+	}()
+
+	cites := citationFixture()
+	id, _, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "citation-carrying record for MCP compact-view test", Scope: scope,
+		Source: "agent-inferred", Category: "decision", Citations: cites,
+	})
+	if err != nil {
+		t.Fatalf("storeMemory: %v", err)
+	}
+
+	assertNoCitationsKey := func(t *testing.T, v any) {
+		t.Helper()
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if strings.Contains(string(b), `"citations"`) {
+			t.Errorf("compact view JSON carries a citations key: %s", b)
+		}
+	}
+	assertHasCitations := func(t *testing.T, v any) {
+		t.Helper()
+		m, ok := v.(store.Memory)
+		if !ok {
+			t.Fatalf("full=true item is %T, want store.Memory", v)
+		}
+		if len(m.Citations) != len(cites) {
+			t.Fatalf("full=true: Citations = %+v, want %d entries", m.Citations, len(cites))
+		}
+	}
+	findByID := func(t *testing.T, items []any, get func(any) string) any {
+		t.Helper()
+		for _, it := range items {
+			if get(it) == id {
+				return it
+			}
+		}
+		t.Fatalf("seeded record %s not found among %d items", id, len(items))
+		return nil
+	}
+	idOf := func(v any) string {
+		if rv, ok := v.(recallView); ok {
+			return rv.ID
+		}
+		if m, ok := v.(store.Memory); ok {
+			return m.ID
+		}
+		return ""
+	}
+
+	hits, err := d.searchMemory(ctx, c, coreSearchRequest{Scope: scope, Query: "citation-carrying record", K: 10})
+	if err != nil {
+		t.Fatalf("searchMemory: %v", err)
+	}
+	compactSearch := shapeRecall(hits, false, d.summaryMaxChars)
+	assertNoCitationsKey(t, findByID(t, compactSearch, idOf))
+	fullSearch := shapeRecall(hits, true, d.summaryMaxChars)
+	assertHasCitations(t, findByID(t, fullSearch, idOf))
+
+	listRes, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 50})
+	if err != nil {
+		t.Fatalf("listMemory: %v", err)
+	}
+	compactList := shapeRecall(listRes.Memories, false, d.summaryMaxChars)
+	assertNoCitationsKey(t, findByID(t, compactList, idOf))
+	fullList := shapeRecall(listRes.Memories, true, d.summaryMaxChars)
+	assertHasCitations(t, findByID(t, fullList, idOf))
+}
+
+// TestCitationsNotAutoPopulated is the falsifiable form of SC1's
+// never-auto-populated clause: a record whose content deliberately LOOKS
+// citation-rich (file-path-like, URL-like, and commit-SHA-like text) but
+// supplies no citations argument must come back from get_memory with an
+// empty citation slice. No code path infers, extracts, or synthesizes a
+// citation from content — this is the project's no-auto-extraction invariant
+// pinned as a test, not merely a design intent.
+func TestCitationsNotAutoPopulated(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-no-auto-cite")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:no-auto-cite"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-no-auto-cite")))
+	}()
+
+	id, _, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "see internal/server/tools.go:673 (commit deadbeefcafefeed1234567890abcdef12345678) " +
+			"and https://pkg.go.dev/github.com/seanb4t/engram for details",
+		Scope: scope, Source: "agent-inferred", Category: "decision",
+		// No Citations field supplied.
+	})
+	if err != nil {
+		t.Fatalf("storeMemory: %v", err)
+	}
+	got, err := d.getMemory(ctx, c, idArgs{ID: id})
+	if err != nil {
+		t.Fatalf("getMemory: %v", err)
+	}
+	if len(got.Citations) != 0 {
+		t.Fatalf("citations were auto-populated from content: %+v", got.Citations)
+	}
+}
+
 // TestUpdateMemoryReStampsEmbedderIdentityHandler proves the re-embed path
 // (updateMemory -> Store.Update -> Upsert) RE-stamps the identity, not only
 // the initial write: the seed record carries a stale identity, and after
@@ -1771,6 +2063,223 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	}
 }
 
+// seedCategoryFixture seeds one "decision", one "preference", and one
+// "gotcha" record in scope (anonymous owner, matching this file's
+// context.Background()/store.Anonymous() unauthenticated-handler-test
+// convention). Shared by TestSearchMemoryCategoriesArg,
+// TestListMemoryCategoriesArg, and TestCategoriesArgEdges (Task 2) so all
+// three category-filter tests exercise an identical fixture.
+func seedCategoryFixture(ctx context.Context, t *testing.T, d *deps, scope string) (decisionID, preferenceID, gotchaID string) {
+	t.Helper()
+	decisionID = "ca000000-0000-0000-0000-000000000001"
+	preferenceID = "ca000000-0000-0000-0000-000000000002"
+	gotchaID = "ca000000-0000-0000-0000-000000000003"
+	t.Cleanup(func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Anonymous()))
+	})
+	for _, m := range []store.Memory{
+		{ID: decisionID, Content: "x", Scope: scope, Owner: "", Category: "decision", CreatedAt: timeNow()},
+		{ID: preferenceID, Content: "x", Scope: scope, Owner: "", Category: "preference", CreatedAt: timeNow()},
+		{ID: gotchaID, Content: "x", Scope: scope, Owner: "", Category: "gotcha", CreatedAt: timeNow()},
+	} {
+		if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", m.ID, err)
+		}
+	}
+	return decisionID, preferenceID, gotchaID
+}
+
+// TestSearchMemoryCategoriesArg pins D-08's OR semantics on the search_memory
+// closure's coreSearchRequest.Categories wiring (a.Categories -> the request
+// field this task adds): a single category narrows to that category only, and
+// two categories return the union, never a third excluded category.
+func TestSearchMemoryCategoriesArg(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:categories-search"
+	decisionID, preferenceID, gotchaID := seedCategoryFixture(ctx, t, d, scope)
+	c := callerFor(ctx, t)
+	ids := func(ms []store.Memory) map[string]bool {
+		out := map[string]bool{}
+		for _, m := range ms {
+			out[m.ID] = true
+		}
+		return out
+	}
+
+	// Single category: only the decision record, never preference or gotcha.
+	hits, err := d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: []string{"decision"}})
+	if err != nil {
+		t.Fatalf("searchMemory decision: %v", err)
+	}
+	if g := ids(hits); !g[decisionID] || g[preferenceID] || g[gotchaID] {
+		t.Errorf("searchMemory categories=[decision] wrong: %v", g)
+	}
+
+	// OR of two categories: decision and gotcha, never preference.
+	hits, err = d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: []string{"decision", "gotcha"}})
+	if err != nil {
+		t.Fatalf("searchMemory decision+gotcha: %v", err)
+	}
+	if g := ids(hits); !g[decisionID] || !g[gotchaID] || g[preferenceID] {
+		t.Errorf("searchMemory categories=[decision,gotcha] wrong: %v", g)
+	}
+}
+
+// TestListMemoryCategoriesArg pins D-08's OR semantics on the list_memory
+// closure's coreListRequest.Categories wiring: a single category narrows to
+// that category only, the CursorMode-true pagination path is untouched by the
+// added field, and omitting categories still returns every readable record.
+func TestListMemoryCategoriesArg(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:categories-list"
+	decisionID, preferenceID, gotchaID := seedCategoryFixture(ctx, t, d, scope)
+	c := callerFor(ctx, t)
+	ids := func(ms []store.Memory) map[string]bool {
+		out := map[string]bool{}
+		for _, m := range ms {
+			out[m.ID] = true
+		}
+		return out
+	}
+
+	// Single category, mirroring the list_memory MCP closure's CursorMode:
+	// true — only the preference record.
+	res, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 10, Categories: []string{"preference"}, CursorMode: true})
+	if err != nil {
+		t.Fatalf("listMemory preference: %v", err)
+	}
+	if g := ids(res.Memories); !g[preferenceID] || g[decisionID] || g[gotchaID] {
+		t.Errorf("listMemory categories=[preference] wrong: %v", g)
+	}
+	// coreListResult.NextToken is always a present struct field (empty or
+	// not) — accessing it here proves adding Categories didn't disturb the
+	// CursorMode result shape the MCP closure's next_cursor map key relies on.
+	_ = res.NextToken
+
+	// Omitted categories: passthrough returns every readable record.
+	res, err = d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 10, CursorMode: true})
+	if err != nil {
+		t.Fatalf("listMemory passthrough: %v", err)
+	}
+	if g := ids(res.Memories); !g[decisionID] || !g[preferenceID] || !g[gotchaID] {
+		t.Errorf("listMemory categories omitted wrong: %v", g)
+	}
+}
+
+// TestCategoriesArgEdges pins the empty, unknown-value, and ordering edges of
+// D-08's categories argument on both search_memory and list_memory: omitted /
+// empty-slice / empty-string-element are all an identical passthrough
+// (categoryMatchCondition's empty-element skipping, store.go), an unknown
+// value matches nothing with a nil error (D-11 — no allowlist, never
+// rejected), a prefix or whitespace-padded value is not a fuzzy match, and a
+// categories value listing every present category leaves ordering unchanged.
+func TestCategoriesArgEdges(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	scope := "iso-test:project:categories-edges"
+	decisionID, preferenceID, gotchaID := seedCategoryFixture(ctx, t, d, scope)
+	c := callerFor(ctx, t)
+
+	searchIDsErr := func(cats []string) ([]string, error) {
+		hits, err := d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: cats})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]string, len(hits))
+		for i, m := range hits {
+			out[i] = m.ID
+		}
+		return out, nil
+	}
+	listIDsErr := func(cats []string) ([]string, error) {
+		res, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 10, Categories: cats, CursorMode: true})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]string, len(res.Memories))
+		for i, m := range res.Memories {
+			out[i] = m.ID
+		}
+		return out, nil
+	}
+
+	for _, tool := range []struct {
+		name   string
+		idsErr func(cats []string) ([]string, error)
+	}{
+		{"search_memory", searchIDsErr},
+		{"list_memory", listIDsErr},
+	} {
+		t.Run(tool.name, func(t *testing.T) {
+			ids := func(t *testing.T, cats []string) []string {
+				t.Helper()
+				got, err := tool.idsErr(cats)
+				if err != nil {
+					t.Fatalf("categories=%v: %v", cats, err)
+				}
+				return got
+			}
+
+			omitted := ids(t, nil)
+			omittedSet := map[string]bool{}
+			for _, id := range omitted {
+				omittedSet[id] = true
+			}
+			if len(omittedSet) != 3 || !omittedSet[decisionID] || !omittedSet[preferenceID] || !omittedSet[gotchaID] {
+				t.Fatalf("omitted: got %v, want all three seeded ids", omitted)
+			}
+
+			t.Run("empty_slice_is_passthrough", func(t *testing.T) {
+				got := ids(t, []string{})
+				if !slices.Equal(got, omitted) {
+					t.Errorf("categories=[] = %v, want identical to omitted %v", got, omitted)
+				}
+			})
+
+			t.Run("empty_string_element_is_passthrough", func(t *testing.T) {
+				got := ids(t, []string{""})
+				if !slices.Equal(got, omitted) {
+					t.Errorf(`categories=[""] = %v, want identical to omitted %v`, got, omitted)
+				}
+			})
+
+			t.Run("unknown_value_returns_zero_and_nil_error", func(t *testing.T) {
+				got, err := tool.idsErr([]string{"nope-not-a-category"})
+				if err != nil {
+					t.Errorf("categories=[nope-not-a-category] returned error %v, want nil (D-11: no allowlist)", err)
+				}
+				if len(got) != 0 {
+					t.Errorf("categories=[nope-not-a-category] = %v, want zero results", got)
+				}
+			})
+
+			t.Run("prefix_value_is_not_a_match", func(t *testing.T) {
+				// "decis" is a strict prefix of the seeded "decision" category.
+				got := ids(t, []string{"decis"})
+				if len(got) != 0 {
+					t.Errorf("categories=[decis] (prefix) = %v, want zero results (exact match only)", got)
+				}
+			})
+
+			t.Run("whitespace_padded_value_is_not_a_match", func(t *testing.T) {
+				got := ids(t, []string{" decision "})
+				if len(got) != 0 {
+					t.Errorf("categories=[\" decision \"] = %v, want zero results (exact match only)", got)
+				}
+			})
+
+			t.Run("all_categories_present_leaves_ordering_unchanged", func(t *testing.T) {
+				got := ids(t, []string{"decision", "preference", "gotcha"})
+				if !slices.Equal(got, omitted) {
+					t.Errorf("categories=[decision,preference,gotcha] order = %v, want identical order to omitted %v", got, omitted)
+				}
+			})
+		})
+	}
+}
+
 func TestUpdateMemoryPreservesSharingHandler(t *testing.T) {
 	d := testDeps(t)
 	ctx := context.Background()
@@ -2215,6 +2724,231 @@ func TestSupersedeMemoryDiscoveryTarget(t *testing.T) {
 			t.Errorf("superseded discovery %s still present in search_discovery", targetID)
 		}
 	}
+}
+
+// TestUpdateMemoryPreservesCitations is the phase's non-negotiable D-02
+// regression test: citations are written EXCLUSIVELY inside payload(), so
+// every whole-payload round trip (Update, Supersede's new-record Upsert)
+// preserves them for free, and every targeted SetPayload writer
+// (UpdatePayload, Supersede's back-stamp, IncrementAccess) never references
+// the citations key and so cannot erase it. Each sub-test names the specific
+// write path under test; a failure here means a citations write bypassed
+// payload() somewhere, and the fix is to route it back through payload() —
+// never to add preservation code to Update, UpdatePayload, Supersede, or
+// IncrementAccess (see this task's PLAN.md prohibitions). This task adds NO
+// production code: every sub-test failure is a Task 1 defect, not a signal
+// to patch the write paths under test.
+func TestUpdateMemoryPreservesCitations(t *testing.T) {
+	// testDepsWithStore also returns the concrete *store.Store: the
+	// access-count sub-test below calls st.IncrementAccess directly, which is
+	// not on the deps.st memStore interface (only usageQueue's fill closure
+	// holds a concrete *store.Store).
+	d, st := testDepsWithStore(t)
+	cites := citationFixture()
+
+	t.Run("content-changing update route (re-embeds, re-Upserts)", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-upd-content")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-upd-content"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-upd-content")))
+		}()
+
+		id, _, err := d.storeMemory(ctx, c, storeArgs{
+			Content: "v1", Scope: scope, Source: "user-said", Category: "decision", Citations: cites,
+		})
+		if err != nil {
+			t.Fatalf("storeMemory: %v", err)
+		}
+		if _, err := d.updateMemory(ctx, c, updateArgs{ID: id, Content: strp("v2, content changed")}); err != nil {
+			t.Fatalf("updateMemory (content change): %v", err)
+		}
+		got, err := d.getMemory(ctx, c, idArgs{ID: id})
+		if err != nil {
+			t.Fatalf("getMemory: %v", err)
+		}
+		if got.Content != "v2, content changed" {
+			t.Fatalf("content did not change: %q", got.Content)
+		}
+		assertCitationsEqual(t, got.Citations, cites)
+	})
+
+	t.Run("shared-only update route (payload-only, never re-embeds)", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-upd-shared")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-upd-shared"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-upd-shared")))
+		}()
+
+		id, _, err := d.storeMemory(ctx, c, storeArgs{
+			Content: "v1", Scope: scope, Source: "user-said", Category: "decision", Citations: cites,
+		})
+		if err != nil {
+			t.Fatalf("storeMemory: %v", err)
+		}
+		shared := true
+		// Content and Tags both nil: routes to Store.UpdatePayload, the
+		// targeted SetPayload that never re-embeds and never references
+		// "citations" (D-02).
+		if _, err := d.updateMemory(ctx, c, updateArgs{ID: id, Shared: &shared}); err != nil {
+			t.Fatalf("updateMemory (shared-only): %v", err)
+		}
+		got, err := d.getMemory(ctx, c, idArgs{ID: id})
+		if err != nil {
+			t.Fatalf("getMemory: %v", err)
+		}
+		if got.Visibility != "shared" {
+			t.Fatalf("visibility did not change: %q", got.Visibility)
+		}
+		assertCitationsEqual(t, got.Citations, cites)
+	})
+
+	t.Run("supersession back-stamp against a citation-carrying target", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-upd-supersede")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-upd-supersede"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-upd-supersede")))
+		}()
+
+		targetID, targetSID, err := d.storeMemory(ctx, c, storeArgs{
+			Content: "original, with citations", Scope: scope, Source: "user-said",
+			Category: "decision", Citations: cites,
+		})
+		if err != nil {
+			t.Fatalf("seed store: %v", err)
+		}
+		newID, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+			storeArgs:  storeArgs{Content: "corrected", Scope: scope, Source: "user-said", Category: "decision"},
+			Supersedes: targetSID,
+		})
+		if err != nil {
+			t.Fatalf("supersedeMemory: %v", err)
+		}
+		// The TARGET's citations must survive the single-key superseded_by
+		// back-stamp (SetPayload), and the back-stamp itself must have landed —
+		// neither write clobbered the other.
+		target, err := d.getMemory(ctx, c, idArgs{ID: targetID})
+		if err != nil {
+			t.Fatalf("getMemory (target): %v", err)
+		}
+		if target.SupersededBy == nil || *target.SupersededBy != newID {
+			t.Errorf("target.SupersededBy = %v, want %q", target.SupersededBy, newID)
+		}
+		assertCitationsEqual(t, target.Citations, cites)
+	})
+
+	t.Run("keyed idempotent replay returns original citations unchanged", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-upd-replay")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-upd-replay"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-upd-replay")))
+		}()
+
+		args := storeArgs{
+			Content: "replay me", Scope: scope, Source: "user-said", Category: "decision",
+			IdempotencyKey: "cite-replay-key", Citations: cites,
+		}
+		id1, _, err := d.storeMemory(ctx, c, args)
+		if err != nil {
+			t.Fatalf("storeMemory (first): %v", err)
+		}
+		// A genuine replay — SAME key, byte-identical args including citations —
+		// returns the original record with its citations untouched.
+		id2, _, err := d.storeMemory(ctx, c, args)
+		if err != nil {
+			t.Fatalf("storeMemory (replay): %v", err)
+		}
+		if id2 != id1 {
+			t.Fatalf("replay returned a different record: %q, want %q", id2, id1)
+		}
+		got, err := d.getMemory(ctx, c, idArgs{ID: id1})
+		if err != nil {
+			t.Fatalf("getMemory: %v", err)
+		}
+		assertCitationsEqual(t, got.Citations, cites)
+
+		// SAME key but DIFFERENT citations is a same-key/different-content
+		// MISMATCH, not a replay. Citations are client-authored (D-04 put them
+		// on the shared storeArgs), so Phase 24's D-07 fingerprint covers them
+		// and D-10 requires a reject. Letting this replay would silently discard
+		// the caller's corrected citations and return success — the exact silent
+		// overwrite D-10 exists to prevent (26-REVIEW CR-01). An earlier planner
+		// assumption held that citations sat outside the fingerprint; it was
+		// wrong and is superseded here.
+		conflict := args
+		conflict.Citations = []citationArg{{Kind: "repo", Ref: "github.com/example/other"}}
+		if _, _, err := d.storeMemory(ctx, c, conflict); !errors.Is(err, store.ErrIdempotencyConflict) {
+			t.Fatalf("changed citations: want errors.Is(err, store.ErrIdempotencyConflict), got %v", err)
+		}
+		// The original record is left untouched by the rejected call.
+		after, err := d.getMemory(ctx, c, idArgs{ID: id1})
+		if err != nil {
+			t.Fatalf("getMemory (after conflict): %v", err)
+		}
+		assertCitationsEqual(t, after.Citations, cites)
+	})
+
+	t.Run("duplicate citations persist without deduplication, in order", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-upd-dup")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-upd-dup"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-upd-dup")))
+		}()
+
+		dup := []citationArg{
+			{Kind: "file", Ref: "f.go", Excerpt: "same"},
+			{Kind: "file", Ref: "f.go", Excerpt: "same"},
+		}
+		id, _, err := d.storeMemory(ctx, c, storeArgs{
+			Content: "dup citations", Scope: scope, Source: "user-said", Category: "decision", Citations: dup,
+		})
+		if err != nil {
+			t.Fatalf("storeMemory: %v", err)
+		}
+		got, err := d.getMemory(ctx, c, idArgs{ID: id})
+		if err != nil {
+			t.Fatalf("getMemory: %v", err)
+		}
+		assertCitationsEqual(t, got.Citations, dup)
+	})
+
+	t.Run("citations unaffected by the access-count SetPayload bump", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-upd-access")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-upd-access"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-upd-access")))
+		}()
+
+		id, _, err := d.storeMemory(ctx, c, storeArgs{
+			Content: "accessed repeatedly", Scope: scope, Source: "user-said", Category: "decision", Citations: cites,
+		})
+		if err != nil {
+			t.Fatalf("storeMemory: %v", err)
+		}
+		// Drive IncrementAccess directly, several times — the exact targeted
+		// SetPayload the async usage-signal queue fires on a real get_memory,
+		// simulated synchronously here for a deterministic assertion. It
+		// writes ONLY access_count/last_accessed_at and never references
+		// "citations".
+		for range 3 {
+			if err := st.IncrementAccess(ctx, id); err != nil {
+				t.Fatalf("IncrementAccess: %v", err)
+			}
+		}
+		got, err := d.getMemory(ctx, c, idArgs{ID: id})
+		if err != nil {
+			t.Fatalf("getMemory: %v", err)
+		}
+		if got.AccessCount != 3 {
+			t.Fatalf("access_count = %d, want 3", got.AccessCount)
+		}
+		assertCitationsEqual(t, got.Citations, cites)
+	})
 }
 
 // TestUpdateMemoryTagsHandler pins the full tag-mutation contract: supplying
@@ -3117,5 +3851,50 @@ func TestStoreDiscoveryArgsIDSchemaAdvertisesShortID(t *testing.T) {
 	tag := f.Tag.Get("jsonschema")
 	if !strings.Contains(tag, "short_id") {
 		t.Fatalf("storeDiscoveryArgs.ID jsonschema tag = %q, want it to mention short_id", tag)
+	}
+}
+
+// TestStoreMemoryIdempotencyFingerprintCoversCitations pins that citations are
+// part of the client-authored identity the idempotency fingerprint hashes
+// (Phase 24 D-07, extended by Phase 26 D-04 which put Citations on the shared
+// storeArgs). Without this, a keyed retry that changes ONLY its citations
+// computes an identical fingerprint, is misclassified as a no-op replay, and
+// returns success while silently discarding the caller's citations — a silent
+// data-loss path that violates SC2's reject-on-mismatch contract.
+func TestStoreMemoryIdempotencyFingerprintCoversCitations(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "owner-cite-fp")
+	scope := "iso-test:project:idempotency-citations"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, st.DeleteAll(context.Background(), scope, store.Authenticated("owner-cite-fp")))
+	}()
+
+	first := storeArgs{
+		Content: "same content", Scope: scope, Source: "user-said", Category: "gotcha",
+		IdempotencyKey: "key-citations",
+		Citations:      []citationArg{{Kind: "file", Ref: "internal/store/store.go"}},
+	}
+	if _, _, err := d.storeMemory(ctx, callerFor(ctx, t), first); err != nil {
+		t.Fatalf("storeMemory (first): %v", err)
+	}
+
+	// Same key, same content, DIFFERENT citations => different client-authored
+	// identity => must reject, not silently replay-and-discard.
+	second := first
+	second.Citations = []citationArg{{Kind: "file", Ref: "internal/server/tools.go"}}
+	if _, _, err := d.storeMemory(ctx, callerFor(ctx, t), second); !errors.Is(err, store.ErrIdempotencyConflict) {
+		t.Fatalf("changed citations: want errors.Is(err, store.ErrIdempotencyConflict), got %v", err)
+	}
+
+	// Adding a citation where there was none is likewise a mismatch.
+	third := first
+	third.Citations = nil
+	if _, _, err := d.storeMemory(ctx, callerFor(ctx, t), third); !errors.Is(err, store.ErrIdempotencyConflict) {
+		t.Fatalf("removed citations: want errors.Is(err, store.ErrIdempotencyConflict), got %v", err)
+	}
+
+	// A genuine replay (byte-identical citations) must still succeed as a replay.
+	if _, _, err := d.storeMemory(ctx, callerFor(ctx, t), first); err != nil {
+		t.Fatalf("identical replay must succeed, got %v", err)
 	}
 }

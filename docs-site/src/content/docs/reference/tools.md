@@ -50,6 +50,7 @@ or timestamps.
 | `worktree_path` | string | no | Path to the git worktree |
 | `base_dir` | string | no | Base directory for the project |
 | `summary` | string | no | Short human-readable summary (caller-authored, `summary_source=client`). Omit for no summary. |
+| `citations` | citation[] | no | Optional structured source anchors (same shape as [`store_discovery`](#store_discovery)'s `citations`, max 50); never inferred — only what you explicitly supply. Omit for none. |
 
 Returns the stored record's `id` and `short_id`.
 
@@ -75,6 +76,7 @@ normally via `search_memory`/`list_memory`.
 | `worktree_path` | string | no | Path to the git worktree |
 | `base_dir` | string | no | Base directory for the project |
 | `summary` | string | no | Short human-readable summary (caller-authored, `summary_source=client`). Omit for no summary. |
+| `citations` | citation[] | no | Optional structured source anchors (same shape as [`store_discovery`](#store_discovery)'s `citations`, max 50); never inferred — only what you explicitly supply. Omit for none. |
 | `not_before` | string | no | RFC3339; hide from recall until this time |
 | `not_after` | string | no | RFC3339; drop from recall at this time |
 
@@ -94,6 +96,7 @@ memories. By default returns compact summaries; pass `full=true` for complete co
 | `scope` | string | yes | Scope to search within |
 | `k` | uint64 | no | Number of results to return (default 8) |
 | `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter. Applied as a hard pre-filter, then results are ranked by vector similarity and reranking (see below) |
+| `categories` | string[] | no | Restrict to records in **any** of the listed categories (OR) — the opposite of `tags`' ALL/AND semantics, since a record carries exactly one category. Omit or pass an empty array for no category filter. An unmatched value returns zero results, never an error; any stored category is accepted, including `discovery` and `rule`, not just the four `store_memory` write values. Applied as a hard pre-filter, before vector ranking. The same filter is available over the Connect read API on `SearchMemories`. |
 | `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
 | `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
 | `full` | bool | no | Return full `content` instead of compact summaries (default `false`) |
@@ -102,7 +105,8 @@ Returns a list of matching memory records. Each result carries a `score`: the
 raw Qdrant cosine similarity for this query (higher = closer), present when
 non-zero. Unranked `list_memory`/`get_memory` results have a zero/omitted score.
 Final order may include reranking; `score` remains first-stage dense
-similarity and may be non-monotonic after rerank.
+similarity and may be non-monotonic after rerank. `citations` are omitted from
+the default compact view; pass `full=true` to include them.
 
 ---
 
@@ -117,12 +121,14 @@ pass `full=true` for complete content.
 | `scope` | string | yes | The scope to list memories from |
 | `limit` | uint64 | no | Maximum memories to return (default 20) |
 | `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter |
+| `categories` | string[] | no | Restrict to records in **any** of the listed categories (OR) — the opposite of `tags`' ALL/AND semantics, since a record carries exactly one category. Omit or pass an empty array for no category filter. An unmatched value returns zero results, never an error; any stored category is accepted, including `discovery` and `rule`, not just the four `store_memory` write values. The same filter is available over the Connect read API on `ListMemories`. |
 | `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
 | `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
 | `cursor` | string | no | Opaque pagination cursor from a previous response's `next_cursor`. Omit for the first page. Mutually exclusive with `offset` |
 | `full` | bool | no | Return full `content` instead of compact summaries (default `false`) |
 
 Returns `{ "memories": [...], "next_cursor": "<token>" }`. An empty or absent `next_cursor` indicates the last page.
+`citations` are omitted from the default compact view; pass `full=true` to include them.
 
 ---
 
@@ -155,7 +161,8 @@ Returns the full memory record. Authenticated callers can read their own records
 plus any `shared` records. Anonymous callers can only read ownerless records.
 Fetch-by-id is **not** recall-gated: a windowed record (set via `schedule_memory`)
 that `search_memory`/`list_memory` hide because it is scheduled or expired is still
-retrievable directly by id here.
+retrievable directly by id here. `get_memory` always returns `citations` in full —
+unlike `search_memory`/`list_memory`, it has no compact view to omit them from.
 
 ---
 
@@ -171,10 +178,12 @@ Takes the full `store_memory` field set for the **new, correcting** record, plus
 |----------|------|----------|-------------|
 | `supersedes` | string | yes | The UUID **or `short_id`** of the memory this new record corrects |
 
-Everything else (`content`, `scope`, `category`, `tags`, `summary`, repo/workspace/
-worktree/base_dir, `source`) describes the new record and behaves exactly as in
-[`store_memory`](#store_memory). `idempotency_key` is **not** supported on this
-verb — a retry creates a second correcting record rather than replaying the first.
+Everything else (`content`, `scope`, `category`, `tags`, `summary`, `citations`,
+repo/workspace/worktree/base_dir, `source`) describes the new record and behaves
+exactly as in [`store_memory`](#store_memory), including `citations` — an
+optional array of structured source anchors, never inferred. `idempotency_key`
+is **not** supported on this verb — a retry creates a second correcting record
+rather than replaying the first.
 
 **What changes.** The new record is stored normally and carries a `supersedes` link
 to the target; the target gains a `superseded_by` link back. Both are additive

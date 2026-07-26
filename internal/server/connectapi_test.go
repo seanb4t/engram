@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -562,6 +564,169 @@ func TestShapeProtoMemoriesFullFlag(t *testing.T) {
 	}
 }
 
+// TestConnectCompactViewOmitsCitations is the Connect half of D-07 (GAP 2's
+// required proof): shapeProtoMemories clears Citations (and Kind) in its
+// non-full branch, so ListMemories/SearchMemories default (full=false)
+// responses never leak citation payloads, while full=true and the
+// never-shaped GetMemory both return them intact. MCP's recallView already
+// satisfies this for free (hand-written allow-list, no citations field); this
+// test pins the asymmetric Connect-side fix.
+func TestConnectCompactViewOmitsCitations(t *testing.T) {
+	d := testDeps(t)
+	api := &engramAPI{d: d}
+	ctx := authedContext(t, "owner-compact-cites")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:connect-compact-cites"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("owner-compact-cites")))
+	}()
+
+	cites := []citationArg{
+		{Kind: "file", Ref: "internal/auth/verifier.go", Locator: "10-40", Pin: "sha256:abc", Excerpt: "jose.NewVerifier(...)"},
+		{Kind: "url", Ref: "https://pkg.go.dev/github.com/go-jose/go-jose/v4"},
+	}
+	id, _, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "citation-carrying record for Connect compact-view test", Scope: scope,
+		Source: "agent-inferred", Category: "decision", Citations: cites,
+	})
+	if err != nil {
+		t.Fatalf("storeMemory: %v", err)
+	}
+
+	actx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "owner-compact-cites"}})
+
+	findByID := func(t *testing.T, ms []*engramv1.Memory) *engramv1.Memory {
+		t.Helper()
+		for _, m := range ms {
+			if m.Id == id {
+				return m
+			}
+		}
+		t.Fatalf("seeded record %s not found in response", id)
+		return nil
+	}
+
+	t.Run("ListMemories compact clears citations and kind", func(t *testing.T) {
+		resp, err := api.ListMemories(actx, connect.NewRequest(&engramv1.ListMemoriesRequest{Scope: scope, Full: false}))
+		if err != nil {
+			t.Fatalf("ListMemories: %v", err)
+		}
+		got := findByID(t, resp.Msg.Memories)
+		if len(got.Citations) != 0 {
+			t.Errorf("ListMemories full=false: Citations = %+v, want empty", got.Citations)
+		}
+		if got.Kind != "" {
+			t.Errorf("ListMemories full=false: Kind = %q, want \"\"", got.Kind)
+		}
+		if got.Content != "" {
+			t.Errorf("ListMemories full=false: Content = %q, want cleared", got.Content)
+		}
+		if got.Summary == "" {
+			t.Error("ListMemories full=false: Summary must be populated in the compact view")
+		}
+	})
+
+	t.Run("ListMemories full=true keeps citations", func(t *testing.T) {
+		resp, err := api.ListMemories(actx, connect.NewRequest(&engramv1.ListMemoriesRequest{Scope: scope, Full: true}))
+		if err != nil {
+			t.Fatalf("ListMemories: %v", err)
+		}
+		got := findByID(t, resp.Msg.Memories)
+		if len(got.Citations) != len(cites) {
+			t.Fatalf("ListMemories full=true: Citations = %+v, want %d entries", got.Citations, len(cites))
+		}
+	})
+
+	t.Run("SearchMemories compact clears citations and kind", func(t *testing.T) {
+		resp, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{
+			Scope: scope, Query: "citation-carrying record", K: 10, Full: false,
+		}))
+		if err != nil {
+			t.Fatalf("SearchMemories: %v", err)
+		}
+		got := findByID(t, resp.Msg.Memories)
+		if len(got.Citations) != 0 {
+			t.Errorf("SearchMemories full=false: Citations = %+v, want empty", got.Citations)
+		}
+		if got.Kind != "" {
+			t.Errorf("SearchMemories full=false: Kind = %q, want \"\"", got.Kind)
+		}
+	})
+
+	t.Run("SearchMemories full=true keeps citations", func(t *testing.T) {
+		resp, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{
+			Scope: scope, Query: "citation-carrying record", K: 10, Full: true,
+		}))
+		if err != nil {
+			t.Fatalf("SearchMemories: %v", err)
+		}
+		got := findByID(t, resp.Msg.Memories)
+		if len(got.Citations) != len(cites) {
+			t.Fatalf("SearchMemories full=true: Citations = %+v, want %d entries", got.Citations, len(cites))
+		}
+	})
+
+	t.Run("GetMemory always returns citations (never shaped)", func(t *testing.T) {
+		resp, err := api.GetMemory(actx, connect.NewRequest(&engramv1.GetMemoryRequest{Id: id}))
+		if err != nil {
+			t.Fatalf("GetMemory: %v", err)
+		}
+		if len(resp.Msg.Memory.Citations) != len(cites) {
+			t.Fatalf("GetMemory: Citations = %+v, want %d entries", resp.Msg.Memory.Citations, len(cites))
+		}
+	})
+}
+
+// TestCitationsDoNotGrantWriteAccess is the citations half of D-16/SC4: a
+// shared citation-carrying record from owner A is readable (citations
+// included) by owner B, but a write attempt by owner B against it still fails
+// with the not-found-shaped error — adding a payload field created no new
+// authorization path. decideRecord/getWritable are untouched by this phase.
+func TestCitationsDoNotGrantWriteAccess(t *testing.T) {
+	d := testDeps(t)
+	api := &engramAPI{d: d}
+	ctxA := authedContext(t, "owner-cite-authz-a")
+	cA := callerFor(ctxA, t)
+	scope := "iso-test:project:citations-authz"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctxA, scope, store.Authenticated("owner-cite-authz-a")))
+	}()
+
+	cites := []citationArg{{Kind: "file", Ref: "f.go"}}
+	id, sid, err := d.storeMemory(ctxA, cA, storeArgs{
+		Content: "shared with citations", Scope: scope, Source: "user-said", Category: "decision", Citations: cites,
+	})
+	if err != nil {
+		t.Fatalf("storeMemory: %v", err)
+	}
+	shared := true
+	if _, err := d.updateMemory(ctxA, cA, updateArgs{ID: id, Shared: &shared}); err != nil {
+		t.Fatalf("updateMemory (share): %v", err)
+	}
+
+	// Owner B reads the shared record — including its citations.
+	bctx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "owner-cite-authz-b"}})
+	resp, err := api.GetMemory(bctx, connect.NewRequest(&engramv1.GetMemoryRequest{Id: sid}))
+	if err != nil {
+		t.Fatalf("owner B GetMemory (shared read): %v", err)
+	}
+	if len(resp.Msg.Memory.Citations) != len(cites) {
+		t.Fatalf("owner B read: Citations = %+v, want %d entries", resp.Msg.Memory.Citations, len(cites))
+	}
+
+	// Owner B's write attempt fails not-found-shaped — a shared record you can
+	// read is not one you can supersede/update.
+	ctxB := authedContext(t, "owner-cite-authz-b")
+	cB := callerFor(ctxB, t)
+	_, _, err = d.supersedeMemory(ctxB, cB, supersedeArgs{
+		storeArgs:  storeArgs{Content: "attacker content", Scope: scope, Source: "user-said", Category: "decision"},
+		Supersedes: sid,
+	})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("owner B supersede attempt on a shared (readable) record: err = %v, want store.ErrNotFound", err)
+	}
+}
+
 // Note: SearchDiscoveries shares the identical subjectFromConnectContext seam.
 // Coverage is skipped here because discovery-scope seeding requires a separate
 // collection setup and discovery-specific Upsert path not yet exposed from testDeps.
@@ -1030,4 +1195,160 @@ func TestConnectSearchDiscoveriesCitationsRoundTrip(t *testing.T) {
 			t.Fatalf("Citations[%d] not field-equal through the wire: got %+v, want %+v", i, c, want)
 		}
 	}
+}
+
+// TestMCPConnectCategoryFilterParity proves SC2: the same categories filter
+// issued over MCP (deps.searchMemory / deps.listMemory — the exact core the
+// search_memory/list_memory tool closures call) and over Connect
+// (engramAPI.SearchMemories / engramAPI.ListMemories) for the same caller,
+// scope, query, and k returns the IDENTICAL ordered record-id list. Both
+// lanes funnel through the same core, so a divergence here means a
+// handler-level parity bug, not a ranking difference (26-03 D-10/SC2).
+func TestMCPConnectCategoryFilterParity(t *testing.T) {
+	d := testDeps(t)
+	api := &engramAPI{d: d}
+	ctx := context.Background()
+	scope := "cat-parity:project:test"
+	now := timeNow()
+
+	decisionID := "cb000000-0000-0000-0000-000000000001"
+	preferenceID := "cb000000-0000-0000-0000-000000000002"
+	gotchaID := "cb000000-0000-0000-0000-000000000003"
+	records := []store.Memory{
+		{ID: decisionID, Content: "x", Scope: scope, Owner: "actor-A", Category: "decision", CreatedAt: now},
+		{ID: preferenceID, Content: "x", Scope: scope, Owner: "actor-A", Category: "preference", CreatedAt: now},
+		{ID: gotchaID, Content: "x", Scope: scope, Owner: "actor-A", Category: "gotcha", CreatedAt: now},
+	}
+	for _, m := range records {
+		if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", m.ID, err)
+		}
+	}
+	t.Cleanup(func() {
+		for _, m := range records {
+			cleanupErr(t, "Delete "+m.ID, d.st.Delete(ctx, m.ID, store.Authenticated("actor-A")))
+		}
+	})
+
+	mcpCtx := authedContext(t, "actor-A")
+	mcpCaller := callerFor(mcpCtx, t)
+	actx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}})
+
+	t.Run("search", func(t *testing.T) {
+		mcpOut, err := d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{
+			Query: "x", Scope: scope, K: 10, Categories: []string{"decision", "gotcha"},
+		})
+		if err != nil {
+			t.Fatalf("MCP searchMemory: %v", err)
+		}
+		mcpIDs := make([]string, len(mcpOut))
+		for i, m := range mcpOut {
+			mcpIDs[i] = m.ID
+		}
+
+		resp, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{
+			Query: "x", Scope: scope, K: 10, Categories: []string{"decision", "gotcha"},
+		}))
+		if err != nil {
+			t.Fatalf("Connect SearchMemories: %v", err)
+		}
+		connectIDs := make([]string, len(resp.Msg.Memories))
+		for i, m := range resp.Msg.Memories {
+			connectIDs[i] = m.Id
+		}
+
+		if !slices.Equal(mcpIDs, connectIDs) {
+			t.Fatalf("MCP/Connect category-filtered search order mismatch:\n MCP:     %v\n Connect: %v", mcpIDs, connectIDs)
+		}
+		if !slices.Contains(connectIDs, decisionID) || !slices.Contains(connectIDs, gotchaID) || slices.Contains(connectIDs, preferenceID) {
+			t.Errorf("categories=[decision,gotcha] wrong set: %v", connectIDs)
+		}
+	})
+
+	t.Run("list", func(t *testing.T) {
+		mcpRes, err := d.listMemory(mcpCtx, mcpCaller, coreListRequest{
+			Scope: scope, Limit: 10, Categories: []string{"decision", "gotcha"}, CursorMode: true,
+		})
+		if err != nil {
+			t.Fatalf("MCP listMemory: %v", err)
+		}
+		mcpIDs := make([]string, len(mcpRes.Memories))
+		for i, m := range mcpRes.Memories {
+			mcpIDs[i] = m.ID
+		}
+
+		lresp, err := api.ListMemories(actx, connect.NewRequest(&engramv1.ListMemoriesRequest{
+			Scope: scope, Limit: 10, Categories: []string{"decision", "gotcha"}, CursorMode: true,
+		}))
+		if err != nil {
+			t.Fatalf("Connect ListMemories: %v", err)
+		}
+		connectIDs := make([]string, len(lresp.Msg.Memories))
+		for i, m := range lresp.Msg.Memories {
+			connectIDs[i] = m.Id
+		}
+
+		if !slices.Equal(mcpIDs, connectIDs) {
+			t.Fatalf("MCP/Connect category-filtered list order mismatch:\n MCP:     %v\n Connect: %v", mcpIDs, connectIDs)
+		}
+		if !slices.Contains(connectIDs, decisionID) || !slices.Contains(connectIDs, gotchaID) || slices.Contains(connectIDs, preferenceID) {
+			t.Errorf("categories=[decision,gotcha] wrong set: %v", connectIDs)
+		}
+	})
+}
+
+// TestConnectSearchUnknownCategory pins D-11 at the proto boundary: the
+// SearchMemoriesRequest.categories field carries no buf.validate allowlist,
+// so a legitimate-but-non-write-domain value like "discovery" passes the
+// SAME protovalidate.Validator the running server's interceptor uses (never
+// an InvalidArgument), and a category value no record carries returns an
+// empty memories list with a nil error rather than a distinguishable error
+// (matching the MCP lane's D-11 contract).
+func TestConnectSearchUnknownCategory(t *testing.T) {
+	d := testDeps(t)
+	api := &engramAPI{d: d}
+	ctx := context.Background()
+	scope := "cat-unknown:project:test"
+	rec := store.Memory{
+		ID: "cb000000-0000-0000-0000-000000000004", Content: "x", Scope: scope,
+		Owner: "actor-A", Category: "decision", CreatedAt: timeNow(),
+	}
+	if err := d.st.Upsert(ctx, rec, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed %s: %v", rec.ID, err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete "+rec.ID, d.st.Delete(ctx, rec.ID, store.Authenticated("actor-A")))
+	})
+	actx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}})
+
+	v, err := protovalidate.New()
+	if err != nil {
+		t.Fatalf("protovalidate.New: %v", err)
+	}
+
+	t.Run("discovery_accepted_no_write_domain_allowlist_leak", func(t *testing.T) {
+		req := &engramv1.SearchMemoriesRequest{Query: "x", Scope: scope, K: 10, Categories: []string{"discovery"}}
+		if err := v.Validate(req); err != nil {
+			t.Fatalf("discovery must not be rejected by protovalidate (D-11: no write-domain allowlist on this field), got: %v", err)
+		}
+		resp, err := api.SearchMemories(actx, connect.NewRequest(req))
+		if err != nil {
+			t.Fatalf("Connect SearchMemories categories=[discovery]: %v", err)
+		}
+		if len(resp.Msg.Memories) != 0 {
+			t.Errorf("expected no discovery-category records seeded, got %d: %+v", len(resp.Msg.Memories), resp.Msg.Memories)
+		}
+	})
+
+	t.Run("unmatched_value_returns_empty_list_nil_error", func(t *testing.T) {
+		resp, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{
+			Query: "x", Scope: scope, K: 10, Categories: []string{"no-such-category"},
+		}))
+		if err != nil {
+			t.Fatalf("Connect SearchMemories categories=[no-such-category]: expected nil error, got %v", err)
+		}
+		if len(resp.Msg.Memories) != 0 {
+			t.Errorf("expected empty memories list for an unmatched category, got %d: %+v", len(resp.Msg.Memories), resp.Msg.Memories)
+		}
+	})
 }

@@ -29,6 +29,11 @@
 {{- with .Values.memory.summarize.model }}
 - { name: ENGRAM_SUMMARY_MODEL, value: "{{ . }}" }
 {{- end }}
+{{- /* Chat lane's own base URL override (D-12). Empty omits the var → the
+       summarizer inherits memory.openai.baseURL. */}}
+{{- with .Values.memory.summarize.chatBaseURL }}
+- { name: ENGRAM_OPENAI_CHAT_BASE_URL, value: "{{ . }}" }
+{{- end }}
 {{- with .Values.memory.summarize.maxChars }}
 - { name: ENGRAM_SUMMARY_MAX_CHARS, value: "{{ . }}" }
 {{- end }}

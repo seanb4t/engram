@@ -106,7 +106,7 @@ into shared stores.
 - [x] **Phase 23: Service Auth Chain & Tenancy Isolation** - Pluggable verifier chain (OIDC user → OIDC client-credentials → static token); a service principal never resolves to the anonymous bucket (completed 2026-07-17)
 - [x] **Phase 24: Idempotent Capture** - `store_memory` accepts an idempotency key with strict, owner-scoped, race-safe replay-safety (completed 2026-07-18)
 - [x] **Phase 25: Supersession with History** - A memory can supersede another via additive links; superseded records are soft-hidden from recall but stay fetchable by id (completed 2026-07-19)
-- [ ] **Phase 26: Structured Citations, Category Filter & Chat Base URL** - Optional provenance on curated memories, MCP↔Connect category-filter parity, and a distinct chat/summarize base URL
+- [x] **Phase 26: Structured Citations, Category Filter & Chat Base URL** - Optional provenance on curated memories, MCP↔Connect category-filter parity, and a distinct chat/summarize base URL (completed 2026-07-25)
 
 ## Phase Details
 
@@ -482,7 +482,28 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 4. None of the three additions introduces new store-layer authz surface — citations and category
    filtering compose onto the existing authz-outer-`Must` invariant untouched.
 
-**Plans**: TBD
+**Plans**: 6/6 plans executed
+
+**Wave 1**
+
+- [x] 26-01-PLAN.md — Track B store layer: `store.SearchOptions` + `categoryMatchCondition`, `Search`/`SearchReranked` reshape across ~25 call sites, `coreSearchRequest.Categories`, OR/pre-ranking/SC4 store tests (Wave 1)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [x] 26-02-PLAN.md — Track B MCP surface: `categories` argument on `search_memory`/`list_memory` with explicit OR wording, closure wiring, empty/unknown/ordering edge tests (Wave 2, depends on 26-01)
+
+**Wave 3** *(blocked on Wave 2; the two plans below are independent of each other)*
+
+- [x] 26-03-PLAN.md — Track B Connect parity: `SearchMemoriesRequest.categories = 8` (one-way, checkpoint-gated), `task proto:gen` + committed `gen/`, handler wiring, MCP↔Connect parity test (Wave 3, depends on 26-02)
+- [x] 26-04-PLAN.md — Track C chat base URL: `internal/openaiurl.Join` shared provider-shape join, `ENGRAM_OPENAI_CHAT_BASE_URL` config/registry/validate trio, `cmp.Or` at the summarizer construction site, Helm wiring (Wave 3, file-ownership serialization only)
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [x] 26-05-PLAN.md — Track A citations: `payload()` gate split, `storeArgs.Citations` + the `toMemory` mapping, shared `validateCitations`, Connect compact-view fix, cross-write-path preservation suite (Wave 4, depends on 26-03 + 26-04)
+
+**Wave 5** *(blocked on Wave 4)*
+
+- [x] 26-06-PLAN.md — Docs + skill: `curating-memory` citations guidance, memory-record/tools reference updates, `ENGRAM_OPENAI_CHAT_BASE_URL` configure guide (Wave 5, depends on 26-03 + 26-04 + 26-05)
 
 ## Progress
 
@@ -515,7 +536,7 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 | 23. Service Auth Chain & Tenancy Isolation | v0.11.x | 4/4 | Complete | 2026-07-17 |
 | 24. Idempotent Capture | v0.11.x | 2/2 | Complete | 2026-07-18 |
 | 25. Supersession with History | v0.11.x | 0/1 | Complete   | 2026-07-19 |
-| 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 0/3 | Not started | - |
+| 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 3/3 | Complete | 2026-07-25 |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.

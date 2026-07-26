@@ -641,6 +641,7 @@ type SearchMemoriesRequest struct {
 	Full          bool                   `protobuf:"varint,5,opt,name=full,proto3" json:"full,omitempty"`                                       // false (default) returns summary-shaped memories (content cleared); true returns full content
 	CreatedAfter  string                 `protobuf:"bytes,6,opt,name=created_after,json=createdAfter,proto3" json:"created_after,omitempty"`    // RFC3339; inclusive lower bound on created_at
 	CreatedBefore string                 `protobuf:"bytes,7,opt,name=created_before,json=createdBefore,proto3" json:"created_before,omitempty"` // RFC3339; exclusive upper bound on created_at
+	Categories    []string               `protobuf:"bytes,8,rep,name=categories,proto3" json:"categories,omitempty"`                            // empty = all categories; non-empty = records in ANY listed category (OR)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -722,6 +723,13 @@ func (x *SearchMemoriesRequest) GetCreatedBefore() string {
 		return x.CreatedBefore
 	}
 	return ""
+}
+
+func (x *SearchMemoriesRequest) GetCategories() []string {
+	if x != nil {
+		return x.Categories
+	}
+	return nil
 }
 
 type SearchMemoriesResponse struct {
@@ -1937,7 +1945,7 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x04R\x05total\x12$\n" +
 	"\vapproximate\x18\x03 \x01(\bB\x02\x18\x01R\vapproximate\x12&\n" +
-	"\x0fnext_page_token\x18\x04 \x01(\tR\rnextPageToken\"\xc5\x01\n" +
+	"\x0fnext_page_token\x18\x04 \x01(\tR\rnextPageToken\"\xe5\x01\n" +
 	"\x15SearchMemoriesRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
 	"\x05scope\x18\x02 \x01(\tR\x05scope\x12\f\n" +
@@ -1945,7 +1953,10 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\x04tags\x18\x04 \x03(\tR\x04tags\x12\x12\n" +
 	"\x04full\x18\x05 \x01(\bR\x04full\x12#\n" +
 	"\rcreated_after\x18\x06 \x01(\tR\fcreatedAfter\x12%\n" +
-	"\x0ecreated_before\x18\a \x01(\tR\rcreatedBefore\"G\n" +
+	"\x0ecreated_before\x18\a \x01(\tR\rcreatedBefore\x12\x1e\n" +
+	"\n" +
+	"categories\x18\b \x03(\tR\n" +
+	"categories\"G\n" +
 	"\x16SearchMemoriesResponse\x12-\n" +
 	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\"\"\n" +
 	"\x10GetMemoryRequest\x12\x0e\n" +

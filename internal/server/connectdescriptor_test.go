@@ -162,7 +162,7 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 		3: {name: "approximate", kind: protoreflect.BoolKind},
 		4: {name: "next_page_token", kind: protoreflect.StringKind},
 	})
-	assertFields(t, fd, "SearchMemoriesRequest", 7, nil)
+	assertFields(t, fd, "SearchMemoriesRequest", 8, nil)
 	assertFields(t, fd, "SearchMemoriesResponse", 1, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "memories", kind: protoreflect.MessageKind, repeated: true, msgType: "engram.v1.Memory"},
 	})

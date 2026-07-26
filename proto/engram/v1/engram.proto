@@ -81,6 +81,7 @@ message SearchMemoriesRequest {
   bool full = 5;            // false (default) returns summary-shaped memories (content cleared); true returns full content
   string created_after = 6;  // RFC3339; inclusive lower bound on created_at
   string created_before = 7; // RFC3339; exclusive upper bound on created_at
+  repeated string categories = 8; // empty = all categories; non-empty = records in ANY listed category (OR)
 }
 message SearchMemoriesResponse { repeated Memory memories = 1; }
 

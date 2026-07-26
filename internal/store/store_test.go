@@ -236,6 +236,76 @@ func TestDiscoveryRoundtrip(t *testing.T) {
 	cleanupErr(t, "Delete "+m.ID, s.Delete(ctx, m.ID, Anonymous()))
 }
 
+// TestPayloadCitations pins D-01: payload()'s citations write gate is
+// independent of the discovery-only kind gate. A curated (non-discovery)
+// record carrying citations round-trips them through a real Upsert/Get, a
+// curated record with no citations produces a stored payload with no
+// "citations" key at all (not an empty list), and "kind" stays
+// discovery-exclusive regardless of whether citations are present.
+func TestPayloadCitations(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	// A `decision` record with citations round-trips them, in order, through
+	// a real Upsert/Get — the store-level half of GAP 1.
+	withCites := Memory{
+		ID:       "99999999-9999-9999-9999-999999999991",
+		Content:  "use jose for JWT, not golang-jwt",
+		Scope:    "eval-test:project:citations",
+		Source:   "agent-inferred",
+		Category: "decision",
+		Citations: []Citation{
+			{Kind: "file", Ref: "internal/auth/verifier.go", Locator: "10-40", Pin: "sha256:abc", Excerpt: "jose.NewVerifier(...)"},
+			{Kind: "url", Ref: "https://pkg.go.dev/github.com/go-jose/go-jose/v4"},
+		},
+		CreatedAt: time.Now().UTC().Truncate(time.Second),
+	}
+	if err := s.Upsert(ctx, withCites, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert (with citations): %v", err)
+	}
+	defer func() { cleanupErr(t, "Delete "+withCites.ID, s.Delete(ctx, withCites.ID, Anonymous())) }()
+	got, err := s.Get(ctx, withCites.ID)
+	if err != nil {
+		t.Fatalf("get (with citations): %v", err)
+	}
+	if len(got.Citations) != 2 {
+		t.Fatalf("citations: got %d want 2: %+v", len(got.Citations), got.Citations)
+	}
+	if got.Citations[0] != withCites.Citations[0] {
+		t.Errorf("citation[0] mismatch: got %+v want %+v", got.Citations[0], withCites.Citations[0])
+	}
+	if got.Citations[1] != withCites.Citations[1] {
+		t.Errorf("citation[1] mismatch: got %+v want %+v", got.Citations[1], withCites.Citations[1])
+	}
+	// A `decision` record — even one carrying citations — never gets a "kind"
+	// payload key; that stays discovery-exclusive.
+	if _, ok := payload(withCites)["kind"]; ok {
+		t.Error("decision record with citations must not write a kind payload key")
+	}
+
+	// A `decision` record with NO citations must produce a payload with no
+	// "citations" key at all (not an empty list) — byte-identical to today.
+	noCites := Memory{ID: "99999999-9999-9999-9999-999999999992", Content: "c", Category: "decision"}
+	if _, ok := payload(noCites)["citations"]; ok {
+		t.Error("citation-free decision record must not write a citations payload key")
+	}
+	if _, ok := payload(noCites)["kind"]; ok {
+		t.Error("decision record must not write a kind payload key")
+	}
+
+	// A discovery record still writes its kind payload key, regardless of
+	// citations — the discovery-only gate is unchanged.
+	disco := Memory{ID: "99999999-9999-9999-9999-999999999993", Content: "c", Category: "discovery", Kind: "fact",
+		Citations: []Citation{{Kind: "file", Ref: "f.go"}}}
+	p := payload(disco)
+	if _, ok := p["kind"]; !ok {
+		t.Error("discovery record must write a kind payload key")
+	}
+	if _, ok := p["citations"]; !ok {
+		t.Error("discovery record with citations must write a citations payload key")
+	}
+}
+
 func TestSearchDiscoveryFilters(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -440,7 +510,7 @@ func TestSearchAndDeleteAll(t *testing.T) {
 		t.Fatalf("upsert mForeign: %v", err)
 	}
 
-	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -459,7 +529,7 @@ func TestSearchAndDeleteAll(t *testing.T) {
 		t.Fatalf("delete_all: %v", err)
 	}
 
-	hits2, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5, nil, time.Time{}, time.Time{})
+	hits2, err := s.Search(ctx, scope, Anonymous(), []float32{0.9, 0.1, 0.0}, 5, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search after delete_all: %v", err)
 	}
@@ -468,7 +538,7 @@ func TestSearchAndDeleteAll(t *testing.T) {
 	}
 	// DeleteAll is owner-scoped: the foreign-owned record must survive an
 	// anonymous DeleteAll.
-	survivors, err := s.Search(ctx, scope, Authenticated("sub-foreign"), []float32{0.9, 0.1, 0.0}, 5, nil, time.Time{}, time.Time{})
+	survivors, err := s.Search(ctx, scope, Authenticated("sub-foreign"), []float32{0.9, 0.1, 0.0}, 5, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search as foreign owner after delete_all: %v", err)
 	}
@@ -541,7 +611,7 @@ func TestSearchAndListTagsFilter(t *testing.T) {
 		}},
 	}
 	for _, tc := range cases {
-		hits, err := s.Search(ctx, scope, Anonymous(), q, 10, tc.tags, time.Time{}, time.Time{})
+		hits, err := s.Search(ctx, scope, Anonymous(), q, 10, SearchOptions{Tags: tc.tags})
 		if err != nil {
 			t.Fatalf("Search %s: %v", tc.name, err)
 		}
@@ -586,7 +656,7 @@ func TestTagsFilterComposesWithWindow(t *testing.T) {
 	mk(expiredID, expired)
 
 	// Tag "go" matches both records, but the window gate must drop the expired one.
-	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10, []string{"go"}, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{Tags: []string{"go"}})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -620,7 +690,7 @@ func TestSearchListOwnerIsolation(t *testing.T) {
 	mk("bbbbbbbb-0000-0000-0000-000000000003", "sub-B", "shared") // B shared
 
 	// A sees only A-private + B-shared (2), never B-private.
-	hits, err := s.Search(ctx, scope, Authenticated("sub-A"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, Authenticated("sub-A"), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -1199,7 +1269,7 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 	}
 
 	// Search: anonymous caller sees only the anonymous-bucket record (owner=="").
-	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, Anonymous(), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("Search anon: %v", err)
 	}
@@ -1259,14 +1329,14 @@ func TestAnonBucketReadIsolation(t *testing.T) {
 	}
 
 	// Authenticated Search: sub-owner sees own private + own shared (2), sub-other sees own (0) + shared (1).
-	ownerHits, err := s.Search(ctx, scope, Authenticated("sub-owner"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	ownerHits, err := s.Search(ctx, scope, Authenticated("sub-owner"), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("Search sub-owner: %v", err)
 	}
 	if len(ownerHits) != 2 {
 		t.Errorf("Search sub-owner: got %d want 2 (private+shared)", len(ownerHits))
 	}
-	otherHits, err := s.Search(ctx, scope, Authenticated("sub-other"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	otherHits, err := s.Search(ctx, scope, Authenticated("sub-other"), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("Search sub-other: %v", err)
 	}
@@ -1430,7 +1500,7 @@ func TestNilSubjectFailsClosed(t *testing.T) {
 	var nilSubj Subject // zero value == nil: the discarded-error case
 
 	// Reads return nothing.
-	if hits, err := s.Search(ctx, scope, nilSubj, []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{}); err != nil || len(hits) != 0 {
+	if hits, err := s.Search(ctx, scope, nilSubj, []float32{0.1, 0.2, 0.3}, 10, SearchOptions{}); err != nil || len(hits) != 0 {
 		t.Errorf("Search(nil): want 0 hits nil err, got %d hits, %v", len(hits), err)
 	}
 	if mems, _, _, err := s.List(ctx, scope, nilSubj, ListOptions{Limit: 20}); err != nil || len(mems) != 0 {
@@ -1690,6 +1760,239 @@ func TestListCategoryAndVisibilityFilter(t *testing.T) {
 	}
 }
 
+// TestSearchCategoryFilter proves Store.Search's Categories filter (D-09):
+// OR-composed across multiple values, an unknown value matches nothing
+// (never an error, D-11), and nil/[""] are passthroughs — mirroring
+// TestListCategoryAndVisibilityFilter's list-lane assertions on the search
+// lane, since both now share categoryMatchCondition.
+func TestSearchCategoryFilter(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "search-category-test:project:x"
+	now := time.Now().UTC().Truncate(time.Second)
+	seed := []Memory{
+		{ID: "f0000000-0000-0000-0000-000000000001", Content: "a decision", Scope: scope, Owner: "owner-A", Category: "decision", Source: "agent-inferred", CreatedAt: now},
+		{ID: "f0000000-0000-0000-0000-000000000002", Content: "a preference", Scope: scope, Owner: "owner-A", Category: "preference", Source: "agent-inferred", CreatedAt: now},
+		{ID: "f0000000-0000-0000-0000-000000000003", Content: "a gotcha", Scope: scope, Owner: "owner-A", Category: "gotcha", Source: "agent-inferred", CreatedAt: now},
+	}
+	vecs := map[string][]float32{
+		seed[0].ID: {0.9, 0.1, 0.0},
+		seed[1].ID: {0.1, 0.9, 0.0},
+		seed[2].ID: {0.0, 0.1, 0.9},
+	}
+	for _, m := range seed {
+		if err := s.Upsert(ctx, m, vecs[m.ID]); err != nil {
+			t.Fatalf("seed %s: %v", m.ID, err)
+		}
+	}
+	defer func() {
+		for _, m := range seed {
+			_ = s.Delete(ctx, m.ID, Authenticated("owner-A"))
+		}
+	}()
+	subj := Authenticated("owner-A")
+	q := []float32{0.3, 0.3, 0.3}
+
+	sortedIDs := func(ms []Memory) []string {
+		out := recordIDs(ms)
+		slices.Sort(out)
+		return out
+	}
+
+	cases := []struct {
+		name string
+		cats []string
+		want []string
+	}{
+		{"single value", []string{"decision"}, []string{seed[0].ID}},
+		{"two-value OR", []string{"decision", "gotcha"}, []string{seed[0].ID, seed[2].ID}},
+		{"unknown value returns empty, not error", []string{"nonexistent"}, []string{}},
+		{"nil is passthrough", nil, []string{seed[0].ID, seed[1].ID, seed[2].ID}},
+		{"[\"\"] is passthrough", []string{""}, []string{seed[0].ID, seed[1].ID, seed[2].ID}},
+	}
+	for _, tc := range cases {
+		hits, err := s.Search(ctx, scope, subj, q, 10, SearchOptions{Categories: tc.cats})
+		if err != nil {
+			t.Fatalf("%s: Search: %v", tc.name, err)
+		}
+		want := slices.Clone(tc.want)
+		slices.Sort(want)
+		if got := sortedIDs(hits); !slices.Equal(got, want) {
+			t.Errorf("%s: got %v want %v", tc.name, got, want)
+		}
+	}
+}
+
+// TestCategoryMatchConditionEdges is a pure (no-Qdrant) unit test over
+// categoryMatchCondition's nil/empty/all-empty-string passthrough behavior
+// and its non-nil condition for a mixed list.
+func TestCategoryMatchConditionEdges(t *testing.T) {
+	t.Parallel()
+	if c := categoryMatchCondition(nil); c != nil {
+		t.Errorf("categoryMatchCondition(nil) = %v, want nil", c)
+	}
+	if c := categoryMatchCondition([]string{}); c != nil {
+		t.Errorf("categoryMatchCondition([]string{}) = %v, want nil", c)
+	}
+	if c := categoryMatchCondition([]string{""}); c != nil {
+		t.Errorf(`categoryMatchCondition([""]) = %v, want nil (empty-string element skipped)`, c)
+	}
+	got := categoryMatchCondition([]string{"decision", ""})
+	want := categoryMatchCondition([]string{"decision"})
+	if got == nil || want == nil {
+		t.Fatalf("categoryMatchCondition([\"decision\", \"\"]) or ([\"decision\"]) unexpectedly nil: got=%v want=%v", got, want)
+	}
+	if got.String() != want.String() {
+		t.Errorf("categoryMatchCondition([\"decision\", \"\"]) = %v, want same as ([\"decision\"]) = %v", got, want)
+	}
+}
+
+// TestSearchCategoryFilterPreRanking makes SC2's "applied before vector
+// ranking" claim falsifiable rather than assumed: it first proves the
+// preference record really would win the unfiltered ranking (it is at index
+// 0), then proves the same search with Categories:["decision"] returns
+// exactly the decision record and never the higher-scored preference one —
+// the exclusion happens because Qdrant never returns the record to be
+// ranked, not because a post-hoc trim removed it.
+func TestSearchCategoryFilterPreRanking(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "search-category-preranking:project:x"
+	now := time.Now().UTC().Truncate(time.Second)
+	subj := Authenticated("owner-preranking")
+	q := []float32{1, 0, 0}
+	prefID := "f1000000-0000-0000-0000-000000000001"
+	decID := "f1000000-0000-0000-0000-000000000002"
+	pref := Memory{ID: prefID, Content: "near-exact match", Scope: scope, Owner: "owner-preranking", Category: "preference", Source: "agent-inferred", CreatedAt: now}
+	dec := Memory{ID: decID, Content: "weak match", Scope: scope, Owner: "owner-preranking", Category: "decision", Source: "agent-inferred", CreatedAt: now}
+	if err := s.Upsert(ctx, pref, []float32{1, 0, 0}); err != nil {
+		t.Fatalf("seed pref: %v", err)
+	}
+	if err := s.Upsert(ctx, dec, []float32{0.5, 0.5, 0}); err != nil {
+		t.Fatalf("seed dec: %v", err)
+	}
+	defer func() {
+		_ = s.Delete(ctx, prefID, subj)
+		_ = s.Delete(ctx, decID, subj)
+	}()
+
+	unfiltered, err := s.Search(ctx, scope, subj, q, 5, SearchOptions{})
+	if err != nil {
+		t.Fatalf("unfiltered Search: %v", err)
+	}
+	if len(unfiltered) == 0 || unfiltered[0].ID != prefID {
+		t.Fatalf("unfiltered Search: want preference record ranked first, got %v", recordIDs(unfiltered))
+	}
+
+	filtered, err := s.Search(ctx, scope, subj, q, 5, SearchOptions{Categories: []string{"decision"}})
+	if err != nil {
+		t.Fatalf("filtered Search: %v", err)
+	}
+	if got := recordIDs(filtered); !slices.Equal(got, []string{decID}) {
+		t.Errorf("filtered Search: got %v want [%s] (category pre-filter must exclude the higher-ranked preference record)", got, decID)
+	}
+}
+
+// TestCategoryFilterDoesNotWidenVisibility is the D-16/SC4 assertion: the
+// category filter composes strictly INSIDE ownerOrSharedCondition and can
+// only narrow, never widen, what a caller may read. It also proves a shared
+// read grant is not a write grant.
+func TestCategoryFilterDoesNotWidenVisibility(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "search-category-widen-test:project:x"
+	now := time.Now().UTC().Truncate(time.Second)
+	ownerA := Authenticated("owner-catA")
+	ownerB := Authenticated("owner-catB")
+	vec := []float32{0.1, 0.2, 0.3}
+
+	privID := "f2000000-0000-0000-0000-000000000001"
+	priv := Memory{ID: privID, Content: "private decision", Scope: scope, Owner: "owner-catA", Category: "decision", Source: "agent-inferred", CreatedAt: now}
+	if err := s.Upsert(ctx, priv, vec); err != nil {
+		t.Fatalf("seed priv: %v", err)
+	}
+	defer func() { _ = s.Delete(ctx, privID, ownerA) }()
+
+	// Owner B's category-filtered search must see zero results — the private
+	// record stays invisible; the category filter cannot widen visibility.
+	gotB, err := s.Search(ctx, scope, ownerB, vec, 10, SearchOptions{Categories: []string{"decision"}})
+	if err != nil {
+		t.Fatalf("owner B Search: %v", err)
+	}
+	if len(gotB) != 0 {
+		t.Fatalf("owner B category-filtered Search: got %d results, want 0 (private record must stay invisible)", len(gotB))
+	}
+
+	sharedID := "f2000000-0000-0000-0000-000000000002"
+	shared := Memory{ID: sharedID, Content: "shared decision", Scope: scope, Owner: "owner-catA", Visibility: "shared", Category: "decision", Source: "agent-inferred", CreatedAt: now}
+	if err := s.Upsert(ctx, shared, vec); err != nil {
+		t.Fatalf("seed shared: %v", err)
+	}
+	defer func() { _ = s.Delete(ctx, sharedID, ownerA) }()
+
+	gotB2, err := s.Search(ctx, scope, ownerB, vec, 10, SearchOptions{Categories: []string{"decision"}})
+	if err != nil {
+		t.Fatalf("owner B Search (after shared): %v", err)
+	}
+	if got := recordIDs(gotB2); !slices.Contains(got, sharedID) {
+		t.Fatalf("owner B category-filtered Search: got %v, want shared record %s present", got, sharedID)
+	}
+
+	// A readable record is not a writable one: owner B's write path must
+	// still fail with the not-found-shaped error.
+	if err := s.SetVisibility(ctx, sharedID, ownerB, false); !errors.Is(err, ErrNotFound) {
+		t.Errorf("owner B SetVisibility on shared record: err=%v, want ErrNotFound (read grant must not become a write grant)", err)
+	}
+}
+
+// TestSearchCategoryFilterOrderingUnchanged pins the ordering edge: a
+// Categories filter that excludes nothing (every seeded record shares the one
+// listed category) must not perturb the result order Search would otherwise
+// return.
+func TestSearchCategoryFilterOrderingUnchanged(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "search-category-ordering-test:project:x"
+	now := time.Now().UTC().Truncate(time.Second)
+	subj := Authenticated("owner-order-cat")
+	q := []float32{0.4, 0.3, 0.2}
+	vecs := [][]float32{
+		{0.4, 0.3, 0.2},
+		{0.35, 0.3, 0.25},
+		{0.3, 0.35, 0.2},
+		{0.2, 0.4, 0.3},
+	}
+	ids := []string{
+		"f3000000-0000-0000-0000-000000000001",
+		"f3000000-0000-0000-0000-000000000002",
+		"f3000000-0000-0000-0000-000000000003",
+		"f3000000-0000-0000-0000-000000000004",
+	}
+	for i, id := range ids {
+		m := Memory{ID: id, Content: "shared-category record", Scope: scope, Owner: "owner-order-cat", Category: "gotcha", Source: "agent-inferred", CreatedAt: now}
+		if err := s.Upsert(ctx, m, vecs[i]); err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+	}
+	defer func() {
+		for _, id := range ids {
+			_ = s.Delete(ctx, id, subj)
+		}
+	}()
+
+	unfiltered, err := s.Search(ctx, scope, subj, q, 10, SearchOptions{})
+	if err != nil {
+		t.Fatalf("unfiltered Search: %v", err)
+	}
+	filtered, err := s.Search(ctx, scope, subj, q, 10, SearchOptions{Categories: []string{"gotcha"}})
+	if err != nil {
+		t.Fatalf("filtered Search: %v", err)
+	}
+	if got, want := recordIDs(filtered), recordIDs(unfiltered); !slices.Equal(got, want) {
+		t.Errorf("filtered vs unfiltered Search ordering: got %v want %v (a filter matching everything must not reorder)", got, want)
+	}
+}
+
 // TestListPrivateFilterCrossActorIsolation verifies that the private visibility
 // filter preserves authz isolation: caller B must not see caller A's private
 // records even when Visibility=="private" is specified in ListOptions.
@@ -1877,7 +2180,7 @@ func TestRecallWindowGate(t *testing.T) {
 		}
 	}
 
-	hits, err := s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -2576,7 +2879,7 @@ func TestSearchDateWindow(t *testing.T) {
 	mk("b0000000-0000-0000-0000-000000000002", t0.Add(time.Hour))
 
 	hits, err := s.Search(ctx, scope, Authenticated("sub-A"),
-		[]float32{0.1, 0.2, 0.3}, 10, nil, t0, time.Time{})
+		[]float32{0.1, 0.2, 0.3}, 10, SearchOptions{CreatedAfter: t0})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -2620,7 +2923,7 @@ func TestSupersedeRecallGate(t *testing.T) {
 	subj := Authenticated("sub-A")
 
 	// Search: superseded record excluded, live record present.
-	hits, err := s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -3065,7 +3368,7 @@ func TestSupersedeForwardChain(t *testing.T) {
 		t.Errorf("List: C %s absent, want present (head): %v", cID, got)
 	}
 
-	hits, err := s.Search(ctx, scope, subj, vec, 10, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, subj, vec, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -3960,7 +4263,7 @@ func TestSearchAuthzCallCount(t *testing.T) {
 	}
 
 	calls = 0
-	hits, err := s.Search(ctx, scope, Authenticated("sub-count"), []float32{0.1, 0.2, 0.3}, uint64(n), nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, Authenticated("sub-count"), []float32{0.1, 0.2, 0.3}, uint64(n), SearchOptions{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -3992,7 +4295,7 @@ func TestBulkFilterOwnAndSharedAdjacency(t *testing.T) {
 		t.Fatalf("upsert: %v", err)
 	}
 
-	hits, err := s.Search(ctx, scope, Authenticated("sub-adj"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, Authenticated("sub-adj"), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -4027,7 +4330,7 @@ func TestBulkFilterZeroBucketFailsClosed(t *testing.T) {
 	}
 	t.Cleanup(func() { s.decideBucketHook = nil })
 
-	hits, err := s.Search(ctx, scope, Authenticated("sub-deny"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+	hits, err := s.Search(ctx, scope, Authenticated("sub-deny"), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -4070,7 +4373,7 @@ func TestBulkFilterOrderIndependent(t *testing.T) {
 	}
 
 	search := func() map[string]bool {
-		hits, err := s.Search(ctx, scope, Authenticated("sub-order"), []float32{0.1, 0.2, 0.3}, 10, nil, time.Time{}, time.Time{})
+		hits, err := s.Search(ctx, scope, Authenticated("sub-order"), []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
 		if err != nil {
 			t.Fatalf("search: %v", err)
 		}

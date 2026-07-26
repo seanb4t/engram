@@ -31,19 +31,60 @@ Source: `internal/server/tools.go` (`StoreAndEmbedderFromEnvNoEnsure`).
 | `ENGRAM_OPENAI_BASE_URL` | — | `http://localhost:4000` | OpenAI-compatible embeddings endpoint — point it at any backend that speaks the OpenAI `/v1/embeddings` API (e.g. Ollama, vLLM, TEI, LiteLLM, OpenAI) |
 | `ENGRAM_OPENAI_API_KEY` | — | _(empty)_ | API key for the embeddings endpoint |
 | `ENGRAM_EMBED_MODEL` | — | `ollama/bge-m3` | Model name forwarded to the endpoint |
+| `ENGRAM_OPENAI_CHAT_BASE_URL` | — | _(empty)_ | Base URL for the chat/summarize lane only — the embedder always uses `ENGRAM_OPENAI_BASE_URL` regardless of this setting. Empty means the summarizer **inherits** `ENGRAM_OPENAI_BASE_URL`. Validated only when set: a malformed or non-HTTP(S) value fails startup; empty is always valid. See [Auto-summary](#auto-summary) below for the URL-shape rule and the shared-API-key constraint. |
 
 Source: `internal/config` (registry) + `internal/server/tools.go` (`embedderFromConfig`).
 
 ## Auto-summary
 
-When `ENGRAM_SUMMARY_MODEL` is set, the server digests memories that lack a summary using that chat model, served by the **same** OpenAI-compatible endpoint as the embedder (`ENGRAM_OPENAI_BASE_URL` + `ENGRAM_OPENAI_API_KEY`). Empty disables auto-summary, and recall returns only client-authored summaries.
+When `ENGRAM_SUMMARY_MODEL` is set, the server digests memories that lack a
+summary using that chat model. **By default** it is served by the same
+OpenAI-compatible endpoint as the embedder (`ENGRAM_OPENAI_BASE_URL` +
+`ENGRAM_OPENAI_API_KEY`) — but the chat/summarize lane can be pointed at a
+**different** gateway by setting `ENGRAM_OPENAI_CHAT_BASE_URL`, independent of
+the embedder. This unblocks a common split deployment: a local embedder (no
+egress, no per-token cost) paired with a hosted chat model for summary
+quality — e.g. embeddings at `http://localhost:4000` (a local TEI/Ollama/vLLM
+server) with summaries at `https://api.openai.com/v1`. Empty
+`ENGRAM_SUMMARY_MODEL` disables auto-summary entirely, and recall returns only
+client-authored summaries.
+
+**The API key is shared across both lanes.** `ENGRAM_OPENAI_API_KEY` is sent
+with every request on *both* the embedder and the chat/summarize lane — there
+is no separate key for `ENGRAM_OPENAI_CHAT_BASE_URL`. This is safe for the
+local-embedder-plus-hosted-chat split above because local embedding servers
+(Ollama, TEI, vLLM) simply ignore an `Authorization` header they don't expect.
+It is worth knowing about *before* you point the chat lane at a hosted
+gateway, though: your embedding API key travels to that host too. If you need
+distinct credentials per lane, that split is not supported this milestone —
+being explicit here is meant to save you from discovering the shared-key
+constraint by debugging an unexpected 401 on the chat lane.
+
+**URL shape matters.** Supply the provider's full OpenAI-compatible root,
+including its `/v1` suffix (or `/v1beta/openai` for Gemini-compatible
+gateways), and engram appends the chat-completions path directly — e.g.
+`ENGRAM_OPENAI_CHAT_BASE_URL=https://api.openai.com/v1` resolves to
+`https://api.openai.com/v1/chat/completions`. Supply a bare host with no
+`/v1`-shaped suffix and engram appends `/v1/chat/completions` itself — e.g.
+`ENGRAM_OPENAI_CHAT_BASE_URL=http://litellm.internal:4000` resolves to
+`http://litellm.internal:4000/v1/chat/completions`. Getting this wrong
+(appending your own `/v1/chat/completions` onto a URL that already ends in
+`/v1`) is the most likely first failure when configuring this variable.
 
 | Environment variable | Flag | Default | Description |
 |---------------------|------|---------|-------------|
-| `ENGRAM_SUMMARY_MODEL` | — | _(empty)_ | Chat model for auto-summary, served by `ENGRAM_OPENAI_BASE_URL`; empty disables auto-summary |
+| `ENGRAM_SUMMARY_MODEL` | — | _(empty)_ | Chat model for auto-summary; empty disables auto-summary |
 | `ENGRAM_SUMMARY_MAX_CHARS` | — | `280` | Max generated-summary length (also the recall-truncation cap) |
 
-Source: `internal/config` (registry) + `internal/server/tools.go` (`summarizerFromConfig`).
+(`ENGRAM_OPENAI_CHAT_BASE_URL` is documented in [Embedder](#embedder) above,
+alongside `ENGRAM_OPENAI_BASE_URL` — this section explains the effect it has
+on the chat/summarize lane specifically.)
+
+In a Helm deployment, set `memory.summarize.chatBaseURL` to render this
+variable into the pod spec (unset omits it, matching the inherit-by-default
+behavior above).
+
+Source: `internal/config` (registry) + `internal/server/tools.go` (`summarizerFromConfig`) + `internal/openaiurl` (the shape-aware endpoint join).
 
 ### Async-on-write summaries
 

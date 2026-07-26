@@ -31,6 +31,7 @@ documents every field, its serialized JSON name, allowed values, and who sets it
 | Created at | `created_at` | string (RFC3339) | server | UTC timestamp of creation |
 | Supersedes | `supersedes` | string (optional) | server | Set on a *correcting* record: the id of the memory it replaced — see [Supersession](#supersession) |
 | Superseded by | `superseded_by` | string (optional) | server | Set on a *corrected* record: the id of the memory that replaced it; its presence soft-hides the record from recall |
+| Citations | `citations` | Citation[] | client | Optional structured source anchors on **any** category (required, min 1, only for `discovery`) — see [Citation fields](#citation-fields); never auto-populated |
 
 ### Supersession
 
@@ -116,22 +117,28 @@ caller-authored summary causes the update to be rejected.
 
 ## Discovery fields
 
-Records in the `discovery` category carry additional fields that are absent (or
-zero-valued) on regular memory records.
+Records in the `discovery` category carry one additional field that is absent
+(or zero-valued) on regular memory records.
 
 | Field | JSON key | Type | Required | Description |
 |-------|----------|------|----------|-------------|
-| Kind | `kind` | string | yes | `map` (orientation/structure) or `fact` (pinned checkable claim) |
-| Citations | `citations` | Citation[] | yes | At least one source anchor; max 50 |
+| Kind | `kind` | string | yes | `map` (orientation/structure) or `fact` (pinned checkable claim); discovery-only, not settable on `store_memory` |
 | Summary | `summary` | string | no | Short human-readable summary |
 
 Discovery records live in scopes starting with `discovery:`, typically
 `discovery:repo:<repo>`. They are recalled on demand via `search_discovery` and
 are never returned by `list_memory` session bootstrap.
 
+`citations` itself is **not** discovery-only — see the [Citations](#field-reference)
+row in the main field reference above. The one asymmetry that remains: a
+`discovery` record requires **at least one** citation, while a curated
+`memory`-category record requires **none** (citations there are optional
+provenance, added only when a claim benefits from a checkable anchor).
+
 ### Citation fields
 
-Each citation anchors a discovery claim to a verifiable source:
+Each citation anchors a claim to a verifiable source. The shape is identical
+whether the citation lives on a `discovery` record or on any other category:
 
 | Field | JSON key | Type | Required | Description |
 |-------|----------|------|----------|-------------|

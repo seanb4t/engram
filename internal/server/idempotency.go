@@ -53,6 +53,14 @@ func idempotencyPointID(owner, scope, key string) string {
 // point ID (idempotencyPointID above) — and neither is any server-set field
 // (short_id, embedder identity, summary fill), so a legitimate replay after
 // an async summary fill still matches.
+//
+// EVERY client-authored storeArgs field MUST be represented here. A field that
+// is absent is silently excluded from the mismatch check, so a keyed retry that
+// changes only that field hashes identically, is misclassified as a no-op
+// replay, and returns success while discarding the caller's value — silent data
+// loss, not a rejection. Phase 26 added Citations to the shared storeArgs and
+// hit exactly that gap (26-REVIEW CR-01); when a future phase adds another
+// client-authored field, add it below in the same pass.
 func contentFingerprint(a storeArgs) string {
 	tags := slices.Clone(a.Tags)
 	slices.Sort(tags)
@@ -68,10 +76,24 @@ func contentFingerprint(a storeArgs) string {
 		fmt.Fprintf(&tagsEnc, "%d:%s:", len(t), t)
 	}
 
+	// Citations are NOT sorted: unlike tags, their order is caller-authored and
+	// preserved verbatim through payload() (duplicates persist, in order), so
+	// two different orderings are two different records and must not collide.
+	// Each of the five fields is individually length-prefixed for the same
+	// injectivity reason as tags above — a citation whose ref contains a literal
+	// separator byte must not be able to impersonate a different citation set.
+	var citesEnc strings.Builder
+	for _, c := range a.Citations {
+		for _, f := range []string{c.Kind, c.Ref, c.Locator, c.Pin, c.Excerpt} {
+			fmt.Fprintf(&citesEnc, "%d:%s:", len(f), f)
+		}
+	}
+
 	var b strings.Builder
 	for _, f := range []string{
 		a.Content, a.Category, tagsEnc.String(),
 		a.Source, a.Repo, a.Workspace, a.Worktree, a.BaseDir, a.Summary,
+		citesEnc.String(),
 	} {
 		fmt.Fprintf(&b, "%d:%s:", len(f), f)
 	}

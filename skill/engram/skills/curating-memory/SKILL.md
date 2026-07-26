@@ -168,6 +168,39 @@ Rules that will bite you if ignored:
   second correcting record rather than replaying the first. Retry only after
   confirming the first call didn't land.
 
+## Citations (structured provenance)
+
+A memory may optionally carry structured **citations** — the same shape
+`store_discovery` uses — an array of source anchors, each with `kind`
+(`file`, `commit`, `url`, or `repo`), `ref` (required, non-empty), and
+optional `locator`, `pin`, and `excerpt`. Available on `store_memory`,
+`schedule_memory`, and `supersede_memory` (`update_memory` does not accept
+citations yet).
+
+**When to attach one.** A claim whose value depends on being checkable
+against a specific source: a convention traced to the file that establishes
+it, a gotcha traced to the commit that introduced it, a decision traced to
+the ADR or issue that records it. The citation is what lets a future reader
+(agent or human) verify the claim instead of taking it on faith.
+
+**When NOT to.** A preference, an opinion, or anything where the anchor
+would be decorative rather than checkable. Citations are **optional
+provenance, never a routine field to fill in** — attaching them reflexively
+"because the capability exists" erodes the zero-junk invariant this skill
+exists to protect, the same way auto-extraction would. Most memories should
+carry zero citations; that is the well-formed default, not a gap to close.
+
+**Constraints.** At most 50 citations per record. At most 16 KiB per
+excerpt. `ref` is required and non-empty. Citations are **never inferred
+from content** — only what you explicitly supply is stored, even when the
+memory text is dense with file paths, URLs, or commit SHAs that *look*
+citable.
+
+**Reading them back.** Citations do not affect ranking or recall order.
+They are **omitted from the default compact recall view** (`search_memory`/
+`list_memory`), so if you need them, call `get_memory` (always returns
+them) or pass `full=true` to `search_memory`/`list_memory`.
+
 ## Summaries
 
 Pass `summary` on `store_memory` or `update_memory` when you have explicit
