@@ -3,11 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.11.x
 milestone_name: Capture & Service Identity
 current_phase: 26
-status: completed
+status: "Phase 26 shipped — PR #432"
 stopped_at: Completed 26-06-PLAN.md — Phase 26 complete
-last_updated: "2026-07-26T04:09:42.417Z"
-last_activity: 2026-07-25
-last_activity_desc: Phase 26 complete
+last_updated: "2026-07-26T17:46:44.404Z"
+last_activity: 2026-07-26
 progress:
   total_phases: 8
   completed_phases: 5
@@ -15,6 +14,7 @@ progress:
   completed_plans: 19
   percent: 63
 current_phase_name: Structured Citations, Category Filter & Chat Base URL
+last_activity_desc: Phase 26 complete
 ---
 
 # Project State
@@ -30,8 +30,8 @@ See: .planning/PROJECT.md (updated 2026-07-18 — after Phase 24)
 
 Phase: 26
 Plan: Not started
-Status: All phases complete
-Last activity: 2026-07-25 — Phase 26 complete
+Status: Phase 26 shipped — PR #432
+Last activity: 2026-07-26
 
 Progress: [████████████████████] 11/11 plans ([██████████] 100%) · 3/8 phases (38%)
 
