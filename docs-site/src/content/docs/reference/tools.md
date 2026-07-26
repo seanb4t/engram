@@ -50,6 +50,7 @@ or timestamps.
 | `worktree_path` | string | no | Path to the git worktree |
 | `base_dir` | string | no | Base directory for the project |
 | `summary` | string | no | Short human-readable summary (caller-authored, `summary_source=client`). Omit for no summary. |
+| `citations` | citation[] | no | Optional structured source anchors (same shape as [`store_discovery`](#store_discovery)'s `citations`, max 50); never inferred — only what you explicitly supply. Omit for none. |
 
 Returns the stored record's `id` and `short_id`.
 
@@ -75,6 +76,7 @@ normally via `search_memory`/`list_memory`.
 | `worktree_path` | string | no | Path to the git worktree |
 | `base_dir` | string | no | Base directory for the project |
 | `summary` | string | no | Short human-readable summary (caller-authored, `summary_source=client`). Omit for no summary. |
+| `citations` | citation[] | no | Optional structured source anchors (same shape as [`store_discovery`](#store_discovery)'s `citations`, max 50); never inferred — only what you explicitly supply. Omit for none. |
 | `not_before` | string | no | RFC3339; hide from recall until this time |
 | `not_after` | string | no | RFC3339; drop from recall at this time |
 
@@ -102,7 +104,8 @@ Returns a list of matching memory records. Each result carries a `score`: the
 raw Qdrant cosine similarity for this query (higher = closer), present when
 non-zero. Unranked `list_memory`/`get_memory` results have a zero/omitted score.
 Final order may include reranking; `score` remains first-stage dense
-similarity and may be non-monotonic after rerank.
+similarity and may be non-monotonic after rerank. `citations` are omitted from
+the default compact view; pass `full=true` to include them.
 
 ---
 
@@ -123,6 +126,7 @@ pass `full=true` for complete content.
 | `full` | bool | no | Return full `content` instead of compact summaries (default `false`) |
 
 Returns `{ "memories": [...], "next_cursor": "<token>" }`. An empty or absent `next_cursor` indicates the last page.
+`citations` are omitted from the default compact view; pass `full=true` to include them.
 
 ---
 
@@ -155,7 +159,8 @@ Returns the full memory record. Authenticated callers can read their own records
 plus any `shared` records. Anonymous callers can only read ownerless records.
 Fetch-by-id is **not** recall-gated: a windowed record (set via `schedule_memory`)
 that `search_memory`/`list_memory` hide because it is scheduled or expired is still
-retrievable directly by id here.
+retrievable directly by id here. `get_memory` always returns `citations` in full —
+unlike `search_memory`/`list_memory`, it has no compact view to omit them from.
 
 ---
 
@@ -171,10 +176,12 @@ Takes the full `store_memory` field set for the **new, correcting** record, plus
 |----------|------|----------|-------------|
 | `supersedes` | string | yes | The UUID **or `short_id`** of the memory this new record corrects |
 
-Everything else (`content`, `scope`, `category`, `tags`, `summary`, repo/workspace/
-worktree/base_dir, `source`) describes the new record and behaves exactly as in
-[`store_memory`](#store_memory). `idempotency_key` is **not** supported on this
-verb — a retry creates a second correcting record rather than replaying the first.
+Everything else (`content`, `scope`, `category`, `tags`, `summary`, `citations`,
+repo/workspace/worktree/base_dir, `source`) describes the new record and behaves
+exactly as in [`store_memory`](#store_memory), including `citations` — an
+optional array of structured source anchors, never inferred. `idempotency_key`
+is **not** supported on this verb — a retry creates a second correcting record
+rather than replaying the first.
 
 **What changes.** The new record is stored normally and carries a `supersedes` link
 to the target; the target gains a `superseded_by` link back. Both are additive
