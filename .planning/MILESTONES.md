@@ -1,5 +1,33 @@
 # Milestones — engram
 
+## v0.11.x Capture & Service Identity (Shipped: 2026-07-26)
+
+**Phases completed:** 5 phases, 19 plans, 46 tasks
+
+**Key accomplishments:**
+
+- A self-contained `internal/authz` cedar-go v1.8.0 PDP (DecideBucket/DecideRecord over four embedded named policies) with a permanent D-08 policy-text regression suite — purely additive, zero `internal/store` wiring.
+- Store's bulk read-filter builders (Search/List/ListScheduled/ListScopes/SearchDiscovery) now derive own/shared bucket access from the Plan-01 Cedar PDP via DecideBucket, while emitting byte-for-byte the same Qdrant filter shapes as the pre-Cedar hardcoded Subject switch — proven per-bucket (never per-record), fail-closed, and order-independent.
+- GetReadable/getWritable/OwnedOrAbsent now decide via the Plan-01 Cedar PDP's DecideRecord in their record-found branch — a Deny is byte-for-byte indistinguishable from a missing id — and a new hand-authored ADR (engram-cdr1) documents the refinement, completing REQ-cedar-store-enforcement and Phase 22.
+- A `Verifier.failClosed` field plus a `NewService` constructor in `internal/auth` that hard-rejects an authenticated service principal resolving to an empty owner at the OIDC verifier boundary, proven as the phase's first test (SC2/D-08/D-09/D-10).
+- Opaque static-token bearer lane for `internal/auth`, verified with `crypto/subtle.ConstantTimeCompare` over the full token value, mapping each token to its own distinct owner via the existing `namespacedOwner("static_token", ownerID)` encoding — with a proven no-leak guarantee on the rejection path.
+- `chainVerifier` combinator over `mcpauth.TokenVerifier` with a structural JWT-vs-opaque discriminator, D-02 OIDC try-order, and D-03 nil-mechanism deny-by-default guards — zero new interface, zero new Subject variant.
+- Additive `service_auth.*` koanf config surface (client-credentials issuer/audience/owner-claims + static-token→owner map) with fail-fast parsing and self-gated validation — the config seam Plan 06 wires into the auth chain.
+- Proved SC4/D-07 tenancy isolation and pinned the SC5/D-15/D-16 global-shared-read decision with two permanent tests against the unchanged Phase-22 store filters — zero new production code.
+- withAuth (cmd/engram/serve.go) now composes the human OIDC, client-credentials OIDC, and static-token verifiers into a single auth.ChainVerifier at the ONE call site, proven behavior-preserving and lane-independent, with the global shared-read decision recorded as an ADR.
+- Payload-only content-fingerprint stamp on `Memory`, a distinct `ErrIdempotencyConflict` sentinel, and two pure helpers — `idempotencyPointID` (deterministic UUIDv5 over owner/scope/key) and `contentFingerprint` (sha256 over client-authored fields) — with zero live call sites yet.
+- Wired Plan 01's pure primitives into `store_memory`/`schedule_memory` via a shared `checkIdempotentReplay` check-before-embed helper — keyed replay is now zero-side-effect on match, rejects with `store.ErrIdempotencyConflict` on mismatch, and converges concurrent identical retries to exactly one Qdrant point under `-race`.
+- Store.Supersede owner-gates a target via getWritable/ActionWrite, back-stamps its `superseded_by` with a single-key SetPayload (never a re-Upsert), and the recall gate soft-hides superseded records from Search/List while `Store.Get` stays fetchable.
+- supersede_memory is now a registered MCP verb — supersedeArgs embeds storeArgs, deps.supersedeMemory resolves the target and delegates the create+back-stamp entirely to Store.Supersede's owner write gate, and connectError's sentinel switch is exhaustive for store.ErrAlreadySuperseded.
+- `store.SearchOptions{Tags, Categories, CreatedAfter, CreatedBefore}` replaces Search/SearchReranked's positional tail, with a shared `categoryMatchCondition` OR-helper generalized out of `listFilter` so the list and search lanes cannot drift.
+- Added a plural `categories []string` argument to `search_memory` and `list_memory`, wired as a pure passthrough into the already-Categories-capable `coreSearchRequest`/`coreListRequest`, with an explicit ANY/OR jsonschema description so agents don't assume AND symmetry with the adjacent `tags` field.
+- Added `repeated string categories = 8` to `SearchMemoriesRequest` (D-10, human-approved as a one-way field-number commitment), wired it into the Connect handler, and proved MCP<->Connect parity with a same-filter-same-order test — closing the search-side half of SC2's category-filter parity gap.
+- `ENGRAM_OPENAI_CHAT_BASE_URL` (cmp.Or fallback to the shared base URL) plus a hoisted `internal/openaiurl.Join` that fixes a live doubled-`/v1` bug in the summarizer's endpoint construction.
+- Curated `memory`-category records can now carry optional, structured `citations` (file/commit/url/repo provenance anchors) through one relaxed `payload()` write gate, a single `storeArgs.Citations` field inherited by all three write tools via Go field embedding, and a Connect-side compact-view fix that closes an information-disclosure gap MCP's hand-written recall view never had.
+- Closed Phase 25's flagged doc gap and finished Phase 26's guidance trio: a Citations section in the curating-memory skill (when to attach vs when not to, never a routine field), citations promoted out of the discovery-only field block and documented on store_memory/schedule_memory/supersede_memory, an explicit ANY/OR `categories` filter row on search_memory/list_memory contrasted against `tags`' ALL/AND, and the `ENGRAM_OPENAI_CHAT_BASE_URL` operator guide entry with the URL-shape rule and shared-API-key constraint spelled out.
+
+---
+
 ## v0.10.x Hardening & Write Lane (Shipped: 2026-07-16)
 
 **Phases completed:** 9 phases, 35 plans, 88 tasks
