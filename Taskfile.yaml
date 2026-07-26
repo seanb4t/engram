@@ -42,6 +42,16 @@ tasks:
     desc: Run the engram skill-plugin hook tests
     cmds:
       - uv run --with pytest pytest skill/engram/hooks/tests -q
+  test:e2e:
+    desc: Run only the binary-level tier (builds engram, runs it, drives the MCP transport)
+    cmds:
+      - go test ./internal/e2e/ -count=1 -v
+  test:strict:
+    desc: Run the Go suite fail-closed — a missing Qdrant fails instead of silently skipping
+    env:
+      ENGRAM_REQUIRE_QDRANT: '1'
+    cmds:
+      - go test ./... -count=1
   test:coverage:
     desc: Run tests with coverage
     cmds:
