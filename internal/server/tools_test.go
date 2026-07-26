@@ -834,6 +834,126 @@ func TestCitationsValidation(t *testing.T) {
 	}
 }
 
+// TestSearchListMemoryCompactViewOmitsCitations is the MCP-side companion to
+// TestConnectCompactViewOmitsCitations (D-07). It currently holds by
+// construction — recallView (summary.go) is a hand-written allow-list struct
+// with no citations field, so shapeRecall's full=false branch cannot leak
+// citations no matter what store.Memory carries — but this test is what
+// keeps a future field added to recallView from silently reintroducing the
+// Connect-side leak this phase just closed on the other transport. Drives
+// the exact shapeRecall call the search_memory/list_memory tool closures use
+// (tools.go), over real search_memory/list_memory handler results.
+func TestSearchListMemoryCompactViewOmitsCitations(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-mcp-compact-cites")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:mcp-compact-cites"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-mcp-compact-cites")))
+	}()
+
+	cites := citationFixture()
+	id, _, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "citation-carrying record for MCP compact-view test", Scope: scope,
+		Source: "agent-inferred", Category: "decision", Citations: cites,
+	})
+	if err != nil {
+		t.Fatalf("storeMemory: %v", err)
+	}
+
+	assertNoCitationsKey := func(t *testing.T, v any) {
+		t.Helper()
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if strings.Contains(string(b), `"citations"`) {
+			t.Errorf("compact view JSON carries a citations key: %s", b)
+		}
+	}
+	assertHasCitations := func(t *testing.T, v any) {
+		t.Helper()
+		m, ok := v.(store.Memory)
+		if !ok {
+			t.Fatalf("full=true item is %T, want store.Memory", v)
+		}
+		if len(m.Citations) != len(cites) {
+			t.Fatalf("full=true: Citations = %+v, want %d entries", m.Citations, len(cites))
+		}
+	}
+	findByID := func(t *testing.T, items []any, get func(any) string) any {
+		t.Helper()
+		for _, it := range items {
+			if get(it) == id {
+				return it
+			}
+		}
+		t.Fatalf("seeded record %s not found among %d items", id, len(items))
+		return nil
+	}
+	idOf := func(v any) string {
+		if rv, ok := v.(recallView); ok {
+			return rv.ID
+		}
+		if m, ok := v.(store.Memory); ok {
+			return m.ID
+		}
+		return ""
+	}
+
+	hits, err := d.searchMemory(ctx, c, coreSearchRequest{Scope: scope, Query: "citation-carrying record", K: 10})
+	if err != nil {
+		t.Fatalf("searchMemory: %v", err)
+	}
+	compactSearch := shapeRecall(hits, false, d.summaryMaxChars)
+	assertNoCitationsKey(t, findByID(t, compactSearch, idOf))
+	fullSearch := shapeRecall(hits, true, d.summaryMaxChars)
+	assertHasCitations(t, findByID(t, fullSearch, idOf))
+
+	listRes, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 50})
+	if err != nil {
+		t.Fatalf("listMemory: %v", err)
+	}
+	compactList := shapeRecall(listRes.Memories, false, d.summaryMaxChars)
+	assertNoCitationsKey(t, findByID(t, compactList, idOf))
+	fullList := shapeRecall(listRes.Memories, true, d.summaryMaxChars)
+	assertHasCitations(t, findByID(t, fullList, idOf))
+}
+
+// TestCitationsNotAutoPopulated is the falsifiable form of SC1's
+// never-auto-populated clause: a record whose content deliberately LOOKS
+// citation-rich (file-path-like, URL-like, and commit-SHA-like text) but
+// supplies no citations argument must come back from get_memory with an
+// empty citation slice. No code path infers, extracts, or synthesizes a
+// citation from content — this is the project's no-auto-extraction invariant
+// pinned as a test, not merely a design intent.
+func TestCitationsNotAutoPopulated(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-no-auto-cite")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:no-auto-cite"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-no-auto-cite")))
+	}()
+
+	id, _, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "see internal/server/tools.go:673 (commit deadbeefcafefeed1234567890abcdef12345678) " +
+			"and https://pkg.go.dev/github.com/seanb4t/engram for details",
+		Scope: scope, Source: "agent-inferred", Category: "decision",
+		// No Citations field supplied.
+	})
+	if err != nil {
+		t.Fatalf("storeMemory: %v", err)
+	}
+	got, err := d.getMemory(ctx, c, idArgs{ID: id})
+	if err != nil {
+		t.Fatalf("getMemory: %v", err)
+	}
+	if len(got.Citations) != 0 {
+		t.Fatalf("citations were auto-populated from content: %+v", got.Citations)
+	}
+}
+
 // TestUpdateMemoryReStampsEmbedderIdentityHandler proves the re-embed path
 // (updateMemory -> Store.Update -> Upsert) RE-stamps the identity, not only
 // the initial write: the seed record carries a stale identity, and after

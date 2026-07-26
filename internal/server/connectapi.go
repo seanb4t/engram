@@ -86,6 +86,14 @@ func parseRFC3339(s string) (time.Time, error) {
 // shapeProtoMemories mirrors the MCP recall contract over the Connect wire: when
 // not full, clear Content and surface a summary-or-truncation so default callers
 // pay summary-sized payloads. Callers opt into full content with full=true.
+//
+// Citations and Kind are ALSO cleared in the non-full branch (D-07): MCP's
+// recallView (summary.go) already omits them from the compact view for free
+// by being a hand-written allow-list struct with no citations field, but this
+// shaper starts from the complete memoryToProto message and must clear them
+// explicitly, or a curated memory carrying up to 50 citations with 16 KiB
+// excerpts each would ride the default (compact) Connect response and defeat
+// the token budget this view exists to protect.
 func shapeProtoMemories(ms []store.Memory, full bool, maxChars int) []*engramv1.Memory {
 	out := make([]*engramv1.Memory, len(ms))
 	for i, m := range ms {
@@ -94,6 +102,8 @@ func shapeProtoMemories(ms []store.Memory, full bool, maxChars int) []*engramv1.
 			summary, _ := summaryOrTruncation(m, maxChars)
 			pb.Content = ""
 			pb.Summary = summary
+			pb.Citations = nil
+			pb.Kind = ""
 		}
 		out[i] = pb
 	}

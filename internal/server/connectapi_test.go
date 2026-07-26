@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -560,6 +561,169 @@ func TestShapeProtoMemoriesFullFlag(t *testing.T) {
 	compact := shapeProtoMemories(ms, false, 4)
 	if compact[0].Content != "" || compact[0].Summary != "kept" {
 		t.Fatalf("full=false must clear content and keep summary: %+v", compact[0])
+	}
+}
+
+// TestConnectCompactViewOmitsCitations is the Connect half of D-07 (GAP 2's
+// required proof): shapeProtoMemories clears Citations (and Kind) in its
+// non-full branch, so ListMemories/SearchMemories default (full=false)
+// responses never leak citation payloads, while full=true and the
+// never-shaped GetMemory both return them intact. MCP's recallView already
+// satisfies this for free (hand-written allow-list, no citations field); this
+// test pins the asymmetric Connect-side fix.
+func TestConnectCompactViewOmitsCitations(t *testing.T) {
+	d := testDeps(t)
+	api := &engramAPI{d: d}
+	ctx := authedContext(t, "owner-compact-cites")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:connect-compact-cites"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("owner-compact-cites")))
+	}()
+
+	cites := []citationArg{
+		{Kind: "file", Ref: "internal/auth/verifier.go", Locator: "10-40", Pin: "sha256:abc", Excerpt: "jose.NewVerifier(...)"},
+		{Kind: "url", Ref: "https://pkg.go.dev/github.com/go-jose/go-jose/v4"},
+	}
+	id, _, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "citation-carrying record for Connect compact-view test", Scope: scope,
+		Source: "agent-inferred", Category: "decision", Citations: cites,
+	})
+	if err != nil {
+		t.Fatalf("storeMemory: %v", err)
+	}
+
+	actx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "owner-compact-cites"}})
+
+	findByID := func(t *testing.T, ms []*engramv1.Memory) *engramv1.Memory {
+		t.Helper()
+		for _, m := range ms {
+			if m.Id == id {
+				return m
+			}
+		}
+		t.Fatalf("seeded record %s not found in response", id)
+		return nil
+	}
+
+	t.Run("ListMemories compact clears citations and kind", func(t *testing.T) {
+		resp, err := api.ListMemories(actx, connect.NewRequest(&engramv1.ListMemoriesRequest{Scope: scope, Full: false}))
+		if err != nil {
+			t.Fatalf("ListMemories: %v", err)
+		}
+		got := findByID(t, resp.Msg.Memories)
+		if len(got.Citations) != 0 {
+			t.Errorf("ListMemories full=false: Citations = %+v, want empty", got.Citations)
+		}
+		if got.Kind != "" {
+			t.Errorf("ListMemories full=false: Kind = %q, want \"\"", got.Kind)
+		}
+		if got.Content != "" {
+			t.Errorf("ListMemories full=false: Content = %q, want cleared", got.Content)
+		}
+		if got.Summary == "" {
+			t.Error("ListMemories full=false: Summary must be populated in the compact view")
+		}
+	})
+
+	t.Run("ListMemories full=true keeps citations", func(t *testing.T) {
+		resp, err := api.ListMemories(actx, connect.NewRequest(&engramv1.ListMemoriesRequest{Scope: scope, Full: true}))
+		if err != nil {
+			t.Fatalf("ListMemories: %v", err)
+		}
+		got := findByID(t, resp.Msg.Memories)
+		if len(got.Citations) != len(cites) {
+			t.Fatalf("ListMemories full=true: Citations = %+v, want %d entries", got.Citations, len(cites))
+		}
+	})
+
+	t.Run("SearchMemories compact clears citations and kind", func(t *testing.T) {
+		resp, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{
+			Scope: scope, Query: "citation-carrying record", K: 10, Full: false,
+		}))
+		if err != nil {
+			t.Fatalf("SearchMemories: %v", err)
+		}
+		got := findByID(t, resp.Msg.Memories)
+		if len(got.Citations) != 0 {
+			t.Errorf("SearchMemories full=false: Citations = %+v, want empty", got.Citations)
+		}
+		if got.Kind != "" {
+			t.Errorf("SearchMemories full=false: Kind = %q, want \"\"", got.Kind)
+		}
+	})
+
+	t.Run("SearchMemories full=true keeps citations", func(t *testing.T) {
+		resp, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{
+			Scope: scope, Query: "citation-carrying record", K: 10, Full: true,
+		}))
+		if err != nil {
+			t.Fatalf("SearchMemories: %v", err)
+		}
+		got := findByID(t, resp.Msg.Memories)
+		if len(got.Citations) != len(cites) {
+			t.Fatalf("SearchMemories full=true: Citations = %+v, want %d entries", got.Citations, len(cites))
+		}
+	})
+
+	t.Run("GetMemory always returns citations (never shaped)", func(t *testing.T) {
+		resp, err := api.GetMemory(actx, connect.NewRequest(&engramv1.GetMemoryRequest{Id: id}))
+		if err != nil {
+			t.Fatalf("GetMemory: %v", err)
+		}
+		if len(resp.Msg.Memory.Citations) != len(cites) {
+			t.Fatalf("GetMemory: Citations = %+v, want %d entries", resp.Msg.Memory.Citations, len(cites))
+		}
+	})
+}
+
+// TestCitationsDoNotGrantWriteAccess is the citations half of D-16/SC4: a
+// shared citation-carrying record from owner A is readable (citations
+// included) by owner B, but a write attempt by owner B against it still fails
+// with the not-found-shaped error — adding a payload field created no new
+// authorization path. decideRecord/getWritable are untouched by this phase.
+func TestCitationsDoNotGrantWriteAccess(t *testing.T) {
+	d := testDeps(t)
+	api := &engramAPI{d: d}
+	ctxA := authedContext(t, "owner-cite-authz-a")
+	cA := callerFor(ctxA, t)
+	scope := "iso-test:project:citations-authz"
+	defer func() {
+		cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctxA, scope, store.Authenticated("owner-cite-authz-a")))
+	}()
+
+	cites := []citationArg{{Kind: "file", Ref: "f.go"}}
+	id, sid, err := d.storeMemory(ctxA, cA, storeArgs{
+		Content: "shared with citations", Scope: scope, Source: "user-said", Category: "decision", Citations: cites,
+	})
+	if err != nil {
+		t.Fatalf("storeMemory: %v", err)
+	}
+	shared := true
+	if _, err := d.updateMemory(ctxA, cA, updateArgs{ID: id, Shared: &shared}); err != nil {
+		t.Fatalf("updateMemory (share): %v", err)
+	}
+
+	// Owner B reads the shared record — including its citations.
+	bctx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "owner-cite-authz-b"}})
+	resp, err := api.GetMemory(bctx, connect.NewRequest(&engramv1.GetMemoryRequest{Id: sid}))
+	if err != nil {
+		t.Fatalf("owner B GetMemory (shared read): %v", err)
+	}
+	if len(resp.Msg.Memory.Citations) != len(cites) {
+		t.Fatalf("owner B read: Citations = %+v, want %d entries", resp.Msg.Memory.Citations, len(cites))
+	}
+
+	// Owner B's write attempt fails not-found-shaped — a shared record you can
+	// read is not one you can supersede/update.
+	ctxB := authedContext(t, "owner-cite-authz-b")
+	cB := callerFor(ctxB, t)
+	_, _, err = d.supersedeMemory(ctxB, cB, supersedeArgs{
+		storeArgs:  storeArgs{Content: "attacker content", Scope: scope, Source: "user-said", Category: "decision"},
+		Supersedes: sid,
+	})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("owner B supersede attempt on a shared (readable) record: err = %v, want store.ErrNotFound", err)
 	}
 }
 
