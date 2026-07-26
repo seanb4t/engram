@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -1030,4 +1031,160 @@ func TestConnectSearchDiscoveriesCitationsRoundTrip(t *testing.T) {
 			t.Fatalf("Citations[%d] not field-equal through the wire: got %+v, want %+v", i, c, want)
 		}
 	}
+}
+
+// TestMCPConnectCategoryFilterParity proves SC2: the same categories filter
+// issued over MCP (deps.searchMemory / deps.listMemory — the exact core the
+// search_memory/list_memory tool closures call) and over Connect
+// (engramAPI.SearchMemories / engramAPI.ListMemories) for the same caller,
+// scope, query, and k returns the IDENTICAL ordered record-id list. Both
+// lanes funnel through the same core, so a divergence here means a
+// handler-level parity bug, not a ranking difference (26-03 D-10/SC2).
+func TestMCPConnectCategoryFilterParity(t *testing.T) {
+	d := testDeps(t)
+	api := &engramAPI{d: d}
+	ctx := context.Background()
+	scope := "cat-parity:project:test"
+	now := timeNow()
+
+	decisionID := "cb000000-0000-0000-0000-000000000001"
+	preferenceID := "cb000000-0000-0000-0000-000000000002"
+	gotchaID := "cb000000-0000-0000-0000-000000000003"
+	records := []store.Memory{
+		{ID: decisionID, Content: "x", Scope: scope, Owner: "actor-A", Category: "decision", CreatedAt: now},
+		{ID: preferenceID, Content: "x", Scope: scope, Owner: "actor-A", Category: "preference", CreatedAt: now},
+		{ID: gotchaID, Content: "x", Scope: scope, Owner: "actor-A", Category: "gotcha", CreatedAt: now},
+	}
+	for _, m := range records {
+		if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", m.ID, err)
+		}
+	}
+	t.Cleanup(func() {
+		for _, m := range records {
+			cleanupErr(t, "Delete "+m.ID, d.st.Delete(ctx, m.ID, store.Authenticated("actor-A")))
+		}
+	})
+
+	mcpCtx := authedContext(t, "actor-A")
+	mcpCaller := callerFor(mcpCtx, t)
+	actx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}})
+
+	t.Run("search", func(t *testing.T) {
+		mcpOut, err := d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{
+			Query: "x", Scope: scope, K: 10, Categories: []string{"decision", "gotcha"},
+		})
+		if err != nil {
+			t.Fatalf("MCP searchMemory: %v", err)
+		}
+		mcpIDs := make([]string, len(mcpOut))
+		for i, m := range mcpOut {
+			mcpIDs[i] = m.ID
+		}
+
+		resp, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{
+			Query: "x", Scope: scope, K: 10, Categories: []string{"decision", "gotcha"},
+		}))
+		if err != nil {
+			t.Fatalf("Connect SearchMemories: %v", err)
+		}
+		connectIDs := make([]string, len(resp.Msg.Memories))
+		for i, m := range resp.Msg.Memories {
+			connectIDs[i] = m.Id
+		}
+
+		if !slices.Equal(mcpIDs, connectIDs) {
+			t.Fatalf("MCP/Connect category-filtered search order mismatch:\n MCP:     %v\n Connect: %v", mcpIDs, connectIDs)
+		}
+		if !slices.Contains(connectIDs, decisionID) || !slices.Contains(connectIDs, gotchaID) || slices.Contains(connectIDs, preferenceID) {
+			t.Errorf("categories=[decision,gotcha] wrong set: %v", connectIDs)
+		}
+	})
+
+	t.Run("list", func(t *testing.T) {
+		mcpRes, err := d.listMemory(mcpCtx, mcpCaller, coreListRequest{
+			Scope: scope, Limit: 10, Categories: []string{"decision", "gotcha"}, CursorMode: true,
+		})
+		if err != nil {
+			t.Fatalf("MCP listMemory: %v", err)
+		}
+		mcpIDs := make([]string, len(mcpRes.Memories))
+		for i, m := range mcpRes.Memories {
+			mcpIDs[i] = m.ID
+		}
+
+		lresp, err := api.ListMemories(actx, connect.NewRequest(&engramv1.ListMemoriesRequest{
+			Scope: scope, Limit: 10, Categories: []string{"decision", "gotcha"}, CursorMode: true,
+		}))
+		if err != nil {
+			t.Fatalf("Connect ListMemories: %v", err)
+		}
+		connectIDs := make([]string, len(lresp.Msg.Memories))
+		for i, m := range lresp.Msg.Memories {
+			connectIDs[i] = m.Id
+		}
+
+		if !slices.Equal(mcpIDs, connectIDs) {
+			t.Fatalf("MCP/Connect category-filtered list order mismatch:\n MCP:     %v\n Connect: %v", mcpIDs, connectIDs)
+		}
+		if !slices.Contains(connectIDs, decisionID) || !slices.Contains(connectIDs, gotchaID) || slices.Contains(connectIDs, preferenceID) {
+			t.Errorf("categories=[decision,gotcha] wrong set: %v", connectIDs)
+		}
+	})
+}
+
+// TestConnectSearchUnknownCategory pins D-11 at the proto boundary: the
+// SearchMemoriesRequest.categories field carries no buf.validate allowlist,
+// so a legitimate-but-non-write-domain value like "discovery" passes the
+// SAME protovalidate.Validator the running server's interceptor uses (never
+// an InvalidArgument), and a category value no record carries returns an
+// empty memories list with a nil error rather than a distinguishable error
+// (matching the MCP lane's D-11 contract).
+func TestConnectSearchUnknownCategory(t *testing.T) {
+	d := testDeps(t)
+	api := &engramAPI{d: d}
+	ctx := context.Background()
+	scope := "cat-unknown:project:test"
+	rec := store.Memory{
+		ID: "cb000000-0000-0000-0000-000000000004", Content: "x", Scope: scope,
+		Owner: "actor-A", Category: "decision", CreatedAt: timeNow(),
+	}
+	if err := d.st.Upsert(ctx, rec, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed %s: %v", rec.ID, err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete "+rec.ID, d.st.Delete(ctx, rec.ID, store.Authenticated("actor-A")))
+	})
+	actx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}})
+
+	v, err := protovalidate.New()
+	if err != nil {
+		t.Fatalf("protovalidate.New: %v", err)
+	}
+
+	t.Run("discovery_accepted_no_write_domain_allowlist_leak", func(t *testing.T) {
+		req := &engramv1.SearchMemoriesRequest{Query: "x", Scope: scope, K: 10, Categories: []string{"discovery"}}
+		if err := v.Validate(req); err != nil {
+			t.Fatalf("discovery must not be rejected by protovalidate (D-11: no write-domain allowlist on this field), got: %v", err)
+		}
+		resp, err := api.SearchMemories(actx, connect.NewRequest(req))
+		if err != nil {
+			t.Fatalf("Connect SearchMemories categories=[discovery]: %v", err)
+		}
+		if len(resp.Msg.Memories) != 0 {
+			t.Errorf("expected no discovery-category records seeded, got %d: %+v", len(resp.Msg.Memories), resp.Msg.Memories)
+		}
+	})
+
+	t.Run("unmatched_value_returns_empty_list_nil_error", func(t *testing.T) {
+		resp, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{
+			Query: "x", Scope: scope, K: 10, Categories: []string{"no-such-category"},
+		}))
+		if err != nil {
+			t.Fatalf("Connect SearchMemories categories=[no-such-category]: expected nil error, got %v", err)
+		}
+		if len(resp.Msg.Memories) != 0 {
+			t.Errorf("expected empty memories list for an unmatched category, got %d: %+v", len(resp.Msg.Memories), resp.Msg.Memories)
+		}
+	})
 }
