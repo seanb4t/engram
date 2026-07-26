@@ -47,6 +47,10 @@ type Client struct {
 	maxChars  int
 	maxTokens int
 	http      *http.Client
+	// chatURL is the fully-resolved /chat/completions endpoint, computed once
+	// in New via openaiurl.Join(baseURL, "chat/completions"). Summarize always
+	// uses this field, never re-joins baseURL per call.
+	chatURL string
 }
 
 // Option customizes a Client.
@@ -80,6 +84,10 @@ func New(baseURL, apiKey, model string, maxChars int, opts ...Option) *Client {
 	for _, o := range opts {
 		o(c)
 	}
+	// Resolve the chat-completions URL exactly once, mirroring
+	// internal/embed.Client's embeddingsURL caching (D-14 unified the join
+	// primitive; this mirrors the caching pattern too).
+	c.chatURL = openaiurl.Join(c.baseURL, "chat/completions")
 	return c
 }
 
@@ -156,9 +164,9 @@ func (c *Client) Summarize(ctx context.Context, content string) (sum string, err
 	})
 	// D-13: the endpoint is built by the shared shape-aware join, not a naive
 	// concat — a base URL already ending in /v1 (every hosted chat provider's
-	// documented shape) must not double it.
-	endpoint := openaiurl.Join(c.baseURL, "chat/completions")
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(reqBody))
+	// documented shape) must not double it. Resolved once in New and cached in
+	// c.chatURL (mirrors internal/embed.Client.embeddingsURL).
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.chatURL, bytes.NewReader(reqBody))
 	if err != nil {
 		return "", err
 	}
