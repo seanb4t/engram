@@ -482,7 +482,7 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 4. None of the three additions introduces new store-layer authz surface — citations and category
    filtering compose onto the existing authz-outer-`Must` invariant untouched.
 
-**Plans**: 5/6 plans executed
+**Plans**: 6/6 plans executed
 
 **Wave 1**
 
@@ -503,7 +503,7 @@ mirrors DEC-4xt7's tag-filter hard-AND-pre-filter pattern for category filtering
 
 **Wave 5** *(blocked on Wave 4)*
 
-- [ ] 26-06-PLAN.md — Docs + skill: `curating-memory` citations guidance, memory-record/tools reference updates, `ENGRAM_OPENAI_CHAT_BASE_URL` configure guide (Wave 5, depends on 26-03 + 26-04 + 26-05)
+- [x] 26-06-PLAN.md — Docs + skill: `curating-memory` citations guidance, memory-record/tools reference updates, `ENGRAM_OPENAI_CHAT_BASE_URL` configure guide (Wave 5, depends on 26-03 + 26-04 + 26-05)
 
 ## Progress
 

@@ -4,17 +4,17 @@ milestone: v0.11.x
 milestone_name: Capture & Service Identity
 current_phase: 26
 current_phase_name: Structured Citations, Category Filter & Chat Base URL
-status: executing
-stopped_at: Completed 26-05-PLAN.md
-last_updated: "2026-07-26T03:37:41.715Z"
+status: verifying
+stopped_at: Completed 26-06-PLAN.md — Phase 26 complete
+last_updated: "2026-07-26T03:48:22.025Z"
 last_activity: 2026-07-25
 last_activity_desc: Phase 26 execution started
 progress:
   total_phases: 8
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 19
-  completed_plans: 18
-  percent: 50
+  completed_plans: 19
+  percent: 63
 ---
 
 # Project State
@@ -30,10 +30,10 @@ See: .planning/PROJECT.md (updated 2026-07-18 — after Phase 24)
 
 Phase: 26 (Structured Citations, Category Filter & Chat Base URL) — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-25 — Phase 26 execution started
 
-Progress: [████████████████████] 11/11 plans ([██████████] 95%) · 3/8 phases (38%)
+Progress: [████████████████████] 11/11 plans ([██████████] 100%) · 3/8 phases (38%)
 
 ## Deferred Items
 
@@ -129,6 +129,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 - [Phase ?]: [Phase 26 P03]: D-10 checkpoint resolved by human as ship-field-8 (genuine decision, not auto-approved) — SearchMemoriesRequest.categories = 8 shipped additive, no buf.validate (D-11), closing SC2's Connect-side parity gap
 - [Phase ?]: [Phase 26 P05]: D-02 confirmed: citations write exclusively inside payload(); zero preservation code added to Update/UpdatePayload/Supersede/IncrementAccess, proven by a six-sub-test regression suite
 - [Phase ?]: [Phase 26 P05]: validateStoreDiscovery's ref-required check was already shipped pre-phase (PR #28); the validateCitations extraction preserved it verbatim, no new discovery-path behavior change
+- [Phase ?]: [Phase 26 P06]: Skill path corrected — actual repo path is skill/engram/skills/curating-memory/SKILL.md, not skill/engram/curating-memory/SKILL.md as the plan's files_modified stated
+- [Phase ?]: [Phase 26 P06]: ENGRAM_OPENAI_CHAT_BASE_URL row placed once in the Embedder/OpenAI table; Auto-summary section carries narrative prose + cross-reference instead of a duplicate row
 
 ### Blockers/Concerns
 
@@ -146,8 +148,8 @@ store-layer authz **primitive** and (except cedar-go) zero new dependencies this
 
 ## Session Continuity
 
-Last session: 2026-07-26T03:37:41.707Z
-Stopped at: Completed 26-05-PLAN.md
+Last session: 2026-07-26T03:48:22.018Z
+Stopped at: Completed 26-06-PLAN.md — Phase 26 complete
 Resume file: None
 
 ## Performance Metrics
@@ -210,6 +212,7 @@ Resume file: None
 | Phase 26 P04 | 25min | 3 tasks | 13 files |
 | Phase 26 P03 | 12min | 2 tasks | 7 files |
 | Phase 26 P05 | 6min | 3 tasks | 6 files |
+| Phase 26 P06 | 18min | 3 tasks | 4 files |
 
 ## Operator Next Steps
 
