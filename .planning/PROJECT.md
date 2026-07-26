@@ -81,8 +81,9 @@ Candidate inputs when scoping it — the carry-forward `### Deferred` list below
   written+tested decision (ADR `engram-svct`); narrowing it is deferred to full ABAC.
 - **Cedar partial evaluation** — not in cedar-go's stable core, so the bucket-decision →
   store-filter pattern stands in for it. Revisit if upstream lands residual compilation.
-- **Nyquist validation coverage** — phases 24 and 26 closed with `VALIDATION.md` at `status: draft`
-  (`/gsd-validate-phase 24` / `26` would reconcile them retroactively).
+- **Nyquist validation coverage** — phase 26 still has `VALIDATION.md` at `status: draft`
+  (`/gsd-validate-phase 26` reconciles it retroactively). Phase 24 was reconciled 2026-07-26 with
+  zero gaps found.
 
 ## Core Value
 

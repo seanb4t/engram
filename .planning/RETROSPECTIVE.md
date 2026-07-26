@@ -230,7 +230,10 @@ hygiene (rumdl exclude, Phase-11 residuals, Renovate self-heal).
 - Model mix: opus for planning/orchestration, sonnet for research/execution/verification/review.
 - Per-phase lifecycle ran fully (discuss→plan→execute→verify→secure→review→ship) with per-phase PRs,
   except phases 22+23 which shipped together in #396.
-- Two phases (24, 26) closed without reconciling `VALIDATION.md`, leaving Nyquist coverage at 3/5.
+- Two phases (24, 26) closed without reconciling `VALIDATION.md`, leaving Nyquist coverage at 3/5
+  at milestone close. Phase 24 was reconciled retroactively on 2026-07-26 and found **zero gaps** —
+  the tests had all shipped with the phase, so the `draft` status was bookkeeping, not missing
+  coverage. That is the likely shape of the phase-26 gap too.
 - Every commit this milestone used the per-commit `git -c commit.gpgsign=false` override — the
   1Password SSH signing agent failed throughout; persistent config was never modified.
 
@@ -249,7 +252,7 @@ Populated as milestones accumulate.
 | Audit verdict | PASSED | tech_debt (0 blockers) | PASSED (0 blockers) | v0.11.x also 6/6 integration seams, 2/2 E2E flows |
 | Merge shape | 1 PR (all phases) | per-phase PRs | per-phase PRs (22+23 combined) | 4 PRs for 5 phases |
 | Defects caught by review, not tests | — | — | 3 (phases 23, 25, 26) | All compiled, vetted, linted, and passed the suite |
-| Nyquist coverage | — | 9/9 | 3/5 (24, 26 left `draft`) | v0.11.x regression — reconcile VALIDATION.md at phase close |
+| Nyquist coverage | — | 9/9 | 3/5 at close → 4/5 (26 left `draft`) | v0.11.x regression — reconcile VALIDATION.md at phase close; the 24 audit found 0 real gaps |
 
 ---
 
