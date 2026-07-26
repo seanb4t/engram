@@ -236,6 +236,76 @@ func TestDiscoveryRoundtrip(t *testing.T) {
 	cleanupErr(t, "Delete "+m.ID, s.Delete(ctx, m.ID, Anonymous()))
 }
 
+// TestPayloadCitations pins D-01: payload()'s citations write gate is
+// independent of the discovery-only kind gate. A curated (non-discovery)
+// record carrying citations round-trips them through a real Upsert/Get, a
+// curated record with no citations produces a stored payload with no
+// "citations" key at all (not an empty list), and "kind" stays
+// discovery-exclusive regardless of whether citations are present.
+func TestPayloadCitations(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	// A `decision` record with citations round-trips them, in order, through
+	// a real Upsert/Get — the store-level half of GAP 1.
+	withCites := Memory{
+		ID:       "99999999-9999-9999-9999-999999999991",
+		Content:  "use jose for JWT, not golang-jwt",
+		Scope:    "eval-test:project:citations",
+		Source:   "agent-inferred",
+		Category: "decision",
+		Citations: []Citation{
+			{Kind: "file", Ref: "internal/auth/verifier.go", Locator: "10-40", Pin: "sha256:abc", Excerpt: "jose.NewVerifier(...)"},
+			{Kind: "url", Ref: "https://pkg.go.dev/github.com/go-jose/go-jose/v4"},
+		},
+		CreatedAt: time.Now().UTC().Truncate(time.Second),
+	}
+	if err := s.Upsert(ctx, withCites, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert (with citations): %v", err)
+	}
+	defer func() { cleanupErr(t, "Delete "+withCites.ID, s.Delete(ctx, withCites.ID, Anonymous())) }()
+	got, err := s.Get(ctx, withCites.ID)
+	if err != nil {
+		t.Fatalf("get (with citations): %v", err)
+	}
+	if len(got.Citations) != 2 {
+		t.Fatalf("citations: got %d want 2: %+v", len(got.Citations), got.Citations)
+	}
+	if got.Citations[0] != withCites.Citations[0] {
+		t.Errorf("citation[0] mismatch: got %+v want %+v", got.Citations[0], withCites.Citations[0])
+	}
+	if got.Citations[1] != withCites.Citations[1] {
+		t.Errorf("citation[1] mismatch: got %+v want %+v", got.Citations[1], withCites.Citations[1])
+	}
+	// A `decision` record — even one carrying citations — never gets a "kind"
+	// payload key; that stays discovery-exclusive.
+	if _, ok := payload(withCites)["kind"]; ok {
+		t.Error("decision record with citations must not write a kind payload key")
+	}
+
+	// A `decision` record with NO citations must produce a payload with no
+	// "citations" key at all (not an empty list) — byte-identical to today.
+	noCites := Memory{ID: "99999999-9999-9999-9999-999999999992", Content: "c", Category: "decision"}
+	if _, ok := payload(noCites)["citations"]; ok {
+		t.Error("citation-free decision record must not write a citations payload key")
+	}
+	if _, ok := payload(noCites)["kind"]; ok {
+		t.Error("decision record must not write a kind payload key")
+	}
+
+	// A discovery record still writes its kind payload key, regardless of
+	// citations — the discovery-only gate is unchanged.
+	disco := Memory{ID: "99999999-9999-9999-9999-999999999993", Content: "c", Category: "discovery", Kind: "fact",
+		Citations: []Citation{{Kind: "file", Ref: "f.go"}}}
+	p := payload(disco)
+	if _, ok := p["kind"]; !ok {
+		t.Error("discovery record must write a kind payload key")
+	}
+	if _, ok := p["citations"]; !ok {
+		t.Error("discovery record with citations must write a citations payload key")
+	}
+}
+
 func TestSearchDiscoveryFilters(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

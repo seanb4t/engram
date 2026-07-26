@@ -441,6 +441,13 @@ type storeArgs struct {
 	// (both store_memory and schedule_memory gain it from this single
 	// declaration, D-13) — do NOT declare it separately on scheduleArgs.
 	IdempotencyKey string `json:"idempotency_key,omitempty" jsonschema:"optional owner-scoped replay-safety key: a repeat call with the same key and identical content returns the original record unchanged (no duplicate, no side-effects); the same key with different content is rejected; omit for a fresh record every time"`
+	// Citations is promoted onto scheduleArgs and supersedeArgs via the same
+	// Go field embedding as IdempotencyKey above (D-04) — one declaration
+	// here, store_memory/schedule_memory/supersede_memory all inherit it; do
+	// NOT declare it separately on either embedding struct. Optional on every
+	// category (unlike store_discovery's required minimum): never inferred,
+	// only what the caller explicitly supplies (Phase 26, D-01/D-03).
+	Citations []citationArg `json:"citations,omitempty" jsonschema:"optional source anchors for this memory; never inferred, only what the caller explicitly supplies"`
 }
 
 // scheduleArgs embeds storeArgs and adds the temporal window. The anonymous
@@ -642,13 +649,28 @@ func validateStoreDiscovery(a storeDiscoveryArgs) error {
 	if !strings.HasPrefix(a.Scope, "discovery:") {
 		return fmt.Errorf("scope must be a discovery scope (start with \"discovery:\"), got %q", a.Scope)
 	}
-	if len(a.Citations) == 0 {
-		return fmt.Errorf("at least one citation is required")
+	return validateCitations(a.Citations, 1)
+}
+
+// validateCitations enforces the shared citation contract (D-05): at least
+// minCount entries, no more than maxDiscoveryCitations total, and per entry a
+// kind accepted by validCitationKind, a non-empty ref, and an excerpt no
+// larger than maxCitationExcerptBytes. store_discovery calls this with
+// minCount 1 (unchanged behavior — extracted verbatim from
+// validateStoreDiscovery's former inline loop); the memory write handlers
+// (store_memory/schedule_memory/supersede_memory) call it with minCount 0,
+// since citations are optional provenance on curated categories.
+func validateCitations(cites []citationArg, minCount int) error {
+	if len(cites) < minCount {
+		if minCount == 1 {
+			return fmt.Errorf("at least one citation is required")
+		}
+		return fmt.Errorf("at least %d citation(s) required", minCount)
 	}
-	if len(a.Citations) > maxDiscoveryCitations {
-		return fmt.Errorf("too many citations: %d (max %d)", len(a.Citations), maxDiscoveryCitations)
+	if len(cites) > maxDiscoveryCitations {
+		return fmt.Errorf("too many citations: %d (max %d)", len(cites), maxDiscoveryCitations)
 	}
-	for i, c := range a.Citations {
+	for i, c := range cites {
 		if !validCitationKind(c.Kind) {
 			return fmt.Errorf("citation %d: kind must be one of file|commit|url|repo, got %q", i, c.Kind)
 		}
@@ -682,6 +704,18 @@ func (a storeArgs) toMemory(owner, actor string, createdAt time.Time) store.Memo
 	if a.Summary != "" {
 		src = store.SummarySourceClient
 	}
+	// Citations: nil/empty input leaves the field nil rather than an
+	// allocated empty slice, keeping payload()'s len(m.Citations) > 0 gate
+	// meaningful (D-01) — an allocated-but-empty slice would still satisfy
+	// len()==0 there, so this guard is belt-and-suspenders, not load-bearing,
+	// but it matches storeDiscovery's mapping loop shape exactly (D-05).
+	var cites []store.Citation
+	if len(a.Citations) > 0 {
+		cites = make([]store.Citation, len(a.Citations))
+		for i, cit := range a.Citations {
+			cites[i] = store.Citation{Kind: cit.Kind, Ref: cit.Ref, Locator: cit.Locator, Pin: cit.Pin, Excerpt: cit.Excerpt}
+		}
+	}
 	return store.Memory{
 		ID:            uuid.NewString(),
 		Content:       a.Content,
@@ -698,6 +732,7 @@ func (a storeArgs) toMemory(owner, actor string, createdAt time.Time) store.Memo
 		Actor:         actor,
 		Owner:         owner,
 		CreatedAt:     createdAt,
+		Citations:     cites,
 	}
 }
 
@@ -753,6 +788,9 @@ func (d *deps) checkIdempotentReplay(ctx context.Context, owner string, a storeA
 }
 
 func (d *deps) storeMemory(ctx context.Context, c caller, a storeArgs) (string, string, error) {
+	if err := validateCitations(a.Citations, 0); err != nil {
+		return "", "", err
+	}
 	owner := c.Subj.Owner()
 	replay, id, shortID, pointID, err := d.checkIdempotentReplay(ctx, owner, a)
 	if err != nil {
@@ -837,6 +875,9 @@ func (d *deps) scheduleMemory(ctx context.Context, c caller, a scheduleArgs) (st
 	// future) before checkIdempotentReplay ever got a chance to recognize it
 	// as a no-op replay. parseWindow only needs to run on the non-replay
 	// (create) path below.
+	if err := validateCitations(a.Citations, 0); err != nil {
+		return "", "", err
+	}
 	owner := c.Subj.Owner()
 	replay, id, shortID, pointID, err := d.checkIdempotentReplay(ctx, owner, a.storeArgs)
 	if err != nil {
@@ -1295,6 +1336,9 @@ func (d *deps) setVisibility(ctx context.Context, c caller, a setVisibilityArgs)
 // correcting record is store_memory-shaped, so it is enqueued for async
 // summary-on-write like any other store_memory write.
 func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (string, string, error) {
+	if err := validateCitations(a.Citations, 0); err != nil {
+		return "", "", err
+	}
 	// WR-04 defense-in-depth: a.storeArgs.IdempotencyKey can be populated on
 	// the wire despite supersedeArgs' json:"-" shadow field (see the
 	// supersedeArgs doc comment — the shadow only removes the field from the

@@ -662,6 +662,178 @@ func TestStoreDiscoveryStampsEmbedderIdentityHandler(t *testing.T) {
 	}
 }
 
+// citationFixture returns two distinct, field-complete citations for reuse
+// across the citations test suite — the fixture TestUpdateMemoryPreservesCitations
+// (Task 2) also reuses per the plan's read_first pointer.
+func citationFixture() []citationArg {
+	return []citationArg{
+		{Kind: "file", Ref: "internal/auth/verifier.go", Locator: "10-40", Pin: "sha256:abc", Excerpt: "jose.NewVerifier(...)"},
+		{Kind: "url", Ref: "https://pkg.go.dev/github.com/go-jose/go-jose/v4"},
+	}
+}
+
+// assertCitationsEqual compares two []store.Citation slices field by field, in
+// order — asserting only the length would let a path that preserved the count
+// while corrupting the contents pass (Task 2's non-negotiable requirement).
+func assertCitationsEqual(t *testing.T, got []store.Citation, want []citationArg) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("citations: got %d want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		g, w := got[i], want[i]
+		if g.Kind != w.Kind || g.Ref != w.Ref || g.Locator != w.Locator || g.Pin != w.Pin || g.Excerpt != w.Excerpt {
+			t.Errorf("citation[%d] mismatch: got %+v want %+v", i, g, w)
+		}
+	}
+}
+
+// TestStoreMemoryCitationsRoundTrip is the GAP 1 non-negotiable proof (D-04's
+// research gap): storeArgs.Citations must survive toMemory's mapping,
+// payload()'s write gate, and fromPayload()'s decode, for all three write
+// tools that embed storeArgs (store_memory, schedule_memory,
+// supersede_memory) — via the single declaration on storeArgs, never
+// re-declared on the embedding structs. Asserting only that the call succeeds
+// would miss the exact failure this test exists to catch: toMemory silently
+// dropping the field before Upsert ever sees it.
+func TestStoreMemoryCitationsRoundTrip(t *testing.T) {
+	d := testDeps(t)
+	cites := citationFixture()
+
+	t.Run("store_memory", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-store")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-store"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-store")))
+		}()
+
+		id, _, err := d.storeMemory(ctx, c, storeArgs{
+			Content: "use jose for JWT, not golang-jwt", Scope: scope, Source: "agent-inferred",
+			Category: "decision", Citations: cites,
+		})
+		if err != nil {
+			t.Fatalf("storeMemory: %v", err)
+		}
+		got, err := d.getMemory(ctx, c, idArgs{ID: id})
+		if err != nil {
+			t.Fatalf("getMemory: %v", err)
+		}
+		assertCitationsEqual(t, got.Citations, cites)
+	})
+
+	t.Run("schedule_memory", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-schedule")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-schedule"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-schedule")))
+		}()
+
+		id, _, err := d.scheduleMemory(ctx, c, scheduleArgs{
+			storeArgs: storeArgs{
+				Content: "temp note with citations", Scope: scope, Source: "agent-inferred",
+				Category: "decision", Citations: cites,
+			},
+			NotBefore: timeNow().Add(-time.Hour).Format(time.RFC3339), // already active
+		})
+		if err != nil {
+			t.Fatalf("scheduleMemory: %v", err)
+		}
+		got, err := d.getMemory(ctx, c, idArgs{ID: id})
+		if err != nil {
+			t.Fatalf("getMemory: %v", err)
+		}
+		assertCitationsEqual(t, got.Citations, cites)
+	})
+
+	t.Run("supersede_memory", func(t *testing.T) {
+		ctx := authedContext(t, "sub-cite-supersede")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:citations-supersede"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(ctx, scope, store.Authenticated("sub-cite-supersede")))
+		}()
+
+		targetID, targetSID, err := d.storeMemory(ctx, c, storeArgs{
+			Content: "original, no citations", Scope: scope, Source: "user-said", Category: "gotcha",
+		})
+		if err != nil {
+			t.Fatalf("seed store: %v", err)
+		}
+		newID, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+			storeArgs: storeArgs{
+				Content: "corrected, WITH citations", Scope: scope, Source: "user-said",
+				Category: "gotcha", Citations: cites,
+			},
+			Supersedes: targetSID,
+		})
+		if err != nil {
+			t.Fatalf("supersedeMemory: %v", err)
+		}
+		_ = targetID
+		got, err := d.getMemory(ctx, c, idArgs{ID: newID})
+		if err != nil {
+			t.Fatalf("getMemory: %v", err)
+		}
+		assertCitationsEqual(t, got.Citations, cites)
+	})
+}
+
+// TestCitationsValidation pins D-05: the shared validateCitations helper
+// enforces kind membership, non-empty ref, the 50-citation cap, and the 16
+// KiB excerpt cap identically whether called with minCount 0 (the memory
+// write handlers) or minCount 1 (store_discovery, unchanged). Pure unit test:
+// validateCitations touches neither Qdrant nor the embedder.
+func TestCitationsValidation(t *testing.T) {
+	good := []citationArg{{Kind: "file", Ref: "f.go"}}
+	if err := validateCitations(nil, 0); err != nil {
+		t.Errorf("zero citations with minCount 0 (memory path) rejected: %v", err)
+	}
+	if err := validateCitations(good, 0); err != nil {
+		t.Errorf("valid single citation rejected: %v", err)
+	}
+	if err := validateCitations(nil, 1); err == nil {
+		t.Error("zero citations with minCount 1 (discovery path) accepted, want rejection")
+	}
+
+	cases := []struct {
+		name string
+		cs   []citationArg
+	}{
+		{"bad kind", []citationArg{{Kind: "blob", Ref: "f"}}},
+		{"empty kind", []citationArg{{Kind: "", Ref: "f"}}},
+		{"empty ref", []citationArg{{Kind: "file", Ref: ""}}},
+		{"51 citations", make([]citationArg, maxDiscoveryCitations+1)},
+		{"oversized excerpt", []citationArg{{Kind: "file", Ref: "f", Excerpt: strings.Repeat("a", maxCitationExcerptBytes+1)}}},
+		{"second citation bad", []citationArg{{Kind: "file", Ref: "ok"}, {Kind: "url", Ref: ""}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := validateCitations(tc.cs, 0); err == nil {
+				t.Errorf("%s: expected rejection at minCount 0, got nil", tc.name)
+			}
+			// A citation malformed enough to fail at minCount 0 must also fail
+			// at minCount 1 — the discovery path is a strict superset of the
+			// memory path's per-entry checks, differing only in the floor.
+			if err := validateCitations(tc.cs, 1); err == nil {
+				t.Errorf("%s: expected rejection at minCount 1, got nil", tc.name)
+			}
+		})
+	}
+
+	// The handler-level rejection: a malformed citation on store_memory is
+	// rejected before any embed or store work (validateCitations runs first).
+	d := &deps{} // no embedder/store wired — a call that reached Embed would panic
+	ctx := authedContext(t, "sub-cite-invalid")
+	if _, _, err := d.storeMemory(ctx, callerFor(ctx, t), storeArgs{
+		Content: "x", Scope: "s", Source: "user-said", Category: "gotcha",
+		Citations: []citationArg{{Kind: "not-a-kind", Ref: "f"}},
+	}); err == nil {
+		t.Error("storeMemory with an invalid citation kind: want error, got nil")
+	}
+}
+
 // TestUpdateMemoryReStampsEmbedderIdentityHandler proves the re-embed path
 // (updateMemory -> Store.Update -> Upsert) RE-stamps the identity, not only
 // the initial write: the seed record carries a stale identity, and after

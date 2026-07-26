@@ -193,9 +193,14 @@ type Memory struct {
 	// pointer (like NotBefore/NotAfter) so json omitempty actually fires and a
 	// never-accessed record omits the field rather than emitting 0001-01-01.
 	LastAccessedAt *time.Time `json:"last_accessed_at,omitempty"`
-	// Discovery-only (zero-valued for the curated four categories).
-	Kind      string     `json:"kind,omitempty"`      // "map" | "fact"
-	Citations []Citation `json:"citations,omitempty"` // >= 1 for discoveries
+	// Kind is discovery-only (zero-valued for the curated categories): "map" | "fact".
+	Kind string `json:"kind,omitempty"`
+	// Citations are optional source anchors on ANY category (Phase 26, D-01) —
+	// required (>= 1) only for discoveries, optional and never auto-populated
+	// on curated memory records. The write gate in payload() is independent of
+	// the Kind gate: citations are written whenever non-empty, regardless of
+	// category.
+	Citations []Citation `json:"citations,omitempty"`
 	// Summary is a short recall line shown in place of Content by the recall
 	// path. Authored by the caller (SummarySource "client") or filled by the
 	// offline summarize-missing sweep ("auto"); "" means none.
@@ -501,6 +506,8 @@ func payload(m Memory) map[string]any {
 	}
 	if m.Category == "discovery" {
 		p["kind"] = m.Kind
+	}
+	if len(m.Citations) > 0 {
 		cites := make([]any, len(m.Citations))
 		for i, c := range m.Citations {
 			cites[i] = map[string]any{
