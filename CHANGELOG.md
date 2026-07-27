@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.1](https://github.com/seanb4t/engram/compare/v0.11.0...v0.11.1) (2026-07-27)
+
+
+### Bug Fixes
+
+* **ci:** close the goreleaser proxy race and add a re-ship path ([#438](https://github.com/seanb4t/engram/issues/438)) ([bbb12ae](https://github.com/seanb4t/engram/commit/bbb12aea4a1d2aaed83053e1cd893591585b386a))
+* **release:** republish artifacts after the v0.11.0 goreleaser proxy race ([#436](https://github.com/seanb4t/engram/issues/436)) ([0db3367](https://github.com/seanb4t/engram/commit/0db33679ab19b645bbdf53c916061a79f0a97a83))
+
 ## [0.11.0](https://github.com/seanb4t/engram/compare/v0.8.8...v0.11.0) (2026-07-27)
 
 
