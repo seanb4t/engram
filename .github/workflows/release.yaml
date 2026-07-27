@@ -53,10 +53,19 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "$INPUT_TAG" ]; then
+            # The dispatch input reaches actions/checkout's `ref:` and the chart
+            # version (VERSION="${TAG_NAME#v}"), so constrain its shape. Dispatch
+            # already requires write access, but this rejects typos that would
+            # otherwise publish a chart under a garbage version.
+            if ! printf '%s' "$INPUT_TAG" |
+                 grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+              echo "::error::tag must look like vX.Y.Z (got: ${INPUT_TAG})"
+              exit 1
+            fi
             echo "Manual re-ship requested for $INPUT_TAG"
             echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
             echo "ship=true" >> "$GITHUB_OUTPUT"
-          elif [ -n "$RP_CREATED" ] && [ -n "$RP_TAG" ]; then
+          elif [ "$RP_CREATED" = "true" ] && [ -n "$RP_TAG" ]; then
             echo "release-please cut $RP_TAG"
             echo "tag=$RP_TAG" >> "$GITHUB_OUTPUT"
             echo "ship=true" >> "$GITHUB_OUTPUT"
