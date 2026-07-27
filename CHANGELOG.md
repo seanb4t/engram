@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.11.0](https://github.com/seanb4t/engram/compare/v0.8.8...v0.11.0) (2026-07-27)
+
+
+### Features
+
+* **auth:** service auth chain & tenancy isolation (Phase 23) ([#396](https://github.com/seanb4t/engram/issues/396)) ([ab84757](https://github.com/seanb4t/engram/commit/ab8475702344b00ae054d08201abcfc258b30c77))
+* **capture:** idempotent store_memory via optional idempotency_key (Phase 24) ([#404](https://github.com/seanb4t/engram/issues/404)) ([67df46a](https://github.com/seanb4t/engram/commit/67df46a6b3d97b440d3647ba2498410640f6434d))
+* **server:** structured citations, category filter & distinct chat base URL ([#432](https://github.com/seanb4t/engram/issues/432)) ([9980d94](https://github.com/seanb4t/engram/commit/9980d9456d826fa1d26ded63ab2814da75b9697c))
+* **store:** supersession with history — supersede_memory tool + recall soft-hide ([#429](https://github.com/seanb4t/engram/issues/429)) ([fe05ee2](https://github.com/seanb4t/engram/commit/fe05ee281831d462b51fba16527d39539df20662))
+
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/grpc to v1.82.1 ([#399](https://github.com/seanb4t/engram/issues/399)) ([5802b3e](https://github.com/seanb4t/engram/commit/5802b3ef9d1c61cf7ccf4cd482e07317e50db628))
+
+
+### Miscellaneous Chores
+
+* **release:** bump feat to minor and release as 0.11.0 ([#435](https://github.com/seanb4t/engram/issues/435)) ([f636894](https://github.com/seanb4t/engram/commit/f636894667940d8f779e7861ea9abf407ce5d283))
+
 ## [0.8.8](https://github.com/seanb4t/engram/compare/v0.8.7...v0.8.8) (2026-07-17)
 
 
