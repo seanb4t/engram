@@ -2,38 +2,36 @@
 gsd_state_version: 1.0
 milestone: v0.11.x
 milestone_name: Capture & Service Identity
-current_phase: 26
-status: "Phase 26 shipped — PR #432"
+status: Awaiting next milestone
 stopped_at: Completed 26-06-PLAN.md — Phase 26 complete
-last_updated: "2026-07-26T17:46:44.404Z"
+last_updated: "2026-07-26T23:20:15.574Z"
 last_activity: 2026-07-26
+last_activity_desc: Milestone v0.11.x completed and archived
 progress:
-  total_phases: 8
+  total_phases: 5
   completed_phases: 5
   total_plans: 19
   completed_plans: 19
-  percent: 63
-current_phase_name: Structured Citations, Category Filter & Chat Base URL
-last_activity_desc: Phase 26 complete
+  percent: 100
+current_phase: null
+current_phase_name: null
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-18 — after Phase 24)
+See: .planning/PROJECT.md (updated 2026-07-26 — after closing milestone v0.11.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 26 — Structured Citations, Category Filter & Chat Base URL
+**Current focus:** Planning the next milestone (`/gsd-new-milestone`) — v0.11.x closed 2026-07-26.
 
 ## Current Position
 
-Phase: 26
-Plan: Not started
-Status: Phase 26 shipped — PR #432
-Last activity: 2026-07-26
-
-Progress: [████████████████████] 11/11 plans ([██████████] 100%) · 3/8 phases (38%)
+Phase: Milestone v0.11.x complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-07-26 — Milestone v0.11.x completed and archived
 
 ## Deferred Items
 
@@ -47,98 +45,51 @@ Items acknowledged and deferred at milestone close on 2026-07-10:
 
 ### Decisions
 
-Full decision record (56 ADR-locked baseline decisions + v0.9.x/v0.10.x milestone decisions) in
-PROJECT.md. v0.9.x headline decisions: D-04 always-on `search_memory` score; D-06 stdlib
-lexical reranker (`store.SearchReranked`); D-01/D-08 async summaries off the write path
-drained after shutdown under the CR-01 kernel; D-08 usage signals never affect ranking; D-09
-`ENGRAM_USAGE_SIGNALS` defaults on (non-egressing). Reusable Go conventions: CR-01
-shutdown-safety (RWMutex+closed guard); `*time.Time` for optional timestamps (never
-`time.Time`+`omitempty`).
+Full decision record lives in `.planning/PROJECT.md` (56 ADR-locked baseline decisions plus the
+per-milestone Key Decisions table). Per-milestone detail is archived alongside each milestone in
+`.planning/milestones/v*-{ROADMAP,REQUIREMENTS}.md`. This section carries only what the *next*
+milestone needs in working memory.
 
-**v0.10.x milestone decisions (resolved at scoping, 2026-07-10 — full text in
-`milestones/v0.10.x-REQUIREMENTS.md`):**
+**Standing invariants (do not relitigate without an ADR):**
 
-- DECISION 1 — Write-lane CRUD scope: full CRUD + Schedule (all six write RPCs shipped).
-- DECISION 2 — Session rotation: stateless sliding-expiry re-seal, no server-side state (honors DEC-u9v); ADR `engram-slr8` documents the no-revocation trade-off.
-- DECISION 3 — Reindex boundary: document AND payload-stamp embedder-config identity (Phase 13).
+- Authorization is enforced in `internal/store` (Qdrant read filters + owner gates), never in
+  handlers. As of v0.11.x the predicate comes from the `internal/authz` Cedar PDP — bucket-level
+  decisions only, compiled into the Qdrant filter; no per-record Cedar eval on bulk paths
+  (ADR `engram-cdr1`, refines LOCKED `DEC-cgb`).
+- Capture is explicit and zero-junk. No auto-extraction, no similarity-triggered supersession, no
+  auto-populated citations.
+- Unauthorized id-addressed operations are 404-indistinguishable from a missing id (`DEC-xa6`).
+- One Qdrant collection for every memory kind; new features add payload keys, never collections
+  (`DEC-2bv`).
 
-**v0.11.x roadmap build-order rationale (research-derived, locked at roadmap creation
-2026-07-16 — full detail in `.planning/research/{SUMMARY,ARCHITECTURE,CEDAR}.md`):** Phase 22
-(Cedar authz foundation, `internal/authz` + cedar-go v1.8.0) must land first — it's a
-behavior-preserving refinement of `DEC-cgb` (new ADR, working id DEC-cdr1: "PDP decides the
-predicate; the store enforces it as the Qdrant filter" — bucket-level decisions only, no
-per-record Cedar eval, no partial evaluation since cedar-go doesn't have it). Phase 23 (service
-auth chain + tenancy isolation) builds on Phase 22 and must prove, as its FIRST test, that an
-authenticated service principal never resolves to `owner==""` (the milestone's #1 risk). Phases
-24→25→26 are the capture trio + recall/config tail: idempotency (24) lands before supersession
-(25) because supersession reuses idempotency's payload-only re-Upsert mechanism to stamp the
-superseded record; citations/category-filter/chat-base-url (26) are the least-coupled, bundled
-last for pacing. Phase 24 is orthogonal to auth and can run in parallel with 22–23. Zero new
-store-layer authz **primitive** and (except cedar-go) zero new dependencies this milestone.
+**Carry-forward gotchas for the next milestone:**
 
-- [Phase 13]: Task 1+2 committed together (shared embed.New Option seam + koanf config trio); Task 3 (D-09 regression) committed separately.
-- [Phase 13]: Query/fragment base-URL join left non-canonicalizing (operator-error scope, T-13-01 trust boundary parity).
-- [Phase 13]: Memory.EmbedderIdentity tagged json:"-" (not a normal json tag) — store.Memory serializes verbatim on 3 full-response MCP wire paths, so a normal tag would leak the audit field (round-1 review HIGH blocker).
-- [Phase 13]: document_params empty-form canonicalization (len(params)==0 -> map[string]any{}) so "" and "{}" hash identically — prevents false null vs {} provenance drift (round-2 review MEDIUM).
-- [Phase 13]: Reindex identity-aware resume — reindexTargetContents returns map[string]reindexTarget{content, identity}; a content match with an absent/stale embedder_identity falls through to re-embed+restamp instead of being skipped as Unchanged.
-- [Phase 13]: StoreAndEmbedderFromEnvNoEnsure returns the computed embedder identity as a 5th value from its single config load; all 3 callers updated to the new arity.
-- [Phase 14]: Named the differ test TestRetrievalEval_AsymmetryDiffer so task eval:retrieval's -run TestRetrievalEval regex substring-matches it without any Taskfile change
-- [Phase 14]: Gemini asymmetry rides ENGRAM_EMBED_QUERY_INSTRUCTION/ENGRAM_EMBED_DOCUMENT_INSTRUCTION (text-prefix), never the *_PARAMS/task_type mechanism
-- [Phase 14]: Local TEI/Ollama/vLLM recipes in guides/embedding-models.md documented as concrete complete rows (exact model id/dim/base URL/empty instruction) rather than operator-chosen placeholders (review B7)
-- [Phase 14]: Gemini compat model-id confirmed unchanged (gemini-embedding-2, 3072-dim); embedding-models.md and values.yaml left untouched
-- [Phase 15]: buf.gen.yaml gained a managed-mode disable rule scoped to buf.build/bufbuild/protovalidate so go_package_prefix override doesn't break the BSR dependency's generated import path (Plan 01, Rule 3)
-- [Phase 15]: Duplicated the idempotency-ban grep regex verbatim between Taskfile.yaml and .github/workflows/ci.yaml (no shared script) — matches this repo's bare-runner CI convention of mirroring Taskfile commands inline; Plan 04's descriptor test is the defense-in-depth backstop against regex drift
-- [Phase 15]: go mod tidy in Plan 03 (not Plan 01) promotes buf.build/go/protovalidate indirect->direct, since connectvalidate.go is the first code to import the runtime package (review finding #4)
-- [Phase 15]: validate interceptor's CodeInternal branch (non-ValidationError) is covered via a fake protovalidate.Validator since a real validator over generated constraints only returns nil or *ValidationError (review finding #5)
-- [Phase 15]: Descriptor test pins per-field wire-shape tables (number/name/kind/cardinality/message-type) on Memory/ScopeCount/read messages, not just message names, per cross-AI review finding #6 (SC4)
-- [Phase 15]: Negative matrix uses a generic callWrite[Req, Resp] helper to keep the six write-RPC table uniform, and asserts GET-405 via generated engramv1connect Procedure constants rather than hardcoded paths (finding #6)
-- [Phase 16]: NewCSRFSigner returns (*CSRFSigner, error) rather than a bare *CSRFSigner, mirroring NewSessionCodec's fail-fast convention (D-08)
-- [Phase 17]: Non-email owner encoding uses fmt.Sprintf("%d:%s:%d:%s", len(claim), claim, len(value), value) instead of the ambiguous claim:value form, closing the (sub,x:y)/(sub:x,y) collision (D-06 hardened)
-- [Phase 17]: ENGRAM_OWNER_CLAIM parsing (config.ParseOwnerClaims) kept strictly separate from defaulting; registry still supplies default email when unset; malformed comma-lists fail fast rather than silently normalizing
-- [Phase 18]: engram-slr8 ADR (Accepted) authored hand-written; names ENGRAM_UI_COOKIE_KEY (registry.go:56) as the sole kill-switch, never the phantom ENGRAM_SESSION_KEY
-- [Phase 19]: retryOnce's retry set is exactly {Unauthenticated, PermissionDenied} — client-side interpretation; a SINGLE OPPORTUNISTIC AUTH-RACE RETRY, never 're-seal on retry'/'rotation'
-- [Phase 20]: Reversed config<->embed import direction (config owns ReservedEmbedParamKeys, embed aliases it) to avoid a real import cycle through internal/telemetry
-- [Phase 21]: D-09: plain .planning rumdl exclude entry (not .planning/** glob), matching convention of .beads/.agents/docs-site neighbors
-- [Phase 22 P01]: A1/A2 confirmed (kind hardcoded 'human'; MustDefault panics on parse failure, not New() error return)
-- [Phase 22 P01]: TestPolicyCorpus_ForbidOverridesPermit proven via a synthetic inline permit-all/forbid-all PolicySet (white-box &PDP{policies:ps}) since the shipped 4-policy corpus has no naturally-overlapping permit+forbid request
-- [Phase 22 P02]: decideBucketHook function-var test seam (mirrors mintCandidate/deletePayloadKeys) added to store.go since *authz.PDP is a sealed concrete type with no test constructor; zero new exported API
-- [Phase 22 P03]: decideRecordHook function-var test seam (mirrors decideBucketHook) added to store.go since *authz.PDP is a sealed concrete type with no test constructor; zero new exported API
-- [Phase 23 P01]: oidctest.Server+SignIDToken (already used in internal/webauth) reused as the fail-closed test fixture — fakeIDV's stub cannot carry claims (oidc.IDToken.claims is unexported), so real signed tokens exercise the actual TokenVerifier/ClaimIdentity path instead.
-- [Phase 23 P01]: NewFromProvider same-issuer optimization skipped (planner discretion) — NewService does a plain second oidc.NewProvider discovery, zero new exported surface beyond NewService itself.
-- [Phase 23 P02]: TokenInfo.UserID is the non-namespaced ownerID; Extra[OwnerClaimExtraKey] carries namespacedOwner("static_token", ownerID) — matches PATTERNS.md shape
-- [Phase 23 P02]: empty configured static-token candidates are structurally excluded from matching (never eligible), independent of the empty-input-token guard
-- [Phase 23 P03]: chainVerifier's D-02 order and D-03 nil-mechanism guards are intrinsic to a correct routing closure; Task 2's tests landed as test-only against Task 1's already-complete implementation rather than driving new production code
-- [Phase ?]: service_auth.owner_claims defaults to client_id,azp (D-05), never email; static_tokens has no cobra flag (ENGRAM_-only secret map)
-- [Phase ?]: SC4/SC5 (tenancy isolation + cross-tenant shared-read) proven with two permanent store-package tests, zero new production code
-- [Phase ?]: Global cross-tenant shared-read (D-15) recorded as ADR engram-svct; per-tenant scoping deferred to a future full-ABAC milestone
-- [Phase ?]: Exported internal/auth's chainVerifier/newStaticTokenVerifier as ChainVerifier/NewStaticTokenVerifier so cmd/engram's withAuth can build the composed verifier chain
-- [Phase ?]: [Phase 24 P01]: engramIdempotencyNS fixed at 69fbe3e4-a53b-4d6e-971a-cad2f107e23c (uuidgen); idempotencyPointID returns string not uuid.UUID per plan artifact signature
-- [Phase ?]: [Phase 24 P01]: Added TestIdempotencyPointIDKeySensitive to resolve golangci-lint unparam finding (key literal was constant "k" across all pre-wiring tests) — genuine coverage gain, no nolint directive
-- [Phase ?]: [Phase 24 P02]: checkIdempotentReplay wired before Embed in both handlers; scheduleMemory calls it after parseWindow (cheap validation stays first) but still before Embed; SC5 test uses testDeps(t) matching the adjacent sibling test convention
-- [Phase ?]: D-01 confirmed: target back-stamp uses SetPayload (single-key merge), not a full re-Upsert
-- [Phase ?]: Recall-gate condition added independently at both Search and List call sites, not folded into activeWindowConditions
-- [Phase ?]: Store.Get left deliberately ungated so superseded records stay fetchable by id
-- [Phase ?]: supersede_memory does not call checkIdempotentReplay despite storeArgs.IdempotencyKey riding along via embedding (plan's explicit handler steps omit it; accepted per RESEARCH Pitfall 2)
-- [Phase ?]: connectError maps store.ErrAlreadySuperseded to CodeFailedPrecondition, pre-positioning only (no Connect RPC exposes supersede_memory this phase)
-- [Phase ?]: [Phase 26 P01]: D-09 confirmed: SearchOptions{Tags,Categories,CreatedAfter,CreatedBefore} replaces Search/SearchReranked's positional tail; k stays positional so SearchReranked's k==0 ErrInvalidArgument guard is unweakened
-- [Phase ?]: [Phase 26 P01]: categoryMatchCondition extracted from listFilter's inline category loop, shared by list and search lanes; flagged tightening — empty-string category elements now skipped (mirrors tagMatchConditions), so categories:[""] becomes a passthrough
-- [Phase ?]: [Phase 26 P02]: D-08 confirmed shipped: categories arg is plural on searchArgs/listArgs with explicit ANY/OR jsonschema wording (distinct from tags' ALL/AND); 26-01 had already threaded coreSearchRequest.Categories/coreListRequest.Categories into the store, so this plan's only gap was the two MCP arg fields + two closure-literal wirings
-- [Phase ?]: [Phase 26 P04]: D-12 confirmed add-alongside — ENGRAM_OPENAI_CHAT_BASE_URL is an optional cmp.Or override resolved once at summarizerFromConfig, not a config redesign; embedderFromConfig untouched
-- [Phase ?]: [Phase 26 P04]: D-14 hoisted the provider-shape join into internal/openaiurl (stdlib-only leaf, imports only strings) so internal/embed and internal/summarize share one implementation with no import-cycle risk
-- [Phase ?]: [Phase 26 P04]: Chart coverage for chatBaseURL placed under memory.summarize (not memory.openai) since ENGRAM_OPENAI_EMBEDDINGS_URL — the cited precedent — was never actually wired into charts/engram
-- [Phase ?]: [Phase 26 P03]: D-10 checkpoint resolved by human as ship-field-8 (genuine decision, not auto-approved) — SearchMemoriesRequest.categories = 8 shipped additive, no buf.validate (D-11), closing SC2's Connect-side parity gap
-- [Phase ?]: [Phase 26 P05]: D-02 confirmed: citations write exclusively inside payload(); zero preservation code added to Update/UpdatePayload/Supersede/IncrementAccess, proven by a six-sub-test regression suite
-- [Phase ?]: [Phase 26 P05]: validateStoreDiscovery's ref-required check was already shipped pre-phase (PR #28); the validateCitations extraction preserved it verbatim, no new discovery-path behavior change
-- [Phase ?]: [Phase 26 P06]: Skill path corrected — actual repo path is skill/engram/skills/curating-memory/SKILL.md, not skill/engram/curating-memory/SKILL.md as the plan's files_modified stated
-- [Phase ?]: [Phase 26 P06]: ENGRAM_OPENAI_CHAT_BASE_URL row placed once in the Embedder/OpenAI table; Auto-summary section carries narrative prose + cross-reference instead of a duplicate row
+- New payload keys must survive every sibling write path. Whole-payload `Upsert` either round-trips
+  all out-of-band keys (`idempotency_fingerprint`, `superseded_by`, `citations`) or takes
+  `store.TargetLocker`; targeted `SetPayload` is the merge-safe alternative.
+- `contentFingerprint` (`internal/server/idempotency.go`) hashes an **explicit** field list, not
+  reflection — any new client-authored `storeArgs` field must be added to it in the same change, or
+  a keyed replay silently discards the caller's value.
+- Provider-endpoint URLs must go through the shape-aware `internal/openaiurl.Join`, never a bare
+  concat. Fixing one lane and not its sibling is how the doubled-`/v1` bug survived from Phase 13
+  to Phase 26.
 
 ### Blockers/Concerns
 
-- **Env restore (non-blocking):** repo-local `commit.gpgsign=false` is still set (1Password SSH-signing was flaky during the v0.9.x milestone; those commits were unsigned and `main` had no required-signatures). Restore when 1Password is stable: `git config --local --unset commit.gpgsign`. Also sync local `main` past the squash merge (`658795e9`).
-- **v0.11.x #1 risk (Phase 23):** a service principal (OIDC client-credentials or static token) whose owner claim resolves empty must be REJECTED, never silently mapped to the anonymous bucket — this must be the first test proven in Phase 23, not discovered later. Cedar's Phase-22 defense-in-depth policy (`forbid ... unless principal.owner != ""`) is a second, independent backstop but does not substitute for the upstream fix.
-- **v0.11.x open product question (Phase 23):** whether `shared` visibility (DEC-kyz, "readable by any authenticated caller") crosses service-tenant boundaries once multiple isolated service-principal owners exist — must be an explicit, tested policy decision, not an assumption.
-- **v0.11.x requirements-clarification (Phase 24):** the same-key/different-content idempotency contract (reject vs. explicit upsert) must be locked before Phase 24 planning proceeds past its first test.
-- Tracked tech debt from v0.10.x: #369 (Renovate self-heal live observation, post-merge only), #366 (console e2e harness), #370 (Taskfile yamlfmt/CI reconciliation) — carried forward, not in v0.11.x scope.
+**Open:**
+
+- **Env restore (non-blocking):** repo-local `commit.gpgsign=false` is still set — the 1Password SSH signing agent failed on every commit through v0.11.x, so each used a per-commit `git -c commit.gpgsign=false` override and persistent config was never modified. Restore when 1Password is stable: `git config --local --unset commit.gpgsign`.
+- **Deployed server lags `main`:** the running engram instance predates the v0.11.x merges, so `supersede_memory`, memory `citations`, and the `categories` filter are not callable until the next release.
+- **Not deployed → not exercised:** every v0.11.x feature is verified against tests and a real Qdrant via testcontainers, but none has run in the deployed instance. Watch the first release for integration surprises.
+- **Validation commands can false-green:** `go test -run X ./pkg/...` matching nothing exits 0 with `ok … [no tests to run]`. Phase 26's VALIDATION.md carried two such stale paths (found 2026-07-26). Whenever a package moves, re-point every command that names it — and prove execution with `-v` RUN/PASS pairs, not a package-level `ok`.
+- Tracked tech debt: #369 (Renovate self-heal live observation, post-merge only), #366 (console e2e harness), #370 (Taskfile yamlfmt/CI reconciliation), plus 2 high Dependabot alerts open on `main`.
+- **CI gates outside the phase lifecycle:** `task chart:validate` (containerEnv checksum pin) and `task ui:build` (vendored SPA) are required checks that no phase gate runs. Run both locally before shipping any phase touching `charts/` or generated TS.
+
+**Resolved during v0.11.x** (kept briefly for traceability, drop at next milestone close):
+
+- ✓ #1 risk — a service principal resolving to `owner==""` is rejected at the verifier boundary; proven by `TestFailClosedRejectsEmptyOwner` as Phase 23's first test.
+- ✓ `shared`-across-tenants product question — decided explicitly: stays global for v0.11.x, written and tested (ADR `engram-svct`); per-tenant scoping deferred to full ABAC.
+- ✓ Idempotency same-key/different-content contract — locked as **reject, never upsert** (`store.ErrIdempotencyConflict` → Connect `AlreadyExists`), checked before the embedder call.
 
 ### Quick Tasks Completed
 
@@ -216,4 +167,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Run `/gsd-plan-phase 22` to plan the Cedar Authz Foundation & Store Enforcement phase.
+- Start the next milestone with /gsd-new-milestone

@@ -144,18 +144,116 @@ hygiene (rumdl exclude, Phase-11 residuals, Renovate self-heal).
 
 ---
 
+## Milestone: v0.11.x — Capture & Service Identity
+
+**Shipped:** 2026-07-26
+**Phases:** 5 (22–26) | **Plans:** 19 | **Tasks:** 46
+**Merged via:** 4 PRs — #396 (phases 22+23), #404 (24), #429 (25), #432 (26)
+
+### What Was Built
+
+- **Cedar authz foundation** — `internal/authz` (cedar-go v1.8.0) with a 4-policy embedded corpus;
+  `DecideBucket` on bulk recall (O(buckets), never per-record), `DecideRecord` on id-addressed
+  gates. Byte-for-byte behavior-preserving; ADR `engram-cdr1` refines LOCKED `DEC-cgb`.
+- **Service identity** — `auth.ChainVerifier` (OIDC user → client-credentials → static token) at the
+  single `withAuth` site, with a fail-closed gate rejecting an authenticated principal that resolves
+  to an empty owner.
+- **Idempotent capture** — optional `idempotency_key`, deterministic UUIDv5 point ID over injective
+  `(owner, scope, key)`, payload-only fingerprint compared before the embedder call, reject-not-upsert.
+- **Supersession with history** — `supersede_memory` back-stamps `superseded_by` via single-key
+  `SetPayload`; soft-hidden from recall, still fetchable by id.
+- **Citations, category filter, chat base URL** — optional structured provenance on any category, a
+  `categories` OR pre-filter at MCP↔Connect parity, and `ENGRAM_OPENAI_CHAT_BASE_URL` with a shared
+  shape-aware URL join.
+
+### What Worked
+
+- **Ordering the milestone by trust dependency, not by size.** Research put the authz foundation
+  first because every later phase's isolation rests on it. That paid off directly: phases 24–26 each
+  added filters and payload keys, and the audit confirmed none of them perturbed the authz
+  outer-`Must` invariant.
+- **Proving the #1 risk as the first test.** The service-principal-resolves-to-`owner==""` risk was
+  named at roadmap time and closed by `TestFailClosedRejectsEmptyOwner` before any other Phase 23
+  work. Naming the top risk up front and making it the first executable check is repeatable.
+- **Independent review caught what green tests could not.** Three phases had a review find a real
+  defect: Phase 23's static-token map-orientation inversion (the lane was deployed non-functional and
+  could leak the raw token as owner), Phase 25's cross-path lost write, Phase 26's fingerprint
+  omission. All three compiled, vetted, linted, and passed the full suite.
+- **Additive-only payload evolution.** Three milestones' worth of new payload keys
+  (`idempotency_fingerprint`, `superseded_by`, `citations`) landed on one collection with no
+  migration, because each was written through the existing `payload()`/`fromPayload()` codec.
+
+### What Was Inefficient
+
+- **A wrong assumption written into a passing test is invisible.** Phase 26's planner flagged
+  "citations are excluded from the idempotency fingerprint" as an assumption; the executor
+  implemented it faithfully *and wrote a subtest asserting it*. "Do the tests pass?" could never have
+  caught it — only a reviewer reasoning from the contract did. The saving grace was that the
+  assumption was flagged rather than buried, which made it cheap to overturn.
+- **CI gates that no phase workflow runs.** Phase 26 was fully verified, UAT'd, security-reviewed and
+  code-reviewed, then went red on `helm chart` (a checksum drift pin) and `ui vendored-asset drift`
+  the moment the PR opened. Neither `task chart:validate` nor `task ui:build` is part of
+  verify/secure/UAT.
+- **Rebuilding generated artifacts against the wrong tree.** The vendored-SPA fix had to be rebuilt
+  *after* merging `main`, because CI builds the merge ref — a branch-only rebuild produced different
+  content-hash chunk names and stayed red.
+- **Stale roadmap bookkeeping.** Progress-table plan counts drifted from reality on 4 of 5 phases
+  (one read `0/1` while marked Complete) and were only caught at audit time.
+
+### Patterns Established
+
+- **PDP decides the predicate; the store enforces it.** Bucket-level decisions compiled into the
+  Qdrant filter — the workable shape when the policy engine has no partial evaluation.
+- **Options struct before the second same-typed parameter.** `store.SearchOptions` replaced a
+  positional tail specifically because two adjacent `[]string` params transpose silently.
+- **Write-domain allowlists must not be copied to the read domain.** `discovery`/`rule` are legitimate
+  *filter* values though not legitimate *write* values (D-11).
+- **Targeted `SetPayload` for out-of-band keys; whole-payload `Upsert` only under a lock.**
+  `store.TargetLocker` serializes `Update` and `Supersede` per target.
+- **Explicit field lists need explicit maintenance.** `contentFingerprint` is not reflection-based, so
+  any new client-authored `storeArgs` field must be added to it in the same change — now recorded in
+  a doc comment on the function.
+
+### Key Lessons
+
+- Flag assumptions rather than burying them. Phase 26's overturned assumption was cheap to reverse
+  *because* it was written down as an assumption; the same belief buried in prose would have shipped.
+- A tool without agent-facing guidance is an incomplete feature — Phase 25 shipped the
+  `curating-memory` skill update in the same PR as `supersede_memory`, and Phase 26 did the same for
+  citations.
+- Run `task chart:validate` and `task ui:build` locally before shipping any phase whose diff touches
+  `charts/` or generated TS. The phase gates do not cover them.
+- When a generated artifact drifts in CI, check whether CI builds the merge ref before rebuilding.
+
+### Cost Observations
+
+- Model mix: opus for planning/orchestration, sonnet for research/execution/verification/review.
+- Per-phase lifecycle ran fully (discuss→plan→execute→verify→secure→review→ship) with per-phase PRs,
+  except phases 22+23 which shipped together in #396.
+- Two phases (24, 26) closed without reconciling `VALIDATION.md`, leaving Nyquist coverage at 3/5
+  at milestone close. Phase 24 was reconciled retroactively on 2026-07-26 and found **zero gaps** —
+  the tests had all shipped with the phase, so the `draft` status was bookkeeping, not missing
+  coverage. Phase 26 was reconciled the same day with the same result — 0 coverage gaps — but it
+  additionally exposed two stale validation command paths that were silently passing at exit 0.
+- Every commit this milestone used the per-commit `git -c commit.gpgsign=false` override — the
+  1Password SSH signing agent failed throughout; persistent config was never modified.
+
+---
+
 ## Cross-Milestone Trends
 
 Populated as milestones accumulate.
 
-| Trend | v0.9.x | v0.10.x | Notes |
-|-------|--------|---------|-------|
-| Already-shipped surprises | 1 (Phase 10) | 0 | v0.9.x also had Phase 8 in the baseline — baseline-verify before planning |
-| Worktree isolation | degraded (#683) | degraded (#683) | Stacked unmerged branch both times; cleared post-merge |
-| Reusable kernels extracted | 2 (CR-01 shutdown, `*time.Time`) | App-token self-push, `set -e` sub-swallow, post-merge-defer | Applied within-milestone and captured for reuse |
-| Requirements satisfied | 6/6 | 19/20 (1 post-merge-deferred) | 3-source cross-referenced |
-| Audit verdict | PASSED | tech_debt (0 blockers) | v0.10.x: 1 deferred obs + bookkeeping, no defects |
-| Merge shape | 1 PR (all phases) | per-phase PRs | v0.10.x shipped each phase independently |
+| Trend | v0.9.x | v0.10.x | v0.11.x | Notes |
+|-------|--------|---------|---------|-------|
+| Already-shipped surprises | 1 (Phase 10) | 0 | 0 | v0.9.x also had Phase 8 in the baseline — baseline-verify before planning |
+| Worktree isolation | degraded (#683) | degraded (#683) | degraded (#683) | Stacked unmerged branch each time; cleared post-merge |
+| Reusable kernels extracted | 2 (CR-01 shutdown, `*time.Time`) | App-token self-push, `set -e` sub-swallow, post-merge-defer | PDP-decides/store-enforces, options-struct-before-2nd-same-type, targeted-SetPayload, explicit-field-list upkeep | Applied within-milestone and captured for reuse |
+| Requirements satisfied | 6/6 | 19/20 (1 post-merge-deferred) | 11/11 | 3-source cross-referenced |
+| Audit verdict | PASSED | tech_debt (0 blockers) | PASSED (0 blockers) | v0.11.x also 6/6 integration seams, 2/2 E2E flows |
+| Merge shape | 1 PR (all phases) | per-phase PRs | per-phase PRs (22+23 combined) | 4 PRs for 5 phases |
+| Defects caught by review, not tests | — | — | 3 (phases 23, 25, 26) | All compiled, vetted, linted, and passed the suite |
+| Nyquist coverage | — | 9/9 | 3/5 at close → 5/5 reconciled | v0.11.x regression — reconcile VALIDATION.md at phase close; both retro audits found 0 real gaps |
 
 ---
 
