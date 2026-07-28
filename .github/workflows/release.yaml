@@ -135,6 +135,32 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+      # `.goreleaser.yaml`'s docker_manifests tags `ghcr.io/seanb4t/engram:latest`
+      # unconditionally, so a dispatch re-ship of an OLDER tag drags the floating
+      # `latest` backwards — backfilling v0.11.0 after v0.11.1 had shipped left
+      # `docker pull …:latest` serving the older build. The push path is always
+      # the newest release and must keep moving `latest`, so reconcile only on
+      # the dispatch path.
+      - if: ${{ steps.target.outputs.ship == 'true' && github.event_name == 'workflow_dispatch' }}
+        name: Reconcile :latest after a re-ship
+        env:
+          SHIPPED_TAG: ${{ steps.target.outputs.tag }}
+        run: |
+          set -euo pipefail
+          newest=$(git tag -l 'v*' --sort=-v:refname | head -1)
+          echo "shipped=${SHIPPED_TAG} newest=${newest}"
+          if [ -z "$newest" ]; then
+            echo "::error::no v* tags found — cannot verify :latest"
+            exit 1
+          fi
+          if [ "$newest" = "$SHIPPED_TAG" ]; then
+            echo ":latest correctly points at the newest tag — nothing to do."
+            exit 0
+          fi
+          echo "Re-pointing :latest at ${newest} (a backfill must not regress it)"
+          docker buildx imagetools create \
+            -t "ghcr.io/seanb4t/engram:latest" \
+            "ghcr.io/seanb4t/engram:${newest#v}"
       - if: ${{ steps.target.outputs.ship == 'true' }}
         name: Push OCI Helm chart
         env:
