@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/seanb4t/engram/compare/v0.11.1...v0.11.2) (2026-07-29)
+
+
+### Bug Fixes
+
+* **ci:** stop a dispatch re-ship from regressing the :latest tag ([#441](https://github.com/seanb4t/engram/issues/441)) ([7b2f418](https://github.com/seanb4t/engram/commit/7b2f41895d10aaa896bd843dfbc95a1074fdc5b2))
+
 ## [0.11.1](https://github.com/seanb4t/engram/compare/v0.11.0...v0.11.1) (2026-07-27)
 
 
