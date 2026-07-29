@@ -6,28 +6,36 @@ status: planning
 last_updated: "2026-07-29T18:45:44.001Z"
 last_activity: 2026-07-29
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
   percent: 0
+current_phase: 27
+current_phase_name: Shared Auth Chain & Connect Bearer Identity
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-26 — after closing milestone v0.11.x)
+See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Planning the next milestone (`/gsd-new-milestone`) — v0.11.x closed 2026-07-26.
+**Current focus:** v0.12.x — Headless Reach & Diagnosability. Roadmap approved: 6 phases (27–32), 20/20 requirements mapped. Phase 27 (the security-critical spine) is next to plan.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 27 — Shared Auth Chain & Connect Bearer Identity (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-07-29 — Milestone v0.12.x started
+Status: Roadmap complete; ready to plan Phase 27
+Last activity: 2026-07-29 — Milestone v0.12.x roadmap created (6 phases, 27–32)
+
+**Phase 27 carries the milestone's two security-critical, silently-passing defect classes** — a CSRF
+exemption keyed on request-controlled input, and Connect never enforcing `TokenInfo.Expiration`
+because it bypasses `mcpauth.RequireBearerToken`'s `verify()`. Both fail-closed negative tests are
+the phase's FIRST tests, per the v0.11.x precedent. Flagged for research at plan time plus a
+security-focused plan review.
 
 ## Deferred Items
 

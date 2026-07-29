@@ -204,32 +204,41 @@ Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REQ-connect-bearer-identity | — | Pending |
-| REQ-connect-token-expiry | — | Pending |
-| REQ-connect-lane-provenance | — | Pending |
-| REQ-connect-headless-mount | — | Pending |
-| REQ-cli-client-commands | — | Pending |
-| REQ-cli-agent-output | — | Pending |
-| REQ-cli-credential-safety | — | Pending |
-| REQ-cli-self-describing | — | Pending |
-| REQ-cross-spine-search | — | Pending |
-| REQ-cross-spine-authz-verified | — | Pending |
-| REQ-cross-spine-result-provenance | — | Pending |
-| REQ-rule-capture-investigation | — | Pending |
-| REQ-rule-capture-intervention | — | Pending |
-| REQ-authz-decision-diagnostics | — | Pending |
-| REQ-validation-error-attribution | — | Pending |
-| REQ-error-hint-envelope | — | Pending |
-| REQ-embed-provider-error-body | — | Pending |
-| REQ-per-lane-api-key | — | Pending |
-| REQ-reindex-resume-tags | — | Pending |
-| REQ-reindex-stale-repair | — | Pending |
+| REQ-connect-bearer-identity | Phase 27 | Pending |
+| REQ-connect-token-expiry | Phase 27 | Pending |
+| REQ-connect-lane-provenance | Phase 27 | Pending |
+| REQ-connect-headless-mount | Phase 27 | Pending |
+| REQ-cli-client-commands | Phase 28 | Pending |
+| REQ-cli-agent-output | Phase 28 | Pending |
+| REQ-cli-credential-safety | Phase 28 | Pending |
+| REQ-cli-self-describing | Phase 28 | Pending |
+| REQ-cross-spine-search | Phase 29 | Pending |
+| REQ-cross-spine-authz-verified | Phase 29 | Pending |
+| REQ-cross-spine-result-provenance | Phase 29 | Pending |
+| REQ-rule-capture-investigation | Phase 32 | Pending |
+| REQ-rule-capture-intervention | Phase 32 | Pending |
+| REQ-authz-decision-diagnostics | Phase 30 | Pending |
+| REQ-validation-error-attribution | Phase 30 | Pending |
+| REQ-error-hint-envelope | Phase 30 | Pending |
+| REQ-embed-provider-error-body | Phase 30 | Pending |
+| REQ-per-lane-api-key | Phase 31 | Pending |
+| REQ-reindex-resume-tags | Phase 31 | Pending |
+| REQ-reindex-stale-repair | Phase 31 | Pending |
 
 **Coverage:**
 
 - v0.12.x requirements: 20 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 20 ⚠️ — resolved by `gsd-roadmapper`
+- Mapped to phases: 20
+- Unmapped: 0 ✓
+
+| Phase | Requirements |
+|-------|--------------|
+| Phase 27 — Shared Auth Chain & Connect Bearer Identity | 4 |
+| Phase 28 — Headless CLI Client | 4 |
+| Phase 29 — Cross-Spine Memory Recall | 3 |
+| Phase 30 — Diagnosability | 4 |
+| Phase 31 — Operator Config & Reindex Correctness | 3 |
+| Phase 32 — Rule Capture — Investigation & Fix | 2 |
 
 **Issue mapping:**
 
@@ -247,4 +256,4 @@ Populated during roadmap creation.
 
 ---
 *Requirements defined: 2026-07-29*
-*Last updated: 2026-07-29 after initial definition for milestone v0.12.x*
+*Last updated: 2026-07-29 after roadmap creation (Phases 27–32) — 20/20 requirements mapped*
