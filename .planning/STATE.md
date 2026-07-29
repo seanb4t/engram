@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.11.x
-milestone_name: Capture & Service Identity
-status: Awaiting next milestone
-stopped_at: Completed 26-06-PLAN.md — Phase 26 complete
-last_updated: "2026-07-26T23:20:15.574Z"
-last_activity: 2026-07-26
-last_activity_desc: Milestone v0.11.x completed and archived
+milestone: v0.12.x
+milestone_name: Headless Reach & Diagnosability
+status: planning
+last_updated: "2026-07-29T18:45:44.001Z"
+last_activity: 2026-07-29
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 19
-  completed_plans: 19
-  percent: 100
-current_phase: null
-current_phase_name: null
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-07-26 — after closing milestone v0.11.
 
 ## Current Position
 
-Phase: Milestone v0.11.x complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-07-26 — Milestone v0.11.x completed and archived
+Status: Defining requirements
+Last activity: 2026-07-29 — Milestone v0.12.x started
 
 ## Deferred Items
 
@@ -56,8 +52,10 @@ milestone needs in working memory.
   handlers. As of v0.11.x the predicate comes from the `internal/authz` Cedar PDP — bucket-level
   decisions only, compiled into the Qdrant filter; no per-record Cedar eval on bulk paths
   (ADR `engram-cdr1`, refines LOCKED `DEC-cgb`).
+
 - Capture is explicit and zero-junk. No auto-extraction, no similarity-triggered supersession, no
   auto-populated citations.
+
 - Unauthorized id-addressed operations are 404-indistinguishable from a missing id (`DEC-xa6`).
 - One Qdrant collection for every memory kind; new features add payload keys, never collections
   (`DEC-2bv`).
@@ -67,9 +65,11 @@ milestone needs in working memory.
 - New payload keys must survive every sibling write path. Whole-payload `Upsert` either round-trips
   all out-of-band keys (`idempotency_fingerprint`, `superseded_by`, `citations`) or takes
   `store.TargetLocker`; targeted `SetPayload` is the merge-safe alternative.
+
 - `contentFingerprint` (`internal/server/idempotency.go`) hashes an **explicit** field list, not
   reflection — any new client-authored `storeArgs` field must be added to it in the same change, or
   a keyed replay silently discards the caller's value.
+
 - Provider-endpoint URLs must go through the shape-aware `internal/openaiurl.Join`, never a bare
   concat. Fixing one lane and not its sibling is how the doubled-`/v1` bug survived from Phase 13
   to Phase 26.
