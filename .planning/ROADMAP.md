@@ -30,7 +30,22 @@ chat/summarize base-URL split as a low-risk independent tail. The milestone held
 constraints: zero new store-layer authz **primitive**, and (except `cedar-go`) zero new
 dependencies — every feature extended an existing seam.
 
-**No active milestone.** Run `/gsd-new-milestone` to scope the next one.
+**Active milestone — v0.12.x — Headless Reach & Diagnosability (Phases 1–6), opened 2026-07-29.**
+Two halves: make engram reachable by agents that are **not** a top-level MCP client, and make what
+the server decides and rejects legible. The structural root is a bearer-token identity on the
+ConnectRPC lane — today that lane has exactly one credential type (a sealed cookie session) and one
+reason to be mounted (the UI is enabled), so a headless deployment has no Connect surface at all.
+Research (HIGH confidence, 4-dimension fan-out at `.planning/research/`) confirmed **zero new Go
+dependencies** are required and found two security-critical, silently-passing defect classes
+concentrated in that first phase: a CSRF exemption keyed on request-controlled input would be a full
+bypass on all six write RPCs, and Connect never routes through `mcpauth.RequireBearerToken`, whose
+private `verify()` is the only place `TokenInfo.Expiration` is enforced — so reusing
+`auth.ChainVerifier` alone makes token expiry decorative on that lane. Both compile, vet, lint, and
+pass a happy-path suite. Per the v0.11.x precedent, the fail-closed negative tests are v0.12.x Phase 1's
+first tests, not follow-up work. Research also raised and deliberately **did not resolve** a
+disagreement about `cross_spine` (v0.12.x Phase 3): whether the store-layer authz `Must` clause composes
+independently of the scope clause is to be settled by reading `Store.Search` end to end, not by
+analogy to `search_discovery`.
 
 ## Milestones
 
@@ -39,6 +54,7 @@ dependencies — every feature extended an existing seam.
 - ✅ **v0.9.x — Recall Quality** — Phases 9–12 (shipped 2026-07-10, PR #336): retrieval eval + ranking precision (#261), embedder query/document asymmetry (#305), async-on-write summaries (#320), per-memory usage signals (#317). Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
 - ✅ **v0.10.x — Hardening & Write Lane** — Phases 13–21 (shipped 2026-07-16): embedder reliability & options (#333/#332/#331/#334/#337, closes #261), Connect write lane + CSRF + stateless session rotation (#322/#323), correctness & polish tail, CI/maintenance hygiene. 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge only → #369). Full detail archived at `milestones/v0.10.x-ROADMAP.md`.
 - ✅ **v0.11.x — Capture & Service Identity** — Phases 22–26 (shipped 2026-07-26): Cedar authz foundation (#362/#373 trust anchor), service auth chain + tenancy isolation (#362/#373), idempotent capture (#340), supersession with history (#342), structured citations + category filter + chat base URL (#341/#374/#350). 11/11 requirements, audit PASSED. Full detail archived at `milestones/v0.11.x-ROADMAP.md`.
+- 🔨 **v0.12.x — Headless Reach & Diagnosability** — Phases 1–6 (opened 2026-07-29): Connect bearer identity + headless mount + CSRF provenance (#343), headless CLI client (#343), cross-spine memory recall (#344), diagnosability trio (#394/#360/#347), operator config & reindex correctness (#350/#345), rule-capture investigation & fix (#351). 20 requirements. `REQUIREMENTS.md` + `research/SUMMARY.md`.
 
 ## Phases
 
@@ -110,6 +126,15 @@ into shared stores.
 - [x] **Phase 26: Structured Citations, Category Filter & Chat Base URL** - Optional provenance on curated memories, MCP↔Connect category-filter parity, and a distinct chat/summarize base URL (completed 2026-07-25)
 
 </details>
+
+### 🔨 v0.12.x — Headless Reach & Diagnosability (Phases 1–6) — ACTIVE
+
+- [ ] **v0.12.x Phase 1: Shared Auth Chain & Connect Bearer Identity** - One composed verifier for both lanes, enforced token expiry, server-set lane provenance driving the CSRF exemption, opt-in headless mount
+- [ ] **v0.12.x Phase 2: Headless CLI Client** - `engram search|store|list` over the generated Connect stubs, agent-shaped output, credential safety
+- [ ] **v0.12.x Phase 3: Cross-Spine Memory Recall** - `cross_spine` on `search_memory` with the store-layer authz composition verified, not assumed
+- [ ] **v0.12.x Phase 4: Diagnosability** - Authz decisions reach a reader; rejections name the true field and carry a remediation hint; provider error bodies survive
+- [ ] **v0.12.x Phase 5: Operator Config & Reindex Correctness** - Per-lane chat credential; tag-aware resume plus a repair path for already-skipped records
+- [ ] **v0.12.x Phase 6: Rule Capture — Investigation & Fix** - Find why `store_rule` never fires, then fix the documented cause without touching who decides
 
 ## Phase Details
 
@@ -287,9 +312,181 @@ requirements, 6/6 integration seams, 2/2 E2E flows) at
 - Phase 25 — Supersession with History (2 plans): `supersede_memory` back-stamps `superseded_by` via single-key SetPayload; superseded records soft-hidden from recall, still fetchable by id (#342)
 - Phase 26 — Structured Citations, Category Filter & Chat Base URL (6 plans): optional citations on any category, `categories` OR-filter at MCP↔Connect parity, `ENGRAM_OPENAI_CHAT_BASE_URL` + shared shape-aware URL join (#341/#374/#350)
 
+### v0.12.x Phase 1: Shared Auth Chain & Connect Bearer Identity
+
+**Goal:** A headless caller can authenticate to the ConnectRPC lane with a bearer token — safely.
+One composed verifier serves both lanes, token expiry is actually enforced, the authenticating lane
+is recorded by the server, the CSRF exemption is decided from that record alone, and the lane is
+mounted only when explicitly enabled.
+
+**Requirements:** REQ-connect-bearer-identity, REQ-connect-token-expiry,
+REQ-connect-lane-provenance, REQ-connect-headless-mount
+
+**Success criteria:**
+
+1. A bearer token accepted on the MCP lane is accepted on the Connect lane, and one rejected there
+   is rejected here — both resolve through a single composed verifier constructed **once**, proven
+   structurally (not two independently-built chains that can drift).
+2. A token whose `Expiration` has passed is rejected on the Connect lane. *(Written as the phase's
+   first test, per the v0.11.x fail-closed precedent — this closes a live gap, not a hypothetical.)*
+3. A cookie-authenticated caller is still rejected on all six write RPCs when it omits
+   `X-CSRF-Token`, and cannot obtain the bearer exemption by attaching a garbage `Authorization`
+   header to its session.
+4. A bearer verification failure never authenticates via the cookie lane.
+5. With the UI disabled and the headless flag unset, no Connect handler is registered —
+   byte-for-byte today's behavior, so no deployment gains a surface on upgrade.
+
+**Why these four ship together:** the provenance stamp and the exemption that reads it are one
+atomic unit. Shipping the stamp alone would land a value nothing reads — precisely the defect
+`REQ-authz-decision-diagnostics` exists to fix. (Contrast v0.10.x's Phase 15, where deliberately
+unreachable stubs *were* a genuinely separable increment.)
+
+**Research flag:** needs research at plan time — the extraction shape for a transport-agnostic
+expiry check out of the go-sdk's `RequireBearerToken`/`verify()` internals. Also warrants a
+security-focused plan review given the CSRF-bypass and confused-deputy risk classes.
+
+---
+
+### v0.12.x Phase 2: Headless CLI Client
+
+**Goal:** An agent with only a shell — a subagent with a closed tool list, a CI step, a cron loop —
+can search, store, and list memories against a remote engram server.
+
+**Requirements:** REQ-cli-client-commands, REQ-cli-agent-output, REQ-cli-credential-safety,
+REQ-cli-self-describing
+
+**Depends on:** v0.12.x Phase 1 (strict).
+
+**Success criteria:**
+
+1. `engram search`, `engram list`, and `engram store` complete against a running server given a
+   server URL and a token, emitting structured JSON when stdout is not a TTY.
+2. Data goes to stdout and diagnostics to stderr; exit codes distinguish auth failure from
+   not-found from validation failure from transport failure; no command prompts on any path.
+3. A token supplied by env var or file never appears in `argv`, and TLS verification cannot be
+   disabled silently.
+4. A bare invocation returns the full command / flag / exit-code catalog as structured output.
+5. No client subcommand imports `internal/store`, `internal/authz`, or `internal/embed`.
+
+**Why one phase, not two:** the dependency boundary research identified — `search`/`list` need only
+the bearer mount while `store` additionally needs the CSRF exemption green — collapses because
+v0.12.x Phase 1 delivers both. Splitting would create a phase whose only distinction is which half of an
+already-landed dependency it uses.
+
+---
+
+### v0.12.x Phase 3: Cross-Spine Memory Recall
+
+**Goal:** An agent can recall curated memories across every scope it is permitted to see, with the
+authorization filter proven un-widened rather than assumed safe.
+
+**Requirements:** REQ-cross-spine-search, REQ-cross-spine-authz-verified,
+REQ-cross-spine-result-provenance
+
+**Success criteria:**
+
+1. `Store.Search`'s filter construction has been read end to end and it is recorded **in writing**
+   that the owner/authz `Must` clause is composed as a separate, unconditional entry from the scope
+   clause — never a combined condition where omitting scope could drop part of the authz gate.
+2. A two-owner isolation test against **real Qdrant** (testcontainers, not a mock) proves owner A's
+   `cross_spine=true` search over overlapping scope names never returns owner B's private records —
+   and it exists and passes **before** the feature is implemented.
+3. `cross_spine=true` returns hits from multiple scopes; omitting it returns only the named scope.
+4. Available on MCP and Connect at parity via an additive proto field.
+5. Every result is attributable to its originating scope, and the response reports which scopes were
+   searched — so "found nothing here" is distinguishable from "searched everywhere and found nothing."
+
+**Research flag:** needs research at plan time. Criterion 1 is the unresolved
+architecture-vs-pitfalls disagreement and is a **gate**, not a task — it must close before
+implementation begins.
+
+---
+
+### v0.12.x Phase 4: Diagnosability
+
+**Goal:** What the server decided, and why it rejected something, reaches whoever needs it — the
+operator debugging a denial, the agent retrying a rejected call.
+
+**Requirements:** REQ-authz-decision-diagnostics, REQ-validation-error-attribution,
+REQ-error-hint-envelope, REQ-embed-provider-error-body
+
+**Success criteria:**
+
+1. At debug level, **both** an allowed and a denied authorization decision emit a log line carrying
+   field-allowlisted Cedar diagnostics; no full expression trace is ever emitted.
+2. An argument-validation rejection names the field that actually failed, proven by a matrix with
+   one case per single-field-invalid input rather than by matching exact wording.
+3. A rejection carries a structured remediation hint alongside the field attribution.
+4. A non-2xx embeddings response surfaces a bounded prefix of the provider's error body alongside
+   the status code and drains the body for connection reuse; the chat/summarize lane has been
+   audited for the same gap and fixed if it shares it.
+
+**Why grouped:** four independent fixes across different subsystems sharing one design discipline —
+bounded, structured, redaction-conscious disclosure. Grouping lets a single internal convention
+emerge instead of three ad hoc mechanisms.
+
+---
+
+### v0.12.x Phase 5: Operator Config & Reindex Correctness
+
+**Goal:** The chat lane can carry its own provider credential, and an interrupted reindex resumes
+without silently leaving stale vectors behind.
+
+**Requirements:** REQ-per-lane-api-key, REQ-reindex-resume-tags, REQ-reindex-stale-repair
+
+**Success criteria:**
+
+1. The chat/summarize client uses its own API key when set and inherits the shared key when unset;
+   behavior with it unset is byte-identical to today. Closes #350.
+2. `reindex --resume` re-embeds a record whose tags changed while content did not, **and** skips one
+   where both match (the paired positive control — without it, a resume that silently stops skipping
+   anything looks green while quietly re-embedding everything). Tag comparison is order-independent.
+3. An operator can identify and heal records an earlier unpatched `--resume` run skipped
+   incorrectly, via a documented path following the existing one-time-reconciliation command
+   precedent.
+
+**Note:** the per-lane-key edit and v0.12.x Phase 3's cross-spine edit both touch `tools.go` in different
+functions (`summarizerFromConfig` vs. `searchMemory`). Low but non-zero merge risk if landed
+concurrently — sequence them or keep the diffs small and independently reviewed.
+
+---
+
+### v0.12.x Phase 6: Rule Capture — Investigation & Fix
+
+**Goal:** Find out why `store_rule` effectively never fires — one rule exists repo-wide against
+dozens of ordinary memories — and fix the cause that is actually there.
+
+**Requirements:** REQ-rule-capture-investigation, REQ-rule-capture-intervention
+
+**Success criteria:**
+
+1. A written root cause exists, derived from tracing actual invocation **attempts including
+   failures** across the chain (`curating-memory` skill routing → session-start rules index →
+   `store_rule` tool description → user-blessing gate), and it distinguishes a mechanical/bug cause
+   from a friction cause.
+2. The intervention addresses that documented cause, not a presumed one.
+3. Rule capture demonstrably fires in a scenario where it previously did not.
+4. No path promotes a rule without explicit user instruction — the user-blessed gate is intact and
+   proven so.
+
+**Internal gate:** criterion 1 must be satisfied and reviewed before any intervention is
+implemented. The roadmap deliberately does **not** commit to a specific fix; research supplied
+consent-preserving candidates but explicitly warned against choosing one before the trace exists.
+Separated from v0.12.x Phase 5 because the shape differs — investigation-gated, and the surfaces are skill
+markdown and tool descriptions rather than Go correctness.
+
+---
+
 ## Progress
 
-**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · 13 → 14 (embedder track) · 15 → 16 → 17 → 18 → 19 (write-lane track, strict order) · 20 → 21 (independent) — v0.10.x shipped 2026-07-16 · 22 → 23 (Cedar foundation → service auth/tenancy, strict order) · 24 → 25 → 26 (capture trio + recall/config tail, strict order; 24 can start in parallel with 22–23) — v0.11.x planned 2026-07-16
+**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · 13 → 14 (embedder track) · 15 → 16 → 17 → 18 → 19 (write-lane track, strict order) · 20 → 21 (independent) — v0.10.x shipped 2026-07-16 · 22 → 23 (Cedar foundation → service auth/tenancy, strict order) · 24 → 25 → 26 (capture trio + recall/config tail, strict order; 24 can start in parallel with 22–23) — v0.11.x shipped 2026-07-26 · **v0.12.x: 1 → 2 (spine → CLI, strict order)** · **3 · 4 · 5 · 6 (independent of the spine and of each other; may run in parallel once 1 is underway — sequence 3 and 5 or keep their `tools.go` diffs small)** — v0.12.x planned 2026-07-29
+
+> **Phase numbering restarts per milestone as of v0.12.x.** Phases 1–26 above are the pre-v0.12.x
+> monotonic sequence and keep their historical numbers. From v0.12.x forward, a phase number is only
+> meaningful with its milestone — always write `v0.12.x Phase 1`, never bare `Phase 1`. The
+> `Milestone` column below is part of the row key. Note that `gsd-tools query find-phase <N>` takes a
+> bare number and globs every archived `milestones/vX.Y.x-phases/` directory, so it may report a hit
+> from another milestone; qualify by milestone at the call site.
 
 | Phase | Milestone | Requirements | Status | Completed |
 |-------|-----------|--------------|--------|-----------|
@@ -319,6 +516,12 @@ requirements, 6/6 integration seams, 2/2 E2E flows) at
 | 24. Idempotent Capture | v0.11.x | 2/2 | Complete | 2026-07-18 |
 | 25. Supersession with History | v0.11.x | 2/2 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
+| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 0/4 | Pending | — |
+| 2. Headless CLI Client | v0.12.x | 0/4 | Pending | — |
+| 3. Cross-Spine Memory Recall | v0.12.x | 0/3 | Pending | — |
+| 4. Diagnosability | v0.12.x | 0/4 | Pending | — |
+| 5. Operator Config & Reindex Correctness | v0.12.x | 0/3 | Pending | — |
+| 6. Rule Capture — Investigation & Fix | v0.12.x | 0/2 | Pending | — |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.

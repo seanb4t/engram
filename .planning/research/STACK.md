@@ -1,164 +1,289 @@
-# Technology Stack — v0.11.x "Capture & Service Identity"
+# Stack Research — v0.12.x "Headless Reach & Diagnosability"
 
-**Project:** engram
-**Researched:** 2026-07-16
-**Scope:** Stack additions/changes for the six NEW v0.11.x capabilities only — idempotency/upsert
-on `store_memory` (#340), supersession links with history (#342), structured provenance/citations
-on curated `memory`-category records (#341), category filter over MCP search/list (#374),
-pluggable service auth: OIDC client-credentials + static-token fallback (#362), tenancy-isolation
-guarantee for headless service principals (#373), and per-lane embedder vs chat/summarize base
-URLs (#350). Everything already shipped (owner-claim authz, sealed `Subject` interface, go-oidc
-bearer verification, Connect write lane, discovery `citations`/`kind`, koanf field registry, single
-Qdrant Memory collection) is out of scope per the milestone brief.
+**Domain:** Additive features on a shipped Go 1.26 server (engram) — headless CLI client, dual-lane
+Connect auth, authz diagnostics logging, bounded HTTP error reads, TS codegen drift CI.
+**Researched:** 2026-07-29
+**Confidence:** HIGH (every recommendation checked against either the existing codebase or current
+library docs — connect-go via Context7 `/connectrpc/connect-go`, `golang.org/x/oauth2` via Context7
+`/golang/oauth2` — not recalled from training data)
 
-**Headline finding: zero new third-party Go dependencies are required for this milestone.** Every
-target feature is buildable with libraries already pinned in `go.mod`
-(`github.com/google/uuid`, `github.com/coreos/go-oidc/v3`, `github.com/knadh/koanf/v2`,
-`github.com/qdrant/go-client`) plus Go 1.26 stdlib (`crypto/sha256`, `crypto/subtle`,
-`crypto/hmac`). This is a design/wiring milestone, not a dependency-acquisition one — every
-recommendation below is "how to use what's already pinned," not "what to add."
+## Verdict, up front
+
+**Zero new dependencies are required for this milestone.** All five capabilities are covered by
+seams already in `go.mod` (`connectrpc.com/connect` v1.20.0, `golang.org/x/oauth2` v0.36.0,
+`github.com/coreos/go-oidc/v3` v3.20.0, `github.com/cedar-policy/cedar-go` v1.8.0, `log/slog` +
+`go.opentelemetry.io/otel/trace`) or by Go stdlib (`io`, `net/http`). This holds the milestone to
+the standing constraint even more strictly than v0.11.x did (which added exactly one dependency,
+`cedar-go`) — v0.12.x can plausibly add **zero**.
 
 ## Recommended Stack
 
-### Core Technologies (already pinned — no change)
+### Core Technologies (already in go.mod — reused, not added)
 
-| Technology | Version (go.mod) | Purpose | Why Recommended |
-|------------|-------------------|---------|------------------|
-| `github.com/coreos/go-oidc/v3` | v3.19.0 | JWKS bearer-token verification | Already the sole OIDC verifier (`internal/auth.Verifier`); client-credentials-issued access tokens from Keycloak/Auth0/Okta/Authentik/Zitadel are self-contained JWTs by default, so the existing `oidc.Verifier.Verify()` (signature + issuer + expiry + optional audience) verifies them identically to user-flow ID tokens — no separate access-token verifier needed |
-| `github.com/qdrant/go-client` | v1.18.3 (server pinned v1.18.2, Phase 17 CI gate) | Vector store client | `Upsert` already replaces-in-place for a given point ID (used today for the D-04 access-count bump) — this is exactly the primitive idempotency needs; no new Qdrant feature or collection required |
-| `github.com/knadh/koanf/v2` + `providers/env/v2` + `providers/confmap` | v2.3.5 / v2.0.0 / v1.0.0 | Config loading | The field-registry pattern in `internal/config/registry.go` is additive by construction — every new var this milestone needs (chat base URL, service-token map, etc.) is a new `field{}` row, not a new provider or koanf version |
-| `github.com/google/uuid` | v1.6.0 | Point IDs | Already used for random v4 IDs (`uuid.NewString()`); also exposes `uuid.NewSHA1`/`uuid.NewMD5` (deterministic UUIDv3/v5) needed for idempotency-key → point-ID derivation — already vendored, no bump |
-| `connectrpc.com/connect` | v1.20.0 | Write-lane RPC | Unaffected by this milestone's scope; category filter/supersession/provenance are MCP-tool-surface + store-payload changes that thread through the existing `deps.*` parity layer, not new RPCs |
+| Technology | Version (pinned in go.mod) | Purpose in this milestone | Why it already covers the need |
+|------------|---------|---------|-----------------|
+| `connectrpc.com/connect` | v1.20.0 | CLI-side `connect.NewClient` calls against the committed `gen/go/engram/v1/engramv1connect` stubs; server-side auth interceptor | Same package the server already imports in `internal/server/connectapi.go`. Client and server share one API surface — `connect.NewClient(httpClient, baseURL, opts...)` plus `connect.WithInterceptors(...)`, the identical interceptor type (`connect.UnaryInterceptorFunc`) already used four times in `mountConnect` |
+| `golang.org/x/oauth2` + its `clientcredentials` subpackage | v0.36.0 (direct dep already) | CLI-side OIDC client-credentials token acquisition | `clientcredentials.Config{ClientID, ClientSecret, TokenURL, Scopes}.Client(ctx)` returns a self-refreshing `*http.Client` — no new module, `clientcredentials` ships inside the `golang.org/x/oauth2` module already required (server already imports `golang.org/x/oauth2` in `internal/webauth/oidc.go`/`handlers.go`) |
+| `github.com/modelcontextprotocol/go-sdk/auth` (`mcpauth`) + `internal/auth` | v1.6.1 / in-tree | Server-side bearer verification on the Connect lane, reusing `auth.ChainVerifier` | `auth.ChainVerifier(oidcHuman, oidcService, static)` (`internal/auth/chain.go:74`) already returns an `mcpauth.TokenVerifier` = `func(ctx, token string, req *http.Request) (*mcpauth.TokenInfo, error)`. The Connect lane's resolver type (`connectResolver` in `connectapi.go:360`) has a different shape (`func(ctx, connect.AnyRequest) (*mcpauth.TokenInfo, error)`) but only needs a ~15-line adapter that reads `Authorization` off `req.Header()` and calls the chain — no new verifier logic |
+| `github.com/cedar-policy/cedar-go` | v1.8.0 | Source of the `Decision.diag` field to surface (#394) | `internal/authz/authz.go:48-51` already computes `diag cedar.Diagnostic` on every `DecideRecord`/`DecideBucket` call; it's unexported and has zero readers today. This milestone only needs an exported accessor plus a call site, not a new dependency |
+| `log/slog` + `go.opentelemetry.io/otel/trace` | stdlib / v1.44.0 | Debug-level logging of authz decisions + OTel span events (#394) | Both are already wired at every seam per `internal/telemetry`; `trace.SpanFromContext(ctx).AddEvent(...)` is the existing idiom for span events elsewhere in the codebase — no new tracing/logging library |
+| stdlib `io`, `net/http` | Go 1.26 | Bounded read of an HTTP error body before drain-for-reuse (#347) | `io.LimitReader(resp.Body, N)` + `io.Copy(io.Discard, resp.Body)` after — pure stdlib, no library needed |
 
-### Supporting stdlib (zero new dependency)
+### Supporting Libraries
 
-| Package | Purpose | When to Use |
-|---------|---------|-------------|
-| `crypto/sha256` | Content-hash fallback for idempotency when no client-supplied key is given | Hash `owner + scope + content` (+ category) to derive a stable digest, then feed it into `uuid.NewSHA1` for the point ID |
-| `crypto/subtle` (`ConstantTimeCompare`) | Static-token comparison | Compare a presented bearer token against each configured static token in constant time — prevents timing side-channels on the token-equality check |
-| `crypto/hmac` + existing HKDF sub-key derivation (already used for CSRF, `internal/server` cookie/CSRF code) | Optional: derive per-deployment static-token verification material from `ui.cookie_key` instead of storing raw tokens | Only if an operator wants tokens tied to instance-rotatable key material; a plain configured-token-list is simpler and matches the existing `oidc.client_secret`/`ui.cookie_key` plaintext-env precedent — prefer the simple form unless specifically requested |
+None needed. Every "supporting" need below is met by a stdlib pattern or an existing package already imported elsewhere in the module.
 
-### New config surface (koanf field-registry additions — no new library)
+### Development Tools (CI — already present)
 
-| New field (proposed key) | Env var (proposed) | Purpose |
-|---------------------------|---------------------|---------|
-| `chat.base_url` | `ENGRAM_CHAT_BASE_URL` | #350 — distinct base URL for the summarize/chat client, decoupled from `openai.base_url` (today `cfg.OpenAI.BaseURL` is passed to **both** `embed.New` and `summarize.New` in `internal/server/tools.go`) |
-| `chat.api_key` (optional) | `ENGRAM_CHAT_API_KEY` | Only needed if the chat/summarize provider uses different credentials than the embedder; default-fall-back to `openai.api_key` if unset, to avoid a breaking change |
-| `service_auth.mode` | `ENGRAM_SERVICE_AUTH_MODE` | #362 — selects `oidc` / `static` / `off` (or both simultaneously if design allows layered verification) |
-| `service_auth.static_tokens` | `ENGRAM_SERVICE_AUTH_STATIC_TOKENS` | #362 — koanf-parsed map/list of `token → owner` (or `token → {owner, name}`); the existing `ENGRAM_EMBED_QUERY_PARAMS` field already proves the "JSON blob in one env var" pattern works in this codebase — reuse it verbatim for the token map instead of inventing a new parsing convention |
+| Tool | Purpose | Notes |
+|------|---------|-------|
+| `go tool buf` (already a `tool` directive in go.mod) | Regenerate `gen/go` + `gen/ts` from `proto/` | `task proto:gen`; CI's `generated-code drift` step (`.github/workflows/ci.yaml:139-142`) already fails the build if `gen/` is stale |
+| Existing "vendored console gen client drift" CI step | Keep `ui/src/lib/gen/{engram,buf}/` in sync with `gen/ts/` | `.github/workflows/ci.yaml:143-147` already does `rm -rf ui/src/lib/gen/engram ui/src/lib/gen/buf && cp -R gen/ts/. ui/src/lib/gen/ && git diff --exit-code -- ui/src/lib/gen/` — see the #356 note below, this already exists |
+
+## Per-question findings
+
+### 1. Headless CLI client over ConnectRPC — no new dependency
+
+`connect-go` v1.20.0's client idioms (verified against current docs, Context7 `/connectrpc/connect-go`):
+
+```go
+client := engramv1connect.NewEngramServiceClient(
+    httpClient, baseURL,
+    connect.WithInterceptors(bearerInterceptor(tokenSource)),
+)
+```
+
+- **Attaching a bearer header:** a client-side `connect.UnaryInterceptorFunc` that sets
+  `req.Header().Set("Authorization", "Bearer "+tok)` before calling `next(ctx, req)` — the exact
+  shape already used server-side four times in `mountConnect` (`otelIc`,
+  `newConnectAccessLogInterceptor`, etc.), just running on the client. No separate
+  "auth middleware" library exists or is needed in connect-go; interceptors are the one seam.
+- **Token acquisition for OIDC client-credentials:** `clientcredentials.Config.Client(ctx)` (from
+  the already-vendored `golang.org/x/oauth2/clientcredentials`) returns a self-refreshing
+  `*http.Client` that can be passed straight into `connect.NewClient` as the `httpClient` arg,
+  OR use `clientcredentials.Config.TokenSource(ctx)` + a thin interceptor if you want the
+  Authorization header set explicitly rather than delegated to an `oauth2.Transport`. Prefer the
+  interceptor form for consistency with the static-token case (same code path for both credential
+  kinds), not the `oauth2.NewClient` transport-wrapping form — otherwise the CLI has two different
+  "attach credentials" mechanisms depending on which lane is configured.
+- **Static token:** trivial — no library, just an interceptor closure over a fixed string, or a
+  fixed-header `http.RoundTripper`.
+- **Output shape (JSON vs human-readable):** no library is warranted. cobra already gives each
+  subcommand its own flag set; add a per-command `--json` bool flag and a tiny two-branch
+  formatter (struct → `encoding/json` with `MarshalIndent`, or a short hand-rolled table/line
+  writer for the human path). This mirrors the project's existing anti-dependency posture — do
+  not reach for a table-rendering or CLI-output library (e.g. no `tablewriter`, no `pterm`) for a
+  handful of memory-search-result rows.
+
+**Integration points:**
+- New file(s) under `cmd/engram/` (e.g. `cmd/engram/search.go`, `store.go`, `list.go`) as sibling
+  cobra commands to the existing `serveCmd` in `cmd/engram/serve.go`.
+- Client stub source: `gen/go/engram/v1/engramv1connect` (already committed, already used
+  server-side).
+- Config for the CLI's own target server URL + credential material: extend `internal/config`'s
+  field registry (the single `ENGRAM_`-prefixed source of truth) rather than inventing a second
+  config path or a dotfile — e.g. `ENGRAM_CLIENT_SERVER_URL` / `ENGRAM_CLIENT_TOKEN` /
+  `ENGRAM_CLIENT_OIDC_*`, with `--flag` overrides in the same cobra+koanf pattern `serveCmd`
+  already uses (`config.FlagDefault`).
+
+### 2. Bearer-token auth on the ConnectRPC server lane, alongside cookie/session — no new dependency
+
+The two-credential-type problem is already solved in miniature by `auth.ChainVerifier`
+(`internal/auth/chain.go`) for the MCP lane; the Connect lane needs the analogous composition at
+one different seam: the `connectResolver` function type, not `mcpauth.TokenVerifier`.
+
+**Recommended pattern (no library, ~1 new file plus a `mountConnect` call-site change):**
+
+1. Write a `bearerResolver` with the connectResolver signature that: reads the `Authorization`
+   header off `req.Header()`, extracts the token, and calls the *same* `auth.ChainVerifier` chain
+   already built in `withAuth` (`cmd/engram/serve.go:297-343`) — meaning `withAuth`'s chain
+   construction needs to be reachable from `serve.go`'s Connect-wiring block, not just handed to
+   the MCP `RequireBearerToken` wrapper. The cleanest seam: have `withAuth` (or a sibling function)
+   return the built `mcpauth.TokenVerifier` chain itself, and wire both the MCP
+   `RequireBearerToken` wrapper *and* the new Connect bearer resolver off that one chain — one
+   verifier, two adapters, matching the "ONE call site" precedent already documented for the
+   Phase 23 service-auth chain.
+2. Compose it with the existing cookie resolver (`webauth.Resolver.Resolve`) via a tiny "try
+   bearer header, else fall back to cookie" resolver function passed into `mountConnect` as the
+   single `resolve connectResolver` argument it already accepts — `mountConnect`'s signature does
+   not need to change at all.
+3. **Marking which lane authenticated the request** (needed by CSRF-exemption downstream, per the
+   milestone's #1 risk): do **not** infer this from header presence/absence at the CSRF
+   interceptor (that is exactly the risk PROJECT.md calls out — "keyed on header absence, a cookie
+   caller can opt itself out of CSRF"). Instead, thread an explicit provenance value alongside the
+   `*mcpauth.TokenInfo` that `withConnectTokenInfo`/`subjectFromConnectContext` already carry in
+   context (`internal/server/identity.go:35-57`). Two structurally-safe options, both stdlib-only:
+   - Extend `connectSubjectKey`'s stored value from `*mcpauth.TokenInfo` to a small struct
+     `{TokenInfo *mcpauth.TokenInfo; Lane string}` (or a second unexported context key
+     `connectLaneKey{}`) set by the *resolver itself* (bearerResolver sets `"bearer"`, the cookie
+     resolver's wrapper sets `"cookie"`) — never derived from request headers a caller controls.
+   - Or reuse `mcpauth.TokenInfo.Extra` (already a `map[string]any` — see
+     `auth.OwnerClaimExtraKey` for precedent) with a second key, e.g. an unexported
+     `laneExtraKey`, set the same way.
+   The first option (separate typed field) is cleaner because `TokenInfo.Extra` is nominally
+   OIDC-claim space; do not overload it with transport metadata. Either way, `newConnectCSRFInterceptor`
+   changes its `csrfWriteProcedures` gate check to also require `lane == "cookie"` (bearer callers
+   skip CSRF entirely, matching "a bearer caller carries no ambient cookie, so CSRF does not apply
+   to it") — and that must be proven fail-closed as this phase's first test, per PROJECT.md's
+   explicit instruction.
+
+**Integration points:** `internal/server/connectapi.go` (`connectResolver` type, `mountConnect`),
+`internal/server/connectauth.go` (`newConnectSubjectInterceptor`), `internal/server/identity.go`
+(context key + `subjectFromConnectContext`/`callerFromConnectContext`), `internal/server/connectcsrf.go`
+(`newConnectCSRFInterceptor`'s gate), `cmd/engram/serve.go` (`withAuth`, and the `uiCfg.Enabled`
+branch that currently only wires `connectResolve` from the cookie lane).
+
+### 3. Debug-level authz decision logging — no new dependency
+
+`authz.Decision.diag` (`internal/authz/authz.go:48-51`) is `cedar.Diagnostic` from the already-vendored
+`cedar-go` v1.8.0. It carries the policy reasons/errors Cedar's `Authorize` call produces. Needed
+work is entirely in-repo:
+
+- Export a read accessor (`Decision.Diagnostic()` or similar) since `diag` is currently unexported
+  by design ("never surfaced to a caller-facing error", per the doc comment) — the accessor must be
+  a *new, separate* path used only by the debug-log/span-event call site, never by the
+  caller-facing error path, preserving the existing DEC-xa6 no-leak guarantee.
+- Log via `slog.Debug` (already the project's logging idiom throughout `internal/server`) at the
+  `internal/store` call sites that already invoke `DecideRecord`/`DecideBucket`.
+- Emit as an OTel span event via `trace.SpanFromContext(ctx).AddEvent("authz.decision", trace.WithAttributes(...))`
+  — `go.opentelemetry.io/otel/trace` v1.44.0 is already a direct dependency; no metrics/tracing
+  library addition.
+- **Owner-only PII rule (DEC-wot referenced in PROJECT.md):** the diagnostic must be filtered/scoped
+  so only the record owner's own identity ever appears in the emitted log/span — this is an
+  application-level redaction concern the existing `cedar.Diagnostic` structure doesn't solve for
+  you; treat it the same way `internal/auth` already treats bearer tokens ("never logged", per
+  `internal/auth/static_token.go`) — a hand-written field allowlist over `diag`'s reasons/errors at
+  the log call site, not a generic serializer.
+
+**Integration points:** `internal/authz/authz.go` (new accessor), `internal/store` call sites
+around every `DecideRecord`/`DecideBucket` invocation, `internal/telemetry` if a shared
+"log+span-event" helper is warranted (mirrors the existing `telemetry.Record*` helpers pattern).
+
+### 4. Bounded HTTP error-body read before drain — stdlib only, no dependency
+
+Exact target: `internal/embed/embed.go` — both `Embed` (~line 151) and `EmbedQuery` (~line 192)
+build a request, call `c.http.Do(req)`, and on `resp.StatusCode != http.StatusOK` currently just
+return `fmt.Errorf("embeddings: status %d", resp.StatusCode)` (line 248-250) without reading the
+body at all — meaning the connection is not returned to the idle pool for reuse (Go's
+`net/http.Transport` requires the body be read to EOF and closed, not merely closed, for
+keep-alive reuse) and the provider's error detail (validation message, quota reason, etc.) is
+lost, which is exactly what #347 wants surfaced.
+
+Correct stdlib pattern (no library):
+
+```go
+if resp.StatusCode != http.StatusOK {
+    const maxErrBody = 4 << 10 // bound the read; provider errors are small
+    body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrBody))
+    _, _ = io.Copy(io.Discard, resp.Body) // drain the rest for keep-alive reuse
+    return nil, fmt.Errorf("embeddings: status %d: %s", resp.StatusCode, bytes.TrimSpace(body))
+}
+```
+
+`io.LimitReader` + `io.ReadAll` bounds the amount of provider-controlled data pulled into memory;
+the subsequent `io.Copy(io.Discard, resp.Body)` finishes draining so `resp.Body.Close()` (already
+deferred at line 247) lets the transport reuse the connection instead of forcing a fresh TCP+TLS
+handshake on the next embed call. This is the documented Go idiom (`net/http` package docs: "the
+default HTTP client's Transport may not reuse HTTP/1.x connections... unless the body is read to
+completion and closed") — nothing beyond `io`/`bytes`/`fmt`, already imported.
+
+**Integration points:** `internal/embed/embed.go` `Embed`/`EmbedQuery` (the `resp.StatusCode !=
+http.StatusOK` branches); check `internal/summarize` for an identical pattern too, since #350's
+chat-lane HTTP client shares the same provider-shape-join heritage (`internal/openaiurl`) and is
+likely to have the same non-2xx short-read gap.
+
+### 5. Codegen TS drift enforcement in CI — already exists, needs verification/extension not a new tool
+
+This is **not a gap to fill with new tooling** — `.github/workflows/ci.yaml:139-147` already runs
+two drift checks in sequence: `go tool buf generate` + `git diff --exit-code -- gen/` (root
+buf-generated tree), then `rm -rf ui/src/lib/gen/engram ui/src/lib/gen/buf && cp -R gen/ts/.
+ui/src/lib/gen/ && git diff --exit-code -- ui/src/lib/gen/` (the vendored UI copy). This appears to
+have landed after GitHub issue #356 was filed (#356's proposed fix — "add a copy step to
+`proto:gen`" and "extend the CI drift check" — is already substantially implemented). Confirmed:
+`ui/src/lib/gen/engram_pb.ts` itself is a **hand-authored, deliberately non-generated** barrel file
+(`export * from './engram/v1/engram_pb'`, with a comment explicitly stating it is "Never
+overwritten by the re-vendor's `cp -R`") — it is not the drift surface #356 worried about; the real
+generated content lives at `ui/src/lib/gen/engram/v1/engram_pb.ts`, which the existing check does
+cover.
+
+**What actually remains for #356:** verify the existing two-step check is airtight (does it run on
+every PR, not just `main`-targeted ones? does it correctly fail before this milestone's proto
+changes for #344's `cross_spine` field land?) — this is a CI-workflow verification/possibly a
+scope-widening task (e.g. confirming no other hand-maintained TS copy exists beyond the barrel),
+not a new dependency or tool. No buf plugin, no new npm package, no drift-detection library is
+warranted.
+
+**Integration points:** `.github/workflows/ci.yaml` lines 139-147 (verify/extend in place), `Taskfile.yaml`'s
+`proto:gen` target (confirm it mirrors the CI copy step so local dev doesn't drift from CI).
 
 ## Installation
 
 ```bash
-# No new dependencies — every symbol used below is already in go.sum:
-#   github.com/google/uuid        v1.6.0   (NewSHA1 / NewMD5)
-#   github.com/coreos/go-oidc/v3  v3.19.0  (Verifier, Config)
-#   github.com/knadh/koanf/v2     v2.3.5   (registry additions)
-#   github.com/qdrant/go-client   v1.18.3  (Upsert / payload conditions)
-# Stdlib: crypto/sha256, crypto/subtle, crypto/hmac — no `go get` required.
+# Nothing to install — every capability above is covered by packages already
+# in go.mod (connectrpc.com/connect v1.20.0, golang.org/x/oauth2 v0.36.0,
+# github.com/cedar-policy/cedar-go v1.8.0, go.opentelemetry.io/otel/trace
+# v1.44.0) or Go 1.26 stdlib (io, net/http, log/slog, encoding/json).
 ```
-
-## Feature-by-Feature Analysis
-
-### (a) Idempotency-key / upsert against Qdrant
-
-**Recommendation: deterministic point-ID derivation via `uuid.NewSHA1`, no new Qdrant feature, no second collection, no new payload index.**
-
-- Today, every `store_memory` call mints a fresh random `uuid.NewString()` (`internal/server/tools.go:632`) and calls `Store.Upsert`, which is a plain Qdrant point upsert keyed by that ID (`store.go:507-515`) — replace-in-place semantics already exist, but nothing makes retries collide onto the same point.
-- Fix: if the caller supplies an `idempotency_key`, derive the point ID as `uuid.NewSHA1(engramIdempotencyNS, []byte(owner+"\x00"+idempotencyKey))` instead of a random UUID. Same owner + same key ⇒ same point ID ⇒ the second `store_memory` call is a genuine Qdrant upsert-replace of the first, satisfying "mechanically re-runnable capture doesn't duplicate" (#340) with zero new store method.
-- If no key is supplied, a content-hash fallback (`sha256(owner+scope+category+content)` fed through the same `uuid.NewSHA1`) gives the same guarantee for byte-identical re-submission, without requiring the caller to invent a key. Both forms share one code path — only the "name" fed to `NewSHA1` differs.
-- **Conflict detection matters more than the ID scheme.** A reused idempotency key with *different* content is a caller bug or a hash-adjacent collision, and the "explicit, zero-junk, correctable" contract (CLAUDE.md) means this should be surfaced as an error, not silently overwritten. Store the raw idempotency key (or content-hash) in the payload (a new small field, payload-only like the existing `v1:`-prefixed embedder-config-identity stamp from Phase 13) so the write path can fetch-before-write, compare, and reject on mismatch. This reuses the exact "payload-only identity stamp" precedent already shipped for embedder-config-identity — same shape, same rationale, no new library.
-- **Do not** add a payload index for the idempotency key (à la DEC-ef28's owner/scope/created_at indexes). Deterministic-ID derivation makes idempotency a point *get*, not a filtered *search* — no new Qdrant index, no new query pattern.
-- **Do not** introduce a separate "idempotency ledger" collection or external dedup store (Redis, etc.). That would violate the existing single-Memory-collection invariant (DEC-2bv) for no benefit — the whole point of deterministic IDs is that Qdrant's own point-identity semantics already give the dedup for free.
-
-### (b) OIDC client-credentials + static bearer-token auth
-
-**Recommendation: reuse `internal/auth.Verifier` unchanged for OIDC service accounts; add a small parallel static-token verifier using stdlib only; select between them (or layer both) via one new config field.**
-
-- **OIDC client-credentials side:** go-oidc's `Verifier.Verify()` operates on any JWT bearer token regardless of which OAuth2 grant produced it — client-credentials-issued access tokens from mainstream IdPs (Keycloak, Auth0, Okta, Authentik, Zitadel) are JWTs signed by the same JWKS the existing verifier already fetches. Confirmed against Context7 (`/coreos/go-oidc`, MEDIUM confidence): the `Config{ClientID, SkipClientIDCheck, ...}` shape used today for user tokens is the same shape a resource server uses for any access token, service or user. **No go-oidc version bump, no new verifier type, no `golang.org/x/oauth2/clientcredentials` import** — that package is for something *requesting* a client-credentials token (an OAuth2 *client*); engram is the resource server *verifying* tokens minted by someone else's client-credentials exchange, so it never performs that flow itself. Do not add it.
-- **The real gap is claim mapping, not verification.** Client-credentials tokens routinely omit `email` (there's no human). `internal/auth.ClaimIdentity` already walks an ordered `ownerClaims` list and falls through to the next claim — so the fix here is almost entirely operational: allow `ENGRAM_OWNER_CLAIM` to carry a fallback list (e.g. `email,azp,client_id,sub`) so a service principal's owner resolves from `azp`/`client_id` when `email` is absent. This is a config/logic change to an existing function, not a new library.
-- **Tenancy-isolation guarantee (#373):** `store.Authenticated(sub string)` already panics on an empty value specifically so an authenticated subject can never collapse into the anonymous `owner==""` bucket (`internal/store/subject.go:37-48`) — that invariant is already shipped and doesn't need new code. The actual gap is upstream: what happens today when every configured owner claim is absent for an *authenticated* (non-anonymous) caller, before `SubjectFromTokenInfo` ever constructs a `Subject`? If claim resolution currently yields an empty owner string that gets handled some other way (rather than a hard rejection before it ever reaches `store.Authenticated`), that's the gap #373 targets — the fix is to fail closed (401) rather than let a service-account token silently resolve to no owner. No new library changes this; it's a control-flow fix in `internal/server/identity.go` / `internal/auth/auth.go`.
-- **Static bearer-token fallback:** implement as a config-mapped set (`token → owner`), checked with `crypto/subtle.ConstantTimeCompare` against each candidate (iterate the small configured set — this set is expected to be small, tens not thousands — rather than a map lookup, to keep the whole comparison constant-time end to end). Store tokens **in plaintext env config**, consistent with the existing precedent (`oidc.client_secret`, `ui.cookie_key` are already plaintext env vars) — do not introduce bcrypt/argon2/scrypt hashing for this; that's password-store tooling and adds a dependency (`golang.org/x/crypto/bcrypt`, transitively available via `x/crypto` but unused today) for a threat model (offline dictionary attack against a stolen config file) this project doesn't otherwise defend against for its other secrets. Revisit only if a future security audit specifically flags it.
-- **Rotation:** support *multiple* static tokens per owner (a list, not a single token) in the config shape, so an operator can add the new token, redeploy, confirm the caller has switched, then remove the old one in a follow-up deploy — zero-downtime rotation without needing a "grace period" timer or expiry field. This is a data-shape decision (list of `{token, owner}` pairs, not a single map entry) rather than a library concern.
-- **Selection mechanism:** a single `service_auth.mode` field (`oidc` | `static` | `off`, or a bitmask/list if both must run concurrently) resolved the same way every other koanf field is — add the rows to `registry.go`, thread into `cmd/engram/serve.go`'s auth wiring alongside the existing `internal/auth.New(...)` call.
-
-### (c) Per-lane embedder vs chat base-URL config in koanf
-
-**Recommendation: pure field-registry extension, zero new library.**
-
-- Confirmed by reading `internal/server/tools.go`: `cfg.OpenAI.BaseURL` and `cfg.OpenAI.APIKey` are passed to **both** `embed.New(...)` (line 357) and `summarize.New(...)` (line 369) today — this is the exact single-base-URL coupling #350 wants split.
-- Fix: add `chat.base_url` (`ENGRAM_CHAT_BASE_URL`) as a new registry row per the existing `field{Key, Env, Legacy, Flag, Default}` shape (no `Legacy` needed — this is additive, not a rename), defaulting to `cfg.OpenAI.BaseURL` when unset so existing single-provider deployments see no behavior change. Thread it into the `summarize.New(...)` call site instead of reusing `cfg.OpenAI.BaseURL`.
-- This is the same shape of change Phase 13/14 already made twice for the embedder (base-URL shape-aware join, timeout) — the registry pattern was purpose-built for exactly this kind of additive per-lane knob. No new koanf provider, no version bump (`v2.3.5` already handles nested field trees fine).
-- **Do not** invent a generic "N-provider" config abstraction (e.g. a providers array/map) for this — that's solving a problem (arbitrary provider count) the milestone doesn't ask for. Two named lanes (embed, chat) is the scope; keep the registry flat.
-
-### (d) Supersession / provenance — library needs beyond the existing store
-
-**Recommendation: none. Both are payload-shape extensions to `store.Memory`, reusing patterns already shipped.**
-
-- **Provenance/citations on curated memories (#341):** the `Citation` struct (`Kind`, `Ref`, `Locator`, `Pin`, `Excerpt`) already exists and is wired for discoveries (`internal/store/store.go:206-208`, payload marshal/unmarshal already present at `store.go:472-489`). Extending `store_memory`/`update_memory` to accept the same `citations` field for `memory`-category records is a matter of relaxing the "discoveries-only" gate in the tool handler/MCP schema — the store-layer payload plumbing is already generic (it doesn't discriminate by category today; category-gating almost certainly lives in the MCP tool-input-schema/handler layer). No new type, no new library.
-- **Supersession links with history (#342):** model as a payload-only pointer pair — `supersedes` (new record → old record's ID) and `superseded_by` (old record ← new record's ID), set via two coordinated `Upsert` calls (new record created; old record's payload patched with `superseded_by`), exactly analogous to the existing `Store.Update` pattern (`store.go:1398-1438`) that already does a read-modify-Upsert round-trip for in-place edits. The key design difference from `Update` is that supersession creates a **second** point rather than mutating one, which is precisely why it needs to be a distinct code path — but the primitives (Qdrant `Upsert`, payload marshal helpers) are 100% reused.
-- **Do not** model supersession as a Qdrant "point version history" feature, graph edges, or a separate collection — Qdrant has no native point-history/versioning primitive to reach for here, and a second collection would violate DEC-2bv. A simple bidirectional ID pointer in the payload is sufficient and keeps recall/authz filtering unchanged (superseded records still live in the same collection, subject to the same owner filters; they're just marked, and recall can optionally filter `superseded_by == null` at query time using the same Qdrant filter-condition machinery already used for tags/temporal windows).
-
-### (e) Category filter over MCP search/list (#374)
-
-Not a "stack" question — `category` is already a payload field with existing values (`memory`, `discovery`, `rule`, plus scheduled variants). This is the same shape as the already-shipped `tags` filter (DEC-4xt7: hard Qdrant pre-filter, AND-composed onto the authz envelope) — add a `qdrant.NewMatch("category", ...)` condition the same way `tags` does it. Zero new dependency.
 
 ## Alternatives Considered
 
-| Recommended | Alternative | Why Not |
-|--------------|-------------|---------|
-| `uuid.NewSHA1` deterministic point ID for idempotency | Client-supplied `idempotency_key` stored as a payload field + a new Qdrant payload index + filtered-search-then-upsert | Extra round-trip (search before write) and a new payload index the existing indexing convention (DEC-ef28: only owner/scope/created_at) doesn't cover; deterministic ID gives O(1) get-by-id dedup for free |
-| Reuse existing `internal/auth.Verifier` (go-oidc) for client-credentials tokens | A second, separate OIDC verifier tuned for "machine tokens" | Client-credentials access tokens from mainstream IdPs are ordinary JWTs verified by the same signature/issuer/expiry checks — a second verifier would duplicate nearly all of `internal/auth/auth.go` for no semantic difference |
-| `crypto/subtle.ConstantTimeCompare` for static tokens | `golang.org/x/crypto/bcrypt` hashed-at-rest tokens | Bcrypt defends against offline dictionary attacks on a leaked config file — a threat model this project doesn't apply to its other plaintext secrets (`oidc.client_secret`, `ui.cookie_key`); adding it here alone is inconsistent, unjustified scope creep |
-| Payload-pointer pair (`supersedes`/`superseded_by`) for supersession | A dedicated "supersession" Qdrant collection or graph store | Violates DEC-2bv (single Memory collection); a payload pointer keeps supersession inside the existing authz/recall filter machinery |
-| One new `chat.base_url` field, default-falls-back to `openai.base_url` | A generic multi-provider config array | Over-generalizes a two-lane (embed, chat) requirement into an N-provider abstraction nobody asked for |
-| Static-token config as a JSON blob in one env var (mirroring `ENGRAM_EMBED_QUERY_PARAMS`) | A dedicated file-based token store (e.g. a mounted secrets file, `ENGRAM_SERVICE_TOKENS_FILE`) | The codebase has zero precedent for config-from-file (koanf is env+flag+defaults only); reuse the proven "JSON blob in one env var" convention instead of introducing a new config source |
+| Recommended | Alternative | When to Use Alternative |
+|-------------|-------------|-------------------------|
+| `golang.org/x/oauth2/clientcredentials` for CLI OIDC token acquisition | A dedicated OIDC client library (e.g. wrapping `coreos/go-oidc` client-side flows) | Never for this milestone — `go-oidc` here is a *verifier* (server-side JWKS/issuer validation), not a token-acquisition client; `clientcredentials` is the RFC 6749 §4.4 grant implementation and is already vendored |
+| Hand-rolled `--json`/table CLI output in cobra | A CLI table/output library (`pterm`, `tablewriter`, `go-pretty`) | Only if the CLI later grows genuinely complex interactive output (progress bars, live-updating tables) — a handful of memory rows doesn't justify it, and it would be this milestone's first "reluctant new dependency" for no architectural gain |
+| Context-threaded provenance field for CSRF-lane marking | Parsing/trusting the `X-CSRF-Token` header's mere presence as the lane signal | Never — this is the exact anti-pattern PROJECT.md's #1 risk warns against (header-absence-keyed exemption lets a cookie caller opt out of CSRF) |
+| `io.LimitReader` + `io.Copy(io.Discard, ...)` for bounded error-body read | A retry/resilience HTTP client wrapper (e.g. `hashicorp/go-retryablehttp`) | Only if the milestone also wanted retry semantics on embed calls — it doesn't; #347 is specifically about surfacing + draining, not retrying |
 
-## What NOT to Use
+## What NOT to Add
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| `viper`, any config-file-based loader | Project constraint — koanf ENGRAM_-prefixed env+flag only, `MEM_*` is a fatal legacy guard (DEC-jgq, DEC-irq) | `internal/config` field registry (add rows) |
-| Database migrations / migration tooling (goose, golang-migrate, atlas) | Not used in this project; Qdrant collection schema changes are additive payload fields, not relational migrations | Payload-field additions + operator CLI commands (pattern: `engram backfill-short-ids`, `engram reindex`) for any backfill need |
-| Prometheus client library / `/metrics` scrape endpoint | Telemetry is OTLP-gRPC only, no Prometheus scrape (DEC-dwi) | Existing OTel span/metric instrumentation seams (`internal/telemetry`) |
-| Any SSR framework/adapter for the console or docs site | Both are static-only by decision (DEC-0lu, DEC-ttb) — irrelevant to this milestone anyway, called out because service-auth work sometimes tempts a "management UI" scope creep | None needed — service auth config is env/Helm-values only, no new UI surface required by this milestone |
-| A second/separate Qdrant collection (per idempotency ledger, per supersession history, per service-account registry) | Violates DEC-2bv (single Memory collection, one authz/recall path) | Payload fields on the existing Memory collection, exactly as discovery/rule kinds were added |
-| `golang.org/x/oauth2/clientcredentials` | That package implements the OAuth2 *client* side of the client-credentials grant (acquiring a token) — engram never acquires tokens, it only verifies tokens acquired by others | `internal/auth.Verifier` (go-oidc), unchanged |
-| `golang.org/x/crypto/bcrypt` / argon2 / scrypt for static-token storage | Threat-model mismatch with existing plaintext-secret precedent (client_secret, cookie_key); adds complexity for no consistent gain | `crypto/subtle.ConstantTimeCompare` (stdlib) against plaintext configured tokens |
-| A new JWT library (e.g. `golang-jwt/jwt`, `lestrrat-go/jwx`) for either OIDC or static tokens | go-oidc already wraps JWT verification end-to-end for the OIDC path; static tokens are opaque bearer strings, not JWTs, so no JWT library applies there either | go-oidc (OIDC lane), raw constant-time compare via `crypto/subtle` (static lane) |
-| A UUIDv4-random point ID plus a separate dedup index/cache (Redis, in-memory LRU, etc.) for idempotency | Adds an external dependency and a consistency problem (cache vs Qdrant can drift) to solve something Qdrant's own point identity already solves | Deterministic `uuid.NewSHA1` point ID |
+| A second OIDC/auth library for the CLI's bearer-token acquisition (e.g. `github.com/coreos/go-oidc` client flows, `zitadel/oidc`, `ory/fosite` client) | The server already has exactly one OIDC dependency (`coreos/go-oidc/v3`) used purely for verification; the CLI only needs the client-credentials *grant*, which is pure OAuth2 (no OIDC discovery/ID-token parsing needed for a machine credential) and is fully served by the already-vendored `golang.org/x/oauth2/clientcredentials` | `clientcredentials.Config` |
+| A CLI framework beyond cobra for `engram search\|store\|list` | cobra is already the CLI framework (`spf13/cobra` v1.10.2); these are just new subcommands under the same root | Add cobra `*cobra.Command`s under `cmd/engram/`, mirroring `serveCmd`'s structure |
+| A structured-CLI-output / table-rendering library | Table/JSON output for a handful of memory records is ~20 lines of `encoding/json` + a `text/tabwriter` loop; stdlib `text/tabwriter` already exists for the human-readable path if alignment is wanted | `encoding/json.MarshalIndent` (JSON mode) + `text/tabwriter` (human mode) |
+| A generic "auth middleware" or "multi-scheme auth" Go package for the two-credential-type Connect lane (cookie + bearer) | The chain-of-verifiers pattern already exists in this exact codebase (`auth.ChainVerifier`) for the MCP lane; duplicating that pattern with a generic third-party library would introduce a second, inconsistent multi-credential abstraction | Reuse `internal/auth.ChainVerifier` behind a `connectResolver` adapter |
+| Any dependency claiming to solve "Cedar decision → structured log" | `cedar.Diagnostic` (already vendored via `cedar-go`) is a plain Go struct; formatting it for `slog`/OTel is a few lines at the call site, and the owner-only-PII redaction rule requires bespoke filtering no generic library would know about | Hand-written accessor + allowlist filter in `internal/authz`/`internal/store` |
+| `golang.org/x/net/http2` tuning, a resilience/circuit-breaker library, or a retry library for the embed error-body fix | #347 asks only for bounded-read + drain-for-reuse, not retry or resilience semantics; `internal/embed` already has its own timeout config (`ENGRAM_EMBED_TIMEOUT`, Phase 13) and `cenkalti/backoff/v5` is already vendored for the one place backoff is actually used (summary queue) — do not add a second backoff/retry dependency for this fix | `io.LimitReader` + `io.Copy(io.Discard, ...)`, stdlib only |
+| A buf-generated-code drift-detection tool/GitHub Action beyond the existing inline `git diff --exit-code` steps | CI already implements exactly this at `.github/workflows/ci.yaml:139-147`; a marketplace Action or dedicated tool would duplicate working, repo-convention-matching logic (the repo's stated convention is inline commands over Action dependencies, per the `ui-drift` job's self-heal comments) | Verify/extend the existing two inline `git diff --exit-code` steps |
 
 ## Stack Patterns by Variant
 
-**If an operator wants headless CI/agent service accounts backed by their existing IdP:**
-- Use OIDC client-credentials (`service_auth.mode=oidc`), same `internal/auth.Verifier`, with `ENGRAM_OWNER_CLAIM` (or its extended fallback-list form) pointed at `azp`/`client_id` so the owner resolves without an `email` claim.
-- Because: zero new infrastructure, and the tenancy/authz model (owner-claim, sealed Subject, store-layer enforcement) is already fully general — service accounts are just Subjects with a non-email owner claim, a case `internal/auth.ClaimIdentity`'s namespaced-claim encoding already handles (`namespacedOwner`).
+**If the CLI needs to support both a static token and OIDC client-credentials for the same
+invocation (operator choice via config):**
+- Build the credential-attaching interceptor the same way `auth.ChainVerifier` picks a lane on the
+  server: resolve config once at CLI startup (`ENGRAM_CLIENT_TOKEN` set → static; `ENGRAM_CLIENT_OIDC_*`
+  set → client-credentials via `clientcredentials.Config.Client(ctx)`) and construct exactly one
+  interceptor closure over the resolved credential, never both wired simultaneously.
+- Because this mirrors the "D-03 independent enablement" precedent already established for the
+  server's three-lane `ChainVerifier` — one clear code path per configured mechanism, no
+  runtime "try all, take first success" ambiguity on the client either.
 
-**If an operator has no IdP, or wants a lower-friction path for a small number of trusted automation callers:**
-- Use the static-token fallback (`service_auth.mode=static`), a small configured `token → owner` list, constant-time compared.
-- Because: this is the "config-mapped bearer token" path the milestone explicitly calls for as a *fallback*, not a replacement — keep it minimal (no hashing, no expiry machinery) since its whole value proposition is simplicity for the no-IdP case.
-
-**If both must be available simultaneously (mixed fleet: some callers via IdP, some via static token):**
-- Chain the two verifiers in the HTTP middleware: try OIDC bearer verification first (existing lane), fall through to static-token lookup only if no `Authorization: Bearer <jwt>` parses as a valid JWT (or if OIDC is unconfigured). Keep both paths converging on the same `store.Subject` construction so authz enforcement in `internal/store` never has to know which lane authenticated the caller.
-- Because: this preserves the existing single-chokepoint authz invariant (DEC-cgb/DEC-12c) — the store layer only ever sees a `Subject`, never a token type.
+**If the Connect bearer resolver and the MCP `RequireBearerToken` wrapper both need the same
+`auth.ChainVerifier` chain:**
+- Build the chain once in `runServe` (or a small helper both call), and hand the resulting
+  `mcpauth.TokenVerifier` to two thin adapters — one for `mcpauth.RequireBearerToken` (MCP,
+  existing), one for the new Connect `connectResolver` (extracts `Authorization` header, calls the
+  chain, sets lane provenance) — rather than duplicating chain construction.
+- Because `withAuth`'s doc comment already states it is "the ONE call site that changes" for
+  auth-chain composition (Phase 23 precedent, D-01/D-03) — a second, separately-constructed chain
+  for Connect would violate that invariant and risk the two lanes drifting out of sync (e.g. one
+  honoring a static-token rotation the other doesn't).
 
 ## Version Compatibility
 
-| Package | Version (pinned) | Compatible With | Notes |
-|---------|-------------------|------------------|-------|
-| `github.com/coreos/go-oidc/v3` | v3.19.0 | `golang.org/x/oauth2` v0.36.0 (indirect dep of go-oidc) | Already current; a July 2026 web check found public v3.18.0 as of April 2026 — engram's v3.19.0 pin is at or ahead of the latest public release, no bump needed |
-| `github.com/qdrant/go-client` | v1.18.3 | Qdrant server v1.18.2 (CI-pinned per Phase 17's `requireQdrant` gate) | No feature in this milestone needs a newer client — `Upsert`/`Get`/`Delete`/filter conditions are all already used |
-| `github.com/knadh/koanf/v2` | v2.3.5 | `providers/env/v2` v2.0.0, `providers/confmap` v1.0.0 | Current; nested-key + JSON-blob-in-env-var patterns already proven by `ENGRAM_EMBED_QUERY_PARAMS`/`ENGRAM_EMBED_DOCUMENT_PARAMS` |
-| `github.com/google/uuid` | v1.6.0 | Go 1.26 | `NewSHA1`/`NewMD5` (deterministic v5/v3 UUIDs) available in this version; no bump needed |
-| `connectrpc.com/connect` | v1.20.0 | `connectrpc.com/otelconnect` v0.9.0 | Unaffected by this milestone |
-| Go toolchain | 1.26, `CGO_ENABLED=0` | distroless base image | `crypto/subtle`, `crypto/sha256`, `crypto/hmac` all stdlib, no CGO implications |
+| Package A | Compatible With | Notes |
+|-----------|-----------------|-------|
+| `connectrpc.com/connect` v1.20.0 (server, existing) | Same v1.20.0 for the new CLI client | Use the identical pinned version — no reason to diverge client/server versions within one module |
+| `golang.org/x/oauth2` v0.36.0 (existing, direct dep) | `golang.org/x/oauth2/clientcredentials` (same module, same version) | Subpackage of the already-required module; `go.mod` needs no new `require` line, only a new `import` |
+| Go 1.26.3 (`go.mod`) | `io.LimitReader`, `io.Copy(io.Discard, ...)`, `text/tabwriter`, `encoding/json` | All stable stdlib APIs, no version sensitivity |
 
 ## Sources
 
-- Direct codebase read (HIGH confidence): `go.mod`/`go.sum` (pinned versions), `internal/store/store.go` (`Upsert`, `Update`, `Citation`, `ownerOrSharedCondition`, payload marshal/unmarshal), `internal/store/subject.go` (`Authenticated`/`Anonymous` sealed-interface guard), `internal/auth/auth.go` (`ClaimIdentity`, `Verifier`, `OwnerClaimExtraKey`), `internal/config/registry.go` (field-registry shape, existing `ENGRAM_EMBED_QUERY_PARAMS` JSON-blob-in-env-var precedent), `internal/server/tools.go` (shared `cfg.OpenAI.BaseURL` feeding both `embed.New` and `summarize.New`), `.planning/PROJECT.md` (locked ADRs DEC-2bv, DEC-ef28, DEC-cgb, DEC-12c, DEC-jgq, DEC-irq, DEC-dwi, DEC-0lu, DEC-ttb, DEC-378, DEC-zyhq)
-- Context7 `/coreos/go-oidc` (MEDIUM confidence) — `Config{ClientID, SkipClientIDCheck, SkipIssuerCheck, SkipExpiryCheck}` shape and `NewRemoteKeySet`/`NewVerifier` construction, confirming the same verifier type applies to any bearer-token verification regardless of originating OAuth2 grant
-- Web search (MEDIUM confidence, cross-checked against the repo's own pinned versions which are equal-or-ahead): `github.com/qdrant/go-client` release cadence; `coreos/go-oidc` v3 release history
+- Context7 `/connectrpc/connect-go` — client-side `connect.NewClient`, `connect.WithInterceptors`, `UnaryInterceptorFunc` shape, `connect.NewClientContext` for per-call headers (verified current docs, not training-data recall)
+- Context7 `/golang/oauth2` — `clientcredentials.Config.Token`/`.Client`/`.TokenSource`, `oauth2.ReuseTokenSourceWithExpiry` (verified current docs)
+- In-repo: `internal/auth/chain.go`, `internal/server/connectapi.go`, `internal/server/connectauth.go`, `internal/server/connectcsrf.go`, `internal/server/identity.go`, `internal/webauth/resolver.go`, `internal/authz/authz.go`, `internal/embed/embed.go`, `cmd/engram/serve.go`, `go.mod`, `.github/workflows/ci.yaml` — read directly to ground every recommendation in the actual seam it extends
+- GitHub issue #356 (`gh issue view 356`) — confirmed scope and confirmed the CI drift check for `ui/src/lib/gen/` already exists, narrowing what remains
 
 ---
-*Stack research for: engram v0.11.x — Capture & Service Identity*
-*Researched: 2026-07-16*
+*Stack research for: engram v0.12.x — Headless Reach & Diagnosability*
+*Researched: 2026-07-29*

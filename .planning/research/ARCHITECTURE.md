@@ -1,402 +1,643 @@
-# Architecture Research — v0.11.x Integration ("Capture & Service Identity")
+# Architecture Research — v0.12.x "Headless Reach & Diagnosability"
 
-**Domain:** Integrating 7 new capabilities into an existing Go+Qdrant MCP memory server
-**Researched:** 2026-07-16
-**Confidence:** HIGH (grounded directly in current `internal/store`, `internal/auth`,
-`internal/server`, `internal/config` source — not external ecosystem research)
+**Domain:** Integrating new capabilities into an existing, shipped Go memory-MCP server (engram)
+**Researched:** 2026-07-29
+**Confidence:** HIGH — every claim below is verified against the current source (files/line ranges
+cited); no speculation about unread code.
 
-## Standard Architecture (as-built, unchanged by this milestone)
+This is not greenfield architecture research. It is an integration map: six new capabilities against
+a specific existing codebase, with real file paths and function names for every seam. All six items
+are additive to the existing Connect/MCP/store architecture — none require restructuring an existing
+component's public contract.
 
-### System Overview
+## System Overview
 
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Transport lanes                                                          │
-│  ┌───────────────────────┐        ┌──────────────────────────────────┐   │
-│  │ MCP StreamableHTTP     │        │ ConnectRPC EngramService (11 RPC) │   │
-│  │ /mcp — bearer OIDC     │        │ /connect — cookie/OIDC (console)  │   │
-│  │ mcpauth.RequireBearer  │        │ newConnectSubjectInterceptor      │   │
-│  │ Token(verifier.Token   │        │ (pluggable `resolve` func)        │   │
-│  │ Verifier(), ...)       │        │                                    │   │
-│  └───────────┬───────────┘        └────────────────┬───────────────────┘   │
-│              │ *mcpauth.TokenInfo{Extra[owner_claim]}                     │
-│              └──────────────────┬─────────────────┘                       │
-│                                  ▼                                        │
-│                    SubjectFromTokenInfo / callerFromTokenInfo             │
-│                    (internal/server/identity.go — ONE choke point)        │
-│                                  ▼                                        │
-│                    caller{Subj store.Subject, Actor string}               │
-├──────────────────────────────────────────────────────────────────────────┤
-│  deps.* business logic (internal/server/tools.go) — dual-surface shared  │
-│  MCP tool handlers ──┐                        ┌── Connect RPC handlers   │
-│                      ▼                        ▼                          │
-│              deps.storeMemory / searchMemory / updateMemory / ...        │
-├──────────────────────────────────────────────────────────────────────────┤
-│  internal/store (Store) — THE authz chokepoint (DEC-cgb/DEC-12c)         │
-│  ownerScopeFilter / ownerOrSharedCondition / listFilter / tagMatch        │
-│  Conditions — default-deny exhaustive type switch on store.Subject        │
-├──────────────────────────────────────────────────────────────────────────┤
-│  Qdrant single "Memory" collection                                        │
-│  payload indexes: owner (keyword), scope (keyword), created_at (datetime) │
-│  categories: decision|preference|convention|gotcha|discovery|rule         │
-└──────────────────────────────────────────────────────────────────────────┘
-```
-
-### Component Responsibilities (existing, cited)
-
-| Component | Responsibility | Key file:symbol |
-|-----------|-----------------|------------------|
-| `store.Subject` | Sealed 2-variant sum (`anonymous`/`authenticated{sub}`); default-deny type switch is the ONLY authz decision point | `internal/store/subject.go` |
-| `auth.Verifier` | OIDC discovery + JWKS verify + `ClaimIdentity` owner-claim resolution → `mcpauth.TokenInfo` | `internal/auth/auth.go` |
-| `SubjectFromTokenInfo` / `callerFromTokenInfo` | The ONE `TokenInfo → {Subject, Actor}` mapping, shared by MCP bearer lane and Connect cookie lane | `internal/server/identity.go` |
-| `withAuth` | Wraps the whole MCP mux in `mcpauth.RequireBearerToken(verifier.TokenVerifier(), ...)` | `cmd/engram/serve.go:290` |
-| `newConnectSubjectInterceptor(resolve)` | Connect-side subject resolution is ALREADY a pluggable `func(ctx, req) (*TokenInfo, error)` seam | `internal/server/connectauth.go` |
-| `Store.ownerScopeFilter` / `ownerOrSharedCondition` / `listFilter` | Build the Qdrant pre-filter from `(scope, Subject, opts)` — the single authz+recall filter builder | `internal/store/store.go:524-846` |
-| `deps.*` | Business logic shared by MCP tool handlers and Connect RPC handlers via the explicit `caller{Subj,Actor}` seam | `internal/server/tools.go` |
-| `config.registry` | Single koanf field-registry: every `ENGRAM_*` var, its default, its legacy alias, its flag | `internal/config/registry.go` |
-| `Memory`/`Citation` structs | Wire+payload schema; `Citations`/`Kind` are Discovery-only TODAY (hard `Category=="discovery"` gate in `payload()`) | `internal/store/store.go:108-212, 372-382` |
-
-## Integration Points for v0.11.x Features
-
-### (a) Pluggable service auth (#362) → tenancy isolation (#373) falls out of the existing owner filter
-
-**Key finding: this is achievable with ZERO new store-layer authz code**, because the store never
-looks at *how* a Subject was authenticated — only at `store.Subject`'s two variants and the `owner`
-string stamped on `Memory.Owner`. Everything upstream of `SubjectFromTokenInfo` is swappable.
-
-**Existing seam to reuse, unmodified:**
-- `mcpauth.TokenVerifier` is `func(ctx, token, *http.Request) (*mcpauth.TokenInfo, error)`.
-  `withAuth` (`cmd/engram/serve.go:290`) wraps exactly one such func today
-  (`verifier.TokenVerifier()`, the OIDC bearer path).
-- `TokenInfo.Extra[auth.OwnerClaimExtraKey]` is the ONE contract `SubjectFromTokenInfo` /
-  `callerFromTokenInfo` read (`internal/server/identity.go:22-30`). Any verifier that populates
-  that key with a non-empty string produces a fully-authorized `caller` — no changes needed in
-  `internal/server/identity.go` or `internal/store`.
-- `auth.ClaimIdentity` already generalizes beyond `email`: for any *other* configured owner claim
-  (`ownerClaims []string`, tried in order) it returns an **injective namespaced encoding**
-  `namespacedOwner(claim, value)` = `"<len>:<claim>:<len>:<value>"` (`internal/auth/auth.go:83-94,
-  150-162`). This is precisely the mechanism that gives a headless service principal (which has no
-  `email`/`email_verified` claim) a collision-safe, distinct owner bucket — e.g. an OIDC
-  client-credentials token's `client_id`/`azp` claim resolves via the SAME code path as any other
-  non-email claim, with zero new logic. **Tenancy isolation for #373 is this mechanism applied to a
-  client-credentials principal, not a new authz primitive.**
-
-**New component — a verifier CHAIN in front of (not replacing) the existing OIDC path:**
+### Today (v0.11.x, shipped)
 
 ```
-withAuth (serve.go) now wraps:
-  chainVerifier(
-    verifier.TokenVerifier(),        // existing: interactive-user OIDC bearer (unchanged)
-    clientCredsVerifier.TokenVerifier(),  // NEW: OIDC client-credentials principal
-    staticTokenVerifier.TokenVerifier(),  // NEW: static-token fallback
-  )
+                          ┌─────────────────────────────────────────────┐
+                          │  net/http.CrossOriginProtection (whole mux)  │  cmd/engram/serve.go:226
+                          └───────────────────┬───────────────────────--┘
+                    ┌─────────────────────────┼─────────────────────────┐
+                    │                         │                         │
+              MCP transport              /auth/*, /ui/*           Connect (/engram.v1.*)
+           (StreamableHTTP, /mcp)      (webauth.Handler,          mounted ONLY if resolve!=nil
+                    │                    UI enabled only)         (== ONLY if UI enabled)
+        withAuth() cmd/engram/serve.go:297                              │
+     auth.ChainVerifier(human, service, static)                 mountConnect()
+     (OIDC user → OIDC client-cred → static token)          internal/server/connectapi.go:362
+                    │                                                    │
+              MCP tool handlers                        otel → access-log → subject(401)
+           internal/server/tools.go                     → CSRF(write-only,403) → validate(400)
+              (deps.* methods)                                → reseal(innermost, r+w)
+                    │                                                    │
+                    └───────────────────────┬───────────────────────────┘
+                                             │
+                                    internal/store (the ONE authz
+                                    chokepoint — DEC-cgb): Cedar PDP
+                                    decisions compiled into Qdrant filters
+                                             │
+                                     internal/authz (cedar-go PDP)
 ```
 
-- `chainVerifier` is a NEW, small (~20 line) `internal/auth` function: try each `TokenVerifier` in
-  order, return the first non-`ErrInvalidToken` success; if all fail, join+return the last error
-  (mirrors the existing `errors.Join(mcpauth.ErrInvalidToken, verr)` pattern already used in
-  `auth.go:192`). No new interface — reuses `mcpauth.TokenVerifier`'s existing function type.
-- `clientCredsVerifier`: mechanically a second `*auth.Verifier` (or a variant constructor) — OIDC
-  client-credentials tokens are still JWTs verifiable via JWKS from the SAME or a distinct issuer;
-  `ClaimIdentity` already knows how to turn a non-email claim into an owner. Only new work: token
-  *shape* differences (client-credentials tokens often lack `email`/`email_verified` — configure
-  `ownerClaims` to prefer `client_id`/`azp` for this lane) and (optionally) a second issuer config
-  if service principals live in a different OIDC client registration than interactive users.
-- `staticTokenVerifier`: genuinely new — a NEW `internal/auth` (or `internal/svcauth`) component
-  that looks up a bearer token in a config-supplied `token → principal-id` map (constant-time
-  compare) and synthesizes a `*mcpauth.TokenInfo{Extra: {OwnerClaimExtraKey: namespacedOwner("static_token", principalID)}}`
-  directly — no JWKS, no discovery. `namespacedOwner` is already exported-enough in spirit
-  (currently a private helper in `internal/auth`); either export it or duplicate the tiny
-  length-prefix scheme in the new package — do NOT invent a second owner-encoding scheme, that
-  would fragment the injectivity guarantee DEC-g37x depends on.
+Two independent credential mechanisms exist today and never overlap:
 
-**New vs Modified:**
-- NEW: `internal/auth.chainVerifier` (or equivalent small combinator)
-- NEW: static-token verifier component + its config surface (`ENGRAM_STATIC_TOKENS` or a
-  token-file path — mirrors the registry pattern, see (e))
-- NEW (maybe): a second `auth.New(...)` construction for the client-credentials issuer, OR reuse
-  of the existing `oidc.Issuer` with a distinct `ownerClaims` order if it's the same IdP
-- MODIFIED: `withAuth` in `cmd/engram/serve.go` to build and wrap the chain instead of the single
-  verifier — this is the only call site that changes
-- UNCHANGED: `internal/store` (zero new authz code), `internal/server/identity.go`
-  (`SubjectFromTokenInfo`/`callerFromTokenInfo` already generic over any `TokenInfo`),
-  `ownerScopeFilter`/`ownerOrSharedCondition`/`listFilter` (they only ever see a `store.Subject`)
+- **MCP lane** — bearer token only, verified by `auth.ChainVerifier` (built once, at
+  `cmd/engram/serve.go:340` inside `withAuth`).
+- **Connect lane** — sealed session cookie only, verified by `webauth.Resolver.Resolve`
+  (`internal/webauth/resolver.go:37`), wired in at `cmd/engram/serve.go:169`
+  (`connectResolve = webauth.NewResolver(codec).Resolve`), and **only ever constructed when
+  `uiCfg.Enabled`** (`cmd/engram/serve.go:143-175`). `mountConnect` (`connectapi.go:362-365`)
+  returns `nil` immediately when `resolve == nil` — Connect literally does not exist on a
+  headless deployment.
 
-**Precedent already in the codebase for "pluggable resolver in front of a chokepoint":**
-`newConnectSubjectInterceptor(resolve func(ctx, req) (*TokenInfo, error))`
-(`internal/server/connectauth.go`) is EXACTLY this shape already, just for the Connect cookie lane.
-The MCP-lane chain described above is the same idea applied to `mcpauth.TokenVerifier`.
+### After this milestone (items 1–3 land)
 
-**Risk to flag for the roadmap:** anonymous-bucket collision. `namespacedOwner` is injective across
-distinct `(claim, value)` pairs, and `email` values matching the reserved `^[0-9]+:` grammar are
-already rejected (`reservedOwnerNamespace`, `auth.go:37,144-145`) — so a crafted email cannot
-impersonate a namespaced principal. Verify the SAME collision property holds for whatever encoding
-the static-token verifier uses (reuse `namespacedOwner`, don't reinvent).
+```
+                          Connect (/engram.v1.*)  — now mountable headless
+                                             │
+                          composed resolver (NEW, cmd/engram/serve.go)
+                    ┌────────────────────────┴────────────────────────┐
+              bearer resolver (NEW)                          cookie resolver (existing)
+        wraps auth.ChainVerifier's TokenVerifier          webauth.Resolver.Resolve (unchanged)
+        stamps Extra[auth.LaneExtraKey]=LaneBearer         stamps Extra[auth.LaneExtraKey]=LaneCookie
+                    └────────────────────────┬────────────────────────┘
+                                             │
+                          newConnectSubjectInterceptor (existing, unchanged signature)
+                          stashes *mcpauth.TokenInfo (now lane-tagged) in ctx
+                                             │
+                          newConnectCSRFInterceptor (MODIFIED)
+                          reads lane from ctx (NOT from request headers) —
+                          exempts everything except LaneCookie
+                                             │
+                          validate → reseal (unchanged; already nil-cookie-safe)
+```
 
-### (b) Idempotency (#340) and supersession (#342) — handler-layer resolve, store-layer dedup/link, authz untouched
+The MCP lane, `internal/store`, and `internal/authz` are **untouched** by items 1–3. Item 1's only
+new dependency direction is: a new Connect-side bearer resolver reuses the *same*
+`mcpauth.TokenVerifier` value the MCP lane already builds — it does not duplicate verification logic
+or add a third auth package.
 
-**Current state (confirmed):** every `store_memory` call mints a fresh `uuid.NewString()`
-(`internal/server/tools.go:632,759`) and calls `persistAndEnqueue` → `Store.Upsert` (`internal/
-store/store.go:493-...`, doc comment: *"Upsert inserts or replaces a memory (same ID replaces in
-place)"*). Qdrant's upsert-by-ID semantics are ALREADY idempotent at the storage layer — there is
-no dedup primitive missing at the Qdrant level, only a missing **key derivation** step before ID
-minting.
+## NEW vs MODIFIED Components
 
-**Integration point — handler layer (`internal/server/tools.go`), not the store:**
-- Add an optional `idempotency_key` (or reuse a client-supplied natural key like
-  `content`+`scope`+`owner` hash) to `storeArgs`. `deps.storeMemory` resolves it BEFORE minting:
-  if a key is supplied, deterministically derive the point ID from it (e.g. a UUIDv5/hash over
-  `(owner, idempotency_key)` so two owners' identical keys never collide) instead of
-  `uuid.NewString()`, then call the SAME `Store.Upsert` — replace-in-place gives free idempotency
-  with zero new store-layer code.
-- If no key is supplied, current behavior (fresh UUID, insert) is preserved — additive, not
-  breaking.
-- A NEW small helper (`internal/server` or `internal/store`) for the deterministic-ID derivation is
-  the only new logic; it is pure (no I/O), so it can live wherever `MintShortID`-style helpers
-  already live in `tools.go`.
+| Component | Status | File(s) |
+|---|---|---|
+| Chain-verifier extraction (`withAuth` split into a reusable builder) | MODIFIED | `cmd/engram/serve.go` |
+| Bearer Connect resolver | NEW | new file, e.g. `internal/server/connectbearer.go` |
+| Composed (bearer+cookie) resolver | NEW | new file or `cmd/engram/serve.go` |
+| Lane provenance constants | NEW | `internal/auth/auth.go` (near `OwnerClaimExtraKey`) |
+| Cookie resolver lane stamp | MODIFIED | `internal/webauth/resolver.go:67` |
+| Headless-mount config knob | NEW | `internal/config/registry.go`, `cmd/engram/serve.go` |
+| `mountConnect` mount gate | UNCHANGED (see Item 1) | `internal/server/connectapi.go:362-365` |
+| Lane-aware context accessor | NEW | `internal/server/identity.go` |
+| CSRF interceptor exemption logic | MODIFIED | `internal/server/connectcsrf.go:58-91` |
+| Reseal interceptor | UNCHANGED (already nil-cookie-safe) | `internal/server/connectreseal.go` |
+| CLI client construction | NEW | `cmd/engram/client.go`, `cmd/engram/clientconfig.go` |
+| CLI subcommands (`search`/`store`/`list`) | NEW | `cmd/engram/search.go`, `cmd/engram/store.go`, `cmd/engram/list.go` |
+| Client-side config registry entries | NEW | `internal/config/registry.go`, `internal/config/config.go` |
+| `search_memory` cross-spine support | NEW field, MODIFIED handler | `internal/server/tools.go` (`searchArgs`, `deps.searchMemory`), `internal/store/store.go` (`ownerScopeFilter`/`Search`) |
+| `SearchMemoriesRequest.cross_spine` (field 9) | NEW (additive proto field) | `proto/engram/v1/engram.proto`, `internal/server/connectapi.go` (`SearchMemories`) |
+| `authz.Decision` safe log accessor | NEW | `internal/authz/authz.go` |
+| Store-side debug logging at the decision chokepoint | MODIFIED | `internal/store/store.go` (`decideBucket`, `decideRecord`) |
+| `OpenAIConfig.ChatAPIKey` | NEW field | `internal/config/config.go`, `internal/config/registry.go` |
+| Chat/summarize API-key resolution | MODIFIED (mirrors shipped base-URL split) | `internal/server/tools.go:369-378` (`summarizerFromConfig`) |
 
-**Supersession (#342) — an additive link field, not a new authz path:**
-- Add `SupersedesID`/`SupersededByID` (or a single directional `Supersedes string`) to the `Memory`
-  struct alongside the existing optional pointer fields (`NotBefore`, `NotAfter`,
-  `LastAccessedAt` — same pattern: `omitempty`, written to payload only when set). This is
-  additive to `payload()`/`fromPayload()` exactly like those fields were.
-- History-preserving means: superseding a record does NOT delete the old one. Model it as: (1)
-  write the new record with `Supersedes = <old ID>`, (2) stamp the old record's
-  `SupersededByID = <new ID>` via the EXISTING payload-only re-stamp path already used for
-  usage-signal bumps (`internal/store/store.go:1411` area: *"the bump piggybacks the already-in-
-  flight Upsert"* — i.e. `Store.Update` already re-Upserts current payload with one field changed;
-  reuse that exact mechanism for the supersession stamp instead of inventing a second write path).
-- **Authz stays entirely in the store's existing `getWritable`/`getReadable`/`ownedOrAbsent` gates**
-  (DEC-kyz) — superseding is just two writes gated by the SAME ownership checks that already guard
-  `update_memory`. No new Qdrant filter, no new Subject variant.
-- Recall-time behavior (should a superseded record still appear in `search_memory`/`list_memory`?)
-  is a product decision for REQUIREMENTS, not an architecture constraint — either a
-  `MustNot(superseded_by_id exists)` condition mirrors the exact `listFilter`-style Must/MustNot
-  composition already used for the private/shared visibility split (`store.go:832-844`), or expose
-  it via `get_memory` only (like scheduled/expired records use `list_scheduled` today, DEC-90w
-  precedent: dedicated surfacing tool rather than overloading recall).
+---
 
-**New vs Modified:**
-- NEW: deterministic-ID derivation helper (handler layer)
-- NEW: `Supersedes`/`SupersededByID` fields on `Memory` (additive payload)
-- MODIFIED: `payload()`/`fromPayload()` (additive keys, same pattern as existing optional fields)
-- MODIFIED: `storeArgs`/`deps.storeMemory` (optional idempotency key param)
-- NEW (maybe): a `supersede_memory` MCP tool or a field on `update_memory` — mirrors the DEC-90w
-  precedent of a dedicated tool over overloading `store_memory`; recommend a dedicated verb given
-  that precedent already governs this codebase's tool-surface style
-- UNCHANGED: `internal/store` authz gates, Qdrant filter-building primitives
+## Item 1 — Bearer auth on the Connect lane
 
-### (c) Provenance/citations on memory records (#341) — reuse the discovery `Citation` shape additively
+### Current facts (verified)
 
-**Current hard gate (confirmed):** `payload()` only serializes `Kind`/`Citations` when
-`m.Category == "discovery"` (`internal/store/store.go:372-382`). `Citation` itself
-(`Kind|Ref|Locator|Pin|Excerpt`, `store.go:206-212`) is already category-agnostic — it is a generic
-source-anchor shape, not discovery-specific in structure, only in wiring.
+- `withAuth` (`cmd/engram/serve.go:297-344`) is the **single call site** that builds
+  `auth.ChainVerifier(humanVerifier, serviceVerifier, staticVerifier)` and wraps the MCP handler
+  with `mcpauth.RequireBearerToken(chain, ...)`. The composed `chain` value (an
+  `mcpauth.TokenVerifier` — `func(ctx, token string, req *http.Request) (*mcpauth.TokenInfo, error)`)
+  is never returned or exposed outside `withAuth` today.
+- `connectResolver` (`connectapi.go:360`) has the signature
+  `func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)` — structurally
+  incompatible with `mcpauth.TokenVerifier` only in argument shape, not in what it produces (both
+  end in `*mcpauth.TokenInfo`).
+- `webauth.Resolver.Resolve` (`resolver.go:37-68`) is the *only* existing implementation of
+  `connectResolver`. It builds `&mcpauth.TokenInfo{Extra: map[string]any{auth.OwnerClaimExtraKey:
+  sess.Owner}}` — no `UserID`, no lane marker.
+- `mountConnect(mux, resolve, csrfVerify, reseal)` (`connectapi.go:362-397`) returns `nil`
+  immediately when `resolve == nil` (line 363-365). `serve.go:139-175` only ever assigns
+  `connectResolve` inside `if uiCfg.Enabled { ... }`; the `else` branch just logs
+  `"web UI disabled (headless); Connect API not mounted"` and leaves all three vars
+  (`connectResolve`, `connectCSRFVerify`, `connectReseal`) nil.
 
-**Integration point:** relax the write gate from `m.Category == "discovery"` to
-`len(m.Citations) > 0` (write citations whenever present, regardless of category), and leave `Kind`
-("map"|"fact") gated to discovery only — `Kind` is genuinely discovery-specific (it disambiguates a
-codebase map vs. a fact), while `Citations` is not. This is a one-line change to the existing `if`
-plus mirroring in `fromPayload`'s existing citations-decode block (`store.go:472-484`, already
-unconditional on read — only the WRITE side gates on category).
+### Integration points
 
-- Reuse `store.Citation` and the MCP-layer `citationArg` conversion (`internal/server/tools.go:546,
-  591-597, 752-753`) verbatim for `store_memory`/`update_memory`: add an optional
-  `citations []citationArg` field to `storeArgs`/`updateArgs`, with the discovery tool's
-  `>= 1 citation required` validation (`tools.go:591`) NOT applied here — for curated memories,
-  citations are optional provenance, not a required contract (discovery's `store_discovery` keeps
-  its own stricter `maxDiscoveryCitations`/`>=1` validation unchanged).
-- No new Qdrant index needed — citations are not filtered/searched on, only carried as payload
-  (same as today for discoveries).
+1. **Extract the chain-builder out of `withAuth`.** Split `cmd/engram/serve.go:297-344` into:
+   - `buildAuthChain(oidc config.OIDCConfig, svcAuth config.ServiceAuthConfig, ownerClaims []string) (mcpauth.TokenVerifier, error)` — everything currently inside `withAuth` up to and
+     including `chain := auth.ChainVerifier(...)`.
+   - `withAuth(handler http.Handler, chain mcpauth.TokenVerifier) http.Handler` — thin, just wraps
+     `mcpauth.RequireBearerToken`.
+   `runServe` calls `buildAuthChain` once and passes the resulting `chain` to *both* `withAuth`
+   (MCP) and the new Connect bearer resolver builder below. This is the one place the milestone
+   MUST touch to avoid a second, drifting copy of the three-lane composition logic.
 
-**New vs Modified:**
-- MODIFIED: `payload()` write-gate (`Category == "discovery"` → `len(Citations) > 0`)
-- MODIFIED: `storeArgs`/`updateArgs` (+optional `citations` field, reusing `citationArg`)
-- UNCHANGED: `Citation` struct, `fromPayload` decode path, `store_discovery`'s own stricter
-  validation, Qdrant schema/indexes
+2. **New bearer resolver**, e.g. `internal/server/connectbearer.go`:
+   ```go
+   func newConnectBearerResolver(verify mcpauth.TokenVerifier) connectResolver {
+       return func(ctx context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, error) {
+           tok := strings.TrimPrefix(req.Header().Get("Authorization"), "Bearer ")
+           if tok == "" { return nil, fmt.Errorf("no bearer token") }
+           dummy := &http.Request{Header: req.Header()}   // same dummy-request trick as
+                                                            // connectcsrf.go/connectreseal.go/webauth.Resolver
+           ti, err := verify(ctx, tok, dummy)
+           if err != nil { return nil, err }
+           if ti.Extra == nil { ti.Extra = map[string]any{} }
+           ti.Extra[auth.LaneExtraKey] = auth.LaneBearer   // Item 2 depends on this stamp
+           return ti, nil
+       }
+   }
+   ```
+   `verify` is exactly the `chain` value `buildAuthChain` returns — **reuses**
+   `auth.ChainVerifier`, does not reimplement OIDC/static-token verification.
 
-### (d) Category filter on search/list over MCP (#374) — compose onto the existing pre-filter, mirror `listFilter`'s pattern
+3. **Lane provenance constants**, added to `internal/auth/auth.go` next to
+   `OwnerClaimExtraKey` (`auth.go:56`):
+   ```go
+   const LaneExtraKey = "connect_lane"
+   const (
+       LaneCookie = "cookie"
+       LaneBearer = "bearer"
+   )
+   ```
+   `internal/webauth` already imports `internal/auth` (for `auth.OwnerClaimExtraKey`), so this is
+   zero new import edges. `webauth.Resolver.Resolve` (`resolver.go:67`) changes from
+   ```go
+   return &mcpauth.TokenInfo{Extra: map[string]any{auth.OwnerClaimExtraKey: sess.Owner}}, nil
+   ```
+   to the same map with `auth.LaneExtraKey: auth.LaneCookie` added.
 
-**Current state (confirmed):**
-- `Store.List` + `ListOptions.Categories` ALREADY supports server-side category filtering via a
-  `Should`-block composed into the outer `Must` (`listFilter`, `store.go:819-846`, specifically the
-  `should := ... qdrant.NewMatch("category", c) ... qdrant.NewFilterAsCondition(&qdrant.Filter{Should: should})`
-  pattern at lines 824-829). This is USED TODAY by Connect's `ListMemories`
-  (`internal/server/connectapi.go:155: Categories: req.Msg.Categories`) — i.e. the console already
-  gets category filtering. **MCP's `listArgs` struct has no `Categories` field** — this is a
-  dual-surface parity gap, not a missing capability.
-- `Store.Search` has NO category parameter at all (`store.go:641`, signature ends at
-  `tags []string, after, before time.Time` — no categories). Category filtering on
-  `search_memory`/`SearchMemories` does not exist on EITHER surface today.
+4. **Composed resolver** — new small function (either `cmd/engram/serve.go` or
+   `internal/server/connectcompose.go`):
+   ```go
+   func newConnectComposedResolver(bearer, cookie connectResolver) connectResolver {
+       return func(ctx context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, error) {
+           if req.Header().Get("Authorization") != "" && bearer != nil {
+               return bearer(ctx, req)   // no cookie fallback on a present-but-invalid bearer
+           }
+           if cookie != nil { return cookie(ctx, req) }
+           return nil, fmt.Errorf("no credential presented")
+       }
+   }
+   ```
+   The `Authorization`-header check here only selects *which resolver attempts verification* — it
+   is not the CSRF-exemption decision (that is Item 2, and it reads the **stamped lane**, never
+   this header). A present-but-invalid `Authorization` header fails closed (401), it never silently
+   falls through to the cookie lane — this matters because a fallthrough would let an attacker
+   probe whether a cookie session exists by sending garbage bearer tokens.
 
-**Integration point:** extract the exact `should`-composition block from `listFilter` into a small
-shared helper (e.g. `categoryMatchConditions(categories []string) *qdrant.Condition`, returning nil
-for empty input — mirrors `tagMatchConditions`'s shape), then:
-1. Use it inside `listFilter` (replacing the inline block — no behavior change, pure refactor).
-2. Add the SAME composition to `Store.Search`'s filter-building (`f := s.ownerScopeFilter(...); f.Must
-   = append(f.Must, ...)`), appended alongside the existing `activeWindowConditions`/
-   `tagMatchConditions`/`createdRangeCondition` appends already at lines 664-668 — same pattern,
-   same place.
-3. Thread a new `categories []string` param through `Store.Search` → `Store.SearchReranked` →
-   `deps.searchMemory` → `searchArgs.Categories` (MCP) and the Connect `SearchMemories` RPC/proto
-   (adding a `repeated string categories` field, additive per the existing `buf breaking` gate).
-4. Add `Categories []string` to MCP's `listArgs` too, closing the dual-surface gap identified above
-   (Connect already has it; MCP doesn't) — wire straight into the already-existing
-   `ListOptions.Categories`, zero store-layer change needed for `List`.
+5. **Headless-mount config knob.** Add to `internal/config/registry.go` (near `ui.enabled`,
+   `registry.go:63`):
+   ```go
+   {Key: "connect.headless_enabled", Env: "ENGRAM_CONNECT_HEADLESS", Flag: "connect-headless", Default: "false"},
+   ```
+   In `cmd/engram/serve.go`, replace the current
+   `if uiCfg.Enabled { connectResolve = webauth.NewResolver(codec).Resolve; ... }` block with:
+   ```go
+   var bearerResolve, cookieResolve connectResolver
+   if cfg.Connect.HeadlessEnabled {
+       chain, err := buildAuthChain(cfg.OIDC, cfg.ServiceAuth, ownerClaims)
+       ...
+       bearerResolve = newConnectBearerResolver(chain)
+   }
+   if uiCfg.Enabled {
+       cookieResolve = webauth.NewResolver(codec).Resolve
+       connectCSRFVerify = csrfSigner.Verify
+       connectReseal = webHandler.Reseal
+   }
+   if bearerResolve != nil || cookieResolve != nil {
+       connectResolve = newConnectComposedResolver(bearerResolve, cookieResolve)
+   }
+   ```
+   **`mountConnect`'s own `if resolve == nil { return nil }` guard (`connectapi.go:363-365`) does
+   NOT need to change.** Its contract ("no resolver configured ⇒ not mounted") is still exactly
+   right and should be preserved verbatim — R1's invariant lives on, just with a second path that
+   can make `resolve` non-nil. This is the smaller, safer diff versus rewriting the guard itself,
+   and it means a deployment with neither `ui.enabled` nor `connect.headless_enabled` set
+   is byte-for-byte today's "Connect not mounted at all" behavior — the milestone's explicit
+   "opt-in only, never a default flip" posture note.
 
-**Authz composition order is unaffected:** the authz condition
-(`ownerOrSharedCondition`/`ownerScopeFilter`) stays the OUTER `Must` in every case — category is
-just one more `Should`-wrapped `Must` entry alongside tags/window/date-range, exactly the existing
-`listFilter` comment's invariant: *"the authz condition stays the outer Must, so no filter
-combination can reach another actor's records"* (`store.go:807-810`). Category composes the same
-way; no new authz surface.
+6. **Reseal for a bearer caller — already safe, verify don't rebuild.**
+   `newConnectResealInterceptor` (`connectreseal.go:36-56`) already no-ops when `reseal == nil`
+   (headless-only deployment, no UI ⇒ `connectReseal` stays nil ⇒ interceptor is a passthrough).
+   When the UI **is** also enabled (mixed deployment) and `reseal` is non-nil,
+   `webauth.Handler.Reseal` (`internal/webauth/handlers.go:46-49`) itself no-ops when
+   `r.Cookie(sessionCookieName)` errors — i.e. **a bearer caller who sends no session cookie is
+   already structurally immune**, zero code change required. The one edge case worth a negative
+   test: a bearer-authenticated request that happens to *also* carry a stray, still-valid session
+   cookie from an earlier browser session must not have that cookie treated as evidence of
+   cookie-lane authentication for *this* request — Reseal may harmlessly re-seal it (it's a
+   read-only refresh, not a trust decision), but Item 2's lane check must still read
+   `Extra[auth.LaneExtraKey] == auth.LaneBearer`, not "is there a session cookie present."
 
-**New vs Modified:**
-- NEW: shared `categoryMatchConditions` helper (extracted, not new logic)
-- MODIFIED: `Store.Search` signature (+`categories []string` param), `Store.SearchReranked`,
-  `deps.searchMemory`
-- MODIFIED: `searchArgs`/`listArgs` (MCP) — add `Categories []string`
-- MODIFIED: Connect `SearchMemoriesRequest` proto (additive field) — `listFilter` itself is a pure
-  refactor (no proto change needed there, it already has the field)
-- UNCHANGED: authz composition order, Qdrant indexes (category is not currently a payload index —
-  confirm whether the `should`-of-`Match` pattern needs a keyword index on `category` for
-  performance at scale; today it works unindexed via payload scan since collections are modest —
-  flag as a phase-time perf check, not an architecture blocker)
+7. **CSRF verify func nil-safety on a headless-only deployment.** When `uiCfg.Enabled` is
+   `false`, `connectCSRFVerify` stays `nil`. `newConnectCSRFInterceptor` must never call a nil
+   `verify` — Item 2's design (below) already guarantees this structurally, since the interceptor
+   returns via the lane-exemption branch before ever reaching the `verify(...)` call for anything
+   that isn't `auth.LaneCookie`, and `auth.LaneCookie` is only ever stamped when the cookie
+   resolver — which only exists when `uiCfg.Enabled` — actually ran. Add a defensive
+   `if verify == nil { return nil, connect.NewError(connect.CodeInternal, ...) }` guard anyway, as
+   insurance against a future resolver-composition bug, and a same-named test
+   (`TestCSRFHeadlessOnlyNeverCallsNilVerify`).
 
-### (e) Per-lane embedder vs chat/summarize base URL (#350) — one new registry field, same construction pattern
+---
 
-**Current state (confirmed):** BOTH `embedderFromConfig` and `summarizerFromConfig`
-(`internal/server/tools.go:343-369`) read the SAME `cfg.OpenAI.BaseURL` (registry key
-`openai.base_url`, `internal/config/registry.go:44`). There is already a narrower override
-(`openai.embeddings_url` / `ENGRAM_OPENAI_EMBEDDINGS_URL`) for the embed lane specifically
-(`registry.go:46`, validated in `validate.go:86-94`) — but nothing analogous for the chat/summarize
-lane.
+## Item 2 — CSRF exemption keyed on provenance (milestone's #1 risk)
 
-**Integration point:** add ONE new registry field following the exact existing pattern:
+### The mechanism
+
+- **Read, never derive.** `newConnectCSRFInterceptor` (`connectcsrf.go:58-91`) currently derives
+  everything from `subjectFromConnectContext` (`identity.go:49-57`), which returns only a
+  `store.Subject` — the lane information is thrown away before the interceptor ever sees it. Add a
+  companion accessor in `internal/server/identity.go`:
+  ```go
+  func connectLaneFromContext(ctx context.Context) (string, error) {
+      ti, ok := ctx.Value(connectSubjectKey{}).(*mcpauth.TokenInfo)
+      if !ok { return "", fmt.Errorf("connect subject key absent: interceptor not installed") }
+      if ti == nil { return "", nil } // anonymous — never cookie-lane, never exempt-by-error
+      lane, _ := ti.Extra[auth.LaneExtraKey].(string)
+      return lane, nil
+  }
+  ```
+- **Ordering — unchanged.** `connectLaneFromContext` is called from inside
+  `newConnectCSRFInterceptor`, which already runs after `newConnectSubjectInterceptor`
+  (`connectapi.go:390-391`) — the lane stamp is guaranteed present by the time CSRF runs, same
+  ordering guarantee the interceptor already relies on for `Subject.Owner`.
+- **The exemption itself.** Insert the lane check immediately after the existing write-procedure
+  gate (`connectcsrf.go:61-63`), before any cookie/header logic:
+  ```go
+  lane, err := connectLaneFromContext(ctx)
+  if err != nil {
+      return nil, connect.NewError(connect.CodePermissionDenied, errors.New("csrf: no lane"))
+  }
+  if lane != auth.LaneCookie {
+      return next(ctx, req)   // bearer (or any future non-cookie lane) — no ambient credential, CSRF is inapplicable
+  }
+  // ... existing cookie/header double-submit check, UNCHANGED below this line
+  ```
+  Everything below this point — the `subjectFromConnectContext` re-check, the cookie parse, the
+  `X-CSRF-Token` header comparison — is **untouched**. The fix is purely additive: one new
+  branch, gated on a value the request itself cannot influence.
+
+### Why this closes the hole (and the naive fix doesn't)
+
+The vulnerable variant the milestone explicitly calls out is: *"exempt when `X-CSRF-Token` is
+absent."* That is attacker-controlled — a cross-site form/fetch from an attacker's origin can
+simply not set the header, and if absence alone meant "exempt," the browser would still auto-attach
+the ambient session cookie, and the interceptor would wave the forged write through.
+
+The fix above never inspects `X-CSRF-Token` (or any other request content) to decide *whether* the
+check applies — only to *satisfy* it once applied. The only input to the exemption decision is
+`ti.Extra[auth.LaneExtraKey]`, and that value is written exactly once, by the resolver, strictly
+*before* the CSRF interceptor runs, as the direct result of **which cryptographic verification
+succeeded**:
+- Reaching `auth.LaneCookie` requires `webauth.Resolver.Resolve` to have successfully
+  `codec.Unseal`ed an AES-GCM-sealed session cookie the server itself minted.
+- Reaching `auth.LaneBearer` requires `auth.ChainVerifier` to have successfully verified an OIDC
+  JWT signature or a constant-time static-token match.
+
+There is no request-content lever that flips a genuinely cookie-backed session into
+`auth.LaneBearer` — an attacker forging a cross-site request has no way to make the *resolver*
+believe a bearer token was presented and verified, because forging that requires the private key
+material / static token secret the attacker doesn't have. Omitting a header changes nothing about
+which resolver ran.
+
+### Negative tests that pin it shut
+
+Add to `internal/server/connectcsrf_test.go` (or a new `connectcsrf_lane_test.go`):
+
+| Test | Proves |
+|---|---|
+| `TestCSRFBearerCallerOmittingHeaderIsExempt` | A bearer-authenticated write with no `X-CSRF-Token` and no cookie succeeds — bearer is legitimately exempt. |
+| `TestCSRFCookieCallerOmittingHeaderIsStillRejected` | A cookie-authenticated write with a **valid session cookie** but **no `X-CSRF-Token`** is still rejected `CodePermissionDenied` — the exact regression test for the #1 risk: header absence alone must never grant exemption to a cookie-lane caller. |
+| `TestCSRFCookieCallerCannotSelfDeclareBearerLane` | A cookie-authenticated request that *also* sends a garbage `Authorization: Bearer x` header is rejected (composed resolver's no-fallback policy denies the whole request) — never silently downgraded into a CSRF-exempt bearer-lane success. |
+| `TestCSRFLaneUnstampedFailsClosed` | Directly invoking the interceptor with a context whose `TokenInfo.Extra` lacks the lane key must **apply** the CSRF check (treat unknown as most-restrictive), not exempt it — guards a future auth-lane addition that forgets to stamp `auth.LaneExtraKey`. |
+| Existing 6-write CSRF-required suite + `TestConnectNoCORSHeaders` | Unmodified baseline stays green — the whole change is additive to one interceptor. |
+
+---
+
+## Item 3 — CLI client subcommands
+
+### Placement
+
+New top-level cobra commands (`engram search`, `engram store`, `engram list`), registered exactly
+like the existing operator commands — each file's `init()` calls `rootCmd.AddCommand(...)`
+(precedent: `cmd/engram/reindex.go:113`, `migrate.go:140/148`, `prune.go:63`). They sit **beside**
+`serve.go`/`reindex.go`/etc. in `cmd/engram/`, not nested under a `client/` subpackage — the
+existing operator commands already prove `cmd/engram/*.go` is where all cobra leaves live; there is
+no precedent in this repo for a `cmd/engram/<subgroup>/` split, and introducing one just for these
+three commands would be inconsistent with `migrate.go`/`backfill.go`/`prune.go`.
+
+### Layering — the discipline that matters here
+
+Every **operator** command (`reindex.go`, `migrate.go`, `prune.go`, `backfill.go`, `summarize.go`)
+imports `internal/server` and/or `internal/store` directly (verified: `reindex.go:16-17` imports
+`internal/server` and `internal/store`) because operator commands talk to Qdrant and the embedder
+directly, out-of-band from any running server. **The new client commands must not do this.** Their
+only server-facing dependency should be the generated wire contract:
+`gen/go/engram/v1` + `gen/go/engram/v1/engramv1connect` (the
+`NewEngramServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) EngramServiceClient`
+constructor already generated at `gen/go/engram/v1/engramv1connect/engram.connect.go:96`). They
+should **not** import `internal/server`, `internal/store`, `internal/authz`, or `internal/embed` —
+those packages carry Qdrant/Cedar/embedder dependencies that have no reason to exist in a process
+that only speaks Connect over HTTP to a *separate* running engram server. This is purely a
+discipline point (both command families already live in the same `main` binary, so there's no
+build-size or binary-split argument) — the value is testability and conceptual clarity: a client
+command's tests should be able to run against a `httptest.Server` wrapping just the generated
+Connect handler, never a real Qdrant.
+
+### Concrete files
+
+- **`cmd/engram/client.go`** — builds the `engramv1connect.EngramServiceClient`:
+  ```go
+  func newEngramClient(baseURL, token string) engramv1connect.EngramServiceClient {
+      hc := &http.Client{Transport: &bearerTransport{token: token, base: http.DefaultTransport}}
+      return engramv1connect.NewEngramServiceClient(hc, baseURL)
+  }
+  type bearerTransport struct { token string; base http.RoundTripper }
+  func (t *bearerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+      if t.token != "" { r.Header.Set("Authorization", "Bearer "+t.token) }
+      return t.base.RoundTrip(r)
+  }
+  ```
+  This is the client-side mirror of Item 1's server-side bearer resolver — same
+  `Authorization: Bearer` convention, opposite direction.
+- **`cmd/engram/clientconfig.go`** — a small, pure, directly-testable resolution function mirroring
+  the existing `resolveUIConfig` pattern (`cmd/engram/uiconfig.go`, tested in
+  `uiconfig_test.go`): resolve `(serverURL, token string, err error)` from flags/env with the same
+  precedence discipline `config.Load` already uses elsewhere.
+- **New registry entries** in `internal/config/registry.go` (keeps the "single ENGRAM_ field
+  registry" constraint, DEC-jgq, intact — no ad hoc env reads):
+  ```go
+  {Key: "client.server_url", Env: "ENGRAM_CLIENT_SERVER_URL", Flag: "server"},
+  {Key: "client.token",      Env: "ENGRAM_CLIENT_TOKEN",      Flag: "token"},
+  ```
+- **`cmd/engram/search.go` / `store.go` / `list.go`** — thin `RunE` bodies: resolve client config →
+  build client → convert flags to the matching `*engramv1.SearchMemoriesRequest` /
+  `StoreMemoryRequest` / `ListMemoriesRequest` → call → print. No business logic; no store/authz
+  imports.
+
+### Dependency on Items 1/2
+
+- `engram search` / `engram list` call read-only Connect RPCs, which are **not** CSRF-gated at all
+  (`csrfWriteProcedures`, `connectcsrf.go:32-39`, lists only the six write procedures) — they need
+  only Item 1 (a mountable, bearer-authable Connect endpoint) to function correctly.
+- `engram store` calls `StoreMemory`, one of the six CSRF-gated write RPCs. It is safe to build in
+  parallel with Item 1, but must not be considered *done/shippable* until Item 2 lands — before
+  Item 2, the write path either has no CSRF exemption logic for bearer at all (blocked, wrong) or
+  (if someone took the naive "exempt when header absent" shortcut) is exploitable by the exact
+  cross-site attack Item 2 exists to prevent. Gate `engram store`'s user-facing readiness on Item 2.
+
+---
+
+## Item 4 — `cross_spine` on `search_memory`
+
+### How discovery does it today (traced end to end)
+
+- **Args** (`tools.go:623-629`): `searchDiscoveryArgs.Scope` is `json:"scope,omitempty"` with
+  jsonschema note `"required unless cross_spine"`; `CrossSpine bool` is a sibling field.
+- **Scope resolution** (`tools.go:1129-1140`, `effectiveDiscoveryScope`): `CrossSpine == true` →
+  return `("", nil)` **unconditionally** (a supplied `Scope` is silently ignored, logged at Info —
+  `tools.go:1147-1151`); otherwise a non-empty `Scope` is mandatory or the call errors.
+- **Store layer** (`store.go:958-997`, `SearchDiscovery`): the Qdrant filter conditionally includes
+  the scope match — `if scope != "" { must = append(must, qdrant.NewMatch("scope", scope)) }`
+  (`store.go:978-980`). Empty scope ⇒ no scope condition ⇒ every discovery scope is candidate.
+- **Authz interaction — unchanged, because it's orthogonal.** `SearchDiscovery` still appends
+  `s.ownerOrSharedCondition(subj)` (`store.go:984`) exactly as the scoped path does. Cross-spine
+  widens *which scopes* are candidates; it does **not** widen *which owners'* records are visible —
+  the Cedar-derived own/shared bucket filter is scope-independent and applies identically either
+  way. This is the load-bearing invariant for item 4: cross-spine recall is safe precisely because
+  scope and authz are two independent filter dimensions in the same `Must` list.
+- **Connect parity**: `SearchDiscoveries` (`connectapi.go:252-271`) maps an *empty* Connect-supplied
+  `Scope` to `CrossSpine: true` (`connectapi.go:265`) — a deliberate MCP/Connect asymmetry
+  documented in the handler's comment (empty Connect scope has always meant "all," predating the
+  MCP-side `CrossSpine` field).
+
+### How `search_memory` must mirror it
+
+1. **`internal/server/tools.go` `searchArgs`** (`tools.go:534-543`): add
+   `CrossSpine bool \`json:"cross_spine,omitempty" jsonschema:"span all scopes (ignores scope)"\``
+   and change `Scope string \`json:"scope"\`` to `Scope string \`json:"scope,omitempty"
+   jsonschema:"required unless cross_spine"\`` — byte-for-byte the discovery precedent.
+2. **Scope resolution** — extract a shared helper rather than duplicating
+   `effectiveDiscoveryScope`'s body (D-08-style discipline: `categoryMatchCondition` is already
+   shared by `listFilter`/`Search` for exactly this "don't let two lanes drift" reason):
+   ```go
+   func effectiveScope(scope string, crossSpine bool) (string, error) {
+       if crossSpine { return "", nil }
+       if scope == "" { return "", fmt.Errorf("scope is required unless cross_spine is true") }
+       return scope, nil
+   }
+   ```
+   `effectiveDiscoveryScope(a)` becomes `effectiveScope(a.Scope, a.CrossSpine)`; the new
+   `search_memory` path calls the same function.
+3. **`coreSearchRequest`** (`tools.go:1048-1056`): add `CrossSpine bool`. `deps.searchMemory`
+   (`tools.go:1116-1127`) calls `effectiveScope(req.Scope, req.CrossSpine)` before building
+   `store.SearchOptions` and passes the *resolved* scope (possibly `""`) to
+   `d.st.SearchReranked(...)`.
+4. **`internal/store/store.go`**: `ownerScopeFilter` (`store.go:752-757`) currently
+   unconditionally appends `qdrant.NewMatch("scope", scope)`. Change to the same conditional
+   `SearchDiscovery` already uses:
+   ```go
+   func (s *Store) ownerScopeFilter(scope string, subj Subject) *qdrant.Filter {
+       must := []*qdrant.Condition{s.ownerOrSharedCondition(subj)}
+       if scope != "" { must = append(must, qdrant.NewMatch("scope", scope)) }
+       return &qdrant.Filter{Must: must}
+   }
+   ```
+   `ownerScopeFilter` is called from exactly one production site (`Search`, `store.go:888`), so this
+   is a self-contained, single-caller change; `bench_test.go:93,98` is the only other caller and
+   will need its cross-spine (empty-scope) case added, not just its existing scoped case preserved.
+   **`SearchReranked` and the rerank path require no change** — they call `Search` unmodified.
+5. **`list_memory` is explicitly out of scope** for this feature — the milestone description scopes
+   `cross_spine` to `search_memory` only (mirroring `SearchDiscoveryArgs.CrossSpine`, which itself
+   only exists on `search_discovery`, never `list_scheduled` or any list-shaped tool). Do not carry
+   it onto `listArgs`/`Store.List`.
+6. **MCP↔Connect parity — additive proto field.** `SearchMemoriesRequest` (`engram.proto:76-85`)
+   currently ends at `repeated string categories = 8;` (the v0.11.x precedent for this exact kind
+   of additive field, D-10 in that phase). Add:
+   ```proto
+   bool cross_spine = 9; // span all scopes (ignores scope); mirrors search_discovery's cross_spine
+   ```
+   `buf breaking` stays clean (additive only, same precedent as field 8). Regenerate (`task
+   proto:gen`) — this touches the committed `gen/` tree (`gen/go/`, `gen/ts/`) and, per the
+   milestone's own "Codegen drift" tail item (#356), the currently-stale
+   `ui/src/lib/gen/engram_pb.ts` needs to be resynced in the same change or the drift gets worse,
+   not better.
+7. **`internal/server/connectapi.go` `SearchMemories`** (`connectapi.go:193-220`): thread
+   `req.Msg.CrossSpine` into `coreSearchRequest{..., CrossSpine: req.Msg.CrossSpine}`. Unlike
+   `SearchDiscoveries`, there is **no** "empty scope implies cross-spine" legacy behavior to
+   preserve here (this is a brand-new field, not an existing asymmetric one) — Connect and MCP can
+   and should have the *exact same* semantics from day one: `cross_spine` is the only way to search
+   without a scope on either lane.
+
+---
+
+## Item 5 — Wiring `authz.Decision.diag` to a reader
+
+### Where the reader belongs, and why
+
+`authz.Decision.diag` (`internal/authz/authz.go:44-51`) is `cedar.Diagnostic` — verified shape
+(`cedar-go@v1.8.0/types/authorize.go`): `Reasons []DiagnosticReason{PolicyID, Position}` and
+`Errors []DiagnosticError{PolicyID, Position, message}`. **No owner/actor/PII fields exist in this
+type at all** — it only ever carries which named policy IDs matched or errored (the
+`internal/authz/policies.go:27` comment already anticipates this: "named ids make debug-level
+diagnostic logging actually useful"). This matters for DEC-wot ("spans carry `engram.owner` (opaque
+`sub`) only; exclude actor/email as PII") — a diag-derived log line is *inherently* PII-free by
+construction of the type, so DEC-wot is satisfied by construction, not by redaction discipline the
+reader has to get right.
+
+The doc comment on `Decision` (`authz.go:44-47`) already states the intended shape: diag "exists
+solely for future debug-level logging / OTel span attachment **by internal/store**." Two
+sub-decisions follow directly from that, and from DEC-cgb (store is the chokepoint):
+
+1. **`internal/authz` exposes a safe accessor, never the raw `cedar.Diagnostic` type.** Exporting
+   `cedar.Diagnostic` directly would leak a third-party type across the package boundary and couple
+   `internal/store` to `cedar-go`'s API shape. Instead, add to `authz.go`:
+   ```go
+   func (d Decision) LogValue() slog.Value {
+       ids := make([]string, len(d.diag.Reasons))
+       for i, r := range d.diag.Reasons { ids[i] = string(r.PolicyID) }
+       return slog.GroupValue(
+           slog.Bool("allow", d.Allow),
+           slog.Any("policy_ids", ids),
+           slog.Int("errors", len(d.diag.Errors)),
+       )
+   }
+   ```
+   Implementing `slog.LogValuer` means the (cheap but non-zero) formatting work is deferred by the
+   `slog` machinery until a handler actually processes the record — a `slog.DebugContext` call site
+   at the hot bulk-recall path costs nothing extra when `ENGRAM_LOG_LEVEL` is above debug.
+2. **`internal/store` logs it, at the existing single-call-site indirections — not a new
+   primitive.** `Store.decideBucket` (`store.go:721-726`) and `Store.decideRecord`
+   (`store.go:732-737`) are *already* the sole choke points every authz-consulting store method
+   routes through. Add one `slog.DebugContext(ctx, "authz decision", "engram.owner", owner,
+   "action", action, "decision", dec)` call inside each, right where `dec` is computed, before
+   returning it. This is observability bolted onto an **existing** primitive, not a new
+   store-layer authz primitive — consistent with the v0.11.x-carried constraint ("zero new
+   store-layer authz primitive") this milestone inherits implicitly by continuing the same
+   discipline. No new dependency, no new package, no new exported type on `internal/store`.
+
+---
+
+## Item 6 — Per-lane API key (closes #350)
+
+### The shipped precedent to mirror exactly
+
+`internal/server/tools.go:368-378` (`summarizerFromConfig`):
 ```go
-{Key: "openai.chat_base_url", Env: "ENGRAM_OPENAI_CHAT_BASE_URL"}  // "" = falls back to openai.base_url
+chatBaseURL := cmp.Or(cfg.OpenAI.ChatBaseURL, cfg.OpenAI.BaseURL)
+return summarize.New(chatBaseURL, cfg.OpenAI.APIKey, cfg.Summarize.Model, ...)
 ```
-- `summarizerFromConfig` (`tools.go:368`) resolves `chatBaseURL := cfg.OpenAI.ChatBaseURL; if
-  chatBaseURL == "" { chatBaseURL = cfg.OpenAI.BaseURL }` — additive, zero-config-change backward
-  compatible (unset = current shared-URL behavior, unchanged).
-- `embedderFromConfig` is UNTOUCHED — it keeps reading `cfg.OpenAI.BaseURL` (+ its existing
-  `EmbeddingsURL` override) exactly as today.
-- Add the matching `Config.Validate` URL-well-formedness check (mirrors the existing
-  `ENGRAM_OPENAI_EMBEDDINGS_URL` block in `validate.go:86-94`) only when the new field is non-empty.
+`embedderFromConfig` (`tools.go:344-366`) independently calls `embed.New(cfg.OpenAI.BaseURL,
+cfg.OpenAI.APIKey, cfg.Embed.Model, ...)`. Both lanes currently share **one** `cfg.OpenAI.APIKey` —
+the base-URL split shipped in v0.11.x Phase 26; the key never got the symmetric treatment.
 
-**New vs Modified:**
-- NEW: `openai.chat_base_url` / `ENGRAM_OPENAI_CHAT_BASE_URL` registry field
-- MODIFIED: `internal/config.Config` struct (+field), `Config.Validate` (+optional-URL check),
-  `summarizerFromConfig` (fallback resolution)
-- UNCHANGED: `embedderFromConfig`, `embed.Client`, Qdrant/store layer entirely
+### The change
 
-## Data Flow Changes (summary)
+1. **`internal/config/config.go`** — `OpenAIConfig` (`config.go:107-...`, alongside the existing
+   `ChatBaseURL` field) gains:
+   ```go
+   ChatAPIKey string `koanf:"chat_api_key"`
+   ```
+2. **`internal/config/registry.go`** — one new line, same shape as
+   `{Key: "openai.chat_base_url", Env: "ENGRAM_OPENAI_CHAT_BASE_URL"}` (`registry.go:47`):
+   ```go
+   {Key: "openai.chat_api_key", Env: "ENGRAM_OPENAI_CHAT_API_KEY"},
+   ```
+3. **`internal/server/tools.go` `summarizerFromConfig`** (single call site, `tools.go:369-378`):
+   ```go
+   chatBaseURL := cmp.Or(cfg.OpenAI.ChatBaseURL, cfg.OpenAI.BaseURL)
+   chatAPIKey := cmp.Or(cfg.OpenAI.ChatAPIKey, cfg.OpenAI.APIKey)
+   return summarize.New(chatBaseURL, chatAPIKey, cfg.Summarize.Model, ...)
+   ```
+   `embedderFromConfig` is untouched — mirrors the base-URL split's own "embedder always uses
+   BaseURL regardless of ChatBaseURL" comment (`tools.go:371-372`) verbatim for the key.
+   Byte-identical at the default (empty `ChatAPIKey` ⇒ falls back to the shared key, exactly as
+   today). No new dependency; the whole change is three small, mechanical edits mirroring a shipped
+   pattern one field over.
+
+---
+
+## Build Order
+
+### Dependency graph
 
 ```
-BEFORE (auth):  bearer token → verifier.TokenVerifier() → TokenInfo → SubjectFromTokenInfo → Subject
-AFTER  (auth):  bearer token → chainVerifier(oidcUser, oidcClientCreds, staticToken) → TokenInfo
-                → SubjectFromTokenInfo (UNCHANGED) → Subject (UNCHANGED)
+Item 1 (bearer resolver + lane provenance + headless mount + reseal verification)
+   │
+   ├──► Item 2 (CSRF provenance exemption)      — needs Item 1's Extra[auth.LaneExtraKey] stamp
+   │        │
+   │        ▼
+   └──► Item 3 (CLI): search/list need only Item 1; store needs Item 1 AND Item 2
 
-BEFORE (write): store_memory → uuid.NewString() → Store.Upsert (insert)
-AFTER  (write): store_memory → [idempotency_key present? deterministic ID : uuid.NewString()]
-                → Store.Upsert (insert OR idempotent replace, same call)
-
-BEFORE (search): search_memory → embed → Store.Search(scope,subj,vec,k,tags,after,before)
-AFTER  (search): search_memory → embed → Store.Search(scope,subj,vec,k,tags,categories,after,before)
-                 — categories composed as one more Should-wrapped Must, same position as tags
-
-BEFORE (curated write): payload() writes citations/kind only if category=="discovery"
-AFTER  (curated write): payload() writes citations whenever len(Citations)>0 (any category);
-                        kind stays discovery-only
+Item 4 (cross_spine on search_memory)  — fully independent
+Item 5 (authz.Decision.diag reader)    — fully independent
+Item 6 (per-lane API key)              — fully independent
 ```
 
-## Scaling / Invariant Considerations
+### Suggested phasing
 
-| Concern | Notes |
-|---------|-------|
-| Store-layer authz chokepoint (DEC-cgb) | Every integration point above was designed to add ZERO new authz code in `internal/store` — the chain/static-token verifier, idempotency key, supersession link, citations, and category filter all terminate in existing `Subject`-gated primitives. This is the single hardest constraint to preserve and the one most worth a plan-review gate. |
-| `category` payload index | Not currently a Qdrant keyword index (only owner/scope/created_at are, DEC-ef28). Category filtering via `Should(Match)` works unindexed today at current record volumes; if search-time category filtering becomes hot-path, consider adding a keyword index in a later phase — not a blocker for v0.11.x. |
-| Namespaced-owner injectivity | The static-token verifier and any second OIDC-client-credentials claim resolution MUST reuse `namespacedOwner`'s exact length-prefix encoding (or an equally-proven injective scheme) — a second ad hoc encoding would silently reopen the collision risk DEC-g37x closed. |
-| Dual-surface parity (MCP ↔ Connect) | Category filter is a parity gap today (Connect List has it, MCP doesn't; neither has it on Search). Any v0.11.x phase touching this should close the gap on BOTH surfaces in the same phase, consistent with the existing `TestWriteParity`-style parity testing already in place for writes. |
+**Wave 1 — parallel, no shared files:**
+- **Spine work (Items 1 → 2, sequential within this wave):** build the bearer resolver, lane
+  constants, composed resolver, and headless-mount config knob first (Item 1); land Item 2's CSRF
+  exemption as the *very next* change once the lane stamp exists — same discipline v0.11.x used for
+  its own #1 risk ("proven fail-closed as the phase's first test"): write
+  `TestCSRFCookieCallerOmittingHeaderIsStillRejected` before wiring the exemption branch, so the
+  regression test exists before the code that could regress it.
+- **Item 4 (cross_spine on search_memory)** — touches `tools.go`, `store.go`, and the proto; no
+  overlap with the spine files (`connectcsrf.go`, `connectbearer.go`, `serve.go`, `auth.go`,
+  `resolver.go`).
+- **Item 5 (diag reader)** — touches only `internal/authz` and `internal/store`'s two indirection
+  functions; no overlap with anything else in this milestone.
+- **Item 6 (per-lane API key)** — touches `internal/config` and one function in `tools.go`
+  (`summarizerFromConfig`, distinct from Item 4's `searchMemory`/`effectiveScope` edits in the same
+  file — low but non-zero merge-order risk if both land in the same PR; sequence them or keep the
+  diffs small and reviewed independently).
 
-## Anti-Patterns to Avoid This Milestone
+**Wave 2 — after Item 1+2 land:**
+- **Item 3 (CLI subcommands).** `engram search`/`engram list` are buildable and testable the moment
+  Item 1's headless mount + bearer resolver exist (read RPCs are never CSRF-gated). Hold
+  `engram store` (or at minimum, hold calling it "done") until Item 2 has landed and its negative
+  tests are green — shipping a write-capable CLI against a CSRF exemption that's still keyed on
+  header-absence would ship the exact vulnerability the milestone's own risk section warns against.
 
-### Anti-Pattern 1: Adding a new Subject variant for service principals
-**What people might do:** introduce a third `store.Subject` variant (e.g. `serviceAccount{clientID
-string}`) to represent tenancy isolation for #373.
-**Why it's wrong:** the sealed 2-variant sum (`anonymous`/`authenticated`) is exhaustively
-type-switched everywhere in the store (DEC-12c); a third variant means touching every default-deny
-switch. It is also unnecessary — `namespacedOwner` already gives a service principal a distinct,
-collision-safe `authenticated{sub}` bucket.
-**Do this instead:** resolve the service principal to an `authenticated` Subject with a namespaced
-owner string, exactly like any other non-email claim already does.
+### What can run fully in parallel
 
-### Anti-Pattern 2: New authz logic in handlers for idempotency/supersession
-**What people might do:** add an owner-check in `internal/server/tools.go` before allowing a
-supersession link, duplicating store-layer gates.
-**Why it's wrong:** violates DEC-cgb (authz enforced ONLY in the store); creates a second place
-that can drift.
-**Do this instead:** supersession writes go through the EXISTING `getWritable`/ownership-gated
-update path — the link is just additional payload on an already-gated write.
-
-### Anti-Pattern 3: A separate collection or index for citations/provenance
-**What people might do:** since discoveries have citations "specially," spin up a side table or a
-second Qdrant collection for provenance on curated memories.
-**Why it's wrong:** DEC-2bv already settled this exact question (discovery lives in the single
-Memory collection, not a separate one) — the same reasoning applies to citations-on-curated-
-memories.
-**Do this instead:** additive payload fields on the existing `Memory`/single-collection shape,
-exactly like `Citation` already works for discoveries.
-
-## Suggested Build Order (dependency-respecting)
-
-1. **Auth/identity foundation first** — `chainVerifier` combinator + static-token verifier +
-   (if needed) second OIDC client-credentials issuer wiring in `withAuth`. Nothing else in this
-   milestone depends on capture correctness, but tenancy isolation (#373) and static-token fallback
-   both depend on this foundation existing. Verify with a parity test analogous to
-   `TestWriteParity`: same owner-claim resolution regardless of which verifier in the chain
-   answered.
-2. **Tenancy isolation validation (#373)** — once the chain exists, this is largely a verification
-   phase (prove namespaced-owner isolation for a client-credentials/static-token principal against
-   the EXISTING store filters) rather than new code — cheap to sequence right after (1).
-3. **Capture primitives: idempotency (#340), then supersession (#342), then citations (#341)** —
-   in that order because supersession's "stamp the old record" reuses the SAME payload-only
-   re-Upsert mechanism idempotency touches first, and citations is the most isolated/additive of
-   the three (least coupled, do last among the capture trio so earlier phases don't need to design
-   around it).
-4. **Category filter parity (#374)** — independent of (1)-(3); can run in parallel with the capture
-   trio, but sequence it after so the shared `categoryMatchConditions` extraction can piggyback on
-   whatever payload/test refactoring the capture phases already touch in `store.go`.
-5. **Embedder/chat base URL split (#350)** — fully independent, zero shared surface with (1)-(4);
-   lowest risk, do last (or first, as a warm-up) — pure config-layer addition.
-6. **Console/UX surfacing** — none of the above strictly requires console changes (all are MCP/
-   Connect-API-level), but if the console needs to expose category filters, supersession history,
-   or provenance display, that follows ALL of (1)-(4) as a pure consumer, per the existing pattern
-   where console features (Phase 19) followed API-layer phases (15-18) in v0.10.x.
-
-**Rationale for this order:** identity/auth is a hard prerequisite for tenancy (mirrors the
-milestone context's own stated ordering: "auth foundation before tenancy"); capture primitives are
-independent of auth entirely and could theoretically run in parallel, but sequencing idempotency →
-supersession → citations minimizes rework since supersession's implementation literally reuses
-idempotency's re-Upsert mechanism; category filter and base-URL split are low-coupling and can slot
-in wherever roadmap capacity allows, but should not block or be blocked by the auth/capture spine.
+Items 4, 5, and 6 have zero file overlap with the Item 1/2 spine and can be assigned to separate
+phases/plans and executed concurrently with the spine work and with each other (mind the
+`tools.go` co-location of Items 4 and 6 noted above). Item 3 is the only item with a hard, two-stage
+dependency on the spine (read subcommands after Item 1; the write subcommand after Item 2 too).
 
 ## Sources
 
-- `internal/store/subject.go`, `internal/store/store.go` (lines 108-846, 1400-1440) — authz
-  Subject, Memory/Citation schema, Search/List filter-building
-- `internal/auth/auth.go` — OIDC verifier, `ClaimIdentity`, `namespacedOwner`
-- `internal/server/identity.go`, `internal/server/connectauth.go` — dual-surface caller resolution,
-  existing pluggable-resolver precedent
-- `internal/server/tools.go` (lines 343-380, 482-600, 632-783, 912-937) — MCP tool args,
-  `deps.storeMemory`/`searchMemory`, embedder/summarizer construction
-- `internal/server/connectapi.go` — Connect RPC parity gaps (Categories already on List, absent on
-  Search and on MCP's listArgs)
-- `internal/config/registry.go`, `internal/config/validate.go` — koanf field-registry pattern
-- `cmd/engram/serve.go` — `withAuth` wiring, the exact call site the auth chain modifies
-- `.planning/PROJECT.md` — locked decisions DEC-cgb, DEC-12c, DEC-g37x, DEC-kyz, DEC-xa6, DEC-2bv,
-  DEC-90w, DEC-jgq referenced above
+All findings verified by direct source reading during this research pass (2026-07-29):
+- `cmd/engram/serve.go` (full file)
+- `internal/server/connectapi.go`, `connectcsrf.go`, `connectreseal.go`, `connectauth.go`,
+  `identity.go`
+- `internal/server/tools.go` (searchArgs, searchDiscoveryArgs, effectiveDiscoveryScope,
+  deps.searchMemory, deps.searchDiscovery, embedderFromConfig, summarizerFromConfig)
+- `internal/store/store.go` (ownerScopeFilter, Search, SearchReranked, SearchDiscovery,
+  decideBucket, decideRecord, SearchOptions, ListOptions)
+- `internal/authz/authz.go` (Decision, DecideBucket, DecideRecord)
+- `internal/auth/chain.go`, `internal/auth/auth.go` (ChainVerifier, TokenVerifier,
+  OwnerClaimExtraKey)
+- `internal/webauth/resolver.go`, `internal/webauth/handlers.go` (Resolve, Reseal)
+- `internal/config/registry.go`, `internal/config/config.go`
+- `proto/engram/v1/engram.proto` (SearchMemoriesRequest, SearchDiscoveriesRequest)
+- `gen/go/engram/v1/engramv1connect/engram.connect.go` (NewEngramServiceClient signature)
+- `cmd/engram/reindex.go`, `root.go`, `uiconfig.go` (operator-command and testable-pure-function
+  precedents)
+- `github.com/cedar-policy/cedar-go@v1.8.0/types/authorize.go` (Diagnostic/DiagnosticReason/
+  DiagnosticError shape — confirms no PII fields)
+- `.planning/PROJECT.md` (milestone framing, DEC-wot, DEC-cgb, DEC-jgq, v0.11.x precedent for
+  "prove fail-closed as the phase's first test")
 
 ---
-*Architecture research for: engram v0.11.x — Capture & Service Identity*
-*Researched: 2026-07-16*
+*Architecture research for: engram v0.12.x "Headless Reach & Diagnosability"*
+*Researched: 2026-07-29*
