@@ -11,7 +11,7 @@ progress:
   total_plans: 0
   completed_plans: 0
   percent: 0
-current_phase: 27
+current_phase: 1
 current_phase_name: Shared Auth Chain & Connect Bearer Identity
 ---
 
@@ -22,16 +22,16 @@ current_phase_name: Shared Auth Chain & Connect Bearer Identity
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x — Headless Reach & Diagnosability. Roadmap approved: 6 phases (27–32), 20/20 requirements mapped. Phase 27 (the security-critical spine) is next to plan.
+**Current focus:** v0.12.x — Headless Reach & Diagnosability. Roadmap approved: 6 phases (v0.12.x Phases 1–6), 20/20 requirements mapped. v0.12.x Phase 1 (the security-critical spine) is next to plan.
 
 ## Current Position
 
-Phase: 27 — Shared Auth Chain & Connect Bearer Identity (not started)
+Phase: 1 — Shared Auth Chain & Connect Bearer Identity (v0.12.x, not started)
 Plan: —
-Status: Roadmap complete; ready to plan Phase 27
-Last activity: 2026-07-29 — Milestone v0.12.x roadmap created (6 phases, 27–32)
+Status: Roadmap complete; ready to plan v0.12.x Phase 1
+Last activity: 2026-07-29 — Milestone v0.12.x roadmap created (6 phases, 1–6)
 
-**Phase 27 carries the milestone's two security-critical, silently-passing defect classes** — a CSRF
+**v0.12.x Phase 1 carries the milestone's two security-critical, silently-passing defect classes** — a CSRF
 exemption keyed on request-controlled input, and Connect never enforcing `TokenInfo.Expiration`
 because it bypasses `mcpauth.RequireBearerToken`'s `verify()`. Both fail-closed negative tests are
 the phase's FIRST tests, per the v0.11.x precedent. Flagged for research at plan time plus a

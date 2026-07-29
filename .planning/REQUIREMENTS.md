@@ -204,26 +204,26 @@ Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REQ-connect-bearer-identity | Phase 27 | Pending |
-| REQ-connect-token-expiry | Phase 27 | Pending |
-| REQ-connect-lane-provenance | Phase 27 | Pending |
-| REQ-connect-headless-mount | Phase 27 | Pending |
-| REQ-cli-client-commands | Phase 28 | Pending |
-| REQ-cli-agent-output | Phase 28 | Pending |
-| REQ-cli-credential-safety | Phase 28 | Pending |
-| REQ-cli-self-describing | Phase 28 | Pending |
-| REQ-cross-spine-search | Phase 29 | Pending |
-| REQ-cross-spine-authz-verified | Phase 29 | Pending |
-| REQ-cross-spine-result-provenance | Phase 29 | Pending |
-| REQ-rule-capture-investigation | Phase 32 | Pending |
-| REQ-rule-capture-intervention | Phase 32 | Pending |
-| REQ-authz-decision-diagnostics | Phase 30 | Pending |
-| REQ-validation-error-attribution | Phase 30 | Pending |
-| REQ-error-hint-envelope | Phase 30 | Pending |
-| REQ-embed-provider-error-body | Phase 30 | Pending |
-| REQ-per-lane-api-key | Phase 31 | Pending |
-| REQ-reindex-resume-tags | Phase 31 | Pending |
-| REQ-reindex-stale-repair | Phase 31 | Pending |
+| REQ-connect-bearer-identity | v0.12.x Phase 1 | Pending |
+| REQ-connect-token-expiry | v0.12.x Phase 1 | Pending |
+| REQ-connect-lane-provenance | v0.12.x Phase 1 | Pending |
+| REQ-connect-headless-mount | v0.12.x Phase 1 | Pending |
+| REQ-cli-client-commands | v0.12.x Phase 2 | Pending |
+| REQ-cli-agent-output | v0.12.x Phase 2 | Pending |
+| REQ-cli-credential-safety | v0.12.x Phase 2 | Pending |
+| REQ-cli-self-describing | v0.12.x Phase 2 | Pending |
+| REQ-cross-spine-search | v0.12.x Phase 3 | Pending |
+| REQ-cross-spine-authz-verified | v0.12.x Phase 3 | Pending |
+| REQ-cross-spine-result-provenance | v0.12.x Phase 3 | Pending |
+| REQ-rule-capture-investigation | v0.12.x Phase 6 | Pending |
+| REQ-rule-capture-intervention | v0.12.x Phase 6 | Pending |
+| REQ-authz-decision-diagnostics | v0.12.x Phase 4 | Pending |
+| REQ-validation-error-attribution | v0.12.x Phase 4 | Pending |
+| REQ-error-hint-envelope | v0.12.x Phase 4 | Pending |
+| REQ-embed-provider-error-body | v0.12.x Phase 4 | Pending |
+| REQ-per-lane-api-key | v0.12.x Phase 5 | Pending |
+| REQ-reindex-resume-tags | v0.12.x Phase 5 | Pending |
+| REQ-reindex-stale-repair | v0.12.x Phase 5 | Pending |
 
 **Coverage:**
 
@@ -233,12 +233,12 @@ Populated during roadmap creation.
 
 | Phase | Requirements |
 |-------|--------------|
-| Phase 27 — Shared Auth Chain & Connect Bearer Identity | 4 |
-| Phase 28 — Headless CLI Client | 4 |
-| Phase 29 — Cross-Spine Memory Recall | 3 |
-| Phase 30 — Diagnosability | 4 |
-| Phase 31 — Operator Config & Reindex Correctness | 3 |
-| Phase 32 — Rule Capture — Investigation & Fix | 2 |
+| v0.12.x Phase 1 — Shared Auth Chain & Connect Bearer Identity | 4 |
+| v0.12.x Phase 2 — Headless CLI Client | 4 |
+| v0.12.x Phase 3 — Cross-Spine Memory Recall | 3 |
+| v0.12.x Phase 4 — Diagnosability | 4 |
+| v0.12.x Phase 5 — Operator Config & Reindex Correctness | 3 |
+| v0.12.x Phase 6 — Rule Capture — Investigation & Fix | 2 |
 
 **Issue mapping:**
 
@@ -256,4 +256,4 @@ Populated during roadmap creation.
 
 ---
 *Requirements defined: 2026-07-29*
-*Last updated: 2026-07-29 after roadmap creation (Phases 27–32) — 20/20 requirements mapped*
+*Last updated: 2026-07-29 after roadmap creation (Phases 1–6) — 20/20 requirements mapped*
