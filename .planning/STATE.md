@@ -4,17 +4,17 @@ milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
 current_phase: 01
 current_phase_name: Shared Auth Chain & Connect Bearer Identity
-status: verifying
-stopped_at: Completed 01-04-PLAN.md (operator docs & Helm value for headless Connect lane) — phase 01 all plans complete
-last_updated: "2026-07-31T20:23:16.589Z"
+status: phase_complete
+stopped_at: v0.12.x Phase 1 COMPLETE — verification passed 5/5, code review 0 critical
+last_updated: "2026-07-31T21:05:00.000Z"
 last_activity: 2026-07-31
-last_activity_desc: Phase 01 execution started
+last_activity_desc: v0.12.x Phase 1 complete — verification passed 5/5, ready for Phase 2
 progress:
-  total_phases: 8
+  total_phases: 6
   completed_phases: 1
   total_plans: 4
   completed_plans: 4
-  percent: 13
+  percent: 17
 ---
 
 # Project State
@@ -24,15 +24,27 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 01 — Shared Auth Chain & Connect Bearer Identity
+**Current focus:** v0.12.x Phase 2 — Headless CLI Client (next). v0.12.x Phase 1 shipped.
 
 ## Current Position
 
-Phase: 01 (Shared Auth Chain & Connect Bearer Identity) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
+Phase: v0.12.x Phase 1 (Shared Auth Chain & Connect Bearer Identity) — ✅ COMPLETE 2026-07-31
+Plans: 4 of 4 complete (3 waves)
+Verification: **passed, 5/5 must-haves** (`01-VERIFICATION.md`); code review 0 critical /
+1 warning (fixed, `31cc732f`) / 1 info (accepted)
+Gates green on final state: `task` (lint+test), `go vet ./...`, `task chart:validate`,
+`task license:check`
 requirements 4/4, decisions 12/12, probe edges 9/9, gap analysis 16/16
-Last activity: 2026-07-31 — Phase 01 execution started
+Next: v0.12.x Phase 2 — Headless CLI Client (strict dependency on Phase 1, now satisfied)
+
+**Criterion 1 was proven STRUCTURALLY, not behaviorally** — `buildAuthChain` has exactly one
+production call site (`cmd/engram/serve.go:146`) and the three verifier constructors
+(`auth.New`, `auth.NewService`, `auth.NewStaticTokenVerifier`) appear nowhere in production
+outside its body, so two chains cannot drift by construction. `mountConnect`'s gate is
+byte-identical since 01-01 (`git diff --exit-code ed853385 -- internal/server/connectapi.go`).
+
+**Branch is behind `origin/main`** — #448 (release 0.11.3), #449 (astro), #450 (wrangler)
+landed during this phase. Zero file overlap with this branch; rebase before PR.
 
 **v0.12.x Phase 1 carries the milestone's two security-critical, silently-passing defect classes** — a CSRF
 exemption keyed on request-controlled input, and Connect never enforcing `TokenInfo.Expiration`
