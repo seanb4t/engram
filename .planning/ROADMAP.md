@@ -356,7 +356,7 @@ only exported caller wraps a whole `http.Handler`, so the two checks are reimple
 Plans:
 
 - [x] 01-01-PLAN.md — Tracer: bearer identity on Connect, lane-stamped, CSRF exemption reads the stamp (wave 1)
-- [ ] 01-02-PLAN.md — Reseal gates on the cookie lane; MCP↔Connect bearer and actor parity (wave 2)
+- [x] 01-02-PLAN.md — Reseal gates on the cookie lane; MCP↔Connect bearer and actor parity (wave 2)
 - [ ] 01-03-PLAN.md — `connect.headless` config key, build-once verifier injection, mount/bearer decoupling + startup refusal (wave 2)
 - [ ] 01-04-PLAN.md — Operator docs and Helm value for the headless lane; deferred follow-up filed (wave 3)
 

@@ -5,15 +5,15 @@ milestone_name: Headless Reach & Diagnosability
 current_phase: 01
 current_phase_name: Shared Auth Chain & Connect Bearer Identity
 status: executing
-stopped_at: Completed 01-01-PLAN.md (bearer lane + lane-keyed CSRF exemption)
-last_updated: "2026-07-31T18:49:25.976Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-07-31T19:04:17.786Z"
 last_activity: 2026-07-31
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.
 ## Current Position
 
 Phase: 01 (Shared Auth Chain & Connect Bearer Identity) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 requirements 4/4, decisions 12/12, probe edges 9/9, gap analysis 16/16
 Last activity: 2026-07-31 — Phase 01 execution started
@@ -144,6 +144,8 @@ milestone needs in working memory.
 
 - [Phase ?]: 01-01: EnforceExpiry uses an unexported invalidTokenError wrapper (not errors.Join) so the go-sdk's 401 body stays byte-identical to today's expiry rejections while still satisfying errors.Is(err, mcpauth.ErrInvalidToken).
 - [Phase ?]: 01-01: CSRF exemption is keyed exclusively on laneFromConnectContext(ctx); an unstamped/unrecognized lane on a write RPC fails closed with no CSRF check attempted (D-08 default-deny arm).
+- [Phase ?]: D-09: reseal interceptor gated on auth.LaneCookie — a bearer-authenticated request never re-seals a session cookie it did not authenticate with
+- [Phase ?]: RESEARCH.md Assumption A1 CONFIRMED: Connect-bearer actor attribution matches the MCP lane exactly (both flow through callerFromTokenInfo)
 
 ### Blockers/Concerns
 
@@ -170,8 +172,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-07-31T18:49:25.968Z
-Stopped at: Completed 01-01-PLAN.md (bearer lane + lane-keyed CSRF exemption)
+Last session: 2026-07-31T19:04:17.778Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -236,6 +238,7 @@ Resume file: None
 | Phase 26 P05 | 6min | 3 tasks | 6 files |
 | Phase 26 P06 | 18min | 3 tasks | 4 files |
 | Phase 01 P01 | 40min | 2 tasks | 16 files |
+| Phase 01 P02 | 13min | 2 tasks | 4 files |
 
 ## Operator Next Steps
 
