@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
-current_phase: 01
-current_phase_name: Shared Auth Chain & Connect Bearer Identity
+current_phase: 02
+current_phase_name: Headless CLI Client
 status: phase_complete
 stopped_at: v0.12.x Phase 1 COMPLETE — verification passed 5/5, code review 0 critical
-last_updated: "2026-07-31T21:05:00.000Z"
+last_updated: "2026-07-31T23:49:17.385Z"
+progress:
+  total_phases: 2
+  completed_phases: 1
+  total_plans: 7
+  completed_plans: 4
+  percent: 50
 last_activity: 2026-07-31
 last_activity_desc: v0.12.x Phase 1 complete — verification passed 5/5, ready for Phase 2
-progress:
-  total_phases: 6
-  completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
-  percent: 17
 ---
 
 # Project State
@@ -24,11 +24,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x Phase 2 — Headless CLI Client (next). v0.12.x Phase 1 shipped.
+**Current focus:** Phase 02 — Headless CLI Client
 
 ## Current Position
 
-Phase: v0.12.x Phase 1 (Shared Auth Chain & Connect Bearer Identity) — ✅ COMPLETE 2026-07-31
+Phase: 02 (Headless CLI Client) — EXECUTING
 Plans: 4 of 4 complete (3 waves)
 Verification: **passed, 5/5 must-haves** (`01-VERIFICATION.md`); code review 0 critical /
 1 warning (fixed, `31cc732f`) / 1 info (accepted)
