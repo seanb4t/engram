@@ -64,6 +64,14 @@ type csrfHeaders struct {
 	cookieValue string
 	hasHeader   bool
 	headerValue string
+	// authorization, when non-empty, is sent as the request's Authorization
+	// header (REVIEWS.md HIGH-2). It exists so a lane test can drive the
+	// self-declaration attack input — a garbage/well-formed credential
+	// header attached to an otherwise cookie-authenticated write — through
+	// this shared fixture. The zero value (empty string) preserves every
+	// existing caller byte-for-byte: doCSRFWrite only sets the header when
+	// this field is non-empty.
+	authorization string
 }
 
 func doCSRFWrite[Req, Resp any](ctx context.Context, fn func(context.Context, *connect.Request[Req]) (*connect.Response[Resp], error), msg *Req, h csrfHeaders) error {
@@ -76,6 +84,9 @@ func doCSRFWrite[Req, Resp any](ctx context.Context, fn func(context.Context, *c
 	}
 	if h.hasHeader {
 		req.Header().Set(CSRFHeaderName, h.headerValue)
+	}
+	if h.authorization != "" {
+		req.Header().Set("Authorization", h.authorization)
 	}
 	_, err := fn(ctx, req)
 	return err
