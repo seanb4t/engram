@@ -5,15 +5,15 @@ milestone_name: Headless Reach & Diagnosability
 current_phase: 01
 current_phase_name: Shared Auth Chain & Connect Bearer Identity
 status: executing
-stopped_at: v0.12.x Phase 1 planned — 4 plans, 3 waves, ready to execute
-last_updated: "2026-07-31T18:10:20.667Z"
+stopped_at: Completed 01-01-PLAN.md (bearer lane + lane-keyed CSRF exemption)
+last_updated: "2026-07-31T18:49:25.976Z"
 last_activity: 2026-07-31
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 4
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.
 ## Current Position
 
 Phase: 01 (Shared Auth Chain & Connect Bearer Identity) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 01
+Plan: 2 of 4
+Status: Ready to execute
 requirements 4/4, decisions 12/12, probe edges 9/9, gap analysis 16/16
 Last activity: 2026-07-31 — Phase 01 execution started
 
@@ -142,6 +142,9 @@ milestone needs in working memory.
   concat. Fixing one lane and not its sibling is how the doubled-`/v1` bug survived from Phase 13
   to Phase 26.
 
+- [Phase ?]: 01-01: EnforceExpiry uses an unexported invalidTokenError wrapper (not errors.Join) so the go-sdk's 401 body stays byte-identical to today's expiry rejections while still satisfying errors.Is(err, mcpauth.ErrInvalidToken).
+- [Phase ?]: 01-01: CSRF exemption is keyed exclusively on laneFromConnectContext(ctx); an unstamped/unrecognized lane on a write RPC fails closed with no CSRF check attempted (D-08 default-deny arm).
+
 ### Blockers/Concerns
 
 **Open:**
@@ -167,9 +170,9 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-07-31T04:06:32.430Z
-Stopped at: v0.12.x Phase 1 context gathered
-Resume file: .planning/phases/01-shared-auth-chain-connect-bearer-identity/01-CONTEXT.md
+Last session: 2026-07-31T18:49:25.968Z
+Stopped at: Completed 01-01-PLAN.md (bearer lane + lane-keyed CSRF exemption)
+Resume file: None
 
 ## Performance Metrics
 
@@ -232,6 +235,7 @@ Resume file: .planning/phases/01-shared-auth-chain-connect-bearer-identity/01-CO
 | Phase 26 P03 | 12min | 2 tasks | 7 files |
 | Phase 26 P05 | 6min | 3 tasks | 6 files |
 | Phase 26 P06 | 18min | 3 tasks | 4 files |
+| Phase 01 P01 | 40min | 2 tasks | 16 files |
 
 ## Operator Next Steps
 

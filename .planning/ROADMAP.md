@@ -153,7 +153,7 @@ into shared stores.
 5. Anonymous (auth-disabled) callers map to a single empty-owner bucket and cannot read other actors' `shared` records.
 
 **Status**: Complete (v0.8.x)
-**Plans**: N/A (retrospective — shipped before GSD planning)
+**Plans**: 1/4 plans executed
 
 ### Phase 2: Recall Semantics
 
@@ -327,11 +327,14 @@ REQ-connect-lane-provenance, REQ-connect-headless-mount
 1. A bearer token accepted on the MCP lane is accepted on the Connect lane, and one rejected there
    is rejected here — both resolve through a single composed verifier constructed **once**, proven
    structurally (not two independently-built chains that can drift).
+
 2. A token whose `Expiration` has passed is rejected on the Connect lane. *(Written as the phase's
    first test, per the v0.11.x fail-closed precedent — this closes a live gap, not a hypothetical.)*
+
 3. A cookie-authenticated caller is still rejected on all six write RPCs when it omits
    `X-CSRF-Token`, and cannot obtain the bearer exemption by attaching a garbage `Authorization`
    header to its session.
+
 4. A bearer verification failure never authenticates via the cookie lane.
 5. With the UI disabled and the headless flag unset, no Connect handler is registered —
    byte-for-byte today's behavior, so no deployment gains a surface on upgrade.
@@ -352,7 +355,7 @@ only exported caller wraps a whole `http.Handler`, so the two checks are reimple
 
 Plans:
 
-- [ ] 01-01-PLAN.md — Tracer: bearer identity on Connect, lane-stamped, CSRF exemption reads the stamp (wave 1)
+- [x] 01-01-PLAN.md — Tracer: bearer identity on Connect, lane-stamped, CSRF exemption reads the stamp (wave 1)
 - [ ] 01-02-PLAN.md — Reseal gates on the cookie lane; MCP↔Connect bearer and actor parity (wave 2)
 - [ ] 01-03-PLAN.md — `connect.headless` config key, build-once verifier injection, mount/bearer decoupling + startup refusal (wave 2)
 - [ ] 01-04-PLAN.md — Operator docs and Helm value for the headless lane; deferred follow-up filed (wave 3)
@@ -373,10 +376,13 @@ REQ-cli-self-describing
 
 1. `engram search`, `engram list`, and `engram store` complete against a running server given a
    server URL and a token, emitting structured JSON when stdout is not a TTY.
+
 2. Data goes to stdout and diagnostics to stderr; exit codes distinguish auth failure from
    not-found from validation failure from transport failure; no command prompts on any path.
+
 3. A token supplied by env var or file never appears in `argv`, and TLS verification cannot be
    disabled silently.
+
 4. A bare invocation returns the full command / flag / exit-code catalog as structured output.
 5. No client subcommand imports `internal/store`, `internal/authz`, or `internal/embed`.
 
@@ -400,9 +406,11 @@ REQ-cross-spine-result-provenance
 1. `Store.Search`'s filter construction has been read end to end and it is recorded **in writing**
    that the owner/authz `Must` clause is composed as a separate, unconditional entry from the scope
    clause — never a combined condition where omitting scope could drop part of the authz gate.
+
 2. A two-owner isolation test against **real Qdrant** (testcontainers, not a mock) proves owner A's
    `cross_spine=true` search over overlapping scope names never returns owner B's private records —
    and it exists and passes **before** the feature is implemented.
+
 3. `cross_spine=true` returns hits from multiple scopes; omitting it returns only the named scope.
 4. Available on MCP and Connect at parity via an additive proto field.
 5. Every result is attributable to its originating scope, and the response reports which scopes were
@@ -426,8 +434,10 @@ REQ-error-hint-envelope, REQ-embed-provider-error-body
 
 1. At debug level, **both** an allowed and a denied authorization decision emit a log line carrying
    field-allowlisted Cedar diagnostics; no full expression trace is ever emitted.
+
 2. An argument-validation rejection names the field that actually failed, proven by a matrix with
    one case per single-field-invalid input rather than by matching exact wording.
+
 3. A rejection carries a structured remediation hint alongside the field attribution.
 4. A non-2xx embeddings response surfaces a bounded prefix of the provider's error body alongside
    the status code and drains the body for connection reuse; the chat/summarize lane has been
@@ -450,9 +460,11 @@ without silently leaving stale vectors behind.
 
 1. The chat/summarize client uses its own API key when set and inherits the shared key when unset;
    behavior with it unset is byte-identical to today. Closes #350.
+
 2. `reindex --resume` re-embeds a record whose tags changed while content did not, **and** skips one
    where both match (the paired positive control — without it, a resume that silently stops skipping
    anything looks green while quietly re-embedding everything). Tag comparison is order-independent.
+
 3. An operator can identify and heal records an earlier unpatched `--resume` run skipped
    incorrectly, via a documented path following the existing one-time-reconciliation command
    precedent.
@@ -476,6 +488,7 @@ dozens of ordinary memories — and fix the cause that is actually there.
    failures** across the chain (`curating-memory` skill routing → session-start rules index →
    `store_rule` tool description → user-blessing gate), and it distinguishes a mechanical/bug cause
    from a friction cause.
+
 2. The intervention addresses that documented cause, not a presumed one.
 3. Rule capture demonstrably fires in a scenario where it previously did not.
 4. No path promotes a rule without explicit user instruction — the user-blessed gate is intact and
@@ -502,7 +515,7 @@ markdown and tool descriptions rather than Go correctness.
 
 | Phase | Milestone | Requirements | Status | Completed |
 |-------|-----------|--------------|--------|-----------|
-| 1. Authorization & Isolation | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
+| 1. Authorization & Isolation | v0.8.x | 3/3 | In Progress|  |
 | 2. Recall Semantics | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
 | 3. Memory Kinds & Tools | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
 | 4. Embedder | v0.8.x | 1/1 | Complete | shipped (v0.8.x) |

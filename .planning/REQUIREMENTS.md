@@ -25,36 +25,43 @@ Zero new Go dependencies are required for this entire milestone.
 
 ### Headless Client Lane (#343 — the milestone's structural spine)
 
-- [ ] **REQ-connect-bearer-identity**: A headless caller can authenticate to the ConnectRPC lane
+- [x] **REQ-connect-bearer-identity**: A headless caller can authenticate to the ConnectRPC lane
   with a bearer token, verified by the **same composed** `auth.ChainVerifier` the MCP lane uses
   (OIDC user → client-credentials → static token). `withAuth`'s chain builder is extracted so both
   mount sites consume one verifier — never two independently-constructed chains that can drift.
-- [ ] **REQ-connect-token-expiry**: The Connect bearer path rejects a token whose
+
+- [x] **REQ-connect-token-expiry**: The Connect bearer path rejects a token whose
   `TokenInfo.Expiration` has passed. *(Closes a live gap: `newConnectSubjectInterceptor` calls
   `resolve()` directly and never routes through `mcpauth.RequireBearerToken`, whose private
   `verify()` is the only place expiration is enforced today. Reusing `ChainVerifier` alone makes
   `Expiration` decorative on this lane — including the static-token lane's long-lived sentinel,
   which exists solely to satisfy a check this lane would never run.)*
-- [ ] **REQ-connect-lane-provenance**: The resolver stamps an explicit, server-set marker recording
+
+- [x] **REQ-connect-lane-provenance**: The resolver stamps an explicit, server-set marker recording
   **which lane** authenticated each request. The CSRF interceptor's exemption is decided from that
   marker alone and can never be influenced by attacker-controlled request content — not header
   presence, not cookie presence, not content type. A cookie-authenticated caller cannot exempt
   itself from CSRF by omitting `X-CSRF-Token`, and cannot self-declare the bearer lane. Bearer
   verification failure never falls through to the cookie lane.
+
 - [ ] **REQ-connect-headless-mount**: An operator can mount the Connect lane on a deployment with
   the web UI disabled, via a flag that defaults **off independently** of every existing UI and
   service-auth flag. A deployment that has no Connect surface today gains none on upgrade.
+
 - [ ] **REQ-cli-client-commands**: An agent with only a shell can `engram search`, `engram store`,
   and `engram list` against a remote server given a server URL and a token. The commands speak only
   the generated Connect stubs (`gen/go/engram/v1/engramv1connect`) and never import
   `internal/store`, `internal/authz`, or `internal/embed`.
+
 - [ ] **REQ-cli-agent-output**: CLI output is consumable by a non-interactive caller: structured
   JSON by default when not attached to a TTY, data on stdout and diagnostics on stderr, documented
   semantic exit codes mapped from engram's existing Connect error taxonomy, and no TTY prompt on
   any path.
+
 - [ ] **REQ-cli-credential-safety**: A token can be supplied without ever appearing in `argv`
   (env var or file), so it does not leak into `ps` output or shell history. TLS verification is on
   by default and cannot be disabled silently.
+
 - [ ] **REQ-cli-self-describing**: A bare invocation returns the full command / flag / exit-code
   catalog as structured output, so an agent can discover the surface without parsing help text.
 
@@ -64,6 +71,7 @@ Zero new Go dependencies are required for this entire milestone.
   permitted to see via `cross_spine=true` on `search_memory`, making `scope` optional — mirroring
   `search_discovery`'s existing `CrossSpine` semantics. Available at MCP↔Connect parity via an
   additive proto field. Opt-in; the default stays scope-confined.
+
 - [ ] **REQ-cross-spine-authz-verified**: Cross-spine search never widens the authorization filter.
   Before implementation, `Store.Search`'s filter-construction path is read end to end and it is
   confirmed **in writing** that the owner/authz `Must` clause is composed as a genuinely separate,
@@ -74,6 +82,7 @@ Zero new Go dependencies are required for this entire milestone.
   lack the `discovery:*` namespace convention discoveries rely on, and that the single-scope path
   may have leaned on `scope` being non-empty as an unaudited narrowing signal. Resolved by
   verification, not analogy.)*
+
 - [ ] **REQ-cross-spine-result-provenance**: A cross-spine result is visibly attributable to its
   originating scope, and the response reports which scopes were searched — so an agent can tell
   "found nothing here" from "searched everywhere I can see and found nothing."
@@ -85,6 +94,7 @@ Zero new Go dependencies are required for this entire milestone.
   **attempts including failures** across the chain: the `curating-memory` skill's routing table →
   the session-start rules index → the `store_rule` tool description → the user-blessing gate.
   Deliverable is a written root cause distinguishing a mechanical/bug cause from a friction cause.
+
 - [ ] **REQ-rule-capture-intervention**: Apply the fix the investigation identifies. If the cause
   is friction, the intervention must reduce **friction** without changing **who decides** — the
   user-blessed gate is a design invariant and any intervention that promotes a rule without
@@ -98,14 +108,17 @@ Zero new Go dependencies are required for this entire milestone.
   looks complete while leaving unexpected allows undebuggable). Re-applies DEC-wot's owner-only
   disclosure rule at the reader, even though `cedar.Diagnostic` carries no PII fields by
   construction. Full Cedar expression traces are excluded.
+
 - [ ] **REQ-validation-error-attribution**: An argument-validation rejection names the field that
   actually failed. Fixed at the branch-attribution mechanism, not by patching the one reported
   string — pinned by a matrix test with one case per single-field-invalid input asserting the
   correct field is named, rather than string-matching exact wording. *(Today an over-long `summary`
   reports `missing properties: ["content"]` while `content` is present and valid.)*
+
 - [ ] **REQ-error-hint-envelope**: A rejection carries a structured remediation hint alongside the
   field attribution, so an agent's next attempt is informed rather than guessed. *(The error string
   is literally the next prompt the model acts on.)*
+
 - [ ] **REQ-embed-provider-error-body**: A non-2xx response from the embeddings provider surfaces a
   bounded prefix of the provider's error body in the returned error alongside the status code, then
   drains and closes the body so the connection stays reusable. The chat/summarize lane is audited
@@ -117,11 +130,13 @@ Zero new Go dependencies are required for this entire milestone.
 - [ ] **REQ-per-lane-api-key**: An operator can point the chat/summarize client at a different
   provider **credential** than the embedder, mirroring the already-shipped base-URL split; empty
   means inherit the shared key. Byte-identical behavior when unset. Closes #350.
+
 - [ ] **REQ-reindex-resume-tags**: `engram reindex --resume` re-embeds a record whose tags changed
   while its content did not. The target **lookup** is extended to fetch stored tags — not only the
   equality check — since tags are not fetched at all today, and comparing against an always-nil
   field either preserves the bug or silently defeats resume entirely. Tag comparison is
   order-independent.
+
 - [ ] **REQ-reindex-stale-repair**: An operator can heal records that an earlier unpatched
   `--resume` run already skipped incorrectly, via a documented repair path — following the existing
   one-time-reconciliation command precedent (`migrate-remap-owner`, `backfill-short-ids`,
@@ -138,6 +153,7 @@ Acknowledged, not in this roadmap.
 - **REQ-cross-spine-coverage-receipt**: A full coverage receipt (scopes searched vs.
   skipped-with-reason, per-scope counts). Deferred — the scope space is small and enumerable today,
   so `REQ-cross-spine-result-provenance` covers the real need; revisit if scope counts grow.
+
 - **REQ-cross-spine-scope-prefix**: Prefix/wildcard scope targeting (e.g. all `repo:*` spines but
   no workspace overlays). Deferred in favour of boolean parity with `search_discovery`; a second
   knob would need its interaction with `cross_spine` specified.
@@ -146,6 +162,7 @@ Acknowledged, not in this roadmap.
 
 - **REQ-shared-read-tenant-scoping**: Narrow `shared` visibility from global cross-tenant to
   per-tenant. Deferred to full ABAC (ADR `engram-svct`).
+
 - **REQ-cedar-partial-evaluation**: Replace the bucket-decision → store-filter pattern with Cedar
   residual compilation. Blocked upstream — not in cedar-go's stable core.
 
@@ -204,9 +221,9 @@ Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REQ-connect-bearer-identity | v0.12.x Phase 1 | Pending |
-| REQ-connect-token-expiry | v0.12.x Phase 1 | Pending |
-| REQ-connect-lane-provenance | v0.12.x Phase 1 | Pending |
+| REQ-connect-bearer-identity | v0.12.x Phase 1 | Complete |
+| REQ-connect-token-expiry | v0.12.x Phase 1 | Complete |
+| REQ-connect-lane-provenance | v0.12.x Phase 1 | Complete |
 | REQ-connect-headless-mount | v0.12.x Phase 1 | Pending |
 | REQ-cli-client-commands | v0.12.x Phase 2 | Pending |
 | REQ-cli-agent-output | v0.12.x Phase 2 | Pending |
