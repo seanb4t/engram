@@ -278,5 +278,8 @@ func validConfigForServiceAuthTests() *Config {
 		Usage: UsageConfig{
 			Signals: "true",
 		},
+		Connect: ConnectConfig{
+			Headless: "false",
+		},
 	}
 }

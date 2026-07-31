@@ -202,6 +202,12 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("ENGRAM_USAGE_SIGNALS %q: must be a boolean: %w", c.Usage.Signals, err))
 	}
 
+	// connect.headless (D-10) is validated at load, not only at point of use,
+	// so a typo fails startup rather than silently reading as off.
+	if _, err := strconv.ParseBool(c.Connect.Headless); err != nil {
+		errs = append(errs, fmt.Errorf("ENGRAM_CONNECT_HEADLESS %q: must be a boolean: %w", c.Connect.Headless, err))
+	}
+
 	switch n, err := strconv.ParseUint(c.Summarize.Workers, 10, 64); {
 	case err != nil:
 		errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_WORKERS %q: must be a positive integer: %w", c.Summarize.Workers, err))

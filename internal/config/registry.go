@@ -64,6 +64,12 @@ var registry = []field{
 	{Key: "ui.issuer", Env: "ENGRAM_UI_ISSUER", Legacy: "MEM_UI_ISSUER", Flag: "ui-issuer"},
 	{Key: "ui.redirect_url", Env: "ENGRAM_UI_REDIRECT_URL", Legacy: "MEM_UI_REDIRECT_URL", Flag: "ui-redirect-url"},
 	{Key: "ui.cookie_key", Env: "ENGRAM_UI_COOKIE_KEY", Legacy: "MEM_UI_COOKIE_KEY", Flag: "ui-cookie-key"},
+	// This entry names the MODE (headless operation), not the surface (D-10):
+	// an "enabled" name would invite the misreading that turning it off
+	// unmounts Connect even when the UI is on, which is not what it does. It
+	// defaults off independently of every ui.* and service_auth.* key below.
+	// No Legacy value: this is a brand-new var.
+	{Key: "connect.headless", Env: "ENGRAM_CONNECT_HEADLESS", Flag: "connect-headless", Default: "false"},
 	{Key: "log.level", Env: "ENGRAM_LOG_LEVEL", Legacy: "MEM_LOG_LEVEL", Default: "info"},
 	{Key: "log.format", Env: "ENGRAM_LOG_FORMAT", Legacy: "MEM_LOG_FORMAT", Default: "json"},
 	{Key: "log.stdout", Env: "ENGRAM_LOG_STDOUT", Legacy: "MEM_LOG_STDOUT", Default: "true"},

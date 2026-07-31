@@ -51,6 +51,8 @@ func init() {
 		"WWW-Authenticate resource metadata URL (optional)")
 	f.String("ui-enabled", config.FlagDefault("ui-enabled"),
 		"enable the web UI + login lane (empty=imply from creds; 'false'=hard off)")
+	f.String("connect-headless", config.FlagDefault("connect-headless"),
+		"mount the ConnectRPC lane on a headless deployment (default off; requires at least one configured auth lane)")
 	f.String("ui-issuer", config.FlagDefault("ui-issuer"),
 		"OIDC issuer for the web-UI login lane (empty=default to --oidc-issuer)")
 	f.String("oidc-client-id", config.FlagDefault("oidc-client-id"), "OIDC confidential-client ID for the web login")

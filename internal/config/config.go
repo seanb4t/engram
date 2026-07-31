@@ -29,6 +29,7 @@ type Config struct {
 	OIDC        OIDCConfig        `koanf:"oidc"`
 	ServiceAuth ServiceAuthConfig `koanf:"service_auth"`
 	UI          UIConfig          `koanf:"ui"`
+	Connect     ConnectConfig     `koanf:"connect"`
 	Log         LogConfig         `koanf:"log"`
 	Usage       UsageConfig       `koanf:"usage"`
 }
@@ -164,6 +165,14 @@ type UIConfig struct {
 	Issuer      string `koanf:"issuer"`
 	RedirectURL string `koanf:"redirect_url"`
 	CookieKey   string `koanf:"cookie_key"`
+}
+
+// ConnectConfig holds the ConnectRPC headless-mount switch (D-10): whether to
+// mount the Connect lane on a deployment with the web UI disabled. Kept a
+// string, parsed with strconv.ParseBool at point of use, mirroring
+// summarize.on_write / usage.signals.
+type ConnectConfig struct {
+	Headless string `koanf:"headless"`
 }
 
 // LogConfig controls structured-log output: verbosity, encoding, and whether

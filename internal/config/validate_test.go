@@ -17,6 +17,7 @@ func validConfig() *Config {
 		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
 		Summarize: SummarizeConfig{OnWrite: "false", Workers: "2", QueueSize: "256"},
 		Usage:     UsageConfig{Signals: "true"},
+		Connect:   ConnectConfig{Headless: "false"},
 	}
 }
 
