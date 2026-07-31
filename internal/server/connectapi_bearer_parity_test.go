@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,6 +19,30 @@ import (
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
 	"github.com/seanb4t/engram/internal/auth"
 )
+
+// assertConnectWireMessage asserts the EXACT message a Connect rejection puts
+// on the wire (REVIEW.md WR-01). connect.NewError(code, err).Message() is
+// err.Error() verbatim, so this is the Connect-lane counterpart to
+// TestBearerLaneParityRejectionBodiesMatch's `body == ...` check on the MCP
+// side — without it, a future errors.Join / fmt.Errorf("%w: %w") regression
+// inside newConnectSubjectInterceptor, NewConnectResolver, or
+// verifyBearerCredential would corrupt the Connect body while every existing
+// test kept passing.
+//
+// A failed errors.As is a HARD failure, deliberately. Gating the comparison
+// behind `if errors.As(...)` would make the whole assertion vanish the moment
+// the error stopped being a *connect.Error — reintroducing on the fix the very
+// can't-actually-fail shape WR-01 reports.
+func assertConnectWireMessage(t *testing.T, err error, want string) {
+	t.Helper()
+	var cerr *connect.Error
+	if !errors.As(err, &cerr) {
+		t.Fatalf("Connect error is not a *connect.Error (%T: %v); cannot assert the wire message", err, err)
+	}
+	if cerr.Message() != want {
+		t.Errorf("Connect wire message = %q, want exactly %q", cerr.Message(), want)
+	}
+}
 
 // TestStubOIDCVerifierCarriesFutureExpiration is a one-line guard (REVIEWS.md
 // MED-9) so a future edit that drops stubOIDCVerifier's Expiration field
@@ -211,6 +236,7 @@ func TestBearerLaneParityRejectsExpiredOnBothLanes(t *testing.T) {
 	if connect.CodeOf(connErr) != connect.CodeUnauthenticated {
 		t.Errorf("Connect lane code = %v, want CodeUnauthenticated", connect.CodeOf(connErr))
 	}
+	assertConnectWireMessage(t, connErr, "token expired")
 }
 
 // TestBearerLaneParityRejectsZeroExpirationOnBothLanes is D-05's cross-lane
@@ -239,6 +265,7 @@ func TestBearerLaneParityRejectsZeroExpirationOnBothLanes(t *testing.T) {
 	if connect.CodeOf(connErr) != connect.CodeUnauthenticated {
 		t.Errorf("Connect lane code = %v, want CodeUnauthenticated", connect.CodeOf(connErr))
 	}
+	assertConnectWireMessage(t, connErr, "token missing expiration")
 }
 
 // TestBearerLaneParityRejectionBodiesMatch (REVIEWS.md MED-8): the MCP
