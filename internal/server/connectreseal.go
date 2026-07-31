@@ -8,6 +8,8 @@ import (
 	"net/http"
 
 	"connectrpc.com/connect"
+
+	"github.com/seanb4t/engram/internal/auth"
 )
 
 // resealFunc mirrors webauth.Handler.Reseal's signature: a best-effort,
@@ -33,11 +35,21 @@ type resealFunc func(http.Header, *http.Request)
 // re-sealing entirely and returns next's (resp, err) unchanged: a re-seal
 // failure must never convert a handler success into an error, and it must
 // never manufacture a response where none exists.
+//
+// It also skips re-sealing unless the request authenticated on the cookie
+// lane (D-09). webauth.Reseal already no-ops without a session cookie
+// (internal/webauth/reseal.go:47-50), so this is not a fix for the common
+// bearer case — it closes the narrow both-credentials case D-01 creates: a
+// request carrying a valid session cookie *and* a valid bearer token
+// authenticates as bearer, yet Reseal reads raw request headers and would
+// otherwise refresh a session the request did not authenticate with. The
+// lane marker, not cookie presence, governs every cookie-lane side effect —
+// this makes that a uniform rule rather than a CSRF-only special case.
 func newConnectResealInterceptor(reseal resealFunc) connect.UnaryInterceptorFunc {
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 			resp, err := next(ctx, req)
-			if err != nil || resp == nil || reseal == nil {
+			if err != nil || resp == nil || reseal == nil || laneFromConnectContext(ctx) != auth.LaneCookie {
 				return resp, err
 			}
 
