@@ -365,3 +365,177 @@ func TestAuthChainSharedBetweenLanes(t *testing.T) {
 		t.Fatal("expected a non-nil TokenInfo from the Connect lane")
 	}
 }
+
+// stubConnectVerifier returns an mcpauth.TokenVerifier that accepts any
+// non-empty token and resolves it to a fixed TokenInfo. Used where a test
+// only needs "a non-nil configured chain that authenticates", not a
+// specific credential check (connectResolverFor's own tests exercise the
+// credential-shape routing; these fixtures stay deliberately simple).
+func stubConnectVerifier() mcpauth.TokenVerifier {
+	return func(context.Context, string, *http.Request) (*mcpauth.TokenInfo, error) {
+		return &mcpauth.TokenInfo{UserID: "stub-bearer-user"}, nil
+	}
+}
+
+// stubConnectCookieResolve returns a cookie-lane resolver stub that always
+// succeeds, for tests exercising connectResolverFor's cookie half.
+func stubConnectCookieResolve() func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error) {
+	return func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error) {
+		return &mcpauth.TokenInfo{UserID: "stub-cookie-user"}, nil
+	}
+}
+
+// TestHeadlessRefusesStartWithoutAuthLane pins D-11: headless with a nil
+// chain refuses to start, naming ENGRAM_CONNECT_HEADLESS; headless with a
+// configured chain is fine; and non-headless with no chain is fine too --
+// this guard constrains only the new flag, so no existing deployment can
+// fail to boot as a result of this phase.
+func TestHeadlessRefusesStartWithoutAuthLane(t *testing.T) {
+	err := connectHeadlessGuard(true, nil)
+	if err == nil {
+		t.Fatal("connectHeadlessGuard(true, nil): want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "ENGRAM_CONNECT_HEADLESS") {
+		t.Fatalf("error %v does not name ENGRAM_CONNECT_HEADLESS", err)
+	}
+	if err := connectHeadlessGuard(true, stubConnectVerifier()); err != nil {
+		t.Fatalf("connectHeadlessGuard(true, chain): want nil, got %v", err)
+	}
+	if err := connectHeadlessGuard(false, nil); err != nil {
+		t.Fatalf("connectHeadlessGuard(false, nil): want nil, got %v", err)
+	}
+}
+
+// TestConnectResolverForDefaultOff is the Pitfall-5 regression guard (D-12 /
+// SC5): a configured auth lane alone -- with no UI and no headless flag --
+// must never mount Connect. This closes REQUIREMENTS.md:197's false-pass,
+// where loosening the mount guard with an OR would keep every "UI enabled
+// -> mounted" test green even though the new condition is wrong.
+func TestConnectResolverForDefaultOff(t *testing.T) {
+	if got := connectResolverFor(nil, false, nil); got != nil {
+		t.Fatal("connectResolverFor(nil, false, nil) != nil, want nil")
+	}
+	chain := stubConnectVerifier()
+	if got := connectResolverFor(chain, false, nil); got != nil {
+		t.Fatal("connectResolverFor(chain, false, nil) != nil, want nil -- a configured chain alone must never mount Connect")
+	}
+}
+
+// TestConnectResolverForHeadlessOnly proves ENGRAM_CONNECT_HEADLESS=true
+// with no UI mounts Connect and authenticates via the bearer half alone.
+func TestConnectResolverForHeadlessOnly(t *testing.T) {
+	resolve := connectResolverFor(stubConnectVerifier(), true, nil)
+	if resolve == nil {
+		t.Fatal("connectResolverFor(chain, true, nil) = nil, want non-nil")
+	}
+	req := connect.NewRequest(&struct{}{})
+	req.Header().Set("Authorization", "Bearer stub-token")
+	ti, lane, err := resolve(context.Background(), req)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if lane != auth.LaneBearer {
+		t.Fatalf("lane = %v, want LaneBearer", lane)
+	}
+	if ti == nil {
+		t.Fatal("expected a non-nil TokenInfo")
+	}
+}
+
+// TestConnectResolverForUIOnlyNoChain proves a deployment with no auth lane
+// configured at all -- UI on, chain nil -- mounts Connect and stamps
+// auth.LaneCookie for every request, byte-for-byte today's UI-only
+// behavior.
+func TestConnectResolverForUIOnlyNoChain(t *testing.T) {
+	resolve := connectResolverFor(nil, false, stubConnectCookieResolve())
+	if resolve == nil {
+		t.Fatal("connectResolverFor(nil, false, cookieResolve) = nil, want non-nil")
+	}
+	req := connect.NewRequest(&struct{}{})
+	ti, lane, err := resolve(context.Background(), req)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if lane != auth.LaneCookie {
+		t.Fatalf("lane = %v, want LaneCookie", lane)
+	}
+	if ti == nil {
+		t.Fatal("expected a non-nil TokenInfo")
+	}
+}
+
+// TestConnectResolverForUIEnabledIncludesBearerHalf is the REVIEWS.md
+// HIGH-3 / SC1 regression guard: UI on, headless UNSET, a chain configured
+// -- the resolver must be non-nil AND route a well-formed bearer credential
+// to auth.LaneBearer through chain, while a non-bearer request still stamps
+// auth.LaneCookie. Gating the bearer half on headless would leave this
+// deployment cookie-only, so a token accepted on MCP would be rejected on
+// Connect -- the exact defect this test exists to catch.
+func TestConnectResolverForUIEnabledIncludesBearerHalf(t *testing.T) {
+	resolve := connectResolverFor(stubConnectVerifier(), false, stubConnectCookieResolve())
+	if resolve == nil {
+		t.Fatal("connectResolverFor(chain, false, cookieResolve) = nil, want non-nil")
+	}
+
+	breq := connect.NewRequest(&struct{}{})
+	breq.Header().Set("Authorization", "Bearer stub-token")
+	ti, lane, err := resolve(context.Background(), breq)
+	if err != nil {
+		t.Fatalf("resolve(bearer): %v", err)
+	}
+	if lane != auth.LaneBearer {
+		t.Fatalf("lane = %v, want LaneBearer (a UI-enabled deployment with a configured chain must accept bearer credentials even with headless unset)", lane)
+	}
+	if ti == nil {
+		t.Fatal("expected a non-nil TokenInfo for the bearer request")
+	}
+
+	creq := connect.NewRequest(&struct{}{})
+	_, lane2, err := resolve(context.Background(), creq)
+	if err != nil {
+		t.Fatalf("resolve(no credential): %v", err)
+	}
+	if lane2 != auth.LaneCookie {
+		t.Fatalf("lane = %v, want LaneCookie for a non-bearer request", lane2)
+	}
+}
+
+// TestConnectResolverForBothLanes proves headless AND UI-enabled together
+// still compose correctly: a bearer credential routes to auth.LaneBearer,
+// everything else to auth.LaneCookie.
+func TestConnectResolverForBothLanes(t *testing.T) {
+	resolve := connectResolverFor(stubConnectVerifier(), true, stubConnectCookieResolve())
+	if resolve == nil {
+		t.Fatal("connectResolverFor(chain, true, cookieResolve) = nil, want non-nil")
+	}
+
+	breq := connect.NewRequest(&struct{}{})
+	breq.Header().Set("Authorization", "Bearer stub-token")
+	_, lane, err := resolve(context.Background(), breq)
+	if err != nil {
+		t.Fatalf("resolve(bearer): %v", err)
+	}
+	if lane != auth.LaneBearer {
+		t.Fatalf("lane = %v, want LaneBearer", lane)
+	}
+
+	creq := connect.NewRequest(&struct{}{})
+	_, lane2, err := resolve(context.Background(), creq)
+	if err != nil {
+		t.Fatalf("resolve(no credential): %v", err)
+	}
+	if lane2 != auth.LaneCookie {
+		t.Fatalf("lane = %v, want LaneCookie", lane2)
+	}
+}
+
+// TestConnectResolverForHeadlessWithoutChainIsNil pins the defense-in-depth
+// backstop: headless=true with a nil chain is unreachable in runServe
+// (connectHeadlessGuard refuses startup first), but the composition itself
+// must never mount an unauthenticatable surface if that guarantee is ever
+// broken.
+func TestConnectResolverForHeadlessWithoutChainIsNil(t *testing.T) {
+	if got := connectResolverFor(nil, true, nil); got != nil {
+		t.Fatal("connectResolverFor(nil, true, nil) != nil, want nil")
+	}
+}

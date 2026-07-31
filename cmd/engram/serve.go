@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -147,12 +148,23 @@ func runServe(cmd *cobra.Command) error {
 		slog.Error("oidc verifier init failed", "err", err, "issuer", cfg.OIDC.Issuer)
 		return err
 	}
+	headless, err := strconv.ParseBool(cfg.Connect.Headless)
+	if err != nil {
+		err = fmt.Errorf("ENGRAM_CONNECT_HEADLESS (or --connect-headless) %q: must be a boolean: %w", cfg.Connect.Headless, err)
+		slog.Error("connect-headless config invalid", "err", err)
+		return err
+	}
+	if err := connectHeadlessGuard(headless, chain); err != nil {
+		slog.Error("connect-headless config invalid", "err", err)
+		return err
+	}
 
-	var connectResolve func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error)
+	var cookieResolve func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)
 	var connectCSRFVerify func(owner, token string) bool
 	var connectReseal func(http.Header, *http.Request)
 	var webHandler *webauth.Handler
-	if uiCfg.Enabled {
+	switch {
+	case uiCfg.Enabled:
 		// resolveUIConfig guarantees uiCfg.Issuer is non-empty here (it defaults
 		// to ENGRAM_OIDC_ISSUER and fails fast when neither issuer is set).
 		key, err := decodeCookieKey(uiCfg.CookieKey)
@@ -178,18 +190,24 @@ func runServe(cmd *cobra.Command) error {
 			return fmt.Errorf("web UI OIDC discovery: %w", err)
 		}
 		webHandler = webauth.NewHandler(authr, codec, true, csrfSigner)
-		// The bearer half stays nil here because no verifier chain is built
-		// yet at this point in serve.go (D-06's chain construction happens
-		// later, inside withAuth); a later plan builds it and passes it in.
-		// webauth.NewResolver(codec).Resolve is passed through unwrapped and
-		// internal/webauth is not modified (D-07).
-		connectResolve = server.NewConnectResolver(nil, webauth.NewResolver(codec).Resolve)
+		// internal/webauth is not modified (D-07); webauth.NewResolver(codec).Resolve
+		// is the cookie half passed through unwrapped to connectResolverFor below,
+		// which composes it with chain (the bearer half) once both are known.
+		cookieResolve = webauth.NewResolver(codec).Resolve
 		connectCSRFVerify = csrfSigner.Verify
 		connectReseal = webHandler.Reseal
 		slog.Info("web UI auth lane enabled", "issuer", uiCfg.Issuer, "redirect", uiCfg.RedirectURL)
-	} else {
-		slog.Info("web UI disabled (headless); Connect API not mounted")
+	case headless:
+		slog.Info("web UI disabled; Connect API mounted headless (ENGRAM_CONNECT_HEADLESS)")
+	default:
+		slog.Info("web UI disabled and ENGRAM_CONNECT_HEADLESS unset; Connect API not mounted")
 	}
+
+	// D-12: mounting (cookieResolve != nil || headless) and bearer-inclusion
+	// (chain, unconditionally, whenever mounted) are decided together here —
+	// after both halves are known — and nowhere else. mountConnect's own
+	// resolve==nil gate is untouched.
+	connectResolve := connectResolverFor(chain, headless, cookieResolve)
 
 	srv := mcp.NewServer(&mcp.Implementation{Name: "engram", Version: version}, nil)
 	drain, err := server.Register(srv, mux, tm, sqm, uqm, connectResolve, connectCSRFVerify, connectReseal)
@@ -294,6 +312,58 @@ func ownerClaimGuard(bearerIssuer string, uiEnabled bool, ownerClaims []string) 
 			"owner_claims", ownerClaims)
 	}
 	return nil
+}
+
+// connectHeadlessGuard fails startup fast when connect.headless is set but
+// no auth lane is configured (D-11): mounting Connect headless with a nil
+// chain would expose every write RPC unauthenticated into the anonymous
+// empty-owner bucket, on a surface that did not exist on this deployment
+// before the upgrade — the same opt-in-only posture PROJECT.md requires.
+// This constrains ONLY the new flag: withAuth's existing no-lane behavior
+// (validation disabled, logged loudly) and the MCP lane's anonymous bucket
+// are deliberately untouched, so no existing deployment can fail to boot as
+// a result of this phase.
+func connectHeadlessGuard(headless bool, chain mcpauth.TokenVerifier) error {
+	if !headless || chain != nil {
+		return nil
+	}
+	return fmt.Errorf("ENGRAM_CONNECT_HEADLESS (or --connect-headless) is set while no auth lane is configured: mounting would expose every write RPC unauthenticated into the anonymous empty-owner bucket; configure ENGRAM_OIDC_ISSUER and/or ENGRAM_SERVICE_AUTH_* (client-credentials issuer/audience or static tokens) to add an auth lane")
+}
+
+// connectResolverFor decides whether to mount Connect at all, and — only
+// when it does — composes the bearer and cookie halves. Mounting and
+// bearer-inclusion are two SEPARATE decisions (REVIEWS.md HIGH-3); do not
+// let one flag answer both:
+//
+//   - Mount decision: nil when cookieResolve == nil && !headless. The two
+//     independent activation booleans are "the UI is on" (a non-nil
+//     cookieResolve) and "the operator explicitly asked for the lane"
+//     (headless). A configured chain is NEVER, on its own, an activation
+//     signal — this is what keeps a deployment with an auth lane but no UI
+//     and no headless flag gaining nothing on upgrade (D-12, SC5).
+//   - Bearer decision: whenever the lane IS mounted, chain is passed through
+//     as the bearer half UNCONDITIONALLY — never gated on headless. A
+//     UI-enabled deployment that never sets connect.headless still gets
+//     chain as its bearer half, because D-06 says one chain value reaches
+//     both mount sites and REQ-connect-bearer-identity says a token
+//     accepted on MCP is accepted on Connect everywhere Connect exists.
+//
+// Checked against the locked decisions: D-10 and D-12 govern mounting only
+// (D-10's "defaults off independently of every ui.* and service_auth.*
+// key" and D-12's "UI enabled OR connect.headless set" are both statements
+// about when the lane is mounted); neither says the bearer half is
+// conditional on headless, and D-06 says the opposite. There is no
+// conflict to escalate.
+//
+// If headless is true, connectHeadlessGuard guarantees chain is non-nil
+// before this is ever called in runServe; server.NewConnectResolver's own
+// "both nil -> nil" rule is the defense-in-depth backstop if that guarantee
+// is ever broken.
+func connectResolverFor(chain mcpauth.TokenVerifier, headless bool, cookieResolve func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)) func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error) {
+	if cookieResolve == nil && !headless {
+		return nil
+	}
+	return server.NewConnectResolver(chain, cookieResolve)
 }
 
 // buildAuthChain constructs up to three independently-enabled verifier lanes
