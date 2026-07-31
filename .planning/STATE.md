@@ -5,15 +5,15 @@ milestone_name: Headless Reach & Diagnosability
 current_phase: 01
 current_phase_name: Shared Auth Chain & Connect Bearer Identity
 status: executing
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-07-31T19:04:17.786Z"
+stopped_at: Completed 01-03-PLAN.md (headless mount & shared chain wiring)
+last_updated: "2026-07-31T19:38:04.019Z"
 last_activity: 2026-07-31
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.
 ## Current Position
 
 Phase: 01 (Shared Auth Chain & Connect Bearer Identity) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 requirements 4/4, decisions 12/12, probe edges 9/9, gap analysis 16/16
 Last activity: 2026-07-31 — Phase 01 execution started
@@ -146,6 +146,9 @@ milestone needs in working memory.
 - [Phase ?]: 01-01: CSRF exemption is keyed exclusively on laneFromConnectContext(ctx); an unstamped/unrecognized lane on a write RPC fails closed with no CSRF check attempted (D-08 default-deny arm).
 - [Phase ?]: D-09: reseal interceptor gated on auth.LaneCookie — a bearer-authenticated request never re-seals a session cookie it did not authenticate with
 - [Phase ?]: RESEARCH.md Assumption A1 CONFIRMED: Connect-bearer actor attribution matches the MCP lane exactly (both flow through callerFromTokenInfo)
+- [Phase ?]: D-06: buildAuthChain is the sole verifier-construction site; withAuth now accepts an already-built chain and takes no config, so the compiler enforces the drift-impossibility guarantee.
+- [Phase ?]: REVIEWS.md HIGH-3 (human-blessed 2026-07-31): connectResolverFor passes the chain as Connect's bearer half unconditionally whenever mounted, never gated on connect.headless -- mounting and bearer-inclusion are separate decisions.
+- [Phase ?]: D-11: connectHeadlessGuard refuses startup when ENGRAM_CONNECT_HEADLESS is set with zero configured auth lanes, mirroring ownerClaimGuard's fail-closed-at-boot shape.
 
 ### Blockers/Concerns
 
@@ -163,6 +166,28 @@ milestone needs in working memory.
 - ✓ #1 risk — a service principal resolving to `owner==""` is rejected at the verifier boundary; proven by `TestFailClosedRejectsEmptyOwner` as Phase 23's first test.
 - ✓ `shared`-across-tenants product question — decided explicitly: stays global for v0.11.x, written and tested (ADR `engram-svct`); per-tenant scoping deferred to full ABAC.
 - ✓ Idempotency same-key/different-content contract — locked as **reject, never upsert** (`store.ErrIdempotencyConflict` → Connect `AlreadyExists`), checked before the embedder call.
+- **BLOCKER (open): 1Password SSH signing agent is down — commits cannot be created.** Plan 01-03's
+  executor hit `1Password: agent returned an error` / `failed to fill whole buffer` on its final
+  metadata commit and stopped rather than bypass signing — the correct call. Independently
+  reconfirmed: `ssh-add -T <key>` returns `Agent signature failed … communication with agent
+  failed`, and a `git commit` hangs indefinitely (killed at 2m) waiting on a Touch ID prompt that
+  never surfaces. `1Password.app` has been stuck in `--just-updated --should-restart` since
+  Thu 11AM. **Fix: quit and relaunch 1Password.app**, then re-run the pending commit.
+
+  Diagnostic notes worth keeping:
+
+  - **`ssh-add -l` is NOT a valid liveness test for signing.** It lists cached key metadata and
+    succeeds while the agent's signing path is dead. Use `ssh-add -T <pubkey>` — it actually
+    exercises signing. Diagnosing with `-l` produced a false "recovered" reading here.
+  - `commit.gpgsign=true` is set **globally**, not repo-locally. The older STATE note claiming a
+    repo-local `false` was wrong — there is no repo-local override, so nothing shields these
+    commits from the agent outage.
+  - Commits genuinely are signed when the agent works: `git cat-file commit <sha>` shows a `gpgsig`
+    SSH block. `git log --show-signature` reporting `N` plus
+    `gpg.ssh.allowedSignersFile needs to be configured` is a **verification** gap, not a signing
+    failure — that file is simply unset.
+  - Do not add `-c commit.gpgsign=false` overrides to work around this without explicit user
+    instruction.
 
 ### Quick Tasks Completed
 
@@ -172,8 +197,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-07-31T19:04:17.778Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-07-31T19:24:47.536Z
+Stopped at: Completed 01-03-PLAN.md (headless mount & shared chain wiring)
 Resume file: None
 
 ## Performance Metrics
@@ -239,6 +264,7 @@ Resume file: None
 | Phase 26 P06 | 18min | 3 tasks | 4 files |
 | Phase 01 P01 | 40min | 2 tasks | 16 files |
 | Phase 01 P02 | 13min | 2 tasks | 4 files |
+| Phase 01 P03 | 35min | 3 tasks | 11 files |
 
 ## Operator Next Steps
 

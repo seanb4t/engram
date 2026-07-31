@@ -357,7 +357,7 @@ Plans:
 
 - [x] 01-01-PLAN.md — Tracer: bearer identity on Connect, lane-stamped, CSRF exemption reads the stamp (wave 1)
 - [x] 01-02-PLAN.md — Reseal gates on the cookie lane; MCP↔Connect bearer and actor parity (wave 2)
-- [ ] 01-03-PLAN.md — `connect.headless` config key, build-once verifier injection, mount/bearer decoupling + startup refusal (wave 2)
+- [x] 01-03-PLAN.md — `connect.headless` config key, build-once verifier injection, mount/bearer decoupling + startup refusal (wave 2)
 - [ ] 01-04-PLAN.md — Operator docs and Helm value for the headless lane; deferred follow-up filed (wave 3)
 
 ---
@@ -541,7 +541,7 @@ markdown and tool descriptions rather than Go correctness.
 | 24. Idempotent Capture | v0.11.x | 2/2 | Complete | 2026-07-18 |
 | 25. Supersession with History | v0.11.x | 2/2 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
-| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 2/4 | In Progress | — |
+| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 3/4 | In Progress | — |
 | 2. Headless CLI Client | v0.12.x | 0/4 | Pending | — |
 | 3. Cross-Spine Memory Recall | v0.12.x | 0/3 | Pending | — |
 | 4. Diagnosability | v0.12.x | 0/4 | Pending | — |

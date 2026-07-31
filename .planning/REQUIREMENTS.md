@@ -44,7 +44,7 @@ Zero new Go dependencies are required for this entire milestone.
   itself from CSRF by omitting `X-CSRF-Token`, and cannot self-declare the bearer lane. Bearer
   verification failure never falls through to the cookie lane.
 
-- [ ] **REQ-connect-headless-mount**: An operator can mount the Connect lane on a deployment with
+- [x] **REQ-connect-headless-mount**: An operator can mount the Connect lane on a deployment with
   the web UI disabled, via a flag that defaults **off independently** of every existing UI and
   service-auth flag. A deployment that has no Connect surface today gains none on upgrade.
 
@@ -224,7 +224,7 @@ Populated during roadmap creation.
 | REQ-connect-bearer-identity | v0.12.x Phase 1 | Complete |
 | REQ-connect-token-expiry | v0.12.x Phase 1 | Complete |
 | REQ-connect-lane-provenance | v0.12.x Phase 1 | Complete |
-| REQ-connect-headless-mount | v0.12.x Phase 1 | Pending |
+| REQ-connect-headless-mount | v0.12.x Phase 1 | Complete |
 | REQ-cli-client-commands | v0.12.x Phase 2 | Pending |
 | REQ-cli-agent-output | v0.12.x Phase 2 | Pending |
 | REQ-cli-credential-safety | v0.12.x Phase 2 | Pending |
