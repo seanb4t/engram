@@ -138,6 +138,16 @@ func runServe(cmd *cobra.Command) error {
 		return err
 	}
 
+	// D-06: build the verifier chain exactly ONCE here. The same chain value
+	// reaches the MCP wrapper (withAuth, below) and the Connect bearer half
+	// (connectResolverFor), so the two mount sites cannot drift — there is one
+	// instance, so there is nothing to diverge.
+	chain, err := buildAuthChain(cfg.OIDC, cfg.ServiceAuth, ownerClaims)
+	if err != nil {
+		slog.Error("oidc verifier init failed", "err", err, "issuer", cfg.OIDC.Issuer)
+		return err
+	}
+
 	var connectResolve func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error)
 	var connectCSRFVerify func(owner, token string) bool
 	var connectReseal func(http.Header, *http.Request)
@@ -205,11 +215,7 @@ func runServe(cmd *cobra.Command) error {
 
 	var handler http.Handler = mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return srv }, nil)
-	handler, err = withAuth(handler, cfg.OIDC, cfg.ServiceAuth, ownerClaims)
-	if err != nil {
-		slog.Error("oidc verifier init failed", "err", err, "issuer", cfg.OIDC.Issuer)
-		return err
-	}
+	handler = withAuth(handler, chain, cfg.OIDC.ResourceMetadata)
 	handler = accessLog(tm.RecordAuthFailure, nil)(handler)
 	handler = otelhttp.NewHandler(handler, "mcp")
 	// Mount the MCP transport at its configured path and give "/" to the console
@@ -290,18 +296,24 @@ func ownerClaimGuard(bearerIssuer string, uiEnabled bool, ownerClaims []string) 
 	return nil
 }
 
-// withAuth wraps the MCP handler with bearer-token validation, composing up to
-// three independently-enabled lanes into a single auth.ChainVerifier (D-01):
-// the human/no-issuer lane (auth.New, iff oidc.Issuer is set), the
-// client-credentials service lane (auth.NewService, iff
-// svcAuth.OIDCIssuer is set), and the static-token lane
-// (auth.NewStaticTokenVerifier, iff svcAuth.StaticTokens is non-empty). Each
-// lane is built ONLY when its own config is present (D-03) — a human-only
-// deployment (no service_auth.* config) constructs a chain containing only
-// the human verifier, byte-for-byte the pre-chain behavior. This is the ONE
-// call site that changes for the service-auth chain (SC1).
-// No lane configured → validation disabled (all requests accepted), logged loudly.
-func withAuth(handler http.Handler, oidc config.OIDCConfig, svcAuth config.ServiceAuthConfig, ownerClaims []string) (http.Handler, error) {
+// buildAuthChain constructs up to three independently-enabled verifier lanes
+// (D-01): the human/no-issuer lane (auth.New, iff oidc.Issuer is set), the
+// client-credentials service lane (auth.NewService, iff svcAuth.OIDCIssuer
+// is set), and the static-token lane (auth.NewStaticTokenVerifier, iff
+// svcAuth.StaticTokens is non-empty). Each lane is built ONLY when its own
+// config is present (D-03) — a human-only deployment (no service_auth.*
+// config) constructs a chain containing only the human verifier, byte-for-
+// byte the pre-chain behavior.
+//
+// This is the SOLE site where a lane verifier is constructed (D-06): the
+// caller (runServe) builds the chain here exactly once and hands the same
+// value to both the MCP wrapper (withAuth) and the Connect bearer half
+// (connectResolverFor), so the two mount sites cannot drift. The final
+// composition step is delegated to composeAuthChain, a pure function of the
+// three verifiers with no config, so a test can prove the expiry wrapping
+// (REVIEWS.md MED-9) without buildAuthChain's config-only signature getting
+// in the way.
+func buildAuthChain(oidc config.OIDCConfig, svcAuth config.ServiceAuthConfig, ownerClaims []string) (mcpauth.TokenVerifier, error) {
 	var humanVerifier, serviceVerifier, staticVerifier mcpauth.TokenVerifier
 
 	if oidc.Issuer != "" {
@@ -339,13 +351,44 @@ func withAuth(handler http.Handler, oidc config.OIDCConfig, svcAuth config.Servi
 		slog.Info("service static-token validation enabled", "token_count", len(tokens))
 	}
 
-	if humanVerifier == nil && serviceVerifier == nil && staticVerifier == nil {
-		slog.Warn("bearer-token validation DISABLED (no --oidc-issuer / ENGRAM_OIDC_ISSUER, no ENGRAM_SERVICE_AUTH_* config); all requests accepted")
-		return handler, nil
-	}
+	return composeAuthChain(humanVerifier, serviceVerifier, staticVerifier), nil
+}
 
-	chain := auth.ChainVerifier(humanVerifier, serviceVerifier, staticVerifier)
+// composeAuthChain is the pure composition step buildAuthChain delegates to
+// (REVIEWS.md MED-9): it takes three already-built verifiers and no config,
+// so a test can prove the expiry wrapping below with a stub verifier
+// returning a past-Expiration TokenInfo — something buildAuthChain's
+// config-only signature cannot do, since it always constructs real OIDC/
+// static verifiers.
+//
+// Returns nil only when all three are nil — the caller decides what "no
+// auth lane" means for its transport (withAuth logs and disables
+// validation; connectHeadlessGuard treats it as fatal when headless is
+// set). Otherwise wraps the composed auth.ChainVerifier in
+// auth.EnforceExpiry (D-04), so expiry is a property of the verifier that
+// every present and future lane inherits — not a property of one call
+// site. composeAuthChain constructs nothing itself; D-06's "sole
+// construction site" guarantee remains buildAuthChain alone.
+func composeAuthChain(human, service, static mcpauth.TokenVerifier) mcpauth.TokenVerifier {
+	if human == nil && service == nil && static == nil {
+		return nil
+	}
+	return auth.EnforceExpiry(auth.ChainVerifier(human, service, static))
+}
+
+// withAuth wraps handler with bearer-token validation using the already-
+// built chain (D-06): a nil chain means no auth lane configured, so the
+// handler is returned unchanged after logging loudly; otherwise it is
+// wrapped with mcpauth.RequireBearerToken. withAuth receives a verifier and
+// takes no config, so there is no code path by which the MCP lane can
+// construct a second chain — the compiler is the D-06 assertion that the
+// two mount sites cannot drift.
+func withAuth(handler http.Handler, chain mcpauth.TokenVerifier, resourceMetadataURL string) http.Handler {
+	if chain == nil {
+		slog.Warn("bearer-token validation DISABLED (no --oidc-issuer / ENGRAM_OIDC_ISSUER, no ENGRAM_SERVICE_AUTH_* config); all requests accepted")
+		return handler
+	}
 	return mcpauth.RequireBearerToken(chain, &mcpauth.RequireBearerTokenOptions{
-		ResourceMetadataURL: oidc.ResourceMetadata,
-	})(handler), nil
+		ResourceMetadataURL: resourceMetadataURL,
+	})(handler)
 }
