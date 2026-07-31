@@ -117,8 +117,8 @@ delivered both, which is why this is one phase and not two.
 
 ### Exit-Code Scope Addendum
 
-- **D-17 (cobra's own flag-parse errors exit 1; exit 2 is reserved for the client's semantic
-  validation):** Decided 2026-07-31 by Sean, on a question `02-RESEARCH.md` raised explicitly.
+- **D-17 (cobra-native flag-parse errors exit 1, not 2):** Exit 2 is reserved for the client's own
+  semantic validation. Decided 2026-07-31 by Sean, on a question `02-RESEARCH.md` raised explicitly.
   Cobra raises unknown-flag and unparseable-value errors before any client code runs, and they flow
   through the shared `Execute` in `cmd/engram/root.go` used by every operator command. Forcing them
   to 2 would change the exit code of `serve`, `reindex`, `prune-expired`, `migrate-remap-owner`,
