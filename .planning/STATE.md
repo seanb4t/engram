@@ -4,17 +4,17 @@ milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
 current_phase: 01
 current_phase_name: Shared Auth Chain & Connect Bearer Identity
-status: executing
-stopped_at: Completed 01-03-PLAN.md (headless mount & shared chain wiring)
-last_updated: "2026-07-31T19:38:04.019Z"
+status: verifying
+stopped_at: Completed 01-04-PLAN.md (operator docs & Helm value for headless Connect lane) — phase 01 all plans complete
+last_updated: "2026-07-31T20:23:16.589Z"
 last_activity: 2026-07-31
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 8
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 3
-  percent: 0
+  completed_plans: 4
+  percent: 13
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.
 
 Phase: 01 (Shared Auth Chain & Connect Bearer Identity) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 requirements 4/4, decisions 12/12, probe edges 9/9, gap analysis 16/16
 Last activity: 2026-07-31 — Phase 01 execution started
 
@@ -149,6 +149,8 @@ milestone needs in working memory.
 - [Phase ?]: D-06: buildAuthChain is the sole verifier-construction site; withAuth now accepts an already-built chain and takes no config, so the compiler enforces the drift-impossibility guarantee.
 - [Phase ?]: REVIEWS.md HIGH-3 (human-blessed 2026-07-31): connectResolverFor passes the chain as Connect's bearer half unconditionally whenever mounted, never gated on connect.headless -- mounting and bearer-inclusion are separate decisions.
 - [Phase ?]: D-11: connectHeadlessGuard refuses startup when ENGRAM_CONNECT_HEADLESS is set with zero configured auth lanes, mirroring ownerClaimGuard's fail-closed-at-boot shape.
+- [Phase ?]: REVIEWS.md MED-10's Helm deferral reversed: memory.connect.headless ships in this phase, not a follow-up issue, because charts/engram has no generic extra-env escape hatch
+- [Phase ?]: Reduced from two originally-planned follow-up issues to one — Helm-values half shipped in Task 2; agent-facing-docs half stays scoped to v0.12.x Phase 2 per 01-CONTEXT.md
 
 ### Blockers/Concerns
 
@@ -179,13 +181,16 @@ milestone needs in working memory.
   - **`ssh-add -l` is NOT a valid liveness test for signing.** It lists cached key metadata and
     succeeds while the agent's signing path is dead. Use `ssh-add -T <pubkey>` — it actually
     exercises signing. Diagnosing with `-l` produced a false "recovered" reading here.
+
   - `commit.gpgsign=true` is set **globally**, not repo-locally. The older STATE note claiming a
     repo-local `false` was wrong — there is no repo-local override, so nothing shields these
     commits from the agent outage.
+
   - Commits genuinely are signed when the agent works: `git cat-file commit <sha>` shows a `gpgsig`
     SSH block. `git log --show-signature` reporting `N` plus
     `gpg.ssh.allowedSignersFile needs to be configured` is a **verification** gap, not a signing
     failure — that file is simply unset.
+
   - Do not add `-c commit.gpgsign=false` overrides to work around this without explicit user
     instruction.
 
@@ -197,8 +202,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-07-31T19:24:47.536Z
-Stopped at: Completed 01-03-PLAN.md (headless mount & shared chain wiring)
+Last session: 2026-07-31T20:23:16.580Z
+Stopped at: Completed 01-04-PLAN.md (operator docs & Helm value for headless Connect lane) — phase 01 all plans complete
 Resume file: None
 
 ## Performance Metrics
@@ -265,6 +270,7 @@ Resume file: None
 | Phase 01 P01 | 40min | 2 tasks | 16 files |
 | Phase 01 P02 | 13min | 2 tasks | 4 files |
 | Phase 01 P03 | 35min | 3 tasks | 11 files |
+| Phase 01 P04 | ~20min | 3 tasks | 4 files |
 
 ## Operator Next Steps
 
