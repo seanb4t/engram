@@ -275,6 +275,14 @@ the bearer mount while `store` additionally needs the CSRF exemption green — c
 v0.12.x Phase 1 delivers both. Splitting would create a phase whose only distinction is which half of an
 already-landed dependency it uses.
 
+**Plans:** 3 plans in 3 waves
+
+Plans:
+
+- [ ] 02-01-PLAN.md — Tracer: `engram search` end-to-end over a real Connect server, plus the shared client foundation and the `Execute` exit-code taxonomy (wave 1)
+- [ ] 02-02-PLAN.md — `engram list` and `engram store` expansion over the proven client; the write is attempted exactly once (wave 2)
+- [ ] 02-03-PLAN.md — Bare-invocation self-describe catalog derived from the live command tree, with an anti-drift gate on the exit codes (wave 3)
+
 ---
 
 ### Phase 3: Cross-Spine Memory Recall
