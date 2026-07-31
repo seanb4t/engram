@@ -120,7 +120,7 @@ Setting `ENGRAM_OIDC_ISSUER` enables bearer-token enforcement (JWKS signature + 
 | `ENGRAM_OIDC_RESOURCE_METADATA` | `--oidc-resource-metadata` | _(empty)_ | `WWW-Authenticate` resource metadata URL returned in 401 responses (optional) |
 | `ENGRAM_OWNER_CLAIM` | `--owner-claim` | `email` | OIDC claim whose value becomes the record `owner` (authz key); fail-closed if absent; requires `email_verified` when `email` |
 
-Source: `cmd/engram/serve.go` (`init()` flag registration and `withAuth`).
+Source: `cmd/engram/serve.go` (`init()` flag registration and `buildAuthChain`, which composes the chain and wraps it in `auth.EnforceExpiry` so token expiry is enforced on the composed chain rather than only inside the MCP bearer wrapper).
 
 ### Service principals (machine-to-machine)
 
@@ -135,7 +135,36 @@ A headless service principal (CI runner, batch job, another backend service) aut
 
 A deployment with none of these set is unchanged: only the human OIDC lane (or no auth at all) is active. Static tokens have no revocation list — rotating means editing `ENGRAM_SERVICE_AUTH_STATIC_TOKENS` and restarting; see `reference/auth.md` (Service principals) for the fail-closed empty-owner guarantee, the no-revocation kill-switch, and the [global cross-tenant `shared`-read decision](/reference/auth/#cross-tenant-shared-reads) (`docs/adr/engram-svct-service-tenant-global-shared-read.md`).
 
-Source: `internal/config` (`ServiceAuthConfig`, `service_auth.*` registry rows) + `cmd/engram/serve.go` (`withAuth`).
+Source: `internal/config` (`ServiceAuthConfig`, `service_auth.*` registry rows) + `cmd/engram/serve.go` (`buildAuthChain`).
+
+### Headless Connect lane
+
+| Environment variable | Flag | Default | Description |
+|---------------------|------|---------|-------------|
+| `ENGRAM_CONNECT_HEADLESS` | `--connect-headless` | `false` | Mounts the ConnectRPC lane on a deployment with the web UI disabled |
+
+`ENGRAM_CONNECT_HEADLESS` defaults **off** and is independent of every `ENGRAM_UI_*` and
+`ENGRAM_SERVICE_AUTH_*` variable — a deployment with no Connect surface today gains none on
+upgrade, including one that already has service-auth configured; configuring an auth lane never
+mounts Connect by itself.
+
+Connect is mounted when the web UI is enabled **or** this flag is set. With either (or both), one
+lane serves both credential types: a well-formed `Authorization: Bearer` credential authenticates
+against the same verifier chain the MCP lane uses, and everything else falls through to the
+session-cookie lane.
+
+Setting `ENGRAM_CONNECT_HEADLESS` with no auth lane configured (no `ENGRAM_OIDC_ISSUER` and no
+`ENGRAM_SERVICE_AUTH_*`) **refuses to start** — mounting would expose every write RPC
+unauthenticated into the anonymous empty-owner bucket. Configure at least one auth lane first:
+either `ENGRAM_OIDC_ISSUER` (the human OIDC lane) or `ENGRAM_SERVICE_AUTH_*` (client-credentials
+OIDC or static tokens, see [Service principals](#service-principals-machine-to-machine) above).
+
+A bearer-authenticated Connect caller is exempt from the `X-CSRF-Token` double-submit check that
+cookie-authenticated browser callers must satisfy; the exemption is decided by which lane verified
+the request, never by which headers the caller sent.
+
+Source: `internal/config` (the `connect.headless` registry row) + `cmd/engram/serve.go`
+(`connectHeadlessGuard`, `connectResolverFor`) + `internal/server/connectbearer.go`.
 
 ## Logging
 
