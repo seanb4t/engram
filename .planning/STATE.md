@@ -30,29 +30,56 @@ See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.
 
 Phase: 1 — Shared Auth Chain & Connect Bearer Identity (v0.12.x, planned)
 Plan: 4 plans in 3 waves (01-01 tracer → 01-02 ‖ 01-03 → 01-04), 9 tasks, all autonomous
-Status: Ready to execute — plan-checker PASSED; requirements 4/4, decisions 12/12, probe edges 9/9
-Last activity: 2026-07-31 — v0.12.x Phase 1 planned (research + patterns + validation + 4 plans)
+Status: Ready to execute — replanned against cross-AI review; plan-checker PASSED (reviews mode);
+requirements 4/4, decisions 12/12, probe edges 9/9, gap analysis 16/16
+Last activity: 2026-07-31 — v0.12.x Phase 1 replanned incorporating all 11 Codex review findings
 
 **v0.12.x Phase 1 carries the milestone's two security-critical, silently-passing defect classes** — a CSRF
 exemption keyed on request-controlled input, and Connect never enforcing `TokenInfo.Expiration`
 because it bypasses `mcpauth.RequireBearerToken`'s `verify()`. Both fail-closed negative tests are
 the phase's FIRST tests, per the v0.11.x precedent.
 
+**Cross-AI review COMPLETE** (`01-REVIEWS.md`, commit `4c6e009c`). Codex reviewed with repo access and
+returned **HIGH — revise before executing**, with 3 HIGH / 7 MEDIUM / 1 LOW findings, all file:line
+grounded. The plans were replanned against it (`36acbc8a`) and re-verified. The requested `--opencode`
+lane could **not** be run (four attempts, all exit 124 with zero bytes on both streams; a 90s trivial
+control prompt also timed out on a route that had answered seconds earlier) — recorded in
+`01-REVIEWS.md` frontmatter as `reason: no_response` with the full elimination trail. **This review is
+one-eyed**; re-run `/gsd-review --phase 1 --opencode` for a second opinion when the provider recovers.
+
 **Carried into execution (read before running 01-01):**
 
 - The ROADMAP's research flag resolved **negatively**: the go-sdk's `verify()` is unexported and its
   only exported caller wraps a whole `http.Handler`, so there is **no extraction** — the phase
   reimplements the bearer-parse + `Expiration` check as new transport-agnostic Go in `internal/auth`.
-- `TestCSRFCookieCallerCannotSelfDeclareBearerLane` **cannot** go red against pre-implementation code
-  (with no exemption branch it rejects trivially). Its fail-first is proven against a deliberately
-  known-wrong implementation; both the FAIL and PASS lines are required in the SUMMARY.
+- **The fail-first story changed.** `TestCSRFCookieCallerCannotSelfDeclareBearerLane` could not have
+  worked as originally planned: `csrfHeaders`/`doCSRFWrite` carry no `authorization` field
+  (`connectcsrf_test.go:60-66`, confirmed against the live tree), so the attack input was
+  unsendable. `TestBearerLaneExemptFromCSRF` is now the **primary red-green** (it genuinely fails at
+  `connectcsrf.go:65-85` today); the known-wrong-implementation mutation is retained only as
+  explicitly-labelled supplementary evidence.
 - D-12's "zero diff in `connectapi.go`" is **not literally achievable** — D-07's resolver arity change
   forces a one-declaration edit at `connectapi.go:360`. The load-bearing half (no boolean inside
   `mountConnect` for an `OR` to loosen) is preserved and gated.
-- Plan 01-01 carries the phase's highest context load (10 files, ~53k tokens est., low confidence) —
-  a deliberate consequence of the stamp/exemption atomicity constraint, not an oversight.
-- ROADMAP flags this phase for a **security-focused plan review**; `/gsd-review --phase 1` on 01-01 is
-  not yet run.
+- **Wave 1 would not have compiled** as originally scoped: the resolver 2→3 arity change breaks six
+  test files none of which 01-01 owned. 01-01 now owns them, with a per-site migration table and a
+  `go vet ./...` gate (`go build` misses `_test.go`).
+- Plan 01-01 is the heaviest plan: ~66k tokens, 16 files nominally — but 9 are enumerated one/two-line
+  mechanical fixture migrations carrying an explicit "do not read these files in full" instruction.
+  It stayed whole because splitting would separate the lane stamp from its CSRF reader.
+- **`connect.headless` no longer gates bearer inclusion** (review HIGH-3). Whenever Connect is mounted
+  the composed chain is the bearer half — otherwise a UI-enabled deployment stayed cookie-only and a
+  token accepted on MCP was rejected on Connect, silently violating SC1 and D-06.
+
+**DECISION NEEDED — bless or revise before merge** (01-03 Flagged Assumption 4, threat T-03-07):
+the HIGH-3 fix means a UI-enabled deployment with a configured chain **changes behavior on upgrade** —
+Connect begins accepting bearer credentials it previously ignored. No new route, no new principal, no
+new surface; only a new credential family on an already-reachable lane. Both the planner and the
+plan-checker judged this compatible with the standing prohibition *"MUST NOT cause any existing
+deployment to gain a reachable Connect surface on upgrade without the operator explicitly setting
+`connect.headless`"* — reading "surface" as route, not credential family. The checker flagged that
+the prohibition's wording does not cleanly anticipate this case. It is the phase's one non-opt-in
+change and wants a human ruling: bless the reading, or amend the prohibition.
 
 ## Deferred Items
 
