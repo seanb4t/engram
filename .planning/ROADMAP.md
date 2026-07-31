@@ -344,6 +344,18 @@ unreachable stubs *were* a genuinely separable increment.)
 **Research flag:** needs research at plan time — the extraction shape for a transport-agnostic
 expiry check out of the go-sdk's `RequireBearerToken`/`verify()` internals. Also warrants a
 security-focused plan review given the CSRF-bypass and confused-deputy risk classes.
+*Resolved 2026-07-31 (`01-RESEARCH.md`): there is no extraction — `verify()` is unexported and its
+only exported caller wraps a whole `http.Handler`, so the two checks are reimplemented in
+`internal/auth`.*
+
+**Plans:** 4 plans in 3 waves
+
+Plans:
+
+- [ ] 01-01-PLAN.md — Tracer: bearer identity on Connect, lane-stamped, CSRF exemption reads the stamp (wave 1)
+- [ ] 01-02-PLAN.md — Reseal gates on the cookie lane; MCP↔Connect bearer and actor parity (wave 2)
+- [ ] 01-03-PLAN.md — `connect.headless` config key, build-once verifier injection, headless mount + startup refusal (wave 2)
+- [ ] 01-04-PLAN.md — Operator docs for the headless lane; deferred follow-ups filed (wave 3)
 
 ---
 
