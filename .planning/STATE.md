@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
-current_phase: 1
+current_phase: 01
 current_phase_name: Shared Auth Chain & Connect Bearer Identity
-status: planned
+status: executing
 stopped_at: v0.12.x Phase 1 planned — 4 plans, 3 waves, ready to execute
-last_updated: "2026-07-31T04:51:03.513Z"
+last_updated: "2026-07-31T18:10:20.667Z"
 last_activity: 2026-07-31
-last_activity_desc: v0.12.x Phase 1 planned (4 plans, 3 waves, 9 tasks); plan-checker PASSED
+last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 8
   completed_phases: 0
@@ -24,15 +24,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x — Headless Reach & Diagnosability. Roadmap approved: 6 phases (v0.12.x Phases 1–6), 20/20 requirements mapped. v0.12.x Phase 1 (the security-critical spine) is planned and ready to execute.
+**Current focus:** Phase 01 — Shared Auth Chain & Connect Bearer Identity
 
 ## Current Position
 
-Phase: 1 — Shared Auth Chain & Connect Bearer Identity (v0.12.x, planned)
-Plan: 4 plans in 3 waves (01-01 tracer → 01-02 ‖ 01-03 → 01-04), 9 tasks, all autonomous
-Status: Ready to execute — replanned against cross-AI review; plan-checker PASSED (reviews mode);
+Phase: 01 (Shared Auth Chain & Connect Bearer Identity) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 01
 requirements 4/4, decisions 12/12, probe edges 9/9, gap analysis 16/16
-Last activity: 2026-07-31 — v0.12.x Phase 1 replanned incorporating all 11 Codex review findings
+Last activity: 2026-07-31 — Phase 01 execution started
 
 **v0.12.x Phase 1 carries the milestone's two security-critical, silently-passing defect classes** — a CSRF
 exemption keyed on request-controlled input, and Connect never enforcing `TokenInfo.Expiration`
@@ -52,21 +52,26 @@ one-eyed**; re-run `/gsd-review --phase 1 --opencode` for a second opinion when 
 - The ROADMAP's research flag resolved **negatively**: the go-sdk's `verify()` is unexported and its
   only exported caller wraps a whole `http.Handler`, so there is **no extraction** — the phase
   reimplements the bearer-parse + `Expiration` check as new transport-agnostic Go in `internal/auth`.
+
 - **The fail-first story changed.** `TestCSRFCookieCallerCannotSelfDeclareBearerLane` could not have
   worked as originally planned: `csrfHeaders`/`doCSRFWrite` carry no `authorization` field
   (`connectcsrf_test.go:60-66`, confirmed against the live tree), so the attack input was
   unsendable. `TestBearerLaneExemptFromCSRF` is now the **primary red-green** (it genuinely fails at
   `connectcsrf.go:65-85` today); the known-wrong-implementation mutation is retained only as
   explicitly-labelled supplementary evidence.
+
 - D-12's "zero diff in `connectapi.go`" is **not literally achievable** — D-07's resolver arity change
   forces a one-declaration edit at `connectapi.go:360`. The load-bearing half (no boolean inside
   `mountConnect` for an `OR` to loosen) is preserved and gated.
+
 - **Wave 1 would not have compiled** as originally scoped: the resolver 2→3 arity change breaks six
   test files none of which 01-01 owned. 01-01 now owns them, with a per-site migration table and a
   `go vet ./...` gate (`go build` misses `_test.go`).
+
 - Plan 01-01 is the heaviest plan: ~66k tokens, 16 files nominally — but 9 are enumerated one/two-line
   mechanical fixture migrations carrying an explicit "do not read these files in full" instruction.
   It stayed whole because splitting would separate the lane stamp from its CSRF reader.
+
 - **`connect.headless` no longer gates bearer inclusion** (review HIGH-3). Whenever Connect is mounted
   the composed chain is the bearer half — otherwise a UI-enabled deployment stayed cookie-only and a
   token accepted on MCP was rejected on Connect, silently violating SC1 and D-06.
