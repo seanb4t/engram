@@ -66,20 +66,20 @@ analogy to `search_discovery`.
 <details>
 <summary>✅ v0.8.x Baseline (Phases 1–7) — SHIPPED</summary>
 
-- [x] **Phase 1: Authorization & Isolation** - Per-actor read isolation, write gating, opt-in sharing, configurable owner key
-- [x] **Phase 2: Recall Semantics** - Summary-by-default, tag/temporal gating, windowed cursor paging, payload indexes
-- [x] **Phase 3: Memory Kinds & Tools** - Discovery + rule kinds, schedule tools, short_id handle
-- [x] **Phase 4: Embedder** - Protocol-named connection vars + asymmetric query/document param passthrough
-- [x] **Phase 5: Config & Transport** - ENGRAM_ koanf config, Config.Validate, fatal legacy guard, explicit MCP path
-- [x] **Phase 6: Telemetry & Observability** - slog + OTel over OTLP at every seam, never blocking startup
-- [x] **Phase 7: Web UI, Docs Site & Distribution** - Operator console SPA, docs site, brand system, bundled client plugin
+- [x] **v0.8.x Phase 1: Authorization & Isolation** - Per-actor read isolation, write gating, opt-in sharing, configurable owner key
+- [x] **v0.8.x Phase 2: Recall Semantics** - Summary-by-default, tag/temporal gating, windowed cursor paging, payload indexes
+- [x] **v0.8.x Phase 3: Memory Kinds & Tools** - Discovery + rule kinds, schedule tools, short_id handle
+- [x] **v0.8.x Phase 4: Embedder** - Protocol-named connection vars + asymmetric query/document param passthrough
+- [x] **v0.8.x Phase 5: Config & Transport** - ENGRAM_ koanf config, Config.Validate, fatal legacy guard, explicit MCP path
+- [x] **v0.8.x Phase 6: Telemetry & Observability** - slog + OTel over OTLP at every seam, never blocking startup
+- [x] **v0.8.x Phase 7: Web UI, Docs Site & Distribution** - Operator console SPA, docs site, brand system, bundled client plugin
 
 </details>
 
 <details>
 <summary>✅ Connect Auth Hardening (Phase 8) — SHIPPED (PR #248/#266)</summary>
 
-- [x] **Phase 8: Connect Observe-Lane Auth Hardening** - Cookie/OIDC observe lane replaces the interim anonymous mount (R1–R4); shipped in PR #248/#266
+- [x] **v0.8.x Phase 8: Connect Observe-Lane Auth Hardening** - Cookie/OIDC observe lane replaces the interim anonymous mount (R1–R4); shipped in PR #248/#266
 
 </details>
 
@@ -129,145 +129,31 @@ into shared stores.
 
 ### 🔨 v0.12.x — Headless Reach & Diagnosability (Phases 1–6) — ACTIVE
 
-- [ ] **v0.12.x Phase 1: Shared Auth Chain & Connect Bearer Identity** - One composed verifier for both lanes, enforced token expiry, server-set lane provenance driving the CSRF exemption, opt-in headless mount
-- [ ] **v0.12.x Phase 2: Headless CLI Client** - `engram search|store|list` over the generated Connect stubs, agent-shaped output, credential safety
-- [ ] **v0.12.x Phase 3: Cross-Spine Memory Recall** - `cross_spine` on `search_memory` with the store-layer authz composition verified, not assumed
-- [ ] **v0.12.x Phase 4: Diagnosability** - Authz decisions reach a reader; rejections name the true field and carry a remediation hint; provider error bodies survive
-- [ ] **v0.12.x Phase 5: Operator Config & Reindex Correctness** - Per-lane chat credential; tag-aware resume plus a repair path for already-skipped records
-- [ ] **v0.12.x Phase 6: Rule Capture — Investigation & Fix** - Find why `store_rule` never fires, then fix the documented cause without touching who decides
+- [x] **Phase 1: Shared Auth Chain & Connect Bearer Identity** - One composed verifier for both lanes, enforced token expiry, server-set lane provenance driving the CSRF exemption, opt-in headless mount
+- [ ] **Phase 2: Headless CLI Client** - `engram search|store|list` over the generated Connect stubs, agent-shaped output, credential safety
+- [ ] **Phase 3: Cross-Spine Memory Recall** - `cross_spine` on `search_memory` with the store-layer authz composition verified, not assumed
+- [ ] **Phase 4: Diagnosability** - Authz decisions reach a reader; rejections name the true field and carry a remediation hint; provider error bodies survive
+- [ ] **Phase 5: Operator Config & Reindex Correctness** - Per-lane chat credential; tag-aware resume plus a repair path for already-skipped records
+- [ ] **Phase 6: Rule Capture — Investigation & Fix** - Find why `store_rule` never fires, then fix the documented cause without touching who decides
 
 ## Phase Details
 
-### Phase 1: Authorization & Isolation
+### Phases 1–8 (v0.8.x — Baseline + Connect Auth Hardening) — ✅ SHIPPED
 
-**Goal**: A coding agent's memories are isolated per actor, so each agent's recall stays clean and only the owner can mutate its own records.
-**Depends on**: Nothing (first phase)
-**Requirements**: REQ-per-actor-isolation, REQ-typed-subject-authz, REQ-configurable-claim-owner
-**Decisions**: DEC-cgb, DEC-g37x, DEC-kyz, DEC-xa6, DEC-12c
-**Success Criteria** (what is TRUE):
+Full phase details (goals, success criteria, status) are archived at
+[`milestones/v0.8.x-ROADMAP.md`](milestones/v0.8.x-ROADMAP.md). Moved out of this file on
+2026-07-31 so that a bare `### Phase N:` heading resolves unambiguously to the **active**
+milestone — v0.12.x restarted phase numbering at 1, and these historical headings were shadowing
+it for every GSD phase-resolution verb.
 
-1. An authenticated actor sees and mutates only its own records; another actor's private records are invisible.
-2. `shared` records are readable by any authenticated caller but writable only by their owner (read/write asymmetry).
-3. Unauthorized id-addressed operations return the same not-found error as a missing id — no cross-actor existence leak.
-4. The record owner key is a configurable OIDC claim (default `email`) that survives IdP `sub` rotation, with `migrate-remap-owner` for re-stamping and pre-isolation backfill.
-5. Anonymous (auth-disabled) callers map to a single empty-owner bucket and cannot read other actors' `shared` records.
-
-**Status**: Complete (v0.8.x)
-**Plans**: N/A (retrospective — shipped before GSD planning)
-
-### Phase 2: Recall Semantics
-
-**Goal**: Recall returns relevant, current, token-efficient memories with precise filtering and deterministic paging.
-**Depends on**: Phase 1
-**Requirements**: REQ-scheduled-memories, REQ-windowed-cursor-recall, REQ-auto-summary
-**Decisions**: DEC-ambu, DEC-4xt7, DEC-y1g, DEC-1frj, DEC-ef28
-**Success Criteria** (what is TRUE):
-
-1. `search_memory`/`list_memory` return summary-shaped output by default, with `full=true` opting into full content; `get_memory` always returns full and carries `summary_source` provenance.
-2. An optional `tags` filter hard-ANDs (contains-all) as a Qdrant pre-filter applied before vector ranking.
-3. Temporal validity (`not_before`/`not_after`) gates recall as Qdrant filter conditions while `get_memory` and by-id paths stay ungated.
-4. Recall accepts half-open `created_after`/`created_before` windows and `list_memory` paginates via an opaque boundary cursor returning `{memories, next_cursor}`.
-5. `owner`/`scope`/`created_at` are Qdrant payload-indexed for exact server-side Count and range filtering (scanCap/approximate retired).
-
-**Status**: Complete (v0.8.x)
-**Plans**: N/A (retrospective)
-**Note**: The `schedule_memory`/`list_scheduled` tool surface (DEC-90w) that sets these windows is presented in Phase 3.
-
-### Phase 3: Memory Kinds & Tools
-
-**Goal**: Beyond plain memories, agents capture discoveries and rules as distinct kinds and address any record by a stable short handle.
-**Depends on**: Phase 1
-**Requirements**: REQ-discovery-memory-type, REQ-rule-memory-kind, REQ-short-id-handle
-**Decisions**: DEC-2bv, DEC-90w, DEC-iedk, DEC-zzq0, DEC-02ta
-**Success Criteria** (what is TRUE):
-
-1. Discovery is a 5th category in the single Memory collection carrying `kind` (map|fact), aging-pinned citations, and a summary — recalled on demand via `store_discovery`/`search_discovery`, never at session start.
-2. Rules are a normative, always-shared kind surfaced at session start as a one-line progressive-disclosure index; `set_visibility` is rejected for rules.
-3. `schedule_memory`/`list_scheduled` expose temporal windows as dedicated tools without adding window params to `store_memory`.
-4. Every record carries a server-minted 10-char Crockford base32 `short_id`, accepted anywhere an id is accepted and resolved to the UUID at the handler layer via `Store.ResolvePointID`.
-
-**Status**: Complete (v0.8.x)
-**Plans**: N/A (retrospective)
-
-### Phase 4: Embedder
-
-**Goal**: Embedding works against OpenAI-compatible gateways and asymmetric/cloud models via protocol-named connection vars and query/document param passthrough.
-**Depends on**: Nothing (foundational subsystem)
-**Requirements**: REQ-asymmetric-embedder-params
-**Decisions**: DEC-378, DEC-zyhq
-**Success Criteria** (what is TRUE):
-
-1. Embedder connection vars are protocol-named (`ENGRAM_OPENAI_BASE_URL`/`ENGRAM_OPENAI_API_KEY`), naming the wire protocol not the vendor.
-2. Query vs document embedding params are provider-agnostic JSON maps merged into the `/v1/embeddings` body, supporting `input_type`/`task`/`task_type` passthrough and a document-side text instruction.
-3. Changing embedder params respects the reindex boundary — the `engram reindex` migration path exists for embedder changes.
-
-**Status**: Complete (v0.8.x)
-**Plans**: N/A (retrospective)
-
-### Phase 5: Config & Transport
-
-**Goal**: All configuration is unified under `ENGRAM_` via koanf with early validation and a fatal legacy guard; the MCP transport mounts at an explicit configurable path.
-**Depends on**: Phase 4 (embedder vars fold into the unified registry)
-**Requirements**: REQ-config-prefix-koanf, REQ-config-validation
-**Decisions**: DEC-jgq, DEC-irq, DEC-bj6
-**Success Criteria** (what is TRUE):
-
-1. All config loads via koanf from a single `ENGRAM_` field registry — no scattered getenv, no viper, `MEM_` prefix retired.
-2. Retired `MEM_*` vars trigger a fatal `config.CheckLegacy` startup guard with guidance — no silent fallback or dual-read shim.
-3. `Config.Validate()` runs early and loudly at the serve/reindex/migrate/prune entrypoints.
-4. The MCP StreamableHTTP transport mounts at an explicit configurable path (default `/mcp`); the console takes root when the UI is enabled.
-
-**Status**: Complete (v0.8.x)
-**Plans**: N/A (retrospective)
-
-### Phase 6: Telemetry & Observability
-
-**Goal**: The server is observable via structured logs plus OTel metrics/traces over OTLP, instrumented at every seam, without ever blocking startup.
-**Depends on**: Phase 5
-**Requirements**: REQ-observability-telemetry, REQ-telemetry-seams
-**Decisions**: DEC-dwi, DEC-uxh
-**Success Criteria** (what is TRUE):
-
-1. Structured `slog` logging plus OTel metrics and traces export exclusively over OTLP gRPC — no Prometheus `/metrics` scrape endpoint.
-2. Spans and domain-latency metrics instrument the store, embed, auth, HTTP, and MCP seams with a complete OTel resource.
-3. A telemetry setup failure or a missing OTLP endpoint yields no-op providers and never aborts server startup.
-4. The Helm chart exposes telemetry knobs (endpoint, toggles).
-
-**Status**: Complete (v0.8.x)
-**Plans**: N/A (retrospective)
-
-### Phase 7: Web UI, Docs Site & Distribution
-
-**Goal**: Operators observe the store through an authenticated web console, learn the product via a docs site under a unified brand, and consume engram as a bundled client plugin.
-**Depends on**: Phase 2 (recall/Connect read API), Phase 5 (MCP/console routing)
-**Requirements**: REQ-web-ui-console, REQ-operator-console-spa, REQ-operator-console-redesign, REQ-memory-display-ux, REQ-ui-test-unification, REQ-docs-site, REQ-docs-landing-redesign, REQ-brand-identity, REQ-relocate-memory-curator
-**Decisions**: DEC-8xe, DEC-0lu, DEC-ttb
-**Success Criteria** (what is TRUE):
-
-1. An authenticated read-only operator console (SvelteKit adapter-static SPA vendored via `go:embed`) reads the store over the Connect `EngramService` v1 read API, showing real `summary`/`summary_source` with safe markdown rendering.
-2. The console is a shadcn-svelte redesign on semantic theme tokens with svelte-query data flow (AppShell/ScopeRail/MemoryList/MemoryDetail/SearchPalette).
-3. UI and sanitizer tests run under vitest 4 browser mode (real Chromium via Playwright), retiring jsdom/happy-dom, with the CI test gate green.
-4. A static Astro Starlight docs site deploys to Cloudflare Workers with a redesigned landing hub, and the engram brand system (neural violet #6E56CF) is applied across console and docs.
-5. The memory-curator client plugin is relocated into the repo as the bundled `skill/engram` plugin with a marketplace entry and SessionStart/PostToolUse hooks.
-
-**Status**: Complete (v0.8.x)
-**Plans**: N/A (retrospective)
-**UI hint**: yes
-
-### Phase 8: Connect Observe-Lane Auth Hardening
-
-**Goal**: Replace the interim anonymous Connect API mount with full cookie/OIDC observe-lane authentication so the read API serves real per-actor identities.
-**Depends on**: Phase 7
-**Requirements**: REQ-connect-auth-posture (R1–R4 — satisfied)
-**Decisions**: interim disposition + acceptance criteria R1–R4 (+R1a) documented in the connect-auth-posture addendum
-**Success Criteria** (what is TRUE):
-
-1. The Connect observe lane authenticates callers via cookie/OIDC (sealed AES-GCM session → verified `sub`) instead of mounting anonymously; when the UI is disabled (headless default) the Connect handler is not mounted at all (R1: `mountConnect` returns nil-not-mounted for a nil resolver).
-2. R1–R4 are satisfied: mount-gating (R1), cookie→Subject as the sole authz entry with no anonymous fallthrough (R2), observability parity via `otelconnect` + access-log interceptors (R3), and same-origin posture with no permissive CORS (R4).
-3. Store isolation applies to Connect-lane callers by their resolved owner, consistent with the MCP lane (verified: `TestConnectCrossActorIsolation`, `TestConnectCookieLaneIsolation`).
-
-**Status**: Complete — shipped in PR #248 (webauth lane) + PR #266 (owner-claim hardening); R1–R4 verified green on main 2026-07-08. Config folded into the Phase-5 `ENGRAM_UI_*` koanf registry (not the plan's original `MEM_*`).
-**Plans**: N/A (shipped before GSD planning). Reference implementation plan: `docs/superpowers/plans/2026-06-09-engram-web-ui-cookie-oidc-auth-lane.md`; design/acceptance criteria: `docs/superpowers/specs/2026-06-09-connect-auth-posture-addendum.md`. Out-of-scope follow-ups remain (Connect write-lane RPCs + CSRF hardening; session refresh-token rotation) — candidates for a future milestone.
+- Phase 1 — Authorization & Isolation: per-actor read isolation, write gating, opt-in sharing, configurable owner key
+- Phase 2 — Recall Semantics: summary-by-default, tag/temporal gating, windowed cursor paging, payload indexes
+- Phase 3 — Memory Kinds & Tools: discovery + rule kinds, schedule tools, short_id handle
+- Phase 4 — Embedder: protocol-named connection vars + asymmetric query/document param passthrough
+- Phase 5 — Config & Transport: ENGRAM_ koanf config, Config.Validate, fatal legacy guard, explicit MCP path
+- Phase 6 — Telemetry & Observability: slog + OTel over OTLP at every seam, never blocking startup
+- Phase 7 — Web UI, Docs Site & Distribution: operator console SPA, docs site, brand system, bundled client plugin
+- Phase 8 — Connect Observe-Lane Auth Hardening: cookie/OIDC observe lane replaces the interim anonymous mount (R1–R4); shipped in PR #248/#266
 
 ### Phases 9–12 (v0.9.x — Recall Quality) — ✅ SHIPPED 2026-07-10
 
@@ -312,15 +198,14 @@ requirements, 6/6 integration seams, 2/2 E2E flows) at
 - Phase 25 — Supersession with History (2 plans): `supersede_memory` back-stamps `superseded_by` via single-key SetPayload; superseded records soft-hidden from recall, still fetchable by id (#342)
 - Phase 26 — Structured Citations, Category Filter & Chat Base URL (6 plans): optional citations on any category, `categories` OR-filter at MCP↔Connect parity, `ENGRAM_OPENAI_CHAT_BASE_URL` + shared shape-aware URL join (#341/#374/#350)
 
-### v0.12.x Phase 1: Shared Auth Chain & Connect Bearer Identity
+### Phase 1: Shared Auth Chain & Connect Bearer Identity
 
 **Goal:** A headless caller can authenticate to the ConnectRPC lane with a bearer token — safely.
 One composed verifier serves both lanes, token expiry is actually enforced, the authenticating lane
 is recorded by the server, the CSRF exemption is decided from that record alone, and the lane is
 mounted only when explicitly enabled.
 
-**Requirements:** REQ-connect-bearer-identity, REQ-connect-token-expiry,
-REQ-connect-lane-provenance, REQ-connect-headless-mount
+**Requirements:** REQ-connect-bearer-identity, REQ-connect-token-expiry, REQ-connect-lane-provenance, REQ-connect-headless-mount
 
 **Success criteria:**
 
@@ -362,13 +247,12 @@ Plans:
 
 ---
 
-### v0.12.x Phase 2: Headless CLI Client
+### Phase 2: Headless CLI Client
 
 **Goal:** An agent with only a shell — a subagent with a closed tool list, a CI step, a cron loop —
 can search, store, and list memories against a remote engram server.
 
-**Requirements:** REQ-cli-client-commands, REQ-cli-agent-output, REQ-cli-credential-safety,
-REQ-cli-self-describing
+**Requirements:** REQ-cli-client-commands, REQ-cli-agent-output, REQ-cli-credential-safety, REQ-cli-self-describing
 
 **Depends on:** v0.12.x Phase 1 (strict).
 
@@ -393,13 +277,12 @@ already-landed dependency it uses.
 
 ---
 
-### v0.12.x Phase 3: Cross-Spine Memory Recall
+### Phase 3: Cross-Spine Memory Recall
 
 **Goal:** An agent can recall curated memories across every scope it is permitted to see, with the
 authorization filter proven un-widened rather than assumed safe.
 
-**Requirements:** REQ-cross-spine-search, REQ-cross-spine-authz-verified,
-REQ-cross-spine-result-provenance
+**Requirements:** REQ-cross-spine-search, REQ-cross-spine-authz-verified, REQ-cross-spine-result-provenance
 
 **Success criteria:**
 
@@ -422,13 +305,12 @@ implementation begins.
 
 ---
 
-### v0.12.x Phase 4: Diagnosability
+### Phase 4: Diagnosability
 
 **Goal:** What the server decided, and why it rejected something, reaches whoever needs it — the
 operator debugging a denial, the agent retrying a rejected call.
 
-**Requirements:** REQ-authz-decision-diagnostics, REQ-validation-error-attribution,
-REQ-error-hint-envelope, REQ-embed-provider-error-body
+**Requirements:** REQ-authz-decision-diagnostics, REQ-validation-error-attribution, REQ-error-hint-envelope, REQ-embed-provider-error-body
 
 **Success criteria:**
 
@@ -449,7 +331,7 @@ emerge instead of three ad hoc mechanisms.
 
 ---
 
-### v0.12.x Phase 5: Operator Config & Reindex Correctness
+### Phase 5: Operator Config & Reindex Correctness
 
 **Goal:** The chat lane can carry its own provider credential, and an interrupted reindex resumes
 without silently leaving stale vectors behind.
@@ -475,7 +357,7 @@ concurrently — sequence them or keep the diffs small and independently reviewe
 
 ---
 
-### v0.12.x Phase 6: Rule Capture — Investigation & Fix
+### Phase 6: Rule Capture — Investigation & Fix
 
 **Goal:** Find out why `store_rule` effectively never fires — one rule exists repo-wide against
 dozens of ordinary memories — and fix the cause that is actually there.
@@ -507,11 +389,23 @@ markdown and tool descriptions rather than Go correctness.
 **Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · 13 → 14 (embedder track) · 15 → 16 → 17 → 18 → 19 (write-lane track, strict order) · 20 → 21 (independent) — v0.10.x shipped 2026-07-16 · 22 → 23 (Cedar foundation → service auth/tenancy, strict order) · 24 → 25 → 26 (capture trio + recall/config tail, strict order; 24 can start in parallel with 22–23) — v0.11.x shipped 2026-07-26 · **v0.12.x: 1 → 2 (spine → CLI, strict order)** · **3 · 4 · 5 · 6 (independent of the spine and of each other; may run in parallel once 1 is underway — sequence 3 and 5 or keep their `tools.go` diffs small)** — v0.12.x planned 2026-07-29
 
 > **Phase numbering restarts per milestone as of v0.12.x.** Phases 1–26 above are the pre-v0.12.x
-> monotonic sequence and keep their historical numbers. From v0.12.x forward, a phase number is only
+> monotonic sequence and keep their historical numbers. In **prose**, a phase number is only
 > meaningful with its milestone — always write `v0.12.x Phase 1`, never bare `Phase 1`. The
 > `Milestone` column below is part of the row key. Note that `gsd-tools query find-phase <N>` takes a
 > bare number and globs every archived `milestones/vX.Y.x-phases/` directory, so it may report a hit
 > from another milestone; qualify by milestone at the call site.
+>
+> **Structural invariant (added 2026-07-31): a bare `Phase N` anchor always means the ACTIVE
+> milestone.** GSD's phase resolvers match a bare `Phase N` in the `## Phases` checklist and the
+> `### Phase N:` detail headings. When v0.12.x restarted numbering, the still-inline v0.8.x
+> sections shadowed it — every resolver silently answered from v0.8.x, which is how
+> `roadmap.update-plan-progress` came to overwrite shipped v0.8.x history (repaired in `e5e9ce4c`).
+> Fixed by archiving the v0.8.x detail sections to
+> [`milestones/v0.8.x-ROADMAP.md`](milestones/v0.8.x-ROADMAP.md) (matching v0.9.x–v0.11.x) and
+> qualifying their checklist entries as `v0.8.x Phase N`. So: **structural anchors for the active
+> milestone stay bare; archived milestones whose numbers collide get milestone-qualified.** Keep
+> `**Requirements:**` on ONE line per phase — a wrapped line truncates `phase_req_ids` to whatever
+> fits before the break.
 
 | Phase | Milestone | Requirements | Status | Completed |
 |-------|-----------|--------------|--------|-----------|

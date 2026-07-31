@@ -5,7 +5,7 @@
     "ai_integration_phase": true
   },
   "git": {
-    "branching_strategy": "phase",
+    "branching_strategy": "none",
     "phase_branch_template": "phase-{phase}-{slug}"
   }
 }
