@@ -4,15 +4,15 @@ milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
 current_phase: 1
 current_phase_name: Shared Auth Chain & Connect Bearer Identity
-status: planning
-stopped_at: v0.12.x Phase 1 context gathered
-last_updated: "2026-07-31T04:06:32.437Z"
-last_activity: 2026-07-29
-last_activity_desc: Milestone v0.12.x roadmap created (6 phases, 1–6)
+status: planned
+stopped_at: v0.12.x Phase 1 planned — 4 plans, 3 waves, ready to execute
+last_updated: "2026-07-31T04:51:03.513Z"
+last_activity: 2026-07-31
+last_activity_desc: v0.12.x Phase 1 planned (4 plans, 3 waves, 9 tasks); plan-checker PASSED
 progress:
   total_phases: 8
   completed_phases: 0
-  total_plans: 0
+  total_plans: 4
   completed_plans: 0
   percent: 0
 ---
@@ -24,20 +24,35 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x — Headless Reach & Diagnosability. Roadmap approved: 6 phases (v0.12.x Phases 1–6), 20/20 requirements mapped. v0.12.x Phase 1 (the security-critical spine) is next to plan.
+**Current focus:** v0.12.x — Headless Reach & Diagnosability. Roadmap approved: 6 phases (v0.12.x Phases 1–6), 20/20 requirements mapped. v0.12.x Phase 1 (the security-critical spine) is planned and ready to execute.
 
 ## Current Position
 
-Phase: 1 — Shared Auth Chain & Connect Bearer Identity (v0.12.x, not started)
-Plan: —
-Status: Roadmap complete; ready to plan v0.12.x Phase 1
-Last activity: 2026-07-29 — Milestone v0.12.x roadmap created (6 phases, 1–6)
+Phase: 1 — Shared Auth Chain & Connect Bearer Identity (v0.12.x, planned)
+Plan: 4 plans in 3 waves (01-01 tracer → 01-02 ‖ 01-03 → 01-04), 9 tasks, all autonomous
+Status: Ready to execute — plan-checker PASSED; requirements 4/4, decisions 12/12, probe edges 9/9
+Last activity: 2026-07-31 — v0.12.x Phase 1 planned (research + patterns + validation + 4 plans)
 
 **v0.12.x Phase 1 carries the milestone's two security-critical, silently-passing defect classes** — a CSRF
 exemption keyed on request-controlled input, and Connect never enforcing `TokenInfo.Expiration`
 because it bypasses `mcpauth.RequireBearerToken`'s `verify()`. Both fail-closed negative tests are
-the phase's FIRST tests, per the v0.11.x precedent. Flagged for research at plan time plus a
-security-focused plan review.
+the phase's FIRST tests, per the v0.11.x precedent.
+
+**Carried into execution (read before running 01-01):**
+
+- The ROADMAP's research flag resolved **negatively**: the go-sdk's `verify()` is unexported and its
+  only exported caller wraps a whole `http.Handler`, so there is **no extraction** — the phase
+  reimplements the bearer-parse + `Expiration` check as new transport-agnostic Go in `internal/auth`.
+- `TestCSRFCookieCallerCannotSelfDeclareBearerLane` **cannot** go red against pre-implementation code
+  (with no exemption branch it rejects trivially). Its fail-first is proven against a deliberately
+  known-wrong implementation; both the FAIL and PASS lines are required in the SUMMARY.
+- D-12's "zero diff in `connectapi.go`" is **not literally achievable** — D-07's resolver arity change
+  forces a one-declaration edit at `connectapi.go:360`. The load-bearing half (no boolean inside
+  `mountConnect` for an `OR` to loosen) is preserved and gated.
+- Plan 01-01 carries the phase's highest context load (10 files, ~53k tokens est., low confidence) —
+  a deliberate consequence of the stamp/exemption atomicity constraint, not an oversight.
+- ROADMAP flags this phase for a **security-focused plan review**; `/gsd-review --phase 1` on 01-01 is
+  not yet run.
 
 ## Deferred Items
 

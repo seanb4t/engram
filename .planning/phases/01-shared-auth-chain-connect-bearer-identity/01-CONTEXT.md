@@ -53,8 +53,8 @@ accepting an injected verifier.
   — **Reversibility:** reversible — a routing rule inside one new function; no persisted
   data and no wire contract depends on it.
 
-- **D-02 (a non-`Bearer` or malformed `Authorization` value falls through to the cookie
-  lane):** `Authorization: Basic …`, a bare token with no scheme, or any other malformed
+- **D-02 (a non-`Bearer` or malformed `Authorization` value falls through to the cookie lane):**
+  `Authorization: Basic …`, a bare token with no scheme, or any other malformed
   value does **not** route to the bearer lane; the request is resolved by the cookie lane as
   if no `Authorization` header were present. This is safe *specifically because the
   fallthrough direction is toward the more restrictive lane*: such a caller receives
@@ -66,8 +66,8 @@ accepting an injected verifier.
   safe. One code path, one decision, one stamp.
   — **Reversibility:** reversible.
 
-- **D-03 (split placement — transport-agnostic policy in `internal/auth`, thin adapter in
-  `internal/server`):** The reusable half (extract a bearer credential from a header value,
+- **D-03 (split placement — transport-agnostic policy in `internal/auth`, thin adapter in `internal/server`):**
+  The reusable half (extract a bearer credential from a header value,
   verify it against the shared chain, enforce expiry) lives in `internal/auth` and operates
   on plain strings — no `connectrpc.com/connect` import. The Connect-facing half is a thin
   adapter (`internal/server/connectbearer.go`, mirroring the `connectauth.go` /
@@ -81,8 +81,8 @@ accepting an injected verifier.
 
 ### Expiry enforcement
 
-- **D-04 (`auth.EnforceExpiry` decorates the composed chain — expiry is a property of the
-  *verifier*, not of a lane):** Wrap the composed `auth.ChainVerifier` in a decorator that
+- **D-04 (`auth.EnforceExpiry` decorates the composed chain — expiry is a property of the verifier, not of a lane):**
+  Wrap the composed `auth.ChainVerifier` in a decorator that
   enforces `TokenInfo.Expiration` before returning. Every present and future lane inherits
   it: MCP keeps `mcpauth.RequireBearerToken`'s own check as belt-and-suspenders, Connect gets
   enforcement without re-implementing it, and a hypothetical third lane cannot repeat the
@@ -94,8 +94,8 @@ accepting an injected verifier.
   two checks must not produce a confusing double-error or a differently-shaped 401.
   — **Reversibility:** reversible — a decorator added at one construction site.
 
-- **D-05 (a zero/absent `Expiration` is REJECTED, matching `RequireBearerToken` byte-for-
-  byte):** `mcpauth.RequireBearerToken` hard-rejects a zero `Expiration` today — which is
+- **D-05 (a zero/absent `Expiration` is REJECTED, matching `RequireBearerToken` byte-for-byte):**
+  `mcpauth.RequireBearerToken` hard-rejects a zero `Expiration` today — which is
   precisely why the static-token lane carries a 100-year sentinel (gotcha `dpw679aay4`).
   `EnforceExpiry` matches that. Rationale: `REQ-connect-bearer-identity` says a token accepted
   on MCP is accepted on Connect and one rejected there is rejected here; treating zero as
@@ -138,8 +138,8 @@ accepting an injected verifier.
   — **Reversibility:** costly — changes `connectResolver`, the interceptor, `mountConnect`'s
   call chain, and their tests.
 
-- **D-08 (the `auth.Lane` zero value is invalid; an absent or unrecognized lane on a write RPC
-  is rejected outright):** `newConnectCSRFInterceptor` grants the exemption **only** on an
+- **D-08 (the `auth.Lane` zero value is invalid; an absent or unrecognized lane on a write RPC is rejected outright):**
+  `newConnectCSRFInterceptor` grants the exemption **only** on an
   explicit, recognized `LaneBearer`. Absent, zero, or unknown → `CodePermissionDenied` with
   the same fixed generic message (D-03's no-`err.Error()`-verbatim rule), with no CSRF check
   attempted. This mirrors the D-05 defense-in-depth already in `connectcsrf.go:66`, which
