@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -44,6 +45,26 @@ func init() {
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
-		os.Exit(1)
+		os.Exit(exitCodeFromError(err))
 	}
+}
+
+// exitCodeFromError returns 0 for a nil error; otherwise it consults an
+// ExitCode() int accessor on err via errors.As and returns that, defaulting
+// to 1 when the error carries no such method. This is additive and
+// backward-compatible by construction: every existing operator command
+// (serve, reindex, prune-expired, migrate-remap-owner, summarize-missing,
+// backfill-short-ids) returns a plain error with no such method, so its
+// exit status is unchanged (D-09). errors.As rather than a bare type
+// assertion is what makes this survive an intermediate fmt.Errorf("%w", …)
+// wrap.
+func exitCodeFromError(err error) int {
+	if err == nil {
+		return 0
+	}
+	var ec interface{ ExitCode() int }
+	if errors.As(err, &ec) {
+		return ec.ExitCode()
+	}
+	return 1
 }
