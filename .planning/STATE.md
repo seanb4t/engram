@@ -166,13 +166,13 @@ milestone needs in working memory.
 - ✓ #1 risk — a service principal resolving to `owner==""` is rejected at the verifier boundary; proven by `TestFailClosedRejectsEmptyOwner` as Phase 23's first test.
 - ✓ `shared`-across-tenants product question — decided explicitly: stays global for v0.11.x, written and tested (ADR `engram-svct`); per-tenant scoping deferred to full ABAC.
 - ✓ Idempotency same-key/different-content contract — locked as **reject, never upsert** (`store.ErrIdempotencyConflict` → Connect `AlreadyExists`), checked before the embedder call.
-- **BLOCKER (open): 1Password SSH signing agent is down — commits cannot be created.** Plan 01-03's
+- **1Password SSH signing outage — RESOLVED 2026-07-31 by relaunching 1Password.app.** Plan 01-03's
   executor hit `1Password: agent returned an error` / `failed to fill whole buffer` on its final
-  metadata commit and stopped rather than bypass signing — the correct call. Independently
-  reconfirmed: `ssh-add -T <key>` returns `Agent signature failed … communication with agent
-  failed`, and a `git commit` hangs indefinitely (killed at 2m) waiting on a Touch ID prompt that
-  never surfaces. `1Password.app` has been stuck in `--just-updated --should-restart` since
-  Thu 11AM. **Fix: quit and relaunch 1Password.app**, then re-run the pending commit.
+  metadata commit and stopped rather than bypass signing — the correct call. The outage was real,
+  not transient: `ssh-add -T <key>` returned `Agent signature failed … communication with agent
+  failed`, and a `git commit` hung indefinitely (killed at 2m) on a Touch ID prompt that never
+  surfaced, with `1Password.app` stuck in `--just-updated --should-restart` since Thu 11AM.
+  Sean relaunched the app; the pending commit then succeeded, signed, with no bypass.
 
   Diagnostic notes worth keeping:
 
