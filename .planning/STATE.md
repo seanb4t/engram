@@ -71,15 +71,26 @@ one-eyed**; re-run `/gsd-review --phase 1 --opencode` for a second opinion when 
   the composed chain is the bearer half — otherwise a UI-enabled deployment stayed cookie-only and a
   token accepted on MCP was rejected on Connect, silently violating SC1 and D-06.
 
-**DECISION NEEDED — bless or revise before merge** (01-03 Flagged Assumption 4, threat T-03-07):
-the HIGH-3 fix means a UI-enabled deployment with a configured chain **changes behavior on upgrade** —
-Connect begins accepting bearer credentials it previously ignored. No new route, no new principal, no
-new surface; only a new credential family on an already-reachable lane. Both the planner and the
-plan-checker judged this compatible with the standing prohibition *"MUST NOT cause any existing
-deployment to gain a reachable Connect surface on upgrade without the operator explicitly setting
-`connect.headless`"* — reading "surface" as route, not credential family. The checker flagged that
-the prohibition's wording does not cleanly anticipate this case. It is the phase's one non-opt-in
-change and wants a human ruling: bless the reading, or amend the prohibition.
+**DECISION RESOLVED 2026-07-31 (Sean) — reading blessed, plans execute unchanged** (01-03 Flagged
+Assumption 4, threat T-03-07). The standing prohibition *"MUST NOT cause any existing deployment to
+gain a reachable Connect surface on upgrade without the operator explicitly setting
+`connect.headless`"* is settled: **"surface" means registered route, not credential family.**
+
+So the HIGH-3 fix stands as planned — the bearer half is passed to Connect unconditionally whenever
+Connect is mounted, never gated on `connect.headless`. A UI-enabled deployment with a configured
+chain therefore *does* change behavior on upgrade: its Connect lane begins accepting bearer
+credentials it previously ignored. Blessed because there is no new route (`serve.go:143-178` already
+mounts Connect on UI-enabled deployments), no new principal (those callers already hold equivalent
+access via MCP through the same verifier, the same `SubjectFromTokenInfo` derivation, and the same
+`internal/store` owner isolation), and no `internal/store` authz change. The stricter reading was
+rejected on the merits: gating bearer inclusion on `headless` *is* Codex HIGH-3 — it breaks SC1 (a
+token accepted on MCP would be rejected on Connect) and splits D-06's single composed chain into two
+divergent paths. The mount decision itself is unchanged and still strictly opt-in
+(`cookieResolve == nil && !headless`); only the credential family widened.
+
+A "bless + blocking release-note gate" variant was offered and declined — the upgrade note is
+ordinary operator-doc work in plan 01-04, not a verification gate. Durable record: engram
+`w1gwq1fm0n`. **No replan; Phase 1 is clear to execute.**
 
 ## Deferred Items
 
