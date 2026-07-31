@@ -153,7 +153,7 @@ into shared stores.
 5. Anonymous (auth-disabled) callers map to a single empty-owner bucket and cannot read other actors' `shared` records.
 
 **Status**: Complete (v0.8.x)
-**Plans**: 1/4 plans executed
+**Plans**: N/A (retrospective — shipped before GSD planning)
 
 ### Phase 2: Recall Semantics
 
@@ -515,7 +515,7 @@ markdown and tool descriptions rather than Go correctness.
 
 | Phase | Milestone | Requirements | Status | Completed |
 |-------|-----------|--------------|--------|-----------|
-| 1. Authorization & Isolation | v0.8.x | 3/3 | In Progress|  |
+| 1. Authorization & Isolation | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
 | 2. Recall Semantics | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
 | 3. Memory Kinds & Tools | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
 | 4. Embedder | v0.8.x | 1/1 | Complete | shipped (v0.8.x) |
@@ -541,7 +541,7 @@ markdown and tool descriptions rather than Go correctness.
 | 24. Idempotent Capture | v0.11.x | 2/2 | Complete | 2026-07-18 |
 | 25. Supersession with History | v0.11.x | 2/2 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
-| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 0/4 | Pending | — |
+| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 2/4 | In Progress | — |
 | 2. Headless CLI Client | v0.12.x | 0/4 | Pending | — |
 | 3. Cross-Spine Memory Recall | v0.12.x | 0/3 | Pending | — |
 | 4. Diagnosability | v0.12.x | 0/4 | Pending | — |
