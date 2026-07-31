@@ -18,6 +18,7 @@ import (
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
+	"github.com/seanb4t/engram/internal/auth"
 )
 
 // callWrite invokes a generated write-RPC client method with msg, optionally
@@ -73,11 +74,11 @@ func TestWriteRPCNegativeMatrix(t *testing.T) {
 	// Task 1). Once the six write RPCs are wired (Task 2) an authenticated+valid
 	// call reaches the real handler body instead of nil-panicking on d.st/d.em.
 	d, _ := newSpyDeps()
-	resolve := func(_ context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, error) {
+	resolve := func(_ context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error) {
 		if req.Header().Get("X-Test-Actor") == "" {
-			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("no identity"))
+			return nil, auth.LaneUnknown, connect.NewError(connect.CodeUnauthenticated, errors.New("no identity"))
 		}
-		return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}}, nil
+		return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}}, auth.LaneCookie, nil
 	}
 
 	// TestWriteRPCNegativeMatrix pins the pre-CSRF negative matrix (Unimplemented

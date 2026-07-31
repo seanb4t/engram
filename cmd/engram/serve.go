@@ -136,7 +136,7 @@ func runServe(cmd *cobra.Command) error {
 		return err
 	}
 
-	var connectResolve func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)
+	var connectResolve func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error)
 	var connectCSRFVerify func(owner, token string) bool
 	var connectReseal func(http.Header, *http.Request)
 	var webHandler *webauth.Handler
@@ -166,7 +166,12 @@ func runServe(cmd *cobra.Command) error {
 			return fmt.Errorf("web UI OIDC discovery: %w", err)
 		}
 		webHandler = webauth.NewHandler(authr, codec, true, csrfSigner)
-		connectResolve = webauth.NewResolver(codec).Resolve
+		// The bearer half stays nil here because no verifier chain is built
+		// yet at this point in serve.go (D-06's chain construction happens
+		// later, inside withAuth); a later plan builds it and passes it in.
+		// webauth.NewResolver(codec).Resolve is passed through unwrapped and
+		// internal/webauth is not modified (D-07).
+		connectResolve = server.NewConnectResolver(nil, webauth.NewResolver(codec).Resolve)
 		connectCSRFVerify = csrfSigner.Verify
 		connectReseal = webHandler.Reseal
 		slog.Info("web UI auth lane enabled", "issuer", uiCfg.Issuer, "redirect", uiCfg.RedirectURL)

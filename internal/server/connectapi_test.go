@@ -20,6 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
+	"github.com/seanb4t/engram/internal/auth"
 	"github.com/seanb4t/engram/internal/store"
 )
 
@@ -792,7 +793,9 @@ func TestMountConnectSkipsWhenResolverNil(t *testing.T) {
 func TestMountConnectMountsWhenResolverPresent(t *testing.T) {
 	d := &deps{}
 	mux := http.NewServeMux()
-	resolve := func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error) { return nil, nil }
+	resolve := func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error) {
+		return nil, auth.LaneCookie, nil
+	}
 	if err := d.mountConnect(mux, resolve, nil, nil); err != nil {
 		t.Fatalf("mountConnect: %v", err)
 	}

@@ -21,6 +21,7 @@ import (
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
+	"github.com/seanb4t/engram/internal/auth"
 )
 
 // csrfTestKey stands in for the HKDF-derived k_csrf in these tests.
@@ -45,12 +46,12 @@ func csrfTestVerify(owner, token string) bool {
 // the stub resolvers already used by connectapi_negative_test.go and
 // connectapi_cookie_test.go. A missing header rejects at the subject
 // interceptor (Unauthenticated), never reaching the CSRF layer.
-func csrfStubResolve(_ context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, error) {
+func csrfStubResolve(_ context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error) {
 	actor := req.Header().Get("X-Test-Actor")
 	if actor == "" {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("no identity"))
+		return nil, auth.LaneUnknown, connect.NewError(connect.CodeUnauthenticated, errors.New("no identity"))
 	}
-	return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": actor}}, nil
+	return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": actor}}, auth.LaneCookie, nil
 }
 
 // csrfHeaders configures the actor identity and CSRF cookie/header pair
@@ -388,8 +389,8 @@ func TestReadRPCsCSRFExempt(t *testing.T) {
 // well-formed CSRF cookie/header pair is presented.
 func TestConnectCSRFInterceptor_EmptyOwner(t *testing.T) {
 	d := &deps{} // no Qdrant: StoreMemory's stub is never reached
-	resolve := func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error) {
-		return nil, nil
+	resolve := func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error) {
+		return nil, auth.LaneCookie, nil
 	}
 	mux := http.NewServeMux()
 	if err := d.mountConnect(mux, resolve, csrfTestVerify, nil); err != nil {

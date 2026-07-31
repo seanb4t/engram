@@ -18,6 +18,7 @@ import (
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
+	"github.com/seanb4t/engram/internal/auth"
 	"github.com/seanb4t/engram/internal/store"
 )
 
@@ -353,11 +354,15 @@ func (a *engramAPI) ScheduleMemory(ctx context.Context, req *connect.Request[eng
 	return connect.NewResponse(idsToScheduleMemoryResponse(id, shortID)), nil
 }
 
-// connectResolver supplies the per-request identity TokenInfo for the Connect
-// lane. The webauth cookie/OIDC resolver is passed in by the caller (serve.go)
-// when the web UI is enabled. A nil resolver means Connect is NOT mounted at
-// all (R1): mountConnect returns immediately without registering any handler.
-type connectResolver func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)
+// connectResolver supplies the per-request identity TokenInfo for the
+// Connect lane, plus WHICH credential family authenticated it (auth.Lane,
+// D-07). NewConnectResolver composes the bearer half and the webauth
+// cookie/OIDC half (passed in by the caller, serve.go); the lane it returns
+// is decided exclusively by which half actually succeeded, never by a
+// second read of the request (D-02). A nil resolver means Connect is NOT
+// mounted at all (R1): mountConnect returns immediately without registering
+// any handler.
+type connectResolver func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error)
 
 func (d *deps) mountConnect(mux *http.ServeMux, resolve connectResolver, csrfVerify func(owner, token string) bool, reseal resealFunc) error {
 	if resolve == nil {
