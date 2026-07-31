@@ -115,6 +115,19 @@ delivered both, which is why this is one phase and not two.
   what a *bare* invocation yields. Replacing cobra's help would degrade the human experience to buy
   nothing — the agent path already has D-15.
 
+### Exit-Code Scope Addendum
+
+- **D-17 (cobra's own flag-parse errors exit 1; exit 2 is reserved for the client's semantic
+  validation):** Decided 2026-07-31 by Sean, on a question `02-RESEARCH.md` raised explicitly.
+  Cobra raises unknown-flag and unparseable-value errors before any client code runs, and they flow
+  through the shared `Execute` in `cmd/engram/root.go` used by every operator command. Forcing them
+  to 2 would change the exit code of `serve`, `reindex`, `prune-expired`, `migrate-remap-owner`,
+  `summarize-missing` and `backfill-short-ids` on upgrade for no compensating benefit. So exit 2 is
+  emitted only by the client's own checks — a missing server URL, an invalid `--output` value, a
+  malformed argument the command itself validates. The accepted cost is that
+  `engram search --typo` reports 1 rather than 2 despite being a usage error in the ordinary sense;
+  the catalog from D-15 must state this plainly so an agent branching on 2 is not surprised.
+
 ### Claude's Discretion
 
 No decisions were deferred to discretion — all 16 grey-area questions were answered explicitly.
