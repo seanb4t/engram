@@ -67,3 +67,27 @@ across the plan set:
 
 Generic OWASP/CSRF canon candidates were breadcrumbed to `/gsd-secure-phase` and dropped rather than
 minted, per the ADR-550 D6 canon-referral rule.
+
+## Amendment — 2026-07-31, cross-AI review replan (`01-REVIEWS.md`, Codex)
+
+The plans were revised in place to resolve eleven review findings. **The 9/9 accounting above is
+unchanged and was not re-derived** — the probe was not re-run (section-level precedence: exactly one
+producer per section). What changed, and why each row still holds:
+
+- **All new `must_haves.truths` were appended, never inserted.** Every index this report cites
+  (`01-01` `truths[1]`, `[3]`, `[4]`, `[5]`, `[6]`; `01-03` `truths[1]`, `[2]`, `[5]`) still points
+  at the same statement it did before the replan.
+- **Row 3** (`REQ-connect-lane-provenance` / `adjacency`) — `01-01` `truths[1]` was *extended*, not
+  replaced: the D-02 boundary now also names the multi-field, comma-coalesced, and duplicate-header
+  shapes Codex flagged as unpinned (MED-5). The adjacency coverage claim is strictly stronger.
+- **Row 7** (`REQ-connect-headless-mount` / `adjacency`) — `01-03` `truths[2]` is untouched. The
+  HIGH-3 fix (bearer-inclusion decoupled from `connect.headless`) changes *which credential families
+  a mounted lane accepts*, not the mount adjacency this row covers; it is recorded as a new appended
+  truth (`01-03` `truths[6]`), which is a phase invariant, not probe output.
+- **Rows 1, 2, 9** — the three flagged assumptions are unchanged and still live at their cited
+  locations (`01-01` Flagged Assumptions 1 and 2; `01-03` Flagged Assumption 1). `01-01` gained
+  Flagged Assumption 5 and `01-03` gained Flagged Assumption 4; neither is probe-derived.
+- **Prohibitions** — all three are unchanged.
+
+Both `backstop` truths survive verbatim and keep their `verification: backstop` marker, so the
+verify-time abstain-to-`human_needed` rule still applies to them.
