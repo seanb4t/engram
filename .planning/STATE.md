@@ -2,17 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
+current_phase: 1
+current_phase_name: Shared Auth Chain & Connect Bearer Identity
 status: planning
-last_updated: "2026-07-29T18:45:44.001Z"
+stopped_at: v0.12.x Phase 1 context gathered
+last_updated: "2026-07-31T04:06:32.437Z"
 last_activity: 2026-07-29
+last_activity_desc: Milestone v0.12.x roadmap created (6 phases, 1–6)
 progress:
-  total_phases: 6
+  total_phases: 8
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
   percent: 0
-current_phase: 1
-current_phase_name: Shared Auth Chain & Connect Bearer Identity
 ---
 
 # Project State
@@ -107,9 +109,9 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-07-26T03:48:22.018Z
-Stopped at: Completed 26-06-PLAN.md — Phase 26 complete
-Resume file: None
+Last session: 2026-07-31T04:06:32.430Z
+Stopped at: v0.12.x Phase 1 context gathered
+Resume file: .planning/phases/01-shared-auth-chain-connect-bearer-identity/01-CONTEXT.md
 
 ## Performance Metrics
 
