@@ -92,6 +92,13 @@
       name: "{{ .Values.memory.ui.cookieKeySecret.name }}"
       key: "{{ .Values.memory.ui.cookieKeySecret.key }}"
 {{- end }}
+{{- if ne (.Values.memory.connect.headless | toString) "" }}
+# Tri-state like ui.enabled above: "" omits (Connect mounted only if the UI
+# is on), "false" is a hard off-switch — both "true" and "false" must reach
+# the binary, so gate on non-empty rather than truthiness (toString
+# tolerates a YAML bool from --set).
+- { name: ENGRAM_CONNECT_HEADLESS, value: "{{ .Values.memory.connect.headless }}" }
+{{- end }}
 - { name: ENGRAM_LOG_LEVEL, value: "{{ .Values.observability.log.level }}" }
 - { name: ENGRAM_LOG_FORMAT, value: "{{ .Values.observability.log.format }}" }
 - { name: ENGRAM_LOG_STDOUT, value: "{{ .Values.observability.log.stdout }}" }

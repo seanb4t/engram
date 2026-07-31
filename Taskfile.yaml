@@ -161,10 +161,12 @@ tasks:
         # Deployment render diff manually) — this checksum guards against
         # silent drift. Recorded 2026-07-16 at plan 20-04; re-pinned
         # 2026-07-26 at plan 26-04 for the with-guarded
-        # ENGRAM_OPENAI_CHAT_BASE_URL row (D-12). Re-verified: the default
-        # render omits the var entirely and its ENGRAM_ env block is
-        # byte-identical to the pre-phase render.
-        EXPECTED_CHECKSUM="290eca2c1d2e948479b2611c755f8bed7d5ed8565ba811b9e1c2cbfcfcde83d7"
+        # ENGRAM_OPENAI_CHAT_BASE_URL row (D-12); re-pinned 2026-07-31 at
+        # plan 01-04 for the with-guarded ENGRAM_CONNECT_HEADLESS row
+        # (REVIEWS.md MED-10). Re-verified: the default render omits the var
+        # entirely and its ENGRAM_ env block is byte-identical to the
+        # pre-phase render.
+        EXPECTED_CHECKSUM="4010b14a86946584ac61ccb413d100d4b8d74281177900a75b1fd3aca2988f23"
         ACTUAL_CHECKSUM=$(awk '/define "engram.containerEnv"/{f=1} f{print} f && /^\{\{- end -\}\}$/{exit}' charts/engram/templates/_helpers.tpl | shasum -a 256 | awk '{print $1}')
         if [ "$ACTUAL_CHECKSUM" != "$EXPECTED_CHECKSUM" ]; then
           echo "chart:validate: engram.containerEnv block in _helpers.tpl has drifted (checksum $ACTUAL_CHECKSUM != expected $EXPECTED_CHECKSUM)."

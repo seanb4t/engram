@@ -149,6 +149,15 @@ memory:
     cookieKeySecret:
       name: "" # Secret holding the AES-256 cookie key (ENGRAM_UI_COOKIE_KEY)
       key: ""
+  # ConnectRPC lane switch, independent of the UI lane above. "" omits
+  # ENGRAM_CONNECT_HEADLESS entirely (server default: off — Connect is
+  # mounted only if the UI lane is on). "true" mounts the ConnectRPC lane on
+  # a deployment with the web UI disabled and requires at least one
+  # configured auth lane (memory.oidc.issuer above, or ENGRAM_SERVICE_AUTH_*
+  # set directly on the container) or the server refuses to start. "false"
+  # pins the lane explicitly off.
+  connect:
+    headless: "" # ENGRAM_CONNECT_HEADLESS: "" | "true" | "false"
   # Reloader watches the DEPLOYMENT object's annotations (not the pod template).
   # The cluster sets { reloader.stakater.com/auto: "true" }.
   deploymentAnnotations: {}
