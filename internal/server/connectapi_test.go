@@ -759,18 +759,21 @@ func TestListMemoriesRejectsMalformedPageToken(t *testing.T) {
 
 // TestListMemoriesRejectsCursorModeWithOffset pins the contract documented on
 // the cursor_mode field (engram-3hp9): cursor_mode and offset>0 are mutually
-// exclusive. The store enforces this (store.go) and the handler maps
-// store.ErrInvalidArgument to CodeInvalidArgument — this test pins that mapping
-// at the Connect boundary for the new flag so a future error-mapping refactor
-// can't silently regress it.
+// exclusive. This is a RELATIONAL rejection between two individually-valid
+// fields (D-11/D-20/04-05), so it classifies as classPrecondition and maps to
+// CodeFailedPrecondition — not CodeInvalidArgument, which is what it mapped
+// to before 04-05 removed connectapi.go's hand-wrapped
+// connect.NewError(CodeInvalidArgument, ...) override. This test pins that
+// mapping at the Connect boundary so a future error-mapping refactor can't
+// silently regress it back.
 func TestListMemoriesRejectsCursorModeWithOffset(t *testing.T) {
 	api := &engramAPI{d: testDeps(t)}
 	ctx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "sub-A"}})
 	_, err := api.ListMemories(ctx, connect.NewRequest(&engramv1.ListMemoriesRequest{
 		Scope: "s:project:x", Limit: 10, Offset: 5, CursorMode: true,
 	}))
-	if err == nil || connect.CodeOf(err) != connect.CodeInvalidArgument {
-		t.Fatalf("cursor_mode + offset>0: got %v want InvalidArgument", err)
+	if err == nil || connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("cursor_mode + offset>0: got %v want FailedPrecondition", err)
 	}
 }
 

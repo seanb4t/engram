@@ -84,6 +84,22 @@ func parseRFC3339(s string) (time.Time, error) {
 	return time.Parse(time.RFC3339, s)
 }
 
+// parseConnectWindowBound parses an optional RFC3339 window bound at the
+// Connect handler boundary (ListMemories/SearchMemories's created_after and
+// created_before). On failure it builds the same classified *argError the
+// MCP lane's inline closures build (04-04, RESEARCH rows 18-21) — field
+// named, classMalformed, HintFormat, stating the RFC3339 requirement — and
+// never carries the caller's raw string forward (D-12): a bare time.Parse
+// error embeds it verbatim. The caller hands the result to connectError, the
+// single mapper, rather than hand-wrapping a code here.
+func parseConnectWindowBound(field, raw string) (time.Time, error) {
+	t, err := parseRFC3339(raw)
+	if err != nil {
+		return time.Time{}, argErrf(classMalformed, HintFormat, field, "%s must be RFC3339", field)
+	}
+	return t, nil
+}
+
 // shapeProtoMemories mirrors the MCP recall contract over the Connect wire: when
 // not full, clear Content and surface a summary-or-truncation so default callers
 // pay summary-sized payloads. Callers opt into full content with full=true.
@@ -136,41 +152,49 @@ func (a *engramAPI) ListScopes(ctx context.Context, _ *connect.Request[engramv1.
 // UNCHANGED — limit=0 means "all" (store.go:873-874), NOT silently capped to
 // 20 (round-4 finding-7; 17-06 removed the shared Limit==0->20 default from
 // the core, so no lane may re-introduce it here). created_after/before are
-// parsed to time.Time AT THIS BOUNDARY so a malformed value returns
-// CodeInvalidArgument directly, never reaching the typed core to be
-// misclassified as CodeInternal by connectError (round-4 MED-6).
+// parsed to time.Time AT THIS BOUNDARY, building the classified *argError the
+// MCP lane builds, and handed to connectError (D-11) so the failure CLASS —
+// not a hand-wrapped code — selects the Connect code. Hand-wrapping
+// connect.CodeInvalidArgument at a boundary check like this one is exactly
+// what would override that class and silently defeat D-11: connectError is
+// the single mapper for every rejection in this handler, with no exception.
 func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engramv1.ListMemoriesRequest]) (*connect.Response[engramv1.ListMemoriesResponse], error) {
 	c, err := callerFromConnectContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	after, err := parseRFC3339(req.Msg.CreatedAfter)
+	after, err := parseConnectWindowBound("created_after", req.Msg.CreatedAfter)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_after: %w", err))
+		return nil, connectError(ctx, err)
 	}
-	before, err := parseRFC3339(req.Msg.CreatedBefore)
+	before, err := parseConnectWindowBound("created_before", req.Msg.CreatedBefore)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_before: %w", err))
+		return nil, connectError(ctx, err)
 	}
 	// Enforce the cursor_mode/offset mutual exclusion (documented on the proto
-	// field) at the handler, alongside the created_after/before validation above.
-	// store.List also rejects this, but a fail-fast guard keeps the wire contract
-	// self-evident at its boundary.
+	// field) at the handler, alongside the created_after/before validation
+	// above. store.List also rejects this, but a fail-fast guard keeps the
+	// wire contract self-evident at its boundary. This is a RELATIONAL
+	// rejection between two individually-valid fields (D-11/D-20), so it
+	// names BOTH fields and classifies as classPrecondition ->
+	// CodeFailedPrecondition, not CodeInvalidArgument — the one Connect-native
+	// check with no tools.go MCP counterpart to inherit from, since MCP's
+	// listArgs carries no offset field at all.
 	if req.Msg.CursorMode && req.Msg.Offset > 0 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cursor_mode is mutually exclusive with offset"))
+		return nil, connectError(ctx, argErrFieldsf(classPrecondition, HintMutuallyExclusive,
+			[]string{"cursor_mode", "offset"}, "cursor_mode is mutually exclusive with offset"))
 	}
 	// D-04: read cross_spine EXPLICITLY. Unlike SearchDiscoveries
 	// (connectapi.go, below), this handler never maps Scope == "" to
 	// cross-spine — memories have no pre-typed-core contract to preserve, and
 	// inferring it would silently widen every existing empty-scope Connect
 	// call from "returns nothing" to "returns everything readable". This
-	// boundary call to effectiveSearchScope exists for error-CODE fidelity:
-	// deps.listMemory carries the same guard as the authoritative chokepoint,
-	// but a bare error from it would be misclassified as CodeInternal by
-	// connectError (see the comment above, :139-141) rather than surfaced as
-	// the client error it is.
+	// boundary call to effectiveSearchScope is a fail-fast duplicate of the
+	// same guard deps.listMemory carries — effectiveSearchScope already
+	// returns a classified *argError (04-04), so it is simply handed to
+	// connectError like everything else in this handler.
 	if _, err := effectiveSearchScope(req.Msg.Scope, req.Msg.CrossSpine); err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		return nil, connectError(ctx, err)
 	}
 	res, err := a.d.listMemory(ctx, c, coreListRequest{
 		Scope:         req.Msg.Scope,
@@ -225,22 +249,22 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	if k == 0 {
 		k = 20
 	}
-	after, err := parseRFC3339(req.Msg.CreatedAfter)
+	after, err := parseConnectWindowBound("created_after", req.Msg.CreatedAfter)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_after: %w", err))
+		return nil, connectError(ctx, err)
 	}
-	before, err := parseRFC3339(req.Msg.CreatedBefore)
+	before, err := parseConnectWindowBound("created_before", req.Msg.CreatedBefore)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_before: %w", err))
+		return nil, connectError(ctx, err)
 	}
 	// D-04: read cross_spine EXPLICITLY, never inferred from Scope == "" —
 	// see the identical note on ListMemories above and the SearchDiscoveries
 	// comment below for what this handler deliberately does NOT copy. The
-	// boundary call to effectiveSearchScope exists for error-CODE fidelity
-	// (connectError would otherwise misclassify a bare argument error as
-	// CodeInternal, per the note at :139-141).
+	// boundary call to effectiveSearchScope is a fail-fast duplicate of the
+	// same guard deps.searchMemory carries — it already returns a classified
+	// *argError (04-04), handed to connectError like everything else here.
 	if _, err := effectiveSearchScope(req.Msg.Scope, req.Msg.CrossSpine); err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		return nil, connectError(ctx, err)
 	}
 	ms, err := a.d.searchMemory(ctx, c, coreSearchRequest{
 		Scope: req.Msg.Scope, Query: req.Msg.Query, K: k, Tags: req.Msg.Tags,
