@@ -4,23 +4,23 @@ milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
 current_phase_name: Cross-Spine Memory Recall
 status: executing
-stopped_at: Completed 03-03-PLAN.md (list_memory cross-spine + searched_scopes reporting, wave 3 of 5) — wave 4 (03-04, Connect/proto parity) is next
-last_updated: "2026-08-01T15:34:19.723Z"
+stopped_at: Completed 03-04-PLAN.md (Connect + proto parity, wave 4 of 5) — wave 5 (03-05, agent-facing guidance) is next
+last_updated: "2026-08-01T16:00:45.975Z"
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
   percent: 67
 current_phase: 03
 last_activity: 2026-08-01
-last_activity_desc: v0.12.x Phase 3 plan 03-03 executed — cross-spine list_memory landed end to end on the MCP lane, plus searched_scopes/scopes_truncated reporting and per-result scope attribution (listFilter, effectiveSearchScope reused, searchedScopes/recallResultMap, handler + store pins); all 3 Phase 3 requirements now complete
+last_activity_desc: v0.12.x Phase 3 plan 03-04 executed — Connect/proto parity for cross-spine recall via six additive protobuf fields (cross_spine, searched_scopes, scopes_truncated on SearchMemories/ListMemories); D-04 non-inference wired and pinned by TestConnectCrossSpineNotInferred/TestConnectCrossSpineScopeRequired; MCP<->Connect id-set parity proven by TestSearchMemoriesConnectCrossSpine; buf breaking clean, gen/ trees zero-drift, task ui:build green
 ---
 
 <!-- RESUME HERE -->
 <!--
 NEXT COMMAND after /clear:
-    /gsd-execute-phase 3   (continue at wave 4, plan 03-04 — 03-01 through 03-03 are done)
+    /gsd-execute-phase 3   (continue at wave 5, plan 03-05 — 03-01 through 03-04 are done)
 
 Phases 1 and 2 are COMPLETE and verified. Phase 3's blocking authz gate is already
 CLOSED — do NOT re-run it. Plan 03-01 (wave 1) landed the isolation test (non-vacuous,
@@ -32,8 +32,14 @@ the handler and store layers. Plan 03-03 (wave 3) landed the identical D-05 shap
 to listFilter/listArgs for list_memory (D-08), plus searched_scopes/scopes_truncated
 reporting on both MCP verbs via Store.ListScopes (D-12/D-13) and per-result scope
 attribution (D-11) — the MCP lane is now fully done for both search_memory and
-list_memory. All 3 of Phase 3's requirements are complete. Wave 4 (03-04, depends_on
-03-03) is next: Connect + proto parity via six additive fields.
+list_memory. Plan 03-04 (wave 4) mirrored that onto Connect: six additive protobuf
+fields (cross_spine on both requests; searched_scopes/scopes_truncated on both
+responses), buf breaking clean against main, gen/go + gen/ts + ui/src/lib/gen zero-drift,
+D-04 non-inference wired and pinned (SearchDiscoveries' empty-scope inference is
+unchanged and deliberately asymmetric), MCP<->Connect id-set parity proven. All 3 of
+Phase 3's requirements are complete. Wave 5 (03-05, depends_on 03-04) is next:
+agent-facing guidance across the tool reference, curating-memory, and the repo memory
+contract.
 -->
 
 # Project State
@@ -43,20 +49,20 @@ list_memory. All 3 of Phase 3's requirements are complete. Wave 4 (03-04, depend
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x Phase 3 — Cross-Spine Memory Recall. Authz gate CLOSED; MCP lane done; wave 4 (03-04, Connect/proto parity) is next.
+**Current focus:** v0.12.x Phase 3 — Cross-Spine Memory Recall. Authz gate CLOSED; MCP lane done; Connect/proto parity done; wave 5 (03-05, agent-facing guidance) is next.
 
 ## ▶ Resume Point (session handed off 2026-08-01)
 
-**Next command:** `/gsd-execute-phase 3` (wave 4, plan 03-04)
+**Next command:** `/gsd-execute-phase 3` (wave 5, plan 03-05)
 
 **Done:** Phases 1 and 2 complete and verified (5/5 each). Phase 3's blocking authz gate is
 already closed — `03-AUTHZ-GATE.md`, commit `a7f827b6`. **Do not re-run the gate.** Plans
-03-01 (authz isolation proof), 03-02 (search_memory cross-spine tracer), and 03-03
-(list_memory cross-spine + searched_scopes reporting) are complete. All 3 Phase 3
-requirements (REQ-cross-spine-search, REQ-cross-spine-authz-verified,
-REQ-cross-spine-result-provenance) are complete.
+03-01 (authz isolation proof), 03-02 (search_memory cross-spine tracer), 03-03
+(list_memory cross-spine + searched_scopes reporting), and 03-04 (Connect + proto parity)
+are complete. All 3 Phase 3 requirements (REQ-cross-spine-search,
+REQ-cross-spine-authz-verified, REQ-cross-spine-result-provenance) are complete.
 
-**Not done for Phase 3:** waves 4-5 (03-04 Connect/proto parity, 03-05 agent-facing guidance).
+**Not done for Phase 3:** wave 5 (03-05 agent-facing guidance).
 
 **Read `03-AUTHZ-GATE.md` before planning Phase 3.** Two findings there change the plan shape:
 
@@ -97,8 +103,8 @@ REQ-cross-spine-result-provenance) are complete.
 ## Current Position
 
 Phase: v0.12.x Phase 3 (Cross-Spine Memory Recall) — IN PROGRESS
-Plans: 3 of 5 complete (03-01 cross-spine authz isolation proof, 03-02 search_memory tracer,
-03-03 list_memory + searched_scopes reporting)
+Plans: 4 of 5 complete (03-01 cross-spine authz isolation proof, 03-02 search_memory tracer,
+03-03 list_memory + searched_scopes reporting, 03-04 Connect + proto parity)
 Plan 03-01: `TestCrossSpineAuthzIsolation` landed and green against real Qdrant, RED-by-mutation
 transcript recorded (`03-RED-TRANSCRIPT.md`), `03-AUTHZ-GATE.md` amended to cover `listFilter`
 (D-06). Zero production code touched — `internal/store/store.go` unmodified. Commits: `737178e2`,
@@ -124,9 +130,24 @@ Six new tests, all green, alongside every standing 03-01/03-02 pin. `task` green
 Requirement REQ-cross-spine-authz-verified: complete. REQ-cross-spine-search: complete.
 REQ-cross-spine-result-provenance: complete. All 3 of Phase 3's requirements are now complete —
 the MCP lane is fully done for both verbs.
-Next: 03-04 (wave 4, `depends_on: ["03-03"]`) — Connect + proto parity via six additive fields
-(`cross_spine`, `searched_scopes`, `scopes_truncated` on both `SearchMemories`/`ListMemories`
-request/response pairs), read explicitly and never inferred from an empty scope (D-04).
+Plan 03-04: Connect/proto parity landed. Six additive protobuf fields — `cross_spine` on
+`SearchMemoriesRequest` (9) and `ListMemoriesRequest` (12); `searched_scopes`/`scopes_truncated`
+on `SearchMemoriesResponse` (2/3) and `ListMemoriesResponse` (5/6 — field 3 there is the
+DECLARED-deprecated `approximate`, correctly left reserved). `buf breaking --against main` clean;
+`gen/go`, `gen/ts`, `ui/src/lib/gen` regenerated with zero post-commit drift; `task ui:build`
+green (re-vendored `internal/webauth/static/`, committed to satisfy the required CI drift check).
+Both Connect handlers read `cross_spine` EXPLICITLY via `effectiveSearchScope` (empty scope
+without it now returns `CodeInvalidArgument`, not the prior `CodeInternal` misclassification);
+`SearchDiscoveries`' `Scope == ""` inference is unchanged and now explicitly commented as a
+deliberate, non-copyable divergence (D-04). `TestConnectCrossSpineScopeRequired`,
+`TestConnectCrossSpineNotInferred`, and `TestSearchMemoriesConnectCrossSpine` (criterion-4
+MCP<->Connect id-set parity) all green. One deviation: a pre-existing pinned-field-count
+descriptor test (`TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs`) needed its
+counts/pins updated for the six new fields — expected, since that test exists precisely to catch
+this kind of change. `task` (lint + full suite) green. Commits: `ac457527`, `0c8a3e22`,
+`84336ec7`, `422f1ad3`.
+Next: 03-05 (wave 5, `depends_on: ["03-04"]`) — agent-facing guidance across the tool reference,
+`curating-memory`, and the repo memory contract, including when not to widen.
 
 Phase: v0.12.x Phase 2 (Headless CLI Client) — ✅ COMPLETE 2026-07-31
 Plans: 3 of 3 (02-01 `engram search` tracer, 02-02 `list` + `store`, 02-03 self-describe catalog)
@@ -287,6 +308,10 @@ milestone needs in working memory.
 - [Phase ?]: D-03/D-07 guard (effectiveSearchScope) applied at both the MCP transport boundary and the typed core, not just one
 - [Phase ?]: listFilter's scope match made conditional identically to ownerScopeFilter/SearchDiscovery; effectiveSearchScope reused verbatim for list_memory (D-03)
 - [Phase ?]: searchedScopes/recallResultMap: searched_scopes+scopes_truncated present only on cross-spine calls (D-14); recallResultMap factored out as shared map-assembly, tested directly (no in-process MCP session harness exists in this codebase)
+- [Phase ?]: 03-04: ListMemoriesResponse field 3 (`approximate`) is DECLARED-deprecated, not reserved-and-removed — the next free number there was 5, not 3; reusing a deprecated-but-declared number is the one way an additive proto change trips buf breaking in FILE mode
+- [Phase ?]: 03-04: SearchMemories/ListMemories read cross_spine EXPLICITLY via effectiveSearchScope at the Connect boundary (never req.Msg.Scope == "") — SearchDiscoveries' identical-looking inference at connectapi.go is a deliberate, non-copyable divergence, now commented as such at its declaration
+- [Phase ?]: 03-04: a bare guard error reaching connectError gets misclassified as CodeInternal — the effectiveSearchScope boundary call at each Connect handler exists specifically for CodeInvalidArgument fidelity, confirmed live via the TDD RED transcript
+- [Phase ?]: 03-04: task ui:build re-vendors internal/webauth/static/ with new content hashes whenever ui/src/lib/gen changes, even with no UI feature work — CI's required "ui vendored-asset drift" job means that directory must be committed alongside any proto change touching generated TS
 
 ### Blockers/Concerns
 
@@ -338,8 +363,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-01T15:34:19.713Z
-Stopped at: Completed 03-03-PLAN.md (list_memory cross-spine + searched_scopes reporting, wave 3 of 5) — wave 4 (03-04, Connect/proto parity) is next
+Last session: 2026-08-01T16:00:45.975Z
+Stopped at: Completed 03-04-PLAN.md (Connect + proto parity, wave 4 of 5) — wave 5 (03-05, agent-facing guidance) is next
 Resume file: None
 
 ## Performance Metrics
@@ -413,6 +438,7 @@ Resume file: None
 | Phase 03 P01 | 9min | 3 tasks | 3 files |
 | Phase 03 P02 | 12min | 2 tasks | 4 files |
 | Phase 03 P03 | 20min | 3 tasks | 5 files |
+| Phase 03 P04 | ~10min | 4 tasks | 7 files |
 
 ## Operator Next Steps
 
