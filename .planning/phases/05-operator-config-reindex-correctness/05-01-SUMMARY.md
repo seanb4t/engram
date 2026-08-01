@@ -214,6 +214,11 @@ None - no external service configuration required. Operators opt in by setting
 - Plan 05-03 (wave 2) owns the full phase-close gate set (`task`, `go vet`, `chart:validate`, etc.)
   and the docs work (D-06, configure.md correction).
 
+## Self-Check: PASSED
+
+All 7 created/modified source files and the SUMMARY.md itself confirmed present on disk; all 3
+commit hashes (`36b5150b`, `3c11e723`, `4c426a90`) confirmed in `git log`.
+
 ---
 *Phase: 05-operator-config-reindex-correctness*
 *Completed: 2026-08-01*
