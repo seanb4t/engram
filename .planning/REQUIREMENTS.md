@@ -48,12 +48,12 @@ Zero new Go dependencies are required for this entire milestone.
   the web UI disabled, via a flag that defaults **off independently** of every existing UI and
   service-auth flag. A deployment that has no Connect surface today gains none on upgrade.
 
-- [ ] **REQ-cli-client-commands**: An agent with only a shell can `engram search`, `engram store`,
+- [x] **REQ-cli-client-commands**: An agent with only a shell can `engram search`, `engram store`,
   and `engram list` against a remote server given a server URL and a token. The commands speak only
   the generated Connect stubs (`gen/go/engram/v1/engramv1connect`) and never import
   `internal/store`, `internal/authz`, or `internal/embed`.
 
-- [ ] **REQ-cli-agent-output**: CLI output is consumable by a non-interactive caller: structured
+- [x] **REQ-cli-agent-output**: CLI output is consumable by a non-interactive caller: structured
   JSON by default when not attached to a TTY, data on stdout and diagnostics on stderr, documented
   semantic exit codes mapped from engram's existing Connect error taxonomy, and no TTY prompt on
   any path.
@@ -225,8 +225,8 @@ Populated during roadmap creation.
 | REQ-connect-token-expiry | v0.12.x Phase 1 | Complete |
 | REQ-connect-lane-provenance | v0.12.x Phase 1 | Complete |
 | REQ-connect-headless-mount | v0.12.x Phase 1 | Complete |
-| REQ-cli-client-commands | v0.12.x Phase 2 | Pending |
-| REQ-cli-agent-output | v0.12.x Phase 2 | Pending |
+| REQ-cli-client-commands | v0.12.x Phase 2 | Complete |
+| REQ-cli-agent-output | v0.12.x Phase 2 | Complete |
 | REQ-cli-credential-safety | v0.12.x Phase 2 | Complete |
 | REQ-cli-self-describing | v0.12.x Phase 2 | Pending |
 | REQ-cross-spine-search | v0.12.x Phase 3 | Pending |

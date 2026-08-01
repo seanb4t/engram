@@ -280,7 +280,7 @@ already-landed dependency it uses.
 Plans:
 
 - [x] 02-01-PLAN.md — Tracer: `engram search` end-to-end over a real Connect server, plus the shared client foundation and the `Execute` exit-code taxonomy (wave 1)
-- [ ] 02-02-PLAN.md — `engram list` and `engram store` expansion over the proven client; the write is attempted exactly once (wave 2)
+- [x] 02-02-PLAN.md — `engram list` and `engram store` expansion over the proven client; the write is attempted exactly once (wave 2)
 - [ ] 02-03-PLAN.md — Bare-invocation self-describe catalog derived from the live command tree, with an anti-drift gate on the exit codes (wave 3)
 
 ---
@@ -444,7 +444,7 @@ markdown and tool descriptions rather than Go correctness.
 | 25. Supersession with History | v0.11.x | 2/2 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | Complete | 2026-07-31 |
-| 2. Headless CLI Client | v0.12.x | 1/4 | In Progress (1/3 plans, wave 1 of 3) | — |
+| 2. Headless CLI Client | v0.12.x | 3/4 | In Progress (2/3 plans, wave 2 of 3) | — |
 | 3. Cross-Spine Memory Recall | v0.12.x | 0/3 | Pending | — |
 | 4. Diagnosability | v0.12.x | 0/4 | Pending | — |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 0/3 | Pending | — |
