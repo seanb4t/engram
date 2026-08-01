@@ -109,7 +109,9 @@ func csrfWriteCases(futureNotBefore *timestamppb.Timestamp) []csrfWriteRPCCase {
 		{
 			name: "StoreMemory",
 			call: func(ctx context.Context, c engramv1connect.EngramServiceClient, h csrfHeaders) error {
-				return doCSRFWrite(ctx, c.StoreMemory, &engramv1.StoreMemoryRequest{Content: "valid content", Scope: "test:scope", Category: "decision"}, h)
+				// Source is now required on both lanes (D-06a: validateStoreArgs
+				// is shared by deps.storeMemory's MCP and Connect callers alike).
+				return doCSRFWrite(ctx, c.StoreMemory, &engramv1.StoreMemoryRequest{Content: "valid content", Scope: "test:scope", Source: "agent-inferred", Category: "decision"}, h)
 			},
 		},
 		{

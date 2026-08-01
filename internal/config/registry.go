@@ -34,6 +34,10 @@ var registry = []field{
 	{Key: "embed.document_params", Env: "ENGRAM_EMBED_DOCUMENT_PARAMS"},
 	{Key: "embed.document_instruction", Env: "ENGRAM_EMBED_DOCUMENT_INSTRUCTION"},
 	{Key: "embed.timeout", Env: "ENGRAM_EMBED_TIMEOUT", Default: "30s"},
+	// memory.max_summary_bytes (D-06a/D-18): a brand-new key, no Legacy value —
+	// the bound did not exist before this phase, so there is nothing retired to
+	// guard against.
+	{Key: "memory.max_summary_bytes", Env: "ENGRAM_MEMORY_MAX_SUMMARY_BYTES", Default: "512"},
 	{Key: "summarize.model", Env: "ENGRAM_SUMMARY_MODEL"},
 	{Key: "summarize.max_chars", Env: "ENGRAM_SUMMARY_MAX_CHARS", Default: "280"},
 	{Key: "summarize.max_tokens", Env: "ENGRAM_SUMMARY_MAX_TOKENS", Default: "1024"},

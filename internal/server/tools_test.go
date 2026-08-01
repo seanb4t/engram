@@ -428,6 +428,10 @@ func authedContext(t *testing.T, sub string) context.Context {
 // call sites that need a non-nil *string content literal.
 func strp(s string) *string { return &s }
 
+// boolp returns a pointer to b — the setVisibilityArgs.Shared (D-06a)
+// analog of strp, for test call sites that need a non-nil *bool literal.
+func boolp(b bool) *bool { return &b }
+
 // callerFor resolves the caller for a context carrying (or not carrying)
 // TokenInfo exactly as callerFromContext does, failing the test on an
 // unexpected error. The write-method test call sites this task retyped use
@@ -2802,7 +2806,7 @@ func TestSetVisibilityReturnsMutationResult(t *testing.T) {
 	}
 	t.Cleanup(func() { cleanupErr(t, "Delete "+id, d.st.Delete(ctx, id, store.Authenticated("sub-mutresult-vis"))) })
 
-	mr, err := d.setVisibility(ctx, callerFor(ctx, t), setVisibilityArgs{ID: sid, Shared: true})
+	mr, err := d.setVisibility(ctx, callerFor(ctx, t), setVisibilityArgs{ID: sid, Shared: boolp(true)})
 	if err != nil {
 		t.Fatalf("setVisibility: %v", err)
 	}
@@ -4031,7 +4035,7 @@ func TestByIDToolsAcceptShortID(t *testing.T) {
 	if err != nil || after.ShortID != sid || after.Content != "hi-edited" {
 		t.Fatalf("update via short id: content=%q short=%q err=%v", after.Content, after.ShortID, err)
 	}
-	if _, err := d.setVisibility(ctx, callerFor(ctx, t), setVisibilityArgs{ID: sid, Shared: true}); err != nil {
+	if _, err := d.setVisibility(ctx, callerFor(ctx, t), setVisibilityArgs{ID: sid, Shared: boolp(true)}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.deleteMemory(ctx, callerFor(ctx, t), idArgs{ID: sid}); err != nil {
@@ -4053,7 +4057,7 @@ func TestShortIDCrossOwnerVisibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.setVisibility(ctxA, callerFor(ctxA, t), setVisibilityArgs{ID: sharedID, Shared: true}); err != nil {
+	if _, err := d.setVisibility(ctxA, callerFor(ctxA, t), setVisibilityArgs{ID: sharedID, Shared: boolp(true)}); err != nil {
 		t.Fatal(err)
 	}
 	// owner-B: resolution is owner-agnostic, the read gate governs.
@@ -4099,7 +4103,7 @@ func TestShortIDCrossOwnerVisibility(t *testing.T) {
 		t.Fatalf("delete error should echo caller-supplied short id only: %v", err)
 	}
 	// setVisibility: same no-leak re-wrap as getMemory.
-	_, err = d.setVisibility(ctxB, callerFor(ctxB, t), setVisibilityArgs{ID: privSid, Shared: true})
+	_, err = d.setVisibility(ctxB, callerFor(ctxB, t), setVisibilityArgs{ID: privSid, Shared: boolp(true)})
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("cross-owner set_visibility must be ErrNotFound, got %v", err)
 	}

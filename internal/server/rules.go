@@ -22,16 +22,23 @@ const (
 	maxRuleSummaryBytes = 256      // one physical index line
 )
 
+// storeRuleArgs' Content/Scope/Summary carry omitempty (D-06a). All three
+// already had a Go-level presence check in validateStoreRule/
+// validateRuleSummary before this plan — those checks were SHADOWED by the
+// schema's own required-ness; relaxing the tag makes them reachable for the
+// first time. No new validation logic needed here.
 type storeRuleArgs struct {
-	Content string   `json:"content" jsonschema:"the full rule text (normative constraint agents must follow)"`
-	Scope   string   `json:"scope" jsonschema:"rule scope: rule:repo:<repo> or rule:project:<project>"`
-	Summary string   `json:"summary" jsonschema:"REQUIRED one-line index entry (single physical line, no newlines)"`
+	Content string   `json:"content,omitempty" jsonschema:"the full rule text (normative constraint agents must follow)"`
+	Scope   string   `json:"scope,omitempty" jsonschema:"rule scope: rule:repo:<repo> or rule:project:<project>"`
+	Summary string   `json:"summary,omitempty" jsonschema:"REQUIRED one-line index entry (single physical line, no newlines)"`
 	Tags    []string `json:"tags,omitempty" jsonschema:"concern-area labels e.g. vcs, deploy, authz"`
 	ID      string   `json:"id,omitempty" jsonschema:"omit to create; supply to replace in place"`
 }
 
+// listRulesArgs.Scopes carries omitempty (D-06a); listRules already rejects
+// len(a.Scopes)==0 in Go — that check was likewise shadowed by the schema.
 type listRulesArgs struct {
-	Scopes []string `json:"scopes" jsonschema:"one or more rule:* scopes to fetch the complete rule set from"`
+	Scopes []string `json:"scopes,omitempty" jsonschema:"one or more rule:* scopes to fetch the complete rule set from"`
 	Tags   []string `json:"tags,omitempty" jsonschema:"restrict to rules carrying ALL listed tags (AND)"`
 	Full   bool     `json:"full,omitempty" jsonschema:"true adds full content; default returns the compact index shape"`
 }

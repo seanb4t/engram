@@ -265,7 +265,7 @@ func TestSetVisibilityRejectsRule(t *testing.T) {
 	}
 
 	// The set_visibility handler must reject any visibility change on a rule.
-	_, err = d.setVisibility(ctx, callerFor(ctx, t), setVisibilityArgs{ID: id, Shared: false})
+	_, err = d.setVisibility(ctx, callerFor(ctx, t), setVisibilityArgs{ID: id, Shared: boolp(false)})
 	if err == nil {
 		t.Fatal("expected set_visibility on a rule to be rejected")
 	}

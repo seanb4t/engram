@@ -586,7 +586,7 @@ func TestWriteParity(t *testing.T) {
 			connCtx := parityConnectCtx(owner)
 			api := &engramAPI{d: dConn}
 
-			_, mcpErr := dMCP.setVisibility(ctx, mcpCaller, setVisibilityArgs{ID: seed.ID, Shared: false})
+			_, mcpErr := dMCP.setVisibility(ctx, mcpCaller, setVisibilityArgs{ID: seed.ID, Shared: boolp(false)})
 			_, connErr := api.SetVisibility(connCtx, connect.NewRequest(&engramv1.SetVisibilityRequest{
 				Id: seed.ID, Visibility: engramv1.Visibility_VISIBILITY_PRIVATE,
 			}))
@@ -620,7 +620,7 @@ func TestWriteParity(t *testing.T) {
 			connCtx := parityConnectCtx(ownerB)
 			api := &engramAPI{d: dConn}
 
-			_, mcpErr := dMCP.setVisibility(ctx, mcpCaller, setVisibilityArgs{ID: seed.ID, Shared: true})
+			_, mcpErr := dMCP.setVisibility(ctx, mcpCaller, setVisibilityArgs{ID: seed.ID, Shared: boolp(true)})
 			_, connErr := api.SetVisibility(connCtx, connect.NewRequest(&engramv1.SetVisibilityRequest{
 				Id: seed.ID, Visibility: engramv1.Visibility_VISIBILITY_SHARED,
 			}))

@@ -104,7 +104,10 @@ func TestWriteRPCNegativeMatrix(t *testing.T) {
 			name:      "StoreMemory",
 			procedure: engramv1connect.EngramServiceStoreMemoryProcedure,
 			validCall: func(ctx context.Context, c engramv1connect.EngramServiceClient, actor string) error {
-				return callWrite(ctx, c.StoreMemory, &engramv1.StoreMemoryRequest{Content: "valid content", Scope: "test:scope", Category: "decision"}, actor)
+				// Source is now required on both lanes (D-06a: validateStoreArgs
+				// is shared by deps.storeMemory's MCP and Connect callers alike) —
+				// this fixture predates that uniform enforcement.
+				return callWrite(ctx, c.StoreMemory, &engramv1.StoreMemoryRequest{Content: "valid content", Scope: "test:scope", Source: "agent-inferred", Category: "decision"}, actor)
 			},
 			invalidCall: func(ctx context.Context, c engramv1connect.EngramServiceClient, actor string) error {
 				return callWrite(ctx, c.StoreMemory, &engramv1.StoreMemoryRequest{}, actor) // empty content/scope violate min_len=1
@@ -166,9 +169,11 @@ func TestWriteRPCNegativeMatrix(t *testing.T) {
 			name:      "ScheduleMemory",
 			procedure: engramv1connect.EngramServiceScheduleMemoryProcedure,
 			validCall: func(ctx context.Context, c engramv1connect.EngramServiceClient, actor string) error {
+				// Source is now required on both lanes (D-06a), same as StoreMemory above.
 				return callWrite(ctx, c.ScheduleMemory, &engramv1.ScheduleMemoryRequest{
 					Content:   "valid content",
 					Scope:     "test:scope",
+					Source:    "agent-inferred",
 					Category:  "decision",
 					NotBefore: futureNotBefore,
 				}, actor)

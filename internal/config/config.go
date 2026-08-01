@@ -24,6 +24,7 @@ type Config struct {
 	Server      ServerConfig      `koanf:"server"`
 	Qdrant      QdrantConfig      `koanf:"qdrant"`
 	Embed       EmbedConfig       `koanf:"embed"`
+	Memory      MemoryConfig      `koanf:"memory"`
 	Summarize   SummarizeConfig   `koanf:"summarize"`
 	OpenAI      OpenAIConfig      `koanf:"openai"`
 	OIDC        OIDCConfig        `koanf:"oidc"`
@@ -73,6 +74,22 @@ type EmbedConfig struct {
 	// Config.Validate — the embedder is always active, unlike Summarize.Timeout
 	// which is gated on Summarize.Model.
 	Timeout string `koanf:"timeout"`
+}
+
+// MemoryConfig bounds the ordinary store_memory/update_memory `summary`
+// field (04-diagnosability D-06a/D-18): issue #360's misattributed
+// "missing properties: [\"content\"]" traces to an oversized `summary`
+// decoding in a way that made `content` read as absent, and there was no
+// bound on a memory summary to reject it deterministically — only
+// maxRuleSummaryBytes (rules.go), which governs RULE summaries alone and is
+// untouched by this key. Sean approved this bound on the explicit condition
+// that it be koanf-configurable rather than a compile-time constant.
+type MemoryConfig struct {
+	// MaxSummaryBytes caps storeArgs.Summary / updateArgs.Summary (default
+	// "512"). "0" disables the bound entirely — the same convention
+	// embed.timeout/summarize.max_tokens already use for their own escape
+	// hatches (validate.go).
+	MaxSummaryBytes string `koanf:"max_summary_bytes"`
 }
 
 // SummarizeConfig selects the recall-summary model and the character cap shared
