@@ -28,6 +28,20 @@ var rootCmd = &cobra.Command{
 	Version:       version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	// RunE makes the root runnable, so a bare invocation reaches the D-15
+	// self-describe catalog instead of falling into cobra's
+	// help-and-exit-0 path. Args is REQUIRED alongside it, not optional and
+	// coupled to RunE — do not remove one without the other. cobra's own
+	// legacyArgs fallback (used when Args is nil) happens to reject an
+	// unmatched first argument for a root command with subcommands too, but
+	// that is an incidental property of cobra's internals, not a contract
+	// this package should rely on: any future Args value more permissive
+	// than cobra.NoArgs (e.g. cobra.ArbitraryArgs) would route a mistyped
+	// verb into this RunE and print the catalog at exit 0 instead of
+	// failing (see 02-03-PLAN.md's landmine table and 02-03-SUMMARY.md's
+	// RED observations).
+	RunE: runSelfDescribe,
+	Args: cobra.NoArgs,
 	PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
 		return config.CheckLegacy(os.Environ())
 	},
