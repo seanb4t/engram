@@ -309,7 +309,18 @@ authorization filter proven un-widened rather than assumed safe.
 
 **Research flag:** needs research at plan time. Criterion 1 is the unresolved
 architecture-vs-pitfalls disagreement and is a **gate**, not a task — it must close before
-implementation begins.
+implementation begins. **Resolved:** criterion 1 CLOSED 2026-08-01 (`03-AUTHZ-GATE.md`, commit
+`a7f827b6`), amended in plan 03-01 to cover `listFilter`.
+
+**Plans:** 5 plans in 5 waves
+
+Plans:
+
+- [ ] 03-01-PLAN.md — The non-vacuous two-owner authz isolation proof against real Qdrant, plus the recorded RED-by-mutation transcript, landing before any filter edit (wave 1)
+- [ ] 03-02-PLAN.md — Tracer: `cross_spine=true` on `search_memory` end-to-end through the guard, the typed core, and the `ownerScopeFilter` conditional (wave 2)
+- [ ] 03-03-PLAN.md — Expansion: cross-spine `list_memory`, plus `searched_scopes`/`scopes_truncated` and per-result scope attribution on the MCP lane (wave 3)
+- [ ] 03-04-PLAN.md — Connect + proto parity via six additive fields, read explicitly and never inferred from an empty scope (wave 4)
+- [ ] 03-05-PLAN.md — Agent-facing guidance across the tool reference, `curating-memory`, and the repo memory contract, including when not to widen (wave 5)
 
 ---
 
