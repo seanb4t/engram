@@ -4,17 +4,17 @@ milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
 current_phase_name: Diagnosability
 status: phase_in_progress
-stopped_at: Completed 04-05-PLAN.md (wave 3 of 5) - rules.go's last unwrapped validator converted, connectapi.go's seven hand-wrapped CodeInvalidArgument sites removed so the failure class selects the Connect code, cursor_mode/offset reshaped as a relational rejection, 12-row code-mapping table with RED transcript
-last_updated: "2026-08-01T19:04:35.072Z"
+stopped_at: Completed 04-06-PLAN.md (wave 4 of 5) - 24 fields across 13 arg structs moved from schema-required to Go-required (D-06a), closing issue #360 by name; delete_all's scope guard extracted into deps.deleteAll and landed in the same commit as its schema relaxation (D-19); koanf-configurable ENGRAM_MEMORY_MAX_SUMMARY_BYTES (D-18); embeddings success-decode bound sized from ENGRAM_EMBED_DIM (D-16, closes plan 04-03's option)
+last_updated: "2026-08-01T19:34:02.322Z"
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 19
-  completed_plans: 17
+  completed_plans: 18
   percent: 75
 current_phase: 04
 last_activity: 2026-08-01
-last_activity_desc: "v0.12.x Phase 4 plan 04-05 executed (wave 3 of 5, depends_on 04-04) — rules.go's validateStoreRule/validateRuleSummary/listRules (9 rejections) converted from bare fmt.Errorf/manually-wrapped store.ErrInvalidArgument to argErrf, closing the third and last of D-11a's three unwrapped validators. connectapi.go's seven hand-wrapped connect.NewError(CodeInvalidArgument, ...) sites in ListMemories/SearchMemories removed — the load-bearing edit that makes D-11 actually live on the Connect lane instead of a no-op every existing test would have missed: the four created_after/created_before parses now share a parseConnectWindowBound helper, the two effectiveSearchScope boundary calls hand their already-classified error to connectError, and the cursor_mode/offset check becomes a relational rejection naming both fields (classPrecondition -> CodeFailedPrecondition, was CodeInvalidArgument). Three named tests in new connectargerror_test.go: TestStoreRuleValidationIsNotCodeInternal (7 subtests, direct connectError call since store_rule has no Connect RPC), TestConnectValidationCodeMapping (12 subtests, floor was >=10, 5 driven through real ListMemories/SearchMemories/StoreDiscovery handlers including one classOutOfRange and one classPrecondition row, trio membership asserted as a SET, RED transcript recorded by temporarily restoring the pre-Task-2 hand-wrap), TestConnectCombinationAttribution (both field names + CodeFailedPrecondition pinned through the real handler). Deviations: TestListMemoriesRejectsCursorModeWithOffset's expected code flipped CodeInvalidArgument -> CodeFailedPrecondition (Rule 1, the intended breaking effect); argErrFieldsf's always-nil variadic dropped after golangci-lint's unparam flagged it at this plan's fourth call site (Rule 3, mechanical, no envelope-shape change). task (lint+full suite) green, -shuffle=on green, go vet clean, go.mod/go.sum zero diff, license:check 0 invalid. REQ-validation-error-attribution and REQ-error-hint-envelope STILL NOT complete — 04-06 (D-06a schema-level extension) also declares both requirements."
+last_activity_desc: "v0.12.x Phase 4 plan 04-06 executed (wave 4 of 5, depends_on 04-05/04-03) — the D-06a schema layer: 24 fields across 13 arg structs (storeArgs, supersedeArgs, searchArgs, listScheduledArgs, idArgs, updateArgs, scopeArgs, citationArg, storeDiscoveryArgs, searchDiscoveryArgs, setVisibilityArgs, storeRuleArgs, listRulesArgs) relaxed to omitempty, each paired with a Go-level presence check in the SAME commit — closing issue #360's own repro (oversized summary now names \"summary\", not \"content\", proven by TestIssue360SummaryLengthNamesSummary with a recorded RED transcript and a positive control). New validateStoreArgs/validateUpdateArgs/requireID/deps.deleteAll for fields with no prior Go-level guard; most other fields already had one (validateCitations/validateStoreDiscovery/validateStoreRule/listRules) now reachable for the first time. delete_all's scopeArgs.Scope guard (D-19) extracted into a new deps.deleteAll method — the ONE tool whose store call had been inlined directly in Register, now consistent with every other tool and independently unit-testable — landed in the exact same commit as the tag relaxation, proven by TestDeleteAllRequiresScope (rejection + zero store calls). setVisibilityArgs.Shared became *bool (not omitempty bool) so shared:false stays distinguishable from omission; protoconv.go and 8 test fixtures updated for the type change. New koanf-configurable ENGRAM_MEMORY_MAX_SUMMARY_BYTES (D-18 amendment, default 512, 0 disables) replacing the plan's originally-specified compile-time constant — new internal/config.MemoryConfig section, checked BEFORE content presence per #360's ordering requirement. embedderFromConfig now wires embed.WithMaxResponseBytes sized from ENGRAM_EMBED_DIM (D-16, completing plan 04-03's option). Deviations: validateStoreArgs's uniform Source enforcement (previously MCP-only) exposed 6 pre-existing Connect-lane test fixtures missing Source (Rule 1, correct-behavior exposure); protoconv.go + 8 fixture sites migrated for the *bool change (Rule 3, compile-forced); Task 3's fixture-migration commit consolidated into Task 1 since Task 1's own verify gate required a compiling+passing tree (structural, not a code deviation). task (lint+full suite) green, go vet clean, go.mod/go.sum zero diff, license:check 0 invalid, chart:validate/proto:lint/proto:gen/ui:build all zero-drift. REQ-validation-error-attribution and REQ-embed-provider-error-body now marked COMPLETE. REQ-error-hint-envelope's blocking condition (D-06a landing) is also now resolved but the requirement is NOT auto-marked — it is absent from 04-06-PLAN.md's own frontmatter requirements field, flagged loudly in 04-06-SUMMARY.md's Requirements Status section for orchestrator/04-07 attention."
 ---
 
 <!-- RESUME HERE -->
@@ -52,13 +52,18 @@ zero diff) are green on the final tree.
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x Phase 4 — Diagnosability — IN PROGRESS (5/7 plans, wave 3 of 5 fully landed). Plan 04-01 (tracer) landed the field+hint error envelope end-to-end on one validator; plan 04-02 landed Cedar decision diagnostics (debug-level logging at both authz chokepoints); plan 04-03 landed the embeddings provider error body, both-lane drain, and bounded success decode; plan 04-04 landed the full `tools.go` sweep (Category A/B) plus the criterion-2 matrix and the 401 scope-fence pin; plan 04-05 landed `rules.go`'s last unwrapped validator and removed `connectapi.go`'s seven hand-wraps so the Connect lane actually honors the failure class.
+**Current focus:** v0.12.x Phase 4 — Diagnosability — IN PROGRESS (6/7 plans, wave 4 of 5 fully landed). Plan 04-01 (tracer) landed the field+hint error envelope end-to-end on one validator; plan 04-02 landed Cedar decision diagnostics (debug-level logging at both authz chokepoints); plan 04-03 landed the embeddings provider error body, both-lane drain, and bounded success decode; plan 04-04 landed the full `tools.go` sweep (Category A/B) plus the criterion-2 matrix and the 401 scope-fence pin; plan 04-05 landed `rules.go`'s last unwrapped validator and removed `connectapi.go`'s seven hand-wraps so the Connect lane actually honors the failure class; plan 04-06 landed the D-06a schema layer (24 fields, 13 structs, closing issue #360 by name), the `delete_all` D-19 guard, the koanf-configurable summary bound, and the dimension-sized embeddings bound.
 
 ## ▶ Resume Point (session handed off 2026-08-01)
 
-**Next command:** Waves 1, 2, and 3 are fully landed (04-01 through 04-05). Proceed to wave 4
-(04-06, D-06a's schema-level `omitempty` extension plus D-19's `delete_all` relaxation and the
-koanf-configurable summary bound), which depends on 04-05 being complete (it now is).
+**Next command:** Waves 1 through 4 are fully landed (04-01 through 04-06). Proceed to wave 5
+(04-07, the docs-site error reference — must document the new ENGRAM_MEMORY_MAX_SUMMARY_BYTES
+config key per D-18's "a config key is a published operator contract" obligation, alongside the
+full class/code/hint vocabulary 04-04/04-05 already stabilized). 04-07 depends on 04-06 being
+complete (it now is). Before planning/executing 04-07, resolve the REQ-error-hint-envelope
+frontmatter gap noted in 04-06-SUMMARY.md's Requirements Status section — the requirement's
+blocking condition is resolved but it is not in 04-06-PLAN.md's own `requirements` field, so it
+was not auto-marked complete.
 
 **Done:** Phases 1, 2, and 3 complete and verified. Phase 3's blocking authz gate is
 closed — `03-AUTHZ-GATE.md`, commit `a7f827b6`. Plans 03-01 (authz isolation proof),
@@ -107,7 +112,7 @@ REQ-cross-spine-authz-verified, REQ-cross-spine-result-provenance) are complete.
 
 ## Current Position
 
-Phase: v0.12.x Phase 4 (Diagnosability) — 🔶 IN PROGRESS (5/7 plans, wave 3 of 5 fully landed)
+Phase: v0.12.x Phase 4 (Diagnosability) — 🔶 IN PROGRESS (6/7 plans, wave 4 of 5 fully landed)
 Plan 04-01 (tracer, wave 1): `argError{Fields, Hint, Detail, Class}` built in
 `internal/server/argerror.go` — the one envelope carrying D-05's field attribution and D-09's
 remediation hint together, grammar `field=<name> hint=<code>: <detail>` per the D-17 checkpoint.
@@ -266,6 +271,55 @@ envelope-shape change — this is the ONE touch to `argerror.go` across 04-04/04
 (D-06a's schema-level `omitempty` extension, D-19's `delete_all` relaxation, D-18's koanf-
 configurable summary bound) also declares both requirements; only mark them complete once 04-06
 has landed.
+
+Plan 04-06 (D-06a schema layer + #360 regression + `delete_all` guard + embed bound, wave 4,
+depends_on 04-05/04-03): Task 1 relaxed all 24 fields on the approved delta list (13 structs) to
+`omitempty`, verified against the LIVE tree by direct `rg -c` count (20 in `tools.go`, 4 in
+`rules.go` excluding `ruleView`'s own 4) rather than trusted from RESEARCH's representative table
+— matched exactly, no premise falsified this plan (three prior plans this phase each falsified
+one). New `validateStoreArgs`/`validateUpdateArgs`/`requireID`/`deps.deleteAll` cover the fields
+with no prior Go-level guard; most others (`citationArg`, `storeDiscoveryArgs`, `storeRuleArgs`,
+`listRulesArgs`) already had a check the schema's own required-ness was shadowing, now reachable
+for the first time. `deps.deleteAll` is a new extraction — `delete_all` was the ONE MCP tool of 15
+whose store call was inlined directly in `Register`'s closure rather than routed through a
+`deps.*` method; extracting it landed the D-19 scope guard correctly (before the only side
+effect) AND made it independently testable against a spy store without a live MCP session.
+`setVisibilityArgs.Shared` became `*bool` (D-06a's one type change, not just a tag) so
+`shared:false` stays distinguishable from omission — `protoconv.go`'s `setVisibilityRequestToArgs`
+and 8 test-fixture call sites updated for the compile-forced consequence (new `boolp` helper
+mirroring the existing `strp`). The **D-18 amendment** (resolved 2026-08-01, checkpoint block at
+the top of the plan's `<objective>`) replaced the originally-specified `maxMemorySummaryBytes = 512`
+constant with a koanf `internal/config.MemoryConfig.MaxSummaryBytes` entry
+(`ENGRAM_MEMORY_MAX_SUMMARY_BYTES`, default 512, 0 disables, no `Legacy` key) — `internal/config`
+touched even though not in the plan's declared `files_modified`, since the amendment mandates it.
+`embedderFromConfig` now derives `embed.WithMaxResponseBytes` from `cfg.Embed.Dim`
+(`max(64KiB, dim*64)`), completing plan 04-03's option (D-16) — falls through to the package
+default on a parse failure. Fixing `validateStoreArgs` to require `Source` UNIFORMLY across MCP
+and Connect (both call the same `deps.storeMemory`/`scheduleMemory` core) exposed 6 pre-existing
+Connect-lane test fixtures whose "valid" requests omitted `Source`, silently relying on a gap the
+Connect proto contract never closed — fixed as the correct consequence of D-06a's uniform-
+enforcement goal, not a bug in the fix (Rule 1). Task 2 built
+`internal/server/schemarequired_test.go`: `TestIssue360SummaryLengthNamesSummary` (#360's own
+repro at ~700/~1400-char summaries, asserts the field SET equals `["summary"]` and explicitly
+that `"content"` is absent) with a recorded RED transcript (temporarily disabling only the summary
+check: the honest failure mode is "no error at all," not "names content" — once required-ness
+lives entirely in Go the four `validateStoreArgs` checks are field-independent, which is the
+correct decoder-independent behavior); `TestIssue360PositiveControl` (#360's own
+previously-succeeding rows still succeed); `TestSchemaRequiredMovedToGoLevel` (25 subtests, floor
+was `>=24`); `TestDeleteAllRequiresScope` (rejection + zero `DeleteAll` calls, D-19's dedicated
+safety test); `TestValidateUpdateArgsNotInDepsUpdateMemory` (the negative half of the
+`updateArgs.Content` asymmetry). A manual before/after schema diff (`jsonschema.For` via a
+throwaway test, deleted after use) confirmed the ONLY delta across the relaxation is `required`
+shrinking to `null` — every property's type/description byte-identical. Task 3's fixture-migration
+commit was consolidated into Task 1 (its own `<verify>` gate required a compiling+passing tree
+before it could land) — the gate-running half (all seven phase-close gates) ran clean with zero
+further changes. `task` (lint + full repo suite) green, `go vet ./...` clean, `go.mod`/`go.sum`
+zero diff, `license:check` 0 invalid, `chart:validate`/`proto:lint`/`proto:gen`/`ui:build` all
+zero-drift. Commits: `98c9bc36`, `8c1a7b59`.
+**REQ-validation-error-attribution and REQ-embed-provider-error-body are now COMPLETE.**
+**REQ-error-hint-envelope's blocking condition is also resolved but the requirement is NOT
+auto-marked** — it is absent from 04-06-PLAN.md's own frontmatter `requirements` field; flagged
+for orchestrator/04-07 attention in `04-06-SUMMARY.md`'s "Requirements Status" section.
 
 Phase: v0.12.x Phase 3 (Cross-Spine Memory Recall) — ✅ COMPLETE 2026-08-01
 Plans: 5 of 5 complete (03-01 cross-spine authz isolation proof, 03-02 search_memory tracer,
@@ -500,6 +554,10 @@ milestone needs in working memory.
 - [Phase ?]: 04-02: confirms 04-03's shared-working-tree finding from the other side — `git add <explicit files>` followed by `git status --short` before every commit caught a sibling agent's concurrently-`git add`-ed files riding along in the index (`git restore --staged <sibling files>` cleans it without touching the sibling's working-tree changes). Also: `gsd-tools query state.record-metric`/`state.record-session` DO apply cleanly to this hand-maintained STATE.md's frontmatter, but `state.record-session` silently resets `progress.percent` to a stale/wrong value as a side effect even when only `stopped_at`/`last_updated`/`last_activity_desc` were the intended target — re-verify and hand-correct `percent` after EVERY `state.*` call that touches frontmatter, not just after `state.advance-plan`/`roadmap.update-plan-progress`. Cross-package Go test-file access is impossible (no `_test.go`-to-`_test.go` imports across packages) — when a negative gate needs an unexported field only reachable from another package's own test file, the gate must live IN that package's test file, even if the plan's `must_haves.artifacts` table names a different location (the plan's action text is authoritative over its own artifacts table when the two conflict on placement).
 - [Phase ?]: D-08 scope fence verified by reading go-sdk@v1.6.1/auth/auth.go:104 (http.Error at :90) before any tools.go reformat landed; MCP 401 body pinned byte-for-byte
 - [Phase ?]: parseWindow's region-scoped verify gate (whole-function zero-fmt.Errorf) forced converting three RESEARCH-unnumbered sub-checks beyond rows 32-34 — documented as an inventory gap, not scope creep
+- [Phase ?]: 04-06: deps.storeMemory/deps.scheduleMemory ARE the shared MCP+Connect core (StoreMemory/ScheduleMemory are 2 of 6 Connect write RPCs — CLAUDE.md's "v1 read API" description of the Connect surface is stale; six write RPCs exist: StoreMemory, StoreDiscovery, UpdateMemory, DeleteMemory, SetVisibility, ScheduleMemory), so a presence check added to one of those shared deps methods applies symmetrically to both lanes with no asymmetry risk — unlike updateArgs.Content, which is genuinely asymmetric (Connect's field-mask lane legitimately supplies nil). Confirm which lanes a deps.* method serves (grep connectapi.go's RPC list) before assuming a new check is MCP-only.
+- [Phase ?]: 04-06: delete_all was the one MCP tool (of 15) whose store call was inlined directly in Register's closure rather than routed through a deps.* method — extracting deps.deleteAll was necessary for both correct guard placement AND independent testability (TestDeleteAllRequiresScope needs a spyStore-backed deps, unreachable from inside an anonymous mcp.AddTool closure argument).
+- [Phase ?]: 04-06: a plan's frozen `<verify>` gate (rg -q 'exact-identifier-name') can predate a later checkpoint amendment that changes the design (D-18: constant -> koanf config). When the two conflict, either satisfy the gate's literal string (here: naming the new parser func identically to the old constant) or flag the mismatch explicitly — do not silently drop the gate.
+- [Phase ?]: 04-06: internal/config test files construct full Config{} literals for direct .Validate() calls (validConfigForServiceAuthTests, TestValidateIgnoresSummaryWhenDisabled, etc.) — any new required-with-a-default config field added to the registry needs a matching field added to EVERY such literal, or previously-green tests fail on the new field's empty-string zero value.
 
 ### Blockers/Concerns
 
@@ -551,8 +609,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-01T19:04:35.059Z
-Stopped at: Completed 04-05-PLAN.md (wave 3 of 5) - rules.go's last unwrapped validator converted, connectapi.go's seven hand-wrapped CodeInvalidArgument sites removed so the failure class selects the Connect code, cursor_mode/offset reshaped as a relational rejection, 12-row code-mapping table with RED transcript
+Last session: 2026-08-01T19:34:02.322Z
+Stopped at: Completed 04-06-PLAN.md (wave 4 of 5) - 24 fields across 13 arg structs moved from schema-required to Go-required (D-06a), closing issue #360 by name; delete_all's scope guard extracted into deps.deleteAll and landed in the same commit as its schema relaxation (D-19); koanf-configurable ENGRAM_MEMORY_MAX_SUMMARY_BYTES (D-18); embeddings success-decode bound sized from ENGRAM_EMBED_DIM (D-16, closes plan 04-03's option)
 Resume file: None
 
 ## Performance Metrics
@@ -633,6 +691,7 @@ Resume file: None
 | Phase 04 P02 | 35min | 3 tasks | 6 files |
 | Phase 04 P04 | ~25min | 3 tasks | 3 files |
 | Phase 04 P05 | 18min | 3 tasks | 5 files |
+| Phase 04 P06 | 35min | 2 tasks | 15 files |
 
 ## Operator Next Steps
 

@@ -115,7 +115,7 @@ Zero new Go dependencies are required for this entire milestone.
   disclosure rule at the reader, even though `cedar.Diagnostic` carries no PII fields by
   construction. Full Cedar expression traces are excluded.
 
-- [ ] **REQ-validation-error-attribution**: An argument-validation rejection names the field that
+- [x] **REQ-validation-error-attribution**: An argument-validation rejection names the field that
   actually failed. Fixed at the branch-attribution mechanism, not by patching the one reported
   string — pinned by a matrix test with one case per single-field-invalid input asserting the
   correct field is named, rather than string-matching exact wording. *(Today an over-long `summary`
@@ -125,7 +125,7 @@ Zero new Go dependencies are required for this entire milestone.
   field attribution, so an agent's next attempt is informed rather than guessed. *(The error string
   is literally the next prompt the model acts on.)*
 
-- [ ] **REQ-embed-provider-error-body**: A non-2xx response from the embeddings provider surfaces a
+- [x] **REQ-embed-provider-error-body**: A non-2xx response from the embeddings provider surfaces a
   bounded prefix of the provider's error body in the returned error alongside the status code, then
   drains and closes the body so the connection stays reusable. The chat/summarize lane is audited
   for the same gap and fixed if present, so the fix does not leave a matching bug behind the one
@@ -241,9 +241,9 @@ Populated during roadmap creation.
 | REQ-rule-capture-investigation | v0.12.x Phase 6 | Pending |
 | REQ-rule-capture-intervention | v0.12.x Phase 6 | Pending |
 | REQ-authz-decision-diagnostics | v0.12.x Phase 4 | Pending |
-| REQ-validation-error-attribution | v0.12.x Phase 4 | Pending |
+| REQ-validation-error-attribution | v0.12.x Phase 4 | Complete |
 | REQ-error-hint-envelope | v0.12.x Phase 4 | Pending |
-| REQ-embed-provider-error-body | v0.12.x Phase 4 | Pending |
+| REQ-embed-provider-error-body | v0.12.x Phase 4 | Complete |
 | REQ-per-lane-api-key | v0.12.x Phase 5 | Pending |
 | REQ-reindex-resume-tags | v0.12.x Phase 5 | Pending |
 | REQ-reindex-stale-repair | v0.12.x Phase 5 | Pending |
