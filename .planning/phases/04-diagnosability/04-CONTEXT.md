@@ -181,6 +181,53 @@ provider integrations.
   planner should size the bound to the configured `ENGRAM_EMBED_DIM` rather than copying 1 MiB blindly.
   — **Reversibility:** reversible.
 
+### Checkpoint resolutions (2026-08-01, Sean — plan 04-01 Task 1)
+
+- **D-17 (the envelope grammar is a flat field-and-hint prefix, not JSON):** Errors read
+  `field=<name> hint=<code>: <human text>`. Chosen over a JSON payload because these errors are
+  `%w`-wrapped by callers and wrapping a JSON blob produces unparseable nesting. This string IS the
+  wire format on the MCP lane — `go-sdk@v1.6.1/mcp/server.go:340-354` discards the built
+  `*CallToolResult` on a non-nil error and returns only `err.Error()` as text, so there is no side
+  channel to carry structure separately.
+  — **Reversibility:** costly — a published error shape on both lanes.
+
+- **D-18 (the memory summary bound is REAL but KOANF-CONFIGURABLE — decided 2026-08-01 by Sean):**
+  Research established that issue #360's misattribution cannot be fixed deterministically without a
+  summary length bound, because none exists today — `maxRuleSummaryBytes = 256`
+  (`internal/server/rules.go:22`) bounds *rules* only. The plan proposed a hard
+  `maxMemorySummaryBytes = 512` constant. Sean approved the bound **on condition that it is koanf
+  configurable**, not a compile-time constant.
+  So it becomes a `internal/config` registry entry — the single source of truth for `ENGRAM_` vars
+  per CLAUDE.md — with a **default of 512**, following the existing entry shape
+  (`internal/config/registry.go:60-66`). The rule bound stays a separate constant; this key governs
+  ordinary memory summaries only.
+  **Planner/executor notes:** (a) no `Legacy:` key — it is new, and retired `MEM_*` vars are a fatal
+  guard (DEC-jgq/DEC-irq); (b) follow the existing "0 is honored as disabled" convention used by the
+  timeout keys (`tools.go:315`, `:330`) so an operator can switch the bound off; (c) the check must
+  still run **before** the content-presence check so #360's regression is deterministic rather than
+  decoder-dependent — configurability does not relax that ordering; (d) a config key is a published
+  operator contract, so it needs a docs-site entry in plan 04-07.
+  — **Reversibility:** costly — a published config key; renaming it later breaks operator deployments
+  and Helm values.
+
+- **D-19 (`delete_all`'s relaxation ships with its mitigation as one indivisible edit):** Accepted as
+  planned. `scopeArgs.Scope` (`tools.go:588`) backs `delete_all` (`tools.go:1702`), so relaxing its
+  `omitempty` moves the only guard between an omitted scope and a destructive teardown out of the
+  wire schema. The tag relaxation and the Go-level presence check are ONE task, the check precedes
+  every side effect, and `TestDeleteAllRequiresScope` is a dedicated test rather than a matrix row.
+  If the ordering cannot be guaranteed, the executor STOPS and reports rather than shipping the
+  relaxation alone.
+  — **Reversibility:** reversible — but the window between relaxation and check is not, which is why
+  they are indivisible.
+
+- **D-20 (the Connect code mapping stays inside the CLI-compatible trio):** Classes map only to
+  `InvalidArgument` (malformed or unknown enum value), `OutOfRange` (length and numeric bounds), and
+  `FailedPrecondition` (mutually-exclusive or ordering violations between individually-valid fields).
+  These are exactly the three `exitCodeForConnectErr` (`cmd/engram/client_common.go:237-249`) already
+  groups under one exit code, so the CLI's exit-code contract is unchanged for free and the breaking
+  surface is confined to callers branching on the Connect code itself. Ships as `feat!` per D-11.
+  — **Reversibility:** one-way — a released error-code mapping.
+
 ### Claude's Discretion
 
 - Exact names for the diagnostics accessor, the structured validation-error type, and the hint code
