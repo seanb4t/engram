@@ -4,17 +4,17 @@ milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
 current_phase_name: Diagnosability
 status: phase_in_progress
-stopped_at: "Completed 04-04-PLAN.md (wave 2 of 5) - the tools.go argument-attribution sweep: 16 Category A sites + 3 Category B relational sites converted, 23-row matrix, D-12 no-echo gate, MCP 401 body pinned"
-last_updated: "2026-08-01T18:46:14.906Z"
+stopped_at: Completed 04-05-PLAN.md (wave 3 of 5) - rules.go's last unwrapped validator converted, connectapi.go's seven hand-wrapped CodeInvalidArgument sites removed so the failure class selects the Connect code, cursor_mode/offset reshaped as a relational rejection, 12-row code-mapping table with RED transcript
+last_updated: "2026-08-01T19:04:35.072Z"
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 19
-  completed_plans: 16
-  percent: 84
+  completed_plans: 17
+  percent: 75
 current_phase: 04
 last_activity: 2026-08-01
-last_activity_desc: "v0.12.x Phase 4 plan 04-04 executed (wave 2 of 5, depends_on 04-01) — every remaining single-field and relational rejection reachable from internal/server/tools.go (RESEARCH sweep rows 6-21 Category A, 32-34 Category B) converted from bare fmt.Errorf to the argError envelope: validateCitations (6 sites), checkIdempotentReplay's key-size check, listScheduled's three window/state checks, effectiveDiscoveryScope, effectiveSearchScope (4 call sites across MCP + Connect), the four inline search_memory/list_memory closure window parses, and parseWindow's three relational rows plus three single-field sub-checks the RESEARCH inventory did not separately number (converted to satisfy the plan's own region-scoped zero-fmt.Errorf verify gate). D-12 discipline: dropped both remaining got %q value-echo tails and every RFC3339 parse-failure's caller-value interpolation. Task 1 verified BEFORE any reformat that the MCP 401 body (go-sdk auth/auth.go:104, http.Error at :90) is architecturally separate from tools.go and pinned it byte-for-byte (TestMCP401BodyByteIdentical, 3 subtests). TestValidationErrorAttributionMatrix: 23 named subtests (>=21 floor), one per single-field-invalid input, full-SET field equality + exact hint equality, covering 04-01's five rows plus this plan's sweep. TestHintNeverEchoesValue: 7 sentinel-marker subtests, RED captured by temporarily restoring the citation-kind got %q tail. TestCitationValidationIsNotCodeInternal closes the second of D-11a's three bare-unwrapped-error defects. task (lint+full suite) green, -shuffle=on green, go vet clean, go.mod/go.sum zero diff. REQ-validation-error-attribution and REQ-error-hint-envelope NOT yet complete — 04-05 (rules.go/summary.go sweep) and 04-06 (D-06a schema-level extension) also declare both requirements."
+last_activity_desc: "v0.12.x Phase 4 plan 04-05 executed (wave 3 of 5, depends_on 04-04) — rules.go's validateStoreRule/validateRuleSummary/listRules (9 rejections) converted from bare fmt.Errorf/manually-wrapped store.ErrInvalidArgument to argErrf, closing the third and last of D-11a's three unwrapped validators. connectapi.go's seven hand-wrapped connect.NewError(CodeInvalidArgument, ...) sites in ListMemories/SearchMemories removed — the load-bearing edit that makes D-11 actually live on the Connect lane instead of a no-op every existing test would have missed: the four created_after/created_before parses now share a parseConnectWindowBound helper, the two effectiveSearchScope boundary calls hand their already-classified error to connectError, and the cursor_mode/offset check becomes a relational rejection naming both fields (classPrecondition -> CodeFailedPrecondition, was CodeInvalidArgument). Three named tests in new connectargerror_test.go: TestStoreRuleValidationIsNotCodeInternal (7 subtests, direct connectError call since store_rule has no Connect RPC), TestConnectValidationCodeMapping (12 subtests, floor was >=10, 5 driven through real ListMemories/SearchMemories/StoreDiscovery handlers including one classOutOfRange and one classPrecondition row, trio membership asserted as a SET, RED transcript recorded by temporarily restoring the pre-Task-2 hand-wrap), TestConnectCombinationAttribution (both field names + CodeFailedPrecondition pinned through the real handler). Deviations: TestListMemoriesRejectsCursorModeWithOffset's expected code flipped CodeInvalidArgument -> CodeFailedPrecondition (Rule 1, the intended breaking effect); argErrFieldsf's always-nil variadic dropped after golangci-lint's unparam flagged it at this plan's fourth call site (Rule 3, mechanical, no envelope-shape change). task (lint+full suite) green, -shuffle=on green, go vet clean, go.mod/go.sum zero diff, license:check 0 invalid. REQ-validation-error-attribution and REQ-error-hint-envelope STILL NOT complete — 04-06 (D-06a schema-level extension) also declares both requirements."
 ---
 
 <!-- RESUME HERE -->
@@ -52,13 +52,13 @@ zero diff) are green on the final tree.
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x Phase 4 — Diagnosability — IN PROGRESS (4/7 plans, wave 2 of 5 fully landed). Plan 04-01 (tracer) landed the field+hint error envelope end-to-end on one validator; plan 04-02 landed Cedar decision diagnostics (debug-level logging at both authz chokepoints); plan 04-03 landed the embeddings provider error body, both-lane drain, and bounded success decode; plan 04-04 landed the full `tools.go` sweep (Category A/B) plus the criterion-2 matrix and the 401 scope-fence pin.
+**Current focus:** v0.12.x Phase 4 — Diagnosability — IN PROGRESS (5/7 plans, wave 3 of 5 fully landed). Plan 04-01 (tracer) landed the field+hint error envelope end-to-end on one validator; plan 04-02 landed Cedar decision diagnostics (debug-level logging at both authz chokepoints); plan 04-03 landed the embeddings provider error body, both-lane drain, and bounded success decode; plan 04-04 landed the full `tools.go` sweep (Category A/B) plus the criterion-2 matrix and the 401 scope-fence pin; plan 04-05 landed `rules.go`'s last unwrapped validator and removed `connectapi.go`'s seven hand-wraps so the Connect lane actually honors the failure class.
 
 ## ▶ Resume Point (session handed off 2026-08-01)
 
-**Next command:** Waves 1 and 2 are fully landed (04-01, 04-02, 04-03, 04-04). Proceed to wave 3
-(04-05, the `rules.go`/`summary.go` sweep plus the Connect `cursor_mode`⊕`offset` combination
-check), which depends on 04-04 being complete (it now is).
+**Next command:** Waves 1, 2, and 3 are fully landed (04-01 through 04-05). Proceed to wave 4
+(04-06, D-06a's schema-level `omitempty` extension plus D-19's `delete_all` relaxation and the
+koanf-configurable summary bound), which depends on 04-05 being complete (it now is).
 
 **Done:** Phases 1, 2, and 3 complete and verified. Phase 3's blocking authz gate is
 closed — `03-AUTHZ-GATE.md`, commit `a7f827b6`. Plans 03-01 (authz isolation proof),
@@ -107,7 +107,7 @@ REQ-cross-spine-authz-verified, REQ-cross-spine-result-provenance) are complete.
 
 ## Current Position
 
-Phase: v0.12.x Phase 4 (Diagnosability) — 🔶 IN PROGRESS (4/7 plans, wave 2 of 5 fully landed)
+Phase: v0.12.x Phase 4 (Diagnosability) — 🔶 IN PROGRESS (5/7 plans, wave 3 of 5 fully landed)
 Plan 04-01 (tracer, wave 1): `argError{Fields, Hint, Detail, Class}` built in
 `internal/server/argerror.go` — the one envelope carrying D-05's field attribution and D-09's
 remediation hint together, grammar `field=<name> hint=<code>: <detail>` per the D-17 checkpoint.
@@ -225,6 +225,47 @@ green, `go vet ./...` clean, `go.mod`/`go.sum` zero diff. Commits: `fa3dfc98`, `
 (`rules.go`/`summary.go` sweep, the Connect `cursor_mode`⊕`offset` combination check) and 04-06
 (D-06a's schema-level `omitempty` extension) also declare both requirements; only mark them
 complete once all plans referencing them have landed.
+
+Plan 04-05 (`rules.go` + `connectapi.go`, wave 3, depends_on 04-04): Task 1 converted `rules.go`'s
+nine rejections (`validateStoreRule` x4, `validateRuleSummary` x3, `listRules` x2) from bare
+`fmt.Errorf`/manually-wrapped `store.ErrInvalidArgument` to `argErrf`, closing the third and last
+of D-11a's three unwrapped validators (`validateStoreDiscovery` 04-01, `validateCitations` 04-04,
+`validateStoreRule` here). Both `got %q` value-echo tails dropped; `listRules`' per-element
+rejection keeps the plain field name `scopes` (never `scopes[i]` or the value) and states the
+offending position in Detail instead, per the plan's explicit instruction. `errStaleSummary`
+(summary.go:34) deliberately left unconverted — a state-precondition sentinel already mapped
+correctly, not an argument rejection. Task 2 is the load-bearing edit: removed all seven of
+`connectapi.go`'s hand-wrapped `connect.NewError(connect.CodeInvalidArgument, ...)` sites in
+`ListMemories`/`SearchMemories`, which had been silently overriding the class `connectError` was
+built to select since 04-01 — every one of those was invisible to every pre-04-05 test because they
+all asserted `CodeInvalidArgument`. The four `created_after`/`created_before` parses now share a new
+`parseConnectWindowBound` helper; the two `effectiveSearchScope` boundary calls hand their
+already-classified error (04-04) to `connectError`; the `cursor_mode`/`offset` check becomes a
+relational rejection naming both fields (`argErrFieldsf`, `classPrecondition`,
+`HintMutuallyExclusive`) mapping to `CodeFailedPrecondition` (was `CodeInvalidArgument`). Task 3
+built `internal/server/connectargerror_test.go`: `TestStoreRuleValidationIsNotCodeInternal` (7
+subtests, direct `connectError` call — `store_rule` has no Connect RPC, so the defect is latent),
+`TestConnectValidationCodeMapping` (12 subtests, floor was `>=10`, 5 driven through the REAL
+`ListMemories`/`SearchMemories`/`StoreDiscovery` handlers including one `classOutOfRange` row
+(too-many-citations) and one `classPrecondition` row (cursor_mode/offset) — trio membership
+asserted as a SET — with a recorded RED transcript: the cursor_mode/offset check was temporarily
+reverted to its pre-Task-2 hand-wrap, the subtest failed `invalid_argument` vs wanted
+`failed_precondition`, and the revert was undone with zero net `git diff`), and
+`TestConnectCombinationAttribution` (both field names + `CodeFailedPrecondition` pinned through the
+real handler). The shipped `TestExitCodeForConnectErrTable` re-run unmodified and green — the CLI's
+exit-code contract proven against the shipped table, not asserted in prose. Two deviations:
+`TestListMemoriesRejectsCursorModeWithOffset`'s expected code flipped `CodeInvalidArgument` ->
+`CodeFailedPrecondition` (Rule 1 — the class change is this plan's intended breaking effect, not a
+bug); `argErrFieldsf`'s always-nil `format string, a ...any` variadic dropped in favor of a plain
+`detail string` param after golangci-lint's `unparam` check flagged it once this plan's fourth call
+site joined the three pre-existing ones (Rule 3, mechanical, no call-site syntax change, no
+envelope-shape change — this is the ONE touch to `argerror.go` across 04-04/04-05). `task`
+(lint+full suite) green, `-shuffle=on` green, `go vet` clean, `go.mod`/`go.sum` zero diff,
+`task license:check` 0 invalid. Commits: `3bd08e97`, `db11dfcf`, `b2b83b04`.
+**REQ-validation-error-attribution and REQ-error-hint-envelope are STILL NOT complete** — 04-06
+(D-06a's schema-level `omitempty` extension, D-19's `delete_all` relaxation, D-18's koanf-
+configurable summary bound) also declares both requirements; only mark them complete once 04-06
+has landed.
 
 Phase: v0.12.x Phase 3 (Cross-Spine Memory Recall) — ✅ COMPLETE 2026-08-01
 Plans: 5 of 5 complete (03-01 cross-spine authz isolation proof, 03-02 search_memory tracer,
@@ -510,8 +551,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-01T18:46:14.893Z
-Stopped at: Completed 04-04-PLAN.md (wave 2 of 5) - the tools.go argument-attribution sweep: 16 Category A sites + 3 Category B relational sites converted, 23-row matrix, D-12 no-echo gate, MCP 401 body pinned
+Last session: 2026-08-01T19:04:35.059Z
+Stopped at: Completed 04-05-PLAN.md (wave 3 of 5) - rules.go's last unwrapped validator converted, connectapi.go's seven hand-wrapped CodeInvalidArgument sites removed so the failure class selects the Connect code, cursor_mode/offset reshaped as a relational rejection, 12-row code-mapping table with RED transcript
 Resume file: None
 
 ## Performance Metrics
@@ -591,6 +632,7 @@ Resume file: None
 | Phase 04 P03 | 6min | 3 tasks | 5 files |
 | Phase 04 P02 | 35min | 3 tasks | 6 files |
 | Phase 04 P04 | ~25min | 3 tasks | 3 files |
+| Phase 04 P05 | 18min | 3 tasks | 5 files |
 
 ## Operator Next Steps
 

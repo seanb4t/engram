@@ -354,7 +354,7 @@ runs, so criterion 2's original scope could not have fixed its own motivating bu
 to move required-ness out of the advertised tool schema and into engram's validation. That, D-08's
 message reformat, and D-11's Connect code widening ship together as one `feat!`.
 
-**Plans:** 4/7 plans executed in 5 waves
+**Plans:** 5/7 plans executed in 5 waves
 
 Plans:
 
@@ -362,7 +362,7 @@ Plans:
 - [x] 04-02-PLAN.md — Cedar decision diagnostics: a narrow allowlisted accessor over `authz.Decision`, a debug line on both arms at the two `internal/store` chokepoints, and a negative gate proving no expression trace is reachable (wave 1)
 - [x] 04-03-PLAN.md — Provider lanes: the bounded embeddings error body, the drain on BOTH lanes, the dimension-sizeable success bound, and the phase's only new test helper (wave 1)
 - [x] 04-04-PLAN.md — The `tools.go` sweep and the criterion-2 matrix, gated behind a read-first proof that the MCP 401 auth body is out of D-08's scope (wave 2)
-- [ ] 04-05-PLAN.md — `rules.go` and `connectapi.go`: the last unwrapped validator, and removing the seven hand-wraps that would otherwise make D-11 a no-op on the Connect lane (wave 3)
+- [x] 04-05-PLAN.md — `rules.go` and `connectapi.go`: the last unwrapped validator, and removing the seven hand-wraps that would otherwise make D-11 a no-op on the Connect lane (wave 3)
 - [ ] 04-06-PLAN.md — D-06a: required-ness moves from the inferred schema into engram, with issue #360's own repro as a named regression and its positive control (wave 4)
 - [ ] 04-07-PLAN.md — Agent- and operator-facing guidance for the three new contracts, plus the upgrade note (wave 5)
 
@@ -475,7 +475,7 @@ markdown and tool descriptions rather than Go correctness.
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | Complete | 2026-07-31 |
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete | 2026-07-31 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete | 2026-08-01 |
-| 4. Diagnosability | v0.12.x | 4/7 | In Progress | — |
+| 4. Diagnosability | v0.12.x | 5/7 | In Progress | — |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 0/3 | Pending | — |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 0/2 | Pending | — |
 
