@@ -428,12 +428,12 @@ markdown and tool descriptions rather than Go correctness.
 
 | Phase | Milestone | Requirements | Status | Completed |
 |-------|-----------|--------------|--------|-----------|
-| 1. Authorization & Isolation | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
-| 2. Recall Semantics | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
-| 3. Memory Kinds & Tools | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
-| 4. Embedder | v0.8.x | 1/1 | Complete | shipped (v0.8.x) |
-| 5. Config & Transport | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
-| 6. Telemetry & Observability | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
+| v0.8.x Phase 1: Authorization & Isolation | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
+| v0.8.x Phase 2: Recall Semantics | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
+| v0.8.x Phase 3: Memory Kinds & Tools | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
+| v0.8.x Phase 4: Embedder | v0.8.x | 1/1 | Complete | shipped (v0.8.x) |
+| v0.8.x Phase 5: Config & Transport | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
+| v0.8.x Phase 6: Telemetry & Observability | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
 | 7. Web UI, Docs Site & Distribution | v0.8.x | 9/9 | Complete | shipped (v0.8.x) |
 | 8. Connect Auth Hardening | v0.8.x | 1/1 | Complete | shipped (PR #248/#266) |
 | 9. Retrieval Eval & Ranking Precision | v0.9.x | 3/3 | Complete | 2026-07-10 (PR #336) |
