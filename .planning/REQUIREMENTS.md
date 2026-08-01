@@ -72,7 +72,7 @@ Zero new Go dependencies are required for this entire milestone.
   `search_discovery`'s existing `CrossSpine` semantics. Available at MCP↔Connect parity via an
   additive proto field. Opt-in; the default stays scope-confined.
 
-- [ ] **REQ-cross-spine-authz-verified**: Cross-spine search never widens the authorization filter.
+- [x] **REQ-cross-spine-authz-verified**: Cross-spine search never widens the authorization filter.
   Before implementation, `Store.Search`'s filter-construction path is read end to end and it is
   confirmed **in writing** that the owner/authz `Must` clause is composed as a genuinely separate,
   unconditional entry from the scope clause — not a combined condition where omitting scope could
@@ -230,7 +230,7 @@ Populated during roadmap creation.
 | REQ-cli-credential-safety | v0.12.x Phase 2 | Complete |
 | REQ-cli-self-describing | v0.12.x Phase 2 | Complete |
 | REQ-cross-spine-search | v0.12.x Phase 3 | Pending |
-| REQ-cross-spine-authz-verified | v0.12.x Phase 3 | Pending |
+| REQ-cross-spine-authz-verified | v0.12.x Phase 3 | Complete |
 | REQ-cross-spine-result-provenance | v0.12.x Phase 3 | Pending |
 | REQ-rule-capture-investigation | v0.12.x Phase 6 | Pending |
 | REQ-rule-capture-intervention | v0.12.x Phase 6 | Pending |

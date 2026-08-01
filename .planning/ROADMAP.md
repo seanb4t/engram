@@ -312,11 +312,11 @@ architecture-vs-pitfalls disagreement and is a **gate**, not a task — it must 
 implementation begins. **Resolved:** criterion 1 CLOSED 2026-08-01 (`03-AUTHZ-GATE.md`, commit
 `a7f827b6`), amended in plan 03-01 to cover `listFilter`.
 
-**Plans:** 5 plans in 5 waves
+**Plans:** 1/5 plans executed in 5 waves
 
 Plans:
 
-- [ ] 03-01-PLAN.md — The non-vacuous two-owner authz isolation proof against real Qdrant, plus the recorded RED-by-mutation transcript, landing before any filter edit (wave 1)
+- [x] 03-01-PLAN.md — The non-vacuous two-owner authz isolation proof against real Qdrant, plus the recorded RED-by-mutation transcript, landing before any filter edit (wave 1)
 - [ ] 03-02-PLAN.md — Tracer: `cross_spine=true` on `search_memory` end-to-end through the guard, the typed core, and the `ownerScopeFilter` conditional (wave 2)
 - [ ] 03-03-PLAN.md — Expansion: cross-spine `list_memory`, plus `searched_scopes`/`scopes_truncated` and per-result scope attribution on the MCP lane (wave 3)
 - [ ] 03-04-PLAN.md — Connect + proto parity via six additive fields, read explicitly and never inferred from an empty scope (wave 4)
@@ -456,7 +456,7 @@ markdown and tool descriptions rather than Go correctness.
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | Complete | 2026-07-31 |
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete | 2026-07-31 |
-| 3. Cross-Spine Memory Recall | v0.12.x | 0/3 | Pending | — |
+| 3. Cross-Spine Memory Recall | v0.12.x | 1/3 | In Progress | — |
 | 4. Diagnosability | v0.12.x | 0/4 | Pending | — |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 0/3 | Pending | — |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 0/2 | Pending | — |

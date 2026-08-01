@@ -2,31 +2,33 @@
 gsd_state_version: 1.0
 milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
-current_phase: 03
 current_phase_name: Cross-Spine Memory Recall
-status: gate_closed_ready_to_discuss
-stopped_at: v0.12.x Phase 3 authz GATE closed (a7f827b6) — next step is smart discuss, then plan
-last_updated: "2026-08-01T01:15:00.000Z"
+status: executing
+stopped_at: Completed 03-01-PLAN.md (cross-spine authz isolation proof, wave 1 of 5) — wave 2 (03-02) is next
+last_updated: "2026-08-01T14:46:03.984Z"
 progress:
-  total_phases: 6
+  total_phases: 3
   completed_phases: 2
-  total_plans: 7
-  completed_plans: 7
-  percent: 33
+  total_plans: 12
+  completed_plans: 8
+  percent: 67
+current_phase: 03
 last_activity: 2026-08-01
-last_activity_desc: v0.12.x Phase 3 authz gate closed by reading Store.Search; discuss not yet run
+last_activity_desc: v0.12.x Phase 3 plan 03-01 executed — cross-spine authz isolation proof landed, non-vacuous (RED-by-mutation transcript recorded), zero production code touched
 ---
 
 <!-- RESUME HERE -->
 <!--
 NEXT COMMAND after /clear:
-    /gsd-autonomous --from 3
+    /gsd-execute-phase 3   (continue at wave 2, plan 03-02 — 03-01 is done)
 
 Phases 1 and 2 are COMPLETE and verified. Phase 3's blocking authz gate is already
-CLOSED — do NOT re-run it. Read .planning/phases/03-cross-spine-memory-recall/03-AUTHZ-GATE.md
-before planning Phase 3; it carries a trap that invalidates the obvious test design.
+CLOSED — do NOT re-run it. Plan 03-01 (wave 1) executed and is COMPLETE: the isolation
+test landed, its RED-by-mutation transcript is recorded, and 03-AUTHZ-GATE.md now
+covers listFilter too. Zero production code has been touched yet — internal/store/store.go
+is unmodified. Wave 2 (03-02, depends_on 03-01) is next: the ownerScopeFilter/listFilter
+D-05 edit, guarded by the isolation test.
 -->
-
 
 # Project State
 
@@ -50,6 +52,7 @@ already closed — `03-AUTHZ-GATE.md`, commit `a7f827b6`. **Do not re-run the ga
 
 1. The authz `Must` clause IS separate and unconditional (`ownerScopeFilter`, `store.go:752-757`),
    so cross-spine cannot widen authorization. Criterion 1 is satisfied.
+
 2. But there is **no scope conditional today** — architecture research described one that does not
    exist. `scope==""` currently means "scope payload is the empty string", not "all scopes", so
    the conditional must be ADDED. **This means criterion 2's two-owner isolation test would pass
@@ -61,21 +64,37 @@ already closed — `03-AUTHZ-GATE.md`, commit `a7f827b6`. **Do not re-run the ga
 
 - `git.branching_strategy` is `none`; the whole milestone rides one branch,
   `phase-01-shared-auth-chain-connect-bearer-identity`. Do not create phase branches.
+
 - The branch is behind `origin/main` by #448 (release 0.11.3), #449 (astro), #450 (wrangler).
   Zero file overlap. Sean declined integrating mid-run — do it before the PR.
+
 - ROADMAP is now GSD-aligned (commit `31429f31`): bare `Phase N` anchors = ACTIVE milestone;
   archived milestones whose numbers collide are qualified. `roadmap.analyze` / `init.manager` still
   report `phase_count: 0` — they additionally want `## vX.Y` section headings this flat ROADMAP
   does not use. Drive phase discovery by reading ROADMAP.md directly.
+
 - `check decision-coverage-plan` takes POSITIONAL args: `<phase_dir> <context_path>`. A `--context`
   flag silently lands in the phase-dir slot and reports `covered: 0`.
+
 - Keep `**Requirements:**` on one line per phase in ROADMAP.md — a wrapped line truncates
   `phase_req_ids`.
+
 - CONTEXT.md decision bullets: `- **D-NN (label):**` must close the bold span on line one, with no
   asterisks or nested emphasis in the label, or the coverage gate fails `could-not-parse`.
+
 - Open follow-ups from Phase 2: #452 (no CLI request timeout), #453 (list flag exclusivity).
 
 ## Current Position
+
+Phase: v0.12.x Phase 3 (Cross-Spine Memory Recall) — IN PROGRESS
+Plans: 1 of 5 complete (03-01 cross-spine authz isolation proof, wave 1 of 5)
+Plan 03-01: `TestCrossSpineAuthzIsolation` landed and green against real Qdrant, RED-by-mutation
+transcript recorded (`03-RED-TRANSCRIPT.md`), `03-AUTHZ-GATE.md` amended to cover `listFilter`
+(D-06). Zero production code touched — `internal/store/store.go` unmodified. Commits: `737178e2`,
+`17ddc1cf`, `4db3cec9`.
+Requirement REQ-cross-spine-authz-verified: complete.
+Next: 03-02 (wave 2, `depends_on: ["03-01"]`) — the `ownerScopeFilter`/`listFilter` D-05 edit,
+guarded by the isolation test that now exists and is proven non-vacuous.
 
 Phase: v0.12.x Phase 2 (Headless CLI Client) — ✅ COMPLETE 2026-07-31
 Plans: 3 of 3 (02-01 `engram search` tracer, 02-02 `list` + `store`, 02-03 self-describe catalog)
@@ -87,8 +106,6 @@ Gates green on final state: `task` (lint+test), `go vet ./...`, `task license:ch
 `go.mod`/`go.sum` zero diff (the milestone's zero-new-dependency constraint holds)
 Requirements: all four complete — REQ-cli-client-commands, REQ-cli-agent-output,
 REQ-cli-credential-safety, REQ-cli-self-describing
-Next: v0.12.x Phase 3 — Cross-Spine Memory Recall (independent of the spine; carries a
-research GATE that must close before implementation)
 
 **CR-01 is worth remembering as a class.** `resetClientFlags` reset the four shared client flag
 vars but none of the five `StringSliceVar`-backed ones. pflag's `stringSliceValue.Set` APPENDS
@@ -234,6 +251,7 @@ milestone needs in working memory.
 - [Phase ?]: Client import-boundary gate (D-04) is per-file via go/parser ImportsOnly, not go list -deps ./cmd/engram/... — the package also contains operator commands that legitimately import internal/store
 - [Phase ?]: 02-02: both list and store built entirely on Plan 01's client_common.go foundation, adding zero new helpers
 - [Phase ?]: The plan's landmine premise (deleting cobra.NoArgs breaks a mistyped-verb guard) did not reproduce for cobra v1.10.2 root-with-subcommands (legacyArgs already guards it); Args: cobra.ArbitraryArgs is the mutation that actually reproduces the regression the guard exists to prevent
+- [Phase ?]: D-15 mutation chosen: empty the Must slice (drop ownerOrSharedCondition) — matches 03-AUTHZ-GATE.md's own wording
 
 ### Blockers/Concerns
 
@@ -285,8 +303,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-01T00:29:21.086Z
-Stopped at: Completed 02-03-PLAN.md (self-describe catalog, wave 3 of 3) — Phase 02 complete
+Last session: 2026-08-01T14:46:03.972Z
+Stopped at: Completed 03-01-PLAN.md (cross-spine authz isolation proof, wave 1 of 5)
 Resume file: None
 
 ## Performance Metrics
@@ -357,6 +375,7 @@ Resume file: None
 | Phase 02 P01 | 40min | 2 tasks | 7 files |
 | Phase 02 P02 | ~15min | 2 tasks | 4 files |
 | Phase 02 P03 | ~35min | 2 tasks | 4 files |
+| Phase 03 P01 | 9min | 3 tasks | 3 files |
 
 ## Operator Next Steps
 
