@@ -4411,6 +4411,89 @@ func TestBulkFilterOrderIndependent(t *testing.T) {
 	}
 }
 
+// TestCrossSpineAuthzIsolation is the non-vacuous two-owner proof for
+// ROADMAP criterion 2 (03-AUTHZ-GATE.md), landed BEFORE the cross-spine
+// feature exists (D-18).
+//
+// It deliberately does NOT go through Store.Search or Store.List. Today
+// scope=="" means "the scope payload is literally the empty string", which
+// matches essentially nothing — a test that passed an empty scope to either
+// method would report "owner B never appeared" because *nothing* appeared,
+// which is a vacuous green and proves nothing about authorization
+// (03-AUTHZ-GATE.md "The correction"). Instead this test builds the exact
+// *qdrant.Filter shape the post-D-05 cross-spine path will produce — a Must
+// slice containing ONLY s.ownerOrSharedCondition, no scope element — and
+// scrolls it directly. That is not a hypothetical shape: it is byte-for-byte
+// the filter Store.ListScopes already runs in production today
+// (store.go:1396-1401), so this test pins a composition that is already
+// live, not one that will exist only after 03-02 lands.
+//
+// Both owners seed records under the SAME scope name (D-16): overlap is what
+// makes a dropped owner clause visible as a leak of the other owner's
+// records, rather than silently returning nothing.
+func TestCrossSpineAuthzIsolation(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:cross-spine-overlap"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	mk := func(id, owner, vis string) {
+		m := Memory{ID: id, Content: "x", Scope: scope, Owner: owner, Visibility: vis,
+			CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	const (
+		aPrivateID = "c5c50000-0000-0000-0000-000000000001"
+		bPrivateID = "c5c50000-0000-0000-0000-000000000002" // must never appear for A
+		bSharedID  = "c5c50000-0000-0000-0000-000000000003"
+	)
+	mk(aPrivateID, "sub-xspine-A", "")      // A private
+	mk(bPrivateID, "sub-xspine-B", "")      // B private
+	mk(bSharedID, "sub-xspine-B", "shared") // B shared
+
+	// The cross-spine-shaped filter: authz clause only, no scope element.
+	f := &qdrant.Filter{Must: []*qdrant.Condition{
+		s.ownerOrSharedCondition(Authenticated("sub-xspine-A")),
+	}}
+
+	const limit = 10000
+	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: s.collection,
+		Filter:         f,
+		Limit:          qdrant.PtrOf(uint32(limit)),
+		WithPayload:    qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		t.Fatalf("scroll: %v", err)
+	}
+
+	// Falsifiability guard: mem_eval_test is a package-shared collection and
+	// other tests (e.g. TestListExactTotalPastOldCap) seed thousands of points
+	// into it. If the page came back full, "owner B's private record is
+	// absent" would be satisfiable by truncation rather than by the authz
+	// clause — the same vacuous green in a new costume. Fail loudly instead.
+	if len(pts) >= limit {
+		t.Fatalf("scroll page filled (%d >= %d limit): cannot conclude anything about exclusion — truncation, not authz, would explain absence", len(pts), limit)
+	}
+
+	seen := make(map[string]bool, len(pts))
+	for _, p := range pts {
+		seen[p.Id.GetUuid()] = true
+	}
+
+	if seen[bPrivateID] {
+		t.Fatalf("leaked owner B's private record across the cross-spine-shaped filter: %s", bPrivateID)
+	}
+	if !seen[aPrivateID] {
+		t.Errorf("owner A's own private record missing from cross-spine-shaped read: %s", aPrivateID)
+	}
+	if !seen[bSharedID] {
+		t.Errorf("owner B's shared record missing from cross-spine-shaped read: %s", bSharedID)
+	}
+}
+
 // TestGetReadableDenyMapsToNotFound proves a Cedar Deny on an id-addressed
 // gate is indistinguishable from a genuinely missing id: even though the
 // record EXISTS and is owned by the caller, an all-deny decideRecordHook
