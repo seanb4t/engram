@@ -159,6 +159,19 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 	if req.Msg.CursorMode && req.Msg.Offset > 0 {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cursor_mode is mutually exclusive with offset"))
 	}
+	// D-04: read cross_spine EXPLICITLY. Unlike SearchDiscoveries
+	// (connectapi.go, below), this handler never maps Scope == "" to
+	// cross-spine — memories have no pre-typed-core contract to preserve, and
+	// inferring it would silently widen every existing empty-scope Connect
+	// call from "returns nothing" to "returns everything readable". This
+	// boundary call to effectiveSearchScope exists for error-CODE fidelity:
+	// deps.listMemory carries the same guard as the authoritative chokepoint,
+	// but a bare error from it would be misclassified as CodeInternal by
+	// connectError (see the comment above, :139-141) rather than surfaced as
+	// the client error it is.
+	if _, err := effectiveSearchScope(req.Msg.Scope, req.Msg.CrossSpine); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	res, err := a.d.listMemory(ctx, c, coreListRequest{
 		Scope:         req.Msg.Scope,
 		Limit:         req.Msg.Limit, // 0 = "all" — no default re-introduced here (round-4 finding-7)
@@ -174,15 +187,27 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 		// page. PageToken != "" keeps resume working whether or not the flag is
 		// re-sent. Default (both false) stays offset-for-UI (ADR engram-1frj).
 		CursorMode: req.Msg.CursorMode || req.Msg.PageToken != "",
+		CrossSpine: req.Msg.CrossSpine,
 	})
 	if err != nil {
 		return nil, connectError(ctx, err)
 	}
+	// (*deps).searchedScopes is the same helper both MCP closures call, so the
+	// two lanes cannot report different spans for the same query. On a
+	// scope-confined call it returns (nil, false, nil), which proto3
+	// serializes as absent — no explicit omission branch needed for the
+	// D-14 byte-identical guarantee.
+	scopes, truncated, err := a.d.searchedScopes(ctx, c, req.Msg.CrossSpine)
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
 	return connect.NewResponse(&engramv1.ListMemoriesResponse{
-		Memories:      shapeProtoMemories(res.Memories, req.Msg.Full, a.d.summaryMaxChars),
-		Total:         res.Total,
-		Approximate:   false,
-		NextPageToken: res.NextToken,
+		Memories:        shapeProtoMemories(res.Memories, req.Msg.Full, a.d.summaryMaxChars),
+		Total:           res.Total,
+		Approximate:     false,
+		NextPageToken:   res.NextToken,
+		SearchedScopes:  scopes,
+		ScopesTruncated: truncated,
 	}), nil
 }
 
@@ -208,15 +233,34 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_before: %w", err))
 	}
+	// D-04: read cross_spine EXPLICITLY, never inferred from Scope == "" —
+	// see the identical note on ListMemories above and the SearchDiscoveries
+	// comment below for what this handler deliberately does NOT copy. The
+	// boundary call to effectiveSearchScope exists for error-CODE fidelity
+	// (connectError would otherwise misclassify a bare argument error as
+	// CodeInternal, per the note at :139-141).
+	if _, err := effectiveSearchScope(req.Msg.Scope, req.Msg.CrossSpine); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	ms, err := a.d.searchMemory(ctx, c, coreSearchRequest{
 		Scope: req.Msg.Scope, Query: req.Msg.Query, K: k, Tags: req.Msg.Tags,
 		CreatedAfter: after, CreatedBefore: before, Categories: req.Msg.Categories,
+		CrossSpine: req.Msg.CrossSpine,
 	})
 	if err != nil {
 		return nil, connectError(ctx, err)
 	}
+	// Same helper the MCP closures use — see the identical note on
+	// ListMemories; (nil, false, nil) on a scope-confined call serializes as
+	// absent with no explicit omission branch needed (D-14).
+	scopes, truncated, err := a.d.searchedScopes(ctx, c, req.Msg.CrossSpine)
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
 	return connect.NewResponse(&engramv1.SearchMemoriesResponse{
-		Memories: shapeProtoMemories(ms, req.Msg.Full, a.d.summaryMaxChars),
+		Memories:        shapeProtoMemories(ms, req.Msg.Full, a.d.summaryMaxChars),
+		SearchedScopes:  scopes,
+		ScopesTruncated: truncated,
 	}), nil
 }
 
@@ -250,6 +294,17 @@ func (a *engramAPI) GetMemory(ctx context.Context, req *connect.Request[engramv1
 // longer embeds the query itself (round-5 MED, grok): deps.searchDiscovery
 // embeds the query internally, so a handler-local embed step would
 // double-embed.
+//
+// DELIBERATE DIVERGENCE (D-04, phase 03-04): the `req.Msg.Scope == ""`
+// inference immediately below is NOT a pattern to copy onto SearchMemories or
+// ListMemories. It exists only to preserve a Connect contract that predates
+// the typed core (see the round-4 HIGH-3 note above); memories have no such
+// contract, and inferring it there would silently widen every existing
+// empty-scope Connect call from "returns nothing" to "returns everything
+// readable" — a behavior change no caller opted into. SearchMemories and
+// ListMemories read an explicit `cross_spine` proto field instead, and
+// TestConnectCrossSpineNotInferred pins that asymmetry as intentional. Do not
+// "fix" this inconsistency by making the three handlers agree.
 func (a *engramAPI) SearchDiscoveries(ctx context.Context, req *connect.Request[engramv1.SearchDiscoveriesRequest]) (*connect.Response[engramv1.SearchDiscoveriesResponse], error) {
 	c, err := callerFromConnectContext(ctx)
 	if err != nil {
