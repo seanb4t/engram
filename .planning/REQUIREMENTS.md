@@ -137,7 +137,7 @@ Zero new Go dependencies are required for this entire milestone.
   provider **credential** than the embedder, mirroring the already-shipped base-URL split; empty
   means inherit the shared key. Byte-identical behavior when unset. Closes #350.
 
-- [ ] **REQ-reindex-resume-tags**: `engram reindex --resume` re-embeds a record whose tags changed
+- [x] **REQ-reindex-resume-tags**: `engram reindex --resume` re-embeds a record whose tags changed
   while its content did not. The target **lookup** is extended to fetch stored tags — not only the
   equality check — since tags are not fetched at all today, and comparing against an always-nil
   field either preserves the bug or silently defeats resume entirely. Tag comparison is
@@ -245,7 +245,7 @@ Populated during roadmap creation.
 | REQ-error-hint-envelope | v0.12.x Phase 4 | Complete |
 | REQ-embed-provider-error-body | v0.12.x Phase 4 | Complete |
 | REQ-per-lane-api-key | v0.12.x Phase 5 | Complete |
-| REQ-reindex-resume-tags | v0.12.x Phase 5 | Pending |
+| REQ-reindex-resume-tags | v0.12.x Phase 5 | Complete |
 | REQ-reindex-stale-repair | v0.12.x Phase 5 | Pending |
 
 **Coverage:**
