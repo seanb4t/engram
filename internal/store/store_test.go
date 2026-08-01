@@ -4455,7 +4455,7 @@ func TestCrossSpineAuthzIsolation(t *testing.T) {
 
 	// The cross-spine-shaped filter: authz clause only, no scope element.
 	f := &qdrant.Filter{Must: []*qdrant.Condition{
-		s.ownerOrSharedCondition(Authenticated("sub-xspine-A")),
+		s.ownerOrSharedCondition(ctx, Authenticated("sub-xspine-A")),
 	}}
 
 	const limit = 10000
