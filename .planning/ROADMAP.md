@@ -354,12 +354,12 @@ runs, so criterion 2's original scope could not have fixed its own motivating bu
 to move required-ness out of the advertised tool schema and into engram's validation. That, D-08's
 message reformat, and D-11's Connect code widening ship together as one `feat!`.
 
-**Plans:** 2/7 plans executed in 5 waves
+**Plans:** 3/7 plans executed in 5 waves
 
 Plans:
 
 - [x] 04-01-PLAN.md — Tracer: the field+hint argument-error envelope proven end-to-end on one rejection across both wire lanes, plus the `connectError` class dispatch and the one-way-door decision gate (wave 1)
-- [ ] 04-02-PLAN.md — Cedar decision diagnostics: a narrow allowlisted accessor over `authz.Decision`, a debug line on both arms at the two `internal/store` chokepoints, and a negative gate proving no expression trace is reachable (wave 1)
+- [x] 04-02-PLAN.md — Cedar decision diagnostics: a narrow allowlisted accessor over `authz.Decision`, a debug line on both arms at the two `internal/store` chokepoints, and a negative gate proving no expression trace is reachable (wave 1)
 - [x] 04-03-PLAN.md — Provider lanes: the bounded embeddings error body, the drain on BOTH lanes, the dimension-sizeable success bound, and the phase's only new test helper (wave 1)
 - [ ] 04-04-PLAN.md — The `tools.go` sweep and the criterion-2 matrix, gated behind a read-first proof that the MCP 401 auth body is out of D-08's scope (wave 2)
 - [ ] 04-05-PLAN.md — `rules.go` and `connectapi.go`: the last unwrapped validator, and removing the seven hand-wraps that would otherwise make D-11 a no-op on the Connect lane (wave 3)
@@ -475,7 +475,7 @@ markdown and tool descriptions rather than Go correctness.
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | Complete | 2026-07-31 |
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete | 2026-07-31 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete | 2026-08-01 |
-| 4. Diagnosability | v0.12.x | 2/7 | In Progress | — |
+| 4. Diagnosability | v0.12.x | 3/7 | In Progress | — |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 0/3 | Pending | — |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 0/2 | Pending | — |
 

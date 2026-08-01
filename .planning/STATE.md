@@ -4,8 +4,8 @@ milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
 current_phase_name: Diagnosability
 status: phase_complete_ready_for_next
-stopped_at: v0.12.x Phase 3 COMPLETE — verification passed 5/5, code review clean. Next is Phase 4 (Diagnosability) discuss.
-last_updated: "2026-08-01T18:17:21.000Z"
+stopped_at: "Completed 04-02-PLAN.md (wave 1 of 5) - Cedar decision diagnostics: debug-level logging at both authz chokepoints, both arms"
+last_updated: "2026-08-01T18:28:06.971Z"
 progress:
   total_phases: 4
   completed_phases: 3
@@ -14,15 +14,15 @@ progress:
   percent: 79
 current_phase: 04
 last_activity: 2026-08-01
-last_activity_desc: v0.12.x Phase 4 plan 04-03 executed (wave 1 of 5, independent of 04-01/04-02) — embeddings non-2xx responses now surface a bounded (4096-byte, D-13) verbatim prefix of the provider error body alongside the status code; both the embeddings and chat/summarize lanes now drain the response body after every bounded read so the connection is reusable (D-14, resolved asymmetrically — surfacing is embed-only, draining is both); embeddings success decode bounded via new WithMaxResponseBytes option (D-16, 1 MiB default, dimension-derived wiring deferred to 04-06); new internal/testhttp.ReuseTracker (httptrace-based) is the phase's only new test helper, shared by both lanes' test files. RED transcripts recorded for both reuse assertions (drain temporarily commented out, Reused()=0 observed, then restored). D-15 finding recorded in a code comment: m["input"] carries caller content, so the accepted residual exposure (T-04-05) is real, not hypothetical. task green scoped to this plan's 3 packages (internal/embed, internal/summarize, internal/testhttp) — repo-wide `task`/`go vet ./...` fail only on internal/store/internal/authz, from concurrent in-flight plan 04-02 work in the same shared working tree, unrelated to this plan. go.mod/go.sum zero diff. REQ-embed-provider-error-body NOT yet complete — 04-06 (config wiring) and 04-07 (docs) also declare it. Plans 04-02, 04-04 through 04-07 remain.
+last_activity_desc: "v0.12.x Phase 4 plan 04-02 executed (wave 1 of 5, independent of 04-01/04-03) — authz.DecisionLog and (Decision).Log() ship the D-02 allowlist accessor (satisfied policy IDs, error count, decision — never Message/Position/raw cedar.Diagnostic; Decision.diag stays unexported, D-03). internal/store's decideBucket/decideRecord (the two chokepoints every production Decision consumption funnels through) each emit one unconditional slog.DebugContext line — both allow and deny arms, never gated on Allow (D-04) — internal/store's first logging statement; internal/authz still emits zero slog calls (D-01). context.Context threaded through 6 functions/14 call sites to reach the chokepoints. Four named tests green: TestDecideBucketLogsAllowAndDeny, TestDecideRecordLogsBothArms (both in internal/store, driven directly against New(nil, ...), no live Qdrant needed), TestDecisionLogCarriesOnlyAllowlistedFields and TestDecisionLogNeverLeaksExpressionTrace (both in internal/authz — the negative gate's error-carrying case could not be built from internal/store per Go's no-cross-package-test-file-import rule, since Decision.diag is unexported; routed to authz's own test file per the plan's explicit fallback). RED transcripts recorded for one arm assertion and the negative gate. task (lint+full suite, repo-wide) green — ran only after plan 04-03's concurrent work in the same shared working tree had also landed. go.mod/go.sum zero diff. REQ-authz-decision-diagnostics NOT yet complete — 04-07 (docs) also declares it. Plans 04-04 through 04-07 remain."
 ---
 
 <!-- RESUME HERE -->
 <!--
 NEXT COMMAND after /clear:
-    Phase 4 (Diagnosability) is IN PROGRESS — wave 1 plan 04-01 (tracer) landed. Continue
-    with the rest of wave 1 (04-02 Cedar decision diagnostics, 04-03 provider error body/drain)
-    or proceed to wave 2 (04-04, the tools.go sweep) once wave 1 is fully green.
+    Phase 4 (Diagnosability) is IN PROGRESS — wave 1 (04-01 tracer, 04-02 Cedar decision
+    diagnostics, 04-03 provider error body/drain) is fully landed. Proceed to wave 2
+    (04-04, the tools.go sweep).
 
     Phase 3 (Cross-Spine Memory Recall) is COMPLETE — all 5 waves landed, all phase-close
     gates green.
@@ -52,13 +52,12 @@ zero diff) are green on the final tree.
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x Phase 4 — Diagnosability — IN PROGRESS (2/7 plans, wave 1 of 5). Plan 04-01 (tracer) landed the field+hint error envelope end-to-end on one validator; plan 04-03 landed the embeddings provider error body, both-lane drain, and bounded success decode.
+**Current focus:** v0.12.x Phase 4 — Diagnosability — IN PROGRESS (3/7 plans, wave 1 of 5 fully landed). Plan 04-01 (tracer) landed the field+hint error envelope end-to-end on one validator; plan 04-02 landed Cedar decision diagnostics (debug-level logging at both authz chokepoints); plan 04-03 landed the embeddings provider error body, both-lane drain, and bounded success decode.
 
 ## ▶ Resume Point (session handed off 2026-08-01)
 
-**Next command:** Continue Phase 4 wave 1 — plan 04-02 (Cedar decision diagnostics) and/or 04-03
-(provider error body/drain) can run in parallel with 04-01 already landed. Wave 2 (04-04, the
-`tools.go` sweep) depends on wave 1 being complete.
+**Next command:** Wave 1 is fully landed (04-01, 04-02, 04-03). Proceed to wave 2 (04-04, the
+`tools.go` sweep), which depends on wave 1 being complete.
 
 **Done:** Phases 1, 2, and 3 complete and verified. Phase 3's blocking authz gate is
 closed — `03-AUTHZ-GATE.md`, commit `a7f827b6`. Plans 03-01 (authz isolation proof),
@@ -107,7 +106,7 @@ REQ-cross-spine-authz-verified, REQ-cross-spine-result-provenance) are complete.
 
 ## Current Position
 
-Phase: v0.12.x Phase 4 (Diagnosability) — 🔶 IN PROGRESS (1/7 plans, wave 1 of 5)
+Phase: v0.12.x Phase 4 (Diagnosability) — 🔶 IN PROGRESS (3/7 plans, wave 1 of 5 fully landed)
 Plan 04-01 (tracer, wave 1): `argError{Fields, Hint, Detail, Class}` built in
 `internal/server/argerror.go` — the one envelope carrying D-05's field attribution and D-09's
 remediation hint together, grammar `field=<name> hint=<code>: <detail>` per the D-17 checkpoint.
@@ -127,8 +126,33 @@ the MCP wire string itself, and the closed defect. `task` (lint + full suite) gr
 ./...` clean, `go.mod`/`go.sum` zero diff. Commits: `64b1e58d`, `8550df20`, `e7d74d5b`.
 **REQ-validation-error-attribution and REQ-error-hint-envelope are NOT yet complete** — this plan
 covers ONE validator of ~30 sweep sites; both requirements finish when 04-04/04-05 land the full
-matrix (D-06's "every site, not a sample"). Plans 04-02 (Cedar decision diagnostics) and 04-03
-(provider error body/drain), both wave 1, remain before wave 2 can start.
+matrix (D-06's "every site, not a sample").
+
+Plan 04-02 (Cedar decision diagnostics, wave 1, independent of 04-01/04-03 — different packages,
+no shared files): `authz.DecisionLog{Allow, PolicyIDs, ErrorCount}` and `(Decision).Log()` ship the
+D-02 allowlist accessor — satisfied policy IDs from `diag.Reasons`, an error COUNT (never
+`Message`, which can embed evaluated entity values), the decision. `Decision.diag` stays
+unexported (D-03); `Log()` is the only read path. `Bucket.String()` renders `"own"`/`"shared"`
+instead of a raw int. `internal/store`'s `decideBucket`/`decideRecord` — confirmed by reading every
+call site to be the two chokepoints every production `Decision` consumption funnels through — each
+emit exactly one `slog.DebugContext` call, unconditionally on both the allow and deny arm (D-04),
+with fields `allow`/`action`/`policy_ids`/`policy_error_count` (plus `bucket` on the bucket arm
+only). This is `internal/store`'s first logging statement; `internal/authz` still emits zero `slog`
+calls (D-01) — verified by a runnable gate, not just inspection. `context.Context` threaded through
+6 functions/14 call sites to reach the two chokepoints. Four named tests green:
+`TestDecideBucketLogsAllowAndDeny`/`TestDecideRecordLogsBothArms` (`internal/store`, driven
+directly against `New(nil, ...)`, no live Qdrant needed) and
+`TestDecisionLogCarriesOnlyAllowlistedFields`/`TestDecisionLogNeverLeaksExpressionTrace`
+(`internal/authz`) — the negative gate's error-carrying case could not be built from
+`internal/store`'s test file (Go disallows cross-package `_test.go` imports, and `Decision.diag` is
+unexported), so it was routed to `internal/authz`'s own test file per the plan's explicit fallback
+clause; documented in `04-02-SUMMARY.md`'s "Route Taken" section. RED transcripts recorded for one
+arm assertion (temporarily disabling `decideRecord`'s emission) and the negative gate (temporarily
+making `Log()` leak `.Message`). `task` (lint + full suite, repo-wide) green — run only after
+04-03's concurrent work in the same shared working tree had also landed. `go vet ./...` clean,
+`go.mod`/`go.sum` zero diff. Commits: `aa870647`, `6004895a`, `4e4276e0`.
+**REQ-authz-decision-diagnostics is NOT yet complete** — 04-07 (docs) also declares this
+requirement; only mark it complete once both plans have landed.
 
 Plan 04-03 (provider lanes, wave 1, independent of 04-01/04-02 — different packages, no shared
 files): `internal/embed/embed.go`'s non-2xx branch now reads a bounded (`maxErrorBodyBytes = 4096`,
@@ -389,6 +413,7 @@ milestone needs in working memory.
 - [Phase ?]: 04-01: argError.Unwrap() returns store.ErrInvalidArgument so every existing errors.Is(err, store.ErrInvalidArgument) consumer keeps working across the sweep; connectError's new *argError case MUST stay first in the switch (before that sentinel arm) or every class silently collapses back to CodeInvalidArgument (T-04-09) — a test that only checks "not CodeInternal" would still pass on the collapsed no-op, which is why TestArgErrorConnectCodeTrio asserts the three codes are DISTINCT, not just "not internal"
 - [Phase ?]: 04-01: gsd-tools state.advance-plan / state.update-progress / requirements.mark-complete do not parse this project's hand-maintained STATE.md/REQUIREMENTS.md shape cleanly — state.advance-plan errors "Cannot parse Current Plan", requirements.mark-complete DOES apply but must NOT be trusted blindly when one requirement spans multiple plans (it will mark REQ-validation-error-attribution/REQ-error-hint-envelope "Complete" after just the tracer, which is wrong — D-06 requires every site, not a sample). roadmap.update-plan-progress applies the right checkbox but also corrupts the summary progress-table row (0/4 instead of 1/7, missing cell) exactly as STATE.md's standing note already warned — hand-correct every time
 - [Phase ?]: 04-03: this milestone runs multiple wave-1 plans concurrently in the SAME git working directory (not isolated worktrees) — a sibling agent's in-progress edits (staged or unstaged) are visible via `git status`/`go vet ./...` at any moment. Two consequences: (a) full-repo gates (`go vet ./...`, `task`) can fail on a file you never touched — scope-check with `go vet`/`golangci-lint run` restricted to your own plan's packages before treating a full-repo failure as your bug; (b) `git commit -m "..."` with NO pathspec commits the WHOLE INDEX, not just what you `git add`-ed — if a sibling agent has files already staged, they silently ride along into your commit. ALWAYS pass an explicit pathspec (`git commit -m "..." -- file1 file2`) when the working tree may be shared. If it happens anyway, `git reset --soft HEAD~1` restores the index to its exact pre-commit state (nothing lost, sibling's staged files intact) — safe to self-correct without asking, since it only moves HEAD and never touches the working tree or discards data.
+- [Phase ?]: 04-02: confirms 04-03's shared-working-tree finding from the other side — `git add <explicit files>` followed by `git status --short` before every commit caught a sibling agent's concurrently-`git add`-ed files riding along in the index (`git restore --staged <sibling files>` cleans it without touching the sibling's working-tree changes). Also: `gsd-tools query state.record-metric`/`state.record-session` DO apply cleanly to this hand-maintained STATE.md's frontmatter, but `state.record-session` silently resets `progress.percent` to a stale/wrong value as a side effect even when only `stopped_at`/`last_updated`/`last_activity_desc` were the intended target — re-verify and hand-correct `percent` after EVERY `state.*` call that touches frontmatter, not just after `state.advance-plan`/`roadmap.update-plan-progress`. Cross-package Go test-file access is impossible (no `_test.go`-to-`_test.go` imports across packages) — when a negative gate needs an unexported field only reachable from another package's own test file, the gate must live IN that package's test file, even if the plan's `must_haves.artifacts` table names a different location (the plan's action text is authoritative over its own artifacts table when the two conflict on placement).
 
 ### Blockers/Concerns
 
@@ -440,8 +465,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-01T18:17:21.000Z
-Stopped at: Completed 04-03-PLAN.md (wave 1 of 5) — embeddings provider error body surfaced, both provider lanes drain, success decode bounded; RED transcripts recorded for both reuse assertions
+Last session: 2026-08-01T18:28:06.956Z
+Stopped at: Completed 04-02-PLAN.md (wave 1 of 5) - Cedar decision diagnostics: debug-level logging at both authz chokepoints, both arms
 Resume file: None
 
 ## Performance Metrics
@@ -519,6 +544,7 @@ Resume file: None
 | Phase 03 P05 | ~15min | 2 tasks | 3 files |
 | Phase 04 P01 | 5min | 3 tasks | 4 files |
 | Phase 04 P03 | 6min | 3 tasks | 5 files |
+| Phase 04 P02 | 35min | 3 tasks | 6 files |
 
 ## Operator Next Steps
 
