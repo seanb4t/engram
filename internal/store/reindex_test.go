@@ -923,3 +923,70 @@ func TestReindexFailsClosedOnEmbedError(t *testing.T) {
 		}
 	}
 }
+
+// TestReindexDryRunResume pins D-14: --dry-run --resume sizes the repair
+// before it is run, using the same three-conjunct skip predicate a real
+// resume would apply, without writing anything or creating a collection.
+func TestReindexDryRunResume(t *testing.T) {
+	c := dialTestClient(t)
+	ctx := context.Background()
+	const src, tgt = "reindex_dryresume_src", "reindex_dryresume_tgt"
+	_ = c.DeleteCollection(ctx, src)
+	_ = c.DeleteCollection(ctx, tgt)
+	t.Cleanup(func() {
+		_ = c.DeleteCollection(context.Background(), src)
+		_ = c.DeleteCollection(context.Background(), tgt)
+	})
+	fullID, _ := seedSource(t, c, src)
+
+	s := New(c, src)
+	// Populate the target with a real resume run first.
+	if _, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Resume: true}, embed4); err != nil {
+		t.Fatalf("populate target: %v", err)
+	}
+
+	// Mutate one source point's tags only (content unchanged), same as EDGE 1.
+	mutated := Memory{
+		ID: fullID, Content: "alpha content", Scope: "eval-test:project:demo",
+		Repo: "demo", Source: "user-said", Category: "preference",
+		Tags: []string{"x", "z"}, Owner: "sub-123", Visibility: "shared",
+		CreatedAt: time.Now().UTC().Truncate(time.Second),
+	}
+	if err := s.Upsert(ctx, mutated, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("mutate source tags: %v", err)
+	}
+
+	beforeTarget := scrollPoints(t, c, tgt)
+
+	res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, DryRun: true, Resume: true}, embed4)
+	if err != nil {
+		t.Fatalf("dry-run --resume against existing target: %v", err)
+	}
+	if res.WouldUpsert != 1 || res.Unchanged != 1 || res.Upserted != 0 {
+		t.Errorf("want would-re-embed=1 unchanged=1 upserted=0, got %+v", res)
+	}
+	afterTarget := scrollPoints(t, c, tgt)
+	if gotTags := tagsFromPayload(afterTarget[fullID].payload); !tagsEqual(gotTags, tagsFromPayload(beforeTarget[fullID].payload)) {
+		t.Errorf("dry-run wrote the target: tags before=%v after=%v", tagsFromPayload(beforeTarget[fullID].payload), gotTags)
+	}
+
+	// Second case: dry-run --resume against a target that does not exist yet —
+	// no error, everything counted would-re-embed, and the target stays absent.
+	const missingTgt = "reindex_dryresume_missing_tgt"
+	_ = c.DeleteCollection(ctx, missingTgt)
+	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), missingTgt) })
+	res2, err := s.Reindex(ctx, ReindexOptions{Target: missingTgt, Dim: 4, DryRun: true, Resume: true}, embed4)
+	if err != nil {
+		t.Fatalf("dry-run --resume against nonexistent target: %v", err)
+	}
+	if res2.WouldUpsert != 2 || res2.Unchanged != 0 || res2.Upserted != 0 {
+		t.Errorf("nonexistent target: want would-re-embed=2 unchanged=0 upserted=0, got %+v", res2)
+	}
+	missingExists, err := c.CollectionExists(ctx, missingTgt)
+	if err != nil {
+		t.Fatalf("collection exists (missing target): %v", err)
+	}
+	if missingExists {
+		t.Errorf("dry-run created the nonexistent target collection")
+	}
+}

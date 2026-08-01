@@ -12,7 +12,7 @@ import (
 
 func TestReindexSummary(t *testing.T) {
 	t.Run("dry run reports the scanned count and is marked dry-run", func(t *testing.T) {
-		got := reindexSummary(store.ReindexResult{Scanned: 5}, "new_coll", 1536, true)
+		got := reindexSummary(store.ReindexResult{Scanned: 5}, "new_coll", 1536, true, false)
 		if !strings.HasPrefix(got, "dry-run:") {
 			t.Errorf("dry-run summary should be marked as such: %q", got)
 		}
@@ -24,13 +24,25 @@ func TestReindexSummary(t *testing.T) {
 	})
 
 	t.Run("real run reports upserted/scanned, skipped, unchanged, and the cutover hint", func(t *testing.T) {
-		got := reindexSummary(store.ReindexResult{Scanned: 5, Upserted: 2, Skipped: 1, Unchanged: 2}, "new_coll", 1536, false)
+		got := reindexSummary(store.ReindexResult{Scanned: 5, Upserted: 2, Skipped: 1, Unchanged: 2}, "new_coll", 1536, false, false)
 		if strings.HasPrefix(got, "dry-run:") {
 			t.Errorf("non-dry-run summary must not be marked dry-run: %q", got)
 		}
 		for _, want := range []string{"2/5 record", "1 skipped", "2 unchanged", "at dim 1536", "ENGRAM_QDRANT_COLLECTION=new_coll"} {
 			if !strings.Contains(got, want) {
 				t.Errorf("summary %q missing %q", got, want)
+			}
+		}
+	})
+
+	t.Run("dry run with resume names both the would-re-embed and the would-skip counts", func(t *testing.T) {
+		got := reindexSummary(store.ReindexResult{Scanned: 5, WouldUpsert: 3, Skipped: 1, Unchanged: 1}, "new_coll", 1536, true, true)
+		if !strings.HasPrefix(got, "dry-run --resume:") {
+			t.Errorf("dry-run-with-resume summary should be marked as such: %q", got)
+		}
+		for _, want := range []string{"3 would be re-embedded", "1 would be skipped", "1 skipped (no content)", "5 scanned", "new_coll", "1536"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("dry-run-with-resume summary %q missing %q", got, want)
 			}
 		}
 	})

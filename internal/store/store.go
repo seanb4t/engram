@@ -2559,13 +2559,18 @@ func (o ReindexOptions) Validate() error {
 // ReindexResult reports what Reindex did: points scanned from the source,
 // points re-embedded and upserted into the target (0 on a dry run), points
 // skipped because they carried no content to embed, and (resume only) points
-// left unchanged because the target already held them with identical content.
-// On a successful non-dry run, Scanned == Upserted + Skipped + Unchanged.
+// left unchanged because the target already held them with identical content
+// and tags. WouldUpsert is populated only under DryRun: the count of points
+// the same skip predicate would NOT have skipped, had this been a real run
+// (D-14). On a successful real run, Scanned == Upserted + Skipped + Unchanged.
+// On a dry run, Scanned == WouldUpsert + Skipped + Unchanged, and Upserted
+// stays 0 — a dry run never writes.
 type ReindexResult struct {
-	Scanned   uint64
-	Upserted  uint64
-	Skipped   uint64
-	Unchanged uint64
+	Scanned     uint64
+	Upserted    uint64
+	Skipped     uint64
+	Unchanged   uint64
+	WouldUpsert uint64
 }
 
 // reindexBatch is the default scroll page size when ReindexOptions.Batch is 0.
@@ -2682,83 +2687,103 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 		if err != nil {
 			return res, fmt.Errorf("reindex: scroll source: %w", err)
 		}
-		// A dry run only needs the count, so tally the whole page and skip the
-		// per-point embed/upsert path entirely.
-		if opts.DryRun {
-			res.Scanned += uint64(len(pts))
-		} else {
-			// Resume: fetch this batch's ids from the target once so a point already
-			// embedded with identical content (AND a matching stamped identity) can
-			// be skipped (engram-irhg; identity-awareness per Phase 13 SC3 review).
-			// One Get per page keeps the lookup O(pages), not O(points).
-			var targetInfo map[string]reindexTarget
-			if opts.Resume {
+		// Resume: fetch this batch's ids from the target once so a point already
+		// embedded with identical content and tags (AND a matching stamped
+		// identity) can be skipped (engram-irhg; identity-awareness per Phase 13
+		// SC3 review; tag-awareness per #345, D-07..D-12). One Get per page keeps
+		// the lookup O(pages), not O(points). A single per-point skip predicate
+		// backs BOTH the dry-run and the real arm below — duplicating it into a
+		// dry-run-only copy is the failure mode this plan designs out (two
+		// predicates drift, which is exactly the defect class being closed).
+		var targetInfo map[string]reindexTarget
+		if opts.Resume {
+			// Under a real run the target is guaranteed to exist (ensureCollection
+			// already ran above). Under a dry run it may not — CollectionExists
+			// guards the lookup, mirroring the source-existence check's shape, so a
+			// missing target under --dry-run --resume yields an empty map (every
+			// record counted as would-re-embed) rather than an error. Never call
+			// ensureCollection under DryRun; that would cross the write boundary a
+			// dry run promises not to cross.
+			lookup := true
+			if opts.DryRun {
+				lookup, err = s.client.CollectionExists(ctx, opts.Target)
+				if err != nil {
+					return res, fmt.Errorf("reindex: check target %q: %w", opts.Target, err)
+				}
+			}
+			if lookup {
 				targetInfo, err = s.reindexTargetContents(ctx, opts.Target, pts)
 				if err != nil {
 					return res, fmt.Errorf("reindex: resume lookup in %q: %w", opts.Target, err)
 				}
 			}
-			for _, p := range pts {
-				res.Scanned++
-				m := fromPayload(p.Id.GetUuid(), p.Payload)
-				content := m.Content
-				if content == "" {
-					// Nothing to embed — skip rather than write a meaningless vector
-					// for an empty string. Surfaced via ReindexResult.Skipped.
-					res.Skipped++
-					continue
-				}
-				if ti, ok := targetInfo[p.Id.GetUuid()]; ok && ti.content == content &&
-					tagsEqual(ti.tags, m.Tags) &&
-					(opts.Identity == "" || ti.identity == opts.Identity) {
-					// ti is a SNAPSHOT of what the target held at its last write; content
-					// and m.Tags are the source's CURRENT values. The two are
-					// independently mutable — a tags-only edit on the source leaves ti
-					// stale while content still matches, so this is a genuine three-part
-					// equality check, not one part implying another (D-11). EmbedText
-					// folds tags into the embedded text, so a real tags change without a
-					// content change still requires a re-embed to avoid serving a stale
-					// vector (the #345 defect this conjunct closes).
-					//
-					// tagsEqual is deliberately order-independent (D-09): a record whose
-					// tags were only reordered embeds to different text under EmbedText
-					// yet is intentionally treated as unchanged here. Normalizing tag
-					// order at write time would be the root fix and is out of scope.
-					//
-					// Only when no Identity is being enforced, or the target already
-					// carries the matching stamp: a content+tags match with an
-					// absent/stale identity falls through and gets re-embedded+restamped
-					// below, so resume never leaves a record untraceable to its embedder
-					// config.
-					res.Unchanged++
-					continue
-				}
-				var vec []float32
-				// Embed content + tags (EmbedText) so a re-embed folds curated tags
-				// into the vector exactly as the store path does.
-				vec, err = embed(ctx, EmbedText(m.Content, m.Tags))
-				if err != nil {
-					return res, fmt.Errorf("reindex: embed point %s: %w", p.Id.GetUuid(), err)
-				}
-				if opts.Identity != "" {
-					// The one intentional additive exception to the verbatim-payload
-					// invariant: a single guarded raw-map key write, never a
-					// Memory/payload() round-trip (see the Reindex doc comment).
-					p.Payload[embedderIdentityKey] = qdrant.NewValueString(opts.Identity)
-				}
-				if _, err = s.client.Upsert(ctx, &qdrant.UpsertPoints{
-					CollectionName: opts.Target,
-					Wait:           qdrant.PtrOf(true),
-					Points: []*qdrant.PointStruct{{
-						Id:      p.Id,
-						Vectors: qdrant.NewVectors(vec...),
-						Payload: p.Payload,
-					}},
-				}); err != nil {
-					return res, fmt.Errorf("reindex: upsert point %s into %q: %w", p.Id.GetUuid(), opts.Target, err)
-				}
-				res.Upserted++
+		}
+		for _, p := range pts {
+			res.Scanned++
+			m := fromPayload(p.Id.GetUuid(), p.Payload)
+			content := m.Content
+			if content == "" {
+				// Nothing to embed — skip rather than write a meaningless vector
+				// for an empty string. Surfaced via ReindexResult.Skipped.
+				res.Skipped++
+				continue
 			}
+			if ti, ok := targetInfo[p.Id.GetUuid()]; ok && ti.content == content &&
+				tagsEqual(ti.tags, m.Tags) &&
+				(opts.Identity == "" || ti.identity == opts.Identity) {
+				// ti is a SNAPSHOT of what the target held at its last write; content
+				// and m.Tags are the source's CURRENT values. The two are
+				// independently mutable — a tags-only edit on the source leaves ti
+				// stale while content still matches, so this is a genuine three-part
+				// equality check, not one part implying another (D-11). EmbedText
+				// folds tags into the embedded text, so a real tags change without a
+				// content change still requires a re-embed to avoid serving a stale
+				// vector (the #345 defect this conjunct closes).
+				//
+				// tagsEqual is deliberately order-independent (D-09): a record whose
+				// tags were only reordered embeds to different text under EmbedText
+				// yet is intentionally treated as unchanged here. Normalizing tag
+				// order at write time would be the root fix and is out of scope.
+				//
+				// Only when no Identity is being enforced, or the target already
+				// carries the matching stamp: a content+tags match with an
+				// absent/stale identity falls through and gets re-embedded+restamped
+				// below, so resume never leaves a record untraceable to its embedder
+				// config.
+				res.Unchanged++
+				continue
+			}
+			if opts.DryRun {
+				// Would be re-embedded on a real run — count it, but never call
+				// embed or write. Upserted stays 0 on every dry run (EDGE 5).
+				res.WouldUpsert++
+				continue
+			}
+			var vec []float32
+			// Embed content + tags (EmbedText) so a re-embed folds curated tags
+			// into the vector exactly as the store path does.
+			vec, err = embed(ctx, EmbedText(m.Content, m.Tags))
+			if err != nil {
+				return res, fmt.Errorf("reindex: embed point %s: %w", p.Id.GetUuid(), err)
+			}
+			if opts.Identity != "" {
+				// The one intentional additive exception to the verbatim-payload
+				// invariant: a single guarded raw-map key write, never a
+				// Memory/payload() round-trip (see the Reindex doc comment).
+				p.Payload[embedderIdentityKey] = qdrant.NewValueString(opts.Identity)
+			}
+			if _, err = s.client.Upsert(ctx, &qdrant.UpsertPoints{
+				CollectionName: opts.Target,
+				Wait:           qdrant.PtrOf(true),
+				Points: []*qdrant.PointStruct{{
+					Id:      p.Id,
+					Vectors: qdrant.NewVectors(vec...),
+					Payload: p.Payload,
+				}},
+			}); err != nil {
+				return res, fmt.Errorf("reindex: upsert point %s into %q: %w", p.Id.GetUuid(), opts.Target, err)
+			}
+			res.Upserted++
 		}
 		// Surface running totals after each scanned page (engram-xddn).
 		if opts.Progress != nil {
