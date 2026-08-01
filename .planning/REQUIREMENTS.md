@@ -67,10 +67,16 @@ Zero new Go dependencies are required for this entire milestone.
 
 ### Cross-Spine Recall (#344)
 
-- [x] **REQ-cross-spine-search**: An agent can search curated memories across every scope it is
-  permitted to see via `cross_spine=true` on `search_memory`, making `scope` optional — mirroring
-  `search_discovery`'s existing `CrossSpine` semantics. Available at MCP↔Connect parity via an
-  additive proto field. Opt-in; the default stays scope-confined.
+- [x] **REQ-cross-spine-search**: An agent can recall curated memories across every scope it is
+  permitted to see via `cross_spine=true` on `search_memory` **and `list_memory`**, making `scope`
+  optional — mirroring `search_discovery`'s existing `CrossSpine` semantics. Available at MCP↔Connect
+  parity via an additive proto field. Opt-in; the default stays scope-confined.
+  *(Widened 2026-08-01 by Sean during v0.12.x Phase 3 discuss — see `03-CONTEXT.md` D-08. The
+  original wording named `search_memory` only; `list_memory` was added on the reasoning that an agent
+  which can search across spines but not list across them has an arbitrary hole, and the cost was low
+  because `listFilter` carries the same two-element `Must` shape as `ownerScopeFilter`. Recorded here
+  so the phase is not silently over-delivering against its own requirement. Unlike `search_discovery`,
+  neither memory RPC infers cross-spine from an empty scope — the explicit field is required (D-04).)*
 
 - [x] **REQ-cross-spine-authz-verified**: Cross-spine search never widens the authorization filter.
   Before implementation, `Store.Search`'s filter-construction path is read end to end and it is
