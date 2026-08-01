@@ -155,16 +155,23 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 		1: {name: "scopes", kind: protoreflect.MessageKind, repeated: true, msgType: "engram.v1.ScopeCount"},
 		2: {name: "approximate", kind: protoreflect.BoolKind},
 	})
-	assertFields(t, fd, "ListMemoriesRequest", 11, nil)
-	assertFields(t, fd, "ListMemoriesResponse", 4, map[protoreflect.FieldNumber]fieldSpec{
+	// 03-04: cross_spine (D-04) plus searched_scopes/scopes_truncated (D-12/
+	// D-13/D-14) are additive fields on these four messages — field counts
+	// and the two new response fields' pins bumped accordingly.
+	assertFields(t, fd, "ListMemoriesRequest", 12, nil)
+	assertFields(t, fd, "ListMemoriesResponse", 6, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "memories", kind: protoreflect.MessageKind, repeated: true, msgType: "engram.v1.Memory"},
 		2: {name: "total", kind: protoreflect.Uint64Kind},
 		3: {name: "approximate", kind: protoreflect.BoolKind},
 		4: {name: "next_page_token", kind: protoreflect.StringKind},
+		5: {name: "searched_scopes", kind: protoreflect.StringKind, repeated: true},
+		6: {name: "scopes_truncated", kind: protoreflect.BoolKind},
 	})
-	assertFields(t, fd, "SearchMemoriesRequest", 8, nil)
-	assertFields(t, fd, "SearchMemoriesResponse", 1, map[protoreflect.FieldNumber]fieldSpec{
+	assertFields(t, fd, "SearchMemoriesRequest", 9, nil)
+	assertFields(t, fd, "SearchMemoriesResponse", 3, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "memories", kind: protoreflect.MessageKind, repeated: true, msgType: "engram.v1.Memory"},
+		2: {name: "searched_scopes", kind: protoreflect.StringKind, repeated: true},
+		3: {name: "scopes_truncated", kind: protoreflect.BoolKind},
 	})
 	assertFields(t, fd, "GetMemoryRequest", 1, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "id", kind: protoreflect.StringKind},
