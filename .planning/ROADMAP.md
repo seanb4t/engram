@@ -348,6 +348,24 @@ operator debugging a denial, the agent retrying a rejected call.
 bounded, structured, redaction-conscious disclosure. Grouping lets a single internal convention
 emerge instead of three ad hoc mechanisms.
 
+**Scope note (D-06a, decided 2026-08-01):** research proved issue #360's misleading
+`missing properties: ["content"]` comes from the go-sdk's schema layer BEFORE any `tools.go` code
+runs, so criterion 2's original scope could not have fixed its own motivating bug. Scope was extended
+to move required-ness out of the advertised tool schema and into engram's validation. That, D-08's
+message reformat, and D-11's Connect code widening ship together as one `feat!`.
+
+**Plans:** 7 plans in 5 waves
+
+Plans:
+
+- [ ] 04-01-PLAN.md — Tracer: the field+hint argument-error envelope proven end-to-end on one rejection across both wire lanes, plus the `connectError` class dispatch and the one-way-door decision gate (wave 1)
+- [ ] 04-02-PLAN.md — Cedar decision diagnostics: a narrow allowlisted accessor over `authz.Decision`, a debug line on both arms at the two `internal/store` chokepoints, and a negative gate proving no expression trace is reachable (wave 1)
+- [ ] 04-03-PLAN.md — Provider lanes: the bounded embeddings error body, the drain on BOTH lanes, the dimension-sizeable success bound, and the phase's only new test helper (wave 1)
+- [ ] 04-04-PLAN.md — The `tools.go` sweep and the criterion-2 matrix, gated behind a read-first proof that the MCP 401 auth body is out of D-08's scope (wave 2)
+- [ ] 04-05-PLAN.md — `rules.go` and `connectapi.go`: the last unwrapped validator, and removing the seven hand-wraps that would otherwise make D-11 a no-op on the Connect lane (wave 3)
+- [ ] 04-06-PLAN.md — D-06a: required-ness moves from the inferred schema into engram, with issue #360's own repro as a named regression and its positive control (wave 4)
+- [ ] 04-07-PLAN.md — Agent- and operator-facing guidance for the three new contracts, plus the upgrade note (wave 5)
+
 ---
 
 ### Phase 5: Operator Config & Reindex Correctness
