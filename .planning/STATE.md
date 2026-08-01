@@ -4,17 +4,17 @@ milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
 current_phase: 02
 current_phase_name: Headless CLI Client
-status: phase_complete
-stopped_at: v0.12.x Phase 1 COMPLETE — verification passed 5/5, code review 0 critical
-last_updated: "2026-07-31T23:49:17.385Z"
+status: phase_executing
+stopped_at: Completed 02-01-PLAN.md (engram search tracer, wave 1 of 3)
+last_updated: "2026-08-01T00:02:43.404Z"
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 7
-  completed_plans: 4
-  percent: 50
+  completed_plans: 5
+  percent: 71
 last_activity: 2026-07-31
-last_activity_desc: v0.12.x Phase 1 complete — verification passed 5/5, ready for Phase 2
+last_activity_desc: v0.12.x Phase 2 Plan 1 complete — engram search tracer, wave 1 of 3
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.
 ## Current Position
 
 Phase: 02 (Headless CLI Client) — EXECUTING
-Plans: 4 of 4 complete (3 waves)
-Verification: **passed, 5/5 must-haves** (`01-VERIFICATION.md`); code review 0 critical /
-1 warning (fixed, `31cc732f`) / 1 info (accepted)
-Gates green on final state: `task` (lint+test), `go vet ./...`, `task chart:validate`,
-`task license:check`
-requirements 4/4, decisions 12/12, probe edges 9/9, gap analysis 16/16
-Next: v0.12.x Phase 2 — Headless CLI Client (strict dependency on Phase 1, now satisfied)
+Plans: 1 of 3 complete (wave 1 of 3) — 02-01 (engram search tracer) done;
+02-02 (list, store) and 02-03 (self-describe catalog, rootCmd.RunE) remain
+Gates green on 02-01's final state: `task` (lint+test), `go vet ./...`, `task license:check`
+requirements progress: REQ-cli-client-commands, REQ-cli-agent-output, REQ-cli-credential-safety
+partially satisfied by 02-01 (search only; list/store land in 02-02); REQ-cli-self-describing
+untouched until 02-03
+Next: 02-02-PLAN.md (`engram list`, `engram store`)
 
 **Criterion 1 was proven STRUCTURALLY, not behaviorally** — `buildAuthChain` has exactly one
 production call site (`cmd/engram/serve.go:146`) and the three verifier constructors
@@ -163,6 +163,7 @@ milestone needs in working memory.
 - [Phase ?]: D-11: connectHeadlessGuard refuses startup when ENGRAM_CONNECT_HEADLESS is set with zero configured auth lanes, mirroring ownerClaimGuard's fail-closed-at-boot shape.
 - [Phase ?]: REVIEWS.md MED-10's Helm deferral reversed: memory.connect.headless ships in this phase, not a follow-up issue, because charts/engram has no generic extra-env escape hatch
 - [Phase ?]: Reduced from two originally-planned follow-up issues to one — Helm-values half shipped in Task 2; agent-facing-docs half stays scoped to v0.12.x Phase 2 per 01-CONTEXT.md
+- [Phase ?]: Client import-boundary gate (D-04) is per-file via go/parser ImportsOnly, not go list -deps ./cmd/engram/... — the package also contains operator commands that legitimately import internal/store
 
 ### Blockers/Concerns
 
@@ -214,8 +215,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-07-31T20:23:16.580Z
-Stopped at: Completed 01-04-PLAN.md (operator docs & Helm value for headless Connect lane) — phase 01 all plans complete
+Last session: 2026-08-01T00:02:43.395Z
+Stopped at: Completed 02-01-PLAN.md (engram search tracer, wave 1 of 3)
 Resume file: None
 
 ## Performance Metrics
@@ -283,6 +284,7 @@ Resume file: None
 | Phase 01 P02 | 13min | 2 tasks | 4 files |
 | Phase 01 P03 | 35min | 3 tasks | 11 files |
 | Phase 01 P04 | ~20min | 3 tasks | 4 files |
+| Phase 02 P01 | 40min | 2 tasks | 7 files |
 
 ## Operator Next Steps
 

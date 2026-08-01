@@ -58,7 +58,7 @@ Zero new Go dependencies are required for this entire milestone.
   semantic exit codes mapped from engram's existing Connect error taxonomy, and no TTY prompt on
   any path.
 
-- [ ] **REQ-cli-credential-safety**: A token can be supplied without ever appearing in `argv`
+- [x] **REQ-cli-credential-safety**: A token can be supplied without ever appearing in `argv`
   (env var or file), so it does not leak into `ps` output or shell history. TLS verification is on
   by default and cannot be disabled silently.
 
@@ -227,7 +227,7 @@ Populated during roadmap creation.
 | REQ-connect-headless-mount | v0.12.x Phase 1 | Complete |
 | REQ-cli-client-commands | v0.12.x Phase 2 | Pending |
 | REQ-cli-agent-output | v0.12.x Phase 2 | Pending |
-| REQ-cli-credential-safety | v0.12.x Phase 2 | Pending |
+| REQ-cli-credential-safety | v0.12.x Phase 2 | Complete |
 | REQ-cli-self-describing | v0.12.x Phase 2 | Pending |
 | REQ-cross-spine-search | v0.12.x Phase 3 | Pending |
 | REQ-cross-spine-authz-verified | v0.12.x Phase 3 | Pending |
