@@ -102,6 +102,24 @@ cross-spine call adds a second bounded scan of your readable set to
 enumerate the scopes it searched. Neither is free — reach for `cross_spine`
 because you need it, not by default.
 
+## Reading a rejection
+
+A rejected call names the field that failed and a machine-stable hint code in one
+envelope: `field=<name> hint=<code>: <human text>`. Branch on `field` and `hint`, not
+on the wording after the colon — the wording is not a contract and changed in this
+very release. Full vocabulary: [`reference/errors.md`](/reference/errors/); do not
+duplicate the table here.
+
+The two or three retry patterns that come up in practice:
+
+- **`hint=too_long` on `summary`** — shorten the summary and resend just that field's
+  worth of change; do not reconstruct or resend the whole record.
+- **`hint=required`** — the field was absent, not malformed. Add it; nothing else about
+  the call was wrong.
+- **`hint=mutually_exclusive` or `hint=ordering`** — the error names *two* fields under
+  `field=`. The pair is wrong together, not either one alone — don't guess which one to
+  drop or reorder without reading both names.
+
 ## Discipline
 
 1. **Search before store.** Call `mcp__engram__search_memory` across both
@@ -237,6 +255,11 @@ on it only as orientation. Changing a memory's content while a caller-authored
 summary (`summary_source=client`) is present requires you to address it:
 re-send it (unchanged), update it (revised summary), or clear it (send empty
 `summary`) — otherwise the update is rejected.
+
+A `summary` is bounded — 512 bytes by default (`ENGRAM_MEMORY_MAX_SUMMARY_BYTES`)
+— so a paragraph-shaped summary that used to be silently accepted is now rejected
+with `field=summary hint=too_long`; keep it a short caveat-bearing digest, not a
+second copy of the content.
 
 ## Tools and auth
 

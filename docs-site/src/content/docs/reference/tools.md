@@ -31,6 +31,10 @@ records created.
 **`actor` and `owner` are always server-set.** They come from the validated OIDC
 token and are never accepted as client input.
 
+**A rejected call** — a missing or malformed argument, a bound exceeded — returns a
+field-and-hint envelope rather than a plain message; see the
+[error reference](/reference/errors/) for the full grammar and hint-code vocabulary.
+
 ---
 
 ## store_memory
@@ -49,7 +53,7 @@ or timestamps.
 | `workspace` | string | no | Workspace identifier |
 | `worktree_path` | string | no | Path to the git worktree |
 | `base_dir` | string | no | Base directory for the project |
-| `summary` | string | no | Short human-readable summary (caller-authored, `summary_source=client`). Omit for no summary. |
+| `summary` | string | no | Short human-readable summary (caller-authored, `summary_source=client`). Max `ENGRAM_MEMORY_MAX_SUMMARY_BYTES` bytes (default 512; see [Configuration](/guides/configure/)). Omit for no summary. |
 | `citations` | citation[] | no | Optional structured source anchors (same shape as [`store_discovery`](#store_discovery)'s `citations`, max 50); never inferred — only what you explicitly supply. Omit for none. |
 
 Returns the stored record's `id` and `short_id`.
@@ -75,7 +79,7 @@ normally via `search_memory`/`list_memory`.
 | `workspace` | string | no | Workspace identifier |
 | `worktree_path` | string | no | Path to the git worktree |
 | `base_dir` | string | no | Base directory for the project |
-| `summary` | string | no | Short human-readable summary (caller-authored, `summary_source=client`). Omit for no summary. |
+| `summary` | string | no | Short human-readable summary (caller-authored, `summary_source=client`). Max `ENGRAM_MEMORY_MAX_SUMMARY_BYTES` bytes (default 512; see [Configuration](/guides/configure/)). Omit for no summary. |
 | `citations` | citation[] | no | Optional structured source anchors (same shape as [`store_discovery`](#store_discovery)'s `citations`, max 50); never inferred — only what you explicitly supply. Omit for none. |
 | `not_before` | string | no | RFC3339; hide from recall until this time |
 | `not_after` | string | no | RFC3339; drop from recall at this time |
@@ -248,7 +252,7 @@ summary), or clear it (empty `summary`) — or the update is rejected.
 | `content` | string | yes | The replacement text (re-embedded) |
 | `shared` | bool | no | `true` = shared, `false` = private; omit to keep current visibility |
 | `tags` | string[] | no | Replaces the full tag set; an empty array clears all tags. Omit to keep the current tags |
-| `summary` | string | no | Replace the summary; empty string clears it. Omit to keep the current summary. When changing `content`, must be addressed if `summary_source=client` |
+| `summary` | string | no | Replace the summary; empty string clears it. Omit to keep the current summary. When changing `content`, must be addressed if `summary_source=client`. Max `ENGRAM_MEMORY_MAX_SUMMARY_BYTES` bytes (default 512). |
 
 Only the record owner can update. Returns `"updated"` on success.
 

@@ -60,7 +60,10 @@ base32 handle, accepted anywhere an id is accepted; legacy records gain one via
 full content via `get_memory`. `search_memory` results carry an always-on per-result
 `score` (raw Qdrant cosine similarity, higher = closer; zero/omitted on unranked
 `list_memory`/`get_memory` results). Design intent: explicit, zero-junk, correctable. Do not
-add auto-extraction.
+add auto-extraction. A rejected call names the failing field and a machine-stable hint
+code in one envelope (`field=<name> hint=<code>: <text>`; see docs-site
+`reference/errors.md`), with a memory `summary` bounded at `ENGRAM_MEMORY_MAX_SUMMARY_BYTES`
+(default 512 bytes).
 
 With `ENGRAM_SUMMARY_ON_WRITE=true` (and `ENGRAM_SUMMARY_MODEL` set), auto-generated
 summaries are filled **asynchronously** shortly after `store_memory`/`schedule_memory`

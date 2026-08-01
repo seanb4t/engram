@@ -35,6 +35,18 @@ Source: `internal/server/tools.go` (`StoreAndEmbedderFromEnvNoEnsure`).
 
 Source: `internal/config` (registry) + `internal/server/tools.go` (`embedderFromConfig`).
 
+## Memory
+
+| Environment variable | Default | Description |
+|----------------------|---------|-------------|
+| `ENGRAM_MEMORY_MAX_SUMMARY_BYTES` | `512` | Max byte length of a memory `summary` on `store_memory`/`schedule_memory`/`supersede_memory`/`update_memory`. A caller-supplied summary over this bound is rejected (`field=summary hint=too_long`) rather than silently truncated. `0` disables the bound. |
+
+This is separate from `ENGRAM_SUMMARY_MAX_CHARS` below: this bound is enforced at write
+time against a **caller-authored** summary; `ENGRAM_SUMMARY_MAX_CHARS` caps the length of a
+**server-generated** one.
+
+Source: `internal/config` (registry) + `internal/server/tools.go` (`maxMemorySummaryBytes`, `validateStoreArgs`/`validateUpdateArgs`).
+
 ## Auto-summary
 
 When `ENGRAM_SUMMARY_MODEL` is set, the server digests memories that lack a
@@ -175,6 +187,19 @@ Source: `internal/config` (the `connect.headless` registry row) + `cmd/engram/se
 | `ENGRAM_LOG_STDOUT` | `true` | Write logs to stdout; set `false` to suppress (requires OTLP endpoint) |
 
 Source: `internal/telemetry/config.go` (`ConfigFromEnv`).
+
+**Authorization decision diagnostics.** At `debug` level, every authorization decision
+(both allow and deny) emits one `"authz decision (bucket)"` or `"authz decision
+(record)"` line carrying `allow`, `action`, the satisfied Cedar `policy_ids`, and
+`policy_error_count`; bucket-scoped decisions also carry `bucket` (`own`/`shared`).
+Volume is bounded: at most two lines per bulk recall call (one per bucket probed) and
+one per id-addressed operation (get/update/delete/set_visibility) — never one line per
+result row.
+
+It does **not** carry a full Cedar expression trace, any policy error **message** text,
+or the caller's `owner`/`scope` values — those are deliberately excluded so a decision
+line is always safe to leave in a log pipeline. Raise `ENGRAM_LOG_LEVEL=debug` to see
+these lines; they do not appear at `info` or above.
 
 ## Observability (OpenTelemetry)
 
