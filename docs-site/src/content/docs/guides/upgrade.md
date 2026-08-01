@@ -104,3 +104,54 @@ engram backfill-short-ids --timeout 5m       # custom wall-clock limit
 
 No re-embedding or data migration — the UUID is unchanged and still valid everywhere.
 The backfill is payload-only and can safely run alongside read traffic.
+
+---
+
+## v0.12.0 — Field-attributed, hint-carrying argument rejections
+
+This release ships three wire-visible changes to how engram rejects a malformed or
+invalid argument. Full grammar and vocabulary: the
+[error envelope reference](/reference/errors/).
+
+### 1. Argument-validation message text changed
+
+A rejected argument now returns a message in a stable `field=<name> hint=<code>:
+<text>` grammar, leading with the field that failed, instead of free-form prose. If
+your client matched on the old message wording, match on `field=`/`hint=` instead —
+the wording after the colon is not a contract and has already changed once in this
+release.
+
+**Scope fence:** this covers `internal/server/tools.go`'s argument validation only.
+**The MCP 401 bearer-auth rejection body is unchanged and byte-identical** — it is
+pinned by a dedicated test (`TestMCP401BodyByteIdentical`) precisely so this note
+cannot be read as broader than it is. If you match on the 401 body text, nothing to
+change.
+
+### 2. The published tool schema loosened
+
+Fields that were previously `required` in the advertised MCP JSON schema (e.g.
+`store_memory`'s `content`, `scope`, `source`, `category`) are no longer marked
+required at the schema level — `tools/list` now shows a shorter or empty `required`
+array for the affected tools. Required-ness moved into engram's own validation
+instead, so the **same calls are still rejected**; the difference is that the
+rejection now names the correct field (this closes issue #360, where an oversized
+`summary` produced a schema-level error naming `content`).
+
+One genuinely **new** rejection: a memory `summary` is now bounded at
+`ENGRAM_MEMORY_MAX_SUMMARY_BYTES` (default 512 bytes) — see
+[Configuration → Memory](/guides/configure/#memory). A summary that used to be
+accepted at any length is now rejected past that bound.
+
+### 3. Connect error codes widened
+
+A validation failure on the Connect API previously always mapped to
+`CodeInvalidArgument`. It now maps to one of `CodeInvalidArgument`,
+`CodeOutOfRange`, or `CodeFailedPrecondition`, selected by the failure class (see
+the [class-to-code table](/reference/errors/#the-class-to-connect-code-mapping)).
+
+**The `engram` CLI needs no change.** All three codes already shared the CLI's
+`exitUsage` exit code (`2`) before this release, and still do — verified against
+`exitCodeForConnectErr`'s own unmodified test table
+(`TestExitCodeForConnectErrTable`). A Connect client that branches on the error
+code directly (not through the CLI) and only handles `CodeInvalidArgument` must
+widen to handle all three.
