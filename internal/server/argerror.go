@@ -133,12 +133,17 @@ func argErrf(class argClass, hint HintCode, field, format string, a ...any) erro
 
 // argErrFieldsf constructs a multi-field argError, for relational rejections
 // (Pitfall 4) where more than one field participates in the violated
-// constraint.
-func argErrFieldsf(class argClass, hint HintCode, fields []string, format string, a ...any) error {
+// constraint. Takes detail as a plain string, not a format+args pair like
+// argErrf: every relational rejection across the D-06 sweep states a fixed
+// constraint text (e.g. "not_before must be strictly before not_after"), and
+// golangci-lint's unparam check correctly flags a variadic parameter no call
+// site ever populates. A future relational rejection needing interpolation
+// can call fmt.Sprintf at the call site before passing detail in.
+func argErrFieldsf(class argClass, hint HintCode, fields []string, detail string) error {
 	return &argError{
 		Fields: fields,
 		Hint:   hint,
-		Detail: fmt.Sprintf(format, a...),
+		Detail: detail,
 		Class:  class,
 	}
 }
