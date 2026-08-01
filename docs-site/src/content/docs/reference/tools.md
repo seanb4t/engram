@@ -93,13 +93,14 @@ memories. By default returns compact summaries; pass `full=true` for complete co
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `query` | string | yes | Natural-language search query |
-| `scope` | string | yes | Scope to search within |
+| `scope` | string | conditional | Scope to search within; required unless `cross_spine` is true |
 | `k` | uint64 | no | Number of results to return (default 8) |
 | `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter. Applied as a hard pre-filter, then results are ranked by vector similarity and reranking (see below) |
 | `categories` | string[] | no | Restrict to records in **any** of the listed categories (OR) — the opposite of `tags`' ALL/AND semantics, since a record carries exactly one category. Omit or pass an empty array for no category filter. An unmatched value returns zero results, never an error; any stored category is accepted, including `discovery` and `rule`, not just the four `store_memory` write values. Applied as a hard pre-filter, before vector ranking. The same filter is available over the Connect read API on `SearchMemories`. |
 | `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
 | `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
 | `full` | bool | no | Return full `content` instead of compact summaries (default `false`) |
+| `cross_spine` | bool | no | Span all scopes the caller can read; ignores `scope` when true |
 
 Returns a list of matching memory records. Each result carries a `score`: the
 raw Qdrant cosine similarity for this query (higher = closer), present when
@@ -107,6 +108,13 @@ non-zero. Unranked `list_memory`/`get_memory` results have a zero/omitted score.
 Final order may include reranking; `score` remains first-stage dense
 similarity and may be non-monotonic after rerank. `citations` are omitted from
 the default compact view; pass `full=true` to include them.
+
+On a cross-spine call (`cross_spine=true`), the response also carries
+`searched_scopes` — every scope you can read that the search spanned, not the
+scopes that produced hits — and `scopes_truncated`, true when that scope
+enumeration hit its bounded ceiling and the list may be incomplete. Both keys
+are omitted entirely on a scope-confined call, so an existing consumer's
+response shape is unchanged.
 
 ---
 
@@ -118,7 +126,7 @@ pass `full=true` for complete content.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `scope` | string | yes | The scope to list memories from |
+| `scope` | string | conditional | The scope to list memories from; required unless `cross_spine` is true |
 | `limit` | uint64 | no | Maximum memories to return (default 20) |
 | `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter |
 | `categories` | string[] | no | Restrict to records in **any** of the listed categories (OR) — the opposite of `tags`' ALL/AND semantics, since a record carries exactly one category. Omit or pass an empty array for no category filter. An unmatched value returns zero results, never an error; any stored category is accepted, including `discovery` and `rule`, not just the four `store_memory` write values. The same filter is available over the Connect read API on `ListMemories`. |
@@ -126,9 +134,22 @@ pass `full=true` for complete content.
 | `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
 | `cursor` | string | no | Opaque pagination cursor from a previous response's `next_cursor`. Omit for the first page. Mutually exclusive with `offset` |
 | `full` | bool | no | Return full `content` instead of compact summaries (default `false`) |
+| `cross_spine` | bool | no | Span all scopes the caller can read; ignores `scope` when true |
 
 Returns `{ "memories": [...], "next_cursor": "<token>" }`. An empty or absent `next_cursor` indicates the last page.
 `citations` are omitted from the default compact view; pass `full=true` to include them.
+
+On a cross-spine call (`cross_spine=true`), the response also carries
+`searched_scopes` — every scope you can read that the list spanned, not the
+scopes that produced results — and `scopes_truncated`, true when that scope
+enumeration hit its bounded ceiling and the list may be incomplete. Both keys
+are omitted entirely on a scope-confined call.
+
+Pass an explicit `limit` on a cross-spine list. The underlying total becomes
+an exact count across every readable scope rather than one scope (visible as
+the Connect API's `total` field), and on the Connect lane an unset limit means
+"all" — a caller flipping `cross_spine` on an existing workflow will see the
+result count jump and, on Connect, may pull far more than intended.
 
 ---
 
