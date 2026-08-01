@@ -4,15 +4,15 @@ milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
 current_phase: 02
 current_phase_name: Headless CLI Client
-status: phase_executing
-stopped_at: Completed 02-03-PLAN.md (self-describe catalog, wave 3 of 3) — Phase 02 complete
-last_updated: "2026-08-01T00:29:21.095Z"
+status: phase_complete
+stopped_at: v0.12.x Phase 2 COMPLETE — verification 5/5, review 1 critical + 1 warning fixed
+last_updated: "2026-08-01T00:45:00.000Z"
 progress:
-  total_phases: 2
+  total_phases: 6
   completed_phases: 2
   total_plans: 7
   completed_plans: 7
-  percent: 100
+  percent: 33
 last_activity: 2026-08-01
 last_activity_desc: v0.12.x Phase 2 Plan 3 complete — bare-invocation self-describe catalog, wave 3 of 3 — Phase 2 complete
 ---
@@ -24,17 +24,37 @@ last_activity_desc: v0.12.x Phase 2 Plan 3 complete — bare-invocation self-des
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 02 — Headless CLI Client
+**Current focus:** v0.12.x Phase 3 — Cross-Spine Memory Recall (next). Phases 1 and 2 shipped.
 
 ## Current Position
 
-Phase: 02 (Headless CLI Client) — PLANS COMPLETE (3 of 3), pending phase verification
-Plans: 3 of 3 complete — 02-01 (engram search tracer), 02-02 (engram list + engram store), and
-02-03 (bare-invocation self-describe catalog, rootCmd.RunE) all done
-Gates green on 02-03's final state: `task` (lint+test), `go vet ./...`, `task license:check`
-requirements progress: ALL FOUR phase requirements COMPLETE — REQ-cli-client-commands,
-REQ-cli-agent-output, REQ-cli-credential-safety (02-01/02-02), REQ-cli-self-describing (02-03)
-Next: phase verification / `/gsd-execute-phase` orchestrator closes out Phase 02
+Phase: v0.12.x Phase 2 (Headless CLI Client) — ✅ COMPLETE 2026-07-31
+Plans: 3 of 3 (02-01 `engram search` tracer, 02-02 `list` + `store`, 02-03 self-describe catalog)
+Verification: **passed, 5/5 must-haves** (`02-VERIFICATION.md`), verified against the running
+binary — real invocations reproduced exit 0/1/2/5 including a closed-port dial
+Code review: 1 critical + 3 warnings (`02-REVIEW.md`). CR-01 and WR-01 fixed in `baa75bc0`;
+WR-02 and WR-03 filed as #452 and #453
+Gates green on final state: `task` (lint+test), `go vet ./...`, `task license:check`,
+`go.mod`/`go.sum` zero diff (the milestone's zero-new-dependency constraint holds)
+Requirements: all four complete — REQ-cli-client-commands, REQ-cli-agent-output,
+REQ-cli-credential-safety, REQ-cli-self-describing
+Next: v0.12.x Phase 3 — Cross-Spine Memory Recall (independent of the spine; carries a
+research GATE that must close before implementation)
+
+**CR-01 is worth remembering as a class.** `resetClientFlags` reset the four shared client flag
+vars but none of the five `StringSliceVar`-backed ones. pflag's `stringSliceValue.Set` APPENDS
+once its internal `changed` bool latches, and cobra's commands are package-level vars shared
+across the whole test binary — so a second invocation accumulated `[foo bar foo bar]`. Dormant
+under `task test` (`-count=1`, no shuffle), real under `-count=2` or `-shuffle=on`. A suite that
+only passes in one ordering is not evidence of isolation. Now green under both.
+
+**A planner/checker premise was falsified during execution.** Both asserted that adding `RunE` to
+`rootCmd` would let a typo'd verb print the catalog at exit 0 unless `Args: cobra.NoArgs` was set;
+the plan-checker called it "the single most important red observation in the plan". Cobra
+v1.10.2's `legacyArgs` (`args.go:28-39`) already rejects an unmatched first arg for any root with
+subcommands, independent of `RunE` — confirmed empirically by deleting the line and rebuilding.
+`NoArgs` is retained (stricter, self-documenting) but is not what prevents the failure. Durable
+record: engram `yr2kr1k9p6`.
 
 **Criterion 1 was proven STRUCTURALLY, not behaviorally** — `buildAuthChain` has exactly one
 production call site (`cmd/engram/serve.go:146`) and the three verifier constructors

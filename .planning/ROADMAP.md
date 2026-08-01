@@ -444,7 +444,7 @@ markdown and tool descriptions rather than Go correctness.
 | 25. Supersession with History | v0.11.x | 2/2 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | Complete | 2026-07-31 |
-| 2. Headless CLI Client | v0.12.x | 4/4 | In Progress (3/3 plans, wave 3 of 3) | — |
+| 2. Headless CLI Client | v0.12.x | 4/4 | Complete | 2026-07-31 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 0/3 | Pending | — |
 | 4. Diagnosability | v0.12.x | 0/4 | Pending | — |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 0/3 | Pending | — |
