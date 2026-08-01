@@ -85,13 +85,14 @@ memory:
       key: ca.crt # key inside the ConfigMap holding the PEM bundle
   # Auto-summary for curated memories. Empty model = disabled (recall returns
   # only client-authored summaries). When set, the server digests memories that
-  # lack a summary using this chat model, served by the SAME OpenAI-compatible
-  # endpoint as the embedder (memory.openai.baseURL + apiKeySecret). maxChars
-  # caps generated-summary length and is also the recall-truncation cap.
-  # Prefer a NON-reasoning model here: this is a tight-token, one-line task, and
-  # reasoning models burn the token budget on hidden reasoning. If you must use a
-  # reasoning model, raise maxTokens (it only bounds generation; the summary is
-  # still truncated to maxChars).
+  # lack a summary using this chat model. Both the base URL and the key
+  # default to the embedder's (memory.openai.baseURL + apiKeySecret) and can
+  # each be overridden independently below. maxChars caps generated-summary
+  # length and is also the recall-truncation cap. Prefer a NON-reasoning model
+  # here: this is a tight-token, one-line task, and reasoning models burn the
+  # token budget on hidden reasoning. If you must use a reasoning model, raise
+  # maxTokens (it only bounds generation; the summary is still truncated to
+  # maxChars).
   summarize:
     model: "" # ENGRAM_SUMMARY_MODEL, e.g. "gpt-4o-mini"; empty disables auto-summary
     # ENGRAM_OPENAI_CHAT_BASE_URL; empty means the summarizer inherits
@@ -99,6 +100,13 @@ memory:
     # gateway (e.g. a hosted provider) while embeddings stay on a local one. A
     # hosted provider URL should include its /v1 (or /v1beta/openai) suffix.
     chatBaseURL: ""
+    # ENGRAM_OPENAI_CHAT_API_KEY; empty name means the summarizer inherits
+    # memory.openai.apiKeySecret's key. Set this to give the chat/summarize
+    # lane its own credential when pointing chatBaseURL at a different
+    # gateway.
+    chatApiKeySecret:
+      name: "" # Secret holding the chat-lane API key
+      key: ""
     maxChars: 280 # ENGRAM_SUMMARY_MAX_CHARS
     maxTokens: 1024 # ENGRAM_SUMMARY_MAX_TOKENS; generation ceiling (0 = gateway default). Raise for reasoning models.
     timeout: 30s # ENGRAM_SUMMARY_TIMEOUT; per-request HTTP timeout (0 = none)
