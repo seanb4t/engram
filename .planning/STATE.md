@@ -3,37 +3,36 @@ gsd_state_version: 1.0
 milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
 current_phase_name: Operator Config & Reindex Correctness
-status: phase_planned
-stopped_at: "Completed 04-07-PLAN.md (wave 5 of 5, FINAL plan of Phase 4) - Phase 4 (Diagnosability) is now COMPLETE. New docs-site reference/errors.md documents the field+hint envelope grammar, all ten hint codes (checked off one by one against internal/server/argerror.go), and the class-to-Connect-code mapping. curating-memory SKILL.md gained a 'Reading a rejection' section (branch on field/hint, not wording) and a summary-bound line in its existing Summaries section. guides/configure.md gained a Memory section (ENGRAM_MEMORY_MAX_SUMMARY_BYTES) and an authz decision-diagnostics operator note under Logging. guides/upgrade.md gained the v0.12.0 entry naming all three wire-visible breaking changes with the MCP 401-body scope fence and the CLI-exit-codes-unchanged claim (backed by TestExitCodeForConnectErrTable). REQ-authz-decision-diagnostics and REQ-error-hint-envelope marked COMPLETE, closing all four of Phase 4's requirements."
-last_updated: "2026-08-01T19:47:25Z"
+status: phase_in_progress
+stopped_at: "Completed 05-01-PLAN.md (wave 1 of 2, plan 1 of 3) - per-lane chat/summarize API key landed end to end: openai.chat_api_key/ENGRAM_OPENAI_CHAT_API_KEY registry entry, OpenAIConfig.ChatAPIKey, summarizerFromConfig's cmp.Or resolution, TestSummarizerFromConfigChatAPIKey (3 subtests, RED/GREEN transcript recorded), and the Helm memory.summarize.chatApiKeySecret value with its re-pinned containerEnv drift checksum. REQ-per-lane-api-key marked COMPLETE. Plan 05-02 (reindex resume tag-awareness) runs concurrently in the same wave/working directory; plan 05-03 (wave 2) owns docs + the full phase-close gate set."
+last_updated: "2026-08-01T22:15:00Z"
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 4
-  total_plans: 19
-  completed_plans: 19
-  percent: 100
-current_phase: 04
+  total_plans: 22
+  completed_plans: 20
+  percent: 91
+current_phase: 05
 last_activity: 2026-08-01
-last_activity_desc: "v0.12.x Phase 4 plan 04-07 executed (wave 5 of 5, depends_on 04-06, FINAL plan of the phase) — agent- and operator-facing guidance for the three new contracts this phase shipped. Task 1: docs-site/src/content/docs/reference/errors.md (new) — the envelope grammar with single-field and relational examples, all ten HintCode constants transcribed one by one from internal/server/argerror.go (required, conditional_required, too_long, too_many, enum, format, prefix, ordering, mutually_exclusive, not_applicable), the class-to-Connect-code table (classMalformed/classOutOfRange/classPrecondition -> CodeInvalidArgument/CodeOutOfRange/CodeFailedPrecondition, all three sharing the CLI's exitUsage), the D-12 no-value-echo guarantee, and the carve-out that the MCP 401 body and go-sdk schema rejections are outside this grammar. Task 2: curating-memory SKILL.md gained '## Reading a rejection' (branch on field/hint not wording; too_long/required/mutually_exclusive+ordering retry patterns; points to the new reference instead of duplicating it) and one line in the existing '## Summaries' section stating the bound; reference/tools.md gained the summary-bound note on store_memory/schedule_memory/update_memory's summary rows plus an errors-reference pointer; guides/configure.md gained a new '## Memory' section (ENGRAM_MEMORY_MAX_SUMMARY_BYTES, default 512, 0 disables) and an authz decision-diagnostics note under '## Logging' naming the exact emitted field names (allow/action/bucket/policy_ids/policy_error_count), what it does NOT carry, and the per-request volume bound; CLAUDE.md's Memory contract gained exactly one sentence. Task 3: guides/upgrade.md gained a v0.12.0 entry covering the message-text reformat (with an explicit MCP-401-body scope fence naming TestMCP401BodyByteIdentical), the loosened tool schema (closing #360, plus the new summary-bound rejection), and the widened Connect codes (with the CLI-needs-no-change claim verified against the shipped, unmodified TestExitCodeForConnectErrTable) — then ran the full phase-close gate set: task (lint+full suite, all green), go vet clean, license:check 0 invalid, chart:validate OK, proto:lint clean, proto:gen/ui:build both zero-drift, go.mod/go.sum zero diff. D-18 amendment applied as instructed both ways: guides/configure.md documents ENGRAM_MEMORY_MAX_SUMMARY_BYTES as an operator config key, and the plan's frozen maxMemorySummaryBytes=NNN verify gate (which no longer matches, since it is now a parser function not a constant) was re-pointed at internal/config/registry.go's memory.max_summary_bytes Default value (512) instead, extracted programmatically and cross-checked into both SKILL.md and CLAUDE.md. REQ-authz-decision-diagnostics and REQ-error-hint-envelope marked COMPLETE via requirements.mark-complete — all four of Phase 4's requirements (REQ-validation-error-attribution, REQ-error-hint-envelope, REQ-authz-decision-diagnostics, REQ-embed-provider-error-body) are now [x]. Phase 4 (Diagnosability) is COMPLETE — 7/7 plans across 5 waves. gsd-tools state.advance-plan was invoked but corrupted last_activity_desc's YAML string escaping on write (turning \\\"summary\\\" into a much longer backslash run) despite also returning a parse error ('Cannot parse Current Plan or Total Plans in Phase') — reverted via git checkout and this STATE.md entry was hand-written instead, per this project's own standing note (line ~550 below) that gsd-tools' state/requirements/roadmap verbs do not parse this project's hand-maintained STATE.md/ROADMAP.md shape cleanly and must be hand-verified every time."
+last_activity_desc: "v0.12.x Phase 5 plan 05-01 executed (wave 1 of 2, one of two concurrent wave-1 plans, git.branching_strategy: none so every commit used an explicit pathspec per the plan's Concurrency contract). Task 1 (tracer/TDD): premise check confirmed summarize.New has exactly one production call site (summarizerFromConfig); added openai.chat_api_key/ENGRAM_OPENAI_CHAT_API_KEY to internal/config/registry.go (no Default/Legacy/Flag) and OpenAIConfig.ChatAPIKey to internal/config/config.go, mirroring ChatBaseURL's doc-comment shape (D-01); summarizerFromConfig gained chatAPIKey := cmp.Or(cfg.OpenAI.ChatAPIKey, cfg.OpenAI.APIKey) alongside the existing chatBaseURL line, passed as summarize.New's second argument — embedderFromConfig's embed.New(cfg.OpenAI.BaseURL, cfg.OpenAI.APIKey, ...) call left byte-identical (D-02/D-03). TestSummarizerFromConfigChatAPIKey added to internal/server/embed_wiring_test.go (3 subtests: chat-key-set routes to chat gateway; chat-key-empty falls back to shared key, chat-only gateway never contacted; chat-key-set-with-no-chat-base-URL still overrides the credential on the shared gateway), mirroring TestSummarizerFromConfigChatBaseURL's two-httptest-server shape but asserting on r.Header.Get(\"Authorization\") instead of r.URL.Path. RED reading taken by mutating (not flag-toggling) the cmp.Or argument order — swapped to shared-key-first, observed subtests 1 and 3 fail exactly as predicted (chat gateway received the shared key), restored correct order, re-confirmed all three green plus the sibling TestSummarizerFromConfigChatBaseURL. internal/config/validate.go, go.mod, go.sum confirmed zero diff from phase base commit dc98ec0c; log-site gate confirmed no non-test ChatAPIKey reference touches slog./fmt.Errorf/Printf/Println; task license:check clean. Task 2: premise check confirmed Taskfile.yaml's EXPECTED_CHECKSUM guard shape unchanged from RESEARCH's description. Shipped the Helm value at memory.summarize.chatApiKeySecret (D-04a — the chart groups by lane; chatBaseURL's sibling location, NOT memory.openai.chatApiKeySecret as D-04 originally and incorrectly specified) with empty name/key defaults in charts/engram/values.yaml, and a guarded secretKeyRef block in charts/engram/templates/_helpers.tpl's engram.containerEnv, mirroring the embedder apiKeySecret guard shape. Corrected the now-false 'reuses the embedder's client' comments in both files. Recomputed Taskfile.yaml's EXPECTED_CHECKSUM via the target's own awk|shasum command (old 4010b14a86946584ac61ccb413d100d4b8d74281177900a75b1fd3aca2988f23 -> new f2af79e090e608aca0fc4cbbab2ce32b4d45e91527316b36bdbdacd85b66f013) in the SAME commit as the template edit (D-04b), plus a dated re-pin comment line naming plan 05-01. task chart:validate and task chart:lint both green; helm template with no overrides omits ENGRAM_OPENAI_CHAT_API_KEY entirely; --set ...name=s --set ...key=k renders a secretKeyRef, never inline plaintext. task lint:yaml clean. Two commits (36b5150b Task 1, 3c11e723 Task 2), each staged with an explicit pathspec per the Concurrency contract, post-commit deletion/untracked checks clean on both. REQ-per-lane-api-key marked complete by hand-edit in REQUIREMENTS.md (gsd-tools' requirements.mark-complete/roadmap.update-plan-progress/state.advance-plan are documented in this project's own standing notes as unreliable against this hand-maintained STATE.md/ROADMAP.md shape — ROADMAP.md's Phase 5 checkbox and progress-table row, and REQUIREMENTS.md's checkbox and traceability-table row, were hand-edited and git-diff-verified instead)."
 ---
 
 <!-- RESUME HERE -->
 <!--
 NEXT COMMAND after /clear:
-    v0.12.x Phase 5 (Operator Config & Reindex Correctness) is PLANNED, not yet executed.
-    3 plans in 2 waves (05-01 ‖ 05-02 in wave 1, 05-03 in wave 2), committed 48d0d2ff.
-    Plan-checker returned VERIFICATION PASSED. Decision coverage 18/18. All three
-    requirement IDs covered. Resume with: /gsd-execute-phase 5
+    v0.12.x Phase 5 (Operator Config & Reindex Correctness): plan 05-01 is COMPLETE
+    (commits 36b5150b, 3c11e723, 4c426a90, 7d127ff1). Plan 05-02 (reindex resume
+    tag-awareness) is still PLANNED, not yet executed — it shares wave 1 and this same
+    working directory with 05-01 (branching_strategy: none). Plan 05-03 (wave 2,
+    depends on both) is also still PLANNED. Resume with: /gsd-execute-phase 5
 
-    TWO THINGS THE EXECUTOR MUST NOT LOSE:
-    (a) Wave 1 runs two plans in ONE shared working directory (branching_strategy: none).
-        Every commit needs an explicit pathspec — `git commit -m "..." -- <files>`. A bare
-        `git commit -m` sweeps the sibling agent's staged files. `git add -A` / `git commit -am`
-        are banned by both plans' Concurrency contract sections.
-    (b) 05-02 must NOT run bare `task`. 05-01 edits _helpers.tpl and Taskfile.yaml's
-        EXPECTED_CHECKSUM in one commit and is transiently red between them, so a full
-        `task chart:validate` from the sibling would fail on work that is not its own.
-        The full phase-close gate set lives in 05-03 (wave 2).
+    ONE THING THE NEXT EXECUTOR (05-02) MUST NOT LOSE:
+    05-02 must NOT run bare `task`. It shares the working directory with 05-01, which
+    has already landed and is clean — but 05-02's OWN edits should still avoid a
+    repo-wide `task` until 05-03 (wave 2) runs the full phase-close gate set. Every
+    commit still needs an explicit pathspec — `git commit -m "..." -- <files>`. A bare
+    `git commit -m` sweeps any concurrently-staged sibling work. `git add -A` /
+    `git commit -am` are banned by 05-02's Concurrency contract section.
 
     Also: `ENGRAM_REQUIRE_QDRANT` does NOT fail closed for internal/store — dialTestClient
     (store_test.go:88-106) t.Skips unconditionally. Store-test gates in these plans therefore
@@ -77,7 +76,7 @@ zero diff) are green on the final tree.
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x Phase 4 — Diagnosability — IN PROGRESS (6/7 plans, wave 4 of 5 fully landed). Plan 04-01 (tracer) landed the field+hint error envelope end-to-end on one validator; plan 04-02 landed Cedar decision diagnostics (debug-level logging at both authz chokepoints); plan 04-03 landed the embeddings provider error body, both-lane drain, and bounded success decode; plan 04-04 landed the full `tools.go` sweep (Category A/B) plus the criterion-2 matrix and the 401 scope-fence pin; plan 04-05 landed `rules.go`'s last unwrapped validator and removed `connectapi.go`'s seven hand-wraps so the Connect lane actually honors the failure class; plan 04-06 landed the D-06a schema layer (24 fields, 13 structs, closing issue #360 by name), the `delete_all` D-19 guard, the koanf-configurable summary bound, and the dimension-sized embeddings bound.
+**Current focus:** v0.12.x Phase 5 — Operator Config & Reindex Correctness — IN PROGRESS (1/3 plans, wave 1 of 2 partially landed). Plan 05-01 landed the per-lane chat/summarize API key end to end (config key, `cmp.Or` construction-site fallback, end-to-end test, Helm value, checksum re-pin), closing REQ-per-lane-api-key. Plan 05-02 (reindex resume tag-awareness) is still planned, sharing wave 1's working directory. Plan 05-03 (docs + phase-close gates, wave 2) is still planned. Phase 4 (Diagnosability) is COMPLETE — 7/7 plans, all four requirements done.
 
 ## ▶ Resume Point (session handed off 2026-08-01)
 
@@ -137,7 +136,33 @@ REQ-cross-spine-authz-verified, REQ-cross-spine-result-provenance) are complete.
 
 ## Current Position
 
-Phase: v0.12.x Phase 4 (Diagnosability) — 🔶 IN PROGRESS (6/7 plans, wave 4 of 5 fully landed)
+Phase: v0.12.x Phase 5 (Operator Config & Reindex Correctness) — 🔶 IN PROGRESS (1/3 plans, wave 1 of 2 partially landed)
+Plan 05-01 (per-lane chat/summarize API key, wave 1, concurrent with 05-02 in the same shared
+working directory — `git.branching_strategy: none`, every commit used an explicit pathspec):
+Task 1 premise check confirmed `summarize.New` has exactly one production call site
+(`summarizerFromConfig`). Added `openai.chat_api_key`/`ENGRAM_OPENAI_CHAT_API_KEY` to the config
+registry (no `Default`/`Legacy`/`Flag`) and `OpenAIConfig.ChatAPIKey`
+(`internal/config/config.go`), mirroring `ChatBaseURL`'s shape (D-01). `summarizerFromConfig`
+gained `chatAPIKey := cmp.Or(cfg.OpenAI.ChatAPIKey, cfg.OpenAI.APIKey)` alongside the existing
+`chatBaseURL` line, passed as `summarize.New`'s second argument; `embedderFromConfig`'s
+`embed.New(cfg.OpenAI.BaseURL, cfg.OpenAI.APIKey, ...)` call left byte-identical (D-02/D-03).
+`TestSummarizerFromConfigChatAPIKey` (3 subtests) added to `embed_wiring_test.go`, mirroring
+`TestSummarizerFromConfigChatBaseURL`'s two-httptest-server shape but asserting on
+`r.Header.Get("Authorization")`. RED reading taken by mutating (not flag-toggling) the `cmp.Or`
+argument order — subtests 1 and 3 failed exactly as predicted, restored and re-confirmed green.
+`internal/config/validate.go`/`go.mod`/`go.sum` zero diff from phase base `dc98ec0c`; log-site
+gate and `task license:check` clean. Task 2 shipped the Helm value at
+`memory.summarize.chatApiKeySecret` (D-04a — the chart groups by lane, matching `chatBaseURL`'s
+location, NOT `memory.openai.chatApiKeySecret` as D-04 originally and incorrectly specified),
+a guarded `secretKeyRef` block in `_helpers.tpl`'s `engram.containerEnv`, corrected the two
+now-false "reuses the embedder's client" comments, and re-pinned `Taskfile.yaml`'s
+`EXPECTED_CHECKSUM` (old `4010b14a...` -> new `f2af79e0...`) in the SAME commit as the template
+edit (D-04b), with a dated re-pin comment line. `task chart:validate`/`chart:lint`/`lint:yaml`
+all green. Commits: `36b5150b` (Task 1), `3c11e723` (Task 2), `4c426a90`/`7d127ff1` (SUMMARY).
+**REQ-per-lane-api-key is now COMPLETE.** Plan 05-02 (reindex resume tag-awareness) and 05-03
+(docs + phase-close gates, wave 2) remain to be executed.
+
+Phase: v0.12.x Phase 4 (Diagnosability) — ✅ COMPLETE 2026-08-01 (7/7 plans, all 5 waves landed)
 Plan 04-01 (tracer, wave 1): `argError{Fields, Hint, Detail, Class}` built in
 `internal/server/argerror.go` — the one envelope carrying D-05's field attribution and D-09's
 remediation hint together, grammar `field=<name> hint=<code>: <detail>` per the D-17 checkpoint.

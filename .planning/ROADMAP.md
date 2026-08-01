@@ -397,7 +397,7 @@ shipped, so this risk is resolved.
 
 Plans:
 
-- [ ] 05-01-PLAN.md — per-lane chat credential: config key, construction-site fallback, end-to-end test, Helm value, checksum re-pin (wave 1)
+- [x] 05-01-PLAN.md — per-lane chat credential: config key, construction-site fallback, end-to-end test, Helm value, checksum re-pin (wave 1)
 - [ ] 05-02-PLAN.md — reindex resume tag-awareness: shared tag decoder, order-independent comparison, three-conjunct predicate, `--dry-run --resume` sizing (wave 1)
 - [ ] 05-03-PLAN.md — operator docs: corrected shared-key prose, the pre-patch-resume repair path and its limit, v0.12.0 upgrade entries, phase-close gates (wave 2)
 
@@ -490,7 +490,7 @@ markdown and tool descriptions rather than Go correctness.
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete | 2026-07-31 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete | 2026-08-01 |
-| 5. Operator Config & Reindex Correctness | v0.12.x | 0/3 | Pending | — |
+| 5. Operator Config & Reindex Correctness | v0.12.x | 1/3 | In Progress (1/3 plans) | — |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 0/2 | Pending | — |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**

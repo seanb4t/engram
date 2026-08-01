@@ -133,7 +133,7 @@ Zero new Go dependencies are required for this entire milestone.
 
 ### Operator Correctness (#350, #345)
 
-- [ ] **REQ-per-lane-api-key**: An operator can point the chat/summarize client at a different
+- [x] **REQ-per-lane-api-key**: An operator can point the chat/summarize client at a different
   provider **credential** than the embedder, mirroring the already-shipped base-URL split; empty
   means inherit the shared key. Byte-identical behavior when unset. Closes #350.
 
@@ -244,7 +244,7 @@ Populated during roadmap creation.
 | REQ-validation-error-attribution | v0.12.x Phase 4 | Complete |
 | REQ-error-hint-envelope | v0.12.x Phase 4 | Complete |
 | REQ-embed-provider-error-body | v0.12.x Phase 4 | Complete |
-| REQ-per-lane-api-key | v0.12.x Phase 5 | Pending |
+| REQ-per-lane-api-key | v0.12.x Phase 5 | Complete |
 | REQ-reindex-resume-tags | v0.12.x Phase 5 | Pending |
 | REQ-reindex-stale-repair | v0.12.x Phase 5 | Pending |
 
