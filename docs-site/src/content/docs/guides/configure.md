@@ -31,7 +31,8 @@ Source: `internal/server/tools.go` (`StoreAndEmbedderFromEnvNoEnsure`).
 | `ENGRAM_OPENAI_BASE_URL` | — | `http://localhost:4000` | OpenAI-compatible embeddings endpoint — point it at any backend that speaks the OpenAI `/v1/embeddings` API (e.g. Ollama, vLLM, TEI, LiteLLM, OpenAI) |
 | `ENGRAM_OPENAI_API_KEY` | — | _(empty)_ | API key for the embeddings endpoint |
 | `ENGRAM_EMBED_MODEL` | — | `ollama/bge-m3` | Model name forwarded to the endpoint |
-| `ENGRAM_OPENAI_CHAT_BASE_URL` | — | _(empty)_ | Base URL for the chat/summarize lane only — the embedder always uses `ENGRAM_OPENAI_BASE_URL` regardless of this setting. Empty means the summarizer **inherits** `ENGRAM_OPENAI_BASE_URL`. Validated only when set: a malformed or non-HTTP(S) value fails startup; empty is always valid. See [Auto-summary](#auto-summary) below for the URL-shape rule and the shared-API-key constraint. |
+| `ENGRAM_OPENAI_CHAT_BASE_URL` | — | _(empty)_ | Base URL for the chat/summarize lane only — the embedder always uses `ENGRAM_OPENAI_BASE_URL` regardless of this setting. Empty means the summarizer **inherits** `ENGRAM_OPENAI_BASE_URL`. Validated only when set: a malformed or non-HTTP(S) value fails startup; empty is always valid. See [Auto-summary](#auto-summary) below for the URL-shape rule and the per-lane credential behavior. |
+| `ENGRAM_OPENAI_CHAT_API_KEY` | — | _(empty)_ | API key for the chat/summarize lane only — the embedder always uses `ENGRAM_OPENAI_API_KEY` regardless of this setting. Empty means the summarizer **inherits** `ENGRAM_OPENAI_API_KEY`. Never validated at startup: unlike a base URL, an API key has no verifiable shape and empty is meaningful (inherit), so a wrong key fails at the provider rather than at boot. See [Auto-summary](#auto-summary) below for the per-lane credential behavior. |
 
 Source: `internal/config` (registry) + `internal/server/tools.go` (`embedderFromConfig`).
 
@@ -61,16 +62,22 @@ server) with summaries at `https://api.openai.com/v1`. Empty
 `ENGRAM_SUMMARY_MODEL` disables auto-summary entirely, and recall returns only
 client-authored summaries.
 
-**The API key is shared across both lanes.** `ENGRAM_OPENAI_API_KEY` is sent
-with every request on *both* the embedder and the chat/summarize lane — there
-is no separate key for `ENGRAM_OPENAI_CHAT_BASE_URL`. This is safe for the
-local-embedder-plus-hosted-chat split above because local embedding servers
-(Ollama, TEI, vLLM) simply ignore an `Authorization` header they don't expect.
-It is worth knowing about *before* you point the chat lane at a hosted
-gateway, though: your embedding API key travels to that host too. If you need
-distinct credentials per lane, that split is not supported this milestone —
-being explicit here is meant to save you from discovering the shared-key
-constraint by debugging an unexpected 401 on the chat lane.
+**Each lane can carry its own API key.** `ENGRAM_OPENAI_API_KEY` is always the
+embedder's credential. The chat/summarize lane can carry its own via
+`ENGRAM_OPENAI_CHAT_API_KEY`; leaving it empty means the chat lane
+**inherits** the embedder's key and sends it to whatever
+`ENGRAM_OPENAI_CHAT_BASE_URL` resolves to. That inherit-by-default behavior is
+safe for the local-embedder-plus-hosted-chat split above, because local
+embedding servers (Ollama, TEI, vLLM) simply ignore an `Authorization` header
+they don't expect. It is worth knowing about *before* you point the chat lane
+at a hosted gateway, though: leaving `ENGRAM_OPENAI_CHAT_API_KEY` unset while
+setting `ENGRAM_OPENAI_CHAT_BASE_URL` sends your embedding API key to that
+gateway too. Set `ENGRAM_OPENAI_CHAT_API_KEY` to opt out and give the chat
+lane a credential of its own.
+
+In a Helm deployment, set `memory.summarize.chatApiKeySecret` to render
+`ENGRAM_OPENAI_CHAT_API_KEY` into the pod spec as a `secretKeyRef` (unset
+omits it, matching the inherit-by-default behavior above).
 
 **URL shape matters.** Supply the provider's full OpenAI-compatible root,
 including its `/v1` suffix (or `/v1beta/openai` for Gemini-compatible
@@ -88,9 +95,11 @@ gateways), and engram appends the chat-completions path directly — e.g.
 | `ENGRAM_SUMMARY_MODEL` | — | _(empty)_ | Chat model for auto-summary; empty disables auto-summary |
 | `ENGRAM_SUMMARY_MAX_CHARS` | — | `280` | Max generated-summary length (also the recall-truncation cap) |
 
-(`ENGRAM_OPENAI_CHAT_BASE_URL` is documented in [Embedder](#embedder) above,
-alongside `ENGRAM_OPENAI_BASE_URL` — this section explains the effect it has
-on the chat/summarize lane specifically.)
+(`ENGRAM_OPENAI_CHAT_BASE_URL` and `ENGRAM_OPENAI_CHAT_API_KEY` are documented
+in [Embedder](#embedder) above, alongside `ENGRAM_OPENAI_BASE_URL` and
+`ENGRAM_OPENAI_API_KEY` — this section explains the per-lane credential
+behavior and the effect the base URL has on the chat/summarize lane
+specifically.)
 
 In a Helm deployment, set `memory.summarize.chatBaseURL` to render this
 variable into the pod spec (unset omits it, matching the inherit-by-default
