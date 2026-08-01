@@ -135,6 +135,11 @@ type OpenAIConfig struct {
 	// construction site (cmp.Or in summarizerFromConfig), not here, so this
 	// field always faithfully reflects what the operator set (D-12).
 	ChatBaseURL string `koanf:"chat_base_url"`
+	// ChatAPIKey is the ENGRAM_OPENAI_CHAT_API_KEY credential for the
+	// chat/summarize lane. Empty (the default; no registry default is set) means
+	// inherit APIKey — the fallback is resolved once, at the summarizer
+	// construction site (cmp.Or in summarizerFromConfig), not here (D-02/D-03).
+	ChatAPIKey string `koanf:"chat_api_key"`
 }
 
 // OIDCConfig holds the MCP bearer-token issuer settings and the web-UI

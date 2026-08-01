@@ -49,6 +49,7 @@ var registry = []field{
 	{Key: "openai.api_key", Env: "ENGRAM_OPENAI_API_KEY", Legacy: "MEM_LITELLM_KEY"},
 	{Key: "openai.embeddings_url", Env: "ENGRAM_OPENAI_EMBEDDINGS_URL"},
 	{Key: "openai.chat_base_url", Env: "ENGRAM_OPENAI_CHAT_BASE_URL"},
+	{Key: "openai.chat_api_key", Env: "ENGRAM_OPENAI_CHAT_API_KEY"},
 	{Key: "oidc.issuer", Env: "ENGRAM_OIDC_ISSUER", Legacy: "MEM_OIDC_ISSUER", Flag: "oidc-issuer"},
 	{Key: "oidc.audience", Env: "ENGRAM_OIDC_AUDIENCE", Legacy: "MEM_OIDC_AUDIENCE", Flag: "oidc-audience"},
 	{Key: "oidc.client_id", Env: "ENGRAM_OIDC_CLIENT_ID", Legacy: "MEM_OIDC_CLIENT_ID", Flag: "oidc-client-id"},

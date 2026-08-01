@@ -417,11 +417,13 @@ func embedderFromConfig(cfg *config.Config) (*embed.Client, error) {
 
 // summarizerFromConfig builds the chat-completions summarizer from config.
 func summarizerFromConfig(cfg *config.Config) *summarize.Client {
-	// cmp.Or resolved once here (D-12): ChatBaseURL wins when set, otherwise
-	// the shared BaseURL. The embedder below is deliberately left untouched —
-	// it always uses BaseURL regardless of ChatBaseURL.
+	// cmp.Or resolved once here (D-12): ChatBaseURL/ChatAPIKey win when set,
+	// otherwise the shared BaseURL/APIKey. The embedder below is deliberately
+	// left untouched — it always uses BaseURL/APIKey regardless of
+	// ChatBaseURL/ChatAPIKey.
 	chatBaseURL := cmp.Or(cfg.OpenAI.ChatBaseURL, cfg.OpenAI.BaseURL)
-	return summarize.New(chatBaseURL, cfg.OpenAI.APIKey, cfg.Summarize.Model, summaryMaxChars(cfg),
+	chatAPIKey := cmp.Or(cfg.OpenAI.ChatAPIKey, cfg.OpenAI.APIKey)
+	return summarize.New(chatBaseURL, chatAPIKey, cfg.Summarize.Model, summaryMaxChars(cfg),
 		summarize.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)),
 		summarize.WithMaxTokens(summaryMaxTokens(cfg)),
 		summarize.WithTimeout(summaryTimeout(cfg)))
