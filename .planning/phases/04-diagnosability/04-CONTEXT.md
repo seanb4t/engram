@@ -67,6 +67,24 @@ provider integrations.
   branch on the field for some tools and not others, which is worse than not having it.
   — **Reversibility:** reversible.
 
+- **D-06a (the sweep is EXTENDED above tools.go to the schema layer, so issue #360 is actually fixed — decided 2026-08-01 by Sean, after research):**
+  Research established that #360's misleading `missing properties: ["content"]` is emitted by the
+  go-sdk's `applySchema` (`mcp/tool.go`) BEFORE any `tools.go` code runs, because
+  `storeArgs.Content/Scope/Source/Category` (`tools.go:430-433`) carry no `omitempty` and are
+  therefore schema-required. D-06's original scope could not reach it, so a phase satisfying
+  criterion 2 over the `tools.go` sites would have shipped with its own motivating bug still
+  reproducible.
+  Extended scope: drop schema-level `required` by adding `omitempty` on the affected fields, and add
+  Go-level presence checks in `tools.go` so engram owns the rejection and attributes the correct
+  field. Applies to every arg struct carrying schema-required fields, not only the two #360 names —
+  a partial application would recreate D-06's own inconsistency objection one layer up.
+  **Consequence, accepted:** the published MCP tool schema loosens. Required-ness moves out of the
+  schema and into engram's validation. This ships under the same `feat!` D-11 already carries.
+  **Verification obligation:** the phase must reproduce #360's exact call — a valid `content` plus an
+  oversized `summary` — and assert the error now names `summary`, not `content`. Criterion 2's matrix
+  alone does not prove this; it is a separate regression test naming the issue.
+  — **Reversibility:** costly — a published tool schema.
+
 - **D-07 (the matrix is table-driven with one case per single-field-invalid input):** Each case makes
   exactly one field invalid and asserts the returned field identifier equals that field. This is what
   makes it a matrix rather than a spot-check, and it is what catches an attribution that names a
@@ -112,6 +130,15 @@ provider integrations.
   `0.12.0` — the `!` is a changelog signal here, not a version escalation, and it does not disturb the
   v0.12.x milestone label.
   — **Reversibility:** one-way — a released error-code mapping is a contract callers branch on.
+
+- **D-11a (the bare-unwrapped-error defect found by research is fixed in this phase):** Research found
+  that `validateStoreDiscovery`, `validateCitations`, and part of `validateStoreRule`
+  (`tools.go:638-687`, `rules.go:56-67`) return bare unwrapped errors, so on the Connect lane they
+  fall through `connectError`'s switch (`connecterror.go:49-85`) to `CodeInternal` — a caller's
+  invalid input reported today as a server fault. This is a live, previously undocumented defect,
+  squarely inside D-11's mapping work, and it is fixed here rather than filed. A test must pin each
+  of the three so the wrapping cannot silently regress.
+  — **Reversibility:** reversible.
 
 - **D-12 (a hint never echoes the caller's rejected VALUE):** It names the field and states the
   constraint. Same discipline as Phase 3's D-02 no-value-echo logging: an unbounded or sensitive
