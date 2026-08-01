@@ -4584,6 +4584,143 @@ func TestSearchCrossSpine(t *testing.T) {
 	}
 }
 
+// TestListCrossSpine is Store.List's wiring proof, the list analog of
+// TestSearchCrossSpine: listFilter's now-conditional scope clause spans every
+// scope in the collection the owner may read when scope=="", and naming a
+// scope still confines to it. One owner, two distinct scopes, one fixture tag
+// unique to this test (mem_eval_test is package-shared).
+func TestListCrossSpine(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	const (
+		scopeA     = "iso-test:project:cross-spine-list-wiring-a"
+		scopeB     = "iso-test:project:cross-spine-list-wiring-b"
+		owner      = "sub-xspine-list-wiring"
+		fixtureTag = "xspine-list-wiring-fixture-4e9a"
+	)
+	defer func() {
+		cleanupErr(t, "DeleteAllRaw "+scopeA, s.DeleteAllRaw(ctx, scopeA))
+		cleanupErr(t, "DeleteAllRaw "+scopeB, s.DeleteAllRaw(ctx, scopeB))
+	}()
+
+	mk := func(id, scope string) {
+		m := Memory{ID: id, Content: "x", Scope: scope, Owner: owner,
+			Tags: []string{fixtureTag}, CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	const (
+		a1 = "c5c50005-0000-0000-0000-000000000001"
+		a2 = "c5c50005-0000-0000-0000-000000000002"
+		b1 = "c5c50005-0000-0000-0000-000000000003"
+		b2 = "c5c50005-0000-0000-0000-000000000004"
+	)
+	mk(a1, scopeA)
+	mk(a2, scopeA)
+	mk(b1, scopeB)
+	mk(b2, scopeB)
+
+	opts := ListOptions{Limit: 10000, Tags: []string{fixtureTag}}
+	subj := Authenticated(owner)
+
+	// Empty scope spans both scopes.
+	items, _, _, err := s.List(ctx, "", subj, opts)
+	if err != nil {
+		t.Fatalf("cross-spine list: %v", err)
+	}
+	gotScopes := map[string]bool{}
+	gotIDs := map[string]bool{}
+	for _, m := range items {
+		gotScopes[m.Scope] = true
+		gotIDs[m.ID] = true
+	}
+	if len(gotScopes) <= 1 {
+		t.Fatalf("cross-spine list spans %d distinct scope(s), want >1: %v", len(gotScopes), gotScopes)
+	}
+	for _, id := range []string{a1, a2, b1, b2} {
+		if !gotIDs[id] {
+			t.Errorf("cross-spine list missing %s", id)
+		}
+	}
+
+	// Naming scopeA still confines to it.
+	scoped, _, _, err := s.List(ctx, scopeA, subj, opts)
+	if err != nil {
+		t.Fatalf("scope-confined list: %v", err)
+	}
+	scopedScopes := map[string]bool{}
+	scopedIDs := map[string]bool{}
+	for _, m := range scoped {
+		scopedScopes[m.Scope] = true
+		scopedIDs[m.ID] = true
+	}
+	if len(scopedScopes) != 1 || !scopedScopes[scopeA] {
+		t.Errorf("scope-confined list: distinct scopes = %v, want exactly {%s}", scopedScopes, scopeA)
+	}
+	if scopedIDs[b1] || scopedIDs[b2] {
+		t.Errorf("scope-confined list leaked scopeB records: %v", scopedIDs)
+	}
+}
+
+// TestListCrossSpineTotal pins D-09: a cross-spine List's total is the exact
+// server-side Count across every readable scope, strictly greater than the
+// scope-confined total. Uses its own fixture tag and owner (distinct from
+// TestListCrossSpine's) so the two tests' exact-count assertions cannot
+// contaminate each other against the package-shared collection.
+func TestListCrossSpineTotal(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	const (
+		scopeA     = "iso-test:project:cross-spine-list-total-a"
+		scopeB     = "iso-test:project:cross-spine-list-total-b"
+		owner      = "sub-xspine-list-total"
+		fixtureTag = "xspine-list-total-fixture-1a7c"
+	)
+	defer func() {
+		cleanupErr(t, "DeleteAllRaw "+scopeA, s.DeleteAllRaw(ctx, scopeA))
+		cleanupErr(t, "DeleteAllRaw "+scopeB, s.DeleteAllRaw(ctx, scopeB))
+	}()
+
+	mk := func(id, scope string) {
+		m := Memory{ID: id, Content: "x", Scope: scope, Owner: owner,
+			Tags: []string{fixtureTag}, CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	// 3 records in scopeA, 2 in scopeB — 5 total, tagged so the count is
+	// deterministic against the shared collection.
+	for i := 0; i < 3; i++ {
+		mk(fmt.Sprintf("c5c50006-0000-0000-0000-00000000000%d", i+1), scopeA)
+	}
+	for i := 0; i < 2; i++ {
+		mk(fmt.Sprintf("c5c50006-0000-0000-0000-00000000001%d", i+1), scopeB)
+	}
+
+	opts := ListOptions{Limit: 1, Tags: []string{fixtureTag}}
+	subj := Authenticated(owner)
+
+	_, crossTotal, _, err := s.List(ctx, "", subj, opts)
+	if err != nil {
+		t.Fatalf("cross-spine list: %v", err)
+	}
+	if crossTotal != 5 {
+		t.Errorf("cross-spine total = %d, want exact 5 (3 in scopeA + 2 in scopeB)", crossTotal)
+	}
+
+	_, scopedTotal, _, err := s.List(ctx, scopeA, subj, opts)
+	if err != nil {
+		t.Fatalf("scope-confined list: %v", err)
+	}
+	if scopedTotal != 3 {
+		t.Errorf("scope-confined total = %d, want exact 3", scopedTotal)
+	}
+	if crossTotal <= scopedTotal {
+		t.Errorf("cross-spine total (%d) must be strictly greater than scope-confined total (%d)", crossTotal, scopedTotal)
+	}
+}
+
 // TestGetReadableDenyMapsToNotFound proves a Cedar Deny on an id-addressed
 // gate is indistinguishable from a genuinely missing id: even though the
 // record EXISTS and is owned by the caller, an all-deny decideRecordHook

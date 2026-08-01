@@ -2378,6 +2378,90 @@ func TestListMemoryCrossSpineIsolation(t *testing.T) {
 	}
 }
 
+// TestCrossSpineResultScope pins criterion 5's attribution half (D-11): a
+// cross-spine search_memory result set spans at least two distinct scope
+// values, and EVERY result's scope equals the scope it was seeded under — on
+// BOTH the compact view (recallView.Scope) and the full view
+// (store.Memory.Scope). recallView is a hand-written allow-list struct whose
+// own comments warn that a field must be added there AND populated in
+// toRecallView to surface, so a regression could plausibly drop scope from
+// the compact view while leaving the full view correct — this test would
+// catch exactly that. Per D-11, no new field is added: both Scope fields
+// already exist; this is a standing pin, not new plumbing.
+func TestCrossSpineResultScope(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	const (
+		scopeA     = "iso-test:project:cross-spine-attribution-a"
+		scopeB     = "iso-test:project:cross-spine-attribution-b"
+		owner      = "sub-xspine-attribution"
+		fixtureTag = "xspine-attribution-fixture-8f2c"
+	)
+	mk := func(id, scope string) {
+		m := store.Memory{
+			ID: id, Content: "x", Scope: scope, Owner: owner,
+			Tags: []string{fixtureTag}, CreatedAt: timeNow(),
+		}
+		if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+	}
+	mk("c5c50007-0000-0000-0000-000000000001", scopeA)
+	mk("c5c50007-0000-0000-0000-000000000002", scopeB)
+	t.Cleanup(func() {
+		cleanupErr(t, "DeleteAll A", d.st.DeleteAll(context.Background(), scopeA, store.Authenticated(owner)))
+		cleanupErr(t, "DeleteAll B", d.st.DeleteAll(context.Background(), scopeB, store.Authenticated(owner)))
+	})
+
+	ctxO := authedContext(t, owner)
+	c := callerFor(ctxO, t)
+
+	ms, err := d.searchMemory(ctxO, c, coreSearchRequest{
+		Query: "x", Scope: "", CrossSpine: true, K: 10, Tags: []string{fixtureTag},
+	})
+	if err != nil {
+		t.Fatalf("cross-spine searchMemory: %v", err)
+	}
+	seedScope := map[string]string{
+		"c5c50007-0000-0000-0000-000000000001": scopeA,
+		"c5c50007-0000-0000-0000-000000000002": scopeB,
+	}
+
+	// Compact view (shapeRecall(ms, false, ...) -> recallView).
+	compact := shapeRecall(ms, false, d.summaryMaxChars)
+	compactScopes := map[string]bool{}
+	for _, v := range compact {
+		rv, ok := v.(recallView)
+		if !ok {
+			t.Fatalf("compact shape is not recallView: %T", v)
+		}
+		compactScopes[rv.Scope] = true
+		if want, seeded := seedScope[rv.ID]; seeded && rv.Scope != want {
+			t.Errorf("compact view: result %s carries scope %q, want %q", rv.ID, rv.Scope, want)
+		}
+	}
+	if len(compactScopes) < 2 {
+		t.Errorf("compact view: results span %d distinct scope(s), want >=2: %v", len(compactScopes), compactScopes)
+	}
+
+	// Full view (shapeRecall(ms, true, ...) -> store.Memory).
+	full := shapeRecall(ms, true, d.summaryMaxChars)
+	fullScopes := map[string]bool{}
+	for _, v := range full {
+		m, ok := v.(store.Memory)
+		if !ok {
+			t.Fatalf("full shape is not store.Memory: %T", v)
+		}
+		fullScopes[m.Scope] = true
+		if want, seeded := seedScope[m.ID]; seeded && m.Scope != want {
+			t.Errorf("full view: result %s carries scope %q, want %q", m.ID, m.Scope, want)
+		}
+	}
+	if len(fullScopes) < 2 {
+		t.Errorf("full view: results span %d distinct scope(s), want >=2: %v", len(fullScopes), fullScopes)
+	}
+}
+
 // TestSearchedScopesReporting pins criterion 5's reporting half (D-12/D-13/
 // D-14). searchedScopes and recallResultMap are exercised directly rather
 // than through a full MCP client/session round trip — this codebase's
