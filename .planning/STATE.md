@@ -4,23 +4,23 @@ milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
 current_phase_name: Cross-Spine Memory Recall
 status: executing
-stopped_at: Completed 03-02-PLAN.md (cross-spine search_memory tracer, wave 2 of 5) — wave 3 (03-03, list_memory) is next
-last_updated: "2026-08-01T15:20:16.367Z"
+stopped_at: Completed 03-03-PLAN.md (list_memory cross-spine + searched_scopes reporting, wave 3 of 5) — wave 4 (03-04, Connect/proto parity) is next
+last_updated: "2026-08-01T15:34:19.723Z"
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 12
-  completed_plans: 9
+  completed_plans: 10
   percent: 67
 current_phase: 03
 last_activity: 2026-08-01
-last_activity_desc: v0.12.x Phase 3 plan 03-02 executed — cross-spine search_memory tracer landed end to end on the MCP lane (ownerScopeFilter, effectiveSearchScope, handler + store isolation/wiring pins)
+last_activity_desc: v0.12.x Phase 3 plan 03-03 executed — cross-spine list_memory landed end to end on the MCP lane, plus searched_scopes/scopes_truncated reporting and per-result scope attribution (listFilter, effectiveSearchScope reused, searchedScopes/recallResultMap, handler + store pins); all 3 Phase 3 requirements now complete
 ---
 
 <!-- RESUME HERE -->
 <!--
 NEXT COMMAND after /clear:
-    /gsd-execute-phase 3   (continue at wave 3, plan 03-03 — 03-01 and 03-02 are done)
+    /gsd-execute-phase 3   (continue at wave 4, plan 03-04 — 03-01 through 03-03 are done)
 
 Phases 1 and 2 are COMPLETE and verified. Phase 3's blocking authz gate is already
 CLOSED — do NOT re-run it. Plan 03-01 (wave 1) landed the isolation test (non-vacuous,
@@ -28,8 +28,12 @@ RED-by-mutation transcript recorded), and 03-AUTHZ-GATE.md covers listFilter too
 03-02 (wave 2) landed the search_memory tracer: ownerScopeFilter's scope clause is now
 conditional, effectiveSearchScope guards both the MCP closure and the typed core, and
 cross_spine=true works end to end on search_memory with owner isolation proven at both
-the handler and store layers. Wave 3 (03-03, depends_on 03-02) is next: the identical
-D-05 shape applied to listFilter/listArgs for list_memory (D-08).
+the handler and store layers. Plan 03-03 (wave 3) landed the identical D-05 shape applied
+to listFilter/listArgs for list_memory (D-08), plus searched_scopes/scopes_truncated
+reporting on both MCP verbs via Store.ListScopes (D-12/D-13) and per-result scope
+attribution (D-11) — the MCP lane is now fully done for both search_memory and
+list_memory. All 3 of Phase 3's requirements are complete. Wave 4 (03-04, depends_on
+03-03) is next: Connect + proto parity via six additive fields.
 -->
 
 # Project State
@@ -39,17 +43,20 @@ D-05 shape applied to listFilter/listArgs for list_memory (D-08).
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x Phase 3 — Cross-Spine Memory Recall. Authz gate CLOSED; wave 3 (03-03, list_memory) is next.
+**Current focus:** v0.12.x Phase 3 — Cross-Spine Memory Recall. Authz gate CLOSED; MCP lane done; wave 4 (03-04, Connect/proto parity) is next.
 
 ## ▶ Resume Point (session handed off 2026-08-01)
 
-**Next command:** `/gsd-execute-phase 3` (wave 3, plan 03-03)
+**Next command:** `/gsd-execute-phase 3` (wave 4, plan 03-04)
 
 **Done:** Phases 1 and 2 complete and verified (5/5 each). Phase 3's blocking authz gate is
 already closed — `03-AUTHZ-GATE.md`, commit `a7f827b6`. **Do not re-run the gate.** Plans
-03-01 (authz isolation proof) and 03-02 (search_memory cross-spine tracer) are complete.
+03-01 (authz isolation proof), 03-02 (search_memory cross-spine tracer), and 03-03
+(list_memory cross-spine + searched_scopes reporting) are complete. All 3 Phase 3
+requirements (REQ-cross-spine-search, REQ-cross-spine-authz-verified,
+REQ-cross-spine-result-provenance) are complete.
 
-**Not done for Phase 3:** waves 3-5 (03-03 list_memory, 03-04 Connect/proto parity, 03-05).
+**Not done for Phase 3:** waves 4-5 (03-04 Connect/proto parity, 03-05 agent-facing guidance).
 
 **Read `03-AUTHZ-GATE.md` before planning Phase 3.** Two findings there change the plan shape:
 
@@ -90,7 +97,8 @@ already closed — `03-AUTHZ-GATE.md`, commit `a7f827b6`. **Do not re-run the ga
 ## Current Position
 
 Phase: v0.12.x Phase 3 (Cross-Spine Memory Recall) — IN PROGRESS
-Plans: 2 of 5 complete (03-01 cross-spine authz isolation proof, 03-02 search_memory tracer)
+Plans: 3 of 5 complete (03-01 cross-spine authz isolation proof, 03-02 search_memory tracer,
+03-03 list_memory + searched_scopes reporting)
 Plan 03-01: `TestCrossSpineAuthzIsolation` landed and green against real Qdrant, RED-by-mutation
 transcript recorded (`03-RED-TRANSCRIPT.md`), `03-AUTHZ-GATE.md` amended to cover `listFilter`
 (D-06). Zero production code touched — `internal/store/store.go` unmodified. Commits: `737178e2`,
@@ -103,11 +111,22 @@ genuine assertion failure (not a compile error) before the `ownerScopeFilter` ed
 (`TestSearchMemoryCrossSpineIsolation`) and store-level (`TestSearchCrossSpine`) isolation/wiring
 pins both green, alongside the standing `TestCrossSpineAuthzIsolation`. `task` green. Commits:
 `9d763790`, `741ee457`.
-Requirement REQ-cross-spine-authz-verified: complete. REQ-cross-spine-search: complete (search
-half; `list_memory` half is 03-03, per D-08's widened interpretation).
-Next: 03-03 (wave 3, `depends_on: ["03-02"]`) — the identical D-05 shape applied to
-`listFilter`/`listArgs` for `list_memory` (D-08), plus `searched_scopes` reporting via
-`Store.ListScopes` (D-12/D-13).
+Plan 03-03: `list_memory` cross-spine wired end to end, mirroring 03-02's shape exactly.
+`listFilter`'s scope clause is now conditional (identical composition to `ownerScopeFilter`);
+`effectiveSearchScope` REUSED verbatim (no new guard written, D-03). Audited the second production
+path to `Store.List` (`listRules`) — already guarded by `validRuleScope`, pinned with
+`TestListRulesRejectsEmptyScope`. `(*deps).searchedScopes` + `recallResultMap` add
+`searched_scopes`/`scopes_truncated` to both MCP verbs' result maps ONLY on cross-spine calls
+(D-14 byte-identical guarantee otherwise); per-result scope attribution pinned on both compact and
+full views (D-11). TDD RED observed as a genuine assertion failure before the `listFilter` edit.
+Six new tests, all green, alongside every standing 03-01/03-02 pin. `task` green. Commits:
+`3ba10569`, `88080d3f`, `4033d915`.
+Requirement REQ-cross-spine-authz-verified: complete. REQ-cross-spine-search: complete.
+REQ-cross-spine-result-provenance: complete. All 3 of Phase 3's requirements are now complete —
+the MCP lane is fully done for both verbs.
+Next: 03-04 (wave 4, `depends_on: ["03-03"]`) — Connect + proto parity via six additive fields
+(`cross_spine`, `searched_scopes`, `scopes_truncated` on both `SearchMemories`/`ListMemories`
+request/response pairs), read explicitly and never inferred from an empty scope (D-04).
 
 Phase: v0.12.x Phase 2 (Headless CLI Client) — ✅ COMPLETE 2026-07-31
 Plans: 3 of 3 (02-01 `engram search` tracer, 02-02 `list` + `store`, 02-03 self-describe catalog)
@@ -266,6 +285,8 @@ milestone needs in working memory.
 - [Phase ?]: The plan's landmine premise (deleting cobra.NoArgs breaks a mistyped-verb guard) did not reproduce for cobra v1.10.2 root-with-subcommands (legacyArgs already guards it); Args: cobra.ArbitraryArgs is the mutation that actually reproduces the regression the guard exists to prevent
 - [Phase ?]: D-15 mutation chosen: empty the Must slice (drop ownerOrSharedCondition) — matches 03-AUTHZ-GATE.md's own wording
 - [Phase ?]: D-03/D-07 guard (effectiveSearchScope) applied at both the MCP transport boundary and the typed core, not just one
+- [Phase ?]: listFilter's scope match made conditional identically to ownerScopeFilter/SearchDiscovery; effectiveSearchScope reused verbatim for list_memory (D-03)
+- [Phase ?]: searchedScopes/recallResultMap: searched_scopes+scopes_truncated present only on cross-spine calls (D-14); recallResultMap factored out as shared map-assembly, tested directly (no in-process MCP session harness exists in this codebase)
 
 ### Blockers/Concerns
 
@@ -317,8 +338,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-01T15:20:16.357Z
-Stopped at: Completed 03-02-PLAN.md (cross-spine search_memory tracer, wave 2 of 5) — wave 3 (03-03, list_memory) is next
+Last session: 2026-08-01T15:34:19.713Z
+Stopped at: Completed 03-03-PLAN.md (list_memory cross-spine + searched_scopes reporting, wave 3 of 5) — wave 4 (03-04, Connect/proto parity) is next
 Resume file: None
 
 ## Performance Metrics
@@ -391,6 +412,7 @@ Resume file: None
 | Phase 02 P03 | ~35min | 2 tasks | 4 files |
 | Phase 03 P01 | 9min | 3 tasks | 3 files |
 | Phase 03 P02 | 12min | 2 tasks | 4 files |
+| Phase 03 P03 | 20min | 3 tasks | 5 files |
 
 ## Operator Next Steps
 

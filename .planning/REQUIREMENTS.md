@@ -83,7 +83,7 @@ Zero new Go dependencies are required for this entire milestone.
   may have leaned on `scope` being non-empty as an unaudited narrowing signal. Resolved by
   verification, not analogy.)*
 
-- [ ] **REQ-cross-spine-result-provenance**: A cross-spine result is visibly attributable to its
+- [x] **REQ-cross-spine-result-provenance**: A cross-spine result is visibly attributable to its
   originating scope, and the response reports which scopes were searched — so an agent can tell
   "found nothing here" from "searched everywhere I can see and found nothing."
 
@@ -231,7 +231,7 @@ Populated during roadmap creation.
 | REQ-cli-self-describing | v0.12.x Phase 2 | Complete |
 | REQ-cross-spine-search | v0.12.x Phase 3 | Complete |
 | REQ-cross-spine-authz-verified | v0.12.x Phase 3 | Complete |
-| REQ-cross-spine-result-provenance | v0.12.x Phase 3 | Pending |
+| REQ-cross-spine-result-provenance | v0.12.x Phase 3 | Complete |
 | REQ-rule-capture-investigation | v0.12.x Phase 6 | Pending |
 | REQ-rule-capture-intervention | v0.12.x Phase 6 | Pending |
 | REQ-authz-decision-diagnostics | v0.12.x Phase 4 | Pending |
