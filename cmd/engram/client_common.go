@@ -77,7 +77,13 @@ func resolveToken(tokenFilePath string) (string, error) {
 	}
 	b, err := os.ReadFile(tokenFilePath)
 	if err != nil {
-		return "", fmt.Errorf("reading --token-file: %w", err)
+		// usageErrorf, not fmt.Errorf (REVIEW.md WR-01): an unreadable
+		// --token-file is the caller naming a bad path, which is the
+		// client's own semantic validation — D-17 reserves exit 2 for
+		// exactly that. A plain error would exit 1 and be indistinguishable
+		// from a server-side failure, so a script could not tell "fix your
+		// path" from "retry later".
+		return "", usageErrorf("reading --token-file: %w", err)
 	}
 	return strings.TrimSpace(string(b)), nil
 }

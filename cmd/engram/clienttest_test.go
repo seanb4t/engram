@@ -107,6 +107,24 @@ func resetClientFlags(t *testing.T) {
 		clientTokenFile = ""
 		clientInsecure = false
 		clientOutput = ""
+
+		// The StringSliceVar-backed vars MUST be reset too (REVIEW.md CR-01).
+		// pflag's stringSliceValue.Set APPENDS once its internal `changed`
+		// bool has latched true, and cobra's commands are package-level vars
+		// shared by every test in this binary — so without this, a second
+		// invocation of the same command accumulates: --tags foo,bar twice
+		// yields [foo bar foo bar]. That is dormant under `task test`
+		// (-count=1, no shuffle) but turns real under -count=2 or
+		// -shuffle=on, which is exactly when a suite is being trusted most.
+		//
+		// Resetting the Go var is sufficient: pflag holds a pointer to it,
+		// so the latched append targets the freshly-nil slice. `changed`
+		// itself is unexported and cannot be cleared from here.
+		storeTags = nil
+		searchTags = nil
+		searchCategories = nil
+		listTags = nil
+		listCategories = nil
 	})
 }
 

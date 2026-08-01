@@ -426,6 +426,32 @@ func TestTokenFileTrailingNewlineTrimmed(t *testing.T) {
 	}
 }
 
+// TestTokenFileUnreadableIsUsageError pins REVIEW.md WR-01: an unreadable
+// --token-file is the caller naming a bad path, so it must exit 2 (the
+// client's own semantic validation, per D-17) and not 1. Exiting 1 would be
+// indistinguishable from a server-side failure, leaving a script unable to
+// tell "fix your path" from "retry later".
+//
+// The positive control matters here: without asserting the error is non-nil
+// FIRST, an errors.As against a nil error would simply report false and the
+// test would read as if it had checked the code.
+func TestTokenFileUnreadableIsUsageError(t *testing.T) {
+	t.Setenv("ENGRAM_TOKEN", "")
+	missing := filepath.Join(t.TempDir(), "no-such-token-file")
+
+	_, err := resolveToken(missing)
+	if err == nil {
+		t.Fatal("expected an error for an unreadable --token-file")
+	}
+	var ec interface{ ExitCode() int }
+	if !errors.As(err, &ec) {
+		t.Fatalf("error %v does not carry ExitCode(); an unreadable --token-file must be a usage error", err)
+	}
+	if ec.ExitCode() != exitUsage {
+		t.Errorf("ExitCode() = %d, want %d (exitUsage)", ec.ExitCode(), exitUsage)
+	}
+}
+
 // TestNoClientPathReadsStandardInput is the REQ-cli-agent-output gate: no
 // client_*.go production file may reference os.Stdin. A cron loop blocked
 // on a hidden prompt is the failure mode the requirement exists to
