@@ -51,11 +51,24 @@ string; any change to the embedder lane's own credential.
   the requirement's "byte-identical when unset" clause and is provable by argument equality, not
   by asserting equal outbound behavior.
 
-- **D-04 (the Helm value ships in this phase, not as a follow-up):** add
-  `memory.openai.chatApiKeySecret` with its own `secretKeyRef` in `charts/engram/values.yaml` +
-  `_helpers.tpl`, omitted meaning the env var is absent meaning inherit. Same reasoning that
-  pulled `connect.headless` into v0.12.x Phase 1 — `charts/engram` has no generic extra-env
-  escape hatch, so an env-only feature is unreachable for chart users.
+- **D-04 (the Helm value ships in this phase, not as a follow-up):** add a `chatApiKeySecret`
+  with its own `secretKeyRef` in `charts/engram/values.yaml` + `_helpers.tpl`, omitted meaning
+  the env var is absent meaning inherit. Same reasoning that pulled `connect.headless` into
+  v0.12.x Phase 1 — `charts/engram` has no generic extra-env escape hatch, so an env-only
+  feature is unreachable for chart users.
+
+- **D-04a (the Helm value goes under summarize beside chatBaseURL, not under openai):**
+  Amended 2026-08-01 after research. D-04 originally named `memory.openai.chatApiKeySecret`. That
+  premise was falsified by reading the chart: `apiKeySecret` is at `memory.openai` (values.yaml:72)
+  but the new key's actual sibling `chatBaseURL` is at `memory.summarize` (values.yaml:101). The
+  chart groups by lane, so the key ships as **`memory.summarize.chatApiKeySecret`**. Splitting the
+  chat lane's two settings across two groups would be the anomaly, not the consistency.
+
+- **D-04b (the containerEnv checksum pin is updated in the same commit as the template edit):**
+  `Taskfile.yaml:169` carries an `EXPECTED_CHECKSUM` over `_helpers.tpl`'s
+  `engram.containerEnv` block, and `task chart:validate` fails on any drift. Editing the template
+  without re-computing that constant turns a required gate red. This is a known, deliberate
+  guardrail — update it, do not route around it.
 
 - **D-05 (no startup validation of the key):** unlike a base URL, an API key has no verifiable
   shape, and empty is meaningful (inherit). A wrong key must fail at the provider, not at boot.
