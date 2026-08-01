@@ -2378,6 +2378,119 @@ func TestListMemoryCrossSpineIsolation(t *testing.T) {
 	}
 }
 
+// TestSearchedScopesReporting pins criterion 5's reporting half (D-12/D-13/
+// D-14). searchedScopes and recallResultMap are exercised directly rather
+// than through a full MCP client/session round trip — this codebase's
+// handler tests always call deps methods directly (see
+// TestToolArgSchemasDoNotPanic's comment; no in-process MCP session harness
+// exists), and recallResultMap IS the exact map-shaping logic both the
+// search_memory and list_memory closures call to assemble their final
+// result, so asserting on its output is asserting on "the result map" the
+// plan's behavior block describes, not a parallel approximation of it.
+//
+// D-12: on a cross-spine call, ListScopes applies the authz predicate ALONE
+// (no recall-window, superseded-soft-hide, tag, or category conditions), so
+// the returned set is the SPAN a query covered, not the scopes that produced
+// hits — assert containment, never equality, since a package-wide shared
+// test collection means other tests' shared scopes are also legitimately
+// present.
+func TestSearchedScopesReporting(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	const (
+		scopeA     = "iso-test:project:searched-scopes-a"
+		scopeB     = "iso-test:project:searched-scopes-b"
+		owner      = "sub-searched-scopes"
+		fixtureTag = "searched-scopes-fixture-6d4f"
+	)
+	mk := func(id, scope string) {
+		m := store.Memory{
+			ID: id, Content: "x", Scope: scope, Owner: owner,
+			Tags: []string{fixtureTag}, CreatedAt: timeNow(),
+		}
+		if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+	}
+	mk("c5c50004-0000-0000-0000-000000000001", scopeA)
+	mk("c5c50004-0000-0000-0000-000000000002", scopeB)
+	t.Cleanup(func() {
+		cleanupErr(t, "DeleteAll A", d.st.DeleteAll(context.Background(), scopeA, store.Authenticated(owner)))
+		cleanupErr(t, "DeleteAll B", d.st.DeleteAll(context.Background(), scopeB, store.Authenticated(owner)))
+	})
+
+	ctxO := authedContext(t, owner)
+	c := callerFor(ctxO, t)
+
+	// Cross-spine: a real ListScopes query runs, and the returned set
+	// CONTAINS both seeded scopes.
+	scopes, _, err := d.searchedScopes(ctxO, c, true)
+	if err != nil {
+		t.Fatalf("searchedScopes cross-spine: %v", err)
+	}
+	got := map[string]bool{}
+	for _, s := range scopes {
+		got[s] = true
+	}
+	if !got[scopeA] || !got[scopeB] {
+		t.Errorf("searchedScopes cross-spine = %v, want to contain %q and %q", scopes, scopeA, scopeB)
+	}
+
+	// Non-cross-spine: no query issued — nil scopes, false truncated, nil
+	// error (D-13).
+	scopes, truncated, err := d.searchedScopes(ctxO, c, false)
+	if err != nil || scopes != nil || truncated {
+		t.Errorf("searchedScopes non-cross-spine = (%v, %v, %v), want (nil, false, nil)", scopes, truncated, err)
+	}
+
+	// recallResultMap: cross-spine adds both new keys; non-cross-spine adds
+	// neither — absence checked via the two-value map lookup, never a
+	// zero-value comparison (an emitted-but-empty searched_scopes would pass
+	// a zero-value check while still breaking D-14's byte-identical
+	// guarantee). Exercised once with search_memory's base shape ({memories})
+	// and once with list_memory's ({memories, next_cursor}) — both closures
+	// share this exact function, so this is the same contract twice, not two
+	// separate proofs.
+	for _, base := range []map[string]any{
+		{"memories": []any{}},
+		{"memories": []any{}, "next_cursor": ""},
+	} {
+		crossMap := recallResultMap(cloneMap(base), true, []string{scopeA, scopeB}, false)
+		if _, ok := crossMap["searched_scopes"]; !ok {
+			t.Errorf("cross-spine result map %v missing searched_scopes", base)
+		}
+		if _, ok := crossMap["scopes_truncated"]; !ok {
+			t.Errorf("cross-spine result map %v missing scopes_truncated", base)
+		}
+
+		plainMap := recallResultMap(cloneMap(base), false, nil, false)
+		if _, ok := plainMap["searched_scopes"]; ok {
+			t.Errorf("non-cross-spine result map %v should not carry searched_scopes at all", base)
+		}
+		if _, ok := plainMap["scopes_truncated"]; ok {
+			t.Errorf("non-cross-spine result map %v should not carry scopes_truncated at all", base)
+		}
+		if len(plainMap) != len(base) {
+			t.Errorf("non-cross-spine result map %v gained/lost keys: got %v", base, plainMap)
+		}
+		if _, ok := base["next_cursor"]; ok {
+			if _, ok := plainMap["next_cursor"]; !ok {
+				t.Errorf("non-cross-spine result map %v: next_cursor was dropped", base)
+			}
+		}
+	}
+}
+
+// cloneMap is a tiny helper so TestSearchedScopesReporting's table-driven
+// base maps aren't mutated by recallResultMap across iterations.
+func cloneMap(m map[string]any) map[string]any {
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
 // TestListMemoryCategoriesArg pins D-08's OR semantics on the list_memory
 // closure's coreListRequest.Categories wiring: a single category narrows to
 // that category only, the CursorMode-true pagination path is untouched by the

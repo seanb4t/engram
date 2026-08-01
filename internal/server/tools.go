@@ -1195,6 +1195,62 @@ func effectiveSearchScope(scope string, crossSpine bool) (string, error) {
 	return scope, nil
 }
 
+// searchedScopes reports the span a cross-spine search_memory/list_memory
+// query covered: the scopes the caller is AUTHORIZED to read, not the scopes
+// that produced hits. When crossSpine is false it returns (nil, false, nil)
+// immediately and issues no query — a scope-confined call adds no round trip
+// (D-13).
+//
+// d.st.ListScopes applies the authz predicate (ownerOrSharedCondition) ALONE
+// — no recall-window, superseded-soft-hide, tag, or category conditions —
+// which is exactly the predicate a cross-spine search/list runs under. That is
+// why the set it returns IS the span that was searched, not a second
+// approximation of it (D-12): deriving the set from the hits instead would
+// report the empty set on a zero-hit search, which is precisely the ambiguity
+// criterion 5 exists to remove. A scope whose only records are superseded or
+// windowed-out will still appear here while contributing nothing — that is
+// the intended semantics, not a bug; a test asserting this set equals "the
+// scopes with results" would be pinning the wrong contract.
+//
+// Per-scope counts are discarded: they belong to the deferred
+// REQ-cross-spine-coverage-receipt, and D-14 keeps the response flat
+// precisely so nobody pre-builds the sub-message that requirement will want.
+//
+// An error from ListScopes fails the call rather than degrading to an empty
+// list: an empty searched_scopes would read as "searched nothing", which is
+// the exact ambiguity the field exists to remove.
+func (d *deps) searchedScopes(ctx context.Context, c caller, crossSpine bool) ([]string, bool, error) {
+	if !crossSpine {
+		return nil, false, nil
+	}
+	counts, more, err := d.st.ListScopes(ctx, c.Subj)
+	if err != nil {
+		return nil, false, err
+	}
+	scopes := make([]string, len(counts))
+	for i, sc := range counts {
+		scopes[i] = sc.Scope
+	}
+	return scopes, more, nil
+}
+
+// recallResultMap assembles a search_memory/list_memory MCP result map: base
+// (the transport-specific entries, e.g. "memories" and, for list_memory,
+// "next_cursor") plus, ONLY when crossSpine is true, "searched_scopes" and
+// "scopes_truncated". On a non-cross-spine call neither key is added at all
+// (D-14), so an existing consumer sees a response byte-identical to today's —
+// scopes_truncated is emitted even when false on a cross-spine call
+// (resolving the Claude's-discretion item in 03-CONTEXT.md) so a consumer
+// reading searched_scopes can read the truncation signal directly rather
+// than inferring completeness from an absent key. Mutates and returns base.
+func recallResultMap(base map[string]any, crossSpine bool, scopes []string, truncated bool) map[string]any {
+	if crossSpine {
+		base["searched_scopes"] = scopes
+		base["scopes_truncated"] = truncated
+	}
+	return base
+}
+
 func (d *deps) searchDiscovery(ctx context.Context, c caller, a searchDiscoveryArgs) ([]store.Memory, error) {
 	scope, err := effectiveDiscoveryScope(a)
 	if err != nil {
@@ -1533,10 +1589,15 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			if err != nil {
 				return nil, nil, err
 			}
+			scopes, truncated, err := d.searchedScopes(ctx, c, a.CrossSpine)
+			if err != nil {
+				return nil, nil, err
+			}
 			// MCP-specific recall shaping lives here, not in the shared core
 			// (D-07): the core returns raw []store.Memory.
 			hits := shapeRecall(ms, a.Full, d.summaryMaxChars)
-			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"memories": hits}, nil
+			result := recallResultMap(map[string]any{"memories": hits}, a.CrossSpine, scopes, truncated)
+			return textResult(fmt.Sprintf("%d hits", len(hits))), result, nil
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List memories in a scope without a query. Most-recent first. `scope` is required unless `cross_spine=true`, which spans every scope the caller can read (ignoring `scope` if supplied). Optional `created_after`/`created_before` (RFC3339) window and `cursor` for paging (use the returned next_cursor). Optional `tags` (AND). Returns {memories, next_cursor}; compact summaries by default, `full=true` for full content."},
@@ -1583,10 +1644,15 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			if err != nil {
 				return nil, nil, err
 			}
+			scopes, truncated, err := d.searchedScopes(ctx, c, a.CrossSpine)
+			if err != nil {
+				return nil, nil, err
+			}
 			// MCP-specific recall shaping lives here, not in the shared core
 			// (D-07): the core returns raw []store.Memory.
 			mems := shapeRecall(res.Memories, a.Full, d.summaryMaxChars)
-			return textResult(fmt.Sprintf("%d memories", len(mems))), map[string]any{"memories": mems, "next_cursor": res.NextToken}, nil
+			result := recallResultMap(map[string]any{"memories": mems, "next_cursor": res.NextToken}, a.CrossSpine, scopes, truncated)
+			return textResult(fmt.Sprintf("%d memories", len(mems))), result, nil
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "list_scheduled", Description: "List your windowed memories the recall gate is hiding: state=scheduled (not yet active, default) | expired | all. Active memories surface via list_memory/search_memory."},
