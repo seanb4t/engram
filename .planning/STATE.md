@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
-current_phase: 02
-current_phase_name: Headless CLI Client
-status: phase_complete
-stopped_at: v0.12.x Phase 2 COMPLETE — verification 5/5, review 1 critical + 1 warning fixed
-last_updated: "2026-08-01T00:45:00.000Z"
+current_phase: 03
+current_phase_name: Cross-Spine Memory Recall
+status: gate_closed_ready_to_discuss
+stopped_at: v0.12.x Phase 3 authz GATE closed (a7f827b6) — next step is smart discuss, then plan
+last_updated: "2026-08-01T01:15:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 2
@@ -14,8 +14,19 @@ progress:
   completed_plans: 7
   percent: 33
 last_activity: 2026-08-01
-last_activity_desc: v0.12.x Phase 2 Plan 3 complete — bare-invocation self-describe catalog, wave 3 of 3 — Phase 2 complete
+last_activity_desc: v0.12.x Phase 3 authz gate closed by reading Store.Search; discuss not yet run
 ---
+
+<!-- RESUME HERE -->
+<!--
+NEXT COMMAND after /clear:
+    /gsd-autonomous --from 3
+
+Phases 1 and 2 are COMPLETE and verified. Phase 3's blocking authz gate is already
+CLOSED — do NOT re-run it. Read .planning/phases/03-cross-spine-memory-recall/03-AUTHZ-GATE.md
+before planning Phase 3; it carries a trap that invalidates the obvious test design.
+-->
+
 
 # Project State
 
@@ -24,7 +35,45 @@ last_activity_desc: v0.12.x Phase 2 Plan 3 complete — bare-invocation self-des
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x Phase 3 — Cross-Spine Memory Recall (next). Phases 1 and 2 shipped.
+**Current focus:** v0.12.x Phase 3 — Cross-Spine Memory Recall. Authz gate CLOSED; discuss is next.
+
+## ▶ Resume Point (session handed off 2026-08-01)
+
+**Next command:** `/gsd-autonomous --from 3`
+
+**Done:** Phases 1 and 2 complete and verified (5/5 each). Phase 3's blocking authz gate is
+already closed — `03-AUTHZ-GATE.md`, commit `a7f827b6`. **Do not re-run the gate.**
+
+**Not done for Phase 3:** discuss (no CONTEXT.md yet), research, plans, execution.
+
+**Read `03-AUTHZ-GATE.md` before planning Phase 3.** Two findings there change the plan shape:
+
+1. The authz `Must` clause IS separate and unconditional (`ownerScopeFilter`, `store.go:752-757`),
+   so cross-spine cannot widen authorization. Criterion 1 is satisfied.
+2. But there is **no scope conditional today** — architecture research described one that does not
+   exist. `scope==""` currently means "scope payload is the empty string", not "all scopes", so
+   the conditional must be ADDED. **This means criterion 2's two-owner isolation test would pass
+   VACUOUSLY today** (zero records returned because the scope filter excluded everything, not
+   because the authz gate held). That test must use OVERLAPPING scope names and observe its RED by
+   MUTATING THE AUTHZ CLAUSE, never by toggling the feature flag.
+
+**Standing operating notes for whoever resumes:**
+
+- `git.branching_strategy` is `none`; the whole milestone rides one branch,
+  `phase-01-shared-auth-chain-connect-bearer-identity`. Do not create phase branches.
+- The branch is behind `origin/main` by #448 (release 0.11.3), #449 (astro), #450 (wrangler).
+  Zero file overlap. Sean declined integrating mid-run — do it before the PR.
+- ROADMAP is now GSD-aligned (commit `31429f31`): bare `Phase N` anchors = ACTIVE milestone;
+  archived milestones whose numbers collide are qualified. `roadmap.analyze` / `init.manager` still
+  report `phase_count: 0` — they additionally want `## vX.Y` section headings this flat ROADMAP
+  does not use. Drive phase discovery by reading ROADMAP.md directly.
+- `check decision-coverage-plan` takes POSITIONAL args: `<phase_dir> <context_path>`. A `--context`
+  flag silently lands in the phase-dir slot and reports `covered: 0`.
+- Keep `**Requirements:**` on one line per phase in ROADMAP.md — a wrapped line truncates
+  `phase_req_ids`.
+- CONTEXT.md decision bullets: `- **D-NN (label):**` must close the bold span on line one, with no
+  asterisks or nested emphasis in the label, or the coverage gate fails `could-not-parse`.
+- Open follow-ups from Phase 2: #452 (no CLI request timeout), #453 (list flag exclusivity).
 
 ## Current Position
 
