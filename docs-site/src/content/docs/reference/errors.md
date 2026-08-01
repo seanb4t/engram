@@ -58,7 +58,7 @@ off one by one against that file — this table cannot list a code the server do
 | `enum` | The value is not one of the accepted set. | Resend with one of the accepted values named in the detail text. |
 | `format` | The value fails a structural check (e.g. an RFC3339 timestamp). | Correct the value's shape; the constraint is named in the detail text. |
 | `prefix` | The value must start with a required prefix (e.g. a discovery scope must start with `discovery:`). | Prepend the required prefix. |
-| `ordering` | Two fields must satisfy a before/after or numeric ordering relationship. | Adjust the pair so the stated ordering holds; both field names are listed under `field=`. |
+| `ordering` | A before/after or numeric ordering constraint is violated — usually between two fields, but sometimes between one field and a fixed reference such as the current time. | Adjust so the stated ordering holds. Read `field=`: it lists every field involved, which may be one or two. |
 | `mutually_exclusive` | Two fields cannot both be set (or both be absent) at once. | Drop one of the two — both field names are listed under `field=`. |
 | `not_applicable` | The field does not apply given another field's value on this call. | Omit the field entirely rather than sending an empty or default value. |
 
@@ -67,8 +67,14 @@ means the field is unconditionally missing; `conditional_required` means it is m
 *given* something else about the call, so retrying with the same fields you already sent
 minus the addition will fail again for the same reason.
 
-`mutually_exclusive` and `ordering` both name **two** fields, never one — do not retry by
-guessing which of the two is "the" problem field; the constraint is between them.
+`mutually_exclusive` always names **two** fields, never one — do not retry by guessing
+which of the two is "the" problem field; the constraint is between them.
+
+`ordering` names **one or two** fields, so read `field=` rather than assuming a pair. Two
+fields means they are misordered relative to each other (`not_before` must precede
+`not_after`). One field means it is misordered relative to a fixed reference rather than to
+another argument you sent — `not_after` must be in the future, for example, which no change
+to a second field can fix.
 
 ## The class-to-Connect-code mapping
 

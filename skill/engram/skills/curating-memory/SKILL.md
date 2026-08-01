@@ -116,9 +116,13 @@ The two or three retry patterns that come up in practice:
   worth of change; do not reconstruct or resend the whole record.
 - **`hint=required`** — the field was absent, not malformed. Add it; nothing else about
   the call was wrong.
-- **`hint=mutually_exclusive` or `hint=ordering`** — the error names *two* fields under
-  `field=`. The pair is wrong together, not either one alone — don't guess which one to
-  drop or reorder without reading both names.
+- **`hint=mutually_exclusive`** — the error names *two* fields under `field=`. The pair is
+  wrong together, not either one alone — don't guess which one to drop without reading both
+  names.
+- **`hint=ordering`** — read `field=`, which names *one or two* fields. Two means they are
+  misordered relative to each other. One means it is misordered relative to a fixed
+  reference, not to another argument you sent (`not_after` must be in the future) — so no
+  change to a second field will fix it.
 
 ## Discipline
 
