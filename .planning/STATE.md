@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
-current_phase_name: Diagnosability
-status: phase_in_progress
+current_phase_name: Operator Config & Reindex Correctness
+status: phase_planned
 stopped_at: "Completed 04-07-PLAN.md (wave 5 of 5, FINAL plan of Phase 4) - Phase 4 (Diagnosability) is now COMPLETE. New docs-site reference/errors.md documents the field+hint envelope grammar, all ten hint codes (checked off one by one against internal/server/argerror.go), and the class-to-Connect-code mapping. curating-memory SKILL.md gained a 'Reading a rejection' section (branch on field/hint, not wording) and a summary-bound line in its existing Summaries section. guides/configure.md gained a Memory section (ENGRAM_MEMORY_MAX_SUMMARY_BYTES) and an authz decision-diagnostics operator note under Logging. guides/upgrade.md gained the v0.12.0 entry naming all three wire-visible breaking changes with the MCP 401-body scope fence and the CLI-exit-codes-unchanged claim (backed by TestExitCodeForConnectErrTable). REQ-authz-decision-diagnostics and REQ-error-hint-envelope marked COMPLETE, closing all four of Phase 4's requirements."
 last_updated: "2026-08-01T19:47:25Z"
 progress:
@@ -20,6 +20,27 @@ last_activity_desc: "v0.12.x Phase 4 plan 04-07 executed (wave 5 of 5, depends_o
 <!-- RESUME HERE -->
 <!--
 NEXT COMMAND after /clear:
+    v0.12.x Phase 5 (Operator Config & Reindex Correctness) is PLANNED, not yet executed.
+    3 plans in 2 waves (05-01 ‖ 05-02 in wave 1, 05-03 in wave 2), committed 48d0d2ff.
+    Plan-checker returned VERIFICATION PASSED. Decision coverage 18/18. All three
+    requirement IDs covered. Resume with: /gsd-execute-phase 5
+
+    TWO THINGS THE EXECUTOR MUST NOT LOSE:
+    (a) Wave 1 runs two plans in ONE shared working directory (branching_strategy: none).
+        Every commit needs an explicit pathspec — `git commit -m "..." -- <files>`. A bare
+        `git commit -m` sweeps the sibling agent's staged files. `git add -A` / `git commit -am`
+        are banned by both plans' Concurrency contract sections.
+    (b) 05-02 must NOT run bare `task`. 05-01 edits _helpers.tpl and Taskfile.yaml's
+        EXPECTED_CHECKSUM in one commit and is transiently red between them, so a full
+        `task chart:validate` from the sibling would fail on work that is not its own.
+        The full phase-close gate set lives in 05-03 (wave 2).
+
+    Also: `ENGRAM_REQUIRE_QDRANT` does NOT fail closed for internal/store — dialTestClient
+    (store_test.go:88-106) t.Skips unconditionally. Store-test gates in these plans therefore
+    grep for `^--- PASS: <TestName> \(` rather than trusting exit 0. Durable record: 478rhhmhb0.
+
+    ---- prior milestone history below ----
+
     Phase 4 (Diagnosability) is COMPLETE — all 5 waves (7 plans: 04-01 through 04-07)
     landed, all four requirements (REQ-authz-decision-diagnostics,
     REQ-validation-error-attribution, REQ-error-hint-envelope, REQ-embed-provider-error-body)
