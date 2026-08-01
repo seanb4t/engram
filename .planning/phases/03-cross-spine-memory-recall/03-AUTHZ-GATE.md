@@ -117,3 +117,47 @@ matches nothing, a naive version of it would pass vacuously today — it would r
 because the scope filter excluded everything, not because the authz gate held. The test must
 therefore be written so that it fails if the authz clause is removed, and that RED must be observed
 by mutating the authz clause, not by toggling the feature.
+
+## Amendment (D-06) — the reading extends to `listFilter`
+
+**This does not re-open the gate. Status stays CLOSED.** D-08 widened cross-spine to `list_memory`
+(decided 2026-08-01, after the verdict above), which makes `listFilter` equally load-bearing. D-06
+requires this be settled by reading the live tree, not by analogy to `ownerScopeFilter`. Read
+2026-08-01 against commit `17ddc1cf`.
+
+`internal/store/store.go:1054-1077`:
+
+```go
+func (s *Store) listFilter(scope string, subj Subject, opts ListOptions) *qdrant.Filter {
+	must := []*qdrant.Condition{
+		qdrant.NewMatch("scope", scope),
+		s.ownerOrSharedCondition(subj),
+	}
+	if c := categoryMatchCondition(opts.Categories); c != nil {
+		must = append(must, c)
+	}
+	must = append(must, tagMatchConditions(opts.Tags)...)
+	switch opts.Visibility {
+	case visibilityShared:
+		must = append(must, qdrant.NewMatch("visibility", visibilityShared))
+	case "private":
+		return &qdrant.Filter{
+			Must:    must,
+			MustNot: []*qdrant.Condition{qdrant.NewMatch("visibility", visibilityShared)},
+		}
+	}
+	return &qdrant.Filter{Must: must}
+}
+```
+
+`must` opens with exactly the same two separate, unconditional elements as `ownerScopeFilter`:
+`qdrant.NewMatch("scope", scope)` at index 0, `s.ownerOrSharedCondition(subj)` at index 1 — no
+nesting, no shared conditional, no boolean combining them. Every opts-driven condition (category,
+tags, the visibility switch) is appended strictly after index 1 via `append`, and none of them reads,
+rewrites, or removes it. Evidence 1's separate-element argument and Evidence 2's "the authz
+condition never reads scope" argument both transfer to `listFilter` without qualification —
+`ownerOrSharedCondition` is the same helper call with the same `subj`-only signature, so Evidence 2's
+proof about that helper applies unchanged.
+
+This reading confirms D-06's premise exactly as stated: `listFilter` carries the same
+separate-unconditional-authz shape the closed gate verified in `ownerScopeFilter`.
