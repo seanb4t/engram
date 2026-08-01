@@ -4,11 +4,23 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+
+	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 )
 
 // TestExitCodeForConnectErrTable is the D-10 mapper table test: every
@@ -119,5 +131,356 @@ func TestIsTerminalOnNonTTY(t *testing.T) {
 	defer f.Close()
 	if isTerminal(f) {
 		t.Error("isTerminal(regular file) = true, want false")
+	}
+}
+
+// allowedClientImports is the exhaustive set of non-standard-library
+// imports a cmd/engram/client_*.go production file may use. Adding an
+// entry here is a deliberate architectural decision, not a mechanical
+// fix — and adding a repo-internal path to it will fail
+// TestClientFilesImportBoundary's second clause regardless.
+var allowedClientImports = map[string]bool{
+	"connectrpc.com/connect":                                     true,
+	"github.com/spf13/cobra":                                     true,
+	"google.golang.org/protobuf/encoding/protojson":              true,
+	"google.golang.org/protobuf/proto":                           true,
+	"github.com/seanb4t/engram/gen/go/engram/v1":                 true,
+	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect": true,
+}
+
+// TestClientFilesImportBoundary is the REQ-cli-client-commands / D-04 gate.
+// A package-wide `go list -deps ./cmd/engram/...` gate is NOT usable here
+// and would be a false RED: reindex.go and prune.go sit in the same
+// package and legitimately import internal/store, so the boundary must be
+// per-file.
+//
+// This gate constrains the client command IMPLEMENTATIONS, not the linked
+// binary, which also contains the operator commands.
+func TestClientFilesImportBoundary(t *testing.T) {
+	files, err := filepath.Glob("client_*.go")
+	if err != nil {
+		t.Fatalf("Glob: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no client_*.go files found — gate cannot exercise anything")
+	}
+
+	fset := token.NewFileSet()
+	seen := map[string]bool{}
+	scanned := 0
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		scanned++
+		af, err := parser.ParseFile(fset, f, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatalf("ParseFile(%s): %v", f, err)
+		}
+		for _, imp := range af.Imports {
+			seen[strings.Trim(imp.Path.Value, `"`)] = true
+		}
+	}
+	if scanned == 0 {
+		t.Fatal("no non-test client_*.go production files found — gate cannot exercise anything")
+	}
+
+	// Clause 1: every non-standard-library import is in the allowlist. An
+	// import is treated as standard library when its first path segment
+	// contains no dot — this admits any stdlib package the implementation
+	// legitimately needs while still catching every module.
+	for path := range seen {
+		firstSeg := path
+		if i := strings.Index(path, "/"); i >= 0 {
+			firstSeg = path[:i]
+		}
+		if !strings.Contains(firstSeg, ".") {
+			continue // stdlib
+		}
+		if !allowedClientImports[path] {
+			t.Errorf("REQ-cli-client-commands/D-04: import %q in a client_*.go production file is not in allowedClientImports", path)
+		}
+	}
+
+	// Clause 2: no member of allowedClientImports is itself a repo-internal
+	// path — this closes the "just widen the allowlist" escape hatch.
+	for allowed := range allowedClientImports {
+		if strings.HasPrefix(allowed, "github.com/seanb4t/engram/internal/") {
+			t.Errorf("REQ-cli-client-commands/D-04: allowedClientImports contains a repo-internal path %q — widening the allowlist to admit an internal package is itself the violation this gate exists to catch", allowed)
+		}
+	}
+
+	// Clause 3: the explicit denylist appears in no client file.
+	denylist := []string{
+		"github.com/seanb4t/engram/internal/store",
+		"github.com/seanb4t/engram/internal/authz",
+		"github.com/seanb4t/engram/internal/embed",
+		"github.com/seanb4t/engram/internal/server",
+		"github.com/seanb4t/engram/internal/config",
+	}
+	for _, deny := range denylist {
+		if seen[deny] {
+			t.Errorf("REQ-cli-client-commands/D-04: client_*.go imports %q, which no client implementation file may import", deny)
+		}
+	}
+}
+
+// TestNoTokenFlagAnywhere is the D-13 gate: no command in the binary — root
+// or any subcommand — declares a flag named "token". search's --token-file
+// is the positive control that the walk actually reaches the client
+// commands: without it, this test would pass against a tree walk that
+// visits nothing.
+func TestNoTokenFlagAnywhere(t *testing.T) {
+	var foundTokenFile bool
+	var walk func(cmd *cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		checkFlags := func(f *pflag.Flag) {
+			if f.Name == "token" {
+				t.Errorf("command %q declares a --token flag", cmd.CommandPath())
+			}
+			if f.Name == "token-file" && cmd.Name() == "search" {
+				foundTokenFile = true
+			}
+		}
+		cmd.Flags().VisitAll(checkFlags)
+		cmd.PersistentFlags().VisitAll(checkFlags)
+		for _, sub := range cmd.Commands() {
+			walk(sub)
+		}
+	}
+	walk(rootCmd)
+	if !foundTokenFile {
+		t.Fatal("positive control failed: search does not declare --token-file — the tree walk is not reaching client commands")
+	}
+}
+
+// TestClientCommandsAcceptNoPositionalArgs is the D-13 structural gate:
+// nothing typed after the verb is consumed as data.
+func TestClientCommandsAcceptNoPositionalArgs(t *testing.T) {
+	resetClientFlags(t)
+	if searchCmd.Args == nil {
+		t.Fatal("searchCmd.Args is nil — no positional-argument policy is enforced")
+	}
+	svc := &stubEngramService{}
+	url := startStubServer(t, svc)
+	_, _, err := runClient(t, "search", "--server", url, "--query", "q", "some-positional")
+	if err == nil {
+		t.Error("expected an error for a positional argument, got nil")
+	}
+}
+
+// TestInsecureWarnsOnStderrAndStdoutStaysJSON is the D-14/D-07 gate: the
+// entire stdout buffer must parse as one JSON object even with --insecure
+// set. A strings.Contains check on stdout would pass even with a warning
+// line prepended — this test unmarshals the whole buffer.
+func TestInsecureWarnsOnStderrAndStdoutStaysJSON(t *testing.T) {
+	resetClientFlags(t)
+	svc := &stubEngramService{
+		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+			return &engramv1.SearchMemoriesResponse{}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	stdout, stderr, err := runClient(t, "search", "--server", url, "--query", "q", "--insecure", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stderr == "" {
+		t.Fatal("stderr is empty, want an --insecure warning")
+	}
+	if !strings.Contains(strings.ToLower(stderr), "certificate") {
+		t.Errorf("stderr = %q, want it to mention certificate verification", stderr)
+	}
+	var js json.RawMessage
+	if err := json.Unmarshal([]byte(stdout), &js); err != nil {
+		t.Fatalf("stdout did not unmarshal in its entirety as one JSON object: %v\nstdout=%q", err, stdout)
+	}
+	if strings.Contains(stdout, "WARNING") || strings.Contains(strings.ToLower(stdout), "certificate") {
+		t.Errorf("stdout = %q, want the warning text to appear nowhere in stdout", stdout)
+	}
+}
+
+// TestInsecureIsNotSetByEnvironment is the D-14 gate: verification cannot
+// be disabled by anything but an explicit --insecure flag on the command
+// line.
+func TestInsecureIsNotSetByEnvironment(t *testing.T) {
+	resetClientFlags(t)
+	t.Setenv("ENGRAM_INSECURE", "true")
+	t.Setenv("ENGRAM_TLS_INSECURE", "true")
+	t.Setenv("ENGRAM_SKIP_VERIFY", "true")
+
+	svc := &stubEngramService{
+		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+			return &engramv1.SearchMemoriesResponse{}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	_, stderr, err := runClient(t, "search", "--server", url, "--query", "q")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if clientInsecure {
+		t.Error("clientInsecure = true; want false — no environment variable may disable TLS verification")
+	}
+	if stderr != "" {
+		t.Errorf("stderr = %q, want empty (no --insecure warning without the flag)", stderr)
+	}
+}
+
+// TestTLSVerificationOnByDefault reads the constructed *http.Client rather
+// than trusting the flag default (D-14).
+func TestTLSVerificationOnByDefault(t *testing.T) {
+	secure := newHTTPClient(false)
+	transport, ok := secure.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("newHTTPClient(false).Transport is %T, want *http.Transport", secure.Transport)
+	}
+	if transport.TLSClientConfig.InsecureSkipVerify {
+		t.Error("newHTTPClient(false).Transport.TLSClientConfig.InsecureSkipVerify = true, want false")
+	}
+
+	insecure := newHTTPClient(true)
+	transport2, ok := insecure.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("newHTTPClient(true).Transport is %T, want *http.Transport", insecure.Transport)
+	}
+	if !transport2.TLSClientConfig.InsecureSkipVerify {
+		t.Error("newHTTPClient(true).Transport.TLSClientConfig.InsecureSkipVerify = false, want true")
+	}
+}
+
+// assertNoSentinel is shared by TestTokenNeverAppearsInOutput's subtests.
+func assertNoSentinel(t *testing.T, sentinel, stdout, stderr string, err error) {
+	t.Helper()
+	if strings.Contains(stdout, sentinel) {
+		t.Errorf("stdout contains the token sentinel: %q", stdout)
+	}
+	if strings.Contains(stderr, sentinel) {
+		t.Errorf("stderr contains the token sentinel: %q", stderr)
+	}
+	if err != nil && strings.Contains(err.Error(), sentinel) {
+		t.Errorf("returned error contains the token sentinel: %v", err)
+	}
+}
+
+// TestTokenNeverAppearsInOutput proves the resolved credential never
+// appears in stdout, stderr, or the returned error's Error() string, on the
+// success, auth-failure, and transport-failure paths — the last being the
+// most likely accidental vehicle, since a wrapped transport error can
+// carry the request URL.
+func TestTokenNeverAppearsInOutput(t *testing.T) {
+	const sentinel = "sentinel-do-not-leak-9f3ac1"
+
+	t.Run("success path", func(t *testing.T) {
+		resetClientFlags(t)
+		t.Setenv("ENGRAM_TOKEN", sentinel)
+		svc := &stubEngramService{
+			searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+				return &engramv1.SearchMemoriesResponse{}, nil
+			},
+		}
+		url := startStubServer(t, svc)
+		stdout, stderr, err := runClient(t, "search", "--server", url, "--query", "q")
+		assertNoSentinel(t, sentinel, stdout, stderr, err)
+	})
+
+	t.Run("auth failure path", func(t *testing.T) {
+		resetClientFlags(t)
+		t.Setenv("ENGRAM_TOKEN", sentinel)
+		svc := &stubEngramService{
+			searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+				return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("nope"))
+			},
+		}
+		url := startStubServer(t, svc)
+		stdout, stderr, err := runClient(t, "search", "--server", url, "--query", "q")
+		assertNoSentinel(t, sentinel, stdout, stderr, err)
+	})
+
+	t.Run("transport failure path", func(t *testing.T) {
+		resetClientFlags(t)
+		t.Setenv("ENGRAM_TOKEN", sentinel)
+		stdout, stderr, err := runClient(t, "search", "--server", "http://127.0.0.1:1", "--query", "q")
+		assertNoSentinel(t, sentinel, stdout, stderr, err)
+	})
+}
+
+// TestTokenFileTrailingNewlineTrimmed proves resolveToken trims the
+// trailing newline a shell redirect writes by default — an untrimmed
+// value would become a malformed multi-field credential the server's
+// extractor rejects.
+func TestTokenFileTrailingNewlineTrimmed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(path, []byte("abc123\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	t.Setenv("ENGRAM_TOKEN", "")
+	got, err := resolveToken(path)
+	if err != nil {
+		t.Fatalf("resolveToken: %v", err)
+	}
+	if got != "abc123" {
+		t.Errorf("resolveToken(file with trailing newline) = %q, want %q", got, "abc123")
+	}
+}
+
+// TestNoClientPathReadsStandardInput is the REQ-cli-agent-output gate: no
+// client_*.go production file may reference os.Stdin. A cron loop blocked
+// on a hidden prompt is the failure mode the requirement exists to
+// prevent, and a code-review note does not survive a future contributor.
+func TestNoClientPathReadsStandardInput(t *testing.T) {
+	files, err := filepath.Glob("client_*.go")
+	if err != nil {
+		t.Fatalf("Glob: %v", err)
+	}
+	fset := token.NewFileSet()
+	scanned := 0
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		scanned++
+		af, err := parser.ParseFile(fset, f, nil, 0)
+		if err != nil {
+			t.Fatalf("ParseFile(%s): %v", f, err)
+		}
+		ast.Inspect(af, func(n ast.Node) bool {
+			sel, ok := n.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			ident, ok := sel.X.(*ast.Ident)
+			if !ok {
+				return true
+			}
+			if ident.Name == "os" && sel.Sel.Name == "Stdin" {
+				t.Errorf("%s references os.Stdin — no client code path may read standard input (REQ-cli-agent-output)", f)
+			}
+			return true
+		})
+	}
+	if scanned == 0 {
+		t.Fatal("no non-test client_*.go production files found — gate cannot exercise anything")
+	}
+}
+
+// TestRootSilencesUsageAndErrors pins the D-07 no-op: rootCmd already
+// silences cobra's own usage/error printing, and searchCmd must not set
+// either flag redundantly — a future edit to root.go cannot silently start
+// printing usage text to stdout on error without this test failing.
+func TestRootSilencesUsageAndErrors(t *testing.T) {
+	if !rootCmd.SilenceUsage {
+		t.Error("rootCmd.SilenceUsage = false, want true")
+	}
+	if !rootCmd.SilenceErrors {
+		t.Error("rootCmd.SilenceErrors = false, want true")
+	}
+	if searchCmd.SilenceUsage {
+		t.Error("searchCmd.SilenceUsage = true, want false — this is inherited from rootCmd, not set redundantly")
+	}
+	if searchCmd.SilenceErrors {
+		t.Error("searchCmd.SilenceErrors = true, want false — this is inherited from rootCmd, not set redundantly")
 	}
 }
