@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
 current_phase_name: Diagnosability
-status: phase_complete_ready_for_next
-stopped_at: "Completed 04-02-PLAN.md (wave 1 of 5) - Cedar decision diagnostics: debug-level logging at both authz chokepoints, both arms"
-last_updated: "2026-08-01T18:28:06.971Z"
+status: phase_in_progress
+stopped_at: "Completed 04-04-PLAN.md (wave 2 of 5) - the tools.go argument-attribution sweep: 16 Category A sites + 3 Category B relational sites converted, 23-row matrix, D-12 no-echo gate, MCP 401 body pinned"
+last_updated: "2026-08-01T18:46:14.906Z"
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 19
-  completed_plans: 15
-  percent: 79
+  completed_plans: 16
+  percent: 84
 current_phase: 04
 last_activity: 2026-08-01
-last_activity_desc: "v0.12.x Phase 4 plan 04-02 executed (wave 1 of 5, independent of 04-01/04-03) — authz.DecisionLog and (Decision).Log() ship the D-02 allowlist accessor (satisfied policy IDs, error count, decision — never Message/Position/raw cedar.Diagnostic; Decision.diag stays unexported, D-03). internal/store's decideBucket/decideRecord (the two chokepoints every production Decision consumption funnels through) each emit one unconditional slog.DebugContext line — both allow and deny arms, never gated on Allow (D-04) — internal/store's first logging statement; internal/authz still emits zero slog calls (D-01). context.Context threaded through 6 functions/14 call sites to reach the chokepoints. Four named tests green: TestDecideBucketLogsAllowAndDeny, TestDecideRecordLogsBothArms (both in internal/store, driven directly against New(nil, ...), no live Qdrant needed), TestDecisionLogCarriesOnlyAllowlistedFields and TestDecisionLogNeverLeaksExpressionTrace (both in internal/authz — the negative gate's error-carrying case could not be built from internal/store per Go's no-cross-package-test-file-import rule, since Decision.diag is unexported; routed to authz's own test file per the plan's explicit fallback). RED transcripts recorded for one arm assertion and the negative gate. task (lint+full suite, repo-wide) green — ran only after plan 04-03's concurrent work in the same shared working tree had also landed. go.mod/go.sum zero diff. REQ-authz-decision-diagnostics NOT yet complete — 04-07 (docs) also declares it. Plans 04-04 through 04-07 remain."
+last_activity_desc: "v0.12.x Phase 4 plan 04-04 executed (wave 2 of 5, depends_on 04-01) — every remaining single-field and relational rejection reachable from internal/server/tools.go (RESEARCH sweep rows 6-21 Category A, 32-34 Category B) converted from bare fmt.Errorf to the argError envelope: validateCitations (6 sites), checkIdempotentReplay's key-size check, listScheduled's three window/state checks, effectiveDiscoveryScope, effectiveSearchScope (4 call sites across MCP + Connect), the four inline search_memory/list_memory closure window parses, and parseWindow's three relational rows plus three single-field sub-checks the RESEARCH inventory did not separately number (converted to satisfy the plan's own region-scoped zero-fmt.Errorf verify gate). D-12 discipline: dropped both remaining got %q value-echo tails and every RFC3339 parse-failure's caller-value interpolation. Task 1 verified BEFORE any reformat that the MCP 401 body (go-sdk auth/auth.go:104, http.Error at :90) is architecturally separate from tools.go and pinned it byte-for-byte (TestMCP401BodyByteIdentical, 3 subtests). TestValidationErrorAttributionMatrix: 23 named subtests (>=21 floor), one per single-field-invalid input, full-SET field equality + exact hint equality, covering 04-01's five rows plus this plan's sweep. TestHintNeverEchoesValue: 7 sentinel-marker subtests, RED captured by temporarily restoring the citation-kind got %q tail. TestCitationValidationIsNotCodeInternal closes the second of D-11a's three bare-unwrapped-error defects. task (lint+full suite) green, -shuffle=on green, go vet clean, go.mod/go.sum zero diff. REQ-validation-error-attribution and REQ-error-hint-envelope NOT yet complete — 04-05 (rules.go/summary.go sweep) and 04-06 (D-06a schema-level extension) also declare both requirements."
 ---
 
 <!-- RESUME HERE -->
@@ -52,12 +52,13 @@ zero diff) are green on the final tree.
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x Phase 4 — Diagnosability — IN PROGRESS (3/7 plans, wave 1 of 5 fully landed). Plan 04-01 (tracer) landed the field+hint error envelope end-to-end on one validator; plan 04-02 landed Cedar decision diagnostics (debug-level logging at both authz chokepoints); plan 04-03 landed the embeddings provider error body, both-lane drain, and bounded success decode.
+**Current focus:** v0.12.x Phase 4 — Diagnosability — IN PROGRESS (4/7 plans, wave 2 of 5 fully landed). Plan 04-01 (tracer) landed the field+hint error envelope end-to-end on one validator; plan 04-02 landed Cedar decision diagnostics (debug-level logging at both authz chokepoints); plan 04-03 landed the embeddings provider error body, both-lane drain, and bounded success decode; plan 04-04 landed the full `tools.go` sweep (Category A/B) plus the criterion-2 matrix and the 401 scope-fence pin.
 
 ## ▶ Resume Point (session handed off 2026-08-01)
 
-**Next command:** Wave 1 is fully landed (04-01, 04-02, 04-03). Proceed to wave 2 (04-04, the
-`tools.go` sweep), which depends on wave 1 being complete.
+**Next command:** Waves 1 and 2 are fully landed (04-01, 04-02, 04-03, 04-04). Proceed to wave 3
+(04-05, the `rules.go`/`summary.go` sweep plus the Connect `cursor_mode`⊕`offset` combination
+check), which depends on 04-04 being complete (it now is).
 
 **Done:** Phases 1, 2, and 3 complete and verified. Phase 3's blocking authz gate is
 closed — `03-AUTHZ-GATE.md`, commit `a7f827b6`. Plans 03-01 (authz isolation proof),
@@ -106,7 +107,7 @@ REQ-cross-spine-authz-verified, REQ-cross-spine-result-provenance) are complete.
 
 ## Current Position
 
-Phase: v0.12.x Phase 4 (Diagnosability) — 🔶 IN PROGRESS (3/7 plans, wave 1 of 5 fully landed)
+Phase: v0.12.x Phase 4 (Diagnosability) — 🔶 IN PROGRESS (4/7 plans, wave 2 of 5 fully landed)
 Plan 04-01 (tracer, wave 1): `argError{Fields, Hint, Detail, Class}` built in
 `internal/server/argerror.go` — the one envelope carrying D-05's field attribution and D-09's
 remediation hint together, grammar `field=<name> hint=<code>: <detail>` per the D-17 checkpoint.
@@ -184,6 +185,46 @@ zero diff. Commits: `ef80ee96`, `0695a7a8`, `c65984f8`.
 **REQ-embed-provider-error-body is NOT yet complete** — 04-06 (`ENGRAM_EMBED_DIM` wiring) and 04-07
 (docs) also declare this requirement in their frontmatter; only mark it complete once all three
 plans have landed.
+
+Plan 04-04 (`tools.go` sweep, wave 2, depends_on 04-01): Task 1 (the D-08 scope-fence proof, run
+FIRST, no production change) read `github.com/modelcontextprotocol/go-sdk@v1.6.1/auth/auth.go`
+this session and confirmed `verify()` (lines 99-140) returns the literal `"no bearer token"` at
+line 104, written via `http.Error(w, errmsg, code)` at line 90 — before any `tools.go` code runs,
+confirming the fence rests on a true premise. `TestMCP401BodyByteIdentical` pins that body and the
+`WWW-Authenticate` header byte-for-byte (full-string `==`, zero `strings.Contains`) for a missing
+header, a non-bearer scheme, and a bare `"Bearer"`; the pinned values were captured by first
+asserting a deliberately-wrong body and reading the actual value out of the failure output. Task 2
+converted every remaining single-field and relational rejection in `internal/server/tools.go`
+(RESEARCH sweep rows 6-21 Category A, 32-34 Category B) from bare `fmt.Errorf` to `argErrf`/
+`argErrFieldsf`: `validateCitations` (6 sites), `checkIdempotentReplay`'s key-size check,
+`listScheduled`'s three window/state checks, `effectiveDiscoveryScope`, `effectiveSearchScope`
+(4 call sites: `listMemory`, `searchMemory`, and both Connect handlers in `connectapi.go`), and the
+four inline `created_after`/`created_before` parses in the `search_memory`/`list_memory` MCP
+closures. `parseWindow` also converted its two individual `not_before`/`not_after` `time.Parse`
+failures and the not-after-in-the-past check — three sub-rows RESEARCH's inventory did not
+separately number, converted anyway because the plan's own region-scoped verify gate requires zero
+bare `fmt.Errorf` across the WHOLE function, not just the three explicitly-numbered rows (an
+inventory gap, documented as a deviation, not a premise worked around). D-12 discipline: dropped
+both remaining `got %q` value-echo tails (citation kind, `listScheduled` state) and every RFC3339
+parse-failure's caller-value interpolation, stating the constant format requirement instead. Task 3
+built `TestValidationErrorAttributionMatrix` (23 named subtests, clearing the `>=21` floor: 04-01's
+five plus this plan's eighteen directly-callable rows), asserting full-SET field equality and exact
+hint equality — never wording — with a non-nil-error-first guard against the vacuous-row failure
+mode. RESEARCH rows 18-21 (the four inline closure parses) are documented in the matrix's doc
+comment as NOT independently driven through a full MCP round trip (they require `Register()`'s
+env-configured Qdrant deps, not an injectable test double) but are byte-identical in field/hint/
+detail to the tested `listScheduled` rows 13/14; the whole-file value-echo gate and `go vet` still
+cover them unconditionally. `TestHintNeverEchoesValue` (7 sentinel-marker subtests) has a recorded
+RED transcript: the citation-kind check's `got %q` tail was temporarily restored, observed to fail,
+and reverted (`git diff --exit-code` confirmed zero net change). `TestCitationValidationIsNotCodeInternal`
+closes the second of D-11a's three bare-unwrapped-error defects (`validateStoreRule` is 04-05's).
+No arg struct tag touched (D-06a is 04-06's work). `task` (lint + full suite) green, `-shuffle=on`
+green, `go vet ./...` clean, `go.mod`/`go.sum` zero diff. Commits: `fa3dfc98`, `c3e363c0`,
+`b8823908`.
+**REQ-validation-error-attribution and REQ-error-hint-envelope are STILL NOT complete** — 04-05
+(`rules.go`/`summary.go` sweep, the Connect `cursor_mode`⊕`offset` combination check) and 04-06
+(D-06a's schema-level `omitempty` extension) also declare both requirements; only mark them
+complete once all plans referencing them have landed.
 
 Phase: v0.12.x Phase 3 (Cross-Spine Memory Recall) — ✅ COMPLETE 2026-08-01
 Plans: 5 of 5 complete (03-01 cross-spine authz isolation proof, 03-02 search_memory tracer,
@@ -413,7 +454,11 @@ milestone needs in working memory.
 - [Phase ?]: 04-01: argError.Unwrap() returns store.ErrInvalidArgument so every existing errors.Is(err, store.ErrInvalidArgument) consumer keeps working across the sweep; connectError's new *argError case MUST stay first in the switch (before that sentinel arm) or every class silently collapses back to CodeInvalidArgument (T-04-09) — a test that only checks "not CodeInternal" would still pass on the collapsed no-op, which is why TestArgErrorConnectCodeTrio asserts the three codes are DISTINCT, not just "not internal"
 - [Phase ?]: 04-01: gsd-tools state.advance-plan / state.update-progress / requirements.mark-complete do not parse this project's hand-maintained STATE.md/REQUIREMENTS.md shape cleanly — state.advance-plan errors "Cannot parse Current Plan", requirements.mark-complete DOES apply but must NOT be trusted blindly when one requirement spans multiple plans (it will mark REQ-validation-error-attribution/REQ-error-hint-envelope "Complete" after just the tracer, which is wrong — D-06 requires every site, not a sample). roadmap.update-plan-progress applies the right checkbox but also corrupts the summary progress-table row (0/4 instead of 1/7, missing cell) exactly as STATE.md's standing note already warned — hand-correct every time
 - [Phase ?]: 04-03: this milestone runs multiple wave-1 plans concurrently in the SAME git working directory (not isolated worktrees) — a sibling agent's in-progress edits (staged or unstaged) are visible via `git status`/`go vet ./...` at any moment. Two consequences: (a) full-repo gates (`go vet ./...`, `task`) can fail on a file you never touched — scope-check with `go vet`/`golangci-lint run` restricted to your own plan's packages before treating a full-repo failure as your bug; (b) `git commit -m "..."` with NO pathspec commits the WHOLE INDEX, not just what you `git add`-ed — if a sibling agent has files already staged, they silently ride along into your commit. ALWAYS pass an explicit pathspec (`git commit -m "..." -- file1 file2`) when the working tree may be shared. If it happens anyway, `git reset --soft HEAD~1` restores the index to its exact pre-commit state (nothing lost, sibling's staged files intact) — safe to self-correct without asking, since it only moves HEAD and never touches the working tree or discards data.
+- [Phase ?]: 04-04: a plan's `<verify>` gate can be a stricter, more authoritative scope statement than its own row-numbered action text — the region-scoped `awk`-bounded zero-`fmt.Errorf` gate on `parseWindow` covers the WHOLE function, so three sub-checks RESEARCH's Full D-06 Sweep Inventory never numbered (the individual `not_before`/`not_after` parse failures, the not-after-in-the-future check) still had to convert, or the gate could not pass. When a plan's verify command and its prose row list disagree on scope, the verify command wins (it is the actual acceptance test); document the gap as a deviation rather than narrowing the conversion to match the prose.
+- [Phase ?]: 04-04: `checkIdempotentReplay`/`listScheduled` can be unit-tested with a zero-value `&deps{}` (nil `st`/`em` fields) for any rejection that returns BEFORE the first `d.st`/`d.em` call — confirmed by reading each function's control flow, not assumed. This avoids needing `testDeps(t)`'s live-Qdrant-via-testcontainers dependency for argument-validation-only test rows.
 - [Phase ?]: 04-02: confirms 04-03's shared-working-tree finding from the other side — `git add <explicit files>` followed by `git status --short` before every commit caught a sibling agent's concurrently-`git add`-ed files riding along in the index (`git restore --staged <sibling files>` cleans it without touching the sibling's working-tree changes). Also: `gsd-tools query state.record-metric`/`state.record-session` DO apply cleanly to this hand-maintained STATE.md's frontmatter, but `state.record-session` silently resets `progress.percent` to a stale/wrong value as a side effect even when only `stopped_at`/`last_updated`/`last_activity_desc` were the intended target — re-verify and hand-correct `percent` after EVERY `state.*` call that touches frontmatter, not just after `state.advance-plan`/`roadmap.update-plan-progress`. Cross-package Go test-file access is impossible (no `_test.go`-to-`_test.go` imports across packages) — when a negative gate needs an unexported field only reachable from another package's own test file, the gate must live IN that package's test file, even if the plan's `must_haves.artifacts` table names a different location (the plan's action text is authoritative over its own artifacts table when the two conflict on placement).
+- [Phase ?]: D-08 scope fence verified by reading go-sdk@v1.6.1/auth/auth.go:104 (http.Error at :90) before any tools.go reformat landed; MCP 401 body pinned byte-for-byte
+- [Phase ?]: parseWindow's region-scoped verify gate (whole-function zero-fmt.Errorf) forced converting three RESEARCH-unnumbered sub-checks beyond rows 32-34 — documented as an inventory gap, not scope creep
 
 ### Blockers/Concerns
 
@@ -465,8 +510,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-01T18:28:06.956Z
-Stopped at: Completed 04-02-PLAN.md (wave 1 of 5) - Cedar decision diagnostics: debug-level logging at both authz chokepoints, both arms
+Last session: 2026-08-01T18:46:14.893Z
+Stopped at: Completed 04-04-PLAN.md (wave 2 of 5) - the tools.go argument-attribution sweep: 16 Category A sites + 3 Category B relational sites converted, 23-row matrix, D-12 no-echo gate, MCP 401 body pinned
 Resume file: None
 
 ## Performance Metrics
@@ -545,6 +590,7 @@ Resume file: None
 | Phase 04 P01 | 5min | 3 tasks | 4 files |
 | Phase 04 P03 | 6min | 3 tasks | 5 files |
 | Phase 04 P02 | 35min | 3 tasks | 6 files |
+| Phase 04 P04 | ~25min | 3 tasks | 3 files |
 
 ## Operator Next Steps
 
