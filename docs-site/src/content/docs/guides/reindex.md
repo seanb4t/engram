@@ -57,8 +57,8 @@ The final summary line names the exact cutover command for the target you used.
 |------|---------|---------|
 | `--target` | `ENGRAM_REINDEX_TARGET` | **Required.** New collection to create and populate. Must differ from the source. |
 | `--source` | `ENGRAM_QDRANT_COLLECTION` | Collection to read from. Set it to reindex an arbitrary collection without changing env. |
-| `--dry-run` | `false` | Scan and count only — no target is created and nothing is written. |
-| `--resume` | `false` | Skip target points that already hold identical content, so an interrupted run restarts cheaply (see below). |
+| `--dry-run` | `false` | Scan and count only — no target is created and nothing is written. Combined with `--resume` against a target that already exists, the count splits into would-re-embed and would-skip instead of one flat total (see [Repairing a pre-patch resume](#repairing-a-pre-patch-resume)). |
+| `--resume` | `false` | Skip target points whose content, tags, and embedder identity all still match the source, so an interrupted run restarts cheaply (see below). |
 | `--timeout` | `30m` | Wall-clock bound for the whole run; `0` means no deadline. `Ctrl-C` / `SIGTERM` aborts either way. |
 
 The two source-related defaults resolve differently: `--target` reads the
@@ -73,6 +73,23 @@ The single machine-parseable **summary** goes to **stdout**:
 ```
 re-embedded 1240/1245 record(s) into "memory_v2" at dim 768 (5 skipped, no content; 0 unchanged); source left untouched — verify, then set ENGRAM_QDRANT_COLLECTION=memory_v2 and restart to cut over
 ```
+
+Used alone, `--dry-run` reports a flat scan count, unchanged from prior
+releases:
+
+```
+dry-run: 1245 record(s) would be re-embedded into "memory_v2" at dim 768
+```
+
+Combined with `--resume` against a target that already exists, `--dry-run`
+sizes the repair instead — a would-re-embed/would-skip split:
+
+```
+dry-run --resume: 5 would be re-embedded, 1235 would be skipped (unchanged), 5 skipped (no content), 1245 scanned, into "memory_v2" at dim 768
+```
+
+Against a target that does not yet exist, `--dry-run --resume` reports every
+scanned record as would-re-embed and creates nothing.
 
 Per-batch **progress** goes to **stderr**, so it never pollutes that summary
 line:
@@ -91,18 +108,26 @@ the target partially populated. Because upserts are keyed by point id, simply
 re-running the same command is safe and idempotent — but by default it
 re-embeds every record again.
 
-`--resume` makes that restart cheap. Before embedding each record, engram checks
-the target for that id and **skips any record whose content is unchanged**
-(reported as `unchanged` in the counts), re-embedding only what is new or
-changed:
+`--resume` makes that restart cheap. Before embedding each record, engram
+checks the target for that id and **skips it only when three things all still
+match**: the content, the tag set (compared without regard to order), and the
+embedder identity used to write the target record. Any one of the three
+differing re-embeds the record; all three matching skips it (reported as
+`unchanged` in the counts):
 
 ```sh
 engram reindex --target memory_v2 --resume
 ```
 
-The skip test is content equality — equal content re-embeds to an equal vector
-under the same embedder — so no extra bookkeeping is stored and the copied
-payload stays byte-for-byte identical.
+No extra bookkeeping is stored — the comparison reads straight off the target
+payload — and the copied payload stays byte-for-byte identical.
+
+One residual is deliberate: the embedded text folds tags in slice order (the
+text handed to the embedder ends with `"\n\ntags: a, b"`), so a record whose
+tags were only reordered embeds to different text yet is intentionally
+treated as unchanged and skipped. Normalizing tag order at write time would
+remove this residual, but it touches every write path and every stored
+record and is out of scope here.
 
 :::caution[Verify before you cut over]
 `reindex` never mutates the source collection, so a bad run costs nothing but
@@ -110,6 +135,47 @@ time — but the cutover (`ENGRAM_QDRANT_COLLECTION` + restart) is the point of 
 return for live traffic. Confirm the target's record count and spot-check recall
 against it before switching.
 :::
+
+## Repairing a pre-patch resume
+
+**What went wrong.** A `--resume` run on a version before this fix compared
+only content, so a record whose tags were edited while its content stayed the
+same was reported unchanged and kept the vector it had before the tag edit.
+Nothing errored; the counts looked healthy.
+
+**The mechanism.** `reindex` re-scrolls the source collection fresh on every
+invocation and compares the source's current content and tags against what
+the target holds. Vector and payload are written together by one upsert built
+from that one source read, so a target record can never hold a vector from
+one revision and a payload from another. The target does not self-correct and
+has no memory of what it should look like; the source is authoritative and
+re-read every time. That is why re-running the patched `--resume` heals the
+affected records, and it is exactly why the limit below exists.
+
+**The procedure.** Size it first — the would-re-embed count is the blast
+radius:
+
+```sh
+engram reindex --target memory_v2 --resume --dry-run
+```
+
+Then run the same command without `--dry-run`:
+
+```sh
+engram reindex --target memory_v2 --resume
+```
+
+There is no separate repair command and none is needed: the patched resume
+is the repair path.
+
+**The limit.** If the source collection was deleted after a previous cutover,
+the correct tags are gone — they live only in the source. Re-embedding from
+the live target payload would produce a vector consistent with the *stale*
+tags: silently wrong while appearing healed. There is deliberately no command
+for this case. The recovery is to re-derive the affected records from
+wherever they were originally authored, or to accept the stale vectors. An
+operator who has deleted their source collection and runs `--resume` gets
+silent skips, not a heal.
 
 ## See also
 
