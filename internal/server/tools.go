@@ -637,19 +637,19 @@ type setVisibilityArgs struct {
 
 func validateStoreDiscovery(a storeDiscoveryArgs) error {
 	if a.Content == "" {
-		return fmt.Errorf("content is required")
+		return argErrf(classMalformed, HintRequired, "content", "content is required")
 	}
 	if len(a.Content) > maxDiscoveryContentBytes {
-		return fmt.Errorf("content too large: %d bytes (max %d)", len(a.Content), maxDiscoveryContentBytes)
+		return argErrf(classOutOfRange, HintTooLong, "content", "content too large: %d bytes (max %d)", len(a.Content), maxDiscoveryContentBytes)
 	}
 	if a.Kind != "map" && a.Kind != "fact" {
-		return fmt.Errorf("kind must be \"map\" or \"fact\", got %q", a.Kind)
+		return argErrf(classMalformed, HintEnum, "kind", "kind must be \"map\" or \"fact\"")
 	}
 	if a.Scope == "" {
-		return fmt.Errorf("scope is required")
+		return argErrf(classMalformed, HintRequired, "scope", "scope is required")
 	}
 	if !strings.HasPrefix(a.Scope, "discovery:") {
-		return fmt.Errorf("scope must be a discovery scope (start with \"discovery:\"), got %q", a.Scope)
+		return argErrf(classMalformed, HintPrefix, "scope", "scope must be a discovery scope (start with \"discovery:\")")
 	}
 	return validateCitations(a.Citations, 1)
 }
