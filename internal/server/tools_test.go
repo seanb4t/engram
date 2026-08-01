@@ -1867,6 +1867,48 @@ func TestEffectiveDiscoveryScope(t *testing.T) {
 	}
 }
 
+// TestEffectiveSearchScope pins the D-03 guard that D-07 leaves as the sole
+// defense against an accidental empty scope reaching a store whose
+// empty-scope semantics now mean "everything readable": table-driven over
+// all four (scope, crossSpine) combinations. The reject case is asserted by
+// non-nil-ness and that the error names the cross_spine argument — not the
+// full sentence, so this pins behavior rather than becoming a wording
+// tripwire.
+func TestEffectiveSearchScope(t *testing.T) {
+	cases := []struct {
+		name       string
+		scope      string
+		crossSpine bool
+		wantScope  string
+		wantErr    bool
+	}{
+		{"cross-spine, empty scope: spans everything, no error", "", true, "", false},
+		{"cross-spine, non-empty scope: ignored, no error", "iso-test:project:x", true, "", false},
+		{"scoped, non-empty scope: returned unchanged", "iso-test:project:x", false, "iso-test:project:x", false},
+		{"scoped, empty scope: rejected", "", false, "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := effectiveSearchScope(tc.scope, tc.crossSpine)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), "cross_spine") {
+					t.Errorf("error %q does not name cross_spine", err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.wantScope {
+				t.Errorf("got %q, want %q", got, tc.wantScope)
+			}
+		})
+	}
+}
+
 // TestStoreAndSearchDiscoveryHandlers exercises the handler bodies end-to-end
 // (embed → citation conversion → Memory assembly → Upsert → search), including
 // the id-replace branch and the cross_spine path. Integration: needs Qdrant.

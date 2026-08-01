@@ -4494,6 +4494,96 @@ func TestCrossSpineAuthzIsolation(t *testing.T) {
 	}
 }
 
+// TestSearchCrossSpine is the WIRING proof for Store.Search's now-conditional
+// scope clause (ownerScopeFilter, store.go:752): an empty scope spans every
+// scope in the collection the caller may read, and naming a scope still
+// confines to it. TestCrossSpineAuthzIsolation (above) is the AUTHZ proof —
+// they are not redundant. This test would have been vacuous if written
+// before ownerScopeFilter's conditional-scope edit: pre-edit, scope=="" is a
+// literal-string match against a payload field no record carries, so an
+// empty-scope Search returns zero hits regardless of what else is true.
+//
+// One owner, two distinct scopes, at least two records per scope (so a
+// single dropped record cannot silently collapse the multi-scope
+// assertion), every record carrying one tag unique to this test — mem_eval_
+// test is a collection the whole package shares (including the 1001 points
+// TestListExactTotalPastOldCap seeds), so SearchOptions.Tags narrows the
+// results to just this fixture without touching the scope or authz
+// conditions it is appended after (store.go:894).
+func TestSearchCrossSpine(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	const (
+		scopeA     = "iso-test:project:cross-spine-wiring-a"
+		scopeB     = "iso-test:project:cross-spine-wiring-b"
+		owner      = "sub-xspine-wiring"
+		fixtureTag = "xspine-wiring-fixture-7c1d"
+	)
+	defer func() {
+		cleanupErr(t, "DeleteAllRaw "+scopeA, s.DeleteAllRaw(ctx, scopeA))
+		cleanupErr(t, "DeleteAllRaw "+scopeB, s.DeleteAllRaw(ctx, scopeB))
+	}()
+
+	mk := func(id, scope string) {
+		m := Memory{ID: id, Content: "x", Scope: scope, Owner: owner,
+			Tags: []string{fixtureTag}, CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	const (
+		a1 = "c5c50002-0000-0000-0000-000000000001"
+		a2 = "c5c50002-0000-0000-0000-000000000002"
+		b1 = "c5c50002-0000-0000-0000-000000000003"
+		b2 = "c5c50002-0000-0000-0000-000000000004"
+	)
+	mk(a1, scopeA)
+	mk(a2, scopeA)
+	mk(b1, scopeB)
+	mk(b2, scopeB)
+
+	opts := SearchOptions{Tags: []string{fixtureTag}}
+	subj := Authenticated(owner)
+
+	// Empty scope spans both scopes.
+	hits, err := s.Search(ctx, "", subj, []float32{0.1, 0.2, 0.3}, 10, opts)
+	if err != nil {
+		t.Fatalf("cross-spine search: %v", err)
+	}
+	gotScopes := map[string]bool{}
+	gotIDs := map[string]bool{}
+	for _, h := range hits {
+		gotScopes[h.Scope] = true
+		gotIDs[h.ID] = true
+	}
+	if len(gotScopes) <= 1 {
+		t.Fatalf("cross-spine search spans %d distinct scope(s), want >1: %v", len(gotScopes), gotScopes)
+	}
+	for _, id := range []string{a1, a2, b1, b2} {
+		if !gotIDs[id] {
+			t.Errorf("cross-spine search missing %s", id)
+		}
+	}
+
+	// Naming scopeA still confines to it.
+	scoped, err := s.Search(ctx, scopeA, subj, []float32{0.1, 0.2, 0.3}, 10, opts)
+	if err != nil {
+		t.Fatalf("scope-confined search: %v", err)
+	}
+	scopedScopes := map[string]bool{}
+	scopedIDs := map[string]bool{}
+	for _, h := range scoped {
+		scopedScopes[h.Scope] = true
+		scopedIDs[h.ID] = true
+	}
+	if len(scopedScopes) != 1 || !scopedScopes[scopeA] {
+		t.Errorf("scope-confined search: distinct scopes = %v, want exactly {%s}", scopedScopes, scopeA)
+	}
+	if scopedIDs[b1] || scopedIDs[b2] {
+		t.Errorf("scope-confined search leaked scopeB records: %v", scopedIDs)
+	}
+}
+
 // TestGetReadableDenyMapsToNotFound proves a Cedar Deny on an id-addressed
 // gate is indistinguishable from a genuinely missing id: even though the
 // record EXISTS and is owned by the caller, an all-deny decideRecordHook
