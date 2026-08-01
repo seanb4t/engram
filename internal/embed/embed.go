@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -28,6 +29,19 @@ var tracer = otel.Tracer("github.com/seanb4t/engram/internal/embed")
 // defaultEmbedTimeout is the per-request HTTP client timeout applied at
 // construction when WithTimeout is not supplied (preserves prior behavior).
 const defaultEmbedTimeout = 30 * time.Second
+
+// maxErrorBodyBytes bounds how much of a non-2xx provider response body is
+// read before it is surfaced in an error. Copied verbatim from
+// internal/summarize/summarize.go:181 (D-13) rather than invented, so the
+// two provider lanes stay consistent.
+const maxErrorBodyBytes = 4096
+
+// defaultMaxResponseBytes bounds the success-path decode when
+// WithMaxResponseBytes is not supplied, matching the sibling's 1 MiB success
+// bound (summarize.go:187). Plan 04-06 wires a dimension-derived value from
+// ENGRAM_EMBED_DIM via WithMaxResponseBytes; this default protects a Client
+// built without that wiring.
+const defaultMaxResponseBytes = 1 << 20
 
 // Client embeds text via an OpenAI-compatible embeddings API.
 type Client struct {
@@ -50,6 +64,10 @@ type Client struct {
 	documentInstruction string
 	queryParams         map[string]any
 	documentParams      map[string]any
+	// maxResponseBytes bounds the success-path response decode (D-16). Set via
+	// WithMaxResponseBytes; falls back to defaultMaxResponseBytes in New when
+	// left at zero.
+	maxResponseBytes int64
 }
 
 // Option customizes a Client.
@@ -99,6 +117,19 @@ func WithEmbeddingsURL(u string) Option {
 	return func(c *Client) { c.embeddingsURL = u }
 }
 
+// WithMaxResponseBytes bounds the success-path response decode (D-16). A
+// non-positive n leaves defaultMaxResponseBytes in place — this mirrors the
+// existing option shapes (e.g. WithMaxTokens in internal/summarize), where an
+// out-of-range override is silently ignored rather than producing an
+// unbounded read.
+func WithMaxResponseBytes(n int64) Option {
+	return func(c *Client) {
+		if n > 0 {
+			c.maxResponseBytes = n
+		}
+	}
+}
+
 // New returns an embedding Client for the given base URL, API key, and model.
 func New(baseURL, apiKey, model string, opts ...Option) *Client {
 	c := &Client{baseURL: baseURL, apiKey: apiKey, model: model, http: &http.Client{Timeout: defaultEmbedTimeout}}
@@ -110,6 +141,9 @@ func New(baseURL, apiKey, model string, opts ...Option) *Client {
 	// shape-aware heuristic runs against baseURL (D-12).
 	if c.embeddingsURL == "" {
 		c.embeddingsURL = joinEmbeddingsURL(c.baseURL)
+	}
+	if c.maxResponseBytes <= 0 {
+		c.maxResponseBytes = defaultMaxResponseBytes
 	}
 	return c
 }
@@ -246,12 +280,33 @@ func (c *Client) embed(ctx context.Context, text string, params map[string]any, 
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("embeddings: status %d", resp.StatusCode)
+		// Bounded, verbatim (D-15) — this is the provider's own diagnostic
+		// text, not caller data being echoed unexamined: m["input"] above DOES
+		// carry caller content (the memory being stored or the query being
+		// searched), so a provider that reflects its request back inside an
+		// error body would surface that content here. That reflection is
+		// nonetheless same-actor on this return path — it travels back to the
+		// same caller who supplied it — so it is not a cross-actor
+		// disclosure. The residual exposure is that connectError's default
+		// arm logs this error server-side (internal/server/connecterror.go),
+		// so a reflecting provider could put one caller's content into an
+		// operator log, bounded here at maxErrorBodyBytes (T-04-05, accepted).
+		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+		_, _ = io.Copy(io.Discard, resp.Body) // drain remainder so the connection is reusable (D-14)
+		return nil, fmt.Errorf("embeddings: status %d: %s", resp.StatusCode, strings.TrimSpace(string(errBody)))
 	}
 	var out embedResp
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	// Bound the success-path decode too (D-16): an embeddings response is
+	// larger than the chat lane's one-line summary, so this is sized from the
+	// configured ENGRAM_EMBED_DIM via WithMaxResponseBytes (wired in plan
+	// 04-06) rather than blind-copying the sibling's 1 MiB — defaultMaxResponseBytes
+	// is only the fallback for a Client built without that wiring. Mirrors
+	// summarize.go's misbehaving-gateway rationale: without a bound, a
+	// misbehaving gateway can force an unbounded read.
+	if err := json.NewDecoder(io.LimitReader(resp.Body, c.maxResponseBytes)).Decode(&out); err != nil {
 		return nil, err
 	}
+	_, _ = io.Copy(io.Discard, resp.Body) // drain remainder so the connection is reusable (D-14)
 	if len(out.Data) == 0 {
 		return nil, fmt.Errorf("embeddings: empty data")
 	}
