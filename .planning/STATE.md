@@ -5,7 +5,7 @@ milestone_name: Headless Reach & Diagnosability
 current_phase_name: Diagnosability
 status: phase_complete_ready_for_next
 stopped_at: v0.12.x Phase 3 COMPLETE — verification passed 5/5, code review clean. Next is Phase 4 (Diagnosability) discuss.
-last_updated: "2026-08-01T17:30:00.000Z"
+last_updated: "2026-08-01T18:07:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 3
@@ -14,14 +14,18 @@ progress:
   percent: 50
 current_phase: 04
 last_activity: 2026-08-01
-last_activity_desc: "v0.12.x Phase 3 plan 03-05 executed — agent-facing guidance for cross_spine shipped across the tool reference, curating-memory skill, and CLAUDE.md's Memory contract; searched_scopes worded as the authorized span (never a hit distribution) on all three surfaces; when-not-to-use-cross-spine subsection names ranking dilution and extra-scan costs (T-03-07 mitigation); all phase-close gates green (task, go vet, chart:validate, ui:build, proto:lint/gen zero-drift, go.mod/go.sum zero diff). Phase 3 COMPLETE."
+last_activity_desc: "v0.12.x Phase 4 plan 04-01 executed (wave 1 of 5, tracer) — argError envelope (Fields/Hint/Detail/Class) built and proven end-to-end on validateStoreDiscovery's five rejections across both MCP and Connect lanes; connectError's *argError case wired first to avoid the T-04-09 sentinel-collapse hazard; D-11a CodeInternal defect closed and pinned for this validator; RED transcript recorded for TestStoreDiscoveryValidationIsNotCodeInternal. Checkpoint (Task 1) was pre-resolved by Sean before execution — D-17/D-18/D-19/D-20 recorded, not re-asked. task green, go.mod/go.sum zero diff. Plans 04-02 through 04-07 (waves 1-5) remain."
 ---
 
 <!-- RESUME HERE -->
 <!--
 NEXT COMMAND after /clear:
+    Phase 4 (Diagnosability) is IN PROGRESS — wave 1 plan 04-01 (tracer) landed. Continue
+    with the rest of wave 1 (04-02 Cedar decision diagnostics, 04-03 provider error body/drain)
+    or proceed to wave 2 (04-04, the tools.go sweep) once wave 1 is fully green.
+
     Phase 3 (Cross-Spine Memory Recall) is COMPLETE — all 5 waves landed, all phase-close
-    gates green. Start the next phase (Phase 4, Diagnosability) or the next milestone step.
+    gates green.
 
 Phases 1, 2, and 3 are COMPLETE and verified. Phase 3's blocking authz gate closed at
 03-01 (03-AUTHZ-GATE.md, commit a7f827b6) and was never re-run. Plan 03-02 (wave 2)
@@ -48,11 +52,13 @@ zero diff) are green on the final tree.
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x Phase 3 — Cross-Spine Memory Recall — COMPLETE (5/5 waves, all requirements, all phase-close gates green). Next: Phase 4 (Diagnosability).
+**Current focus:** v0.12.x Phase 4 — Diagnosability — IN PROGRESS (1/7 plans, wave 1 of 5). Plan 04-01 (tracer) landed the field+hint error envelope end-to-end on one validator.
 
 ## ▶ Resume Point (session handed off 2026-08-01)
 
-**Next command:** Phase 3 is done. Proceed to Phase 4 (Diagnosability) or the milestone's next step.
+**Next command:** Continue Phase 4 wave 1 — plan 04-02 (Cedar decision diagnostics) and/or 04-03
+(provider error body/drain) can run in parallel with 04-01 already landed. Wave 2 (04-04, the
+`tools.go` sweep) depends on wave 1 being complete.
 
 **Done:** Phases 1, 2, and 3 complete and verified. Phase 3's blocking authz gate is
 closed — `03-AUTHZ-GATE.md`, commit `a7f827b6`. Plans 03-01 (authz isolation proof),
@@ -100,6 +106,29 @@ REQ-cross-spine-authz-verified, REQ-cross-spine-result-provenance) are complete.
 - Open follow-ups from Phase 2: #452 (no CLI request timeout), #453 (list flag exclusivity).
 
 ## Current Position
+
+Phase: v0.12.x Phase 4 (Diagnosability) — 🔶 IN PROGRESS (1/7 plans, wave 1 of 5)
+Plan 04-01 (tracer, wave 1): `argError{Fields, Hint, Detail, Class}` built in
+`internal/server/argerror.go` — the one envelope carrying D-05's field attribution and D-09's
+remediation hint together, grammar `field=<name> hint=<code>: <detail>` per the D-17 checkpoint.
+`validateStoreDiscovery`'s five rejections converted end to end; `validateCitations` untouched
+(byte-identical, confirmed by `git diff`). `connectError` gained an `*argError` case placed FIRST
+(before `store.ErrNotFound` and the `store.ErrInvalidArgument` sentinel arm) to avoid the T-04-09
+collapse hazard, with the hazard documented at the case itself. D-11a's `CodeInternal`
+misclassification is closed and pinned for this validator via
+`TestStoreDiscoveryValidationIsNotCodeInternal`, whose RED reading was taken by temporarily
+reverting one rejection and observing the failure before restoring it. Task 1 (checkpoint) was
+pre-resolved by Sean before this execution — D-17 (flat-prefix grammar), D-18 (koanf-configurable
+512-byte summary bound, deferred to 04-06), D-19 (`delete_all` relaxation + Go-level check as one
+indivisible task, deferred to 04-06), D-20 (class table confined to
+InvalidArgument/OutOfRange/FailedPrecondition) all recorded verbatim in `04-01-SUMMARY.md`, not
+re-asked. Five named tests pin the grammar, sentinel back-compat, the Connect code trio as a SET,
+the MCP wire string itself, and the closed defect. `task` (lint + full suite) green, `go vet
+./...` clean, `go.mod`/`go.sum` zero diff. Commits: `64b1e58d`, `8550df20`, `e7d74d5b`.
+**REQ-validation-error-attribution and REQ-error-hint-envelope are NOT yet complete** — this plan
+covers ONE validator of ~30 sweep sites; both requirements finish when 04-04/04-05 land the full
+matrix (D-06's "every site, not a sample"). Plans 04-02 (Cedar decision diagnostics) and 04-03
+(provider error body/drain), both wave 1, remain before wave 2 can start.
 
 Phase: v0.12.x Phase 3 (Cross-Spine Memory Recall) — ✅ COMPLETE 2026-08-01
 Plans: 5 of 5 complete (03-01 cross-spine authz isolation proof, 03-02 search_memory tracer,
@@ -326,6 +355,8 @@ milestone needs in working memory.
 - [Phase ?]: 03-04: SearchMemories/ListMemories read cross_spine EXPLICITLY via effectiveSearchScope at the Connect boundary (never req.Msg.Scope == "") — SearchDiscoveries' identical-looking inference at connectapi.go is a deliberate, non-copyable divergence, now commented as such at its declaration
 - [Phase ?]: 03-04: a bare guard error reaching connectError gets misclassified as CodeInternal — the effectiveSearchScope boundary call at each Connect handler exists specifically for CodeInvalidArgument fidelity, confirmed live via the TDD RED transcript
 - [Phase ?]: 03-04: task ui:build re-vendors internal/webauth/static/ with new content hashes whenever ui/src/lib/gen changes, even with no UI feature work — CI's required "ui vendored-asset drift" job means that directory must be committed alongside any proto change touching generated TS
+- [Phase ?]: 04-01: argError.Unwrap() returns store.ErrInvalidArgument so every existing errors.Is(err, store.ErrInvalidArgument) consumer keeps working across the sweep; connectError's new *argError case MUST stay first in the switch (before that sentinel arm) or every class silently collapses back to CodeInvalidArgument (T-04-09) — a test that only checks "not CodeInternal" would still pass on the collapsed no-op, which is why TestArgErrorConnectCodeTrio asserts the three codes are DISTINCT, not just "not internal"
+- [Phase ?]: 04-01: gsd-tools state.advance-plan / state.update-progress / requirements.mark-complete do not parse this project's hand-maintained STATE.md/REQUIREMENTS.md shape cleanly — state.advance-plan errors "Cannot parse Current Plan", requirements.mark-complete DOES apply but must NOT be trusted blindly when one requirement spans multiple plans (it will mark REQ-validation-error-attribution/REQ-error-hint-envelope "Complete" after just the tracer, which is wrong — D-06 requires every site, not a sample). roadmap.update-plan-progress applies the right checkbox but also corrupts the summary progress-table row (0/4 instead of 1/7, missing cell) exactly as STATE.md's standing note already warned — hand-correct every time
 
 ### Blockers/Concerns
 
@@ -377,8 +408,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-01T17:00:00.000Z
-Stopped at: Completed 03-05-PLAN.md (agent-facing guidance, wave 5 of 5) — Phase 3 COMPLETE, all gates green
+Last session: 2026-08-01T18:07:00.000Z
+Stopped at: Completed 04-01-PLAN.md (tracer, wave 1 of 5) — envelope proven end-to-end on validateStoreDiscovery, task green
 Resume file: None
 
 ## Performance Metrics
@@ -454,6 +485,7 @@ Resume file: None
 | Phase 03 P03 | 20min | 3 tasks | 5 files |
 | Phase 03 P04 | ~10min | 4 tasks | 7 files |
 | Phase 03 P05 | ~15min | 2 tasks | 3 files |
+| Phase 04 P01 | 5min | 3 tasks | 4 files |
 
 ## Operator Next Steps
 
