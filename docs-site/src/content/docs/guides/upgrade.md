@@ -109,9 +109,10 @@ The backfill is payload-only and can safely run alongside read traffic.
 
 ## v0.12.0 — Field-attributed, hint-carrying argument rejections
 
-This release ships three wire-visible changes to how engram rejects a malformed or
-invalid argument. Full grammar and vocabulary: the
-[error envelope reference](/reference/errors/).
+This release ships five changes: three affecting how engram rejects a
+malformed or invalid argument (full grammar and vocabulary: the
+[error envelope reference](/reference/errors/)), plus a per-lane chat/summarize
+credential and a reindex resume correctness fix.
 
 ### 1. Argument-validation message text changed
 
@@ -155,3 +156,28 @@ the [class-to-code table](/reference/errors/#the-class-to-connect-code-mapping))
 (`TestExitCodeForConnectErrTable`). A Connect client that branches on the error
 code directly (not through the CLI) and only handles `CodeInvalidArgument` must
 widen to handle all three.
+
+### 4. The chat/summarize lane can carry its own API key
+
+`ENGRAM_OPENAI_CHAT_API_KEY` (or the Helm value
+`memory.summarize.chatApiKeySecret`) lets the chat/summarize lane use a
+different credential than the embedder's `ENGRAM_OPENAI_API_KEY`. **No action
+is required** — leaving it unset is byte-identical to previous behavior: the
+embedder's key inherits to the chat lane exactly as before. **Who should
+act:** an operator who has pointed `ENGRAM_OPENAI_CHAT_BASE_URL` at a
+different gateway and would rather that gateway not receive the embedder's
+credential. See
+[Configuration → Auto-summary](/guides/configure/#auto-summary) for the full
+per-lane credential behavior.
+
+### 5. `reindex --resume` now compares tags, not just content
+
+Before this release, `reindex --resume` compared only content, so a record
+whose tags changed while its content did not was reported unchanged and kept
+a stale vector. **Who should act:** operators who have run `--resume` on an
+earlier version should re-run it — size the blast radius first with
+`engram reindex --target <target> --resume --dry-run`, then re-run without
+`--dry-run`. See
+[Reindex → Repairing a pre-patch resume](/guides/reindex/#repairing-a-pre-patch-resume)
+for the full procedure; its one limit is that a source collection deleted
+after cutover makes the correct tags unrecoverable.
