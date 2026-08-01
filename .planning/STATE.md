@@ -5,16 +5,16 @@ milestone_name: Headless Reach & Diagnosability
 current_phase_name: Diagnosability
 status: phase_complete_ready_for_next
 stopped_at: v0.12.x Phase 3 COMPLETE — verification passed 5/5, code review clean. Next is Phase 4 (Diagnosability) discuss.
-last_updated: "2026-08-01T18:07:00.000Z"
+last_updated: "2026-08-01T18:17:21.000Z"
 progress:
-  total_phases: 6
+  total_phases: 4
   completed_phases: 3
-  total_plans: 12
-  completed_plans: 12
-  percent: 50
+  total_plans: 19
+  completed_plans: 15
+  percent: 79
 current_phase: 04
 last_activity: 2026-08-01
-last_activity_desc: "v0.12.x Phase 4 plan 04-01 executed (wave 1 of 5, tracer) — argError envelope (Fields/Hint/Detail/Class) built and proven end-to-end on validateStoreDiscovery's five rejections across both MCP and Connect lanes; connectError's *argError case wired first to avoid the T-04-09 sentinel-collapse hazard; D-11a CodeInternal defect closed and pinned for this validator; RED transcript recorded for TestStoreDiscoveryValidationIsNotCodeInternal. Checkpoint (Task 1) was pre-resolved by Sean before execution — D-17/D-18/D-19/D-20 recorded, not re-asked. task green, go.mod/go.sum zero diff. Plans 04-02 through 04-07 (waves 1-5) remain."
+last_activity_desc: v0.12.x Phase 4 plan 04-03 executed (wave 1 of 5, independent of 04-01/04-02) — embeddings non-2xx responses now surface a bounded (4096-byte, D-13) verbatim prefix of the provider error body alongside the status code; both the embeddings and chat/summarize lanes now drain the response body after every bounded read so the connection is reusable (D-14, resolved asymmetrically — surfacing is embed-only, draining is both); embeddings success decode bounded via new WithMaxResponseBytes option (D-16, 1 MiB default, dimension-derived wiring deferred to 04-06); new internal/testhttp.ReuseTracker (httptrace-based) is the phase's only new test helper, shared by both lanes' test files. RED transcripts recorded for both reuse assertions (drain temporarily commented out, Reused()=0 observed, then restored). D-15 finding recorded in a code comment: m["input"] carries caller content, so the accepted residual exposure (T-04-05) is real, not hypothetical. task green scoped to this plan's 3 packages (internal/embed, internal/summarize, internal/testhttp) — repo-wide `task`/`go vet ./...` fail only on internal/store/internal/authz, from concurrent in-flight plan 04-02 work in the same shared working tree, unrelated to this plan. go.mod/go.sum zero diff. REQ-embed-provider-error-body NOT yet complete — 04-06 (config wiring) and 04-07 (docs) also declare it. Plans 04-02, 04-04 through 04-07 remain.
 ---
 
 <!-- RESUME HERE -->
@@ -52,7 +52,7 @@ zero diff) are green on the final tree.
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x Phase 4 — Diagnosability — IN PROGRESS (1/7 plans, wave 1 of 5). Plan 04-01 (tracer) landed the field+hint error envelope end-to-end on one validator.
+**Current focus:** v0.12.x Phase 4 — Diagnosability — IN PROGRESS (2/7 plans, wave 1 of 5). Plan 04-01 (tracer) landed the field+hint error envelope end-to-end on one validator; plan 04-03 landed the embeddings provider error body, both-lane drain, and bounded success decode.
 
 ## ▶ Resume Point (session handed off 2026-08-01)
 
@@ -129,6 +129,37 @@ the MCP wire string itself, and the closed defect. `task` (lint + full suite) gr
 covers ONE validator of ~30 sweep sites; both requirements finish when 04-04/04-05 land the full
 matrix (D-06's "every site, not a sample"). Plans 04-02 (Cedar decision diagnostics) and 04-03
 (provider error body/drain), both wave 1, remain before wave 2 can start.
+
+Plan 04-03 (provider lanes, wave 1, independent of 04-01/04-02 — different packages, no shared
+files): `internal/embed/embed.go`'s non-2xx branch now reads a bounded (`maxErrorBodyBytes = 4096`,
+copied verbatim from `summarize.go:181` per D-13), trimmed prefix of the provider body into the
+returned error alongside the status code, then drains the remainder before returning
+(`io.Copy(io.Discard, resp.Body)`). The success branch decodes through a new
+`WithMaxResponseBytes(int64) Option` (1 MiB `defaultMaxResponseBytes` fallback; dimension-derived
+wiring from `ENGRAM_EMBED_DIM` is explicitly plan 04-06's job via `embedderFromConfig`, not this
+plan's) and also drains afterward. `internal/summarize/summarize.go` gained ONLY the drain on both
+its existing bounded reads — D-14 resolves asymmetrically: surfacing is embed-only (chat lane
+already had it), draining is both (neither lane had it) — confirmed by `git diff` scoped to that
+file showing only `io.Copy(io.Discard, ...)` additions, nothing else changed. New
+`internal/testhttp.ReuseTracker` (httptrace `GotConn` hook counting fresh vs. reused connections)
+is the phase's only new test infrastructure, shared by both packages' test files since a `_test.go`
+helper cannot cross package boundaries. Four new tests
+(`TestEmbedNon2xxIncludesStatusAndBody`, `TestEmbedNon2xxDrainsForReuse`,
+`TestEmbedSuccessDecodeBounded`, `TestSummarizeNon200DrainsForReuse`); both reuse assertions were
+proven capable of failing by temporarily commenting out the drain, observing `Reused()` stay at 0,
+and restoring (RED transcripts in `04-03-SUMMARY.md`). D-15's premise in `04-CONTEXT.md` ("the
+provider's own text, not caller data") was FALSIFIED by reading `embed.go:232` — `m["input"] = text`
+DOES carry caller content, so a reflecting provider could echo it back; the corrected analysis
+(same-actor return path, residual exposure is the bounded server-side log line, `T-04-05` accepted)
+is written into the code comment above the read, per the plan's explicit instruction. `go
+vet`/`golangci-lint` scoped clean on this plan's 3 packages
+(`internal/embed`/`internal/summarize`/`internal/testhttp`); repo-wide `task`/`go vet ./...` fail
+only on `internal/store`/`internal/authz` from plan 04-02's concurrent in-flight work in the same
+shared (non-worktree-isolated) working tree — verified out of scope, not touched. `go.mod`/`go.sum`
+zero diff. Commits: `ef80ee96`, `0695a7a8`, `c65984f8`.
+**REQ-embed-provider-error-body is NOT yet complete** — 04-06 (`ENGRAM_EMBED_DIM` wiring) and 04-07
+(docs) also declare this requirement in their frontmatter; only mark it complete once all three
+plans have landed.
 
 Phase: v0.12.x Phase 3 (Cross-Spine Memory Recall) — ✅ COMPLETE 2026-08-01
 Plans: 5 of 5 complete (03-01 cross-spine authz isolation proof, 03-02 search_memory tracer,
@@ -357,6 +388,7 @@ milestone needs in working memory.
 - [Phase ?]: 03-04: task ui:build re-vendors internal/webauth/static/ with new content hashes whenever ui/src/lib/gen changes, even with no UI feature work — CI's required "ui vendored-asset drift" job means that directory must be committed alongside any proto change touching generated TS
 - [Phase ?]: 04-01: argError.Unwrap() returns store.ErrInvalidArgument so every existing errors.Is(err, store.ErrInvalidArgument) consumer keeps working across the sweep; connectError's new *argError case MUST stay first in the switch (before that sentinel arm) or every class silently collapses back to CodeInvalidArgument (T-04-09) — a test that only checks "not CodeInternal" would still pass on the collapsed no-op, which is why TestArgErrorConnectCodeTrio asserts the three codes are DISTINCT, not just "not internal"
 - [Phase ?]: 04-01: gsd-tools state.advance-plan / state.update-progress / requirements.mark-complete do not parse this project's hand-maintained STATE.md/REQUIREMENTS.md shape cleanly — state.advance-plan errors "Cannot parse Current Plan", requirements.mark-complete DOES apply but must NOT be trusted blindly when one requirement spans multiple plans (it will mark REQ-validation-error-attribution/REQ-error-hint-envelope "Complete" after just the tracer, which is wrong — D-06 requires every site, not a sample). roadmap.update-plan-progress applies the right checkbox but also corrupts the summary progress-table row (0/4 instead of 1/7, missing cell) exactly as STATE.md's standing note already warned — hand-correct every time
+- [Phase ?]: 04-03: this milestone runs multiple wave-1 plans concurrently in the SAME git working directory (not isolated worktrees) — a sibling agent's in-progress edits (staged or unstaged) are visible via `git status`/`go vet ./...` at any moment. Two consequences: (a) full-repo gates (`go vet ./...`, `task`) can fail on a file you never touched — scope-check with `go vet`/`golangci-lint run` restricted to your own plan's packages before treating a full-repo failure as your bug; (b) `git commit -m "..."` with NO pathspec commits the WHOLE INDEX, not just what you `git add`-ed — if a sibling agent has files already staged, they silently ride along into your commit. ALWAYS pass an explicit pathspec (`git commit -m "..." -- file1 file2`) when the working tree may be shared. If it happens anyway, `git reset --soft HEAD~1` restores the index to its exact pre-commit state (nothing lost, sibling's staged files intact) — safe to self-correct without asking, since it only moves HEAD and never touches the working tree or discards data.
 
 ### Blockers/Concerns
 
@@ -408,8 +440,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-01T18:07:00.000Z
-Stopped at: Completed 04-01-PLAN.md (tracer, wave 1 of 5) — envelope proven end-to-end on validateStoreDiscovery, task green
+Last session: 2026-08-01T18:17:21.000Z
+Stopped at: Completed 04-03-PLAN.md (wave 1 of 5) — embeddings provider error body surfaced, both provider lanes drain, success decode bounded; RED transcripts recorded for both reuse assertions
 Resume file: None
 
 ## Performance Metrics
@@ -486,6 +518,7 @@ Resume file: None
 | Phase 03 P04 | ~10min | 4 tasks | 7 files |
 | Phase 03 P05 | ~15min | 2 tasks | 3 files |
 | Phase 04 P01 | 5min | 3 tasks | 4 files |
+| Phase 04 P03 | 6min | 3 tasks | 5 files |
 
 ## Operator Next Steps
 
