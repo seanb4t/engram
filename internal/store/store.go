@@ -748,12 +748,23 @@ func matchNothing() *qdrant.Condition {
 }
 
 // ownerScopeFilter restricts to a scope AND the caller's readable set (see
-// ownerOrSharedCondition for anonymous vs authenticated semantics).
+// ownerOrSharedCondition for anonymous vs authenticated semantics). An empty
+// scope now means "every scope the caller may read" (cross-spine): the scope
+// match is appended to Must only when scope != "", mirroring SearchDiscovery
+// (store.go:977-987) rather than inventing a variant. The
+// ownerOrSharedCondition authz element is deliberately OUTSIDE that
+// conditional and always appended — this composition never depends on the
+// scope value, so widening what an empty scope matches cannot weaken or drop
+// the authz clause. internal/server's effectiveSearchScope is the sole guard
+// against an accidental empty scope reaching this function (D-03/D-07): this
+// function itself carries no cross-spine flag or opinion, by design.
 func (s *Store) ownerScopeFilter(scope string, subj Subject) *qdrant.Filter {
-	return &qdrant.Filter{Must: []*qdrant.Condition{
-		qdrant.NewMatch("scope", scope),
-		s.ownerOrSharedCondition(subj),
-	}}
+	must := make([]*qdrant.Condition, 0, 2)
+	if scope != "" {
+		must = append(must, qdrant.NewMatch("scope", scope))
+	}
+	must = append(must, s.ownerOrSharedCondition(subj))
+	return &qdrant.Filter{Must: must}
 }
 
 // tagMatchConditions returns one exact-match condition per requested tag, with

@@ -533,13 +533,14 @@ type supersedeArgs struct {
 
 type searchArgs struct {
 	Query         string   `json:"query"`
-	Scope         string   `json:"scope"`
+	Scope         string   `json:"scope,omitempty" jsonschema:"required unless cross_spine"`
 	K             uint64   `json:"k,omitempty"`
 	Tags          []string `json:"tags,omitempty" jsonschema:"optional; restrict to records carrying ALL listed tags"`
 	Categories    []string `json:"categories,omitempty" jsonschema:"optional; restrict to records in ANY of the listed categories (OR) — unlike tags, which requires ALL"`
 	Full          bool     `json:"full,omitempty" jsonschema:"return full content instead of summaries (default false → compact summary view)"`
 	CreatedAfter  string   `json:"created_after,omitempty" jsonschema:"optional RFC3339; inclusive lower bound on created_at"`
 	CreatedBefore string   `json:"created_before,omitempty" jsonschema:"optional RFC3339; exclusive upper bound on created_at"`
+	CrossSpine    bool     `json:"cross_spine,omitempty" jsonschema:"span all readable scopes (ignores scope)"`
 }
 
 type listArgs struct {
@@ -1053,6 +1054,14 @@ type coreSearchRequest struct {
 	Categories    []string
 	CreatedAfter  time.Time
 	CreatedBefore time.Time
+	// CrossSpine spans every scope the caller may read (D-08 widens this to
+	// list_memory too, in a later plan). Scope and CrossSpine are passed
+	// through RAW from the transport; deps.searchMemory is what resolves them
+	// via effectiveSearchScope — the typed core is the last chokepoint before
+	// the store, so a future call site cannot reach a widened filter by
+	// forgetting the guard (D-07's hazard, closed here rather than in
+	// internal/store).
+	CrossSpine bool
 }
 
 // listMemory returns a page of the caller's readable records in scope on the
@@ -1113,12 +1122,26 @@ func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs)
 // internal k default (round-4 finding-7, same discipline as listMemory's
 // Limit) — store.SearchReranked rejects K==0, so each adapter (MCP closure: 8;
 // Connect: 20) must apply its own default before calling here.
+//
+// req.Scope/req.CrossSpine are resolved via effectiveSearchScope as the FIRST
+// statement, and the RESOLVED scope — never req.Scope directly — is what
+// reaches d.st.SearchReranked. There is deliberately no store-level
+// CrossSpine flag (D-07): the store still receives nothing but a scope
+// string, so this call is not a second source of truth for the cross-spine
+// decision. What it closes is the hole D-07 leaves behind — once an empty
+// scope means "everything readable" at the store layer, this is the last
+// chokepoint before a caller could reach that widened filter by forgetting
+// the guard.
 func (d *deps) searchMemory(ctx context.Context, c caller, req coreSearchRequest) ([]store.Memory, error) {
+	scope, err := effectiveSearchScope(req.Scope, req.CrossSpine)
+	if err != nil {
+		return nil, err
+	}
 	vec, err := d.em.EmbedQuery(ctx, req.Query)
 	if err != nil {
 		return nil, err
 	}
-	return d.st.SearchReranked(ctx, req.Scope, c.Subj, req.Query, vec, req.K, store.SearchOptions{
+	return d.st.SearchReranked(ctx, scope, c.Subj, req.Query, vec, req.K, store.SearchOptions{
 		Tags:          req.Tags,
 		Categories:    req.Categories,
 		CreatedAfter:  req.CreatedAfter,
@@ -1137,6 +1160,29 @@ func effectiveDiscoveryScope(a searchDiscoveryArgs) (string, error) {
 		return "", fmt.Errorf("scope is required unless cross_spine is true")
 	}
 	return a.Scope, nil
+}
+
+// effectiveSearchScope resolves the scope filter for search_memory (and,
+// starting in a later plan, list_memory) under D-03: cross_spine==true
+// ignores any supplied scope and returns "" (span every scope the caller may
+// read); otherwise a non-empty scope is mandatory. This is the load-bearing
+// guard D-07 leaves as the only thing standing between an accidental empty
+// scope and a store whose empty-scope semantics mean "everything readable".
+//
+// Unlike effectiveDiscoveryScope (which takes searchDiscoveryArgs because it
+// has exactly one caller), this takes the two primitive values directly: by
+// the end of this phase it serves four call sites across three different
+// arg/request types (search_memory args, coreSearchRequest, and their
+// list_memory analogs), so a single shared arg-struct parameter would not
+// fit all of them. That divergence from the mirrored analog is deliberate.
+func effectiveSearchScope(scope string, crossSpine bool) (string, error) {
+	if crossSpine {
+		return "", nil
+	}
+	if scope == "" {
+		return "", fmt.Errorf("scope is required unless cross_spine is true")
+	}
+	return scope, nil
 }
 
 func (d *deps) searchDiscovery(ctx context.Context, c caller, a searchDiscoveryArgs) ([]store.Memory, error) {
@@ -1440,7 +1486,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			return textResult(fmt.Sprintf("scheduled %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory. Each result carries a `score`: the raw Qdrant cosine similarity for this query (higher = closer), present when non-zero; unranked list_memory/get_memory results have a zero/omitted score."},
+	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. `scope` is required unless `cross_spine=true`, which spans every scope the caller can read (ignoring `scope` if supplied). Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory. Each result carries a `score`: the raw Qdrant cosine similarity for this query (higher = closer), present when non-zero; unranked list_memory/get_memory results have a zero/omitted score."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a searchArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1461,9 +1507,18 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			if err != nil {
 				return nil, nil, fmt.Errorf("created_before: %w", err)
 			}
+			if _, err := effectiveSearchScope(a.Scope, a.CrossSpine); err != nil {
+				return nil, nil, err
+			}
+			if a.CrossSpine && a.Scope != "" {
+				// Don't echo the caller-supplied scope value into logs (avoids
+				// unbounded/sensitive scope strings reaching log aggregation) —
+				// mirrors deps.searchDiscovery's identical discipline (D-02).
+				slog.InfoContext(ctx, "search_memory: cross_spine=true; ignoring supplied scope")
+			}
 			ms, err := d.searchMemory(ctx, c, coreSearchRequest{
 				Scope: a.Scope, Query: a.Query, K: k, Tags: a.Tags, Categories: a.Categories,
-				CreatedAfter: after, CreatedBefore: before,
+				CreatedAfter: after, CreatedBefore: before, CrossSpine: a.CrossSpine,
 			})
 			if err != nil {
 				return nil, nil, err

@@ -2126,6 +2126,113 @@ func TestSearchMemoryCategoriesArg(t *testing.T) {
 	}
 }
 
+// TestSearchMemoryCrossSpineIsolation pins the handler-level cross-spine
+// contract at the search_memory seam (D-17's handler-level half; the store-
+// level wiring/authz proofs are TestSearchCrossSpine and
+// TestCrossSpineAuthzIsolation in internal/store/store_test.go). D-16: owner A
+// and owner B both hold records under an OVERLAPPING scope name
+// (scopeShared) — overlap is what makes a dropped owner clause visible (it
+// returns the other owner's records) rather than silently returning nothing.
+// Owner A additionally holds a record in a second scope (scopeAOnly) that B
+// never touches, so a genuinely cross-spine read has something extra to find.
+// Every fixture record carries one tag unique to this test: mem_eval_test is
+// a collection the whole package shares, and a cross-spine query reads across
+// all of it — including the 1001 points TestListExactTotalPastOldCap seeds —
+// so without the tag narrowing, the assertions below would be at the mercy of
+// other tests' leftovers. The tag condition is passed via
+// coreSearchRequest.Tags, which store.Search appends to the Must slice AFTER
+// both the scope and authz elements (store.go:894), so it narrows without
+// masking what is under test.
+func TestSearchMemoryCrossSpineIsolation(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	const (
+		scopeShared = "iso-test:project:cross-spine-search"
+		scopeAOnly  = "iso-test:project:cross-spine-search-a-only"
+		ownerA      = "sub-xspine-search-A"
+		ownerB      = "sub-xspine-search-B"
+		fixtureTag  = "xspine-search-fixture-9f3a"
+	)
+	const (
+		aSharedScopeID = "c5c50001-0000-0000-0000-000000000001" // A, private, scopeShared
+		aOnlyScopeID   = "c5c50001-0000-0000-0000-000000000002" // A, private, scopeAOnly
+		bPrivateID     = "c5c50001-0000-0000-0000-000000000003" // B, private, scopeShared — must never leak to A
+		bSharedID      = "c5c50001-0000-0000-0000-000000000004" // B, shared, scopeShared — positive control
+	)
+	mk := func(id, owner, scope, vis string) {
+		m := store.Memory{
+			ID: id, Content: "x", Scope: scope, Owner: owner, Visibility: vis,
+			Tags: []string{fixtureTag}, CreatedAt: timeNow(),
+		}
+		if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+	}
+	mk(aSharedScopeID, ownerA, scopeShared, "")
+	mk(aOnlyScopeID, ownerA, scopeAOnly, "")
+	mk(bPrivateID, ownerB, scopeShared, "")
+	mk(bSharedID, ownerB, scopeShared, "shared")
+	t.Cleanup(func() {
+		cleanupErr(t, "DeleteAll A/shared", d.st.DeleteAll(context.Background(), scopeShared, store.Authenticated(ownerA)))
+		cleanupErr(t, "DeleteAll A/aonly", d.st.DeleteAll(context.Background(), scopeAOnly, store.Authenticated(ownerA)))
+		cleanupErr(t, "DeleteAll B/shared", d.st.DeleteAll(context.Background(), scopeShared, store.Authenticated(ownerB)))
+	})
+
+	ctxA := authedContext(t, ownerA)
+	callerA := callerFor(ctxA, t)
+
+	// 1. Cross-spine spans scopes: A's cross-spine hits include A's records
+	// from BOTH scopes, and the set of distinct Scope values has >1 member.
+	hits, err := d.searchMemory(ctxA, callerA, coreSearchRequest{
+		Query: "x", Scope: "", CrossSpine: true, K: 10, Tags: []string{fixtureTag},
+	})
+	if err != nil {
+		t.Fatalf("cross-spine searchMemory: %v", err)
+	}
+	seenScopes := map[string]bool{}
+	seenIDs := map[string]bool{}
+	for _, m := range hits {
+		seenScopes[m.Scope] = true
+		seenIDs[m.ID] = true
+	}
+	if !seenIDs[aSharedScopeID] {
+		t.Errorf("cross-spine: missing A's record in scopeShared: %s", aSharedScopeID)
+	}
+	if !seenIDs[aOnlyScopeID] {
+		t.Errorf("cross-spine: missing A's record in scopeAOnly: %s", aOnlyScopeID)
+	}
+	if len(seenScopes) <= 1 {
+		t.Errorf("cross-spine: hits span only %d distinct scope(s), want >1: %v", len(seenScopes), seenScopes)
+	}
+
+	// 2. Cross-spine does not widen authorization: B's private record must
+	// never appear; B's shared record (positive control) must appear — without
+	// it, an accidental zero-result regression would read as a pass.
+	if seenIDs[bPrivateID] {
+		t.Fatalf("cross-spine: leaked owner B's private record: %s", bPrivateID)
+	}
+	if !seenIDs[bSharedID] {
+		t.Errorf("cross-spine: missing owner B's shared record (positive control): %s", bSharedID)
+	}
+
+	// 3. Scope-confined is unchanged: naming scopeShared with no CrossSpine
+	// returns only that scope's hits; A's scopeAOnly record is absent.
+	scoped, err := d.searchMemory(ctxA, callerA, coreSearchRequest{
+		Query: "x", Scope: scopeShared, CrossSpine: false, K: 10, Tags: []string{fixtureTag},
+	})
+	if err != nil {
+		t.Fatalf("scope-confined searchMemory: %v", err)
+	}
+	for _, m := range scoped {
+		if m.Scope != scopeShared {
+			t.Errorf("scope-confined: hit %s carries scope %q, want %q", m.ID, m.Scope, scopeShared)
+		}
+		if m.ID == aOnlyScopeID {
+			t.Errorf("scope-confined: A's scopeAOnly record leaked into scopeShared-only search")
+		}
+	}
+}
+
 // TestListMemoryCategoriesArg pins D-08's OR semantics on the list_memory
 // closure's coreListRequest.Categories wiring: a single category narrows to
 // that category only, the CursorMode-true pagination path is untouched by the
