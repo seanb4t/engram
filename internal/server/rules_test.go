@@ -162,6 +162,27 @@ func TestListRulesFullNeverSurfacesEmbedderIdentity(t *testing.T) {
 	}
 }
 
+// TestListRulesRejectsEmptyScope pins validRuleScope as the guard that keeps
+// listRules from becoming a store-wide read now that Store.List's empty scope
+// means "every readable scope" (plan 03-03, T-03-02): an empty entry in
+// listRulesArgs.Scopes must be rejected before Store.List is ever reached.
+func TestListRulesRejectsEmptyScope(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+
+	_, _, err := d.listRules(ctx, callerFor(ctx, t), listRulesArgs{Scopes: []string{""}})
+	if err == nil {
+		t.Fatal("listRules with an empty scope entry should be rejected, got nil error")
+	}
+
+	// A well-formed scope alongside the empty one must not mask the rejection
+	// — the loop must fail on the first bad entry, not silently skip it.
+	_, _, err = d.listRules(ctx, callerFor(ctx, t), listRulesArgs{Scopes: []string{"rule:repo:ok", ""}})
+	if err == nil {
+		t.Fatal("listRules with a mix of a valid scope and an empty scope should be rejected, got nil error")
+	}
+}
+
 func TestListRulesHandler(t *testing.T) {
 	d := testDeps(t)
 	// Advancing clock: created_at is stored at RFC3339 seconds precision, so

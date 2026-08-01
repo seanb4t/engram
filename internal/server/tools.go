@@ -544,7 +544,7 @@ type searchArgs struct {
 }
 
 type listArgs struct {
-	Scope         string   `json:"scope" jsonschema:"the scope to list memories from"`
+	Scope         string   `json:"scope,omitempty" jsonschema:"required unless cross_spine"`
 	Limit         uint64   `json:"limit,omitempty" jsonschema:"max memories to return (default 20)"`
 	Tags          []string `json:"tags,omitempty" jsonschema:"optional; restrict to records carrying ALL listed tags"`
 	Categories    []string `json:"categories,omitempty" jsonschema:"optional; restrict to records in ANY of the listed categories (OR) — unlike tags, which requires ALL"`
@@ -552,6 +552,7 @@ type listArgs struct {
 	CreatedAfter  string   `json:"created_after,omitempty" jsonschema:"optional RFC3339; inclusive lower bound on created_at"`
 	CreatedBefore string   `json:"created_before,omitempty" jsonschema:"optional RFC3339; exclusive upper bound on created_at"`
 	Cursor        string   `json:"cursor,omitempty" jsonschema:"opaque pagination cursor from a prior next_cursor; omit for the first page"`
+	CrossSpine    bool     `json:"cross_spine,omitempty" jsonschema:"span all readable scopes (ignores scope)"`
 }
 
 type listScheduledArgs struct {
@@ -1027,6 +1028,11 @@ type coreListRequest struct {
 	CreatedBefore time.Time
 	Cursor        string
 	CursorMode    bool
+	// CrossSpine spans every scope the caller may read (D-08). Scope and
+	// CrossSpine are passed through RAW from the transport; deps.listMemory is
+	// what resolves them via effectiveSearchScope — the same typed-core
+	// chokepoint reasoning coreSearchRequest.CrossSpine documents.
+	CrossSpine bool
 }
 
 // coreListResult is the typed list result: raw []store.Memory (no []any, no
@@ -1073,7 +1079,11 @@ type coreSearchRequest struct {
 // means "all", CursorMode carried from the request) before calling here
 // (round-3 HIGH-2, round-4 finding-7).
 func (d *deps) listMemory(ctx context.Context, c caller, req coreListRequest) (coreListResult, error) {
-	ms, total, next, err := d.st.List(ctx, req.Scope, c.Subj, store.ListOptions{
+	scope, err := effectiveSearchScope(req.Scope, req.CrossSpine)
+	if err != nil {
+		return coreListResult{}, err
+	}
+	ms, total, next, err := d.st.List(ctx, scope, c.Subj, store.ListOptions{
 		Limit:         req.Limit,
 		Offset:        req.Offset,
 		Categories:    req.Categories,
@@ -1529,7 +1539,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"memories": hits}, nil
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List memories in a scope without a query. Most-recent first. Optional `created_after`/`created_before` (RFC3339) window and `cursor` for paging (use the returned next_cursor). Optional `tags` (AND). Returns {memories, next_cursor}; compact summaries by default, `full=true` for full content."},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List memories in a scope without a query. Most-recent first. `scope` is required unless `cross_spine=true`, which spans every scope the caller can read (ignoring `scope` if supplied). Optional `created_after`/`created_before` (RFC3339) window and `cursor` for paging (use the returned next_cursor). Optional `tags` (AND). Returns {memories, next_cursor}; compact summaries by default, `full=true` for full content."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1549,6 +1559,15 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			if err != nil {
 				return nil, nil, fmt.Errorf("created_before: %w", err)
 			}
+			if _, err := effectiveSearchScope(a.Scope, a.CrossSpine); err != nil {
+				return nil, nil, err
+			}
+			if a.CrossSpine && a.Scope != "" {
+				// Don't echo the caller-supplied scope value into logs (avoids
+				// unbounded/sensitive scope strings reaching log aggregation) —
+				// mirrors search_memory's identical discipline (D-02).
+				slog.InfoContext(ctx, "list_memory: cross_spine=true; ignoring supplied scope")
+			}
 			res, err := d.listMemory(ctx, c, coreListRequest{
 				Scope: a.Scope, Limit: limit, Tags: a.Tags, Categories: a.Categories,
 				CreatedAfter: after, CreatedBefore: before,
@@ -1559,6 +1578,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 				// silently stop cursoring (offset mode leaves next_cursor empty,
 				// store.go:817).
 				CursorMode: true,
+				CrossSpine: a.CrossSpine,
 			})
 			if err != nil {
 				return nil, nil, err

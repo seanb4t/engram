@@ -1050,10 +1050,11 @@ func createdRangeCondition(after, before time.Time) *qdrant.Condition {
 	return qdrant.NewDatetimeRange("created_at", dr)
 }
 
-// listFilter builds the Qdrant filter for List: scope + per-actor authz (outer
-// Must constraint) AND optional category/visibility request filters. The authz
-// condition stays the outer Must, so no filter combination can reach another
-// actor's records.
+// listFilter builds the Qdrant filter for List: scope (when non-empty; an
+// empty scope spans every scope the caller may read — cross-spine, D-08) +
+// per-actor authz (outer Must constraint, unconditional) AND optional
+// category/visibility request filters. The authz condition stays the outer
+// Must, so no filter combination can reach another actor's records.
 //
 // Visibility semantics:
 //   - "" (empty): no visibility filter — return all readable records.
@@ -1063,10 +1064,11 @@ func createdRangeCondition(after, before time.Time) *qdrant.Condition {
 //     is expressed as MustNot(visibility=="shared") so that an empty-string match
 //     in Qdrant is reliable across payload-key-absent and empty-value cases.
 func (s *Store) listFilter(scope string, subj Subject, opts ListOptions) *qdrant.Filter {
-	must := []*qdrant.Condition{
-		qdrant.NewMatch("scope", scope),
-		s.ownerOrSharedCondition(subj),
+	must := make([]*qdrant.Condition, 0, 2)
+	if scope != "" {
+		must = append(must, qdrant.NewMatch("scope", scope))
 	}
+	must = append(must, s.ownerOrSharedCondition(subj))
 	if c := categoryMatchCondition(opts.Categories); c != nil {
 		must = append(must, c)
 	}

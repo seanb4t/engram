@@ -2275,6 +2275,109 @@ func TestSearchMemoryCrossSpineIsolation(t *testing.T) {
 	}
 }
 
+// TestListMemoryCrossSpineIsolation pins the handler-level cross-spine
+// contract at the list_memory seam (D-08 — cross-spine applies to list_memory
+// too, not just search_memory), mirroring TestSearchMemoryCrossSpineIsolation
+// above. Owner A holds a record in scopeShared (which owner B also touches,
+// D-16's overlap discipline — a dropped owner clause would surface B's
+// records rather than silently returning nothing) and a second record in
+// scopeAOnly. Every fixture record carries one tag unique to this test, since
+// mem_eval_test is a package-shared collection a cross-spine list reads
+// across in full.
+func TestListMemoryCrossSpineIsolation(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	const (
+		scopeShared = "iso-test:project:cross-spine-list"
+		scopeAOnly  = "iso-test:project:cross-spine-list-a-only"
+		ownerA      = "sub-xspine-list-A"
+		ownerB      = "sub-xspine-list-B"
+		fixtureTag  = "xspine-list-fixture-2b6e"
+	)
+	const (
+		aSharedScopeID = "c5c50003-0000-0000-0000-000000000001" // A, private, scopeShared
+		aOnlyScopeID   = "c5c50003-0000-0000-0000-000000000002" // A, private, scopeAOnly
+		bPrivateID     = "c5c50003-0000-0000-0000-000000000003" // B, private, scopeShared — must never leak to A
+		bSharedID      = "c5c50003-0000-0000-0000-000000000004" // B, shared, scopeShared — positive control
+	)
+	mk := func(id, owner, scope, vis string) {
+		m := store.Memory{
+			ID: id, Content: "x", Scope: scope, Owner: owner, Visibility: vis,
+			Tags: []string{fixtureTag}, CreatedAt: timeNow(),
+		}
+		if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+	}
+	mk(aSharedScopeID, ownerA, scopeShared, "")
+	mk(aOnlyScopeID, ownerA, scopeAOnly, "")
+	mk(bPrivateID, ownerB, scopeShared, "")
+	mk(bSharedID, ownerB, scopeShared, "shared")
+	t.Cleanup(func() {
+		cleanupErr(t, "DeleteAll A/shared", d.st.DeleteAll(context.Background(), scopeShared, store.Authenticated(ownerA)))
+		cleanupErr(t, "DeleteAll A/aonly", d.st.DeleteAll(context.Background(), scopeAOnly, store.Authenticated(ownerA)))
+		cleanupErr(t, "DeleteAll B/shared", d.st.DeleteAll(context.Background(), scopeShared, store.Authenticated(ownerB)))
+	})
+
+	ctxA := authedContext(t, ownerA)
+	callerA := callerFor(ctxA, t)
+
+	// 1. Cross-spine spans scopes: A's cross-spine list includes A's records
+	// from BOTH scopes, and the set of distinct Scope values has >1 member.
+	res, err := d.listMemory(ctxA, callerA, coreListRequest{
+		Scope: "", CrossSpine: true, Limit: 10, Tags: []string{fixtureTag}, CursorMode: true,
+	})
+	if err != nil {
+		t.Fatalf("cross-spine listMemory: %v", err)
+	}
+	seenScopes := map[string]bool{}
+	seenIDs := map[string]bool{}
+	for _, m := range res.Memories {
+		seenScopes[m.Scope] = true
+		seenIDs[m.ID] = true
+	}
+	if !seenIDs[aSharedScopeID] {
+		t.Errorf("cross-spine: missing A's record in scopeShared: %s", aSharedScopeID)
+	}
+	if !seenIDs[aOnlyScopeID] {
+		t.Errorf("cross-spine: missing A's record in scopeAOnly: %s", aOnlyScopeID)
+	}
+	if len(seenScopes) <= 1 {
+		t.Errorf("cross-spine: hits span only %d distinct scope(s), want >1: %v", len(seenScopes), seenScopes)
+	}
+
+	// 2. Cross-spine does not widen authorization: B's private record must
+	// never appear; B's shared record (positive control) must appear.
+	if seenIDs[bPrivateID] {
+		t.Fatalf("cross-spine: leaked owner B's private record: %s", bPrivateID)
+	}
+	if !seenIDs[bSharedID] {
+		t.Errorf("cross-spine: missing owner B's shared record (positive control): %s", bSharedID)
+	}
+
+	// 3. Scope-confined is unchanged: naming scopeShared with no CrossSpine
+	// returns only that scope's records; A's scopeAOnly record is absent.
+	scoped, err := d.listMemory(ctxA, callerA, coreListRequest{
+		Scope: scopeShared, CrossSpine: false, Limit: 10, Tags: []string{fixtureTag}, CursorMode: true,
+	})
+	if err != nil {
+		t.Fatalf("scope-confined listMemory: %v", err)
+	}
+	for _, m := range scoped.Memories {
+		if m.Scope != scopeShared {
+			t.Errorf("scope-confined: record %s carries scope %q, want %q", m.ID, m.Scope, scopeShared)
+		}
+		if m.ID == aOnlyScopeID {
+			t.Errorf("scope-confined: A's scopeAOnly record leaked into scopeShared-only list")
+		}
+	}
+
+	// 4. Empty scope without cross-spine is rejected at deps.listMemory.
+	if _, err := d.listMemory(ctxA, callerA, coreListRequest{Scope: "", CrossSpine: false, Limit: 10}); err == nil {
+		t.Error("listMemory with empty scope and cross_spine=false should be rejected, got nil error")
+	}
+}
+
 // TestListMemoryCategoriesArg pins D-08's OR semantics on the list_memory
 // closure's coreListRequest.Categories wiring: a single category narrows to
 // that category only, the CursorMode-true pagination path is untouched by the
