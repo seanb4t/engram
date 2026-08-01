@@ -467,30 +467,30 @@ type scheduleArgs struct {
 // CodeInternal, once 17-04 wires the connectError mapper.
 func parseWindow(a scheduleArgs, now time.Time) (nb, na *time.Time, err error) {
 	if a.NotBefore == "" && a.NotAfter == "" {
-		return nil, nil, fmt.Errorf("schedule_memory requires not_before and/or not_after (use store_memory for unscheduled records): %w", store.ErrInvalidArgument)
+		return nil, nil, argErrFieldsf(classMalformed, HintRequired, []string{"not_before", "not_after"}, "schedule_memory requires not_before and/or not_after (use store_memory for unscheduled records)")
 	}
 	if a.Category == "discovery" {
-		return nil, nil, fmt.Errorf("discovery is not schedulable; use store_discovery: %w", store.ErrInvalidArgument)
+		return nil, nil, argErrf(classPrecondition, HintNotApplicable, "category", "discovery is not schedulable; use store_discovery")
 	}
 	if a.NotBefore != "" {
 		t, perr := time.Parse(time.RFC3339, a.NotBefore)
 		if perr != nil {
-			return nil, nil, fmt.Errorf("not_before: %w: %w", perr, store.ErrInvalidArgument)
+			return nil, nil, argErrf(classMalformed, HintFormat, "not_before", "not_before must be RFC3339")
 		}
 		nb = &t
 	}
 	if a.NotAfter != "" {
 		t, perr := time.Parse(time.RFC3339, a.NotAfter)
 		if perr != nil {
-			return nil, nil, fmt.Errorf("not_after: %w: %w", perr, store.ErrInvalidArgument)
+			return nil, nil, argErrf(classMalformed, HintFormat, "not_after", "not_after must be RFC3339")
 		}
 		if !t.After(now) {
-			return nil, nil, fmt.Errorf("not_after %s is not in the future: %w", a.NotAfter, store.ErrInvalidArgument)
+			return nil, nil, argErrf(classOutOfRange, HintOrdering, "not_after", "not_after must be in the future")
 		}
 		na = &t
 	}
 	if nb != nil && na != nil && !nb.Before(*na) {
-		return nil, nil, fmt.Errorf("not_before must be strictly before not_after: %w", store.ErrInvalidArgument)
+		return nil, nil, argErrFieldsf(classPrecondition, HintOrdering, []string{"not_before", "not_after"}, "not_before must be strictly before not_after")
 	}
 	return nb, na, nil
 }
@@ -665,22 +665,22 @@ func validateStoreDiscovery(a storeDiscoveryArgs) error {
 func validateCitations(cites []citationArg, minCount int) error {
 	if len(cites) < minCount {
 		if minCount == 1 {
-			return fmt.Errorf("at least one citation is required")
+			return argErrf(classMalformed, HintRequired, "citations", "at least one citation is required")
 		}
-		return fmt.Errorf("at least %d citation(s) required", minCount)
+		return argErrf(classMalformed, HintRequired, "citations", "at least %d citation(s) required", minCount)
 	}
 	if len(cites) > maxDiscoveryCitations {
-		return fmt.Errorf("too many citations: %d (max %d)", len(cites), maxDiscoveryCitations)
+		return argErrf(classOutOfRange, HintTooMany, "citations", "too many citations: %d (max %d)", len(cites), maxDiscoveryCitations)
 	}
 	for i, c := range cites {
 		if !validCitationKind(c.Kind) {
-			return fmt.Errorf("citation %d: kind must be one of file|commit|url|repo, got %q", i, c.Kind)
+			return argErrf(classMalformed, HintEnum, "citations[i].kind", "citation %d: kind must be one of file|commit|url|repo", i)
 		}
 		if c.Ref == "" {
-			return fmt.Errorf("citation %d: ref is required (the source anchor)", i)
+			return argErrf(classMalformed, HintRequired, "citations[i].ref", "citation %d: ref is required (the source anchor)", i)
 		}
 		if len(c.Excerpt) > maxCitationExcerptBytes {
-			return fmt.Errorf("citation %d: excerpt too large: %d bytes (max %d)", i, len(c.Excerpt), maxCitationExcerptBytes)
+			return argErrf(classOutOfRange, HintTooLong, "citations[i].excerpt", "citation %d: excerpt too large: %d bytes (max %d)", i, len(c.Excerpt), maxCitationExcerptBytes)
 		}
 	}
 	return nil
@@ -773,7 +773,7 @@ func (d *deps) checkIdempotentReplay(ctx context.Context, owner string, a storeA
 		return false, "", "", "", nil
 	}
 	if len(a.IdempotencyKey) > maxIdempotencyKeyBytes {
-		return false, "", "", "", fmt.Errorf("idempotency_key too large: %d bytes (max %d): %w", len(a.IdempotencyKey), maxIdempotencyKeyBytes, store.ErrInvalidArgument)
+		return false, "", "", "", argErrf(classOutOfRange, HintTooLong, "idempotency_key", "idempotency_key too large: %d bytes (max %d)", len(a.IdempotencyKey), maxIdempotencyKeyBytes)
 	}
 	pointID = idempotencyPointID(owner, a.Scope, a.IdempotencyKey)
 	existing, gerr := d.st.Get(ctx, pointID)
@@ -1106,11 +1106,11 @@ func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs)
 	}
 	after, err := parseRFC3339(a.CreatedAfter)
 	if err != nil {
-		return nil, fmt.Errorf("created_after: %w", err)
+		return nil, argErrf(classMalformed, HintFormat, "created_after", "created_after must be RFC3339")
 	}
 	before, err := parseRFC3339(a.CreatedBefore)
 	if err != nil {
-		return nil, fmt.Errorf("created_before: %w", err)
+		return nil, argErrf(classMalformed, HintFormat, "created_before", "created_before must be RFC3339")
 	}
 	var state store.ScheduledState
 	switch a.State {
@@ -1121,7 +1121,7 @@ func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs)
 	case "all":
 		state = store.ScheduledAll
 	default:
-		return nil, fmt.Errorf("state must be one of scheduled|expired|all, got %q", a.State)
+		return nil, argErrf(classMalformed, HintEnum, "state", "state must be one of scheduled|expired|all")
 	}
 	return d.st.ListScheduled(ctx, a.Scope, c.Subj, state,
 		store.ListOptions{Limit: a.Limit, CreatedAfter: after, CreatedBefore: before})
@@ -1167,7 +1167,7 @@ func effectiveDiscoveryScope(a searchDiscoveryArgs) (string, error) {
 		return "", nil
 	}
 	if a.Scope == "" {
-		return "", fmt.Errorf("scope is required unless cross_spine is true")
+		return "", argErrf(classMalformed, HintConditionalRequired, "scope", "scope is required unless cross_spine is true")
 	}
 	return a.Scope, nil
 }
@@ -1190,7 +1190,7 @@ func effectiveSearchScope(scope string, crossSpine bool) (string, error) {
 		return "", nil
 	}
 	if scope == "" {
-		return "", fmt.Errorf("scope is required unless cross_spine is true")
+		return "", argErrf(classMalformed, HintConditionalRequired, "scope", "scope is required unless cross_spine is true")
 	}
 	return scope, nil
 }
@@ -1567,11 +1567,11 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			}
 			after, err := parseRFC3339(a.CreatedAfter)
 			if err != nil {
-				return nil, nil, fmt.Errorf("created_after: %w", err)
+				return nil, nil, argErrf(classMalformed, HintFormat, "created_after", "created_after must be RFC3339")
 			}
 			before, err := parseRFC3339(a.CreatedBefore)
 			if err != nil {
-				return nil, nil, fmt.Errorf("created_before: %w", err)
+				return nil, nil, argErrf(classMalformed, HintFormat, "created_before", "created_before must be RFC3339")
 			}
 			if _, err := effectiveSearchScope(a.Scope, a.CrossSpine); err != nil {
 				return nil, nil, err
@@ -1614,11 +1614,11 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			}
 			after, err := parseRFC3339(a.CreatedAfter)
 			if err != nil {
-				return nil, nil, fmt.Errorf("created_after: %w", err)
+				return nil, nil, argErrf(classMalformed, HintFormat, "created_after", "created_after must be RFC3339")
 			}
 			before, err := parseRFC3339(a.CreatedBefore)
 			if err != nil {
-				return nil, nil, fmt.Errorf("created_before: %w", err)
+				return nil, nil, argErrf(classMalformed, HintFormat, "created_before", "created_before must be RFC3339")
 			}
 			if _, err := effectiveSearchScope(a.Scope, a.CrossSpine); err != nil {
 				return nil, nil, err
