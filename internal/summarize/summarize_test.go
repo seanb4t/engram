@@ -14,6 +14,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/seanb4t/engram/internal/testhttp"
 )
 
 // fenceRe matches the per-request tokenized opening fence <record-HEX> the
@@ -144,6 +146,43 @@ func TestSummarizeNon200IncludesStatusAndBody(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "model overloaded") {
 		t.Fatalf("error missing body detail: %v", err)
+	}
+}
+
+// TestSummarizeNon200DrainsForReuse proves a non-200 chat-completions
+// response body is drained after the bounded error read, so the connection
+// it arrived on is returned to the pool and reused by a second request to
+// the same server. Without the drain, the second call opens a fresh
+// connection and tracker.Reused() stays 0 — see the SUMMARY for the recorded
+// RED transcript (drain temporarily commented out) that confirms this
+// assertion can fail.
+func TestSummarizeNon200DrainsForReuse(t *testing.T) {
+	// The fake error body is deliberately larger than the 4096-byte bound:
+	// if it fit inside the bound, the bounded read alone would consume it
+	// entirely and the connection would be reusable with or without the
+	// drain, proving nothing.
+	bigBody := strings.Repeat("x", 4096*2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(w, bigBody)
+	}))
+	defer srv.Close()
+
+	tracker := &testhttp.ReuseTracker{}
+	// Both calls go through the same Client (and thus the same underlying
+	// http.Client/Transport connection pool).
+	c := New(srv.URL, "k", "m", 280)
+	ctx := tracker.Context(context.Background())
+
+	if _, err := c.Summarize(ctx, "x"); err == nil {
+		t.Fatal("want error on 503, got nil")
+	}
+	if _, err := c.Summarize(ctx, "y"); err == nil {
+		t.Fatal("want error on 503, got nil")
+	}
+
+	if tracker.Reused() < 1 {
+		t.Fatalf("want at least one reused connection, got Reused()=%d Total()=%d", tracker.Reused(), tracker.Total())
 	}
 }
 
