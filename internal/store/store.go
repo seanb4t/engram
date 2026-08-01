@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -677,13 +678,13 @@ func (s *Store) Upsert(ctx context.Context, m Memory, vec []float32) (err error)
 // WITHOUT consulting the PDP (principalParams returns ok=false).
 // A decision allowing zero buckets (e.g. an all-deny PDP) also compiles to
 // matchNothing — never an unfiltered query.
-func (s *Store) ownerOrSharedCondition(subj Subject) *qdrant.Condition {
+func (s *Store) ownerOrSharedCondition(ctx context.Context, subj Subject) *qdrant.Condition {
 	owner, kind, ok := principalParams(subj)
 	if !ok {
 		return matchNothing()
 	}
-	ownAllowed := s.decideBucket(owner, kind, authz.ActionRead, authz.BucketOwn).Allow
-	sharedAllowed := s.decideBucket(owner, kind, authz.ActionRead, authz.BucketShared).Allow
+	ownAllowed := s.decideBucket(ctx, owner, kind, authz.ActionRead, authz.BucketOwn).Allow
+	sharedAllowed := s.decideBucket(ctx, owner, kind, authz.ActionRead, authz.BucketShared).Allow
 	var should []*qdrant.Condition
 	if ownAllowed {
 		should = append(should, qdrant.NewMatch("owner", owner))
@@ -704,12 +705,12 @@ func (s *Store) ownerOrSharedCondition(subj Subject) *qdrant.Condition {
 // The own-bucket decision is policy-derived (s.authz.DecideBucket); fail-closed
 // for nil/unknown Subjects and a denied own bucket, exactly like
 // ownerOrSharedCondition — WITHOUT consulting the PDP for nil/unknown.
-func (s *Store) ownerOnlyCondition(subj Subject) *qdrant.Condition {
+func (s *Store) ownerOnlyCondition(ctx context.Context, subj Subject) *qdrant.Condition {
 	owner, kind, ok := principalParams(subj)
 	if !ok {
 		return matchNothing()
 	}
-	if s.decideBucket(owner, kind, authz.ActionRead, authz.BucketOwn).Allow {
+	if s.decideBucket(ctx, owner, kind, authz.ActionRead, authz.BucketOwn).Allow {
 		return qdrant.NewMatch("owner", owner)
 	}
 	return matchNothing()
@@ -718,22 +719,57 @@ func (s *Store) ownerOnlyCondition(subj Subject) *qdrant.Condition {
 // decideBucket is the single call-site indirection ownerOrSharedCondition and
 // ownerOnlyCondition use to reach the PDP. It defaults to s.authz.DecideBucket;
 // decideBucketHook (nil in production) lets tests observe/count invocations.
-func (s *Store) decideBucket(owner, kind string, action authz.Action, bucket authz.Bucket) authz.Decision {
+//
+// This is one of the two chokepoints (with decideRecord) every production
+// Decision consumption funnels through, so it is the sole place a debug-level
+// decision-diagnostics line is emitted for bucket-level decisions (D-01/D-04):
+// ownerOrSharedCondition/ownerOnlyCondition build a filter CONDITION once per
+// request (at most two calls for a bulk Search/List), never once per result
+// row (RESEARCH § Pattern 3). The call is unconditional — both the allow and
+// the deny arm log, never gated on d.Allow — so "both arms are logged" is
+// structurally true rather than a claim about two branches staying in sync.
+func (s *Store) decideBucket(ctx context.Context, owner, kind string, action authz.Action, bucket authz.Bucket) authz.Decision {
+	var d authz.Decision
 	if s.decideBucketHook != nil {
-		return s.decideBucketHook(owner, kind, action, bucket)
+		d = s.decideBucketHook(owner, kind, action, bucket)
+	} else {
+		d = s.authz.DecideBucket(owner, kind, action, bucket)
 	}
-	return s.authz.DecideBucket(owner, kind, action, bucket)
+	dl := d.Log()
+	slog.DebugContext(ctx, "authz decision (bucket)",
+		"allow", dl.Allow,
+		"action", string(action),
+		"bucket", bucket.String(),
+		"policy_ids", dl.PolicyIDs,
+		"policy_error_count", dl.ErrorCount,
+	)
+	return d
 }
 
 // decideRecord is the single call-site indirection GetReadable/getWritable/
 // OwnedOrAbsent use to reach the PDP for a per-record (id-addressed) decision.
 // It defaults to s.authz.DecideRecord; decideRecordHook (nil in production)
 // lets tests inject an all-deny probe without a real *authz.PDP construction.
-func (s *Store) decideRecord(owner, kind string, action authz.Action, memoryOwner, category, visibility, scope string) authz.Decision {
+//
+// The other of the two chokepoints (see decideBucket): id-addressed gates are
+// single-record, so this is at most one debug line per id-addressed op, never
+// O(result count). No `bucket` field — a per-record decision has no bucket
+// (D-02's field list names bucket for the bucket arm only).
+func (s *Store) decideRecord(ctx context.Context, owner, kind string, action authz.Action, memoryOwner, category, visibility, scope string) authz.Decision {
+	var d authz.Decision
 	if s.decideRecordHook != nil {
-		return s.decideRecordHook(owner, kind, action, memoryOwner, category, visibility, scope)
+		d = s.decideRecordHook(owner, kind, action, memoryOwner, category, visibility, scope)
+	} else {
+		d = s.authz.DecideRecord(owner, kind, action, memoryOwner, category, visibility, scope)
 	}
-	return s.authz.DecideRecord(owner, kind, action, memoryOwner, category, visibility, scope)
+	dl := d.Log()
+	slog.DebugContext(ctx, "authz decision (record)",
+		"allow", dl.Allow,
+		"action", string(action),
+		"policy_ids", dl.PolicyIDs,
+		"policy_error_count", dl.ErrorCount,
+	)
+	return d
 }
 
 // matchNothing returns a condition no record can satisfy (owner==x AND owner!=x).
@@ -758,12 +794,12 @@ func matchNothing() *qdrant.Condition {
 // the authz clause. internal/server's effectiveSearchScope is the sole guard
 // against an accidental empty scope reaching this function (D-03/D-07): this
 // function itself carries no cross-spine flag or opinion, by design.
-func (s *Store) ownerScopeFilter(scope string, subj Subject) *qdrant.Filter {
+func (s *Store) ownerScopeFilter(ctx context.Context, scope string, subj Subject) *qdrant.Filter {
 	must := make([]*qdrant.Condition, 0, 2)
 	if scope != "" {
 		must = append(must, qdrant.NewMatch("scope", scope))
 	}
-	must = append(must, s.ownerOrSharedCondition(subj))
+	must = append(must, s.ownerOrSharedCondition(ctx, subj))
 	return &qdrant.Filter{Must: must}
 }
 
@@ -896,7 +932,7 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 		}
 	}()
 
-	f := s.ownerScopeFilter(scope, subj)
+	f := s.ownerScopeFilter(ctx, scope, subj)
 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
 	// Soft-hide superseded records from search recall (D-09) — sibling
 	// condition to activeWindowConditions, not folded into it (that helper is
@@ -992,7 +1028,7 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Su
 	if kind != "" {
 		must = append(must, qdrant.NewMatch("kind", kind))
 	}
-	must = append(must, s.ownerOrSharedCondition(subj))
+	must = append(must, s.ownerOrSharedCondition(ctx, subj))
 	// Soft-hide superseded discoveries from search recall (WR-01), the same
 	// gate Search/List already apply — get_memory stays ungated.
 	must = append(must, qdrant.NewIsEmpty("superseded_by"))
@@ -1063,12 +1099,12 @@ func createdRangeCondition(after, before time.Time) *qdrant.Condition {
 //     private representation — the store only ever writes "" or "shared"). This
 //     is expressed as MustNot(visibility=="shared") so that an empty-string match
 //     in Qdrant is reliable across payload-key-absent and empty-value cases.
-func (s *Store) listFilter(scope string, subj Subject, opts ListOptions) *qdrant.Filter {
+func (s *Store) listFilter(ctx context.Context, scope string, subj Subject, opts ListOptions) *qdrant.Filter {
 	must := make([]*qdrant.Condition, 0, 2)
 	if scope != "" {
 		must = append(must, qdrant.NewMatch("scope", scope))
 	}
-	must = append(must, s.ownerOrSharedCondition(subj))
+	must = append(must, s.ownerOrSharedCondition(ctx, subj))
 	if c := categoryMatchCondition(opts.Categories); c != nil {
 		must = append(must, c)
 	}
@@ -1123,7 +1159,7 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		return nil, 0, "", fmt.Errorf("list: ascending ordering is honored only in offset/all mode, not cursor mode: %w", ErrInvalidArgument)
 	}
 
-	f := s.listFilter(scope, subj, opts)
+	f := s.listFilter(ctx, scope, subj, opts)
 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
 	// Soft-hide superseded records from list recall (D-09) — sibling
 	// condition to activeWindowConditions, not folded into it (that helper is
@@ -1353,7 +1389,7 @@ func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, s
 	}
 	f := &qdrant.Filter{Must: []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),
-		s.ownerOnlyCondition(subj),
+		s.ownerOnlyCondition(ctx, subj),
 		scheduledStateCondition(state, s.now()),
 		// Soft-hide superseded scheduled records from the management view
 		// (WR-02) — a corrected-away record shouldn't still surface as a
@@ -1408,7 +1444,7 @@ func (s *Store) ListScopes(ctx context.Context, subj Subject) (out []ScopeCount,
 	const scanCap = 1000
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
-		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{s.ownerOrSharedCondition(subj)}},
+		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{s.ownerOrSharedCondition(ctx, subj)}},
 		Limit:          qdrant.PtrOf(uint32(scanCap)),
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
@@ -1529,7 +1565,7 @@ func (s *Store) GetReadable(ctx context.Context, id string, subj Subject) (out M
 	if !ok {
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	if !s.decideRecord(owner, kind, authz.ActionRead, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
+	if !s.decideRecord(ctx, owner, kind, authz.ActionRead, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	return m, nil
@@ -1557,7 +1593,7 @@ func (s *Store) getWritable(ctx context.Context, id string, subj Subject, action
 	if !ok {
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	if !s.decideRecord(owner, kind, action, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
+	if !s.decideRecord(ctx, owner, kind, action, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	return m, nil
@@ -1592,7 +1628,7 @@ func (s *Store) OwnedOrAbsent(ctx context.Context, id string, subj Subject) (err
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	if !s.decideRecord(owner, kind, authz.ActionWrite, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
+	if !s.decideRecord(ctx, owner, kind, authz.ActionWrite, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
 		return fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	return nil
@@ -2031,7 +2067,7 @@ func (s *Store) DeleteAll(ctx context.Context, scope string, subj Subject) (err 
 	if !ok {
 		return fmt.Errorf("%w: nil subject", ErrNotFound)
 	}
-	if !s.decideBucket(owner, kind, authz.ActionDelete, authz.BucketOwn).Allow {
+	if !s.decideBucket(ctx, owner, kind, authz.ActionDelete, authz.BucketOwn).Allow {
 		return nil
 	}
 	filter := &qdrant.Filter{Must: []*qdrant.Condition{

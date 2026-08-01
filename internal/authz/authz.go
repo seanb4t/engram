@@ -41,6 +41,20 @@ const (
 	BucketShared
 )
 
+// String renders b as a readable token rather than its raw int value — used
+// by internal/store's decision-log line so an operator reading it sees
+// "own"/"shared" instead of "bucket=0".
+func (b Bucket) String() string {
+	switch b {
+	case BucketOwn:
+		return "own"
+	case BucketShared:
+		return "shared"
+	default:
+		return "unknown"
+	}
+}
+
 // Decision is the result of a policy evaluation. Allow is the only field
 // callers should branch on; diag (the raw cedar.Diagnostic) is unexported and
 // never surfaced to a caller-facing error (D-10) — it exists solely for
@@ -48,6 +62,47 @@ const (
 type Decision struct {
 	Allow bool
 	diag  cedar.Diagnostic
+}
+
+// DecisionLog is the narrow, allowlisted view of a Decision's diagnostic that
+// Log() exposes for debug-level operator logging. This struct IS the D-02
+// allowlist — its field set is the entire API surface across the
+// internal/authz -> internal/store trust boundary (see the phase threat
+// model). Widening it is a deliberate act: add a field here only after
+// re-checking D-02.
+type DecisionLog struct {
+	// Allow is the decision this diagnostic belongs to.
+	Allow bool
+	// PolicyIDs are the satisfied policy ids from diag.Reasons — the named
+	// ids from internal/authz/policies.go, e.g. "own-records", "shared-read".
+	PolicyIDs []string
+	// ErrorCount is len(diag.Errors) — a COUNT only, never the error text.
+	// DiagnosticError.Message can embed evaluated entity values (caller-
+	// adjacent data), so it is deliberately never read here.
+	ErrorCount int
+}
+
+// Log returns the D-02 allowlisted view of d's diagnostic: the satisfied
+// policy ids, the decision, and an error COUNT. This is the ONLY read path
+// for d.diag — d.diag itself stays unexported (D-03), so a future
+// cedar.Diagnostic field cannot leak through a well-meaning call site.
+//
+// Two fields are deliberately excluded, not merely unread:
+//   - DiagnosticError.Message: the one cedar.Diagnostic field that can embed
+//     evaluated entity values. D-02 forbids it at any log level, always.
+//   - DiagnosticReason.Position: the POLICY source's file/line/column (never
+//     caller data), but not useful to an operator reading a decision log
+//     line, so it is left out to keep the allowlist minimal.
+func (d Decision) Log() DecisionLog {
+	ids := make([]string, 0, len(d.diag.Reasons))
+	for _, r := range d.diag.Reasons {
+		ids = append(ids, string(r.PolicyID))
+	}
+	return DecisionLog{
+		Allow:      d.Allow,
+		PolicyIDs:  ids,
+		ErrorCount: len(d.diag.Errors),
+	}
 }
 
 // DecideRecord answers a single per-record authorization decision for the
