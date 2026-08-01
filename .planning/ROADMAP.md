@@ -390,7 +390,21 @@ without silently leaving stale vectors behind.
 
 **Note:** the per-lane-key edit and v0.12.x Phase 3's cross-spine edit both touch `tools.go` in different
 functions (`summarizerFromConfig` vs. `searchMemory`). Low but non-zero merge risk if landed
-concurrently — sequence them or keep the diffs small and independently reviewed.
+concurrently — sequence them or keep the diffs small and independently reviewed. Phase 3 has since
+shipped, so this risk is resolved.
+
+**Plans:** 3 plans
+
+Plans:
+
+- [ ] 05-01-PLAN.md — per-lane chat credential: config key, construction-site fallback, end-to-end test, Helm value, checksum re-pin (wave 1)
+- [ ] 05-02-PLAN.md — reindex resume tag-awareness: shared tag decoder, order-independent comparison, three-conjunct predicate, `--dry-run --resume` sizing (wave 1)
+- [ ] 05-03-PLAN.md — operator docs: corrected shared-key prose, the pre-patch-resume repair path and its limit, v0.12.0 upgrade entries, phase-close gates (wave 2)
+
+**Note on execution:** waves 1 and 2. `git.branching_strategy` is `none`, so 05-01 and 05-02 run
+concurrently in one working directory sharing one git index — both plans mandate explicit-pathspec
+commits. 05-02 deliberately avoids bare `task` because 05-01 is transiently mid-edit on the chart
+drift checksum; the full gate runs in 05-03.
 
 ---
 
