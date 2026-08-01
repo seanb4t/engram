@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
-current_phase_name: Cross-Spine Memory Recall
-status: executing
-stopped_at: Completed 03-05-PLAN.md (agent-facing guidance, wave 5 of 5) — Phase 3 COMPLETE, all gates green
-last_updated: "2026-08-01T17:00:00.000Z"
+current_phase_name: Diagnosability
+status: phase_complete_ready_for_next
+stopped_at: v0.12.x Phase 3 COMPLETE — verification passed 5/5, code review clean. Next is Phase 4 (Diagnosability) discuss.
+last_updated: "2026-08-01T17:30:00.000Z"
 progress:
-  total_phases: 3
+  total_phases: 6
   completed_phases: 3
-  total_plans: 13
-  completed_plans: 13
-  percent: 100
-current_phase: 03
+  total_plans: 12
+  completed_plans: 12
+  percent: 50
+current_phase: 04
 last_activity: 2026-08-01
 last_activity_desc: "v0.12.x Phase 3 plan 03-05 executed — agent-facing guidance for cross_spine shipped across the tool reference, curating-memory skill, and CLAUDE.md's Memory contract; searched_scopes worded as the authorized span (never a hit distribution) on all three surfaces; when-not-to-use-cross-spine subsection names ranking dilution and extra-scan costs (T-03-07 mitigation); all phase-close gates green (task, go vet, chart:validate, ui:build, proto:lint/gen zero-drift, go.mod/go.sum zero diff). Phase 3 COMPLETE."
 ---
