@@ -416,6 +416,137 @@ func TestReindexResumeSkipsUnchanged(t *testing.T) {
 	}
 }
 
+// TestReindexResumeTags pins engram-345 (D-07..D-12): with Resume, a source
+// point whose tags changed while its content did not is re-embedded, not
+// skipped as Unchanged. It also pins the paired positive control — a genuine
+// content-and-tags match still skips — plus tag-reordering (D-09) and the
+// untagged raw point (D-10) staying stable across every run. Batch:1 forces
+// the resume target lookup to run per page, as in TestReindexResumeSkipsUnchanged.
+func TestReindexResumeTags(t *testing.T) {
+	c := dialTestClient(t)
+	ctx := context.Background()
+	const src, tgt = "reindex_resume_tags_src", "reindex_resume_tags_tgt"
+	_ = c.DeleteCollection(ctx, src)
+	_ = c.DeleteCollection(ctx, tgt)
+	t.Cleanup(func() {
+		_ = c.DeleteCollection(context.Background(), src)
+		_ = c.DeleteCollection(context.Background(), tgt)
+	})
+	fullID, rawID := seedSource(t, c, src) // fullID: content="alpha content", tags=[x,y]. rawID: no tags key.
+
+	s := New(c, src)
+	// Seed run: fresh target, populate it (not itself an assertion step).
+	if seed, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Batch: 1, Resume: true}, embed4); err != nil {
+		t.Fatalf("seed run: %v", err)
+	} else if seed.Upserted != 2 || seed.Unchanged != 0 {
+		t.Fatalf("seed run: want upserted=2 unchanged=0, got %+v", seed)
+	}
+
+	t.Run("EDGE 1: tags-only edit re-embeds, content-only-match record still skips", func(t *testing.T) {
+		// Mutate fullID's tags only; content stays byte-identical ("alpha content").
+		mutated := Memory{
+			ID: fullID, Content: "alpha content", Scope: "eval-test:project:demo",
+			Repo: "demo", Source: "user-said", Category: "preference",
+			Tags: []string{"x", "z"}, Owner: "sub-123", Visibility: "shared",
+			CreatedAt: time.Now().UTC().Truncate(time.Second),
+		}
+		if err := s.Upsert(ctx, mutated, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("mutate source tags: %v", err)
+		}
+		res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Batch: 1, Resume: true}, embed4)
+		if err != nil {
+			t.Fatalf("resume after tags edit: %v", err)
+		}
+		// fullID's tags changed (re-embed); rawID's content+tags still match (skip).
+		if res.Upserted != 1 || res.Unchanged != 1 {
+			t.Errorf("want upserted=1 unchanged=1, got %+v", res)
+		}
+		got := scrollPoints(t, c, tgt)
+		gotTags := tagsFromPayload(got[fullID].payload)
+		if !tagsEqual(gotTags, []string{"x", "z"}) {
+			t.Errorf("target tags after tags-only re-embed: want [x z], got %v (proves the record was actually rewritten, not merely counted)", gotTags)
+		}
+	})
+
+	t.Run("EDGE 2: paired positive control — content AND tags both match, nothing re-embedded", func(t *testing.T) {
+		// Nothing mutated since the prior subtest. This is the assertion that a
+		// fix which stopped skipping anything would fail: it must be its own run,
+		// not a subtraction from EDGE 1's totals.
+		res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Batch: 1, Resume: true}, embed4)
+		if err != nil {
+			t.Fatalf("resume with nothing mutated: %v", err)
+		}
+		if res.Scanned != 2 || res.Upserted != 0 || res.Unchanged != 2 {
+			t.Errorf("want scanned=2 upserted=0 unchanged=2, got %+v", res)
+		}
+	})
+
+	t.Run("EDGE 3: same tag elements in a different order still skips", func(t *testing.T) {
+		reordered := Memory{
+			ID: fullID, Content: "alpha content", Scope: "eval-test:project:demo",
+			Repo: "demo", Source: "user-said", Category: "preference",
+			Tags: []string{"z", "x"}, Owner: "sub-123", Visibility: "shared",
+			CreatedAt: time.Now().UTC().Truncate(time.Second),
+		}
+		if err := s.Upsert(ctx, reordered, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("reorder source tags: %v", err)
+		}
+		res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Batch: 1, Resume: true}, embed4)
+		if err != nil {
+			t.Fatalf("resume after tag reorder: %v", err)
+		}
+		if res.Upserted != 0 || res.Unchanged != 2 {
+			t.Errorf("want upserted=0 unchanged=2 (reorder is a skip), got %+v", res)
+		}
+	})
+
+	t.Run("EDGE 4: untagged record stays Unchanged across every run above", func(t *testing.T) {
+		// rawID carries no "tags" payload key at all and was never mutated in any
+		// subtest. Proven by elimination against the two-point totals recorded
+		// above: EDGE 1 counted exactly one Unchanged while fullID was the one
+		// Upserted, so rawID was that Unchanged point; EDGE 2 and EDGE 3 each
+		// counted both points Unchanged, so rawID was Unchanged there too. A
+		// nil-versus-empty asymmetry between the source and target tag decodes
+		// would have made rawID re-embed in every one of those runs instead.
+		res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Batch: 1, Resume: true}, embed4)
+		if err != nil {
+			t.Fatalf("final confirmation run: %v", err)
+		}
+		if res.Upserted != 0 || res.Unchanged != 2 {
+			t.Errorf("want upserted=0 unchanged=2 (rawID and fullID both stable), got %+v", res)
+		}
+		got := scrollPoints(t, c, tgt)
+		if gotTags := tagsFromPayload(got[rawID].payload); len(gotTags) != 0 {
+			t.Errorf("rawID target tags: want none, got %v", gotTags)
+		}
+	})
+}
+
+// TestTagsEqual is a cheap, Qdrant-free table test over tagsEqual directly —
+// it runs in milliseconds and gates the comparison helper without a live
+// Qdrant dependency.
+func TestTagsEqual(t *testing.T) {
+	cases := []struct {
+		name string
+		a, b []string
+		want bool
+	}{
+		{"equal", []string{"x", "y"}, []string{"x", "y"}, true},
+		{"reordered-equal", []string{"x", "y"}, []string{"y", "x"}, true},
+		{"different-element-unequal", []string{"x", "y"}, []string{"x", "z"}, false},
+		{"differing-length-unequal", []string{"x", "y"}, []string{"x"}, false},
+		{"nil-versus-empty-equal", nil, []string{}, true},
+		{"duplicate-multiplicity-unequal", []string{"x", "x"}, []string{"x"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tagsEqual(tc.a, tc.b); got != tc.want {
+				t.Errorf("tagsEqual(%v, %v) = %v, want %v", tc.a, tc.b, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestReindexDryRunWritesNothing(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()

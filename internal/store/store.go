@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -559,13 +560,7 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	if v, ok := p["visibility"]; ok {
 		m.Visibility = v.GetStringValue()
 	}
-	if v, ok := p["tags"]; ok {
-		if lv := v.GetListValue(); lv != nil {
-			for _, item := range lv.GetValues() {
-				m.Tags = append(m.Tags, item.GetStringValue())
-			}
-		}
-	}
+	m.Tags = tagsFromPayload(p)
 	if v, ok := p["created_at"]; ok {
 		if t, err := time.Parse(time.RFC3339, v.GetStringValue()); err == nil {
 			m.CreatedAt = t
@@ -2714,14 +2709,27 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 					continue
 				}
 				if ti, ok := targetInfo[p.Id.GetUuid()]; ok && ti.content == content &&
+					tagsEqual(ti.tags, m.Tags) &&
 					(opts.Identity == "" || ti.identity == opts.Identity) {
-					// Target already holds this id with identical content — equal
-					// content (and, from the same source payload, equal tags) re-embeds
-					// to an equal vector, so skip the embed+upsert. But only when no
-					// Identity is being enforced, or the target already carries the
-					// matching stamp: a content match with an absent/stale identity
-					// falls through and gets re-embedded+restamped below, so resume
-					// never leaves a record untraceable to its embedder config.
+					// ti is a SNAPSHOT of what the target held at its last write; content
+					// and m.Tags are the source's CURRENT values. The two are
+					// independently mutable — a tags-only edit on the source leaves ti
+					// stale while content still matches, so this is a genuine three-part
+					// equality check, not one part implying another (D-11). EmbedText
+					// folds tags into the embedded text, so a real tags change without a
+					// content change still requires a re-embed to avoid serving a stale
+					// vector (the #345 defect this conjunct closes).
+					//
+					// tagsEqual is deliberately order-independent (D-09): a record whose
+					// tags were only reordered embeds to different text under EmbedText
+					// yet is intentionally treated as unchanged here. Normalizing tag
+					// order at write time would be the root fix and is out of scope.
+					//
+					// Only when no Identity is being enforced, or the target already
+					// carries the matching stamp: a content+tags match with an
+					// absent/stale identity falls through and gets re-embedded+restamped
+					// below, so resume never leaves a record untraceable to its embedder
+					// config.
 					res.Unchanged++
 					continue
 				}
@@ -2764,21 +2772,64 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 	return res, nil
 }
 
+// tagsFromPayload decodes the "tags" key out of a raw Qdrant payload map. It is
+// the single tag decoder in this package: fromPayload calls it for the source
+// side and reindexTargetContents calls it for the target side. Both reads MUST
+// go through this one function — an encoding asymmetry between the two sides
+// would surface as permanent false re-embeds, since reindex --resume would
+// never converge (D-08). An absent key and a present-but-empty list both yield
+// the nil zero value; do not pre-initialize the return slice, or every
+// untagged record would re-embed forever under nil-vs-empty comparison.
+func tagsFromPayload(p map[string]*qdrant.Value) []string {
+	var tags []string
+	if v, ok := p["tags"]; ok {
+		if lv := v.GetListValue(); lv != nil {
+			for _, item := range lv.GetValues() {
+				tags = append(tags, item.GetStringValue())
+			}
+		}
+	}
+	return tags
+}
+
+// tagsEqual reports whether a and b hold the same tags, order-independent but
+// multiplicity-preserving: reordering doesn't matter (D-09's deliberate
+// residual — EmbedText joins tags in slice order, so a purely reordered
+// record embeds to different text yet compares equal here), but a tag
+// appearing twice in one slice and once in the other is NOT equal. A set-
+// based comparison would silently collapse duplicates, which content
+// equality's own byte-exact semantics never would. nil and an empty slice
+// compare equal by construction (D-10) — both have length 0.
+func tagsEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	as, bs := slices.Clone(a), slices.Clone(b)
+	sort.Strings(as)
+	sort.Strings(bs)
+	return slices.Equal(as, bs)
+}
+
 // reindexTarget is the per-id resume lookup shape: the target point's content
-// (for the content-equality skip check) and its stamped embedder_identity (a
-// missing key reads as the zero-value "", per fromPayload's convention).
+// and tags (for the content/tags-equality skip check) and its stamped
+// embedder_identity (a missing key reads as the zero-value "", per
+// fromPayload's convention).
 type reindexTarget struct {
 	content  string
+	tags     []string
 	identity string
 }
 
-// reindexTargetContents fetches the content and stamped embedder_identity of
-// the given source points' ids from the target collection, returning id→
-// reindexTarget only for ids that already exist there. It backs Reindex's
-// resume skip: a fresh or partially-populated target simply yields fewer (or
-// no) entries, so a first run skips nothing. The identity is read so the
-// resume skip predicate can be identity-aware (Phase 13 SC3): a content match
-// with a missing/mismatched identity must NOT be treated as unchanged.
+// reindexTargetContents fetches the content, tags, and stamped
+// embedder_identity of the given source points' ids from the target
+// collection, returning id→reindexTarget only for ids that already exist
+// there. It backs Reindex's resume skip: a fresh or partially-populated
+// target simply yields fewer (or no) entries, so a first run skips nothing.
+// Tags are read via tagsFromPayload — the same decoder the source side uses
+// via fromPayload — so the resume tag-equality conjunct can never diverge
+// between the two sides (D-08). The identity is read so the resume skip
+// predicate can be identity-aware (Phase 13 SC3): a content match with a
+// missing/mismatched identity must NOT be treated as unchanged.
 func (s *Store) reindexTargetContents(ctx context.Context, target string, pts []*qdrant.RetrievedPoint) (map[string]reindexTarget, error) {
 	if len(pts) == 0 {
 		return nil, nil
@@ -2800,6 +2851,7 @@ func (s *Store) reindexTargetContents(ctx context.Context, target string, pts []
 	for _, p := range got {
 		out[p.Id.GetUuid()] = reindexTarget{
 			content:  p.Payload["content"].GetStringValue(),
+			tags:     tagsFromPayload(p.Payload),
 			identity: p.Payload[embedderIdentityKey].GetStringValue(),
 		}
 	}
