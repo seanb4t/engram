@@ -3,38 +3,33 @@ gsd_state_version: 1.0
 milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
 current_phase_name: Operator Config & Reindex Correctness
-status: phase_in_progress
-stopped_at: "Completed 05-02-PLAN.md (wave 1 of 2, plan 2 of 3) - reindex --resume is now tag-aware: tagsFromPayload (single decoder, source+target both call it), tagsEqual (order-independent, multiplicity-preserving, nil==empty), the resume skip predicate's new third conjunct with rewritten comment, and TestReindexResumeTags (4 labelled subtests, TWO separate RED transcripts - defect case and the paired positive control). ReindexResult.WouldUpsert + a unified per-point loop wire --dry-run --resume into repair sizing (D-14); reindexSummary's non-resume dry-run string stays byte-identical. REQ-reindex-resume-tags marked COMPLETE; REQ-reindex-stale-repair's code is done but stays Pending until 05-03 lands its documentation (D-16). Plan 05-03 (wave 2, docs + full phase-close gate set) is next and can now run bare task."
-last_updated: "2026-08-01T22:30:00Z"
+status: phase_complete
+stopped_at: "Completed 05-03-PLAN.md (wave 2, plan 3 of 3) - v0.12.x Phase 5 (Operator Config & Reindex Correctness) is COMPLETE. Corrected configure.md's shared-key assertion (D-06: the three now-false statements removed, the residual credential-exposure warning preserved in opt-out form), added reindex.md's Repairing a pre-patch resume section (mechanism-then-limit ordering per D-15), and upgrade.md's v0.12.0 ### 4/### 5 entries. Ran the full phase-close gate set plus every prohibition and edge gate - all green. REQ-reindex-stale-repair marked COMPLETE (REQ-per-lane-api-key and REQ-reindex-resume-tags were already complete from 05-01/05-02); all three of Phase 5's requirements are now done. Next: v0.12.x Phase 6 (Rule Capture - Investigation & Fix) - start with /gsd-discuss-phase or /gsd-plan-phase for 06-01."
+last_updated: "2026-08-01T22:37:45Z"
 progress:
   total_phases: 5
-  completed_phases: 4
-  total_plans: 22
-  completed_plans: 21
-  percent: 95
+  completed_phases: 5
+  total_plans: 23
+  completed_plans: 23
+  percent: 100
 current_phase: 05
 last_activity: 2026-08-01
-last_activity_desc: "v0.12.x Phase 5 plan 05-01 executed (wave 1 of 2, one of two concurrent wave-1 plans, git.branching_strategy: none so every commit used an explicit pathspec per the plan's Concurrency contract). Task 1 (tracer/TDD): premise check confirmed summarize.New has exactly one production call site (summarizerFromConfig); added openai.chat_api_key/ENGRAM_OPENAI_CHAT_API_KEY to internal/config/registry.go (no Default/Legacy/Flag) and OpenAIConfig.ChatAPIKey to internal/config/config.go, mirroring ChatBaseURL's doc-comment shape (D-01); summarizerFromConfig gained chatAPIKey := cmp.Or(cfg.OpenAI.ChatAPIKey, cfg.OpenAI.APIKey) alongside the existing chatBaseURL line, passed as summarize.New's second argument — embedderFromConfig's embed.New(cfg.OpenAI.BaseURL, cfg.OpenAI.APIKey, ...) call left byte-identical (D-02/D-03). TestSummarizerFromConfigChatAPIKey added to internal/server/embed_wiring_test.go (3 subtests: chat-key-set routes to chat gateway; chat-key-empty falls back to shared key, chat-only gateway never contacted; chat-key-set-with-no-chat-base-URL still overrides the credential on the shared gateway), mirroring TestSummarizerFromConfigChatBaseURL's two-httptest-server shape but asserting on r.Header.Get(\"Authorization\") instead of r.URL.Path. RED reading taken by mutating (not flag-toggling) the cmp.Or argument order — swapped to shared-key-first, observed subtests 1 and 3 fail exactly as predicted (chat gateway received the shared key), restored correct order, re-confirmed all three green plus the sibling TestSummarizerFromConfigChatBaseURL. internal/config/validate.go, go.mod, go.sum confirmed zero diff from phase base commit dc98ec0c; log-site gate confirmed no non-test ChatAPIKey reference touches slog./fmt.Errorf/Printf/Println; task license:check clean. Task 2: premise check confirmed Taskfile.yaml's EXPECTED_CHECKSUM guard shape unchanged from RESEARCH's description. Shipped the Helm value at memory.summarize.chatApiKeySecret (D-04a — the chart groups by lane; chatBaseURL's sibling location, NOT memory.openai.chatApiKeySecret as D-04 originally and incorrectly specified) with empty name/key defaults in charts/engram/values.yaml, and a guarded secretKeyRef block in charts/engram/templates/_helpers.tpl's engram.containerEnv, mirroring the embedder apiKeySecret guard shape. Corrected the now-false 'reuses the embedder's client' comments in both files. Recomputed Taskfile.yaml's EXPECTED_CHECKSUM via the target's own awk|shasum command (old 4010b14a86946584ac61ccb413d100d4b8d74281177900a75b1fd3aca2988f23 -> new f2af79e090e608aca0fc4cbbab2ce32b4d45e91527316b36bdbdacd85b66f013) in the SAME commit as the template edit (D-04b), plus a dated re-pin comment line naming plan 05-01. task chart:validate and task chart:lint both green; helm template with no overrides omits ENGRAM_OPENAI_CHAT_API_KEY entirely; --set ...name=s --set ...key=k renders a secretKeyRef, never inline plaintext. task lint:yaml clean. Two commits (36b5150b Task 1, 3c11e723 Task 2), each staged with an explicit pathspec per the Concurrency contract, post-commit deletion/untracked checks clean on both. REQ-per-lane-api-key marked complete by hand-edit in REQUIREMENTS.md (gsd-tools' requirements.mark-complete/roadmap.update-plan-progress/state.advance-plan are documented in this project's own standing notes as unreliable against this hand-maintained STATE.md/ROADMAP.md shape — ROADMAP.md's Phase 5 checkbox and progress-table row, and REQUIREMENTS.md's checkbox and traceability-table row, were hand-edited and git-diff-verified instead)."
+last_activity_desc: "v0.12.x Phase 5 plan 05-03 executed (wave 2, depends on both wave-1 plans having landed on the shared working directory, git.branching_strategy: none, explicit-pathspec commits per the Concurrency contract). Task 1: rewrote configure.md's shared-key callout ('Each lane can carry its own API key') removing the three now-false statements (no separate key for the chat base URL; the key is shared across both lanes; per-lane credentials unsupported this milestone) while preserving the residual credential-exposure warning (T-05-03) in corrected opt-out form; added the ENGRAM_OPENAI_CHAT_API_KEY table row directly after ENGRAM_OPENAI_CHAT_BASE_URL; fixed both stale cross-references; mentioned memory.summarize.chatApiKeySecret. Task 2: rewrote reindex.md's ## Resuming an interrupted run from a single content-equality claim to the actual three-part conjunction (content, order-independent tags, embedder identity), stating the tag-reorder residual as deliberate; updated the --dry-run/--resume flag rows and ## Output with the actual dry-run --resume wording quoted from cmd/engram/reindex.go; added ## Repairing a pre-patch resume (what went wrong, the re-scroll-fresh mechanism stated before the D-15 limit as its cause, the size-then-run procedure naming only the existing --resume/--dry-run flags, the deleted-source limit stated plainly with no best-effort recovery implied per D-15's explicit prohibition). Task 3: widened upgrade.md's v0.12.0 lead paragraph from three to five changes; added ### 4 (chat credential, no action required unless the chat base URL was repointed) and ### 5 (resume tags defect, prescribing --dry-run --resume then --resume, linking to the reindex guide's repair section), 1-3 left unmodified; then ran task (lint+full suite), go vet ./..., task license:check, task chart:validate, task proto:lint, task proto:gen (zero drift), task ui:build (zero drift), git diff --exit-code dc98ec0c -- go.mod go.sum, all 6 phase-wide prohibition gates, and all 4 phase-wide edge gates (TestReindexResumeTags, TestReindexDryRunWritesNothing, TestSummarizerFromConfigChatAPIKey via the mandated ^--- PASS: <TestName> \\( grep with zero --- SKIP, plus the go.mod/go.sum diff) - every gate green, all results recorded in 05-03-SUMMARY.md's Phase-Close Gate Results table. One Rule-1 deviation: also corrected the --resume flag-table row's stale 'identical content' description while already editing that file for Task 2 (same class of falsified-prose defect the task's own acceptance criteria targeted, one row above the text explicitly named). Three commits (6f260fae Task 1, 6d2b622d Task 2, b922d715 Task 3), each staged with an explicit pathspec. REQ-reindex-stale-repair marked complete by hand-edit in REQUIREMENTS.md; ROADMAP.md's Phase 5 checkbox, the 05-03 plan checkbox, and the progress-table row (3/3, Complete, 2026-08-01) hand-edited per this plan's explicit warning that gsd-tools' roadmap.update-plan-progress/state.advance-plan corrupted this repo's flat-ROADMAP/hand-maintained-STATE shape in prior phases - git diff confirmed clean, correctly-formatted diffs on both files before committing. **v0.12.x Phase 5 (Operator Config & Reindex Correctness) is now COMPLETE - all 3 plans, all 3 requirements.**"
 ---
 
 <!-- RESUME HERE -->
 <!--
 NEXT COMMAND after /clear:
-    v0.12.x Phase 5 (Operator Config & Reindex Correctness): plans 05-01 and 05-02 are
-    COMPLETE (commits 36b5150b, 3c11e723, 4c426a90, 7d127ff1, b59a30b6, 5fd8b051,
-    7c4cb57d). Plan 05-03 (wave 2, docs + full phase-close gate set, depends on both)
-    is the only plan left in this phase. Resume with: /gsd-execute-phase 5
+    v0.12.x Phase 5 (Operator Config & Reindex Correctness) is COMPLETE — all 3 plans
+    (05-01, 05-02, 05-03), all 3 requirements (REQ-per-lane-api-key,
+    REQ-reindex-resume-tags, REQ-reindex-stale-repair). Commits: 36b5150b, 3c11e723,
+    4c426a90, 7d127ff1, b59a30b6, 5fd8b051, 7c4cb57d, 6f260fae, 6d2b622d, b922d715,
+    cbc18a64. Every phase-close, prohibition, and edge gate is green on the final tree
+    (05-03-SUMMARY.md's Phase-Close Gate Results table). Proceed to v0.12.x Phase 6
+    (Rule Capture — Investigation & Fix) — start with /gsd-discuss-phase or
+    /gsd-plan-phase for 06-01.
 
-    ONE THING THE NEXT EXECUTOR (05-03) MUST NOT LOSE:
-    05-03 is the FIRST plan in this phase cleared to run bare `task` — both wave-1
-    plans have landed cleanly on the shared working directory (`git.branching_strategy:
-    none`). REQ-reindex-stale-repair's code (patched resume + `--dry-run --resume`
-    sizing) is already done from 05-02; what's left is D-16's documentation
-    (`docs-site/src/content/docs/guides/reindex.md`'s repair section,
-    `guides/upgrade.md`'s v0.12.0 entry) — only mark that requirement Complete once the
-    docs land. Every commit still needs an explicit pathspec if any concurrent work is
-    still in flight; verify with `git status --short` before assuming a bare `task`/
-    `git add -A` is now safe.
+    STANDING NOTES CARRIED FORWARD FOR PHASE 6:
 
     Also: `ENGRAM_REQUIRE_QDRANT` does NOT fail closed for internal/store — dialTestClient
     (store_test.go:88-106) t.Skips unconditionally. Store-test gates in these plans therefore
@@ -59,7 +54,7 @@ NEXT COMMAND after /clear:
     Phase 3 (Cross-Spine Memory Recall) is COMPLETE — all 5 waves landed, all phase-close
     gates green.
 
-Phases 1, 2, 3, and 4 are COMPLETE and verified. Phase 3's blocking authz gate closed at
+Phases 1, 2, 3, 4, and 5 are COMPLETE and verified. Phase 3's blocking authz gate closed at
 03-01 (03-AUTHZ-GATE.md, commit a7f827b6) and was never re-run. Plan 03-02 (wave 2)
 landed the search_memory tracer: ownerScopeFilter's scope clause conditional,
 effectiveSearchScope guarding both the MCP closure and the typed core. Plan 03-03
@@ -84,7 +79,7 @@ zero diff) are green on the final tree.
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x Phase 5 — Operator Config & Reindex Correctness — IN PROGRESS (2/3 plans, wave 1 of 2 COMPLETE). Plan 05-01 landed the per-lane chat/summarize API key end to end (config key, `cmp.Or` construction-site fallback, end-to-end test, Helm value, checksum re-pin), closing REQ-per-lane-api-key. Plan 05-02 landed reindex resume tag-awareness (shared tag decoder, order-independent comparison, three-conjunct predicate, `--dry-run --resume` sizing), closing REQ-reindex-resume-tags. Plan 05-03 (docs + phase-close gates, wave 2) is the last plan remaining. Phase 4 (Diagnosability) is COMPLETE — 7/7 plans, all four requirements done.
+**Current focus:** v0.12.x Phase 5 — Operator Config & Reindex Correctness — ✅ COMPLETE (3/3 plans). Plan 05-01 landed the per-lane chat/summarize API key end to end (config key, `cmp.Or` construction-site fallback, end-to-end test, Helm value, checksum re-pin), closing REQ-per-lane-api-key. Plan 05-02 landed reindex resume tag-awareness (shared tag decoder, order-independent comparison, three-conjunct predicate, `--dry-run --resume` sizing), closing REQ-reindex-resume-tags. Plan 05-03 landed the operator docs (corrected shared-key prose, the pre-patch-resume repair path and its D-15 limit, v0.12.0 upgrade entries) and the full phase-close gate run, closing REQ-reindex-stale-repair. All three of Phase 5's requirements are now complete. Phase 4 (Diagnosability) is COMPLETE — 7/7 plans, all four requirements done. Next: v0.12.x Phase 6 (Rule Capture — Investigation & Fix).
 
 ## ▶ Resume Point (session handed off 2026-08-01)
 
@@ -144,7 +139,7 @@ REQ-cross-spine-authz-verified, REQ-cross-spine-result-provenance) are complete.
 
 ## Current Position
 
-Phase: v0.12.x Phase 5 (Operator Config & Reindex Correctness) — 🔶 IN PROGRESS (2/3 plans, wave 1 of 2 COMPLETE)
+Phase: v0.12.x Phase 5 (Operator Config & Reindex Correctness) — ✅ COMPLETE 2026-08-01 (3/3 plans, both waves landed)
 Plan 05-01 (per-lane chat/summarize API key, wave 1, concurrent with 05-02 in the same shared
 working directory — `git.branching_strategy: none`, every commit used an explicit pathspec):
 Task 1 premise check confirmed `summarize.New` has exactly one production call site
@@ -207,10 +202,41 @@ Full `internal/store` suite (160 subtests via `-v`) ran clean with zero SKIP/FAI
 plan-wide verification; `internal/authz/...` and `go.mod`/`go.sum` confirmed zero diff from phase
 base `dc98ec0c`; `task license:check` clean. Commits: `b59a30b6` (Task 1), `5fd8b051` (Task 2),
 `7c4cb57d` (SUMMARY). **REQ-reindex-resume-tags is now COMPLETE.** REQ-reindex-stale-repair's code
-(patched resume + dry-run sizing, D-13/D-14) is done, but the requirement text mandates a
-**documented** repair path (D-16) — that lands in 05-03, so it stays Pending until then. Plan 05-03
-(docs + phase-close gates, wave 2) is the only plan remaining in this phase; it can now run bare
-`task` since both wave-1 plans have landed cleanly.
+(patched resume + dry-run sizing, D-13/D-14) is done. REQ-reindex-stale-repair's documentation
+requirement (D-16) is completed by plan 05-03 below.
+
+Plan 05-03 (operator docs + phase-close gates, wave 2, depends on both 05-01 and 05-02, ran after
+both had landed on the shared working directory): Task 1 rewrote `configure.md`'s shared-key
+callout — retitled "Each lane can carry its own API key" — removing the three now-false statements
+(no separate key for the chat base URL; the key is shared across both lanes; per-lane credentials
+unsupported this milestone) while preserving the residual credential-exposure warning (T-05-03) in
+corrected opt-out form; added the `ENGRAM_OPENAI_CHAT_API_KEY` table row directly after
+`ENGRAM_OPENAI_CHAT_BASE_URL`; fixed both stale cross-references; mentioned
+`memory.summarize.chatApiKeySecret`. Task 2 rewrote `reindex.md`'s `## Resuming an interrupted run`
+from a single content-equality claim to the actual three-part conjunction (content, order-
+independent tags, embedder identity), stating the tag-reorder residual as deliberate; updated the
+`--dry-run`/`--resume` flag rows and `## Output` with the actual `dry-run --resume` wording quoted
+from `cmd/engram/reindex.go`; added `## Repairing a pre-patch resume` (what went wrong, the
+re-scroll-fresh mechanism stated before the D-15 limit as its cause, the size-then-run procedure
+naming only the existing `--resume`/`--dry-run` flags, the deleted-source limit stated plainly with
+no best-effort recovery implied). Task 3 widened `upgrade.md`'s v0.12.0 lead paragraph from three
+to five changes; added `### 4` (chat credential) and `### 5` (resume tags defect, linking to the
+reindex guide's repair section), 1-3 left unmodified; then ran `task`, `go vet ./...`,
+`task license:check`, `task chart:validate`, `task proto:lint`, `task proto:gen`/`task ui:build`
+(both zero-drift), `git diff --exit-code dc98ec0c -- go.mod go.sum`, all 6 phase-wide prohibition
+gates, and all 4 phase-wide edge gates (via the mandated `^--- PASS: <TestName> \(` grep, zero
+`--- SKIP`) — every gate green, recorded in `05-03-SUMMARY.md`'s Phase-Close Gate Results table.
+One Rule-1 deviation: also corrected the `--resume` flag-table row's stale "identical content"
+description while already editing that file for Task 2. Three commits (`6f260fae` Task 1,
+`6d2b622d` Task 2, `b922d715` Task 3), each with an explicit pathspec. `REQ-reindex-stale-repair`
+marked complete by hand-edit in `REQUIREMENTS.md`; `ROADMAP.md`'s Phase 5 checkbox, the 05-03 plan
+checkbox, and the progress-table row hand-edited (3/3, Complete, 2026-08-01) per this plan's
+explicit warning that `gsd-tools`' `roadmap.update-plan-progress`/`state.advance-plan` corrupted
+this repo's flat-ROADMAP/hand-maintained-STATE shape in prior phases — `git diff` confirmed clean,
+correctly-formatted diffs on both files before committing.
+
+**v0.12.x Phase 5 (Operator Config & Reindex Correctness) is COMPLETE — all 3 plans, all 3
+requirements (REQ-per-lane-api-key, REQ-reindex-resume-tags, REQ-reindex-stale-repair).**
 
 Phase: v0.12.x Phase 4 (Diagnosability) — ✅ COMPLETE 2026-08-01 (7/7 plans, all 5 waves landed)
 Plan 04-01 (tracer, wave 1): `argError{Fields, Hint, Detail, Class}` built in
