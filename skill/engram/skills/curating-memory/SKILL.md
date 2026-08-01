@@ -78,6 +78,30 @@ to rebuild a folksonomy the embedder already handles. Prefer a handful of stable
 low-cardinality tags over an ever-growing taxonomy; when in doubt, rely on
 content + semantic search and leave the record untagged.
 
+## Cross-spine recall
+
+`search_memory` and `list_memory` accept `cross_spine` (bool) to span every
+scope you can read; it ignores any `scope` you also supply. The response
+reports `searched_scopes` and `scopes_truncated`, which name the scopes
+searched under your authorization — not the scopes that had results.
+
+### When not to use cross-spine
+
+Cross-spine is an opt-in widening, and the failure mode of an opt-in widening
+is setting it on every call. Don't. The default is scope-confined, and it
+should stay that way for ordinary work: a session-start bootstrap, a recall
+about the repo you're in, or anything where the two-tier spine/overlay scope
+you already know is the right scope. Reach for `cross_spine` only when the
+thing you're looking for might live somewhere you're not — a decision made in
+another repo, a convention that spans projects, a memory whose scope you
+genuinely don't know.
+
+Two costs come with it. A broader result set dilutes ranking, so a
+cross-spine search can rank a distant match above a local one. And a
+cross-spine call adds a second bounded scan of your readable set to
+enumerate the scopes it searched. Neither is free — reach for `cross_spine`
+because you need it, not by default.
+
 ## Discipline
 
 1. **Search before store.** Call `mcp__engram__search_memory` across both
