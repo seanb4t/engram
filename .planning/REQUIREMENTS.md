@@ -143,7 +143,7 @@ Zero new Go dependencies are required for this entire milestone.
   field either preserves the bug or silently defeats resume entirely. Tag comparison is
   order-independent.
 
-- [ ] **REQ-reindex-stale-repair**: An operator can heal records that an earlier unpatched
+- [x] **REQ-reindex-stale-repair**: An operator can heal records that an earlier unpatched
   `--resume` run already skipped incorrectly, via a documented repair path — following the existing
   one-time-reconciliation command precedent (`migrate-remap-owner`, `backfill-short-ids`,
   `prune-expired`, `summarize-missing`).
@@ -246,7 +246,7 @@ Populated during roadmap creation.
 | REQ-embed-provider-error-body | v0.12.x Phase 4 | Complete |
 | REQ-per-lane-api-key | v0.12.x Phase 5 | Complete |
 | REQ-reindex-resume-tags | v0.12.x Phase 5 | Complete |
-| REQ-reindex-stale-repair | v0.12.x Phase 5 | Pending |
+| REQ-reindex-stale-repair | v0.12.x Phase 5 | Complete |
 
 **Coverage:**
 

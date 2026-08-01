@@ -133,7 +133,7 @@ into shared stores.
 - [x] **Phase 2: Headless CLI Client** - `engram search|store|list` over the generated Connect stubs, agent-shaped output, credential safety (completed 2026-07-31)
 - [x] **Phase 3: Cross-Spine Memory Recall** - `cross_spine` on `search_memory` with the store-layer authz composition verified, not assumed (completed 2026-08-01)
 - [x] **Phase 4: Diagnosability** - Authz decisions reach a reader; rejections name the true field and carry a remediation hint; provider error bodies survive (completed 2026-08-01)
-- [ ] **Phase 5: Operator Config & Reindex Correctness** - Per-lane chat credential; tag-aware resume plus a repair path for already-skipped records
+- [x] **Phase 5: Operator Config & Reindex Correctness** - Per-lane chat credential; tag-aware resume plus a repair path for already-skipped records (completed 2026-08-01)
 - [ ] **Phase 6: Rule Capture — Investigation & Fix** - Find why `store_rule` never fires, then fix the documented cause without touching who decides
 
 ## Phase Details
@@ -399,7 +399,7 @@ Plans:
 
 - [x] 05-01-PLAN.md — per-lane chat credential: config key, construction-site fallback, end-to-end test, Helm value, checksum re-pin (wave 1)
 - [x] 05-02-PLAN.md — reindex resume tag-awareness: shared tag decoder, order-independent comparison, three-conjunct predicate, `--dry-run --resume` sizing (wave 1)
-- [ ] 05-03-PLAN.md — operator docs: corrected shared-key prose, the pre-patch-resume repair path and its limit, v0.12.0 upgrade entries, phase-close gates (wave 2)
+- [x] 05-03-PLAN.md — operator docs: corrected shared-key prose, the pre-patch-resume repair path and its limit, v0.12.0 upgrade entries, phase-close gates (wave 2)
 
 **Note on execution:** waves 1 and 2. `git.branching_strategy` is `none`, so 05-01 and 05-02 run
 concurrently in one working directory sharing one git index — both plans mandate explicit-pathspec
@@ -490,7 +490,7 @@ markdown and tool descriptions rather than Go correctness.
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete | 2026-07-31 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete | 2026-08-01 |
-| 5. Operator Config & Reindex Correctness | v0.12.x | 2/3 | In Progress (2/3 plans) | — |
+| 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 0/2 | Pending | — |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
