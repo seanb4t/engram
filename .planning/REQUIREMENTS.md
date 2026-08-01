@@ -108,7 +108,7 @@ Zero new Go dependencies are required for this entire milestone.
 
 ### Diagnosability (#394, #360, #347)
 
-- [ ] **REQ-authz-decision-diagnostics**: An operator can see why the Cedar PDP allowed or denied a
+- [x] **REQ-authz-decision-diagnostics**: An operator can see why the Cedar PDP allowed or denied a
   request, at debug level, through a field-allowlisted accessor over `authz.Decision`'s
   already-computed diagnostics. Logged on **both** the allow and deny paths (a deny-only reader
   looks complete while leaving unexpected allows undebuggable). Re-applies DEC-wot's owner-only
@@ -121,7 +121,7 @@ Zero new Go dependencies are required for this entire milestone.
   correct field is named, rather than string-matching exact wording. *(Today an over-long `summary`
   reports `missing properties: ["content"]` while `content` is present and valid.)*
 
-- [ ] **REQ-error-hint-envelope**: A rejection carries a structured remediation hint alongside the
+- [x] **REQ-error-hint-envelope**: A rejection carries a structured remediation hint alongside the
   field attribution, so an agent's next attempt is informed rather than guessed. *(The error string
   is literally the next prompt the model acts on.)*
 
@@ -240,9 +240,9 @@ Populated during roadmap creation.
 | REQ-cross-spine-result-provenance | v0.12.x Phase 3 | Complete |
 | REQ-rule-capture-investigation | v0.12.x Phase 6 | Pending |
 | REQ-rule-capture-intervention | v0.12.x Phase 6 | Pending |
-| REQ-authz-decision-diagnostics | v0.12.x Phase 4 | Pending |
+| REQ-authz-decision-diagnostics | v0.12.x Phase 4 | Complete |
 | REQ-validation-error-attribution | v0.12.x Phase 4 | Complete |
-| REQ-error-hint-envelope | v0.12.x Phase 4 | Pending |
+| REQ-error-hint-envelope | v0.12.x Phase 4 | Complete |
 | REQ-embed-provider-error-body | v0.12.x Phase 4 | Complete |
 | REQ-per-lane-api-key | v0.12.x Phase 5 | Pending |
 | REQ-reindex-resume-tags | v0.12.x Phase 5 | Pending |

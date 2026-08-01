@@ -131,8 +131,8 @@ into shared stores.
 
 - [x] **Phase 1: Shared Auth Chain & Connect Bearer Identity** - One composed verifier for both lanes, enforced token expiry, server-set lane provenance driving the CSRF exemption, opt-in headless mount
 - [x] **Phase 2: Headless CLI Client** - `engram search|store|list` over the generated Connect stubs, agent-shaped output, credential safety (completed 2026-07-31)
-- [ ] **Phase 3: Cross-Spine Memory Recall** - `cross_spine` on `search_memory` with the store-layer authz composition verified, not assumed
-- [ ] **Phase 4: Diagnosability** - Authz decisions reach a reader; rejections name the true field and carry a remediation hint; provider error bodies survive
+- [x] **Phase 3: Cross-Spine Memory Recall** - `cross_spine` on `search_memory` with the store-layer authz composition verified, not assumed (completed 2026-08-01)
+- [x] **Phase 4: Diagnosability** - Authz decisions reach a reader; rejections name the true field and carry a remediation hint; provider error bodies survive (completed 2026-08-01)
 - [ ] **Phase 5: Operator Config & Reindex Correctness** - Per-lane chat credential; tag-aware resume plus a repair path for already-skipped records
 - [ ] **Phase 6: Rule Capture — Investigation & Fix** - Find why `store_rule` never fires, then fix the documented cause without touching who decides
 
@@ -354,7 +354,7 @@ runs, so criterion 2's original scope could not have fixed its own motivating bu
 to move required-ness out of the advertised tool schema and into engram's validation. That, D-08's
 message reformat, and D-11's Connect code widening ship together as one `feat!`.
 
-**Plans:** 6/7 plans executed in 5 waves
+**Plans:** 7/7 plans executed in 5 waves
 
 Plans:
 
@@ -364,7 +364,7 @@ Plans:
 - [x] 04-04-PLAN.md — The `tools.go` sweep and the criterion-2 matrix, gated behind a read-first proof that the MCP 401 auth body is out of D-08's scope (wave 2)
 - [x] 04-05-PLAN.md — `rules.go` and `connectapi.go`: the last unwrapped validator, and removing the seven hand-wraps that would otherwise make D-11 a no-op on the Connect lane (wave 3)
 - [x] 04-06-PLAN.md — D-06a: required-ness moves from the inferred schema into engram, with issue #360's own repro as a named regression and its positive control (wave 4)
-- [ ] 04-07-PLAN.md — Agent- and operator-facing guidance for the three new contracts, plus the upgrade note (wave 5)
+- [x] 04-07-PLAN.md — Agent- and operator-facing guidance for the three new contracts, plus the upgrade note (wave 5)
 
 ---
 
@@ -475,7 +475,7 @@ markdown and tool descriptions rather than Go correctness.
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | Complete | 2026-07-31 |
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete | 2026-07-31 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete | 2026-08-01 |
-| 4. Diagnosability | v0.12.x | 6/7 | In Progress | — |
+| 4. Diagnosability | v0.12.x | 4/4 | Complete | 2026-08-01 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 0/3 | Pending | — |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 0/2 | Pending | — |
 
