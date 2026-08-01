@@ -67,7 +67,7 @@ Zero new Go dependencies are required for this entire milestone.
 
 ### Cross-Spine Recall (#344)
 
-- [ ] **REQ-cross-spine-search**: An agent can search curated memories across every scope it is
+- [x] **REQ-cross-spine-search**: An agent can search curated memories across every scope it is
   permitted to see via `cross_spine=true` on `search_memory`, making `scope` optional — mirroring
   `search_discovery`'s existing `CrossSpine` semantics. Available at MCP↔Connect parity via an
   additive proto field. Opt-in; the default stays scope-confined.
@@ -229,7 +229,7 @@ Populated during roadmap creation.
 | REQ-cli-agent-output | v0.12.x Phase 2 | Complete |
 | REQ-cli-credential-safety | v0.12.x Phase 2 | Complete |
 | REQ-cli-self-describing | v0.12.x Phase 2 | Complete |
-| REQ-cross-spine-search | v0.12.x Phase 3 | Pending |
+| REQ-cross-spine-search | v0.12.x Phase 3 | Complete |
 | REQ-cross-spine-authz-verified | v0.12.x Phase 3 | Complete |
 | REQ-cross-spine-result-provenance | v0.12.x Phase 3 | Pending |
 | REQ-rule-capture-investigation | v0.12.x Phase 6 | Pending |
