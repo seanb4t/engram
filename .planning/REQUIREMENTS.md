@@ -62,7 +62,7 @@ Zero new Go dependencies are required for this entire milestone.
   (env var or file), so it does not leak into `ps` output or shell history. TLS verification is on
   by default and cannot be disabled silently.
 
-- [ ] **REQ-cli-self-describing**: A bare invocation returns the full command / flag / exit-code
+- [x] **REQ-cli-self-describing**: A bare invocation returns the full command / flag / exit-code
   catalog as structured output, so an agent can discover the surface without parsing help text.
 
 ### Cross-Spine Recall (#344)
@@ -228,7 +228,7 @@ Populated during roadmap creation.
 | REQ-cli-client-commands | v0.12.x Phase 2 | Complete |
 | REQ-cli-agent-output | v0.12.x Phase 2 | Complete |
 | REQ-cli-credential-safety | v0.12.x Phase 2 | Complete |
-| REQ-cli-self-describing | v0.12.x Phase 2 | Pending |
+| REQ-cli-self-describing | v0.12.x Phase 2 | Complete |
 | REQ-cross-spine-search | v0.12.x Phase 3 | Pending |
 | REQ-cross-spine-authz-verified | v0.12.x Phase 3 | Pending |
 | REQ-cross-spine-result-provenance | v0.12.x Phase 3 | Pending |
