@@ -119,6 +119,79 @@ it.
 This adds a narrower test on top of the routing and junk-taxonomy sections
 above; it does not replace them.
 
+### Rule hygiene
+
+A rotted rule is worse than a rotted memory: rules are MUST-follow, so a wrong
+one does not merely sit there being incorrect — it misdirects every later
+session that reads the index and acts on it.
+
+**When to run these checks.** Not every session — that turns hygiene into a
+tax nobody pays. Two moments are already enough: when you are about to bless
+a new rule (the one point where comparing it against the existing set is
+directly useful), and when `list_rules` returns its curation-smell advisory.
+
+**Price the index honestly (D-11).** Session start loads only the compact
+`ruleView` — `short_id`, `summary`, `tags`, `scope`, `created_at` — and it
+carries no `content`. That split changes what each check can do from the
+index alone:
+
+- **Duplicates.** Catchable from summaries alone — a duplicate rule usually
+  has a near-duplicate index line. Free; do it while reading the index you
+  already have.
+- **Contradictions.** Not catchable from summaries. Two rules can carry
+  near-identical summaries and opposite content, or unrelated summaries and
+  directly conflicting content. A real check needs full text.
+- **Rot.** The constraint a rule names no longer exists — the path, command,
+  tool, or workflow it constrains is gone or has changed. `created_at` is the
+  cheap aging signal; the check itself runs against the current tree, not
+  against the index.
+
+Price the full-text read exactly: it is **one `list_rules` call with
+`full: true`**, which returns the whole set in a single response — not a
+`get_memory` per rule. The cost scales with total rule bytes, not with a
+round trip per rule. At the three rules this repo has today it is free; at
+fifty the response is large enough to be worth gating. Gate it behind the
+moments named above and nothing else — an unconditional full-text read every
+session is the habit this pricing exists to prevent.
+
+`list_rules` also returns a curation-smell advisory when a scope holds more
+than 50 rules (`ruleThreshold`, pinned by
+`TestListRulesHandlerCurationAdvisory`). It is a **volume signal only** — it
+says nothing about duplication or contradiction, and it cannot fire below 51
+rules in a scope, so it will never fire at this repo's current scale. Treat
+it as one input, never as the discipline.
+
+**Correcting a rule.** Rules do not correct like memories —
+`supersede_memory` is rejected for them (see Supersession, below). Which tool
+applies depends on what actually changed:
+
+| Situation | Tool | Why |
+|-----------|------|-----|
+| Same constraint, better wording — a clearer index line, an added caveat, a tag fix | `update_memory` | in-place refinement; the `short_id` and index entry survive. The only two guards that apply to a rule: the summary must stay a valid single-line index entry, and `shared: false` is rejected. |
+| A full rewrite of the rule text against the same constraint | `store_rule` with `id` set to the existing UUID or `short_id` | an ownership-checked in-place replace that carries the existing `short_id` forward, so anything citing that handle still resolves |
+| The constraint is wrong, reversed, or rotted — the rule should stop existing | propose `delete_memory`, then `store_rule` fresh if a corrected rule should stand in its place | rules cannot be superseded, so there is no correcting-record path; this is the only delete-then-re-store case |
+| Make a rule private | none — `set_visibility` and `update_memory` with `shared: false` both reject it | rules are always shared; delete instead |
+
+**Deleting a rule is user-blessed, symmetrically with creating one (D-10).**
+Nothing in the server stops you — `delete_memory` has no rule guard, unlike
+`set_visibility` and `supersede_memory`, which reject rules outright. Propose
+the removal, name the rule's `short_id` and the specific reason it should go,
+and call `delete_memory` only after the user has explicitly blessed it — this
+instruction is the only gate there is, so never perform it on your own
+judgment.
+
+**No history survives a rule deletion.** `supersede_memory` is rejected for
+rules, so unlike a corrected memory there is no "what we used to believe and
+when it changed" trail. If the old text matters, quote it in the proposal
+before deleting — after the delete it is gone.
+
+**Disposition vocabulary.** Keep (no issue). Merge (a duplicate — refine the
+survivor via `update_memory`, propose deleting the other). Flag (a
+contradiction — surface both `short_id`s and let the user resolve; never pick
+a winner yourself). Retire (rot — propose deletion, quoting the old text
+first). Every disposition that removes anything terminates in a user
+decision.
+
 ## Tagging
 
 `tags` are now a recall dimension, not just display metadata: `search_memory`
