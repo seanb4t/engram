@@ -54,7 +54,7 @@ analogy to `search_discovery`.
 - ✅ **v0.9.x — Recall Quality** — Phases 9–12 (shipped 2026-07-10, PR #336): retrieval eval + ranking precision (#261), embedder query/document asymmetry (#305), async-on-write summaries (#320), per-memory usage signals (#317). Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
 - ✅ **v0.10.x — Hardening & Write Lane** — Phases 13–21 (shipped 2026-07-16): embedder reliability & options (#333/#332/#331/#334/#337, closes #261), Connect write lane + CSRF + stateless session rotation (#322/#323), correctness & polish tail, CI/maintenance hygiene. 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge only → #369). Full detail archived at `milestones/v0.10.x-ROADMAP.md`.
 - ✅ **v0.11.x — Capture & Service Identity** — Phases 22–26 (shipped 2026-07-26): Cedar authz foundation (#362/#373 trust anchor), service auth chain + tenancy isolation (#362/#373), idempotent capture (#340), supersession with history (#342), structured citations + category filter + chat base URL (#341/#374/#350). 11/11 requirements, audit PASSED. Full detail archived at `milestones/v0.11.x-ROADMAP.md`.
-- 🔨 **v0.12.x — Headless Reach & Diagnosability** — Phases 1–6 (opened 2026-07-29): Connect bearer identity + headless mount + CSRF provenance (#343), headless CLI client (#343), cross-spine memory recall (#344), diagnosability trio (#394/#360/#347), operator config & reindex correctness (#350/#345), rule-capture investigation & fix (#351). 20 requirements. `REQUIREMENTS.md` + `research/SUMMARY.md`.
+- 🔨 **v0.12.x — Headless Reach & Diagnosability** — Phases 1–7 (opened 2026-07-29): Connect bearer identity + headless mount + CSRF provenance (#343), headless CLI client (#343), cross-spine memory recall (#344), diagnosability trio (#394/#360/#347), operator config & reindex correctness (#350/#345), rule-capture investigation & fix (#351). 20 requirements. `REQUIREMENTS.md` + `research/SUMMARY.md`.
 
 ## Phases
 
@@ -65,6 +65,11 @@ analogy to `search_discovery`.
 
 <details>
 <summary>✅ v0.8.x Baseline (Phases 1–7) — SHIPPED</summary>
+
+Full detail archived at [`milestones/v0.8.x-ROADMAP.md`](milestones/v0.8.x-ROADMAP.md). The detail
+sections were moved out of this file on 2026-07-31 so a bare `### Phase N:` heading resolves to the
+**active** milestone — v0.12.x restarted phase numbering at 1, and the historical headings were
+shadowing it for every GSD phase-resolution verb.
 
 - [x] **v0.8.x Phase 1: Authorization & Isolation** - Per-actor read isolation, write gating, opt-in sharing, configurable owner key
 - [x] **v0.8.x Phase 2: Recall Semantics** - Summary-by-default, tag/temporal gating, windowed cursor paging, payload indexes
@@ -86,7 +91,9 @@ analogy to `search_discovery`.
 <details>
 <summary>✅ v0.9.x — Recall Quality (Phases 9–12) — SHIPPED 2026-07-10 (PR #336)</summary>
 
-Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
+Full detail archived at [`milestones/v0.9.x-ROADMAP.md`](milestones/v0.9.x-ROADMAP.md).
+Requirements outcomes at [`milestones/v0.9.x-REQUIREMENTS.md`](milestones/v0.9.x-REQUIREMENTS.md).
+Audit (PASSED) at [`milestones/v0.9.x-MILESTONE-AUDIT.md`](milestones/v0.9.x-MILESTONE-AUDIT.md).
 
 - [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval (recall@k/MRR), always-on similarity scores in `search_memory`, dependency-free reranker to kill phrasing-sensitivity — chosen by the eval numbers (completed 2026-07-10)
 - [x] **Phase 10: Asymmetric Query/Document Embeddings** - Native API-param passthrough (cloud) + document-side prefix (E5/nomic) for query≠document embeds — found ALREADY SHIPPED under Phase 4 (verified 2026-07-10; #305 closed; no plans built)
@@ -98,7 +105,10 @@ Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
 <details>
 <summary>✅ v0.10.x — Hardening & Write Lane (Phases 13–21) — SHIPPED 2026-07-16</summary>
 
-Full detail archived at `milestones/v0.10.x-ROADMAP.md`.
+Full detail archived at [`milestones/v0.10.x-ROADMAP.md`](milestones/v0.10.x-ROADMAP.md).
+Requirements outcomes at [`milestones/v0.10.x-REQUIREMENTS.md`](milestones/v0.10.x-REQUIREMENTS.md).
+Audit (tech_debt — 19/20 requirements, 1 deferred) at
+[`milestones/v0.10.x-MILESTONE-AUDIT.md`](milestones/v0.10.x-MILESTONE-AUDIT.md).
 
 - [x] **Phase 13: Embedder Reliability Foundation** - Configurable HTTP timeout (re-derived backoff budget) + base-URL `/v1` join fix across every provider shape + embedder-config-identity payload stamp (completed 2026-07-11)
 - [x] **Phase 14: Embedder Model Options & Eval** - Direct Gemini embeddings (eval-verified task_type behavior) + #261 prod-parity re-confirm on qwen3 + docs-site/Helm model recipes (completed 2026-07-11)
@@ -119,6 +129,11 @@ Full detail archived at `milestones/v0.10.x-ROADMAP.md`.
 principals a first-class, isolated identity — so agents can write memory mechanically and safely
 into shared stores.
 
+Full detail archived at [`milestones/v0.11.x-ROADMAP.md`](milestones/v0.11.x-ROADMAP.md).
+Requirements outcomes at [`milestones/v0.11.x-REQUIREMENTS.md`](milestones/v0.11.x-REQUIREMENTS.md).
+Audit (PASSED — 11/11 requirements, 6/6 integration seams, 2/2 E2E flows) at
+[`milestones/v0.11.x-MILESTONE-AUDIT.md`](milestones/v0.11.x-MILESTONE-AUDIT.md).
+
 - [x] **Phase 22: Cedar Authz Foundation & Store Enforcement** - Cedar (cedar-go v1.8.0) PDP decides authorization over enumerable buckets; `internal/store` compiles decisions into the Qdrant filter — behavior-preserving refinement of DEC-cgb (completed 2026-07-17)
 - [x] **Phase 23: Service Auth Chain & Tenancy Isolation** - Pluggable verifier chain (OIDC user → OIDC client-credentials → static token); a service principal never resolves to the anonymous bucket (completed 2026-07-17)
 - [x] **Phase 24: Idempotent Capture** - `store_memory` accepts an idempotency key with strict, owner-scoped, race-safe replay-safety (completed 2026-07-18)
@@ -127,7 +142,7 @@ into shared stores.
 
 </details>
 
-### 🔨 v0.12.x — Headless Reach & Diagnosability (Phases 1–6) — ACTIVE
+### 🔨 v0.12.x — Headless Reach & Diagnosability (Phases 1–7) — ACTIVE
 
 - [x] **Phase 1: Shared Auth Chain & Connect Bearer Identity** - One composed verifier for both lanes, enforced token expiry, server-set lane provenance driving the CSRF exemption, opt-in headless mount
 - [x] **Phase 2: Headless CLI Client** - `engram search|store|list` over the generated Connect stubs, agent-shaped output, credential safety (completed 2026-07-31)
@@ -138,66 +153,6 @@ into shared stores.
 - [x] **Phase 7: CLI Cross-Spine Wiring** - `--cross-spine` on `engram search|list` through one shared guard, with the coverage footer and bidirectional help text that make it learnable by reading (completed 2026-08-02)
 
 ## Phase Details
-
-### Phases 1–8 (v0.8.x — Baseline + Connect Auth Hardening) — ✅ SHIPPED
-
-Full phase details (goals, success criteria, status) are archived at
-[`milestones/v0.8.x-ROADMAP.md`](milestones/v0.8.x-ROADMAP.md). Moved out of this file on
-2026-07-31 so that a bare `### Phase N:` heading resolves unambiguously to the **active**
-milestone — v0.12.x restarted phase numbering at 1, and these historical headings were shadowing
-it for every GSD phase-resolution verb.
-
-- Phase 1 — Authorization & Isolation: per-actor read isolation, write gating, opt-in sharing, configurable owner key
-- Phase 2 — Recall Semantics: summary-by-default, tag/temporal gating, windowed cursor paging, payload indexes
-- Phase 3 — Memory Kinds & Tools: discovery + rule kinds, schedule tools, short_id handle
-- Phase 4 — Embedder: protocol-named connection vars + asymmetric query/document param passthrough
-- Phase 5 — Config & Transport: ENGRAM_ koanf config, Config.Validate, fatal legacy guard, explicit MCP path
-- Phase 6 — Telemetry & Observability: slog + OTel over OTLP at every seam, never blocking startup
-- Phase 7 — Web UI, Docs Site & Distribution: operator console SPA, docs site, brand system, bundled client plugin
-- Phase 8 — Connect Observe-Lane Auth Hardening: cookie/OIDC observe lane replaces the interim anonymous mount (R1–R4); shipped in PR #248/#266
-
-### Phases 9–12 (v0.9.x — Recall Quality) — ✅ SHIPPED 2026-07-10
-
-Full phase details (goals, success criteria, plans, decisions, tech debt) are archived at
-[`milestones/v0.9.x-ROADMAP.md`](milestones/v0.9.x-ROADMAP.md). Requirements outcomes at
-[`milestones/v0.9.x-REQUIREMENTS.md`](milestones/v0.9.x-REQUIREMENTS.md). Audit (PASSED) at
-[`milestones/v0.9.x-MILESTONE-AUDIT.md`](milestones/v0.9.x-MILESTONE-AUDIT.md).
-
-- Phase 9 — Retrieval Eval Harness & Ranking Precision (3 plans): eval harness + always-on similarity score + dependency-free reranker (#261; recall@8=1.00)
-- Phase 10 — Asymmetric Query/Document Embeddings: already shipped under Phase 4 (#305 closed; no plans)
-- Phase 11 — Async-on-Write Summaries (3 plans): bounded worker pool off the write path (#320)
-- Phase 12 — Per-Memory Usage Signals (6 plans): get/update counters, hybrid OTLP+payload, never affects ranking (#317)
-
-### Phases 13–21 (v0.10.x — Hardening & Write Lane) — ✅ SHIPPED 2026-07-16
-
-Full phase details (goals, success criteria, plans, decisions, tech debt) are archived at
-[`milestones/v0.10.x-ROADMAP.md`](milestones/v0.10.x-ROADMAP.md). Requirements outcomes at
-[`milestones/v0.10.x-REQUIREMENTS.md`](milestones/v0.10.x-REQUIREMENTS.md). Audit (tech_debt — 19/20 requirements, 1 deferred) at
-[`milestones/v0.10.x-MILESTONE-AUDIT.md`](milestones/v0.10.x-MILESTONE-AUDIT.md).
-
-- Phase 13 — Embedder Reliability Foundation (3 plans): configurable timeout + base-URL join fix + embedder-config-identity stamp (#333/#332)
-- Phase 14 — Embedder Model Options & Eval (3 plans): direct Gemini + prod-parity re-confirm + model recipes (#331/#334/#337, closes #261)
-- Phase 15 — Additive Proto + Stub Write Handlers (4 plans): 6 additive write RPCs, idempotency-annotation CI gate (#322)
-- Phase 16 — CSRF Interceptor (3 plans): Origin/Sec-Fetch-Site + session-bound double-submit token (#322)
-- Phase 17 — Wired Write Handlers (6 plans): deps.* refactor, MCP↔Connect authz parity (#322)
-- Phase 18 — Stateless Session Rotation (3 plans): sliding-expiry cookie re-seal, no server state (#323)
-- Phase 19 — Console Write UX (6 plans): create/edit/delete/re-share/schedule over the write lane, CSRF + auth-race retry (live browser E2E UAT deferred → #366)
-- Phase 20 — Correctness & Polish (4 plans): discovery proto fidelity, MintShortID cap, embed cleanups, summarize CronJob (#307/#308/#304/#302/#303/#269)
-- Phase 21 — CI / Maintenance Hygiene (3 plans): rumdl `.planning` exclude, phase-11 residuals (#335), Renovate self-heal (#301 — live observation deferred, post-merge only → #369)
-
-### Phases 22–26 (v0.11.x — Capture & Service Identity) — ✅ SHIPPED 2026-07-26
-
-Full phase details (goals, success criteria, plans, decisions, tech debt) are archived at
-[`milestones/v0.11.x-ROADMAP.md`](milestones/v0.11.x-ROADMAP.md). Requirements outcomes at
-[`milestones/v0.11.x-REQUIREMENTS.md`](milestones/v0.11.x-REQUIREMENTS.md). Audit (PASSED — 11/11
-requirements, 6/6 integration seams, 2/2 E2E flows) at
-[`milestones/v0.11.x-MILESTONE-AUDIT.md`](milestones/v0.11.x-MILESTONE-AUDIT.md).
-
-- Phase 22 — Cedar Authz Foundation & Store Enforcement (3 plans): `internal/authz` cedar-go v1.8.0 PDP decides over enumerable buckets; the store compiles decisions into the Qdrant filter, byte-for-byte behavior-preserving (#362/#373, ADR engram-cdr1)
-- Phase 23 — Service Auth Chain & Tenancy Isolation (6 plans): pluggable verifier chain (OIDC user → client-credentials → static token), fail-closed proof that a service principal never resolves to `owner==""` (#362/#373)
-- Phase 24 — Idempotent Capture (2 plans): optional `idempotency_key`, deterministic UUIDv5 point ID, payload-only fingerprint checked before embedding, reject-not-overwrite on mismatch (#340)
-- Phase 25 — Supersession with History (2 plans): `supersede_memory` back-stamps `superseded_by` via single-key SetPayload; superseded records soft-hidden from recall, still fetchable by id (#342)
-- Phase 26 — Structured Citations, Category Filter & Chat Base URL (6 plans): optional citations on any category, `categories` OR-filter at MCP↔Connect parity, `ENGRAM_OPENAI_CHAT_BASE_URL` + shared shape-aware URL join (#341/#374/#350)
 
 ### Phase 1: Shared Auth Chain & Connect Bearer Identity
 
