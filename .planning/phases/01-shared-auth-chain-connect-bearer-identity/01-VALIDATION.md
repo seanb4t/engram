@@ -3,9 +3,9 @@ phase: 1
 slug: shared-auth-chain-connect-bearer-identity
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
 # audit-milestone §5.5 distinguishes NOT-VALIDATED (draft) from PARTIAL (validated + nyquist_compliant: false) (#2117)
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-07-31
 ---
 
@@ -48,18 +48,18 @@ satisfy. `validate-phase` fills the Task ID / Plan / Wave columns after executio
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| TBD | TBD | TBD | REQ-connect-token-expiry | Token replay past expiry | Stub verifier returns `TokenInfo{Expiration: past}`, `err==nil` → Connect rejects | unit | `go test ./internal/auth/... -run TestEnforceExpiry -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-connect-token-expiry | Token replay past expiry | Zero `Expiration` also rejects (D-05) | unit | `go test ./internal/auth/... -run TestEnforceExpiryZero -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-connect-bearer-identity | Lane drift | Same verifier value reaches both mount sites (D-06) | unit/structural | `go test ./cmd/engram/... -run TestAuthChainSharedBetweenLanes -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-connect-bearer-identity | Lane drift | Token accepted on MCP is accepted on Connect and vice versa | unit | `go test ./internal/server/... -run TestBearerLaneParity -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-connect-lane-provenance | CSRF | Cookie caller omitting `X-CSRF-Token` still rejected (write FIRST) | unit | `go test ./internal/server/... -run TestCSRFCookieCallerOmittingHeaderIsStillRejected -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-connect-lane-provenance | CSRF bypass | Cookie caller cannot self-declare bearer lane via a garbage `Authorization` header | unit | `go test ./internal/server/... -run TestCSRFCookieCallerCannotSelfDeclareBearerLane -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-connect-lane-provenance | Confused deputy | Bearer verification failure never falls through to cookie | unit | `go test ./internal/server/... -run TestBearerFailureNeverFallsThroughToCookie -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-connect-lane-provenance | Fail-open on unknown lane | Unstamped/unknown lane on a write RPC → `PermissionDenied`, no CSRF check attempted (D-08) | unit | `go test ./internal/server/... -run TestCSRFLaneUnstampedFailsClosed -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-connect-lane-provenance | Session fixation | Reseal skipped for a non-`LaneCookie` request (D-09) | unit | `go test ./internal/server/... -run TestResealGatesOnCookieLane -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-connect-headless-mount | Surface regression on upgrade | UI disabled AND `connect.headless` unset → Connect unmounted, byte-for-byte today's behavior | unit | `go test ./internal/server/... -run TestMountConnectDefaultOffWithoutUIOrHeadlessFlag -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-connect-headless-mount | Unauthenticated write surface | headless + zero configured auth lanes → startup refusal (D-11) | unit | `go test ./cmd/engram/... -run TestHeadlessRefusesStartWithoutAuthLane -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-connect-headless-mount | Config default drift | `connect.headless` config-loader zero-value case | unit | `go test ./internal/config/... -run TestConnectHeadlessDefault -v` | ❌ W0 | ⬜ pending |
+| 01-01 T1 | 01-01 | 1 | REQ-connect-token-expiry | T-01-03 — Token replay past expiry | Stub verifier returns `TokenInfo{Expiration: past}`, `err==nil` → Connect rejects | unit | `go test ./internal/auth/... -run TestEnforceExpiry -v` | ✅ `internal/auth/bearer_test.go` | ✅ green |
+| 01-01 T1 | 01-01 | 1 | REQ-connect-token-expiry | T-01-03 — Token replay past expiry | Zero `Expiration` also rejects (D-05) | unit | `go test ./internal/auth/... -run TestEnforceExpiryZero -v` | ✅ `internal/auth/bearer_test.go` | ✅ green |
+| 01-03 T2 | 01-03 | 3 | REQ-connect-bearer-identity | T-03-03 — Lane drift | Same verifier value reaches both mount sites (D-06) | unit/structural | `go test ./cmd/engram/... -run TestAuthChainSharedBetweenLanes -v` | ✅ `cmd/engram/serve_test.go` | ✅ green |
+| 01-02 T2 | 01-02 | 2 | REQ-connect-bearer-identity | T-02-03 — Lane drift | Token accepted on MCP is accepted on Connect and vice versa | unit | `go test ./internal/server/... -run TestBearerLaneParity -v` | ✅ `internal/server/connectapi_bearer_parity_test.go` | ✅ green |
+| 01-01 T2 | 01-01 | 1 | REQ-connect-lane-provenance | T-01-01 — CSRF | Cookie caller omitting `X-CSRF-Token` still rejected (write FIRST) | unit | `go test ./internal/server/... -run TestCSRFCookieCallerOmittingHeaderIsStillRejected -v` | ✅ `internal/server/connectcsrf_lane_test.go` | ✅ green |
+| 01-01 T2 | 01-01 | 1 | REQ-connect-lane-provenance | T-01-01 — CSRF bypass | Cookie caller cannot self-declare bearer lane via a garbage `Authorization` header | unit | `go test ./internal/server/... -run TestCSRFCookieCallerCannotSelfDeclareBearerLane -v` | ✅ `internal/server/connectcsrf_lane_test.go` | ✅ green |
+| 01-01 T1 | 01-01 | 1 | REQ-connect-lane-provenance | T-01-02 — Confused deputy | Bearer verification failure never falls through to cookie | unit | `go test ./internal/server/... -run TestBearerFailureNeverFallsThroughToCookie -v` | ✅ `internal/server/connectbearer_test.go` | ✅ green |
+| 01-01 T2 | 01-01 | 1 | REQ-connect-lane-provenance | T-01-04 — Fail-open on unknown lane | Unstamped/unknown lane on a write RPC → `PermissionDenied`, no CSRF check attempted (D-08) | unit | `go test ./internal/server/... -run TestCSRFLaneUnstampedFailsClosed -v` | ✅ `internal/server/connectcsrf_lane_test.go` | ✅ green |
+| 01-02 T1 | 01-02 | 2 | REQ-connect-lane-provenance | T-02-01 — Session fixation | Reseal skipped for a non-`LaneCookie` request (D-09) | unit | `go test ./internal/server/... -run TestResealGatesOnCookieLane -v` | ✅ `internal/server/connectreseal_test.go` | ✅ green |
+| 01-03 T3 | 01-03 | 3 | REQ-connect-headless-mount | T-03-02 — Surface regression on upgrade | UI disabled AND `connect.headless` unset → Connect unmounted, byte-for-byte today's behavior | unit | `go test ./internal/server/... -run TestMountConnectDefaultOffWithoutUIOrHeadlessFlag -v` | ✅ `internal/server/connectmount_test.go` | ✅ green |
+| 01-03 T3 | 01-03 | 3 | REQ-connect-headless-mount | T-03-01 — Unauthenticated write surface | headless + zero configured auth lanes → startup refusal (D-11) | unit | `go test ./cmd/engram/... -run TestHeadlessRefusesStartWithoutAuthLane -v` | ✅ `cmd/engram/serve_test.go` | ✅ green |
+| 01-03 T1 | 01-03 | 3 | REQ-connect-headless-mount | T-03-04 — Config default drift | `connect.headless` config-loader zero-value case | unit | `go test ./internal/config/... -run TestConnectHeadlessDefault -v` | ✅ `internal/config/connect_test.go` | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -67,14 +67,15 @@ satisfy. `validate-phase` fills the Task ID / Plan / Wave columns after executio
 
 ## Wave 0 Requirements
 
-No existing test file covers any of the twelve rows above — all are Wave 0 gaps.
+All twelve rows above were Wave 0 gaps at plan time; execution closed every one. Each file below
+exists and its contracted tests are green (verified `2026-08-02` — 12/12 `--- PASS:`, 0 fail, 0 skip).
 
-- [ ] `internal/auth/expiry_test.go` — `EnforceExpiry` unit tests (zero, past, valid, error-passthrough)
-- [ ] `internal/server/connectbearer_test.go` — new bearer adapter unit tests (mirrors `webauth/resolver_test.go`)
-- [ ] `internal/server/connectcsrf_lane_test.go` — the four lane-provenance negative tests
-- [ ] `internal/server/connectreseal_test.go` extension — the `LaneCookie`-gate test (D-09)
-- [ ] `cmd/engram/serve_test.go` — the D-06 structural/parity test and the D-11 startup-refusal test
-- [ ] `internal/config` test extension — the `connect.headless` zero-value test
+- [x] `internal/auth/bearer_test.go` — `EnforceExpiry` unit tests (zero, past, valid, error-passthrough). *Landed here rather than the planned `expiry_test.go`: `EnforceExpiry` ships in `internal/auth/bearer.go`, so the test file follows the source file's name.*
+- [x] `internal/server/connectbearer_test.go` — new bearer adapter unit tests (mirrors `webauth/resolver_test.go`)
+- [x] `internal/server/connectcsrf_lane_test.go` — the four lane-provenance negative tests
+- [x] `internal/server/connectreseal_test.go` extension — the `LaneCookie`-gate test (D-09)
+- [x] `cmd/engram/serve_test.go` — the D-06 structural/parity test and the D-11 startup-refusal test
+- [x] `internal/config/connect_test.go` — the `connect.headless` zero-value test
 
 **No new test framework or fixture infrastructure needed.** The existing
 `newConnectAPITestMux` / stub-resolver / `csrfTestVerify` helper patterns in `connectapi_test.go`,
@@ -106,12 +107,37 @@ runtime, or environment dependency (no Qdrant/testcontainers requirement).
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Every targeted `-run` command proven with `-v` RUN/PASS pairs (repo false-green guard)
-- [ ] Feedback latency < 30s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Every targeted `-run` command proven with `-v` RUN/PASS pairs (repo false-green guard)
+- [x] Feedback latency < 30s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** validated 2026-08-02 — retroactive audit, no gaps found
+
+---
+
+## Validation Audit 2026-08-02
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 0 |
+
+All twelve contracted rows resolved to existing, compiling, passing tests — no auditor
+intervention and no new test files were required. Evidence:
+
+- `go test -list` over the twelve contracted names returned 12/12, proving each test exists
+  **and compiles** (a stronger check than a source text match).
+- `go test -count=1 -v -run '<the twelve>' ./internal/auth/... ./internal/server/... ./cmd/engram/... ./internal/config/...`
+  → 12 `--- PASS:`, 0 `--- FAIL:`, 0 `--- SKIP:`. Counting `--- PASS:` lines rather than trusting
+  package-level `ok` is required here: a `-run` filter matching nothing still exits 0.
+- Both Fail-Closed-First obligations above were honored during execution and are recorded in the
+  plan artifacts — `TestEnforceExpiry` ("RED observed before the body existed", 01-01-PLAN T-01-03)
+  and `TestCSRFCookieCallerCannotSelfDeclareBearerLane` (01-01-PLAN T-01-01, fail-first proof
+  against the header-presence-keyed variant).
+- Execution delivered substantially more coverage than the twelve contracted rows; the full
+  per-decision test inventory lives in the `coverage:` blocks of `01-01`–`01-04-SUMMARY.md`.
