@@ -3,9 +3,9 @@ phase: 7
 slug: cli-cross-spine-wiring
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
 # audit-milestone §5.5 distinguishes NOT-VALIDATED (draft) from PARTIAL (validated + nyquist_compliant: false) (#2117)
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-08-02
 ---
 
@@ -59,15 +59,16 @@ decisions are the contract.
 
 | Criterion | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |-----------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| D-01 empty-scope rejection (exit 2, before dialing) | TBD | 1 | D-01 | — | Client refuses an under-specified recall rather than silently widening it | unit | `go test ./cmd/engram/... -run 'ScopeGuard'` | ❌ W0 | ⬜ pending |
-| D-04 `--scope` + `--cross-spine` mutual exclusion (exit 2) | TBD | 1 | D-04 | — | An explicitly-typed filter is never silently discarded | unit | `go test ./cmd/engram/... -run 'ScopeGuard'` | ❌ W0 | ⬜ pending |
-| D-02 one shared guard helper, both commands | TBD | 1 | D-02 | — | N/A | unit | `go test ./cmd/engram/...` (both commands' guard tests bind the one helper) | ❌ W0 | ⬜ pending |
-| D-03 parity with `effectiveSearchScope` incl. the deliberate D-04 divergence | TBD | 1 | D-03 | — | Client never accepts what the server would reject | unit | `go test ./cmd/engram/...` | ❌ W0 | ⬜ pending |
-| D-05 coverage footer on cross-spine calls (stdout) | TBD | 2 | D-05 | — | N/A | unit | `go test ./cmd/engram/... -run 'Footer\|CrossSpine'` | ❌ W0 | ⬜ pending |
-| D-06 byte-identical output for non-cross-spine calls | TBD | 2 | D-06 | — | N/A | unit (regression) | `go test ./cmd/engram/... -run 'Footer\|CrossSpine'` | ❌ W0 | ⬜ pending |
-| D-07 catalog carries `--cross-spine` with non-empty Usage | TBD | 1 | D-07 | — | Agent discovery path is not worse than a human's | unit (pre-existing) | `go test ./cmd/engram/... -run TestCatalogEnumeratesEveryFlag` | ✅ pre-existing | ⬜ pending |
-| D-00 flag help names the sibling flag (both directions) | TBD | 1 | D-00 | — | Interface teaches correct use before an error can | unit (assertion on `Usage` strings) | `go test ./cmd/engram/...` | ❌ W0 | ⬜ pending |
-| Regression: `engram search --query x` with no `--scope` | TBD | 1 | D-01 | — | 0 RPC calls issued; exit 2 | unit | `go test ./cmd/engram/...` | ❌ W0 | ⬜ pending |
+| D-01 empty-scope rejection (exit 2, before dialing) | 07-01 | 1 | D-01 | — | Client refuses an under-specified recall rather than silently widening it | unit | `go test ./cmd/engram/... -run 'MissingScopeIsUsageErrorBeforeDialing' -v` | ✅ `client_search_test.go`, `client_list_test.go` | ✅ green |
+| D-04 `--scope` + `--cross-spine` mutual exclusion (exit 2) | 07-01 | 1 | D-04 | — | An explicitly-typed filter is never silently discarded | unit | `go test ./cmd/engram/... -run 'ScopeWithCrossSpineIsUsageErrorBeforeDialing' -v` | ✅ `client_search_test.go`, `client_list_test.go` | ✅ green |
+| D-02 one shared guard helper, both commands | 07-01 | 1 | D-02 | — | N/A | unit | `go test ./cmd/engram/... -run 'MissingScopeIsUsageErrorBeforeDialing\|ScopeWithCrossSpineIsUsageErrorBeforeDialing' -v` (both commands' guard tests bind the one helper) | ✅ `client_common.go` guard | ✅ green |
+| D-03 parity with `effectiveSearchScope` incl. the deliberate D-04 divergence | 07-01 | 1 | D-03 | — | Client never accepts what the server would reject | unit | `go test ./cmd/engram/... -run TestValidateScopeCrossSpineParity -v` | ✅ `cmd/engram` | ✅ green |
+| D-05 coverage footer on cross-spine calls (stdout) | 07-02 | 2 | D-05 | — | N/A | unit | `go test ./cmd/engram/... -run 'TestClientSearchCrossSpineEndToEnd\|TestClientListCrossSpineEndToEnd' -v` | ✅ `client_search_test.go`, `client_list_test.go` | ✅ green |
+| D-06 byte-identical output for non-cross-spine calls | 07-02 | 2 | D-06 | — | N/A | unit (regression) | `go test ./cmd/engram/... -run 'TestClientSearchNoFooterWithoutCrossSpine\|TestClientListFooterUnchangedWithoutCrossSpine' -v` | ✅ `client_search_test.go`, `client_list_test.go` | ✅ green |
+| D-07 catalog carries `--cross-spine` with non-empty Usage | 07-02 | 1 | D-07 | — | Agent discovery path is not worse than a human's | unit (pre-existing + new) | `go test ./cmd/engram/... -run 'TestCatalogEnumeratesEveryFlag\|TestCatalogCarriesCrossSpineGuidance' -v` | ✅ `catalog_test.go` | ✅ green |
+| D-00 flag help names the sibling flag (both directions) | 07-01 | 1 | D-00 | — | Interface teaches correct use before an error can | unit (assertion on `Usage` strings) | `go test ./cmd/engram/... -run TestScopeCrossSpineFlagsNameEachOther -v` | ✅ `cmd/engram` | ✅ green |
+| Regression: `engram search --query x` with no `--scope` | 07-01 | 1 | D-01 | — | 0 RPC calls issued; exit 2 | unit | `go test ./cmd/engram/... -run TestClientSearchMissingScopeIsUsageErrorBeforeDialing -v` | ✅ `client_search_test.go` | ✅ green |
+| Docs gates (D-05 surfaced to operators + agents) | 07-03 | 3 | D-05 / D-07 | — | The capability is discoverable without reading the source | docs | `cli.md` 'cross-spine' = 4 lines, 'searched_scopes' = 3; `upgrade.md` `^### 6\.` = 1, 'six changes' = 1; `CLAUDE.md` 'cross_spine' = 1, 'cross-spine' = 0 | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -81,15 +82,14 @@ or the test becomes a copy-editing tripwire.
 
 ## Wave 0 Requirements
 
-- [ ] Guard-helper table test — new cases in `cmd/engram/client_common_test.go`, following the
-      `TestExitCodeForConnectErrTable` / `TestResolveOutputFormat` idiom (table + count assertion,
-      the anti-drift shape `client_common_test.go:29-53` established).
-- [ ] Missing-`--scope` regression test for `engram search` — no existing test covers this input
-      at all (confirmed in research). Uses the established `svc.searchCalls == 0` idiom to prove
-      the guard fires *before* dialing.
-- [ ] D-06 baseline capture — pin current `search` / `list` stdout for a non-cross-spine
-      invocation before the footer lands, so "byte-identical" is a measured claim.
-- [ ] Framework install: **none needed** — `go test` / `task` already configured.
+- [x] Guard-helper table test — landed as `TestValidateScopeCrossSpineParity` and
+      `TestScopeCrossSpineFlagsNameEachOther`.
+- [x] Missing-`--scope` regression test for `engram search` — landed as
+      `TestClientSearchMissingScopeIsUsageErrorBeforeDialing` (and the `list` twin), proving the
+      guard fires *before* dialing.
+- [x] D-06 baseline capture — landed as `TestClientSearchNoFooterWithoutCrossSpine` /
+      `TestClientListFooterUnchangedWithoutCrossSpine`.
+- [x] Framework install: **none needed** — `go test` / `task` already configured.
 
 ---
 
@@ -105,11 +105,52 @@ Everything else has automated verification.
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 15s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Every recorded `-run` command proven to match at least one test (see the audit below)
+- [x] Feedback latency < 15s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** validated 2026-08-02 — retroactive audit, 0 coverage gaps, 3 doc defects resolved
+
+---
+
+## Validation Audit 2026-08-02
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 0 |
+
+Every criterion is covered by a real, passing test — 12 top-level tests green, 0 fail, 0 skip:
+`TestValidateScopeCrossSpineParity`, `TestScopeCrossSpineFlagsNameEachOther`,
+`TestClientSearchMissingScopeIsUsageErrorBeforeDialing` (+ `list` twin),
+`TestClientSearchScopeWithCrossSpineIsUsageErrorBeforeDialing` (+ `list` twin),
+`TestClientSearchCrossSpineEndToEnd` (+ `list` twin), `TestClientSearchNoFooterWithoutCrossSpine`,
+`TestClientListFooterUnchangedWithoutCrossSpine`, `TestCatalogCarriesCrossSpineGuidance`,
+`TestCatalogEnumeratesEveryFlag`. All six docs gates re-verified and exact.
+
+**DOC DEFECT (resolved) — three rows recorded a command that matched no test.** Rows D-01, D-04, and
+D-02 all read `go test ./cmd/engram/... -run 'ScopeGuard'`. No test in the tree contains the substring
+`ScopeGuard`; the guard tests shipped as `…MissingScopeIsUsageErrorBeforeDialing` and
+`…ScopeWithCrossSpineIsUsageErrorBeforeDialing`. Run exactly as written the command emits
+`ok … [no tests to run]` and **exits 0** — a green that proves nothing, on the three rows carrying this
+phase's load-bearing accept/reject matrix.
+
+That is the same defect found in Phase 4 row 4-A-02 (which named the wrong *package*); here it is the
+wrong *name*. Both share a root cause worth naming: a `-run` pattern written at plan time, before the
+tests exist, and never re-checked against what actually shipped. Since `-run` matching nothing exits 0,
+nothing downstream ever complains.
+
+Three further rows (D-03, D-00, and the missing-`--scope` regression) recorded the bare package command
+`go test ./cmd/engram/...` — true but not selective, so they could not distinguish their own criterion
+passing from the package passing. All nine rows now name a command that provably selects at least one
+test, and a new sign-off line records that requirement so the next planner inherits the check.
+
+`nyquist_compliant: true`: every criterion carries automated verification. The one manual-only row
+(help text *reads well* to a human) supplements `TestScopeCrossSpineFlagsNameEachOther`, which
+mechanically asserts each flag names its sibling — the judgment half is legibility, which no test can
+assert, but the structural half is covered.
