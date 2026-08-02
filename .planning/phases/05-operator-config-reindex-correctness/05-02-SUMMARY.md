@@ -1,6 +1,3 @@
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- Copyright 2026 Sean Brandt -->
-
 ---
 phase: 05-operator-config-reindex-correctness
 plan: 02

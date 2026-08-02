@@ -1,6 +1,3 @@
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- Copyright 2026 Sean Brandt -->
-
 ---
 phase: 06-rule-capture-investigation-fix
 plan: 02
