@@ -27,6 +27,11 @@ spine — it fails. The most natural invocation of the shipped CLI errors out to
 **Out of scope:** `engram store` (no scope-recall path); any change to the server, proto, or store;
 the surface-wide interface audit (captured as backlog Phase 999.2).
 
+**Amended 2026-08-02 (post-research, Sean):** the server fence has exactly one permitted exception —
+exporting `effectiveSearchScope` from `internal/server` so D-03's parity test can compile against it
+(see the D-03 amendment below). That export is additive and changes no behavior. Nothing else in
+`internal/` may be touched; `07-VALIDATION.md` carries the containment gate that enforces this.
+
 </domain>
 
 <decisions>
@@ -76,6 +81,22 @@ the surface-wide interface audit (captured as backlog Phase 999.2).
   the moment either moves. Precedent: `client_common_test.go:29-53` already pins the exit-code table
   against `connect.Code` with a count assertion.
 
+  **Amended 2026-08-02 (post-research, Sean) — two corrections:**
+
+  1. *The compile link requires an export.* `effectiveSearchScope` is unexported
+     (`internal/server/tools.go:1374`). `cmd/engram` already imports `internal/server` in five files
+     and `client_common_test.go:208-219` explicitly allowlists that direction, so unexportedness was
+     the only barrier. **Resolution (Sean, chosen over a shared-package extraction and over a weaker
+     unlinked test):** export it — `EffectiveSearchScope`, or a thin exported wrapper — and put the
+     parity test in `cmd/engram`. This is the sole authorized `internal/` edit for this phase.
+
+  2. *"The two agree" is wrong as originally written.* D-04 makes the client deliberately **stricter**
+     than the server on one row of the matrix — a non-empty `--scope` together with `--cross-spine`
+     is rejected client-side (exit 2), while the server accepts it and silently discards the scope
+     (Phase 3 D-02). The parity test must therefore assert *the client never accepts what the server
+     would reject*, plus one explicitly-documented divergence row, not blanket equality. A test
+     asserting full equality would be wrong by construction and would fail the moment it is written.
+
 - **D-04 (`--scope` and `--cross-spine` are mutually exclusive):** Passing both exits 2 before
   dialing. The server's Phase 3 D-02 behavior is to ignore the scope and log at Info, but that log
   lands in server stderr where the calling agent never sees it — the caller just receives a wider
@@ -84,6 +105,15 @@ the surface-wide interface audit (captured as backlog Phase 999.2).
   mutually-exclusive pair in this file set: `--offset` / `--cursor-mode`, documented at
   `cmd/engram/client_list.go:86`. **Each flag's help names the other**, so the relationship is
   discoverable from either entry point.
+
+  **Amended 2026-08-02 (post-research) — the precedent splits in two.** Verified: `client_list.go:86`
+  and `:94` do name each other bidirectionally, so the *help-text* half of this decision has a live
+  precedent to copy. The *enforcement* half does not — `--offset` / `--cursor-mode` is rejected
+  **server-side** at `internal/server/connectapi.go:183-186` (`classPrecondition` +
+  `HintMutuallyExclusive` → `CodeFailedPrecondition`), and `cmd/engram` carries no client-side
+  mutual-exclusion check at all today. D-04 will therefore be the **first** client-side relational
+  rejection in this codebase. The planner must not go looking for a client-side pattern to copy;
+  it must establish one, routed through `usageErrorf` for exit 2 per D-01.
 
 ### Provenance surfacing
 
