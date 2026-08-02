@@ -6,6 +6,7 @@
   },
   "git": {
     "branching_strategy": "none",
-    "phase_branch_template": "phase-{phase}-{slug}"
+    "phase_branch_template": "phase-{phase}-{slug}",
+    "create_tag": false
   }
 }
