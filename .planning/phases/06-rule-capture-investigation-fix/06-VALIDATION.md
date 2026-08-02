@@ -2,9 +2,9 @@
 phase: 6
 slug: rule-capture-investigation-fix
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
-status: draft
+status: validated
 nyquist_compliant: false
-wave_0_complete: false
+wave_0_complete: true
 created: 2026-08-01
 ---
 
@@ -44,14 +44,14 @@ anything. See "Why most of this is manual" at the bottom.
 
 | Task ID | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|-------------|-----------|-------------------|-------------|--------|
-| TBD | REQ-rule-capture-investigation | manual | none — deliverable is the root cause in `06-CONTEXT.md` D-01/D-02 | N/A | ⬜ pending |
-| TBD | REQ-rule-capture-intervention | structural (weak) | `rg -n '^### Proposing a rule$' skill/engram/skills/curating-memory/SKILL.md` | ❌ W0 | ⬜ pending |
-| TBD | REQ-rule-capture-intervention | manual | the permission clause reads as primary, not subordinate to two prohibitions | N/A | ⬜ pending |
-| TBD | REQ-rule-capture-intervention | manual | `docs-site/.../reference/tools.md`'s `store_rule` prose no longer carries the twin defect | N/A | ⬜ pending |
-| TBD | REQ-rule-capture-intervention | structural (already shipped) | `rg -n 'errRuleImmutable' internal/server/tools.go` — `setVisibility`/`supersedeMemory` still reject rules | ✅ | ⬜ pending |
-| TBD | REQ-rule-curation-hygiene | structural (weak) | `rg -n '^### Rule hygiene$' skill/engram/skills/curating-memory/SKILL.md` | ❌ W0 | ⬜ pending |
-| TBD | REQ-rule-curation-hygiene | automated (already shipped) | `go test ./internal/server/... -run TestListRulesHandlerCurationAdvisory -v` | ✅ `rules_test.go:550-587` | ⬜ pending |
-| TBD | REQ-rule-curation-hygiene | manual | D-07 decline mechanism and D-10 user-blessed deletion are both documented | N/A | ⬜ pending |
+| 06-01 | REQ-rule-capture-investigation | manual | none — deliverable is the root cause in `06-CONTEXT.md` D-01/D-02 | N/A | ✅ manual (recorded) |
+| 06-02 | REQ-rule-capture-intervention | structural (weak) | `rg -n '^### Proposing a rule$' skill/engram/skills/curating-memory/SKILL.md` (1 hit) | ✅ `curating-memory/SKILL.md` | ✅ green |
+| 06-02 | REQ-rule-capture-intervention | manual | the permission clause reads as primary, not subordinate to two prohibitions | N/A | ✅ manual — `06-COLD-READ.md` verdict **PASS** |
+| 06-02 | REQ-rule-capture-intervention | manual | `docs-site/.../reference/tools.md`'s `store_rule` prose no longer carries the twin defect | N/A | ✅ manual (reviewed) |
+| 06-02 | REQ-rule-capture-intervention | structural (already shipped) | `rg -n 'errRuleImmutable' internal/server/tools.go` — `setVisibility`/`supersedeMemory` still reject rules (3 hits) | ✅ | ✅ green |
+| 06-02 | REQ-rule-curation-hygiene | structural (weak) | `rg -n '^### Rule hygiene$' skill/engram/skills/curating-memory/SKILL.md` (1 hit) | ✅ `curating-memory/SKILL.md` | ✅ green |
+| 06-02 | REQ-rule-curation-hygiene | automated (already shipped) | `go test ./internal/server/... -run TestListRulesHandlerCurationAdvisory -v` | ✅ `internal/server/rules_test.go` | ✅ green |
+| 06-03 | REQ-rule-curation-hygiene | manual | D-07 decline mechanism and D-10 user-blessed deletion are both documented | N/A | ✅ manual (reviewed) |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -59,9 +59,10 @@ anything. See "Why most of this is manual" at the bottom.
 
 ## Wave 0 Requirements
 
-- [ ] Fixed subsection headers in `curating-memory/SKILL.md` (`### Proposing a rule`,
-      `### Rule hygiene`) so the structural `rg` checks have a stable anchor
-- [ ] If any hook text changes, a corresponding assertion in `skill/engram/hooks/tests/`
+- [x] Fixed subsection headers in `curating-memory/SKILL.md` (`### Proposing a rule`,
+      `### Rule hygiene`) so the structural `rg` checks have a stable anchor — both present, 1 hit each
+- [x] If any hook text changes, a corresponding assertion in `skill/engram/hooks/tests/` — suite green
+      (33 passed); no hook file required a new assertion this phase
 
 No new test framework is needed. If the plan touches no hook file, the pytest suite needs no change.
 
@@ -93,9 +94,56 @@ verify nothing about whether the prose inside them is correct.
 
 ## Validation Sign-Off
 
-- [ ] Every automatable item has an `<automated>` verify or a Wave 0 dependency
-- [ ] Every manual item is actually read, not assumed
-- [ ] No evadable prose gate was added to inflate the automated count
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] Every automatable item has an `<automated>` verify or a Wave 0 dependency
+- [x] Every manual item is actually read, not assumed
+- [x] No evadable prose gate was added to inflate the automated count
+- [ ] `nyquist_compliant: true` set in frontmatter — **deliberately left false; see the audit below**
 
-**Approval:** pending
+**Approval:** validated 2026-08-02 — retroactive audit, 0 gaps, PARTIAL by design
+
+---
+
+## Validation Audit 2026-08-02
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 0 |
+
+Every automatable row is green, verified live:
+
+- `### Proposing a rule` — 1 hit; `### Rule hygiene` — 1 hit (`curating-memory/SKILL.md`)
+- `errRuleImmutable` — 3 hits in `internal/server/tools.go`; the `setVisibility` / `supersedeMemory`
+  rule-rejection gate is intact
+- `--- PASS: TestListRulesHandlerCurationAdvisory`
+- hook pytest suite: 33 passed
+
+**No gates were added, and that is the finding — not an omission.** This phase's stated rationale is
+correct and this audit endorses it: an `rg` gate over prose "would pass on a reworded-but-still-buried
+sentence and fail on a correctly-fixed one that drops that exact phrase." Adding one would have raised
+the automated count while testing nothing, which is the failure mode the repo's grepping discipline
+names explicitly — *a gate that reports success while testing nothing is worse than no gate*.
+
+**Why `nyquist_compliant` stays `false` while `status` is `validated`.** This is the PARTIAL state
+`audit-milestone` §5.5 distinguishes from NOT-VALIDATED, and it is the honest classification here.
+The rule applied consistently across this milestone's audits: `nyquist_compliant: true` requires every
+*requirement* to carry at least one automated verification; manual checks that supplement automated
+coverage do not break compliance, but a requirement verified **only** manually does.
+
+`REQ-rule-capture-investigation` is verified only manually — its deliverable is a root-cause analysis
+in `06-CONTEXT.md` (D-01/D-02), and no test can assert that a conclusion is correct. The other two
+requirements do carry automated verification. Marking this phase compliant would have claimed
+automation that does not and should not exist.
+
+The strongest evidence for this phase is behavioral rather than structural, and it is worth noting
+because it substitutes for the gate that could not be written: `06-COLD-READ.md` records a **PASS** —
+a fresh subagent with zero phase context, reading the corrected `## Rules` section cold, unprompted
+named the trigger, proposed via the corrected protocol, and stopped at consent. That demonstrates the
+prose changed agent *behavior*, which is what `REQ-rule-capture-intervention` actually asked for and
+what no `rg` pattern could have shown.
+
+**Open, non-blocking (carried, not introduced by this audit):** the live rule-backfill sweep against
+the three D-03 candidates is still a scaffold in `06-DEMONSTRATION.md` awaiting an orchestrator-run
+session with the user. It does not gate this phase — `REQ-rule-capture-intervention` closed on the
+cold-read PASS — and it is unchanged by this validation.
