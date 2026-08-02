@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -42,12 +44,39 @@ const qdrantTOCTOUVerifiedVersion = "1.18.2"
 // which case the integration tests skip.
 var testQdrantAddr string
 
+// requireQdrant is the SOLE place ENGRAM_REQUIRE_QDRANT is read/parsed in this
+// package, mirroring internal/server/tools_test.go's requireQdrant: TestMain and
+// dialTestClient act only on its result, never parsing the env var themselves.
+// Unset/empty -> (false, nil): local dev ergonomics unchanged (integration tests
+// still skip without Qdrant). A truthy/falsey value parses via
+// strconv.ParseBool. Any non-empty invalid value returns a non-nil error rather
+// than being coerced to false — coercing a parse error to false would silently
+// re-enable skipping and defeat the fail-closed gate the CI `test` job relies on.
+func requireQdrant() (bool, error) {
+	v := os.Getenv("ENGRAM_REQUIRE_QDRANT")
+	if v == "" {
+		return false, nil
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, fmt.Errorf("ENGRAM_REQUIRE_QDRANT: invalid value %q: %w", v, err)
+	}
+	return b, nil
+}
+
 // TestMain provisions Qdrant for this package's integration tests. It prefers an
 // existing instance via ENGRAM_QDRANT_TEST_ADDR; otherwise it boots an ephemeral
 // Qdrant via testcontainers and tears it down afterward. If neither is available
-// the suite still runs — the integration tests skip with a clear message — so
-// unit-only tests are unaffected.
+// the suite still runs and the integration tests skip with a clear message —
+// UNLESS ENGRAM_REQUIRE_QDRANT is set (mirrors internal/server/tools_test.go: the
+// CI `test` job sets it), in which case TestMain exits non-zero instead of
+// letting the suite run with the real-store authz gate silently skipped.
 func TestMain(m *testing.M) {
+	required, rerr := requireQdrant()
+	if rerr != nil {
+		fmt.Fprintf(os.Stderr, "fatal: %v\n", rerr)
+		os.Exit(1)
+	}
 	if addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR"); addr != "" {
 		testQdrantAddr = addr
 		os.Exit(m.Run())
@@ -59,6 +88,10 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		startCancel()
 		fmt.Fprintf(os.Stderr, "qdrant testcontainer unavailable (%v); integration tests will skip — set ENGRAM_QDRANT_TEST_ADDR or start Docker\n", err)
+		if required {
+			fmt.Fprintln(os.Stderr, "fatal: ENGRAM_REQUIRE_QDRANT is set — failing instead of skipping")
+			os.Exit(1)
+		}
 		os.Exit(m.Run())
 	}
 	testQdrantAddr, err = container.GRPCEndpoint(startCtx)
@@ -66,6 +99,11 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		terminateQdrant(container)
 		fmt.Fprintf(os.Stderr, "qdrant grpc endpoint: %v\n", err)
+		os.Exit(1)
+	}
+	if required && testQdrantAddr == "" {
+		terminateQdrant(container)
+		fmt.Fprintln(os.Stderr, "fatal: ENGRAM_REQUIRE_QDRANT is set but no Qdrant address resolved")
 		os.Exit(1)
 	}
 	code := m.Run()
@@ -88,6 +126,13 @@ func terminateQdrant(c *tcqdrant.QdrantContainer) {
 func dialTestClient(t *testing.T) *qdrant.Client {
 	t.Helper()
 	if testQdrantAddr == "" {
+		required, err := requireQdrant()
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		if required {
+			t.Fatal("no Qdrant available and ENGRAM_REQUIRE_QDRANT is set: failing instead of skipping")
+		}
 		t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
 	}
 	host, portStr, err := net.SplitHostPort(testQdrantAddr)
@@ -103,6 +148,99 @@ func dialTestClient(t *testing.T) *qdrant.Client {
 		t.Fatalf("client: %v", err)
 	}
 	return c
+}
+
+// TestRequireQdrant mirrors internal/server/tools_test.go's TestRequireQdrant:
+// verifies parsing semantics for the env var this package's fail-closed gate
+// relies on.
+func TestRequireQdrant(t *testing.T) {
+	cases := []struct {
+		name    string
+		val     string
+		want    bool
+		wantErr bool
+	}{
+		{name: "unset_or_empty", val: "", want: false},
+		{name: "truthy_true", val: "true", want: true},
+		{name: "truthy_1", val: "1", want: true},
+		{name: "falsey_false", val: "false", want: false},
+		{name: "falsey_0", val: "0", want: false},
+		{name: "malformed", val: "treu", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("ENGRAM_REQUIRE_QDRANT", tc.val)
+			got, err := requireQdrant()
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("requireQdrant() with %q = (%v, nil), want a non-nil error (must not coerce to false)", tc.val, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("requireQdrant() with %q: unexpected error: %v", tc.val, err)
+			}
+			if got != tc.want {
+				t.Errorf("requireQdrant() with %q = %v, want %v", tc.val, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDialTestClientSkipsWhenNotRequired proves dialTestClient preserves its
+// original skip-not-fail behavior with no Qdrant available and
+// ENGRAM_REQUIRE_QDRANT unset, so local development without Docker still
+// works. Runs against a saved/restored testQdrantAddr so it does not depend on
+// whether TestMain actually provisioned a live Qdrant.
+func TestDialTestClientSkipsWhenNotRequired(t *testing.T) {
+	savedAddr := testQdrantAddr
+	t.Cleanup(func() { testQdrantAddr = savedAddr })
+	testQdrantAddr = ""
+	t.Setenv("ENGRAM_REQUIRE_QDRANT", "")
+
+	passed := t.Run("inner", func(t *testing.T) {
+		dialTestClient(t)
+		t.Fatal("dialTestClient(t) did not skip; reached past the skip call")
+	})
+	if !passed {
+		t.Fatal("dialTestClient(t) failed instead of skipping with ENGRAM_REQUIRE_QDRANT unset; local dev ergonomics regressed")
+	}
+}
+
+// TestDialTestClientFailsWhenRequiredAndUnavailable proves dialTestClient FAILS
+// (not skips) when ENGRAM_REQUIRE_QDRANT is set and no Qdrant is available —
+// the exact fail-closed gate this package previously lacked (internal/server
+// already had it via failOrSkipNoQdrant). A subtest that is meant to fail
+// cannot be nested directly (a failing subtest marks its whole parent test
+// binary run as FAIL regardless of how the outer test reads t.Run's returned
+// bool), so this re-execs the test binary as a subprocess and asserts on its
+// exit code and output — the standard Go idiom for testing an intentional
+// test failure.
+func TestDialTestClientFailsWhenRequiredAndUnavailable(t *testing.T) {
+	if os.Getenv("ENGRAM_STORE_TEST_DIAL_FAIL_HELPER") == "1" {
+		testQdrantAddr = ""
+		dialTestClient(t)
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestDialTestClientFailsWhenRequiredAndUnavailable", "-test.v")
+	cmd.Env = append(os.Environ(),
+		"ENGRAM_STORE_TEST_DIAL_FAIL_HELPER=1",
+		"ENGRAM_REQUIRE_QDRANT=1",
+	)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("subprocess unexpectedly succeeded (want failure: no Qdrant available and ENGRAM_REQUIRE_QDRANT=1); output:\n%s", out)
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("subprocess failed for an unexpected reason (want a plain non-zero exit from t.Fatal): %v; output:\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "no Qdrant available and ENGRAM_REQUIRE_QDRANT is set: failing instead of skipping") {
+		t.Fatalf("subprocess exited non-zero but not via the expected fail-closed message; output:\n%s", out)
+	}
+	if strings.Contains(string(out), "--- SKIP:") {
+		t.Fatalf("subprocess SKIPPED instead of FAILING with ENGRAM_REQUIRE_QDRANT=1; output:\n%s", out)
+	}
 }
 
 func testStore(t *testing.T) *Store {
