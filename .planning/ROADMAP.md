@@ -435,6 +435,7 @@ buried inside its own prohibition and gated on a belief nothing in the skill pro
 4. No path promotes a rule without explicit user instruction — the user-blessed gate is intact and
    proven so. Deletion is gated symmetrically: an agent may propose removing a rotted or
    contradictory rule, never remove one itself.
+
 5. The rule set has a hygiene discipline covering duplicates, contradictions, and rot — accounting
    for the fact that rules cannot be superseded (correction is delete-then-re-store) and that
    session start loads only the one-line index, so full-text checks cost a fetch.
@@ -525,6 +526,17 @@ phase's core risk) and the live sweep in wave 3. The phase should change no Go; 
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.
 **v0.11.x — Capture & Service Identity: ✅ shipped 2026-07-26 · 5 phases (22–26), 19 plans, 46 tasks · 11/11 requirements · audit PASSED (6/6 integration seams, 2/2 E2E flows, 0 blockers; Nyquist 5/5 validated — phases 24 and 26 reconciled 2026-07-26, 0 gaps).** Full detail: `milestones/v0.11.x-ROADMAP.md`.
 
+### Phase 7: CLI Cross-Spine Wiring
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 6
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 7 to break down)
+
 ---
 
 ## Backlog
@@ -556,12 +568,15 @@ The v0.12.x session surfaced every failure mode this command would address:
 - **Consolidate** — `2ak73h8bta` had to be superseded by `478rhhmhb0` because one of its three
   claims (`ENGRAM_REQUIRE_QDRANT` fails closed) was false for `internal/store`. Found by accident
   during phase planning, not by any review pass.
+
 - **Review** — three records filed `category: gotcha` were phrased as normative MUSTs and were
   really rule candidates. Surfaced only because v0.12.x Phase 6 went looking. One (`r3bjakymtz`)
   became rule `n6m4as49mr`; two were declined (`hxwad6qr58`).
+
 - **Verify** — records cite `file:line` anchors (`store.go:752-757`, `rules.go:103-146`). Those drift
   every time the file is edited. Nothing checks whether a cited anchor still points at what the
   record claims.
+
 - **Purge / archive** — per-phase lifecycle records for shipped milestones accumulate; `7smp8vy9hr`
   says to delete them but only after extraction, and deletes are irreversible.
 
@@ -572,13 +587,17 @@ The v0.12.x session surfaced every failure mode this command would address:
   one-time-reconciliation commands all resolve **structural** predicates; "is this record still
   true" and "are these two records the same fact" are **semantic** judgments — the same split that
   made v0.12.x Phase 6 route its backfill sweep to an agent procedure rather than a CLI.
+
 - What is proposed vs. what is performed? Deletes are irreversible and rules are user-blessed, so
   the consent model from v0.12.x Phase 6 (`### Proposing a rule`, `### Rule hygiene`) is the
   precedent — propose, never promote; the same should hold for purge.
+
 - Cadence: on demand, at milestone close (hooking `7smp8vy9hr`'s existing moment), or on a volume
   signal like `rules.go`'s existing `ruleThreshold = 50`.
+
 - Scope: spine only, or overlays too? Interaction with the `promoting-memory` skill, which already
   graduates overlay memories into the spine.
 
 Plans:
+
 - [ ] TBD (promote with /gsd-review-backlog when ready)
