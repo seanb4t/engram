@@ -168,6 +168,7 @@ func TestValidateScopeCrossSpineParity(t *testing.T) {
 // table: a command that carries both --scope and --cross-spine flags.
 var scopeCrossSpineFlagCommands = []*cobra.Command{
 	searchCmd,
+	listCmd,
 }
 
 // TestScopeCrossSpineFlagsNameEachOther is the D-00 mechanical check: on
@@ -175,8 +176,8 @@ var scopeCrossSpineFlagCommands = []*cobra.Command{
 // other by its literal double-dash spelling, so the relationship is
 // discoverable from either entry point without running the command.
 func TestScopeCrossSpineFlagsNameEachOther(t *testing.T) {
-	if len(scopeCrossSpineFlagCommands) != 1 {
-		t.Fatalf("scopeCrossSpineFlagCommands has %d entries, want 1 (searchCmd; listCmd joins in plan 07-02)", len(scopeCrossSpineFlagCommands))
+	if len(scopeCrossSpineFlagCommands) != 2 {
+		t.Fatalf("scopeCrossSpineFlagCommands has %d entries, want 2 (searchCmd, listCmd)", len(scopeCrossSpineFlagCommands))
 	}
 	for _, cmd := range scopeCrossSpineFlagCommands {
 		t.Run(cmd.Name(), func(t *testing.T) {

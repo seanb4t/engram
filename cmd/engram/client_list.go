@@ -15,6 +15,7 @@ import (
 
 var (
 	listScope         string
+	listCrossSpine    bool
 	listLimit         uint64
 	listOffset        uint64
 	listCategories    []string
@@ -33,6 +34,10 @@ var listCmd = &cobra.Command{
 	Short: "List memories on a remote engram server",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		// D-01/D-02/D-04 pre-flight guard, fired before any dialing.
+		if err := validateScopeCrossSpine(listScope, listCrossSpine); err != nil {
+			return err
+		}
 		format, err := resolveOutputFormat(clientOutput, isTerminal(os.Stdout))
 		if err != nil {
 			return err
@@ -43,6 +48,7 @@ var listCmd = &cobra.Command{
 		}
 		resp, err := client.ListMemories(cmd.Context(), connect.NewRequest(&engramv1.ListMemoriesRequest{
 			Scope:         listScope,
+			CrossSpine:    listCrossSpine,
 			Limit:         listLimit,
 			Offset:        listOffset,
 			Categories:    listCategories,
@@ -73,7 +79,10 @@ var listCmd = &cobra.Command{
 			} else {
 				_, err = fmt.Fprintf(cmd.OutOrStdout(), "total: %d\n", resp.Msg.GetTotal())
 			}
-			return err
+			if err != nil {
+				return err
+			}
+			return renderCoverageFooter(cmd.OutOrStdout(), listCrossSpine, resp.Msg.GetSearchedScopes(), resp.Msg.GetScopesTruncated())
 		}
 		return renderJSON(cmd.OutOrStdout(), resp.Msg)
 	},
@@ -81,7 +90,10 @@ var listCmd = &cobra.Command{
 
 func init() {
 	addClientFlags(listCmd)
-	listCmd.Flags().StringVar(&listScope, "scope", "", "scope filter")
+	listCmd.Flags().StringVar(&listScope, "scope", "",
+		"limit recall to one scope; omit and pass --cross-spine to span every scope you can read; mutually exclusive with --cross-spine")
+	listCmd.Flags().BoolVar(&listCrossSpine, "cross-spine", false,
+		"span every scope you can read; mutually exclusive with --scope")
 	listCmd.Flags().Uint64Var(&listLimit, "limit", 0, "max results (0 = server default)")
 	listCmd.Flags().Uint64Var(&listOffset, "offset", 0, "offset-for-UI paging; mutually exclusive with --cursor-mode")
 	listCmd.Flags().StringSliceVar(&listCategories, "categories", nil, "category filter (empty = all categories)")

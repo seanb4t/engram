@@ -127,6 +127,8 @@ func resetClientFlags(t *testing.T) {
 		searchCrossSpine = false
 		listTags = nil
 		listCategories = nil
+		listScope = ""
+		listCrossSpine = false
 	})
 }
 
