@@ -30,7 +30,7 @@ chat/summarize base-URL split as a low-risk independent tail. The milestone held
 constraints: zero new store-layer authz **primitive**, and (except `cedar-go`) zero new
 dependencies — every feature extended an existing seam.
 
-**Active milestone — v0.12.x — Headless Reach & Diagnosability (Phases 1–6), opened 2026-07-29.**
+**Active milestone — v0.12.x — Headless Reach & Diagnosability (Phases 1–7), opened 2026-07-29.**
 Two halves: make engram reachable by agents that are **not** a top-level MCP client, and make what
 the server decides and rejects legible. The structural root is a bearer-token identity on the
 ConnectRPC lane — today that lane has exactly one credential type (a sealed cookie session) and one
@@ -135,6 +135,7 @@ into shared stores.
 - [x] **Phase 4: Diagnosability** - Authz decisions reach a reader; rejections name the true field and carry a remediation hint; provider error bodies survive (completed 2026-08-01)
 - [x] **Phase 5: Operator Config & Reindex Correctness** - Per-lane chat credential; tag-aware resume plus a repair path for already-skipped records (completed 2026-08-01)
 - [x] **Phase 6: Rule Capture — Investigation & Fix** - Find why `store_rule` never fires, then fix the documented cause without touching who decides (completed 2026-08-01)
+- [x] **Phase 7: CLI Cross-Spine Wiring** - `--cross-spine` on `engram search|list` through one shared guard, with the coverage footer and bidirectional help text that make it learnable by reading (completed 2026-08-02)
 
 ## Phase Details
 
@@ -534,6 +535,12 @@ from help text alone. Closes the seam the v0.12.x milestone audit found: `cross_
 Phase 2, and nothing ever wired the two together — so the most natural recall invocation
 (`engram search --query x`, no `--scope`) fails today with a rule the CLI's help never states.
 
+**Status:** ✅ COMPLETE 2026-08-02 — 3/3 plans, all 3 waves landed. Verification PASSED, 10/10
+decisions (D-00..D-09) verified against the codebase. One shared `validateScopeCrossSpine` guard
+serves both commands and fires before any dialing; `internal/` containment held at exactly one
+file (`internal/server/tools.go`, the authorized `EffectiveSearchScope` export); zero new
+dependencies. See `07-VERIFICATION.md`.
+
 **Requirements**: TBD (none mapped — CONTEXT.md's D-00..D-09 decision IDs are this phase's
 traceability keys)
 **Depends on:** Phase 6
@@ -543,15 +550,15 @@ Plans:
 
 **Wave 1**
 
-- [ ] 07-01-PLAN.md — tracer: wire `--cross-spine` end to end on `engram search` (shared guard, coverage footer, `EffectiveSearchScope` parity pin)
+- [x] 07-01-PLAN.md — tracer: wire `--cross-spine` end to end on `engram search` (shared guard, coverage footer, `EffectiveSearchScope` parity pin) (completed 2026-08-02)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 07-02-PLAN.md — expand to `engram list`: same guard, same footer, guard-before-dialing and byte-identical-baseline proofs
+- [x] 07-02-PLAN.md — expand to `engram list`: same guard, same footer, guard-before-dialing and byte-identical-baseline proofs (completed 2026-08-02)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 07-03-PLAN.md — discoverability: verify the self-describe catalog, docs-site CLI reference and upgrade note, CLAUDE.md, phase-close gates
+- [x] 07-03-PLAN.md — discoverability: verify the self-describe catalog, docs-site CLI reference and upgrade note, CLAUDE.md, phase-close gates (completed 2026-08-02)
 
 ---
 
