@@ -21,6 +21,7 @@ import (
 	"github.com/spf13/pflag"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
+	"github.com/seanb4t/engram/internal/server"
 )
 
 // TestExitCodeForConnectErrTable is the D-10 mapper table test: every
@@ -106,6 +107,95 @@ func TestResolveOutputFormat(t *testing.T) {
 			t.Errorf("ExitCode() = %d, want %d", ec.ExitCode(), exitUsage)
 		}
 	})
+}
+
+// TestValidateScopeCrossSpineParity is the D-03 anti-drift gate: it pins
+// validateScopeCrossSpine against internal/server.EffectiveSearchScope
+// across the full 2x2 matrix (scope empty/non-empty x cross-spine off/on).
+//
+// This does NOT assert blanket equality — that would be wrong by
+// construction. D-04 makes the client deliberately STRICTER than the
+// server on the "scope set, cross-spine on" row: the server accepts that
+// combination and silently discards the scope (Phase 3 D-02), while the
+// client rejects it up front so an explicitly-typed filter is never
+// silently ignored. The load-bearing assertion below is therefore
+// one-directional: the client must never ACCEPT an input the server would
+// REJECT. Do not relax this row into agreement; it is the intended
+// divergence, not a bug.
+//
+// Importing internal/server here is legal precisely because
+// TestClientFilesImportBoundary's file walk skips any file whose name ends
+// in "_test.go" (see the "scanned" loop above) — only production
+// client_*.go files are denylisted from internal/server.
+func TestValidateScopeCrossSpineParity(t *testing.T) {
+	cases := []struct {
+		name       string
+		scope      string
+		crossSpine bool
+		clientErr  bool
+		serverErr  bool
+	}{
+		{"empty scope, cross-spine off", "", false, true, true},
+		{"empty scope, cross-spine on", "", true, false, false},
+		{"scope set, cross-spine off", "repo:x", false, false, false},
+		{"scope set, cross-spine on (D-04: client is stricter here)", "repo:x", true, true, false},
+	}
+	if len(cases) != 4 {
+		t.Fatalf("test table has %d entries, want 4 (2x2 matrix)", len(cases))
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			clientErr := validateScopeCrossSpine(c.scope, c.crossSpine) != nil
+			if clientErr != c.clientErr {
+				t.Errorf("validateScopeCrossSpine(%q, %v) error presence = %v, want %v", c.scope, c.crossSpine, clientErr, c.clientErr)
+			}
+			_, serverRawErr := server.EffectiveSearchScope(c.scope, c.crossSpine)
+			serverErr := serverRawErr != nil
+			if serverErr != c.serverErr {
+				t.Errorf("EffectiveSearchScope(%q, %v) error presence = %v, want %v", c.scope, c.crossSpine, serverErr, c.serverErr)
+			}
+			// Load-bearing invariant: the client must never accept an input
+			// the server would reject (the client may only be stricter,
+			// never looser).
+			if !clientErr && serverErr {
+				t.Errorf("client accepted (%q, %v) but server would reject it — client guard has drifted looser than EffectiveSearchScope", c.scope, c.crossSpine)
+			}
+		})
+	}
+}
+
+// scopeCrossSpineFlagCommand is one row of TestScopeCrossSpineFlagsNameEachOther's
+// table: a command that carries both --scope and --cross-spine flags.
+var scopeCrossSpineFlagCommands = []*cobra.Command{
+	searchCmd,
+}
+
+// TestScopeCrossSpineFlagsNameEachOther is the D-00 mechanical check: on
+// every command carrying both flags, each flag's Usage string names the
+// other by its literal double-dash spelling, so the relationship is
+// discoverable from either entry point without running the command.
+func TestScopeCrossSpineFlagsNameEachOther(t *testing.T) {
+	if len(scopeCrossSpineFlagCommands) != 1 {
+		t.Fatalf("scopeCrossSpineFlagCommands has %d entries, want 1 (searchCmd; listCmd joins in plan 07-02)", len(scopeCrossSpineFlagCommands))
+	}
+	for _, cmd := range scopeCrossSpineFlagCommands {
+		t.Run(cmd.Name(), func(t *testing.T) {
+			scopeFlag := cmd.Flags().Lookup("scope")
+			if scopeFlag == nil || scopeFlag.Usage == "" {
+				t.Fatalf("%s: --scope flag missing or has empty Usage", cmd.Name())
+			}
+			crossSpineFlag := cmd.Flags().Lookup("cross-spine")
+			if crossSpineFlag == nil || crossSpineFlag.Usage == "" {
+				t.Fatalf("%s: --cross-spine flag missing or has empty Usage", cmd.Name())
+			}
+			if !strings.Contains(scopeFlag.Usage, "--cross-spine") {
+				t.Errorf("%s: --scope Usage %q does not name --cross-spine", cmd.Name(), scopeFlag.Usage)
+			}
+			if !strings.Contains(crossSpineFlag.Usage, "--scope") {
+				t.Errorf("%s: --cross-spine Usage %q does not name --scope", cmd.Name(), crossSpineFlag.Usage)
+			}
+		})
+	}
 }
 
 // TestIsTerminalOnNonTTY confirms isTerminal is false for a pipe and for a

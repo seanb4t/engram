@@ -1381,6 +1381,14 @@ func effectiveSearchScope(scope string, crossSpine bool) (string, error) {
 	return scope, nil
 }
 
+// EffectiveSearchScope is the exported form of effectiveSearchScope. It
+// exists solely so cmd/engram's client-side scope guard can be pinned
+// against this rule at compile time, per Phase 7's D-03 amendment — it
+// changes no behavior and carries no other intended consumer.
+func EffectiveSearchScope(scope string, crossSpine bool) (string, error) {
+	return effectiveSearchScope(scope, crossSpine)
+}
+
 // searchedScopes reports the span a cross-spine search_memory/list_memory
 // query covered: the scopes the caller is AUTHORIZED to read, not the scopes
 // that produced hits. When crossSpine is false it returns (nil, false, nil)
