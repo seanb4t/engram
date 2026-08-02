@@ -192,6 +192,53 @@ a winner yourself). Retire (rot — propose deletion, quoting the old text
 first). Every disposition that removes anything terminates in a user
 decision.
 
+### One-time rule backfill sweep
+
+Rules only started being proposed when the trigger above shipped, so the
+store already holds facts that read as normative and were filed as ordinary
+memories before it existed. This sweep surfaces them once so each can be
+blessed or declined. It runs **only when the user asks for it**, once per
+repo — the inline trigger above covers everything after it, and re-running
+this on a cadence is the nag the decline record exists to prevent.
+
+1. **Confirm the scopes.** The spine (`Memory spine scope` from session
+   start) is where the candidates live; the `rule:repo:*` scope is where a
+   blessed rule goes. If engram returns 401 or 403 the server is
+   unauthenticated — tell the user to authenticate via `/mcp` and stop. Store
+   nothing and delete nothing on an auth failure.
+2. **Enumerate the candidates.** Call `list_memory` on the spine with
+   `categories` set to `gotcha` and `full` set to `true` — the compact view
+   returns summaries, and the normative-phrasing test needs the record's own
+   content. Page with `cursor` until `next_cursor` comes back empty. **Skip
+   any record tagged `rule-declined`**: those are records of a past decline,
+   not candidates, and re-proposing them is exactly what that tag exists to
+   prevent. Consider `convention` records too if the user asks for a wider
+   pass, but default to `gotcha`.
+3. **Apply the test.** Use the same normative-phrasing test `### Proposing a
+   rule` defines — do not write a second heuristic here and do not loosen
+   it, or the sweep and the inline trigger will drift apart.
+4. **Decide per candidate**, running the proposal protocol from `### Proposing
+   a rule` unchanged:
+   - **Bless.** The user says yes. Call `store_rule` and cite the new
+     `short_id`. Then ask a *separate* question about the source record:
+     delete it as now-redundant, or keep it for context the one-line rule
+     does not carry. That deletion is its own user decision — never fold it
+     into the rule proposal, and never perform it because the bless implied
+     it.
+   - **Decline.** The user says no. Store the decline record exactly as
+     `### Proposing a rule` specifies (`category: decision`, tag
+     `rule-declined`). Leave the source record untouched — a decline is
+     about rule status, not about the fact.
+5. **Report a summary.** Each candidate's `short_id` and its outcome —
+   blessed with the new rule's `short_id`, declined with the decline
+   record's `short_id`, or skipped and why — plus which source records were
+   deleted. Cite `short_id`s throughout.
+
+The sweep proposes, it never promotes: a sweep of twenty candidates is twenty
+proposals and twenty user answers, not one approval applied twenty times. If
+that is too many, stop and ask the user how they want to narrow it — do not
+batch the consent.
+
 ## Tagging
 
 `tags` are now a recall dimension, not just display metadata: `search_memory`
