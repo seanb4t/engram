@@ -126,9 +126,17 @@ one does not merely sit there being incorrect — it misdirects every later
 session that reads the index and acts on it.
 
 **When to run these checks.** Not every session — that turns hygiene into a
-tax nobody pays. Two moments are already enough: when you are about to bless
-a new rule (the one point where comparing it against the existing set is
-directly useful), and when `list_rules` returns its curation-smell advisory.
+tax nobody pays. Three moments are enough: when you are about to bless a new
+rule (the one point where comparing it against the existing set is directly
+useful); when `list_rules` returns its curation-smell advisory; and at
+milestone completion, alongside the memory-curation pass rule `7smp8vy9hr`
+already establishes for that moment — its procedure extracts reusable facts
+embedded in per-phase lifecycle records first, writes one authoritative
+milestone summary, and only then deletes the collapsed per-phase records,
+never touching reusable codebase facts. Rule hygiene rides that same pass
+rather than inventing a separate cadence: while curating memories at
+milestone completion, also run the duplicate/contradiction/rot checks below
+against the rule set.
 
 **Price the index honestly (D-11).** Session start loads only the compact
 `ruleView` — `short_id`, `summary`, `tags`, `scope`, `created_at` — and it
