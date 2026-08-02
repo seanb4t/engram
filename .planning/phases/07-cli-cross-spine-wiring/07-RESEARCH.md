@@ -505,10 +505,25 @@ func TestValidateScopeCrossSpineMatrix(t *testing.T) {
 
 **If empty:** N/A — see table above; both entries are explicitly flagged, not silently assumed.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does the user want `internal/server` touched at all to make D-03's parity test genuinely
    compile-linked, or is a weaker same-repo-but-not-literally-linked test acceptable?**
+
+   **RESOLVED 2026-08-02 (Sean) — option (a), export it.** See the D-03 amendment in `07-CONTEXT.md`.
+   `effectiveSearchScope` is exported as `EffectiveSearchScope`; the parity test lives in
+   `cmd/engram/client_common_test.go` and compiles against it. This is the phase's sole authorized
+   `internal/` edit, containment-gated in `07-VALIDATION.md`.
+
+   **Two corrections to the analysis below, verified against live source after this research ran:**
+   - The production guard in `client_common.go` still may **not** import `internal/server` —
+     `TestClientFilesImportBoundary` (`client_common_test.go:158-228`) denylists it for production
+     `client_*.go` files and forbids widening the allowlist. It skips `_test.go`, which is why the
+     parity test lane works and the guard must implement the rule independently. The duplication D-03
+     guards against is therefore architecturally required, not accidental.
+   - "The two agree across the full input matrix" is wrong. D-04 makes the client deliberately
+     stricter on one row; the parity assertion is *the client never accepts what the server would
+     reject*, plus one documented divergence.
    - What we know: the two options and their tradeoffs (Priority 2).
    - What's unclear: which the user prefers — CONTEXT.md's own language ("goes RED the moment either
      moves") implies option (a)'s guarantee was intended, but the "Files this phase edits" list

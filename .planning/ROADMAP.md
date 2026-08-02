@@ -541,8 +541,16 @@ traceability keys)
 
 Plans:
 
+**Wave 1**
+
 - [ ] 07-01-PLAN.md — tracer: wire `--cross-spine` end to end on `engram search` (shared guard, coverage footer, `EffectiveSearchScope` parity pin)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 07-02-PLAN.md — expand to `engram list`: same guard, same footer, guard-before-dialing and byte-identical-baseline proofs
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 07-03-PLAN.md — discoverability: verify the self-describe catalog, docs-site CLI reference and upgrade note, CLAUDE.md, phase-close gates
 
 ---
