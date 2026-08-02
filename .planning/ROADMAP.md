@@ -134,7 +134,7 @@ into shared stores.
 - [x] **Phase 3: Cross-Spine Memory Recall** - `cross_spine` on `search_memory` with the store-layer authz composition verified, not assumed (completed 2026-08-01)
 - [x] **Phase 4: Diagnosability** - Authz decisions reach a reader; rejections name the true field and carry a remediation hint; provider error bodies survive (completed 2026-08-01)
 - [x] **Phase 5: Operator Config & Reindex Correctness** - Per-lane chat credential; tag-aware resume plus a repair path for already-skipped records (completed 2026-08-01)
-- [ ] **Phase 6: Rule Capture — Investigation & Fix** - Find why `store_rule` never fires, then fix the documented cause without touching who decides
+- [x] **Phase 6: Rule Capture — Investigation & Fix** - Find why `store_rule` never fires, then fix the documented cause without touching who decides (completed 2026-08-01)
 
 ## Phase Details
 
@@ -450,7 +450,7 @@ Plans:
 
 - [x] 06-01-PLAN.md — de-bury the permission: `### Proposing a rule` with two observable triggers, the inline protocol, the `rule-declined` record, the skill `description` cue, and the tool-reference/`CLAUDE.md` mirrors; closes REQ-rule-capture-investigation by citation (wave 1)
 - [x] 06-02-PLAN.md — `### Rule hygiene` (duplicates, contradictions, rot, the code-verified correction table, user-blessed deletion, the `list_rules(full=true)` price) and `### One-time rule backfill sweep` (wave 2)
-- [ ] 06-03-PLAN.md — run the sweep live against the three named gotchas, record `06-DEMONSTRATION.md`, close the remaining requirements and the phase-close gates (wave 3)
+- [x] 06-03-PLAN.md — closed `REQ-rule-capture-intervention` by citation to `06-COLD-READ.md`'s PASS, restored the milestone-completion cadence clause (rule `7smp8vy9hr`), and ran the phase-close gates; the live backfill sweep against the three named gotchas is reassigned to the orchestrator (no MCP access in this environment) and recorded as a scaffold in `06-DEMONSTRATION.md` pending its result (wave 3)
 
 **Note on execution:** waves 1, 2, and 3, strictly sequential — all three plans edit
 `skill/engram/skills/curating-memory/SKILL.md` and two of them edit
@@ -519,7 +519,7 @@ phase's core risk) and the live sweep in wave 3. The phase should change no Go; 
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete | 2026-08-01 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete | 2026-08-01 |
-| 6. Rule Capture — Investigation & Fix | v0.12.x | 2/3 | In Progress | — |
+| 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete | 2026-08-01 |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.

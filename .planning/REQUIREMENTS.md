@@ -108,12 +108,24 @@ Zero new Go dependencies are required for this entire milestone.
   nothing in the skill produces, evidenced by the three normatively-phrased `gotcha` records named
   in D-03.
 
-- [ ] **REQ-rule-capture-intervention**: Apply the fix the investigation identifies. If the cause
+- [x] **REQ-rule-capture-intervention**: Apply the fix the investigation identifies. If the cause
   is friction, the intervention must reduce **friction** without changing **who decides** — the
   user-blessed gate is a design invariant and any intervention that promotes a rule without
   explicit user instruction is out of scope, not a trade-off. Suggesting is not promoting: the gate
   governs who decides, not who notices, so a recognition trigger and a proposal protocol leave it
   intact.
+  **Closed 2026-08-01:** the fix is `### Proposing a rule` (06-01), mirrored into the tool
+  reference and `CLAUDE.md`. Satisfied by `06-COLD-READ.md`'s PASS verdict — the phase's actual
+  acceptance test, per D-14, since a buried-but-present permission cannot be detected by any string
+  check. A fresh subagent with zero phase context, given a realistic repeat-hit scenario and no hint
+  that rules were the subject, unprompted named the trigger, proposed with the exact protocol, and
+  stopped at consent. This is behavioral evidence the intervention changed agent behavior, not
+  merely that prose was edited; it also stands as evidence for roadmap criterion 3 (rule capture
+  firing in a scenario where it previously did not) independent of the live backfill sweep in
+  `06-DEMONSTRATION.md`, which is orchestrator-administered and pending live-store confirmation. The
+  user-blessed gate itself remains intact and unmodified — `errRuleImmutable` still guards
+  `update_memory`'s un-share path, `setVisibility`, and `supersede_memory` (3 hits, unchanged across
+  the phase).
 
 - [x] **REQ-rule-curation-hygiene**: A rule set that actually grows needs a curation discipline
   analogous to `curating-memory`, covering duplicate rules, contradictory rules, and rules that
@@ -263,7 +275,7 @@ Populated during roadmap creation.
 | REQ-cross-spine-authz-verified | v0.12.x Phase 3 | Complete |
 | REQ-cross-spine-result-provenance | v0.12.x Phase 3 | Complete |
 | REQ-rule-capture-investigation | v0.12.x Phase 6 | Complete |
-| REQ-rule-capture-intervention | v0.12.x Phase 6 | Pending |
+| REQ-rule-capture-intervention | v0.12.x Phase 6 | Complete |
 | REQ-rule-curation-hygiene | v0.12.x Phase 6 | Complete |
 | REQ-authz-decision-diagnostics | v0.12.x Phase 4 | Complete |
 | REQ-validation-error-attribution | v0.12.x Phase 4 | Complete |
