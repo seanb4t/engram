@@ -67,7 +67,7 @@ func TestClientSearchSendsBearerHeader(t *testing.T) {
 	url := startStubServer(t, svc)
 	t.Setenv("ENGRAM_TOKEN", "sentinel-token-value")
 
-	_, _, err := runClient(t, "search", "--server", url, "--query", "q")
+	_, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestClientSearchNoTokenSendsNoAuthHeader(t *testing.T) {
 	url := startStubServer(t, svc)
 	t.Setenv("ENGRAM_TOKEN", "")
 
-	_, _, err := runClient(t, "search", "--server", url, "--query", "q")
+	_, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestClientSearchTokenFromFile(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	_, _, err := runClient(t, "search", "--server", url, "--query", "q", "--token-file", path)
+	_, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x", "--token-file", path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestClientSearchEnvBeatsTokenFile(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	_, _, err := runClient(t, "search", "--server", url, "--query", "q", "--token-file", path)
+	_, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x", "--token-file", path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestClientSearchEmptyResultIsEmptyArray(t *testing.T) {
 	}
 	url := startStubServer(t, svc)
 
-	stdout, _, err := runClient(t, "search", "--server", url, "--query", "q", "--output", "json")
+	stdout, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x", "--output", "json")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -171,10 +171,13 @@ func TestClientSearchMissingServerURLIsUsageError(t *testing.T) {
 	}
 	// The stub server is started but --server is never passed to it, so a
 	// non-zero call count would prove a network call was attempted despite
-	// the missing URL.
+	// the missing URL. --scope is load-bearing here too: once the D-01/D-04
+	// scope guard lands, an omitted --scope would make this test keep
+	// asserting exit 2 while actually exercising the scope guard instead of
+	// the missing-server check it was written for.
 	startStubServer(t, svc)
 
-	_, _, err := runClient(t, "search", "--query", "q")
+	_, _, err := runClient(t, "search", "--query", "q", "--scope", "repo:x")
 	if err == nil {
 		t.Fatal("expected an error for a missing --server/ENGRAM_SERVER_URL")
 	}
@@ -199,7 +202,7 @@ func TestClientSearchMissingQueryIsUsageError(t *testing.T) {
 	}
 	url := startStubServer(t, svc)
 
-	_, _, err := runClient(t, "search", "--server", url, "--query", "")
+	_, _, err := runClient(t, "search", "--server", url, "--query", "", "--scope", "repo:x")
 	if err == nil {
 		t.Fatal("expected an error for an empty --query")
 	}
@@ -224,7 +227,7 @@ func TestClientSearchExitCodeAuth(t *testing.T) {
 	}
 	url := startStubServer(t, svc)
 
-	_, _, err := runClient(t, "search", "--server", url, "--query", "q")
+	_, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x")
 	assertExitCode(t, err, exitAuth)
 }
 
@@ -237,7 +240,7 @@ func TestClientSearchExitCodeNotFound(t *testing.T) {
 	}
 	url := startStubServer(t, svc)
 
-	_, _, err := runClient(t, "search", "--server", url, "--query", "q")
+	_, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x")
 	assertExitCode(t, err, exitNotFound)
 }
 
@@ -250,7 +253,11 @@ func TestClientSearchExitCodeInvalidArgument(t *testing.T) {
 	}
 	url := startStubServer(t, svc)
 
-	_, _, err := runClient(t, "search", "--server", url, "--query", "q")
+	// --scope is load-bearing here too: once the D-01/D-04 scope guard
+	// lands, an omitted --scope would make this test keep asserting exit 2
+	// while actually exercising the scope guard instead of the
+	// CodeInvalidArgument mapping it was written for.
+	_, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x")
 	assertExitCode(t, err, exitUsage)
 }
 
@@ -264,7 +271,7 @@ func TestClientSearchExitCodeTransport(t *testing.T) {
 	resetClientFlags(t)
 	t.Setenv("ENGRAM_TOKEN", "")
 
-	_, _, err := runClient(t, "search", "--server", "http://127.0.0.1:1", "--query", "q")
+	_, _, err := runClient(t, "search", "--server", "http://127.0.0.1:1", "--query", "q", "--scope", "repo:x")
 	assertExitCode(t, err, exitUnavailable)
 }
 
@@ -279,7 +286,7 @@ func TestClientSearchTextOutputIsNotJSON(t *testing.T) {
 	}
 	url := startStubServer(t, svc)
 
-	stdout, _, err := runClient(t, "search", "--server", url, "--query", "q", "--output", "text")
+	stdout, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x", "--output", "text")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

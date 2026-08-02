@@ -263,7 +263,7 @@ func TestClientCommandsAcceptNoPositionalArgs(t *testing.T) {
 	}
 	svc := &stubEngramService{}
 	url := startStubServer(t, svc)
-	_, _, err := runClient(t, "search", "--server", url, "--query", "q", "some-positional")
+	_, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x", "some-positional")
 	if err == nil {
 		t.Error("expected an error for a positional argument, got nil")
 	}
@@ -282,7 +282,7 @@ func TestInsecureWarnsOnStderrAndStdoutStaysJSON(t *testing.T) {
 	}
 	url := startStubServer(t, svc)
 
-	stdout, stderr, err := runClient(t, "search", "--server", url, "--query", "q", "--insecure", "--output", "json")
+	stdout, stderr, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x", "--insecure", "--output", "json")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -317,7 +317,7 @@ func TestInsecureIsNotSetByEnvironment(t *testing.T) {
 	}
 	url := startStubServer(t, svc)
 
-	_, stderr, err := runClient(t, "search", "--server", url, "--query", "q")
+	_, stderr, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -382,7 +382,7 @@ func TestTokenNeverAppearsInOutput(t *testing.T) {
 			},
 		}
 		url := startStubServer(t, svc)
-		stdout, stderr, err := runClient(t, "search", "--server", url, "--query", "q")
+		stdout, stderr, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x")
 		assertNoSentinel(t, sentinel, stdout, stderr, err)
 	})
 
@@ -395,14 +395,14 @@ func TestTokenNeverAppearsInOutput(t *testing.T) {
 			},
 		}
 		url := startStubServer(t, svc)
-		stdout, stderr, err := runClient(t, "search", "--server", url, "--query", "q")
+		stdout, stderr, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x")
 		assertNoSentinel(t, sentinel, stdout, stderr, err)
 	})
 
 	t.Run("transport failure path", func(t *testing.T) {
 		resetClientFlags(t)
 		t.Setenv("ENGRAM_TOKEN", sentinel)
-		stdout, stderr, err := runClient(t, "search", "--server", "http://127.0.0.1:1", "--query", "q")
+		stdout, stderr, err := runClient(t, "search", "--server", "http://127.0.0.1:1", "--query", "q", "--scope", "repo:x")
 		assertNoSentinel(t, sentinel, stdout, stderr, err)
 	})
 }
