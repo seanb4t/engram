@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.3](https://github.com/seanb4t/engram/compare/v0.11.2...v0.11.3) (2026-07-31)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/modelcontextprotocol/go-sdk to v1.7.0 ([#447](https://github.com/seanb4t/engram/issues/447)) ([b821b3e](https://github.com/seanb4t/engram/commit/b821b3eb1db288c273e8cd16d5ca426bb547f8f5))
+
 ## [0.11.2](https://github.com/seanb4t/engram/compare/v0.11.1...v0.11.2) (2026-07-29)
 
 
