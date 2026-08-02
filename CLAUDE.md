@@ -32,8 +32,14 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 - **CLI:** cobra; config is loaded by `internal/config` (koanf): env-first via the `ENGRAM_` prefix with `--flag` overrides; no viper.
 - **Commits:** Conventional Commits; PR titles validated in CI
   (action-semantic-pull-request).
-- **License:** every Go/Markdown file carries the Apache-2.0 SPDX header
-  (`task license:check`). `task license:add` applies it.
+- **License:** every **in-scope** Go/Markdown file carries the Apache-2.0 SPDX
+  header (`task license:check`). `task license:add` applies it. Scope is owned
+  by `.licenserc.yaml` — never by hand. **Do not add an SPDX header to any file
+  whose first line must be `---` YAML frontmatter**: `.planning/**` (GSD parses
+  it, and a header above the frontmatter makes a passed VERIFICATION.md read as
+  `missing`, re-dispatching a completed phase), `skill/**/SKILL.md`, slash-command
+  markdown, and `docs-site/**`. All are excluded in `.licenserc.yaml`; if
+  `license:check` is green, the file does not need one.
 - **Lint/format:** `task lint` (golangci-lint, yamlfmt, actionlint, rumdl) and
   `task fmt` (gofmt, dprint, yamlfmt) must be clean.
 - **Releases:** release-please-driven (see `RELEASING.md`). Merging the
