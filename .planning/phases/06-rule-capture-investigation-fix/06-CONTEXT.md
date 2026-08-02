@@ -103,6 +103,15 @@ Out of scope: any path that stores, edits, or deletes a rule without explicit us
   supersession machinery memories use is unavailable here, so the curation half cannot be modelled
   on `supersede_memory`.
 
+- **D-09a (delete-then-re-store applies to retirement, not to rewording — amended after planning):**
+  D-09's premise holds but its conclusion was too broad. Reading the tree found two in-place paths:
+  `store_rule` with `id` set does an ownership-validated replace that carries the existing
+  `short_id` forward (`internal/server/rules.go:103-146`), and `update_memory` is permitted on a
+  rule (`internal/server/tools.go:1501-1513`). So **retiring or reversing** a rule is
+  delete-then-re-store, while **rewording or refining** one uses the in-place path — deleting to
+  reword would churn a `short_id` that other records cite in their `related-*` tags. The hygiene
+  discipline must distinguish the two cases rather than prescribing delete for both.
+
 - **D-10 (rule deletion is user-blessed, symmetrically with creation):** deleting normative ground
   truth is the same class of act as creating it. The agent proposes "this rule appears rotted" or
   "this contradicts that one" and the user decides. Leaving deletion unilateral while creation is
@@ -121,6 +130,29 @@ Out of scope: any path that stores, edits, or deletes a rule without explicit us
   can be blessed or declined. Same gate as everything else — proposed, never promoted. This sweep
   doubles as the criterion-3 demonstration: rule capture firing in a scenario where it previously
   did not.
+
+### Added after planning
+
+- **D-13 (the defect has three sites, not one):** found by the planner. Besides
+  `curating-memory/SKILL.md:51-53`, the identical buried-permission wording appears at
+  `docs-site/src/content/docs/reference/tools.md:353-355`, and `CLAUDE.md:126-135` carries the
+  purest instance — *"`store_rule` is invoked only on explicit user instruction (never promoted
+  unilaterally)"*, two prohibitions with no permission at all. All three ship together or the
+  corrected skill is contradicted by its own documentation the moment it lands. Follows the
+  three-surface precedent set by v0.12.x plan 03-05.
+
+- **D-14 (the cold read is performed by a fresh subagent, not by a blocking human checkpoint):**
+  decided by Sean. The only real test of this phase is whether the corrected prose reads as
+  permission to someone who did not help write it — which the orchestrator cannot self-administer,
+  having produced the context. A subagent spawned with zero phase context, shown only the edited
+  section and asked whether it would proactively offer a rule, is a genuine cold read at no
+  interrupt cost. A negative result is a real failure of the phase's core deliverable, not advisory.
+
+- **D-15 (a full-text rule check is one call, not N):** the planner corrected D-11's pricing.
+  `list_rules` accepts `full`, so a contradiction or dedup pass over the whole set costs a single
+  `list_rules(full=true)` rather than a `get_memory` per rule. D-11's underlying point stands — the
+  check is not free and the session-start index deliberately does not pay for it — but the cost
+  curve is far flatter than stated.
 
 ### Claude's Discretion
 
