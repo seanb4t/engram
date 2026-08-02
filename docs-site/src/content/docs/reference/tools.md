@@ -268,6 +268,13 @@ Delete one memory by id.
 
 Only the record owner can delete. Returns `"deleted"` on success.
 
+Deleting a rule is permitted — this is the only path that retires one, since
+`supersede_memory` and un-sharing are both rejected for rules — and no
+server-side guard here distinguishes a rule from any other record. Agents
+following the `curating-memory` skill are instructed to *propose* a rule's
+removal and never perform it unasked; that is an instruction-level gate, not
+an enforced one.
+
 ---
 
 ## delete_all
@@ -368,7 +375,11 @@ index.
 
 `category` (`rule`), `source` (`user-said`), and `visibility` (`shared`) are all
 server-set; do not supply them. The summary is stored as a client-authored
-summary. `set_visibility` is rejected for rules — they are always shared.
+summary. A replace (`id` set to the existing UUID or `short_id`) preserves the
+record's existing `short_id`, so handles cited elsewhere keep resolving.
+`set_visibility` is rejected for rules — they are always shared — and so is
+`supersede_memory`; both correction paths are closed, so retiring a rule
+means deleting it.
 
 Returns the stored rule's `id` and `short_id`.
 
@@ -386,10 +397,13 @@ Rules are the repository/project's normative ground truth.
 | `full` | bool | no | `true` adds full content; default returns the compact index shape |
 
 The default compact shape is a `ruleView` (`short_id`, `id`, `summary`, `tags`,
-`scope`, `created_at`); `full=true` returns the full records. Ordering is
-oldest-first (this ascending order is specific to `list_rules`). A per-scope
-count above 50 adds a curation-smell advisory to the text result only — the
-returned rules payload is unaffected.
+`scope`, `created_at`) — note it carries no `content`, so a contradiction or
+duplication check needs `full=true`. `full=true` returns the full records.
+Ordering is oldest-first (this ascending order is specific to `list_rules`).
+A per-scope count above 50 adds a curation-smell advisory to the text result
+only — the returned rules payload is unaffected. The advisory is a volume
+signal only: it says nothing about duplication or contradiction, and it
+cannot fire below 51 rules in a scope.
 
 ---
 
