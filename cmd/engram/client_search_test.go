@@ -299,6 +299,128 @@ func TestClientSearchTextOutputIsNotJSON(t *testing.T) {
 	}
 }
 
+// TestClientSearchCrossSpineEndToEnd is the phase's tracer slice: the
+// --cross-spine flag reaches the wire request untouched (D-01), and the
+// text-mode coverage footer reports a count only, never the scope names
+// (D-05, T-07-02).
+func TestClientSearchCrossSpineEndToEnd(t *testing.T) {
+	resetClientFlags(t)
+	var gotReq *engramv1.SearchMemoriesRequest
+	svc := &stubEngramService{
+		searchFn: func(_ context.Context, req *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+			gotReq = req
+			return &engramv1.SearchMemoriesResponse{
+				Memories: []*engramv1.Memory{
+					{ShortId: "AAAA111111"},
+					{ShortId: "BBBB222222"},
+				},
+				SearchedScopes:  []string{"repo:a", "repo:b", "repo:c"},
+				ScopesTruncated: false,
+			}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	stdout, _, err := runClient(t, "search",
+		"--server", url, "--query", "q", "--cross-spine", "--output", "text")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.searchCalls != 1 {
+		t.Fatalf("searchCalls = %d, want 1", svc.searchCalls)
+	}
+	if gotReq == nil {
+		t.Fatal("stub never received a request")
+	}
+	if !gotReq.GetCrossSpine() {
+		t.Error("request CrossSpine = false, want true")
+	}
+	if gotReq.GetScope() != "" {
+		t.Errorf("request Scope = %q, want empty", gotReq.GetScope())
+	}
+	if !strings.Contains(stdout, "searched_scopes: 3") {
+		t.Errorf("stdout = %q, want a coverage footer reporting count 3", stdout)
+	}
+	for _, name := range []string{"repo:a", "repo:b", "repo:c"} {
+		if strings.Contains(stdout, name) {
+			t.Errorf("stdout = %q, must not name scope %q (D-05: count only)", stdout, name)
+		}
+	}
+}
+
+// TestClientSearchMissingScopeIsUsageErrorBeforeDialing pins D-01: with
+// neither --scope nor --cross-spine, the guard fires before any network
+// call.
+func TestClientSearchMissingScopeIsUsageErrorBeforeDialing(t *testing.T) {
+	resetClientFlags(t)
+	svc := &stubEngramService{
+		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+			return &engramv1.SearchMemoriesResponse{}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	_, _, err := runClient(t, "search", "--server", url, "--query", "q")
+	assertExitCode(t, err, exitUsage)
+	if svc.searchCalls != 0 {
+		t.Errorf("searchCalls = %d, want 0 (guard must fire before dialing)", svc.searchCalls)
+	}
+}
+
+// TestClientSearchScopeWithCrossSpineIsUsageErrorBeforeDialing pins D-04:
+// --scope together with --cross-spine is rejected client-side before
+// dialing, never silently discarding the scope the way the server does.
+func TestClientSearchScopeWithCrossSpineIsUsageErrorBeforeDialing(t *testing.T) {
+	resetClientFlags(t)
+	svc := &stubEngramService{
+		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+			return &engramv1.SearchMemoriesResponse{}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	_, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x", "--cross-spine")
+	assertExitCode(t, err, exitUsage)
+	if svc.searchCalls != 0 {
+		t.Errorf("searchCalls = %d, want 0 (guard must fire before dialing)", svc.searchCalls)
+	}
+}
+
+// TestClientSearchNoFooterWithoutCrossSpine is the D-06 measured baseline:
+// a scope-confined text-mode call is byte-identical to what
+// renderMemoryTable alone produces — no trailing footer line — even when
+// the stub populates the provenance fields, proving the footer is gated on
+// the caller's own flag, not on what the server happened to return.
+func TestClientSearchNoFooterWithoutCrossSpine(t *testing.T) {
+	resetClientFlags(t)
+	mems := []*engramv1.Memory{
+		{ShortId: "AAAA111111", Scope: "repo:x"},
+		{ShortId: "BBBB222222", Scope: "repo:x"},
+	}
+	svc := &stubEngramService{
+		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+			return &engramv1.SearchMemoriesResponse{
+				Memories:        mems,
+				SearchedScopes:  []string{"repo:x"},
+				ScopesTruncated: true,
+			}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	stdout, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x", "--output", "text")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var want strings.Builder
+	if err := renderMemoryTable(&want, mems, true); err != nil {
+		t.Fatalf("renderMemoryTable: %v", err)
+	}
+	if stdout != want.String() {
+		t.Errorf("stdout = %q, want exactly %q (no footer line without --cross-spine)", stdout, want.String())
+	}
+}
+
 // assertExitCode is a shared helper for the exit-code-mapping tests above.
 func assertExitCode(t *testing.T, err error, want int) {
 	t.Helper()

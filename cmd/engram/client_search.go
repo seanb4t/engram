@@ -15,6 +15,7 @@ import (
 var (
 	searchQuery         string
 	searchScope         string
+	searchCrossSpine    bool
 	searchK             uint64
 	searchTags          []string
 	searchFull          bool
@@ -35,6 +36,10 @@ var searchCmd = &cobra.Command{
 		if searchQuery == "" {
 			return usageErrorf("--query is required")
 		}
+		// D-01/D-02/D-04 pre-flight guard, fired before any dialing.
+		if err := validateScopeCrossSpine(searchScope, searchCrossSpine); err != nil {
+			return err
+		}
 		format, err := resolveOutputFormat(clientOutput, isTerminal(os.Stdout))
 		if err != nil {
 			return err
@@ -46,6 +51,7 @@ var searchCmd = &cobra.Command{
 		resp, err := client.SearchMemories(cmd.Context(), connect.NewRequest(&engramv1.SearchMemoriesRequest{
 			Query:         searchQuery,
 			Scope:         searchScope,
+			CrossSpine:    searchCrossSpine,
 			K:             searchK,
 			Tags:          searchTags,
 			Full:          searchFull,
@@ -61,7 +67,10 @@ var searchCmd = &cobra.Command{
 		// D-12: return nil regardless of how many memories came back — an
 		// empty result set is a legitimate answer, not a failure.
 		if format == formatText {
-			return renderMemoryTable(cmd.OutOrStdout(), resp.Msg.GetMemories(), true)
+			if err := renderMemoryTable(cmd.OutOrStdout(), resp.Msg.GetMemories(), true); err != nil {
+				return err
+			}
+			return renderCoverageFooter(cmd.OutOrStdout(), searchCrossSpine, resp.Msg.GetSearchedScopes(), resp.Msg.GetScopesTruncated())
 		}
 		return renderJSON(cmd.OutOrStdout(), resp.Msg)
 	},
@@ -70,7 +79,10 @@ var searchCmd = &cobra.Command{
 func init() {
 	addClientFlags(searchCmd)
 	searchCmd.Flags().StringVar(&searchQuery, "query", "", "search query (required)")
-	searchCmd.Flags().StringVar(&searchScope, "scope", "", "scope filter")
+	searchCmd.Flags().StringVar(&searchScope, "scope", "",
+		"limit recall to one scope; omit and pass --cross-spine to span every scope you can read; mutually exclusive with --cross-spine")
+	searchCmd.Flags().BoolVar(&searchCrossSpine, "cross-spine", false,
+		"span every scope you can read; mutually exclusive with --scope")
 	searchCmd.Flags().Uint64Var(&searchK, "k", 0, "max results (0 = server default)")
 	searchCmd.Flags().StringSliceVar(&searchTags, "tags", nil, "tag filter (records must carry ALL listed tags)")
 	searchCmd.Flags().BoolVar(&searchFull, "full", false, "return full content instead of summaries")

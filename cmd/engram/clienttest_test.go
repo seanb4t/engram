@@ -123,6 +123,8 @@ func resetClientFlags(t *testing.T) {
 		storeTags = nil
 		searchTags = nil
 		searchCategories = nil
+		searchScope = ""
+		searchCrossSpine = false
 		listTags = nil
 		listCategories = nil
 	})

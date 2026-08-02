@@ -217,6 +217,61 @@ func usageErrorf(format string, a ...any) error {
 	return &cliError{code: exitUsage, err: fmt.Errorf(format, a...)}
 }
 
+// validateScopeCrossSpine is the shared D-01/D-02/D-04 pre-flight guard used
+// by both searchCmd and listCmd, before dialing. It is deliberately
+// STRICTER than internal/server's effectiveSearchScope on the row where a
+// scope is set together with cross-spine: the server accepts that
+// combination and silently discards the scope (Phase 3 D-02), but that
+// discard is logged server-side at Info, where the calling agent never sees
+// it — an explicitly-typed filter being silently ignored is exactly the
+// "surprise" D-00 forbids, so the client rejects it instead. See
+// TestValidateScopeCrossSpineParity in client_common_test.go, which pins
+// this exact divergence as deliberate; do not "fix" it into agreement.
+//
+// It fails closed: every path below returns either an explicit rejection or
+// nil for one of the four enumerated matrix rows, with no fall-through that
+// would widen the query on unrecognized input.
+func validateScopeCrossSpine(scope string, crossSpine bool) error {
+	if crossSpine && scope != "" {
+		return usageErrorf("--scope and --cross-spine are mutually exclusive")
+	}
+	if !crossSpine && scope == "" {
+		return usageErrorf("--scope is required unless --cross-spine is set")
+	}
+	return nil
+}
+
+// renderCoverageFooter writes the D-05 cross-spine coverage footer to w: a
+// count of the scopes the caller was authorized to read, and whether that
+// span was truncated. It returns nil immediately when crossSpine is false —
+// putting the D-06 "no footer on a scope-confined call" condition inside
+// the helper, rather than at each call site, makes it structurally
+// impossible for a caller to forget.
+//
+// Gating on the caller's own crossSpine value (rather than on
+// searchedScopes being non-empty) matters: a cross-spine caller authorized
+// to read zero scopes still deserves an honest count of zero, and gating on
+// the request rather than the response is what makes D-06's byte-identical
+// guarantee independent of what the server happens to return.
+//
+// The footer reports a COUNT, never the scope names (D-05) — naming them is
+// unbounded in width and would need its own truncation rule layered on top
+// of the server's own scopes_truncated signal. Key names are the proto
+// field names verbatim (searched_scopes / scopes_truncated), so the text
+// lane and the JSON lane agree about what the coverage information is
+// called (Phase 2 D-08).
+func renderCoverageFooter(w io.Writer, crossSpine bool, searchedScopes []string, scopesTruncated bool) error {
+	if !crossSpine {
+		return nil
+	}
+	if scopesTruncated {
+		_, err := fmt.Fprintf(w, "searched_scopes: %d  scopes_truncated: true\n", len(searchedScopes))
+		return err
+	}
+	_, err := fmt.Fprintf(w, "searched_scopes: %d\n", len(searchedScopes))
+	return err
+}
+
 // wrapRPCError wraps an RPC error in a *cliError whose code is
 // exitCodeForConnectErr(err) (D-10).
 func wrapRPCError(err error) error {
