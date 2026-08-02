@@ -524,3 +524,61 @@ phase's core risk) and the live sweep in wave 3. The phase should change no Go; 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.
 **v0.11.x — Capture & Service Identity: ✅ shipped 2026-07-26 · 5 phases (22–26), 19 plans, 46 tasks · 11/11 requirements · audit PASSED (6/6 integration seams, 2/2 E2E flows, 0 blockers; Nyquist 5/5 validated — phases 24 and 26 reconciled 2026-07-26, 0 gaps).** Full detail: `milestones/v0.11.x-ROADMAP.md`.
+
+---
+
+## Backlog
+
+Unsequenced ideas parked outside the active phase sequence. Promote with `/gsd-review-backlog`.
+
+### Phase 999.1: Spine review / consolidate / verify / purge / archive command (BACKLOG)
+
+**Goal:** [Captured for future planning] A single operation that audits a memory spine end to end —
+reviews what is there, consolidates duplicates and near-duplicates, verifies records still hold
+against the tree they describe, purges what has rotted, and archives what is finished — instead of
+the ad-hoc, per-session, human-driven curation this repo does today.
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+**Why this came up (captured 2026-08-01, during the v0.12.x milestone close):**
+
+Rule `7smp8vy9hr` already mandates a curation pass at milestone completion, and specifies a real
+procedure — extract embedded reusable gotchas into standalone records FIRST, then write one
+authoritative milestone summary, then delete the collapsed per-phase process records, never touching
+reusable codebase facts. But it is a **playbook a human or agent executes by hand**, with an explicit
+safety clause requiring user confirmation before large delete batches. Nothing enforces the order,
+nothing detects when it is overdue, and nothing verifies the extract actually happened before the
+delete.
+
+The v0.12.x session surfaced every failure mode this command would address:
+
+- **Consolidate** — `2ak73h8bta` had to be superseded by `478rhhmhb0` because one of its three
+  claims (`ENGRAM_REQUIRE_QDRANT` fails closed) was false for `internal/store`. Found by accident
+  during phase planning, not by any review pass.
+- **Review** — three records filed `category: gotcha` were phrased as normative MUSTs and were
+  really rule candidates. Surfaced only because v0.12.x Phase 6 went looking. One (`r3bjakymtz`)
+  became rule `n6m4as49mr`; two were declined (`hxwad6qr58`).
+- **Verify** — records cite `file:line` anchors (`store.go:752-757`, `rules.go:103-146`). Those drift
+  every time the file is edited. Nothing checks whether a cited anchor still points at what the
+  record claims.
+- **Purge / archive** — per-phase lifecycle records for shipped milestones accumulate; `7smp8vy9hr`
+  says to delete them but only after extraction, and deletes are irreversible.
+
+**Shape questions to resolve when this is planned:**
+
+- Is this an engram CLI command (`engram spine-review`, joining `migrate-remap-owner` /
+  `backfill-short-ids` / `prune-expired` / `summarize-missing`), a GSD skill, or both? The existing
+  one-time-reconciliation commands all resolve **structural** predicates; "is this record still
+  true" and "are these two records the same fact" are **semantic** judgments — the same split that
+  made v0.12.x Phase 6 route its backfill sweep to an agent procedure rather than a CLI.
+- What is proposed vs. what is performed? Deletes are irreversible and rules are user-blessed, so
+  the consent model from v0.12.x Phase 6 (`### Proposing a rule`, `### Rule hygiene`) is the
+  precedent — propose, never promote; the same should hold for purge.
+- Cadence: on demand, at milestone close (hooking `7smp8vy9hr`'s existing moment), or on a volume
+  signal like `rules.go`'s existing `ruleThreshold = 50`.
+- Scope: spine only, or overlays too? Interaction with the `promoting-memory` skill, which already
+  graduates overlay memories into the spine.
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
