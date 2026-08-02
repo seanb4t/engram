@@ -351,10 +351,12 @@ Returns `"visibility updated"` on success.
 ## store_rule
 
 Persist a **normative rule** (repository/project ground truth) that agents must
-follow. Call **only on explicit user instruction** — never promote a rule
-unilaterally; propose it to the user instead. Rules live in a dedicated
-`rule:repo:*` / `rule:project:*` scope, are always shared, and surface as a
-session-start index.
+follow. An agent may notice a rule candidate and propose it to the user;
+`store_rule` is called only after the user says yes — never promote a rule
+unilaterally. See the `curating-memory` skill for the recognition triggers and
+the proposal protocol. Rules live in a dedicated `rule:repo:*` /
+`rule:project:*` scope, are always shared, and surface as a session-start
+index.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|

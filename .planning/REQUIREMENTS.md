@@ -95,13 +95,18 @@ Zero new Go dependencies are required for this entire milestone.
 
 ### Rule Capture (#351)
 
-- [ ] **REQ-rule-capture-investigation**: Determine why an agent with the skill and MCP installed
+- [x] **REQ-rule-capture-investigation**: Determine why an agent with the skill and MCP installed
   never *proposes* a rule and has to be asked explicitly. Deliverable is a written root cause
   distinguishing a mechanical/bug cause from a friction cause, grounded in evidence.
   **Amended 2026-08-01:** the original parenthetical ("one rule exists repo-wide against dozens of
   ordinary memories") is struck — three rules exist, and the rule-to-memory ratio was never
   evidence of a defect, since rules are per-scope and user-blessed while memories are per-fact and
   continuous. See `06-CONTEXT.md`.
+  **Closed 2026-08-01:** satisfied by `06-CONTEXT.md` D-01/D-02 — a friction cause, not a
+  mechanical one. The instruction to propose already exists at
+  `curating-memory/SKILL.md:51-53` but is buried inside its own prohibition and gated on a belief
+  nothing in the skill produces, evidenced by the three normatively-phrased `gotcha` records named
+  in D-03.
 
 - [ ] **REQ-rule-capture-intervention**: Apply the fix the investigation identifies. If the cause
   is friction, the intervention must reduce **friction** without changing **who decides** — the
