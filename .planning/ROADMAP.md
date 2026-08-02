@@ -410,26 +410,37 @@ drift checksum; the full gate runs in 05-03.
 
 ### Phase 6: Rule Capture — Investigation & Fix
 
-**Goal:** Find out why `store_rule` effectively never fires — one rule exists repo-wide against
-dozens of ordinary memories — and fix the cause that is actually there.
+**Goal:** An agent with the skill and MCP installed *proposes* rules instead of waiting to be
+asked, and the rule set that results stays free of duplicates, contradictions, and rot.
 
-**Requirements:** REQ-rule-capture-investigation, REQ-rule-capture-intervention
+**Requirements:** REQ-rule-capture-investigation, REQ-rule-capture-intervention, REQ-rule-curation-hygiene
+
+**Amended 2026-08-01 (discuss).** The original goal asked why `store_rule` "effectively never
+fires — one rule exists repo-wide against dozens of ordinary memories." Both halves of that
+premise failed under examination: three rules exist, two created after this roadmap was written;
+and a rule-count-to-memory-count ratio was never evidence of anything, since rules are per-scope,
+normative and user-blessed while memories are per-fact and continuous. Sean restated the real
+problem — the agent never *suggests* a rule, it has to be pushed — and added rule-hygiene to the
+scope. Root cause was established during discuss (see `06-CONTEXT.md` D-01/D-02) rather than
+deferred to research: the instruction to propose exists at `curating-memory/SKILL.md:51-53` but is
+buried inside its own prohibition and gated on a belief nothing in the skill produces.
 
 **Success criteria:**
 
-1. A written root cause exists, derived from tracing actual invocation **attempts including
-   failures** across the chain (`curating-memory` skill routing → session-start rules index →
-   `store_rule` tool description → user-blessing gate), and it distinguishes a mechanical/bug cause
-   from a friction cause.
+1. A written root cause exists distinguishing a mechanical cause from a friction cause, grounded in
+   evidence rather than reconstruction. (Satisfied in discuss: friction — no trigger exists.)
 
 2. The intervention addresses that documented cause, not a presumed one.
 3. Rule capture demonstrably fires in a scenario where it previously did not.
 4. No path promotes a rule without explicit user instruction — the user-blessed gate is intact and
-   proven so.
+   proven so. Deletion is gated symmetrically: an agent may propose removing a rotted or
+   contradictory rule, never remove one itself.
+5. The rule set has a hygiene discipline covering duplicates, contradictions, and rot — accounting
+   for the fact that rules cannot be superseded (correction is delete-then-re-store) and that
+   session start loads only the one-line index, so full-text checks cost a fetch.
 
 **Internal gate:** criterion 1 must be satisfied and reviewed before any intervention is
-implemented. The roadmap deliberately does **not** commit to a specific fix; research supplied
-consent-preserving candidates but explicitly warned against choosing one before the trace exists.
+implemented. This roadmap deliberately does **not** commit to a specific fix.
 Separated from v0.12.x Phase 5 because the shape differs — investigation-gated, and the surfaces are skill
 markdown and tool descriptions rather than Go correctness.
 
@@ -491,7 +502,7 @@ markdown and tool descriptions rather than Go correctness.
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete | 2026-08-01 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete | 2026-08-01 |
-| 6. Rule Capture — Investigation & Fix | v0.12.x | 0/2 | Pending | — |
+| 6. Rule Capture — Investigation & Fix | v0.12.x | 0/3 | Pending | — |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.

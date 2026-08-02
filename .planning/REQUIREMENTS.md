@@ -95,16 +95,28 @@ Zero new Go dependencies are required for this entire milestone.
 
 ### Rule Capture (#351)
 
-- [ ] **REQ-rule-capture-investigation**: Determine why `store_rule` effectively never fires
-  (one rule exists repo-wide against dozens of ordinary memories) by tracing actual invocation
-  **attempts including failures** across the chain: the `curating-memory` skill's routing table →
-  the session-start rules index → the `store_rule` tool description → the user-blessing gate.
-  Deliverable is a written root cause distinguishing a mechanical/bug cause from a friction cause.
+- [ ] **REQ-rule-capture-investigation**: Determine why an agent with the skill and MCP installed
+  never *proposes* a rule and has to be asked explicitly. Deliverable is a written root cause
+  distinguishing a mechanical/bug cause from a friction cause, grounded in evidence.
+  **Amended 2026-08-01:** the original parenthetical ("one rule exists repo-wide against dozens of
+  ordinary memories") is struck — three rules exist, and the rule-to-memory ratio was never
+  evidence of a defect, since rules are per-scope and user-blessed while memories are per-fact and
+  continuous. See `06-CONTEXT.md`.
 
 - [ ] **REQ-rule-capture-intervention**: Apply the fix the investigation identifies. If the cause
   is friction, the intervention must reduce **friction** without changing **who decides** — the
   user-blessed gate is a design invariant and any intervention that promotes a rule without
-  explicit user instruction is out of scope, not a trade-off.
+  explicit user instruction is out of scope, not a trade-off. Suggesting is not promoting: the gate
+  governs who decides, not who notices, so a recognition trigger and a proposal protocol leave it
+  intact.
+
+- [ ] **REQ-rule-curation-hygiene**: A rule set that actually grows needs a curation discipline
+  analogous to `curating-memory`, covering duplicate rules, contradictory rules, and rules that
+  have rotted. A rotted rule is worse than a rotted memory because rules are MUST-follow — it
+  misdirects every later session. Two constraints shape it: rules **cannot be superseded**
+  (correction is delete-then-re-store), and rule deletion is **user-blessed symmetrically with
+  creation** (the agent proposes removal, never performs it unasked). Added 2026-08-01 during
+  discuss.
 
 ### Diagnosability (#394, #360, #347)
 
@@ -240,6 +252,7 @@ Populated during roadmap creation.
 | REQ-cross-spine-result-provenance | v0.12.x Phase 3 | Complete |
 | REQ-rule-capture-investigation | v0.12.x Phase 6 | Pending |
 | REQ-rule-capture-intervention | v0.12.x Phase 6 | Pending |
+| REQ-rule-curation-hygiene | v0.12.x Phase 6 | Pending |
 | REQ-authz-decision-diagnostics | v0.12.x Phase 4 | Complete |
 | REQ-validation-error-attribution | v0.12.x Phase 4 | Complete |
 | REQ-error-hint-envelope | v0.12.x Phase 4 | Complete |
