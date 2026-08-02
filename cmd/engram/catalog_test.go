@@ -375,6 +375,100 @@ func TestHelpFlagStillPrintsHumanHelp(t *testing.T) {
 	}
 }
 
+// TestCatalogCarriesCrossSpineGuidance is D-07's guidance-content gate. The
+// pre-existing TestCatalogEnumeratesEveryFlag already proves --cross-spine is
+// *present* in the catalog with a *non-empty* Usage on both search and list;
+// it does not check what that Usage says. D-00 requires the agent-facing
+// discovery path (this catalog) to carry the same guidance as the
+// human-facing one (--help), so this test pins the content, and asserts it
+// is literally the same string collectFlags emits verbatim from
+// pflag.Flag.Usage — not a paraphrase that could quietly drift from --help.
+func TestCatalogCarriesCrossSpineGuidance(t *testing.T) {
+	doc := decodeCatalog(t)
+
+	byName := make(map[string][]struct {
+		Name    string `json:"name"`
+		Type    string `json:"type"`
+		Default string `json:"default"`
+		Usage   string `json:"usage"`
+	})
+	for _, c := range doc.Commands {
+		byName[c.Name] = c.Flags
+	}
+
+	commands := []string{"search", "list"}
+	if len(commands) != 2 {
+		t.Fatalf("test table has %d entries, want 2 (search and list)", len(commands))
+	}
+
+	for _, verb := range commands {
+		t.Run(verb, func(t *testing.T) {
+			flags := byName[verb]
+
+			var crossSpine, scope *struct {
+				Name    string `json:"name"`
+				Type    string `json:"type"`
+				Default string `json:"default"`
+				Usage   string `json:"usage"`
+			}
+			for i := range flags {
+				switch flags[i].Name {
+				case "cross-spine":
+					crossSpine = &flags[i]
+				case "scope":
+					scope = &flags[i]
+				}
+			}
+			if crossSpine == nil {
+				t.Fatalf("%s catalog entry has no cross-spine flag", verb)
+			}
+			if scope == nil {
+				t.Fatalf("%s catalog entry has no scope flag", verb)
+			}
+
+			if crossSpine.Type != "bool" {
+				t.Errorf("%s cross-spine type = %q, want %q", verb, crossSpine.Type, "bool")
+			}
+			if crossSpine.Default != "false" {
+				t.Errorf("%s cross-spine default = %q, want %q", verb, crossSpine.Default, "false")
+			}
+
+			if !strings.Contains(crossSpine.Usage, "--scope") {
+				t.Errorf("%s cross-spine usage does not name --scope: %q", verb, crossSpine.Usage)
+			}
+			if !strings.Contains(scope.Usage, "--cross-spine") {
+				t.Errorf("%s scope usage does not name --cross-spine: %q", verb, scope.Usage)
+			}
+
+			cmd, _, err := rootCmd.Find([]string{verb})
+			if err != nil {
+				t.Fatalf("rootCmd.Find(%q): %v", verb, err)
+			}
+			liveCrossSpine := cmd.Flags().Lookup("cross-spine")
+			if liveCrossSpine == nil {
+				t.Fatalf("%s live command has no cross-spine flag", verb)
+			}
+			liveScope := cmd.Flags().Lookup("scope")
+			if liveScope == nil {
+				t.Fatalf("%s live command has no scope flag", verb)
+			}
+
+			// The catalog and --help must be the same string by
+			// construction, not merely similar prose — this is what makes
+			// "an agent's discovery path is not strictly worse than a
+			// human's" a checked property rather than a hope (D-00).
+			if crossSpine.Usage != liveCrossSpine.Usage {
+				t.Errorf("%s catalog cross-spine usage != live --help usage:\ncatalog: %q\nlive:    %q",
+					verb, crossSpine.Usage, liveCrossSpine.Usage)
+			}
+			if scope.Usage != liveScope.Usage {
+				t.Errorf("%s catalog scope usage != live --help usage:\ncatalog: %q\nlive:    %q",
+					verb, scope.Usage, liveScope.Usage)
+			}
+		})
+	}
+}
+
 // TestHelpAndCatalogAreDifferentOutputs pins the bare-invocation catalog
 // and --help's human output as a pair: a change that made help emit JSON,
 // or the catalog emit help text, breaks this even if each half's own test
