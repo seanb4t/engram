@@ -601,3 +601,57 @@ The v0.12.x session surfaced every failure mode this command would address:
 Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+
+---
+
+### Phase 999.2: Review the CLI and MCP surface under the self-evident-interface principle (BACKLOG)
+
+**Goal:** [Captured for future planning] Audit every command, operation, flag, and tool argument on
+both the `engram` CLI and the MCP tool surface against one standard: it must be discoverable and
+usable **correctly by reading** — from help text, from the naming of operations and parameters, and
+from the self-describe / tool-schema output alone. No teaching by example, no error-and-find-out, no
+surprises.
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+**Why this came up (captured 2026-08-02, during v0.12.x Phase 7 discussion):**
+
+Stated by Sean as a general principle while deciding how `--cross-spine` should behave:
+
+> "the flags, cli help, all of this should _read_ well and be discoverable for an agent or human. no
+> surprises, no error and wait to see how it works. The goal is to NOT need to teach by example how
+> to use the cli, it should be evident from its help and the naming of its operations and
+> parameters."
+
+Phase 7 applies it to two commands. This item applies it to the whole surface.
+
+Two concrete failures motivated it, both found by the v0.12.x milestone audit and its follow-on
+discussion:
+
+- **A capability with no way to reach it.** `cross_spine` shipped on the Connect API in v0.12.x
+  Phase 3; the CLI shipped in Phase 2 and never wired it. Nothing in `engram search --help`
+  suggested the capability existed, so the only way to discover the gap was to read the proto.
+
+- **A default that fails without saying why.** `engram search --query x` with no `--scope` is
+  rejected by `effectiveSearchScope` (`internal/server/tools.go:1374-1382`) with *"scope is required
+  unless cross_spine is true"* — a rule the CLI's help text never states. The most natural
+  invocation teaches by failure, which is exactly the pattern this principle forbids.
+
+**Scope to audit:**
+
+- `cmd/engram/*` — every flag's help string, every command's `Short`/`Use`, and whether related
+  flags name each other (mutually-exclusive pairs, conditionally-required pairs).
+- The v0.12.x Phase 2 D-15 self-describe JSON catalog — an agent's primary discovery path; it must
+  carry the same guidance as `--help`, not a thinner version.
+- MCP tool descriptions and argument docs in `internal/server` — same standard, different surface.
+  Server-side conditional-requirement rules (`effectiveSearchScope` and its siblings) should be
+  stated wherever the argument is advertised.
+
+**Related:** convention `yaj7dqz9qq` — *"a new tool argument with no guidance is an incomplete
+feature."* This item is that convention applied retroactively and surface-wide, rather than only at
+the moment an argument is added.
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
