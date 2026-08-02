@@ -5,7 +5,7 @@ milestone_name: Headless Reach & Diagnosability
 current_phase_name: CLI Cross-Spine Wiring
 status: in_progress
 stopped_at: "v0.12.x Phase 7 PLANNED — 3 plans, 3 waves, 8 tasks; plan-checker VERIFICATION PASSED, decision coverage 10/10. Research resolved D-07 (the self-describe catalog absorbs the new flag with zero catalog work) and Sean resolved the D-03 scope conflict in favour of exporting EffectiveSearchScope — the phase's sole authorized internal/ edit, containment-gated in 07-VALIDATION.md. Phase base for all diff gates: b4544d47. Next: /gsd-execute-phase 7."
-last_updated: "2026-08-02T14:30:00.000Z"
+last_updated: "2026-08-02T15:25:00.000Z"
 progress:
   total_phases: 7
   completed_phases: 6
@@ -94,7 +94,7 @@ zero diff) are green on the final tree.
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x Phase 6 — Rule Capture — Investigation & Fix — COMPLETE, 3/3 plans, all 3 requirements. Plan 06-01 de-buried the propose-a-rule permission (`### Proposing a rule`: two observable triggers, an inline propose-then-consent protocol, a `rule-declined` decline record) and closed `REQ-rule-capture-investigation` by citation; its cold-read checkpoint (reassigned per D-14) PASSED (`06-COLD-READ.md`). Plan 06-02 added `### Rule hygiene` (duplicates/contradictions/rot, a code-verified correction table, D-10's user-blessed deletion gate, D-11/D-15-priced full-text check) and `### One-time rule backfill sweep` (D-12's procedure), and mirrored both into the tool reference, closing `REQ-rule-curation-hygiene`. Plan 06-03 restored the milestone-completion cadence clause (rule `7smp8vy9hr`) and closed `REQ-rule-capture-intervention` by citation to `06-COLD-READ.md`'s PASS — the live backfill sweep against the three D-03 candidates was reassigned to the orchestrator (no MCP access in the executing environment) and scaffolded in `06-DEMONSTRATION.md`, pending but non-blocking. **v0.12.x Phase 6 is the milestone's last phase — all 6 phases of v0.12.x are now COMPLETE.** Next: the orchestrator runs the milestone lifecycle (live sweep with Sean, then ship/complete-milestone).
+**Current focus:** v0.12.x Phase 7 — CLI Cross-Spine Wiring — EXECUTING, 0/3 plans. Wires the `cross_spine` capability (shipped on the Connect API in Phase 3) through to the CLI: plan 07-01 lands the full tracer slice on `engram search` (flag → shared `validateScopeCrossSpine` guard → request field → server → coverage footer, with `EffectiveSearchScope` exported as the phase's sole authorized `internal/` edit), 07-02 expands it to `engram list`, 07-03 closes D-00's correct-by-reading bar (self-describe catalog + docs). Waves are strictly serial (one plan each); isolation auto-degraded to sequential-on-main per #683. Prior phase for reference: v0.12.x Phase 6 — Rule Capture — COMPLETE, 3/3 plans, all 3 requirements. Plan 06-01 de-buried the propose-a-rule permission (`### Proposing a rule`: two observable triggers, an inline propose-then-consent protocol, a `rule-declined` decline record) and closed `REQ-rule-capture-investigation` by citation; its cold-read checkpoint (reassigned per D-14) PASSED (`06-COLD-READ.md`). Plan 06-02 added `### Rule hygiene` (duplicates/contradictions/rot, a code-verified correction table, D-10's user-blessed deletion gate, D-11/D-15-priced full-text check) and `### One-time rule backfill sweep` (D-12's procedure), and mirrored both into the tool reference, closing `REQ-rule-curation-hygiene`. Plan 06-03 restored the milestone-completion cadence clause (rule `7smp8vy9hr`) and closed `REQ-rule-capture-intervention` by citation to `06-COLD-READ.md`'s PASS — the live backfill sweep against the three D-03 candidates was reassigned to the orchestrator (no MCP access in the executing environment) and scaffolded in `06-DEMONSTRATION.md`, pending but non-blocking. **v0.12.x Phase 6 is the milestone's last phase — all 6 phases of v0.12.x are now COMPLETE.** Next: the orchestrator runs the milestone lifecycle (live sweep with Sean, then ship/complete-milestone).
 
 ## ▶ Resume Point (session handed off 2026-08-01)
 
@@ -154,8 +154,14 @@ REQ-cross-spine-authz-verified, REQ-cross-spine-result-provenance) are complete.
 
 ## Current Position
 
-Phase: v0.12.x Phase 6 (Rule Capture — Investigation & Fix) — ✅ COMPLETE 2026-08-02 (3/3 plans,
-all 3 waves landed — the milestone's final phase)
+Phase: v0.12.x Phase 7 (CLI Cross-Spine Wiring) — EXECUTING, started 2026-08-02 (0/3 plans;
+waves 1/2/3 are strictly serial, one plan each). Executors run sequentially on the main working
+tree: `worktree.base-check` auto-degraded isolation to `none` (#683) because HEAD `2f251368`
+has diverged from `origin/HEAD` `fb4ffb8c`. No parallelism is lost — every wave holds one plan.
+
+### Prior phase record (v0.12.x Phase 6 — Rule Capture — Investigation & Fix)
+
+✅ COMPLETE 2026-08-02 (3/3 plans, all 3 waves landed).
 Plan 06-01 (de-bury the permission, wave 1): Task 1 split `## Rules`'s buried permission from its
 prohibition and added `### Proposing a rule` — two observable triggers (repeat-hit on a footgun via
 the search-before-store step; normative phrasing at write time), a four-step inline
