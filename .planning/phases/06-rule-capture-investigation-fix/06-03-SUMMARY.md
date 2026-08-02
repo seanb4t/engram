@@ -72,10 +72,13 @@ coverage:
         status: pass
     human_judgment: false
   - id: D4
-    description: "The live backfill sweep against the three D-03 candidates (r3bjakymtz, z4mgz3a4ab, 478rhhmhb0), which doubles as the phase's live-store demonstration of roadmap criterion 3, is orchestrator-administered and not yet run."
-    verification: []
+    description: "The live backfill sweep against the three D-03 candidates (r3bjakymtz, z4mgz3a4ab, 478rhhmhb0), which doubles as the phase's live-store demonstration of roadmap criterion 3, is orchestrator-administered. RAN 2026-08-01: Sean blessed one and declined two."
+    verification:
+      - kind: manual_procedural
+        ref: "live store — rule n6m4as49mr (blessed r3bjakymtz; its content records 'Blessed by Sean 2026-08-01 during the v0.12.x Phase 6 backfill sweep') and decision hxwad6qr58 (declines z4mgz3a4ab and 478rhhmhb0); outcomes tabulated in 06-DEMONSTRATION.md § Sweep result; re-confirmed against the live store 2026-08-02, see 06-UAT.md test 2"
+        status: pass
     human_judgment: true
-    rationale: "This execution environment has no MCP access (no .mcp.json, no engram MCP tool in the tool list), so the live sweep cannot be simulated or self-administered — it is reassigned to the orchestrator per the objective's explicit scope change, same pattern as D-14's cold-read reassignment. A human (Sean, via the orchestrator) must bless or decline each candidate; that consent cannot be automated or pre-judged."
+    rationale: "Consent cannot be automated or pre-judged — a human (Sean, via the orchestrator) had to bless or decline each candidate individually. That happened on 2026-08-01, after this SUMMARY was first written; the 'not yet run' wording above was true at authoring time and is corrected here rather than rewritten, so the reassignment history stays visible. The executing agent had no MCP access (no .mcp.json, no engram tool in its list), which is why the sweep was reassigned to the orchestrator in the first place — the same pattern as D-14's cold-read reassignment. Do NOT re-run this sweep: hxwad6qr58 exists specifically to block re-proposing the two declined candidates on the same evidence."
 
 duration: ~25min
 completed: 2026-08-02

@@ -41,7 +41,7 @@ worth running, but it is not the sole gate for criterion 3 or for
 `REQ-rule-capture-intervention`, both of which the cold read already
 satisfies.
 
-## Sweep result (orchestrator fills in below)
+## Sweep result
 
 Run 2026-08-01 by the orchestrator, live against
 `rule:repo:github.com/seanb4t/engram`, with Sean answering per candidate.
@@ -77,10 +77,27 @@ would be weak evidence that the user is actually deciding. The decline record is
 gotcha enumeration cannot pick it up and re-propose the same candidates next session. That loop is
 the specific failure D-07 exists to prevent, and this record is the mechanism.
 
-**What this sweep, once run, establishes and does not:**
+**What this sweep establishes and does not:**
 
 It establishes that the trigger fires against real, previously-un-proposed
 store content — the live-store form of criterion 3. It does not establish
 that the trigger is well-calibrated over time; that needs accept/decline
 rates this phase has no data path for, and `06-CONTEXT.md`'s Deferred section
 says so explicitly.
+
+**Independently re-confirmed 2026-08-02** during `/gsd-verify-work` (UAT test 2, recorded in
+`06-UAT.md`). The outcomes above were checked against the live store rather than taken from this
+document: `n6m4as49mr` exists as a rule whose own content closes with "Blessed by Sean 2026-08-01
+during the v0.12.x Phase 6 backfill sweep", and `hxwad6qr58` records the two declines verbatim.
+The baseline count also reconciles — this document claims 3 rules before and 4 after; a
+`list_rules` on 2026-08-02 returned 5, being those 4 plus `8dfdhfs5nn`, added after the sweep.
+
+Note for anyone tempted to re-run this: **do not.** `hxwad6qr58` exists precisely to block
+re-proposal of `z4mgz3a4ab` and `478rhhmhb0` on the same evidence, and re-running the sweep
+mechanically would violate a decision Sean already made. Re-proposal is appropriate only on *new*
+evidence — for example, if either footgun bites again after 2026-08-01.
+
+One content change since the sweep, which does not affect its outcome: `478rhhmhb0` was superseded
+on 2026-08-02 by `1f7sr0y1xg`, because the underlying asymmetry it described was fixed in commit
+`c84fad6f` (`internal/store` now honors `ENGRAM_REQUIRE_QDRANT`). The decline was about *rule
+status*, not about the record's accuracy, so superseding the record leaves the decline intact.
