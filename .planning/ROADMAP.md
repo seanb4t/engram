@@ -444,6 +444,23 @@ implemented. This roadmap deliberately does **not** commit to a specific fix.
 Separated from v0.12.x Phase 5 because the shape differs — investigation-gated, and the surfaces are skill
 markdown and tool descriptions rather than Go correctness.
 
+**Plans:** 3 plans
+
+Plans:
+
+- [ ] 06-01-PLAN.md — de-bury the permission: `### Proposing a rule` with two observable triggers, the inline protocol, the `rule-declined` record, the skill `description` cue, and the tool-reference/`CLAUDE.md` mirrors; closes REQ-rule-capture-investigation by citation (wave 1)
+- [ ] 06-02-PLAN.md — `### Rule hygiene` (duplicates, contradictions, rot, the code-verified correction table, user-blessed deletion, the `list_rules(full=true)` price) and `### One-time rule backfill sweep` (wave 2)
+- [ ] 06-03-PLAN.md — run the sweep live against the three named gotchas, record `06-DEMONSTRATION.md`, close the remaining requirements and the phase-close gates (wave 3)
+
+**Note on execution:** waves 1, 2, and 3, strictly sequential — all three plans edit
+`skill/engram/skills/curating-memory/SKILL.md` and two of them edit
+`docs-site/.../reference/tools.md`, so there is no parallelism to take. `git.branching_strategy` is
+`none`, so every commit needs an explicit pathspec (`git commit -m "..." -- <files>`); `git add -A`
+and `git commit -am` are banned. 06-01 and 06-03 each carry one blocking human checkpoint: a cold
+read of the corrected section in wave 1 (deliberately early — it is the only detector for this
+phase's core risk) and the live sweep in wave 3. The phase should change no Go; the plans gate on
+`git diff --exit-code <base> -- '*.go' go.mod go.sum` and treat any Go diff as scope drift.
+
 ---
 
 ## Progress
