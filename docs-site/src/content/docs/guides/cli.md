@@ -16,8 +16,8 @@ true`, or a UI-enabled deployment) — see [Configuration](/guides/configure/).
 
 | Command | Purpose |
 |---------|---------|
-| `engram search --server <url> --query <text>` | Vector search over stored memories |
-| `engram list --server <url>` | Paged, filtered recall |
+| `engram search --server <url> --query <text> --scope <scope>` | Vector search over stored memories |
+| `engram list --server <url> --scope <scope>` | Paged, filtered recall |
 | `engram store --server <url> --content <text> --scope <scope>` | Write a memory (the only write verb) |
 
 Run `engram <verb> --help` for the full flag list of each command — every
@@ -40,6 +40,25 @@ deliberate: a credential must never be able to reach `argv`, `ps` output, or
 shell history. Omitting both is legal — an anonymous call against a
 no-issuer server is a normal request, not an error.
 
+## Recall scope selection
+
+`engram search` and `engram list` each require exactly one of two flags — there
+is no default that silently picks one for you:
+
+| Flag | Purpose |
+|------|---------|
+| `--scope` | Limit recall to one scope; omit and pass `--cross-spine` to span every scope you can read; mutually exclusive with `--cross-spine`. |
+| `--cross-spine` | Span every scope you can read; mutually exclusive with `--scope`. |
+
+Passing neither, or passing both, is rejected by the CLI itself — before any
+network call — with exit `2`. The server would in fact accept `--scope`
+together with `cross_spine=true`, silently discarding the scope and logging
+the discard at Info on the server side, where the calling agent never sees
+it. The CLI is deliberately stricter than the server on this one combination:
+an explicitly-typed filter being discarded without the caller learning about
+it is exactly the kind of surprise this interface is designed to avoid, so
+the client rejects the pair outright rather than forwarding it.
+
 ## Output contract
 
 Data goes to stdout as one JSON object per invocation, mirroring the Connect
@@ -48,6 +67,25 @@ response's own field names (`memories`, `total`, `next_page_token`, `id`,
 errors — goes to stderr, so `engram search ... | jq` is always safe. An empty
 result set is a success: `engram search` and `engram list` exit `0` with
 `"memories":[]`, never `null`.
+
+On a `--cross-spine` call, text-mode output for both `engram search` and
+`engram list` appends a coverage footer after the table:
+
+```text
+searched_scopes: 3
+```
+
+or, when the server reports the authorized span was truncated:
+
+```text
+searched_scopes: 3  scopes_truncated: true
+```
+
+The footer reports a **count** of the scopes searched, never the scope names
+themselves. It prints only on a `--cross-spine` call — output for every other
+invocation is unchanged, byte-for-byte, from before this capability existed.
+The JSON lane already carried `searched_scopes` and `scopes_truncated` on
+every response before this release and is unaffected by this change.
 
 ## Exit codes
 

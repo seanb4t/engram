@@ -109,10 +109,11 @@ The backfill is payload-only and can safely run alongside read traffic.
 
 ## v0.12.0 — Field-attributed, hint-carrying argument rejections
 
-This release ships five changes: three affecting how engram rejects a
+This release ships six changes: three affecting how engram rejects a
 malformed or invalid argument (full grammar and vocabulary: the
 [error envelope reference](/reference/errors/)), plus a per-lane chat/summarize
-credential and a reindex resume correctness fix.
+credential, a reindex resume correctness fix, and the CLI reaching cross-spine
+recall.
 
 ### 1. Argument-validation message text changed
 
@@ -181,3 +182,23 @@ earlier version should re-run it — size the blast radius first with
 [Reindex → Repairing a pre-patch resume](/guides/reindex/#repairing-a-pre-patch-resume)
 for the full procedure; its one limit is that a source collection deleted
 after cutover makes the correct tags unrecoverable.
+
+### 6. `engram search` and `engram list` can now request cross-spine recall
+
+Cross-spine recall (`cross_spine`, plus the `searched_scopes` /
+`scopes_truncated` provenance fields) shipped on the Connect API in an
+earlier release in this line, but the CLI never wired it — the flag did not
+exist and neither request ever set the field. `engram search` and
+`engram list` now accept `--cross-spine`, mutually exclusive with `--scope`;
+see [Recall scope selection](/guides/cli/#recall-scope-selection) for the
+full rule and the coverage footer it adds to text-mode output.
+
+**Who should act:** existing CLI users who could not reach cross-spine recall
+from a shell before. **What action is needed:** none to keep current
+behavior — a scope-bearing invocation is unchanged. A recall invocation that
+omitted `--scope` still fails, but now fails client-side with no round trip
+to the server, exiting `2` instead of waiting on a network call to find out.
+Anyone who wants the wider recall opts in explicitly with `--cross-spine`.
+This is purely additive: no protobuf field was added, no wire schema
+changed, and no existing invocation's behavior changed beyond where the
+rejection now happens.
