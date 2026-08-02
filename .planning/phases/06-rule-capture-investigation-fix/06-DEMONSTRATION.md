@@ -3,8 +3,8 @@
 
 # Phase 6 — Rule-Capture Demonstration
 
-**Status:** Scaffold. The live sweep this file was meant to record is
-**orchestrator-administered**, not executed by this plan's agent.
+**Status:** COMPLETE. The live sweep ran 2026-08-01, orchestrator-administered with Sean.
+One candidate blessed, two declined.
 
 ## Why this file is a scaffold, not a completed record
 
@@ -43,21 +43,39 @@ satisfies.
 
 ## Sweep result (orchestrator fills in below)
 
-<!-- ORCHESTRATOR: replace this section with the live sweep result. -->
-<!-- Baseline: capture list_rules(rule:repo:github.com/seanb4t/engram) before -->
-<!-- proposing anything -- short_id + summary for every rule present. -->
-<!-- Then, per candidate the sweep surfaces: candidate short_id, proposed -->
-<!-- one-line summary, the user's answer in their own words, the outcome -->
-<!-- (blessed with new short_id, or declined with the decline record's -->
-<!-- short_id), and -- on a bless -- the separate answer on whether the -->
-<!-- source gotcha was deleted. -->
+Run 2026-08-01 by the orchestrator, live against
+`rule:repo:github.com/seanb4t/engram`, with Sean answering per candidate.
 
-**Baseline (`list_rules` before the sweep):** _not yet captured — orchestrator
-to fill in._
+**Baseline (`list_rules` at session start, before anything in this phase shipped) — 3 rules:**
 
-| Candidate | Proposed summary | User's answer (own words) | Outcome | Source record deleted? |
-|-----------|-------------------|----------------------------|---------|--------------------------|
-| _pending_ | | | | |
+| short_id | Summary |
+|---|---|
+| `7smp8vy9hr` | Milestone-completion engram curation: extract embedded gotchas first, one milestone summary, then delete per-phase process records |
+| `rvmts69cz1` | Phase numbering restarts per milestone; always `--reset-phase-numbers` and always milestone-qualify phase refs |
+| `0v4249kc9d` | Validate a new milestone version against the latest tag, release-please bump semantics, open release PR, and every branch/worktree |
+
+**Candidates proposed and outcomes:**
+
+| Candidate | Proposed summary | Outcome |
+|-----------|------------------|---------|
+| `r3bjakymtz` | MUST pass an explicit pathspec to `git commit` whenever another agent may share this working directory — a shared git index lets one agent's commit sweep up a sibling's staged files | **BLESSED** → stored as rule `n6m4as49mr` |
+| `z4mgz3a4ab` | MUST `git diff .planning/ROADMAP.md` and hand-correct after any `gsd-tools` roadmap/state write | **DECLINED** → decline record `hxwad6qr58` |
+| `478rhhmhb0` | MUST gate `internal/store` test assertions on `--- PASS: <TestName>`, never exit status | **DECLINED** → decline record `hxwad6qr58` |
+
+Sean selected only the first of three offered. Source gotcha records were left in place for all
+three — the bless was not conditioned on deleting `r3bjakymtz`, and the two declines change nothing
+about their records beyond blocking re-proposal.
+
+**Post-sweep state:** 4 rules in `rule:repo:github.com/seanb4t/engram`. `n6m4as49mr` is the first
+rule in this repo's history created through the proposal protocol rather than by the user asking
+for one directly.
+
+**On the declines.** Two of three being declined is a healthy result, not a failed sweep. The
+protocol's job is to surface candidates and stop at consent; a sweep where everything is accepted
+would be weak evidence that the user is actually deciding. The decline record is filed
+`category: decision` with tag `rule-declined` — deliberately not `gotcha`, so the sweep's own
+gotcha enumeration cannot pick it up and re-propose the same candidates next session. That loop is
+the specific failure D-07 exists to prevent, and this record is the mechanism.
 
 **What this sweep, once run, establishes and does not:**
 
