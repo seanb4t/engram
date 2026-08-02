@@ -48,10 +48,10 @@ coverage:
     description: "The error-envelope reference page documents the grammar (single-field and relational examples), all ten hint codes checked off one by one against argerror.go, and the class-to-Connect-code table"
     requirement: "REQ-error-hint-envelope"
     verification:
-      - kind: static
+      - kind: other
         ref: "rg -c '^\\| `[a-z_]+` \\|' docs-site/src/content/docs/reference/errors.md == 10 (floor was >=10)"
         status: pass
-      - kind: static
+      - kind: other
         ref: "rg -q 'field=' and rg -q 'hint=' docs-site/src/content/docs/reference/errors.md"
         status: pass
     human_judgment: false
@@ -59,7 +59,7 @@ coverage:
     description: "curating-memory SKILL.md tells an agent to branch on field+hint (not wording), gives concrete retry patterns for too_long/required/mutually_exclusive+ordering, points to the errors reference instead of duplicating it, and states the summary bound with the value cross-checked against the config registry's default"
     requirement: "REQ-error-hint-envelope"
     verification:
-      - kind: static
+      - kind: other
         ref: "rg -q 'hint' skill/engram/skills/curating-memory/SKILL.md; value cross-check (512) present in both SKILL.md and CLAUDE.md"
         status: pass
     human_judgment: false
@@ -67,7 +67,7 @@ coverage:
     description: "guides/configure.md documents the debug-level authz decision log's actual field names (allow, action, bucket, policy_ids, policy_error_count), what it does NOT carry (Cedar trace, error message text, owner/scope), and the per-request volume bound"
     requirement: "REQ-authz-decision-diagnostics"
     verification:
-      - kind: static
+      - kind: other
         ref: "rg -q 'policy' docs-site/src/content/docs/guides/configure.md; field names transcribed from internal/store/store.go's decideBucket/decideRecord slog.DebugContext calls"
         status: pass
     human_judgment: false
@@ -75,7 +75,7 @@ coverage:
     description: "guides/upgrade.md's v0.12.0 entry names all three wire-visible changes, explicitly scopes the MCP 401 auth body OUT (pinned by TestMCP401BodyByteIdentical), and states the CLI exit-code table is unchanged, backed by the shipped TestExitCodeForConnectErrTable"
     requirement: "REQ-error-hint-envelope"
     verification:
-      - kind: static
+      - kind: other
         ref: "rg -q 'field=' and rg -q 'OutOfRange|FailedPrecondition' docs-site/src/content/docs/guides/upgrade.md"
         status: pass
       - kind: unit

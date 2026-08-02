@@ -75,7 +75,7 @@ coverage:
       - kind: unit
         ref: "internal/server/argattribution_test.go#TestHintNeverEchoesValue (7 subtests, RED transcript recorded)"
         status: pass
-      - kind: static
+      - kind: other
         ref: "region-scoped whole-file `got %q` zero-count verify gate"
         status: pass
     human_judgment: false

@@ -79,7 +79,7 @@ coverage:
       - kind: unit
         ref: "internal/server/schemarequired_test.go#TestSchemaRequiredMovedToGoLevel (25 subtests, >=24 floor)"
         status: pass
-      - kind: static
+      - kind: other
         ref: "rg -c 'json:\"[a-z_]+\"' internal/server/tools.go == 0, internal/server/rules.go == 4 (ruleView's own 4 result-type tags, region-scoped)"
         status: pass
     human_judgment: false
@@ -95,7 +95,7 @@ coverage:
     description: "update_memory's MCP lane still requires content on every call (validateUpdateArgs, closure-only); the Connect field-mask lane's legitimate nil Content still reaches deps.updateMemory unrejected"
     requirement: "REQ-validation-error-attribution"
     verification:
-      - kind: static
+      - kind: other
         ref: "awk-scoped, comment-stripped zero-count of validateUpdateArgs inside deps.updateMemory's body"
         status: pass
       - kind: unit
@@ -106,7 +106,7 @@ coverage:
     description: "The embeddings success-decode bound is sized from ENGRAM_EMBED_DIM (D-16), completing plan 04-03's option, with a package-default fallback on a parse failure"
     requirement: "REQ-embed-provider-error-body"
     verification:
-      - kind: static
+      - kind: other
         ref: "rg -q 'WithMaxResponseBytes' internal/server/tools.go"
         status: pass
       - kind: integration

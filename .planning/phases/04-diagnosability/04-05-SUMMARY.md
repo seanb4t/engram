@@ -61,7 +61,7 @@ coverage:
       - kind: unit
         ref: "internal/server/connectargerror_test.go#TestConnectValidationCodeMapping (12 subtests, 5 handler-driven, RED transcript recorded)"
         status: pass
-      - kind: static
+      - kind: other
         ref: "region-scoped, comment-stripped zero-count of connect.NewError(connect.CodeInvalidArgument, ...) in connectapi.go (pre-task value 7)"
         status: pass
     human_judgment: false

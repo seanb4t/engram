@@ -65,6 +65,7 @@ coverage:
         ref: "manual text review of all three edited files against the exact sentence quoted in Decisions Made below"
         status: pass
     human_judgment: true
+    rationale: "Whether the prose says the scopes the caller is *authorized to read* rather than the scopes that *produced hits* is a comprehension judgment, not a pattern match. A wording gate would pass on a reworded-but-still-wrong sentence and fail on a correct rewrite. The distinction is load-bearing: searched_scopes reports the span the query covered, so it can legitimately name a scope that contributed zero hits (see 03-VALIDATION.md, Known Precision Note)."
   - id: D4
     description: "The repo's memory contract in CLAUDE.md names the new recall dimension alongside tags, the created-at window, and cursor."
     requirement: "REQ-cross-spine-search"
