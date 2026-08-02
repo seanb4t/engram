@@ -1,6 +1,6 @@
 ---
 name: curating-memory
-description: Use when storing or updating durable project memory via the engram MCP tools — enforces the engram-vs-beads routing gate (engram is preferred over `bd remember`/`bd memories` for durable facts), durable-only capture, search-before-store, supersede-on-contradiction, and the two-tier spine/overlay scope. Trigger when the user states a durable decision/preference/convention/gotcha, when the user explicitly asks to remember something (including a time-bound reminder, due date, or "not before"/expiry — even if it looks task-shaped), whenever you are about to record a durable fact and the repo also has a beads memory store (prefer engram; do not write it to `bd remember`), on the session-start recall and capture nudges, whenever a durable fact you are about to store contradicts or corrects one already in the store (supersede it, do not overwrite it), and before any mcp__engram__store_memory / schedule_memory / supersede_memory / update_memory / delete_memory call.
+description: Use when storing or updating durable project memory via the engram MCP tools — enforces the engram-vs-beads routing gate (engram is preferred over `bd remember`/`bd memories` for durable facts), durable-only capture, search-before-store, supersede-on-contradiction, and the two-tier spine/overlay scope. Trigger when the user states a durable decision/preference/convention/gotcha, when the user explicitly asks to remember something (including a time-bound reminder, due date, or "not before"/expiry — even if it looks task-shaped), whenever you are about to record a durable fact and the repo also has a beads memory store (prefer engram; do not write it to `bd remember`), on the session-start recall and capture nudges, whenever a durable fact you are about to store contradicts or corrects one already in the store (supersede it, do not overwrite it), and before any mcp__engram__store_memory / schedule_memory / supersede_memory / update_memory / delete_memory / store_rule / list_rules call, when a fact you are about to store is phrased as a MUST / NEVER / ALWAYS constraint on future behavior (propose a rule, never promote one), and when a footgun the store already records is hit again.
 ---
 
 # Curating Memory
@@ -48,12 +48,76 @@ keys, timestamps, one-off tool output, or anything trivially re-derivable.
 
 A **rule** is normative ground truth for the repo/project — a MUST-follow
 constraint, always shared, stored via `store_rule` in a `rule:repo:*` /
-`rule:project:*` scope. Store a rule **only on explicit user instruction**: if
-you believe something should be a rule, propose it to the user and let them
-bless it — never promote one unilaterally. A rule's `summary` is a single line
-(the session-start index entry). This complements — it does not replace — the
+`rule:project:*` scope. Store a rule **only on explicit user instruction** —
+never promote one unilaterally. A rule's `summary` is a single line (the
+session-start index entry). This complements — it does not replace — the
 decision / preference / convention / gotcha routing above; a rule is the
 narrower, user-blessed, normative case.
+
+### Proposing a rule
+
+Offer a rule the moment you notice a candidate. Proposing is not promoting —
+the user still decides.
+
+Either of two triggers is sufficient:
+
+- **Repeat-hit on a footgun.** The `search_memory` call you already make
+  before every store surfaces an existing record describing the same problem
+  you have just hit again. The store knew, and knowing did not prevent the
+  hit — that gap is what a rule closes. This trigger costs nothing new: the
+  search-before-store step already runs and already returns the record.
+- **Normative phrasing at capture time.** The `content` of the record you are
+  about to write via `store_memory` or `schedule_memory` is phrased as a
+  constraint on future behavior — MUST, MUST NOT, NEVER, ALWAYS, or a bare
+  imperative with no exception. It is already a constraint; the only open
+  question is whether it should be normative ground truth rather than a
+  `gotcha`. Scope this to the record's own content, at the moment you are
+  about to write it — not to conversation, to text you are quoting, or to a
+  requirement you are restating. A trigger that fires on every MUST-shaped
+  sentence in a session is the nag that gets the whole mechanism turned off.
+
+Propose inline, at the moment the trigger fires — never batched to a
+session-end sweep. The case for a candidate is strongest while the context
+that produced it is live.
+
+1. Say what you noticed and why it reads as normative. One or two sentences.
+   This is a note, not a pitch.
+2. Show the exact one-line `summary` you would store as the index entry, and
+   the scope you would store it in (`rule:repo:*` for a repo constraint,
+   `rule:project:*` for one that spans repos). Showing the actual index line
+   is what lets the user judge it in one read.
+3. Ask once, then stop. Do not re-ask within the session, do not restate the
+   case after a no, and do not attach the proposal to an unrelated interrupt.
+   **A user who has to argue you down will disable the trigger, and then the
+   store gets nothing.**
+4. On yes, call `store_rule` and cite the resulting `short_id`. On no, record
+   the decline as below, then carry on with the `store_memory` you were about
+   to make — the fact is still worth keeping as a `gotcha` or `convention`,
+   it just is not normative ground truth.
+
+On a decline, store an ordinary memory with `category: decision`, tag
+`rule-declined`, `source: user-said`, in the spine scope. Its content states
+three things: what was proposed as a rule, that the user declined **rule
+status** for it and when, and that the underlying fact remains true and stays
+where it is. This is `decision`, not `gotcha` — a decline filed as a gotcha
+would be re-enumerated by the one-time backfill sweep and re-proposed, which
+is exactly the nag this record exists to prevent.
+
+Before proposing, check whether the `search_memory` you already ran surfaced
+a record tagged `rule-declined` covering this concern — if it did, do not
+propose it again. Mention it only if the user's own words reopen the
+question. This is a check, not a block: a user whose tolerance has changed
+can still be met, but the default is silence.
+
+A proposal that fires too often is the failure mode this whole mechanism
+lives or dies by. Do not propose when: the fact is scoped to one file or one
+session, not normative; the candidate was already declined; you have already
+made one proposal this turn; or you cannot state the constraint as a single
+index line, which means you do not yet understand it well enough to propose
+it.
+
+This adds a narrower test on top of the routing and junk-taxonomy sections
+above; it does not replace them.
 
 ## Tagging
 
