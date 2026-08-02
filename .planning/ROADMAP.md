@@ -448,8 +448,8 @@ markdown and tool descriptions rather than Go correctness.
 
 Plans:
 
-- [ ] 06-01-PLAN.md — de-bury the permission: `### Proposing a rule` with two observable triggers, the inline protocol, the `rule-declined` record, the skill `description` cue, and the tool-reference/`CLAUDE.md` mirrors; closes REQ-rule-capture-investigation by citation (wave 1)
-- [ ] 06-02-PLAN.md — `### Rule hygiene` (duplicates, contradictions, rot, the code-verified correction table, user-blessed deletion, the `list_rules(full=true)` price) and `### One-time rule backfill sweep` (wave 2)
+- [x] 06-01-PLAN.md — de-bury the permission: `### Proposing a rule` with two observable triggers, the inline protocol, the `rule-declined` record, the skill `description` cue, and the tool-reference/`CLAUDE.md` mirrors; closes REQ-rule-capture-investigation by citation (wave 1)
+- [x] 06-02-PLAN.md — `### Rule hygiene` (duplicates, contradictions, rot, the code-verified correction table, user-blessed deletion, the `list_rules(full=true)` price) and `### One-time rule backfill sweep` (wave 2)
 - [ ] 06-03-PLAN.md — run the sweep live against the three named gotchas, record `06-DEMONSTRATION.md`, close the remaining requirements and the phase-close gates (wave 3)
 
 **Note on execution:** waves 1, 2, and 3, strictly sequential — all three plans edit
@@ -519,7 +519,7 @@ phase's core risk) and the live sweep in wave 3. The phase should change no Go; 
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete | 2026-08-01 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete | 2026-08-01 |
-| 6. Rule Capture — Investigation & Fix | v0.12.x | 0/3 | Pending | — |
+| 6. Rule Capture — Investigation & Fix | v0.12.x | 2/3 | In Progress | — |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.

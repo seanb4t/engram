@@ -2,32 +2,45 @@
 gsd_state_version: 1.0
 milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
-current_phase_name: Operator Config & Reindex Correctness
-status: phase_complete
-stopped_at: "Completed 05-03-PLAN.md (wave 2, plan 3 of 3) - v0.12.x Phase 5 (Operator Config & Reindex Correctness) is COMPLETE. Corrected configure.md's shared-key assertion (D-06: the three now-false statements removed, the residual credential-exposure warning preserved in opt-out form), added reindex.md's Repairing a pre-patch resume section (mechanism-then-limit ordering per D-15), and upgrade.md's v0.12.0 ### 4/### 5 entries. Ran the full phase-close gate set plus every prohibition and edge gate - all green. REQ-reindex-stale-repair marked COMPLETE (REQ-per-lane-api-key and REQ-reindex-resume-tags were already complete from 05-01/05-02); all three of Phase 5's requirements are now done. Next: v0.12.x Phase 6 (Rule Capture - Investigation & Fix) - start with /gsd-discuss-phase or /gsd-plan-phase for 06-01."
-last_updated: "2026-08-01T22:37:45Z"
+current_phase_name: Rule Capture — Investigation & Fix
+status: in_progress
+stopped_at: "Completed 06-02-PLAN.md (wave 2, plan 2 of 3) - added ### Rule hygiene (duplicates/contradictions/rot, D-11/D-15-priced full-text check, the D-09/D-09a-conflict-honoring four-row correction table, D-10's user-blessed deletion gate) and ### One-time rule backfill sweep (D-12's five-step procedure reusing ### Proposing a rule's test/protocol by reference) to curating-memory/SKILL.md, then mirrored the invariants into docs-site/reference/tools.md's store_rule/list_rules/delete_memory entries. REQ-rule-curation-hygiene marked COMPLETE. task (lint+full suite) green; git diff --exit-code -- '*.go' go.mod go.sum clean against phase base ad922f27. Next: 06-03 - run the backfill sweep live against the three D-03 candidates, record 06-DEMONSTRATION.md, close REQ-rule-capture-intervention (citing 06-COLD-READ.md's PASS) and the phase-close gates."
+last_updated: "2026-08-02T00:53:24Z"
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 5
-  total_plans: 23
-  completed_plans: 23
-  percent: 100
-current_phase: 05
+  total_plans: 26
+  completed_plans: 25
+  percent: 96
+current_phase: 06
 last_activity: 2026-08-01
-last_activity_desc: "v0.12.x Phase 5 plan 05-03 executed (wave 2, depends on both wave-1 plans having landed on the shared working directory, git.branching_strategy: none, explicit-pathspec commits per the Concurrency contract). Task 1: rewrote configure.md's shared-key callout ('Each lane can carry its own API key') removing the three now-false statements (no separate key for the chat base URL; the key is shared across both lanes; per-lane credentials unsupported this milestone) while preserving the residual credential-exposure warning (T-05-03) in corrected opt-out form; added the ENGRAM_OPENAI_CHAT_API_KEY table row directly after ENGRAM_OPENAI_CHAT_BASE_URL; fixed both stale cross-references; mentioned memory.summarize.chatApiKeySecret. Task 2: rewrote reindex.md's ## Resuming an interrupted run from a single content-equality claim to the actual three-part conjunction (content, order-independent tags, embedder identity), stating the tag-reorder residual as deliberate; updated the --dry-run/--resume flag rows and ## Output with the actual dry-run --resume wording quoted from cmd/engram/reindex.go; added ## Repairing a pre-patch resume (what went wrong, the re-scroll-fresh mechanism stated before the D-15 limit as its cause, the size-then-run procedure naming only the existing --resume/--dry-run flags, the deleted-source limit stated plainly with no best-effort recovery implied per D-15's explicit prohibition). Task 3: widened upgrade.md's v0.12.0 lead paragraph from three to five changes; added ### 4 (chat credential, no action required unless the chat base URL was repointed) and ### 5 (resume tags defect, prescribing --dry-run --resume then --resume, linking to the reindex guide's repair section), 1-3 left unmodified; then ran task (lint+full suite), go vet ./..., task license:check, task chart:validate, task proto:lint, task proto:gen (zero drift), task ui:build (zero drift), git diff --exit-code dc98ec0c -- go.mod go.sum, all 6 phase-wide prohibition gates, and all 4 phase-wide edge gates (TestReindexResumeTags, TestReindexDryRunWritesNothing, TestSummarizerFromConfigChatAPIKey via the mandated ^--- PASS: <TestName> \\( grep with zero --- SKIP, plus the go.mod/go.sum diff) - every gate green, all results recorded in 05-03-SUMMARY.md's Phase-Close Gate Results table. One Rule-1 deviation: also corrected the --resume flag-table row's stale 'identical content' description while already editing that file for Task 2 (same class of falsified-prose defect the task's own acceptance criteria targeted, one row above the text explicitly named). Three commits (6f260fae Task 1, 6d2b622d Task 2, b922d715 Task 3), each staged with an explicit pathspec. REQ-reindex-stale-repair marked complete by hand-edit in REQUIREMENTS.md; ROADMAP.md's Phase 5 checkbox, the 05-03 plan checkbox, and the progress-table row (3/3, Complete, 2026-08-01) hand-edited per this plan's explicit warning that gsd-tools' roadmap.update-plan-progress/state.advance-plan corrupted this repo's flat-ROADMAP/hand-maintained-STATE shape in prior phases - git diff confirmed clean, correctly-formatted diffs on both files before committing. **v0.12.x Phase 5 (Operator Config & Reindex Correctness) is now COMPLETE - all 3 plans, all 3 requirements.**"
+last_activity_desc: "v0.12.x Phase 6 plan 06-02 executed (wave 2, depends on 06-01, git.branching_strategy: none, explicit-pathspec commits). Task 1 added ### Rule hygiene to curating-memory/SKILL.md immediately after ### Proposing a rule: a two-moment cadence (bless-time, advisory-fire — not the milestone-completion moment the plan's action text also named, since verifying rule 7smp8vy9hr's live content required an mcp__engram__get_memory call this execution environment could not make; dropped per the plan's own authorized fallback), D-11/D-15's honest pricing (ruleView carries no content; the real contradiction check is one list_rules(full=true) call, not a get_memory per rule), a code-verified four-row correction table honoring the plan's decision_conflict block (refine via update_memory, replace-in-place via store_rule(id=...) carrying short_id forward, retire via delete-then-re-store, cannot-unshare rejected), D-10's user-blessed deletion gate in the same sentence as delete_memory, and a Keep/Merge/Flag/Retire disposition vocabulary. Task 2 added ### One-time rule backfill sweep: D-12's five-step procedure (confirm scopes, enumerate category:gotcha via list_memory(categories=[gotcha], full=true) paging on cursor and skipping rule-declined records, apply ### Proposing a rule's normative test by reference, decide per candidate with source-record deletion as a separate consent question, report a summary), rejecting batched consent explicitly. Task 3 mirrored the invariants into docs-site/reference/tools.md's store_rule/list_rules/delete_memory entries, prose only, no table rows touched. All per-task verify gates green, task (lint+full suite) green, git diff --exit-code -- '*.go' go.mod go.sum clean against phase base ad922f27. REQ-rule-curation-hygiene closed by hand-edit in REQUIREMENTS.md; ROADMAP.md's 06-01/06-02 plan checkboxes and the progress-table row (2/3, In Progress) hand-edited per the plan's explicit warning that gsd-tools' roadmap.update-plan-progress/state.advance-plan are unreliable on this repo's hand-maintained files. Commits: f5cc26fd (Task 1), fcab5ff5 (Task 2), 4ac8ad74 (Task 3). D-03's three candidates traced on paper through the sweep procedure (06-02-SUMMARY.md) — all three enumerate and pass the test, ready for 06-03 to run live. **v0.12.x Phase 6 is 2/3 plans complete; 06-03 remains.**
+
+PRIOR: v0.12.x Phase 5 plan 05-03 executed (wave 2, depends on both wave-1 plans having landed on the shared working directory, git.branching_strategy: none, explicit-pathspec commits per the Concurrency contract). Task 1: rewrote configure.md's shared-key callout ('Each lane can carry its own API key') removing the three now-false statements (no separate key for the chat base URL; the key is shared across both lanes; per-lane credentials unsupported this milestone) while preserving the residual credential-exposure warning (T-05-03) in corrected opt-out form; added the ENGRAM_OPENAI_CHAT_API_KEY table row directly after ENGRAM_OPENAI_CHAT_BASE_URL; fixed both stale cross-references; mentioned memory.summarize.chatApiKeySecret. Task 2: rewrote reindex.md's ## Resuming an interrupted run from a single content-equality claim to the actual three-part conjunction (content, order-independent tags, embedder identity), stating the tag-reorder residual as deliberate; updated the --dry-run/--resume flag rows and ## Output with the actual dry-run --resume wording quoted from cmd/engram/reindex.go; added ## Repairing a pre-patch resume (what went wrong, the re-scroll-fresh mechanism stated before the D-15 limit as its cause, the size-then-run procedure naming only the existing --resume/--dry-run flags, the deleted-source limit stated plainly with no best-effort recovery implied per D-15's explicit prohibition). Task 3: widened upgrade.md's v0.12.0 lead paragraph from three to five changes; added ### 4 (chat credential, no action required unless the chat base URL was repointed) and ### 5 (resume tags defect, prescribing --dry-run --resume then --resume, linking to the reindex guide's repair section), 1-3 left unmodified; then ran task (lint+full suite), go vet ./..., task license:check, task chart:validate, task proto:lint, task proto:gen (zero drift), task ui:build (zero drift), git diff --exit-code dc98ec0c -- go.mod go.sum, all 6 phase-wide prohibition gates, and all 4 phase-wide edge gates (TestReindexResumeTags, TestReindexDryRunWritesNothing, TestSummarizerFromConfigChatAPIKey via the mandated ^--- PASS: <TestName> \\( grep with zero --- SKIP, plus the go.mod/go.sum diff) - every gate green, all results recorded in 05-03-SUMMARY.md's Phase-Close Gate Results table. One Rule-1 deviation: also corrected the --resume flag-table row's stale 'identical content' description while already editing that file for Task 2 (same class of falsified-prose defect the task's own acceptance criteria targeted, one row above the text explicitly named). Three commits (6f260fae Task 1, 6d2b622d Task 2, b922d715 Task 3), each staged with an explicit pathspec. REQ-reindex-stale-repair marked complete by hand-edit in REQUIREMENTS.md; ROADMAP.md's Phase 5 checkbox, the 05-03 plan checkbox, and the progress-table row (3/3, Complete, 2026-08-01) hand-edited per this plan's explicit warning that gsd-tools' roadmap.update-plan-progress/state.advance-plan corrupted this repo's flat-ROADMAP/hand-maintained-STATE shape in prior phases - git diff confirmed clean, correctly-formatted diffs on both files before committing. **v0.12.x Phase 5 (Operator Config & Reindex Correctness) is now COMPLETE - all 3 plans, all 3 requirements.**"
 ---
 
 <!-- RESUME HERE -->
 <!--
 NEXT COMMAND after /clear:
-    v0.12.x Phase 5 (Operator Config & Reindex Correctness) is COMPLETE — all 3 plans
+    v0.12.x Phase 6 (Rule Capture — Investigation & Fix) is 2/3 plans complete
+    (06-01, 06-02 landed; 06-03 remains). REQ-rule-capture-investigation and
+    REQ-rule-curation-hygiene are both COMPLETE. REQ-rule-capture-intervention is
+    NOT yet marked complete — its blocking condition (the cold-read checkpoint) already
+    PASSED (06-COLD-READ.md, administered by the orchestrator per D-14), but the
+    requirement closes formally in 06-03 by citation. Proceed to 06-03: run the
+    one-time rule backfill sweep LIVE against the three D-03 candidates
+    (r3bjakymtz, z4mgz3a4ab, 478rhhmhb0 — all traced through the sweep procedure on
+    paper in 06-02-SUMMARY.md and confirmed to enumerate/pass), record
+    06-DEMONSTRATION.md (doubles as the phase's criterion-3 demonstration), close
+    REQ-rule-capture-intervention, and run the full phase-close gate set. Start with
+    /gsd-plan-phase for 06-03 if not already planned, else /gsd-execute-phase.
+
+    PRIOR: v0.12.x Phase 5 (Operator Config & Reindex Correctness) is COMPLETE — all 3 plans
     (05-01, 05-02, 05-03), all 3 requirements (REQ-per-lane-api-key,
     REQ-reindex-resume-tags, REQ-reindex-stale-repair). Commits: 36b5150b, 3c11e723,
     4c426a90, 7d127ff1, b59a30b6, 5fd8b051, 7c4cb57d, 6f260fae, 6d2b622d, b922d715,
     cbc18a64. Every phase-close, prohibition, and edge gate is green on the final tree
-    (05-03-SUMMARY.md's Phase-Close Gate Results table). Proceed to v0.12.x Phase 6
-    (Rule Capture — Investigation & Fix) — start with /gsd-discuss-phase or
-    /gsd-plan-phase for 06-01.
+    (05-03-SUMMARY.md's Phase-Close Gate Results table).
 
     STANDING NOTES CARRIED FORWARD FOR PHASE 6:
 
@@ -79,7 +92,7 @@ zero diff) are green on the final tree.
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x Phase 5 — Operator Config & Reindex Correctness — ✅ COMPLETE (3/3 plans). Plan 05-01 landed the per-lane chat/summarize API key end to end (config key, `cmp.Or` construction-site fallback, end-to-end test, Helm value, checksum re-pin), closing REQ-per-lane-api-key. Plan 05-02 landed reindex resume tag-awareness (shared tag decoder, order-independent comparison, three-conjunct predicate, `--dry-run --resume` sizing), closing REQ-reindex-resume-tags. Plan 05-03 landed the operator docs (corrected shared-key prose, the pre-patch-resume repair path and its D-15 limit, v0.12.0 upgrade entries) and the full phase-close gate run, closing REQ-reindex-stale-repair. All three of Phase 5's requirements are now complete. Phase 4 (Diagnosability) is COMPLETE — 7/7 plans, all four requirements done. Next: v0.12.x Phase 6 (Rule Capture — Investigation & Fix).
+**Current focus:** v0.12.x Phase 6 — Rule Capture — Investigation & Fix — 2/3 plans landed (waves 1-2 of 3). Plan 06-01 de-buried the propose-a-rule permission (`### Proposing a rule`: two observable triggers, an inline propose-then-consent protocol, a `rule-declined` decline record) and closed `REQ-rule-capture-investigation` by citation; its cold-read checkpoint (reassigned per D-14) PASSED (`06-COLD-READ.md`). Plan 06-02 added `### Rule hygiene` (duplicates/contradictions/rot, a code-verified correction table, D-10's user-blessed deletion gate, D-11/D-15-priced full-text check) and `### One-time rule backfill sweep` (D-12's procedure), and mirrored both into the tool reference, closing `REQ-rule-curation-hygiene`. Next: 06-03 — run the sweep live, record `06-DEMONSTRATION.md`, close `REQ-rule-capture-intervention` and the phase-close gates. Phase 5 (Operator Config & Reindex Correctness) is COMPLETE — 3/3 plans, all three requirements done.
 
 ## ▶ Resume Point (session handed off 2026-08-01)
 
@@ -138,6 +151,56 @@ REQ-cross-spine-authz-verified, REQ-cross-spine-result-provenance) are complete.
 - Open follow-ups from Phase 2: #452 (no CLI request timeout), #453 (list flag exclusivity).
 
 ## Current Position
+
+Phase: v0.12.x Phase 6 (Rule Capture — Investigation & Fix) — IN PROGRESS 2026-08-01 (2/3 plans,
+waves 1-2 of 3 landed)
+Plan 06-01 (de-bury the permission, wave 1): Task 1 split `## Rules`'s buried permission from its
+prohibition and added `### Proposing a rule` — two observable triggers (repeat-hit on a footgun via
+the search-before-store step; normative phrasing at write time), a four-step inline
+propose-then-consent protocol naming `store_rule` only in the accept branch, and a
+`category:decision`/`rule-declined` decline record (so a decline is never re-enumerable by the
+06-02 backfill sweep). Task 2 mirrored the corrected gate into `docs-site/reference/tools.md`'s
+`store_rule` entry and `CLAUDE.md`'s `Rule tools:` paragraph (the purest instance of D-13's
+buried-permission defect — two prohibitions, no permission at all), and closed
+`REQ-rule-capture-investigation` by citation to `06-CONTEXT.md` D-01/D-02. Task 3 (the cold-read
+checkpoint) was reassigned per D-14 (added after the plan was written) to a fresh subagent with zero
+phase context — administered by the orchestrator, **PASSED** (`06-COLD-READ.md`): unprompted, the
+subagent named the repeat-hit trigger, checked for a prior `rule-declined` record, proposed with the
+exact scope/summary, asked once and stopped, and branched correctly on decline. `task` (lint+full
+suite) green both after Task 1 and Task 2; `git diff --exit-code -- '*.go' go.mod go.sum` clean
+against phase base `ad922f27`. Commits: `ff44bdc1` (Task 1), `baa8c932` (Task 2), `22f8b077`/
+`8f7a25fa` (SUMMARY + cold-read record).
+Plan 06-02 (rule hygiene, wave 2, depends on 06-01): Task 1 added `### Rule hygiene` immediately
+after `### Proposing a rule` — states why a rotted rule is worse than a rotted memory (MUST-follow,
+misdirects every later session), a two-moment cadence (about to bless a new rule; `list_rules`'
+curation-smell advisory fires — NOT the milestone-completion moment the plan's action text also
+named, since verifying rule `7smp8vy9hr`'s actual content required a live `mcp__engram__get_memory`
+call this execution environment could not make; the plan's own `<read_first>` explicitly authorizes
+dropping that clause rather than citing an unread cadence), prices the index honestly per D-11/D-15
+(`ruleView` carries no `content`; the real check is one `list_rules(full=true)` call, not a
+`get_memory` per rule), a code-verified four-row correction table honoring the plan's
+`<decision_conflict>` (refine via `update_memory`, replace-in-place via `store_rule(id=...)`
+carrying the `short_id` forward, retire via delete-then-re-store since rules cannot be superseded,
+cannot-unshare — rejected), D-10's user-blessed deletion gate stated in the same sentence as
+`delete_memory`, and a Keep/Merge/Flag/Retire disposition vocabulary. Task 2 added `### One-time
+rule backfill sweep` — D-12's five-step procedure (confirm scopes → enumerate `category: gotcha`
+via `list_memory(categories=[gotcha], full=true)`, paging on `cursor`, skipping `rule-declined`
+records → apply `### Proposing a rule`'s normative test by reference, not a second heuristic →
+decide per candidate with source-record deletion as its own separate consent question → report a
+summary), closing with an explicit rejection of batched consent. Task 3 mirrored the invariants into
+`docs-site/reference/tools.md`'s `store_rule` (short_id preservation on replace; supersede and
+un-share both closed paths), `list_rules` (no-`content` index note; advisory's volume-only limits in
+the same paragraph), and `delete_memory` (rule deletion server-permitted, instruction-gated only,
+never enforced) entries — prose only, no argument-table rows touched. All three tasks'
+per-task `<verify>` gates green (`rg` heading checks, `TestListRulesHandlerCurationAdvisory`
+PASS, `errRuleImmutable` 3 hits unchanged, `task lint:markdown` clean); `task` (full lint+test)
+green; `git diff --exit-code -- '*.go' go.mod go.sum` clean against phase base `ad922f27`.
+`REQ-rule-curation-hygiene` closed by citation to `06-02-SUMMARY.md`. D-03's three candidates
+(`r3bjakymtz`, `z4mgz3a4ab`, `478rhhmhb0`) traced on paper through the sweep procedure — all three
+enumerate (category `gotcha`, no `rule-declined` tag) and pass the normative test, ready for 06-03
+to run the sweep live. Commits: `f5cc26fd` (Task 1), `fcab5ff5` (Task 2), `4ac8ad74` (Task 3).
+**Next: 06-03 — run the sweep live, record `06-DEMONSTRATION.md`, close
+`REQ-rule-capture-intervention` (citing `06-COLD-READ.md`'s PASS) and the phase-close gates.**
 
 Phase: v0.12.x Phase 5 (Operator Config & Reindex Correctness) — ✅ COMPLETE 2026-08-01 (3/3 plans, both waves landed)
 Plan 05-01 (per-lane chat/summarize API key, wave 1, concurrent with 05-02 in the same shared

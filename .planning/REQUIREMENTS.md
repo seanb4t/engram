@@ -115,13 +115,20 @@ Zero new Go dependencies are required for this entire milestone.
   governs who decides, not who notices, so a recognition trigger and a proposal protocol leave it
   intact.
 
-- [ ] **REQ-rule-curation-hygiene**: A rule set that actually grows needs a curation discipline
+- [x] **REQ-rule-curation-hygiene**: A rule set that actually grows needs a curation discipline
   analogous to `curating-memory`, covering duplicate rules, contradictory rules, and rules that
   have rotted. A rotted rule is worse than a rotted memory because rules are MUST-follow — it
   misdirects every later session. Two constraints shape it: rules **cannot be superseded**
   (correction is delete-then-re-store), and rule deletion is **user-blessed symmetrically with
   creation** (the agent proposes removal, never performs it unasked). Added 2026-08-01 during
   discuss.
+  **Closed 2026-08-01:** satisfied by `06-02-SUMMARY.md` — `### Rule hygiene` gives duplicates,
+  contradictions, and rot each an observable trigger and a disposition (Keep/Merge/Flag/Retire), a
+  code-verified correction table distinguishing refine/replace-in-place (D-09a) from
+  retire-by-delete-then-re-store (D-09), and prices the contradiction check as one
+  `list_rules(full=true)` call (D-15 corrects D-11's per-rule pricing). The `### One-time rule
+  backfill sweep` documents D-12's procedure, reusing `### Proposing a rule`'s test rather than a
+  second heuristic.
 
 ### Diagnosability (#394, #360, #347)
 
@@ -255,9 +262,9 @@ Populated during roadmap creation.
 | REQ-cross-spine-search | v0.12.x Phase 3 | Complete |
 | REQ-cross-spine-authz-verified | v0.12.x Phase 3 | Complete |
 | REQ-cross-spine-result-provenance | v0.12.x Phase 3 | Complete |
-| REQ-rule-capture-investigation | v0.12.x Phase 6 | Pending |
+| REQ-rule-capture-investigation | v0.12.x Phase 6 | Complete |
 | REQ-rule-capture-intervention | v0.12.x Phase 6 | Pending |
-| REQ-rule-curation-hygiene | v0.12.x Phase 6 | Pending |
+| REQ-rule-curation-hygiene | v0.12.x Phase 6 | Complete |
 | REQ-authz-decision-diagnostics | v0.12.x Phase 4 | Complete |
 | REQ-validation-error-attribution | v0.12.x Phase 4 | Complete |
 | REQ-error-hint-envelope | v0.12.x Phase 4 | Complete |
