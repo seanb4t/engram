@@ -4,17 +4,19 @@ milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
 current_phase_name: Rule Capture — Investigation & Fix
 status: in_progress
-stopped_at: "Completed 06-02-PLAN.md (wave 2, plan 2 of 3) - added ### Rule hygiene (duplicates/contradictions/rot, D-11/D-15-priced full-text check, the D-09/D-09a-conflict-honoring four-row correction table, D-10's user-blessed deletion gate) and ### One-time rule backfill sweep (D-12's five-step procedure reusing ### Proposing a rule's test/protocol by reference) to curating-memory/SKILL.md, then mirrored the invariants into docs-site/reference/tools.md's store_rule/list_rules/delete_memory entries. REQ-rule-curation-hygiene marked COMPLETE. task (lint+full suite) green; git diff --exit-code -- '*.go' go.mod go.sum clean against phase base ad922f27. Next: 06-03 - run the backfill sweep live against the three D-03 candidates, record 06-DEMONSTRATION.md, close REQ-rule-capture-intervention (citing 06-COLD-READ.md's PASS) and the phase-close gates."
-last_updated: "2026-08-02T00:53:24Z"
+stopped_at: "Completed 06-03-PLAN.md (wave 3, plan 3 of 3, FINAL PLAN OF v0.12.x) - restored the milestone-completion cadence clause in ### Rule hygiene citing rule 7smp8vy9hr's orchestrator-verified live content; closed REQ-rule-capture-intervention by citation to 06-COLD-READ.md's PASS (not a live sweep, per the executing agent's explicit no-MCP-access reassignment); wrote 06-DEMONSTRATION.md as a scaffold (the live backfill sweep against the three D-03 candidates is orchestrator-administered, same D-14 reassignment pattern, result section left marked for the orchestrator to fill in); hand-edited REQUIREMENTS.md (all 3 REQ-rule-* now Complete) and ROADMAP.md (Phase 6: 3/3, Complete, 2026-08-01) and diffed both before committing. Full phase-close gate set green: task, go vet ./..., license:check, chart:validate, proto:lint, proto:gen/ui:build zero-drift, git diff --exit-code ad922f27 -- go.mod go.sum (clean), git diff --exit-code ad922f27 -- '*.go' internal/ cmd/ (clean) - the whole phase touched no Go and added no dependency. **v0.12.x Phase 6 is COMPLETE - all 3 plans, all 3 requirements. This was the milestone's last phase: all 6 phases of v0.12.x are now COMPLETE.** Next: the orchestrator runs the milestone lifecycle (live backfill sweep with Sean, then ship/complete-milestone)."
+last_updated: "2026-08-02T01:15:00Z"
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 26
-  completed_plans: 25
-  percent: 96
+  completed_plans: 26
+  percent: 100
 current_phase: 06
-last_activity: 2026-08-01
-last_activity_desc: "v0.12.x Phase 6 plan 06-02 executed (wave 2, depends on 06-01, git.branching_strategy: none, explicit-pathspec commits). Task 1 added ### Rule hygiene to curating-memory/SKILL.md immediately after ### Proposing a rule: a two-moment cadence (bless-time, advisory-fire — not the milestone-completion moment the plan's action text also named, since verifying rule 7smp8vy9hr's live content required an mcp__engram__get_memory call this execution environment could not make; dropped per the plan's own authorized fallback), D-11/D-15's honest pricing (ruleView carries no content; the real contradiction check is one list_rules(full=true) call, not a get_memory per rule), a code-verified four-row correction table honoring the plan's decision_conflict block (refine via update_memory, replace-in-place via store_rule(id=...) carrying short_id forward, retire via delete-then-re-store, cannot-unshare rejected), D-10's user-blessed deletion gate in the same sentence as delete_memory, and a Keep/Merge/Flag/Retire disposition vocabulary. Task 2 added ### One-time rule backfill sweep: D-12's five-step procedure (confirm scopes, enumerate category:gotcha via list_memory(categories=[gotcha], full=true) paging on cursor and skipping rule-declined records, apply ### Proposing a rule's normative test by reference, decide per candidate with source-record deletion as a separate consent question, report a summary), rejecting batched consent explicitly. Task 3 mirrored the invariants into docs-site/reference/tools.md's store_rule/list_rules/delete_memory entries, prose only, no table rows touched. All per-task verify gates green, task (lint+full suite) green, git diff --exit-code -- '*.go' go.mod go.sum clean against phase base ad922f27. REQ-rule-curation-hygiene closed by hand-edit in REQUIREMENTS.md; ROADMAP.md's 06-01/06-02 plan checkboxes and the progress-table row (2/3, In Progress) hand-edited per the plan's explicit warning that gsd-tools' roadmap.update-plan-progress/state.advance-plan are unreliable on this repo's hand-maintained files. Commits: f5cc26fd (Task 1), fcab5ff5 (Task 2), 4ac8ad74 (Task 3). D-03's three candidates traced on paper through the sweep procedure (06-02-SUMMARY.md) — all three enumerate and pass the test, ready for 06-03 to run live. **v0.12.x Phase 6 is 2/3 plans complete; 06-03 remains.**
+last_activity: 2026-08-02
+last_activity_desc: "v0.12.x Phase 6 plan 06-03 executed (wave 3, final plan of the phase and of the v0.12.x milestone; depends on 06-01/06-02, git.branching_strategy: none, explicit-pathspec commits). Executing agent had no MCP access, so Task 1 (the live backfill sweep against the three D-03 candidates via mcp__engram__list_rules/store_rule) was reassigned to the orchestrator per the spawning objective, same D-14 pattern as 06-01's cold-read reassignment. Two content changes landed instead: (1) restored the milestone-completion cadence clause in ### Rule hygiene's 'When to run these checks' paragraph, citing rule 7smp8vy9hr's orchestrator-verified live content accurately (extract reusable facts from per-phase lifecycle records first, write one authoritative milestone summary, only then delete the collapsed per-phase records, never touch reusable codebase facts) rather than paraphrasing it broader - the third cadence moment 06-02 honestly dropped for lack of live verification; (2) wrote 06-DEMONSTRATION.md as an explicit scaffold - not a completed record - stating why the live sweep is orchestrator-administered, that REQ-rule-capture-intervention closes independently on 06-COLD-READ.md's PASS verdict (a fresh subagent with zero phase context unprompted named the trigger, proposed via the corrected protocol, and stopped at consent - behavioral evidence the intervention changed agent behavior, not merely that prose was edited), and leaving a clearly-marked baseline/per-candidate-table section for the orchestrator to fill in with the real sweep result. REQUIREMENTS.md hand-edited: REQ-rule-capture-intervention flipped to [x] with a closure note citing 06-COLD-READ.md and noting errRuleImmutable's 3 unchanged hits prove the user-blessed gate stayed intact; traceability row Pending -> Complete. ROADMAP.md hand-edited: Phase 6 checklist checkbox, the 06-03 plan-line description (rewritten to describe what actually happened, not the plan's original 'run the sweep live' text), and the progress-table row (3/3, Complete, 2026-08-01) - git diff confirmed clean, intended-only edits before each commit, per this repo's standing warning that gsd-tools' roadmap.update-plan-progress/state.advance-plan are unreliable here. Full phase-close gate set green on the final tree: task (lint+full suite), go vet ./..., task license:check, task chart:validate, task proto:lint, task proto:gen (zero drift vs gen/), task ui:build (zero drift vs web/), git diff --exit-code ad922f27 -- go.mod go.sum (clean - the phase's strongest prohibition gate), git diff --exit-code ad922f27 -- '*.go' internal/ cmd/ (clean) - confirming the whole three-plan phase touched no Go code and added no dependency. Skill-heading rg gate (3 hits) and errRuleImmutable rg gate (3 hits) both green. Commits: 3cb3a3bd (cadence clause), be21fdbd (demonstration scaffold + REQ/ROADMAP close), 39f75e18 (SUMMARY). **v0.12.x Phase 6 (Rule Capture - Investigation & Fix) is now COMPLETE - all 3 plans, all 3 requirements (REQ-rule-capture-investigation, REQ-rule-capture-intervention, REQ-rule-curation-hygiene).** **This was the milestone's final phase: all 6 phases of v0.12.x (Headless Reach & Diagnosability) are now COMPLETE.** One open item, non-blocking: the orchestrator still needs to run the live backfill sweep against r3bjakymtz/z4mgz3a4ab/478rhhmhb0 with Sean and fill in 06-DEMONSTRATION.md's result section - valuable live-store evidence, but REQ-rule-capture-intervention and roadmap criterion 3 are already satisfied by 06-COLD-READ.md, so it does not block phase or milestone close. Proceed to the milestone lifecycle (ship / complete-milestone).
+
+PRIOR: v0.12.x Phase 6 plan 06-02 executed (wave 2, depends on 06-01, git.branching_strategy: none, explicit-pathspec commits). Task 1 added ### Rule hygiene to curating-memory/SKILL.md immediately after ### Proposing a rule: a two-moment cadence (bless-time, advisory-fire — not the milestone-completion moment the plan's action text also named, since verifying rule 7smp8vy9hr's live content required an mcp__engram__get_memory call this execution environment could not make; dropped per the plan's own authorized fallback), D-11/D-15's honest pricing (ruleView carries no content; the real contradiction check is one list_rules(full=true) call, not a get_memory per rule), a code-verified four-row correction table honoring the plan's decision_conflict block (refine via update_memory, replace-in-place via store_rule(id=...) carrying short_id forward, retire via delete-then-re-store, cannot-unshare rejected), D-10's user-blessed deletion gate in the same sentence as delete_memory, and a Keep/Merge/Flag/Retire disposition vocabulary. Task 2 added ### One-time rule backfill sweep: D-12's five-step procedure (confirm scopes, enumerate category:gotcha via list_memory(categories=[gotcha], full=true) paging on cursor and skipping rule-declined records, apply ### Proposing a rule's normative test by reference, decide per candidate with source-record deletion as a separate consent question, report a summary), rejecting batched consent explicitly. Task 3 mirrored the invariants into docs-site/reference/tools.md's store_rule/list_rules/delete_memory entries, prose only, no table rows touched. All per-task verify gates green, task (lint+full suite) green, git diff --exit-code -- '*.go' go.mod go.sum clean against phase base ad922f27. REQ-rule-curation-hygiene closed by hand-edit in REQUIREMENTS.md; ROADMAP.md's 06-01/06-02 plan checkboxes and the progress-table row (2/3, In Progress) hand-edited per the plan's explicit warning that gsd-tools' roadmap.update-plan-progress/state.advance-plan are unreliable on this repo's hand-maintained files. Commits: f5cc26fd (Task 1), fcab5ff5 (Task 2), 4ac8ad74 (Task 3). D-03's three candidates traced on paper through the sweep procedure (06-02-SUMMARY.md) — all three enumerate and pass the test, ready for 06-03 to run live. **v0.12.x Phase 6 is 2/3 plans complete; 06-03 remains.**
 
 PRIOR: v0.12.x Phase 5 plan 05-03 executed (wave 2, depends on both wave-1 plans having landed on the shared working directory, git.branching_strategy: none, explicit-pathspec commits per the Concurrency contract). Task 1: rewrote configure.md's shared-key callout ('Each lane can carry its own API key') removing the three now-false statements (no separate key for the chat base URL; the key is shared across both lanes; per-lane credentials unsupported this milestone) while preserving the residual credential-exposure warning (T-05-03) in corrected opt-out form; added the ENGRAM_OPENAI_CHAT_API_KEY table row directly after ENGRAM_OPENAI_CHAT_BASE_URL; fixed both stale cross-references; mentioned memory.summarize.chatApiKeySecret. Task 2: rewrote reindex.md's ## Resuming an interrupted run from a single content-equality claim to the actual three-part conjunction (content, order-independent tags, embedder identity), stating the tag-reorder residual as deliberate; updated the --dry-run/--resume flag rows and ## Output with the actual dry-run --resume wording quoted from cmd/engram/reindex.go; added ## Repairing a pre-patch resume (what went wrong, the re-scroll-fresh mechanism stated before the D-15 limit as its cause, the size-then-run procedure naming only the existing --resume/--dry-run flags, the deleted-source limit stated plainly with no best-effort recovery implied per D-15's explicit prohibition). Task 3: widened upgrade.md's v0.12.0 lead paragraph from three to five changes; added ### 4 (chat credential, no action required unless the chat base URL was repointed) and ### 5 (resume tags defect, prescribing --dry-run --resume then --resume, linking to the reindex guide's repair section), 1-3 left unmodified; then ran task (lint+full suite), go vet ./..., task license:check, task chart:validate, task proto:lint, task proto:gen (zero drift), task ui:build (zero drift), git diff --exit-code dc98ec0c -- go.mod go.sum, all 6 phase-wide prohibition gates, and all 4 phase-wide edge gates (TestReindexResumeTags, TestReindexDryRunWritesNothing, TestSummarizerFromConfigChatAPIKey via the mandated ^--- PASS: <TestName> \\( grep with zero --- SKIP, plus the go.mod/go.sum diff) - every gate green, all results recorded in 05-03-SUMMARY.md's Phase-Close Gate Results table. One Rule-1 deviation: also corrected the --resume flag-table row's stale 'identical content' description while already editing that file for Task 2 (same class of falsified-prose defect the task's own acceptance criteria targeted, one row above the text explicitly named). Three commits (6f260fae Task 1, 6d2b622d Task 2, b922d715 Task 3), each staged with an explicit pathspec. REQ-reindex-stale-repair marked complete by hand-edit in REQUIREMENTS.md; ROADMAP.md's Phase 5 checkbox, the 05-03 plan checkbox, and the progress-table row (3/3, Complete, 2026-08-01) hand-edited per this plan's explicit warning that gsd-tools' roadmap.update-plan-progress/state.advance-plan corrupted this repo's flat-ROADMAP/hand-maintained-STATE shape in prior phases - git diff confirmed clean, correctly-formatted diffs on both files before committing. **v0.12.x Phase 5 (Operator Config & Reindex Correctness) is now COMPLETE - all 3 plans, all 3 requirements.**"
 ---
@@ -22,18 +24,21 @@ PRIOR: v0.12.x Phase 5 plan 05-03 executed (wave 2, depends on both wave-1 plans
 <!-- RESUME HERE -->
 <!--
 NEXT COMMAND after /clear:
-    v0.12.x Phase 6 (Rule Capture — Investigation & Fix) is 2/3 plans complete
-    (06-01, 06-02 landed; 06-03 remains). REQ-rule-capture-investigation and
-    REQ-rule-curation-hygiene are both COMPLETE. REQ-rule-capture-intervention is
-    NOT yet marked complete — its blocking condition (the cold-read checkpoint) already
-    PASSED (06-COLD-READ.md, administered by the orchestrator per D-14), but the
-    requirement closes formally in 06-03 by citation. Proceed to 06-03: run the
-    one-time rule backfill sweep LIVE against the three D-03 candidates
-    (r3bjakymtz, z4mgz3a4ab, 478rhhmhb0 — all traced through the sweep procedure on
-    paper in 06-02-SUMMARY.md and confirmed to enumerate/pass), record
-    06-DEMONSTRATION.md (doubles as the phase's criterion-3 demonstration), close
-    REQ-rule-capture-intervention, and run the full phase-close gate set. Start with
-    /gsd-plan-phase for 06-03 if not already planned, else /gsd-execute-phase.
+    v0.12.x Phase 6 (Rule Capture — Investigation & Fix) is COMPLETE — all 3 plans
+    (06-01, 06-02, 06-03), all 3 requirements (REQ-rule-capture-investigation,
+    REQ-rule-capture-intervention, REQ-rule-curation-hygiene). This was the
+    milestone's final phase: all 6 phases of v0.12.x (Headless Reach & Diagnosability)
+    are now COMPLETE. REQ-rule-capture-intervention closed on 06-COLD-READ.md's PASS
+    verdict (administered by the orchestrator per D-14) — behavioral evidence the
+    corrected ### Proposing a rule prose actually changes agent behavior. One
+    non-blocking open item: 06-03's executing agent had no MCP access, so the live
+    backfill sweep against the three D-03 candidates (r3bjakymtz, z4mgz3a4ab,
+    478rhhmhb0) was reassigned to the orchestrator and left as a scaffold in
+    06-DEMONSTRATION.md — run it live with Sean (per-candidate bless/decline, no
+    batched consent) and fill in the result section when convenient; it is valuable
+    live-store evidence but does not gate phase or milestone completion since
+    REQ-rule-capture-intervention and roadmap criterion 3 are already satisfied.
+    Proceed to the v0.12.x milestone lifecycle — ship / complete-milestone.
 
     PRIOR: v0.12.x Phase 5 (Operator Config & Reindex Correctness) is COMPLETE — all 3 plans
     (05-01, 05-02, 05-03), all 3 requirements (REQ-per-lane-api-key,
@@ -92,7 +97,7 @@ zero diff) are green on the final tree.
 See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x Phase 6 — Rule Capture — Investigation & Fix — 2/3 plans landed (waves 1-2 of 3). Plan 06-01 de-buried the propose-a-rule permission (`### Proposing a rule`: two observable triggers, an inline propose-then-consent protocol, a `rule-declined` decline record) and closed `REQ-rule-capture-investigation` by citation; its cold-read checkpoint (reassigned per D-14) PASSED (`06-COLD-READ.md`). Plan 06-02 added `### Rule hygiene` (duplicates/contradictions/rot, a code-verified correction table, D-10's user-blessed deletion gate, D-11/D-15-priced full-text check) and `### One-time rule backfill sweep` (D-12's procedure), and mirrored both into the tool reference, closing `REQ-rule-curation-hygiene`. Next: 06-03 — run the sweep live, record `06-DEMONSTRATION.md`, close `REQ-rule-capture-intervention` and the phase-close gates. Phase 5 (Operator Config & Reindex Correctness) is COMPLETE — 3/3 plans, all three requirements done.
+**Current focus:** v0.12.x Phase 6 — Rule Capture — Investigation & Fix — COMPLETE, 3/3 plans, all 3 requirements. Plan 06-01 de-buried the propose-a-rule permission (`### Proposing a rule`: two observable triggers, an inline propose-then-consent protocol, a `rule-declined` decline record) and closed `REQ-rule-capture-investigation` by citation; its cold-read checkpoint (reassigned per D-14) PASSED (`06-COLD-READ.md`). Plan 06-02 added `### Rule hygiene` (duplicates/contradictions/rot, a code-verified correction table, D-10's user-blessed deletion gate, D-11/D-15-priced full-text check) and `### One-time rule backfill sweep` (D-12's procedure), and mirrored both into the tool reference, closing `REQ-rule-curation-hygiene`. Plan 06-03 restored the milestone-completion cadence clause (rule `7smp8vy9hr`) and closed `REQ-rule-capture-intervention` by citation to `06-COLD-READ.md`'s PASS — the live backfill sweep against the three D-03 candidates was reassigned to the orchestrator (no MCP access in the executing environment) and scaffolded in `06-DEMONSTRATION.md`, pending but non-blocking. **v0.12.x Phase 6 is the milestone's last phase — all 6 phases of v0.12.x are now COMPLETE.** Next: the orchestrator runs the milestone lifecycle (live sweep with Sean, then ship/complete-milestone).
 
 ## ▶ Resume Point (session handed off 2026-08-01)
 
@@ -152,8 +157,8 @@ REQ-cross-spine-authz-verified, REQ-cross-spine-result-provenance) are complete.
 
 ## Current Position
 
-Phase: v0.12.x Phase 6 (Rule Capture — Investigation & Fix) — IN PROGRESS 2026-08-01 (2/3 plans,
-waves 1-2 of 3 landed)
+Phase: v0.12.x Phase 6 (Rule Capture — Investigation & Fix) — ✅ COMPLETE 2026-08-02 (3/3 plans,
+all 3 waves landed — the milestone's final phase)
 Plan 06-01 (de-bury the permission, wave 1): Task 1 split `## Rules`'s buried permission from its
 prohibition and added `### Proposing a rule` — two observable triggers (repeat-hit on a footgun via
 the search-before-store step; normative phrasing at write time), a four-step inline
@@ -199,8 +204,36 @@ green; `git diff --exit-code -- '*.go' go.mod go.sum` clean against phase base `
 (`r3bjakymtz`, `z4mgz3a4ab`, `478rhhmhb0`) traced on paper through the sweep procedure — all three
 enumerate (category `gotcha`, no `rule-declined` tag) and pass the normative test, ready for 06-03
 to run the sweep live. Commits: `f5cc26fd` (Task 1), `fcab5ff5` (Task 2), `4ac8ad74` (Task 3).
-**Next: 06-03 — run the sweep live, record `06-DEMONSTRATION.md`, close
-`REQ-rule-capture-intervention` (citing `06-COLD-READ.md`'s PASS) and the phase-close gates.**
+Plan 06-03 (rule-capture close & milestone-completion cadence, wave 3, depends on 06-01/06-02, final
+plan of the phase): the executing agent had no MCP access, so the live backfill sweep (Task 1 as
+originally planned) was reassigned to the orchestrator per the spawning objective — same D-14
+reassignment pattern as 06-01's cold read. Instead: restored the milestone-completion cadence clause
+in `### Rule hygiene`'s cadence paragraph, citing rule `7smp8vy9hr`'s orchestrator-verified live
+content accurately (extract reusable facts from per-phase lifecycle records first, write one
+authoritative milestone summary, only then delete the collapsed per-phase records, never touch
+reusable codebase facts) — the third cadence moment 06-02 honestly dropped. Wrote
+`06-DEMONSTRATION.md` as an explicit scaffold, not a completed record: states the live sweep is
+orchestrator-administered, that `REQ-rule-capture-intervention` closes independently on
+`06-COLD-READ.md`'s PASS (behavioral evidence the intervention changed agent behavior, not merely
+that prose was edited), and leaves a clearly-marked baseline/per-candidate-table section for the
+orchestrator to fill in with the real sweep result. `REQUIREMENTS.md` hand-edited: all 3
+`REQ-rule-*` requirements now `[x]` Complete, traceability table updated. `ROADMAP.md` hand-edited:
+Phase 6 checklist checkbox, 06-03 plan-line description (rewritten to describe what actually
+happened), progress-table row (`3/3`, `Complete`, `2026-08-01`) — `git diff` confirmed clean,
+intended-only edits before each commit. Full phase-close gate set green: `task`, `go vet ./...`,
+`task license:check`, `task chart:validate`, `task proto:lint`, `task proto:gen`/`task ui:build`
+(both zero-drift), `git diff --exit-code ad922f27 -- go.mod go.sum` (clean — the phase's strongest
+prohibition gate), `git diff --exit-code ad922f27 -- '*.go' internal/ cmd/` (clean) — the whole
+three-plan phase touched no Go and added no dependency. Commits: `3cb3a3bd` (cadence clause),
+`be21fdbd` (demonstration scaffold + REQ/ROADMAP close), `39f75e18` (SUMMARY).
+**`REQ-rule-capture-intervention` is now COMPLETE, closing all 3 of the phase's requirements.**
+**v0.12.x Phase 6 (Rule Capture — Investigation & Fix) is COMPLETE — all 3 plans, all 3
+requirements. This was the milestone's final phase: all 6 phases of v0.12.x (Headless Reach &
+Diagnosability) are now COMPLETE.** One non-blocking open item: the orchestrator still needs to run
+the live backfill sweep against `r3bjakymtz`/`z4mgz3a4ab`/`478rhhmhb0` with Sean and fill in
+`06-DEMONSTRATION.md`'s result section — valuable live-store evidence, but neither
+`REQ-rule-capture-intervention` nor roadmap criterion 3 wait on it, since `06-COLD-READ.md` already
+satisfies both. Next: the orchestrator runs the v0.12.x milestone lifecycle (ship / complete-milestone).
 
 Phase: v0.12.x Phase 5 (Operator Config & Reindex Correctness) — ✅ COMPLETE 2026-08-01 (3/3 plans, both waves landed)
 Plan 05-01 (per-lane chat/summarize API key, wave 1, concurrent with 05-02 in the same shared
