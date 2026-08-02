@@ -6,7 +6,10 @@ package server
 import (
 	"context"
 	"reflect"
+	"slices"
 	"testing"
+
+	"github.com/google/jsonschema-go/jsonschema"
 
 	"github.com/seanb4t/engram/internal/store"
 )
@@ -353,6 +356,117 @@ func TestValidateUpdateArgsNotInDepsUpdateMemory(t *testing.T) {
 	if _, err := d.updateMemory(ctx, c, updateArgs{ID: seedID, Content: nil, Shared: &shared}); err != nil {
 		t.Fatalf("deps.updateMemory with nil Content (Connect field-mask shape): want success, got %v", err)
 	}
+}
+
+// --- TestSchemaGeneratedRequiredExcludesRelaxedFields -----------------------
+
+// TestSchemaGeneratedRequiredExcludesRelaxedFields is half (i) of D-06a: the
+// generated JSON schema's "required" set must NOT list any of the 24 fields
+// TestSchemaRequiredMovedToGoLevel proves are enforced in Go. That other test
+// drives the validators directly and never touches jsonschema.For, so a
+// struct tag that regains "required" (a re-added `jsonschema:"required"` or a
+// dropped `omitempty`) would re-tighten the wire schema, make the go-sdk
+// reject the call BEFORE engram's validator runs, and silently reopen issue
+// #360 — while every other test in this file kept passing. This test
+// exercises the exact generator call (jsonschema.For[T](nil)) the go-sdk uses
+// for AddTool (see TestSupersedeMemorySchemaExcludesIdempotencyKey and
+// TestToolArgSchemasDoNotPanic, tools_test.go), and asserts ONLY the
+// `required` set — no property types, descriptions, or shape assertions
+// (those are deliberately out of bounds per the D-06a decision: they would
+// pin go-sdk generator internals).
+//
+// The field/struct list below is restated from TestSchemaRequiredMovedToGoLevel's
+// table above (same file) rather than derived programmatically, because that
+// table keys off validator call sites, not struct+field pairs, and Go generics
+// cannot iterate heterogeneous types from a shared slice. Keep the two lists in
+// sync if D-06a's delta list changes.
+func TestSchemaGeneratedRequiredExcludesRelaxedFields(t *testing.T) {
+	assertNotRequired := func(t *testing.T, structName string, required []string, fields ...string) {
+		t.Helper()
+		for _, f := range fields {
+			if slices.Contains(required, f) {
+				t.Errorf("%s: generated schema `required` = %v, want it to NOT contain %q (D-06a: this field must be enforced by engram's Go validator, not the wire schema)", structName, required, f)
+			}
+		}
+	}
+
+	storeSchema, err := jsonschema.For[storeArgs](nil)
+	if err != nil {
+		t.Fatalf("jsonschema.For[storeArgs]: %v", err)
+	}
+	assertNotRequired(t, "storeArgs", storeSchema.Required, "content", "scope", "source", "category")
+
+	supersedeSchema, err := jsonschema.For[supersedeArgs](nil)
+	if err != nil {
+		t.Fatalf("jsonschema.For[supersedeArgs]: %v", err)
+	}
+	assertNotRequired(t, "supersedeArgs", supersedeSchema.Required, "content", "scope", "source", "category", "supersedes")
+
+	searchSchema, err := jsonschema.For[searchArgs](nil)
+	if err != nil {
+		t.Fatalf("jsonschema.For[searchArgs]: %v", err)
+	}
+	assertNotRequired(t, "searchArgs", searchSchema.Required, "query")
+
+	listScheduledSchema, err := jsonschema.For[listScheduledArgs](nil)
+	if err != nil {
+		t.Fatalf("jsonschema.For[listScheduledArgs]: %v", err)
+	}
+	assertNotRequired(t, "listScheduledArgs", listScheduledSchema.Required, "scope")
+
+	idSchema, err := jsonschema.For[idArgs](nil)
+	if err != nil {
+		t.Fatalf("jsonschema.For[idArgs]: %v", err)
+	}
+	assertNotRequired(t, "idArgs", idSchema.Required, "id")
+
+	updateSchema, err := jsonschema.For[updateArgs](nil)
+	if err != nil {
+		t.Fatalf("jsonschema.For[updateArgs]: %v", err)
+	}
+	assertNotRequired(t, "updateArgs", updateSchema.Required, "id", "content")
+
+	scopeSchema, err := jsonschema.For[scopeArgs](nil)
+	if err != nil {
+		t.Fatalf("jsonschema.For[scopeArgs]: %v", err)
+	}
+	assertNotRequired(t, "scopeArgs", scopeSchema.Required, "scope")
+
+	citationSchema, err := jsonschema.For[citationArg](nil)
+	if err != nil {
+		t.Fatalf("jsonschema.For[citationArg]: %v", err)
+	}
+	assertNotRequired(t, "citationArg", citationSchema.Required, "kind", "ref")
+
+	storeDiscoverySchema, err := jsonschema.For[storeDiscoveryArgs](nil)
+	if err != nil {
+		t.Fatalf("jsonschema.For[storeDiscoveryArgs]: %v", err)
+	}
+	assertNotRequired(t, "storeDiscoveryArgs", storeDiscoverySchema.Required, "content", "kind", "citations", "scope")
+
+	searchDiscoverySchema, err := jsonschema.For[searchDiscoveryArgs](nil)
+	if err != nil {
+		t.Fatalf("jsonschema.For[searchDiscoveryArgs]: %v", err)
+	}
+	assertNotRequired(t, "searchDiscoveryArgs", searchDiscoverySchema.Required, "query")
+
+	setVisibilitySchema, err := jsonschema.For[setVisibilityArgs](nil)
+	if err != nil {
+		t.Fatalf("jsonschema.For[setVisibilityArgs]: %v", err)
+	}
+	assertNotRequired(t, "setVisibilityArgs", setVisibilitySchema.Required, "id", "shared")
+
+	storeRuleSchema, err := jsonschema.For[storeRuleArgs](nil)
+	if err != nil {
+		t.Fatalf("jsonschema.For[storeRuleArgs]: %v", err)
+	}
+	assertNotRequired(t, "storeRuleArgs", storeRuleSchema.Required, "content", "scope", "summary")
+
+	listRulesSchema, err := jsonschema.For[listRulesArgs](nil)
+	if err != nil {
+		t.Fatalf("jsonschema.For[listRulesArgs]: %v", err)
+	}
+	assertNotRequired(t, "listRulesArgs", listRulesSchema.Required, "scopes")
 }
 
 // --- TestDeleteAllRequiresScope ---------------------------------------------
