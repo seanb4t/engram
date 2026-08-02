@@ -88,7 +88,8 @@ to window recall by creation time; `list_memory` paginates via an opaque `cursor
 arg and returns `{memories, next_cursor}` (empty `next_cursor` = last page).
 `search_memory` and `list_memory` also accept `cross_spine` (bool) to span every
 scope the caller can read, with the response reporting `searched_scopes` and
-`scopes_truncated`.
+`scopes_truncated`; the `engram search`/`engram list` CLI verbs reach the same
+capability and report the same two fields.
 Pre-isolation records (missing
 `owner` key) are invisible to every read until you backfill them with `engram
 migrate-remap-owner --from-missing --to <owner>` (the `migrate-set-owner` command
