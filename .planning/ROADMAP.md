@@ -528,14 +528,22 @@ phase's core risk) and the live sweep in wave 3. The phase should change no Go; 
 
 ### Phase 7: CLI Cross-Spine Wiring
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** `engram search` and `engram list` can reach cross-spine recall, and a caller learns how
+from help text alone. Closes the seam the v0.12.x milestone audit found: `cross_spine` plus
+`searched_scopes` / `scopes_truncated` shipped on the Connect API in Phase 3, the CLI shipped in
+Phase 2, and nothing ever wired the two together — so the most natural recall invocation
+(`engram search --query x`, no `--scope`) fails today with a rule the CLI's help never states.
+
+**Requirements**: TBD (none mapped — CONTEXT.md's D-00..D-09 decision IDs are this phase's
+traceability keys)
 **Depends on:** Phase 6
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 7 to break down)
+- [ ] 07-01-PLAN.md — tracer: wire `--cross-spine` end to end on `engram search` (shared guard, coverage footer, `EffectiveSearchScope` parity pin)
+- [ ] 07-02-PLAN.md — expand to `engram list`: same guard, same footer, guard-before-dialing and byte-identical-baseline proofs
+- [ ] 07-03-PLAN.md — discoverability: verify the self-describe catalog, docs-site CLI reference and upgrade note, CLAUDE.md, phase-close gates
 
 ---
 
