@@ -206,15 +206,19 @@ exact undocumented exit-code split #467 exists to close.
    `--offset`/`--cursor-mode`/`--page-token`) is rejected before any network dial, using cobra's
    declarative flag-group API rather than a fourth hand-rolled guard alongside
    `client_common.go:236` and `migrate.go:85`.
+
 2. Every command that fails — client verb or operator command, including cobra's own flag-group
    validation — exits with exactly one of 0 (success), 2 (usage/validation), 4 (not found), or 5
    (unavailable); no path falls through to a bare, undocumented exit 1.
+
 3. `guides/upgrade.md` names every command whose exit status changes, backed by a table-driven
    regression test that pinned each affected command's *current* exit code before the change
    landed, and an audit of known consumers completed before the unification ships.
+
 4. A CLI invocation against a hung or half-open server returns within an operator-configurable
    `--timeout` window instead of blocking indefinitely, exiting with a documented code for the
    timeout case.
+
 5. Every client flag/setting — `--server`, `--token-file`, `--output`, `--insecure`, and the new
    `--timeout` — resolves through the `internal/config` koanf registry rather than a per-setting
    hand-rolled resolver; no `os.Getenv`-based client resolver (e.g. `resolveServerURL`) remains in
@@ -223,14 +227,37 @@ exact undocumented exit-code split #467 exists to close.
 **Plans:** 9 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 01-01-PLAN.md — D-09 before-table: every command x failure mode pinned at its current exit code, green against unchanged code
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 01-02-PLAN.md — Tracer: paging-trio flag group -> central interception -> exit 2 with zero dials; framework errors typed; D-17 note retracted
 - [ ] 01-03-PLAN.md — koanf client-config registry: five `client.*` rows, `ClientConfig`, `ValidateClient`, non-string flag overlay
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 01-04-PLAN.md — Remaining flag-group sites: scope/cross-spine on search+list, migrate exactly-one-of, conformance invariant test
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 01-05-PLAN.md — Operator error classifier plus reindex, prune-expired, summarize-missing, backfill-short-ids
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 01-06-PLAN.md — Operator classification for migrate-remap-owner, migrate-set-owner, serve; the ListenAndServe backstop pinned as deliberate
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 01-07-PLAN.md — `exitTimeout = 6`, mapper split, catalog entry; hand-rolled client resolvers retired; `--timeout` registered
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
 - [ ] 01-08-PLAN.md — `context.WithTimeout` at all three client RPC sites; hung-server harness proving exit 6 distinct from 5
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
 - [ ] 01-09-PLAN.md — `guides/upgrade.md` + `guides/cli.md` migration notes, recorded consumer audit, mechanical coverage gate
 
 ---
@@ -252,11 +279,14 @@ next thing this audit has to retrofit.
 1. Every server-side conditional-requirement rule (e.g. `effectiveSearchScope`'s "scope is
    required unless cross_spine is true") is stated in both the cobra `Usage` text and the
    `internal/server` MCP jsonschema tag for its argument.
+
 2. A conformance test asserts each named conditional rule's substring appears on both independent
    surfaces (the cobra tree, which already feeds `--help` and the self-describe catalog from one
    source via `buildCatalog`, and the MCP arg-struct tags) and fails CI the moment they diverge.
+
 3. Every MCP tool declares `readOnlyHint`/`destructiveHint`/`idempotentHint`, so an agent can
    classify a tool's blast radius before calling it.
+
 4. Any unreviewed change to a command's `--help` output fails CI via a golden-file test.
 
 **Plans:** TBD
@@ -282,14 +312,18 @@ conditional-rule documentation standard should exist before this phase's help te
 
 1. `engram spine-review scan` reports inventory and health signals by scope and category across
    the whole spine, with no mutation on any path.
+
 2. `engram spine-review verify` classifies every stored citation anchor as valid, moved-but-valid,
    or broken, with the moved tier reported separately from the broken tier so ordinary refactoring
    does not train an operator to ignore the verifier.
+
 3. `engram spine-review consolidate` reports near-duplicate candidates by querying Qdrant with
    records' already-stored vectors (no re-embedding), and never merges or mutates.
+
 4. `engram spine-review purge` previews by default, mutates only under an explicit `--apply` that
    re-derives eligibility fresh at that moment (never acting on a stale candidate list), and
    refuses to run unless rule `7smp8vy9hr`'s extract-before-delete ordering is provably satisfied.
+
 5. A record can be archived — removed from recall but retained and restorable — as a state an
    operator can observe as distinct from both a superseded record's soft-hide and a purged
    record's irreversible delete.
@@ -324,8 +358,10 @@ existing).
    whether two records describe the same fact, using only already-shipped MCP tools
    (`list_memory`/`search_memory`/`get_memory`/`update_memory`/`supersede_memory`/`delete_memory`)
    — zero new server-side code.
+
 2. Every mutation the skill identifies is proposed for user blessing and never performed
    unilaterally, reusing `store_rule`'s consent protocol rather than a second consent shape.
+
 3. A cold-read adversarial test proves a confident, plausible, and *wrong* proposal still stops at
    consent — not merely that a correct proposal is offered.
 
@@ -358,8 +394,10 @@ phases as they close rather than only at the end.
 1. Every v0.12.x `VALIDATION.md` row (six at `status: draft`, plus the one phase with none) is
    re-resolved against `go test -list` with a nonzero, expected match count — not merely re-run and
    checked for exit 0.
+
 2. Every v0.13.x phase (1–4 above) reconciles its own `VALIDATION.md` the same way before the
    milestone closes.
+
 3. #355's drifted `tools.go` citation anchors are repaired, and `spine-review verify` correctly
    classifies the repair as resolved without over-flagging nearby, merely-moved-but-valid citations
    elsewhere in the same sweep.
@@ -436,7 +474,6 @@ phases as they close rather than only at the end.
 **v0.11.x — Capture & Service Identity: ✅ shipped 2026-07-26 · 5 phases (22–26), 19 plans, 46 tasks · 11/11 requirements · audit PASSED (6/6 integration seams, 2/2 E2E flows, 0 blockers; Nyquist 5/5 validated — phases 24 and 26 reconciled 2026-07-26, 0 gaps).** Full detail: `milestones/v0.11.x-ROADMAP.md`.
 **v0.12.x — Headless Reach & Diagnosability: ✅ shipped 2026-08-02 · 7 phases (1–7, first milestone on restarted numbering), 28 plans, 68 tasks · 21/21 requirements · audit `tech_debt` (5/5 integration seams, 2/2 E2E flows, 0 blockers; Nyquist not validated — 6 phases at `status: draft`, phase 2 has none, tracked as debt not gaps).** Full detail: `milestones/v0.12.x-ROADMAP.md`.
 **v0.13.x — Curation & Self-Evidence: 🔄 active (opened 2026-08-03) · 5 phases (1–5) · 18/18 requirements mapped, 0 shipped · carries forward the 6-row v0.12.x Nyquist debt into Phase 5.**
-
 
 ---
 

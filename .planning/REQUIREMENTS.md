@@ -151,6 +151,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-exit-code-unified | Phase 1 | Pending |
 | REQ-exit-code-migration-safe | Phase 1 | Pending |
 | REQ-cli-request-timeout | Phase 1 | Pending |
+| REQ-client-config-unified | Phase 1 | Pending |
 | REQ-conditional-rules-stated | Phase 2 | Pending |
 | REQ-surface-conformance-gate | Phase 2 | Pending |
 | REQ-mcp-tool-annotations | Phase 2 | Pending |
