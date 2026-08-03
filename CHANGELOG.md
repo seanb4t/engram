@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.0](https://github.com/seanb4t/engram/compare/v0.11.3...v0.12.0) (2026-08-03)
+
+
+### Features
+
+* v0.12.x — headless reach & diagnosability ([#464](https://github.com/seanb4t/engram/issues/464)) ([906a5cf](https://github.com/seanb4t/engram/commit/906a5cf6bd15918dd11020af8e0c0a201f83219e))
+
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/grpc to v1.83.0 ([#458](https://github.com/seanb4t/engram/issues/458)) ([752d32c](https://github.com/seanb4t/engram/commit/752d32c692f198831a4f0588a7187abe219edc29))
+
 ## [0.11.3](https://github.com/seanb4t/engram/compare/v0.11.2...v0.11.3) (2026-07-31)
 
 
