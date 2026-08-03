@@ -19,7 +19,7 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 | `internal/auth/` | OIDC bearer-token verifier (go-oidc + go-sdk auth middleware) |
 | `internal/config/` | koanf config loader + field registry (single source of truth for ENGRAM_ vars) |
 | `charts/engram/` | Helm chart (server + Qdrant), generic/parameterized |
-| `proto/engram/v1/` | protobuf schema (`EngramService` v1 read API) — source of truth for codegen |
+| `proto/engram/v1/` | protobuf schema (`EngramService` v1: 5 read + 6 write RPCs) — source of truth for codegen |
 | `gen/` | committed buf-generated code (connect-go stubs in `gen/go/`, protobuf-es types in `gen/ts/`) |
 
 ## Conventions

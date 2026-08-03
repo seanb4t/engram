@@ -1,5 +1,49 @@
 # Milestones — engram
 
+## v0.12.x Headless Reach & Diagnosability (Shipped: 2026-08-02)
+
+**Phases completed:** 7 phases, 28 plans, 68 tasks
+**Requirements:** 21/21 verified · **Audit:** `tech_debt` (5/5 integration seams, 2/2 E2E flows, 0 blockers)
+**Git range:** `cccf5d27..HEAD` — 228 commits, 132 files, +12,510 / −944 (excluding `.planning/`)
+**Timeline:** 2026-07-26 → 2026-08-02 (8 days) · **No git tag** — release-please owns the version namespace
+**Archived:** `milestones/v0.12.x-{ROADMAP,REQUIREMENTS,MILESTONE-AUDIT}.md` + `v0.12.x-phases/`
+
+**Delivered:** engram became reachable by agents that are not a top-level MCP client, and what the
+server decides and rejects became legible. One composed verifier chain serves both lanes; Connect
+mounts headless; `engram search|store|list` is a real CLI; `cross_spine` spans MCP, the Connect
+wire, and the CLI; and one `field=<name> hint=<code>` envelope replaced prose rejections across
+both wires. Zero new Go dependencies across all seven phases.
+
+**Known tech debt:** no phase has a reconciled Nyquist `VALIDATION.md` (six at `status: draft`,
+phase 2 has none); the two-tier CLI error model has no REQ or decision ID recording its exemption
+from the field+hint envelope.
+
+**Key accomplishments:**
+
+- Connect gains a bearer-token identity lane (reimplemented go-sdk-parity credential parse + expiry enforcement in `internal/auth`), and the CSRF exemption is re-keyed off a compiler-enforced, per-request lane stamp instead of any caller-controlled request signal.
+- The reseal interceptor now gates on the same lane stamp the CSRF exemption reads (D-09), and a new MCP-vs-Connect parity suite proves the same bearer token resolves to the identical actor/owner on both lanes and is rejected identically when expired — retiring RESEARCH.md Assumption A1 by measurement.
+- The verifier chain is now built exactly once per process and injected into both the MCP wrapper and the Connect bearer half (D-06); `connect.headless` gives operators a default-off, fail-closed switch to mount Connect without the web UI (D-10/D-11), and mounting is decided independently of bearer-inclusion so a UI-enabled deployment's Connect lane finally accepts every credential its MCP lane already does (D-12, REVIEWS.md HIGH-3).
+- Ships the operator-facing surface for the headless Connect lane: a `guides/configure.md` subsection, a `memory.connect.headless` Helm value with a byte-identical default render, and one tracked follow-up issue — reversing REVIEWS.md MED-10's prior deferral so a Helm-deployed operator can actually reach `REQ-connect-headless-mount`.
+- Wired `cross_spine=true` through `search_memory` end to end on the MCP lane — one tracer path from the tool argument through `effectiveSearchScope` to a now-conditional `ownerScopeFilter`, with a TDD RED observed as a real assertion failure before the store-layer edit, and both a handler-level and a store-level isolation/wiring pin.
+- Wired `cross_spine=true` through `list_memory` end to end (mirroring plan 03-02's `search_memory` shape exactly), and made both cross-spine MCP verbs report `searched_scopes`/`scopes_truncated` so a zero-hit cross-spine result is distinguishable from a scope-confined miss — closing the MCP lane for wave 4's Connect wire mirror.
+- Mirrored the proven MCP cross-spine lane onto the Connect wire via six additive protobuf fields (`cross_spine`, `searched_scopes`, `scopes_truncated` on `SearchMemories`/`ListMemories`), with the one deliberate divergence from `SearchDiscoveries` — explicit-field-only, never scope-inferred — pinned by a behavioral test.
+- Documented the shipped `cross_spine` feature (03-02/03-03/03-04) across the three surfaces an agent actually reads — tool reference, `curating-memory` skill, `CLAUDE.md` — with `searched_scopes` worded as the authorized span it is, never as a hit-distribution report, and a load-bearing "when not to widen" subsection naming the ranking-dilution and extra-scan costs of the opt-in.
+- One envelope (`argError`: Fields + Hint + Detail + Class) now carries `validateStoreDiscovery`'s five rejections end-to-end on both the MCP wire string and the Connect error code, closing the D-11a `CodeInternal` misclassification for that validator and proving the shape before the 04-04/04-05 sweep touches thirty more sites.
+- A debug-level `slog.DebugContext` line now fires unconditionally on both the allow and deny arm at `internal/store`'s two authz chokepoints, carrying only the D-02 allowlist (satisfied policy IDs, an error count, decision/action/bucket) via a narrow `(authz.Decision).Log()` accessor — `Decision.diag` stays unexported, so a future `cedar.Diagnostic` field structurally cannot leak through a well-meaning call site.
+- A 502 from the embedder now names both the status and the provider's own diagnostic text (bounded, verbatim), and both provider lanes drain their response bodies so the connection that carried the error survives it — proven by an httptrace-based `ReuseTracker` observed failing without the drain and passing with it.
+- Every remaining single-field and relational rejection reachable from `internal/server/tools.go` (RESEARCH's sixteen Category A sites, three Category B relational sites, plus three unnumbered `parseWindow` sub-checks the plan's own verify gate forced into scope) now carries a machine-readable field attribution and remediation hint, proven by a 23-row matrix and a D-12 value-echo absence gate — with the MCP 401 auth body verified separate and pinned byte-for-byte before any reformat landed.
+- `validateStoreRule`/`validateRuleSummary`/`listRules` converted to the field+hint envelope (closing D-11a's third and last unwrapped validator), and all seven of `connectapi.go`'s hand-wrapped `CodeInvalidArgument` sites removed so the failure CLASS — not a hand-wrap — selects the Connect code, proven by a 12-row table with five rows driven through the real `ListMemories`/`SearchMemories`/`StoreDiscovery` handlers and a recorded RED transcript.
+- Required-ness for 24 fields across 13 MCP arg structs moved out of the go-sdk's inferred JSON schema and into engram's own Go validation — closing issue #360 at its actual cause (a `validateStoreArgs` a caller's oversized `summary` now names, not `content`) — with `delete_all`'s scope guard landing in the same commit as its schema relaxation, a koanf-configurable `ENGRAM_MEMORY_MAX_SUMMARY_BYTES` bound (D-18), and the embeddings success-decode bound sized to `ENGRAM_EMBED_DIM` (D-16, completing plan 04-03).
+- One new docs-site reference page (`errors.md`) makes the field+hint envelope, all ten hint codes, and the Connect class-to-code mapping discoverable; the `curating-memory` skill and `CLAUDE.md` teach an agent to branch on `field=`/`hint=` instead of message wording; `guides/configure.md` gains the `ENGRAM_MEMORY_MAX_SUMMARY_BYTES` config entry and the authz decision-log operator note; and `guides/upgrade.md` names all three wire-visible breaking changes with an explicit "CLI exit codes did not change" reassurance — closing `REQ-error-hint-envelope` and `REQ-authz-decision-diagnostics`, the last two open requirements in the phase.
+- `ENGRAM_OPENAI_CHAT_API_KEY` gives the chat/summarize lane its own credential, resolved by `cmp.Or` at the construction site and reachable for Helm users via `memory.summarize.chatApiKeySecret`.
+- `reindex --resume` now re-embeds tags-only edits while a paired positive control proves it still skips genuinely unchanged records, and `--dry-run --resume` sizes the repair before it runs — both through one shared tag decoder and one shared skip predicate.
+- Corrects `configure.md`'s now-false shared-key assertion, adds `reindex.md`'s pre-patch-resume repair section with its stated D-15 limit, extends `upgrade.md`'s v0.12.0 entries to five, and closes the whole phase with every gate green.
+- Restructured the buried "propose a rule" permission into its own subsection with two observable triggers, an inline consent-gated protocol, and a decline record — then mirrored the corrected gate into the tool reference and CLAUDE.md, and closed the investigation requirement by citation.
+- Added `### Rule hygiene` (duplicates/contradictions/rot with a code-verified four-row correction table and D-10's user-blessed deletion gate) and `### One-time rule backfill sweep` (D-12's reuse-the-trigger procedure) to `curating-memory/SKILL.md`, then mirrored the same invariants into the tool reference.
+- Restored the milestone-completion cadence clause in `### Rule hygiene` citing rule `7smp8vy9hr`'s verified live content, closed `REQ-rule-capture-intervention` by citation to `06-COLD-READ.md`'s PASS, and closed the phase with a full green gate set — the live backfill sweep against the three D-03 candidates is reassigned to the orchestrator as a scaffolded `06-DEMONSTRATION.md`.
+
+---
+
 ## v0.11.x Capture & Service Identity (Shipped: 2026-07-26)
 
 **Phases completed:** 5 phases, 19 plans, 46 tasks
