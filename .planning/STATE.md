@@ -95,6 +95,15 @@ milestone needs in working memory.
   a backstop for someone who did not read — never the teaching mechanism.
 
 
+### Pending Todos
+
+2 pending — see `/gsd-capture --list`.
+
+| Severity | Title | Area |
+|----------|-------|------|
+| major | Rotate the Cloudflare API token for docs-site deploy | tooling |
+| minor | Resolve stale `docs/v0.12.x-phase-01-context` branch | planning |
+
 ### Blockers/Concerns
 
 **Open:**
