@@ -53,8 +53,12 @@ var rootCmd = &cobra.Command{
 	// runs when this hook returns nil; it re-validates unchanged flag state
 	// and can only agree.
 	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		// A misconfigured environment (a retired MEM_* var still set) is a
+		// usage error, not an unclassified one — this is the fourth bare-
+		// exit-1 site (not named in CONTEXT.md's canonical refs):
+		// CheckLegacy runs for every command, client or operator alike.
 		if err := config.CheckLegacy(os.Environ()); err != nil {
-			return err
+			return usageErrorf("%s", err)
 		}
 		if err := cmd.ValidateFlagGroups(); err != nil {
 			return usageErrorf("%s", err)
@@ -66,6 +70,16 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.Version = version
 	rootCmd.AddCommand(serveCmd, versionCmd)
+	// This registration is inherited by every subcommand whose own
+	// FlagErrorFunc is unset, so one call covers the binary. It fires from
+	// c.FlagErrorFunc()(c, err) when c.ParseFlags(a) itself fails — an
+	// unknown flag, or a value that does not parse for the flag's Go type.
+	// That is a disjoint error class from ValidateFlagGroups (which fires
+	// from PersistentPreRunE above, after parsing succeeds); both
+	// mechanisms are required and neither substitutes for the other.
+	rootCmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return usageErrorf("%s", err)
+	})
 }
 
 // Execute runs the root command and exits non-zero on error, printing the error

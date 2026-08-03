@@ -100,6 +100,7 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		before:  exitGeneric,
 		after:   exitUsage,
 		changes: true,
+		landed:  true,
 	},
 	{
 		name:    "search/unparseable-flag-value",
@@ -107,6 +108,7 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		before:  exitGeneric,
 		after:   exitUsage,
 		changes: true,
+		landed:  true,
 	},
 	{
 		name:    "search/bad-output-value",
@@ -163,6 +165,7 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		before:  exitGeneric,
 		after:   exitUsage,
 		changes: true,
+		landed:  true,
 	},
 
 	// --- Operator commands ---

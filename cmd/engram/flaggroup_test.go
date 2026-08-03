@@ -152,3 +152,49 @@ func TestFlagGroupRejectionPerformsNoIO(t *testing.T) {
 		t.Errorf("cumulative accepts across the whole table = %d, want 0 — a flag-group rejection performs no I/O", got)
 	}
 }
+
+// TestFlagParseErrorsExitUsage pins rootCmd.SetFlagErrorFunc: a
+// flag-parsing error raised by the command framework itself — an unknown
+// flag, or a value that does not parse for the flag's Go type — exits
+// exitUsage, not the untyped fallback. This is a disjoint error class from
+// ValidateFlagGroups (which fires only after parsing succeeds).
+func TestFlagParseErrorsExitUsage(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{name: "unknown-flag", args: []string{"search", "--typo"}},
+		{
+			name: "unparseable-flag-value",
+			args: []string{"search", "--server", deadServer, "--scope", "s", "--query", "q", "--k", "notanumber"},
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			resetClientFlags(t)
+			resetCommandFlagState(t, searchCmd)
+
+			_, _, err := runClient(t, tc.args...)
+
+			if got := exitCodeFromError(err); got != exitUsage {
+				t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage); err=%v", got, exitUsage, err)
+			}
+		})
+	}
+}
+
+// TestLegacyEnvExitsUsage pins the fourth bare-exit-1 site closed:
+// config.CheckLegacy's error, wrapped by usageErrorf in
+// rootCmd.PersistentPreRunE, now exits exitUsage for any command — client
+// or operator — run with a retired MEM_* var still set.
+func TestLegacyEnvExitsUsage(t *testing.T) {
+	resetClientFlags(t)
+	t.Setenv("MEM_QDRANT_ADDR", "old-host:1234")
+
+	_, _, err := runClient(t, "version")
+
+	if got := exitCodeFromError(err); got != exitUsage {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage); err=%v", got, exitUsage, err)
+	}
+}
