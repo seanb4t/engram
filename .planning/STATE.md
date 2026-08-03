@@ -1,22 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.12.x
-milestone_name: Headless Reach & Diagnosability
-status: Awaiting next milestone
-stopped_at: Completed 07-03-PLAN.md — Phase 7 complete
-last_updated: "2026-08-02T23:51:44.814Z"
-last_activity: 2026-08-02
-last_activity_desc: Milestone v0.12.x completed and archived
+milestone: v0.13.x
+milestone_name: Curation & Self-Evidence
+status: planning
+last_updated: "2026-08-03T12:25:50.615Z"
+last_activity: 2026-08-03
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 28
-  completed_plans: 28
-  percent: 100
-current_phase: null
-current_phase_name: null
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
-
 
 # Project State
 
@@ -29,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.
 
 ## Current Position
 
-Phase: Milestone v0.12.x complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-02 — Milestone v0.12.x completed and archived
+Status: Defining requirements
+Last activity: 2026-08-03 — Milestone v0.13.x started
 
 ## Deferred Items
 
@@ -93,7 +88,6 @@ milestone needs in working memory.
 - The CLI is **correct-by-reading** (`4aksmneehh`): help text and the self-describe catalog are
   deliverables with acceptance criteria, related flags name each other, and a validation error is
   a backstop for someone who did not read — never the teaching mechanism.
-
 
 ### Blockers/Concerns
 
