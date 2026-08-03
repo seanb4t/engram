@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -246,6 +247,14 @@ func TestCatalogListsEveryExitCode(t *testing.T) {
 // Before trusting this test, cobra.NoArgs was temporarily removed from
 // rootCmd's literal and this test was observed to fail — see the SUMMARY
 // for the quoted FAIL line.
+//
+// The accepted, deliberate gap this test also pins: a mistyped verb stays
+// on exitGeneric (never reclassified to exitUsage), because cobra's Find()
+// fails inside ExecuteC() before execute() runs, so PersistentPreRunE never
+// sees it and no sentinel exists to classify it without matching the
+// message text — which this plan's prohibitions forbid. This mirrors the
+// D-09 baseline's root/unknown-subcommand row (before == after == exitGeneric,
+// changes: false).
 func TestRootUnknownSubcommandStillErrors(t *testing.T) {
 	resetClientFlags(t)
 	stdout, _, err := runClient(t, "definitely-not-a-verb")
@@ -257,6 +266,13 @@ func TestRootUnknownSubcommandStillErrors(t *testing.T) {
 	}
 	if isJSON(stdout) {
 		t.Errorf("stdout unexpectedly parsed as JSON: %q", stdout)
+	}
+	// exitCodeFromError, not assertExitCode: a mistyped verb's error is a
+	// bare cobra error with no ExitCode() method, which is exactly the
+	// untyped-fallback case exitCodeFromError exists to cover — assertExitCode
+	// would abort the test the moment it found no ExitCode() method.
+	if got := exitCodeFromError(err); got != exitGeneric {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitGeneric)", got, exitGeneric)
 	}
 }
 
@@ -321,26 +337,62 @@ func TestCatalogExitCodesMatchMapper(t *testing.T) {
 	}
 }
 
-// TestCatalogDocumentsFlagParseExitCode is D-17's gate: the catalog's
-// notes mention both exit codes — the framework-level flag error's 1 and
-// engram's own validation's 2 — in the same note, which also mentions
-// flags or usage. The match is tolerant of exact wording deliberately: a
-// brittle exact-string assertion here would be the first thing edited away,
-// leaving D-17 undocumented and the test still green.
-func TestCatalogDocumentsFlagParseExitCode(t *testing.T) {
+// TestCatalogClaimsNoFlagErrorExitsGeneric replaces the retracted D-17 gate
+// (the prior test pinning the flag-error note's exact wording).
+// D-02/D-03 falsified the old promise ("a framework flag error exits 1, not
+// 2"): after this plan, a
+// framework flag error exits exitUsage, and exitGeneric is reserved for a
+// mistyped verb and a genuinely unclassified internal error — never for a
+// flag-shaped failure.
+//
+// The old test matched on any note containing the digits "1" and "2" near
+// the word "flag" or "usage" — a reworded note can satisfy that *by
+// accident* while asserting the opposite of what the test intended (e.g. a
+// note saying "exits 1, not 2" contains both digits just as readily as one
+// saying "exits 2, not 1"). This test asserts the intention directly, as a
+// positive-set assertion over the numbers appearing in the SENTENCE that
+// names a flag error, not a substring hunt over the whole note: for that
+// sentence, the set of exit codes it names must contain exitUsage and must
+// NOT contain exitGeneric. A sentence elsewhere in the same note that
+// separately, correctly, names exitGeneric's other two causes is not a
+// false positive, because it is not the sentence that mentions "flag".
+func TestCatalogClaimsNoFlagErrorExitsGeneric(t *testing.T) {
 	doc := decodeCatalog(t)
 
-	found := false
+	var flagNotes []string
 	for _, n := range doc.Notes {
-		if strings.Contains(n, "1") && strings.Contains(n, "2") &&
-			(strings.Contains(n, "flag") || strings.Contains(n, "usage")) {
-			found = true
-			break
+		if strings.Contains(n, "flag") {
+			flagNotes = append(flagNotes, n)
+		}
+	}
+	if len(flagNotes) != 1 {
+		t.Fatalf("notes mentioning flag errors = %d, want exactly 1; notes=%v", len(flagNotes), doc.Notes)
+	}
+	note := flagNotes[0]
+
+	numRe := regexp.MustCompile(`\b\d+\b`)
+	found := false
+	for _, sentence := range strings.Split(note, ". ") {
+		if !strings.Contains(sentence, "flag") {
+			continue
+		}
+		found = true
+		codes := make(map[int]bool)
+		for _, m := range numRe.FindAllString(sentence, -1) {
+			n, convErr := strconv.Atoi(m)
+			if convErr == nil {
+				codes[n] = true
+			}
+		}
+		if codes[exitGeneric] {
+			t.Errorf("the sentence naming a flag error also names exitGeneric (%d): %q", exitGeneric, sentence)
+		}
+		if !codes[exitUsage] {
+			t.Errorf("the sentence naming a flag error does not name exitUsage (%d): %q", exitUsage, sentence)
 		}
 	}
 	if !found {
-		t.Errorf("no note documents both exit code 1 and exit code 2 alongside a mention of "+
-			"flags or usage; notes=%v", doc.Notes)
+		t.Fatalf("no sentence in the flag note mentions %q: %q", "flag", note)
 	}
 }
 

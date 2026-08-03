@@ -5,6 +5,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
 
 	"github.com/spf13/cobra"
@@ -82,7 +83,11 @@ func buildCatalog(root *cobra.Command) catalogDoc {
 	// TestCatalogExitCodesMatchMapper gates that they stay so.
 	doc.ExitCodes = []catalogExitCode{
 		{Code: exitOK, Meaning: "success"},
-		{Code: exitGeneric, Meaning: "generic or unclassified failure"},
+		// D-02: exitGeneric is redefined as an unreachable-by-design
+		// internal-error backstop, not a general-purpose failure code —
+		// every classified path is now typed. It survives only for a
+		// mistyped verb (see notes) and a genuinely unclassified Go error.
+		{Code: exitGeneric, Meaning: "unclassified internal error (backstop only — not a general-purpose failure code; see notes)"},
 		{Code: exitUsage, Meaning: "usage or validation error"},
 		{Code: exitAuth, Meaning: "authentication or authorization failure"},
 		{Code: exitNotFound, Meaning: "not found"},
@@ -90,12 +95,21 @@ func buildCatalog(root *cobra.Command) catalogDoc {
 	}
 
 	doc.Notes = []string{
-		"A flag-parsing error raised by the command framework itself (an unknown flag, " +
-			"an unparseable flag value, or a mistyped verb) exits 1, not 2 (D-17). Exit 2 is " +
-			"reserved for engram's own semantic validation — for example a missing " +
-			"--server/ENGRAM_SERVER_URL, an invalid --output value, or a missing required " +
-			"flag one of engram's own commands checks. Do not assume every usage-shaped " +
-			"failure exits 2.",
+		// D-02/D-03 retract the published D-17 promise that a framework
+		// flag error exits 1: it now exits exitUsage, alongside a violated
+		// mutually-exclusive flag group and engram's own semantic
+		// validation. The two remaining exitGeneric paths are named
+		// explicitly so neither reads as an oversight.
+		fmt.Sprintf(
+			"A flag-parsing error raised by the command framework itself (an unknown flag "+
+				"or an unparseable flag value) and a violated mutually-exclusive flag group "+
+				"both exit %d, alongside engram's own semantic validation — for example a "+
+				"missing --server/ENGRAM_SERVER_URL or an invalid --output value. Two paths "+
+				"still exit %d: a mistyped verb, rejected during cobra's own command "+
+				"resolution before any engram hook runs, and a genuinely unclassified "+
+				"internal error.",
+			exitUsage, exitGeneric,
+		),
 		"An empty result set is a success and exits 0 (D-12); absence of results is a " +
 			"legitimate answer, not a failure.",
 	}
