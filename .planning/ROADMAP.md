@@ -224,7 +224,7 @@ exact undocumented exit-code split #467 exists to close.
    hand-rolled resolver; no `os.Getenv`-based client resolver (e.g. `resolveServerURL`) remains in
    `cmd/engram/`.
 
-**Plans:** 1/9 plans executed
+**Plans:** 2/9 plans executed
 
 Plans:
 **Wave 1**
@@ -233,7 +233,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Tracer: paging-trio flag group -> central interception -> exit 2 with zero dials; framework errors typed; D-17 note retracted
+- [x] 01-02-PLAN.md — Tracer: paging-trio flag group -> central interception -> exit 2 with zero dials; framework errors typed; D-17 note retracted
 - [ ] 01-03-PLAN.md — koanf client-config registry: five `client.*` rows, `ClientConfig`, `ValidateClient`, non-string flag overlay
 
 **Wave 3** *(blocked on Wave 2 completion)*

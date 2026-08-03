@@ -31,11 +31,11 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
 
 ### Interface Enforceability
 
-- [ ] **REQ-flag-exclusivity-enforced**: Every documented mutually-exclusive flag combination on the
+- [x] **REQ-flag-exclusivity-enforced**: Every documented mutually-exclusive flag combination on the
   `engram` CLI is rejected before any network call, using cobra's declarative flag-group API rather
   than a hand-rolled guard, so the constraint is enforced at the same place it is declared. (#453)
 
-- [ ] **REQ-exit-code-unified**: Every command in the `engram` binary — client verbs and operator
+- [x] **REQ-exit-code-unified**: Every command in the `engram` binary — client verbs and operator
   commands alike — resolves errors through one exit-code taxonomy (0 success, 2 usage/validation, 4
   not found, 5 unavailable), including errors raised by cobra's own flag-group validation, which
   today bypass `cliError`/`ExitCode()` and fall through to 1. (#467)
@@ -166,8 +166,8 @@ Which phases cover which requirements. Filled during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REQ-flag-exclusivity-enforced | Phase 1 | Pending |
-| REQ-exit-code-unified | Phase 1 | Pending |
+| REQ-flag-exclusivity-enforced | Phase 1 | Complete |
+| REQ-exit-code-unified | Phase 1 | Complete |
 | REQ-exit-code-migration-safe | Phase 1 | Complete |
 | REQ-cli-request-timeout | Phase 1 | Pending |
 | REQ-client-config-unified | Phase 1 | Pending |
