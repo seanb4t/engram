@@ -42,8 +42,24 @@ var rootCmd = &cobra.Command{
 	// RED observations).
 	RunE: runSelfDescribe,
 	Args: cobra.NoArgs,
-	PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
-		return config.CheckLegacy(os.Environ())
+	// cmd is the LEAF command cobra is executing (cobra passes the running
+	// subcommand, not rootCmd itself, into a parent's PersistentPreRunE when
+	// EnableTraverseRunHooks is false — confirmed unset in this binary, see
+	// RESEARCH A3). cmd.ValidateFlagGroups() therefore validates the
+	// subcommand's own declared flag groups (e.g. listCmd's paging trio) and
+	// short-circuits cobra's execute() before RunE runs and before any
+	// dial — one root-level call types every flag-group site in the binary.
+	// cobra's own later ValidateFlagGroups() call inside execute() still
+	// runs when this hook returns nil; it re-validates unchanged flag state
+	// and can only agree.
+	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		if err := config.CheckLegacy(os.Environ()); err != nil {
+			return err
+		}
+		if err := cmd.ValidateFlagGroups(); err != nil {
+			return usageErrorf("%s", err)
+		}
+		return nil
 	},
 }
 

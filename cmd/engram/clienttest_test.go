@@ -152,22 +152,27 @@ func resetClientFlags(t *testing.T) {
 //
 // pflag.Flag.Changed is an exported struct field, so it can be cleared
 // directly from this package. f.Value.Set(f.DefValue)'s error is ignored:
-// for a StringSliceVar-backed flag, pflag's Set APPENDS rather than
-// replacing once Changed has latched, so calling it here would not restore
-// the zero value anyway — resetClientFlags already handles those by nilling
-// the Go var directly, and this helper's job is limited to the Changed bit
-// itself.
+// for a StringSliceVar-backed flag, calling Set is skipped entirely rather
+// than attempted — DefValue for such a flag is the bracketed DISPLAY string
+// ("[]" or "[a,b]"), not a value Set ever expects to receive back, and
+// stringSliceValue.Set APPENDS rather than replaces once its own unexported
+// changed bit has latched, so feeding it "[]" corrupts the slice with a
+// spurious literal "[]" element instead of restoring the zero value.
+// resetClientFlags already handles the zero-value reset for these flags by
+// nilling the Go var directly; this helper's job for them is limited to the
+// pflag.Flag.Changed bit.
 func resetCommandFlagState(t *testing.T, cmd *cobra.Command) {
 	t.Helper()
+	resetOne := func(f *pflag.Flag) {
+		f.Changed = false
+		if f.Value.Type() == "stringSlice" {
+			return
+		}
+		_ = f.Value.Set(f.DefValue)
+	}
 	doReset := func() {
-		cmd.Flags().VisitAll(func(f *pflag.Flag) {
-			f.Changed = false
-			_ = f.Value.Set(f.DefValue)
-		})
-		cmd.Root().PersistentFlags().VisitAll(func(f *pflag.Flag) {
-			f.Changed = false
-			_ = f.Value.Set(f.DefValue)
-		})
+		cmd.Flags().VisitAll(resetOne)
+		cmd.Root().PersistentFlags().VisitAll(resetOne)
 	}
 	doReset()
 	t.Cleanup(doReset)

@@ -68,6 +68,7 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		before:  exitUnavailable, // the trio is enforced nowhere today, so the call dials and fails
 		after:   exitUsage,
 		changes: true,
+		landed:  true,
 	},
 	{
 		name:    "list/scope+cross-spine",
