@@ -4,6 +4,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	flag "github.com/spf13/pflag"
@@ -134,6 +135,88 @@ func TestLoadOverlayBindsNonStringFlag(t *testing.T) {
 		}
 		if cfg.Server.ListenAddr != ":9090" {
 			t.Errorf("Server.ListenAddr = %q, want :9090", cfg.Server.ListenAddr)
+		}
+	})
+}
+
+// validClientConfig returns a ClientConfig whose fields all pass
+// ValidateClient. Tests mutate one field to exercise a single rule.
+// Deliberately a fresh helper local to this file (zero pre-existing call
+// sites), so the hand-built-literal tax this package's Config-shaped test
+// helper already carries stays confined to Config, never spreading to
+// ClientConfig.
+func validClientConfig() ClientConfig {
+	return ClientConfig{
+		Timeout:  "30s",
+		Insecure: "false",
+	}
+}
+
+// TestClientConfigValidateFieldRules locks in ValidateClient's rules,
+// including D-05's central claim: 0 (in either duration spelling) is a
+// rejected usage error, never treated as unbounded.
+func TestClientConfigValidateFieldRules(t *testing.T) {
+	if err := ValidateClient(validClientConfig()); err != nil {
+		t.Fatalf("ValidateClient(valid) = %v, want nil", err)
+	}
+
+	cases := []struct {
+		name   string
+		mutate func(*ClientConfig)
+		want   string
+	}{
+		{"timeout zero", func(c *ClientConfig) { c.Timeout = "0" }, "ENGRAM_TIMEOUT"},
+		{"timeout zero (0s spelling)", func(c *ClientConfig) { c.Timeout = "0s" }, "ENGRAM_TIMEOUT"},
+		{"timeout negative", func(c *ClientConfig) { c.Timeout = "-1s" }, "ENGRAM_TIMEOUT"},
+		{"timeout not a duration", func(c *ClientConfig) { c.Timeout = "abc" }, "ENGRAM_TIMEOUT"},
+		{"timeout empty", func(c *ClientConfig) { c.Timeout = "" }, "ENGRAM_TIMEOUT"},
+		{"insecure non-bool", func(c *ClientConfig) { c.Insecure = "maybe" }, "--insecure"},
+		{"output bogus", func(c *ClientConfig) { c.Output = "bogus" }, "--output"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := validClientConfig()
+			tc.mutate(&c)
+			err := ValidateClient(c)
+			if err == nil {
+				t.Fatalf("ValidateClient() = nil, want error containing %q", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("ValidateClient() error = %q, want substring %q", err, tc.want)
+			}
+		})
+	}
+
+	t.Run("insecure true and false both valid", func(t *testing.T) {
+		for _, v := range []string{"true", "false"} {
+			c := validClientConfig()
+			c.Insecure = v
+			if err := ValidateClient(c); err != nil {
+				t.Errorf("ValidateClient(Insecure=%q) = %v, want nil", v, err)
+			}
+		}
+	})
+
+	t.Run("output json, text, and empty all valid", func(t *testing.T) {
+		for _, v := range []string{"json", "text", ""} {
+			c := validClientConfig()
+			c.Output = v
+			if err := ValidateClient(c); err != nil {
+				t.Errorf("ValidateClient(Output=%q) = %v, want nil", v, err)
+			}
+		}
+	})
+
+	t.Run("multiple bad fields aggregate into one error", func(t *testing.T) {
+		c := ClientConfig{Timeout: "0", Insecure: "maybe", Output: "bogus"}
+		err := ValidateClient(c)
+		if err == nil {
+			t.Fatal("ValidateClient() = nil, want aggregated error")
+		}
+		for _, want := range []string{"ENGRAM_TIMEOUT", "--insecure", "--output"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("ValidateClient() error = %q, want substring %q", err, want)
+			}
 		}
 	})
 }
