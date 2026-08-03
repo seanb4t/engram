@@ -5,9 +5,12 @@ package main
 
 import (
 	"net"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/spf13/pflag"
 )
 
 // startAcceptCountingListener starts a TCP listener on 127.0.0.1:0 whose
@@ -342,5 +345,108 @@ func TestLegacyEnvExitsUsage(t *testing.T) {
 
 	if got := exitCodeFromError(err); got != exitUsage {
 		t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage); err=%v", got, exitUsage, err)
+	}
+}
+
+// mutuallyExclusiveAnnotation is the exact annotation key cobra's
+// MarkFlagsMutuallyExclusive stores group membership under, on each member
+// flag's own pflag.Flag.Annotations (confirmed against the vendored
+// cobra@v1.10.2/flag_groups.go: `mutuallyExclusiveAnnotation =
+// "cobra_annotation_mutually_exclusive"`). That constant is unexported, so
+// it cannot be imported; the literal is read directly off the *pflag.Flag
+// instead of reaching for unexported *cobra.Command state, per this task's
+// own instruction.
+const mutuallyExclusiveAnnotation = "cobra_annotation_mutually_exclusive"
+
+// mutualExclusivitySentenceSplit and mutualExclusivityFlagToken parse a
+// flag's Usage prose conservatively: split into sentences on ';' and '.',
+// keep only the sentence(s) actually containing the phrase this repo uses
+// ("mutually exclusive"), then extract every "--flag-name" token named in
+// that sentence. This deliberately does NOT scan the whole Usage string —
+// --scope's own Usage names --cross-spine twice (once in an unrelated
+// clause, once in the exclusivity clause), and only the latter is the claim
+// under test.
+var (
+	mutualExclusivitySentenceSplit = regexp.MustCompile(`[;.]`)
+	mutualExclusivityFlagToken     = regexp.MustCompile(`--[A-Za-z][A-Za-z0-9-]*`)
+)
+
+// flagsClaimedMutuallyExclusive returns the peer flag names usage claims are
+// mutually exclusive with f, extracted from the sentence(s) of f.Usage that
+// contain the phrase "mutually exclusive".
+func flagsClaimedMutuallyExclusive(usage string) []string {
+	var peers []string
+	for _, sentence := range mutualExclusivitySentenceSplit.Split(usage, -1) {
+		if !strings.Contains(sentence, "mutually exclusive") {
+			continue
+		}
+		for _, m := range mutualExclusivityFlagToken.FindAllString(sentence, -1) {
+			peers = append(peers, strings.TrimPrefix(m, "--"))
+		}
+	}
+	return peers
+}
+
+// declaredGroupCoversPair reports whether f's own
+// cobra_annotation_mutually_exclusive annotation contains a group naming
+// both self and peer — i.e. whether a real MarkFlagsMutuallyExclusive call
+// covers this pair, not merely a prose claim.
+func declaredGroupCoversPair(f *pflag.Flag, self, peer string) bool {
+	for _, group := range f.Annotations[mutuallyExclusiveAnnotation] {
+		hasSelf, hasPeer := false, false
+		for _, member := range strings.Fields(group) {
+			if member == self {
+				hasSelf = true
+			}
+			if member == peer {
+				hasPeer = true
+			}
+		}
+		if hasSelf && hasPeer {
+			return true
+		}
+	}
+	return false
+}
+
+// TestEveryDeclaredExclusivityHasAFlagGroup is the conformance invariant
+// generalizing plan 01-02's <assumption_delta_decision>: if a flag's Usage
+// text tells a caller it is mutually exclusive with another flag on the same
+// command, that command MUST carry a declared cobra flag group covering the
+// pair. This goes red the instant a future command re-states an
+// exclusivity rule in prose while enforcing it somewhere else, or nowhere —
+// exactly the "help-text fiction" D-07 closed for the three sites this phase
+// converted (see 01-CONTEXT.md D-07's memory 5kqrs63zte reference).
+//
+// A flag naming a peer that does not exist on the command is itself a
+// failure: the help text is lying about a flag the command doesn't even
+// have.
+func TestEveryDeclaredExclusivityHasAFlagGroup(t *testing.T) {
+	checked := 0
+	for _, cmd := range rootCmd.Commands() {
+		cmd := cmd
+		cmd.Flags().VisitAll(func(f *pflag.Flag) {
+			peers := flagsClaimedMutuallyExclusive(f.Usage)
+			if len(peers) == 0 {
+				return
+			}
+			t.Run(cmd.Name()+"/--"+f.Name, func(t *testing.T) {
+				for _, peer := range peers {
+					checked++
+					if cmd.Flags().Lookup(peer) == nil {
+						t.Errorf("%s --%s Usage claims mutual exclusivity with --%s, but %s declares no such flag — the help text is lying",
+							cmd.Name(), f.Name, peer, cmd.Name())
+						continue
+					}
+					if !declaredGroupCoversPair(f, f.Name, peer) {
+						t.Errorf("%s --%s Usage claims mutual exclusivity with --%s, but no declared cobra flag group (MarkFlagsMutuallyExclusive) covers both",
+							cmd.Name(), f.Name, peer)
+					}
+				}
+			})
+		})
+	}
+	if checked < 4 {
+		t.Fatalf("checked %d claimed pairs, want at least 4 — the command-tree walk did not reach enough flags", checked)
 	}
 }
