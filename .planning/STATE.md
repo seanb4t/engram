@@ -6,7 +6,7 @@ current_phase: 1
 current_phase_name: Interface Enforceability
 status: planning
 stopped_at: Phase 1 context gathered
-last_updated: "2026-08-03T17:16:35.638Z"
+last_updated: "2026-08-03T17:29:15.232Z"
 last_activity: 2026-08-03
 last_activity_desc: ROADMAP.md and REQUIREMENTS.md traceability written for v0.13.x
 progress:
@@ -127,6 +127,10 @@ milestone needs in working memory.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260717-g1r | Triage + fix #301 — Renovate ui/ postUpgradeTasks via `bash -c` (shell-free); branch unmerged, gated on a cluster-first allowlist update | 2026-07-17 | 1462da20 | [260717-g1r-renovate-ui-vendor-shell](./quick/260717-g1r-renovate-ui-vendor-shell/) |
+
+### Roadmap Evolution
+
+- Phase 1 edited: edited fields: requirements, success_criteria (D-04 client-config scope expansion)
 
 ## Session Continuity
 

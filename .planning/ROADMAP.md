@@ -196,7 +196,7 @@ resolves the load-bearing entanglement between #453 and #467 in a single pass: c
 falls through to exit 1, so adopting #453 without #467 would reintroduce, one command over, the
 exact undocumented exit-code split #467 exists to close.
 
-**Requirements:** REQ-flag-exclusivity-enforced, REQ-exit-code-unified, REQ-exit-code-migration-safe, REQ-cli-request-timeout
+**Requirements:** REQ-flag-exclusivity-enforced, REQ-exit-code-unified, REQ-exit-code-migration-safe, REQ-cli-request-timeout, REQ-client-config-unified
 
 **Depends on:** Nothing (first phase).
 
@@ -215,6 +215,10 @@ exact undocumented exit-code split #467 exists to close.
 4. A CLI invocation against a hung or half-open server returns within an operator-configurable
    `--timeout` window instead of blocking indefinitely, exiting with a documented code for the
    timeout case.
+5. Every client flag/setting — `--server`, `--token-file`, `--output`, `--insecure`, and the new
+   `--timeout` — resolves through the `internal/config` koanf registry rather than a per-setting
+   hand-rolled resolver; no `os.Getenv`-based client resolver (e.g. `resolveServerURL`) remains in
+   `cmd/engram/`.
 
 **Plans:** TBD
 

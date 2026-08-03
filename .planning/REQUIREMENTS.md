@@ -42,6 +42,11 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
 - [ ] **REQ-cli-request-timeout**: Every `engram` CLI RPC path applies a finite, operator-
   configurable deadline, so a hung or half-open server cannot block an invocation indefinitely; a
   timeout is reported with a documented exit code. (#452)
+- [ ] **REQ-client-config-unified**: Every `engram` client flag/setting — `--server`,
+  `--token-file`, `--output`, `--insecure`, and the new `--timeout` — resolves through the
+  `internal/config` koanf registry rather than a per-setting hand-rolled resolver, so client
+  configuration is declared in the same single source of truth that already owns the `ENGRAM_`
+  server vars. (#452)
 
 ### Interface Discoverability
 
