@@ -5,15 +5,15 @@ milestone_name: Curation & Self-Evidence
 current_phase: 01
 current_phase_name: interface-enforceability
 status: executing
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-08-03T19:31:45.015Z"
+stopped_at: Completed 01-04-PLAN.md
+last_updated: "2026-08-03T19:45:40.790Z"
 last_activity: 2026-08-03
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 9
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.
 ## Current Position
 
 Phase: 01 (interface-enforceability) — EXECUTING
-Plan: 4 of 9
+Plan: 5 of 9
 Status: Ready to execute
 Last activity: 2026-08-03 — Phase 01 execution started
 
@@ -117,6 +117,8 @@ milestone needs in working memory.
 - [Phase ?]: resetCommandFlagState (plan 01-01) had a latent bug: f.Value.Set(f.DefValue) corrupts stringSlice-typed flags via pflag's append-once-changed semantics; fixed to skip Set for stringSlice flags
 - [Phase ?]: client.timeout=0 rejected as usage error (D-05), diverging from Embed/Summarize.Timeout's zero-means-unbounded convention
 - [Phase ?]: ValidateClient kept structurally separate from Config.Validate to avoid forcing ~33 hand-built Config{} test literals to carry new required fields
+- [Phase ?]: 01-04: no defense-in-depth backstop retained for scope/cross-spine after cobra takes over the symmetric rule (CONTEXT.md discretion item resolved)
+- [Phase ?]: 01-04: buildRemapSource's residual empty-string --from gap confirmed real via store.ValidateOwnerRemap and closed explicitly
 
 ### Blockers/Concerns
 
@@ -140,8 +142,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-03T19:31:45.007Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-08-03T19:45:40.783Z
+Stopped at: Completed 01-04-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -226,6 +228,7 @@ Resume file: None
 | Phase 01 P01 | 15min | 3 tasks | 2 files |
 | Phase 01 P02 | ~13min | 4 tasks | 8 files |
 | Phase 01 P03 | 4min | 3 tasks | 5 files |
+| Phase 01 P04 | ~20min | 3 tasks | 9 files |
 
 ## Operator Next Steps
 

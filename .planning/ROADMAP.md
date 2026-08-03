@@ -224,7 +224,7 @@ exact undocumented exit-code split #467 exists to close.
    hand-rolled resolver; no `os.Getenv`-based client resolver (e.g. `resolveServerURL`) remains in
    `cmd/engram/`.
 
-**Plans:** 3/9 plans executed
+**Plans:** 4/9 plans executed
 
 Plans:
 **Wave 1**
@@ -238,7 +238,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-04-PLAN.md — Remaining flag-group sites: scope/cross-spine on search+list, migrate exactly-one-of, conformance invariant test
+- [x] 01-04-PLAN.md — Remaining flag-group sites: scope/cross-spine on search+list, migrate exactly-one-of, conformance invariant test
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
