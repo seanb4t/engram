@@ -298,13 +298,17 @@ func Load(flags *flag.FlagSet) (*Config, error) {
 	if flags != nil {
 		overlay := map[string]any{}
 		for name, key := range flagToKey {
-			if flags.Changed(name) {
-				v, err := flags.GetString(name)
-				if err != nil {
-					return nil, fmt.Errorf("config flag %q: %w", name, err)
-				}
-				overlay[key] = v
+			if !flags.Changed(name) {
+				continue
 			}
+			// pflag.Value's String() form works for ANY flag type, not just
+			// string — D-04 puts a bool (--insecure) into this registry, and
+			// the prior string-typed accessor errored on any non-string
+			// flag. Changed(name) just returned true, which pflag guarantees
+			// implies a registered flag, so the lookup below is never nil.
+			// For a string flag this returns exactly what that prior
+			// accessor returned, so existing rows are unaffected.
+			overlay[key] = flags.Lookup(name).Value.String()
 		}
 		if len(overlay) > 0 {
 			if err := k.Load(confmap.Provider(overlay, "."), nil); err != nil {

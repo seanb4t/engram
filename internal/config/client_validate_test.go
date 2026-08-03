@@ -5,6 +5,8 @@ package config
 
 import (
 	"testing"
+
+	flag "github.com/spf13/pflag"
 )
 
 // TestClientConfigLoadPrecedence locks in the client.* registry rows'
@@ -65,6 +67,73 @@ func TestClientConfigLoadPrecedence(t *testing.T) {
 			if f.Env == "ENGRAM_TOKEN" {
 				t.Fatalf("registry has an ENGRAM_TOKEN row (key %q) — the credential must never reach koanf (D-13)", f.Key)
 			}
+		}
+	})
+}
+
+// TestLoadOverlayBindsNonStringFlag locks in that Load's changed-flag overlay
+// reads a flag of any pflag type via Value.String(), not GetString — D-04
+// puts a bool (--insecure) into the registry, so the overlay must not error
+// on a non-string flag.
+func TestLoadOverlayBindsNonStringFlag(t *testing.T) {
+	t.Run("bool flag supplied", func(t *testing.T) {
+		f := flag.NewFlagSet("client", flag.ContinueOnError)
+		f.Bool("insecure", false, "")
+		if err := f.Parse([]string{"--insecure"}); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		cfg, err := Load(f)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.Client.Insecure != "true" {
+			t.Errorf("Client.Insecure = %q, want true", cfg.Client.Insecure)
+		}
+	})
+
+	t.Run("bool flag not supplied", func(t *testing.T) {
+		f := flag.NewFlagSet("client", flag.ContinueOnError)
+		f.Bool("insecure", false, "")
+		if err := f.Parse([]string{}); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		cfg, err := Load(f)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.Client.Insecure != "false" {
+			t.Errorf("Client.Insecure = %q, want false default", cfg.Client.Insecure)
+		}
+	})
+
+	t.Run("string flag still overlays", func(t *testing.T) {
+		f := flag.NewFlagSet("client", flag.ContinueOnError)
+		f.String("server", "", "")
+		if err := f.Parse([]string{"--server", "https://x"}); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		cfg, err := Load(f)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.Client.ServerURL != "https://x" {
+			t.Errorf("Client.ServerURL = %q, want https://x", cfg.Client.ServerURL)
+		}
+	})
+
+	t.Run("existing string-flag row still overlays (regression)", func(t *testing.T) {
+		t.Setenv("ENGRAM_LISTEN_ADDR", "")
+		f := flag.NewFlagSet("serve", flag.ContinueOnError)
+		f.String("listen-addr", "", "")
+		if err := f.Parse([]string{"--listen-addr", ":9090"}); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		cfg, err := Load(f)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.Server.ListenAddr != ":9090" {
+			t.Errorf("Server.ListenAddr = %q, want :9090", cfg.Server.ListenAddr)
 		}
 	})
 }
