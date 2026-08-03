@@ -45,11 +45,11 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
   known consumers, and a `guides/upgrade.md` entry naming every command whose exit status changes.
   (#467)
 
-- [ ] **REQ-cli-request-timeout**: Every `engram` CLI RPC path applies a finite, operator-
+- [x] **REQ-cli-request-timeout**: Every `engram` CLI RPC path applies a finite, operator-
   configurable deadline, so a hung or half-open server cannot block an invocation indefinitely; a
   timeout is reported with a documented exit code. (#452)
 
-- [ ] **REQ-client-config-unified**: Every `engram` client flag/setting — `--server`,
+- [x] **REQ-client-config-unified**: Every `engram` client flag/setting — `--server`,
   `--token-file`, `--output`, `--insecure`, and the new `--timeout` — resolves through the
   `internal/config` koanf registry rather than a per-setting hand-rolled resolver, so client
   configuration is declared in the same single source of truth that already owns the `ENGRAM_`
@@ -169,8 +169,8 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-flag-exclusivity-enforced | Phase 1 | Complete |
 | REQ-exit-code-unified | Phase 1 | Complete |
 | REQ-exit-code-migration-safe | Phase 1 | Complete |
-| REQ-cli-request-timeout | Phase 1 | Pending |
-| REQ-client-config-unified | Phase 1 | Pending |
+| REQ-cli-request-timeout | Phase 1 | Complete |
+| REQ-client-config-unified | Phase 1 | Complete |
 | REQ-conditional-rules-stated | Phase 2 | Pending |
 | REQ-surface-conformance-gate | Phase 2 | Pending |
 | REQ-mcp-tool-annotations | Phase 2 | Pending |
