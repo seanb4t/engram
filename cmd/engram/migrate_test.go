@@ -9,6 +9,17 @@ import (
 	"github.com/seanb4t/engram/internal/store"
 )
 
+// TestRemapOwnerFlagValidation covers the rows buildRemapSource itself still
+// owns after D-07: migrateRemapOwnerCmd's declared cobra flag groups
+// (MarkFlagsMutuallyExclusive + MarkFlagsOneRequired over
+// from/from-missing/from-anon) now guarantee exactly one of the three is
+// supplied before this function ever runs, so the old "no source"/"two
+// sources" selected-count rows describe a rule cobra owns — they moved to
+// end-to-end coverage in flaggroup_test.go's TestFlagGroupMigrateSourceExactlyOne.
+// What remains here is what buildRemapSource itself still validates: the
+// residual "--from ''" case cobra's flag groups cannot express (a supplied
+// flag with an unusable value), and store.ValidateOwnerRemap's own
+// conditions (empty --to, identical --from/--to).
 func TestRemapOwnerFlagValidation(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -17,11 +28,9 @@ func TestRemapOwnerFlagValidation(t *testing.T) {
 		to            string
 		wantErr       bool
 	}{
-		{"no source", "", false, false, "x", true},
 		{"missing ok", "", true, false, "x", false},
 		{"anon ok", "", false, true, "x", false},
 		{"from ok", "old", false, false, "x", false},
-		{"two sources", "old", true, false, "x", true},
 		{"empty to", "", true, false, "", true},
 		{"ambiguous empty from", "", false, false, "x", true},
 		{"from==to", "x", false, false, "x", true},

@@ -223,6 +223,7 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		before:  exitGeneric,
 		after:   exitUsage,
 		changes: true,
+		landed:  true,
 	},
 	{
 		name:    "migrate-remap/two-sources",
@@ -230,6 +231,7 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		before:  exitGeneric,
 		after:   exitUsage,
 		changes: true,
+		landed:  true,
 	},
 	{
 		name:    "migrate-remap/identical-from-to",
@@ -237,6 +239,7 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		before:  exitGeneric,
 		after:   exitUsage,
 		changes: true,
+		landed:  true,
 	},
 	{
 		name:    "migrate-set-owner/missing-owner",

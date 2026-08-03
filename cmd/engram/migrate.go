@@ -65,36 +65,40 @@ var (
 	remapTimeout time.Duration
 )
 
-// buildRemapSource validates the mutually-exclusive source flags, constructs
-// the sealed store.OwnerRemapSource, and runs the shared
-// store.ValidateOwnerRemap (--to non-empty, no-op --from X --to X) so both
-// fail fast before opening a Qdrant connection. Pure (no I/O) so it is
+// buildRemapSource constructs the sealed store.OwnerRemapSource and runs the
+// shared store.ValidateOwnerRemap (--to non-empty, no-op --from X --to X) so
+// both fail fast before opening a Qdrant connection. Pure (no I/O) so it is
 // unit-testable.
+//
+// migrateRemapOwnerCmd declares both MarkFlagsMutuallyExclusive and
+// MarkFlagsOneRequired over from/from-missing/from-anon, validated centrally
+// by rootCmd.PersistentPreRunE before RunE — and therefore this function —
+// ever runs, so exactly one of the three is always supplied here (D-07).
+// This function no longer counts selected sources.
+//
+// The one case cobra's flag groups CANNOT express: a supplied --from with an
+// empty value. MarkFlagsOneRequired only tracks whether the flag was
+// SUPPLIED (pflag.Flag.Changed), not whether its value is usable — "--from
+// ''" satisfies OneRequired but yields a source no different from "no source
+// at all". Rejected explicitly below rather than silently accepted as
+// RemapFrom("").
 func buildRemapSource(from string, missing, anon bool, to string) (store.OwnerRemapSource, error) {
-	selected := 0
-	if missing {
-		selected++
-	}
-	if anon {
-		selected++
-	}
-	if from != "" {
-		selected++
-	}
-	if selected != 1 {
-		return nil, fmt.Errorf("exactly one source required: --from <value> | --from-missing | --from-anon")
-	}
 	var src store.OwnerRemapSource
 	switch {
 	case missing:
 		src = store.RemapMissing()
 	case anon:
 		src = store.RemapAnon()
+	case from == "":
+		return nil, usageErrorf("--from requires a non-empty value")
 	default:
 		src = store.RemapFrom(from)
 	}
 	if err := store.ValidateOwnerRemap(src, to); err != nil {
-		return nil, err
+		// Wrap, don't reword (D-02/D-03): store.ValidateOwnerRemap's three
+		// bare errors (nil source, empty --to, identical --from/--to) become
+		// exit 2 via the carrier alone.
+		return nil, usageErrorf("%w", err)
 	}
 	return src, nil
 }
@@ -145,6 +149,14 @@ func init() {
 	migrateRemapOwnerCmd.Flags().StringVar(&remapTo, "to", "", "new owner value to stamp (required)")
 	migrateRemapOwnerCmd.Flags().BoolVar(&remapDryRun, "dry-run", false, "count matching records without writing")
 	migrateRemapOwnerCmd.Flags().DurationVar(&remapTimeout, "timeout", 5*time.Minute, "max wall-clock (0 disables); also cancellable via Ctrl-C")
+	// D-07: the third exclusivity claim site, and the only one needing
+	// exactly-one-of rather than plain mutual exclusivity.
+	// MarkFlagsMutuallyExclusive alone permits zero flags supplied, so it is
+	// paired with MarkFlagsOneRequired to make exactly one the only
+	// accepted shape. buildRemapSource no longer counts selected sources —
+	// cobra guarantees the count before RunE ever runs.
+	migrateRemapOwnerCmd.MarkFlagsMutuallyExclusive("from", "from-missing", "from-anon")
+	migrateRemapOwnerCmd.MarkFlagsOneRequired("from", "from-missing", "from-anon")
 	rootCmd.AddCommand(migrateRemapOwnerCmd)
 
 	// migrate-set-owner is now a deprecated alias for the owner-less case.

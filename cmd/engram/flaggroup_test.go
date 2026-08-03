@@ -289,6 +289,47 @@ func TestFlagGroupScopeCrossSpine(t *testing.T) {
 	})
 }
 
+// TestFlagGroupMigrateSourceExactlyOne extends the tracer's mechanism to the
+// third D-07 claim site: migrate-remap-owner's exactly-one-of source
+// selection, split across two declared cobra flag groups
+// (MarkFlagsMutuallyExclusive + MarkFlagsOneRequired over
+// from/from-missing/from-anon) plus the surviving store.ValidateOwnerRemap
+// checks inside buildRemapSource (identical from/to, empty --to). Every row
+// is rejected before server.StoreFromEnv() is ever called — buildRemapSource
+// runs first in migrateRemapOwnerCmd's RunE and returns early on error — so
+// the zero-accept listener, pointed at by ENGRAM_QDRANT_ADDR, proves the
+// no-dial claim structurally rather than merely by exit code.
+func TestFlagGroupMigrateSourceExactlyOne(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{name: "no source", args: []string{"migrate-remap-owner", "--to", "x"}},
+		{name: "two sources: from+from-missing", args: []string{"migrate-remap-owner", "--from", "a", "--from-missing", "--to", "x"}},
+		{name: "two sources: from-missing+from-anon", args: []string{"migrate-remap-owner", "--from-missing", "--from-anon", "--to", "x"}},
+		{name: "identical from/to", args: []string{"migrate-remap-owner", "--from", "a", "--to", "a"}},
+		{name: "empty to", args: []string{"migrate-remap-owner", "--from-missing"}},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			resetClientFlags(t)
+			resetCommandFlagState(t, migrateRemapOwnerCmd)
+			addr, accepts := startAcceptCountingListener(t)
+			t.Setenv("ENGRAM_QDRANT_ADDR", addr)
+
+			_, _, err := runClient(t, c.args...)
+
+			if got := exitCodeFromError(err); got != exitUsage {
+				t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage); err=%v", got, exitUsage, err)
+			}
+			if got := accepts(); got != 0 {
+				t.Errorf("accepts = %d, want 0 — rejected before server.StoreFromEnv is ever called", got)
+			}
+		})
+	}
+}
+
 // TestLegacyEnvExitsUsage pins the fourth bare-exit-1 site closed:
 // config.CheckLegacy's error, wrapped by usageErrorf in
 // rootCmd.PersistentPreRunE, now exits exitUsage for any command — client
