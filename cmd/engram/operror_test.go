@@ -114,7 +114,11 @@ func TestClassifyOperatorErr(t *testing.T) {
 	t.Run("already classified is idempotent", func(t *testing.T) {
 		original := &cliError{code: exitUsage, err: errors.New("boom")}
 		got := classifyOperatorErr(original)
-		if got != error(original) {
+		// errors.Is starts with an == comparison before ever walking
+		// Unwrap(), so this is an identity check, not a semantic-equality
+		// one -- errorlint flags a naked != here since it can't tell the
+		// two apart, but the intent is exactly "the same value, unchanged".
+		if !errors.Is(got, original) {
 			t.Errorf("classifyOperatorErr(already-classified) = %v, want the same value unchanged", got)
 		}
 		wantExitCode(t, got, exitUsage)
@@ -123,7 +127,7 @@ func TestClassifyOperatorErr(t *testing.T) {
 	t.Run("unrecognized error stays unclassified", func(t *testing.T) {
 		err := errors.New("totally unrelated failure")
 		got := classifyOperatorErr(err)
-		if got != err {
+		if !errors.Is(got, err) {
 			t.Errorf("classifyOperatorErr(unrecognized) = %v, want the same value unchanged", got)
 		}
 		var ec interface{ ExitCode() int }
