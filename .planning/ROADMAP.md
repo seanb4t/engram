@@ -220,7 +220,18 @@ exact undocumented exit-code split #467 exists to close.
    hand-rolled resolver; no `os.Getenv`-based client resolver (e.g. `resolveServerURL`) remains in
    `cmd/engram/`.
 
-**Plans:** TBD
+**Plans:** 9 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — D-09 before-table: every command x failure mode pinned at its current exit code, green against unchanged code
+- [ ] 01-02-PLAN.md — Tracer: paging-trio flag group -> central interception -> exit 2 with zero dials; framework errors typed; D-17 note retracted
+- [ ] 01-03-PLAN.md — koanf client-config registry: five `client.*` rows, `ClientConfig`, `ValidateClient`, non-string flag overlay
+- [ ] 01-04-PLAN.md — Remaining flag-group sites: scope/cross-spine on search+list, migrate exactly-one-of, conformance invariant test
+- [ ] 01-05-PLAN.md — Operator error classifier plus reindex, prune-expired, summarize-missing, backfill-short-ids
+- [ ] 01-06-PLAN.md — Operator classification for migrate-remap-owner, migrate-set-owner, serve; the ListenAndServe backstop pinned as deliberate
+- [ ] 01-07-PLAN.md — `exitTimeout = 6`, mapper split, catalog entry; hand-rolled client resolvers retired; `--timeout` registered
+- [ ] 01-08-PLAN.md — `context.WithTimeout` at all three client RPC sites; hung-server harness proving exit 6 distinct from 5
+- [ ] 01-09-PLAN.md — `guides/upgrade.md` + `guides/cli.md` migration notes, recorded consumer audit, mechanical coverage gate
 
 ---
 
