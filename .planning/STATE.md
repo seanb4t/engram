@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.13.x
 milestone_name: Curation & Self-Evidence
-current_phase: 1
-current_phase_name: Interface Enforceability
-status: planning
-stopped_at: Phase 1 context gathered
-last_updated: "2026-08-03T18:28:32.071Z"
+current_phase: 01
+current_phase_name: interface-enforceability
+status: executing
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-08-03T18:43:04.415Z"
 last_activity: 2026-08-03
-last_activity_desc: ROADMAP.md and REQUIREMENTS.md traceability written for v0.13.x
+last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 9
-  completed_plans: 0
+  completed_plans: 1
 ---
 
 # Project State
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Roadmap written for v0.13.x (5 phases, 18/18 requirements mapped). Next: `/gsd-plan-phase 1`.
+**Current focus:** Phase 01 — interface-enforceability
 
 ## Current Position
 
-Phase: Phase 1 — Interface Enforceability (not started)
-Plan: —
-Status: Roadmapped, awaiting first plan
-Last activity: 2026-08-03 — ROADMAP.md and REQUIREMENTS.md traceability written for v0.13.x
+Phase: 01 (interface-enforceability) — EXECUTING
+Plan: 2 of 9
+Status: Ready to execute
+Last activity: 2026-08-03 — Phase 01 execution started
 
 ## Deferred Items
 
@@ -112,6 +112,8 @@ milestone needs in working memory.
 - Phase 5 (Nyquist reconciliation + #355) is ordered last: #355 is the live acceptance fixture for
   Phase 3's `verify`, not a prerequisite to building it.
 
+- [Phase ?]: D-09 before-table: every hand-derived 'before' exit code matched actual observed behavior on the first run; fixed a flag-state leak (resetCommandFlagState only covers the handed command, not the whole tree) discovered under full-package test run order
+
 ### Blockers/Concerns
 
 **Open:**
@@ -134,9 +136,9 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-03T17:16:35.630Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-interface-enforceability/01-CONTEXT.md
+Last session: 2026-08-03T18:43:04.408Z
+Stopped at: Completed 01-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -217,6 +219,7 @@ Resume file: .planning/phases/01-interface-enforceability/01-CONTEXT.md
 | Phase 04 P04 | ~25min | 3 tasks | 3 files |
 | Phase 04 P05 | 18min | 3 tasks | 5 files |
 | Phase 04 P06 | 35min | 2 tasks | 15 files |
+| Phase 01 P01 | 15min | 3 tasks | 2 files |
 
 ## Operator Next Steps
 
