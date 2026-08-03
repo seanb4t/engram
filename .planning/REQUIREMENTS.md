@@ -142,21 +142,21 @@ Which phases cover which requirements. Filled during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REQ-flag-exclusivity-enforced | TBD | Pending |
-| REQ-exit-code-unified | TBD | Pending |
-| REQ-exit-code-migration-safe | TBD | Pending |
-| REQ-cli-request-timeout | TBD | Pending |
-| REQ-conditional-rules-stated | TBD | Pending |
-| REQ-surface-conformance-gate | TBD | Pending |
-| REQ-mcp-tool-annotations | TBD | Pending |
-| REQ-help-output-pinned | TBD | Pending |
-| REQ-spine-scan | TBD | Pending |
-| REQ-citation-drift-verify | TBD | Pending |
-| REQ-near-duplicate-report | TBD | Pending |
-| REQ-purge-extract-gated | TBD | Pending |
-| REQ-archive-tier | TBD | Pending |
-| REQ-semantic-curation-skill | TBD | Pending |
-| REQ-consent-never-perform | TBD | Pending |
-| REQ-consent-adversarial-proof | TBD | Pending |
-| REQ-nyquist-reconciled | TBD | Pending |
-| REQ-citation-fixture-355 | TBD | Pending |
+| REQ-flag-exclusivity-enforced | Phase 1 | Pending |
+| REQ-exit-code-unified | Phase 1 | Pending |
+| REQ-exit-code-migration-safe | Phase 1 | Pending |
+| REQ-cli-request-timeout | Phase 1 | Pending |
+| REQ-conditional-rules-stated | Phase 2 | Pending |
+| REQ-surface-conformance-gate | Phase 2 | Pending |
+| REQ-mcp-tool-annotations | Phase 2 | Pending |
+| REQ-help-output-pinned | Phase 2 | Pending |
+| REQ-spine-scan | Phase 3 | Pending |
+| REQ-citation-drift-verify | Phase 3 | Pending |
+| REQ-near-duplicate-report | Phase 3 | Pending |
+| REQ-purge-extract-gated | Phase 3 | Pending |
+| REQ-archive-tier | Phase 3 | Pending |
+| REQ-semantic-curation-skill | Phase 4 | Pending |
+| REQ-consent-never-perform | Phase 4 | Pending |
+| REQ-consent-adversarial-proof | Phase 4 | Pending |
+| REQ-nyquist-reconciled | Phase 5 | Pending |
+| REQ-citation-fixture-355 | Phase 5 | Pending |

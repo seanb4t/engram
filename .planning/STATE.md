@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.13.x
 milestone_name: Curation & Self-Evidence
 status: planning
-last_updated: "2026-08-03T12:25:50.615Z"
+last_updated: "2026-08-03T00:00:00.000Z"
 last_activity: 2026-08-03
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Planning the next milestone (`/gsd-new-milestone`) — v0.12.x closed 2026-08-02.
+**Current focus:** Roadmap written for v0.13.x (5 phases, 18/18 requirements mapped). Next: `/gsd-plan-phase 1`.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Phase 1 — Interface Enforceability (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-08-03 — Milestone v0.13.x started
+Status: Roadmapped, awaiting first plan
+Last activity: 2026-08-03 — ROADMAP.md and REQUIREMENTS.md traceability written for v0.13.x
 
 ## Deferred Items
 
@@ -89,13 +89,29 @@ milestone needs in working memory.
   deliverables with acceptance criteria, related flags name each other, and a validation error is
   a backstop for someone who did not read — never the teaching mechanism.
 
+**v0.13.x roadmap decisions (2026-08-03, carried from research + user scoping):**
+
+- `spine-review` is the sixth Subject-less operator-tier command (`reindex`,
+  `migrate-remap-owner`, `prune-expired`, `summarize-missing`, `backfill-short-ids`) — never a new
+  authz path, never composed from `Search`/`List`.
+- #467 resolves via **unification**, not a documented boundary (user override of the research
+  default recommendation) — ships with a pinned-current-behavior regression test authored before
+  the change, a consumer audit, and a `guides/upgrade.md` entry.
+- #453 and #467 are phased together (v0.13.x Phase 1): cobra's `MarkFlagsMutuallyExclusive` raises
+  a plain `fmt.Errorf` that bypasses `cliError`/`ExitCode()`, so adopting #453 without resolving
+  #467 first would reintroduce the exact undocumented exit-code split #467 exists to close.
+- `REQ-archive-tier` (Phase 3) and the semantic-skill cold-read test design (Phase 4) are both
+  flagged as needing a research pass at plan-phase — no single existing precedent to copy verbatim.
+- Phase 5 (Nyquist reconciliation + #355) is ordered last: #355 is the live acceptance fixture for
+  Phase 3's `verify`, not a prerequisite to building it.
+
 ### Blockers/Concerns
 
 **Open:**
 
 - **Deployed server lags `main`:** the running engram instance predates the v0.11.x and v0.12.x merges, so `supersede_memory`, memory `citations`, the `categories` filter, and every v0.12.x capability (Connect bearer identity, the headless CLI, `cross_spine`, the field+hint error envelope) are not callable until the next release.
 - **Not deployed → not exercised:** every v0.11.x and v0.12.x feature is verified against tests and a real Qdrant via testcontainers, but none has run in the deployed instance. Watch the first release for integration surprises.
-- **Validation commands can false-green:** `go test -run X ./pkg/...` matching nothing exits 0 with `ok … [no tests to run]`. This bit v0.12.x too: VALIDATION.md `-run` commands are written at PLAN time and routinely never match what shipped (wrong package in Phase 4, wrong test name in Phase 7), so the row reports a false green forever. Re-resolve every `-run` against `go test -list` when auditing, and prove execution with `-v` RUN/PASS pairs, not a package-level `ok`. Durable record: `bsbsvn4hbc`.
+- **Validation commands can false-green:** `go test -run X ./pkg/...` matching nothing exits 0 with `ok … [no tests to run]`. This bit v0.12.x too: VALIDATION.md `-run` commands are written at PLAN time and routinely never match what shipped (wrong package in Phase 4, wrong test name in Phase 7), so the row reports a false green forever. Re-resolve every `-run` against `go test -list` when auditing, and prove execution with `-v` RUN/PASS pairs, not a package-level `ok`. Durable record: `bsbsvn4hbc`. **This is v0.13.x Phase 5's own deliverable — do not let Phase 5 reproduce the bug it exists to close.**
 - Tracked tech debt: #369 (Renovate self-heal live observation, post-merge only), #366 (console e2e harness), #370 (Taskfile yamlfmt/CI reconciliation), plus 2 high Dependabot alerts open on `main`.
 - **CI gates outside the phase lifecycle:** `task chart:validate` (containerEnv checksum pin) and `task ui:build` (vendored SPA) are required checks that no phase gate runs. Run both locally before shipping any phase touching `charts/` or generated TS.
 
@@ -107,8 +123,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-02T13:22:59.463Z
-Stopped at: Completed 07-03-PLAN.md — Phase 7 complete; milestone v0.12.x closed and archived
+Last session: 2026-08-03T00:00:00.000Z
+Stopped at: ROADMAP.md written for v0.13.x (5 phases, 18/18 requirements mapped); REQUIREMENTS.md traceability filled
 Resume file: None
 
 ## Performance Metrics
@@ -193,4 +209,5 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Review `.planning/ROADMAP.md`'s v0.13.x phase details (5 phases, 18/18 requirements mapped).
+- Start Phase 1 with `/gsd-plan-phase 1`.

@@ -47,6 +47,29 @@ disagreement about `cross_spine` (v0.12.x Phase 3): whether the store-layer auth
 independently of the scope clause is to be settled by reading `Store.Search` end to end, not by
 analogy to `search_discovery`.
 
+**Active milestone — v0.13.x — Curation & Self-Evidence (Phases 1–5), opened 2026-08-03.** Closes
+two classes v0.12.x left to human diligence. First: an `engram spine-review` CLI resolving
+**structural** spine predicates (drifted `file:line` citations, near-duplicate candidates,
+purge-eligible records, an archive tier) through the existing Subject-less operator tier
+(`reindex`/`migrate-remap-owner`/`prune-expired`/`summarize-missing`/`backfill-short-ids`) — never
+a new authorization path — paired with a companion curation skill for the **semantic** judgments a
+CLI cannot make ("is this still true," "are these the same fact"), propose-never-perform, reusing
+`store_rule`'s consent gate verbatim. Second: a correct-by-reading interface audit that states
+every server-side conditional requirement on both the cobra `Usage` text and the MCP jsonschema
+tags with a CI conformance gate, adds MCP tool blast-radius annotations
+(`readOnlyHint`/`destructiveHint`/`idempotentHint`), pins `--help` output, and unifies the CLI's
+flag-exclusivity enforcement (#453) with its exit-code taxonomy (#467) **in the same phase** —
+because cobra's `MarkFlagsMutuallyExclusive` raises a plain `fmt.Errorf` that bypasses
+`cliError`/`ExitCode()`, adopting #453 without resolving #467 first would reintroduce, one command
+over, the exact undocumented exit-code split #467 exists to close. The exit-code change ships as a
+unification (not a documented boundary), with a pinned-current-behavior regression test authored
+before the change, a consumer audit, and a `guides/upgrade.md` entry. Also folds in the still-open
+Nyquist `VALIDATION.md` reconciliation debt inherited from v0.12.x (six `status: draft` rows plus
+one phase with none). Research (HIGH confidence) confirmed **zero new Go dependencies**: citation
+drift detection is a byte compare against `Citation.Excerpt` already cached at write time,
+near-duplicate scoring reuses a stored vector via `qdrant.NewQueryID` (no re-embedding), and the
+flag/timeout gaps are one-line `cobra`/stdlib fixes.
+
 ## Milestones
 
 - ✅ **v0.8.x Baseline** — Phases 1–7 (shipped)
@@ -55,6 +78,7 @@ analogy to `search_discovery`.
 - ✅ **v0.10.x — Hardening & Write Lane** — Phases 13–21 (shipped 2026-07-16): embedder reliability & options (#333/#332/#331/#334/#337, closes #261), Connect write lane + CSRF + stateless session rotation (#322/#323), correctness & polish tail, CI/maintenance hygiene. 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge only → #369). Full detail archived at `milestones/v0.10.x-ROADMAP.md`.
 - ✅ **v0.11.x — Capture & Service Identity** — Phases 22–26 (shipped 2026-07-26): Cedar authz foundation (#362/#373 trust anchor), service auth chain + tenancy isolation (#362/#373), idempotent capture (#340), supersession with history (#342), structured citations + category filter + chat base URL (#341/#374/#350). 11/11 requirements, audit PASSED. Full detail archived at `milestones/v0.11.x-ROADMAP.md`.
 - ✅ **v0.12.x — Headless Reach & Diagnosability** — Phases 1–7 (shipped 2026-08-02): Connect bearer identity + headless mount + CSRF provenance (#343), headless CLI client (#343), cross-spine memory recall (#344), diagnosability trio (#394/#360/#347), operator config & reindex correctness (#350/#345), rule-capture investigation & fix (#351), CLI cross-spine wiring. 21/21 requirements, audit `tech_debt` (0 blockers). Full detail archived at `milestones/v0.12.x-ROADMAP.md`.
+- **v0.13.x — Curation & Self-Evidence** — Phases 1–5 (active, opened 2026-08-03): CLI interface enforceability (#453/#467 unified + #452 timeout), interface discoverability (conditional-rule conformance, MCP tool annotations, pinned `--help`), `engram spine-review` structural spine curation, a companion semantic curation skill, and Nyquist `VALIDATION.md` reconciliation (incl. #355). 18 requirements mapped, 0 shipped yet.
 
 ## Phases
 
@@ -155,17 +179,183 @@ Audit (PASSED — 11/11 requirements, 6/6 integration seams, 2/2 E2E flows) at
 
 </details>
 
+- [ ] **Phase 1: Interface Enforceability** - Flag-group validation and one exit-code taxonomy resolved together (#453/#467), plus an operator-configurable CLI request timeout (#452)
+- [ ] **Phase 2: Interface Discoverability** - Conditional rules stated on both the cobra and MCP surfaces with a CI conformance gate, MCP tool blast-radius hints, pinned `--help` golden files
+- [ ] **Phase 3: Spine Curation — Structural (CLI)** - `engram spine-review scan/verify/consolidate/purge/archive` through the existing Subject-less operator tier
+- [ ] **Phase 4: Spine Curation — Semantic (Skill)** - A companion skill judges staleness and near-duplicate identity, proposing only, never mutating without consent
+- [ ] **Phase 5: Validation Debt Reconciliation** - Six inherited Nyquist drafts plus this milestone's own phases re-resolved against `go test -list`; #355's drifted citations fixed and used to calibrate `verify`
+
 ## Phase Details
 
-No active milestone. v0.12.x detail sections are archived at
-[`milestones/v0.12.x-ROADMAP.md`](milestones/v0.12.x-ROADMAP.md); the next milestone's phases land
-here when `/gsd-new-milestone` runs.
+### Phase 1: Interface Enforceability
+
+**Goal:** Every `engram` CLI invocation — client verb or operator command alike — resolves flag
+conflicts, timeouts, and errors through one predictable, migration-safe contract. This phase
+resolves the load-bearing entanglement between #453 and #467 in a single pass: cobra's
+`MarkFlagsMutuallyExclusive` raises a plain `fmt.Errorf` that bypasses `cliError`/`ExitCode()` and
+falls through to exit 1, so adopting #453 without #467 would reintroduce, one command over, the
+exact undocumented exit-code split #467 exists to close.
+
+**Requirements:** REQ-flag-exclusivity-enforced, REQ-exit-code-unified, REQ-exit-code-migration-safe, REQ-cli-request-timeout
+
+**Depends on:** Nothing (first phase).
+
+**Success criteria:**
+
+1. Every documented mutually-exclusive flag combination (e.g. `client_list.go`'s
+   `--offset`/`--cursor-mode`/`--page-token`) is rejected before any network dial, using cobra's
+   declarative flag-group API rather than a fourth hand-rolled guard alongside
+   `client_common.go:236` and `migrate.go:85`.
+2. Every command that fails — client verb or operator command, including cobra's own flag-group
+   validation — exits with exactly one of 0 (success), 2 (usage/validation), 4 (not found), or 5
+   (unavailable); no path falls through to a bare, undocumented exit 1.
+3. `guides/upgrade.md` names every command whose exit status changes, backed by a table-driven
+   regression test that pinned each affected command's *current* exit code before the change
+   landed, and an audit of known consumers completed before the unification ships.
+4. A CLI invocation against a hung or half-open server returns within an operator-configurable
+   `--timeout` window instead of blocking indefinitely, exiting with a documented code for the
+   timeout case.
+
+**Plans:** TBD
+
+---
+
+### Phase 2: Interface Discoverability
+
+**Goal:** Every server-side conditional requirement, CLI flag, and MCP tool argument is
+correct-by-reading — a caller learns the rule from the interface itself, never by triggering the
+rejection first. This phase's documented standard should exist before Phase 3's `spine-review` help
+text is finalized, so the new command is correct-by-reading from day one rather than becoming the
+next thing this audit has to retrofit.
+
+**Requirements:** REQ-conditional-rules-stated, REQ-surface-conformance-gate, REQ-mcp-tool-annotations, REQ-help-output-pinned
+
+**Depends on:** Nothing (parallelizable with Phase 1 — touches unrelated files).
+
+**Success criteria:**
+
+1. Every server-side conditional-requirement rule (e.g. `effectiveSearchScope`'s "scope is
+   required unless cross_spine is true") is stated in both the cobra `Usage` text and the
+   `internal/server` MCP jsonschema tag for its argument.
+2. A conformance test asserts each named conditional rule's substring appears on both independent
+   surfaces (the cobra tree, which already feeds `--help` and the self-describe catalog from one
+   source via `buildCatalog`, and the MCP arg-struct tags) and fails CI the moment they diverge.
+3. Every MCP tool declares `readOnlyHint`/`destructiveHint`/`idempotentHint`, so an agent can
+   classify a tool's blast radius before calling it.
+4. Any unreviewed change to a command's `--help` output fails CI via a golden-file test.
+
+**Plans:** TBD
+
+---
+
+### Phase 3: Spine Curation — Structural (CLI)
+
+**Goal:** An operator can inventory, verify, consolidate-report, and safely dispose of a memory
+spine's structural problems — drifted citations, near-duplicates, purge-eligible records, an
+archive tier — through `engram spine-review`, the sixth instance of the existing Subject-less
+operator tier (`reindex`/`migrate-remap-owner`/`prune-expired`/`summarize-missing`/
+`backfill-short-ids`), never by composing the Subject-gated `Search`/`List` and never via a new
+authorization path.
+
+**Requirements:** REQ-spine-scan, REQ-citation-drift-verify, REQ-near-duplicate-report, REQ-purge-extract-gated, REQ-archive-tier
+
+**Depends on:** Phase 1 (spine-review's own error/exit-code handling must be written against the
+resolved taxonomy, not retrofitted onto an already-shipped destructive `purge` verb), Phase 2 (the
+conditional-rule documentation standard should exist before this phase's help text is finalized).
+
+**Success criteria:**
+
+1. `engram spine-review scan` reports inventory and health signals by scope and category across
+   the whole spine, with no mutation on any path.
+2. `engram spine-review verify` classifies every stored citation anchor as valid, moved-but-valid,
+   or broken, with the moved tier reported separately from the broken tier so ordinary refactoring
+   does not train an operator to ignore the verifier.
+3. `engram spine-review consolidate` reports near-duplicate candidates by querying Qdrant with
+   records' already-stored vectors (no re-embedding), and never merges or mutates.
+4. `engram spine-review purge` previews by default, mutates only under an explicit `--apply` that
+   re-derives eligibility fresh at that moment (never acting on a stale candidate list), and
+   refuses to run unless rule `7smp8vy9hr`'s extract-before-delete ordering is provably satisfied.
+5. A record can be archived — removed from recall but retained and restorable — as a state an
+   operator can observe as distinct from both a superseded record's soft-hide and a purged
+   record's irreversible delete.
+
+**Research flag:** needs research at plan time. `REQ-archive-tier` is open at definition: whether
+archive needs a genuine fourth record state or can extend `prune-expired`'s existing soft-hide
+shape is to be resolved during this phase's plan-phase, not mid-build. The tombstone/grace-window
+mechanism for `purge` (marker duration, how `--apply`'s re-derive-at-apply-time interacts with a
+persisted watermark for partial-failure recovery) also has no single existing precedent to copy
+verbatim — see `research/SUMMARY.md`'s Gaps to Address.
+
+**Plans:** TBD
+
+---
+
+### Phase 4: Spine Curation — Semantic (Skill)
+
+**Goal:** An agent can judge record staleness ("is this still true against the tree it describes")
+and near-duplicate identity ("are these the same fact") using only already-shipped MCP tools, and
+every mutation it identifies stops at explicit user consent before anything is written — reusing
+`store_rule`'s consent protocol verbatim rather than inventing a second consent shape.
+
+**Requirements:** REQ-semantic-curation-skill, REQ-consent-never-perform, REQ-consent-adversarial-proof
+
+**Depends on:** Phase 3 (no code dependency — the skill calls only existing MCP tools and can be
+authored in parallel — but full acceptance of its extract-before-delete handoff waits on `verify`
+existing).
+
+**Success criteria:**
+
+1. The curation skill judges whether a record is still true against the tree it describes, and
+   whether two records describe the same fact, using only already-shipped MCP tools
+   (`list_memory`/`search_memory`/`get_memory`/`update_memory`/`supersede_memory`/`delete_memory`)
+   — zero new server-side code.
+2. Every mutation the skill identifies is proposed for user blessing and never performed
+   unilaterally, reusing `store_rule`'s consent protocol rather than a second consent shape.
+3. A cold-read adversarial test proves a confident, plausible, and *wrong* proposal still stops at
+   consent — not merely that a correct proposal is offered.
+
+**Research flag:** needs research at plan time. The cold-read adversarial test design (a
+deliberately-wrong "obviously right" proposal that must still stop at consent) has only one
+internal precedent (v0.12.x Phase 6 rule-capture) and deserves a focused pass on constructing a
+genuinely adversarial case for this milestone's broader, all-memories scope — not a mechanical
+reuse of that template.
+
+**Plans:** TBD
+
+---
+
+### Phase 5: Validation Debt Reconciliation
+
+**Goal:** Every phase's validation record — the six v0.12.x `VALIDATION.md` rows left at
+`status: draft` plus the one phase with none, and this milestone's own five phases — reflects
+tests that actually run, not a stale false green. This phase runs last relative to Phase 3
+specifically because #355 is the live acceptance fixture `spine-review verify` exists to detect,
+not a prerequisite to building `verify`; fixing it earlier would waste the calibration opportunity.
+
+**Requirements:** REQ-nyquist-reconciled, REQ-citation-fixture-355
+
+**Depends on:** Phase 3 (needs `verify` to exist so #355 can calibrate its false-positive rate);
+otherwise zero technical dependency on Phases 1–4, and reconciles each of this milestone's own
+phases as they close rather than only at the end.
+
+**Success criteria:**
+
+1. Every v0.12.x `VALIDATION.md` row (six at `status: draft`, plus the one phase with none) is
+   re-resolved against `go test -list` with a nonzero, expected match count — not merely re-run and
+   checked for exit 0.
+2. Every v0.13.x phase (1–4 above) reconciles its own `VALIDATION.md` the same way before the
+   milestone closes.
+3. #355's drifted `tools.go` citation anchors are repaired, and `spine-review verify` correctly
+   classifies the repair as resolved without over-flagging nearby, merely-moved-but-valid citations
+   elsewhere in the same sweep.
+
+**Plans:** TBD
 
 ---
 
 ## Progress
 
-**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · 13 → 14 (embedder track) · 15 → 16 → 17 → 18 → 19 (write-lane track, strict order) · 20 → 21 (independent) — v0.10.x shipped 2026-07-16 · 22 → 23 (Cedar foundation → service auth/tenancy, strict order) · 24 → 25 → 26 (capture trio + recall/config tail, strict order; 24 can start in parallel with 22–23) — v0.11.x shipped 2026-07-26 · v0.12.x: 1 → 2 (spine → CLI, strict order) · 3 · 4 · 5 · 6 (independent of the spine and of each other; ran in parallel once 1 was underway) · 7 (CLI cross-spine wiring, closed the audit seam between 2 and 3) — v0.12.x shipped 2026-08-02
+**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · 13 → 14 (embedder track) · 15 → 16 → 17 → 18 → 19 (write-lane track, strict order) · 20 → 21 (independent) — v0.10.x shipped 2026-07-16 · 22 → 23 (Cedar foundation → service auth/tenancy, strict order) · 24 → 25 → 26 (capture trio + recall/config tail, strict order; 24 can start in parallel with 22–23) — v0.11.x shipped 2026-07-26 · v0.12.x: 1 → 2 (spine → CLI, strict order) · 3 · 4 · 5 · 6 (independent of the spine and of each other; ran in parallel once 1 was underway) · 7 (CLI cross-spine wiring, closed the audit seam between 2 and 3) — v0.12.x shipped 2026-08-02 · v0.13.x: 1 · 2 (parallelizable with each other) → 3 (needs 1 and 2 settled first) → 4 (authored in parallel with 3, full acceptance trails it) → 5 (last; needs 3's `verify` for the #355 fixture, reconciles each phase's own validation as it closes) — v0.13.x planned 2026-08-03
 
 > **Phase numbering restarts per milestone as of v0.12.x.** Phases 1–26 above are the pre-v0.12.x
 > monotonic sequence and keep their historical numbers. In **prose**, a phase number is only
@@ -220,11 +410,17 @@ here when `/gsd-new-milestone` runs.
 | 4. Diagnosability | v0.12.x | 4/4 | Complete | 2026-08-01 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete | 2026-08-01 |
+| 1. Interface Enforceability | v0.13.x | 0/4 | Not started | - |
+| 2. Interface Discoverability | v0.13.x | 0/4 | Not started | - |
+| 3. Spine Curation — Structural (CLI) | v0.13.x | 0/5 | Not started | - |
+| 4. Spine Curation — Semantic (Skill) | v0.13.x | 0/3 | Not started | - |
+| 5. Validation Debt Reconciliation | v0.13.x | 0/2 | Not started | - |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.
 **v0.11.x — Capture & Service Identity: ✅ shipped 2026-07-26 · 5 phases (22–26), 19 plans, 46 tasks · 11/11 requirements · audit PASSED (6/6 integration seams, 2/2 E2E flows, 0 blockers; Nyquist 5/5 validated — phases 24 and 26 reconciled 2026-07-26, 0 gaps).** Full detail: `milestones/v0.11.x-ROADMAP.md`.
 **v0.12.x — Headless Reach & Diagnosability: ✅ shipped 2026-08-02 · 7 phases (1–7, first milestone on restarted numbering), 28 plans, 68 tasks · 21/21 requirements · audit `tech_debt` (5/5 integration seams, 2/2 E2E flows, 0 blockers; Nyquist not validated — 6 phases at `status: draft`, phase 2 has none, tracked as debt not gaps).** Full detail: `milestones/v0.12.x-ROADMAP.md`.
+**v0.13.x — Curation & Self-Evidence: 🔄 active (opened 2026-08-03) · 5 phases (1–5) · 18/18 requirements mapped, 0 shipped · carries forward the 6-row v0.12.x Nyquist debt into Phase 5.**
 
 
 ---
