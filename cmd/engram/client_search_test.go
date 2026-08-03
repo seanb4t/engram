@@ -19,6 +19,7 @@ import (
 
 func TestClientSearchEndToEndJSON(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
 	svc := &stubEngramService{
 		searchFn: func(_ context.Context, req *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
 			return &engramv1.SearchMemoriesResponse{
@@ -59,6 +60,7 @@ func TestClientSearchEndToEndJSON(t *testing.T) {
 
 func TestClientSearchSendsBearerHeader(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
 	svc := &stubEngramService{
 		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
 			return &engramv1.SearchMemoriesResponse{}, nil
@@ -78,6 +80,7 @@ func TestClientSearchSendsBearerHeader(t *testing.T) {
 
 func TestClientSearchNoTokenSendsNoAuthHeader(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
 	svc := &stubEngramService{
 		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
 			return &engramv1.SearchMemoriesResponse{}, nil
@@ -97,6 +100,7 @@ func TestClientSearchNoTokenSendsNoAuthHeader(t *testing.T) {
 
 func TestClientSearchTokenFromFile(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
 	t.Setenv("ENGRAM_TOKEN", "")
 	svc := &stubEngramService{
 		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
@@ -121,6 +125,7 @@ func TestClientSearchTokenFromFile(t *testing.T) {
 
 func TestClientSearchEnvBeatsTokenFile(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
 	svc := &stubEngramService{
 		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
 			return &engramv1.SearchMemoriesResponse{}, nil
@@ -145,6 +150,7 @@ func TestClientSearchEnvBeatsTokenFile(t *testing.T) {
 
 func TestClientSearchEmptyResultIsEmptyArray(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
 	svc := &stubEngramService{
 		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
 			return &engramv1.SearchMemoriesResponse{}, nil
@@ -163,6 +169,7 @@ func TestClientSearchEmptyResultIsEmptyArray(t *testing.T) {
 
 func TestClientSearchMissingServerURLIsUsageError(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
 	t.Setenv("ENGRAM_SERVER_URL", "")
 	svc := &stubEngramService{
 		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
@@ -195,6 +202,7 @@ func TestClientSearchMissingServerURLIsUsageError(t *testing.T) {
 
 func TestClientSearchMissingQueryIsUsageError(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
 	svc := &stubEngramService{
 		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
 			return &engramv1.SearchMemoriesResponse{}, nil
@@ -220,6 +228,7 @@ func TestClientSearchMissingQueryIsUsageError(t *testing.T) {
 
 func TestClientSearchExitCodeAuth(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
 	svc := &stubEngramService{
 		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
 			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("nope"))
@@ -233,6 +242,7 @@ func TestClientSearchExitCodeAuth(t *testing.T) {
 
 func TestClientSearchExitCodeNotFound(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
 	svc := &stubEngramService{
 		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("nope"))
@@ -246,6 +256,7 @@ func TestClientSearchExitCodeNotFound(t *testing.T) {
 
 func TestClientSearchExitCodeInvalidArgument(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
 	svc := &stubEngramService{
 		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("nope"))
@@ -269,6 +280,7 @@ func TestClientSearchExitCodeInvalidArgument(t *testing.T) {
 // that is wrong for production (02-RESEARCH.md Pitfall 5).
 func TestClientSearchExitCodeTransport(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
 	t.Setenv("ENGRAM_TOKEN", "")
 
 	_, _, err := runClient(t, "search", "--server", "http://127.0.0.1:1", "--query", "q", "--scope", "repo:x")
@@ -277,6 +289,7 @@ func TestClientSearchExitCodeTransport(t *testing.T) {
 
 func TestClientSearchTextOutputIsNotJSON(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
 	svc := &stubEngramService{
 		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
 			return &engramv1.SearchMemoriesResponse{
@@ -305,6 +318,7 @@ func TestClientSearchTextOutputIsNotJSON(t *testing.T) {
 // (D-05, T-07-02).
 func TestClientSearchCrossSpineEndToEnd(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
 	var gotReq *engramv1.SearchMemoriesRequest
 	svc := &stubEngramService{
 		searchFn: func(_ context.Context, req *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
@@ -353,6 +367,7 @@ func TestClientSearchCrossSpineEndToEnd(t *testing.T) {
 // call.
 func TestClientSearchMissingScopeIsUsageErrorBeforeDialing(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
 	svc := &stubEngramService{
 		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
 			return &engramv1.SearchMemoriesResponse{}, nil
@@ -372,6 +387,7 @@ func TestClientSearchMissingScopeIsUsageErrorBeforeDialing(t *testing.T) {
 // dialing, never silently discarding the scope the way the server does.
 func TestClientSearchScopeWithCrossSpineIsUsageErrorBeforeDialing(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
 	svc := &stubEngramService{
 		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
 			return &engramv1.SearchMemoriesResponse{}, nil
@@ -393,6 +409,7 @@ func TestClientSearchScopeWithCrossSpineIsUsageErrorBeforeDialing(t *testing.T) 
 // the caller's own flag, not on what the server happened to return.
 func TestClientSearchNoFooterWithoutCrossSpine(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
 	mems := []*engramv1.Memory{
 		{ShortId: "AAAA111111", Scope: "repo:x"},
 		{ShortId: "BBBB222222", Scope: "repo:x"},

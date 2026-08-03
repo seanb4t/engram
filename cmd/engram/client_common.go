@@ -217,24 +217,36 @@ func usageErrorf(format string, a ...any) error {
 	return &cliError{code: exitUsage, err: fmt.Errorf(format, a...)}
 }
 
-// validateScopeCrossSpine is the shared D-01/D-02/D-04 pre-flight guard used
-// by both searchCmd and listCmd, before dialing. It is deliberately
-// STRICTER than internal/server's effectiveSearchScope on the row where a
-// scope is set together with cross-spine: the server accepts that
-// combination and silently discards the scope (Phase 3 D-02), but that
-// discard is logged server-side at Info, where the calling agent never sees
-// it — an explicitly-typed filter being silently ignored is exactly the
-// "surprise" D-00 forbids, so the client rejects it instead. See
-// TestValidateScopeCrossSpineParity in client_common_test.go, which pins
-// this exact divergence as deliberate; do not "fix" it into agreement.
+// requireScopeUnlessCrossSpine is the shared D-01/D-02/D-04 pre-flight guard
+// used by both searchCmd and listCmd, before dialing. It enforces the one
+// rule that survives here after D-07: --scope is required unless
+// --cross-spine is set.
 //
-// It fails closed: every path below returns either an explicit rejection or
-// nil for one of the four enumerated matrix rows, with no fall-through that
-// would widen the query on unrecognized input.
-func validateScopeCrossSpine(scope string, crossSpine bool) error {
-	if crossSpine && scope != "" {
-		return usageErrorf("--scope and --cross-spine are mutually exclusive")
-	}
+// The symmetric half of the old guard — --scope and --cross-spine are
+// mutually exclusive — moved to a declared cobra flag group
+// (MarkFlagsMutuallyExclusive("scope", "cross-spine")) on each of
+// searchCmd/listCmd, validated centrally by rootCmd.PersistentPreRunE before
+// this function ever runs. It is deliberately NOT re-enforced here as a
+// defense-in-depth backstop: a second enforcement of a rule cobra now owns
+// is the exact "fourth hand-rolled guard" SC1 exists to eliminate, and a
+// backstop that can never fire reads as an active rule to a future reader.
+//
+// This asymmetric rule has no declarative cobra equivalent:
+// MarkFlagsOneRequired expresses "at least one of N flags is required",
+// never "A is required unless B is set" — crossSpine=false, scope="" is the
+// only rejected row here, which is not a symmetric relationship a flag group
+// can express.
+//
+// It is deliberately STRICTER than internal/server's effectiveSearchScope on
+// the scope-plus-cross-spine row — now rejected before this function ever
+// runs, by the cobra group described above — because the server accepts
+// that combination and silently discards the scope (Phase 3 D-02), logged
+// server-side at Info where the calling agent never sees it: an
+// explicitly-typed filter being silently ignored is exactly the "surprise"
+// D-00 forbids. See TestValidateScopeCrossSpineParity in
+// client_common_test.go, which pins this exact divergence as deliberate; do
+// not "fix" it into agreement.
+func requireScopeUnlessCrossSpine(scope string, crossSpine bool) error {
 	if !crossSpine && scope == "" {
 		return usageErrorf("--scope is required unless --cross-spine is set")
 	}

@@ -35,7 +35,7 @@ var listCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		// D-01/D-02/D-04 pre-flight guard, fired before any dialing.
-		if err := validateScopeCrossSpine(listScope, listCrossSpine); err != nil {
+		if err := requireScopeUnlessCrossSpine(listScope, listCrossSpine); err != nil {
 			return err
 		}
 		format, err := resolveOutputFormat(clientOutput, isTerminal(os.Stdout))
@@ -111,5 +111,11 @@ func init() {
 	// is rejected too (D-08's widened blast radius) — this is what closes
 	// the previously-unenforced trio without a fourth hand-rolled guard.
 	listCmd.MarkFlagsMutuallyExclusive("offset", "cursor-mode", "page-token")
+	// D-07: the second of the three exclusivity claim sites, shared with
+	// searchCmd's declaration above — MarkFlagsMutuallyExclusive is a
+	// per-Command method, so the group must be declared here too, not just
+	// once on searchCmd. requireScopeUnlessCrossSpine (client_common.go)
+	// still enforces the surviving asymmetric half.
+	listCmd.MarkFlagsMutuallyExclusive("scope", "cross-spine")
 	rootCmd.AddCommand(listCmd)
 }

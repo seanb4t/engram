@@ -93,6 +93,7 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		before:  exitUnavailable, // a false value is accepted today
 		after:   exitUsage,
 		changes: true,
+		landed:  true,
 	},
 	{
 		name:    "search/unknown-flag",

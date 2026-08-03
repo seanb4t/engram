@@ -5,6 +5,7 @@ package main
 
 import (
 	"net"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -182,6 +183,110 @@ func TestFlagParseErrorsExitUsage(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestFlagGroupScopeCrossSpine extends the tracer's mechanism (plan 01-02)
+// to the second D-07 claim site: the declared --scope/--cross-spine flag
+// group on both searchCmd and listCmd, plus the surviving asymmetric
+// requireScopeUnlessCrossSpine guard behind it. All six behaviors from
+// 01-04-PLAN.md's Task 1 <behavior> block are covered.
+func TestFlagGroupScopeCrossSpine(t *testing.T) {
+	t.Run("search: scope+cross-spine rejected before dial", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, searchCmd)
+		addr, accepts := startAcceptCountingListener(t)
+
+		_, _, err := runClient(t, "search", "--server", "http://"+addr, "--scope", "s", "--cross-spine", "--query", "q")
+
+		if got := exitCodeFromError(err); got != exitUsage {
+			t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage); err=%v", got, exitUsage, err)
+		}
+		if got := accepts(); got != 0 {
+			t.Errorf("accepts = %d, want 0 — the flag group must reject before any dial", got)
+		}
+	})
+
+	t.Run("list: scope+cross-spine rejected before dial", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, listCmd)
+		addr, accepts := startAcceptCountingListener(t)
+
+		_, _, err := runClient(t, "list", "--server", "http://"+addr, "--scope", "s", "--cross-spine")
+
+		if got := exitCodeFromError(err); got != exitUsage {
+			t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage); err=%v", got, exitUsage, err)
+		}
+		if got := accepts(); got != 0 {
+			t.Errorf("accepts = %d, want 0 — the flag group must reject before any dial", got)
+		}
+	})
+
+	// D-08's widened blast radius, restated for this site: cobra's flag
+	// groups count a *supplied* flag, not its value, so --cross-spine=false
+	// is still a supplied member of the group and must be rejected too.
+	// This is the search/scope+cross-spine-false baseline row.
+	t.Run("search: scope+cross-spine=false is still supplied, rejected before dial", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, searchCmd)
+		addr, accepts := startAcceptCountingListener(t)
+
+		_, _, err := runClient(t, "search", "--server", "http://"+addr, "--scope", "s", "--cross-spine=false", "--query", "q")
+
+		if got := exitCodeFromError(err); got != exitUsage {
+			t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage); err=%v", got, exitUsage, err)
+		}
+		if got := accepts(); got != 0 {
+			t.Errorf("accepts = %d, want 0 — a supplied false value is still supplied", got)
+		}
+	})
+
+	t.Run("search: neither flag supplied exits usage with the asymmetric message", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, searchCmd)
+		addr, accepts := startAcceptCountingListener(t)
+
+		_, _, err := runClient(t, "search", "--server", "http://"+addr, "--query", "q")
+
+		if got := exitCodeFromError(err); got != exitUsage {
+			t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage); err=%v", got, exitUsage, err)
+		}
+		if err == nil || !strings.Contains(err.Error(), "--scope is required unless --cross-spine is set") {
+			t.Errorf("err = %v, want it to mention the scope-required-unless-cross-spine message", err)
+		}
+		if got := accepts(); got != 0 {
+			t.Errorf("accepts = %d, want 0 — requireScopeUnlessCrossSpine must reject before any dial too", got)
+		}
+	})
+
+	t.Run("search: cross-spine alone is legal and dials", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, searchCmd)
+		addr, accepts := startAcceptCountingListener(t)
+
+		_, _, err := runClient(t, "search", "--server", "http://"+addr, "--cross-spine", "--query", "q")
+
+		if got := exitCodeFromError(err); got == exitUsage {
+			t.Errorf("exitCodeFromError(err) = %d, want something other than exitUsage; err=%v", got, err)
+		}
+		if got := accepts(); got == 0 {
+			t.Error("accepts = 0, want >= 1 — --cross-spine alone is legal and should have dialed")
+		}
+	})
+
+	t.Run("search: scope alone is legal and dials", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, searchCmd)
+		addr, accepts := startAcceptCountingListener(t)
+
+		_, _, err := runClient(t, "search", "--server", "http://"+addr, "--scope", "s", "--query", "q")
+
+		if got := exitCodeFromError(err); got == exitUsage {
+			t.Errorf("exitCodeFromError(err) = %d, want something other than exitUsage; err=%v", got, err)
+		}
+		if got := accepts(); got == 0 {
+			t.Error("accepts = 0, want >= 1 — --scope alone is legal and should have dialed")
+		}
+	})
 }
 
 // TestLegacyEnvExitsUsage pins the fourth bare-exit-1 site closed:

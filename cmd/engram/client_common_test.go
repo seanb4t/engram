@@ -110,8 +110,11 @@ func TestResolveOutputFormat(t *testing.T) {
 }
 
 // TestValidateScopeCrossSpineParity is the D-03 anti-drift gate: it pins
-// validateScopeCrossSpine against internal/server.EffectiveSearchScope
-// across the full 2x2 matrix (scope empty/non-empty x cross-spine off/on).
+// requireScopeUnlessCrossSpine against internal/server.EffectiveSearchScope
+// across the three rows that function still governs after D-07 (scope
+// empty/non-empty x cross-spine off/on, MINUS the scope-set-with-cross-spine
+// row, which cobra's declared flag group now rejects before this function
+// ever runs — see the end-to-end subtest below).
 //
 // This does NOT assert blanket equality — that would be wrong by
 // construction. D-04 makes the client deliberately STRICTER than the
@@ -138,16 +141,15 @@ func TestValidateScopeCrossSpineParity(t *testing.T) {
 		{"empty scope, cross-spine off", "", false, true, true},
 		{"empty scope, cross-spine on", "", true, false, false},
 		{"scope set, cross-spine off", "repo:x", false, false, false},
-		{"scope set, cross-spine on (D-04: client is stricter here)", "repo:x", true, true, false},
 	}
-	if len(cases) != 4 {
-		t.Fatalf("test table has %d entries, want 4 (2x2 matrix)", len(cases))
+	if len(cases) != 3 {
+		t.Fatalf("test table has %d entries, want 3 (the rows requireScopeUnlessCrossSpine still governs)", len(cases))
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			clientErr := validateScopeCrossSpine(c.scope, c.crossSpine) != nil
+			clientErr := requireScopeUnlessCrossSpine(c.scope, c.crossSpine) != nil
 			if clientErr != c.clientErr {
-				t.Errorf("validateScopeCrossSpine(%q, %v) error presence = %v, want %v", c.scope, c.crossSpine, clientErr, c.clientErr)
+				t.Errorf("requireScopeUnlessCrossSpine(%q, %v) error presence = %v, want %v", c.scope, c.crossSpine, clientErr, c.clientErr)
 			}
 			_, serverRawErr := server.EffectiveSearchScope(c.scope, c.crossSpine)
 			serverErr := serverRawErr != nil
@@ -162,6 +164,37 @@ func TestValidateScopeCrossSpineParity(t *testing.T) {
 			}
 		})
 	}
+
+	// The D-04 divergence row — scope set together with cross-spine — moved
+	// from requireScopeUnlessCrossSpine to a declared cobra flag group on
+	// searchCmd and listCmd (D-07). Assert it end-to-end, on both commands:
+	// the CLI rejects with exitUsage even though
+	// internal/server.EffectiveSearchScope accepts the identical combination
+	// (and silently discards the scope). Do not "fix" this into agreement —
+	// it is the intended divergence pinned above, now enforced one layer
+	// earlier than the Go function.
+	t.Run("scope set, cross-spine on (D-04: client is stricter here) — enforced by cobra flag group", func(t *testing.T) {
+		if _, serverRawErr := server.EffectiveSearchScope("repo:x", true); serverRawErr != nil {
+			t.Fatalf("server.EffectiveSearchScope(%q, true) = %v, want nil — the server accepts this combination; the client's stricter rejection is what this test pins", "repo:x", serverRawErr)
+		}
+		for _, cmdName := range []string{"search", "list"} {
+			t.Run(cmdName, func(t *testing.T) {
+				resetClientFlags(t)
+				cmd := searchCmd
+				args := []string{"search", "--server", deadServer, "--scope", "repo:x", "--cross-spine", "--query", "q"}
+				if cmdName == "list" {
+					cmd = listCmd
+					args = []string{"list", "--server", deadServer, "--scope", "repo:x", "--cross-spine"}
+				}
+				resetCommandFlagState(t, cmd)
+
+				_, _, err := runClient(t, args...)
+				if got := exitCodeFromError(err); got != exitUsage {
+					t.Errorf("%s --scope repo:x --cross-spine: exitCodeFromError(err) = %d, want %d (exitUsage); err=%v", cmdName, got, exitUsage, err)
+				}
+			})
+		}
+	})
 }
 
 // scopeCrossSpineFlagCommand is one row of TestScopeCrossSpineFlagsNameEachOther's

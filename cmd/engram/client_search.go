@@ -37,7 +37,7 @@ var searchCmd = &cobra.Command{
 			return usageErrorf("--query is required")
 		}
 		// D-01/D-02/D-04 pre-flight guard, fired before any dialing.
-		if err := validateScopeCrossSpine(searchScope, searchCrossSpine); err != nil {
+		if err := requireScopeUnlessCrossSpine(searchScope, searchCrossSpine); err != nil {
 			return err
 		}
 		format, err := resolveOutputFormat(clientOutput, isTerminal(os.Stdout))
@@ -89,5 +89,12 @@ func init() {
 	searchCmd.Flags().StringVar(&searchCreatedAfter, "created-after", "", "RFC3339 inclusive lower bound on created_at")
 	searchCmd.Flags().StringVar(&searchCreatedBefore, "created-before", "", "RFC3339 exclusive upper bound on created_at")
 	searchCmd.Flags().StringSliceVar(&searchCategories, "categories", nil, "category filter (ANY listed category)")
+	// D-07: the second of the three exclusivity claim sites. cobra's flag
+	// groups count a *supplied* flag, not its value, so --cross-spine=false
+	// is rejected too (the search/scope+cross-spine-false baseline row) —
+	// the same D-08 widened-blast-radius semantics plan 01-02 established
+	// for the paging trio. requireScopeUnlessCrossSpine (client_common.go)
+	// still enforces the surviving asymmetric half.
+	searchCmd.MarkFlagsMutuallyExclusive("scope", "cross-spine")
 	rootCmd.AddCommand(searchCmd)
 }
