@@ -2,15 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.13.x
 milestone_name: Curation & Self-Evidence
+current_phase: 1
+current_phase_name: Interface Enforceability
 status: planning
-last_updated: "2026-08-03T00:00:00.000Z"
+stopped_at: Phase 1 context gathered
+last_updated: "2026-08-03T17:16:35.638Z"
 last_activity: 2026-08-03
+last_activity_desc: ROADMAP.md and REQUIREMENTS.md traceability written for v0.13.x
 progress:
-  total_phases: 5
+  total_phases: 1
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
-  percent: 0
 ---
 
 # Project State
@@ -94,14 +97,18 @@ milestone needs in working memory.
 - `spine-review` is the sixth Subject-less operator-tier command (`reindex`,
   `migrate-remap-owner`, `prune-expired`, `summarize-missing`, `backfill-short-ids`) — never a new
   authz path, never composed from `Search`/`List`.
+
 - #467 resolves via **unification**, not a documented boundary (user override of the research
   default recommendation) — ships with a pinned-current-behavior regression test authored before
   the change, a consumer audit, and a `guides/upgrade.md` entry.
+
 - #453 and #467 are phased together (v0.13.x Phase 1): cobra's `MarkFlagsMutuallyExclusive` raises
   a plain `fmt.Errorf` that bypasses `cliError`/`ExitCode()`, so adopting #453 without resolving
   #467 first would reintroduce the exact undocumented exit-code split #467 exists to close.
+
 - `REQ-archive-tier` (Phase 3) and the semantic-skill cold-read test design (Phase 4) are both
   flagged as needing a research pass at plan-phase — no single existing precedent to copy verbatim.
+
 - Phase 5 (Nyquist reconciliation + #355) is ordered last: #355 is the live acceptance fixture for
   Phase 3's `verify`, not a prerequisite to building it.
 
@@ -123,9 +130,9 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-03T00:00:00.000Z
-Stopped at: ROADMAP.md written for v0.13.x (5 phases, 18/18 requirements mapped); REQUIREMENTS.md traceability filled
-Resume file: None
+Last session: 2026-08-03T17:16:35.630Z
+Stopped at: Phase 1 context gathered
+Resume file: .planning/phases/01-interface-enforceability/01-CONTEXT.md
 
 ## Performance Metrics
 
