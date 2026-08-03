@@ -24,11 +24,13 @@ type Config struct {
 	Server      ServerConfig      `koanf:"server"`
 	Qdrant      QdrantConfig      `koanf:"qdrant"`
 	Embed       EmbedConfig       `koanf:"embed"`
+	Memory      MemoryConfig      `koanf:"memory"`
 	Summarize   SummarizeConfig   `koanf:"summarize"`
 	OpenAI      OpenAIConfig      `koanf:"openai"`
 	OIDC        OIDCConfig        `koanf:"oidc"`
 	ServiceAuth ServiceAuthConfig `koanf:"service_auth"`
 	UI          UIConfig          `koanf:"ui"`
+	Connect     ConnectConfig     `koanf:"connect"`
 	Log         LogConfig         `koanf:"log"`
 	Usage       UsageConfig       `koanf:"usage"`
 }
@@ -74,6 +76,22 @@ type EmbedConfig struct {
 	Timeout string `koanf:"timeout"`
 }
 
+// MemoryConfig bounds the ordinary store_memory/update_memory `summary`
+// field (04-diagnosability D-06a/D-18): issue #360's misattributed
+// "missing properties: [\"content\"]" traces to an oversized `summary`
+// decoding in a way that made `content` read as absent, and there was no
+// bound on a memory summary to reject it deterministically — only
+// maxRuleSummaryBytes (rules.go), which governs RULE summaries alone and is
+// untouched by this key. Sean approved this bound on the explicit condition
+// that it be koanf-configurable rather than a compile-time constant.
+type MemoryConfig struct {
+	// MaxSummaryBytes caps storeArgs.Summary / updateArgs.Summary (default
+	// "512"). "0" disables the bound entirely — the same convention
+	// embed.timeout/summarize.max_tokens already use for their own escape
+	// hatches (validate.go).
+	MaxSummaryBytes string `koanf:"max_summary_bytes"`
+}
+
 // SummarizeConfig selects the recall-summary model and the character cap shared
 // by the summarizer and recall truncation. Empty Model disables auto-summary
 // (presence-enables, like OIDC issuer); MaxChars defaults to "280".
@@ -117,6 +135,11 @@ type OpenAIConfig struct {
 	// construction site (cmp.Or in summarizerFromConfig), not here, so this
 	// field always faithfully reflects what the operator set (D-12).
 	ChatBaseURL string `koanf:"chat_base_url"`
+	// ChatAPIKey is the ENGRAM_OPENAI_CHAT_API_KEY credential for the
+	// chat/summarize lane. Empty (the default; no registry default is set) means
+	// inherit APIKey — the fallback is resolved once, at the summarizer
+	// construction site (cmp.Or in summarizerFromConfig), not here (D-02/D-03).
+	ChatAPIKey string `koanf:"chat_api_key"`
 }
 
 // OIDCConfig holds the MCP bearer-token issuer settings and the web-UI
@@ -164,6 +187,14 @@ type UIConfig struct {
 	Issuer      string `koanf:"issuer"`
 	RedirectURL string `koanf:"redirect_url"`
 	CookieKey   string `koanf:"cookie_key"`
+}
+
+// ConnectConfig holds the ConnectRPC headless-mount switch (D-10): whether to
+// mount the Connect lane on a deployment with the web UI disabled. Kept a
+// string, parsed with strconv.ParseBool at point of use, mirroring
+// summarize.on_write / usage.signals.
+type ConnectConfig struct {
+	Headless string `koanf:"headless"`
 }
 
 // LogConfig controls structured-log output: verbosity, encoding, and whether

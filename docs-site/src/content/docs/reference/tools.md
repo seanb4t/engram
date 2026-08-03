@@ -31,6 +31,10 @@ records created.
 **`actor` and `owner` are always server-set.** They come from the validated OIDC
 token and are never accepted as client input.
 
+**A rejected call** — a missing or malformed argument, a bound exceeded — returns a
+field-and-hint envelope rather than a plain message; see the
+[error reference](/reference/errors/) for the full grammar and hint-code vocabulary.
+
 ---
 
 ## store_memory
@@ -49,7 +53,7 @@ or timestamps.
 | `workspace` | string | no | Workspace identifier |
 | `worktree_path` | string | no | Path to the git worktree |
 | `base_dir` | string | no | Base directory for the project |
-| `summary` | string | no | Short human-readable summary (caller-authored, `summary_source=client`). Omit for no summary. |
+| `summary` | string | no | Short human-readable summary (caller-authored, `summary_source=client`). Max `ENGRAM_MEMORY_MAX_SUMMARY_BYTES` bytes (default 512; see [Configuration](/guides/configure/)). Omit for no summary. |
 | `citations` | citation[] | no | Optional structured source anchors (same shape as [`store_discovery`](#store_discovery)'s `citations`, max 50); never inferred — only what you explicitly supply. Omit for none. |
 
 Returns the stored record's `id` and `short_id`.
@@ -75,7 +79,7 @@ normally via `search_memory`/`list_memory`.
 | `workspace` | string | no | Workspace identifier |
 | `worktree_path` | string | no | Path to the git worktree |
 | `base_dir` | string | no | Base directory for the project |
-| `summary` | string | no | Short human-readable summary (caller-authored, `summary_source=client`). Omit for no summary. |
+| `summary` | string | no | Short human-readable summary (caller-authored, `summary_source=client`). Max `ENGRAM_MEMORY_MAX_SUMMARY_BYTES` bytes (default 512; see [Configuration](/guides/configure/)). Omit for no summary. |
 | `citations` | citation[] | no | Optional structured source anchors (same shape as [`store_discovery`](#store_discovery)'s `citations`, max 50); never inferred — only what you explicitly supply. Omit for none. |
 | `not_before` | string | no | RFC3339; hide from recall until this time |
 | `not_after` | string | no | RFC3339; drop from recall at this time |
@@ -93,13 +97,14 @@ memories. By default returns compact summaries; pass `full=true` for complete co
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `query` | string | yes | Natural-language search query |
-| `scope` | string | yes | Scope to search within |
+| `scope` | string | conditional | Scope to search within; required unless `cross_spine` is true |
 | `k` | uint64 | no | Number of results to return (default 8) |
 | `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter. Applied as a hard pre-filter, then results are ranked by vector similarity and reranking (see below) |
 | `categories` | string[] | no | Restrict to records in **any** of the listed categories (OR) — the opposite of `tags`' ALL/AND semantics, since a record carries exactly one category. Omit or pass an empty array for no category filter. An unmatched value returns zero results, never an error; any stored category is accepted, including `discovery` and `rule`, not just the four `store_memory` write values. Applied as a hard pre-filter, before vector ranking. The same filter is available over the Connect read API on `SearchMemories`. |
 | `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
 | `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
 | `full` | bool | no | Return full `content` instead of compact summaries (default `false`) |
+| `cross_spine` | bool | no | Span all scopes the caller can read; ignores `scope` when true |
 
 Returns a list of matching memory records. Each result carries a `score`: the
 raw Qdrant cosine similarity for this query (higher = closer), present when
@@ -107,6 +112,13 @@ non-zero. Unranked `list_memory`/`get_memory` results have a zero/omitted score.
 Final order may include reranking; `score` remains first-stage dense
 similarity and may be non-monotonic after rerank. `citations` are omitted from
 the default compact view; pass `full=true` to include them.
+
+On a cross-spine call (`cross_spine=true`), the response also carries
+`searched_scopes` — every scope you can read that the search spanned, not the
+scopes that produced hits — and `scopes_truncated`, true when that scope
+enumeration hit its bounded ceiling and the list may be incomplete. Both keys
+are omitted entirely on a scope-confined call, so an existing consumer's
+response shape is unchanged.
 
 ---
 
@@ -118,7 +130,7 @@ pass `full=true` for complete content.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `scope` | string | yes | The scope to list memories from |
+| `scope` | string | conditional | The scope to list memories from; required unless `cross_spine` is true |
 | `limit` | uint64 | no | Maximum memories to return (default 20) |
 | `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter |
 | `categories` | string[] | no | Restrict to records in **any** of the listed categories (OR) — the opposite of `tags`' ALL/AND semantics, since a record carries exactly one category. Omit or pass an empty array for no category filter. An unmatched value returns zero results, never an error; any stored category is accepted, including `discovery` and `rule`, not just the four `store_memory` write values. The same filter is available over the Connect read API on `ListMemories`. |
@@ -126,9 +138,22 @@ pass `full=true` for complete content.
 | `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
 | `cursor` | string | no | Opaque pagination cursor from a previous response's `next_cursor`. Omit for the first page. Mutually exclusive with `offset` |
 | `full` | bool | no | Return full `content` instead of compact summaries (default `false`) |
+| `cross_spine` | bool | no | Span all scopes the caller can read; ignores `scope` when true |
 
 Returns `{ "memories": [...], "next_cursor": "<token>" }`. An empty or absent `next_cursor` indicates the last page.
 `citations` are omitted from the default compact view; pass `full=true` to include them.
+
+On a cross-spine call (`cross_spine=true`), the response also carries
+`searched_scopes` — every scope you can read that the list spanned, not the
+scopes that produced results — and `scopes_truncated`, true when that scope
+enumeration hit its bounded ceiling and the list may be incomplete. Both keys
+are omitted entirely on a scope-confined call.
+
+Pass an explicit `limit` on a cross-spine list. The underlying total becomes
+an exact count across every readable scope rather than one scope (visible as
+the Connect API's `total` field), and on the Connect lane an unset limit means
+"all" — a caller flipping `cross_spine` on an existing workflow will see the
+result count jump and, on Connect, may pull far more than intended.
 
 ---
 
@@ -227,7 +252,7 @@ summary), or clear it (empty `summary`) — or the update is rejected.
 | `content` | string | yes | The replacement text (re-embedded) |
 | `shared` | bool | no | `true` = shared, `false` = private; omit to keep current visibility |
 | `tags` | string[] | no | Replaces the full tag set; an empty array clears all tags. Omit to keep the current tags |
-| `summary` | string | no | Replace the summary; empty string clears it. Omit to keep the current summary. When changing `content`, must be addressed if `summary_source=client` |
+| `summary` | string | no | Replace the summary; empty string clears it. Omit to keep the current summary. When changing `content`, must be addressed if `summary_source=client`. Max `ENGRAM_MEMORY_MAX_SUMMARY_BYTES` bytes (default 512). |
 
 Only the record owner can update. Returns `"updated"` on success.
 
@@ -242,6 +267,13 @@ Delete one memory by id.
 | `id` | string | yes | The UUID **or `short_id`** of the memory to delete |
 
 Only the record owner can delete. Returns `"deleted"` on success.
+
+Deleting a rule is permitted — this is the only path that retires one, since
+`supersede_memory` and un-sharing are both rejected for rules — and no
+server-side guard here distinguishes a rule from any other record. Agents
+following the `curating-memory` skill are instructed to *propose* a rule's
+removal and never perform it unasked; that is an instruction-level gate, not
+an enforced one.
 
 ---
 
@@ -326,10 +358,12 @@ Returns `"visibility updated"` on success.
 ## store_rule
 
 Persist a **normative rule** (repository/project ground truth) that agents must
-follow. Call **only on explicit user instruction** — never promote a rule
-unilaterally; propose it to the user instead. Rules live in a dedicated
-`rule:repo:*` / `rule:project:*` scope, are always shared, and surface as a
-session-start index.
+follow. An agent may notice a rule candidate and propose it to the user;
+`store_rule` is called only after the user says yes — never promote a rule
+unilaterally. See the `curating-memory` skill for the recognition triggers and
+the proposal protocol. Rules live in a dedicated `rule:repo:*` /
+`rule:project:*` scope, are always shared, and surface as a session-start
+index.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
@@ -341,7 +375,11 @@ session-start index.
 
 `category` (`rule`), `source` (`user-said`), and `visibility` (`shared`) are all
 server-set; do not supply them. The summary is stored as a client-authored
-summary. `set_visibility` is rejected for rules — they are always shared.
+summary. A replace (`id` set to the existing UUID or `short_id`) preserves the
+record's existing `short_id`, so handles cited elsewhere keep resolving.
+`set_visibility` is rejected for rules — they are always shared — and so is
+`supersede_memory`; both correction paths are closed, so retiring a rule
+means deleting it.
 
 Returns the stored rule's `id` and `short_id`.
 
@@ -359,10 +397,13 @@ Rules are the repository/project's normative ground truth.
 | `full` | bool | no | `true` adds full content; default returns the compact index shape |
 
 The default compact shape is a `ruleView` (`short_id`, `id`, `summary`, `tags`,
-`scope`, `created_at`); `full=true` returns the full records. Ordering is
-oldest-first (this ascending order is specific to `list_rules`). A per-scope
-count above 50 adds a curation-smell advisory to the text result only — the
-returned rules payload is unaffected.
+`scope`, `created_at`) — note it carries no `content`, so a contradiction or
+duplication check needs `full=true`. `full=true` returns the full records.
+Ordering is oldest-first (this ascending order is specific to `list_rules`).
+A per-scope count above 50 adds a curation-smell advisory to the text result
+only — the returned rules payload is unaffected. The advisory is a volume
+signal only: it says nothing about duplication or contradiction, and it
+cannot fire below 51 rules in a scope.
 
 ---
 

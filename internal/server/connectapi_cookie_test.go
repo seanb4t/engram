@@ -15,6 +15,7 @@ import (
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
+	"github.com/seanb4t/engram/internal/auth"
 	"github.com/seanb4t/engram/internal/store"
 )
 
@@ -41,14 +42,14 @@ func TestConnectCookieLaneIsolation(t *testing.T) {
 		_ = d.st.Delete(ctx, bPriv.ID, store.Authenticated("actor-B"))
 	}()
 
-	resolve := func(_ context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, error) {
+	resolve := func(_ context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error) {
 		switch req.Header().Get("X-Test-Actor") {
 		case "A":
-			return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}}, nil
+			return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}}, auth.LaneCookie, nil
 		case "B":
-			return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-B"}}, nil
+			return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-B"}}, auth.LaneCookie, nil
 		default:
-			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("no identity"))
+			return nil, auth.LaneUnknown, connect.NewError(connect.CodeUnauthenticated, errors.New("no identity"))
 		}
 	}
 
@@ -98,7 +99,9 @@ func TestConnectCookieLaneIsolation(t *testing.T) {
 func TestConnectNoCORSHeaders(t *testing.T) {
 	d := &deps{} // no Qdrant needed
 	mux := http.NewServeMux()
-	resolve := func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error) { return nil, nil }
+	resolve := func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error) {
+		return nil, auth.LaneCookie, nil
+	}
 	// TestConnectNoCORSHeaders only exercises an OPTIONS preflight, never a
 	// write RPC, so csrfVerify is never invoked — nil is fine.
 	if err := d.mountConnect(mux, resolve, nil, nil); err != nil {

@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -42,12 +44,39 @@ const qdrantTOCTOUVerifiedVersion = "1.18.2"
 // which case the integration tests skip.
 var testQdrantAddr string
 
+// requireQdrant is the SOLE place ENGRAM_REQUIRE_QDRANT is read/parsed in this
+// package, mirroring internal/server/tools_test.go's requireQdrant: TestMain and
+// dialTestClient act only on its result, never parsing the env var themselves.
+// Unset/empty -> (false, nil): local dev ergonomics unchanged (integration tests
+// still skip without Qdrant). A truthy/falsey value parses via
+// strconv.ParseBool. Any non-empty invalid value returns a non-nil error rather
+// than being coerced to false — coercing a parse error to false would silently
+// re-enable skipping and defeat the fail-closed gate the CI `test` job relies on.
+func requireQdrant() (bool, error) {
+	v := os.Getenv("ENGRAM_REQUIRE_QDRANT")
+	if v == "" {
+		return false, nil
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, fmt.Errorf("ENGRAM_REQUIRE_QDRANT: invalid value %q: %w", v, err)
+	}
+	return b, nil
+}
+
 // TestMain provisions Qdrant for this package's integration tests. It prefers an
 // existing instance via ENGRAM_QDRANT_TEST_ADDR; otherwise it boots an ephemeral
 // Qdrant via testcontainers and tears it down afterward. If neither is available
-// the suite still runs — the integration tests skip with a clear message — so
-// unit-only tests are unaffected.
+// the suite still runs and the integration tests skip with a clear message —
+// UNLESS ENGRAM_REQUIRE_QDRANT is set (mirrors internal/server/tools_test.go: the
+// CI `test` job sets it), in which case TestMain exits non-zero instead of
+// letting the suite run with the real-store authz gate silently skipped.
 func TestMain(m *testing.M) {
+	required, rerr := requireQdrant()
+	if rerr != nil {
+		fmt.Fprintf(os.Stderr, "fatal: %v\n", rerr)
+		os.Exit(1)
+	}
 	if addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR"); addr != "" {
 		testQdrantAddr = addr
 		os.Exit(m.Run())
@@ -59,6 +88,10 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		startCancel()
 		fmt.Fprintf(os.Stderr, "qdrant testcontainer unavailable (%v); integration tests will skip — set ENGRAM_QDRANT_TEST_ADDR or start Docker\n", err)
+		if required {
+			fmt.Fprintln(os.Stderr, "fatal: ENGRAM_REQUIRE_QDRANT is set — failing instead of skipping")
+			os.Exit(1)
+		}
 		os.Exit(m.Run())
 	}
 	testQdrantAddr, err = container.GRPCEndpoint(startCtx)
@@ -66,6 +99,11 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		terminateQdrant(container)
 		fmt.Fprintf(os.Stderr, "qdrant grpc endpoint: %v\n", err)
+		os.Exit(1)
+	}
+	if required && testQdrantAddr == "" {
+		terminateQdrant(container)
+		fmt.Fprintln(os.Stderr, "fatal: ENGRAM_REQUIRE_QDRANT is set but no Qdrant address resolved")
 		os.Exit(1)
 	}
 	code := m.Run()
@@ -88,6 +126,13 @@ func terminateQdrant(c *tcqdrant.QdrantContainer) {
 func dialTestClient(t *testing.T) *qdrant.Client {
 	t.Helper()
 	if testQdrantAddr == "" {
+		required, err := requireQdrant()
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		if required {
+			t.Fatal("no Qdrant available and ENGRAM_REQUIRE_QDRANT is set: failing instead of skipping")
+		}
 		t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
 	}
 	host, portStr, err := net.SplitHostPort(testQdrantAddr)
@@ -103,6 +148,99 @@ func dialTestClient(t *testing.T) *qdrant.Client {
 		t.Fatalf("client: %v", err)
 	}
 	return c
+}
+
+// TestRequireQdrant mirrors internal/server/tools_test.go's TestRequireQdrant:
+// verifies parsing semantics for the env var this package's fail-closed gate
+// relies on.
+func TestRequireQdrant(t *testing.T) {
+	cases := []struct {
+		name    string
+		val     string
+		want    bool
+		wantErr bool
+	}{
+		{name: "unset_or_empty", val: "", want: false},
+		{name: "truthy_true", val: "true", want: true},
+		{name: "truthy_1", val: "1", want: true},
+		{name: "falsey_false", val: "false", want: false},
+		{name: "falsey_0", val: "0", want: false},
+		{name: "malformed", val: "treu", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("ENGRAM_REQUIRE_QDRANT", tc.val)
+			got, err := requireQdrant()
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("requireQdrant() with %q = (%v, nil), want a non-nil error (must not coerce to false)", tc.val, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("requireQdrant() with %q: unexpected error: %v", tc.val, err)
+			}
+			if got != tc.want {
+				t.Errorf("requireQdrant() with %q = %v, want %v", tc.val, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDialTestClientSkipsWhenNotRequired proves dialTestClient preserves its
+// original skip-not-fail behavior with no Qdrant available and
+// ENGRAM_REQUIRE_QDRANT unset, so local development without Docker still
+// works. Runs against a saved/restored testQdrantAddr so it does not depend on
+// whether TestMain actually provisioned a live Qdrant.
+func TestDialTestClientSkipsWhenNotRequired(t *testing.T) {
+	savedAddr := testQdrantAddr
+	t.Cleanup(func() { testQdrantAddr = savedAddr })
+	testQdrantAddr = ""
+	t.Setenv("ENGRAM_REQUIRE_QDRANT", "")
+
+	passed := t.Run("inner", func(t *testing.T) {
+		dialTestClient(t)
+		t.Fatal("dialTestClient(t) did not skip; reached past the skip call")
+	})
+	if !passed {
+		t.Fatal("dialTestClient(t) failed instead of skipping with ENGRAM_REQUIRE_QDRANT unset; local dev ergonomics regressed")
+	}
+}
+
+// TestDialTestClientFailsWhenRequiredAndUnavailable proves dialTestClient FAILS
+// (not skips) when ENGRAM_REQUIRE_QDRANT is set and no Qdrant is available —
+// the exact fail-closed gate this package previously lacked (internal/server
+// already had it via failOrSkipNoQdrant). A subtest that is meant to fail
+// cannot be nested directly (a failing subtest marks its whole parent test
+// binary run as FAIL regardless of how the outer test reads t.Run's returned
+// bool), so this re-execs the test binary as a subprocess and asserts on its
+// exit code and output — the standard Go idiom for testing an intentional
+// test failure.
+func TestDialTestClientFailsWhenRequiredAndUnavailable(t *testing.T) {
+	if os.Getenv("ENGRAM_STORE_TEST_DIAL_FAIL_HELPER") == "1" {
+		testQdrantAddr = ""
+		dialTestClient(t)
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestDialTestClientFailsWhenRequiredAndUnavailable", "-test.v")
+	cmd.Env = append(os.Environ(),
+		"ENGRAM_STORE_TEST_DIAL_FAIL_HELPER=1",
+		"ENGRAM_REQUIRE_QDRANT=1",
+	)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("subprocess unexpectedly succeeded (want failure: no Qdrant available and ENGRAM_REQUIRE_QDRANT=1); output:\n%s", out)
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("subprocess failed for an unexpected reason (want a plain non-zero exit from t.Fatal): %v; output:\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "no Qdrant available and ENGRAM_REQUIRE_QDRANT is set: failing instead of skipping") {
+		t.Fatalf("subprocess exited non-zero but not via the expected fail-closed message; output:\n%s", out)
+	}
+	if strings.Contains(string(out), "--- SKIP:") {
+		t.Fatalf("subprocess SKIPPED instead of FAILING with ENGRAM_REQUIRE_QDRANT=1; output:\n%s", out)
+	}
 }
 
 func testStore(t *testing.T) *Store {
@@ -4408,6 +4546,316 @@ func TestBulkFilterOrderIndependent(t *testing.T) {
 	got := search()
 	if len(got) != len(want) || !got[own.ID] || !got[shared.ID] {
 		t.Errorf("order-independence: got %v, want %v (unchanged regardless of decision order)", got, want)
+	}
+}
+
+// TestCrossSpineAuthzIsolation is the non-vacuous two-owner proof for
+// ROADMAP criterion 2 (03-AUTHZ-GATE.md), landed BEFORE the cross-spine
+// feature exists (D-18).
+//
+// It deliberately does NOT go through Store.Search or Store.List. Today
+// scope=="" means "the scope payload is literally the empty string", which
+// matches essentially nothing — a test that passed an empty scope to either
+// method would report "owner B never appeared" because *nothing* appeared,
+// which is a vacuous green and proves nothing about authorization
+// (03-AUTHZ-GATE.md "The correction"). Instead this test builds the exact
+// *qdrant.Filter shape the post-D-05 cross-spine path will produce — a Must
+// slice containing ONLY s.ownerOrSharedCondition, no scope element — and
+// scrolls it directly. That is not a hypothetical shape: it is byte-for-byte
+// the filter Store.ListScopes already runs in production today
+// (store.go:1396-1401), so this test pins a composition that is already
+// live, not one that will exist only after 03-02 lands.
+//
+// Both owners seed records under the SAME scope name (D-16): overlap is what
+// makes a dropped owner clause visible as a leak of the other owner's
+// records, rather than silently returning nothing.
+func TestCrossSpineAuthzIsolation(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "iso-test:project:cross-spine-overlap"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	mk := func(id, owner, vis string) {
+		m := Memory{ID: id, Content: "x", Scope: scope, Owner: owner, Visibility: vis,
+			CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	const (
+		aPrivateID = "c5c50000-0000-0000-0000-000000000001"
+		bPrivateID = "c5c50000-0000-0000-0000-000000000002" // must never appear for A
+		bSharedID  = "c5c50000-0000-0000-0000-000000000003"
+	)
+	mk(aPrivateID, "sub-xspine-A", "")      // A private
+	mk(bPrivateID, "sub-xspine-B", "")      // B private
+	mk(bSharedID, "sub-xspine-B", "shared") // B shared
+
+	// The cross-spine-shaped filter: authz clause only, no scope element.
+	f := &qdrant.Filter{Must: []*qdrant.Condition{
+		s.ownerOrSharedCondition(ctx, Authenticated("sub-xspine-A")),
+	}}
+
+	const limit = 10000
+	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: s.collection,
+		Filter:         f,
+		Limit:          qdrant.PtrOf(uint32(limit)),
+		WithPayload:    qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		t.Fatalf("scroll: %v", err)
+	}
+
+	// Falsifiability guard: mem_eval_test is a package-shared collection and
+	// other tests (e.g. TestListExactTotalPastOldCap) seed thousands of points
+	// into it. If the page came back full, "owner B's private record is
+	// absent" would be satisfiable by truncation rather than by the authz
+	// clause — the same vacuous green in a new costume. Fail loudly instead.
+	if len(pts) >= limit {
+		t.Fatalf("scroll page filled (%d >= %d limit): cannot conclude anything about exclusion — truncation, not authz, would explain absence", len(pts), limit)
+	}
+
+	seen := make(map[string]bool, len(pts))
+	for _, p := range pts {
+		seen[p.Id.GetUuid()] = true
+	}
+
+	if seen[bPrivateID] {
+		t.Fatalf("leaked owner B's private record across the cross-spine-shaped filter: %s", bPrivateID)
+	}
+	if !seen[aPrivateID] {
+		t.Errorf("owner A's own private record missing from cross-spine-shaped read: %s", aPrivateID)
+	}
+	if !seen[bSharedID] {
+		t.Errorf("owner B's shared record missing from cross-spine-shaped read: %s", bSharedID)
+	}
+}
+
+// TestSearchCrossSpine is the WIRING proof for Store.Search's now-conditional
+// scope clause (ownerScopeFilter, store.go:752): an empty scope spans every
+// scope in the collection the caller may read, and naming a scope still
+// confines to it. TestCrossSpineAuthzIsolation (above) is the AUTHZ proof —
+// they are not redundant. This test would have been vacuous if written
+// before ownerScopeFilter's conditional-scope edit: pre-edit, scope=="" is a
+// literal-string match against a payload field no record carries, so an
+// empty-scope Search returns zero hits regardless of what else is true.
+//
+// One owner, two distinct scopes, at least two records per scope (so a
+// single dropped record cannot silently collapse the multi-scope
+// assertion), every record carrying one tag unique to this test — mem_eval_
+// test is a collection the whole package shares (including the 1001 points
+// TestListExactTotalPastOldCap seeds), so SearchOptions.Tags narrows the
+// results to just this fixture without touching the scope or authz
+// conditions it is appended after (store.go:894).
+func TestSearchCrossSpine(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	const (
+		scopeA     = "iso-test:project:cross-spine-wiring-a"
+		scopeB     = "iso-test:project:cross-spine-wiring-b"
+		owner      = "sub-xspine-wiring"
+		fixtureTag = "xspine-wiring-fixture-7c1d"
+	)
+	defer func() {
+		cleanupErr(t, "DeleteAllRaw "+scopeA, s.DeleteAllRaw(ctx, scopeA))
+		cleanupErr(t, "DeleteAllRaw "+scopeB, s.DeleteAllRaw(ctx, scopeB))
+	}()
+
+	mk := func(id, scope string) {
+		m := Memory{ID: id, Content: "x", Scope: scope, Owner: owner,
+			Tags: []string{fixtureTag}, CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	const (
+		a1 = "c5c50002-0000-0000-0000-000000000001"
+		a2 = "c5c50002-0000-0000-0000-000000000002"
+		b1 = "c5c50002-0000-0000-0000-000000000003"
+		b2 = "c5c50002-0000-0000-0000-000000000004"
+	)
+	mk(a1, scopeA)
+	mk(a2, scopeA)
+	mk(b1, scopeB)
+	mk(b2, scopeB)
+
+	opts := SearchOptions{Tags: []string{fixtureTag}}
+	subj := Authenticated(owner)
+
+	// Empty scope spans both scopes.
+	hits, err := s.Search(ctx, "", subj, []float32{0.1, 0.2, 0.3}, 10, opts)
+	if err != nil {
+		t.Fatalf("cross-spine search: %v", err)
+	}
+	gotScopes := map[string]bool{}
+	gotIDs := map[string]bool{}
+	for _, h := range hits {
+		gotScopes[h.Scope] = true
+		gotIDs[h.ID] = true
+	}
+	if len(gotScopes) <= 1 {
+		t.Fatalf("cross-spine search spans %d distinct scope(s), want >1: %v", len(gotScopes), gotScopes)
+	}
+	for _, id := range []string{a1, a2, b1, b2} {
+		if !gotIDs[id] {
+			t.Errorf("cross-spine search missing %s", id)
+		}
+	}
+
+	// Naming scopeA still confines to it.
+	scoped, err := s.Search(ctx, scopeA, subj, []float32{0.1, 0.2, 0.3}, 10, opts)
+	if err != nil {
+		t.Fatalf("scope-confined search: %v", err)
+	}
+	scopedScopes := map[string]bool{}
+	scopedIDs := map[string]bool{}
+	for _, h := range scoped {
+		scopedScopes[h.Scope] = true
+		scopedIDs[h.ID] = true
+	}
+	if len(scopedScopes) != 1 || !scopedScopes[scopeA] {
+		t.Errorf("scope-confined search: distinct scopes = %v, want exactly {%s}", scopedScopes, scopeA)
+	}
+	if scopedIDs[b1] || scopedIDs[b2] {
+		t.Errorf("scope-confined search leaked scopeB records: %v", scopedIDs)
+	}
+}
+
+// TestListCrossSpine is Store.List's wiring proof, the list analog of
+// TestSearchCrossSpine: listFilter's now-conditional scope clause spans every
+// scope in the collection the owner may read when scope=="", and naming a
+// scope still confines to it. One owner, two distinct scopes, one fixture tag
+// unique to this test (mem_eval_test is package-shared).
+func TestListCrossSpine(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	const (
+		scopeA     = "iso-test:project:cross-spine-list-wiring-a"
+		scopeB     = "iso-test:project:cross-spine-list-wiring-b"
+		owner      = "sub-xspine-list-wiring"
+		fixtureTag = "xspine-list-wiring-fixture-4e9a"
+	)
+	defer func() {
+		cleanupErr(t, "DeleteAllRaw "+scopeA, s.DeleteAllRaw(ctx, scopeA))
+		cleanupErr(t, "DeleteAllRaw "+scopeB, s.DeleteAllRaw(ctx, scopeB))
+	}()
+
+	mk := func(id, scope string) {
+		m := Memory{ID: id, Content: "x", Scope: scope, Owner: owner,
+			Tags: []string{fixtureTag}, CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	const (
+		a1 = "c5c50005-0000-0000-0000-000000000001"
+		a2 = "c5c50005-0000-0000-0000-000000000002"
+		b1 = "c5c50005-0000-0000-0000-000000000003"
+		b2 = "c5c50005-0000-0000-0000-000000000004"
+	)
+	mk(a1, scopeA)
+	mk(a2, scopeA)
+	mk(b1, scopeB)
+	mk(b2, scopeB)
+
+	opts := ListOptions{Limit: 10000, Tags: []string{fixtureTag}}
+	subj := Authenticated(owner)
+
+	// Empty scope spans both scopes.
+	items, _, _, err := s.List(ctx, "", subj, opts)
+	if err != nil {
+		t.Fatalf("cross-spine list: %v", err)
+	}
+	gotScopes := map[string]bool{}
+	gotIDs := map[string]bool{}
+	for _, m := range items {
+		gotScopes[m.Scope] = true
+		gotIDs[m.ID] = true
+	}
+	if len(gotScopes) <= 1 {
+		t.Fatalf("cross-spine list spans %d distinct scope(s), want >1: %v", len(gotScopes), gotScopes)
+	}
+	for _, id := range []string{a1, a2, b1, b2} {
+		if !gotIDs[id] {
+			t.Errorf("cross-spine list missing %s", id)
+		}
+	}
+
+	// Naming scopeA still confines to it.
+	scoped, _, _, err := s.List(ctx, scopeA, subj, opts)
+	if err != nil {
+		t.Fatalf("scope-confined list: %v", err)
+	}
+	scopedScopes := map[string]bool{}
+	scopedIDs := map[string]bool{}
+	for _, m := range scoped {
+		scopedScopes[m.Scope] = true
+		scopedIDs[m.ID] = true
+	}
+	if len(scopedScopes) != 1 || !scopedScopes[scopeA] {
+		t.Errorf("scope-confined list: distinct scopes = %v, want exactly {%s}", scopedScopes, scopeA)
+	}
+	if scopedIDs[b1] || scopedIDs[b2] {
+		t.Errorf("scope-confined list leaked scopeB records: %v", scopedIDs)
+	}
+}
+
+// TestListCrossSpineTotal pins D-09: a cross-spine List's total is the exact
+// server-side Count across every readable scope, strictly greater than the
+// scope-confined total. Uses its own fixture tag and owner (distinct from
+// TestListCrossSpine's) so the two tests' exact-count assertions cannot
+// contaminate each other against the package-shared collection.
+func TestListCrossSpineTotal(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	const (
+		scopeA     = "iso-test:project:cross-spine-list-total-a"
+		scopeB     = "iso-test:project:cross-spine-list-total-b"
+		owner      = "sub-xspine-list-total"
+		fixtureTag = "xspine-list-total-fixture-1a7c"
+	)
+	defer func() {
+		cleanupErr(t, "DeleteAllRaw "+scopeA, s.DeleteAllRaw(ctx, scopeA))
+		cleanupErr(t, "DeleteAllRaw "+scopeB, s.DeleteAllRaw(ctx, scopeB))
+	}()
+
+	mk := func(id, scope string) {
+		m := Memory{ID: id, Content: "x", Scope: scope, Owner: owner,
+			Tags: []string{fixtureTag}, CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	// 3 records in scopeA, 2 in scopeB — 5 total, tagged so the count is
+	// deterministic against the shared collection.
+	for i := 0; i < 3; i++ {
+		mk(fmt.Sprintf("c5c50006-0000-0000-0000-00000000000%d", i+1), scopeA)
+	}
+	for i := 0; i < 2; i++ {
+		mk(fmt.Sprintf("c5c50006-0000-0000-0000-00000000001%d", i+1), scopeB)
+	}
+
+	opts := ListOptions{Limit: 1, Tags: []string{fixtureTag}}
+	subj := Authenticated(owner)
+
+	_, crossTotal, _, err := s.List(ctx, "", subj, opts)
+	if err != nil {
+		t.Fatalf("cross-spine list: %v", err)
+	}
+	if crossTotal != 5 {
+		t.Errorf("cross-spine total = %d, want exact 5 (3 in scopeA + 2 in scopeB)", crossTotal)
+	}
+
+	_, scopedTotal, _, err := s.List(ctx, scopeA, subj, opts)
+	if err != nil {
+		t.Fatalf("scope-confined list: %v", err)
+	}
+	if scopedTotal != 3 {
+		t.Errorf("scope-confined total = %d, want exact 3", scopedTotal)
+	}
+	if crossTotal <= scopedTotal {
+		t.Errorf("cross-spine total (%d) must be strictly greater than scope-confined total (%d)", crossTotal, scopedTotal)
 	}
 }
 

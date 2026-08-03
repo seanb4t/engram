@@ -21,7 +21,13 @@ import (
 // per-handler mapping (D-11, T-17-01/T-17-12).
 //
 // nil -> nil. Known sentinels map to precise codes:
-//   - store.ErrNotFound -> CodeNotFound
+//   - *argError (via errors.As) -> its own ConnectCode(), one of
+//     CodeInvalidArgument / CodeOutOfRange / CodeFailedPrecondition selected
+//     by the failure CLASS, never by message text (04-diagnosability D-11,
+//     D-20). Classes stay inside that trio, the exact set
+//     cmd/engram/client_common.go:237-249's exitCodeForConnectErr already
+//     groups under exitUsage, so the CLI's exit-code contract needs no
+//     change.
 //   - store.ErrInvalidArgument -> CodeInvalidArgument (covers 17-02's wrapped
 //     parseWindow past-not_after/ordering rejections and validateRuleSummary
 //     rejections — finding 5)
@@ -50,7 +56,16 @@ func connectError(ctx context.Context, err error) error {
 	if err == nil {
 		return nil
 	}
+	var ae *argError
 	switch {
+	// MUST stay first, before the errors.Is(err, store.ErrInvalidArgument)
+	// case below: argError.Unwrap() returns store.ErrInvalidArgument, so if
+	// this case sits anywhere after that arm, every class collapses back to
+	// CodeInvalidArgument, D-11 ships as a no-op, and a test that only checks
+	// "not CodeInternal" still passes. Do not reorder this switch for tidiness
+	// without re-reading this comment.
+	case errors.As(err, &ae):
+		return connect.NewError(ae.ConnectCode(), err)
 	case errors.Is(err, store.ErrNotFound):
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, store.ErrInvalidArgument):

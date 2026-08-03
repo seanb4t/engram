@@ -30,7 +30,7 @@ chat/summarize base-URL split as a low-risk independent tail. The milestone held
 constraints: zero new store-layer authz **primitive**, and (except `cedar-go`) zero new
 dependencies — every feature extended an existing seam.
 
-**Active milestone — v0.12.x — Headless Reach & Diagnosability (Phases 1–6), opened 2026-07-29.**
+**Active milestone — v0.12.x — Headless Reach & Diagnosability (Phases 1–7), opened 2026-07-29.**
 Two halves: make engram reachable by agents that are **not** a top-level MCP client, and make what
 the server decides and rejects legible. The structural root is a bearer-token identity on the
 ConnectRPC lane — today that lane has exactly one credential type (a sealed cookie session) and one
@@ -54,7 +54,7 @@ analogy to `search_discovery`.
 - ✅ **v0.9.x — Recall Quality** — Phases 9–12 (shipped 2026-07-10, PR #336): retrieval eval + ranking precision (#261), embedder query/document asymmetry (#305), async-on-write summaries (#320), per-memory usage signals (#317). Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
 - ✅ **v0.10.x — Hardening & Write Lane** — Phases 13–21 (shipped 2026-07-16): embedder reliability & options (#333/#332/#331/#334/#337, closes #261), Connect write lane + CSRF + stateless session rotation (#322/#323), correctness & polish tail, CI/maintenance hygiene. 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge only → #369). Full detail archived at `milestones/v0.10.x-ROADMAP.md`.
 - ✅ **v0.11.x — Capture & Service Identity** — Phases 22–26 (shipped 2026-07-26): Cedar authz foundation (#362/#373 trust anchor), service auth chain + tenancy isolation (#362/#373), idempotent capture (#340), supersession with history (#342), structured citations + category filter + chat base URL (#341/#374/#350). 11/11 requirements, audit PASSED. Full detail archived at `milestones/v0.11.x-ROADMAP.md`.
-- 🔨 **v0.12.x — Headless Reach & Diagnosability** — Phases 1–6 (opened 2026-07-29): Connect bearer identity + headless mount + CSRF provenance (#343), headless CLI client (#343), cross-spine memory recall (#344), diagnosability trio (#394/#360/#347), operator config & reindex correctness (#350/#345), rule-capture investigation & fix (#351). 20 requirements. `REQUIREMENTS.md` + `research/SUMMARY.md`.
+- ✅ **v0.12.x — Headless Reach & Diagnosability** — Phases 1–7 (shipped 2026-08-02): Connect bearer identity + headless mount + CSRF provenance (#343), headless CLI client (#343), cross-spine memory recall (#344), diagnosability trio (#394/#360/#347), operator config & reindex correctness (#350/#345), rule-capture investigation & fix (#351), CLI cross-spine wiring. 21/21 requirements, audit `tech_debt` (0 blockers). Full detail archived at `milestones/v0.12.x-ROADMAP.md`.
 
 ## Phases
 
@@ -66,27 +66,34 @@ analogy to `search_discovery`.
 <details>
 <summary>✅ v0.8.x Baseline (Phases 1–7) — SHIPPED</summary>
 
-- [x] **Phase 1: Authorization & Isolation** - Per-actor read isolation, write gating, opt-in sharing, configurable owner key
-- [x] **Phase 2: Recall Semantics** - Summary-by-default, tag/temporal gating, windowed cursor paging, payload indexes
-- [x] **Phase 3: Memory Kinds & Tools** - Discovery + rule kinds, schedule tools, short_id handle
-- [x] **Phase 4: Embedder** - Protocol-named connection vars + asymmetric query/document param passthrough
-- [x] **Phase 5: Config & Transport** - ENGRAM_ koanf config, Config.Validate, fatal legacy guard, explicit MCP path
-- [x] **Phase 6: Telemetry & Observability** - slog + OTel over OTLP at every seam, never blocking startup
-- [x] **Phase 7: Web UI, Docs Site & Distribution** - Operator console SPA, docs site, brand system, bundled client plugin
+Full detail archived at [`milestones/v0.8.x-ROADMAP.md`](milestones/v0.8.x-ROADMAP.md). The detail
+sections were moved out of this file on 2026-07-31 so a bare `### Phase N:` heading resolves to the
+**active** milestone — v0.12.x restarted phase numbering at 1, and the historical headings were
+shadowing it for every GSD phase-resolution verb.
+
+- [x] **v0.8.x Phase 1: Authorization & Isolation** - Per-actor read isolation, write gating, opt-in sharing, configurable owner key
+- [x] **v0.8.x Phase 2: Recall Semantics** - Summary-by-default, tag/temporal gating, windowed cursor paging, payload indexes
+- [x] **v0.8.x Phase 3: Memory Kinds & Tools** - Discovery + rule kinds, schedule tools, short_id handle
+- [x] **v0.8.x Phase 4: Embedder** - Protocol-named connection vars + asymmetric query/document param passthrough
+- [x] **v0.8.x Phase 5: Config & Transport** - ENGRAM_ koanf config, Config.Validate, fatal legacy guard, explicit MCP path
+- [x] **v0.8.x Phase 6: Telemetry & Observability** - slog + OTel over OTLP at every seam, never blocking startup
+- [x] **v0.8.x Phase 7: Web UI, Docs Site & Distribution** - Operator console SPA, docs site, brand system, bundled client plugin
 
 </details>
 
 <details>
 <summary>✅ Connect Auth Hardening (Phase 8) — SHIPPED (PR #248/#266)</summary>
 
-- [x] **Phase 8: Connect Observe-Lane Auth Hardening** - Cookie/OIDC observe lane replaces the interim anonymous mount (R1–R4); shipped in PR #248/#266
+- [x] **v0.8.x Phase 8: Connect Observe-Lane Auth Hardening** - Cookie/OIDC observe lane replaces the interim anonymous mount (R1–R4); shipped in PR #248/#266
 
 </details>
 
 <details>
 <summary>✅ v0.9.x — Recall Quality (Phases 9–12) — SHIPPED 2026-07-10 (PR #336)</summary>
 
-Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
+Full detail archived at [`milestones/v0.9.x-ROADMAP.md`](milestones/v0.9.x-ROADMAP.md).
+Requirements outcomes at [`milestones/v0.9.x-REQUIREMENTS.md`](milestones/v0.9.x-REQUIREMENTS.md).
+Audit (PASSED) at [`milestones/v0.9.x-MILESTONE-AUDIT.md`](milestones/v0.9.x-MILESTONE-AUDIT.md).
 
 - [x] **Phase 9: Retrieval Eval Harness & Ranking Precision** - Labeled retrieval eval (recall@k/MRR), always-on similarity scores in `search_memory`, dependency-free reranker to kill phrasing-sensitivity — chosen by the eval numbers (completed 2026-07-10)
 - [x] **Phase 10: Asymmetric Query/Document Embeddings** - Native API-param passthrough (cloud) + document-side prefix (E5/nomic) for query≠document embeds — found ALREADY SHIPPED under Phase 4 (verified 2026-07-10; #305 closed; no plans built)
@@ -98,7 +105,10 @@ Full detail archived at `milestones/v0.9.x-ROADMAP.md`.
 <details>
 <summary>✅ v0.10.x — Hardening & Write Lane (Phases 13–21) — SHIPPED 2026-07-16</summary>
 
-Full detail archived at `milestones/v0.10.x-ROADMAP.md`.
+Full detail archived at [`milestones/v0.10.x-ROADMAP.md`](milestones/v0.10.x-ROADMAP.md).
+Requirements outcomes at [`milestones/v0.10.x-REQUIREMENTS.md`](milestones/v0.10.x-REQUIREMENTS.md).
+Audit (tech_debt — 19/20 requirements, 1 deferred) at
+[`milestones/v0.10.x-MILESTONE-AUDIT.md`](milestones/v0.10.x-MILESTONE-AUDIT.md).
 
 - [x] **Phase 13: Embedder Reliability Foundation** - Configurable HTTP timeout (re-derived backoff budget) + base-URL `/v1` join fix across every provider shape + embedder-config-identity payload stamp (completed 2026-07-11)
 - [x] **Phase 14: Embedder Model Options & Eval** - Direct Gemini embeddings (eval-verified task_type behavior) + #261 prod-parity re-confirm on qwen3 + docs-site/Helm model recipes (completed 2026-07-11)
@@ -119,6 +129,11 @@ Full detail archived at `milestones/v0.10.x-ROADMAP.md`.
 principals a first-class, isolated identity — so agents can write memory mechanically and safely
 into shared stores.
 
+Full detail archived at [`milestones/v0.11.x-ROADMAP.md`](milestones/v0.11.x-ROADMAP.md).
+Requirements outcomes at [`milestones/v0.11.x-REQUIREMENTS.md`](milestones/v0.11.x-REQUIREMENTS.md).
+Audit (PASSED — 11/11 requirements, 6/6 integration seams, 2/2 E2E flows) at
+[`milestones/v0.11.x-MILESTONE-AUDIT.md`](milestones/v0.11.x-MILESTONE-AUDIT.md).
+
 - [x] **Phase 22: Cedar Authz Foundation & Store Enforcement** - Cedar (cedar-go v1.8.0) PDP decides authorization over enumerable buckets; `internal/store` compiles decisions into the Qdrant filter — behavior-preserving refinement of DEC-cgb (completed 2026-07-17)
 - [x] **Phase 23: Service Auth Chain & Tenancy Isolation** - Pluggable verifier chain (OIDC user → OIDC client-credentials → static token); a service principal never resolves to the anonymous bucket (completed 2026-07-17)
 - [x] **Phase 24: Idempotent Capture** - `store_memory` accepts an idempotency key with strict, owner-scoped, race-safe replay-safety (completed 2026-07-18)
@@ -127,375 +142,58 @@ into shared stores.
 
 </details>
 
-### 🔨 v0.12.x — Headless Reach & Diagnosability (Phases 1–6) — ACTIVE
+<details>
+<summary>✅ v0.12.x — Headless Reach & Diagnosability (Phases 1–7) — SHIPPED 2026-08-02</summary>
 
-- [ ] **v0.12.x Phase 1: Shared Auth Chain & Connect Bearer Identity** - One composed verifier for both lanes, enforced token expiry, server-set lane provenance driving the CSRF exemption, opt-in headless mount
-- [ ] **v0.12.x Phase 2: Headless CLI Client** - `engram search|store|list` over the generated Connect stubs, agent-shaped output, credential safety
-- [ ] **v0.12.x Phase 3: Cross-Spine Memory Recall** - `cross_spine` on `search_memory` with the store-layer authz composition verified, not assumed
-- [ ] **v0.12.x Phase 4: Diagnosability** - Authz decisions reach a reader; rejections name the true field and carry a remediation hint; provider error bodies survive
-- [ ] **v0.12.x Phase 5: Operator Config & Reindex Correctness** - Per-lane chat credential; tag-aware resume plus a repair path for already-skipped records
-- [ ] **v0.12.x Phase 6: Rule Capture — Investigation & Fix** - Find why `store_rule` never fires, then fix the documented cause without touching who decides
+- [x] **Phase 1: Shared Auth Chain & Connect Bearer Identity** - One composed verifier for both lanes, enforced token expiry, server-set lane provenance driving the CSRF exemption, opt-in headless mount
+- [x] **Phase 2: Headless CLI Client** - `engram search|store|list` over the generated Connect stubs, agent-shaped output, credential safety (completed 2026-07-31)
+- [x] **Phase 3: Cross-Spine Memory Recall** - `cross_spine` on `search_memory` with the store-layer authz composition verified, not assumed (completed 2026-08-01)
+- [x] **Phase 4: Diagnosability** - Authz decisions reach a reader; rejections name the true field and carry a remediation hint; provider error bodies survive (completed 2026-08-01)
+- [x] **Phase 5: Operator Config & Reindex Correctness** - Per-lane chat credential; tag-aware resume plus a repair path for already-skipped records (completed 2026-08-01)
+- [x] **Phase 6: Rule Capture — Investigation & Fix** - Find why `store_rule` never fires, then fix the documented cause without touching who decides (completed 2026-08-01)
+- [x] **Phase 7: CLI Cross-Spine Wiring** - `--cross-spine` on `engram search|list` through one shared guard, with the coverage footer and bidirectional help text that make it learnable by reading (completed 2026-08-02)
+
+</details>
 
 ## Phase Details
 
-### Phase 1: Authorization & Isolation
-
-**Goal**: A coding agent's memories are isolated per actor, so each agent's recall stays clean and only the owner can mutate its own records.
-**Depends on**: Nothing (first phase)
-**Requirements**: REQ-per-actor-isolation, REQ-typed-subject-authz, REQ-configurable-claim-owner
-**Decisions**: DEC-cgb, DEC-g37x, DEC-kyz, DEC-xa6, DEC-12c
-**Success Criteria** (what is TRUE):
-
-1. An authenticated actor sees and mutates only its own records; another actor's private records are invisible.
-2. `shared` records are readable by any authenticated caller but writable only by their owner (read/write asymmetry).
-3. Unauthorized id-addressed operations return the same not-found error as a missing id — no cross-actor existence leak.
-4. The record owner key is a configurable OIDC claim (default `email`) that survives IdP `sub` rotation, with `migrate-remap-owner` for re-stamping and pre-isolation backfill.
-5. Anonymous (auth-disabled) callers map to a single empty-owner bucket and cannot read other actors' `shared` records.
-
-**Status**: Complete (v0.8.x)
-**Plans**: N/A (retrospective — shipped before GSD planning)
-
-### Phase 2: Recall Semantics
-
-**Goal**: Recall returns relevant, current, token-efficient memories with precise filtering and deterministic paging.
-**Depends on**: Phase 1
-**Requirements**: REQ-scheduled-memories, REQ-windowed-cursor-recall, REQ-auto-summary
-**Decisions**: DEC-ambu, DEC-4xt7, DEC-y1g, DEC-1frj, DEC-ef28
-**Success Criteria** (what is TRUE):
-
-1. `search_memory`/`list_memory` return summary-shaped output by default, with `full=true` opting into full content; `get_memory` always returns full and carries `summary_source` provenance.
-2. An optional `tags` filter hard-ANDs (contains-all) as a Qdrant pre-filter applied before vector ranking.
-3. Temporal validity (`not_before`/`not_after`) gates recall as Qdrant filter conditions while `get_memory` and by-id paths stay ungated.
-4. Recall accepts half-open `created_after`/`created_before` windows and `list_memory` paginates via an opaque boundary cursor returning `{memories, next_cursor}`.
-5. `owner`/`scope`/`created_at` are Qdrant payload-indexed for exact server-side Count and range filtering (scanCap/approximate retired).
-
-**Status**: Complete (v0.8.x)
-**Plans**: N/A (retrospective)
-**Note**: The `schedule_memory`/`list_scheduled` tool surface (DEC-90w) that sets these windows is presented in Phase 3.
-
-### Phase 3: Memory Kinds & Tools
-
-**Goal**: Beyond plain memories, agents capture discoveries and rules as distinct kinds and address any record by a stable short handle.
-**Depends on**: Phase 1
-**Requirements**: REQ-discovery-memory-type, REQ-rule-memory-kind, REQ-short-id-handle
-**Decisions**: DEC-2bv, DEC-90w, DEC-iedk, DEC-zzq0, DEC-02ta
-**Success Criteria** (what is TRUE):
-
-1. Discovery is a 5th category in the single Memory collection carrying `kind` (map|fact), aging-pinned citations, and a summary — recalled on demand via `store_discovery`/`search_discovery`, never at session start.
-2. Rules are a normative, always-shared kind surfaced at session start as a one-line progressive-disclosure index; `set_visibility` is rejected for rules.
-3. `schedule_memory`/`list_scheduled` expose temporal windows as dedicated tools without adding window params to `store_memory`.
-4. Every record carries a server-minted 10-char Crockford base32 `short_id`, accepted anywhere an id is accepted and resolved to the UUID at the handler layer via `Store.ResolvePointID`.
-
-**Status**: Complete (v0.8.x)
-**Plans**: N/A (retrospective)
-
-### Phase 4: Embedder
-
-**Goal**: Embedding works against OpenAI-compatible gateways and asymmetric/cloud models via protocol-named connection vars and query/document param passthrough.
-**Depends on**: Nothing (foundational subsystem)
-**Requirements**: REQ-asymmetric-embedder-params
-**Decisions**: DEC-378, DEC-zyhq
-**Success Criteria** (what is TRUE):
-
-1. Embedder connection vars are protocol-named (`ENGRAM_OPENAI_BASE_URL`/`ENGRAM_OPENAI_API_KEY`), naming the wire protocol not the vendor.
-2. Query vs document embedding params are provider-agnostic JSON maps merged into the `/v1/embeddings` body, supporting `input_type`/`task`/`task_type` passthrough and a document-side text instruction.
-3. Changing embedder params respects the reindex boundary — the `engram reindex` migration path exists for embedder changes.
-
-**Status**: Complete (v0.8.x)
-**Plans**: N/A (retrospective)
-
-### Phase 5: Config & Transport
-
-**Goal**: All configuration is unified under `ENGRAM_` via koanf with early validation and a fatal legacy guard; the MCP transport mounts at an explicit configurable path.
-**Depends on**: Phase 4 (embedder vars fold into the unified registry)
-**Requirements**: REQ-config-prefix-koanf, REQ-config-validation
-**Decisions**: DEC-jgq, DEC-irq, DEC-bj6
-**Success Criteria** (what is TRUE):
-
-1. All config loads via koanf from a single `ENGRAM_` field registry — no scattered getenv, no viper, `MEM_` prefix retired.
-2. Retired `MEM_*` vars trigger a fatal `config.CheckLegacy` startup guard with guidance — no silent fallback or dual-read shim.
-3. `Config.Validate()` runs early and loudly at the serve/reindex/migrate/prune entrypoints.
-4. The MCP StreamableHTTP transport mounts at an explicit configurable path (default `/mcp`); the console takes root when the UI is enabled.
-
-**Status**: Complete (v0.8.x)
-**Plans**: N/A (retrospective)
-
-### Phase 6: Telemetry & Observability
-
-**Goal**: The server is observable via structured logs plus OTel metrics/traces over OTLP, instrumented at every seam, without ever blocking startup.
-**Depends on**: Phase 5
-**Requirements**: REQ-observability-telemetry, REQ-telemetry-seams
-**Decisions**: DEC-dwi, DEC-uxh
-**Success Criteria** (what is TRUE):
-
-1. Structured `slog` logging plus OTel metrics and traces export exclusively over OTLP gRPC — no Prometheus `/metrics` scrape endpoint.
-2. Spans and domain-latency metrics instrument the store, embed, auth, HTTP, and MCP seams with a complete OTel resource.
-3. A telemetry setup failure or a missing OTLP endpoint yields no-op providers and never aborts server startup.
-4. The Helm chart exposes telemetry knobs (endpoint, toggles).
-
-**Status**: Complete (v0.8.x)
-**Plans**: N/A (retrospective)
-
-### Phase 7: Web UI, Docs Site & Distribution
-
-**Goal**: Operators observe the store through an authenticated web console, learn the product via a docs site under a unified brand, and consume engram as a bundled client plugin.
-**Depends on**: Phase 2 (recall/Connect read API), Phase 5 (MCP/console routing)
-**Requirements**: REQ-web-ui-console, REQ-operator-console-spa, REQ-operator-console-redesign, REQ-memory-display-ux, REQ-ui-test-unification, REQ-docs-site, REQ-docs-landing-redesign, REQ-brand-identity, REQ-relocate-memory-curator
-**Decisions**: DEC-8xe, DEC-0lu, DEC-ttb
-**Success Criteria** (what is TRUE):
-
-1. An authenticated read-only operator console (SvelteKit adapter-static SPA vendored via `go:embed`) reads the store over the Connect `EngramService` v1 read API, showing real `summary`/`summary_source` with safe markdown rendering.
-2. The console is a shadcn-svelte redesign on semantic theme tokens with svelte-query data flow (AppShell/ScopeRail/MemoryList/MemoryDetail/SearchPalette).
-3. UI and sanitizer tests run under vitest 4 browser mode (real Chromium via Playwright), retiring jsdom/happy-dom, with the CI test gate green.
-4. A static Astro Starlight docs site deploys to Cloudflare Workers with a redesigned landing hub, and the engram brand system (neural violet #6E56CF) is applied across console and docs.
-5. The memory-curator client plugin is relocated into the repo as the bundled `skill/engram` plugin with a marketplace entry and SessionStart/PostToolUse hooks.
-
-**Status**: Complete (v0.8.x)
-**Plans**: N/A (retrospective)
-**UI hint**: yes
-
-### Phase 8: Connect Observe-Lane Auth Hardening
-
-**Goal**: Replace the interim anonymous Connect API mount with full cookie/OIDC observe-lane authentication so the read API serves real per-actor identities.
-**Depends on**: Phase 7
-**Requirements**: REQ-connect-auth-posture (R1–R4 — satisfied)
-**Decisions**: interim disposition + acceptance criteria R1–R4 (+R1a) documented in the connect-auth-posture addendum
-**Success Criteria** (what is TRUE):
-
-1. The Connect observe lane authenticates callers via cookie/OIDC (sealed AES-GCM session → verified `sub`) instead of mounting anonymously; when the UI is disabled (headless default) the Connect handler is not mounted at all (R1: `mountConnect` returns nil-not-mounted for a nil resolver).
-2. R1–R4 are satisfied: mount-gating (R1), cookie→Subject as the sole authz entry with no anonymous fallthrough (R2), observability parity via `otelconnect` + access-log interceptors (R3), and same-origin posture with no permissive CORS (R4).
-3. Store isolation applies to Connect-lane callers by their resolved owner, consistent with the MCP lane (verified: `TestConnectCrossActorIsolation`, `TestConnectCookieLaneIsolation`).
-
-**Status**: Complete — shipped in PR #248 (webauth lane) + PR #266 (owner-claim hardening); R1–R4 verified green on main 2026-07-08. Config folded into the Phase-5 `ENGRAM_UI_*` koanf registry (not the plan's original `MEM_*`).
-**Plans**: N/A (shipped before GSD planning). Reference implementation plan: `docs/superpowers/plans/2026-06-09-engram-web-ui-cookie-oidc-auth-lane.md`; design/acceptance criteria: `docs/superpowers/specs/2026-06-09-connect-auth-posture-addendum.md`. Out-of-scope follow-ups remain (Connect write-lane RPCs + CSRF hardening; session refresh-token rotation) — candidates for a future milestone.
-
-### Phases 9–12 (v0.9.x — Recall Quality) — ✅ SHIPPED 2026-07-10
-
-Full phase details (goals, success criteria, plans, decisions, tech debt) are archived at
-[`milestones/v0.9.x-ROADMAP.md`](milestones/v0.9.x-ROADMAP.md). Requirements outcomes at
-[`milestones/v0.9.x-REQUIREMENTS.md`](milestones/v0.9.x-REQUIREMENTS.md). Audit (PASSED) at
-[`milestones/v0.9.x-MILESTONE-AUDIT.md`](milestones/v0.9.x-MILESTONE-AUDIT.md).
-
-- Phase 9 — Retrieval Eval Harness & Ranking Precision (3 plans): eval harness + always-on similarity score + dependency-free reranker (#261; recall@8=1.00)
-- Phase 10 — Asymmetric Query/Document Embeddings: already shipped under Phase 4 (#305 closed; no plans)
-- Phase 11 — Async-on-Write Summaries (3 plans): bounded worker pool off the write path (#320)
-- Phase 12 — Per-Memory Usage Signals (6 plans): get/update counters, hybrid OTLP+payload, never affects ranking (#317)
-
-### Phases 13–21 (v0.10.x — Hardening & Write Lane) — ✅ SHIPPED 2026-07-16
-
-Full phase details (goals, success criteria, plans, decisions, tech debt) are archived at
-[`milestones/v0.10.x-ROADMAP.md`](milestones/v0.10.x-ROADMAP.md). Requirements outcomes at
-[`milestones/v0.10.x-REQUIREMENTS.md`](milestones/v0.10.x-REQUIREMENTS.md). Audit (tech_debt — 19/20 requirements, 1 deferred) at
-[`milestones/v0.10.x-MILESTONE-AUDIT.md`](milestones/v0.10.x-MILESTONE-AUDIT.md).
-
-- Phase 13 — Embedder Reliability Foundation (3 plans): configurable timeout + base-URL join fix + embedder-config-identity stamp (#333/#332)
-- Phase 14 — Embedder Model Options & Eval (3 plans): direct Gemini + prod-parity re-confirm + model recipes (#331/#334/#337, closes #261)
-- Phase 15 — Additive Proto + Stub Write Handlers (4 plans): 6 additive write RPCs, idempotency-annotation CI gate (#322)
-- Phase 16 — CSRF Interceptor (3 plans): Origin/Sec-Fetch-Site + session-bound double-submit token (#322)
-- Phase 17 — Wired Write Handlers (6 plans): deps.* refactor, MCP↔Connect authz parity (#322)
-- Phase 18 — Stateless Session Rotation (3 plans): sliding-expiry cookie re-seal, no server state (#323)
-- Phase 19 — Console Write UX (6 plans): create/edit/delete/re-share/schedule over the write lane, CSRF + auth-race retry (live browser E2E UAT deferred → #366)
-- Phase 20 — Correctness & Polish (4 plans): discovery proto fidelity, MintShortID cap, embed cleanups, summarize CronJob (#307/#308/#304/#302/#303/#269)
-- Phase 21 — CI / Maintenance Hygiene (3 plans): rumdl `.planning` exclude, phase-11 residuals (#335), Renovate self-heal (#301 — live observation deferred, post-merge only → #369)
-
-### Phases 22–26 (v0.11.x — Capture & Service Identity) — ✅ SHIPPED 2026-07-26
-
-Full phase details (goals, success criteria, plans, decisions, tech debt) are archived at
-[`milestones/v0.11.x-ROADMAP.md`](milestones/v0.11.x-ROADMAP.md). Requirements outcomes at
-[`milestones/v0.11.x-REQUIREMENTS.md`](milestones/v0.11.x-REQUIREMENTS.md). Audit (PASSED — 11/11
-requirements, 6/6 integration seams, 2/2 E2E flows) at
-[`milestones/v0.11.x-MILESTONE-AUDIT.md`](milestones/v0.11.x-MILESTONE-AUDIT.md).
-
-- Phase 22 — Cedar Authz Foundation & Store Enforcement (3 plans): `internal/authz` cedar-go v1.8.0 PDP decides over enumerable buckets; the store compiles decisions into the Qdrant filter, byte-for-byte behavior-preserving (#362/#373, ADR engram-cdr1)
-- Phase 23 — Service Auth Chain & Tenancy Isolation (6 plans): pluggable verifier chain (OIDC user → client-credentials → static token), fail-closed proof that a service principal never resolves to `owner==""` (#362/#373)
-- Phase 24 — Idempotent Capture (2 plans): optional `idempotency_key`, deterministic UUIDv5 point ID, payload-only fingerprint checked before embedding, reject-not-overwrite on mismatch (#340)
-- Phase 25 — Supersession with History (2 plans): `supersede_memory` back-stamps `superseded_by` via single-key SetPayload; superseded records soft-hidden from recall, still fetchable by id (#342)
-- Phase 26 — Structured Citations, Category Filter & Chat Base URL (6 plans): optional citations on any category, `categories` OR-filter at MCP↔Connect parity, `ENGRAM_OPENAI_CHAT_BASE_URL` + shared shape-aware URL join (#341/#374/#350)
-
-### v0.12.x Phase 1: Shared Auth Chain & Connect Bearer Identity
-
-**Goal:** A headless caller can authenticate to the ConnectRPC lane with a bearer token — safely.
-One composed verifier serves both lanes, token expiry is actually enforced, the authenticating lane
-is recorded by the server, the CSRF exemption is decided from that record alone, and the lane is
-mounted only when explicitly enabled.
-
-**Requirements:** REQ-connect-bearer-identity, REQ-connect-token-expiry,
-REQ-connect-lane-provenance, REQ-connect-headless-mount
-
-**Success criteria:**
-
-1. A bearer token accepted on the MCP lane is accepted on the Connect lane, and one rejected there
-   is rejected here — both resolve through a single composed verifier constructed **once**, proven
-   structurally (not two independently-built chains that can drift).
-2. A token whose `Expiration` has passed is rejected on the Connect lane. *(Written as the phase's
-   first test, per the v0.11.x fail-closed precedent — this closes a live gap, not a hypothetical.)*
-3. A cookie-authenticated caller is still rejected on all six write RPCs when it omits
-   `X-CSRF-Token`, and cannot obtain the bearer exemption by attaching a garbage `Authorization`
-   header to its session.
-4. A bearer verification failure never authenticates via the cookie lane.
-5. With the UI disabled and the headless flag unset, no Connect handler is registered —
-   byte-for-byte today's behavior, so no deployment gains a surface on upgrade.
-
-**Why these four ship together:** the provenance stamp and the exemption that reads it are one
-atomic unit. Shipping the stamp alone would land a value nothing reads — precisely the defect
-`REQ-authz-decision-diagnostics` exists to fix. (Contrast v0.10.x's Phase 15, where deliberately
-unreachable stubs *were* a genuinely separable increment.)
-
-**Research flag:** needs research at plan time — the extraction shape for a transport-agnostic
-expiry check out of the go-sdk's `RequireBearerToken`/`verify()` internals. Also warrants a
-security-focused plan review given the CSRF-bypass and confused-deputy risk classes.
-
----
-
-### v0.12.x Phase 2: Headless CLI Client
-
-**Goal:** An agent with only a shell — a subagent with a closed tool list, a CI step, a cron loop —
-can search, store, and list memories against a remote engram server.
-
-**Requirements:** REQ-cli-client-commands, REQ-cli-agent-output, REQ-cli-credential-safety,
-REQ-cli-self-describing
-
-**Depends on:** v0.12.x Phase 1 (strict).
-
-**Success criteria:**
-
-1. `engram search`, `engram list`, and `engram store` complete against a running server given a
-   server URL and a token, emitting structured JSON when stdout is not a TTY.
-2. Data goes to stdout and diagnostics to stderr; exit codes distinguish auth failure from
-   not-found from validation failure from transport failure; no command prompts on any path.
-3. A token supplied by env var or file never appears in `argv`, and TLS verification cannot be
-   disabled silently.
-4. A bare invocation returns the full command / flag / exit-code catalog as structured output.
-5. No client subcommand imports `internal/store`, `internal/authz`, or `internal/embed`.
-
-**Why one phase, not two:** the dependency boundary research identified — `search`/`list` need only
-the bearer mount while `store` additionally needs the CSRF exemption green — collapses because
-v0.12.x Phase 1 delivers both. Splitting would create a phase whose only distinction is which half of an
-already-landed dependency it uses.
-
----
-
-### v0.12.x Phase 3: Cross-Spine Memory Recall
-
-**Goal:** An agent can recall curated memories across every scope it is permitted to see, with the
-authorization filter proven un-widened rather than assumed safe.
-
-**Requirements:** REQ-cross-spine-search, REQ-cross-spine-authz-verified,
-REQ-cross-spine-result-provenance
-
-**Success criteria:**
-
-1. `Store.Search`'s filter construction has been read end to end and it is recorded **in writing**
-   that the owner/authz `Must` clause is composed as a separate, unconditional entry from the scope
-   clause — never a combined condition where omitting scope could drop part of the authz gate.
-2. A two-owner isolation test against **real Qdrant** (testcontainers, not a mock) proves owner A's
-   `cross_spine=true` search over overlapping scope names never returns owner B's private records —
-   and it exists and passes **before** the feature is implemented.
-3. `cross_spine=true` returns hits from multiple scopes; omitting it returns only the named scope.
-4. Available on MCP and Connect at parity via an additive proto field.
-5. Every result is attributable to its originating scope, and the response reports which scopes were
-   searched — so "found nothing here" is distinguishable from "searched everywhere and found nothing."
-
-**Research flag:** needs research at plan time. Criterion 1 is the unresolved
-architecture-vs-pitfalls disagreement and is a **gate**, not a task — it must close before
-implementation begins.
-
----
-
-### v0.12.x Phase 4: Diagnosability
-
-**Goal:** What the server decided, and why it rejected something, reaches whoever needs it — the
-operator debugging a denial, the agent retrying a rejected call.
-
-**Requirements:** REQ-authz-decision-diagnostics, REQ-validation-error-attribution,
-REQ-error-hint-envelope, REQ-embed-provider-error-body
-
-**Success criteria:**
-
-1. At debug level, **both** an allowed and a denied authorization decision emit a log line carrying
-   field-allowlisted Cedar diagnostics; no full expression trace is ever emitted.
-2. An argument-validation rejection names the field that actually failed, proven by a matrix with
-   one case per single-field-invalid input rather than by matching exact wording.
-3. A rejection carries a structured remediation hint alongside the field attribution.
-4. A non-2xx embeddings response surfaces a bounded prefix of the provider's error body alongside
-   the status code and drains the body for connection reuse; the chat/summarize lane has been
-   audited for the same gap and fixed if it shares it.
-
-**Why grouped:** four independent fixes across different subsystems sharing one design discipline —
-bounded, structured, redaction-conscious disclosure. Grouping lets a single internal convention
-emerge instead of three ad hoc mechanisms.
-
----
-
-### v0.12.x Phase 5: Operator Config & Reindex Correctness
-
-**Goal:** The chat lane can carry its own provider credential, and an interrupted reindex resumes
-without silently leaving stale vectors behind.
-
-**Requirements:** REQ-per-lane-api-key, REQ-reindex-resume-tags, REQ-reindex-stale-repair
-
-**Success criteria:**
-
-1. The chat/summarize client uses its own API key when set and inherits the shared key when unset;
-   behavior with it unset is byte-identical to today. Closes #350.
-2. `reindex --resume` re-embeds a record whose tags changed while content did not, **and** skips one
-   where both match (the paired positive control — without it, a resume that silently stops skipping
-   anything looks green while quietly re-embedding everything). Tag comparison is order-independent.
-3. An operator can identify and heal records an earlier unpatched `--resume` run skipped
-   incorrectly, via a documented path following the existing one-time-reconciliation command
-   precedent.
-
-**Note:** the per-lane-key edit and v0.12.x Phase 3's cross-spine edit both touch `tools.go` in different
-functions (`summarizerFromConfig` vs. `searchMemory`). Low but non-zero merge risk if landed
-concurrently — sequence them or keep the diffs small and independently reviewed.
-
----
-
-### v0.12.x Phase 6: Rule Capture — Investigation & Fix
-
-**Goal:** Find out why `store_rule` effectively never fires — one rule exists repo-wide against
-dozens of ordinary memories — and fix the cause that is actually there.
-
-**Requirements:** REQ-rule-capture-investigation, REQ-rule-capture-intervention
-
-**Success criteria:**
-
-1. A written root cause exists, derived from tracing actual invocation **attempts including
-   failures** across the chain (`curating-memory` skill routing → session-start rules index →
-   `store_rule` tool description → user-blessing gate), and it distinguishes a mechanical/bug cause
-   from a friction cause.
-2. The intervention addresses that documented cause, not a presumed one.
-3. Rule capture demonstrably fires in a scenario where it previously did not.
-4. No path promotes a rule without explicit user instruction — the user-blessed gate is intact and
-   proven so.
-
-**Internal gate:** criterion 1 must be satisfied and reviewed before any intervention is
-implemented. The roadmap deliberately does **not** commit to a specific fix; research supplied
-consent-preserving candidates but explicitly warned against choosing one before the trace exists.
-Separated from v0.12.x Phase 5 because the shape differs — investigation-gated, and the surfaces are skill
-markdown and tool descriptions rather than Go correctness.
+No active milestone. v0.12.x detail sections are archived at
+[`milestones/v0.12.x-ROADMAP.md`](milestones/v0.12.x-ROADMAP.md); the next milestone's phases land
+here when `/gsd-new-milestone` runs.
 
 ---
 
 ## Progress
 
-**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · 13 → 14 (embedder track) · 15 → 16 → 17 → 18 → 19 (write-lane track, strict order) · 20 → 21 (independent) — v0.10.x shipped 2026-07-16 · 22 → 23 (Cedar foundation → service auth/tenancy, strict order) · 24 → 25 → 26 (capture trio + recall/config tail, strict order; 24 can start in parallel with 22–23) — v0.11.x shipped 2026-07-26 · **v0.12.x: 1 → 2 (spine → CLI, strict order)** · **3 · 4 · 5 · 6 (independent of the spine and of each other; may run in parallel once 1 is underway — sequence 3 and 5 or keep their `tools.go` diffs small)** — v0.12.x planned 2026-07-29
+**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · 13 → 14 (embedder track) · 15 → 16 → 17 → 18 → 19 (write-lane track, strict order) · 20 → 21 (independent) — v0.10.x shipped 2026-07-16 · 22 → 23 (Cedar foundation → service auth/tenancy, strict order) · 24 → 25 → 26 (capture trio + recall/config tail, strict order; 24 can start in parallel with 22–23) — v0.11.x shipped 2026-07-26 · v0.12.x: 1 → 2 (spine → CLI, strict order) · 3 · 4 · 5 · 6 (independent of the spine and of each other; ran in parallel once 1 was underway) · 7 (CLI cross-spine wiring, closed the audit seam between 2 and 3) — v0.12.x shipped 2026-08-02
 
 > **Phase numbering restarts per milestone as of v0.12.x.** Phases 1–26 above are the pre-v0.12.x
-> monotonic sequence and keep their historical numbers. From v0.12.x forward, a phase number is only
+> monotonic sequence and keep their historical numbers. In **prose**, a phase number is only
 > meaningful with its milestone — always write `v0.12.x Phase 1`, never bare `Phase 1`. The
 > `Milestone` column below is part of the row key. Note that `gsd-tools query find-phase <N>` takes a
 > bare number and globs every archived `milestones/vX.Y.x-phases/` directory, so it may report a hit
 > from another milestone; qualify by milestone at the call site.
+>
+> **Structural invariant (added 2026-07-31): a bare `Phase N` anchor always means the ACTIVE
+> milestone.** GSD's phase resolvers match a bare `Phase N` in the `## Phases` checklist and the
+> `### Phase N:` detail headings. When v0.12.x restarted numbering, the still-inline v0.8.x
+> sections shadowed it — every resolver silently answered from v0.8.x, which is how
+> `roadmap.update-plan-progress` came to overwrite shipped v0.8.x history (repaired in `e5e9ce4c`).
+> Fixed by archiving the v0.8.x detail sections to
+> [`milestones/v0.8.x-ROADMAP.md`](milestones/v0.8.x-ROADMAP.md) (matching v0.9.x–v0.11.x) and
+> qualifying their checklist entries as `v0.8.x Phase N`. So: **structural anchors for the active
+> milestone stay bare; archived milestones whose numbers collide get milestone-qualified.** Keep
+> `**Requirements:**` on ONE line per phase — a wrapped line truncates `phase_req_ids` to whatever
+> fits before the break.
 
 | Phase | Milestone | Requirements | Status | Completed |
 |-------|-----------|--------------|--------|-----------|
-| 1. Authorization & Isolation | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
-| 2. Recall Semantics | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
-| 3. Memory Kinds & Tools | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
-| 4. Embedder | v0.8.x | 1/1 | Complete | shipped (v0.8.x) |
-| 5. Config & Transport | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
-| 6. Telemetry & Observability | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
+| v0.8.x Phase 1: Authorization & Isolation | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
+| v0.8.x Phase 2: Recall Semantics | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
+| v0.8.x Phase 3: Memory Kinds & Tools | v0.8.x | 3/3 | Complete | shipped (v0.8.x) |
+| v0.8.x Phase 4: Embedder | v0.8.x | 1/1 | Complete | shipped (v0.8.x) |
+| v0.8.x Phase 5: Config & Transport | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
+| v0.8.x Phase 6: Telemetry & Observability | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
 | 7. Web UI, Docs Site & Distribution | v0.8.x | 9/9 | Complete | shipped (v0.8.x) |
 | 8. Connect Auth Hardening | v0.8.x | 1/1 | Complete | shipped (PR #248/#266) |
 | 9. Retrieval Eval & Ranking Precision | v0.9.x | 3/3 | Complete | 2026-07-10 (PR #336) |
@@ -516,13 +214,134 @@ markdown and tool descriptions rather than Go correctness.
 | 24. Idempotent Capture | v0.11.x | 2/2 | Complete | 2026-07-18 |
 | 25. Supersession with History | v0.11.x | 2/2 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
-| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 0/4 | Pending | — |
-| 2. Headless CLI Client | v0.12.x | 0/4 | Pending | — |
-| 3. Cross-Spine Memory Recall | v0.12.x | 0/3 | Pending | — |
-| 4. Diagnosability | v0.12.x | 0/4 | Pending | — |
-| 5. Operator Config & Reindex Correctness | v0.12.x | 0/3 | Pending | — |
-| 6. Rule Capture — Investigation & Fix | v0.12.x | 0/2 | Pending | — |
+| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | Complete | 2026-07-31 |
+| 2. Headless CLI Client | v0.12.x | 4/4 | Complete | 2026-07-31 |
+| 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete | 2026-08-01 |
+| 4. Diagnosability | v0.12.x | 4/4 | Complete | 2026-08-01 |
+| 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete | 2026-08-01 |
+| 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete | 2026-08-01 |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.
 **v0.11.x — Capture & Service Identity: ✅ shipped 2026-07-26 · 5 phases (22–26), 19 plans, 46 tasks · 11/11 requirements · audit PASSED (6/6 integration seams, 2/2 E2E flows, 0 blockers; Nyquist 5/5 validated — phases 24 and 26 reconciled 2026-07-26, 0 gaps).** Full detail: `milestones/v0.11.x-ROADMAP.md`.
+**v0.12.x — Headless Reach & Diagnosability: ✅ shipped 2026-08-02 · 7 phases (1–7, first milestone on restarted numbering), 28 plans, 68 tasks · 21/21 requirements · audit `tech_debt` (5/5 integration seams, 2/2 E2E flows, 0 blockers; Nyquist not validated — 6 phases at `status: draft`, phase 2 has none, tracked as debt not gaps).** Full detail: `milestones/v0.12.x-ROADMAP.md`.
+
+
+---
+
+## Backlog
+
+Unsequenced ideas parked outside the active phase sequence. Promote with `/gsd-review-backlog`.
+
+### Phase 999.1: Spine review / consolidate / verify / purge / archive command (BACKLOG)
+
+**Goal:** [Captured for future planning] A single operation that audits a memory spine end to end —
+reviews what is there, consolidates duplicates and near-duplicates, verifies records still hold
+against the tree they describe, purges what has rotted, and archives what is finished — instead of
+the ad-hoc, per-session, human-driven curation this repo does today.
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+**Why this came up (captured 2026-08-01, during the v0.12.x milestone close):**
+
+Rule `7smp8vy9hr` already mandates a curation pass at milestone completion, and specifies a real
+procedure — extract embedded reusable gotchas into standalone records FIRST, then write one
+authoritative milestone summary, then delete the collapsed per-phase process records, never touching
+reusable codebase facts. But it is a **playbook a human or agent executes by hand**, with an explicit
+safety clause requiring user confirmation before large delete batches. Nothing enforces the order,
+nothing detects when it is overdue, and nothing verifies the extract actually happened before the
+delete.
+
+The v0.12.x session surfaced every failure mode this command would address:
+
+- **Consolidate** — `2ak73h8bta` had to be superseded by `478rhhmhb0` because one of its three
+  claims (`ENGRAM_REQUIRE_QDRANT` fails closed) was false for `internal/store`. Found by accident
+  during phase planning, not by any review pass.
+
+- **Review** — three records filed `category: gotcha` were phrased as normative MUSTs and were
+  really rule candidates. Surfaced only because v0.12.x Phase 6 went looking. One (`r3bjakymtz`)
+  became rule `n6m4as49mr`; two were declined (`hxwad6qr58`).
+
+- **Verify** — records cite `file:line` anchors (`store.go:752-757`, `rules.go:103-146`). Those drift
+  every time the file is edited. Nothing checks whether a cited anchor still points at what the
+  record claims.
+
+- **Purge / archive** — per-phase lifecycle records for shipped milestones accumulate; `7smp8vy9hr`
+  says to delete them but only after extraction, and deletes are irreversible.
+
+**Shape questions to resolve when this is planned:**
+
+- Is this an engram CLI command (`engram spine-review`, joining `migrate-remap-owner` /
+  `backfill-short-ids` / `prune-expired` / `summarize-missing`), a GSD skill, or both? The existing
+  one-time-reconciliation commands all resolve **structural** predicates; "is this record still
+  true" and "are these two records the same fact" are **semantic** judgments — the same split that
+  made v0.12.x Phase 6 route its backfill sweep to an agent procedure rather than a CLI.
+
+- What is proposed vs. what is performed? Deletes are irreversible and rules are user-blessed, so
+  the consent model from v0.12.x Phase 6 (`### Proposing a rule`, `### Rule hygiene`) is the
+  precedent — propose, never promote; the same should hold for purge.
+
+- Cadence: on demand, at milestone close (hooking `7smp8vy9hr`'s existing moment), or on a volume
+  signal like `rules.go`'s existing `ruleThreshold = 50`.
+
+- Scope: spine only, or overlays too? Interaction with the `promoting-memory` skill, which already
+  graduates overlay memories into the spine.
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+---
+
+### Phase 999.2: Review the CLI and MCP surface under the self-evident-interface principle (BACKLOG)
+
+**Goal:** [Captured for future planning] Audit every command, operation, flag, and tool argument on
+both the `engram` CLI and the MCP tool surface against one standard: it must be discoverable and
+usable **correctly by reading** — from help text, from the naming of operations and parameters, and
+from the self-describe / tool-schema output alone. No teaching by example, no error-and-find-out, no
+surprises.
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+**Why this came up (captured 2026-08-02, during v0.12.x Phase 7 discussion):**
+
+Stated by Sean as a general principle while deciding how `--cross-spine` should behave:
+
+> "the flags, cli help, all of this should _read_ well and be discoverable for an agent or human. no
+> surprises, no error and wait to see how it works. The goal is to NOT need to teach by example how
+> to use the cli, it should be evident from its help and the naming of its operations and
+> parameters."
+
+Phase 7 applies it to two commands. This item applies it to the whole surface.
+
+Two concrete failures motivated it, both found by the v0.12.x milestone audit and its follow-on
+discussion:
+
+- **A capability with no way to reach it.** `cross_spine` shipped on the Connect API in v0.12.x
+  Phase 3; the CLI shipped in Phase 2 and never wired it. Nothing in `engram search --help`
+  suggested the capability existed, so the only way to discover the gap was to read the proto.
+
+- **A default that fails without saying why.** `engram search --query x` with no `--scope` is
+  rejected by `effectiveSearchScope` (`internal/server/tools.go:1374-1382`) with *"scope is required
+  unless cross_spine is true"* — a rule the CLI's help text never states. The most natural
+  invocation teaches by failure, which is exactly the pattern this principle forbids.
+
+**Scope to audit:**
+
+- `cmd/engram/*` — every flag's help string, every command's `Short`/`Use`, and whether related
+  flags name each other (mutually-exclusive pairs, conditionally-required pairs).
+- The v0.12.x Phase 2 D-15 self-describe JSON catalog — an agent's primary discovery path; it must
+  carry the same guidance as `--help`, not a thinner version.
+- MCP tool descriptions and argument docs in `internal/server` — same standard, different surface.
+  Server-side conditional-requirement rules (`effectiveSearchScope` and its siblings) should be
+  stated wherever the argument is advertised.
+
+**Related:** convention `yaj7dqz9qq` — *"a new tool argument with no guidance is an incomplete
+feature."* This item is that convention applied retroactively and surface-wide, rather than only at
+the moment an argument is added.
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)

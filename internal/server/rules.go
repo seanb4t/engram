@@ -22,16 +22,23 @@ const (
 	maxRuleSummaryBytes = 256      // one physical index line
 )
 
+// storeRuleArgs' Content/Scope/Summary carry omitempty (D-06a). All three
+// already had a Go-level presence check in validateStoreRule/
+// validateRuleSummary before this plan — those checks were SHADOWED by the
+// schema's own required-ness; relaxing the tag makes them reachable for the
+// first time. No new validation logic needed here.
 type storeRuleArgs struct {
-	Content string   `json:"content" jsonschema:"the full rule text (normative constraint agents must follow)"`
-	Scope   string   `json:"scope" jsonschema:"rule scope: rule:repo:<repo> or rule:project:<project>"`
-	Summary string   `json:"summary" jsonschema:"REQUIRED one-line index entry (single physical line, no newlines)"`
+	Content string   `json:"content,omitempty" jsonschema:"the full rule text (normative constraint agents must follow)"`
+	Scope   string   `json:"scope,omitempty" jsonschema:"rule scope: rule:repo:<repo> or rule:project:<project>"`
+	Summary string   `json:"summary,omitempty" jsonschema:"REQUIRED one-line index entry (single physical line, no newlines)"`
 	Tags    []string `json:"tags,omitempty" jsonschema:"concern-area labels e.g. vcs, deploy, authz"`
 	ID      string   `json:"id,omitempty" jsonschema:"omit to create; supply to replace in place"`
 }
 
+// listRulesArgs.Scopes carries omitempty (D-06a); listRules already rejects
+// len(a.Scopes)==0 in Go — that check was likewise shadowed by the schema.
 type listRulesArgs struct {
-	Scopes []string `json:"scopes" jsonschema:"one or more rule:* scopes to fetch the complete rule set from"`
+	Scopes []string `json:"scopes,omitempty" jsonschema:"one or more rule:* scopes to fetch the complete rule set from"`
 	Tags   []string `json:"tags,omitempty" jsonschema:"restrict to rules carrying ALL listed tags (AND)"`
 	Full   bool     `json:"full,omitempty" jsonschema:"true adds full content; default returns the compact index shape"`
 }
@@ -54,16 +61,16 @@ func validRuleScope(s string) bool {
 // the problem (explicit/correctable ethos).
 func validateStoreRule(a storeRuleArgs) error {
 	if a.Content == "" {
-		return fmt.Errorf("content is required")
+		return argErrf(classMalformed, HintRequired, "content", "content is required")
 	}
 	if len(a.Content) > maxRuleContentBytes {
-		return fmt.Errorf("content too large: %d bytes (max %d)", len(a.Content), maxRuleContentBytes)
+		return argErrf(classOutOfRange, HintTooLong, "content", "content too large: %d bytes (max %d)", len(a.Content), maxRuleContentBytes)
 	}
 	if a.Scope == "" {
-		return fmt.Errorf("scope is required")
+		return argErrf(classMalformed, HintRequired, "scope", "scope is required")
 	}
 	if !validRuleScope(a.Scope) {
-		return fmt.Errorf("scope must be rule:repo:<repo> or rule:project:<project>, got %q", a.Scope)
+		return argErrf(classMalformed, HintPrefix, "scope", "scope must be rule:repo:<repo> or rule:project:<project>")
 	}
 	if err := validateRuleSummary(a.Summary); err != nil {
 		return err
@@ -73,18 +80,19 @@ func validateStoreRule(a storeRuleArgs) error {
 
 // validateRuleSummary enforces the shared summary contract for rules: non-empty,
 // single physical line, within the byte cap. Reused by the update_memory guard.
-// Every rejection is wrapped with the existing store.ErrInvalidArgument (review
-// finding 5) so a Connect UpdateMemory call violating the rule-summary contract
-// maps to CodeInvalidArgument, not CodeInternal, once 17-04 wires connectError.
+// Every rejection carries the field+hint argError envelope (D-05/D-09); its
+// Unwrap() supplies store.ErrInvalidArgument, so every existing
+// errors.Is(err, store.ErrInvalidArgument) consumer and connectError's
+// *argError case both keep working with no separate sentinel wrap needed here.
 func validateRuleSummary(summary string) error {
 	if summary == "" {
-		return fmt.Errorf("summary is required for a rule (it is the one-line index entry): %w", store.ErrInvalidArgument)
+		return argErrf(classMalformed, HintRequired, "summary", "summary is required for a rule (it is the one-line index entry)")
 	}
 	if strings.ContainsAny(summary, "\r\n") {
-		return fmt.Errorf("rule summary must be a single line (no newlines); it is the index entry: %w", store.ErrInvalidArgument)
+		return argErrf(classMalformed, HintFormat, "summary", "rule summary must be a single line (no newlines); it is the index entry")
 	}
 	if len(summary) > maxRuleSummaryBytes {
-		return fmt.Errorf("summary too long: %d bytes (max %d): %w", len(summary), maxRuleSummaryBytes, store.ErrInvalidArgument)
+		return argErrf(classOutOfRange, HintTooLong, "summary", "summary too long: %d bytes (max %d)", len(summary), maxRuleSummaryBytes)
 	}
 	return nil
 }
@@ -183,11 +191,14 @@ func toRuleView(m store.Memory) ruleView {
 // textResult (empty when under threshold); it never changes the {rules} payload.
 func (d *deps) listRules(ctx context.Context, c caller, a listRulesArgs) (out []any, advisory string, err error) {
 	if len(a.Scopes) == 0 {
-		return nil, "", fmt.Errorf("at least one rule scope is required")
+		return nil, "", argErrf(classMalformed, HintRequired, "scopes", "at least one rule scope is required")
 	}
-	for _, sc := range a.Scopes {
+	for i, sc := range a.Scopes {
 		if !validRuleScope(sc) {
-			return nil, "", fmt.Errorf("scope must be rule:repo:<repo> or rule:project:<project>, got %q", sc)
+			// Field stays the plain "scopes" (never "scopes[i]" or the offending
+			// value) — D-12 and the matrix asserts on the identifier, not a
+			// per-element value. The position is useful detail text, not a value.
+			return nil, "", argErrf(classMalformed, HintPrefix, "scopes", "scope at position %d must be rule:repo:<repo> or rule:project:<project>", i)
 		}
 	}
 	var over []string

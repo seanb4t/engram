@@ -179,6 +179,7 @@ func (c *Client) Summarize(ctx context.Context, content string) (sum string, err
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		_, _ = io.Copy(io.Discard, resp.Body) // drain remainder so the connection is reusable (D-14)
 		return "", fmt.Errorf("chat completions: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var out chatResp
@@ -187,6 +188,7 @@ func (c *Client) Summarize(ctx context.Context, content string) (sum string, err
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
 		return "", err
 	}
+	_, _ = io.Copy(io.Discard, resp.Body) // drain remainder so the connection is reusable (D-14)
 	if len(out.Choices) == 0 {
 		return "", fmt.Errorf("chat completions: empty choices")
 	}

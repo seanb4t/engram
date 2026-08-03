@@ -16,7 +16,7 @@ engram is a self-hosted, correctable, OAuth-secured memory MCP server written in
 | `internal/embed/` | embedder (OpenAI-compatible) |
 | `internal/auth/` | OIDC bearer-token verifier (go-oidc + go-sdk auth middleware) |
 | `charts/engram/` | Helm chart (server + Qdrant), generic/parameterized |
-| `proto/engram/v1/` | protobuf schema (`EngramService` v1 read API) — source of truth for codegen |
+| `proto/engram/v1/` | protobuf schema (`EngramService` v1: 5 read + 6 write RPCs) — source of truth for codegen |
 | `gen/` | committed buf-generated code (connect-go stubs in `gen/go/`, protobuf-es types in `gen/ts/`) |
 
 ## Key conventions

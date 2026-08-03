@@ -56,6 +56,30 @@ func subjectFromConnectContext(ctx context.Context) (store.Subject, error) {
 	return SubjectFromTokenInfo(ti)
 }
 
+// connectLaneKey is engram-owned, mirroring connectSubjectKey: the subject
+// interceptor stamps which credential family authenticated a Connect
+// request (D-07) under this key, and laneFromConnectContext reads it back.
+type connectLaneKey struct{}
+
+// withConnectLane stamps the resolved auth.Lane onto ctx.
+func withConnectLane(ctx context.Context, lane auth.Lane) context.Context {
+	return context.WithValue(ctx, connectLaneKey{}, lane)
+}
+
+// laneFromConnectContext returns the auth.Lane stamped by the subject
+// interceptor, or auth.LaneUnknown when the key is absent or holds an
+// unexpected type. auth.LaneUnknown being the zero value is itself the
+// fail-closed signal downstream (D-08): callers that gate on the lane
+// (e.g. the CSRF exemption) reject on it rather than treat an absent key as
+// a permissive default, so this accessor returns no error.
+func laneFromConnectContext(ctx context.Context) auth.Lane {
+	lane, ok := ctx.Value(connectLaneKey{}).(auth.Lane)
+	if !ok {
+		return auth.LaneUnknown
+	}
+	return lane
+}
+
 // caller is the verified caller identity threaded explicitly through every
 // write deps.* method (and storeRule/listRules), replacing the internal
 // subjectFromContext/actorFromContext ctx reads (SC1/D-01). Subj is the

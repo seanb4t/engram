@@ -21,6 +21,7 @@ import (
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
+	"github.com/seanb4t/engram/internal/auth"
 )
 
 // csrfTestKey stands in for the HKDF-derived k_csrf in these tests.
@@ -45,12 +46,12 @@ func csrfTestVerify(owner, token string) bool {
 // the stub resolvers already used by connectapi_negative_test.go and
 // connectapi_cookie_test.go. A missing header rejects at the subject
 // interceptor (Unauthenticated), never reaching the CSRF layer.
-func csrfStubResolve(_ context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, error) {
+func csrfStubResolve(_ context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error) {
 	actor := req.Header().Get("X-Test-Actor")
 	if actor == "" {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("no identity"))
+		return nil, auth.LaneUnknown, connect.NewError(connect.CodeUnauthenticated, errors.New("no identity"))
 	}
-	return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": actor}}, nil
+	return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": actor}}, auth.LaneCookie, nil
 }
 
 // csrfHeaders configures the actor identity and CSRF cookie/header pair
@@ -63,6 +64,14 @@ type csrfHeaders struct {
 	cookieValue string
 	hasHeader   bool
 	headerValue string
+	// authorization, when non-empty, is sent as the request's Authorization
+	// header (REVIEWS.md HIGH-2). It exists so a lane test can drive the
+	// self-declaration attack input — a garbage/well-formed credential
+	// header attached to an otherwise cookie-authenticated write — through
+	// this shared fixture. The zero value (empty string) preserves every
+	// existing caller byte-for-byte: doCSRFWrite only sets the header when
+	// this field is non-empty.
+	authorization string
 }
 
 func doCSRFWrite[Req, Resp any](ctx context.Context, fn func(context.Context, *connect.Request[Req]) (*connect.Response[Resp], error), msg *Req, h csrfHeaders) error {
@@ -75,6 +84,9 @@ func doCSRFWrite[Req, Resp any](ctx context.Context, fn func(context.Context, *c
 	}
 	if h.hasHeader {
 		req.Header().Set(CSRFHeaderName, h.headerValue)
+	}
+	if h.authorization != "" {
+		req.Header().Set("Authorization", h.authorization)
 	}
 	_, err := fn(ctx, req)
 	return err
@@ -97,7 +109,9 @@ func csrfWriteCases(futureNotBefore *timestamppb.Timestamp) []csrfWriteRPCCase {
 		{
 			name: "StoreMemory",
 			call: func(ctx context.Context, c engramv1connect.EngramServiceClient, h csrfHeaders) error {
-				return doCSRFWrite(ctx, c.StoreMemory, &engramv1.StoreMemoryRequest{Content: "valid content", Scope: "test:scope", Category: "decision"}, h)
+				// Source is now required on both lanes (D-06a: validateStoreArgs
+				// is shared by deps.storeMemory's MCP and Connect callers alike).
+				return doCSRFWrite(ctx, c.StoreMemory, &engramv1.StoreMemoryRequest{Content: "valid content", Scope: "test:scope", Source: "agent-inferred", Category: "decision"}, h)
 			},
 		},
 		{
@@ -388,8 +402,8 @@ func TestReadRPCsCSRFExempt(t *testing.T) {
 // well-formed CSRF cookie/header pair is presented.
 func TestConnectCSRFInterceptor_EmptyOwner(t *testing.T) {
 	d := &deps{} // no Qdrant: StoreMemory's stub is never reached
-	resolve := func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error) {
-		return nil, nil
+	resolve := func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error) {
+		return nil, auth.LaneCookie, nil
 	}
 	mux := http.NewServeMux()
 	if err := d.mountConnect(mux, resolve, csrfTestVerify, nil); err != nil {

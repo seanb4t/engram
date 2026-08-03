@@ -29,9 +29,15 @@ func visibilityToShared(v engramv1.Visibility) bool {
 }
 
 func setVisibilityRequestToArgs(req *engramv1.SetVisibilityRequest) setVisibilityArgs {
+	// D-06a: setVisibilityArgs.Shared is now *bool (never nil on this lane —
+	// the Visibility enum is a required, always-populated proto field, so
+	// visibilityToShared always resolves a definite bool). A nil Shared can
+	// only arise from the MCP JSON decode path when the field is genuinely
+	// absent on the wire.
+	shared := visibilityToShared(req.GetVisibility())
 	return setVisibilityArgs{
 		ID:     req.GetId(),
-		Shared: visibilityToShared(req.GetVisibility()),
+		Shared: &shared,
 	}
 }
 

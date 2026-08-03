@@ -11,6 +11,7 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
+	"github.com/seanb4t/engram/internal/auth"
 )
 
 // CSRFCookieName and CSRFHeaderName are the server-side copies of the wire
@@ -60,6 +61,28 @@ func newConnectCSRFInterceptor(verify func(owner, token string) bool) connect.Un
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 			if !csrfWriteProcedures[req.Spec().Procedure] {
 				return next(ctx, req) // SC3: read RPCs untouched.
+			}
+
+			// D-08: the exemption decision comes from the stamped lane
+			// ALONE — never from Authorization, a cookie, Peer(), the HTTP
+			// method, or Content-Type (RESEARCH.md Pitfall 1). A bearer
+			// caller carries no ambient cookie by design, so CSRF does not
+			// apply to it; the exemption is total for write procedures. A
+			// cookie-lane caller falls through to the existing subject
+			// re-check and double-submit comparison below, byte-for-byte
+			// unchanged. An absent or unrecognized lane (LaneUnknown, or
+			// any future value this switch does not yet know about) is
+			// rejected outright with NO CSRF check attempted: "treat
+			// unknown as cookie" would let a misordered-interceptor bug
+			// succeed whenever the caller happens to carry valid CSRF
+			// material, so the wiring fault would never surface.
+			switch laneFromConnectContext(ctx) {
+			case auth.LaneBearer:
+				return next(ctx, req)
+			case auth.LaneCookie:
+				// Fall through to the cookie-lane double-submit check below.
+			default:
+				return nil, connect.NewError(connect.CodePermissionDenied, errors.New("csrf: no lane"))
 			}
 
 			subj, err := subjectFromConnectContext(ctx)

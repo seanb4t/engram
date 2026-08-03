@@ -5,21 +5,27 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"connectrpc.com/connect"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/coreos/go-oidc/v3/oidc/oidctest"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 
 	"github.com/seanb4t/engram/internal/auth"
 	"github.com/seanb4t/engram/internal/config"
+	"github.com/seanb4t/engram/internal/server"
 )
 
 // wantNamespacedOwner mirrors auth.go's DOCUMENTED namespacedOwner encoding
@@ -105,10 +111,11 @@ func TestOwnerClaimGuardUnsetDefaultNoWarn(t *testing.T) {
 // observed unmodified, with no bearer-token gate in front of it.
 func TestWithAuth_NoLaneConfigured_ReturnsHandlerUnchanged(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
-	handler, err := withAuth(inner, config.OIDCConfig{}, config.ServiceAuthConfig{}, nil)
+	chain, err := buildAuthChain(config.OIDCConfig{}, config.ServiceAuthConfig{}, nil)
 	if err != nil {
-		t.Fatalf("withAuth: %v", err)
+		t.Fatalf("buildAuthChain: %v", err)
 	}
+	handler := withAuth(inner, chain, "")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	if rec.Code != http.StatusTeapot {
@@ -150,10 +157,11 @@ func TestWithAuth_StaticTokenLane_AuthenticatesConfiguredToken(t *testing.T) {
 		w.WriteHeader(http.StatusTeapot)
 	})
 	svcAuth := config.ServiceAuthConfig{StaticTokens: "owner-x=secret-token-value"}
-	handler, err := withAuth(inner, config.OIDCConfig{}, svcAuth, nil)
+	chain, err := buildAuthChain(config.OIDCConfig{}, svcAuth, nil)
 	if err != nil {
-		t.Fatalf("withAuth: %v", err)
+		t.Fatalf("buildAuthChain: %v", err)
 	}
+	handler := withAuth(inner, chain, "")
 
 	t.Run("configured token authenticates", func(t *testing.T) {
 		gotOwner = ""
@@ -189,13 +197,345 @@ func TestWithAuth_StaticTokenLane_AuthenticatesConfiguredToken(t *testing.T) {
 func TestWithAuth_HumanOnlyConfig_RejectsUnauthenticated(t *testing.T) {
 	issuer := newServeTestOIDCServer(t)
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
-	handler, err := withAuth(inner, config.OIDCConfig{Issuer: issuer}, config.ServiceAuthConfig{}, []string{"email"})
+	chain, err := buildAuthChain(config.OIDCConfig{Issuer: issuer}, config.ServiceAuthConfig{}, []string{"email"})
 	if err != nil {
-		t.Fatalf("withAuth: %v", err)
+		t.Fatalf("buildAuthChain: %v", err)
 	}
+	handler := withAuth(inner, chain, "")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 for an unauthenticated request against the human-only chain, got %d", rec.Code)
+	}
+}
+
+// TestBuildAuthChainNoLaneConfiguredReturnsNil pins the D-06/D-03 baseline:
+// with no OIDC issuer and no service_auth.* config, buildAuthChain returns
+// a nil chain and a nil error — "no lane configured" is not an error case.
+func TestBuildAuthChainNoLaneConfiguredReturnsNil(t *testing.T) {
+	chain, err := buildAuthChain(config.OIDCConfig{}, config.ServiceAuthConfig{}, nil)
+	if err != nil {
+		t.Fatalf("buildAuthChain: %v", err)
+	}
+	if chain != nil {
+		t.Fatal("buildAuthChain with no lane configured returned a non-nil chain")
+	}
+}
+
+// TestBuildAuthChainStaticLaneAcceptsConfiguredToken proves buildAuthChain's
+// static-lane construction, driven through the real config-string ->
+// ParseServiceStaticTokens -> NewStaticTokenVerifier path (mirroring
+// TestWithAuth_StaticTokenLane_AuthenticatesConfiguredToken, but exercising
+// the extracted builder directly): a chain built from a static-tokens
+// config resolves the configured token to its namespaced owner.
+func TestBuildAuthChainStaticLaneAcceptsConfiguredToken(t *testing.T) {
+	svcAuth := config.ServiceAuthConfig{StaticTokens: "owner-y=another-secret"}
+	chain, err := buildAuthChain(config.OIDCConfig{}, svcAuth, nil)
+	if err != nil {
+		t.Fatalf("buildAuthChain: %v", err)
+	}
+	if chain == nil {
+		t.Fatal("buildAuthChain returned nil for a configured static lane")
+	}
+	ti, err := chain(context.Background(), "another-secret", httptest.NewRequest(http.MethodGet, "/", nil))
+	if err != nil {
+		t.Fatalf("chain rejected the configured static token: %v", err)
+	}
+	owner, _ := ti.Extra[auth.OwnerClaimExtraKey].(string)
+	want := wantNamespacedOwner("static_token", "owner-y")
+	if owner != want {
+		t.Fatalf("resolved owner = %q, want %q", owner, want)
+	}
+}
+
+// TestComposeAuthChainWrapsWithExpiry proves the expiry-enforcement
+// obligation REVIEWS.md MED-9 flags as infeasible against buildAuthChain's
+// config-only signature: composeAuthChain(stub, nil, nil), where stub
+// returns a past-Expiration TokenInfo with a nil error, rejects with
+// errors.Is(err, auth.ErrTokenExpired). buildAuthChain itself can only
+// construct real OIDC/static verifiers from configuration, so no test
+// against it could produce a past-expiration TokenInfo to prove this with;
+// this test carries that obligation instead, against the pure composition
+// step.
+func TestComposeAuthChainWrapsWithExpiry(t *testing.T) {
+	past := time.Now().Add(-time.Hour)
+	stub := func(context.Context, string, *http.Request) (*mcpauth.TokenInfo, error) {
+		return &mcpauth.TokenInfo{Expiration: past}, nil
+	}
+	chain := composeAuthChain(stub, nil, nil)
+	if chain == nil {
+		t.Fatal("composeAuthChain(stub, nil, nil) = nil, want a non-nil verifier")
+	}
+	// JWT-shaped (exactly two dots) so auth.ChainVerifier's structural
+	// discriminator routes the bearer to the human lane, where stub runs.
+	_, err := chain(context.Background(), "aaa.bbb.ccc", httptest.NewRequest(http.MethodGet, "/", nil))
+	if err == nil {
+		t.Fatal("expected the composed verifier to reject a past-Expiration TokenInfo, got nil error")
+	}
+	if !errors.Is(err, auth.ErrTokenExpired) {
+		t.Fatalf("err = %v, want errors.Is(err, auth.ErrTokenExpired)", err)
+	}
+}
+
+// TestComposeAuthChainAllNilReturnsNil proves "no lane configured" still
+// propagates as a nil chain through the extracted composition step.
+func TestComposeAuthChainAllNilReturnsNil(t *testing.T) {
+	if chain := composeAuthChain(nil, nil, nil); chain != nil {
+		t.Fatal("composeAuthChain(nil, nil, nil) != nil, want nil")
+	}
+}
+
+// TestBuildAuthChainDelegatesComposition is a structural pin (REVIEWS.md
+// MED-9's companion obligation): buildAuthChain calls composeAuthChain
+// exactly once and applies no auth.EnforceExpiry wrapping of its own —
+// expiry wrapping is composeAuthChain's sole responsibility. Recorded as a
+// named test so this obligation is visible in the suite even though its
+// evidence is a source read, not a runtime assertion.
+func TestBuildAuthChainDelegatesComposition(t *testing.T) {
+	src, err := os.ReadFile("serve.go")
+	if err != nil {
+		t.Fatalf("read serve.go: %v", err)
+	}
+	text := string(src)
+
+	buildStart := strings.Index(text, "\nfunc buildAuthChain(")
+	composeStart := strings.Index(text, "\nfunc composeAuthChain(")
+	withAuthStart := strings.Index(text, "\nfunc withAuth(")
+	if buildStart < 0 || composeStart < 0 || withAuthStart < 0 {
+		t.Fatal("could not locate buildAuthChain/composeAuthChain/withAuth in serve.go")
+	}
+	if buildStart >= composeStart || composeStart >= withAuthStart {
+		t.Fatalf("expected declaration order buildAuthChain < composeAuthChain < withAuth, got offsets %d/%d/%d", buildStart, composeStart, withAuthStart)
+	}
+
+	buildBody := text[buildStart:composeStart]
+	composeBody := text[composeStart:withAuthStart]
+
+	if n := strings.Count(buildBody, "composeAuthChain("); n != 1 {
+		t.Fatalf("buildAuthChain body calls composeAuthChain( %d times, want exactly 1", n)
+	}
+	if strings.Count(buildBody, "auth.EnforceExpiry(") != 0 {
+		t.Fatal("buildAuthChain must not call auth.EnforceExpiry directly -- that belongs solely to composeAuthChain")
+	}
+	if n := strings.Count(composeBody, "auth.EnforceExpiry("); n != 1 {
+		t.Fatalf("composeAuthChain body calls auth.EnforceExpiry( %d times, want exactly 1", n)
+	}
+}
+
+// TestAuthChainSharedBetweenLanes is the D-06 drift-impossibility proof: one
+// buildAuthChain call produces one verifier value, and that SAME value is
+// handed to withAuth (the MCP wrapper) and to server.NewConnectResolver
+// (the Connect bearer half) — no second construction call. The same
+// configured static token authenticates through both: the MCP handler
+// returns non-401, and the composed Connect resolver returns a TokenInfo
+// stamped auth.LaneBearer.
+func TestAuthChainSharedBetweenLanes(t *testing.T) {
+	svcAuth := config.ServiceAuthConfig{StaticTokens: "owner-x=shared-secret-token"}
+	chain, err := buildAuthChain(config.OIDCConfig{}, svcAuth, nil)
+	if err != nil {
+		t.Fatalf("buildAuthChain: %v", err)
+	}
+	if chain == nil {
+		t.Fatal("buildAuthChain returned a nil chain for a configured static lane")
+	}
+
+	// MCP half: the same chain value wrapped by withAuth.
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	mcpHandler := withAuth(inner, chain, "")
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer shared-secret-token")
+	mcpHandler.ServeHTTP(rec, req)
+	if rec.Code == http.StatusUnauthorized {
+		t.Fatalf("MCP lane rejected the configured token, got %d", rec.Code)
+	}
+
+	// Connect half: the SAME chain value, no second buildAuthChain call.
+	resolve := server.NewConnectResolver(chain, nil)
+	creq := connect.NewRequest(&struct{}{})
+	creq.Header().Set("Authorization", "Bearer shared-secret-token")
+	ti, lane, err := resolve(context.Background(), creq)
+	if err != nil {
+		t.Fatalf("Connect resolver rejected the configured token: %v", err)
+	}
+	if lane != auth.LaneBearer {
+		t.Fatalf("lane = %v, want LaneBearer", lane)
+	}
+	if ti == nil {
+		t.Fatal("expected a non-nil TokenInfo from the Connect lane")
+	}
+}
+
+// stubConnectVerifier returns an mcpauth.TokenVerifier that accepts any
+// non-empty token and resolves it to a fixed TokenInfo. Used where a test
+// only needs "a non-nil configured chain that authenticates", not a
+// specific credential check (connectResolverFor's own tests exercise the
+// credential-shape routing; these fixtures stay deliberately simple).
+func stubConnectVerifier() mcpauth.TokenVerifier {
+	return func(context.Context, string, *http.Request) (*mcpauth.TokenInfo, error) {
+		return &mcpauth.TokenInfo{UserID: "stub-bearer-user"}, nil
+	}
+}
+
+// stubConnectCookieResolve returns a cookie-lane resolver stub that always
+// succeeds, for tests exercising connectResolverFor's cookie half.
+func stubConnectCookieResolve() func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error) {
+	return func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error) {
+		return &mcpauth.TokenInfo{UserID: "stub-cookie-user"}, nil
+	}
+}
+
+// TestHeadlessRefusesStartWithoutAuthLane pins D-11: headless with a nil
+// chain refuses to start, naming ENGRAM_CONNECT_HEADLESS; headless with a
+// configured chain is fine; and non-headless with no chain is fine too --
+// this guard constrains only the new flag, so no existing deployment can
+// fail to boot as a result of this phase.
+func TestHeadlessRefusesStartWithoutAuthLane(t *testing.T) {
+	err := connectHeadlessGuard(true, nil)
+	if err == nil {
+		t.Fatal("connectHeadlessGuard(true, nil): want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "ENGRAM_CONNECT_HEADLESS") {
+		t.Fatalf("error %v does not name ENGRAM_CONNECT_HEADLESS", err)
+	}
+	if err := connectHeadlessGuard(true, stubConnectVerifier()); err != nil {
+		t.Fatalf("connectHeadlessGuard(true, chain): want nil, got %v", err)
+	}
+	if err := connectHeadlessGuard(false, nil); err != nil {
+		t.Fatalf("connectHeadlessGuard(false, nil): want nil, got %v", err)
+	}
+}
+
+// TestConnectResolverForDefaultOff is the Pitfall-5 regression guard (D-12 /
+// SC5): a configured auth lane alone -- with no UI and no headless flag --
+// must never mount Connect. This closes REQUIREMENTS.md:197's false-pass,
+// where loosening the mount guard with an OR would keep every "UI enabled
+// -> mounted" test green even though the new condition is wrong.
+func TestConnectResolverForDefaultOff(t *testing.T) {
+	if got := connectResolverFor(nil, false, nil); got != nil {
+		t.Fatal("connectResolverFor(nil, false, nil) != nil, want nil")
+	}
+	chain := stubConnectVerifier()
+	if got := connectResolverFor(chain, false, nil); got != nil {
+		t.Fatal("connectResolverFor(chain, false, nil) != nil, want nil -- a configured chain alone must never mount Connect")
+	}
+}
+
+// TestConnectResolverForHeadlessOnly proves ENGRAM_CONNECT_HEADLESS=true
+// with no UI mounts Connect and authenticates via the bearer half alone.
+func TestConnectResolverForHeadlessOnly(t *testing.T) {
+	resolve := connectResolverFor(stubConnectVerifier(), true, nil)
+	if resolve == nil {
+		t.Fatal("connectResolverFor(chain, true, nil) = nil, want non-nil")
+	}
+	req := connect.NewRequest(&struct{}{})
+	req.Header().Set("Authorization", "Bearer stub-token")
+	ti, lane, err := resolve(context.Background(), req)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if lane != auth.LaneBearer {
+		t.Fatalf("lane = %v, want LaneBearer", lane)
+	}
+	if ti == nil {
+		t.Fatal("expected a non-nil TokenInfo")
+	}
+}
+
+// TestConnectResolverForUIOnlyNoChain proves a deployment with no auth lane
+// configured at all -- UI on, chain nil -- mounts Connect and stamps
+// auth.LaneCookie for every request, byte-for-byte today's UI-only
+// behavior.
+func TestConnectResolverForUIOnlyNoChain(t *testing.T) {
+	resolve := connectResolverFor(nil, false, stubConnectCookieResolve())
+	if resolve == nil {
+		t.Fatal("connectResolverFor(nil, false, cookieResolve) = nil, want non-nil")
+	}
+	req := connect.NewRequest(&struct{}{})
+	ti, lane, err := resolve(context.Background(), req)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if lane != auth.LaneCookie {
+		t.Fatalf("lane = %v, want LaneCookie", lane)
+	}
+	if ti == nil {
+		t.Fatal("expected a non-nil TokenInfo")
+	}
+}
+
+// TestConnectResolverForUIEnabledIncludesBearerHalf is the REVIEWS.md
+// HIGH-3 / SC1 regression guard: UI on, headless UNSET, a chain configured
+// -- the resolver must be non-nil AND route a well-formed bearer credential
+// to auth.LaneBearer through chain, while a non-bearer request still stamps
+// auth.LaneCookie. Gating the bearer half on headless would leave this
+// deployment cookie-only, so a token accepted on MCP would be rejected on
+// Connect -- the exact defect this test exists to catch.
+func TestConnectResolverForUIEnabledIncludesBearerHalf(t *testing.T) {
+	resolve := connectResolverFor(stubConnectVerifier(), false, stubConnectCookieResolve())
+	if resolve == nil {
+		t.Fatal("connectResolverFor(chain, false, cookieResolve) = nil, want non-nil")
+	}
+
+	breq := connect.NewRequest(&struct{}{})
+	breq.Header().Set("Authorization", "Bearer stub-token")
+	ti, lane, err := resolve(context.Background(), breq)
+	if err != nil {
+		t.Fatalf("resolve(bearer): %v", err)
+	}
+	if lane != auth.LaneBearer {
+		t.Fatalf("lane = %v, want LaneBearer (a UI-enabled deployment with a configured chain must accept bearer credentials even with headless unset)", lane)
+	}
+	if ti == nil {
+		t.Fatal("expected a non-nil TokenInfo for the bearer request")
+	}
+
+	creq := connect.NewRequest(&struct{}{})
+	_, lane2, err := resolve(context.Background(), creq)
+	if err != nil {
+		t.Fatalf("resolve(no credential): %v", err)
+	}
+	if lane2 != auth.LaneCookie {
+		t.Fatalf("lane = %v, want LaneCookie for a non-bearer request", lane2)
+	}
+}
+
+// TestConnectResolverForBothLanes proves headless AND UI-enabled together
+// still compose correctly: a bearer credential routes to auth.LaneBearer,
+// everything else to auth.LaneCookie.
+func TestConnectResolverForBothLanes(t *testing.T) {
+	resolve := connectResolverFor(stubConnectVerifier(), true, stubConnectCookieResolve())
+	if resolve == nil {
+		t.Fatal("connectResolverFor(chain, true, cookieResolve) = nil, want non-nil")
+	}
+
+	breq := connect.NewRequest(&struct{}{})
+	breq.Header().Set("Authorization", "Bearer stub-token")
+	_, lane, err := resolve(context.Background(), breq)
+	if err != nil {
+		t.Fatalf("resolve(bearer): %v", err)
+	}
+	if lane != auth.LaneBearer {
+		t.Fatalf("lane = %v, want LaneBearer", lane)
+	}
+
+	creq := connect.NewRequest(&struct{}{})
+	_, lane2, err := resolve(context.Background(), creq)
+	if err != nil {
+		t.Fatalf("resolve(no credential): %v", err)
+	}
+	if lane2 != auth.LaneCookie {
+		t.Fatalf("lane = %v, want LaneCookie", lane2)
+	}
+}
+
+// TestConnectResolverForHeadlessWithoutChainIsNil pins the defense-in-depth
+// backstop: headless=true with a nil chain is unreachable in runServe
+// (connectHeadlessGuard refuses startup first), but the composition itself
+// must never mount an unauthenticatable surface if that guarantee is ever
+// broken.
+func TestConnectResolverForHeadlessWithoutChainIsNil(t *testing.T) {
+	if got := connectResolverFor(nil, true, nil); got != nil {
+		t.Fatal("connectResolverFor(nil, true, nil) != nil, want nil")
 	}
 }

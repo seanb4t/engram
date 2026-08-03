@@ -451,6 +451,10 @@ type ListMemoriesRequest struct {
 	CreatedBefore string                 `protobuf:"bytes,9,opt,name=created_before,json=createdBefore,proto3" json:"created_before,omitempty"` // RFC3339; exclusive upper bound on created_at
 	PageToken     string                 `protobuf:"bytes,10,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`            // opaque cursor; when set, cursor paging (ignores offset)
 	CursorMode    bool                   `protobuf:"varint,11,opt,name=cursor_mode,json=cursorMode,proto3" json:"cursor_mode,omitempty"`        // opt into cursor paging on the first (tokenless) page; default false = offset-for-UI (ADR engram-1frj). Mutually exclusive with offset>0.
+	// cross_spine spans every scope the caller is authorized to read, ignoring
+	// `scope` entirely when true. `scope` is REQUIRED when this is unset or
+	// false — an empty scope is rejected, never silently treated as "all".
+	CrossSpine    bool `protobuf:"varint,12,opt,name=cross_spine,json=crossSpine,proto3" json:"cross_spine,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -562,6 +566,13 @@ func (x *ListMemoriesRequest) GetCursorMode() bool {
 	return false
 }
 
+func (x *ListMemoriesRequest) GetCrossSpine() bool {
+	if x != nil {
+		return x.CrossSpine
+	}
+	return false
+}
+
 type ListMemoriesResponse struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Memories []*Memory              `protobuf:"bytes,1,rep,name=memories,proto3" json:"memories,omitempty"`
@@ -569,8 +580,17 @@ type ListMemoriesResponse struct {
 	// Deprecated: Marked as deprecated in engram/v1/engram.proto.
 	Approximate   bool   `protobuf:"varint,3,opt,name=approximate,proto3" json:"approximate,omitempty"`                           // always false since totals are now exact (Count)
 	NextPageToken string `protobuf:"bytes,4,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"` // empty when no further pages (cursor paging)
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// searched_scopes names the scopes the caller is AUTHORIZED to read — the
+	// span a cross_spine query covered — NOT the scopes that produced hits.
+	// Present only when the request set cross_spine=true; absent (proto3
+	// default) on a scope-confined response.
+	SearchedScopes []string `protobuf:"bytes,5,rep,name=searched_scopes,json=searchedScopes,proto3" json:"searched_scopes,omitempty"`
+	// scopes_truncated is true when the searched_scopes enumeration hit its
+	// bounded-sample ceiling, so the list may be incomplete. Present only
+	// alongside searched_scopes on a cross_spine response.
+	ScopesTruncated bool `protobuf:"varint,6,opt,name=scopes_truncated,json=scopesTruncated,proto3" json:"scopes_truncated,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ListMemoriesResponse) Reset() {
@@ -632,6 +652,20 @@ func (x *ListMemoriesResponse) GetNextPageToken() string {
 	return ""
 }
 
+func (x *ListMemoriesResponse) GetSearchedScopes() []string {
+	if x != nil {
+		return x.SearchedScopes
+	}
+	return nil
+}
+
+func (x *ListMemoriesResponse) GetScopesTruncated() bool {
+	if x != nil {
+		return x.ScopesTruncated
+	}
+	return false
+}
+
 type SearchMemoriesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Query         string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
@@ -642,6 +676,10 @@ type SearchMemoriesRequest struct {
 	CreatedAfter  string                 `protobuf:"bytes,6,opt,name=created_after,json=createdAfter,proto3" json:"created_after,omitempty"`    // RFC3339; inclusive lower bound on created_at
 	CreatedBefore string                 `protobuf:"bytes,7,opt,name=created_before,json=createdBefore,proto3" json:"created_before,omitempty"` // RFC3339; exclusive upper bound on created_at
 	Categories    []string               `protobuf:"bytes,8,rep,name=categories,proto3" json:"categories,omitempty"`                            // empty = all categories; non-empty = records in ANY listed category (OR)
+	// cross_spine spans every scope the caller is authorized to read, ignoring
+	// `scope` entirely when true. `scope` is REQUIRED when this is unset or
+	// false — an empty scope is rejected, never silently treated as "all".
+	CrossSpine    bool `protobuf:"varint,9,opt,name=cross_spine,json=crossSpine,proto3" json:"cross_spine,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -732,11 +770,27 @@ func (x *SearchMemoriesRequest) GetCategories() []string {
 	return nil
 }
 
+func (x *SearchMemoriesRequest) GetCrossSpine() bool {
+	if x != nil {
+		return x.CrossSpine
+	}
+	return false
+}
+
 type SearchMemoriesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Memories      []*Memory              `protobuf:"bytes,1,rep,name=memories,proto3" json:"memories,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Memories []*Memory              `protobuf:"bytes,1,rep,name=memories,proto3" json:"memories,omitempty"`
+	// searched_scopes names the scopes the caller is AUTHORIZED to read — the
+	// span a cross_spine query covered — NOT the scopes that produced hits.
+	// Present only when the request set cross_spine=true; absent (proto3
+	// default) on a scope-confined response.
+	SearchedScopes []string `protobuf:"bytes,2,rep,name=searched_scopes,json=searchedScopes,proto3" json:"searched_scopes,omitempty"`
+	// scopes_truncated is true when the searched_scopes enumeration hit its
+	// bounded-sample ceiling, so the list may be incomplete. Present only
+	// alongside searched_scopes on a cross_spine response.
+	ScopesTruncated bool `protobuf:"varint,3,opt,name=scopes_truncated,json=scopesTruncated,proto3" json:"scopes_truncated,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *SearchMemoriesResponse) Reset() {
@@ -774,6 +828,20 @@ func (x *SearchMemoriesResponse) GetMemories() []*Memory {
 		return x.Memories
 	}
 	return nil
+}
+
+func (x *SearchMemoriesResponse) GetSearchedScopes() []string {
+	if x != nil {
+		return x.SearchedScopes
+	}
+	return nil
+}
+
+func (x *SearchMemoriesResponse) GetScopesTruncated() bool {
+	if x != nil {
+		return x.ScopesTruncated
+	}
+	return false
 }
 
 type GetMemoryRequest struct {
@@ -1921,7 +1989,7 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\x11ListScopesRequest\"e\n" +
 	"\x12ListScopesResponse\x12-\n" +
 	"\x06scopes\x18\x01 \x03(\v2\x15.engram.v1.ScopeCountR\x06scopes\x12 \n" +
-	"\vapproximate\x18\x02 \x01(\bR\vapproximate\"\xcd\x02\n" +
+	"\vapproximate\x18\x02 \x01(\bR\vapproximate\"\xee\x02\n" +
 	"\x13ListMemoriesRequest\x12\x14\n" +
 	"\x05scope\x18\x01 \x01(\tR\x05scope\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x04R\x05limit\x12\x16\n" +
@@ -1940,12 +2008,16 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"page_token\x18\n" +
 	" \x01(\tR\tpageToken\x12\x1f\n" +
 	"\vcursor_mode\x18\v \x01(\bR\n" +
-	"cursorMode\"\xa9\x01\n" +
+	"cursorMode\x12\x1f\n" +
+	"\vcross_spine\x18\f \x01(\bR\n" +
+	"crossSpine\"\xfd\x01\n" +
 	"\x14ListMemoriesResponse\x12-\n" +
 	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x04R\x05total\x12$\n" +
 	"\vapproximate\x18\x03 \x01(\bB\x02\x18\x01R\vapproximate\x12&\n" +
-	"\x0fnext_page_token\x18\x04 \x01(\tR\rnextPageToken\"\xe5\x01\n" +
+	"\x0fnext_page_token\x18\x04 \x01(\tR\rnextPageToken\x12'\n" +
+	"\x0fsearched_scopes\x18\x05 \x03(\tR\x0esearchedScopes\x12)\n" +
+	"\x10scopes_truncated\x18\x06 \x01(\bR\x0fscopesTruncated\"\x86\x02\n" +
 	"\x15SearchMemoriesRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
 	"\x05scope\x18\x02 \x01(\tR\x05scope\x12\f\n" +
@@ -1956,9 +2028,13 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\x0ecreated_before\x18\a \x01(\tR\rcreatedBefore\x12\x1e\n" +
 	"\n" +
 	"categories\x18\b \x03(\tR\n" +
-	"categories\"G\n" +
+	"categories\x12\x1f\n" +
+	"\vcross_spine\x18\t \x01(\bR\n" +
+	"crossSpine\"\x9b\x01\n" +
 	"\x16SearchMemoriesResponse\x12-\n" +
-	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\"\"\n" +
+	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\x12'\n" +
+	"\x0fsearched_scopes\x18\x02 \x03(\tR\x0esearchedScopes\x12)\n" +
+	"\x10scopes_truncated\x18\x03 \x01(\bR\x0fscopesTruncated\"\"\n" +
 	"\x10GetMemoryRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\">\n" +
 	"\x11GetMemoryResponse\x12)\n" +

@@ -18,6 +18,7 @@ import (
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
+	"github.com/seanb4t/engram/internal/auth"
 )
 
 // callWrite invokes a generated write-RPC client method with msg, optionally
@@ -73,11 +74,11 @@ func TestWriteRPCNegativeMatrix(t *testing.T) {
 	// Task 1). Once the six write RPCs are wired (Task 2) an authenticated+valid
 	// call reaches the real handler body instead of nil-panicking on d.st/d.em.
 	d, _ := newSpyDeps()
-	resolve := func(_ context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, error) {
+	resolve := func(_ context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error) {
 		if req.Header().Get("X-Test-Actor") == "" {
-			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("no identity"))
+			return nil, auth.LaneUnknown, connect.NewError(connect.CodeUnauthenticated, errors.New("no identity"))
 		}
-		return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}}, nil
+		return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}}, auth.LaneCookie, nil
 	}
 
 	// TestWriteRPCNegativeMatrix pins the pre-CSRF negative matrix (Unimplemented
@@ -103,7 +104,10 @@ func TestWriteRPCNegativeMatrix(t *testing.T) {
 			name:      "StoreMemory",
 			procedure: engramv1connect.EngramServiceStoreMemoryProcedure,
 			validCall: func(ctx context.Context, c engramv1connect.EngramServiceClient, actor string) error {
-				return callWrite(ctx, c.StoreMemory, &engramv1.StoreMemoryRequest{Content: "valid content", Scope: "test:scope", Category: "decision"}, actor)
+				// Source is now required on both lanes (D-06a: validateStoreArgs
+				// is shared by deps.storeMemory's MCP and Connect callers alike) —
+				// this fixture predates that uniform enforcement.
+				return callWrite(ctx, c.StoreMemory, &engramv1.StoreMemoryRequest{Content: "valid content", Scope: "test:scope", Source: "agent-inferred", Category: "decision"}, actor)
 			},
 			invalidCall: func(ctx context.Context, c engramv1connect.EngramServiceClient, actor string) error {
 				return callWrite(ctx, c.StoreMemory, &engramv1.StoreMemoryRequest{}, actor) // empty content/scope violate min_len=1
@@ -165,9 +169,11 @@ func TestWriteRPCNegativeMatrix(t *testing.T) {
 			name:      "ScheduleMemory",
 			procedure: engramv1connect.EngramServiceScheduleMemoryProcedure,
 			validCall: func(ctx context.Context, c engramv1connect.EngramServiceClient, actor string) error {
+				// Source is now required on both lanes (D-06a), same as StoreMemory above.
 				return callWrite(ctx, c.ScheduleMemory, &engramv1.ScheduleMemoryRequest{
 					Content:   "valid content",
 					Scope:     "test:scope",
+					Source:    "agent-inferred",
 					Category:  "decision",
 					NotBefore: futureNotBefore,
 				}, actor)

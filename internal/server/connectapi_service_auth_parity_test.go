@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 
@@ -48,6 +49,13 @@ func stubOIDCVerifier(userID, owner string) mcpauth.TokenVerifier {
 		return &mcpauth.TokenInfo{
 			UserID: userID,
 			Extra:  map[string]any{auth.OwnerClaimExtraKey: owner},
+			// Expiration is load-bearing (REVIEWS.md MED-9): auth.EnforceExpiry
+			// (D-05) hard-rejects a zero Expiration, and 01-02's parity tests
+			// reuse this fixture wrapped in that decorator. Without an explicit
+			// future value here, every happy-path parity test would fail for
+			// the wrong reason. This file's pre-existing tests never wrap with
+			// EnforceExpiry, so the field is inert for them.
+			Expiration: time.Now().Add(time.Hour),
 		}, nil
 	}
 }

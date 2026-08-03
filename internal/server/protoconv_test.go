@@ -33,12 +33,22 @@ func TestProtoconvVisibilityToShared(t *testing.T) {
 	}
 }
 
+// TestProtoconvSetVisibilityRequestToArgs also pins D-06a: Shared is now a
+// *bool, and this Connect-lane conversion must NEVER produce a nil pointer
+// (the Visibility enum is always populated) — struct `!=` would compare
+// pointer identity, not value, so this asserts ID and the dereferenced
+// Shared value explicitly instead.
 func TestProtoconvSetVisibilityRequestToArgs(t *testing.T) {
 	req := &engramv1.SetVisibilityRequest{Id: "mem-1", Visibility: engramv1.Visibility_VISIBILITY_SHARED}
 	got := setVisibilityRequestToArgs(req)
-	want := setVisibilityArgs{ID: "mem-1", Shared: true}
-	if got != want {
-		t.Errorf("setVisibilityRequestToArgs = %+v, want %+v", got, want)
+	if got.ID != "mem-1" {
+		t.Errorf("setVisibilityRequestToArgs ID = %q, want %q", got.ID, "mem-1")
+	}
+	if got.Shared == nil {
+		t.Fatal("setVisibilityRequestToArgs Shared = nil, want non-nil (Connect always supplies a value)")
+	}
+	if *got.Shared != true {
+		t.Errorf("setVisibilityRequestToArgs *Shared = %v, want true", *got.Shared)
 	}
 }
 

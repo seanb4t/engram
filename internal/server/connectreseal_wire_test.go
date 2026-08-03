@@ -22,6 +22,7 @@ import (
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
+	"github.com/seanb4t/engram/internal/auth"
 )
 
 // This file closes WR-02: it proves the single most load-bearing seam of the
@@ -177,8 +178,8 @@ func TestConnectResealSetCookieReachesWire(t *testing.T) {
 	nearExpiry := time.Now().UTC().Add(1 * time.Hour) // < resealThreshold (6h), > 0
 	sealedCookie := mustSealTestPayload(t, codec, testSessionPayload{Owner: owner, Exp: nearExpiry})
 
-	resolve := func(_ context.Context, _ connect.AnyRequest) (*mcpauth.TokenInfo, error) {
-		return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": owner}}, nil
+	resolve := func(_ context.Context, _ connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error) {
+		return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": owner}}, auth.LaneCookie, nil
 	}
 
 	mux := http.NewServeMux()

@@ -50,6 +50,15 @@ type deps struct {
 	now func() time.Time
 	// summaryMaxChars is the recall truncation cap (ENGRAM_SUMMARY_MAX_CHARS).
 	summaryMaxChars int
+	// maxSummaryBytes bounds storeArgs.Summary / updateArgs.Summary
+	// (ENGRAM_MEMORY_MAX_SUMMARY_BYTES, D-06a/D-18): the Go-level check that
+	// makes issue #360's repro attributable, checked BEFORE content presence
+	// in validateStoreArgs/validateUpdateArgs. 0 disables the bound (operator
+	// escape hatch, mirroring embedTimeout/summaryTimeout's "0 = infinite"
+	// convention) — this is DIFFERENT from a zero-value &deps{} test literal
+	// that never called buildDepsFromEnv, which tests must populate
+	// explicitly to exercise the bound.
+	maxSummaryBytes int
 	// summaryQueue is the async-on-write summary worker pool. nil (disabled)
 	// unless ENGRAM_SUMMARY_MODEL is set AND ENGRAM_SUMMARY_ON_WRITE parses
 	// true (D-01 AND-gate, decided in buildDepsFromEnv). Its methods are
@@ -207,6 +216,7 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 		st:               st,
 		em:               em,
 		summaryMaxChars:  summaryMaxChars(cfg),
+		maxSummaryBytes:  maxMemorySummaryBytes(cfg),
 		summaryQueue:     buildSummaryQueue(cfg, st, sqm),
 		usageQueue:       buildUsageQueue(cfg, st, uqm),
 		embedderIdentity: identity,
@@ -283,6 +293,24 @@ func buildUsageQueue(cfg *config.Config, st *store.Store, uqm *telemetry.UsageQu
 	return q
 }
 
+// maxMemorySummaryBytes parses ENGRAM_MEMORY_MAX_SUMMARY_BYTES (D-06a/D-18),
+// defaulting to 512 on empty/invalid. Unlike summaryMaxChars/summaryMaxTokens,
+// 0 is a legitimate PARSED value (config.Validate already guarantees a
+// non-negative integer) and is honored as "bound disabled" — it is NOT
+// coerced to the default, mirroring embedTimeout's/summaryTimeout's own
+// "0 = escape hatch" convention. Only an unparseable value falls back.
+func maxMemorySummaryBytes(cfg *config.Config) int {
+	n, err := strconv.Atoi(cfg.Memory.MaxSummaryBytes)
+	if err != nil || n < 0 {
+		if cfg.Memory.MaxSummaryBytes != "" {
+			slog.Warn("ENGRAM_MEMORY_MAX_SUMMARY_BYTES is set but unparseable or negative; using default 512",
+				"value", cfg.Memory.MaxSummaryBytes)
+		}
+		return 512
+	}
+	return n
+}
+
 // summaryMaxChars parses the recall cap, defaulting to 280 on empty/invalid.
 func summaryMaxChars(cfg *config.Config) int {
 	n, err := strconv.Atoi(cfg.Summarize.MaxChars)
@@ -355,23 +383,47 @@ func embedderFromConfig(cfg *config.Config) (*embed.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return embed.New(cfg.OpenAI.BaseURL, cfg.OpenAI.APIKey, cfg.Embed.Model,
+	opts := []embed.Option{
 		embed.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)),
 		embed.WithQueryInstruction(cfg.Embed.QueryInstruction),
 		embed.WithDocumentInstruction(cfg.Embed.DocumentInstruction),
 		embed.WithQueryParams(queryParams),
 		embed.WithDocumentParams(documentParams),
 		embed.WithTimeout(embedTimeout(cfg)),
-		embed.WithEmbeddingsURL(cfg.OpenAI.EmbeddingsURL)), nil
+		embed.WithEmbeddingsURL(cfg.OpenAI.EmbeddingsURL),
+	}
+	// D-16 (plan 04-03's option, wired here): size the success-path decode
+	// bound to the configured dimension rather than copying the chat lane's
+	// blind 1 MiB (summarize.go:186-188) — an embeddings response is larger
+	// than a one-line summary. 64 bytes/element gives roughly 4.5x headroom
+	// over the ~12-14 bytes an element costs as JSON text, floored at 64 KiB
+	// so a small dim still gets a sane bound. config.Validate already
+	// guarantees ENGRAM_EMBED_DIM parses to a positive integer on the normal
+	// startup path, but this function is also called directly with an
+	// unvalidated cfg (embed_wiring_test.go); on a parse failure this simply
+	// omits the option so embed.New's own defaultMaxResponseBytes applies —
+	// never a zero bound.
+	if dim, derr := strconv.ParseUint(cfg.Embed.Dim, 10, 64); derr == nil && dim > 0 {
+		const perElementBytes = 64
+		const floorBytes = 64 * 1024
+		bound := dim * perElementBytes
+		if bound < floorBytes {
+			bound = floorBytes
+		}
+		opts = append(opts, embed.WithMaxResponseBytes(int64(bound)))
+	}
+	return embed.New(cfg.OpenAI.BaseURL, cfg.OpenAI.APIKey, cfg.Embed.Model, opts...), nil
 }
 
 // summarizerFromConfig builds the chat-completions summarizer from config.
 func summarizerFromConfig(cfg *config.Config) *summarize.Client {
-	// cmp.Or resolved once here (D-12): ChatBaseURL wins when set, otherwise
-	// the shared BaseURL. The embedder below is deliberately left untouched —
-	// it always uses BaseURL regardless of ChatBaseURL.
+	// cmp.Or resolved once here (D-12): ChatBaseURL/ChatAPIKey win when set,
+	// otherwise the shared BaseURL/APIKey. The embedder below is deliberately
+	// left untouched — it always uses BaseURL/APIKey regardless of
+	// ChatBaseURL/ChatAPIKey.
 	chatBaseURL := cmp.Or(cfg.OpenAI.ChatBaseURL, cfg.OpenAI.BaseURL)
-	return summarize.New(chatBaseURL, cfg.OpenAI.APIKey, cfg.Summarize.Model, summaryMaxChars(cfg),
+	chatAPIKey := cmp.Or(cfg.OpenAI.ChatAPIKey, cfg.OpenAI.APIKey)
+	return summarize.New(chatBaseURL, chatAPIKey, cfg.Summarize.Model, summaryMaxChars(cfg),
 		summarize.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)),
 		summarize.WithMaxTokens(summaryMaxTokens(cfg)),
 		summarize.WithTimeout(summaryTimeout(cfg)))
@@ -427,10 +479,16 @@ func warnOwnerlessRecords(st *store.Store) {
 }
 
 type storeArgs struct {
-	Content   string   `json:"content" jsonschema:"the memory text to persist"`
-	Scope     string   `json:"scope" jsonschema:"run:tier:repo, e.g. eval-2026-05:project:selfhosted-cluster"`
-	Source    string   `json:"source" jsonschema:"user-said or agent-inferred"`
-	Category  string   `json:"category" jsonschema:"decision|preference|convention|gotcha"`
+	// Content/Scope/Source/Category carry omitempty (D-06a): required-ness for
+	// all four moved out of the go-sdk's inferred JSON schema and into
+	// validateStoreArgs, which attributes the correct field on rejection —
+	// this is issue #360's actual fix. Do NOT read the absence of "required"
+	// text here as these fields becoming optional; they are exactly as
+	// required as before, just enforced one layer down.
+	Content   string   `json:"content,omitempty" jsonschema:"the memory text to persist"`
+	Scope     string   `json:"scope,omitempty" jsonschema:"run:tier:repo, e.g. eval-2026-05:project:selfhosted-cluster"`
+	Source    string   `json:"source,omitempty" jsonschema:"user-said or agent-inferred"`
+	Category  string   `json:"category,omitempty" jsonschema:"decision|preference|convention|gotcha"`
 	Tags      []string `json:"tags,omitempty"`
 	Repo      string   `json:"repo,omitempty"`
 	Workspace string   `json:"workspace,omitempty"`
@@ -467,30 +525,30 @@ type scheduleArgs struct {
 // CodeInternal, once 17-04 wires the connectError mapper.
 func parseWindow(a scheduleArgs, now time.Time) (nb, na *time.Time, err error) {
 	if a.NotBefore == "" && a.NotAfter == "" {
-		return nil, nil, fmt.Errorf("schedule_memory requires not_before and/or not_after (use store_memory for unscheduled records): %w", store.ErrInvalidArgument)
+		return nil, nil, argErrFieldsf(classMalformed, HintRequired, []string{"not_before", "not_after"}, "schedule_memory requires not_before and/or not_after (use store_memory for unscheduled records)")
 	}
 	if a.Category == "discovery" {
-		return nil, nil, fmt.Errorf("discovery is not schedulable; use store_discovery: %w", store.ErrInvalidArgument)
+		return nil, nil, argErrf(classPrecondition, HintNotApplicable, "category", "discovery is not schedulable; use store_discovery")
 	}
 	if a.NotBefore != "" {
 		t, perr := time.Parse(time.RFC3339, a.NotBefore)
 		if perr != nil {
-			return nil, nil, fmt.Errorf("not_before: %w: %w", perr, store.ErrInvalidArgument)
+			return nil, nil, argErrf(classMalformed, HintFormat, "not_before", "not_before must be RFC3339")
 		}
 		nb = &t
 	}
 	if a.NotAfter != "" {
 		t, perr := time.Parse(time.RFC3339, a.NotAfter)
 		if perr != nil {
-			return nil, nil, fmt.Errorf("not_after: %w: %w", perr, store.ErrInvalidArgument)
+			return nil, nil, argErrf(classMalformed, HintFormat, "not_after", "not_after must be RFC3339")
 		}
 		if !t.After(now) {
-			return nil, nil, fmt.Errorf("not_after %s is not in the future: %w", a.NotAfter, store.ErrInvalidArgument)
+			return nil, nil, argErrf(classOutOfRange, HintOrdering, "not_after", "not_after must be in the future")
 		}
 		na = &t
 	}
 	if nb != nil && na != nil && !nb.Before(*na) {
-		return nil, nil, fmt.Errorf("not_before must be strictly before not_after: %w", store.ErrInvalidArgument)
+		return nil, nil, argErrFieldsf(classPrecondition, HintOrdering, []string{"not_before", "not_after"}, "not_before must be strictly before not_after")
 	}
 	return nb, na, nil
 }
@@ -525,25 +583,30 @@ func parseWindow(a scheduleArgs, now time.Time) (nb, na *time.Time, err error) {
 // this shadow.
 type supersedeArgs struct {
 	storeArgs
-	Supersedes string `json:"supersedes" jsonschema:"id (full UUID or short_id) of the memory this new record corrects/replaces"`
+	// Supersedes carries omitempty (D-06a); its presence check lives in
+	// deps.supersedeMemory, run before ResolvePointID.
+	Supersedes string `json:"supersedes,omitempty" jsonschema:"id (full UUID or short_id) of the memory this new record corrects/replaces"`
 	// IdempotencyKey shadows storeArgs.IdempotencyKey for schema purposes
 	// only — see the type doc comment above. Never read.
 	IdempotencyKey string `json:"-"`
 }
 
 type searchArgs struct {
-	Query         string   `json:"query"`
-	Scope         string   `json:"scope"`
+	// Query carries omitempty (D-06a); its presence check runs in
+	// deps.searchMemory, first, before the embed call.
+	Query         string   `json:"query,omitempty"`
+	Scope         string   `json:"scope,omitempty" jsonschema:"required unless cross_spine"`
 	K             uint64   `json:"k,omitempty"`
 	Tags          []string `json:"tags,omitempty" jsonschema:"optional; restrict to records carrying ALL listed tags"`
 	Categories    []string `json:"categories,omitempty" jsonschema:"optional; restrict to records in ANY of the listed categories (OR) — unlike tags, which requires ALL"`
 	Full          bool     `json:"full,omitempty" jsonschema:"return full content instead of summaries (default false → compact summary view)"`
 	CreatedAfter  string   `json:"created_after,omitempty" jsonschema:"optional RFC3339; inclusive lower bound on created_at"`
 	CreatedBefore string   `json:"created_before,omitempty" jsonschema:"optional RFC3339; exclusive upper bound on created_at"`
+	CrossSpine    bool     `json:"cross_spine,omitempty" jsonschema:"span all readable scopes (ignores scope)"`
 }
 
 type listArgs struct {
-	Scope         string   `json:"scope" jsonschema:"the scope to list memories from"`
+	Scope         string   `json:"scope,omitempty" jsonschema:"required unless cross_spine"`
 	Limit         uint64   `json:"limit,omitempty" jsonschema:"max memories to return (default 20)"`
 	Tags          []string `json:"tags,omitempty" jsonschema:"optional; restrict to records carrying ALL listed tags"`
 	Categories    []string `json:"categories,omitempty" jsonschema:"optional; restrict to records in ANY of the listed categories (OR) — unlike tags, which requires ALL"`
@@ -551,10 +614,13 @@ type listArgs struct {
 	CreatedAfter  string   `json:"created_after,omitempty" jsonschema:"optional RFC3339; inclusive lower bound on created_at"`
 	CreatedBefore string   `json:"created_before,omitempty" jsonschema:"optional RFC3339; exclusive upper bound on created_at"`
 	Cursor        string   `json:"cursor,omitempty" jsonschema:"opaque pagination cursor from a prior next_cursor; omit for the first page"`
+	CrossSpine    bool     `json:"cross_spine,omitempty" jsonschema:"span all readable scopes (ignores scope)"`
 }
 
 type listScheduledArgs struct {
-	Scope         string `json:"scope" jsonschema:"the scope to list scheduled/expired memories from"`
+	// Scope carries omitempty (D-06a); its presence check runs in
+	// deps.listScheduled, first.
+	Scope         string `json:"scope,omitempty" jsonschema:"the scope to list scheduled/expired memories from"`
 	State         string `json:"state,omitempty" jsonschema:"scheduled (default, not yet active) | expired | all"`
 	Limit         uint64 `json:"limit,omitempty" jsonschema:"max memories to return (default 20)"`
 	CreatedAfter  string `json:"created_after,omitempty" jsonschema:"optional RFC3339; inclusive lower bound on created_at"`
@@ -562,43 +628,68 @@ type listScheduledArgs struct {
 }
 
 type idArgs struct {
-	ID string `json:"id" jsonschema:"the memory's full UUID or its short_id"`
+	// ID carries omitempty (D-06a); its presence check (requireID) runs in
+	// every deps.* method that resolves it (getMemory/deleteMemory), first.
+	ID string `json:"id,omitempty" jsonschema:"the memory's full UUID or its short_id"`
 }
 
 type updateArgs struct {
-	ID string `json:"id" jsonschema:"the memory's full UUID or its short_id"`
+	// ID carries omitempty (D-06a); requireID runs in deps.updateMemory,
+	// first — symmetric across both lanes (Connect always supplies an id).
+	ID string `json:"id,omitempty" jsonschema:"the memory's full UUID or its short_id"`
 	// Content is presence-signaled (nil = unchanged) so deps.updateMemory can
 	// route a shared/summary-only change to the payload-only store method
 	// (no re-embed, vector preserved) instead of unconditionally re-embedding
-	// and blanking content on a nil value (landmine 2). The MCP tool still
-	// requires content on every call (schema unchanged: no omitempty), so a
-	// non-nil pointer is always populated on that lane, preserving MCP's
-	// existing full-replace behavior byte-for-byte; the Connect protoconv
-	// layer (17-03/17-04) is what actually supplies nil, for a field-mask
-	// update that omits "content".
-	Content *string   `json:"content"`
+	// and blanking content on a nil value (landmine 2). Content now carries
+	// omitempty too (D-06a): the schema no longer enforces its
+	// requiredness. validateUpdateArgs re-enforces it in Go, but is called
+	// ONLY from the update_memory MCP closure (tools.go, Register) — NEVER
+	// from this shared deps.updateMemory — because the Connect protoconv
+	// field-mask lane (protoconv.go:updateMemoryRequestToArgs) legitimately
+	// supplies a nil Content for an update that omits "content". Putting the
+	// check here would break that lane's field-mask semantics.
+	Content *string   `json:"content,omitempty"`
 	Shared  *bool     `json:"shared,omitempty" jsonschema:"omit to keep current visibility; true=shared, false=private"`
 	Tags    *[]string `json:"tags,omitempty" jsonschema:"omit to keep current tags; supply to replace the full set (empty array clears)"`
 	Summary *string   `json:"summary,omitempty" jsonschema:"omit to keep current summary; supply to replace (empty string clears). If content changes and a caller-authored summary exists, you MUST address it (re-send to keep, update, or clear) or the update is rejected"`
 }
 
+// scopeArgs backs delete_all — a destructive teardown (D-19/T-04-17). Scope
+// carries omitempty (D-06a), which moves the ONLY guard between an omitted
+// scope and that teardown out of the wire schema — deps.deleteAll's presence
+// check is now the SOLE remaining guard, and it MUST run before every side
+// effect in that path (see deps.deleteAll below). This is the
+// highest-consequence row in the whole D-06a delta; do not relax the tag
+// without deps.deleteAll's check landing in the SAME commit.
 type scopeArgs struct {
-	Scope string `json:"scope"`
+	Scope string `json:"scope,omitempty"`
 }
 
 type citationArg struct {
-	Kind    string `json:"kind" jsonschema:"file|commit|url|repo"`
-	Ref     string `json:"ref" jsonschema:"path, repo URL, or doc URL"`
+	// Kind/Ref already carry a presence-equivalent check inside
+	// validateCitations (Kind via validCitationKind's enum rejection, which
+	// rejects "" as not in {file,commit,url,repo}; Ref via an explicit
+	// Ref=="" check) — omitempty here is a schema-only change, no new Go
+	// logic needed.
+	Kind    string `json:"kind,omitempty" jsonschema:"file|commit|url|repo"`
+	Ref     string `json:"ref,omitempty" jsonschema:"path, repo URL, or doc URL"`
 	Locator string `json:"locator,omitempty" jsonschema:"e.g. 200-240 line range"`
 	Pin     string `json:"pin,omitempty" jsonschema:"commit SHA, content-hash, @rev, or fetched-at"`
 	Excerpt string `json:"excerpt,omitempty" jsonschema:"cached substance (<= ~50 lines)"`
 }
 
 type storeDiscoveryArgs struct {
-	Content   string        `json:"content" jsonschema:"the understanding to cache (embedded + searched)"`
-	Kind      string        `json:"kind" jsonschema:"map (orientation) or fact (pinned checkable claim)"`
-	Citations []citationArg `json:"citations" jsonschema:"at least one source anchor"`
-	Scope     string        `json:"scope" jsonschema:"discovery scope, must start with discovery: (e.g. discovery:repo:<repo>)"`
+	// Content/Kind/Citations/Scope carry omitempty (D-06a). All four already
+	// had a Go-level presence-equivalent check in validateStoreDiscovery
+	// before this plan (Content=="" reject, Kind enum reject, Scope=="" plus
+	// prefix reject, Citations via validateCitations' minCount=1 length
+	// check) — those checks were simply SHADOWED by the schema's own
+	// required-ness; relaxing the tag makes them reachable for the first
+	// time. No new validation logic needed here.
+	Content   string        `json:"content,omitempty" jsonschema:"the understanding to cache (embedded + searched)"`
+	Kind      string        `json:"kind,omitempty" jsonschema:"map (orientation) or fact (pinned checkable claim)"`
+	Citations []citationArg `json:"citations,omitempty" jsonschema:"at least one source anchor"`
+	Scope     string        `json:"scope,omitempty" jsonschema:"discovery scope, must start with discovery: (e.g. discovery:repo:<repo>)"`
 	Tags      []string      `json:"tags,omitempty"`
 	Summary   string        `json:"summary,omitempty"`
 	ID        string        `json:"id,omitempty" jsonschema:"omit to create; supply the full UUID or short_id to replace in place"`
@@ -621,33 +712,113 @@ const (
 const maxIdempotencyKeyBytes = 512
 
 type searchDiscoveryArgs struct {
-	Query      string `json:"query"`
+	// Query carries omitempty (D-06a); its presence check runs in
+	// deps.searchDiscovery, first, before effectiveDiscoveryScope/embed.
+	Query      string `json:"query,omitempty"`
 	Scope      string `json:"scope,omitempty" jsonschema:"required unless cross_spine"`
 	Kind       string `json:"kind,omitempty" jsonschema:"map|fact filter"`
 	K          uint64 `json:"k,omitempty"`
 	CrossSpine bool   `json:"cross_spine,omitempty" jsonschema:"span all discovery scopes (ignores scope)"`
 }
 
+// setVisibilityArgs carries omitempty on both fields (D-06a). Shared is a
+// *bool (not a plain bool), the ONE type change this plan makes beyond the
+// tag relaxation: a plain bool with omitempty would make `shared:false` — a
+// legitimate, meaningful call — silently indistinguishable from omission,
+// which is a behavior change, not a relaxation. deps.setVisibility rejects a
+// nil Shared with the presence check; requireID covers ID the same way as
+// idArgs/updateArgs.
 type setVisibilityArgs struct {
-	ID     string `json:"id" jsonschema:"the memory's full UUID or its short_id"`
-	Shared bool   `json:"shared" jsonschema:"true = readable by any authenticated caller; false = private"`
+	ID     string `json:"id,omitempty" jsonschema:"the memory's full UUID or its short_id"`
+	Shared *bool  `json:"shared,omitempty" jsonschema:"true = readable by any authenticated caller; false = private"`
+}
+
+// requireID rejects an absent id/short_id with the field-attributed envelope
+// (D-06a). Shared by every deps.* method that resolves idArgs.ID/
+// updateArgs.ID/setVisibilityArgs.ID via ResolvePointID — that store-level
+// call already rejects an empty id (store.go:1513-1516), but with a bare
+// store.ErrInvalidArgument carrying no field attribution. This runs FIRST so
+// the caller learns which field, not just that resolution failed. Safe to
+// call from a shared MCP+Connect deps method: "id" is required on both
+// lanes symmetrically (unlike updateArgs.Content, which is not).
+func requireID(id string) error {
+	if id == "" {
+		return argErrf(classMalformed, HintRequired, "id", "id is required")
+	}
+	return nil
+}
+
+// validateStoreArgs enforces storeArgs' presence requirements in Go (D-06a):
+// content/scope/source/category, which carry no schema-level "required"
+// after this plan's omitempty relaxation — this validator IS engram's
+// replacement enforcement, not a supplement to a schema check that still
+// exists. Shared by store_memory/schedule_memory/supersede_memory (all three
+// embed storeArgs) on both the MCP and Connect lanes: Connect's create-style
+// write RPCs (StoreMemory/ScheduleMemory) have no field-mask semantics, so
+// there is no asymmetric-nil case here the way there is for updateArgs.Content.
+//
+// The summary-length bound (maxSummaryBytes, ENGRAM_MEMORY_MAX_SUMMARY_BYTES,
+// D-18) is checked FIRST, before content presence — this order is what makes
+// issue #360's regression deterministic: #360's failure mode is precisely an
+// oversized `summary` producing a false content-absent reading, so evaluating
+// the summary constraint first means the caller is told the REAL cause even
+// in the case where the underlying decode anomaly also drops `content`.
+// maxSummaryBytes<=0 means the bound is disabled (D-18's "0 is honored as
+// disabled" convention).
+func validateStoreArgs(a storeArgs, maxSummaryBytes int) error {
+	if maxSummaryBytes > 0 && len(a.Summary) > maxSummaryBytes {
+		return argErrf(classOutOfRange, HintTooLong, "summary", "summary too large: %d bytes (max %d)", len(a.Summary), maxSummaryBytes)
+	}
+	if a.Content == "" {
+		return argErrf(classMalformed, HintRequired, "content", "content is required")
+	}
+	if a.Scope == "" {
+		return argErrf(classMalformed, HintRequired, "scope", "scope is required")
+	}
+	if a.Source == "" {
+		return argErrf(classMalformed, HintRequired, "source", "source is required")
+	}
+	if a.Category == "" {
+		return argErrf(classMalformed, HintRequired, "category", "category is required")
+	}
+	return nil
+}
+
+// validateUpdateArgs enforces updateArgs' MCP-lane requirements in Go
+// (D-06a): a non-nil Content, plus the same maxSummaryBytes bound
+// validateStoreArgs enforces (D-18), ordered before the content check for
+// the identical #360 reason. Called ONLY from the update_memory MCP closure
+// (Register, below) — NEVER from deps.updateMemory, which the Connect
+// protoconv field-mask lane legitimately calls with a nil Content for an
+// update that omits "content" (see updateArgs.Content's doc comment).
+// requireID's ID check is NOT folded in here: unlike Content, ID is required
+// symmetrically on both lanes, so it lives in deps.updateMemory instead,
+// where a single check covers MCP and Connect alike.
+func validateUpdateArgs(a updateArgs, maxSummaryBytes int) error {
+	if maxSummaryBytes > 0 && a.Summary != nil && len(*a.Summary) > maxSummaryBytes {
+		return argErrf(classOutOfRange, HintTooLong, "summary", "summary too large: %d bytes (max %d)", len(*a.Summary), maxSummaryBytes)
+	}
+	if a.Content == nil {
+		return argErrf(classMalformed, HintRequired, "content", "content is required")
+	}
+	return nil
 }
 
 func validateStoreDiscovery(a storeDiscoveryArgs) error {
 	if a.Content == "" {
-		return fmt.Errorf("content is required")
+		return argErrf(classMalformed, HintRequired, "content", "content is required")
 	}
 	if len(a.Content) > maxDiscoveryContentBytes {
-		return fmt.Errorf("content too large: %d bytes (max %d)", len(a.Content), maxDiscoveryContentBytes)
+		return argErrf(classOutOfRange, HintTooLong, "content", "content too large: %d bytes (max %d)", len(a.Content), maxDiscoveryContentBytes)
 	}
 	if a.Kind != "map" && a.Kind != "fact" {
-		return fmt.Errorf("kind must be \"map\" or \"fact\", got %q", a.Kind)
+		return argErrf(classMalformed, HintEnum, "kind", "kind must be \"map\" or \"fact\"")
 	}
 	if a.Scope == "" {
-		return fmt.Errorf("scope is required")
+		return argErrf(classMalformed, HintRequired, "scope", "scope is required")
 	}
 	if !strings.HasPrefix(a.Scope, "discovery:") {
-		return fmt.Errorf("scope must be a discovery scope (start with \"discovery:\"), got %q", a.Scope)
+		return argErrf(classMalformed, HintPrefix, "scope", "scope must be a discovery scope (start with \"discovery:\")")
 	}
 	return validateCitations(a.Citations, 1)
 }
@@ -663,22 +834,22 @@ func validateStoreDiscovery(a storeDiscoveryArgs) error {
 func validateCitations(cites []citationArg, minCount int) error {
 	if len(cites) < minCount {
 		if minCount == 1 {
-			return fmt.Errorf("at least one citation is required")
+			return argErrf(classMalformed, HintRequired, "citations", "at least one citation is required")
 		}
-		return fmt.Errorf("at least %d citation(s) required", minCount)
+		return argErrf(classMalformed, HintRequired, "citations", "at least %d citation(s) required", minCount)
 	}
 	if len(cites) > maxDiscoveryCitations {
-		return fmt.Errorf("too many citations: %d (max %d)", len(cites), maxDiscoveryCitations)
+		return argErrf(classOutOfRange, HintTooMany, "citations", "too many citations: %d (max %d)", len(cites), maxDiscoveryCitations)
 	}
 	for i, c := range cites {
 		if !validCitationKind(c.Kind) {
-			return fmt.Errorf("citation %d: kind must be one of file|commit|url|repo, got %q", i, c.Kind)
+			return argErrf(classMalformed, HintEnum, "citations[i].kind", "citation %d: kind must be one of file|commit|url|repo", i)
 		}
 		if c.Ref == "" {
-			return fmt.Errorf("citation %d: ref is required (the source anchor)", i)
+			return argErrf(classMalformed, HintRequired, "citations[i].ref", "citation %d: ref is required (the source anchor)", i)
 		}
 		if len(c.Excerpt) > maxCitationExcerptBytes {
-			return fmt.Errorf("citation %d: excerpt too large: %d bytes (max %d)", i, len(c.Excerpt), maxCitationExcerptBytes)
+			return argErrf(classOutOfRange, HintTooLong, "citations[i].excerpt", "citation %d: excerpt too large: %d bytes (max %d)", i, len(c.Excerpt), maxCitationExcerptBytes)
 		}
 	}
 	return nil
@@ -771,7 +942,7 @@ func (d *deps) checkIdempotentReplay(ctx context.Context, owner string, a storeA
 		return false, "", "", "", nil
 	}
 	if len(a.IdempotencyKey) > maxIdempotencyKeyBytes {
-		return false, "", "", "", fmt.Errorf("idempotency_key too large: %d bytes (max %d): %w", len(a.IdempotencyKey), maxIdempotencyKeyBytes, store.ErrInvalidArgument)
+		return false, "", "", "", argErrf(classOutOfRange, HintTooLong, "idempotency_key", "idempotency_key too large: %d bytes (max %d)", len(a.IdempotencyKey), maxIdempotencyKeyBytes)
 	}
 	pointID = idempotencyPointID(owner, a.Scope, a.IdempotencyKey)
 	existing, gerr := d.st.Get(ctx, pointID)
@@ -788,6 +959,9 @@ func (d *deps) checkIdempotentReplay(ctx context.Context, owner string, a storeA
 }
 
 func (d *deps) storeMemory(ctx context.Context, c caller, a storeArgs) (string, string, error) {
+	if err := validateStoreArgs(a, d.maxSummaryBytes); err != nil {
+		return "", "", err
+	}
 	if err := validateCitations(a.Citations, 0); err != nil {
 		return "", "", err
 	}
@@ -866,6 +1040,9 @@ func (d *deps) clock() time.Time {
 }
 
 func (d *deps) scheduleMemory(ctx context.Context, c caller, a scheduleArgs) (string, string, error) {
+	if err := validateStoreArgs(a.storeArgs, d.maxSummaryBytes); err != nil {
+		return "", "", err
+	}
 	// checkIdempotentReplay runs BEFORE parseWindow's future-only validation
 	// (WR-02): the window is deliberately excluded from the D-07 content
 	// fingerprint precisely so a retry doesn't need to resend a still-valid
@@ -1026,6 +1203,11 @@ type coreListRequest struct {
 	CreatedBefore time.Time
 	Cursor        string
 	CursorMode    bool
+	// CrossSpine spans every scope the caller may read (D-08). Scope and
+	// CrossSpine are passed through RAW from the transport; deps.listMemory is
+	// what resolves them via effectiveSearchScope — the same typed-core
+	// chokepoint reasoning coreSearchRequest.CrossSpine documents.
+	CrossSpine bool
 }
 
 // coreListResult is the typed list result: raw []store.Memory (no []any, no
@@ -1053,6 +1235,14 @@ type coreSearchRequest struct {
 	Categories    []string
 	CreatedAfter  time.Time
 	CreatedBefore time.Time
+	// CrossSpine spans every scope the caller may read (D-08 widens this to
+	// list_memory too, in a later plan). Scope and CrossSpine are passed
+	// through RAW from the transport; deps.searchMemory is what resolves them
+	// via effectiveSearchScope — the typed core is the last chokepoint before
+	// the store, so a future call site cannot reach a widened filter by
+	// forgetting the guard (D-07's hazard, closed here rather than in
+	// internal/store).
+	CrossSpine bool
 }
 
 // listMemory returns a page of the caller's readable records in scope on the
@@ -1064,7 +1254,11 @@ type coreSearchRequest struct {
 // means "all", CursorMode carried from the request) before calling here
 // (round-3 HIGH-2, round-4 finding-7).
 func (d *deps) listMemory(ctx context.Context, c caller, req coreListRequest) (coreListResult, error) {
-	ms, total, next, err := d.st.List(ctx, req.Scope, c.Subj, store.ListOptions{
+	scope, err := effectiveSearchScope(req.Scope, req.CrossSpine)
+	if err != nil {
+		return coreListResult{}, err
+	}
+	ms, total, next, err := d.st.List(ctx, scope, c.Subj, store.ListOptions{
 		Limit:         req.Limit,
 		Offset:        req.Offset,
 		Categories:    req.Categories,
@@ -1082,16 +1276,21 @@ func (d *deps) listMemory(ctx context.Context, c caller, req coreListRequest) (c
 }
 
 func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs) ([]store.Memory, error) {
+	// D-06a: Scope carries omitempty now; this is the sole remaining guard
+	// (list_scheduled has no Connect RPC — MCP-only).
+	if a.Scope == "" {
+		return nil, argErrf(classMalformed, HintRequired, "scope", "scope is required")
+	}
 	if a.Limit == 0 {
 		a.Limit = 20
 	}
 	after, err := parseRFC3339(a.CreatedAfter)
 	if err != nil {
-		return nil, fmt.Errorf("created_after: %w", err)
+		return nil, argErrf(classMalformed, HintFormat, "created_after", "created_after must be RFC3339")
 	}
 	before, err := parseRFC3339(a.CreatedBefore)
 	if err != nil {
-		return nil, fmt.Errorf("created_before: %w", err)
+		return nil, argErrf(classMalformed, HintFormat, "created_before", "created_before must be RFC3339")
 	}
 	var state store.ScheduledState
 	switch a.State {
@@ -1102,7 +1301,7 @@ func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs)
 	case "all":
 		state = store.ScheduledAll
 	default:
-		return nil, fmt.Errorf("state must be one of scheduled|expired|all, got %q", a.State)
+		return nil, argErrf(classMalformed, HintEnum, "state", "state must be one of scheduled|expired|all")
 	}
 	return d.st.ListScheduled(ctx, a.Scope, c.Subj, state,
 		store.ListOptions{Limit: a.Limit, CreatedAfter: after, CreatedBefore: before})
@@ -1113,12 +1312,32 @@ func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs)
 // internal k default (round-4 finding-7, same discipline as listMemory's
 // Limit) — store.SearchReranked rejects K==0, so each adapter (MCP closure: 8;
 // Connect: 20) must apply its own default before calling here.
+//
+// req.Scope/req.CrossSpine are resolved via effectiveSearchScope as the FIRST
+// statement, and the RESOLVED scope — never req.Scope directly — is what
+// reaches d.st.SearchReranked. There is deliberately no store-level
+// CrossSpine flag (D-07): the store still receives nothing but a scope
+// string, so this call is not a second source of truth for the cross-spine
+// decision. What it closes is the hole D-07 leaves behind — once an empty
+// scope means "everything readable" at the store layer, this is the last
+// chokepoint before a caller could reach that widened filter by forgetting
+// the guard.
 func (d *deps) searchMemory(ctx context.Context, c caller, req coreSearchRequest) ([]store.Memory, error) {
+	// D-06a: searchArgs.Query carries omitempty now; this is the sole
+	// remaining guard, shared by both lanes (MCP search_memory and Connect
+	// SearchMemories both build coreSearchRequest before calling here).
+	if req.Query == "" {
+		return nil, argErrf(classMalformed, HintRequired, "query", "query is required")
+	}
+	scope, err := effectiveSearchScope(req.Scope, req.CrossSpine)
+	if err != nil {
+		return nil, err
+	}
 	vec, err := d.em.EmbedQuery(ctx, req.Query)
 	if err != nil {
 		return nil, err
 	}
-	return d.st.SearchReranked(ctx, req.Scope, c.Subj, req.Query, vec, req.K, store.SearchOptions{
+	return d.st.SearchReranked(ctx, scope, c.Subj, req.Query, vec, req.K, store.SearchOptions{
 		Tags:          req.Tags,
 		Categories:    req.Categories,
 		CreatedAfter:  req.CreatedAfter,
@@ -1134,12 +1353,106 @@ func effectiveDiscoveryScope(a searchDiscoveryArgs) (string, error) {
 		return "", nil
 	}
 	if a.Scope == "" {
-		return "", fmt.Errorf("scope is required unless cross_spine is true")
+		return "", argErrf(classMalformed, HintConditionalRequired, "scope", "scope is required unless cross_spine is true")
 	}
 	return a.Scope, nil
 }
 
+// effectiveSearchScope resolves the scope filter for search_memory (and,
+// starting in a later plan, list_memory) under D-03: cross_spine==true
+// ignores any supplied scope and returns "" (span every scope the caller may
+// read); otherwise a non-empty scope is mandatory. This is the load-bearing
+// guard D-07 leaves as the only thing standing between an accidental empty
+// scope and a store whose empty-scope semantics mean "everything readable".
+//
+// Unlike effectiveDiscoveryScope (which takes searchDiscoveryArgs because it
+// has exactly one caller), this takes the two primitive values directly: by
+// the end of this phase it serves four call sites across three different
+// arg/request types (search_memory args, coreSearchRequest, and their
+// list_memory analogs), so a single shared arg-struct parameter would not
+// fit all of them. That divergence from the mirrored analog is deliberate.
+func effectiveSearchScope(scope string, crossSpine bool) (string, error) {
+	if crossSpine {
+		return "", nil
+	}
+	if scope == "" {
+		return "", argErrf(classMalformed, HintConditionalRequired, "scope", "scope is required unless cross_spine is true")
+	}
+	return scope, nil
+}
+
+// EffectiveSearchScope is the exported form of effectiveSearchScope. It
+// exists solely so cmd/engram's client-side scope guard can be pinned
+// against this rule at compile time, per Phase 7's D-03 amendment — it
+// changes no behavior and carries no other intended consumer.
+func EffectiveSearchScope(scope string, crossSpine bool) (string, error) {
+	return effectiveSearchScope(scope, crossSpine)
+}
+
+// searchedScopes reports the span a cross-spine search_memory/list_memory
+// query covered: the scopes the caller is AUTHORIZED to read, not the scopes
+// that produced hits. When crossSpine is false it returns (nil, false, nil)
+// immediately and issues no query — a scope-confined call adds no round trip
+// (D-13).
+//
+// d.st.ListScopes applies the authz predicate (ownerOrSharedCondition) ALONE
+// — no recall-window, superseded-soft-hide, tag, or category conditions —
+// which is exactly the predicate a cross-spine search/list runs under. That is
+// why the set it returns IS the span that was searched, not a second
+// approximation of it (D-12): deriving the set from the hits instead would
+// report the empty set on a zero-hit search, which is precisely the ambiguity
+// criterion 5 exists to remove. A scope whose only records are superseded or
+// windowed-out will still appear here while contributing nothing — that is
+// the intended semantics, not a bug; a test asserting this set equals "the
+// scopes with results" would be pinning the wrong contract.
+//
+// Per-scope counts are discarded: they belong to the deferred
+// REQ-cross-spine-coverage-receipt, and D-14 keeps the response flat
+// precisely so nobody pre-builds the sub-message that requirement will want.
+//
+// An error from ListScopes fails the call rather than degrading to an empty
+// list: an empty searched_scopes would read as "searched nothing", which is
+// the exact ambiguity the field exists to remove.
+func (d *deps) searchedScopes(ctx context.Context, c caller, crossSpine bool) ([]string, bool, error) {
+	if !crossSpine {
+		return nil, false, nil
+	}
+	counts, more, err := d.st.ListScopes(ctx, c.Subj)
+	if err != nil {
+		return nil, false, err
+	}
+	scopes := make([]string, len(counts))
+	for i, sc := range counts {
+		scopes[i] = sc.Scope
+	}
+	return scopes, more, nil
+}
+
+// recallResultMap assembles a search_memory/list_memory MCP result map: base
+// (the transport-specific entries, e.g. "memories" and, for list_memory,
+// "next_cursor") plus, ONLY when crossSpine is true, "searched_scopes" and
+// "scopes_truncated". On a non-cross-spine call neither key is added at all
+// (D-14), so an existing consumer sees a response byte-identical to today's —
+// scopes_truncated is emitted even when false on a cross-spine call
+// (resolving the Claude's-discretion item in 03-CONTEXT.md) so a consumer
+// reading searched_scopes can read the truncation signal directly rather
+// than inferring completeness from an absent key. Mutates and returns base.
+func recallResultMap(base map[string]any, crossSpine bool, scopes []string, truncated bool) map[string]any {
+	if crossSpine {
+		base["searched_scopes"] = scopes
+		base["scopes_truncated"] = truncated
+	}
+	return base
+}
+
 func (d *deps) searchDiscovery(ctx context.Context, c caller, a searchDiscoveryArgs) ([]store.Memory, error) {
+	// D-06a: searchDiscoveryArgs.Query carries omitempty now; this is the
+	// sole remaining guard, shared by both lanes (MCP search_discovery and
+	// Connect SearchDiscoveries both build searchDiscoveryArgs before
+	// calling here).
+	if a.Query == "" {
+		return nil, argErrf(classMalformed, HintRequired, "query", "query is required")
+	}
 	scope, err := effectiveDiscoveryScope(a)
 	if err != nil {
 		return nil, err
@@ -1171,6 +1484,12 @@ func (d *deps) searchDiscovery(ctx context.Context, c caller, a searchDiscoveryA
 // through the vector-upsert path (store.Update) — the embedded document is a
 // function of both content and tags (landmine 2).
 func (d *deps) updateMemory(ctx context.Context, c caller, a updateArgs) (mutationResult, error) {
+	// D-06a: requireID here (shared core) — symmetric across both lanes,
+	// unlike Content (see updateArgs.Content's doc comment for why THAT
+	// check must stay out of this function).
+	if err := requireID(a.ID); err != nil {
+		return mutationResult{}, err
+	}
 	// Resolve id or short id to the point UUID (owner-agnostic; the gate governs).
 	pid, err := d.st.ResolvePointID(ctx, a.ID)
 	if err != nil {
@@ -1254,6 +1573,9 @@ func (d *deps) updateMemory(ctx context.Context, c caller, a updateArgs) (mutati
 // with the caller's ORIGINAL input so a resolved short id never leaks another
 // owner's real UUID.
 func (d *deps) getMemory(ctx context.Context, c caller, a idArgs) (store.Memory, error) {
+	if err := requireID(a.ID); err != nil {
+		return store.Memory{}, err
+	}
 	pid, err := d.st.ResolvePointID(ctx, a.ID)
 	if err != nil {
 		return store.Memory{}, err
@@ -1273,6 +1595,9 @@ func (d *deps) getMemory(ctx context.Context, c caller, a idArgs) (store.Memory,
 // deleteMemory deletes one record by id or short id. Same no-leak re-wrap as
 // getMemory: the Delete gate's not-found echoes only the caller's input.
 func (d *deps) deleteMemory(ctx context.Context, c caller, a idArgs) error {
+	if err := requireID(a.ID); err != nil {
+		return err
+	}
 	pid, err := d.st.ResolvePointID(ctx, a.ID)
 	if err != nil {
 		return err
@@ -1286,9 +1611,35 @@ func (d *deps) deleteMemory(ctx context.Context, c caller, a idArgs) error {
 	return nil
 }
 
+// deleteAll clears every record the caller owns within scope — a
+// destructive teardown (D-19/T-04-17). scopeArgs.Scope now carries
+// omitempty in the wire schema (D-06a), so the presence check below is the
+// SOLE remaining guard between an omitted scope and this call; it MUST run
+// before the d.st.DeleteAll call (the only side effect in this path) and
+// does — this is the entire point of D-19's "one indivisible task" rule.
+// delete_all has no Connect RPC (MCP-only), so there is no second lane to
+// keep in sync.
+func (d *deps) deleteAll(ctx context.Context, c caller, a scopeArgs) error {
+	if a.Scope == "" {
+		return argErrf(classMalformed, HintRequired, "scope", "scope is required")
+	}
+	return d.st.DeleteAll(ctx, a.Scope, c.Subj)
+}
+
 // setVisibility shares/unshares one record by id or short id. Same no-leak
 // re-wrap: the SetVisibility gate's not-found echoes only the caller's input.
 func (d *deps) setVisibility(ctx context.Context, c caller, a setVisibilityArgs) (mutationResult, error) {
+	if err := requireID(a.ID); err != nil {
+		return mutationResult{}, err
+	}
+	// D-06a: Shared is now a *bool (setVisibilityArgs doc comment) so an
+	// absent shared and an explicit shared:false are distinguishable; reject
+	// only the former. Both lanes always supply a non-nil value — Connect's
+	// visibilityToShared (protoconv.go) is unconditional — so this check is
+	// safe in the shared core, unlike updateArgs.Content.
+	if a.Shared == nil {
+		return mutationResult{}, argErrf(classMalformed, HintRequired, "shared", "shared is required")
+	}
 	pid, err := d.st.ResolvePointID(ctx, a.ID)
 	if err != nil {
 		return mutationResult{}, err
@@ -1312,7 +1663,7 @@ func (d *deps) setVisibility(ctx context.Context, c caller, a setVisibilityArgs)
 	if rec.Category == "rule" {
 		return mutationResult{}, fmt.Errorf("%w — delete the rule instead of changing its visibility", errRuleImmutable)
 	}
-	if err := d.st.SetVisibility(ctx, pid, c.Subj, a.Shared); err != nil {
+	if err := d.st.SetVisibility(ctx, pid, c.Subj, *a.Shared); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return mutationResult{}, fmt.Errorf("%w: %s", store.ErrNotFound, a.ID)
 		}
@@ -1336,6 +1687,15 @@ func (d *deps) setVisibility(ctx context.Context, c caller, a setVisibilityArgs)
 // correcting record is store_memory-shaped, so it is enqueued for async
 // summary-on-write like any other store_memory write.
 func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (string, string, error) {
+	if err := validateStoreArgs(a.storeArgs, d.maxSummaryBytes); err != nil {
+		return "", "", err
+	}
+	// D-06a: Supersedes carries omitempty now, so this is the sole remaining
+	// guard between an absent target and ResolvePointID below — checked
+	// before any store interaction.
+	if a.Supersedes == "" {
+		return "", "", argErrf(classMalformed, HintRequired, "supersedes", "supersedes is required")
+	}
 	if err := validateCitations(a.Citations, 0); err != nil {
 		return "", "", err
 	}
@@ -1440,7 +1800,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			return textResult(fmt.Sprintf("scheduled %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory. Each result carries a `score`: the raw Qdrant cosine similarity for this query (higher = closer), present when non-zero; unranked list_memory/get_memory results have a zero/omitted score."},
+	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. `scope` is required unless `cross_spine=true`, which spans every scope the caller can read (ignoring `scope` if supplied). Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory. Each result carries a `score`: the raw Qdrant cosine similarity for this query (higher = closer), present when non-zero; unranked list_memory/get_memory results have a zero/omitted score."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a searchArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1455,26 +1815,40 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			}
 			after, err := parseRFC3339(a.CreatedAfter)
 			if err != nil {
-				return nil, nil, fmt.Errorf("created_after: %w", err)
+				return nil, nil, argErrf(classMalformed, HintFormat, "created_after", "created_after must be RFC3339")
 			}
 			before, err := parseRFC3339(a.CreatedBefore)
 			if err != nil {
-				return nil, nil, fmt.Errorf("created_before: %w", err)
+				return nil, nil, argErrf(classMalformed, HintFormat, "created_before", "created_before must be RFC3339")
+			}
+			if _, err := effectiveSearchScope(a.Scope, a.CrossSpine); err != nil {
+				return nil, nil, err
+			}
+			if a.CrossSpine && a.Scope != "" {
+				// Don't echo the caller-supplied scope value into logs (avoids
+				// unbounded/sensitive scope strings reaching log aggregation) —
+				// mirrors deps.searchDiscovery's identical discipline (D-02).
+				slog.InfoContext(ctx, "search_memory: cross_spine=true; ignoring supplied scope")
 			}
 			ms, err := d.searchMemory(ctx, c, coreSearchRequest{
 				Scope: a.Scope, Query: a.Query, K: k, Tags: a.Tags, Categories: a.Categories,
-				CreatedAfter: after, CreatedBefore: before,
+				CreatedAfter: after, CreatedBefore: before, CrossSpine: a.CrossSpine,
 			})
+			if err != nil {
+				return nil, nil, err
+			}
+			scopes, truncated, err := d.searchedScopes(ctx, c, a.CrossSpine)
 			if err != nil {
 				return nil, nil, err
 			}
 			// MCP-specific recall shaping lives here, not in the shared core
 			// (D-07): the core returns raw []store.Memory.
 			hits := shapeRecall(ms, a.Full, d.summaryMaxChars)
-			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"memories": hits}, nil
+			result := recallResultMap(map[string]any{"memories": hits}, a.CrossSpine, scopes, truncated)
+			return textResult(fmt.Sprintf("%d hits", len(hits))), result, nil
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List memories in a scope without a query. Most-recent first. Optional `created_after`/`created_before` (RFC3339) window and `cursor` for paging (use the returned next_cursor). Optional `tags` (AND). Returns {memories, next_cursor}; compact summaries by default, `full=true` for full content."},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List memories in a scope without a query. Most-recent first. `scope` is required unless `cross_spine=true`, which spans every scope the caller can read (ignoring `scope` if supplied). Optional `created_after`/`created_before` (RFC3339) window and `cursor` for paging (use the returned next_cursor). Optional `tags` (AND). Returns {memories, next_cursor}; compact summaries by default, `full=true` for full content."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1488,11 +1862,20 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			}
 			after, err := parseRFC3339(a.CreatedAfter)
 			if err != nil {
-				return nil, nil, fmt.Errorf("created_after: %w", err)
+				return nil, nil, argErrf(classMalformed, HintFormat, "created_after", "created_after must be RFC3339")
 			}
 			before, err := parseRFC3339(a.CreatedBefore)
 			if err != nil {
-				return nil, nil, fmt.Errorf("created_before: %w", err)
+				return nil, nil, argErrf(classMalformed, HintFormat, "created_before", "created_before must be RFC3339")
+			}
+			if _, err := effectiveSearchScope(a.Scope, a.CrossSpine); err != nil {
+				return nil, nil, err
+			}
+			if a.CrossSpine && a.Scope != "" {
+				// Don't echo the caller-supplied scope value into logs (avoids
+				// unbounded/sensitive scope strings reaching log aggregation) —
+				// mirrors search_memory's identical discipline (D-02).
+				slog.InfoContext(ctx, "list_memory: cross_spine=true; ignoring supplied scope")
 			}
 			res, err := d.listMemory(ctx, c, coreListRequest{
 				Scope: a.Scope, Limit: limit, Tags: a.Tags, Categories: a.Categories,
@@ -1504,14 +1887,20 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 				// silently stop cursoring (offset mode leaves next_cursor empty,
 				// store.go:817).
 				CursorMode: true,
+				CrossSpine: a.CrossSpine,
 			})
+			if err != nil {
+				return nil, nil, err
+			}
+			scopes, truncated, err := d.searchedScopes(ctx, c, a.CrossSpine)
 			if err != nil {
 				return nil, nil, err
 			}
 			// MCP-specific recall shaping lives here, not in the shared core
 			// (D-07): the core returns raw []store.Memory.
 			mems := shapeRecall(res.Memories, a.Full, d.summaryMaxChars)
-			return textResult(fmt.Sprintf("%d memories", len(mems))), map[string]any{"memories": mems, "next_cursor": res.NextToken}, nil
+			result := recallResultMap(map[string]any{"memories": mems, "next_cursor": res.NextToken}, a.CrossSpine, scopes, truncated)
+			return textResult(fmt.Sprintf("%d memories", len(mems))), result, nil
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "list_scheduled", Description: "List your windowed memories the recall gate is hiding: state=scheduled (not yet active, default) | expired | all. Active memories surface via list_memory/search_memory."},
@@ -1540,9 +1929,16 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			if err != nil {
 				return nil, nil, err
 			}
-			// MCP unconditionally replaces content (the wire contract requires
-			// it on every call); the mutationResult isn't surfaced here — MCP's
-			// wire shape hasn't changed (Connect's response uses it, 17-03/17-04).
+			// D-06a: validateUpdateArgs re-enforces content-requiredness in Go
+			// ONLY here (the MCP closure) — the wire contract still requires
+			// it on every MCP call, but the schema no longer carries it as
+			// "required" (updateArgs.Content's doc comment explains why this
+			// check must NOT move into deps.updateMemory). The mutationResult
+			// isn't surfaced here — MCP's wire shape hasn't changed (Connect's
+			// response uses it, 17-03/17-04).
+			if err := validateUpdateArgs(a, d.maxSummaryBytes); err != nil {
+				return nil, nil, err
+			}
 			_, err = d.updateMemory(ctx, c, a)
 			return textResult("updated"), nil, err
 		})
@@ -1563,7 +1959,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			if err != nil {
 				return nil, nil, err
 			}
-			err = d.st.DeleteAll(ctx, a.Scope, c.Subj)
+			err = d.deleteAll(ctx, c, a)
 			return textResult("scope cleared"), nil, err
 		})
 

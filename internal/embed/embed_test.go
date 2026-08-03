@@ -6,14 +6,18 @@ package embed
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
+	"github.com/seanb4t/engram/internal/testhttp"
 )
 
 func TestWithHTTPTransportIsApplied(t *testing.T) {
@@ -418,5 +422,93 @@ func TestEmbedEmitsSpan(t *testing.T) {
 	}
 	if attrs["engram.embed.dims"] != "3" {
 		t.Errorf("engram.embed.dims = %q, want 3", attrs["engram.embed.dims"])
+	}
+}
+
+// TestEmbedNon2xxIncludesStatusAndBody proves a non-2xx embeddings response
+// surfaces both the status code and the provider's own error text. Direct
+// twin of summarize.TestSummarizeNon200IncludesStatusAndBody.
+func TestEmbedNon2xxIncludesStatusAndBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"error":"embedder overloaded"}`))
+	}))
+	defer srv.Close()
+
+	_, err := New(srv.URL, "k", "m").Embed(context.Background(), "x")
+	if err == nil {
+		t.Fatal("want error on 503, got nil")
+	}
+	if !strings.Contains(err.Error(), "503") {
+		t.Fatalf("error missing status code: %v", err)
+	}
+	if !strings.Contains(err.Error(), "embedder overloaded") {
+		t.Fatalf("error missing body detail: %v", err)
+	}
+}
+
+// TestEmbedNon2xxDrainsForReuse proves a non-2xx embeddings response body is
+// drained after the bounded error read, so the connection it arrived on is
+// returned to the pool and reused by a second request to the same server.
+// Without the drain, the second call opens a fresh connection and
+// tracker.Reused() stays 0 — see the SUMMARY for the recorded RED transcript
+// (drain temporarily commented out) that confirms this assertion can fail.
+func TestEmbedNon2xxDrainsForReuse(t *testing.T) {
+	// The fake error body is deliberately larger than maxErrorBodyBytes
+	// (4096): if it fit inside the bound, the bounded read alone would
+	// consume it entirely and the connection would be reusable with or
+	// without the drain, proving nothing.
+	bigBody := strings.Repeat("x", maxErrorBodyBytes*2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(w, bigBody)
+	}))
+	defer srv.Close()
+
+	tracker := &testhttp.ReuseTracker{}
+	// Both calls go through the same Client (and thus the same underlying
+	// http.Client/Transport connection pool) — httptest's default client
+	// would not share a pool across independently-constructed clients.
+	c := New(srv.URL, "k", "m")
+	ctx := tracker.Context(context.Background())
+
+	if _, err := c.Embed(ctx, "x"); err == nil {
+		t.Fatal("want error on 503, got nil")
+	}
+	if _, err := c.Embed(ctx, "y"); err == nil {
+		t.Fatal("want error on 503, got nil")
+	}
+
+	if tracker.Reused() < 1 {
+		t.Fatalf("want at least one reused connection, got Reused()=%d Total()=%d", tracker.Reused(), tracker.Total())
+	}
+}
+
+// TestEmbedSuccessDecodeBounded proves the success-path decode is bounded:
+// a response padded past a deliberately tiny WithMaxResponseBytes is
+// rejected rather than read unbounded. Paired with a generous-bound control
+// that succeeds over the identical body — without the control, a client that
+// rejected everything would look green here too.
+func TestEmbedSuccessDecodeBounded(t *testing.T) {
+	big := strings.Repeat("0.1,", 1000)
+	body := `{"data":[{"embedding":[` + big + `0.1]}]}`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	tiny := New(srv.URL, "k", "m", WithMaxResponseBytes(16))
+	if _, err := tiny.Embed(context.Background(), "x"); err == nil {
+		t.Fatal("want decode error with a tiny WithMaxResponseBytes, got nil")
+	}
+
+	generous := New(srv.URL, "k", "m", WithMaxResponseBytes(int64(len(body)+1024)))
+	vec, err := generous.Embed(context.Background(), "x")
+	if err != nil {
+		t.Fatalf("Embed with generous bound: %v", err)
+	}
+	if len(vec) == 0 {
+		t.Fatal("want non-empty vector with generous bound")
 	}
 }

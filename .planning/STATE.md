@@ -2,40 +2,37 @@
 gsd_state_version: 1.0
 milestone: v0.12.x
 milestone_name: Headless Reach & Diagnosability
-status: planning
-last_updated: "2026-07-29T18:45:44.001Z"
-last_activity: 2026-07-29
+status: Awaiting next milestone
+stopped_at: Completed 07-03-PLAN.md — Phase 7 complete
+last_updated: "2026-08-02T23:51:44.814Z"
+last_activity: 2026-08-02
+last_activity_desc: Milestone v0.12.x completed and archived
 progress:
-  total_phases: 6
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
-current_phase: 1
-current_phase_name: Shared Auth Chain & Connect Bearer Identity
+  total_phases: 7
+  completed_phases: 7
+  total_plans: 28
+  completed_plans: 28
+  percent: 100
+current_phase: null
+current_phase_name: null
 ---
+
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-29 — after opening milestone v0.12.x)
+See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** v0.12.x — Headless Reach & Diagnosability. Roadmap approved: 6 phases (v0.12.x Phases 1–6), 20/20 requirements mapped. v0.12.x Phase 1 (the security-critical spine) is next to plan.
+**Current focus:** Planning the next milestone (`/gsd-new-milestone`) — v0.12.x closed 2026-08-02.
 
 ## Current Position
 
-Phase: 1 — Shared Auth Chain & Connect Bearer Identity (v0.12.x, not started)
+Phase: Milestone v0.12.x complete
 Plan: —
-Status: Roadmap complete; ready to plan v0.12.x Phase 1
-Last activity: 2026-07-29 — Milestone v0.12.x roadmap created (6 phases, 1–6)
-
-**v0.12.x Phase 1 carries the milestone's two security-critical, silently-passing defect classes** — a CSRF
-exemption keyed on request-controlled input, and Connect never enforcing `TokenInfo.Expiration`
-because it bypasses `mcpauth.RequireBearerToken`'s `verify()`. Both fail-closed negative tests are
-the phase's FIRST tests, per the v0.11.x precedent. Flagged for research at plan time plus a
-security-focused plan review.
+Status: Awaiting next milestone
+Last activity: 2026-08-02 — Milestone v0.12.x completed and archived
 
 ## Deferred Items
 
@@ -82,22 +79,31 @@ milestone needs in working memory.
   concat. Fixing one lane and not its sibling is how the doubled-`/v1` bug survived from Phase 13
   to Phase 26.
 
+- `connectError`'s `*argError` case must stay FIRST in the type switch, ahead of the
+  `store.ErrInvalidArgument` sentinel arm — `argError.Unwrap()` returns that sentinel, so any
+  reordering silently collapses every error class back to `CodeInvalidArgument`. A test asserting
+  only "not `CodeInternal`" still passes on the collapse; assert the codes are DISTINCT. Durable
+  record: `667p88n2be`.
+
+- Proto field numbers: a `deprecated = true` field still OCCUPIES its number. Reusing one is the
+  single way an otherwise-additive change trips `buf breaking` in FILE mode. Any new required
+  `internal/config` registry field must also be added to every full `Config{}` literal in that
+  package's tests. Durable record: `s780vae1vr`.
+
+- The CLI is **correct-by-reading** (`4aksmneehh`): help text and the self-describe catalog are
+  deliverables with acceptance criteria, related flags name each other, and a validation error is
+  a backstop for someone who did not read — never the teaching mechanism.
+
+
 ### Blockers/Concerns
 
 **Open:**
 
-- **Env restore (non-blocking):** repo-local `commit.gpgsign=false` is still set — the 1Password SSH signing agent failed on every commit through v0.11.x, so each used a per-commit `git -c commit.gpgsign=false` override and persistent config was never modified. Restore when 1Password is stable: `git config --local --unset commit.gpgsign`.
-- **Deployed server lags `main`:** the running engram instance predates the v0.11.x merges, so `supersede_memory`, memory `citations`, and the `categories` filter are not callable until the next release.
-- **Not deployed → not exercised:** every v0.11.x feature is verified against tests and a real Qdrant via testcontainers, but none has run in the deployed instance. Watch the first release for integration surprises.
-- **Validation commands can false-green:** `go test -run X ./pkg/...` matching nothing exits 0 with `ok … [no tests to run]`. Phase 26's VALIDATION.md carried two such stale paths (found 2026-07-26). Whenever a package moves, re-point every command that names it — and prove execution with `-v` RUN/PASS pairs, not a package-level `ok`.
+- **Deployed server lags `main`:** the running engram instance predates the v0.11.x and v0.12.x merges, so `supersede_memory`, memory `citations`, the `categories` filter, and every v0.12.x capability (Connect bearer identity, the headless CLI, `cross_spine`, the field+hint error envelope) are not callable until the next release.
+- **Not deployed → not exercised:** every v0.11.x and v0.12.x feature is verified against tests and a real Qdrant via testcontainers, but none has run in the deployed instance. Watch the first release for integration surprises.
+- **Validation commands can false-green:** `go test -run X ./pkg/...` matching nothing exits 0 with `ok … [no tests to run]`. This bit v0.12.x too: VALIDATION.md `-run` commands are written at PLAN time and routinely never match what shipped (wrong package in Phase 4, wrong test name in Phase 7), so the row reports a false green forever. Re-resolve every `-run` against `go test -list` when auditing, and prove execution with `-v` RUN/PASS pairs, not a package-level `ok`. Durable record: `bsbsvn4hbc`.
 - Tracked tech debt: #369 (Renovate self-heal live observation, post-merge only), #366 (console e2e harness), #370 (Taskfile yamlfmt/CI reconciliation), plus 2 high Dependabot alerts open on `main`.
 - **CI gates outside the phase lifecycle:** `task chart:validate` (containerEnv checksum pin) and `task ui:build` (vendored SPA) are required checks that no phase gate runs. Run both locally before shipping any phase touching `charts/` or generated TS.
-
-**Resolved during v0.11.x** (kept briefly for traceability, drop at next milestone close):
-
-- ✓ #1 risk — a service principal resolving to `owner==""` is rejected at the verifier boundary; proven by `TestFailClosedRejectsEmptyOwner` as Phase 23's first test.
-- ✓ `shared`-across-tenants product question — decided explicitly: stays global for v0.11.x, written and tested (ADR `engram-svct`); per-tenant scoping deferred to full ABAC.
-- ✓ Idempotency same-key/different-content contract — locked as **reject, never upsert** (`store.ErrIdempotencyConflict` → Connect `AlreadyExists`), checked before the embedder call.
 
 ### Quick Tasks Completed
 
@@ -107,8 +113,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-07-26T03:48:22.018Z
-Stopped at: Completed 26-06-PLAN.md — Phase 26 complete
+Last session: 2026-08-02T13:22:59.463Z
+Stopped at: Completed 07-03-PLAN.md — Phase 7 complete; milestone v0.12.x closed and archived
 Resume file: None
 
 ## Performance Metrics
@@ -172,6 +178,24 @@ Resume file: None
 | Phase 26 P03 | 12min | 2 tasks | 7 files |
 | Phase 26 P05 | 6min | 3 tasks | 6 files |
 | Phase 26 P06 | 18min | 3 tasks | 4 files |
+| Phase 01 P01 | 40min | 2 tasks | 16 files |
+| Phase 01 P02 | 13min | 2 tasks | 4 files |
+| Phase 01 P03 | 35min | 3 tasks | 11 files |
+| Phase 01 P04 | ~20min | 3 tasks | 4 files |
+| Phase 02 P01 | 40min | 2 tasks | 7 files |
+| Phase 02 P02 | ~15min | 2 tasks | 4 files |
+| Phase 02 P03 | ~35min | 2 tasks | 4 files |
+| Phase 03 P01 | 9min | 3 tasks | 3 files |
+| Phase 03 P02 | 12min | 2 tasks | 4 files |
+| Phase 03 P03 | 20min | 3 tasks | 5 files |
+| Phase 03 P04 | ~10min | 4 tasks | 7 files |
+| Phase 03 P05 | ~15min | 2 tasks | 3 files |
+| Phase 04 P01 | 5min | 3 tasks | 4 files |
+| Phase 04 P03 | 6min | 3 tasks | 5 files |
+| Phase 04 P02 | 35min | 3 tasks | 6 files |
+| Phase 04 P04 | ~25min | 3 tasks | 3 files |
+| Phase 04 P05 | 18min | 3 tasks | 5 files |
+| Phase 04 P06 | 35min | 2 tasks | 15 files |
 
 ## Operator Next Steps
 

@@ -154,6 +154,37 @@ tasks:
           echo "chart:validate: enabled CronJob render must default to the daily schedule '0 3 * * *' (D-08)"
           exit 1
         fi
+        # Per-lane chat credential (v0.12.x phase 05, REQ-per-lane-api-key /
+        # D-04a/D-04b). The containerEnv checksum below pins the template block
+        # against silent drift, but it cannot assert the SET path renders
+        # correctly — the default render omits the var, so a break in the
+        # secretKeyRef branch would leave the checksum untouched while an
+        # operator's chat key silently stopped reaching the container and the
+        # summarizer fell back to the shared key (exactly D-06's "key for
+        # gateway A reaches gateway B" risk). Assert both directions.
+        if helm template charts/engram | grep -q 'ENGRAM_OPENAI_CHAT_API_KEY'; then
+          echo "chart:validate: default render must NOT emit ENGRAM_OPENAI_CHAT_API_KEY (chatApiKeySecret unset)"
+          exit 1
+        fi
+        CHATKEY_RENDER=$(helm template charts/engram \
+          --set memory.summarize.chatApiKeySecret.name=cv-secret \
+          --set memory.summarize.chatApiKeySecret.key=cv-key)
+        if ! echo "$CHATKEY_RENDER" | grep -q 'name: ENGRAM_OPENAI_CHAT_API_KEY'; then
+          echo "chart:validate: --set memory.summarize.chatApiKeySecret.{name,key} must emit ENGRAM_OPENAI_CHAT_API_KEY"
+          exit 1
+        fi
+        if ! echo "$CHATKEY_RENDER" | grep -A3 'name: ENGRAM_OPENAI_CHAT_API_KEY' | grep -q 'secretKeyRef'; then
+          echo "chart:validate: ENGRAM_OPENAI_CHAT_API_KEY must render as a secretKeyRef, never a literal value"
+          exit 1
+        fi
+        if ! echo "$CHATKEY_RENDER" | grep -A5 'name: ENGRAM_OPENAI_CHAT_API_KEY' | grep -q 'name: "cv-secret"'; then
+          echo "chart:validate: ENGRAM_OPENAI_CHAT_API_KEY secretKeyRef must carry the configured secret name"
+          exit 1
+        fi
+        if ! echo "$CHATKEY_RENDER" | grep -A5 'name: ENGRAM_OPENAI_CHAT_API_KEY' | grep -q 'key: "cv-key"'; then
+          echo "chart:validate: ENGRAM_OPENAI_CHAT_API_KEY secretKeyRef must carry the configured secret key"
+          exit 1
+        fi
         helm lint charts/engram
         # Drift pin: engram.containerEnv is the single source of the
         # Deployment+CronJob container env (D-09). Any edit to this block
@@ -161,10 +192,13 @@ tasks:
         # Deployment render diff manually) — this checksum guards against
         # silent drift. Recorded 2026-07-16 at plan 20-04; re-pinned
         # 2026-07-26 at plan 26-04 for the with-guarded
-        # ENGRAM_OPENAI_CHAT_BASE_URL row (D-12). Re-verified: the default
-        # render omits the var entirely and its ENGRAM_ env block is
-        # byte-identical to the pre-phase render.
-        EXPECTED_CHECKSUM="290eca2c1d2e948479b2611c755f8bed7d5ed8565ba811b9e1c2cbfcfcde83d7"
+        # ENGRAM_OPENAI_CHAT_BASE_URL row (D-12); re-pinned 2026-07-31 at
+        # plan 01-04 for the with-guarded ENGRAM_CONNECT_HEADLESS row
+        # (REVIEWS.md MED-10); re-pinned 2026-08-01 at plan 05-01 for the
+        # guarded ENGRAM_OPENAI_CHAT_API_KEY row (D-04a/D-04b). Re-verified:
+        # the default render omits the var entirely and its ENGRAM_ env
+        # block is byte-identical to the pre-phase render.
+        EXPECTED_CHECKSUM="f2af79e090e608aca0fc4cbbab2ce32b4d45e91527316b36bdbdacd85b66f013"
         ACTUAL_CHECKSUM=$(awk '/define "engram.containerEnv"/{f=1} f{print} f && /^\{\{- end -\}\}$/{exit}' charts/engram/templates/_helpers.tpl | shasum -a 256 | awk '{print $1}')
         if [ "$ACTUAL_CHECKSUM" != "$EXPECTED_CHECKSUM" ]; then
           echo "chart:validate: engram.containerEnv block in _helpers.tpl has drifted (checksum $ACTUAL_CHECKSUM != expected $EXPECTED_CHECKSUM)."

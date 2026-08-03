@@ -18,6 +18,7 @@ import (
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
+	"github.com/seanb4t/engram/internal/auth"
 	"github.com/seanb4t/engram/internal/store"
 )
 
@@ -83,6 +84,22 @@ func parseRFC3339(s string) (time.Time, error) {
 	return time.Parse(time.RFC3339, s)
 }
 
+// parseConnectWindowBound parses an optional RFC3339 window bound at the
+// Connect handler boundary (ListMemories/SearchMemories's created_after and
+// created_before). On failure it builds the same classified *argError the
+// MCP lane's inline closures build (04-04, RESEARCH rows 18-21) — field
+// named, classMalformed, HintFormat, stating the RFC3339 requirement — and
+// never carries the caller's raw string forward (D-12): a bare time.Parse
+// error embeds it verbatim. The caller hands the result to connectError, the
+// single mapper, rather than hand-wrapping a code here.
+func parseConnectWindowBound(field, raw string) (time.Time, error) {
+	t, err := parseRFC3339(raw)
+	if err != nil {
+		return time.Time{}, argErrf(classMalformed, HintFormat, field, "%s must be RFC3339", field)
+	}
+	return t, nil
+}
+
 // shapeProtoMemories mirrors the MCP recall contract over the Connect wire: when
 // not full, clear Content and surface a summary-or-truncation so default callers
 // pay summary-sized payloads. Callers opt into full content with full=true.
@@ -135,28 +152,49 @@ func (a *engramAPI) ListScopes(ctx context.Context, _ *connect.Request[engramv1.
 // UNCHANGED — limit=0 means "all" (store.go:873-874), NOT silently capped to
 // 20 (round-4 finding-7; 17-06 removed the shared Limit==0->20 default from
 // the core, so no lane may re-introduce it here). created_after/before are
-// parsed to time.Time AT THIS BOUNDARY so a malformed value returns
-// CodeInvalidArgument directly, never reaching the typed core to be
-// misclassified as CodeInternal by connectError (round-4 MED-6).
+// parsed to time.Time AT THIS BOUNDARY, building the classified *argError the
+// MCP lane builds, and handed to connectError (D-11) so the failure CLASS —
+// not a hand-wrapped code — selects the Connect code. Hand-wrapping
+// connect.CodeInvalidArgument at a boundary check like this one is exactly
+// what would override that class and silently defeat D-11: connectError is
+// the single mapper for every rejection in this handler, with no exception.
 func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engramv1.ListMemoriesRequest]) (*connect.Response[engramv1.ListMemoriesResponse], error) {
 	c, err := callerFromConnectContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	after, err := parseRFC3339(req.Msg.CreatedAfter)
+	after, err := parseConnectWindowBound("created_after", req.Msg.CreatedAfter)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_after: %w", err))
+		return nil, connectError(ctx, err)
 	}
-	before, err := parseRFC3339(req.Msg.CreatedBefore)
+	before, err := parseConnectWindowBound("created_before", req.Msg.CreatedBefore)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_before: %w", err))
+		return nil, connectError(ctx, err)
 	}
 	// Enforce the cursor_mode/offset mutual exclusion (documented on the proto
-	// field) at the handler, alongside the created_after/before validation above.
-	// store.List also rejects this, but a fail-fast guard keeps the wire contract
-	// self-evident at its boundary.
+	// field) at the handler, alongside the created_after/before validation
+	// above. store.List also rejects this, but a fail-fast guard keeps the
+	// wire contract self-evident at its boundary. This is a RELATIONAL
+	// rejection between two individually-valid fields (D-11/D-20), so it
+	// names BOTH fields and classifies as classPrecondition ->
+	// CodeFailedPrecondition, not CodeInvalidArgument — the one Connect-native
+	// check with no tools.go MCP counterpart to inherit from, since MCP's
+	// listArgs carries no offset field at all.
 	if req.Msg.CursorMode && req.Msg.Offset > 0 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cursor_mode is mutually exclusive with offset"))
+		return nil, connectError(ctx, argErrFieldsf(classPrecondition, HintMutuallyExclusive,
+			[]string{"cursor_mode", "offset"}, "cursor_mode is mutually exclusive with offset"))
+	}
+	// D-04: read cross_spine EXPLICITLY. Unlike SearchDiscoveries
+	// (connectapi.go, below), this handler never maps Scope == "" to
+	// cross-spine — memories have no pre-typed-core contract to preserve, and
+	// inferring it would silently widen every existing empty-scope Connect
+	// call from "returns nothing" to "returns everything readable". This
+	// boundary call to effectiveSearchScope is a fail-fast duplicate of the
+	// same guard deps.listMemory carries — effectiveSearchScope already
+	// returns a classified *argError (04-04), so it is simply handed to
+	// connectError like everything else in this handler.
+	if _, err := effectiveSearchScope(req.Msg.Scope, req.Msg.CrossSpine); err != nil {
+		return nil, connectError(ctx, err)
 	}
 	res, err := a.d.listMemory(ctx, c, coreListRequest{
 		Scope:         req.Msg.Scope,
@@ -173,15 +211,27 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 		// page. PageToken != "" keeps resume working whether or not the flag is
 		// re-sent. Default (both false) stays offset-for-UI (ADR engram-1frj).
 		CursorMode: req.Msg.CursorMode || req.Msg.PageToken != "",
+		CrossSpine: req.Msg.CrossSpine,
 	})
 	if err != nil {
 		return nil, connectError(ctx, err)
 	}
+	// (*deps).searchedScopes is the same helper both MCP closures call, so the
+	// two lanes cannot report different spans for the same query. On a
+	// scope-confined call it returns (nil, false, nil), which proto3
+	// serializes as absent — no explicit omission branch needed for the
+	// D-14 byte-identical guarantee.
+	scopes, truncated, err := a.d.searchedScopes(ctx, c, req.Msg.CrossSpine)
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
 	return connect.NewResponse(&engramv1.ListMemoriesResponse{
-		Memories:      shapeProtoMemories(res.Memories, req.Msg.Full, a.d.summaryMaxChars),
-		Total:         res.Total,
-		Approximate:   false,
-		NextPageToken: res.NextToken,
+		Memories:        shapeProtoMemories(res.Memories, req.Msg.Full, a.d.summaryMaxChars),
+		Total:           res.Total,
+		Approximate:     false,
+		NextPageToken:   res.NextToken,
+		SearchedScopes:  scopes,
+		ScopesTruncated: truncated,
 	}), nil
 }
 
@@ -199,23 +249,42 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	if k == 0 {
 		k = 20
 	}
-	after, err := parseRFC3339(req.Msg.CreatedAfter)
+	after, err := parseConnectWindowBound("created_after", req.Msg.CreatedAfter)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_after: %w", err))
+		return nil, connectError(ctx, err)
 	}
-	before, err := parseRFC3339(req.Msg.CreatedBefore)
+	before, err := parseConnectWindowBound("created_before", req.Msg.CreatedBefore)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_before: %w", err))
+		return nil, connectError(ctx, err)
+	}
+	// D-04: read cross_spine EXPLICITLY, never inferred from Scope == "" —
+	// see the identical note on ListMemories above and the SearchDiscoveries
+	// comment below for what this handler deliberately does NOT copy. The
+	// boundary call to effectiveSearchScope is a fail-fast duplicate of the
+	// same guard deps.searchMemory carries — it already returns a classified
+	// *argError (04-04), handed to connectError like everything else here.
+	if _, err := effectiveSearchScope(req.Msg.Scope, req.Msg.CrossSpine); err != nil {
+		return nil, connectError(ctx, err)
 	}
 	ms, err := a.d.searchMemory(ctx, c, coreSearchRequest{
 		Scope: req.Msg.Scope, Query: req.Msg.Query, K: k, Tags: req.Msg.Tags,
 		CreatedAfter: after, CreatedBefore: before, Categories: req.Msg.Categories,
+		CrossSpine: req.Msg.CrossSpine,
 	})
 	if err != nil {
 		return nil, connectError(ctx, err)
 	}
+	// Same helper the MCP closures use — see the identical note on
+	// ListMemories; (nil, false, nil) on a scope-confined call serializes as
+	// absent with no explicit omission branch needed (D-14).
+	scopes, truncated, err := a.d.searchedScopes(ctx, c, req.Msg.CrossSpine)
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
 	return connect.NewResponse(&engramv1.SearchMemoriesResponse{
-		Memories: shapeProtoMemories(ms, req.Msg.Full, a.d.summaryMaxChars),
+		Memories:        shapeProtoMemories(ms, req.Msg.Full, a.d.summaryMaxChars),
+		SearchedScopes:  scopes,
+		ScopesTruncated: truncated,
 	}), nil
 }
 
@@ -249,6 +318,17 @@ func (a *engramAPI) GetMemory(ctx context.Context, req *connect.Request[engramv1
 // longer embeds the query itself (round-5 MED, grok): deps.searchDiscovery
 // embeds the query internally, so a handler-local embed step would
 // double-embed.
+//
+// DELIBERATE DIVERGENCE (D-04, phase 03-04): the `req.Msg.Scope == ""`
+// inference immediately below is NOT a pattern to copy onto SearchMemories or
+// ListMemories. It exists only to preserve a Connect contract that predates
+// the typed core (see the round-4 HIGH-3 note above); memories have no such
+// contract, and inferring it there would silently widen every existing
+// empty-scope Connect call from "returns nothing" to "returns everything
+// readable" — a behavior change no caller opted into. SearchMemories and
+// ListMemories read an explicit `cross_spine` proto field instead, and
+// TestConnectCrossSpineNotInferred pins that asymmetry as intentional. Do not
+// "fix" this inconsistency by making the three handlers agree.
 func (a *engramAPI) SearchDiscoveries(ctx context.Context, req *connect.Request[engramv1.SearchDiscoveriesRequest]) (*connect.Response[engramv1.SearchDiscoveriesResponse], error) {
 	c, err := callerFromConnectContext(ctx)
 	if err != nil {
@@ -353,11 +433,15 @@ func (a *engramAPI) ScheduleMemory(ctx context.Context, req *connect.Request[eng
 	return connect.NewResponse(idsToScheduleMemoryResponse(id, shortID)), nil
 }
 
-// connectResolver supplies the per-request identity TokenInfo for the Connect
-// lane. The webauth cookie/OIDC resolver is passed in by the caller (serve.go)
-// when the web UI is enabled. A nil resolver means Connect is NOT mounted at
-// all (R1): mountConnect returns immediately without registering any handler.
-type connectResolver func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)
+// connectResolver supplies the per-request identity TokenInfo for the
+// Connect lane, plus WHICH credential family authenticated it (auth.Lane,
+// D-07). NewConnectResolver composes the bearer half and the webauth
+// cookie/OIDC half (passed in by the caller, serve.go); the lane it returns
+// is decided exclusively by which half actually succeeded, never by a
+// second read of the request (D-02). A nil resolver means Connect is NOT
+// mounted at all (R1): mountConnect returns immediately without registering
+// any handler.
+type connectResolver func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error)
 
 func (d *deps) mountConnect(mux *http.ServeMux, resolve connectResolver, csrfVerify func(owner, token string) bool, reseal resealFunc) error {
 	if resolve == nil {

@@ -24,8 +24,9 @@
       name: "{{ .Values.memory.openai.apiKeySecret.name }}"
       key: "{{ .Values.memory.openai.apiKeySecret.key }}"
 {{- end }}
-{{- /* Auto-summary reuses the embedder's OpenAI client (base URL + key).
-       Empty model omits the var → server disables auto-summary. */}}
+{{- /* Auto-summary: both the chat base URL and the chat key fall back to the
+       embedder's when their values are empty. Empty model omits the var →
+       server disables auto-summary. */}}
 {{- with .Values.memory.summarize.model }}
 - { name: ENGRAM_SUMMARY_MODEL, value: "{{ . }}" }
 {{- end }}
@@ -33,6 +34,15 @@
        summarizer inherits memory.openai.baseURL. */}}
 {{- with .Values.memory.summarize.chatBaseURL }}
 - { name: ENGRAM_OPENAI_CHAT_BASE_URL, value: "{{ . }}" }
+{{- end }}
+{{- /* Chat lane's own API key override. Empty name omits the var → the
+       summarizer inherits memory.openai.apiKeySecret's key. */}}
+{{- if .Values.memory.summarize.chatApiKeySecret.name }}
+- name: ENGRAM_OPENAI_CHAT_API_KEY
+  valueFrom:
+    secretKeyRef:
+      name: "{{ .Values.memory.summarize.chatApiKeySecret.name }}"
+      key: "{{ .Values.memory.summarize.chatApiKeySecret.key }}"
 {{- end }}
 {{- with .Values.memory.summarize.maxChars }}
 - { name: ENGRAM_SUMMARY_MAX_CHARS, value: "{{ . }}" }
@@ -91,6 +101,13 @@
     secretKeyRef:
       name: "{{ .Values.memory.ui.cookieKeySecret.name }}"
       key: "{{ .Values.memory.ui.cookieKeySecret.key }}"
+{{- end }}
+{{- if ne (.Values.memory.connect.headless | toString) "" }}
+# Tri-state like ui.enabled above: "" omits (Connect mounted only if the UI
+# is on), "false" is a hard off-switch — both "true" and "false" must reach
+# the binary, so gate on non-empty rather than truthiness (toString
+# tolerates a YAML bool from --set).
+- { name: ENGRAM_CONNECT_HEADLESS, value: "{{ .Values.memory.connect.headless }}" }
 {{- end }}
 - { name: ENGRAM_LOG_LEVEL, value: "{{ .Values.observability.log.level }}" }
 - { name: ENGRAM_LOG_FORMAT, value: "{{ .Values.observability.log.format }}" }

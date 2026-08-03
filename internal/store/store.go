@@ -8,6 +8,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -558,13 +560,7 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	if v, ok := p["visibility"]; ok {
 		m.Visibility = v.GetStringValue()
 	}
-	if v, ok := p["tags"]; ok {
-		if lv := v.GetListValue(); lv != nil {
-			for _, item := range lv.GetValues() {
-				m.Tags = append(m.Tags, item.GetStringValue())
-			}
-		}
-	}
+	m.Tags = tagsFromPayload(p)
 	if v, ok := p["created_at"]; ok {
 		if t, err := time.Parse(time.RFC3339, v.GetStringValue()); err == nil {
 			m.CreatedAt = t
@@ -677,13 +673,13 @@ func (s *Store) Upsert(ctx context.Context, m Memory, vec []float32) (err error)
 // WITHOUT consulting the PDP (principalParams returns ok=false).
 // A decision allowing zero buckets (e.g. an all-deny PDP) also compiles to
 // matchNothing — never an unfiltered query.
-func (s *Store) ownerOrSharedCondition(subj Subject) *qdrant.Condition {
+func (s *Store) ownerOrSharedCondition(ctx context.Context, subj Subject) *qdrant.Condition {
 	owner, kind, ok := principalParams(subj)
 	if !ok {
 		return matchNothing()
 	}
-	ownAllowed := s.decideBucket(owner, kind, authz.ActionRead, authz.BucketOwn).Allow
-	sharedAllowed := s.decideBucket(owner, kind, authz.ActionRead, authz.BucketShared).Allow
+	ownAllowed := s.decideBucket(ctx, owner, kind, authz.ActionRead, authz.BucketOwn).Allow
+	sharedAllowed := s.decideBucket(ctx, owner, kind, authz.ActionRead, authz.BucketShared).Allow
 	var should []*qdrant.Condition
 	if ownAllowed {
 		should = append(should, qdrant.NewMatch("owner", owner))
@@ -704,12 +700,12 @@ func (s *Store) ownerOrSharedCondition(subj Subject) *qdrant.Condition {
 // The own-bucket decision is policy-derived (s.authz.DecideBucket); fail-closed
 // for nil/unknown Subjects and a denied own bucket, exactly like
 // ownerOrSharedCondition — WITHOUT consulting the PDP for nil/unknown.
-func (s *Store) ownerOnlyCondition(subj Subject) *qdrant.Condition {
+func (s *Store) ownerOnlyCondition(ctx context.Context, subj Subject) *qdrant.Condition {
 	owner, kind, ok := principalParams(subj)
 	if !ok {
 		return matchNothing()
 	}
-	if s.decideBucket(owner, kind, authz.ActionRead, authz.BucketOwn).Allow {
+	if s.decideBucket(ctx, owner, kind, authz.ActionRead, authz.BucketOwn).Allow {
 		return qdrant.NewMatch("owner", owner)
 	}
 	return matchNothing()
@@ -718,22 +714,57 @@ func (s *Store) ownerOnlyCondition(subj Subject) *qdrant.Condition {
 // decideBucket is the single call-site indirection ownerOrSharedCondition and
 // ownerOnlyCondition use to reach the PDP. It defaults to s.authz.DecideBucket;
 // decideBucketHook (nil in production) lets tests observe/count invocations.
-func (s *Store) decideBucket(owner, kind string, action authz.Action, bucket authz.Bucket) authz.Decision {
+//
+// This is one of the two chokepoints (with decideRecord) every production
+// Decision consumption funnels through, so it is the sole place a debug-level
+// decision-diagnostics line is emitted for bucket-level decisions (D-01/D-04):
+// ownerOrSharedCondition/ownerOnlyCondition build a filter CONDITION once per
+// request (at most two calls for a bulk Search/List), never once per result
+// row (RESEARCH § Pattern 3). The call is unconditional — both the allow and
+// the deny arm log, never gated on d.Allow — so "both arms are logged" is
+// structurally true rather than a claim about two branches staying in sync.
+func (s *Store) decideBucket(ctx context.Context, owner, kind string, action authz.Action, bucket authz.Bucket) authz.Decision {
+	var d authz.Decision
 	if s.decideBucketHook != nil {
-		return s.decideBucketHook(owner, kind, action, bucket)
+		d = s.decideBucketHook(owner, kind, action, bucket)
+	} else {
+		d = s.authz.DecideBucket(owner, kind, action, bucket)
 	}
-	return s.authz.DecideBucket(owner, kind, action, bucket)
+	dl := d.Log()
+	slog.DebugContext(ctx, "authz decision (bucket)",
+		"allow", dl.Allow,
+		"action", string(action),
+		"bucket", bucket.String(),
+		"policy_ids", dl.PolicyIDs,
+		"policy_error_count", dl.ErrorCount,
+	)
+	return d
 }
 
 // decideRecord is the single call-site indirection GetReadable/getWritable/
 // OwnedOrAbsent use to reach the PDP for a per-record (id-addressed) decision.
 // It defaults to s.authz.DecideRecord; decideRecordHook (nil in production)
 // lets tests inject an all-deny probe without a real *authz.PDP construction.
-func (s *Store) decideRecord(owner, kind string, action authz.Action, memoryOwner, category, visibility, scope string) authz.Decision {
+//
+// The other of the two chokepoints (see decideBucket): id-addressed gates are
+// single-record, so this is at most one debug line per id-addressed op, never
+// O(result count). No `bucket` field — a per-record decision has no bucket
+// (D-02's field list names bucket for the bucket arm only).
+func (s *Store) decideRecord(ctx context.Context, owner, kind string, action authz.Action, memoryOwner, category, visibility, scope string) authz.Decision {
+	var d authz.Decision
 	if s.decideRecordHook != nil {
-		return s.decideRecordHook(owner, kind, action, memoryOwner, category, visibility, scope)
+		d = s.decideRecordHook(owner, kind, action, memoryOwner, category, visibility, scope)
+	} else {
+		d = s.authz.DecideRecord(owner, kind, action, memoryOwner, category, visibility, scope)
 	}
-	return s.authz.DecideRecord(owner, kind, action, memoryOwner, category, visibility, scope)
+	dl := d.Log()
+	slog.DebugContext(ctx, "authz decision (record)",
+		"allow", dl.Allow,
+		"action", string(action),
+		"policy_ids", dl.PolicyIDs,
+		"policy_error_count", dl.ErrorCount,
+	)
+	return d
 }
 
 // matchNothing returns a condition no record can satisfy (owner==x AND owner!=x).
@@ -748,12 +779,23 @@ func matchNothing() *qdrant.Condition {
 }
 
 // ownerScopeFilter restricts to a scope AND the caller's readable set (see
-// ownerOrSharedCondition for anonymous vs authenticated semantics).
-func (s *Store) ownerScopeFilter(scope string, subj Subject) *qdrant.Filter {
-	return &qdrant.Filter{Must: []*qdrant.Condition{
-		qdrant.NewMatch("scope", scope),
-		s.ownerOrSharedCondition(subj),
-	}}
+// ownerOrSharedCondition for anonymous vs authenticated semantics). An empty
+// scope now means "every scope the caller may read" (cross-spine): the scope
+// match is appended to Must only when scope != "", mirroring SearchDiscovery
+// (store.go:977-987) rather than inventing a variant. The
+// ownerOrSharedCondition authz element is deliberately OUTSIDE that
+// conditional and always appended — this composition never depends on the
+// scope value, so widening what an empty scope matches cannot weaken or drop
+// the authz clause. internal/server's effectiveSearchScope is the sole guard
+// against an accidental empty scope reaching this function (D-03/D-07): this
+// function itself carries no cross-spine flag or opinion, by design.
+func (s *Store) ownerScopeFilter(ctx context.Context, scope string, subj Subject) *qdrant.Filter {
+	must := make([]*qdrant.Condition, 0, 2)
+	if scope != "" {
+		must = append(must, qdrant.NewMatch("scope", scope))
+	}
+	must = append(must, s.ownerOrSharedCondition(ctx, subj))
+	return &qdrant.Filter{Must: must}
 }
 
 // tagMatchConditions returns one exact-match condition per requested tag, with
@@ -885,7 +927,7 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 		}
 	}()
 
-	f := s.ownerScopeFilter(scope, subj)
+	f := s.ownerScopeFilter(ctx, scope, subj)
 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
 	// Soft-hide superseded records from search recall (D-09) — sibling
 	// condition to activeWindowConditions, not folded into it (that helper is
@@ -981,7 +1023,7 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Su
 	if kind != "" {
 		must = append(must, qdrant.NewMatch("kind", kind))
 	}
-	must = append(must, s.ownerOrSharedCondition(subj))
+	must = append(must, s.ownerOrSharedCondition(ctx, subj))
 	// Soft-hide superseded discoveries from search recall (WR-01), the same
 	// gate Search/List already apply — get_memory stays ungated.
 	must = append(must, qdrant.NewIsEmpty("superseded_by"))
@@ -1039,10 +1081,11 @@ func createdRangeCondition(after, before time.Time) *qdrant.Condition {
 	return qdrant.NewDatetimeRange("created_at", dr)
 }
 
-// listFilter builds the Qdrant filter for List: scope + per-actor authz (outer
-// Must constraint) AND optional category/visibility request filters. The authz
-// condition stays the outer Must, so no filter combination can reach another
-// actor's records.
+// listFilter builds the Qdrant filter for List: scope (when non-empty; an
+// empty scope spans every scope the caller may read — cross-spine, D-08) +
+// per-actor authz (outer Must constraint, unconditional) AND optional
+// category/visibility request filters. The authz condition stays the outer
+// Must, so no filter combination can reach another actor's records.
 //
 // Visibility semantics:
 //   - "" (empty): no visibility filter — return all readable records.
@@ -1051,11 +1094,12 @@ func createdRangeCondition(after, before time.Time) *qdrant.Condition {
 //     private representation — the store only ever writes "" or "shared"). This
 //     is expressed as MustNot(visibility=="shared") so that an empty-string match
 //     in Qdrant is reliable across payload-key-absent and empty-value cases.
-func (s *Store) listFilter(scope string, subj Subject, opts ListOptions) *qdrant.Filter {
-	must := []*qdrant.Condition{
-		qdrant.NewMatch("scope", scope),
-		s.ownerOrSharedCondition(subj),
+func (s *Store) listFilter(ctx context.Context, scope string, subj Subject, opts ListOptions) *qdrant.Filter {
+	must := make([]*qdrant.Condition, 0, 2)
+	if scope != "" {
+		must = append(must, qdrant.NewMatch("scope", scope))
 	}
+	must = append(must, s.ownerOrSharedCondition(ctx, subj))
 	if c := categoryMatchCondition(opts.Categories); c != nil {
 		must = append(must, c)
 	}
@@ -1110,7 +1154,7 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		return nil, 0, "", fmt.Errorf("list: ascending ordering is honored only in offset/all mode, not cursor mode: %w", ErrInvalidArgument)
 	}
 
-	f := s.listFilter(scope, subj, opts)
+	f := s.listFilter(ctx, scope, subj, opts)
 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
 	// Soft-hide superseded records from list recall (D-09) — sibling
 	// condition to activeWindowConditions, not folded into it (that helper is
@@ -1340,7 +1384,7 @@ func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, s
 	}
 	f := &qdrant.Filter{Must: []*qdrant.Condition{
 		qdrant.NewMatch("scope", scope),
-		s.ownerOnlyCondition(subj),
+		s.ownerOnlyCondition(ctx, subj),
 		scheduledStateCondition(state, s.now()),
 		// Soft-hide superseded scheduled records from the management view
 		// (WR-02) — a corrected-away record shouldn't still surface as a
@@ -1395,7 +1439,7 @@ func (s *Store) ListScopes(ctx context.Context, subj Subject) (out []ScopeCount,
 	const scanCap = 1000
 	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
-		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{s.ownerOrSharedCondition(subj)}},
+		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{s.ownerOrSharedCondition(ctx, subj)}},
 		Limit:          qdrant.PtrOf(uint32(scanCap)),
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
@@ -1516,7 +1560,7 @@ func (s *Store) GetReadable(ctx context.Context, id string, subj Subject) (out M
 	if !ok {
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	if !s.decideRecord(owner, kind, authz.ActionRead, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
+	if !s.decideRecord(ctx, owner, kind, authz.ActionRead, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	return m, nil
@@ -1544,7 +1588,7 @@ func (s *Store) getWritable(ctx context.Context, id string, subj Subject, action
 	if !ok {
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	if !s.decideRecord(owner, kind, action, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
+	if !s.decideRecord(ctx, owner, kind, action, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
 		return Memory{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	return m, nil
@@ -1579,7 +1623,7 @@ func (s *Store) OwnedOrAbsent(ctx context.Context, id string, subj Subject) (err
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	if !s.decideRecord(owner, kind, authz.ActionWrite, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
+	if !s.decideRecord(ctx, owner, kind, authz.ActionWrite, m.Owner, m.Category, m.Visibility, m.Scope).Allow {
 		return fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	return nil
@@ -2018,7 +2062,7 @@ func (s *Store) DeleteAll(ctx context.Context, scope string, subj Subject) (err 
 	if !ok {
 		return fmt.Errorf("%w: nil subject", ErrNotFound)
 	}
-	if !s.decideBucket(owner, kind, authz.ActionDelete, authz.BucketOwn).Allow {
+	if !s.decideBucket(ctx, owner, kind, authz.ActionDelete, authz.BucketOwn).Allow {
 		return nil
 	}
 	filter := &qdrant.Filter{Must: []*qdrant.Condition{
@@ -2515,13 +2559,18 @@ func (o ReindexOptions) Validate() error {
 // ReindexResult reports what Reindex did: points scanned from the source,
 // points re-embedded and upserted into the target (0 on a dry run), points
 // skipped because they carried no content to embed, and (resume only) points
-// left unchanged because the target already held them with identical content.
-// On a successful non-dry run, Scanned == Upserted + Skipped + Unchanged.
+// left unchanged because the target already held them with identical content
+// and tags. WouldUpsert is populated only under DryRun: the count of points
+// the same skip predicate would NOT have skipped, had this been a real run
+// (D-14). On a successful real run, Scanned == Upserted + Skipped + Unchanged.
+// On a dry run, Scanned == WouldUpsert + Skipped + Unchanged, and Upserted
+// stays 0 — a dry run never writes.
 type ReindexResult struct {
-	Scanned   uint64
-	Upserted  uint64
-	Skipped   uint64
-	Unchanged uint64
+	Scanned     uint64
+	Upserted    uint64
+	Skipped     uint64
+	Unchanged   uint64
+	WouldUpsert uint64
 }
 
 // reindexBatch is the default scroll page size when ReindexOptions.Batch is 0.
@@ -2638,70 +2687,103 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 		if err != nil {
 			return res, fmt.Errorf("reindex: scroll source: %w", err)
 		}
-		// A dry run only needs the count, so tally the whole page and skip the
-		// per-point embed/upsert path entirely.
-		if opts.DryRun {
-			res.Scanned += uint64(len(pts))
-		} else {
-			// Resume: fetch this batch's ids from the target once so a point already
-			// embedded with identical content (AND a matching stamped identity) can
-			// be skipped (engram-irhg; identity-awareness per Phase 13 SC3 review).
-			// One Get per page keeps the lookup O(pages), not O(points).
-			var targetInfo map[string]reindexTarget
-			if opts.Resume {
+		// Resume: fetch this batch's ids from the target once so a point already
+		// embedded with identical content and tags (AND a matching stamped
+		// identity) can be skipped (engram-irhg; identity-awareness per Phase 13
+		// SC3 review; tag-awareness per #345, D-07..D-12). One Get per page keeps
+		// the lookup O(pages), not O(points). A single per-point skip predicate
+		// backs BOTH the dry-run and the real arm below — duplicating it into a
+		// dry-run-only copy is the failure mode this plan designs out (two
+		// predicates drift, which is exactly the defect class being closed).
+		var targetInfo map[string]reindexTarget
+		if opts.Resume {
+			// Under a real run the target is guaranteed to exist (ensureCollection
+			// already ran above). Under a dry run it may not — CollectionExists
+			// guards the lookup, mirroring the source-existence check's shape, so a
+			// missing target under --dry-run --resume yields an empty map (every
+			// record counted as would-re-embed) rather than an error. Never call
+			// ensureCollection under DryRun; that would cross the write boundary a
+			// dry run promises not to cross.
+			lookup := true
+			if opts.DryRun {
+				lookup, err = s.client.CollectionExists(ctx, opts.Target)
+				if err != nil {
+					return res, fmt.Errorf("reindex: check target %q: %w", opts.Target, err)
+				}
+			}
+			if lookup {
 				targetInfo, err = s.reindexTargetContents(ctx, opts.Target, pts)
 				if err != nil {
 					return res, fmt.Errorf("reindex: resume lookup in %q: %w", opts.Target, err)
 				}
 			}
-			for _, p := range pts {
-				res.Scanned++
-				m := fromPayload(p.Id.GetUuid(), p.Payload)
-				content := m.Content
-				if content == "" {
-					// Nothing to embed — skip rather than write a meaningless vector
-					// for an empty string. Surfaced via ReindexResult.Skipped.
-					res.Skipped++
-					continue
-				}
-				if ti, ok := targetInfo[p.Id.GetUuid()]; ok && ti.content == content &&
-					(opts.Identity == "" || ti.identity == opts.Identity) {
-					// Target already holds this id with identical content — equal
-					// content (and, from the same source payload, equal tags) re-embeds
-					// to an equal vector, so skip the embed+upsert. But only when no
-					// Identity is being enforced, or the target already carries the
-					// matching stamp: a content match with an absent/stale identity
-					// falls through and gets re-embedded+restamped below, so resume
-					// never leaves a record untraceable to its embedder config.
-					res.Unchanged++
-					continue
-				}
-				var vec []float32
-				// Embed content + tags (EmbedText) so a re-embed folds curated tags
-				// into the vector exactly as the store path does.
-				vec, err = embed(ctx, EmbedText(m.Content, m.Tags))
-				if err != nil {
-					return res, fmt.Errorf("reindex: embed point %s: %w", p.Id.GetUuid(), err)
-				}
-				if opts.Identity != "" {
-					// The one intentional additive exception to the verbatim-payload
-					// invariant: a single guarded raw-map key write, never a
-					// Memory/payload() round-trip (see the Reindex doc comment).
-					p.Payload[embedderIdentityKey] = qdrant.NewValueString(opts.Identity)
-				}
-				if _, err = s.client.Upsert(ctx, &qdrant.UpsertPoints{
-					CollectionName: opts.Target,
-					Wait:           qdrant.PtrOf(true),
-					Points: []*qdrant.PointStruct{{
-						Id:      p.Id,
-						Vectors: qdrant.NewVectors(vec...),
-						Payload: p.Payload,
-					}},
-				}); err != nil {
-					return res, fmt.Errorf("reindex: upsert point %s into %q: %w", p.Id.GetUuid(), opts.Target, err)
-				}
-				res.Upserted++
+		}
+		for _, p := range pts {
+			res.Scanned++
+			m := fromPayload(p.Id.GetUuid(), p.Payload)
+			content := m.Content
+			if content == "" {
+				// Nothing to embed — skip rather than write a meaningless vector
+				// for an empty string. Surfaced via ReindexResult.Skipped.
+				res.Skipped++
+				continue
 			}
+			if ti, ok := targetInfo[p.Id.GetUuid()]; ok && ti.content == content &&
+				tagsEqual(ti.tags, m.Tags) &&
+				(opts.Identity == "" || ti.identity == opts.Identity) {
+				// ti is a SNAPSHOT of what the target held at its last write; content
+				// and m.Tags are the source's CURRENT values. The two are
+				// independently mutable — a tags-only edit on the source leaves ti
+				// stale while content still matches, so this is a genuine three-part
+				// equality check, not one part implying another (D-11). EmbedText
+				// folds tags into the embedded text, so a real tags change without a
+				// content change still requires a re-embed to avoid serving a stale
+				// vector (the #345 defect this conjunct closes).
+				//
+				// tagsEqual is deliberately order-independent (D-09): a record whose
+				// tags were only reordered embeds to different text under EmbedText
+				// yet is intentionally treated as unchanged here. Normalizing tag
+				// order at write time would be the root fix and is out of scope.
+				//
+				// Only when no Identity is being enforced, or the target already
+				// carries the matching stamp: a content+tags match with an
+				// absent/stale identity falls through and gets re-embedded+restamped
+				// below, so resume never leaves a record untraceable to its embedder
+				// config.
+				res.Unchanged++
+				continue
+			}
+			if opts.DryRun {
+				// Would be re-embedded on a real run — count it, but never call
+				// embed or write. Upserted stays 0 on every dry run (EDGE 5).
+				res.WouldUpsert++
+				continue
+			}
+			var vec []float32
+			// Embed content + tags (EmbedText) so a re-embed folds curated tags
+			// into the vector exactly as the store path does.
+			vec, err = embed(ctx, EmbedText(m.Content, m.Tags))
+			if err != nil {
+				return res, fmt.Errorf("reindex: embed point %s: %w", p.Id.GetUuid(), err)
+			}
+			if opts.Identity != "" {
+				// The one intentional additive exception to the verbatim-payload
+				// invariant: a single guarded raw-map key write, never a
+				// Memory/payload() round-trip (see the Reindex doc comment).
+				p.Payload[embedderIdentityKey] = qdrant.NewValueString(opts.Identity)
+			}
+			if _, err = s.client.Upsert(ctx, &qdrant.UpsertPoints{
+				CollectionName: opts.Target,
+				Wait:           qdrant.PtrOf(true),
+				Points: []*qdrant.PointStruct{{
+					Id:      p.Id,
+					Vectors: qdrant.NewVectors(vec...),
+					Payload: p.Payload,
+				}},
+			}); err != nil {
+				return res, fmt.Errorf("reindex: upsert point %s into %q: %w", p.Id.GetUuid(), opts.Target, err)
+			}
+			res.Upserted++
 		}
 		// Surface running totals after each scanned page (engram-xddn).
 		if opts.Progress != nil {
@@ -2715,21 +2797,64 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 	return res, nil
 }
 
+// tagsFromPayload decodes the "tags" key out of a raw Qdrant payload map. It is
+// the single tag decoder in this package: fromPayload calls it for the source
+// side and reindexTargetContents calls it for the target side. Both reads MUST
+// go through this one function — an encoding asymmetry between the two sides
+// would surface as permanent false re-embeds, since reindex --resume would
+// never converge (D-08). An absent key and a present-but-empty list both yield
+// the nil zero value; do not pre-initialize the return slice, or every
+// untagged record would re-embed forever under nil-vs-empty comparison.
+func tagsFromPayload(p map[string]*qdrant.Value) []string {
+	var tags []string
+	if v, ok := p["tags"]; ok {
+		if lv := v.GetListValue(); lv != nil {
+			for _, item := range lv.GetValues() {
+				tags = append(tags, item.GetStringValue())
+			}
+		}
+	}
+	return tags
+}
+
+// tagsEqual reports whether a and b hold the same tags, order-independent but
+// multiplicity-preserving: reordering doesn't matter (D-09's deliberate
+// residual — EmbedText joins tags in slice order, so a purely reordered
+// record embeds to different text yet compares equal here), but a tag
+// appearing twice in one slice and once in the other is NOT equal. A set-
+// based comparison would silently collapse duplicates, which content
+// equality's own byte-exact semantics never would. nil and an empty slice
+// compare equal by construction (D-10) — both have length 0.
+func tagsEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	as, bs := slices.Clone(a), slices.Clone(b)
+	sort.Strings(as)
+	sort.Strings(bs)
+	return slices.Equal(as, bs)
+}
+
 // reindexTarget is the per-id resume lookup shape: the target point's content
-// (for the content-equality skip check) and its stamped embedder_identity (a
-// missing key reads as the zero-value "", per fromPayload's convention).
+// and tags (for the content/tags-equality skip check) and its stamped
+// embedder_identity (a missing key reads as the zero-value "", per
+// fromPayload's convention).
 type reindexTarget struct {
 	content  string
+	tags     []string
 	identity string
 }
 
-// reindexTargetContents fetches the content and stamped embedder_identity of
-// the given source points' ids from the target collection, returning id→
-// reindexTarget only for ids that already exist there. It backs Reindex's
-// resume skip: a fresh or partially-populated target simply yields fewer (or
-// no) entries, so a first run skips nothing. The identity is read so the
-// resume skip predicate can be identity-aware (Phase 13 SC3): a content match
-// with a missing/mismatched identity must NOT be treated as unchanged.
+// reindexTargetContents fetches the content, tags, and stamped
+// embedder_identity of the given source points' ids from the target
+// collection, returning id→reindexTarget only for ids that already exist
+// there. It backs Reindex's resume skip: a fresh or partially-populated
+// target simply yields fewer (or no) entries, so a first run skips nothing.
+// Tags are read via tagsFromPayload — the same decoder the source side uses
+// via fromPayload — so the resume tag-equality conjunct can never diverge
+// between the two sides (D-08). The identity is read so the resume skip
+// predicate can be identity-aware (Phase 13 SC3): a content match with a
+// missing/mismatched identity must NOT be treated as unchanged.
 func (s *Store) reindexTargetContents(ctx context.Context, target string, pts []*qdrant.RetrievedPoint) (map[string]reindexTarget, error) {
 	if len(pts) == 0 {
 		return nil, nil
@@ -2751,6 +2876,7 @@ func (s *Store) reindexTargetContents(ctx context.Context, target string, pts []
 	for _, p := range got {
 		out[p.Id.GetUuid()] = reindexTarget{
 			content:  p.Payload["content"].GetStringValue(),
+			tags:     tagsFromPayload(p.Payload),
 			identity: p.Payload[embedderIdentityKey].GetStringValue(),
 		}
 	}

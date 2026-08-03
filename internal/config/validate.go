@@ -69,6 +69,14 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("ENGRAM_EMBED_TIMEOUT %q: must not be negative", c.Embed.Timeout))
 	}
 
+	// memory.max_summary_bytes (D-06a/D-18): a non-negative integer; "0"
+	// disables the bound (validated unconditionally, mirroring
+	// ENGRAM_CONNECT_HEADLESS below — a typo must fail startup, not silently
+	// read as the compiled-in default).
+	if _, err := strconv.ParseUint(c.Memory.MaxSummaryBytes, 10, 64); err != nil {
+		errs = append(errs, fmt.Errorf("ENGRAM_MEMORY_MAX_SUMMARY_BYTES %q: must be a non-negative integer: %w", c.Memory.MaxSummaryBytes, err))
+	}
+
 	switch u, err := url.Parse(c.OpenAI.BaseURL); {
 	case c.OpenAI.BaseURL == "":
 		errs = append(errs, errors.New("ENGRAM_OPENAI_BASE_URL is empty: must be an http(s) URL"))
@@ -200,6 +208,12 @@ func (c *Config) Validate() error {
 
 	if _, err := strconv.ParseBool(c.Usage.Signals); err != nil {
 		errs = append(errs, fmt.Errorf("ENGRAM_USAGE_SIGNALS %q: must be a boolean: %w", c.Usage.Signals, err))
+	}
+
+	// connect.headless (D-10) is validated at load, not only at point of use,
+	// so a typo fails startup rather than silently reading as off.
+	if _, err := strconv.ParseBool(c.Connect.Headless); err != nil {
+		errs = append(errs, fmt.Errorf("ENGRAM_CONNECT_HEADLESS %q: must be a boolean: %w", c.Connect.Headless, err))
 	}
 
 	switch n, err := strconv.ParseUint(c.Summarize.Workers, 10, 64); {

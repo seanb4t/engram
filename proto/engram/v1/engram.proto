@@ -64,6 +64,10 @@ message ListMemoriesRequest {
   string created_before = 9;      // RFC3339; exclusive upper bound on created_at
   string page_token = 10;         // opaque cursor; when set, cursor paging (ignores offset)
   bool cursor_mode = 11;          // opt into cursor paging on the first (tokenless) page; default false = offset-for-UI (ADR engram-1frj). Mutually exclusive with offset>0.
+  // cross_spine spans every scope the caller is authorized to read, ignoring
+  // `scope` entirely when true. `scope` is REQUIRED when this is unset or
+  // false — an empty scope is rejected, never silently treated as "all".
+  bool cross_spine = 12;
 }
 
 message ListMemoriesResponse {
@@ -71,6 +75,15 @@ message ListMemoriesResponse {
   uint64 total = 2;
   bool approximate = 3 [deprecated = true]; // always false since totals are now exact (Count)
   string next_page_token = 4;               // empty when no further pages (cursor paging)
+  // searched_scopes names the scopes the caller is AUTHORIZED to read — the
+  // span a cross_spine query covered — NOT the scopes that produced hits.
+  // Present only when the request set cross_spine=true; absent (proto3
+  // default) on a scope-confined response.
+  repeated string searched_scopes = 5;
+  // scopes_truncated is true when the searched_scopes enumeration hit its
+  // bounded-sample ceiling, so the list may be incomplete. Present only
+  // alongside searched_scopes on a cross_spine response.
+  bool scopes_truncated = 6;
 }
 
 message SearchMemoriesRequest {
@@ -82,8 +95,23 @@ message SearchMemoriesRequest {
   string created_after = 6;  // RFC3339; inclusive lower bound on created_at
   string created_before = 7; // RFC3339; exclusive upper bound on created_at
   repeated string categories = 8; // empty = all categories; non-empty = records in ANY listed category (OR)
+  // cross_spine spans every scope the caller is authorized to read, ignoring
+  // `scope` entirely when true. `scope` is REQUIRED when this is unset or
+  // false — an empty scope is rejected, never silently treated as "all".
+  bool cross_spine = 9;
 }
-message SearchMemoriesResponse { repeated Memory memories = 1; }
+message SearchMemoriesResponse {
+  repeated Memory memories = 1;
+  // searched_scopes names the scopes the caller is AUTHORIZED to read — the
+  // span a cross_spine query covered — NOT the scopes that produced hits.
+  // Present only when the request set cross_spine=true; absent (proto3
+  // default) on a scope-confined response.
+  repeated string searched_scopes = 2;
+  // scopes_truncated is true when the searched_scopes enumeration hit its
+  // bounded-sample ceiling, so the list may be incomplete. Present only
+  // alongside searched_scopes on a cross_spine response.
+  bool scopes_truncated = 3;
+}
 
 message GetMemoryRequest { string id = 1; }
 message GetMemoryResponse { Memory memory = 1; }

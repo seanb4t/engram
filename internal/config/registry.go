@@ -34,6 +34,10 @@ var registry = []field{
 	{Key: "embed.document_params", Env: "ENGRAM_EMBED_DOCUMENT_PARAMS"},
 	{Key: "embed.document_instruction", Env: "ENGRAM_EMBED_DOCUMENT_INSTRUCTION"},
 	{Key: "embed.timeout", Env: "ENGRAM_EMBED_TIMEOUT", Default: "30s"},
+	// memory.max_summary_bytes (D-06a/D-18): a brand-new key, no Legacy value —
+	// the bound did not exist before this phase, so there is nothing retired to
+	// guard against.
+	{Key: "memory.max_summary_bytes", Env: "ENGRAM_MEMORY_MAX_SUMMARY_BYTES", Default: "512"},
 	{Key: "summarize.model", Env: "ENGRAM_SUMMARY_MODEL"},
 	{Key: "summarize.max_chars", Env: "ENGRAM_SUMMARY_MAX_CHARS", Default: "280"},
 	{Key: "summarize.max_tokens", Env: "ENGRAM_SUMMARY_MAX_TOKENS", Default: "1024"},
@@ -45,6 +49,7 @@ var registry = []field{
 	{Key: "openai.api_key", Env: "ENGRAM_OPENAI_API_KEY", Legacy: "MEM_LITELLM_KEY"},
 	{Key: "openai.embeddings_url", Env: "ENGRAM_OPENAI_EMBEDDINGS_URL"},
 	{Key: "openai.chat_base_url", Env: "ENGRAM_OPENAI_CHAT_BASE_URL"},
+	{Key: "openai.chat_api_key", Env: "ENGRAM_OPENAI_CHAT_API_KEY"},
 	{Key: "oidc.issuer", Env: "ENGRAM_OIDC_ISSUER", Legacy: "MEM_OIDC_ISSUER", Flag: "oidc-issuer"},
 	{Key: "oidc.audience", Env: "ENGRAM_OIDC_AUDIENCE", Legacy: "MEM_OIDC_AUDIENCE", Flag: "oidc-audience"},
 	{Key: "oidc.client_id", Env: "ENGRAM_OIDC_CLIENT_ID", Legacy: "MEM_OIDC_CLIENT_ID", Flag: "oidc-client-id"},
@@ -64,6 +69,12 @@ var registry = []field{
 	{Key: "ui.issuer", Env: "ENGRAM_UI_ISSUER", Legacy: "MEM_UI_ISSUER", Flag: "ui-issuer"},
 	{Key: "ui.redirect_url", Env: "ENGRAM_UI_REDIRECT_URL", Legacy: "MEM_UI_REDIRECT_URL", Flag: "ui-redirect-url"},
 	{Key: "ui.cookie_key", Env: "ENGRAM_UI_COOKIE_KEY", Legacy: "MEM_UI_COOKIE_KEY", Flag: "ui-cookie-key"},
+	// This entry names the MODE (headless operation), not the surface (D-10):
+	// an "enabled" name would invite the misreading that turning it off
+	// unmounts Connect even when the UI is on, which is not what it does. It
+	// defaults off independently of every ui.* and service_auth.* key below.
+	// No Legacy value: this is a brand-new var.
+	{Key: "connect.headless", Env: "ENGRAM_CONNECT_HEADLESS", Flag: "connect-headless", Default: "false"},
 	{Key: "log.level", Env: "ENGRAM_LOG_LEVEL", Legacy: "MEM_LOG_LEVEL", Default: "info"},
 	{Key: "log.format", Env: "ENGRAM_LOG_FORMAT", Legacy: "MEM_LOG_FORMAT", Default: "json"},
 	{Key: "log.stdout", Env: "ENGRAM_LOG_STDOUT", Legacy: "MEM_LOG_STDOUT", Default: "true"},

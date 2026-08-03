@@ -1,6 +1,6 @@
 ---
 name: curating-memory
-description: Use when storing or updating durable project memory via the engram MCP tools — enforces the engram-vs-beads routing gate (engram is preferred over `bd remember`/`bd memories` for durable facts), durable-only capture, search-before-store, supersede-on-contradiction, and the two-tier spine/overlay scope. Trigger when the user states a durable decision/preference/convention/gotcha, when the user explicitly asks to remember something (including a time-bound reminder, due date, or "not before"/expiry — even if it looks task-shaped), whenever you are about to record a durable fact and the repo also has a beads memory store (prefer engram; do not write it to `bd remember`), on the session-start recall and capture nudges, whenever a durable fact you are about to store contradicts or corrects one already in the store (supersede it, do not overwrite it), and before any mcp__engram__store_memory / schedule_memory / supersede_memory / update_memory / delete_memory call.
+description: Use when storing or updating durable project memory via the engram MCP tools — enforces the engram-vs-beads routing gate (engram is preferred over `bd remember`/`bd memories` for durable facts), durable-only capture, search-before-store, supersede-on-contradiction, and the two-tier spine/overlay scope. Trigger when the user states a durable decision/preference/convention/gotcha, when the user explicitly asks to remember something (including a time-bound reminder, due date, or "not before"/expiry — even if it looks task-shaped), whenever you are about to record a durable fact and the repo also has a beads memory store (prefer engram; do not write it to `bd remember`), on the session-start recall and capture nudges, whenever a durable fact you are about to store contradicts or corrects one already in the store (supersede it, do not overwrite it), and before any mcp__engram__store_memory / schedule_memory / supersede_memory / update_memory / delete_memory / store_rule / list_rules call, when a fact you are about to store is phrased as a MUST / NEVER / ALWAYS constraint on future behavior (propose a rule, never promote one), and when a footgun the store already records is hit again.
 ---
 
 # Curating Memory
@@ -48,12 +48,204 @@ keys, timestamps, one-off tool output, or anything trivially re-derivable.
 
 A **rule** is normative ground truth for the repo/project — a MUST-follow
 constraint, always shared, stored via `store_rule` in a `rule:repo:*` /
-`rule:project:*` scope. Store a rule **only on explicit user instruction**: if
-you believe something should be a rule, propose it to the user and let them
-bless it — never promote one unilaterally. A rule's `summary` is a single line
-(the session-start index entry). This complements — it does not replace — the
+`rule:project:*` scope. Store a rule **only on explicit user instruction** —
+never promote one unilaterally. A rule's `summary` is a single line (the
+session-start index entry). This complements — it does not replace — the
 decision / preference / convention / gotcha routing above; a rule is the
 narrower, user-blessed, normative case.
+
+### Proposing a rule
+
+Offer a rule the moment you notice a candidate. Proposing is not promoting —
+the user still decides.
+
+Either of two triggers is sufficient:
+
+- **Repeat-hit on a footgun.** The `search_memory` call you already make
+  before every store surfaces an existing record describing the same problem
+  you have just hit again. The store knew, and knowing did not prevent the
+  hit — that gap is what a rule closes. This trigger costs nothing new: the
+  search-before-store step already runs and already returns the record.
+- **Normative phrasing at capture time.** The `content` of the record you are
+  about to write via `store_memory` or `schedule_memory` is phrased as a
+  constraint on future behavior — MUST, MUST NOT, NEVER, ALWAYS, or a bare
+  imperative with no exception. It is already a constraint; the only open
+  question is whether it should be normative ground truth rather than a
+  `gotcha`. Scope this to the record's own content, at the moment you are
+  about to write it — not to conversation, to text you are quoting, or to a
+  requirement you are restating. A trigger that fires on every MUST-shaped
+  sentence in a session is the nag that gets the whole mechanism turned off.
+
+Propose inline, at the moment the trigger fires — never batched to a
+session-end sweep. The case for a candidate is strongest while the context
+that produced it is live.
+
+1. Say what you noticed and why it reads as normative. One or two sentences.
+   This is a note, not a pitch.
+2. Show the exact one-line `summary` you would store as the index entry, and
+   the scope you would store it in (`rule:repo:*` for a repo constraint,
+   `rule:project:*` for one that spans repos). Showing the actual index line
+   is what lets the user judge it in one read.
+3. Ask once, then stop. Do not re-ask within the session, do not restate the
+   case after a no, and do not attach the proposal to an unrelated interrupt.
+   **A user who has to argue you down will disable the trigger, and then the
+   store gets nothing.**
+4. On yes, call `store_rule` and cite the resulting `short_id`. On no, record
+   the decline as below, then carry on with the `store_memory` you were about
+   to make — the fact is still worth keeping as a `gotcha` or `convention`,
+   it just is not normative ground truth.
+
+On a decline, store an ordinary memory with `category: decision`, tag
+`rule-declined`, `source: user-said`, in the spine scope. Its content states
+three things: what was proposed as a rule, that the user declined **rule
+status** for it and when, and that the underlying fact remains true and stays
+where it is. This is `decision`, not `gotcha` — a decline filed as a gotcha
+would be re-enumerated by the one-time backfill sweep and re-proposed, which
+is exactly the nag this record exists to prevent.
+
+Before proposing, check whether the `search_memory` you already ran surfaced
+a record tagged `rule-declined` covering this concern — if it did, do not
+propose it again. Mention it only if the user's own words reopen the
+question. This is a check, not a block: a user whose tolerance has changed
+can still be met, but the default is silence.
+
+A proposal that fires too often is the failure mode this whole mechanism
+lives or dies by. Do not propose when: the fact is scoped to one file or one
+session, not normative; the candidate was already declined; you have already
+made one proposal this turn; or you cannot state the constraint as a single
+index line, which means you do not yet understand it well enough to propose
+it.
+
+This adds a narrower test on top of the routing and junk-taxonomy sections
+above; it does not replace them.
+
+### Rule hygiene
+
+A rotted rule is worse than a rotted memory: rules are MUST-follow, so a wrong
+one does not merely sit there being incorrect — it misdirects every later
+session that reads the index and acts on it.
+
+**When to run these checks.** Not every session — that turns hygiene into a
+tax nobody pays. Three moments are enough: when you are about to bless a new
+rule (the one point where comparing it against the existing set is directly
+useful); when `list_rules` returns its curation-smell advisory; and at
+milestone completion, alongside the memory-curation pass rule `7smp8vy9hr`
+already establishes for that moment — its procedure extracts reusable facts
+embedded in per-phase lifecycle records first, writes one authoritative
+milestone summary, and only then deletes the collapsed per-phase records,
+never touching reusable codebase facts. Rule hygiene rides that same pass
+rather than inventing a separate cadence: while curating memories at
+milestone completion, also run the duplicate/contradiction/rot checks below
+against the rule set.
+
+**Price the index honestly (D-11).** Session start loads only the compact
+`ruleView` — `short_id`, `summary`, `tags`, `scope`, `created_at` — and it
+carries no `content`. That split changes what each check can do from the
+index alone:
+
+- **Duplicates.** Catchable from summaries alone — a duplicate rule usually
+  has a near-duplicate index line. Free; do it while reading the index you
+  already have.
+- **Contradictions.** Not catchable from summaries. Two rules can carry
+  near-identical summaries and opposite content, or unrelated summaries and
+  directly conflicting content. A real check needs full text.
+- **Rot.** The constraint a rule names no longer exists — the path, command,
+  tool, or workflow it constrains is gone or has changed. `created_at` is the
+  cheap aging signal; the check itself runs against the current tree, not
+  against the index.
+
+Price the full-text read exactly: it is **one `list_rules` call with
+`full: true`**, which returns the whole set in a single response — not a
+`get_memory` per rule. The cost scales with total rule bytes, not with a
+round trip per rule. At the three rules this repo has today it is free; at
+fifty the response is large enough to be worth gating. Gate it behind the
+moments named above and nothing else — an unconditional full-text read every
+session is the habit this pricing exists to prevent.
+
+`list_rules` also returns a curation-smell advisory when a scope holds more
+than 50 rules (`ruleThreshold`, pinned by
+`TestListRulesHandlerCurationAdvisory`). It is a **volume signal only** — it
+says nothing about duplication or contradiction, and it cannot fire below 51
+rules in a scope, so it will never fire at this repo's current scale. Treat
+it as one input, never as the discipline.
+
+**Correcting a rule.** Rules do not correct like memories —
+`supersede_memory` is rejected for them (see Supersession, below). Which tool
+applies depends on what actually changed:
+
+| Situation | Tool | Why |
+|-----------|------|-----|
+| Same constraint, better wording — a clearer index line, an added caveat, a tag fix | `update_memory` | in-place refinement; the `short_id` and index entry survive. The only two guards that apply to a rule: the summary must stay a valid single-line index entry, and `shared: false` is rejected. |
+| A full rewrite of the rule text against the same constraint | `store_rule` with `id` set to the existing UUID or `short_id` | an ownership-checked in-place replace that carries the existing `short_id` forward, so anything citing that handle still resolves |
+| The constraint is wrong, reversed, or rotted — the rule should stop existing | propose `delete_memory`, then `store_rule` fresh if a corrected rule should stand in its place | rules cannot be superseded, so there is no correcting-record path; this is the only delete-then-re-store case |
+| Make a rule private | none — `set_visibility` and `update_memory` with `shared: false` both reject it | rules are always shared; delete instead |
+
+**Deleting a rule is user-blessed, symmetrically with creating one (D-10).**
+Nothing in the server stops you — `delete_memory` has no rule guard, unlike
+`set_visibility` and `supersede_memory`, which reject rules outright. Propose
+the removal, name the rule's `short_id` and the specific reason it should go,
+and call `delete_memory` only after the user has explicitly blessed it — this
+instruction is the only gate there is, so never perform it on your own
+judgment.
+
+**No history survives a rule deletion.** `supersede_memory` is rejected for
+rules, so unlike a corrected memory there is no "what we used to believe and
+when it changed" trail. If the old text matters, quote it in the proposal
+before deleting — after the delete it is gone.
+
+**Disposition vocabulary.** Keep (no issue). Merge (a duplicate — refine the
+survivor via `update_memory`, propose deleting the other). Flag (a
+contradiction — surface both `short_id`s and let the user resolve; never pick
+a winner yourself). Retire (rot — propose deletion, quoting the old text
+first). Every disposition that removes anything terminates in a user
+decision.
+
+### One-time rule backfill sweep
+
+Rules only started being proposed when the trigger above shipped, so the
+store already holds facts that read as normative and were filed as ordinary
+memories before it existed. This sweep surfaces them once so each can be
+blessed or declined. It runs **only when the user asks for it**, once per
+repo — the inline trigger above covers everything after it, and re-running
+this on a cadence is the nag the decline record exists to prevent.
+
+1. **Confirm the scopes.** The spine (`Memory spine scope` from session
+   start) is where the candidates live; the `rule:repo:*` scope is where a
+   blessed rule goes. If engram returns 401 or 403 the server is
+   unauthenticated — tell the user to authenticate via `/mcp` and stop. Store
+   nothing and delete nothing on an auth failure.
+2. **Enumerate the candidates.** Call `list_memory` on the spine with
+   `categories` set to `gotcha` and `full` set to `true` — the compact view
+   returns summaries, and the normative-phrasing test needs the record's own
+   content. Page with `cursor` until `next_cursor` comes back empty. **Skip
+   any record tagged `rule-declined`**: those are records of a past decline,
+   not candidates, and re-proposing them is exactly what that tag exists to
+   prevent. Consider `convention` records too if the user asks for a wider
+   pass, but default to `gotcha`.
+3. **Apply the test.** Use the same normative-phrasing test `### Proposing a
+   rule` defines — do not write a second heuristic here and do not loosen
+   it, or the sweep and the inline trigger will drift apart.
+4. **Decide per candidate**, running the proposal protocol from `### Proposing
+   a rule` unchanged:
+   - **Bless.** The user says yes. Call `store_rule` and cite the new
+     `short_id`. Then ask a *separate* question about the source record:
+     delete it as now-redundant, or keep it for context the one-line rule
+     does not carry. That deletion is its own user decision — never fold it
+     into the rule proposal, and never perform it because the bless implied
+     it.
+   - **Decline.** The user says no. Store the decline record exactly as
+     `### Proposing a rule` specifies (`category: decision`, tag
+     `rule-declined`). Leave the source record untouched — a decline is
+     about rule status, not about the fact.
+5. **Report a summary.** Each candidate's `short_id` and its outcome —
+   blessed with the new rule's `short_id`, declined with the decline
+   record's `short_id`, or skipped and why — plus which source records were
+   deleted. Cite `short_id`s throughout.
+
+The sweep proposes, it never promotes: a sweep of twenty candidates is twenty
+proposals and twenty user answers, not one approval applied twenty times. If
+that is too many, stop and ask the user how they want to narrow it — do not
+batch the consent.
 
 ## Tagging
 
@@ -77,6 +269,52 @@ distinction already covered by `category`, a transient-vs-durable marker) — no
 to rebuild a folksonomy the embedder already handles. Prefer a handful of stable,
 low-cardinality tags over an ever-growing taxonomy; when in doubt, rely on
 content + semantic search and leave the record untagged.
+
+## Cross-spine recall
+
+`search_memory` and `list_memory` accept `cross_spine` (bool) to span every
+scope you can read; it ignores any `scope` you also supply. The response
+reports `searched_scopes` and `scopes_truncated`, which name the scopes
+searched under your authorization — not the scopes that had results.
+
+### When not to use cross-spine
+
+Cross-spine is an opt-in widening, and the failure mode of an opt-in widening
+is setting it on every call. Don't. The default is scope-confined, and it
+should stay that way for ordinary work: a session-start bootstrap, a recall
+about the repo you're in, or anything where the two-tier spine/overlay scope
+you already know is the right scope. Reach for `cross_spine` only when the
+thing you're looking for might live somewhere you're not — a decision made in
+another repo, a convention that spans projects, a memory whose scope you
+genuinely don't know.
+
+Two costs come with it. A broader result set dilutes ranking, so a
+cross-spine search can rank a distant match above a local one. And a
+cross-spine call adds a second bounded scan of your readable set to
+enumerate the scopes it searched. Neither is free — reach for `cross_spine`
+because you need it, not by default.
+
+## Reading a rejection
+
+A rejected call names the field that failed and a machine-stable hint code in one
+envelope: `field=<name> hint=<code>: <human text>`. Branch on `field` and `hint`, not
+on the wording after the colon — the wording is not a contract and changed in this
+very release. Full vocabulary: [`reference/errors.md`](/reference/errors/); do not
+duplicate the table here.
+
+The two or three retry patterns that come up in practice:
+
+- **`hint=too_long` on `summary`** — shorten the summary and resend just that field's
+  worth of change; do not reconstruct or resend the whole record.
+- **`hint=required`** — the field was absent, not malformed. Add it; nothing else about
+  the call was wrong.
+- **`hint=mutually_exclusive`** — the error names *two* fields under `field=`. The pair is
+  wrong together, not either one alone — don't guess which one to drop without reading both
+  names.
+- **`hint=ordering`** — read `field=`, which names *one or two* fields. Two means they are
+  misordered relative to each other. One means it is misordered relative to a fixed
+  reference, not to another argument you sent (`not_after` must be in the future) — so no
+  change to a second field will fix it.
 
 ## Discipline
 
@@ -213,6 +451,11 @@ on it only as orientation. Changing a memory's content while a caller-authored
 summary (`summary_source=client`) is present requires you to address it:
 re-send it (unchanged), update it (revised summary), or clear it (send empty
 `summary`) — otherwise the update is rejected.
+
+A `summary` is bounded — 512 bytes by default (`ENGRAM_MEMORY_MAX_SUMMARY_BYTES`)
+— so a paragraph-shaped summary that used to be silently accepted is now rejected
+with `field=summary hint=too_long`; keep it a short caveat-bearing digest, not a
+second copy of the content.
 
 ## Tools and auth
 

@@ -10,6 +10,8 @@ import (
 
 	"connectrpc.com/connect"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
+
+	"github.com/seanb4t/engram/internal/auth"
 )
 
 func TestSubjectFromConnectContext(t *testing.T) {
@@ -39,8 +41,8 @@ func TestNewConnectSubjectInterceptor_ErrorPath(t *testing.T) {
 			return nil, nil
 		})
 
-		interceptor := newConnectSubjectInterceptor(func(_ context.Context, _ connect.AnyRequest) (*mcpauth.TokenInfo, error) {
-			return nil, resolveErr
+		interceptor := newConnectSubjectInterceptor(func(_ context.Context, _ connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error) {
+			return nil, auth.LaneUnknown, resolveErr
 		})
 		handler := interceptor(next)
 
@@ -65,8 +67,8 @@ func TestNewConnectSubjectInterceptor_ErrorPath(t *testing.T) {
 			return nil, nil
 		})
 
-		interceptor := newConnectSubjectInterceptor(func(_ context.Context, _ connect.AnyRequest) (*mcpauth.TokenInfo, error) {
-			return nil, nil // success: anonymous / no-issuer path
+		interceptor := newConnectSubjectInterceptor(func(_ context.Context, _ connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error) {
+			return nil, auth.LaneCookie, nil // success: anonymous / no-issuer path
 		})
 		handler := interceptor(next)
 

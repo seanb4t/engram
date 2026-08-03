@@ -4,6 +4,7 @@
 package store
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -90,12 +91,12 @@ func BenchmarkSearchFilter(b *testing.B) {
 	now := time.Date(2026, 6, 24, 12, 0, 0, 0, time.UTC)
 	tags := []string{"qdrant", "store"}
 	const scope = "repo:github.com/seanb4t/engram"
-	if len(s.ownerScopeFilter(scope, subj).Must) == 0 {
+	if len(s.ownerScopeFilter(context.Background(), scope, subj).Must) == 0 {
 		b.Fatal("fixture produced empty filter")
 	}
 	b.ReportAllocs()
 	for b.Loop() {
-		f := s.ownerScopeFilter(scope, subj)
+		f := s.ownerScopeFilter(context.Background(), scope, subj)
 		f.Must = append(f.Must, activeWindowConditions(now)...)
 		f.Must = append(f.Must, tagMatchConditions(tags)...)
 	}

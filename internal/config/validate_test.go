@@ -14,9 +14,11 @@ func validConfig() *Config {
 	return &Config{
 		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "mem_eval"},
 		Embed:     EmbedConfig{Model: "ollama/bge-m3", Dim: "1024", Timeout: "30s"},
+		Memory:    MemoryConfig{MaxSummaryBytes: "512"},
 		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
 		Summarize: SummarizeConfig{OnWrite: "false", Workers: "2", QueueSize: "256"},
 		Usage:     UsageConfig{Signals: "true"},
+		Connect:   ConnectConfig{Headless: "false"},
 	}
 }
 

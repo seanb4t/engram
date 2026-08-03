@@ -155,3 +155,94 @@ func TestSummarizerFromConfigChatBaseURL(t *testing.T) {
 		}
 	})
 }
+
+// TestSummarizerFromConfigChatAPIKey pins D-01/D-02/D-03: the summarizer
+// sends ENGRAM_OPENAI_CHAT_API_KEY (when configured) as the Authorization
+// header on the chat gateway, while the embedder keeps sending the shared
+// ENGRAM_OPENAI_API_KEY regardless; and when the chat key is unset, the
+// summarizer falls back to the shared key. srvA stands in for the
+// shared/embeddings gateway (it can also serve chat completions, mirroring a
+// real shared LiteLLM-style gateway); srvB stands in for a distinct hosted
+// chat gateway.
+func TestSummarizerFromConfigChatAPIKey(t *testing.T) {
+	var aAuth, bAuth string
+	srvA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		aAuth = r.Header.Get("Authorization")
+		if strings.Contains(r.URL.Path, "chat/completions") {
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"embedding": []float32{0.1}}},
+		})
+	}))
+	defer srvA.Close()
+	srvB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer srvB.Close()
+
+	t.Run("chat key set routes the chat credential to the chat gateway", func(t *testing.T) {
+		aAuth, bAuth = "", ""
+		cfg := &config.Config{
+			OpenAI:    config.OpenAIConfig{BaseURL: srvA.URL, ChatBaseURL: srvB.URL + "/v1", APIKey: "shared-key", ChatAPIKey: "chat-key"},
+			Embed:     config.EmbedConfig{Model: "m"},
+			Summarize: config.SummarizeConfig{Model: "m"},
+		}
+
+		em, err := embedderFromConfig(cfg)
+		if err != nil {
+			t.Fatalf("embedderFromConfig: %v", err)
+		}
+		if _, err := em.Embed(context.Background(), "x"); err != nil {
+			t.Fatalf("Embed: %v", err)
+		}
+		if aAuth != "Bearer shared-key" {
+			t.Errorf("embed request Authorization = %q, want Bearer shared-key", aAuth)
+		}
+
+		sm := summarizerFromConfig(cfg)
+		if _, err := sm.Summarize(context.Background(), "x"); err != nil {
+			t.Fatalf("Summarize: %v", err)
+		}
+		if bAuth != "Bearer chat-key" {
+			t.Errorf("summarize request Authorization = %q, want Bearer chat-key", bAuth)
+		}
+	})
+
+	t.Run("chat key empty falls back to the shared key", func(t *testing.T) {
+		aAuth, bAuth = "", ""
+		cfg := &config.Config{
+			OpenAI:    config.OpenAIConfig{BaseURL: srvA.URL, APIKey: "shared-key"},
+			Summarize: config.SummarizeConfig{Model: "m"},
+		}
+
+		sm := summarizerFromConfig(cfg)
+		if _, err := sm.Summarize(context.Background(), "x"); err != nil {
+			t.Fatalf("Summarize: %v", err)
+		}
+		if aAuth != "Bearer shared-key" {
+			t.Errorf("summarize request Authorization = %q, want Bearer shared-key", aAuth)
+		}
+		if bAuth != "" {
+			t.Errorf("summarize request unexpectedly reached the chat-only server: Authorization=%q", bAuth)
+		}
+	})
+
+	t.Run("chat key set with no chat base URL still overrides the credential on the shared gateway", func(t *testing.T) {
+		aAuth, bAuth = "", ""
+		cfg := &config.Config{
+			OpenAI:    config.OpenAIConfig{BaseURL: srvA.URL, APIKey: "shared-key", ChatAPIKey: "chat-key"},
+			Summarize: config.SummarizeConfig{Model: "m"},
+		}
+
+		sm := summarizerFromConfig(cfg)
+		if _, err := sm.Summarize(context.Background(), "x"); err != nil {
+			t.Fatalf("Summarize: %v", err)
+		}
+		if aAuth != "Bearer chat-key" {
+			t.Errorf("summarize request Authorization = %q, want Bearer chat-key", aAuth)
+		}
+	})
+}

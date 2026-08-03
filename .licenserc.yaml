@@ -44,6 +44,19 @@ header:
     - "docs-site/**"
     - "skill/**/SKILL.md"
     - "skill/**/commands/*.md"
+    # GSD planning artifacts. Already out of scope by omission from `paths`
+    # above, but listed explicitly because the consequence of a leading SPDX
+    # comment here is silent and destructive rather than cosmetic: gsd-tools
+    # parses YAML frontmatter and requires `---` on LINE 1. A header above it
+    # makes the frontmatter unreadable, so `verification.status` reports
+    # "missing" on a VERIFICATION.md that actually PASSED — and execute-phase
+    # routes on that, re-dispatching a completed phase. It also silently
+    # degrades uat.classify-coverage to mode=legacy, dropping every
+    # auto-covered deliverable and manufacturing bogus UAT checkpoints.
+    # Both were observed live on 2026-08-02 (fixes ad8650cb, 797ea24f).
+    # Same class as the skill/**/SKILL.md carve-out below: frontmatter owns
+    # line 1. repo LICENSE covers provenance for everything under .planning/.
+    - ".planning/**"
     # ADR markdown is render-generated from its bd decision record (source of
     # truth = bd; "do not edit manually"), so an SPDX comment would be clobbered
     # on every re-render. repo LICENSE + the bd record cover provenance.

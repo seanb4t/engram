@@ -267,6 +267,9 @@ func validConfigForServiceAuthTests() *Config {
 			Dim:     "1024",
 			Timeout: "30s",
 		},
+		Memory: MemoryConfig{
+			MaxSummaryBytes: "512",
+		},
 		OpenAI: OpenAIConfig{
 			BaseURL: "http://localhost:4000",
 		},
@@ -277,6 +280,9 @@ func validConfigForServiceAuthTests() *Config {
 		},
 		Usage: UsageConfig{
 			Signals: "true",
+		},
+		Connect: ConnectConfig{
+			Headless: "false",
 		},
 	}
 }

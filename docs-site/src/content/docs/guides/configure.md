@@ -31,9 +31,22 @@ Source: `internal/server/tools.go` (`StoreAndEmbedderFromEnvNoEnsure`).
 | `ENGRAM_OPENAI_BASE_URL` | — | `http://localhost:4000` | OpenAI-compatible embeddings endpoint — point it at any backend that speaks the OpenAI `/v1/embeddings` API (e.g. Ollama, vLLM, TEI, LiteLLM, OpenAI) |
 | `ENGRAM_OPENAI_API_KEY` | — | _(empty)_ | API key for the embeddings endpoint |
 | `ENGRAM_EMBED_MODEL` | — | `ollama/bge-m3` | Model name forwarded to the endpoint |
-| `ENGRAM_OPENAI_CHAT_BASE_URL` | — | _(empty)_ | Base URL for the chat/summarize lane only — the embedder always uses `ENGRAM_OPENAI_BASE_URL` regardless of this setting. Empty means the summarizer **inherits** `ENGRAM_OPENAI_BASE_URL`. Validated only when set: a malformed or non-HTTP(S) value fails startup; empty is always valid. See [Auto-summary](#auto-summary) below for the URL-shape rule and the shared-API-key constraint. |
+| `ENGRAM_OPENAI_CHAT_BASE_URL` | — | _(empty)_ | Base URL for the chat/summarize lane only — the embedder always uses `ENGRAM_OPENAI_BASE_URL` regardless of this setting. Empty means the summarizer **inherits** `ENGRAM_OPENAI_BASE_URL`. Validated only when set: a malformed or non-HTTP(S) value fails startup; empty is always valid. See [Auto-summary](#auto-summary) below for the URL-shape rule and the per-lane credential behavior. |
+| `ENGRAM_OPENAI_CHAT_API_KEY` | — | _(empty)_ | API key for the chat/summarize lane only — the embedder always uses `ENGRAM_OPENAI_API_KEY` regardless of this setting. Empty means the summarizer **inherits** `ENGRAM_OPENAI_API_KEY`. Never validated at startup: unlike a base URL, an API key has no verifiable shape and empty is meaningful (inherit), so a wrong key fails at the provider rather than at boot. See [Auto-summary](#auto-summary) below for the per-lane credential behavior. |
 
 Source: `internal/config` (registry) + `internal/server/tools.go` (`embedderFromConfig`).
+
+## Memory
+
+| Environment variable | Default | Description |
+|----------------------|---------|-------------|
+| `ENGRAM_MEMORY_MAX_SUMMARY_BYTES` | `512` | Max byte length of a memory `summary` on `store_memory`/`schedule_memory`/`supersede_memory`/`update_memory`. A caller-supplied summary over this bound is rejected (`field=summary hint=too_long`) rather than silently truncated. `0` disables the bound. |
+
+This is separate from `ENGRAM_SUMMARY_MAX_CHARS` below: this bound is enforced at write
+time against a **caller-authored** summary; `ENGRAM_SUMMARY_MAX_CHARS` caps the length of a
+**server-generated** one.
+
+Source: `internal/config` (registry) + `internal/server/tools.go` (`maxMemorySummaryBytes`, `validateStoreArgs`/`validateUpdateArgs`).
 
 ## Auto-summary
 
@@ -49,16 +62,22 @@ server) with summaries at `https://api.openai.com/v1`. Empty
 `ENGRAM_SUMMARY_MODEL` disables auto-summary entirely, and recall returns only
 client-authored summaries.
 
-**The API key is shared across both lanes.** `ENGRAM_OPENAI_API_KEY` is sent
-with every request on *both* the embedder and the chat/summarize lane — there
-is no separate key for `ENGRAM_OPENAI_CHAT_BASE_URL`. This is safe for the
-local-embedder-plus-hosted-chat split above because local embedding servers
-(Ollama, TEI, vLLM) simply ignore an `Authorization` header they don't expect.
-It is worth knowing about *before* you point the chat lane at a hosted
-gateway, though: your embedding API key travels to that host too. If you need
-distinct credentials per lane, that split is not supported this milestone —
-being explicit here is meant to save you from discovering the shared-key
-constraint by debugging an unexpected 401 on the chat lane.
+**Each lane can carry its own API key.** `ENGRAM_OPENAI_API_KEY` is always the
+embedder's credential. The chat/summarize lane can carry its own via
+`ENGRAM_OPENAI_CHAT_API_KEY`; leaving it empty means the chat lane
+**inherits** the embedder's key and sends it to whatever
+`ENGRAM_OPENAI_CHAT_BASE_URL` resolves to. That inherit-by-default behavior is
+safe for the local-embedder-plus-hosted-chat split above, because local
+embedding servers (Ollama, TEI, vLLM) simply ignore an `Authorization` header
+they don't expect. It is worth knowing about *before* you point the chat lane
+at a hosted gateway, though: leaving `ENGRAM_OPENAI_CHAT_API_KEY` unset while
+setting `ENGRAM_OPENAI_CHAT_BASE_URL` sends your embedding API key to that
+gateway too. Set `ENGRAM_OPENAI_CHAT_API_KEY` to opt out and give the chat
+lane a credential of its own.
+
+In a Helm deployment, set `memory.summarize.chatApiKeySecret` to render
+`ENGRAM_OPENAI_CHAT_API_KEY` into the pod spec as a `secretKeyRef` (unset
+omits it, matching the inherit-by-default behavior above).
 
 **URL shape matters.** Supply the provider's full OpenAI-compatible root,
 including its `/v1` suffix (or `/v1beta/openai` for Gemini-compatible
@@ -76,9 +95,11 @@ gateways), and engram appends the chat-completions path directly — e.g.
 | `ENGRAM_SUMMARY_MODEL` | — | _(empty)_ | Chat model for auto-summary; empty disables auto-summary |
 | `ENGRAM_SUMMARY_MAX_CHARS` | — | `280` | Max generated-summary length (also the recall-truncation cap) |
 
-(`ENGRAM_OPENAI_CHAT_BASE_URL` is documented in [Embedder](#embedder) above,
-alongside `ENGRAM_OPENAI_BASE_URL` — this section explains the effect it has
-on the chat/summarize lane specifically.)
+(`ENGRAM_OPENAI_CHAT_BASE_URL` and `ENGRAM_OPENAI_CHAT_API_KEY` are documented
+in [Embedder](#embedder) above, alongside `ENGRAM_OPENAI_BASE_URL` and
+`ENGRAM_OPENAI_API_KEY` — this section explains the per-lane credential
+behavior and the effect the base URL has on the chat/summarize lane
+specifically.)
 
 In a Helm deployment, set `memory.summarize.chatBaseURL` to render this
 variable into the pod spec (unset omits it, matching the inherit-by-default
@@ -120,7 +141,7 @@ Setting `ENGRAM_OIDC_ISSUER` enables bearer-token enforcement (JWKS signature + 
 | `ENGRAM_OIDC_RESOURCE_METADATA` | `--oidc-resource-metadata` | _(empty)_ | `WWW-Authenticate` resource metadata URL returned in 401 responses (optional) |
 | `ENGRAM_OWNER_CLAIM` | `--owner-claim` | `email` | OIDC claim whose value becomes the record `owner` (authz key); fail-closed if absent; requires `email_verified` when `email` |
 
-Source: `cmd/engram/serve.go` (`init()` flag registration and `withAuth`).
+Source: `cmd/engram/serve.go` (`init()` flag registration and `buildAuthChain`, which composes the chain and wraps it in `auth.EnforceExpiry` so token expiry is enforced on the composed chain rather than only inside the MCP bearer wrapper).
 
 ### Service principals (machine-to-machine)
 
@@ -135,7 +156,36 @@ A headless service principal (CI runner, batch job, another backend service) aut
 
 A deployment with none of these set is unchanged: only the human OIDC lane (or no auth at all) is active. Static tokens have no revocation list — rotating means editing `ENGRAM_SERVICE_AUTH_STATIC_TOKENS` and restarting; see `reference/auth.md` (Service principals) for the fail-closed empty-owner guarantee, the no-revocation kill-switch, and the [global cross-tenant `shared`-read decision](/reference/auth/#cross-tenant-shared-reads) (`docs/adr/engram-svct-service-tenant-global-shared-read.md`).
 
-Source: `internal/config` (`ServiceAuthConfig`, `service_auth.*` registry rows) + `cmd/engram/serve.go` (`withAuth`).
+Source: `internal/config` (`ServiceAuthConfig`, `service_auth.*` registry rows) + `cmd/engram/serve.go` (`buildAuthChain`).
+
+### Headless Connect lane
+
+| Environment variable | Flag | Default | Description |
+|---------------------|------|---------|-------------|
+| `ENGRAM_CONNECT_HEADLESS` | `--connect-headless` | `false` | Mounts the ConnectRPC lane on a deployment with the web UI disabled |
+
+`ENGRAM_CONNECT_HEADLESS` defaults **off** and is independent of every `ENGRAM_UI_*` and
+`ENGRAM_SERVICE_AUTH_*` variable — a deployment with no Connect surface today gains none on
+upgrade, including one that already has service-auth configured; configuring an auth lane never
+mounts Connect by itself.
+
+Connect is mounted when the web UI is enabled **or** this flag is set. With either (or both), one
+lane serves both credential types: a well-formed `Authorization: Bearer` credential authenticates
+against the same verifier chain the MCP lane uses, and everything else falls through to the
+session-cookie lane.
+
+Setting `ENGRAM_CONNECT_HEADLESS` with no auth lane configured (no `ENGRAM_OIDC_ISSUER` and no
+`ENGRAM_SERVICE_AUTH_*`) **refuses to start** — mounting would expose every write RPC
+unauthenticated into the anonymous empty-owner bucket. Configure at least one auth lane first:
+either `ENGRAM_OIDC_ISSUER` (the human OIDC lane) or `ENGRAM_SERVICE_AUTH_*` (client-credentials
+OIDC or static tokens, see [Service principals](#service-principals-machine-to-machine) above).
+
+A bearer-authenticated Connect caller is exempt from the `X-CSRF-Token` double-submit check that
+cookie-authenticated browser callers must satisfy; the exemption is decided by which lane verified
+the request, never by which headers the caller sent.
+
+Source: `internal/config` (the `connect.headless` registry row) + `cmd/engram/serve.go`
+(`connectHeadlessGuard`, `connectResolverFor`) + `internal/server/connectbearer.go`.
 
 ## Logging
 
@@ -146,6 +196,19 @@ Source: `internal/config` (`ServiceAuthConfig`, `service_auth.*` registry rows) 
 | `ENGRAM_LOG_STDOUT` | `true` | Write logs to stdout; set `false` to suppress (requires OTLP endpoint) |
 
 Source: `internal/telemetry/config.go` (`ConfigFromEnv`).
+
+**Authorization decision diagnostics.** At `debug` level, every authorization decision
+(both allow and deny) emits one `"authz decision (bucket)"` or `"authz decision
+(record)"` line carrying `allow`, `action`, the satisfied Cedar `policy_ids`, and
+`policy_error_count`; bucket-scoped decisions also carry `bucket` (`own`/`shared`).
+Volume is bounded: at most two lines per bulk recall call (one per bucket probed) and
+one per id-addressed operation (get/update/delete/set_visibility) — never one line per
+result row.
+
+It does **not** carry a full Cedar expression trace, any policy error **message** text,
+or the caller's `owner`/`scope` values — those are deliberately excluded so a decision
+line is always safe to leave in a log pipeline. Raise `ENGRAM_LOG_LEVEL=debug` to see
+these lines; they do not appear at `info` or above.
 
 ## Observability (OpenTelemetry)
 
