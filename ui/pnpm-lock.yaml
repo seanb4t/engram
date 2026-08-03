@@ -22,13 +22,13 @@ importers:
         version: 2.1.2(@bufbuild/protobuf@2.13.0)(@connectrpc/connect@2.1.2(@bufbuild/protobuf@2.13.0))
       '@internationalized/date':
         specifier: ^3.12.2
-        version: 3.12.2
+        version: 3.12.3
       '@tanstack/svelte-query':
         specifier: ^6.1.34
         version: 6.1.38(svelte@5.56.6)
       bits-ui:
         specifier: ^2.18.1
-        version: 2.18.1(@internationalized/date@3.12.2)(@sveltejs/kit@2.70.1(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.56.6)(vite@8.2.0(@types/node@26.0.0)(jiti@2.7.0)))(svelte@5.56.6)(typescript@7.0.2)(vite@8.2.0(@types/node@26.0.0)(jiti@2.7.0)))(svelte@5.56.6)
+        version: 2.18.1(@internationalized/date@3.12.3)(@sveltejs/kit@2.70.1(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.56.6)(vite@8.2.0(@types/node@26.0.0)(jiti@2.7.0)))(svelte@5.56.6)(typescript@7.0.2)(vite@8.2.0(@types/node@26.0.0)(jiti@2.7.0)))(svelte@5.56.6)
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -210,8 +210,8 @@ packages:
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
 
-  '@internationalized/date@3.12.2':
-    resolution: {integrity: sha512-FY1Y+H64NDs+HAF6omlnWxm3mEpfgaCSWtL5l551ZZfImA+kGjPFgrnJrGjH6lfmLL0g8Z/mBu1R3kufeCp6Jw==}
+  '@internationalized/date@3.12.3':
+    resolution: {integrity: sha512-fuLX+3ZKLsxI73y8b01EG/WjHb6gE6weCqlfawPO27kBWGMh9G1yH6Csv1uU7/cac9H2GHmOMt6CjmuQ1aia4Q==}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -1574,7 +1574,7 @@ snapshots:
 
   '@floating-ui/utils@0.2.11': {}
 
-  '@internationalized/date@3.12.2':
+  '@internationalized/date@3.12.3':
     dependencies:
       '@swc/helpers': 0.5.23
 
@@ -1973,11 +1973,11 @@ snapshots:
       require-from-string: 2.0.2
     optional: true
 
-  bits-ui@2.18.1(@internationalized/date@3.12.2)(@sveltejs/kit@2.70.1(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.56.6)(vite@8.2.0(@types/node@26.0.0)(jiti@2.7.0)))(svelte@5.56.6)(typescript@7.0.2)(vite@8.2.0(@types/node@26.0.0)(jiti@2.7.0)))(svelte@5.56.6):
+  bits-ui@2.18.1(@internationalized/date@3.12.3)(@sveltejs/kit@2.70.1(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.56.6)(vite@8.2.0(@types/node@26.0.0)(jiti@2.7.0)))(svelte@5.56.6)(typescript@7.0.2)(vite@8.2.0(@types/node@26.0.0)(jiti@2.7.0)))(svelte@5.56.6):
     dependencies:
       '@floating-ui/core': 1.7.5
       '@floating-ui/dom': 1.7.6
-      '@internationalized/date': 3.12.2
+      '@internationalized/date': 3.12.3
       esm-env: 1.2.2
       runed: 0.35.1(@sveltejs/kit@2.70.1(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.56.6)(vite@8.2.0(@types/node@26.0.0)(jiti@2.7.0)))(svelte@5.56.6)(typescript@7.0.2)(vite@8.2.0(@types/node@26.0.0)(jiti@2.7.0)))(svelte@5.56.6)
       svelte: 5.56.6
