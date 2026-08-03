@@ -134,10 +134,10 @@ func zzRepeat(unit string, n int) string {
 // other required fields on the same struct are populated with valid
 // values, so the failure is attributable to exactly the field under test).
 type schemaRequiredCase struct {
-	name       string
-	wantField  string
-	wantHint   HintCode
-	call       func() error
+	name      string
+	wantField string
+	wantHint  HintCode
+	call      func() error
 }
 
 // TestSchemaRequiredMovedToGoLevel is table-driven across all 24 fields on
