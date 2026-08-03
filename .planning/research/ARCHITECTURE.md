@@ -1,643 +1,410 @@
-# Architecture Research — v0.12.x "Headless Reach & Diagnosability"
+# Architecture Research — v0.13.x "Curation & Self-Evidence"
 
-**Domain:** Integrating new capabilities into an existing, shipped Go memory-MCP server (engram)
-**Researched:** 2026-07-29
-**Confidence:** HIGH — every claim below is verified against the current source (files/line ranges
-cited); no speculation about unread code.
+**Domain:** integrating a structural-curation CLI, a semantic-curation skill, and a
+three-surface interface audit into an existing, shipped Go/Qdrant memory server
+**Researched:** 2026-08-03
+**Confidence:** HIGH (grounded directly in the shipped `cmd/engram/*`, `internal/store/store.go`,
+`internal/server/tools.go`, `internal/authz/*`, and `skill/engram/skills/curating-memory/SKILL.md`
+source — not external ecosystem research; this milestone is pure integration, not new-technology
+adoption)
 
-This is not greenfield architecture research. It is an integration map: six new capabilities against
-a specific existing codebase, with real file paths and function names for every seam. All six items
-are additive to the existing Connect/MCP/store architecture — none require restructuring an existing
-component's public contract.
+## Standing invariants this design must not violate
 
-## System Overview
+- **Authorization lives only in `internal/store`.** Every actor-facing store method
+  (`Search`, `SearchReranked`, `SearchDiscovery`, `List`, `ListScheduled`, `Get`/`GetReadable`,
+  `getWritable`, `Update`, `Delete`, `SetVisibility`, `Supersede`) takes a `Subject` and calls
+  `decideBucket`/`decideRecord` (`internal/store/store.go:726,753`), which consult the Cedar PDP
+  in `internal/authz`. A design that adds a second authorization check anywhere else — a CLI-side
+  filter, a skill-side "am I allowed to see this" heuristic — is an architectural violation here,
+  not a stylistic choice.
+- **MCP/Connect parity.** Connect's six write RPCs are thin `protoconv` adapters delegating to the
+  same `deps.*` business-logic methods the MCP tool handlers call (REQ-connect-write-authz-parity,
+  v0.10.x Phase 17) — proven by a per-RPC `TestWriteParity`. Any new write path (the skill, a future
+  spine-review write mode) that bypasses this shared layer and calls `internal/store` directly from
+  a new adapter would break that provable-parity guarantee.
+- **Near-zero new Go dependencies**, held across four consecutive milestones. Every design below
+  reuses cobra, the existing `jsonschema`-tagged arg-struct pattern, and stdlib — no new codegen
+  toolchain, no plan-file serialization library.
 
-### Today (v0.11.x, shipped)
+## Existing precedent this milestone must extend, not reinvent
+
+`cmd/engram/` already has five **operator commands**, each resolving exactly one structural
+predicate against the whole collection, **without a `Subject`**:
+
+| Command | Store method | Predicate | Subject-based authz? |
+|---|---|---|---|
+| `reindex` | `Store.Reindex` (`store.go:2614`) | re-embed into new dim | No |
+| `migrate-remap-owner` | `Store.RemapOwner` (`store.go:2443`) | owner re-stamp | No |
+| `prune-expired` | `Store.PruneExpired` (`store.go:2087`) | lapsed window reclaim | No |
+| `summarize-missing` | (summary queue sweep) | missing summary | No |
+| `backfill-short-ids` | `Store.BackfillShortIDs` (`store.go:2234`) | missing short_id | No |
+
+None of these five methods takes a `Subject`, and none calls `decideBucket`/`decideRecord`. They
+scan/mutate the **whole** Qdrant collection via `Count`/`Scroll`/`SetPayload` filters keyed on
+payload fields (`owner==""`, `owner==X`, expiry timestamp), run by an operator who already has
+direct Qdrant/process access — a deliberate, five-times-repeated second tier that sits **beside**
+(not inside) the per-actor authz model, not a gap in it. `engram spine-review` is the **sixth**
+instance of this tier, not a new one. This is the answer to "must not invent a second authorization
+path": the correct move is to reuse this already-established Subject-less operator tier, not to
+compose `Search`/`List` (which would silently authz-filter to one actor's slice — wrong for a
+spine-wide sweep) and not to add any new permission check.
+
+Every one of the five existing commands also already implements **dry-run as "same method,
+skip-the-write" — never a second code path**:
+
+- `store.RemapOwner(ctx, src, to, dryRun bool)` (`store.go:2443`) computes the same `Count` either
+  way and only calls `SetPayload` `if cnt == 0 || dryRun { return }`.
+- `store.Reindex(ctx, opts.DryRun, ...)` (`store.go:2614`) scans and classifies every record
+  identically; `DryRun` only gates the final `Upsert`. `reindexSummary()` (`reindex.go:93`) is a
+  **pure, unit-tested** renderer that produces a different sentence for `dry-run`, `dry-run
+  --resume`, and the real cutover, from the **same** `ReindexResult` struct.
+- `migrate-remap-owner --dry-run` (`migrate.go:121`) prints `[dry-run] would remap %d` vs
+  `remapped %d`, again from the same `n, err := st.RemapOwner(...)` call.
+
+This is engram's existing plan-then-apply architecture — lighter than Terraform's persisted
+plan-file model (no serialized artifact, no separate `apply <planfile>` step), and that lightness
+is deliberate: it costs nothing (`near-zero new dependencies`) and is proven safe at this data
+scale by four operator commands already in production. **Recommendation: extend this pattern,
+don't replace it with a Terraform-style plan file.**
+
+## A. `engram spine-review` — structural curation CLI
+
+### Shape: one parent command, cobra subcommands — not five siblings
+
+The milestone names five phases: review, consolidate, verify, purge, archive. Unlike the five
+existing operator commands (which are **independent** — nothing about `reindex` depends on
+`prune-expired` having run), spine-review's phases have a **real pipeline dependency**: `purge`
+must not run before `verify` has confirmed the extract-before-delete ordering invariant on the
+records `review`/scan flagged. A flat set of five new top-level sibling commands (matching the
+existing five-command convention) would let an operator run `engram spine-purge` before ever
+running `engram spine-review`, with nothing in the CLI's own structure preventing it.
+
+Compare the two precedents the question names:
+
+- **`git gc`** bundles several internally-sequenced sub-tasks (repack, prune, rerere-gc) behind
+  **one** verb with no exposed subcommands — because the sequencing is entirely internal and the
+  user never needs to run one phase without the others.
+- **`terraform {plan, apply, destroy}`** exposes the phases as **separate subcommands** precisely
+  because a human needs to inspect `plan`'s output before choosing to `apply` it — the boundary
+  between propose and perform is a deliberate, user-visible gate, not an implementation detail.
+
+Spine-review is the Terraform shape, not the `git gc` shape: the whole point of a structural
+curation tool touching deletes is that a human (or the calling agent, per invariant B below) reads
+the proposal before anything is destroyed. Recommend:
 
 ```
-                          ┌─────────────────────────────────────────────┐
-                          │  net/http.CrossOriginProtection (whole mux)  │  cmd/engram/serve.go:226
-                          └───────────────────┬───────────────────────--┘
-                    ┌─────────────────────────┼─────────────────────────┐
-                    │                         │                         │
-              MCP transport              /auth/*, /ui/*           Connect (/engram.v1.*)
-           (StreamableHTTP, /mcp)      (webauth.Handler,          mounted ONLY if resolve!=nil
-                    │                    UI enabled only)         (== ONLY if UI enabled)
-        withAuth() cmd/engram/serve.go:297                              │
-     auth.ChainVerifier(human, service, static)                 mountConnect()
-     (OIDC user → OIDC client-cred → static token)          internal/server/connectapi.go:362
-                    │                                                    │
-              MCP tool handlers                        otel → access-log → subject(401)
-           internal/server/tools.go                     → CSRF(write-only,403) → validate(400)
-              (deps.* methods)                                → reseal(innermost, r+w)
-                    │                                                    │
-                    └───────────────────────┬───────────────────────────┘
-                                             │
-                                    internal/store (the ONE authz
-                                    chokepoint — DEC-cgb): Cedar PDP
-                                    decisions compiled into Qdrant filters
-                                             │
-                                     internal/authz (cedar-go PDP)
+engram spine-review scan     # read-only; walks the whole collection, classifies findings
+                              # (drifted citations, orphaned records, lapsed windows).
+                              # Always safe. --output json for programmatic consumption.
+engram spine-review verify   # read-only; asserts the extract-before-delete ordering
+                              # invariant for whatever `purge` would touch. This is the
+                              # command #355 is the live fixture for (see Build Order).
+engram spine-review purge    # destructive; requires --apply (default = preview only,
+                              # a DELIBERATE inversion of the existing --dry-run-opt-in
+                              # convention — see "Dry-run representation" below).
+engram spine-review archive  # softer disposal (e.g. tag-and-hide) for borderline findings
+                              # scan surfaces but verify/purge shouldn't auto-delete.
 ```
 
-Two independent credential mechanisms exist today and never overlap:
+Grouping under one parent namespace communicates the pipeline relationship cobra's flat top-level
+list cannot; each subcommand still reuses the shared propose/perform convention below.
 
-- **MCP lane** — bearer token only, verified by `auth.ChainVerifier` (built once, at
-  `cmd/engram/serve.go:340` inside `withAuth`).
-- **Connect lane** — sealed session cookie only, verified by `webauth.Resolver.Resolve`
-  (`internal/webauth/resolver.go:37`), wired in at `cmd/engram/serve.go:169`
-  (`connectResolve = webauth.NewResolver(codec).Resolve`), and **only ever constructed when
-  `uiCfg.Enabled`** (`cmd/engram/serve.go:143-175`). `mountConnect` (`connectapi.go:362-365`)
-  returns `nil` immediately when `resolve == nil` — Connect literally does not exist on a
-  headless deployment.
+### Where the scan lives
 
-### After this milestone (items 1–3 land)
+**New `internal/store` bulk-scan method(s)**, Subject-less, following `Reindex`/`PruneExpired`'s
+existing shape exactly (a `Scroll`-based whole-collection walk classified against payload fields —
+`superseded_by`, `not_after`, `citations[].locator`/`ref`, orphan markers), returning a typed
+findings struct the way `ReindexResult`/`RemapOwner`'s count do today. **Do not** build this by
+composing `Search`/`List`: those are Subject-gated and would silently scope the sweep to one
+actor's records, defeating the tool's purpose and creating a false sense that the spine was fully
+reviewed when only a slice was. **Do not** add a new authorization primitive to gate the scan:
+the existing five-command precedent establishes that this tier runs with direct operator access,
+outside `decideBucket`/`decideRecord` entirely — matching that precedent is what keeps
+`internal/store`'s authz chokepoint singular rather than duplicating it.
 
-```
-                          Connect (/engram.v1.*)  — now mountable headless
-                                             │
-                          composed resolver (NEW, cmd/engram/serve.go)
-                    ┌────────────────────────┴────────────────────────┐
-              bearer resolver (NEW)                          cookie resolver (existing)
-        wraps auth.ChainVerifier's TokenVerifier          webauth.Resolver.Resolve (unchanged)
-        stamps Extra[auth.LaneExtraKey]=LaneBearer         stamps Extra[auth.LaneExtraKey]=LaneCookie
-                    └────────────────────────┬────────────────────────┘
-                                             │
-                          newConnectSubjectInterceptor (existing, unchanged signature)
-                          stashes *mcpauth.TokenInfo (now lane-tagged) in ctx
-                                             │
-                          newConnectCSRFInterceptor (MODIFIED)
-                          reads lane from ctx (NOT from request headers) —
-                          exempts everything except LaneCookie
-                                             │
-                          validate → reseal (unchanged; already nil-cookie-safe)
-```
+### Dry-run / propose representation
 
-The MCP lane, `internal/store`, and `internal/authz` are **untouched** by items 1–3. Item 1's only
-new dependency direction is: a new Connect-side bearer resolver reuses the *same*
-`mcpauth.TokenVerifier` value the MCP lane already builds — it does not duplicate verification logic
-or add a third auth package.
+Keep the existing "same method, `DryRun`/`Apply` flag skips the write" architecture — it already
+produces both the proposal and the execution from one code path (`RemapOwner`, `Reindex`). Two
+refinements specific to spine-review's higher blast radius:
 
-## NEW vs MODIFIED Components
+1. **Invert the default for `purge` only.** The five existing commands default to *write* (opt-in
+   `--dry-run` to preview). A tool whose job is cross-owner deletes should default to *preview*
+   (opt-in `--apply` to perform) — this is a deliberate divergence from the established
+   convention, not an oversight, and should be recorded as such (an ADR or `D-` decision) precisely
+   because a future reader diffing spine-review against `reindex`/`migrate-remap-owner` will
+   otherwise assume the flag polarity is a bug.
+2. **Re-derive eligibility at apply time; never trust a stale externally-passed ID list.**
+   Terraform's plan file needs a "stale plan" refresh check because plan and apply are separate
+   invocations, possibly far apart in time. Engram's existing `PruneExpired(ctx, before
+   time.Time)` sidesteps this entirely by computing-then-deleting inside **one call** — no ID list
+   crosses the propose/perform boundary. `purge --apply` should do the same: recompute its own
+   fresh Subject-less scan and predicate check immediately before each delete, not act on IDs
+   copy-pasted from an earlier `scan` report. Pin this with a golden/snapshot test asserting
+   `scan`'s report and `purge`'s dry-run preview are byte-identical for the same underlying data —
+   the concrete, testable meaning of "same code path produces both the proposal and the
+   execution."
 
-| Component | Status | File(s) |
+## B. The semantic-judgment skill
+
+### Route: the existing MCP tool surface — never the CLI, never a new Connect path
+
+The skill must reach the same Qdrant collection spine-review scans, but it should do so through
+the **already-shipped MCP tools** (`list_memory`/`search_memory` to enumerate candidates,
+`get_memory` for full content, `update_memory`/`supersede_memory`/`delete_memory` to apply a
+user-blessed disposition) — exactly the mechanism `skill/engram/skills/curating-memory/SKILL.md`'s
+existing "One-time rule backfill sweep" (`SKILL.md:203-248`) already uses for the v0.12.x Phase 6
+precedent this milestone explicitly cites. Three architectural reasons, not just consistency:
+
+1. **Consent boundary via authz, not via prose.** MCP tool calls run through the calling agent's
+   own authenticated actor, which means every candidate the skill can even *see* is already
+   filtered by `internal/store`'s Subject-based authz — the skill is structurally incapable of
+   proposing a change to a record the calling agent's owner can't read/write. This is the "propose,
+   never perform" boundary made real by the architecture, not by an instruction the model might
+   ignore.
+2. **The CLI is the wrong side of a hard privilege line.** `engram spine-review` is (by design A)
+   a Subject-less, cross-owner operator tool. Letting an agent invoke it — even in read-only `scan`
+   mode — would hand LLM-driven code visibility into every owner's private records, a strictly
+   worse boundary than anything the MCP surface grants today. The skill must never shell out to
+   `engram spine-review` in any mode.
+3. **Connect adds a transport with zero behavioral difference and real new plumbing.** Because of
+   the MCP/Connect parity invariant, a Connect write RPC does exactly what the matching MCP tool
+   does. Routing the skill over Connect would require it to bootstrap a second client identity
+   (bearer token, TLS config) for no capability gain — a pure regression against "near-zero new
+   dependencies" and against the invariant that MCP and Connect are two adapters over one shared
+   layer, not two independent capability sets an agent should choose between.
+
+### What's new vs. reused
+
+- **Reused, unmodified:** every MCP tool the skill calls already exists (`list_memory`,
+  `search_memory`, `get_memory`, `update_memory`, `supersede_memory`, `delete_memory`). No new
+  server-side code.
+- **New/extended:** the skill content itself — most naturally an extension of
+  `curating-memory`'s existing rule-hygiene section (`SKILL.md:122-249`), generalizing its
+  duplicate/contradiction/rot triad from *rules* to *all memories*, plus the new "is this record
+  still true" staleness judgment. The per-candidate propose-then-stop consent protocol
+  (`SKILL.md:228-248`, "Bless"/"Decline", never batch-applying a sweep on one approval) is the
+  precedent to generalize verbatim — do not design a new consent shape for this milestone.
+
+### The extract-before-delete handoff (B → A coupling)
+
+Rule `7smp8vy9hr`'s existing milestone-completion curation pass already performs the semantic
+"extract reusable facts, write one authoritative summary, only then delete the collapsed records"
+sequence (`SKILL.md:132-139`) — that extraction step is inherently semantic (which facts are
+reusable) and belongs in the skill. `engram spine-review verify`'s job is the **structural**
+mirror: mechanically confirm, for any record `purge` is about to remove, that a corresponding
+extract already landed (a superseding summary record exists, or an equivalent marker). The skill
+and the CLI never call into each other — they act on the same Qdrant data at different times,
+coordinated by the human's own workflow ("run the curation skill, then run `spine-review
+verify`/`purge`"), not by a shared code path. Do not try to make `verify` semantically aware, and
+do not try to make the skill perform structural checks it has no privileged view to perform
+correctly.
+
+## C. The interface audit — three surfaces, two independent sources
+
+### Correction to the framing: `--help` and the self-describe catalog are already ONE source
+
+`cmd/engram/catalog.go`'s `buildCatalog(root *cobra.Command)` (`catalog.go:52`) walks the **live**
+cobra tree — `root.Commands()`, `cmd.Flags().VisitAll` via `collectFlags` (`catalog.go:109`) — and
+its own doc comment states the design intent explicitly: derived "never from a hand-maintained
+literal — so a command or flag added later appears here with no edit, and cannot silently go
+missing (D-15)." The exit-code table inside it is likewise built from the `exitOK`/`exitUsage`/…
+constants in `client_common.go:194-201`, not a second literal list — and `catalog.go`'s own comment
+names the regression gate: `TestCatalogExitCodesMatchMapper`. **`--help` and the JSON catalog
+cannot drift from each other by construction; that problem is already solved.**
+
+The genuine, independent third surface is `internal/server/tools.go`'s Go struct + `jsonschema`
+struct-tag declarations (e.g. `Scope string `json:"scope,omitempty" jsonschema:"required unless
+cross_spine"``, `tools.go:598,609,718`) — a completely separate type system (proto/MCP arg structs
+reflected into JSON Schema by the go-sdk) with no natural common representation shared with a
+`pflag.Flag.Usage` string. A CLI flag (`--scope`) and an MCP tool argument (`scope`) describing the
+identical server-side rule (`effectiveSearchScope` and its siblings) are two independently-authored
+English sentences today, on two different commands/tools that don't correspond 1:1.
+
+### Proportionate mechanism: a conformance test, not a codegen unification
+
+Given only a **small, enumerable** set of conditional-requirement rules exist
+(`effectiveSearchScope` and its named siblings), the proportionate fix is the same pattern this
+codebase already uses for the exit-code catalog: a **hand-authored table** mapping each rule to
+(a) the MCP tool + field name(s) whose `jsonschema` tag must state it, and (b) the CLI command +
+flag(s) whose `Usage` string must state it — then a test walks **both** live sources (the CLI side
+already exposed via `buildCatalog`/`collectFlags`; the MCP side needs one small new introspection
+helper in `internal/server`, mirroring `buildCatalog`'s shape) and asserts the named substring
+appears in both. This is a golden/conformance test, not full codegen: it needs no new dependency,
+derives no struct tags from flag text or vice versa, and is proportionate to a handful of rules
+rather than the full cross product of every flag against every tool argument (most of which
+describe unrelated concerns and have no reason to agree).
+
+This becomes the **permanent regression gate** for D-00 (correct-by-reading) — the same role
+`TestCatalogExitCodesMatchMapper` plays for the exit-code taxonomy and the spine-review `verify`
+step plays for citation drift. Build it once; every future flag/tool-arg addition is checked by it
+going forward, rather than re-auditing by hand each milestone.
+
+### #453 is this same family, with a mechanical rather than a documentary fix
+
+`client_list.go:94-106` already **states** three mutual exclusivities in `Usage` text
+(`--offset`/`--cursor-mode`/`--page-token`) that nothing validates — a documented-but-unenforced
+constraint is exactly the D-00 violation class C exists to catch, just on the "is it true" axis
+rather than the "is it discoverable" axis. The fix is mechanical and narrow: adopt cobra's own
+`cmd.MarkFlagsMutuallyExclusive(...)`, replacing the undone `client_list.go` declarations, and
+noting it as the third variant alongside the two existing hand-rolled guards
+(`validateScopeCrossSpine`, `client_common.go:234`; `buildRemapSource`, `migrate.go:73`) — those two
+stay hand-rolled (they also enforce cross-field *semantic* rules, e.g. exactly-one-of, that
+`MarkFlagsMutuallyExclusive` alone can't express), but no *new* hand-rolled guard should be added
+where cobra's builtin already covers the case.
+
+## New vs. modified components
+
+| Component | Status | Notes |
 |---|---|---|
-| Chain-verifier extraction (`withAuth` split into a reusable builder) | MODIFIED | `cmd/engram/serve.go` |
-| Bearer Connect resolver | NEW | new file, e.g. `internal/server/connectbearer.go` |
-| Composed (bearer+cookie) resolver | NEW | new file or `cmd/engram/serve.go` |
-| Lane provenance constants | NEW | `internal/auth/auth.go` (near `OwnerClaimExtraKey`) |
-| Cookie resolver lane stamp | MODIFIED | `internal/webauth/resolver.go:67` |
-| Headless-mount config knob | NEW | `internal/config/registry.go`, `cmd/engram/serve.go` |
-| `mountConnect` mount gate | UNCHANGED (see Item 1) | `internal/server/connectapi.go:362-365` |
-| Lane-aware context accessor | NEW | `internal/server/identity.go` |
-| CSRF interceptor exemption logic | MODIFIED | `internal/server/connectcsrf.go:58-91` |
-| Reseal interceptor | UNCHANGED (already nil-cookie-safe) | `internal/server/connectreseal.go` |
-| CLI client construction | NEW | `cmd/engram/client.go`, `cmd/engram/clientconfig.go` |
-| CLI subcommands (`search`/`store`/`list`) | NEW | `cmd/engram/search.go`, `cmd/engram/store.go`, `cmd/engram/list.go` |
-| Client-side config registry entries | NEW | `internal/config/registry.go`, `internal/config/config.go` |
-| `search_memory` cross-spine support | NEW field, MODIFIED handler | `internal/server/tools.go` (`searchArgs`, `deps.searchMemory`), `internal/store/store.go` (`ownerScopeFilter`/`Search`) |
-| `SearchMemoriesRequest.cross_spine` (field 9) | NEW (additive proto field) | `proto/engram/v1/engram.proto`, `internal/server/connectapi.go` (`SearchMemories`) |
-| `authz.Decision` safe log accessor | NEW | `internal/authz/authz.go` |
-| Store-side debug logging at the decision chokepoint | MODIFIED | `internal/store/store.go` (`decideBucket`, `decideRecord`) |
-| `OpenAIConfig.ChatAPIKey` | NEW field | `internal/config/config.go`, `internal/config/registry.go` |
-| Chat/summarize API-key resolution | MODIFIED (mirrors shipped base-URL split) | `internal/server/tools.go:369-378` (`summarizerFromConfig`) |
+| `cmd/engram/spinereview.go` (new file) | **New** | cobra parent command + `scan`/`verify`/`purge`/`archive` subcommands, `--apply` gate on `purge` |
+| `internal/store` bulk-scan method(s) (new) | **New** | Subject-less `Store.ScanSpine`-shaped method(s), Scroll-based, parallel to `Reindex`/`PruneExpired` |
+| `internal/store/store.go` authz surface | **Unmodified** | `decideBucket`/`decideRecord` and every `Subject`-taking method stay exactly as shipped — spine-review never calls them |
+| `skill/engram/skills/curating-memory/SKILL.md` | **Modified** | extend rule-hygiene triad (duplicate/contradiction/rot) to all memories; add "is this still true" judgment; reuse existing consent protocol verbatim |
+| MCP tool surface (`internal/server/tools.go`) | **Unmodified** | the skill introduces zero new tools/args |
+| `internal/server` MCP introspection helper (new, small) | **New** | mirrors `buildCatalog`'s shape for the C conformance test's MCP-side walk |
+| Conformance test (new) | **New** | table + test asserting named conditional-requirement rules appear in both cobra `Usage` strings and MCP `jsonschema` tags |
+| `cmd/engram/client_list.go` | **Modified** | replace undone mutual-exclusivity prose with `MarkFlagsMutuallyExclusive` (#453) |
+| `cmd/engram/client_common.go` exit-code constants | **Possibly modified** | depends on the #467 decision — see Build Order |
 
----
+## Anti-patterns to avoid (violations, not trade-offs, in this codebase)
 
-## Item 1 — Bearer auth on the Connect lane
+### Anti-pattern 1: composing `Search`/`List` for the spine-review scan
 
-### Current facts (verified)
+**What people would do:** reuse the existing, well-tested `Store.Search`/`Store.List` to "walk the
+spine" for structural findings, since they're already bulk query paths.
+**Why it's wrong:** both take a `Subject` and are authz-filtered to one actor's readable records —
+a spine-wide structural sweep run this way silently reviews a slice and reports it as complete.
+**Instead:** a new Subject-less bulk method, matching the five existing operator-command precedent.
 
-- `withAuth` (`cmd/engram/serve.go:297-344`) is the **single call site** that builds
-  `auth.ChainVerifier(humanVerifier, serviceVerifier, staticVerifier)` and wraps the MCP handler
-  with `mcpauth.RequireBearerToken(chain, ...)`. The composed `chain` value (an
-  `mcpauth.TokenVerifier` — `func(ctx, token string, req *http.Request) (*mcpauth.TokenInfo, error)`)
-  is never returned or exposed outside `withAuth` today.
-- `connectResolver` (`connectapi.go:360`) has the signature
-  `func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)` — structurally
-  incompatible with `mcpauth.TokenVerifier` only in argument shape, not in what it produces (both
-  end in `*mcpauth.TokenInfo`).
-- `webauth.Resolver.Resolve` (`resolver.go:37-68`) is the *only* existing implementation of
-  `connectResolver`. It builds `&mcpauth.TokenInfo{Extra: map[string]any{auth.OwnerClaimExtraKey:
-  sess.Owner}}` — no `UserID`, no lane marker.
-- `mountConnect(mux, resolve, csrfVerify, reseal)` (`connectapi.go:362-397`) returns `nil`
-  immediately when `resolve == nil` (line 363-365). `serve.go:139-175` only ever assigns
-  `connectResolve` inside `if uiCfg.Enabled { ... }`; the `else` branch just logs
-  `"web UI disabled (headless); Connect API not mounted"` and leaves all three vars
-  (`connectResolve`, `connectCSRFVerify`, `connectReseal`) nil.
+### Anti-pattern 2: giving the semantic-judgment skill CLI or direct-store access
 
-### Integration points
+**What people would do:** let the skill shell out to `engram spine-review scan --output json` for
+convenience, since the CLI already computes findings.
+**Why it's wrong:** it hands agent-driven code a cross-owner, Subject-less view no MCP call would
+ever grant that actor — a privilege-boundary violation, not a style choice.
+**Instead:** the skill stays entirely on the MCP tool surface, actor-scoped by construction.
 
-1. **Extract the chain-builder out of `withAuth`.** Split `cmd/engram/serve.go:297-344` into:
-   - `buildAuthChain(oidc config.OIDCConfig, svcAuth config.ServiceAuthConfig, ownerClaims []string) (mcpauth.TokenVerifier, error)` — everything currently inside `withAuth` up to and
-     including `chain := auth.ChainVerifier(...)`.
-   - `withAuth(handler http.Handler, chain mcpauth.TokenVerifier) http.Handler` — thin, just wraps
-     `mcpauth.RequireBearerToken`.
-   `runServe` calls `buildAuthChain` once and passes the resulting `chain` to *both* `withAuth`
-   (MCP) and the new Connect bearer resolver builder below. This is the one place the milestone
-   MUST touch to avoid a second, drifting copy of the three-lane composition logic.
+### Anti-pattern 3: a second, skill-specific "may I act on this" check
 
-2. **New bearer resolver**, e.g. `internal/server/connectbearer.go`:
-   ```go
-   func newConnectBearerResolver(verify mcpauth.TokenVerifier) connectResolver {
-       return func(ctx context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, error) {
-           tok := strings.TrimPrefix(req.Header().Get("Authorization"), "Bearer ")
-           if tok == "" { return nil, fmt.Errorf("no bearer token") }
-           dummy := &http.Request{Header: req.Header()}   // same dummy-request trick as
-                                                            // connectcsrf.go/connectreseal.go/webauth.Resolver
-           ti, err := verify(ctx, tok, dummy)
-           if err != nil { return nil, err }
-           if ti.Extra == nil { ti.Extra = map[string]any{} }
-           ti.Extra[auth.LaneExtraKey] = auth.LaneBearer   // Item 2 depends on this stamp
-           return ti, nil
-       }
-   }
-   ```
-   `verify` is exactly the `chain` value `buildAuthChain` returns — **reuses**
-   `auth.ChainVerifier`, does not reimplement OIDC/static-token verification.
+**What people would do:** have the skill call some new authz-aware helper to double-check it's
+allowed to touch a record before calling `update_memory`/`delete_memory`.
+**Why it's wrong:** `internal/store`'s existing gate already enforces this on every call; a second
+check is redundant at best and, if it ever disagrees with the store's decision, a drift bug at
+worst — authorization has exactly one enforcement point in this codebase.
+**Instead:** let the tool call fail/succeed on the store's own decision; the skill's job is consent
+before the call, not a parallel permission model.
 
-3. **Lane provenance constants**, added to `internal/auth/auth.go` next to
-   `OwnerClaimExtraKey` (`auth.go:56`):
-   ```go
-   const LaneExtraKey = "connect_lane"
-   const (
-       LaneCookie = "cookie"
-       LaneBearer = "bearer"
-   )
-   ```
-   `internal/webauth` already imports `internal/auth` (for `auth.OwnerClaimExtraKey`), so this is
-   zero new import edges. `webauth.Resolver.Resolve` (`resolver.go:67`) changes from
-   ```go
-   return &mcpauth.TokenInfo{Extra: map[string]any{auth.OwnerClaimExtraKey: sess.Owner}}, nil
-   ```
-   to the same map with `auth.LaneExtraKey: auth.LaneCookie` added.
-
-4. **Composed resolver** — new small function (either `cmd/engram/serve.go` or
-   `internal/server/connectcompose.go`):
-   ```go
-   func newConnectComposedResolver(bearer, cookie connectResolver) connectResolver {
-       return func(ctx context.Context, req connect.AnyRequest) (*mcpauth.TokenInfo, error) {
-           if req.Header().Get("Authorization") != "" && bearer != nil {
-               return bearer(ctx, req)   // no cookie fallback on a present-but-invalid bearer
-           }
-           if cookie != nil { return cookie(ctx, req) }
-           return nil, fmt.Errorf("no credential presented")
-       }
-   }
-   ```
-   The `Authorization`-header check here only selects *which resolver attempts verification* — it
-   is not the CSRF-exemption decision (that is Item 2, and it reads the **stamped lane**, never
-   this header). A present-but-invalid `Authorization` header fails closed (401), it never silently
-   falls through to the cookie lane — this matters because a fallthrough would let an attacker
-   probe whether a cookie session exists by sending garbage bearer tokens.
-
-5. **Headless-mount config knob.** Add to `internal/config/registry.go` (near `ui.enabled`,
-   `registry.go:63`):
-   ```go
-   {Key: "connect.headless_enabled", Env: "ENGRAM_CONNECT_HEADLESS", Flag: "connect-headless", Default: "false"},
-   ```
-   In `cmd/engram/serve.go`, replace the current
-   `if uiCfg.Enabled { connectResolve = webauth.NewResolver(codec).Resolve; ... }` block with:
-   ```go
-   var bearerResolve, cookieResolve connectResolver
-   if cfg.Connect.HeadlessEnabled {
-       chain, err := buildAuthChain(cfg.OIDC, cfg.ServiceAuth, ownerClaims)
-       ...
-       bearerResolve = newConnectBearerResolver(chain)
-   }
-   if uiCfg.Enabled {
-       cookieResolve = webauth.NewResolver(codec).Resolve
-       connectCSRFVerify = csrfSigner.Verify
-       connectReseal = webHandler.Reseal
-   }
-   if bearerResolve != nil || cookieResolve != nil {
-       connectResolve = newConnectComposedResolver(bearerResolve, cookieResolve)
-   }
-   ```
-   **`mountConnect`'s own `if resolve == nil { return nil }` guard (`connectapi.go:363-365`) does
-   NOT need to change.** Its contract ("no resolver configured ⇒ not mounted") is still exactly
-   right and should be preserved verbatim — R1's invariant lives on, just with a second path that
-   can make `resolve` non-nil. This is the smaller, safer diff versus rewriting the guard itself,
-   and it means a deployment with neither `ui.enabled` nor `connect.headless_enabled` set
-   is byte-for-byte today's "Connect not mounted at all" behavior — the milestone's explicit
-   "opt-in only, never a default flip" posture note.
-
-6. **Reseal for a bearer caller — already safe, verify don't rebuild.**
-   `newConnectResealInterceptor` (`connectreseal.go:36-56`) already no-ops when `reseal == nil`
-   (headless-only deployment, no UI ⇒ `connectReseal` stays nil ⇒ interceptor is a passthrough).
-   When the UI **is** also enabled (mixed deployment) and `reseal` is non-nil,
-   `webauth.Handler.Reseal` (`internal/webauth/handlers.go:46-49`) itself no-ops when
-   `r.Cookie(sessionCookieName)` errors — i.e. **a bearer caller who sends no session cookie is
-   already structurally immune**, zero code change required. The one edge case worth a negative
-   test: a bearer-authenticated request that happens to *also* carry a stray, still-valid session
-   cookie from an earlier browser session must not have that cookie treated as evidence of
-   cookie-lane authentication for *this* request — Reseal may harmlessly re-seal it (it's a
-   read-only refresh, not a trust decision), but Item 2's lane check must still read
-   `Extra[auth.LaneExtraKey] == auth.LaneBearer`, not "is there a session cookie present."
-
-7. **CSRF verify func nil-safety on a headless-only deployment.** When `uiCfg.Enabled` is
-   `false`, `connectCSRFVerify` stays `nil`. `newConnectCSRFInterceptor` must never call a nil
-   `verify` — Item 2's design (below) already guarantees this structurally, since the interceptor
-   returns via the lane-exemption branch before ever reaching the `verify(...)` call for anything
-   that isn't `auth.LaneCookie`, and `auth.LaneCookie` is only ever stamped when the cookie
-   resolver — which only exists when `uiCfg.Enabled` — actually ran. Add a defensive
-   `if verify == nil { return nil, connect.NewError(connect.CodeInternal, ...) }` guard anyway, as
-   insurance against a future resolver-composition bug, and a same-named test
-   (`TestCSRFHeadlessOnlyNeverCallsNilVerify`).
-
----
-
-## Item 2 — CSRF exemption keyed on provenance (milestone's #1 risk)
-
-### The mechanism
-
-- **Read, never derive.** `newConnectCSRFInterceptor` (`connectcsrf.go:58-91`) currently derives
-  everything from `subjectFromConnectContext` (`identity.go:49-57`), which returns only a
-  `store.Subject` — the lane information is thrown away before the interceptor ever sees it. Add a
-  companion accessor in `internal/server/identity.go`:
-  ```go
-  func connectLaneFromContext(ctx context.Context) (string, error) {
-      ti, ok := ctx.Value(connectSubjectKey{}).(*mcpauth.TokenInfo)
-      if !ok { return "", fmt.Errorf("connect subject key absent: interceptor not installed") }
-      if ti == nil { return "", nil } // anonymous — never cookie-lane, never exempt-by-error
-      lane, _ := ti.Extra[auth.LaneExtraKey].(string)
-      return lane, nil
-  }
-  ```
-- **Ordering — unchanged.** `connectLaneFromContext` is called from inside
-  `newConnectCSRFInterceptor`, which already runs after `newConnectSubjectInterceptor`
-  (`connectapi.go:390-391`) — the lane stamp is guaranteed present by the time CSRF runs, same
-  ordering guarantee the interceptor already relies on for `Subject.Owner`.
-- **The exemption itself.** Insert the lane check immediately after the existing write-procedure
-  gate (`connectcsrf.go:61-63`), before any cookie/header logic:
-  ```go
-  lane, err := connectLaneFromContext(ctx)
-  if err != nil {
-      return nil, connect.NewError(connect.CodePermissionDenied, errors.New("csrf: no lane"))
-  }
-  if lane != auth.LaneCookie {
-      return next(ctx, req)   // bearer (or any future non-cookie lane) — no ambient credential, CSRF is inapplicable
-  }
-  // ... existing cookie/header double-submit check, UNCHANGED below this line
-  ```
-  Everything below this point — the `subjectFromConnectContext` re-check, the cookie parse, the
-  `X-CSRF-Token` header comparison — is **untouched**. The fix is purely additive: one new
-  branch, gated on a value the request itself cannot influence.
-
-### Why this closes the hole (and the naive fix doesn't)
-
-The vulnerable variant the milestone explicitly calls out is: *"exempt when `X-CSRF-Token` is
-absent."* That is attacker-controlled — a cross-site form/fetch from an attacker's origin can
-simply not set the header, and if absence alone meant "exempt," the browser would still auto-attach
-the ambient session cookie, and the interceptor would wave the forged write through.
-
-The fix above never inspects `X-CSRF-Token` (or any other request content) to decide *whether* the
-check applies — only to *satisfy* it once applied. The only input to the exemption decision is
-`ti.Extra[auth.LaneExtraKey]`, and that value is written exactly once, by the resolver, strictly
-*before* the CSRF interceptor runs, as the direct result of **which cryptographic verification
-succeeded**:
-- Reaching `auth.LaneCookie` requires `webauth.Resolver.Resolve` to have successfully
-  `codec.Unseal`ed an AES-GCM-sealed session cookie the server itself minted.
-- Reaching `auth.LaneBearer` requires `auth.ChainVerifier` to have successfully verified an OIDC
-  JWT signature or a constant-time static-token match.
-
-There is no request-content lever that flips a genuinely cookie-backed session into
-`auth.LaneBearer` — an attacker forging a cross-site request has no way to make the *resolver*
-believe a bearer token was presented and verified, because forging that requires the private key
-material / static token secret the attacker doesn't have. Omitting a header changes nothing about
-which resolver ran.
-
-### Negative tests that pin it shut
-
-Add to `internal/server/connectcsrf_test.go` (or a new `connectcsrf_lane_test.go`):
-
-| Test | Proves |
-|---|---|
-| `TestCSRFBearerCallerOmittingHeaderIsExempt` | A bearer-authenticated write with no `X-CSRF-Token` and no cookie succeeds — bearer is legitimately exempt. |
-| `TestCSRFCookieCallerOmittingHeaderIsStillRejected` | A cookie-authenticated write with a **valid session cookie** but **no `X-CSRF-Token`** is still rejected `CodePermissionDenied` — the exact regression test for the #1 risk: header absence alone must never grant exemption to a cookie-lane caller. |
-| `TestCSRFCookieCallerCannotSelfDeclareBearerLane` | A cookie-authenticated request that *also* sends a garbage `Authorization: Bearer x` header is rejected (composed resolver's no-fallback policy denies the whole request) — never silently downgraded into a CSRF-exempt bearer-lane success. |
-| `TestCSRFLaneUnstampedFailsClosed` | Directly invoking the interceptor with a context whose `TokenInfo.Extra` lacks the lane key must **apply** the CSRF check (treat unknown as most-restrictive), not exempt it — guards a future auth-lane addition that forgets to stamp `auth.LaneExtraKey`. |
-| Existing 6-write CSRF-required suite + `TestConnectNoCORSHeaders` | Unmodified baseline stays green — the whole change is additive to one interceptor. |
-
----
-
-## Item 3 — CLI client subcommands
-
-### Placement
-
-New top-level cobra commands (`engram search`, `engram store`, `engram list`), registered exactly
-like the existing operator commands — each file's `init()` calls `rootCmd.AddCommand(...)`
-(precedent: `cmd/engram/reindex.go:113`, `migrate.go:140/148`, `prune.go:63`). They sit **beside**
-`serve.go`/`reindex.go`/etc. in `cmd/engram/`, not nested under a `client/` subpackage — the
-existing operator commands already prove `cmd/engram/*.go` is where all cobra leaves live; there is
-no precedent in this repo for a `cmd/engram/<subgroup>/` split, and introducing one just for these
-three commands would be inconsistent with `migrate.go`/`backfill.go`/`prune.go`.
-
-### Layering — the discipline that matters here
-
-Every **operator** command (`reindex.go`, `migrate.go`, `prune.go`, `backfill.go`, `summarize.go`)
-imports `internal/server` and/or `internal/store` directly (verified: `reindex.go:16-17` imports
-`internal/server` and `internal/store`) because operator commands talk to Qdrant and the embedder
-directly, out-of-band from any running server. **The new client commands must not do this.** Their
-only server-facing dependency should be the generated wire contract:
-`gen/go/engram/v1` + `gen/go/engram/v1/engramv1connect` (the
-`NewEngramServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) EngramServiceClient`
-constructor already generated at `gen/go/engram/v1/engramv1connect/engram.connect.go:96`). They
-should **not** import `internal/server`, `internal/store`, `internal/authz`, or `internal/embed` —
-those packages carry Qdrant/Cedar/embedder dependencies that have no reason to exist in a process
-that only speaks Connect over HTTP to a *separate* running engram server. This is purely a
-discipline point (both command families already live in the same `main` binary, so there's no
-build-size or binary-split argument) — the value is testability and conceptual clarity: a client
-command's tests should be able to run against a `httptest.Server` wrapping just the generated
-Connect handler, never a real Qdrant.
-
-### Concrete files
-
-- **`cmd/engram/client.go`** — builds the `engramv1connect.EngramServiceClient`:
-  ```go
-  func newEngramClient(baseURL, token string) engramv1connect.EngramServiceClient {
-      hc := &http.Client{Transport: &bearerTransport{token: token, base: http.DefaultTransport}}
-      return engramv1connect.NewEngramServiceClient(hc, baseURL)
-  }
-  type bearerTransport struct { token string; base http.RoundTripper }
-  func (t *bearerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-      if t.token != "" { r.Header.Set("Authorization", "Bearer "+t.token) }
-      return t.base.RoundTrip(r)
-  }
-  ```
-  This is the client-side mirror of Item 1's server-side bearer resolver — same
-  `Authorization: Bearer` convention, opposite direction.
-- **`cmd/engram/clientconfig.go`** — a small, pure, directly-testable resolution function mirroring
-  the existing `resolveUIConfig` pattern (`cmd/engram/uiconfig.go`, tested in
-  `uiconfig_test.go`): resolve `(serverURL, token string, err error)` from flags/env with the same
-  precedence discipline `config.Load` already uses elsewhere.
-- **New registry entries** in `internal/config/registry.go` (keeps the "single ENGRAM_ field
-  registry" constraint, DEC-jgq, intact — no ad hoc env reads):
-  ```go
-  {Key: "client.server_url", Env: "ENGRAM_CLIENT_SERVER_URL", Flag: "server"},
-  {Key: "client.token",      Env: "ENGRAM_CLIENT_TOKEN",      Flag: "token"},
-  ```
-- **`cmd/engram/search.go` / `store.go` / `list.go`** — thin `RunE` bodies: resolve client config →
-  build client → convert flags to the matching `*engramv1.SearchMemoriesRequest` /
-  `StoreMemoryRequest` / `ListMemoriesRequest` → call → print. No business logic; no store/authz
-  imports.
-
-### Dependency on Items 1/2
-
-- `engram search` / `engram list` call read-only Connect RPCs, which are **not** CSRF-gated at all
-  (`csrfWriteProcedures`, `connectcsrf.go:32-39`, lists only the six write procedures) — they need
-  only Item 1 (a mountable, bearer-authable Connect endpoint) to function correctly.
-- `engram store` calls `StoreMemory`, one of the six CSRF-gated write RPCs. It is safe to build in
-  parallel with Item 1, but must not be considered *done/shippable* until Item 2 lands — before
-  Item 2, the write path either has no CSRF exemption logic for bearer at all (blocked, wrong) or
-  (if someone took the naive "exempt when header absent" shortcut) is exploitable by the exact
-  cross-site attack Item 2 exists to prevent. Gate `engram store`'s user-facing readiness on Item 2.
-
----
-
-## Item 4 — `cross_spine` on `search_memory`
-
-### How discovery does it today (traced end to end)
-
-- **Args** (`tools.go:623-629`): `searchDiscoveryArgs.Scope` is `json:"scope,omitempty"` with
-  jsonschema note `"required unless cross_spine"`; `CrossSpine bool` is a sibling field.
-- **Scope resolution** (`tools.go:1129-1140`, `effectiveDiscoveryScope`): `CrossSpine == true` →
-  return `("", nil)` **unconditionally** (a supplied `Scope` is silently ignored, logged at Info —
-  `tools.go:1147-1151`); otherwise a non-empty `Scope` is mandatory or the call errors.
-- **Store layer** (`store.go:958-997`, `SearchDiscovery`): the Qdrant filter conditionally includes
-  the scope match — `if scope != "" { must = append(must, qdrant.NewMatch("scope", scope)) }`
-  (`store.go:978-980`). Empty scope ⇒ no scope condition ⇒ every discovery scope is candidate.
-- **Authz interaction — unchanged, because it's orthogonal.** `SearchDiscovery` still appends
-  `s.ownerOrSharedCondition(subj)` (`store.go:984`) exactly as the scoped path does. Cross-spine
-  widens *which scopes* are candidates; it does **not** widen *which owners'* records are visible —
-  the Cedar-derived own/shared bucket filter is scope-independent and applies identically either
-  way. This is the load-bearing invariant for item 4: cross-spine recall is safe precisely because
-  scope and authz are two independent filter dimensions in the same `Must` list.
-- **Connect parity**: `SearchDiscoveries` (`connectapi.go:252-271`) maps an *empty* Connect-supplied
-  `Scope` to `CrossSpine: true` (`connectapi.go:265`) — a deliberate MCP/Connect asymmetry
-  documented in the handler's comment (empty Connect scope has always meant "all," predating the
-  MCP-side `CrossSpine` field).
-
-### How `search_memory` must mirror it
-
-1. **`internal/server/tools.go` `searchArgs`** (`tools.go:534-543`): add
-   `CrossSpine bool \`json:"cross_spine,omitempty" jsonschema:"span all scopes (ignores scope)"\``
-   and change `Scope string \`json:"scope"\`` to `Scope string \`json:"scope,omitempty"
-   jsonschema:"required unless cross_spine"\`` — byte-for-byte the discovery precedent.
-2. **Scope resolution** — extract a shared helper rather than duplicating
-   `effectiveDiscoveryScope`'s body (D-08-style discipline: `categoryMatchCondition` is already
-   shared by `listFilter`/`Search` for exactly this "don't let two lanes drift" reason):
-   ```go
-   func effectiveScope(scope string, crossSpine bool) (string, error) {
-       if crossSpine { return "", nil }
-       if scope == "" { return "", fmt.Errorf("scope is required unless cross_spine is true") }
-       return scope, nil
-   }
-   ```
-   `effectiveDiscoveryScope(a)` becomes `effectiveScope(a.Scope, a.CrossSpine)`; the new
-   `search_memory` path calls the same function.
-3. **`coreSearchRequest`** (`tools.go:1048-1056`): add `CrossSpine bool`. `deps.searchMemory`
-   (`tools.go:1116-1127`) calls `effectiveScope(req.Scope, req.CrossSpine)` before building
-   `store.SearchOptions` and passes the *resolved* scope (possibly `""`) to
-   `d.st.SearchReranked(...)`.
-4. **`internal/store/store.go`**: `ownerScopeFilter` (`store.go:752-757`) currently
-   unconditionally appends `qdrant.NewMatch("scope", scope)`. Change to the same conditional
-   `SearchDiscovery` already uses:
-   ```go
-   func (s *Store) ownerScopeFilter(scope string, subj Subject) *qdrant.Filter {
-       must := []*qdrant.Condition{s.ownerOrSharedCondition(subj)}
-       if scope != "" { must = append(must, qdrant.NewMatch("scope", scope)) }
-       return &qdrant.Filter{Must: must}
-   }
-   ```
-   `ownerScopeFilter` is called from exactly one production site (`Search`, `store.go:888`), so this
-   is a self-contained, single-caller change; `bench_test.go:93,98` is the only other caller and
-   will need its cross-spine (empty-scope) case added, not just its existing scoped case preserved.
-   **`SearchReranked` and the rerank path require no change** — they call `Search` unmodified.
-5. **`list_memory` is explicitly out of scope** for this feature — the milestone description scopes
-   `cross_spine` to `search_memory` only (mirroring `SearchDiscoveryArgs.CrossSpine`, which itself
-   only exists on `search_discovery`, never `list_scheduled` or any list-shaped tool). Do not carry
-   it onto `listArgs`/`Store.List`.
-6. **MCP↔Connect parity — additive proto field.** `SearchMemoriesRequest` (`engram.proto:76-85`)
-   currently ends at `repeated string categories = 8;` (the v0.11.x precedent for this exact kind
-   of additive field, D-10 in that phase). Add:
-   ```proto
-   bool cross_spine = 9; // span all scopes (ignores scope); mirrors search_discovery's cross_spine
-   ```
-   `buf breaking` stays clean (additive only, same precedent as field 8). Regenerate (`task
-   proto:gen`) — this touches the committed `gen/` tree (`gen/go/`, `gen/ts/`) and, per the
-   milestone's own "Codegen drift" tail item (#356), the currently-stale
-   `ui/src/lib/gen/engram_pb.ts` needs to be resynced in the same change or the drift gets worse,
-   not better.
-7. **`internal/server/connectapi.go` `SearchMemories`** (`connectapi.go:193-220`): thread
-   `req.Msg.CrossSpine` into `coreSearchRequest{..., CrossSpine: req.Msg.CrossSpine}`. Unlike
-   `SearchDiscoveries`, there is **no** "empty scope implies cross-spine" legacy behavior to
-   preserve here (this is a brand-new field, not an existing asymmetric one) — Connect and MCP can
-   and should have the *exact same* semantics from day one: `cross_spine` is the only way to search
-   without a scope on either lane.
-
----
-
-## Item 5 — Wiring `authz.Decision.diag` to a reader
-
-### Where the reader belongs, and why
-
-`authz.Decision.diag` (`internal/authz/authz.go:44-51`) is `cedar.Diagnostic` — verified shape
-(`cedar-go@v1.8.0/types/authorize.go`): `Reasons []DiagnosticReason{PolicyID, Position}` and
-`Errors []DiagnosticError{PolicyID, Position, message}`. **No owner/actor/PII fields exist in this
-type at all** — it only ever carries which named policy IDs matched or errored (the
-`internal/authz/policies.go:27` comment already anticipates this: "named ids make debug-level
-diagnostic logging actually useful"). This matters for DEC-wot ("spans carry `engram.owner` (opaque
-`sub`) only; exclude actor/email as PII") — a diag-derived log line is *inherently* PII-free by
-construction of the type, so DEC-wot is satisfied by construction, not by redaction discipline the
-reader has to get right.
-
-The doc comment on `Decision` (`authz.go:44-47`) already states the intended shape: diag "exists
-solely for future debug-level logging / OTel span attachment **by internal/store**." Two
-sub-decisions follow directly from that, and from DEC-cgb (store is the chokepoint):
-
-1. **`internal/authz` exposes a safe accessor, never the raw `cedar.Diagnostic` type.** Exporting
-   `cedar.Diagnostic` directly would leak a third-party type across the package boundary and couple
-   `internal/store` to `cedar-go`'s API shape. Instead, add to `authz.go`:
-   ```go
-   func (d Decision) LogValue() slog.Value {
-       ids := make([]string, len(d.diag.Reasons))
-       for i, r := range d.diag.Reasons { ids[i] = string(r.PolicyID) }
-       return slog.GroupValue(
-           slog.Bool("allow", d.Allow),
-           slog.Any("policy_ids", ids),
-           slog.Int("errors", len(d.diag.Errors)),
-       )
-   }
-   ```
-   Implementing `slog.LogValuer` means the (cheap but non-zero) formatting work is deferred by the
-   `slog` machinery until a handler actually processes the record — a `slog.DebugContext` call site
-   at the hot bulk-recall path costs nothing extra when `ENGRAM_LOG_LEVEL` is above debug.
-2. **`internal/store` logs it, at the existing single-call-site indirections — not a new
-   primitive.** `Store.decideBucket` (`store.go:721-726`) and `Store.decideRecord`
-   (`store.go:732-737`) are *already* the sole choke points every authz-consulting store method
-   routes through. Add one `slog.DebugContext(ctx, "authz decision", "engram.owner", owner,
-   "action", action, "decision", dec)` call inside each, right where `dec` is computed, before
-   returning it. This is observability bolted onto an **existing** primitive, not a new
-   store-layer authz primitive — consistent with the v0.11.x-carried constraint ("zero new
-   store-layer authz primitive") this milestone inherits implicitly by continuing the same
-   discipline. No new dependency, no new package, no new exported type on `internal/store`.
-
----
-
-## Item 6 — Per-lane API key (closes #350)
-
-### The shipped precedent to mirror exactly
-
-`internal/server/tools.go:368-378` (`summarizerFromConfig`):
-```go
-chatBaseURL := cmp.Or(cfg.OpenAI.ChatBaseURL, cfg.OpenAI.BaseURL)
-return summarize.New(chatBaseURL, cfg.OpenAI.APIKey, cfg.Summarize.Model, ...)
-```
-`embedderFromConfig` (`tools.go:344-366`) independently calls `embed.New(cfg.OpenAI.BaseURL,
-cfg.OpenAI.APIKey, cfg.Embed.Model, ...)`. Both lanes currently share **one** `cfg.OpenAI.APIKey` —
-the base-URL split shipped in v0.11.x Phase 26; the key never got the symmetric treatment.
-
-### The change
-
-1. **`internal/config/config.go`** — `OpenAIConfig` (`config.go:107-...`, alongside the existing
-   `ChatBaseURL` field) gains:
-   ```go
-   ChatAPIKey string `koanf:"chat_api_key"`
-   ```
-2. **`internal/config/registry.go`** — one new line, same shape as
-   `{Key: "openai.chat_base_url", Env: "ENGRAM_OPENAI_CHAT_BASE_URL"}` (`registry.go:47`):
-   ```go
-   {Key: "openai.chat_api_key", Env: "ENGRAM_OPENAI_CHAT_API_KEY"},
-   ```
-3. **`internal/server/tools.go` `summarizerFromConfig`** (single call site, `tools.go:369-378`):
-   ```go
-   chatBaseURL := cmp.Or(cfg.OpenAI.ChatBaseURL, cfg.OpenAI.BaseURL)
-   chatAPIKey := cmp.Or(cfg.OpenAI.ChatAPIKey, cfg.OpenAI.APIKey)
-   return summarize.New(chatBaseURL, chatAPIKey, cfg.Summarize.Model, ...)
-   ```
-   `embedderFromConfig` is untouched — mirrors the base-URL split's own "embedder always uses
-   BaseURL regardless of ChatBaseURL" comment (`tools.go:371-372`) verbatim for the key.
-   Byte-identical at the default (empty `ChatAPIKey` ⇒ falls back to the shared key, exactly as
-   today). No new dependency; the whole change is three small, mechanical edits mirroring a shipped
-   pattern one field over.
-
----
-
-## Build Order
-
-### Dependency graph
+## Data flow
 
 ```
-Item 1 (bearer resolver + lane provenance + headless mount + reseal verification)
-   │
-   ├──► Item 2 (CSRF provenance exemption)      — needs Item 1's Extra[auth.LaneExtraKey] stamp
-   │        │
-   │        ▼
-   └──► Item 3 (CLI): search/list need only Item 1; store needs Item 1 AND Item 2
-
-Item 4 (cross_spine on search_memory)  — fully independent
-Item 5 (authz.Decision.diag reader)    — fully independent
-Item 6 (per-lane API key)              — fully independent
+Operator (human)                    Calling agent session
+    │                                     │
+    │ engram spine-review scan            │ mcp__engram__list_memory /
+    │ (Subject-less Scroll,               │ search_memory / get_memory
+    │  cmd/engram → internal/store,       │ (Subject-based, actor-scoped —
+    │  bypasses decideBucket entirely)    │  same authz path every other
+    │        │                            │  MCP tool uses)
+    │        ▼                            │        │
+    │  Qdrant (whole collection)  ◄───────┼────────┘
+    │        │                            │
+    │ engram spine-review verify          │ curating-memory skill: semantic
+    │ (checks extract-before-delete       │ judgment, propose per-candidate,
+    │  ordering — reads #355-shaped       │ user blesses/declines, then
+    │  findings)                          │ update_memory / supersede_memory /
+    │        │                            │ delete_memory (Subject-based,
+    │ engram spine-review purge --apply   │ same store.go write gates as any
+    │ (re-derives eligibility fresh,      │ other agent write)
+    │  never trusts a stale ID list)      │
+    │        │                            │
+    │        ▼                            │
+    │  Qdrant (deletes)                    │
+    └──────────────┬───────────────────────┘
+                   ▼
+       Same Qdrant collection, two
+       independent access tiers:
+       Subject-less operator (A) and
+       Subject-based actor (B) — never
+       the same code path, never a
+       shared authz check.
 ```
 
-### Suggested phasing
+## Build order
 
-**Wave 1 — parallel, no shared files:**
-- **Spine work (Items 1 → 2, sequential within this wave):** build the bearer resolver, lane
-  constants, composed resolver, and headless-mount config knob first (Item 1); land Item 2's CSRF
-  exemption as the *very next* change once the lane stamp exists — same discipline v0.11.x used for
-  its own #1 risk ("proven fail-closed as the phase's first test"): write
-  `TestCSRFCookieCallerOmittingHeaderIsStillRejected` before wiring the exemption branch, so the
-  regression test exists before the code that could regress it.
-- **Item 4 (cross_spine on search_memory)** — touches `tools.go`, `store.go`, and the proto; no
-  overlap with the spine files (`connectcsrf.go`, `connectbearer.go`, `serve.go`, `auth.go`,
-  `resolver.go`).
-- **Item 5 (diag reader)** — touches only `internal/authz` and `internal/store`'s two indirection
-  functions; no overlap with anything else in this milestone.
-- **Item 6 (per-lane API key)** — touches `internal/config` and one function in `tools.go`
-  (`summarizerFromConfig`, distinct from Item 4's `searchMemory`/`effectiveScope` edits in the same
-  file — low but non-zero merge-order risk if both land in the same PR; sequence them or keep the
-  diffs small and reviewed independently).
+Real dependencies, not conceptual tidiness:
 
-**Wave 2 — after Item 1+2 land:**
-- **Item 3 (CLI subcommands).** `engram search`/`engram list` are buildable and testable the moment
-  Item 1's headless mount + bearer resolver exist (read RPCs are never CSRF-gated). Hold
-  `engram store` (or at minimum, hold calling it "done") until Item 2 has landed and its negative
-  tests are green — shipping a write-capable CLI against a CSRF exemption that's still keyed on
-  header-absence would ship the exact vulnerability the milestone's own risk section warns against.
-
-### What can run fully in parallel
-
-Items 4, 5, and 6 have zero file overlap with the Item 1/2 spine and can be assigned to separate
-phases/plans and executed concurrently with the spine work and with each other (mind the
-`tools.go` co-location of Items 4 and 6 noted above). Item 3 is the only item with a hard, two-stage
-dependency on the spine (read subcommands after Item 1; the write subcommand after Item 2 too).
+1. **#453 (systematic mutual-exclusivity via `MarkFlagsMutuallyExclusive`).** Small, self-contained,
+   no dependency on anything else. Do this **before** spine-review so its own subcommand flags
+   (e.g., whatever future exclusive-flag pairs `purge`/`archive` grow) are built on the corrected
+   mechanism rather than adding a *fourth* hand-rolled guard alongside `validateScopeCrossSpine`
+   and `buildRemapSource`.
+2. **#467 (one exit-code taxonomy, or a documented boundary).** A genuine blocker for spine-review:
+   today, operator commands (`reindex`, `migrate-remap-owner`, `prune-expired`, …) return a plain
+   `error` and always exit 1 (D-09's carve-out), while client commands use the `*cliError` 0/2/3/4/5
+   taxonomy. `engram spine-review` is architecturally an operator command (per A) and would silently
+   become a *third* undocumented case unless #467 is resolved first — even if the resolution is
+   "operator commands deliberately keep exit 1, documented as the boundary," that decision must
+   exist before spine-review's own error handling is written, not be improvised mid-build.
+3. **C's audit machinery** (the conditional-requirement-rule table + the small MCP-side
+   introspection helper + the conformance test itself). No code dependency on A or B — build in
+   parallel with steps 1–2. Its full fix-sweep across *existing* `cmd/engram/*`/`tools.go` surfaces
+   can run concurrently with A's build, since it touches unrelated files; but its **standard**
+   (state conditional requirements inline, in both `Usage` text and `jsonschema` tags) should exist
+   in written or test form before spine-review's own help text is finalized, so spine-review is
+   built correct-by-reading from day one rather than becoming the next thing C has to retrofit.
+4. **`engram spine-review` (A).** Built once 1–3 have settled: a Subject-less
+   `internal/store` bulk-scan method (parallel to `Reindex`/`PruneExpired`), `scan`/`verify`/`purge`
+   /`archive` subcommands, the corrected mutual-exclusivity mechanism, the #467-decided exit-code
+   convention, and help text meeting C's standard. `verify` is validated against **#355 as a live
+   fixture** — leave #355 unfixed until `verify` can detect it (see step 7).
+5. **The semantic-judgment skill (B).** No code dependency on A — it only calls MCP tools that
+   already exist, so its SKILL.md content can be authored any time, including in parallel with A.
+   Its extract-before-delete handoff, however, is only end-to-end demonstrable once A's `verify`
+   subcommand exists to mechanically confirm the ordering invariant the skill's extraction step is
+   supposed to satisfy — so full acceptance of that coupling waits on step 4.
+6. **#452 (CLI request timeout).** Fully independent — scoped to `newHTTPClient`/the Connect-lane
+   client commands (`client_*.go`), a different code path from spine-review's operator-command
+   pattern (which already has its own `signal.NotifyContext` + `context.WithTimeout` convention,
+   `reindex.go:57`, `migrate.go:43`, to copy directly). No ordering constraint with 1–5; do it
+   whenever convenient.
+7. **#355 fix.** Deliberately **last** relative to A: PROJECT.md's own framing is that #355 *is* the
+   drifted-citation failure class spine-review's `verify` step exists to detect, so it is the live
+   acceptance fixture for step 4, not a prerequisite to it.
+8. **Nyquist `VALIDATION.md` reconciliation.** Orthogonal documentation/process work across the six
+   already-shipped v0.12.x phases with `status: draft` — zero technical dependency on 1–7.
+   Parallelizable throughout; the one coupling worth naming is that v0.13.x's *own* new phases
+   (spine-review, the skill, the audit) should reconcile their `VALIDATION.md` as each phase closes,
+   so this milestone doesn't add three more files to the same backlog it's supposed to be clearing.
 
 ## Sources
 
-All findings verified by direct source reading during this research pass (2026-07-29):
-- `cmd/engram/serve.go` (full file)
-- `internal/server/connectapi.go`, `connectcsrf.go`, `connectreseal.go`, `connectauth.go`,
-  `identity.go`
-- `internal/server/tools.go` (searchArgs, searchDiscoveryArgs, effectiveDiscoveryScope,
-  deps.searchMemory, deps.searchDiscovery, embedderFromConfig, summarizerFromConfig)
-- `internal/store/store.go` (ownerScopeFilter, Search, SearchReranked, SearchDiscovery,
-  decideBucket, decideRecord, SearchOptions, ListOptions)
-- `internal/authz/authz.go` (Decision, DecideBucket, DecideRecord)
-- `internal/auth/chain.go`, `internal/auth/auth.go` (ChainVerifier, TokenVerifier,
-  OwnerClaimExtraKey)
-- `internal/webauth/resolver.go`, `internal/webauth/handlers.go` (Resolve, Reseal)
-- `internal/config/registry.go`, `internal/config/config.go`
-- `proto/engram/v1/engram.proto` (SearchMemoriesRequest, SearchDiscoveriesRequest)
-- `gen/go/engram/v1/engramv1connect/engram.connect.go` (NewEngramServiceClient signature)
-- `cmd/engram/reindex.go`, `root.go`, `uiconfig.go` (operator-command and testable-pure-function
-  precedents)
-- `github.com/cedar-policy/cedar-go@v1.8.0/types/authorize.go` (Diagnostic/DiagnosticReason/
-  DiagnosticError shape — confirms no PII fields)
-- `.planning/PROJECT.md` (milestone framing, DEC-wot, DEC-cgb, DEC-jgq, v0.11.x precedent for
-  "prove fail-closed as the phase's first test")
+- `/Volumes/Code/github.com/seanb4t/engram/cmd/engram/catalog.go` — self-describe JSON catalog
+  (D-15), built from the live cobra tree; exit-code table sourced from `client_common.go` constants
+- `/Volumes/Code/github.com/seanb4t/engram/cmd/engram/root.go` — root command wiring,
+  `exitCodeFromError`, D-09 backward-compatible default-exit-1 carve-out
+- `/Volumes/Code/github.com/seanb4t/engram/cmd/engram/reindex.go` — existing dry-run/apply
+  precedent (`ReindexOptions.DryRun`, `reindexSummary` pure renderer)
+- `/Volumes/Code/github.com/seanb4t/engram/cmd/engram/migrate.go` — `migrate-remap-owner`
+  dry-run precedent; `buildRemapSource`'s hand-rolled exactly-one-of guard
+- `/Volumes/Code/github.com/seanb4t/engram/cmd/engram/client_common.go` — exit-code taxonomy
+  constants (D-09/D-17), `validateScopeCrossSpine` hand-rolled guard, `wrapRPCError`/`cliError`
+- `/Volumes/Code/github.com/seanb4t/engram/cmd/engram/client_list.go` — undone mutual-exclusivity
+  prose (#453's concrete target)
+- `/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go` — `decideBucket`/`decideRecord`
+  (Subject-based authz chokepoint) vs. `RemapOwner`/`Reindex`/`PruneExpired`/`BackfillShortIDs`
+  (Subject-less operator tier) — the precedent spine-review extends
+  (see `store.go:726,753,2443,2614,2087,2234`)
+- `/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go` — MCP tool arg structs with
+  `jsonschema` tags, the third, genuinely-independent interface surface
+- `/Volumes/Code/github.com/seanb4t/engram/internal/server/argerror.go` — the `argError` envelope
+  and `HintMutuallyExclusive`, the server-side (MCP/Connect) expression of the same "mutually
+  exclusive" concept #453 is fixing on the CLI side
+- `/Volumes/Code/github.com/seanb4t/engram/skill/engram/skills/curating-memory/SKILL.md` — the
+  shipped rule-hygiene triad and "One-time rule backfill sweep" (`:122-249`), the v0.12.x Phase 6
+  precedent this milestone's semantic-judgment skill extends
+- `/Volumes/Code/github.com/seanb4t/engram/.planning/PROJECT.md` — milestone scope, decision
+  history, and the #355/#453/#452/#467 issue framing this research is grounded against
 
 ---
-*Architecture research for: engram v0.12.x "Headless Reach & Diagnosability"*
-*Researched: 2026-07-29*
+*Architecture research for: engram v0.13.x — Curation & Self-Evidence*
+*Researched: 2026-08-03*
