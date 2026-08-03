@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
@@ -132,6 +134,45 @@ func resetClientFlags(t *testing.T) {
 	})
 }
 
+// resetCommandFlagState clears pflag's Changed latch for every flag on cmd
+// AND on the root command's persistent flags, via t.Cleanup. It is the
+// complement of resetClientFlags, not a replacement: resetClientFlags resets
+// the Go variables a flag writes into; this resets pflag's own bookkeeping
+// about whether a flag was supplied on this invocation.
+//
+// Why it is required: every cobra command in this binary is a package-level
+// var shared across the whole test binary, and pflag.Flag.Changed latches
+// true the first time a flag is supplied and never clears itself. Every
+// mechanism this phase introduces (ValidateFlagGroups,
+// MarkFlagsMutuallyExclusive, MarkFlagsOneRequired, and koanf's
+// changed-flag overlay in config.Load) branches on Changed, not on the
+// flag's value. Without this reset, row N+1 in a table-driven test sees row
+// N's supplied flags as still supplied and silently reports the wrong exit
+// code.
+//
+// pflag.Flag.Changed is an exported struct field, so it can be cleared
+// directly from this package. f.Value.Set(f.DefValue)'s error is ignored:
+// for a StringSliceVar-backed flag, pflag's Set APPENDS rather than
+// replacing once Changed has latched, so calling it here would not restore
+// the zero value anyway — resetClientFlags already handles those by nilling
+// the Go var directly, and this helper's job is limited to the Changed bit
+// itself.
+func resetCommandFlagState(t *testing.T, cmd *cobra.Command) {
+	t.Helper()
+	doReset := func() {
+		cmd.Flags().VisitAll(func(f *pflag.Flag) {
+			f.Changed = false
+			_ = f.Value.Set(f.DefValue)
+		})
+		cmd.Root().PersistentFlags().VisitAll(func(f *pflag.Flag) {
+			f.Changed = false
+			_ = f.Value.Set(f.DefValue)
+		})
+	}
+	doReset()
+	t.Cleanup(doReset)
+}
+
 // runClient sets rootCmd's output/error writers to two independent buffers,
 // runs it against args, and returns the captured stdout, stderr, and the
 // error rootCmd.Execute() returned.
@@ -152,4 +193,25 @@ func runClient(t *testing.T, args ...string) (stdout, stderr string, err error) 
 	})
 	err = rootCmd.Execute()
 	return outBuf.String(), errBuf.String(), err
+}
+
+// TestResetCommandFlagState proves the latch is actually cleared: run list
+// once with --offset 1 (against a server that refuses the connection, so the
+// command still returns quickly), call the helper, then assert
+// listCmd.Flags().Changed("offset") is false.
+func TestResetCommandFlagState(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
+
+	_, _, _ = runClient(t, "list", "--server", "http://127.0.0.1:1", "--scope", "s", "--offset", "1")
+
+	if !listCmd.Flags().Changed("offset") {
+		t.Fatal("precondition failed: --offset should be Changed immediately after being supplied")
+	}
+
+	resetCommandFlagState(t, listCmd)
+
+	if listCmd.Flags().Changed("offset") {
+		t.Error(`listCmd.Flags().Changed("offset") = true after resetCommandFlagState, want false`)
+	}
 }
