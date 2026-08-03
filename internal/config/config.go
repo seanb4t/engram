@@ -33,6 +33,7 @@ type Config struct {
 	Connect     ConnectConfig     `koanf:"connect"`
 	Log         LogConfig         `koanf:"log"`
 	Usage       UsageConfig       `koanf:"usage"`
+	Client      ClientConfig      `koanf:"client"`
 }
 
 // ServerConfig is engram's HTTP-listener surface: where the process binds and
@@ -219,6 +220,44 @@ type LogConfig struct {
 // recall-id spans are independent of this flag.
 type UsageConfig struct {
 	Signals string `koanf:"signals"`
+}
+
+// ClientConfig is the caller-side lane (D-04): every engram-client-command
+// flag now routes through the same registry as the server config, rather
+// than a fourth hand-rolled resolver. These fields are deliberately
+// validated by ValidateClient, not Config.Validate — Config.Validate's own
+// doc comment already documents this exclusion pattern for the OIDC/UI
+// fields, and folding client fields into it would force every hand-built
+// Config{} literal in this package's tests (which bypass Load and so never
+// see the registry default) to set them, turning previously-green tests red
+// on the empty-string zero value.
+type ClientConfig struct {
+	// ServerURL is the engram server base URL (ENGRAM_SERVER_URL / --server).
+	// Empty means unset — resolveServerURL's own "flag, then env, then
+	// error" precedence still applies at the call site (D-02).
+	ServerURL string `koanf:"server_url"`
+	// TokenFile is the path to a file containing the bearer credential
+	// (--token-file). There is no ENGRAM_TOKEN registry row: the credential
+	// itself never routes through koanf, only the path to it (D-13).
+	TokenFile string `koanf:"token_file"`
+	// Output is the rendering choice for a client command's response: "json",
+	// "text", or "" (detect from stdout). A per-invocation choice, not a
+	// deployment setting, so it carries no Env fallback.
+	Output string `koanf:"output"`
+	// Insecure skips TLS certificate verification (--insecure). Kept a
+	// string, parsed with strconv.ParseBool at point of use, mirroring
+	// connect.headless / summarize.on_write. Carries no Env fallback: the
+	// flag's own help text promises none, for this TLS gate specifically.
+	Insecure string `koanf:"insecure"`
+	// Timeout is the per-request client deadline (ENGRAM_TIMEOUT / --timeout,
+	// default "30s"). Unlike EmbedConfig.Timeout and SummarizeConfig.Timeout,
+	// where "0" means unbounded, a client "0" is REJECTED as a usage error
+	// (D-05) — because the operator commands (migrate-remap-owner, reindex,
+	// etc.) ship a --timeout flag of the same name with the opposite
+	// zero-means-unbounded semantics, and a reader comparing `engram search
+	// --help` against `engram reindex --help` must not have to infer which
+	// convention applies.
+	Timeout string `koanf:"timeout"`
 }
 
 // Load builds Config from registry defaults, the ENGRAM_ env layer, and — when
