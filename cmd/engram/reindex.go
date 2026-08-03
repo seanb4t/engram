@@ -40,7 +40,7 @@ var reindexCmd = &cobra.Command{
 	Short: "Re-embed memories into a new (new-dimension) collection for embedder migration",
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if reindexTarget == "" {
-			return fmt.Errorf("--target (new collection name) is required")
+			return usageErrorf("--target (new collection name) is required")
 		}
 		// Build the source store WITHOUT creating its collection: reindex must read
 		// an EXISTING source (Reindex errors if it's absent), not conjure an empty
@@ -49,7 +49,7 @@ var reindexCmd = &cobra.Command{
 		// embedder come from a single config load.
 		st, dim, em, identity, err := server.StoreAndEmbedderFromEnvNoEnsure()
 		if err != nil {
-			return err
+			return classifyOperatorErrConstruction(err)
 		}
 
 		// Bound the reindex so a hung Qdrant/embedder cannot block forever, and let
@@ -77,7 +77,7 @@ var reindexCmd = &cobra.Command{
 			},
 		}, em.Embed)
 		if err != nil {
-			return err
+			return classifyOperatorErr(err)
 		}
 		cmd.Println(reindexSummary(res, reindexTarget, dim, reindexDryRun, reindexResume))
 		return nil

@@ -60,7 +60,7 @@ func isUnavailableTransportErr(err error) bool {
 //
 // classifyOperatorErr's own default is a true passthrough (D-02: exit code 1
 // stays a real backstop for a genuinely unclassified Go error, never a
-// silent misclassification). classifyConstructionErr below layers
+// silent misclassification). classifyOperatorErrConstruction below layers
 // call-site knowledge on top of this function for the three store
 // constructors specifically, where every error that reaches this function's
 // default IS, by construction of internal/server/tools.go, a config/parse
@@ -144,13 +144,13 @@ func classifyOperatorErr(err error) error {
 		// Genuinely unclassified from this function's own signals: returned
 		// unchanged, honoring D-02 -- exit code 1 stays a real backstop for
 		// a future, truly unanticipated error type, not a silent
-		// misclassification. classifyConstructionErr applies call-site
+		// misclassification. classifyOperatorErrConstruction applies call-site
 		// knowledge on top of this at the three store-construction sites.
 		return err
 	}
 }
 
-// classifyConstructionErr wraps classifyOperatorErr for the three store/
+// classifyOperatorErrConstruction wraps classifyOperatorErr for the three store/
 // summarizer constructors these four commands call before any sweep begins:
 // server.StoreFromEnv, StoreAndEmbedderFromEnvNoEnsure, and
 // StoreAndSummarizerFromEnv (internal/server/tools.go). Per that file, the
@@ -171,7 +171,7 @@ func classifyOperatorErr(err error) error {
 // classifyOperatorErr itself an honest general classifier -- its own
 // default stays a true passthrough -- rather than forcing every
 // unrecognized error, everywhere, into exitUsage.
-func classifyConstructionErr(err error) error {
+func classifyOperatorErrConstruction(err error) error {
 	if err == nil {
 		return nil
 	}

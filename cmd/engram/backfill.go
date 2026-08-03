@@ -26,7 +26,7 @@ var backfillShortIDsCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		st, err := server.StoreFromEnv()
 		if err != nil {
-			return err
+			return classifyOperatorErrConstruction(err)
 		}
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
@@ -40,7 +40,7 @@ var backfillShortIDsCmd = &cobra.Command{
 			if n > 0 {
 				cmd.PrintErrf("aborted after backfilling %d record(s)\n", n)
 			}
-			return err
+			return classifyOperatorErr(err)
 		}
 		if backfillDryRun {
 			cmd.Printf("[dry-run] would backfill %d record(s)\n", n)

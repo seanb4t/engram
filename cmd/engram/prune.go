@@ -29,7 +29,7 @@ var pruneExpiredCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		st, err := server.StoreFromEnv()
 		if err != nil {
-			return err
+			return classifyOperatorErrConstruction(err)
 		}
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
@@ -41,7 +41,7 @@ var pruneExpiredCmd = &cobra.Command{
 		before := pruneCutoff(time.Now().UTC(), pruneOlderThan)
 		n, err := st.PruneExpired(ctx, before)
 		if err != nil {
-			return err
+			return classifyOperatorErr(err)
 		}
 		cmd.Printf("pruned ~%d expired record(s) (not_after < %s; best-effort count)\n", n, before.Format(time.RFC3339))
 		return nil

@@ -35,11 +35,11 @@ var summarizeMissingCmd = &cobra.Command{
 	Short: "Fill empty recall summaries with the configured cheap model",
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if summarizeScope == "" && !summarizeAllScopes {
-			return fmt.Errorf("--scope <scope> or --all-scopes is required")
+			return usageErrorf("--scope <scope> or --all-scopes is required")
 		}
 		st, sm, model, maxChars, err := server.StoreAndSummarizerFromEnv()
 		if err != nil {
-			return err
+			return classifyOperatorErrConstruction(err)
 		}
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
@@ -62,7 +62,7 @@ var summarizeMissingCmd = &cobra.Command{
 			DryRun:    summarizeDryRun,
 		}, sm.Summarize)
 		if err != nil {
-			return err
+			return classifyOperatorErr(err)
 		}
 		cmd.Println(summarizeSummary(res, summarizeDryRun))
 		return nil

@@ -177,6 +177,7 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		before:  exitGeneric,
 		after:   exitUsage,
 		changes: true,
+		landed:  true,
 	},
 	{
 		name:    "reindex/unreachable-qdrant",
@@ -185,6 +186,7 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		before:  exitGeneric,
 		after:   exitUnavailable,
 		changes: true,
+		landed:  true,
 	},
 	{
 		name:    "prune/unreachable-qdrant",
@@ -193,6 +195,7 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		before:  exitGeneric,
 		after:   exitUnavailable,
 		changes: true,
+		landed:  true,
 	},
 	{
 		name:    "summarize/missing-scope",
@@ -200,6 +203,7 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		before:  exitGeneric,
 		after:   exitUsage,
 		changes: true,
+		landed:  true,
 	},
 	{
 		name:    "summarize/missing-model",
@@ -208,6 +212,7 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		before:  exitGeneric,
 		after:   exitUsage,
 		changes: true,
+		landed:  true,
 	},
 	{
 		name:    "backfill/unreachable-qdrant",
@@ -216,6 +221,7 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		before:  exitGeneric,
 		after:   exitUnavailable,
 		changes: true,
+		landed:  true,
 	},
 	{
 		name:    "migrate-remap/no-source",

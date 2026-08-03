@@ -81,11 +81,11 @@ func TestClassifyOperatorErr(t *testing.T) {
 		// shape server.StoreAndSummarizerFromEnv / storeFromConfig raise --
 		// no gRPC status, no store sentinel. classifyOperatorErr's own
 		// default leaves this untouched (D-02, proven by the "unrecognized
-		// error" row below); classifyConstructionErr is the
+		// error" row below); classifyOperatorErrConstruction is the
 		// construction-call-site fallback that classifies it exitUsage --
 		// see its doc comment in operror.go.
 		err := errors.New("ENGRAM_SUMMARY_MODEL is empty: auto-summary is disabled")
-		wantExitCode(t, classifyConstructionErr(err), exitUsage)
+		wantExitCode(t, classifyOperatorErrConstruction(err), exitUsage)
 	})
 
 	t.Run("grpc codes.Unavailable", func(t *testing.T) {
