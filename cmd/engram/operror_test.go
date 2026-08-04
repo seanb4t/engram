@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	grpccodes "google.golang.org/grpc/codes"
@@ -166,5 +168,76 @@ func TestClassifyOperatorErrCodesAreDistinct(t *testing.T) {
 	want := map[int]bool{exitNotFound: true, exitUsage: true, exitUnavailable: true}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("sentinel exit codes = {%s}, want {%s}", sortedIntKeys(got), sortedIntKeys(want))
+	}
+}
+
+// operatorCommandFiles lists the six operator command source files D-03
+// scopes for full classification (CONTEXT.md). Kept as a literal here
+// rather than a directory walk so a new operator command file must be
+// added explicitly -- the same discipline TestExitCodeBaselineRowCount
+// applies to its own row list.
+var operatorCommandFiles = []string{
+	"reindex.go",
+	"prune.go",
+	"summarize.go",
+	"backfill.go",
+	"migrate.go",
+	"serve.go",
+}
+
+// bareOperatorErrorExceptionMarker is the explicit opt-out comment a
+// `return fmt.Errorf(...)` / `return errors.New(...)` site in one of
+// operatorCommandFiles must carry, on the SAME line, to be exempted from
+// TestNoBareOperatorErrorReturns below.
+//
+// Zero sites carry it at this commit. Even the one deliberate D-03
+// backstop -- serve.go's ListenAndServe failure -- returns the SDK's own
+// error bare (`return err` / `serveErr <- err`), never a locally
+// constructed fmt.Errorf/errors.New, so there is nothing for this marker
+// to exempt yet; see the comment at that call site in serve.go for the
+// full rationale. The marker exists so a future genuinely exceptional
+// site is recorded explicitly in the source, rather than silently
+// widening this gate by editing the test itself.
+const bareOperatorErrorExceptionMarker = "gsd:bare-operator-error-exception"
+
+// TestNoBareOperatorErrorReturns is the source-level D-03 closing gate: no
+// operator command file returns an error the taxonomy could have
+// classified, unclassified. A comment-filtered substring scan (mirroring
+// `rg -v '^\s*//'` before counting, done in Go rather than shelling out)
+// rather than a full go/parser AST walk -- this plan's own Flagged
+// Assumptions permit the simpler substitute when an AST walk is
+// disproportionate, and filtering full-line comments first means a
+// comment merely mentioning the pattern can neither satisfy nor break the
+// gate.
+func TestNoBareOperatorErrorReturns(t *testing.T) {
+	const (
+		bareFmtErrorf = "return fmt.Errorf("
+		bareErrorsNew = "return errors.New("
+	)
+	for _, name := range operatorCommandFiles {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			src, err := os.ReadFile(name)
+			if err != nil {
+				t.Fatalf("read %s: %v", name, err)
+			}
+			var bareReturns, marked int
+			for _, line := range strings.Split(string(src), "\n") {
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "//") {
+					continue // full-line comment: never a live return site
+				}
+				if strings.Contains(line, bareFmtErrorf) || strings.Contains(line, bareErrorsNew) {
+					bareReturns++
+				}
+				if strings.Contains(line, bareOperatorErrorExceptionMarker) {
+					marked++
+				}
+			}
+			if bareReturns != marked {
+				t.Errorf("%s: %d bare fmt.Errorf(...)/errors.New(...) return(s) not routed through the taxonomy (found %d explicitly marked with %q) -- wrap in usageErrorf/classifyOperatorErr/classifyOperatorErrConstruction, or add the marker on the same line if this is a new, deliberate exception",
+					name, bareReturns, marked, bareOperatorErrorExceptionMarker)
+			}
+		})
 	}
 }

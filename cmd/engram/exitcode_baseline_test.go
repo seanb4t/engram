@@ -134,6 +134,23 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		changes: false,
 	},
 	{
+		// A genuinely deferred row (plan 01-07, see 01-03-SUMMARY.md's "Next
+		// Phase Readiness"), not yet landed: no client command reads
+		// cfg.Client.Timeout or calls ValidateClient today (confirmed --
+		// client_common.go/client_search.go import neither internal/config
+		// symbol), so a malformed ENGRAM_TIMEOUT is silently inert and the
+		// call proceeds to dial the dead server. Once 01-07 wires
+		// ValidateClient into the client entry path, the same invocation
+		// will be rejected before any dial. Named in
+		// exitCodeBaselineFullyMigratedAllowlist below.
+		name:    "search/malformed-client-timeout-env",
+		args:    []string{"search", "--server", deadServer, "--scope", "s", "--query", "q"},
+		env:     map[string]string{"ENGRAM_TIMEOUT": "not-a-duration"},
+		before:  exitUnavailable,
+		after:   exitUsage,
+		changes: true,
+	},
+	{
 		name:    "store/missing-required",
 		args:    []string{"store", "--server", deadServer},
 		before:  exitUsage,
@@ -327,7 +344,7 @@ func TestExitCodeBaselineClaims(t *testing.T) {
 // uniqueness so a silently-deleted row fails the test instead of quietly
 // shrinking coverage.
 func TestExitCodeBaselineRowCount(t *testing.T) {
-	const wantRows = 28
+	const wantRows = 29
 	if got := len(exitCodeBaseline); got != wantRows {
 		t.Errorf("len(exitCodeBaseline) = %d, want %d", got, wantRows)
 	}
@@ -400,5 +417,41 @@ func TestExitCodeBaseline(t *testing.T) {
 				t.Errorf("row %q: exitCodeFromError(err) = %d, want %d (err=%v)", c.name, got, want, err)
 			}
 		})
+	}
+}
+
+// exitCodeBaselineFullyMigratedAllowlist is the explicit, named exception to
+// TestExitCodeBaselineFullyMigrated below: a row here is exempt from the
+// "changes implies landed" rule because its behavior change is genuinely
+// deferred to a later plan (01-07/01-08), not because it was missed by this
+// plan's own sweep. A loose "skip every client-verb row" would silently
+// exempt rows nobody actually deferred; naming them individually is what
+// keeps the exemption auditable, and is why an entry here must correspond
+// to a real row with a comment explaining which later plan owns it (see
+// exitCodeBaseline's own "search/malformed-client-timeout-env" row comment).
+var exitCodeBaselineFullyMigratedAllowlist = map[string]bool{
+	"search/malformed-client-timeout-env": true, // plan 01-07: ValidateClient wiring
+}
+
+// TestExitCodeBaselineFullyMigrated is the table-level D-03 closing gate,
+// complementing TestNoBareOperatorErrorReturns' source-level one
+// (operror_test.go): every row declaring changes: true must also carry
+// landed: true, except a row explicitly named in
+// exitCodeBaselineFullyMigratedAllowlist. At THIS plan's commit every
+// OPERATOR row (the six commands D-03 scopes) is landed with zero
+// exceptions -- the one allowlisted row is a client verb whose behavior is
+// owned by a later plan, not an operator gap this plan left open.
+func TestExitCodeBaselineFullyMigrated(t *testing.T) {
+	for _, c := range exitCodeBaseline {
+		c := c
+		if !c.changes {
+			continue
+		}
+		if exitCodeBaselineFullyMigratedAllowlist[c.name] {
+			continue
+		}
+		if !c.landed {
+			t.Errorf("row %q: changes=true but landed=false, and not present in exitCodeBaselineFullyMigratedAllowlist -- either this row's change has not shipped yet (add it to the allowlist with a comment naming the owning plan) or it was missed by the plan that should have flipped it", c.name)
+		}
 	}
 }
