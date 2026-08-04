@@ -224,7 +224,7 @@ exact undocumented exit-code split #467 exists to close.
    hand-rolled resolver; no `os.Getenv`-based client resolver (e.g. `resolveServerURL`) remains in
    `cmd/engram/`.
 
-**Plans:** 6/9 plans executed
+**Plans:** 7/9 plans executed
 
 Plans:
 **Wave 1**
@@ -250,7 +250,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 01-07-PLAN.md — `exitTimeout = 6`, mapper split, catalog entry; hand-rolled client resolvers retired; `--timeout` registered
+- [x] 01-07-PLAN.md — `exitTimeout = 6`, mapper split, catalog entry; hand-rolled client resolvers retired; `--timeout` registered
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
