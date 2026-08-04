@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"connectrpc.com/connect"
@@ -37,14 +38,17 @@ var listCmd = &cobra.Command{
 		if err := requireScopeUnlessCrossSpine(listScope, listCrossSpine); err != nil {
 			return err
 		}
-		// Timeout is resolved here but not yet applied to the RPC context —
-		// plan 01-08 wires it into context.WithTimeout; this plan only
-		// makes it exist and be validated (D-05).
-		client, format, _, err := clientFromFlags(cmd)
+		client, format, timeout, err := clientFromFlags(cmd)
 		if err != nil {
 			return err
 		}
-		resp, err := client.ListMemories(cmd.Context(), connect.NewRequest(&engramv1.ListMemoriesRequest{
+		// The deadline comes from clientFromFlags' resolved timeout — the
+		// single resolution point (D-05) — never a second resolution here.
+		// cmd.Context() is only ever the PARENT of this derived context,
+		// never passed to the Connect call directly (E-13).
+		ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
+		defer cancel()
+		resp, err := client.ListMemories(ctx, connect.NewRequest(&engramv1.ListMemoriesRequest{
 			Scope:         listScope,
 			CrossSpine:    listCrossSpine,
 			Limit:         listLimit,
