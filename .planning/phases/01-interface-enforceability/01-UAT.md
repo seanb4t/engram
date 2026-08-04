@@ -14,7 +14,7 @@ expected: |
   `guides/upgrade.md`'s `## Unreleased` section gives an operator upgrading a live
   deployment enough to act: every changed exit status named, each with who-should-act
   framing, and no surprise left implicit.
-awaiting: user response
+awaiting: none — session complete, all 12 tests resolved
 
 ## Tests
 
@@ -94,8 +94,9 @@ Auto-covered by passing tests (7 of 9 SUMMARYs, `all_auto_covered: true`): 01-01
 01-03, 01-04, 01-07 coverage blocks; 01-05 and 01-06 are legacy-mode and were covered by
 direct CLI observation above (tests 5, 6, 8).
 
-11 of 12 tests pass by direct observation against a binary built at HEAD. 1 pending human
-judgment.
+12 of 12 pass. Tests 1–10 by direct observation against a binary built at HEAD, test 11 by
+the automated catalog gates, test 12 by user judgment (passed, with the triage-table fix
+applied in response).
 
 ## Gaps
 
