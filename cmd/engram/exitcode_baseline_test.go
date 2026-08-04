@@ -279,6 +279,23 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		before:  exitGeneric,
 		after:   exitUsage,
 		changes: true,
+		landed:  true,
+	},
+	{
+		name:    "serve/ui-enabled-missing-creds",
+		args:    []string{"serve", "--listen-addr", "127.0.0.1:0", "--ui-enabled", "true"},
+		before:  exitGeneric,
+		after:   exitUsage,
+		changes: true,
+		landed:  true,
+	},
+	{
+		name:    "serve/connect-headless-no-auth-lane",
+		args:    []string{"serve", "--listen-addr", "127.0.0.1:0", "--connect-headless", "true"},
+		before:  exitGeneric,
+		after:   exitUsage,
+		changes: true,
+		landed:  true,
 	},
 }
 
@@ -310,7 +327,7 @@ func TestExitCodeBaselineClaims(t *testing.T) {
 // uniqueness so a silently-deleted row fails the test instead of quietly
 // shrinking coverage.
 func TestExitCodeBaselineRowCount(t *testing.T) {
-	const wantRows = 26
+	const wantRows = 28
 	if got := len(exitCodeBaseline); got != wantRows {
 		t.Errorf("len(exitCodeBaseline) = %d, want %d", got, wantRows)
 	}
