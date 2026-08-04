@@ -224,7 +224,7 @@ exact undocumented exit-code split #467 exists to close.
    hand-rolled resolver; no `os.Getenv`-based client resolver (e.g. `resolveServerURL`) remains in
    `cmd/engram/`.
 
-**Plans:** 8/9 plans executed
+**Plans:** 9/9 plans executed
 
 Plans:
 **Wave 1**
@@ -258,7 +258,7 @@ Plans:
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
-- [ ] 01-09-PLAN.md — `guides/upgrade.md` + `guides/cli.md` migration notes, recorded consumer audit, mechanical coverage gate
+- [x] 01-09-PLAN.md — `guides/upgrade.md` + `guides/cli.md` migration notes, recorded consumer audit, mechanical coverage gate
 
 ---
 

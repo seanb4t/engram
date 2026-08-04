@@ -4,16 +4,16 @@ milestone: v0.13.x
 milestone_name: Curation & Self-Evidence
 current_phase: 01
 current_phase_name: interface-enforceability
-status: executing
-stopped_at: Completed 01-08-PLAN.md
-last_updated: "2026-08-04T01:36:59.515Z"
+status: verifying
+stopped_at: Completed 01-09-PLAN.md (phase 01-interface-enforceability complete)
+last_updated: "2026-08-04T01:48:23.260Z"
 last_activity: 2026-08-03
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 9
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.
 
 Phase: 01 (interface-enforceability) — EXECUTING
 Plan: 9 of 9
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-03 — Phase 01 execution started
 
 ## Deferred Items
@@ -126,6 +126,8 @@ milestone needs in working memory.
 - [Phase ?]: 01-07: D-01/D-06 checkpoints pre-approved (exitAuth=3 kept, exitTimeout=6 added); TestClientFilesImportBoundary restructured with a named per-file exception so client_common.go alone may import internal/config for clientFromFlags' config.Load/ValidateClient call
 - [Phase ?]: 01-08: hung-server test harness selects on r.Context().Done() OR a t.Cleanup-closed release channel — connect-go's client does not reliably close the underlying TCP connection on context cancellation, confirmed via a throwaway repro; relying on r.Context().Done() alone hangs httptest.Server.Close()
 - [Phase ?]: 01-08: exitCodeBaseline table extended with hungServer/hungServerPlaceholder row opt-in, letting a static table row exercise a dynamically-addressed hung httptest.Server
+- [Phase ?]: Plan 01-09: guides/upgrade.md documents a THREE-way --timeout zero-semantics split (client rejects 0; reindex/prune-expired/summarize-missing/backfill-short-ids unchanged at 0-disables; migrate-remap-owner/migrate-set-owner now reject 0 per D-05 reconciliation), matching what actually shipped rather than the plan's own two-way framing.
+- [Phase ?]: Plan 01-09: TestUpgradeGuideNamesEveryChangedCommand derives required command names from exitCodeBaseline's own args[0] rather than a second hand-maintained list, closing the phase with a mechanical (not reading-based) guarantee that guides/upgrade.md names every changed command.
 
 ### Blockers/Concerns
 
@@ -149,8 +151,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-04T01:36:59.507Z
-Stopped at: Completed 01-08-PLAN.md
+Last session: 2026-08-04T01:48:23.252Z
+Stopped at: Completed 01-09-PLAN.md (phase 01-interface-enforceability complete)
 Resume file: None
 
 ## Performance Metrics
@@ -240,6 +242,7 @@ Resume file: None
 | Phase 01 P06 | ~25min | 3 tasks | 5 files |
 | Phase 01 P07 | ~25min | 2 tasks | 10 files |
 | Phase 01 P08 | ~15min | 3 tasks | 5 files |
+| Phase 01 P09 | ~40min | 3 tasks | 4 files |
 
 ## Operator Next Steps
 
