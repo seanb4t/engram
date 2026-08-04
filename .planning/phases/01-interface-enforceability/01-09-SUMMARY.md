@@ -230,3 +230,9 @@ None — no external service configuration required.
 ---
 *Phase: 01-interface-enforceability*
 *Completed: 2026-08-03*
+
+## Self-Check: PASSED
+
+All created/modified files (`cmd/engram/docsync_test.go`, `docs-site/src/content/docs/guides/cli.md`,
+`docs-site/src/content/docs/guides/upgrade.md`, `RELEASING.md`, this SUMMARY.md) and all three commit
+hashes (`5597ec2c`, `15a7d2cb`, `f61e84ec`) verified present.
