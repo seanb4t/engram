@@ -25,14 +25,17 @@ flag mirrors a field on the corresponding Connect request message.
 
 ## Shared flags
 
-All three commands accept the same four flags:
+All three commands accept the same five flags, each resolved flag-then-
+environment-then-default through the same `internal/config` registry the
+server side uses:
 
 | Flag | Purpose |
 |------|---------|
 | `--server` | Server base URL. Falls back to `ENGRAM_SERVER_URL` if unset. Required (from one or the other) — there is no localhost default. |
 | `--token-file` | Path to a file containing the bearer credential. Falls back to `ENGRAM_TOKEN` (env wins over file if both are set). |
-| `--insecure` | Skip TLS certificate verification. Always prints an unconditional warning to stderr — this cannot be suppressed and cannot be set via an environment variable. |
+| `--insecure` | Skip TLS certificate verification. Always prints an unconditional warning to stderr — this cannot be suppressed and **has no environment fallback**, deliberately: it cannot be silently enabled by an inherited environment variable. |
 | `--output` | Force `"json"` or `"text"`. Default: JSON when stdout is not a terminal, a human table when it is. |
+| `--timeout` | Bounds the RPC call. Falls back to `ENGRAM_TIMEOUT`. Default `30s`. `0` is rejected as a usage error — it does not mean unbounded. See [Request timeout](#request-timeout) below. |
 
 **Credential precedence, in order:** `ENGRAM_TOKEN` environment variable, then
 the file named by `--token-file`. **There is no `--token` flag.** This is
@@ -89,25 +92,66 @@ every response before this release and is unaffected by this change.
 
 ## Exit codes
 
+Every command in the binary — the three client verbs and all seven operator
+commands (`serve`, `reindex`, `prune-expired`, `summarize-missing`,
+`backfill-short-ids`, `migrate-remap-owner`, and its deprecated alias
+`migrate-set-owner`) — resolves through the same seven codes:
+
 | Code | Meaning |
 |------|---------|
 | 0 | Success (including an empty result set) |
-| 1 | Generic or unclassified failure — **also what a cobra-native flag-parse error produces** (see caveat below) |
-| 2 | Usage or validation error engram's own commands detect (a missing `--server`/`ENGRAM_SERVER_URL`, an invalid `--output` value, an empty required flag) |
+| 1 | Unclassified internal error — a backstop, not a general-purpose failure code. Reached by exactly two paths (see caution below). |
+| 2 | Usage or validation error — a bad flag value, a violated mutually-exclusive flag group, or engram's own semantic validation (a missing `--server`/`ENGRAM_SERVER_URL`, an invalid `--output` value, an empty required flag) |
 | 3 | Authentication or authorization failure |
 | 4 | Not found |
 | 5 | Transport or server unavailable |
+| 6 | Request deadline exceeded — the server accepted the request but did not answer within `--timeout` |
 
-:::caution[A flag typo exits 1, not 2]
-Exit `2` is reserved for engram's **own** semantic validation. An unknown
-flag, an unparseable flag value, or a mistyped verb is rejected by the
-command framework itself, before any engram code runs — and that path always
-exits `1`, the same generic code every pre-existing operator command
-(`serve`, `reindex`, `prune-expired`, ...) already used for an unclassified
-failure. `engram search --typo` is a usage mistake in the ordinary sense, but
-it reports `1`, not `2`. Do not branch on `2` to catch every usage error —
-branch on it only for the validation engram's own commands perform.
+:::caution[Only two paths still exit 1]
+Framework flag errors — an unknown flag, an unparseable flag value — and a
+violated mutually-exclusive flag group all exit `2` now, the same code as
+engram's own semantic validation. Previously published guidance said a flag
+typo exits `1`, "not `2`"; that guidance is **retracted**. Only two paths
+still exit `1`:
+
+- A **mistyped verb** (`engram serach`), rejected during cobra's own command
+  resolution before any engram hook runs.
+- A **genuinely unclassified internal error**, including `serve`'s own
+  `ListenAndServe()` call failing to bind (for example, "address already in
+  use"). This one is deliberate, not an oversight: exit `5` means "the
+  remote server or Qdrant is unreachable" everywhere else in this taxonomy,
+  and a local OS bind failure is a different condition — force-mapping it
+  onto `5` would make `5` ambiguous for any caller scripting both `serve`
+  and a client verb.
+
+See the
+[upgrade guide](/guides/upgrade/#1-framework-flag-errors-now-exit-2-not-1)
+for the full migration note.
 :::
+
+## Request timeout
+
+Every client verb (`search`, `list`, `store`) bounds its RPC call with
+`--timeout` (or `ENGRAM_TIMEOUT`), default `30s`. `0`, a negative value, and
+a malformed duration are all rejected as usage errors (exit `2`) **before**
+any dial — `--timeout 0` together with an unreachable `--server` still exits
+`2`, not `5`. A server that accepts the connection but never answers within
+the window reports exit `6`, distinct from exit `5` (the server refused the
+connection, or was never reachable at all).
+
+**The operator commands' own `--timeout` is a different flag with different
+zero-semantics, and it is not uniform across commands:**
+
+| Commands | `--timeout` meaning | `0` behavior |
+|---|---|---|
+| `search`, `list`, `store` | Per-RPC-call deadline | **Rejected** (usage error) |
+| `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
+| `migrate-remap-owner`, `migrate-set-owner` | Whole-sweep wall-clock budget | **Rejected** (usage error) — changed this release, see the [upgrade guide](/guides/upgrade/#6-migrate-remap-owner---timeout-0--migrate-set-owner---timeout-0-no-longer-means-unbounded) |
+
+A reader comparing `engram search --help` against `engram reindex --help`
+and `engram migrate-remap-owner --help` side by side should not have to
+infer this table from the flag's one-line usage text — the three groups
+genuinely disagree on what `--timeout 0` does.
 
 ## The self-describe catalog
 
