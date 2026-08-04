@@ -8,6 +8,195 @@ additive, but some minor versions change **default behavior** without changing
 the wire schema. This page lists those changes and the opt-in to restore prior
 behavior.
 
+## Unreleased — One CLI exit-code taxonomy, enforced flag groups, and a client request timeout
+
+<!--
+  Release-time step: rename "Unreleased" above to the version release-please
+  actually cuts (e.g. "## vX.Y.Z — ..."). Do not hand-author a version number
+  before that point — release-please computes the next version from
+  Conventional Commits at merge time and syncs charts/engram/Chart.yaml and
+  the skill plugin manifest, but not this file. See RELEASING.md.
+-->
+
+This release closes GitHub issues #453 (flag exclusivity) and #467
+(exit-code unification) in one pass, and ships #452 (a client request
+timeout). Every `engram` invocation — client verb or operator command alike
+— now resolves flag conflicts, configuration, timeouts, and errors through
+one predictable, migration-safe contract.
+
+### 1. Framework flag errors now exit 2, not 1
+
+Previously published guidance told callers that a flag-parsing error raised
+by the command framework itself — an unknown flag or an unparseable flag
+value — exits `1`, "not `2`," and warned against assuming every usage-shaped
+failure exits `2`. **That guidance is retracted.** An unknown flag, an
+unparseable flag value (`engram search --k notanumber`), and a violated
+mutually-exclusive flag group all exit `2` now, alongside engram's own
+semantic validation.
+
+A retired `MEM_*` legacy environment variable being set (superseded by its
+`ENGRAM_*` equivalent) also now exits `2` instead of `1` — reachable from
+any command, for example `engram version` with a stale `MEM_QDRANT_ADDR`
+still set. See [Configuration](/guides/configure/) for the full
+`ENGRAM_*`/`MEM_*` legacy mapping.
+
+Two paths still exit `1`, and only two:
+
+- A **mistyped verb** (`engram serach`), rejected during cobra's own command
+  resolution before any engram hook runs.
+- A **genuinely unclassified internal error** — an untyped Go error that
+  reached the top of `Execute()` without being wrapped by any of this
+  release's new classifiers.
+
+**Who should act:** any script branching on exit `1` to detect a flag
+mistake. It now reports `2`, the same code as every other usage error.
+
+### 2. Operator commands now return classified exit statuses
+
+`reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`,
+`migrate-remap-owner`, `migrate-set-owner` (the deprecated alias for
+`migrate-remap-owner --from-missing`), and `serve` previously returned exit
+`1` for every failure — a bad flag value, an unreachable Qdrant, and a
+config error were indistinguishable to a caller's exit-status check. All
+seven now use the same vocabulary the client verbs already used:
+
+| Code | Meaning |
+|---|---|
+| `2` | Bad flag or configuration value |
+| `4` | Missing target |
+| `5` | Backend (Qdrant) unreachable |
+
+**The one documented exception:** `serve`'s own `ListenAndServe()` call —
+the underlying HTTP listener failing to bind (for example, "address already
+in use") — still exits `1`. Every other `serve` startup failure (bad
+config, missing auth credentials, OIDC discovery failure) exits `2` or `5`
+like everything else in this list. This is deliberate, not an oversight:
+exit `5` has meant "the remote server or Qdrant is unreachable" at every
+other site in this taxonomy, and a local OS bind failure is a different
+condition — force-mapping it onto `5` would make `5` ambiguous for any
+caller scripting both `serve` and a client verb. See the caution box in the
+[CLI guide](/guides/cli/#exit-codes) for the same statement in context.
+
+**Who should act:** any operator script that branches on a specific exit
+code from any of these seven commands. A script that only checks
+zero-vs-nonzero needs no change.
+
+### 3. `--page-token` together with `--offset` is now an error
+
+Previously, `engram list --offset N --page-token X` silently ignored
+`--offset` and paged by token. The help text made two different claims for
+the same trio of flags — `--offset` was "mutually exclusive with
+`--cursor-mode`" but `--page-token` merely "ignored `--offset`." Silently
+ignoring a flag the caller explicitly passed is the same class of defect as
+an unenforced exclusivity claim, so `list`'s
+`--offset`/`--cursor-mode`/`--page-token` trio is now a declared, enforced
+mutually-exclusive group: supplying any two exits `2` before any network
+call.
+
+The same enforcement now covers `search --scope` / `search --cross-spine`
+and `list --scope` / `list --cross-spine`, which previously had a
+hand-rolled guard covering only the symmetric case.
+
+**The blast radius is wider than "don't pass both."** cobra's flag groups
+count a flag being *supplied*, not its value. `engram list --offset 0
+--page-token ''` — both at their zero values — is rejected too, because
+both flags were explicitly set on the command line, even though `0` and
+`""` look like "nothing." The same applies to `engram search --scope s
+--cross-spine=false`: `--cross-spine=false` is still a supplied flag and
+still conflicts with `--scope`. If your script always passes every flag it
+knows about, even at a default-looking value, this is the change most
+likely to affect it.
+
+**Who should act:** any script or shell alias that passes
+`--offset`/`--page-token` together, or `--scope`/`--cross-spine` together
+(at any value), on `search` or `list`.
+
+### 4. New exit code 6 for a request timeout
+
+A client-side request deadline being exceeded now reports **exit code
+`6`**, distinct from exit `5` (transport or server unavailable). Code `5`
+means "I could not reach the server or it refused the connection"; code `6`
+means "the server accepted the request but did not answer before the
+deadline." A caller currently treating `5` as "retry later" should decide
+whether a timeout warrants raising `--timeout` instead of a bare retry.
+
+### 5. New client `--timeout`, default 30s, and `0` is rejected
+
+Every client verb (`search`, `list`, `store`) now accepts `--timeout` (also
+settable via `ENGRAM_TIMEOUT`), bounding the RPC call with a real deadline.
+Default: `30s`. A value of `0` is rejected as a usage error (exit `2`) — it
+does **not** mean "unbounded."
+
+**This is the opposite convention from four of the six operator commands'
+own `--timeout`** (`reindex`, `prune-expired`, `summarize-missing`,
+`backfill-short-ids`, where `0` still disables the deadline, unchanged).
+It matches `migrate-remap-owner`/`migrate-set-owner`'s own `--timeout` as
+of this release (see #6 below). Same flag name, different zero-semantics
+across three groups of commands — a reader must not have to infer it. See
+[Request timeout](/guides/cli/#request-timeout) for the full comparison
+table.
+
+**Who should act:** any client-side script invoking `search`/`list`/`store`
+with no explicit `--timeout` gets a new 30-second ceiling it did not have
+before — there was previously no client-side deadline at all, so a hung
+server blocked the invocation forever. If your workload legitimately needs
+longer than 30 seconds, pass `--timeout` explicitly.
+
+### 6. `migrate-remap-owner --timeout 0` / `migrate-set-owner --timeout 0` no longer means unbounded
+
+Before this release, these two commands' pre-existing `--timeout` flag
+treated `0` as "disable the deadline." That is now a rejected usage error
+(exit `2`), reconciled onto the same rule the new client `--timeout` uses
+(#5 above) — the binary no longer ships a `--timeout` whose zero-semantics
+depend on which command you happen to be scripting, for these two commands.
+
+**Who should act:** any operator who scripts `migrate-remap-owner --timeout
+0` or `migrate-set-owner --timeout 0` expecting an unbounded run. Remove
+the flag (both commands' own default, `5m`, still applies) or supply a
+large explicit duration (`--timeout 24h`) instead.
+
+### 7. Client configuration now resolves through the `ENGRAM_` registry
+
+`--server`, `--token-file`, `--output`, `--insecure`, and `--timeout` all
+now resolve flag-then-environment-then-default through the same
+`internal/config` registry the server side already used, instead of four
+separate hand-rolled resolvers. `ENGRAM_TIMEOUT` is new. `ENGRAM_SERVER_URL`
+is unchanged. `--insecure` deliberately has **no** environment fallback —
+it cannot be set any way other than the flag itself, so it can never be
+silently enabled by an inherited environment variable. There is still no
+`--token`/env-value flag: a credential reaches the client only via
+`--token-file` or `ENGRAM_TOKEN`, never argv.
+
+**Who should act:** nobody, for ordinary use — this is an internal refactor
+of how the same five settings resolve, not a change to which settings exist
+or their precedence order. Flagged here only because the internal resolver
+functions this replaced (`resolveServerURL`, `resolveOutputFormat`) are
+gone; relevant only if external tooling somehow referenced them directly,
+which nothing in this repository did.
+
+### In-repo consumer audit
+
+REQ-exit-code-migration-safe requires this migration to be checked against
+every consumer this repository can actually observe. engram is self-hosted
+with no telemetry — the maintainer cannot enumerate, and this guide cannot
+notify, any consumer outside this repository. What follows is what *was*
+checked, re-run at the commit shipping this guide, not carried forward from
+earlier research: it names what was checked rather than implying a survey
+of users who cannot be enumerated. This guide itself is the notification
+channel for everyone else.
+
+| Location | Finding |
+|---|---|
+| `Taskfile.yaml` | Only builds the binary (`go build ... -o bin/engram`). No invocation of the CLI, no exit-status branch. |
+| `.github/workflows/` (`ci.yaml`, `docs-site.yaml`, `release.yaml`) | No workflow invokes the built `engram` binary or branches on its exit status. |
+| `charts/engram/templates/summarize-cronjob.yaml` | Runs `summarize-missing --all-scopes` as a CronJob container. Kubernetes CronJob semantics distinguish only zero from nonzero exit — confirmed no numeric status branch in the template. |
+| `skill/engram/hooks/` | Both hooks (`session-start-memory-recall`, `posttooluse-memory-capture-nudge`) are Python scripts with no `subprocess`/HTTP-client import — they never shell out to the CLI or call the Connect API directly. |
+| `docs-site/` | `reference/errors.md` links to this guide's sibling [exit-code table](/guides/cli/#exit-codes) rather than duplicating it; no example in the docs site branches on a specific exit code. |
+
+No in-repo consumer branches on a specific numeric exit code today.
+
+---
+
 ## v0.7.10 — Recall returns summaries by default
 
 **Affected tools:** `search_memory`, `list_memory` (MCP), and `SearchMemories`,
