@@ -192,8 +192,14 @@ channel for everyone else.
 | `charts/engram/templates/summarize-cronjob.yaml` | Runs `summarize-missing --all-scopes` as a CronJob container. Kubernetes CronJob semantics distinguish only zero from nonzero exit — confirmed no numeric status branch in the template. |
 | `skill/engram/hooks/` | Both hooks (`session-start-memory-recall`, `posttooluse-memory-capture-nudge`) are Python scripts with no `subprocess`/HTTP-client import — they never shell out to the CLI or call the Connect API directly. |
 | `docs-site/` | `reference/errors.md` links to this guide's sibling [exit-code table](/guides/cli/#exit-codes) rather than duplicating it; no example in the docs site branches on a specific exit code. |
+| `internal/e2e/cli_exitcode_test.go` | **One consumer found.** `TestCLIExitCodes` asserts specific numeric exit codes end to end. Its `unknown flag` case expected `1` and now expects `2`; its `unknown verb` case still expects `1` and is unchanged. Updated in this release. |
 
-No in-repo consumer branches on a specific numeric exit code today.
+One in-repo consumer branches on a specific numeric exit code — the end-to-end
+CLI test above — and it was updated alongside the change. It is worth naming how
+it was nearly missed: the first pass of this audit swept build, CI, chart, skill,
+and docs surfaces but not Go test files under `internal/`, which is exactly where
+a numeric exit-code assertion is most likely to live. If you maintain a fork,
+grep your own test suites, not just your scripts.
 
 ---
 
