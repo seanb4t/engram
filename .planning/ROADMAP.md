@@ -224,7 +224,7 @@ exact undocumented exit-code split #467 exists to close.
    hand-rolled resolver; no `os.Getenv`-based client resolver (e.g. `resolveServerURL`) remains in
    `cmd/engram/`.
 
-**Plans:** 5/9 plans executed
+**Plans:** 6/9 plans executed
 
 Plans:
 **Wave 1**
@@ -246,7 +246,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 01-06-PLAN.md — Operator classification for migrate-remap-owner, migrate-set-owner, serve; the ListenAndServe backstop pinned as deliberate
+- [x] 01-06-PLAN.md — Operator classification for migrate-remap-owner, migrate-set-owner, serve; the ListenAndServe backstop pinned as deliberate
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
