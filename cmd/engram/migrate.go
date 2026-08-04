@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -31,25 +30,30 @@ var migrateSetOwnerCmd = &cobra.Command{
 	Short: "Backfill owner (OIDC sub) onto pre-isolation memory records",
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if migrateOwner == "" {
-			return fmt.Errorf("--owner (or ENGRAM_MIGRATE_OWNER) is required and must be a non-empty OIDC sub")
+			return usageErrorf("--owner (or ENGRAM_MIGRATE_OWNER) is required and must be a non-empty OIDC sub")
+		}
+		// D-05 reconciliation: this binary's other --timeout (client.timeout,
+		// internal/config/client_validate.go) rejects 0 as a usage error
+		// rather than treating it as unbounded, so migrate-set-owner's own
+		// --timeout of the same name converges onto the same rule -- the
+		// binary must not ship two --timeout flags with opposite semantics.
+		if migrateTimeout <= 0 {
+			return usageErrorf("--timeout must be greater than 0 -- a timeout of 0 is not treated as unbounded")
 		}
 		st, err := server.StoreFromEnv()
 		if err != nil {
-			return err
+			return classifyOperatorErrConstruction(err)
 		}
 		// Bound the backfill so a hung Qdrant cannot block forever, and let the
 		// operator abort with Ctrl-C / SIGTERM. context.Background() previously
 		// gave the underlying gRPC calls no deadline or cancellation path.
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
-		if migrateTimeout > 0 {
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, migrateTimeout)
-			defer cancel()
-		}
+		ctx, cancel := context.WithTimeout(ctx, migrateTimeout)
+		defer cancel()
 		n, err := st.MigrateSetOwner(ctx, migrateOwner)
 		if err != nil {
-			return err
+			return classifyOperatorErr(err)
 		}
 		cmd.Printf("stamped owner=%s onto %d owner-less record(s)\n", migrateOwner, n)
 		return nil
@@ -109,22 +113,25 @@ var migrateRemapOwnerCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		src, err := buildRemapSource(remapFrom, remapMissing, remapAnon, remapTo)
 		if err != nil {
+			// buildRemapSource already carries exitUsage (plan 01-04);
+			// return unchanged rather than double-classify.
 			return err
+		}
+		// D-05 reconciliation: see migrate-set-owner's identical guard above.
+		if remapTimeout <= 0 {
+			return usageErrorf("--timeout must be greater than 0 -- a timeout of 0 is not treated as unbounded")
 		}
 		st, err := server.StoreFromEnv()
 		if err != nil {
-			return err
+			return classifyOperatorErrConstruction(err)
 		}
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
-		if remapTimeout > 0 {
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, remapTimeout)
-			defer cancel()
-		}
+		ctx, cancel := context.WithTimeout(ctx, remapTimeout)
+		defer cancel()
 		n, err := st.RemapOwner(ctx, src, remapTo, remapDryRun)
 		if err != nil {
-			return err
+			return classifyOperatorErr(err)
 		}
 		if remapDryRun {
 			cmd.Printf("[dry-run] would remap %d record(s) to owner=%s\n", n, remapTo)
@@ -140,7 +147,7 @@ func init() {
 		os.Getenv("ENGRAM_MIGRATE_OWNER"),
 		"OIDC sub to stamp onto owner-less records (required, non-empty)")
 	migrateSetOwnerCmd.Flags().DurationVar(&migrateTimeout, "timeout", 5*time.Minute,
-		"max wall-clock for the backfill (0 disables); also cancellable via Ctrl-C")
+		"max wall-clock for the backfill (must be > 0); also cancellable via Ctrl-C")
 	rootCmd.AddCommand(migrateSetOwnerCmd)
 
 	migrateRemapOwnerCmd.Flags().StringVar(&remapFrom, "from", "", "current owner value to remap (a sub or email); mutually exclusive with --from-missing/--from-anon")
@@ -148,7 +155,7 @@ func init() {
 	migrateRemapOwnerCmd.Flags().BoolVar(&remapAnon, "from-anon", false, "remap the explicit anonymous bucket (owner==\"\")")
 	migrateRemapOwnerCmd.Flags().StringVar(&remapTo, "to", "", "new owner value to stamp (required)")
 	migrateRemapOwnerCmd.Flags().BoolVar(&remapDryRun, "dry-run", false, "count matching records without writing")
-	migrateRemapOwnerCmd.Flags().DurationVar(&remapTimeout, "timeout", 5*time.Minute, "max wall-clock (0 disables); also cancellable via Ctrl-C")
+	migrateRemapOwnerCmd.Flags().DurationVar(&remapTimeout, "timeout", 5*time.Minute, "max wall-clock (must be > 0); also cancellable via Ctrl-C")
 	// D-07: the third exclusivity claim site, and the only one needing
 	// exactly-one-of rather than plain mutual exclusivity.
 	// MarkFlagsMutuallyExclusive alone permits zero flags supplied, so it is

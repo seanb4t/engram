@@ -253,6 +253,25 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		before:  exitGeneric,
 		after:   exitUsage,
 		changes: true,
+		landed:  true,
+	},
+	{
+		name:    "migrate-remap/unreachable-qdrant",
+		args:    []string{"migrate-remap-owner", "--from-missing", "--to", "x", "--timeout", "2s"},
+		env:     map[string]string{"ENGRAM_QDRANT_ADDR": deadQdrant},
+		before:  exitGeneric,
+		after:   exitUnavailable,
+		changes: true,
+		landed:  true,
+	},
+	{
+		name:    "migrate-set-owner/unreachable-qdrant",
+		args:    []string{"migrate-set-owner", "--owner", "x", "--timeout", "2s"},
+		env:     map[string]string{"ENGRAM_QDRANT_ADDR": deadQdrant},
+		before:  exitGeneric,
+		after:   exitUnavailable,
+		changes: true,
+		landed:  true,
 	},
 	{
 		name:    "serve/empty-listen-addr",
@@ -291,7 +310,7 @@ func TestExitCodeBaselineClaims(t *testing.T) {
 // uniqueness so a silently-deleted row fails the test instead of quietly
 // shrinking coverage.
 func TestExitCodeBaselineRowCount(t *testing.T) {
-	const wantRows = 24
+	const wantRows = 26
 	if got := len(exitCodeBaseline); got != wantRows {
 		t.Errorf("len(exitCodeBaseline) = %d, want %d", got, wantRows)
 	}
