@@ -198,6 +198,7 @@ const (
 	exitAuth        = 3 // authentication or authorization failure
 	exitNotFound    = 4 // not found
 	exitUnavailable = 5 // transport or server unavailable
+	exitTimeout     = 6 // request deadline exceeded (D-06)
 )
 
 // cliError carries an explicit process exit code alongside a wrapped
@@ -301,6 +302,19 @@ func wrapRPCError(err error) error {
 // error.go:293-313 — see 02-RESEARCH.md Pitfall 5], so a genuine dial
 // failure never arrives here as CodeUnknown. Do not classify by matching
 // on the error's text.
+//
+// D-06 splits CodeDeadlineExceeded out of the exitUnavailable arm into its
+// own exitTimeout: "the server never answered in time" and "I could not
+// connect at all" call for different operator responses — raise the
+// timeout versus check the server is up — and folding both into 5 made
+// them indistinguishable. CodeCanceled deliberately stays on
+// exitUnavailable alongside CodeUnavailable: a caller-initiated
+// cancellation (e.g. Ctrl-C) is not a server that failed to answer, so it
+// does not belong on exitTimeout either. See
+// TestExitCodeTimeoutDistinctFromUnavailable, which asserts 5 and 6 by
+// explicit inequality, not by set membership alone (memory 667p88n2be: a
+// test that only checks "not the default" still passes on a silent
+// collapse).
 func exitCodeForConnectErr(err error) int {
 	switch connect.CodeOf(err) {
 	case connect.CodeUnauthenticated, connect.CodePermissionDenied:
@@ -309,7 +323,9 @@ func exitCodeForConnectErr(err error) int {
 		return exitNotFound
 	case connect.CodeInvalidArgument, connect.CodeFailedPrecondition, connect.CodeOutOfRange:
 		return exitUsage
-	case connect.CodeUnavailable, connect.CodeDeadlineExceeded, connect.CodeCanceled:
+	case connect.CodeDeadlineExceeded:
+		return exitTimeout
+	case connect.CodeUnavailable, connect.CodeCanceled:
 		return exitUnavailable
 	default:
 		return exitGeneric

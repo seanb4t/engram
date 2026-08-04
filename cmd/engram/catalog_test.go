@@ -213,19 +213,37 @@ func TestCatalogEnumeratesEveryFlag(t *testing.T) {
 	}
 }
 
-// TestCatalogListsEveryExitCode asserts the catalog carries exactly six
-// exit-code entries, covering 0 through 5 with no duplicates, each with a
-// non-empty meaning.
+// wantExitCodes is every exit code this binary's constants declare —
+// deriving TestCatalogListsEveryExitCode's bounds and membership check from
+// this slice, rather than a second set of hand-written integer literals, is
+// what makes the next code addition (after D-06's exitTimeout) not repeat
+// the drift TestCatalogListsEveryExitCode's own hard-coded "6"/"0-5"
+// literals caused when exitTimeout was added.
+var wantExitCodes = []int{exitOK, exitGeneric, exitUsage, exitAuth, exitNotFound, exitUnavailable, exitTimeout}
+
+// TestCatalogListsEveryExitCode asserts the catalog carries exactly one
+// entry per constant in wantExitCodes, with no duplicates and no code
+// outside that set's min/max range, each with a non-empty meaning.
 func TestCatalogListsEveryExitCode(t *testing.T) {
 	doc := decodeCatalog(t)
 
-	if len(doc.ExitCodes) != 6 {
-		t.Fatalf("len(exit_codes) = %d, want 6", len(doc.ExitCodes))
+	minCode, maxCode := wantExitCodes[0], wantExitCodes[0]
+	for _, c := range wantExitCodes {
+		if c < minCode {
+			minCode = c
+		}
+		if c > maxCode {
+			maxCode = c
+		}
+	}
+
+	if len(doc.ExitCodes) != len(wantExitCodes) {
+		t.Fatalf("len(exit_codes) = %d, want %d", len(doc.ExitCodes), len(wantExitCodes))
 	}
 	seen := make(map[int]bool)
 	for _, ec := range doc.ExitCodes {
-		if ec.Code < 0 || ec.Code > 5 {
-			t.Errorf("exit code %d is outside the 0-5 range", ec.Code)
+		if ec.Code < minCode || ec.Code > maxCode {
+			t.Errorf("exit code %d is outside the %d-%d range", ec.Code, minCode, maxCode)
 		}
 		if seen[ec.Code] {
 			t.Errorf("duplicate exit code %d", ec.Code)
@@ -235,9 +253,9 @@ func TestCatalogListsEveryExitCode(t *testing.T) {
 			t.Errorf("exit code %d has an empty meaning", ec.Code)
 		}
 	}
-	for i := 0; i <= 5; i++ {
-		if !seen[i] {
-			t.Errorf("exit code %d missing from the catalog", i)
+	for _, c := range wantExitCodes {
+		if !seen[c] {
+			t.Errorf("exit code %d missing from the catalog", c)
 		}
 	}
 }

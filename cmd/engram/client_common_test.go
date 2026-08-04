@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -35,7 +36,7 @@ func TestExitCodeForConnectErrTable(t *testing.T) {
 		{connect.CodeCanceled, exitUnavailable},
 		{connect.CodeUnknown, exitGeneric},
 		{connect.CodeInvalidArgument, exitUsage},
-		{connect.CodeDeadlineExceeded, exitUnavailable},
+		{connect.CodeDeadlineExceeded, exitTimeout},
 		{connect.CodeNotFound, exitNotFound},
 		{connect.CodeAlreadyExists, exitGeneric},
 		{connect.CodePermissionDenied, exitAuth},
@@ -65,6 +66,54 @@ func TestExitCodeForConnectErrTable(t *testing.T) {
 			t.Errorf("exitCodeForConnectErr(plain error) = %d, want %d", got, exitGeneric)
 		}
 	})
+}
+
+// TestExitCodeTimeoutDistinctFromUnavailable is the D-06 gate: a deadline
+// exceeded RPC and a dial failure must produce DIFFERENT exit codes,
+// asserted by explicit inequality — not merely each being "not the
+// default" (memory 667p88n2be: a test asserting only "not CodeInternal"
+// still passed on a switch-arm ordering bug that silently collapsed every
+// error class back to one code). It also pins CodeCanceled's placement:
+// caller-initiated cancellation stays on exitUnavailable, not exitTimeout.
+func TestExitCodeTimeoutDistinctFromUnavailable(t *testing.T) {
+	if exitTimeout == exitUnavailable {
+		t.Fatalf("exitTimeout (%d) == exitUnavailable (%d), want distinct", exitTimeout, exitUnavailable)
+	}
+
+	deadline := exitCodeForConnectErr(connect.NewError(connect.CodeDeadlineExceeded, errors.New("boom")))
+	if deadline != exitTimeout {
+		t.Errorf("exitCodeForConnectErr(CodeDeadlineExceeded) = %d, want %d (exitTimeout)", deadline, exitTimeout)
+	}
+
+	unavailable := exitCodeForConnectErr(connect.NewError(connect.CodeUnavailable, errors.New("boom")))
+	if unavailable != exitUnavailable {
+		t.Errorf("exitCodeForConnectErr(CodeUnavailable) = %d, want %d (exitUnavailable)", unavailable, exitUnavailable)
+	}
+
+	canceled := exitCodeForConnectErr(connect.NewError(connect.CodeCanceled, errors.New("boom")))
+	if canceled != exitUnavailable {
+		t.Errorf("exitCodeForConnectErr(CodeCanceled) = %d, want %d (exitUnavailable) — a caller-initiated "+
+			"cancellation is not a server that failed to answer", canceled, exitUnavailable)
+	}
+
+	if deadline == unavailable {
+		t.Fatalf("exitCodeForConnectErr(CodeDeadlineExceeded) == exitCodeForConnectErr(CodeUnavailable) (%d), want distinct", deadline)
+	}
+
+	// The full set of codes producible across every connect.Code plus a
+	// non-connect error plus exitOK must equal exactly {0,1,2,3,4,5,6}.
+	got := map[int]bool{exitOK: true}
+	for i := 1; i <= 16; i++ {
+		got[exitCodeForConnectErr(connect.NewError(connect.Code(i), errors.New("boom")))] = true
+	}
+	got[exitCodeForConnectErr(errors.New("not a connect error"))] = true
+	want := map[int]bool{
+		exitOK: true, exitGeneric: true, exitUsage: true, exitAuth: true,
+		exitNotFound: true, exitUnavailable: true, exitTimeout: true,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("codes producible by exitCodeForConnectErr = %v, want %v", got, want)
+	}
 }
 
 // TestResolveOutputFormat is the D-05/D-06 table test over the six

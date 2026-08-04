@@ -92,6 +92,10 @@ func buildCatalog(root *cobra.Command) catalogDoc {
 		{Code: exitAuth, Meaning: "authentication or authorization failure"},
 		{Code: exitNotFound, Meaning: "not found"},
 		{Code: exitUnavailable, Meaning: "transport or server unavailable"},
+		// D-06: a client-side request deadline is distinguished from a
+		// transport/server-unavailable failure — "raise --timeout" and
+		// "check the server is up" are different remedies.
+		{Code: exitTimeout, Meaning: "request deadline exceeded"},
 	}
 
 	doc.Notes = []string{
