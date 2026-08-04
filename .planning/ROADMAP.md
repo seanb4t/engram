@@ -224,7 +224,7 @@ exact undocumented exit-code split #467 exists to close.
    hand-rolled resolver; no `os.Getenv`-based client resolver (e.g. `resolveServerURL`) remains in
    `cmd/engram/`.
 
-**Plans:** 7/9 plans executed
+**Plans:** 8/9 plans executed
 
 Plans:
 **Wave 1**
@@ -254,7 +254,7 @@ Plans:
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 01-08-PLAN.md — `context.WithTimeout` at all three client RPC sites; hung-server harness proving exit 6 distinct from 5
+- [x] 01-08-PLAN.md — `context.WithTimeout` at all three client RPC sites; hung-server harness proving exit 6 distinct from 5
 
 **Wave 8** *(blocked on Wave 7 completion)*
 

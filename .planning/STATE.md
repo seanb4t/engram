@@ -5,15 +5,15 @@ milestone_name: Curation & Self-Evidence
 current_phase: 01
 current_phase_name: interface-enforceability
 status: executing
-stopped_at: Completed 01-07-PLAN.md
-last_updated: "2026-08-04T01:19:14.361Z"
+stopped_at: Completed 01-08-PLAN.md
+last_updated: "2026-08-04T01:36:59.515Z"
 last_activity: 2026-08-03
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.
 ## Current Position
 
 Phase: 01 (interface-enforceability) — EXECUTING
-Plan: 8 of 9
+Plan: 9 of 9
 Status: Ready to execute
 Last activity: 2026-08-03 — Phase 01 execution started
 
@@ -124,6 +124,8 @@ milestone needs in working memory.
 - [Phase ?]: 01-05: store.ErrShortIDExhausted -> exit 5 (backend-capacity, live trigger via backfill-short-ids); ErrIdempotencyConflict/ErrAlreadySuperseded -> exit 2 (no live trigger, kept exhaustive)
 - [Phase ?]: 01-06: checkpoint backstop-1 pre-answered (ListenAndServe stays exit 1, deliberate); D-05 timeout reconciliation applied to migrate.go despite conflicting PLAN.md prose (per LOCKED CONTEXT.md D-05 + 01-03-SUMMARY.md ownership note); TestExitCodeBaselineFullyMigrated allowlist populated with one genuinely-deferred row (search/malformed-client-timeout-env, plan 01-07)
 - [Phase ?]: 01-07: D-01/D-06 checkpoints pre-approved (exitAuth=3 kept, exitTimeout=6 added); TestClientFilesImportBoundary restructured with a named per-file exception so client_common.go alone may import internal/config for clientFromFlags' config.Load/ValidateClient call
+- [Phase ?]: 01-08: hung-server test harness selects on r.Context().Done() OR a t.Cleanup-closed release channel — connect-go's client does not reliably close the underlying TCP connection on context cancellation, confirmed via a throwaway repro; relying on r.Context().Done() alone hangs httptest.Server.Close()
+- [Phase ?]: 01-08: exitCodeBaseline table extended with hungServer/hungServerPlaceholder row opt-in, letting a static table row exercise a dynamically-addressed hung httptest.Server
 
 ### Blockers/Concerns
 
@@ -147,8 +149,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-04T01:19:14.353Z
-Stopped at: Completed 01-07-PLAN.md
+Last session: 2026-08-04T01:36:59.507Z
+Stopped at: Completed 01-08-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -237,6 +239,7 @@ Resume file: None
 | Phase 01 P05 | ~35min | 2 tasks | 7 files |
 | Phase 01 P06 | ~25min | 3 tasks | 5 files |
 | Phase 01 P07 | ~25min | 2 tasks | 10 files |
+| Phase 01 P08 | ~15min | 3 tasks | 5 files |
 
 ## Operator Next Steps
 
