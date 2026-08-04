@@ -41,7 +41,20 @@ type exitCodeBaselineCase struct {
 	// meaningful `before`). Such rows assert only `after` and are exempt
 	// from the distinct/identical rules below.
 	introduced bool
+	// hungServer, when true, replaces the literal placeholder argument
+	// hungServerPlaceholder in args with a freshly started hung-server URL
+	// (timeout_test.go's startHungServer) immediately before the row runs.
+	// The static table cannot hard-code a hung server's address the way
+	// deadServer hard-codes a refused one -- a hung listener needs a live
+	// httptest.Server per run -- so this is the row-level opt-in that lets
+	// TestExitCodeBaseline provide one without a second, parallel test loop.
+	hungServer bool
 }
+
+// hungServerPlaceholder is the args token exitCodeBaseline rows use in
+// place of a --server value when hungServer is true; TestExitCodeBaseline
+// substitutes it with a real, freshly started hung-server URL.
+const hungServerPlaceholder = "HUNG_SERVER"
 
 // deadServer and deadQdrant are addresses nothing listens on, used by rows
 // that need a dial to fail (connection refused) rather than hang or
@@ -174,6 +187,25 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		args:       []string{"search", "--server", deadServer, "--scope", "s", "--query", "q", "--timeout", "0"},
 		after:      exitUsage,
 		introduced: true,
+	},
+	{
+		// Introduced by this plan (01-08): --timeout did not bound any
+		// client RPC call site before this plan, so a hung server has no
+		// meaningful `before` -- it simply blocked forever. --timeout 300ms
+		// keeps the row fast; the hung server itself is started per-run by
+		// TestExitCodeBaseline (see hungServer/hungServerPlaceholder).
+		name:       "search/hung-server-timeout",
+		args:       []string{"search", "--server", hungServerPlaceholder, "--scope", "s", "--query", "q", "--timeout", "300ms"},
+		after:      exitTimeout,
+		introduced: true,
+		hungServer: true,
+	},
+	{
+		name:       "list/hung-server-timeout",
+		args:       []string{"list", "--server", hungServerPlaceholder, "--scope", "s", "--timeout", "300ms"},
+		after:      exitTimeout,
+		introduced: true,
+		hungServer: true,
 	},
 	{
 		name:    "store/missing-required",
@@ -379,7 +411,7 @@ func TestExitCodeBaselineClaims(t *testing.T) {
 // uniqueness so a silently-deleted row fails the test instead of quietly
 // shrinking coverage.
 func TestExitCodeBaselineRowCount(t *testing.T) {
-	const wantRows = 32
+	const wantRows = 34
 	if got := len(exitCodeBaseline); got != wantRows {
 		t.Errorf("len(exitCodeBaseline) = %d, want %d", got, wantRows)
 	}
@@ -419,6 +451,24 @@ func resetEveryCommandFlagState(t *testing.T, root *cobra.Command) {
 	}
 }
 
+// substituteHungServerURL returns a copy of args with hungServerPlaceholder
+// replaced by a freshly started hung-server URL (timeout_test.go's
+// startHungServer), for rows with hungServer set to true. A fresh server
+// per row keeps each row's observation independent of what ran before it,
+// the same discipline resetEveryCommandFlagState applies to flag state.
+func substituteHungServerURL(t *testing.T, args []string) []string {
+	t.Helper()
+	url := startHungServer(t)
+	out := make([]string, len(args))
+	for i, a := range args {
+		if a == hungServerPlaceholder {
+			a = url
+		}
+		out[i] = a
+	}
+	return out
+}
+
 // TestExitCodeBaseline is the observation test: for each row, it drives
 // rootCmd through the runClient harness exactly as Execute() would, and
 // compares exitCodeFromError(err) against the row's declared expectation.
@@ -441,7 +491,11 @@ func TestExitCodeBaseline(t *testing.T) {
 			resetClientFlags(t)
 			resetEveryCommandFlagState(t, rootCmd)
 
-			_, _, err := runClient(t, c.args...)
+			args := c.args
+			if c.hungServer {
+				args = substituteHungServerURL(t, args)
+			}
+			_, _, err := runClient(t, args...)
 			got := exitCodeFromError(err)
 
 			want := c.before
@@ -464,21 +518,24 @@ func TestExitCodeBaseline(t *testing.T) {
 // exemption auditable, and is why an entry here must correspond to a real
 // row with a comment explaining which later plan owns it.
 //
-// Empty as of this plan (01-07): the one row that had populated this
-// allowlist, "search/malformed-client-timeout-env", is landed here (see its
-// own row comment above) -- ValidateClient is now wired into the client
-// entry path. This is the phase's closing proof for this gate: every row
-// this table tracks, client and operator alike, now has changes implying
-// landed with zero exceptions.
+// Empty since plan 01-07 and confirmed still empty by 01-08: the one row
+// that had populated this allowlist, "search/malformed-client-timeout-env",
+// is landed here (see its own row comment above) -- ValidateClient is now
+// wired into the client entry path. 01-08 added two `introduced: true`
+// rows (search/hung-server-timeout, list/hung-server-timeout) that need no
+// allowlist entry -- introduced rows never carry changes: true, so they are
+// outside this gate's scope entirely. This remains the phase's closing
+// proof for this gate: every row this table tracks, client and operator
+// alike, has changes implying landed with zero exceptions.
 var exitCodeBaselineFullyMigratedAllowlist = map[string]bool{}
 
 // TestExitCodeBaselineFullyMigrated is the table-level D-03 closing gate,
 // complementing TestNoBareOperatorErrorReturns' source-level one
 // (operror_test.go): every row declaring changes: true must also carry
 // landed: true, except a row explicitly named in
-// exitCodeBaselineFullyMigratedAllowlist. As of this plan (01-07) that
-// allowlist is empty: every row this table tracks -- client and operator
-// alike -- is fully landed.
+// exitCodeBaselineFullyMigratedAllowlist. As of this plan (01-08) that
+// allowlist is still empty: every row this table tracks -- client and
+// operator alike -- is fully landed.
 func TestExitCodeBaselineFullyMigrated(t *testing.T) {
 	for _, c := range exitCodeBaseline {
 		c := c
