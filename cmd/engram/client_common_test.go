@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
@@ -116,14 +118,16 @@ func TestExitCodeTimeoutDistinctFromUnavailable(t *testing.T) {
 	}
 }
 
-// TestResolveOutputFormat is the D-05/D-06 table test over the six
-// TTY/flag combinations plus an invalid --output value.
-func TestResolveOutputFormat(t *testing.T) {
+// TestOutputFormatFromConfig is the D-05/D-06 table test over the six
+// TTY/output combinations config.ValidateClient guarantees are legal
+// (config.ValidateClient's own test in internal/config/client_validate_test.go
+// covers the invalid-value rejection this function no longer performs).
+func TestOutputFormatFromConfig(t *testing.T) {
 	cases := []struct {
-		name    string
-		flagVal string
-		isTTY   bool
-		want    outputFormat
+		name   string
+		output string
+		isTTY  bool
+		want   outputFormat
 	}{
 		{"empty tty=true", "", true, formatText},
 		{"empty tty=false", "", false, formatJSON},
@@ -134,26 +138,245 @@ func TestResolveOutputFormat(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := resolveOutputFormat(c.flagVal, c.isTTY)
-			if err != nil {
-				t.Fatalf("resolveOutputFormat(%q, %v) returned error: %v", c.flagVal, c.isTTY, err)
-			}
-			if got != c.want {
-				t.Errorf("resolveOutputFormat(%q, %v) = %v, want %v", c.flagVal, c.isTTY, got, c.want)
+			if got := outputFormatFromConfig(c.output, c.isTTY); got != c.want {
+				t.Errorf("outputFormatFromConfig(%q, %v) = %v, want %v", c.output, c.isTTY, got, c.want)
 			}
 		})
 	}
-	t.Run("invalid value", func(t *testing.T) {
-		_, err := resolveOutputFormat("yaml", false)
-		if err == nil {
-			t.Fatal("expected an error for an invalid --output value")
+}
+
+// newClientTestCmd builds a standalone *cobra.Command carrying the shared
+// client flags (addClientFlags), for exercising clientFromFlags's config
+// resolution directly with cmd.Flags().Set — without touching the shared,
+// package-level rootCmd/searchCmd flag state every other test in this
+// binary reads and writes.
+func newClientTestCmd(t *testing.T) *cobra.Command {
+	t.Helper()
+	cmd := &cobra.Command{Use: "clienttest"}
+	addClientFlags(cmd)
+	var errBuf bytes.Buffer
+	cmd.SetErr(&errBuf)
+	return cmd
+}
+
+// mustSetFlag calls cmd.Flags().Set, which both assigns the value AND
+// marks the flag Changed=true — exactly what real argv parsing does, and
+// what config.Load's changed-flag overlay branches on.
+func mustSetFlag(t *testing.T, cmd *cobra.Command, name, value string) {
+	t.Helper()
+	if err := cmd.Flags().Set(name, value); err != nil {
+		t.Fatalf("Flags().Set(%q, %q): %v", name, value, err)
+	}
+}
+
+// assertUsageError fails the test unless err carries ExitCode() == exitUsage.
+func assertUsageError(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+	var ec interface{ ExitCode() int }
+	if !errors.As(err, &ec) {
+		t.Fatalf("error %v does not carry ExitCode()", err)
+	}
+	if ec.ExitCode() != exitUsage {
+		t.Errorf("ExitCode() = %d, want %d (exitUsage); err=%v", ec.ExitCode(), exitUsage, err)
+	}
+}
+
+// TestClientConfigResolution is the D-04 gate over clientFromFlags: every
+// client setting now resolves through the client.* koanf registry in one
+// config.Load(cmd.Flags()) call, --timeout exists and is validated before
+// any dial, and none of the retired resolvers' behavior regressed.
+func TestClientConfigResolution(t *testing.T) {
+	t.Run("--timeout 45s resolves to a 45s deadline", func(t *testing.T) {
+		cmd := newClientTestCmd(t)
+		mustSetFlag(t, cmd, "server", "http://127.0.0.1:1")
+		mustSetFlag(t, cmd, "timeout", "45s")
+		_, _, timeout, err := clientFromFlags(cmd)
+		if err != nil {
+			t.Fatalf("clientFromFlags: %v", err)
 		}
-		var ec interface{ ExitCode() int }
-		if !errors.As(err, &ec) {
-			t.Fatalf("error %v does not carry ExitCode()", err)
+		if timeout != 45*time.Second {
+			t.Errorf("timeout = %v, want 45s", timeout)
 		}
-		if ec.ExitCode() != exitUsage {
-			t.Errorf("ExitCode() = %d, want %d", ec.ExitCode(), exitUsage)
+	})
+
+	t.Run("--timeout omitted resolves to the 30s registry default", func(t *testing.T) {
+		cmd := newClientTestCmd(t)
+		mustSetFlag(t, cmd, "server", "http://127.0.0.1:1")
+		_, _, timeout, err := clientFromFlags(cmd)
+		if err != nil {
+			t.Fatalf("clientFromFlags: %v", err)
+		}
+		if timeout != 30*time.Second {
+			t.Errorf("timeout = %v, want 30s", timeout)
+		}
+	})
+
+	for _, c := range []struct{ name, val string }{
+		{"zero", "0"},
+		{"zero duration", "0s"},
+		{"negative", "-1s"},
+		{"malformed", "abc"},
+		{"empty", ""},
+	} {
+		t.Run("--timeout "+c.name+" is rejected before any dial", func(t *testing.T) {
+			addr, accepts := startAcceptCountingListener(t)
+			cmd := newClientTestCmd(t)
+			mustSetFlag(t, cmd, "server", "http://"+addr)
+			mustSetFlag(t, cmd, "timeout", c.val)
+			_, _, _, err := clientFromFlags(cmd)
+			assertUsageError(t, err)
+			if got := accepts(); got != 0 {
+				t.Errorf("accepts = %d, want 0 — clientFromFlags must reject before any dial", got)
+			}
+		})
+	}
+
+	t.Run("bad --timeout together with an unreachable --server exits 2, not 5", func(t *testing.T) {
+		addr, accepts := startAcceptCountingListener(t)
+		cmd := newClientTestCmd(t)
+		mustSetFlag(t, cmd, "server", "http://"+addr)
+		mustSetFlag(t, cmd, "timeout", "0")
+		_, _, _, err := clientFromFlags(cmd)
+		assertUsageError(t, err)
+		if got := accepts(); got != 0 {
+			t.Errorf("accepts = %d, want 0 — client-config validation must run before the dial", got)
+		}
+	})
+
+	t.Run("--output bogus is rejected", func(t *testing.T) {
+		cmd := newClientTestCmd(t)
+		mustSetFlag(t, cmd, "server", "http://127.0.0.1:1")
+		mustSetFlag(t, cmd, "output", "bogus")
+		_, _, _, err := clientFromFlags(cmd)
+		assertUsageError(t, err)
+	})
+
+	t.Run("--output json and text resolve", func(t *testing.T) {
+		for _, want := range []struct {
+			val    string
+			format outputFormat
+		}{
+			{"json", formatJSON},
+			{"text", formatText},
+		} {
+			cmd := newClientTestCmd(t)
+			mustSetFlag(t, cmd, "server", "http://127.0.0.1:1")
+			mustSetFlag(t, cmd, "output", want.val)
+			_, format, _, err := clientFromFlags(cmd)
+			if err != nil {
+				t.Fatalf("clientFromFlags(--output %s): %v", want.val, err)
+			}
+			if format != want.format {
+				t.Errorf("clientFromFlags(--output %s) format = %v, want %v", want.val, format, want.format)
+			}
+		}
+	})
+
+	t.Run("--insecure resolves to true and warns unconditionally on stderr", func(t *testing.T) {
+		cmd := newClientTestCmd(t)
+		mustSetFlag(t, cmd, "server", "http://127.0.0.1:1")
+		mustSetFlag(t, cmd, "insecure", "true")
+		client, _, _, err := clientFromFlags(cmd)
+		if err != nil {
+			t.Fatalf("clientFromFlags: %v", err)
+		}
+		if client == nil {
+			t.Fatal("client is nil")
+		}
+		if !strings.Contains(cmd.ErrOrStderr().(*bytes.Buffer).String(), "certificate") {
+			t.Errorf("stderr = %q, want an --insecure warning", cmd.ErrOrStderr().(*bytes.Buffer).String())
+		}
+	})
+
+	t.Run("--insecure omitted resolves to false, no warning", func(t *testing.T) {
+		cmd := newClientTestCmd(t)
+		mustSetFlag(t, cmd, "server", "http://127.0.0.1:1")
+		_, _, _, err := clientFromFlags(cmd)
+		if err != nil {
+			t.Fatalf("clientFromFlags: %v", err)
+		}
+		if got := cmd.ErrOrStderr().(*bytes.Buffer).String(); got != "" {
+			t.Errorf("stderr = %q, want empty", got)
+		}
+	})
+
+	t.Run("--token-file naming an unreadable path exits 2", func(t *testing.T) {
+		t.Setenv("ENGRAM_TOKEN", "")
+		cmd := newClientTestCmd(t)
+		mustSetFlag(t, cmd, "server", "http://127.0.0.1:1")
+		mustSetFlag(t, cmd, "token-file", filepath.Join(t.TempDir(), "no-such-token-file"))
+		_, _, _, err := clientFromFlags(cmd)
+		assertUsageError(t, err)
+	})
+
+	t.Run("ENGRAM_TOKEN still wins over --token-file", func(t *testing.T) {
+		const sentinel = "sentinel-env-wins-4f1c9a"
+		t.Setenv("ENGRAM_TOKEN", sentinel)
+		path := filepath.Join(t.TempDir(), "token")
+		if err := os.WriteFile(path, []byte("from-file"), 0o600); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		cmd := newClientTestCmd(t)
+		mustSetFlag(t, cmd, "server", "http://127.0.0.1:1")
+		mustSetFlag(t, cmd, "token-file", path)
+		client, _, _, err := clientFromFlags(cmd)
+		if err != nil {
+			t.Fatalf("clientFromFlags: %v", err)
+		}
+		if client == nil {
+			t.Fatal("client is nil")
+		}
+	})
+
+	t.Run("--server flag beats ENGRAM_SERVER_URL", func(t *testing.T) {
+		resetClientFlags(t)
+		svc := &stubEngramService{
+			searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+				return &engramv1.SearchMemoriesResponse{}, nil
+			},
+		}
+		url := startStubServer(t, svc)
+		t.Setenv("ENGRAM_SERVER_URL", deadServer)
+		resetCommandFlagState(t, searchCmd)
+		_, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "s")
+		if err != nil {
+			t.Fatalf("expected success (flag --server should win over ENGRAM_SERVER_URL), got %v", err)
+		}
+		if svc.searchCalls != 1 {
+			t.Errorf("searchCalls = %d, want 1 — the flag's server, not ENGRAM_SERVER_URL's, should have been dialed", svc.searchCalls)
+		}
+	})
+
+	t.Run("ENGRAM_SERVER_URL used when --server is not supplied", func(t *testing.T) {
+		resetClientFlags(t)
+		svc := &stubEngramService{
+			searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+				return &engramv1.SearchMemoriesResponse{}, nil
+			},
+		}
+		url := startStubServer(t, svc)
+		t.Setenv("ENGRAM_SERVER_URL", url)
+		resetCommandFlagState(t, searchCmd)
+		_, _, err := runClient(t, "search", "--query", "q", "--scope", "s")
+		if err != nil {
+			t.Fatalf("expected success via ENGRAM_SERVER_URL, got %v", err)
+		}
+		if svc.searchCalls != 1 {
+			t.Errorf("searchCalls = %d, want 1", svc.searchCalls)
+		}
+	})
+
+	t.Run("neither --server nor ENGRAM_SERVER_URL exits usage naming both", func(t *testing.T) {
+		resetClientFlags(t)
+		t.Setenv("ENGRAM_SERVER_URL", "")
+		resetCommandFlagState(t, searchCmd)
+		_, _, err := runClient(t, "search", "--query", "q", "--scope", "s")
+		assertUsageError(t, err)
+		if !strings.Contains(err.Error(), "--server") || !strings.Contains(err.Error(), "ENGRAM_SERVER_URL") {
+			t.Errorf("error = %v, want it to name both --server and ENGRAM_SERVER_URL", err)
 		}
 	})
 }
@@ -284,7 +507,7 @@ func TestScopeCrossSpineFlagsNameEachOther(t *testing.T) {
 // TestIsTerminalOnNonTTY confirms isTerminal is false for a pipe and for a
 // regular file — the only two non-pty cases a test can exercise. The
 // positive branch (a real pty) cannot be exercised without one, which is
-// why resolveOutputFormat takes the boolean as a parameter and is tested
+// why outputFormatFromConfig takes the boolean as a parameter and is tested
 // directly for isTTY=true above; this gap is recorded here, not hidden.
 func TestIsTerminalOnNonTTY(t *testing.T) {
 	r, w, err := os.Pipe()
@@ -321,10 +544,21 @@ var allowedClientImports = map[string]bool{
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect": true,
 }
 
-// TestClientFilesImportBoundary is the REQ-cli-client-commands / D-04 gate.
-// A package-wide `go list -deps ./cmd/engram/...` gate is NOT usable here
-// and would be a false RED: reindex.go and prune.go sit in the same
-// package and legitimately import internal/store, so the boundary must be
+// clientConfigException is the single, named exception to
+// TestClientFilesImportBoundary's otherwise-blanket internal/config
+// denylist: client_common.go alone may import it, because clientFromFlags
+// is the single shared constructor (D-03) that resolves every client
+// setting through the client.* koanf registry (D-04, this phase's own
+// scope-expansion decision — 01-CONTEXT.md). No other client_*.go file may
+// import it; client_search.go, client_list.go, and client_store.go reach
+// client configuration only indirectly, through clientFromFlags's return
+// values, never by calling internal/config themselves.
+const clientConfigException = "client_common.go"
+
+// TestClientFilesImportBoundary is the REQ-cli-client-commands gate. A
+// package-wide `go list -deps ./cmd/engram/...` gate is NOT usable here and
+// would be a false RED: reindex.go and prune.go sit in the same package
+// and legitimately import internal/store, so the boundary must be
 // per-file.
 //
 // This gate constrains the client command IMPLEMENTATIONS, not the linked
@@ -339,7 +573,15 @@ func TestClientFilesImportBoundary(t *testing.T) {
 	}
 
 	fset := token.NewFileSet()
+	// seen aggregates every file's imports, for the "no member of
+	// allowedClientImports is repo-internal" clause below, which is a
+	// property of the allowlist itself and does not need to be per-file.
 	seen := map[string]bool{}
+	// byFile is kept separately so the internal/config exception can be
+	// enforced per-file: an aggregated set cannot tell WHICH file imported
+	// it, and client_common.go legitimately does while its siblings must
+	// not.
+	byFile := map[string]map[string]bool{}
 	scanned := 0
 	for _, f := range files {
 		if strings.HasSuffix(f, "_test.go") {
@@ -350,51 +592,83 @@ func TestClientFilesImportBoundary(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ParseFile(%s): %v", f, err)
 		}
+		imports := map[string]bool{}
 		for _, imp := range af.Imports {
-			seen[strings.Trim(imp.Path.Value, `"`)] = true
+			path := strings.Trim(imp.Path.Value, `"`)
+			imports[path] = true
+			seen[path] = true
 		}
+		byFile[f] = imports
 	}
 	if scanned == 0 {
 		t.Fatal("no non-test client_*.go production files found — gate cannot exercise anything")
 	}
 
-	// Clause 1: every non-standard-library import is in the allowlist. An
-	// import is treated as standard library when its first path segment
-	// contains no dot — this admits any stdlib package the implementation
-	// legitimately needs while still catching every module.
-	for path := range seen {
-		firstSeg := path
-		if i := strings.Index(path, "/"); i >= 0 {
-			firstSeg = path[:i]
-		}
-		if !strings.Contains(firstSeg, ".") {
-			continue // stdlib
-		}
-		if !allowedClientImports[path] {
-			t.Errorf("REQ-cli-client-commands/D-04: import %q in a client_*.go production file is not in allowedClientImports", path)
+	const configImport = "github.com/seanb4t/engram/internal/config"
+
+	// Clause 1: every non-standard-library import is either in the
+	// allowlist, or is configImport imported specifically by
+	// clientConfigException. An import is treated as standard library when
+	// its first path segment contains no dot — this admits any stdlib
+	// package the implementation legitimately needs while still catching
+	// every module.
+	for f, imports := range byFile {
+		for path := range imports {
+			firstSeg := path
+			if i := strings.Index(path, "/"); i >= 0 {
+				firstSeg = path[:i]
+			}
+			if !strings.Contains(firstSeg, ".") {
+				continue // stdlib
+			}
+			if path == configImport && f == clientConfigException {
+				continue // the one named, documented exception
+			}
+			if !allowedClientImports[path] {
+				t.Errorf("REQ-cli-client-commands: import %q in %s is not in allowedClientImports", path, f)
+			}
 		}
 	}
 
 	// Clause 2: no member of allowedClientImports is itself a repo-internal
 	// path — this closes the "just widen the allowlist" escape hatch.
+	// configImport is deliberately never added here: it stays an isolated,
+	// per-file exception (clause 1 above), not a general allowlist entry
+	// every client_*.go file could then import.
 	for allowed := range allowedClientImports {
 		if strings.HasPrefix(allowed, "github.com/seanb4t/engram/internal/") {
-			t.Errorf("REQ-cli-client-commands/D-04: allowedClientImports contains a repo-internal path %q — widening the allowlist to admit an internal package is itself the violation this gate exists to catch", allowed)
+			t.Errorf("REQ-cli-client-commands: allowedClientImports contains a repo-internal path %q — widening the allowlist to admit an internal package is itself the violation this gate exists to catch", allowed)
 		}
 	}
 
-	// Clause 3: the explicit denylist appears in no client file.
+	// Clause 3: the explicit denylist appears in no client file, EXCEPT
+	// configImport in clientConfigException specifically.
 	denylist := []string{
 		"github.com/seanb4t/engram/internal/store",
 		"github.com/seanb4t/engram/internal/authz",
 		"github.com/seanb4t/engram/internal/embed",
 		"github.com/seanb4t/engram/internal/server",
-		"github.com/seanb4t/engram/internal/config",
+		configImport,
 	}
-	for _, deny := range denylist {
-		if seen[deny] {
-			t.Errorf("REQ-cli-client-commands/D-04: client_*.go imports %q, which no client implementation file may import", deny)
+	for f, imports := range byFile {
+		for _, deny := range denylist {
+			if !imports[deny] {
+				continue
+			}
+			if deny == configImport && f == clientConfigException {
+				continue
+			}
+			t.Errorf("REQ-cli-client-commands: %s imports %q, which no client implementation file may import", f, deny)
 		}
+	}
+
+	// Positive control: clientConfigException must actually be one of the
+	// scanned files and must actually import configImport, or clause 1's
+	// exception is silently inert (permitting nothing, testing nothing).
+	if imports, ok := byFile[clientConfigException]; !ok {
+		t.Fatalf("positive control failed: %s was not scanned — clientConfigException names a file glob missed", clientConfigException)
+	} else if !imports[configImport] {
+		t.Fatalf("positive control failed: %s does not import %q — the per-file exception exercises nothing", clientConfigException, configImport)
 	}
 }
 
@@ -494,9 +768,12 @@ func TestInsecureIsNotSetByEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if clientInsecure {
-		t.Error("clientInsecure = true; want false — no environment variable may disable TLS verification")
-	}
+	// clientFromFlags warns on stderr unconditionally whenever the resolved
+	// Insecure value is true (never gated by --output), so an empty stderr
+	// here is itself the proof that none of the three env vars above
+	// resolved --insecure to true — there is no package-level clientInsecure
+	// var left to inspect directly after D-04 (client.insecure carries no
+	// Env row by design, precisely so this can never happen).
 	if stderr != "" {
 		t.Errorf("stderr = %q, want empty (no --insecure warning without the flag)", stderr)
 	}

@@ -45,10 +45,13 @@ type exitCodeBaselineCase struct {
 
 // deadServer and deadQdrant are addresses nothing listens on, used by rows
 // that need a dial to fail (connection refused) rather than hang or
-// succeed. --timeout 2s (client rows have no --timeout of their own at this
-// plan's commit, so their dial timeout is whatever the transport defaults
-// to; operator rows pass their own existing --timeout flag) keeps a dead
-// backend from stalling the suite.
+// succeed. --timeout 2s (client rows below this plan's commit had no
+// --timeout of their own, so their dial timeout was whatever the transport
+// defaulted to; operator rows pass their own existing --timeout flag) keeps
+// a dead backend from stalling the suite. As of this plan (01-07), client
+// verbs carry their own --timeout too (client.timeout, default 30s); the
+// existing client rows below deliberately omit it, since deadServer refuses
+// the connection immediately rather than hanging.
 const (
 	deadServer = "http://127.0.0.1:1"
 	deadQdrant = "127.0.0.1:1"
@@ -134,21 +137,43 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		changes: false,
 	},
 	{
-		// A genuinely deferred row (plan 01-07, see 01-03-SUMMARY.md's "Next
-		// Phase Readiness"), not yet landed: no client command reads
-		// cfg.Client.Timeout or calls ValidateClient today (confirmed --
-		// client_common.go/client_search.go import neither internal/config
-		// symbol), so a malformed ENGRAM_TIMEOUT is silently inert and the
-		// call proceeds to dial the dead server. Once 01-07 wires
-		// ValidateClient into the client entry path, the same invocation
-		// will be rejected before any dial. Named in
-		// exitCodeBaselineFullyMigratedAllowlist below.
+		// Landed by this plan (01-07): clientFromFlags now calls
+		// config.Load + config.ValidateClient before any dial, so a
+		// malformed ENGRAM_TIMEOUT is rejected as exitUsage instead of
+		// silently reaching the dead server. This closes the deferral
+		// 01-06 recorded (see 01-03-SUMMARY.md's "Next Phase Readiness")
+		// and empties exitCodeBaselineFullyMigratedAllowlist below.
 		name:    "search/malformed-client-timeout-env",
 		args:    []string{"search", "--server", deadServer, "--scope", "s", "--query", "q"},
 		env:     map[string]string{"ENGRAM_TIMEOUT": "not-a-duration"},
 		before:  exitUnavailable,
 		after:   exitUsage,
 		changes: true,
+		landed:  true,
+	},
+	{
+		// Introduced by this plan (01-07): --timeout did not exist on any
+		// client verb before this plan, so there is no meaningful `before`.
+		name:       "search/timeout-zero",
+		args:       []string{"search", "--server", deadServer, "--scope", "s", "--query", "q", "--timeout", "0s"},
+		after:      exitUsage,
+		introduced: true,
+	},
+	{
+		name:       "search/timeout-malformed",
+		args:       []string{"search", "--server", deadServer, "--scope", "s", "--query", "q", "--timeout", "abc"},
+		after:      exitUsage,
+		introduced: true,
+	},
+	{
+		// The ordering row (must_haves truth): a bad --timeout together with
+		// an unreachable --server exits 2, not 5 -- client-config validation
+		// runs before the dial, even against the same dead address every
+		// other unreachable-server row in this table dials.
+		name:       "search/timeout-zero-beats-unreachable",
+		args:       []string{"search", "--server", deadServer, "--scope", "s", "--query", "q", "--timeout", "0"},
+		after:      exitUsage,
+		introduced: true,
 	},
 	{
 		name:    "store/missing-required",
@@ -323,12 +348,22 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 // row it asserts introduced implies !changes. A loose "codes are as
 // expected" assertion would pass while classification silently collapses —
 // this types the claim itself.
+//
+// introduced rows are exempt from the after/before distinct-or-identical
+// checks entirely (per the introduced field's own doc comment above: "no
+// meaningful before"), not just from the changes==true branch — before this
+// plan's rows, no row had ever set introduced:true, so this exemption was
+// documented but never actually implemented; it silently compared an
+// introduced row's zero-value `before` against its `after` and failed.
 func TestExitCodeBaselineClaims(t *testing.T) {
 	for _, c := range exitCodeBaseline {
 		c := c
 		t.Run(c.name, func(t *testing.T) {
 			if c.introduced && c.changes {
 				t.Errorf("row %q: introduced rows must not also declare changes=true (no meaningful before)", c.name)
+			}
+			if c.introduced {
+				return
 			}
 			if c.changes && c.after == c.before {
 				t.Errorf("row %q: changes=true but after (%d) == before (%d), want distinct", c.name, c.after, c.before)
@@ -344,7 +379,7 @@ func TestExitCodeBaselineClaims(t *testing.T) {
 // uniqueness so a silently-deleted row fails the test instead of quietly
 // shrinking coverage.
 func TestExitCodeBaselineRowCount(t *testing.T) {
-	const wantRows = 29
+	const wantRows = 32
 	if got := len(exitCodeBaseline); got != wantRows {
 		t.Errorf("len(exitCodeBaseline) = %d, want %d", got, wantRows)
 	}
@@ -423,24 +458,27 @@ func TestExitCodeBaseline(t *testing.T) {
 // exitCodeBaselineFullyMigratedAllowlist is the explicit, named exception to
 // TestExitCodeBaselineFullyMigrated below: a row here is exempt from the
 // "changes implies landed" rule because its behavior change is genuinely
-// deferred to a later plan (01-07/01-08), not because it was missed by this
-// plan's own sweep. A loose "skip every client-verb row" would silently
-// exempt rows nobody actually deferred; naming them individually is what
-// keeps the exemption auditable, and is why an entry here must correspond
-// to a real row with a comment explaining which later plan owns it (see
-// exitCodeBaseline's own "search/malformed-client-timeout-env" row comment).
-var exitCodeBaselineFullyMigratedAllowlist = map[string]bool{
-	"search/malformed-client-timeout-env": true, // plan 01-07: ValidateClient wiring
-}
+// deferred to a later plan, not because it was missed by this plan's own
+// sweep. A loose "skip every client-verb row" would silently exempt rows
+// nobody actually deferred; naming them individually is what keeps the
+// exemption auditable, and is why an entry here must correspond to a real
+// row with a comment explaining which later plan owns it.
+//
+// Empty as of this plan (01-07): the one row that had populated this
+// allowlist, "search/malformed-client-timeout-env", is landed here (see its
+// own row comment above) -- ValidateClient is now wired into the client
+// entry path. This is the phase's closing proof for this gate: every row
+// this table tracks, client and operator alike, now has changes implying
+// landed with zero exceptions.
+var exitCodeBaselineFullyMigratedAllowlist = map[string]bool{}
 
 // TestExitCodeBaselineFullyMigrated is the table-level D-03 closing gate,
 // complementing TestNoBareOperatorErrorReturns' source-level one
 // (operror_test.go): every row declaring changes: true must also carry
 // landed: true, except a row explicitly named in
-// exitCodeBaselineFullyMigratedAllowlist. At THIS plan's commit every
-// OPERATOR row (the six commands D-03 scopes) is landed with zero
-// exceptions -- the one allowlisted row is a client verb whose behavior is
-// owned by a later plan, not an operator gap this plan left open.
+// exitCodeBaselineFullyMigratedAllowlist. As of this plan (01-07) that
+// allowlist is empty: every row this table tracks -- client and operator
+// alike -- is fully landed.
 func TestExitCodeBaselineFullyMigrated(t *testing.T) {
 	for _, c := range exitCodeBaseline {
 		c := c

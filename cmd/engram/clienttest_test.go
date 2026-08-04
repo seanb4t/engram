@@ -99,17 +99,35 @@ func startStubServer(t *testing.T, svc engramv1connect.EngramServiceHandler) str
 }
 
 // resetClientFlags restores every package-level client flag var to its zero
-// value via t.Cleanup. The whole package shares one rootCmd and one set of
-// flag vars across the test binary, and a leaked --insecure or --output
-// would silently contaminate a later test.
+// value via t.Cleanup, AND resets pflag's own Changed/value state for
+// rootCmd and every direct subcommand, both immediately and via t.Cleanup.
+// The whole package shares one rootCmd and one set of flag vars across the
+// test binary, and a leaked --tags, --scope, or --insecure would silently
+// contaminate a later test.
+//
+// The five shared client flags (--server, --token-file, --output,
+// --insecure, --timeout) no longer have package-level Go vars to reset
+// (D-04): they are read once per invocation from cfg.Client inside
+// clientFromFlags, via config.Load(cmd.Flags()). Before this plan, a test
+// that forgot to pair a runClient(t, "search", "--insecure", ...) call with
+// its own resetCommandFlagState(t, searchCmd) was silently protected by
+// resetClientFlags zeroing the package-level clientInsecure Go var in
+// t.Cleanup — independent of whether pflag's own Changed latch was ever
+// cleared. Deleting that var (D-04) removed that accidental safety net and
+// surfaced several such gaps as full-suite-only failures (individually
+// green, failing only under `go test ./...`'s shared test-binary flag
+// state) — TestInsecureIsNotSetByEnvironment being the one that actually
+// tripped. Rather than auditing every runClient call site in this package
+// for a missing resetCommandFlagState pairing, resetClientFlags now folds
+// resetEveryCommandFlagState(rootCmd) into itself: every one of the dozens
+// of existing resetClientFlags(t) call sites gets the broader reset for
+// free, and a future test that calls resetClientFlags but forgets
+// resetCommandFlagState is protected the same way the deleted Go vars used
+// to protect it.
 func resetClientFlags(t *testing.T) {
 	t.Helper()
+	resetEveryCommandFlagState(t, rootCmd)
 	t.Cleanup(func() {
-		clientServerURL = ""
-		clientTokenFile = ""
-		clientInsecure = false
-		clientOutput = ""
-
 		// The StringSliceVar-backed vars MUST be reset too (REVIEW.md CR-01).
 		// pflag's stringSliceValue.Set APPENDS once its internal `changed`
 		// bool has latched true, and cobra's commands are package-level vars

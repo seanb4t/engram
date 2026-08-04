@@ -4,8 +4,6 @@
 package main
 
 import (
-	"os"
-
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
@@ -47,11 +45,10 @@ var storeCmd = &cobra.Command{
 		if storeScope == "" {
 			return usageErrorf("--scope is required")
 		}
-		format, err := resolveOutputFormat(clientOutput, isTerminal(os.Stdout))
-		if err != nil {
-			return err
-		}
-		client, err := clientFromFlags(cmd)
+		// Timeout is resolved here but not yet applied to the RPC context —
+		// plan 01-08 wires it into context.WithTimeout; this plan only
+		// makes it exist and be validated (D-05).
+		client, format, _, err := clientFromFlags(cmd)
 		if err != nil {
 			return err
 		}
