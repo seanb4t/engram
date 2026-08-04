@@ -200,3 +200,7 @@ None — no external service configuration required.
 ---
 *Phase: 01-interface-enforceability*
 *Completed: 2026-08-03*
+
+## Self-Check: PASSED
+
+All five created/modified source files plus this SUMMARY.md found on disk; all four commit hashes (`48b98458`, `46d1b95f`, `2e6766b1`, `650ab8bf`) found in git log.
