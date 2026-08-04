@@ -24,6 +24,17 @@ timeout). Every `engram` invocation — client verb or operator command alike
 — now resolves flag conflicts, configuration, timeouts, and errors through
 one predictable, migration-safe contract.
 
+**Do you need to act?**
+
+| If you… | Read |
+|---|---|
+| branch on `engram`'s exit status in any script or CI job | §1, §2, §4 |
+| pass `--offset` with `--page-token`, or `--scope` with `--cross-spine` | §3 |
+| script `migrate-remap-owner` / `migrate-set-owner` with `--timeout 0` | §6 |
+| rely on a CLI call blocking until the server answers | §5 |
+| set client configuration through environment variables | §7 |
+| only run `engram` interactively | nothing — no action |
+
 ### 1. Framework flag errors now exit 2, not 1
 
 Previously published guidance told callers that a flag-parsing error raised
