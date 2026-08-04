@@ -1,0 +1,1031 @@
+# Phase 2: Interface Discoverability - Research
+
+**Researched:** 2026-08-04
+**Domain:** Go interface-conformance tooling (cobra CLI + MCP go-sdk + protobuf comments + Astro/Starlight markdown + Claude Code skill markdown), single-source rule registries, codegen-and-drift-check CI patterns.
+**Confidence:** HIGH for surface-reading mechanics (all verified by reading the actual vendored source or by running `go tool buf` live); MEDIUM for the exact D-01 reclassification list and generator implementation shape (both explicitly left to planner discretion in CONTEXT.md); LOW/ASSUMED for nothing load-bearing — every claim below is tagged.
+
+<user_constraints>
+## User Constraints (from CONTEXT.md)
+
+### Locked Decisions
+
+- **D-01:** Completeness is anchored on the **hint code as a structural marker**, not on a
+  hand-curated list. `HintConditionalRequired` (and its cross-field siblings) widens to every
+  conditional rejection, and the gate sweeps marked call sites, failing when a site's field has no
+  registry entry. Cost: ~6 existing rejections currently filed under `HintRequired`/other codes need
+  reclassification. — **Reversibility:** costly.
+
+- **D-02:** A rejection is in scope for the gate when it **names ≥2 fields** (`argErrFieldsf`)
+  **OR** carries one of the four cross-field hint codes (`conditional_required`,
+  `mutually_exclusive`, `not_applicable`, `ordering`). `tools.go:546` (`not_after must be in the
+  future`) is **explicitly excluded** — single-field and clock-dependent, with no second field to
+  cross-reference. That exclusion must be deliberate and documented. — **Reversibility:** reversible.
+
+- **D-03:** Each rule is a **declared Go value** (id, canonical text, fields, hint) constructed
+  once. The `argErrf` detail message and the cobra `Usage` string both **compose that const** —
+  legal, because only struct tags are literal-only in Go. This cuts the reflection-compared surfaces
+  from two to one: the jsonschema tag is the only place the canonical text must be re-typed and
+  checked rather than referenced. — **Reversibility:** costly.
+
+- **D-04:** The invariant "every conditional rejection references a declared rule" is enforced by a
+  **dedicated constructor**, `conditionalErrf(rule, …)`, that accepts only a declared rule value —
+  so the compiler enforces the common path. — **Reversibility:** costly.
+
+- **D-05:** The gate binds **all six surfaces** that state these rules today:
+  1. cobra `Usage` (`client_list.go:95-108`, `client_search.go:83-92`) — also feeds `--help` and
+     `engram catalog` from one source via `buildCatalog`
+  2. MCP jsonschema struct tags (`tools.go:598,609,718`)
+  3. MCP tool `Description` prose (`tools.go:1803,1851,1976`)
+  4. proto field comments (`proto/engram/v1/*.proto:65-70`)
+  5. `docs-site/` (`reference/tools.md`, `guides/cli.md`)
+  6. `skill/engram/` (`curating-memory`, `discovering` SKILL.md)
+  — **Reversibility:** reversible per surface.
+
+- **D-06:** Prose surfaces carry **anchored regions whose contents are generated** from the rule
+  registry, and CI fails on drift — the same contract the committed `gen/` tree already lives under.
+  Authors reword freely outside the anchors; the rule sentence has exactly one source.
+  — **Reversibility:** costly.
+
+- **D-07:** **One `task surfaces:gen` target regenerates every pinned interface artifact** — rule
+  regions, `--help` goldens (D-12), and the catalog JSON (D-13) — and **one CI job** re-runs it and
+  fails on a dirty tree. Mirrors `task proto:gen` + the `buf` drift job. — **Reversibility:**
+  reversible.
+
+- **D-08:** A rule's applicable surfaces are **derived from the fields the rule names**, never
+  declared: a surface is checked iff it exposes those fields. Requires a name normalizer
+  (`--cross-spine` ↔ `cross_spine`), load-bearing: if it mismaps, a rule silently resolves to zero
+  surfaces and passes. Needs its own test asserting every rule resolves to a **non-empty** surface
+  set. — **Reversibility:** reversible.
+
+- **D-09:** The interpretive stance for MCP annotations is **conservative — a hint is true only if
+  it holds under every valid invocation**. `store_memory`/`schedule_memory` are `idempotentHint:
+  false`; `update_memory` is `destructiveHint: true`; `supersede_memory` is `destructiveHint: false`.
+  — **Reversibility:** reversible per tool, but advertised to every connected agent.
+
+- **D-10:** Annotations live in a **central table keyed by tool name, gated in both directions** —
+  every registered tool has an entry, every entry names a registered tool. Follows `catalog.go`'s
+  precedent (`TestCatalogExitCodesMatchMapper`). `openWorldHint` is **set explicitly to `false`** on
+  every tool rather than omitted. — **Reversibility:** reversible.
+
+- **D-11:** `engram catalog` gains **per-command blast-radius derived from the same table** — one
+  taxonomy, both lanes. — **Reversibility:** one-way — `engram catalog` is a published contract.
+
+- **D-12:** A **single golden file, generated by walking the live cobra tree** in deterministic
+  order. `config.FlagDefault` reads a static registry map, not the environment, so goldens are
+  deterministic. — **Reversibility:** reversible.
+
+- **D-13:** The bare `engram` **catalog JSON is pinned alongside `--help`**, under the same `task
+  surfaces:gen` target. — **Reversibility:** reversible.
+
+- **D-14:** REQ-help-output-pinned's word **"unreviewed" is interpreted as: CI fails whenever the
+  committed golden does not match the live tree**, so any help-text change forces a regeneration
+  commit whose diff shows the exact before/after wording in review. CODEOWNERS gating was rejected as
+  theater. **This interpretation must be recorded in the phase's own docs so the verifier scores
+  against it.** — **Reversibility:** reversible.
+
+### Claude's Discretion
+
+- The exact rule IDs and canonical sentence wording for each declared rule.
+- Which specific existing rejections get reclassified under D-01, and in what commit order.
+- The concrete normalizer mapping table for D-08, and whether it lives beside the registry or the
+  gate.
+- Golden and generated-region file locations (`cmd/engram/testdata/` is the obvious home).
+- Whether `task surfaces:gen` must chain `task proto:gen`.
+- Anchor comment syntax for each prose file type.
+
+### Deferred Ideas (OUT OF SCOPE)
+
+- A scheduled canary or paging alarm for the docs-site deploy.
+- A routine audit for stranded local branches.
+
+### Folded Todos (in scope, but separate work streams)
+
+- Rotate the Cloudflare API token for docs-site deploy (user action — dashboard/repo-secret access
+  required, not a coding step). Blocks the `docs-site/` generated regions from actually publishing.
+- Resolve stale `docs/v0.12.x-phase-01-context` branch (verify-by-content-then-delete).
+
+</user_constraints>
+
+<phase_requirements>
+## Phase Requirements
+
+| ID | Description | Research Support |
+|----|-------------|------------------|
+| REQ-conditional-rules-stated | Every server-side conditional-requirement rule is stated in both cobra `Usage` and the MCP jsonschema tag. | Rule inventory (Q1 below) enumerates every existing conditional-rule call site and its current attribution gap. Code Examples show the exact `argErrf`/jsonschema-tag/Usage-string triads to unify under D-03's declared-rule-value pattern. |
+| REQ-surface-conformance-gate | A conformance test asserts each rule's substring appears on both independent surfaces, fails CI on divergence. | Widened by D-05 to six surfaces. Q2 documents exactly how a Go test reads each of the six surfaces, including the two non-obvious ones (proto comments require shelling to `go tool buf build`; MCP tool enumeration requires a new `registerTools(s, d)` seam since `Register()` currently inlines all 15 `mcp.AddTool` calls after `buildDepsFromEnv`). |
+| REQ-mcp-tool-annotations | Every MCP tool declares `readOnlyHint`/`destructiveHint`/`idempotentHint`. | go-sdk v1.7.0's actual `ToolAnnotations` shape verified (Q5) — critically, `DestructiveHint`/`OpenWorldHint` are `*bool` (nil defaults to `true`) while `ReadOnlyHint`/`IdempotentHint` are bare `bool` (default `false`); D-10's "explicit `openWorldHint: false`" therefore needs a `bool` literal taken by address, not a bare `false`. |
+| REQ-help-output-pinned | Every command's `--help` output is pinned by a golden-file test; unreviewed changes fail CI. | Q6 confirms `config.FlagDefault` is a pure static-map lookup (verified by reading `internal/config/registry.go:144-149`) so goldens are deterministic; documents the `Version` ldflags-injection hazard for catalog JSON pinning. |
+
+</phase_requirements>
+
+## Summary
+
+This phase has no new external dependency to evaluate — every mechanism below is either already
+vendored (`cobra`, `pflag`, `go-sdk`, `google.golang.org/protobuf`, the `buf` CLI as a `go tool`) or
+buildable from the Go standard library. The work is entirely **internal plumbing**: a declared-rule
+registry, a name normalizer that derives which of six surfaces a rule applies to, a generator that
+rewrites anchored regions in four prose trees plus two goldens, and a central MCP-annotation table
+gated in both directions. The existing codebase already contains three strong precedents to copy
+verbatim in shape: `catalog.go`'s `buildCatalog` (derive-never-declare), `TestCatalogExitCodesMatchMapper`
+(both-directions gate), and the committed `gen/` tree's generate-commit-drift-check CI contract
+(`buf` job in `.github/workflows/ci.yaml`).
+
+Two mechanically non-obvious findings drive most of the plan's risk:
+
+1. **Proto field comments are NOT available via `protoreflect.FileDescriptor.SourceLocations()` on
+   the generated Go code.** `protoc-gen-go` strips `SourceCodeInfo` from the descriptor it embeds in
+   `.pb.go` files by default — confirmed both by upstream issue tracking and by directly running
+   `go tool buf build proto --as-file-descriptor-set -o /tmp/fds.binpb` in this repo and finding the
+   raw `.proto` comment text present in the byte stream only because `buf build` (unlike
+   `protoc-gen-go`'s embedded descriptor) includes source info by default. The conformance gate must
+   read proto comments by shelling to `go tool buf build --as-file-descriptor-set` (already a `go
+   tool` dependency, zero new imports) and walking the resulting `descriptorpb.FileDescriptorSet`'s
+   `SourceCodeInfo.Location` entries — not by reflecting on `engramv1.File_engram_v1_engram_proto`.
+
+2. **`internal/server.Register()` inlines all 15 `mcp.AddTool` calls directly after
+   `buildDepsFromEnv(sqm, uqm)`** (`tools.go:1772-1783`), so there is currently no way to enumerate the
+   real registered tool set (names, Descriptions, Annotations) without live Qdrant/embedder
+   environment config. D-10's both-directions gate needs the REAL registration, not a hand-duplicated
+   list (that would just move the "second literal" problem D-10 exists to eliminate into the test
+   file). The plan should extract a `registerTools(s *mcp.Server, d *deps) error` seam that `Register`
+   calls after building `d`, so a test can call it directly with a bare `&deps{}` — exactly the
+   pattern `argattribution_test.go` already uses to call `deps` methods without a live backend — then
+   read the result via `mcp.NewInMemoryTransports()` + a `mcp.Client.ListTools` round trip (the
+   in-memory analog of the e2e-tier pattern already in `internal/e2e/boot_test.go:104-122`).
+
+**Primary recommendation:** Build the rule registry as declared `[]conditionalRule` values in
+`internal/server/argerror.go` (id, canonical sentence, `[]string` fields, `HintCode`), derive every
+other artifact (surface applicability, prose-anchor content, cobra `Usage` composition) from that
+registry via a single `task surfaces:gen` target that also regenerates the `--help` golden and the
+catalog JSON golden, gated by one new `surfaces` CI job modeled byte-for-byte on the existing `buf`
+job's generate-then-`git diff --exit-code` pattern.
+
+## Architectural Responsibility Map
+
+| Capability | Primary Tier | Secondary Tier | Rationale |
+|------------|-------------|----------------|-----------|
+| Conditional-rule registry (declared rule values) | API / Backend (`internal/server`) | — | Rules originate from server-side validation logic (`argerror.go`, `tools.go`); every other surface derives from this source of truth. |
+| Rule-name → surface-field normalizer | API / Backend | CLI (`cmd/engram`, read-only consumer) | The normalizer is pure data (a mapping table); it is invoked by both the server-side conformance test and (transitively) by anything in `cmd/engram` that needs to compose Usage text from the same rule. |
+| cobra `Usage` composition | CLI (`cmd/engram`) | — | Usage strings are cobra-owned text, rendered by `--help` and consumed by `buildCatalog`. |
+| MCP jsonschema tags + tool Description prose | API / Backend (`internal/server`) | — | Both are Go struct tags / `mcp.Tool` literals inside `internal/server/tools.go`; no other tier touches them. |
+| Proto field comments | API / Backend (schema layer, `proto/`) | CDN/Static analog: `gen/` (generated, committed) | Comments live in the `.proto` source of truth; `gen/` is a downstream generated artifact that must NOT itself carry hand-edited comments (buf/protoc-gen-go strips them anyway). |
+| `docs-site/` markdown | CDN / Static (Astro/Starlight, statically built and Cloudflare-deployed) | — | Published documentation site; anchored regions are source-controlled markdown, not runtime state. |
+| `skill/engram/` markdown | CDN / Static analog (distributed as a Claude Code plugin skill, not served by engram itself) | — | Consumed by an external agent's skill loader, not by the engram binary at runtime. |
+| `--help` / catalog JSON goldens | CLI (`cmd/engram`) | — | Golden fixtures live in `cmd/engram/testdata/`, generated from the live cobra tree the CLI owns. |
+| MCP tool annotation table | API / Backend (`internal/server`) | — | `mcp.ToolAnnotations` is attached at `mcp.AddTool` registration time, server-side only. |
+| CLI blast-radius classification (`engram catalog`) | CLI (`cmd/engram`) | API / Backend (shares the taxonomy) | `catalog.go`'s `buildCatalog` is CLI-owned, but D-11 requires it read from the SAME table as the MCP annotations — this is the one capability that needs a shared package to avoid either an import cycle or a duplicated literal (see Pitfall "Shared blast-radius table placement" below). |
+
+## Research Question Findings
+
+### Q1 — Rule registry + constructor shape; call-site inventory
+
+**Current `argerror.go` shape** (`internal/server/argerror.go:1-180`, read in full this session):
+
+```go
+// [VERIFIED: internal/server/argerror.go:20-37]
+type HintCode string
+const (
+	HintRequired            HintCode = "required"
+	HintConditionalRequired HintCode = "conditional_required"
+	HintTooLong             HintCode = "too_long"
+	HintTooMany             HintCode = "too_many"
+	HintEnum                HintCode = "enum"
+	HintFormat              HintCode = "format"
+	HintPrefix              HintCode = "prefix"
+	HintOrdering            HintCode = "ordering"
+	HintMutuallyExclusive   HintCode = "mutually_exclusive"
+	HintNotApplicable       HintCode = "not_applicable"
+)
+```
+
+```go
+// [VERIFIED: internal/server/argerror.go:70-149] — the envelope + both constructors
+type argError struct {
+	Fields []string
+	Hint   HintCode
+	Detail string
+	Class  argClass
+}
+func argErrf(class argClass, hint HintCode, field, format string, a ...any) error { … }
+func argErrFieldsf(class argClass, hint HintCode, fields []string, detail string) error { … }
+```
+
+`argErrf` takes exactly one field name (string); `argErrFieldsf` takes a `[]string`. Neither
+currently references a declared rule value — `Detail` is always a literal string built at the call
+site. D-03/D-04's `conditionalErrf(rule, …)` is new: least-invasive shape is a third constructor that
+takes a declared `rule` value (holding `ID`, `Fields []string`, `Hint HintCode`, `Sentence string`)
+and forwards to `argErrFieldsf` internally, so `argFieldsOf`/`argHintOf`/`connectError`'s existing
+`errors.As(&argError{})` handling is untouched — no call site outside the sweep needs to change its
+error-handling shape, only its construction call.
+
+**Full call-site inventory** (every `argErrf`/`argErrFieldsf` call in `internal/server/{tools,rules,connectapi}.go`, non-test,
+`[VERIFIED: rg over internal/server/*.go this session]`):
+
+| Site | Fields | Hint | D-02 in scope? | Notes |
+|------|--------|------|-----------------|-------|
+| `tools.go:528` | `not_before, not_after` | `HintRequired` | **YES** (≥2 fields via `argErrFieldsf`) | "at least one of not_before/not_after" — disjunctive-requirement shape, not the "A required unless B" shape of the other conditional rules. Candidate for reclassification to a dedicated hint if the registry needs to distinguish disjunction from exemption; D-02's predicate catches it either way via field arity. |
+| `tools.go:531` | `category` | `HintNotApplicable` | **YES** (hint code) | "discovery is not schedulable; use store_discovery" |
+| `tools.go:546` | `not_after` | `HintOrdering` | **NO — explicitly excluded (D-02)** | Single-field, clock-dependent (`time.Now()`); the ONE literal hit for a cross-field hint code that must be carved out by name/comment, since a bare "hint code in the four" predicate would otherwise wrongly include it. |
+| `tools.go:551` | `not_before, not_after` | `HintOrdering` | **YES** (both markers) | "not_before must be strictly before not_after" |
+| `tools.go:1356` (`effectiveDiscoveryScope`) | `scope` | `HintConditionalRequired` | **YES** (hint code) | "scope is required unless cross_spine is true" — search_discovery's counterpart to the requirement's worked example |
+| `tools.go:1379` (`effectiveSearchScope`) | `scope` | `HintConditionalRequired` | **YES** (hint code) | The requirement's worked example itself; also exported as `EffectiveSearchScope` for `cmd/engram`'s cross-package test (see Q3). |
+| `connectapi.go:184` | `cursor_mode, offset` | `HintMutuallyExclusive` | **YES** (both markers) | Connect-lane-only: "the one Connect-native check with no `tools.go` MCP counterpart to inherit from, since MCP's `listArgs` carries no offset field at all" (comment in source, `connectapi.go:174-186`). Directly demonstrates D-08's derived-applicability: under the field-name normalizer this rule's fields (`cursor_mode`, `offset`) do not exist anywhere in `listArgs`' JSON tags, so it correctly resolves to zero MCP surfaces while still applying to cobra `Usage` (`client_list.go`'s `--offset`/`--cursor-mode` flags) and the proto `ListMemoriesRequest` comment. |
+
+**A genuine conditional rule currently OUTSIDE the `argError` system entirely**
+(`[VERIFIED: internal/server/summary.go:14-37]`, quoted verbatim):
+
+```go
+// errStaleSummary rejects an update that would silently strand a caller-authored
+// summary against changed content. Actionable: the agent must choose.
+var errStaleSummary = errors.New(
+	`content changed but a caller-authored summary would go stale: ` +
+		`re-send the same summary to keep it, pass an updated one, or pass summary="" to clear it`)
+```
+
+This is a real "content changes AND a caller-authored summary exists → summary must be addressed"
+conditional rule (matches the MCP `update_memory` tool Description prose verbatim: `tools.go:654`,
+`tools.go:1926`), but it is a bare `errors.New` sentinel, not an `*argError` — `argFieldsOf`/
+`argHintOf` return empty/`""` for it today, so D-02's structural-marker predicate does not select it
+at all. `internal/server/connecterror.go:75-76` maps it to `CodeFailedPrecondition` via a dedicated
+`errors.Is(err, errStaleSummary)` arm, separate from the `*argError` `errors.As` arm (which the
+comment at `connecterror.go:61-66` says MUST stay first in the switch). **Converting this to
+`argErrFieldsf`/`conditionalErrf` is a strong D-01 reclassification candidate** but is riskier than
+the other five: four existing tests (`summary_test.go:139`, `tools_test.go:1667`,
+`connectapi_write_parity_test.go:404`, `connecterror_test.go:46`) assert `errors.Is(err,
+errStaleSummary)` directly — the sentinel identity must survive the conversion (e.g. by keeping
+`errStaleSummary` as the wrapped/underlying value inside a new `*argError`'s chain, or updating all
+four call sites in the same commit). Also flag `errRuleImmutable` (`connecterror.go:34,73-74`) as a
+second bare sentinel worth a one-line check during the sweep — not confirmed conditional/relational
+in this session; `internal/server/rules.go` was not read for this rule's shape.
+
+**`cmd/engram` side of the sweep:** `cmd/engram` has **zero** `argErrf`/`argErrFieldsf`/`HintCode`
+call sites — that machinery is `internal/server`-only (a different Go package; `cliError`/
+`usageErrorf` in `client_common.go:229-244` is the CLI's own, unrelated error type with no
+Fields/Hint concept). D-02's literal predicate therefore selects nothing in `cmd/engram`. This is not
+a gap: the one client-side conditional guard, `requireScopeUnlessCrossSpine` (`client_common.go:246-280`,
+plain `usageErrorf("--scope is required unless --cross-spine is set")` with no hint attribution), does
+not need its OWN hint-tagged rejection to participate in the D-05 conformance gate — it only needs its
+`Usage` string composition (in `client_list.go`/`client_search.go`'s flag registration, D-07) to
+reference the SAME declared rule value that `effectiveSearchScope`'s `argErrf` site produces. The
+gate compares STATED rule text across surfaces, not enforcement behavior — and `TestValidateScopeCrossSpineParity`
+(`cmd/engram/client_common_test.go:384-450`, imports `internal/server` for exactly this cross-package
+comparison) already documents that the CLI is *deliberately stricter* than the server on the
+scope+cross-spine-both-set row (server silently discards scope; CLI rejects outright via a separate
+cobra `MarkFlagsMutuallyExclusive` mechanism from Phase 1, unrelated to this phase's rule registry).
+
+### Q2 — Reading the six surfaces at test time
+
+| Surface | Read mechanism | Confidence |
+|---------|-----------------|------------|
+| (a) cobra `Usage` | `buildCatalog(root)` (`cmd/engram/catalog.go:53-122`) already walks the live tree; a conformance test in `internal/server` cannot import `cmd/engram` without an import-cycle risk (server imported by cmd, not vice versa — confirmed by existing directory layout), so the gate should live in `cmd/engram` (or a small new shared package — see Q7) and call `buildCatalog` directly, or walk `cmd.Flags().VisitAll` per flag's `.Usage` string. | `[VERIFIED: cmd/engram/catalog.go:53-146]` |
+| (b) MCP jsonschema struct tags | Reflection over the arg structs in `tools.go` (e.g. `searchArgs`, `listArgs`, `searchDiscoveryArgs`) via Go's `reflect` package reading the `jsonschema:"..."` struct tag text directly — no need to invoke `jsonschema.For[T]()` for THIS purpose (that's for schema generation/validation, not text extraction); a plain `reflect.TypeOf(searchArgs{}).Field(i).Tag.Get("jsonschema")` suffices. `TestToolArgSchemasDoNotPanic` (`tools_test.go:44-117`) is the precedent for exercising `jsonschema.For[T]` on these exact structs if schema-level (not just tag-text) inspection is ever needed. Anonymous embedding (`storeArgs` promoted into `scheduleArgs`/`supersedeArgs`) flattens identically on the reflected-schema path per the doc comment at `tools.go:511-514` (`[VERIFIED: tools.go:511-514, 560-592]`, quoted: "the anonymous embed flattens identically on both the json-decode and reflected-schema paths"). | `[VERIFIED: internal/server/tools.go:594-722]` (jsonschema tags read directly), `[CITED: tools.go doc comments]` for embedding-flattening claim |
+| (c) registered MCP tool Descriptions | **Not currently possible without a code change.** `Register()` (`tools.go:1772-1783`) calls `buildDepsFromEnv(sqm, uqm)` unconditionally before any `mcp.AddTool` call, so a pure unit test cannot reach the real registration today. Two options: (1) extract `registerTools(s *mcp.Server, d *deps) error` and call it with `d := &deps{}` (mirrors the existing pattern of calling `deps` methods directly against a bare struct throughout `argattribution_test.go`), then enumerate via `mcp.NewInMemoryTransports()` + `mcp.NewClient(...).Connect(...)` + `cs.ListTools(ctx, nil)` (in-memory analog of `internal/e2e/boot_test.go:104-122`'s real-HTTP pattern, but sub-second instead of a full binary boot); (2) keep a second, hand-duplicated literal of the 15 Descriptions in the test file (rejected — this recreates the "second literal" problem D-05/D-10 exist to eliminate). Recommend option 1. | `[VERIFIED: internal/server/tools.go:1772-1783]` (no seam exists today); `[VERIFIED: go-sdk@v1.7.0 mcp/server.go:929-954]` (no exported "list tools without RPC" method — `s.tools` is unexported, so the in-memory-transport `ListTools` RPC round trip is the only supported read path); `[CITED: internal/e2e/boot_test.go:99-122]` (existing real-HTTP precedent) |
+| (d) proto field comments | **NOT available via `protoreflect.FileDescriptor.SourceLocations()` on the generated Go code** — `protoc-gen-go` strips `SourceCodeInfo` from the embedded descriptor by default. **Verified live this session**: ran `go tool buf build proto --as-file-descriptor-set -o /tmp/engram-fds.binpb` (a `go tool` invocation identical in kind to `Taskfile.yaml`'s existing `proto:gen`/`proto:lint` targets — zero new dependency) and confirmed the raw output bytes contain the literal `.proto` comment text ("REQUIRED when this is unset..." from the `cross_spine` field comment), proving `buf build`'s default (source info included unless `--exclude-source-info` is passed — confirmed via `go tool buf build --help`) survives into the binary `FileDescriptorSet`. A Go program can therefore shell out to `go tool buf build --as-file-descriptor-set -o -` (or a temp file), `proto.Unmarshal` the bytes into `descriptorpb.FileDescriptorSet` (already an existing import — see `internal/server/connectdescriptor_test.go:11`), and walk each `FileDescriptorProto.SourceCodeInfo.Location` entry, matching `Path` against the field's declaration path to recover `LeadingComments`. This is genuinely zero-new-Go-dependency. | `[VERIFIED: ran `go tool buf build proto --as-file-descriptor-set -o /tmp/engram-fds.binpb` and `go tool buf build --help` this session]` |
+| (e)/(f) `docs-site/` and `skill/engram/` markdown | Plain file reads + substring search. Both are ordinary `.md` (zero `.mdx` files in `docs-site/`, confirmed by `find … -iname "*.mdx"` returning 0 results this session), so no MDX-specific comment-syntax hazard applies — see Q4 for the anchor-syntax implication. | `[VERIFIED: find docs-site/src/content/docs -iname "*.mdx" → 0 results, this session]` |
+
+### Q3 — The name normalizer (D-08)
+
+Naming conventions observed across the four field-bearing surfaces (cobra flag / proto field / Go
+struct-JSON-tag / MCP jsonschema-tag text), `[VERIFIED: read this session across client_list.go,
+client_search.go, engram.proto, tools.go]`:
+
+| Concept | cobra flag | proto field | Go JSON tag (server arg struct) | Mechanical transform? |
+|---------|-----------|-------------|----------------------------------|------------------------|
+| Cross-spine flag | `--cross-spine` | `cross_spine` | `cross_spine` (`searchArgs.CrossSpine`, `tools.go:605`) | YES — kebab-case ↔ snake_case is a bare hyphen/underscore swap |
+| Search scope | `--scope` | `scope` | `scope` | YES (identity) |
+| **Paging trio — NOT mechanical** | `--offset`, `--cursor-mode`, `--page-token` (three separate flags, `client_list.go:99-108`) | `offset`, `cursor_mode`, `page_token` (three separate fields, `ListMemoriesRequest`, `engram.proto:56-71`) | **`cursor`** — ONE field (`listArgs.Cursor`, `tools.go:616`), semantically nearest to `page_token`, but `offset` and `cursor_mode` have **no MCP field at all**. `list_memory`'s MCP closure hardcodes `CursorMode: true` unconditionally (`tools.go:1889`, comment: "Preserves today's UNCONDITIONAL MCP cursor-mode pagination"). | **NO.** This is the one case flagged in CONTEXT.md and it is real: a rule about `cursor_mode`/`offset` mutual exclusion (the Connect-only `connectapi.go:184` rejection, see Q1) resolves to a NON-empty surface set on cobra `Usage` and proto, but a genuinely EMPTY set on MCP jsonschema — which is CORRECT per D-08 (the rule truly doesn't apply there), not a normalizer bug. The normalizer must not attempt to force a `cursor` ↔ `offset`/`cursor_mode` mapping; it must instead recognize that `offset`/`cursor_mode` simply are not present in `listArgs`' tag set and skip the MCP surface for that rule. |
+| Response pagination token | `next_page_token` (proto, CLI text output "next_page_token") | `next_page_token` | `next_cursor` (MCP response key, not an arg-struct field — `tools.go:1902`) | Response-side naming, not argument-side; not exercised by D-08 (D-08 concerns *argument* fields a rule names, not response fields) but worth flagging as a parallel naming split if the registry is ever extended to response-shape rules. |
+
+**Recommendation:** implement the normalizer as kebab-case↔snake_case transform PLUS an explicit
+per-surface "field exists in this surface's tag/flag set" existence check (not a blind rename) — the
+existence check is what correctly excludes the paging trio from the MCP surface without needing a
+special-cased exception list. D-08's own mandate ("its own test asserting every rule resolves to a
+non-empty surface set") should be read as "non-empty across the surfaces where the rule's fields
+CAN exist" — cross-check against at least the cobra+proto pair (which always agrees for every
+inventoried rule in Q1) rather than requiring all six to be non-empty for every rule.
+
+### Q4 — Generator + drift-check mechanics (D-06/D-07)
+
+**Reference implementation** (`[VERIFIED: read Taskfile.yaml:228-243, .github/workflows/ci.yaml:126-153,
+buf.gen.yaml this session]`):
+
+```yaml
+# Taskfile.yaml:237-242
+proto:gen:
+  desc: Regenerate connect stubs (Go + TS) and re-vendor the console gen client tree
+  cmds:
+    - go tool buf generate
+    - rm -rf ui/src/lib/gen/engram ui/src/lib/gen/buf
+    - cp -R gen/ts/. ui/src/lib/gen/
+```
+
+```yaml
+# .github/workflows/ci.yaml:139-147 (the `buf` job's "generated-code drift" step)
+- name: generated-code drift
+  run: |
+    go tool buf generate
+    git diff --exit-code -- gen/ || (echo "gen/ is stale; run 'task proto:gen'"; exit 1)
+- name: vendored console gen client drift
+  run: |
+    rm -rf ui/src/lib/gen/engram ui/src/lib/gen/buf
+    cp -R gen/ts/. ui/src/lib/gen/
+    git diff --exit-code -- ui/src/lib/gen/ || (echo "ui/src/lib/gen/ is stale; run 'task proto:gen'"; exit 1)
+```
+
+The pattern is exactly: **regenerate in place, then `git diff --exit-code` on the generated paths**.
+`task surfaces:gen` should follow this shape precisely: regenerate the anchored regions + both
+goldens in place, and a new `surfaces` CI job (or a step added to the existing `buf` job) runs
+`task surfaces:gen` then `git diff --exit-code` over the affected paths (`docs-site/`, `skill/engram/`,
+`proto/`, `cmd/engram/testdata/`).
+
+**Two hazards, resolved:**
+
+(i) **Does regenerating a proto comment dirty the committed `gen/` tree?** — Not investigated to a
+definitive answer this session (would require actually editing a `.proto` comment and re-running
+`go tool buf generate`/`buf generate` for TS, which is destructive to run speculatively mid-research).
+Reasoning from Q2(d)'s finding: since `protoc-gen-go` STRIPS `SourceCodeInfo` from the descriptor it
+embeds in `.pb.go`, a comment-only change to a `.proto` file should NOT change any byte of the
+generated Go `.pb.go` output (the Go plugin never saw the comment to begin with). The TS plugin
+(`buf.build/bufbuild/es`) may behave differently — some TS/JSDoc-emitting plugins DO carry proto
+comments into generated TSDoc. **This must be verified empirically by the planner** (edit one proto
+comment, run `task proto:gen`, `git diff -- gen/`) before deciding whether `surfaces:gen` needs to
+chain `proto:gen` — flag this as an explicit Wave-0/first-task verification step, not an assumption
+to carry into the plan unverified. `[ASSUMED]` for the Go-side no-op claim (reasoned from confirmed
+stripping behavior, not empirically run against this repo's actual `.pb.go` diff); `[ASSUMED]` for TS
+plugin behavior (not investigated).
+
+(ii) **What comment syntax survives the markdown pipelines?** `docs-site/` is 100% plain `.md`
+(zero `.mdx`, confirmed Q2), rendered by Starlight's remark/rehype pipeline — standard CommonMark
+HTML comments (`<!-- GSD:ANCHOR:START rule-id -->`) are valid raw-HTML blocks and pass through
+untouched; no MDX JSX-comment (`{/* */}`) requirement applies. `skill/engram/**/SKILL.md` files are
+also plain markdown consumed by Claude Code's skill loader (not a build pipeline at all — read
+directly as text), so the same HTML-comment syntax works identically there. **Recommendation: use
+identical `<!-- GSD:ANCHOR:START <rule-id> -->` / `<!-- GSD:ANCHOR:END <rule-id> -->` syntax across
+all four prose surfaces (docs-site markdown ×2 files, skill markdown ×2 files) for a single generator
+implementation**, rather than a per-file-type syntax table. For `.proto`, use `//` line comments with
+the same sentinel text (protobuf has no block-comment-based anchor convention already in this repo to
+match against). `[VERIFIED: 0 .mdx files found this session]`, `[CITED: CommonMark raw-HTML-block
+spec — HTML comments pass through remark/rehype unmodified]`.
+
+### Q5 — MCP `ToolAnnotations` wiring
+
+**The version actually vendored is go-sdk v1.7.0** (`[VERIFIED: go.mod:18]`), not v1.6.1 as cited in
+CONTEXT.md's canonical refs (v1.6.1 was likely accurate at context-gathering time; a Renovate bump
+landed since). Exact shape, read directly from `$(go env GOMODCACHE)/github.com/modelcontextprotocol/go-sdk@v1.7.0/mcp/protocol.go:1967-1994`:
+
+```go
+// [VERIFIED: go-sdk@v1.7.0 mcp/protocol.go:1959-1994]
+type ToolAnnotations struct {
+	// If true, the tool may perform destructive updates to its environment. If
+	// false, the tool performs only additive updates.
+	// (This property is meaningful only when ReadOnlyHint == false.)
+	// Default: true
+	DestructiveHint *bool `json:"destructiveHint,omitempty"`
+	// If true, calling the tool repeatedly with the same arguments will have no
+	// additional effect on the its environment.
+	// Default: false
+	IdempotentHint bool `json:"idempotentHint"`
+	// If true, this tool may interact with an "open world" of external entities.
+	// Default: true
+	OpenWorldHint *bool `json:"openWorldHint,omitempty"`
+	// If true, the tool does not modify its environment.
+	// Default: false
+	ReadOnlyHint bool `json:"readOnlyHint"`
+	Title string `json:"title,omitempty"`
+}
+```
+
+**Critical, previously-unflagged finding:** `DestructiveHint` and `OpenWorldHint` are `*bool`
+(pointer — nil means "default true"), while `ReadOnlyHint` and `IdempotentHint` are bare `bool`
+(zero value means `false`). D-10's "openWorldHint is set explicitly to false on every tool" therefore
+requires a helper (`func ptr[T any](v T) *T { return &v }` or similar, or a package-level
+`var falseVal = false`) — a bare `OpenWorldHint: false` will not compile against a `*bool` field.
+`Tool.Annotations *ToolAnnotations` (`protocol.go:1905`) is itself a pointer too, so an entirely
+unset `Annotations` field (nil) is distinct from a zero-valued `&ToolAnnotations{}` — the central
+table's every-tool-has-an-entry gate must assert `Annotations != nil` in addition to comparing field
+values.
+
+**No exported way to enumerate registered tools without an RPC round trip** — see Q2(c). The go-sdk
+also carries its own explicit caveat matching D-09's rationale, quoted verbatim (`protocol.go:1959-1966`):
+"NOTE: all properties in ToolAnnotations are hints. They are not guaranteed to provide a faithful
+description of tool behavior... Clients should never make tool use decisions based on ToolAnnotations
+received from untrusted servers."
+
+### Q6 — Golden-file mechanics (D-12/D-13)
+
+`config.FlagDefault` is confirmed a pure static-map lookup, **quoted verbatim**
+(`[VERIFIED: internal/config/registry.go:144-149]`):
+
+```go
+// FlagDefault returns the registry default for the field bound to flag name, so
+// cobra flag registration shows accurate --help defaults without duplicating
+// literals. Returns "" when the flag is unknown or its field has no default.
+func FlagDefault(flagName string) string {
+	return flagToDefault[flagName]
+}
+```
+
+`flagToDefault` (`registry.go:134-142`) is built once from the package-level `registry []field`
+literal (`registry.go:25-100`) — no environment read anywhere in the call chain. This confirms Phase
+1's koanf migration did not make `--help` output env-sensitive.
+
+**No other flag default or Usage string was found to interpolate an env var or path** in the files
+read this session (`client_common.go`'s `addClientFlags`, `client_list.go`, `client_search.go`) — all
+Usage strings are Go string literals. This is not an exhaustive sweep of every cobra command in
+`cmd/engram/` (operator commands like `reindex`, `migrate-remap-owner` were not individually read),
+so the planner should still grep `cmd/engram/*.go` for `os.Getenv` calls inside `Usage:`/flag-registration
+code before finalizing the golden as a Wave-0 check. `[ASSUMED]` for full-tree coverage — only the
+three-verb subset cited in CONTEXT.md's canonical refs was verified.
+
+**`engram catalog` JSON pinning hazard, confirmed:** `catalogDoc.Version` is set from `root.Version`
+(`catalog.go:56`), and `root.go` sets `Version: version` from an ldflags-injected `main.version`
+build variable (per CONTEXT.md's citation `root.go:28,71`, not independently re-read this session —
+`[CITED: CONTEXT.md canonical_refs, not re-verified this session]`). The golden must normalize/strip
+the `version` field (e.g. compare `doc.Commands`/`doc.ExitCodes`/`doc.Notes` and D-11's new blast-radius
+field independently of `doc.Version`, or run the catalog-JSON test with a fixed `-ldflags "-X
+main.version=test"` build) or every release retag breaks the golden for a reason unrelated to any real
+interface drift.
+
+### Q7 — Blast-radius on the catalog (D-11)
+
+`catalogDoc`/`catalogCommand` (`[VERIFIED: cmd/engram/catalog.go:20-47]`) currently has no
+classification field:
+
+```go
+type catalogCommand struct {
+	Name    string        `json:"name"`
+	Summary string        `json:"summary"`
+	Flags   []catalogFlag `json:"flags"`
+}
+```
+
+Adding a `BlastRadius` (or `ReadOnly`/`Destructive`/`Idempotent` trio mirroring the MCP shape)
+field here is a straightforward additive struct field, consistent with `buildCatalog`'s
+derive-never-declare pattern. **The shared-table placement question is real**: `internal/server`
+(package `server`) and `cmd/engram` (package `main`) are separate Go modules' packages within the
+same module, and `cmd/engram` already imports `internal/config` (confirmed via `client_common.go:25`
+import) but does **not** currently import `internal/server` in production code (only
+`client_common_test.go` imports it, and that file is explicitly exempted from
+`TestClientFilesImportBoundary`'s denylist per the comment at `client_common_test.go:401-404`). Two
+viable placements avoiding both an import cycle and a duplicated literal:
+
+1. **A new leaf package** (e.g. `internal/toolclass` or similar) holding just the `[]ToolClass{Name,
+   ReadOnly, Destructive, Idempotent, OpenWorld}` table plus a lookup function. Both `internal/server`
+   (to build `mcp.ToolAnnotations`) and `cmd/engram` (to build `catalogCommand.BlastRadius`) import it.
+   Zero cycle risk since it depends on nothing else in the module.
+2. **`internal/server` exports the table**, and `cmd/engram` imports `internal/server` directly for
+   this one lookup (mirroring the existing `EffectiveSearchScope` precedent at `tools.go:1384-1390`,
+   which exists "solely so cmd/engram's client-side scope guard can be pinned against this rule at
+   compile time"). Simpler (no new package), but note `TestClientFilesImportBoundary`
+   (`client_common_test.go`, referenced but not fully read this session) currently denylists
+   production `client_*.go` files from importing `internal/server` — `catalog.go` is not a
+   `client_*.go`-prefixed file, so it may already be exempt from that specific denylist, but this
+   needs the planner to actually read `TestClientFilesImportBoundary`'s file-name predicate to confirm
+   before choosing option 2. `[ASSUMED]` — the denylist's exact predicate (which filenames it covers)
+   was not read this session; only the `_test.go`-suffix exemption comment was seen indirectly via
+   `client_common_test.go:401-404`.
+
+**Recommendation:** option 1 (new leaf package) is lower-risk — it sidesteps the need to verify the
+import-boundary test's exact predicate and matches the "reviewable on one screen" framing D-10 uses
+for the annotation table itself.
+
+### Q8 — Test-cache hazard
+
+Confirmed as a real, previously-hit issue: memory `p1vqxqhxrm` (cited in CONTEXT.md, not independently
+re-fetched this session — `[CITED: CONTEXT.md canonical_refs]`) documents Go's test cache replaying a
+stale PASS for `internal/e2e` after a `cmd/engram` behavior change, because `internal/e2e` shells out
+to the *built binary*, and `go test`'s caching is keyed on Go source inputs, not on the binary's
+actual bytes. This phase adds golden tests over CLI `--help`/catalog-JSON output that are exercised
+purely in-process (via `cmd.SetOut`/`buildCatalog`, not by shelling to a built binary) — those are
+NOT subject to the `internal/e2e` staleness class, since their test inputs (the cobra tree
+construction) are ordinary Go source the test cache correctly invalidates on. The e2e-tier risk is
+narrower: if a future golden test is added inside `internal/e2e` itself (shelling to the built
+binary) rather than as an in-process `cmd/engram` unit test, `go clean -testcache` before any
+phase-completion gate becomes load-bearing again. **Recommendation: keep the D-12/D-13 goldens as
+in-process `cmd/engram` package tests (not `internal/e2e` tests)** to sidestep this hazard entirely,
+and still run `go clean -testcache && task test` before the phase gate as defense-in-depth per the
+standing project practice.
+
+## Standard Stack
+
+No new external packages this phase (see Package Legitimacy Audit). All work uses:
+
+### Core (already vendored/tooled)
+| Library | Version (verified) | Purpose | Why Standard |
+|---------|---------|---------|--------------|
+| `github.com/spf13/cobra` | v1.10.2 `[VERIFIED: go.mod:20]` | CLI tree, `Usage` strings, flag groups | Already the project's CLI framework (Phase 1). |
+| `github.com/spf13/pflag` | v1.0.10 `[VERIFIED: go.mod:21]` | Flag introspection (`VisitAll`) for golden walker | Cobra's flag layer. |
+| `github.com/modelcontextprotocol/go-sdk` | v1.7.0 `[VERIFIED: go.mod:18]` | `mcp.Tool`, `mcp.ToolAnnotations`, `mcp.AddTool`, `mcp.NewInMemoryTransports` | Already the project's MCP server framework. |
+| `google.golang.org/protobuf` (incl. `descriptorpb`) | v1.36.11 `[VERIFIED: go.mod:38]` | Unmarshal the `FileDescriptorSet` produced by `go tool buf build` to read proto comments | Already imported by `internal/server/connectdescriptor_test.go`. |
+| `go tool buf` (`github.com/bufbuild/buf`) | pinned via `go.mod` tool directive `[VERIFIED: go.mod:156]` | `buf build --as-file-descriptor-set` to extract proto `SourceCodeInfo` | Already the project's proto tool; `buf build` (not `buf generate`) is the new invocation this phase introduces, no new module. |
+
+### Supporting (stdlib only)
+| Package | Purpose | When to Use |
+|---------|---------|-------------|
+| `os/exec` | Shell to `go tool buf build --as-file-descriptor-set` | Reading proto field comments (Q2d) |
+| `reflect` | Read `jsonschema:"..."` struct-tag text on the MCP arg structs | Surface (b) — no need for `jsonschema.For[T]` unless full schema (not just tag text) inspection is needed |
+| `regexp` / `bufio` | Anchored-region find-and-replace in prose files | The generator (D-06/D-07) |
+| `text/template` or plain `fmt.Sprintf` | Render each rule's canonical sentence into prose | Generator |
+
+### Alternatives Considered
+| Instead of | Could Use | Tradeoff |
+|------------|-----------|----------|
+| Shelling to `go tool buf build --as-file-descriptor-set` for proto comments | Importing `github.com/bufbuild/protocompile` directly (already an indirect transitive dependency via `github.com/bufbuild/buf`, `[VERIFIED: go.mod:60]`) to parse `.proto` source with full source info in-process | Avoids a subprocess spawn, but promotes an indirect dependency to direct (a `go.mod` diff, even though no new module enters `go.sum`) and is a considerably larger API surface to learn correctly. Shelling to the already-used `go tool buf` CLI is simpler and matches the existing `Taskfile.yaml` idiom of invoking `go tool buf` for proto work. |
+| A dedicated markdown-anchor-rewrite library | Hand-rolled `regexp`/`bufio` region replace | No markdown-anchor-rewrite library is a plausible "near-zero new deps" candidate for a two-marker-line find/replace — this is squarely stdlib territory; do not add a dependency for it. |
+
+**Installation:** none — no `go get`/`npm install` required this phase.
+
+## Package Legitimacy Audit
+
+**No new external packages are introduced by this phase.** Every mechanism above resolves to the
+Go standard library or an already-vendored/already-tooled dependency (`cobra`, `pflag`, `go-sdk`,
+`google.golang.org/protobuf`, `go tool buf`). This satisfies the v0.13.x milestone's standing
+constraint of near-zero new Go dependencies (`REQUIREMENTS.md`, "Standing constraints" section,
+`[VERIFIED: .planning/REQUIREMENTS.md:14-16]`, quoted: "Near-zero new Go dependencies. Every
+capability in this milestone resolves to the stdlib or already-vendored code (`cobra` v1.10.2,
+`qdrant/go-client` v1.18.3)."). No `package-legitimacy check` run was needed since no package name is
+being newly introduced.
+
+**Packages removed due to [SLOP] verdict:** none.
+**Packages flagged as suspicious [SUS]:** none.
+
+## Architecture Patterns
+
+### System Architecture Diagram
+
+```
+                    ┌─────────────────────────────────┐
+                    │   Rule Registry (D-03/D-04)      │
+                    │   internal/server/argerror.go    │
+                    │   []conditionalRule{ID, Fields,  │
+                    │    Hint, Sentence}                │
+                    └───────────────┬───────────────────┘
+                                    │  referenced by
+             ┌──────────────────────┼──────────────────────────┐
+             │                      │                          │
+             ▼                      ▼                          ▼
+   conditionalErrf(rule,…)   cobra Usage composition   task surfaces:gen
+   (argErrf call sites)      (client_list.go etc.)     (generator, D-06/D-07)
+             │                      │                          │
+             │                      │            ┌─────────────┼─────────────┬───────────────┐
+             ▼                      ▼            ▼             ▼             ▼               ▼
+     runtime rejection      --help / catalog  anchored      anchored      anchored        anchored
+     (field=… hint=…)       (buildCatalog)    region in     region in     region in       region in
+                                               proto/*.proto docs-site/*.md skill/*.md    (n/a — jsonschema
+                                                                                            tag stays literal,
+                                                                                            D-03 exception)
+             │                      │             │             │             │
+             └──────────────────────┴─────────────┴─────────────┴─────────────┘
+                                    │
+                                    ▼
+                    ┌───────────────────────────────────┐
+                    │  D-08 Name Normalizer              │
+                    │  (rule.Fields → per-surface field   │
+                    │   existence check, derives which    │
+                    │   of the 6 surfaces apply)          │
+                    └───────────────┬───────────────────┘
+                                    │
+                                    ▼
+                    ┌───────────────────────────────────┐
+                    │  D-05 Conformance Test              │
+                    │  reads all 6 surfaces at test time  │
+                    │  (Q2 mechanisms), asserts rule       │
+                    │  substring present on every          │
+                    │  APPLICABLE surface                  │
+                    └───────────────────────────────────┘
+
+  Separately: MCP Annotation Table (D-09/D-10) ──┬──► mcp.AddTool(...).Annotations
+                internal/toolclass (new leaf pkg) │
+                                                   └──► cmd/engram/catalog.go BlastRadius (D-11)
+
+  Separately: Golden Walker (D-12/D-13) ──► cmd/engram/testdata/*.golden (--help, catalog JSON)
+              reads live cobra tree, generated + committed + drift-checked by task surfaces:gen
+```
+
+### Recommended Project Structure
+
+```
+internal/server/
+├── argerror.go          # + declared rule registry, conditionalErrf (D-03/D-04)
+├── toolannotations.go   # NEW — central mcp.ToolAnnotations table (D-09/D-10), reads internal/toolclass
+├── surfaces_test.go     # NEW — D-05 conformance gate (reads MCP surfaces b/c; server-side half)
+internal/toolclass/      # NEW leaf package — shared blast-radius taxonomy (Q7 option 1)
+├── toolclass.go         # []ToolClass{Name, ReadOnly, Destructive, Idempotent, OpenWorld}
+cmd/engram/
+├── catalog.go           # + BlastRadius field on catalogCommand, reads internal/toolclass (D-11)
+├── surfaces_test.go     # NEW — D-05 conformance gate (cobra Usage half); D-12/D-13 golden tests
+├── testdata/
+│   ├── help.golden          # D-12
+│   └── catalog.golden       # D-13
+proto/engram/v1/
+├── engram.proto          # anchored regions in field comments (D-06)
+docs-site/src/content/docs/
+├── reference/tools.md    # anchored regions (D-06)
+├── guides/cli.md         # anchored regions (D-06)
+skill/engram/skills/
+├── curating-memory/SKILL.md  # anchored regions (D-06)
+├── discovering/SKILL.md      # anchored regions (D-06)
+internal/surfacesgen/    # NEW — the generator invoked by `task surfaces:gen`
+├── main.go (or a `cmd/engram-surfacesgen` internal tool, per project convention for one-off tooling)
+```
+
+### Pattern 1: Derive-Never-Declare (existing project convention)
+**What:** Every advertised artifact is computed from a single source at generation/test time, never
+hand-duplicated.
+**When to use:** Every one of D-03/D-08/D-11/D-12's mechanisms.
+**Example:**
+```go
+// Source: cmd/engram/catalog.go:53-77 (existing precedent, verified this session)
+func buildCatalog(root *cobra.Command) catalogDoc {
+	doc := catalogDoc{Binary: root.Name(), Version: root.Version}
+	for _, cmd := range root.Commands() {
+		if cmd.Hidden || cmd.Name() == "help" || cmd.Name() == "completion" {
+			continue
+		}
+		doc.Commands = append(doc.Commands, catalogCommand{
+			Name: cmd.Name(), Summary: cmd.Short, Flags: collectFlags(root, cmd),
+		})
+	}
+	// ...
+	return doc
+}
+```
+
+### Pattern 2: Both-Directions Gate (existing project convention)
+**What:** Assert set A ⊆ set B AND set B ⊆ set A independently constructed, via `reflect.DeepEqual`
+on two maps — not a one-directional subset check.
+**When to use:** D-10's "every registered tool has an entry, every entry names a registered tool."
+**Example:**
+```go
+// Source: cmd/engram/catalog_test.go:338-356 (existing precedent, verified this session)
+func TestCatalogExitCodesMatchMapper(t *testing.T) {
+	doc := decodeCatalog(t)
+	catalogCodes := make(map[int]bool)
+	for _, ec := range doc.ExitCodes {
+		catalogCodes[ec.Code] = true
+	}
+	mapperCodes := map[int]bool{exitOK: true}
+	for i := 1; i <= 16; i++ {
+		mapperCodes[exitCodeForConnectErr(connect.NewError(connect.Code(i), errors.New("boom")))] = true
+	}
+	mapperCodes[exitCodeForConnectErr(errors.New("not a connect error"))] = true
+	if !reflect.DeepEqual(catalogCodes, mapperCodes) {
+		t.Errorf("catalog exit codes = {%s}, mapper-producible exit codes = {%s}", ...)
+	}
+}
+```
+
+### Pattern 3: Generate-Commit-Drift-Check (existing project convention)
+**What:** A `task` target regenerates a committed artifact in place; CI re-runs the same target then
+`git diff --exit-code` on the affected paths.
+**When to use:** D-06/D-07's whole mechanism, D-12/D-13's goldens.
+**Example:** see Q4's Taskfile/CI quotes above — copy the shape exactly, extending `git diff --exit-code`'s
+path list to cover `proto/`, `docs-site/`, `skill/engram/`, `cmd/engram/testdata/`.
+
+### Anti-Patterns to Avoid
+- **A second hand-maintained literal of the 15 MCP tool names/Descriptions in a test file** (Q2c) —
+  defeats the entire point of D-05/D-10; extract `registerTools(s, d)` instead.
+- **Treating `HintOrdering`/`HintNotApplicable`/etc. membership alone as the D-02 selector** — this
+  wrongly includes `tools.go:546` (single-field, clock-dependent); the predicate needs an explicit,
+  documented carve-out for that one site, not a bare hint-code-in-set check.
+- **A bare `OpenWorldHint: false` literal** — will not compile; the field is `*bool` (Q5).
+- **Comparing the full `engram catalog` JSON byte-for-byte including `Version`** — breaks on every
+  release retag (Q6); normalize or fix `Version` before comparison.
+
+## Don't Hand-Roll
+
+| Problem | Don't Build | Use Instead | Why |
+|---------|-------------|-------------|-----|
+| Reading proto field comments | A custom `.proto` text parser (regex over the raw file) | `go tool buf build --as-file-descriptor-set` + `descriptorpb.FileDescriptorSet` unmarshal | Handles imports, multi-line comments, and proto3 syntax correctly; a hand-rolled regex parser would need to reimplement proto's comment-attachment rules (leading vs. trailing vs. detached comments) that `SourceCodeInfo` already encodes correctly. Zero new dependency either way. |
+| Enumerating registered MCP tools + their annotations | Duplicating the 15 tool literals in a test file | `registerTools(s, d)` extraction + `mcp.NewInMemoryTransports` + `ListTools` RPC | The go-sdk already implements correct JSON marshaling of `ToolAnnotations` (including the pointer/bare-bool distinction in Q5) — testing through the real `tools/list` handler catches wire-format bugs a hand-duplicated struct literal cannot. |
+| Markdown anchor find-and-replace | A markdown AST library (e.g. goldmark) for a two-sentinel-line region swap | `bufio.Scanner` line-by-line matching on the two sentinel comment lines | The anchor boundaries are exact literal strings the generator itself writes; no markdown semantics need parsing, only line-range replacement. Pulling in an AST library for this is disproportionate. |
+
+**Key insight:** every "don't hand-roll" in this phase is really "don't build a SECOND system to
+extract information the FIRST system (buf, go-sdk, cobra) already computes correctly and exposes,
+even if the exposure mechanism (CLI subprocess, RPC round trip) is less direct than reading a field."
+
+## Common Pitfalls
+
+### Pitfall 1: `errStaleSummary` sentinel-identity break on D-01 reclassification
+**What goes wrong:** Converting `internal/server/summary.go:16`'s bare `errStaleSummary` sentinel to
+`argErrFieldsf`/`conditionalErrf` silently breaks `errors.Is(err, errStaleSummary)` in the four
+existing test call sites (`summary_test.go:139`, `tools_test.go:1667`,
+`connectapi_write_parity_test.go:404`, `connecterror_test.go:46`) and in `connecterror.go`'s own
+`errors.Is(err, errStaleSummary)` classification arm, unless the new `*argError`'s error chain still
+resolves `errors.Is(..., errStaleSummary)` to true.
+**Why it happens:** `argError.Unwrap()` returns the single sentinel `store.ErrInvalidArgument`
+(`argerror.go:99-101`) — there is no mechanism today for an `*argError` to ALSO satisfy `errors.Is`
+against a second, more specific sentinel.
+**How to avoid:** Either (a) keep `errStaleSummary` as a wrapped inner error inside the new
+`argErrFieldsf` call's `Detail` construction path is not enough (Detail is a string, not an error) —
+the real fix is giving `argError` a second, optional wrapped sentinel field checked by a custom
+`Is(target error) bool` method, or (b) update all four call sites to assert on `argFieldsOf`/`argHintOf`
+instead of `errors.Is(err, errStaleSummary)`, in the SAME commit as the reclassification, and retire
+`errStaleSummary` as an exported-for-testing identity entirely.
+**Warning signs:** `go test ./internal/server/...` failures naming `errStaleSummary` after any
+`summary.go` edit in this phase.
+
+### Pitfall 2: Blindly applying "hint code in the four cross-field codes" as the D-02 predicate
+**What goes wrong:** `tools.go:546` (`not_after must be in the future`) carries `HintOrdering`, one
+of the four codes, but is single-field and clock-dependent — CONTEXT.md D-02 explicitly excludes it.
+A predicate implemented as a bare `hint == HintOrdering || hint == HintMutuallyExclusive || ...`
+without an additional exclusion incorrectly sweeps this site in, and the conformance gate would then
+demand this rejection's text appear on cobra `Usage`/MCP jsonschema tags — which is not the
+requirement's intent (this rule is about wall-clock state, not an interface-legible constraint).
+**Why it happens:** The four-hint-code criterion and the two-fields criterion are OR'd in D-02's
+prose, but D-02 also names one exception by line number — a naive implementation of "OR of two
+predicates" misses a THIRD, narrower "AND NOT this specific site" clause.
+**How to avoid:** Implement the exclusion as an explicit, named, commented allowlist-of-one (e.g. a
+`//go:build`-adjacent constant or a doc-commented `excludedFromConformanceGate = map[string]bool{...}`
+keyed by rule ID once the site is converted to `conditionalErrf`), not a heuristic.
+**Warning signs:** The conformance gate fails demanding `not_after must be in the future`-shaped text
+appear in cobra `Usage`/jsonschema tags where no such text exists today.
+
+### Pitfall 3: `*bool` vs `bool` in `mcp.ToolAnnotations`
+**What goes wrong:** `DestructiveHint`/`OpenWorldHint *bool` vs. `ReadOnlyHint`/`IdempotentHint bool`
+— a naive struct literal like `&mcp.ToolAnnotations{OpenWorldHint: false}` fails to compile.
+**Why it happens:** The go-sdk models "true is the risky default" fields as pointers (nil = assume
+the riskier default of `true`) and "false is the safe default" fields as bare bools (Q5).
+**How to avoid:** A small package-level `var falseVal = false` (or a generic `ptr[T](v T) *T` helper)
+used consistently in the central annotation table.
+**Warning signs:** Compile error `cannot use false (untyped bool constant) as *bool value`.
+
+### Pitfall 4: Shared blast-radius table creating an accidental import cycle or duplicated literal
+**What goes wrong:** If `internal/toolclass` (or wherever the shared table lives) is placed inside
+`internal/server` instead of a new leaf package, and `cmd/engram`'s `TestClientFilesImportBoundary`
+denylist (referenced in Phase 1's canonical refs, not fully read this session) turns out to cover
+`catalog.go`, the import either fails a test or forces a workaround that reintroduces a duplicated
+literal.
+**Why it happens:** `cmd/engram`'s import-boundary test exists specifically to prevent client-facing
+CLI files from depending on server internals (Phase 1's D-04 boundary).
+**How to avoid:** Read `TestClientFilesImportBoundary`'s exact file-name predicate BEFORE deciding
+package placement (flagged as an Open Question below); default to the new-leaf-package option (Q7
+option 1), which has zero dependency on that test's predicate either way.
+**Warning signs:** `TestClientFilesImportBoundary` failing after adding an `internal/server` import to
+`catalog.go`.
+
+### Pitfall 5: Golden test coupled to ldflags-injected `Version`
+**What goes wrong:** `engram catalog`'s pinned JSON golden (D-13) breaks on every version bump if
+`Version` is compared byte-for-byte, even when nothing about the actual interface changed.
+**Why it happens:** `catalogDoc.Version` is set from `root.Version`, itself set from an
+ldflags-injected `main.version` build variable (Q6).
+**How to avoid:** Build the golden-comparison test with a fixed, test-only version string (e.g. build
+the root command in the test with `Version: "test"` explicitly, bypassing the ldflags path
+entirely — `runSelfDescribe`/`buildCatalog` both take the command tree as a parameter, so this is a
+test-construction choice, not a production code change) rather than post-processing/stripping the
+field from the golden file.
+**Warning signs:** `catalog.golden` diff showing ONLY a `version` field change after `git tag` / a
+release build.
+
+## Code Examples
+
+### Existing declared-rule composition precedent (nearest analog in this codebase)
+```go
+// Source: internal/server/tools.go:1374-1390 — effectiveSearchScope, the exact rule
+// D-03's registry entry should represent as a declared value.
+func effectiveSearchScope(scope string, crossSpine bool) (string, error) {
+	if crossSpine {
+		return "", nil
+	}
+	if scope == "" {
+		return "", argErrf(classMalformed, HintConditionalRequired, "scope", "scope is required unless cross_spine is true")
+	}
+	return scope, nil
+}
+
+// EffectiveSearchScope is the exported form of effectiveSearchScope. It
+// exists solely so cmd/engram's client-side scope guard can be pinned
+// against this rule at compile time, per Phase 7's D-03 amendment.
+func EffectiveSearchScope(scope string, crossSpine bool) (string, error) {
+	return effectiveSearchScope(scope, crossSpine)
+}
+```
+
+### Reading a jsonschema struct tag directly (surface b)
+```go
+// Illustrative — no existing precedent in this codebase for tag-TEXT
+// extraction (only tag-driven SCHEMA generation via jsonschema.For[T]
+// exists today, TestToolArgSchemasDoNotPanic, tools_test.go:44-117).
+t := reflect.TypeOf(searchArgs{})
+f, _ := t.FieldByName("Scope")
+tagText := f.Tag.Get("jsonschema") // "required unless cross_spine"
+```
+
+### Reading proto field comments (surface d) — verified command this session
+```bash
+# Verified live in this repo this session:
+go tool buf build proto --as-file-descriptor-set -o /tmp/engram-fds.binpb
+# Then in Go: proto.Unmarshal(data, &descriptorpb.FileDescriptorSet{}) and walk
+# each File's SourceCodeInfo.Location, matching Path against the field's
+# declaration path (e.g. [4, msgIndex, 2, fieldIndex] for a top-level message
+# field) to read LeadingComments.
+```
+
+### Both-directions annotation gate skeleton (extends Pattern 2)
+```go
+// Illustrative — combine with the registerTools(s, &deps{}) + in-memory
+// ListTools pattern from Q2(c) to get the REAL tool set, then:
+registered := map[string]bool{}
+for _, tool := range listToolsResult.Tools {
+	registered[tool.Name] = true
+	if _, ok := toolClassTable[tool.Name]; !ok {
+		t.Errorf("tool %q has no toolClassTable entry", tool.Name)
+	}
+}
+for name := range toolClassTable {
+	if !registered[name] {
+		t.Errorf("toolClassTable entry %q names no registered tool", name)
+	}
+}
+```
+
+## State of the Art
+
+| Old Approach | Current Approach | When Changed | Impact |
+|--------------|------------------|---------------|--------|
+| `argErrf`/`argErrFieldsf` with an ad-hoc literal `Detail` string per call site | `conditionalErrf(rule, …)` composing a declared rule's canonical sentence | This phase (D-03/D-04) | Cuts reflection-compared surfaces from two (Usage text + jsonschema tag both hand-typed) to one (jsonschema tag remains the sole re-typed surface, since Go struct tags are literal-only). |
+| `errStaleSummary` as a bare, un-attributed sentinel | (recommended) `argErrFieldsf`-wrapped conditional rule with `[]string{"content","summary"}` field attribution | This phase, if D-01's sweep includes it | Brings the "must address stale summary" rule into the same field/hint attribution every other rejection carries — currently the ONE production rejection with zero field attribution at all. |
+| `mcp.AddTool` calls inlined directly in `Register()` after `buildDepsFromEnv` | (recommended) extracted `registerTools(s, d)` seam | This phase, if Q2(c)'s recommendation is taken | Makes the real tool registration set unit-testable without live Qdrant/embedder config, closing the same class of gap `TestToolArgSchemasDoNotPanic` closed for schema-generation panics in v0.4.2. |
+
+**Deprecated/outdated:** none — this phase adds new invariants rather than replacing a deprecated
+mechanism.
+
+## Assumptions Log
+
+| # | Claim | Section | Risk if Wrong |
+|---|-------|---------|----------------|
+| A1 | Regenerating a proto field comment does NOT dirty the committed Go `gen/` tree (because `protoc-gen-go` strips `SourceCodeInfo`), but MAY dirty the TS `gen/` tree (plugin-dependent, not verified) | Q4 hazard (i) | If wrong on the Go side, `surfaces:gen` silently leaves `gen/go/` stale and the existing `buf` CI job's drift check fails for an unrelated-looking reason on the next PR touching proto comments — confusing, not silently broken, but wastes a review cycle. If wrong on the TS side and unaccounted for, `task surfaces:gen` must chain `task proto:gen`, which the planner should decide explicitly rather than discover via a red CI job. |
+| A2 | `TestClientFilesImportBoundary`'s denylist predicate does not cover `cmd/engram/catalog.go` (only `client_*.go`-prefixed files) | Q7 / Pitfall 4 | If wrong, choosing Q7's "option 2" (direct `internal/server` import from `catalog.go`) fails a pre-existing test; low risk since Q7's recommendation is already the new-leaf-package option, which is unaffected either way. |
+| A3 | No cobra `Usage` string or flag default in the full `cmd/engram/` tree (beyond the three verbs read this session — `search`, `list`, plus `addClientFlags`) interpolates an environment variable or filesystem path | Q6 golden determinism | If wrong, `--help` golden becomes flaky/environment-sensitive for whichever untested command carries the interpolation, and CI intermittently fails the D-12 golden for reasons unrelated to real interface drift. |
+| A4 | `root.Version`/`main.version` is genuinely ldflags-injected (not independently re-read at `root.go:28,71` this session — taken from CONTEXT.md's canonical_refs citation) | Q6 / Pitfall 5 | If the citation is stale or inaccurate, the catalog-JSON golden-normalization concern may be moot (no actual risk) or may need a different fix than assumed. |
+| A5 | `errRuleImmutable` (a second bare sentinel alongside `errStaleSummary`, `connecterror.go:34,73-74`) may or may not be a genuine conditional/relational rule in the D-01/D-02 sense — `internal/server/rules.go`'s actual raise sites were not read this session | Q1 | Low risk — flagged only as a "worth a one-line check" item, not built into any recommendation above. |
+
+## Open Questions
+
+1. **Does a proto comment-only edit actually leave `gen/go/` byte-identical?**
+   - What we know: `protoc-gen-go` strips `SourceCodeInfo` from the descriptor it embeds by design
+     (confirmed via web search of the upstream golang/protobuf issue tracker); this repo's `gen/go/`
+     files are produced by the pinned `buf.build/protocolbuffers/go:v1.36.11` remote plugin
+     (`buf.gen.yaml:22-24`), which is exactly `protoc-gen-go`.
+   - What's unclear: whether the TS plugin (`buf.build/bufbuild/es:v2.12.1`) also strips comments, or
+     carries them into generated JSDoc/TSDoc, which would dirty `gen/ts/` (and therefore the vendored
+     `ui/src/lib/gen/`) on every rule-registry-driven proto comment regeneration.
+   - Recommendation: make this the FIRST verification task in Wave 0 — edit one proto field comment
+     by hand, run `task proto:gen`, `git status`/`git diff -- gen/`, and record the actual result
+     before designing `surfaces:gen`'s chaining behavior.
+
+2. **Exact predicate of `TestClientFilesImportBoundary`.**
+   - What we know: it exists (referenced in Phase 1's CONTEXT.md canonical refs and in
+     `client_common_test.go:401-404`'s comment) and denylists at least `client_*.go`-suffixed
+     production files from importing `internal/server`.
+   - What's unclear: whether `catalog.go` (not `client_*.go`-prefixed) is inside or outside that
+     denylist, and the exact mechanism (filename glob? explicit list? directory-wide?).
+   - Recommendation: read `cmd/engram/client_common_test.go`'s `TestClientFilesImportBoundary`
+     definition directly during planning if Q7's shared-package recommendation is reconsidered;
+     otherwise moot (the new-leaf-package option sidesteps this entirely).
+
+3. **Which ~6 sites D-01's reclassification actually covers.**
+   - What we know: the inventory in Q1 lists every candidate with its current D-02-in-scope status
+     and flags `errStaleSummary` as the strongest additional candidate (currently zero attribution,
+     not just wrong attribution).
+   - What's unclear: CONTEXT.md's "~6" figure was set during discussion before this session's file
+     reads; this research did not find exactly 6 currently-mis-hinted sites among the argError call
+     sites alone (most single-field `HintRequired` sites, e.g. `tools.go:746,773,776,...`, are
+     correctly OUT of scope per D-02 and need no reclassification) — the count likely includes
+     `errStaleSummary` and possibly `errRuleImmutable` alongside a subset of the ones already
+     correctly hint-coded (which need no CODE change, only registry-entry authorship).
+   - Recommendation: this is explicitly "Claude's Discretion" per CONTEXT.md — the planner should
+     treat the Q1 table as the complete candidate pool and decide the final registry membership
+     during plan authoring, not attempt to force exactly 6.
+
+## Environment Availability
+
+| Dependency | Required By | Available | Version | Fallback |
+|------------|------------|-----------|---------|----------|
+| `go tool buf` | Reading proto comments (Q2d), proto:gen precedent | ✓ (verified — ran successfully this session) | pinned via `go.mod` tool directive, `github.com/bufbuild/buf v1.72.0` `[VERIFIED: go.mod:59]` | none needed |
+| Go toolchain | Everything | ✓ | per `go.mod` | none needed |
+| Astro/Starlight build | Confirming markdown pipeline behavior (Q4ii) | Not run this session (config read only, `astro.config.mjs`) | — | Anchors use plain CommonMark HTML comments, which do not require a live build to validate structurally; a `docs-site` build IS still recommended as a Wave-0/verification step before shipping to confirm no Starlight-specific stripping occurs, but was not run in this research session. |
+
+**Missing dependencies with no fallback:** none.
+**Missing dependencies with fallback:** Astro/Starlight build verification (see above) — deferred to
+plan execution rather than this research session, since it requires `pnpm install`/`astro build` in
+`docs-site/`, out of scope for a read-only research pass.
+
+## Validation Architecture
+
+### Test Framework
+| Property | Value |
+|----------|-------|
+| Framework | Go `testing` (stdlib), `go test ./...` |
+| Config file | none — `Taskfile.yaml`'s `test:go` target (`go test ./...`) is the invocation |
+| Quick run command | `go test ./internal/server/... ./cmd/engram/... -run TestSurfaceConformance -v` (name illustrative — actual test name is a planner decision) |
+| Full suite command | `task test` (= `go test ./...` + python skill-hook tests) |
+
+### Phase Requirements → Test Map
+| Req ID | Behavior | Test Type | Automated Command | File Exists? |
+|--------|----------|-----------|---------------------|-------------|
+| REQ-conditional-rules-stated | Every declared rule's sentence appears verbatim (or as a substring) in cobra `Usage` and the MCP jsonschema tag | unit | `go test ./internal/server/... -run TestRuleRegistrySurfaces -v` | ❌ Wave 0 — new test |
+| REQ-surface-conformance-gate | The six-surface gate fails CI on any single-surface divergence | unit (fast, in-process for 5 of 6 surfaces; shells to `go tool buf build` for the proto surface) | `go test ./cmd/engram/... -run TestSixSurfaceConformance -v` | ❌ Wave 0 — new test |
+| REQ-mcp-tool-annotations | Every registered MCP tool has a non-nil `Annotations` with all four hints set per D-09's conservative rule | unit, in-memory transport | `go test ./internal/server/... -run TestToolAnnotationsBothDirections -v` | ❌ Wave 0 — new test; depends on the `registerTools(s, d)` extraction (Q2c) landing first |
+| REQ-help-output-pinned | `--help` output for every command matches the committed golden | unit, golden-file | `go test ./cmd/engram/... -run TestHelpGolden -v` | ❌ Wave 0 — new test + new golden file under `cmd/engram/testdata/` |
+
+### Sampling Rate
+- **Per task commit:** the relevant `-run` subset above (all sub-second/fast, in-process; the proto
+  surface's `go tool buf build` subprocess call is the slowest single step, still well under 30s).
+- **Per wave merge:** `task test` (full suite).
+- **Phase gate:** `go clean -testcache && task test` (per memory `p1vqxqhxrm`'s standing practice,
+  and Q8's finding that this phase's own goldens are NOT `internal/e2e`-tier and so are not
+  independently at risk of the staleness bug — but the blanket clean-then-test practice still applies
+  as defense-in-depth for the rest of the suite).
+
+### Wave 0 Gaps
+- [ ] `internal/server/toolannotations_test.go` (or similar) — the both-directions annotation gate;
+  blocked on the `registerTools(s, d)` extraction from `Register()` landing first.
+- [ ] `cmd/engram/testdata/help.golden`, `cmd/engram/testdata/catalog.golden` — do not exist yet.
+- [ ] The `registerTools(s *mcp.Server, d *deps) error` seam itself does not exist yet — this is
+  arguably a Task 1 prerequisite for several of the above, not merely a test-infra gap.
+- [ ] Empirical verification of Open Question 1 (does a proto comment edit dirty `gen/ts/`?) should
+  land as an early, throwaway spike before the generator's chaining behavior is finalized.
+
+## Security Domain
+
+`security_enforcement` is absent from `.planning/config.json` and therefore treated as enabled
+(`[VERIFIED: .planning/config.json]`, no `security` key present).
+
+### Applicable ASVS Categories
+
+| ASVS Category | Applies | Standard Control |
+|---------------|---------|-------------------|
+| V2 Authentication | No | Phase touches no auth code path — purely documentation/tooling/annotation surfaces. |
+| V3 Session Management | No | Not touched. |
+| V4 Access Control | No | Not touched — no new authz decision point is introduced. |
+| V5 Input Validation | Indirect only | The phase RECLASSIFIES existing validation error attribution (hint codes, field names) but does not change what is accepted or rejected — no new validation logic, only better-labeled existing rejections. The one exception under discretion (converting `errStaleSummary`) also changes no accepted/rejected input, only its error shape. |
+| V6 Cryptography | No | Not touched. |
+
+### Known Threat Patterns for this stack
+
+| Pattern | STRIDE | Standard Mitigation |
+|---------|--------|-----------------------|
+| A generated/anchored region in a published doc accidentally includes unescaped user-influenced text | Tampering (of published docs, low severity) | Rule sentences originate from `internal/server`-declared Go string constants (compile-time literals, never runtime/caller-supplied values) — there is no path for caller input to reach the generator's output. Confirmed by D-12's existing sibling discipline (`argerror.go`'s D-12 comment, `argerror.go:63-69`, quoted: "Detail states the constraint and names the bound — it never interpolates the caller's rejected VALUE") which the new rule-registry sentences inherit by construction (they are authored once, not built per-request). |
+| CI job with write access rewriting `gen/`/prose trees | Tampering / Elevation of Privilege | `task surfaces:gen` (like `task proto:gen`) is a LOCAL/PR-author-run regeneration step, not something CI executes with write-back — CI only re-runs it in a throwaway checkout and diffs, mirroring the existing `buf` job's `generated-code drift` step exactly (`.github/workflows/ci.yaml:139-142`, read this session — no `git push`/commit step in that job). |
+
+No new threat surface is introduced by this phase; it is a documentation/tooling-correctness phase
+over already-validated input paths.
+
+## Sources
+
+### Primary (HIGH confidence — read directly this session)
+- `internal/server/argerror.go` (full file) — `HintCode`, `argError`, `argErrf`/`argErrFieldsf`
+- `internal/server/tools.go` (lines 500-770, 1330-1400, 1760-2030) — arg structs, jsonschema tags,
+  `parseWindow`, `effectiveSearchScope`/`effectiveDiscoveryScope`, all 15 `mcp.AddTool` registrations
+- `internal/server/summary.go` (full file) — `errStaleSummary`, `resolveSummaryUpdate`
+- `internal/server/connecterror.go` (lines 1-90) — `connectError`'s sentinel-to-Connect-code switch
+- `internal/server/connectapi.go` (lines 160-200) — the Connect-only `cursor_mode`/`offset` rejection
+- `internal/server/argattribution_test.go` (full file), `internal/server/connectdescriptor_test.go`
+  (full file), `internal/server/tools_test.go` (lines 1-120)
+- `cmd/engram/catalog.go` (full file), `cmd/engram/client_common.go` (full file), `cmd/engram/client_list.go`
+  (full file), `cmd/engram/client_search.go` (full file), `cmd/engram/client_common_test.go` (lines 380-460)
+- `internal/config/registry.go` (full file)
+- `proto/engram/v1/engram.proto` (full file), `buf.yaml`, `buf.gen.yaml`
+- `Taskfile.yaml` (full file), `.github/workflows/ci.yaml` (full file)
+- `.licenserc.yaml` (full file)
+- `docs-site/src/content/docs/reference/tools.md` (lines 85-160), `docs-site/src/content/docs/guides/cli.md`
+  (lines 35-80), `docs-site/astro.config.mjs` (full file)
+- `internal/e2e/boot_test.go` (lines 90-130)
+- `$(go env GOMODCACHE)/github.com/modelcontextprotocol/go-sdk@v1.7.0/mcp/protocol.go` (lines 1898-2010),
+  same module's `mcp/server.go` (grep for exported methods)
+- `.planning/phases/02-interface-discoverability/02-CONTEXT.md`, `.planning/REQUIREMENTS.md`,
+  `.planning/STATE.md`, `.planning/phases/01-interface-enforceability/01-CONTEXT.md`
+- Live commands run this session: `go tool buf build proto --as-file-descriptor-set -o
+  /tmp/engram-fds.binpb` (succeeded, byte-inspected for comment survival), `go tool buf build --help`
+
+### Secondary (MEDIUM confidence)
+- WebSearch: "protoc-gen-go generated descriptor strips SourceCodeInfo comments protoreflect
+  SourceLocations" — corroborates the live-verified finding above with upstream issue-tracker context
+  (golang/protobuf#1134, jhump/protoreflect sourceinfo package as the known workaround this project
+  does not need since it can shell to `buf build` instead).
+
+### Tertiary (LOW confidence)
+- None relied upon for any load-bearing claim; all `[ASSUMED]`-tagged items above are explicitly
+  flagged as such rather than presented as verified.
+
+## Metadata
+
+**Confidence breakdown:**
+- Standard stack: HIGH — zero new dependencies, every tool/library version pinned and read directly
+  from `go.mod`/vendored source this session.
+- Architecture (six-surface reading mechanics): HIGH for surfaces (a),(b),(e),(f) — read directly.
+  HIGH for (d) — empirically verified by running `go tool buf build` this session. MEDIUM for (c) —
+  the recommended `registerTools` extraction is a design recommendation, not something already in the
+  codebase, so its exact shape is a planning decision, not a verified fact.
+- Pitfalls: HIGH — every pitfall traces to a specific, quoted line range read this session.
+- D-01 reclassification exact scope: MEDIUM — full candidate inventory built, but the "~6" figure
+  from discussion was not independently re-derived to an exact match (see Open Question 3).
+- Proto-comment codegen-drift chaining (Open Question 1): LOW/unresolved — explicitly flagged as
+  needing a Wave-0 empirical spike, not resolved by this research session (would require a
+  destructive edit-and-regenerate cycle inappropriate for a read-only research pass).
+
+**Research date:** 2026-08-04
+**Valid until:** ~2026-09-04 (30 days — stable Go toolchain/vendored-dependency domain; re-verify if
+`go-sdk`, `buf`, or `cobra` receive a Renovate bump before planning executes, since this research
+already found one version drift versus CONTEXT.md's citations, go-sdk v1.6.1 → v1.7.0).
