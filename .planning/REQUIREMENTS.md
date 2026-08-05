@@ -62,7 +62,7 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
   argument is advertised — in cobra `Usage` text and in the `internal/server` jsonschema tag — so a
   caller learns the rule by reading rather than by triggering it.
 
-- [ ] **REQ-surface-conformance-gate**: A conformance test asserts that each named conditional rule
+- [x] **REQ-surface-conformance-gate**: A conformance test asserts that each named conditional rule
   appears on both independent surfaces (the cobra tree, which already feeds `--help` and the
   self-describe catalog from one source via `buildCatalog`, and the MCP arg-struct tags), and fails
   CI when they diverge.
@@ -172,7 +172,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-cli-request-timeout | Phase 1 | Complete |
 | REQ-client-config-unified | Phase 1 | Complete |
 | REQ-conditional-rules-stated | Phase 2 | Complete |
-| REQ-surface-conformance-gate | Phase 2 | Pending |
+| REQ-surface-conformance-gate | Phase 2 | Complete |
 | REQ-mcp-tool-annotations | Phase 2 | Complete |
 | REQ-help-output-pinned | Phase 2 | Pending |
 | REQ-spine-scan | Phase 3 | Pending |
