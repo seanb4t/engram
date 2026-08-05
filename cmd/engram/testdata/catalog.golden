@@ -1,0 +1,663 @@
+{
+  "binary": "engram",
+  "version": "test-version",
+  "commands": [
+    {
+      "name": "backfill-short-ids",
+      "summary": "Assign a short_id to every memory that lacks one (payload-only; no re-embed)",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "default": "false",
+          "usage": "count records missing a short_id without writing"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "5m0s",
+          "usage": "max wall-clock (0 disables); also cancellable via Ctrl-C"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "list",
+      "summary": "List memories on a remote engram server",
+      "flags": [
+        {
+          "name": "categories",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "category filter (empty = all categories)"
+        },
+        {
+          "name": "created-after",
+          "type": "string",
+          "default": "",
+          "usage": "RFC3339 inclusive lower bound on created_at"
+        },
+        {
+          "name": "created-before",
+          "type": "string",
+          "default": "",
+          "usage": "RFC3339 exclusive upper bound on created_at"
+        },
+        {
+          "name": "cross-spine",
+          "type": "bool",
+          "default": "false",
+          "usage": "span every scope you can read; mutually exclusive with --scope"
+        },
+        {
+          "name": "cursor-mode",
+          "type": "bool",
+          "default": "false",
+          "usage": "opt into cursor paging on the first (tokenless) page; cursor_mode, offset, and page_token are mutually exclusive"
+        },
+        {
+          "name": "full",
+          "type": "bool",
+          "default": "false",
+          "usage": "return full content instead of summaries"
+        },
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "limit",
+          "type": "uint64",
+          "default": "0",
+          "usage": "max results (0 = server default)"
+        },
+        {
+          "name": "offset",
+          "type": "uint64",
+          "default": "0",
+          "usage": "offset-for-UI paging; cursor_mode, offset, and page_token are mutually exclusive"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "page-token",
+          "type": "string",
+          "default": "",
+          "usage": "opaque cursor from a previous response's next_page_token; cursor_mode, offset, and page_token are mutually exclusive"
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "default": "",
+          "usage": "scope is required unless cross_spine is true; omit and pass --cross-spine to span every scope you can read; mutually exclusive with --cross-spine"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "tags",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "tag filter (records must carry ALL listed tags)"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        },
+        {
+          "name": "visibility",
+          "type": "string",
+          "default": "",
+          "usage": "visibility filter: \"\" (all), \"private\", or \"shared\""
+        }
+      ],
+      "blast_radius": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "migrate-remap-owner",
+      "summary": "Re-stamp record owner across the collection (sub-\u003eemail, email-\u003eemail, owner-less, or anonymous bucket)",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "default": "false",
+          "usage": "count matching records without writing"
+        },
+        {
+          "name": "from",
+          "type": "string",
+          "default": "",
+          "usage": "current owner value to remap (a sub or email); mutually exclusive with --from-missing/--from-anon"
+        },
+        {
+          "name": "from-anon",
+          "type": "bool",
+          "default": "false",
+          "usage": "remap the explicit anonymous bucket (owner==\"\")"
+        },
+        {
+          "name": "from-missing",
+          "type": "bool",
+          "default": "false",
+          "usage": "remap owner-less (pre-isolation) records"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "5m0s",
+          "usage": "max wall-clock (must be \u003e 0); also cancellable via Ctrl-C"
+        },
+        {
+          "name": "to",
+          "type": "string",
+          "default": "",
+          "usage": "new owner value to stamp (required)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": true,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "migrate-set-owner",
+      "summary": "Backfill owner (OIDC sub) onto pre-isolation memory records",
+      "flags": [
+        {
+          "name": "owner",
+          "type": "string",
+          "default": "",
+          "usage": "OIDC sub to stamp onto owner-less records (required, non-empty)"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "5m0s",
+          "usage": "max wall-clock for the backfill (must be \u003e 0); also cancellable via Ctrl-C"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "prune-expired",
+      "summary": "Delete memories whose validity window (not_after) has lapsed",
+      "flags": [
+        {
+          "name": "older-than",
+          "type": "duration",
+          "default": "0s",
+          "usage": "grace period: only prune records whose not_after lapsed at least this long ago (0 = any past not_after)"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "5m0s",
+          "usage": "max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": true,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "reindex",
+      "summary": "Re-embed memories into a new (new-dimension) collection for embedder migration",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "default": "false",
+          "usage": "scan and count without creating the target or writing"
+        },
+        {
+          "name": "resume",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip points already present in the target with identical content (cheap restart of an interrupted reindex)"
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "default": "",
+          "usage": "source collection to read from (default: ENGRAM_QDRANT_COLLECTION)"
+        },
+        {
+          "name": "target",
+          "type": "string",
+          "default": "",
+          "usage": "target collection to create and populate (required)"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "30m0s",
+          "usage": "max wall-clock for the reindex; 0 means no deadline (Ctrl-C or SIGTERM aborts either way)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "search",
+      "summary": "Search memories on a remote engram server",
+      "flags": [
+        {
+          "name": "categories",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "category filter (ANY listed category)"
+        },
+        {
+          "name": "created-after",
+          "type": "string",
+          "default": "",
+          "usage": "RFC3339 inclusive lower bound on created_at"
+        },
+        {
+          "name": "created-before",
+          "type": "string",
+          "default": "",
+          "usage": "RFC3339 exclusive upper bound on created_at"
+        },
+        {
+          "name": "cross-spine",
+          "type": "bool",
+          "default": "false",
+          "usage": "span every scope you can read; mutually exclusive with --scope"
+        },
+        {
+          "name": "full",
+          "type": "bool",
+          "default": "false",
+          "usage": "return full content instead of summaries"
+        },
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "k",
+          "type": "uint64",
+          "default": "0",
+          "usage": "max results (0 = server default)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "query",
+          "type": "string",
+          "default": "",
+          "usage": "search query (required)"
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "default": "",
+          "usage": "scope is required unless cross_spine is true; mutually exclusive with --cross-spine"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "tags",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "tag filter (records must carry ALL listed tags)"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "serve",
+      "summary": "Run the engram MCP server",
+      "flags": [
+        {
+          "name": "connect-headless",
+          "type": "string",
+          "default": "false",
+          "usage": "mount the ConnectRPC lane on a headless deployment (default off; requires at least one configured auth lane)"
+        },
+        {
+          "name": "listen-addr",
+          "type": "string",
+          "default": ":8080",
+          "usage": "listen address"
+        },
+        {
+          "name": "mcp-path",
+          "type": "string",
+          "default": "",
+          "usage": "path for the MCP transport (empty=/mcp; '/'=legacy root catch-all)"
+        },
+        {
+          "name": "oidc-audience",
+          "type": "string",
+          "default": "",
+          "usage": "expected OIDC audience (optional)"
+        },
+        {
+          "name": "oidc-client-id",
+          "type": "string",
+          "default": "",
+          "usage": "OIDC confidential-client ID for the web login"
+        },
+        {
+          "name": "oidc-client-secret",
+          "type": "string",
+          "default": "",
+          "usage": "OIDC client secret for the web login"
+        },
+        {
+          "name": "oidc-issuer",
+          "type": "string",
+          "default": "",
+          "usage": "OIDC issuer URL; setting it enables bearer-token enforcement"
+        },
+        {
+          "name": "oidc-resource-metadata",
+          "type": "string",
+          "default": "",
+          "usage": "WWW-Authenticate resource metadata URL (optional)"
+        },
+        {
+          "name": "owner-claim",
+          "type": "string",
+          "default": "email",
+          "usage": "OIDC claim whose value becomes the record owner / authz key (default email)"
+        },
+        {
+          "name": "ui-cookie-key",
+          "type": "string",
+          "default": "",
+          "usage": "32-byte AES-GCM key sealing the session cookie"
+        },
+        {
+          "name": "ui-enabled",
+          "type": "string",
+          "default": "",
+          "usage": "enable the web UI + login lane (empty=imply from creds; 'false'=hard off)"
+        },
+        {
+          "name": "ui-issuer",
+          "type": "string",
+          "default": "",
+          "usage": "OIDC issuer for the web-UI login lane (empty=default to --oidc-issuer)"
+        },
+        {
+          "name": "ui-redirect-url",
+          "type": "string",
+          "default": "",
+          "usage": "OIDC auth-code callback URL"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": false,
+        "open_world": false
+      }
+    },
+    {
+      "name": "store",
+      "summary": "Store a memory on a remote engram server",
+      "flags": [
+        {
+          "name": "base-dir",
+          "type": "string",
+          "default": "",
+          "usage": "base directory"
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "default": "",
+          "usage": "category: one of decision, preference, convention, gotcha; discovery is not schedulable; use store_discovery"
+        },
+        {
+          "name": "content",
+          "type": "string",
+          "default": "",
+          "usage": "memory content (required)"
+        },
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "repo",
+          "type": "string",
+          "default": "",
+          "usage": "repo identifier"
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "default": "",
+          "usage": "memory scope (required)"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "default": "",
+          "usage": "source of the memory"
+        },
+        {
+          "name": "summary",
+          "type": "string",
+          "default": "",
+          "usage": "client-authored summary"
+        },
+        {
+          "name": "tags",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "tags to attach to the memory"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        },
+        {
+          "name": "workspace",
+          "type": "string",
+          "default": "",
+          "usage": "workspace identifier"
+        },
+        {
+          "name": "worktree",
+          "type": "string",
+          "default": "",
+          "usage": "worktree identifier"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": false,
+        "open_world": false
+      }
+    },
+    {
+      "name": "summarize-missing",
+      "summary": "Fill empty recall summaries with the configured cheap model",
+      "flags": [
+        {
+          "name": "all-scopes",
+          "type": "bool",
+          "default": "false",
+          "usage": "sweep every scope (required if --scope is omitted)"
+        },
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "default": "false",
+          "usage": "count eligible records without writing"
+        },
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "0",
+          "usage": "max records to scan (0 = no cap)"
+        },
+        {
+          "name": "older-than",
+          "type": "duration",
+          "default": "0s",
+          "usage": "only records created at least this long ago (0 = any age)"
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "default": "",
+          "usage": "only summarize records in this scope"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "30m0s",
+          "usage": "max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "version",
+      "summary": "Print the engram version",
+      "flags": [],
+      "blast_radius": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    }
+  ],
+  "exit_codes": [
+    {
+      "code": 0,
+      "meaning": "success"
+    },
+    {
+      "code": 1,
+      "meaning": "unclassified internal error (backstop only — not a general-purpose failure code; see notes)"
+    },
+    {
+      "code": 2,
+      "meaning": "usage or validation error"
+    },
+    {
+      "code": 3,
+      "meaning": "authentication or authorization failure"
+    },
+    {
+      "code": 4,
+      "meaning": "not found"
+    },
+    {
+      "code": 5,
+      "meaning": "transport or server unavailable"
+    },
+    {
+      "code": 6,
+      "meaning": "request deadline exceeded"
+    }
+  ],
+  "notes": [
+    "A flag-parsing error raised by the command framework itself (an unknown flag or an unparseable flag value) and a violated mutually-exclusive flag group both exit 2, alongside engram's own semantic validation — for example a missing --server/ENGRAM_SERVER_URL or an invalid --output value. Two paths still exit 1: a mistyped verb, rejected during cobra's own command resolution before any engram hook runs, and a genuinely unclassified internal error.",
+    "An empty result set is a success and exits 0 (D-12); absence of results is a legitimate answer, not a failure."
+  ]
+}

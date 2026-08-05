@@ -1,0 +1,213 @@
+## engram backfill-short-ids
+
+```
+Assign a short_id to every memory that lacks one (payload-only; no re-embed)
+
+Usage:
+  engram backfill-short-ids [flags]
+
+Flags:
+      --dry-run            count records missing a short_id without writing
+  -h, --help               help for backfill-short-ids
+      --timeout duration   max wall-clock (0 disables); also cancellable via Ctrl-C (default 5m0s)
+```
+
+## engram list
+
+```
+List memories on a remote engram server
+
+Usage:
+  engram list [flags]
+
+Flags:
+      --categories strings      category filter (empty = all categories)
+      --created-after string    RFC3339 inclusive lower bound on created_at
+      --created-before string   RFC3339 exclusive upper bound on created_at
+      --cross-spine             span every scope you can read; mutually exclusive with --scope
+      --cursor-mode             opt into cursor paging on the first (tokenless) page; cursor_mode, offset, and page_token are mutually exclusive
+      --full                    return full content instead of summaries
+  -h, --help                    help for list
+      --insecure                skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --limit uint              max results (0 = server default)
+      --offset uint             offset-for-UI paging; cursor_mode, offset, and page_token are mutually exclusive
+      --output string           output format: "json" or "text" (default: detect from stdout)
+      --page-token string       opaque cursor from a previous response's next_page_token; cursor_mode, offset, and page_token are mutually exclusive
+      --scope string            scope is required unless cross_spine is true; omit and pass --cross-spine to span every scope you can read; mutually exclusive with --cross-spine
+      --server string           engram server base URL (default: ENGRAM_SERVER_URL)
+      --tags strings            tag filter (records must carry ALL listed tags)
+      --timeout string          per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string       path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
+      --visibility string       visibility filter: "" (all), "private", or "shared"
+```
+
+## engram migrate-remap-owner
+
+```
+Re-stamp record owner across the collection (sub->email, email->email, owner-less, or anonymous bucket)
+
+Usage:
+  engram migrate-remap-owner [flags]
+
+Flags:
+      --dry-run            count matching records without writing
+      --from string        current owner value to remap (a sub or email); mutually exclusive with --from-missing/--from-anon
+      --from-anon          remap the explicit anonymous bucket (owner=="")
+      --from-missing       remap owner-less (pre-isolation) records
+  -h, --help               help for migrate-remap-owner
+      --timeout duration   max wall-clock (must be > 0); also cancellable via Ctrl-C (default 5m0s)
+      --to string          new owner value to stamp (required)
+```
+
+## engram migrate-set-owner
+
+```
+Backfill owner (OIDC sub) onto pre-isolation memory records
+
+Usage:
+  engram migrate-set-owner [flags]
+
+Flags:
+  -h, --help               help for migrate-set-owner
+      --owner string       OIDC sub to stamp onto owner-less records (required, non-empty)
+      --timeout duration   max wall-clock for the backfill (must be > 0); also cancellable via Ctrl-C (default 5m0s)
+```
+
+## engram prune-expired
+
+```
+Delete memories whose validity window (not_after) has lapsed
+
+Usage:
+  engram prune-expired [flags]
+
+Flags:
+  -h, --help                  help for prune-expired
+      --older-than duration   grace period: only prune records whose not_after lapsed at least this long ago (0 = any past not_after)
+      --timeout duration      max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 5m0s)
+```
+
+## engram reindex
+
+```
+Re-embed memories into a new (new-dimension) collection for embedder migration
+
+Usage:
+  engram reindex [flags]
+
+Flags:
+      --dry-run            scan and count without creating the target or writing
+  -h, --help               help for reindex
+      --resume             skip points already present in the target with identical content (cheap restart of an interrupted reindex)
+      --source string      source collection to read from (default: ENGRAM_QDRANT_COLLECTION)
+      --target string      target collection to create and populate (required)
+      --timeout duration   max wall-clock for the reindex; 0 means no deadline (Ctrl-C or SIGTERM aborts either way) (default 30m0s)
+```
+
+## engram search
+
+```
+Search memories on a remote engram server
+
+Usage:
+  engram search [flags]
+
+Flags:
+      --categories strings      category filter (ANY listed category)
+      --created-after string    RFC3339 inclusive lower bound on created_at
+      --created-before string   RFC3339 exclusive upper bound on created_at
+      --cross-spine             span every scope you can read; mutually exclusive with --scope
+      --full                    return full content instead of summaries
+  -h, --help                    help for search
+      --insecure                skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --k uint                  max results (0 = server default)
+      --output string           output format: "json" or "text" (default: detect from stdout)
+      --query string            search query (required)
+      --scope string            scope is required unless cross_spine is true; mutually exclusive with --cross-spine
+      --server string           engram server base URL (default: ENGRAM_SERVER_URL)
+      --tags strings            tag filter (records must carry ALL listed tags)
+      --timeout string          per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string       path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
+```
+
+## engram serve
+
+```
+Run the engram MCP server
+
+Usage:
+  engram serve [flags]
+
+Flags:
+      --connect-headless string         mount the ConnectRPC lane on a headless deployment (default off; requires at least one configured auth lane) (default "false")
+  -h, --help                            help for serve
+      --listen-addr string              listen address (default ":8080")
+      --mcp-path string                 path for the MCP transport (empty=/mcp; '/'=legacy root catch-all)
+      --oidc-audience string            expected OIDC audience (optional)
+      --oidc-client-id string           OIDC confidential-client ID for the web login
+      --oidc-client-secret string       OIDC client secret for the web login
+      --oidc-issuer string              OIDC issuer URL; setting it enables bearer-token enforcement
+      --oidc-resource-metadata string   WWW-Authenticate resource metadata URL (optional)
+      --owner-claim string              OIDC claim whose value becomes the record owner / authz key (default email) (default "email")
+      --ui-cookie-key string            32-byte AES-GCM key sealing the session cookie
+      --ui-enabled string               enable the web UI + login lane (empty=imply from creds; 'false'=hard off)
+      --ui-issuer string                OIDC issuer for the web-UI login lane (empty=default to --oidc-issuer)
+      --ui-redirect-url string          OIDC auth-code callback URL
+```
+
+## engram store
+
+```
+Store a memory on a remote engram server
+
+Usage:
+  engram store [flags]
+
+Flags:
+      --base-dir string     base directory
+      --category string     category: one of decision, preference, convention, gotcha; discovery is not schedulable; use store_discovery
+      --content string      memory content (required)
+  -h, --help                help for store
+      --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --output string       output format: "json" or "text" (default: detect from stdout)
+      --repo string         repo identifier
+      --scope string        memory scope (required)
+      --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --source string       source of the memory
+      --summary string      client-authored summary
+      --tags strings        tags to attach to the memory
+      --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
+      --workspace string    workspace identifier
+      --worktree string     worktree identifier
+```
+
+## engram summarize-missing
+
+```
+Fill empty recall summaries with the configured cheap model
+
+Usage:
+  engram summarize-missing [flags]
+
+Flags:
+      --all-scopes            sweep every scope (required if --scope is omitted)
+      --dry-run               count eligible records without writing
+  -h, --help                  help for summarize-missing
+      --limit int             max records to scan (0 = no cap)
+      --older-than duration   only records created at least this long ago (0 = any age)
+      --scope string          only summarize records in this scope
+      --timeout duration      max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 30m0s)
+```
+
+## engram version
+
+```
+Print the engram version
+
+Usage:
+  engram version [flags]
+
+Flags:
+  -h, --help   help for version
+```

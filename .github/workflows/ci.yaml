@@ -167,14 +167,18 @@ jobs:
       # are included because a proto comment-only edit was confirmed (this
       # phase's own SUMMARY, Wave 0 resolution) to dirty protoc-gen-go's and
       # the TS plugin's generated Go-doc-comment / TSDoc output, not just
-      # the anchored proto/docs-site/skill prose itself.
+      # the anchored proto/docs-site/skill prose itself. cmd/engram/testdata/
+      # is included per D-12/D-13: the pinned --help and catalog-JSON
+      # goldens, regenerated via the SAME -update invocation `task
+      # surfaces:gen` runs — never a second, divergent regeneration path.
       - name: interface-surface drift
         run: |
           go run ./internal/surfacesgen
           go tool buf generate
           rm -rf ui/src/lib/gen/engram ui/src/lib/gen/buf
           cp -R gen/ts/. ui/src/lib/gen/
-          git diff --exit-code -- proto/ docs-site/ skill/ gen/ ui/src/lib/gen/ || (echo "interface surfaces are stale; run 'task surfaces:gen'"; exit 1)
+          go test ./cmd/engram -run 'TestHelpGolden|TestCatalogGolden' -update -count=1
+          git diff --exit-code -- proto/ docs-site/ skill/ gen/ ui/src/lib/gen/ cmd/engram/testdata/ || (echo "interface surfaces are stale; run 'task surfaces:gen'"; exit 1)
 
   ui-drift:
     name: ui vendored-asset drift

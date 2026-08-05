@@ -242,7 +242,8 @@ tasks:
       - cp -R gen/ts/. ui/src/lib/gen/
 
   surfaces:gen:
-    desc: Regenerate every anchored interface-surface region from the internal/surfaces rule registry
+    desc: Regenerate every anchored interface-surface region, plus the --help/catalog goldens, from the internal/surfaces
+      rule registry and the live cobra tree
     cmds:
       - go run ./internal/surfacesgen
       # A rule's proto anchors live inside field leading comments (D-05/D-06),
@@ -253,6 +254,14 @@ tasks:
       # this target must chain proto:gen's own command sequence or the two
       # drift jobs fail in a confusing order.
       - task: proto:gen
+      # D-12/D-13: regenerate the pinned --help and catalog-JSON goldens
+      # from the live cmd/engram cobra tree. -count=1 is load-bearing —
+      # without it the test cache can skip the regeneration entirely
+      # (memory p1vqxqhxrm's staleness class). This target is deliberately
+      # never part of `task default`, `task test`, or `task lint` — golden
+      # regeneration must stay an explicit, separately-reviewable step
+      # (D-14).
+      - go test ./cmd/engram -run 'TestHelpGolden|TestCatalogGolden' -update -count=1
 
   deps:
     cmds:
