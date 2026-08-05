@@ -59,6 +59,7 @@ and ageable. For each citation capture:
 
 When entering mapped territory later, issue a targeted `search_discovery` scoped
 to `discovery:repo:<repo>`. Pass `cross_spine=true` only when you deliberately
-want to span every discovery scope. The result carries each citation's `pin` and
+want to span every discovery scope: <!-- engram:rule:start scope-required-unless-cross-spine -->scope is required unless cross_spine is true<!-- engram:rule:end scope-required-unless-cross-spine -->.
+The result carries each citation's `pin` and
 the record's `created_at` — render trust from those (age, pinned commit, whether
 the cited code has since moved); the server stores signals, never a verdict.

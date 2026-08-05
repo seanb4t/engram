@@ -50,7 +50,7 @@ is no default that silently picks one for you:
 
 | Flag | Purpose |
 |------|---------|
-| `--scope` | Limit recall to one scope; omit and pass `--cross-spine` to span every scope you can read; mutually exclusive with `--cross-spine`. |
+| `--scope` | Limit recall to one scope; <!-- engram:rule:start scope-required-unless-cross-spine -->scope is required unless cross_spine is true<!-- engram:rule:end scope-required-unless-cross-spine -->; omit and pass `--cross-spine` to span every scope you can read; mutually exclusive with `--cross-spine`. |
 | `--cross-spine` | Span every scope you can read; mutually exclusive with `--scope`. |
 
 Passing neither, or passing both, is rejected by the CLI itself — before any

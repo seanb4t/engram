@@ -273,9 +273,10 @@ content + semantic search and leave the record untagged.
 ## Cross-spine recall
 
 `search_memory` and `list_memory` accept `cross_spine` (bool) to span every
-scope you can read; it ignores any `scope` you also supply. The response
-reports `searched_scopes` and `scopes_truncated`, which name the scopes
-searched under your authorization — not the scopes that had results.
+scope you can read; it ignores any `scope` you also supply. Otherwise,
+<!-- engram:rule:start scope-required-unless-cross-spine -->scope is required unless cross_spine is true<!-- engram:rule:end scope-required-unless-cross-spine -->.
+The response reports `searched_scopes` and `scopes_truncated`, which name the
+scopes searched under your authorization — not the scopes that had results.
 
 ### When not to use cross-spine
 

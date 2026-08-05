@@ -288,8 +288,10 @@ export type ListMemoriesRequest = Message<"engram.v1.ListMemoriesRequest"> & {
 
   /**
    * cross_spine spans every scope the caller is authorized to read, ignoring
-   * `scope` entirely when true. `scope` is REQUIRED when this is unset or
-   * false — an empty scope is rejected, never silently treated as "all".
+   * `scope` entirely when true.
+   * engram:rule:start scope-required-unless-cross-spine
+   * scope is required unless cross_spine is true
+   * engram:rule:end scope-required-unless-cross-spine
    *
    * @generated from field: bool cross_spine = 12;
    */
@@ -415,8 +417,10 @@ export type SearchMemoriesRequest = Message<"engram.v1.SearchMemoriesRequest"> &
 
   /**
    * cross_spine spans every scope the caller is authorized to read, ignoring
-   * `scope` entirely when true. `scope` is REQUIRED when this is unset or
-   * false — an empty scope is rejected, never silently treated as "all".
+   * `scope` entirely when true.
+   * engram:rule:start scope-required-unless-cross-spine
+   * scope is required unless cross_spine is true
+   * engram:rule:end scope-required-unless-cross-spine
    *
    * @generated from field: bool cross_spine = 9;
    */

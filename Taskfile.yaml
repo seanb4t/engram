@@ -245,6 +245,14 @@ tasks:
     desc: Regenerate every anchored interface-surface region from the internal/surfaces rule registry
     cmds:
       - go run ./internal/surfacesgen
+      # A rule's proto anchors live inside field leading comments (D-05/D-06),
+      # and protoc-gen-go's own generated Go doc comments on the matching
+      # struct field carry that same text — confirmed empirically (this
+      # plan's own SUMMARY, Wave 0 resolution): a proto comment-only edit
+      # DOES dirty gen/go, gen/ts, and the vendored ui/src/lib/gen/ tree, so
+      # this target must chain proto:gen's own command sequence or the two
+      # drift jobs fail in a confusing order.
+      - task: proto:gen
 
   deps:
     cmds:

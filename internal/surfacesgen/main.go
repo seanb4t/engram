@@ -47,6 +47,15 @@ type target struct {
 var ruleTargets = map[string][]target{
 	surfaces.RuleScopeRequiredUnlessCrossSpine: {
 		{path: "docs-site/src/content/docs/reference/tools.md", kind: kindMarkdown},
+		{path: "docs-site/src/content/docs/guides/cli.md", kind: kindMarkdown},
+		{path: "skill/engram/skills/curating-memory/SKILL.md", kind: kindMarkdown},
+		{path: "skill/engram/skills/discovering/SKILL.md", kind: kindMarkdown},
+		// proto/engram/v1/engram.proto carries this rule's anchors TWICE —
+		// once on ListMemoriesRequest.cross_spine, once on
+		// SearchMemoriesRequest.cross_spine — so this one path entry drives
+		// WriteRegion rewriting both occurrences (it rewrites every
+		// well-formed anchor pair it finds for a rule, not just the first).
+		{path: "proto/engram/v1/engram.proto", kind: kindProto},
 	},
 }
 

@@ -452,8 +452,10 @@ type ListMemoriesRequest struct {
 	PageToken     string                 `protobuf:"bytes,10,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`            // opaque cursor; when set, cursor paging (ignores offset)
 	CursorMode    bool                   `protobuf:"varint,11,opt,name=cursor_mode,json=cursorMode,proto3" json:"cursor_mode,omitempty"`        // opt into cursor paging on the first (tokenless) page; default false = offset-for-UI (ADR engram-1frj). Mutually exclusive with offset>0.
 	// cross_spine spans every scope the caller is authorized to read, ignoring
-	// `scope` entirely when true. `scope` is REQUIRED when this is unset or
-	// false — an empty scope is rejected, never silently treated as "all".
+	// `scope` entirely when true.
+	// engram:rule:start scope-required-unless-cross-spine
+	// scope is required unless cross_spine is true
+	// engram:rule:end scope-required-unless-cross-spine
 	CrossSpine    bool `protobuf:"varint,12,opt,name=cross_spine,json=crossSpine,proto3" json:"cross_spine,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -677,8 +679,10 @@ type SearchMemoriesRequest struct {
 	CreatedBefore string                 `protobuf:"bytes,7,opt,name=created_before,json=createdBefore,proto3" json:"created_before,omitempty"` // RFC3339; exclusive upper bound on created_at
 	Categories    []string               `protobuf:"bytes,8,rep,name=categories,proto3" json:"categories,omitempty"`                            // empty = all categories; non-empty = records in ANY listed category (OR)
 	// cross_spine spans every scope the caller is authorized to read, ignoring
-	// `scope` entirely when true. `scope` is REQUIRED when this is unset or
-	// false — an empty scope is rejected, never silently treated as "all".
+	// `scope` entirely when true.
+	// engram:rule:start scope-required-unless-cross-spine
+	// scope is required unless cross_spine is true
+	// engram:rule:end scope-required-unless-cross-spine
 	CrossSpine    bool `protobuf:"varint,9,opt,name=cross_spine,json=crossSpine,proto3" json:"cross_spine,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
