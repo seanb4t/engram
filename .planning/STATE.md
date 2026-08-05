@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.13.x
 milestone_name: Curation & Self-Evidence
-current_phase: 01
-current_phase_name: interface-enforceability
+current_phase: 02
+current_phase_name: interface-discoverability
 status: executing
-stopped_at: Phase 2 context gathered
-last_updated: "2026-08-05T00:23:15.183Z"
-last_activity: 2026-08-03
-last_activity_desc: Phase 01 execution started
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-08-05T00:47:03.113Z"
+last_activity: 2026-08-04
+last_activity_desc: Phase 02 execution started
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 15
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 01 — interface-enforceability
+**Current focus:** Phase 02 — interface-discoverability
 
 ## Current Position
 
-Phase: 01 (interface-enforceability) — EXECUTING
-Plan: 9 of 9
+Phase: 02 (interface-discoverability) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-08-03 — Phase 01 execution started
+Last activity: 2026-08-04 — Phase 02 execution started
 
 ## Deferred Items
 
@@ -128,6 +128,9 @@ milestone needs in working memory.
 - [Phase ?]: 01-08: exitCodeBaseline table extended with hungServer/hungServerPlaceholder row opt-in, letting a static table row exercise a dynamically-addressed hung httptest.Server
 - [Phase ?]: Plan 01-09: guides/upgrade.md documents a THREE-way --timeout zero-semantics split (client rejects 0; reindex/prune-expired/summarize-missing/backfill-short-ids unchanged at 0-disables; migrate-remap-owner/migrate-set-owner now reject 0 per D-05 reconciliation), matching what actually shipped rather than the plan's own two-way framing.
 - [Phase ?]: Plan 01-09: TestUpgradeGuideNamesEveryChangedCommand derives required command names from exitCodeBaseline's own args[0] rather than a second hand-maintained list, closing the phase with a mechanical (not reading-based) guarantee that guides/upgrade.md names every changed command.
+- [Phase ?]: 02-01: TestClientFilesImportBoundary clause 2 amended with a single named exception (surfacesImport) for the new internal/surfaces leaf package, mirroring the existing clientConfigException pattern
+- [Phase ?]: 02-01: anchor.go supports multiple same-rule-ID anchor pairs per file (proto restates cross_spine on two messages); inline (same-line) anchors enable markdown-table-cell generation targets
+- [Phase ?]: 02-01 Wave 0: a proto comment-only edit DOES dirty gen/go, gen/ts, and ui/src/lib/gen/ (protoc-gen-go/TS plugin carry proto comments into generated doc comments) — surfaces:gen chains proto:gen
 
 ### Blockers/Concerns
 
@@ -151,9 +154,9 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-04T23:37:26.186Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-interface-discoverability/02-CONTEXT.md
+Last session: 2026-08-05T00:47:03.105Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -243,6 +246,7 @@ Resume file: .planning/phases/02-interface-discoverability/02-CONTEXT.md
 | Phase 01 P07 | ~25min | 2 tasks | 10 files |
 | Phase 01 P08 | ~15min | 3 tasks | 5 files |
 | Phase 01 P09 | ~40min | 3 tasks | 4 files |
+| Phase 02 P01 | 55min | 2 tasks | 14 files |
 
 ## Operator Next Steps
 
