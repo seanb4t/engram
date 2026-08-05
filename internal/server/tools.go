@@ -1782,6 +1782,35 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 
 	s.AddReceivingMiddleware(instrumentTools(tm.Record))
 
+	if err := registerTools(s, d); err != nil {
+		return nil, fmt.Errorf("register tools: %w", err)
+	}
+
+	// Compose both queues' shutdown into a single closure: the caller
+	// (serve.go) invokes this once, strictly after httpSrv.Shutdown returns,
+	// draining the summary queue then the usage queue (both nil-safe no-ops
+	// when disabled).
+	return func(ctx context.Context) {
+		d.summaryQueue.Shutdown(ctx)
+		d.usageQueue.Shutdown(ctx)
+	}, nil
+}
+
+// registerTools registers every MCP tool handler on s using the
+// dependencies in d. Register calls this once buildDepsFromEnv has
+// succeeded — extracting it here creates the seam registertools_test.go
+// needs to enumerate the REAL registered tool set (names, Descriptions,
+// wire shape) against a bare &deps{}: no live Qdrant, no live embedder, no
+// ENGRAM_* environment configuration. This mirrors
+// argattribution_test.go's established pattern of calling deps methods
+// directly against a bare struct literal without live backend config.
+//
+// This is a pure mechanical extraction from Register: no closure body
+// changes, no tool name changes, no Description changes, no reordering.
+// It always returns nil today (mcp.AddTool has no failure mode), but keeps
+// the error-returning signature so a future failure mode inside
+// registration would not require changing Register's own error handling.
+func registerTools(s *mcp.Server, d *deps) error {
 	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps. Optionally pass `summary`: a one-line recall summary shown in place of content (keep negations/identifiers verbatim). Optionally pass `idempotency_key` for safe retries: same key + identical content returns the original id/short_id unchanged; same key + different content is rejected; omit for a fresh record every time. The result includes the memory's id and short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
@@ -2028,14 +2057,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			}
 			return textResult(msg), map[string]any{"rules": rules}, err
 		})
-	// Compose both queues' shutdown into a single closure: the caller
-	// (serve.go) invokes this once, strictly after httpSrv.Shutdown returns,
-	// draining the summary queue then the usage queue (both nil-safe no-ops
-	// when disabled).
-	return func(ctx context.Context) {
-		d.summaryQueue.Shutdown(ctx)
-		d.usageQueue.Shutdown(ctx)
-	}, nil
+	return nil
 }
 
 func textResult(s string) *mcp.CallToolResult {
