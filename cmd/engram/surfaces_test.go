@@ -52,7 +52,7 @@ func TestSurfaceConformanceCobraUsage(t *testing.T) {
 	// outcome D-08's worked example names for MCP jsonschema. Skipping it
 	// here is what keeps this test from demanding rule text on a command
 	// that structurally cannot carry it.
-	var unionExposed []string
+	unionExposed := make([]string, 0, len(commands)*8)
 	for _, cmd := range commands {
 		unionExposed = append(unionExposed, cobraExposedFields(cmd)...)
 	}

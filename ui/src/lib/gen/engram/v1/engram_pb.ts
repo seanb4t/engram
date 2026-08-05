@@ -280,6 +280,10 @@ export type ListMemoriesRequest = Message<"engram.v1.ListMemoriesRequest"> & {
   pageToken: string;
 
   /**
+   * engram:rule:start paging-trio-mutually-exclusive
+   * cursor_mode, offset, and page_token are mutually exclusive
+   * engram:rule:end paging-trio-mutually-exclusive
+   *
    * opt into cursor paging on the first (tokenless) page; default false = offset-for-UI (ADR engram-1frj). Mutually exclusive with offset>0.
    *
    * @generated from field: bool cursor_mode = 11;
@@ -923,6 +927,10 @@ export type ScheduleMemoryRequest = Message<"engram.v1.ScheduleMemoryRequest"> &
   source: string;
 
   /**
+   * engram:rule:start discovery-not-schedulable
+   * discovery is not schedulable; use store_discovery
+   * engram:rule:end discovery-not-schedulable
+   *
    * @generated from field: string category = 4;
    */
   category: string;
@@ -958,6 +966,13 @@ export type ScheduleMemoryRequest = Message<"engram.v1.ScheduleMemoryRequest"> &
   summary: string;
 
   /**
+   * engram:rule:start schedule-window-at-least-one-bound
+   * schedule_memory requires not_before and/or not_after (use store_memory for unscheduled records)
+   * engram:rule:end schedule-window-at-least-one-bound
+   * engram:rule:start window-not-before-before-not-after
+   * not_before must be strictly before not_after
+   * engram:rule:end window-not-before-before-not-after
+   *
    * @generated from field: google.protobuf.Timestamp not_before = 11;
    */
   notBefore?: Timestamp | undefined;

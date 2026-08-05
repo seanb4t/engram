@@ -450,7 +450,10 @@ type ListMemoriesRequest struct {
 	CreatedAfter  string                 `protobuf:"bytes,8,opt,name=created_after,json=createdAfter,proto3" json:"created_after,omitempty"`    // RFC3339; inclusive lower bound on created_at
 	CreatedBefore string                 `protobuf:"bytes,9,opt,name=created_before,json=createdBefore,proto3" json:"created_before,omitempty"` // RFC3339; exclusive upper bound on created_at
 	PageToken     string                 `protobuf:"bytes,10,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`            // opaque cursor; when set, cursor paging (ignores offset)
-	CursorMode    bool                   `protobuf:"varint,11,opt,name=cursor_mode,json=cursorMode,proto3" json:"cursor_mode,omitempty"`        // opt into cursor paging on the first (tokenless) page; default false = offset-for-UI (ADR engram-1frj). Mutually exclusive with offset>0.
+	// engram:rule:start paging-trio-mutually-exclusive
+	// cursor_mode, offset, and page_token are mutually exclusive
+	// engram:rule:end paging-trio-mutually-exclusive
+	CursorMode bool `protobuf:"varint,11,opt,name=cursor_mode,json=cursorMode,proto3" json:"cursor_mode,omitempty"` // opt into cursor paging on the first (tokenless) page; default false = offset-for-UI (ADR engram-1frj). Mutually exclusive with offset>0.
 	// cross_spine spans every scope the caller is authorized to read, ignoring
 	// `scope` entirely when true.
 	// engram:rule:start scope-required-unless-cross-spine
@@ -1771,17 +1774,26 @@ func (x *SetVisibilityResponse) GetShortId() string {
 // is wall-clock/time-of-check dependent and is left to the Phase 17 handler,
 // matching parseWindow's own split between shape and clock validation.
 type ScheduleMemoryRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Content       string                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
-	Scope         string                 `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
-	Source        string                 `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
-	Category      string                 `protobuf:"bytes,4,opt,name=category,proto3" json:"category,omitempty"`
-	Tags          []string               `protobuf:"bytes,5,rep,name=tags,proto3" json:"tags,omitempty"`
-	Repo          string                 `protobuf:"bytes,6,opt,name=repo,proto3" json:"repo,omitempty"`
-	Workspace     string                 `protobuf:"bytes,7,opt,name=workspace,proto3" json:"workspace,omitempty"`
-	Worktree      string                 `protobuf:"bytes,8,opt,name=worktree,proto3" json:"worktree,omitempty"`
-	BaseDir       string                 `protobuf:"bytes,9,opt,name=base_dir,json=baseDir,proto3" json:"base_dir,omitempty"`
-	Summary       string                 `protobuf:"bytes,10,opt,name=summary,proto3" json:"summary,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Content string                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
+	Scope   string                 `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
+	Source  string                 `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
+	// engram:rule:start discovery-not-schedulable
+	// discovery is not schedulable; use store_discovery
+	// engram:rule:end discovery-not-schedulable
+	Category  string   `protobuf:"bytes,4,opt,name=category,proto3" json:"category,omitempty"`
+	Tags      []string `protobuf:"bytes,5,rep,name=tags,proto3" json:"tags,omitempty"`
+	Repo      string   `protobuf:"bytes,6,opt,name=repo,proto3" json:"repo,omitempty"`
+	Workspace string   `protobuf:"bytes,7,opt,name=workspace,proto3" json:"workspace,omitempty"`
+	Worktree  string   `protobuf:"bytes,8,opt,name=worktree,proto3" json:"worktree,omitempty"`
+	BaseDir   string   `protobuf:"bytes,9,opt,name=base_dir,json=baseDir,proto3" json:"base_dir,omitempty"`
+	Summary   string   `protobuf:"bytes,10,opt,name=summary,proto3" json:"summary,omitempty"`
+	// engram:rule:start schedule-window-at-least-one-bound
+	// schedule_memory requires not_before and/or not_after (use store_memory for unscheduled records)
+	// engram:rule:end schedule-window-at-least-one-bound
+	// engram:rule:start window-not-before-before-not-after
+	// not_before must be strictly before not_after
+	// engram:rule:end window-not-before-before-not-after
 	NotBefore     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=not_before,json=notBefore,proto3" json:"not_before,omitempty"`
 	NotAfter      *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=not_after,json=notAfter,proto3" json:"not_after,omitempty"`
 	unknownFields protoimpl.UnknownFields

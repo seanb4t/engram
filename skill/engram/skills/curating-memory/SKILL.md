@@ -354,14 +354,19 @@ The two or three retry patterns that come up in practice:
 
 Use `schedule_memory` instead of `store_memory` when a durable fact should not be
 recalled *yet*, or should stop being recalled *after* a point in time. It takes
-the same fields as `store_memory` plus a validity window — at least one of
-`not_before` (RFC3339; hidden from recall until then, a deferred reveal) or
-`not_after` (RFC3339; dropped from recall at then, an expiry). Search-before-store
+the same fields as `store_memory` plus a validity window: `not_before` (RFC3339;
+hidden from recall until then, a deferred reveal) and/or `not_after` (RFC3339;
+dropped from recall at then, an expiry) —
+<!-- engram:rule:start schedule-window-at-least-one-bound -->schedule_memory requires not_before and/or not_after (use store_memory for unscheduled records)<!-- engram:rule:end schedule-window-at-least-one-bound -->,
+and when both are set,
+<!-- engram:rule:start window-not-before-before-not-after -->not_before must be strictly before not_after<!-- engram:rule:end window-not-before-before-not-after -->.
+Search-before-store
 still applies. The junk-taxonomy "transient" exclusion targets *incidental* state
 the user never asked to keep — an explicit request to remember something
 by/until/after a time is itself durable (the ask is the signal), so schedule it
 rather than discarding it. Scheduling controls *when* a durable fact is active,
-not *whether* it is durable. Discoveries are not schedulable.
+not *whether* it is durable.
+<!-- engram:rule:start discovery-not-schedulable -->discovery is not schedulable; use store_discovery<!-- engram:rule:end discovery-not-schedulable -->.
 
 A windowed record inside its active window surfaces normally through
 `search_memory` / `list_memory`. Outside that window the recall tools hide it,

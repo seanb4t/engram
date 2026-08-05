@@ -127,7 +127,7 @@ func checkJSONSchemaTagSurface(t *testing.T, rule surfaces.ConditionalRule) {
 	// paging trio's worked example: list_memory's MCP arg struct carries
 	// only `cursor`, never offset/cursor_mode/page_token) — that is not a
 	// violation, it is the surface correctly resolving empty.
-	var unionExposed []string
+	unionExposed := make([]string, 0, len(jsonschemaArgStructs)*8)
 	for _, typ := range jsonschemaArgStructs {
 		unionExposed = append(unionExposed, jsonschemaExposedFields(typ)...)
 	}
@@ -169,7 +169,7 @@ func checkMCPDescriptionSurface(t *testing.T, rule surfaces.ConditionalRule, too
 	// the REAL registered tool set instead of the hardcoded struct map: a
 	// rule whose fields appear on no tool's own wire schema at all (again,
 	// the paging trio) does not apply to mcp_description either.
-	var unionExposed []string
+	unionExposed := make([]string, 0, len(tools)*8)
 	for _, tool := range tools {
 		unionExposed = append(unionExposed, toolExposedFields(tool)...)
 	}

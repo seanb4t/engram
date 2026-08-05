@@ -62,6 +62,21 @@ an explicitly-typed filter being discarded without the caller learning about
 it is exactly the kind of surprise this interface is designed to avoid, so
 the client rejects the pair outright rather than forwarding it.
 
+## Paging `engram list`
+
+`engram list` supports two independent paging styles — offset-for-UI and
+cursor paging — never combined:
+
+| Flag | Purpose |
+|------|---------|
+| `--offset` | Offset-for-UI paging; <!-- engram:rule:start paging-trio-mutually-exclusive -->cursor_mode, offset, and page_token are mutually exclusive<!-- engram:rule:end paging-trio-mutually-exclusive -->. |
+| `--cursor-mode` | Opt into cursor paging on the first (tokenless) page; mutually exclusive with `--offset` and `--page-token`. |
+| `--page-token` | Opaque cursor from a previous response's `next_page_token`; mutually exclusive with `--offset` and `--cursor-mode`. |
+
+Passing more than one of the three is rejected by the CLI itself — before any
+network call — with exit `2`, via a declared cobra flag group (the same
+mutual-exclusion enforcement mechanism as `--scope`/`--cross-spine` above).
+
 ## Output contract
 
 Data goes to stdout as one JSON object per invocation, mirroring the Connect

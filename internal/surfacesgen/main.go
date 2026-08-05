@@ -57,6 +57,38 @@ var ruleTargets = map[string][]target{
 		// well-formed anchor pair it finds for a rule, not just the first).
 		{path: "proto/engram/v1/engram.proto", kind: kindProto},
 	},
+	// The four rules 02-03-PLAN.md's Task 1 declares. Each is anchored only
+	// where its fields are genuinely advertised (D-08) — schedule_memory has
+	// no CLI verb, so none of the three schedule-only rules below carry a
+	// cobra/client_*.go composition or a cli.md anchor; the paging rule has
+	// no MCP jsonschema-tag counterpart, so it carries no anchor on any
+	// MCP-only surface.
+	surfaces.RuleScheduleWindowAtLeastOne: {
+		{path: "docs-site/src/content/docs/reference/tools.md", kind: kindMarkdown},
+		{path: "skill/engram/skills/curating-memory/SKILL.md", kind: kindMarkdown},
+		{path: "proto/engram/v1/engram.proto", kind: kindProto},
+	},
+	surfaces.RuleDiscoveryNotSchedulable: {
+		{path: "docs-site/src/content/docs/reference/tools.md", kind: kindMarkdown},
+		{path: "skill/engram/skills/curating-memory/SKILL.md", kind: kindMarkdown},
+		{path: "proto/engram/v1/engram.proto", kind: kindProto},
+	},
+	surfaces.RuleWindowOrdering: {
+		{path: "docs-site/src/content/docs/reference/tools.md", kind: kindMarkdown},
+		{path: "skill/engram/skills/curating-memory/SKILL.md", kind: kindMarkdown},
+		{path: "proto/engram/v1/engram.proto", kind: kindProto},
+	},
+	// RulePagingMutuallyExclusive: only the two surfaces that actually
+	// advertise cursor_mode/offset/page_token as fields (D-08) —
+	// ListMemoriesRequest's proto comment and cli.md's new Paging section.
+	// Not docs-site/reference/tools.md (that page documents MCP tool
+	// arguments; list_memory's MCP arg struct carries none of these three
+	// fields, only the single unified `cursor`) and not either skill file
+	// (neither mentions offset/page_token/cursor_mode by name today).
+	surfaces.RulePagingMutuallyExclusive: {
+		{path: "docs-site/src/content/docs/guides/cli.md", kind: kindMarkdown},
+		{path: "proto/engram/v1/engram.proto", kind: kindProto},
+	},
 }
 
 // render returns rule sentence's on-disk form for the given surface kind.

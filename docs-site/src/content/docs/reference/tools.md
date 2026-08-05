@@ -62,9 +62,11 @@ Returns the stored record's `id` and `short_id`.
 
 ## schedule_memory
 
-Persist a memory with a temporal validity window. At least one of `not_before` /
-`not_after` is required (use `store_memory` for unscheduled records). `discovery`
-is not schedulable. A future `not_before` hides the record from recall until then;
+Persist a memory with a temporal validity window.
+<!-- engram:rule:start schedule-window-at-least-one-bound -->schedule_memory requires not_before and/or not_after (use store_memory for unscheduled records)<!-- engram:rule:end schedule-window-at-least-one-bound -->.
+<!-- engram:rule:start window-not-before-before-not-after -->not_before must be strictly before not_after<!-- engram:rule:end window-not-before-before-not-after -->.
+<!-- engram:rule:start discovery-not-schedulable -->discovery is not schedulable; use store_discovery<!-- engram:rule:end discovery-not-schedulable -->.
+A future `not_before` hides the record from recall until then;
 `not_after` drops it from recall at that time. Active windowed records surface
 normally via `search_memory`/`list_memory`.
 
