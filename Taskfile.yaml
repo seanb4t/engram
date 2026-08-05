@@ -241,6 +241,11 @@ tasks:
       - rm -rf ui/src/lib/gen/engram ui/src/lib/gen/buf
       - cp -R gen/ts/. ui/src/lib/gen/
 
+  surfaces:gen:
+    desc: Regenerate every anchored interface-surface region from the internal/surfaces rule registry
+    cmds:
+      - go run ./internal/surfacesgen
+
   deps:
     cmds:
       - go mod tidy

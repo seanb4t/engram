@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
+	"github.com/seanb4t/engram/internal/surfaces"
 )
 
 var (
@@ -81,8 +82,14 @@ var searchCmd = &cobra.Command{
 func init() {
 	addClientFlags(searchCmd)
 	searchCmd.Flags().StringVar(&searchQuery, "query", "", "search query (required)")
+	// The --scope Usage string composes surfaces.RuleByID's declared
+	// Sentence verbatim (D-03) rather than restating the rule as a second
+	// literal — this cobra file is denylisted by TestClientFilesImportBoundary
+	// from importing internal/server, which is exactly why the rule value
+	// lives in the stdlib-only internal/surfaces leaf package instead.
+	scopeRule, _ := surfaces.RuleByID(surfaces.RuleScopeRequiredUnlessCrossSpine)
 	searchCmd.Flags().StringVar(&searchScope, "scope", "",
-		"limit recall to one scope; omit and pass --cross-spine to span every scope you can read; mutually exclusive with --cross-spine")
+		scopeRule.Sentence+"; mutually exclusive with --cross-spine")
 	searchCmd.Flags().BoolVar(&searchCrossSpine, "cross-spine", false,
 		"span every scope you can read; mutually exclusive with --scope")
 	searchCmd.Flags().Uint64Var(&searchK, "k", 0, "max results (0 = server default)")

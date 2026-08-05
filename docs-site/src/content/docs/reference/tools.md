@@ -97,7 +97,7 @@ memories. By default returns compact summaries; pass `full=true` for complete co
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `query` | string | yes | Natural-language search query |
-| `scope` | string | conditional | Scope to search within; required unless `cross_spine` is true |
+| `scope` | string | conditional | Scope to search within; <!-- engram:rule:start scope-required-unless-cross-spine -->scope is required unless cross_spine is true<!-- engram:rule:end scope-required-unless-cross-spine --> |
 | `k` | uint64 | no | Number of results to return (default 8) |
 | `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter. Applied as a hard pre-filter, then results are ranked by vector similarity and reranking (see below) |
 | `categories` | string[] | no | Restrict to records in **any** of the listed categories (OR) — the opposite of `tags`' ALL/AND semantics, since a record carries exactly one category. Omit or pass an empty array for no category filter. An unmatched value returns zero results, never an error; any stored category is accepted, including `discovery` and `rule`, not just the four `store_memory` write values. Applied as a hard pre-filter, before vector ranking. The same filter is available over the Connect read API on `SearchMemories`. |

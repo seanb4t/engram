@@ -530,11 +530,22 @@ func TestIsTerminalOnNonTTY(t *testing.T) {
 	}
 }
 
+// surfacesImport is the one repo-internal path allowedClientImports may
+// name (see clause 2 of TestClientFilesImportBoundary below for why it is
+// the sole exception): a stdlib-only leaf package with zero dependency on
+// any other repo package, admitted so a client_*.go cobra Usage string can
+// compose the same declared surfaces.ConditionalRule value
+// internal/server's rejection composes (D-03/D-05), without needing to
+// import internal/server itself — which is exactly the wider boundary this
+// gate exists to keep closed.
+const surfacesImport = "github.com/seanb4t/engram/internal/surfaces"
+
 // allowedClientImports is the exhaustive set of non-standard-library
 // imports a cmd/engram/client_*.go production file may use. Adding an
 // entry here is a deliberate architectural decision, not a mechanical
 // fix — and adding a repo-internal path to it will fail
-// TestClientFilesImportBoundary's second clause regardless.
+// TestClientFilesImportBoundary's second clause, with the single named
+// exception of surfacesImport (see its doc comment).
 var allowedClientImports = map[string]bool{
 	"connectrpc.com/connect":                                     true,
 	"github.com/spf13/cobra":                                     true,
@@ -542,6 +553,7 @@ var allowedClientImports = map[string]bool{
 	"google.golang.org/protobuf/proto":                           true,
 	"github.com/seanb4t/engram/gen/go/engram/v1":                 true,
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect": true,
+	surfacesImport: true,
 }
 
 // clientConfigException is the single, named exception to
@@ -631,11 +643,18 @@ func TestClientFilesImportBoundary(t *testing.T) {
 	}
 
 	// Clause 2: no member of allowedClientImports is itself a repo-internal
-	// path — this closes the "just widen the allowlist" escape hatch.
-	// configImport is deliberately never added here: it stays an isolated,
-	// per-file exception (clause 1 above), not a general allowlist entry
-	// every client_*.go file could then import.
+	// path — this closes the "just widen the allowlist" escape hatch —
+	// EXCEPT surfacesImport, the one deliberately-admitted leaf package
+	// (see its doc comment: stdlib-only, zero dependency on any other repo
+	// package, so admitting it cannot reintroduce the internal/server
+	// reachability this gate exists to block). configImport is deliberately
+	// never added here either: it stays an isolated, per-file exception
+	// (clause 1 above), not a general allowlist entry every client_*.go
+	// file could then import.
 	for allowed := range allowedClientImports {
+		if allowed == surfacesImport {
+			continue
+		}
 		if strings.HasPrefix(allowed, "github.com/seanb4t/engram/internal/") {
 			t.Errorf("REQ-cli-client-commands: allowedClientImports contains a repo-internal path %q — widening the allowlist to admit an internal package is itself the violation this gate exists to catch", allowed)
 		}

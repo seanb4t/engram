@@ -29,6 +29,7 @@ import (
 	"github.com/seanb4t/engram/internal/embed"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/summarize"
+	"github.com/seanb4t/engram/internal/surfaces"
 	"github.com/seanb4t/engram/internal/telemetry"
 )
 
@@ -1376,7 +1377,8 @@ func effectiveSearchScope(scope string, crossSpine bool) (string, error) {
 		return "", nil
 	}
 	if scope == "" {
-		return "", argErrf(classMalformed, HintConditionalRequired, "scope", "scope is required unless cross_spine is true")
+		rule, _ := surfaces.RuleByID(surfaces.RuleScopeRequiredUnlessCrossSpine)
+		return "", conditionalErrf(classMalformed, rule)
 	}
 	return scope, nil
 }
