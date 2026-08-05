@@ -35,6 +35,37 @@ token and are never accepted as client input.
 field-and-hint envelope rather than a plain message; see the
 [error reference](/reference/errors/) for the full grammar and hint-code vocabulary.
 
+## Blast radius
+
+Every tool advertises four MCP `ToolAnnotations` hints — `readOnlyHint`,
+`destructiveHint`, `idempotentHint`, `openWorldHint` — so an agent can read a
+tool's blast radius before calling it, never by triggering it first. Values
+come from one shared table (`internal/surfaces`), generated here rather than
+hand-maintained per tool; `openWorldHint` is `false` on every tool, since
+engram is a closed memory domain. These are hints, not an authorization
+mechanism — never make a tool-use decision based on annotations from an
+untrusted server.
+
+<!-- engram:rule:start tool-blast-radius -->
+| Tool | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |
+|------|----------------|--------------------|-------------------|------------------|
+| `store_memory` | false | false | false | false |
+| `schedule_memory` | false | false | false | false |
+| `search_memory` | true | false | true | false |
+| `list_memory` | true | false | true | false |
+| `list_scheduled` | true | false | true | false |
+| `get_memory` | true | false | true | false |
+| `update_memory` | false | true | true | false |
+| `delete_memory` | false | true | true | false |
+| `delete_all` | false | true | true | false |
+| `store_discovery` | false | false | false | false |
+| `search_discovery` | true | false | true | false |
+| `set_visibility` | false | false | true | false |
+| `supersede_memory` | false | false | true | false |
+| `store_rule` | false | false | false | false |
+| `list_rules` | true | false | true | false |
+<!-- engram:rule:end tool-blast-radius -->
+
 ---
 
 ## store_memory

@@ -12,6 +12,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/seanb4t/engram/internal/surfaces"
 )
@@ -99,11 +101,45 @@ func render(sentence string, kind surfaceKind) string {
 	return sentence
 }
 
+// toolBlastRadiusPath is the one prose file carrying the tool-blast-radius
+// region (02-04-PLAN.md Task 2). It reuses the same
+// engram:rule:start/engram:rule:end anchor machinery ruleTargets' regions
+// do, under a distinct region id that is not a surfaces.ConditionalRule —
+// WriteRegion/ReadRegion key on an arbitrary string, not exclusively a
+// declared rule ID.
+const toolBlastRadiusPath = "docs-site/src/content/docs/reference/tools.md"
+
+const toolBlastRadiusRegionID = "tool-blast-radius"
+
+// renderToolBlastRadius renders the markdown table body for the
+// tool-blast-radius region: one row per MCP tool in surfaces.Operations()
+// declaration order, listing all four blast-radius hints.
+func renderToolBlastRadius() string {
+	var b strings.Builder
+	b.WriteString("| Tool | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |\n")
+	b.WriteString("|------|----------------|--------------------|-------------------|------------------|\n")
+	for _, op := range surfaces.Operations() {
+		if op.MCPTool == "" {
+			continue
+		}
+		b.WriteString("| `" + op.MCPTool + "` | " +
+			strconv.FormatBool(op.Class.ReadOnly) + " | " +
+			strconv.FormatBool(op.Class.Destructive) + " | " +
+			strconv.FormatBool(op.Class.Idempotent) + " | " +
+			strconv.FormatBool(op.Class.OpenWorld) + " |\n")
+	}
+	return strings.TrimSuffix(b.String(), "\n")
+}
+
 // run regenerates every anchored region ruleTargets names, in
-// surfaces.Rules() declaration order so output is stable across runs.
+// surfaces.Rules() declaration order so output is stable across runs, then
+// regenerates the tool-blast-radius region from surfaces.Operations().
 func run() error {
 	if err := surfaces.ValidateRules(); err != nil {
 		return fmt.Errorf("surfacesgen: registry invalid: %w", err)
+	}
+	if err := surfaces.ValidateOperations(); err != nil {
+		return fmt.Errorf("surfacesgen: operations registry invalid: %w", err)
 	}
 	for _, rule := range surfaces.Rules() {
 		for _, t := range ruleTargets[rule.ID] {
@@ -112,6 +148,9 @@ func run() error {
 				return fmt.Errorf("surfacesgen: rule %q: %w", rule.ID, err)
 			}
 		}
+	}
+	if err := surfaces.WriteRegion(toolBlastRadiusPath, toolBlastRadiusRegionID, renderToolBlastRadius()); err != nil {
+		return fmt.Errorf("surfacesgen: tool-blast-radius: %w", err)
 	}
 	return nil
 }
