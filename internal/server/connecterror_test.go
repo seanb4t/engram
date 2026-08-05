@@ -84,3 +84,27 @@ func TestConnectError(t *testing.T) {
 		}
 	})
 }
+
+// TestConnectErrorStaleSummaryDistinctFromMalformed is 02-03-PLAN.md Task 2's
+// required guard: the summary-stale code and a plain malformed-argument code
+// must be DISTINCT values, not merely both individually correct and both
+// non-internal — the exact assertion weakness that would let connectError's
+// load-bearing switch ordering (the *argError errors.As arm MUST stay first,
+// ahead of the store.ErrInvalidArgument sentinel arm — see connectError's own
+// doc comment and durable record 667p88n2be) silently regress: a test that
+// only checks "not CodeInternal" still passes even if a reordering collapsed
+// every class back to CodeInvalidArgument.
+func TestConnectErrorStaleSummaryDistinctFromMalformed(t *testing.T) {
+	ctx := context.Background()
+	staleCode := connect.CodeOf(connectError(ctx, errStaleSummary))
+	malformedCode := connect.CodeOf(connectError(ctx, argErrf(classMalformed, HintRequired, "content", "content is required")))
+	if staleCode == malformedCode {
+		t.Fatalf("summary-stale code (%v) and malformed-argument code (%v) must be DISTINCT, got the same value", staleCode, malformedCode)
+	}
+	if staleCode != connect.CodeFailedPrecondition {
+		t.Errorf("summary-stale code = %v, want CodeFailedPrecondition", staleCode)
+	}
+	if malformedCode != connect.CodeInvalidArgument {
+		t.Errorf("malformed-argument code = %v, want CodeInvalidArgument", malformedCode)
+	}
+}

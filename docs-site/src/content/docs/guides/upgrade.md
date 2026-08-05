@@ -33,6 +33,7 @@ one predictable, migration-safe contract.
 | script `migrate-remap-owner` / `migrate-set-owner` with `--timeout 0` | §6 |
 | rely on a CLI call blocking until the server answers | §5 |
 | set client configuration through environment variables | §7 |
+| pattern-match the exact `field=` value of an argument rejection (not just check a field name's presence) | §8 |
 | only run `engram` interactively | nothing — no action |
 
 ### 1. Framework flag errors now exit 2, not 1
@@ -184,6 +185,40 @@ or their precedence order. Flagged here only because the internal resolver
 functions this replaced (`resolveServerURL`, `resolveOutputFormat`) are
 gone; relevant only if external tooling somehow referenced them directly,
 which nothing in this repository did.
+
+### 8. Interface discoverability: no published hint code changed, two field lists widened
+
+Phase 2 (interface discoverability) reclassified six existing argument
+rejections onto a declared rule registry (see the
+[error envelope reference](/reference/errors/)), so every conditional
+requirement is now stated on the CLI Usage text, the MCP tool schema and
+Description, and the proto field comment — not just discoverable by
+triggering the rejection. **No rejection's `hint=` code changed** as part of
+this: every converted site kept the hint code it already carried
+(`conditional_required`, `required`, `not_applicable`, `ordering`,
+`mutually_exclusive`).
+
+**Two `field=` lists widened** — both intentional, neither a narrowing:
+
+- `search_discovery`'s empty-scope rejection now names `field=scope,cross_spine`
+  (previously `field=scope` alone), matching `search_memory`/`list_memory`'s
+  existing attribution for the same scope-required-unless-cross_spine rule.
+- `list_memory`'s Connect-lane `cursor_mode`/`offset` mutual-exclusion
+  rejection now names `field=cursor_mode,offset,page_token` (previously
+  `field=cursor_mode,offset`) — the declared rule states all three mutually
+  exclusive paging controls, matching the CLI's existing three-way
+  `MarkFlagsMutuallyExclusive` group from the prior release.
+
+**Who should act:** a caller that pattern-matches the exact `field=` value
+(rather than checking whether a specific field name is present in the
+comma-joined list) for either of these two rejections. Checking for a
+specific field's presence in the list — the documented, correct way to read
+`field=` — is unaffected by either widening.
+
+**The `mutually_exclusive` hint's documented shape widened from "always two
+fields" to "two or more fields"** to match the paging-trio case above — see
+the [error envelope reference](/reference/errors/#the-ten-hint-codes) for the
+updated wording. No code that already reads `field=` as a list is affected.
 
 ### In-repo consumer audit
 

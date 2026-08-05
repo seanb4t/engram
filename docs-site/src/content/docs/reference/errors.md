@@ -24,15 +24,15 @@ this release and will again.
 field=summary hint=too_long: summary must be at most 512 bytes (got 700)
 ```
 
-**Relational example** — two fields that cannot both be set, on `list_memory`:
+**Relational example** — fields that cannot be combined, on `list_memory`:
 
 ```
-field=cursor_mode,offset hint=mutually_exclusive: cursor_mode is mutually exclusive with offset
+field=cursor_mode,offset,page_token hint=mutually_exclusive: cursor_mode, offset, and page_token are mutually exclusive
 ```
 
 `field` is a comma-joined list rather than a single string specifically so a relational
-rejection like this one has a home in the same envelope — both fields are named, never
-just one arbitrarily picked.
+rejection like this one has a home in the same envelope — every field the constraint
+relates is named, never just one arbitrarily picked.
 
 **MCP carries this string as the entire wire payload.** The protocol has no structured-error
 slot for a tool-call rejection: the MCP SDK discards any structured result on a non-nil
@@ -59,7 +59,7 @@ off one by one against that file — this table cannot list a code the server do
 | `format` | The value fails a structural check (e.g. an RFC3339 timestamp). | Correct the value's shape; the constraint is named in the detail text. |
 | `prefix` | The value must start with a required prefix (e.g. a discovery scope must start with `discovery:`). | Prepend the required prefix. |
 | `ordering` | A before/after or numeric ordering constraint is violated — usually between two fields, but sometimes between one field and a fixed reference such as the current time. | Adjust so the stated ordering holds. Read `field=`: it lists every field involved, which may be one or two. |
-| `mutually_exclusive` | Two fields cannot both be set (or both be absent) at once. | Drop one of the two — both field names are listed under `field=`. |
+| `mutually_exclusive` | Two or more fields cannot be combined at once. | Drop all but one — every field the constraint relates is listed under `field=`. |
 | `not_applicable` | The field does not apply given another field's value on this call. | Omit the field entirely rather than sending an empty or default value. |
 
 `required` and `conditional_required` are two different codes for a reason: `required`
@@ -67,8 +67,10 @@ means the field is unconditionally missing; `conditional_required` means it is m
 *given* something else about the call, so retrying with the same fields you already sent
 minus the addition will fail again for the same reason.
 
-`mutually_exclusive` always names **two** fields, never one — do not retry by guessing
-which of the two is "the" problem field; the constraint is between them.
+`mutually_exclusive` always names **two or more** fields, never one — do not retry by
+guessing which single field is "the" problem field; the constraint is between all of
+them. `list_memory`'s paging trio (`cursor_mode`, `offset`, `page_token`) is the one
+three-field case today.
 
 `ordering` names **one or two** fields, so read `field=` rather than assuming a pair. Two
 fields means they are misordered relative to each other (`not_before` must precede
