@@ -90,6 +90,10 @@ func scanAnchors(path, ruleID string) (lines []string, pairs []anchorPair, sawSt
 				return nil, nil, false, false, fmt.Errorf(
 					"surfaces: %s: end anchor for rule %q precedes its start anchor", path, ruleID)
 			}
+			if pending.startLineIdx == len(lines) && s < pending.startSpanEnd {
+				return nil, nil, false, false, fmt.Errorf(
+					"surfaces: %s: end anchor for rule %q precedes its start anchor on the same line", path, ruleID)
+			}
 			pending.endLineIdx = len(lines)
 			pending.endSpanStart = s
 			pairs = append(pairs, *pending)
