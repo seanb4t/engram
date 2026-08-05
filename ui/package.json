@@ -22,7 +22,7 @@
     "@vitest/browser-playwright": "4.1.10",
     "paneforge": "1.0.2",
     "playwright": "1.62.1",
-    "shadcn-svelte": "1.4.2",
+    "shadcn-svelte": "1.5.0",
     "svelte": "5.56.6",
     "svelte-check": "4.7.3",
     "svelte-sonner": "1.1.1",
