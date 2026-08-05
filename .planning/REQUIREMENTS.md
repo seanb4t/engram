@@ -67,7 +67,7 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
   self-describe catalog from one source via `buildCatalog`, and the MCP arg-struct tags), and fails
   CI when they diverge.
 
-- [ ] **REQ-mcp-tool-annotations**: Every MCP tool declares `readOnlyHint` / `destructiveHint` /
+- [x] **REQ-mcp-tool-annotations**: Every MCP tool declares `readOnlyHint` / `destructiveHint` /
   `idempotentHint`, so an agent can classify a tool's blast radius before calling it.
 
 - [ ] **REQ-help-output-pinned**: Every command's `--help` output is pinned by a golden-file test,
@@ -173,7 +173,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-client-config-unified | Phase 1 | Complete |
 | REQ-conditional-rules-stated | Phase 2 | Complete |
 | REQ-surface-conformance-gate | Phase 2 | Pending |
-| REQ-mcp-tool-annotations | Phase 2 | Pending |
+| REQ-mcp-tool-annotations | Phase 2 | Complete |
 | REQ-help-output-pinned | Phase 2 | Pending |
 | REQ-spine-scan | Phase 3 | Pending |
 | REQ-citation-drift-verify | Phase 3 | Pending |

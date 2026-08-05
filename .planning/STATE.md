@@ -5,15 +5,15 @@ milestone_name: Curation & Self-Evidence
 current_phase: 02
 current_phase_name: interface-discoverability
 status: executing
-stopped_at: Completed 02-03-PLAN.md
-last_updated: "2026-08-05T21:36:57.552Z"
+stopped_at: Completed 02-04-PLAN.md
+last_updated: "2026-08-05T21:51:12.869Z"
 last_activity: 2026-08-04
 last_activity_desc: Phase 02 execution started
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 15
-  completed_plans: 12
+  completed_plans: 13
 ---
 
 # Project State
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.
 ## Current Position
 
 Phase: 02 (interface-discoverability) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-08-04 — Phase 02 execution started
 
@@ -134,6 +134,9 @@ milestone needs in working memory.
 - [Phase ?]: 02-03: errStaleSummary stays outside internal/surfaces registry — its fields (content/summary) are shared with engram store's create-only CLI flags, forcing update-only text where it doesn't apply
 - [Phase ?]: 02-03: errRuleImmutable is not conditional/relational (D-01/D-02) — fixed category invariant, zero field attribution, no second field to cross-reference
 - [Phase ?]: 02-03: union-based applicability pre-check added to 02-02's conformance-gate test files — a latent gap where every rule was assumed to match on every surface unconditionally, first exposed by the paging trio / schedule-only rules
+- [Phase ?]: 02-04: delete_memory/delete_all/supersede_memory classified idempotent (REST-DELETE-style and single-live-head-structural reasoning respectively, not idempotency_key)
+- [Phase ?]: 02-04: set_visibility classified non-destructive (diverges from update_memory) since it only flips a reversible boolean flag, content/tags untouched
+- [Phase ?]: 02-04: tool-blast-radius is a new hand-authored anchor region in docs-site/reference/tools.md, not tied to a surfaces.ConditionalRule — proves WriteRegion/ReadRegion generalize beyond the rule registry
 
 ### Blockers/Concerns
 
@@ -157,8 +160,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-05T21:36:57.544Z
-Stopped at: Completed 02-03-PLAN.md
+Last session: 2026-08-05T21:51:12.860Z
+Stopped at: Completed 02-04-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -251,6 +254,7 @@ Resume file: None
 | Phase 01 P09 | ~40min | 3 tasks | 4 files |
 | Phase 02 P01 | 55min | 2 tasks | 14 files |
 | Phase 02 P03 | 90min | 3 tasks | 22 files |
+| Phase 02 P04 | ~15min | 2 tasks | 7 files |
 
 ## Operator Next Steps
 
