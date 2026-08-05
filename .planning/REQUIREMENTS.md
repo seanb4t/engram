@@ -57,7 +57,7 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
 
 ### Interface Discoverability
 
-- [ ] **REQ-conditional-rules-stated**: Every server-side conditional-requirement rule (e.g.
+- [x] **REQ-conditional-rules-stated**: Every server-side conditional-requirement rule (e.g.
   `effectiveSearchScope`'s "scope is required unless cross_spine is true") is stated wherever its
   argument is advertised — in cobra `Usage` text and in the `internal/server` jsonschema tag — so a
   caller learns the rule by reading rather than by triggering it.
@@ -171,7 +171,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-exit-code-migration-safe | Phase 1 | Complete |
 | REQ-cli-request-timeout | Phase 1 | Complete |
 | REQ-client-config-unified | Phase 1 | Complete |
-| REQ-conditional-rules-stated | Phase 2 | Pending |
+| REQ-conditional-rules-stated | Phase 2 | Complete |
 | REQ-surface-conformance-gate | Phase 2 | Pending |
 | REQ-mcp-tool-annotations | Phase 2 | Pending |
 | REQ-help-output-pinned | Phase 2 | Pending |

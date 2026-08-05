@@ -5,15 +5,15 @@ milestone_name: Curation & Self-Evidence
 current_phase: 02
 current_phase_name: interface-discoverability
 status: executing
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-08-05T21:07:19.048Z"
+stopped_at: Completed 02-03-PLAN.md
+last_updated: "2026-08-05T21:36:57.552Z"
 last_activity: 2026-08-04
 last_activity_desc: Phase 02 execution started
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 15
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.
 ## Current Position
 
 Phase: 02 (interface-discoverability) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-08-04 — Phase 02 execution started
 
@@ -131,6 +131,9 @@ milestone needs in working memory.
 - [Phase ?]: 02-01: TestClientFilesImportBoundary clause 2 amended with a single named exception (surfacesImport) for the new internal/surfaces leaf package, mirroring the existing clientConfigException pattern
 - [Phase ?]: 02-01: anchor.go supports multiple same-rule-ID anchor pairs per file (proto restates cross_spine on two messages); inline (same-line) anchors enable markdown-table-cell generation targets
 - [Phase ?]: 02-01 Wave 0: a proto comment-only edit DOES dirty gen/go, gen/ts, and ui/src/lib/gen/ (protoc-gen-go/TS plugin carry proto comments into generated doc comments) — surfaces:gen chains proto:gen
+- [Phase ?]: 02-03: errStaleSummary stays outside internal/surfaces registry — its fields (content/summary) are shared with engram store's create-only CLI flags, forcing update-only text where it doesn't apply
+- [Phase ?]: 02-03: errRuleImmutable is not conditional/relational (D-01/D-02) — fixed category invariant, zero field attribution, no second field to cross-reference
+- [Phase ?]: 02-03: union-based applicability pre-check added to 02-02's conformance-gate test files — a latent gap where every rule was assumed to match on every surface unconditionally, first exposed by the paging trio / schedule-only rules
 
 ### Blockers/Concerns
 
@@ -154,9 +157,9 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-05T21:07:19.018Z
-Stopped at: Completed 02-02-PLAN.md
-Resume file: .planning/phases/02-interface-discoverability/02-03-PLAN.md
+Last session: 2026-08-05T21:36:57.544Z
+Stopped at: Completed 02-03-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -247,6 +250,7 @@ Resume file: .planning/phases/02-interface-discoverability/02-03-PLAN.md
 | Phase 01 P08 | ~15min | 3 tasks | 5 files |
 | Phase 01 P09 | ~40min | 3 tasks | 4 files |
 | Phase 02 P01 | 55min | 2 tasks | 14 files |
+| Phase 02 P03 | 90min | 3 tasks | 22 files |
 
 ## Operator Next Steps
 
