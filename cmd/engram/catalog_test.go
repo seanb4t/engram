@@ -16,6 +16,8 @@ import (
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/seanb4t/engram/internal/surfaces"
 )
 
 // noArgs is a non-nil empty argument slice. runClient's own doc comment
@@ -85,6 +87,12 @@ type decodedCatalog struct {
 			Default string `json:"default"`
 			Usage   string `json:"usage"`
 		} `json:"flags"`
+		BlastRadius struct {
+			ReadOnly    bool `json:"read_only"`
+			Destructive bool `json:"destructive"`
+			Idempotent  bool `json:"idempotent"`
+			OpenWorld   bool `json:"open_world"`
+		} `json:"blast_radius"`
 	} `json:"commands"`
 	ExitCodes []struct {
 		Code    int    `json:"code"`
@@ -352,6 +360,57 @@ func TestCatalogExitCodesMatchMapper(t *testing.T) {
 	if !reflect.DeepEqual(catalogCodes, mapperCodes) {
 		t.Errorf("catalog exit codes = {%s}, mapper-producible exit codes = {%s}",
 			sortedIntKeys(catalogCodes), sortedIntKeys(mapperCodes))
+	}
+}
+
+// TestCatalogBlastRadiusMatchesToolClasses is D-11's both-directions gate,
+// copying TestCatalogExitCodesMatchMapper's shape: the catalog's emitted
+// command names and internal/surfaces.Operations()'s non-empty CLICommand
+// values must be the EXACT same set — a command the catalog emits but the
+// table never classified fails here, and a table row naming a command the
+// catalog never emits fails here too. A second loop then asserts every
+// catalog command's rendered classification equals
+// surfaces.ClassForCommand(name)'s value for that name, so the two lanes
+// cannot silently disagree about a command they both classify.
+func TestCatalogBlastRadiusMatchesToolClasses(t *testing.T) {
+	doc := decodeCatalog(t)
+
+	catalogNames := make(map[string]bool, len(doc.Commands))
+	for _, c := range doc.Commands {
+		catalogNames[c.Name] = true
+	}
+
+	classifiedNames := make(map[string]bool)
+	for _, op := range surfaces.Operations() {
+		// "engram" (rootCmd.Name()) is the bare self-describe invocation's
+		// own sentinel CLICommand value (toolclass.go's comment: added
+		// because ValidateOperations rejects a row with both key columns
+		// empty) — it names the root command itself, which buildCatalog
+		// never emits as one of doc.Commands, so it is deliberately excluded
+		// from this comparison rather than a genuine mismatch.
+		if op.CLICommand == "" || op.CLICommand == rootCmd.Name() {
+			continue
+		}
+		classifiedNames[op.CLICommand] = true
+	}
+
+	if !reflect.DeepEqual(catalogNames, classifiedNames) {
+		t.Errorf("catalog command names = %v, surfaces.Operations() non-empty CLICommand names = %v",
+			sortedKeys(catalogNames), sortedKeys(classifiedNames))
+	}
+
+	for _, c := range doc.Commands {
+		want, ok := surfaces.ClassForCommand(c.Name)
+		if !ok {
+			t.Errorf("catalog command %q has no surfaces.ClassForCommand entry", c.Name)
+			continue
+		}
+		if c.BlastRadius.ReadOnly != want.ReadOnly ||
+			c.BlastRadius.Destructive != want.Destructive ||
+			c.BlastRadius.Idempotent != want.Idempotent ||
+			c.BlastRadius.OpenWorld != want.OpenWorld {
+			t.Errorf("catalog command %q blast_radius = %+v, want %+v", c.Name, c.BlastRadius, want)
+		}
 	}
 }
 

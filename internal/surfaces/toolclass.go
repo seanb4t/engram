@@ -198,6 +198,43 @@ var operations = []Operation{
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
+		// Found missing during plan 02-05: buildCatalog emits a "serve" entry
+		// (rootCmd.AddCommand(serveCmd, versionCmd), root.go) that this table
+		// never classified, which the both-directions catalog gate
+		// (TestCatalogBlastRadiusMatchesToolClasses) turns into a hard
+		// failure rather than a silently-omitted classification.
+		// ReadOnly: false — serving ensures the configured Qdrant collection
+		// exists (server.StoreFromEnv/ensureStoreFromConfig may CREATE it),
+		// and every mutating MCP/Connect call an agent makes for the
+		// server's whole lifetime runs through this command; it is not a
+		// pure read. Destructive: false — starting the listener does not
+		// itself remove or overwrite existing data (each request it serves
+		// carries its own, separately classified, blast radius). Idempotent:
+		// false under D-09's "every valid invocation" test — running it a
+		// second time with the same --listen-addr does not leave the
+		// environment unchanged; it fails to bind the already-held port, a
+		// genuine additional effect, not a no-op repeat.
+		MCPTool: "", CLICommand: "serve",
+		Class: Class{ReadOnly: false, Destructive: false, Idempotent: false, OpenWorld: false},
+	},
+	{
+		// Same missing-row discovery as "serve" above: migrateSetOwnerCmd
+		// (migrate.go) is a live, non-Hidden rootCmd.AddCommand registration
+		// — cobra's Deprecated field only prints a warning, it does not hide
+		// the command from root.Commands() or from buildCatalog's traversal.
+		// migrate-set-owner is the deprecated alias for
+		// `migrate-remap-owner --from-missing --to <owner>`: unlike
+		// migrate-remap-owner's general --from/--from-anon forms (which CAN
+		// overwrite an existing non-empty owner and are Destructive: true),
+		// this alias's own doc comment states it is scoped to "memory
+		// records written before per-actor isolation (which carry no owner
+		// key)" and is "One-time, idempotent" — it only ever fills an EMPTY
+		// owner field, the same additive reasoning as summarize-missing and
+		// backfill-short-ids above.
+		MCPTool: "", CLICommand: "migrate-set-owner",
+		Class: Class{ReadOnly: false, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
+	{
 		// The bare `engram` self-describe invocation (no subcommand):
 		// prints the catalog JSON and exits. CLICommand is the root
 		// command's own Use ("engram") rather than empty, since

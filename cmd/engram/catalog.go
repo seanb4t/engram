@@ -10,6 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/seanb4t/engram/internal/surfaces"
 )
 
 // catalogDoc is the self-describe document a bare `engram` invocation emits
@@ -30,6 +32,31 @@ type catalogCommand struct {
 	Name    string        `json:"name"`
 	Summary string        `json:"summary"`
 	Flags   []catalogFlag `json:"flags"`
+	// BlastRadius is derived from the SAME internal/surfaces table the MCP
+	// tool annotations compose from (D-11) — never a second literal, so the
+	// two lanes cannot silently disagree. buildCatalog PANICS rather than
+	// emitting a zero-valued BlastRadius when a command has no
+	// surfaces.ClassForCommand entry: a command advertised as safe because
+	// nobody classified it is exactly the failure this field exists to
+	// prevent, and TestCatalogBlastRadiusMatchesToolClasses's
+	// both-directions gate is meant to catch any such gap long before it
+	// reaches a release — this panic is the defense-in-depth backstop for
+	// the case where it somehow didn't.
+	BlastRadius catalogBlastRadius `json:"blast_radius"`
+}
+
+// catalogBlastRadius mirrors surfaces.Class's four MCP ToolAnnotations
+// hints in the shape chosen at 02-05's checkpoint (option-a): a nested
+// object, lossless with the MCP lane, so an agent's blast-radius logic
+// transfers unchanged across both. Keys are snake_case, matching this
+// document's own convention — they rhyme with, but do not match, the MCP
+// wire's camelCase readOnlyHint/destructiveHint/idempotentHint/
+// openWorldHint.
+type catalogBlastRadius struct {
+	ReadOnly    bool `json:"read_only"`
+	Destructive bool `json:"destructive"`
+	Idempotent  bool `json:"idempotent"`
+	OpenWorld   bool `json:"open_world"`
 }
 
 // catalogFlag is one entry in catalogCommand.Flags.
@@ -69,10 +96,24 @@ func buildCatalog(root *cobra.Command) catalogDoc {
 		if cmd.Hidden || cmd.Name() == "help" || cmd.Name() == "completion" {
 			continue
 		}
+		class, ok := surfaces.ClassForCommand(cmd.Name())
+		if !ok {
+			panic(fmt.Sprintf(
+				"catalog: command %q has no internal/surfaces blast-radius classification — "+
+					"add a row to internal/surfaces/toolclass.go's operations table",
+				cmd.Name(),
+			))
+		}
 		doc.Commands = append(doc.Commands, catalogCommand{
 			Name:    cmd.Name(),
 			Summary: cmd.Short,
 			Flags:   collectFlags(root, cmd),
+			BlastRadius: catalogBlastRadius{
+				ReadOnly:    class.ReadOnly,
+				Destructive: class.Destructive,
+				Idempotent:  class.Idempotent,
+				OpenWorld:   class.OpenWorld,
+			},
 		})
 	}
 
