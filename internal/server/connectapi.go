@@ -20,6 +20,7 @@ import (
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
 	"github.com/seanb4t/engram/internal/auth"
 	"github.com/seanb4t/engram/internal/store"
+	"github.com/seanb4t/engram/internal/surfaces"
 )
 
 // engramAPI implements the generated EngramServiceHandler. It reuses the same
@@ -181,8 +182,8 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 	// check with no tools.go MCP counterpart to inherit from, since MCP's
 	// listArgs carries no offset field at all.
 	if req.Msg.CursorMode && req.Msg.Offset > 0 {
-		return nil, connectError(ctx, argErrFieldsf(classPrecondition, HintMutuallyExclusive,
-			[]string{"cursor_mode", "offset"}, "cursor_mode is mutually exclusive with offset"))
+		rule, _ := surfaces.RuleByID(surfaces.RulePagingMutuallyExclusive)
+		return nil, connectError(ctx, conditionalErrf(classPrecondition, rule))
 	}
 	// D-04: read cross_spine EXPLICITLY. Unlike SearchDiscoveries
 	// (connectapi.go, below), this handler never maps Scope == "" to

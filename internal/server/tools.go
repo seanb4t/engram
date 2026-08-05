@@ -486,10 +486,16 @@ type storeArgs struct {
 	// this is issue #360's actual fix. Do NOT read the absence of "required"
 	// text here as these fields becoming optional; they are exactly as
 	// required as before, just enforced one layer down.
-	Content   string   `json:"content,omitempty" jsonschema:"the memory text to persist"`
-	Scope     string   `json:"scope,omitempty" jsonschema:"run:tier:repo, e.g. eval-2026-05:project:selfhosted-cluster"`
-	Source    string   `json:"source,omitempty" jsonschema:"user-said or agent-inferred"`
-	Category  string   `json:"category,omitempty" jsonschema:"decision|preference|convention|gotcha"`
+	Content string `json:"content,omitempty" jsonschema:"the memory text to persist"`
+	Scope   string `json:"scope,omitempty" jsonschema:"run:tier:repo, e.g. eval-2026-05:project:selfhosted-cluster"`
+	Source  string `json:"source,omitempty" jsonschema:"user-said or agent-inferred"`
+	// Category's tag states the discovery-not-schedulable rule even though
+	// that rejection only fires from parseWindow (schedule_memory): this
+	// field is promoted, via Go embedding, onto scheduleArgs and
+	// supersedeArgs too, so store_memory/schedule_memory/supersede_memory
+	// all share this one tag (D-03) — the statement is true in every
+	// context, just only ENFORCED in the schedule_memory one.
+	Category  string   `json:"category,omitempty" jsonschema:"decision|preference|convention|gotcha; discovery is not schedulable; use store_discovery"`
 	Tags      []string `json:"tags,omitempty"`
 	Repo      string   `json:"repo,omitempty"`
 	Workspace string   `json:"workspace,omitempty"`
@@ -515,8 +521,14 @@ type storeArgs struct {
 // store_memory fields plus not_before/not_after.
 type scheduleArgs struct {
 	storeArgs
-	NotBefore string `json:"not_before,omitempty" jsonschema:"RFC3339; hide from recall until this time"`
-	NotAfter  string `json:"not_after,omitempty" jsonschema:"RFC3339; drop from recall at this time"`
+	// NotBefore/NotAfter's tags each state both window rules (D-03): at
+	// least one bound is required, and when both are set, not_before must
+	// be strictly before not_after. Neither tag states the third parseWindow
+	// rejection ("not_after must be in the future") — that is D-02's one
+	// explicit registry exclusion (single-field, clock-dependent), pinned by
+	// the doc comment at parseWindow's not-in-future check.
+	NotBefore string `json:"not_before,omitempty" jsonschema:"RFC3339; hide from recall until this time; requires not_before and/or not_after; not_before must be strictly before not_after"`
+	NotAfter  string `json:"not_after,omitempty" jsonschema:"RFC3339; drop from recall at this time; requires not_before and/or not_after; not_before must be strictly before not_after"`
 }
 
 // parseWindow validates and parses the schedule_memory temporal window. At least
@@ -526,10 +538,12 @@ type scheduleArgs struct {
 // CodeInternal, once 17-04 wires the connectError mapper.
 func parseWindow(a scheduleArgs, now time.Time) (nb, na *time.Time, err error) {
 	if a.NotBefore == "" && a.NotAfter == "" {
-		return nil, nil, argErrFieldsf(classMalformed, HintRequired, []string{"not_before", "not_after"}, "schedule_memory requires not_before and/or not_after (use store_memory for unscheduled records)")
+		rule, _ := surfaces.RuleByID(surfaces.RuleScheduleWindowAtLeastOne)
+		return nil, nil, conditionalErrf(classMalformed, rule)
 	}
 	if a.Category == "discovery" {
-		return nil, nil, argErrf(classPrecondition, HintNotApplicable, "category", "discovery is not schedulable; use store_discovery")
+		rule, _ := surfaces.RuleByID(surfaces.RuleDiscoveryNotSchedulable)
+		return nil, nil, conditionalErrf(classPrecondition, rule)
 	}
 	if a.NotBefore != "" {
 		t, perr := time.Parse(time.RFC3339, a.NotBefore)
@@ -544,12 +558,20 @@ func parseWindow(a scheduleArgs, now time.Time) (nb, na *time.Time, err error) {
 			return nil, nil, argErrf(classMalformed, HintFormat, "not_after", "not_after must be RFC3339")
 		}
 		if !t.After(now) {
+			// D-02's ONE explicit exclusion from the conditional-rule registry:
+			// single-field and clock-dependent (compares against time.Now(),
+			// not a second caller-supplied field), so it is a wall-clock state
+			// constraint rather than an interface-legible one. Do NOT declare a
+			// rule for this site and do NOT convert it — this is the deliberate,
+			// documented carve-out internal/server/conditionalsweep_test.go
+			// pins by name (conformanceExcludedSites).
 			return nil, nil, argErrf(classOutOfRange, HintOrdering, "not_after", "not_after must be in the future")
 		}
 		na = &t
 	}
 	if nb != nil && na != nil && !nb.Before(*na) {
-		return nil, nil, argErrFieldsf(classPrecondition, HintOrdering, []string{"not_before", "not_after"}, "not_before must be strictly before not_after")
+		rule, _ := surfaces.RuleByID(surfaces.RuleWindowOrdering)
+		return nil, nil, conditionalErrf(classPrecondition, rule)
 	}
 	return nb, na, nil
 }
@@ -1354,7 +1376,8 @@ func effectiveDiscoveryScope(a searchDiscoveryArgs) (string, error) {
 		return "", nil
 	}
 	if a.Scope == "" {
-		return "", argErrf(classMalformed, HintConditionalRequired, "scope", "scope is required unless cross_spine is true")
+		rule, _ := surfaces.RuleByID(surfaces.RuleScopeRequiredUnlessCrossSpine)
+		return "", conditionalErrf(classMalformed, rule)
 	}
 	return a.Scope, nil
 }
@@ -1812,8 +1835,9 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 // registration would not require changing Register's own error handling —
 // the signature itself is the seam registertools_test.go pins.
 //
-//nolint:unparam // error is always nil today by mcp.AddTool's design; the
 // signature is the deliberate, plan-required seam (see doc comment above).
+//
+//nolint:unparam // error is always nil today by mcp.AddTool's design; the
 func registerTools(s *mcp.Server, d *deps) error {
 	// scopeRule composes the same declared sentence effectiveSearchScope's
 	// rejection and cmd/engram's --scope Usage string already reference
@@ -1822,8 +1846,19 @@ func registerTools(s *mcp.Server, d *deps) error {
 	// this surface can never drift from the registry independently of the
 	// other two.
 	scopeRule, _ := surfaces.RuleByID(surfaces.RuleScopeRequiredUnlessCrossSpine)
+	// discoveryNotSchedulableRule/windowAtLeastOneRule/windowOrderingRule
+	// (02-03-PLAN.md Task 1): same D-03 composition discipline as scopeRule
+	// above, for the three rules parseWindow's rejections now reference via
+	// conditionalErrf. discoveryNotSchedulableRule's Sentence is composed
+	// into store_memory/schedule_memory/supersede_memory's Descriptions
+	// because the "category" field is shared (via Go embedding of
+	// storeArgs) across all three tools' arg structs, not just
+	// schedule_memory's.
+	discoveryNotSchedulableRule, _ := surfaces.RuleByID(surfaces.RuleDiscoveryNotSchedulable)
+	windowAtLeastOneRule, _ := surfaces.RuleByID(surfaces.RuleScheduleWindowAtLeastOne)
+	windowOrderingRule, _ := surfaces.RuleByID(surfaces.RuleWindowOrdering)
 
-	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps. Optionally pass `summary`: a one-line recall summary shown in place of content (keep negations/identifiers verbatim). Optionally pass `idempotency_key` for safe retries: same key + identical content returns the original id/short_id unchanged; same key + different content is rejected; omit for a fresh record every time. The result includes the memory's id and short_id."},
+	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps. Optionally pass `summary`: a one-line recall summary shown in place of content (keep negations/identifiers verbatim). Optionally pass `idempotency_key` for safe retries: same key + identical content returns the original id/short_id unchanged; same key + different content is rejected; omit for a fresh record every time. The result includes the memory's id and short_id. " + discoveryNotSchedulableRule.Sentence + "."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1833,7 +1868,7 @@ func registerTools(s *mcp.Server, d *deps) error {
 			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "schedule_memory", Description: "Persist a memory with a validity window (not_before defers recall; not_after expires it). At least one bound (RFC3339) is required; use store_memory for unscheduled records. Optionally pass `idempotency_key` for safe retries: same key + identical content returns the original id/short_id unchanged (the schedule window is NOT part of the replay check); same key + different content is rejected; omit for a fresh record every time. The result includes the memory's id and short_id."},
+	mcp.AddTool(s, &mcp.Tool{Name: "schedule_memory", Description: "Persist a memory with a validity window (not_before defers recall; not_after expires it). " + windowAtLeastOneRule.Sentence + "; " + windowOrderingRule.Sentence + ". " + discoveryNotSchedulableRule.Sentence + ". Optionally pass `idempotency_key` for safe retries: same key + identical content returns the original id/short_id unchanged (the schedule window is NOT part of the replay check); same key + different content is rejected; omit for a fresh record every time. The result includes the memory's id and short_id."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a scheduleArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -2036,7 +2071,7 @@ func registerTools(s *mcp.Server, d *deps) error {
 			return textResult("visibility updated"), nil, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "supersede_memory", Description: "Correct a memory you own by superseding it: stores a new record and marks the target superseded_by the new one. The target is soft-hidden from search_memory/list_memory but remains fetchable via get_memory — history is preserved, nothing is deleted or overwritten. Rejects if the target is already superseded (single live head per chain). The target id may be the full UUID or short_id."},
+	mcp.AddTool(s, &mcp.Tool{Name: "supersede_memory", Description: "Correct a memory you own by superseding it: stores a new record and marks the target superseded_by the new one. The target is soft-hidden from search_memory/list_memory but remains fetchable via get_memory — history is preserved, nothing is deleted or overwritten. Rejects if the target is already superseded (single live head per chain). The target id may be the full UUID or short_id. " + discoveryNotSchedulableRule.Sentence + "."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a supersedeArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {

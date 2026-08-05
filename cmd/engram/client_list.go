@@ -105,15 +105,20 @@ func init() {
 	listCmd.Flags().BoolVar(&listCrossSpine, "cross-spine", false,
 		"span every scope you can read; mutually exclusive with --scope")
 	listCmd.Flags().Uint64Var(&listLimit, "limit", 0, "max results (0 = server default)")
-	listCmd.Flags().Uint64Var(&listOffset, "offset", 0, "offset-for-UI paging; mutually exclusive with --cursor-mode and --page-token")
+	// The --offset/--cursor-mode/--page-token Usage strings compose
+	// surfaces.RuleByID's declared paging-trio Sentence verbatim (D-03),
+	// mirroring the --scope composition above, rather than each restating
+	// the mutual-exclusion rule as a separate literal.
+	pagingRule, _ := surfaces.RuleByID(surfaces.RulePagingMutuallyExclusive)
+	listCmd.Flags().Uint64Var(&listOffset, "offset", 0, "offset-for-UI paging; "+pagingRule.Sentence)
 	listCmd.Flags().StringSliceVar(&listCategories, "categories", nil, "category filter (empty = all categories)")
 	listCmd.Flags().StringVar(&listVisibility, "visibility", "", `visibility filter: "" (all), "private", or "shared"`)
 	listCmd.Flags().StringSliceVar(&listTags, "tags", nil, "tag filter (records must carry ALL listed tags)")
 	listCmd.Flags().BoolVar(&listFull, "full", false, "return full content instead of summaries")
 	listCmd.Flags().StringVar(&listCreatedAfter, "created-after", "", "RFC3339 inclusive lower bound on created_at")
 	listCmd.Flags().StringVar(&listCreatedBefore, "created-before", "", "RFC3339 exclusive upper bound on created_at")
-	listCmd.Flags().StringVar(&listPageToken, "page-token", "", "opaque cursor from a previous response's next_page_token; mutually exclusive with --offset and --cursor-mode")
-	listCmd.Flags().BoolVar(&listCursorMode, "cursor-mode", false, "opt into cursor paging on the first (tokenless) page; mutually exclusive with --offset and --page-token")
+	listCmd.Flags().StringVar(&listPageToken, "page-token", "", "opaque cursor from a previous response's next_page_token; "+pagingRule.Sentence)
+	listCmd.Flags().BoolVar(&listCursorMode, "cursor-mode", false, "opt into cursor paging on the first (tokenless) page; "+pagingRule.Sentence)
 	// D-07/D-08: the paging trio is mutually exclusive as a declared cobra
 	// flag group, validated centrally by rootCmd.PersistentPreRunE calling
 	// cmd.ValidateFlagGroups() before RunE ever dials. cobra's flag groups

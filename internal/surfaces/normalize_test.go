@@ -59,6 +59,16 @@ var (
 		"scope", "limit", "offset", "categories", "visibility", "tags", "full",
 		"created_after", "created_before", "page_token", "cursor_mode", "cross_spine",
 	}
+	// protoScheduleMemoryFields mirrors ScheduleMemoryRequest's declared
+	// fields (engram.proto): the flattened store_memory field set plus the
+	// typed temporal window. 02-03-PLAN.md's window/discovery-not-schedulable
+	// rules exist ONLY on this message — schedule_memory has no CLI verb, so
+	// (unlike the tracer/paging rules) these three rules do NOT resolve on
+	// SurfaceCobraUsage at all; ApplicableSurfaces correctly excludes it.
+	protoScheduleMemoryFields = []string{
+		"content", "scope", "source", "category", "tags", "repo", "workspace",
+		"worktree", "base_dir", "summary", "not_before", "not_after",
+	}
 )
 
 // exposedForTest builds a minimal but representative exposed map covering
@@ -69,7 +79,12 @@ func exposedForTest() map[Surface][]string {
 	return map[Surface][]string{
 		SurfaceCobraUsage:    cobraSearchListFields,
 		SurfaceJSONSchemaTag: jsonschemaListFields,
-		SurfaceProtoComment:  protoListMemoriesFields,
+		// ProtoComment's exposed set unions BOTH proto messages' fields —
+		// mirroring how the real gate's ProtoFieldComments/buildProseExposed
+		// scan the WHOLE proto file (every message), not one message at a
+		// time, so a rule whose fields live only on ScheduleMemoryRequest
+		// still resolves here exactly as it does against the live tree.
+		SurfaceProtoComment: append(append([]string{}, protoListMemoriesFields...), protoScheduleMemoryFields...),
 	}
 }
 
@@ -182,20 +197,39 @@ func TestApplicableSurfacesDeterministic(t *testing.T) {
 
 // TestEveryRuleResolvesToNonEmptySurfaceSet is D-08's own mandate: for
 // every declared rule, ApplicableSurfaces must be non-empty across the
-// surfaces where the rule's fields CAN exist — read here as at minimum the
-// cobra-Usage/proto-comment pair, which RESEARCH.md confirms agrees for
-// every rule in the current inventory. This does NOT require all six
-// surfaces to be non-empty for every rule (the paging rule legitimately
-// applies to fewer) — it requires that a mismapping normalizer cannot let
-// a rule silently resolve to zero surfaces everywhere.
+// surfaces where the rule's fields CAN exist. It does NOT require all six
+// surfaces — or even a fixed pair — to be non-empty for every rule: the
+// paging rule legitimately applies to fewer (D-08's worked example), and
+// 02-03-PLAN.md's three schedule_memory-only rules (no CLI verb exists for
+// schedule_memory) legitimately resolve on SurfaceProtoComment alone, never
+// SurfaceCobraUsage. What this test guards is that a mismapping normalizer
+// cannot let a rule silently resolve to zero surfaces everywhere — the
+// per-surface correctness (which surfaces, exactly) is the live conformance
+// gate's job (conformance_test.go's runGate against the real tree), not
+// this synthetic-fixture unit test's.
 func TestEveryRuleResolvesToNonEmptySurfaceSet(t *testing.T) {
 	exposed := exposedForTest()
 	for _, rule := range Rules() {
 		got := ApplicableSurfaces(rule, exposed)
 		if len(got) == 0 {
-			t.Errorf("rule %q: ApplicableSurfaces = empty, want at least cobra-Usage/proto-comment", rule.ID)
-			continue
+			t.Errorf("rule %q: ApplicableSurfaces = empty, want at least one surface", rule.ID)
 		}
+	}
+}
+
+// TestScopeAndPagingRulesResolveOnCobraAndProto pins the narrower guarantee
+// the old TestEveryRuleResolvesToNonEmptySurfaceSet used to assert for every
+// rule: for the two rules that DO have a CLI surface (scope-required and the
+// paging trio), ApplicableSurfaces must contain both SurfaceCobraUsage and
+// SurfaceProtoComment.
+func TestScopeAndPagingRulesResolveOnCobraAndProto(t *testing.T) {
+	exposed := exposedForTest()
+	for _, id := range []string{RuleScopeRequiredUnlessCrossSpine, RulePagingMutuallyExclusive} {
+		rule, ok := RuleByID(id)
+		if !ok {
+			t.Fatalf("rule %q not found in registry", id)
+		}
+		got := ApplicableSurfaces(rule, exposed)
 		if !containsSurface(got, SurfaceCobraUsage) {
 			t.Errorf("rule %q: ApplicableSurfaces = %v, want to contain %s", rule.ID, got, SurfaceCobraUsage)
 		}

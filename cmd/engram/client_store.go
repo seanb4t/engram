@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
+	"github.com/seanb4t/engram/internal/surfaces"
 )
 
 var (
@@ -88,8 +89,15 @@ func init() {
 	storeCmd.Flags().StringVar(&storeContent, "content", "", "memory content (required)")
 	storeCmd.Flags().StringVar(&storeScope, "scope", "", "memory scope (required)")
 	storeCmd.Flags().StringVar(&storeSource, "source", "", "source of the memory")
+	// --category's Usage composes surfaces.RuleByID's declared
+	// discovery-not-schedulable Sentence (D-03): the "category" field is
+	// shared (via Go struct embedding) across store_memory, schedule_memory,
+	// and supersede_memory, so the same true statement belongs wherever the
+	// field is exposed, not just on the schedule_memory-specific surfaces
+	// where the rejection actually fires.
+	discoveryNotSchedulableRule, _ := surfaces.RuleByID(surfaces.RuleDiscoveryNotSchedulable)
 	storeCmd.Flags().StringVar(&storeCategory, "category", "",
-		"category: one of decision, preference, convention, gotcha")
+		"category: one of decision, preference, convention, gotcha; "+discoveryNotSchedulableRule.Sentence)
 	storeCmd.Flags().StringSliceVar(&storeTags, "tags", nil, "tags to attach to the memory")
 	storeCmd.Flags().StringVar(&storeRepo, "repo", "", "repo identifier")
 	storeCmd.Flags().StringVar(&storeWorkspace, "workspace", "", "workspace identifier")

@@ -65,6 +65,39 @@ type ConditionalRule struct {
 // is true.
 const RuleScopeRequiredUnlessCrossSpine = "scope-required-unless-cross-spine"
 
+// RuleScheduleWindowAtLeastOne: schedule_memory requires at least one of
+// not_before/not_after. Selected into D-02's scope by field arity
+// (tools.go's parseWindow raises it via argErrFieldsf with two fields) even
+// though its hint stays HintRequired rather than one of the four cross-field
+// codes — a disjunctive-requirement shape, not "A required unless B".
+const RuleScheduleWindowAtLeastOne = "schedule-window-at-least-one-bound"
+
+// RuleDiscoveryNotSchedulable: schedule_memory rejects category=="discovery"
+// — discovery-kind knowledge has its own tool (store_discovery) with its own
+// citation contract, so it is never scheduled. Selected by hint code
+// (HintNotApplicable).
+const RuleDiscoveryNotSchedulable = "discovery-not-schedulable"
+
+// RuleWindowOrdering: when both not_before and not_after are set on
+// schedule_memory, not_before must be strictly before not_after. Selected by
+// both D-02 markers (field arity AND HintOrdering). Distinct from the
+// single-field, clock-dependent "not_after must be in the future" check at
+// tools.go's parseWindow, which D-02 explicitly excludes from this registry
+// (see the doc comment at that call site).
+const RuleWindowOrdering = "window-not-before-before-not-after"
+
+// RulePagingMutuallyExclusive: list_memory's three paging controls
+// (cursor_mode, offset, page_token) are mutually exclusive. Fields include
+// page_token even though the Connect-lane rejection (connectapi.go) names
+// only cursor_mode/offset: Phase 1's D-08 made all three mutually exclusive
+// on the CLI via MarkFlagsMutuallyExclusive, and this rule's field list is
+// what drives which surfaces ApplicableSurfaces resolves it onto — it
+// correctly resolves EMPTY on the MCP jsonschema-tag/Description surfaces
+// (list_memory's MCP arg struct carries none of these three fields, only
+// the single unified `cursor`) while resolving non-empty on cobra Usage and
+// the proto ListMemoriesRequest comment (D-08's worked example).
+const RulePagingMutuallyExclusive = "paging-trio-mutually-exclusive"
+
 // rules is the declared registry — the single source every bound surface
 // composes from. Declaration order is the order internal/surfacesgen emits
 // rules into generated regions, so regeneration is stable across runs.
@@ -79,6 +112,31 @@ var rules = []ConditionalRule{
 		// conformance gate reads this value rather than a second hand-typed
 		// copy in a test file.
 		TagForm: "required unless cross_spine",
+	},
+	{
+		ID:       RuleScheduleWindowAtLeastOne,
+		Sentence: "schedule_memory requires not_before and/or not_after (use store_memory for unscheduled records)",
+		Fields:   []string{"not_before", "not_after"},
+		Hint:     "required",
+		TagForm:  "requires not_before and/or not_after",
+	},
+	{
+		ID:       RuleDiscoveryNotSchedulable,
+		Sentence: "discovery is not schedulable; use store_discovery",
+		Fields:   []string{"category"},
+		Hint:     "not_applicable",
+	},
+	{
+		ID:       RuleWindowOrdering,
+		Sentence: "not_before must be strictly before not_after",
+		Fields:   []string{"not_before", "not_after"},
+		Hint:     "ordering",
+	},
+	{
+		ID:       RulePagingMutuallyExclusive,
+		Sentence: "cursor_mode, offset, and page_token are mutually exclusive",
+		Fields:   []string{"cursor_mode", "offset", "page_token"},
+		Hint:     "mutually_exclusive",
 	},
 }
 

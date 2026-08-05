@@ -14,23 +14,28 @@ import (
 
 // jsonschemaArgStructs maps every MCP arg struct D-05 names as the
 // jsonschema-tag surface (tools.go:594-723) to its live reflect.Type.
-// searchArgs/listArgs/searchDiscoveryArgs are the three structs whose
-// Scope field carries the scope-required-unless-cross-spine tag today;
-// future rules extend which structs matter, not this file's mechanism.
+// scheduleArgs is included (not just the three structs the tracer plan
+// named) because 02-03-PLAN.md's window/discovery-not-schedulable rules
+// live on its own and its EMBEDDED storeArgs fields (not_before/not_after/
+// category) — reflect.VisibleFields below flattens the embed identically to
+// jsonschema.For[T]'s own promotion (tools.go's scheduleArgs doc comment).
 var jsonschemaArgStructs = map[string]reflect.Type{
 	"searchArgs":          reflect.TypeOf(searchArgs{}),
 	"listArgs":            reflect.TypeOf(listArgs{}),
 	"searchDiscoveryArgs": reflect.TypeOf(searchDiscoveryArgs{}),
+	"scheduleArgs":        reflect.TypeOf(scheduleArgs{}),
 }
 
 // jsonschemaExposedFields returns the json tag name (before the comma) for
-// every field of t that carries a json tag — the REAL, reflected
+// every VISIBLE field of t that carries a json tag — the REAL, reflected
 // field-name set this struct exposes on the wire, never a hand-maintained
-// list.
+// list. reflect.VisibleFields (not a shallow t.NumField() walk) is required
+// so an anonymously-embedded struct's promoted fields (e.g. scheduleArgs'
+// embedded storeArgs.Category) are seen exactly as jsonschema.For[T]'s own
+// schema generation sees them.
 func jsonschemaExposedFields(t reflect.Type) []string {
 	var out []string
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
+	for _, f := range reflect.VisibleFields(t) {
 		jsonTag := f.Tag.Get("json")
 		if jsonTag == "" || jsonTag == "-" {
 			continue
@@ -45,12 +50,13 @@ func jsonschemaExposedFields(t reflect.Type) []string {
 }
 
 // jsonschemaTagFor returns the raw `jsonschema:"..."` tag text for the
-// field of t whose json tag name matches fieldName, and whether that field
-// (and a non-empty jsonschema tag on it) was found.
+// VISIBLE field of t whose json tag name matches fieldName, and whether
+// that field (and a non-empty jsonschema tag on it) was found. See
+// jsonschemaExposedFields for why VisibleFields (not a shallow field walk)
+// is required.
 func jsonschemaTagFor(t reflect.Type, fieldName string) (string, bool) {
 	want := surfaces.NormalizeField(fieldName)
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
+	for _, f := range reflect.VisibleFields(t) {
 		jsonTag := strings.SplitN(f.Tag.Get("json"), ",", 2)[0]
 		if surfaces.NormalizeField(jsonTag) != want {
 			continue
@@ -114,6 +120,21 @@ func checkJSONSchemaTagSurface(t *testing.T, rule surfaces.ConditionalRule) {
 		want = rule.Sentence
 	}
 
+	// unionExposed is every field ANY configured arg struct exposes — the
+	// jsonschema_tag surface's COMPLETE exposed field set (D-08's flat
+	// per-surface shape). A rule whose fields don't ALL appear somewhere in
+	// this union genuinely does not apply to jsonschema_tag at all (the
+	// paging trio's worked example: list_memory's MCP arg struct carries
+	// only `cursor`, never offset/cursor_mode/page_token) — that is not a
+	// violation, it is the surface correctly resolving empty.
+	var unionExposed []string
+	for _, typ := range jsonschemaArgStructs {
+		unionExposed = append(unionExposed, jsonschemaExposedFields(typ)...)
+	}
+	if !surfaceExposesAll(unionExposed, rule.Fields) {
+		return
+	}
+
 	matched := 0
 	for name, typ := range jsonschemaArgStructs {
 		structFields := jsonschemaExposedFields(typ)
@@ -143,6 +164,19 @@ func checkJSONSchemaTagSurface(t *testing.T, rule surfaces.ConditionalRule) {
 
 func checkMCPDescriptionSurface(t *testing.T, rule surfaces.ConditionalRule, tools []*mcp.Tool) {
 	t.Helper()
+
+	// unionExposed mirrors checkJSONSchemaTagSurface's pre-check, built from
+	// the REAL registered tool set instead of the hardcoded struct map: a
+	// rule whose fields appear on no tool's own wire schema at all (again,
+	// the paging trio) does not apply to mcp_description either.
+	var unionExposed []string
+	for _, tool := range tools {
+		unionExposed = append(unionExposed, toolExposedFields(tool)...)
+	}
+	if !surfaceExposesAll(unionExposed, rule.Fields) {
+		return
+	}
+
 	matched := 0
 	for _, tool := range tools {
 		if !surfaceExposesAll(toolExposedFields(tool), rule.Fields) {

@@ -127,9 +127,14 @@ func TestValidationErrorAttributionMatrix(t *testing.T) {
 	}
 
 	// --- effectiveDiscoveryScope, row 16 ---
+	// Field attribution widens from ["scope"] to ["scope", "cross_spine"]
+	// here (02-03-PLAN.md Task 1): this site now rejects via conditionalErrf
+	// against the same declared scope-required-unless-cross-spine rule
+	// effectiveSearchScope already composes, whose registry entry names
+	// both fields the constraint relates.
 	t.Run("discovery_scope_conditional_required", func(t *testing.T) {
 		_, err := effectiveDiscoveryScope(searchDiscoveryArgs{CrossSpine: false, Scope: ""})
-		assertEnvelope(t, err, []string{"scope"}, HintConditionalRequired)
+		assertEnvelope(t, err, []string{"scope", "cross_spine"}, HintConditionalRequired)
 	})
 
 	// --- effectiveSearchScope, row 17 ---
