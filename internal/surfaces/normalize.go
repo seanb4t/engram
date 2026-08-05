@@ -80,13 +80,30 @@ func NormalizeField(name string) string {
 // the rule truly doesn't apply to MCP jsonschema, so ApplicableSurfaces
 // correctly drops it there rather than papering over the gap.
 func ApplicableSurfaces(rule ConditionalRule, exposed map[Surface][]string) []Surface {
+	fields := SurfaceApplicabilityFields(rule)
 	var out []Surface
 	for _, s := range allSurfaces {
-		if surfaceExposesAllFields(exposed[s], rule.Fields) {
+		if surfaceExposesAllFields(exposed[s], fields) {
 			out = append(out, s)
 		}
 	}
 	return out
+}
+
+// SurfaceApplicabilityFields returns the field set ApplicableSurfaces uses
+// to derive which surfaces rule composes onto: rule.SurfaceFields when
+// declared, otherwise rule.Fields (the fallback that keeps every rule
+// without a SurfaceFields override behaving exactly as before). Exported so
+// a caller that must build an `exposed` map or otherwise mirror
+// ApplicableSurfaces' resolution (e.g. a conformance check scanning live
+// source for which fields a surface actually carries) derives it from the
+// SAME field set ApplicableSurfaces will check, rather than hand-duplicating
+// the SurfaceFields-vs-Fields fallback.
+func SurfaceApplicabilityFields(rule ConditionalRule) []string {
+	if len(rule.SurfaceFields) > 0 {
+		return rule.SurfaceFields
+	}
+	return rule.Fields
 }
 
 // surfaceExposesAllFields reports whether every field in ruleFields is

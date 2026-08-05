@@ -119,6 +119,16 @@ func checkJSONSchemaTagSurface(t *testing.T, rule surfaces.ConditionalRule) {
 	if want == "" {
 		want = rule.Sentence
 	}
+	// applicabilityFields is SurfaceFields when the rule declares an
+	// override, otherwise Fields — the SAME field set surfaces.
+	// ApplicableSurfaces checks (surfaces.SurfaceApplicabilityFields). Using
+	// plain rule.Fields here would re-diverge this hand-duplicated check
+	// from the production resolution logic exactly the way the WR-01 bug
+	// did: a struct that merely carries a shared/embedded field (e.g.
+	// storeArgs.Category, promoted onto scheduleArgs too) would count as
+	// "matched" even when it doesn't carry the OTHER fields (e.g.
+	// not_before/not_after) that actually distinguish the enforcing surface.
+	applicabilityFields := surfaces.SurfaceApplicabilityFields(rule)
 
 	// unionExposed is every field ANY configured arg struct exposes — the
 	// jsonschema_tag surface's COMPLETE exposed field set (D-08's flat
@@ -131,19 +141,19 @@ func checkJSONSchemaTagSurface(t *testing.T, rule surfaces.ConditionalRule) {
 	for _, typ := range jsonschemaArgStructs {
 		unionExposed = append(unionExposed, jsonschemaExposedFields(typ)...)
 	}
-	if !surfaceExposesAll(unionExposed, rule.Fields) {
+	if !surfaceExposesAll(unionExposed, applicabilityFields) {
 		return
 	}
 
 	matched := 0
 	for name, typ := range jsonschemaArgStructs {
 		structFields := jsonschemaExposedFields(typ)
-		if !surfaceExposesAll(structFields, rule.Fields) {
+		if !surfaceExposesAll(structFields, applicabilityFields) {
 			continue // this specific struct doesn't carry every field the rule names
 		}
 		matched++
 		found := false
-		for _, field := range rule.Fields {
+		for _, field := range applicabilityFields {
 			tag, ok := jsonschemaTagFor(typ, field)
 			if !ok {
 				continue // this field carries no jsonschema tag at all — not this field's job
@@ -164,6 +174,10 @@ func checkJSONSchemaTagSurface(t *testing.T, rule surfaces.ConditionalRule) {
 
 func checkMCPDescriptionSurface(t *testing.T, rule surfaces.ConditionalRule, tools []*mcp.Tool) {
 	t.Helper()
+	// applicabilityFields mirrors checkJSONSchemaTagSurface's — see its
+	// comment for why plain rule.Fields would re-diverge this check from
+	// surfaces.ApplicableSurfaces.
+	applicabilityFields := surfaces.SurfaceApplicabilityFields(rule)
 
 	// unionExposed mirrors checkJSONSchemaTagSurface's pre-check, built from
 	// the REAL registered tool set instead of the hardcoded struct map: a
@@ -173,13 +187,13 @@ func checkMCPDescriptionSurface(t *testing.T, rule surfaces.ConditionalRule, too
 	for _, tool := range tools {
 		unionExposed = append(unionExposed, toolExposedFields(tool)...)
 	}
-	if !surfaceExposesAll(unionExposed, rule.Fields) {
+	if !surfaceExposesAll(unionExposed, applicabilityFields) {
 		return
 	}
 
 	matched := 0
 	for _, tool := range tools {
-		if !surfaceExposesAll(toolExposedFields(tool), rule.Fields) {
+		if !surfaceExposesAll(toolExposedFields(tool), applicabilityFields) {
 			continue // this tool's own schema doesn't expose every field the rule names
 		}
 		matched++

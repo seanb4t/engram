@@ -42,10 +42,28 @@ type ConditionalRule struct {
 	// introduce a normalization hazard.
 	Sentence string
 	// Fields lists the argument/flag/field names this rule constrains, in
-	// declared order. D-08's surface-applicability normalizer derives which
-	// surfaces a rule binds from this list — never from a second, hand-kept
-	// declaration.
+	// declared order. It drives error-envelope attribution (conditionalErrf
+	// reports field=<Fields[0]>) and, for the common case, surface
+	// applicability too — see SurfaceFields below for when the two diverge.
 	Fields []string
+	// SurfaceFields, when non-empty, overrides Fields as the field set
+	// ApplicableSurfaces uses to derive WHICH surfaces this rule composes
+	// onto. It never affects error attribution — that stays Fields, always.
+	// The two diverge exactly when a field is shared via Go struct embedding
+	// across tools/commands with different semantics: Fields=["category"]
+	// alone can't distinguish "this tool's schema carries category" from
+	// "this tool actually enforces the rule", since category is promoted
+	// onto store_memory/schedule_memory/supersede_memory alike but the
+	// rejection only ever fires from schedule_memory's handler. Declaring
+	// SurfaceFields as the full field combination that ONLY the enforcing
+	// surface(s) expose (e.g. category plus the schedule-window fields,
+	// which storeArgs/supersedeArgs never carry) resolves applicability to
+	// just those surfaces, without touching the published field= attribution.
+	// Leave empty (the default) for every rule where Fields already
+	// correctly drives applicability — ApplicableSurfaces falls back to
+	// Fields when SurfaceFields is empty, so declaring nothing here is a
+	// no-op, not an opt-out.
+	SurfaceFields []string
 	// Hint is the remediation hint code this rule maps to on the MCP/CLI
 	// error envelope, as a plain string (see the type doc for why it is not
 	// internal/server.HintCode).
@@ -125,8 +143,20 @@ var rules = []ConditionalRule{
 	{
 		ID:       RuleDiscoveryNotSchedulable,
 		Sentence: "discovery is not schedulable; use store_discovery",
-		Fields:   []string{"category"},
-		Hint:     "not_applicable",
+		// Fields stays ["category"] — the field the rejection actually
+		// attributes on the error envelope (field=category) — even though
+		// category is shared, via Go struct embedding, across
+		// store_memory/schedule_memory/supersede_memory's arg structs alike.
+		Fields: []string{"category"},
+		// SurfaceFields adds the schedule-window fields so applicability
+		// resolves to ONLY the surfaces exposing category AND not_before AND
+		// not_after together — that combination exists on scheduleArgs (and
+		// ScheduleMemoryRequest) exclusively; storeArgs/supersedeArgs (and
+		// StoreMemoryRequest) carry category alone, so they correctly drop
+		// out of ApplicableSurfaces for this rule instead of being told a
+		// rejection they never raise.
+		SurfaceFields: []string{"category", "not_before", "not_after"},
+		Hint:          "not_applicable",
 	},
 	{
 		ID:       RuleWindowOrdering,
@@ -168,11 +198,12 @@ func RuleByID(id string) (ConditionalRule, bool) {
 }
 
 // ValidateRules rejects the declared registry if it has an empty ID, an
-// empty Sentence, an empty Fields slice, a duplicate ID, a non-ASCII byte
-// anywhere in a Sentence, or any pair of rules where one Sentence is a
-// substring of another. internal/surfacesgen calls this before writing
-// anything, so a malformed declaration fails the generator rather than
-// silently resolving to zero surfaces or producing an ambiguous text match.
+// empty Sentence, an empty Fields slice, an empty-string entry in
+// SurfaceFields (when declared), a duplicate ID, a non-ASCII byte anywhere
+// in a Sentence, or any pair of rules where one Sentence is a substring of
+// another. internal/surfacesgen calls this before writing anything, so a
+// malformed declaration fails the generator rather than silently resolving
+// to zero surfaces or producing an ambiguous text match.
 func ValidateRules() error {
 	return validateRuleSet(rules)
 }
@@ -191,6 +222,14 @@ func validateRuleSet(set []ConditionalRule) error {
 		}
 		if len(r.Fields) == 0 {
 			return fmt.Errorf("surfaces: rule %q has empty Fields", r.ID)
+		}
+		for _, f := range r.SurfaceFields {
+			if f == "" {
+				return fmt.Errorf("surfaces: rule %q has an empty SurfaceFields entry", r.ID)
+			}
+			if NormalizeField(f) == "" {
+				return fmt.Errorf("surfaces: rule %q has a SurfaceFields entry %q that normalizes to empty", r.ID, f)
+			}
 		}
 		if seenIDs[r.ID] {
 			return fmt.Errorf("surfaces: duplicate rule ID %q", r.ID)

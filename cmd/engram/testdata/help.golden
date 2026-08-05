@@ -165,7 +165,7 @@ Usage:
 
 Flags:
       --base-dir string     base directory
-      --category string     category: one of decision, preference, convention, gotcha; discovery is not schedulable; use store_discovery
+      --category string     category: one of decision, preference, convention, gotcha
       --content string      memory content (required)
   -h, --help                help for store
       --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)

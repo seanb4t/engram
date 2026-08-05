@@ -217,6 +217,54 @@ func TestEveryRuleResolvesToNonEmptySurfaceSet(t *testing.T) {
 	}
 }
 
+// TestDiscoveryNotSchedulableExcludesCategoryOnlySurfaces is WR-01's
+// regression proof: discovery-not-schedulable's Fields alone (["category"])
+// would resolve applicable on ANY surface merely carrying category — which
+// is every surface store_memory's and supersede_memory's arg structs expose
+// too, via storeArgs.Category's Go-embedding promotion, even though neither
+// tool enforces this rule. The declared SurfaceFields override
+// (["category", "not_before", "not_after"]) must resolve this rule's
+// applicability to ONLY a surface carrying that full combination — the one
+// scheduleArgs/ScheduleMemoryRequest actually expose — and must NOT resolve
+// on a surface exposing category alone (store_memory's/supersede_memory's
+// own field set, mirrored below).
+func TestDiscoveryNotSchedulableExcludesCategoryOnlySurfaces(t *testing.T) {
+	rule, ok := RuleByID(RuleDiscoveryNotSchedulable)
+	if !ok {
+		t.Fatal("RuleDiscoveryNotSchedulable not found in registry")
+	}
+	if len(rule.SurfaceFields) == 0 {
+		t.Fatal("RuleDiscoveryNotSchedulable declares no SurfaceFields — the applicability override this test guards is missing")
+	}
+
+	// categoryOnly mirrors store_memory's/supersede_memory's own exposed
+	// field set: category is present (via the shared storeArgs embed), but
+	// not_before/not_after never are — neither tool schedules anything.
+	categoryOnly := map[Surface][]string{
+		SurfaceMCPDescription: {"content", "scope", "source", "category", "tags"},
+		SurfaceJSONSchemaTag:  {"content", "scope", "source", "category", "tags"},
+		SurfaceCobraUsage:     {"content", "scope", "source", "category", "tags"},
+	}
+	got := ApplicableSurfaces(rule, categoryOnly)
+	if len(got) != 0 {
+		t.Errorf("ApplicableSurfaces(discovery-not-schedulable, category-only exposed set) = %v, want empty — a tool exposing category alone does not enforce this rule", got)
+	}
+
+	// categoryAndWindow mirrors scheduleArgs'/ScheduleMemoryRequest's own
+	// exposed field set: category plus both window fields — the ONLY
+	// combination that actually raises this rejection (parseWindow).
+	categoryAndWindow := map[Surface][]string{
+		SurfaceMCPDescription: {"content", "scope", "source", "category", "not_before", "not_after"},
+		SurfaceJSONSchemaTag:  {"content", "scope", "source", "category", "not_before", "not_after"},
+	}
+	got = ApplicableSurfaces(rule, categoryAndWindow)
+	for _, want := range []Surface{SurfaceMCPDescription, SurfaceJSONSchemaTag} {
+		if !containsSurface(got, want) {
+			t.Errorf("ApplicableSurfaces(discovery-not-schedulable, category+window exposed set) = %v, want to contain %s", got, want)
+		}
+	}
+}
+
 // TestScopeAndPagingRulesResolveOnCobraAndProto pins the narrower guarantee
 // the old TestEveryRuleResolvesToNonEmptySurfaceSet used to assert for every
 // rule: for the two rules that DO have a CLI surface (scope-required and the

@@ -69,6 +69,27 @@ func TestValidateRulesCatchesEmptyFieldsAndEmptySentence(t *testing.T) {
 	}
 }
 
+// TestValidateRulesCatchesEmptySurfaceFieldsEntry pins ValidateRules'
+// SurfaceFields check: a declared SurfaceFields entry that is empty (or
+// normalizes to empty) fails validation rather than silently producing an
+// applicability derivation that can never match any real surface.
+func TestValidateRulesCatchesEmptySurfaceFieldsEntry(t *testing.T) {
+	cases := []struct {
+		name string
+		rule ConditionalRule
+	}{
+		{"empty string entry", ConditionalRule{ID: "r", Sentence: "x is required", Fields: []string{"x"}, SurfaceFields: []string{"x", ""}, Hint: "conditional_required"}},
+		{"entry normalizing to empty", ConditionalRule{ID: "r", Sentence: "x is required", Fields: []string{"x"}, SurfaceFields: []string{"--"}, Hint: "conditional_required"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := validateRuleSet([]ConditionalRule{tc.rule}); err == nil {
+				t.Errorf("validateRuleSet([]ConditionalRule{%+v}) = nil, want an error", tc.rule)
+			}
+		})
+	}
+}
+
 // TestValidateRulesCatchesDuplicateIDAndSubstring pins the two multi-rule
 // checks against throwaway registry copies.
 func TestValidateRulesCatchesDuplicateIDAndSubstring(t *testing.T) {

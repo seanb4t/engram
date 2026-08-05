@@ -61,14 +61,21 @@ func exposedFileFields(t *testing.T, path string, fields []string) []string {
 // buildProseExposed derives rule's exposed field set on the docs-site,
 // skill, and proto-comment surfaces from the REAL prose/proto trees on
 // disk — never a declared per-rule list — so ApplicableSurfaces resolves
-// applicability from what these files actually mention.
+// applicability from what these files actually mention. It scans for
+// SurfaceApplicabilityFields(rule) — SurfaceFields when the rule declares
+// an override, otherwise Fields — the SAME field set ApplicableSurfaces
+// itself checks; scanning for plain Fields here while ApplicableSurfaces
+// checks SurfaceFields would silently under-populate this map and make a
+// rule with a SurfaceFields override resolve empty on every prose surface,
+// even where its anchor is correctly placed.
 func buildProseExposed(t *testing.T, rule ConditionalRule) map[Surface][]string {
 	t.Helper()
+	fields := SurfaceApplicabilityFields(rule)
 	exposed := map[Surface][]string{}
 	for _, target := range proseTargets {
-		exposed[target.surface] = append(exposed[target.surface], exposedFileFields(t, target.path, rule.Fields)...)
+		exposed[target.surface] = append(exposed[target.surface], exposedFileFields(t, target.path, fields)...)
 	}
-	exposed[SurfaceProtoComment] = exposedFileFields(t, protoFile, rule.Fields)
+	exposed[SurfaceProtoComment] = exposedFileFields(t, protoFile, fields)
 	return exposed
 }
 

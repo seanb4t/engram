@@ -478,7 +478,7 @@
           "name": "category",
           "type": "string",
           "default": "",
-          "usage": "category: one of decision, preference, convention, gotcha; discovery is not schedulable; use store_discovery"
+          "usage": "category: one of decision, preference, convention, gotcha"
         },
         {
           "name": "content",
