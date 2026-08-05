@@ -167,7 +167,14 @@ func buildCatalog(root *cobra.Command) catalogDoc {
 // (since a caller may pass those on any subcommand too).
 func collectFlags(root, cmd *cobra.Command) []catalogFlag {
 	seen := make(map[string]bool)
-	var flags []catalogFlag
+	// Non-nil by construction so a flagless command always serializes as
+	// "flags": [] and never "flags": null. Two reasons this matters:
+	// a caller parsing the catalog should not have to handle both shapes
+	// for the same fact, and cobra registers a command's own -h/--help
+	// lazily inside execute() — so within the shared cmd/engram test
+	// binary, whether a flagless command had been executed earlier decided
+	// nil-vs-empty and made TestCatalogGolden depend on test run order.
+	flags := []catalogFlag{}
 	add := func(f *pflag.Flag) {
 		if f.Hidden || seen[f.Name] {
 			return
