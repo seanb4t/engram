@@ -184,6 +184,25 @@ describing it, not the contract itself.
 engram | jq '.commands[] | select(.name == "search")'
 ```
 
+### Blast radius
+
+Every command in the catalog carries a `blast_radius` object:
+
+```json
+"blast_radius": {
+  "read_only": true,
+  "destructive": false,
+  "idempotent": true,
+  "open_world": false
+}
+```
+
+This is the same taxonomy the [MCP tool annotations](/reference/tools/#blast-radius) publish — `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint` — read from the same table, so an agent that has already learned to branch on one lane's hints applies the identical logic on the other. The JSON keys are snake_case rather than the MCP wire's camelCase, so the two forms rhyme without being byte-identical.
+
+Each hint takes the conservative stance: a value is `true` only if it holds under **every** valid invocation of that command, not merely the common case. `migrate-remap-owner`, for example, is `"destructive": true` because its `--from <value>` form can overwrite an existing, non-empty owner — even though its `--from-missing` form only ever fills an empty one.
+
+This classification is a discoverability aid, not an authorization mechanism — it tells an agent what to expect, it does not gate what the agent is allowed to run.
+
 ## See also
 
 - [Configuration](/guides/configure/) — `connect.headless` and the other
