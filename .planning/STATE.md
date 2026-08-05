@@ -5,15 +5,15 @@ milestone_name: Curation & Self-Evidence
 current_phase: 02
 current_phase_name: interface-discoverability
 status: executing
-stopped_at: Completed 02-04-PLAN.md
-last_updated: "2026-08-05T21:51:12.869Z"
+stopped_at: Completed 02-05-PLAN.md
+last_updated: "2026-08-05T22:19:51.218Z"
 last_activity: 2026-08-04
 last_activity_desc: Phase 02 execution started
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 15
-  completed_plans: 13
+  completed_plans: 14
 ---
 
 # Project State
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.
 ## Current Position
 
 Phase: 02 (interface-discoverability) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-08-04 — Phase 02 execution started
 
@@ -137,6 +137,7 @@ milestone needs in working memory.
 - [Phase ?]: 02-04: delete_memory/delete_all/supersede_memory classified idempotent (REST-DELETE-style and single-live-head-structural reasoning respectively, not idempotency_key)
 - [Phase ?]: 02-04: set_visibility classified non-destructive (diverges from update_memory) since it only flips a reversible boolean flag, content/tags untouched
 - [Phase ?]: 02-04: tool-blast-radius is a new hand-authored anchor region in docs-site/reference/tools.md, not tied to a surfaces.ConditionalRule — proves WriteRegion/ReadRegion generalize beyond the rule registry
+- [Phase ?]: 02-05: serve/migrate-set-owner classified idempotent=false/true respectively (found unclassified live, fixed the shared table); cobra lazily registers -h/--help only inside a command's own execute() path, a cross-test determinism hazard on the shared rootCmd singleton, closed asymmetrically (forced for help golden, stripped for catalog golden)
 
 ### Blockers/Concerns
 
@@ -160,8 +161,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-05T21:51:12.860Z
-Stopped at: Completed 02-04-PLAN.md
+Last session: 2026-08-05T22:19:51.211Z
+Stopped at: Completed 02-05-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -255,6 +256,7 @@ Resume file: None
 | Phase 02 P01 | 55min | 2 tasks | 14 files |
 | Phase 02 P03 | 90min | 3 tasks | 22 files |
 | Phase 02 P04 | ~15min | 2 tasks | 7 files |
+| Phase 02 P05 | ~40min | 3 tasks | 11 files |
 
 ## Operator Next Steps
 

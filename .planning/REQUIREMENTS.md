@@ -70,7 +70,7 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
 - [x] **REQ-mcp-tool-annotations**: Every MCP tool declares `readOnlyHint` / `destructiveHint` /
   `idempotentHint`, so an agent can classify a tool's blast radius before calling it.
 
-- [ ] **REQ-help-output-pinned**: Every command's `--help` output is pinned by a golden-file test,
+- [x] **REQ-help-output-pinned**: Every command's `--help` output is pinned by a golden-file test,
   so an unreviewed change to the interface's primary teaching surface fails CI.
 
 ### Spine Curation — Structural (CLI)
@@ -174,7 +174,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-conditional-rules-stated | Phase 2 | Complete |
 | REQ-surface-conformance-gate | Phase 2 | Complete |
 | REQ-mcp-tool-annotations | Phase 2 | Complete |
-| REQ-help-output-pinned | Phase 2 | Pending |
+| REQ-help-output-pinned | Phase 2 | Complete |
 | REQ-spine-scan | Phase 3 | Pending |
 | REQ-citation-drift-verify | Phase 3 | Pending |
 | REQ-near-duplicate-report | Phase 3 | Pending |

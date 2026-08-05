@@ -289,13 +289,13 @@ next thing this audit has to retrofit.
 
 4. Any unreviewed change to a command's `--help` output fails CI via a golden-file test.
 
-**Plans:** 4/6 plans executed
+**Plans:** 5/6 plans executed
 
 - [x] 02-01-PLAN.md
 - [x] 02-02-PLAN.md
 - [x] 02-03-PLAN.md
 - [x] 02-04-PLAN.md
-- [ ] 02-05-PLAN.md
+- [x] 02-05-PLAN.md
 - [ ] 02-06-PLAN.md
 
 ---
