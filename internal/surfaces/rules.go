@@ -50,6 +50,13 @@ type ConditionalRule struct {
 	// error envelope, as a plain string (see the type doc for why it is not
 	// internal/server.HintCode).
 	Hint string
+	// TagForm is this rule's compressed statement for the ONE surface that
+	// cannot reference Sentence directly: a Go struct's jsonschema tag
+	// (D-03's stated exception — struct tags are literal-only, so this
+	// text is necessarily re-typed here rather than referenced). Leave
+	// empty when no compressed form exists; a jsonschema-tag surface check
+	// then compares against Sentence itself instead.
+	TagForm string
 }
 
 // RuleScopeRequiredUnlessCrossSpine is the ID of the one rule this phase's
@@ -67,6 +74,11 @@ var rules = []ConditionalRule{
 		Sentence: "scope is required unless cross_spine is true",
 		Fields:   []string{"scope", "cross_spine"},
 		Hint:     "conditional_required",
+		// Matches the live jsonschema tag on searchArgs.Scope/listArgs.Scope/
+		// searchDiscoveryArgs.Scope (tools.go) verbatim — this plan's
+		// conformance gate reads this value rather than a second hand-typed
+		// copy in a test file.
+		TagForm: "required unless cross_spine",
 	},
 }
 
