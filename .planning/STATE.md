@@ -6,7 +6,7 @@ current_phase: 3
 current_phase_name: Spine Curation — Structural (CLI)
 status: planning
 stopped_at: Phase 3 context gathered
-last_updated: "2026-08-06T15:44:17.195Z"
+last_updated: "2026-08-06T15:52:57.207Z"
 last_activity: 2026-08-05
 last_activity_desc: Phase 02 complete, transitioned to Phase 3
 progress:
@@ -159,6 +159,7 @@ milestone needs in working memory.
 
 - Phase 1 edited: edited fields: requirements, success_criteria (D-04 client-config scope expansion)
 - Phase 2 edited: edited fields: success_criteria (added D-05 six-surface scope, D-06/D-07 generated anchored regions + one drift job, D-08 derived applicability + zero-surface guard, D-10 openWorldHint, D-11 catalog blast-radius parity); applied under --force since phase is complete
+- Phase 3 edited: scope expansions D-04 (prune-expired preview-by-default hard flip), D-12 (archive/restore verbs), D-13 (--output tier-wide backfill); +REQ-destructive-preview-default, +REQ-operator-output-flag
 
 ## Session Continuity
 

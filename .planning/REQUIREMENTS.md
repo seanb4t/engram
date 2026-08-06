@@ -99,10 +99,24 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
   candidate list, and refuses to run unless rule `7smp8vy9hr`'s extract-before-delete ordering is
   provably satisfied.
 
-- [ ] **REQ-archive-tier**: A record can be archived — removed from recall but retained and
-  restorable — as a state distinct from both supersession's soft-hide and purge's irreversible
-  delete. *Open at definition time: whether this needs a genuine fourth record state or can extend
-  `prune-expired`'s existing soft-hide shape. To be resolved in phase planning, not mid-build.*
+- [ ] **REQ-archive-tier**: A record can be archived and restored — removed from recall but
+  retained — through `engram spine-review archive` / `restore`, as a state distinct from both
+  supersession's soft-hide and purge's irreversible delete. *Open at definition time: whether this
+  needs a genuine fourth record state or can extend `prune-expired`'s existing soft-hide shape. To
+  be resolved in phase planning, not mid-build.*
+
+- [ ] **REQ-destructive-preview-default**: Every operator command classified destructive by the
+  blast-radius table previews by default and mutates only under an explicit `--apply` — membership
+  derived from that table, never declared per command, so a future destructive command inherits the
+  guard automatically. `prune-expired`, which today deletes with no preview flag at all, hard-flips
+  to this contract with a breaking-change note in
+  `docs-site/src/content/docs/guides/upgrade.md`.
+
+- [ ] **REQ-operator-output-flag**: `--output json|text` with TTY auto-detection is accepted by
+  `spine-review` and backfilled across all five existing operator commands (`reindex`,
+  `migrate-remap-owner`, `prune-expired`, `summarize-missing`, `backfill-short-ids`), so an agent
+  driving the headless CLI lane gets machine-readable reports. The backfill adopts `--output` only
+  and must not incidentally unify the deliberate client-vs-operator `--timeout` divergence.
 
 ### Spine Curation — Semantic (Skill)
 

@@ -312,14 +312,17 @@ next thing this audit has to retrofit.
 
 ### Phase 3: Spine Curation — Structural (CLI)
 
-**Goal:** An operator can inventory, verify, consolidate-report, and safely dispose of a memory
-spine's structural problems — drifted citations, near-duplicates, purge-eligible records, an
-archive tier — through `engram spine-review`, the sixth instance of the existing Subject-less
-operator tier (`reindex`/`migrate-remap-owner`/`prune-expired`/`summarize-missing`/
-`backfill-short-ids`), never by composing the Subject-gated `Search`/`List` and never via a new
-authorization path.
+**Goal:** An operator can inventory, verify, consolidate-report, archive, restore, and safely
+dispose of a memory spine's structural problems — drifted citations, near-duplicates,
+purge-eligible records, an archive tier — through `engram spine-review`, the sixth instance of the
+existing Subject-less operator tier (`reindex`/`migrate-remap-owner`/`prune-expired`/
+`summarize-missing`/`backfill-short-ids`), never by composing the Subject-gated `Search`/`List` and
+never via a new authorization path. Shipping it safely also settles two tier-wide contracts
+`spine-review` cannot own alone: the destructive operator tier becomes uniformly preview-by-default
+under an explicit `--apply` (a breaking change to `prune-expired`), and `--output json|text` is
+backfilled across all five existing operator commands so every report is machine-readable.
 
-**Requirements:** REQ-spine-scan, REQ-citation-drift-verify, REQ-near-duplicate-report, REQ-purge-extract-gated, REQ-archive-tier
+**Requirements:** REQ-spine-scan, REQ-citation-drift-verify, REQ-near-duplicate-report, REQ-purge-extract-gated, REQ-archive-tier, REQ-destructive-preview-default, REQ-operator-output-flag
 
 **Depends on:** Phase 1 (spine-review's own error/exit-code handling must be written against the
 resolved taxonomy, not retrofitted onto an already-shipped destructive `purge` verb), Phase 2 (the
@@ -341,9 +344,20 @@ conditional-rule documentation standard should exist before this phase's help te
    re-derives eligibility fresh at that moment (never acting on a stale candidate list), and
    refuses to run unless rule `7smp8vy9hr`'s extract-before-delete ordering is provably satisfied.
 
-5. A record can be archived — removed from recall but retained and restorable — as a state an
-   operator can observe as distinct from both a superseded record's soft-hide and a purged
-   record's irreversible delete.
+5. A record can be archived and restored through `engram spine-review archive` / `restore` —
+   removed from recall but retained — as a state an operator can observe as distinct from both a
+   superseded record's soft-hide and a purged record's irreversible delete.
+
+6. Every operator command the blast-radius table classifies destructive — `spine-review purge` and
+   `prune-expired` alike — previews by default and mutates only under an explicit `--apply`, with
+   membership derived from that table rather than declared per command. `prune-expired`'s flip is a
+   breaking change documented in `docs-site/src/content/docs/guides/upgrade.md` alongside Phase 1's
+   exit-code migration.
+
+7. `--output json|text` with TTY auto-detection is accepted by `spine-review` and by all five
+   existing operator commands (`reindex`, `migrate-remap-owner`, `prune-expired`,
+   `summarize-missing`, `backfill-short-ids`), without disturbing the deliberate
+   client-vs-operator `--timeout` divergence (client rejects `0`; operator treats `0` as disabled).
 
 **Research flag:** needs research at plan time. `REQ-archive-tier` is open at definition: whether
 archive needs a genuine fourth record state or can extend `prune-expired`'s existing soft-hide
