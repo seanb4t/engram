@@ -263,16 +263,17 @@ The server logs a startup warning when owner-less records exist. Claim them with
 
 ```sh
 # Backfill pre-isolation records that have no owner set
-engram migrate-remap-owner --from-missing --to <owner-claim-value>
+engram migrate-remap-owner --from-missing --to <owner-claim-value> --apply
 
 # Re-stamp records that were written when owner was derived from sub
 # (e.g. after switching ENGRAM_OWNER_CLAIM from "sub" to "email")
-engram migrate-remap-owner --from <old-sub-value> --to <email-value>
+engram migrate-remap-owner --from <old-sub-value> --to <email-value> --apply
 ```
 
-Both forms accept `--dry-run` to preview changes and `--timeout` to cap the
-operation. The command is **idempotent** — re-running when no matching records
-remain reports `0`.
+Both forms preview by default — drop `--apply` from either command above to
+see the eligible count without writing anything — and accept `--timeout` to
+cap the operation. The command is **idempotent** — re-running when no
+matching records remain reports `0`.
 
 > **Note:** changing `ENGRAM_OWNER_CLAIM` (including upgrading from an older
 > binary that always used `sub`) invalidates existing web-console session
@@ -320,12 +321,12 @@ rollout **migration**, not just a config change, because the owner string
 
   ```sh
   # sub owner "svc-1" -> encoded target "3:sub:5:svc-1"
-  engram migrate-remap-owner --from svc-1 --to 3:sub:5:svc-1 --dry-run
-  engram migrate-remap-owner --from svc-1 --to 3:sub:5:svc-1
+  engram migrate-remap-owner --from svc-1 --to 3:sub:5:svc-1              # preview (no --apply)
+  engram migrate-remap-owner --from svc-1 --to 3:sub:5:svc-1 --apply
 
   # client_id owner "app42" -> encoded target "9:client_id:5:app42"
-  engram migrate-remap-owner --from app42 --to 9:client_id:5:app42 --dry-run
-  engram migrate-remap-owner --from app42 --to 9:client_id:5:app42
+  engram migrate-remap-owner --from app42 --to 9:client_id:5:app42        # preview (no --apply)
+  engram migrate-remap-owner --from app42 --to 9:client_id:5:app42 --apply
   ```
 
   `email`-owned records need **no** migration — a winning `email` claim is
@@ -335,8 +336,10 @@ rollout **migration**, not just a config change, because the owner string
   `migrate-remap-owner` matches and rewrites **every** record carrying the
   exact `--from` owner string together, in one non-transactional pass — it
   cannot distinguish which claim originally produced that value if historical
-  claim configurations collided. Always run with `--dry-run` first and take a
-  backup of your Qdrant collection before applying the mapping.
+  claim configurations collided. It previews by default and writes nothing
+  until you pass `--apply` (see the [upgrade guide](/guides/upgrade/)); review
+  the preview count and take a backup of your Qdrant collection before
+  applying the mapping.
   :::
 
 Pre-1.0 self-hosted deployments that have never set `ENGRAM_OWNER_CLAIM` to a

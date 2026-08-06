@@ -64,6 +64,52 @@ func (s *Store) scrollAllPoints(ctx context.Context, filter *qdrant.Filter, with
 	}
 }
 
+// expiredFilter is the ONE not_after range constructor PruneExpired's
+// deletion sweep reads — CountExpired's preview count and PruneExpired's
+// applied delete both build their filter through this single call site, so
+// the two numbers can never silently drift onto two independently
+// constructed conditions (03-03-PLAN.md D-04's "make divergence
+// unrepresentable" requirement). Plan 03-06 appends an archived_at IsEmpty
+// condition to this SAME site when it lands — extend the Must slice here
+// rather than adding a second constructor; that plan's acceptance grep spans
+// both this file and store.go for exactly that reason.
+func expiredFilter(before time.Time) *qdrant.Filter {
+	return &qdrant.Filter{Must: []*qdrant.Condition{
+		qdrant.NewRange("not_after", &qdrant.Range{Lt: qdrant.PtrOf(float64(before.Unix()))}),
+	}}
+}
+
+// CountExpired returns the number of records whose not_after is strictly
+// before the given instant — the exact Count PruneExpired's applied path
+// issues, extracted here so the preview path and the applied path read the
+// SAME number from the SAME call, never two independently maintained counts
+// that merely happen to agree on a fixture. Carries the same best-effort
+// caveat PruneExpired's own doc comment states: a concurrent write between
+// this Count and any later Delete can make the two numbers drift.
+func (s *Store) CountExpired(ctx context.Context, before time.Time) (n uint64, err error) {
+	ctx, span := tracer.Start(ctx, "store.CountExpired",
+		trace.WithAttributes(attribute.Int64("engram.before", before.Unix())))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "CountExpired", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int64("engram.result_count", int64(n)))
+		}
+	}()
+
+	n, err = s.client.Count(ctx, &qdrant.CountPoints{
+		CollectionName: s.collection, Filter: expiredFilter(before), Exact: qdrant.PtrOf(true),
+	})
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 // SpineScanOptions configures ScanSpine.
 type SpineScanOptions struct {
 	// Scope restricts the scan to one scope; empty means every scope.

@@ -2099,12 +2099,12 @@ func (s *Store) PruneExpired(ctx context.Context, before time.Time) (deleted uin
 		}
 	}()
 
-	f := &qdrant.Filter{Must: []*qdrant.Condition{
-		qdrant.NewRange("not_after", &qdrant.Range{Lt: qdrant.PtrOf(float64(before.Unix()))}),
-	}}
-	n, err := s.client.Count(ctx, &qdrant.CountPoints{
-		CollectionName: s.collection, Filter: f, Exact: qdrant.PtrOf(true),
-	})
+	// The Count half IS CountExpired (spine.go) — not a second, independently
+	// built Count — so the preview number cmd/engram's prune-expired --output
+	// reports without --apply and the number reported here are the same
+	// function called twice, never two constructions that merely happen to
+	// agree on a fixture.
+	n, err := s.CountExpired(ctx, before)
 	if err != nil {
 		return 0, err
 	}
@@ -2113,7 +2113,7 @@ func (s *Store) PruneExpired(ctx context.Context, before time.Time) (deleted uin
 	}
 	if _, err := s.client.Delete(ctx, &qdrant.DeletePoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
-		Points: qdrant.NewPointsSelectorFilter(f),
+		Points: qdrant.NewPointsSelectorFilter(expiredFilter(before)),
 	}); err != nil {
 		return 0, err
 	}

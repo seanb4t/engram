@@ -151,10 +151,10 @@
       "summary": "Re-stamp record owner across the collection (sub-\u003eemail, email-\u003eemail, owner-less, or anonymous bucket)",
       "flags": [
         {
-          "name": "dry-run",
+          "name": "apply",
           "type": "bool",
           "default": "false",
-          "usage": "count matching records without writing"
+          "usage": "a destructive operator command previews by default and mutates only when apply is set"
         },
         {
           "name": "from",
@@ -234,6 +234,12 @@
       "name": "prune-expired",
       "summary": "Delete memories whose validity window (not_after) has lapsed",
       "flags": [
+        {
+          "name": "apply",
+          "type": "bool",
+          "default": "false",
+          "usage": "a destructive operator command previews by default and mutates only when apply is set"
+        },
         {
           "name": "older-than",
           "type": "duration",

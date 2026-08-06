@@ -127,8 +127,9 @@ func TestMigrateRemapDryRunJSONDistinguishesPreviewFromApplied(t *testing.T) {
 	}
 }
 
-// TestMigrateSetOwnerSummaryUnchanged and TestMigrateRemapSummaryUnchanged
-// pin the pure text formatters against the pre-backfill literal sentences.
+// TestMigrateSetOwnerSummaryUnchanged pins migrate-set-owner's pure text
+// formatter against its pre-backfill literal sentence — migrate-set-owner is
+// not classified destructive and is unaffected by this plan's --apply flip.
 func TestMigrateSetOwnerSummaryUnchanged(t *testing.T) {
 	got := migrateSetOwnerSummary("alice", 3)
 	want := "stamped owner=alice onto 3 owner-less record(s)"
@@ -137,8 +138,12 @@ func TestMigrateSetOwnerSummaryUnchanged(t *testing.T) {
 	}
 }
 
-func TestMigrateRemapSummaryUnchanged(t *testing.T) {
-	if got, want := migrateRemapSummary(3, "alice", true), "[dry-run] would remap 3 record(s) to owner=alice"; got != want {
+// TestMigrateRemapSummary pins migrate-remap-owner's pure text formatter
+// against its NEW (03-03-PLAN.md D-02/D-04) preview/applied sentences — the
+// preview wording changed from the pre-plan "[dry-run] would remap ..." to
+// name --apply explicitly, since --dry-run no longer exists on this command.
+func TestMigrateRemapSummary(t *testing.T) {
+	if got, want := migrateRemapSummary(3, "alice", true), "preview: 3 record(s) eligible to remap to owner=alice; re-run with --apply to remap"; got != want {
 		t.Errorf("migrateRemapSummary(3, \"alice\", true) = %q, want %q", got, want)
 	}
 	if got, want := migrateRemapSummary(3, "alice", false), "remapped 3 record(s) to owner=alice"; got != want {

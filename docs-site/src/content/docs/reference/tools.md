@@ -118,7 +118,8 @@ normally via `search_memory`/`list_memory`.
 | `not_after` | string | no | RFC3339; drop from recall at this time |
 
 Returns the scheduled record's `id` and `short_id`. At least one bound is required. Operators
-reclaim lapsed records with the `engram prune-expired [--older-than DUR]` CLI command.
+reclaim lapsed records with the `engram prune-expired --apply` CLI command (preview by default
+without `--apply`; add `--older-than DUR` for a grace period).
 
 ---
 

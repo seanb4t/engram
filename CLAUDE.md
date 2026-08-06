@@ -108,7 +108,8 @@ and/or `not_after` (RFC3339; expiry: dropped from recall at then). `list_schedul
 surfaces windowed records the recall gate is hiding (`state` = `scheduled` default
 | `expired` | `all`); active windowed records surface normally via
 `search_memory`/`list_memory`. Recall is gated; fetch-by-id (`get_memory`) is not.
-Operators reclaim lapsed records with `engram prune-expired [--older-than DUR]`.
+Operators reclaim lapsed records with `engram prune-expired --apply` (preview
+by default without `--apply`; add `--older-than DUR` for a grace period).
 
 Supersession: `supersede_memory` corrects a record without losing history. It takes
 the `store_memory` field set for the new/correcting record plus `supersedes` (the

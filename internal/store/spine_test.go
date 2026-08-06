@@ -204,3 +204,54 @@ func TestScanSpinePaginatesEveryPage(t *testing.T) {
 		t.Errorf("Owners = %d, want 2 (pagination and Subject-lessness proven together)", res.Owners)
 	}
 }
+
+// TestCountExpiredAndPruneExpiredAgree is the boundary-fixture backstop for
+// the structural "one filter, called twice" property expiredFilter/
+// CountExpired establish (03-03-PLAN.md D-04): a record exactly AT the
+// cutoff and one strictly PAST it. CountExpired's preview count and
+// PruneExpired's deleted count must agree for the IDENTICAL before instant —
+// the grep gate over expiredFilter/CountExpired's call sites is the primary
+// proof this can never drift; this fixture is the backstop, not the reverse,
+// since two independently drifted filters would still agree on most
+// fixtures and only diverge at an edge exactly like this one.
+func TestCountExpiredAndPruneExpiredAgree(t *testing.T) {
+	fixedNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	s := newSpineTestStore(t, "spine_count_expired_agree")
+	ctx := context.Background()
+	const scope = "spine_count_expired_agree_scope"
+
+	atCutoff := fixedNow
+	pastCutoff := fixedNow.Add(-time.Second)
+	futureCutoff := fixedNow.Add(time.Second)
+
+	seedSpineMemory(t, s, Memory{
+		ID: "f0000000-0000-0000-0000-000000000001", Content: "at cutoff", Scope: scope,
+		Category: "note", Owner: "owner-a", CreatedAt: fixedNow, NotAfter: &atCutoff,
+	})
+	seedSpineMemory(t, s, Memory{
+		ID: "f0000000-0000-0000-0000-000000000002", Content: "past cutoff", Scope: scope,
+		Category: "note", Owner: "owner-a", CreatedAt: fixedNow, NotAfter: &pastCutoff,
+	})
+	seedSpineMemory(t, s, Memory{
+		ID: "f0000000-0000-0000-0000-000000000003", Content: "not yet expired", Scope: scope,
+		Category: "note", Owner: "owner-a", CreatedAt: fixedNow, NotAfter: &futureCutoff,
+	})
+
+	count, err := s.CountExpired(ctx, fixedNow)
+	if err != nil {
+		t.Fatalf("CountExpired: %v", err)
+	}
+	// expiredFilter is Lt (strictly before): only "past cutoff" (fixedNow-1s)
+	// is < fixedNow; "at cutoff" (==fixedNow) is NOT strictly before it.
+	if count != 1 {
+		t.Fatalf("CountExpired(fixedNow) = %d, want 1 (only the strictly-past record)", count)
+	}
+
+	deleted, err := s.PruneExpired(ctx, fixedNow)
+	if err != nil {
+		t.Fatalf("PruneExpired: %v", err)
+	}
+	if deleted != count {
+		t.Errorf("PruneExpired(fixedNow) = %d, want %d (must equal CountExpired's count for the identical before)", deleted, count)
+	}
+}

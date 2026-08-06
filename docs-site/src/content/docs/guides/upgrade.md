@@ -220,6 +220,49 @@ fields" to "two or more fields"** to match the paging-trio case above — see
 the [error envelope reference](/reference/errors/#the-ten-hint-codes) for the
 updated wording. No code that already reads `field=` as a list is affected.
 
+### 9. `prune-expired` now previews by default; `--apply` performs the deletion
+
+Before this release, `engram prune-expired` deleted matching records
+immediately, with no confirmation step. It now previews: a bare invocation
+reports the number of eligible records and exits `0` without deleting
+anything. Pass `--apply` to perform the deletion — the only flag that does.
+
+No deprecation window was offered for this one: it is a safety default, and
+shipping a release that still deletes without `--apply` would leave the
+dangerous behavior live for one more cycle, which is exactly what this
+change exists to close.
+
+**Audited:** no `.github/` workflow, chart template, or CI caller invokes
+`prune-expired` — the only Helm CronJob runs `summarize-missing
+--all-scopes` (`charts/engram/templates/summarize-cronjob.yaml:23`), which
+this change does not touch. This flip has no in-repo consumer; it is
+documentation-only outside the binary itself.
+
+**Who should act:** any operator who scripts `engram prune-expired` and
+relies on it deleting. Add `--apply` to restore the previous behavior.
+
+### 10. `migrate-remap-owner --dry-run` is removed; `--apply` performs the mutation
+
+`migrate-remap-owner` is classified `destructive` in the blast-radius table
+(a `--from`/`--from-anon` call can overwrite an existing, non-empty owner
+value with no history retained), so it now follows the SAME preview-by-default
+contract as `prune-expired` (#9 above) rather than keeping its own
+`--dry-run` flag. A bare invocation previews the count of records it would
+remap and exits `0` without writing; `--apply` performs the remap.
+`--dry-run` no longer exists on this command — passing it now fails with an
+unknown-flag usage error (exit `2`), a loud failure rather than a silent
+behavior change.
+
+No deprecation shim (a `--dry-run` no-op alias) was offered either: shipping
+two ways to request a preview — `--dry-run` on one destructive command and
+`--apply`'s absence on the other — is exactly the "two ways to say one
+thing" ambiguity a single `--apply` contract across the destructive tier
+exists to remove.
+
+**Who should act:** any operator who scripts `migrate-remap-owner
+--dry-run`. Remove the flag — a bare invocation now previews by default.
+Add `--apply` to perform the remap.
+
 ### In-repo consumer audit
 
 REQ-exit-code-migration-safe requires this migration to be checked against

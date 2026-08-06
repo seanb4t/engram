@@ -85,9 +85,9 @@ var (
 	remapMissing bool
 	remapAnon    bool
 	remapTo      string
-	remapDryRun  bool
 	remapTimeout time.Duration
 	remapOutput  string
+	remapApply   bool
 )
 
 // buildRemapSource constructs the sealed store.OwnerRemapSource and runs the
@@ -128,47 +128,82 @@ func buildRemapSource(from string, missing, anon bool, to string) (store.OwnerRe
 	return src, nil
 }
 
+// migrateRemapOwnerCmd is classified Destructive in
+// internal/surfaces/toolclass.go (a --from/--from-anon call can overwrite an
+// existing, non-empty owner value with no history retained), so it is
+// registered through registerDestructive (destructive.go) rather than
+// assigning its own RunE: a bare invocation previews the eligible count and
+// writes nothing; --apply performs the remap. The --dry-run flag this
+// command carried before this plan is REMOVED, not deprecated — see the
+// upgrade guide.
 var migrateRemapOwnerCmd = &cobra.Command{
 	Use:   "migrate-remap-owner",
 	Short: "Re-stamp record owner across the collection (sub->email, email->email, owner-less, or anonymous bucket)",
-	RunE: func(cmd *cobra.Command, _ []string) error {
-		src, err := buildRemapSource(remapFrom, remapMissing, remapAnon, remapTo)
-		if err != nil {
-			// buildRemapSource already carries exitUsage (plan 01-04);
-			// return unchanged rather than double-classify.
-			return err
-		}
-		// D-05 reconciliation: see migrate-set-owner's identical guard above.
-		if remapTimeout <= 0 {
-			return usageErrorf("--timeout must be greater than 0 -- a timeout of 0 is not treated as unbounded")
-		}
-		format, err := operatorOutputFormat(cmd, remapOutput)
-		if err != nil {
-			return err
-		}
-		st, err := server.StoreFromEnv()
-		if err != nil {
-			return classifyOperatorErrConstruction(err)
-		}
-		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-		defer stop()
-		ctx, cancel := context.WithTimeout(ctx, remapTimeout)
-		defer cancel()
-		n, err := st.RemapOwner(ctx, src, remapTo, remapDryRun)
-		if err != nil {
-			return classifyOperatorErr(err)
-		}
-		return renderOperator(cmd, format, migrateRemapSummary(n, remapTo, remapDryRun), migrateRemapDoc(n, remapTo, remapDryRun))
-	},
+}
+
+// migrateRemapValidate runs buildRemapSource's flag-group-backed source
+// selection plus the D-05 --timeout>0 reconciliation, shared by both the
+// preview and apply closures so neither can diverge from the other's
+// pre-dial validation.
+func migrateRemapValidate() (store.OwnerRemapSource, error) {
+	src, err := buildRemapSource(remapFrom, remapMissing, remapAnon, remapTo)
+	if err != nil {
+		// buildRemapSource already carries exitUsage (plan 01-04); return
+		// unchanged rather than double-classify.
+		return nil, err
+	}
+	// D-05 reconciliation: see migrate-set-owner's identical guard above.
+	if remapTimeout <= 0 {
+		return nil, usageErrorf("--timeout must be greater than 0 -- a timeout of 0 is not treated as unbounded")
+	}
+	return src, nil
+}
+
+// migrateRemapRun is the shared body registerDestructive's preview and apply
+// closures both call, varying only dryRun — the store-level "count only, do
+// not write" bool st.RemapOwner already accepted before this plan. This is
+// an internal dispatch detail, unrelated to the now-removed --dry-run CLI
+// flag: it is never reachable except through one of the two closures
+// registerDestructive installs.
+func migrateRemapRun(ctx context.Context, cmd *cobra.Command, dryRun bool) error {
+	src, err := migrateRemapValidate()
+	if err != nil {
+		return err
+	}
+	format, err := operatorOutputFormat(cmd, remapOutput)
+	if err != nil {
+		return err
+	}
+	st, err := server.StoreFromEnv()
+	if err != nil {
+		return classifyOperatorErrConstruction(err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, remapTimeout)
+	defer cancel()
+	n, err := st.RemapOwner(ctx, src, remapTo, dryRun)
+	if err != nil {
+		return classifyOperatorErr(err)
+	}
+	return renderOperator(cmd, format, migrateRemapSummary(n, remapTo, dryRun), migrateRemapDoc(n, remapTo, dryRun))
+}
+
+// migrateRemapPreview is registerDestructive's preview closure.
+func migrateRemapPreview(ctx context.Context, cmd *cobra.Command) error {
+	return migrateRemapRun(ctx, cmd, true)
+}
+
+// migrateRemapApply is registerDestructive's apply closure.
+func migrateRemapApply(ctx context.Context, cmd *cobra.Command) error {
+	return migrateRemapRun(ctx, cmd, false)
 }
 
 // migrateRemapSummary renders the operator-facing one-line result of a
-// migrate-remap-owner run. Pure (no I/O), returning the pre-D-13 sentence
-// unchanged, character for character, for both the dry-run and applied
-// shapes.
+// migrate-remap-owner run, for both the preview and applied shapes. The
+// preview sentence names --apply as the flag that performs the remap, so an
+// operator who expected a mutation learns the fix from the output itself.
 func migrateRemapSummary(n uint64, owner string, dryRun bool) string {
 	if dryRun {
-		return fmt.Sprintf("[dry-run] would remap %d record(s) to owner=%s", n, owner)
+		return fmt.Sprintf("preview: %d record(s) eligible to remap to owner=%s; re-run with --apply to remap", n, owner)
 	}
 	return fmt.Sprintf("remapped %d record(s) to owner=%s", n, owner)
 }
@@ -210,7 +245,6 @@ func init() {
 	migrateRemapOwnerCmd.Flags().BoolVar(&remapMissing, "from-missing", false, "remap owner-less (pre-isolation) records")
 	migrateRemapOwnerCmd.Flags().BoolVar(&remapAnon, "from-anon", false, "remap the explicit anonymous bucket (owner==\"\")")
 	migrateRemapOwnerCmd.Flags().StringVar(&remapTo, "to", "", "new owner value to stamp (required)")
-	migrateRemapOwnerCmd.Flags().BoolVar(&remapDryRun, "dry-run", false, "count matching records without writing")
 	migrateRemapOwnerCmd.Flags().DurationVar(&remapTimeout, "timeout", 5*time.Minute, "max wall-clock (must be > 0); also cancellable via Ctrl-C")
 	// D-07: the third exclusivity claim site, and the only one needing
 	// exactly-one-of rather than plain mutual exclusivity.
@@ -220,6 +254,7 @@ func init() {
 	// cobra guarantees the count before RunE ever runs.
 	migrateRemapOwnerCmd.MarkFlagsMutuallyExclusive("from", "from-missing", "from-anon")
 	migrateRemapOwnerCmd.MarkFlagsOneRequired("from", "from-missing", "from-anon")
+	registerDestructive(migrateRemapOwnerCmd, &remapApply, migrateRemapPreview, migrateRemapApply)
 	rootCmd.AddCommand(migrateRemapOwnerCmd)
 
 	// migrate-set-owner is now a deprecated alias for the owner-less case.

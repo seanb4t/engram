@@ -82,7 +82,7 @@ Usage:
   engram migrate-remap-owner [flags]
 
 Flags:
-      --dry-run            count matching records without writing
+      --apply              a destructive operator command previews by default and mutates only when apply is set
       --from string        current owner value to remap (a sub or email); mutually exclusive with --from-missing/--from-anon
       --from-anon          remap the explicit anonymous bucket (owner=="")
       --from-missing       remap owner-less (pre-isolation) records
@@ -116,6 +116,7 @@ Usage:
   engram prune-expired [flags]
 
 Flags:
+      --apply                 a destructive operator command previews by default and mutates only when apply is set
   -h, --help                  help for prune-expired
       --older-than duration   grace period: only prune records whose not_after lapsed at least this long ago (0 = any past not_after)
       --output string         output format: "json" or "text" (default: detect from stdout)
