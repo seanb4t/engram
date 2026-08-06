@@ -40,6 +40,7 @@ Usage:
 Flags:
       --dry-run            count records missing a short_id without writing
   -h, --help               help for backfill-short-ids
+      --output string      output format: "json" or "text" (default: detect from stdout)
       --timeout duration   max wall-clock (0 disables); also cancellable via Ctrl-C (default 5m0s)
 ```
 
@@ -86,6 +87,7 @@ Flags:
       --from-anon          remap the explicit anonymous bucket (owner=="")
       --from-missing       remap owner-less (pre-isolation) records
   -h, --help               help for migrate-remap-owner
+      --output string      output format: "json" or "text" (default: detect from stdout)
       --timeout duration   max wall-clock (must be > 0); also cancellable via Ctrl-C (default 5m0s)
       --to string          new owner value to stamp (required)
 ```
@@ -100,6 +102,7 @@ Usage:
 
 Flags:
   -h, --help               help for migrate-set-owner
+      --output string      output format: "json" or "text" (default: detect from stdout)
       --owner string       OIDC sub to stamp onto owner-less records (required, non-empty)
       --timeout duration   max wall-clock for the backfill (must be > 0); also cancellable via Ctrl-C (default 5m0s)
 ```
@@ -262,6 +265,7 @@ Flags:
   -h, --help                  help for summarize-missing
       --limit int             max records to scan (0 = no cap)
       --older-than duration   only records created at least this long ago (0 = any age)
+      --output string         output format: "json" or "text" (default: detect from stdout)
       --scope string          only summarize records in this scope
       --timeout duration      max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 30m0s)
 ```

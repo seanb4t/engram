@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -19,6 +20,7 @@ import (
 var (
 	migrateOwner   string
 	migrateTimeout time.Duration
+	migrateOutput  string
 )
 
 // migrateSetOwnerCmd backfills the stable OIDC `sub` onto memory records written
@@ -40,6 +42,10 @@ var migrateSetOwnerCmd = &cobra.Command{
 		if migrateTimeout <= 0 {
 			return usageErrorf("--timeout must be greater than 0 -- a timeout of 0 is not treated as unbounded")
 		}
+		format, err := operatorOutputFormat(cmd, migrateOutput)
+		if err != nil {
+			return err
+		}
 		st, err := server.StoreFromEnv()
 		if err != nil {
 			return classifyOperatorErrConstruction(err)
@@ -55,9 +61,23 @@ var migrateSetOwnerCmd = &cobra.Command{
 		if err != nil {
 			return classifyOperatorErr(err)
 		}
-		cmd.Printf("stamped owner=%s onto %d owner-less record(s)\n", migrateOwner, n)
-		return nil
+		return renderOperator(cmd, format, migrateSetOwnerSummary(migrateOwner, n), migrateSetOwnerReportDoc{Owner: migrateOwner, Stamped: n})
 	},
+}
+
+// migrateSetOwnerSummary renders the operator-facing one-line result of a
+// migrate-set-owner backfill. Pure (no I/O), mirroring reindexSummary's
+// discipline, and returns the pre-D-13 sentence unchanged, character for
+// character (renderOperator supplies the trailing newline on write).
+func migrateSetOwnerSummary(owner string, stamped uint64) string {
+	return fmt.Sprintf("stamped owner=%s onto %d owner-less record(s)", owner, stamped)
+}
+
+// migrateSetOwnerReportDoc is the JSON-mode shape of a migrate-set-owner
+// run: every value the text sentence states, as fields.
+type migrateSetOwnerReportDoc struct {
+	Owner   string `json:"owner"`
+	Stamped uint64 `json:"stamped"`
 }
 
 var (
@@ -67,6 +87,7 @@ var (
 	remapTo      string
 	remapDryRun  bool
 	remapTimeout time.Duration
+	remapOutput  string
 )
 
 // buildRemapSource constructs the sealed store.OwnerRemapSource and runs the
@@ -83,7 +104,7 @@ var (
 // The one case cobra's flag groups CANNOT express: a supplied --from with an
 // empty value. MarkFlagsOneRequired only tracks whether the flag was
 // SUPPLIED (pflag.Flag.Changed), not whether its value is usable — "--from
-// ''" satisfies OneRequired but yields a source no different from "no source
+// ”" satisfies OneRequired but yields a source no different from "no source
 // at all". Rejected explicitly below rather than silently accepted as
 // RemapFrom("").
 func buildRemapSource(from string, missing, anon bool, to string) (store.OwnerRemapSource, error) {
@@ -121,6 +142,10 @@ var migrateRemapOwnerCmd = &cobra.Command{
 		if remapTimeout <= 0 {
 			return usageErrorf("--timeout must be greater than 0 -- a timeout of 0 is not treated as unbounded")
 		}
+		format, err := operatorOutputFormat(cmd, remapOutput)
+		if err != nil {
+			return err
+		}
 		st, err := server.StoreFromEnv()
 		if err != nil {
 			return classifyOperatorErrConstruction(err)
@@ -133,16 +158,46 @@ var migrateRemapOwnerCmd = &cobra.Command{
 		if err != nil {
 			return classifyOperatorErr(err)
 		}
-		if remapDryRun {
-			cmd.Printf("[dry-run] would remap %d record(s) to owner=%s\n", n, remapTo)
-		} else {
-			cmd.Printf("remapped %d record(s) to owner=%s\n", n, remapTo)
-		}
-		return nil
+		return renderOperator(cmd, format, migrateRemapSummary(n, remapTo, remapDryRun), migrateRemapDoc(n, remapTo, remapDryRun))
 	},
 }
 
+// migrateRemapSummary renders the operator-facing one-line result of a
+// migrate-remap-owner run. Pure (no I/O), returning the pre-D-13 sentence
+// unchanged, character for character, for both the dry-run and applied
+// shapes.
+func migrateRemapSummary(n uint64, owner string, dryRun bool) string {
+	if dryRun {
+		return fmt.Sprintf("[dry-run] would remap %d record(s) to owner=%s", n, owner)
+	}
+	return fmt.Sprintf("remapped %d record(s) to owner=%s", n, owner)
+}
+
+// migrateRemapReportDoc is the JSON-mode shape of a migrate-remap-owner
+// run. DryRun is an explicit boolean plus SEPARATE would-remap/remapped
+// count fields — never inferred from the text sentence's "[dry-run]"
+// prose prefix, so a json consumer cannot mistake a preview for a
+// completed mutation (T-03-10's mitigation).
+type migrateRemapReportDoc struct {
+	Owner      string `json:"owner"`
+	DryRun     bool   `json:"dry_run"`
+	WouldRemap uint64 `json:"would_remap"`
+	Remapped   uint64 `json:"remapped"`
+}
+
+// migrateRemapDoc converts (n, owner, dryRun) into migrateRemapReportDoc.
+func migrateRemapDoc(n uint64, owner string, dryRun bool) migrateRemapReportDoc {
+	doc := migrateRemapReportDoc{Owner: owner, DryRun: dryRun}
+	if dryRun {
+		doc.WouldRemap = n
+	} else {
+		doc.Remapped = n
+	}
+	return doc
+}
+
 func init() {
+	addOperatorOutputFlag(migrateSetOwnerCmd, &migrateOutput)
 	migrateSetOwnerCmd.Flags().StringVar(&migrateOwner, "owner",
 		os.Getenv("ENGRAM_MIGRATE_OWNER"),
 		"OIDC sub to stamp onto owner-less records (required, non-empty)")
@@ -150,6 +205,7 @@ func init() {
 		"max wall-clock for the backfill (must be > 0); also cancellable via Ctrl-C")
 	rootCmd.AddCommand(migrateSetOwnerCmd)
 
+	addOperatorOutputFlag(migrateRemapOwnerCmd, &remapOutput)
 	migrateRemapOwnerCmd.Flags().StringVar(&remapFrom, "from", "", "current owner value to remap (a sub or email); mutually exclusive with --from-missing/--from-anon")
 	migrateRemapOwnerCmd.Flags().BoolVar(&remapMissing, "from-missing", false, "remap owner-less (pre-isolation) records")
 	migrateRemapOwnerCmd.Flags().BoolVar(&remapAnon, "from-anon", false, "remap the explicit anonymous bucket (owner==\"\")")

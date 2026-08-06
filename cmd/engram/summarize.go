@@ -24,6 +24,7 @@ var (
 	summarizeLimit     int
 	summarizeDryRun    bool
 	summarizeTimeout   time.Duration
+	summarizeOutput    string
 )
 
 // summarizeMissingCmd fills empty recall summaries via the configured cheap
@@ -36,6 +37,10 @@ var summarizeMissingCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if summarizeScope == "" && !summarizeAllScopes {
 			return usageErrorf("--scope <scope> or --all-scopes is required")
+		}
+		format, err := operatorOutputFormat(cmd, summarizeOutput)
+		if err != nil {
+			return err
 		}
 		st, sm, model, maxChars, err := server.StoreAndSummarizerFromEnv()
 		if err != nil {
@@ -64,8 +69,7 @@ var summarizeMissingCmd = &cobra.Command{
 		if err != nil {
 			return classifyOperatorErr(err)
 		}
-		cmd.Println(summarizeSummary(res, summarizeDryRun))
-		return nil
+		return renderOperator(cmd, format, summarizeSummary(res, summarizeDryRun), summarizeReportDoc(res, summarizeDryRun))
 	},
 }
 
@@ -80,7 +84,31 @@ func summarizeSummary(res store.SummarizeResult, dryRun bool) string {
 		res.Filled, res.Scanned, res.Skipped, res.Failed)
 }
 
+// summarizeOutputDoc is the JSON-mode shape of a summarize-missing sweep:
+// filled, skipped, scanned and failed counts as SEPARATE fields, plus
+// DryRun as an explicit boolean — reusing summarizeSummary's own inputs,
+// never recomputed.
+type summarizeOutputDoc struct {
+	DryRun  bool `json:"dry_run"`
+	Scanned int  `json:"scanned"`
+	Filled  int  `json:"filled"`
+	Skipped int  `json:"skipped"`
+	Failed  int  `json:"failed"`
+}
+
+// summarizeReportDoc converts (res, dryRun) into summarizeOutputDoc.
+func summarizeReportDoc(res store.SummarizeResult, dryRun bool) summarizeOutputDoc {
+	return summarizeOutputDoc{
+		DryRun:  dryRun,
+		Scanned: res.Scanned,
+		Filled:  res.Filled,
+		Skipped: res.Skipped,
+		Failed:  res.Failed,
+	}
+}
+
 func init() {
+	addOperatorOutputFlag(summarizeMissingCmd, &summarizeOutput)
 	summarizeMissingCmd.Flags().StringVar(&summarizeScope, "scope", "", "only summarize records in this scope")
 	summarizeMissingCmd.Flags().BoolVar(&summarizeAllScopes, "all-scopes", false, "sweep every scope (required if --scope is omitted)")
 	summarizeMissingCmd.Flags().DurationVar(&summarizeOlderThan, "older-than", 0, "only records created at least this long ago (0 = any age)")

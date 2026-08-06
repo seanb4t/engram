@@ -13,6 +13,12 @@
           "usage": "count records missing a short_id without writing"
         },
         {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
           "name": "timeout",
           "type": "duration",
           "default": "5m0s",
@@ -169,6 +175,12 @@
           "usage": "remap owner-less (pre-isolation) records"
         },
         {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
           "name": "timeout",
           "type": "duration",
           "default": "5m0s",
@@ -192,6 +204,12 @@
       "name": "migrate-set-owner",
       "summary": "Backfill owner (OIDC sub) onto pre-isolation memory records",
       "flags": [
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
         {
           "name": "owner",
           "type": "string",
@@ -652,6 +670,12 @@
           "type": "duration",
           "default": "0s",
           "usage": "only records created at least this long ago (0 = any age)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
         },
         {
           "name": "scope",

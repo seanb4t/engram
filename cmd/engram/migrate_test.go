@@ -4,6 +4,7 @@
 package main
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/seanb4t/engram/internal/store"
@@ -61,5 +62,86 @@ func TestRemapOwnerFlagValidation(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestMigrateSetOwnerRejectsInvalidOutput proves `migrate-set-owner`
+// validates --output through the shared operatorOutputFormat before
+// dialing any store.
+func TestMigrateSetOwnerRejectsInvalidOutput(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, migrateSetOwnerCmd)
+	_, _, err := runClient(t, "migrate-set-owner", "--owner", "x", "--output", "yaml")
+	if err == nil {
+		t.Fatal("expected an error for --output yaml, got nil")
+	}
+	if got := exitCodeFromError(err); got != exitUsage {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage)", got, exitUsage)
+	}
+}
+
+// TestMigrateRemapOwnerRejectsInvalidOutput proves `migrate-remap-owner`
+// validates --output through the shared operatorOutputFormat before
+// dialing any store.
+func TestMigrateRemapOwnerRejectsInvalidOutput(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, migrateRemapOwnerCmd)
+	_, _, err := runClient(t, "migrate-remap-owner", "--from-missing", "--to", "x", "--output", "yaml")
+	if err == nil {
+		t.Fatal("expected an error for --output yaml, got nil")
+	}
+	if got := exitCodeFromError(err); got != exitUsage {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage)", got, exitUsage)
+	}
+}
+
+// TestMigrateRemapDryRunJSONDistinguishesPreviewFromApplied proves
+// migrate-remap-owner's json document carries the dry-run vs applied
+// distinction as an explicit boolean plus SEPARATE count fields, never
+// inferred from the text sentence's "[dry-run]" prose prefix (T-03-10's
+// mitigation): dry-run yields dry_run=true, would_remap=n, remapped=0;
+// applied yields dry_run=false, would_remap=0, remapped=n.
+func TestMigrateRemapDryRunJSONDistinguishesPreviewFromApplied(t *testing.T) {
+	dry := migrateRemapDoc(5, "new-owner", true)
+	if !dry.DryRun || dry.WouldRemap != 5 || dry.Remapped != 0 {
+		t.Errorf("migrateRemapDoc(5, _, true) = %+v, want DryRun=true WouldRemap=5 Remapped=0", dry)
+	}
+	applied := migrateRemapDoc(5, "new-owner", false)
+	if applied.DryRun || applied.WouldRemap != 0 || applied.Remapped != 5 {
+		t.Errorf("migrateRemapDoc(5, _, false) = %+v, want DryRun=false WouldRemap=0 Remapped=5", applied)
+	}
+
+	b, err := json.Marshal(dry)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if m["dry_run"] != true {
+		t.Errorf(`m["dry_run"] = %v, want true`, m["dry_run"])
+	}
+	if m["remapped"] != float64(0) {
+		t.Errorf(`m["remapped"] = %v, want 0 (a preview must not report as applied)`, m["remapped"])
+	}
+}
+
+// TestMigrateSetOwnerSummaryUnchanged and TestMigrateRemapSummaryUnchanged
+// pin the pure text formatters against the pre-backfill literal sentences.
+func TestMigrateSetOwnerSummaryUnchanged(t *testing.T) {
+	got := migrateSetOwnerSummary("alice", 3)
+	want := "stamped owner=alice onto 3 owner-less record(s)"
+	if got != want {
+		t.Errorf("migrateSetOwnerSummary(\"alice\", 3) = %q, want %q", got, want)
+	}
+}
+
+func TestMigrateRemapSummaryUnchanged(t *testing.T) {
+	if got, want := migrateRemapSummary(3, "alice", true), "[dry-run] would remap 3 record(s) to owner=alice"; got != want {
+		t.Errorf("migrateRemapSummary(3, \"alice\", true) = %q, want %q", got, want)
+	}
+	if got, want := migrateRemapSummary(3, "alice", false), "remapped 3 record(s) to owner=alice"; got != want {
+		t.Errorf("migrateRemapSummary(3, \"alice\", false) = %q, want %q", got, want)
 	}
 }
