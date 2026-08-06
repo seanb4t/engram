@@ -1,7 +1,7 @@
 ---
 phase: 3
 reviewers: [codex, pi]
-reviewed_at: 2026-08-06T17:20:49Z
+reviewed_at: 2026-08-06T18:44:03Z
 plans_reviewed:
   - 03-01-PLAN.md
   - 03-02-PLAN.md
@@ -859,3 +859,448 @@ against current source, not from an observed failure. Rule `7smp8vy9hr`'s text l
 memory store, not the repo, so 03-07's fidelity to its step 4 was assessed from the quotations in
 `03-CONTEXT.md` / `03-07-PLAN.md` rather than the rule itself. No previous REVIEWS.md exists for this
 phase or any other in this repo, so this is cycle 1 and every finding above is newly raised.
+
+---
+
+# Cycle 2 — review of revision `5fa19a84`
+
+<!-- Cycle 1 above is retained verbatim as history. This cycle re-reviews the SAME seven plans
+     after commit 5fa19a84 ("docs(03): replan from cross-AI review feedback"), which claims to
+     incorporate all 9 HIGH and 25 actionable non-HIGH findings. Reviewers were given the
+     cycle-1 checklist and asked to adjudicate each item against the CURRENT plan text and the
+     live tree rather than trust the revision's self-description. -->
+
+**Reviewed:** 2026-08-06T18:44:03Z · **Reviewers:** codex, pi · **Revision:** `5fa19a84`
+
+**Headline:** the revision closes the large majority of cycle 1. Both lanes independently confirm
+that pagination, the runtime destructive gate, `--output` validation, symlink containment, archive
+locking, `--all-scopes` semantics, the `--timeout` three-group table, the exit-code derivation and
+all four deferrals are now specified with mechanisms and reachable gates. The two lanes **diverge
+sharply on execution-readiness**: Codex says HIGH risk / not execution-ready on two blockers; pi says
+LOW risk / execution-ready. Orchestrator verification (below) sides with Codex on both.
+
+## Codex Review
+
+*(Codex wrote its full adjudication to a side file; it has been folded in here verbatim and the
+stray artifact removed — a `03-REVIEWS-CYCLE-2.md` is not a shape GSD generates or reads.)*
+
+**Verdict:** NOT EXECUTION-READY · **Risk:** HIGH
+
+### Summary
+
+The revision closes most cycle-1 defects with concrete tasks and behavioral gates, but it is not
+execution-ready. Two new HIGH blockers remain. First, plan 03-01's walker file-set criterion is
+mathematically inconsistent: the prescribed helper is deliberately named `from` so it contains
+`from.Commands()`, while the grep matches only `root.Commands()` or `rootCmd.Commands()`; the
+criterion nevertheless expects `cmd/engram/cmdwalk.go` as the sole result. The same command's claimed
+pre-state is six unique files, not seven. Second, plan 03-07 offers no complete valid purge choice:
+option A is the only choice that preserves D-11's cross-process preview contract but does not assign
+the required key/config/Helm work to files or tasks; option B explicitly weakens D-11; option C moves
+the requirement out of the phase. The strict seven-wave chain also remains unaddressed. Most other
+cycle-1 findings are fully resolved in plan text and grounded in the live source.
+
+### Cycle-1 finding adjudication (Codex)
+
+| # | Verdict | Evidence and adjudication |
+|---:|---|---|
+| 1 | **PARTIALLY RESOLVED** | The behavioral union assertion is real (`03-01-PLAN.md:365`), but the replacement grep gate is unsatisfiable: the helper must use parameter `from` (`03-01-PLAN.md:313`) while the post-state expects the only match to be `cmdwalk.go` (`03-01-PLAN.md:364`). The regex cannot match `from.Commands()`. Live source confirms the old vulnerable walk is `rootCmd.Commands()` in `cmd/engram/surfaces_test.go:102`. |
+| 2 | **PARTIALLY RESOLVED** | All seven *sites* are now enumerated and the two missing files are owned (`03-01-PLAN.md:315-319`; frontmatter). However the RED-first prose calls them seven files and says the `sort -u` output lists seven; its own list has only six unique files (`03-01-PLAN.md:305-311`). Live sites: `catalog.go:86`, `catalog_test.go:130`, `golden_test.go:81,107`, `surfaces_test.go:102`, `flaggroup_test.go:426`, `exitcode_baseline_test.go:449`. |
+| 3 | **FULLY RESOLVED** | 03-04 mandates `exitFindings = 7`, a named non-Connect producer allowlist, preservation of set equality, baseline rows, catalog, errors reference and upgrade entry in one task (`03-04-PLAN.md:376-408`). Addresses the live derivation, which unions only Connect mappings plus fallback (`cmd/engram/catalog_test.go:334-363`). |
+| 4 | **FULLY RESOLVED** | One shared `scrollAllPoints` using `ScrollAndOffset` owned by 03-01 and reused by verify/consolidate/purge (`03-01-PLAN.md:329-332`; `03-04-PLAN.md:248-253`; `03-05-PLAN.md:189-193`; `03-07-PLAN.md:319-324`). Library semantics correctly cited: `Scroll` drops the offset (`qdrant/points.go:70-75`); `ScrollAndOffset` returns it (`:88-93`). |
+| 5 | **FULLY RESOLVED** | Page-crossing tests force batch size 1 and assert exact counts for scan, citation enumeration, duplicate enumeration and purge derivation (`03-01-PLAN.md:418-424`; `03-04-PLAN.md:326-330`; `03-05-PLAN.md:238-242`; `03-07-PLAN.md:411-415`). These fail on first-page-only behavior rather than token presence. |
+| 6 | **FULLY RESOLVED** | `TestTimeoutGroupMatrix` pins three behavioral groups and set-equals their union to every live timeout-bearing command (`03-02-PLAN.md:314-334,360`). Matches live behavior: migrate rejects zero (`cmd/engram/migrate.go:41,122,158`), reindex says no deadline (`cmd/engram/reindex.go:119-120`), published table at `docs-site/src/content/docs/guides/cli.md:157-169`. |
+| 7 | **FULLY RESOLVED** | `registerDestructive` owns `RunE`, takes preview/apply closures, and has both a runtime provenance assertion and an apply-call counter test (`03-03-PLAN.md:280-308,318-324`). The exception-list option is explicitly struck (`03-03-PLAN.md:183-215`). |
+| 8 | **PARTIALLY RESOLVED** | The caller-mintable per-record tag is correctly replaced with server-written `superseded_by` (`03-07-PLAN.md:229-246,339-351`), consistent with live `Update` preserving the field (`internal/store/store.go:1694-1703`) while tags are caller-replaced (`:1718-1720`). Manifest transport is not closed: option B admits it weakens D-11 and option C defers the requirement (`03-07-PLAN.md:257-265`); option A names unowned config/Helm/key work only in its `cons` (`03-07-PLAN.md:252-255`). |
+| 9 | **FULLY RESOLVED** | `NearDuplicateOptions` now has explicit `AllScopes bool`; the scope filter is omitted in that mode and cross-scope pairs are specified and tested (`03-05-PLAN.md:160-181,236-237`). |
+| 10 | **FULLY RESOLVED** | Output validation moved into 03-01; scan must call `operatorOutputFormat`, which calls the shared exported validator (`03-01-PLAN.md:336-346,372-373`). 03-02 adds a behavioral table over every operator command (`03-02-PLAN.md:360-361`). |
+| 11 | **FULLY RESOLVED** | 03-06 and 03-07 explicitly add the new string-slice backing variables to `resetClientFlags` and require latch regression tests (`03-06-PLAN.md:410-438`; `03-07-PLAN.md:465-469,564`). Matches live reset semantics (`cmd/engram/clienttest_test.go:127-152,155-197`). |
+| 12 | **FULLY RESOLVED** | 03-07 measures applicability and owns anchors in `cli.md`, `reference/tools.md` and `curating-memory/SKILL.md`, with an exact-three gate (`03-07-PLAN.md:483-497,555-559`). |
+| 13 | **FULLY RESOLVED** | Archive and restore must take the same `TargetLocker` as `Update`, and concurrent interleaving tests are assigned (`03-06-PLAN.md:266-308,325-329`). The race is real in current code: `Update` locks and re-reads before whole-payload upsert (`internal/store/store.go:1694-1732`) while the analogous `SetVisibility` targeted write is lock-free (`:1872-1897`). |
+| 14 | **FULLY RESOLVED** | All publishing files are in 03-04 frontmatter and Task 3 explicitly updates the constant, catalog, derivation test, baseline, errors reference and upgrade guide (`03-04-PLAN.md:7-27,376-408`). |
+| 15 | **FULLY RESOLVED** | `MinScore` is `*float32`, nil means no filter, and a negative-score behavioral test plus reflection gate is required (`03-05-PLAN.md:167-186,238-240`). |
+| 16 | **FULLY RESOLVED** | Both archive and restore resolve the target before mutation and share not-found behavior (`03-06-PLAN.md:281-299,323-324`). Closes the live asymmetry: `defaultDeletePayloadKeys` does no existence check (`internal/store/store.go:1853-1862`). |
+| 17 | **FULLY RESOLVED** | Requires `EvalSymlinks` containment, deepest-existing-ancestor handling, and a symlink-escape test proving the reader is never called (`03-04-PLAN.md:270-285,319-320`). |
+| 18 | **FULLY RESOLVED** | 03-03 adds built-binary prune coverage (`03-03-PLAN.md:414-426`); 03-07 extends it to one multi-page, multi-owner phase acceptance flow covering all seven criteria (`03-07-PLAN.md:525-541,567-568`). |
+| 19 | **FULLY RESOLVED** | `operatorCommands()` now has a concrete structural predicate and a both-directions tuple-set gate, with named exclusions checked against live commands (`03-02-PLAN.md:275-297,356`). Imperfect for hypothetical commands but no longer undefined. |
+| 20 | **FULLY RESOLVED** | 03-01 walks every ancestor's persistent flags and adds a behavioral inherited-flag catalog test (`03-01-PLAN.md:325,369`). Live `collectFlags` sees only leaf flags and root persistent flags (`cmd/engram/catalog.go:165-193`). |
+| 21 | **FULLY RESOLVED** | Operator TTY detection is explicitly derived from `cmd.OutOrStdout()` and non-file writers are non-TTY, with a test (`03-01-PLAN.md:338-341,373`). |
+| 22 | **PARTIALLY RESOLVED** | 03-07 requires `/gsd-validate-phase 3` and a non-draft result (`03-07-PLAN.md:543-548,569`), but `03-VALIDATION.md` is not listed in 03-07's `files_modified` and the plan delegates a slash-command workflow from inside an executor task without specifying how the resulting artifact is incorporated. Debt acknowledged, ownership incomplete. |
+| 23 | **FULLY RESOLVED** | 03-06 explicitly decides not to index `archived_at`, cites the identical unindexed `superseded_by` `IsEmpty` precedent, and gates that `ensureIndexes` is untouched (`03-06-PLAN.md:253-264,330`). Live indexes are exactly owner/scope/created_at/short_id (`internal/store/store.go:424-457`). |
+| 24 | **FULLY RESOLVED** | One shared iterator is the plan's architectural constraint and every later sweep is directed through it (`03-01-PLAN.md:329-332`). |
+| 25 | **FULLY RESOLVED** | The false claim is retracted; the existing check is accurately identified as hand-written and registration is explicitly deferred with rationale and a follow-up issue (`03-01-PLAN.md:155-173,346`). |
+| 26 | **FULLY RESOLVED** | 03-03 introduces `cliNow`, requires every cutoff to use it, and pins repeatability (`03-03-PLAN.md:300-304,321-325,401-403`). |
+| 27 | **FULLY RESOLVED** | 03-03 assigns the shared expiry constructor to `spine.go`; 03-06's exact-five grep spans both `store.go` and `spine.go` (`03-03-PLAN.md:365-371`; `03-06-PLAN.md:314-317`). |
+| 28 | **FULLY RESOLVED** | SCP-style colon-to-slash normalization and a four-form table test are explicit (`03-04-PLAN.md:258-269,323`). |
+| 29 | **FULLY RESOLVED** | Neighbor queries must use a payload include-selector for only `short_id` and `scope`, backed by a distinctive-content test (`03-05-PLAN.md:201-208,243-245`). |
+| 30 | **FULLY RESOLVED** | 03-03 updates the prune contract in `CLAUDE.md` and `reference/tools.md` (`03-03-PLAN.md:389-413`); 03-06 updates memory-record, tools reference, `get_memory` description and CLI guide for archive (`03-06-PLAN.md:379-408,432-436`). |
+| 31 | **FULLY RESOLVED** | The nonexistent docs task is removed; 03-02 explicitly uses `task lint:markdown` and says not to invoke `task docs:build` (`03-02-PLAN.md:363`). |
+| 32 | **UNRESOLVED** | The chain remains strictly serial: every plan depends on the immediately prior plan (`03-02-PLAN.md:5` … `03-07-PLAN.md:5`), despite 03-04 and 03-05 being logically independent of the destructive checkpoint. Estimates remain low-confidence, totalling roughly 674k tokens. No PLAN.md rationale accepts this cost. |
+| 33 | **FULLY RESOLVED** | Bare parent behavior is pinned by `TestSpineReviewBareInvocationPrintsHelp` (`03-01-PLAN.md:344,502-503`). The unbounded token transport is retired; the only cross-process option is a manifest file (`03-07-PLAN.md:182-189,252-255`). |
+
+### Newly introduced concerns (Codex)
+
+**HIGH — walker file-set acceptance is impossible.** Plan 03-01 orders the helper parameter to be
+named `from`, specifically so its call is `from.Commands()` and does not match
+`(rootCmd|root)\.Commands\(\)` (`03-01-PLAN.md:305-313`). Its acceptance criterion then requires that
+same regex to output exactly `cmd/engram/cmdwalk.go` (`:364`). It will output nothing after a correct
+conversion. The pre-state is also miscounted: `sort -u` produces six files because the seven sites
+include two in `golden_test.go`. This blocks Task 1 completion even if the implementation is correct.
+*Required correction:* either make the post-state empty and use the behavioral walker tests as the
+positive existence gate, or use a separate exact matcher for `from.Commands()` in `cmdwalk.go`.
+Record six pre-state files / seven sites.
+
+**HIGH — purge checkpoint has no complete requirement-satisfying option.** D-11 explicitly requires
+two invocations and a preview result crossing the process boundary (`03-07-PLAN.md:193-200`). Option B
+explicitly weakens that property to showing the set in the same output that reports deletion
+(`:257-260`), so it cannot satisfy the locked decision or the requirement. Option C moves the
+requirement out of Phase 3 (`:262-265`). Option A is the only semantically valid choice, but the plan
+merely mentions durable key generation, permissioning, config loading, startup validation and a Helm
+secret reference as *cons* (`:252-255`); none of `internal/config`, chart values/templates or operator
+key files appears in `files_modified`, Task 2 or acceptance criteria. Option A is therefore not
+executable as written either. *Required correction:* either fully plan option A (key lifecycle,
+config registry, CLI loading, chart/secret plumbing, permissions, rotation/version behavior, tests,
+docs) or revise the locked decision/requirement through the authorized roadmap workflow before
+permitting option B/C.
+
+**MEDIUM — phase validation mutation is unowned.** 03-07 requires running `/gsd-validate-phase 3` and
+changing `03-VALIDATION.md` out of draft (`03-07-PLAN.md:543-548,569`), but the artifact is absent
+from `files_modified`. An executor cannot know whether it owns the generated planning change or
+whether the separate workflow commits it.
+
+**MEDIUM — the destructive flag-set equality conflicts with conditional option B.** 03-03 requires
+each destructive command's own flag set to equal a literal expected set (`03-03-PLAN.md:322`). 03-07
+makes `--manifest` conditional on a later checkpoint (`03-07-PLAN.md:182-189`). Unless the
+expected-set test is also specified as checkpoint-dependent, option A adds a flag that fails the
+"no escape hatch" equality while option B does not. The plan does not assign the necessary
+conditional update to `destructive_test.go` in 03-07's files.
+
+**LOW — archive concurrency RED is probabilistic.** The proposed tens-of-iterations goroutine race
+(`03-06-PLAN.md:303-308`) has no synchronization hook forcing Archive into Update's vulnerable
+re-read/upsert window. A lock-free implementation can pass repeatedly. The gate should use a
+deterministic barrier/fake around the in-lock read or upsert.
+
+### RED-first criteria audit (Codex)
+
+*Genuinely falsifiable:* timeout group mutation (`03-02-PLAN.md:360`; live rejection at
+`cmd/engram/migrate.go:122`); hand-assigned destructive `RunE` (`03-03-PLAN.md:307-318`); symlink
+escape under lexical-only containment (`03-04-PLAN.md:319-320`); catalog exit-code set in both
+directions (`03-04-PLAN.md:423-428`; live equality at `cmd/engram/catalog_test.go:346-363`);
+all-scopes encoded as empty scope (`03-05-PLAN.md:236-237`); unknown-id restore using bare
+`DeletePayload` (`03-06-PLAN.md:323-324`; live helper `internal/store/store.go:1853-1862`);
+string-slice latch tests (`03-06-PLAN.md:438`; `03-07-PLAN.md:564`; live mechanism
+`cmd/engram/clienttest_test.go:131-151,171-187`); caller-supplied extraction tag
+(`03-07-PLAN.md:401-404`); multi-page count tests (`03-01-PLAN.md:418-424`; `03-04-PLAN.md:326`;
+`03-05-PLAN.md:240`; `03-07-PLAN.md:411`).
+
+*Decorative, impossible, or insufficiently controlled:* the walker file-set RED/post-state —
+impossible as written, and the pre-state count is wrong (`03-01-PLAN.md:305-313,364`); the catalog
+"temporarily skip one command" mutation — falsifiable but decorative, does not occur naturally in
+task order and gives no precise expected failure line (`03-01-PLAN.md:497`); scan pagination RED —
+task order builds the correct iterator first, then asks Task 2 to run against a deliberately
+regressed `client.Scroll` implementation (`03-01-PLAN.md:423`), which is mutation testing rather than
+RED-first, though the stated `Total = 1` failure is precise; archive/update race RED —
+nondeterministic without barriers (`03-06-PLAN.md:303-308,326-329`); the "no exported ParsePurge"
+compile failure under option B — verifies symbol absence but is not a runnable regression test
+(`03-07-PLAN.md:418-423`), and reflection over exported methods is sufficient.
+
+### Deferral audit (Codex)
+
+| Deferral | Verdict | PLAN.md rationale |
+|---|---|---|
+| Sweep scope-or-all-scopes rule | **CLOSED AS DEFERRAL** | 03-01 names the existing hand-rolled debt, explains the cross-surface/generated-region cost, distinguishes it from the new purge safety rule, and requires a GitHub issue (`03-01-PLAN.md:164-173`). Residual risk: sweep rules stay hand-written this release. |
+| Typed renderer | **CLOSED AS DEFERRAL** | 03-02 states that `renderOperator(text, doc)` cannot make parity unrepresentable, explains the 13-command refactor cost, retains a both-directions parity test, and requires a follow-up issue (`03-02-PLAN.md:300-307`). |
+| Consolidate record cap | **CLOSED AS DEFERRAL** | 03-05 explains that a cap would contradict the command's exhaustive-coverage claim, supplies progress/scanned counts and scope as current controls, and requires a follow-up only if observed cost warrants it (`03-05-PLAN.md:217-223`). Residual risk: unbounded operator runtime on a large spine. |
+| Connect-lane `archived_at` omission | **CLOSED AS DEFERRAL** | 03-06 verifies the pre-existing proto omission extends to scheduling/supersession fields, documents MCP-visible/Connect-omitted behavior, forbids partial proto work, and requires one follow-up issue for all five fields (`03-06-PLAN.md:400-408`). |
+
+### Risk assessment (Codex)
+
+**HIGH.** Materially stronger than cycle 1 — pagination, output validation, destructive runtime
+gating, symlink containment, archive locking and all-scopes semantics are now specified with
+meaningful tests. But execution would halt in plan 03-01 on an impossible acceptance command, and the
+phase's only irreversible verb still has no complete selectable design that both satisfies D-11 and
+is assigned to executable tasks. The unchanged seven-wave chain and the unowned validation artifact
+amplify schedule and integration risk. Replan the two HIGH blockers before execution; the remaining
+MEDIUM items can be repaired in the same pass.
+
+---
+
+## pi Review
+
+**Verdict:** EXECUTION-READY · **Risk:** LOW
+
+### Summary
+
+pi verified the load-bearing claims against the live tree at `5fa19a84`: the seven single-level
+walkers exist exactly where the plan says (`rg` confirms 6 files / 7 sites); `Client.Scroll` at
+`qdrant/go-client@v1.18.3/qdrant/points.go:70-76` does discard `NextPageOffset` while
+`ScrollAndOffset` (`:88`) paginates; the three-group `--timeout` table is genuinely published at
+`docs-site/.../cli.md:157-165` with `migrate.go:40`/`:120` rejecting `<= 0`;
+`defaultDeletePayloadKeys` (`internal/store/store.go:1855-1862`) has no existence check; `Update`'s
+in-lock re-read is at `store.go:1694-1700`; tags are client-verbatim
+(`internal/server/tools.go:920`) and replaced wholesale (`store.go:1718-1720`); `collectFlags`
+(`catalog.go:168-194`) never walks the parent chain; `resetCommandFlagState` skips stringSlice value
+reset (`clienttest_test.go:155-197`); `task docs:build` does not exist (no `docs:*` target;
+`lint:markdown` at `Taskfile.yaml:88`); and `NewQueryID`/`QueryBatch`/`NewHasID` all exist in the
+vendored client. pi's conclusion: every cycle-1 HIGH is closed with a mechanism rather than a
+restatement, and the only finding left open is the wave-chain serialization (#32).
+
+### Cycle-1 finding adjudication (pi)
+
+**Score as reported by pi: 33 FULLY RESOLVED, 0 PARTIALLY, 1 UNRESOLVED (#32).**
+
+Selected evidence rows (pi's full verdicts agree with Codex's table above except where noted in
+Divergent Views):
+
+| # | pi verdict | Evidence |
+|---|---|---|
+| 1 | **FULLY RESOLVED** *(disputed — see Divergent Views)* | Gate is now `(rootCmd\|root)\.Commands\(\)` file-set equality requiring RED-first observation of the pre-state; parameter named `from` so the walker itself can't match; behavioural `nonHiddenCommands()` vs `walkCommands` set-equality with a nested-member assertion added. Verified the live tree: 6 files, 7 sites. |
+| 2 | **FULLY RESOLVED** | 03-01 Task 1 lists all seven with file:line; `exitcode_baseline_test.go` and `flaggroup_test.go` are in `files_modified`; the falsified "tree is flat" comment at `exitcode_baseline_test.go:430` (confirmed verbatim) must be rewritten in the same commit. |
+| 5 | **FULLY RESOLVED** | `spineScrollBatch` seam + named tests (`TestScanSpinePaginatesEveryPage`, `TestEnumerateCitationsPaginatesEveryPage`, `TestNearDuplicatesPaginatesEveryPage`, `TestPurgeDerivationPaginatesEveryPage`), 5 records at batch 1, count equality, RED-first required. Mirrors `internal/store/reindex_test.go:673`. |
+| 7 | **FULLY RESOLVED** | `registerDestructive` owns `cmd.RunE`; leaves supply closures; `TestDestructiveCommandsRouteThroughGate` uses `runtime.FuncForPC`; `TestDestructiveGatePreventsMutation` observes a call counter (bare, `--apply=false`, `--apply`). Option-c struck with rationale. |
+| 8 | **FULLY RESOLVED** *(disputed — see Divergent Views)* | Checkpoint rebuilt as signed-file / in-process-only / defer; unsigned token explicitly retired with the correct reason. Per-record link moved to server-set `superseded_by` with the `store.go:1699-1700` preservation mechanism cited; batch floor's caller-mintable residual risk stated openly in plan, code comment and CLI guide. |
+| 15 | **FULLY RESOLVED** | `*float32` (nil = no filter); behavioural gate `TestNearDuplicatesNoMinScoreReportsNegativePair`; CLI flag is a string defaulting to `""` so `DefValue` can't advertise `0`. |
+| 18 | **FULLY RESOLVED** | Verified `internal/e2e` execs only serve/search/list. 03-03 Task 3 creates `internal/e2e/spine_review_test.go` for the prune flip; 03-07 Task 3 extends it to all seven success criteria over a multi-page multi-owner collection. The `go clean -testcache` rationale is corrected, not just repeated. |
+| 22 | **FULLY RESOLVED** *(disputed — see Divergent Views)* | 03-07 Task 3 requires `/gsd-validate-phase 3` before phase completion and assigns the Wave-0 `resetCommandFlagState` requirement an owner (03-01). |
+| 32 | **UNRESOLVED** | All seven plans still declare strictly serial `depends_on`, and no plan carries a rationale for keeping verify/consolidate serial behind the destructive gate. Neither a re-waving nor a deferral rationale appears in any PLAN.md. |
+
+### Newly introduced concerns (pi)
+
+1. **LOW — `TestDestructiveCommandsRouteThroughGate` is compiler-fragile.** Asserting
+   `runtime.FuncForPC(reflect.ValueOf(cmd.RunE).Pointer()).Name()` names `registerDestructive`'s
+   closure depends on Go's closure naming (`...registerDestructive.func1`) and non-inlining. A
+   toolchain upgrade could rename or inline the closure and turn this gate red for an incidental
+   reason — the exact failure mode the review instructions warn about. The plan should pin the
+   assertion to a substring match on `registerDestructive` and add `//go:noinline` on the installed
+   closure. (03-03 Task 2.)
+2. **LOW — 03-06's review_response contains one verified-true claim phrased too broadly.** It says the
+   Connect `Memory` omits "the entire supersession and scheduling state". pi verified `message Memory`
+   (fields 1-22) indeed carries no `superseded_by`/`not_before`/`not_after` — the `not_after = 12` at
+   `engram.proto:269` belongs to a request message, not `Memory`. The claim survives.
+3. **LOW — option-b's "two derivations in one invocation" wording.** Honest about weakening D-11's
+   workflow, but ensure the executor does not present option-b as fully preserving D-11 if selected.
+4. **LOW — 03-01's post-change gate is brittle to legitimate future uses.** Any future legitimate
+   direct `Commands()` use outside the walker fails the build; the gate's error message should say
+   "route through walkCommands".
+
+### RED-first criteria audit (pi)
+
+pi rates eleven criteria genuinely falsifiable — the walker file-set equality, scan pagination
+(`Total=1` vs `5`), the timeout group mutation, the FuncForPC gate, both directions of the edited
+`TestCatalogExitCodesMatchMapper`, `TestVerifyRejectsSymlinkEscape`,
+`TestNearDuplicatesAllScopesSpansScopes`, `TestArchiveSurvivesConcurrentUpdate`, unknown-id `Restore`,
+the stringSlice latch regressions, and `TestExtractGateIgnoresCallerSuppliedLinkTag`.
+
+pi rates **one** weak: 03-07's "compile-time-checked file that must NOT build" asserting no
+`ParsePurge*` export under option-b — a non-building file cannot live in the tree, so the "test" is a
+SUMMARY note that the executor observed a `go build` failure. The sibling `reflect`-based
+exported-method-set assertion (`{IsVerified, IDs, DerivedAt}`) is the real gate and is sound; the
+build-failure line should not be counted as evidence.
+
+### Deferral audit (pi)
+
+pi confirms all four deferrals carry real in-plan rationale, none a REVIEWS.md-only ghost: sweep
+rule registration (03-01 § Deferrals — what, why, residual risk, file a GitHub issue); typed renderer
+(03-02 Task 3 "Known limitation" — 13 commands touched for a property the parity test detects);
+consolidate record cap (03-05 Task 1 — a silent cap would falsify the command's only claim;
+mitigations are the progress callback, scanned/queried counts and `--scope`); Connect-lane
+`archived_at` (03-06 Task 3 — verified consistency rationale, explicit no-proto-work boundary,
+follow-up issue covering all five fields).
+
+### Risk assessment (pi)
+
+**LOW.** The revision's self-descriptions survive source verification at every point pi checked; the
+one unresolved item (#32) costs wall-clock time, not correctness. Residual execution risks are
+concentrated in 03-07's checkpoint and in the compiler-fragile FuncForPC gate — both checkpointed or
+easily hardened. The dominant safety properties (pagination exhaustiveness, runtime destructive-gate
+prevention, unforgeable preview→apply, server-set extraction link) are each backed by a gate whose
+RED state is reachable and required to be observed.
+
+---
+
+## Consensus Summary — Cycle 2
+
+Both lanes are prompt-fed and source-grounded; neither carries the `[reviewed-without-repo-access]`
+marker, so both count at full consensus weight. Where they disagree, the orchestrator re-ran the
+disputed assertions against the live tree; those adjudications are recorded under Divergent Views and
+in § Verification coverage (cycle 2).
+
+### Agreed Strengths
+
+- **Pagination is genuinely fixed, mechanism and gate both.** One `scrollAllPoints` over
+  `ScrollAndOffset` in `internal/store/spine.go` (`03-01-PLAN.md:329-332`), reused by 03-04/05/07, an
+  exactly-one-call-site grep with comments filtered, and behavioural page-crossing tests at
+  `spineScrollBatch = 1`. This was cycle 1's clearest silent-failure risk and it is closed.
+- **The destructive gate now prevents rather than declares.** `registerDestructive` owns `RunE`;
+  leaves supply preview/apply closures; provenance is asserted through `runtime.FuncForPC` and a
+  call-counter test. Option-c (the exception list) is struck with rationale.
+- **The `--timeout` premise is corrected to the shipped truth** and pinned behaviourally by
+  `TestTimeoutGroupMatrix` with a both-directions set equality over every timeout-bearing command.
+- **The forgeable extraction gate is genuinely repaired.** Moving the per-record link from
+  client-supplied `tags` to server-set `superseded_by` is the right mechanism, and the plan cites the
+  exact preservation site (`store.go:1699-1700`) rather than asserting it.
+- **All four deferrals carry real in-plan rationale.** Both lanes checked independently and both
+  found what, why, residual risk and a follow-up action inside PLAN.md — not only in REVIEWS.md.
+- **The non-HIGH backlog is substantially cleared.** Both lanes independently score at least 25 of
+  the 24 numbered non-HIGH items FULLY RESOLVED with file:line evidence.
+
+### Agreed Concerns
+
+1. **HIGH (new) — 03-01's walker file-set acceptance criterion cannot be satisfied.** Codex raised
+   it; pi marked finding 1 resolved but simultaneously recorded the contradicting fact ("parameter
+   named `from` so the walker itself can't match") without connecting it to the post-state
+   expectation. **Orchestrator verification confirms Codex.** The action at `03-01-PLAN.md:313`
+   mandates the parameter be named `from` *precisely so `cmdwalk.go` does not match the regex*; the
+   acceptance criterion at `:364` requires the same regex to output "exactly the single line
+   `cmd/engram/cmdwalk.go`". After a correct conversion the output is **empty**, and Task 1 cannot be
+   marked complete. Additionally the recorded pre-state is off by one: run verbatim today,
+   `rg -n -o '(rootCmd|root)\.Commands\(\)' cmd/engram/ | cut -d: -f1 | sort -u` emits **six** lines
+   (catalog.go, catalog_test.go, exitcode_baseline_test.go, flaggroup_test.go, golden_test.go,
+   surfaces_test.go) over **seven** sites, while `03-01-PLAN.md:307` says it "must list SEVEN files
+   today". Cycle 1's gate was vacuous; cycle 2's is unsatisfiable. *Fix:* make the post-state empty
+   and let the behavioural union-walk test be the positive existence gate, or add a separate exact
+   matcher for `from.Commands()` in `cmdwalk.go`; and record six files / seven sites.
+2. **HIGH (new) — 03-07's purge checkpoint presents no option that is both requirement-satisfying and
+   executable.** Codex raised it; pi cleared finding 8 and downgraded the residue to a LOW wording
+   note. **Orchestrator verification confirms Codex.** D-11 requires the preview result to cross a
+   process boundary (`03-07-PLAN.md:193-200`). Option-b explicitly weakens that to same-output
+   disclosure (`:257-260`); option-c moves REQ-purge-extract-gated out of the phase (`:262-265`);
+   option-a is the only semantically valid choice, and its key lifecycle, `internal/config` loading,
+   startup validation, permissions/rotation and Helm secret wiring appear **only** in the `<cons>`
+   prose at `:255` and the threat-model row at `:591`. `03-07-PLAN.md`'s `files_modified` (lines
+   7-22) contains no `internal/config` path, no `charts/` path and no key artifact, and neither Task 2
+   nor Task 3 nor any acceptance criterion assigns that work. Selecting option-a at the checkpoint
+   therefore hands the executor an unplanned workstream mid-wave. *Fix:* fully plan option-a
+   (key lifecycle, config registry, CLI loading, chart/secret plumbing, permissions, rotation, tests,
+   docs) so the checkpoint has at least one complete choice — or revise D-11/REQ-purge-extract-gated
+   through `/gsd-phase` before option-b/c is selectable.
+3. **MEDIUM — `03-VALIDATION.md` is required to change but is owned by nobody.** (Codex; pi scored
+   #22 resolved.) Orchestrator verification sides with Codex: `03-07-PLAN.md:543-548` and `:569`
+   require `/gsd-validate-phase 3` to run and the artifact to leave `status: draft`, but
+   `03-VALIDATION.md` appears in no plan's `files_modified` (`rg` over all seven confirms only
+   `read_first`/prose references). The executor cannot tell whether it owns and commits that change.
+4. **MEDIUM — `cmd/engram/destructive_test.go` is not owned by 03-07, yet 03-07 changes what it must
+   assert.** (Codex.) 03-03 owns the file (`03-03-PLAN.md:9`) and specifies the no-escape-hatch gate
+   as a **flag-set equality against an expected literal set per destructive command**
+   (`03-03-PLAN.md:322`). 03-07 adds `purge` as a destructive command and makes `--manifest`
+   conditional on its own checkpoint (`03-07-PLAN.md:182-189`), yet `destructive_test.go` is absent
+   from 03-07's `files_modified` and `03-07-PLAN.md:556` requires both destructive tests to pass
+   "with no edit to either test". Under option-a the new `--manifest` flag changes purge's flag set;
+   under either option a new expected-set entry is needed. *Fix:* add `destructive_test.go` to
+   03-07's `files_modified` and make the expected-set row explicitly checkpoint-dependent.
+5. **MEDIUM/LOW — the archive/update race gate is nondeterministic.** (Codex LOW; pi rated it
+   reachable.) `03-06-PLAN.md:303-308` specifies a tens-of-iterations goroutine race with no
+   synchronization hook forcing `Archive` into `Update`'s re-read→upsert window. A lock-free
+   implementation can pass repeatedly, so the RED state is not guaranteed observable. *Fix:* a
+   deterministic barrier or injected seam around the in-lock read or the upsert.
+6. **LOW — the `runtime.FuncForPC` provenance gate is compiler-fragile.** (pi.) It depends on Go's
+   closure naming (`...registerDestructive.func1`) and on the closure not being inlined; a toolchain
+   upgrade can turn it red for an incidental reason. *Fix:* substring match on `registerDestructive`
+   plus `//go:noinline` on the installed closure.
+7. **LOW — 03-07's "a file that must NOT compile" line is not a gate.** (pi; Codex concurs.) A
+   non-building file cannot live in the tree, so the criterion reduces to a SUMMARY narrative
+   (`03-07-PLAN.md:418-423`). The sibling reflection assertion over the exported method set
+   (`{IsVerified, IDs, DerivedAt}`) is the real gate. *Fix:* strike the compile-failure line and keep
+   the reflection assertion.
+8. **UNRESOLVED from cycle 1 (#32) — the seven-wave serial chain still carries no rationale.** Both
+   lanes agree. Every plan declares `depends_on` on its immediate predecessor
+   (`03-02-PLAN.md:5` … `03-07-PLAN.md:5`); 03-04 and 03-05 remain logically independent of 03-03's
+   destructive checkpoint; all seven remain `confidence: low` totalling roughly 674k tokens. Cycle 1
+   recorded this and the revision neither re-waved nor wrote an accepting rationale into any PLAN.md,
+   so it stays invisible to `/gsd-execute-phase`. *Fix:* either re-wave 03-04/03-05 off the chain, or
+   add one paragraph to a PLAN.md accepting the serialization and saying why (shared-file contention
+   on `toolclass.go`, `spine.go` and the goldens is the stated reason and is a legitimate one).
+
+### Divergent Views
+
+- **Overall verdict: Codex HIGH / not execution-ready, pi LOW / execution-ready.** This is a
+  genuine depth split, not a taste split, and it reproduces cycle 1's pattern exactly: pi verifies
+  that each cited *fact* is true and that each fix names a *mechanism*, while Codex additionally
+  checks whether the plan's own instructions are mutually satisfiable. Both of Codex's HIGHs are
+  internal-consistency failures — an acceptance criterion that contradicts its own action, and a
+  checkpoint whose only valid option has unplanned work — which is a class pi's method does not
+  reach. Orchestrator verification confirmed both by running the plan's own command and reading
+  03-07's `files_modified`; **Codex's verdict is adopted.**
+- **Finding 1 (walker gate): Codex PARTIALLY, pi FULLY.** pi's own evidence cell contains the
+  contradiction ("parameter named `from` so the walker itself can't match") next to a criterion
+  demanding `cmdwalk.go` be the sole match, but pi did not evaluate the post-state. Codex is right.
+  Notably pi *did* independently measure "6 files / 7 sites" — the same off-by-one Codex flags —
+  and still scored the finding fully resolved, which is the tell that the pre-state number was read
+  as trivia rather than as the recorded RED evidence the criterion depends on.
+- **Finding 8 (purge transport): Codex PARTIALLY, pi FULLY.** pi credits the checkpoint for
+  correctly retiring the unsigned token and for the `superseded_by` substitution — both true and both
+  real progress. The disagreement is whether "a well-framed three-way checkpoint" counts as closing a
+  HIGH when none of the three options is simultaneously requirement-satisfying and fully planned.
+  The orchestrator's position: the `superseded_by` half (8b) is **fully resolved**; the manifest
+  transport half (8a) is **not**, and it is the same defect as Agreed Concern 2 — counted once.
+- **Finding 22 (VALIDATION.md): Codex PARTIALLY, pi FULLY.** pi credits 03-07 for requiring the
+  gate to run. Codex asks who owns the resulting file mutation. Verified: no plan lists
+  `03-VALIDATION.md` in `files_modified`. Codex is right on ownership; pi is right that the gate is
+  at least now scheduled. Recorded as MEDIUM, actionable.
+- **Archive-race determinism: Codex LOW-but-real, pi clears it.** Not adjudicated by execution (no
+  test was run). Recorded at Codex's severity because the argument is structural — absent a barrier,
+  a passing run is not evidence the vulnerable interleaving was reached.
+- **Not disputed, worth recording:** both lanes agree the revision's *substance* is a large
+  improvement. Cycle 1 raised 9 HIGH; cycle 2 leaves **2** unresolved, and both are repairable
+  within 03-01 Task 1 and 03-07 Task 1 without redesigning anything the revision built.
+
+### Cycle-over-cycle
+
+| | Cycle 1 | Cycle 2 |
+|---|---|---|
+| Reviewers | codex, pi | codex, pi |
+| HIGH raised | 9 | 2 (both newly introduced by the revision) |
+| HIGH resolved | — | 7 fully, 2 partially (the partials are the 2 above) |
+| Actionable non-HIGH | 25 | 6 |
+| Codex risk | HIGH | HIGH |
+| pi risk | MEDIUM | LOW |
+| Orchestrator verdict | not execution-ready | not execution-ready — 2 HIGH blockers, both narrow |
+
+---
+
+## Verification coverage (cycle 2)
+
+Findings recorded above were re-checked against the live tree at
+`/Volumes/Code/github.com/seanb4t/engram` (branch `feat/v0.13`, HEAD `5fa19a84`) before being
+adopted. This block states what the orchestrator actually opened and ran, so a later reader can tell
+an adjudicated finding from a relayed one.
+
+**Reviewer evidence classes**
+
+| Lane | Evidence class | Prompt | Repo access | Outcome |
+|---|---|---|---|---|
+| codex | prompt-fed, source-grounded | full (plans + project + roadmap + requirements + context + cycle-1 checklist) | yes | full adjudication; wrote to a side file, folded in and the stray artifact removed |
+| pi | prompt-fed, source-grounded | same | yes | full adjudication; first invocation died with exit 144 and no output, re-run in the foreground succeeded |
+
+**Commands run to adjudicate the divergences** (rather than relay them):
+
+- `rg -n -o '(rootCmd|root)\.Commands\(\)' cmd/engram/ | cut -d: -f1 | sort -u` — the plan's own
+  RED-first pre-state command, run verbatim. Emits **6** lines over **7** raw matches
+  (`golden_test.go` twice, at `:81` and `:107`). `03-01-PLAN.md:307` asserts SEVEN files. Confirms
+  Codex's off-by-one; confirms pi's independent "6 files / 7 sites" measurement.
+- Read of `03-01-PLAN.md:305-374` — the action at `:313` ("Name the parameter `from`, NOT `root` —
+  … naming it `root` would make the walker itself match") against the acceptance criterion at `:364`
+  ("outputs exactly the single line `cmd/engram/cmdwalk.go`"). Mutually unsatisfiable. Confirms
+  Codex's first HIGH.
+- Read of `03-07-PLAN.md:1-22` (`files_modified`) and `:175-268` (the checkpoint) plus
+  `rg -n 'internal/config|charts/|values.yaml|Chart.yaml|secret' 03-07-PLAN.md` — one hit, at `:255`,
+  inside option-a's `<cons>`. No config, chart or key artifact in `files_modified`; no task or
+  acceptance criterion covers key lifecycle. Confirms Codex's second HIGH.
+- `rg -n '03-VALIDATION|VALIDATION.md|gsd-validate-phase' 03-0*-PLAN.md` — `03-07-PLAN.md:540,542,569`
+  require the gate to run and the artifact to leave draft; every other hit is a `read_first` or a
+  prose reference. No `files_modified` entry anywhere. Confirms Codex on #22.
+- `sed -n '1,25p' 03-03-PLAN.md` and `rg -n 'destructive_test|TestDestructive' 03-07-PLAN.md` —
+  `cmd/engram/destructive_test.go` is owned by 03-03 (`:9`) and absent from 03-07's `files_modified`,
+  while `03-07-PLAN.md:556` requires both destructive tests to pass unedited and `03-03-PLAN.md:322`
+  specifies a per-command literal expected flag set. Confirms Codex's MEDIUM.
+- `rg -n '(rootCmd|root|from|cmd)\.Commands\(\)' cmd/engram/` — the live walker inventory, for the
+  pre-state check above: `flaggroup_test.go:426`, `surfaces_test.go:102`, `catalog.go:86`,
+  `golden_test.go:81`, `golden_test.go:107`, `exitcode_baseline_test.go:449`, `catalog_test.go:130`
+  (plus `client_common_test.go:713`, which uses `cmd.Commands()` and is outside the regex).
+
+**Not verified / out of scope for this cycle.** No test was executed (`task test` needs a live Qdrant
+via testcontainers), so every "this gate would go red" claim is derived from reading the assertion
+against current source, not from an observed failure — the same limitation as cycle 1. The
+orchestrator did not independently re-verify the ~25 non-HIGH items both lanes scored FULLY RESOLVED
+with concurring file:line evidence; those are adopted on two-lane agreement. Rule `7smp8vy9hr`'s text
+lives in the engram memory store rather than the repo, so 03-07's fidelity to it was again assessed
+from the quotations in `03-CONTEXT.md` / `03-07-PLAN.md`.
