@@ -60,6 +60,61 @@ func commandKey(cmd *cobra.Command) string {
 // withGoldenDeterminism, nonHiddenCommands, wantCommandNames,
 // TestEveryDeclaredExclusivityHasAFlagGroup, resetEveryCommandFlagState)
 // has been converted to call this function instead.
+// operatorCommandExclusions is the small NAMED set operatorCommands drops
+// after its two structural filters (non-nil RunE, no "server" flag) have
+// already run. Each exclusion exists for a reason a structural filter
+// cannot express:
+//
+//   - "serve": the daemon, not a report — it has a RunE and registers no
+//     "server" client flag, so it would otherwise pass both structural
+//     filters, but it never produces an operator-facing summary to render
+//     through --output.
+//   - "version": prints a constant — currently registered with a plain
+//     Run (nil RunE), so today's structural filter alone already excludes
+//     it; named here anyway so the exclusion survives a future change to
+//     Run/RunE without silently widening operatorCommands' membership.
+//
+// TestOperatorCommands asserts this set is EXACTLY {"serve", "version"}
+// and that every name in it resolves to a live command in the tree, so a
+// future addition to this set cannot go unnoticed and a stale entry
+// (naming a command that no longer exists) cannot silently persist.
+var operatorCommandExclusions = map[string]bool{
+	"serve":   true,
+	"version": true,
+}
+
+// operatorCommands returns every operator-tier command in the live cobra
+// tree: the concrete structural predicate the phase's --output parity and
+// timeout-group gates derive from, replacing the previous informal
+// "whatever walkCommands classifies as an operator command" language —
+// walkCommands is a pure traversal with a hidden/help/completion skip
+// predicate and performs no tier classification at all.
+//
+// The predicate, in order: walk the whole tree (walkCommands with
+// commandWalkSkip), keep only commands with a non-nil RunE (drops
+// non-runnable GROUP commands such as "spine-review", whose own bare
+// invocation only ever prints help), drop any command whose own flag set
+// declares the client-tier's "server" flag (addClientFlags registers it on
+// exactly search/list/store and nowhere else, so this is how the three
+// client verbs are excluded without naming them), then drop the small
+// named exclusion set above.
+func operatorCommands() []*cobra.Command {
+	var out []*cobra.Command
+	for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {
+		if cmd.RunE == nil {
+			continue
+		}
+		if cmd.Flags().Lookup("server") != nil {
+			continue
+		}
+		if operatorCommandExclusions[commandKey(cmd)] {
+			continue
+		}
+		out = append(out, cmd)
+	}
+	return out
+}
+
 func walkCommands(from *cobra.Command, skip func(*cobra.Command) bool) []*cobra.Command {
 	children := from.Commands()
 	sorted := make([]*cobra.Command, len(children))

@@ -4,6 +4,8 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -101,4 +103,120 @@ func TestWalkCommands(t *testing.T) {
 			t.Errorf("commandKey(leaf) = %q, want %q", got, want)
 		}
 	})
+}
+
+// wantOperatorCommandKeys is the hand-known expected membership of
+// operatorCommands() over the LIVE rootCmd tree: the six pre-existing
+// operator commands this plan backfills plus spine-review scan (plan
+// 03-01's first operator-tier leaf) — never search/list/store (the client
+// tier, excluded by the "server" flag check) and never spine-review itself
+// (the non-runnable group, excluded by the RunE check) or serve/version
+// (the named exclusion set).
+var wantOperatorCommandKeys = map[string]bool{
+	"reindex":             true,
+	"prune-expired":       true,
+	"summarize-missing":   true,
+	"backfill-short-ids":  true,
+	"migrate-remap-owner": true,
+	"migrate-set-owner":   true,
+	"spine-review scan":   true,
+}
+
+// commandKeySet is a small helper turning a []*cobra.Command into a
+// commandKey set for both-directions comparison.
+func commandKeySet(cmds []*cobra.Command) map[string]bool {
+	set := make(map[string]bool, len(cmds))
+	for _, c := range cmds {
+		set[commandKey(c)] = true
+	}
+	return set
+}
+
+// TestOperatorCommands is the phase's structural-predicate gate (review
+// #19): operatorCommands() is a concrete definition of operator-tier
+// membership, not an informal reading of walkCommands' own (tier-agnostic)
+// traversal. Two claims, both both-directions:
+//
+//  1. operatorCommands()'s commandKey set equals the hand-known expected
+//     set over the live tree, in both directions — a command silently
+//     dropped from (or added to) the predicate is caught either way.
+//  2. The named exclusion set is EXACTLY {"serve", "version"}, and both
+//     names resolve to a live command in the tree — a future command
+//     added to the exclusion set without also existing in the tree (or a
+//     stale entry left behind after a rename) is caught.
+func TestOperatorCommands(t *testing.T) {
+	got := commandKeySet(operatorCommands())
+
+	for key := range wantOperatorCommandKeys {
+		if !got[key] {
+			t.Errorf("operatorCommands() is missing %q", key)
+		}
+	}
+	for key := range got {
+		if !wantOperatorCommandKeys[key] {
+			t.Errorf("operatorCommands() unexpectedly includes %q", key)
+		}
+	}
+
+	wantExclusions := map[string]bool{"serve": true, "version": true}
+	if len(operatorCommandExclusions) != len(wantExclusions) {
+		t.Fatalf("operatorCommandExclusions has %d entries, want %d: %v", len(operatorCommandExclusions), len(wantExclusions), operatorCommandExclusions)
+	}
+	for name := range wantExclusions {
+		if !operatorCommandExclusions[name] {
+			t.Errorf("operatorCommandExclusions is missing %q", name)
+		}
+	}
+
+	liveKeys := commandKeySet(walkCommands(rootCmd, commandWalkSkip))
+	for name := range operatorCommandExclusions {
+		if !liveKeys[name] {
+			t.Errorf("operatorCommandExclusions names %q, which does not resolve to a live command in the tree", name)
+		}
+	}
+}
+
+// TestCatalogOutputFlagMatchesOperatorCommandsUnionClientVerbs decodes the
+// committed catalog.golden fixture and asserts SET EQUALITY between the
+// set of command names whose flag list carries "output" and
+// operatorCommands()'s commandKey set unioned with the three client verbs
+// (search, list, store). This is the behavioural gate the plan's
+// acceptance criteria call for — an rg-based literal count over the golden
+// text would pass on two offsetting errors; decoding the JSON and
+// comparing sets cannot.
+func TestCatalogOutputFlagMatchesOperatorCommandsUnionClientVerbs(t *testing.T) {
+	b, err := os.ReadFile("testdata/catalog.golden")
+	if err != nil {
+		t.Fatalf("reading testdata/catalog.golden: %v", err)
+	}
+	var doc catalogDoc
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatalf("json.Unmarshal(catalog.golden): %v", err)
+	}
+
+	golden := make(map[string]bool)
+	for _, c := range doc.Commands {
+		for _, f := range c.Flags {
+			if f.Name == "output" {
+				golden[c.Name] = true
+				break
+			}
+		}
+	}
+
+	want := commandKeySet(operatorCommands())
+	want["search"] = true
+	want["list"] = true
+	want["store"] = true
+
+	for key := range want {
+		if !golden[key] {
+			t.Errorf("catalog.golden's --output-bearing command set is missing %q", key)
+		}
+	}
+	for key := range golden {
+		if !want[key] {
+			t.Errorf("catalog.golden's --output-bearing command set unexpectedly includes %q (not in operatorCommands() union the three client verbs)", key)
+		}
+	}
 }

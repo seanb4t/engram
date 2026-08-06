@@ -105,6 +105,31 @@ invocation is unchanged, byte-for-byte, from before this capability existed.
 The JSON lane already carried `searched_scopes` and `scopes_truncated` on
 every response before this release and is unaffected by this change.
 
+### Operator commands
+
+Every operator command — `reindex`, `prune-expired`, `summarize-missing`,
+`backfill-short-ids`, `migrate-remap-owner`, its deprecated alias
+`migrate-set-owner`, and every `engram spine-review` leaf (currently `scan`) —
+also accepts `--output`:
+
+| Value | Behavior |
+|-------|----------|
+| `json` | Write exactly one JSON document to stdout. |
+| `text` | Write the pre-existing human-readable summary line, unchanged. |
+| *(absent)* | Detect from the command's own configured output writer: a human
+terminal renders `text`; anything else (a pipe, a file redirect) renders `json`. |
+| anything else | Rejected as a usage error (exit `2`), naming `--output` and its
+legal values — the same validator the three client verbs use. |
+
+As with the client tier, the JSON document goes to stdout and any warning or
+diagnostic goes to stderr, so `engram <operator-command> --output json | jq .`
+is always safe. A sweep that affected zero records still emits zero-valued
+counters and `[]` for any list-shaped field — never `null` — and exits `0`.
+Every fact an operator command's `text` line states also appears as a field
+in its `json` document; a preview (`--dry-run`) is always distinguished from
+an applied mutation by an explicit boolean field plus separate count fields,
+never by prose alone.
+
 ## Exit codes
 
 Every command in the binary — the three client verbs and all seven operator
@@ -160,7 +185,7 @@ zero-semantics, and it is not uniform across commands:**
 | Commands | `--timeout` meaning | `0` behavior |
 |---|---|---|
 | `search`, `list`, `store` | Per-RPC-call deadline | **Rejected** (usage error) |
-| `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
+| `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
 | `migrate-remap-owner`, `migrate-set-owner` | Whole-sweep wall-clock budget | **Rejected** (usage error) — changed this release, see the [upgrade guide](/guides/upgrade/#6-migrate-remap-owner---timeout-0--migrate-set-owner---timeout-0-no-longer-means-unbounded) |
 
 A reader comparing `engram search --help` against `engram reindex --help`
