@@ -1,6 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sean Brandt
 
+// Package main's spine-review test files carry one standing discipline
+// note for future plans in this phase: every `stringSlice`-backed
+// package-level flag var a later spine-review leaf introduces (plan
+// 03-06's `--id`, plan 03-07's `--tags`/`--class`) MUST ALSO be nilled in
+// resetClientFlags' explicit cleanup list (clienttest_test.go). This is
+// NOT optional or redundant with resetCommandFlagState: that helper
+// DELIBERATELY skips value reset for stringSlice flags (its doc comment
+// explains why — DefValue for such a flag is a bracketed DISPLAY string,
+// not a value Set expects, and stringSliceValue.Set APPENDS once its own
+// changed bit has latched) and clears only pflag's Changed latch. Plan
+// 03-01 introduces zero stringSlice-backed flags (--scope/--all-scopes/
+// --output/--timeout are string/bool/duration), so no such registration
+// exists yet — this note exists so the NEXT plan that adds one does not
+// have to rediscover the gap RESEARCH.md Pitfall 6 (memory k66tenzbhy)
+// already names.
 package main
 
 import (
@@ -118,5 +133,58 @@ func TestSpineScanSummaryFormat(t *testing.T) {
 	allScopes := spineScanSummary(store.SpineScanResult{}, "")
 	if !strings.Contains(allScopes, "all scopes") {
 		t.Errorf("spineScanSummary(res, \"\") = %q, want it to name \"all scopes\"", allScopes)
+	}
+}
+
+// TestSpineReviewBareInvocationPrintsHelp pins the bare `spine-review`
+// contract as a published operator-facing behavior, not an incidental
+// framework default: cobra v1.10.2 prints a non-runnable parent's own help
+// and exits 0 (command.go:935, :1152), but this repo already pins the
+// analogous root behavior explicitly (TestRootBareInvocationEmitsCatalog)
+// rather than trusting cobra's default to keep doing this across upgrades.
+func TestSpineReviewBareInvocationPrintsHelp(t *testing.T) {
+	resetClientFlags(t)
+	stdout, _, err := runClient(t, "spine-review")
+	if err != nil {
+		t.Fatalf("bare `spine-review` invocation returned error: %v", err)
+	}
+	if !strings.Contains(stdout, "scan") {
+		t.Errorf("bare `spine-review` stdout does not list its own leaf %q: %q", "scan", stdout)
+	}
+	if !strings.Contains(stdout, "Usage:") {
+		t.Errorf("bare `spine-review` stdout does not look like cobra's own usage block: %q", stdout)
+	}
+}
+
+// TestSpineReviewScanFlagStateDoesNotLeakBetweenRows is the regression
+// RESEARCH.md Pitfall 6 (memory k66tenzbhy) warns about: rootCmd and every
+// subcommand are package-level singletons shared across this whole test
+// binary, so a row that forgets its own resetCommandFlagState pairing can
+// silently inherit a PRIOR row's flag value. Row 1 sets --scope; row 2
+// sets only --all-scopes, paired with its own resetCommandFlagState call,
+// and must NOT see row 1's --scope value survive. Both rows use
+// `--output yaml` so each fails at output validation before any store
+// dial — only flag state is under test here.
+func TestSpineReviewScanFlagStateDoesNotLeakBetweenRows(t *testing.T) {
+	rows := []struct {
+		name string
+		args []string
+	}{
+		{"scope", []string{"spine-review", "scan", "--scope", "row-a-scope", "--output", "yaml"}},
+		{"all-scopes", []string{"spine-review", "scan", "--all-scopes", "--output", "yaml"}},
+	}
+	for _, row := range rows {
+		resetClientFlags(t)
+		resetCommandFlagState(t, spineReviewScanCmd)
+		if _, _, err := runClient(t, row.args...); err == nil {
+			t.Fatalf("row %q: expected an error (--output yaml is always invalid), got nil", row.name)
+		}
+	}
+
+	if spineScanScope != "" {
+		t.Errorf("spineScanScope = %q after the all-scopes row, want \"\" — row 1's --scope value leaked into row 2", spineScanScope)
+	}
+	if !spineScanAllScopes {
+		t.Error("spineScanAllScopes = false after the all-scopes row, want true")
 	}
 }

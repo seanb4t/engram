@@ -698,3 +698,68 @@ func TestCollectFlagsIsDepthAware(t *testing.T) {
 			scan.Flags, flagName)
 	}
 }
+
+// catalogCommandNameSet returns the set of doc.Commands[i].Name values.
+func catalogCommandNameSet(doc catalogDoc) map[string]bool {
+	set := make(map[string]bool, len(doc.Commands))
+	for _, c := range doc.Commands {
+		set[c.Name] = true
+	}
+	return set
+}
+
+// walkedCommandKeySet returns the commandKey set of walkCommands(rootCmd,
+// commandWalkSkip) — the live tree's own ground truth.
+func walkedCommandKeySet() map[string]bool {
+	set := make(map[string]bool)
+	for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {
+		set[commandKey(cmd)] = true
+	}
+	return set
+}
+
+// TestBuildCatalogCommandNamesEqualWalkedKeys asserts, over the LIVE
+// rootCmd, that buildCatalog's emitted command-name set is EXACTLY the
+// commandKey set walkCommands(rootCmd, commandWalkSkip) returns — set
+// equality, not membership or a count — so no entry's Name is a bare leaf
+// name that also exists as a nested leaf (e.g. a stray "scan" alongside
+// the correct "spine-review scan").
+//
+// **MUTATION CHECK, not a RED-first observation** (say so honestly, per
+// this plan's own discipline): this equality holds by construction from
+// the moment buildCatalog and wantCommandNames/nonHiddenCommands were
+// converted to the same walker in Task 1, so its failure state does not
+// arise naturally at any later point in this plan's task order. Falsified
+// in both directions by injection below, each reverted immediately after
+// its observed failure is recorded.
+func TestBuildCatalogCommandNamesEqualWalkedKeys(t *testing.T) {
+	doc := buildCatalog(rootCmd)
+	got := catalogCommandNameSet(doc)
+	want := walkedCommandKeySet()
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("buildCatalog(rootCmd) command names = %v, want exactly %v (walkCommands' commandKey set)", got, want)
+	}
+
+	// Direction 1: drop one command from the catalog's own list and prove
+	// the equality check catches the omission.
+	t.Run("mutation: catalog missing an entry", func(t *testing.T) {
+		mutated := catalogCommandNameSet(doc)
+		for k := range mutated {
+			delete(mutated, k)
+			break
+		}
+		if reflect.DeepEqual(mutated, want) {
+			t.Fatal("dropping one entry from the catalog's name set did not break equality — the gate cannot detect a missing command")
+		}
+	})
+
+	// Direction 2: add a phantom entry the walker never produced and prove
+	// the equality check catches the addition.
+	t.Run("mutation: catalog has a phantom entry", func(t *testing.T) {
+		mutated := catalogCommandNameSet(doc)
+		mutated["phantom-command-not-in-live-tree"] = true
+		if reflect.DeepEqual(mutated, want) {
+			t.Fatal("adding a phantom entry to the catalog's name set did not break equality — the gate cannot detect an invented command")
+		}
+	})
+}

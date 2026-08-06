@@ -187,8 +187,8 @@ func TestScanSpinePaginatesEveryPage(t *testing.T) {
 	owners := []string{"owner-a", "owner-b", "owner-a", "owner-b", "owner-a"}
 	for i, owner := range owners {
 		seedSpineMemory(t, s, Memory{
-			ID:        "c0000000-0000-0000-0000-00000000000" + string(rune('1'+i)),
-			Content:   "point", Scope: scope, Category: "note",
+			ID:      "c0000000-0000-0000-0000-00000000000" + string(rune('1'+i)),
+			Content: "point", Scope: scope, Category: "note",
 			Owner: owner, CreatedAt: time.Now().UTC(),
 		})
 	}

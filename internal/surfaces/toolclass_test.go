@@ -145,3 +145,26 @@ func TestClassForCommandKnowsCLIOnlyOperations(t *testing.T) {
 		})
 	}
 }
+
+// TestClassForCommandResolvesQualifiedNestedPaths proves ClassForCommand
+// resolves a nested command's QUALIFIED path (D-01), not its bare leaf
+// name — the qualification is load-bearing, not cosmetic: a bare "scan"
+// must resolve to nothing, since a future spine-review sibling group could
+// register its own "scan" leaf with an entirely different Class, and a
+// bare-name lookup would silently collide the two.
+func TestClassForCommandResolvesQualifiedNestedPaths(t *testing.T) {
+	if _, ok := ClassForCommand("spine-review"); !ok {
+		t.Error(`ClassForCommand("spine-review") not found, want the group's own row`)
+	}
+	got, ok := ClassForCommand("spine-review scan")
+	if !ok {
+		t.Fatal(`ClassForCommand("spine-review scan") not found`)
+	}
+	if !got.ReadOnly || got.Destructive {
+		t.Errorf(`ClassForCommand("spine-review scan") = %+v, want ReadOnly=true Destructive=false`, got)
+	}
+
+	if _, ok := ClassForCommand("scan"); ok {
+		t.Error(`ClassForCommand("scan") resolved by bare leaf name, want ok=false — only the qualified path "spine-review scan" should resolve`)
+	}
+}
