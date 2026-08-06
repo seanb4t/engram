@@ -426,10 +426,13 @@ func TestExitCodeBaselineRowCount(t *testing.T) {
 }
 
 // resetEveryCommandFlagState resets flag state (both pflag's Changed latch
-// and the Go variable it writes into) for rootCmd itself AND every one of
-// its direct subcommands. rootCmd's own tree is flat — every client and
-// operator command is a direct child of rootCmd, never nested — so one
-// level of Commands() is exhaustive.
+// and the Go variable it writes into) for rootCmd itself AND every command
+// in its WHOLE tree, at any depth (walkCommands(root, commandWalkSkip)).
+// rootCmd's tree is nested as of D-01 (the "spine-review" group and its own
+// leaves, e.g. "spine-review scan"), so a single level of Commands() is no
+// longer exhaustive — this walk is now recursive precisely so a nested
+// leaf's flag state cannot escape this harness the way it would have under
+// the pre-D-01 one-level loop.
 //
 // This table's rows invoke a different leaf command each (list, search,
 // store, reindex, ...), and resetCommandFlagState alone only clears the
@@ -439,14 +442,13 @@ func TestExitCodeBaselineRowCount(t *testing.T) {
 // validation and dial instead — observed directly: TestExitCodeBaseline's
 // store/missing-required row reported exitUnavailable instead of exitUsage
 // under `go test ./...` (full-package run order), because only rootCmd's
-// own flags were being reset, never storeCmd's. Resetting the whole
-// one-level tree before every row is what makes each row's observation
-// depend only on its own args/env, independent of what ran before it in
-// the same test binary.
+// own flags were being reset, never storeCmd's. Resetting the whole tree
+// before every row is what makes each row's observation depend only on its
+// own args/env, independent of what ran before it in the same test binary.
 func resetEveryCommandFlagState(t *testing.T, root *cobra.Command) {
 	t.Helper()
 	resetCommandFlagState(t, root)
-	for _, c := range root.Commands() {
+	for _, c := range walkCommands(root, commandWalkSkip) {
 		resetCommandFlagState(t, c)
 	}
 }
@@ -548,5 +550,31 @@ func TestExitCodeBaselineFullyMigrated(t *testing.T) {
 		if !c.landed {
 			t.Errorf("row %q: changes=true but landed=false, and not present in exitCodeBaselineFullyMigratedAllowlist -- either this row's change has not shipped yet (add it to the allowlist with a comment naming the owning plan) or it was missed by the plan that should have flipped it", c.name)
 		}
+	}
+}
+
+// TestResetEveryCommandFlagStateReachesDepth proves resetEveryCommandFlagState
+// actually visits a GRANDCHILD command, not just root's direct children —
+// the exact gap the pre-D-01 single-level direct-children loop left open.
+// Built on a fully throwaway tree (never rootCmd), so it exercises the walk
+// itself without touching any shared cobra singleton other tests depend on.
+func TestResetEveryCommandFlagStateReachesDepth(t *testing.T) {
+	throwawayRoot := &cobra.Command{Use: "throwaway-root"}
+	group := &cobra.Command{Use: "throwaway-group"}
+	leaf := &cobra.Command{Use: "throwaway-leaf"}
+	group.AddCommand(leaf)
+	throwawayRoot.AddCommand(group)
+
+	leaf.Flags().Bool("depth-flag", false, "test-only")
+	f := leaf.Flags().Lookup("depth-flag")
+	if err := f.Value.Set("true"); err != nil {
+		t.Fatalf("setting throwaway flag: %v", err)
+	}
+	f.Changed = true
+
+	resetEveryCommandFlagState(t, throwawayRoot)
+
+	if f.Changed {
+		t.Error("leaf.Flags().Lookup(\"depth-flag\").Changed = true after resetEveryCommandFlagState, want false — the walk did not reach the grandchild")
 	}
 }

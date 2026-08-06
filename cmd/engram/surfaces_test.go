@@ -4,6 +4,7 @@
 package main
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -16,7 +17,7 @@ import (
 // cmd — the SAME live-tree walk buildCatalog already uses (catalog.go),
 // never a second traversal.
 func cobraExposedFields(cmd *cobra.Command) []string {
-	flags := collectFlags(rootCmd, cmd)
+	flags := collectFlags(cmd)
 	out := make([]string, len(flags))
 	for i, f := range flags {
 		out[i] = f.Name
@@ -77,7 +78,7 @@ func TestSurfaceConformanceCobraUsage(t *testing.T) {
 			matched++
 
 			found := false
-			for _, f := range collectFlags(rootCmd, cmd) {
+			for _, f := range collectFlags(cmd) {
 				if strings.Contains(f.Usage, rule.Sentence) {
 					found = true
 					break
@@ -93,17 +94,53 @@ func TestSurfaceConformanceCobraUsage(t *testing.T) {
 	}
 }
 
-// nonHiddenCommands returns rootCmd's non-hidden, non-help, non-completion
-// subcommands — the exact predicate TestSurfaceConformanceCobraUsage's loop
-// already applied inline; factored out so the union pass and the per-command
-// pass iterate the identical set.
+// nonHiddenCommands returns EVERY non-hidden, non-help, non-completion
+// command in rootCmd's whole tree, at any depth — walkCommands(rootCmd,
+// commandWalkSkip), the same shared walker and skip predicate buildCatalog
+// uses, factored out so the union pass and the per-command pass iterate the
+// identical set. Widening this to the whole tree (not just rootCmd's direct
+// children) is what makes TestSurfaceConformanceCobraUsage's unionExposed
+// actually reach a nested leaf's flags: a single-level nonHiddenCommands
+// would make every rule this phase registers on a spine-review leaf
+// resolve "not applicable to cobra_usage" via the ApplicableSurfaces skip
+// below, with the suite staying green (T-03-23).
 func nonHiddenCommands() []*cobra.Command {
-	var out []*cobra.Command
-	for _, cmd := range rootCmd.Commands() {
-		if cmd.Hidden || cmd.Name() == "help" || cmd.Name() == "completion" {
-			continue
+	return walkCommands(rootCmd, commandWalkSkip)
+}
+
+// TestNonHiddenCommandsReachesNestedLeaves is the behavioral gate behind
+// the walker-conversion grep: it asserts the commandKey set of
+// nonHiddenCommands() equals the commandKey set of walkCommands(rootCmd,
+// commandWalkSkip) directly (they should be literally the same call, so
+// this also catches nonHiddenCommands drifting to a different skip
+// predicate), AND that at least one member contains a space — proof the
+// union actually reaches a nested leaf, not merely a stub function that
+// happens to delegate today. This is what would go red on exactly the miss
+// that lets TestSurfaceConformanceCobraUsage silently skip every rule this
+// phase registers on a spine-review leaf (T-03-23).
+func TestNonHiddenCommandsReachesNestedLeaves(t *testing.T) {
+	keySet := func(cmds []*cobra.Command) map[string]bool {
+		m := make(map[string]bool, len(cmds))
+		for _, c := range cmds {
+			m[commandKey(c)] = true
 		}
-		out = append(out, cmd)
+		return m
 	}
-	return out
+
+	got := keySet(nonHiddenCommands())
+	want := keySet(walkCommands(rootCmd, commandWalkSkip))
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("nonHiddenCommands() keys = %v, want %v", got, want)
+	}
+
+	nested := false
+	for k := range got {
+		if strings.Contains(k, " ") {
+			nested = true
+			break
+		}
+	}
+	if !nested {
+		t.Errorf("nonHiddenCommands() = %v, want at least one nested leaf (a key containing a space)", got)
+	}
 }

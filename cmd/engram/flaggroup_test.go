@@ -423,14 +423,14 @@ func declaredGroupCoversPair(f *pflag.Flag, self, peer string) bool {
 // have.
 func TestEveryDeclaredExclusivityHasAFlagGroup(t *testing.T) {
 	checked := 0
-	for _, cmd := range rootCmd.Commands() {
+	for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {
 		cmd := cmd
 		cmd.Flags().VisitAll(func(f *pflag.Flag) {
 			peers := flagsClaimedMutuallyExclusive(f.Usage)
 			if len(peers) == 0 {
 				return
 			}
-			t.Run(cmd.Name()+"/--"+f.Name, func(t *testing.T) {
+			t.Run(commandKey(cmd)+"/--"+f.Name, func(t *testing.T) {
 				for _, peer := range peers {
 					checked++
 					if cmd.Flags().Lookup(peer) == nil {

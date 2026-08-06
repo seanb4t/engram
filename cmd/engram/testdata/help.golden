@@ -17,6 +17,7 @@ Available Commands:
   reindex             Re-embed memories into a new (new-dimension) collection for embedder migration
   search              Search memories on a remote engram server
   serve               Run the engram MCP server
+  spine-review        Inventory, verify, and curate the memory spine
   store               Store a memory on a remote engram server
   summarize-missing   Fill empty recall summaries with the configured cheap model
   version             Print the engram version
@@ -183,6 +184,39 @@ Flags:
       --ui-enabled string               enable the web UI + login lane (empty=imply from creds; 'false'=hard off)
       --ui-issuer string                OIDC issuer for the web-UI login lane (empty=default to --oidc-issuer)
       --ui-redirect-url string          OIDC auth-code callback URL
+```
+
+## engram spine-review
+
+```
+Inventory, verify, and curate the memory spine
+
+Usage:
+  engram spine-review [command]
+
+Available Commands:
+  scan        Report an inventory of the memory spine
+
+Flags:
+  -h, --help   help for spine-review
+
+Use "engram spine-review [command] --help" for more information about a command.
+```
+
+## engram spine-review scan
+
+```
+Report an inventory of the memory spine
+
+Usage:
+  engram spine-review scan [flags]
+
+Flags:
+      --all-scopes         sweep every scope (required if --scope is omitted)
+  -h, --help               help for scan
+      --output string      output format: "json" or "text" (default: detect from stdout)
+      --scope string       only scan records in this scope
+      --timeout duration   max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 5m0s)
 ```
 
 ## engram store

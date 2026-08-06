@@ -465,6 +465,53 @@
       }
     },
     {
+      "name": "spine-review",
+      "summary": "Inventory, verify, and curate the memory spine",
+      "flags": [],
+      "blast_radius": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "spine-review scan",
+      "summary": "Report an inventory of the memory spine",
+      "flags": [
+        {
+          "name": "all-scopes",
+          "type": "bool",
+          "default": "false",
+          "usage": "sweep every scope (required if --scope is omitted)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "default": "",
+          "usage": "only scan records in this scope"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "5m0s",
+          "usage": "max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C"
+        }
+      ],
+      "blast_radius": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
       "name": "store",
       "summary": "Store a memory on a remote engram server",
       "flags": [

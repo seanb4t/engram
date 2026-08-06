@@ -45,7 +45,12 @@ type Class struct {
 // no counterpart on that lane" — never "unclassified": every declared row
 // carries a real, deliberately-chosen Class.
 type Operation struct {
-	MCPTool    string
+	MCPTool string
+	// CLICommand is the command's qualified path relative to the binary
+	// (D-01): a top-level command's bare name ("reindex"), or a nested
+	// leaf's space-joined path ("spine-review scan") — never a bare cobra
+	// Use name for a nested command, which would collide with any other
+	// leaf sharing that name under a different group.
 	CLICommand string
 	Class      Class
 }
@@ -242,6 +247,22 @@ var operations = []Operation{
 		MCPTool: "", CLICommand: "engram",
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
+	{
+		// spine-review is the operator tier's first nested cobra group
+		// (D-01) — a bare `engram spine-review` invocation runs nothing but
+		// its own help (no RunE), the same read-only, non-destructive,
+		// idempotent, closed-world shape as the bare root invocation above.
+		MCPTool: "", CLICommand: "spine-review",
+		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
+	{
+		// spine-review scan reports an inventory of the memory spine —
+		// counts, scopes and categories only, never a mutating Qdrant RPC
+		// (T-03-07/T-03-24's mitigation). Idempotent: repeating the same
+		// scan against unchanged data reports the same counts.
+		MCPTool: "", CLICommand: "spine-review scan",
+		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
 }
 
 // classByTool/classByCommand are built once from operations, backing
@@ -283,8 +304,10 @@ func ClassForTool(name string) (Class, bool) {
 	return c, ok
 }
 
-// ClassForCommand looks up a CLI command's blast-radius Class by its cobra
-// Use name (or, for the bare self-describe invocation, "engram").
+// ClassForCommand looks up a CLI command's blast-radius Class by its
+// qualified command path (D-01: a top-level command's bare cobra Use name,
+// e.g. "reindex"; a nested leaf's space-joined path, e.g.
+// "spine-review scan"; or, for the bare self-describe invocation, "engram").
 func ClassForCommand(name string) (Class, bool) {
 	c, ok := classByCommand[name]
 	return c, ok

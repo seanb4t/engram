@@ -9,7 +9,6 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 
@@ -78,8 +77,8 @@ func withGoldenDeterminism(t *testing.T) {
 	rootCmd.Version = goldenTestVersion
 	t.Cleanup(func() { rootCmd.Version = origVersion })
 
-	for _, cmd := range rootCmd.Commands() {
-		flagNames, ok := envDerivedFlagDefaults[cmd.Name()]
+	for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {
+		flagNames, ok := envDerivedFlagDefaults[commandKey(cmd)]
 		if !ok {
 			continue
 		}
@@ -97,21 +96,14 @@ func withGoldenDeterminism(t *testing.T) {
 	}
 }
 
-// goldenCommands returns root's non-hidden, non-cobra-scaffolding
-// subcommands sorted lexicographically by name — the SAME skip predicate
-// buildCatalog uses (catalog.go:96), reused here rather than duplicated, so
-// the help golden and the catalog golden can only ever cover the identical
-// command set.
+// goldenCommands returns EVERY non-hidden, non-cobra-scaffolding command in
+// root's whole tree, at any depth, in walkCommands' deterministic pre-order
+// (parent immediately followed by its own children) — the SAME shared
+// walker and skip predicate buildCatalog uses (cmdwalk.go), so the help
+// golden and the catalog golden can only ever cover the identical command
+// set, now including nested leaves such as "spine-review scan".
 func goldenCommands(root *cobra.Command) []*cobra.Command {
-	var cmds []*cobra.Command
-	for _, cmd := range root.Commands() {
-		if cmd.Hidden || cmd.Name() == "help" || cmd.Name() == "completion" {
-			continue
-		}
-		cmds = append(cmds, cmd)
-	}
-	sort.Slice(cmds, func(i, j int) bool { return cmds[i].Name() < cmds[j].Name() })
-	return cmds
+	return walkCommands(root, commandWalkSkip)
 }
 
 // buildHelpGoldenContent captures --help output for every command

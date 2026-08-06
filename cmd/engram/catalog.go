@@ -27,7 +27,11 @@ type catalogDoc struct {
 	Notes     []string          `json:"notes"`
 }
 
-// catalogCommand is one entry in catalogDoc.Commands.
+// catalogCommand is one entry in catalogDoc.Commands. Name is the
+// command's qualified path relative to the binary (commandKey), never a
+// bare cobra Use name — this stays a FLAT list, one entry per command at
+// any depth, so a nested leaf (e.g. "spine-review scan") appears alongside
+// a top-level command (e.g. "reindex") in the same array.
 type catalogCommand struct {
 	Name    string        `json:"name"`
 	Summary string        `json:"summary"`
@@ -83,31 +87,28 @@ func buildCatalog(root *cobra.Command) catalogDoc {
 		Version: root.Version,
 	}
 
-	for _, cmd := range root.Commands() {
-		// Cobra auto-registers "help" and "completion" at Execute() time
-		// (InitDefaultHelpCmd / InitDefaultCompletionCmd, called before any
-		// RunE runs). Neither is part of the surface this phase's three
-		// client verbs — or any operator command — advertise, so both are
-		// skipped by name here, alongside any command explicitly marked
-		// Hidden. This omission is deliberate, not a bug: an agent parsing
-		// this catalog should see the same commands a human sees listed in
-		// `engram --help`'s "Available Commands" section, minus cobra's own
-		// scaffolding.
-		if cmd.Hidden || cmd.Name() == "help" || cmd.Name() == "completion" {
-			continue
-		}
-		class, ok := surfaces.ClassForCommand(cmd.Name())
+	// walkCommands(root, commandWalkSkip) replaces the pre-D-01 single-level
+	// direct-children loop: it recurses into nested groups (e.g.
+	// spine-review's leaves) so a nested command cannot escape the catalog.
+	// commandWalkSkip is the same skip predicate as before (hidden, plus
+	// cobra's own "help"/"completion" scaffolding), now applied at every
+	// depth rather than only at the top. An agent parsing this catalog
+	// should see the same commands a human sees listed in `engram --help`'s
+	// "Available Commands" sections, minus cobra's own scaffolding.
+	for _, cmd := range walkCommands(root, commandWalkSkip) {
+		key := commandKey(cmd)
+		class, ok := surfaces.ClassForCommand(key)
 		if !ok {
 			panic(fmt.Sprintf(
 				"catalog: command %q has no internal/surfaces blast-radius classification — "+
 					"add a row to internal/surfaces/toolclass.go's operations table",
-				cmd.Name(),
+				key,
 			))
 		}
 		doc.Commands = append(doc.Commands, catalogCommand{
-			Name:    cmd.Name(),
+			Name:    key,
 			Summary: cmd.Short,
-			Flags:   collectFlags(root, cmd),
+			Flags:   collectFlags(cmd),
 			BlastRadius: catalogBlastRadius{
 				ReadOnly:    class.ReadOnly,
 				Destructive: class.Destructive,
@@ -163,9 +164,17 @@ func buildCatalog(root *cobra.Command) catalogDoc {
 }
 
 // collectFlags returns the sorted, de-duplicated set of flags a caller may
-// legitimately pass to cmd: cmd's own flags, plus root's persistent flags
-// (since a caller may pass those on any subcommand too).
-func collectFlags(root, cmd *cobra.Command) []catalogFlag {
+// legitimately pass to cmd: cmd's own flags, plus EVERY ancestor's
+// persistent flags, walking the parent chain from cmd up to the root
+// (rather than only root's, as the pre-D-01 version did). This is what
+// keeps a flag hoisted onto a group command's own PersistentFlags (e.g. a
+// future `--scope`/`--all-scopes`/`--timeout` shared by several
+// spine-review leaves) visible on the catalog entry for every leaf
+// beneath it — cobra only merges a command's inherited persistent flags
+// into its own Flags() at Execute()-time (mergePersistentFlags), so a
+// catalog built without ever calling Execute() must walk the chain itself
+// or silently drop them.
+func collectFlags(cmd *cobra.Command) []catalogFlag {
 	seen := make(map[string]bool)
 	// Non-nil by construction so a flagless command always serializes as
 	// "flags": [] and never "flags": null. Two reasons this matters:
@@ -188,7 +197,9 @@ func collectFlags(root, cmd *cobra.Command) []catalogFlag {
 		})
 	}
 	cmd.Flags().VisitAll(add)
-	root.PersistentFlags().VisitAll(add)
+	for anc := cmd; anc != nil; anc = anc.Parent() {
+		anc.PersistentFlags().VisitAll(add)
+	}
 	sort.Slice(flags, func(i, j int) bool { return flags[i].Name < flags[j].Name })
 	return flags
 }

@@ -119,19 +119,18 @@ func decodeCatalog(t *testing.T) decodedCatalog {
 	return doc
 }
 
-// wantCommandNames returns the set of names buildCatalog is expected to
-// enumerate: rootCmd's non-hidden subcommands, excluding cobra's own
-// auto-generated help and completion commands. This mirrors buildCatalog's
-// own filter exactly, so the two can only diverge if buildCatalog's actual
-// derivation itself drifts from the live tree.
+// wantCommandNames returns the set of qualified command paths buildCatalog
+// is expected to enumerate: every non-hidden command in rootCmd's WHOLE
+// tree (walkCommands(rootCmd, commandWalkSkip)), keyed by commandKey rather
+// than the bare cobra Name() — this mirrors buildCatalog's own derivation
+// exactly (same walker, same skip predicate, same key function), so the
+// two can only diverge if buildCatalog's actual derivation itself drifts
+// from the live tree.
 func wantCommandNames(t *testing.T) map[string]bool {
 	t.Helper()
 	want := make(map[string]bool)
-	for _, cmd := range rootCmd.Commands() {
-		if cmd.Hidden || cmd.Name() == "help" || cmd.Name() == "completion" {
-			continue
-		}
-		want[cmd.Name()] = true
+	for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {
+		want[commandKey(cmd)] = true
 	}
 	return want
 }
@@ -623,5 +622,79 @@ func TestHelpAndCatalogAreDifferentOutputs(t *testing.T) {
 	if catalogIsJSON == helpIsJSON {
 		t.Errorf("expected exactly one of the two outputs to parse as JSON: catalog=%v help=%v",
 			catalogIsJSON, helpIsJSON)
+	}
+}
+
+// TestBuildCatalogPanicsOnUnclassifiedNestedCommandAtDepth proves the
+// panic backstop (catalog.go's buildCatalog) still fires for a command
+// buried two levels deep, not just a top-level command — this is the exact
+// shape a real nested leaf shipped without a
+// internal/surfaces/toolclass.go operations row would take. Built on a
+// throwaway tree, never rootCmd, so it cannot pollute any other test's
+// shared cobra singleton state. The group node is deliberately named
+// "spine-review" — classification is keyed on the STRING commandKey, not
+// object identity, so reusing that already-classified name here proves the
+// group itself is classified (buildCatalog does not panic on it) and the
+// panic fires specifically on the unclassified GRANDCHILD.
+func TestBuildCatalogPanicsOnUnclassifiedNestedCommandAtDepth(t *testing.T) {
+	throwawayRoot := &cobra.Command{Use: "throwaway-root"}
+	group := &cobra.Command{Use: "spine-review"}
+	leaf := &cobra.Command{Use: "unclassified-leaf"}
+	group.AddCommand(leaf)
+	throwawayRoot.AddCommand(group)
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("buildCatalog did not panic for a nested command with no operations row")
+		}
+		msg, ok := r.(string)
+		if !ok {
+			t.Fatalf("panic value = %v (%T), want a string", r, r)
+		}
+		wantPath := "spine-review unclassified-leaf"
+		if !strings.Contains(msg, wantPath) {
+			t.Errorf("panic message %q does not contain the qualified path %q", msg, wantPath)
+		}
+	}()
+	buildCatalog(throwawayRoot)
+}
+
+// TestCollectFlagsIsDepthAware proves collectFlags walks the WHOLE parent
+// chain, not just cmd's own flags plus root's persistent flags (the
+// pre-D-01 behavior): a flag registered on spineReviewCmd's OWN persistent
+// flag set — the natural home for a flag shared by several spine-review
+// leaves — must appear in the catalog entry for a leaf beneath it. The
+// throwaway flag is marked Hidden again via t.Cleanup so it never
+// contaminates TestHelpGolden/TestCatalogGolden's pinned goldens, mirroring
+// collectFlags' own Hidden-flag exclusion (catalog.go).
+func TestCollectFlagsIsDepthAware(t *testing.T) {
+	const flagName = "depth-aware-test-only-flag"
+	spineReviewCmd.PersistentFlags().Bool(flagName, false, "test-only: proves collectFlags walks the parent chain")
+	f := spineReviewCmd.PersistentFlags().Lookup(flagName)
+	if f == nil {
+		t.Fatal("failed to register throwaway persistent flag on spineReviewCmd")
+	}
+	t.Cleanup(func() { f.Hidden = true })
+
+	doc := buildCatalog(rootCmd)
+	var scan *catalogCommand
+	for i := range doc.Commands {
+		if doc.Commands[i].Name == "spine-review scan" {
+			scan = &doc.Commands[i]
+		}
+	}
+	if scan == nil {
+		t.Fatalf("catalog has no %q entry", "spine-review scan")
+	}
+	found := false
+	for _, fl := range scan.Flags {
+		if fl.Name == flagName {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("spine-review scan catalog flags = %v, want to include %q (registered on spineReviewCmd's own PersistentFlags)",
+			scan.Flags, flagName)
 	}
 }

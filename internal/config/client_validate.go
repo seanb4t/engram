@@ -38,17 +38,28 @@ func ValidateClient(c ClientConfig) error {
 		errs = append(errs, fmt.Errorf("--insecure %q: must be a boolean: %w", c.Insecure, err))
 	}
 
-	switch c.Output {
-	case "json", "text", "":
-		// valid — mirrors resolveOutputFormat's vocabulary in
-		// cmd/engram/client_common.go, kept in sync by hand since the two
-		// packages must not import each other.
-	default:
-		errs = append(errs, fmt.Errorf(`--output %q: must be "json", "text", or empty`, c.Output))
+	if err := ValidateOutputFormat(c.Output); err != nil {
+		errs = append(errs, err)
 	}
 
 	if len(errs) == 0 {
 		return nil
 	}
 	return fmt.Errorf("invalid client configuration: %w", errors.Join(errs...))
+}
+
+// ValidateOutputFormat reports whether v is a legal --output value: "json",
+// "text", or "" (empty — detect from stdout). This is the single exported
+// validator both the client tier (via ValidateClient above) and the
+// operator tier's `--output` flag (cmd/engram/operator_output.go's
+// operatorOutputFormat) call, so the accepted vocabulary and the error
+// wording exist exactly once across both lanes rather than two
+// hand-maintained switches that could silently drift apart.
+func ValidateOutputFormat(v string) error {
+	switch v {
+	case "json", "text", "":
+		return nil
+	default:
+		return fmt.Errorf(`--output %q: must be "json", "text", or empty`, v)
+	}
 }
