@@ -366,7 +366,15 @@ mechanism for `purge` (marker duration, how `--apply`'s re-derive-at-apply-time 
 persisted watermark for partial-failure recovery) also has no single existing precedent to copy
 verbatim — see `research/SUMMARY.md`'s Gaps to Address.
 
-**Plans:** TBD
+**Plans:** 7 plans
+
+- [ ] 03-01-PLAN.md — Tracer: nested `spine-review` tree, depth-aware catalog/golden traversal, qualified-path blast-radius classification, and `spine-review scan`
+- [ ] 03-02-PLAN.md — `--output json|text` backfilled across every existing operator command
+- [ ] 03-03-PLAN.md — Derived preview-by-default `--apply` gate and `prune-expired`'s hard flip
+- [ ] 03-04-PLAN.md — `spine-review verify`: four-tier citation drift classification and `--fail-on`
+- [ ] 03-05-PLAN.md — `spine-review consolidate`: ranked near-duplicate pairs over stored vectors
+- [ ] 03-06-PLAN.md — `archived_at` as a first-class record state with `archive` / `restore`
+- [ ] 03-07-PLAN.md — `spine-review purge`: unforgeable manifest, intersection apply, extract-before-delete gate
 
 ---
 
