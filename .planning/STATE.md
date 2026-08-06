@@ -4,15 +4,15 @@ milestone: v0.13.x
 milestone_name: Curation & Self-Evidence
 current_phase: 3
 current_phase_name: Spine Curation — Structural (CLI)
-status: planning
+status: executing
 stopped_at: Phase 3 context gathered
-last_updated: "2026-08-06T15:52:57.207Z"
+last_updated: "2026-08-06T20:33:06.039Z"
 last_activity: 2026-08-05
 last_activity_desc: Phase 02 complete, transitioned to Phase 3
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 15
+  total_plans: 22
   completed_plans: 15
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.
 
 Phase: 3 — Spine Curation — Structural (CLI)
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-08-05 — Phase 02 complete, transitioned to Phase 3
 
 ## Deferred Items
