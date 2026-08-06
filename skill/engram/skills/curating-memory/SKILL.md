@@ -375,7 +375,9 @@ default | `expired` | `all`) — never the active ones, so an in-window record
 absent from `list_scheduled` is reached through ordinary recall, not missing.
 Recall is gated, but fetch-by-id (`get_memory`) is not — it accepts either the
 full id or the short_id. Operators reclaim lapsed records with the `engram
-prune-expired [--older-than DUR]` CLI.
+prune-expired --apply` CLI (add `--older-than DUR` for a grace period):
+<!-- engram:rule:start destructive-requires-apply -->a destructive operator command previews by default and mutates only when apply is set<!-- engram:rule:end destructive-requires-apply -->
+a bare invocation previews the eligible count and deletes nothing.
 
 ## Supersession (correcting without losing history)
 

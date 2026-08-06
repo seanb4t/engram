@@ -126,9 +126,27 @@ diagnostic goes to stderr, so `engram <operator-command> --output json | jq .`
 is always safe. A sweep that affected zero records still emits zero-valued
 counters and `[]` for any list-shaped field — never `null` — and exits `0`.
 Every fact an operator command's `text` line states also appears as a field
-in its `json` document; a preview (`--dry-run`) is always distinguished from
-an applied mutation by an explicit boolean field plus separate count fields,
-never by prose alone.
+in its `json` document; a preview is always distinguished from an applied
+mutation by an explicit boolean field plus separate count fields, never by
+prose alone.
+
+### Destructive commands
+
+<!-- engram:rule:start destructive-requires-apply -->a destructive operator command previews by default and mutates only when apply is set<!-- engram:rule:end destructive-requires-apply -->.
+This applies to every command the [blast-radius](#blast-radius) table below
+classifies `destructive`: today, `prune-expired` and `migrate-remap-owner`. A
+bare invocation reports what the sweep *would* do and exits `0` without
+touching the collection; add `--apply` to perform the mutation. A forgotten
+`--apply` is therefore a harmless no-op — the command just previews again.
+
+Every other mutating operator command — `reindex`, `summarize-missing`, and
+`backfill-short-ids` — is classified **non-destructive** and keeps its
+pre-existing opt-in **preview** idiom, `--dry-run`. This is a deliberate,
+two-idiom split, not an accident: on a destructive command a forgotten
+`--apply` costs nothing (it just previews again), but on a non-destructive
+command a forgotten `--dry-run` merely performs the recoverable, additive
+thing the operator already asked for. The boundary sits exactly on the
+blast-radius table's `Destructive` column and nowhere else.
 
 ## Exit codes
 

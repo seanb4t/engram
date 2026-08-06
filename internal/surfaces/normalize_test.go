@@ -69,6 +69,13 @@ var (
 		"content", "scope", "source", "category", "tags", "repo", "workspace",
 		"worktree", "base_dir", "summary", "not_before", "not_after",
 	}
+	// cobraDestructiveFields mirrors the destructive operator tier's own
+	// cobra flag set (03-03-PLAN.md's registerDestructive/addApplyFlag):
+	// "apply" plus each destructive command's own flags. This rule has no
+	// jsonschema-tag or proto-comment counterpart at all (no MCP arg struct
+	// or proto message carries an "apply" field), so it is unioned only
+	// into SurfaceCobraUsage below, not into either of the other two lists.
+	cobraDestructiveFields = []string{"apply", "older-than", "from", "from-anon", "from-missing", "to", "timeout", "output"}
 )
 
 // exposedForTest builds a minimal but representative exposed map covering
@@ -77,7 +84,7 @@ var (
 // one D-08's worked example needs to prove empty for the paging trio).
 func exposedForTest() map[Surface][]string {
 	return map[Surface][]string{
-		SurfaceCobraUsage:    cobraSearchListFields,
+		SurfaceCobraUsage:    append(append([]string{}, cobraSearchListFields...), cobraDestructiveFields...),
 		SurfaceJSONSchemaTag: jsonschemaListFields,
 		// ProtoComment's exposed set unions BOTH proto messages' fields —
 		// mirroring how the real gate's ProtoFieldComments/buildProseExposed

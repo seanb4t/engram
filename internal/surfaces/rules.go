@@ -123,6 +123,17 @@ const RuleDiscoveryNotSchedulable = "discovery-not-schedulable"
 // (see the doc comment at that call site).
 const RuleWindowOrdering = "window-not-before-before-not-after"
 
+// RuleDestructiveRequiresApply is the ID of the rule requiring a destructive
+// operator command (internal/surfaces blast-radius table, Destructive: true)
+// to preview by default and mutate only under an explicit --apply flag
+// (03-03-PLAN.md D-02/D-03). Fields is ["apply"] alone — the field/flag this
+// rule constrains — and SurfaceFields is deliberately left unset: the
+// fallback to Fields is correct here, since "apply" is the only name this
+// rule needs to resolve applicability against (unlike
+// RuleDiscoveryNotSchedulable, which needs a wider SurfaceFields override to
+// disambiguate a field shared across differently-behaving tools).
+const RuleDestructiveRequiresApply = "destructive-requires-apply"
+
 // RulePagingMutuallyExclusive is the ID of the rule making list_memory's
 // three paging controls (cursor_mode, offset, page_token) mutually exclusive.
 // Fields include page_token even though the Connect-lane rejection
@@ -191,6 +202,18 @@ var rules = []ConditionalRule{
 		Sentence: "cursor_mode, offset, and page_token are mutually exclusive",
 		Fields:   []string{"cursor_mode", "offset", "page_token"},
 		Hint:     "mutually_exclusive",
+		declared: true,
+	},
+	{
+		ID:       RuleDestructiveRequiresApply,
+		Sentence: "a destructive operator command previews by default and mutates only when apply is set",
+		Fields:   []string{"apply"},
+		Hint:     "conditional_required",
+		// TagForm deliberately left empty: no MCP arg struct carries an
+		// "apply" field, so there is no jsonschema tag to compress this
+		// rule's statement into (D-03's stated exception is for the ONE
+		// surface that needs a compressed form; this rule has no such
+		// surface at all).
 		declared: true,
 	},
 }

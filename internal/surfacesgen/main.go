@@ -91,6 +91,16 @@ var ruleTargets = map[string][]target{
 		{path: "docs-site/src/content/docs/guides/cli.md", kind: kindMarkdown},
 		{path: "proto/engram/v1/engram.proto", kind: kindProto},
 	},
+	// RuleDestructiveRequiresApply: no proto anchor — "apply" is not a proto
+	// field on any message (03-03-PLAN.md Task 2), so the proto-comment
+	// surface correctly resolves not-applicable rather than getting an
+	// anchor with nothing to attach to. Anchored on cli.md (the CLI guide's
+	// new destructive-commands section) and curating-memory's SKILL.md
+	// (where an agent already learns the deletion contract).
+	surfaces.RuleDestructiveRequiresApply: {
+		{path: "docs-site/src/content/docs/guides/cli.md", kind: kindMarkdown},
+		{path: "skill/engram/skills/curating-memory/SKILL.md", kind: kindMarkdown},
+	},
 }
 
 // render returns rule sentence's on-disk form for the given surface kind.

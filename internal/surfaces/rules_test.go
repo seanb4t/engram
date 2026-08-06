@@ -45,6 +45,23 @@ func TestRuleByID(t *testing.T) {
 	}
 }
 
+// TestRuleByIDDestructiveRequiresApply pins the lookup for the rule
+// destructive.go's addApplyFlag composes into every destructive command's
+// --apply Usage string (03-03-PLAN.md D-02/D-03).
+func TestRuleByIDDestructiveRequiresApply(t *testing.T) {
+	rule, ok := RuleByID(RuleDestructiveRequiresApply)
+	if !ok {
+		t.Fatalf("RuleByID(%q) not found", RuleDestructiveRequiresApply)
+	}
+	const wantSentence = "a destructive operator command previews by default and mutates only when apply is set"
+	if rule.Sentence != wantSentence {
+		t.Errorf("rule.Sentence = %q, want %q", rule.Sentence, wantSentence)
+	}
+	if len(rule.Fields) != 1 || rule.Fields[0] != "apply" {
+		t.Errorf("rule.Fields = %v, want [\"apply\"]", rule.Fields)
+	}
+}
+
 // TestIsDeclaredDistinguishesRegistryFromLiteral pins the provenance
 // property internal/server.conditionalErrf relies on: every rule Rules()
 // returns was built by this package's own rules literal and so reports
