@@ -10,6 +10,30 @@ import (
 	flag "github.com/spf13/pflag"
 )
 
+// TestValidateOutputFormat pins the single exported validator both the
+// client tier (via ValidateClient) and the operator tier
+// (cmd/engram/operator_output.go's operatorOutputFormat) call: exactly
+// "json", "text", and "" are legal; every other value is rejected naming
+// both the flag and its legal values.
+func TestValidateOutputFormat(t *testing.T) {
+	for _, v := range []string{"json", "text", ""} {
+		if err := ValidateOutputFormat(v); err != nil {
+			t.Errorf("ValidateOutputFormat(%q) = %v, want nil", v, err)
+		}
+	}
+
+	cases := []string{"yaml", "JSON", "Text", " json", "json "}
+	for _, v := range cases {
+		err := ValidateOutputFormat(v)
+		if err == nil {
+			t.Fatalf("ValidateOutputFormat(%q) = nil, want an error", v)
+		}
+		if !strings.Contains(err.Error(), "--output") || !strings.Contains(err.Error(), v) {
+			t.Errorf("ValidateOutputFormat(%q) error = %q, want it to name --output and the illegal value", v, err)
+		}
+	}
+}
+
 // TestClientConfigLoadPrecedence locks in the client.* registry rows'
 // wiring into cfg.Client: registry defaults, the ENGRAM_ env layer (including
 // the empty-env-preserves-default guard), and the deliberate absence of an

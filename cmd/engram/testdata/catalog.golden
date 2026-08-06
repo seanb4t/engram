@@ -223,6 +223,12 @@
           "usage": "grace period: only prune records whose not_after lapsed at least this long ago (0 = any past not_after)"
         },
         {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
           "name": "timeout",
           "type": "duration",
           "default": "5m0s",
@@ -245,6 +251,12 @@
           "type": "bool",
           "default": "false",
           "usage": "scan and count without creating the target or writing"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
         },
         {
           "name": "resume",

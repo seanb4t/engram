@@ -115,6 +115,7 @@ Usage:
 Flags:
   -h, --help                  help for prune-expired
       --older-than duration   grace period: only prune records whose not_after lapsed at least this long ago (0 = any past not_after)
+      --output string         output format: "json" or "text" (default: detect from stdout)
       --timeout duration      max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 5m0s)
 ```
 
@@ -129,6 +130,7 @@ Usage:
 Flags:
       --dry-run            scan and count without creating the target or writing
   -h, --help               help for reindex
+      --output string      output format: "json" or "text" (default: detect from stdout)
       --resume             skip points already present in the target with identical content (cheap restart of an interrupted reindex)
       --source string      source collection to read from (default: ENGRAM_QDRANT_COLLECTION)
       --target string      target collection to create and populate (required)

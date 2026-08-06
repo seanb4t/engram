@@ -23,6 +23,7 @@ var (
 	reindexDryRun  bool
 	reindexResume  bool
 	reindexTimeout time.Duration
+	reindexOutput  string
 )
 
 // reindexCmd re-embeds every stored memory into a new target collection at the
@@ -41,6 +42,10 @@ var reindexCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if reindexTarget == "" {
 			return usageErrorf("--target (new collection name) is required")
+		}
+		format, err := operatorOutputFormat(cmd, reindexOutput)
+		if err != nil {
+			return err
 		}
 		// Build the source store WITHOUT creating its collection: reindex must read
 		// an EXISTING source (Reindex errors if it's absent), not conjure an empty
@@ -79,8 +84,8 @@ var reindexCmd = &cobra.Command{
 		if err != nil {
 			return classifyOperatorErr(err)
 		}
-		cmd.Println(reindexSummary(res, reindexTarget, dim, reindexDryRun, reindexResume))
-		return nil
+		text := reindexSummary(res, reindexTarget, dim, reindexDryRun, reindexResume)
+		return renderOperator(cmd, format, text, reindexReportDoc(res, reindexTarget, dim, reindexDryRun, reindexResume))
 	},
 }
 
@@ -106,7 +111,41 @@ func reindexSummary(res store.ReindexResult, target string, dim uint64, dryRun, 
 		res.Upserted, res.Scanned, target, dim, res.Skipped, res.Unchanged, target)
 }
 
+// reindexOutputDoc is the JSON-mode shape of a reindex run: every value
+// reindexSummary's text sentence states, projected as fields so a json
+// consumer never has to parse prose to recover a fact the text form
+// already reports (T-03-09's mitigation). DryRun and Resume are explicit
+// booleans rather than inferred from which prose sentence was chosen.
+type reindexOutputDoc struct {
+	DryRun      bool   `json:"dry_run"`
+	Resume      bool   `json:"resume"`
+	Target      string `json:"target"`
+	Dim         uint64 `json:"dim"`
+	Scanned     uint64 `json:"scanned"`
+	Upserted    uint64 `json:"upserted"`
+	WouldUpsert uint64 `json:"would_upsert"`
+	Skipped     uint64 `json:"skipped"`
+	Unchanged   uint64 `json:"unchanged"`
+}
+
+// reindexReportDoc converts res into reindexOutputDoc. Pure (value types
+// only), mirroring reindexSummary's own testability discipline.
+func reindexReportDoc(res store.ReindexResult, target string, dim uint64, dryRun, resume bool) reindexOutputDoc {
+	return reindexOutputDoc{
+		DryRun:      dryRun,
+		Resume:      resume,
+		Target:      target,
+		Dim:         dim,
+		Scanned:     res.Scanned,
+		Upserted:    res.Upserted,
+		WouldUpsert: res.WouldUpsert,
+		Skipped:     res.Skipped,
+		Unchanged:   res.Unchanged,
+	}
+}
+
 func init() {
+	addOperatorOutputFlag(reindexCmd, &reindexOutput)
 	reindexCmd.Flags().StringVar(&reindexTarget, "target",
 		os.Getenv("ENGRAM_REINDEX_TARGET"),
 		"target collection to create and populate (required)")
