@@ -81,10 +81,44 @@ type ScopeCategoryCount struct {
 // SpineScanResult is ScanSpine's aggregated inventory report. Every field
 // is a plain counter or a slice of counters — never a record id, content,
 // or summary — so a report can never leak stored substance (T-03-05's
-// mitigation).
+// mitigation). Archived is deliberately absent from this struct: it lands
+// with the archived_at payload key in a later plan, which owns that field.
 type SpineScanResult struct {
 	Total           uint64
 	ByScopeCategory []ScopeCategoryCount
+
+	// ScannedAt is the comparison instant ScanSpine took once, at the top
+	// of the sweep, via the store's existing now() hook — the SAME instant
+	// Expired/Scheduled are evaluated against. Reported so a caller reading
+	// the JSON/text report knows exactly when "expired"/"scheduled" was
+	// evaluated relative to.
+	ScannedAt time.Time
+
+	// WithoutSummary/WithSummary partition Total by whether the record's
+	// summary field is empty.
+	WithoutSummary uint64
+	WithSummary    uint64
+	// Superseded counts records whose SupersededBy is set — recall
+	// soft-hides these, but ScanSpine (Subject-less, never built on
+	// Search/List) still counts them, proving the report spans what recall
+	// hides.
+	Superseded uint64
+	// Expired counts records whose NotAfter is at or before the scan
+	// instant (s.now(), taken once at the top of ScanSpine).
+	Expired uint64
+	// Scheduled counts records whose NotBefore is after the scan instant —
+	// deferred-reveal records recall is still hiding.
+	Scheduled uint64
+	// WithCitations counts records carrying at least one citation;
+	// Citations is the total citation count across all of them (a record
+	// with 3 citations contributes 1 to WithCitations and 3 to Citations).
+	WithCitations uint64
+	Citations     uint64
+	// Owners is the count of DISTINCT non-empty owner values seen across
+	// the whole sweep — the signal that makes the Subject-less claim
+	// observable: a sweep narrowed to one caller's bucket would report 1
+	// even when the collection holds records from several owners.
+	Owners uint64
 }
 
 // ScanSpine aggregates an inventory report across the WHOLE memory spine
@@ -126,16 +160,45 @@ func (s *Store) ScanSpine(ctx context.Context, opts SpineScanOptions) (res Spine
 		category string
 	}
 	counts := make(map[bucketKey]uint64)
+	owners := make(map[string]bool)
+	// now is taken ONCE, at the top of the sweep via the store's existing
+	// now() hook, so Expired/Scheduled are deterministic under test
+	// (WithClock) rather than drifting mid-sweep against the wall clock.
+	now := s.now()
+	res.ScannedAt = now
 
 	scanErr := s.scrollAllPoints(ctx, filter, qdrant.NewWithPayload(true), func(p *qdrant.RetrievedPoint) error {
 		m := fromPayload(p.Id.GetUuid(), p.Payload)
 		res.Total++
 		counts[bucketKey{scope: m.Scope, category: m.Category}]++
+
+		if m.Summary == "" {
+			res.WithoutSummary++
+		} else {
+			res.WithSummary++
+		}
+		if m.SupersededBy != nil {
+			res.Superseded++
+		}
+		if m.NotAfter != nil && !now.Before(*m.NotAfter) {
+			res.Expired++
+		}
+		if m.NotBefore != nil && m.NotBefore.After(now) {
+			res.Scheduled++
+		}
+		if n := len(m.Citations); n > 0 {
+			res.WithCitations++
+			res.Citations += uint64(n)
+		}
+		if m.Owner != "" {
+			owners[m.Owner] = true
+		}
 		return nil
 	})
 	if scanErr != nil {
 		return SpineScanResult{}, scanErr
 	}
+	res.Owners = uint64(len(owners))
 
 	res.ByScopeCategory = make([]ScopeCategoryCount, 0, len(counts))
 	for k, c := range counts {

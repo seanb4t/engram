@@ -5,7 +5,11 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"strings"
 	"testing"
+
+	"github.com/seanb4t/engram/internal/store"
 )
 
 // TestSpineReviewScanRejectsInvalidOutput proves `spine-review scan`
@@ -57,5 +61,62 @@ func TestOperatorOutputFormatResolvesNonTTYForCustomWriter(t *testing.T) {
 	}
 	if got != formatJSON {
 		t.Errorf("operatorOutputFormat resolved %v, want formatJSON (non-TTY) for a *bytes.Buffer writer", got)
+	}
+}
+
+// TestSpineScanDocEmptyResultMarshalsEmptyArray proves spineScanDoc's
+// breakdown slice is non-nil even for a zero-record result: JSON mode must
+// emit "[]", never "null", for a caller who always expects an array shape
+// (store.ScanSpine's own contract). Hand-built store.SpineScanResult, no
+// Qdrant.
+func TestSpineScanDocEmptyResultMarshalsEmptyArray(t *testing.T) {
+	doc := spineScanDoc(store.SpineScanResult{})
+	b, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if !strings.Contains(string(b), `"by_scope_category":[]`) {
+		t.Errorf("marshaled doc = %s, want a literal \"by_scope_category\":[] (never null)", b)
+	}
+
+	var roundTrip map[string]any
+	if err := json.Unmarshal(b, &roundTrip); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	arr, ok := roundTrip["by_scope_category"].([]any)
+	if !ok {
+		t.Fatalf("by_scope_category = %v (%T), want a JSON array", roundTrip["by_scope_category"], roundTrip["by_scope_category"])
+	}
+	if len(arr) != 0 {
+		t.Errorf("by_scope_category has %d elements, want 0", len(arr))
+	}
+}
+
+// TestSpineScanSummaryFormat pins the pure text formatter's shape: a
+// single trailing-newline-free string (renderOperator appends the newline
+// on write), reporting total/owners/health-signal lines, hand-built
+// against a fabricated store.SpineScanResult with no Qdrant.
+func TestSpineScanSummaryFormat(t *testing.T) {
+	res := store.SpineScanResult{
+		Total: 3, Owners: 2, WithSummary: 1, WithoutSummary: 2,
+		Superseded: 1, Expired: 1, Scheduled: 0, WithCitations: 1, Citations: 4,
+		ByScopeCategory: []store.ScopeCategoryCount{{Scope: "s", Category: "note", Count: 3}},
+	}
+	got := spineScanSummary(res, "s")
+
+	if strings.HasSuffix(got, "\n") {
+		t.Errorf("spineScanSummary result ends with a trailing newline, want none: %q", got)
+	}
+	for _, want := range []string{"total=3", "owners=2", "without_summary=2", "with_summary=1",
+		"superseded=1", "expired=1", "scheduled=0", "with_citations=1", "citations=4",
+		`scope="s"`, `category="note"`, "count=3"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("spineScanSummary(res, %q) = %q, want it to contain %q", "s", got, want)
+		}
+	}
+
+	allScopes := spineScanSummary(store.SpineScanResult{}, "")
+	if !strings.Contains(allScopes, "all scopes") {
+		t.Errorf("spineScanSummary(res, \"\") = %q, want it to name \"all scopes\"", allScopes)
 	}
 }
