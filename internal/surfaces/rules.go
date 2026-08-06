@@ -75,6 +75,24 @@ type ConditionalRule struct {
 	// empty when no compressed form exists; a jsonschema-tag surface check
 	// then compares against Sentence itself instead.
 	TagForm string
+	// declared is the provenance marker internal/server.conditionalErrf
+	// checks via IsDeclared before honoring a rule. It is set ONLY in this
+	// file's rules literal below, and being unexported it CANNOT be set by
+	// a composite literal written in any other package — Go forbids
+	// assigning an unexported struct field across package boundaries. That
+	// compiler-enforced restriction, not a runtime check, is what makes an
+	// off-registry surfaces.ConditionalRule{...} literal unforgeable: it
+	// always carries the zero value (false), no matter how faithfully every
+	// other field is copied from a real rule.
+	declared bool
+}
+
+// IsDeclared reports whether r was constructed by this package's own rules
+// literal, as opposed to a composite literal written elsewhere. It is the
+// only way to read the declared marker — the field itself stays unexported
+// so no outside package can either read OR set it directly.
+func (r ConditionalRule) IsDeclared() bool {
+	return r.declared
 }
 
 // RuleScopeRequiredUnlessCrossSpine is the ID of the one rule this phase's
@@ -131,7 +149,8 @@ var rules = []ConditionalRule{
 		// searchDiscoveryArgs.Scope (tools.go) verbatim — this plan's
 		// conformance gate reads this value rather than a second hand-typed
 		// copy in a test file.
-		TagForm: "required unless cross_spine",
+		TagForm:  "required unless cross_spine",
+		declared: true,
 	},
 	{
 		ID:       RuleScheduleWindowAtLeastOne,
@@ -139,6 +158,7 @@ var rules = []ConditionalRule{
 		Fields:   []string{"not_before", "not_after"},
 		Hint:     "required",
 		TagForm:  "requires not_before and/or not_after",
+		declared: true,
 	},
 	{
 		ID:       RuleDiscoveryNotSchedulable,
@@ -157,18 +177,21 @@ var rules = []ConditionalRule{
 		// rejection they never raise.
 		SurfaceFields: []string{"category", "not_before", "not_after"},
 		Hint:          "not_applicable",
+		declared:      true,
 	},
 	{
 		ID:       RuleWindowOrdering,
 		Sentence: "not_before must be strictly before not_after",
 		Fields:   []string{"not_before", "not_after"},
 		Hint:     "ordering",
+		declared: true,
 	},
 	{
 		ID:       RulePagingMutuallyExclusive,
 		Sentence: "cursor_mode, offset, and page_token are mutually exclusive",
 		Fields:   []string{"cursor_mode", "offset", "page_token"},
 		Hint:     "mutually_exclusive",
+		declared: true,
 	},
 }
 

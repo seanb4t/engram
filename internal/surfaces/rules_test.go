@@ -45,6 +45,32 @@ func TestRuleByID(t *testing.T) {
 	}
 }
 
+// TestIsDeclaredDistinguishesRegistryFromLiteral pins the provenance
+// property internal/server.conditionalErrf relies on: every rule Rules()
+// returns was built by this package's own rules literal and so reports
+// IsDeclared()==true, while a same-shaped ConditionalRule{...} literal
+// constructed here (still inside package surfaces, so it COULD set the
+// unexported field if it tried) reports false because it does not set it —
+// and a literal built in any OTHER package cannot set it at all, since Go
+// forbids assigning an unexported struct field across package boundaries.
+func TestIsDeclaredDistinguishesRegistryFromLiteral(t *testing.T) {
+	for _, r := range Rules() {
+		if !r.IsDeclared() {
+			t.Errorf("Rules() entry %q: IsDeclared() = false, want true for every registry rule", r.ID)
+		}
+	}
+
+	literal := ConditionalRule{
+		ID:       "not-in-the-registry",
+		Sentence: "x is required",
+		Fields:   []string{"x"},
+		Hint:     "conditional_required",
+	}
+	if literal.IsDeclared() {
+		t.Error("a ConditionalRule literal not assigned via the rules slice: IsDeclared() = true, want false")
+	}
+}
+
 // TestValidateRulesCatchesEmptyFieldsAndEmptySentence pins D-08's own
 // requirement ("a declared conditional rule with an empty Fields slice or an
 // empty canonical sentence fails a registry validation test rather than
