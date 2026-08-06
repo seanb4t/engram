@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.13.x
 milestone_name: Curation & Self-Evidence
-current_phase: 02
-current_phase_name: interface-discoverability
-status: executing
+current_phase: 3
+current_phase_name: Spine Curation — Structural (CLI)
+status: planning
 stopped_at: Completed 02-06-PLAN.md (all 6 plans)
-last_updated: "2026-08-05T23:16:30.918Z"
-last_activity: 2026-08-04
-last_activity_desc: Phase 02 execution started
+last_updated: "2026-08-06T00:28:00.138Z"
+last_activity: 2026-08-05
+last_activity_desc: Phase 02 complete, transitioned to Phase 3
 progress:
   total_phases: 2
   completed_phases: 2
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.
 
 ## Current Position
 
-Phase: 02 (interface-discoverability) — EXECUTING
-Plan: 5 of 6
-Status: Ready to execute
-Last activity: 2026-08-04 — Phase 02 execution started
+Phase: 3 — Spine Curation — Structural (CLI)
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-05 — Phase 02 complete, transitioned to Phase 3
 
 ## Deferred Items
 
