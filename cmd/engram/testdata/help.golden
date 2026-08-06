@@ -1,3 +1,33 @@
+## engram
+
+```
+Self-hosted, correctable, OAuth-secured memory for coding agents
+
+Usage:
+  engram [flags]
+  engram [command]
+
+Available Commands:
+  backfill-short-ids  Assign a short_id to every memory that lacks one (payload-only; no re-embed)
+  completion          Generate the autocompletion script for the specified shell
+  help                Help about any command
+  list                List memories on a remote engram server
+  migrate-remap-owner Re-stamp record owner across the collection (sub->email, email->email, owner-less, or anonymous bucket)
+  prune-expired       Delete memories whose validity window (not_after) has lapsed
+  reindex             Re-embed memories into a new (new-dimension) collection for embedder migration
+  search              Search memories on a remote engram server
+  serve               Run the engram MCP server
+  store               Store a memory on a remote engram server
+  summarize-missing   Fill empty recall summaries with the configured cheap model
+  version             Print the engram version
+
+Flags:
+  -h, --help      help for engram
+  -v, --version   version for engram
+
+Use "engram [command] --help" for more information about a command.
+```
+
 ## engram backfill-short-ids
 
 ```

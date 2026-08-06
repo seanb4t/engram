@@ -127,7 +127,30 @@ func goldenCommands(root *cobra.Command) []*cobra.Command {
 func buildHelpGoldenContent(t *testing.T) string {
 	t.Helper()
 	var b strings.Builder
-	for _, cmd := range goldenCommands(rootCmd) {
+	// The ROOT command's own --help is pinned too, ahead of the subcommands.
+	// `engram --help` is the first teaching surface any caller meets, and it
+	// is the one place rootCmd.Short/Long render — neither of which appears
+	// anywhere in catalog.golden, whose command list covers subcommands only.
+	// goldenCommands is deliberately left alone: it mirrors buildCatalog's
+	// skip predicate so the two goldens cover an identical SUBCOMMAND set,
+	// and widening it would break that parity. Prepending the root here adds
+	// the missing surface without disturbing it.
+	//
+	// The root needs THREE more deterministic registrations than a subcommand
+	// does, for the same lazy-init reason InitDefaultHelpFlag is called below:
+	// cobra adds -v/--version (InitDefaultVersionFlag) and the `help` and
+	// `completion` subcommands (InitDefaultHelpCmd / InitDefaultCompletionCmd)
+	// from inside execute(). Because the root's help LISTS its children,
+	// whether some earlier test in this shared-rootCmd binary happened to
+	// Execute() anything decided whether `help`/`completion`/`--version`
+	// appeared — which made this golden flap across test orderings (observed
+	// live: 3 of 4 -shuffle seeds failed before these calls were added).
+	// Forcing them reproduces what a real `engram --help` always prints.
+	rootCmd.InitDefaultVersionFlag()
+	rootCmd.InitDefaultHelpCmd()
+	rootCmd.InitDefaultCompletionCmd()
+
+	for _, cmd := range append([]*cobra.Command{rootCmd}, goldenCommands(rootCmd)...) {
 		// cobra only lazily registers -h/--help on a command's OWN FlagSet
 		// from inside execute() (command.go InitDefaultHelpFlag, called
 		// right before ParseFlags) — cmd.Help() called directly, as below,
