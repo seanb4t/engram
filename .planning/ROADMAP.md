@@ -366,9 +366,9 @@ mechanism for `purge` (marker duration, how `--apply`'s re-derive-at-apply-time 
 persisted watermark for partial-failure recovery) also has no single existing precedent to copy
 verbatim — see `research/SUMMARY.md`'s Gaps to Address.
 
-**Plans:** 7 plans
+**Plans:** 1/7 plans executed
 
-- [ ] 03-01-PLAN.md — Tracer: nested `spine-review` tree, depth-aware catalog/golden traversal, qualified-path blast-radius classification, and `spine-review scan`
+- [x] 03-01-PLAN.md — Tracer: nested `spine-review` tree, depth-aware catalog/golden traversal, qualified-path blast-radius classification, and `spine-review scan`
 - [ ] 03-02-PLAN.md — `--output json|text` backfilled across every existing operator command
 - [ ] 03-03-PLAN.md — Derived preview-by-default `--apply` gate and `prune-expired`'s hard flip
 - [ ] 03-04-PLAN.md — `spine-review verify`: four-tier citation drift classification and `--fail-on`
@@ -504,7 +504,7 @@ phases as they close rather than only at the end.
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 1. Interface Enforceability | v0.13.x | 0/4 | Not started | - |
 | 2. Interface Discoverability | v0.13.x | 0/4 | Not started | - |
-| 3. Spine Curation — Structural (CLI) | v0.13.x | 0/5 | Not started | - |
+| 3. Spine Curation — Structural (CLI) | v0.13.x | 1/7 | In Progress | - |
 | 4. Spine Curation — Semantic (Skill) | v0.13.x | 0/3 | Not started | - |
 | 5. Validation Debt Reconciliation | v0.13.x | 0/2 | Not started | - |
 
