@@ -186,6 +186,22 @@ func operatorParityRows() []operatorParityRow {
 			doc:   spineScanDoc(spineRes),
 			facts: []string{"9", "3", "5", "4", "1", "2", "6"},
 		},
+		{
+			name: "spine-review verify",
+			text: verifySummary(verifyReport{
+				ValidCount: 2, MovedCount: 1, BrokenCount: 1, UnverifiableCount: 1,
+				Moved:        []verifyEntry{{RecordID: "rec-moved", ShortID: "short-moved", Ref: "a.go", Reason: "excerpt found at byte offset 12, not at the cited locator"}},
+				Broken:       []verifyEntry{{RecordID: "rec-broken", ShortID: "short-broken", Ref: "b.go", Reason: reasonFileMissing}},
+				Unverifiable: []verifyEntry{{RecordID: "rec-unverifiable", ShortID: "short-unverifiable", Ref: "c.go", Reason: "different repo"}},
+			}),
+			doc: verifyDoc(verifyReport{
+				ValidCount: 2, MovedCount: 1, BrokenCount: 1, UnverifiableCount: 1,
+				Moved:        []verifyEntry{{RecordID: "rec-moved", ShortID: "short-moved", Ref: "a.go", Reason: "excerpt found at byte offset 12, not at the cited locator"}},
+				Broken:       []verifyEntry{{RecordID: "rec-broken", ShortID: "short-broken", Ref: "b.go", Reason: reasonFileMissing}},
+				Unverifiable: []verifyEntry{{RecordID: "rec-unverifiable", ShortID: "short-unverifiable", Ref: "c.go", Reason: "different repo"}},
+			}),
+			facts: []string{"2", "1", "rec-moved", "rec-broken", "rec-unverifiable"},
+		},
 	}
 }
 
@@ -392,7 +408,7 @@ var timeoutGroups = []timeoutGroup{
 		name: "zero-disables",
 		commands: map[string]bool{
 			"reindex": true, "prune-expired": true, "summarize-missing": true,
-			"backfill-short-ids": true, "spine-review scan": true,
+			"backfill-short-ids": true, "spine-review scan": true, "spine-review verify": true,
 		},
 		zeroRejected: false,
 	},
@@ -430,6 +446,8 @@ func timeoutGroupCaseArgs(t *testing.T, name string) (args []string, env map[str
 		return []string{"backfill-short-ids", "--timeout", "0"}, env
 	case "spine-review scan":
 		return []string{"spine-review", "scan", "--all-scopes", "--timeout", "0"}, env
+	case "spine-review verify":
+		return []string{"spine-review", "verify", "--all-scopes", "--timeout", "0"}, env
 	case "migrate-remap-owner":
 		return []string{"migrate-remap-owner", "--from-missing", "--to", "x", "--timeout", "0"}, env
 	case "migrate-set-owner":
@@ -474,6 +492,8 @@ func operatorInvalidOutputArgs(t *testing.T, name string) []string {
 		return []string{"migrate-set-owner", "--owner", "x"}
 	case "spine-review scan":
 		return []string{"spine-review", "scan", "--all-scopes"}
+	case "spine-review verify":
+		return []string{"spine-review", "verify", "--all-scopes"}
 	default:
 		t.Fatalf("operatorInvalidOutputArgs: no row defined for command %q", name)
 		return nil

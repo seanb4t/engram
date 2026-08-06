@@ -548,6 +548,42 @@
       }
     },
     {
+      "name": "spine-review verify",
+      "summary": "Classify every stored citation as valid, moved, broken, or unverifiable",
+      "flags": [
+        {
+          "name": "all-scopes",
+          "type": "bool",
+          "default": "false",
+          "usage": "sweep every scope (required if --scope is omitted)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "default": "",
+          "usage": "only verify citations from records in this scope"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "5m0s",
+          "usage": "max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C"
+        }
+      ],
+      "blast_radius": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
       "name": "store",
       "summary": "Store a memory on a remote engram server",
       "flags": [

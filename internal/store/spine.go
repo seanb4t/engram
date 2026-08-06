@@ -260,3 +260,76 @@ func (s *Store) ScanSpine(ctx context.Context, opts SpineScanOptions) (res Spine
 	})
 	return res, nil
 }
+
+// CitationRecord is one spine record carrying at least one citation, as
+// EnumerateCitations returns it. Deliberately excludes every field that
+// could leak stored substance (content, summary, tags) -- only the
+// identifiers a report row needs and the Citations themselves, whose
+// Excerpt field cmd/engram's rendering layer is separately responsible for
+// never printing (T-03-14's mitigation).
+type CitationRecord struct {
+	ID        string
+	ShortID   string
+	Scope     string
+	Category  string
+	Citations []Citation
+}
+
+// EnumerateCitations returns every record carrying at least one citation
+// across opts.Scope (or every scope, when opts.Scope is empty),
+// Subject-less by signature: no Subject parameter, no owner or shared
+// read-filter condition, so a superseded or expired record still appears --
+// recall hides both, EnumerateCitations does not (mirrors ScanSpine's own
+// T-03-07 mitigation, applied here as T-03-07's sibling for the verify
+// leaf).
+//
+// Built ONLY over scrollAllPoints, the phase's one paginated whole-spine
+// iterator (T-03-26's mitigation) -- internal/store/spine.go must carry
+// exactly one client.ScrollAndOffset call site after this addition, never a
+// second, independently-written loop. The server-side MustNot(IsEmpty(...))
+// filter below is an optimization (fewer points transferred), not the
+// correctness boundary: the payload-level len(m.Citations)==0 guard inside
+// the callback is what actually enforces "every returned record carries at
+// least one citation" against a malformed or defensively-skipped citation
+// entry (fromPayload's own malformed-item tolerance).
+func (s *Store) EnumerateCitations(ctx context.Context, opts SpineScanOptions) (res []CitationRecord, err error) {
+	ctx, span := tracer.Start(ctx, "store.EnumerateCitations",
+		trace.WithAttributes(attribute.String("engram.scope", opts.Scope)))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "EnumerateCitations", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int64("engram.result_count", int64(len(res))))
+		}
+	}()
+
+	var must []*qdrant.Condition
+	if opts.Scope != "" {
+		must = append(must, qdrant.NewMatch("scope", opts.Scope))
+	}
+	filter := &qdrant.Filter{
+		Must:    must,
+		MustNot: []*qdrant.Condition{qdrant.NewIsEmpty("citations")},
+	}
+
+	res = []CitationRecord{}
+	scanErr := s.scrollAllPoints(ctx, filter, qdrant.NewWithPayload(true), func(p *qdrant.RetrievedPoint) error {
+		m := fromPayload(p.Id.GetUuid(), p.Payload)
+		if len(m.Citations) == 0 {
+			return nil
+		}
+		res = append(res, CitationRecord{
+			ID: m.ID, ShortID: m.ShortID, Scope: m.Scope, Category: m.Category,
+			Citations: m.Citations,
+		})
+		return nil
+	})
+	if scanErr != nil {
+		return nil, scanErr
+	}
+	return res, nil
+}

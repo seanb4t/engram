@@ -202,6 +202,7 @@ Usage:
 
 Available Commands:
   scan        Report an inventory of the memory spine
+  verify      Classify every stored citation as valid, moved, broken, or unverifiable
 
 Flags:
   -h, --help   help for spine-review
@@ -222,6 +223,22 @@ Flags:
   -h, --help               help for scan
       --output string      output format: "json" or "text" (default: detect from stdout)
       --scope string       only scan records in this scope
+      --timeout duration   max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 5m0s)
+```
+
+## engram spine-review verify
+
+```
+Classify every stored citation as valid, moved, broken, or unverifiable
+
+Usage:
+  engram spine-review verify [flags]
+
+Flags:
+      --all-scopes         sweep every scope (required if --scope is omitted)
+  -h, --help               help for verify
+      --output string      output format: "json" or "text" (default: detect from stdout)
+      --scope string       only verify citations from records in this scope
       --timeout duration   max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 5m0s)
 ```
 

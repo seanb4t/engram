@@ -263,6 +263,15 @@ var operations = []Operation{
 		MCPTool: "", CLICommand: "spine-review scan",
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
+	{
+		// spine-review verify classifies every stored citation into one of
+		// four tiers — reads citations and the local filesystem, never a
+		// mutating Qdrant RPC. Idempotent: repeating the same verify run
+		// against unchanged data and an unchanged working tree reports the
+		// same tier counts.
+		MCPTool: "", CLICommand: "spine-review verify",
+		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
 }
 
 // classByTool/classByCommand are built once from operations, backing

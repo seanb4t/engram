@@ -255,3 +255,106 @@ func TestCountExpiredAndPruneExpiredAgree(t *testing.T) {
 		t.Errorf("PruneExpired(fixedNow) = %d, want %d (must equal CountExpired's count for the identical before)", deleted, count)
 	}
 }
+
+// TestEnumerateCitationsEmptyScope is the empty-spine behavior: a scope with
+// no citation-bearing records returns a non-nil, zero-length slice.
+func TestEnumerateCitationsEmptyScope(t *testing.T) {
+	s := newSpineTestStore(t, "spine_enum_empty")
+	res, err := s.EnumerateCitations(context.Background(), SpineScanOptions{Scope: "spine_enum_empty_scope"})
+	if err != nil {
+		t.Fatalf("EnumerateCitations: %v", err)
+	}
+	if res == nil {
+		t.Error("EnumerateCitations returned nil, want a non-nil empty slice")
+	}
+	if len(res) != 0 {
+		t.Errorf("EnumerateCitations = %v, want empty", res)
+	}
+}
+
+// TestEnumerateCitationsExcludesUncited proves the server-side filter (and
+// the payload-level guard behind it) actually narrows to citation-bearing
+// records: a record with no citations at all must not appear.
+func TestEnumerateCitationsExcludesUncited(t *testing.T) {
+	s := newSpineTestStore(t, "spine_enum_uncited")
+	ctx := context.Background()
+	const scope = "spine_enum_uncited_scope"
+
+	seedSpineMemory(t, s, Memory{
+		ID: "d0000000-0000-0000-0000-000000000001", Content: "no citations", Scope: scope,
+		Category: "note", Owner: "owner-a", CreatedAt: time.Now().UTC(),
+	})
+	seedSpineMemory(t, s, Memory{
+		ID: "d0000000-0000-0000-0000-000000000002", Content: "cited", Scope: scope,
+		Category: "note", Owner: "owner-a", CreatedAt: time.Now().UTC(),
+		Citations: []Citation{{Kind: "file", Ref: "a.go"}},
+	})
+
+	res, err := s.EnumerateCitations(ctx, SpineScanOptions{Scope: scope})
+	if err != nil {
+		t.Fatalf("EnumerateCitations: %v", err)
+	}
+	if len(res) != 1 {
+		t.Fatalf("EnumerateCitations returned %d records, want 1 (only the cited one)", len(res))
+	}
+	if res[0].ID != "d0000000-0000-0000-0000-000000000002" {
+		t.Errorf("EnumerateCitations returned record %q, want the cited record", res[0].ID)
+	}
+}
+
+// TestEnumerateCitationsIncludesSuperseded is the coverage-claim-spoofing
+// regression (T-03-07's sibling mitigation): EnumerateCitations is
+// Subject-less and built on scrollAllPoints, never Search/List, so a
+// superseded record -- which recall soft-hides -- must still be enumerated.
+func TestEnumerateCitationsIncludesSuperseded(t *testing.T) {
+	s := newSpineTestStore(t, "spine_enum_superseded")
+	ctx := context.Background()
+	const scope = "spine_enum_superseded_scope"
+	supersededBy := "d0000000-0000-0000-0000-000000000099"
+
+	seedSpineMemory(t, s, Memory{
+		ID: "d0000000-0000-0000-0000-000000000010", Content: "superseded but cited", Scope: scope,
+		Category: "note", Owner: "owner-a", CreatedAt: time.Now().UTC(),
+		SupersededBy: &supersededBy,
+		Citations:    []Citation{{Kind: "file", Ref: "a.go"}},
+	})
+
+	res, err := s.EnumerateCitations(ctx, SpineScanOptions{Scope: scope})
+	if err != nil {
+		t.Fatalf("EnumerateCitations: %v", err)
+	}
+	if len(res) != 1 {
+		t.Fatalf("EnumerateCitations returned %d records, want 1 (recall-hidden but still enumerated)", len(res))
+	}
+}
+
+// TestEnumerateCitationsPaginatesEveryPage is the pagination gate,
+// mirroring TestScanSpinePaginatesEveryPage: with the scroll batch size
+// forced to 1 and five citation-bearing records seeded, a correct sweep
+// returns all five (count equality), not just the first page's worth.
+func TestEnumerateCitationsPaginatesEveryPage(t *testing.T) {
+	orig := spineScrollBatch
+	spineScrollBatch = 1
+	t.Cleanup(func() { spineScrollBatch = orig })
+
+	s := newSpineTestStore(t, "spine_enum_pagination")
+	ctx := context.Background()
+	const scope = "spine_enum_pagination_scope"
+
+	for i := 0; i < 5; i++ {
+		seedSpineMemory(t, s, Memory{
+			ID:      "d000000" + string(rune('1'+i)) + "-0000-0000-0000-000000000001",
+			Content: "point", Scope: scope, Category: "note",
+			Owner: "owner-a", CreatedAt: time.Now().UTC(),
+			Citations: []Citation{{Kind: "file", Ref: "a.go"}},
+		})
+	}
+
+	res, err := s.EnumerateCitations(ctx, SpineScanOptions{Scope: scope})
+	if err != nil {
+		t.Fatalf("EnumerateCitations: %v", err)
+	}
+	if len(res) != 5 {
+		t.Errorf("EnumerateCitations returned %d records, want 5 (batch size 1 must still cross every page)", len(res))
+	}
+}
