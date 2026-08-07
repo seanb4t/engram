@@ -5,6 +5,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -77,8 +78,28 @@ func (s *Store) scrollAllPoints(ctx context.Context, filter *qdrant.Filter, with
 func expiredFilter(before time.Time) *qdrant.Filter {
 	return &qdrant.Filter{Must: []*qdrant.Condition{
 		qdrant.NewRange("not_after", &qdrant.Range{Lt: qdrant.PtrOf(float64(before.Unix()))}),
+		// Exclude archived records from the naturally-expired population
+		// (D-12, plan 03-06): an operator reaching for `archive` deliberately
+		// chose the reversible state over letting the record lapse, so
+		// prune-expired/CountExpired must not sweep it up just because its
+		// not_after also happens to be in the past. This never changes the
+		// not_after predicate above — it is a sibling condition, exactly like
+		// the four recall-site archived_at IsEmpty additions in store.go.
+		qdrant.NewIsEmpty("archived_at"),
 	}}
 }
+
+// Deliberately NOT indexed: ensureIndexes (store.go) creates payload indexes
+// for owner, scope, created_at and short_id only. archived_at is filtered
+// with IsEmpty at five call sites (the four recall sites in store.go plus
+// this expiry filter), the exact same access pattern superseded_by already
+// has at four of those five sites, and superseded_by has never been indexed
+// either — the cost is already accepted for an identical predicate at
+// identical cardinality. An index would help a Range query, not an IsEmpty
+// filter, so adding one here would buy little while changing ensureIndexes
+// for every existing deployment on next start. If plan 03-07's
+// archived-past-retention purge class later needs a Range query over this
+// key, revisit indexing there — not here.
 
 // CountExpired returns the number of records whose not_after is strictly
 // before the given instant — the exact Count PruneExpired's applied path
@@ -128,8 +149,7 @@ type ScopeCategoryCount struct {
 // SpineScanResult is ScanSpine's aggregated inventory report. Every field
 // is a plain counter or a slice of counters — never a record id, content,
 // or summary — so a report can never leak stored substance (T-03-05's
-// mitigation). Archived is deliberately absent from this struct: it lands
-// with the archived_at payload key in a later plan, which owns that field.
+// mitigation).
 type SpineScanResult struct {
 	Total           uint64
 	ByScopeCategory []ScopeCategoryCount
@@ -156,6 +176,12 @@ type SpineScanResult struct {
 	// Scheduled counts records whose NotBefore is after the scan instant —
 	// deferred-reveal records recall is still hiding.
 	Scheduled uint64
+	// Archived counts records whose ArchivedAt is set (D-12, plan 03-06) — a
+	// SEPARATE bucket from Expired: an archived record's NotAfter may or may
+	// not also be lapsed, but archiving and expiry are independently
+	// observable states, so a record is never double-counted into the wrong
+	// bucket by construction (each check reads its own field).
+	Archived uint64
 	// WithCitations counts records carrying at least one citation;
 	// Citations is the total citation count across all of them (a record
 	// with 3 citations contributes 1 to WithCitations and 3 to Citations).
@@ -232,6 +258,9 @@ func (s *Store) ScanSpine(ctx context.Context, opts SpineScanOptions) (res Spine
 		}
 		if m.NotBefore != nil && m.NotBefore.After(now) {
 			res.Scheduled++
+		}
+		if m.ArchivedAt != nil {
+			res.Archived++
 		}
 		if n := len(m.Citations); n > 0 {
 			res.WithCitations++
@@ -616,4 +645,163 @@ func (s *Store) NearDuplicates(ctx context.Context, opts NearDuplicateOptions) (
 		return res[i].B < res[j].B
 	})
 	return res, nil
+}
+
+// ArchiveOutcome enumerates the three outcomes Archive/Restore can report for
+// one id, so a caller (the CLI's per-id report, in particular) can say which
+// one occurred honestly without inferring it from an error string — the
+// zero value is never a valid outcome, forcing every code path to set one
+// explicitly.
+type ArchiveOutcome string
+
+const (
+	// ArchiveOutcomeChanged means the call mutated the record's archived
+	// state (Archive set archived_at; Restore removed it).
+	ArchiveOutcomeChanged ArchiveOutcome = "changed"
+	// ArchiveOutcomeAlready means the record was already in the target
+	// state (Archive on an already-archived record; Restore on a
+	// never-archived one) — idempotent by value, no write issued.
+	ArchiveOutcomeAlready ArchiveOutcome = "already"
+	// ArchiveOutcomeNotFound means the id does not resolve to an existing
+	// record. Returned alongside a non-nil ErrNotFound-wrapping error, but
+	// carried on the result value too so a batch caller can read the
+	// outcome directly rather than parsing the error's text.
+	ArchiveOutcomeNotFound ArchiveOutcome = "not_found"
+)
+
+// ArchiveResult is Archive/Restore's per-id report: which id, and which of
+// the three ArchiveOutcome values occurred.
+type ArchiveResult struct {
+	ID      string
+	Outcome ArchiveOutcome
+}
+
+// Archive stamps archived_at on the record identified by id, excluding it
+// from Search/List/SearchDiscovery/ListScheduled recall while leaving it
+// fetchable by id via Get — reversible via Restore, never a delete, content
+// erasure, or vector removal (REQ-archive-tier's safety prohibition).
+// Subject-less by signature (no Subject parameter, no getWritable owner
+// gate): archive/restore are operator-tier verbs, matching every other
+// Subject-less method in this file.
+//
+// Both the read (existence + already-archived check) and the write happen
+// under s.locker.Lock(ctx, id) — the SAME per-target lock Update takes at
+// store.go around its whole-payload Upsert. This is not optional hygiene: a
+// lock-free targeted SetPayload (the shape Store.SetVisibility uses) can
+// land between Update's in-lock re-read and its Upsert and be silently
+// erased — exactly the CR-04 failure mode Update's own doc comment
+// describes for supersession, reproduced here for archival state.
+// TestArchiveSurvivesConcurrentUpdate proves this via a deterministic,
+// barrier-controlled interleaving through the updateAfterReadHook seam, not
+// a repeated unsynchronized race.
+//
+// The target is resolved FIRST, via Get: an unknown id returns
+// ArchiveResult{Outcome: ArchiveOutcomeNotFound} alongside an
+// ErrNotFound-wrapping error — never a silent success. An already-archived
+// record returns ArchiveOutcomeAlready with no write issued (idempotent by
+// value: the original archived_at stamp is left unchanged), rather than
+// re-stamping.
+func (s *Store) Archive(ctx context.Context, id string) (res ArchiveResult, err error) {
+	ctx, span := tracer.Start(ctx, "store.Archive",
+		trace.WithAttributes(attribute.String("engram.id", id)))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "Archive", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.String("engram.archive.outcome", string(res.Outcome)))
+		}
+	}()
+
+	unlock, lerr := s.locker.Lock(ctx, id)
+	if lerr != nil {
+		return ArchiveResult{ID: id}, lerr
+	}
+	defer unlock()
+
+	cur, gerr := s.Get(ctx, id)
+	if gerr != nil {
+		if errors.Is(gerr, ErrNotFound) {
+			return ArchiveResult{ID: id, Outcome: ArchiveOutcomeNotFound}, gerr
+		}
+		return ArchiveResult{ID: id}, gerr
+	}
+	if cur.ArchivedAt != nil {
+		return ArchiveResult{ID: id, Outcome: ArchiveOutcomeAlready}, nil
+	}
+
+	now := s.now()
+	if _, err = s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload:        qdrant.NewValueMap(map[string]any{"archived_at": now.Unix()}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
+	}); err != nil {
+		return ArchiveResult{ID: id}, err
+	}
+	return ArchiveResult{ID: id, Outcome: ArchiveOutcomeChanged}, nil
+}
+
+// Restore reverses Archive: it deletes the archived_at key outright (never a
+// false/zero-value write, which fromPayload would decode as present) so the
+// record returns to normal recall. Subject-less, same as Archive.
+//
+// Takes the SAME s.locker.Lock(ctx, id) Archive and Update take, for the
+// identical reason Archive's doc comment gives: without it, a lock-free
+// targeted DeletePayload could land inside Update's re-read/Upsert window
+// and be silently reverted. TestRestoreSurvivesConcurrentUpdate proves this
+// deterministically, mirroring TestArchiveSurvivesConcurrentUpdate.
+//
+// The target is resolved FIRST, via Get — exactly like Archive. This
+// matters here specifically: the underlying primitive, defaultDeletePayloadKeys,
+// is a bare DeletePayload with an id selector and NO existence check
+// (unlike point-id SetPayload, which does return NotFound), so without this
+// explicit resolution `restore` on an unknown id would silently exit 0 while
+// `archive` on the same id errors — an asymmetry an operator would read as
+// "it was already restored". Resolving first makes both verbs agree: unknown
+// id -> ArchiveResult{Outcome: ArchiveOutcomeNotFound} plus an
+// ErrNotFound-wrapping error, identically. A record that was never archived
+// returns ArchiveOutcomeAlready with no mutation.
+func (s *Store) Restore(ctx context.Context, id string) (res ArchiveResult, err error) {
+	ctx, span := tracer.Start(ctx, "store.Restore",
+		trace.WithAttributes(attribute.String("engram.id", id)))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "Restore", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.String("engram.archive.outcome", string(res.Outcome)))
+		}
+	}()
+
+	unlock, lerr := s.locker.Lock(ctx, id)
+	if lerr != nil {
+		return ArchiveResult{ID: id}, lerr
+	}
+	defer unlock()
+
+	cur, gerr := s.Get(ctx, id)
+	if gerr != nil {
+		if errors.Is(gerr, ErrNotFound) {
+			return ArchiveResult{ID: id, Outcome: ArchiveOutcomeNotFound}, gerr
+		}
+		return ArchiveResult{ID: id}, gerr
+	}
+	if cur.ArchivedAt == nil {
+		return ArchiveResult{ID: id, Outcome: ArchiveOutcomeAlready}, nil
+	}
+
+	del := s.deletePayloadKeys
+	if del == nil {
+		del = s.defaultDeletePayloadKeys
+	}
+	if err = del(ctx, id, []string{"archived_at"}); err != nil {
+		return ArchiveResult{ID: id}, err
+	}
+	return ArchiveResult{ID: id, Outcome: ArchiveOutcomeChanged}, nil
 }

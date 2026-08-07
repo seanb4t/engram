@@ -183,16 +183,20 @@ func TestScanSpineHealthSignals(t *testing.T) {
 		Category: "note", Owner: "owner-a", CreatedAt: fixedNow,
 		Citations: []Citation{{Kind: "file", Ref: "a.go"}, {Kind: "file", Ref: "b.go"}},
 	})
+	seedSpineMemory(t, s, Memory{
+		ID: "b0000000-0000-0000-0000-000000000007", Content: "archived", Scope: scope,
+		Category: "note", Owner: "owner-a", CreatedAt: fixedNow, ArchivedAt: &fixedNow,
+	})
 
 	res, err := s.ScanSpine(ctx, SpineScanOptions{Scope: scope})
 	if err != nil {
 		t.Fatalf("ScanSpine: %v", err)
 	}
-	if res.Total != 6 {
-		t.Fatalf("Total = %d, want 6", res.Total)
+	if res.Total != 7 {
+		t.Fatalf("Total = %d, want 7", res.Total)
 	}
-	if res.WithoutSummary != 5 {
-		t.Errorf("WithoutSummary = %d, want 5", res.WithoutSummary)
+	if res.WithoutSummary != 6 {
+		t.Errorf("WithoutSummary = %d, want 6", res.WithoutSummary)
 	}
 	if res.WithSummary != 1 {
 		t.Errorf("WithSummary = %d, want 1", res.WithSummary)
@@ -205,6 +209,9 @@ func TestScanSpineHealthSignals(t *testing.T) {
 	}
 	if res.Scheduled != 1 {
 		t.Errorf("Scheduled = %d, want 1", res.Scheduled)
+	}
+	if res.Archived != 1 {
+		t.Errorf("Archived = %d, want 1 (a SEPARATE bucket from Expired, never folded into it)", res.Archived)
 	}
 	if res.WithCitations != 1 {
 		t.Errorf("WithCitations = %d, want 1", res.WithCitations)
@@ -309,6 +316,59 @@ func TestCountExpiredAndPruneExpiredAgree(t *testing.T) {
 	}
 	if deleted != count {
 		t.Errorf("PruneExpired(fixedNow) = %d, want %d (must equal CountExpired's count for the identical before)", deleted, count)
+	}
+}
+
+// TestPruneExpiredExcludesArchived (T-03-18's mitigation, D-12) pins that an
+// archived record whose not_after has ALSO lapsed survives PruneExpired and
+// is excluded from CountExpired's preview: archiving never touches
+// not_after, and expiry alone must not sweep away a record an operator
+// deliberately chose to retain via archive. The not_after predicate itself
+// is unchanged — a second, ordinary-expired record in the same fixture is
+// still pruned, proving this isn't a change to expiredFilter's range bound.
+func TestPruneExpiredExcludesArchived(t *testing.T) {
+	fixedNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	s := newSpineTestStore(t, "spine_prune_excludes_archived", WithClock(func() time.Time { return fixedNow }))
+	ctx := context.Background()
+	const scope = "spine_prune_excludes_archived_scope"
+
+	pastCutoff := fixedNow.Add(-time.Hour)
+
+	archivedID := "f1000000-0000-0000-0000-000000000001"
+	expiredID := "f1000000-0000-0000-0000-000000000002"
+	seedSpineMemory(t, s, Memory{
+		ID: archivedID, Content: "archived and lapsed", Scope: scope,
+		Category: "note", Owner: "owner-a", CreatedAt: fixedNow, NotAfter: &pastCutoff,
+	})
+	if _, err := s.Archive(ctx, archivedID); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+	seedSpineMemory(t, s, Memory{
+		ID: expiredID, Content: "just expired", Scope: scope,
+		Category: "note", Owner: "owner-a", CreatedAt: fixedNow, NotAfter: &pastCutoff,
+	})
+
+	count, err := s.CountExpired(ctx, fixedNow)
+	if err != nil {
+		t.Fatalf("CountExpired: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("CountExpired = %d, want 1 (the archived record must be excluded)", count)
+	}
+
+	deleted, err := s.PruneExpired(ctx, fixedNow)
+	if err != nil {
+		t.Fatalf("PruneExpired: %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("PruneExpired deleted = %d, want 1", deleted)
+	}
+
+	if _, err := s.Get(ctx, archivedID); err != nil {
+		t.Errorf("Get archived record after PruneExpired: %v, want it to survive", err)
+	}
+	if _, err := s.Get(ctx, expiredID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Get expired record after PruneExpired: err = %v, want ErrNotFound", err)
 	}
 }
 

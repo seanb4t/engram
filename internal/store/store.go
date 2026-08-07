@@ -184,6 +184,18 @@ type Memory struct {
 	// Non-nil excludes the record from Search/List recall (soft-hide, D-09) but
 	// never from Get (D-08). Plain json tag, matching Supersedes above.
 	SupersededBy *string `json:"superseded_by,omitempty"`
+	// ArchivedAt is the epoch-second instant this record was archived via
+	// Store.Archive (D-12, plan 03-06). Server-set only — no client-writable
+	// tool argument sets it. nil means never archived. Non-nil excludes the
+	// record from Search/List/SearchDiscovery/ListScheduled recall (soft-hide)
+	// but never from Get (matching Supersedes/SupersededBy's own D-08
+	// contract). Orthogonal to NotAfter: archiving never writes not_after and
+	// expiring never writes archived_at, so an archived record and a
+	// naturally-expired record stay independently observable states — reusing
+	// NotAfter for this was the option D-12 rejected (RESEARCH.md Pitfall 3).
+	// Reversible via Store.Restore, which deletes the key outright rather than
+	// writing a false/zero sentinel.
+	ArchivedAt *time.Time `json:"archived_at,omitempty"`
 	// AccessCount is the monotonic total of strong-signal touches (get-by-id +
 	// update; never search/list result-set membership, D-02). Server-set only —
 	// no client-writable tool argument sets it. A legacy record missing the
@@ -489,6 +501,9 @@ func payload(m Memory) map[string]any {
 	if m.SupersededBy != nil {
 		p["superseded_by"] = *m.SupersededBy
 	}
+	if m.ArchivedAt != nil {
+		p["archived_at"] = m.ArchivedAt.Unix()
+	}
 	p["access_count"] = m.AccessCount
 	p[embedderIdentityKey] = m.EmbedderIdentity
 	p[idempotencyFingerprintKey] = m.IdempotencyFingerprint
@@ -581,6 +596,10 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	if v, ok := p["superseded_by"]; ok {
 		s := v.GetStringValue()
 		m.SupersededBy = &s
+	}
+	if v, ok := p["archived_at"]; ok {
+		t := time.Unix(v.GetIntegerValue(), 0).UTC()
+		m.ArchivedAt = &t
 	}
 	if v, ok := p["access_count"]; ok {
 		m.AccessCount = uint64(v.GetIntegerValue())
@@ -933,6 +952,12 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 	// condition to activeWindowConditions, not folded into it (that helper is
 	// time-window-scoped only). get_memory (Store.Get) stays ungated.
 	f.Must = append(f.Must, qdrant.NewIsEmpty("superseded_by"))
+	// Soft-hide archived records (D-12, plan 03-06) — a SIBLING condition to
+	// both activeWindowConditions and the superseded_by IsEmpty above, never
+	// folded into either: archived is orthogonal to both the time window and
+	// supersession, so this stays independently maintained alongside them.
+	// get_memory (Store.Get) stays ungated.
+	f.Must = append(f.Must, qdrant.NewIsEmpty("archived_at"))
 	f.Must = append(f.Must, tagMatchConditions(opts.Tags)...)
 	if c := categoryMatchCondition(opts.Categories); c != nil {
 		f.Must = append(f.Must, c)
@@ -1027,6 +1052,10 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Su
 	// Soft-hide superseded discoveries from search recall (WR-01), the same
 	// gate Search/List already apply — get_memory stays ungated.
 	must = append(must, qdrant.NewIsEmpty("superseded_by"))
+	// Soft-hide archived discoveries (D-12, plan 03-06) — a SIBLING condition,
+	// never folded into the superseded_by gate above: archived and superseded
+	// are independently observable states. get_memory stays ungated.
+	must = append(must, qdrant.NewIsEmpty("archived_at"))
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
 		Filter: &qdrant.Filter{Must: must}, Limit: qdrant.PtrOf(k),
@@ -1160,6 +1189,11 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 	// condition to activeWindowConditions, not folded into it (that helper is
 	// time-window-scoped only). get_memory (Store.Get) stays ungated.
 	f.Must = append(f.Must, qdrant.NewIsEmpty("superseded_by"))
+	// Soft-hide archived records (D-12, plan 03-06) — a SIBLING condition,
+	// never folded into activeWindowConditions or the superseded_by gate
+	// above: archived, expired, and superseded stay independently observable
+	// states. get_memory (Store.Get) stays ungated.
+	f.Must = append(f.Must, qdrant.NewIsEmpty("archived_at"))
 	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
 		f.Must = append(f.Must, c)
 	}
@@ -1390,6 +1424,11 @@ func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, s
 		// (WR-02) — a corrected-away record shouldn't still surface as a
 		// live pending/expired candidate. get_memory stays ungated.
 		qdrant.NewIsEmpty("superseded_by"),
+		// Soft-hide archived scheduled records (D-12, plan 03-06) — a SIBLING
+		// condition to the superseded_by gate above, never folded into it:
+		// archived and superseded are independently observable states.
+		// get_memory stays ungated.
+		qdrant.NewIsEmpty("archived_at"),
 	}}
 	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
 		f.Must = append(f.Must, c)
@@ -1655,6 +1694,17 @@ func (s *Store) FetchForUpdate(ctx context.Context, id string, subj Subject) (ou
 	return s.getWritable(ctx, id, subj, authz.ActionWrite)
 }
 
+// updateAfterReadHook is a test-only seam: nil in production (a single
+// nil-check branch), it is invoked by Update exactly once, inside the
+// s.locker.Lock block, after the in-lock re-read and before the
+// whole-payload Upsert. It exists to make the archive/update race window
+// (plan 03-06, TestArchiveSurvivesConcurrentUpdate/
+// TestRestoreSurvivesConcurrentUpdate) addressable deterministically from a
+// test, instead of repeating an unsynchronized goroutine race and hoping to
+// land in the vulnerable window. Must never be set outside a test —
+// mirrors internal/store/spine.go's spineScrollBatch test-only var.
+var updateAfterReadHook func()
+
 // Update applies a content change (re-embedded via vec) to a record previously
 // fetched and ownership-verified via FetchForUpdate. It does NOT re-fetch: cur
 // is authoritative, so the update path gates ownership exactly once. When shared
@@ -1691,15 +1741,31 @@ func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *
 	//      survives this Upsert. A concurrent Delete (Get returns ErrNotFound)
 	//      is left as pre-existing, out-of-scope behavior: Update never
 	//      existence-checks cur, matching its behavior before this fix.
+	// Plan 03-06 extends this same in-lock re-read to ArchivedAt, and extends
+	// the lock itself to Store.Archive/Store.Restore (internal/store/spine.go)
+	// for the identical reason: a lock-free targeted SetPayload landing
+	// between this re-read and the Upsert below would otherwise be silently
+	// erased, exactly like the CR-04 supersession case this comment describes.
 	unlock, err := s.locker.Lock(ctx, cur.ID)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 	if fresh, gerr := s.Get(ctx, cur.ID); gerr == nil {
-		cur.Supersedes, cur.SupersededBy = fresh.Supersedes, fresh.SupersededBy
+		cur.Supersedes, cur.SupersededBy, cur.ArchivedAt = fresh.Supersedes, fresh.SupersededBy, fresh.ArchivedAt
 	} else if !errors.Is(gerr, ErrNotFound) {
 		return gerr
+	}
+	// updateAfterReadHook is a test-only seam (nil in production, one
+	// nil-check branch cost) that makes the archive/update race window
+	// addressable from a test: it fires exactly here, inside the lock, after
+	// the in-lock re-read above and before the whole-payload Upsert below —
+	// the same window CR-04's comment describes for supersession. A test sets
+	// it to force this window open on demand rather than repeating an
+	// unsynchronized goroutine race and hoping to hit it; it must never be
+	// set outside a test, mirroring spineScrollBatch's own test-only var.
+	if updateAfterReadHook != nil {
+		updateAfterReadHook()
 	}
 
 	cur.Content = content

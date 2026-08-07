@@ -5013,3 +5013,520 @@ func TestIdAddressedAbsentShortCircuit(t *testing.T) {
 		t.Errorf("OwnedOrAbsent absent id under all-deny PDP: want nil, got %v", err)
 	}
 }
+
+// --- Archive/Restore (D-12, plan 03-06) ---
+
+// TestActiveWindowConditionsExcludesArchivedAt (D-12) pins that the
+// archived_at soft-hide is a SIBLING of activeWindowConditions, never folded
+// into it: the helper's returned conditions must never reference
+// archived_at. Pure unit test — no Qdrant round-trip — asserted directly on
+// the helper's return value rather than a source grep any comment could
+// satisfy or defeat.
+func TestActiveWindowConditionsExcludesArchivedAt(t *testing.T) {
+	conds := activeWindowConditions(time.Now())
+	if len(conds) == 0 {
+		t.Fatal("activeWindowConditions returned no conditions")
+	}
+	for _, c := range conds {
+		if strings.Contains(c.String(), "archived_at") {
+			t.Fatalf("activeWindowConditions condition references archived_at, want it excluded entirely: %s", c.String())
+		}
+	}
+}
+
+// TestArchiveRecallGateSearchAndList (T-03-03's mitigation) mirrors
+// TestSupersedeRecallGate: an archived record is excluded from Search and
+// List but stays fetchable, content intact, via Get.
+func TestArchiveRecallGateSearchAndList(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "archive-test:project:recall-search-list"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+	vec := []float32{0.1, 0.2, 0.3}
+
+	archivedID := "e1000000-0000-0000-0000-000000000001"
+	liveID := "e1000000-0000-0000-0000-000000000002"
+	if err := s.Upsert(ctx, Memory{ID: archivedID, Content: "old", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}, vec); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := s.Archive(ctx, archivedID); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: liveID, Content: "live", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}, vec); err != nil {
+		t.Fatalf("upsert live: %v", err)
+	}
+
+	hits, err := s.Search(ctx, scope, subj, vec, 10, SearchOptions{})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if got := recordIDs(hits); slices.Contains(got, archivedID) {
+		t.Errorf("Search: archived record %s present, want excluded: %v", archivedID, got)
+	} else if !slices.Contains(got, liveID) {
+		t.Errorf("Search: live record %s absent, want present: %v", liveID, got)
+	}
+
+	items, _, _, err := s.List(ctx, scope, subj, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if got := recordIDs(items); slices.Contains(got, archivedID) {
+		t.Errorf("List: archived record %s present, want excluded: %v", archivedID, got)
+	} else if !slices.Contains(got, liveID) {
+		t.Errorf("List: live record %s absent, want present: %v", liveID, got)
+	}
+
+	got, err := s.Get(ctx, archivedID)
+	if err != nil {
+		t.Fatalf("Get archived: %v", err)
+	}
+	if got.ArchivedAt == nil {
+		t.Errorf("Get archived: ArchivedAt = nil, want set (Get is never gated)")
+	}
+	if got.Content != "old" {
+		t.Errorf("Get archived: content = %q, want %q (untouched)", got.Content, "old")
+	}
+}
+
+// TestArchiveRecallGateSearchDiscovery mirrors
+// TestSearchDiscoverySupersededHidden for the archived_at soft-hide.
+func TestArchiveRecallGateSearchDiscovery(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "discovery:repo:archive-recall-gate"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	vec := []float32{0.1, 0.2, 0.3}
+
+	archivedID := "e1000000-0000-0000-0000-000000000003"
+	liveID := "e1000000-0000-0000-0000-000000000004"
+	if err := s.Upsert(ctx, Memory{
+		ID: archivedID, Content: "old discovery", Scope: scope, Category: "discovery",
+		Kind: "fact", Owner: "sub-A", CreatedAt: time.Now().UTC(),
+	}, vec); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := s.Archive(ctx, archivedID); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{
+		ID: liveID, Content: "live discovery", Scope: scope, Category: "discovery",
+		Kind: "fact", Owner: "sub-A", CreatedAt: time.Now().UTC(),
+	}, vec); err != nil {
+		t.Fatalf("upsert live: %v", err)
+	}
+
+	hits, err := s.SearchDiscovery(ctx, scope, "", Authenticated("sub-A"), vec, 10)
+	if err != nil {
+		t.Fatalf("SearchDiscovery: %v", err)
+	}
+	if got := recordIDs(hits); slices.Contains(got, archivedID) {
+		t.Errorf("SearchDiscovery: archived record %s present, want excluded: %v", archivedID, got)
+	} else if !slices.Contains(got, liveID) {
+		t.Errorf("SearchDiscovery: live record %s absent, want present: %v", liveID, got)
+	}
+}
+
+// TestArchiveRecallGateListScheduled mirrors TestListScheduledSupersededHidden
+// for the archived_at soft-hide.
+func TestArchiveRecallGateListScheduled(t *testing.T) {
+	s := testStore(t)
+	fixed := time.Date(2030, 6, 15, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return fixed }
+	ctx := context.Background()
+	scope := "sched-test:project:archive-recall-gate"
+	subj := Authenticated("sub-A")
+	future := fixed.Add(24 * time.Hour)
+
+	archivedID := "e1000000-0000-0000-0000-000000000005"
+	liveID := "e1000000-0000-0000-0000-000000000006"
+	mk := func(id string) {
+		m := Memory{ID: id, Content: "c", Scope: scope, Owner: "sub-A", CreatedAt: fixed, NotBefore: &future}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+		t.Cleanup(func() { cleanupErr(t, id, s.Delete(ctx, id, subj)) })
+	}
+	mk(archivedID)
+	mk(liveID)
+	if _, err := s.Archive(ctx, archivedID); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+
+	sched, err := s.ListScheduled(ctx, scope, subj, ScheduledPending, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListScheduled: %v", err)
+	}
+	if got := recordIDs(sched); slices.Contains(got, archivedID) {
+		t.Errorf("ListScheduled: archived record %s present, want excluded: %v", archivedID, got)
+	} else if !slices.Contains(got, liveID) {
+		t.Errorf("ListScheduled: live record %s absent, want present: %v", liveID, got)
+	}
+}
+
+// TestArchivedAndSupersededHideIndependently (T-03-03's mitigation) pins that
+// a record carrying BOTH superseded_by and archived_at stays hidden from
+// recall while EITHER condition holds, and resurfaces only once BOTH are
+// cleared — proving the two soft-hides are independently maintained, not a
+// single combined flag one Restore call alone could clear.
+func TestArchivedAndSupersededHideIndependently(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "archive-test:project:both-states"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+	vec := []float32{0.1, 0.2, 0.3}
+
+	id := "e2000000-0000-0000-0000-000000000001"
+	newID := "e2000000-0000-0000-0000-000000000002"
+	if err := s.Upsert(ctx, Memory{
+		ID: id, Content: "v1", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), SupersededBy: &newID,
+	}, vec); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := s.Archive(ctx, id); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+
+	assertHidden := func(t *testing.T, why string) {
+		t.Helper()
+		items, _, _, err := s.List(ctx, scope, subj, ListOptions{Limit: 10})
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		if got := recordIDs(items); slices.Contains(got, id) {
+			t.Errorf("List: record %s present (%s), want excluded", id, why)
+		}
+	}
+	assertHidden(t, "both superseded_by and archived_at set")
+
+	// Restore clears archived_at; supersession alone still hides it.
+	if _, err := s.Restore(ctx, id); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	assertHidden(t, "superseded_by still set after Restore")
+
+	got, err := s.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.ArchivedAt != nil {
+		t.Errorf("Get after Restore: ArchivedAt = %v, want nil", got.ArchivedAt)
+	}
+	if got.SupersededBy == nil {
+		t.Fatalf("Get after Restore: SupersededBy = nil, want still set")
+	}
+
+	// Re-archive while still superseded, then clear supersession alone (no
+	// "un-supersede" verb exists; a direct targeted delete stands in) to
+	// prove the REVERSE order too: clearing superseded_by alone must not
+	// resurface a still-archived record.
+	if _, err := s.Archive(ctx, id); err != nil {
+		t.Fatalf("re-Archive: %v", err)
+	}
+	assertHidden(t, "archived_at set again, superseded_by still set")
+
+	if err := s.defaultDeletePayloadKeys(ctx, id, []string{"superseded_by"}); err != nil {
+		t.Fatalf("clear superseded_by: %v", err)
+	}
+	assertHidden(t, "archived_at still set after clearing superseded_by")
+
+	if _, err := s.Restore(ctx, id); err != nil {
+		t.Fatalf("final Restore: %v", err)
+	}
+	items, _, _, err := s.List(ctx, scope, subj, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if got := recordIDs(items); !slices.Contains(got, id) {
+		t.Errorf("List: record %s absent after both conditions cleared, want present: %v", id, got)
+	}
+}
+
+// TestArchiveIdempotent pins that a second Archive on an already-archived
+// record reports ArchiveOutcomeAlready and leaves the original stamp
+// unchanged — idempotent by value, not by re-stamping.
+func TestArchiveIdempotent(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "archive-test:project:idempotent"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	id := "e4000000-0000-0000-0000-000000000001"
+	if err := s.Upsert(ctx, Memory{ID: id, Content: "v", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	res1, err := s.Archive(ctx, id)
+	if err != nil {
+		t.Fatalf("first Archive: %v", err)
+	}
+	if res1.Outcome != ArchiveOutcomeChanged {
+		t.Fatalf("first Archive: Outcome = %q, want %q", res1.Outcome, ArchiveOutcomeChanged)
+	}
+	first, err := s.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get after first Archive: %v", err)
+	}
+	if first.ArchivedAt == nil {
+		t.Fatalf("Get after first Archive: ArchivedAt = nil, want set")
+	}
+
+	res2, err := s.Archive(ctx, id)
+	if err != nil {
+		t.Fatalf("second Archive: %v", err)
+	}
+	if res2.Outcome != ArchiveOutcomeAlready {
+		t.Errorf("second Archive: Outcome = %q, want %q", res2.Outcome, ArchiveOutcomeAlready)
+	}
+	second, err := s.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get after second Archive: %v", err)
+	}
+	if !second.ArchivedAt.Equal(*first.ArchivedAt) {
+		t.Errorf("second Archive changed the stamp: first=%v second=%v", first.ArchivedAt, second.ArchivedAt)
+	}
+}
+
+// TestRestoreNoOpWhenNeverArchived pins that Restore on a never-archived
+// record reports ArchiveOutcomeAlready and mutates nothing.
+func TestRestoreNoOpWhenNeverArchived(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "archive-test:project:restore-noop"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	id := "e4000000-0000-0000-0000-000000000002"
+	if err := s.Upsert(ctx, Memory{ID: id, Content: "v", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	res, err := s.Restore(ctx, id)
+	if err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	if res.Outcome != ArchiveOutcomeAlready {
+		t.Errorf("Restore never-archived: Outcome = %q, want %q", res.Outcome, ArchiveOutcomeAlready)
+	}
+	got, err := s.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Content != "v" {
+		t.Errorf("Restore never-archived mutated content: got %q, want %q", got.Content, "v")
+	}
+	if got.ArchivedAt != nil {
+		t.Errorf("Restore never-archived: ArchivedAt = %v, want nil", got.ArchivedAt)
+	}
+}
+
+// TestArchiveUnknownID and TestRestoreUnknownID pin that both verbs report
+// the SAME not-found-class error and the SAME ArchiveOutcomeNotFound value
+// for an id that does not exist — never a silent success on either side
+// (T-03-29's mitigation).
+func TestArchiveUnknownID(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	res, err := s.Archive(ctx, "ffffffff-ffff-ffff-ffff-ffffffffffff")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Archive(unknown): err = %v, want ErrNotFound-class", err)
+	}
+	if res.Outcome != ArchiveOutcomeNotFound {
+		t.Errorf("Archive(unknown): Outcome = %q, want %q", res.Outcome, ArchiveOutcomeNotFound)
+	}
+}
+
+func TestRestoreUnknownID(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	res, err := s.Restore(ctx, "ffffffff-ffff-ffff-ffff-ffffffffffff")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Restore(unknown): err = %v, want ErrNotFound-class", err)
+	}
+	if res.Outcome != ArchiveOutcomeNotFound {
+		t.Errorf("Restore(unknown): Outcome = %q, want %q", res.Outcome, ArchiveOutcomeNotFound)
+	}
+}
+
+// TestArchiveSurvivesWholePayloadUpdate pins that a record archived and then
+// updated through Store.Update's whole-payload Upsert path is still
+// archived afterwards — the sequential half of T-03-17's mitigation.
+func TestArchiveSurvivesWholePayloadUpdate(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "archive-test:project:survives-update"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+
+	id := "e3000000-0000-0000-0000-000000000001"
+	if err := s.Upsert(ctx, Memory{ID: id, Content: "v1", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := s.Archive(ctx, id); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+
+	cur, err := s.FetchForUpdate(ctx, id, subj)
+	if err != nil {
+		t.Fatalf("FetchForUpdate: %v", err)
+	}
+	if cur.ArchivedAt == nil {
+		t.Fatalf("precondition: FetchForUpdate.ArchivedAt = nil, want set")
+	}
+	if err := s.Update(ctx, cur, "v2", nil, nil, nil, []float32{0.2, 0.3, 0.4}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	got, err := s.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.ArchivedAt == nil {
+		t.Errorf("Get after Update: ArchivedAt = nil, want still set (whole-payload Upsert must preserve it)")
+	}
+	if got.Content != "v2" {
+		t.Errorf("Get after Update: Content = %q, want %q", got.Content, "v2")
+	}
+}
+
+// TestArchiveSurvivesConcurrentUpdate (T-03-17's mitigation) proves Update's
+// whole-payload Upsert cannot erase a concurrent Archive, via a
+// DETERMINISTIC barrier-controlled interleaving through the
+// updateAfterReadHook seam — a single iteration, never a repeated
+// unsynchronized race. The hook fires inside Update's lock, after its
+// in-lock re-read and before its Upsert; the test holds Update there until
+// Archive either completes or a 2s bound expires, then asserts the record
+// is still archived. Run with -race.
+func TestArchiveSurvivesConcurrentUpdate(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "archive-test:project:concurrent-update"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+
+	id := "e5000000-0000-0000-0000-000000000001"
+	if err := s.Upsert(ctx, Memory{ID: id, Content: "v1", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	cur, err := s.FetchForUpdate(ctx, id, subj)
+	if err != nil {
+		t.Fatalf("FetchForUpdate: %v", err)
+	}
+	if cur.ArchivedAt != nil {
+		t.Fatalf("precondition: cur.ArchivedAt = %v, want nil before the race", cur.ArchivedAt)
+	}
+
+	inWindow := make(chan struct{})
+	archiveDone := make(chan struct{})
+	updateAfterReadHook = func() {
+		close(inWindow)
+		select {
+		case <-archiveDone:
+		case <-time.After(2 * time.Second):
+		}
+	}
+	t.Cleanup(func() { updateAfterReadHook = nil })
+
+	var wg sync.WaitGroup
+	var updateErr, archiveErr error
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		updateErr = s.Update(ctx, cur, "v2", nil, nil, nil, []float32{0.2, 0.3, 0.4})
+	}()
+	<-inWindow
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, archiveErr = s.Archive(ctx, id)
+		close(archiveDone)
+	}()
+	wg.Wait()
+
+	if updateErr != nil {
+		t.Fatalf("Update: %v", updateErr)
+	}
+	if archiveErr != nil {
+		t.Fatalf("Archive: %v", archiveErr)
+	}
+	got, err := s.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.ArchivedAt == nil {
+		t.Fatalf("ArchivedAt = nil, want set (Update must not erase a concurrent Archive under the same-lock implementation)")
+	}
+	if got.Content != "v2" {
+		t.Errorf("Content = %q, want %q (Update's content edit must still land)", got.Content, "v2")
+	}
+}
+
+// TestRestoreSurvivesConcurrentUpdate is TestArchiveSurvivesConcurrentUpdate's
+// mirror: an already-archived record, racing Restore against Update via the
+// same deterministic barrier, must end up NOT archived.
+func TestRestoreSurvivesConcurrentUpdate(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "archive-test:project:restore-concurrent-update"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+
+	id := "e5000000-0000-0000-0000-000000000002"
+	if err := s.Upsert(ctx, Memory{ID: id, Content: "v1", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := s.Archive(ctx, id); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+	cur, err := s.FetchForUpdate(ctx, id, subj)
+	if err != nil {
+		t.Fatalf("FetchForUpdate: %v", err)
+	}
+	if cur.ArchivedAt == nil {
+		t.Fatalf("precondition: cur.ArchivedAt = nil, want set before the race")
+	}
+
+	inWindow := make(chan struct{})
+	restoreDone := make(chan struct{})
+	updateAfterReadHook = func() {
+		close(inWindow)
+		select {
+		case <-restoreDone:
+		case <-time.After(2 * time.Second):
+		}
+	}
+	t.Cleanup(func() { updateAfterReadHook = nil })
+
+	var wg sync.WaitGroup
+	var updateErr, restoreErr error
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		updateErr = s.Update(ctx, cur, "v2", nil, nil, nil, []float32{0.2, 0.3, 0.4})
+	}()
+	<-inWindow
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, restoreErr = s.Restore(ctx, id)
+		close(restoreDone)
+	}()
+	wg.Wait()
+
+	if updateErr != nil {
+		t.Fatalf("Update: %v", updateErr)
+	}
+	if restoreErr != nil {
+		t.Fatalf("Restore: %v", restoreErr)
+	}
+	got, err := s.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.ArchivedAt != nil {
+		t.Fatalf("ArchivedAt = %v, want nil (Restore must complete after Update releases the lock)", got.ArchivedAt)
+	}
+}
