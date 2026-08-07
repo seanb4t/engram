@@ -114,7 +114,7 @@ func TestSpineScanDocEmptyResultMarshalsEmptyArray(t *testing.T) {
 func TestSpineScanSummaryFormat(t *testing.T) {
 	res := store.SpineScanResult{
 		Total: 3, Owners: 2, WithSummary: 1, WithoutSummary: 2,
-		Superseded: 1, Expired: 1, Scheduled: 0, WithCitations: 1, Citations: 4,
+		Superseded: 1, Expired: 1, Scheduled: 0, Archived: 1, WithCitations: 1, Citations: 4,
 		ByScopeCategory: []store.ScopeCategoryCount{{Scope: "s", Category: "note", Count: 3}},
 	}
 	got := spineScanSummary(res, "s")
@@ -123,7 +123,7 @@ func TestSpineScanSummaryFormat(t *testing.T) {
 		t.Errorf("spineScanSummary result ends with a trailing newline, want none: %q", got)
 	}
 	for _, want := range []string{"total=3", "owners=2", "without_summary=2", "with_summary=1",
-		"superseded=1", "expired=1", "scheduled=0", "with_citations=1", "citations=4",
+		"superseded=1", "expired=1", "scheduled=0", "archived=1", "with_citations=1", "citations=4",
 		`scope="s"`, `category="note"`, "count=3"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("spineScanSummary(res, %q) = %q, want it to contain %q", "s", got, want)

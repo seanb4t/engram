@@ -218,10 +218,20 @@ Fetch one memory by id.
 
 Returns the full memory record. Authenticated callers can read their own records
 plus any `shared` records. Anonymous callers can only read ownerless records.
-Fetch-by-id is **not** recall-gated: a windowed record (set via `schedule_memory`)
-that `search_memory`/`list_memory` hide because it is scheduled or expired is still
-retrievable directly by id here. `get_memory` always returns `citations` in full —
-unlike `search_memory`/`list_memory`, it has no compact view to omit them from.
+Fetch-by-id is **not** recall-gated: it returns every state `search_memory`/
+`list_memory`/`search_discovery`/`list_scheduled` hide —
+
+- **scheduled** — not yet active (`not_before` in the future)
+- **expired** — past its validity window (`not_after` in the past)
+- **superseded** — corrected away by [`supersede_memory`](#supersede_memory);
+  see that section for the full soft-hide contract
+- **archived** — explicitly retired via the `engram spine-review archive` CLI
+  command (reversible via `restore`); see
+  [`reference/memory-record`](/reference/memory-record/#archiving) for the
+  `archived_at` field's contract
+
+`get_memory` always returns `citations` in full — unlike `search_memory`/
+`list_memory`, it has no compact view to omit them from.
 
 ---
 
@@ -251,7 +261,12 @@ payload links — the target's content, tags, and vector are untouched.
 **Recall behavior.** A superseded record is soft-hidden from `search_memory`,
 `list_memory`, `search_discovery`, and `list_scheduled`, so recall returns only the
 current truth. It stays **fully fetchable by id** via [`get_memory`](#get_memory),
-which is not recall-gated — so the superseded history remains auditable.
+which is not recall-gated — so the superseded history remains auditable. This is
+one of the four states `get_memory`'s own section lists as recall-hidden-but-fetchable
+(scheduled, expired, superseded, archived); **archived** is a separate, independently
+maintained state — see [`get_memory`](#get_memory) and
+[`reference/memory-record`](/reference/memory-record/#archiving) — never entered or
+cleared by this verb.
 
 **Constraints.**
 

@@ -110,7 +110,7 @@ every response before this release and is unaffected by this change.
 Every operator command — `reindex`, `prune-expired`, `summarize-missing`,
 `backfill-short-ids`, `migrate-remap-owner`, its deprecated alias
 `migrate-set-owner`, and every `engram spine-review` leaf (currently `scan`,
-`verify`, and `consolidate`) — also accepts `--output`:
+`verify`, `consolidate`, `archive`, and `restore`) — also accepts `--output`:
 
 | Value | Behavior |
 |-------|----------|
@@ -201,6 +201,42 @@ is never confused with a cross-scope one.
 A scope with fewer than two records reports zero candidates and exits `0`;
 the JSON `candidates` array is `[]`, never `null`, in that case.
 
+### `spine-review archive` / `spine-review restore`
+
+`engram spine-review archive --id <id>` [`--id <id> ...`] explicitly retires
+one or more records: it stamps `archived_at` (see
+[Archiving](/reference/memory-record/#archiving) for the field's full
+contract), an entirely new key orthogonal to both expiry (`not_after`) and
+supersession (`superseded_by`). `engram spine-review restore --id <id>`
+reverses it. Both accept `--id` **more than once**, processing every id and
+reporting a per-id outcome — there is no filter form; a mutating verb's
+blast radius is always the explicit id set an operator supplied, never an
+implicit scope sweep.
+
+Each id resolves to exactly one of three outcomes, reported honestly rather
+than inferred from an error string:
+
+| Outcome | Meaning |
+|---------|---------|
+| `changed` | The record's archived state was mutated (stamped or cleared). |
+| `already` | The record was already in the target state — no write issued. |
+| `not_found` | The id does not resolve to an existing record. |
+
+An unknown id reports `not_found` on **both** verbs identically — there is
+no asymmetry where one verb errors and the other silently reports success
+for the same typo'd id. Archiving an already-archived record, or restoring
+a never-archived one, is idempotent: it reports `already` and mutates
+nothing.
+
+**Retained, not deleted.** Neither verb removes a point, erases content, or
+drops a vector. An archived record stays fully fetchable via `get_memory`
+(and the MCP tools) — only recall (`search_memory`/`list_memory`/
+`search_discovery`/`list_scheduled`) hides it, exactly like a superseded or
+expired record. `engram spine-review scan` reports an `archived` count as
+its own bucket, separate from `expired` — an archived record's `not_after`
+may or may not also be lapsed, but the two states are independently
+observable and never folded together.
+
 ## Exit codes
 
 Every command in the binary — the three client verbs and all eight operator
@@ -258,7 +294,7 @@ zero-semantics, and it is not uniform across commands:**
 | Commands | `--timeout` meaning | `0` behavior |
 |---|---|---|
 | `search`, `list`, `store` | Per-RPC-call deadline | **Rejected** (usage error) |
-| `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan`, `spine-review verify`, `spine-review consolidate` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
+| `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan`, `spine-review verify`, `spine-review consolidate`, `spine-review archive`, `spine-review restore` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
 | `migrate-remap-owner`, `migrate-set-owner` | Whole-sweep wall-clock budget | **Rejected** (usage error) — changed this release, see the [upgrade guide](/guides/upgrade/#6-migrate-remap-owner---timeout-0--migrate-set-owner---timeout-0-no-longer-means-unbounded) |
 
 A reader comparing `engram search --help` against `engram reindex --help`

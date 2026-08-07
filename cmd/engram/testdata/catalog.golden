@@ -512,6 +512,36 @@
       }
     },
     {
+      "name": "spine-review archive",
+      "summary": "Archive one or more records by id (reversible via restore)",
+      "flags": [
+        {
+          "name": "id",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "id (or short_id) of a record to archive; may be repeated"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "5m0s",
+          "usage": "max wall-clock for the run (0 disables); also cancellable via Ctrl-C"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
       "name": "spine-review consolidate",
       "summary": "Report ranked near-duplicate candidate pairs across the memory spine",
       "flags": [
@@ -554,6 +584,36 @@
       ],
       "blast_radius": {
         "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "spine-review restore",
+      "summary": "Restore one or more previously-archived records by id",
+      "flags": [
+        {
+          "name": "id",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "id (or short_id) of a previously-archived record to restore; may be repeated"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "5m0s",
+          "usage": "max wall-clock for the run (0 disables); also cancellable via Ctrl-C"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
         "destructive": false,
         "idempotent": true,
         "open_world": false

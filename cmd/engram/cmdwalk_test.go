@@ -109,10 +109,11 @@ func TestWalkCommands(t *testing.T) {
 // operatorCommands() over the LIVE rootCmd tree: the six pre-existing
 // operator commands this plan backfills plus spine-review scan (plan
 // 03-01's first operator-tier leaf), spine-review verify (plan 03-04's
-// leaf), and spine-review consolidate (plan 03-05's leaf) — never
-// search/list/store (the client tier, excluded by the "server" flag
-// check) and never spine-review itself (the non-runnable group, excluded
-// by the RunE check) or serve/version (the named exclusion set).
+// leaf), spine-review consolidate (plan 03-05's leaf), and spine-review
+// archive/restore (plan 03-06's leaves) — never search/list/store (the
+// client tier, excluded by the "server" flag check) and never spine-review
+// itself (the non-runnable group, excluded by the RunE check) or
+// serve/version (the named exclusion set).
 var wantOperatorCommandKeys = map[string]bool{
 	"reindex":                  true,
 	"prune-expired":            true,
@@ -123,6 +124,8 @@ var wantOperatorCommandKeys = map[string]bool{
 	"spine-review scan":        true,
 	"spine-review verify":      true,
 	"spine-review consolidate": true,
+	"spine-review archive":     true,
+	"spine-review restore":     true,
 }
 
 // commandKeySet is a small helper turning a []*cobra.Command into a

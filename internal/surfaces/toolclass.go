@@ -281,6 +281,36 @@ var operations = []Operation{
 		MCPTool: "", CLICommand: "spine-review consolidate",
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
+	{
+		// spine-review archive sets ONE server-owned state key (archived_at)
+		// via a targeted SetPayload. This is a RECORDED DECISION, not the
+		// comfortable-but-false claim that this verb "removes nothing":
+		// restore (the sibling row below) issues a real Qdrant DeletePayload
+		// RPC for that same key (internal/store/store.go's
+		// defaultDeletePayloadKeys). Destructive: false rests on the SAME
+		// precedent set_visibility already occupies above in this table —
+		// that row is Destructive: false while OVERWRITING a payload field,
+		// on the recorded grounds that "content, tags, and the vector are
+		// untouched, and the change is always reversible by calling again".
+		// archive/restore satisfy that identical test: neither reads, writes
+		// or erases content, tags or the vector, and each is EXACTLY
+		// reversible by the other verb. This table's operative meaning is
+		// therefore "removes or overwrites the record's CONTENT", not
+		// "touches any payload byte". Idempotent: true — archiving an
+		// already-archived record reports the "already" outcome and issues
+		// no write (idempotent by value, not by re-stamping).
+		MCPTool: "", CLICommand: "spine-review archive",
+		Class: Class{ReadOnly: false, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
+	{
+		// spine-review restore is archive's exact inverse — see the archive
+		// row immediately above for the full set_visibility precedent this
+		// classification rests on. Idempotent: true — restoring a
+		// never-archived record reports the "already" outcome and mutates
+		// nothing.
+		MCPTool: "", CLICommand: "spine-review restore",
+		Class: Class{ReadOnly: false, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
 }
 
 // classByTool/classByCommand are built once from operations, backing

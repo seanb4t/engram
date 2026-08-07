@@ -201,7 +201,9 @@ Usage:
   engram spine-review [command]
 
 Available Commands:
+  archive     Archive one or more records by id (reversible via restore)
   consolidate Report ranked near-duplicate candidate pairs across the memory spine
+  restore     Restore one or more previously-archived records by id
   scan        Report an inventory of the memory spine
   verify      Classify every stored citation as valid, moved, broken, or unverifiable
 
@@ -209,6 +211,21 @@ Flags:
   -h, --help   help for spine-review
 
 Use "engram spine-review [command] --help" for more information about a command.
+```
+
+## engram spine-review archive
+
+```
+Archive one or more records by id (reversible via restore)
+
+Usage:
+  engram spine-review archive [flags]
+
+Flags:
+  -h, --help               help for archive
+      --id strings         id (or short_id) of a record to archive; may be repeated
+      --output string      output format: "json" or "text" (default: detect from stdout)
+      --timeout duration   max wall-clock for the run (0 disables); also cancellable via Ctrl-C (default 5m0s)
 ```
 
 ## engram spine-review consolidate
@@ -227,6 +244,21 @@ Flags:
       --scope string       only consider records in this scope
       --timeout duration   max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 5m0s)
       --top-k uint         neighbours considered per record (default 5)
+```
+
+## engram spine-review restore
+
+```
+Restore one or more previously-archived records by id
+
+Usage:
+  engram spine-review restore [flags]
+
+Flags:
+  -h, --help               help for restore
+      --id strings         id (or short_id) of a previously-archived record to restore; may be repeated
+      --output string      output format: "json" or "text" (default: detect from stdout)
+      --timeout duration   max wall-clock for the run (0 disables); also cancellable via Ctrl-C (default 5m0s)
 ```
 
 ## engram spine-review scan

@@ -149,6 +149,8 @@ func resetClientFlags(t *testing.T) {
 		listCategories = nil
 		listScope = ""
 		listCrossSpine = false
+		spineArchiveIDs = nil
+		spineRestoreIDs = nil
 	})
 }
 

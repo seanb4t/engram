@@ -80,14 +80,18 @@ type spineScanBreakdownDoc struct {
 // declared struct, not an embedded store.SpineScanResult, so this
 // exclusion is enforced by the type itself rather than by discipline.
 type spineScanReportDoc struct {
-	Total           uint64                  `json:"total"`
-	ScannedAt       time.Time               `json:"scanned_at"`
-	Owners          uint64                  `json:"owners"`
-	WithoutSummary  uint64                  `json:"without_summary"`
-	WithSummary     uint64                  `json:"with_summary"`
-	Superseded      uint64                  `json:"superseded"`
-	Expired         uint64                  `json:"expired"`
-	Scheduled       uint64                  `json:"scheduled"`
+	Total          uint64    `json:"total"`
+	ScannedAt      time.Time `json:"scanned_at"`
+	Owners         uint64    `json:"owners"`
+	WithoutSummary uint64    `json:"without_summary"`
+	WithSummary    uint64    `json:"with_summary"`
+	Superseded     uint64    `json:"superseded"`
+	Expired        uint64    `json:"expired"`
+	Scheduled      uint64    `json:"scheduled"`
+	// Archived is its own bucket, separate from Expired (D-12, plan 03-06):
+	// an archived record's not_after may or may not also be lapsed, but the
+	// two states are independently observable, never folded together.
+	Archived        uint64                  `json:"archived"`
 	WithCitations   uint64                  `json:"with_citations"`
 	Citations       uint64                  `json:"citations"`
 	ByScopeCategory []spineScanBreakdownDoc `json:"by_scope_category"`
@@ -105,6 +109,7 @@ func spineScanDoc(res store.SpineScanResult) spineScanReportDoc {
 		Superseded:      res.Superseded,
 		Expired:         res.Expired,
 		Scheduled:       res.Scheduled,
+		Archived:        res.Archived,
 		WithCitations:   res.WithCitations,
 		Citations:       res.Citations,
 		ByScopeCategory: make([]spineScanBreakdownDoc, 0, len(res.ByScopeCategory)),
@@ -132,7 +137,7 @@ func spineScanSummary(res store.SpineScanResult, scope string) string {
 	fmt.Fprintf(&b, "spine scan (%s) at %s: total=%d owners=%d\n",
 		target, res.ScannedAt.Format(time.RFC3339), res.Total, res.Owners)
 	fmt.Fprintf(&b, "  without_summary=%d with_summary=%d\n", res.WithoutSummary, res.WithSummary)
-	fmt.Fprintf(&b, "  superseded=%d expired=%d scheduled=%d\n", res.Superseded, res.Expired, res.Scheduled)
+	fmt.Fprintf(&b, "  superseded=%d expired=%d scheduled=%d archived=%d\n", res.Superseded, res.Expired, res.Scheduled, res.Archived)
 	fmt.Fprintf(&b, "  with_citations=%d citations=%d\n", res.WithCitations, res.Citations)
 	for _, c := range res.ByScopeCategory {
 		fmt.Fprintf(&b, "  scope=%q category=%q count=%d\n", c.Scope, c.Category, c.Count)

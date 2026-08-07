@@ -31,6 +31,7 @@ documents every field, its serialized JSON name, allowed values, and who sets it
 | Created at | `created_at` | string (RFC3339) | server | UTC timestamp of creation |
 | Supersedes | `supersedes` | string (optional) | server | Set on a *correcting* record: the id of the memory it replaced — see [Supersession](#supersession) |
 | Superseded by | `superseded_by` | string (optional) | server | Set on a *corrected* record: the id of the memory that replaced it; its presence soft-hides the record from recall |
+| Archived at | `archived_at` | string (RFC3339) | **server** | Set via `engram spine-review archive`; its presence soft-hides the record from recall but never from `get_memory` — see [Archiving](#archiving) |
 | Citations | `citations` | Citation[] | client | Optional structured source anchors on **any** category (required, min 1, only for `discovery`) — see [Citation fields](#citation-fields); never auto-populated |
 
 ### Supersession
@@ -48,6 +49,40 @@ Chains run forward (C supersedes B supersedes A) with exactly one live head:
 superseding an already-superseded record is rejected, which makes cycles and
 self-supersession structurally impossible. See
 [`supersede_memory`](/reference/tools/#supersede_memory) for the full contract.
+
+### Archiving
+
+`engram spine-review archive --id <id>` explicitly retires a record: it stamps
+`archived_at`, an entirely **new, orthogonal** key — distinct from both `not_after`
+expiry and `superseded_by` supersession. Archiving never writes `not_after` and
+never writes `superseded_by`; a record can be archived, expired, and superseded
+independently, and each state is cleared independently of the others.
+
+A record carrying `archived_at` is **soft-hidden from recall** (`search_memory`,
+`list_memory`, `search_discovery`, `list_scheduled`) but remains **fetchable by id**
+via `get_memory`, exactly like `superseded_by` above. `engram spine-review restore
+--id <id>` reverses it by deleting the `archived_at` key outright — never a
+delete, content erasure, or vector removal on either verb. Archiving an
+already-archived record, or restoring a never-archived one, is a no-op success.
+
+Internally, `archived_at` is stored in Qdrant as an epoch-second integer (matching
+`not_before`/`not_after`'s stored form) but round-trips through `get_memory` as an
+RFC3339 string like every other `time.Time`-typed field in this table. It is
+**visible on the MCP lane** — `get_memory` returns the `store.Memory` struct
+directly as structured output, so `archived_at` appears there with no extra server
+work — but is **not present on the Connect lane**: `proto/engram/v1/engram.proto`'s
+`Memory` message does not carry `superseded_by`, `supersedes`, `not_before`, or
+`not_after` either, so this is consistent with the shipped Connect contract rather
+than a new gap. See
+[GitHub issue #482](https://github.com/seanb4t/engram/issues/482) for the
+tracked follow-up to add all five fields to the Connect lane together.
+
+`archived_at` is deliberately **not** a Qdrant payload index: it is filtered with
+`IsEmpty`, the identical access pattern `superseded_by` already has unindexed, so
+the cost is already accepted for an equivalent predicate at equivalent
+cardinality. See `engram spine-review scan`'s `archived` bucket (in
+[the CLI guide](/guides/cli/)) for a spine-wide count of archived records,
+separate from its `expired` bucket.
 
 ### Source values
 

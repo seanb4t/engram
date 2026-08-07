@@ -212,6 +212,30 @@ func operatorParityRows() []operatorParityRow {
 			doc:   consolidateDoc(consolidatePairs, "s", false, &consolidateMinScore, 5, 9, 9),
 			facts: []string{"9", "5", "0.5", "id-a", "id-b"},
 		},
+		{
+			name: "spine-review archive",
+			text: archiveSummary([]store.ArchiveResult{
+				{ID: "id-changed", Outcome: store.ArchiveOutcomeChanged},
+				{ID: "id-already", Outcome: store.ArchiveOutcomeAlready},
+			}, "archive"),
+			doc: archiveDoc([]store.ArchiveResult{
+				{ID: "id-changed", Outcome: store.ArchiveOutcomeChanged},
+				{ID: "id-already", Outcome: store.ArchiveOutcomeAlready},
+			}, "archive"),
+			facts: []string{"id-changed", "id-already", "changed", "already"},
+		},
+		{
+			name: "spine-review restore",
+			text: archiveSummary([]store.ArchiveResult{
+				{ID: "id-restored", Outcome: store.ArchiveOutcomeChanged},
+				{ID: "id-unknown", Outcome: store.ArchiveOutcomeNotFound},
+			}, "restore"),
+			doc: archiveDoc([]store.ArchiveResult{
+				{ID: "id-restored", Outcome: store.ArchiveOutcomeChanged},
+				{ID: "id-unknown", Outcome: store.ArchiveOutcomeNotFound},
+			}, "restore"),
+			facts: []string{"id-restored", "id-unknown", "changed", "not_found"},
+		},
 	}
 }
 
@@ -419,7 +443,7 @@ var timeoutGroups = []timeoutGroup{
 		commands: map[string]bool{
 			"reindex": true, "prune-expired": true, "summarize-missing": true,
 			"backfill-short-ids": true, "spine-review scan": true, "spine-review verify": true,
-			"spine-review consolidate": true,
+			"spine-review consolidate": true, "spine-review archive": true, "spine-review restore": true,
 		},
 		zeroRejected: false,
 	},
@@ -461,6 +485,10 @@ func timeoutGroupCaseArgs(t *testing.T, name string) (args []string, env map[str
 		return []string{"spine-review", "verify", "--all-scopes", "--timeout", "0"}, env
 	case "spine-review consolidate":
 		return []string{"spine-review", "consolidate", "--all-scopes", "--timeout", "0"}, env
+	case "spine-review archive":
+		return []string{"spine-review", "archive", "--id", "x", "--timeout", "0"}, env
+	case "spine-review restore":
+		return []string{"spine-review", "restore", "--id", "x", "--timeout", "0"}, env
 	case "migrate-remap-owner":
 		return []string{"migrate-remap-owner", "--from-missing", "--to", "x", "--timeout", "0"}, env
 	case "migrate-set-owner":
@@ -509,6 +537,10 @@ func operatorInvalidOutputArgs(t *testing.T, name string) []string {
 		return []string{"spine-review", "verify", "--all-scopes"}
 	case "spine-review consolidate":
 		return []string{"spine-review", "consolidate", "--all-scopes"}
+	case "spine-review archive":
+		return []string{"spine-review", "archive", "--id", "x"}
+	case "spine-review restore":
+		return []string{"spine-review", "restore", "--id", "x"}
 	default:
 		t.Fatalf("operatorInvalidOutputArgs: no row defined for command %q", name)
 		return nil
