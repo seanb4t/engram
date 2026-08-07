@@ -99,7 +99,7 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
   candidate list, and refuses to run unless rule `7smp8vy9hr`'s extract-before-delete ordering is
   provably satisfied.
 
-- [ ] **REQ-archive-tier**: A record can be archived and restored — removed from recall but
+- [x] **REQ-archive-tier**: A record can be archived and restored — removed from recall but
   retained — through `engram spine-review archive` / `restore`, as a state distinct from both
   supersession's soft-hide and purge's irreversible delete. *Open at definition time: whether this
   needs a genuine fourth record state or can extend `prune-expired`'s existing soft-hide shape. To
@@ -199,7 +199,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-citation-drift-verify | Phase 3 | Complete |
 | REQ-near-duplicate-report | Phase 3 | Complete |
 | REQ-purge-extract-gated | Phase 3 | Pending |
-| REQ-archive-tier | Phase 3 | Pending |
+| REQ-archive-tier | Phase 3 | Complete |
 | REQ-semantic-curation-skill | Phase 4 | Pending |
 | REQ-consent-never-perform | Phase 4 | Pending |
 | REQ-consent-adversarial-proof | Phase 4 | Pending |
