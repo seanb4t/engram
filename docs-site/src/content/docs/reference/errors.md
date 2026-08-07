@@ -96,6 +96,21 @@ message text — selects the Connect error code:
 `engram` CLI needs no change. A Connect client branching on the error code directly (not
 through the CLI) does need to widen from `CodeInvalidArgument` alone to all three.
 
+## The one exit code with no hint-code or Connect-code counterpart
+
+Every exit code the CLI's taxonomy publishes elsewhere is reachable through this page's
+hint-code or Connect-code vocabulary above — except one:
+
+| Exit code | Meaning |
+|---|---|
+| `7` | Findings reported under an explicit opt-in flag (e.g. `spine-review verify --fail-on`) — the command itself succeeded; see the [CLI guide's exit-code table](/guides/cli/#exit-codes). |
+
+No argument-validation hint and no Connect error code ever produces exit `7`, because it
+never represents an invalid request — the request succeeded and reported real findings a
+CI step asked to be told about. It is documented here specifically because a reader
+auditing this page for "every way engram can fail" would otherwise miss the one exit path
+that isn't a failure at all.
+
 ## What is NOT in an error
 
 **No value echo.** An engram rejection names the field that failed and states the

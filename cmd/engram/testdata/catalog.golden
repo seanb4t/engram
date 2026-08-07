@@ -558,6 +558,12 @@
           "usage": "sweep every scope (required if --scope is omitted)"
         },
         {
+          "name": "fail-on",
+          "type": "string",
+          "default": "",
+          "usage": "fail-on accepts broken, moved, unverifiable, or any; omitted, verify exits 0 regardless of findings"
+        },
+        {
           "name": "output",
           "type": "string",
           "default": "",
@@ -779,6 +785,10 @@
     {
       "code": 6,
       "meaning": "request deadline exceeded"
+    },
+    {
+      "code": 7,
+      "meaning": "findings reported under an explicit opt-in flag (e.g. spine-review verify --fail-on); the command itself succeeded"
     }
   ],
   "notes": [

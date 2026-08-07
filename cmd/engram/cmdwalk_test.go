@@ -108,10 +108,11 @@ func TestWalkCommands(t *testing.T) {
 // wantOperatorCommandKeys is the hand-known expected membership of
 // operatorCommands() over the LIVE rootCmd tree: the six pre-existing
 // operator commands this plan backfills plus spine-review scan (plan
-// 03-01's first operator-tier leaf) — never search/list/store (the client
-// tier, excluded by the "server" flag check) and never spine-review itself
-// (the non-runnable group, excluded by the RunE check) or serve/version
-// (the named exclusion set).
+// 03-01's first operator-tier leaf) and spine-review verify (plan 03-04's
+// leaf) — never search/list/store (the client tier, excluded by the
+// "server" flag check) and never spine-review itself (the non-runnable
+// group, excluded by the RunE check) or serve/version (the named exclusion
+// set).
 var wantOperatorCommandKeys = map[string]bool{
 	"reindex":             true,
 	"prune-expired":       true,
@@ -120,6 +121,7 @@ var wantOperatorCommandKeys = map[string]bool{
 	"migrate-remap-owner": true,
 	"migrate-set-owner":   true,
 	"spine-review scan":   true,
+	"spine-review verify": true,
 }
 
 // commandKeySet is a small helper turning a []*cobra.Command into a

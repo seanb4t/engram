@@ -19,6 +19,7 @@ import (
 
 	"github.com/seanb4t/engram/internal/server"
 	"github.com/seanb4t/engram/internal/store"
+	"github.com/seanb4t/engram/internal/surfaces"
 )
 
 // Citation verification tiers (D-05/D-06/D-08): the four buckets
@@ -540,18 +541,82 @@ func verifySummary(report verifyReport) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
+// verifyFailOnValues is the accepted enum for --fail-on -- the four tier
+// names plus "any". Declared once here so both validateFailOn and any
+// future caller enumerate the same set rather than a second hand-typed
+// copy.
+var verifyFailOnValues = []string{tierBroken, tierMoved, tierUnverifiable, "any"}
+
+// validateFailOn rejects v unless it is empty (the default -- see D-14) or
+// one of verifyFailOnValues. Returns a usageErrorf naming both --fail-on
+// and the accepted values, per the registered
+// surfaces.RuleVerifyFailOnValues rule's Sentence, so an illegal value
+// exits exitUsage through Phase 1's taxonomy.
+func validateFailOn(v string) error {
+	if v == "" {
+		return nil
+	}
+	for _, ok := range verifyFailOnValues {
+		if v == ok {
+			return nil
+		}
+	}
+	rule, ruleOK := surfaces.RuleByID(surfaces.RuleVerifyFailOnValues)
+	sentence := "fail-on accepts broken, moved, unverifiable, or any"
+	if ruleOK {
+		sentence = rule.Sentence
+	}
+	return usageErrorf("--fail-on %q is invalid: %s", v, sentence)
+}
+
+// verifyFailOnErr is the D-14 gate: exit 0 (nil) unless failOn names a tier
+// with at least one entry, in which case it returns a *cliError carrying
+// exitFindings -- distinguishable from every store/transport error code in
+// the taxonomy. Pure over report + failOn, so this is unit-testable via
+// exitCodeFromError with no live store and no filesystem access.
+func verifyFailOnErr(report verifyReport, failOn string) error {
+	var (
+		tier  string
+		count int
+	)
+	switch failOn {
+	case "":
+		return nil
+	case tierBroken:
+		tier, count = tierBroken, report.BrokenCount
+	case tierMoved:
+		tier, count = tierMoved, report.MovedCount
+	case tierUnverifiable:
+		tier, count = tierUnverifiable, report.UnverifiableCount
+	case "any":
+		tier = "any"
+		count = report.MovedCount + report.BrokenCount + report.UnverifiableCount
+	default:
+		// validateFailOn already rejects every other value before this
+		// function is ever reached; unreachable in practice.
+		return nil
+	}
+	if count == 0 {
+		return nil
+	}
+	return &cliError{code: exitFindings, err: fmt.Errorf("--fail-on %s: %d %s citation(s) found", failOn, count, tier)}
+}
+
 var (
 	spineVerifyScope     string
 	spineVerifyAllScopes bool
 	spineVerifyTimeout   time.Duration
 	spineVerifyOutput    string
+	spineVerifyFailOn    string
 )
 
 // spineReviewVerifyCmd classifies every stored citation into one of four
 // tiers (valid/moved/broken/unverifiable), bounded to the file a citation
 // names and to the repo the command runs in. Read-only by construction --
 // it never issues a mutating Qdrant RPC -- and Subject-less like every
-// other operator-tier command on this binary.
+// other operator-tier command on this binary. Exits 0 by default even when
+// it reports broken citations (D-14): --fail-on is the opt-in that turns a
+// named tier's findings into a nonzero (exitFindings) exit, for CI.
 var spineReviewVerifyCmd = &cobra.Command{
 	Use:   "verify",
 	Short: "Classify every stored citation as valid, moved, broken, or unverifiable",
@@ -562,6 +627,9 @@ var spineReviewVerifyCmd = &cobra.Command{
 		}
 		format, err := operatorOutputFormat(cmd, spineVerifyOutput)
 		if err != nil {
+			return err
+		}
+		if err := validateFailOn(spineVerifyFailOn); err != nil {
 			return err
 		}
 		st, err := server.StoreFromEnv()
@@ -588,7 +656,10 @@ var spineReviewVerifyCmd = &cobra.Command{
 			return classifyOperatorErrConstruction(err)
 		}
 		report := runVerify(records, repoIdentity, root, time.Now().UTC())
-		return renderOperator(cmd, format, verifySummary(report), verifyDoc(report))
+		if err := renderOperator(cmd, format, verifySummary(report), verifyDoc(report)); err != nil {
+			return err
+		}
+		return verifyFailOnErr(report, spineVerifyFailOn)
 	},
 }
 
@@ -598,5 +669,10 @@ func init() {
 	spineReviewVerifyCmd.Flags().BoolVar(&spineVerifyAllScopes, "all-scopes", false, "sweep every scope (required if --scope is omitted)")
 	spineReviewVerifyCmd.Flags().DurationVar(&spineVerifyTimeout, "timeout", 5*time.Minute,
 		"max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C")
+	rule, ok := surfaces.RuleByID(surfaces.RuleVerifyFailOnValues)
+	if !ok {
+		panic("spine-review verify: surfaces.RuleVerifyFailOnValues is not registered in internal/surfaces/rules.go")
+	}
+	spineReviewVerifyCmd.Flags().StringVar(&spineVerifyFailOn, "fail-on", "", rule.Sentence)
 	spineReviewCmd.AddCommand(spineReviewVerifyCmd)
 }

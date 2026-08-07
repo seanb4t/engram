@@ -236,6 +236,7 @@ Usage:
 
 Flags:
       --all-scopes         sweep every scope (required if --scope is omitted)
+      --fail-on string     fail-on accepts broken, moved, unverifiable, or any; omitted, verify exits 0 regardless of findings
   -h, --help               help for verify
       --output string      output format: "json" or "text" (default: detect from stdout)
       --scope string       only verify citations from records in this scope

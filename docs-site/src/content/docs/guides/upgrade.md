@@ -263,6 +263,26 @@ exists to remove.
 --dry-run`. Remove the flag — a bare invocation now previews by default.
 Add `--apply` to perform the remap.
 
+### 11. New `engram spine-review verify` and exit code 7 for opt-in findings
+
+`engram spine-review verify` is new: it classifies every stored citation
+into `valid`, `moved`, `broken`, or `unverifiable`, bounded to the file a
+citation names and to the repo the command runs in. It exits `0` by
+default even when it reports broken citations — the command itself
+succeeded; the data just didn't pass a check nobody asked it to run yet.
+
+Pass `--fail-on <broken|moved|unverifiable|any>` to ask that question from
+a CI step: it exits **code `7`**, a new addition to the taxonomy, when the
+named tier has at least one entry. Code `7` is additive — no previously
+published exit code changes meaning — but the taxonomy is a published
+contract, and this release's exit-code migration (#1–#4 above) set the
+precedent that changes to it are announced rather than left to a diff.
+
+**Who should act:** nobody, unless you adopt `spine-review verify
+--fail-on` in a CI pipeline — in which case treat exit `7` as "findings
+reported," distinct from every other nonzero code in the taxonomy, which
+all mean "the command itself failed."
+
 ### In-repo consumer audit
 
 REQ-exit-code-migration-safe requires this migration to be checked against

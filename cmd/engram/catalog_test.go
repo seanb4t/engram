@@ -6,6 +6,8 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
@@ -226,7 +228,7 @@ func TestCatalogEnumeratesEveryFlag(t *testing.T) {
 // what makes the next code addition (after D-06's exitTimeout) not repeat
 // the drift TestCatalogListsEveryExitCode's own hard-coded "6"/"0-5"
 // literals caused when exitTimeout was added.
-var wantExitCodes = []int{exitOK, exitGeneric, exitUsage, exitAuth, exitNotFound, exitUnavailable, exitTimeout}
+var wantExitCodes = []int{exitOK, exitGeneric, exitUsage, exitAuth, exitNotFound, exitUnavailable, exitTimeout, exitFindings}
 
 // TestCatalogListsEveryExitCode asserts the catalog carries exactly one
 // entry per constant in wantExitCodes, with no duplicates and no code
@@ -330,18 +332,39 @@ func TestCatalogGoesToStdoutNotStderr(t *testing.T) {
 	}
 }
 
+// nonConnectProducedCodes is the named, explicitly-justified allowlist of
+// exit codes the catalog advertises that exitCodeForConnectErr can NEVER
+// produce, because they originate from a different, non-connect path
+// entirely. Each entry names that path. TestCatalogExitCodesMatchMapper
+// unions this into mapperCodes before comparing: an entry here asserts a
+// code is produced by a non-connect path and names that path, so the
+// both-directions DeepEqual below stays a real gate rather than being
+// weakened to a subset check -- a code in neither the mapper nor this
+// allowlist still fails the test, and an allowlist entry no command
+// actually produces still fails it too (03-04-PLAN.md's review-cycle
+// decision: add exitFindings to the catalog AND edit this derivation, in
+// the same commit, rather than leaving the pair internally unsatisfiable).
+var nonConnectProducedCodes = map[int]string{
+	exitFindings: "spine-review verify --fail-on",
+}
+
 // TestCatalogExitCodesMatchMapper is the D-11 anti-drift gate: the set of
 // exit codes the catalog advertises must equal, as a set, the set of exit
 // codes exitCodeForConnectErr can actually produce across every
 // connect.Code plus the not-a-connect-error case, unioned with exitOK for
-// the success path. Set equality carries both directions — a code the
-// mapper can return but the catalog omits fails, and a code the catalog
-// invents but the mapper never returns fails too.
+// the success path AND with nonConnectProducedCodes for every code a
+// non-connect path produces. Set equality carries both directions — a code
+// the mapper (plus the named allowlist) can account for but the catalog
+// omits fails, and a code the catalog invents but neither the mapper nor
+// the allowlist accounts for fails too.
 //
 // Both directions of this gate were observed failing before being trusted:
 // see the SUMMARY for the quoted FAIL lines from (1) a temporary seventh
 // catalog entry the mapper never produces, and (2) a temporary mapper arm
-// returning a code absent from the catalog.
+// returning a code absent from the catalog. 03-04-PLAN.md's SUMMARY records
+// the analogous pair of observations for exitFindings specifically: adding
+// it to the catalog WITHOUT this allowlist entry, and adding an allowlist
+// entry for a code the catalog does not list.
 func TestCatalogExitCodesMatchMapper(t *testing.T) {
 	doc := decodeCatalog(t)
 
@@ -355,10 +378,42 @@ func TestCatalogExitCodesMatchMapper(t *testing.T) {
 		mapperCodes[exitCodeForConnectErr(connect.NewError(connect.Code(i), errors.New("boom")))] = true
 	}
 	mapperCodes[exitCodeForConnectErr(errors.New("not a connect error"))] = true
+	for code := range nonConnectProducedCodes {
+		mapperCodes[code] = true
+	}
 
 	if !reflect.DeepEqual(catalogCodes, mapperCodes) {
-		t.Errorf("catalog exit codes = {%s}, mapper-producible exit codes = {%s}",
+		t.Errorf("catalog exit codes = {%s}, mapper-producible exit codes (incl. nonConnectProducedCodes) = {%s}",
 			sortedIntKeys(catalogCodes), sortedIntKeys(mapperCodes))
+	}
+}
+
+// TestCatalogGoldenExitFindingsDescribesFailOn decodes the COMMITTED
+// testdata/catalog.golden fixture directly (not the live tree) and asserts
+// the exit-code-7 entry's description names the opt-in flag that produces
+// it -- proving the published, pinned golden itself (not just the live
+// binary's transient output) documents exitFindings intelligibly.
+func TestCatalogGoldenExitFindingsDescribesFailOn(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "catalog.golden"))
+	if err != nil {
+		t.Fatalf("read testdata/catalog.golden: %v", err)
+	}
+	var doc decodedCatalog
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatalf("unmarshal testdata/catalog.golden: %v", err)
+	}
+	var found bool
+	for _, ec := range doc.ExitCodes {
+		if ec.Code != exitFindings {
+			continue
+		}
+		found = true
+		if !strings.Contains(ec.Meaning, "--fail-on") {
+			t.Errorf("exit code %d meaning = %q, want it to name --fail-on", exitFindings, ec.Meaning)
+		}
+	}
+	if !found {
+		t.Fatalf("testdata/catalog.golden has no entry for exit code %d", exitFindings)
 	}
 }
 

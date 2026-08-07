@@ -272,6 +272,33 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		landed:  true,
 	},
 	{
+		// Introduced by this plan (03-04): `spine-review verify` did not
+		// exist before this plan, so there is no meaningful `before` --
+		// exitFindings (the exit code its OWN --fail-on flag can produce)
+		// has no meaningful before either, since it never has a live
+		// findings-bearing spine here; that contract is unit-tested
+		// directly in spine_review_verify_test.go's
+		// TestVerifyFailOnTripsExitFindings instead of through this
+		// runClient-driven table.
+		name:       "spine-review verify/missing-scope",
+		args:       []string{"spine-review", "verify"},
+		after:      exitUsage,
+		introduced: true,
+	},
+	{
+		name:       "spine-review verify/bad-fail-on",
+		args:       []string{"spine-review", "verify", "--all-scopes", "--fail-on", "nonsense"},
+		after:      exitUsage,
+		introduced: true,
+	},
+	{
+		name:       "spine-review verify/unreachable-qdrant",
+		args:       []string{"spine-review", "verify", "--all-scopes", "--timeout", "2s"},
+		env:        map[string]string{"ENGRAM_QDRANT_ADDR": deadQdrant},
+		after:      exitUnavailable,
+		introduced: true,
+	},
+	{
 		name:    "summarize/missing-scope",
 		args:    []string{"summarize-missing"},
 		before:  exitGeneric,
@@ -411,7 +438,7 @@ func TestExitCodeBaselineClaims(t *testing.T) {
 // uniqueness so a silently-deleted row fails the test instead of quietly
 // shrinking coverage.
 func TestExitCodeBaselineRowCount(t *testing.T) {
-	const wantRows = 34
+	const wantRows = 37
 	if got := len(exitCodeBaseline); got != wantRows {
 		t.Errorf("len(exitCodeBaseline) = %d, want %d", got, wantRows)
 	}

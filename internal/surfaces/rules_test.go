@@ -62,6 +62,28 @@ func TestRuleByIDDestructiveRequiresApply(t *testing.T) {
 	}
 }
 
+// TestRuleByIDVerifyFailOnValues pins the lookup for the rule
+// spine_review_verify.go's --fail-on flag composes into its Usage string
+// (03-04-PLAN.md), and proves it resolves to a non-empty applicable
+// surface set (ApplicableSurfaces derives applicability from Fields --
+// never a declared per-rule list of surfaces).
+func TestRuleByIDVerifyFailOnValues(t *testing.T) {
+	rule, ok := RuleByID(RuleVerifyFailOnValues)
+	if !ok {
+		t.Fatalf("RuleByID(%q) not found", RuleVerifyFailOnValues)
+	}
+	const wantSentence = "fail-on accepts broken, moved, unverifiable, or any; omitted, verify exits 0 regardless of findings"
+	if rule.Sentence != wantSentence {
+		t.Errorf("rule.Sentence = %q, want %q", rule.Sentence, wantSentence)
+	}
+	if len(rule.Fields) != 1 || rule.Fields[0] != "fail-on" {
+		t.Errorf("rule.Fields = %v, want [\"fail-on\"]", rule.Fields)
+	}
+	if got := ApplicableSurfaces(rule, exposedForTest()); len(got) == 0 {
+		t.Error("ApplicableSurfaces(rule, exposedForTest()) = empty, want at least one surface")
+	}
+}
+
 // TestIsDeclaredDistinguishesRegistryFromLiteral pins the provenance
 // property internal/server.conditionalErrf relies on: every rule Rules()
 // returns was built by this package's own rules literal and so reports

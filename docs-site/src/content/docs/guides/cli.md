@@ -109,8 +109,8 @@ every response before this release and is unaffected by this change.
 
 Every operator command — `reindex`, `prune-expired`, `summarize-missing`,
 `backfill-short-ids`, `migrate-remap-owner`, its deprecated alias
-`migrate-set-owner`, and every `engram spine-review` leaf (currently `scan`) —
-also accepts `--output`:
+`migrate-set-owner`, and every `engram spine-review` leaf (currently `scan`
+and `verify`) — also accepts `--output`:
 
 | Value | Behavior |
 |-------|----------|
@@ -148,12 +148,35 @@ command a forgotten `--dry-run` merely performs the recoverable, additive
 thing the operator already asked for. The boundary sits exactly on the
 blast-radius table's `Destructive` column and nowhere else.
 
+### `spine-review verify`
+
+`engram spine-review verify --scope <scope>` (or `--all-scopes`) classifies
+every stored citation into one of four tiers: `valid`, `moved` (the cited
+excerpt still exists in the same file, at a different byte offset —
+ordinary drift from an edit above the cited range, never treated as
+breakage), `broken` (the file is missing, or the excerpt is gone from it
+entirely), and `unverifiable` (a `commit`/`url`/`repo` citation, an empty
+cached excerpt, a citation whose owning record names a different repo than
+the working tree, or a `ref` this command refuses to read for safety —
+every such citation carries the reason it was not checked, so a clean
+report can never be read as coverage the run did not have). It never reads
+outside the working tree it was run in — not even through a symlink — and
+never widens its search past the file a citation names.
+
+<!-- engram:rule:start verify-fail-on-accepted-values -->fail-on accepts broken, moved, unverifiable, or any; omitted, verify exits 0 regardless of findings<!-- engram:rule:end verify-fail-on-accepted-values -->
+`verify` exits `0` by default even when it reports broken citations —
+"the command worked" and "the data is healthy" are different questions.
+Pass `--fail-on <tier>` to ask the second one from a CI step without
+parsing the report: it exits a distinct code (`7`, see below) when the
+named tier has at least one entry.
+
 ## Exit codes
 
-Every command in the binary — the three client verbs and all seven operator
+Every command in the binary — the three client verbs and all eight operator
 commands (`serve`, `reindex`, `prune-expired`, `summarize-missing`,
-`backfill-short-ids`, `migrate-remap-owner`, and its deprecated alias
-`migrate-set-owner`) — resolves through the same seven codes:
+`backfill-short-ids`, `migrate-remap-owner` and its deprecated alias
+`migrate-set-owner`, and every `engram spine-review` leaf) — resolves
+through the same eight codes:
 
 | Code | Meaning |
 |------|---------|
@@ -164,6 +187,7 @@ commands (`serve`, `reindex`, `prune-expired`, `summarize-missing`,
 | 4 | Not found |
 | 5 | Transport or server unavailable |
 | 6 | Request deadline exceeded — the server accepted the request but did not answer within `--timeout` |
+| 7 | Findings reported under an explicit opt-in flag (e.g. `spine-review verify --fail-on`) — the command itself succeeded; the data just didn't pass the check |
 
 :::caution[Only two paths still exit 1]
 Framework flag errors — an unknown flag, an unparseable flag value — and a
@@ -203,7 +227,7 @@ zero-semantics, and it is not uniform across commands:**
 | Commands | `--timeout` meaning | `0` behavior |
 |---|---|---|
 | `search`, `list`, `store` | Per-RPC-call deadline | **Rejected** (usage error) |
-| `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
+| `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan`, `spine-review verify` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
 | `migrate-remap-owner`, `migrate-set-owner` | Whole-sweep wall-clock budget | **Rejected** (usage error) — changed this release, see the [upgrade guide](/guides/upgrade/#6-migrate-remap-owner---timeout-0--migrate-set-owner---timeout-0-no-longer-means-unbounded) |
 
 A reader comparing `engram search --help` against `engram reindex --help`

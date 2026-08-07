@@ -224,6 +224,15 @@ const (
 	exitNotFound    = 4 // not found
 	exitUnavailable = 5 // transport or server unavailable
 	exitTimeout     = 6 // request deadline exceeded (D-06)
+	// exitFindings is produced by a report command's own explicit opt-in
+	// flag (e.g. `spine-review verify --fail-on`) -- and by NO connect-error
+	// mapping, which is exactly why TestCatalogExitCodesMatchMapper's
+	// derivation must know about it via a named allowlist entry
+	// (catalog_test.go's nonConnectProducedCodes) rather than deriving it
+	// from exitCodeForConnectErr like every other code in this block. The
+	// command itself succeeded; the data just didn't pass a check the
+	// caller opted into.
+	exitFindings = 7
 )
 
 // cliError carries an explicit process exit code alongside a wrapped

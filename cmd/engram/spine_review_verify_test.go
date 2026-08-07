@@ -403,6 +403,108 @@ func TestVerifySummaryFormat(t *testing.T) {
 	}
 }
 
+// TestVerifyFailOnDefaultExitsZero asserts that a run reporting broken
+// (and moved, and unverifiable) citations with no --fail-on returns a nil
+// error -- exit 0 -- per D-14's deliberately weaker default.
+func TestVerifyFailOnDefaultExitsZero(t *testing.T) {
+	report := verifyReport{
+		MovedCount: 1, BrokenCount: 1, UnverifiableCount: 1,
+		Moved:        []verifyEntry{{RecordID: "r1", Ref: "a.go", Reason: "moved"}},
+		Broken:       []verifyEntry{{RecordID: "r2", Ref: "b.go", Reason: reasonFileMissing}},
+		Unverifiable: []verifyEntry{{RecordID: "r3", Ref: "c.go", Reason: "different repo"}},
+	}
+	if err := verifyFailOnErr(report, ""); err != nil {
+		t.Fatalf("verifyFailOnErr(report, \"\") = %v, want nil (exit 0 by default)", err)
+	}
+	if got := exitCodeFromError(verifyFailOnErr(report, "")); got != exitOK {
+		t.Errorf("exitCodeFromError(verifyFailOnErr(report, \"\")) = %d, want %d (exitOK)", got, exitOK)
+	}
+}
+
+// TestVerifyFailOnTripsExitFindings asserts each of the four accepted
+// --fail-on values trips exitFindings when its own tier has at least one
+// entry, and does not trip when that tier is empty.
+func TestVerifyFailOnTripsExitFindings(t *testing.T) {
+	report := verifyReport{
+		MovedCount: 1, BrokenCount: 1, UnverifiableCount: 1,
+		Moved:        []verifyEntry{{RecordID: "r1", Ref: "a.go", Reason: "moved"}},
+		Broken:       []verifyEntry{{RecordID: "r2", Ref: "b.go", Reason: reasonFileMissing}},
+		Unverifiable: []verifyEntry{{RecordID: "r3", Ref: "c.go", Reason: "different repo"}},
+	}
+	for _, tier := range []string{tierBroken, tierMoved, tierUnverifiable, "any"} {
+		t.Run(tier, func(t *testing.T) {
+			err := verifyFailOnErr(report, tier)
+			if err == nil {
+				t.Fatalf("verifyFailOnErr(report, %q) = nil, want an exitFindings error", tier)
+			}
+			if got := exitCodeFromError(err); got != exitFindings {
+				t.Errorf("exitCodeFromError(err) = %d, want %d (exitFindings)", got, exitFindings)
+			}
+		})
+	}
+
+	empty := verifyReport{ValidCount: 5}
+	for _, tier := range []string{tierBroken, tierMoved, tierUnverifiable, "any"} {
+		t.Run(tier+"/empty", func(t *testing.T) {
+			if err := verifyFailOnErr(empty, tier); err != nil {
+				t.Errorf("verifyFailOnErr(emptyReport, %q) = %v, want nil (that tier has zero entries)", tier, err)
+			}
+		})
+	}
+}
+
+// TestVerifyFailOnExitFindingsIsDistinct proves exitFindings differs from
+// every other constant in the exit-code taxonomy, by building the set of
+// all constants and checking cardinality -- never by naming two of them.
+func TestVerifyFailOnExitFindingsIsDistinct(t *testing.T) {
+	all := []int{exitOK, exitGeneric, exitUsage, exitAuth, exitNotFound, exitUnavailable, exitTimeout, exitFindings}
+	seen := make(map[int]bool, len(all))
+	for _, c := range all {
+		seen[c] = true
+	}
+	if len(seen) != len(all) {
+		t.Errorf("taxonomy constants collapse to %d distinct values, want %d (exitFindings must differ from every other constant)", len(seen), len(all))
+	}
+}
+
+// TestValidateFailOnRejectsNonsense proves an illegal --fail-on value
+// exits 2 (exitUsage) with a message naming the flag and the accepted
+// values.
+func TestValidateFailOnRejectsNonsense(t *testing.T) {
+	err := validateFailOn("nonsense")
+	if err == nil {
+		t.Fatal("validateFailOn(\"nonsense\") = nil, want a usage error")
+	}
+	if got := exitCodeFromError(err); got != exitUsage {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage)", got, exitUsage)
+	}
+	if !strings.Contains(err.Error(), "--fail-on") {
+		t.Errorf("error %q does not name --fail-on", err.Error())
+	}
+	if !strings.Contains(err.Error(), "broken") {
+		t.Errorf("error %q does not name an accepted value", err.Error())
+	}
+	for _, ok := range []string{"", "broken", "moved", "unverifiable", "any"} {
+		if err := validateFailOn(ok); err != nil {
+			t.Errorf("validateFailOn(%q) = %v, want nil", ok, err)
+		}
+	}
+}
+
+// TestSpineReviewVerifyFailOnRejectsInvalidValue proves the leaf's own
+// --fail-on flag is wired to validateFailOn end-to-end.
+func TestSpineReviewVerifyFailOnRejectsInvalidValue(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, spineReviewVerifyCmd)
+	_, _, err := runClient(t, "spine-review", "verify", "--all-scopes", "--fail-on", "nonsense")
+	if err == nil {
+		t.Fatal("expected an error for --fail-on nonsense, got nil")
+	}
+	if got := exitCodeFromError(err); got != exitUsage {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage)", got, exitUsage)
+	}
+}
+
 // TestSpineReviewVerifyRejectsInvalidOutput proves `spine-review verify`
 // validates --output through operatorOutputFormat, exactly as `scan` does.
 func TestSpineReviewVerifyRejectsInvalidOutput(t *testing.T) {

@@ -101,6 +101,13 @@ var ruleTargets = map[string][]target{
 		{path: "docs-site/src/content/docs/guides/cli.md", kind: kindMarkdown},
 		{path: "skill/engram/skills/curating-memory/SKILL.md", kind: kindMarkdown},
 	},
+	// RuleVerifyFailOnValues: no proto anchor and no skill anchor -- "fail-on"
+	// is not a proto field on any message, and neither skill file mentions it
+	// by name. Anchored only on cli.md's new spine-review section, the one
+	// place this flag is actually documented (03-04-PLAN.md Task 3).
+	surfaces.RuleVerifyFailOnValues: {
+		{path: "docs-site/src/content/docs/guides/cli.md", kind: kindMarkdown},
+	},
 }
 
 // render returns rule sentence's on-disk form for the given surface kind.

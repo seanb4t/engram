@@ -134,6 +134,15 @@ const RuleWindowOrdering = "window-not-before-before-not-after"
 // disambiguate a field shared across differently-behaving tools).
 const RuleDestructiveRequiresApply = "destructive-requires-apply"
 
+// RuleVerifyFailOnValues is the ID of the rule constraining
+// `spine-review verify`'s --fail-on flag to a fixed enum, with a
+// deliberately weaker default: omitted, verify exits 0 regardless of
+// findings (D-14, 03-04-PLAN.md). Fields is ["fail-on"] alone -- the only
+// field this rule needs to resolve applicability against. TagForm is left
+// empty: no MCP arg struct carries a "fail-on" field, so there is no
+// jsonschema tag to compress this rule's statement into.
+const RuleVerifyFailOnValues = "verify-fail-on-accepted-values"
+
 // RulePagingMutuallyExclusive is the ID of the rule making list_memory's
 // three paging controls (cursor_mode, offset, page_token) mutually exclusive.
 // Fields include page_token even though the Connect-lane rejection
@@ -214,6 +223,16 @@ var rules = []ConditionalRule{
 		// rule's statement into (D-03's stated exception is for the ONE
 		// surface that needs a compressed form; this rule has no such
 		// surface at all).
+		declared: true,
+	},
+	{
+		ID:       RuleVerifyFailOnValues,
+		Sentence: "fail-on accepts broken, moved, unverifiable, or any; omitted, verify exits 0 regardless of findings",
+		Fields:   []string{"fail-on"},
+		Hint:     "enum",
+		// TagForm deliberately left empty, same reasoning as
+		// RuleDestructiveRequiresApply: no MCP arg struct carries a
+		// "fail-on" field.
 		declared: true,
 	},
 }
