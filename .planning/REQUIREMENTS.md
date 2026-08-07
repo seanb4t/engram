@@ -81,11 +81,11 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
 
 ### Spine Curation — Structural (CLI)
 
-- [ ] **REQ-spine-scan**: `engram spine-review scan` enumerates a memory spine through the existing
+- [x] **REQ-spine-scan**: `engram spine-review scan` enumerates a memory spine through the existing
   Subject-less operator tier and reports inventory and health signals by scope and category, with
   no mutation on any path.
 
-- [ ] **REQ-citation-drift-verify**: `engram spine-review verify` checks every stored citation
+- [x] **REQ-citation-drift-verify**: `engram spine-review verify` checks every stored citation
   anchor against the content cached in its `Excerpt` at write time, and classifies each as valid,
   moved-but-valid, or broken — with the moved tier reported separately from the broken tier, so
   ordinary refactoring does not train an operator to ignore the verifier.
@@ -105,14 +105,14 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
   needs a genuine fourth record state or can extend `prune-expired`'s existing soft-hide shape. To
   be resolved in phase planning, not mid-build.*
 
-- [ ] **REQ-destructive-preview-default**: Every operator command classified destructive by the
+- [x] **REQ-destructive-preview-default**: Every operator command classified destructive by the
   blast-radius table previews by default and mutates only under an explicit `--apply` — membership
   derived from that table, never declared per command, so a future destructive command inherits the
   guard automatically. `prune-expired`, which today deletes with no preview flag at all, hard-flips
   to this contract with a breaking-change note in
   `docs-site/src/content/docs/guides/upgrade.md`.
 
-- [ ] **REQ-operator-output-flag**: `--output json|text` with TTY auto-detection is accepted by
+- [x] **REQ-operator-output-flag**: `--output json|text` with TTY auto-detection is accepted by
   `spine-review` and backfilled across all five existing operator commands (`reindex`,
   `migrate-remap-owner`, `prune-expired`, `summarize-missing`, `backfill-short-ids`), so an agent
   driving the headless CLI lane gets machine-readable reports. The backfill adopts `--output` only
@@ -195,8 +195,8 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-surface-conformance-gate | Phase 2 | Complete |
 | REQ-mcp-tool-annotations | Phase 2 | Complete |
 | REQ-help-output-pinned | Phase 2 | Complete |
-| REQ-spine-scan | Phase 3 | Pending |
-| REQ-citation-drift-verify | Phase 3 | Pending |
+| REQ-spine-scan | Phase 3 | Complete |
+| REQ-citation-drift-verify | Phase 3 | Complete |
 | REQ-near-duplicate-report | Phase 3 | Complete |
 | REQ-purge-extract-gated | Phase 3 | Pending |
 | REQ-archive-tier | Phase 3 | Pending |
