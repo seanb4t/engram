@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.13.x
 milestone_name: Curation & Self-Evidence
-current_phase: 3
-current_phase_name: Spine Curation — Structural (CLI)
-status: executing
+current_phase: 4
+current_phase_name: Spine Curation — Semantic (Skill)
+status: planning
 stopped_at: Phase 3 context gathered
-last_updated: "2026-08-06T20:33:06.039Z"
-last_activity: 2026-08-05
-last_activity_desc: Phase 02 complete, transitioned to Phase 3
+last_updated: "2026-08-07T21:19:40.873Z"
+last_activity: 2026-08-07
+last_activity_desc: Phase 3 complete, transitioned to Phase 4
 progress:
-  total_phases: 3
-  completed_phases: 2
+  total_phases: 5
+  completed_phases: 3
   total_plans: 22
-  completed_plans: 15
+  completed_plans: 22
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.
 
 ## Current Position
 
-Phase: 3 — Spine Curation — Structural (CLI)
+Phase: 4 — Spine Curation — Semantic (Skill)
 Plan: Not started
-Status: Ready to execute
-Last activity: 2026-08-05 — Phase 02 complete, transitioned to Phase 3
+Status: Ready to plan
+Last activity: 2026-08-07 — Phase 3 complete, transitioned to Phase 4
 
 ## Deferred Items
 

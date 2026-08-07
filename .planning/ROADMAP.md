@@ -181,7 +181,7 @@ Audit (PASSED — 11/11 requirements, 6/6 integration seams, 2/2 E2E flows) at
 
 - [ ] **Phase 1: Interface Enforceability** - Flag-group validation and one exit-code taxonomy resolved together (#453/#467), plus an operator-configurable CLI request timeout (#452)
 - [x] **Phase 2: Interface Discoverability** - Conditional rules stated on both the cobra and MCP surfaces with a CI conformance gate, MCP tool blast-radius hints, pinned `--help` golden files (completed 2026-08-05)
-- [ ] **Phase 3: Spine Curation — Structural (CLI)** - `engram spine-review scan/verify/consolidate/purge/archive` through the existing Subject-less operator tier
+- [x] **Phase 3: Spine Curation — Structural (CLI)** - `engram spine-review scan/verify/consolidate/purge/archive` through the existing Subject-less operator tier (completed 2026-08-07)
 - [ ] **Phase 4: Spine Curation — Semantic (Skill)** - A companion skill judges staleness and near-duplicate identity, proposing only, never mutating without consent
 - [ ] **Phase 5: Validation Debt Reconciliation** - Six inherited Nyquist drafts plus this milestone's own phases re-resolved against `go test -list`; #355's drifted citations fixed and used to calibrate `verify`
 
@@ -366,7 +366,7 @@ mechanism for `purge` (marker duration, how `--apply`'s re-derive-at-apply-time 
 persisted watermark for partial-failure recovery) also has no single existing precedent to copy
 verbatim — see `research/SUMMARY.md`'s Gaps to Address.
 
-**Plans:** 7/7 plans executed
+**Plans:** 7/7 plans complete
 
 - [x] 03-01-PLAN.md — Tracer: nested `spine-review` tree, depth-aware catalog/golden traversal, qualified-path blast-radius classification, and `spine-review scan`
 - [x] 03-02-PLAN.md — `--output json|text` backfilled across every existing operator command
@@ -504,7 +504,7 @@ phases as they close rather than only at the end.
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 1. Interface Enforceability | v0.13.x | 0/4 | Not started | - |
 | 2. Interface Discoverability | v0.13.x | 0/4 | Not started | - |
-| 3. Spine Curation — Structural (CLI) | v0.13.x | 7/7 | In Progress | - |
+| 3. Spine Curation — Structural (CLI) | v0.13.x | 7/7 | Complete | 2026-08-07 |
 | 4. Spine Curation — Semantic (Skill) | v0.13.x | 0/3 | Not started | - |
 | 5. Validation Debt Reconciliation | v0.13.x | 0/2 | Not started | - |
 
