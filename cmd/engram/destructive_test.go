@@ -234,6 +234,7 @@ var destructiveFlagCases = []struct {
 }{
 	{pruneExpiredCmd, []string{"apply", "older-than", "output", "timeout"}},
 	{migrateRemapOwnerCmd, []string{"apply", "from", "from-anon", "from-missing", "output", "timeout", "to"}},
+	{spineReviewPurgeCmd, []string{"all-scopes", "apply", "category", "class", "older-than", "output", "scope", "tags", "timeout"}},
 }
 
 // TestDestructiveCommandsExactFlagSet is the "no escape hatch exists"

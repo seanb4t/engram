@@ -143,6 +143,20 @@ const RuleDestructiveRequiresApply = "destructive-requires-apply"
 // jsonschema tag to compress this rule's statement into.
 const RuleVerifyFailOnValues = "verify-fail-on-accepted-values"
 
+// RulePurgeFilterRequiresScope is the ID of the rule requiring an explicit
+// --scope (or --all-scopes) whenever `spine-review purge`'s free-form
+// filter path (category/tags/older-than supplied with no structural class
+// selected -- store.PurgeFilterPathActive) is engaged (D-10, 03-07-PLAN.md).
+// A structural-class-only run is exempt: a class is a derivation the
+// operator merely parameterizes, never a free-form judgment. Fields lists
+// all four field names the filter path is built from, so ApplicableSurfaces
+// resolves this rule onto exactly the surfaces that expose scope AND
+// category AND tags AND older-than together -- measured against the live
+// tree, that is `spine-review purge` alone on the cobra-usage lane, plus
+// docs-site/reference/tools.md, docs-site/guides/cli.md, and
+// curating-memory/SKILL.md on the prose lanes (03-07-PLAN.md Task 3).
+const RulePurgeFilterRequiresScope = "purge-filter-requires-scope"
+
 // RulePagingMutuallyExclusive is the ID of the rule making list_memory's
 // three paging controls (cursor_mode, offset, page_token) mutually exclusive.
 // Fields include page_token even though the Connect-lane rejection
@@ -233,6 +247,16 @@ var rules = []ConditionalRule{
 		// TagForm deliberately left empty, same reasoning as
 		// RuleDestructiveRequiresApply: no MCP arg struct carries a
 		// "fail-on" field.
+		declared: true,
+	},
+	{
+		ID:       RulePurgeFilterRequiresScope,
+		Sentence: "the free-form filter path (category, tags, or older-than with no class selected) requires an explicit --scope or --all-scopes",
+		Fields:   []string{"scope", "category", "tags", "older-than"},
+		Hint:     "conditional_required",
+		// TagForm deliberately left empty: no MCP arg struct carries a
+		// "class"/purge-shaped field set at all -- this rule is CLI-only,
+		// same reasoning as RuleDestructiveRequiresApply/RuleVerifyFailOnValues.
 		declared: true,
 	},
 }

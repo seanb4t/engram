@@ -236,6 +236,16 @@ func operatorParityRows() []operatorParityRow {
 			}, "restore"),
 			facts: []string{"id-restored", "id-unknown", "changed", "not_found"},
 		},
+		{
+			name: "spine-review purge",
+			text: purgeAppliedSummary(store.PurgeResult{
+				Deleted: []string{"id-deleted"}, Spared: []string{"id-spared"}, Appeared: []string{"id-appeared"},
+			}, store.PurgeOptions{Classes: []store.PurgeClass{store.PurgeClassExpired}, Scope: "s"}),
+			doc: purgeAppliedDoc([]string{"id-deleted", "id-spared"}, store.PurgeResult{
+				Deleted: []string{"id-deleted"}, Spared: []string{"id-spared"}, Appeared: []string{"id-appeared"},
+			}, store.PurgeOptions{Classes: []store.PurgeClass{store.PurgeClassExpired}, Scope: "s"}),
+			facts: []string{"id-deleted", "id-spared", "id-appeared"},
+		},
 	}
 }
 
@@ -444,6 +454,7 @@ var timeoutGroups = []timeoutGroup{
 			"reindex": true, "prune-expired": true, "summarize-missing": true,
 			"backfill-short-ids": true, "spine-review scan": true, "spine-review verify": true,
 			"spine-review consolidate": true, "spine-review archive": true, "spine-review restore": true,
+			"spine-review purge": true,
 		},
 		zeroRejected: false,
 	},
@@ -489,6 +500,8 @@ func timeoutGroupCaseArgs(t *testing.T, name string) (args []string, env map[str
 		return []string{"spine-review", "archive", "--id", "x", "--timeout", "0"}, env
 	case "spine-review restore":
 		return []string{"spine-review", "restore", "--id", "x", "--timeout", "0"}, env
+	case "spine-review purge":
+		return []string{"spine-review", "purge", "--class", "expired", "--timeout", "0"}, env
 	case "migrate-remap-owner":
 		return []string{"migrate-remap-owner", "--from-missing", "--to", "x", "--timeout", "0"}, env
 	case "migrate-set-owner":
@@ -541,6 +554,8 @@ func operatorInvalidOutputArgs(t *testing.T, name string) []string {
 		return []string{"spine-review", "archive", "--id", "x"}
 	case "spine-review restore":
 		return []string{"spine-review", "restore", "--id", "x"}
+	case "spine-review purge":
+		return []string{"spine-review", "purge", "--class", "expired"}
 	default:
 		t.Fatalf("operatorInvalidOutputArgs: no row defined for command %q", name)
 		return nil

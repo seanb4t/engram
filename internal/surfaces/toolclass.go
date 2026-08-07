@@ -311,6 +311,22 @@ var operations = []Operation{
 		MCPTool: "", CLICommand: "spine-review restore",
 		Class: Class{ReadOnly: false, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
+	{
+		// spine-review purge is the phase's sharpest edge: a genuine,
+		// permanent removal of one or more records (never reversible, unlike
+		// archive), gated on rule 7smp8vy9hr's extract-before-delete
+		// precondition and D-11's preview/apply intersection. Destructive:
+		// true routes it through registerDestructive (D-03's derivation),
+		// which is the entire payoff of Phase 2's D-11 blast-radius table --
+		// this command is BORN classified rather than retrofitted.
+		// Idempotent: true -- re-running --apply with the same manifest
+		// after a successful apply deletes nothing further (the already-
+		// deleted ids are simply absent from the fresh re-derivation), the
+		// same REST-DELETE-style idempotency reasoning delete_memory/
+		// delete_all already carry in this table.
+		MCPTool: "", CLICommand: "spine-review purge",
+		Class: Class{ReadOnly: false, Destructive: true, Idempotent: true, OpenWorld: false},
+	},
 }
 
 // classByTool/classByCommand are built once from operations, backing

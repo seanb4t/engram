@@ -379,6 +379,15 @@ prune-expired --apply` CLI (add `--older-than DUR` for a grace period):
 <!-- engram:rule:start destructive-requires-apply -->a destructive operator command previews by default and mutates only when apply is set<!-- engram:rule:end destructive-requires-apply -->
 a bare invocation previews the eligible count and deletes nothing.
 
+Operators can permanently delete purge-eligible records with `engram spine-review purge --apply`
+(also preview-by-default). This is the deletion contract an agent should understand even though it
+never calls this CLI verb directly: a candidate must satisfy an extract-before-delete gate (a
+server-set `superseded_by` link to a later record, or an authoritative milestone-summary record
+covering the batch) before it can be removed, and its free-form filter path (category/tags/older-than
+with no structural class selected) additionally requires:
+<!-- engram:rule:start purge-filter-requires-scope -->the free-form filter path (category, tags, or older-than with no class selected) requires an explicit --scope or --all-scopes<!-- engram:rule:end purge-filter-requires-scope -->.
+`discovery` and `rule` category records are never purge-eligible under any class or filter.
+
 ## Supersession (correcting without losing history)
 
 `supersede_memory` is the correction verb. It takes the full `store_memory` field

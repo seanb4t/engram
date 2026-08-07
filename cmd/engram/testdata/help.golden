@@ -203,6 +203,7 @@ Usage:
 Available Commands:
   archive     Archive one or more records by id (reversible via restore)
   consolidate Report ranked near-duplicate candidate pairs across the memory spine
+  purge       Delete purge-eligible records, gated on an extraction precondition
   restore     Restore one or more previously-archived records by id
   scan        Report an inventory of the memory spine
   verify      Classify every stored citation as valid, moved, broken, or unverifiable
@@ -244,6 +245,27 @@ Flags:
       --scope string       only consider records in this scope
       --timeout duration   max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 5m0s)
       --top-k uint         neighbours considered per record (default 5)
+```
+
+## engram spine-review purge
+
+```
+Delete purge-eligible records under one or more structural classes (superseded, expired, archived) or a free-form filter (category/tags/older-than, which requires an explicit --scope). Every candidate must satisfy rule 7smp8vy9hr's extract-before-delete gate: a server-set superseded_by link to a later record, or an authoritative milestone-summary record covering the batch. a preview cannot be carried into a later invocation: --apply re-derives eligibility within its own run and deletes only the intersection of what it just showed and what is still eligible at that moment. the two derivations run milliseconds apart in one process, so the intersection guards against a concurrent writer changing eligibility in that window, not against operator delay -- the extract gate, the mandatory --scope on the filter path, and the discovery/rule category exclusions carry the real safety weight. the per-record path reads the server-set superseded_by link and cannot be satisfied by anything a caller writes; the batch floor requires a real milestone-summary record whose creation time the server stamped, but its marker tag is caller-mintable, so that path validates a convention, not proof of preservation.
+
+Usage:
+  engram spine-review purge [flags]
+
+Flags:
+      --all-scopes            span every scope; mutually exclusive with --scope
+      --apply                 a destructive operator command previews by default and mutates only when apply is set
+      --category string       free-form filter: only this category; the free-form filter path (category, tags, or older-than with no class selected) requires an explicit --scope or --all-scopes
+      --class strings         structural eligibility class (repeatable): superseded, expired, archived
+  -h, --help                  help for purge
+      --older-than duration   grace/retention window override for the selected class(es) (0 = each class's own default: immediate for superseded/expired, 90 days for archived); with NO class selected, a free-form created-more-than-this-long-ago filter -- the free-form filter path (category, tags, or older-than with no class selected) requires an explicit --scope or --all-scopes
+      --output string         output format: "json" or "text" (default: detect from stdout)
+      --scope string          restrict the derivation to one scope
+      --tags strings          free-form filter: records must carry ALL listed tags (repeatable); the free-form filter path (category, tags, or older-than with no class selected) requires an explicit --scope or --all-scopes
+      --timeout duration      max wall-clock for the run (0 disables); also cancellable via Ctrl-C (default 5m0s)
 ```
 
 ## engram spine-review restore

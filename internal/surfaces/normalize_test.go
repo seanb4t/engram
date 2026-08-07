@@ -82,6 +82,13 @@ var (
 	// "fail-on" field), so it is unioned only into SurfaceCobraUsage below,
 	// the same treatment cobraDestructiveFields gets.
 	cobraVerifyFields = []string{"fail-on", "scope", "all-scopes"}
+	// cobraPurgeFields mirrors spine-review purge's own cobra flag set
+	// (03-07-PLAN.md's RulePurgeFilterRequiresScope): "category" (singular,
+	// distinct from cobraSearchListFields' plural "categories") and "class"
+	// have no jsonschema-tag or proto-comment counterpart either, so this is
+	// unioned only into SurfaceCobraUsage below, the same treatment
+	// cobraDestructiveFields/cobraVerifyFields get.
+	cobraPurgeFields = []string{"class", "category"}
 )
 
 // exposedForTest builds a minimal but representative exposed map covering
@@ -90,7 +97,7 @@ var (
 // one D-08's worked example needs to prove empty for the paging trio).
 func exposedForTest() map[Surface][]string {
 	return map[Surface][]string{
-		SurfaceCobraUsage:    append(append(append([]string{}, cobraSearchListFields...), cobraDestructiveFields...), cobraVerifyFields...),
+		SurfaceCobraUsage:    append(append(append(append([]string{}, cobraSearchListFields...), cobraDestructiveFields...), cobraVerifyFields...), cobraPurgeFields...),
 		SurfaceJSONSchemaTag: jsonschemaListFields,
 		// ProtoComment's exposed set unions BOTH proto messages' fields —
 		// mirroring how the real gate's ProtoFieldComments/buildProseExposed

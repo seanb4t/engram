@@ -110,7 +110,7 @@ every response before this release and is unaffected by this change.
 Every operator command — `reindex`, `prune-expired`, `summarize-missing`,
 `backfill-short-ids`, `migrate-remap-owner`, its deprecated alias
 `migrate-set-owner`, and every `engram spine-review` leaf (currently `scan`,
-`verify`, `consolidate`, `archive`, and `restore`) — also accepts `--output`:
+`verify`, `consolidate`, `archive`, `restore`, and `purge`) — also accepts `--output`:
 
 | Value | Behavior |
 |-------|----------|
@@ -134,7 +134,8 @@ prose alone.
 
 <!-- engram:rule:start destructive-requires-apply -->a destructive operator command previews by default and mutates only when apply is set<!-- engram:rule:end destructive-requires-apply -->.
 This applies to every command the [blast-radius](#blast-radius) table below
-classifies `destructive`: today, `prune-expired` and `migrate-remap-owner`. A
+classifies `destructive`: today, `prune-expired`, `migrate-remap-owner`, and
+`spine-review purge`. A
 bare invocation reports what the sweep *would* do and exits `0` without
 touching the collection; add `--apply` to perform the mutation. A forgotten
 `--apply` is therefore a harmless no-op — the command just previews again.
@@ -236,6 +237,51 @@ expired record. `engram spine-review scan` reports an `archived` count as
 its own bucket, separate from `expired` — an archived record's `not_after`
 may or may not also be lapsed, but the two states are independently
 observable and never folded together.
+
+### `spine-review purge`
+
+`engram spine-review purge` deletes purge-eligible records — the phase's
+sharpest edge, and the only irreversible command in the `spine-review`
+group. It previews by default (see [Destructive commands](#destructive-commands)
+above) and mutates only under `--apply`.
+
+**Eligibility classes** (`--class`, repeatable): `superseded` (a
+`superseded_by` link to an existing record, past a grace window),
+`expired` (`not_after` lapsed, past a grace window), and `archived`
+(`archived_at` past a retention window — **90 days by default**,
+overridable with `--older-than`). A class-only run needs no `--scope`: a
+class is a derivation, not an operator judgment.
+
+**The free-form filter path** (`--category`, `--tags`, or `--older-than`
+supplied with **no** `--class`) is gated harder:
+<!-- engram:rule:start purge-filter-requires-scope -->the free-form filter path (category, tags, or older-than with no class selected) requires an explicit --scope or --all-scopes<!-- engram:rule:end purge-filter-requires-scope -->.
+
+**The extract-before-delete gate** (rule `7smp8vy9hr`). Every candidate
+must satisfy one of two paths before it can be deleted: a server-set
+`superseded_by` link naming a later record (unforgeable — this is the
+identical field `Store.Supersede` writes and `Update` preserves, never a
+caller-supplied tag), or an authoritative milestone-summary record
+covering the batch. The per-record path and the batch floor carry
+different strength: the per-record link cannot be satisfied by anything a
+caller writes, while the batch floor's marker is a caller-mintable tag
+convention over a real, server-timestamped record — strictly stronger than
+no artifact at all, strictly weaker than the per-record link. Neither is
+ever presented as proof.
+
+**Preview and apply happen within ONE invocation.** `purge` carries its
+preview into `--apply` through an in-process manifest — there is no
+`--manifest`/`--token` flag, and a preview cannot be carried into a later
+invocation. `--apply` re-derives eligibility within its own run and
+deletes only the **intersection** of what it just showed and what is
+still eligible at that moment; a record that became ineligible since
+preview is spared, and a record that became newly eligible is reported
+`appeared` (never deleted — re-run to include it). Because the two
+derivations run milliseconds apart in one process, the intersection
+guards against a **concurrent writer**, not against operator delay — the
+extract gate, the mandatory `--scope` on the filter path, and the
+`discovery`/`rule` category exclusions carry the real safety weight.
+Cross-invocation preview is a possible future ADDITIVE change requiring a
+signature; it is not shipped here.
 
 ## Exit codes
 

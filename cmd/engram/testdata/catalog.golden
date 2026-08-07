@@ -590,6 +590,72 @@
       }
     },
     {
+      "name": "spine-review purge",
+      "summary": "Delete purge-eligible records, gated on an extraction precondition",
+      "flags": [
+        {
+          "name": "all-scopes",
+          "type": "bool",
+          "default": "false",
+          "usage": "span every scope; mutually exclusive with --scope"
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "default": "false",
+          "usage": "a destructive operator command previews by default and mutates only when apply is set"
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "default": "",
+          "usage": "free-form filter: only this category; the free-form filter path (category, tags, or older-than with no class selected) requires an explicit --scope or --all-scopes"
+        },
+        {
+          "name": "class",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "structural eligibility class (repeatable): superseded, expired, archived"
+        },
+        {
+          "name": "older-than",
+          "type": "duration",
+          "default": "0s",
+          "usage": "grace/retention window override for the selected class(es) (0 = each class's own default: immediate for superseded/expired, 90 days for archived); with NO class selected, a free-form created-more-than-this-long-ago filter -- the free-form filter path (category, tags, or older-than with no class selected) requires an explicit --scope or --all-scopes"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "default": "",
+          "usage": "restrict the derivation to one scope"
+        },
+        {
+          "name": "tags",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "free-form filter: records must carry ALL listed tags (repeatable); the free-form filter path (category, tags, or older-than with no class selected) requires an explicit --scope or --all-scopes"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "5m0s",
+          "usage": "max wall-clock for the run (0 disables); also cancellable via Ctrl-C"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": true,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
       "name": "spine-review restore",
       "summary": "Restore one or more previously-archived records by id",
       "flags": [

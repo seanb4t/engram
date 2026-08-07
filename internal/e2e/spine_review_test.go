@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os/exec"
 	"strconv"
@@ -187,3 +188,235 @@ func TestE2EPruneExpiredPreviewZeroEligible(t *testing.T) {
 		t.Errorf("preview against an empty spine = %q, want it to report 0 eligible records", stdout)
 	}
 }
+
+// seedFiller upserts a minimal, throwaway record used only to give scan/
+// consolidate a real multi-page, multi-owner population to sweep — never
+// touched by this test's own targeted assertions.
+func seedFiller(t *testing.T, s *store.Store, id, scope, owner string) {
+	t.Helper()
+	// A tiny per-record vector perturbation so consolidate's near-duplicate
+	// sweep does not treat all 270 filler records as one giant duplicate
+	// cluster -- irrelevant to this test's assertions, which never inspect
+	// consolidate's candidate list, only its exit code and unchanged-store
+	// property.
+	v := float32(len(id)%7) / 10.0
+	if err := s.Upsert(context.Background(), store.Memory{
+		ID: id, Content: "filler", Scope: scope, Category: "note",
+		Owner: owner, CreatedAt: time.Now().UTC(),
+	}, []float32{0.1 + v, 0.2, 0.3 - v}); err != nil {
+		t.Fatalf("seed filler %s: %v", id, err)
+	}
+}
+
+// fillerID deterministically derives a valid-shaped UUID from prefix and i --
+// decimal digits are a subset of hex digits, so a zero-padded decimal
+// counter is a valid (if unconventional) UUID suffix.
+func fillerID(prefix string, i int) string {
+	return fmt.Sprintf("%s000000-0000-4000-8000-%012d", prefix, i)
+}
+
+// verifyRepoScope derives a "repo:<identity>" scope segment matching what
+// `spine-review verify` (cmd/engram/spine_review_verify.go's
+// repoIdentityFromCWD/normalizeGitRemote) derives from THIS process's git
+// origin remote -- so a citation seeded under this scope is classified
+// "broken" (same repo, file genuinely missing) rather than "unverifiable"
+// (different repo). A minimal, test-local duplicate of that normalisation
+// rather than an import: cmd/engram's function is unexported and this
+// package cannot reach it.
+func verifyRepoScope(t *testing.T) string {
+	t.Helper()
+	out, err := exec.Command("git", "remote", "get-url", "origin").Output()
+	if err != nil {
+		t.Skipf("no git origin remote available to derive a same-repo verify scope: %v", err)
+	}
+	remote := strings.TrimSpace(string(out))
+	if i := strings.Index(remote, "://"); i >= 0 {
+		remote = remote[i+3:]
+	}
+	if i := strings.Index(remote, "@"); i >= 0 {
+		remote = remote[i+1:]
+	}
+	if i := strings.Index(remote, ":"); i >= 0 {
+		remote = remote[:i] + "/" + remote[i+1:]
+	}
+	remote = strings.TrimSuffix(remote, ".git")
+	remote = strings.TrimSuffix(remote, "/")
+	return "repo:" + remote
+}
+
+// TestE2EPhaseAcceptance is the phase's ONE end-to-end acceptance run
+// (03-07-PLAN.md Task 3, review finding #18 / Codex cross-plan): it execs
+// the BUILT binary against a seeded multi-page, multi-owner collection and
+// exercises all seven ROADMAP success criteria in one flow -- scan, verify,
+// consolidate, archive then restore, prune-expired preview then --apply,
+// and spine-review purge preview then --apply. Before this task,
+// internal/e2e execed only serve/search/list (pre-phase) and prune-expired
+// (plan 03-03); no other spine-review leaf had end-to-end coverage against
+// the BUILT binary at all.
+//
+// Coverage map (which assertion below covers which of the seven ROADMAP
+// success criteria):
+//  1. scan (inventory/health signals)        -> the scan exit-0 + Owners>=2 assertion
+//  2. verify (tiers, --fail-on)               -> the broken-citation + --fail-on exitFindings assertion
+//  3. consolidate (ranked pairs)              -> the consolidate exit-0 + unchanged-store assertion
+//  4. archive/restore                         -> the archive-then-restore round trip
+//  5. prune-expired preview/apply             -> the prune preview-then-apply block
+//  6. spine-review purge preview/apply        -> the purge preview-then-apply block
+//  7. REQ-purge-extract-gated (this plan)     -> the purge block's extract-gate-satisfied path
+//     (the superseded class self-satisfies its own gate, 03-07-PLAN.md's
+//     named property)
+func TestE2EPhaseAcceptance(t *testing.T) {
+	if testQdrantAddr == "" {
+		skipOrFailNoQdrant(t)
+	}
+	const collection = "e2e_phase_acceptance"
+	s := newSpineReviewStore(t, collection)
+	ctx := context.Background()
+	env := pruneEnv(collection)
+
+	const fillerScopeA = "e2e_phase_acceptance_scope_a"
+	const fillerScopeB = "e2e_phase_acceptance_scope_b"
+
+	// 1. Seed a MULTI-PAGE (> one Qdrant scroll page; scrollAllPoints'
+	// default batch is 256), multi-owner (2 distinct owners) population, so
+	// scan's Owners count and consolidate's pagination claim are exercised
+	// against real data rather than assumed.
+	for i := 0; i < 200; i++ {
+		seedFiller(t, s, fillerID("70", i), fillerScopeA, "owner-a")
+	}
+	for i := 0; i < 70; i++ {
+		seedFiller(t, s, fillerID("71", i), fillerScopeB, "owner-b")
+	}
+
+	// --- Criterion 1: scan ---
+	stdout, stderr, code := runCLIWithEnv(t, env, "spine-review", "scan", "--all-scopes", "--output", "json")
+	if code != 0 {
+		t.Fatalf("spine-review scan exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, `"total":270`) {
+		t.Errorf("spine-review scan --output json = %q, want it to report total:270", stdout)
+	}
+
+	// --- Criterion 2: verify (tiers + --fail-on exitFindings) ---
+	verifyScope := verifyRepoScope(t)
+	brokenID := "72000000-0000-4000-8000-000000000001"
+	if err := s.Upsert(ctx, store.Memory{
+		ID: brokenID, Content: "cites a file that does not exist", Scope: verifyScope, Category: "decision",
+		Owner: "owner-a", CreatedAt: time.Now().UTC(),
+		Citations: []store.Citation{{Kind: "file", Ref: "this-file-does-not-exist.go", Excerpt: "func x() {}", Locator: "1"}},
+	}, []float32{0.4, 0.4, 0.4}); err != nil {
+		t.Fatalf("seed broken-citation record: %v", err)
+	}
+	stdout, stderr, code = runCLIWithEnv(t, env, "spine-review", "verify", "--scope", verifyScope, "--output", "json")
+	if code != 0 {
+		t.Fatalf("spine-review verify exit = %d, want 0 (no --fail-on)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, `"broken":1`) {
+		t.Errorf("spine-review verify --output json = %q, want broken:1", stdout)
+	}
+	_, stderr, code = runCLIWithEnv(t, env, "spine-review", "verify", "--scope", verifyScope, "--fail-on", "broken")
+	if code != exitFindingsForTest {
+		t.Errorf("spine-review verify --fail-on broken exit = %d, want %d (exitFindings)\nstderr:\n%s", code, exitFindingsForTest, stderr)
+	}
+
+	// --- Criterion 3: consolidate ---
+	stdout, stderr, code = runCLIWithEnv(t, env, "spine-review", "consolidate", "--all-scopes", "--output", "json")
+	if code != 0 {
+		t.Fatalf("spine-review consolidate exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	// --- Criterion 4: archive / restore ---
+	const archiveScope = "e2e_phase_acceptance_archive_scope"
+	archiveID := "73000000-0000-4000-8000-000000000001"
+	if err := s.Upsert(ctx, store.Memory{
+		ID: archiveID, Content: "archive me", Scope: archiveScope, Category: "decision",
+		Owner: "owner-a", CreatedAt: time.Now().UTC(),
+	}, []float32{0.5, 0.5, 0.5}); err != nil {
+		t.Fatalf("seed archive fixture: %v", err)
+	}
+	_, stderr, code = runCLIWithEnv(t, env, "spine-review", "archive", "--id", archiveID, "--output", "json")
+	if code != 0 {
+		t.Fatalf("spine-review archive exit = %d, want 0\nstderr:\n%s", code, stderr)
+	}
+	if got, gerr := s.Get(ctx, archiveID); gerr != nil || got.ArchivedAt == nil {
+		t.Fatalf("record not archived after spine-review archive: err=%v archivedAt=%v", gerr, got.ArchivedAt)
+	}
+	_, stderr, code = runCLIWithEnv(t, env, "spine-review", "restore", "--id", archiveID, "--output", "json")
+	if code != 0 {
+		t.Fatalf("spine-review restore exit = %d, want 0\nstderr:\n%s", code, stderr)
+	}
+	if got, gerr := s.Get(ctx, archiveID); gerr != nil || got.ArchivedAt != nil {
+		t.Fatalf("record still archived after spine-review restore: err=%v archivedAt=%v", gerr, got.ArchivedAt)
+	}
+
+	// --- Criterion 5: prune-expired preview then --apply ---
+	const pruneScope = "e2e_phase_acceptance_prune_scope"
+	past := time.Now().UTC().Add(-time.Hour)
+	pruneID := "74000000-0000-4000-8000-000000000001"
+	if err := s.Upsert(ctx, store.Memory{
+		ID: pruneID, Content: "expired", Scope: pruneScope, Category: "decision",
+		Owner: "owner-a", CreatedAt: time.Now().UTC(), NotAfter: &past,
+	}, []float32{0.6, 0.6, 0.6}); err != nil {
+		t.Fatalf("seed prune fixture: %v", err)
+	}
+	_, stderr, code = runCLIWithEnv(t, env, "prune-expired", "--output", "json")
+	if code != 0 {
+		t.Fatalf("prune-expired (preview) exit = %d, want 0\nstderr:\n%s", code, stderr)
+	}
+	if _, gerr := s.Get(ctx, pruneID); gerr != nil {
+		t.Fatalf("record missing after a BARE prune-expired preview: %v", gerr)
+	}
+	_, stderr, code = runCLIWithEnv(t, env, "prune-expired", "--apply", "--output", "json")
+	if code != 0 {
+		t.Fatalf("prune-expired --apply exit = %d, want 0\nstderr:\n%s", code, stderr)
+	}
+	if _, gerr := s.Get(ctx, pruneID); !errors.Is(gerr, store.ErrNotFound) {
+		t.Fatalf("record still present after prune-expired --apply: err=%v, want %v", gerr, store.ErrNotFound)
+	}
+
+	// --- Criteria 6 & 7: spine-review purge preview then --apply, gated on
+	// the extract-before-delete precondition (REQ-purge-extract-gated). The
+	// superseded class self-satisfies its own gate (03-07-PLAN.md's named
+	// property): the successor IS the extraction link's target.
+	const purgeScope = "e2e_phase_acceptance_purge_scope"
+	successorID := "75000000-0000-4000-8000-000000000002"
+	targetID := "75000000-0000-4000-8000-000000000001"
+	if err := s.Upsert(ctx, store.Memory{
+		ID: successorID, Content: "successor", Scope: purgeScope, Category: "decision",
+		Owner: "owner-a", CreatedAt: time.Now().UTC().Add(-time.Minute),
+	}, []float32{0.7, 0.7, 0.7}); err != nil {
+		t.Fatalf("seed purge successor fixture: %v", err)
+	}
+	if err := s.Upsert(ctx, store.Memory{
+		ID: targetID, Content: "superseded", Scope: purgeScope, Category: "decision",
+		Owner: "owner-a", CreatedAt: time.Now().UTC().Add(-2 * time.Minute), SupersededBy: &successorID,
+	}, []float32{0.75, 0.75, 0.75}); err != nil {
+		t.Fatalf("seed purge target fixture: %v", err)
+	}
+	stdout, stderr, code = runCLIWithEnv(t, env, "spine-review", "purge", "--class", "superseded", "--scope", purgeScope, "--output", "json")
+	if code != 0 {
+		t.Fatalf("spine-review purge (preview) exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, targetID) {
+		t.Errorf("spine-review purge preview = %q, want it to name the eligible target %s", stdout, targetID)
+	}
+	if _, gerr := s.Get(ctx, targetID); gerr != nil {
+		t.Fatalf("target missing after a BARE spine-review purge preview: %v", gerr)
+	}
+	stdout, stderr, code = runCLIWithEnv(t, env, "spine-review", "purge", "--class", "superseded", "--scope", purgeScope, "--apply", "--output", "json")
+	if code != 0 {
+		t.Fatalf("spine-review purge --apply exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if _, gerr := s.Get(ctx, targetID); !errors.Is(gerr, store.ErrNotFound) {
+		t.Fatalf("target still present after spine-review purge --apply: err=%v, want %v", gerr, store.ErrNotFound)
+	}
+	if _, gerr := s.Get(ctx, successorID); gerr != nil {
+		t.Errorf("successor was deleted by purge (it was never a candidate): %v", gerr)
+	}
+}
+
+// exitFindingsForTest mirrors cmd/engram's unexported exitFindings constant
+// (client_common.go) -- this package cannot import cmd/engram's internal
+// constants, so the value is pinned here and cross-checked against the
+// pinned catalog.golden fixture by cmd/engram's own TestCatalogGolden.
+const exitFindingsForTest = 7

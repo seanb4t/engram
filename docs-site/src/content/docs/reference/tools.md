@@ -121,6 +121,13 @@ Returns the scheduled record's `id` and `short_id`. At least one bound is requir
 reclaim lapsed records with the `engram prune-expired --apply` CLI command (preview by default
 without `--apply`; add `--older-than DUR` for a grace period).
 
+Operators can also permanently delete purge-eligible records with `engram spine-review purge
+--apply` (preview by default without `--apply`), gated on an extract-before-delete precondition.
+Its structural classes (`superseded`, `expired`, `archived`) need only that gate; the free-form
+filter path (`--category`, `--tags`, or `--older-than` with no `--class`) additionally requires:
+<!-- engram:rule:start purge-filter-requires-scope -->the free-form filter path (category, tags, or older-than with no class selected) requires an explicit --scope or --all-scopes<!-- engram:rule:end purge-filter-requires-scope -->.
+See the [CLI guide](/guides/cli/#spine-review-purge) for the full contract.
+
 ---
 
 ## search_memory

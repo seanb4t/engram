@@ -126,6 +126,7 @@ var wantOperatorCommandKeys = map[string]bool{
 	"spine-review consolidate": true,
 	"spine-review archive":     true,
 	"spine-review restore":     true,
+	"spine-review purge":       true,
 }
 
 // commandKeySet is a small helper turning a []*cobra.Command into a

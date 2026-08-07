@@ -108,6 +108,18 @@ var ruleTargets = map[string][]target{
 	surfaces.RuleVerifyFailOnValues: {
 		{path: "docs-site/src/content/docs/guides/cli.md", kind: kindMarkdown},
 	},
+	// RulePurgeFilterRequiresScope: no proto anchor -- "class"/"older-than"
+	// (purge's own flags) are not proto fields on any message. Anchored on
+	// all THREE prose surfaces the live tree measures as exposing
+	// scope+category+tags+older-than together (03-07-PLAN.md Task 3): the
+	// CLI guide's own purge subsection, the tools reference (where the
+	// filter vocabulary is published), and curating-memory's SKILL.md
+	// (where an agent learns the deletion contract).
+	surfaces.RulePurgeFilterRequiresScope: {
+		{path: "docs-site/src/content/docs/guides/cli.md", kind: kindMarkdown},
+		{path: "docs-site/src/content/docs/reference/tools.md", kind: kindMarkdown},
+		{path: "skill/engram/skills/curating-memory/SKILL.md", kind: kindMarkdown},
+	},
 }
 
 // render returns rule sentence's on-disk form for the given surface kind.
