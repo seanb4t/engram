@@ -512,6 +512,54 @@
       }
     },
     {
+      "name": "spine-review consolidate",
+      "summary": "Report ranked near-duplicate candidate pairs across the memory spine",
+      "flags": [
+        {
+          "name": "all-scopes",
+          "type": "bool",
+          "default": "false",
+          "usage": "span every scope; a candidate pair may then cross scopes, and each row names both (mutually exclusive with --scope)"
+        },
+        {
+          "name": "min-score",
+          "type": "string",
+          "default": "",
+          "usage": "minimum cosine score a pair must carry to be reported; absent (the default) means NO filter at all — including pairs with a negative score"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "default": "",
+          "usage": "only consider records in this scope"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "5m0s",
+          "usage": "max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C"
+        },
+        {
+          "name": "top-k",
+          "type": "uint64",
+          "default": "5",
+          "usage": "neighbours considered per record"
+        }
+      ],
+      "blast_radius": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
       "name": "spine-review scan",
       "summary": "Report an inventory of the memory spine",
       "flags": [

@@ -201,6 +201,7 @@ Usage:
   engram spine-review [command]
 
 Available Commands:
+  consolidate Report ranked near-duplicate candidate pairs across the memory spine
   scan        Report an inventory of the memory spine
   verify      Classify every stored citation as valid, moved, broken, or unverifiable
 
@@ -208,6 +209,24 @@ Flags:
   -h, --help   help for spine-review
 
 Use "engram spine-review [command] --help" for more information about a command.
+```
+
+## engram spine-review consolidate
+
+```
+Report ranked near-duplicate candidate pairs across the memory spine
+
+Usage:
+  engram spine-review consolidate [flags]
+
+Flags:
+      --all-scopes         span every scope; a candidate pair may then cross scopes, and each row names both (mutually exclusive with --scope)
+  -h, --help               help for consolidate
+      --min-score string   minimum cosine score a pair must carry to be reported; absent (the default) means NO filter at all — including pairs with a negative score
+      --output string      output format: "json" or "text" (default: detect from stdout)
+      --scope string       only consider records in this scope
+      --timeout duration   max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 5m0s)
+      --top-k uint         neighbours considered per record (default 5)
 ```
 
 ## engram spine-review scan

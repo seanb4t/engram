@@ -612,7 +612,7 @@ func TestNearDuplicatesMinScoreOptionIsPointer(t *testing.T) {
 	if !ok {
 		t.Fatal("NearDuplicateOptions has no MinScore field")
 	}
-	if field.Type.Kind() != reflect.Ptr {
+	if field.Type.Kind() != reflect.Pointer {
 		t.Errorf("MinScore field type = %v, want a pointer (nil must be able to mean \"no filter\", distinct from a float32 zero value)", field.Type)
 	}
 }

@@ -272,6 +272,15 @@ var operations = []Operation{
 		MCPTool: "", CLICommand: "spine-review verify",
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
+	{
+		// spine-review consolidate reports ranked near-duplicate candidate
+		// pairs using each record's already-stored vector — never a
+		// mutating Qdrant RPC, never a merge, never a mutation on any path
+		// (T-03-16's mitigation). Idempotent: repeating the same sweep
+		// against unchanged data reports the same ranked pairs.
+		MCPTool: "", CLICommand: "spine-review consolidate",
+		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
 }
 
 // classByTool/classByCommand are built once from operations, backing

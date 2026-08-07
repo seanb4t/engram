@@ -142,6 +142,10 @@ func operatorParityRows() []operatorParityRow {
 		Total: 9, Owners: 3, WithSummary: 5, WithoutSummary: 4,
 		Superseded: 1, Expired: 1, Scheduled: 0, WithCitations: 2, Citations: 6,
 	}
+	consolidatePairs := []store.DuplicatePair{
+		{A: "id-a", B: "id-b", AShortID: "sa", BShortID: "sb", AScope: "s", BScope: "s", Score: 0.5},
+	}
+	consolidateMinScore := float32(0.5)
 
 	return []operatorParityRow{
 		{
@@ -201,6 +205,12 @@ func operatorParityRows() []operatorParityRow {
 				Unverifiable: []verifyEntry{{RecordID: "rec-unverifiable", ShortID: "short-unverifiable", Ref: "c.go", Reason: "different repo"}},
 			}),
 			facts: []string{"2", "1", "rec-moved", "rec-broken", "rec-unverifiable"},
+		},
+		{
+			name:  "spine-review consolidate",
+			text:  consolidateSummary(consolidatePairs, "s", false, &consolidateMinScore, 5, 9, 9),
+			doc:   consolidateDoc(consolidatePairs, "s", false, &consolidateMinScore, 5, 9, 9),
+			facts: []string{"9", "5", "0.5", "id-a", "id-b"},
 		},
 	}
 }
@@ -409,6 +419,7 @@ var timeoutGroups = []timeoutGroup{
 		commands: map[string]bool{
 			"reindex": true, "prune-expired": true, "summarize-missing": true,
 			"backfill-short-ids": true, "spine-review scan": true, "spine-review verify": true,
+			"spine-review consolidate": true,
 		},
 		zeroRejected: false,
 	},
@@ -448,6 +459,8 @@ func timeoutGroupCaseArgs(t *testing.T, name string) (args []string, env map[str
 		return []string{"spine-review", "scan", "--all-scopes", "--timeout", "0"}, env
 	case "spine-review verify":
 		return []string{"spine-review", "verify", "--all-scopes", "--timeout", "0"}, env
+	case "spine-review consolidate":
+		return []string{"spine-review", "consolidate", "--all-scopes", "--timeout", "0"}, env
 	case "migrate-remap-owner":
 		return []string{"migrate-remap-owner", "--from-missing", "--to", "x", "--timeout", "0"}, env
 	case "migrate-set-owner":
@@ -494,6 +507,8 @@ func operatorInvalidOutputArgs(t *testing.T, name string) []string {
 		return []string{"spine-review", "scan", "--all-scopes"}
 	case "spine-review verify":
 		return []string{"spine-review", "verify", "--all-scopes"}
+	case "spine-review consolidate":
+		return []string{"spine-review", "consolidate", "--all-scopes"}
 	default:
 		t.Fatalf("operatorInvalidOutputArgs: no row defined for command %q", name)
 		return nil

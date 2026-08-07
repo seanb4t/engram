@@ -109,8 +109,8 @@ every response before this release and is unaffected by this change.
 
 Every operator command — `reindex`, `prune-expired`, `summarize-missing`,
 `backfill-short-ids`, `migrate-remap-owner`, its deprecated alias
-`migrate-set-owner`, and every `engram spine-review` leaf (currently `scan`
-and `verify`) — also accepts `--output`:
+`migrate-set-owner`, and every `engram spine-review` leaf (currently `scan`,
+`verify`, and `consolidate`) — also accepts `--output`:
 
 | Value | Behavior |
 |-------|----------|
@@ -170,6 +170,37 @@ Pass `--fail-on <tier>` to ask the second one from a CI step without
 parsing the report: it exits a distinct code (`7`, see below) when the
 named tier has at least one entry.
 
+### `spine-review consolidate`
+
+`engram spine-review consolidate --scope <scope>` (or `--all-scopes`)
+reports ranked near-duplicate candidate pairs — `(record A, record B,
+score)` rows sorted by score, highest first — using each record's
+**already-stored vector**: no text is re-embedded and no vector ever
+crosses the wire from engram to Qdrant. `--scope` and `--all-scopes` are
+mutually exclusive; supplying neither sweeps a well-defined empty result
+(no record has a literally-empty scope), never an accidental whole-spine
+sweep.
+
+This command **never merges, never mutates, and never labels a pair a
+"duplicate."** It ranks candidates and stops — deciding whether two
+records are the same fact is a judgment for the operator (or a future
+semantic skill) to make with the ranked list in hand, not a verdict this
+structural sweep pre-decides. There is no clustering and no default
+similarity threshold: `--min-score` bounds report SIZE, not correctness,
+and its absence (the default) means **no filtering at all** — a pair with
+a negative cosine score is reported just like any other. `--top-k` bounds
+how many neighbours are considered per record (a small default; see the
+flag's own `--help` text for the exact number).
+
+With `--all-scopes`, a candidate pair may span **two different scopes** —
+two scopes holding the same fact is exactly the duplication an operator
+wants surfaced, so cross-scope pairs are reported, and each row names both
+records' scopes (`a_scope`/`b_scope` in JSON) so a within-scope duplicate
+is never confused with a cross-scope one.
+
+A scope with fewer than two records reports zero candidates and exits `0`;
+the JSON `candidates` array is `[]`, never `null`, in that case.
+
 ## Exit codes
 
 Every command in the binary — the three client verbs and all eight operator
@@ -227,7 +258,7 @@ zero-semantics, and it is not uniform across commands:**
 | Commands | `--timeout` meaning | `0` behavior |
 |---|---|---|
 | `search`, `list`, `store` | Per-RPC-call deadline | **Rejected** (usage error) |
-| `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan`, `spine-review verify` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
+| `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan`, `spine-review verify`, `spine-review consolidate` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
 | `migrate-remap-owner`, `migrate-set-owner` | Whole-sweep wall-clock budget | **Rejected** (usage error) — changed this release, see the [upgrade guide](/guides/upgrade/#6-migrate-remap-owner---timeout-0--migrate-set-owner---timeout-0-no-longer-means-unbounded) |
 
 A reader comparing `engram search --help` against `engram reindex --help`
