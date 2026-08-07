@@ -94,7 +94,7 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
   candidates by querying Qdrant with records' already-stored vectors (no re-embedding), and never
   merges or mutates — the operator or an agent decides.
 
-- [ ] **REQ-purge-extract-gated**: `engram spine-review purge` previews by default and mutates only
+- [x] **REQ-purge-extract-gated**: `engram spine-review purge` previews by default and mutates only
   under an explicit `--apply`, re-derives eligibility at apply time rather than acting on a stale
   candidate list, and refuses to run unless rule `7smp8vy9hr`'s extract-before-delete ordering is
   provably satisfied.
@@ -198,7 +198,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-spine-scan | Phase 3 | Complete |
 | REQ-citation-drift-verify | Phase 3 | Complete |
 | REQ-near-duplicate-report | Phase 3 | Complete |
-| REQ-purge-extract-gated | Phase 3 | Pending |
+| REQ-purge-extract-gated | Phase 3 | Complete |
 | REQ-archive-tier | Phase 3 | Complete |
 | REQ-semantic-curation-skill | Phase 4 | Pending |
 | REQ-consent-never-perform | Phase 4 | Pending |
