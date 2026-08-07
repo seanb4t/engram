@@ -90,7 +90,7 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
   moved-but-valid, or broken — with the moved tier reported separately from the broken tier, so
   ordinary refactoring does not train an operator to ignore the verifier.
 
-- [ ] **REQ-near-duplicate-report**: `engram spine-review consolidate` reports near-duplicate
+- [x] **REQ-near-duplicate-report**: `engram spine-review consolidate` reports near-duplicate
   candidates by querying Qdrant with records' already-stored vectors (no re-embedding), and never
   merges or mutates — the operator or an agent decides.
 
@@ -197,7 +197,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-help-output-pinned | Phase 2 | Complete |
 | REQ-spine-scan | Phase 3 | Pending |
 | REQ-citation-drift-verify | Phase 3 | Pending |
-| REQ-near-duplicate-report | Phase 3 | Pending |
+| REQ-near-duplicate-report | Phase 3 | Complete |
 | REQ-purge-extract-gated | Phase 3 | Pending |
 | REQ-archive-tier | Phase 3 | Pending |
 | REQ-semantic-curation-skill | Phase 4 | Pending |
