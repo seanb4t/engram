@@ -251,7 +251,7 @@ var rules = []ConditionalRule{
 	},
 	{
 		ID:       RulePurgeFilterRequiresScope,
-		Sentence: "the free-form filter path (category, tags, or older-than with no class selected) requires an explicit --scope or --all-scopes",
+		Sentence: "the free-form filter path requires an explicit --scope or --all-scopes: category or tags always engage it, and older-than engages it when no class is selected",
 		Fields:   []string{"scope", "category", "tags", "older-than"},
 		Hint:     "conditional_required",
 		// TagForm deliberately left empty: no MCP arg struct carries a

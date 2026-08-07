@@ -385,7 +385,7 @@ never calls this CLI verb directly: a candidate must satisfy an extract-before-d
 server-set `superseded_by` link to a later record, or an authoritative milestone-summary record
 covering the batch) before it can be removed, and its free-form filter path (category/tags/older-than
 with no structural class selected) additionally requires:
-<!-- engram:rule:start purge-filter-requires-scope -->the free-form filter path (category, tags, or older-than with no class selected) requires an explicit --scope or --all-scopes<!-- engram:rule:end purge-filter-requires-scope -->.
+<!-- engram:rule:start purge-filter-requires-scope -->the free-form filter path requires an explicit --scope or --all-scopes: category or tags always engage it, and older-than engages it when no class is selected<!-- engram:rule:end purge-filter-requires-scope -->.
 `discovery` and `rule` category records are never purge-eligible under any class or filter.
 
 ## Supersession (correcting without losing history)

@@ -17,9 +17,9 @@ import (
 // three outcomes (changed, already, not_found) in one multi-id call.
 func TestArchiveSummaryFormat(t *testing.T) {
 	results := []store.ArchiveResult{
-		{ID: "id-1", Outcome: store.ArchiveOutcomeChanged},
-		{ID: "id-2", Outcome: store.ArchiveOutcomeAlready},
-		{ID: "id-3", Outcome: store.ArchiveOutcomeNotFound},
+		{Requested: "id-1", ID: "id-1", Outcome: store.ArchiveOutcomeChanged},
+		{Requested: "id-2", ID: "id-2", Outcome: store.ArchiveOutcomeAlready},
+		{Requested: "id-3", ID: "id-3", Outcome: store.ArchiveOutcomeNotFound},
 	}
 	got := archiveSummary(results, "archive")
 
@@ -41,6 +41,70 @@ func TestArchiveSummaryFormat(t *testing.T) {
 	if !strings.Contains(restoreGot, "spine restore: 3 id(s) processed") {
 		t.Errorf("archiveSummary(..., \"restore\") = %q, want the verb in the header", restoreGot)
 	}
+}
+
+// TestArchiveReportCorrelatesRequestedToken pins the property that makes a
+// multi-id report usable when the caller passed short_ids: EVERY row echoes
+// the caller's own token, whatever its outcome.
+//
+// The regression this guards is subtle. A resolved row can report the
+// canonical UUID, but an unresolvable token has no canonical id to report --
+// so a report keyed only on "id" silently mixes representations exactly where
+// correlation matters most, and a caller who passed three short_ids cannot
+// tell which of them the not_found row refers to. Requested is therefore set
+// on every path, and id is omitted (not faked) when resolution failed.
+func TestArchiveReportCorrelatesRequestedToken(t *testing.T) {
+	const shortID = "x37kbpw0xq"
+	results := []store.ArchiveResult{
+		{Requested: shortID, ID: "11111111-0000-0000-0000-000000000001", Outcome: store.ArchiveOutcomeChanged},
+		{Requested: "zzzznotfound", Outcome: store.ArchiveOutcomeNotFound},
+	}
+
+	t.Run("text", func(t *testing.T) {
+		got := archiveSummary(results, "archive")
+		for _, want := range []string{
+			"requested=" + shortID + " id=11111111-0000-0000-0000-000000000001 outcome=changed",
+			"requested=zzzznotfound outcome=not_found",
+		} {
+			if !strings.Contains(got, want) {
+				t.Errorf("archiveSummary(...) = %q, want it to contain %q", got, want)
+			}
+		}
+		if strings.Contains(got, "id= ") || strings.Contains(got, "id=\n") {
+			t.Errorf("archiveSummary(...) emitted an empty id= for an unresolved token: %q", got)
+		}
+	})
+
+	t.Run("json", func(t *testing.T) {
+		raw, err := json.Marshal(archiveDoc(results, "archive"))
+		if err != nil {
+			t.Fatalf("json.Marshal(archiveDoc(...)) = %v", err)
+		}
+		var doc struct {
+			Results []struct {
+				Requested string `json:"requested"`
+				ID        string `json:"id"`
+				Outcome   string `json:"outcome"`
+			} `json:"results"`
+		}
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			t.Fatalf("json.Unmarshal(%s) = %v", raw, err)
+		}
+		if len(doc.Results) != 2 {
+			t.Fatalf("got %d result rows, want 2: %s", len(doc.Results), raw)
+		}
+		if doc.Results[0].Requested != shortID {
+			t.Errorf("resolved row requested = %q, want %q", doc.Results[0].Requested, shortID)
+		}
+		if doc.Results[1].Requested != "zzzznotfound" {
+			t.Errorf("not_found row requested = %q, want %q", doc.Results[1].Requested, "zzzznotfound")
+		}
+		// omitempty: an unresolved token must not carry an empty "id" key a
+		// consumer could mistake for a real (blank) canonical id.
+		if strings.Contains(string(raw), `"id":""`) {
+			t.Errorf("JSON emitted an empty id for an unresolved token: %s", raw)
+		}
+	})
 }
 
 // TestArchiveDocMarshalsExplicitOutcomes proves the JSON form reports the

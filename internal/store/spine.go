@@ -674,8 +674,19 @@ const (
 // ArchiveResult is Archive/Restore's per-id report: which id, and which of
 // the three ArchiveOutcome values occurred.
 type ArchiveResult struct {
-	ID      string
-	Outcome ArchiveOutcome
+	// ID is the CANONICAL point id, set once the target resolved. It is
+	// empty when resolution itself failed, because there is no canonical id
+	// to report for a token that named nothing.
+	ID string
+	// Requested is the token the caller actually supplied -- a short_id or a
+	// UUID. Set on EVERY outcome, including not_found, so a caller can
+	// correlate each row back to its input. Without it the report mixes
+	// representations exactly where correlation matters most: resolved rows
+	// echo the canonical UUID while an unresolvable one can only echo the
+	// raw token, leaving a caller who passed short_ids unable to tell which
+	// of its inputs the not_found row refers to.
+	Requested string
+	Outcome   ArchiveOutcome
 }
 
 // Archive stamps archived_at on the record identified by id, excluding it

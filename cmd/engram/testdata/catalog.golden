@@ -609,7 +609,7 @@
           "name": "category",
           "type": "string",
           "default": "",
-          "usage": "free-form filter: only this category; the free-form filter path (category, tags, or older-than with no class selected) requires an explicit --scope or --all-scopes"
+          "usage": "free-form filter: only this category; the free-form filter path requires an explicit --scope or --all-scopes: category or tags always engage it, and older-than engages it when no class is selected"
         },
         {
           "name": "class",
@@ -621,7 +621,7 @@
           "name": "older-than",
           "type": "duration",
           "default": "0s",
-          "usage": "grace/retention window override for the selected class(es) (0 = each class's own default: immediate for superseded/expired, 90 days for archived); with NO class selected, a free-form created-more-than-this-long-ago filter -- the free-form filter path (category, tags, or older-than with no class selected) requires an explicit --scope or --all-scopes"
+          "usage": "grace/retention window override for the selected class(es) (0 = each class's own default: immediate for superseded/expired, 90 days for archived); with NO class selected, a free-form created-more-than-this-long-ago filter -- the free-form filter path requires an explicit --scope or --all-scopes: category or tags always engage it, and older-than engages it when no class is selected"
         },
         {
           "name": "output",
@@ -639,7 +639,7 @@
           "name": "tags",
           "type": "stringSlice",
           "default": "[]",
-          "usage": "free-form filter: records must carry ALL listed tags (repeatable); the free-form filter path (category, tags, or older-than with no class selected) requires an explicit --scope or --all-scopes"
+          "usage": "free-form filter: records must carry ALL listed tags (repeatable); the free-form filter path requires an explicit --scope or --all-scopes: category or tags always engage it, and older-than engages it when no class is selected"
         },
         {
           "name": "timeout",

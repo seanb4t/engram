@@ -31,7 +31,13 @@ func archiveSummary(results []store.ArchiveResult, verb string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "spine %s: %d id(s) processed\n", verb, len(results))
 	for _, r := range results {
-		fmt.Fprintf(&b, "  id=%s outcome=%s\n", r.ID, r.Outcome)
+		// requested= is always the caller's token; id= is the canonical id
+		// and is omitted when resolution failed (there is none).
+		if r.ID == "" {
+			fmt.Fprintf(&b, "  requested=%s outcome=%s\n", r.Requested, r.Outcome)
+			continue
+		}
+		fmt.Fprintf(&b, "  requested=%s id=%s outcome=%s\n", r.Requested, r.ID, r.Outcome)
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
@@ -41,8 +47,12 @@ func archiveSummary(results []store.ArchiveResult, verb string) string {
 // string -- never left for a JSON consumer to infer from prose (T-03-29's
 // mitigation).
 type archiveResultDoc struct {
-	ID      string `json:"id"`
-	Outcome string `json:"outcome"`
+	// Requested is the caller's own token, present on every row so a
+	// consumer can correlate results back to its input list; ID is the
+	// canonical id and is omitted when the token resolved to nothing.
+	Requested string `json:"requested"`
+	ID        string `json:"id,omitempty"`
+	Outcome   string `json:"outcome"`
 }
 
 // archiveReportDoc is the JSON-mode report's exported-field shape: ids and
@@ -61,7 +71,7 @@ type archiveReportDoc struct {
 func archiveDoc(results []store.ArchiveResult, verb string) archiveReportDoc {
 	doc := archiveReportDoc{Verb: verb, Results: make([]archiveResultDoc, 0, len(results))}
 	for _, r := range results {
-		doc.Results = append(doc.Results, archiveResultDoc{ID: r.ID, Outcome: string(r.Outcome)})
+		doc.Results = append(doc.Results, archiveResultDoc{Requested: r.Requested, ID: r.ID, Outcome: string(r.Outcome)})
 	}
 	return doc
 }
@@ -97,7 +107,10 @@ func spineArchiveOrRestore(ctx context.Context, st *store.Store, ids []string, f
 			if !errors.Is(rerr, store.ErrNotFound) {
 				return results, rerr
 			}
-			results = append(results, store.ArchiveResult{ID: raw, Outcome: store.ArchiveOutcomeNotFound})
+			// ID stays empty: the token resolved to nothing, so there is no
+			// canonical id to report. Requested carries the caller's token
+			// so the row is still correlatable to its input.
+			results = append(results, store.ArchiveResult{Requested: raw, Outcome: store.ArchiveOutcomeNotFound})
 			if err == nil {
 				err = rerr
 			}
@@ -107,6 +120,9 @@ func spineArchiveOrRestore(ctx context.Context, st *store.Store, ids []string, f
 		if rerr != nil && res.Outcome == "" {
 			return results, rerr
 		}
+		// The store sees only the resolved id, so the raw token is stamped
+		// here -- the one layer that knows both.
+		res.Requested = raw
 		results = append(results, res)
 		if rerr != nil && err == nil {
 			err = rerr

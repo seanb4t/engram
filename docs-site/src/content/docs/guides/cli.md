@@ -278,9 +278,18 @@ above) and mutates only under `--apply`.
 overridable with `--older-than`). A class-only run needs no `--scope`: a
 class is a derivation, not an operator judgment.
 
-**The free-form filter path** (`--category`, `--tags`, or `--older-than`
-supplied with **no** `--class`) is gated harder:
-<!-- engram:rule:start purge-filter-requires-scope -->the free-form filter path (category, tags, or older-than with no class selected) requires an explicit --scope or --all-scopes<!-- engram:rule:end purge-filter-requires-scope -->.
+**The free-form filter path** is gated harder:
+<!-- engram:rule:start purge-filter-requires-scope -->the free-form filter path requires an explicit --scope or --all-scopes: category or tags always engage it, and older-than engages it when no class is selected<!-- engram:rule:end purge-filter-requires-scope -->.
+
+Note the asymmetry, which is deliberate. `--older-than` alongside a
+`--class` is read as *parameterizing* that class's window (overriding
+`archived`'s 90-day retention, say), so it does not engage the harder gate.
+`--category` and `--tags` engage it **even when a class is also selected**,
+because narrowing by category or tag is a semantic judgment no structural
+class expresses — and D-10 gates on how much judgment the operator supplied,
+not on how many records the run would touch. A `--class superseded
+--category decision` run is therefore narrower than `--class superseded`
+alone yet still requires an explicit scope.
 
 **The extract-before-delete gate** (rule `7smp8vy9hr`). Every candidate
 must satisfy one of two paths before it can be deleted: a server-set

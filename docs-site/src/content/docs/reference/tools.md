@@ -125,7 +125,7 @@ Operators can also permanently delete purge-eligible records with `engram spine-
 --apply` (preview by default without `--apply`), gated on an extract-before-delete precondition.
 Its structural classes (`superseded`, `expired`, `archived`) need only that gate; the free-form
 filter path (`--category`, `--tags`, or `--older-than` with no `--class`) additionally requires:
-<!-- engram:rule:start purge-filter-requires-scope -->the free-form filter path (category, tags, or older-than with no class selected) requires an explicit --scope or --all-scopes<!-- engram:rule:end purge-filter-requires-scope -->.
+<!-- engram:rule:start purge-filter-requires-scope -->the free-form filter path requires an explicit --scope or --all-scopes: category or tags always engage it, and older-than engages it when no class is selected<!-- engram:rule:end purge-filter-requires-scope -->.
 See the [CLI guide](/guides/cli/#spine-review-purge) for the full contract.
 
 ---

@@ -930,6 +930,15 @@ func TestPurgeFilterPathActive(t *testing.T) {
 		{"category alone", PurgeOptions{Category: "decision"}, true},
 		{"tags alone", PurgeOptions{Tags: []string{"x"}}, true},
 		{"older-than alone (no class)", PurgeOptions{OlderThan: time.Hour}, true},
+		// The asymmetry is deliberate and was previously untested. A class
+		// merely parameterized by --older-than stays a derivation, so it does
+		// NOT engage the harder gate. Narrowing that same class by category
+		// or tag is a semantic judgment no structural class expresses, so it
+		// DOES -- even though the resulting run is strictly narrower. D-10
+		// gates on how much judgment the operator supplied, not on how many
+		// records the run would touch.
+		{"class plus category still engages the gate", PurgeOptions{Classes: []PurgeClass{PurgeClassArchived}, Category: "decision"}, true},
+		{"class plus tags still engages the gate", PurgeOptions{Classes: []PurgeClass{PurgeClassSuperseded}, Tags: []string{"x"}}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
