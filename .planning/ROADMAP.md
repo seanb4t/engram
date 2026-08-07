@@ -366,7 +366,7 @@ mechanism for `purge` (marker duration, how `--apply`'s re-derive-at-apply-time 
 persisted watermark for partial-failure recovery) also has no single existing precedent to copy
 verbatim — see `research/SUMMARY.md`'s Gaps to Address.
 
-**Plans:** 6/7 plans executed
+**Plans:** 7/7 plans executed
 
 - [x] 03-01-PLAN.md — Tracer: nested `spine-review` tree, depth-aware catalog/golden traversal, qualified-path blast-radius classification, and `spine-review scan`
 - [x] 03-02-PLAN.md — `--output json|text` backfilled across every existing operator command
@@ -374,7 +374,7 @@ verbatim — see `research/SUMMARY.md`'s Gaps to Address.
 - [x] 03-04-PLAN.md — `spine-review verify`: four-tier citation drift classification and `--fail-on`
 - [x] 03-05-PLAN.md — `spine-review consolidate`: ranked near-duplicate pairs over stored vectors
 - [x] 03-06-PLAN.md — `archived_at` as a first-class record state with `archive` / `restore`
-- [ ] 03-07-PLAN.md — `spine-review purge`: unforgeable manifest, intersection apply, extract-before-delete gate
+- [x] 03-07-PLAN.md — `spine-review purge`: unforgeable manifest, intersection apply, extract-before-delete gate
 
 ---
 
@@ -504,7 +504,7 @@ phases as they close rather than only at the end.
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 1. Interface Enforceability | v0.13.x | 0/4 | Not started | - |
 | 2. Interface Discoverability | v0.13.x | 0/4 | Not started | - |
-| 3. Spine Curation — Structural (CLI) | v0.13.x | 6/7 | In Progress | - |
+| 3. Spine Curation — Structural (CLI) | v0.13.x | 7/7 | In Progress | - |
 | 4. Spine Curation — Semantic (Skill) | v0.13.x | 0/3 | Not started | - |
 | 5. Validation Debt Reconciliation | v0.13.x | 0/2 | Not started | - |
 
