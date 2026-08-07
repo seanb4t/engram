@@ -5,6 +5,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 
@@ -331,5 +332,288 @@ func (s *Store) EnumerateCitations(ctx context.Context, opts SpineScanOptions) (
 	if scanErr != nil {
 		return nil, scanErr
 	}
+	return res, nil
+}
+
+// nearDuplicateBatchSize is the number of independent per-id ANN queries
+// batched into a single client.QueryBatch RPC — RESEARCH.md's verified
+// cost-shape example: Qdrant's HNSW index makes each individual query
+// sub-linear in collection size, so a batch of 50 independent queries is
+// cheap server-side.
+const nearDuplicateBatchSize = 50
+
+// defaultNearDuplicateTopK is NearDuplicates' per-query neighbour limit
+// when NearDuplicateOptions.TopK is zero.
+const defaultNearDuplicateTopK = 5
+
+// NearDuplicateOptions configures NearDuplicates.
+type NearDuplicateOptions struct {
+	// Scope restricts the sweep to records in this scope. Applied as an
+	// explicit qdrant.NewMatch("scope", Scope) condition even when Scope is
+	// "" and AllScopes is false — so an options value naming neither a
+	// scope nor AllScopes produces a well-defined EMPTY result (no record's
+	// scope is literally ""), never an accidental unfiltered sweep. Ignored
+	// when AllScopes is true.
+	Scope string
+
+	// AllScopes spans every scope. A SEPARATE, explicit bool — NEVER
+	// represented as an empty Scope string. The rejected prior design
+	// encoded "all scopes" as Scope == "" while still requiring every
+	// QueryPoints to carry a scope Must condition, which matched only
+	// records whose scope was literally empty (i.e. nothing) while the
+	// report claimed whole-spine coverage. AllScopes: true combined with a
+	// non-empty Scope is rejected with ErrInvalidArgument.
+	AllScopes bool
+
+	// TopK bounds the neighbours considered per queried record. Zero
+	// resolves to defaultNearDuplicateTopK.
+	TopK uint64
+
+	// MinScore is the minimum cosine score a pair must carry to be
+	// reported. nil means NO filter at all — including pairs with a
+	// negative score, which cosine similarity can genuinely produce. A
+	// plain (non-pointer) float32 whose zero value silently imposes
+	// score >= 0 is exactly the design this pointer exists to avoid.
+	MinScore *float32
+
+	// Progress, when non-nil, is invoked after every QueryBatch RPC with
+	// the running scanned (total ids enumerated) and queried (ids a
+	// QueryBatch has been issued for, so far) counts.
+	Progress func(scanned, queried uint64)
+}
+
+// DuplicatePair is one ranked near-duplicate candidate: two record
+// identities, their short ids and scopes, and Score — the cosine
+// similarity Qdrant reports, printed as-is, never normalised, bucketed, or
+// labelled a verdict (REQ-near-duplicate-report's transparency
+// requirement). A and B are ordered so A < B lexically (orderedPairKey),
+// making the collapsed, two-sided sweep's output deterministic. Content
+// and summary are deliberately absent from this struct — a report row can
+// never leak stored substance (T-03-28's mitigation).
+type DuplicatePair struct {
+	A, B               string
+	AShortID, BShortID string
+	AScope, BScope     string
+	Score              float32
+}
+
+// nearDuplicateIdentity is the minimal per-id lookup NearDuplicates builds
+// during id enumeration: enough to populate a DuplicatePair row (short id,
+// scope) without ever fetching a neighbour's content, and without a second
+// fetch at query time.
+type nearDuplicateIdentity struct {
+	shortID string
+	scope   string
+}
+
+// chunkIDs splits ids into slices of at most size, preserving order. The
+// final chunk may be shorter than size. Returns nil for an empty input.
+func chunkIDs(ids []string, size int) [][]string {
+	if len(ids) == 0 {
+		return nil
+	}
+	if size <= 0 {
+		size = len(ids)
+	}
+	chunks := make([][]string, 0, (len(ids)+size-1)/size)
+	for i := 0; i < len(ids); i += size {
+		end := i + size
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunks = append(chunks, ids[i:end])
+	}
+	return chunks
+}
+
+// orderedPairKey returns (x, y) reordered so the first element is
+// lexically smaller — the deterministic tiebreak every collapsed pair (and
+// the final sort) uses, so the two-sided sweep's (A,B)/(B,A) duplicate
+// always collapses onto the SAME map key regardless of which direction was
+// processed first.
+func orderedPairKey(x, y string) [2]string {
+	if x < y {
+		return [2]string{x, y}
+	}
+	return [2]string{y, x}
+}
+
+// NearDuplicates sweeps every record in scope (or, with AllScopes, every
+// record in the whole collection) and reports ranked (A, B, score)
+// candidate pairs, using each record's ALREADY-STORED vector: no text is
+// re-embedded and no vector is ever transmitted from engram to Qdrant for
+// this call. Subject-less by signature — no Subject parameter, no owner or
+// shared read-filter condition (T-03-07's sibling mitigation).
+//
+// Never merges, never mutates, and issues no write RPC on any path
+// (T-03-16's mitigation) — proven by TestNearDuplicatesDoesNotMutate's
+// before/after point-count-and-payload-digest equality.
+//
+// Built over TWO Qdrant primitives, deliberately never SearchMatrixPairs/
+// SearchMatrixOffsets (RESEARCH.md Pitfall 4: their `sample` parameter
+// carries no documented exhaustiveness guarantee, and this command's whole
+// claim is that every record in scope was checked):
+//
+//  1. Every point id in scope is enumerated through scrollAllPoints, this
+//     phase's ONE paginated whole-spine iterator — internal/store/spine.go
+//     must carry exactly one client.ScrollAndOffset call site after this
+//     addition (T-03-07's mitigation). The enumeration payload
+//     include-selector names only short_id and scope: two small string
+//     fields, cheap enough that "the id set is cheap and complete" still
+//     holds, and it is what lets a collapsed pair report BOTH records'
+//     identity without any payload fetch at query time.
+//  2. The enumerated ids are chunked and queried via client.QueryBatch, one
+//     qdrant.NewQueryID(id) sub-query per id, each carrying a
+//     MustNot(NewHasID(id)) so a record never matches itself, and NO
+//     payload selector at all — every neighbour's identity is already
+//     known from step 1's enumeration map, so the per-id query fetches
+//     nothing beyond id and score (T-03-28's mitigation, taken further
+//     than an include-selector: zero incremental payload cost per
+//     neighbour, and record content is never fetched anywhere in this
+//     method).
+//
+// AllScopes: true combined with a non-empty Scope is rejected with
+// ErrInvalidArgument. In all-scopes mode the scope Must condition is
+// omitted entirely from both the enumeration and the per-query filter —
+// encoding "all scopes" as an empty Scope string while still requiring
+// that Must match (the rejected prior design) matches only records whose
+// scope is literally "", i.e. nothing, while the report claimed
+// whole-spine coverage.
+//
+// The two-sided sweep naturally produces both (A,B) and (B,A); these
+// collapse onto ONE row, keyed by orderedPairKey so A is always the
+// lexically smaller id. MinScore (when non-nil) filters AFTER collapsing.
+// The result is sorted by score descending, tiebroken on (A,B) ascending,
+// so two runs over the same data return identical ordering
+// (TestNearDuplicatesIsDeterministic).
+func (s *Store) NearDuplicates(ctx context.Context, opts NearDuplicateOptions) (res []DuplicatePair, err error) {
+	ctx, span := tracer.Start(ctx, "store.NearDuplicates",
+		trace.WithAttributes(
+			attribute.String("engram.scope", opts.Scope),
+			attribute.Bool("engram.all_scopes", opts.AllScopes),
+		))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "NearDuplicates", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int64("engram.result_count", int64(len(res))))
+		}
+	}()
+
+	if opts.AllScopes && opts.Scope != "" {
+		return nil, fmt.Errorf("%w: NearDuplicates: AllScopes and a non-empty Scope are mutually exclusive", ErrInvalidArgument)
+	}
+
+	topK := opts.TopK
+	if topK == 0 {
+		topK = defaultNearDuplicateTopK
+	}
+
+	var scopeMust []*qdrant.Condition
+	if !opts.AllScopes {
+		scopeMust = []*qdrant.Condition{qdrant.NewMatch("scope", opts.Scope)}
+	}
+	var enumFilter *qdrant.Filter
+	if scopeMust != nil {
+		enumFilter = &qdrant.Filter{Must: scopeMust}
+	}
+
+	var ids []string
+	identities := make(map[string]nearDuplicateIdentity)
+	enumErr := s.scrollAllPoints(ctx, enumFilter, qdrant.NewWithPayloadInclude("short_id", "scope"), func(p *qdrant.RetrievedPoint) error {
+		id := p.Id.GetUuid()
+		ids = append(ids, id)
+		identities[id] = nearDuplicateIdentity{
+			shortID: p.Payload["short_id"].GetStringValue(),
+			scope:   p.Payload["scope"].GetStringValue(),
+		}
+		return nil
+	})
+	if enumErr != nil {
+		return nil, enumErr
+	}
+
+	scannedTotal := uint64(len(ids))
+	var queriedTotal uint64
+	collapsed := make(map[[2]string]DuplicatePair)
+
+	for _, chunk := range chunkIDs(ids, nearDuplicateBatchSize) {
+		qp := make([]*qdrant.QueryPoints, len(chunk))
+		for i, id := range chunk {
+			f := &qdrant.Filter{MustNot: []*qdrant.Condition{qdrant.NewHasID(qdrant.NewID(id))}}
+			if scopeMust != nil {
+				f.Must = scopeMust
+			}
+			qp[i] = &qdrant.QueryPoints{
+				CollectionName: s.collection,
+				Query:          qdrant.NewQueryID(qdrant.NewID(id)),
+				Filter:         f,
+				Limit:          qdrant.PtrOf(topK),
+			}
+		}
+		batchRes, qErr := s.client.QueryBatch(ctx, &qdrant.QueryBatchPoints{
+			CollectionName: s.collection, QueryPoints: qp,
+		})
+		if qErr != nil {
+			return nil, qErr
+		}
+		for i, br := range batchRes {
+			aID := chunk[i]
+			aInfo, aOK := identities[aID]
+			if !aOK {
+				continue
+			}
+			for _, sp := range br.GetResult() {
+				bID := sp.Id.GetUuid()
+				bInfo, bOK := identities[bID]
+				if !bOK {
+					// A concurrent write between enumeration and this
+					// query removed the record; skip rather than report a
+					// pair with an unresolvable identity.
+					continue
+				}
+				key := orderedPairKey(aID, bID)
+				if _, exists := collapsed[key]; exists {
+					continue
+				}
+				aScope, aShortID, bScope, bShortID := aInfo.scope, aInfo.shortID, bInfo.scope, bInfo.shortID
+				if key[0] != aID {
+					aScope, bScope = bScope, aScope
+					aShortID, bShortID = bShortID, aShortID
+				}
+				collapsed[key] = DuplicatePair{
+					A: key[0], B: key[1],
+					AShortID: aShortID, BShortID: bShortID,
+					AScope: aScope, BScope: bScope,
+					Score: sp.Score,
+				}
+			}
+		}
+		queriedTotal += uint64(len(chunk))
+		if opts.Progress != nil {
+			opts.Progress(scannedTotal, queriedTotal)
+		}
+	}
+
+	res = make([]DuplicatePair, 0, len(collapsed))
+	for _, pair := range collapsed {
+		if opts.MinScore != nil && pair.Score < *opts.MinScore {
+			continue
+		}
+		res = append(res, pair)
+	}
+	sort.Slice(res, func(i, j int) bool {
+		if res[i].Score != res[j].Score {
+			return res[i].Score > res[j].Score
+		}
+		if res[i].A != res[j].A {
+			return res[i].A < res[j].A
+		}
+		return res[i].B < res[j].B
+	})
 	return res, nil
 }
