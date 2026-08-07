@@ -910,3 +910,557 @@ func TestNearDuplicatesPayloadFrugality(t *testing.T) {
 		t.Errorf("pair = %+v, want both short ids populated", p)
 	}
 }
+
+// --- Purge (03-07-PLAN.md) ---------------------------------------------
+
+// TestPurgeFilterPathActive pins the ONE predicate derivePurgeEligible and
+// the CLI leaf both read to decide whether D-10's free-form filter path is
+// engaged: category/tags always engage it; older-than engages it ONLY when
+// no class is selected (alongside a class it is that class's own window
+// override instead).
+func TestPurgeFilterPathActive(t *testing.T) {
+	cases := []struct {
+		name string
+		opts PurgeOptions
+		want bool
+	}{
+		{"nothing", PurgeOptions{}, false},
+		{"class only", PurgeOptions{Classes: []PurgeClass{PurgeClassArchived}}, false},
+		{"class plus older-than is a window override", PurgeOptions{Classes: []PurgeClass{PurgeClassArchived}, OlderThan: time.Hour}, false},
+		{"category alone", PurgeOptions{Category: "decision"}, true},
+		{"tags alone", PurgeOptions{Tags: []string{"x"}}, true},
+		{"older-than alone (no class)", PurgeOptions{OlderThan: time.Hour}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := PurgeFilterPathActive(tc.opts); got != tc.want {
+				t.Errorf("PurgeFilterPathActive(%+v) = %v, want %v", tc.opts, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestCheckExtractGate is a pure (no Qdrant) table test over
+// checkExtractGate's two paths, run directly against hand-built
+// purgeCandidate/milestoneSummaryRecord values -- no store, no RPC.
+func TestCheckExtractGate(t *testing.T) {
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	successor := "11111111-0000-0000-0000-000000000001"
+
+	t.Run("empty candidate set passes trivially", func(t *testing.T) {
+		if err := checkExtractGate(nil, nil); err != nil {
+			t.Fatalf("checkExtractGate(nil, nil) = %v, want nil", err)
+		}
+	})
+
+	t.Run("per-record link satisfies the gate", func(t *testing.T) {
+		cands := []purgeCandidate{{
+			ID: "c1", Scope: "s", CreatedAt: base,
+			SupersededBy: &successor, SuccessorExists: true, SuccessorCreatedAt: base.Add(time.Hour),
+		}}
+		if err := checkExtractGate(cands, nil); err != nil {
+			t.Fatalf("checkExtractGate with a valid successor = %v, want nil", err)
+		}
+	})
+
+	t.Run("nonexistent extraction-link target fails the gate", func(t *testing.T) {
+		cands := []purgeCandidate{{
+			ID: "c1", Scope: "s", CreatedAt: base,
+			SupersededBy: &successor, SuccessorExists: false,
+		}}
+		if err := checkExtractGate(cands, nil); err == nil {
+			t.Fatal("checkExtractGate with a nonexistent successor = nil, want an error")
+		}
+	})
+
+	t.Run("no link and no qualifying summary fails, deletes nothing", func(t *testing.T) {
+		cands := []purgeCandidate{{ID: "c1", Scope: "s", CreatedAt: base}}
+		if err := checkExtractGate(cands, nil); err == nil {
+			t.Fatal("checkExtractGate with no link and no summary = nil, want an error")
+		}
+	})
+
+	t.Run("qualifying milestone summary satisfies the batch floor", func(t *testing.T) {
+		cands := []purgeCandidate{{ID: "c1", Scope: "s", CreatedAt: base}}
+		ms := []milestoneSummaryRecord{{ID: "m1", Scope: "s", CreatedAt: base.Add(time.Hour)}}
+		if err := checkExtractGate(cands, ms); err != nil {
+			t.Fatalf("checkExtractGate with a qualifying summary = %v, want nil", err)
+		}
+	})
+
+	t.Run("milestone summary predating the newest candidate fails the gate", func(t *testing.T) {
+		cands := []purgeCandidate{
+			{ID: "c1", Scope: "s", CreatedAt: base},
+			{ID: "c2", Scope: "s", CreatedAt: base.Add(2 * time.Hour)}, // newest
+		}
+		ms := []milestoneSummaryRecord{{ID: "m1", Scope: "s", CreatedAt: base.Add(time.Hour)}} // predates c2
+		if err := checkExtractGate(cands, ms); err == nil {
+			t.Fatal("checkExtractGate with a summary older than the newest candidate = nil, want an error")
+		}
+	})
+
+	t.Run("milestone summary in a different scope does not cover a candidate", func(t *testing.T) {
+		cands := []purgeCandidate{{ID: "c1", Scope: "scope-a", CreatedAt: base}}
+		ms := []milestoneSummaryRecord{{ID: "m1", Scope: "scope-b", CreatedAt: base.Add(time.Hour)}}
+		if err := checkExtractGate(cands, ms); err == nil {
+			t.Fatal("checkExtractGate with a cross-scope summary = nil, want an error")
+		}
+	})
+}
+
+// TestExtractGateIgnoresCallerSuppliedLinkTag is the gate against reverting
+// checkExtractGate's per-record path to a caller-mintable tag.
+//
+// This is a MUTATION CHECK (inject-and-revert), not RED-first: Task 2 writes
+// the SupersededBy-reading gate directly, so the tag-reading failure state
+// never arises naturally in task order. See the plan SUMMARY for the
+// observed injected-defect failure line.
+func TestExtractGateIgnoresCallerSuppliedLinkTag(t *testing.T) {
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// A candidate carrying ONLY a caller-supplied tag naming a successor
+	// (SupersededBy left nil) must NOT pass the per-record path.
+	tagOnly := purgeCandidate{ID: "c1", Scope: "s", CreatedAt: base}
+	if err := checkExtractGate([]purgeCandidate{tagOnly}, nil); err == nil {
+		t.Fatal("a candidate with no SupersededBy (only a hypothetical caller tag) passed the gate -- " +
+			"the per-record path must read the server-set link, never a tag")
+	}
+
+	// The real, server-set link DOES pass.
+	successor := "22222222-0000-0000-0000-000000000002"
+	linked := purgeCandidate{
+		ID: "c2", Scope: "s", CreatedAt: base,
+		SupersededBy: &successor, SuccessorExists: true, SuccessorCreatedAt: base.Add(time.Hour),
+	}
+	if err := checkExtractGate([]purgeCandidate{linked}, nil); err != nil {
+		t.Fatalf("a candidate with a real SupersededBy link failed the gate: %v", err)
+	}
+}
+
+// purgeTestNow anchors every purge boundary test's clock so "at cutoff" and
+// "past cutoff" fixtures are computed the same way TestCountExpiredAndPruneExpiredAgree's
+// sibling fixtures are, and so PreviewPurge/ApplyPurge (each independently
+// resolving opts.Now) agree on the SAME instant when the caller supplies it
+// explicitly.
+var purgeTestNow = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+// TestPreviewPurgeEmptyCandidateSet: a scope with nothing eligible previews
+// a verified, zero-id manifest, and ApplyPurge against it deletes nothing
+// and returns success.
+func TestPreviewPurgeEmptyCandidateSet(t *testing.T) {
+	s := newSpineTestStore(t, "spine_purge_empty")
+	ctx := context.Background()
+	const scope = "spine_purge_empty_scope"
+
+	opts := PurgeOptions{Classes: []PurgeClass{PurgeClassExpired}, Scope: scope, Now: purgeTestNow}
+	manifest, err := s.PreviewPurge(ctx, opts)
+	if err != nil {
+		t.Fatalf("PreviewPurge: %v", err)
+	}
+	if !manifest.IsVerified() {
+		t.Fatal("PreviewPurge returned an unverified manifest")
+	}
+	if len(manifest.IDs()) != 0 {
+		t.Fatalf("IDs() = %v, want empty", manifest.IDs())
+	}
+
+	res, err := s.ApplyPurge(ctx, manifest, opts)
+	if err != nil {
+		t.Fatalf("ApplyPurge: %v", err)
+	}
+	if len(res.Deleted) != 0 || len(res.Spared) != 0 || len(res.Appeared) != 0 {
+		t.Errorf("ApplyPurge on an empty manifest = %+v, want all-empty", res)
+	}
+}
+
+// TestPurgeSupersededPastGraceSelfSatisfiesGate proves PurgeClassSuperseded's
+// named self-satisfying property (checkExtractGate's per-record path reads
+// the SAME SupersededBy field the class itself requires to classify a
+// record eligible): a superseded record whose successor exists and
+// postdates it, past the grace window, previews and applies cleanly with no
+// extra artifact.
+func TestPurgeSupersededPastGraceSelfSatisfiesGate(t *testing.T) {
+	s := newSpineTestStore(t, "spine_purge_superseded")
+	ctx := context.Background()
+	const scope = "spine_purge_superseded_scope"
+
+	successorID := "60000000-0000-0000-0000-000000000002"
+	targetID := "60000000-0000-0000-0000-000000000001"
+	seedSpineMemory(t, s, Memory{
+		ID: successorID, Content: "successor", Scope: scope, Category: "decision",
+		Owner: "owner-a", CreatedAt: purgeTestNow.Add(-2 * time.Hour),
+	})
+	seedSpineMemory(t, s, Memory{
+		ID: targetID, Content: "superseded", Scope: scope, Category: "decision",
+		Owner: "owner-a", CreatedAt: purgeTestNow.Add(-3 * time.Hour), SupersededBy: &successorID,
+	})
+
+	opts := PurgeOptions{Classes: []PurgeClass{PurgeClassSuperseded}, Scope: scope, Now: purgeTestNow}
+	manifest, err := s.PreviewPurge(ctx, opts)
+	if err != nil {
+		t.Fatalf("PreviewPurge: %v", err)
+	}
+	if ids := manifest.IDs(); len(ids) != 1 || ids[0] != targetID {
+		t.Fatalf("PreviewPurge IDs = %v, want [%s]", ids, targetID)
+	}
+
+	res, err := s.ApplyPurge(ctx, manifest, opts)
+	if err != nil {
+		t.Fatalf("ApplyPurge: %v", err)
+	}
+	if len(res.Deleted) != 1 || res.Deleted[0] != targetID {
+		t.Fatalf("Deleted = %v, want [%s]", res.Deleted, targetID)
+	}
+	if _, gerr := s.Get(ctx, targetID); !errors.Is(gerr, ErrNotFound) {
+		t.Errorf("target still present after ApplyPurge: err=%v", gerr)
+	}
+	if _, gerr := s.Get(ctx, successorID); gerr != nil {
+		t.Errorf("successor was deleted (it was never a candidate): %v", gerr)
+	}
+}
+
+// TestPurgeBatchFloorRequiresNewerMilestoneSummary covers D-09's batch floor:
+// a candidate with no per-record link is blocked without a qualifying
+// milestone-summary record, and passes once one exists in-scope with a
+// later CreatedAt -- which is itself excluded from the deleted set even
+// though it independently matches the selected class/filter.
+func TestPurgeBatchFloorRequiresNewerMilestoneSummary(t *testing.T) {
+	s := newSpineTestStore(t, "spine_purge_batch_floor")
+	ctx := context.Background()
+	const scope = "spine_purge_batch_floor_scope"
+
+	past := purgeTestNow.Add(-48 * time.Hour)
+	candidateID := "61000000-0000-0000-0000-000000000001"
+	seedSpineMemory(t, s, Memory{
+		ID: candidateID, Content: "no link", Scope: scope, Category: "decision",
+		Owner: "owner-a", CreatedAt: purgeTestNow.Add(-72 * time.Hour), NotAfter: &past,
+	})
+
+	opts := PurgeOptions{Classes: []PurgeClass{PurgeClassExpired}, Scope: scope, Now: purgeTestNow}
+
+	// No milestone-summary record yet: the gate blocks, nothing is deleted.
+	if _, err := s.PreviewPurge(ctx, opts); err == nil {
+		t.Fatal("PreviewPurge with no per-record link and no milestone summary = nil error, want the extract gate to fail")
+	}
+	if _, gerr := s.Get(ctx, candidateID); gerr != nil {
+		t.Fatalf("candidate missing after a FAILED preview: %v", gerr)
+	}
+
+	// Seed a qualifying milestone-summary record: same scope, later
+	// CreatedAt than the candidate, carrying the marker tag. Its own
+	// NotAfter also lapses (so it would independently match the filter
+	// too) -- it must still never be deleted.
+	summaryID := "61000000-0000-0000-0000-000000000002"
+	summaryPast := purgeTestNow.Add(-1 * time.Hour)
+	seedSpineMemory(t, s, Memory{
+		ID: summaryID, Content: "milestone summary", Scope: scope, Category: "decision",
+		Owner: "owner-a", CreatedAt: purgeTestNow.Add(-24 * time.Hour), NotAfter: &summaryPast,
+		Tags: []string{purgeMilestoneSummaryTag},
+	})
+
+	manifest, err := s.PreviewPurge(ctx, opts)
+	if err != nil {
+		t.Fatalf("PreviewPurge after seeding a qualifying summary: %v", err)
+	}
+	if ids := manifest.IDs(); len(ids) != 1 || ids[0] != candidateID {
+		t.Fatalf("IDs = %v, want [%s] (the summary record must never be a candidate)", ids, candidateID)
+	}
+
+	res, err := s.ApplyPurge(ctx, manifest, opts)
+	if err != nil {
+		t.Fatalf("ApplyPurge: %v", err)
+	}
+	if len(res.Deleted) != 1 || res.Deleted[0] != candidateID {
+		t.Fatalf("Deleted = %v, want [%s]", res.Deleted, candidateID)
+	}
+	if _, gerr := s.Get(ctx, summaryID); gerr != nil {
+		t.Errorf("milestone-summary record was deleted: %v", gerr)
+	}
+}
+
+// TestPurgeExcludesDiscoveryAndRuleCategories proves the unconditional
+// category exclusion (rule 7smp8vy9hr step 4) survives even when a record
+// would otherwise match every selected class AND the free-form filter path.
+func TestPurgeExcludesDiscoveryAndRuleCategories(t *testing.T) {
+	s := newSpineTestStore(t, "spine_purge_excluded_categories")
+	ctx := context.Background()
+	const scope = "spine_purge_excluded_categories_scope"
+
+	past := purgeTestNow.Add(-48 * time.Hour)
+	discID := "62000000-0000-0000-0000-000000000001"
+	ruleID := "62000000-0000-0000-0000-000000000002"
+	seedSpineMemory(t, s, Memory{
+		ID: discID, Content: "discovery", Scope: scope, Category: "discovery",
+		Owner: "owner-a", CreatedAt: purgeTestNow.Add(-72 * time.Hour), NotAfter: &past,
+	})
+	seedSpineMemory(t, s, Memory{
+		ID: ruleID, Content: "rule", Scope: scope, Category: "rule",
+		Owner: "owner-a", CreatedAt: purgeTestNow.Add(-72 * time.Hour), NotAfter: &past,
+	})
+
+	opts := PurgeOptions{Classes: []PurgeClass{PurgeClassExpired}, Scope: scope, Now: purgeTestNow}
+	manifest, err := s.PreviewPurge(ctx, opts)
+	if err != nil {
+		t.Fatalf("PreviewPurge: %v", err)
+	}
+	if ids := manifest.IDs(); len(ids) != 0 {
+		t.Fatalf("IDs = %v, want empty -- discovery/rule records must never be eligible", ids)
+	}
+
+	filterOpts := PurgeOptions{Category: "discovery", Scope: scope, Now: purgeTestNow, OlderThan: time.Hour}
+	manifest2, err := s.PreviewPurge(ctx, filterOpts)
+	if err != nil {
+		t.Fatalf("PreviewPurge (filter path): %v", err)
+	}
+	if ids := manifest2.IDs(); len(ids) != 0 {
+		t.Fatalf("IDs (filter path, category=discovery) = %v, want empty", ids)
+	}
+}
+
+// TestPurgeDerivationPaginatesEveryPage forces spineScrollBatch to 1 and
+// seeds five eligible candidates -- derivePurgeEligible must still return
+// all five, proving the derivation crosses every Qdrant page rather than
+// evaluating the batch floor against a first page. A companion assertion
+// seeds the NEWEST candidate on the last page and confirms the batch floor
+// correctly fails against a summary older than it (the milestone-summary
+// record here is deliberately OMITTED, so checkExtractGate's own failure
+// proves the newest candidate really was seen).
+func TestPurgeDerivationPaginatesEveryPage(t *testing.T) {
+	saved := spineScrollBatch
+	spineScrollBatch = 1
+	t.Cleanup(func() { spineScrollBatch = saved })
+
+	s := newSpineTestStore(t, "spine_purge_pagination_count")
+	ctx := context.Background()
+	const scope = "spine_purge_pagination_count_scope"
+
+	past := purgeTestNow.Add(-48 * time.Hour)
+	var newestID string
+	for i := 1; i <= 5; i++ {
+		id := fmt.Sprintf("64000000-0000-0000-0000-00000000000%d", i)
+		created := purgeTestNow.Add(-time.Duration(72-i) * time.Hour) // ascending CreatedAt; last seeded is newest
+		seedSpineMemory(t, s, Memory{
+			ID: id, Content: "expired", Scope: scope, Category: "decision",
+			Owner: "owner-a", CreatedAt: created, NotAfter: &past,
+		})
+		newestID = id
+	}
+	summaryID := "64000000-0000-0000-0000-000000000099"
+	seedSpineMemory(t, s, Memory{
+		ID: summaryID, Content: "summary", Scope: scope, Category: "decision",
+		Owner: "owner-a", CreatedAt: purgeTestNow, Tags: []string{purgeMilestoneSummaryTag},
+	})
+
+	opts := PurgeOptions{Classes: []PurgeClass{PurgeClassExpired}, Scope: scope, Now: purgeTestNow}
+	candidates, ms, err := s.derivePurgeEligible(ctx, opts)
+	if err != nil {
+		t.Fatalf("derivePurgeEligible: %v", err)
+	}
+	if len(candidates) != 5 {
+		t.Fatalf("candidates = %d, want 5 (batch size 1 must still cross every page)", len(candidates))
+	}
+	if len(ms) != 1 || ms[0].ID != summaryID {
+		t.Fatalf("milestoneSummaries = %v, want exactly [%s]", ms, summaryID)
+	}
+	if err := checkExtractGate(candidates, ms); err != nil {
+		t.Fatalf("checkExtractGate: %v (newest candidate id %s)", err, newestID)
+	}
+
+	// Companion assertion: a milestone-summary record that predates the
+	// NEWEST candidate (seeded on the LAST page, batch size 1) must still
+	// fail the floor -- proving the newest candidate on the final page was
+	// genuinely seen by the derivation rather than the floor accidentally
+	// passing against a truncated (first-page-only) candidate set.
+	olderSummary := milestoneSummaryRecord{ID: "stale-summary", Scope: scope, CreatedAt: purgeTestNow.Add(-time.Duration(72-3) * time.Hour)}
+	if err := checkExtractGate(candidates, []milestoneSummaryRecord{olderSummary}); err == nil {
+		t.Fatalf("checkExtractGate with a summary older than the newest (last-page) candidate = nil, want an error")
+	}
+}
+
+// TestPurgeIntersectionSparesIneligibleReportsAppeared is D-11's core
+// property: a record eligible at preview but archived (which the run's
+// selected classes never included) before apply is spared; a record that
+// becomes freshly eligible between preview and apply is reported appeared,
+// never deleted, never merged into Deleted.
+func TestPurgeIntersectionSparesIneligibleReportsAppeared(t *testing.T) {
+	s := newSpineTestStore(t, "spine_purge_intersection")
+	ctx := context.Background()
+	const scope = "spine_purge_intersection_scope"
+
+	past := purgeTestNow.Add(-48 * time.Hour)
+	sparedID := "65000000-0000-0000-0000-000000000001"
+	appearedID := "65000000-0000-0000-0000-000000000002"
+	summaryID := "65000000-0000-0000-0000-000000000099"
+
+	seedSpineMemory(t, s, Memory{
+		ID: sparedID, Content: "will be restored before apply", Scope: scope, Category: "decision",
+		Owner: "owner-a", CreatedAt: purgeTestNow.Add(-72 * time.Hour), NotAfter: &past,
+	})
+	seedSpineMemory(t, s, Memory{
+		ID: summaryID, Content: "summary", Scope: scope, Category: "decision",
+		Owner: "owner-a", CreatedAt: purgeTestNow, Tags: []string{purgeMilestoneSummaryTag},
+	})
+
+	opts := PurgeOptions{Classes: []PurgeClass{PurgeClassExpired}, Scope: scope, Now: purgeTestNow}
+	manifest, err := s.PreviewPurge(ctx, opts)
+	if err != nil {
+		t.Fatalf("PreviewPurge: %v", err)
+	}
+	if ids := manifest.IDs(); len(ids) != 1 || ids[0] != sparedID {
+		t.Fatalf("preview IDs = %v, want [%s]", ids, sparedID)
+	}
+
+	// Between preview and apply: sparedID becomes ineligible (its NotAfter
+	// is cleared via a whole-payload Upsert simulating a correction), and a
+	// brand-new record appears that independently qualifies.
+	fresh, gerr := s.Get(ctx, sparedID)
+	if gerr != nil {
+		t.Fatalf("re-fetch %s: %v", sparedID, gerr)
+	}
+	fresh.NotAfter = nil
+	if uerr := s.Upsert(ctx, fresh, []float32{0.1, 0.2, 0.3}); uerr != nil {
+		t.Fatalf("clear NotAfter on %s: %v", sparedID, uerr)
+	}
+	seedSpineMemory(t, s, Memory{
+		ID: appearedID, Content: "newly expired", Scope: scope, Category: "decision",
+		Owner: "owner-a", CreatedAt: purgeTestNow.Add(-72 * time.Hour), NotAfter: &past,
+	})
+
+	res, err := s.ApplyPurge(ctx, manifest, opts)
+	if err != nil {
+		t.Fatalf("ApplyPurge: %v", err)
+	}
+	if len(res.Deleted) != 0 {
+		t.Errorf("Deleted = %v, want empty (the only previewed id became ineligible)", res.Deleted)
+	}
+	if len(res.Spared) != 1 || res.Spared[0] != sparedID {
+		t.Errorf("Spared = %v, want [%s]", res.Spared, sparedID)
+	}
+	if len(res.Appeared) != 1 || res.Appeared[0] != appearedID {
+		t.Errorf("Appeared = %v, want [%s]", res.Appeared, appearedID)
+	}
+	if _, gerr := s.Get(ctx, sparedID); gerr != nil {
+		t.Errorf("spared record was deleted: %v", gerr)
+	}
+	if _, gerr := s.Get(ctx, appearedID); gerr != nil {
+		t.Errorf("appeared record was deleted: %v", gerr)
+	}
+}
+
+// TestApplyPurgeReRunIsNoOp: re-running ApplyPurge with the same manifest
+// after a successful apply deletes nothing further and returns success.
+func TestApplyPurgeReRunIsNoOp(t *testing.T) {
+	s := newSpineTestStore(t, "spine_purge_rerun")
+	ctx := context.Background()
+	const scope = "spine_purge_rerun_scope"
+
+	past := purgeTestNow.Add(-48 * time.Hour)
+	targetID := "66000000-0000-0000-0000-000000000001"
+	summaryID := "66000000-0000-0000-0000-000000000099"
+	seedSpineMemory(t, s, Memory{
+		ID: targetID, Content: "expired", Scope: scope, Category: "decision",
+		Owner: "owner-a", CreatedAt: purgeTestNow.Add(-72 * time.Hour), NotAfter: &past,
+	})
+	seedSpineMemory(t, s, Memory{
+		ID: summaryID, Content: "summary", Scope: scope, Category: "decision",
+		Owner: "owner-a", CreatedAt: purgeTestNow, Tags: []string{purgeMilestoneSummaryTag},
+	})
+
+	opts := PurgeOptions{Classes: []PurgeClass{PurgeClassExpired}, Scope: scope, Now: purgeTestNow}
+	manifest, err := s.PreviewPurge(ctx, opts)
+	if err != nil {
+		t.Fatalf("PreviewPurge: %v", err)
+	}
+	if _, err := s.ApplyPurge(ctx, manifest, opts); err != nil {
+		t.Fatalf("first ApplyPurge: %v", err)
+	}
+	res2, err := s.ApplyPurge(ctx, manifest, opts)
+	if err != nil {
+		t.Fatalf("second ApplyPurge (re-run): %v", err)
+	}
+	if len(res2.Deleted) != 0 {
+		t.Errorf("re-run Deleted = %v, want empty", res2.Deleted)
+	}
+}
+
+// TestPurgeBoundaries proves each of the three structural classes spares a
+// record EXACTLY at its window boundary and includes one strictly past it,
+// matching pruneCutoff's own strict-comparison semantics.
+func TestPurgeBoundaries(t *testing.T) {
+	const window = time.Hour
+
+	t.Run("expired", func(t *testing.T) {
+		s := newSpineTestStore(t, "spine_purge_boundary_expired")
+		ctx := context.Background()
+		const scope = "spine_purge_boundary_expired_scope"
+		atCutoff := purgeTestNow.Add(-window)
+		pastCutoff := atCutoff.Add(-time.Second)
+		idAt := "67000000-0000-0000-0000-000000000001"
+		idPast := "67000000-0000-0000-0000-000000000002"
+		seedSpineMemory(t, s, Memory{ID: idAt, Content: "at", Scope: scope, Category: "decision", Owner: "o", CreatedAt: purgeTestNow.Add(-3 * time.Hour), NotAfter: &atCutoff})
+		seedSpineMemory(t, s, Memory{ID: idPast, Content: "past", Scope: scope, Category: "decision", Owner: "o", CreatedAt: purgeTestNow.Add(-3 * time.Hour), NotAfter: &pastCutoff})
+
+		cands, _, err := s.derivePurgeEligible(ctx, PurgeOptions{Classes: []PurgeClass{PurgeClassExpired}, Scope: scope, OlderThan: window, Now: purgeTestNow})
+		if err != nil {
+			t.Fatalf("derivePurgeEligible: %v", err)
+		}
+		assertPurgeCandidateIDs(t, cands, idPast)
+	})
+
+	t.Run("archived", func(t *testing.T) {
+		s := newSpineTestStore(t, "spine_purge_boundary_archived")
+		ctx := context.Background()
+		const scope = "spine_purge_boundary_archived_scope"
+		atCutoff := purgeTestNow.Add(-window)
+		pastCutoff := atCutoff.Add(-time.Second)
+		idAt := "68000000-0000-0000-0000-000000000001"
+		idPast := "68000000-0000-0000-0000-000000000002"
+		seedSpineMemory(t, s, Memory{ID: idAt, Content: "at", Scope: scope, Category: "decision", Owner: "o", CreatedAt: purgeTestNow.Add(-3 * time.Hour), ArchivedAt: &atCutoff})
+		seedSpineMemory(t, s, Memory{ID: idPast, Content: "past", Scope: scope, Category: "decision", Owner: "o", CreatedAt: purgeTestNow.Add(-3 * time.Hour), ArchivedAt: &pastCutoff})
+
+		cands, _, err := s.derivePurgeEligible(ctx, PurgeOptions{Classes: []PurgeClass{PurgeClassArchived}, Scope: scope, OlderThan: window, Now: purgeTestNow})
+		if err != nil {
+			t.Fatalf("derivePurgeEligible: %v", err)
+		}
+		assertPurgeCandidateIDs(t, cands, idPast)
+	})
+
+	t.Run("superseded", func(t *testing.T) {
+		s := newSpineTestStore(t, "spine_purge_boundary_superseded")
+		ctx := context.Background()
+		const scope = "spine_purge_boundary_superseded_scope"
+		atCutoff := purgeTestNow.Add(-window)
+		pastCutoff := atCutoff.Add(-time.Second)
+
+		succAtID := "69000000-0000-0000-0000-000000000011"
+		succPastID := "69000000-0000-0000-0000-000000000012"
+		idAt := "69000000-0000-0000-0000-000000000001"
+		idPast := "69000000-0000-0000-0000-000000000002"
+		seedSpineMemory(t, s, Memory{ID: succAtID, Content: "succ-at", Scope: scope, Category: "decision", Owner: "o", CreatedAt: atCutoff})
+		seedSpineMemory(t, s, Memory{ID: succPastID, Content: "succ-past", Scope: scope, Category: "decision", Owner: "o", CreatedAt: pastCutoff})
+		seedSpineMemory(t, s, Memory{ID: idAt, Content: "at", Scope: scope, Category: "decision", Owner: "o", CreatedAt: purgeTestNow.Add(-5 * time.Hour), SupersededBy: &succAtID})
+		seedSpineMemory(t, s, Memory{ID: idPast, Content: "past", Scope: scope, Category: "decision", Owner: "o", CreatedAt: purgeTestNow.Add(-5 * time.Hour), SupersededBy: &succPastID})
+
+		cands, _, err := s.derivePurgeEligible(ctx, PurgeOptions{Classes: []PurgeClass{PurgeClassSuperseded}, Scope: scope, OlderThan: window, Now: purgeTestNow})
+		if err != nil {
+			t.Fatalf("derivePurgeEligible: %v", err)
+		}
+		assertPurgeCandidateIDs(t, cands, idPast)
+	})
+}
+
+// assertPurgeCandidateIDs asserts cands' ids equal exactly want (order
+// independent), failing the test with the full candidate list otherwise.
+func assertPurgeCandidateIDs(t *testing.T, cands []purgeCandidate, want ...string) {
+	t.Helper()
+	gotIDs := make([]string, len(cands))
+	for i, c := range cands {
+		gotIDs[i] = c.ID
+	}
+	sort.Strings(gotIDs)
+	wantSorted := append([]string(nil), want...)
+	sort.Strings(wantSorted)
+	if !reflect.DeepEqual(gotIDs, wantSorted) {
+		t.Fatalf("candidate ids = %v, want %v", gotIDs, wantSorted)
+	}
+}

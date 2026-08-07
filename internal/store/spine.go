@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/qdrant/go-client/qdrant"
@@ -804,4 +806,571 @@ func (s *Store) Restore(ctx context.Context, id string) (res ArchiveResult, err 
 		return ArchiveResult{ID: id}, err
 	}
 	return ArchiveResult{ID: id, Outcome: ArchiveOutcomeChanged}, nil
+}
+
+// PurgeClass enumerates purge's structural eligibility classes -- D-10's
+// "classes plus free-form filters, with the filter path gated harder" split.
+// Selecting one or more classes derives eligibility WITHOUT operator
+// judgment (rule 7smp8vy9hr's extract gate is the only precondition); only
+// the free-form filter path (category/tags/older-than supplied with NO
+// class selected -- see PurgeFilterPathActive) requires the additional
+// explicit --scope RulePurgeFilterRequiresScope enforces.
+type PurgeClass string
+
+const (
+	// PurgeClassSuperseded selects records whose SupersededBy names an
+	// EXISTING successor whose CreatedAt is strictly more than the window
+	// in the past. The successor's creation instant is the only server-set
+	// timestamp available to measure "how long ago was this superseded"
+	// against -- Memory carries no separate superseded-at field. A
+	// successor that does not exist (deleted after the back-stamp) never
+	// makes the candidate eligible under this class; it also fails the
+	// extract gate's per-record path for the identical reason, so the two
+	// checks agree by construction rather than by coincidence.
+	PurgeClassSuperseded PurgeClass = "superseded"
+	// PurgeClassExpired selects records whose NotAfter lapsed strictly more
+	// than the window ago -- the same not_after comparison expiredFilter
+	// (above) makes for prune-expired's sweep, but routed through purge's
+	// own extract-before-delete gate, which prune-expired's ungated sweep
+	// never applies.
+	PurgeClassExpired PurgeClass = "expired"
+	// PurgeClassArchived selects records whose ArchivedAt is strictly more
+	// than the window in the past, defaulting to
+	// purgeDefaultArchivedRetention (90 days) when the caller's window is
+	// zero -- Task 1's resolved checkpoint (confirmed 2026-08-06).
+	PurgeClassArchived PurgeClass = "archived"
+)
+
+// purgeDefaultArchivedRetention is PurgeClassArchived's default window when
+// PurgeOptions.OlderThan is zero -- Task 1's resolved checkpoint: 90 days,
+// overridable via --older-than. PurgeClassSuperseded/PurgeClassExpired have
+// no equivalent default substitution: a zero window for either genuinely
+// means "immediately eligible once superseded/expired", mirroring
+// prune-expired's own --older-than=0-means-any-past-not_after contract
+// (cmd/engram/prune.go's pruneCutoff) -- archived is the one class D-10's
+// planning explicitly names a non-zero default retention for, so only this
+// one constant exists.
+const purgeDefaultArchivedRetention = 90 * 24 * time.Hour
+
+// purgeMilestoneSummaryTag is the reserved tag literal Task 1's checkpoint
+// selected (option-a, confirmed 2026-08-06) to identify a milestone-summary
+// record for the extract gate's batch floor. Zero new surface: no schema
+// change, no seventh category, no migration -- it works today with records
+// agents already write. Stated plainly, here and everywhere this constant
+// is read: the tag itself IS caller-mintable, so a record carrying it
+// VALIDATES A CONVENTION over a real, server-timestamped artifact -- it
+// does NOT prove the record's content actually preserved anything. Never
+// call this proof. Strictly stronger than the operator attestation D-09
+// rejected (which required no artifact at all); strictly weaker than the
+// per-record superseded_by link (checkExtractGate's per-record path,
+// below).
+const purgeMilestoneSummaryTag = "engram:milestone-summary"
+
+// PurgeOptions configures derivePurgeEligible, PreviewPurge, and ApplyPurge.
+type PurgeOptions struct {
+	// Classes selects zero or more structural eligibility classes.
+	Classes []PurgeClass
+	// Scope restricts the derivation to one scope; AllScopes spans every
+	// scope. Mutually exclusive, mirroring NearDuplicateOptions.
+	Scope     string
+	AllScopes bool
+	// Category, Tags, and OlderThan constitute D-10's free-form filter
+	// path. OlderThan is shared with the structural classes' own window
+	// (see PurgeFilterPathActive's doc comment for exactly when it plays
+	// which role): supplied ALONGSIDE one or more Classes, it overrides
+	// that class's own window; supplied with NO Classes selected, it is
+	// instead a free-form "created more than this long ago" filter.
+	Category  string
+	Tags      []string
+	OlderThan time.Duration
+	// Now is the derivation instant every window/cutoff comparison reads.
+	// Zero resolves to s.now() (matching ScanSpine's own now := s.now()
+	// pattern). Exposed here -- rather than only behind a private clock
+	// field -- so a test can freeze the SAME instant across two
+	// independent PreviewPurge/ApplyPurge calls and prove they resolve
+	// identical candidate sets against unchanged data, and so the CLI
+	// layer's cliNow() seam (cmd/engram/destructive.go) threads through
+	// exactly once per invocation, mirroring pruneCutoffNow's own
+	// "compute once at the CLI layer" discipline.
+	Now time.Time
+}
+
+// PurgeFilterPathActive reports whether opts engages D-10's free-form
+// filter path -- category, tags, or older-than supplied with NO structural
+// class selected. older-than supplied ALONGSIDE one or more classes is
+// instead read as that class's own window override (PurgeClassArchived's
+// retention, in particular) and does not, by itself, engage the filter
+// path's harder RulePurgeFilterRequiresScope gate: a class is a derivation
+// the operator merely parameterizes, never a free-form judgment (D-10).
+//
+// This is the ONE predicate both derivePurgeEligible (to decide whether the
+// free-form creation-age criterion applies) and the CLI leaf (to decide
+// whether --scope is mandatory) read -- declared once, here, so the two can
+// never silently diverge.
+func PurgeFilterPathActive(opts PurgeOptions) bool {
+	return opts.Category != "" || len(opts.Tags) > 0 || (opts.OlderThan != 0 && len(opts.Classes) == 0)
+}
+
+// purgeCandidate is one purge-eligible record, as derivePurgeEligible
+// reports it: enough to render a report row, re-derive membership, and
+// evaluate checkExtractGate's per-record path -- never Content, Summary, or
+// Tags (T-03-05's sibling discipline: a purge report row never carries
+// stored substance).
+type purgeCandidate struct {
+	ID        string
+	ShortID   string
+	Scope     string
+	Category  string
+	CreatedAt time.Time
+
+	// SupersededBy/SuccessorExists/SuccessorCreatedAt back
+	// checkExtractGate's per-record path. SuccessorExists/
+	// SuccessorCreatedAt are resolved by a single targeted Get per
+	// superseded candidate at derivation time (never a second whole-spine
+	// scroll), so checkExtractGate itself stays a pure function over
+	// already-resolved data -- no ctx, no store method, trivially
+	// unit-testable, and structurally unable to issue an RPC.
+	SupersededBy       *string
+	SuccessorExists    bool
+	SuccessorCreatedAt time.Time
+}
+
+// milestoneSummaryRecord is one non-candidate record from the SAME
+// derivation sweep that carries purgeMilestoneSummaryTag -- the extract
+// gate's batch floor real, server-timestamped artifact population. Drawn
+// from the same scrollAllPoints pass that produces purgeCandidate, so it is
+// guaranteed to share the candidates' scope filter (D-09's "same scope as
+// the candidates" requirement) at zero additional RPC cost.
+type milestoneSummaryRecord struct {
+	ID        string
+	Scope     string
+	CreatedAt time.Time
+}
+
+// derivePurgeEligible is the SINGLE eligibility derivation both PreviewPurge
+// and ApplyPurge call -- one function, never two that can drift (mirroring
+// expiredFilter's own "make divergence unrepresentable" discipline, D-04).
+// It scrolls the requested population (opts.Scope, or every scope with
+// opts.AllScopes) exactly ONCE, through scrollAllPoints -- this phase's one
+// paginated whole-spine iterator; internal/store/spine.go must still carry
+// exactly one client.ScrollAndOffset call site (inside that wrapper) after
+// this addition -- and classifies every scanned record.
+//
+// discovery- and rule-category records are excluded from candidacy
+// UNCONDITIONALLY, in this derivation itself rather than at a call site, per
+// rule 7smp8vy9hr step 4: a curation tool that can reach durable knowledge
+// is worse than no curation tool. State the limit of that exclusion
+// honestly: excluding two categories does not establish that a surviving
+// decision/convention/preference/gotcha reached through the free-form
+// filter path is not ITSELF a reusable codebase fact -- deciding that is a
+// semantic judgment, explicitly Phase 4's job and out of scope here (T-03-32,
+// accepted residual risk).
+//
+// A record carrying purgeMilestoneSummaryTag is likewise excluded from
+// candidacy UNCONDITIONALLY, regardless of any class or filter match: the
+// artifact preserving a batch's content must never be deleted in the same
+// run whose batch floor it satisfies.
+func (s *Store) derivePurgeEligible(ctx context.Context, opts PurgeOptions) (candidates []purgeCandidate, milestoneSummaries []milestoneSummaryRecord, err error) {
+	now := opts.Now
+	if now.IsZero() {
+		now = s.now()
+	}
+
+	var must []*qdrant.Condition
+	if !opts.AllScopes && opts.Scope != "" {
+		must = append(must, qdrant.NewMatch("scope", opts.Scope))
+	}
+	var filter *qdrant.Filter
+	if len(must) > 0 {
+		filter = &qdrant.Filter{Must: must}
+	}
+
+	classes := make(map[PurgeClass]bool, len(opts.Classes))
+	for _, c := range opts.Classes {
+		classes[c] = true
+	}
+	filterPath := PurgeFilterPathActive(opts)
+
+	tagSet := make(map[string]bool, len(opts.Tags))
+	for _, t := range opts.Tags {
+		tagSet[t] = true
+	}
+
+	archivedWindow := opts.OlderThan
+	if archivedWindow == 0 {
+		archivedWindow = purgeDefaultArchivedRetention
+	}
+	supersededCutoff := now.Add(-opts.OlderThan)
+	expiredCutoff := now.Add(-opts.OlderThan)
+	archivedCutoff := now.Add(-archivedWindow)
+	filterAgeCutoff := now.Add(-opts.OlderThan)
+
+	scanErr := s.scrollAllPoints(ctx, filter, qdrant.NewWithPayload(true), func(p *qdrant.RetrievedPoint) error {
+		m := fromPayload(p.Id.GetUuid(), p.Payload)
+
+		if slices.Contains(m.Tags, purgeMilestoneSummaryTag) {
+			milestoneSummaries = append(milestoneSummaries, milestoneSummaryRecord{
+				ID: m.ID, Scope: m.Scope, CreatedAt: m.CreatedAt,
+			})
+			// A milestone-summary marker record is never itself a
+			// candidate -- see this function's doc comment.
+			return nil
+		}
+		if m.Category == "discovery" || m.Category == "rule" {
+			return nil
+		}
+
+		var successorExists bool
+		var successorCreatedAt time.Time
+		if m.SupersededBy != nil {
+			successor, gerr := s.Get(ctx, *m.SupersededBy)
+			switch {
+			case gerr == nil:
+				successorExists, successorCreatedAt = true, successor.CreatedAt
+			case errors.Is(gerr, ErrNotFound):
+				// The extraction-link target does not exist: leave
+				// successorExists false so both the superseded class and
+				// checkExtractGate's per-record path correctly treat this
+				// candidate as lacking a live link.
+			default:
+				return gerr
+			}
+		}
+
+		eligible := classes[PurgeClassSuperseded] && m.SupersededBy != nil && successorExists && successorCreatedAt.Before(supersededCutoff)
+		if classes[PurgeClassExpired] && m.NotAfter != nil && m.NotAfter.Before(expiredCutoff) {
+			eligible = true
+		}
+		if classes[PurgeClassArchived] && m.ArchivedAt != nil && m.ArchivedAt.Before(archivedCutoff) {
+			eligible = true
+		}
+		if filterPath {
+			matches := true
+			if opts.Category != "" && m.Category != opts.Category {
+				matches = false
+			}
+			if matches {
+				for t := range tagSet {
+					if !slices.Contains(m.Tags, t) {
+						matches = false
+						break
+					}
+				}
+			}
+			if matches && opts.OlderThan != 0 && !m.CreatedAt.Before(filterAgeCutoff) {
+				matches = false
+			}
+			if matches {
+				eligible = true
+			}
+		}
+		if !eligible {
+			return nil
+		}
+
+		candidates = append(candidates, purgeCandidate{
+			ID: m.ID, ShortID: m.ShortID, Scope: m.Scope, Category: m.Category, CreatedAt: m.CreatedAt,
+			SupersededBy: m.SupersededBy, SuccessorExists: successorExists, SuccessorCreatedAt: successorCreatedAt,
+		})
+		return nil
+	})
+	if scanErr != nil {
+		return nil, nil, scanErr
+	}
+	return candidates, milestoneSummaries, nil
+}
+
+// checkExtractGate implements rule 7smp8vy9hr's two-path extract-before-
+// delete gate (D-09) over already-resolved data -- no ctx, no store method,
+// so it is trivially unit-testable and structurally unable to issue an RPC.
+// Never a partial delete: this function has no side effect on any path, and
+// its caller (PreviewPurge/ApplyPurge) treats any non-nil return as "delete
+// nothing".
+//
+// Per-record path -- reads the SERVER-SET link, never a tag. A candidate
+// passes individually when its SupersededBy names a record that (a) exists
+// and (b) has a CreatedAt strictly after the candidate's own. Both
+// properties this package alone can produce: SupersededBy is written ONLY
+// by Store.Supersede (which verifies the target exists before back-stamping,
+// store.go's Supersede step 1-4) and PRESERVED -- never accepted from a
+// client -- by Store.Update's in-lock re-read (store.go's Update, the
+// "cur.Supersedes, cur.SupersededBy, cur.ArchivedAt = fresh...." line). A
+// candidate carrying only a caller-supplied TAG naming a successor does NOT
+// satisfy this path: tags arrive verbatim from client arguments
+// (internal/server/tools.go:920) and are replaced wholesale by
+// update_memory (internal/store/store.go's Update, "if tags != nil {
+// cur.Tags = *tags }"), so any authenticated caller could mint one without
+// preserving anything -- precisely the self-attestation this plan's own
+// second prohibition calls theatre.
+//
+// One interaction, named rather than left to be discovered: the
+// superseded-past-grace CLASS therefore self-satisfies its own gate
+// whenever its successor exists (which derivePurgeEligible already required
+// to classify it eligible under that class at all). This is correct, not
+// vacuous: a superseded record's content genuinely does live in its
+// successor, which is exactly what the gate asks for.
+//
+// Batch floor -- a real artifact with server-set ordering, and an HONEST
+// statement of what it is not. Absent a per-record link, the candidate
+// additionally passes if milestoneSummaries contains a record in the
+// candidate's own scope whose server-set CreatedAt is strictly after the
+// NEWEST candidate's (derivePurgeEligible already guarantees a
+// milestone-summary record is never itself a candidate). The marker tag
+// identifying that record (purgeMilestoneSummaryTag) IS caller-mintable, so
+// this path validates a CONVENTION over a real record, not proof of
+// preservation -- strictly stronger than the operator attestation D-09
+// rejected (no artifact required at all), strictly weaker than the
+// per-record link above. Never call this proof, here or anywhere else this
+// gate is described.
+//
+// Failing the gate returns an error naming every candidate that lacked a
+// link and what the batch floor required.
+func checkExtractGate(candidates []purgeCandidate, milestoneSummaries []milestoneSummaryRecord) error {
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	var newest time.Time
+	for _, c := range candidates {
+		if c.CreatedAt.After(newest) {
+			newest = c.CreatedAt
+		}
+	}
+
+	floorByScope := make(map[string]bool, len(milestoneSummaries))
+	for _, ms := range milestoneSummaries {
+		if !ms.CreatedAt.After(newest) {
+			continue // must postdate the NEWEST candidate, strictly
+		}
+		floorByScope[ms.Scope] = true
+	}
+
+	var lacking []string
+	for _, c := range candidates {
+		if c.SupersededBy != nil && c.SuccessorExists && c.SuccessorCreatedAt.After(c.CreatedAt) {
+			continue // per-record path satisfied
+		}
+		if floorByScope[c.Scope] {
+			continue // batch floor satisfied for this candidate's scope
+		}
+		lacking = append(lacking, c.ID)
+	}
+	if len(lacking) > 0 {
+		return fmt.Errorf(
+			"%w: extract-before-delete gate (rule 7smp8vy9hr): %d candidate(s) lack a per-record superseded_by "+
+				"link, and no qualifying milestone-summary record (tag %q, created after the newest candidate, "+
+				"in the same scope) covers them: %s",
+			ErrInvalidArgument, len(lacking), purgeMilestoneSummaryTag, strings.Join(lacking, ", "))
+	}
+	return nil
+}
+
+// PurgeManifest is PreviewPurge's unforgeable output and ApplyPurge's
+// required input -- carried IN-PROCESS ONLY (settled by the user 2026-08-06;
+// see 03-07-PLAN.md's "purge manifest transport is settled" section). Its
+// three fields are ALL unexported, so no composite literal written outside
+// this package can set any of them: Go forbids assigning an unexported
+// struct field across package boundaries, which is what makes an
+// off-registry store.PurgeManifest{} literal always report IsVerified()
+// false, no matter how faithfully every other value is copied from a real
+// manifest. This mirrors internal/surfaces.ConditionalRule.declared's
+// mechanism verbatim (see that field's doc comment): the marker is a
+// compile-time-impossible-to-forge shape, not a runtime check someone could
+// forget to call.
+//
+// This type MUST NEVER acquire an Encode/Token()/MarshalJSON/String() method
+// or a Parse*/Decode* constructor. An unexported field stops protecting
+// anything the moment a SECOND constructor reads operator-controlled bytes
+// and sets it -- exactly the forgeable reserved-tags design this phase's
+// cross-AI review rejected for this same reason (03-07-PLAN.md HIGH 8a/
+// cycle-2 HIGH 2). PreviewPurge is the ONLY function in this codebase that
+// sets verified, and it does so on a value that never crosses a process
+// boundary -- which is what makes the unexported marker an actual guarantee
+// rather than a speed bump. The exported method set below -- IsVerified,
+// IDs, DerivedAt -- is deliberately exactly this and nothing more: no
+// method yields transportable bytes. A reflection test
+// (internal/store/spine_forgery_test.go, built in a DIFFERENT package) pins
+// this set so an added encoder fails the suite rather than quietly widening
+// the surface.
+type PurgeManifest struct {
+	ids       []string
+	derivedAt time.Time
+
+	// verified is set ONLY by PreviewPurge, mirroring
+	// internal/surfaces.ConditionalRule's declared field verbatim.
+	// Separated into its own gofmt alignment group (a blank line above)
+	// so its declaration reads as exactly "verified bool", not
+	// "verified  bool" -- the literal key-link pattern 03-07-PLAN.md's
+	// key_links table pins.
+	verified bool
+}
+
+// IsVerified reports whether m was produced by PreviewPurge -- the only
+// function that can set the unexported verified marker. A composite literal
+// built anywhere outside internal/store always reports false here (Go's
+// unexported-field visibility rule, not a runtime check).
+func (m PurgeManifest) IsVerified() bool { return m.verified }
+
+// IDs returns a defensive copy of the eligible id set m carries.
+func (m PurgeManifest) IDs() []string {
+	out := make([]string, len(m.ids))
+	copy(out, m.ids)
+	return out
+}
+
+// DerivedAt returns the instant PreviewPurge derived m's id set at.
+func (m PurgeManifest) DerivedAt() time.Time { return m.derivedAt }
+
+// PurgeResult is ApplyPurge's report: three explicit, disjoint id sets --
+// never one field whose meaning depends on prose (mirrors ArchiveResult's
+// own explicit-outcome discipline, and T-03-22's mitigation: Appeared is
+// never merged into Deleted).
+type PurgeResult struct {
+	// Deleted is manifest.IDs() intersected with the fresh re-derivation --
+	// exactly what this call removed.
+	Deleted []string
+	// Spared is manifest.IDs() minus the fresh re-derivation: eligible at
+	// preview, ineligible (or already gone) now -- NOT deleted.
+	Spared []string
+	// Appeared is the fresh re-derivation minus manifest.IDs(): eligible
+	// now but never previewed -- NOT deleted; a re-run would include it.
+	Appeared []string
+}
+
+// PreviewPurge derives eligibility, runs the extract gate, and returns a
+// verified manifest -- performing NO write of any kind, on any path.
+func (s *Store) PreviewPurge(ctx context.Context, opts PurgeOptions) (manifest PurgeManifest, err error) {
+	ctx, span := tracer.Start(ctx, "store.PreviewPurge", trace.WithAttributes(
+		attribute.String("engram.scope", opts.Scope), attribute.Bool("engram.all_scopes", opts.AllScopes)))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "PreviewPurge", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int64("engram.result_count", int64(len(manifest.ids))))
+		}
+	}()
+
+	if opts.AllScopes && opts.Scope != "" {
+		return PurgeManifest{}, fmt.Errorf("%w: PreviewPurge: AllScopes and a non-empty Scope are mutually exclusive", ErrInvalidArgument)
+	}
+	now := opts.Now
+	if now.IsZero() {
+		now = s.now()
+	}
+
+	candidates, milestoneSummaries, derr := s.derivePurgeEligible(ctx, opts)
+	if derr != nil {
+		return PurgeManifest{}, derr
+	}
+	if gerr := checkExtractGate(candidates, milestoneSummaries); gerr != nil {
+		return PurgeManifest{}, gerr
+	}
+
+	ids := make([]string, len(candidates))
+	for i, c := range candidates {
+		ids[i] = c.ID
+	}
+	return PurgeManifest{ids: ids, derivedAt: now, verified: true}, nil
+}
+
+// ApplyPurge rejects an unverified manifest first, with an
+// invalid-argument-class error, BEFORE touching Qdrant. It then re-derives
+// eligibility fresh (the SAME derivePurgeEligible PreviewPurge calls), re-runs
+// the extract gate against that fresh derivation, computes
+// intersection = manifest.IDs() ∩ fresh ids and appeared = fresh ids \
+// manifest.IDs(), and issues exactly ONE client.Delete whose selector is a
+// filter built from qdrant.NewHasID over the intersection -- never a
+// re-evaluated structural predicate, which could delete a record that newly
+// qualified under a DIFFERENT class between preview and apply. A single RPC
+// means there is no engram-side partial-batch state to reconcile: a failure
+// is retried with a fresh preview rather than leaving "N of M deleted and
+// which N unclear" -- the existing code shows one filtered Delete
+// (store.go's PruneExpired) but does not itself establish transactional
+// behaviour across Qdrant replicas, so this is not asserted as
+// all-or-nothing at the storage layer (T-03-21's scoped claim).
+//
+// A record deleted by a concurrent writer between preview and apply is
+// simply absent from the fresh derivation -- scrollAllPoints cannot return a
+// point that no longer exists -- so it is excluded from the intersection
+// (reported Spared, never an error) rather than reaching the Delete filter
+// at all and having qdrant.NewHasID silently match zero points for it; both
+// shapes are observably a no-op for that id, which is the property this
+// requirement actually asks for.
+func (s *Store) ApplyPurge(ctx context.Context, manifest PurgeManifest, opts PurgeOptions) (result PurgeResult, err error) {
+	ctx, span := tracer.Start(ctx, "store.ApplyPurge", trace.WithAttributes(
+		attribute.String("engram.scope", opts.Scope), attribute.Bool("engram.all_scopes", opts.AllScopes)))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "ApplyPurge", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.Int64("engram.result_count", int64(len(result.Deleted))))
+		}
+	}()
+
+	if !manifest.IsVerified() {
+		return PurgeResult{}, fmt.Errorf(
+			"%w: ApplyPurge: manifest was not produced by PreviewPurge (unverified) -- refusing before issuing any RPC",
+			ErrInvalidArgument)
+	}
+	if opts.AllScopes && opts.Scope != "" {
+		return PurgeResult{}, fmt.Errorf("%w: ApplyPurge: AllScopes and a non-empty Scope are mutually exclusive", ErrInvalidArgument)
+	}
+
+	candidates, milestoneSummaries, derr := s.derivePurgeEligible(ctx, opts)
+	if derr != nil {
+		return PurgeResult{}, derr
+	}
+	if gerr := checkExtractGate(candidates, milestoneSummaries); gerr != nil {
+		return PurgeResult{}, gerr
+	}
+
+	freshIDs := make(map[string]bool, len(candidates))
+	for _, c := range candidates {
+		freshIDs[c.ID] = true
+	}
+	previewIDs := make(map[string]bool, len(manifest.ids))
+	for _, id := range manifest.ids {
+		previewIDs[id] = true
+	}
+
+	intersection := make([]string, 0, len(manifest.ids))
+	spared := make([]string, 0)
+	for _, id := range manifest.ids {
+		if freshIDs[id] {
+			intersection = append(intersection, id)
+		} else {
+			spared = append(spared, id)
+		}
+	}
+	appeared := make([]string, 0)
+	for _, c := range candidates {
+		if !previewIDs[c.ID] {
+			appeared = append(appeared, c.ID)
+		}
+	}
+
+	if len(intersection) == 0 {
+		return PurgeResult{Deleted: []string{}, Spared: spared, Appeared: appeared}, nil
+	}
+
+	pointIDs := make([]*qdrant.PointId, len(intersection))
+	for i, id := range intersection {
+		pointIDs[i] = qdrant.NewID(id)
+	}
+	delFilter := &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewHasID(pointIDs...)}}
+	if _, derr := s.client.Delete(ctx, &qdrant.DeletePoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Points: qdrant.NewPointsSelectorFilter(delFilter),
+	}); derr != nil {
+		return PurgeResult{}, derr
+	}
+	return PurgeResult{Deleted: intersection, Spared: spared, Appeared: appeared}, nil
 }
