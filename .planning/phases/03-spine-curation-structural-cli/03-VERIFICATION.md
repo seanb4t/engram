@@ -1,10 +1,19 @@
 ---
 phase: 03-spine-curation-structural-cli
 verified: 2026-08-07T16:13:39Z
-status: human_needed
+status: passed
 score: 7/7 must-haves verified
 behavior_unverified: 0
-overrides_applied: 0
+overrides_applied: 1
+human_verification_waived:
+  by: Sean
+  date: 2026-08-07
+  note: >-
+    Status was raised as human_needed by the verifier and flipped to passed on the strength of
+    the 7/7 automated verification alone. The three items below were NOT performed — they were
+    explicitly waived. They remain genuinely unverified: automation cannot settle prose
+    comprehension or real-TTY rendering, which is why the verifier flagged them. Recorded here
+    so the artifact does not claim work that was not done.
 human_verification:
   - test: "Read docs-site/src/content/docs/guides/cli.md's purge subsection cold (no code open) and confirm the concurrent-writer-scoping wording matches ApplyPurge's actual behavior (intersection-only delete, Spared/Appeared semantics, same-run-only manifest)."
     expected: "The prose an operator reads before running --apply accurately describes what the code does, with no over-claim (e.g. it must not imply cross-invocation safety or protection against operator delay)."

@@ -149,6 +149,32 @@ command a forgotten `--dry-run` merely performs the recoverable, additive
 thing the operator already asked for. The boundary sits exactly on the
 blast-radius table's `Destructive` column and nowhere else.
 
+### `spine-review scan`
+
+`engram spine-review scan --scope <scope>` (or `--all-scopes`) reports an
+inventory of the memory spine and never mutates on any path. Alongside the
+total and a per-scope/per-category breakdown, it reports the health signals
+an operator needs before deciding what to curate: how many records carry a
+summary and how many do not, how many are superseded, expired, or archived
+(three independently observable states, each read from its own field, so a
+record is never double-counted into the wrong bucket), how many carry
+citations and how many citations exist in total, and the count of distinct
+non-empty owners.
+
+That last number is what makes the Subject-less claim observable rather
+than asserted: `scan` is built on the operator tier, never on the
+Subject-gated `Search`/`List`, so a sweep that had been silently narrowed
+to one caller's bucket would report a single owner even on a collection
+holding records from several. The report also carries `scanned_at` — the
+one instant the sweep took at the top of the run and evaluated
+`expired`/`scheduled` against — so a reader knows exactly what those counts
+are relative to.
+
+`scan` counts what recall hides. Superseded and archived records are
+soft-hidden from `search_memory`/`list_memory` but still appear here, which
+is the point: an inventory that inherited recall's blind spots could not
+tell you what needs curating.
+
 ### `spine-review verify`
 
 `engram spine-review verify --scope <scope>` (or `--all-scopes`) classifies
@@ -340,7 +366,7 @@ zero-semantics, and it is not uniform across commands:**
 | Commands | `--timeout` meaning | `0` behavior |
 |---|---|---|
 | `search`, `list`, `store` | Per-RPC-call deadline | **Rejected** (usage error) |
-| `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan`, `spine-review verify`, `spine-review consolidate`, `spine-review archive`, `spine-review restore` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
+| `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan`, `spine-review verify`, `spine-review consolidate`, `spine-review archive`, `spine-review restore`, `spine-review purge` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
 | `migrate-remap-owner`, `migrate-set-owner` | Whole-sweep wall-clock budget | **Rejected** (usage error) — changed this release, see the [upgrade guide](/guides/upgrade/#6-migrate-remap-owner---timeout-0--migrate-set-owner---timeout-0-no-longer-means-unbounded) |
 
 A reader comparing `engram search --help` against `engram reindex --help`
