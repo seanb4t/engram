@@ -405,8 +405,13 @@ delete; every workaround leaves either a duplicated merged record or an unlinked
    every offending target in one response, not just the first, without breaking
    404-indistinguishability.
 
-3. A partially-applied merge is not *observable* — every target ends stamped, or none does, proven
-   against a real Qdrant with a forced mid-sequence failure. The "unrepresentable" route is closed:
+3. A partially-applied merge does not survive in the *terminal state* — once a merge attempt returns
+   and its reconciliation succeeds, every target is stamped or none is, proven against a real Qdrant
+   with a forced mid-sequence failure. Scope of the claim (narrowed 2026-08-10 after cross-AI review):
+   this is NOT "never observable at any instant". `TargetLocker` serializes writers only — `Store.Get`
+   and every recall query are lock-free — so a concurrent reader CAN observe a predecessor
+   soft-hidden in the window between Qdrant's partial write and the reconciliation pass. Claiming
+   otherwise would be unprovable. The "unrepresentable" route is closed:
    research verified against the pinned server's source (`qdrant/qdrant:v1.18.2`,
    `lib/shard/src/update.rs`) that a multi-ID `SetPayload` chunks by `PAYLOAD_OP_BATCH_SIZE = 32` and
    mutates existing points *before* raising `PointIdError` for a missing one — so an error means

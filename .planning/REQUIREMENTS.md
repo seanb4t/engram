@@ -126,9 +126,11 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
   merge path. Additive to the existing single-target form; the single-live-head rule is enforced per
   target, so an already-superseded target is still rejected.
 
-- [ ] **REQ-merge-atomicity**: A partially-applied merge is not observable — either every target ends
-  back-stamped or none does — proven against a real Qdrant with a forced mid-sequence failure, not by
-  inspection. Note (2026-08-10): "unreachable" was the original wording and rested on a premise
+- [ ] **REQ-merge-atomicity**: A partially-applied merge does not survive in the terminal state —
+  once a merge attempt returns and its reconciliation succeeds, either every target ends back-stamped
+  or none does — proven against a real Qdrant with a forced mid-sequence failure, not by inspection.
+  The claim is deliberately NOT "never observable at any instant": readers are lock-free, so a
+  concurrent `Get`/recall can see a soft-hidden predecessor mid-window. Note (2026-08-10): "unreachable" was the original wording and rested on a premise
   research falsified — a multi-ID `SetPayload` is **not** all-or-nothing at the pinned Qdrant
   (`v1.18.2`; engram `mc1d0jmh69`), so partial application is reachable and must be *detected and
   reconciled* rather than prevented by construction. The proof must therefore assert both that the
