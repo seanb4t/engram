@@ -429,11 +429,15 @@ ordering resolved without a `TargetLocker` interface change, but the in-process 
 is not reentrant, so the *resolved* target-UUID set must be deduped before acquisition or a repeated
 target self-deadlocks. `idempotency_key` resolved as supported (D-12).
 
-**Plans:** 0 plans
+**Plans:** 5 plans
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 03.1 to break down)
+- [ ] 03.1-01-PLAN.md — Tracer: promote `supersedes` to a set end to end, with tolerant decode and sorted deduped multi-lock acquisition
+- [ ] 03.1-02-PLAN.md — Detect and reconcile a partially-applied back-stamp; the REQ-merge-atomicity proof against a real Qdrant
+- [ ] 03.1-03-PLAN.md — Staged-by-class multi-fault preflight, all offenders named, 404-indistinguishability across the set
+- [ ] 03.1-04-PLAN.md — `idempotency_key` support: content-plus-target-set fingerprint, replay before the already-superseded stage
+- [ ] 03.1-05-PLAN.md — Publish the multi-target contract across docs, CLAUDE.md, and the skill, bound by a drift gate
 
 ### Phase 4: Spine Curation — Semantic (Skill)
 
