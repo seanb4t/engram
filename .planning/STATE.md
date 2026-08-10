@@ -139,6 +139,13 @@ milestone needs in working memory.
 - [Phase ?]: 02-04: tool-blast-radius is a new hand-authored anchor region in docs-site/reference/tools.md, not tied to a surfaces.ConditionalRule — proves WriteRegion/ReadRegion generalize beyond the rule registry
 - [Phase ?]: 02-05: serve/migrate-set-owner classified idempotent=false/true respectively (found unclassified live, fixed the shared table); cobra lazily registers -h/--help only inside a command's own execute() path, a cross-test determinism hazard on the shared rootCmd singleton, closed asymmetrically (forced for help golden, stripped for catalog golden)
 
+### Pending Todos
+
+[From .planning/todos/pending/ — ideas captured during sessions]
+
+- **supersede_memory cannot merge two records into one without a delete** (api, major) — folded into v0.13.x Phase 03.1; the origin analysis for that phase.
+- **Research a versioned payload-migration mechanism** (database, minor) — no stored schema/payload version exists; every evolution ships as its own one-off operator command. Deferred out of Phase 03.1.
+
 ### Blockers/Concerns
 
 **Open:**
