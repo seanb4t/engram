@@ -4,15 +4,15 @@ milestone: v0.13.x
 milestone_name: Curation & Self-Evidence
 current_phase: 4
 current_phase_name: Spine Curation — Semantic (Skill)
-status: planning
+status: executing
 stopped_at: Phase 03.1 context gathered
-last_updated: "2026-08-10T20:31:41.193Z"
+last_updated: "2026-08-10T21:35:18.137Z"
 last_activity: 2026-08-07
 last_activity_desc: Phase 3 complete, transitioned to Phase 4
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 22
+  total_plans: 27
   completed_plans: 22
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.
 
 Phase: 4 — Spine Curation — Semantic (Skill)
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-08-07 — Phase 3 complete, transitioned to Phase 4
 
 ## Deferred Items
