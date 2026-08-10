@@ -405,20 +405,29 @@ delete; every workaround leaves either a duplicated merged record or an unlinked
    every offending target in one response, not just the first, without breaking
    404-indistinguishability.
 
-3. A partially-applied merge is not reachable — either every target is stamped or none is, proven
-   against a real Qdrant with a forced mid-sequence failure. Where the design makes partial stamping
-   *unrepresentable* rather than merely tested (a single multi-ID `SetPayload`), that argument is
-   made explicitly and the Qdrant semantics it relies on are verified, not assumed.
+3. A partially-applied merge is not *observable* — every target ends stamped, or none does, proven
+   against a real Qdrant with a forced mid-sequence failure. The "unrepresentable" route is closed:
+   research verified against the pinned server's source (`qdrant/qdrant:v1.18.2`,
+   `lib/shard/src/update.rs`) that a multi-ID `SetPayload` chunks by `PAYLOAD_OP_BATCH_SIZE = 32` and
+   mutates existing points *before* raising `PointIdError` for a missing one — so an error means
+   possibly-partial, not "nothing written". The criterion is therefore met by **detection plus
+   reconciliation** (CONTEXT.md D-15): on stamp failure, compensating-delete the survivor **and**
+   clear `superseded_by` on every target left pointing at it. The proof must assert both that the
+   error surfaces AND that no surviving target carries a dangling `superseded_by` — otherwise a
+   failed merge permanently soft-hides live records via the four `IsEmpty("superseded_by")` gates.
+   Target sets are not capped at 32; the resulting cross-chunk partial-failure class is covered by
+   the same reconciliation pass and must be documented, not left implicit.
 
 4. `idempotency_key` is supported on `supersede_memory`, with the replay fingerprint keyed on
    content **and** the target set, and the replay check ordered before the already-superseded
    preflight. This completes the scope `plan T-25-10` deferred in Phase 25.
 
-**Research flag:** needs research at plan time. The per-target lock currently serializes one target
-(`store.go:2010-2016`); extending it to a set raises lock-ordering and all-or-nothing questions the
-single-target form never had. The `idempotency_key` question is now resolved (supported — see
-CONTEXT.md D-12); the open research item is whether a multi-ID `SetPayload` is all-or-nothing in the
-pinned Qdrant version.
+**Research flag:** RESOLVED at plan time (2026-08-10, `03.1-RESEARCH.md`). The open item — whether a
+multi-ID `SetPayload` is all-or-nothing in the pinned Qdrant version — is answered: **it is not**
+(engram `mc1d0jmh69`), which falsified CONTEXT.md D-06 and added D-15's reconciliation pass. Lock
+ordering resolved without a `TargetLocker` interface change, but the in-process locker's `sync.Mutex`
+is not reentrant, so the *resolved* target-UUID set must be deduped before acquisition or a repeated
+target self-deadlocks. `idempotency_key` resolved as supported (D-12).
 
 **Plans:** 0 plans
 
