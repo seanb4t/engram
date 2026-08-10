@@ -5,8 +5,8 @@ milestone_name: Curation & Self-Evidence
 current_phase: 4
 current_phase_name: Spine Curation — Semantic (Skill)
 status: planning
-stopped_at: Phase 3 context gathered
-last_updated: "2026-08-07T21:19:40.873Z"
+stopped_at: Phase 4 context gathered
+last_updated: "2026-08-10T19:28:07.275Z"
 last_activity: 2026-08-07
 last_activity_desc: Phase 3 complete, transitioned to Phase 4
 progress:
@@ -163,9 +163,9 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-06T15:44:17.182Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-spine-curation-structural-cli/03-CONTEXT.md
+Last session: 2026-08-10T19:28:07.265Z
+Stopped at: Phase 4 context gathered
+Resume file: .planning/phases/04-spine-curation-semantic-skill/04-CONTEXT.md
 
 ## Performance Metrics
 
