@@ -130,6 +130,13 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
   back-stamped or none is — proven against a real Qdrant with a forced mid-sequence failure, not by
   inspection.
 
+- [ ] **REQ-merge-idempotency**: `supersede_memory` accepts `idempotency_key`, so a merge retried
+  after an ambiguous failure replays to the original result instead of erroring or duplicating. The
+  fingerprint keys on content **and** the target set — the same content against a different set is a
+  different operation — and the replay check runs before the already-superseded preflight, so a
+  retry after an unobserved success returns its answer rather than a conflict. Completes the scope
+  `plan T-25-10` deferred in Phase 25.
+
 ### Spine Curation — Semantic (Skill)
 
 - [ ] **REQ-semantic-curation-skill**: An agent skill judges record staleness ("is this still true
@@ -215,6 +222,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-archive-tier | Phase 3 | Complete |
 | REQ-merge-supersession | Phase 03.1 | Pending |
 | REQ-merge-atomicity | Phase 03.1 | Pending |
+| REQ-merge-idempotency | Phase 03.1 | Pending |
 | REQ-semantic-curation-skill | Phase 4 | Pending |
 | REQ-consent-never-perform | Phase 4 | Pending |
 | REQ-consent-adversarial-proof | Phase 4 | Pending |

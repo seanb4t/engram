@@ -6,7 +6,7 @@ current_phase: 4
 current_phase_name: Spine Curation — Semantic (Skill)
 status: planning
 stopped_at: Phase 03.1 context gathered
-last_updated: "2026-08-10T20:25:24.685Z"
+last_updated: "2026-08-10T20:31:41.193Z"
 last_activity: 2026-08-07
 last_activity_desc: Phase 3 complete, transitioned to Phase 4
 progress:
@@ -167,6 +167,7 @@ milestone needs in working memory.
 - Phase 1 edited: edited fields: requirements, success_criteria (D-04 client-config scope expansion)
 - Phase 2 edited: edited fields: success_criteria (added D-05 six-surface scope, D-06/D-07 generated anchored regions + one drift job, D-08 derived applicability + zero-surface guard, D-10 openWorldHint, D-11 catalog blast-radius parity); applied under --force since phase is complete
 - Phase 3 edited: scope expansions D-04 (prune-expired preview-by-default hard flip), D-12 (archive/restore verbs), D-13 (--output tier-wide backfill); +REQ-destructive-preview-default, +REQ-operator-output-flag
+- Phase 03.1 edited: edited fields: success_criteria (SC1 proto premise corrected to MCP JSON schema; SC2 multi-fault rejection; SC3 unrepresentable-vs-tested), added SC4 idempotency_key, requirements (+REQ-merge-idempotency), research flag; removed duplicated Plans block
 
 ## Session Continuity
 

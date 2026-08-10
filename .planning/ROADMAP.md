@@ -387,7 +387,7 @@ record (`internal/store/store.go:2029-2032`) and `Update` refuses to let a calle
 `superseded_by` (`store.go:1755`), so there is no way to reduce two live records to one without a
 delete; every workaround leaves either a duplicated merged record or an unlinked orphan.
 
-**Requirements:** REQ-merge-supersession, REQ-merge-atomicity
+**Requirements:** REQ-merge-supersession, REQ-merge-atomicity, REQ-merge-idempotency
 
 **Depends on:** Phase 3 (`spine-review consolidate` produces the candidate pairs this verb acts on).
 
@@ -395,23 +395,32 @@ delete; every workaround leaves either a duplicated merged record or an unlinked
 
 1. `supersede_memory` accepts a set of targets and, in one logical operation, stores one new record
    and back-stamps `superseded_by` on every target — additive to the existing single-target form,
-   with no breaking proto change (a `deprecated` field still occupies its number).
+   with no breaking change to the advertised MCP JSON schema. Note: there is **no `Supersede` proto
+   RPC** — `proto/engram/v1/engram.proto` declares 11 RPCs and supersession is MCP-only, defined by
+   `supersedeArgs` (`internal/server/tools.go:614-622`). The compatibility surface is the JSON
+   schema, not a proto field number.
 
 2. The existing single-live-head rule holds per target: any target already carrying a non-empty
-   `superseded_by` is rejected, so a merge cannot resurrect a non-head record.
+   `superseded_by` is rejected, so a merge cannot resurrect a non-head record. The rejection names
+   every offending target in one response, not just the first, without breaking
+   404-indistinguishability.
 
 3. A partially-applied merge is not reachable — either every target is stamped or none is, proven
-   against a real Qdrant with a forced mid-sequence failure.
+   against a real Qdrant with a forced mid-sequence failure. Where the design makes partial stamping
+   *unrepresentable* rather than merely tested (a single multi-ID `SetPayload`), that argument is
+   made explicitly and the Qdrant semantics it relies on are verified, not assumed.
+
+4. `idempotency_key` is supported on `supersede_memory`, with the replay fingerprint keyed on
+   content **and** the target set, and the replay check ordered before the already-superseded
+   preflight. This completes the scope `plan T-25-10` deferred in Phase 25.
 
 **Research flag:** needs research at plan time. The per-target lock currently serializes one target
 (`store.go:2010-2016`); extending it to a set raises lock-ordering and all-or-nothing questions the
-single-target form never had. Whether `idempotency_key` should become supported on this verb is open.
+single-target form never had. The `idempotency_key` question is now resolved (supported — see
+CONTEXT.md D-12); the open research item is whether a multi-ID `SetPayload` is all-or-nothing in the
+pinned Qdrant version.
 
 **Plans:** 0 plans
-
-Plans:
-
-- [ ] TBD (run /gsd-plan-phase 03.1 to break down)
 
 Plans:
 
