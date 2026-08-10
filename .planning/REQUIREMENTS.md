@@ -126,9 +126,14 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
   merge path. Additive to the existing single-target form; the single-live-head rule is enforced per
   target, so an already-superseded target is still rejected.
 
-- [ ] **REQ-merge-atomicity**: A partially-applied merge is unreachable — either every target is
-  back-stamped or none is — proven against a real Qdrant with a forced mid-sequence failure, not by
-  inspection.
+- [ ] **REQ-merge-atomicity**: A partially-applied merge is not observable — either every target ends
+  back-stamped or none does — proven against a real Qdrant with a forced mid-sequence failure, not by
+  inspection. Note (2026-08-10): "unreachable" was the original wording and rested on a premise
+  research falsified — a multi-ID `SetPayload` is **not** all-or-nothing at the pinned Qdrant
+  (`v1.18.2`; engram `mc1d0jmh69`), so partial application is reachable and must be *detected and
+  reconciled* rather than prevented by construction. The proof must therefore assert both that the
+  error surfaces AND that no surviving target is left with a dangling `superseded_by` pointing at the
+  compensated survivor — otherwise a failed merge permanently soft-hides live records.
 
 - [ ] **REQ-merge-idempotency**: `supersede_memory` accepts `idempotency_key`, so a merge retried
   after an ambiguous failure replays to the original result instead of erroring or duplicating. The
