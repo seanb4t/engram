@@ -378,6 +378,45 @@ verbatim — see `research/SUMMARY.md`'s Gaps to Address.
 
 ---
 
+### Phase 03.1: Merge Supersession (INSERTED)
+
+**Goal:** `supersede_memory` accepts multiple `supersedes` targets, so consolidating a duplicate
+set links every predecessor to one surviving record — history preserved for all of them, and no
+`delete_memory` anywhere in the merge path. Today `Store.Supersede` unconditionally creates a new
+record (`internal/store/store.go:2029-2032`) and `Update` refuses to let a caller set
+`superseded_by` (`store.go:1755`), so there is no way to reduce two live records to one without a
+delete; every workaround leaves either a duplicated merged record or an unlinked orphan.
+
+**Requirements:** REQ-merge-supersession, REQ-merge-atomicity
+
+**Depends on:** Phase 3 (`spine-review consolidate` produces the candidate pairs this verb acts on).
+
+**Success criteria:**
+
+1. `supersede_memory` accepts a set of targets and, in one logical operation, stores one new record
+   and back-stamps `superseded_by` on every target — additive to the existing single-target form,
+   with no breaking proto change (a `deprecated` field still occupies its number).
+
+2. The existing single-live-head rule holds per target: any target already carrying a non-empty
+   `superseded_by` is rejected, so a merge cannot resurrect a non-head record.
+
+3. A partially-applied merge is not reachable — either every target is stamped or none is, proven
+   against a real Qdrant with a forced mid-sequence failure.
+
+**Research flag:** needs research at plan time. The per-target lock currently serializes one target
+(`store.go:2010-2016`); extending it to a set raises lock-ordering and all-or-nothing questions the
+single-target form never had. Whether `idempotency_key` should become supported on this verb is open.
+
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 03.1 to break down)
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 03.1 to break down)
+
 ### Phase 4: Spine Curation — Semantic (Skill)
 
 **Goal:** An agent can judge record staleness ("is this still true against the tree it describes")

@@ -118,11 +118,24 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
   driving the headless CLI lane gets machine-readable reports. The backfill adopts `--output` only
   and must not incidentally unify the deliberate client-vs-operator `--timeout` divergence.
 
+### Merge Supersession
+
+- [ ] **REQ-merge-supersession**: `supersede_memory` accepts multiple `supersedes` targets, storing
+  one new record and back-stamping `superseded_by` on every target, so a duplicate set collapses to
+  one surviving record with history preserved for all predecessors and no `delete_memory` in the
+  merge path. Additive to the existing single-target form; the single-live-head rule is enforced per
+  target, so an already-superseded target is still rejected.
+
+- [ ] **REQ-merge-atomicity**: A partially-applied merge is unreachable — either every target is
+  back-stamped or none is — proven against a real Qdrant with a forced mid-sequence failure, not by
+  inspection.
+
 ### Spine Curation — Semantic (Skill)
 
 - [ ] **REQ-semantic-curation-skill**: An agent skill judges record staleness ("is this still true
-  against the tree it describes") and near-duplicate identity ("are these the same fact") using only
-  already-shipped MCP tools, requiring zero new server-side code.
+  against the tree it describes") and near-duplicate identity ("are these the same fact") using the
+  engram MCP tool surface — including Phase 03.1's multi-target `supersede_memory` — and adds no
+  server-side code of its own beyond that verb.
 
 - [ ] **REQ-consent-never-perform**: Every mutation the skill identifies is proposed for user
   blessing and never performed unilaterally, reusing `store_rule`'s consent protocol rather than
@@ -200,6 +213,8 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-near-duplicate-report | Phase 3 | Complete |
 | REQ-purge-extract-gated | Phase 3 | Complete |
 | REQ-archive-tier | Phase 3 | Complete |
+| REQ-merge-supersession | Phase 03.1 | Pending |
+| REQ-merge-atomicity | Phase 03.1 | Pending |
 | REQ-semantic-curation-skill | Phase 4 | Pending |
 | REQ-consent-never-perform | Phase 4 | Pending |
 | REQ-consent-adversarial-proof | Phase 4 | Pending |
