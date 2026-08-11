@@ -9,5 +9,10 @@
     "branching_strategy": "none",
     "phase_branch_template": "phase-{phase}-{slug}",
     "create_tag": false
+  },
+  "review": {
+    "models": {
+      "opencode": "openrouter/moonshotai/kimi-k3"
+    }
   }
 }
