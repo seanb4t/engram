@@ -120,13 +120,13 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
 
 ### Merge Supersession
 
-- [ ] **REQ-merge-supersession**: `supersede_memory` accepts multiple `supersedes` targets, storing
+- [x] **REQ-merge-supersession**: `supersede_memory` accepts multiple `supersedes` targets, storing
   one new record and back-stamping `superseded_by` on every target, so a duplicate set collapses to
   one surviving record with history preserved for all predecessors and no `delete_memory` in the
   merge path. Additive to the existing single-target form; the single-live-head rule is enforced per
   target, so an already-superseded target is still rejected.
 
-- [ ] **REQ-merge-atomicity**: A partially-applied merge does not survive in the terminal state —
+- [x] **REQ-merge-atomicity**: A partially-applied merge does not survive in the terminal state —
   once a merge attempt returns and its reconciliation succeeds, either every target ends back-stamped
   or none does — proven against a real Qdrant with a forced mid-sequence failure, not by inspection.
   The claim is deliberately NOT "never observable at any instant": readers are lock-free, so a
@@ -137,7 +137,7 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
   error surfaces AND that no surviving target is left with a dangling `superseded_by` pointing at the
   compensated survivor — otherwise a failed merge permanently soft-hides live records.
 
-- [ ] **REQ-merge-idempotency**: `supersede_memory` accepts `idempotency_key`, so a merge retried
+- [x] **REQ-merge-idempotency**: `supersede_memory` accepts `idempotency_key`, so a merge retried
   after an ambiguous failure replays to the original result instead of erroring or duplicating. The
   fingerprint keys on content **and** the target set — the same content against a different set is a
   different operation — and the replay check runs before the already-superseded preflight, so a
@@ -227,9 +227,9 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-near-duplicate-report | Phase 3 | Complete |
 | REQ-purge-extract-gated | Phase 3 | Complete |
 | REQ-archive-tier | Phase 3 | Complete |
-| REQ-merge-supersession | Phase 03.1 | Pending |
-| REQ-merge-atomicity | Phase 03.1 | Pending |
-| REQ-merge-idempotency | Phase 03.1 | Pending |
+| REQ-merge-supersession | Phase 03.1 | Complete |
+| REQ-merge-atomicity | Phase 03.1 | Complete |
+| REQ-merge-idempotency | Phase 03.1 | Complete |
 | REQ-semantic-curation-skill | Phase 4 | Pending |
 | REQ-consent-never-perform | Phase 4 | Pending |
 | REQ-consent-adversarial-proof | Phase 4 | Pending |
