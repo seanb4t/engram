@@ -3485,7 +3485,9 @@ func TestSupersedeMemoryMultiRejectsRuleTargets(t *testing.T) {
 	ruleScope := "rule:repo:supersede-multi-rule-guard"
 	ordinaryScope := "iso-test:project:supersede-multi-rule-guard"
 	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+ruleScope, d.st.DeleteAll(ctx, ruleScope, store.Anonymous())) })
-	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+ordinaryScope, d.st.DeleteAll(ctx, ordinaryScope, store.Anonymous())) })
+	t.Cleanup(func() {
+		cleanupErr(t, "DeleteAll "+ordinaryScope, d.st.DeleteAll(ctx, ordinaryScope, store.Anonymous()))
+	})
 
 	_, ordinarySID, err := d.storeMemory(ctx, c, storeArgs{
 		Content: "ordinary", Scope: ordinaryScope, Category: "gotcha", Source: "user-said",
