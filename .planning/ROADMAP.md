@@ -434,7 +434,7 @@ ordering resolved without a `TargetLocker` interface change, but the in-process 
 is not reentrant, so the *resolved* target-UUID set must be deduped before acquisition or a repeated
 target self-deadlocks. `idempotency_key` resolved as supported (D-12).
 
-**Plans:** 2/6 plans executed
+**Plans:** 4/6 plans executed
 
 Plans:
 **Wave 1**
@@ -447,8 +447,8 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 03.1-02-PLAN.md — Declared mutation fault seam, classified reconciliation of a partially-applied back-stamp, and the REQ-merge-atomicity proof against a real Qdrant
-- [ ] 03.1-03-PLAN.md — Split staged preflight, all offenders named, and 404-indistinguishability extended to ambiguous handles
+- [x] 03.1-02-PLAN.md — Declared mutation fault seam, classified reconciliation of a partially-applied back-stamp, and the REQ-merge-atomicity proof against a real Qdrant
+- [x] 03.1-03-PLAN.md — Split staged preflight, all offenders named, and 404-indistinguishability extended to ambiguous handles
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
