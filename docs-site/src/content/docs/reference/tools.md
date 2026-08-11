@@ -244,26 +244,42 @@ Fetch-by-id is **not** recall-gated: it returns every state `search_memory`/
 
 ## supersede_memory
 
-Correct a memory you own by **superseding** it: stores a new record and marks the
-target `superseded_by` the new one. Correction is explicit and preserves history —
-nothing is deleted or overwritten.
+Correct one or more memories you own by **superseding** them: stores a single new,
+correcting record and marks each target `superseded_by` that new record.
+Correction is explicit and preserves history — nothing is deleted or overwritten.
+A merge may span different scopes, categories, and visibilities; there is no
+requirement that targets be alike.
 
 Takes the full `store_memory` field set for the **new, correcting** record, plus:
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `supersedes` | string | yes | The UUID **or `short_id`** of the memory this new record corrects |
+| `supersedes` | array of string | yes | One or more ids — each a full UUID or a `short_id` — of the memories this new record corrects. A one-element array is the ordinary single-target case. |
+
+There is no maximum target count — the set is unbounded. Duplicate targets — the
+same id given twice, or two spellings of the same record (a short id and its
+matching UUID) — collapse to one target; you do not need to dedupe your input
+before calling.
 
 Everything else (`content`, `scope`, `category`, `tags`, `summary`, `citations`,
 repo/workspace/worktree/base_dir, `source`) describes the new record and behaves
 exactly as in [`store_memory`](#store_memory), including `citations` — an
-optional array of structured source anchors, never inferred. `idempotency_key`
-is **not** supported on this verb — a retry creates a second correcting record
-rather than replaying the first.
+optional array of structured source anchors, never inferred.
 
-**What changes.** The new record is stored normally and carries a `supersedes` link
-to the target; the target gains a `superseded_by` link back. Both are additive
-payload links — the target's content, tags, and vector are untouched.
+**Idempotency.** `idempotency_key` is accepted on this verb — the replay
+fingerprint covers the new record's content and the target set together, so the
+same `idempotency_key` against a different target set is a conflict, not a
+replay. A retry with the same key and the same target set — in any order, with
+any duplicates — returns the original result instead of merging again. Because
+the replay check runs after target existence and ownership are checked, a retry
+whose targets were deleted, or whose ownership changed, since the first call
+does **not** replay — it is rejected as not found, the same as any other
+addressability failure.
+
+**What changes.** The new record is stored normally and carries a `supersedes`
+link to every target; each target gains a `superseded_by` link back to the new
+record. All of these are additive payload links — no target's content, tags, or
+vector is touched.
 
 **Recall behavior.** A superseded record is soft-hidden from `search_memory`,
 `list_memory`, `search_discovery`, and `list_scheduled`, so recall returns only the
@@ -275,19 +291,39 @@ maintained state — see [`get_memory`](#get_memory) and
 [`reference/memory-record`](/reference/memory-record/#archiving) — never entered or
 cleared by this verb.
 
+**If the merge fails partway through.** When stamping `superseded_by` onto every
+target fails partway through, the server compensates by removing the new record
+and clearing whatever links it managed to leave behind, so a failed merge is
+*usually* observably a no-op. Compensation talks to the same store that just
+failed, though, so when it cannot complete, the call can leave an orphaned new
+record, one or more targets still carrying a link to it, or both — there is no
+retry queue and no recovery command; the server logs the affected ids for the
+operator, and that log is the only remediation path. Once a merge attempt has
+returned and its cleanup succeeded, no partial state remains — but that is a
+statement about the state after the call, not about every instant during it: a
+concurrent, lock-free read can briefly see a target hidden while the merge is
+still in flight.
+
 **Constraints.**
 
-- **Owner-only.** Routes through the ownership *write* gate. A `shared` record you
-  can read is **not** one you can supersede; a target you do not own is
-  indistinguishable from one that does not exist (both return not-found).
+- **Owner-only.** Routes through the ownership *write* gate, per target. A
+  `shared` record you can read is **not** one you can supersede; a target you
+  do not own, a target that does not exist, and a target whose short id is
+  ambiguous (matches more than one record) are all the same rejection —
+  indistinguishable from each other — and the response names every offending
+  target of the set, not just the first.
 - **Single live head.** Superseding an already-superseded record is rejected
-  (Connect: `failed_precondition`). Always target the current head — forward chains
-  (C supersedes B supersedes A) are how history accumulates, and this makes cycles
-  and self-supersession structurally impossible.
+  (Connect: `failed_precondition`). This rule applies per target: naming even
+  one already-superseded id in the set rejects the whole call, naming every
+  such target. Always target the current head — forward chains (C supersedes
+  B supersedes A) are how history accumulates, and this makes cycles and
+  self-supersession structurally impossible.
 - **Never automatic.** No similarity threshold or write-through path ever
   supersedes a record; it is only ever this explicit call.
-- **Rules are immutable.** A `store_rule` record cannot be superseded — delete the
-  rule instead (same restriction as [`set_visibility`](#set_visibility)).
+- **Rules are immutable.** A `store_rule` record cannot be superseded — naming
+  one anywhere in the target set rejects the whole call, naming every rule
+  target — delete the rule instead (same restriction as
+  [`set_visibility`](#set_visibility)).
 
 Returns the new record's `id` and `short_id`.
 

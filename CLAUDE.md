@@ -111,19 +111,28 @@ surfaces windowed records the recall gate is hiding (`state` = `scheduled` defau
 Operators reclaim lapsed records with `engram prune-expired --apply` (preview
 by default without `--apply`; add `--older-than DUR` for a grace period).
 
-Supersession: `supersede_memory` corrects a record without losing history. It takes
-the `store_memory` field set for the new/correcting record plus `supersedes` (the
-target's id or `short_id`), stores the new record, and stamps `superseded_by` onto
-the target — additive links, never a delete or an overwrite. A superseded record is
-soft-hidden from recall (`search_memory`/`list_memory`/`search_discovery`/
-`list_scheduled`) but stays fetchable by id via `get_memory`. Owner-only (the write
-gate — a `shared` record you can read is not one you can supersede; a non-owned
-target is 404-indistinguishable); rejects an already-superseded target so a chain
-keeps a single live head (cycles/self-supersession impossible); never automatic (no
+Supersession: `supersede_memory` corrects a record without losing history.
+`supersedes` is a set of one or more target ids (full UUID or `short_id`) — a
+call names a set of duplicate RECORDS to merge into one surviving record with
+history preserved for every predecessor. It takes the `store_memory` field set
+for the new/correcting record plus `supersedes`, stores the new record, and
+stamps `superseded_by` onto every target — additive links, never a delete or an
+overwrite; the forward link is a list (one correcting record, several
+predecessors), the backward link stays a single id, and each predecessor has
+exactly one successor. A superseded record is soft-hidden from recall
+(`search_memory`/`list_memory`/`search_discovery`/`list_scheduled`) but stays
+fetchable by id via `get_memory`. Owner-only (the write gate — a `shared` record
+you can read is not one you can supersede); the single-live-head rule is
+enforced per target, an invalid set rejects the whole call, and the rejection
+names every offending target of one failure class — a non-owned target, a
+nonexistent target, and a target whose short id is ambiguous all stay
+indistinguishable from each other across the whole set; never automatic (no
 similarity or write-through path); rules cannot be superseded (delete instead);
-`idempotency_key` is not supported on this verb. Use it for *reversals* — prefer
-`update_memory` for in-place refinement and `delete_memory` for junk. Agent-facing
-guidance lives in the `curating-memory` skill.
+`idempotency_key` is accepted on this verb — the fingerprint covers content and
+the target set, and a retry after an ambiguous failure replays instead of
+duplicating. Use it for *reversals* — prefer `update_memory` for in-place
+refinement and `delete_memory` for junk. Agent-facing guidance lives in the
+`curating-memory` skill.
 
 Discovery tools: `store_discovery` / `search_discovery`. A discovery is a 5th
 `category` carrying `kind` (`map`|`fact`), `citations` (with aging `pin`s), and
