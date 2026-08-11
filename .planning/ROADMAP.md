@@ -490,14 +490,14 @@ internal precedent (v0.12.x Phase 6 rule-capture) and deserves a focused pass on
 genuinely adversarial case for this milestone's broader, all-memories scope — not a mechanical
 reuse of that template.
 
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 **Wave 1**
 
 - [x] 04-01-PLAN.md — Tracer: `curating-spine` skill carrying the near-duplicate identity path end-to-end through the verbatim consent gate, plus the no-integration COVERAGE declaration
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 04-02-PLAN.md — The adversarial cold read: an `overlapping`-misjudged-as-`same-fact` fixture proving a confident wrong proposal still stops at consent
+- [x] 04-02-PLAN.md — The adversarial cold read: an `overlapping`-misjudged-as-`same-fact` fixture proving a confident wrong proposal still stops at consent
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
