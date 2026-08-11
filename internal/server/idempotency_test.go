@@ -80,6 +80,16 @@ func TestContentFingerprintTagOrderStable(t *testing.T) {
 // TestContentFingerprintFieldSensitivity pins D-07: changing any
 // client-authored identity field changes the fingerprint, and the
 // idempotency_key itself is NOT an input.
+//
+// The "citations" case (WR-02, 03.1 cycle-4 review) closes a gap this test
+// left open despite its own doc comment naming exactly this class of
+// regression: contentFingerprint folds Citations into the hash (idempotency.go
+// citesEnc), and Phase 26 previously shipped a real bug here (26-REVIEW
+// CR-01, a forgotten field silently discarding a caller's changed value on
+// replay) — yet this test enumerated every OTHER storeArgs field without
+// ever exercising Citations. A regression that stopped citesEnc from being
+// folded into the hash (e.g. computed but never appended) would have passed
+// this test undetected.
 func TestContentFingerprintFieldSensitivity(t *testing.T) {
 	base := storeArgs{
 		Content:   "content",
@@ -91,19 +101,21 @@ func TestContentFingerprintFieldSensitivity(t *testing.T) {
 		Worktree:  "worktree",
 		BaseDir:   "basedir",
 		Summary:   "summary",
+		Citations: []citationArg{{Kind: "file", Ref: "foo.go", Locator: "1-10", Pin: "abc123", Excerpt: "excerpt"}},
 	}
 	baseFP := contentFingerprint(base)
 
 	cases := map[string]storeArgs{
-		"content":   {Content: "different", Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary},
-		"category":  {Content: base.Content, Category: "gotcha", Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary},
-		"tags":      {Content: base.Content, Category: base.Category, Tags: []string{"c", "d"}, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary},
-		"source":    {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: "agent-inferred", Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary},
-		"repo":      {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: "different-repo", Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary},
-		"workspace": {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: "different-workspace", Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary},
-		"worktree":  {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: "different-worktree", BaseDir: base.BaseDir, Summary: base.Summary},
-		"base_dir":  {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: "different-basedir", Summary: base.Summary},
-		"summary":   {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: "different-summary"},
+		"content":   {Content: "different", Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary, Citations: base.Citations},
+		"category":  {Content: base.Content, Category: "gotcha", Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary, Citations: base.Citations},
+		"tags":      {Content: base.Content, Category: base.Category, Tags: []string{"c", "d"}, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary, Citations: base.Citations},
+		"source":    {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: "agent-inferred", Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary, Citations: base.Citations},
+		"repo":      {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: "different-repo", Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary, Citations: base.Citations},
+		"workspace": {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: "different-workspace", Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary, Citations: base.Citations},
+		"worktree":  {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: "different-worktree", BaseDir: base.BaseDir, Summary: base.Summary, Citations: base.Citations},
+		"base_dir":  {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: "different-basedir", Summary: base.Summary, Citations: base.Citations},
+		"summary":   {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: "different-summary", Citations: base.Citations},
+		"citations": {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary, Citations: []citationArg{{Kind: "commit", Ref: "different-ref", Locator: "20-30", Pin: "def456", Excerpt: "different excerpt"}}},
 	}
 	for name, variant := range cases {
 		t.Run(name, func(t *testing.T) {
