@@ -182,7 +182,7 @@ func TestSchemaRequiredMovedToGoLevel(t *testing.T) {
 		// supersedeArgs.Supersedes — deps.supersedeMemory, MCP-only.
 		{"supersedeArgs.Supersedes", "supersedes", HintRequired, func() error {
 			d := &deps{}
-			_, _, err := d.supersedeMemory(ctx, c, supersedeArgs{storeArgs: validStore(), Supersedes: ""})
+			_, _, err := d.supersedeMemory(ctx, c, supersedeArgs{storeArgs: validStore(), Supersedes: nil})
 			return err
 		}},
 

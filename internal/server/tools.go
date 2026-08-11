@@ -613,9 +613,12 @@ func parseWindow(a scheduleArgs, now time.Time) (nb, na *time.Time, err error) {
 // this shadow.
 type supersedeArgs struct {
 	storeArgs
-	// Supersedes carries omitempty (D-06a); its presence check lives in
-	// deps.supersedeMemory, run before ResolvePointID.
-	Supersedes string `json:"supersedes,omitempty" jsonschema:"id (full UUID or short_id) of the memory this new record corrects/replaces"`
+	// Supersedes carries omitempty (D-06a); its non-empty-slice presence
+	// check lives in deps.supersedeMemory, run before ResolvePointID. Always
+	// an array on the wire (D-01/D-03, phase 03.1 promote — a one-element
+	// array behaves exactly as the pre-phase single-target call). No maximum
+	// length is enforced or advertised (PD-07, 03.1-00-SUMMARY.md).
+	Supersedes []string `json:"supersedes,omitempty" jsonschema:"non-empty array of ids (full UUID or short_id) of the memories this new record corrects/replaces"`
 	// IdempotencyKey shadows storeArgs.IdempotencyKey for schema purposes
 	// only — see the type doc comment above. Never read.
 	IdempotencyKey string `json:"-"`
@@ -1704,28 +1707,34 @@ func (d *deps) setVisibility(ctx context.Context, c caller, a setVisibilityArgs)
 	return mutationResult{ID: rec.ID, ShortID: rec.ShortID}, nil
 }
 
-// supersedeMemory corrects a memory the caller owns: it resolves the target,
-// gates ownership (and rejects a rule target) BEFORE embedding, embeds the
-// correcting content, and delegates the create+back-stamp to Store.Supersede
-// — which re-gates the target via getWritable/ActionWrite under its own
-// per-target lock (SC3: a caller with only read/shared access to the target
-// cannot supersede it; D-07: supersession only ever fires from this explicit
-// call, never a similarity-threshold or write-through path; CR-01: the
-// store-level re-gate is what Store.Supersede's lock makes atomic against a
-// concurrent racing caller). On store.ErrNotFound the error is re-wrapped
-// with the caller's ORIGINAL a.Supersedes input, never the resolved target
-// id — same 404-indistinguishability discipline as setVisibility/
-// storeDiscovery (a non-owner cannot learn a target exists). The new
-// correcting record is store_memory-shaped, so it is enqueued for async
-// summary-on-write like any other store_memory write.
+// supersedeMemory corrects a memory the caller owns by merging one or more
+// targets into a single new record (phase 03.1: promoted from one target to
+// a set — D-01 promote semantics, a one-element array behaves exactly as the
+// pre-phase single-target call). It resolves every target, gates ownership
+// (and rejects any rule target) for EVERY target BEFORE embedding, embeds
+// the correcting content once, and delegates the create+back-stamp to
+// Store.Supersede — which re-gates every target via getWritable/ActionWrite
+// under its own per-target locks (SC3: a caller with only read/shared access
+// to a target cannot supersede it; D-07: supersession only ever fires from
+// this explicit call, never a similarity-threshold or write-through path;
+// CR-01: the store-level re-gate is what Store.Supersede's locks make atomic
+// against a concurrent racing caller). On store.ErrNotFound the error is
+// re-wrapped with the caller's ORIGINAL a.Supersedes inputs (joined), never a
+// resolved target id — same 404-indistinguishability discipline as
+// setVisibility/storeDiscovery (a non-owner cannot learn a target exists).
+// The new correcting record is store_memory-shaped, so it is enqueued for
+// async summary-on-write like any other store_memory write, exactly once
+// regardless of target-set size.
 func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (string, string, error) {
 	if err := validateStoreArgs(a.storeArgs, d.maxSummaryBytes); err != nil {
 		return "", "", err
 	}
 	// D-06a: Supersedes carries omitempty now, so this is the sole remaining
-	// guard between an absent target and ResolvePointID below — checked
-	// before any store interaction.
-	if a.Supersedes == "" {
+	// guard between an absent target set and ResolvePointID below — checked
+	// before any store interaction. Set-shape only: no maximum length is
+	// enforced here (PD-07, 03.1-00-SUMMARY.md — the ruling explicitly bars
+	// a set-length branch in this class).
+	if len(a.Supersedes) == 0 {
 		return "", "", argErrf(classMalformed, HintRequired, "supersedes", "supersedes is required")
 	}
 	if err := validateCitations(a.Citations, 0); err != nil {
@@ -1737,37 +1746,57 @@ func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (
 	// advertised schema, not the decode). Clearing it here — before it is
 	// ever read — guarantees a caller-supplied idempotency_key is silently
 	// ignored (no replay, no error) rather than being read by some future
-	// refactor that reuses storeArgs' idempotency helpers.
+	// refactor that reuses storeArgs' idempotency helpers. (Unwound in plan
+	// 03.1-04, which adds first-class merge idempotency.)
 	a.storeArgs.IdempotencyKey = ""
-	targetID, err := d.st.ResolvePointID(ctx, a.Supersedes)
-	if err != nil {
-		return "", "", err
+
+	// Resolve every entry to its canonical UUID, then dedupe the RESOLVED
+	// set (PD-01, 03.1-00-SUMMARY.md) — dedupe MUST run over resolved ids,
+	// never the caller's original spellings, because a short_id and its own
+	// full UUID name the same target and Store.Supersede's per-target lock
+	// is a plain non-reentrant sync.Mutex: locking one resolved target twice
+	// on one goroutine deadlocks with no panic and no race-detector hit.
+	targetIDs := make([]string, 0, len(a.Supersedes))
+	for _, in := range a.Supersedes {
+		id, err := d.st.ResolvePointID(ctx, in)
+		if err != nil {
+			return "", "", err
+		}
+		targetIDs = append(targetIDs, id)
 	}
+	targetIDs = dedupeStrings(targetIDs)
+
 	// Ownership gate BEFORE the billable embed and the Qdrant-hitting
 	// MintShortID call (CR-03 cost-amplification hardening — mirrors
 	// updateMemory/storeDiscovery's ordering; TestUpdateMemoryEmbedNotCalledForNonOwner's
 	// pattern). FetchForUpdate is the same getWritable/ActionWrite gate
-	// Store.Supersede re-runs (under its per-target lock) below; a non-owner
-	// or nonexistent target is rejected here, before any spend.
-	targetRec, err := d.st.FetchForUpdate(ctx, targetID, c.Subj)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return "", "", fmt.Errorf("%w: %s", store.ErrNotFound, a.Supersedes)
+	// Store.Supersede re-runs (under its per-target locks) below; EVERY
+	// resolved target must pass before any spend. Collecting all offenders
+	// per failure class is plan 03.1-03's job — first-failure-wins is
+	// acceptable here as long as every target is gated (this loop does not
+	// stop checking after the first PASSING target).
+	for _, targetID := range targetIDs {
+		targetRec, err := d.st.FetchForUpdate(ctx, targetID, c.Subj)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return "", "", fmt.Errorf("%w: %s", store.ErrNotFound, strings.Join(a.Supersedes, ", "))
+			}
+			return "", "", err
 		}
-		return "", "", err
+		// Rule guard (CR-02): list_rules relies on Store.List's unconditional
+		// superseded_by gate to present the "complete rule set" — superseding
+		// a rule would silently vanish it from that index without going
+		// through the required delete flow. Mirrors updateMemory
+		// (tools.go:1116) / setVisibility (tools.go:1233).
+		if targetRec.Category == "rule" {
+			return "", "", fmt.Errorf("%w — delete the rule instead of superseding it", errRuleImmutable)
+		}
 	}
-	// Rule guard (CR-02): list_rules relies on Store.List's unconditional
-	// superseded_by gate to present the "complete rule set" — superseding a
-	// rule would silently vanish it from that index without going through
-	// the required delete flow. Mirrors updateMemory (tools.go:1116) /
-	// setVisibility (tools.go:1233).
-	if targetRec.Category == "rule" {
-		return "", "", fmt.Errorf("%w — delete the rule instead of superseding it", errRuleImmutable)
-	}
+
 	owner := c.Subj.Owner()
 	m := a.toMemory(owner, c.Actor, d.clock())
 	m.EmbedderIdentity = d.embedderIdentity
-	m.Supersedes = &targetID
+	m.Supersedes = targetIDs
 	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 	if err != nil {
 		return "", "", err // embed first: on error we never touch the store
@@ -1775,19 +1804,37 @@ func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (
 	if m.ShortID, err = d.st.MintShortID(ctx, nil); err != nil {
 		return "", "", err
 	}
-	if err := d.st.Supersede(ctx, m, vec, targetID, c.Subj); err != nil {
+	if err := d.st.Supersede(ctx, m, vec, targetIDs, c.Subj); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			// Re-wrap with the caller's ORIGINAL input: targetID is the
-			// resolved UUID (possibly another owner's, resolved from their
-			// short id), and Supersede embeds it in ErrNotFound — echoing
-			// targetID would leak the real UUID (404-indistinguishability).
+			// Re-wrap with the caller's ORIGINAL inputs, joined: targetIDs
+			// are resolved UUIDs (possibly another owner's, resolved from
+			// their short id), and Supersede embeds them in ErrNotFound —
+			// echoing them would leak the real UUID (404-indistinguishability).
 			// Mirrors setVisibility/storeDiscovery.
-			return "", "", fmt.Errorf("%w: %s", store.ErrNotFound, a.Supersedes)
+			return "", "", fmt.Errorf("%w: %s", store.ErrNotFound, strings.Join(a.Supersedes, ", "))
 		}
 		return "", "", err
 	}
 	d.summaryQueue.tryEnqueue(m.ID)
 	return m.ID, m.ShortID, nil
+}
+
+// dedupeStrings returns in with duplicate entries removed, preserving the
+// order of first occurrence. Used to collapse a caller's resolved
+// supersede-target UUID set (PD-01) before it reaches Store.Supersede's
+// per-target locks, which are not safe to acquire twice for the same id in
+// one call (the in-process locker is a plain non-reentrant sync.Mutex).
+func dedupeStrings(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
 }
 
 // Register wires the memory tools onto the MCP server. It accepts a pre-built
@@ -2082,14 +2129,14 @@ func registerTools(s *mcp.Server, d *deps) error {
 			return textResult("visibility updated"), nil, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "supersede_memory", Description: "Correct a memory you own by superseding it: stores a new record and marks the target superseded_by the new one. The target is soft-hidden from search_memory/list_memory but remains fetchable via get_memory — history is preserved, nothing is deleted or overwritten. Rejects if the target is already superseded (single live head per chain). The target id may be the full UUID or short_id.", Annotations: annotationsFor("supersede_memory")},
+	mcp.AddTool(s, &mcp.Tool{Name: "supersede_memory", Description: "Correct a memory you own by superseding one or more targets: stores a single new record and marks each target superseded_by the new one. Targets are soft-hidden from search_memory/list_memory but remain fetchable via get_memory — history is preserved, nothing is deleted or overwritten. Rejects if any target is already superseded (single live head per chain). Each target id may be the full UUID or short_id.", Annotations: annotationsFor("supersede_memory")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a supersedeArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
 				return nil, nil, err
 			}
 			id, sid, err := d.supersedeMemory(ctx, c, a)
-			return textResult(fmt.Sprintf("stored %s, superseding %s", id, a.Supersedes)), map[string]string{"id": id, "short_id": sid}, err
+			return textResult(fmt.Sprintf("stored %s, superseding %s", id, strings.Join(a.Supersedes, ", "))), map[string]string{"id": id, "short_id": sid}, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "store_rule", Description: "Persist a NORMATIVE rule (ground truth) for a repo/project. Call ONLY on explicit user instruction — never promote a rule unilaterally; propose it to the user instead. scope=rule:repo:<repo> or rule:project:<project>. summary is REQUIRED and is the one-line index entry (single line). Rules are always shared and user-blessed. The result includes the rule's id and short_id.", Annotations: annotationsFor("store_rule")},

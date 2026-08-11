@@ -721,7 +721,7 @@ func TestCitationsDoNotGrantWriteAccess(t *testing.T) {
 	cB := callerFor(ctxB, t)
 	_, _, err = d.supersedeMemory(ctxB, cB, supersedeArgs{
 		storeArgs:  storeArgs{Content: "attacker content", Scope: scope, Source: "user-said", Category: "decision"},
-		Supersedes: sid,
+		Supersedes: []string{sid},
 	})
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("owner B supersede attempt on a shared (readable) record: err = %v, want store.ErrNotFound", err)

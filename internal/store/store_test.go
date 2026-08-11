@@ -3111,7 +3111,7 @@ func TestSupersedeRecallGate(t *testing.T) {
 	// Codec round-trip: a record with Supersedes set (forward link) survives.
 	newRec := Memory{
 		ID: newID, Content: "new content", Scope: scope, Owner: "sub-A",
-		CreatedAt: time.Now().UTC(), Supersedes: &supersededID,
+		CreatedAt: time.Now().UTC(), Supersedes: []string{supersededID},
 	}
 	if err := s.Upsert(ctx, newRec, []float32{0.1, 0.2, 0.3}); err != nil {
 		t.Fatalf("upsert new: %v", err)
@@ -3120,8 +3120,8 @@ func TestSupersedeRecallGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get new: %v", err)
 	}
-	if gotNew.Supersedes == nil || *gotNew.Supersedes != supersededID {
-		t.Errorf("Get new: Supersedes = %v, want %q", gotNew.Supersedes, supersededID)
+	if len(gotNew.Supersedes) != 1 || gotNew.Supersedes[0] != supersededID {
+		t.Errorf("Get new: Supersedes = %v, want [%q]", gotNew.Supersedes, supersededID)
 	}
 	if gotNew.SupersededBy != nil {
 		t.Errorf("Get new: SupersededBy = %v, want nil", gotNew.SupersededBy)
@@ -3152,9 +3152,9 @@ func TestSupersedeStamp(t *testing.T) {
 
 	newMem := Memory{
 		ID: newID, Content: "corrected content", Scope: scope, Owner: "sub-A",
-		CreatedAt: time.Now().UTC(), Supersedes: &targetID,
+		CreatedAt: time.Now().UTC(), Supersedes: []string{targetID},
 	}
-	if err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, targetID, Authenticated("sub-A")); err != nil {
+	if err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, []string{targetID}, Authenticated("sub-A")); err != nil {
 		t.Fatalf("Supersede: %v", err)
 	}
 
@@ -3182,8 +3182,8 @@ func TestSupersedeStamp(t *testing.T) {
 	if gotNew.Content != "corrected content" {
 		t.Errorf("new.Content = %q, want %q", gotNew.Content, "corrected content")
 	}
-	if gotNew.Supersedes == nil || *gotNew.Supersedes != targetID {
-		t.Errorf("new.Supersedes = %v, want %q", gotNew.Supersedes, targetID)
+	if len(gotNew.Supersedes) != 1 || gotNew.Supersedes[0] != targetID {
+		t.Errorf("new.Supersedes = %v, want [%q]", gotNew.Supersedes, targetID)
 	}
 }
 
@@ -3235,9 +3235,9 @@ func TestSupersedeVectorPreserved(t *testing.T) {
 
 	newMem := Memory{
 		ID: newID, Content: "corrected", Scope: scope, Owner: "sub-A",
-		CreatedAt: time.Now().UTC(), Supersedes: &targetID,
+		CreatedAt: time.Now().UTC(), Supersedes: []string{targetID},
 	}
-	if err := s.Supersede(ctx, newMem, []float32{0.9, 0.8, 0.7}, targetID, Authenticated("sub-A")); err != nil {
+	if err := s.Supersede(ctx, newMem, []float32{0.9, 0.8, 0.7}, []string{targetID}, Authenticated("sub-A")); err != nil {
 		t.Fatalf("Supersede: %v", err)
 	}
 
@@ -3267,9 +3267,9 @@ func TestSupersedeOwnerGate(t *testing.T) {
 
 	newMem := Memory{
 		ID: newID, Content: "corrected", Scope: scope, Owner: "sub-A",
-		CreatedAt: time.Now().UTC(), Supersedes: &targetID,
+		CreatedAt: time.Now().UTC(), Supersedes: []string{targetID},
 	}
-	if err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, targetID, Authenticated("sub-A")); !errors.Is(err, ErrNotFound) {
+	if err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, []string{targetID}, Authenticated("sub-A")); !errors.Is(err, ErrNotFound) {
 		t.Errorf("non-owner Supersede: want ErrNotFound, got %v", err)
 	}
 
@@ -3302,17 +3302,17 @@ func TestSupersedeAlreadySuperseded(t *testing.T) {
 	}
 	firstNew := Memory{
 		ID: firstNewID, Content: "first correction", Scope: scope, Owner: "sub-A",
-		CreatedAt: time.Now().UTC(), Supersedes: &targetID,
+		CreatedAt: time.Now().UTC(), Supersedes: []string{targetID},
 	}
-	if err := s.Supersede(ctx, firstNew, []float32{0.2, 0.3, 0.4}, targetID, subj); err != nil {
+	if err := s.Supersede(ctx, firstNew, []float32{0.2, 0.3, 0.4}, []string{targetID}, subj); err != nil {
 		t.Fatalf("first Supersede: %v", err)
 	}
 
 	secondNew := Memory{
 		ID: secondNewID, Content: "second correction", Scope: scope, Owner: "sub-A",
-		CreatedAt: time.Now().UTC(), Supersedes: &targetID,
+		CreatedAt: time.Now().UTC(), Supersedes: []string{targetID},
 	}
-	if err := s.Supersede(ctx, secondNew, []float32{0.3, 0.4, 0.5}, targetID, subj); !errors.Is(err, ErrAlreadySuperseded) {
+	if err := s.Supersede(ctx, secondNew, []float32{0.3, 0.4, 0.5}, []string{targetID}, subj); !errors.Is(err, ErrAlreadySuperseded) {
 		t.Errorf("second Supersede on already-superseded target: want ErrAlreadySuperseded, got %v", err)
 	}
 }
@@ -3341,11 +3341,11 @@ func TestSupersedeConcurrent(t *testing.T) {
 
 	firstNew := Memory{
 		ID: firstNewID, Content: "first correction", Scope: scope, Owner: "sub-A",
-		CreatedAt: time.Now().UTC(), Supersedes: &targetID,
+		CreatedAt: time.Now().UTC(), Supersedes: []string{targetID},
 	}
 	secondNew := Memory{
 		ID: secondNewID, Content: "second correction", Scope: scope, Owner: "sub-A",
-		CreatedAt: time.Now().UTC(), Supersedes: &targetID,
+		CreatedAt: time.Now().UTC(), Supersedes: []string{targetID},
 	}
 
 	var wg sync.WaitGroup
@@ -3353,11 +3353,11 @@ func TestSupersedeConcurrent(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		errs[0] = s.Supersede(ctx, firstNew, []float32{0.2, 0.3, 0.4}, targetID, subj)
+		errs[0] = s.Supersede(ctx, firstNew, []float32{0.2, 0.3, 0.4}, []string{targetID}, subj)
 	}()
 	go func() {
 		defer wg.Done()
-		errs[1] = s.Supersede(ctx, secondNew, []float32{0.3, 0.4, 0.5}, targetID, subj)
+		errs[1] = s.Supersede(ctx, secondNew, []float32{0.3, 0.4, 0.5}, []string{targetID}, subj)
 	}()
 	wg.Wait()
 
@@ -3426,7 +3426,7 @@ func TestSupersedeVsUpdateConcurrent(t *testing.T) {
 
 	newMem := Memory{
 		ID: newID, Content: "corrected", Scope: scope, Owner: "sub-A",
-		CreatedAt: time.Now().UTC(), Supersedes: &targetID,
+		CreatedAt: time.Now().UTC(), Supersedes: []string{targetID},
 	}
 
 	var wg sync.WaitGroup
@@ -3434,7 +3434,7 @@ func TestSupersedeVsUpdateConcurrent(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		supersedeErr = s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, targetID, subj)
+		supersedeErr = s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, []string{targetID}, subj)
 	}()
 	go func() {
 		defer wg.Done()
@@ -3481,12 +3481,12 @@ func TestSupersedeForwardChain(t *testing.T) {
 	if err := s.Upsert(ctx, b, vec); err != nil {
 		t.Fatalf("upsert b: %v", err)
 	}
-	a := Memory{ID: aID, Content: "a", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC(), Supersedes: &bID}
-	if err := s.Supersede(ctx, a, vec, bID, subj); err != nil {
+	a := Memory{ID: aID, Content: "a", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC(), Supersedes: []string{bID}}
+	if err := s.Supersede(ctx, a, vec, []string{bID}, subj); err != nil {
 		t.Fatalf("Supersede b->a: %v", err)
 	}
-	c := Memory{ID: cID, Content: "c", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC(), Supersedes: &aID}
-	if err := s.Supersede(ctx, c, vec, aID, subj); err != nil {
+	c := Memory{ID: cID, Content: "c", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC(), Supersedes: []string{aID}}
+	if err := s.Supersede(ctx, c, vec, []string{aID}, subj); err != nil {
 		t.Fatalf("Supersede a->c: %v", err)
 	}
 
@@ -3591,10 +3591,489 @@ func TestSupersedeTOCTOU(t *testing.T) {
 	}
 	newMem := Memory{
 		ID: newID2, Content: "correction", Scope: scope, Owner: "sub-owner",
-		CreatedAt: time.Now().UTC(), Supersedes: &id2,
+		CreatedAt: time.Now().UTC(), Supersedes: []string{id2},
 	}
-	if err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, id2, Authenticated("sub-owner")); err == nil {
+	if err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, []string{id2}, Authenticated("sub-owner")); err == nil {
 		t.Error("Supersede on deleted target returned nil — expected an error")
+	}
+}
+
+// TestSupersedeMultiStamp (D-01 promote, the phase's tracer proof) pins
+// Store.Supersede's multi-target contract: a single call naming three owned
+// live targets stores exactly one survivor and back-stamps ALL three
+// targets to point at it. N=3 is deliberate — N=1 would pass under a
+// reintroduced singular assumption (the assumption-delta checkpoint's
+// companion invariant test).
+func TestSupersedeMultiStamp(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-multi-test:project:stamp"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+
+	target1 := "e1000000-0000-0000-0000-000000000001"
+	target2 := "e1000000-0000-0000-0000-000000000002"
+	target3 := "e1000000-0000-0000-0000-000000000003"
+	newID := "e1000000-0000-0000-0000-000000000004"
+	targets := []string{target1, target2, target3} // already lexically sorted
+
+	for _, id := range targets {
+		m := Memory{ID: id, Content: "original " + id, Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+
+	newMem := Memory{
+		ID: newID, Content: "merged content", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: targets,
+	}
+	if err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, targets, subj); err != nil {
+		t.Fatalf("Supersede: %v", err)
+	}
+
+	for _, id := range targets {
+		got, err := s.Get(ctx, id)
+		if err != nil {
+			t.Fatalf("Get %s: %v", id, err)
+		}
+		if got.SupersededBy == nil || *got.SupersededBy != newID {
+			t.Errorf("%s.SupersededBy = %v, want %q", id, got.SupersededBy, newID)
+		}
+	}
+
+	gotNew, err := s.Get(ctx, newID)
+	if err != nil {
+		t.Fatalf("Get new: %v", err)
+	}
+	if !slices.Equal(gotNew.Supersedes, targets) {
+		t.Errorf("new.Supersedes = %v, want %v (three-element list, sorted order)", gotNew.Supersedes, targets)
+	}
+
+	// Exactly one survivor: all three targets are soft-hidden, and there is
+	// no fourth record beyond newID.
+	items, _, _, err := s.List(ctx, scope, subj, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if got := recordIDs(items); len(got) != 1 || got[0] != newID {
+		t.Errorf("List after merge = %v, want exactly [%q] (targets soft-hidden)", got, newID)
+	}
+}
+
+// TestSupersedeMultiTypedErrorCarriesOffenders (PD-10) pins the typed
+// multi-target rejection: superseding two of three targets first, then
+// calling again with all three, must satisfy errors.Is against the
+// ErrAlreadySuperseded sentinel AND errors.As must yield *MultiTargetError
+// whose IDs holds BOTH offending canonical ids — not just the first — so
+// the handler tier can recover them without parsing a formatted message
+// (INV-01).
+func TestSupersedeMultiTypedErrorCarriesOffenders(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-multi-test:project:typed-error"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+
+	target1 := "e2000000-0000-0000-0000-000000000001"
+	target2 := "e2000000-0000-0000-0000-000000000002"
+	target3 := "e2000000-0000-0000-0000-000000000003"
+	firstNewID := "e2000000-0000-0000-0000-000000000004"
+	secondNewID := "e2000000-0000-0000-0000-000000000005"
+
+	for _, id := range []string{target1, target2, target3} {
+		m := Memory{ID: id, Content: "v", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+
+	// Merge target1+target2 first, leaving target3 live.
+	firstNew := Memory{
+		ID: firstNewID, Content: "first merge", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: []string{target1, target2},
+	}
+	if err := s.Supersede(ctx, firstNew, []float32{0.2, 0.3, 0.4}, []string{target1, target2}, subj); err != nil {
+		t.Fatalf("first Supersede: %v", err)
+	}
+
+	// Attempt all three: target1 and target2 are now already-superseded.
+	secondNew := Memory{
+		ID: secondNewID, Content: "second merge", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: []string{target1, target2, target3},
+	}
+	err := s.Supersede(ctx, secondNew, []float32{0.3, 0.4, 0.5}, []string{target1, target2, target3}, subj)
+	if !errors.Is(err, ErrAlreadySuperseded) {
+		t.Fatalf("second Supersede err = %v, want ErrAlreadySuperseded", err)
+	}
+	var multiErr *MultiTargetError
+	if !errors.As(err, &multiErr) {
+		t.Fatalf("errors.As(err, *MultiTargetError) failed on err = %v", err)
+	}
+	want := []string{target1, target2}
+	got := slices.Clone(multiErr.IDs)
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Errorf("multiErr.IDs = %v, want %v (both offenders)", got, want)
+	}
+
+	// target3 must not have been stamped by the rejected call.
+	gotTarget3, err := s.Get(ctx, target3)
+	if err != nil {
+		t.Fatalf("Get target3: %v", err)
+	}
+	if gotTarget3.SupersededBy != nil {
+		t.Errorf("target3.SupersededBy = %v, want nil (rejected call must not stamp)", gotTarget3.SupersededBy)
+	}
+}
+
+// TestSupersedeMultiCompensatesInline (cycle-2 review HIGH) drives the
+// back-stamp failure through the declared setPayloadKeys seam AFTER all
+// three targets have passed preflight and the survivor has been written —
+// the only way to reach the compensation branch. A nonexistent target is
+// deliberately NOT used as the trigger: getWritable rejects the whole call
+// before Upsert (store.go:1621-1625), so the survivor would never be
+// written and the branch under test would never execute — the
+// green-by-not-running class cycle-2 review found and withdrew.
+func TestSupersedeMultiCompensatesInline(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-multi-test:project:compensate"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+
+	target1 := "e3000000-0000-0000-0000-000000000001"
+	target2 := "e3000000-0000-0000-0000-000000000002"
+	target3 := "e3000000-0000-0000-0000-000000000003"
+	newID := "e3000000-0000-0000-0000-000000000004"
+	targets := []string{target1, target2, target3}
+
+	for _, id := range targets {
+		m := Memory{ID: id, Content: "v", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+
+	// Script the seam: (a) count the call, (b) perform the REAL stamp via
+	// the production default so all three targets genuinely land the
+	// back-stamp, (c) return a sentinel error — proving compensation ran
+	// against real dangling links, not against nothing-was-ever-written.
+	injected := errors.New("injected setPayloadKeys failure")
+	calls := 0
+	s.setPayloadKeys = func(ctx context.Context, ids []string, kv map[string]any) error {
+		calls++
+		if derr := s.defaultSetPayloadKeys(ctx, ids, kv); derr != nil {
+			return derr
+		}
+		return injected
+	}
+	t.Cleanup(func() { s.setPayloadKeys = nil })
+
+	newMem := Memory{
+		ID: newID, Content: "merged content", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: targets,
+	}
+	err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, targets, subj)
+	if !errors.Is(err, injected) {
+		t.Fatalf("Supersede err = %v, want the exact injected error %v", err, injected)
+	}
+	if calls != 1 {
+		t.Fatalf("setPayloadKeys called %d times, want exactly 1 (distinguishes compensated-cleanup from failed-before-back-stamp)", calls)
+	}
+
+	for _, id := range targets {
+		got, gerr := s.Get(ctx, id)
+		if gerr != nil {
+			t.Fatalf("Get %s: %v (target must still exist — no delete_memory in the merge path)", id, gerr)
+		}
+		if got.SupersededBy != nil {
+			t.Errorf("%s.SupersededBy = %v, want nil (compensation must clear the dangling link)", id, got.SupersededBy)
+		}
+	}
+
+	if _, err := s.Get(ctx, newID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Get survivor after compensation: err = %v, want ErrNotFound (survivor removed)", err)
+	}
+}
+
+// The next three tests close the class RESEARCH.md's Pitfall 4 names: an
+// accessor that returns a ZERO VALUE instead of an error (Value.GetStringValue
+// on a list-kind Value returns "" rather than erroring) makes a lost
+// tolerance indistinguishable from a record with no link at all — every test
+// on the pre-phase scalar shape would stay green while every record this
+// phase writes silently decoded to empty. This repo has been bitten by this
+// exact class twice; these tests pin the tolerance so a regression goes red.
+
+// TestSupersedesFromPayloadTolerantDecode drives supersedesFromPayload
+// directly with hand-built map[string]*qdrant.Value inputs — not through
+// Upsert, because a write-then-read round trip only ever exercises the
+// shape THIS phase writes and would leave the legacy scalar shape untested.
+func TestSupersedesFromPayloadTolerantDecode(t *testing.T) {
+	cases := []struct {
+		name string
+		p    map[string]*qdrant.Value
+		want []string
+	}{
+		{
+			name: "bare string value",
+			p:    qdrant.NewValueMap(map[string]any{"supersedes": "legacy-target-id"}),
+			want: []string{"legacy-target-id"},
+		},
+		{
+			name: "list value of three strings",
+			p:    qdrant.NewValueMap(map[string]any{"supersedes": []any{"a", "b", "c"}}),
+			want: []string{"a", "b", "c"},
+		},
+		{
+			name: "absent key",
+			p:    qdrant.NewValueMap(map[string]any{"other_key": "x"}),
+			want: nil,
+		},
+		{
+			name: "list value containing an empty string",
+			p:    qdrant.NewValueMap(map[string]any{"supersedes": []any{"a", "", "c"}}),
+			want: []string{"a", "", "c"},
+		},
+		{
+			name: "list value of length zero",
+			p:    qdrant.NewValueMap(map[string]any{"supersedes": []any{}}),
+			want: []string{},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := supersedesFromPayload(tc.p)
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("supersedesFromPayload(%+v) = %v, want %v", tc.p, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestSupersedesLegacyScalarRecordDecodes writes a record to Qdrant with the
+// "supersedes" payload key set to a BARE STRING — the pre-phase record
+// shape — bypassing payload()'s list write by issuing a raw client Upsert
+// (mirroring TestMigrateSetOwner's raw-payload-override idiom), then reads
+// it back through Store.Get and asserts Supersedes decodes to a one-element
+// list holding that string. It must not read as empty.
+func TestSupersedesLegacyScalarRecordDecodes(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-codec-test:project:legacy-scalar"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	id := "e4000000-0000-0000-0000-000000000001"
+	p := payload(Memory{ID: id, Content: "legacy record", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()})
+	p["supersedes"] = "legacy-target-id" // pre-phase scalar shape, overriding payload()'s (absent, this record has no Supersedes) list write.
+	if _, err := s.client.Upsert(ctx, &qdrant.UpsertPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Points: []*qdrant.PointStruct{{
+			Id: qdrant.NewID(id), Vectors: qdrant.NewVectors(0.1, 0.2, 0.3),
+			Payload: qdrant.NewValueMap(p),
+		}},
+	}); err != nil {
+		t.Fatalf("raw upsert: %v", err)
+	}
+
+	got, err := s.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(got.Supersedes) != 1 || got.Supersedes[0] != "legacy-target-id" {
+		t.Errorf("Supersedes = %v, want [%q] (legacy scalar must not read as empty)", got.Supersedes, "legacy-target-id")
+	}
+}
+
+// TestSupersedesListRecordDecodes writes through the normal Upsert path with
+// a three-element Supersedes and asserts Store.Get returns the same three in
+// order — the shape every record written by this phase carries.
+func TestSupersedesListRecordDecodes(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-codec-test:project:list-record"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	id := "e4000000-0000-0000-0000-000000000002"
+	want := []string{"target-a", "target-b", "target-c"}
+	m := Memory{ID: id, Content: "merged", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC(), Supersedes: want}
+	if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+
+	got, err := s.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !slices.Equal(got.Supersedes, want) {
+		t.Errorf("Supersedes = %v, want %v (same three, in order)", got.Supersedes, want)
+	}
+}
+
+// TestSupersedeMultiDuplicateTargets (D-10, RESEARCH.md Pitfall 2) proves a
+// repeated target completes rather than deadlocking: the in-process locker
+// is a plain non-reentrant sync.Mutex, so acquiring the SAME resolved
+// target twice on one goroutine would self-deadlock permanently — no panic,
+// no timeout from the mutex itself, and Go's runtime deadlock detector does
+// not catch a goroutine blocking on a lock it already holds. Guards the
+// call with a bounded wait: a regression here would hang the whole test
+// binary rather than fail, which is exactly the failure mode being guarded.
+func TestSupersedeMultiDuplicateTargets(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-multi-test:project:duplicate-targets"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+
+	targetID := "e5000000-0000-0000-0000-000000000001"
+	newID := "e5000000-0000-0000-0000-000000000002"
+	target := Memory{ID: targetID, Content: "v", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+	if err := s.Upsert(ctx, target, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert target: %v", err)
+	}
+
+	newMem := Memory{
+		ID: newID, Content: "merged", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: []string{targetID},
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, []string{targetID, targetID, targetID}, subj)
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Supersede: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Supersede with a repeated target did not return within 5s — self-deadlock on the non-reentrant per-target lock")
+	}
+
+	got, err := s.Get(ctx, targetID)
+	if err != nil {
+		t.Fatalf("Get target: %v", err)
+	}
+	if got.SupersededBy == nil || *got.SupersededBy != newID {
+		t.Errorf("target.SupersededBy = %v, want %q", got.SupersededBy, newID)
+	}
+
+	gotNew, err := s.Get(ctx, newID)
+	if err != nil {
+		t.Fatalf("Get new: %v", err)
+	}
+	if len(gotNew.Supersedes) != 1 || gotNew.Supersedes[0] != targetID {
+		t.Errorf("new.Supersedes = %v, want [%q] (target stamped once, not three)", gotNew.Supersedes, targetID)
+	}
+}
+
+// TestSupersedeMultiConcurrentOverlapping (D-10) proves sorted per-target
+// lock acquisition: two goroutines superseding overlapping-but-different
+// target sets ({A,B} and {B,C}) can never hold each other's next lock, so
+// both terminate, and at most one succeeds for the shared target B. Copies
+// TestSupersedeConcurrent's sync.WaitGroup + errs + classify-by-errors.Is
+// shape, guarded by the same bounded-wait discipline as
+// TestSupersedeMultiDuplicateTargets.
+func TestSupersedeMultiConcurrentOverlapping(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-multi-test:project:concurrent-overlapping"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+
+	aID := "e6000000-0000-0000-0000-000000000001"
+	bID := "e6000000-0000-0000-0000-000000000002"
+	cID := "e6000000-0000-0000-0000-000000000003"
+	firstNewID := "e6000000-0000-0000-0000-000000000004"
+	secondNewID := "e6000000-0000-0000-0000-000000000005"
+
+	for _, id := range []string{aID, bID, cID} {
+		m := Memory{ID: id, Content: "v", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+
+	firstNew := Memory{
+		ID: firstNewID, Content: "merge AB", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: []string{aID, bID},
+	}
+	secondNew := Memory{
+		ID: secondNewID, Content: "merge BC", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: []string{bID, cID},
+	}
+
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		errs[0] = s.Supersede(ctx, firstNew, []float32{0.2, 0.3, 0.4}, []string{aID, bID}, subj)
+	}()
+	go func() {
+		defer wg.Done()
+		errs[1] = s.Supersede(ctx, secondNew, []float32{0.3, 0.4, 0.5}, []string{bID, cID}, subj)
+	}()
+
+	waitDone := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(waitDone)
+	}()
+	select {
+	case <-waitDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("two overlapping Supersede calls did not both terminate within 10s — sorted-lock-ordering deadlock (D-10 violated)")
+	}
+
+	successes, conflicts := 0, 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, ErrAlreadySuperseded):
+			conflicts++
+		default:
+			t.Fatalf("unexpected Supersede error: %v", err)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("concurrent overlapping Supersede: got %d successes, %d conflicts (errs=%v), want exactly 1 success and 1 conflict", successes, conflicts, errs)
+	}
+
+	gotB, err := s.Get(ctx, bID)
+	if err != nil {
+		t.Fatalf("Get B: %v", err)
+	}
+	if gotB.SupersededBy == nil {
+		t.Fatal("B.SupersededBy = nil, want set to the winning call's survivor id")
+	}
+	winner := firstNewID
+	if errs[0] != nil {
+		winner = secondNewID
+	}
+	if *gotB.SupersededBy != winner {
+		t.Errorf("B.SupersededBy = %q, want %q (the winning call's survivor)", *gotB.SupersededBy, winner)
+	}
+
+	// The losing call's non-shared target (A if AB lost, C if BC lost) must
+	// not be stamped by the call that failed.
+	if errs[0] != nil {
+		gotA, err := s.Get(ctx, aID)
+		if err != nil {
+			t.Fatalf("Get A: %v", err)
+		}
+		if gotA.SupersededBy != nil {
+			t.Errorf("A.SupersededBy = %v, want nil (the failing AB call must not stamp A)", gotA.SupersededBy)
+		}
+	} else {
+		gotC, err := s.Get(ctx, cID)
+		if err != nil {
+			t.Fatalf("Get C: %v", err)
+		}
+		if gotC.SupersededBy != nil {
+			t.Errorf("C.SupersededBy = %v, want nil (the failing BC call must not stamp C)", gotC.SupersededBy)
+		}
 	}
 }
 
