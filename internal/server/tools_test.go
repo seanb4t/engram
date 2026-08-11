@@ -770,7 +770,7 @@ func TestStoreMemoryCitationsRoundTrip(t *testing.T) {
 				Content: "corrected, WITH citations", Scope: scope, Source: "user-said",
 				Category: "gotcha", Citations: cites,
 			},
-			Supersedes: targetSID,
+			Supersedes: []string{targetSID},
 		})
 		if err != nil {
 			t.Fatalf("supersedeMemory: %v", err)
@@ -2843,7 +2843,7 @@ func TestSupersedeMemory(t *testing.T) {
 
 	newID, newSID, err := d.supersedeMemory(ctx, c, supersedeArgs{
 		storeArgs:  storeArgs{Content: "corrected content", Scope: scope, Category: "gotcha", Source: "user-said"},
-		Supersedes: targetSID,
+		Supersedes: []string{targetSID},
 	})
 	if err != nil {
 		t.Fatalf("supersedeMemory: %v", err)
@@ -2872,8 +2872,8 @@ func TestSupersedeMemory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get new record: %v", err)
 	}
-	if newRec.Supersedes == nil || *newRec.Supersedes != targetID {
-		t.Errorf("newRec.Supersedes = %v, want %q", newRec.Supersedes, targetID)
+	if len(newRec.Supersedes) != 1 || newRec.Supersedes[0] != targetID {
+		t.Errorf("newRec.Supersedes = %v, want [%q]", newRec.Supersedes, targetID)
 	}
 
 	// The target must be absent from list_memory.
@@ -2906,7 +2906,7 @@ func TestSupersedeMemory(t *testing.T) {
 	otherC := callerFor(otherCtx, t)
 	_, _, err = d.supersedeMemory(otherCtx, otherC, supersedeArgs{
 		storeArgs:  storeArgs{Content: "attacker content", Scope: scope, Category: "gotcha", Source: "user-said"},
-		Supersedes: targetSID,
+		Supersedes: []string{targetSID},
 	})
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("cross-owner supersede err = %v, want store.ErrNotFound", err)
@@ -2916,6 +2916,160 @@ func TestSupersedeMemory(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), targetID) {
 		t.Errorf("cross-owner err %v leaks resolved target UUID %q (404-indistinguishability violation)", err, targetID)
+	}
+}
+
+// TestSupersedeMemoryMultiTarget (D-01 promote, the tracer's handler-tier
+// proof) drives deps.supersedeMemory with TWO owned targets in one call and
+// asserts one id/short_id pair back, both targets stamped, and one survivor
+// whose Supersedes holds both resolved ids.
+func TestSupersedeMemoryMultiTarget(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-multi")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-multi-handler"
+
+	target1ID, target1SID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original one", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store 1: %v", err)
+	}
+	target2ID, target2SID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original two", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store 2: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete target1", d.st.Delete(context.Background(), target1ID, store.Authenticated("sub-supersede-multi")))
+		cleanupErr(t, "Delete target2", d.st.Delete(context.Background(), target2ID, store.Authenticated("sub-supersede-multi")))
+	})
+
+	newID, newSID, err := d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs:  storeArgs{Content: "merged content", Scope: scope, Category: "gotcha", Source: "user-said"},
+		Supersedes: []string{target1SID, target2SID},
+	})
+	if err != nil {
+		t.Fatalf("supersedeMemory: %v", err)
+	}
+	if newID == "" || newSID == "" {
+		t.Fatalf("supersedeMemory returned empty id/short_id: id=%q short_id=%q", newID, newSID)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete new record", d.st.Delete(context.Background(), newID, store.Authenticated("sub-supersede-multi")))
+	})
+
+	for _, targetID := range []string{target1ID, target2ID} {
+		target, err := d.getMemory(ctx, c, idArgs{ID: targetID})
+		if err != nil {
+			t.Fatalf("get target %s: %v", targetID, err)
+		}
+		if target.SupersededBy == nil || *target.SupersededBy != newID {
+			t.Errorf("target %s SupersededBy = %v, want %q", targetID, target.SupersededBy, newID)
+		}
+	}
+
+	newRec, err := d.getMemory(ctx, c, idArgs{ID: newID})
+	if err != nil {
+		t.Fatalf("get new record: %v", err)
+	}
+	if len(newRec.Supersedes) != 2 {
+		t.Fatalf("newRec.Supersedes = %v, want 2 elements", newRec.Supersedes)
+	}
+	for _, want := range []string{target1ID, target2ID} {
+		if !slices.Contains(newRec.Supersedes, want) {
+			t.Errorf("newRec.Supersedes = %v, want to contain %q", newRec.Supersedes, want)
+		}
+	}
+}
+
+// TestSupersedeMemoryEmptyTargetSetRejected pins the D-06a set-shape guard:
+// an empty supersedes array is rejected as a required-argument error before
+// any store interaction, and the billable embedder is never called.
+func TestSupersedeMemoryEmptyTargetSetRejected(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-empty")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-empty-target-set"
+
+	counter := &countingEmbedder{}
+	d.em = counter
+
+	_, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs:  storeArgs{Content: "corrected content", Scope: scope, Category: "gotcha", Source: "user-said"},
+		Supersedes: []string{},
+	})
+	if err == nil {
+		t.Fatal("empty supersedes array: want an error, got nil")
+	}
+	var ae *argError
+	if !errors.As(err, &ae) {
+		t.Fatalf("err = %v, want *argError", err)
+	}
+	if ae.Hint != HintRequired || len(ae.Fields) != 1 || ae.Fields[0] != "supersedes" {
+		t.Errorf("argError = %+v, want field=supersedes hint=required", ae)
+	}
+	if counter.calls != 0 {
+		t.Errorf("empty supersedes array: embed must not be called; got %d call(s)", counter.calls)
+	}
+}
+
+// TestSupersedeMemoryDuplicateSpellings (PD-01) drives the handler with a
+// target's full UUID and its own short_id in the same array and asserts one
+// survivor whose Supersedes has a single element — the dedupe pass runs
+// over RESOLVED ids, not the caller's spellings, so two names for one
+// target collapse to one. Bounded-wait guarded: a regression that dedupes
+// before resolution (or not at all) would otherwise hang the whole test
+// binary on Store.Supersede's non-reentrant per-target lock.
+func TestSupersedeMemoryDuplicateSpellings(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-dup-spellings")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-dup-spellings"
+
+	targetID, targetSID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete target", d.st.Delete(context.Background(), targetID, store.Authenticated("sub-supersede-dup-spellings")))
+	})
+
+	type result struct {
+		id, sid string
+		err     error
+	}
+	done := make(chan result, 1)
+	go func() {
+		id, sid, err := d.supersedeMemory(ctx, c, supersedeArgs{
+			storeArgs:  storeArgs{Content: "merged", Scope: scope, Category: "gotcha", Source: "user-said"},
+			Supersedes: []string{targetID, targetSID},
+		})
+		done <- result{id, sid, err}
+	}()
+
+	var res result
+	select {
+	case res = <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("supersedeMemory with two spellings of one target did not return within 5s — dedupe likely ran over unresolved spellings, self-deadlocking the per-target lock")
+	}
+	if res.err != nil {
+		t.Fatalf("supersedeMemory: %v", res.err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete new record", d.st.Delete(context.Background(), res.id, store.Authenticated("sub-supersede-dup-spellings")))
+	})
+
+	newRec, err := d.getMemory(ctx, c, idArgs{ID: res.id})
+	if err != nil {
+		t.Fatalf("get new record: %v", err)
+	}
+	if len(newRec.Supersedes) != 1 || newRec.Supersedes[0] != targetID {
+		t.Errorf("newRec.Supersedes = %v, want [%q] (deduped, not two spellings)", newRec.Supersedes, targetID)
 	}
 }
 
@@ -2940,7 +3094,7 @@ func TestSupersedeMemoryRejectsRule(t *testing.T) {
 
 	_, _, err = d.supersedeMemory(ctx, callerFor(ctx, t), supersedeArgs{
 		storeArgs:  storeArgs{Content: "corrected rule text", Scope: scope, Category: "rule", Source: "user-said"},
-		Supersedes: sid,
+		Supersedes: []string{sid},
 	})
 	if err == nil {
 		t.Fatal("expected supersede_memory on a rule to be rejected")
@@ -3002,7 +3156,7 @@ func TestSupersedeMemoryEmbedNotCalledForNonOwner(t *testing.T) {
 	// without embedding or minting a short id.
 	_, _, err := d.supersedeMemory(ctx, callerFor(ctx, t), supersedeArgs{
 		storeArgs:  storeArgs{Content: "hijack", Scope: scope, Category: "convention", Source: "agent-inferred"},
-		Supersedes: stampedID,
+		Supersedes: []string{stampedID},
 	})
 	if err == nil {
 		t.Fatal("non-owner supersedeMemory: expected error, got nil")
@@ -3050,7 +3204,7 @@ func TestSupersedeMemorySchemaExcludesIdempotencyKey(t *testing.T) {
 // than relying on the shadow — see TestSupersedeMemoryIgnoresIdempotencyKey.
 func TestSupersedeArgsDecodePopulatesPromotedIdempotencyKey(t *testing.T) {
 	var a supersedeArgs
-	in := `{"idempotency_key":"probe-key","content":"x","scope":"s","supersedes":"y"}`
+	in := `{"idempotency_key":"probe-key","content":"x","scope":"s","supersedes":["y"]}`
 	if err := json.Unmarshal([]byte(in), &a); err != nil {
 		t.Fatalf("json.Unmarshal: %v", err)
 	}
@@ -3089,7 +3243,7 @@ func TestSupersedeMemoryIgnoresIdempotencyKey(t *testing.T) {
 			Content: "corrected content", Scope: scope, Category: "gotcha", Source: "user-said",
 			IdempotencyKey: "some-key-that-must-be-ignored",
 		},
-		Supersedes: targetSID,
+		Supersedes: []string{targetSID},
 	})
 	if err != nil {
 		t.Fatalf("supersedeMemory with idempotency_key set: want a normal supersede (ignored key), got error: %v", err)
@@ -3119,7 +3273,7 @@ func TestSupersedeMemoryIgnoresIdempotencyKey(t *testing.T) {
 			Content: "corrected content", Scope: scope, Category: "gotcha", Source: "user-said",
 			IdempotencyKey: "some-key-that-must-be-ignored",
 		},
-		Supersedes: targetSID,
+		Supersedes: []string{targetSID},
 	})
 	if err == nil {
 		t.Errorf("second supersedeMemory with same idempotency_key + already-superseded target: want error, got id=%q (key was NOT ignored — looks like a replay)", replayID)
@@ -3149,7 +3303,7 @@ func TestSupersedeMemoryDiscoveryTarget(t *testing.T) {
 
 	newID, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
 		storeArgs:  storeArgs{Content: "corrected discovery", Scope: scope, Category: "discovery", Source: "agent-inferred"},
-		Supersedes: targetSID,
+		Supersedes: []string{targetSID},
 	})
 	if err != nil {
 		t.Fatalf("supersedeMemory on discovery target: %v", err)
@@ -3274,7 +3428,7 @@ func TestUpdateMemoryPreservesCitations(t *testing.T) {
 		}
 		newID, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
 			storeArgs:  storeArgs{Content: "corrected", Scope: scope, Source: "user-said", Category: "decision"},
-			Supersedes: targetSID,
+			Supersedes: []string{targetSID},
 		})
 		if err != nil {
 			t.Fatalf("supersedeMemory: %v", err)

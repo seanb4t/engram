@@ -98,6 +98,31 @@ var ErrIdempotencyConflict = errors.New("idempotency key reused with different c
 // impossible (D-06).
 var ErrAlreadySuperseded = errors.New("target is already superseded")
 
+// MultiTargetError wraps a sentinel error together with every offending
+// canonical (resolved) target id, for Store.Supersede's multi-target
+// rejections (PD-10, 03.1-REVIEWS.md cycle-1 MEDIUM). It exists so the
+// handler tier can recover the offending ids via errors.As instead of
+// parsing them back out of a formatted message — echoing a resolved UUID
+// pulled from parsed prose is exactly the leak INV-01 exists to prevent.
+// Unwrap keeps errors.Is(err, ErrAlreadySuperseded) matching byte-for-byte
+// unchanged; Error() renders in the same shape the pre-phase scalar path
+// rendered ("<sentinel>: <ids>"). Nothing outside internal/ reads this type.
+type MultiTargetError struct {
+	Err error
+	IDs []string
+}
+
+// Error renders "<sentinel>: <id1>, <id2>, ...".
+func (e *MultiTargetError) Error() string {
+	return e.Err.Error() + ": " + strings.Join(e.IDs, ", ")
+}
+
+// Unwrap returns the wrapped sentinel, so errors.Is(err, ErrAlreadySuperseded)
+// (and any future sentinel this type wraps) keeps matching unchanged.
+func (e *MultiTargetError) Unwrap() error {
+	return e.Err
+}
+
 // maxMintAttempts bounds MintShortID's real (Qdrant Count-checked) collision
 // attempts. 16 is extra headroom over the ~8 that is already astronomically
 // safe in a 32^10 Crockford base32 space (D-04).
@@ -174,11 +199,14 @@ type Memory struct {
 	// NotAfter gates expiry: the record drops out of recall once now >= NotAfter.
 	// nil = never expires.
 	NotAfter *time.Time `json:"not_after,omitempty"`
-	// Supersedes is the id of the record this one corrects/replaces (D-04).
-	// nil on every record except a correcting one created via Store.Supersede.
-	// Plain json tag (not "-"): the caller must be able to observe this link on
-	// full=true recall and get_memory (D-08).
-	Supersedes *string `json:"supersedes,omitempty"`
+	// Supersedes holds the ids of every record this one corrects/replaces
+	// (D-04, promoted from a scalar to a set in phase 03.1 — D-01 promote
+	// semantics: a one-element slice behaves exactly as the pre-phase
+	// single-target call). Ordered as the store received them.
+	// nil/empty on every record except a correcting one created via
+	// Store.Supersede. Plain json tag (not "-"): the caller must be able to
+	// observe this link on full=true recall and get_memory (D-08).
+	Supersedes []string `json:"supersedes,omitempty"`
 	// SupersededBy is the id of the record that superseded this one (D-01/D-04).
 	// Server-set only, via Store.Supersede's target back-stamp — nil until then.
 	// Non-nil excludes the record from Search/List recall (soft-hide, D-09) but
@@ -347,6 +375,19 @@ type Store struct {
 	// client-interface refactor.
 	deletePayloadKeys func(ctx context.Context, id string, keys []string) error
 
+	// setPayloadKeys issues one multi-ID Qdrant SetPayload op merging the
+	// given key/value pairs onto every point in ids; nil defaults to
+	// defaultSetPayloadKeys (s.client.SetPayload). *qdrant.Client is a
+	// concrete type with no interface seam, so this function-var field
+	// (mirroring deletePayloadKeys/mintCandidate) is how Store.Supersede's
+	// multi-target back-stamp is routed — and is how its compensation
+	// branch is made reachable by a test: a nonexistent target rejects the
+	// whole call in getWritable before Upsert (store.go:1621-1625), so a bad
+	// input can never reach a post-write branch. Only a scripted fault at
+	// this seam, AFTER every target has passed preflight and the survivor
+	// has been written, can exercise the compensation that follows it.
+	setPayloadKeys func(ctx context.Context, ids []string, kv map[string]any) error
+
 	// locker serializes Supersede's check-then-act (already-superseded guard
 	// through the back-stamp) per target id. Defaults to an in-process
 	// sync.Mutex-backed implementation in New(); WithTargetLocker overrides it
@@ -495,8 +536,12 @@ func payload(m Memory) map[string]any {
 	if m.NotAfter != nil {
 		p["not_after"] = m.NotAfter.Unix()
 	}
-	if m.Supersedes != nil {
-		p["supersedes"] = *m.Supersedes
+	if len(m.Supersedes) > 0 {
+		ids := make([]any, len(m.Supersedes))
+		for i, id := range m.Supersedes {
+			ids[i] = id
+		}
+		p["supersedes"] = ids
 	}
 	if m.SupersededBy != nil {
 		p["superseded_by"] = *m.SupersededBy
@@ -589,10 +634,7 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 		t := time.Unix(v.GetIntegerValue(), 0).UTC()
 		m.NotAfter = &t
 	}
-	if v, ok := p["supersedes"]; ok {
-		s := v.GetStringValue()
-		m.Supersedes = &s
-	}
+	m.Supersedes = supersedesFromPayload(p)
 	if v, ok := p["superseded_by"]; ok {
 		s := v.GetStringValue()
 		m.SupersededBy = &s
@@ -1927,6 +1969,21 @@ func (s *Store) defaultDeletePayloadKeys(ctx context.Context, id string, keys []
 	return err
 }
 
+// defaultSetPayloadKeys is the production setPayloadKeys implementation: one
+// multi-ID Qdrant SetPayload op merging kv onto every point in ids.
+func (s *Store) defaultSetPayloadKeys(ctx context.Context, ids []string, kv map[string]any) error {
+	pointIDs := make([]*qdrant.PointId, len(ids))
+	for i, id := range ids {
+		pointIDs[i] = qdrant.NewID(id)
+	}
+	_, err := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload:        qdrant.NewValueMap(kv),
+		PointsSelector: qdrant.NewPointsSelectorIDs(pointIDs),
+	})
+	return err
+}
+
 // SetVisibility flips a record's shared flag without re-embedding (uses
 // SetPayload, preserving the vector), only if owned by subj.
 //
@@ -1963,39 +2020,100 @@ func (s *Store) SetVisibility(ctx context.Context, id string, subj Subject, shar
 	return err
 }
 
-// Supersede stores newMem (a normal, caller-owned create — same shape as
-// Upsert) and back-stamps target's superseded_by link. newMem.Supersedes MUST
-// already be set to target's resolved id by the caller before this is
-// invoked (mirrors OwnedOrAbsent's contract: callers thread resolved ids in,
-// store methods do not resolve short ids).
+// lockTargets clones, sorts, and dedupes targets, then acquires
+// s.locker.Lock for each id in sorted order, accumulating unlock funcs
+// (D-10). Sorted acquisition means two concurrent Supersede calls over
+// overlapping-but-different target sets can never hold each other's next
+// lock — deadlock-free without changing the TargetLocker interface, so a
+// future distributed locker still drops in unmodified; the ordering
+// discipline lives entirely at this call site.
 //
-// Ordering is load-bearing: the new record is created FIRST, the target is
-// back-stamped SECOND. This is only atomic-intent, not atomic — same
-// non-atomicity SetVisibility's own two-step SetPayload+DeletePayload
-// sequence accepts. If step 4 (the back-stamp) fails after step 3 (the new
-// record's create) succeeds, the new record persists as a valid, fetchable
-// record with a forward Supersedes link to a not-yet-back-stamped target —
-// an accepted, bounded orphan (no distributed-transaction primitive exists
-// in this codebase for a rollback).
+// Dedup MUST happen BEFORE acquisition, not merely for tidiness:
+// inProcessTargetLocker.Lock wraps a plain, non-reentrant sync.Mutex, so
+// acquiring the SAME target id twice on one goroutine self-deadlocks
+// permanently — no panic, no timeout, and Go's runtime deadlock detector
+// does not catch a goroutine blocking on a lock it already holds.
+//
+// On a mid-loop acquisition error, everything already acquired is released
+// (in reverse order) before returning a nil unlock and a nil sorted slice;
+// on success the returned unlock func releases everything in reverse sorted
+// order — callers must always invoke it, typically via defer.
+func (s *Store) lockTargets(ctx context.Context, targets []string) (unlock func(), sorted []string, err error) {
+	sorted = slices.Clone(targets)
+	sort.Strings(sorted)
+	sorted = slices.Compact(sorted)
+
+	unlocks := make([]func(), 0, len(sorted))
+	for _, id := range sorted {
+		u, lerr := s.locker.Lock(ctx, id)
+		if lerr != nil {
+			for i := len(unlocks) - 1; i >= 0; i-- {
+				unlocks[i]()
+			}
+			return nil, nil, lerr
+		}
+		unlocks = append(unlocks, u)
+	}
+	return func() {
+		for i := len(unlocks) - 1; i >= 0; i-- {
+			unlocks[i]()
+		}
+	}, sorted, nil
+}
+
+// Supersede stores newMem (a normal, caller-owned create — same shape as
+// Upsert) and back-stamps every target's superseded_by link to newMem's id
+// (D-01: promoted from a single target to a set — a one-element targets
+// slice behaves exactly as the pre-phase single-target call).
+// newMem.Supersedes MUST already be set to the resolved target id list by
+// the caller before this is invoked (mirrors OwnedOrAbsent's contract:
+// callers thread resolved ids in, store methods do not resolve short ids).
+//
+// Ordering is load-bearing: locks for every (deduped, sorted) target are
+// acquired FIRST (lockTargets); then getWritable/ActionWrite and the
+// already-superseded check run for EVERY target, both completed before any
+// write (D-05 — a set is never accepted because one member passed); then
+// the new record is created; then ONE multi-ID back-stamp covers the whole
+// target set, routed through the setPayloadKeys seam. This is only
+// atomic-intent, not atomic — same non-atomicity SetVisibility's own
+// two-step SetPayload+DeletePayload sequence accepts. If the back-stamp
+// fails after the survivor's create succeeds, the minimal compensation
+// below removes the survivor and clears superseded_by from any target the
+// back-stamp actually reached, so no committed state can leave a dangling
+// link (T-03.1-06). Compensation is best-effort — it talks to the same
+// Qdrant that just failed, so a failed merge is the usual no-op, never a
+// guaranteed one; the claim it supports is about the TERMINAL state after
+// this call returns, not about what a concurrent lock-free reader observes
+// mid-flight (plan 03.1-02 hardens this further with a classified result
+// and structured logging).
 //
 // TOCTOU note (identical in spirit to SetVisibility's, store.go:1688-1692):
-// if the target is deleted between the getWritable ownership gate and the
+// if a target is deleted between its getWritable ownership gate and the
 // back-stamp SetPayload, Qdrant's point-ID-selector SetPayload returns a
 // NotFound gRPC error that propagates unchanged — fail-closed, no re-fetch
-// needed (D-02).
+// needed (D-02). At the pinned server (qdrant/qdrant:v1.18.2,
+// lib/shard/src/update.rs) a multi-ID SetPayload chunks point ids and
+// mutates every point it finds BEFORE raising a missing-id error for one it
+// doesn't, so an error from this call means possibly-partial, never
+// nothing-written — the reason the compensation loop below re-reads the
+// FULL target set rather than trusting the error to mean nothing landed.
 //
-// Concurrency note (CR-01): steps 2-4 (already-superseded check through the
-// back-stamp) are classic check-then-act with no Qdrant-side compare-and-swap.
-// Two concurrent Supersede calls against the SAME target could otherwise both
+// Concurrency note (CR-01): the already-superseded check through the
+// back-stamp is classic check-then-act with no Qdrant-side compare-and-swap.
+// Two concurrent Supersede calls sharing a target could otherwise both
 // observe "not yet superseded" and both succeed, silently forking the
-// correction chain. s.locker.Lock(target) below serializes calls per target
-// id (different targets never contend) to make the check-then-act atomic
-// in-process. See TargetLocker's doc comment: this only guarantees
+// correction chain. lockTargets' sorted per-target locks, held through the
+// back-stamp, make the check-then-act atomic in-process per target (D-10
+// additionally guarantees overlapping concurrent merges never deadlock each
+// other). See TargetLocker's doc comment: this only guarantees
 // single-instance atomicity — a future distributed lock (swapped in via
 // WithTargetLocker) would be required for multi-replica atomicity.
-func (s *Store) Supersede(ctx context.Context, newMem Memory, vec []float32, target string, subj Subject) (err error) {
+func (s *Store) Supersede(ctx context.Context, newMem Memory, vec []float32, targets []string, subj Subject) (err error) {
 	ctx, span := tracer.Start(ctx, "store.Supersede",
-		trace.WithAttributes(attribute.String("engram.owner", ownerOf(subj))))
+		trace.WithAttributes(
+			attribute.String("engram.owner", ownerOf(subj)),
+			attribute.Int("engram.supersede.target_count", len(targets)),
+		))
 	defer span.End()
 	start := time.Now()
 	defer func() {
@@ -2006,40 +2124,96 @@ func (s *Store) Supersede(ctx context.Context, newMem Memory, vec []float32, tar
 		}
 	}()
 
-	// 0. Per-target lock, held through the back-stamp (CR-01): serializes
-	//    concurrent Supersede calls against this target so the
-	//    already-superseded check-then-act below is atomic in-process.
-	unlock, err := s.locker.Lock(ctx, target)
+	// 0. Dedupe + sort + acquire a per-target lock for every target, held
+	//    through the back-stamp (CR-01/D-10).
+	unlock, sorted, err := s.lockTargets(ctx, targets)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 
-	// 1. Owner-only write gate on the TARGET (not the new record — that's a
-	//    normal create, already write-gated by construction).
-	targetRec, err := s.getWritable(ctx, target, subj, authz.ActionWrite)
-	if err != nil {
-		return err // ErrNotFound: not owner, or doesn't exist — fail-closed, no leak.
+	// 1. Owner-only write gate on EVERY target (not the new record — that's
+	//    a normal create, already write-gated by construction) — completed
+	//    before any write (D-05).
+	recs := make(map[string]Memory, len(sorted))
+	for _, target := range sorted {
+		rec, gerr := s.getWritable(ctx, target, subj, authz.ActionWrite)
+		if gerr != nil {
+			return gerr // ErrNotFound: not owner, or doesn't exist — fail-closed, no leak.
+		}
+		recs[target] = rec
 	}
-	// 2. Single-hop / cycle rejection (D-05/D-06): reject if target is
-	//    already a non-head record.
-	if targetRec.SupersededBy != nil && *targetRec.SupersededBy != "" {
-		return fmt.Errorf("%w: %s", ErrAlreadySuperseded, target)
+	// 2. Single-hop / cycle rejection (D-05/D-06) over EVERY target: reject
+	//    if any target is already a non-head record. Collects ALL offenders
+	//    (not just the first) so the typed error's IDs field is complete
+	//    (PD-10) — unlike the ownership gate above, this class must name
+	//    every offender at once.
+	var alreadySuperseded []string
+	for _, target := range sorted {
+		if rec := recs[target]; rec.SupersededBy != nil && *rec.SupersededBy != "" {
+			alreadySuperseded = append(alreadySuperseded, target)
+		}
+	}
+	if len(alreadySuperseded) > 0 {
+		return &MultiTargetError{Err: ErrAlreadySuperseded, IDs: alreadySuperseded}
 	}
 	// 3. Store the new record (normal Upsert — fresh id, no concurrent-writer
 	//    risk since nothing else references it yet).
-	if err := s.Upsert(ctx, newMem, vec); err != nil {
+	if err = s.Upsert(ctx, newMem, vec); err != nil {
 		return err
 	}
-	// 4. Back-stamp the target: single-key SetPayload, vector-preserving —
-	//    mirrors SetVisibility exactly, action swapped Share->Write, key
-	//    swapped visibility->superseded_by.
-	_, err = s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
-		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
-		Payload:        qdrant.NewValueMap(map[string]any{"superseded_by": newMem.ID}),
-		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(target)}),
-	})
-	return err
+	// 4. Back-stamp every target: one multi-ID SetPayload, vector-preserving
+	//    — mirrors SetVisibility exactly, action swapped Share->Write, key
+	//    swapped visibility->superseded_by, a single id swapped for the
+	//    whole deduped sorted set. Routed through the setPayloadKeys seam
+	//    (nil-guarded via a local fallback, never invoked off the receiver —
+	//    New populates no function field, so a receiver-qualified call would
+	//    panic in production; store.go:1953-1958 is the same idiom).
+	setKeys := s.setPayloadKeys
+	if setKeys == nil {
+		setKeys = s.defaultSetPayloadKeys
+	}
+	if err = setKeys(ctx, sorted, map[string]any{"superseded_by": newMem.ID}); err != nil {
+		// Minimal compensation (D-07/D-08/D-15, cycle-1 review MEDIUM): a
+		// failed multi-ID back-stamp may be possibly-partial per the doc
+		// comment above, and leaving this bare would commit a merge that
+		// permanently soft-hides live records behind the four
+		// IsEmpty("superseded_by") recall gates. Best-effort — errors from
+		// this cleanup are deliberately swallowed here; plan 03.1-02 adds
+		// the classified result type and structured logging this task does
+		// not attempt.
+		//
+		// (1) Remove the survivor directly. D-09's "no delete_memory in the
+		// merge path" governs the caller-facing verb, not this internal
+		// cleanup: the compensated survivor was never linked to anything,
+		// was never recallable by another caller, and carries no lineage, so
+		// removing it destroys zero history.
+		_, _ = s.client.Delete(ctx, &qdrant.DeletePoints{
+			CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+			Points: qdrant.NewPointsSelector(qdrant.NewID(newMem.ID)),
+		})
+		// (2) Clear superseded_by from every target still pointing at the
+		// now-deleted survivor — DELETING the key, never writing "": an
+		// empty string is still a value and the recall gates test for key
+		// emptiness, so writing "" would leave the record hidden forever.
+		clearKeys := s.deletePayloadKeys
+		if clearKeys == nil {
+			clearKeys = s.defaultDeletePayloadKeys
+		}
+		for _, target := range sorted {
+			fresh, gerr := s.Get(ctx, target)
+			if gerr != nil {
+				continue
+			}
+			if fresh.SupersededBy == nil || *fresh.SupersededBy != newMem.ID {
+				continue
+			}
+			_ = clearKeys(ctx, target, []string{"superseded_by"})
+		}
+		// (3) Return the ORIGINAL back-stamp error, unchanged.
+		return err
+	}
+	return nil
 }
 
 // IncrementAccess bumps a record's access_count by 1 and stamps
@@ -2881,6 +3055,36 @@ func tagsFromPayload(p map[string]*qdrant.Value) []string {
 		}
 	}
 	return tags
+}
+
+// supersedesFromPayload decodes the "supersedes" payload key tolerantly: a
+// list-shaped value (every record this phase writes, D-01/D-03) or a legacy
+// bare-string value (every record written before this phase, D-04 — no
+// backfill command, a legacy scalar loses nothing functionally under this
+// tolerant read). It exists to close a silent-empty-string failure mode: the
+// protobuf oneof accessor Value.GetStringValue() returns "" — never an error
+// — when the stored Kind is actually a list, so an unconditional string read
+// of this key would silently decode to empty for every record this phase
+// writes, with every existing test on the pre-phase scalar shape staying
+// green. Kind is checked explicitly (mirroring tagsFromPayload's
+// GetListValue-first shape) to close that seam; this is the ONLY decode call
+// site for this key.
+func supersedesFromPayload(p map[string]*qdrant.Value) []string {
+	v, ok := p["supersedes"]
+	if !ok {
+		return nil
+	}
+	if lv := v.GetListValue(); lv != nil {
+		ids := make([]string, 0, len(lv.GetValues()))
+		for _, item := range lv.GetValues() {
+			ids = append(ids, item.GetStringValue())
+		}
+		return ids
+	}
+	if _, isString := v.GetKind().(*qdrant.Value_StringValue); isString {
+		return []string{v.GetStringValue()}
+	}
+	return nil
 }
 
 // tagsEqual reports whether a and b hold the same tags, order-independent but
