@@ -434,7 +434,7 @@ ordering resolved without a `TargetLocker` interface change, but the in-process 
 is not reentrant, so the *resolved* target-UUID set must be deduped before acquisition or a repeated
 target self-deadlocks. `idempotency_key` resolved as supported (D-12).
 
-**Plans:** 6/6 plans executed
+**Plans:** 6/6 plans complete
 
 Plans:
 **Wave 1**
