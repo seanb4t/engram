@@ -146,12 +146,12 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
 
 ### Spine Curation — Semantic (Skill)
 
-- [ ] **REQ-semantic-curation-skill**: An agent skill judges record staleness ("is this still true
+- [x] **REQ-semantic-curation-skill**: An agent skill judges record staleness ("is this still true
   against the tree it describes") and near-duplicate identity ("are these the same fact") using the
   engram MCP tool surface — including Phase 03.1's multi-target `supersede_memory` — and adds no
   server-side code of its own beyond that verb.
 
-- [ ] **REQ-consent-never-perform**: Every mutation the skill identifies is proposed for user
+- [x] **REQ-consent-never-perform**: Every mutation the skill identifies is proposed for user
   blessing and never performed unilaterally, reusing `store_rule`'s consent protocol rather than
   inventing a second consent shape.
 
@@ -230,8 +230,8 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-merge-supersession | Phase 03.1 | Complete |
 | REQ-merge-atomicity | Phase 03.1 | Complete |
 | REQ-merge-idempotency | Phase 03.1 | Complete |
-| REQ-semantic-curation-skill | Phase 4 | Pending |
-| REQ-consent-never-perform | Phase 4 | Pending |
+| REQ-semantic-curation-skill | Phase 4 | Complete |
+| REQ-consent-never-perform | Phase 4 | Complete |
 | REQ-consent-adversarial-proof | Phase 4 | Pending |
 | REQ-nyquist-reconciled | Phase 5 | Pending |
 | REQ-citation-fixture-355 | Phase 5 | Pending |
