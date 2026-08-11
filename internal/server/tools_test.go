@@ -3169,6 +3169,562 @@ func TestSupersedeMemoryEmbedNotCalledForNonOwner(t *testing.T) {
 	}
 }
 
+// TestResolveAndAuthorizeSupersedeTargets pins Classes 1-2 of the staged
+// preflight (03.1-03) directly against resolveAndAuthorizeSupersedeTargets:
+// the set-shape guard, and the THREE causes that all collapse into the same
+// addressability class — resolution-not-found, resolution-ambiguous, and
+// not-owned — proving 404-indistinguishability at the function boundary
+// itself, before any handler-tier composition.
+func TestResolveAndAuthorizeSupersedeTargets(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "sub-resolve-authorize")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:resolve-authorize"
+
+	ownedID, ownedSID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "owned", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed owned: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete owned", st.Delete(context.Background(), ownedID, store.Authenticated("sub-resolve-authorize")))
+	})
+
+	// A record owned by a DIFFERENT actor — resolves fine (it's a valid
+	// UUID) but fails the ownership gate, so it must collapse into the same
+	// not-found bucket as a nonexistent id.
+	otherOwnedID := "b0000000-0000-0000-0000-000000000001"
+	if err := st.Upsert(context.Background(), store.Memory{
+		ID: otherOwnedID, ShortID: "otherowned", Content: "not yours", Scope: scope,
+		Owner: "sub-someone-else", Category: "gotcha", Source: "user-said", CreatedAt: timeNow(),
+	}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed other-owned: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete other-owned", st.Delete(context.Background(), otherOwnedID, store.Authenticated("sub-someone-else")))
+	})
+
+	// Two records sharing one short id, owned by two different actors —
+	// forces ResolvePointID's global ambiguity path (bypasses MintShortID's
+	// collision-retry by writing directly, mirroring
+	// store_test.go#TestResolvePointIDAmbiguous).
+	for i, id := range []string{"b0000000-0000-0000-0000-000000000002", "b0000000-0000-0000-0000-000000000003"} {
+		owner := fmt.Sprintf("sub-ambig-%d", i)
+		if err := st.Upsert(context.Background(), store.Memory{
+			ID: id, ShortID: "ambigambig", Content: "dup", Scope: scope,
+			Owner: owner, Category: "gotcha", Source: "user-said", CreatedAt: timeNow(),
+		}, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed ambiguous %d: %v", i, err)
+		}
+		t.Cleanup(func() {
+			cleanupErr(t, "Delete ambiguous", st.Delete(context.Background(), id, store.Authenticated(owner)))
+		})
+	}
+
+	t.Run("empty set", func(t *testing.T) {
+		_, err := d.resolveAndAuthorizeSupersedeTargets(ctx, c, []string{})
+		var ae *argError
+		if !errors.As(err, &ae) || ae.Hint != HintRequired {
+			t.Fatalf("empty set: err = %v, want argError field=supersedes hint=required", err)
+		}
+	})
+
+	t.Run("blank entry", func(t *testing.T) {
+		_, err := d.resolveAndAuthorizeSupersedeTargets(ctx, c, []string{"   "})
+		var ae *argError
+		if !errors.As(err, &ae) || ae.Hint != HintRequired {
+			t.Fatalf("blank entry: err = %v, want argError field=supersedes hint=required", err)
+		}
+	})
+
+	t.Run("nonexistent id collapses to not-found", func(t *testing.T) {
+		_, err := d.resolveAndAuthorizeSupersedeTargets(ctx, c, []string{"zzzzzzzzzz"})
+		if !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("nonexistent id: err = %v, want ErrNotFound", err)
+		}
+	})
+
+	t.Run("ambiguous short id collapses to not-found", func(t *testing.T) {
+		_, err := d.resolveAndAuthorizeSupersedeTargets(ctx, c, []string{"ambigambig"})
+		if !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("ambiguous id: err = %v, want ErrNotFound (collapsed)", err)
+		}
+		if errors.Is(err, store.ErrAmbiguousShortID) {
+			t.Errorf("ambiguous id: err %v must not surface ErrAmbiguousShortID as its own class", err)
+		}
+	})
+
+	t.Run("not-owned id collapses to not-found", func(t *testing.T) {
+		_, err := d.resolveAndAuthorizeSupersedeTargets(ctx, c, []string{otherOwnedID})
+		if !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("not-owned id: err = %v, want ErrNotFound (collapsed)", err)
+		}
+	})
+
+	t.Run("owned target resolves", func(t *testing.T) {
+		targets, err := d.resolveAndAuthorizeSupersedeTargets(ctx, c, []string{ownedSID})
+		if err != nil {
+			t.Fatalf("owned target: %v", err)
+		}
+		if len(targets) != 1 || targets[0].Input != ownedSID || targets[0].ID != ownedID {
+			t.Fatalf("owned target: got %+v, want one target Input=%q ID=%q", targets, ownedSID, ownedID)
+		}
+	})
+
+	t.Run("duplicate spellings dedupe over resolved id", func(t *testing.T) {
+		targets, err := d.resolveAndAuthorizeSupersedeTargets(ctx, c, []string{ownedID, ownedSID})
+		if err != nil {
+			t.Fatalf("duplicate spellings: %v", err)
+		}
+		if len(targets) != 1 || targets[0].Input != ownedID {
+			t.Fatalf("duplicate spellings: got %+v, want one target with first-occurrence Input=%q", targets, ownedID)
+		}
+	})
+}
+
+// TestValidateSupersedeTargetState pins Classes 3-4 of the staged preflight
+// (03.1-03) directly against validateSupersedeTargetState: rule immutability
+// and already-superseded, evaluated only over already-resolved,
+// already-owned resolvedSupersedeTarget values — nothing here can be reached
+// by a non-owned or nonexistent target, since Class 2 already filtered those
+// out before this stage ever runs.
+func TestValidateSupersedeTargetState(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	c := callerFor(ctx, t)
+
+	live := resolvedSupersedeTarget{Input: "live-in", ID: "live-id", Rec: store.Memory{Category: "gotcha"}}
+	rule := resolvedSupersedeTarget{Input: "rule-in", ID: "rule-id", Rec: store.Memory{Category: "rule"}}
+	superseded := resolvedSupersedeTarget{Input: "superseded-in", ID: "superseded-id", Rec: store.Memory{Category: "gotcha", SupersededBy: strp("winner-id")}}
+
+	t.Run("all live: no error", func(t *testing.T) {
+		if err := d.validateSupersedeTargetState(ctx, c, []resolvedSupersedeTarget{live}); err != nil {
+			t.Fatalf("all-live: unexpected error: %v", err)
+		}
+	})
+
+	t.Run("rule target rejected, named", func(t *testing.T) {
+		err := d.validateSupersedeTargetState(ctx, c, []resolvedSupersedeTarget{live, rule})
+		if !errors.Is(err, errRuleImmutable) {
+			t.Fatalf("rule target: err = %v, want errRuleImmutable", err)
+		}
+		if !strings.Contains(err.Error(), "rule-in") {
+			t.Errorf("rule target: err %v does not name %q", err, "rule-in")
+		}
+		if strings.Contains(err.Error(), "live-in") {
+			t.Errorf("rule target: err %v names non-offending target %q", err, "live-in")
+		}
+	})
+
+	t.Run("already-superseded target rejected, named", func(t *testing.T) {
+		err := d.validateSupersedeTargetState(ctx, c, []resolvedSupersedeTarget{live, superseded})
+		if !errors.Is(err, store.ErrAlreadySuperseded) {
+			t.Fatalf("already-superseded: err = %v, want store.ErrAlreadySuperseded", err)
+		}
+		if !strings.Contains(err.Error(), "superseded-in") {
+			t.Errorf("already-superseded: err %v does not name %q", err, "superseded-in")
+		}
+	})
+
+	t.Run("rule class wins over already-superseded when both present", func(t *testing.T) {
+		err := d.validateSupersedeTargetState(ctx, c, []resolvedSupersedeTarget{rule, superseded})
+		if !errors.Is(err, errRuleImmutable) {
+			t.Fatalf("rule-before-superseded: err = %v, want errRuleImmutable", err)
+		}
+		if errors.Is(err, store.ErrAlreadySuperseded) {
+			t.Errorf("rule-before-superseded: err %v unexpectedly also matches ErrAlreadySuperseded", err)
+		}
+	})
+}
+
+// TestSupersedeMemoryMultiNamesAllNotFoundTargets (03.1-03 Task 3, D-11)
+// pins that a set naming two unresolvable targets alongside one live owned
+// target rejects ONCE, naming BOTH missing targets and never the valid one —
+// a caller fixing a bad set learns the full picture in one round trip.
+func TestSupersedeMemoryMultiNamesAllNotFoundTargets(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-multi-notfound")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-multi-notfound"
+
+	validID, validSID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "kept", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed valid: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete valid", d.st.Delete(context.Background(), validID, store.Authenticated("sub-supersede-multi-notfound")))
+	})
+
+	missing1, missing2 := "notfound001", "notfound002"
+	_, _, err = d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs:  storeArgs{Content: "merged", Scope: scope, Category: "gotcha", Source: "user-said"},
+		Supersedes: []string{validSID, missing1, missing2},
+	})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("err = %v, want store.ErrNotFound", err)
+	}
+	if !strings.Contains(err.Error(), missing1) || !strings.Contains(err.Error(), missing2) {
+		t.Errorf("err %v does not name both missing targets %q, %q", err, missing1, missing2)
+	}
+	if strings.Contains(err.Error(), validSID) {
+		t.Errorf("err %v unexpectedly names the valid, non-offending target %q", err, validSID)
+	}
+}
+
+// TestSupersedeMemoryMultiIndistinguishable (03.1-03 Task 3, T-03.1-01 —
+// security-relevant) is the whole-rejection comparison: a target owned by a
+// different actor and a target id that exists nowhere must produce
+// byte-identical rejections after substituting the target string. Asserting
+// only "both are not-found" would still pass if one message said "not
+// yours" — this test compares the entire rendered error.
+func TestSupersedeMemoryMultiIndistinguishable(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "sub-supersede-multi-indist")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-multi-indist"
+
+	ownedID, ownedSID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "kept", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed owned: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete owned", st.Delete(context.Background(), ownedID, store.Authenticated("sub-supersede-multi-indist")))
+	})
+
+	nonOwnedID := "c0000000-0000-0000-0000-000000000001"
+	if err := st.Upsert(context.Background(), store.Memory{
+		ID: nonOwnedID, ShortID: "nonownedxx", Content: "not yours", Scope: scope,
+		Owner: "sub-someone-else-indist", Category: "gotcha", Source: "user-said", CreatedAt: timeNow(),
+	}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed non-owned: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete non-owned", st.Delete(context.Background(), nonOwnedID, store.Authenticated("sub-someone-else-indist")))
+	})
+	missingID := "c0000000-0000-0000-0000-000000000099" // valid UUID shape, never written
+
+	call := func(target string) error {
+		_, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+			storeArgs:  storeArgs{Content: "merged", Scope: scope, Category: "gotcha", Source: "user-said"},
+			Supersedes: []string{ownedSID, target},
+		})
+		return err
+	}
+
+	errNonOwned := call(nonOwnedID)
+	errMissing := call(missingID)
+
+	if !errors.Is(errNonOwned, store.ErrNotFound) || !errors.Is(errMissing, store.ErrNotFound) {
+		t.Fatalf("errNonOwned=%v errMissing=%v, want both store.ErrNotFound", errNonOwned, errMissing)
+	}
+	if strings.Contains(errNonOwned.Error(), ownedSID) || strings.Contains(errMissing.Error(), ownedSID) {
+		t.Errorf("a rejection named the non-offending owned target %q: nonOwned=%v missing=%v", ownedSID, errNonOwned, errMissing)
+	}
+
+	normNonOwned := strings.ReplaceAll(errNonOwned.Error(), nonOwnedID, "<target>")
+	normMissing := strings.ReplaceAll(errMissing.Error(), missingID, "<target>")
+	if normNonOwned != normMissing {
+		t.Errorf("rejections are distinguishable after normalizing the target string:\n  non-owned: %q\n  missing:   %q", errNonOwned, errMissing)
+	}
+}
+
+// TestSupersedeMemoryMultiEchoesOriginalInput (03.1-03 Task 3, INV-01) pins
+// that a rejected target is echoed as the caller's ORIGINAL short_id, never
+// the resolved UUID — the negative half (UUID absent) is the whole point.
+func TestSupersedeMemoryMultiEchoesOriginalInput(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "sub-supersede-multi-echo")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-multi-echo"
+
+	otherID := "d0000000-0000-0000-0000-000000000001"
+	otherSID := "abtarget99" // no i/l/o: Canonical() must round-trip this literal unchanged
+	if err := st.Upsert(context.Background(), store.Memory{
+		ID: otherID, ShortID: otherSID, Content: "not yours", Scope: scope,
+		Owner: "sub-someone-else-echo", Category: "gotcha", Source: "user-said", CreatedAt: timeNow(),
+	}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed other-owned: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete other-owned", st.Delete(context.Background(), otherID, store.Authenticated("sub-someone-else-echo")))
+	})
+
+	resolved, err := st.ResolvePointID(context.Background(), otherSID)
+	if err != nil || resolved != otherID {
+		t.Fatalf("resolve out of band: got %q, err %v, want %q", resolved, err, otherID)
+	}
+
+	_, _, err = d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs:  storeArgs{Content: "merged", Scope: scope, Category: "gotcha", Source: "user-said"},
+		Supersedes: []string{otherSID},
+	})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("err = %v, want store.ErrNotFound", err)
+	}
+	if !strings.Contains(err.Error(), otherSID) {
+		t.Errorf("err %v does not echo the caller's original short_id input %q", err, otherSID)
+	}
+	if strings.Contains(err.Error(), otherID) {
+		t.Errorf("err %v leaks the resolved UUID %q for a short_id-named target (404-indistinguishability violation)", err, otherID)
+	}
+}
+
+// TestSupersedeMemoryMultiRejectsRuleTargets (03.1-03 Task 3, INV-02) pins
+// that a set naming two rule-category targets alongside one ordinary owned
+// target rejects naming BOTH rule targets, not just the first — a merge
+// must never become a back door to superseding a rule.
+func TestSupersedeMemoryMultiRejectsRuleTargets(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+	c := callerFor(ctx, t)
+	ruleScope := "rule:repo:supersede-multi-rule-guard"
+	ordinaryScope := "iso-test:project:supersede-multi-rule-guard"
+	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+ruleScope, d.st.DeleteAll(ctx, ruleScope, store.Anonymous())) })
+	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+ordinaryScope, d.st.DeleteAll(ctx, ordinaryScope, store.Anonymous())) })
+
+	_, ordinarySID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "ordinary", Scope: ordinaryScope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed ordinary: %v", err)
+	}
+	_, rule1SID, err := d.storeRule(ctx, c, storeRuleArgs{Content: "rule one", Scope: ruleScope, Summary: "rule one"})
+	if err != nil {
+		t.Fatalf("seed rule1: %v", err)
+	}
+	_, rule2SID, err := d.storeRule(ctx, c, storeRuleArgs{Content: "rule two", Scope: ruleScope, Summary: "rule two"})
+	if err != nil {
+		t.Fatalf("seed rule2: %v", err)
+	}
+
+	_, _, err = d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs:  storeArgs{Content: "merged", Scope: ordinaryScope, Category: "gotcha", Source: "user-said"},
+		Supersedes: []string{ordinarySID, rule1SID, rule2SID},
+	})
+	if !errors.Is(err, errRuleImmutable) {
+		t.Fatalf("err = %v, want errRuleImmutable", err)
+	}
+	if !strings.Contains(err.Error(), rule1SID) || !strings.Contains(err.Error(), rule2SID) {
+		t.Errorf("err %v does not name both rule targets %q, %q", err, rule1SID, rule2SID)
+	}
+	if strings.Contains(err.Error(), ordinarySID) {
+		t.Errorf("err %v unexpectedly names the non-offending ordinary target %q", err, ordinarySID)
+	}
+}
+
+// TestSupersedeMemoryMultiOffenderOrderIsCallerOrder (03.1-03 Task 3, cycle-3
+// review MEDIUM) is the mixed-class ordering case: every other offender test
+// in this plan supplies offenders of ONE addressability sub-class, and for
+// those the two-pass bucket collection and the caller's order coincide —
+// which is exactly why an inversion would be invisible there. A non-owned
+// target (collected in the FETCH pass, pass two) and a missing target
+// (collected in the RESOLUTION pass, pass one) are run in both input
+// orders; the rejection must always name them in the CALLER's order, proven
+// by comparing byte offsets, not by which pass collected them.
+func TestSupersedeMemoryMultiOffenderOrderIsCallerOrder(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "sub-supersede-multi-order")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-multi-order"
+
+	nonOwnedID := "e0000000-0000-0000-0000-000000000001" // resolves trivially (valid UUID), fails at FetchForUpdate: pass two
+	if err := st.Upsert(context.Background(), store.Memory{
+		ID: nonOwnedID, ShortID: "orderownxx", Content: "not yours", Scope: scope,
+		Owner: "sub-someone-else-order", Category: "gotcha", Source: "user-said", CreatedAt: timeNow(),
+	}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed non-owned: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete non-owned", st.Delete(context.Background(), nonOwnedID, store.Authenticated("sub-someone-else-order")))
+	})
+	missingSID := "zzzznotfnd" // short_id form, never seeded: fails at ResolvePointID itself, pass one
+
+	check := func(t *testing.T, order []string, wantFirst, wantSecond string) {
+		t.Helper()
+		_, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+			storeArgs:  storeArgs{Content: "merged", Scope: scope, Category: "gotcha", Source: "user-said"},
+			Supersedes: order,
+		})
+		if !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("err = %v, want store.ErrNotFound", err)
+		}
+		msg := err.Error()
+		iFirst := strings.Index(msg, wantFirst)
+		iSecond := strings.Index(msg, wantSecond)
+		if iFirst < 0 || iSecond < 0 {
+			t.Fatalf("err %q does not name both offenders %q, %q", msg, wantFirst, wantSecond)
+		}
+		if iFirst >= iSecond {
+			t.Errorf("err %q: offender order is wrong — want caller order %q before %q", msg, wantFirst, wantSecond)
+		}
+	}
+
+	// Without the index-stable sort, this case renders "missing, nonOwned"
+	// (pass order) instead of the caller's "nonOwned, missing" — see the
+	// sort's doc comment at its call site in resolveAndAuthorizeSupersedeTargets.
+	t.Run("nonOwned then missing (pass-two offender first)", func(t *testing.T) {
+		check(t, []string{nonOwnedID, missingSID}, nonOwnedID, missingSID)
+	})
+	t.Run("missing then nonOwned (pass-one offender first)", func(t *testing.T) {
+		check(t, []string{missingSID, nonOwnedID}, missingSID, nonOwnedID)
+	})
+}
+
+// TestSupersedeMemoryAmbiguousShortIDIndistinguishable (03.1-03 Task 3,
+// T-03.1-23 — security-relevant) is the second whole-rejection comparison:
+// two records sharing one short id, owned by two DIFFERENT actors (neither
+// the caller), must produce a rejection byte-identical to naming a short id
+// no record holds. ResolvePointID scrolls the whole collection
+// owner-agnostically, so reporting "ambiguous" as its own class would tell
+// an unauthenticated guesser that an invented handle matches several
+// records they cannot read — the collapse into not-found is what stops the
+// resolution stage from being a global handle-count oracle.
+func TestSupersedeMemoryAmbiguousShortIDIndistinguishable(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := authedContext(t, "sub-supersede-multi-ambig-third")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-multi-ambig"
+
+	collidingSID := "abcdefghjk" // no i/l/o: Canonical() must round-trip this literal unchanged
+	ids := []string{"f0000000-0000-0000-0000-000000000001", "f0000000-0000-0000-0000-000000000002"}
+	for i, id := range ids {
+		owner := fmt.Sprintf("sub-ambig-owner-%d", i)
+		if err := st.Upsert(context.Background(), store.Memory{
+			ID: id, ShortID: collidingSID, Content: "colliding", Scope: scope,
+			Owner: owner, Category: "gotcha", Source: "user-said", CreatedAt: timeNow(),
+		}, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed colliding %d: %v", i, err)
+		}
+		t.Cleanup(func() {
+			cleanupErr(t, "Delete colliding", st.Delete(context.Background(), id, store.Authenticated(owner)))
+		})
+	}
+	noSuchSID := "nosuchid01" // never seeded
+
+	call := func(sid string) error {
+		_, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+			storeArgs:  storeArgs{Content: "merged", Scope: scope, Category: "gotcha", Source: "user-said"},
+			Supersedes: []string{sid},
+		})
+		return err
+	}
+
+	errAmbig := call(collidingSID)
+	errNoSuch := call(noSuchSID)
+
+	if !errors.Is(errAmbig, store.ErrNotFound) || !errors.Is(errNoSuch, store.ErrNotFound) {
+		t.Fatalf("errAmbig=%v errNoSuch=%v, want both store.ErrNotFound", errAmbig, errNoSuch)
+	}
+	if errors.Is(errAmbig, store.ErrAmbiguousShortID) {
+		t.Errorf("errAmbig %v surfaces ErrAmbiguousShortID as its own class", errAmbig)
+	}
+
+	normAmbig := strings.ReplaceAll(errAmbig.Error(), collidingSID, "<target>")
+	normNoSuch := strings.ReplaceAll(errNoSuch.Error(), noSuchSID, "<target>")
+	if normAmbig != normNoSuch {
+		t.Errorf("rejections are distinguishable after normalizing the target string:\n  ambiguous: %q\n  no-such:   %q", errAmbig, errNoSuch)
+	}
+	if strings.Contains(strings.ToLower(errAmbig.Error()), "ambiguous") {
+		t.Errorf("errAmbig %v leaks the word the ambiguity sentinel renders", errAmbig)
+	}
+	for _, id := range ids {
+		if strings.Contains(errAmbig.Error(), id) {
+			t.Errorf("errAmbig %v leaks a colliding record's UUID %q", errAmbig, id)
+		}
+	}
+}
+
+// TestSupersedeMemoryStagedByClassOrdering (03.1-03 Task 3) pins that the
+// class order is fixed and independent of offender position: a set mixing
+// an addressability offender (missing or ambiguous) with a rule target
+// always rejects on the addressability class alone — the later class is
+// never evaluated, regardless of which position each offender occupies.
+func TestSupersedeMemoryStagedByClassOrdering(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	ctx := context.Background()
+	c := callerFor(ctx, t)
+	ruleScope := "rule:repo:supersede-staged-order"
+	t.Cleanup(func() { cleanupErr(t, "DeleteAll "+ruleScope, d.st.DeleteAll(ctx, ruleScope, store.Anonymous())) })
+
+	_, ruleSID, err := d.storeRule(ctx, c, storeRuleArgs{Content: "a rule", Scope: ruleScope, Summary: "a rule"})
+	if err != nil {
+		t.Fatalf("seed rule: %v", err)
+	}
+	missingSID := "stagedmiss"
+
+	assertAddressabilityWins := func(t *testing.T, order []string) {
+		t.Helper()
+		_, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+			storeArgs:  storeArgs{Content: "merged", Scope: ruleScope, Category: "gotcha", Source: "user-said"},
+			Supersedes: order,
+		})
+		if !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("err = %v, want store.ErrNotFound (addressability class)", err)
+		}
+		if errors.Is(err, errRuleImmutable) {
+			t.Errorf("err %v unexpectedly also matches errRuleImmutable — the later class must not run", err)
+		}
+		if strings.Contains(err.Error(), ruleSID) {
+			t.Errorf("err %v names the rule target %q — the later class must not be evaluated", err, ruleSID)
+		}
+	}
+
+	t.Run("missing then rule", func(t *testing.T) {
+		assertAddressabilityWins(t, []string{missingSID, ruleSID})
+	})
+	t.Run("rule then missing", func(t *testing.T) {
+		assertAddressabilityWins(t, []string{ruleSID, missingSID})
+	})
+	t.Run("ambiguous handle then rule: addressability still wins", func(t *testing.T) {
+		ambigSID := "stagedambg"
+		ids := []string{"a1000000-0000-0000-0000-000000000001", "a1000000-0000-0000-0000-000000000002"}
+		for i, id := range ids {
+			owner := fmt.Sprintf("sub-staged-ambig-%d", i)
+			if err := st.Upsert(context.Background(), store.Memory{
+				ID: id, ShortID: ambigSID, Content: "colliding", Scope: ruleScope,
+				Owner: owner, Category: "gotcha", Source: "user-said", CreatedAt: timeNow(),
+			}, []float32{0.1, 0.2, 0.3}); err != nil {
+				t.Fatalf("seed staged-ambig %d: %v", i, err)
+			}
+			t.Cleanup(func() {
+				cleanupErr(t, "Delete staged-ambig", st.Delete(context.Background(), id, store.Authenticated(owner)))
+			})
+		}
+		assertAddressabilityWins(t, []string{ambigSID, ruleSID})
+	})
+}
+
+// TestSupersedeMemorySchemaAdvertisesTargetBounds (03.1-03 Task 3, cycle-2
+// review MEDIUM) is the SOLE test in this repo asserting supersede_memory's
+// target-set bounds, against the exact schema-building function
+// (supersedeMemoryInputSchema) Register() calls — so the advertised schema
+// and this assertion can never drift apart. PD-07 (03.1-00-SUMMARY.md): the
+// cap was DROPPED, so only minItems is asserted; maxItems must be absent.
+func TestSupersedeMemorySchemaAdvertisesTargetBounds(t *testing.T) {
+	schema, err := supersedeMemoryInputSchema()
+	if err != nil {
+		t.Fatalf("supersedeMemoryInputSchema: %v", err)
+	}
+	prop, ok := schema.Properties["supersedes"]
+	if !ok {
+		t.Fatal("schema missing supersedes property")
+	}
+	if prop.Type != "array" && !slices.Contains(prop.Types, "array") {
+		t.Errorf("supersedes schema type = %q (Types=%v), want array", prop.Type, prop.Types)
+	}
+	if prop.MinItems == nil || *prop.MinItems != 1 {
+		t.Errorf("supersedes MinItems = %v, want 1", prop.MinItems)
+	}
+	if prop.MaxItems != nil {
+		t.Errorf("supersedes MaxItems = %d, want nil — PD-07 (03.1-00-SUMMARY.md) dropped the target-set cap", *prop.MaxItems)
+	}
+}
+
 // TestSupersedeMemorySchemaExcludesIdempotencyKey (WR-03) pins that
 // supersede_memory's advertised JSON schema does NOT include
 // idempotency_key: supersede's idempotency was deliberately deferred (plan
