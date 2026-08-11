@@ -3518,6 +3518,253 @@ func TestSupersedeForwardChain(t *testing.T) {
 	}
 }
 
+// TestSupersedeMultiAlreadySuperseded (plan 03.1-02 Task 3, REQ-merge-
+// supersession) generalizes TestSupersedeAlreadySuperseded to the multi-
+// target rejection: naming an already-superseded target among a larger set
+// is rejected, and — the part the single-target test never needed —
+// naming it must leave no survivor behind (D-05: the preflight completes
+// for every target before any write) and must name EVERY offender, not
+// just the first.
+func TestSupersedeMultiAlreadySuperseded(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-multi-test:project:already-superseded"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+
+	target1 := "f4000000-0000-0000-0000-000000000001"
+	target2 := "f4000000-0000-0000-0000-000000000002"
+	target3 := "f4000000-0000-0000-0000-000000000003"
+	preCorrection1ID := "f4000000-0000-0000-0000-000000000004"
+	preCorrection2ID := "f4000000-0000-0000-0000-000000000005"
+	mergeAttempt1ID := "f4000000-0000-0000-0000-000000000006"
+	mergeAttempt2ID := "f4000000-0000-0000-0000-000000000007"
+
+	for _, id := range []string{target1, target2, target3} {
+		m := Memory{ID: id, Content: "v", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+
+	// Single-offender case: target1 already superseded on its own first.
+	preCorrection1 := Memory{
+		ID: preCorrection1ID, Content: "pre-correction 1", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: []string{target1},
+	}
+	if err := s.Supersede(ctx, preCorrection1, []float32{0.2, 0.3, 0.4}, []string{target1}, subj); err != nil {
+		t.Fatalf("pre-correct target1: %v", err)
+	}
+
+	mergeAttempt1 := Memory{
+		ID: mergeAttempt1ID, Content: "merge attempt 1", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: []string{target1, target2, target3},
+	}
+	err := s.Supersede(ctx, mergeAttempt1, []float32{0.3, 0.4, 0.5}, []string{target1, target2, target3}, subj)
+	if !errors.Is(err, ErrAlreadySuperseded) {
+		t.Fatalf("merge attempt 1 err = %v, want ErrAlreadySuperseded", err)
+	}
+	var multiErr1 *MultiTargetError
+	if !errors.As(err, &multiErr1) {
+		t.Fatalf("errors.As(err, *MultiTargetError) failed on err = %v", err)
+	}
+	if !slices.Equal(multiErr1.IDs, []string{target1}) {
+		t.Errorf("multiErr1.IDs = %v, want [%q] (single offender named)", multiErr1.IDs, target1)
+	}
+	if _, gerr := s.Get(ctx, mergeAttempt1ID); !errors.Is(gerr, ErrNotFound) {
+		t.Errorf("Get merge-attempt-1 survivor: err = %v, want ErrNotFound (a rejected merge must leave no new record behind — D-05)", gerr)
+	}
+
+	// Two-offender case: target2 ALSO pre-corrected on its own — want both
+	// already-superseded ids named, not just the first encountered.
+	preCorrection2 := Memory{
+		ID: preCorrection2ID, Content: "pre-correction 2", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: []string{target2},
+	}
+	if err := s.Supersede(ctx, preCorrection2, []float32{0.3, 0.4, 0.5}, []string{target2}, subj); err != nil {
+		t.Fatalf("pre-correct target2: %v", err)
+	}
+
+	mergeAttempt2 := Memory{
+		ID: mergeAttempt2ID, Content: "merge attempt 2", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: []string{target1, target2, target3},
+	}
+	err = s.Supersede(ctx, mergeAttempt2, []float32{0.4, 0.5, 0.6}, []string{target1, target2, target3}, subj)
+	if !errors.Is(err, ErrAlreadySuperseded) {
+		t.Fatalf("merge attempt 2 err = %v, want ErrAlreadySuperseded", err)
+	}
+	// Asserts through the TYPED error, not the rendered message: errors.As
+	// yields *MultiTargetError and its IDs field holds both offending
+	// canonical ids — want both already-superseded ids named.
+	var multiErr2 *MultiTargetError
+	if !errors.As(err, &multiErr2) {
+		t.Fatalf("errors.As(err, *MultiTargetError) failed on err = %v", err)
+	}
+	gotIDs := slices.Clone(multiErr2.IDs)
+	slices.Sort(gotIDs)
+	wantIDs := []string{target1, target2}
+	slices.Sort(wantIDs)
+	if !slices.Equal(gotIDs, wantIDs) {
+		t.Errorf("multiErr2.IDs = %v, want both offenders %v (want both already-superseded ids named, not just the first)", gotIDs, wantIDs)
+	}
+	// Secondary check on the rendered text, kept as a belt-and-suspenders
+	// assertion alongside the typed-error check above.
+	if !strings.Contains(err.Error(), target1) || !strings.Contains(err.Error(), target2) {
+		t.Errorf("err.Error() = %q, want both already-superseded ids named", err.Error())
+	}
+	if _, gerr := s.Get(ctx, mergeAttempt2ID); !errors.Is(gerr, ErrNotFound) {
+		t.Errorf("Get merge-attempt-2 survivor: err = %v, want ErrNotFound (a rejected merge must leave no new record behind — D-05)", gerr)
+	}
+}
+
+// TestSupersedeMultiRecallGate (plan 03.1-02 Task 3) generalizes
+// TestSupersedeRecallGate to N=3: after a successful three-target merge,
+// all three targets are absent from List and Search (soft-hidden) and the
+// survivor is present, while every target remains fetchable by id via Get
+// with its content intact — the phase's "history preserved for all
+// predecessors" claim stated as an executable assertion.
+func TestSupersedeMultiRecallGate(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-multi-test:project:recall-gate"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+
+	target1 := "f5000000-0000-0000-0000-000000000001"
+	target2 := "f5000000-0000-0000-0000-000000000002"
+	target3 := "f5000000-0000-0000-0000-000000000003"
+	newID := "f5000000-0000-0000-0000-000000000004"
+	targets := []string{target1, target2, target3}
+
+	for _, id := range targets {
+		m := Memory{ID: id, Content: "original " + id, Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+
+	newMem := Memory{
+		ID: newID, Content: "merged content", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: targets,
+	}
+	if err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, targets, subj); err != nil {
+		t.Fatalf("Supersede: %v", err)
+	}
+
+	items, _, _, err := s.List(ctx, scope, subj, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	gotIDs := recordIDs(items)
+	for _, id := range targets {
+		if slices.Contains(gotIDs, id) {
+			t.Errorf("List: target %s present, want excluded (soft-hidden by merge): %v", id, gotIDs)
+		}
+	}
+	if !slices.Contains(gotIDs, newID) {
+		t.Errorf("List: survivor %s absent, want present: %v", newID, gotIDs)
+	}
+
+	hits, err := s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	gotHitIDs := recordIDs(hits)
+	for _, id := range targets {
+		if slices.Contains(gotHitIDs, id) {
+			t.Errorf("Search: target %s present, want excluded (soft-hidden by merge): %v", id, gotHitIDs)
+		}
+	}
+	if !slices.Contains(gotHitIDs, newID) {
+		t.Errorf("Search: survivor %s absent, want present: %v", newID, gotHitIDs)
+	}
+
+	for _, id := range targets {
+		got, gerr := s.Get(ctx, id)
+		if gerr != nil {
+			t.Fatalf("Get %s: %v (must still be fetchable by id)", id, gerr)
+		}
+		if got.Content != "original "+id {
+			t.Errorf("Get %s: content = %q, want %q (must survive intact)", id, got.Content, "original "+id)
+		}
+		if got.SupersededBy == nil || *got.SupersededBy != newID {
+			t.Errorf("Get %s: SupersededBy = %v, want %q", id, got.SupersededBy, newID)
+		}
+	}
+}
+
+// TestSupersedeMultiChainKeepsSingleHead (plan 03.1-02 Task 3, D-06) proves
+// a merge does not disturb the forward-chain rule: A and B merge into C,
+// then C is superseded by D. A further call naming the now-non-head A is
+// rejected exactly as TestSupersedeForwardChain's single-target chain would
+// reject a non-head record; a further call naming the current live head D
+// succeeds, keeping one live head per chain.
+func TestSupersedeMultiChainKeepsSingleHead(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-multi-test:project:chain-single-head"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+
+	aID := "f6000000-0000-0000-0000-000000000001"
+	bID := "f6000000-0000-0000-0000-000000000002"
+	cID := "f6000000-0000-0000-0000-000000000003" // merges A+B
+	dID := "f6000000-0000-0000-0000-000000000004" // supersedes C
+	eID := "f6000000-0000-0000-0000-000000000005" // supersedes D
+	rejectAttemptID := "f6000000-0000-0000-0000-000000000099"
+
+	for _, id := range []string{aID, bID} {
+		m := Memory{ID: id, Content: "v", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	c := Memory{
+		ID: cID, Content: "merged a+b", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: []string{aID, bID},
+	}
+	if err := s.Supersede(ctx, c, []float32{0.2, 0.3, 0.4}, []string{aID, bID}, subj); err != nil {
+		t.Fatalf("Supersede a+b->c: %v", err)
+	}
+	d := Memory{
+		ID: dID, Content: "d supersedes c", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: []string{cID},
+	}
+	if err := s.Supersede(ctx, d, []float32{0.3, 0.4, 0.5}, []string{cID}, subj); err != nil {
+		t.Fatalf("Supersede c->d: %v", err)
+	}
+
+	// A is a non-head record (folded into C, then C itself was superseded);
+	// naming it must still be rejected, never resurrected.
+	rejectAttempt := Memory{
+		ID: rejectAttemptID, Content: "invalid", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: []string{aID},
+	}
+	if err := s.Supersede(ctx, rejectAttempt, []float32{0.9, 0.9, 0.9}, []string{aID}, subj); !errors.Is(err, ErrAlreadySuperseded) {
+		t.Errorf("Supersede naming non-head A: err = %v, want ErrAlreadySuperseded", err)
+	}
+	if _, gerr := s.Get(ctx, rejectAttemptID); !errors.Is(gerr, ErrNotFound) {
+		t.Errorf("Get rejected merge's survivor: err = %v, want ErrNotFound", gerr)
+	}
+
+	// D is the current live head — a normal forward-chain target, must succeed.
+	e := Memory{
+		ID: eID, Content: "e supersedes d", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: []string{dID},
+	}
+	if err := s.Supersede(ctx, e, []float32{0.4, 0.5, 0.6}, []string{dID}, subj); err != nil {
+		t.Fatalf("Supersede d->e (forward chain over the live head must succeed): %v", err)
+	}
+
+	got, gerr := s.Get(ctx, eID)
+	if gerr != nil {
+		t.Fatalf("Get e: %v", gerr)
+	}
+	if got.SupersededBy != nil {
+		t.Errorf("e.SupersededBy = %v, want nil (e is the current live head)", got.SupersededBy)
+	}
+}
+
 // TestSupersedeTOCTOU (D-02) verifies Store.Supersede's TOCTOU behaviour: a
 // target deleted between the getWritable ownership gate and the back-stamp
 // SetPayload call must not cause Supersede to return nil. Mirrors
