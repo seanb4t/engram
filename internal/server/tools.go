@@ -591,28 +591,18 @@ func parseWindow(a scheduleArgs, now time.Time) (nb, na *time.Time, err error) {
 // summary) without a hand-rolled parallel field list — the exact drift class
 // persistAndEnqueue's doc comment already flags (tools.go:734-736).
 //
-// idempotency_key is intentionally NOT supported on supersede_memory this
-// phase (WR-03/WR-04, plan T-25-10 deferred scope): deps.supersedeMemory
-// never calls checkIdempotentReplay or stamps IdempotencyFingerprint, so any
-// idempotency_key a caller sends is silently IGNORED — a normal supersede
-// happens, no replay, no error (see the defensive clear in supersedeMemory
-// below). IdempotencyKey below (a depth-0 `json:"-"` field) DOES remove
-// idempotency_key from the advertised JSON schema: jsonschema-go's
-// reflect.VisibleFields-based inference applies Go's normal
-// shallowest-depth-wins shadowing rule, so this field wins over storeArgs'
-// depth-1 promoted one there (pinned by
-// TestSupersedeMemorySchemaExcludesIdempotencyKey).
-//
-// It does NOT, however, remove idempotency_key from the wire DECODE: a
-// `json:"-"` field has no JSON name, so it never enters encoding/json's
-// same-name shadowing contest — it just excuses itself, leaving the
-// promoted storeArgs.IdempotencyKey (json:"idempotency_key,omitempty") as
-// the sole decode target for that key. A caller that (incorrectly, since it
-// isn't advertised) sends idempotency_key on supersede_memory therefore
-// STILL populates a.storeArgs.IdempotencyKey on the wire (pinned by
-// TestSupersedeArgsDecodePopulatesPromotedIdempotencyKey) — the defensive
-// clear at the top of supersedeMemory is what actually makes it inert, not
-// this shadow.
+// idempotency_key IS supported here (D-12, phase 03.1 plan 04): this closes
+// Phase 25's deliberately deferred scope (WR-03/WR-04, plan T-25-10 — the
+// feature was never argued against, only deferred). The promoted
+// storeArgs.IdempotencyKey field is now the sole schema AND decode target:
+// a caller-supplied idempotency_key is advertised on the generated schema,
+// decoded, and READ by deps.supersedeMemory via
+// checkIdempotentMergeReplay/resolveLostMergeRace, whose replay fingerprint
+// (mergeFingerprint) covers content AND the resolved target set — so a
+// same-key retry with a DIFFERENT target set is a conflict, never a silent
+// different-operation success (D-13). The replay check runs BEFORE the
+// already-superseded stage (D-14/PD-09) — see checkIdempotentMergeReplay's
+// doc comment for the ordering requirement and PD-09's residual narrowing.
 type supersedeArgs struct {
 	storeArgs
 	// Supersedes carries omitempty (D-06a); its non-empty-slice presence
@@ -621,9 +611,6 @@ type supersedeArgs struct {
 	// array behaves exactly as the pre-phase single-target call). No maximum
 	// length is enforced or advertised (PD-07, 03.1-00-SUMMARY.md).
 	Supersedes []string `json:"supersedes,omitempty" jsonschema:"non-empty array of ids (full UUID or short_id) of the memories this new record corrects/replaces"`
-	// IdempotencyKey shadows storeArgs.IdempotencyKey for schema purposes
-	// only — see the type doc comment above. Never read.
-	IdempotencyKey string `json:"-"`
 }
 
 type searchArgs struct {
@@ -991,6 +978,114 @@ func (d *deps) checkIdempotentReplay(ctx context.Context, owner string, a storeA
 		return true, existing.ID, existing.ShortID, "", nil
 	}
 	return false, "", "", "", fmt.Errorf("idempotency key %q reused with different content: %w", a.IdempotencyKey, store.ErrIdempotencyConflict)
+}
+
+// checkIdempotentMergeReplay is supersede_memory's idempotency replay check
+// (D-12, closing Phase 25's deliberately deferred scope WR-03/WR-04). It
+// copies checkIdempotentReplay's control flow exactly — the same-key-
+// different-content detection above is the mechanism being extended, not
+// replaced — but compares against mergeFingerprint(a.storeArgs, targets)
+// instead of contentFingerprint(a), so a same-key retry with a DIFFERENT
+// target set is a conflict, never a silent different-operation success
+// (D-13, T-03.1-07).
+//
+// Ordering (D-14). This is called from deps.supersedeMemory AFTER
+// resolveAndAuthorizeSupersedeTargets (existence + ownership) and BEFORE
+// validateSupersedeTargetState (already-superseded) — a structural property
+// of the call sequence (two separate statements), not a position inside one
+// function body a later edit can quietly move. Ordered the other way, the
+// already-superseded stage would reject a retry before the key is ever
+// consulted, and that failure mode is invisible in every happy-path test.
+//
+// PD-09's residual narrowing, stated as contract rather than only a test
+// (03.1-00-SUMMARY.md, review MEDIUM): because this check runs AFTER
+// existence and ownership rather than at the very top of the handler, a
+// retry whose targets were deleted in the meantime, or whose ownership
+// changed, does NOT replay — resolveAndAuthorizeSupersedeTargets rejects it
+// as not found before this check ever runs. That is weaker than ordinary
+// key-alone idempotent-replay semantics. It is a deliberate trade —
+// replaying without re-checking ownership would let a key minted while the
+// caller owned a record still act after they no longer do — and is
+// published in reference/tools.md, not only pinned by
+// TestSupersedeMemoryReplayAfterTargetDeletedRejects.
+func (d *deps) checkIdempotentMergeReplay(ctx context.Context, owner string, a supersedeArgs, targets []string) (replay bool, id, shortID, pointID string, err error) {
+	if a.IdempotencyKey == "" {
+		return false, "", "", "", nil
+	}
+	if len(a.IdempotencyKey) > maxIdempotencyKeyBytes {
+		return false, "", "", "", argErrf(classOutOfRange, HintTooLong, "idempotency_key", "idempotency_key too large: %d bytes (max %d)", len(a.IdempotencyKey), maxIdempotencyKeyBytes)
+	}
+	pointID = idempotencyPointID(owner, a.Scope, a.IdempotencyKey)
+	existing, gerr := d.st.Get(ctx, pointID)
+	switch {
+	case errors.Is(gerr, store.ErrNotFound):
+		return false, "", "", pointID, nil
+	case gerr != nil:
+		return false, "", "", "", gerr
+	}
+	if mergeFingerprint(a.storeArgs, targets) == existing.IdempotencyFingerprint {
+		return true, existing.ID, existing.ShortID, "", nil
+	}
+	return false, "", "", "", fmt.Errorf("idempotency key %q reused with a different target set or content: %w", a.IdempotencyKey, store.ErrIdempotencyConflict)
+}
+
+// resolveLostMergeRace recovers the losing racer's answer from a store-tier
+// ErrAlreadySuperseded rejection (T-03.1-26). Store.Supersede's under-lock
+// already-superseded check (store.go) runs BEFORE its Upsert, so the loser
+// of two simultaneous identical keyed merges never reaches Upsert and never
+// reaches the keyed post-write short-id re-read persistAndEnqueue-style code
+// performs after a successful write — this recovery is the ONLY path by
+// which a call that never wrote can still return the winner's persisted
+// answer.
+//
+// Deliberately narrow: it does not retry and does not write. It turns
+// exactly ONE sentinel (ErrAlreadySuperseded) into exactly one replay, and
+// only when the caller's OWN deterministic point id (derived from
+// owner+scope+key, so cross-owner disclosure is structurally impossible)
+// holds a record carrying the caller's OWN merge fingerprint. Anything wider
+// would let a key convert an unrelated rejection into a fabricated success.
+//
+//   - pointID empty (unkeyed call): return supersedeErr unchanged — the
+//     unkeyed path has no deterministic id to look up and this recovery
+//     must never fire there.
+//   - supersedeErr does not wrap store.ErrAlreadySuperseded: return it
+//     unchanged. This recovery is scoped to exactly one rejection; every
+//     other store error propagates untouched.
+//   - the deterministic point is absent: return supersedeErr unchanged.
+//     There is no winner to defer to — the targets were superseded by some
+//     OTHER call — so the rejection stands.
+//   - the point read fails (transport error): return that read error, never
+//     masked as a conflict or a success.
+//   - stored fingerprint equals mergeFingerprint(a.storeArgs, targets): a
+//     record already sits at the caller's own deterministic id carrying the
+//     caller's own fingerprint — the operation the caller asked for has
+//     already happened. Return its persisted id/short id, nil error.
+//   - stored fingerprint differs: a genuine conflict, not a lost race
+//     (D-13) — the same key is being reused for a different operation and
+//     the targets happen to already be superseded. Return the
+//     idempotency-conflict sentinel — NEVER the already-superseded error and
+//     never a success — because the caller's key is the stronger signal
+//     here: a key reused for a different operation is a client bug the
+//     caller can act on, whereas "already superseded" would send them
+//     looking at the wrong thing.
+func (d *deps) resolveLostMergeRace(ctx context.Context, a supersedeArgs, targets []string, pointID string, supersedeErr error) (id, shortID string, err error) {
+	if pointID == "" {
+		return "", "", supersedeErr
+	}
+	if !errors.Is(supersedeErr, store.ErrAlreadySuperseded) {
+		return "", "", supersedeErr
+	}
+	existing, gerr := d.st.Get(ctx, pointID)
+	switch {
+	case errors.Is(gerr, store.ErrNotFound):
+		return "", "", supersedeErr
+	case gerr != nil:
+		return "", "", gerr
+	}
+	if mergeFingerprint(a.storeArgs, targets) == existing.IdempotencyFingerprint {
+		return existing.ID, existing.ShortID, nil
+	}
+	return "", "", fmt.Errorf("idempotency key %q reused with a different target set or content: %w", a.IdempotencyKey, store.ErrIdempotencyConflict)
 }
 
 func (d *deps) storeMemory(ctx context.Context, c caller, a storeArgs) (string, string, error) {
@@ -1910,21 +2005,22 @@ func (d *deps) validateSupersedeTargetState(_ context.Context, _ caller, targets
 // a set — D-01 promote semantics, a one-element array behaves exactly as the
 // pre-phase single-target call). It runs the staged preflight above — the
 // authorize stage (resolution, ownership, no rule/no-already-superseded is
-// NOT yet checked) then the state stage — strictly ahead of the billable
-// embed and the Qdrant-hitting MintShortID call (CR-03 cost-amplification
-// hardening: a set that cannot succeed never spends), then delegates the
-// create+back-stamp to Store.Supersede — which re-gates every target via
-// getWritable/ActionWrite under its own per-target locks (SC3: a caller with
-// only read/shared access to a target cannot supersede it; D-07: supersession
-// only ever fires from this explicit call, never a similarity-threshold or
-// write-through path; CR-01: the store-level re-gate is what Store.Supersede's
-// locks make atomic against a concurrent racing caller). Store-tier
-// rejections are re-wrapped through renderTargetRejection with the caller's
-// ORIGINAL inputs, never a resolved target id — same 404-indistinguishability
-// discipline as setVisibility/storeDiscovery (a non-owner cannot learn a
-// target exists). The new correcting record is store_memory-shaped, so it is
-// enqueued for async summary-on-write like any other store_memory write,
-// exactly once regardless of target-set size.
+// NOT yet checked), then the idempotency replay check (D-12/D-14, below),
+// then the state stage — strictly ahead of the billable embed and the
+// Qdrant-hitting MintShortID call (CR-03 cost-amplification hardening: a set
+// that cannot succeed never spends), then delegates the create+back-stamp to
+// Store.Supersede — which re-gates every target via getWritable/ActionWrite
+// under its own per-target locks (SC3: a caller with only read/shared access
+// to a target cannot supersede it; D-07: supersession only ever fires from
+// this explicit call, never a similarity-threshold or write-through path;
+// CR-01: the store-level re-gate is what Store.Supersede's locks make atomic
+// against a concurrent racing caller). Store-tier rejections are re-wrapped
+// through renderTargetRejection with the caller's ORIGINAL inputs, never a
+// resolved target id — same 404-indistinguishability discipline as
+// setVisibility/storeDiscovery (a non-owner cannot learn a target exists).
+// The new correcting record is store_memory-shaped, so it is enqueued for
+// async summary-on-write like any other store_memory write, exactly once
+// regardless of target-set size.
 func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (string, string, error) {
 	if err := validateStoreArgs(a.storeArgs, d.maxSummaryBytes); err != nil {
 		return "", "", err
@@ -1932,27 +2028,11 @@ func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (
 	if err := validateCitations(a.Citations, 0); err != nil {
 		return "", "", err
 	}
-	// WR-04 defense-in-depth: a.storeArgs.IdempotencyKey can be populated on
-	// the wire despite supersedeArgs' json:"-" shadow field (see the
-	// supersedeArgs doc comment — the shadow only removes the field from the
-	// advertised schema, not the decode). Clearing it here — before it is
-	// ever read — guarantees a caller-supplied idempotency_key is silently
-	// ignored (no replay, no error) rather than being read by some future
-	// refactor that reuses storeArgs' idempotency helpers. (Unwound in plan
-	// 03.1-04, which adds first-class merge idempotency.)
-	a.storeArgs.IdempotencyKey = ""
+
+	owner := c.Subj.Owner()
 
 	targets, err := d.resolveAndAuthorizeSupersedeTargets(ctx, c, a.Supersedes)
 	if err != nil {
-		return "", "", err
-	}
-	// plan 03.1-04 inserts the idempotency replay check HERE, between the
-	// authorize stage above and the state stage below — D-14 requires the
-	// replay check run before the already-superseded check, and this gap is
-	// what makes that ordering a structural property of the call sequence
-	// rather than a statement position a later edit can quietly move. Do not
-	// collapse these two calls back into one.
-	if err := d.validateSupersedeTargetState(ctx, c, targets); err != nil {
 		return "", "", err
 	}
 
@@ -1961,10 +2041,35 @@ func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (
 		targetIDs[i] = t.ID
 	}
 
-	owner := c.Subj.Owner()
+	// D-12/D-14: the idempotency replay check runs HERE, between the
+	// authorize stage above and the state stage below — a structural
+	// property of the call sequence (two separate statements), not a
+	// position inside one function body a later edit can quietly move.
+	// Ordered the other way, a retry after an unobserved success would be
+	// rejected by the already-superseded stage before the key is ever
+	// consulted, and that failure mode is invisible in every happy-path
+	// test. See checkIdempotentMergeReplay's doc comment for PD-09's
+	// residual narrowing (a retry whose targets were deleted/reowned in the
+	// meantime never reaches this check — it was already rejected above).
+	replay, replayID, replayShortID, pointID, err := d.checkIdempotentMergeReplay(ctx, owner, a, targetIDs)
+	if err != nil {
+		return "", "", err
+	}
+	if replay {
+		return replayID, replayShortID, nil
+	}
+
+	if err := d.validateSupersedeTargetState(ctx, c, targets); err != nil {
+		return "", "", err
+	}
+
 	m := a.toMemory(owner, c.Actor, d.clock())
 	m.EmbedderIdentity = d.embedderIdentity
 	m.Supersedes = targetIDs
+	if pointID != "" {
+		m.ID = pointID
+		m.IdempotencyFingerprint = mergeFingerprint(a.storeArgs, targetIDs)
+	}
 	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 	if err != nil {
 		return "", "", err // embed first: on error we never touch the store
@@ -1985,6 +2090,19 @@ func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (
 			}
 			return "", "", renderTargetRejection(store.ErrNotFound, inputs)
 		case errors.Is(err, store.ErrAlreadySuperseded):
+			// THE LOSING RACER (T-03.1-26). Store.Supersede rejects an
+			// already-stamped target under its own per-target locks BEFORE
+			// its Upsert, so a losing simultaneous keyed merge never writes
+			// and never reaches the keyed post-write re-read below.
+			// resolveLostMergeRace is the only path by which such a call
+			// can still return the winner's persisted answer — and only on
+			// a fingerprint match; a mismatch stays a genuine conflict
+			// (D-13), never converted into a success.
+			if rid, rsid, rerr := d.resolveLostMergeRace(ctx, a, targetIDs, pointID, err); rerr == nil {
+				return rid, rsid, nil
+			} else if !errors.Is(rerr, store.ErrAlreadySuperseded) {
+				return "", "", rerr
+			}
 			// Recover the offending canonical ids from the typed error
 			// (plan 01, PD-10) and map each back to its Input through the
 			// resolved pairs. Do NOT parse the error's message:
@@ -2012,6 +2130,21 @@ func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (
 			return "", "", renderTargetRejection(store.ErrAlreadySuperseded, inputs)
 		default:
 			return "", "", err
+		}
+	}
+	// Re-read the point after Upsert so a concurrent DIFFERENT keyed merge
+	// racing on the SAME deterministic pointID (same owner+scope+key, a
+	// non-overlapping target set so no shared target lock blocks it —
+	// unlike the identical-target-set race, which resolveLostMergeRace
+	// covers) returns the short_id that was ACTUALLY PERSISTED, not the one
+	// it discarded — mirrors persistAndEnqueue's keyed-path tail. Gated to
+	// the keyed path only: m.IdempotencyFingerprint is only ever non-empty
+	// when this write used a deterministic pointID; a failed re-Get here is
+	// non-fatal — fall back to the locally-minted value rather than fail an
+	// otherwise-successful write.
+	if m.IdempotencyFingerprint != "" {
+		if persisted, gerr := d.st.Get(ctx, m.ID); gerr == nil {
+			m.ShortID = persisted.ShortID
 		}
 	}
 	d.summaryQueue.tryEnqueue(m.ID)
