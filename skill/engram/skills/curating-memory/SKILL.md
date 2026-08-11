@@ -392,36 +392,51 @@ with no structural class selected) additionally requires:
 
 `supersede_memory` is the correction verb. It takes the full `store_memory` field
 set (content, scope, tags, category, …) for the **new, correcting** record, plus
-`supersedes`: the id — full UUID or `short_id` — of the record it replaces. In one
-call it stores the new record and stamps `superseded_by` onto the old one.
+`supersedes`: one or more target ids — each a full UUID or `short_id` — of the
+records it replaces. In one call it stores the new record and stamps
+`superseded_by` onto every target.
+
+Several targets may be corrected in **one call**:
+`supersedes: ["short_id_a", "short_id_b"]` merges both into a single new record.
+A one-element array (`supersedes: ["short_id_a"]`) is the ordinary single-target
+case — nothing changes about how you call it for the common case.
 
 What that buys you:
 
-- The superseded record **stops surfacing** in `search_memory` / `list_memory` /
+- Every superseded target **stops surfacing** in `search_memory` / `list_memory` /
   `search_discovery` / `list_scheduled` — recall stays clean and agents act on the
   current truth.
-- It remains **fully fetchable by id** via `get_memory`, and the new record carries
-  a `supersedes` link back to it — so "what did we believe before, and what
-  replaced it" is always answerable. Nothing is deleted or overwritten.
+- Each remains **fully fetchable by id** via `get_memory`, and the new record
+  carries a `supersedes` link back to every one of them — so "what did we believe
+  before, and what replaced it" is always answerable. Nothing is deleted or
+  overwritten.
 
 Rules that will bite you if ignored:
 
 - **Supersede the live head, not a link mid-chain.** Superseding an
-  already-superseded record is rejected (`already superseded`). A chain keeps one
-  live head: correcting C→B→A is fine, but you must always target the current
-  head. If you get that rejection, `search_memory` for the current record and
-  supersede *that*.
-- **You must own the target.** Supersession routes through the ownership *write*
-  gate — a `shared` record you can read is **not** one you can supersede. A target
-  you don't own is indistinguishable from one that doesn't exist (both 404).
+  already-superseded record is rejected (`already superseded`). This applies to
+  every target in the set — naming even one already-superseded id rejects the
+  whole call. A chain keeps one live head: correcting C→B→A is fine, but you must
+  always target the current head. If you get that rejection, `search_memory` for
+  the current record and supersede *that*.
+- **You must own every target.** Supersession routes through the ownership
+  *write* gate, per target — a `shared` record you can read is **not** one you
+  can supersede. A target you don't own, a target that doesn't exist, and a
+  target whose short id is ambiguous are all indistinguishable (all 404) — and
+  the rejection names every offending target at once, so you can fix the whole
+  set in one round trip instead of discovering offenders one at a time.
 - **Rules can't be superseded.** `store_rule` records are normative ground truth;
-  delete the rule instead (same restriction as `set_visibility`).
+  naming one anywhere in the set rejects the whole call, naming every rule
+  target — delete the rule instead (same restriction as `set_visibility`).
 - **Never automatic.** Do not supersede on a similarity hunch or as a write-through
-  side effect. Supersession is an explicit correction of a *specific* record you
-  identified — if you're unsure which record is wrong, search first.
-- `idempotency_key` is **not** supported here — a retried supersede creates a
-  second correcting record rather than replaying the first. Retry only after
-  confirming the first call didn't land.
+  side effect, no matter how large the target set. Supersession is an explicit
+  correction of *specific* records you identified and the user blessed — if
+  you're unsure which record is wrong, search first.
+- `idempotency_key` **is** supported here: pass one when retrying a merge after
+  an ambiguous failure (e.g. you didn't see the response) — the fingerprint
+  covers content and the target set, so a matching retry replays the original
+  result instead of merging again. If the target set changed between attempts,
+  expect a conflict rather than a silent second application.
 
 ## Citations (structured provenance)
 
