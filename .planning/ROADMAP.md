@@ -491,9 +491,16 @@ genuinely adversarial case for this milestone's broader, all-memories scope — 
 reuse of that template.
 
 **Plans:** 0/3 plans complete
+**Wave 1**
 
 - [ ] 04-01-PLAN.md — Tracer: `curating-spine` skill carrying the near-duplicate identity path end-to-end through the verbatim consent gate, plus the no-integration COVERAGE declaration
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 04-02-PLAN.md — The adversarial cold read: an `overlapping`-misjudged-as-`same-fact` fixture proving a confident wrong proposal still stops at consent
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 04-03-PLAN.md — Expansion: staleness four-tier axis, the codegraph→ast-grep→rg→Read ladder, the reactive-recall trigger, and the `distinct` no-re-propose marker
 
 ---
