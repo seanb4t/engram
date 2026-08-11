@@ -490,10 +490,10 @@ internal precedent (v0.12.x Phase 6 rule-capture) and deserves a focused pass on
 genuinely adversarial case for this milestone's broader, all-memories scope — not a mechanical
 reuse of that template.
 
-**Plans:** 0/3 plans complete
+**Plans:** 1/3 plans executed
 **Wave 1**
 
-- [ ] 04-01-PLAN.md — Tracer: `curating-spine` skill carrying the near-duplicate identity path end-to-end through the verbatim consent gate, plus the no-integration COVERAGE declaration
+- [x] 04-01-PLAN.md — Tracer: `curating-spine` skill carrying the near-duplicate identity path end-to-end through the verbatim consent gate, plus the no-integration COVERAGE declaration
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -590,7 +590,7 @@ phases as they close rather than only at the end.
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | In Progress|  |
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-05 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete | 2026-08-01 |
-| 4. Diagnosability | v0.12.x | 4/4 | Complete | 2026-08-01 |
+| 4. Diagnosability | v0.12.x | 4/4 | In Progress|  |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 1. Interface Enforceability | v0.13.x | 0/4 | Not started | - |

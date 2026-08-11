@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.13.x
 milestone_name: Curation & Self-Evidence
 current_phase: 04
-current_phase_name: Spine Curation — Semantic (Skill)
+current_phase_name: spine-curation-semantic-skill
 status: executing
 stopped_at: Phase 03.1 context gathered
-last_updated: "2026-08-11T22:40:43.605Z"
+last_updated: "2026-08-11T22:43:35.515Z"
 last_activity: 2026-08-11
 last_activity_desc: Phase 03.1 execution started
 progress:
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 03.1 — merge-supersession-supersede-memory-accepts-multiple-targets
+**Current focus:** Phase 04 — spine-curation-semantic-skill
 
 ## Current Position
 
-Phase: 04 — Spine Curation — Semantic (Skill)
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-08-11 — Phase 03.1 complete, transitioned to Phase 04
+Phase: 04 (spine-curation-semantic-skill) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 04
+Last activity: 2026-08-11 — Phase 04 execution started
 
 ## Deferred Items
 
