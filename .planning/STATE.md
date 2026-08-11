@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.13.x
 milestone_name: Curation & Self-Evidence
-current_phase: 04
-current_phase_name: spine-curation-semantic-skill
-status: executing
+current_phase: 5
+current_phase_name: Validation Debt Reconciliation
+status: planning
 stopped_at: Phase 03.1 context gathered
-last_updated: "2026-08-11T22:43:35.515Z"
+last_updated: "2026-08-11T23:52:22.517Z"
 last_activity: 2026-08-11
 last_activity_desc: Phase 03.1 execution started
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 31
-  completed_plans: 28
+  completed_plans: 31
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.
 
 ## Current Position
 
-Phase: 04 (spine-curation-semantic-skill) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 04
-Last activity: 2026-08-11 — Phase 04 execution started
+Phase: 5 — Validation Debt Reconciliation
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-11 — Phase 04 complete, transitioned to Phase 5
 
 ## Deferred Items
 

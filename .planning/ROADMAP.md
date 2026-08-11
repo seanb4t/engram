@@ -182,7 +182,7 @@ Audit (PASSED — 11/11 requirements, 6/6 integration seams, 2/2 E2E flows) at
 - [ ] **Phase 1: Interface Enforceability** - Flag-group validation and one exit-code taxonomy resolved together (#453/#467), plus an operator-configurable CLI request timeout (#452)
 - [x] **Phase 2: Interface Discoverability** - Conditional rules stated on both the cobra and MCP surfaces with a CI conformance gate, MCP tool blast-radius hints, pinned `--help` golden files (completed 2026-08-05)
 - [x] **Phase 3: Spine Curation — Structural (CLI)** - `engram spine-review scan/verify/consolidate/purge/archive` through the existing Subject-less operator tier (completed 2026-08-07)
-- [ ] **Phase 4: Spine Curation — Semantic (Skill)** - A companion skill judges staleness and near-duplicate identity, proposing only, never mutating without consent
+- [x] **Phase 4: Spine Curation — Semantic (Skill)** - A companion skill judges staleness and near-duplicate identity, proposing only, never mutating without consent (completed 2026-08-11)
 - [ ] **Phase 5: Validation Debt Reconciliation** - Six inherited Nyquist drafts plus this milestone's own phases re-resolved against `go test -list`; #355's drifted citations fixed and used to calibrate `verify`
 
 ## Phase Details
@@ -490,7 +490,7 @@ internal precedent (v0.12.x Phase 6 rule-capture) and deserves a focused pass on
 genuinely adversarial case for this milestone's broader, all-memories scope — not a mechanical
 reuse of that template.
 
-**Plans:** 3/3 plans executed
+**Plans:** 3/3 plans complete
 **Wave 1**
 
 - [x] 04-01-PLAN.md — Tracer: `curating-spine` skill carrying the near-duplicate identity path end-to-end through the verbatim consent gate, plus the no-integration COVERAGE declaration
@@ -590,7 +590,7 @@ phases as they close rather than only at the end.
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | In Progress|  |
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-05 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete | 2026-08-01 |
-| 4. Diagnosability | v0.12.x | 4/4 | In Progress|  |
+| 4. Diagnosability | v0.12.x | 4/4 | Complete    | 2026-08-11 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 1. Interface Enforceability | v0.13.x | 0/4 | Not started | - |
