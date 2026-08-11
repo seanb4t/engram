@@ -490,7 +490,7 @@ internal precedent (v0.12.x Phase 6 rule-capture) and deserves a focused pass on
 genuinely adversarial case for this milestone's broader, all-memories scope — not a mechanical
 reuse of that template.
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans executed
 **Wave 1**
 
 - [x] 04-01-PLAN.md — Tracer: `curating-spine` skill carrying the near-duplicate identity path end-to-end through the verbatim consent gate, plus the no-integration COVERAGE declaration
@@ -501,7 +501,7 @@ reuse of that template.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 04-03-PLAN.md — Expansion: staleness four-tier axis, the codegraph→ast-grep→rg→Read ladder, the reactive-recall trigger, and the `distinct` no-re-propose marker
+- [x] 04-03-PLAN.md — Expansion: staleness four-tier axis, the codegraph→ast-grep→rg→Read ladder, the reactive-recall trigger, and the `distinct` no-re-propose marker
 
 ---
 
