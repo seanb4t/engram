@@ -434,7 +434,7 @@ ordering resolved without a `TargetLocker` interface change, but the in-process 
 is not reentrant, so the *resolved* target-UUID set must be deduped before acquisition or a repeated
 target self-deadlocks. `idempotency_key` resolved as supported (D-12).
 
-**Plans:** 5/6 plans executed
+**Plans:** 6/6 plans executed
 
 Plans:
 **Wave 1**
@@ -456,7 +456,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 03.1-05-PLAN.md — Publish the multi-target contract across docs, CLAUDE.md, and the skill, bound by a drift gate
+- [x] 03.1-05-PLAN.md — Publish the multi-target contract across docs, CLAUDE.md, and the skill, bound by a drift gate
 
 ### Phase 4: Spine Curation — Semantic (Skill)
 
