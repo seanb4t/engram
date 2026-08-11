@@ -5041,6 +5041,132 @@ func TestSupersedeMultiConcurrentOverlapping(t *testing.T) {
 	}
 }
 
+// TestSupersedeConcurrentKeyedDisjointTargetsCannotBothLand (03.1 cycle-4
+// review CR-01) pins the fix for a data-integrity gap the per-target lock
+// alone left open: two concurrent KEYED Supersede calls that share the same
+// survivor id (simulating idempotencyPointID(owner, scope, key), which is
+// deterministic and independent of the target set) but name DISJOINT target
+// sets never contended on any per-target lock — both could pass their own
+// preflight and both Upsert the same survivor id, the second whole-payload
+// replacing the first with no error and no log (silent corruption: the
+// first call's already-back-stamped target ends up pointing at a survivor
+// whose persisted Supersedes omits it entirely).
+//
+// This asserts on GRAPH STATE, not merely a returned error: exactly one call
+// must succeed and the other must observe store.ErrIdempotencyConflict
+// (never both succeeding, and never any other error); the persisted
+// survivor's Supersedes must equal exactly the WINNING call's target set;
+// the winning target must be back-stamped to the survivor; and — the
+// corruption this fix closes — the LOSING call's target must NOT be
+// back-stamped at all, since the fix rejects the losing call under the lock
+// BEFORE it ever reaches Upsert or the back-stamp. Run with -race.
+func TestSupersedeConcurrentKeyedDisjointTargetsCannotBothLand(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-test:project:keyed-disjoint-race"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+
+	aID := "ee000000-0000-0000-0000-000000000001"
+	bID := "ee000000-0000-0000-0000-000000000002"
+	// survivorID stands in for a deterministic idempotencyPointID: both
+	// racing calls share it, exactly as two calls sharing an owner+scope+key
+	// would at the server layer.
+	survivorID := "ee000000-0000-0000-0000-0000000000f0"
+
+	for _, id := range []string{aID, bID} {
+		m := Memory{ID: id, Content: "v", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+
+	fixA := Memory{
+		ID: survivorID, Content: "fix A", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: []string{aID},
+		IdempotencyFingerprint: "fp-fix-a",
+	}
+	fixB := Memory{
+		ID: survivorID, Content: "fix B", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: []string{bID},
+		IdempotencyFingerprint: "fp-fix-b",
+	}
+
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		errs[0] = s.Supersede(ctx, fixA, []float32{0.2, 0.3, 0.4}, []string{aID}, subj)
+	}()
+	go func() {
+		defer wg.Done()
+		errs[1] = s.Supersede(ctx, fixB, []float32{0.3, 0.4, 0.5}, []string{bID}, subj)
+	}()
+
+	waitDone := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(waitDone)
+	}()
+	select {
+	case <-waitDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("two disjoint-target keyed Supersede calls did not both terminate within 10s — locking newMem.ID alongside targets must not deadlock")
+	}
+
+	successes, conflicts := 0, 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, ErrIdempotencyConflict):
+			conflicts++
+		default:
+			t.Fatalf("unexpected Supersede error: %v", err)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("concurrent keyed disjoint-target Supersede: got %d successes, %d idempotency conflicts (errs=%v), want exactly 1 success and 1 conflict — BOTH succeeding means the race this test guards against is back", successes, conflicts, errs)
+	}
+
+	winnerTarget, loserTarget := aID, bID
+	if errs[0] != nil {
+		winnerTarget, loserTarget = bID, aID
+	}
+
+	survivor, err := s.Get(ctx, survivorID)
+	if err != nil {
+		t.Fatalf("Get survivor: %v", err)
+	}
+	if len(survivor.Supersedes) != 1 || survivor.Supersedes[0] != winnerTarget {
+		t.Fatalf("survivor.Supersedes = %v, want [%q] (only the winning call's target set — the losing call's whole-payload Upsert must never have landed)", survivor.Supersedes, winnerTarget)
+	}
+
+	gotWinner, err := s.Get(ctx, winnerTarget)
+	if err != nil {
+		t.Fatalf("Get winning target: %v", err)
+	}
+	if gotWinner.SupersededBy == nil || *gotWinner.SupersededBy != survivorID {
+		t.Errorf("winning target %s: SupersededBy = %v, want %q", winnerTarget, gotWinner.SupersededBy, survivorID)
+	}
+
+	// The corruption this fix closes: pre-fix, the losing call still reached
+	// its own back-stamp (its Upsert never conflicted, since nothing locked
+	// the shared survivor id), leaving this target pointing at a survivor
+	// whose persisted Supersedes omits it — a dangling forward link with no
+	// error and no log. Post-fix the losing call must be rejected UNDER THE
+	// LOCK before ever reaching Upsert or the back-stamp, so this target's
+	// superseded_by must remain nil.
+	gotLoser, err := s.Get(ctx, loserTarget)
+	if err != nil {
+		t.Fatalf("Get losing target: %v", err)
+	}
+	if gotLoser.SupersededBy != nil {
+		t.Errorf("losing target %s: SupersededBy = %v, want nil (the losing keyed call must be rejected before it ever back-stamps its target)", loserTarget, *gotLoser.SupersededBy)
+	}
+}
+
 // TestListCursorTraversal pins order-independent cursor paging at limit=1: N
 // records sharing ONE timestamp plus M with distinct timestamps, paged to
 // exhaustion, must yield the full set with no duplicates and no skips. At limit=1

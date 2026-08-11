@@ -2163,6 +2163,24 @@ func (s *Store) lockTargets(ctx context.Context, targets []string) (unlock func(
 // other). See TargetLocker's doc comment: this only guarantees
 // single-instance atomicity — a future distributed lock (swapped in via
 // WithTargetLocker) would be required for multi-replica atomicity.
+//
+// Concurrency note (03.1 cycle-4 review CR-01): the per-target lock above
+// only ever covered `targets` — never newMem.ID, the survivor's own id. For
+// a keyed call that id is deterministic (idempotencyPointID(owner, scope,
+// key), computed independent of the target set), so two concurrent keyed
+// calls sharing a key but naming DISJOINT target sets contended on no lock
+// at all: both could observe "not found" at that id (the caller's own
+// pre-lock checkIdempotentMergeReplay Get), both pass their own per-target
+// preflight, and both Upsert the same survivor id — the second silently
+// whole-payload-replacing the first's content and target set, orphaning the
+// first's back-stamped target with a superseded_by link to a record whose
+// Supersedes omits it. This is fixed by locking the UNION of targets and
+// newMem.ID (when keyed) below, then re-deciding the same
+// same-key-different-operation question under that lock before ever
+// Upserting. newMem.ID is locked but deliberately never joins the STAMP set
+// (`sorted`, built separately from `targets` alone) — folding it into the
+// lock's dedupe/sort step would make the survivor back-stamp itself as one
+// of its own targets, corruption strictly worse than the race being closed.
 func (s *Store) Supersede(ctx context.Context, newMem Memory, vec []float32, targets []string, subj Subject) (err error) {
 	ctx, span := tracer.Start(ctx, "store.Supersede",
 		trace.WithAttributes(
@@ -2179,17 +2197,57 @@ func (s *Store) Supersede(ctx context.Context, newMem Memory, vec []float32, tar
 		}
 	}()
 
-	// 0. Dedupe + sort + acquire a per-target lock for every target, held
-	//    through the back-stamp (CR-01/D-10).
-	unlock, sorted, err := s.lockTargets(ctx, targets)
+	// 0. Dedupe + sort + acquire a per-target lock for every target, PLUS the
+	//    survivor's own id (newMem.ID) when this is a keyed call, held
+	//    through the back-stamp (CR-01/D-10, and 03.1 cycle-4 CR-01 above).
+	//    lockTargets dedupes+sorts the UNION it is given, so a newMem.ID that
+	//    happens to coincide with a target id is never locked twice (which
+	//    would self-deadlock the non-reentrant per-id mutex).
+	lockIDs := targets
+	if newMem.ID != "" {
+		lockIDs = append(slices.Clone(targets), newMem.ID)
+	}
+	unlock, _, err := s.lockTargets(ctx, lockIDs)
 	if err != nil {
 		return err
 	}
 	defer unlock()
+
+	// The STAMP set is deliberately computed independently of the LOCK set
+	// above: only the caller's actual targets are ever getWritable-checked or
+	// back-stamped. newMem.ID must never appear here (see the doc comment
+	// above Supersede).
+	sorted := slices.Clone(targets)
+	sort.Strings(sorted)
+	sorted = slices.Compact(sorted)
 	// Surfaced for operators, not branched on: whether the deduped set
 	// exceeds one Qdrant payload-op chunk, so a partial-application incident
 	// can be correlated with cross-chunk vs. within-chunk (D-15).
 	span.SetAttributes(attribute.Bool("engram.supersede.multi_chunk", len(sorted) > qdrantPayloadOpBatchSize))
+
+	// 0.5. Race-free keyed-survivor-collision re-check (03.1 cycle-4 review
+	// CR-01). checkIdempotentMergeReplay's own Get (tools.go) runs BEFORE any
+	// lock is held, so it cannot itself close the race described above — but
+	// newMem.ID is now locked (for keyed calls) by step 0, so re-deciding the
+	// identical same-key-different-operation question here IS race-free.
+	// A matching fingerprint is a true replay: some other in-flight or
+	// already-committed call already wrote this exact (key, content, target
+	// set) — return success without writing again, mirroring
+	// checkIdempotentMergeReplay's own replay branch. A mismatched
+	// fingerprint is exactly the race this fix closes: reject it the same
+	// way a genuine idempotency-key reuse conflict is rejected, rather than
+	// letting a second blind Upsert silently replace the winner.
+	if newMem.ID != "" && newMem.IdempotencyFingerprint != "" {
+		existing, gerr := s.Get(ctx, newMem.ID)
+		switch {
+		case gerr == nil && existing.IdempotencyFingerprint == newMem.IdempotencyFingerprint:
+			return nil
+		case gerr == nil:
+			return fmt.Errorf("idempotency key reused with a different target set or content: %w", ErrIdempotencyConflict)
+		case !errors.Is(gerr, ErrNotFound):
+			return gerr
+		}
+	}
 
 	// 1. Owner-only write gate on EVERY target (not the new record — that's
 	//    a normal create, already write-gated by construction) — completed
