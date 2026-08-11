@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"os/exec"
@@ -3795,6 +3796,496 @@ func TestSupersedeMultiCompensatesInline(t *testing.T) {
 	if _, err := s.Get(ctx, newID); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Get survivor after compensation: err = %v, want ErrNotFound (survivor removed)", err)
 	}
+}
+
+// TestSupersedeMultiCompensatesSurvivor (plan 03.1-02, D-15) scripts the
+// setPayloadKeys seam to genuinely stamp only TWO of three targets (modelling
+// the pinned server's chunk-then-error partial application, RESEARCH.md
+// Pitfall 1) and then return an error — the trigger the classified
+// reconciliation pass is proved against, not a nonexistent-target input
+// (which dies in getWritable's preflight before the survivor is ever
+// written; cycle-3 review's rejected alternative). Asserts the survivor is
+// gone after the call returns.
+func TestSupersedeMultiCompensatesSurvivor(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-multi-test:project:compensates-survivor"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+
+	target1 := "e7000000-0000-0000-0000-000000000001"
+	target2 := "e7000000-0000-0000-0000-000000000002"
+	target3 := "e7000000-0000-0000-0000-000000000003"
+	newID := "e7000000-0000-0000-0000-000000000004"
+	targets := []string{target1, target2, target3} // already lexically sorted
+
+	for _, id := range targets {
+		m := Memory{ID: id, Content: "v", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+
+	injected := errors.New("injected partial back-stamp failure")
+	s.setPayloadKeys = func(ctx context.Context, ids []string, kv map[string]any) error {
+		// Really stamp only the first two ids, then error — a genuine
+		// partial write, not a simulated one.
+		if derr := s.defaultSetPayloadKeys(ctx, ids[:2], kv); derr != nil {
+			return derr
+		}
+		return injected
+	}
+	t.Cleanup(func() { s.setPayloadKeys = nil })
+
+	newMem := Memory{
+		ID: newID, Content: "merged content", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: targets,
+	}
+	err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, targets, subj)
+	if !errors.Is(err, injected) {
+		t.Fatalf("Supersede err = %v, want the injected error %v", err, injected)
+	}
+
+	if _, gerr := s.Get(ctx, newID); !errors.Is(gerr, ErrNotFound) {
+		t.Errorf("Get survivor after compensation: err = %v, want ErrNotFound (survivor removed)", gerr)
+	}
+}
+
+// TestSupersedeMultiReconcilesDanglingLinks drives the identical
+// two-of-three partial back-stamp as TestSupersedeMultiCompensatesSurvivor,
+// but asserts the OTHER half of the D-15 claim: neither of the two targets
+// that really were stamped still points at the removed survivor, and the
+// error Supersede returns is the exact scripted sentinel — not a
+// compensation error wrapping it (D-08: orphan/dangling detail goes to the
+// structured log, never into the caller-facing error).
+func TestSupersedeMultiReconcilesDanglingLinks(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-multi-test:project:reconciles-dangling"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+
+	target1 := "e8000000-0000-0000-0000-000000000001"
+	target2 := "e8000000-0000-0000-0000-000000000002"
+	target3 := "e8000000-0000-0000-0000-000000000003"
+	newID := "e8000000-0000-0000-0000-000000000004"
+	targets := []string{target1, target2, target3}
+
+	for _, id := range targets {
+		m := Memory{ID: id, Content: "v", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+
+	injected := errors.New("injected partial back-stamp failure")
+	s.setPayloadKeys = func(ctx context.Context, ids []string, kv map[string]any) error {
+		if derr := s.defaultSetPayloadKeys(ctx, ids[:2], kv); derr != nil {
+			return derr
+		}
+		return injected
+	}
+	t.Cleanup(func() { s.setPayloadKeys = nil })
+
+	newMem := Memory{
+		ID: newID, Content: "merged content", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: targets,
+	}
+	err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, targets, subj)
+	if !errors.Is(err, injected) {
+		t.Fatalf("errors.Is(err, injected) = false for err = %v", err)
+	}
+	// errors.Is alone would ALSO pass if err were wrapped (e.g.
+	// fmt.Errorf("compensation: %w", injected)) — comparing rendered text
+	// catches that a compensation error must never wrap the original (D-08).
+	if err.Error() != injected.Error() {
+		t.Fatalf("Supersede err = %q, want the EXACT injected error text %q (unwrapped, not decorated by a compensation error)", err.Error(), injected.Error())
+	}
+
+	for _, id := range targets {
+		got, gerr := s.Get(ctx, id)
+		if gerr != nil {
+			t.Fatalf("Get %s: %v (target must still exist)", id, gerr)
+		}
+		if got.SupersededBy != nil {
+			t.Errorf("%s.SupersededBy = %v, want nil (reconciliation must clear any dangling link)", id, got.SupersededBy)
+		}
+	}
+}
+
+// TestSupersedeMultiReconcileClassifiesFailures drives
+// reconcileSupersedeFailure DIRECTLY (not through Supersede) over four
+// targets, one of each classification outcome, so the classification logic
+// itself has a dedicated, greppable proof independent of how Supersede
+// wires it in:
+//   - clearable: SupersededBy already equals the (nonexistent, deliberately
+//     never-created) survivor id — clear must succeed and leave neither
+//     ReadFailures, ClearFailures, nor Dangling.
+//   - notFound: never upserted — s.Get fails with ErrNotFound, which must be
+//     classified RESOLVED and appear in no field.
+//   - transportFail: a malformed (non-UUID) id — the pinned server rejects
+//     it with a protocol-level InvalidArgument error, NOT NotFound
+//     (confirmed directly against a real v1.18.2 server before writing this
+//     test), so it must land in BOTH ReadFailures and Dangling.
+//   - pointsElsewhere: SupersededBy is set but to a DIFFERENT id — nothing
+//     to do, must appear in no field.
+func TestSupersedeMultiReconcileClassifiesFailures(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "supersede-multi-test:project:reconcile-classify"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	// Deliberately never upserted: deleting a nonexistent point is a no-op
+	// success at the pinned server (confirmed directly before writing this
+	// test), so RemoveErr is expected nil here.
+	survivorID := "e9000000-0000-0000-0000-000000000099"
+
+	clearable := "e9000000-0000-0000-0000-000000000001"
+	notFound := "e9000000-0000-0000-0000-000000000002" // never upserted
+	transportFail := "not-a-valid-uuid-transport-probe"
+	pointsElsewhere := "e9000000-0000-0000-0000-000000000003"
+
+	clearedBy := survivorID
+	elsewhereBy := "e9000000-0000-0000-0000-000000000098"
+	if err := s.Upsert(ctx, Memory{
+		ID: clearable, Content: "v", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), SupersededBy: &clearedBy,
+	}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert clearable: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{
+		ID: pointsElsewhere, Content: "v", Scope: scope, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), SupersededBy: &elsewhereBy,
+	}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsert pointsElsewhere: %v", err)
+	}
+
+	result := s.reconcileSupersedeFailure(ctx, survivorID, []string{clearable, notFound, transportFail, pointsElsewhere})
+
+	if result.RemoveErr != nil {
+		t.Errorf("RemoveErr = %v, want nil (deleting a nonexistent survivor point is a no-op)", result.RemoveErr)
+	}
+	if !slices.Equal(result.ReadFailures, []string{transportFail}) {
+		t.Errorf("ReadFailures = %v, want exactly [%q]", result.ReadFailures, transportFail)
+	}
+	if len(result.ClearFailures) != 0 {
+		t.Errorf("ClearFailures = %v, want empty (the one clear attempted must succeed)", result.ClearFailures)
+	}
+	if !slices.Equal(result.Dangling, []string{transportFail}) {
+		t.Errorf("Dangling = %v, want exactly [%q] (the transport-error id; notFound is RESOLVED and pointsElsewhere/clearable have nothing to report)", result.Dangling, transportFail)
+	}
+
+	// The clearable target's link must actually be gone — proves the clear
+	// branch ran, not just that it was classified as attempted.
+	got, gerr := s.Get(ctx, clearable)
+	if gerr != nil {
+		t.Fatalf("Get clearable: %v", gerr)
+	}
+	if got.SupersededBy != nil {
+		t.Errorf("clearable.SupersededBy = %v, want nil (clear must have run)", got.SupersededBy)
+	}
+
+	// pointsElsewhere's link must be untouched.
+	got, gerr = s.Get(ctx, pointsElsewhere)
+	if gerr != nil {
+		t.Fatalf("Get pointsElsewhere: %v", gerr)
+	}
+	if got.SupersededBy == nil || *got.SupersededBy != elsewhereBy {
+		t.Errorf("pointsElsewhere.SupersededBy = %v, want %q (untouched)", got.SupersededBy, elsewhereBy)
+	}
+}
+
+// TestSupersedeMultiProductionDefaultsDoNotPanic (cycle-2 review HIGH) is
+// the gate against a receiver-qualified invocation of a nil-defaulted
+// function-var field: New populates no function field, so on a production
+// Store every seam is nil, and a receiver-qualified call panics. Injecting a
+// seam to test a branch is precisely what makes that field non-nil, so no
+// seam-driven test can ever catch this class — only a Store built the way
+// production builds it can. Drives BOTH a successful merge (defaultSetPayloadKeys
+// only) and a compensated merge (defaultDeletePoint + defaultDeletePayloadKeys,
+// via the local nil-fallback, exercised for real) to completion.
+//
+// The failing half uses a SECOND New-built instance with a t.Cleanup-scoped
+// setPayloadKeys script — the ONLY field scripted there, so deletePoint and
+// deletePayloadKeys stay nil exactly as in production and the compensation
+// path really does resolve them from nil. Scripting the first instance's
+// setPayloadKeys would leave it non-nil for the success case too. The
+// trigger is deliberately NOT a nonexistent-target input: cycle-3 review
+// caught that alternative as unreachable (it dies in getWritable's preflight
+// before Upsert, so compensation never runs, and this test's "no panic"
+// assertion would then pass without the compensated branch ever executing —
+// a false verification record against this criterion).
+func TestSupersedeMultiProductionDefaultsDoNotPanic(t *testing.T) {
+	ctx := context.Background()
+	subj := Authenticated("sub-A")
+
+	// Success case: production store, every function field nil.
+	s1 := New(dialTestClient(t), "mem_eval_test_prod_defaults_1")
+	if err := s1.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("ensure s1: %v", err)
+	}
+	scope1 := "supersede-multi-test:project:prod-defaults-success"
+	defer func() { cleanupErr(t, "DeleteAllRaw s1 "+scope1, s1.DeleteAllRaw(ctx, scope1)) }()
+
+	target1 := "ea000000-0000-0000-0000-000000000001"
+	target2 := "ea000000-0000-0000-0000-000000000002"
+	target3 := "ea000000-0000-0000-0000-000000000003"
+	newID := "ea000000-0000-0000-0000-000000000004"
+	targets := []string{target1, target2, target3}
+	for _, id := range targets {
+		m := Memory{ID: id, Content: "v", Scope: scope1, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+		if err := s1.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	newMem := Memory{
+		ID: newID, Content: "merged", Scope: scope1, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: targets,
+	}
+	if err := s1.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, targets, subj); err != nil {
+		t.Fatalf("Supersede (production defaults, success case): %v", err)
+	}
+
+	// Failing case: a SECOND New-built instance.
+	s2 := New(dialTestClient(t), "mem_eval_test_prod_defaults_2")
+	if err := s2.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("ensure s2: %v", err)
+	}
+	scope2 := "supersede-multi-test:project:prod-defaults-compensated"
+	defer func() { cleanupErr(t, "DeleteAllRaw s2 "+scope2, s2.DeleteAllRaw(ctx, scope2)) }()
+
+	ftarget1 := "ea000000-0000-0000-0000-000000000011"
+	ftarget2 := "ea000000-0000-0000-0000-000000000012"
+	ftarget3 := "ea000000-0000-0000-0000-000000000013"
+	fnewID := "ea000000-0000-0000-0000-000000000014"
+	ftargets := []string{ftarget1, ftarget2, ftarget3}
+	for _, id := range ftargets {
+		m := Memory{ID: id, Content: "v", Scope: scope2, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+		if err := s2.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	injected := errors.New("injected production-default panic probe")
+	s2.setPayloadKeys = func(ctx context.Context, ids []string, kv map[string]any) error {
+		if derr := s2.defaultSetPayloadKeys(ctx, ids, kv); derr != nil {
+			return derr
+		}
+		return injected
+	}
+	t.Cleanup(func() { s2.setPayloadKeys = nil })
+
+	fnewMem := Memory{
+		ID: fnewID, Content: "merged", Scope: scope2, Owner: "sub-A",
+		CreatedAt: time.Now().UTC(), Supersedes: ftargets,
+	}
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("Supersede (production defaults, compensation path) panicked: %v", r)
+			}
+		}()
+		if err := s2.Supersede(ctx, fnewMem, []float32{0.4, 0.5, 0.6}, ftargets, subj); !errors.Is(err, injected) {
+			t.Fatalf("Supersede err = %v, want the injected error", err)
+		}
+	}()
+}
+
+// capturingLogHandler is a minimal slog.Handler that records every emitted
+// slog.Record for inline assertion, without going through any formatting —
+// TestSupersedeMultiCompensationFailureLogged reads structured field values
+// directly rather than parsing rendered text.
+type capturingLogHandler struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (h *capturingLogHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *capturingLogHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, r.Clone())
+	return nil
+}
+
+func (h *capturingLogHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *capturingLogHandler) WithGroup(string) slog.Handler      { return h }
+
+// findAttr returns the value of the first attribute named key in r, and
+// whether it was present.
+func findAttr(r slog.Record, key string) (slog.Value, bool) {
+	var v slog.Value
+	found := false
+	r.Attrs(func(a slog.Attr) bool {
+		if a.Key == key {
+			v, found = a.Value, true
+			return false
+		}
+		return true
+	})
+	return v, found
+}
+
+// TestSupersedeMultiCompensationFailureLogged (T-03.1-08) proves the
+// operator-visible half of D-08: when compensation itself cannot fully
+// complete, the ORIGINAL back-stamp error is still what the caller receives
+// unchanged, and the orphan/dangling detail crosses ONLY into the
+// structured log, never into the returned error. Two scripted scenarios,
+// each severe enough that a "real" version of this test (driven by an
+// actual Qdrant outage) could only ever be flaky or vacuous — an outage
+// that breaks cleanup also breaks the setup and the observation.
+func TestSupersedeMultiCompensationFailureLogged(t *testing.T) {
+	handler := &capturingLogHandler{}
+	prevLogger := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	t.Cleanup(func() { slog.SetDefault(prevLogger) })
+
+	t.Run("survivor_removal_fails", func(t *testing.T) {
+		s := testStore(t)
+		ctx := context.Background()
+		scope := "supersede-multi-test:project:compensation-logged-remove"
+		defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+		subj := Authenticated("sub-A")
+
+		target1 := "eb000000-0000-0000-0000-000000000001"
+		target2 := "eb000000-0000-0000-0000-000000000002"
+		newID := "eb000000-0000-0000-0000-000000000003"
+		targets := []string{target1, target2}
+		for _, id := range targets {
+			m := Memory{ID: id, Content: "v", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+			if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+				t.Fatalf("upsert %s: %v", id, err)
+			}
+		}
+
+		injected := errors.New("injected back-stamp failure (remove-fails scenario)")
+		s.setPayloadKeys = func(ctx context.Context, ids []string, kv map[string]any) error {
+			if derr := s.defaultSetPayloadKeys(ctx, ids, kv); derr != nil {
+				return derr
+			}
+			return injected
+		}
+		t.Cleanup(func() { s.setPayloadKeys = nil })
+		removeErr := errors.New("injected survivor-removal failure")
+		s.deletePoint = func(_ context.Context, _ string) error { return removeErr }
+		t.Cleanup(func() { s.deletePoint = nil })
+
+		newMem := Memory{
+			ID: newID, Content: "merged", Scope: scope, Owner: "sub-A",
+			CreatedAt: time.Now().UTC(), Supersedes: targets,
+		}
+		err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, targets, subj)
+		if !errors.Is(err, injected) || err.Error() != injected.Error() {
+			t.Fatalf("Supersede err = %v, want the exact original back-stamp error, unchanged by the removal failure", err)
+		}
+
+		var rec slog.Record
+		found := false
+		handler.mu.Lock()
+		for _, r := range handler.records {
+			if r.Message == "supersede compensation incomplete" {
+				if v, ok := findAttr(r, "survivor_id"); ok && v.String() == newID {
+					rec, found = r, true
+				}
+			}
+		}
+		handler.mu.Unlock()
+		if !found {
+			t.Fatalf("no structured log record found with survivor_id=%q", newID)
+		}
+		if v, ok := findAttr(rec, "remove_err"); !ok || v.String() == "" {
+			t.Errorf("remove_err field missing or empty in log record")
+		}
+		if _, ok := findAttr(rec, "dangling"); !ok {
+			t.Errorf("dangling field missing from log record")
+		}
+	})
+
+	t.Run("clear_fails_for_one_target", func(t *testing.T) {
+		s := testStore(t)
+		ctx := context.Background()
+		scope := "supersede-multi-test:project:compensation-logged-clear"
+		defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+		subj := Authenticated("sub-A")
+
+		target1 := "ec000000-0000-0000-0000-000000000001"
+		target2 := "ec000000-0000-0000-0000-000000000002"
+		newID := "ec000000-0000-0000-0000-000000000003"
+		targets := []string{target1, target2}
+		for _, id := range targets {
+			m := Memory{ID: id, Content: "v", Scope: scope, Owner: "sub-A", CreatedAt: time.Now().UTC()}
+			if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+				t.Fatalf("upsert %s: %v", id, err)
+			}
+		}
+
+		injected := errors.New("injected back-stamp failure (clear-fails scenario)")
+		s.setPayloadKeys = func(ctx context.Context, ids []string, kv map[string]any) error {
+			if derr := s.defaultSetPayloadKeys(ctx, ids, kv); derr != nil {
+				return derr
+			}
+			return injected
+		}
+		t.Cleanup(func() { s.setPayloadKeys = nil })
+		clearErr := errors.New("injected clear failure for target2")
+		s.deletePayloadKeys = func(ctx context.Context, id string, keys []string) error {
+			if id == target2 {
+				return clearErr
+			}
+			return s.defaultDeletePayloadKeys(ctx, id, keys)
+		}
+		t.Cleanup(func() { s.deletePayloadKeys = nil })
+
+		newMem := Memory{
+			ID: newID, Content: "merged", Scope: scope, Owner: "sub-A",
+			CreatedAt: time.Now().UTC(), Supersedes: targets,
+		}
+		err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, targets, subj)
+		if !errors.Is(err, injected) || err.Error() != injected.Error() {
+			t.Fatalf("Supersede err = %v, want the exact original back-stamp error, unchanged by the clear failure", err)
+		}
+
+		var rec slog.Record
+		found := false
+		handler.mu.Lock()
+		for _, r := range handler.records {
+			if r.Message == "supersede compensation incomplete" {
+				if v, ok := findAttr(r, "survivor_id"); ok && v.String() == newID {
+					rec, found = r, true
+				}
+			}
+		}
+		handler.mu.Unlock()
+		if !found {
+			t.Fatalf("no structured log record found with survivor_id=%q", newID)
+		}
+		v, ok := findAttr(rec, "dangling")
+		if !ok {
+			t.Fatalf("dangling field missing from log record")
+		}
+		dangling, ok := v.Any().([]string)
+		if !ok || !slices.Contains(dangling, target2) {
+			t.Errorf("dangling = %v, want a []string containing %q", v.Any(), target2)
+		}
+
+		// target1's link, cleared successfully, must be gone; target2's,
+		// which failed to clear, must still dangle — proving the failure is
+		// real, not merely reported.
+		got1, gerr := s.Get(ctx, target1)
+		if gerr != nil {
+			t.Fatalf("Get target1: %v", gerr)
+		}
+		if got1.SupersededBy != nil {
+			t.Errorf("target1.SupersededBy = %v, want nil (clear succeeded)", got1.SupersededBy)
+		}
+		got2, gerr := s.Get(ctx, target2)
+		if gerr != nil {
+			t.Fatalf("Get target2: %v", gerr)
+		}
+		if got2.SupersededBy == nil || *got2.SupersededBy != newID {
+			t.Errorf("target2.SupersededBy = %v, want %q (clear failed, link still dangling)", got2.SupersededBy, newID)
+		}
+	})
 }
 
 // The next three tests close the class RESEARCH.md's Pitfall 4 names: an
