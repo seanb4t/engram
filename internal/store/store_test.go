@@ -3599,6 +3599,232 @@ func TestSupersedeTOCTOU(t *testing.T) {
 	}
 }
 
+// TestSupersedeMultiTOCTOU (REQ-merge-atomicity, plan 03.1-02 Task 2)
+// generalizes TestSupersedeTOCTOU to N=3, carrying the
+// qdrantTOCTOUVerifiedVersion guard verbatim.
+//
+// Part 1 is the falsification, asserted directly against the server rather
+// than assumed: a raw multi-ID payload write over three point ids — two
+// real, one that does not exist — in ONE Qdrant call. It must error AND
+// leave the two existing points mutated. This is the load-bearing evidence
+// that partial application is reachable at this server version; if it ever
+// starts passing "nothing was written", the whole reconciliation design is
+// over-engineered and this test should say so, not silently pass.
+//
+// Part 2 is the end-to-end proof. The originally-planned trigger (deleting a
+// target inside the window) does NOT work and is not attempted here: cross-AI
+// review verified against the source that Store.Supersede's defer unlock()
+// releases AFTER the back-stamp (so a locker-driven delete fires too late to
+// create the window), and a pre-call delete is rejected by the method's own
+// under-lock getWritable before Upsert ever runs — which is exactly what
+// TestSupersedeTOCTOU's own end-to-end case already proves and all it
+// proves. Instead: three owned live records are upserted against the real
+// pinned Qdrant, then Supersede runs on a store whose setPayloadKeys seam
+// wraps the production default — it forwards the write for target1/target2
+// through defaultSetPayloadKeys (so Qdrant genuinely stamps them), then
+// triggers the REAL missing-id error the server raises (proved reachable by
+// Part 1 above), rather than an injected sentinel. Everything else — locks,
+// gates, Upsert, the compensating deletePoint, and the reconciliation
+// reads/clears — is production code hitting the real server; only the
+// partiality itself is substituted.
+//
+// Every assertion is about the state AFTER the call has returned. This test
+// does not and cannot prove anything about what a concurrent reader sees
+// mid-call — Store.Get and every recall query are lock-free (see
+// Store.Supersede's doc comment).
+func TestSupersedeMultiTOCTOU(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	if os.Getenv("ENGRAM_QDRANT_TEST_ADDR") == "" {
+		hc, err := s.client.HealthCheck(ctx)
+		if err != nil {
+			t.Fatalf("qdrant health check: %v", err)
+		}
+		if v := hc.GetVersion(); v != qdrantTOCTOUVerifiedVersion {
+			t.Fatalf("Qdrant version %q != verified %q: re-verify SetPayload point-ID NotFound semantics, then update qdrantTOCTOUVerifiedVersion and qdrantImageTag together", v, qdrantTOCTOUVerifiedVersion)
+		}
+	}
+
+	scope := "supersede-multi-test:project:toctou"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+
+	// Part 1: the falsification.
+	real1 := "ed000000-0000-0000-0000-000000000001"
+	real2 := "ed000000-0000-0000-0000-000000000002"
+	missing := "ed000000-0000-0000-0000-000000000099"
+	for _, id := range []string{real1, real2} {
+		m := Memory{ID: id, Content: "falsification-target", Scope: scope, Owner: "sub-owner", CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	_, rawErr := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Payload: qdrant.NewValueMap(map[string]any{"superseded_by": "falsification-probe"}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{
+			qdrant.NewID(real1), qdrant.NewID(real2), qdrant.NewID(missing),
+		}),
+	})
+	if rawErr == nil {
+		t.Fatal("qdrant multi-ID SetPayload with one missing id returned nil — if this ever passes, the whole reconciliation design is over-engineered and this test should say so, not silently pass")
+	}
+	for _, id := range []string{real1, real2} {
+		got, gerr := s.client.Get(ctx, &qdrant.GetPoints{
+			CollectionName: s.collection, Ids: []*qdrant.PointId{qdrant.NewID(id)},
+			WithPayload: qdrant.NewWithPayload(true),
+		})
+		if gerr != nil || len(got) != 1 {
+			t.Fatalf("Get %s after falsification write: %v / %d points", id, gerr, len(got))
+		}
+		if v, ok := got[0].Payload["superseded_by"]; !ok || v.GetStringValue() != "falsification-probe" {
+			t.Fatalf("%s.superseded_by after falsification write = %v, want %q — the load-bearing evidence that partial application is reachable did not hold", id, v, "falsification-probe")
+		}
+	}
+	if _, derr := s.client.DeletePayload(ctx, &qdrant.DeletePayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Keys:           []string{"superseded_by"},
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(real1), qdrant.NewID(real2)}),
+	}); derr != nil {
+		t.Fatalf("cleanup falsification payload: %v", derr)
+	}
+
+	// Part 2: the end-to-end proof, driven through the setPayloadKeys seam
+	// against the real server.
+	subj := Authenticated("sub-owner")
+	target1 := "ed000000-0000-0000-0000-000000000011"
+	target2 := "ed000000-0000-0000-0000-000000000012"
+	target3 := "ed000000-0000-0000-0000-000000000013"
+	newID := "ed000000-0000-0000-0000-000000000014"
+	targets := []string{target1, target2, target3}
+	for _, id := range targets {
+		m := Memory{ID: id, Content: "toctou-target", Scope: scope, Owner: "sub-owner", CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	s.setPayloadKeys = func(ctx context.Context, ids []string, kv map[string]any) error {
+		// Really stamp target1/target2 (ids[0], ids[1] — sorted) via the
+		// production default, so Qdrant genuinely mutates them...
+		if derr := s.defaultSetPayloadKeys(ctx, ids[:2], kv); derr != nil {
+			return derr
+		}
+		// ...then trigger the REAL missing-id error, proved reachable by
+		// Part 1 above, rather than an injected sentinel.
+		return s.defaultSetPayloadKeys(ctx, []string{missing}, kv)
+	}
+	t.Cleanup(func() { s.setPayloadKeys = nil })
+
+	newMem := Memory{
+		ID: newID, Content: "merged", Scope: scope, Owner: "sub-owner",
+		CreatedAt: time.Now().UTC(), Supersedes: targets,
+	}
+	err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, targets, subj)
+	if err == nil {
+		t.Fatal("Supersede over a target set forced to partially apply returned nil, want a non-nil error")
+	}
+
+	for _, id := range []string{target1, target2} {
+		got, gerr := s.Get(ctx, id)
+		if gerr != nil {
+			t.Fatalf("Get %s: %v", id, gerr)
+		}
+		if got.SupersededBy != nil {
+			t.Errorf("%s.SupersededBy = %v, want nil (no dangling link after the failed merge returned)", id, got.SupersededBy)
+		}
+	}
+
+	items, _, _, lerr := s.List(ctx, scope, subj, ListOptions{Limit: 10})
+	if lerr != nil {
+		t.Fatalf("List: %v", lerr)
+	}
+	gotIDs := recordIDs(items)
+	for _, id := range []string{target1, target2, target3} {
+		if !slices.Contains(gotIDs, id) {
+			t.Errorf("List after failed merge = %v, want %s present", gotIDs, id)
+		}
+	}
+
+	hits, serr := s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10, SearchOptions{})
+	if serr != nil {
+		t.Fatalf("Search: %v", serr)
+	}
+	gotHitIDs := recordIDs(hits)
+	for _, id := range []string{target1, target2, target3} {
+		if !slices.Contains(gotHitIDs, id) {
+			t.Errorf("Search after failed merge = %v, want %s present", gotHitIDs, id)
+		}
+	}
+
+	if _, gerr := s.Get(ctx, newID); !errors.Is(gerr, ErrNotFound) {
+		t.Errorf("Get survivor after failed merge: err = %v, want ErrNotFound (compensated survivor removed)", gerr)
+	}
+}
+
+// TestSupersedeMultiTOCTOUNoDanglingLink is a focused companion to
+// TestSupersedeMultiTOCTOU: it re-drives the identical trigger, then reads
+// EVERY requested target (all three, not just the two the seam actually
+// stamped) and asserts none has a superseded_by equal to the compensated
+// survivor's id — the specific T-03.1-06 invariant, with its own named,
+// greppable failure independent of TestSupersedeMultiTOCTOU's broader
+// List/Search/Get assertions.
+func TestSupersedeMultiTOCTOUNoDanglingLink(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	if os.Getenv("ENGRAM_QDRANT_TEST_ADDR") == "" {
+		hc, err := s.client.HealthCheck(ctx)
+		if err != nil {
+			t.Fatalf("qdrant health check: %v", err)
+		}
+		if v := hc.GetVersion(); v != qdrantTOCTOUVerifiedVersion {
+			t.Fatalf("Qdrant version %q != verified %q: re-verify SetPayload point-ID NotFound semantics, then update qdrantTOCTOUVerifiedVersion and qdrantImageTag together", v, qdrantTOCTOUVerifiedVersion)
+		}
+	}
+
+	scope := "supersede-multi-test:project:toctou-no-dangling"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-owner")
+
+	target1 := "ee100000-0000-0000-0000-000000000001"
+	target2 := "ee100000-0000-0000-0000-000000000002"
+	target3 := "ee100000-0000-0000-0000-000000000003"
+	missing := "ee100000-0000-0000-0000-000000000099"
+	newID := "ee100000-0000-0000-0000-000000000004"
+	targets := []string{target1, target2, target3}
+	for _, id := range targets {
+		m := Memory{ID: id, Content: "v", Scope: scope, Owner: "sub-owner", CreatedAt: time.Now().UTC()}
+		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	s.setPayloadKeys = func(ctx context.Context, ids []string, kv map[string]any) error {
+		if derr := s.defaultSetPayloadKeys(ctx, ids[:2], kv); derr != nil {
+			return derr
+		}
+		return s.defaultSetPayloadKeys(ctx, []string{missing}, kv)
+	}
+	t.Cleanup(func() { s.setPayloadKeys = nil })
+
+	newMem := Memory{
+		ID: newID, Content: "merged", Scope: scope, Owner: "sub-owner",
+		CreatedAt: time.Now().UTC(), Supersedes: targets,
+	}
+	if err := s.Supersede(ctx, newMem, []float32{0.4, 0.5, 0.6}, targets, subj); err == nil {
+		t.Fatal("Supersede over a target set forced to partially apply returned nil, want a non-nil error")
+	}
+
+	for _, id := range targets {
+		got, gerr := s.Get(ctx, id)
+		if gerr != nil {
+			t.Fatalf("Get %s: %v", id, gerr)
+		}
+		if got.SupersededBy != nil && *got.SupersededBy == newID {
+			t.Errorf("%s.SupersededBy = %q, want anything but the compensated survivor's id %q (T-03.1-06 dangling-link invariant)", id, *got.SupersededBy, newID)
+		}
+	}
+}
+
 // TestSupersedeMultiStamp (D-01 promote, the phase's tracer proof) pins
 // Store.Supersede's multi-target contract: a single call naming three owned
 // live targets stores exactly one survivor and back-stamps ALL three
