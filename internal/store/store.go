@@ -123,6 +123,21 @@ func (e *MultiTargetError) Unwrap() error {
 	return e.Err
 }
 
+// qdrantPayloadOpBatchSize mirrors the pinned Qdrant server's own
+// payload-operation batch size (qdrant/qdrant:v1.18.2,
+// lib/shard/src/update.rs, PAYLOAD_OP_BATCH_SIZE): the server chunks a
+// multi-ID payload write (SetPayload/DeletePayload/UpdateVectors/
+// OverwritePayload) by this many point ids, and a later chunk can error
+// after an earlier chunk has fully committed. Store.Supersede's target set
+// is deliberately NOT capped at this value (D-15, 03.1-00 PD-07 ruling:
+// no-cap-otherwise-defaults) — Store.reconcileSupersedeFailure, which
+// re-reads the FULL requested target set rather than one chunk, is the
+// single mechanism covering both the within-chunk and the cross-chunk
+// partial-application classes. This constant exists to make the number
+// visible, not to impose a limit; a Qdrant image bump must re-verify it
+// against the new version's source.
+const qdrantPayloadOpBatchSize = 32
+
 // maxMintAttempts bounds MintShortID's real (Qdrant Count-checked) collision
 // attempts. 16 is extra headroom over the ~8 that is already astronomically
 // safe in a 32^10 Crockford base32 space (D-04).
@@ -387,6 +402,23 @@ type Store struct {
 	// this seam, AFTER every target has passed preflight and the survivor
 	// has been written, can exercise the compensation that follows it.
 	setPayloadKeys func(ctx context.Context, ids []string, kv map[string]any) error
+
+	// deletePoint issues the raw, UNGATED Qdrant point-removal for one id; nil
+	// defaults to defaultDeletePoint (s.client.Delete). It exists for
+	// Store.Supersede's post-failure compensating removal of the survivor it
+	// just created, and for a second, independent reason (plan 03.1-02):
+	// Store.Delete re-runs getWritable with authz.ActionDelete, a SECOND
+	// authorization decision taken during rollback — a policy permitting
+	// create/write but denying delete would strand the orphan. Rollback
+	// correctness must not depend on a policy file, so this primitive
+	// bypasses that gate entirely. MUST NOT be used for any caller-supplied
+	// id — the only legitimate argument is a record minted inside the same
+	// call (newMem.ID in reconcileSupersedeFailure), never linked, never
+	// recallable by another caller. *qdrant.Client is a concrete type with no
+	// interface seam, so this function-var field (mirroring setPayloadKeys/
+	// deletePayloadKeys/mintCandidate) is how the survivor-removal-failure
+	// branch is made reachable by a test.
+	deletePoint func(ctx context.Context, id string) error
 
 	// locker serializes Supersede's check-then-act (already-superseded guard
 	// through the back-stamp) per target id. Defaults to an in-process
@@ -1984,6 +2016,18 @@ func (s *Store) defaultSetPayloadKeys(ctx context.Context, ids []string, kv map[
 	return err
 }
 
+// defaultDeletePoint is the production deletePoint implementation: a raw,
+// UNGATED Qdrant point removal for one id — no getWritable, no ActionDelete
+// authz decision. Used only by reconcileSupersedeFailure, scoped to the
+// survivor id minted inside the same Supersede call.
+func (s *Store) defaultDeletePoint(ctx context.Context, id string) error {
+	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Points: qdrant.NewPointsSelector(qdrant.NewID(id)),
+	})
+	return err
+}
+
 // SetVisibility flips a record's shared flag without re-embedding (uses
 // SetPayload, preserving the vector), only if owned by subj.
 //
@@ -2077,26 +2121,37 @@ func (s *Store) lockTargets(ctx context.Context, targets []string) (unlock func(
 // target set, routed through the setPayloadKeys seam. This is only
 // atomic-intent, not atomic — same non-atomicity SetVisibility's own
 // two-step SetPayload+DeletePayload sequence accepts. If the back-stamp
-// fails after the survivor's create succeeds, the minimal compensation
-// below removes the survivor and clears superseded_by from any target the
-// back-stamp actually reached, so no committed state can leave a dangling
-// link (T-03.1-06). Compensation is best-effort — it talks to the same
-// Qdrant that just failed, so a failed merge is the usual no-op, never a
-// guaranteed one; the claim it supports is about the TERMINAL state after
-// this call returns, not about what a concurrent lock-free reader observes
-// mid-flight (plan 03.1-02 hardens this further with a classified result
-// and structured logging).
+// fails after the survivor's create succeeds, reconcileSupersedeFailure
+// removes the survivor and clears superseded_by from every target still
+// pointing at it, so no committed state can leave a dangling link
+// (T-03.1-06).
+//
+// Compensation and reconciliation are BEST-EFFORT, not a guarantee: they
+// talk to the same Qdrant that just failed, so they degrade in exactly the
+// outage that triggers them — a clean no-op is the usual outcome, not
+// something this method promises. What IS provable is scoped to the
+// TERMINAL state: once this call has returned and reconcileSupersedeFailure
+// has succeeded, no target carries a superseded_by pointing at the removed
+// survivor. That scope matters because lockTargets' locks serialize
+// WRITERS only — Store.Get and every recall query (List/Search/
+// SearchDiscovery/ListScheduled) are lock-free and take no lock at all. A
+// concurrent reader CAN therefore observe a predecessor soft-hidden inside
+// the window between Qdrant's partial write and the reconciliation pass; a
+// partially-applied merge being briefly observable mid-flight is NOT
+// something this method closes, and no comment or test in this package may
+// claim otherwise.
 //
 // TOCTOU note (identical in spirit to SetVisibility's, store.go:1688-1692):
 // if a target is deleted between its getWritable ownership gate and the
 // back-stamp SetPayload, Qdrant's point-ID-selector SetPayload returns a
 // NotFound gRPC error that propagates unchanged — fail-closed, no re-fetch
 // needed (D-02). At the pinned server (qdrant/qdrant:v1.18.2,
-// lib/shard/src/update.rs) a multi-ID SetPayload chunks point ids and
-// mutates every point it finds BEFORE raising a missing-id error for one it
-// doesn't, so an error from this call means possibly-partial, never
-// nothing-written — the reason the compensation loop below re-reads the
-// FULL target set rather than trusting the error to mean nothing landed.
+// lib/shard/src/update.rs) a multi-ID SetPayload chunks point ids (in
+// batches of qdrantPayloadOpBatchSize) and mutates every point it finds
+// BEFORE raising a missing-id error for one it doesn't, so an error from
+// this call means possibly-partial, never nothing-written — the reason
+// reconcileSupersedeFailure re-reads the FULL target set, across every
+// chunk, rather than trusting the error to mean nothing landed.
 //
 // Concurrency note (CR-01): the already-superseded check through the
 // back-stamp is classic check-then-act with no Qdrant-side compare-and-swap.
@@ -2131,6 +2186,10 @@ func (s *Store) Supersede(ctx context.Context, newMem Memory, vec []float32, tar
 		return err
 	}
 	defer unlock()
+	// Surfaced for operators, not branched on: whether the deduped set
+	// exceeds one Qdrant payload-op chunk, so a partial-application incident
+	// can be correlated with cross-chunk vs. within-chunk (D-15).
+	span.SetAttributes(attribute.Bool("engram.supersede.multi_chunk", len(sorted) > qdrantPayloadOpBatchSize))
 
 	// 1. Owner-only write gate on EVERY target (not the new record — that's
 	//    a normal create, already write-gated by construction) — completed
@@ -2174,46 +2233,127 @@ func (s *Store) Supersede(ctx context.Context, newMem Memory, vec []float32, tar
 		setKeys = s.defaultSetPayloadKeys
 	}
 	if err = setKeys(ctx, sorted, map[string]any{"superseded_by": newMem.ID}); err != nil {
-		// Minimal compensation (D-07/D-08/D-15, cycle-1 review MEDIUM): a
-		// failed multi-ID back-stamp may be possibly-partial per the doc
-		// comment above, and leaving this bare would commit a merge that
+		// D-07/D-08/D-15 (cycle-1 review MEDIUM, plan 03.1-02): a failed
+		// multi-ID back-stamp may be possibly-partial per the doc comment
+		// above, and leaving this bare would commit a merge that
 		// permanently soft-hides live records behind the four
-		// IsEmpty("superseded_by") recall gates. Best-effort — errors from
-		// this cleanup are deliberately swallowed here; plan 03.1-02 adds
-		// the classified result type and structured logging this task does
-		// not attempt.
-		//
-		// (1) Remove the survivor directly. D-09's "no delete_memory in the
-		// merge path" governs the caller-facing verb, not this internal
-		// cleanup: the compensated survivor was never linked to anything,
-		// was never recallable by another caller, and carries no lineage, so
-		// removing it destroys zero history.
-		_, _ = s.client.Delete(ctx, &qdrant.DeletePoints{
-			CollectionName: s.collection, Wait: qdrant.PtrOf(true),
-			Points: qdrant.NewPointsSelector(qdrant.NewID(newMem.ID)),
-		})
-		// (2) Clear superseded_by from every target still pointing at the
-		// now-deleted survivor — DELETING the key, never writing "": an
-		// empty string is still a value and the recall gates test for key
-		// emptiness, so writing "" would leave the record hidden forever.
-		clearKeys := s.deletePayloadKeys
-		if clearKeys == nil {
-			clearKeys = s.defaultDeletePayloadKeys
+		// IsEmpty("superseded_by") recall gates. reconcileSupersedeFailure
+		// owns BOTH halves — removing the survivor and reconciling every
+		// target — and is the single call site for compensation; no removal
+		// happens here.
+		result := s.reconcileSupersedeFailure(ctx, newMem.ID, sorted)
+		if result.RemoveErr != nil || len(result.Dangling) > 0 {
+			// Orphan ids cross to the operator log, never back into the
+			// returned error (D-08) — the caller receives the original
+			// single-fault envelope only, so this log line can never be
+			// used to probe for record existence.
+			slog.ErrorContext(ctx, "supersede compensation incomplete",
+				"survivor_id", newMem.ID,
+				"remove_err", errString(result.RemoveErr),
+				"read_failures", result.ReadFailures,
+				"clear_failures", result.ClearFailures,
+				"dangling", result.Dangling,
+			)
 		}
-		for _, target := range sorted {
-			fresh, gerr := s.Get(ctx, target)
-			if gerr != nil {
-				continue
-			}
-			if fresh.SupersededBy == nil || *fresh.SupersededBy != newMem.ID {
-				continue
-			}
-			_ = clearKeys(ctx, target, []string{"superseded_by"})
-		}
-		// (3) Return the ORIGINAL back-stamp error, unchanged.
+		// Return the ORIGINAL back-stamp error, unchanged.
 		return err
 	}
 	return nil
+}
+
+// errString renders err as a string for a structured log field, "" for nil —
+// slog.ErrorContext's Any-typed fields would otherwise serialize a non-nil
+// error inconsistently across handlers; this pins one shape for this call
+// site.
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+// supersedeReconcileResult classifies what reconcileSupersedeFailure
+// observed while compensating a failed back-stamp. RemoveErr is the
+// survivor-removal outcome (nil on success); ReadFailures and
+// ClearFailures record, respectively, which target reads and which target
+// clears errored (both are also folded into Dangling, since either failure
+// mode leaves the reconciler unable to certify that target clean); Dangling
+// is every target the caller cannot be certain was reconciled — an operator
+// worklist, never returned to the caller (D-08).
+type supersedeReconcileResult struct {
+	RemoveErr     error
+	ReadFailures  []string
+	ClearFailures []string
+	Dangling      []string
+}
+
+// reconcileSupersedeFailure runs after Store.Supersede's multi-ID back-stamp
+// has errored, still holding every per-target lock lockTargets acquired.
+// It owns BOTH halves of compensation and populates every field of the
+// returned result — the caller performs no removal of its own:
+//
+//  1. Remove the survivor via the deletePoint seam (nil-guarded to
+//     defaultDeletePoint below), the internal UNGATED point-removal
+//     primitive scoped to newMem.ID — a record minted inside this same
+//     Supersede call, never linked to anything, never recallable by another
+//     caller. D-09's "no delete_memory in the merge path" governs the
+//     caller-facing verb, not this internal cleanup: removing a record that
+//     was never linked destroys zero history. Routing through this
+//     primitive rather than Store.Delete is deliberate (cycle-1 review
+//     MEDIUM): Store.Delete re-runs getWritable with authz.ActionDelete, a
+//     SECOND authorization decision during rollback that a policy
+//     permitting write but denying delete could block, stranding the
+//     orphan. RemoveErr carries whatever this call returns; a removal
+//     failure does NOT abort reconciliation below — an orphaned survivor
+//     and a dangling link are independent problems and the operator needs
+//     both reported.
+//  2. Re-read the FULL requested target set (every id in targets, not one
+//     qdrantPayloadOpBatchSize chunk and not only the ids the failed call is
+//     believed to have reached) via s.Get and classify each:
+//     - read succeeded, SupersededBy nil/empty/points elsewhere: nothing to
+//     do, not reported anywhere.
+//     - read succeeded, SupersededBy == survivorID: clear the key via the
+//     clearKeys local (nil-guarded to defaultDeletePayloadKeys), DELETING
+//     it rather than writing "" (an empty value still satisfies a value
+//     check, so writing one would leave the record hidden forever —
+//     mirrors UpdatePayload's provenance-clear mechanism, store.go:1954-
+//     1958). On clear error: append to BOTH ClearFailures and Dangling.
+//     - read failed with ErrNotFound: RESOLVED, not dangling — the target
+//     is gone, so nothing points anywhere. Not reported.
+//     - read failed with any other error (a transport/protocol failure):
+//     the state is UNKNOWN, and unknown must be reported as
+//     possibly-dangling rather than assumed clean. Append to BOTH
+//     ReadFailures and Dangling.
+func (s *Store) reconcileSupersedeFailure(ctx context.Context, survivorID string, targets []string) supersedeReconcileResult {
+	delPoint := s.deletePoint
+	if delPoint == nil {
+		delPoint = s.defaultDeletePoint
+	}
+	result := supersedeReconcileResult{RemoveErr: delPoint(ctx, survivorID)}
+
+	clearKeys := s.deletePayloadKeys
+	if clearKeys == nil {
+		clearKeys = s.defaultDeletePayloadKeys
+	}
+	for _, target := range targets {
+		fresh, gerr := s.Get(ctx, target)
+		if gerr != nil {
+			if errors.Is(gerr, ErrNotFound) {
+				continue // resolved: the target is gone, nothing points anywhere.
+			}
+			result.ReadFailures = append(result.ReadFailures, target)
+			result.Dangling = append(result.Dangling, target)
+			continue
+		}
+		if fresh.SupersededBy == nil || *fresh.SupersededBy != survivorID {
+			continue // nothing to do: never stamped, or points elsewhere.
+		}
+		if cerr := clearKeys(ctx, target, []string{"superseded_by"}); cerr != nil {
+			result.ClearFailures = append(result.ClearFailures, target)
+			result.Dangling = append(result.Dangling, target)
+		}
+	}
+	return result
 }
 
 // IncrementAccess bumps a record's access_count by 1 and stamps
