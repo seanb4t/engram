@@ -733,6 +733,20 @@ const (
 // establish for other client-supplied strings in this file.
 const maxIdempotencyKeyBytes = 512
 
+// maxSupersedeTargetBytes bounds each INDIVIDUAL entry of supersedeArgs's
+// `supersedes` (WR-01, 03.1 cycle-4 review): a real UUID or short_id never
+// exceeds a small, fixed length, so 256 bytes is generous enough to cost
+// nothing legitimate. This is a per-ENTRY length bound only — PD-07
+// (03.1-00-SUMMARY.md) deliberately declined a cap on the NUMBER of targets
+// in the set, and this constant does not revisit that ruling. Without it, an
+// unresolvable entry is echoed back verbatim (comma-joined with every other
+// offender) by renderTargetRejection, so an unbounded-length entry becomes
+// an unbounded-length rejection — the one client-supplied string in this
+// verb's blast radius that lacked the size-bound discipline every sibling
+// field (IdempotencyKey, Summary, citation Excerpt, discovery Content)
+// already has.
+const maxSupersedeTargetBytes = 256
+
 type searchDiscoveryArgs struct {
 	// Query carries omitempty (D-06a); its presence check runs in
 	// deps.searchDiscovery, first, before effectiveDiscoveryScope/embed.
@@ -1852,14 +1866,20 @@ func (d *deps) resolveAndAuthorizeSupersedeTargets(ctx context.Context, c caller
 	// Class 1 — set shape. Runs before any store call, so it discloses
 	// nothing about any record — precisely why it is allowed to run first.
 	// PD-07 (03.1-00-SUMMARY.md): the target-set cap was DROPPED, so this
-	// class checks shape only, with no length branch and no maximum ever
-	// advertised.
+	// class checks shape only — no branch on the NUMBER of entries, and no
+	// maximum COUNT is ever advertised. The per-entry length bound below
+	// (maxSupersedeTargetBytes, WR-01) is a different axis than PD-07 and
+	// does not revisit it: it bounds how LONG one entry may be, never how
+	// MANY entries the set may contain.
 	if len(inputs) == 0 {
 		return nil, argErrf(classMalformed, HintRequired, "supersedes", "supersedes is required")
 	}
-	for _, in := range inputs {
+	for i, in := range inputs {
 		if strings.TrimSpace(in) == "" {
 			return nil, argErrf(classMalformed, HintRequired, "supersedes", "supersedes entries must not be blank")
+		}
+		if len(in) > maxSupersedeTargetBytes {
+			return nil, argErrf(classOutOfRange, HintTooLong, "supersedes", "supersedes[%d] too large: %d bytes (max %d)", i, len(in), maxSupersedeTargetBytes)
 		}
 	}
 

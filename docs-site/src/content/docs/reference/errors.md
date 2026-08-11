@@ -160,11 +160,19 @@ that isn't a failure at all.
 
 ## What is NOT in an error
 
-**No value echo.** An engram rejection names the field that failed and states the
-constraint it violated — it never echoes the value you sent. A derived, bounded number
-(a byte count, an element count) may appear, but never the caller-supplied string or
-structure itself. This means an engram rejection is safe to log verbatim: it cannot
-carry a secret or an oversized blob back out through your own logs.
+**No value echo, with one deliberate, bounded exception.** An engram rejection names the
+field that failed and states the constraint it violated — it never echoes the value you
+sent. A derived, bounded number (a byte count, an element count) may appear, but never the
+caller-supplied string or structure itself. This means an engram rejection is safe to log
+verbatim: it cannot carry a secret or an oversized blob back out through your own logs.
+
+The one exception is [`supersede_memory`'s multi-target rejections](#multi-target-rejections)
+(sentinel-shaped, classes 2-4 above): each offending target is echoed back exactly as you
+wrote it — a UUID or short id you already possess, not a secret or free-form content, and
+individually length-bounded (see the [MCP Tools reference](/reference/tools/) for the
+per-entry cap) so the echo itself can never carry an oversized or arbitrary blob. Every
+other field in this grammar, including `supersede_memory`'s own set-shape (class 1)
+rejection, still names the field alone and never echoes its value.
 
 **The MCP 401 auth body is a separate, unchanged contract.** A bearer-token rejection
 (missing or invalid credential) is produced by the MCP SDK's own auth middleware, before

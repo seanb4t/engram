@@ -4172,6 +4172,40 @@ func TestSupersedeMemoryOversizedKeyRejected(t *testing.T) {
 	}
 }
 
+// TestSupersedeMemoryOversizedTargetRejected (WR-01, 03.1 cycle-4 review)
+// proves an individual `supersedes` entry exceeding maxSupersedeTargetBytes
+// is rejected by Class 1 (set shape) before any store call — mirroring
+// TestSupersedeMemoryOversizedKeyRejected's shape for IdempotencyKey. This
+// bounds the LENGTH of one entry only: PD-07 (03.1-00-SUMMARY.md) already
+// declined a cap on the NUMBER of targets, and this test does not revisit
+// that — a set with many short entries stays fully accepted by Class 1;
+// only an individual entry over the byte bound is rejected.
+func TestSupersedeMemoryOversizedTargetRejected(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-oversized-target")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-oversized-target"
+
+	counter := &countingEmbedder{}
+	d.em = counter
+
+	_, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs: storeArgs{
+			Content: "merged", Scope: scope, Category: "gotcha", Source: "user-said",
+		},
+		Supersedes: []string{strings.Repeat("t", maxSupersedeTargetBytes+1)},
+	})
+	if err == nil {
+		t.Fatal("oversized supersedes entry should be rejected, got nil error")
+	}
+	if !errors.Is(err, store.ErrInvalidArgument) {
+		t.Fatalf("error = %v, want wrapping store.ErrInvalidArgument", err)
+	}
+	if counter.calls != 0 {
+		t.Errorf("oversized supersedes entry: embed must not be called; got %d call(s)", counter.calls)
+	}
+}
+
 // TestSupersedeMemoryConcurrentIdenticalKeyReturnsSameSurvivor (T-03.1-26,
 // cycle-1/cycle-2 review) proves two SIMULTANEOUS identical keyed merges
 // both return the SAME persisted survivor id and short id — not merely "an"

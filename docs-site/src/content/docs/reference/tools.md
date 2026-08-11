@@ -259,7 +259,11 @@ Takes the full `store_memory` field set for the **new, correcting** record, plus
 There is no maximum target count — the set is unbounded. Duplicate targets — the
 same id given twice, or two spellings of the same record (a short id and its
 matching UUID) — collapse to one target; you do not need to dedupe your input
-before calling.
+before calling. Each individual entry is bounded at 256 bytes — generous for a
+real UUID or `short_id`, which never approaches that length — and an
+oversized entry rejects the call before any target is resolved; this bounds
+the LENGTH of one entry only and does not reintroduce a cap on how many
+targets the set may contain.
 
 Everything else (`content`, `scope`, `category`, `tags`, `summary`, `citations`,
 repo/workspace/worktree/base_dir, `source`) describes the new record and behaves
