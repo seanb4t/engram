@@ -118,6 +118,109 @@ evidence that drove the choice:
 | Same fact, better wording — a clearer summary, an added caveat, a tag fix, no contradiction | `update_memory` | in-place refinement; nothing to preserve |
 | The record should never have existed — junk, transient state, a mistake | `delete_memory` | there is no history worth keeping |
 
+## Judging staleness
+
+A record can go stale against the tree it describes even when no other
+record contradicts it. Judge staleness one of two ways depending on what
+the record carries.
+
+**Citation-bearing records.** Run `engram spine-review verify` or read its
+report; do not reimplement its classifier here.
+
+**Citation-less records — the well-formed default in this repo.** Extract
+checkable refs from the record's own prose — file paths, symbol names,
+commit SHAs — and check those against the tree (D-05). Because extraction is
+a judgment call, every finding must be reported as checkable evidence naming
+what was checked and what was found — "the record says X about
+`internal/store/spine.go:400`; that function no longer exists there" — never
+as a bare verdict the user cannot overrule in one read.
+
+Use exactly the four verdicts `spine-review verify` uses, in this order, so
+an operator reads the CLI report and this skill's report the same way:
+
+- **valid** — the referent is where the record says it is.
+- **moved** — the referent was found elsewhere in the tree. This tier is
+  deliberately broader here than in `spine_review_verify.go`'s own sense,
+  where `moved` means the excerpt is still in the *same* file at a different
+  byte offset — a definition only a Locator-bearing citation can support. A
+  ref extracted from prose carries no Locator, so this skill's `moved`
+  extends to "found elsewhere in the tree."
+- **broken** — the file is gone, or the referent is gone from it entirely.
+- **unverifiable** — the check was not actually made, with the reason
+  stated: the path is outside the tree, a rename is ambiguous, or the ref
+  belongs to a different repo.
+
+Search before concluding `broken`. A bare path-exists check is the cheapest
+possible test and is wrong for the moved case, so search the tree for the
+referenced symbol or content before concluding `broken`. A sweep reporting a
+suspiciously high `broken` count right after a known rename or reorg is
+almost certainly reporting moved records as broken.
+
+When a confident answer is out of reach, report `unverifiable` with the
+reason. Never a confident wrong verdict, and never silence — absence of a
+finding must not be indistinguishable from checked-and-fine.
+
+A staleness verdict feeds the same verb table above (`## Choosing the
+verb`) — the mapping is never mechanical. A `broken` ref can mean the fact
+reversed, or merely that a path changed, and only the evidence distinguishes
+them (D-09).
+
+## Searching cheaply
+
+During a deliberate sweep, prefer cheap structural search over reading the
+tree by hand. The precedence ladder, in order: **codegraph** (`explore` /
+`impact` / `callers`) for symbol and call-path lookup, then **ast-grep** or
+`sg` for structural shapes a text regex cannot express, then **`rg`** for
+text, then reading only the enclosing region.
+
+Every rung is optional. This skill ships to users who may have none of
+these installed, so the ladder degrades to `rg` and then to reading the
+region alone. A reader with no optional tooling: run `rg` for the
+referenced symbol or path across the tree, and if that comes up empty, read
+the region a citation or nearby reference points at.
+
+A missing optional tool is never by itself grounds to skip the check or to
+report `unverifiable`: descend the ladder and check with what is present.
+`unverifiable` remains available once the available fallbacks have been
+tried and failed — a reader with no structural search facility genuinely
+may not be able to resolve a repo-wide rename by reading alone, and forcing
+a verdict there would produce exactly the confident wrong answer the
+previous section forbids. Exhaust the ladder you have, then report
+`unverifiable` with the reason naming the exhausted path — so the user can
+tell "I could not check" from "I did not bother".
+
+Explicit invocation is what buys this read budget. The reactive path (`##
+Noticing during recall`) never gets it — it performs zero tool calls beyond
+the recall that triggered it.
+
+## When a call is rejected
+
+Read a write rejection from
+`docs-site/src/content/docs/reference/errors.md` rather than
+pattern-matching error prose: rejections carry a `field=` name and a
+machine-stable `hint=` code. The one documented exception is
+`supersede_memory`'s multi-target rejections, which are sentinel-shaped
+rather than field/hint shaped, name every offending target of one failure
+class, and evaluate in a fixed order.
+
+Per `errors.md` § "Multi-target rejections" item 2, a target you do not own,
+a target that does not exist, and a target whose short id matches more than
+one record are the same rejection — the server makes them indistinguishable
+on purpose. This skill must not report "that record is not yours," "that
+record does not exist," or "that short id is ambiguous" — each names one of
+three possibilities it has no way to tell apart. Report what is actually
+known: one or more of these targets is not addressable by you. The one
+remedy worth offering is the one `errors.md` names: re-send the target by
+its full UUID instead of its short id. If that does not resolve it, this
+skill still does not know which of the remaining two it was — propose
+nothing, attempt no workaround, and do not probe by retrying variants,
+which is guessing at an answer the server deliberately withholds.
+
+This mirrors the 401-vs-403 discipline already stated above (`## Tools this
+skill may call`): an authentication failure and a permission rejection are
+different problems with different remedies, and neither is the tool-layer
+envelope.
+
 ## Proposing a mutation
 
 This is the consent gate — the only thing between a judgment and a
