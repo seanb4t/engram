@@ -1,6 +1,6 @@
 ---
 name: curating-spine
-description: Use when curating the semantic quality of the memory spine — judging whether two records are the same fact, checking a record's claims against the current tree, or running a deliberate spine-review sweep. Trigger on "curate the spine", "check for stale memories", "are these two records the same fact", "run a spine-review sweep", or when consuming `engram spine-review consolidate --output json` candidates. This skill judges and proposes: it never mutates a record without the user's explicit consent in this conversation, and it never produces candidate pairs itself — those come from `spine-review consolidate`.
+description: Use when curating the semantic quality of the memory spine — judging whether two records are the same fact, checking a record's claims against the current tree, or running a deliberate spine-review sweep. Trigger on "curate the spine", "check for stale memories", "are these two records the same fact", "run a spine-review sweep", or when consuming `engram spine-review consolidate --output json` candidates — and also, reactively, when a record recall just surfaced plainly contradicts a file, commit, or fact the agent already has open or just read, which surfaces only a one-line note rather than opening the full flow. This skill judges and proposes: it never mutates a record without the user's explicit consent in this conversation, and it never produces candidate pairs itself — those come from `spine-review consolidate`.
 ---
 
 # Curating Spine
@@ -102,9 +102,50 @@ the two records for `same-fact`, the union of both for `overlapping` — it
 never changes the verb. There is no `mcp__engram__delete_memory` anywhere
 in the merge path.
 
-Record a `distinct` verdict as a finding in the sweep report so it is
-visible; this skill does not itself write a durable no-re-propose marker
-for it.
+On a `distinct` verdict, propose recording it durably so the pair is not
+re-proposed every sweep: tag the record whose `short_id` sorts
+lexicographically first with `spine-distinct-` followed by the other
+record's `short_id`. This is one write per `distinct` verdict, proposed and
+consented to like any other item in the batch report (`## Proposing a
+mutation`) — one judgment, one write, one yes.
+
+The write must be spelled as a call that is valid on the MCP lane this
+skill uses. `update_memory`'s MCP closure rejects a call with no `content`
+(`field=content hint=required`) — a tag-only update is legal on the Connect
+field-mask lane but illegal here. Five steps, in order:
+
+1. `mcp__engram__get_memory` on the chosen record — already mandated to
+   judge the pair.
+2. Take its `content` exactly as returned. Do not reflow, re-wrap, trim, or
+   tidy it: an altered byte marks the content changed, which can strand a
+   caller-authored `summary` and get the whole call rejected.
+3. Take its current `tags` and compute the union with the new marker —
+   `tags` replaces the whole set, so sending anything less silently clears
+   every existing tag.
+4. Call `mcp__engram__update_memory` with both the unchanged `content` and
+   the full replacement tag set.
+5. Send no `summary`. Content is unchanged, so a caller-authored summary is
+   preserved untouched; sending one would be an unrequested second mutation
+   riding on a consented first.
+
+This is not pure metadata bookkeeping: a tags-only change still re-embeds
+the record, because tags are part of the embedded document, so the write
+nudges the record's vector and can shift which pairs a future `consolidate`
+sweep ranks highest. State that cost before the user says yes.
+
+Before proposing a candidate pair, check **both** records for a tag naming
+the other — never just the lexicographically-first one, since the marker
+travels with whichever record was tagged and that record may since have
+been superseded. The tags come from the `mcp__engram__get_memory` fetch
+this skill already performs on each record, never from the `consolidate`
+candidate row, which carries no tags at all. If either record carries the
+counterpart tag, do not propose the pair again.
+
+Declining costs something honest to state: the pair resurfaces on the next
+sweep. Within a session, "ask once, then stop" (`## Proposing a mutation`)
+covers a decline; across sessions it does not persist — recording a
+declined mutation durably would need a tool outside this skill's allowed
+six, so that stays out of scope.
 
 ## Choosing the verb
 
@@ -261,3 +302,21 @@ candidate array.
 judges every candidate `distinct` with nothing to propose, say what was
 checked and that nothing was found. Never return silence — absence of a
 finding must not be indistinguishable from "checked and fine".
+
+## Noticing during recall
+
+Recall — `list_memory`, `search_memory`, or whatever already surfaced a
+record into the current context — can reveal a record's staleness without
+another tool call. This path fires only when a record recall just surfaced
+plainly contradicts something the agent already has open or just read: a
+file, a commit, a fact already live in context. It is not a sweep and it is
+not the deliberate flow above.
+
+The bound is absolute: this path performs zero tool calls beyond the recall
+that triggered it. No extra reads, no tree-walking, no confirming grep
+"just this once." Its only action is emitting text.
+
+The output is a one-line note, never a proposal, never a verdict, never a
+tool call. Only a separate, deliberate invocation opens the full sweep and
+consent flow described above. A skill that interrupts often is the one that
+gets turned off — that is the reason this path stays this narrow.
