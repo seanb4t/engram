@@ -44,6 +44,53 @@ prefix out of that string; there is no side channel.
 branch on the code alone and treat the string as detail, or parse the same `field=`/`hint=`
 prefix for parity with the MCP lane.
 
+## Multi-target rejections
+
+[`supersede_memory`](/reference/tools/#supersede_memory) accepts a set of one or more
+targets to merge into a single correcting record. An invalid target set rejects the
+**whole call** — a merge never partially applies to a valid subset of the set you sent.
+
+A rejection carries exactly **one failure class** per response, in a fixed order
+evaluated top to bottom:
+
+1. **Set shape** — the `supersedes` array is empty, or one of its entries is blank.
+2. **Addressability and access** — a target you do not own, a target that does not
+   exist, and a target whose short id matches more than one record are all the SAME
+   rejection. Do not read a not-found response as proof an id is unused, and do not
+   read it as proof a short id is unique — either could be why you got it. If a short
+   id will not resolve, name that target by its full UUID instead.
+3. **Rule target** — one or more targets is a `store_rule` record, which cannot be
+   superseded.
+4. **Already superseded** — one or more targets already carries a `superseded_by`
+   link; supersede the current head of that chain instead.
+
+Every offending target of the failing class is named in the same response,
+comma-separated, in the order you supplied them — never just the first one. Each
+target is echoed exactly as you wrote it, so a target you sent as a short id comes
+back as that short id, never as a resolved UUID.
+
+**Worked examples**, taken verbatim from what the server renders — an automated test
+(`TestSupersedeDocsMatchShippedContract`) binds this text to the production rendering
+helper, so an out-of-date example fails the build rather than silently drifting:
+
+Addressability and access, two offending targets:
+
+```
+not found: a1b2c3d4e5, f6g7h8j9k0
+```
+
+Already superseded, two offending targets:
+
+```
+target is already superseded: a1b2c3d4e5, m1n2p3q4r5
+```
+
+These four rejections are **sentinel-shaped**, not field-and-hint shaped — they name
+offending targets, not a field, and the ten-code hint vocabulary above is unchanged;
+no new hint code was added for this verb. Set-shape rejections (empty array, blank
+entry) DO use the field-and-hint grammar above, naming the `supersedes` argument
+itself rather than any target value.
+
 ## The ten hint codes
 
 Transcribed directly from `internal/server/argerror.go`'s `HintCode` constants and checked
