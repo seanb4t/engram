@@ -142,3 +142,65 @@ func TestContentFingerprintTagsBoundaryShiftInjective(t *testing.T) {
 			merged.Tags, split.Tags, contentFingerprint(merged))
 	}
 }
+
+// TestMergeFingerprintOrderIndependent pins the target-set canonicalization
+// mergeFingerprint composes on top of contentFingerprint: the same target set
+// supplied in a different order must hash identically — the same merge
+// stated two ways is one operation.
+func TestMergeFingerprintOrderIndependent(t *testing.T) {
+	a := storeArgs{Content: "merged content", Category: "gotcha", Source: "user-said"}
+	forward := mergeFingerprint(a, []string{"target-a", "target-b", "target-c"})
+	reversed := mergeFingerprint(a, []string{"target-c", "target-b", "target-a"})
+	if forward != reversed {
+		t.Fatalf("mergeFingerprint not order-independent: %q != %q", forward, reversed)
+	}
+}
+
+// TestMergeFingerprintDedupeIndependent pins that a target repeated in the
+// input hashes identically to the same set without the repeat —
+// mergeFingerprint canonicalizes (sorts and compacts) its own input, so
+// duplicate-independence is a property of the ENCODING regardless of
+// plan 00's PD-01 ruling on whether a duplicate ever reaches this function
+// through the handler (that external-observability half is conditional and
+// lives in Task 3's handler-level tests, not here).
+func TestMergeFingerprintDedupeIndependent(t *testing.T) {
+	a := storeArgs{Content: "merged content", Category: "gotcha", Source: "user-said"}
+	withoutDup := mergeFingerprint(a, []string{"target-a", "target-b"})
+	withDup := mergeFingerprint(a, []string{"target-a", "target-a", "target-b"})
+	if withoutDup != withDup {
+		t.Fatalf("mergeFingerprint not dedupe-independent: %q != %q", withoutDup, withDup)
+	}
+}
+
+// TestMergeFingerprintDistinctTargetSets pins that two target sets differing
+// by even one id hash differently, and that a content difference over an
+// otherwise-identical target set still changes the hash exactly as
+// contentFingerprint already guarantees (mergeFingerprint composes it, never
+// reimplements it).
+func TestMergeFingerprintDistinctTargetSets(t *testing.T) {
+	a := storeArgs{Content: "merged content", Category: "gotcha", Source: "user-said"}
+	base := mergeFingerprint(a, []string{"target-a", "target-b"})
+
+	if got := mergeFingerprint(a, []string{"target-a", "target-c"}); got == base {
+		t.Fatalf("mergeFingerprint did not change when the target set differed by one id: %q", got)
+	}
+
+	diffContent := storeArgs{Content: "different content", Category: a.Category, Source: a.Source}
+	if got := mergeFingerprint(diffContent, []string{"target-a", "target-b"}); got == base {
+		t.Fatalf("mergeFingerprint did not change when content differed over the same target set: %q", got)
+	}
+}
+
+// TestMergeFingerprintTargetBoundaryInjectivity pins that the target-set
+// encoding is injective, not a naive join — the same probe
+// TestContentFingerprintTagsBoundaryShiftInjective uses for tags: a single
+// target id containing a literal 0x1F byte must NOT fingerprint identically
+// to two separate targets split at that byte.
+func TestMergeFingerprintTargetBoundaryInjectivity(t *testing.T) {
+	a := storeArgs{Content: "merged content", Category: "gotcha", Source: "user-said"}
+	merged := mergeFingerprint(a, []string{"a\x1fb"})
+	split := mergeFingerprint(a, []string{"a", "b"})
+	if merged == split {
+		t.Fatalf("mergeFingerprint collided on target boundary shift via 0x1F byte: both produced %q", merged)
+	}
+}

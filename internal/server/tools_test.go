@@ -3725,22 +3725,27 @@ func TestSupersedeMemorySchemaAdvertisesTargetBounds(t *testing.T) {
 	}
 }
 
-// TestSupersedeMemorySchemaExcludesIdempotencyKey (WR-03) pins that
-// supersede_memory's advertised JSON schema does NOT include
-// idempotency_key: supersede's idempotency was deliberately deferred (plan
-// T-25-10), and deps.supersedeMemory never reads the field, so the field
-// must not be promoted onto the wire schema (it would silently mislead a
-// client into believing supersede retries are safe).
-func TestSupersedeMemorySchemaExcludesIdempotencyKey(t *testing.T) {
+// TestSupersedeMemorySchemaIncludesIdempotencyKey (D-12) pins that
+// supersede_memory's advertised JSON schema now includes idempotency_key:
+// the field's prior absence was Phase 25's deliberately deferred scope
+// (WR-03, plan T-25-10), closed by this phase, and this test now guards the
+// opposite direction — a caller-sent key is a real, advertised,
+// replay-safety contract.
+//
+// Scoped to idempotency_key presence ONLY: type, minItems and maxItems on
+// `supersedes` are plan 03.1-03's TestSupersedeMemorySchemaAdvertisesTargetBounds
+// — one owner per property (cycle-2 review flagged the cap's value being
+// re-transcribed across multiple tests).
+func TestSupersedeMemorySchemaIncludesIdempotencyKey(t *testing.T) {
 	schema, err := jsonschema.For[supersedeArgs](nil)
 	if err != nil {
 		t.Fatalf("jsonschema.For[supersedeArgs]: %v", err)
 	}
-	if _, ok := schema.Properties["idempotency_key"]; ok {
-		t.Errorf("supersede_memory schema advertises idempotency_key, want it excluded (WR-03)")
+	if _, ok := schema.Properties["idempotency_key"]; !ok {
+		t.Errorf("supersede_memory schema does not advertise idempotency_key, want it included (D-12)")
 	}
 	// Sanity: the schema still carries the fields supersede_memory DOES
-	// support, proving the exclusion is targeted, not a broken reflection.
+	// support, proving the inclusion is targeted, not a broken reflection.
 	for _, want := range []string{"content", "scope", "supersedes"} {
 		if _, ok := schema.Properties[want]; !ok {
 			t.Errorf("supersede_memory schema missing expected field %q: %+v", want, schema.Properties)
@@ -3748,41 +3753,35 @@ func TestSupersedeMemorySchemaExcludesIdempotencyKey(t *testing.T) {
 	}
 }
 
-// TestSupersedeArgsDecodePopulatesPromotedIdempotencyKey (WR-04) pins the
-// wire-decode half of supersedeArgs' IdempotencyKey shadow that WR-03's
-// schema-only test did not cover: a json:"-" field has no JSON name, so it
-// never enters encoding/json's same-name shadowing contest — it excuses
-// itself, leaving the promoted storeArgs.IdempotencyKey
-// (json:"idempotency_key,omitempty") as the sole decode target. So a raw
-// idempotency_key on the wire STILL lands in a.storeArgs.IdempotencyKey,
-// contrary to what an earlier (now-corrected) doc comment claimed. This is
-// exactly why supersedeMemory defensively clears the field itself rather
-// than relying on the shadow — see TestSupersedeMemoryIgnoresIdempotencyKey.
-func TestSupersedeArgsDecodePopulatesPromotedIdempotencyKey(t *testing.T) {
+// TestSupersedeArgsDecodePopulatesIdempotencyKey (D-12) pins the wire-decode
+// half now that supersedeArgs' depth-zero json:"-" shadow field is gone (see
+// the supersedeArgs doc comment): the promoted storeArgs.IdempotencyKey
+// field is the SOLE schema and decode target, so a caller-supplied
+// idempotency_key on the wire decodes into it directly — and it is now
+// actually READ by checkIdempotentMergeReplay, not silently discarded (see
+// TestSupersedeMemoryHonorsIdempotencyKey).
+func TestSupersedeArgsDecodePopulatesIdempotencyKey(t *testing.T) {
 	var a supersedeArgs
 	in := `{"idempotency_key":"probe-key","content":"x","scope":"s","supersedes":["y"]}`
 	if err := json.Unmarshal([]byte(in), &a); err != nil {
 		t.Fatalf("json.Unmarshal: %v", err)
 	}
-	if a.storeArgs.IdempotencyKey != "probe-key" {
-		t.Errorf("a.storeArgs.IdempotencyKey (promoted) = %q, want %q (the json:\"-\" shadow does not block wire decode)", a.storeArgs.IdempotencyKey, "probe-key")
-	}
-	if a.IdempotencyKey != "" {
-		t.Errorf("a.IdempotencyKey (outer json:\"-\" shadow) = %q, want empty (it has no JSON name to decode into)", a.IdempotencyKey)
+	if a.IdempotencyKey != "probe-key" {
+		t.Errorf("a.IdempotencyKey (promoted) = %q, want %q", a.IdempotencyKey, "probe-key")
 	}
 }
 
-// TestSupersedeMemoryIgnoresIdempotencyKey (WR-04) pins that a caller-sent
-// idempotency_key on supersede_memory is silently IGNORED end to end: no
-// replay lookup, no error, a normal supersede happens — the defensive clear
-// at the top of supersedeMemory (tools.go) is what makes the decoded-but-
-// unadvertised field inert, not the schema-only json:"-" shadow (see
-// TestSupersedeArgsDecodePopulatesPromotedIdempotencyKey above).
-func TestSupersedeMemoryIgnoresIdempotencyKey(t *testing.T) {
+// TestSupersedeMemoryHonorsIdempotencyKey (D-12) pins that a caller-sent
+// idempotency_key on supersede_memory now produces a KEYED write: the
+// survivor sits at the deterministic point id (idempotencyPointID) and
+// carries a non-empty stored fingerprint — inverted from the pre-phase
+// behavior this test used to pin (a normal unkeyed write, key silently
+// ignored).
+func TestSupersedeMemoryHonorsIdempotencyKey(t *testing.T) {
 	d := testDeps(t)
 	ctx := authedContext(t, "sub-supersede-idem")
 	c := callerFor(ctx, t)
-	scope := "iso-test:project:supersede-idempotency-ignored"
+	scope := "iso-test:project:supersede-idempotency-honored"
 
 	targetID, targetSID, err := d.storeMemory(ctx, c, storeArgs{
 		Content: "original content", Scope: scope, Category: "gotcha", Source: "user-said",
@@ -3797,12 +3796,12 @@ func TestSupersedeMemoryIgnoresIdempotencyKey(t *testing.T) {
 	newID, newSID, err := d.supersedeMemory(ctx, c, supersedeArgs{
 		storeArgs: storeArgs{
 			Content: "corrected content", Scope: scope, Category: "gotcha", Source: "user-said",
-			IdempotencyKey: "some-key-that-must-be-ignored",
+			IdempotencyKey: "honor-me",
 		},
 		Supersedes: []string{targetSID},
 	})
 	if err != nil {
-		t.Fatalf("supersedeMemory with idempotency_key set: want a normal supersede (ignored key), got error: %v", err)
+		t.Fatalf("supersedeMemory with idempotency_key set: %v", err)
 	}
 	if newID == "" || newSID == "" {
 		t.Fatalf("supersedeMemory returned empty id/short_id: id=%q short_id=%q", newID, newSID)
@@ -3811,28 +3810,862 @@ func TestSupersedeMemoryIgnoresIdempotencyKey(t *testing.T) {
 		cleanupErr(t, "Delete new record", d.st.Delete(context.Background(), newID, store.Authenticated("sub-supersede-idem")))
 	})
 
+	wantPointID := idempotencyPointID(c.Subj.Owner(), scope, "honor-me")
+	if newID != wantPointID {
+		t.Errorf("newID = %q, want the deterministic point id %q (a caller-sent key must produce a keyed write)", newID, wantPointID)
+	}
+
 	newRec, err := d.getMemory(ctx, c, idArgs{ID: newID})
 	if err != nil {
 		t.Fatalf("get new record: %v", err)
 	}
 	if newRec.Content != "corrected content" {
-		t.Errorf("newRec.Content = %q, want %q (a normal supersede, not a replay)", newRec.Content, "corrected content")
+		t.Errorf("newRec.Content = %q, want %q", newRec.Content, "corrected content")
+	}
+	if newRec.IdempotencyFingerprint == "" {
+		t.Errorf("newRec.IdempotencyFingerprint is empty, want non-empty (a keyed write must stamp a fingerprint)")
+	}
+}
+
+// TestSupersedeMemoryIdempotencyReplay (D-12) pins SC1 for supersede_memory:
+// a keyed merge over two owned targets returns the deterministic point id;
+// an identical retry returns the SAME id and short id, with no second
+// survivor written and no second embed.
+func TestSupersedeMemoryIdempotencyReplay(t *testing.T) {
+	d := testDeps(t)
+	spy := &countingEmbedder{}
+	d.em = spy
+	ctx := authedContext(t, "sub-supersede-replay")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-idempotency-replay"
+
+	target1ID, target1SID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original one", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store 1: %v", err)
+	}
+	target2ID, target2SID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original two", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store 2: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete target1", d.st.Delete(context.Background(), target1ID, store.Authenticated("sub-supersede-replay")))
+		cleanupErr(t, "Delete target2", d.st.Delete(context.Background(), target2ID, store.Authenticated("sub-supersede-replay")))
+	})
+	spy.calls = 0 // reset after the two seed store_memory calls (each embeds too)
+
+	args := supersedeArgs{
+		storeArgs: storeArgs{
+			Content: "merged content", Scope: scope, Category: "gotcha", Source: "user-said",
+			IdempotencyKey: "replay-key",
+		},
+		Supersedes: []string{target1SID, target2SID},
 	}
 
-	// Calling again with the SAME idempotency_key must NOT be treated as a
-	// replay: it is a brand-new supersede attempt against an
-	// already-superseded target, so it fails ErrAlreadySuperseded — never
-	// returns the first call's id, which would indicate the key was
-	// (incorrectly) honored as a replay key.
-	replayID, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+	id1, sid1, err := d.supersedeMemory(ctx, c, args)
+	if err != nil {
+		t.Fatalf("supersedeMemory (first): %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete new record", d.st.Delete(context.Background(), id1, store.Authenticated("sub-supersede-replay")))
+	})
+	wantPointID := idempotencyPointID(c.Subj.Owner(), scope, "replay-key")
+	if id1 != wantPointID {
+		t.Fatalf("id1 = %q, want deterministic point id %q", id1, wantPointID)
+	}
+	if spy.calls != 1 {
+		t.Fatalf("first call: embed calls = %d, want 1", spy.calls)
+	}
+
+	id2, sid2, err := d.supersedeMemory(ctx, c, args)
+	if err != nil {
+		t.Fatalf("supersedeMemory (second, replay): %v", err)
+	}
+	if id2 != id1 || sid2 != sid1 {
+		t.Errorf("replay id/sid = (%q,%q), want the original (%q,%q)", id2, sid2, id1, sid1)
+	}
+	if spy.calls != 1 {
+		t.Errorf("second (replay) call: embed calls = %d, want still 1 (no second embed)", spy.calls)
+	}
+
+	// No second survivor: both targets point at the same original id.
+	for _, targetID := range []string{target1ID, target2ID} {
+		target, err := d.getMemory(ctx, c, idArgs{ID: targetID})
+		if err != nil {
+			t.Fatalf("get target %s: %v", targetID, err)
+		}
+		if target.SupersededBy == nil || *target.SupersededBy != id1 {
+			t.Errorf("target %s SupersededBy = %v, want %q", targetID, target.SupersededBy, id1)
+		}
+	}
+}
+
+// TestSupersedeMemoryIdempotencyDifferentTargetSetConflicts (D-13, T-03.1-07)
+// pins that a same-key retry with a DIFFERENT target set is rejected as an
+// idempotency conflict, never silently applied as a different operation.
+func TestSupersedeMemoryIdempotencyDifferentTargetSetConflicts(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-conflict")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-idempotency-conflict"
+
+	target1ID, target1SID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original one", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store 1: %v", err)
+	}
+	target2ID, target2SID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original two", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store 2: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete target1", d.st.Delete(context.Background(), target1ID, store.Authenticated("sub-supersede-conflict")))
+		cleanupErr(t, "Delete target2", d.st.Delete(context.Background(), target2ID, store.Authenticated("sub-supersede-conflict")))
+	})
+
+	id1, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
 		storeArgs: storeArgs{
-			Content: "corrected content", Scope: scope, Category: "gotcha", Source: "user-said",
-			IdempotencyKey: "some-key-that-must-be-ignored",
+			Content: "merged content", Scope: scope, Category: "gotcha", Source: "user-said",
+			IdempotencyKey: "conflict-key",
+		},
+		Supersedes: []string{target1SID},
+	})
+	if err != nil {
+		t.Fatalf("supersedeMemory (first): %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete new record", d.st.Delete(context.Background(), id1, store.Authenticated("sub-supersede-conflict")))
+	})
+
+	_, _, err = d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs: storeArgs{
+			Content: "merged content", Scope: scope, Category: "gotcha", Source: "user-said",
+			IdempotencyKey: "conflict-key",
+		},
+		Supersedes: []string{target1SID, target2SID},
+	})
+	if err == nil {
+		t.Fatal("same key, different target set: want an idempotency conflict, got nil")
+	}
+	if !errors.Is(err, store.ErrIdempotencyConflict) {
+		t.Errorf("err = %v, want wrapping store.ErrIdempotencyConflict", err)
+	}
+
+	// No new record was written for the conflicting call: target2 is untouched.
+	target2, err := d.getMemory(ctx, c, idArgs{ID: target2ID})
+	if err != nil {
+		t.Fatalf("get target2: %v", err)
+	}
+	if target2.SupersededBy != nil {
+		t.Errorf("target2.SupersededBy = %v, want nil (the conflicting call must not write)", target2.SupersededBy)
+	}
+}
+
+// TestSupersedeMemoryIdempotencyReorderedSetReplays (D-12) pins that the
+// merge fingerprint is order-independent: the same key and content, over
+// the same target set supplied in reverse order, replays rather than
+// conflicting. PD-01 ruled dedupe-silently (03.1-00-SUMMARY.md), so this
+// case ALSO covers a duplicated entry in the reordered set — after dedupe
+// both spellings resolve to the same set, and the replay must still fire.
+func TestSupersedeMemoryIdempotencyReorderedSetReplays(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-reorder")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-idempotency-reorder"
+
+	target1ID, target1SID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original one", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store 1: %v", err)
+	}
+	target2ID, target2SID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original two", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store 2: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete target1", d.st.Delete(context.Background(), target1ID, store.Authenticated("sub-supersede-reorder")))
+		cleanupErr(t, "Delete target2", d.st.Delete(context.Background(), target2ID, store.Authenticated("sub-supersede-reorder")))
+	})
+
+	id1, sid1, err := d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs: storeArgs{
+			Content: "merged content", Scope: scope, Category: "gotcha", Source: "user-said",
+			IdempotencyKey: "reorder-key",
+		},
+		Supersedes: []string{target1SID, target2SID},
+	})
+	if err != nil {
+		t.Fatalf("supersedeMemory (first): %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete new record", d.st.Delete(context.Background(), id1, store.Authenticated("sub-supersede-reorder")))
+	})
+
+	// Reversed order, plus a duplicated entry (PD-01 dedupe-silently): must
+	// still replay.
+	id2, sid2, err := d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs: storeArgs{
+			Content: "merged content", Scope: scope, Category: "gotcha", Source: "user-said",
+			IdempotencyKey: "reorder-key",
+		},
+		Supersedes: []string{target2SID, target1SID, target2SID},
+	})
+	if err != nil {
+		t.Fatalf("supersedeMemory (reordered+duplicated retry): want a replay, got error: %v", err)
+	}
+	if id2 != id1 || sid2 != sid1 {
+		t.Errorf("reordered+duplicated retry id/sid = (%q,%q), want the original (%q,%q)", id2, sid2, id1, sid1)
+	}
+}
+
+// TestSupersedeMemoryReplayPrecedesAlreadySupersededPreflight is the D-14
+// proof: a keyed merge stamps its target superseded_by the new record —
+// simulating an unobserved success — and the identical retry must still
+// return the ORIGINAL id and short id, not the already-superseded
+// rejection. Ordered the other way (replay check after
+// validateSupersedeTargetState), this is the only test that catches the
+// mistake: every happy-path test passes either way.
+func TestSupersedeMemoryReplayPrecedesAlreadySupersededPreflight(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-precedence")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-replay-precedence"
+
+	targetID, targetSID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete target", d.st.Delete(context.Background(), targetID, store.Authenticated("sub-supersede-precedence")))
+	})
+
+	args := supersedeArgs{
+		storeArgs: storeArgs{
+			Content: "merged content", Scope: scope, Category: "gotcha", Source: "user-said",
+			IdempotencyKey: "precedence-key",
+		},
+		Supersedes: []string{targetSID},
+	}
+	id1, sid1, err := d.supersedeMemory(ctx, c, args)
+	if err != nil {
+		t.Fatalf("supersedeMemory (first): %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete new record", d.st.Delete(context.Background(), id1, store.Authenticated("sub-supersede-precedence")))
+	})
+
+	// The target now carries superseded_by — simulating a caller who never
+	// observed the first call's success and retries.
+	target, err := d.getMemory(ctx, c, idArgs{ID: targetID})
+	if err != nil {
+		t.Fatalf("get target: %v", err)
+	}
+	if target.SupersededBy == nil || *target.SupersededBy != id1 {
+		t.Fatalf("target.SupersededBy = %v, want %q (setup invariant)", target.SupersededBy, id1)
+	}
+
+	id2, sid2, err := d.supersedeMemory(ctx, c, args)
+	if err != nil {
+		t.Fatalf("supersedeMemory (retry after unobserved success): want the original answer, got error: %v", err)
+	}
+	if id2 != id1 || sid2 != sid1 {
+		t.Errorf("retry id/sid = (%q,%q), want the original (%q,%q)", id2, sid2, id1, sid1)
+	}
+}
+
+// TestSupersedeMemoryUnkeyedUnchanged pins that an unkeyed merge behaves
+// exactly as before D-12: a fresh non-deterministic id, an empty stored
+// fingerprint, and no deterministic-lookup round trip (checkIdempotentMergeReplay
+// returns immediately on an empty key).
+func TestSupersedeMemoryUnkeyedUnchanged(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-unkeyed")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-unkeyed"
+
+	targetID, targetSID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete target", d.st.Delete(context.Background(), targetID, store.Authenticated("sub-supersede-unkeyed")))
+	})
+
+	newID, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs:  storeArgs{Content: "merged", Scope: scope, Category: "gotcha", Source: "user-said"},
+		Supersedes: []string{targetSID},
+	})
+	if err != nil {
+		t.Fatalf("supersedeMemory: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete new record", d.st.Delete(context.Background(), newID, store.Authenticated("sub-supersede-unkeyed")))
+	})
+
+	wantDeterministicID := idempotencyPointID(c.Subj.Owner(), scope, "")
+	if newID == wantDeterministicID {
+		t.Errorf("newID = %q, unexpectedly equals a deterministic point id derived from an empty key", newID)
+	}
+
+	newRec, err := d.getMemory(ctx, c, idArgs{ID: newID})
+	if err != nil {
+		t.Fatalf("get new record: %v", err)
+	}
+	if newRec.IdempotencyFingerprint != "" {
+		t.Errorf("newRec.IdempotencyFingerprint = %q, want empty (unkeyed write must not stamp a fingerprint)", newRec.IdempotencyFingerprint)
+	}
+}
+
+// TestSupersedeMemoryOversizedKeyRejected pins IN-01 for supersede_memory: an
+// oversized idempotency_key is rejected before the billable Embed call and
+// the Qdrant-hitting MintShortID call.
+func TestSupersedeMemoryOversizedKeyRejected(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-oversized")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-oversized-key"
+
+	stampedID := "a9a9a9a9-0000-0000-0000-000000000001"
+	stamped := store.Memory{
+		ID: stampedID, Content: "original", Scope: scope,
+		Owner: c.Subj.Owner(), Category: "gotcha",
+		Source: "user-said", CreatedAt: timeNow(),
+	}
+	if err := d.st.Upsert(context.Background(), stamped, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed stamped record: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete "+stampedID, d.st.Delete(context.Background(), stampedID, store.Authenticated("sub-supersede-oversized")))
+	})
+
+	counter := &countingEmbedder{}
+	d.em = counter
+
+	_, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs: storeArgs{
+			Content: "merged", Scope: scope, Category: "gotcha", Source: "user-said",
+			IdempotencyKey: strings.Repeat("k", maxIdempotencyKeyBytes+1),
+		},
+		Supersedes: []string{stampedID},
+	})
+	if err == nil {
+		t.Fatal("oversized idempotency_key should be rejected, got nil error")
+	}
+	if !errors.Is(err, store.ErrInvalidArgument) {
+		t.Fatalf("error = %v, want wrapping store.ErrInvalidArgument", err)
+	}
+	if counter.calls != 0 {
+		t.Errorf("oversized idempotency_key: embed must not be called; got %d call(s)", counter.calls)
+	}
+}
+
+// TestSupersedeMemoryConcurrentIdenticalKeyReturnsSameSurvivor (T-03.1-26,
+// cycle-1/cycle-2 review) proves two SIMULTANEOUS identical keyed merges
+// both return the SAME persisted survivor id and short id — not merely "an"
+// id each, but the one actually stored at the deterministic point.
+//
+// Which goroutine wins is nondeterministic and this test does not assume:
+// the WINNER reaches Upsert and gets its short id from the keyed post-write
+// re-read (mirrors persistAndEnqueue's tail); the LOSER is rejected under
+// the target locks by Store.Supersede's already-superseded check BEFORE
+// Upsert, so it never reaches that re-read and gets its answer from
+// resolveLostMergeRace on a fingerprint match. A test attributing both
+// answers to the post-write re-read would be asserting something the code
+// cannot do.
+func TestSupersedeMemoryConcurrentIdenticalKeyReturnsSameSurvivor(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-concurrent-key")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-concurrent-key"
+
+	target1ID, target1SID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original one", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store 1: %v", err)
+	}
+	target2ID, target2SID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original two", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store 2: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete target1", d.st.Delete(context.Background(), target1ID, store.Authenticated("sub-supersede-concurrent-key")))
+		cleanupErr(t, "Delete target2", d.st.Delete(context.Background(), target2ID, store.Authenticated("sub-supersede-concurrent-key")))
+	})
+
+	args := supersedeArgs{
+		storeArgs: storeArgs{
+			Content: "merged content", Scope: scope, Category: "gotcha", Source: "user-said",
+			IdempotencyKey: "concurrent-key",
+		},
+		Supersedes: []string{target1SID, target2SID},
+	}
+
+	type result struct {
+		id, sid string
+		err     error
+	}
+	var wg sync.WaitGroup
+	results := make([]result, 2)
+	wg.Add(2)
+	for i := range 2 {
+		go func(i int) {
+			defer wg.Done()
+			id, sid, err := d.supersedeMemory(ctx, c, args)
+			results[i] = result{id, sid, err}
+		}(i)
+	}
+	wg.Wait()
+
+	for i, r := range results {
+		if r.err != nil {
+			t.Fatalf("caller %d: supersedeMemory: %v", i, r.err)
+		}
+	}
+	if results[0].id != results[1].id {
+		t.Fatalf("caller 0 id = %q, caller 1 id = %q, want equal", results[0].id, results[1].id)
+	}
+	if results[0].sid != results[1].sid {
+		t.Fatalf("caller 0 short id = %q, caller 1 short id = %q, want equal", results[0].sid, results[1].sid)
+	}
+	survivorID := results[0].id
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete new record", d.st.Delete(context.Background(), survivorID, store.Authenticated("sub-supersede-concurrent-key")))
+	})
+
+	persisted, err := d.st.Get(ctx, survivorID)
+	if err != nil {
+		t.Fatalf("Get survivor: %v", err)
+	}
+	if persisted.ShortID != results[0].sid {
+		t.Errorf("returned short id = %q, persisted short id = %q, want equal (the answer returned must be the one actually stored)", results[0].sid, persisted.ShortID)
+	}
+}
+
+// lostRaceStore embeds *spyStore and overrides ONLY Supersede, to
+// deterministically reproduce the window a real losing racer sees: the
+// deterministic point id is ABSENT at checkIdempotentMergeReplay's pre-check
+// (so the handler proceeds all the way to Store.Supersede) but PRESENT by
+// the time the store rejects the call — exactly the race resolveLostMergeRace
+// exists to recover from. The override writes the WINNER's record directly
+// into the embedded spy's map (never through Upsert, mirroring how the real
+// Store.Supersede rejects a losing racer BEFORE its own Upsert) and then
+// returns the store-tier already-superseded rejection, in that order — the
+// same order a real winner holding the target lock produces relative to a
+// real loser. See TestSupersedeMemoryLostRaceFingerprintMismatchConflicts
+// for why a sequential (non-scripted) setup cannot reach this branch.
+type lostRaceStore struct {
+	*spyStore
+	winnerID, winnerFP string
+}
+
+func (l *lostRaceStore) Supersede(_ context.Context, _ store.Memory, _ []float32, targets []string, subj store.Subject) error {
+	owner := ownerOfSubject(subj)
+	l.mu.Lock()
+	l.record("Supersede", owner, targets[0])
+	l.records[l.winnerID] = store.Memory{
+		ID: l.winnerID, Owner: owner, IdempotencyFingerprint: l.winnerFP,
+	}
+	l.mu.Unlock()
+	return fmt.Errorf("%w: %s", store.ErrAlreadySuperseded, targets[0])
+}
+
+// TestSupersedeMemoryLostRaceFingerprintMismatchConflicts (T-03.1-26,
+// cycle-3 review HIGH) is the mismatch half of the lost-race recovery,
+// reached only when the deterministic point is ABSENT at
+// checkIdempotentMergeReplay's pre-check and PRESENT by the time the store
+// rejects the call — exactly what a real losing racer sees.
+//
+// A sequential setup (keyed merge with key K, then re-submit key K with
+// different content) CANNOT reach resolveLostMergeRace: by the second call a
+// record already sits at the deterministic point, so
+// checkIdempotentMergeReplay's own Get finds it and returns the conflict
+// BEFORE Store.Supersede is ever called — Supersede never runs,
+// resolveLostMergeRace is never entered, and because both paths return the
+// same store.ErrIdempotencyConflict sentinel the assertion would pass anyway
+// (cycle-3's exact defect: deleting the helper would not have failed that
+// shape). This test reproduces the real window deterministically with a
+// scripted store instead, and asserts the call sequence, not only the
+// sentinel.
+func TestSupersedeMemoryLostRaceFingerprintMismatchConflicts(t *testing.T) {
+	sp := newSpyStore()
+	ctx := authedContext(t, "sub-supersede-lostrace")
+	c := callerFor(ctx, t)
+	owner := c.Subj.Owner()
+	scope := "iso-test:project:supersede-lostrace"
+	const key = "lostrace-key"
+
+	targetID := "c0000000-0000-0000-0000-000000000001"
+	sp.records[targetID] = store.Memory{ID: targetID, Owner: owner, Category: "gotcha", Scope: scope}
+
+	pointID := idempotencyPointID(owner, scope, key)
+	lrs := &lostRaceStore{spyStore: sp, winnerID: pointID, winnerFP: "deliberately-different-fingerprint"}
+	d := &deps{st: lrs, em: fakeEmbedder{}}
+
+	a := supersedeArgs{
+		storeArgs: storeArgs{
+			Content: "merged content", Scope: scope, Category: "gotcha", Source: "user-said",
+			IdempotencyKey: key,
+		},
+		Supersedes: []string{targetID},
+	}
+
+	// Guard against the setup silently degenerating: the seeded winner's
+	// fingerprint must differ from what the caller's own call would compute —
+	// a future edit that accidentally makes them equal must turn this test
+	// red rather than quietly exercise the match branch instead.
+	if lrs.winnerFP == mergeFingerprint(a.storeArgs, []string{targetID}) {
+		t.Fatal("test setup invariant violated: seeded winner fingerprint must differ from the caller's own")
+	}
+
+	_, _, err := d.supersedeMemory(ctx, c, a)
+
+	log := sp.callLog()
+	supersedeCount, getPoints := 0, 0
+	firstGetIdx, supersedeIdx, secondGetIdx := -1, -1, -1
+	for i, call := range log {
+		switch {
+		case call.Method == "Supersede":
+			supersedeCount++
+			supersedeIdx = i
+		case call.Method == "Get" && call.Args == pointID:
+			getPoints++
+			if firstGetIdx == -1 {
+				firstGetIdx = i
+			} else if secondGetIdx == -1 {
+				secondGetIdx = i
+			}
+		case call.Method == "Upsert":
+			t.Fatalf("Upsert was called (log=%+v); the loser must never write", log)
+		}
+	}
+	if supersedeCount != 1 {
+		t.Fatalf("Supersede call count = %d, want 1 (log=%+v)", supersedeCount, log)
+	}
+	if getPoints != 2 {
+		t.Fatalf("Get(%s) call count = %d, want 2 — one from checkIdempotentMergeReplay, one from resolveLostMergeRace (log=%+v)", pointID, getPoints, log)
+	}
+	if firstGetIdx >= supersedeIdx || supersedeIdx >= secondGetIdx {
+		t.Fatalf("Get/Supersede/Get ordering wrong: firstGet=%d Supersede=%d secondGet=%d (log=%+v)", firstGetIdx, supersedeIdx, secondGetIdx, log)
+	}
+
+	if !errors.Is(err, store.ErrIdempotencyConflict) {
+		t.Errorf("err = %v, want wrapping store.ErrIdempotencyConflict", err)
+	}
+	if errors.Is(err, store.ErrAlreadySuperseded) {
+		t.Errorf("err = %v, must NOT wrap store.ErrAlreadySuperseded (the mismatch is a conflict, not the store-tier rejection)", err)
+	}
+}
+
+// errStore embeds *spyStore and overrides Get to return a fixed transport
+// error for one specific id — spyStore itself has no way to return anything
+// but ErrNotFound or nil, and TestResolveLostMergeRaceBranches' read-error
+// subtest needs a genuine non-sentinel failure.
+type errStore struct {
+	*spyStore
+	errID string
+	err   error
+}
+
+func (e *errStore) Get(ctx context.Context, id string) (store.Memory, error) {
+	if id == e.errID {
+		return store.Memory{}, e.err
+	}
+	return e.spyStore.Get(ctx, id)
+}
+
+// TestResolveLostMergeRaceBranches is the recovery contract, table-driven,
+// calling resolveLostMergeRace DIRECTLY so reachability is a property of the
+// call rather than of a setup — the branch coverage
+// TestSupersedeMemoryLostRaceFingerprintMismatchConflicts deliberately does
+// not duplicate end to end.
+func TestResolveLostMergeRaceBranches(t *testing.T) {
+	baseArgs := supersedeArgs{
+		storeArgs:  storeArgs{Content: "merged", Scope: "iso-test:project:lost-race-branches", Category: "gotcha", Source: "user-said"},
+		Supersedes: []string{"whatever"},
+	}
+	targets := []string{"target-a"}
+	otherErr := errors.New("some other store error")
+	transportErr := errors.New("transport failure")
+
+	t.Run("empty point id returns incoming error unchanged", func(t *testing.T) {
+		d, _ := newSpyDeps()
+		incoming := fmt.Errorf("%w: whatever", store.ErrAlreadySuperseded)
+		id, sid, err := d.resolveLostMergeRace(context.Background(), baseArgs, targets, "", incoming)
+		if id != "" || sid != "" || !errors.Is(err, incoming) {
+			t.Errorf("got (%q,%q,%v), want (\"\",\"\",the exact incoming error instance unchanged)", id, sid, err)
+		}
+	})
+
+	t.Run("non-already-superseded error returns unchanged", func(t *testing.T) {
+		d, _ := newSpyDeps()
+		id, sid, err := d.resolveLostMergeRace(context.Background(), baseArgs, targets, "point-id", otherErr)
+		if id != "" || sid != "" || !errors.Is(err, otherErr) {
+			t.Errorf("got (%q,%q,%v), want (\"\",\"\",otherErr unchanged)", id, sid, err)
+		}
+	})
+
+	t.Run("deterministic point absent returns incoming error unchanged", func(t *testing.T) {
+		d, _ := newSpyDeps()
+		incoming := fmt.Errorf("%w: target-a", store.ErrAlreadySuperseded)
+		id, sid, err := d.resolveLostMergeRace(context.Background(), baseArgs, targets, "absent-point-id", incoming)
+		if id != "" || sid != "" || !errors.Is(err, incoming) {
+			t.Errorf("got (%q,%q,%v), want (\"\",\"\",incoming unchanged)", id, sid, err)
+		}
+	})
+
+	t.Run("point read transport error returns that error", func(t *testing.T) {
+		sp := newSpyStore()
+		es := &errStore{spyStore: sp, errID: "err-point-id", err: transportErr}
+		d := &deps{st: es, em: fakeEmbedder{}}
+		incoming := fmt.Errorf("%w: target-a", store.ErrAlreadySuperseded)
+		id, sid, err := d.resolveLostMergeRace(context.Background(), baseArgs, targets, "err-point-id", incoming)
+		if id != "" || sid != "" || !errors.Is(err, transportErr) {
+			t.Errorf("got (%q,%q,%v), want (\"\",\"\",transportErr)", id, sid, err)
+		}
+		if errors.Is(err, store.ErrAlreadySuperseded) {
+			t.Errorf("err = %v, must not be the already-superseded rejection (a transport failure must not be masked)", err)
+		}
+	})
+
+	t.Run("stored fingerprint match replays", func(t *testing.T) {
+		sp := newSpyStore()
+		fp := mergeFingerprint(baseArgs.storeArgs, targets)
+		sp.records["match-point-id"] = store.Memory{ID: "match-point-id", ShortID: "SHORTID1", IdempotencyFingerprint: fp}
+		d := &deps{st: sp, em: fakeEmbedder{}}
+		incoming := fmt.Errorf("%w: target-a", store.ErrAlreadySuperseded)
+		id, sid, err := d.resolveLostMergeRace(context.Background(), baseArgs, targets, "match-point-id", incoming)
+		if err != nil {
+			t.Fatalf("resolveLostMergeRace: want nil error on fingerprint match, got %v", err)
+		}
+		if id != "match-point-id" || sid != "SHORTID1" {
+			t.Errorf("got (%q,%q), want (%q,%q)", id, sid, "match-point-id", "SHORTID1")
+		}
+	})
+
+	t.Run("stored fingerprint mismatch conflicts", func(t *testing.T) {
+		sp := newSpyStore()
+		sp.records["mismatch-point-id"] = store.Memory{ID: "mismatch-point-id", ShortID: "SHORTID2", IdempotencyFingerprint: "a-different-fingerprint"}
+		d := &deps{st: sp, em: fakeEmbedder{}}
+		incoming := fmt.Errorf("%w: target-a", store.ErrAlreadySuperseded)
+		id, sid, err := d.resolveLostMergeRace(context.Background(), baseArgs, targets, "mismatch-point-id", incoming)
+		if !errors.Is(err, store.ErrIdempotencyConflict) {
+			t.Errorf("err = %v, want wrapping store.ErrIdempotencyConflict", err)
+		}
+		if errors.Is(err, store.ErrAlreadySuperseded) {
+			t.Errorf("err = %v, must NOT wrap store.ErrAlreadySuperseded on a mismatch", err)
+		}
+		if id != "" || sid != "" {
+			t.Errorf("got (%q,%q), want empty on conflict", id, sid)
+		}
+	})
+}
+
+// TestSupersedeMemoryReplayAfterTargetDeletedRejects pins PD-09's documented
+// narrowing: because the replay check runs AFTER existence and ownership
+// (resolveAndAuthorizeSupersedeTargets), a retry whose target was deleted in
+// the meantime does NOT replay — it is rejected as not found, the same as
+// any other missing target. This is the deliberate cost of the ordering:
+// weaker than key-alone replay semantics, and published in
+// reference/tools.md, not only pinned here.
+func TestSupersedeMemoryReplayAfterTargetDeletedRejects(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-deleted-target")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-replay-deleted"
+
+	targetID, targetSID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	args := supersedeArgs{
+		storeArgs: storeArgs{
+			Content: "merged content", Scope: scope, Category: "gotcha", Source: "user-said",
+			IdempotencyKey: "deleted-target-key",
+		},
+		Supersedes: []string{targetSID},
+	}
+	id1, _, err := d.supersedeMemory(ctx, c, args)
+	if err != nil {
+		t.Fatalf("supersedeMemory (first): %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete new record", d.st.Delete(context.Background(), id1, store.Authenticated("sub-supersede-deleted-target")))
+	})
+
+	// Delete the target out of band, then repeat the identical keyed call.
+	if err := d.st.Delete(context.Background(), targetID, store.Authenticated("sub-supersede-deleted-target")); err != nil {
+		t.Fatalf("delete target out of band: %v", err)
+	}
+
+	_, _, err = d.supersedeMemory(ctx, c, args)
+	if err == nil {
+		t.Fatal("retry after target deleted: want a not-found rejection, got nil (replay must not fire)")
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("err = %v, want wrapping store.ErrNotFound (PD-09's narrowing: no replay after existence/ownership was already rejected)", err)
+	}
+}
+
+// TestSupersedeMemoryCannotSelfLink pins the adjacency edge: a merge naming
+// its own survivor as a target. On the unkeyed path this is unreachable by
+// construction — the survivor id is a freshly minted UUID the caller cannot
+// know at call time — so no equivalent test exists there. On the keyed path
+// the survivor's deterministic id IS knowable in advance (derived from
+// owner+scope+key), so this proves the keyed path rejects rather than
+// silently accepting a cycle: the second call's target set ({survivorID})
+// differs from the first call's ({targetID}), so the SAME mismatch mechanism
+// TestSupersedeMemoryIdempotencyDifferentTargetSetConflicts pins also closes
+// this edge — no separate self-link check exists or is needed.
+func TestSupersedeMemoryCannotSelfLink(t *testing.T) {
+	d := testDeps(t)
+	ctx := authedContext(t, "sub-supersede-selflink")
+	c := callerFor(ctx, t)
+	scope := "iso-test:project:supersede-selflink"
+
+	targetID, targetSID, err := d.storeMemory(ctx, c, storeArgs{
+		Content: "original", Scope: scope, Category: "gotcha", Source: "user-said",
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete target", d.st.Delete(context.Background(), targetID, store.Authenticated("sub-supersede-selflink")))
+	})
+
+	survivorID, _, err := d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs: storeArgs{
+			Content: "merged content", Scope: scope, Category: "gotcha", Source: "user-said",
+			IdempotencyKey: "selflink-key",
 		},
 		Supersedes: []string{targetSID},
 	})
+	if err != nil {
+		t.Fatalf("supersedeMemory (first): %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupErr(t, "Delete new record", d.st.Delete(context.Background(), survivorID, store.Authenticated("sub-supersede-selflink")))
+	})
+
+	survivorBefore, err := d.getMemory(ctx, c, idArgs{ID: survivorID})
+	if err != nil {
+		t.Fatalf("get survivor before: %v", err)
+	}
+
+	_, _, err = d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs: storeArgs{
+			Content: "merged content", Scope: scope, Category: "gotcha", Source: "user-said",
+			IdempotencyKey: "selflink-key",
+		},
+		Supersedes: []string{survivorID},
+	})
 	if err == nil {
-		t.Errorf("second supersedeMemory with same idempotency_key + already-superseded target: want error, got id=%q (key was NOT ignored — looks like a replay)", replayID)
+		t.Fatal("merge naming its own survivor as a target: want an idempotency conflict, got nil")
+	}
+	if !errors.Is(err, store.ErrIdempotencyConflict) {
+		t.Errorf("err = %v, want wrapping store.ErrIdempotencyConflict", err)
+	}
+
+	survivorAfter, err := d.getMemory(ctx, c, idArgs{ID: survivorID})
+	if err != nil {
+		t.Fatalf("get survivor after: %v", err)
+	}
+	if survivorAfter.SupersededBy != nil {
+		t.Errorf("survivor.SupersededBy = %v, want nil (self-link must not stamp)", survivorAfter.SupersededBy)
+	}
+	if len(survivorAfter.Supersedes) != len(survivorBefore.Supersedes) {
+		t.Errorf("survivor.Supersedes changed: before=%v after=%v", survivorBefore.Supersedes, survivorAfter.Supersedes)
+	}
+	for _, s := range survivorAfter.Supersedes {
+		if s == survivorID {
+			t.Errorf("survivor.Supersedes contains its own id %q — a self-referencing cycle", survivorID)
+		}
+	}
+}
+
+// raceWriteStore embeds *spyStore and overrides ONLY Supersede: it performs
+// the caller's own write via the embedded spy (so the normal per-target
+// gates/back-stamp run), then overwrites the SAME deterministic point id
+// with a DIFFERENT short_id before returning — simulating a genuinely
+// concurrent DIFFERENT keyed merge (same owner+scope+key, a non-overlapping
+// target set, so no shared target lock blocks it — unlike the
+// identical-target-set race TestSupersedeMemoryConcurrentIdenticalKeyReturnsSameSurvivor
+// covers) landing its own Upsert microseconds later. Backs
+// TestSupersedeMemoryKeyedPostWriteReReadPrefersPersisted, which proves the
+// keyed-path post-write re-read is load-bearing: without it, this caller
+// would return its own locally-minted short_id, discarding what was
+// actually persisted.
+type raceWriteStore struct {
+	*spyStore
+	racerShortID string
+}
+
+func (r *raceWriteStore) Supersede(ctx context.Context, newMem store.Memory, vec []float32, targets []string, subj store.Subject) error {
+	if err := r.spyStore.Supersede(ctx, newMem, vec, targets, subj); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	rec := r.records[newMem.ID]
+	rec.ShortID = r.racerShortID
+	r.records[newMem.ID] = rec
+	r.mu.Unlock()
+	return nil
+}
+
+// TestSupersedeMemoryKeyedPostWriteReReadPrefersPersisted proves the keyed
+// post-write short-id re-read is load-bearing: a scripted store overwrites
+// the deterministic point id with a different short_id immediately after
+// this caller's own write (simulating a concurrent, non-overlapping-target
+// keyed merge sharing the same point id), and the caller must return the
+// short_id ACTUALLY PERSISTED, not the one it discarded.
+func TestSupersedeMemoryKeyedPostWriteReReadPrefersPersisted(t *testing.T) {
+	sp := newSpyStore()
+	ctx := authedContext(t, "sub-supersede-reread")
+	c := callerFor(ctx, t)
+	owner := c.Subj.Owner()
+	scope := "iso-test:project:supersede-reread"
+	const key = "reread-key"
+
+	targetID := "d1000000-0000-0000-0000-000000000001"
+	sp.records[targetID] = store.Memory{ID: targetID, Owner: owner, Category: "gotcha", Scope: scope}
+
+	rs := &raceWriteStore{spyStore: sp, racerShortID: "RACERWON01"}
+	d := &deps{st: rs, em: fakeEmbedder{}}
+
+	id, sid, err := d.supersedeMemory(ctx, c, supersedeArgs{
+		storeArgs: storeArgs{
+			Content: "merged content", Scope: scope, Category: "gotcha", Source: "user-said",
+			IdempotencyKey: key,
+		},
+		Supersedes: []string{targetID},
+	})
+	if err != nil {
+		t.Fatalf("supersedeMemory: %v", err)
+	}
+	wantPointID := idempotencyPointID(owner, scope, key)
+	if id != wantPointID {
+		t.Fatalf("id = %q, want %q", id, wantPointID)
+	}
+	if sid != "RACERWON01" {
+		t.Errorf("sid = %q, want %q (the keyed post-write re-read must prefer the actually-persisted short_id, not the one this caller discarded)", sid, "RACERWON01")
 	}
 }
 
