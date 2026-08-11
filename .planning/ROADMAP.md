@@ -434,16 +434,16 @@ ordering resolved without a `TargetLocker` interface change, but the in-process 
 is not reentrant, so the *resolved* target-UUID set must be deduped before acquisition or a repeated
 target self-deadlocks. `idempotency_key` resolved as supported (D-12).
 
-**Plans:** 6 plans
+**Plans:** 2/6 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 03.1-00-PLAN.md — Decision gate: rule on the target-set cap, the rejection class order, duplicate handling, and cross-scope merges before any code implements them
+- [x] 03.1-00-PLAN.md — Decision gate: rule on the target-set cap, the rejection class order, duplicate handling, and cross-scope merges before any code implements them
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 03.1-01-PLAN.md — Tracer: promote `supersedes` to a set end to end, with tolerant decode, sorted deduped multi-lock acquisition, and the minimal compensation that keeps the commit safe
+- [x] 03.1-01-PLAN.md — Tracer: promote `supersedes` to a set end to end, with tolerant decode, sorted deduped multi-lock acquisition, and the minimal compensation that keeps the commit safe
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
