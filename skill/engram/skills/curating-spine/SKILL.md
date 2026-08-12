@@ -33,9 +33,12 @@ different responses — conflating them sends the user to the wrong remedy:
 - **401, an authentication failure.** The caller is not authenticated at
   all. `RequireBearerToken` (`internal/auth/auth.go:216`) is what emits
   this. Tell the user to run `/mcp`, engram → Authenticate, then retry.
-- **403, a permission rejection.** The caller *is* authenticated and is
-  still not permitted. Stop. Re-authenticating does not help here, so do
-  not send the user around the 401 loop.
+- **404, an addressability rejection on a single-target tool**
+  (`get_memory`, `update_memory`, `delete_memory`). The server returns the
+  same not-found response whether the record is not yours or does not
+  exist, so this cannot be told apart from a typo'd id — report only "not
+  addressable by you", never "not yours". (403 is a CSRF-layer response
+  that never fires for these MCP tools.)
 - **A tool-layer rejection.** Not an HTTP status at all — the
   `field=<name> hint=<code>` envelope, or, for a multi-target
   `supersede_memory` call, the addressability failure class documented in
@@ -256,10 +259,10 @@ skill still does not know which of the remaining two it was — propose
 nothing, attempt no workaround, and do not probe by retrying variants,
 which is guessing at an answer the server deliberately withholds.
 
-This mirrors the 401-vs-403 discipline already stated above (`## Tools this
-skill may call`): an authentication failure and a permission rejection are
-different problems with different remedies, and neither is the tool-layer
-envelope.
+This mirrors the 401-vs-404 discipline already stated above (`## Tools this
+skill may call`): an authentication failure and a not-addressable-by-you
+rejection are different problems with different remedies, and neither is
+the tool-layer envelope.
 
 ## Proposing a mutation
 
