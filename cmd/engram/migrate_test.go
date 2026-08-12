@@ -18,7 +18,7 @@ import (
 // sources" selected-count rows describe a rule cobra owns — they moved to
 // end-to-end coverage in flaggroup_test.go's TestFlagGroupMigrateSourceExactlyOne.
 // What remains here is what buildRemapSource itself still validates: the
-// residual "--from ''" case cobra's flag groups cannot express (a supplied
+// residual empty-string --from case cobra's flag groups cannot express (a supplied
 // flag with an unusable value), and store.ValidateOwnerRemap's own
 // conditions (empty --to, identical --from/--to).
 func TestRemapOwnerFlagValidation(t *testing.T) {

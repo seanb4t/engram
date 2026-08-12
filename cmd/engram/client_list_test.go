@@ -225,7 +225,7 @@ func TestClientListExitCodes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			resetClientFlags(t)
-	resetCommandFlagState(t, listCmd)
+			resetCommandFlagState(t, listCmd)
 			svc := &stubEngramService{
 				listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
 					return nil, connect.NewError(tc.code, errUnimplementedStub)
