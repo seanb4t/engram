@@ -532,10 +532,10 @@ phases as they close rather than only at the end.
    classifies the repair as resolved without over-flagging nearby, merely-moved-but-valid citations
    elsewhere in the same sweep.
 
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — Reconcile this milestone's four `status: draft` validation records against HEAD; 04 stays partial because `REQ-consent-adversarial-proof` is genuinely unproven
+- [x] 05-01-PLAN.md — Reconcile this milestone's four `status: draft` validation records against HEAD; 04 stays partial because `REQ-consent-adversarial-proof` is genuinely unproven
 - [ ] 05-02-PLAN.md — Repair #355's drifted citation anchors as a plain docs fix, and correct the two requirement statements this phase disproved
 
 ---
@@ -595,7 +595,7 @@ phases as they close rather than only at the end.
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-05 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete    | 2026-08-11 |
-| 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete | 2026-08-01 |
+| 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | In Progress|  |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 1. Interface Enforceability | v0.13.x | 0/4 | Not started | - |
 | 2. Interface Discoverability | v0.13.x | 0/4 | Not started | - |

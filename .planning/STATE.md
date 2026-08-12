@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.13.x
 milestone_name: Curation & Self-Evidence
-current_phase: 5
-current_phase_name: Validation Debt Reconciliation
+current_phase: 05
+current_phase_name: validation-debt-reconciliation
 status: executing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-08-12T01:14:44.741Z"
-last_activity: 2026-08-11
-last_activity_desc: Phase 03.1 execution started
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-08-12T12:26:58.714Z"
+last_activity: 2026-08-12
+last_activity_desc: Phase 05 execution started
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 33
-  completed_plans: 31
+  completed_plans: 32
 ---
 
 # Project State
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 04 — spine-curation-semantic-skill
+**Current focus:** Phase 05 — validation-debt-reconciliation
 
 ## Current Position
 
-Phase: 5 — Validation Debt Reconciliation
-Plan: Not started
+Phase: 05 (validation-debt-reconciliation) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-08-11 — Phase 04 complete, transitioned to Phase 5
+Last activity: 2026-08-12 — Phase 05 execution started
 
 ## Deferred Items
 
@@ -138,6 +138,7 @@ milestone needs in working memory.
 - [Phase ?]: 02-04: set_visibility classified non-destructive (diverges from update_memory) since it only flips a reversible boolean flag, content/tags untouched
 - [Phase ?]: 02-04: tool-blast-radius is a new hand-authored anchor region in docs-site/reference/tools.md, not tied to a surfaces.ConditionalRule — proves WriteRegion/ReadRegion generalize beyond the rule registry
 - [Phase ?]: 02-05: serve/migrate-set-owner classified idempotent=false/true respectively (found unclassified live, fixed the shared table); cobra lazily registers -h/--help only inside a command's own execute() path, a cross-test determinism hazard on the shared rootCmd singleton, closed asymmetrically (forced for help golden, stripped for catalog golden)
+- [Phase ?]: Phase 5 Plan 1: Task 3 checkpoint (narrow-and-record) — pinned 04's no-new-server-code range to 72a32c58..b992929b excluding test files, after live re-verification showed the open-ended range had already gone red on the phase's own commit a2599027
 
 ### Pending Todos
 
@@ -171,9 +172,9 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-12T00:48:20.542Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-validation-debt-reconciliation/05-CONTEXT.md
+Last session: 2026-08-12T12:26:58.704Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -267,6 +268,7 @@ Resume file: .planning/phases/05-validation-debt-reconciliation/05-CONTEXT.md
 | Phase 02 P03 | 90min | 3 tasks | 22 files |
 | Phase 02 P04 | ~15min | 2 tasks | 7 files |
 | Phase 02 P05 | ~40min | 3 tasks | 11 files |
+| Phase 05 P01 | 40min | 4 tasks | 4 files |
 
 ## Operator Next Steps
 
