@@ -4,16 +4,16 @@ milestone: v0.13.x
 milestone_name: Curation & Self-Evidence
 current_phase: 05
 current_phase_name: validation-debt-reconciliation
-status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-08-12T12:26:58.714Z"
+status: verifying
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-08-12T12:32:08.023Z"
 last_activity: 2026-08-12
 last_activity_desc: Phase 05 execution started
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 33
-  completed_plans: 32
+  completed_plans: 33
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.
 
 Phase: 05 (validation-debt-reconciliation) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-12 — Phase 05 execution started
 
 ## Deferred Items
@@ -139,6 +139,9 @@ milestone needs in working memory.
 - [Phase ?]: 02-04: tool-blast-radius is a new hand-authored anchor region in docs-site/reference/tools.md, not tied to a surfaces.ConditionalRule — proves WriteRegion/ReadRegion generalize beyond the rule registry
 - [Phase ?]: 02-05: serve/migrate-set-owner classified idempotent=false/true respectively (found unclassified live, fixed the shared table); cobra lazily registers -h/--help only inside a command's own execute() path, a cross-test determinism hazard on the shared rootCmd singleton, closed asymmetrically (forced for help golden, stripped for catalog golden)
 - [Phase ?]: Phase 5 Plan 1: Task 3 checkpoint (narrow-and-record) — pinned 04's no-new-server-code range to 72a32c58..b992929b excluding test files, after live re-verification showed the open-ended range had already gone red on the phase's own commit a2599027
+- [Phase ?]: Phase 5 Plan 2: #355 repaired as the plain docs fix it is (D-04) — symbol-name citations, no fixture memory records staged
+- [Phase ?]: Phase 5 Plan 2: dropped REQ-citation-fixture-355's claim that the repair calibrates spine-review verify (D-05) — verify reads stored Qdrant citations, cannot see a Go comment or docs cross-ref
+- [Phase ?]: Phase 5 Plan 2: REQ-nyquist-reconciled and ROADMAP Phase 5 corrected to the live re-resolution finding (D-06) — 89/90 v0.12.x rows clean at merge commit 906a5cf6, replacing the disproven six-draft premise
 
 ### Pending Todos
 
@@ -172,8 +175,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-12T12:26:58.704Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-08-12T12:32:02.025Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -269,6 +272,7 @@ Resume file: None
 | Phase 02 P04 | ~15min | 2 tasks | 7 files |
 | Phase 02 P05 | ~40min | 3 tasks | 11 files |
 | Phase 05 P01 | 40min | 4 tasks | 4 files |
+| Phase 05 P02 | 6min | 2 tasks | 4 files |
 
 ## Operator Next Steps
 

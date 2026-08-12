@@ -533,11 +533,11 @@ Qdrant citations and cannot see #355's Go-comment and docs-cross-ref anchors.
    drifted line numbers, and the dangling OpenRouter cross-ref points at the guide that actually
    carries the referenced row.
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans executed
 **Wave 1**
 
 - [x] 05-01-PLAN.md — Reconcile this milestone's four `status: draft` validation records against HEAD; 04 stays partial because `REQ-consent-adversarial-proof` is genuinely unproven
-- [ ] 05-02-PLAN.md — Repair #355's drifted citation anchors as a plain docs fix, and correct the two requirement statements this phase disproved
+- [x] 05-02-PLAN.md — Repair #355's drifted citation anchors as a plain docs fix, and correct the two requirement statements this phase disproved
 
 ---
 

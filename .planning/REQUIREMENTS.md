@@ -161,7 +161,7 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
 
 ### Validation Debt
 
-- [ ] **REQ-nyquist-reconciled**: Every v0.13.x phase's `VALIDATION.md` row (Phases 1-4; Phase 5 is
+- [x] **REQ-nyquist-reconciled**: Every v0.13.x phase's `VALIDATION.md` row (Phases 1-4; Phase 5 is
   this phase itself) is re-resolved against `go test -list` with a nonzero match count per pattern
   element — not merely re-run and checked for exit 0 — and each phase's frontmatter states what
   that resolution found, leaving `REQ-consent-adversarial-proof`'s genuinely unproven row visibly
@@ -172,7 +172,7 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
   v0.12.x Phase 7's own already-documented `ScopeGuard` drift, left as-is because archived
   milestone artifacts are immutable.
 
-- [ ] **REQ-citation-fixture-355**: #355's drifted `tools.go` citation anchors are repaired by
+- [x] **REQ-citation-fixture-355**: #355's drifted `tools.go` citation anchors are repaired by
   citing symbol names instead of line numbers, and the dangling OpenRouter cross-ref now points at
   the guide that actually carries the referenced row. The requirement no longer claims the repair
   exercises `spine-review verify`: `verify` reads stored `Citation.Excerpt` payloads out of Qdrant
@@ -243,5 +243,5 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-semantic-curation-skill | Phase 4 | Complete |
 | REQ-consent-never-perform | Phase 4 | Complete |
 | REQ-consent-adversarial-proof | Phase 4 | Pending |
-| REQ-nyquist-reconciled | Phase 5 | Pending |
-| REQ-citation-fixture-355 | Phase 5 | Pending |
+| REQ-nyquist-reconciled | Phase 5 | Complete |
+| REQ-citation-fixture-355 | Phase 5 | Complete |
