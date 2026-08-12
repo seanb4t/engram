@@ -12,10 +12,12 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/google/uuid"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -29,6 +31,7 @@ import (
 	"github.com/seanb4t/engram/internal/embed"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/summarize"
+	"github.com/seanb4t/engram/internal/surfaces"
 	"github.com/seanb4t/engram/internal/telemetry"
 )
 
@@ -485,9 +488,17 @@ type storeArgs struct {
 	// this is issue #360's actual fix. Do NOT read the absence of "required"
 	// text here as these fields becoming optional; they are exactly as
 	// required as before, just enforced one layer down.
-	Content   string   `json:"content,omitempty" jsonschema:"the memory text to persist"`
-	Scope     string   `json:"scope,omitempty" jsonschema:"run:tier:repo, e.g. eval-2026-05:project:selfhosted-cluster"`
-	Source    string   `json:"source,omitempty" jsonschema:"user-said or agent-inferred"`
+	Content string `json:"content,omitempty" jsonschema:"the memory text to persist"`
+	Scope   string `json:"scope,omitempty" jsonschema:"run:tier:repo, e.g. eval-2026-05:project:selfhosted-cluster"`
+	Source  string `json:"source,omitempty" jsonschema:"user-said or agent-inferred"`
+	// Category's tag deliberately does NOT state the discovery-not-schedulable
+	// rule: this field is promoted, via Go embedding, onto scheduleArgs and
+	// supersedeArgs too, so a sentence stated here would reach
+	// store_memory's and supersede_memory's OWN generated schemas — neither
+	// enforces it (only parseWindow, schedule_memory's handler, does). The
+	// rule composes instead onto scheduleArgs.NotBefore/NotAfter below,
+	// fields exclusive to the one struct/tool that actually raises it
+	// (WR-01).
 	Category  string   `json:"category,omitempty" jsonschema:"decision|preference|convention|gotcha"`
 	Tags      []string `json:"tags,omitempty"`
 	Repo      string   `json:"repo,omitempty"`
@@ -514,8 +525,19 @@ type storeArgs struct {
 // store_memory fields plus not_before/not_after.
 type scheduleArgs struct {
 	storeArgs
-	NotBefore string `json:"not_before,omitempty" jsonschema:"RFC3339; hide from recall until this time"`
-	NotAfter  string `json:"not_after,omitempty" jsonschema:"RFC3339; drop from recall at this time"`
+	// NotBefore/NotAfter's tags each state both window rules (D-03): at
+	// least one bound is required, and when both are set, not_before must
+	// be strictly before not_after. Neither tag states the third parseWindow
+	// rejection ("not_after must be in the future") — that is D-02's one
+	// explicit registry exclusion (single-field, clock-dependent), pinned by
+	// the doc comment at parseWindow's not-in-future check. Both tags also
+	// state discovery-not-schedulable (WR-01): NotBefore/NotAfter are
+	// declared directly on scheduleArgs, not promoted via embedding, so this
+	// is the one place the rule can compose onto the jsonschema-tag surface
+	// without also reaching store_memory's/supersede_memory's schemas (see
+	// storeArgs.Category's tag comment above).
+	NotBefore string `json:"not_before,omitempty" jsonschema:"RFC3339; hide from recall until this time; requires not_before and/or not_after; not_before must be strictly before not_after; discovery is not schedulable; use store_discovery"`
+	NotAfter  string `json:"not_after,omitempty" jsonschema:"RFC3339; drop from recall at this time; requires not_before and/or not_after; not_before must be strictly before not_after; discovery is not schedulable; use store_discovery"`
 }
 
 // parseWindow validates and parses the schedule_memory temporal window. At least
@@ -525,10 +547,12 @@ type scheduleArgs struct {
 // CodeInternal, once 17-04 wires the connectError mapper.
 func parseWindow(a scheduleArgs, now time.Time) (nb, na *time.Time, err error) {
 	if a.NotBefore == "" && a.NotAfter == "" {
-		return nil, nil, argErrFieldsf(classMalformed, HintRequired, []string{"not_before", "not_after"}, "schedule_memory requires not_before and/or not_after (use store_memory for unscheduled records)")
+		rule, _ := surfaces.RuleByID(surfaces.RuleScheduleWindowAtLeastOne)
+		return nil, nil, conditionalErrf(classMalformed, rule)
 	}
 	if a.Category == "discovery" {
-		return nil, nil, argErrf(classPrecondition, HintNotApplicable, "category", "discovery is not schedulable; use store_discovery")
+		rule, _ := surfaces.RuleByID(surfaces.RuleDiscoveryNotSchedulable)
+		return nil, nil, conditionalErrf(classPrecondition, rule)
 	}
 	if a.NotBefore != "" {
 		t, perr := time.Parse(time.RFC3339, a.NotBefore)
@@ -543,12 +567,20 @@ func parseWindow(a scheduleArgs, now time.Time) (nb, na *time.Time, err error) {
 			return nil, nil, argErrf(classMalformed, HintFormat, "not_after", "not_after must be RFC3339")
 		}
 		if !t.After(now) {
+			// D-02's ONE explicit exclusion from the conditional-rule registry:
+			// single-field and clock-dependent (compares against time.Now(),
+			// not a second caller-supplied field), so it is a wall-clock state
+			// constraint rather than an interface-legible one. Do NOT declare a
+			// rule for this site and do NOT convert it — this is the deliberate,
+			// documented carve-out internal/server/conditionalsweep_test.go
+			// pins by name (conformanceExcludedSites).
 			return nil, nil, argErrf(classOutOfRange, HintOrdering, "not_after", "not_after must be in the future")
 		}
 		na = &t
 	}
 	if nb != nil && na != nil && !nb.Before(*na) {
-		return nil, nil, argErrFieldsf(classPrecondition, HintOrdering, []string{"not_before", "not_after"}, "not_before must be strictly before not_after")
+		rule, _ := surfaces.RuleByID(surfaces.RuleWindowOrdering)
+		return nil, nil, conditionalErrf(classPrecondition, rule)
 	}
 	return nb, na, nil
 }
@@ -559,36 +591,26 @@ func parseWindow(a scheduleArgs, now time.Time) (nb, na *time.Time, err error) {
 // summary) without a hand-rolled parallel field list — the exact drift class
 // persistAndEnqueue's doc comment already flags (tools.go:734-736).
 //
-// idempotency_key is intentionally NOT supported on supersede_memory this
-// phase (WR-03/WR-04, plan T-25-10 deferred scope): deps.supersedeMemory
-// never calls checkIdempotentReplay or stamps IdempotencyFingerprint, so any
-// idempotency_key a caller sends is silently IGNORED — a normal supersede
-// happens, no replay, no error (see the defensive clear in supersedeMemory
-// below). IdempotencyKey below (a depth-0 `json:"-"` field) DOES remove
-// idempotency_key from the advertised JSON schema: jsonschema-go's
-// reflect.VisibleFields-based inference applies Go's normal
-// shallowest-depth-wins shadowing rule, so this field wins over storeArgs'
-// depth-1 promoted one there (pinned by
-// TestSupersedeMemorySchemaExcludesIdempotencyKey).
-//
-// It does NOT, however, remove idempotency_key from the wire DECODE: a
-// `json:"-"` field has no JSON name, so it never enters encoding/json's
-// same-name shadowing contest — it just excuses itself, leaving the
-// promoted storeArgs.IdempotencyKey (json:"idempotency_key,omitempty") as
-// the sole decode target for that key. A caller that (incorrectly, since it
-// isn't advertised) sends idempotency_key on supersede_memory therefore
-// STILL populates a.storeArgs.IdempotencyKey on the wire (pinned by
-// TestSupersedeArgsDecodePopulatesPromotedIdempotencyKey) — the defensive
-// clear at the top of supersedeMemory is what actually makes it inert, not
-// this shadow.
+// idempotency_key IS supported here (D-12, phase 03.1 plan 04): this closes
+// Phase 25's deliberately deferred scope (WR-03/WR-04, plan T-25-10 — the
+// feature was never argued against, only deferred). The promoted
+// storeArgs.IdempotencyKey field is now the sole schema AND decode target:
+// a caller-supplied idempotency_key is advertised on the generated schema,
+// decoded, and READ by deps.supersedeMemory via
+// checkIdempotentMergeReplay/resolveLostMergeRace, whose replay fingerprint
+// (mergeFingerprint) covers content AND the resolved target set — so a
+// same-key retry with a DIFFERENT target set is a conflict, never a silent
+// different-operation success (D-13). The replay check runs BEFORE the
+// already-superseded stage (D-14/PD-09) — see checkIdempotentMergeReplay's
+// doc comment for the ordering requirement and PD-09's residual narrowing.
 type supersedeArgs struct {
 	storeArgs
-	// Supersedes carries omitempty (D-06a); its presence check lives in
-	// deps.supersedeMemory, run before ResolvePointID.
-	Supersedes string `json:"supersedes,omitempty" jsonschema:"id (full UUID or short_id) of the memory this new record corrects/replaces"`
-	// IdempotencyKey shadows storeArgs.IdempotencyKey for schema purposes
-	// only — see the type doc comment above. Never read.
-	IdempotencyKey string `json:"-"`
+	// Supersedes carries omitempty (D-06a); its non-empty-slice presence
+	// check lives in deps.supersedeMemory, run before ResolvePointID. Always
+	// an array on the wire (D-01/D-03, phase 03.1 promote — a one-element
+	// array behaves exactly as the pre-phase single-target call). No maximum
+	// length is enforced or advertised (PD-07, 03.1-00-SUMMARY.md).
+	Supersedes []string `json:"supersedes,omitempty" jsonschema:"non-empty array of ids (full UUID or short_id) of the memories this new record corrects/replaces"`
 }
 
 type searchArgs struct {
@@ -710,6 +732,20 @@ const (
 // with the size-bound discipline the store_discovery fields above already
 // establish for other client-supplied strings in this file.
 const maxIdempotencyKeyBytes = 512
+
+// maxSupersedeTargetBytes bounds each INDIVIDUAL entry of supersedeArgs's
+// `supersedes` (WR-01, 03.1 cycle-4 review): a real UUID or short_id never
+// exceeds a small, fixed length, so 256 bytes is generous enough to cost
+// nothing legitimate. This is a per-ENTRY length bound only — PD-07
+// (03.1-00-SUMMARY.md) deliberately declined a cap on the NUMBER of targets
+// in the set, and this constant does not revisit that ruling. Without it, an
+// unresolvable entry is echoed back verbatim (comma-joined with every other
+// offender) by renderTargetRejection, so an unbounded-length entry becomes
+// an unbounded-length rejection — the one client-supplied string in this
+// verb's blast radius that lacked the size-bound discipline every sibling
+// field (IdempotencyKey, Summary, citation Excerpt, discovery Content)
+// already has.
+const maxSupersedeTargetBytes = 256
 
 type searchDiscoveryArgs struct {
 	// Query carries omitempty (D-06a); its presence check runs in
@@ -956,6 +992,114 @@ func (d *deps) checkIdempotentReplay(ctx context.Context, owner string, a storeA
 		return true, existing.ID, existing.ShortID, "", nil
 	}
 	return false, "", "", "", fmt.Errorf("idempotency key %q reused with different content: %w", a.IdempotencyKey, store.ErrIdempotencyConflict)
+}
+
+// checkIdempotentMergeReplay is supersede_memory's idempotency replay check
+// (D-12, closing Phase 25's deliberately deferred scope WR-03/WR-04). It
+// copies checkIdempotentReplay's control flow exactly — the same-key-
+// different-content detection above is the mechanism being extended, not
+// replaced — but compares against mergeFingerprint(a.storeArgs, targets)
+// instead of contentFingerprint(a), so a same-key retry with a DIFFERENT
+// target set is a conflict, never a silent different-operation success
+// (D-13, T-03.1-07).
+//
+// Ordering (D-14). This is called from deps.supersedeMemory AFTER
+// resolveAndAuthorizeSupersedeTargets (existence + ownership) and BEFORE
+// validateSupersedeTargetState (already-superseded) — a structural property
+// of the call sequence (two separate statements), not a position inside one
+// function body a later edit can quietly move. Ordered the other way, the
+// already-superseded stage would reject a retry before the key is ever
+// consulted, and that failure mode is invisible in every happy-path test.
+//
+// PD-09's residual narrowing, stated as contract rather than only a test
+// (03.1-00-SUMMARY.md, review MEDIUM): because this check runs AFTER
+// existence and ownership rather than at the very top of the handler, a
+// retry whose targets were deleted in the meantime, or whose ownership
+// changed, does NOT replay — resolveAndAuthorizeSupersedeTargets rejects it
+// as not found before this check ever runs. That is weaker than ordinary
+// key-alone idempotent-replay semantics. It is a deliberate trade —
+// replaying without re-checking ownership would let a key minted while the
+// caller owned a record still act after they no longer do — and is
+// published in reference/tools.md, not only pinned by
+// TestSupersedeMemoryReplayAfterTargetDeletedRejects.
+func (d *deps) checkIdempotentMergeReplay(ctx context.Context, owner string, a supersedeArgs, targets []string) (replay bool, id, shortID, pointID string, err error) {
+	if a.IdempotencyKey == "" {
+		return false, "", "", "", nil
+	}
+	if len(a.IdempotencyKey) > maxIdempotencyKeyBytes {
+		return false, "", "", "", argErrf(classOutOfRange, HintTooLong, "idempotency_key", "idempotency_key too large: %d bytes (max %d)", len(a.IdempotencyKey), maxIdempotencyKeyBytes)
+	}
+	pointID = idempotencyPointID(owner, a.Scope, a.IdempotencyKey)
+	existing, gerr := d.st.Get(ctx, pointID)
+	switch {
+	case errors.Is(gerr, store.ErrNotFound):
+		return false, "", "", pointID, nil
+	case gerr != nil:
+		return false, "", "", "", gerr
+	}
+	if mergeFingerprint(a.storeArgs, targets) == existing.IdempotencyFingerprint {
+		return true, existing.ID, existing.ShortID, "", nil
+	}
+	return false, "", "", "", fmt.Errorf("idempotency key %q reused with a different target set or content: %w", a.IdempotencyKey, store.ErrIdempotencyConflict)
+}
+
+// resolveLostMergeRace recovers the losing racer's answer from a store-tier
+// ErrAlreadySuperseded rejection (T-03.1-26). Store.Supersede's under-lock
+// already-superseded check (store.go) runs BEFORE its Upsert, so the loser
+// of two simultaneous identical keyed merges never reaches Upsert and never
+// reaches the keyed post-write short-id re-read persistAndEnqueue-style code
+// performs after a successful write — this recovery is the ONLY path by
+// which a call that never wrote can still return the winner's persisted
+// answer.
+//
+// Deliberately narrow: it does not retry and does not write. It turns
+// exactly ONE sentinel (ErrAlreadySuperseded) into exactly one replay, and
+// only when the caller's OWN deterministic point id (derived from
+// owner+scope+key, so cross-owner disclosure is structurally impossible)
+// holds a record carrying the caller's OWN merge fingerprint. Anything wider
+// would let a key convert an unrelated rejection into a fabricated success.
+//
+//   - pointID empty (unkeyed call): return supersedeErr unchanged — the
+//     unkeyed path has no deterministic id to look up and this recovery
+//     must never fire there.
+//   - supersedeErr does not wrap store.ErrAlreadySuperseded: return it
+//     unchanged. This recovery is scoped to exactly one rejection; every
+//     other store error propagates untouched.
+//   - the deterministic point is absent: return supersedeErr unchanged.
+//     There is no winner to defer to — the targets were superseded by some
+//     OTHER call — so the rejection stands.
+//   - the point read fails (transport error): return that read error, never
+//     masked as a conflict or a success.
+//   - stored fingerprint equals mergeFingerprint(a.storeArgs, targets): a
+//     record already sits at the caller's own deterministic id carrying the
+//     caller's own fingerprint — the operation the caller asked for has
+//     already happened. Return its persisted id/short id, nil error.
+//   - stored fingerprint differs: a genuine conflict, not a lost race
+//     (D-13) — the same key is being reused for a different operation and
+//     the targets happen to already be superseded. Return the
+//     idempotency-conflict sentinel — NEVER the already-superseded error and
+//     never a success — because the caller's key is the stronger signal
+//     here: a key reused for a different operation is a client bug the
+//     caller can act on, whereas "already superseded" would send them
+//     looking at the wrong thing.
+func (d *deps) resolveLostMergeRace(ctx context.Context, a supersedeArgs, targets []string, pointID string, supersedeErr error) (id, shortID string, err error) {
+	if pointID == "" {
+		return "", "", supersedeErr
+	}
+	if !errors.Is(supersedeErr, store.ErrAlreadySuperseded) {
+		return "", "", supersedeErr
+	}
+	existing, gerr := d.st.Get(ctx, pointID)
+	switch {
+	case errors.Is(gerr, store.ErrNotFound):
+		return "", "", supersedeErr
+	case gerr != nil:
+		return "", "", gerr
+	}
+	if mergeFingerprint(a.storeArgs, targets) == existing.IdempotencyFingerprint {
+		return existing.ID, existing.ShortID, nil
+	}
+	return "", "", fmt.Errorf("idempotency key %q reused with a different target set or content: %w", a.IdempotencyKey, store.ErrIdempotencyConflict)
 }
 
 func (d *deps) storeMemory(ctx context.Context, c caller, a storeArgs) (string, string, error) {
@@ -1353,7 +1497,8 @@ func effectiveDiscoveryScope(a searchDiscoveryArgs) (string, error) {
 		return "", nil
 	}
 	if a.Scope == "" {
-		return "", argErrf(classMalformed, HintConditionalRequired, "scope", "scope is required unless cross_spine is true")
+		rule, _ := surfaces.RuleByID(surfaces.RuleScopeRequiredUnlessCrossSpine)
+		return "", conditionalErrf(classMalformed, rule)
 	}
 	return a.Scope, nil
 }
@@ -1376,7 +1521,8 @@ func effectiveSearchScope(scope string, crossSpine bool) (string, error) {
 		return "", nil
 	}
 	if scope == "" {
-		return "", argErrf(classMalformed, HintConditionalRequired, "scope", "scope is required unless cross_spine is true")
+		rule, _ := surfaces.RuleByID(surfaces.RuleScopeRequiredUnlessCrossSpine)
+		return "", conditionalErrf(classMalformed, rule)
 	}
 	return scope, nil
 }
@@ -1672,70 +1818,278 @@ func (d *deps) setVisibility(ctx context.Context, c caller, a setVisibilityArgs)
 	return mutationResult{ID: rec.ID, ShortID: rec.ShortID}, nil
 }
 
-// supersedeMemory corrects a memory the caller owns: it resolves the target,
-// gates ownership (and rejects a rule target) BEFORE embedding, embeds the
-// correcting content, and delegates the create+back-stamp to Store.Supersede
-// — which re-gates the target via getWritable/ActionWrite under its own
-// per-target lock (SC3: a caller with only read/shared access to the target
-// cannot supersede it; D-07: supersession only ever fires from this explicit
-// call, never a similarity-threshold or write-through path; CR-01: the
-// store-level re-gate is what Store.Supersede's lock makes atomic against a
-// concurrent racing caller). On store.ErrNotFound the error is re-wrapped
-// with the caller's ORIGINAL a.Supersedes input, never the resolved target
-// id — same 404-indistinguishability discipline as setVisibility/
-// storeDiscovery (a non-owner cannot learn a target exists). The new
-// correcting record is store_memory-shaped, so it is enqueued for async
-// summary-on-write like any other store_memory write.
+// resolvedSupersedeTarget is one supersede_memory target after Class 1/2 of
+// the staged preflight below: Input is exactly what the caller sent (a full
+// UUID or a short_id, verbatim), ID is its resolved canonical UUID, and Rec
+// is the fetched, ownership-verified record. Every rejection message in this
+// verb is built from Input; nothing downstream may build a caller-facing
+// message from ID. Echoing a resolved UUID would hand back another owner's
+// real id for a short_id the caller merely guessed — exactly the leak the
+// 404-indistinguishability rule (INV-01) exists to prevent.
+type resolvedSupersedeTarget struct {
+	Input string
+	ID    string
+	Rec   store.Memory
+}
+
+// renderTargetRejection is the ONE production rendering helper for every
+// caller-facing rejection this verb produces — every class in
+// resolveAndAuthorizeSupersedeTargets/validateSupersedeTargetState below, and
+// both store-tier re-wraps in supersedeMemory. Nothing else hand-assembles an
+// equivalent fmt.Errorf: plan 05's documentation drift gate asserts the
+// published examples are byte-identical to what the server actually renders,
+// and a test that re-types the same format string drifts in parallel with
+// the handler and proves nothing. This is the single definition both call.
+func renderTargetRejection(sentinel error, inputs []string) error {
+	return fmt.Errorf("%w: %s", sentinel, strings.Join(inputs, ", "))
+}
+
+// resolveAndAuthorizeSupersedeTargets is stage one of supersede_memory's
+// split preflight (Classes 1-2 of 4). The class order is fixed and
+// deliberate — nothing that can report on a specific record precedes the
+// ownership stage:
+//  1. set shape (empty array, blank entry) — names the argument, never a
+//     value, and discloses nothing about any record;
+//  2. addressability and access — resolution-not-found, resolution-ambiguous,
+//     fetch-not-found and not-owned ALL collapse into the existing not-found
+//     sentinel, so "not yours" and "does not exist" are one answer.
+//
+// Classes 3-4 (rule immutability, already-superseded) live in
+// validateSupersedeTargetState below — split into a second function, not a
+// hook, so plan 03.1-04's idempotency replay check can run in the gap
+// between the two calls as a structural property of the call sequence
+// (D-14), not a statement position a later edit can quietly move. One class
+// is evaluated per response: a Connect response carries exactly one status
+// code, so a homogeneous rejection is what keeps the existing
+// sentinel-to-Connect-code switch (connecterror.go) intact and unmodified.
+func (d *deps) resolveAndAuthorizeSupersedeTargets(ctx context.Context, c caller, inputs []string) ([]resolvedSupersedeTarget, error) {
+	// Class 1 — set shape. Runs before any store call, so it discloses
+	// nothing about any record — precisely why it is allowed to run first.
+	// PD-07 (03.1-00-SUMMARY.md): the target-set cap was DROPPED, so this
+	// class checks shape only — no branch on the NUMBER of entries, and no
+	// maximum COUNT is ever advertised. The per-entry length bound below
+	// (maxSupersedeTargetBytes, WR-01) is a different axis than PD-07 and
+	// does not revisit it: it bounds how LONG one entry may be, never how
+	// MANY entries the set may contain.
+	if len(inputs) == 0 {
+		return nil, argErrf(classMalformed, HintRequired, "supersedes", "supersedes is required")
+	}
+	for i, in := range inputs {
+		if strings.TrimSpace(in) == "" {
+			return nil, argErrf(classMalformed, HintRequired, "supersedes", "supersedes entries must not be blank")
+		}
+		if len(in) > maxSupersedeTargetBytes {
+			return nil, argErrf(classOutOfRange, HintTooLong, "supersedes", "supersedes[%d] too large: %d bytes (max %d)", i, len(in), maxSupersedeTargetBytes)
+		}
+	}
+
+	// Class 2 — addressability and access, as ONE stage over THREE buckets:
+	// resolved, unaddressable, and (for any other resolution error) an
+	// immediate transport-failure propagation.
+	type indexed struct {
+		Input string
+		Index int
+	}
+	type resolvedPair struct {
+		Input string
+		ID    string
+		Index int
+	}
+
+	resolved := make([]resolvedPair, 0, len(inputs))
+	var unaddressable []indexed
+	for i, in := range inputs {
+		id, err := d.st.ResolvePointID(ctx, in)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrAmbiguousShortID) {
+				unaddressable = append(unaddressable, indexed{Input: in, Index: i})
+				continue
+			}
+			return nil, err // transport failure, not a rejection class
+		}
+		resolved = append(resolved, resolvedPair{Input: in, ID: id, Index: i})
+	}
+
+	// FetchForUpdate is called ONLY for entries that resolved to a canonical
+	// id — a resolution not-found produces no id at all (store.go:1608
+	// returns the sentinel with no id), so "carrying it forward into the
+	// fetch" is not an operation that exists; it is impossible by
+	// construction here, not merely avoided.
+	targets := make([]resolvedSupersedeTarget, 0, len(resolved))
+	for _, r := range resolved {
+		rec, err := d.st.FetchForUpdate(ctx, r.ID, c.Subj)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				unaddressable = append(unaddressable, indexed{Input: r.Input, Index: r.Index})
+				continue
+			}
+			return nil, err
+		}
+		targets = append(targets, resolvedSupersedeTarget{Input: r.Input, ID: r.ID, Rec: rec})
+	}
+
+	// This single class is what makes "not yours" and "does not exist" one
+	// answer: a non-owned record fails the same FetchForUpdate gate, joins
+	// the same bucket, and produces the same sentinel and the same offender
+	// count as a nonexistent id.
+	//
+	// Ambiguity joins that bucket for the same reason and not by accident.
+	// ResolvePointID is owner-agnostic and scrolls the whole collection
+	// (store.go:1530/:1555), so reporting "ambiguous" as its own class would
+	// tell an unauthenticated guesser that an invented handle matches
+	// several records they cannot read. A caller who legitimately owns one
+	// of two records sharing a handle addresses it by its full UUID instead
+	// — the accepted trade recorded in PD-06 (03.1-00-SUMMARY.md).
+	if len(unaddressable) > 0 {
+		// The index-stable sort is load-bearing, not tidiness (cycle-3
+		// review, MEDIUM). The bucket above is filled in TWO passes —
+		// resolution failures in the first pass over ResolvePointID,
+		// fetch/ownership failures in the second pass over the resolved
+		// pairs — so without this sort the bucket renders in PASS order
+		// rather than caller order: an input of [nonOwnedA, missingB] would
+		// render as "B, A", contradicting the caller-order guarantee this
+		// verb keeps and reference/tools.md publishes ("in the order the
+		// caller supplied them"). On single-class inputs (most of this
+		// plan's tests) the sort is a visible no-op — do not delete it on
+		// that evidence alone; TestSupersedeMemoryMultiOffenderOrderIsCallerOrder
+		// is the mixed-class case that needs it.
+		slices.SortStableFunc(unaddressable, func(a, b indexed) int {
+			return cmp.Compare(a.Index, b.Index)
+		})
+		names := make([]string, len(unaddressable))
+		for i, u := range unaddressable {
+			names[i] = u.Input
+		}
+		return nil, renderTargetRejection(store.ErrNotFound, names)
+	}
+
+	// Dedupe by resolved ID (PD-01, 03.1-00-SUMMARY.md): the dedupe pass
+	// MUST run over resolved ids, never the caller's original spellings —
+	// preserving the first occurrence's Input and the caller's input order
+	// so a duplicate never produces two entries in a later rejection
+	// message, and Store.Supersede's non-reentrant per-target lock is never
+	// asked to acquire the same target twice.
+	seen := make(map[string]struct{}, len(targets))
+	out := make([]resolvedSupersedeTarget, 0, len(targets))
+	for _, t := range targets {
+		if _, ok := seen[t.ID]; ok {
+			continue
+		}
+		seen[t.ID] = struct{}{}
+		out = append(out, t)
+	}
+	return out, nil
+}
+
+// validateSupersedeTargetState is stage two of supersede_memory's split
+// preflight (Classes 3-4 of 4), run over the resolved, owner-verified pairs
+// resolveAndAuthorizeSupersedeTargets returned. Both classes operate only on
+// records the caller provably owns — nothing here can be reached by a
+// non-owned or nonexistent target, since those were rejected in stage one.
+func (d *deps) validateSupersedeTargetState(_ context.Context, _ caller, targets []resolvedSupersedeTarget) error {
+	// Class 3 — rule immutability (CR-02): list_rules relies on Store.List's
+	// unconditional superseded_by gate to present the "complete rule set" —
+	// superseding a rule would silently vanish it from that index without
+	// going through the required delete flow. Mirrors updateMemory
+	// (tools.go:1116) / setVisibility (tools.go:1233), widened to name every
+	// rule offender in the set, not just the first.
+	var ruleInputs []string
+	for _, t := range targets {
+		if t.Rec.Category == "rule" {
+			ruleInputs = append(ruleInputs, t.Input)
+		}
+	}
+	if len(ruleInputs) > 0 {
+		return fmt.Errorf("%w — delete the rule instead of superseding it", renderTargetRejection(errRuleImmutable, ruleInputs))
+	}
+
+	// Class 4 — already superseded. This is a preflight, not the authority:
+	// Store.Supersede re-checks under its own per-target locks, because a
+	// concurrent caller can supersede a target between this read and the
+	// write. That store-level re-check — not this one — is what closes the
+	// race (CR-01); this stage only saves a doomed call its embed/mint spend.
+	var supersededInputs []string
+	for _, t := range targets {
+		if t.Rec.SupersededBy != nil && *t.Rec.SupersededBy != "" {
+			supersededInputs = append(supersededInputs, t.Input)
+		}
+	}
+	if len(supersededInputs) > 0 {
+		return renderTargetRejection(store.ErrAlreadySuperseded, supersededInputs)
+	}
+	return nil
+}
+
+// supersedeMemory corrects a memory the caller owns by merging one or more
+// targets into a single new record (phase 03.1: promoted from one target to
+// a set — D-01 promote semantics, a one-element array behaves exactly as the
+// pre-phase single-target call). It runs the staged preflight above — the
+// authorize stage (resolution, ownership, no rule/no-already-superseded is
+// NOT yet checked), then the idempotency replay check (D-12/D-14, below),
+// then the state stage — strictly ahead of the billable embed and the
+// Qdrant-hitting MintShortID call (CR-03 cost-amplification hardening: a set
+// that cannot succeed never spends), then delegates the create+back-stamp to
+// Store.Supersede — which re-gates every target via getWritable/ActionWrite
+// under its own per-target locks (SC3: a caller with only read/shared access
+// to a target cannot supersede it; D-07: supersession only ever fires from
+// this explicit call, never a similarity-threshold or write-through path;
+// CR-01: the store-level re-gate is what Store.Supersede's locks make atomic
+// against a concurrent racing caller). Store-tier rejections are re-wrapped
+// through renderTargetRejection with the caller's ORIGINAL inputs, never a
+// resolved target id — same 404-indistinguishability discipline as
+// setVisibility/storeDiscovery (a non-owner cannot learn a target exists).
+// The new correcting record is store_memory-shaped, so it is enqueued for
+// async summary-on-write like any other store_memory write, exactly once
+// regardless of target-set size.
 func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (string, string, error) {
 	if err := validateStoreArgs(a.storeArgs, d.maxSummaryBytes); err != nil {
 		return "", "", err
 	}
-	// D-06a: Supersedes carries omitempty now, so this is the sole remaining
-	// guard between an absent target and ResolvePointID below — checked
-	// before any store interaction.
-	if a.Supersedes == "" {
-		return "", "", argErrf(classMalformed, HintRequired, "supersedes", "supersedes is required")
-	}
 	if err := validateCitations(a.Citations, 0); err != nil {
 		return "", "", err
 	}
-	// WR-04 defense-in-depth: a.storeArgs.IdempotencyKey can be populated on
-	// the wire despite supersedeArgs' json:"-" shadow field (see the
-	// supersedeArgs doc comment — the shadow only removes the field from the
-	// advertised schema, not the decode). Clearing it here — before it is
-	// ever read — guarantees a caller-supplied idempotency_key is silently
-	// ignored (no replay, no error) rather than being read by some future
-	// refactor that reuses storeArgs' idempotency helpers.
-	a.storeArgs.IdempotencyKey = ""
-	targetID, err := d.st.ResolvePointID(ctx, a.Supersedes)
-	if err != nil {
-		return "", "", err
-	}
-	// Ownership gate BEFORE the billable embed and the Qdrant-hitting
-	// MintShortID call (CR-03 cost-amplification hardening — mirrors
-	// updateMemory/storeDiscovery's ordering; TestUpdateMemoryEmbedNotCalledForNonOwner's
-	// pattern). FetchForUpdate is the same getWritable/ActionWrite gate
-	// Store.Supersede re-runs (under its per-target lock) below; a non-owner
-	// or nonexistent target is rejected here, before any spend.
-	targetRec, err := d.st.FetchForUpdate(ctx, targetID, c.Subj)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return "", "", fmt.Errorf("%w: %s", store.ErrNotFound, a.Supersedes)
-		}
-		return "", "", err
-	}
-	// Rule guard (CR-02): list_rules relies on Store.List's unconditional
-	// superseded_by gate to present the "complete rule set" — superseding a
-	// rule would silently vanish it from that index without going through
-	// the required delete flow. Mirrors updateMemory (tools.go:1116) /
-	// setVisibility (tools.go:1233).
-	if targetRec.Category == "rule" {
-		return "", "", fmt.Errorf("%w — delete the rule instead of superseding it", errRuleImmutable)
-	}
+
 	owner := c.Subj.Owner()
+
+	targets, err := d.resolveAndAuthorizeSupersedeTargets(ctx, c, a.Supersedes)
+	if err != nil {
+		return "", "", err
+	}
+
+	targetIDs := make([]string, len(targets))
+	for i, t := range targets {
+		targetIDs[i] = t.ID
+	}
+
+	// D-12/D-14: the idempotency replay check runs HERE, between the
+	// authorize stage above and the state stage below — a structural
+	// property of the call sequence (two separate statements), not a
+	// position inside one function body a later edit can quietly move.
+	// Ordered the other way, a retry after an unobserved success would be
+	// rejected by the already-superseded stage before the key is ever
+	// consulted, and that failure mode is invisible in every happy-path
+	// test. See checkIdempotentMergeReplay's doc comment for PD-09's
+	// residual narrowing (a retry whose targets were deleted/reowned in the
+	// meantime never reaches this check — it was already rejected above).
+	replay, replayID, replayShortID, pointID, err := d.checkIdempotentMergeReplay(ctx, owner, a, targetIDs)
+	if err != nil {
+		return "", "", err
+	}
+	if replay {
+		return replayID, replayShortID, nil
+	}
+
+	if err := d.validateSupersedeTargetState(ctx, c, targets); err != nil {
+		return "", "", err
+	}
+
 	m := a.toMemory(owner, c.Actor, d.clock())
 	m.EmbedderIdentity = d.embedderIdentity
-	m.Supersedes = &targetID
+	m.Supersedes = targetIDs
+	if pointID != "" {
+		m.ID = pointID
+		m.IdempotencyFingerprint = mergeFingerprint(a.storeArgs, targetIDs)
+	}
 	vec, err := d.em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 	if err != nil {
 		return "", "", err // embed first: on error we never touch the store
@@ -1743,16 +2097,75 @@ func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (
 	if m.ShortID, err = d.st.MintShortID(ctx, nil); err != nil {
 		return "", "", err
 	}
-	if err := d.st.Supersede(ctx, m, vec, targetID, c.Subj); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			// Re-wrap with the caller's ORIGINAL input: targetID is the
-			// resolved UUID (possibly another owner's, resolved from their
-			// short id), and Supersede embeds it in ErrNotFound — echoing
-			// targetID would leak the real UUID (404-indistinguishability).
-			// Mirrors setVisibility/storeDiscovery.
-			return "", "", fmt.Errorf("%w: %s", store.ErrNotFound, a.Supersedes)
+	if err := d.st.Supersede(ctx, m, vec, targetIDs, c.Subj); err != nil {
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			// The race path: the handler cannot know which target changed
+			// hands between its own gate and the store's, so naming the
+			// whole set is both correct and the conservative choice for
+			// indistinguishability.
+			inputs := make([]string, len(targets))
+			for i, t := range targets {
+				inputs[i] = t.Input
+			}
+			return "", "", renderTargetRejection(store.ErrNotFound, inputs)
+		case errors.Is(err, store.ErrAlreadySuperseded):
+			// THE LOSING RACER (T-03.1-26). Store.Supersede rejects an
+			// already-stamped target under its own per-target locks BEFORE
+			// its Upsert, so a losing simultaneous keyed merge never writes
+			// and never reaches the keyed post-write re-read below.
+			// resolveLostMergeRace is the only path by which such a call
+			// can still return the winner's persisted answer — and only on
+			// a fingerprint match; a mismatch stays a genuine conflict
+			// (D-13), never converted into a success.
+			if rid, rsid, rerr := d.resolveLostMergeRace(ctx, a, targetIDs, pointID, err); rerr == nil {
+				return rid, rsid, nil
+			} else if !errors.Is(rerr, store.ErrAlreadySuperseded) {
+				return "", "", rerr
+			}
+			// Recover the offending canonical ids from the typed error
+			// (plan 01, PD-10) and map each back to its Input through the
+			// resolved pairs. Do NOT parse the error's message:
+			// substring-matching resolved ids out of formatted prose is
+			// fragile, and it is this mapping that keeps a resolved UUID
+			// out of the response — a parsing bug here would be a
+			// disclosure bug, not just a cosmetic one.
+			var mte *store.MultiTargetError
+			inputs := a.Supersedes // conservative fallback: the whole input set
+			if errors.As(err, &mte) {
+				byID := make(map[string]string, len(targets))
+				for _, t := range targets {
+					byID[t.ID] = t.Input
+				}
+				mapped := make([]string, 0, len(mte.IDs))
+				for _, id := range mte.IDs {
+					if in, ok := byID[id]; ok {
+						mapped = append(mapped, in)
+					}
+				}
+				if len(mapped) > 0 {
+					inputs = mapped
+				}
+			}
+			return "", "", renderTargetRejection(store.ErrAlreadySuperseded, inputs)
+		default:
+			return "", "", err
 		}
-		return "", "", err
+	}
+	// Re-read the point after Upsert so a concurrent DIFFERENT keyed merge
+	// racing on the SAME deterministic pointID (same owner+scope+key, a
+	// non-overlapping target set so no shared target lock blocks it —
+	// unlike the identical-target-set race, which resolveLostMergeRace
+	// covers) returns the short_id that was ACTUALLY PERSISTED, not the one
+	// it discarded — mirrors persistAndEnqueue's keyed-path tail. Gated to
+	// the keyed path only: m.IdempotencyFingerprint is only ever non-empty
+	// when this write used a deterministic pointID; a failed re-Get here is
+	// non-fatal — fall back to the locally-minted value rather than fail an
+	// otherwise-successful write.
+	if m.IdempotencyFingerprint != "" {
+		if persisted, gerr := d.st.Get(ctx, m.ID); gerr == nil {
+			m.ShortID = persisted.ShortID
+		}
 	}
 	d.summaryQueue.tryEnqueue(m.ID)
 	return m.ID, m.ShortID, nil
@@ -1780,7 +2193,91 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 
 	s.AddReceivingMiddleware(instrumentTools(tm.Record))
 
-	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps. Optionally pass `summary`: a one-line recall summary shown in place of content (keep negations/identifiers verbatim). Optionally pass `idempotency_key` for safe retries: same key + identical content returns the original id/short_id unchanged; same key + different content is rejected; omit for a fresh record every time. The result includes the memory's id and short_id."},
+	if err := registerTools(s, d); err != nil {
+		return nil, fmt.Errorf("register tools: %w", err)
+	}
+
+	// Compose both queues' shutdown into a single closure: the caller
+	// (serve.go) invokes this once, strictly after httpSrv.Shutdown returns,
+	// draining the summary queue then the usage queue (both nil-safe no-ops
+	// when disabled).
+	return func(ctx context.Context) {
+		d.summaryQueue.Shutdown(ctx)
+		d.usageQueue.Shutdown(ctx)
+	}, nil
+}
+
+// supersedeMemoryInputSchema builds supersede_memory's advertised input
+// schema: the same reflection-inferred shape jsonschema.For[T] produces for
+// every other tool in this file, plus an explicit minItems constraint on
+// `supersedes` that the "jsonschema" struct-tag mechanism cannot express — it
+// supplies only a property description, never a numeric constraint (see
+// jsonschema-go's own doc.go). A runtime-only bound the advertised schema
+// does not mention is a rejection an agent can only discover by failing, so
+// this is the ONE place the constraint is set: registerTools and
+// TestSupersedeMemorySchemaAdvertisesTargetBounds both call this exact
+// function, so the advertised schema and the value a test asserts against
+// can never drift apart from each other. PD-07 (03.1-00-SUMMARY.md): the
+// target-set cap was DROPPED — minItems: 1 is the ONLY bound ever
+// advertised here; no maxItems is set or ever should be.
+func supersedeMemoryInputSchema() (*jsonschema.Schema, error) {
+	schema, err := jsonschema.For[supersedeArgs](nil)
+	if err != nil {
+		return nil, err
+	}
+	if prop, ok := schema.Properties["supersedes"]; ok {
+		prop.MinItems = jsonschema.Ptr(1)
+	}
+	return schema, nil
+}
+
+// registerTools registers every MCP tool handler on s using the
+// dependencies in d. Register calls this once buildDepsFromEnv has
+// succeeded — extracting it here creates the seam registertools_test.go
+// needs to enumerate the REAL registered tool set (names, Descriptions,
+// wire shape) against a bare &deps{}: no live Qdrant, no live embedder, no
+// ENGRAM_* environment configuration. This mirrors
+// argattribution_test.go's established pattern of calling deps methods
+// directly against a bare struct literal without live backend config.
+//
+// This started as a pure mechanical extraction from Register: no closure
+// body changes, no tool name changes, no Description changes, no reordering.
+// It returned nil unconditionally at extraction time (mcp.AddTool has no
+// failure mode) but kept the error-returning signature so a future failure
+// mode inside registration would not require changing Register's own error
+// handling — the signature itself is the seam registertools_test.go pins.
+// Plan 03.1-03 is that future failure mode: supersede_memory's advertised
+// input schema is built once here (supersedeMemoryInputSchema, below) so it
+// can carry a minItems constraint jsonschema.For's own tag mechanism cannot
+// express, and that build step's error — vanishingly unlikely for a
+// well-formed struct, but real — is now propagated instead of ignored.
+//
+// signature is the deliberate, plan-required seam (see doc comment above).
+func registerTools(s *mcp.Server, d *deps) error {
+	// scopeRule composes the same declared sentence effectiveSearchScope's
+	// rejection and cmd/engram's --scope Usage string already reference
+	// (D-03) — search_memory/list_memory/search_discovery's Descriptions
+	// below compose it too, rather than each retyping their own copy, so
+	// this surface can never drift from the registry independently of the
+	// other two.
+	scopeRule, _ := surfaces.RuleByID(surfaces.RuleScopeRequiredUnlessCrossSpine)
+	// discoveryNotSchedulableRule/windowAtLeastOneRule/windowOrderingRule
+	// (02-03-PLAN.md Task 1): same D-03 composition discipline as scopeRule
+	// above, for the three rules parseWindow's rejections now reference via
+	// conditionalErrf. discoveryNotSchedulableRule's Sentence is composed
+	// ONLY into schedule_memory's Description (WR-01): the "category" field
+	// is shared, via Go embedding of storeArgs, across store_memory's and
+	// supersede_memory's arg structs too, but the rejection only ever fires
+	// from parseWindow (schedule_memory's handler) — composing it onto the
+	// other two tools' Descriptions told readers of tools that never
+	// schedule anything about a rule that never fires there. See
+	// storeArgs.Category's jsonschema tag comment (this rule's SurfaceFields
+	// declaration) for the applicability-derivation half of this fix.
+	discoveryNotSchedulableRule, _ := surfaces.RuleByID(surfaces.RuleDiscoveryNotSchedulable)
+	windowAtLeastOneRule, _ := surfaces.RuleByID(surfaces.RuleScheduleWindowAtLeastOne)
+	windowOrderingRule, _ := surfaces.RuleByID(surfaces.RuleWindowOrdering)
+
+	mcp.AddTool(s, &mcp.Tool{Name: "store_memory", Description: "Persist a deliberate, well-formed memory. Do NOT store transient state, secrets, or timestamps. Optionally pass `summary`: a one-line recall summary shown in place of content (keep negations/identifiers verbatim). Optionally pass `idempotency_key` for safe retries: same key + identical content returns the original id/short_id unchanged; same key + different content is rejected; omit for a fresh record every time. The result includes the memory's id and short_id.", Annotations: annotationsFor("store_memory")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1790,7 +2287,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "schedule_memory", Description: "Persist a memory with a validity window (not_before defers recall; not_after expires it). At least one bound (RFC3339) is required; use store_memory for unscheduled records. Optionally pass `idempotency_key` for safe retries: same key + identical content returns the original id/short_id unchanged (the schedule window is NOT part of the replay check); same key + different content is rejected; omit for a fresh record every time. The result includes the memory's id and short_id."},
+	mcp.AddTool(s, &mcp.Tool{Name: "schedule_memory", Description: "Persist a memory with a validity window (not_before defers recall; not_after expires it). " + windowAtLeastOneRule.Sentence + "; " + windowOrderingRule.Sentence + ". " + discoveryNotSchedulableRule.Sentence + ". Optionally pass `idempotency_key` for safe retries: same key + identical content returns the original id/short_id unchanged (the schedule window is NOT part of the replay check); same key + different content is rejected; omit for a fresh record every time. The result includes the memory's id and short_id.", Annotations: annotationsFor("schedule_memory")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a scheduleArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1800,7 +2297,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			return textResult(fmt.Sprintf("scheduled %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. `scope` is required unless `cross_spine=true`, which spans every scope the caller can read (ignoring `scope` if supplied). Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory. Each result carries a `score`: the raw Qdrant cosine similarity for this query (higher = closer), present when non-zero; unranked list_memory/get_memory results have a zero/omitted score."},
+	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. " + scopeRule.Sentence + "; `cross_spine=true` spans every scope the caller can read (ignoring `scope` if supplied). Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory. Each result carries a `score`: the raw Qdrant cosine similarity for this query (higher = closer), present when non-zero; unranked list_memory/get_memory results have a zero/omitted score.", Annotations: annotationsFor("search_memory")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a searchArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1848,7 +2345,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			return textResult(fmt.Sprintf("%d hits", len(hits))), result, nil
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List memories in a scope without a query. Most-recent first. `scope` is required unless `cross_spine=true`, which spans every scope the caller can read (ignoring `scope` if supplied). Optional `created_after`/`created_before` (RFC3339) window and `cursor` for paging (use the returned next_cursor). Optional `tags` (AND). Returns {memories, next_cursor}; compact summaries by default, `full=true` for full content."},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List memories in a scope without a query. Most-recent first. " + scopeRule.Sentence + "; `cross_spine=true` spans every scope the caller can read (ignoring `scope` if supplied). Optional `created_after`/`created_before` (RFC3339) window and `cursor` for paging (use the returned next_cursor). Optional `tags` (AND). Returns {memories, next_cursor}; compact summaries by default, `full=true` for full content.", Annotations: annotationsFor("list_memory")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1903,7 +2400,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			return textResult(fmt.Sprintf("%d memories", len(mems))), result, nil
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "list_scheduled", Description: "List your windowed memories the recall gate is hiding: state=scheduled (not yet active, default) | expired | all. Active memories surface via list_memory/search_memory."},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_scheduled", Description: "List your windowed memories the recall gate is hiding: state=scheduled (not yet active, default) | expired | all. Active memories surface via list_memory/search_memory.", Annotations: annotationsFor("list_scheduled")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listScheduledArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1913,7 +2410,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			return textResult(fmt.Sprintf("%d scheduled", len(mems))), map[string]any{"memories": mems}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id. Unlike search_memory/list_memory, fetch-by-id is NOT recall-gated: it returns scheduled (not-yet-active) and expired records too. The id may be the full UUID or the short_id."},
+	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id. Unlike search_memory/list_memory, fetch-by-id is NOT recall-gated: it returns every state recall hides — scheduled (not-yet-active), expired, superseded, and archived records too. The id may be the full UUID or the short_id.", Annotations: annotationsFor("get_memory")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1923,7 +2420,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			return textResult(m.Content), m, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "update_memory", Description: "Replace a memory's content in place (re-embeds). Optionally set `shared` to toggle visibility (true=shared, false=private); omit to keep current visibility. Optionally set `tags` to replace the full tag set (empty array clears); omit to keep current tags. Optionally set `summary` to replace the recall summary (empty string clears); omit to keep current. If you change content while a caller-authored summary exists, you must address the summary (re-send, update, or clear) or the update is rejected. The id may be the full UUID or the short_id."},
+	mcp.AddTool(s, &mcp.Tool{Name: "update_memory", Description: "Replace a memory's content in place (re-embeds). Optionally set `shared` to toggle visibility (true=shared, false=private); omit to keep current visibility. Optionally set `tags` to replace the full tag set (empty array clears); omit to keep current tags. Optionally set `summary` to replace the recall summary (empty string clears); omit to keep current. If you change content while a caller-authored summary exists, you must address the summary (re-send, update, or clear) or the update is rejected. The id may be the full UUID or the short_id.", Annotations: annotationsFor("update_memory")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a updateArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1943,7 +2440,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			return textResult("updated"), nil, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "delete_memory", Description: "Delete one memory by id. The id may be the full UUID or the short_id."},
+	mcp.AddTool(s, &mcp.Tool{Name: "delete_memory", Description: "Delete one memory by id. The id may be the full UUID or the short_id.", Annotations: annotationsFor("delete_memory")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1953,7 +2450,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			return textResult("deleted"), nil, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "delete_all", Description: "Delete your own memories in a scope (teardown); never another caller's records."},
+	mcp.AddTool(s, &mcp.Tool{Name: "delete_all", Description: "Delete your own memories in a scope (teardown); never another caller's records.", Annotations: annotationsFor("delete_all")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a scopeArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1963,7 +2460,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			return textResult("scope cleared"), nil, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "store_discovery", Description: "Cache agent-earned codebase understanding with citations. kind=map|fact; >=1 citation; scope discovery:repo:<repo>. The result includes the discovery's id and short_id."},
+	mcp.AddTool(s, &mcp.Tool{Name: "store_discovery", Description: "Cache agent-earned codebase understanding with citations. kind=map|fact; >=1 citation; scope discovery:repo:<repo>. The result includes the discovery's id and short_id.", Annotations: annotationsFor("store_discovery")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeDiscoveryArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1973,7 +2470,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "search_discovery", Description: "Semantic search over the discovery pool. scope required unless cross_spine=true; optional kind=map|fact. Results carry citations + created_at (aging signals)."},
+	mcp.AddTool(s, &mcp.Tool{Name: "search_discovery", Description: "Semantic search over the discovery pool. " + scopeRule.Sentence + "; optional kind=map|fact. Results carry citations + created_at (aging signals).", Annotations: annotationsFor("search_discovery")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a searchDiscoveryArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1983,7 +2480,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"discoveries": hits}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "set_visibility", Description: "Share or unshare a memory you own. shared=true → readable by any authenticated caller (never writable by others); false → private. The id may be the full UUID or the short_id."},
+	mcp.AddTool(s, &mcp.Tool{Name: "set_visibility", Description: "Share or unshare a memory you own. shared=true → readable by any authenticated caller (never writable by others); false → private. The id may be the full UUID or the short_id.", Annotations: annotationsFor("set_visibility")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a setVisibilityArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -1993,17 +2490,21 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			return textResult("visibility updated"), nil, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "supersede_memory", Description: "Correct a memory you own by superseding it: stores a new record and marks the target superseded_by the new one. The target is soft-hidden from search_memory/list_memory but remains fetchable via get_memory — history is preserved, nothing is deleted or overwritten. Rejects if the target is already superseded (single live head per chain). The target id may be the full UUID or short_id."},
+	supersedeSchema, err := supersedeMemoryInputSchema()
+	if err != nil {
+		return fmt.Errorf("supersede_memory input schema: %w", err)
+	}
+	mcp.AddTool(s, &mcp.Tool{Name: "supersede_memory", Description: "Correct a memory you own by superseding one or more targets: stores a single new record and marks each target superseded_by the new one. Targets are soft-hidden from search_memory/list_memory but remain fetchable via get_memory — history is preserved, nothing is deleted or overwritten. An invalid target set rejects the whole call once, naming every offending target of one failure class: a target you do not own, one that does not exist, and one whose short_id is ambiguous (matches more than one record) are all the same rejection — replace an ambiguous short_id with the target's full UUID. Rejects if any target is already superseded (single live head per chain) or is a rule (delete it instead). Each target id may be the full UUID or short_id.", InputSchema: supersedeSchema, Annotations: annotationsFor("supersede_memory")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a supersedeArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
 				return nil, nil, err
 			}
 			id, sid, err := d.supersedeMemory(ctx, c, a)
-			return textResult(fmt.Sprintf("stored %s, superseding %s", id, a.Supersedes)), map[string]string{"id": id, "short_id": sid}, err
+			return textResult(fmt.Sprintf("stored %s, superseding %s", id, strings.Join(a.Supersedes, ", "))), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "store_rule", Description: "Persist a NORMATIVE rule (ground truth) for a repo/project. Call ONLY on explicit user instruction — never promote a rule unilaterally; propose it to the user instead. scope=rule:repo:<repo> or rule:project:<project>. summary is REQUIRED and is the one-line index entry (single line). Rules are always shared and user-blessed. The result includes the rule's id and short_id."},
+	mcp.AddTool(s, &mcp.Tool{Name: "store_rule", Description: "Persist a NORMATIVE rule (ground truth) for a repo/project. Call ONLY on explicit user instruction — never promote a rule unilaterally; propose it to the user instead. scope=rule:repo:<repo> or rule:project:<project>. summary is REQUIRED and is the one-line index entry (single line). Rules are always shared and user-blessed. The result includes the rule's id and short_id.", Annotations: annotationsFor("store_rule")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeRuleArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -2013,7 +2514,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			return textResult(fmt.Sprintf("stored rule %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "list_rules", Description: "List the COMPLETE rule set for one or more rule:* scopes, oldest-first. Compact index shape by default (short_id, summary, tags); full=true adds content. Optional tags filter (AND). Rules are the repo/project's normative ground truth."},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_rules", Description: "List the COMPLETE rule set for one or more rule:* scopes, oldest-first. Compact index shape by default (short_id, summary, tags); full=true adds content. Optional tags filter (AND). Rules are the repo/project's normative ground truth.", Annotations: annotationsFor("list_rules")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listRulesArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -2026,14 +2527,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 			}
 			return textResult(msg), map[string]any{"rules": rules}, err
 		})
-	// Compose both queues' shutdown into a single closure: the caller
-	// (serve.go) invokes this once, strictly after httpSrv.Shutdown returns,
-	// draining the summary queue then the usage queue (both nil-safe no-ops
-	// when disabled).
-	return func(ctx context.Context) {
-		d.summaryQueue.Shutdown(ctx)
-		d.usageQueue.Shutdown(ctx)
-	}, nil
+	return nil
 }
 
 func textResult(s string) *mcp.CallToolResult {

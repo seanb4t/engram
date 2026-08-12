@@ -1,5 +1,76 @@
 # Milestones — engram
 
+## v0.13.x Curation & Self-Evidence (Shipped: 2026-08-12)
+
+**Phases completed:** 6 phases (1–5 plus inserted 03.1), 33 plans, 99 tasks
+**Requirements:** 23/24 verified · **Audit:** `tech_debt` (6/6 integration seams, 4/4 E2E flows, 0 blockers, Nyquist 5/6 COMPLIANT)
+**Git range:** `b7b9f051..HEAD` — 234 commits, 106 files, +23,671 / −1,842 (excluding `.planning/`)
+**Timeline:** 2026-08-03 → 2026-08-12 (10 days) · **No git tag** — release-please owns the version namespace
+**Archived:** `milestones/v0.13.x-{ROADMAP,REQUIREMENTS,MILESTONE-AUDIT}.md` + `v0.13.x-phases/`
+
+**Delivered:** the memory spine became maintainable without hand-curation, and the interface began
+stating its own rules. `engram spine-review` resolves the structural spine predicates a command can
+decide as the sixth instance of the existing Subject-less operator tier — never a new authorization
+path — while the `curating-spine` skill carries the semantic judgments a CLI cannot make,
+proposing every mutation and stopping at `store_rule`'s consent gate verbatim. Alongside it, one
+exit-code taxonomy came to govern the whole binary, cobra began enforcing the flag exclusivity the
+help text had only claimed, every RPC path gained a finite deadline, and each server-side
+conditional rule is now declared once and machine-proven present on every surface that advertises
+it. `supersede_memory` grew multi-target merges. Zero new Go dependencies across all six phases.
+
+### Known Gaps
+
+- **REQ-consent-adversarial-proof** (Phase 4) — **NOT SATISFIED**, not merely deferred. The
+  adversarial cold read ran and exhausted its locked 3-run cap with every run landing NOT-TEMPTED:
+  the reader's identity verdict was correct each time, so the confidently-wrong proposal the
+  criterion must observe was never produced. Terminal verdict NOT-OBTAINED — neither pass nor fail
+  — escalated and accepted as a non-result by Sean on 2026-08-11 rather than converted into a green
+  checkbox. Tracked open at `WINDOWS.md` id 3. Closing it needs a fixture that reliably misleads on
+  identity, not more runs of the same one.
+
+**Known verification overrides:** 1 (Phase 4's phase-level override, which unblocks the phase
+without asserting SC-3 was proven). Deferred items recorded in `STATE.md` § Deferred Items.
+
+**Known tech debt:** two Phase 03 TDD commit-granularity deviations where RED was genuinely
+observed but RED+GREEN landed combined (`WINDOWS.md` ids 1, 2); three waived Phase 03
+human-verification items (two prose cold reads, one real-pty `--output` check); a stale rationale
+comment at `internal/surfaces/toolclass.go:141-142` contradicting the shipped `idempotency_key`
+support (the emitted annotation value is correct — only the justification is wrong); and
+`TestExitCodeBaseline`'s env-var fragility (#476).
+
+**Key accomplishments:**
+
+- `reject-both` — any two of the paging trio (`--offset`/`--cursor-mode`/`--page-token`) are rejected before any network call, via cobra's declarative flag-group API rather than a third hand-rolled guard.
+- `reindex`, `prune-expired`, `summarize-missing`, and `backfill-short-ids` now resolve every error through the same 2/4/5 exit-code vocabulary as the client verbs, via a new `classifyOperatorErr` modeled on `connectError`.
+- `migrate-set-owner`, `migrate-remap-owner`, and every `serve` pre-flight guard now resolve through the shared 2/4/5 exit-code taxonomy; `ListenAndServe`'s own bind failure is the one deliberate, commented exit-1 exception; and two new gates (source-level and table-level) prove no classifiable operator path was missed.
+- `exitTimeout=6` distinguishes a client-side deadline from an unreachable server, and every client setting (`--server`, `--token-file`, `--output`, `--insecure`, the new `--timeout`) now resolves through one `config.Load` + `config.ValidateClient` call in `clientFromFlags` instead of four hand-rolled resolvers.
+- Every client RPC call site (`search`, `list`, `store`) now derives `context.WithTimeout` from the single resolved client timeout, and a hung server is empirically proven — against connect-go's real client behavior, not an assumption — to return within the window with exit 6, distinct from a closed port's exit 5.
+- Rewrote `guides/cli.md`'s exit-code table and `guides/upgrade.md` with a new `## Unreleased` section naming every command this phase's exit-code unification, flag-group enforcement, and client timeout changed — and added `TestUpgradeGuideNamesEveryChangedCommand`, a mechanical gate deriving the required command list from the D-09 before-table itself so the guide cannot silently fall out of sync with what actually shipped.
+- `scope-required-unless-cross-spine` declared once in a new stdlib-only `internal/surfaces` leaf package, reaching the server rejection, the cobra `--scope` help text, and five anchored prose regions via a new `task surfaces:gen` generator + CI drift job — proving the whole Phase-2 architecture end-to-end before widening to the rest of D-05's rule inventory.
+- Every declared rule's canonical sentence is now machine-proven present on every surface its fields resolve to — across cobra Usage, jsonschema tags, MCP tool Descriptions, proto comments, docs-site, and skill markdown — with applicability derived from the rule's own fields rather than declared, and the gate demonstrated fail-first against a real corrupted region.
+- Widened `internal/surfaces`'s registry from one tracer rule to five, converted every remaining in-scope `parseWindow`/`effectiveDiscoveryScope`/paging rejection to `conditionalErrf`, decided `errStaleSummary` stays outside the registry (its fields are shared with a create-only CLI command), and closed a latent gap in 02-02's own conformance-gate tests that the paging/schedule-only rules were the first to exercise.
+- All 15 registered MCP tools now advertise readOnlyHint/destructiveHint/idempotentHint/openWorldHint from one internal/surfaces table gated in both directions against the real registration, published to docs-site/reference/tools.md via internal/surfacesgen, and demonstrated fail-first in three distinct ways this session.
+- `engram catalog` now carries a per-command `blast_radius` classification derived from the same shared table the MCP tool annotations publish, and every command's `--help` output plus the bare catalog JSON are pinned behind deterministic goldens — closing two determinism hazards (env-derived flag defaults, and cobra's lazy `-h/--help` registration) neither the plan nor its RESEARCH pass anticipated.
+- The docs-site deploy is green for the first time since 2026-08-02 and `reference/errors.md` is verified live with all ten hint codes; the stale `docs/v0.12.x-phase-01-context` branch was proven content-identical to its archived copy and deleted.
+- A shared recursive cobra walker replacing seven single-level command traversals, plus the operator tier's first nested subcommand (`engram spine-review scan`) backed by a Subject-less, fully-paginated whole-spine scan in `internal/store/spine.go`.
+- `--output json|text` backfilled onto all six pre-existing operator commands via the shared operator_output.go helpers, plus `operatorCommands()` as a concrete, gated structural predicate and a behaviourally-pinned three-group `--timeout` matrix.
+- `registerDestructive` makes the destructive tier's `--apply` gate a runtime-enforced RunE choke point (not just a derived flag), flips `prune-expired` and `migrate-remap-owner` to preview-by-default, and adds the first end-to-end coverage any operator command has ever had.
+- A pure four-tier (valid/moved/broken/unverifiable) citation classifier, a Subject-less citation enumeration over the phase's shared paginated iterator, a RESOLVED (not lexical) path-safety gate, an exact-segment repo-identity comparison, and the new `exitFindings=7` taxonomy code gated behind a registered `--fail-on` conditional rule.
+- Ranked near-duplicate candidate pairs (A, B, score) over already-stored vectors via Qdrant's `NewQueryID`/`QueryBatch`, with no clustering, no default threshold, and no mutation on any path.
+- A new orthogonal `archived_at` record state (D-12) — epoch-second integer, soft-hidden alongside `superseded_by`, driven by `engram spine-review archive`/`restore` with a deterministic concurrent-update race gate.
+- `PurgeManifest`'s provenance is compiler-enforced (unexported fields, never a runtime check), `--apply` deletes only the intersection of a previewed, gate-passing set and a fresh re-derivation, and the extract-before-delete gate is honestly asymmetric: a server-set link is unforgeable, a milestone-summary marker is convention.
+- Developer ruled `no-cap-otherwise-defaults`: the target-set cap is dropped entirely, and the three remaining planner recommendations (collapse-ambiguous, dedupe-silently, allow-heterogeneous) are adopted as written.
+- `supersedes` promoted from a scalar to a set end to end, with a Kind-branching tolerant decoder closing the `GetStringValue()`-returns-empty seam (`supersede_memory` is MCP-only, so proto field-number reasoning never applied).
+- `Store.Supersede`'s back-stamp-failure path is now a classified reconciliation pass — a `deletePoint` fault seam plus `reconcileSupersedeFailure` that removes the survivor through an internal ungated primitive, re-reads the FULL requested target set across every Qdrant payload-op chunk, clears dangling `superseded_by` links, and logs whatever it could not resolve — proved against a real pinned Qdrant (`v1.18.2`) with a forced mid-sequence partial-application failure.
+- `supersede_memory`'s preflight split into `resolveAndAuthorizeSupersedeTargets` (set-shape + addressability/access, collapsed into one not-found class) and `validateSupersedeTargetState` (rule immutability + already-superseded), proven by two whole-rejection indistinguishability tests, a mixed-pass caller-order test, and four observed-red regression checks.
+- `supersede_memory` now accepts `idempotency_key` with a target-set-keyed replay fingerprint (`mergeFingerprint`, composing the existing `contentFingerprint`) checked BEFORE the already-superseded stage — a same-key/different-target retry conflicts, a reordered/duplicated set replays (PD-01), and a losing simultaneous keyed merge recovers its answer from `resolveLostMergeRace` rather than surfacing the store's under-lock rejection.
+- Multi-target rejection envelope documented in the error reference with verbatim server-rendered examples, `supersede_memory`'s `supersedes` argument retyped to an array across three docs-site pages, `idempotency_key` support and the honest three-sentence failure paragraph published, CLAUDE.md and the curating-memory skill brought current, and `TestSupersedeDocsMatchShippedContract` binds all of it to the production code so a future edit fails the build instead of drifting.
+- Three capped runs of an identity-axis adversarial fixture against `curating-spine/SKILL.md`'s consent gate all returned the correct `overlapping` verdict and an explicit consent-stop — so the confident-wrong case SC-3 requires was never produced, and the honest terminal verdict is NOT-OBTAINED, escalated to the user.
+- Expanded `curating-spine/SKILL.md` from 160 to 322 lines with the staleness axis, cheap-search ladder, reactive-recall trigger, and a durable `distinct`-pair marker — all added around the tracer's unchanged consent gate, which a post-expansion cold read against the shipped file confirms still stops at consent (`dilution: NOT DILUTED`).
+- Reconciled four v0.13.x VALIDATION.md records against live HEAD facts — repointed one fictional test name, flipped three files to fully validated, and partially reconciled a fourth (04) whose one genuinely unproven requirement stays visibly unproven.
+
+---
+
 ## v0.12.x Headless Reach & Diagnosability (Shipped: 2026-08-02)
 
 **Phases completed:** 7 phases, 28 plans, 68 tasks

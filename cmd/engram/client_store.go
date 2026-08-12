@@ -4,7 +4,7 @@
 package main
 
 import (
-	"os"
+	"context"
 
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
@@ -47,15 +47,17 @@ var storeCmd = &cobra.Command{
 		if storeScope == "" {
 			return usageErrorf("--scope is required")
 		}
-		format, err := resolveOutputFormat(clientOutput, isTerminal(os.Stdout))
+		client, format, timeout, err := clientFromFlags(cmd)
 		if err != nil {
 			return err
 		}
-		client, err := clientFromFlags(cmd)
-		if err != nil {
-			return err
-		}
-		resp, err := client.StoreMemory(cmd.Context(), connect.NewRequest(&engramv1.StoreMemoryRequest{
+		// The deadline comes from clientFromFlags' resolved timeout — the
+		// single resolution point (D-05) — never a second resolution here.
+		// cmd.Context() is only ever the PARENT of this derived context,
+		// never passed to the Connect call directly (E-13).
+		ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
+		defer cancel()
+		resp, err := client.StoreMemory(ctx, connect.NewRequest(&engramv1.StoreMemoryRequest{
 			Content:   storeContent,
 			Scope:     storeScope,
 			Source:    storeSource,
@@ -86,6 +88,14 @@ func init() {
 	storeCmd.Flags().StringVar(&storeContent, "content", "", "memory content (required)")
 	storeCmd.Flags().StringVar(&storeScope, "scope", "", "memory scope (required)")
 	storeCmd.Flags().StringVar(&storeSource, "source", "", "source of the memory")
+	// --category's Usage does NOT compose the discovery-not-schedulable
+	// rule (WR-01): the "category" field is shared (via Go struct
+	// embedding) across store_memory, schedule_memory, and
+	// supersede_memory, but `engram store` never schedules anything, so
+	// stating the rule here told readers of this command about a rejection
+	// it can never raise. There is no `engram schedule` command yet (D-08's
+	// applicability derivation correctly resolves this rule to no cobra
+	// surface at all until one exists).
 	storeCmd.Flags().StringVar(&storeCategory, "category", "",
 		"category: one of decision, preference, convention, gotcha")
 	storeCmd.Flags().StringSliceVar(&storeTags, "tags", nil, "tags to attach to the memory")

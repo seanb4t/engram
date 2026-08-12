@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -69,20 +68,26 @@ func init() {
 func runServe(cmd *cobra.Command) error {
 	cfg, err := config.Load(cmd.Flags())
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+		// D-03 bucket 1 (pre-flight config/auth-guard validation): a
+		// malformed flag/env value the process cannot use.
+		return usageErrorf("load config: %w", err)
 	}
 	// Serve-local guard: an empty listen address makes http.Server bind ":http"
 	// (port 80) silently. ENGRAM_LISTEN_ADDR defaults to :8080; only an explicit
 	// --listen-addr "" can empty it. Data-plane fields are validated in the store
-	// path (buildDepsFromEnv -> loadAndValidate -> Config.Validate).
+	// path (buildDepsFromEnv -> loadAndValidate -> Config.Validate). Bucket 1.
 	if cfg.Server.ListenAddr == "" {
-		return fmt.Errorf("ENGRAM_LISTEN_ADDR (or --listen-addr) is empty: a listen address is required")
+		return usageErrorf("ENGRAM_LISTEN_ADDR (or --listen-addr) is empty: a listen address is required")
 	}
 
 	telCfg := telemetry.ConfigFromEnv("engram", version)
 	logger, shutdown, err := telemetry.Setup(context.Background(), telCfg)
 	if err != nil {
-		return fmt.Errorf("telemetry setup: %w", err)
+		// Bucket 1. telemetry.Setup never returns a non-nil error today --
+		// it degrades to stdout logging instead of failing startup
+		// (internal/telemetry/telemetry.go's own doc comment) -- but the
+		// classification is typed here for if that contract ever changes.
+		return usageErrorf("telemetry setup: %w", err)
 	}
 	slog.SetDefault(logger)
 	defer func() {
@@ -123,7 +128,11 @@ func runServe(cmd *cobra.Command) error {
 	})
 	if err != nil {
 		slog.Error("web UI config invalid", "err", err)
-		return err
+		// Bucket 1. resolveUIConfig (uiconfig.go) is outside this plan's
+		// file scope, so its bare error is classified here at the call
+		// site rather than at its source, mirroring migrate.go's
+		// buildRemapSource "wrap, don't reword" discipline.
+		return usageErrorf("%w", err)
 	}
 	// Parse the comma-list once (parsing is separate from defaulting: the
 	// registry already supplies "email" when unset). A malformed list
@@ -132,10 +141,12 @@ func runServe(cmd *cobra.Command) error {
 	ownerClaims, err := config.ParseOwnerClaims(cfg.OIDC.OwnerClaim)
 	if err != nil {
 		slog.Error("owner-claim config invalid", "err", err)
-		return err
+		// Bucket 1: a malformed --owner-claim comma-list.
+		return usageErrorf("%w", err)
 	}
 	if err := ownerClaimGuard(cfg.OIDC.Issuer, uiCfg.Enabled, ownerClaims); err != nil {
 		slog.Error("owner-claim config invalid", "err", err)
+		// ownerClaimGuard already returns a usageErrorf-typed error below.
 		return err
 	}
 
@@ -145,16 +156,22 @@ func runServe(cmd *cobra.Command) error {
 	// instance, so there is nothing to diverge.
 	chain, err := buildAuthChain(cfg.OIDC, cfg.ServiceAuth, ownerClaims)
 	if err != nil {
+		// buildAuthChain already returns a usageErrorf-typed error below
+		// (bucket 1: OIDC discovery misconfiguration and service-auth
+		// config, D-03).
 		slog.Error("oidc verifier init failed", "err", err, "issuer", cfg.OIDC.Issuer)
 		return err
 	}
 	headless, err := strconv.ParseBool(cfg.Connect.Headless)
 	if err != nil {
-		err = fmt.Errorf("ENGRAM_CONNECT_HEADLESS (or --connect-headless) %q: must be a boolean: %w", cfg.Connect.Headless, err)
+		// Bucket 1: a malformed --connect-headless boolean.
+		err = usageErrorf("ENGRAM_CONNECT_HEADLESS (or --connect-headless) %q: must be a boolean: %w", cfg.Connect.Headless, err)
 		slog.Error("connect-headless config invalid", "err", err)
 		return err
 	}
 	if err := connectHeadlessGuard(headless, chain); err != nil {
+		// connectHeadlessGuard already returns a usageErrorf-typed error
+		// below (bucket 1: headless without a configured auth lane).
 		slog.Error("connect-headless config invalid", "err", err)
 		return err
 	}
@@ -167,27 +184,29 @@ func runServe(cmd *cobra.Command) error {
 	case uiCfg.Enabled:
 		// resolveUIConfig guarantees uiCfg.Issuer is non-empty here (it defaults
 		// to ENGRAM_OIDC_ISSUER and fails fast when neither issuer is set).
+		// Bucket 1 (cookie-key / CSRF construction, malformed configured
+		// values) for every error below through the OIDC discovery call.
 		key, err := decodeCookieKey(uiCfg.CookieKey)
 		if err != nil {
-			return err
+			return usageErrorf("%w", err)
 		}
 		codec, err := webauth.NewSessionCodec(key)
 		if err != nil {
-			return fmt.Errorf("session cookie key: %w", err)
+			return usageErrorf("session cookie key: %w", err)
 		}
 		kcsrf, err := webauth.DeriveCSRFKey(key)
 		if err != nil {
-			return fmt.Errorf("derive csrf key: %w", err)
+			return usageErrorf("derive csrf key: %w", err)
 		}
 		csrfSigner, err := webauth.NewCSRFSigner(kcsrf)
 		if err != nil {
-			return fmt.Errorf("csrf signer: %w", err)
+			return usageErrorf("csrf signer: %w", err)
 		}
 		oidcCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		authr, err := webauth.NewAuthenticator(oidcCtx, uiCfg.Issuer, uiCfg.ClientID, uiCfg.ClientSecret, uiCfg.RedirectURL, ownerClaims)
 		cancel()
 		if err != nil {
-			return fmt.Errorf("web UI OIDC discovery: %w", err)
+			return usageErrorf("web UI OIDC discovery: %w", err)
 		}
 		webHandler = webauth.NewHandler(authr, codec, true, csrfSigner)
 		// internal/webauth is not modified (D-07); webauth.NewResolver(codec).Resolve
@@ -213,7 +232,16 @@ func runServe(cmd *cobra.Command) error {
 	drain, err := server.Register(srv, mux, tm, sqm, uqm, connectResolve, connectCSRFVerify, connectReseal)
 	if err != nil {
 		slog.Error("server registration failed", "err", err)
-		return err
+		// D-03 bucket 2 (backend construction). server.Register's dominant
+		// failure mode is buildDepsFromEnv -> ensureStoreFromConfig -- the
+		// identical config-versus-unreachable-Qdrant split
+		// classifyOperatorErrConstruction already resolves for the four
+		// sweep commands (cmd/engram/operror.go): EnsureCollection is the
+		// only network-touching call in that construction path, so
+		// anything else reaching the classifier's default is config-shaped
+		// by elimination. Reused here rather than re-deciding at this
+		// fifth call site.
+		return classifyOperatorErrConstruction(err)
 	}
 
 	if uiCfg.Enabled {
@@ -228,7 +256,8 @@ func runServe(cmd *cobra.Command) error {
 	resolvedMCPPath, err := resolveMCPPath(cfg.Server.MCPPath)
 	if err != nil {
 		slog.Error("invalid MCP path", "err", err)
-		return err
+		// Bucket 1: a malformed/colliding --mcp-path.
+		return usageErrorf("%w", err)
 	}
 
 	var handler http.Handler = mcp.NewStreamableHTTPHandler(
@@ -265,6 +294,20 @@ func runServe(cmd *cobra.Command) error {
 	serveErr := make(chan error, 1)
 	go func() {
 		slog.Info("engram listening", "version", version, "addr", cfg.Server.ListenAddr)
+		// DELIBERATE D-03 EXCEPTION (second, and only other, documented
+		// exit-1 case alongside root.go's mistyped-verb path, plan 01-02):
+		// ListenAndServe's own failure (e.g. "address already in use") is a
+		// local OS resource failure, not a config error and not "the remote
+		// server or Qdrant is unreachable" -- exit 5 has meant the latter at
+		// every other site in this taxonomy, and force-mapping a local bind
+		// failure onto it would make 5 ambiguous for any caller scripting
+		// both `serve` and a client verb. D-02 keeps exit 1 for exactly
+		// this: a genuinely unclassified failure that degrades loudly
+		// rather than being misfiled as a usage error. Recorded as accepted
+		// checkpoint decision "backstop-1" in 01-06-SUMMARY.md; named in
+		// guides/cli.md and guides/upgrade.md (plan 01-09). Left as a bare,
+		// untyped error on purpose -- do not wrap it in usageErrorf,
+		// classifyOperatorErr, or any other carrier.
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serveErr <- err
 		}
@@ -272,6 +315,8 @@ func runServe(cmd *cobra.Command) error {
 
 	select {
 	case err := <-serveErr:
+		// See the deliberate-exception comment at the ListenAndServe call
+		// site above: this err is returned bare, reaching exitGeneric (1).
 		return err
 	case <-sigCtx.Done():
 		slog.Info("shutdown signal received; draining")
@@ -305,7 +350,9 @@ func ownerClaimGuard(bearerIssuer string, uiEnabled bool, ownerClaims []string) 
 		return nil // no auth lane active; owner-claim is inert
 	}
 	if len(ownerClaims) == 0 {
-		return fmt.Errorf("ENGRAM_OWNER_CLAIM (or --owner-claim) is empty while an OIDC lane is enabled: every authenticated request would fail with a missing-owner-claim error")
+		// D-03 bucket 1: an empty --owner-claim while an auth lane is
+		// active is a configuration-validation failure.
+		return usageErrorf("ENGRAM_OWNER_CLAIM (or --owner-claim) is empty while an OIDC lane is enabled: every authenticated request would fail with a missing-owner-claim error")
 	}
 	if !slices.Contains(ownerClaims, "email") {
 		slog.Warn("owner-claim list does not include \"email\"; the email_verified enforcement only applies to a winning \"email\" claim — ensure your IdP guarantees the configured claim(s) are unique and stable",
@@ -327,7 +374,9 @@ func connectHeadlessGuard(headless bool, chain mcpauth.TokenVerifier) error {
 	if !headless || chain != nil {
 		return nil
 	}
-	return fmt.Errorf("ENGRAM_CONNECT_HEADLESS (or --connect-headless) is set while no auth lane is configured: mounting would expose every write RPC unauthenticated into the anonymous empty-owner bucket; configure ENGRAM_OIDC_ISSUER and/or ENGRAM_SERVICE_AUTH_* (client-credentials issuer/audience or static tokens) to add an auth lane")
+	// D-03 bucket 1: headless requested with no auth lane configured is a
+	// configuration-validation failure, not a runtime condition.
+	return usageErrorf("ENGRAM_CONNECT_HEADLESS (or --connect-headless) is set while no auth lane is configured: mounting would expose every write RPC unauthenticated into the anonymous empty-owner bucket; configure ENGRAM_OIDC_ISSUER and/or ENGRAM_SERVICE_AUTH_* (client-credentials issuer/audience or static tokens) to add an auth lane")
 }
 
 // connectResolverFor decides whether to mount Connect at all, and — only
@@ -391,7 +440,8 @@ func buildAuthChain(oidc config.OIDCConfig, svcAuth config.ServiceAuthConfig, ow
 		verifier, err := auth.New(ctx, oidc.Issuer, oidc.Audience, ownerClaims)
 		cancel()
 		if err != nil {
-			return nil, fmt.Errorf("oidc verifier init: %w", err)
+			// D-03 bucket 1: OIDC discovery misconfiguration.
+			return nil, usageErrorf("oidc verifier init: %w", err)
 		}
 		humanVerifier = verifier.TokenVerifier()
 		slog.Info("OIDC bearer-token validation enabled", "issuer", oidc.Issuer)
@@ -400,13 +450,15 @@ func buildAuthChain(oidc config.OIDCConfig, svcAuth config.ServiceAuthConfig, ow
 	if svcAuth.OIDCIssuer != "" {
 		svcOwnerClaims, err := config.ParseOwnerClaims(svcAuth.OwnerClaims)
 		if err != nil {
-			return nil, fmt.Errorf("service-auth owner-claim config invalid: %w", err)
+			// D-03 bucket 1.
+			return nil, usageErrorf("service-auth owner-claim config invalid: %w", err)
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		verifier, err := auth.NewService(ctx, svcAuth.OIDCIssuer, svcAuth.OIDCAudience, svcOwnerClaims)
 		cancel()
 		if err != nil {
-			return nil, fmt.Errorf("service-auth oidc verifier init: %w", err)
+			// D-03 bucket 1: OIDC discovery misconfiguration.
+			return nil, usageErrorf("service-auth oidc verifier init: %w", err)
 		}
 		serviceVerifier = verifier.TokenVerifier()
 		slog.Info("service OIDC client-credentials validation enabled", "issuer", svcAuth.OIDCIssuer, "owner_claims", svcOwnerClaims)
@@ -415,7 +467,8 @@ func buildAuthChain(oidc config.OIDCConfig, svcAuth config.ServiceAuthConfig, ow
 	if svcAuth.StaticTokens != "" {
 		tokens, err := config.ParseServiceStaticTokens(svcAuth.StaticTokens)
 		if err != nil {
-			return nil, fmt.Errorf("service-auth static-tokens config invalid: %w", err)
+			// D-03 bucket 1.
+			return nil, usageErrorf("service-auth static-tokens config invalid: %w", err)
 		}
 		staticVerifier = auth.NewStaticTokenVerifier(tokens).TokenVerifier()
 		slog.Info("service static-token validation enabled", "token_count", len(tokens))

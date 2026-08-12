@@ -6,7 +6,10 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,6 +18,8 @@ import (
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/seanb4t/engram/internal/surfaces"
 )
 
 // noArgs is a non-nil empty argument slice. runClient's own doc comment
@@ -84,6 +89,12 @@ type decodedCatalog struct {
 			Default string `json:"default"`
 			Usage   string `json:"usage"`
 		} `json:"flags"`
+		BlastRadius struct {
+			ReadOnly    bool `json:"read_only"`
+			Destructive bool `json:"destructive"`
+			Idempotent  bool `json:"idempotent"`
+			OpenWorld   bool `json:"open_world"`
+		} `json:"blast_radius"`
 	} `json:"commands"`
 	ExitCodes []struct {
 		Code    int    `json:"code"`
@@ -110,19 +121,18 @@ func decodeCatalog(t *testing.T) decodedCatalog {
 	return doc
 }
 
-// wantCommandNames returns the set of names buildCatalog is expected to
-// enumerate: rootCmd's non-hidden subcommands, excluding cobra's own
-// auto-generated help and completion commands. This mirrors buildCatalog's
-// own filter exactly, so the two can only diverge if buildCatalog's actual
-// derivation itself drifts from the live tree.
+// wantCommandNames returns the set of qualified command paths buildCatalog
+// is expected to enumerate: every non-hidden command in rootCmd's WHOLE
+// tree (walkCommands(rootCmd, commandWalkSkip)), keyed by commandKey rather
+// than the bare cobra Name() — this mirrors buildCatalog's own derivation
+// exactly (same walker, same skip predicate, same key function), so the
+// two can only diverge if buildCatalog's actual derivation itself drifts
+// from the live tree.
 func wantCommandNames(t *testing.T) map[string]bool {
 	t.Helper()
 	want := make(map[string]bool)
-	for _, cmd := range rootCmd.Commands() {
-		if cmd.Hidden || cmd.Name() == "help" || cmd.Name() == "completion" {
-			continue
-		}
-		want[cmd.Name()] = true
+	for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {
+		want[commandKey(cmd)] = true
 	}
 	return want
 }
@@ -212,19 +222,37 @@ func TestCatalogEnumeratesEveryFlag(t *testing.T) {
 	}
 }
 
-// TestCatalogListsEveryExitCode asserts the catalog carries exactly six
-// exit-code entries, covering 0 through 5 with no duplicates, each with a
-// non-empty meaning.
+// wantExitCodes is every exit code this binary's constants declare —
+// deriving TestCatalogListsEveryExitCode's bounds and membership check from
+// this slice, rather than a second set of hand-written integer literals, is
+// what makes the next code addition (after D-06's exitTimeout) not repeat
+// the drift TestCatalogListsEveryExitCode's own hard-coded "6"/"0-5"
+// literals caused when exitTimeout was added.
+var wantExitCodes = []int{exitOK, exitGeneric, exitUsage, exitAuth, exitNotFound, exitUnavailable, exitTimeout, exitFindings}
+
+// TestCatalogListsEveryExitCode asserts the catalog carries exactly one
+// entry per constant in wantExitCodes, with no duplicates and no code
+// outside that set's min/max range, each with a non-empty meaning.
 func TestCatalogListsEveryExitCode(t *testing.T) {
 	doc := decodeCatalog(t)
 
-	if len(doc.ExitCodes) != 6 {
-		t.Fatalf("len(exit_codes) = %d, want 6", len(doc.ExitCodes))
+	minCode, maxCode := wantExitCodes[0], wantExitCodes[0]
+	for _, c := range wantExitCodes {
+		if c < minCode {
+			minCode = c
+		}
+		if c > maxCode {
+			maxCode = c
+		}
+	}
+
+	if len(doc.ExitCodes) != len(wantExitCodes) {
+		t.Fatalf("len(exit_codes) = %d, want %d", len(doc.ExitCodes), len(wantExitCodes))
 	}
 	seen := make(map[int]bool)
 	for _, ec := range doc.ExitCodes {
-		if ec.Code < 0 || ec.Code > 5 {
-			t.Errorf("exit code %d is outside the 0-5 range", ec.Code)
+		if ec.Code < minCode || ec.Code > maxCode {
+			t.Errorf("exit code %d is outside the %d-%d range", ec.Code, minCode, maxCode)
 		}
 		if seen[ec.Code] {
 			t.Errorf("duplicate exit code %d", ec.Code)
@@ -234,9 +262,9 @@ func TestCatalogListsEveryExitCode(t *testing.T) {
 			t.Errorf("exit code %d has an empty meaning", ec.Code)
 		}
 	}
-	for i := 0; i <= 5; i++ {
-		if !seen[i] {
-			t.Errorf("exit code %d missing from the catalog", i)
+	for _, c := range wantExitCodes {
+		if !seen[c] {
+			t.Errorf("exit code %d missing from the catalog", c)
 		}
 	}
 }
@@ -246,6 +274,14 @@ func TestCatalogListsEveryExitCode(t *testing.T) {
 // Before trusting this test, cobra.NoArgs was temporarily removed from
 // rootCmd's literal and this test was observed to fail — see the SUMMARY
 // for the quoted FAIL line.
+//
+// The accepted, deliberate gap this test also pins: a mistyped verb stays
+// on exitGeneric (never reclassified to exitUsage), because cobra's Find()
+// fails inside ExecuteC() before execute() runs, so PersistentPreRunE never
+// sees it and no sentinel exists to classify it without matching the
+// message text — which this plan's prohibitions forbid. This mirrors the
+// D-09 baseline's root/unknown-subcommand row (before == after == exitGeneric,
+// changes: false).
 func TestRootUnknownSubcommandStillErrors(t *testing.T) {
 	resetClientFlags(t)
 	stdout, _, err := runClient(t, "definitely-not-a-verb")
@@ -257,6 +293,13 @@ func TestRootUnknownSubcommandStillErrors(t *testing.T) {
 	}
 	if isJSON(stdout) {
 		t.Errorf("stdout unexpectedly parsed as JSON: %q", stdout)
+	}
+	// exitCodeFromError, not assertExitCode: a mistyped verb's error is a
+	// bare cobra error with no ExitCode() method, which is exactly the
+	// untyped-fallback case exitCodeFromError exists to cover — assertExitCode
+	// would abort the test the moment it found no ExitCode() method.
+	if got := exitCodeFromError(err); got != exitGeneric {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitGeneric)", got, exitGeneric)
 	}
 }
 
@@ -289,18 +332,39 @@ func TestCatalogGoesToStdoutNotStderr(t *testing.T) {
 	}
 }
 
+// nonConnectProducedCodes is the named, explicitly-justified allowlist of
+// exit codes the catalog advertises that exitCodeForConnectErr can NEVER
+// produce, because they originate from a different, non-connect path
+// entirely. Each entry names that path. TestCatalogExitCodesMatchMapper
+// unions this into mapperCodes before comparing: an entry here asserts a
+// code is produced by a non-connect path and names that path, so the
+// both-directions DeepEqual below stays a real gate rather than being
+// weakened to a subset check -- a code in neither the mapper nor this
+// allowlist still fails the test, and an allowlist entry no command
+// actually produces still fails it too (03-04-PLAN.md's review-cycle
+// decision: add exitFindings to the catalog AND edit this derivation, in
+// the same commit, rather than leaving the pair internally unsatisfiable).
+var nonConnectProducedCodes = map[int]string{
+	exitFindings: "spine-review verify --fail-on",
+}
+
 // TestCatalogExitCodesMatchMapper is the D-11 anti-drift gate: the set of
 // exit codes the catalog advertises must equal, as a set, the set of exit
 // codes exitCodeForConnectErr can actually produce across every
 // connect.Code plus the not-a-connect-error case, unioned with exitOK for
-// the success path. Set equality carries both directions — a code the
-// mapper can return but the catalog omits fails, and a code the catalog
-// invents but the mapper never returns fails too.
+// the success path AND with nonConnectProducedCodes for every code a
+// non-connect path produces. Set equality carries both directions — a code
+// the mapper (plus the named allowlist) can account for but the catalog
+// omits fails, and a code the catalog invents but neither the mapper nor
+// the allowlist accounts for fails too.
 //
 // Both directions of this gate were observed failing before being trusted:
 // see the SUMMARY for the quoted FAIL lines from (1) a temporary seventh
 // catalog entry the mapper never produces, and (2) a temporary mapper arm
-// returning a code absent from the catalog.
+// returning a code absent from the catalog. 03-04-PLAN.md's SUMMARY records
+// the analogous pair of observations for exitFindings specifically: adding
+// it to the catalog WITHOUT this allowlist entry, and adding an allowlist
+// entry for a code the catalog does not list.
 func TestCatalogExitCodesMatchMapper(t *testing.T) {
 	doc := decodeCatalog(t)
 
@@ -314,33 +378,152 @@ func TestCatalogExitCodesMatchMapper(t *testing.T) {
 		mapperCodes[exitCodeForConnectErr(connect.NewError(connect.Code(i), errors.New("boom")))] = true
 	}
 	mapperCodes[exitCodeForConnectErr(errors.New("not a connect error"))] = true
+	for code := range nonConnectProducedCodes {
+		mapperCodes[code] = true
+	}
 
 	if !reflect.DeepEqual(catalogCodes, mapperCodes) {
-		t.Errorf("catalog exit codes = {%s}, mapper-producible exit codes = {%s}",
+		t.Errorf("catalog exit codes = {%s}, mapper-producible exit codes (incl. nonConnectProducedCodes) = {%s}",
 			sortedIntKeys(catalogCodes), sortedIntKeys(mapperCodes))
 	}
 }
 
-// TestCatalogDocumentsFlagParseExitCode is D-17's gate: the catalog's
-// notes mention both exit codes — the framework-level flag error's 1 and
-// engram's own validation's 2 — in the same note, which also mentions
-// flags or usage. The match is tolerant of exact wording deliberately: a
-// brittle exact-string assertion here would be the first thing edited away,
-// leaving D-17 undocumented and the test still green.
-func TestCatalogDocumentsFlagParseExitCode(t *testing.T) {
-	doc := decodeCatalog(t)
-
-	found := false
-	for _, n := range doc.Notes {
-		if strings.Contains(n, "1") && strings.Contains(n, "2") &&
-			(strings.Contains(n, "flag") || strings.Contains(n, "usage")) {
-			found = true
-			break
+// TestCatalogGoldenExitFindingsDescribesFailOn decodes the COMMITTED
+// testdata/catalog.golden fixture directly (not the live tree) and asserts
+// the exit-code-7 entry's description names the opt-in flag that produces
+// it -- proving the published, pinned golden itself (not just the live
+// binary's transient output) documents exitFindings intelligibly.
+func TestCatalogGoldenExitFindingsDescribesFailOn(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "catalog.golden"))
+	if err != nil {
+		t.Fatalf("read testdata/catalog.golden: %v", err)
+	}
+	var doc decodedCatalog
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatalf("unmarshal testdata/catalog.golden: %v", err)
+	}
+	var found bool
+	for _, ec := range doc.ExitCodes {
+		if ec.Code != exitFindings {
+			continue
+		}
+		found = true
+		if !strings.Contains(ec.Meaning, "--fail-on") {
+			t.Errorf("exit code %d meaning = %q, want it to name --fail-on", exitFindings, ec.Meaning)
 		}
 	}
 	if !found {
-		t.Errorf("no note documents both exit code 1 and exit code 2 alongside a mention of "+
-			"flags or usage; notes=%v", doc.Notes)
+		t.Fatalf("testdata/catalog.golden has no entry for exit code %d", exitFindings)
+	}
+}
+
+// TestCatalogBlastRadiusMatchesToolClasses is D-11's both-directions gate,
+// copying TestCatalogExitCodesMatchMapper's shape: the catalog's emitted
+// command names and internal/surfaces.Operations()'s non-empty CLICommand
+// values must be the EXACT same set — a command the catalog emits but the
+// table never classified fails here, and a table row naming a command the
+// catalog never emits fails here too. A second loop then asserts every
+// catalog command's rendered classification equals
+// surfaces.ClassForCommand(name)'s value for that name, so the two lanes
+// cannot silently disagree about a command they both classify.
+func TestCatalogBlastRadiusMatchesToolClasses(t *testing.T) {
+	doc := decodeCatalog(t)
+
+	catalogNames := make(map[string]bool, len(doc.Commands))
+	for _, c := range doc.Commands {
+		catalogNames[c.Name] = true
+	}
+
+	classifiedNames := make(map[string]bool)
+	for _, op := range surfaces.Operations() {
+		// "engram" (rootCmd.Name()) is the bare self-describe invocation's
+		// own sentinel CLICommand value (toolclass.go's comment: added
+		// because ValidateOperations rejects a row with both key columns
+		// empty) — it names the root command itself, which buildCatalog
+		// never emits as one of doc.Commands, so it is deliberately excluded
+		// from this comparison rather than a genuine mismatch.
+		if op.CLICommand == "" || op.CLICommand == rootCmd.Name() {
+			continue
+		}
+		classifiedNames[op.CLICommand] = true
+	}
+
+	if !reflect.DeepEqual(catalogNames, classifiedNames) {
+		t.Errorf("catalog command names = %v, surfaces.Operations() non-empty CLICommand names = %v",
+			sortedKeys(catalogNames), sortedKeys(classifiedNames))
+	}
+
+	for _, c := range doc.Commands {
+		want, ok := surfaces.ClassForCommand(c.Name)
+		if !ok {
+			t.Errorf("catalog command %q has no surfaces.ClassForCommand entry", c.Name)
+			continue
+		}
+		if c.BlastRadius.ReadOnly != want.ReadOnly ||
+			c.BlastRadius.Destructive != want.Destructive ||
+			c.BlastRadius.Idempotent != want.Idempotent ||
+			c.BlastRadius.OpenWorld != want.OpenWorld {
+			t.Errorf("catalog command %q blast_radius = %+v, want %+v", c.Name, c.BlastRadius, want)
+		}
+	}
+}
+
+// TestCatalogClaimsNoFlagErrorExitsGeneric replaces the retracted D-17 gate
+// (the prior test pinning the flag-error note's exact wording).
+// D-02/D-03 falsified the old promise ("a framework flag error exits 1, not
+// 2"): after this plan, a
+// framework flag error exits exitUsage, and exitGeneric is reserved for a
+// mistyped verb and a genuinely unclassified internal error — never for a
+// flag-shaped failure.
+//
+// The old test matched on any note containing the digits "1" and "2" near
+// the word "flag" or "usage" — a reworded note can satisfy that *by
+// accident* while asserting the opposite of what the test intended (e.g. a
+// note saying "exits 1, not 2" contains both digits just as readily as one
+// saying "exits 2, not 1"). This test asserts the intention directly, as a
+// positive-set assertion over the numbers appearing in the SENTENCE that
+// names a flag error, not a substring hunt over the whole note: for that
+// sentence, the set of exit codes it names must contain exitUsage and must
+// NOT contain exitGeneric. A sentence elsewhere in the same note that
+// separately, correctly, names exitGeneric's other two causes is not a
+// false positive, because it is not the sentence that mentions "flag".
+func TestCatalogClaimsNoFlagErrorExitsGeneric(t *testing.T) {
+	doc := decodeCatalog(t)
+
+	var flagNotes []string
+	for _, n := range doc.Notes {
+		if strings.Contains(n, "flag") {
+			flagNotes = append(flagNotes, n)
+		}
+	}
+	if len(flagNotes) != 1 {
+		t.Fatalf("notes mentioning flag errors = %d, want exactly 1; notes=%v", len(flagNotes), doc.Notes)
+	}
+	note := flagNotes[0]
+
+	numRe := regexp.MustCompile(`\b\d+\b`)
+	found := false
+	for _, sentence := range strings.Split(note, ". ") {
+		if !strings.Contains(sentence, "flag") {
+			continue
+		}
+		found = true
+		codes := make(map[int]bool)
+		for _, m := range numRe.FindAllString(sentence, -1) {
+			n, convErr := strconv.Atoi(m)
+			if convErr == nil {
+				codes[n] = true
+			}
+		}
+		if codes[exitGeneric] {
+			t.Errorf("the sentence naming a flag error also names exitGeneric (%d): %q", exitGeneric, sentence)
+		}
+		if !codes[exitUsage] {
+			t.Errorf("the sentence naming a flag error does not name exitUsage (%d): %q", exitUsage, sentence)
+		}
+	}
+	if !found {
+		t.Fatalf("no sentence in the flag note mentions %q: %q", "flag", note)
 	}
 }
 
@@ -495,4 +678,143 @@ func TestHelpAndCatalogAreDifferentOutputs(t *testing.T) {
 		t.Errorf("expected exactly one of the two outputs to parse as JSON: catalog=%v help=%v",
 			catalogIsJSON, helpIsJSON)
 	}
+}
+
+// TestBuildCatalogPanicsOnUnclassifiedNestedCommandAtDepth proves the
+// panic backstop (catalog.go's buildCatalog) still fires for a command
+// buried two levels deep, not just a top-level command — this is the exact
+// shape a real nested leaf shipped without a
+// internal/surfaces/toolclass.go operations row would take. Built on a
+// throwaway tree, never rootCmd, so it cannot pollute any other test's
+// shared cobra singleton state. The group node is deliberately named
+// "spine-review" — classification is keyed on the STRING commandKey, not
+// object identity, so reusing that already-classified name here proves the
+// group itself is classified (buildCatalog does not panic on it) and the
+// panic fires specifically on the unclassified GRANDCHILD.
+func TestBuildCatalogPanicsOnUnclassifiedNestedCommandAtDepth(t *testing.T) {
+	throwawayRoot := &cobra.Command{Use: "throwaway-root"}
+	group := &cobra.Command{Use: "spine-review"}
+	leaf := &cobra.Command{Use: "unclassified-leaf"}
+	group.AddCommand(leaf)
+	throwawayRoot.AddCommand(group)
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("buildCatalog did not panic for a nested command with no operations row")
+		}
+		msg, ok := r.(string)
+		if !ok {
+			t.Fatalf("panic value = %v (%T), want a string", r, r)
+		}
+		wantPath := "spine-review unclassified-leaf"
+		if !strings.Contains(msg, wantPath) {
+			t.Errorf("panic message %q does not contain the qualified path %q", msg, wantPath)
+		}
+	}()
+	buildCatalog(throwawayRoot)
+}
+
+// TestCollectFlagsIsDepthAware proves collectFlags walks the WHOLE parent
+// chain, not just cmd's own flags plus root's persistent flags (the
+// pre-D-01 behavior): a flag registered on spineReviewCmd's OWN persistent
+// flag set — the natural home for a flag shared by several spine-review
+// leaves — must appear in the catalog entry for a leaf beneath it. The
+// throwaway flag is marked Hidden again via t.Cleanup so it never
+// contaminates TestHelpGolden/TestCatalogGolden's pinned goldens, mirroring
+// collectFlags' own Hidden-flag exclusion (catalog.go).
+func TestCollectFlagsIsDepthAware(t *testing.T) {
+	const flagName = "depth-aware-test-only-flag"
+	spineReviewCmd.PersistentFlags().Bool(flagName, false, "test-only: proves collectFlags walks the parent chain")
+	f := spineReviewCmd.PersistentFlags().Lookup(flagName)
+	if f == nil {
+		t.Fatal("failed to register throwaway persistent flag on spineReviewCmd")
+	}
+	t.Cleanup(func() { f.Hidden = true })
+
+	doc := buildCatalog(rootCmd)
+	var scan *catalogCommand
+	for i := range doc.Commands {
+		if doc.Commands[i].Name == "spine-review scan" {
+			scan = &doc.Commands[i]
+		}
+	}
+	if scan == nil {
+		t.Fatalf("catalog has no %q entry", "spine-review scan")
+	}
+	found := false
+	for _, fl := range scan.Flags {
+		if fl.Name == flagName {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("spine-review scan catalog flags = %v, want to include %q (registered on spineReviewCmd's own PersistentFlags)",
+			scan.Flags, flagName)
+	}
+}
+
+// catalogCommandNameSet returns the set of doc.Commands[i].Name values.
+func catalogCommandNameSet(doc catalogDoc) map[string]bool {
+	set := make(map[string]bool, len(doc.Commands))
+	for _, c := range doc.Commands {
+		set[c.Name] = true
+	}
+	return set
+}
+
+// walkedCommandKeySet returns the commandKey set of walkCommands(rootCmd,
+// commandWalkSkip) — the live tree's own ground truth.
+func walkedCommandKeySet() map[string]bool {
+	set := make(map[string]bool)
+	for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {
+		set[commandKey(cmd)] = true
+	}
+	return set
+}
+
+// TestBuildCatalogCommandNamesEqualWalkedKeys asserts, over the LIVE
+// rootCmd, that buildCatalog's emitted command-name set is EXACTLY the
+// commandKey set walkCommands(rootCmd, commandWalkSkip) returns — set
+// equality, not membership or a count — so no entry's Name is a bare leaf
+// name that also exists as a nested leaf (e.g. a stray "scan" alongside
+// the correct "spine-review scan").
+//
+// **MUTATION CHECK, not a RED-first observation** (say so honestly, per
+// this plan's own discipline): this equality holds by construction from
+// the moment buildCatalog and wantCommandNames/nonHiddenCommands were
+// converted to the same walker in Task 1, so its failure state does not
+// arise naturally at any later point in this plan's task order. Falsified
+// in both directions by injection below, each reverted immediately after
+// its observed failure is recorded.
+func TestBuildCatalogCommandNamesEqualWalkedKeys(t *testing.T) {
+	doc := buildCatalog(rootCmd)
+	got := catalogCommandNameSet(doc)
+	want := walkedCommandKeySet()
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("buildCatalog(rootCmd) command names = %v, want exactly %v (walkCommands' commandKey set)", got, want)
+	}
+
+	// Direction 1: drop one command from the catalog's own list and prove
+	// the equality check catches the omission.
+	t.Run("mutation: catalog missing an entry", func(t *testing.T) {
+		mutated := catalogCommandNameSet(doc)
+		for k := range mutated {
+			delete(mutated, k)
+			break
+		}
+		if reflect.DeepEqual(mutated, want) {
+			t.Fatal("dropping one entry from the catalog's name set did not break equality — the gate cannot detect a missing command")
+		}
+	})
+
+	// Direction 2: add a phantom entry the walker never produced and prove
+	// the equality check catches the addition.
+	t.Run("mutation: catalog has a phantom entry", func(t *testing.T) {
+		mutated := catalogCommandNameSet(doc)
+		mutated["phantom-command-not-in-live-tree"] = true
+		if reflect.DeepEqual(mutated, want) {
+			t.Fatal("adding a phantom entry to the catalog's name set did not break equality — the gate cannot detect an invented command")
+		}
+	})
 }

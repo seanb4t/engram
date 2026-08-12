@@ -1,658 +1,518 @@
 # Pitfalls Research
 
-**Domain:** Adding a second (bearer) auth credential, a headless-mountable API surface, a
-first-party CLI client, cross-scope search, and authz/error diagnostics to an existing,
-shipped, multi-tenant, authorization-enforcing Go server (engram) whose authz chokepoint is
-the storage layer and whose Connect transport already has a working CSRF defense for a
-cookie-authenticated browser lane.
-**Researched:** 2026-07-29
-**Confidence:** HIGH (grounded directly in the current `internal/server`, `internal/auth`,
-`internal/webauth`, and `internal/store` source — not generic advice)
+**Domain:** Curation/maintenance tooling + interface (CLI/MCP) audit added to an already-shipped,
+correctable memory store
+**Researched:** 2026-08-03
+**Confidence:** HIGH (destructive-op design, CLI/semver conventions, alert-fatigue mechanics —
+cross-checked against multiple independent sources) / MEDIUM (agent-driven-curation consent
+architecture — an emerging area with few mature precedents, reasoned from incident reports plus
+this repo's own `supersede_memory`/`store_rule` consent gates)
 
 ## Critical Pitfalls
 
-### Pitfall 1: CSRF exemption inferred from a request-controlled signal instead of resolver provenance
+### Pitfall 1: Delete-before-extract ordering has no enforcement mechanism
 
 **What goes wrong:**
-`newConnectCSRFInterceptor` (`internal/server/connectcsrf.go`) today has exactly one identity
-source: `subjectFromConnectContext`, populated by a resolver that is *always* the cookie lane
-(`webauth.Resolver.Resolve`). Every write request that reaches the interceptor is, by
-construction, cookie-authenticated, so `verify(subj.Owner(), cookieValue)` is a safe check.
-The moment a second resolver path exists (bearer), the interceptor's implicit assumption —
-"if I have a Subject, it came from a cookie" — becomes false, but nothing in the code
-currently *says* that assumption out loud. The natural, wrong fix is to special-case the
-missing pieces of the cookie flow: skip CSRF "if there's no `engram_csrf` cookie" or "if
-there's no `X-CSRF-Token` header" or "if the caller sent `Authorization: Bearer ...`". All
-three of those are **request-controlled**: a cookie-authenticated attacker (the exact actor
-CSRF exists to stop — a browser with a live session making a cross-origin POST) can simply
-omit the CSRF header, or omit the cookie, or add a garbage `Authorization` header, and now
-qualifies for the exemption meant only for a genuinely bearer-authenticated caller. This is a
-full CSRF bypass on the six write RPCs, exploitable by any page the victim's browser loads
-while the session cookie is live — silently, because the request still authenticates fine
-(cookie → Subject) and the exemption fires before the token/cookie mismatch would ever be
-checked.
+`spine-review` purges/consolidates a phase's collapsed per-phase records before the reusable
+gotchas inside them are extracted into standalone records. The extraction step is a *judgment
+call* (semantic — "is this worth keeping as a standalone fact") that the CLI cannot make; if the
+CLI's structural purge step runs on a schedule, a threshold, or a careless flag combination ahead
+of the skill's semantic pass, the source material for extraction is gone. This is not
+hypothetical — rule `7smp8vy9hr` already mandates this exact ordering today, and nothing in the
+codebase enforces it.
 
 **Why it happens:**
-The interceptor's existing code has no explicit "how was this Subject resolved" field to
-branch on — only the *result* (a `store.Subject`), never the *mechanism*. When bearer support
-lands, whoever wires the exemption reaches for the nearest available signal, which is always
-something the caller sent on the wire (a header's presence/absence, an Authorization prefix),
-because that's what's visible at the point they're editing. This is exactly the "keyed on
-request-controlled input" trap named in PROJECT.md's milestone #1 risk, and it is structurally
-the same class of bug as v0.11.x's service-principal `owner==""` risk: a security invariant
-that lives at a seam between two independently-evolving lanes, where the "obvious" signal to
-key on is attacker-controlled.
+The CLI and the skill are two separate execution contexts (a deterministic binary vs. an LLM
+agent invoked in a separate session) with no shared transactional boundary. A CLI that exposes
+`purge`/`consolidate`/`archive` as independently invocable subcommands makes it trivial for an
+operator (or a script, or a future autonomous agent) to call `purge` without ever having called
+`extract`. Nothing about the CLI's own state distinguishes "extraction ran and found nothing
+worth keeping" from "extraction never ran."
 
 **How to avoid:**
-Provenance must be decided **inside the resolver**, at the moment the credential is actually
-verified, and carried forward as an explicit, non-inferable value — not reconstructed
-downstream from what the request happens to contain. Concretely: extend the value stashed
-under `connectSubjectKey` (or add a sibling context key) with an explicit lane tag (e.g. an
-enum `laneCookie`/`laneBearer`) set by the *resolver that succeeded*, never derived from
-header presence at the CSRF interceptor. `newConnectCSRFInterceptor` then branches on that
-tag, not on `req.Header().Get(...)` or `dummy.Cookie(...)` returning an error. Write the
-provenance-carrying field first, as its own small, reviewable change, before wiring any bearer
-resolver to it — this mirrors the v0.11.x precedent of proving the risk closed as the phase's
-**first** test, before any other write-lane code depends on the new field.
+- Make `purge`/`archive` refuse to run against a target set until a **recorded, timestamped
+  extraction pass** exists for that set (a state marker the CLI itself writes and checks — not an
+  honor system). `spine-review consolidate` should be the only path that transitions a target from
+  "reviewable" to "purge-eligible," and it should require the extraction step to have executed
+  (even if its answer was "nothing to extract") — not merely permit it to have executed.
+- Never make `purge` a single top-level verb that skips the pipeline. If an operator needs an
+  emergency bypass, require an explicit `--i-extracted-manually` flag that is loud in `--help` and
+  logged, not the default path.
+- The skill's propose-never-perform contract (see Pitfall 4) must write its own completion marker
+  the CLI can check — don't rely on the operator to have "definitely run the skill first."
 
 **Warning signs:**
-- The CSRF exemption condition (in code review) reads as `if header == "" { skip }`,
-  `if err != nil { skip }` (cookie lookup failing), or checks `req.Header().Get("Authorization")`
-  anywhere inside `newConnectCSRFInterceptor` — any of these is the bug, even if the
-  accompanying comment sounds reasonable.
-- The bearer resolver and the cookie resolver both populate the *same* `TokenInfo.Extra` shape
-  with no additional field distinguishing them — downstream code has no way to tell them apart
-  even if it wanted to.
-- Grep for `csrf` finds no reference to a lane/provenance type at all — only Subject/Owner.
+- A `spine-review purge` run that produces zero `store_memory` calls beforehand in the session
+  transcript.
+- Any code path where `purge` and `consolidate`/`extract` are structurally independent
+  subcommands with no shared precondition check between them.
+- Passing review with a happy-path test that only exercises "extract, then purge" — the
+  order-violating case (`purge` first) is exactly the case that must be a test, and it's the case
+  most plans forget to write because it's the "wrong" order nobody intends to use.
 
 **Phase to address:**
-Headless client lane (Connect bearer identity) — this MUST be the first slice of that phase,
-proven with a negative test before the bearer resolver is wired to anything else. Suggested
-test: `TestCSRFNotExemptedByMissingHeaderOrCookie` — construct a request resolved via the
-**cookie** lane (provenance = cookie) that omits `X-CSRF-Token`, omits the `engram_csrf`
-cookie, and/or carries a bogus `Authorization: Bearer garbage` header; assert
-`CodePermissionDenied` in every case. Pair it with
-`TestCSRFExemptedOnlyByBearerProvenance` — a request resolved via the **bearer** lane with no
-cookie/CSRF header present at all must pass, but a request that fails bearer verification and
-falls through to no-identity must be `CodeUnauthenticated`, never silently retried against the
-cookie lane.
+Spine curation CLI (structural) phase — the precondition-gate must be part of the initial
+`spine-review` design, not a follow-up hardening pass, because retrofitting a gate onto an already
+-shipped `purge` verb is itself a breaking change to a destructive command.
 
 ---
 
-### Pitfall 2: The combined resolver silently reclassifies a failed bearer attempt as "try cookie instead"
+### Pitfall 2: The purge step has no tombstone stage — it goes straight to hard delete
 
 **What goes wrong:**
-Mounting Connect headless-and-with-UI at once means the new resolver must decide, per request,
-which lane to try. The natural implementation is "if `Authorization` header present, try
-bearer; else try cookie" — which is exactly the request-controlled branching Pitfall 1 warns
-against, just moved one layer down (into resolver construction rather than the CSRF
-interceptor) and now controlling *which identity* the caller gets, not just the CSRF
-exemption. Two dangerous shapes fall out of this:
-1. A request carrying **both** a stale/expired `Authorization` header (e.g. a CI job with a
-   cached bad token) **and** a live session cookie: if bearer verification failing silently
-   falls through to trying the cookie, the caller gets a valid identity from a lane it didn't
-   intend to use, and any lane-specific behavior (CSRF exemption, rate limits, audit
-   attribution) now applies to the wrong lane's rules for a caller who thought they
-   authenticated as a service principal.
-2. A request carrying a garbage/replayed `Authorization` header and no cookie: if the failure
-   is swallowed and treated as "no bearer, must be a cookie-shaped request", it produces a
-   confusing `CodeUnauthenticated: no session cookie` instead of the more correct "bearer
-   token invalid" — masking the real failure and making the client's own retry logic guess
-   wrong about which credential to fix.
+Mature systems handling bulk destructive maintenance never go straight from "flagged for
+cleanup" to "gone." The standard shape is tombstone-then-finalize: mark the record
+(hidden from normal reads, still recoverable) and only irreversibly reclaim it in a later, separate,
+explicitly-invoked step, often after a grace window. Bigtable, Cassandra, and CDC pipelines all use
+this pattern for exactly this reason — a single-phase delete cannot be undone if the judgment that
+triggered it (staleness, redundancy, "this is superseded") turns out to be wrong, and judgment
+calls about memory content are exactly the class of decision most likely to be wrong at the
+margins.
 
 **Why it happens:**
-Both lanes ultimately produce the same `*mcpauth.TokenInfo` shape, so it's tempting to write
-the resolver as `if bearer, try it; on any error, fall through to cookie` — treating the two
-lanes as interchangeable fallback options the way `auth.ChainVerifier`'s OIDC-human →
-OIDC-service fallback is written (`verifyOIDCBranch` in `internal/auth/chain.go` explicitly
-tries human then service). That fallback pattern is correct *within* one mechanism family
-(both are OIDC bearer tokens); it is **not** correct *across* mechanism families (bearer vs.
-cookie) because those have different trust boundaries — a bearer credential is
-attacker-suppliable in a way a sealed, server-signed cookie is not, and CSRF-relevant code
-downstream needs to know which one actually won.
+`delete_memory` already exists as a direct, irreversible primitive (that's correct for its
+existing use — deleting obvious junk a human explicitly asked to remove). It's tempting to wire
+`spine-review purge` straight onto it because the primitive is already there and "it's just calling
+the existing tool in a loop." That reuse is the trap: a *bulk, automated* sweep calling a
+*single-record, human-intentional* primitive inherits none of the human's implicit judgment that
+made direct deletion safe in the first place.
 
 **How to avoid:**
-The resolver should determine intent **structurally and unambiguously**, not by
-try-then-fallback: if the request carries a well-formed `Authorization: Bearer <token>`
-header, that is the caller's declared lane — verify it and return success or a hard
-`CodeUnauthenticated` bearer-specific failure; never consult the cookie in that path. Only a
-request with **no** `Authorization` header at all falls to the cookie resolver. This mirrors
-`auth.ChainVerifier`'s own `discriminate()` function, which routes by *shape*, deny-by-default
-on the unrecognized branch, and never "tries everything." Reuse that discriminator concept at
-the Connect resolver boundary instead of reinventing a looser one.
+This codebase already has the correct precedent twice over — reuse it rather than inventing a new
+pattern:
+- **`schedule_memory` + `prune-expired`** is already tombstone-then-finalize: `not_after` soft-hides
+  a record from recall immediately, and only the separate, explicit `engram prune-expired` command
+  hard-deletes it, typically after the window has been visibly expired for a while.
+- **`supersede_memory`** is the same shape for corrections: the old record is soft-hidden
+  (`superseded_by` set) but never deleted — it stays fetchable by id forever.
+- `spine-review`'s purge-candidate step should **mark** records (a payload flag, or route through
+  `schedule_memory`'s existing `not_after` soft-hide with a grace window) rather than calling
+  `delete_memory` directly from the sweep. A separate, explicitly-confirmed `spine-review
+  finalize`/`--commit` step performs the actual irreversible delete, requiring the operator (or the
+  skill's consent gate) to act twice, at two different times, before data is gone.
+- Add a confirmation threshold: any purge batch above N records (or any purge touching a `rule`-
+  category record at all — rules cannot be superseded and can only be deleted, so they are the
+  single highest-consequence purge target) requires an explicit `--yes`/count-echoing confirmation,
+  not a silent bulk operation.
 
-**Warning signs:** A resolver function with an `if err != nil { return cookieResolve(...) }`
-line after a bearer verification attempt. A test suite with no case for "valid cookie present
-+ invalid bearer header present" (this exact combination is what an attacker would send).
+**Warning signs:**
+- `spine-review purge` (or whatever the terminal verb is named) calling `store.Delete` or
+  `delete_memory`'s handler directly, with no intermediate soft-hidden state.
+- No `--dry-run` default or requirement — a destructive bulk command that runs for-real on first
+  invocation, with dry-run as an opt-in rather than the command requiring an explicit
+  `--commit`/`--yes` to go live.
+- A test suite that verifies "purge deletes the record" but has no test verifying "a
+  purge-candidate is still recoverable N hours/days after being marked, before finalize runs."
 
 **Phase to address:**
-Headless client lane, same slice as Pitfall 1. Negative test:
-`TestBearerFailureNeverFallsThroughToCookie` — request has a valid session cookie AND an
-invalid `Authorization` header; assert the response is the bearer-specific
-`CodeUnauthenticated`, not a resolved cookie identity.
+Spine curation CLI (structural) phase — the tombstone/finalize split is core to the command's
+shape, not an add-on; splitting it out later means every operator script written against the
+single-step verb breaks.
 
 ---
 
-### Pitfall 3: Connect's bearer path bypasses `mcpauth.RequireBearerToken`, silently dropping the Authorization-header parse and the `Expiration` check
+### Pitfall 3: Partial-failure mid-sweep leaves the spine in an undocumented, unrecoverable middle state
 
 **What goes wrong:**
-On the MCP lane, `cmd/engram/serve.go`'s `withAuth` wraps the handler with
-`mcpauth.RequireBearerToken(chain, ...)`. That wrapper's internal `verify()` (in the go-sdk,
-`auth/auth.go`) does two things beyond calling the `TokenVerifier`: it parses
-`Authorization: Bearer <token>` out of the header itself, and — separately from whatever the
-verifier returned — it hard-rejects a zero or past `TokenInfo.Expiration`
-(`"token missing expiration"` / `"token expired"`). This is exactly the mechanism the
-milestone-context note about `RequireBearerToken` hard-rejecting a zero `Expiration` is
-describing, and it is why `StaticTokenVerifier` sets a 100-year `staticTokenExpirationHorizon`
-— that horizon exists **only** to satisfy this specific downstream check.
+A multi-record consolidation/purge sweep that dies partway (network blip to Qdrant, process
+killed, embedder outage mid-extraction) can leave some records extracted-and-marked, some purged,
+and some untouched — with no record of which stage each one reached. Re-running the sweep from
+scratch is not obviously safe: does it re-extract (creating duplicate standalone records for
+gotchas already extracted), re-purge (erroring or silently no-op'ing on already-gone records), or
+skip everything (silently leaving the untouched remainder unprocessed forever)?
 
-Connect does not go through `RequireBearerToken` at all — `newConnectSubjectInterceptor` calls
-`resolve(ctx, req)` directly and stores whatever `*mcpauth.TokenInfo` comes back, with **no**
-expiration check anywhere in that path (confirmed by reading the go-sdk's `auth/auth.go`
-directly: the `Expiration` check lives inside the unexported `verify()` helper that only
-`RequireBearerToken` calls). If the new Connect bearer resolver is implemented as "call
-`auth.ChainVerifier`'s returned function directly," it gets the header-parsing and the
-`Expiration` enforcement **from neither lane** — `ChainVerifier` itself does not check
-`Expiration`; only `RequireBearerToken`'s `verify()` does, and Connect never calls that. The
-practical effect: a `TokenInfo.Expiration` value on the Connect lane becomes decorative. For
-OIDC-derived tokens this is partially masked because the underlying OIDC verifier itself
-checks the JWT `exp` claim during verification — but for the static-token lane, whose
-`TokenInfo.Expiration` is a fabricated 100-year sentinel specifically because *something else*
-was expected to reject it, nothing on the Connect lane would ever reject an expired static
-token, because nothing on the Connect lane currently understands "expired" at all beyond what
-the verifier itself does.
+**Why it happens:**
+Curation sweeps are naturally framed as "process this batch" scripts, and it's easy to write the
+happy path (loop over records, extract, then purge) without separately handling "what if this
+crashes at record 40 of 100." Non-idempotent sweeps are the default output of straightforward
+imperative code; idempotency has to be designed in.
 
-**Why it happens:** The two transports (`net/http` MCP handler wrapped by `RequireBearerToken`,
-and the Connect interceptor chain calling `resolve` directly) were built independently and
-never shared a bearer-extraction/expiration-check helper, because until now only one of them
-(MCP) accepted bearer tokens at all. "Reusing the shipped `auth.ChainVerifier`" (as scoped in
-PROJECT.md) is correct at the verifier-composition layer but easy to conflate with "reusing
-the shipped bearer-token *handling*," which lives one layer up, in `RequireBearerToken`, and is
-MCP-transport-specific (an `http.Handler` wrapper, not something `connect.UnaryInterceptorFunc`
-can drop in directly since Connect's request shape differs).
+**How to avoid:**
+- Design every `spine-review` verb to be safely re-runnable: re-running `extract` on an
+  already-extracted record must be a no-op (detect via the state marker from Pitfall 1), not a
+  duplicate write. Re-running `purge` on an already-purged/already-tombstoned record must be a
+  no-op, not an error that halts the batch.
+  - `idempotency_key` already exists on `store_memory`/`schedule_memory` for exactly this shape —
+    prefer it for any record the skill's extraction step writes, rather than inventing a second
+    duplicate-detection mechanism.
+- Process and commit progress per-record (or in small batches with a persisted watermark), not as
+  one large all-or-nothing transaction — Qdrant has no cross-record transaction to rely on here.
+- After any sweep, `spine-review verify` should be able to detect and report an inconsistent
+  middle state (record purged with no corresponding extraction marker; record marked
+  purge-eligible but never actually removed) rather than silently reporting green.
 
-**How to avoid:** Extract the `Authorization: Bearer` header parse and the `Expiration`
-zero/past check into a small transport-agnostic helper (or literally reuse a factored-out
-version of the go-sdk's `verify()` logic) that both the MCP path (via `RequireBearerToken`,
-unchanged) and the new Connect bearer resolver call. Do not let the Connect resolver treat
-"got a `*TokenInfo` back with no error" as "authenticated" — it must independently confirm
-`Expiration` is non-zero and in the future, exactly as `RequireBearerToken` does today for MCP.
+**Warning signs:**
+- A sweep command with no persisted progress marker — killing the process and re-running produces
+  different results than letting it finish uninterrupted.
+- `spine-review verify` (or the equivalent) only checks the *current* structural invariants
+  (drifted citations, orphaned records) and has no check for "sweep started but never finished."
+- Manual testing only ever exercises full successful runs; nobody has run the sweep, killed it at
+  record N, and re-run it.
 
-**Warning signs:** The new Connect bearer resolver's happy path is `ti, err := chain(ctx, tok,
-req); if err != nil { return nil, err }; return ti, nil` with no reference to
-`ti.Expiration` anywhere. A static token whose `staticTokenExpirationHorizon` comment
-("`mcpauth.RequireBearerToken` hard-rejects...") is now misleading on the Connect lane because
-nothing on that lane does the rejecting.
-
-**Phase to address:** Headless client lane. This is **invisible to a green test suite** unless
-a test specifically constructs a `TokenInfo` with a **past** `Expiration` and confirms the
-Connect bearer resolver rejects it — a test that only exercises the happy path (valid,
-non-expired token) never exercises this gap, and `go vet`/lint have no way to flag "a field
-exists but nothing reads it." Negative test:
-`TestConnectBearerResolverRejectsExpiredTokenInfo` — feed the resolver a `TokenVerifier` stub
-that returns a `TokenInfo{Expiration: time.Now().Add(-time.Hour)}` with `err == nil`; assert
-the Connect request is rejected, not merely "the underlying verifier would have caught it" —
-this must hold even for a verifier (like a hypothetical future or misconfigured static-token
-map) that returns a stale-but-nil-error `TokenInfo`.
+**Phase to address:**
+Spine curation CLI (structural) phase, with the idempotency/re-run test as an explicit acceptance
+criterion — this is exactly the class of defect that compiles, lints, and passes a happy-path
+suite while being wrong.
 
 ---
 
-### Pitfall 4: Two independently-constructed `ChainVerifier`s drift when only one call site is updated
+### Pitfall 4: Agent-driven curation makes a confident, wrong, irreversible mutation with no consent checkpoint
 
-**What goes wrong:** `withAuth` in `cmd/engram/serve.go` is today the *single* call site that
-builds `humanVerifier`/`serviceVerifier`/`staticVerifier` from config and composes them via
-`auth.ChainVerifier`. Wiring bearer auth onto Connect requires that same composed verifier (or
-an equivalent) at the Connect mount call site. If the Connect wiring reconstructs its own
-three verifiers from `cfg.OIDC`/`cfg.ServiceAuth` independently, rather than reusing the chain
-`withAuth` already built, the two chains can silently diverge the next time either one is
-edited — e.g. a future lane added only to `withAuth`, or a bugfix to owner-claim parsing
-applied to only one construction. Both compile, both vet clean, both pass their own
-lane-scoped tests (each has its own mocked chain), and the drift is invisible until a caller
-observes different acceptance behavior between the MCP and Connect lanes for the same bearer
-token — a lane-confusion bug of a different flavor than Pitfall 1/2, but from the same root
-cause (duplicated logic at a security seam).
+**What goes wrong:**
+An LLM judging "is this record still true" or "are these two the same fact" is not making a
+retrieval decision (recoverable — just search again) — it is proposing a *write*, and a wrong
+judgment that reaches the store as a direct action is the single most expensive failure mode in
+this milestone. The 2025–2026 incident record for autonomous coding agents is now well-populated
+with cases of an agent forming a confident, plausible-sounding theory and executing a destructive
+action without any human in the loop to catch it — the common thread across every one of these
+incidents is that the agent had *direct execution authority* over the destructive primitive, not
+merely the ability to *suggest* it.
 
-**Why it happens:** `withAuth`'s three-verifier construction is presently private to
-`cmd/engram/serve.go` and returns an already-wrapped `http.Handler`, not the composed
-`mcpauth.TokenVerifier` itself — there's no existing seam to "just reuse" it from
-`mountConnect`'s call site without a refactor. The path of least resistance for whoever wires
-Connect bearer support is to copy the three `if svcAuth.X != ""` blocks rather than extract and
-share them.
+**Why it happens:**
+It's natural to give a curation skill the same tool access as normal working sessions
+(`update_memory`, `supersede_memory`, `delete_memory` all callable directly) because "the skill
+already knows the right verb to use." The failure isn't the skill's judgment being wrong sometimes
+— it's that the architecture gives a wrong judgment a direct path to an irreversible outcome with
+no other party ever seeing the proposal before it executes.
 
-**How to avoid:** Refactor `withAuth` to expose the composed `mcpauth.TokenVerifier` (or the
-raw lane constructors) as a separate function callable from both `withAuth` (MCP) and the new
-Connect-mount wiring — one build site, two consumers. This is the same "one call site" pattern
-the milestone already values (`withAuth` is explicitly documented as "the ONE call site that
-changes for the service-auth chain").
+**How to avoid:**
+- **Propose-never-perform is the whole design, not a documentation note.** The skill must never
+  itself call `supersede_memory`/`update_memory`/`delete_memory`/`store_rule` as its terminal
+  action. It should emit a structured proposal (which records, which action, why) that a human (or
+  the deterministic `spine-review` CLI, after human confirmation) executes. This mirrors the
+  existing, already-proven `store_rule` consent gate in this codebase: "an agent proposes a rule
+  candidate... `store_rule` is invoked only after the user blesses it (never promoted
+  unilaterally)" — reuse that exact shape rather than inventing a new one.
+- Batch proposals with a visible diff-like summary (what changes, what's lost) before any commit,
+  the same way a destructive `git` operation shows a diff before an irreversible rebase/reset.
+- Never let the skill's own output format be silently executable by tooling downstream (e.g., no
+  "if the proposal JSON validates, auto-apply it" convenience path) — that reintroduces direct
+  execution authority through a side door.
+- Rules are the highest-consequence target: they are user-blessed ground truth and **cannot be
+  superseded, only deleted**. The skill must never propose rule deletion with the same casualness
+  as an ordinary memory correction — require a distinctly higher-friction confirmation for any
+  rule-category proposal.
 
-**Warning signs:** `grep -n "auth.NewService\|auth.NewStaticTokenVerifier\|auth.New("
-cmd/engram/*.go internal/server/*.go` returns matches in more than one file/function.
+**Warning signs:**
+- Any code or skill instruction path where the agent's own tool-call sequence includes a mutating
+  memory verb as a *consequence* of its semantic judgment, rather than a proposal artifact that a
+  separate step (human, or a deterministic re-invocation) turns into a tool call.
+- A "confidence threshold" gating auto-apply (e.g., "if similarity > 0.95, merge automatically") —
+  this reintroduces auto-extraction/auto-mutation by another name, which is the exact thing this
+  project's design intent (explicit, zero-junk, no auto-extraction, ever) forbids.
+- A demo/cold-read validation that only tests the agent proposing correctly, never tests the
+  agent being *wrong* and confirms the wrong proposal still stops at consent (the v0.12.x rule-
+  capture phase's own validation method — a cold-read agent — is the right template; it must be
+  repeated here with an adversarial/wrong-judgment case, not just a correct one).
 
-**Phase to address:** Headless client lane. Verification: a single `TestAuthChainSharedBetweenLanes`
-(or a code-structure assertion, mirroring the `TestWriteParity` AST-delegation precedent from
-v0.11.x) confirming both mount sites call the same constructor function, not parallel
-copies.
-
----
-
-### Pitfall 5: Headless mount silently flips a deployment's exposure on upgrade
-
-**What goes wrong:** `mountConnect` (`internal/server/connectapi.go:362-365`) today returns
-immediately when `resolve == nil`, and `resolve` is only non-nil when the UI is enabled
-(cookie resolver wired). Every deployment that runs with the UI disabled today has **no**
-Connect surface at all — not gated-and-empty, genuinely absent from the mux. The moment
-headless mounting exists, that invariant inverts: a deployment upgrading past this milestone
-could go from "no Connect endpoint reachable" to "Connect endpoint reachable with bearer auth"
-without any deliberate operator action, if the new flag defaults on, or if the flag's absence
-is treated as "mount using whatever auth is available" rather than "don't mount." This is a
-network-surface exposure regression on upgrade — the exact failure mode PROJECT.md's posture
-note calls out ("a deployment with no Connect surface today could gain one").
-
-A second, subtler version: even with the new flag correctly defaulting off, if the *condition*
-for mounting becomes `resolve != nil || headlessEnabled` where `headlessEnabled` derives its
-default from something that's already true in most deployments (e.g. "true whenever any
-service-auth lane is configured," since v0.11.x shipped service auth already), operators who
-configured static tokens or client-credentials **for the MCP lane only** get Connect mounted
-as a side effect, without ever opting into a Connect-specific exposure decision.
-
-**Why it happens:** The cleanest code change is often "loosen the early-return condition,"
-which is easy to write as an OR that silently broadens exposure rather than a genuinely
-separate, independently-defaulted-off gate.
-
-**How to avoid:** The new headless-mount config key must be its own explicit
-`ENGRAM_`-prefixed field (per the koanf field-registry discipline, DEC-jgq) with a
-default-off zero value, checked as its own independent condition — never derived from,
-or OR'd with, the existing UI-enabled/service-auth-configured flags. `mountConnect` should
-mount when `(UI enabled AND cookie resolver present) OR (headless flag explicitly true AND
-bearer chain present)` — two clearly separate booleans, not one loosened one. Document the
-default in the Helm chart's `values.yaml` with an explicit comment that it is opt-in, and add
-a config-loader test asserting the zero-value/unset case leaves Connect unmounted exactly as
-it is pre-milestone.
-
-**Warning signs:** The diff to `mountConnect`'s guard condition is a one-line change to the
-existing `if resolve == nil` check rather than an additional, separately-named condition. The
-Helm chart's new value has no explicit `false`/empty default committed alongside it. No test
-asserts "UI disabled, headless flag unset → Connect not mounted" (the pre-milestone baseline
-behavior) still holds.
-
-**Phase to address:** Headless client lane. Negative test: `TestMountConnectDefaultOffWithoutUIOrHeadlessFlag`
-— construct config with UI disabled and the new headless flag left at its zero value; assert
-`mountConnect` still returns without registering any handler, byte-for-byte the current R1
-behavior.
+**Phase to address:**
+Companion curation skill (semantic) phase — the consent architecture is the deliverable, and it
+must be validated the same way v0.12.x validated rule capture: a cold-read agent test, including at
+least one case where the "obviously right" answer is actually wrong, to prove the gate holds under
+a confident bad proposal, not only a correct one.
 
 ---
 
-### Pitfall 6: Docs, Helm chart, and field registry drift out of sync with the new headless/bearer surface
+### Pitfall 5: Semantic dedup/merge collapses two records that were not, in fact, the same fact
 
-**What goes wrong:** A new `ENGRAM_` config key, a new CLI subcommand set, and a newly
-reachable network endpoint each have their own documentation surface (`docs-site/`, Helm
-`values.yaml` comments, `internal/config`'s field registry, and — per this exact milestone's
-own #356 item — the committed `gen/` drift-check). Shipping the server-side capability without
-updating all of them produces a deployment that *can* run headless but whose Helm chart has no
-documented value for it, whose docs-site has no guide describing the bearer-token flow (in the
-same style as the existing `guides/reindex` / `guides/embedding-models.md` precedent), and
-whose operators have no way to discover the feature except by reading source. This isn't a
-correctness bug, but it directly produces the "silently gains an exposed endpoint" complaint
-from a different angle: an operator who *does* want headless mode has no documented, supported
-way to turn it on safely (CSRF/token lifecycle implications included), so they either don't
-adopt it or misconfigure it.
+**What goes wrong:**
+Merging two memories that are lexically or embedding-similar but semantically distinct (e.g., "we
+decided X for repo A" and "we decided X for repo B," or a decision and its later, narrower
+refinement) destroys information. Published guidance on this exact failure mode is consistent:
+even a high cosine-similarity threshold (0.9+) can spuriously merge statements that differ along a
+critical axis the embedding doesn't weight heavily (scope, sign/polarity, "still true" vs. "was
+true then"), and no single scalar threshold is safe as a fully automatic gate.
 
-**Why it happens:** Config/docs/chart updates are easy to defer to "polish" and this milestone
-already has an explicit "completion tail" bucket (#356 codegen drift) suggesting the project
-has a known pattern of shipping code before docs/chart catch up.
+**Why it happens:**
+Vector similarity measures *surface* semantic closeness, not "these are the same fact for the
+purposes of curation." Two decisions with nearly identical wording but opposite scope, or a
+decision and its later refinement (which this repo already distinguishes structurally —
+`supersede_memory` vs. `update_memory`), can sit above any similarity threshold that's loose
+enough to catch true duplicates.
 
-**How to avoid:** Treat the Helm `values.yaml` recipe + docs-site guide + `internal/config`
-field-registry entry as part of the same unit of work as the headless-mount code itself, not a
-follow-up — mirroring how Phase 14 paired every embedder model option with a `values.yaml`
-recipe and a docs-site guide in the same phase.
+**How to avoid:**
+- Treat similarity score as a **candidate filter for the semantic skill to examine**, never as a
+  merge trigger on its own. The skill's job is exactly the judgment a threshold can't make; a
+  threshold's job is only to narrow the candidate set worth showing a human/agent.
+- Distinguish "is-the-same-fact" merge candidates from "is-a-correction-of" candidates explicitly
+  — the former belongs nowhere in this system's vocabulary as a destructive merge (there's no
+  `merge_memory` primitive and there shouldn't be one); the latter already has the correct primitive
+  (`supersede_memory`, additive, recoverable). A "these are duplicates" proposal from the skill
+  should map to *deletion of the redundant one after extraction of anything unique*, never to a
+  new "combined" record replacing two others — a fabricated merged record is unverifiable against
+  either original.
+- Make any merge/redundancy proposal show both full records side by side in the proposal artifact
+  — never a similarity score alone — so the human confirming it can see the axis a score would
+  hide (scope, time, negation).
 
-**Warning signs:** `task chart:push`/Helm lint passes but `values.yaml` has no comment block
-for the new key. `rg` for the new `ENGRAM_` env var name finds it in `internal/config` and
-tests but nowhere under `docs-site/`.
+**Warning signs:**
+- Any design that treats "cosine similarity above threshold N" as sufficient justification to
+  purge one of a pair, with no distinct-content check.
+- A `spine-review`/skill proposal format that shows a similarity score without showing both
+  records' full content for comparison.
+- No test case in the acceptance suite for "two records are similar but scoped to different
+  repos/workspaces/time windows and must NOT be proposed as duplicates."
 
-**Phase to address:** Headless client lane (documentation slice, same phase, not deferred).
-
----
-
-### Pitfall 7: A first-party CLI leaks its bearer token via argv, shell history, or child-process environment
-
-**What goes wrong:** A CLI invoked as `engram store --token=eyJ...` (or similar) puts the
-token in `ps auxww` output, shell history files, and any process-list-scraping monitoring —
-visible to every other user on a shared CI runner or box, and to any tool that logs the
-command line it ran (a very common CI failure mode: the exact invocation, secrets included,
-ends up in build logs). A token passed via an env var is safer from `ps`, but is not free
-either: env vars are inherited by every child process the CLI spawns (unlikely here, but
-relevant if the CLI ever shells out) and, more importantly, are commonly captured whole by
-crash-reporting/telemetry libraries that dump `os.Environ()` on panic — a bearer token in
-`ENGRAM_TOKEN` ending up verbatim in a Sentry/crash-report payload is a real, easy-to-miss
-leak. A CLI built for "autonomous agents and CI" is specifically the profile most likely to be
-invoked non-interactively with credentials baked into scripts, making this more likely than
-for a human-operated CLI.
-
-**Why it happens:** `--token` flags are the fastest thing to implement and test; env-var
-support is added as "the secure alternative" without actually auditing what else in the binary
-reads/logs/dumps the full environment.
-
-**How to avoid:** Prefer reading the token from a file path (`ENGRAM_TOKEN_FILE` or
-`--token-file`, following the same `ENGRAM_` prefix convention as the server), never accept it
-as a bare CLI flag value (accept `--token-file` only, or read stdin), and if an env var is
-supported, audit that no panic/crash-report/telemetry path in the CLI dumps `os.Environ()` or
-logs its own invocation args verbatim. Never `slog` the resolved token or the raw
-`Authorization` header value anywhere in the CLI (mirrors the server's own
-no-token-in-logs discipline already established for `StaticTokenVerifier`).
-
-**Warning signs:** `--help` output or README examples show `engram store --token=...` as the
-documented usage. Any `recover()`/panic handler in the CLI includes `%+v` of a config struct
-that embeds the raw token, or logs `os.Environ()`.
-
-**Phase to address:** Headless client lane (CLI subcommand slice).
+**Phase to address:**
+Companion curation skill (semantic) phase, with the "is this the same fact" prompt design itself
+being validated against adversarial near-duplicate-but-distinct pairs, not only true duplicates.
 
 ---
 
-### Pitfall 8: CLI TLS-verification default and error/exit-code design make automation unsafe or unusable
+### Pitfall 6: False-positive staleness detection trains operators to stop trusting the verifier
 
-**What goes wrong:** Two independent traps for a CLI meant to run unattended in CI/agents:
-(1) a convenience `--insecure`/`InsecureSkipVerify` flag that's easy to leave on by default
-during development and never removed before shipping — silently accepted by an agent script
-that never notices TLS verification was off; (2) collapsing every failure (auth rejected,
-network unreachable, server 500, CSRF/authz denied, malformed input) to the same exit code 1
-— which is exactly what `connectError`'s Connect-code taxonomy (`CodeUnauthenticated`,
-`CodePermissionDenied`, `CodeNotFound`, `CodeInvalidArgument`, `CodeFailedPrecondition`,
-`CodeInternal`, plus the `context.Canceled`/`DeadlineExceeded` arms) already exists to prevent
-server-side. A CLI that throws that taxonomy away at the last mile forces every calling script
-to string-match stderr to decide "should I retry" vs "should I alert a human" vs "is my token
-just expired" — brittle by construction and exactly the kind of thing this project's own
-CLAUDE.md warns against pinning to strings.
+**What goes wrong:**
+An automated "this record looks stale/drifted" check that fires too often on records that are
+actually still valid produces the same dynamic documented extensively in security-alert-fatigue
+research: repeated investigation of alerts that turn out benign trains the operator to give every
+alert — including the real ones — the same skeptical, cursory dismissal. Applied here: if
+`spine-review`'s citation-drift or staleness detector cries wolf on `file:line` anchors that
+merely moved (rather than becoming actually wrong), operators will start reflexively dismissing
+its output, including the times it's caught something real.
 
-**Why it happens:** TLS verification bypass flags get added for local/dev testing against a
-self-signed cert and never gated behind an explicit, loud, non-default opt-in. Exit codes get
-treated as an afterthought because the interactive human use case ("read the error message")
-works fine with a single generic failure code.
+**Why it happens:**
+`file:line` citations drift on *every* edit to the cited file, including pure reformatting,
+unrelated additions above the cited line, or renames that don't touch semantics at all. A naive
+"does this line number still exist / does the line still contain roughly this text" check will
+fire constantly in a fast-moving codebase, vastly out of proportion to genuinely broken citations.
 
-**How to avoid:** No TLS bypass by default; if a bypass flag exists at all, require both an
-explicit flag AND a matching env var (defense against a script accidentally inheriting a flag
-from a copied command line) and print a loud warning to stderr every time it's used. Map the
-Connect code taxonomy to a small, stable, documented set of CLI exit codes (e.g. 2 =
-auth/credential failure, 3 = permission/CSRF denied, 4 = not found, 5 = invalid
-argument/validation, 1 = everything else/internal) so CI and agent callers can branch on
-`$?` without parsing text.
+**How to avoid:**
+- Distinguish "line moved but content is unchanged/recognizable" (low severity, informational —
+  auto-repairable by re-locating the anchor via a fuzzy/content match) from "the cited content is
+  gone entirely" (high severity — the citation is actually broken and needs human attention).
+  Never surface both at the same severity.
+- Where the anchor can be mechanically re-resolved (same function/symbol, shifted line number),
+  auto-repair it as part of the verify pass and report it as a fixed-not-flagged count, rather than
+  asking a human to confirm a move that carries no information.
+- Track and report the detector's own false-positive rate over time (how many flagged citations
+  were, on operator review, actually fine) — treat a persistently high rate as a defect in the
+  detector, not a fact about the spine.
+- #355 (drifted `tools.go` citation anchors) is explicitly the fixture this verifier needs to get
+  right — use it as the calibration case: does the shipped detector correctly classify it as
+  "broken" without also flagging a large number of merely-moved, still-valid citations elsewhere
+  in the same sweep?
 
-**Warning signs:** The CLI's only documented exit codes are "0 = success, 1 = failure." A
-`--insecure` flag exists with no corresponding test asserting it is off by default.
+**Warning signs:**
+- A first real run of `spine-review verify` against the live spine that flags a large fraction of
+  all citations as "drifted" — that's a detector-precision problem, not a spine-health finding, and
+  shipping it as-is guarantees the next several runs get ignored.
+- No distinction in the tool's output between "auto-repaired, FYI" and "needs your judgment."
+- Operators (in dogfooding/UAT) skipping past `spine-review verify` output without reading it
+  after the first run or two — that is the alert-fatigue signature and should block ship, not be
+  noted as a UX nit.
 
-**Phase to address:** Headless client lane (CLI subcommand slice).
-
----
-
-### Pitfall 9: Client/server version skew silently misbehaves instead of failing loud
-
-**What goes wrong:** The CLI talks to the typed Connect stubs generated from `proto/`. This
-project's own `buf breaking` discipline keeps the wire contract additive-only, so an *older*
-CLI against a *newer* server is generally safe (new fields just don't populate). The dangerous
-direction is a *newer* CLI against an *older* server: a CLI built after a field is added (e.g.
-a future `cross_spine` on `SearchMemoriesRequest`, per #344) sent to a server that predates
-that field either silently no-ops the new behavior (the exact "carried caveat" already
-documented for v0.11.x: "the deployed engram server predates this merge, so `supersede_memory`,
-citations, and the `categories` filter are not callable until the next release") or, worse,
-the CLI interprets an old server's response shape as if the new field were honored, presenting
-results the user believes are cross-spine-scoped when they are not — a silent correctness
-regression in exactly the search-scope dimension Pitfall 10 below is about.
-
-**Why it happens:** Additive-proto discipline protects the *wire format* from breaking, but
-says nothing about whether the *client's assumptions* about server behavior hold — that's a
-semantic, not a schema-level, compatibility question, and nothing currently checks it
-automatically.
-
-**How to avoid:** Have the CLI report the server's build/version (a lightweight version RPC or
-reuse of an existing metadata surface) and, for any CLI flag that depends on a
-recently-added field, either detect the server doesn't support it and fail loud
-("cross_spine requires engram server ≥ v0.12.0") or clearly label output as
-possibly-unscoped when the server is too old to guarantee the flag was honored. At minimum,
-document the version-skew caveat in the CLI's own docs guide the way the v0.11.x carried
-caveat was documented in PROJECT.md.
-
-**Warning signs:** No `engram --version`-equivalent server round-trip exists; the CLI has no
-test simulating "new client flag against a server response that omits the corresponding
-field."
-
-**Phase to address:** Headless client lane (CLI subcommand slice); cross-reference into
-Cross-spine memory recall phase for the `cross_spine`-specific instance.
+**Phase to address:**
+Spine curation CLI (structural) phase, using #355 as the acceptance fixture and requiring a
+false-positive-rate check as part of that phase's verification, not deferred to post-ship
+observation.
 
 ---
 
-### Pitfall 10: `scope` becoming optional widens the authz filter, not just the search filter
+### Pitfall 7: A previously-accepted flag combination is now rejected — a silent breaking change
 
-**What goes wrong:** `search_memory`'s `cross_spine` (mirroring `SearchDiscoveryArgs.CrossSpine`)
-makes `scope` optional. The existing `SearchDiscoveries` Connect handler already has a
-precedent for this exact shape: `CrossSpine: req.Msg.Scope == ""` — an *empty* scope is
-deliberately overloaded to mean "search everywhere," and `deps.searchDiscovery`'s
-`effectiveDiscoveryScope` explicitly rejects an empty scope **unless** `CrossSpine == true`.
-The danger for `search_memory` is that "everywhere" for a discovery scope (all
-`discovery:*` scopes) is a fundamentally different authorization surface than "everywhere" for
-a regular memory scope: memories are not confined to a `memory:*`-style namespace the way
-discoveries are confined to `discovery:*` — a memory record's `scope` is an arbitrary
-repo/workspace/worktree string. If cross-spine memory search is implemented by simply *not
-appending a scope filter* to the Qdrant query when `cross_spine=true`, the remaining filter is
-whatever the **owner/authz** `Must` clause already provides — which is correct *only if* that
-owner clause is unconditionally applied ahead of, and independently of, the scope filter, the
-same way DEC-cgb requires. The actual risk is subtler than "forgot to filter by owner": it's
-that the *existing* single-scope code path may have historically leaned on `scope` being
-required as an implicit second narrowing signal in some code path (e.g., a helper that only
-gets called with a non-empty scope today and was never audited for empty-scope behavior),
-and making `scope` optional exercises that helper on an input it was never designed for.
+**What goes wrong:**
+Adding `MarkFlagsMutuallyExclusive` (or equivalent hand-rolled validation) to enforce a constraint
+that was previously only *documented* in help text (per #453: `client_list.go`'s
+`--offset`/`--cursor-mode`/`--page-token` mutual exclusivity) changes the CLI's actual accepted
+input surface. Any script, cron job, or agent invocation that was — deliberately or accidentally —
+passing more than one of these flags together and silently getting *some* behavior (whichever the
+code happened to prioritize) will now get a hard rejection where it previously ran to completion.
+That is a breaking change to a shipped CLI's public contract (the CLI's flags are its API), even
+though the change looks purely like "finally enforcing what was already documented."
 
-**Why it happens:** The `SearchDiscoveries` precedent makes "optional scope = cross_spine
-flag" look like a solved, safe pattern to copy — but discovery and memory categories don't
-share exactly the same authz-filter code path (discoveries live in `discovery:*` scopes by
-convention; regular memories don't have an equivalent namespace convention), so copying the
-*shape* of the fix without re-verifying the *filter composition* underneath it is the trap.
-Additionally, "scope optional" is easy to implement as "if scope=='' skip the scope clause,"
-which is correct only if the authz clause was already unconditionally composed — a fact that
-must be verified by reading `Store.Search`'s filter-building code, not assumed by analogy.
+**Why it happens:**
+It's easy to treat "the help text already says these are mutually exclusive" as license to add the
+enforcement freely — the validation *looks* like it's just catching a bug, not removing a
+capability. But an unenforced "shouldn't combine these" is, in practice, a permissive
+under-specified behavior, and any caller relying on that permissiveness (even accidentally, even
+via a flag passed by a script that no longer needs it but never got cleaned up) breaks.
 
-**How to avoid:** Before touching `search_memory`'s handler, read `Store.Search`'s Qdrant
-filter construction end to end and confirm the authz `Must` clause (owner/visibility bucket
-decision) is composed **unconditionally**, with the scope condition as a genuinely separate,
-optional `Must` entry — never a single combined condition where omitting scope could
-accidentally also omit part of the authz gate. Add the cross-spine flag as an explicit,
-named parameter through the same `store.SearchOptions` struct discipline already established
-in v0.11.x (D-09: "Two adjacent `[]string` params transpose silently"; the same "explicit
-struct field over positional/implicit" lesson applies to a boolean flag as much as to a slice
-param). Write the negative test *before* the implementation.
+**How to avoid:**
+- Audit real invocation patterns (scripts, CI, the operator console if any command wraps CLI calls,
+  agent skill invocations) for the flag combination being newly forbidden *before* landing the
+  validation — this is different from checking whether the constraint is documented; it's checking
+  whether anyone actually violates it today.
+- Where the newly-enforced combination could plausibly be in use, land the enforcement as a
+  *warning* first (one release/minor version) before making it a hard error — the standard
+  deprecate-then-remove shape (mark deprecated with a clear message for at least one release cycle,
+  then remove/error) applies just as much to "flags now conflict" as to "flag now removed."
+- Since this repo's CLI is the public API surface and the project treats CLI flags/exit codes as
+  the interface (correct-by-reading, D-00), any test suite added for this must include a
+  **negative-space regression test** proving the *old* accepted combination now correctly errors —
+  not just a test that the *new* rejection message text is right. Silently accepting a
+  previously-rejected-in-code-review-but-not-in-code combination is exactly the kind of thing that
+  passes `go vet`/lint/happy-path tests.
 
-**Warning signs:** The diff to `Store.Search` shows the scope condition and the owner/authz
-condition built by a single function that takes `scope string` and only adds *one* combined
-filter clause for "isolation" — i.e., scope and authz aren't visibly two separate `Must`
-entries in the Qdrant filter you can point to independently.
+**Warning signs:**
+- A PR adding `MarkFlagsMutuallyExclusive` with no corresponding test asserting the *specific* old
+  behavior (e.g., "when both `--offset` and `--cursor-mode` were passed together, the tool used to
+  do X") is now gone and replaced by a rejection — if the old behavior was never pinned by a test,
+  there's no way to know whether removing it breaks someone.
+- No CHANGELOG/release-notes line calling out the new rejection as a **breaking change** distinct
+  from ordinary bug fixes — release-please's conventional-commit categorization will bury this as a
+  `fix:` unless it's deliberately marked (`!`/`BREAKING CHANGE:`) footer, which changes semver
+  bump behavior too.
 
-**Phase to address:** Cross-spine memory recall. Negative test:
-`TestCrossSpineSearchNeverBypassesOwnerFilter` — two different authenticated owners each with
-records in overlapping scope names; owner A searches with `cross_spine=true` and an empty
-scope; assert owner B's private records never appear in A's results, using real Qdrant
-(testcontainers, matching the project's existing `-race` vs. real-Qdrant precedent for
-authz-adjacent features) rather than a mock that could paper over a real filter-composition
-bug.
+**Phase to address:**
+Documented constraints made enforceable (#453) phase — the audit-before-enforce step belongs at
+the start of this phase, not as an afterthought once the validation already exists.
 
 ---
 
-### Pitfall 11: `authz.Decision.diag` wiring leaks PII, aids policy probing, or is only exercised on the deny path
+### Pitfall 8: Exit-code changes look like cleanup but break every script branching on them
 
-**What goes wrong:** `authz.Decision` (`internal/authz/authz.go`) carries an unexported
-`diag cedar.Diagnostic` computed on **every** `DecideBucket`/`DecideRecord` call — allow and
-deny alike — but currently has zero readers. Wiring it to debug logging has three distinct,
-independent failure modes:
-1. **PII/identity leakage.** DEC-wot already locked "spans carry `engram.owner` (opaque
-   `sub`) only; exclude actor/email as PII" specifically because raw claim values are
-   sensitive. A `cedar.Diagnostic` dump can easily include the full Cedar entity/request,
-   which — depending on how the PDP's Principal/Memory schema populates its attributes —
-   may embed the same owner/actor strings DEC-wot deliberately keeps out of telemetry. Wiring
-   `diag` to logging without re-applying that same redaction discipline reopens a decision
-   the project already made once.
-2. **Policy-probing detail.** A verbose diagnostic (which policy IDs matched/didn't match,
-   why) is exactly the kind of oracle an attacker probing for authz bypasses wants — Cedar's
-   own diagnostic is designed for *operator* debugging, not for being echoed anywhere a
-   caller (even indirectly, via a shared log aggregator with broader read access than the
-   engram operator) might see it. It must land in `debug`-level structured logging /
-   span events only — never in any client-facing error (this dovetails with `connectError`'s
-   existing discipline of a generic `CodeInternal` message with no store/embed internals
-   leaked to the client).
-3. **Only-correct-on-deny diagnostics.** It's tempting to wire logging as
-   `if !decision.Allow { log(decision.diag) }` — cheap, and deny is the "interesting" case.
-   But `diag` is computed unconditionally per the doc comment ("computed on every decision"),
-   and an **allow**-path diagnostic is just as valuable for debugging "why did this succeed
-   when I expected a deny" (e.g. investigating an over-permissive policy, or confirming a
-   fix). A deny-only wiring silently produces a diagnostic feature that only ever shows half
-   the picture, and worse, nobody notices because the deny path still "looks complete" — it's
-   invisible until someone specifically needs to debug an unexpected *allow*.
+**What goes wrong:**
+This repo already carries a live, deliberate split: client-facing verbs use a 0/2/4/5 taxonomy
+(D-17) while six operator-command sites stay on exit 1 as a backward-compatibility carve-out
+(D-09, tracked as #467 — "no surface states which taxonomy governs which command"). Any attempt to
+"finish the job" and unify these during this milestone's audit is itself the highest-risk change
+in the whole milestone: a cron job, a CI step, or an operator's own script that branches on
+`engram migrate-remap-owner; if [ $? -eq 1 ]` (today's contract) silently does the wrong thing —
+or nothing at all — the moment that command's failure exit code moves to match the client
+taxonomy.
 
-**Why it happens:** Deny-path logging is the obvious, minimal-effort interpretation of
-"diagnostics for what the server rejects," and PII-safety is easy to forget because
-`cedar.Diagnostic` is an opaque third-party type whose exact field shape isn't obvious without
-reading the cedar-go source — nobody currently in this codebase has needed to look inside it.
+**Why it happens:**
+Exit codes are invisible in code review relative to their blast radius — a one-line change from
+`os.Exit(1)` to `os.Exit(2)` reads as trivial, and nothing in a Go type system or a passing test
+suite for the command itself will show that some external caller's branch on the old value now
+takes the wrong path. This is precisely the class this project has already been bitten by once
+(the `*argError` switch-arm-order collapse, `667p88n2be`): a dispatch/mapping change that is
+locally correct but globally wrong, verifiable only by checking every call site, not by unit-
+testing the changed function alone.
 
-**How to avoid:** Log `diag` on both allow and deny at `debug` level (never `info`/`warn`, to
-bound volume — see Performance Traps below), gated the same way other debug-only spans/logs in
-this codebase already are, and explicitly enumerate which `cedar.Diagnostic` fields are safe
-to log (policy IDs, allow/deny reason codes) versus which carry request/entity attribute
-values that must be redacted or omitted, re-applying DEC-wot's owner-only-no-actor-no-email
-rule to whatever attribute set the diagnostic exposes. Add a code-review checklist item (or a
-test asserting a fixed set of safe field names) rather than trusting ad hoc judgment at the
-call site.
+**How to avoid:**
+- Resolve #467 by **documenting the boundary explicitly** (which taxonomy governs which command,
+  as a decision record) before changing any actual exit code — the milestone goal listed is "one
+  exit-code taxonomy, **or a documented boundary**"; the documented-boundary option is strictly
+  lower risk and should be the default unless there's a concrete, named consumer that benefits from
+  unification enough to justify a breaking change.
+- If unification is chosen anyway, treat it exactly like the flag-validation breaking change in
+  Pitfall 7: one minor version with both codes supported/documented as deprecated-old-code, a
+  CHANGELOG breaking-change entry, and a grep across this repo's own CI/Taskfile/scripts (plus any
+  known operator automation, e.g., `prune-expired`/`reindex` invoked from a cron) for exit-code
+  branches before flipping the default.
+- Pin the **current** per-command exit code with a table-driven test enumerating every operator
+  command's exit code for its known failure modes — this is the negative-space test that would
+  have caught the switch-arm-order regression class earlier, and it's the only thing that makes
+  "we changed exit codes" a visible, reviewable diff instead of an invisible one.
 
-**Warning signs:** The wiring is a single `if !decision.Allow` branch. A `slog.Debug` call
-passes `decision` (or an unredacted `diag`) as a single `%+v`-style value rather than
-extracting named, reviewed fields.
+**Warning signs:**
+- A code review of an exit-code change that only checks "does the new code make semantic sense,"
+  never "what does this command currently return today, pinned by a test, that this diff changes."
+- No table anywhere in the codebase or docs enumerating command → exit-code contract — if the
+  audit phase produces one, that itself is evidence the gap existed; if it doesn't produce one,
+  the boundary is still undocumented and the pitfall is unaddressed.
+- Any exit-code dispatch implemented as a sequence of `if`/`switch` arms ordered by
+  first-match-wins without an exhaustiveness check — the exact shape that silently collapsed all
+  hint-code classes once already in this codebase.
 
-**Phase to address:** Authz diagnosability.
-
----
-
-### Pitfall 12: "Improving" a validation error message masks a different real failure
-
-**What goes wrong:** #360 names a live instance of this exact class: `store_memory` reports
-`missing properties: ["content"]` when the actual fault is an over-long `summary`. This kind
-of bug is almost always a symptom of *validation logic that isn't independently testable per
-field* — e.g., a JSON-schema `oneOf`/`allOf` construction where an over-long `summary`
-disqualifies the whole schema branch that would otherwise have matched, and the validator's
-generic "which required property is missing" fallback reports whichever property that
-disqualified branch happened to require, not the field that actually failed. Simply changing
-the string ("content is required" → something else) without fixing the underlying branch-
-misattribution risks two new failure modes: (a) the new message is *also* wrong for a
-different malformed-input shape nobody tested (the fix "cures" the one reported case and
-introduces a fresh mismatch for another combination of bad fields), or (b) the message is
-correct in isolation but a test written to pin the new string text is now a brittle assertion
-that will break the next time wording is touched for an unrelated reason, without ever
-verifying the message is *accurate* for the actual failing field.
-
-**Why it happens:** Error-message bugs get fixed by testing the one reported repro case (an
-over-long summary produces the wrong message) and asserting the new string appears — passing
-that one test looks like "fixed," but if the fix is a string substitution rather than a
-validation-attribution fix (report the field whose own constraint actually failed, not a
-downstream schema artifact), the underlying misattribution mechanism is untouched and will
-resurface on the next multi-field-invalid input.
-
-**How to avoid:** Root-cause the *validation branch selection*, not the string: find where the
-schema/validator decides "which required property to name" and confirm it can name any field
-whose own independent constraint fails (content empty, summary too long, category invalid,
-etc.), not just a hardcoded "content" fallback. Test message *accuracy*, not exact text:
-assert the error mentions the actually-invalid field name (e.g. `strings.Contains(err.Error(),
-"summary")` and NOT `strings.Contains(err.Error(), "content")`) for a case where only summary
-is invalid — this pins correctness without pinning brittle full-string wording, and will still
-catch a regression where the misattribution comes back under a *differently worded* message.
-Also add a matrix test: for each single-field-invalid case (bad content, bad summary, bad
-category, bad scope, ...) assert the reported field matches the actually-broken one — this is
-the only way to catch the "fixed the reported case, broke a different one" failure mode.
-
-**Warning signs:** The fix diff is a one-line string change with no change to the validation
-control flow. The only new/changed test asserts the exact previously-reported string
-(`"summary too long"` for example) rather than a matrix of single-field-invalid cases.
-
-**Phase to address:** Failure legibility. This class of bug **survives a green test suite** by
-default — the original bug shipped despite full lint/vet/test coverage precisely because
-nothing exercised "summary too long AND content present" as a distinct case from "content
-missing"; a fix that only adds back a test for the one reported repro leaves every *other*
-multi-field-invalid combination equally unverified.
+**Phase to address:**
+One exit-code taxonomy, or a documented boundary (#467) phase — must ship a decision record either
+way, and if unification is chosen, must ship the pinned-current-behavior regression test in the
+same change, not after.
 
 ---
 
-### Pitfall 13: `reindex --resume`'s equality key needs the target's *tags*, not just its content — and the target lookup doesn't fetch them yet
+### Pitfall 9: A verify/test-selection command that matches nothing exits 0 — a false green forever
 
-**What goes wrong:** `Store.Reindex`'s resume-skip check (`internal/store/store.go`, around
-line 2667) currently compares only `ti.content == content` (plus the identity stamp) to decide
-whether a point can be skipped as unchanged. `reindexTarget` (the per-id resume-lookup shape)
-has exactly two fields, `content` and `identity` — **no `tags` field at all** — and
-`reindexTargetContents` only ever reads `p.Payload["content"]` and the identity key out of the
-target collection's stored payload; it never reads `p.Payload["tags"]`. A tag-only edit
-(content unchanged, tags changed) is therefore currently invisible to the resume check: the
-source content matches the target's stored content, so the point is skipped as `Unchanged`,
-even though its vector was originally embedded via `EmbedText(m.Content, m.Tags)` — folding
-tags into the embedding — so a tag change *should* trigger a re-embed but silently doesn't.
+**What goes wrong:**
+Memory `bsbsvn4hbc` already documents this exact failure class in this codebase: `go test -run
+<pattern>` matching zero tests exits 0, so a Nyquist `VALIDATION.md` row recording a `-run` command
+as "passing" can be **permanently, silently wrong** if the pattern ever stops matching (a rename,
+a moved test, a typo introduced during refactor) — nothing distinguishes "0 tests ran because
+nothing needed testing" from "0 tests ran because the selector is broken." This is the single
+highest-value class the downstream consumer flagged: it passes review, passes CI, and reports
+success while verifying nothing.
 
-Fixing this is **not** a one-line change to the comparison (`ti.content == content &&
-ti.tags == tags`) — `reindexTarget` must first grow a `tags` field, and
-`reindexTargetContents` must be extended to actually read `p.Payload["tags"]` from the
-**target** collection's stored payload (not just the source point, which already has `m.Tags`
-available via `fromPayload`). Get this ordering wrong — comparing against a always-zero-value
-`ti.tags` because the target lookup was never extended — and the equality check either (a)
-always treats tags as matching (a `nil`/empty `ti.tags` structurally-equal to some other
-default), silently reintroducing the exact bug being fixed, just with different code, or (b)
-always treats tags as mismatching (comparing an unpopulated `nil` slice against a real slice
-from the source), which defeats resume's entire purpose by re-embedding every already-current
-record on every resumed run — a correctness bug in the *opposite* direction, invisible because
-it "just" costs extra embedder calls and looks like resume "still working" (nothing errors;
-everything just silently gets slower and more expensive, potentially by a lot, on every
-resumed run).
+**Why it happens:**
+`go test`'s (and most test runners') exit code answers "did anything that ran, fail," not "did the
+thing I intended to run, run." A selector is not part of the tool's contract in a way that gets
+checked — it's free text that either matches or doesn't, with silence on the "doesn't" case.
 
-Also: tags order matters for slice equality — `m.Tags` (source) and the target's stored tags
-must be compared with the same order-independent discipline `contentFingerprint` already uses
-for tags (`slices.Clone` + `slices.Sort` before comparing/hashing) — a naive `slices.Equal`
-without sorting first would treat `["a","b"]` and `["b","a"]` as different, again re-embedding
-unnecessarily (or, if the *source* embed step sorts tags before embedding but the *comparison*
-doesn't, potentially masking a real change the other direction).
+**How to avoid:**
+- Any `-run`/selector-based verification command recorded anywhere (a `VALIDATION.md` row, a CI
+  step, a `spine-review verify` gate) must be re-resolved against `go test -list` (or the
+  equivalent enumeration for the runner in question) at the time it's trusted, not merely
+  re-executed and checked for exit 0. A stale selector matching nothing must fail loud.
+  For **this milestone's own Nyquist reconciliation work**, that means every one of the six
+  `status: draft` rows plus Phase 2's missing file must have its `-run` command actually re-checked
+  against `go test -list -run <pattern>` (nonzero test count) as part of reconciling it, not just
+  re-run.
+- For any *new* verification tooling this milestone ships (`spine-review verify`, a citation-drift
+  checker, a CLI/MCP-surface audit script), apply the same principle preemptively: if the checker
+  can legitimately find "zero issues" as a true result, it must independently prove it *looked* at
+  a nonzero number of records/commands/flags — report a scanned-count alongside the found-count, so
+  "0 found because there's nothing to find" is distinguishable from "0 found because the scan
+  matched nothing."
+- Generalize past `go test`: the same shape applies to `grep`/`rg`-based checks used as acceptance
+  gates in this milestone's own tooling — a pattern that stops matching (because of a rename) will
+  silently report "clean" forever. Any such gate needs a scanned-count assertion, not just an
+  exit-code check.
 
-**Where partial-progress correctness bugs hide:** a reindex run interrupted midway through a
-large collection, then resumed, has *already* processed and skipped some prefix of records
-under the old (content-only) equality key before this fix lands. If the fix changes the
-equality key going forward but doesn't account for records a prior *unpatched* resume run
-already (incorrectly) marked "unchanged" and skipped, those specific records stay stale
-indefinitely — a resumed run only re-evaluates points it scans in the current pass; it does
-not retroactively re-check points a previous run's `Unchanged` counter already walked past
-correctly-for-content-but-not-for-tags. This is a genuine "looks done but isn't" trap:
-`ReindexResult.Unchanged` going up looks like success, not a sign that some subset of those
-"unchanged" records actually needs re-embedding.
+**Warning signs:**
+- A CI/verification step whose only assertion is "exit code 0" with no assertion on how many
+  things were checked.
+- A `VALIDATION.md` (or new spine-review verify report) that has been "green" across multiple
+  unrelated code changes without ever being re-derived from a fresh `-list`/enumeration — a
+  suspiciously stable-forever green is itself the warning sign, not reassurance.
+- Any acceptance criterion phrased as "the check passes" rather than "the check passes AND
+  confirms it examined N ≥ 1 (or the expected N) targets."
 
-**Why it happens:** The existing code comment even states the (currently false, post-fix-needed)
-assumption directly: *"equal content (and, from the same source payload, equal tags) re-embeds
-to an equal vector"* — content-implies-tags was true only because, historically, nothing could
-change tags without also changing content through the same write path. That assumption breaks
-the moment tags can be edited independently of content (which they already can, via
-`update_memory`'s tag-replace semantics) — the reindex resume code just never caught up to that
-fact.
+**Phase to address:**
+Nyquist validation reconciliation phase — this is the phase's entire reason for existing this
+milestone, and its own deliverable must not repeat the mistake (a reconciled `VALIDATION.md` that
+was never re-checked against a live `-list` is not actually reconciled, just re-stamped).
 
-**How to avoid:** (1) Add `tags []string` to `reindexTarget`; (2) extend
-`reindexTargetContents` to read `p.Payload["tags"]` from the target collection alongside
-content/identity; (3) compare tags with the same sort-before-compare discipline as
-`contentFingerprint`; (4) update the stale doc comment on `reindexTargetContents`/the resume-skip
-block since it currently asserts the false content-implies-tags equivalence; (5) explicitly
-decide and document what happens to records a prior *unpatched* resume run already skipped
-incorrectly — likely: document that a full non-resume reindex (or a repair sweep) is needed
-once, post-fix, to catch any records whose tags diverged from what a stale resume run
-believed, since the fix only changes behavior for records evaluated *after* it ships.
+---
 
-**Warning signs:** `reindexTarget`'s struct literal in code review still has exactly two
-fields. The PR diff touches only the `if ti.content == content && ...` comparison line and
-nothing in `reindexTargetContents`. The doc comment above the resume-skip block still says
-"equal content ... equal tags" as an assumption rather than an explicit check.
+### Pitfall 10: The same constraint drifts silently across CLI help, self-describe catalog, and MCP tool schema
 
-**Phase to address:** Reindex resume correctness. Negative test:
-`TestReindexResumeSkipsOnContentMatchTagsDiffer` — seed source and target with identical
-content but different tag sets (including a same-elements-different-order case); run
-`Reindex(Resume: true)`; assert the point is **re-embedded** (shows up in `Upserted`, not
-`Unchanged`) and that the resulting target vector reflects the new tags (e.g. via a
-differ-style assertion comparable to the existing `TestRetrievalEval_AsymmetryDiffer`
-precedent, not just "some vector changed"). Add a second case,
-`TestReindexResumeSkipsWhenContentAndTagsBothMatch` (order-independent), as the paired
-positive control so the fix doesn't overshoot into "always re-embeds."
+**What goes wrong:**
+`effectiveSearchScope` and its sibling conditional-requirement rules must be stated in at least
+three independent places: the `cmd/engram/*` flag help strings, the v0.12.x self-describe JSON
+catalog, and the `internal/server` MCP tool/argument jsonschema docs. Each surface is hand-authored
+prose (or hand-authored schema description text) with no single generator producing all three, so
+a fix to the rule's *behavior* is trivially easy to land in code while updating only one of the
+three descriptions — the other two silently keep describing the old, now-wrong behavior. Nothing
+in CI checks that these three surfaces agree, because they're free text/description fields, not
+generated code with a drift-detection build gate the way `gen/` already has for protobuf.
+
+**Why it happens:**
+This repo already has exactly the right template for solving this (`buf breaking`/CI drift-check
+on the committed `gen/` tree, catching protobuf/codegen divergence) — but that machinery only
+covers the wire-format layer, not free-text documentation describing conditional business rules.
+Those conditional rules exist in code (e.g., a Go function implementing `effectiveSearchScope`) but
+their *description* is duplicated by hand into JSON schema strings and CLI help strings, which is
+the same "invented structure in a place a tool doesn't generate" hazard this project already
+guards against for planning artifacts, just applied to documentation surfaces instead.
+
+**How to avoid:**
+- Where feasible, generate the description text for one conditional rule from a single source
+  (a Go const/doc-comment referenced by both the MCP tool schema builder and the CLI help-string
+  builder) rather than three independent hand-written sentences saying "the same thing."
+- Where full generation isn't practical this milestone, add a **grep-based drift test** (with the
+  Pitfall 9 caveat applied — assert a nonzero match count, not just "no failures") that checks the
+  same named rule/flag appears with the same key phrase across all three surfaces, so a change to
+  one without the others fails CI rather than shipping silently correct-in-code,
+  wrong-in-three-places-of-documentation.
+- Treat this audit's own output as the enumeration of every place a conditional rule is currently
+  stated — the audit phase's deliverable should include, for each conditional rule found, the list
+  of surfaces it must appear on, so a future change has a checklist rather than tribal knowledge.
+
+**Warning signs:**
+- A PR that changes `effectiveSearchScope`'s logic (or any similar conditional-requirement rule)
+  touching only the Go implementation and one description string, with the diff never showing the
+  other two surfaces.
+- No test anywhere asserting cross-surface agreement — `task lint`/`task` passing is not evidence
+  here, since free-text schema descriptions are not type-checked or drift-checked by existing
+  tooling.
+- The self-describe JSON catalog (v0.12.x Phase 2 D-15) and MCP tool schema jsonschema being
+  generated/updated by different code paths with no shared constant.
+
+**Phase to address:**
+Self-evident surface audit phase — this is the audit's central finding-and-fix category, and its
+deliverable should include the drift-detection test as a permanent regression gate, not just a
+one-time fix of the divergences found during the audit.
 
 ---
 
@@ -660,126 +520,131 @@ positive control so the fix doesn't overshoot into "always re-embeds."
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|-----------------|------------------|
-| Building a second, Connect-local `ChainVerifier` instead of sharing `withAuth`'s | Faster to land the Connect bearer slice without refactoring `serve.go` | Silent drift between MCP and Connect bearer acceptance the next time either is edited (Pitfall 4) | Never — refactor `withAuth` to expose the shared constructor first |
-| Inferring CSRF-exemption from header/cookie presence instead of resolver provenance | No new context-key plumbing needed | Full CSRF bypass on all six write RPCs (Pitfall 1) | Never |
-| Pinning a validation-error fix to the one reported repro string | Closes the ticket fast | Leaves the misattribution mechanism live for every other multi-field-invalid combination (Pitfall 12) | Never for a security- or correctness-relevant validator; acceptable only for genuinely cosmetic wording with no attribution logic underneath |
-| Shipping headless-mount as a loosened `mountConnect` guard rather than a new independent flag | Smaller diff | Silent exposure flip on upgrade for existing deployments (Pitfall 5) | Never |
-| Deferring Helm/docs updates to a follow-up PR | Ships the code sooner | Feature is unsafe-by-default to adopt because nobody can find the documented, supported way to configure it (Pitfall 6) | Only for genuinely internal/dev-only flags never exposed in `values.yaml` |
+| `spine-review purge` calls `delete_memory` directly instead of tombstone-then-finalize | Ships faster; reuses an existing primitive | Irreversible if the purge judgment (structural or semantic) is wrong; no grace window to catch mistakes | Never — this is the milestone's highest-blast-radius shortcut |
+| Skill proposes AND performs the mutation in one agent turn (no separate confirm step) | Fewer round-trips, feels more "autonomous" | Reintroduces auto-extraction/auto-mutation by another name; violates the project's core "no auto-extraction, ever" invariant | Never |
+| Adding `MarkFlagsMutuallyExclusive` without auditing existing scripts for the now-forbidden combination | Closes #453 quickly | Breaks any caller relying on the previously-permissive behavior, with no warning period | Only with a documented one-release deprecation warning first |
+| Unifying exit codes without a pinned "current behavior" regression test | Removes the two-taxonomy carve-out cleanly | Breaks any script/cron branching on today's exit 1 for operator commands, invisibly | Only if #467 is resolved by documenting the boundary instead, or if unification ships with the pinned test + a CHANGELOG breaking-change entry |
+| Re-stamping a `VALIDATION.md` row as reconciled without re-running `-list` against the current test names | Closes the Nyquist tracking item fast | Reintroduces the exact false-green-forever failure the reconciliation phase exists to fix | Never |
+| Similarity-threshold auto-merge without a human/skill judgment step | Removes an interaction round-trip | False-merge rate is unacceptable at any threshold below ~1.0 on records that differ by scope/time/negation; data loss is silent and permanent | Never |
 
 ## Integration Gotchas
 
 | Integration | Common Mistake | Correct Approach |
-|-------------|-----------------|--------------------|
-| `mcpauth.RequireBearerToken` (go-sdk) vs. Connect interceptor chain | Assuming Connect's bearer resolver inherits header-parsing + `Expiration` enforcement "for free" because both call the same `auth.ChainVerifier` | Explicitly re-implement/reuse `RequireBearerToken`'s `verify()`-equivalent logic (header parse + `Expiration` check) at the Connect resolver, since Connect never passes through the go-sdk's HTTP middleware (Pitfall 3) |
-| Cookie resolver (`webauth.Resolver`) + new bearer resolver, combined at one Connect mount | Try-bearer-then-fallback-to-cookie, treating the two lanes as interchangeable the way `verifyOIDCBranch` treats human/service OIDC | Route by structural presence of `Authorization` header, deny-by-default, never fall through across mechanism families (Pitfall 2) |
-| `newConnectResealInterceptor` (unconditional, not procedure-gated) meeting a bearer-authenticated request | Assuming it needs bearer-awareness added | It is already lane-safe by construction — `Reseal` no-ops when the request carries no session cookie — but any future change to `Reseal` must preserve that it triggers only off an actual request-supplied cookie, never off the resolved `TokenInfo`/Subject, or it risks minting a session cookie for a bearer-only caller |
-| `SearchDiscoveries`'s `Scope == ""` → `CrossSpine` precedent, copied to `search_memory` | Assuming the discovery-scope authz-filter shape transfers unchanged to the memory-scope authz-filter shape | Re-verify `Store.Search`'s filter composition keeps the authz `Must` clause unconditional and independent from the (now optional) scope clause before reusing the pattern (Pitfall 10) |
-| `store.SearchOptions` positional-vs-struct discipline (D-09 precedent) | Adding `cross_spine` as a new bare boolean parameter threaded positionally alongside existing filter args | Add it as a named `SearchOptions` field, continuing the struct-over-positional-params discipline already adopted for `Tags`/`Categories` |
-| `authz.Decision.diag` (cedar-go `cedar.Diagnostic`) → `slog` | Passing the whole `Decision`/`diag` value to a logger in one `%+v` | Extract and redact named fields per DEC-wot's existing owner-only-no-actor-no-email discipline before logging (Pitfall 11) |
+|--------------|-----------------|-------------------|
+| `spine-review` CLI ↔ curation skill | Treating the CLI's structural purge as independent of the skill's semantic extraction, letting either run without the other having run first | Gate `purge`/`archive` on a recorded extraction-pass marker the CLI itself checks (Pitfall 1) |
+| Curation skill ↔ mutating memory tools | Skill calls `supersede_memory`/`delete_memory`/`update_memory` directly as its own terminal action | Skill emits a proposal artifact only; a separate confirmed step (human or CLI re-invocation) performs the mutation (Pitfall 4) — mirrors the existing `store_rule` consent gate |
+| `spine-review` purge ↔ `rule` category | Treating rule-category purge candidates with the same friction as ordinary memory corrections | Require materially higher-friction confirmation for any rule-category proposal — rules cannot be superseded, only deleted, so a wrong rule-purge is maximally destructive |
+| CLI help text ↔ cobra flag validation | Documenting a mutual-exclusivity constraint in `Short`/help text without ever enforcing it, then enforcing it later as if it were purely a bug fix | Audit real invocation patterns for the newly-forbidden combination before enforcing; treat enforcement as a breaking change with a deprecation window if any caller might rely on the old permissiveness |
+| Operator-command exit codes ↔ any external script/cron/CI branching on them | Changing an exit code because it "should" match the client taxonomy, without checking existing consumers | Pin current behavior with a table-driven test before touching it; prefer documenting the boundary (#467's explicit "or documented boundary" option) over unifying without evidence of a benefiting consumer |
+| CLI help / self-describe catalog / MCP tool jsonschema | Hand-editing one surface's description of a conditional rule and assuming the others are consistent because they were consistent at last check | Single source of truth for the rule's description where feasible; otherwise a cross-surface grep-based drift test with a nonzero-match assertion |
+| `VALIDATION.md` `-run` commands ↔ actual test names | Treating a `-run` pattern recorded at plan time as still valid because the row says "passing" | Re-resolve every recorded selector against `go test -list` before trusting or reconciling the row (Pitfall 9) |
 
 ## Performance Traps
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|-----------------|
-| Logging `authz.Decision.diag` at a non-debug level, or on every allow decision in a hot recall path | OTLP/log volume spikes disproportionately to traffic; log-storage cost jumps right after this milestone ships | Gate at `debug` level only, matching existing OTel sampler/debug conventions (DEC-7qd); consider sampling if `DecideBucket` is called O(buckets) per recall (already the case per ADR `engram-cdr1`) | As soon as debug logging is left on in a production-traffic environment, or if diag logging is accidentally wired to `info` |
-| Cross-spine memory search with an unbounded owner/visibility bucket enumeration | `search_memory(cross_spine=true)` latency degrades non-linearly as a caller's authorized scope/bucket count grows | Confirm cross-spine still resolves to an O(buckets) `DecideBucket` call, per the existing ADR `engram-cdr1` pattern, not a fallback to O(records) scanning when scope is empty | A caller with many distinct scopes under one owner, once cross-spine search is available broadly |
-| Reindex resume's per-page target lookup (`reindexTargetContents`) growing per-point payload size once `tags` is added | Reindex throughput regresses measurably on large collections after the tags fix lands, since each page's target `Get` now also transfers tag payloads | Keep the lookup O(pages) as already documented ("One Get per page keeps the lookup O(pages), not O(points)") — adding a field to the fetched payload doesn't change that big-O, but validate it in a benchmark on a realistic-size fixture before/after the fix | Very large tag sets per record, or very large collections, though this is a minor/likely-acceptable regression relative to correctness |
+| Citation-drift verification scans every `file:line` anchor in the spine on every `spine-review verify` invocation, re-reading files from disk each time | `verify` gets slower every time the codebase grows, eventually timing out or making the tool unpleasant to run regularly (which itself causes it to be skipped — feeding Pitfall 6) | Cache file content/line hashes keyed by commit SHA; only re-check anchors whose target file changed since the last verified commit | Once the spine has enough citation-bearing records that a full-file re-read per anchor is seconds-to-minutes rather than sub-second |
+| Semantic-dedup candidate generation does an all-pairs similarity comparison across the whole spine | Fine at hundreds of records, quadratic blowup once the spine is large enough that a full curation pass becomes impractically slow to run | Use Qdrant's own ANN search per-record (top-k similar) rather than a manual all-pairs loop; this is already the store's core capability | Once spine size is large enough that O(n²) all-pairs stops being "a few seconds" |
+| Purge/consolidate sweep does one record at a time with a network round-trip per record and no batching | A large sweep takes disproportionately long, increasing the odds of the partial-failure scenario in Pitfall 3 | Batch reads/writes where Qdrant's client supports it; checkpoint progress per-batch, not per-record, but keep the idempotency guarantee from Pitfall 3 | Sweeps touching more than a few hundred records at once |
 
 ## Security Mistakes
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| CSRF exemption keyed on request-controlled input (header/cookie presence) | Full CSRF bypass on all six write RPCs for cookie-authenticated victims | Key exemption on resolver-set provenance only (Pitfall 1) |
-| Bearer verification failure silently falling through to cookie resolution | Confused-deputy: caller gets identity/privileges from the wrong lane | Discriminate by credential shape, deny-by-default, no cross-lane fallback (Pitfall 2) |
-| Connect bearer path skipping `Expiration` enforcement | An expired (or, for static tokens, a token an operator believes was rotated out) bearer stays valid indefinitely on the Connect lane specifically | Explicit `Expiration` check at the Connect resolver, independent of the MCP-only `RequireBearerToken` wrapper (Pitfall 3) |
-| Headless mount defaulting on, or derived from an unrelated already-true condition | Deployment upgrade silently gains a reachable, bearer-authenticated network surface it never opted into | Independent, explicitly-defaulted-off `ENGRAM_` flag; regression test pinning the pre-milestone "not mounted" baseline (Pitfall 5) |
-| CLI token via bare `--token` flag or unaudited env var propagation | Token visible in `ps`, shell history, CI logs, or crash-report environment dumps | File-based or stdin credential input; audit crash/telemetry paths for `os.Environ()` dumps (Pitfall 7) |
-| `authz.Decision.diag` logged unredacted | Policy-probing oracle for an attacker; potential PII leak reopening DEC-wot | Redact to a reviewed, named field allowlist; log both allow and deny paths at debug level (Pitfall 11) |
-| Cross-spine search filter composed as a single combined scope+authz condition | A refactor that "removes" the scope clause for `cross_spine=true` could accidentally weaken the authz clause bundled with it | Keep authz and scope as two independently-composed, always-present-except-scope Qdrant `Must` entries (Pitfall 10) |
+| Curation skill given direct tool access to mutating verbs, reasoning "it's a trusted first-party skill, not a random prompt" | A confident-but-wrong semantic judgment (or a prompt-injected instruction embedded in a memory's own content, which the skill will read while judging it) executes an irreversible mutation with no human check | Propose-never-perform, no exceptions, including for "obviously correct" cases — the incident record shows this exact "obviously right" confidence preceding irreversible mistakes repeatedly |
+| Purge sweep treats `shared`-visibility records the same as private ones for a single caller's judgment | An actor curating their own spine could propose deleting a `shared` record another actor depends on, since shared grants read but never write — a curation proposal touching a record the proposer doesn't own must still route through the existing ownership write-gate, never bypass it because "it's just a cleanup" | Route every spine-review mutation (even proposed-then-confirmed ones) through the existing `getWritable`/ownership gate unchanged — curation tooling gets no special authz bypass |
+| Bulk purge command accepts a broad selector (e.g., a scope glob) with no echo of exactly what will be affected before committing | A slightly-too-broad selector silently deletes more than intended, with no way to know until it's too late | Any bulk destructive command must print (or require `--dry-run` to have been run and reviewed for) the exact record count and a sample before requiring a second explicit confirmation to commit |
+| Exit-code or flag-validation changes shipped without a security-relevant regression check for the existing 404-uniform-not-found invariant (DEC-xa6) | A CLI/MCP surface audit touching validation ordering could accidentally reorder a check so an authz-driven not-found and a plain validation error become distinguishable, reopening a cross-actor existence leak the store layer was designed to prevent | Any change to error/exit dispatch ordering in this milestone must be checked against the existing DEC-xa6 negative tests, not just the new validation behavior being added |
 
 ## UX Pitfalls
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-------------------|
-| CLI collapses every failure to exit code 1 with free-text stderr | CI/agent callers can't distinguish "retry me" from "fix your config" from "this is a real bug," so scripts either retry blindly or alert on everything | Map the Connect code taxonomy to a small stable exit-code contract (Pitfall 8) |
-| CLI silently no-ops a new flag against an old server | Caller believes a query was cross-spine-scoped (or otherwise using new semantics) when the server ignored the flag entirely | Detect and fail loud, or clearly label output as version-uncertain (Pitfall 9) |
-| Validation error names the wrong field | Caller "fixes" the field the error named, resubmits, and gets the same rejection for a different reason — a confusing, multi-round-trip debugging loop | Attribute errors to the actually-failing field, verified per-field, not per reported repro (Pitfall 12) |
-| Reindex `--resume` reports `Unchanged` for records that are actually stale (pre-tags-fix) | Operator trusts a completed resume run believing the collection is fully current; tag-based recall precision silently degrades for those records with no error surfaced anywhere | Document + provide a one-time repair path after the tags fix ships (Pitfall 13) |
+| Over-eager staleness/drift flags on every `spine-review verify` run | Operators stop reading the output after the first few runs (alert fatigue), missing the real findings when they eventually appear | Severity-tier findings; auto-repair the mechanically-fixable class (moved-but-recognizable anchors); report a scanned-count so "clean" is trustworthy |
+| Destructive commands with no `--dry-run` default and a single-step commit | An operator (or a script written by an operator under time pressure) runs the real thing on first try, with no preview | Dry-run by default, or require an explicit second flag/confirmation naming the exact record count before any live commit |
+| A curation-skill proposal that just says "these look like duplicates, delete one" with no visible reasoning or side-by-side content | Operator can't actually evaluate whether the proposal is right, so either rubber-stamps it (false confidence) or ignores it (skill goes unused) | Show both full records, the reasoning, and what's uniquely present in each before asking for confirmation |
+| Two different exit-code taxonomies with no documentation of which governs which command | Script authors guess, get it wrong half the time, and file bugs against engram instead of realizing the split is deliberate | Ship the documented boundary (or the unification) as visible, discoverable documentation — not just an internal decision record — including in `--help` output itself |
+| Flag-validation errors that reject a combination but don't say why it's forbidden or what to do instead | Operator trial-and-errors their way to a working invocation instead of reading help correctly the first time (violates this project's own correct-by-reading principle, D-00) | Every new validation rejection must state the constraint in the error text, matching whatever the help text already says, so the two are provably the same sentence |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Bearer identity on Connect:** Often missing an explicit provenance field distinguishing
-      it from the cookie lane — verify the CSRF interceptor branches on a resolver-set tag, not
-      on header/cookie presence (grep `newConnectCSRFInterceptor` for any `req.Header()` or
-      `.Cookie(` reference beyond the existing cookie-lane verify call).
-- [ ] **Connect bearer resolver:** Often missing the `Expiration` check `RequireBearerToken`
-      performs for MCP — verify with a stale-`TokenInfo` unit test, not just a happy-path one.
-- [ ] **Headless mount flag:** Often missing an explicit off-by-default `ENGRAM_` config test —
-      verify a config-loader test asserts the zero-value case leaves `mountConnect` mounting
-      nothing.
-- [ ] **`cross_spine` on `search_memory`:** Often missing a cross-owner isolation test that
-      actually exercises the empty-scope path against real Qdrant, not a mock — verify a
-      two-owner `-race`-safe testcontainers test exists (mirroring the idempotency/supersession
-      precedent).
-- [ ] **`authz.Decision.diag` logging:** Often missing field-level redaction — verify the log
-      call passes named, reviewed fields, not the whole `Decision`/`diag` value.
-- [ ] **Validation error message fix (#360):** Often only tests the one reported repro string —
-      verify a matrix of single-field-invalid cases each reports the correct field.
-- [ ] **`reindex --resume` tags fix (#345):** Often only changes the comparison line — verify
-      `reindexTarget`/`reindexTargetContents` were actually extended to fetch the target's
-      stored `tags`, and that tag comparison is order-independent.
-- [ ] **CLI credential handling:** Often accepts a bare `--token` flag "for convenience" —
-      verify only file/stdin-based credential input is documented/supported.
-- [ ] **Docs/chart/config parity:** Often shipped one phase behind the code — verify the new
-      `ENGRAM_` key has a `values.yaml` comment and a docs-site guide in the same phase.
+- [ ] **`spine-review purge`:** Often missing the tombstone/grace-window stage — verify a purge
+      candidate is still recoverable for some window before the terminal, irreversible step runs,
+      not deleted on first invocation.
+- [ ] **Extraction-before-delete ordering:** Often "documented" as a rule (like `7smp8vy9hr`) but
+      not mechanically enforced — verify `purge` structurally refuses to run without a recorded
+      extraction pass, not merely that the operator was told to run extraction first.
+- [ ] **Curation skill consent gate:** Often demonstrated only on a correct-proposal happy path —
+      verify it was cold-read-tested with at least one deliberately-wrong "obviously right" semantic
+      judgment and confirmed the gate still stopped it before any mutation.
+- [ ] **Flag-validation enforcement (#453):** Often shipped without checking whether any existing
+      script/skill invocation relies on the newly-forbidden combination — verify a grep/audit of
+      known invocation sites (CI, Taskfile, docs examples, skill instructions) was actually done,
+      not assumed clean because it "was already documented as forbidden."
+- [ ] **Exit-code taxonomy resolution (#467):** Often "resolved" by picking a taxonomy without
+      checking what currently consumes the other one — verify either a documented-boundary decision
+      record exists, or a pinned-current-behavior regression test shipped alongside any unification.
+- [ ] **Nyquist `VALIDATION.md` reconciliation:** Often re-stamped as reconciled by re-running the
+      recorded `-run` command and seeing exit 0 — verify each row was re-resolved against
+      `go test -list` and shows a nonzero, expected test count, not just a clean exit code.
+- [ ] **Multi-surface documentation (CLI help / self-describe catalog / MCP schema):** Often fixed
+      in the surface that was reported broken, with the other two assumed still correct — verify all
+      three were checked for the same conditional rule, with a grep-based drift test added, not just
+      a one-time fix.
+- [ ] **New verification/audit tooling's own false-negative mode:** Often validated only by
+      confirming it finds known-planted issues — verify it also reports how much it scanned, so a
+      selector/pattern silently matching nothing is distinguishable from genuinely finding zero
+      issues.
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|----------------|------------------|
-| CSRF exemption keyed on request-controlled input (shipped, then caught) | LOW if caught before release (revert the exemption condition, add the negative test); HIGH if it reached a real deployment (must treat as an active vulnerability — rotate `ENGRAM_UI_COOKIE_KEY` per the existing `engram-slr8` kill-switch precedent to invalidate all live sessions, then patch) | Add provenance field; add `TestCSRFNotExemptedByMissingHeaderOrCookie`; if shipped, follow incident process — rotate cookie key, patch, backport |
-| Connect bearer skipping `Expiration` enforcement | LOW — add the check and the negative test; no data-layer damage, only an authentication-lifetime gap | Add explicit `Expiration` check at the resolver; add `TestConnectBearerResolverRejectsExpiredTokenInfo` |
-| Headless mount accidentally defaulted on | LOW if caught pre-release (flip default, add the regression test); MEDIUM if a real deployment upgraded and unknowingly exposed Connect (must audit access logs for the exposure window, then patch + document in release notes) | Add the independent flag with an off default; audit `newConnectAccessLogInterceptor` logs for the affected window if already shipped |
-| `reindex --resume` tags-staleness (already-run resumes under the old key) | MEDIUM — no data loss, but requires a one-time non-resume (or repair-sweep) reindex to correct any records a prior unpatched resume incorrectly skipped | Ship the fix; run/communicate a one-time full reindex (or a targeted repair pass keyed on tag-payload presence) as a documented follow-up, mirroring the `engram reindex` operator-guide precedent |
-| `authz.Decision.diag` leaking unredacted fields into logs | LOW-MEDIUM depending on log retention/access scope — treat as a PII-handling incident if any actor/email-equivalent value reached a log sink broader than the operator | Add field allowlist/redaction; purge or restrict access to the affected log window per the org's log-retention policy |
+| Delete-before-extract already happened (records purged, gotchas lost) | HIGH | If Qdrant snapshots/backups exist, restore from the most recent pre-purge snapshot to recover the deleted records' content before re-attempting extraction; if no backup exists, the gotchas are unrecoverable — this is exactly why Pitfall 1's precondition gate must ship before any purge capability, not after |
+| Wrong semantic merge/delete proposal was confirmed and executed | MEDIUM–HIGH | If the purge routed through the tombstone/grace-window stage (Pitfall 2), the record is still recoverable via `get_memory` until the grace window's finalize step runs — recover it there; if it went straight to `delete_memory`, recovery depends entirely on external backups |
+| Exit-code change broke a script silently | LOW–MEDIUM | Revert the exit-code change as a patch release; add the pinned-current-behavior regression test that should have existed before the change shipped, then re-attempt the change with a documented deprecation window |
+| Flag-validation change rejected a previously-working invocation | LOW | Revert to a deprecation-warning state (accept the combination with a loud warning) for one release cycle, then re-attempt hard rejection with advance notice |
+| A `VALIDATION.md` row was falsely green (selector matched nothing) | LOW | Re-resolve the selector against `go test -list`, write the correct pattern, re-run, and re-verify the referenced success criterion is actually exercised — cheap once caught, expensive only in the false confidence it produced beforehand |
+| Multi-surface documentation drifted (CLI help says one thing, MCP schema says another) | LOW | Reconcile to a single source description and add the cross-surface drift test so it can't recur silently |
 
 ## Pitfall-to-Phase Mapping
 
-| Pitfall | Prevention Phase (theme) | Verification |
-|---------|---------------------------|----------------|
-| 1. CSRF exemption keyed on request-controlled input | Headless client lane — FIRST slice, before any other bearer-dependent code | `TestCSRFNotExemptedByMissingHeaderOrCookie` + `TestCSRFExemptedOnlyByBearerProvenance` |
-| 2. Resolver silently falls through cookie↔bearer | Headless client lane | `TestBearerFailureNeverFallsThroughToCookie` |
-| 3. Connect bearer skips header-parse/`Expiration` enforcement | Headless client lane | `TestConnectBearerResolverRejectsExpiredTokenInfo` |
-| 4. Duplicated `ChainVerifier` construction drifts | Headless client lane | Structural/AST test asserting one shared constructor, or a config-change regression test exercised against both mount sites |
-| 5. Headless mount defaults on / flips exposure on upgrade | Headless client lane | `TestMountConnectDefaultOffWithoutUIOrHeadlessFlag` |
-| 6. Docs/chart/config drift | Headless client lane (docs slice, same phase) | Chart-lint + docs-site guide present in the same PR as the code |
-| 7. CLI credential leakage (argv/env/crash reports) | Headless client lane (CLI slice) | Manual review + no `--token` flag accepting a bare value; crash-handler audit |
-| 8. CLI TLS default / exit-code collapse | Headless client lane (CLI slice) | Exit-code contract test per Connect-code class; TLS-bypass-off-by-default test |
-| 9. Client/server version skew | Headless client lane (CLI slice); cross-check in Cross-spine memory recall | Version-mismatch simulation test against an old-shaped response |
-| 10. `cross_spine` widening the authz filter | Cross-spine memory recall | `TestCrossSpineSearchNeverBypassesOwnerFilter` (real Qdrant, two owners) |
-| 11. `authz.Decision.diag` PII/probing/deny-only logging | Authz diagnosability | Field-allowlist test; assert both allow and deny paths log |
-| 12. Validation error message masks a different failure | Failure legibility | Single-field-invalid matrix test asserting per-field message accuracy |
-| 13. Reindex resume equality key missing tags | Reindex resume correctness | `TestReindexResumeSkipsOnContentMatchTagsDiffer` + `TestReindexResumeSkipsWhenContentAndTagsBothMatch` |
+| Pitfall | Prevention Phase | Verification |
+|---------|-------------------|----------------|
+| Delete-before-extract ordering unenforced | Spine curation CLI (structural) | Test: `purge` on a target with no prior extraction marker refuses to run |
+| No tombstone stage before hard delete | Spine curation CLI (structural) | Test: a purge-candidate record is still fetchable via `get_memory` for the grace window before `finalize`/`--commit` runs |
+| Partial-failure mid-sweep leaves inconsistent state | Spine curation CLI (structural) | Test: kill the sweep process mid-batch, re-run, and assert identical end state to an uninterrupted run (idempotency) |
+| Agent-driven curation executes a wrong proposal directly | Companion curation skill (semantic) | Cold-read test with a deliberately-wrong "obviously right" judgment; assert zero mutating tool calls without a separate confirmed step |
+| Semantic dedup false-merges distinct records | Companion curation skill (semantic) | Adversarial test set: near-duplicate-but-scope/time-distinct pairs must never be proposed as merge candidates |
+| False-positive staleness/drift detection | Spine curation CLI (structural) | #355 used as the calibration fixture; false-positive rate measured across a real sweep, not just the planted case |
+| Previously-accepted flag combination now rejected | Documented constraints made enforceable (#453) | Audit of existing invocation sites for the newly-forbidden combination, completed and recorded before landing the validation |
+| Exit-code change breaks scripts | One exit-code taxonomy, or a documented boundary (#467) | Either a documented-boundary decision record, or a pinned-current-behavior table-driven regression test shipped with any unification |
+| Test-selector false green (matches nothing, exits 0) | Nyquist validation reconciliation | Every reconciled row's `-run` pattern re-resolved against `go test -list` with a nonzero, expected match count |
+| Multi-surface documentation drift (CLI/catalog/MCP schema) | Self-evident surface audit | Cross-surface grep-based drift test with a nonzero-match assertion added as a permanent CI gate |
 
 ## Sources
 
-- `internal/server/connectcsrf.go`, `internal/server/connectapi.go`, `internal/server/connectauth.go`,
-  `internal/server/connectreseal.go`, `internal/server/identity.go`, `internal/server/connecterror.go`,
-  `internal/server/idempotency.go`, `internal/server/tools.go` (read directly, current `main`)
-- `internal/auth/chain.go`, `internal/auth/static_token.go`, `internal/webauth/resolver.go`,
-  `internal/webauth/reseal.go` (read directly, current `main`)
-- `internal/store/store.go` (Reindex/resume path, lines ~2620-2758, read directly)
-- `internal/authz/authz.go` (`Decision`/`diag`, read directly)
-- `cmd/engram/serve.go` (`withAuth`, `mountMCPRoutes`, read directly)
-- `github.com/modelcontextprotocol/go-sdk@v1.6.1` `auth/auth.go` (`RequireBearerToken`'s
-  `verify()` — bearer header parse + `Expiration` enforcement — read directly from the module
-  cache to confirm it is NOT invoked anywhere in the Connect interceptor chain)
-- `.planning/PROJECT.md` — v0.12.x milestone scope, milestone #1 risk note, posture note,
-  Decisions section (DEC-cgb, DEC-xa6, DEC-wot, DEC-jgq, ADR `engram-cdr1`, ADR `engram-slr8`),
-  and the v0.11.x retrospective entries this milestone explicitly builds on (map-orientation
-  inversion, fingerprint-field-list omission, fail-closed-as-first-test precedent)
+- [Tombstone (data store) — Grokipedia](https://grokipedia.com/page/Tombstone_(data_store)) — HIGH confidence, cross-checked against Bigtable/Cassandra tombstone-then-compaction precedent
+- [Tombstone Design Pattern — James's Knowledge Graph](https://www.jamestharpe.com/tombstone-pattern/) — MEDIUM confidence, corroborating pattern description
+- [CDC Soft Deletes and Tombstones — Streamkap](https://streamkap.com/resources-and-guides/cdc-soft-deletes-tombstones) — MEDIUM confidence
+- [How would you implement soft vs hard TTL for GDPR deletion? — DesignGurus](https://www.designgurus.io/answers/detail/how-would-you-implement-soft-vs-hard-ttl-for-gdpr-deletion) — MEDIUM confidence, "tombstone then finalize" phrasing
+- [An AI Agent Deleted a Company's Entire Production Database — Then Lied About It — DEV Community](https://dev.to/arbabyousaf/an-ai-agent-deleted-a-companys-entire-production-database-then-lied-about-it-49mh) — HIGH confidence, widely corroborated incident (Replit, July 2025)
+- [Incident 1152 — AI Incident Database](https://incidentdatabase.ai/cite/1152/) — HIGH confidence, independently curated incident record
+- [When an Agent Deletes the Production Database — O'Reilly Radar](https://www.oreilly.com/radar/when-an-agent-deletes-the-production-database/) — HIGH confidence, editorial analysis of the failure pattern
+- [When AI Agents Delete Production: Lessons from Amazon's Kiro Incident — Particula](https://particula.tech/blog/ai-agent-production-safety-kiro-incident) — MEDIUM confidence, second independent incident (Dec 2025)
+- [AI Agent Deleted a Production Database, The Real Failure Was Access Control — Penligent](https://www.penligent.ai/hackinglabs/ai-agent-deleted-a-production-database-the-real-failure-was-access-control/) — MEDIUM confidence, corroborates "direct execution authority is the root cause" framing
+- [Semantic Deduplication — NVIDIA NeMo Framework User Guide](https://docs.nvidia.com/nemo-framework/user-guide/25.07/datacuration/semdedup.html) — HIGH confidence, official framework docs on cosine-threshold dedup mechanics
+- [Beyond MD5: transformer-based fuzzy deduplication — Medium](https://medium.com/@banavalikar/beyond-md5-implementing-transformer-based-fuzzy-deduplication-for-unstructured-datasets-at-scale-6ebff328da98) — MEDIUM confidence, threshold examples (0.85/0.95)
+- [Modeling Clinical Uncertainty in Radiology Reports — arXiv](https://arxiv.org/pdf/2511.04506) — MEDIUM confidence, explicit false-merge-at-high-threshold finding in a domain with similarly high correction stakes
+- [cobra package — pkg.go.dev](https://pkg.go.dev/github.com/spf13/cobra) — HIGH confidence, official reference for `MarkFlagsMutuallyExclusive`
+- [MarkFlagsMutuallyExclusive does not work with default values — cobra#1752](https://github.com/spf13/cobra/issues/1752) — HIGH confidence, primary-source known limitation directly relevant to #453
+- [Working with Flags — Cobra docs](https://cobra.dev/docs/how-to-guides/working-with-flags/) — HIGH confidence, official deprecation-pattern (`MarkDeprecated`) documentation
+- [Handling Breaking API Changes — cetra3.github.io](https://cetra3.github.io/blog/breaking-api-changes/) — MEDIUM confidence, "CLI flags/exit codes are the public API" framing
+- [Understanding and fighting alert fatigue — Atlassian](https://www.atlassian.com/incident-management/on-call/alert-fatigue) — HIGH confidence, well-established operational-practice source
+- [The Analyst Who Cried Malware — CardinalOps](https://cardinalops.com/blog/rethinking-false-positives-alert-fatigue/) — MEDIUM confidence, corroborates the "trains reviewers to distrust severity" mechanism
+- [Contract-First APIs: How OpenAPI Becomes Your Single Source of Truth — HackerNoon](https://hackernoon.com/contract-first-apis-how-openapi-becomes-your-single-source-of-truth) — MEDIUM confidence, generalizable single-source-of-truth pattern for multi-surface doc drift
+- Repo-internal precedent (`.planning/PROJECT.md`, `CLAUDE.md`, cited memory IDs `7smp8vy9hr`, `bsbsvn4hbc`, `667p88n2be`, `4aksmneehh`, decisions DEC-xa6/DEC-kyz/DEC-iedk/D-09/D-17) — HIGH confidence, primary source
 
 ---
-*Pitfalls research for: adding headless bearer auth, a headless-mountable Connect API, a
-first-party CLI client, cross-scope search, and authz/error diagnostics to engram (v0.12.x)*
-*Researched: 2026-07-29*
+*Pitfalls research for: curation/maintenance tooling + interface audit on an existing shipped memory system (engram v0.13.x)*
+*Researched: 2026-08-03*

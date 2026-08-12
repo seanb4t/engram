@@ -36,3 +36,15 @@ engram is a self-hosted, correctable, OAuth-secured memory MCP server written in
 **Lint/format.** `task lint` runs golangci-lint, yamlfmt, actionlint, and rumdl. `task fmt` runs gofmt, dprint, and yamlfmt. Both must be clean before merging.
 
 **Not used here:** database migrations, viper, cocogitto.
+
+## Pinned interface surfaces
+
+Six surfaces state the same conditional-requirement rules today: cobra `Usage` strings, the MCP jsonschema struct tags, the MCP tool `Description` prose, the proto field comments, `docs-site/`, and `skill/engram/`. For each rule, exactly one source exists — the declared value in `internal/surfaces` (id, canonical sentence, bound fields) — and everything else is either generated from it directly or composed from it in Go source. Inside a generated region, marked by an `engram:rule:start` / `engram:rule:end` anchor pair, the text is regenerated on every run and any hand-edit is silently reverted; authors reword freely everywhere OUTSIDE the anchors.
+
+Two more artifacts are pinned the same way, from the same registry: every command's `--help` output (`cmd/engram/testdata/help.golden`, walked from the live cobra tree) and the bare `engram` catalog JSON (`cmd/engram/testdata/catalog.golden`), which now includes each command's `blast_radius` classification (see [the CLI guide](/guides/cli/#blast-radius) for its shape).
+
+**One command regenerates every pinned artifact:** `task surfaces:gen` — the anchored rule regions, the `--help` golden, and the catalog-JSON golden, in one run. One CI job (`surfaces`) re-runs the same regeneration in a throwaway checkout and fails the build on a dirty tree, mirroring the contract the committed `gen/` tree already lives under (`task proto:gen` + the `buf` drift job).
+
+**What "unreviewed" means here.** `REQ-help-output-pinned` requires `--help` output to change only "reviewed, not unreviewed." This phase interprets that as a mechanical guarantee: CI fails whenever the committed golden does not match what the live tree actually produces, so any help-text change — however small — forces a regeneration commit whose diff shows the exact before/after wording in a normal PR review. CODEOWNERS gating on these paths was considered and rejected: on a single-maintainer repo it adds a required-reviewer rule with nobody else to review, which is process theater rather than an actual second set of eyes. The CI drift check is the real gate.
+
+**Regeneration is never automatic.** `surfaces:gen` is not a dependency of `task default`, `task test`, or `task lint` — running the normal gates never silently rewrites a golden or a generated region. The `surfaces` CI job itself holds no repository write access and never pushes; it only regenerates in its own checkout and diffs against what was committed.

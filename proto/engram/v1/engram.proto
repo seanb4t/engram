@@ -63,10 +63,15 @@ message ListMemoriesRequest {
   string created_after = 8;       // RFC3339; inclusive lower bound on created_at
   string created_before = 9;      // RFC3339; exclusive upper bound on created_at
   string page_token = 10;         // opaque cursor; when set, cursor paging (ignores offset)
+  // engram:rule:start paging-trio-mutually-exclusive
+  // cursor_mode, offset, and page_token are mutually exclusive
+  // engram:rule:end paging-trio-mutually-exclusive
   bool cursor_mode = 11;          // opt into cursor paging on the first (tokenless) page; default false = offset-for-UI (ADR engram-1frj). Mutually exclusive with offset>0.
   // cross_spine spans every scope the caller is authorized to read, ignoring
-  // `scope` entirely when true. `scope` is REQUIRED when this is unset or
-  // false — an empty scope is rejected, never silently treated as "all".
+  // `scope` entirely when true.
+  // engram:rule:start scope-required-unless-cross-spine
+  // scope is required unless cross_spine is true
+  // engram:rule:end scope-required-unless-cross-spine
   bool cross_spine = 12;
 }
 
@@ -96,8 +101,10 @@ message SearchMemoriesRequest {
   string created_before = 7; // RFC3339; exclusive upper bound on created_at
   repeated string categories = 8; // empty = all categories; non-empty = records in ANY listed category (OR)
   // cross_spine spans every scope the caller is authorized to read, ignoring
-  // `scope` entirely when true. `scope` is REQUIRED when this is unset or
-  // false — an empty scope is rejected, never silently treated as "all".
+  // `scope` entirely when true.
+  // engram:rule:start scope-required-unless-cross-spine
+  // scope is required unless cross_spine is true
+  // engram:rule:end scope-required-unless-cross-spine
   bool cross_spine = 9;
 }
 message SearchMemoriesResponse {
@@ -242,6 +249,9 @@ message ScheduleMemoryRequest {
   string content = 1 [(buf.validate.field).string.min_len = 1];
   string scope = 2 [(buf.validate.field).string.min_len = 1];
   string source = 3;
+  // engram:rule:start discovery-not-schedulable
+  // discovery is not schedulable; use store_discovery
+  // engram:rule:end discovery-not-schedulable
   string category = 4 [(buf.validate.field).string = {in: ["decision", "preference", "convention", "gotcha"]}];
   repeated string tags = 5;
   string repo = 6;
@@ -249,6 +259,12 @@ message ScheduleMemoryRequest {
   string worktree = 8;
   string base_dir = 9;
   string summary = 10;
+  // engram:rule:start schedule-window-at-least-one-bound
+  // schedule_memory requires not_before and/or not_after (use store_memory for unscheduled records)
+  // engram:rule:end schedule-window-at-least-one-bound
+  // engram:rule:start window-not-before-before-not-after
+  // not_before must be strictly before not_after
+  // engram:rule:end window-not-before-before-not-after
   google.protobuf.Timestamp not_before = 11;
   google.protobuf.Timestamp not_after = 12;
 }

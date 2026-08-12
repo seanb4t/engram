@@ -100,3 +100,52 @@ func contentFingerprint(a storeArgs) string {
 	sum := sha256.Sum256([]byte(b.String()))
 	return hex.EncodeToString(sum[:])
 }
+
+// mergeFingerprint composes the supersede_memory replay fingerprint from
+// TWO length-prefixed fields: contentFingerprint(a) — called, not
+// reimplemented — followed by the canonical resolved target-set encoding.
+// Content identity is delegated entirely to contentFingerprint so there is
+// ONE canonical client-authored field list; this function adds exactly one
+// thing on top, the target set. If a future merge-specific field is added to
+// supersedeArgs (not to storeArgs), it must be folded in HERE, in the same
+// pass, for the same reason contentFingerprint's own doc comment gives: a
+// field represented in one fingerprint and forgotten in the other lets a
+// keyed retry that changes only that field hash identically, get
+// misclassified as a no-op replay, and return success while silently
+// discarding the caller's changed value.
+//
+// targets is canonicalized before encoding: cloned (the caller's slice is
+// never mutated), sorted (so the same set expressed in a different order
+// hashes identically — the same merge stated two ways is one operation), and
+// compacted to a deduped set (so a target spelled twice, or resolved twice
+// via two different handles, still replays — consistent with the handler's
+// own dedupe of the resolved set, PD-01). Each target is encoded with the
+// same per-element length-prefixed discipline contentFingerprint uses for
+// tags: length, colon, value, colon, before the whole encoded block enters
+// the outer field-length prefix. A plain separator-joined string is NOT
+// injective over a set of ids — an id containing a literal separator byte
+// could otherwise collapse two distinct target sets into the same string.
+//
+// idempotencyPointID is deliberately NOT extended with the target set: the
+// point id is the lookup key for (owner, scope, key) and its UUIDv5
+// namespace is load-bearing and must never change (see idempotencyPointID's
+// own doc comment). The target set participates only in THIS fingerprint
+// comparison, which is what turns "same key, different operation" into a
+// conflict rather than a silent overwrite.
+func mergeFingerprint(a storeArgs, targets []string) string {
+	sorted := slices.Clone(targets)
+	slices.Sort(sorted)
+	sorted = slices.Compact(sorted)
+
+	var targetsEnc strings.Builder
+	for _, tgt := range sorted {
+		fmt.Fprintf(&targetsEnc, "%d:%s:", len(tgt), tgt)
+	}
+
+	var b strings.Builder
+	for _, f := range []string{contentFingerprint(a), targetsEnc.String()} {
+		fmt.Fprintf(&b, "%d:%s:", len(f), f)
+	}
+	sum := sha256.Sum256([]byte(b.String()))
+	return hex.EncodeToString(sum[:])
+}

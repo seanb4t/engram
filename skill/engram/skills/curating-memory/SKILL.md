@@ -273,9 +273,10 @@ content + semantic search and leave the record untagged.
 ## Cross-spine recall
 
 `search_memory` and `list_memory` accept `cross_spine` (bool) to span every
-scope you can read; it ignores any `scope` you also supply. The response
-reports `searched_scopes` and `scopes_truncated`, which name the scopes
-searched under your authorization — not the scopes that had results.
+scope you can read; it ignores any `scope` you also supply. Otherwise,
+<!-- engram:rule:start scope-required-unless-cross-spine -->scope is required unless cross_spine is true<!-- engram:rule:end scope-required-unless-cross-spine -->.
+The response reports `searched_scopes` and `scopes_truncated`, which name the
+scopes searched under your authorization — not the scopes that had results.
 
 ### When not to use cross-spine
 
@@ -353,14 +354,19 @@ The two or three retry patterns that come up in practice:
 
 Use `schedule_memory` instead of `store_memory` when a durable fact should not be
 recalled *yet*, or should stop being recalled *after* a point in time. It takes
-the same fields as `store_memory` plus a validity window — at least one of
-`not_before` (RFC3339; hidden from recall until then, a deferred reveal) or
-`not_after` (RFC3339; dropped from recall at then, an expiry). Search-before-store
+the same fields as `store_memory` plus a validity window: `not_before` (RFC3339;
+hidden from recall until then, a deferred reveal) and/or `not_after` (RFC3339;
+dropped from recall at then, an expiry) —
+<!-- engram:rule:start schedule-window-at-least-one-bound -->schedule_memory requires not_before and/or not_after (use store_memory for unscheduled records)<!-- engram:rule:end schedule-window-at-least-one-bound -->,
+and when both are set,
+<!-- engram:rule:start window-not-before-before-not-after -->not_before must be strictly before not_after<!-- engram:rule:end window-not-before-before-not-after -->.
+Search-before-store
 still applies. The junk-taxonomy "transient" exclusion targets *incidental* state
 the user never asked to keep — an explicit request to remember something
 by/until/after a time is itself durable (the ask is the signal), so schedule it
 rather than discarding it. Scheduling controls *when* a durable fact is active,
-not *whether* it is durable. Discoveries are not schedulable.
+not *whether* it is durable.
+<!-- engram:rule:start discovery-not-schedulable -->discovery is not schedulable; use store_discovery<!-- engram:rule:end discovery-not-schedulable -->.
 
 A windowed record inside its active window surfaces normally through
 `search_memory` / `list_memory`. Outside that window the recall tools hide it,
@@ -369,42 +375,68 @@ default | `expired` | `all`) — never the active ones, so an in-window record
 absent from `list_scheduled` is reached through ordinary recall, not missing.
 Recall is gated, but fetch-by-id (`get_memory`) is not — it accepts either the
 full id or the short_id. Operators reclaim lapsed records with the `engram
-prune-expired [--older-than DUR]` CLI.
+prune-expired --apply` CLI (add `--older-than DUR` for a grace period):
+<!-- engram:rule:start destructive-requires-apply -->a destructive operator command previews by default and mutates only when apply is set<!-- engram:rule:end destructive-requires-apply -->
+a bare invocation previews the eligible count and deletes nothing.
+
+Operators can permanently delete purge-eligible records with `engram spine-review purge --apply`
+(also preview-by-default). This is the deletion contract an agent should understand even though it
+never calls this CLI verb directly: a candidate must satisfy an extract-before-delete gate (a
+server-set `superseded_by` link to a later record, or an authoritative milestone-summary record
+covering the batch) before it can be removed, and its free-form filter path (category/tags/older-than
+with no structural class selected) additionally requires:
+<!-- engram:rule:start purge-filter-requires-scope -->the free-form filter path requires an explicit --scope or --all-scopes: category or tags always engage it, and older-than engages it when no class is selected<!-- engram:rule:end purge-filter-requires-scope -->.
+`discovery` and `rule` category records are never purge-eligible under any class or filter.
 
 ## Supersession (correcting without losing history)
 
 `supersede_memory` is the correction verb. It takes the full `store_memory` field
 set (content, scope, tags, category, …) for the **new, correcting** record, plus
-`supersedes`: the id — full UUID or `short_id` — of the record it replaces. In one
-call it stores the new record and stamps `superseded_by` onto the old one.
+`supersedes`: one or more target ids — each a full UUID or `short_id` — of the
+records it replaces. In one call it stores the new record and stamps
+`superseded_by` onto every target.
+
+Several targets may be corrected in **one call**:
+`supersedes: ["short_id_a", "short_id_b"]` merges both into a single new record.
+A one-element array (`supersedes: ["short_id_a"]`) is the ordinary single-target
+case — nothing changes about how you call it for the common case.
 
 What that buys you:
 
-- The superseded record **stops surfacing** in `search_memory` / `list_memory` /
+- Every superseded target **stops surfacing** in `search_memory` / `list_memory` /
   `search_discovery` / `list_scheduled` — recall stays clean and agents act on the
   current truth.
-- It remains **fully fetchable by id** via `get_memory`, and the new record carries
-  a `supersedes` link back to it — so "what did we believe before, and what
-  replaced it" is always answerable. Nothing is deleted or overwritten.
+- Each remains **fully fetchable by id** via `get_memory`, and the new record
+  carries a `supersedes` link back to every one of them — so "what did we believe
+  before, and what replaced it" is always answerable. Nothing is deleted or
+  overwritten.
 
 Rules that will bite you if ignored:
 
 - **Supersede the live head, not a link mid-chain.** Superseding an
-  already-superseded record is rejected (`already superseded`). A chain keeps one
-  live head: correcting C→B→A is fine, but you must always target the current
-  head. If you get that rejection, `search_memory` for the current record and
-  supersede *that*.
-- **You must own the target.** Supersession routes through the ownership *write*
-  gate — a `shared` record you can read is **not** one you can supersede. A target
-  you don't own is indistinguishable from one that doesn't exist (both 404).
+  already-superseded record is rejected (`already superseded`). This applies to
+  every target in the set — naming even one already-superseded id rejects the
+  whole call. A chain keeps one live head: correcting C→B→A is fine, but you must
+  always target the current head. If you get that rejection, `search_memory` for
+  the current record and supersede *that*.
+- **You must own every target.** Supersession routes through the ownership
+  *write* gate, per target — a `shared` record you can read is **not** one you
+  can supersede. A target you don't own, a target that doesn't exist, and a
+  target whose short id is ambiguous are all indistinguishable (all 404) — and
+  the rejection names every offending target at once, so you can fix the whole
+  set in one round trip instead of discovering offenders one at a time.
 - **Rules can't be superseded.** `store_rule` records are normative ground truth;
-  delete the rule instead (same restriction as `set_visibility`).
+  naming one anywhere in the set rejects the whole call, naming every rule
+  target — delete the rule instead (same restriction as `set_visibility`).
 - **Never automatic.** Do not supersede on a similarity hunch or as a write-through
-  side effect. Supersession is an explicit correction of a *specific* record you
-  identified — if you're unsure which record is wrong, search first.
-- `idempotency_key` is **not** supported here — a retried supersede creates a
-  second correcting record rather than replaying the first. Retry only after
-  confirming the first call didn't land.
+  side effect, no matter how large the target set. Supersession is an explicit
+  correction of *specific* records you identified and the user blessed — if
+  you're unsure which record is wrong, search first.
+- `idempotency_key` **is** supported here: pass one when retrying a merge after
+  an ambiguous failure (e.g. you didn't see the response) — the fingerprint
+  covers content and the target set, so a matching retry replays the original
+  result instead of merging again. If the target set changed between attempts,
+  expect a conflict rather than a silent second application.
 
 ## Citations (structured provenance)
 

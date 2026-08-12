@@ -206,29 +206,43 @@ func (s *spyStore) SetVisibility(_ context.Context, id string, subj store.Subjec
 	return nil
 }
 
-// Supersede mirrors Store.Supersede's shape: owner-only write gate on the
-// target, single-hop already-superseded rejection, create the new record,
-// then back-stamp the target's SupersededBy — same ordering (new record
-// first, back-stamp second) and same ErrNotFound ownership-gate semantics
-// the real store uses (store.go:1780).
-func (s *spyStore) Supersede(_ context.Context, newMem store.Memory, _ []float32, target string, subj store.Subject) error {
+// Supersede mirrors Store.Supersede's shape, generalized to a target SET
+// (phase 03.1): owner-only write gate PER TARGET, single-hop already-
+// superseded rejection PER TARGET, create the new record, then back-stamp
+// every target's SupersededBy — same ordering (new record first, back-stamp
+// second) and same ErrNotFound ownership-gate semantics the real store uses
+// (store.go). Every gate loops over the FULL targets slice — this is
+// deliberate, not incidental: a version that only inspected targets[0]
+// would let every multi-target authz test in later plans pass while proving
+// nothing (TestSpyStoreSupersedeGatesEverySetMember pins this).
+func (s *spyStore) Supersede(_ context.Context, newMem store.Memory, _ []float32, targets []string, subj store.Subject) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	owner := ownerOfSubject(subj)
-	s.record("Supersede", owner, target)
-	targetRec, ok := s.records[target]
-	if !ok || targetRec.Owner != owner {
-		return fmt.Errorf("%w: %s", store.ErrNotFound, target)
+	for _, target := range targets {
+		s.record("Supersede", owner, target)
 	}
-	if targetRec.SupersededBy != nil && *targetRec.SupersededBy != "" {
-		return fmt.Errorf("%w: %s", store.ErrAlreadySuperseded, target)
+	for _, target := range targets {
+		targetRec, ok := s.records[target]
+		if !ok || targetRec.Owner != owner {
+			return fmt.Errorf("%w: %s", store.ErrNotFound, target)
+		}
+	}
+	for _, target := range targets {
+		targetRec := s.records[target]
+		if targetRec.SupersededBy != nil && *targetRec.SupersededBy != "" {
+			return fmt.Errorf("%w: %s", store.ErrAlreadySuperseded, target)
+		}
 	}
 	s.records[newMem.ID] = newMem
 	if newMem.ShortID != "" {
 		s.shortIndex[shortid.Canonical(newMem.ShortID)] = newMem.ID
 	}
-	targetRec.SupersededBy = &newMem.ID
-	s.records[target] = targetRec
+	for _, target := range targets {
+		targetRec := s.records[target]
+		targetRec.SupersededBy = &newMem.ID
+		s.records[target] = targetRec
+	}
 	return nil
 }
 
@@ -533,4 +547,52 @@ func TestSpyDepsStoreMemoryReachesEmbedder(t *testing.T) {
 	if !found {
 		t.Fatal("spy did not record an Upsert call")
 	}
+}
+
+// TestSpyStoreSupersedeGatesEverySetMember (Task 1, cycle-1 review HIGH)
+// proves spyStore.Supersede gates and stamps EVERY member of the target set,
+// not just the first — a signature-only pluralization would let every
+// multi-target authz test in plans 03.1-03/04 pass while the fake silently
+// only ever inspected targets[0]. Drives the spy directly with a two-element
+// set whose SECOND element fails each gate in turn.
+func TestSpyStoreSupersedeGatesEverySetMember(t *testing.T) {
+	ctx := context.Background()
+	owner := "sub-gate-owner"
+	other := "sub-gate-other"
+	subj := store.Authenticated(owner)
+
+	t.Run("second target owned by another actor", func(t *testing.T) {
+		sp := newSpyStore()
+		firstID := "e0000000-0000-0000-0000-000000000001"
+		secondID := "e0000000-0000-0000-0000-000000000002"
+		sp.records[firstID] = store.Memory{ID: firstID, Owner: owner}
+		sp.records[secondID] = store.Memory{ID: secondID, Owner: other}
+
+		newMem := store.Memory{ID: "e0000000-0000-0000-0000-000000000003", Owner: owner}
+		err := sp.Supersede(ctx, newMem, nil, []string{firstID, secondID}, subj)
+		if !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("Supersede err = %v, want ErrNotFound", err)
+		}
+		if _, ok := sp.records[newMem.ID]; ok {
+			t.Error("new record inserted despite a not-owned second target — gate is vacuous")
+		}
+	})
+
+	t.Run("second target already superseded", func(t *testing.T) {
+		sp := newSpyStore()
+		firstID := "e0000000-0000-0000-0000-000000000004"
+		secondID := "e0000000-0000-0000-0000-000000000005"
+		supersededBy := "e0000000-0000-0000-0000-000000000006"
+		sp.records[firstID] = store.Memory{ID: firstID, Owner: owner}
+		sp.records[secondID] = store.Memory{ID: secondID, Owner: owner, SupersededBy: &supersededBy}
+
+		newMem := store.Memory{ID: "e0000000-0000-0000-0000-000000000007", Owner: owner}
+		err := sp.Supersede(ctx, newMem, nil, []string{firstID, secondID}, subj)
+		if !errors.Is(err, store.ErrAlreadySuperseded) {
+			t.Fatalf("Supersede err = %v, want ErrAlreadySuperseded", err)
+		}
+		if _, ok := sp.records[newMem.ID]; ok {
+			t.Error("new record inserted despite an already-superseded second target — gate is vacuous")
+		}
+	})
 }

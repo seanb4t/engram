@@ -1,201 +1,372 @@
 # Project Research Summary
 
-**Project:** engram v0.12.x — "Headless Reach & Diagnosability"
-**Domain:** Additive integration work on a shipped, self-hosted, multi-tenant Go memory-MCP server (Connect/MCP dual-transport, Qdrant-backed, Cedar-authorized)
-**Researched:** 2026-07-29
+**Project:** engram v0.13.x — Curation & Self-Evidence
+**Domain:** Go CLI + MCP server — curation tooling for a self-hosted, correctable memory store, plus a correct-by-reading interface audit across CLI/self-describe-catalog/MCP surfaces
+**Researched:** 2026-08-03
 **Confidence:** HIGH
 
 ## Executive Summary
 
-This milestone makes engram usable by agents that are not a top-level MCP client (a headless CLI over ConnectRPC, issue #343, plus its dependent items #344/#347/#350/#360) and makes what the server decides and rejects legible (#394, and investigatively #351). Every capability is additive to the existing Connect/MCP/store architecture — none require restructuring a shipped component's public contract, and **zero new Go dependencies are required**: connect-go, `golang.org/x/oauth2/clientcredentials`, cedar-go, `log/slog`, OTel, and stdlib `io`/`net/http` already cover the full surface. Several items are also smaller than their issue text implies: #356 (UI TS codegen drift) is already fully shipped and should be closed with rationale, not carried into this milestone, and #394's diagnostics wiring is "connect an already-computed value to a reader," not a new authz primitive.
+v0.13.x adds two capability clusters to an already-shipped, correctable memory store: a
+structural curation CLI (`engram spine-review`) resolving deterministic predicates — drifted
+`file:line` citations, orphaned records, lapsed windows, extract-before-delete ordering — and a
+companion agent skill for the semantic judgments a CLI cannot safely make ("is this still true,"
+"are these the same fact"), plus a correct-by-reading audit closing four named gaps (#453, #452,
+#467, #355) and reconciling six Nyquist `VALIDATION.md` rows left at `status: draft`. All four
+research dimensions converge on the same headline: this milestone needs zero new Go dependencies.
+Citation drift detection is a byte compare against `store.Citation.Excerpt` (already cached at
+write time); near-duplicate scoring is `qdrant.NewQueryID` against an already-stored vector (no
+re-embedding); the flag-exclusivity and timeout gaps are one-line stdlib/cobra fixes. This is pure
+integration on a four-milestone zero-dependency streak, not new technology adoption.
 
-The milestone's structural spine is #343 (headless Connect mounting + bearer auth), and it is also its highest-risk item. Two research passes converged on the same root cause from different angles: `newConnectCSRFInterceptor` today has exactly one identity source (the cookie lane), so any CSRF-exemption logic that keys off request-controlled signals (header/cookie presence) rather than resolver-set provenance is a full CSRF bypass on all six write RPCs. Separately — and this is a finding the individual research passes could not cross-reference against each other, so it is elevated here — the pitfalls research identified that Connect's interceptor chain calls `resolve()` directly and **never routes through `mcpauth.RequireBearerToken`**, whose private `verify()` is where `TokenInfo.Expiration` is actually enforced. A Connect bearer resolver built by "just calling `auth.ChainVerifier`" (the stack research's literal recommended shape) therefore makes `Expiration` decorative on the Connect lane — including the static-token lane's 100-year sentinel, which exists *solely* to satisfy a check that lane will never run. This is a security-critical, silently-passing defect class: it compiles, vets, lints, and passes a happy-path test suite cleanly, and is only caught by a test that constructs a `TokenInfo` with a past `Expiration` and confirms the Connect resolver rejects it. Any plan for #343 must explicitly build this check, not assume it comes free from reusing `ChainVerifier`.
+The recommended approach is architecturally conservative: `spine-review` is the sixth instance of
+an existing, Subject-less "operator tier" (`reindex`, `migrate-remap-owner`, `prune-expired`,
+`summarize-missing`, `backfill-short-ids`) — not a new authorization path, and must not be built
+by composing the Subject-gated `Search`/`List`, which would silently scope a spine-wide sweep to
+one actor. The semantic skill stays entirely on the existing MCP tool surface, propose-never-
+perform, reusing `store_rule`'s already-proven consent gate verbatim rather than inventing a new
+one. The `--help`/self-describe-catalog pair is already one source by construction
+(`buildCatalog` walks the live cobra tree) — the genuinely independent second surface is
+`internal/server/tools.go`'s jsonschema-tagged MCP structs, so the audit needs a two-surface
+conformance test, not a three-surface one.
 
-The remaining items (#344 cross-spine search, #394 diag wiring, #347 embed error bodies, #350 per-lane key, #345 reindex resume) are architecturally independent of the #343 spine and of each other (aside from two items sharing `tools.go`), and can run in parallel once the spine's provenance-tagging groundwork lands. #351 (why rule capture never fires) is scoped as investigate-then-fix, not a known implementation — the feature research's deep dive gives concrete, consent-preserving intervention candidates but explicitly warns against jumping to a UX fix before confirming the break isn't mechanical.
+The dominant risk is destructive-operation design, not technology risk: purge/consolidate touch
+irreversible deletes with a semantic judgment upstream that can be confidently wrong, and this
+milestone's own Nyquist-reconciliation deliverable can trivially reproduce the exact false-green
+bug (`go test -run` matching zero tests, exit 0) that it exists to close. Mitigation is consistent
+across every pitfall found: tombstone-then-finalize (never a single-step hard delete), propose-
+artifacts-only for the skill (never direct tool-call execution), re-derive eligibility fresh at
+apply time (never trust a stale ID list across the propose/perform boundary), and re-resolve every
+`-run` selector against `go test -list` before trusting a "passing" row.
 
 ## Key Findings
 
 ### Recommended Stack
 
-Nothing new to install. `connectrpc.com/connect` v1.20.0 supplies both the CLI's client construction and the server's bearer-resolver adapter via the same interceptor idiom already used four times in `mountConnect`. `golang.org/x/oauth2/clientcredentials` (already a subpackage of a direct dependency) covers CLI-side OIDC client-credentials token acquisition — no second OIDC library. `cedar-go` v1.8.0 already computes the `Decision.diag` value #394 needs to surface; only an accessor is missing. Bounded HTTP error-body reads (#347) are pure stdlib (`io.LimitReader` + `io.Copy(io.Discard, ...)`). CI's codegen-drift check for `gen/ts/` → `ui/src/lib/gen/` already exists and passes (`.github/workflows/ci.yaml:139-147`) — confirming the milestone-context note that #356 is out of scope.
+Zero new dependencies. `cobra` v1.10.2 and `qdrant/go-client` v1.18.3 are already vendored and
+already imported by the exact packages (`cmd/engram`, `internal/store`) this milestone touches;
+everything else is Go 1.26 stdlib. The one integration gotcha worth flagging up front: cobra's
+`MarkFlagsMutuallyExclusive` does not auto-generate help text (constraint enforcement and
+constraint documentation are two separate things — none of its annotation constants appear in
+cobra's help-rendering code), and `ValidateFlagGroups()` returns a plain `fmt.Errorf` with no
+`ExitCode()` method, which falls through `exitCodeFromError`'s `errors.As` check to exit 1
+(`exitGeneric`) rather than exit 2 (`exitUsage`) — the code every hand-rolled `usageErrorf` call
+in this codebase already returns for the identical error class. Adopting #453's obvious fix
+unhandled would make #467's problem worse, introducing a third undocumented exit-code split one
+command over from the exact gap #467 exists to close. Either wrap `ValidateFlagGroups()`'s return
+in a `*cliError{code: exitUsage}`, or explicitly document native-cobra-validated flag errors as
+exit 1 by design — pick one and record it before landing #453.
 
-**Core technologies (all already in go.mod):**
-- `connectrpc.com/connect` v1.20.0 — CLI client + server bearer resolver, same interceptor shape both directions
-- `golang.org/x/oauth2/clientcredentials` v0.36.0 — CLI OIDC token acquisition (RFC 6749 §4.4 grant, not a second OIDC client library)
-- `github.com/cedar-policy/cedar-go` v1.8.0 — source of `Decision.diag`; needs only an exported, PII-safe accessor
-- `log/slog` + `go.opentelemetry.io/otel/trace` v1.44.0 — debug logging + span events for authz decisions
-- stdlib `io`, `net/http` — bounded error-body read + drain-for-reuse in `internal/embed`
+**Core technologies (all already present):**
+- `spf13/cobra` v1.10.2 — `MarkFlagsMutuallyExclusive`/`MarkFlagsOneRequired`/
+  `MarkFlagsRequiredTogether` for #453, replacing three independently hand-rolled guards
+- Go stdlib (`os`, `strings`) — citation drift detection via `Citation.Excerpt` byte-compare;
+  optional `go/ast` containment scan for `.go`-file anchors to distinguish "moved" from "changed"
+- `qdrant/go-client` v1.18.3 — `NewQueryID` reuses a stored point's vector for near-dup candidate
+  generation with no re-embedding round-trip
+- Go stdlib (`net/http`, `context`) — `--timeout` flag + `context.WithTimeout` for #452
 
 ### Expected Features
 
-**Must have (table stakes):** JSON output on `engram search|store|list` (default-on when piped); stdout=data/stderr=diagnostics separation; documented, semantic exit codes mapped from engram's existing error taxonomy; non-interactive-by-default CLI (no TTY prompts — the primary caller cannot answer one); token/server-URL via `ENGRAM_`-prefixed env vars with flag override; actionable validation errors naming the true offending field (direct target of #360); foreign-scope results visibly tagged with their source scope on cross-spine search; authz denial reasons reaching a reader instead of being silently computed and dropped (#394).
+**Must have (table stakes):** citation liveness/reference check with drift-tolerance (not naive
+exact-line-match — flooding false positives on ordinary refactors is the single most consistent
+failure mode in the drift-detection literature); consolidate that surfaces near-dup candidates and
+never auto-merges; purge that respects extract-before-delete ordering (extending
+`prune-expired`'s existing dry-run shape, not inventing a fourth record state); review that
+surfaces structural signals only, never auto-promotes; MCP tool descriptions stating what/when/
+returns/does-NOT; MCP tool annotations (`readOnlyHint`/`destructiveHint`/`idempotentHint`) — every
+MCP-server review guide surveyed treats their absence as the single most common quality gap;
+`MarkFlagsMutuallyExclusive` replacing hand-rolled guards; one exit-code taxonomy or a named
+boundary; a finite-default CLI timeout.
 
-**Should have (differentiators):** a self-describing CLI (bare invocation/`--help` returns the full command/flag/error catalog — cheap given cobra already builds the tree internally); a structured error envelope with a `hint`/`next_actions` field, extending the #360 fix; a `scopes_searched` marker on cross-spine results so an agent can distinguish "found nothing" from "searched everywhere and found nothing"; friction-reducing (not consent-removing) interventions for rule capture.
+**Should have (differentiators):** a pre-auth, pre-config machine-readable schema surface stating
+conditional requirements inline (extends the already-shipped v0.12.x Phase 2 catalog);
+citation-anchored verify with #355 as a permanent, committed adversarial fixture rather than a
+corpus-validated-only detector; consolidate reusing the existing vector index (zero new
+infrastructure vs. competitors who ship a separate dedup subsystem).
 
-**Defer:** a full cross-spine "coverage receipt" (scopes searched vs. skipped-with-reason) — the scope space is small and enumerable today, so this is speculative; any CLI manifest/introspection richer than the closed 3-command surface.
-
-**Explicitly out of scope / anti-features:** auto-promoting a memory to a rule (violates the user-blessed gate, and PKM literature shows agent-generated structure measurably underperforms human-authored structure); embedding-similarity auto-supersede; a CLI `--auto-json` mode inferring format from response shape (non-deterministic format selection is a documented CLI-agent failure mode); flipping `cross_spine` to default-true; verbose Cedar expression-trace logging on every denial (OPA's own maintainers rejected this for cost and PII-leak reasons — directly conflicts with DEC-wot); a CLI that internally retries mutating calls on ambiguous failure without an idempotency key.
+**Defer:** a full archive-tier redesign (genuine fourth record state) — existing soft-hide +
+`not_after` + `prune-expired` likely covers the need; any decay/promotion scoring model
+(AMV-L/Z3rno-style tiering) — explicitly out of scope, would reopen the v0.9.x usage-signal
+invariant.
 
 ### Architecture Approach
 
-Six items land at six mostly-disjoint seams in the existing Connect/MCP/store architecture. The MCP lane, `internal/store`, and `internal/authz` are untouched by the auth-lane work. The spine (#343) requires extracting `withAuth`'s chain-builder into a reusable function so both the MCP wrapper and the new Connect bearer resolver consume one composed `mcpauth.TokenVerifier` — never two independently-constructed chains that can drift.
+`spine-review` is a Terraform-shaped (`plan`/`apply` — proposal is a user-visible gate), not a
+`git gc`-shaped (internally sequenced, no exposed phases), parent command: `scan` (read-only),
+`verify` (read-only, the extract-before-delete and #355 fixture check), `purge` (destructive,
+default-preview via `--apply`, a deliberate inversion of the existing --dry-run-opt-in convention
+that must be recorded as such), `archive` (softer disposal). It extends the existing five-command
+Subject-less operator tier via a new `Store.ScanSpine`-shaped bulk method (Scroll-based, parallel
+to `Reindex`/`PruneExpired`) — never composing `Search`/`List`. The semantic skill routes
+exclusively through already-shipped MCP tools (`list_memory`/`search_memory`/`get_memory` to
+enumerate, `update_memory`/`supersede_memory`/`delete_memory` to apply a user-blessed
+disposition) — never the CLI, never a new Connect path, because Connect write parity would
+require the skill to bootstrap a second client identity for zero capability gain. The interface
+audit is a hand-authored conformance table + test, not codegen unification, checking that each
+named conditional-requirement rule appears in both cobra `Usage` text and MCP `jsonschema` tags.
 
 **Major components:**
-1. **Connect bearer resolver + composed resolver** (new) — verifies bearer tokens via the shared `auth.ChainVerifier`, stamps an explicit lane-provenance value (`auth.LaneBearer`/`auth.LaneCookie`) into context; the composed resolver routes by *structural presence* of the `Authorization` header, never try-then-fallback across the two lanes.
-2. **CSRF interceptor** (modified) — reads lane provenance from context, never from request headers/cookies; exempts only genuinely bearer-authenticated requests.
-3. **CLI subcommands** (`cmd/engram/search.go`/`store.go`/`list.go`, new) — thin cobra commands that speak only the generated Connect stubs (`gen/go/engram/v1/engramv1connect`), deliberately never importing `internal/store`/`internal/authz`/`internal/embed` directly (that's the operator-command pattern, not the client-command pattern).
-4. **`cross_spine` on `search_memory`** (`tools.go`, `store.go`, proto field 9, additive) — mirrors `search_discovery`'s existing `CrossSpine` mechanism at the args/handler layer.
-5. **`authz.Decision` safe accessor** (`internal/authz`, new) — a `slog.LogValuer`-based, field-allowlisted view exposed to `internal/store`'s two existing decision chokepoints (`decideBucket`/`decideRecord`), never the raw `cedar.Diagnostic`.
-6. **Per-lane API key** (`internal/config`, `tools.go`, mechanical) — mirrors the already-shipped base-URL split for chat vs. embed.
+1. `cmd/engram/spinereview.go` (new) — cobra parent + `scan`/`verify`/`purge`/`archive`
+   subcommands; `internal/store` authz surface (`decideBucket`/`decideRecord`) stays unmodified
+2. New Subject-less `internal/store` bulk-scan method(s) — parallel to `Reindex`/`PruneExpired`
+3. `skill/engram/skills/curating-memory/SKILL.md` (modified) — generalize the existing
+   duplicate/contradiction/rot triad from rules to all memories; reuse the consent protocol
+   verbatim
+4. New small `internal/server` MCP introspection helper + conformance test (mirrors
+   `buildCatalog`'s shape) for the cross-surface drift gate
 
 ### Critical Pitfalls
 
-1. **CSRF exemption keyed on request-controlled input** — must be decided inside the resolver at verification time and carried forward as an explicit, non-inferable context value; never derived from header/cookie presence at the CSRF interceptor. This is the milestone's #1 named risk and must be the first slice proven with a negative test.
-2. **Connect bearer resolver silently drops `Expiration` enforcement** — see Executive Summary; `RequireBearerToken`'s header-parse + expiration check must be explicitly re-implemented or extracted for the Connect path, since Connect never passes through the go-sdk's HTTP middleware that performs it today.
-3. **Two independently-built `ChainVerifier`s drift** — `withAuth` must be refactored to expose its composed verifier to both mount sites, not reconstructed a second time for Connect.
-4. **`cross_spine` copying `SearchDiscoveries`' pattern verbatim** — see the disagreement section below; must be individually verified, not assumed safe by analogy.
-5. **Deny-only or unredacted `authz.Decision.diag` logging** — must log both allow and deny at debug level, with a reviewed field allowlist re-applying DEC-wot's owner-only-no-actor-no-email rule (`cedar.Diagnostic` has no PII fields by construction, but the reader discipline still must be explicit).
-
-## Cross-Cutting Finding: The `cross_spine` Disagreement (#344) — Present, Not Resolved
-
-The architecture research and the pitfalls research reached different emphases on the same change, and a planner must resolve this by verification, not by picking a side up front.
-
-**Architecture's position:** `cross_spine` on `search_memory` is a precise structural mirror of `search_discovery`'s existing implementation. Concretely: add a `CrossSpine bool` arg (byte-for-byte the discovery precedent), extract a shared `effectiveScope(scope, crossSpine)` helper, and change `ownerScopeFilter` from unconditionally appending `qdrant.NewMatch("scope", scope)` to a conditional append — the exact one-line change `SearchDiscovery` already makes. It further notes the authz interaction is orthogonal today: `SearchDiscovery` still unconditionally appends `s.ownerOrSharedCondition(subj)` regardless of scope, because scope and authz are two independent filter dimensions in the same Qdrant `Must` list.
-
-**Pitfalls' position:** this shape cannot be assumed safe to copy verbatim, for two reasons. First, discoveries live in a `discovery:*` namespace convention — a memory's `scope` is an arbitrary repo/workspace/worktree string with no equivalent confining namespace, so "everywhere" means something structurally different for the two categories. Second, and more load-bearing: the *fact* that `ownerScopeFilter`'s authz `Must` clause composes unconditionally and independently of the scope clause must be **verified by reading `Store.Search`'s filter-building code end to end**, not assumed by analogy to `SearchDiscovery`'s separate code path — the existing single-scope code path may have implicitly relied on `scope` being non-empty as an unaudited secondary narrowing signal somewhere in that path, and making scope optional would exercise that path on an input it was never designed for.
-
-**What a planner must do before treating this as a one-line change:**
-1. Read `Store.Search`'s full filter-construction path (not just `ownerScopeFilter` in isolation) and confirm in writing that the authz/owner `Must` clause is built as a genuinely separate, unconditional entry from the scope `Must` clause — never a single combined condition where omitting scope could silently omit part of the authz gate.
-2. Add `cross_spine` as a named `SearchOptions` struct field (continuing the D-09 struct-over-positional-param discipline), not a bare boolean threaded positionally.
-3. Write `TestCrossSpineSearchNeverBypassesOwnerFilter` — two different authenticated owners with records in overlapping scope names; owner A searches `cross_spine=true` with empty scope; assert owner B's private records never appear — against **real Qdrant** (testcontainers), not a mock, since a mock could paper over exactly the filter-composition bug this disagreement is about.
-
-Both research passes agree the *proto/args/handler* layer (field 9, `CrossSpine` arg, `effectiveScope` helper) is safe and mechanical. The disagreement is entirely about whether the *store-layer filter composition* is safe to assume unconditional versus requiring active verification — treat it as requiring verification.
-
-## Cross-Cutting Finding: Items Invisible to a Green Test Suite
-
-This project's documented failure mode is defects that compile, vet, lint, and pass the full suite, caught only by a reviewer reasoning from the contract rather than from what the tests happen to exercise. Consolidated list, for reviewer use:
-
-| # | Item | Why it's invisible | The test that catches it |
-|---|------|---------------------|---------------------------|
-| 1 | Connect bearer resolver skips `Expiration` enforcement | Happy-path tests (valid, non-expired token) never exercise the missing check; `go vet`/lint cannot flag "a struct field exists but nothing reads it" | `TestConnectBearerResolverRejectsExpiredTokenInfo` — feed a `TokenVerifier` stub returning `TokenInfo{Expiration: past}` with `err == nil`; assert rejection |
-| 2 | CSRF exemption keyed on request-controlled signal | Looks correct against every test that only sends *either* a valid cookie *or* a valid bearer header — never the adversarial combination | `TestCSRFCookieCallerOmittingHeaderIsStillRejected` + `TestCSRFCookieCallerCannotSelfDeclareBearerLane` (cookie session + garbage `Authorization` header) |
-| 3 | Combined resolver falls through bearer-failure to cookie | Same blind spot as #2 — no test sends a valid cookie *and* an invalid bearer header simultaneously | `TestBearerFailureNeverFallsThroughToCookie` |
-| 4 | Two independently-constructed `ChainVerifier`s drift | Each lane has its own mocked-chain tests that individually pass; divergence only shows up when a real caller gets different acceptance behavior between lanes | `TestAuthChainSharedBetweenLanes` — structural assertion that both mount sites call the same constructor |
-| 5 | `cross_spine` widening the authz filter, not just the scope filter | A mock-based test can pass even if the real Qdrant filter composition is wrong; single-owner tests don't exercise cross-owner isolation | `TestCrossSpineSearchNeverBypassesOwnerFilter` (real Qdrant, two owners) |
-| 6 | `authz.Decision.diag` logged deny-only or unredacted | Deny-path logging "looks complete" — nobody notices the allow path is silently unlogged until debugging an unexpected allow; PII risk depends on `cedar.Diagnostic`'s actual field shape, which nobody has had reason to inspect before | Field-allowlist test + an assertion that both allow and deny paths produce a log line |
-| 7 | #360 validation-error fix pins the one reported string instead of fixing branch-attribution | A test asserting the new exact string passes trivially, while the underlying misattribution mechanism (which field a schema fallback names) remains broken for every other multi-field-invalid combination | A matrix test: one case per single-field-invalid input (bad content, bad summary, bad category, bad scope...), asserting the *correct* field is named each time, not string-matching exact wording |
-| 8 | `reindex --resume` tags fix changes only the comparison line | `reindexTarget`/`reindexTargetContents` never fetch the target's stored `tags` at all — a comparison against an always-nil field either always "matches" (bug persists) or always "mismatches" (resume stops working, but nothing errors — it just silently re-embeds everything, costing more without ever surfacing as a failure) | `TestReindexResumeSkipsOnContentMatchTagsDiffer` (including a same-elements-different-order case) + `TestReindexResumeSkipsWhenContentAndTagsBothMatch` as the paired positive control |
-| 9 | Headless mount defaults on, or is derived from an already-true condition | The "smallest diff" version of this fix is loosening `mountConnect`'s existing `if resolve == nil` guard with an OR — every existing test that only checks "UI enabled → mounted" still passes even if the new condition is wrong | `TestMountConnectDefaultOffWithoutUIOrHeadlessFlag` — UI disabled AND headless flag unset must leave Connect unmounted, byte-for-byte today's behavior |
-
-## Build Order and Dependencies
-
-```
-Item 1 (bearer resolver + lane provenance + headless mount + Expiration check)
-   │
-   ├──► Item 2 (CSRF provenance exemption) — strictly needs Item 1's lane stamp
-   │        │
-   │        ▼
-   └──► Item 3 (CLI): search/list need only Item 1 (read RPCs aren't CSRF-gated);
-                       store needs Item 1 AND Item 2 before it can be called "done"
-
-Independent, parallelizable with the spine and with each other:
-   Item 4 — cross_spine on search_memory (#344)         — touches tools.go, store.go, proto
-   Item 5 — authz.Decision.diag reader (#394)            — touches internal/authz, internal/store only
-   Item 6 — per-lane API key (#350)                      — touches internal/config, tools.go (summarizerFromConfig)
-   Item 7 — reindex --resume tags fix (#345)              — touches internal/store, fully separate code path
-   Item 8 — #360 validation-error root-cause fix          — touches validation/schema layer, fully separate
-   Item 9 — #347 bounded embed error-body read            — touches internal/embed only, stdlib-only fix
-   Item 10 — #351 rule-capture investigation → fix        — investigate first; intervention (if UX) touches curating-memory skill + session-start surfacing, not core server code
-```
-
-**Sequencing notes:**
-- Within the spine, Items 1 and 2 are sequential (2 needs 1's stamp), and the CSRF negative test (`TestCSRFCookieCallerOmittingHeaderIsStillRejected`) should be written *before* the exemption branch is wired — mirroring the project's own "prove fail-closed as the phase's first test" precedent from v0.11.x.
-- Item 3's `store` subcommand must not be considered shippable until Item 2's negative tests are green — shipping a write-capable CLI against a CSRF exemption still keyed on header-absence would ship the exact vulnerability the milestone's risk section names.
-- Item 4 (cross_spine) and Item 6 (per-lane key) both touch `tools.go` in different functions (`searchMemory`/`effectiveScope` vs. `summarizerFromConfig`) — low but non-zero merge risk if landed in the same PR; sequence or keep diffs small and independently reviewed.
-- #351 is explicitly investigate-then-fix per the milestone framing — do not plan a specific UX intervention before confirming (via a trace of actual `store_rule` invocation attempts, including failures) whether the gap is behavioral/friction or mechanical/bug. If mechanical, this could be a small, independent fix with no dependency on anything else in the milestone.
+1. **Delete-before-extract has no enforcement mechanism** — `purge`/`archive` must refuse to run
+   against a target set until a recorded, timestamped extraction-pass marker exists; never an
+   honor-system ordering.
+2. **Purge has no tombstone stage** — reuse the codebase's own two existing precedents
+   (`schedule_memory`+`prune-expired`, `supersede_memory`'s soft-hide) rather than wiring `purge`
+   straight onto `delete_memory`; require a separate, explicitly-confirmed finalize/`--commit`
+   step for the irreversible action.
+3. **Agent-driven curation risks a confident, wrong, irreversible mutation** — propose-never-
+   perform is the entire design, not a documentation note; the skill must never itself call a
+   mutating verb as its terminal action, and must be cold-read-tested with at least one
+   deliberately-wrong "obviously right" judgment.
+4. **Exit-code/flag-validation changes look like cleanup but silently break scripts** — resolve
+   #467 by documenting the boundary (lower risk than unification) unless a concrete consumer
+   justifies a breaking change; pin current per-command exit codes with a table-driven test before
+   touching any of them.
+5. **A test-selector false green (`go test -run` matching zero tests, exit 0)** — the Nyquist
+   reconciliation phase can reproduce the exact bug it exists to close if it re-stamps rows
+   without re-resolving `-run` patterns against `go test -list`.
 
 ## Implications for Roadmap
 
-### Phase 1: Headless Connect Spine (bearer auth + provenance + headless mount)
-**Rationale:** Structural dependency root for the entire CLI story (#343) and the milestone's highest-risk item (CSRF bypass class). Must land, and be proven fail-closed, before anything else in the "headless reach" half of the milestone.
-**Delivers:** Extracted shared `ChainVerifier` builder; new Connect bearer resolver with explicit `Expiration` enforcement; lane-provenance context stamp; composed (bearer+cookie) resolver with no cross-lane fallback; CSRF interceptor reading provenance, not request signals; independently-defaulted-off headless-mount config flag.
-**Addresses:** Table-stakes CLI credential plumbing (env var token/server-URL) from FEATURES.md; the milestone's explicit #1 risk.
-**Avoids:** Pitfalls 1, 2, 3, 4, 5 (CSRF-on-request-signal, cross-lane fallthrough, missing Expiration check, drifted ChainVerifier, silent exposure-flip-on-upgrade). Ship the negative tests listed in the "invisible to a green suite" table as this phase's definition of done, not follow-up work.
+### Convergent findings to carry forward as headline framing
 
-### Phase 2: CLI Subcommands (`engram search|store|list`)
-**Rationale:** Depends on Phase 1. Read commands are buildable/testable the moment the headless mount + bearer resolver exist; the write command additionally requires Phase 1's CSRF fix to be safe to ship.
-**Delivers:** cobra subcommands under `cmd/engram/`, speaking only the generated Connect client (no `internal/store`/`internal/authz`/`internal/embed` imports); JSON-default-when-piped output; stderr-only diagnostics; documented exit codes mapped from the Connect error-code taxonomy; file/stdin-based credential input (never a bare `--token` flag value).
-**Uses:** connect-go client idioms, `clientcredentials`, `internal/config` field-registry extension for `ENGRAM_CLIENT_*` vars.
-**Avoids:** Pitfalls 7, 8, 9 (token leakage via argv/env/crash-reports, exit-code collapse, silent version-skew no-ops).
+- **Zero new dependencies** confirmed independently by STACK and reinforced by ARCHITECTURE/
+  FEATURES — state this as a constraint-confirmation, not a to-be-determined question, in every
+  phase's plan.
+- **Two interface surfaces, not three** — ARCHITECTURE's correction (CLI `--help` and the
+  self-describe JSON catalog are one source by construction via `buildCatalog`) should reframe the
+  audit phase's scope statement; the genuinely independent target is `tools.go`'s jsonschema tags.
+- **`spine-review` is the sixth operator-tier instance, not a new authz path** — this must be
+  stated explicitly in the spine-review phase's design so a reviewer doesn't ask "where's the new
+  permission check" and get a wrong answer composed from `Search`/`List`.
+- **Consent architecture convergence** — FEATURES and PITFALLS independently arrived at
+  propose-never-perform using `store_rule`'s consent gate as the in-repo template. This is not two
+  separate design questions; it's one answer confirmed twice.
+- **Nyquist self-referential risk** — the reconciliation phase's own deliverable must not repeat
+  the false-green bug it is closing; its acceptance criterion must include re-deriving `-run`
+  patterns against `go test -list`, not merely re-running and checking exit 0.
 
-### Phase 3: Cross-Spine Memory Search (#344)
-**Rationale:** Independent of the spine; can run in parallel with Phase 1/2, but carries the milestone's one unresolved architecture/pitfalls disagreement and must not be treated as a trivial mirror of `search_discovery` without the verification step.
-**Delivers:** `cross_spine` arg on `search_memory` (MCP + Connect, additive proto field 9); shared `effectiveScope` helper; verified-unconditional authz `Must` clause in `Store.Search`; per-result scope tagging.
-**Addresses:** Table-stakes foreign-scope tagging and the differentiator scopes-searched marker from FEATURES.md.
-**Avoids:** Pitfall 10 — requires the `Store.Search` filter-composition read-through and the real-Qdrant, two-owner isolation test described in the disagreement section above, before this can be called done.
+### Build-order disagreement — present both, do not silently pick one
 
-### Phase 4: Diagnosability (#394 authz decision logging, #360 validation-error attribution, #347 embed error bodies)
-**Rationale:** Three independent, small, PII/legibility-shaped fixes sharing a common design discipline (bounded, structured, redaction-conscious disclosure) even though they touch different subsystems. Grouping them lets one internal convention (a shared diagnostic-envelope shape) land coherently rather than as three ad hoc mechanisms.
-**Delivers:** `authz.Decision` safe `slog.LogValuer` accessor logged at both allow and deny; #360's root-cause validation-branch-attribution fix (not a string substitution) with a per-field matrix test; #347's bounded-read-and-drain fix in `internal/embed` (and audit `internal/summarize` for the same gap).
-**Addresses:** Table-stakes authz-denial-reaches-a-reader and actionable-error-naming-the-true-field from FEATURES.md.
-**Avoids:** Pitfalls 11, 12 (deny-only/unredacted diag logging, string-patched validation error masking the real branch bug).
+FEATURES' MVP recommendation orders by capability value: (1) Verify — deterministic, reuses
+shipped `citations`, #355 is a ready fixture; (2) the audit's mechanical fixes (#453/#452/#467/MCP
+annotations) — all low-complexity, named gaps; (3) Consolidate (report-only). Its stated rationale
+is shipping the cheapest, highest-confidence wins first and deferring anything with unresolved
+design questions (archive-tier redesign, decay/promotion scoring).
 
-### Phase 5: Operator/Correctness Tail (#350 per-lane API key, #345 reindex --resume tags fix, #351 rule-capture)
-**Rationale:** Fully independent, mechanical-or-investigative items with no shared files or dependencies on the above phases; good candidates for parallel execution once assigned, or for filling schedule gaps around the spine work.
-**Delivers:** `OpenAIConfig.ChatAPIKey` mirroring the shipped `ChatBaseURL` split (#350); `reindexTarget`/`reindexTargetContents` extended to fetch and order-independently compare target `tags`, plus a documented one-time repair path for records an unpatched resume run already skipped incorrectly (#345); #351's investigation output, and — only if the investigation finds a friction/UX cause rather than a mechanical bug — one of the consent-preserving intervention candidates from FEATURES.md's deep dive (session-start reminder, single-turn propose-and-confirm, widened trigger surface in the `curating-memory` skill routing table).
-**Avoids:** Pitfall 13 (reindex resume's silent staleness); the auto-promotion/auto-supersede anti-features named explicitly Out-of-Scope in PROJECT.md.
+ARCHITECTURE's build order is driven by load-bearing code dependencies, and is more granular: (1)
+#453 first, so spine-review's own subcommand flags aren't built on a fourth hand-rolled guard; (2)
+#467 next — a genuine blocker, because `spine-review` is architecturally an operator command and
+would silently become a third undocumented exit-code case unless #467 is resolved (even if the
+resolution is "operators stay exit 1, documented") before spine-review's own error handling is
+written; (3) the audit's conformance-test machinery (parallelizable with 1–2, no code dependency
+on A/B, but its standard should exist before spine-review's help text is finalized so spine-review
+is correct-by-reading from day one); (4) `spine-review` itself; (5) the semantic skill (no code
+dependency on spine-review, can be authored in parallel, but full acceptance of its
+extract-before-delete handoff waits on spine-review's `verify` subcommand existing); (6) #452 —
+fully independent, no ordering constraint, do whenever convenient; (7) #355's actual fix —
+deliberately last, because it is the live fixture `verify` must be validated against, not a
+prerequisite to building `verify`; (8) Nyquist reconciliation — zero technical dependency on 1–7,
+parallelizable throughout, with the one coupling that this milestone's own new phases should
+reconcile their `VALIDATION.md` as each closes.
+
+Which claims are load-bearing vs. stylistic: ARCHITECTURE's #453→#467→spine-review ordering is
+load-bearing — spine-review's error-handling code and help text are written differently depending
+on both decisions, and retrofitting either onto an already-shipped `purge` verb is itself a
+breaking change to a destructive command (a claim PITFALLS independently corroborates for #453/
+#467 specifically). FEATURES' "Verify first because it's the cheapest win" is a stylistic/value
+ordering — it does not conflict with ARCHITECTURE's mechanical prerequisites, since #453/#467 are
+still small enough to land immediately before Verify in either framing. Recommend: sequence #453 →
+#467 → [audit conformance machinery, parallel] → spine-review (scan → verify → purge/archive,
+internally, matching Verify's fixture-first value argument) → semantic skill (authored in
+parallel, accepted after verify exists) → #452 (anytime) → #355 (last, as verify's fixture) →
+Nyquist reconciliation (parallel throughout, closing per-phase as v0.13.x's own phases land).
+
+### Suggested phase structure
+
+**Phase 1: Documented constraints made enforceable (#453)**
+Rationale: Small, self-contained, no dependency on anything else; must land before spine-review so
+its subcommand flags build on the corrected mechanism, not a fourth hand-rolled guard. Also
+carries its own audit-before-enforce precondition (Pitfall 7) — a documented-but-unenforced
+constraint becoming enforced is a breaking change to a shipped CLI's public contract.
+Delivers: `MarkFlagsMutuallyExclusive` replacing `client_list.go`'s undone prose; an audit of real
+invocation patterns for the newly-forbidden combination, completed before landing validation.
+Addresses: "MarkFlagsMutuallyExclusive replaces hand-rolled guards" (FEATURES table stakes).
+Avoids: Pitfall 7 (previously-accepted flag combination silently rejected).
+
+**Phase 2: One exit-code taxonomy, or a documented boundary (#467)**
+Rationale: A genuine blocker for spine-review — `spine-review` is architecturally an operator
+command and would silently become a third undocumented exit-code case unless this is resolved
+first, even if the resolution is "operator commands deliberately keep exit 1, documented as the
+boundary."
+Delivers: Either a documented-boundary decision record, or a unification shipped with a
+pinned-current-behavior table-driven regression test and a CHANGELOG breaking-change entry.
+Addresses: "One exit-code taxonomy, or a named boundary" (FEATURES table stakes).
+Avoids: Pitfall 8 (exit-code changes silently break scripts branching on today's contract).
+
+**Phase 3: Self-evident surface audit**
+Rationale: Parallelizable with Phases 1–2 (touches unrelated files); its standard (state
+conditional requirements inline, in both `Usage` text and MCP `jsonschema` tags) should exist in
+written/test form before spine-review's own help text is finalized.
+Delivers: A hand-authored conditional-requirement-rule table; a small new `internal/server` MCP
+introspection helper mirroring `buildCatalog`'s shape; a conformance test asserting each named
+rule's substring appears on both surfaces; MCP tool annotations (`readOnlyHint`/`destructiveHint`/
+`idempotentHint`) added across the tool surface; `--timeout` flag + exit-code mapping (#452, fully
+independent, can land here or anywhere convenient).
+Uses: the existing `buildCatalog`/`collectFlags` introspection pattern (STACK/ARCHITECTURE).
+Implements: the conformance-test architecture component (ARCHITECTURE section C).
+
+**Phase 4: Spine curation CLI — `engram spine-review` (structural)**
+Rationale: Built once Phases 1–3 have settled per the load-bearing dependency chain; the sixth
+instance of the existing Subject-less operator tier, never composing Subject-gated `Search`/`List`.
+Delivers: `spine-review scan`/`verify`/`purge`/`archive`; a new Subject-less
+`Store.ScanSpine`-shaped bulk method; tombstone-then-finalize purge shape (`--apply` default-off);
+re-derive-eligibility-at-apply-time (never a stale ID list crossing the propose/perform boundary);
+severity-tiered drift findings (auto-repair mechanically-fixable moved anchors, distinct from
+genuinely-broken ones) to avoid alert fatigue.
+Addresses: citation liveness/drift-tolerance, purge extract-before-delete ordering, consolidate
+report-only near-dup candidates (FEATURES table stakes + differentiators).
+Avoids: Pitfalls 1, 2, 3, 6 (delete-before-extract, no tombstone, partial-failure
+non-idempotency, false-positive staleness/alert fatigue).
+
+**Phase 5: Companion curation skill (semantic)**
+Rationale: No code dependency on Phase 4 — calls only already-shipped MCP tools, so its content
+can be authored any time, including in parallel with Phase 4. Full acceptance of its
+extract-before-delete handoff waits on Phase 4's `verify` subcommand existing.
+Delivers: Extension of `curating-memory`'s existing rule-hygiene triad (duplicate/
+contradiction/rot) generalized from rules to all memories; the "is this still true" staleness
+judgment; propose-never-perform reusing `store_rule`'s consent protocol verbatim; cold-read
+validation including at least one deliberately-wrong "obviously right" proposal.
+Uses: existing MCP tools only (`list_memory`/`search_memory`/`get_memory`/`update_memory`/
+`supersede_memory`/`delete_memory`) — zero new server-side code.
+Implements: the propose-never-perform architecture boundary (ARCHITECTURE section B).
+Avoids: Pitfalls 4, 5 (agent-driven wrong-but-confident mutation; semantic dedup false-merge).
+
+**Phase 6: #355 fix (drifted `tools.go` citation anchors)**
+Rationale: Deliberately last relative to Phase 4 — #355 is the drifted-citation failure class
+`spine-review verify` exists to detect; it is the live acceptance fixture for Phase 4, not a
+prerequisite to it. Leave unfixed until `verify` can detect it, then use it to calibrate the
+detector's false-positive rate before shipping.
+Delivers: The fix itself, plus confirmation that `verify` correctly classifies it as "broken"
+without also flagging a large number of merely-moved, still-valid citations elsewhere in the same
+sweep.
+Addresses: "Citation-anchored verify as a live regression fixture" (FEATURES differentiator).
+Avoids: Pitfall 6 (false-positive staleness detection training operators to distrust the
+verifier).
+
+**Phase 7: Nyquist `VALIDATION.md` reconciliation**
+Rationale: Zero technical dependency on Phases 1–6; parallelizable throughout. The one coupling
+worth naming: v0.13.x's own new phases should reconcile their `VALIDATION.md` as each closes, so
+this milestone doesn't add three more files to the backlog it exists to clear.
+Delivers: Every one of the six `status: draft` rows (plus the one missing file) re-resolved
+against `go test -list` with a nonzero, expected test count — not merely re-run and checked for
+exit 0.
+Avoids: Pitfall 9 (test-selector false green, matching zero tests, exits 0 forever).
 
 ### Phase Ordering Rationale
 
-- Phase 1 must lead because it is the only item with downstream structural dependents (Phase 2's `store` subcommand, and the shared lane-provenance mechanism nothing else in the milestone needs but everything else can safely ignore).
-- Phases 3, 4, and 5 have zero file overlap with Phase 1/2 and with each other (excepting the noted `tools.go` co-location between cross_spine and per-lane-key edits) and can be assigned to parallel workstreams once Phase 1 is underway, per the architecture research's own "Wave 1/Wave 2" framing.
-- Grouping #394/#360/#347 into one phase (rather than three scattered ones) is a deliberate roadmap choice to let a shared diagnostic-disclosure convention emerge, per the feature research's explicit dependency note.
-- #351 is placed last/independently specifically because its own milestone framing separates investigation from fix — sequencing it early would risk committing to an intervention before the root cause is confirmed.
+- #453 and #467 must precede spine-review because both change how spine-review's own error/
+  validation code should be written from day one — retrofitting either onto an already-shipped
+  destructive `purge` verb is itself a breaking change (PITFALLS Pitfall 7/8, corroborating
+  ARCHITECTURE's build-order claim).
+- The audit's conformance machinery (Phase 3) has no code dependency on spine-review or the skill,
+  but its documentation standard should exist before spine-review's help text is finalized, so
+  spine-review is built correct-by-reading rather than becoming the next thing the audit has to
+  retrofit.
+- The skill (Phase 5) has no code dependency on spine-review (Phase 4) — it only calls existing MCP
+  tools — but its extract-before-delete handoff is only end-to-end demonstrable once `verify`
+  exists, so full acceptance trails Phase 4 even though authoring can run in parallel.
+- #355 is ordered last relative to spine-review specifically because it is the acceptance fixture
+  for `verify`, not a prerequisite — fixing it before `verify` exists wastes the calibration
+  opportunity the milestone explicitly wants (PITFALLS Pitfall 6, ARCHITECTURE step 7).
+- Nyquist reconciliation (Phase 7) runs orthogonally throughout, closing per-phase as each of this
+  milestone's own phases lands, to avoid adding to the exact backlog it's meant to clear.
 
 ### Research Flags
 
 Phases likely needing deeper research during planning:
-- **Phase 1 (Headless Connect Spine):** needs a focused read-through of the go-sdk's `mcpauth.RequireBearerToken`/`verify()` internals (already partially done by pitfalls research, but the exact extraction/reuse shape for a transport-agnostic Expiration-check helper needs to be nailed down at plan time) and a security-focused plan review given the CSRF-bypass and confused-deputy risk classes.
-- **Phase 3 (Cross-Spine Memory Search):** needs the `Store.Search` filter-composition verification described in the disagreement section as an explicit planning step, not an assumption carried in from research.
+- **Phase 4 (spine-review CLI):** the tombstone/grace-window mechanism design (what marks a record
+  purge-eligible-but-recoverable, what the grace window duration is, how `--apply`'s
+  re-derive-at-apply-time interacts with a persisted watermark for partial-failure recovery) has
+  no single existing precedent to copy verbatim — it combines `schedule_memory`'s `not_after`
+  shape with `Reindex`'s dry-run/apply shape, and the exact mechanics deserve a research pass
+  during plan-phase.
+- **Phase 5 (companion skill):** the cold-read adversarial test design (a deliberately-wrong
+  "obviously right" semantic judgment that must still stop at consent) is a validation-methodology
+  question with only one internal precedent (v0.12.x Phase 6 rule-capture) — worth a focused
+  research pass on constructing a genuinely adversarial test case, not just reusing the v0.12.x
+  template mechanically.
 
 Phases with standard patterns (skip research-phase):
-- **Phase 2 (CLI Subcommands):** connect-go client idioms and cobra subcommand structure are already fully mapped to concrete file paths and precedents in ARCHITECTURE.md.
-- **Phase 4 (Diagnosability):** each of the three fixes has a fully-specified target file, function, and test shape in both STACK.md and PITFALLS.md.
-- **Phase 5 (Operator/Correctness Tail):** #350 and #345 are mechanical, precedent-mirroring changes with concrete line-level guidance already produced; #351's investigation step is itself the research (not a phase needing external research).
+- **Phase 1 (#453):** cobra's `MarkFlagsMutuallyExclusive` is fully documented and already read
+  directly from the vendored source; mechanical replacement of existing hand-rolled prose.
+- **Phase 2 (#467):** a documentation/decision-record phase with a clear default recommendation
+  (document the boundary over unifying); the pinned-regression-test pattern is standard Go testing.
+- **Phase 3 (audit):** extends an already-shipped pattern (`buildCatalog`,
+  `TestCatalogExitCodesMatchMapper`) with a structurally identical conformance test for a second
+  surface.
+- **Phase 6 (#355 fix):** a bug fix using an already-designed detector (Phase 4's `verify`).
+- **Phase 7 (Nyquist reconciliation):** mechanical re-resolution of `-run` patterns against
+  `go test -list`; no design ambiguity.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Verified against Context7 current docs (connect-go, oauth2) plus direct source reads of go.mod and every integration seam; zero speculative recommendations |
-| Features | MEDIUM | Web/community consensus across multiple independent sources for CLI/agent-UX conventions and PKM/capture-friction literature; not validated against engram's own usage telemetry (no such telemetry exists yet) |
-| Architecture | HIGH | Every claim grounded in direct source reads with file/line citations; no speculation about unread code |
-| Pitfalls | HIGH | Grounded directly in current `internal/server`/`internal/auth`/`internal/webauth`/`internal/store` source, including a direct read of the go-sdk's `auth/auth.go` from the module cache to confirm the Expiration-enforcement gap |
+| Stack | HIGH | Every recommendation grounded in reading vendored source (`go.mod`, `$(go env GOMODCACHE)`) and current call sites directly, not memory. |
+| Features | HIGH | Cross-checked against peer-reviewed drift-detection literature (DOCER, DocPrism, Cascade), Anthropic's own tool-design guidance, and this repo's own locked decision records (DEC-2bv, D-00). |
+| Architecture | HIGH | Grounded directly in shipped `cmd/engram/*`, `internal/store/store.go`, `internal/server/tools.go`, and the existing `curating-memory` SKILL.md — pure integration research, not external-ecosystem research. |
+| Pitfalls | HIGH (destructive-op design, CLI/semver conventions, alert-fatigue mechanics) / MEDIUM (agent-driven-curation consent architecture — an emerging area with few mature precedents, reasoned from incident reports plus this repo's own consent gates) | Mixed per PITFALLS.md's own stated confidence split. |
 
-**Overall confidence:** HIGH — with one explicit gap (below) that must be closed during Phase 3 planning, not assumed away.
+**Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **`Store.Search` filter-composition verification (Phase 3):** the architecture and pitfalls research disagree on whether the authz `Must` clause composes unconditionally and independently of the scope clause. This is not a research gap that can be closed by more reading here — it requires a planner/implementer to read the current filter-construction code end to end at plan time and write the isolation test *before* implementing the feature, per the disagreement section above.
-- **#351's root cause is genuinely unknown** — the feature research provides strong candidate interventions but explicitly states the investigation (trace actual `store_rule` invocation attempts, including failures) must happen first; treat any specific intervention chosen at roadmap time as provisional pending that trace.
-- **Feature-research confidence (MEDIUM) reflects literature synthesis, not engram-specific data** — the CLI-UX and rule-capture-friction conclusions are well-supported externally but unvalidated against this project's own agents/users; treat FEATURES.md's differentiator tier as directional rather than committed scope until validated post-ship.
+- **Tombstone/grace-window exact mechanics** (duration, how a purge-candidate marker interacts
+  with re-derive-at-apply-time and partial-failure recovery) — not fully specified by any single
+  source; resolve during Phase 4's plan-phase, likely via `/gsd-plan-phase --research-phase`.
+- **Cold-read adversarial test construction for the semantic skill** — the v0.12.x Phase 6
+  precedent proves the shape of consent-gate validation but not how to construct a genuinely
+  adversarial "obviously right but wrong" test case for this milestone's broader (all-memories,
+  not just rules) scope; resolve during Phase 5's plan-phase.
+- **Whether #467 resolves via documentation or unification** — both PITFALLS and STACK recommend
+  documenting the boundary as the lower-risk default, but the final call is a decision this
+  milestone must make explicitly (a `D-` decision record), not infer from research alone.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Context7 `/connectrpc/connect-go` — client-side `connect.NewClient`, interceptor shapes
-- Context7 `/golang/oauth2` — `clientcredentials` grant implementation
-- Direct source reads: `cmd/engram/serve.go`, `internal/server/connectapi.go`/`connectcsrf.go`/`connectreseal.go`/`connectauth.go`/`identity.go`/`tools.go`, `internal/store/store.go`, `internal/authz/authz.go`, `internal/auth/chain.go`/`auth.go`, `internal/webauth/resolver.go`/`handlers.go`, `internal/config/registry.go`/`config.go`, `proto/engram/v1/engram.proto`, `.github/workflows/ci.yaml`, `.planning/PROJECT.md`
-- `github.com/modelcontextprotocol/go-sdk@v1.6.1` `auth/auth.go` — read directly from module cache to confirm `RequireBearerToken`'s `verify()` is never invoked in the Connect interceptor chain
-- `github.com/cedar-policy/cedar-go@v1.8.0/types/authorize.go` — confirms `cedar.Diagnostic` carries no PII fields by construction
-- GitHub issue #356 (`gh issue view 356`) — confirmed already-shipped scope
+- `/Volumes/Code/github.com/seanb4t/engram/go.mod`, `internal/store/store.go`,
+  `internal/server/tools.go`, `cmd/engram/{root,client_common,client_list,reindex,migrate,catalog}.go`,
+  `skill/engram/skills/curating-memory/SKILL.md`, `.planning/PROJECT.md`, `CLAUDE.md` — read directly
+- `$(go env GOMODCACHE)/github.com/spf13/cobra@v1.10.2/{flag_groups.go,command.go}` — read directly
+- `$(go env GOMODCACHE)/github.com/qdrant/go-client@v1.18.3/qdrant/oneof_factory.go` — read directly
+- Anthropic, "Writing effective tools for AI agents" — https://www.anthropic.com/engineering/writing-tools-for-agents
+- DOCER (peer-reviewed, Empirical Software Engineering 2023) — https://link.springer.com/article/10.1007/s10664-023-10397-6
+- cobra official docs / `MarkFlagsMutuallyExclusive` known-limitation issue — https://pkg.go.dev/github.com/spf13/cobra, https://github.com/spf13/cobra/issues/1752
 
 ### Secondary (MEDIUM confidence)
-- The CLI Spec, cli-agent-spec, InfoQ, Terry Li's seven-patterns article — agent-facing CLI structured-output/exit-code/credential conventions
-- Cloudflare AI Search, Elastic cross-project search, claude-context #374 — per-result scope tagging and coverage-receipt precedent for cross-spine search
-- Van Kleek et al. (Finders/Keepers, Note to Self), isophist's PKM synthesis (2025 AGENTS.md study) — capture-friction root-cause literature for #351
-- OPA #2897, Cedarling decision logs — precedent against always-on full authz trace logging
+- RAG dedup failure-mode case studies (practitioner reports) — "The Dedup Rule That Broke Our
+  RAG," "The RAG Dedup Step That Broke Silently," adjudication-layer case study
+- Tombstone/soft-delete pattern sources — Grokipedia, jamestharpe.com, Streamkap CDC docs
+- AI-agent destructive-action incident reports — Replit (2025), Amazon Kiro (Dec 2025), AI
+  Incident Database #1152
+- CLI design guidelines — clig.dev, clispec.dev, `structcli` AI-native Cobra add-on docs
+
+### Tertiary (LOW confidence)
+- None flagged as needing validation beyond the Gaps to Address above.
 
 ---
-*Research completed: 2026-07-29*
+*Research completed: 2026-08-03*
 *Ready for roadmap: yes*

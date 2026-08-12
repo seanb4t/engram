@@ -91,10 +91,15 @@ func TestCLIExitCodes(t *testing.T) {
 		}
 	})
 
-	t.Run("unknown flag exits 1", func(t *testing.T) {
+	// An unknown flag is a usage error, so it exits 2 (not the exit-1 backstop).
+	// Cobra's flag-parse failure is intercepted in rootCmd.PersistentPreRunE and
+	// typed through cliError; before the exit-code unification it fell through to 1.
+	// An unknown *verb* still exits 1 above: cobra's Find() fails before execute()
+	// runs, so that path is structurally unreachable from the interception point.
+	t.Run("unknown flag exits 2", func(t *testing.T) {
 		_, stderr, code := runCLI(t, "--definitely-not-a-real-flag")
-		if code != 1 {
-			t.Fatalf("exit code = %d, want 1\nstderr:\n%s", code, stderr)
+		if code != 2 {
+			t.Fatalf("exit code = %d, want 2\nstderr:\n%s", code, stderr)
 		}
 	})
 

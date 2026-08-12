@@ -79,6 +79,24 @@ var registry = []field{
 	{Key: "log.format", Env: "ENGRAM_LOG_FORMAT", Legacy: "MEM_LOG_FORMAT", Default: "json"},
 	{Key: "log.stdout", Env: "ENGRAM_LOG_STDOUT", Legacy: "MEM_LOG_STDOUT", Default: "true"},
 	{Key: "usage.signals", Env: "ENGRAM_USAGE_SIGNALS", Default: "true"},
+	// client.* is the caller-side lane (D-04): every client-command flag now
+	// routes through this same registry rather than a fourth hand-rolled
+	// resolver. Brand-new — no Legacy value, since nothing retired precedes it.
+	{Key: "client.server_url", Env: "ENGRAM_SERVER_URL", Flag: "server"},
+	// token_file carries only the credential's PATH through koanf; the
+	// credential itself stays with resolveToken's existing env-var read, with
+	// deliberately no row of its own here (D-13 — a credential must never
+	// reach argv, and routing it through this registry would put it one
+	// --help-adjacent step from being logged).
+	{Key: "client.token_file", Flag: "token-file"},
+	// output is a per-invocation rendering choice, not a deployment setting —
+	// deliberately no Env.
+	{Key: "client.output", Flag: "output"},
+	// insecure deliberately carries no Env: the flag's own help text already
+	// promises no environment fallback for the TLS gate, and adding one here
+	// would weaken that promise silently.
+	{Key: "client.insecure", Flag: "insecure", Default: "false"},
+	{Key: "client.timeout", Env: "ENGRAM_TIMEOUT", Flag: "timeout", Default: "30s"},
 }
 
 // envToKey maps each ENGRAM_* env var to its koanf key.

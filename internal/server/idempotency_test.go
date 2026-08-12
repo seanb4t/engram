@@ -80,6 +80,16 @@ func TestContentFingerprintTagOrderStable(t *testing.T) {
 // TestContentFingerprintFieldSensitivity pins D-07: changing any
 // client-authored identity field changes the fingerprint, and the
 // idempotency_key itself is NOT an input.
+//
+// The "citations" case (WR-02, 03.1 cycle-4 review) closes a gap this test
+// left open despite its own doc comment naming exactly this class of
+// regression: contentFingerprint folds Citations into the hash (idempotency.go
+// citesEnc), and Phase 26 previously shipped a real bug here (26-REVIEW
+// CR-01, a forgotten field silently discarding a caller's changed value on
+// replay) — yet this test enumerated every OTHER storeArgs field without
+// ever exercising Citations. A regression that stopped citesEnc from being
+// folded into the hash (e.g. computed but never appended) would have passed
+// this test undetected.
 func TestContentFingerprintFieldSensitivity(t *testing.T) {
 	base := storeArgs{
 		Content:   "content",
@@ -91,19 +101,21 @@ func TestContentFingerprintFieldSensitivity(t *testing.T) {
 		Worktree:  "worktree",
 		BaseDir:   "basedir",
 		Summary:   "summary",
+		Citations: []citationArg{{Kind: "file", Ref: "foo.go", Locator: "1-10", Pin: "abc123", Excerpt: "excerpt"}},
 	}
 	baseFP := contentFingerprint(base)
 
 	cases := map[string]storeArgs{
-		"content":   {Content: "different", Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary},
-		"category":  {Content: base.Content, Category: "gotcha", Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary},
-		"tags":      {Content: base.Content, Category: base.Category, Tags: []string{"c", "d"}, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary},
-		"source":    {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: "agent-inferred", Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary},
-		"repo":      {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: "different-repo", Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary},
-		"workspace": {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: "different-workspace", Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary},
-		"worktree":  {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: "different-worktree", BaseDir: base.BaseDir, Summary: base.Summary},
-		"base_dir":  {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: "different-basedir", Summary: base.Summary},
-		"summary":   {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: "different-summary"},
+		"content":   {Content: "different", Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary, Citations: base.Citations},
+		"category":  {Content: base.Content, Category: "gotcha", Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary, Citations: base.Citations},
+		"tags":      {Content: base.Content, Category: base.Category, Tags: []string{"c", "d"}, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary, Citations: base.Citations},
+		"source":    {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: "agent-inferred", Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary, Citations: base.Citations},
+		"repo":      {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: "different-repo", Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary, Citations: base.Citations},
+		"workspace": {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: "different-workspace", Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary, Citations: base.Citations},
+		"worktree":  {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: "different-worktree", BaseDir: base.BaseDir, Summary: base.Summary, Citations: base.Citations},
+		"base_dir":  {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: "different-basedir", Summary: base.Summary, Citations: base.Citations},
+		"summary":   {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: "different-summary", Citations: base.Citations},
+		"citations": {Content: base.Content, Category: base.Category, Tags: base.Tags, Source: base.Source, Repo: base.Repo, Workspace: base.Workspace, Worktree: base.Worktree, BaseDir: base.BaseDir, Summary: base.Summary, Citations: []citationArg{{Kind: "commit", Ref: "different-ref", Locator: "20-30", Pin: "def456", Excerpt: "different excerpt"}}},
 	}
 	for name, variant := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -140,5 +152,67 @@ func TestContentFingerprintTagsBoundaryShiftInjective(t *testing.T) {
 	if contentFingerprint(merged) == contentFingerprint(split) {
 		t.Fatalf("contentFingerprint collided on tag boundary shift via 0x1F byte: tags=%q and tags=%q both produced %q",
 			merged.Tags, split.Tags, contentFingerprint(merged))
+	}
+}
+
+// TestMergeFingerprintOrderIndependent pins the target-set canonicalization
+// mergeFingerprint composes on top of contentFingerprint: the same target set
+// supplied in a different order must hash identically — the same merge
+// stated two ways is one operation.
+func TestMergeFingerprintOrderIndependent(t *testing.T) {
+	a := storeArgs{Content: "merged content", Category: "gotcha", Source: "user-said"}
+	forward := mergeFingerprint(a, []string{"target-a", "target-b", "target-c"})
+	reversed := mergeFingerprint(a, []string{"target-c", "target-b", "target-a"})
+	if forward != reversed {
+		t.Fatalf("mergeFingerprint not order-independent: %q != %q", forward, reversed)
+	}
+}
+
+// TestMergeFingerprintDedupeIndependent pins that a target repeated in the
+// input hashes identically to the same set without the repeat —
+// mergeFingerprint canonicalizes (sorts and compacts) its own input, so
+// duplicate-independence is a property of the ENCODING regardless of
+// plan 00's PD-01 ruling on whether a duplicate ever reaches this function
+// through the handler (that external-observability half is conditional and
+// lives in Task 3's handler-level tests, not here).
+func TestMergeFingerprintDedupeIndependent(t *testing.T) {
+	a := storeArgs{Content: "merged content", Category: "gotcha", Source: "user-said"}
+	withoutDup := mergeFingerprint(a, []string{"target-a", "target-b"})
+	withDup := mergeFingerprint(a, []string{"target-a", "target-a", "target-b"})
+	if withoutDup != withDup {
+		t.Fatalf("mergeFingerprint not dedupe-independent: %q != %q", withoutDup, withDup)
+	}
+}
+
+// TestMergeFingerprintDistinctTargetSets pins that two target sets differing
+// by even one id hash differently, and that a content difference over an
+// otherwise-identical target set still changes the hash exactly as
+// contentFingerprint already guarantees (mergeFingerprint composes it, never
+// reimplements it).
+func TestMergeFingerprintDistinctTargetSets(t *testing.T) {
+	a := storeArgs{Content: "merged content", Category: "gotcha", Source: "user-said"}
+	base := mergeFingerprint(a, []string{"target-a", "target-b"})
+
+	if got := mergeFingerprint(a, []string{"target-a", "target-c"}); got == base {
+		t.Fatalf("mergeFingerprint did not change when the target set differed by one id: %q", got)
+	}
+
+	diffContent := storeArgs{Content: "different content", Category: a.Category, Source: a.Source}
+	if got := mergeFingerprint(diffContent, []string{"target-a", "target-b"}); got == base {
+		t.Fatalf("mergeFingerprint did not change when content differed over the same target set: %q", got)
+	}
+}
+
+// TestMergeFingerprintTargetBoundaryInjectivity pins that the target-set
+// encoding is injective, not a naive join — the same probe
+// TestContentFingerprintTagsBoundaryShiftInjective uses for tags: a single
+// target id containing a literal 0x1F byte must NOT fingerprint identically
+// to two separate targets split at that byte.
+func TestMergeFingerprintTargetBoundaryInjectivity(t *testing.T) {
+	a := storeArgs{Content: "merged content", Category: "gotcha", Source: "user-said"}
+	merged := mergeFingerprint(a, []string{"a\x1fb"})
+	split := mergeFingerprint(a, []string{"a", "b"})
+	if merged == split {
+		t.Fatalf("mergeFingerprint collided on target boundary shift via 0x1F byte: both produced %q", merged)
 	}
 }

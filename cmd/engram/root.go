@@ -42,14 +42,44 @@ var rootCmd = &cobra.Command{
 	// RED observations).
 	RunE: runSelfDescribe,
 	Args: cobra.NoArgs,
-	PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
-		return config.CheckLegacy(os.Environ())
+	// cmd is the LEAF command cobra is executing (cobra passes the running
+	// subcommand, not rootCmd itself, into a parent's PersistentPreRunE when
+	// EnableTraverseRunHooks is false — confirmed unset in this binary, see
+	// RESEARCH A3). cmd.ValidateFlagGroups() therefore validates the
+	// subcommand's own declared flag groups (e.g. listCmd's paging trio) and
+	// short-circuits cobra's execute() before RunE runs and before any
+	// dial — one root-level call types every flag-group site in the binary.
+	// cobra's own later ValidateFlagGroups() call inside execute() still
+	// runs when this hook returns nil; it re-validates unchanged flag state
+	// and can only agree.
+	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		// A misconfigured environment (a retired MEM_* var still set) is a
+		// usage error, not an unclassified one — this is the fourth bare-
+		// exit-1 site (not named in CONTEXT.md's canonical refs):
+		// CheckLegacy runs for every command, client or operator alike.
+		if err := config.CheckLegacy(os.Environ()); err != nil {
+			return usageErrorf("%s", err)
+		}
+		if err := cmd.ValidateFlagGroups(); err != nil {
+			return usageErrorf("%s", err)
+		}
+		return nil
 	},
 }
 
 func init() {
 	rootCmd.Version = version
 	rootCmd.AddCommand(serveCmd, versionCmd)
+	// This registration is inherited by every subcommand whose own
+	// FlagErrorFunc is unset, so one call covers the binary. It fires from
+	// c.FlagErrorFunc()(c, err) when c.ParseFlags(a) itself fails — an
+	// unknown flag, or a value that does not parse for the flag's Go type.
+	// That is a disjoint error class from ValidateFlagGroups (which fires
+	// from PersistentPreRunE above, after parsing succeeds); both
+	// mechanisms are required and neither substitutes for the other.
+	rootCmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return usageErrorf("%s", err)
+	})
 }
 
 // Execute runs the root command and exits non-zero on error, printing the error

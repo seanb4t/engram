@@ -160,7 +160,9 @@ func TestClientStoreNeverRetries(t *testing.T) {
 	}{
 		{"unavailable", connect.CodeUnavailable, exitUnavailable},
 		{"internal", connect.CodeInternal, exitGeneric},
-		{"deadlineexceeded", connect.CodeDeadlineExceeded, exitUnavailable},
+		// D-06: a client-side deadline is now its own exitTimeout, distinct
+		// from exitUnavailable — see TestExitCodeTimeoutDistinctFromUnavailable.
+		{"deadlineexceeded", connect.CodeDeadlineExceeded, exitTimeout},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

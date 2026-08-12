@@ -2,11 +2,17 @@
   "workflow": {
     "_auto_chain_active": false,
     "nyquist_validation": true,
-    "ai_integration_phase": true
+    "ai_integration_phase": true,
+    "plan_review_convergence": true
   },
   "git": {
     "branching_strategy": "none",
     "phase_branch_template": "phase-{phase}-{slug}",
     "create_tag": false
+  },
+  "review": {
+    "models": {
+      "opencode": "openrouter/moonshotai/kimi-k3"
+    }
   }
 }

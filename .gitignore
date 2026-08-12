@@ -57,3 +57,9 @@ ui/**/__screenshots__/
 
 # GSD ingest staging (regenerable per-doc classifications; synthesized intel is tracked)
 .planning/intel/classifications/
+
+# GSD tooling state (SQLite db + generated CODEBASE/KNOWLEDGE digests; regenerable)
+.gsd/
+
+# Background-shell manifests (per-session scratch)
+.bg-shell/

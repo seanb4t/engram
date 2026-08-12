@@ -20,9 +20,12 @@ import (
 // Scope is the fields every command's store/embedder path consumes (Qdrant,
 // embedder). Optional fields (ENGRAM_OPENAI_API_KEY), fields validated elsewhere
 // (OIDC/UI creds via resolveUIConfig), and the serve-only listen address are
-// intentionally NOT checked here. Validation lives outside config.Load on
-// purpose: Load stays pure assembly so a Load error remains a programming error
-// (a malformed koanf layer), never operator input.
+// intentionally NOT checked here. ClientConfig is another such elsewhere-
+// validated group (see client_validate.go), kept deliberately separate so the
+// client fields' zero value never reaches this function through one of this
+// package's hand-built Config{} test literals. Validation lives outside
+// config.Load on purpose: Load stays pure assembly so a Load error remains a
+// programming error (a malformed koanf layer), never operator input.
 func (c *Config) Validate() error {
 	var errs []error
 

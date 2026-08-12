@@ -182,7 +182,7 @@ func TestSchemaRequiredMovedToGoLevel(t *testing.T) {
 		// supersedeArgs.Supersedes — deps.supersedeMemory, MCP-only.
 		{"supersedeArgs.Supersedes", "supersedes", HintRequired, func() error {
 			d := &deps{}
-			_, _, err := d.supersedeMemory(ctx, c, supersedeArgs{storeArgs: validStore(), Supersedes: ""})
+			_, _, err := d.supersedeMemory(ctx, c, supersedeArgs{storeArgs: validStore(), Supersedes: nil})
 			return err
 		}},
 
@@ -369,7 +369,7 @@ func TestValidateUpdateArgsNotInDepsUpdateMemory(t *testing.T) {
 // reject the call BEFORE engram's validator runs, and silently reopen issue
 // #360 — while every other test in this file kept passing. This test
 // exercises the exact generator call (jsonschema.For[T](nil)) the go-sdk uses
-// for AddTool (see TestSupersedeMemorySchemaExcludesIdempotencyKey and
+// for AddTool (see TestSupersedeMemorySchemaIncludesIdempotencyKey and
 // TestToolArgSchemasDoNotPanic, tools_test.go), and asserts ONLY the
 // `required` set — no property types, descriptions, or shape assertions
 // (those are deliberately out of bounds per the D-06a decision: they would

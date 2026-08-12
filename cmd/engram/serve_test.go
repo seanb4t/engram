@@ -539,3 +539,54 @@ func TestConnectResolverForHeadlessWithoutChainIsNil(t *testing.T) {
 		t.Fatal("connectResolverFor(nil, true, nil) != nil, want nil")
 	}
 }
+
+// TestServePreflightGuardsExitUsage proves the D-03 bucket-1 classification
+// end-to-end: `engram serve` driven through the real rootCmd.Execute() path
+// (mirroring exitcode_baseline_test.go's TestExitCodeBaseline, not a direct
+// runServe(cmd) call) for three guards reachable WITHOUT a live Qdrant --
+// each trips before runServe ever reaches server.Register (the bucket-2
+// store-construction call). Bucket 3 (ListenAndServe's own failure) is
+// deliberately NOT exercised here by binding a port; the deliberate
+// exception is proven by reading the code path instead (see the comment at
+// its call site in serve.go), per this plan's own instruction.
+func TestServePreflightGuardsExitUsage(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		env  map[string]string
+	}{
+		{
+			// The D-09 baseline row this test complements: serve's own
+			// listen-addr guard, the first bucket-1 site in runServe.
+			name: "empty listen addr",
+			args: []string{"serve", "--listen-addr", ""},
+		},
+		{
+			// resolveUIConfig (uiconfig.go): ENGRAM_UI_ENABLED=true with
+			// none of the four required web-UI creds set.
+			name: "ui enabled without required creds",
+			args: []string{"serve", "--listen-addr", "127.0.0.1:0"},
+			env:  map[string]string{"ENGRAM_UI_ENABLED": "true"},
+		},
+		{
+			// connectHeadlessGuard: --connect-headless with no OIDC issuer
+			// and no service_auth.* config, so chain is nil.
+			name: "connect-headless without a configured auth lane",
+			args: []string{"serve", "--listen-addr", "127.0.0.1:0", "--connect-headless", "true"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			for k, v := range c.env {
+				t.Setenv(k, v)
+			}
+			resetClientFlags(t)
+			resetEveryCommandFlagState(t, rootCmd)
+
+			_, _, err := runClient(t, c.args...)
+			if got := exitCodeFromError(err); got != exitUsage {
+				t.Fatalf("%v: exitCodeFromError(err) = %d, want exitUsage (%d); err=%v", c.args, got, exitUsage, err)
+			}
+		})
+	}
+}

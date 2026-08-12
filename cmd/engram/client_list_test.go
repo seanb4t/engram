@@ -17,6 +17,7 @@ import (
 
 func TestClientListEndToEndJSON(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
 	svc := &stubEngramService{
 		listFn: func(_ context.Context, req *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
 			return &engramv1.ListMemoriesResponse{
@@ -65,6 +66,7 @@ func TestClientListEndToEndJSON(t *testing.T) {
 
 func TestClientListPassesFiltersToRequest(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
 	var captured *engramv1.ListMemoriesRequest
 	svc := &stubEngramService{
 		listFn: func(_ context.Context, req *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
@@ -74,6 +76,9 @@ func TestClientListPassesFiltersToRequest(t *testing.T) {
 	}
 	url := startStubServer(t, svc)
 
+	// --offset and --page-token are mutually exclusive (D-07/D-08), so this
+	// test exercises --offset; TestClientListPageTokenReachesRequest below
+	// exercises --page-token on its own.
 	_, _, err := runClient(t, "list",
 		"--server", url,
 		"--scope", "repo:x",
@@ -85,7 +90,6 @@ func TestClientListPassesFiltersToRequest(t *testing.T) {
 		"--full",
 		"--created-after", "2026-01-01T00:00:00Z",
 		"--created-before", "2026-12-31T00:00:00Z",
-		"--page-token", "opaque-token",
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -120,6 +124,34 @@ func TestClientListPassesFiltersToRequest(t *testing.T) {
 	if captured.GetCreatedBefore() != "2026-12-31T00:00:00Z" {
 		t.Errorf("CreatedBefore = %q, want %q", captured.GetCreatedBefore(), "2026-12-31T00:00:00Z")
 	}
+}
+
+// TestClientListPageTokenReachesRequest pins --page-token reaching the wire
+// request on its own, now that D-08 makes it mutually exclusive with
+// --offset and --cursor-mode (split out of TestClientListPassesFiltersToRequest).
+func TestClientListPageTokenReachesRequest(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
+	var captured *engramv1.ListMemoriesRequest
+	svc := &stubEngramService{
+		listFn: func(_ context.Context, req *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
+			captured = req
+			return &engramv1.ListMemoriesResponse{}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	_, _, err := runClient(t, "list",
+		"--server", url,
+		"--scope", "repo:x",
+		"--page-token", "opaque-token",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if captured == nil {
+		t.Fatal("ListMemories was never called")
+	}
 	if captured.GetPageToken() != "opaque-token" {
 		t.Errorf("PageToken = %q, want %q", captured.GetPageToken(), "opaque-token")
 	}
@@ -139,6 +171,7 @@ func equalStrSlices(a, b []string) bool {
 
 func TestClientListCursorModeReachesRequest(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
 	var captured *engramv1.ListMemoriesRequest
 	svc := &stubEngramService{
 		listFn: func(_ context.Context, req *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
@@ -162,6 +195,7 @@ func TestClientListCursorModeReachesRequest(t *testing.T) {
 
 func TestClientListEmptyResultIsEmptyArray(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
 	svc := &stubEngramService{
 		listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
 			return &engramv1.ListMemoriesResponse{}, nil
@@ -191,6 +225,7 @@ func TestClientListExitCodes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			resetClientFlags(t)
+			resetCommandFlagState(t, listCmd)
 			svc := &stubEngramService{
 				listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
 					return nil, connect.NewError(tc.code, errUnimplementedStub)
@@ -206,6 +241,7 @@ func TestClientListExitCodes(t *testing.T) {
 
 func TestClientListMissingServerURLIsUsageError(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
 	t.Setenv("ENGRAM_SERVER_URL", "")
 	svc := &stubEngramService{
 		listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
@@ -230,6 +266,7 @@ func TestClientListNoDeprecatedApproximateFlag(t *testing.T) {
 	}
 
 	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
 	svc := &stubEngramService{
 		listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
 			return &engramv1.ListMemoriesResponse{
@@ -250,6 +287,7 @@ func TestClientListNoDeprecatedApproximateFlag(t *testing.T) {
 
 func TestClientListTextOutput(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
 	svc := &stubEngramService{
 		listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
 			return &engramv1.ListMemoriesResponse{
@@ -279,6 +317,7 @@ func TestClientListTextOutput(t *testing.T) {
 // never the scope names (D-05), printed after the existing total line.
 func TestClientListCrossSpineEndToEnd(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
 	var gotReq *engramv1.ListMemoriesRequest
 	svc := &stubEngramService{
 		listFn: func(_ context.Context, req *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
@@ -336,6 +375,7 @@ func TestClientListCrossSpineEndToEnd(t *testing.T) {
 // call.
 func TestClientListMissingScopeIsUsageErrorBeforeDialing(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
 	svc := &stubEngramService{
 		listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
 			return &engramv1.ListMemoriesResponse{}, nil
@@ -355,6 +395,7 @@ func TestClientListMissingScopeIsUsageErrorBeforeDialing(t *testing.T) {
 // dialing, never silently discarding the scope the way the server does.
 func TestClientListScopeWithCrossSpineIsUsageErrorBeforeDialing(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
 	svc := &stubEngramService{
 		listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
 			return &engramv1.ListMemoriesResponse{}, nil
@@ -377,6 +418,7 @@ func TestClientListScopeWithCrossSpineIsUsageErrorBeforeDialing(t *testing.T) {
 // to return.
 func TestClientListFooterUnchangedWithoutCrossSpine(t *testing.T) {
 	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
 	mems := []*engramv1.Memory{
 		{ShortId: "AAAA111111", Scope: "repo:x"},
 		{ShortId: "BBBB222222", Scope: "repo:x"},

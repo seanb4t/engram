@@ -4,12 +4,13 @@
 package main
 
 import (
-	"os"
+	"context"
 
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
+	"github.com/seanb4t/engram/internal/surfaces"
 )
 
 var (
@@ -37,18 +38,20 @@ var searchCmd = &cobra.Command{
 			return usageErrorf("--query is required")
 		}
 		// D-01/D-02/D-04 pre-flight guard, fired before any dialing.
-		if err := validateScopeCrossSpine(searchScope, searchCrossSpine); err != nil {
+		if err := requireScopeUnlessCrossSpine(searchScope, searchCrossSpine); err != nil {
 			return err
 		}
-		format, err := resolveOutputFormat(clientOutput, isTerminal(os.Stdout))
+		client, format, timeout, err := clientFromFlags(cmd)
 		if err != nil {
 			return err
 		}
-		client, err := clientFromFlags(cmd)
-		if err != nil {
-			return err
-		}
-		resp, err := client.SearchMemories(cmd.Context(), connect.NewRequest(&engramv1.SearchMemoriesRequest{
+		// The deadline comes from clientFromFlags' resolved timeout — the
+		// single resolution point (D-05) — never a second resolution here.
+		// cmd.Context() is only ever the PARENT of this derived context,
+		// never passed to the Connect call directly (E-13).
+		ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
+		defer cancel()
+		resp, err := client.SearchMemories(ctx, connect.NewRequest(&engramv1.SearchMemoriesRequest{
 			Query:         searchQuery,
 			Scope:         searchScope,
 			CrossSpine:    searchCrossSpine,
@@ -79,8 +82,14 @@ var searchCmd = &cobra.Command{
 func init() {
 	addClientFlags(searchCmd)
 	searchCmd.Flags().StringVar(&searchQuery, "query", "", "search query (required)")
+	// The --scope Usage string composes surfaces.RuleByID's declared
+	// Sentence verbatim (D-03) rather than restating the rule as a second
+	// literal — this cobra file is denylisted by TestClientFilesImportBoundary
+	// from importing internal/server, which is exactly why the rule value
+	// lives in the stdlib-only internal/surfaces leaf package instead.
+	scopeRule, _ := surfaces.RuleByID(surfaces.RuleScopeRequiredUnlessCrossSpine)
 	searchCmd.Flags().StringVar(&searchScope, "scope", "",
-		"limit recall to one scope; omit and pass --cross-spine to span every scope you can read; mutually exclusive with --cross-spine")
+		scopeRule.Sentence+"; mutually exclusive with --cross-spine")
 	searchCmd.Flags().BoolVar(&searchCrossSpine, "cross-spine", false,
 		"span every scope you can read; mutually exclusive with --scope")
 	searchCmd.Flags().Uint64Var(&searchK, "k", 0, "max results (0 = server default)")
@@ -89,5 +98,12 @@ func init() {
 	searchCmd.Flags().StringVar(&searchCreatedAfter, "created-after", "", "RFC3339 inclusive lower bound on created_at")
 	searchCmd.Flags().StringVar(&searchCreatedBefore, "created-before", "", "RFC3339 exclusive upper bound on created_at")
 	searchCmd.Flags().StringSliceVar(&searchCategories, "categories", nil, "category filter (ANY listed category)")
+	// D-07: the second of the three exclusivity claim sites. cobra's flag
+	// groups count a *supplied* flag, not its value, so --cross-spine=false
+	// is rejected too (the search/scope+cross-spine-false baseline row) —
+	// the same D-08 widened-blast-radius semantics plan 01-02 established
+	// for the paging trio. requireScopeUnlessCrossSpine (client_common.go)
+	// still enforces the surviving asymmetric half.
+	searchCmd.MarkFlagsMutuallyExclusive("scope", "cross-spine")
 	rootCmd.AddCommand(searchCmd)
 }

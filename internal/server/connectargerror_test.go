@@ -285,7 +285,13 @@ func TestConnectCombinationAttribution(t *testing.T) {
 	if !errors.As(err, &ae) {
 		t.Fatalf("error does not unwrap to *argError: %v", err)
 	}
-	wantFields := []string{"cursor_mode", "offset"}
+	// Fields widens to include page_token (02-03-PLAN.md Task 1): the
+	// declared paging-trio rule names all three mutually-exclusive fields,
+	// even though this specific Connect-lane rejection only fires on
+	// cursor_mode+offset — the rule's field list is what drives which
+	// surfaces ApplicableSurfaces resolves it onto (D-08), not the narrower
+	// set this one call site happens to trigger on.
+	wantFields := []string{"cursor_mode", "offset", "page_token"}
 	if !reflect.DeepEqual(ae.Fields, wantFields) {
 		t.Fatalf("Fields = %v, want %v", ae.Fields, wantFields)
 	}
