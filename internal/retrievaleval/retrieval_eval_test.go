@@ -20,9 +20,10 @@ import (
 	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
 )
 
-// defaultK mirrors deps.searchMemory's production default (the a.K = 8
-// assignment inside deps.searchMemory) — the k a real MCP client experiences
-// when it omits the arg.
+// defaultK mirrors the k a real MCP client experiences when it omits the arg.
+// The default is applied by the search_memory tool closure in server.Register,
+// NOT by deps.searchMemory — the core deliberately applies no internal k
+// default, so each adapter supplies its own (MCP: 8, Connect: 20).
 const defaultK = 8
 
 // qdrantImageTag mirrors internal/store/store_test.go's pinned Qdrant image so
