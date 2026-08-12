@@ -237,6 +237,8 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-near-duplicate-report | Phase 3 | Complete |
 | REQ-purge-extract-gated | Phase 3 | Complete |
 | REQ-archive-tier | Phase 3 | Complete |
+| REQ-destructive-preview-default | Phase 3 | Complete |
+| REQ-operator-output-flag | Phase 3 | Complete |
 | REQ-merge-supersession | Phase 03.1 | Complete |
 | REQ-merge-atomicity | Phase 03.1 | Complete |
 | REQ-merge-idempotency | Phase 03.1 | Complete |
