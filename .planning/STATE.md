@@ -4,15 +4,15 @@ milestone: v0.13.x
 milestone_name: Curation & Self-Evidence
 current_phase: 5
 current_phase_name: Validation Debt Reconciliation
-status: planning
+status: executing
 stopped_at: Phase 5 context gathered
-last_updated: "2026-08-12T00:48:20.560Z"
+last_updated: "2026-08-12T01:14:44.741Z"
 last_activity: 2026-08-11
 last_activity_desc: Phase 03.1 execution started
 progress:
   total_phases: 6
   completed_phases: 5
-  total_plans: 31
+  total_plans: 33
   completed_plans: 31
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.
 
 Phase: 5 — Validation Debt Reconciliation
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-08-11 — Phase 04 complete, transitioned to Phase 5
 
 ## Deferred Items
