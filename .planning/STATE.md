@@ -3,27 +3,27 @@ gsd_state_version: 1.0
 milestone: v0.13.x
 milestone_name: Curation & Self-Evidence
 status: Awaiting next milestone
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-08-12T20:43:04.571Z"
+stopped_at: Milestone v0.13.x archived
+last_updated: "2026-08-12T21:15:00.000Z"
 last_activity: 2026-08-12
-last_activity_desc: Phase 05 execution started
+last_activity_desc: Milestone v0.13.x completed and archived
 progress:
   total_phases: 6
   completed_phases: 6
   total_plans: 33
   completed_plans: 33
-current_phase: 02
-current_phase_name: Interface Discoverability
+current_phase: null
+current_phase_name: null
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.x)
+See: .planning/PROJECT.md (updated 2026-08-12 — after closing milestone v0.13.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 05 — validation-debt-reconciliation
+**Current focus:** Planning next milestone — run `/gsd-new-milestone`
 
 ## Current Position
 
