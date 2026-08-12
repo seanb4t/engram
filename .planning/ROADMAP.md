@@ -183,7 +183,7 @@ Audit (PASSED — 11/11 requirements, 6/6 integration seams, 2/2 E2E flows) at
 - [x] **Phase 2: Interface Discoverability** - Conditional rules stated on both the cobra and MCP surfaces with a CI conformance gate, MCP tool blast-radius hints, pinned `--help` golden files (completed 2026-08-05)
 - [x] **Phase 3: Spine Curation — Structural (CLI)** - `engram spine-review scan/verify/consolidate/purge/archive` through the existing Subject-less operator tier (completed 2026-08-07)
 - [x] **Phase 4: Spine Curation — Semantic (Skill)** - A companion skill judges staleness and near-duplicate identity, proposing only, never mutating without consent (completed 2026-08-11)
-- [ ] **Phase 5: Validation Debt Reconciliation** - This milestone's own five phases re-resolved against `go test -list` with each record stating what it found, and #355's drifted citations repaired as the plain docs fix they are
+- [x] **Phase 5: Validation Debt Reconciliation** - This milestone's own five phases re-resolved against `go test -list` with each record stating what it found, and #355's drifted citations repaired as the plain docs fix they are (completed 2026-08-12)
 
 ## Phase Details
 
@@ -533,7 +533,7 @@ Qdrant citations and cannot see #355's Go-comment and docs-cross-ref anchors.
    drifted line numbers, and the dangling OpenRouter cross-ref points at the guide that actually
    carries the referenced row.
 
-**Plans:** 2/2 plans executed
+**Plans:** 2/2 plans complete
 **Wave 1**
 
 - [x] 05-01-PLAN.md — Reconcile this milestone's four `status: draft` validation records against HEAD; 04 stays partial because `REQ-consent-adversarial-proof` is genuinely unproven
@@ -602,7 +602,7 @@ Qdrant citations and cannot see #355's Go-comment and docs-cross-ref anchors.
 | 2. Interface Discoverability | v0.13.x | 0/4 | Not started | - |
 | 3. Spine Curation — Structural (CLI) | v0.13.x | 7/7 | Complete | 2026-08-07 |
 | 4. Spine Curation — Semantic (Skill) | v0.13.x | 0/3 | Not started | - |
-| 5. Validation Debt Reconciliation | v0.13.x | 0/2 | Not started | - |
+| 5. Validation Debt Reconciliation | v0.13.x | 2/2 | Complete | 2026-08-12 |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.
