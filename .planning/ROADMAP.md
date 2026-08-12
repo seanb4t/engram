@@ -183,7 +183,7 @@ Audit (PASSED — 11/11 requirements, 6/6 integration seams, 2/2 E2E flows) at
 - [x] **Phase 2: Interface Discoverability** - Conditional rules stated on both the cobra and MCP surfaces with a CI conformance gate, MCP tool blast-radius hints, pinned `--help` golden files (completed 2026-08-05)
 - [x] **Phase 3: Spine Curation — Structural (CLI)** - `engram spine-review scan/verify/consolidate/purge/archive` through the existing Subject-less operator tier (completed 2026-08-07)
 - [x] **Phase 4: Spine Curation — Semantic (Skill)** - A companion skill judges staleness and near-duplicate identity, proposing only, never mutating without consent (completed 2026-08-11)
-- [ ] **Phase 5: Validation Debt Reconciliation** - Six inherited Nyquist drafts plus this milestone's own phases re-resolved against `go test -list`; #355's drifted citations fixed and used to calibrate `verify`
+- [ ] **Phase 5: Validation Debt Reconciliation** - This milestone's own five phases re-resolved against `go test -list` with each record stating what it found, and #355's drifted citations repaired as the plain docs fix they are
 
 ## Phase Details
 
@@ -507,30 +507,31 @@ reuse of that template.
 
 ### Phase 5: Validation Debt Reconciliation
 
-**Goal:** Every phase's validation record — the six v0.12.x `VALIDATION.md` rows left at
-`status: draft` plus the one phase with none, and this milestone's own five phases — reflects
-tests that actually run, not a stale false green. This phase runs last relative to Phase 3
-specifically because #355 is the live acceptance fixture `spine-review verify` exists to detect,
-not a prerequisite to building `verify`; fixing it earlier would waste the calibration opportunity.
+**Goal:** Every v0.13.x phase's validation record reflects tests that actually run, not a stale
+false green — with the one requirement that was never proven left visibly unproven rather than
+flipped green.
 
 **Requirements:** REQ-nyquist-reconciled, REQ-citation-fixture-355
 
-**Depends on:** Phase 3 (needs `verify` to exist so #355 can calibrate its false-positive rate);
-otherwise zero technical dependency on Phases 1–4, and reconciles each of this milestone's own
-phases as they close rather than only at the end.
+**Depends on:** No technical dependency on Phases 1-4 — the original Phase 3 ordering rationale
+(that #355 would tune `verify`'s false-positive rate) did not hold, since `verify` reads stored
+Qdrant citations and cannot see #355's Go-comment and docs-cross-ref anchors.
 
 **Success criteria:**
 
-1. Every v0.12.x `VALIDATION.md` row (six at `status: draft`, plus the one phase with none) is
-   re-resolved against `go test -list` with a nonzero, expected match count — not merely re-run and
-   checked for exit 0.
+1. The v0.12.x premise is corrected to what a live re-resolution found — that debt was already
+   cleared on the v0.12.x branch after the milestone audit was written and before the squash merge
+   (89/90 real rows resolve clean at merge commit `906a5cf6`) — and archived milestone artifacts
+   under `.planning/milestones/**` are not edited.
 
-2. Every v0.13.x phase (1–4 above) reconciles its own `VALIDATION.md` the same way before the
-   milestone closes.
+2. Every v0.13.x phase (1-4) has its `VALIDATION.md` rows re-resolved against `go test -list` with
+   a nonzero match count per pattern element, and its frontmatter set to what that resolution
+   found — including leaving Phase 4 partial because `REQ-consent-adversarial-proof` is genuinely
+   unproven.
 
-3. #355's drifted `tools.go` citation anchors are repaired, and `spine-review verify` correctly
-   classifies the repair as resolved without over-flagging nearby, merely-moved-but-valid citations
-   elsewhere in the same sweep.
+3. #355's drifted `tools.go` citation anchors are repaired: symbol-name citations replace the
+   drifted line numbers, and the dangling OpenRouter cross-ref points at the guide that actually
+   carries the referenced row.
 
 **Plans:** 1/2 plans executed
 **Wave 1**

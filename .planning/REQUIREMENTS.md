@@ -161,13 +161,23 @@ Requirements for milestone v0.13.x. Each maps to exactly one roadmap phase.
 
 ### Validation Debt
 
-- [ ] **REQ-nyquist-reconciled**: Every v0.12.x `VALIDATION.md` row (six at `status: draft`, plus
-  the one phase with no file) is re-resolved against `go test -list` with a nonzero, expected match
-  count — not merely re-run and checked for exit 0 — and every v0.13.x phase reconciles its own
-  before closing.
+- [ ] **REQ-nyquist-reconciled**: Every v0.13.x phase's `VALIDATION.md` row (Phases 1-4; Phase 5 is
+  this phase itself) is re-resolved against `go test -list` with a nonzero match count per pattern
+  element — not merely re-run and checked for exit 0 — and each phase's frontmatter states what
+  that resolution found, leaving `REQ-consent-adversarial-proof`'s genuinely unproven row visibly
+  unproven rather than flipped green. The v0.12.x six-draft-plus-one-missing-file premise this
+  requirement inherited was disproven by a live re-resolution: that debt was already cleared on the
+  v0.12.x branch after the milestone audit was written and before the squash merge — 89 of 90 real
+  rows resolve clean at that milestone's own merge commit `906a5cf6`, and the single miss is
+  v0.12.x Phase 7's own already-documented `ScopeGuard` drift, left as-is because archived
+  milestone artifacts are immutable.
 
-- [ ] **REQ-citation-fixture-355**: #355's drifted `tools.go` citation anchors are repaired, and the
-  repair is used to calibrate `verify`'s false-positive rate before it ships.
+- [ ] **REQ-citation-fixture-355**: #355's drifted `tools.go` citation anchors are repaired by
+  citing symbol names instead of line numbers, and the dangling OpenRouter cross-ref now points at
+  the guide that actually carries the referenced row. The requirement no longer claims the repair
+  exercises `spine-review verify`: `verify` reads stored `Citation.Excerpt` payloads out of Qdrant
+  via `EnumerateCitations` (`internal/store/spine.go:296-360`), so it cannot see a Go source
+  comment or a docs cross-ref, and that premise was never true.
 
 ## v2 Requirements
 
