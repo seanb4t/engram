@@ -3,10 +3,11 @@ phase: 1
 slug: interface-enforceability
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
 # audit-milestone §5.5 distinguishes NOT-VALIDATED (draft) from PARTIAL (validated + nyquist_compliant: false) (#2117)
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-08-03
+validated: 2026-08-11
 ---
 
 # Phase 1 — Validation Strategy
@@ -38,13 +39,13 @@ created: 2026-08-03
 
 ## Per-Task Verification Map
 
-| Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
+| Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | Tests Matched | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| TBD | TBD | 1 | REQ-exit-code-migration-safe | — | N/A | unit | `go test ./cmd/engram/... -run TestExitCodeBaseline -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-flag-exclusivity-enforced | T-1-02 | Invalid flag combination rejected before any network dial (exit 2), never silently ignored | unit | `go test ./cmd/engram/... -run TestFlagGroup -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-exit-code-unified | T-1-03 | Every classified error resolves to 0/2/3/4/5/6; exit 1 unreachable by design | unit | `go test ./cmd/engram/... -run TestExitCode -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-cli-request-timeout | T-1-01 | Hung/half-open server cannot block an invocation indefinitely; returns within `--timeout`, exits 6 | unit + integration | `go test ./cmd/engram/... -run TestTimeout -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-client-config-unified | — | N/A | unit | `go test ./internal/config/... -run TestClientConfig -v` | ❌ W0 | ⬜ pending |
+| TBD | TBD | 1 | REQ-exit-code-migration-safe | — | N/A | unit | `go test ./cmd/engram/... -run TestExitCodeBaseline -v` | 4 | ✅ green |
+| TBD | TBD | TBD | REQ-flag-exclusivity-enforced | T-1-02 | Invalid flag combination rejected before any network dial (exit 2), never silently ignored | unit | `go test ./cmd/engram/... -run TestFlagGroup -v` | 4 | ✅ green |
+| TBD | TBD | TBD | REQ-exit-code-unified | T-1-03 | Every classified error resolves to 0/2/3/4/5/6; exit 1 unreachable by design | unit | `go test ./cmd/engram/... -run TestExitCode -v` | 7 | ✅ green |
+| TBD | TBD | TBD | REQ-cli-request-timeout | T-1-01 | Hung/half-open server cannot block an invocation indefinitely; returns within `--timeout`, exits 6 | unit + integration | `go test ./cmd/engram/... -run TestTimeout -v` | 4 | ✅ green |
+| TBD | TBD | TBD | REQ-client-config-unified | — | N/A | unit | `go test ./internal/config/... -run TestClientConfig -v` | 3 | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -72,11 +73,39 @@ created: 2026-08-03
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 60s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 60s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-08-11
+
+---
+
+## Validation Audit 2026-08-11
+
+All five `-run` elements in the Per-Task Verification Map were re-resolved against
+`go test -list '.*' ./...` run fresh at HEAD, not trusted from a prior transcript or from exit
+status. Each element's resolved count:
+
+| Element | Resolved count |
+|---|---|
+| `TestExitCodeBaseline` | 4 |
+| `TestFlagGroup` | 4 |
+| `TestExitCode` | 7 |
+| `TestTimeout` | 4 |
+| `TestClientConfig` | 3 |
+
+Per D-08 the bar asserted for every element is at least one match, never an exact count, so the
+counts above are a cross-check only, not a pinned assertion. No element resolved to zero.
+
+Only rows of the Per-Task Verification Map (table rows starting with a pipe) were resolved. The
+`-run '<TestName>'` placeholder in the Test Infrastructure block above and the `go test -run X
+./pkg/...` example in this file's own Sign-Off/Manual-Only prose are that prose's own cautionary
+examples of a false green, not verification-map rows, and were left untouched.
+
+The seeded `Task ID` cells (all `TBD`) were deliberately left as-is rather than backfilled with
+reconstructed values; assigning them now would be the same class of unverified claim as the row
+this reconciliation pass exists to repair.
