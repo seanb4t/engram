@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/seanb4t/engram/compare/v0.12.0...v0.13.0) (2026-08-12)
+
+
+### Features
+
+* **v0.13:** unified exit codes, surface conformance gate, spine-review, and merge supersession ([#494](https://github.com/seanb4t/engram/issues/494)) ([9ba6449](https://github.com/seanb4t/engram/commit/9ba6449b859ea9e801077771430a8365fd02ef59))
+
 ## [0.12.0](https://github.com/seanb4t/engram/compare/v0.11.3...v0.12.0) (2026-08-03)
 
 
