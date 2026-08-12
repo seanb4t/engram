@@ -596,7 +596,7 @@ Qdrant citations and cannot see #355's Go-comment and docs-cross-ref anchors.
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-05 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete    | 2026-08-11 |
-| 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | In Progress|  |
+| 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 1. Interface Enforceability | v0.13.x | 0/4 | Not started | - |
 | 2. Interface Discoverability | v0.13.x | 0/4 | Not started | - |
