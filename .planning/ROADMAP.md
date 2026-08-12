@@ -532,7 +532,11 @@ phases as they close rather than only at the end.
    classifies the repair as resolved without over-flagging nearby, merely-moved-but-valid citations
    elsewhere in the same sweep.
 
-**Plans:** TBD
+**Plans:** 2 plans
+**Wave 1**
+
+- [ ] 05-01-PLAN.md — Reconcile this milestone's four `status: draft` validation records against HEAD; 04 stays partial because `REQ-consent-adversarial-proof` is genuinely unproven
+- [ ] 05-02-PLAN.md — Repair #355's drifted citation anchors as a plain docs fix, and correct the two requirement statements this phase disproved
 
 ---
 
