@@ -20,8 +20,9 @@ import (
 	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
 )
 
-// defaultK mirrors deps.searchMemory's production default (tools.go:706) — the
-// k a real MCP client experiences when it omits the arg.
+// defaultK mirrors deps.searchMemory's production default (the a.K = 8
+// assignment inside deps.searchMemory) — the k a real MCP client experiences
+// when it omits the arg.
 const defaultK = 8
 
 // qdrantImageTag mirrors internal/store/store_test.go's pinned Qdrant image so
@@ -91,9 +92,9 @@ func TestRetrievalEval(t *testing.T) {
 				}
 				idByKey[rec.key] = m.ID
 
-				// Exact prod doc-embed sequence (tools.go:508-515, round-2 finding
-				// 2): EmbedText folds tags in, then Embed, then Upsert takes the
-				// precomputed vector — never a raw/bespoke shortcut.
+				// Exact prod doc-embed sequence (round-2 finding 2):
+				// store.EmbedText folds tags in, then Embed, then Upsert takes
+				// the precomputed vector — never a raw/bespoke shortcut.
 				vec, err := em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 				if err != nil {
 					t.Fatalf("seed %s: embed: %v", rec.key, err)

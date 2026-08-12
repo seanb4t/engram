@@ -103,7 +103,7 @@ Alternatively, you can still inject the field at your OpenAI-compatible gateway
 | --- | --- |
 | Cohere embed v3 | `{"input_type":"search_query"}` / `{"input_type":"search_document"}` (**required**) |
 | Voyage (voyage-3, voyage-3-lite, voyage-large-2-instruct) | `{"input_type":"query"}` / `{"input_type":"document"}` (optional) |
-| OpenRouter | forwards whichever field name/value the backend model expects — see its row above |
+| OpenRouter | forwards whichever field name/value the backend model expects — see [Embedding model recipes](/guides/embedding-models/) |
 | Jina embeddings v3 | `{"task":"retrieval.query"}` / `{"task":"retrieval.passage"}` |
 
 The gateway forwards these fields to the provider (OpenRouter accepts
