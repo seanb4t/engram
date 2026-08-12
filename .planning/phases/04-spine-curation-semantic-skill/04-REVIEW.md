@@ -1,143 +1,177 @@
 ---
 phase: 04-spine-curation-semantic-skill
-reviewed: 2026-08-11T00:00:00Z
+reviewed: 2026-08-12T00:00:38Z
 depth: standard
-files_reviewed: 3
+files_reviewed: 1
 files_reviewed_list:
   - skill/engram/skills/curating-spine/SKILL.md
-  - .planning/phases/04-spine-curation-semantic-skill/04-COLD-READ.md
-  - .planning/phases/04-spine-curation-semantic-skill/COVERAGE.md
 findings:
   critical: 0
-  warning: 3
+  warning: 2
   info: 1
-  total: 4
+  total: 3
 status: issues_found
 ---
 
-# Phase 4: Code Review Report
+# Phase 04: Code Review Report
 
-**Reviewed:** 2026-08-11
+**Reviewed:** 2026-08-12T00:00:38Z
 **Depth:** standard
-**Files Reviewed:** 3
+**Files Reviewed:** 1
 **Status:** issues_found
 
 ## Summary
 
-Phase 4 shipped no source code — every changed file is markdown, and the deliverable under review
-is `skill/engram/skills/curating-spine/SKILL.md` (322 lines, agent-facing normative prose). The
-consent gate itself is sound: the 4-line consent block shared with `curating-memory/SKILL.md:89-92`
-is present verbatim, the identity-verdict merge path never routes through `delete_memory`, the
-staleness four-tier vocabulary (`valid`/`moved`/`broken`/`unverifiable`) matches
-`spine_review_verify.go`'s own classifier exactly (including the deliberately widened `moved`
-definition, verified against `verifyFileCitation`), and every CLI verb, MCP field name, and JSON
-shape cited in the file (`spine-review consolidate --output json`'s `a`/`b`/`a_short_id`/
-`b_short_id`/`a_scope`/`b_scope`/`score`, `EmbedText` folding tags into the embedded document,
-`update_memory`'s MCP-lane content-required guard) checks out against the actual Go source. No
-finding below reaches Critical: nothing in this file authorizes an unblessed mutation.
+The single file in scope, `skill/engram/skills/curating-spine/SKILL.md`, is agent-facing
+normative prose (no Go/executable code shipped this phase). Because this file's whole job is
+to make precise, checkable claims about server behavior, tool names, JSON field shapes, and
+error semantics, this review verified every such claim against the live source
+(`internal/server/tools.go`, `internal/store/spine.go`, `cmd/engram/spine_review_consolidate.go`,
+`cmd/engram/spine_review_verify.go`, `internal/auth/auth.go`, `cmd/engram/csrf.go`, and
+`docs-site/src/content/docs/reference/errors.md`) rather than accepting the prose at face
+value.
 
-What the review did find is a real but bounded correctness gap in how the skill's identity-verdict
-flow assumes `spine-review consolidate`'s candidate feed is always mergeable, one instruction-clarity
-weak point in the newly-added `distinct`-marker write procedure, one stale code citation, and one
-minor unhandled-edge-case gap. `04-COLD-READ.md` and `COVERAGE.md` were skimmed per scope and are
-clean — their citations (commit hashes `1cdef4d9`/`7834659f`, file line counts, tool-surface listing)
-all check out; no structural defect that would mislead a future reader was found in either.
+The large majority of claims check out exactly against the running code: the six
+`mcp__engram__*` tool names and their MCP-registered descriptions; the `consolidate --output
+json` candidate field names (`a`, `b`, `a_short_id`, `b_short_id`, `a_scope`, `b_scope`,
+`score`); the `spine-review verify` four-tier vocabulary and the Locator-scoped definition of
+`moved`; the claim that `update_memory`'s MCP closure requires `content` while the Connect
+field-mask lane does not (`validateUpdateArgs` is called only from the MCP tool closure, never
+from the shared `deps.updateMemory` core); the claim that a tags-only update still re-embeds
+because tags are part of the embedded document; the claim that `get_memory` is not
+recall-gated while `search_memory`/`list_memory` are; the claim that repeated `search_memory`
+calls re-embed per query (`d.em.EmbedQuery` inside `deps.searchMemory`); the `errors.md`
+"Multi-target rejections" §2 same-rejection-for-three-causes semantics; and the D-09
+verb-selection table's byte-for-byte match against `curating-memory/SKILL.md:336-338`. This is
+a well-researched file.
+
+Two findings surfaced despite that: one is a literal self-contradiction (the file makes an
+explicit, checkable claim about its own contents that is false as written), and the other is a
+factual inaccuracy in the 401/403 rejection taxonomy that misdescribes a rejection path that,
+per the server's own CSRF design, cannot occur for the MCP tools this skill exclusively calls.
 
 ## Warnings
 
-### WR-01: `consolidate` candidates can name a record the identity-verdict merge path cannot act on
+### WR-01: File claims a character sequence never appears in it, but it does
 
-**File:** `skill/engram/skills/curating-spine/SKILL.md:98-103, 150-160`
-**Issue:** `## Identity verdicts` states unconditionally that both `same-fact` and `overlapping`
-verdicts "route through the same call — `mcp__engram__supersede_memory` with `supersedes` naming
-every target," and that "there is no `mcp__engram__delete_memory` anywhere in the merge path." But
-`internal/store/spine.go`'s `NearDuplicates` (the function `spine-review consolidate` calls) applies
-**no category filter and no already-superseded filter** — confirmed by reading the function: it
-"sweeps every record in scope" via `scrollAllPoints` with only a `scope` `Must` condition, unlike the
-purge-eligibility path (`spine.go:1030`, `if m.Category == "discovery" || m.Category == "rule"`)
-which explicitly excludes those two categories. So a `--all-scopes` sweep (which the skill's own
-`## Getting candidate pairs` section does not discourage) can legitimately rank a `rule`-category or
-`discovery`-category record, or an already-superseded mid-chain record, as a near-duplicate candidate
-against an ordinary memory. Per `CLAUDE.md`'s memory contract and `curating-memory/SKILL.md`'s own
-Supersession section, `store_rule` records can never be superseded and an already-superseded target
-rejects the *whole* multi-target call — both are documented rejection classes in `errors.md`'s
-"Multi-target rejections" (items 3 and 4). `curating-spine/SKILL.md`'s own `## When a call is
-rejected` section (lines 237-263) documents only the *addressability* class (item 2); it says nothing
-about the "Rule target" or "Already superseded" classes, so a reader who reaches either rejection
-after building and proposing a merge has no fallback guidance in this file.
-**Consequence:** Not a consent-gate bypass (the server safely rejects the call before any mutation),
-but the skill can walk a reader through fetching, judging, and proposing a merge that the server will
-always refuse — wasting a consent round-trip and leaving the reader with no documented next step for
-that specific rejection.
-**Fix:** Add a short check before proposing a merge — "if either record is `category: rule`,
-`category: discovery`, or already carries a `superseded_by` link (visible on the `get_memory` fetch
-this skill already performs), do not propose `supersede_memory` for it; report why instead" — and
-extend `## When a call is rejected` to name the "Rule target" and "Already superseded" classes
-alongside the addressability one it already covers.
+**File:** `skill/engram/skills/curating-spine/SKILL.md:24-29` (claim), `:43` (violation)
+**Issue:** Lines 24-29 state, as an explicit, checkable invariant:
 
-### WR-02: `auth.go:216` citation points to a comment, not the code that emits 401
+> Referenced by file and line only; the abbreviation's literal characters, in either the
+> Unicode single-character ellipsis form or the ASCII three-period form, never appear anywhere
+> in this file.
 
-**File:** `skill/engram/skills/curating-spine/SKILL.md:34-36`
-**Issue:** "`RequireBearerToken` (`internal/auth/auth.go:216`) is what emits this [401]." Line 216 of
-`internal/auth/auth.go` is a doc-comment line ("`// RequireBearerToken middleware responds 401.`")
-attached to `(*Verifier) TokenVerifier()`, not the `RequireBearerToken` function itself.
-`RequireBearerToken` is not defined anywhere in this repo — it is `mcpauth.RequireBearerToken` from
-the go-sdk, invoked from `internal/server/connectapi_bearer_parity_test.go:72` and
-`internal/server/tools_test.go:414` (test files only; production wiring is elsewhere in
-`internal/server`). A reader who follows this citation to verify the 401 behavior lands on an
-unrelated token-verification adapter, not the middleware that actually returns 401.
-**Consequence:** Low — the guidance given to the user (run `/mcp`, Authenticate, retry) is correct
-regardless of the citation's accuracy, so this does not change agent behavior. It does mislead a
-future maintainer or a curious reader trying to verify the claim in code.
-**Fix:** Point to where `RequireBearerToken` is actually wired into the request path (e.g. wherever
-`internal/server` registers it for the MCP/Connect handlers), or drop the line-specific citation and
-just name the middleware and its package.
+This is false as written. Line 43 reads:
 
-### WR-03: the `distinct`-marker write procedure reads as one uninterrupted sequence through the actual call
+> `docs-site/.../reference/errors.md` § "Multi-target rejections"
 
-**File:** `skill/engram/skills/curating-spine/SKILL.md:112-129`
-**Issue:** The paragraph immediately before this procedure is unambiguous about consent: "proposed
-and consented to like any other item in the batch report (`## Proposing a mutation`) — one judgment,
-one write, one yes." But the "Five steps, in order" list that follows is phrased as a single
-mechanical procedure with no consent checkpoint marked inside it — step 4 reads "Call
-`mcp__engram__update_memory` with both the unchanged `content` and the full replacement tag set,"
-an unconditioned imperative, not "on the user's yes, call…". Steps 1-3 (fetch, take content verbatim,
-compute the tag union) legitimately belong to *drafting* the proposal shown to the user before the
-ask (per `## Proposing a mutation` step 2: "Show the exact text you would write... so the user can
-judge it in one read" — which requires steps 1-3 to already be done). Step 4, the actual mutating
-call, belongs strictly *after* the yes. The five-step list does not mark that boundary, so a reader
-skimming it as one executable checklist has no textual cue for where the pause belongs.
-**Consequence:** This is the exact dilution risk the review brief calls out by name — a late-added
-section whose own internal structure could be read as authorizing the mutation once the mechanical
-steps are "in order," even though the surrounding prose (and this file's general consent discipline)
-makes clear it is not. No evidence this has actually failed in practice — the phase's own cold-read
-runs (`04-COLD-READ.md`) show the skill consistently asking before any call — but the instruction
-itself is weaker than it needs to be at exactly the place this review was asked to scrutinize hardest.
-**Fix:** Mark the boundary explicitly inside the five-step list, e.g. split it as "steps 1-3, done
-while drafting the proposal" and "step 4, only after the user's yes (`## Proposing a mutation`)" —
-or insert a one-line consent checkpoint between step 3 and step 4.
+That path literally contains the ASCII three-period sequence `...`. A `grep -o '\.\.\.'
+SKILL.md` against this file returns a hit at line 43, directly contradicting the "never appear
+anywhere in this file" claim two paragraphs earlier. The claim's intent was almost certainly
+narrower — "the `…__mcp__engram__` prefix-abbreviation convention `promoting-memory` declares
+is never adopted here" — but as literally written it is a blanket claim about the character
+sequence, and it is falsifiable by a one-line grep against the file's own text. The same path
+is also spelled out in full elsewhere in the same file (`:239-240`,
+`docs-site/src/content/docs/reference/errors.md`), so the abbreviated form at line 43 is both
+internally inconsistent with line 239-240's full form and in direct conflict with the file's
+own no-ellipsis guarantee.
+
+**Fix:** Spell the path in full at line 43 (matching the form already used at line 239-240),
+and narrow the claim at lines 24-29 to what is actually being guaranteed — the
+`mcp__engram__`-prefix shorthand is never used for tool-call sites in this file — rather than a
+blanket claim about the three-period character sequence appearing nowhere in the document:
+
+```diff
+- `supersede_memory` call, the addressability failure class documented in
+- `docs-site/.../reference/errors.md` § "Multi-target rejections". The
++ `supersede_memory` call, the addressability failure class documented in
++ `docs-site/src/content/docs/reference/errors.md` § "Multi-target rejections". The
+```
+
+and narrow the earlier claim, e.g.:
+
+```diff
+- Referenced by file and line only; the abbreviation's literal characters, in either the
+- Unicode single-character ellipsis form or the ASCII three-period form, never appear anywhere
+- in this file.
++ Referenced by file and line only; the `mcp__engram__`-prefix shorthand that abbreviation
++ names is never used as a tool-call prefix anywhere in this file.
+```
+
+### WR-02: 403 guidance describes a rejection path unreachable via the MCP transport this skill uses, and never mentions the rejection path that actually occurs
+
+**File:** `skill/engram/skills/curating-spine/SKILL.md:37-39`
+**Issue:** The three-way write-rejection taxonomy states:
+
+> **403, a permission rejection.** The caller *is* authenticated and is still not permitted.
+> Stop. Re-authenticating does not help here, so do not send the user around the 401 loop.
+
+This does not match the server's actual behavior for the six tools this skill calls:
+
+- The only 403 source in the codebase is the CSRF layer (`cmd/engram/csrf.go`,
+  `newCrossOriginProtection`'s deny handler, and `newConnectCSRFInterceptor`), and its own doc
+  comment states explicitly that "requests with neither header — the MCP transport — fall
+  through and pass too." CSRF protection is a same-origin browser defense; it does not gate
+  MCP tool calls at all.
+- Real per-record authorization failures on these tools (a non-owner calling `get_memory`,
+  `update_memory`, `delete_memory`, or naming a not-owned target in `supersede_memory`) return
+  `store.ErrNotFound` — HTTP 404, not 403 — by explicit design, so a non-owner cannot
+  distinguish "not yours" from "doesn't exist" (confirmed by
+  `internal/server/tools_test.go:5645`: `"another owner's private record → ErrNotFound (404,
+  not 403; no leak)"`, and matches the `supersede_memory` multi-target rejection this same
+  skill file documents accurately a few sections later).
+- `docs-site/src/content/docs/reference/errors.md` — the document this skill instructs the
+  reader to consult for rejections (`## When a call is rejected`) — never mentions HTTP 403 at
+  all.
+
+So the skill dedicates a full triage branch, with an explicit "Stop" instruction, to a
+rejection class that cannot occur through the MCP tools it is scoped to use, while the
+rejection class that actually occurs for non-owned single-target reads/writes (404 /
+`ErrNotFound`) has no branch of its own — an agent hitting that case has to fall back to
+guessing which of the file's three categories applies. Given the section's own stated purpose
+— "conflating them sends the user to the wrong remedy" — this is exactly the failure mode the
+section exists to prevent, applied to itself.
+
+**Fix:** Either drop the 403 branch (it cannot fire via this skill's tools) or reframe it
+accurately as a transport-layer CSRF response that will not be seen through the MCP tools this
+skill calls, and add the real single-target ownership-rejection case (404 / `ErrNotFound`,
+same-envelope-for-multiple-causes as the documented `supersede_memory` multi-target case) as
+its own row:
+
+```diff
+-- **403, a permission rejection.** The caller *is* authenticated and is
+-  still not permitted. Stop. Re-authenticating does not help here, so do
+-  not send the user around the 401 loop.
++- **404, an addressability rejection on a single-target tool** (`get_memory`,
++  `update_memory`, `delete_memory`). The server returns the same not-found response whether
++  the record is not yours or does not exist, so this cannot be told apart from a typo'd id —
++  report only "not addressable by you", never "not yours".
+```
 
 ## Info
 
-### IN-01: candidate pairs can name a record the calling agent cannot actually read
+### IN-01: The D-09 byte-identical verb table has no CI enforcement against drift
 
-**File:** `skill/engram/skills/curating-spine/SKILL.md:76-78`
-**Issue:** `internal/store/spine.go`'s `NearDuplicates` is explicitly "Subject-less by signature — no
-Subject parameter, no owner or shared read-filter condition" (its own doc comment), because
-`spine-review consolidate` is an operator-tier CLI command, not a per-caller MCP tool. In a
-multi-tenant deployment (CLAUDE.md's isolation model explicitly supports multiple owners sharing a
-scope), a candidate pair can therefore name a record the MCP-authenticated agent does not own and
-that is not `shared` — and `get_memory`'s handler (`d.st.GetReadable(ctx, pid, c.Subj)`) will
-correctly return not-found for it. `## Getting candidate pairs` (lines 76-78) notes that a
-superseded or windowed record is "still readable" via `get_memory`, but does not mention that a
-candidate member can instead be *unreadable* to the caller, and gives no guidance for that case.
-**Fix:** One sentence: "if `get_memory` returns not-found for a candidate member, the record is not
-one this caller can read (a different owner's private record, most likely) — report the candidate as
-skipped and move on, do not treat the not-found as evidence about the record's staleness or
-identity."
+**File:** `skill/engram/skills/curating-spine/SKILL.md:156-160`
+**Issue:** The verb-selection table is required (per `.planning/phases/04-.../04-01-PLAN.md`
+D-09) to stay byte-identical (whitespace-normalized) to
+`curating-memory/SKILL.md:336-338`, and today it genuinely is. That match was verified once,
+by hand/programmatically, during this phase's own verification pass
+(`04-VERIFICATION.md` item 7). There is no standing Go test binding the two files together the
+way `TestSupersedeDocsMatchShippedContract` binds `errors.md`'s worked examples to the
+production rendering helper — a `rg -n "curating-spine" -g '*.go'` across the repo returns no
+hits. A future edit to either file's verb table (e.g. rewording the `update_memory` "Why"
+cell) will not be caught by CI; the two tables can silently diverge with no signal beyond an
+attentive reviewer noticing during an unrelated diff.
+
+**Fix:** Add a small Go test (or a lightweight script step in `task lint`/`task test`) that
+reads both `skill/engram/skills/curating-memory/SKILL.md` and
+`skill/engram/skills/curating-spine/SKILL.md`, extracts the verb table by its header row, and
+asserts whitespace-normalized equality — mirroring the pattern
+`TestSupersedeDocsMatchShippedContract` already establishes for `errors.md`.
 
 ---
 
-_Reviewed: 2026-08-11_
+_Reviewed: 2026-08-12T00:00:38Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
