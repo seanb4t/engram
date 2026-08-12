@@ -24,9 +24,8 @@ server prefix:
 Every call site in this file spells the prefix in full. This skill
 deliberately does not adopt the shorthand `promoting-memory/SKILL.md:21-22`
 declares — that file names it there and calls tools through it. Referenced by
-file and line only; the abbreviation's literal characters, in either the
-Unicode single-character ellipsis form or the ASCII three-period form, never
-appear anywhere in this file.
+file and line only; the `mcp__engram__`-prefix shorthand that abbreviation
+names is never used as a tool-call prefix anywhere in this file.
 
 A write call can be rejected three separate ways, and they call for
 different responses — conflating them sends the user to the wrong remedy:
@@ -40,8 +39,8 @@ different responses — conflating them sends the user to the wrong remedy:
 - **A tool-layer rejection.** Not an HTTP status at all — the
   `field=<name> hint=<code>` envelope, or, for a multi-target
   `supersede_memory` call, the addressability failure class documented in
-  `docs-site/.../reference/errors.md` § "Multi-target rejections". The
-  server deliberately makes a not-owned target, a nonexistent target, and a
+  `docs-site/src/content/docs/reference/errors.md` § "Multi-target
+  rejections". The server deliberately makes a not-owned target, a nonexistent target, and a
   target whose short id is ambiguous **the same rejection** — this skill
   must NOT claim to know which of the three occurred. The honest response
   is "one or more of these targets is not addressable by you"; the one
