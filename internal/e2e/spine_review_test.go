@@ -6,10 +6,12 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os/exec"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -108,6 +110,47 @@ func pruneEnv(collection string) map[string]string {
 	}
 }
 
+// assertSamePreview asserts that a bare preview run and an explicit
+// --apply=false run made the SAME decision — every field byte-identical except
+// the one that legitimately cannot be.
+//
+// `before` is the expiry cutoff, computed as wall-clock now() at each
+// invocation and serialized at SECOND precision. The two runs are separated by
+// a round trip to Qdrant, so whenever they straddle a second boundary the
+// cutoffs differ by 1s. Comparing raw stdout therefore made this assertion a
+// coin flip: green whenever both landed inside the same second, red otherwise
+// — and it went red in CI on a tree where `go test ./...` was green locally.
+//
+// Dropping `before` from the comparison is not the same as ignoring it: it is
+// still required to be present and RFC3339-parseable in both, so a regression
+// that omitted or corrupted the cutoff still fails here. What is deliberately
+// NOT asserted is that two different invocations observed the same instant.
+func assertSamePreview(t *testing.T, bare, applyFalse string) {
+	t.Helper()
+
+	decode := func(label, out string) map[string]any {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &m); err != nil {
+			t.Fatalf("%s stdout is not JSON: %v\nstdout: %q", label, err, out)
+		}
+		cutoff, ok := m["before"].(string)
+		if !ok {
+			t.Fatalf("%s stdout carries no string %q cutoff: %q", label, "before", out)
+		}
+		if _, err := time.Parse(time.RFC3339, cutoff); err != nil {
+			t.Fatalf("%s %q cutoff is not RFC3339: %v (%q)", label, "before", err, cutoff)
+		}
+		delete(m, "before")
+		return m
+	}
+
+	gotBare, gotApplyFalse := decode("bare", bare), decode("--apply=false", applyFalse)
+	if !reflect.DeepEqual(gotBare, gotApplyFalse) {
+		t.Errorf("bare vs --apply=false differ outside the time-varying cutoff:\nbare:          %v\n--apply=false: %v\n(raw bare: %q)\n(raw --apply=false: %q)",
+			gotBare, gotApplyFalse, bare, applyFalse)
+	}
+}
+
 // TestE2EPruneExpiredPreviewsBeforeApply is REQ-destructive-preview-default's
 // end-to-end proof against the BUILT binary (review finding #18: no operator
 // command had ANY end-to-end coverage in this package before this test —
@@ -115,8 +158,8 @@ func pruneEnv(collection string) map[string]string {
 // directly through internal/store, execs `engram prune-expired` with no
 // --apply and asserts BY RE-READING THE COLLECTION that the record is still
 // present — never merely that the process exited 0 — execs again with
-// --apply=false and asserts the same plus byte-identical stdout, then execs
-// with --apply and asserts the record is gone.
+// --apply=false and asserts the same plus an equivalent preview verdict (see
+// assertSamePreview), then execs with --apply and asserts the record is gone.
 func TestE2EPruneExpiredPreviewsBeforeApply(t *testing.T) {
 	if testQdrantAddr == "" {
 		skipOrFailNoQdrant(t)
@@ -154,9 +197,7 @@ func TestE2EPruneExpiredPreviewsBeforeApply(t *testing.T) {
 	if _, err := s.Get(ctx, id); err != nil {
 		t.Fatalf("record missing after --apply=false: %v — --apply=false must behave exactly like an omitted flag", err)
 	}
-	if stdout1 != stdout2 {
-		t.Errorf("bare vs --apply=false stdout differ:\nbare:          %q\n--apply=false: %q", stdout1, stdout2)
-	}
+	assertSamePreview(t, stdout1, stdout2)
 
 	// --apply: performs the deletion.
 	stdout3, stderr, code := runCLIWithEnv(t, env, "prune-expired", "--apply")
