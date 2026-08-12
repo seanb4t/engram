@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v0.13.x
 milestone_name: Curation & Self-Evidence
-status: Awaiting next milestone
+status: "Milestone v0.13.x shipped — PR #494"
 stopped_at: Milestone v0.13.x archived
-last_updated: "2026-08-12T21:15:00.000Z"
+last_updated: "2026-08-12T21:11:28.588Z"
 last_activity: 2026-08-12
 last_activity_desc: Milestone v0.13.x completed and archived
 progress:
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-08-12 — after closing milestone v0.13.
 
 Phase: Milestone v0.13.x complete
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-12 — Milestone v0.13.x completed and archived
+Status: Milestone v0.13.x shipped — PR #494
+Last activity: 2026-08-12 — Milestone v0.13.x shipped as PR #494
 
 ## Deferred Items
 
