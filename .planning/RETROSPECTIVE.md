@@ -240,20 +240,119 @@ hygiene (rumdl exclude, Phase-11 residuals, Renovate self-heal).
 
 ---
 
+## Milestone: v0.13.x — Curation & Self-Evidence
+
+**Shipped:** 2026-08-12
+**Phases:** 6 (1–5 plus inserted 03.1) | **Plans:** 33 | **Tasks:** 99 | **Requirements:** 23/24
+**Git range:** `b7b9f051..HEAD` — 234 commits, 106 files, +23,671 / −1,842 (excluding `.planning/`)
+**Timeline:** 2026-08-03 → 2026-08-12 (10 days)
+
+> **Note:** v0.12.x has no section here — its retrospective step was skipped at close. This file's
+> header also claims "newest milestone section first" while sections are in fact oldest-first;
+> the ordering, not the header, is what every close has followed.
+
+### What Was Built
+
+- **`engram spine-review`** — `scan`/`verify`/`consolidate`/`purge`/`archive`/`restore` as the sixth
+  Subject-less operator command. Four-tier citation classification over a resolved-path safety gate,
+  near-duplicate ranking reusing stored vectors (`NewQueryID`, no re-embedding), an orthogonal
+  `archived_at` soft-hidden state, and a `PurgeManifest` whose provenance is compiler-enforced.
+- **`internal/surfaces`** — a stdlib-only leaf package holding the single declaration of every
+  conditional rule and the MCP blast-radius table, with a conformance gate proving each rule's
+  canonical sentence present on every surface its fields resolve to.
+- **One exit-code taxonomy** — 2/4/5 plus `exitTimeout=6` and `exitFindings=7` across client verbs
+  and all six operator commands, with cobra flag groups and a finite `--timeout` on every RPC path.
+- **Multi-target merge supersession** — `supersedes` as a set, a classified reconciliation pass for
+  Qdrant's chunked `SetPayload`, and `mergeFingerprint` keyed over content *and* the target set.
+- **`curating-spine` skill** — semantic staleness and identity judgments, propose-never-perform,
+  zero server-side code.
+
+### What Worked
+
+- **Sequencing #467 before #453 on a stated mechanism, not a hunch.** The roadmap argued that
+  cobra's `MarkFlagsMutuallyExclusive` raises a plain `fmt.Errorf` bypassing `cliError`, so adopting
+  #453 first would reintroduce the exact split #467 exists to close. The milestone audit's
+  integration check later found zero bare `fmt.Errorf` on any new `spine-review` error path — the
+  predicted regression never had a chance to appear.
+- **Deriving gate scope from live structure instead of a list.** Both the conformance gate (walks
+  `nonHiddenCommands()`) and the `--help` goldens (walk the live cobra tree) cover Phase 3's new
+  command tree without anyone extending them. A pin that cannot silently go partial is worth more
+  than a broader pin that can.
+- **Making an invariant a compile error rather than a check.** The unexported `declared` marker on
+  `ConditionalRule` means an off-registry rule cannot be constructed from another package at all.
+  Verified with scratch repros *outside* the owning package rather than by re-reading the commit's
+  own tests — the distinction that made it evidence.
+- **Recording a non-result as a non-result.** The adversarial cold read produced only correct
+  verdicts, so the criterion's target case never occurred. Scoring NOT-OBTAINED, escalating, and
+  leaving the requirement unchecked kept five artifacts mutually consistent and left the gap
+  visible instead of laundering it into a pass.
+
+### What Was Inefficient
+
+- **Planning artifacts drifted from the work all milestone, and nothing noticed until the audit.**
+  Four defects — a traceability table missing two delivered requirements, two Progress rows reading
+  `Not started` for completed phases, a missing Phase 03.1 row, and a milestone line claiming
+  "18/18 mapped, 0 shipped" — all made the milestone look *smaller* than it was, and all survived
+  because the artifact that was wrong is not the artifact anyone reads during execution. They were
+  caught only because the audit ran before archiving; archives are immutable, so a day later they
+  would have been permanent.
+- **A plan-text contradiction shipped straight through execution.** `05-02-PLAN.md` asserted both
+  "sits at tools.go:1617" and "inside `deps.searchMemory`" — two different functions. The executor
+  implemented it faithfully and code review caught it, confirming that plans are audited far less
+  than code.
+- **The cold-read run cap bought three runs of the same fixture.** All three landed on the same
+  outcome. The cap was the right stopping rule, but a fixture that reliably produces a *correct*
+  verdict cannot test what happens after a wrong one, and three attempts established that without
+  changing the fixture.
+
+### Patterns Established
+
+- **Derive gate applicability from the subject's own fields; never declare it alongside.** A
+  declared list is a second source of truth that drifts silently from the thing it describes.
+- **Prefer a compile-time impossibility to a runtime check** when the invariant is about *who may
+  construct a value* — unexported fields are the cheapest enforcement Go offers.
+- **Pin both ends of a `git diff` range in a validation row.** An open-ended `..HEAD` decays into a
+  false RED the moment any later work touches the same tree — including the phase's own review-fix.
+- **Repair bookkeeping before archiving, never after.** `milestones/**` is immutable by convention,
+  so the audit-then-archive order is load-bearing rather than procedural.
+
+### Key Lessons
+
+- **A one-directional completeness check misses half its failure mode.** `audit-milestone`'s orphan
+  detection looks only for "in the table, in no VERIFICATION". The inverse — delivered, verified,
+  and missing from the table — has no row in its matrix and went unseen all milestone. Counting
+  both forms (`rg -c '^- \[[x ]\] \*\*REQ-'` vs `rg -c '^\| REQ-'`) is a two-second check.
+- **Recurrence is the signal that the reference point is the defect.** Phase 04's validation row was
+  re-anchored once and broke again identically; the second break identified an unpinned range, not
+  an unlucky sha.
+- **Read the cited target, not the citation.** Two separate defects this milestone — the `defaultK`
+  attribution and the `toolclass.go` rationale comment — were prose confidently describing code that
+  said the opposite.
+
+### Cost Observations
+
+- Model mix: predominantly opus for planning/verification, sonnet for the integration checker
+- Notable: the milestone's most expensive rework (the `defaultK` fix) originated in plan text, not
+  code — the cheapest place to catch it was a plan review that did not happen
+
+---
+
 ## Cross-Milestone Trends
 
 Populated as milestones accumulate.
 
-| Trend | v0.9.x | v0.10.x | v0.11.x | Notes |
-|-------|--------|---------|---------|-------|
-| Already-shipped surprises | 1 (Phase 10) | 0 | 0 | v0.9.x also had Phase 8 in the baseline — baseline-verify before planning |
-| Worktree isolation | degraded (#683) | degraded (#683) | degraded (#683) | Stacked unmerged branch each time; cleared post-merge |
-| Reusable kernels extracted | 2 (CR-01 shutdown, `*time.Time`) | App-token self-push, `set -e` sub-swallow, post-merge-defer | PDP-decides/store-enforces, options-struct-before-2nd-same-type, targeted-SetPayload, explicit-field-list upkeep | Applied within-milestone and captured for reuse |
-| Requirements satisfied | 6/6 | 19/20 (1 post-merge-deferred) | 11/11 | 3-source cross-referenced |
-| Audit verdict | PASSED | tech_debt (0 blockers) | PASSED (0 blockers) | v0.11.x also 6/6 integration seams, 2/2 E2E flows |
-| Merge shape | 1 PR (all phases) | per-phase PRs | per-phase PRs (22+23 combined) | 4 PRs for 5 phases |
-| Defects caught by review, not tests | — | — | 3 (phases 23, 25, 26) | All compiled, vetted, linted, and passed the suite |
-| Nyquist coverage | — | 9/9 | 3/5 at close → 5/5 reconciled | v0.11.x regression — reconcile VALIDATION.md at phase close; both retro audits found 0 real gaps |
+| Trend | v0.9.x | v0.10.x | v0.11.x | v0.13.x | Notes |
+|-------|--------|---------|---------|---------|-------|
+| Already-shipped surprises | 1 (Phase 10) | 0 | 0 | 0 | v0.9.x also had Phase 8 in the baseline — baseline-verify before planning |
+| Worktree isolation | degraded (#683) | degraded (#683) | degraded (#683) | degraded (#683) | Stacked unmerged branch each time; cleared post-merge |
+| Reusable kernels extracted | 2 (CR-01 shutdown, `*time.Time`) | App-token self-push, `set -e` sub-swallow, post-merge-defer | PDP-decides/store-enforces, options-struct-before-2nd-same-type, targeted-SetPayload, explicit-field-list upkeep | derive-applicability-from-fields, unexported-marker-as-compile-gate, pin-both-ends-of-a-diff-range, walk-the-live-tree-not-a-list | Applied within-milestone and captured for reuse |
+| Requirements satisfied | 6/6 | 19/20 (1 post-merge-deferred) | 11/11 | 23/24 (1 genuinely unmet) | 3-source cross-referenced |
+| Audit verdict | PASSED | tech_debt (0 blockers) | PASSED (0 blockers) | tech_debt (0 blockers) | v0.13.x: 6/6 integration seams, 4/4 E2E flows |
+| Merge shape | 1 PR (all phases) | per-phase PRs | per-phase PRs (22+23 combined) | single branch `feat/v0.13` | v0.13.x did not split per-phase |
+| Defects caught by review, not tests | — | — | 3 (phases 23, 25, 26) | 2 (`defaultK` attribution, `toolclass.go` rationale) | Both v0.13.x cases were prose contradicting the code it described |
+| Nyquist coverage | — | 9/9 | 3/5 at close → 5/5 reconciled | 6/6 validated, 5/6 compliant | v0.13.x cleared v0.12.x's inherited 6-row debt; 04 PARTIAL by design |
+| Planning-artifact drift found at audit | — | — | — | 4 defects, all under-reporting | New trend — all four would have frozen into the immutable archive a day later |
+| Retrospective written at close | ✓ | ✓ | ✓ | ✓ | **v0.12.x skipped** — the only gap in the series |
 
 ---
 
