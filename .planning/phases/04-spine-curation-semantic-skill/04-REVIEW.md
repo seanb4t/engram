@@ -1,177 +1,80 @@
 ---
 phase: 04-spine-curation-semantic-skill
-reviewed: 2026-08-12T00:00:38Z
+reviewed: 2026-08-11T20:15:00Z
 depth: standard
-files_reviewed: 1
+files_reviewed: 2
 files_reviewed_list:
   - skill/engram/skills/curating-spine/SKILL.md
+  - internal/server/verbtabledocs_test.go
 findings:
   critical: 0
-  warning: 2
-  info: 1
-  total: 3
-status: issues_found
+  warning: 0
+  info: 0
+  total: 0
+status: clean
 ---
 
 # Phase 04: Code Review Report
 
-**Reviewed:** 2026-08-12T00:00:38Z
+**Reviewed:** 2026-08-11T20:15:00Z
 **Depth:** standard
-**Files Reviewed:** 1
-**Status:** issues_found
+**Files Reviewed:** 2
+**Status:** clean
 
 ## Summary
 
-The single file in scope, `skill/engram/skills/curating-spine/SKILL.md`, is agent-facing
-normative prose (no Go/executable code shipped this phase). Because this file's whole job is
-to make precise, checkable claims about server behavior, tool names, JSON field shapes, and
-error semantics, this review verified every such claim against the live source
-(`internal/server/tools.go`, `internal/store/spine.go`, `cmd/engram/spine_review_consolidate.go`,
-`cmd/engram/spine_review_verify.go`, `internal/auth/auth.go`, `cmd/engram/csrf.go`, and
-`docs-site/src/content/docs/reference/errors.md`) rather than accepting the prose at face
-value.
+Iteration 2 of the fix/re-review loop. All three iteration-1 findings were re-derived from
+current file contents rather than assumed fixed, and all three are confirmed resolved:
 
-The large majority of claims check out exactly against the running code: the six
-`mcp__engram__*` tool names and their MCP-registered descriptions; the `consolidate --output
-json` candidate field names (`a`, `b`, `a_short_id`, `b_short_id`, `a_scope`, `b_scope`,
-`score`); the `spine-review verify` four-tier vocabulary and the Locator-scoped definition of
-`moved`; the claim that `update_memory`'s MCP closure requires `content` while the Connect
-field-mask lane does not (`validateUpdateArgs` is called only from the MCP tool closure, never
-from the shared `deps.updateMemory` core); the claim that a tags-only update still re-embeds
-because tags are part of the embedded document; the claim that `get_memory` is not
-recall-gated while `search_memory`/`list_memory` are; the claim that repeated `search_memory`
-calls re-embed per query (`d.em.EmbedQuery` inside `deps.searchMemory`); the `errors.md`
-"Multi-target rejections" §2 same-rejection-for-three-causes semantics; and the D-09
-verb-selection table's byte-for-byte match against `curating-memory/SKILL.md:336-338`. This is
-a well-researched file.
+- **WR-01** (self-contradictory ellipsis claim): the offending abbreviated path at the old
+  line 43 is gone; `docs-site/src/content/docs/reference/errors.md` is now spelled in full at
+  line 43-45, and the earlier claim (lines 24-28) is narrowed to "the `mcp__engram__`-prefix
+  shorthand ... is never used as a tool-call prefix anywhere in this file" — a claim that is
+  actually true and checkable (`rg -n "…mcp__engram__|\.\.\.mcp__engram__"` finds nothing). No
+  remaining `\.\.\.`/ellipsis text in the file at all.
+- **WR-02** (unreachable 403 branch): the write-rejection taxonomy (lines 30-54) now enumerates
+  401, 404, and the tool-layer envelope as its three cases; 403 survives only as a one-sentence
+  parenthetical inside the 404 bullet ("403 is a CSRF-layer response that never fires for these
+  MCP tools"), which matches `cmd/engram/csrf.go`'s own doc comment and
+  `TestCrossOriginProtectionAllowsSafeAndNoOrigin` (a no-Origin/no-Sec-Fetch-Site request — the
+  MCP transport's shape — reaches the inner handler untouched). The 404 case is now documented
+  accurately against `internal/store/store.go`'s `GetReadable`/`getWritable` (both collapse
+  "not found" and "found but not yours" into the same `ErrNotFound`), and "404" as shorthand for
+  this class matches the codebase's own convention (`internal/server/tools_test.go:5645`'s
+  `"ErrNotFound (404, not 403; no leak)"` comment), so it is not an invented term.
+- **IN-01** (no CI binding on the D-09 verb table): `internal/server/verbtabledocs_test.go` is
+  new and does exactly this. Verified directly (not just read):
+  - `go test ./internal/server/... -run TestCuratingSpineVerbTableMatchesCuratingMemory` passes
+    against the current tree.
+  - The anchor (`"The old fact *was* true and is now wrong"`, checked against the header's `i+2`
+    line) is genuinely unique: `curating-memory/SKILL.md` has exactly two
+    `| Situation | Tool | Why |` tables (line 176, the rule-correction table, and line 334, the
+    D-09 verb table); only the second one's first data row contains the anchor text, so
+    `extractVerbTable` selects the D-09 table and skips the unrelated rule-correction table.
+  - The test genuinely goes RED on divergence: mutating one word in
+    `curating-spine/SKILL.md`'s table (`"nothing to preserve"` → `"nothing at all to preserve"`)
+    and rerunning fails with a clear diff; reverting restores green. (File was restored after
+    this check; `git diff` shows no residual change.)
+  - The test lives in `internal/server` (covered by plain `go test ./...`, i.e. `task test` /
+    default `task`), not gated behind a build tag or `-short` skip, so it is a real CI gate, not
+    a dead/optional check. `gofmt -l`, `go vet ./internal/server/...`, and
+    `golangci-lint run ./internal/server/...` are all clean on the package.
 
-Two findings surfaced despite that: one is a literal self-contradiction (the file makes an
-explicit, checkable claim about its own contents that is false as written), and the other is a
-factual inaccuracy in the 401/403 rejection taxonomy that misdescribes a rejection path that,
-per the server's own CSRF design, cannot occur for the MCP tools this skill exclusively calls.
+No new defects were found in either file. Every checkable claim in `SKILL.md` re-verified
+against current source during this pass — MCP tool names and registered descriptions
+(`internal/server/tools.go` `Register`), the `consolidate --output json` candidate field names
+(`cmd/engram/spine_review_consolidate.go`), the `spine-review verify` four-tier vocabulary and
+`moved`'s Locator-scoped definition (`cmd/engram/spine_review_verify.go`), the `errors.md`
+"Multi-target rejections" §2 same-rejection-for-three-causes text (verified against the live
+doc), the `update_memory` MCP-vs-Connect `content`-requiredness asymmetry
+(`validateUpdateArgs`/`updateArgs.Content` doc comments), tags participating in the embedded
+document (`store.EmbedText`), `get_memory`'s non-recall-gated fetch, and `search_memory`
+re-embedding per call (`d.em.EmbedQuery` inside `deps.searchMemory`) — all check out exactly.
 
-## Warnings
-
-### WR-01: File claims a character sequence never appears in it, but it does
-
-**File:** `skill/engram/skills/curating-spine/SKILL.md:24-29` (claim), `:43` (violation)
-**Issue:** Lines 24-29 state, as an explicit, checkable invariant:
-
-> Referenced by file and line only; the abbreviation's literal characters, in either the
-> Unicode single-character ellipsis form or the ASCII three-period form, never appear anywhere
-> in this file.
-
-This is false as written. Line 43 reads:
-
-> `docs-site/.../reference/errors.md` § "Multi-target rejections"
-
-That path literally contains the ASCII three-period sequence `...`. A `grep -o '\.\.\.'
-SKILL.md` against this file returns a hit at line 43, directly contradicting the "never appear
-anywhere in this file" claim two paragraphs earlier. The claim's intent was almost certainly
-narrower — "the `…__mcp__engram__` prefix-abbreviation convention `promoting-memory` declares
-is never adopted here" — but as literally written it is a blanket claim about the character
-sequence, and it is falsifiable by a one-line grep against the file's own text. The same path
-is also spelled out in full elsewhere in the same file (`:239-240`,
-`docs-site/src/content/docs/reference/errors.md`), so the abbreviated form at line 43 is both
-internally inconsistent with line 239-240's full form and in direct conflict with the file's
-own no-ellipsis guarantee.
-
-**Fix:** Spell the path in full at line 43 (matching the form already used at line 239-240),
-and narrow the claim at lines 24-29 to what is actually being guaranteed — the
-`mcp__engram__`-prefix shorthand is never used for tool-call sites in this file — rather than a
-blanket claim about the three-period character sequence appearing nowhere in the document:
-
-```diff
-- `supersede_memory` call, the addressability failure class documented in
-- `docs-site/.../reference/errors.md` § "Multi-target rejections". The
-+ `supersede_memory` call, the addressability failure class documented in
-+ `docs-site/src/content/docs/reference/errors.md` § "Multi-target rejections". The
-```
-
-and narrow the earlier claim, e.g.:
-
-```diff
-- Referenced by file and line only; the abbreviation's literal characters, in either the
-- Unicode single-character ellipsis form or the ASCII three-period form, never appear anywhere
-- in this file.
-+ Referenced by file and line only; the `mcp__engram__`-prefix shorthand that abbreviation
-+ names is never used as a tool-call prefix anywhere in this file.
-```
-
-### WR-02: 403 guidance describes a rejection path unreachable via the MCP transport this skill uses, and never mentions the rejection path that actually occurs
-
-**File:** `skill/engram/skills/curating-spine/SKILL.md:37-39`
-**Issue:** The three-way write-rejection taxonomy states:
-
-> **403, a permission rejection.** The caller *is* authenticated and is still not permitted.
-> Stop. Re-authenticating does not help here, so do not send the user around the 401 loop.
-
-This does not match the server's actual behavior for the six tools this skill calls:
-
-- The only 403 source in the codebase is the CSRF layer (`cmd/engram/csrf.go`,
-  `newCrossOriginProtection`'s deny handler, and `newConnectCSRFInterceptor`), and its own doc
-  comment states explicitly that "requests with neither header — the MCP transport — fall
-  through and pass too." CSRF protection is a same-origin browser defense; it does not gate
-  MCP tool calls at all.
-- Real per-record authorization failures on these tools (a non-owner calling `get_memory`,
-  `update_memory`, `delete_memory`, or naming a not-owned target in `supersede_memory`) return
-  `store.ErrNotFound` — HTTP 404, not 403 — by explicit design, so a non-owner cannot
-  distinguish "not yours" from "doesn't exist" (confirmed by
-  `internal/server/tools_test.go:5645`: `"another owner's private record → ErrNotFound (404,
-  not 403; no leak)"`, and matches the `supersede_memory` multi-target rejection this same
-  skill file documents accurately a few sections later).
-- `docs-site/src/content/docs/reference/errors.md` — the document this skill instructs the
-  reader to consult for rejections (`## When a call is rejected`) — never mentions HTTP 403 at
-  all.
-
-So the skill dedicates a full triage branch, with an explicit "Stop" instruction, to a
-rejection class that cannot occur through the MCP tools it is scoped to use, while the
-rejection class that actually occurs for non-owned single-target reads/writes (404 /
-`ErrNotFound`) has no branch of its own — an agent hitting that case has to fall back to
-guessing which of the file's three categories applies. Given the section's own stated purpose
-— "conflating them sends the user to the wrong remedy" — this is exactly the failure mode the
-section exists to prevent, applied to itself.
-
-**Fix:** Either drop the 403 branch (it cannot fire via this skill's tools) or reframe it
-accurately as a transport-layer CSRF response that will not be seen through the MCP tools this
-skill calls, and add the real single-target ownership-rejection case (404 / `ErrNotFound`,
-same-envelope-for-multiple-causes as the documented `supersede_memory` multi-target case) as
-its own row:
-
-```diff
--- **403, a permission rejection.** The caller *is* authenticated and is
--  still not permitted. Stop. Re-authenticating does not help here, so do
--  not send the user around the 401 loop.
-+- **404, an addressability rejection on a single-target tool** (`get_memory`,
-+  `update_memory`, `delete_memory`). The server returns the same not-found response whether
-+  the record is not yours or does not exist, so this cannot be told apart from a typo'd id —
-+  report only "not addressable by you", never "not yours".
-```
-
-## Info
-
-### IN-01: The D-09 byte-identical verb table has no CI enforcement against drift
-
-**File:** `skill/engram/skills/curating-spine/SKILL.md:156-160`
-**Issue:** The verb-selection table is required (per `.planning/phases/04-.../04-01-PLAN.md`
-D-09) to stay byte-identical (whitespace-normalized) to
-`curating-memory/SKILL.md:336-338`, and today it genuinely is. That match was verified once,
-by hand/programmatically, during this phase's own verification pass
-(`04-VERIFICATION.md` item 7). There is no standing Go test binding the two files together the
-way `TestSupersedeDocsMatchShippedContract` binds `errors.md`'s worked examples to the
-production rendering helper — a `rg -n "curating-spine" -g '*.go'` across the repo returns no
-hits. A future edit to either file's verb table (e.g. rewording the `update_memory` "Why"
-cell) will not be caught by CI; the two tables can silently diverge with no signal beyond an
-attentive reviewer noticing during an unrelated diff.
-
-**Fix:** Add a small Go test (or a lightweight script step in `task lint`/`task test`) that
-reads both `skill/engram/skills/curating-memory/SKILL.md` and
-`skill/engram/skills/curating-spine/SKILL.md`, extracts the verb table by its header row, and
-asserts whitespace-normalized equality — mirroring the pattern
-`TestSupersedeDocsMatchShippedContract` already establishes for `errors.md`.
+All reviewed files meet quality standards. No issues found.
 
 ---
 
-_Reviewed: 2026-08-12T00:00:38Z_
+_Reviewed: 2026-08-11T20:15:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
