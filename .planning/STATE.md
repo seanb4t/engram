@@ -2,11 +2,9 @@
 gsd_state_version: 1.0
 milestone: v0.13.x
 milestone_name: Curation & Self-Evidence
-current_phase: 02
-current_phase_name: Interface Discoverability
-status: planning
+status: Awaiting next milestone
 stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-08-12T17:31:59.355Z"
+last_updated: "2026-08-12T20:43:04.571Z"
 last_activity: 2026-08-12
 last_activity_desc: Phase 05 execution started
 progress:
@@ -14,6 +12,8 @@ progress:
   completed_phases: 6
   total_plans: 33
   completed_plans: 33
+current_phase: 02
+current_phase_name: Interface Discoverability
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-08-02 — after closing milestone v0.12.
 
 ## Current Position
 
-Phase: 02 — Interface Discoverability
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-12 — Phase 1 complete, transitioned to Phase 02
+Phase: Milestone v0.13.x complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-12 — Milestone v0.13.x completed and archived
 
 ## Deferred Items
 
@@ -286,5 +286,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Review `.planning/ROADMAP.md`'s v0.13.x phase details (5 phases, 18/18 requirements mapped).
-- Start Phase 1 with `/gsd-plan-phase 1`.
+- Start the next milestone with /gsd-new-milestone
