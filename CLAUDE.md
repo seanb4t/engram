@@ -25,6 +25,21 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 ## Conventions
 
 - **VCS:** git. Branch + PR; never push to `main` directly (protect-main ruleset). Planning/workflow via GSD (`.planning/`, `/gsd-*`).
+- **Milestone labels:** CalVer `YYYY-MM-DD.NN` — the milestone's **start** date
+  (local date, matching GSD's own `date +%Y-%m-%d`), plus a two-digit counter
+  from `01` disambiguating milestones opened the same day. The label is stamped
+  once at `/gsd-new-milestone` and never rewritten to a ship date. Adopted
+  2026-08-12 and **forward-only**: milestones through `v0.13.x` keep their
+  SemVer-style labels, so milestone history stays valid as written.
+  These label GSD milestones in `.planning/` **only** — they are not release
+  versions (see **Releases** below), so milestone → release is now a lookup,
+  never an inference. Two constraints to respect when writing one:
+  - Any *version-bearing milestone heading* added to `ROADMAP.md` must carry a
+    `✅`/`📋`/`🚧` marker. GSD ends a milestone section at the next heading
+    matching `/v\d+\.\d+|✅|📋|🚧/`; a CalVer heading with no marker is invisible
+    as a boundary, so the current milestone silently swallows the next one.
+  - `roadmap-command-router` and `roadmap-upgrade` hardcode `v(\d+)\.(\d+)` and
+    will not recognize a CalVer milestone heading at all.
 - **Task runner:** `task` (see `Taskfile.yaml`). `task` = lint + test.
 - **Protobuf/buf:** the `EngramService` Connect API is defined in `proto/` and
   generated via `go tool buf` (`task proto:lint` / `task proto:gen`); the
@@ -42,10 +57,14 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
   `license:check` is green, the file does not need one.
 - **Lint/format:** `task lint` (golangci-lint, yamlfmt, actionlint, rumdl) and
   `task fmt` (gofmt, dprint, yamlfmt) must be clean.
-- **Releases:** release-please-driven (see `RELEASING.md`). Merging the
-  release PR cuts the `vX.Y.Z` tag + GitHub Release; the release workflow then
-  ships the binary + image (goreleaser) and the OCI Helm chart (`task
-  chart:push`). release-please syncs `charts/engram/Chart.yaml`
+- **Releases:** release-please-driven (see `RELEASING.md`), **SemVer, always** —
+  never CalVer, and decoupled from the milestone label above. Helm requires
+  `Chart.yaml: version` to be SemVer 2 and Go module tags require `vX.Y.Z`, so a
+  date-shaped release version is not representable. release-please derives the
+  bump from Conventional Commit types; nothing about a milestone label feeds it.
+  Merging the release PR cuts the `vX.Y.Z` tag + GitHub Release; the release
+  workflow then ships the binary + image (goreleaser) and the OCI Helm chart
+  (`task chart:push`). release-please syncs `charts/engram/Chart.yaml`
   (`version`/`appVersion`) and `skill/engram/.claude-plugin/plugin.json`
   (`$.version`); the binary version is ldflags-injected into `main.version`.
 - **Not used here:** database migrations, viper, cocogitto.
