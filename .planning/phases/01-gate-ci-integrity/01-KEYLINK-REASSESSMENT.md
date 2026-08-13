@@ -104,6 +104,37 @@ correctly wired — confirmed above by inspection, not merely assumed — so no 
 found, only a stale key-link pin. If repinning ever becomes worthwhile, that is its own scoped
 work.
 
+## Upstream unescaping gap disposition (D-01)
+
+The root cause of #479 lives in gsd-core, not this repo: `parseMustHavesBlock` strips a single
+pair of leading/trailing quote characters from a `pattern:` scalar and never backslash-unescapes
+it, so a doubled-escape string (`\\.`) reaches `new RegExp` intact and compiles to "a literal
+backslash, then any character" — valid regex, silently unmatchable. D-01 fixes this repo-locally
+(plan 01-02's rewrite plus this phase's `internal/keylinks` guard) and deliberately does **not**
+patch gsd-core. D-01 explicitly left open whether the gap itself gets *reported* upstream (a
+GitHub issue against the tool) or *spine-tracked* (a durable engram memory in this repo), naming
+it Sean's call rather than the executor's, per the live precedent in memory `cvvrwjbsnz` (a prior
+GSD-core bug spine-tracked rather than filed, by explicit decision).
+
+**Decision, made by Sean at this phase's Task 3 checkpoint: `spine-track`.** The gap is recorded
+as durable project memory in this repo's engram spine. No GitHub issue is filed against the
+gsd-core tool's repository, and no other outward-facing action is taken.
+
+**Consequence, stated plainly and not softened:** because the gap stays unreported upstream, every
+other consumer of gsd-core's `verify key-links` keeps hitting the identical silent no-op this
+phase's own guard exists to catch — `parseMustHavesBlock` is unpatched, so the defect is not fixed
+at its source, only worked around here. This repo's `internal/keylinks` guard is therefore
+**permanent, not transitional**: there is no upstream fix in flight that would ever make it
+redundant, because none was requested. Choosing `spine-track` over `file-upstream` or `both` is a
+choice to keep the record local and skip external coordination, at the cost of leaving the actual
+defect open everywhere else the tool is used.
+
+**Where the memory itself is written:** this document records the decision and its consequence;
+it does not create the spine record. Per the division of labor at this checkpoint, the orchestrator
+writes the actual `store_memory` (or `supersede_memory`, if a prior related record exists) call at
+phase close — search-before-store and supersede-on-contradiction are the orchestrator's
+responsibility, not this plan's Task 3.
+
 ## Placement note (deliberate, not an oversight)
 
 Decision D-13 in `01-CONTEXT.md` originally named this phase's own `VERIFICATION.md` as the home
