@@ -22,7 +22,7 @@ instead of another one-shot operator command.
 - [x] **REQ-schema-version-stamped**: Every record write stamps the current `schema_version`. A record written before the field existed reads as v0 by absence, so adoption requires no backfill. Proven by a test asserting that 100% of write paths stamp — not a sample.
 - [x] **REQ-schema-version-never-gates-recall**: `schema_version` never appears in any Qdrant recall or authz filter condition. Carried by an explicit negative test, because the adjacent `superseded_by`/`archived_at` `IsEmpty` recall-gate idiom has inverted cardinality here and copying it would silently exclude every pre-migration record from recall.
 - [x] **REQ-schema-version-wire-visible**: `schema_version` is a wire-visible `store.Memory` field, not a `json:"-"` internal audit stamp like `EmbedderIdentity`/`IdempotencyFingerprint`. A record is never rejected, hidden, or downgraded for carrying an old version — the divergence from `sessionPayloadVersion`'s hard-reject-on-mismatch is deliberate and tested.
-- [ ] **REQ-schema-version-forward-compatible**: A binary reading a record whose `schema_version` is NEWER than its own constant still reads it, ignoring keys it does not understand, and never rejects or hides it. This is what makes rolling the binary back across a schema change safe, and it is tested in both directions — older-than and newer-than — not only the older-than case.
+- [x] **REQ-schema-version-forward-compatible**: A binary reading a record whose `schema_version` is NEWER than its own constant still reads it, ignoring keys it does not understand, and never rejects or hides it. This is what makes rolling the binary back across a schema change safe, and it is tested in both directions — older-than and newer-than — not only the older-than case.
 
 ### Migration Mechanism
 
@@ -93,7 +93,7 @@ this repo's structural invariant — see ROADMAP.md's `## Progress` note).
 | REQ-schema-version-stamped | Phase 2 | Complete |
 | REQ-schema-version-never-gates-recall | Phase 2 | Complete |
 | REQ-schema-version-wire-visible | Phase 2 | Complete |
-| REQ-schema-version-forward-compatible | Phase 2 | Pending |
+| REQ-schema-version-forward-compatible | Phase 2 | Complete |
 | REQ-migration-step-registry | Phase 3 | Pending |
 | REQ-migration-additive-only-gated | Phase 3 | Pending |
 | REQ-migration-step-reversibility | Phase 3 | Pending |
