@@ -238,104 +238,135 @@ mechanism instead of another one-shot operator command.
 - [ ] **Phase 8: Registry & Docs Tail** - The shared scope-or-all-scopes guard becomes a registered conditional rule (#480); docs and CLAUDE.md brought current with what this milestone actually ships
 
 ### Phase 1: Gate & CI Integrity
+
 **Goal**: The build can actually go red for schema/migration work — key-link pattern gates are provably matchable again, and the Qdrant testcontainer no longer masks real failures with unrelated infra flakiness.
 **Depends on**: Nothing (first phase)
 **Requirements**: REQ-keylink-pattern-matchable, REQ-keylink-past-gates-reassessed, REQ-ci-qdrant-container-stability
 **Success Criteria** (what must be TRUE):
+
   1. A key-link `pattern:` field containing `\\` escaping compiles into an actually-matchable `RegExp`, and a guard test proves a reintroduced corrupted-pattern instance fails the build (fail-first, not silently passing).
   2. Every v0.13.x Phase 1–2 key-link is re-resolved against the tool: each is either genuinely pinned (a test exists that would fail on regression) or explicitly recorded as unpinned — a past "key-links passed" claim is never accepted as evidence on its own.
   3. A full `go test ./...` run no longer fails from `internal/store`'s Qdrant testcontainer dying mid-run; when the container does die, its exit reason is captured in the failure output so a recurrence is diagnosable from evidence.
+
 **Plans:** 6 plans in 3 waves
 
 Plans:
+**Wave 1**
 
 - [ ] 01-01-PLAN.md — Tracer: `internal/keylinks` guard core with the committed good/bad fixture pair (wave 1)
-- [ ] 01-02-PLAN.md — Normalize every escaped `pattern:` repo-wide, then land the two recurring gates with D-04's asymmetric scopes (wave 2)
-- [ ] 01-03-PLAN.md — One-time v0.13.x Phase 1–2 key-link reassessment; verdict table plus the D-01 upstream-reporting decision (wave 3)
 - [ ] 01-04-PLAN.md — Tracer: one shared CI Qdrant service, shared-address proof per package, one-container assertion and on-failure diagnostics (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 01-02-PLAN.md — Normalize every escaped `pattern:` repo-wide, then land the two recurring gates with D-04's asymmetric scopes (wave 2)
 - [ ] 01-05-PLAN.md — Per-package collection namespaces enforced by a prefix-asserting construction seam across all four Qdrant-backed packages (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 01-03-PLAN.md — One-time v0.13.x Phase 1–2 key-link reassessment; verdict table plus the D-01 upstream-reporting decision (wave 3)
 - [ ] 01-06-PLAN.md — Source-level conformance gate plus prefix-disjointness proof; real CI run confirms the three mechanism claims (wave 3)
 
 ### Phase 2: Record Schema Versioning Foundation
+
 **Goal**: Every record carries a `schema_version` discriminator that is wire-visible, absent-safe (no backfill needed), forward-compatible in both directions, and structurally incapable of narrowing recall.
 **Depends on**: 2026-08-12.01 Phase 1
 **Requirements**: REQ-schema-version-stamped, REQ-schema-version-never-gates-recall, REQ-schema-version-wire-visible, REQ-schema-version-forward-compatible
 **Success Criteria** (what must be TRUE):
+
   1. Every write path (store/schedule/supersede/update) stamps the current `schema_version`, proven by a test asserting 100% of write paths stamp — not a sample.
   2. A record written before this milestone (no `schema_version` key present) reads as v0 by absence with no backfill required, and remains fully recallable through every existing search/list path, unchanged from today's behavior.
   3. `schema_version` is a plain wire-visible field on `store.Memory` (never `json:"-"`), observable on `full=true` recall and `get_memory` — the deliberate divergence from the `EmbedderIdentity`/`IdempotencyFingerprint` payload-only precedent.
   4. A negative "recall gate blast radius" test proves `schema_version` never appears in any Qdrant recall or authz filter condition built by `Search`/`SearchReranked`/`SearchDiscovery`/`List`/`ListScheduled` — the adjacent `superseded_by`/`archived_at` `IsEmpty` idiom has inverted cardinality here and copying it would silently exclude every pre-migration record from recall.
   5. A binary reads a record whose `schema_version` is NEWER than its own constant without rejecting, hiding, or downgrading it — tested in both the older-than and newer-than direction, which is what makes rolling the binary back across a schema change safe.
+
 **Plans**: TBD
 
 ### Phase 3: Migration Foundation (Registry, Invariants & Sweep)
+
 **Goal**: A pure, dependency-free migration-step registry exists, and no step can be registered without declaring both additive-only compliance and its reversibility — enforced structurally, not caught in review. The sweep that drives it survives Qdrant's real batch non-atomicity and converges without a collection lock.
 **Depends on**: 2026-08-12.01 Phase 2
 **Requirements**: REQ-migration-step-registry, REQ-migration-additive-only-gated, REQ-migration-step-reversibility, REQ-migrate-partial-failure-resume, REQ-migrate-converges-without-lock
 **Success Criteria** (what must be TRUE):
+
   1. `internal/migrate` is a stdlib-only leaf package with zero Qdrant or authz dependency, holding the ordered migration-step registry, imported by `internal/store` (never the reverse); a single `Validate` invariant checks step ordering and idempotency over the whole registry.
   2. Registering a step that removes or renames a payload key fails to build or fails a test — not a review catch — and the step interface is shaped so a per-version decoder can attach later without breaking existing steps.
   3. Registering a step that is silent about reversibility fails the same way: a reversible step must supply its inverse, an irreversible one must name why — "nobody thought about it" is not a representable state.
   4. `Store.Migrate`'s sweep survives a forced mid-sequence partial `SetPayload` failure against a real pinned Qdrant, then a subsequent resume converges the backlog to zero — reconciling by re-derivation (a fresh scroll/count), never by trusting the write call's own success/failure signal.
   5. The sweep runs with no collection lock: because the write path (Phase 2) stamps the current version before the sweep runs, new writes arrive already-current and never create new backlog, proven by a test that writes new records mid-sweep and confirms they are never re-processed.
+
 **Plans**: TBD
 
 Research flag: yes — the exact `internal/migrate` step-registry API shape (step struct, `Validate` invariants, a `StepsFrom(v)` helper) and the partial-failure-resume test design need explicit attention at plan time; this is the highest-complexity test in the milestone.
 
 ### Phase 4: Migration CLI & First Customer
+
 **Goal**: An operator can preview, apply, and revert schema migrations through the standard destructive-tier CLI, with `backfill-short-ids` folded in as the registry's first real step — never running automatically.
 **Depends on**: 2026-08-12.01 Phase 3
 **Requirements**: REQ-migrate-command, REQ-migrate-status-histogram, REQ-migrate-preview-apply-parity, REQ-backfill-shortids-first-step, REQ-migrate-revert, REQ-migrate-never-automatic
 **Success Criteria** (what must be TRUE):
+
   1. `engram migrate` is registered via `registerDestructive`: a bare invocation previews only (no writes), `--apply` is the explicit runtime choke point, and `--output json|text` matches the rest of the operator tier.
   2. `engram migrate status` reports a version-distribution histogram across the collection, not a single scalar version — a mixed-version collection mid-rollout is correctly represented, not misreported.
   3. `--apply` acts only on the intersection of the previewed, gate-passing set and a fresh re-derivation (reusing the shipped `spine-review purge` pattern) — a preview that does not match what apply does is treated as a defect, provable by test.
   4. `backfill-short-ids` is registered as the v0→v1 step, giving the mechanism a real first customer; the standalone command becomes a thin delegating alias (soft deprecation, per the `migrate-set-owner` precedent — never hard removal), and its prior apply-by-default is reconciled with `registerDestructive`'s preview-by-default via a `guides/upgrade.md` entry gated by a test.
   5. `engram migrate revert` previews by default like `--apply`, runs declared inverses in reverse order, and refuses the whole operation at the first irreversible step in the requested range rather than reverting partially — the refusal message names a collection snapshot as the recovery path.
   6. No migration ever runs automatically on server startup; at most, startup emits a non-blocking warning that pending migrations exist.
+
 **Plans**: TBD
 
 ### Phase 5: Connect Record-State Parity
+
 **Goal**: The Connect wire carries a record's full state — the same fields `store.Memory` already exposes — proven by an exhaustive mapping test, not a green `buf breaking` run mistaken for evidence a fourth time.
 **Depends on**: 2026-08-12.01 Phase 4
 **Requirements**: REQ-connect-record-state-parity, REQ-connect-parity-roundtrip-proof
 **Success Criteria** (what must be TRUE):
+
   1. `proto`'s `Memory` message gains `superseded_by`, `supersedes`, `not_before`, `not_after`, `archived_at`, and `schema_version` in ONE additive pass (field numbers 23–28), wired through `memoryToProto`; `buf breaking` stays clean.
   2. An exhaustive field-mapping round-trip test — not a hand-maintained field list — proves every wire-eligible `store.Memory` field is populated by `memoryToProto` and decodes losslessly; the test fails loudly (not silently) if a future field is added to `store.Memory` without a corresponding proto mapping, closing the gap that recurred across v0.8.x, v0.11.x, and v0.13.x.
   3. `not_before`/`not_after` on the new Connect read path apply the same sub-second outward-rounding discipline the write path already established, proven by a boundary-second test run against both lanes simultaneously.
+
 **Plans**: TBD
 
 ### Phase 6: Typed Operator Renderer
+
 **Goal**: Operator command output cannot let a json document silently carry more state than its text sentence states — enforced by construction, not merely detected by test.
 **Depends on**: Nothing within this milestone (independent of the other phases; must complete before 2026-08-12.01 Phase 7)
 **Requirements**: REQ-operator-renderer-typed
 **Success Criteria** (what must be TRUE):
+
   1. `renderOperator`'s text and json output both derive from one shared ordered field set, so a json document cannot widen past what its text sentence states — field-set identity holds by construction, not by a test over hand-built rows.
   2. Every existing operator command's `--output json|text` behavior is unchanged (regression-free) after the refactor.
   3. Adding a new field to an operator report requires touching exactly one field-set declaration to appear correctly in both json and text output — there is no second call site to remember, which is what makes the six new record-state fields (Phase 5/7) safe to add afterward.
+
 **Plans**: TBD
 
 ### Phase 7: Console & CLI State Surfacing
+
 **Goal**: An operator can see a record's full state — archived, superseded, scheduled, schema version, and pending migrations — from the operator console UI and the CLI, not only by running `engram migrate status`.
 **Depends on**: 2026-08-12.01 Phase 5, 2026-08-12.01 Phase 6
 **Requirements**: REQ-console-record-state, REQ-cli-record-state, REQ-migration-state-visible
 **Success Criteria** (what must be TRUE):
+
   1. The operator console UI renders a record's archived, superseded, and scheduled state — today it cannot render the v0.13.x archive tier at all.
   2. `engram search`/`list`/`get` surface the same state fields through the typed renderer, so the CLI and the console agree on what a record is.
   3. An operator can see pending-migration state (e.g., how many records sit behind the current schema version) through the console and CLI surfaces, not only by running `engram migrate status` directly.
+
 **Plans**: TBD
 **UI hint**: yes
 
 Research flag: yes — the operator-UI soft-hidden-state conventions (archived/superseded/scheduled badges, precedence rules for compound state) are synthesized from general product convention, not a single citable spec; validate against real console usage rather than pre-guessing precedence for compound states.
 
 ### Phase 8: Registry & Docs Tail
+
 **Goal**: The shared scope-or-all-scopes guard is a registered, conformance-gated rule instead of a hand-rolled check, and the docs plus CLAUDE.md describe what this milestone actually shipped instead of what it superseded.
 **Depends on**: 2026-08-12.01 Phase 4, 2026-08-12.01 Phase 7
 **Requirements**: REQ-sweep-scope-rule-registered, REQ-docs-record-state, REQ-claude-md-migrations-convention
 **Success Criteria** (what must be TRUE):
+
   1. `RuleSweepScopeOrAllScopesRequired` is a registered `surfaces.ConditionalRule` (not a hand-rolled `usageErrorf`), reused by both `summarize-missing` and `spine-review scan`, with its canonical sentence anchored and conformance-gated on every surface its fields resolve to.
   2. `reference/memory-record.md` and `reference/tools.md` document the full record state including `schema_version`, and a new operator-facing guide documents the migration mechanism end to end.
   3. CLAUDE.md's "Not used here: database migrations" line is revised to accurately describe what this milestone ships and its scope — schema-version-driven migrations only, deliberately not `migrate-remap-owner`/`summarize-missing`/`reindex` — so the normative doc no longer contradicts the code.
+
 **Plans**: TBD
 
 ## Progress
