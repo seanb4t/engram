@@ -119,3 +119,96 @@ func TestSchemaVersionEndToEnd(t *testing.T) {
 		}
 	}
 }
+
+// TestEnsureCollectionIndexesSchemaVersion pins D-12: EnsureCollection
+// provisions a schema_version payload index, asserted from LIVE collection
+// info (not source text).
+func TestEnsureCollectionIndexesSchemaVersion(t *testing.T) {
+	s := newTestStore(t, dialTestClient(t), testCollection("schemaversion_index"))
+	ctx := context.Background()
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+	info, err := s.client.GetCollectionInfo(ctx, s.collection)
+	if err != nil {
+		t.Fatalf("GetCollectionInfo: %v", err)
+	}
+	schema := info.GetPayloadSchema()
+	if _, ok := schema[schemaVersionKey]; !ok {
+		t.Fatalf("payload index missing for %q; have %v", schemaVersionKey, keysOf(schema))
+	}
+}
+
+// TestUpdateRefreshesSchemaVersionUnderLock proves the Task 1 in-lock
+// refresh fix: Store.Update's in-lock re-read now also copies
+// fresh.SchemaVersion (alongside Supersedes/SupersededBy/ArchivedAt), so
+// D-05's monotonic max is computed against the LATEST STORED stamp rather
+// than only the caller's FetchForUpdate snapshot.
+//
+// The race is driven deterministically, never via unsynchronized
+// goroutines: the "concurrent writer" is a raw client.SetPayload issued by
+// this test, sequenced strictly between FetchForUpdate (which snapshots
+// cur at the pre-raise version) and the call to Store.Update — landing
+// unambiguously in the window Update's own in-lock re-read is about to
+// re-scan. Without Task 1's fix, cur.SchemaVersion would remain fixed at
+// its FetchForUpdate-time value for the whole call, and Update's Upsert
+// would silently downgrade the just-raised stored version back down.
+//
+// This does NOT prove the narrower window between that in-lock re-read and
+// Update's own Upsert is protected — it is not: a writer landing strictly
+// there still loses, the same pre-existing lost-update window every field
+// on Memory shares (recorded on the SchemaVersion field's own doc
+// comment). updateAfterReadHook fires exactly in that later window (after
+// the re-read, before the Upsert) — deliberately not used here to inject,
+// since anything it writes would be overwritten by this same call's
+// subsequent Upsert; that is precisely the boundary this test does not
+// claim to cover.
+func TestUpdateRefreshesSchemaVersionUnderLock(t *testing.T) {
+	s := newTestStore(t, dialTestClient(t), testCollection("schemaversion_lockrefresh"))
+	ctx := context.Background()
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+	scope := "schemaversion:project:lockrefresh"
+	subj := Authenticated("sub-lockrefresh")
+
+	id := "c0000000-0000-0000-0000-000000000003"
+	if err := s.Upsert(ctx, Memory{ID: id, Content: "v1", Scope: scope, Owner: "sub-lockrefresh", CreatedAt: time.Now().UTC()}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+
+	cur, err := s.FetchForUpdate(ctx, id, subj)
+	if err != nil {
+		t.Fatalf("FetchForUpdate: %v", err)
+	}
+	if cur.SchemaVersion != migrate.CurrentVersion {
+		t.Fatalf("precondition: cur.SchemaVersion = %d, want %d", cur.SchemaVersion, migrate.CurrentVersion)
+	}
+
+	// The "concurrent" raise: lands after cur was snapshotted, before
+	// Update's in-lock re-read runs (Update has not been called yet).
+	raised := migrate.CurrentVersion + 2
+	if _, err := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collection,
+		Wait:           qdrant.PtrOf(true),
+		Payload:        qdrant.NewValueMap(map[string]any{schemaVersionKey: int(raised)}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
+	}); err != nil {
+		t.Fatalf("raw SetPayload (simulated concurrent raise): %v", err)
+	}
+
+	if err := s.Update(ctx, cur, "v2", nil, nil, nil, []float32{0.2, 0.3, 0.4}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	got, err := s.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.SchemaVersion != raised {
+		t.Fatalf("post-Update SchemaVersion = %d, want %d (the raised value, picked up by the in-lock re-read) — the stale cur snapshot must not downgrade it", got.SchemaVersion, raised)
+	}
+	if got.Content != "v2" {
+		t.Errorf("post-Update Content = %q, want %q (Update's content edit must still land)", got.Content, "v2")
+	}
+}

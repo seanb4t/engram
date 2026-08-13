@@ -556,6 +556,14 @@ func (s *Store) ensureCollection(ctx context.Context, name string, dim uint64) e
 // (enables server-side DatetimeRange + order_by). Re-creating an existing index
 // is idempotent in Qdrant; the AlreadyExists check defends against versions/races
 // that return it instead of succeeding silently.
+//
+// schema_version is an integer index (D-12) serving the future Phase 3
+// migration sweep and Phase 4's `migrate status` version histogram
+// EXCLUSIVELY — it must never serve recall. See
+// internal/store/schemaversion_recallgate_test.go (plan 02-03) for the gate
+// that holds that line: an index that exists makes it easier for a future
+// filter to reach for the field, which is precisely why that gate — not
+// inconvenience — is the guard.
 func (s *Store) ensureIndexes(ctx context.Context, name string) error {
 	type idx struct {
 		field  string
@@ -568,6 +576,7 @@ func (s *Store) ensureIndexes(ctx context.Context, name string) error {
 		{"scope", qdrant.FieldType_FieldTypeKeyword, nil},
 		{"created_at", qdrant.FieldType_FieldTypeDatetime, nil},
 		{"short_id", qdrant.FieldType_FieldTypeKeyword, nil},
+		{schemaVersionKey, qdrant.FieldType_FieldTypeInteger, nil},
 	}
 	for _, ix := range idxs {
 		req := &qdrant.CreateFieldIndexCollection{
@@ -3097,6 +3106,18 @@ const reindexBatch = 256
 // overwritten on the payload map immediately before the upsert (Phase 13
 // SC3). This is a guarded additive raw-map write, not a Memory/payload()
 // round-trip, so it does not touch the owner key or any other field.
+//
+// Reindex's per-point write (the raw client.Upsert call below, Payload:
+// p.Payload) is the intentional whole-write exception to "every full write
+// routes through payload()" — it never calls payload() at all. This has a
+// real consequence for schema_version specifically (correcting an earlier
+// assumption that Reindex "inherits" the D-05 monotonic stamp like every
+// other full write): because the payload map is copied verbatim off the
+// source point rather than rebuilt from a decoded Memory, Reindex preserves
+// schema_version byte-for-byte, present or absent, exactly as the source
+// carried it. Reindexing does NOT advance a record's version — converging
+// a version toward current is the future migration sweep's job (Phase 3),
+// not Reindex's.
 //
 // Fail-closed: an embed error aborts immediately and is returned wrapped; no
 // zero/garbage vector is ever written. A point carrying no content is skipped
