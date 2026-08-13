@@ -52,6 +52,24 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
+      # Asserts the FIX'S OWN MECHANISM, not the absence of the flake it
+      # replaced (CONTEXT.md D-20 — a green streak is never sufficient
+      # evidence, per durable-memory finding cmjxxswmm2). The count is
+      # compared against the literal 1 with no `|| echo`/`2>/dev/null ||`
+      # fallback: a docker failure here yields an empty/non-"1" count and
+      # correctly trips the assertion rather than silently passing.
+      - name: assert exactly one Qdrant container
+        env:
+          ENGRAM_QDRANT_TEST_ADDR: localhost:6334
+        run: |
+          echo "ENGRAM_QDRANT_TEST_ADDR resolved to: ${ENGRAM_QDRANT_TEST_ADDR}"
+          count=$(docker ps --filter "ancestor=qdrant/qdrant:v1.18.2" --format '{{.ID}}' | wc -l | tr -d '[:space:]')
+          echo "running Qdrant containers (ancestor qdrant/qdrant:v1.18.2): ${count}"
+          if [ "${count}" != "1" ]; then
+            echo "::error::expected exactly one Qdrant container, found ${count}"
+            docker ps --filter "ancestor=qdrant/qdrant:v1.18.2"
+            exit 1
+          fi
       - name: Test
         env:
           # Fail-closed real-Qdrant authz/parity gate (round-6 MED, Codex):
@@ -65,6 +83,29 @@ jobs:
           # (D-15). All four TestMain chains already honor this var.
           ENGRAM_QDRANT_TEST_ADDR: localhost:6334
         run: go test ./...
+      # D-19: capture WHY the Qdrant container died as a CI post-step rather
+      # than in-Go — when the container dies mid-run the Go process often
+      # cannot reach it either, so in-process capture yields nothing in
+      # exactly the case that matters most. Scoped to the pinned Qdrant
+      # image's own container only: no printenv, no unscoped `docker ps -a`
+      # of every container on the runner. Every command tolerates its own
+      # absence so this step itself never fails and masks the real failure.
+      - name: qdrant container diagnostics on failure
+        if: failure()
+        env:
+          QDRANT_IMAGE: qdrant/qdrant:v1.18.2
+        run: |
+          echo "--- qdrant container state ---"
+          cid=$(docker ps -aq --filter "ancestor=${QDRANT_IMAGE}" | head -n1)
+          if [ -n "${cid}" ]; then
+            docker inspect "${cid}" --format 'id={{.Id}} status={{.State.Status}} exitCode={{.State.ExitCode}} oomKilled={{.State.OOMKilled}} error={{.State.Error}}' || echo "docker inspect failed"
+            echo "--- qdrant container logs (last 200 lines) ---"
+            docker logs "${cid}" 2>&1 | tail -n 200 || echo "docker logs failed"
+          else
+            echo "no qdrant container found (ancestor ${QDRANT_IMAGE})"
+          fi
+          echo "--- kernel OOM evidence ---"
+          dmesg 2>/dev/null | grep -i -E 'oom|killed process' || echo "no OOM evidence in dmesg (or dmesg unavailable)"
       # Enforce go.mod/go.sum tidiness here, not via a GoReleaser hook: release
       # builds use the exact tagged module files (tag = source of truth).
       - name: go.mod tidy check
