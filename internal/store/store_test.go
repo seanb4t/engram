@@ -3000,9 +3000,25 @@ func TestPayloadRoundTripsSchemaVersion(t *testing.T) {
 		// The zero-valued Memory{} — the empty-input edge — still stamps
 		// current, and the key is never omitted.
 		{"zero", Memory{}, migrate.CurrentVersion},
+		// An OLDER record read by a NEWER binary is RAISED to current — the
+		// arm the whole migration sweep depends on. Constructed one below
+		// CurrentVersion rather than at a literal, so this case keeps
+		// exercising the "below" branch after a later phase raises the
+		// constant. While CurrentVersion is 0 the value is a synthetic
+		// negative sentinel, which is precisely why the assertion is written
+		// against the max() rule and not against a fixed number.
+		{"below", Memory{ID: "a0000000-0000-0000-0000-000000000006", Content: "c", Scope: "s", SchemaVersion: migrate.CurrentVersion - 1}, migrate.CurrentVersion},
 	}
-	if len(cases) != 3 {
-		t.Fatalf("case count = %d, want 3 (above/equal/zero)", len(cases))
+	// Derived, not enumerated: a hard-coded count silently stays "correct"
+	// while a case goes missing. Assert on the case NAMES so a dropped or
+	// renamed arm fails loudly instead of passing on cardinality alone.
+	wantNames := []string{"above", "equal", "zero", "below"}
+	gotNames := make([]string, 0, len(cases))
+	for _, tc := range cases {
+		gotNames = append(gotNames, tc.name)
+	}
+	if !slices.Equal(gotNames, wantNames) {
+		t.Fatalf("case set = %v, want %v — every arm of the monotonic rule must stay covered", gotNames, wantNames)
 	}
 	ran := 0
 	for _, tc := range cases {
@@ -3035,8 +3051,10 @@ func TestPayloadRoundTripsSchemaVersion(t *testing.T) {
 			}
 		})
 	}
-	if ran != 3 {
-		t.Fatalf("subtests executed = %d, want 3", ran)
+	// Derived from the table, not restated as a literal: a second hard-coded
+	// count is a second place to forget when an arm is added.
+	if ran != len(cases) {
+		t.Fatalf("subtests executed = %d, want %d (one per case)", ran, len(cases))
 	}
 
 	// Legacy decode: a payload map with no schema_version key at all
