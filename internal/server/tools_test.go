@@ -123,6 +123,28 @@ func TestToolArgSchemasDoNotPanic(t *testing.T) {
 // in which case they fail (see requireQdrant).
 var testQdrantAddr string
 
+// testQdrantContainerBooted records whether TestMain booted its OWN
+// testcontainer for this run, as opposed to taking the ENGRAM_QDRANT_TEST_ADDR
+// fast path onto a shared instance. Set true only inside the testcontainer
+// branch, immediately after the container's gRPC endpoint resolves; the env-var
+// branch leaves it false. TestSharedQdrantAddressHonored asserts on it directly
+// so "the CI test job uses one shared Qdrant" is a checkable claim rather than
+// an inference from logs (CONTEXT.md D-20).
+var testQdrantContainerBooted bool
+
+// testCollectionPrefix namespaces this package's integration-test Qdrant
+// collection names so a single shared Qdrant instance (CI's ENGRAM_QDRANT_TEST_ADDR
+// path) can host internal/store's and internal/server's test suites
+// concurrently without their previously-identical "mem_eval_test" collection
+// names colliding (CONTEXT.md D-16).
+const testCollectionPrefix = "server_"
+
+// testCollection returns name namespaced into this package's collection space
+// on the shared test Qdrant instance.
+func testCollection(name string) string {
+	return testCollectionPrefix + name
+}
+
 // requireQdrant is the SOLE place ENGRAM_REQUIRE_QDRANT is read/parsed
 // (round-6 MED, round-7 LOW + round-8 LOW, Codex): TestMain and
 // failOrSkipNoQdrant act only on its result, never parsing the env var
@@ -199,6 +221,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "qdrant grpc endpoint: %v\n", cerr)
 		os.Exit(1)
 	}
+	testQdrantContainerBooted = true
 	if required && testQdrantAddr == "" {
 		terminateQdrant(container)
 		fmt.Fprintln(os.Stderr, "fatal: ENGRAM_REQUIRE_QDRANT is set but no Qdrant address resolved")
@@ -215,6 +238,26 @@ func terminateQdrant(c *tcqdrant.QdrantContainer) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_ = c.Terminate(ctx)
+}
+
+// TestSharedQdrantAddressHonored proves this package took the CI shared-Qdrant
+// fast path rather than booting its own testcontainer, whenever
+// ENGRAM_QDRANT_TEST_ADDR is set. Address equality alone is not enough — a
+// package could boot a container and coincidentally resolve the same address —
+// so the load-bearing assertion is testQdrantContainerBooted == false
+// (CONTEXT.md D-20). Skips (does not fail) when the env var is unset: a
+// developer running locally without it is not the case this test is about.
+func TestSharedQdrantAddressHonored(t *testing.T) {
+	addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR")
+	if addr == "" {
+		t.Skip("ENGRAM_QDRANT_TEST_ADDR not set: this test only asserts the shared-instance path")
+	}
+	if testQdrantAddr != addr {
+		t.Errorf("testQdrantAddr = %q, want %q (shared CI Qdrant address not honored)", testQdrantAddr, addr)
+	}
+	if testQdrantContainerBooted {
+		t.Error("testQdrantContainerBooted = true, want false: ENGRAM_QDRANT_TEST_ADDR was set but this package booted its own testcontainer anyway")
+	}
 }
 
 // TestRequireQdrant pins requireQdrant's parse contract (round-7 LOW + round-8
@@ -318,7 +361,7 @@ func testDepsWithStore(t *testing.T) (*deps, *store.Store) {
 	if err != nil {
 		t.Fatalf("client: %v", err)
 	}
-	st := store.New(c, "mem_eval_test")
+	st := store.New(c, testCollection("mem_eval_test"))
 	if err := st.EnsureCollection(context.Background(), 3); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}

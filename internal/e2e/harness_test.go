@@ -43,6 +43,15 @@ var engramBin string
 // ENGRAM_REQUIRE_QDRANT — mirroring internal/server and internal/store).
 var testQdrantAddr string
 
+// testQdrantContainerBooted records whether TestMain booted its OWN
+// testcontainer for this run, as opposed to taking the ENGRAM_QDRANT_TEST_ADDR
+// fast path onto a shared instance. Set true only inside the testcontainer
+// branch, immediately after the container's gRPC endpoint resolves; the env-var
+// branch leaves it false. TestSharedQdrantAddressHonored asserts on it directly
+// so "the CI test job uses one shared Qdrant" is a checkable claim rather than
+// an inference from logs (CONTEXT.md D-20).
+var testQdrantContainerBooted bool
+
 // requireQdrant mirrors internal/server's helper: ENGRAM_REQUIRE_QDRANT makes a
 // missing Qdrant fatal rather than a skip, so CI cannot go green with this tier
 // silently sitting out. An unparseable value is an error, never coerced to false.
@@ -110,6 +119,7 @@ func TestMain(m *testing.M) {
 		_ = os.RemoveAll(tmp)
 		os.Exit(1)
 	}
+	testQdrantContainerBooted = true
 	code := m.Run()
 	terminateQdrant(container)
 	_ = os.RemoveAll(tmp)
@@ -132,6 +142,26 @@ func skipOrFailNoQdrant(t *testing.T) {
 		t.Fatal("no Qdrant available and ENGRAM_REQUIRE_QDRANT is set: failing instead of skipping")
 	}
 	t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
+}
+
+// TestSharedQdrantAddressHonored proves this package took the CI shared-Qdrant
+// fast path rather than booting its own testcontainer, whenever
+// ENGRAM_QDRANT_TEST_ADDR is set. Address equality alone is not enough — a
+// package could boot a container and coincidentally resolve the same address —
+// so the load-bearing assertion is testQdrantContainerBooted == false
+// (CONTEXT.md D-20). Skips (does not fail) when the env var is unset: a
+// developer running locally without it is not the case this test is about.
+func TestSharedQdrantAddressHonored(t *testing.T) {
+	addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR")
+	if addr == "" {
+		t.Skip("ENGRAM_QDRANT_TEST_ADDR not set: this test only asserts the shared-instance path")
+	}
+	if testQdrantAddr != addr {
+		t.Errorf("testQdrantAddr = %q, want %q (shared CI Qdrant address not honored)", testQdrantAddr, addr)
+	}
+	if testQdrantContainerBooted {
+		t.Error("testQdrantContainerBooted = true, want false: ENGRAM_QDRANT_TEST_ADDR was set but this package booted its own testcontainer anyway")
+	}
 }
 
 // childEnv builds the subprocess environment from SCRATCH rather than extending
