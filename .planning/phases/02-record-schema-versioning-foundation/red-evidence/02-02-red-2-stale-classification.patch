@@ -1,0 +1,19 @@
+diff --git a/internal/store/schemaversion_stamp_gate_test.go b/internal/store/schemaversion_stamp_gate_test.go
+index d7ae4e4f..9db2b174 100644
+--- a/internal/store/schemaversion_stamp_gate_test.go
++++ b/internal/store/schemaversion_stamp_gate_test.go
+@@ -344,10 +344,10 @@ var fullWriteClassification = []writeClassification{
+ 		enclosingFunc: "Store.Supersede", receiver: "s", disposition: conformingDelegation,
+ 		justification: "s.Upsert(ctx, newMem, vec) for the new correcting record — same reasoning as Store.Update.",
+ 	},
+-	{
+-		enclosingFunc: "Store.Reindex", receiver: "s.client", disposition: namedException,
+-		justification: "It copies the raw payload map scrolled off the source collection verbatim (Payload: p.Payload) rather than rebuilding it from a decoded Memory, mirroring the existing embedder_identity exception comment at this write — which is what makes it preserve every key including ones this binary does not know about. Routing it through payload() would defeat that contract.",
+-	},
++	// 02-02-PLAN.md Task 2 prove-RED direction 2: the Store.Reindex entry is
++	// TEMPORARILY REMOVED here to prove the set-equality assertion has
++	// teeth on the side a subset-only check would miss — Reindex's derived
++	// site becomes unclassified and the gate must fail.
+ }
+ 
+ // partialWriteClassification is the partial-write classification: every

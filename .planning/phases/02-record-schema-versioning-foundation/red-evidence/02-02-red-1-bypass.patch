@@ -1,0 +1,33 @@
+diff --git a/internal/store/store.go b/internal/store/store.go
+index f60a9c3a..28fae691 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -815,6 +815,28 @@ func (s *Store) Upsert(ctx context.Context, m Memory, vec []float32) (err error)
+ 	return err
+ }
+ 
++// proveRedDirection1BypassBuildRequest is a TEMPORARY injection
++// (02-02-PLAN.md Task 2 prove-RED direction 1): builds a request in a
++// separate helper function, exactly mirroring bad_pkg.go.txt's
++// helperBuiltWrite H1 bypass shape.
++func proveRedDirection1BypassBuildRequest(m Memory) *qdrant.UpsertPoints {
++	return &qdrant.UpsertPoints{
++		Points: []*qdrant.PointStruct{{Id: qdrant.NewID(m.ID)}},
++	}
++}
++
++// proveRedDirection1Bypass is a TEMPORARY injection (02-02-PLAN.md Task 2
++// prove-RED direction 1): transmits a request assembled by a separate
++// helper function through a local variable, calling s.client.Upsert
++// directly and never routing through payload(). This function's own body
++// contains no qdrant.PointStruct literal, so the gate must derive it from
++// the transmitted Upsert call, not from composite-literal construction.
++func (s *Store) proveRedDirection1Bypass(ctx context.Context, m Memory) error {
++	req := proveRedDirection1BypassBuildRequest(m)
++	_, err := s.client.Upsert(ctx, req)
++	return err
++}
++
+ // ownerOrSharedCondition matches records the subject may READ. The own/shared
+ // bucket decisions are policy-derived (s.authz.DecideBucket), but the emitted
+ // filter shape is numerically identical to the pre-Cedar hardcoded switch

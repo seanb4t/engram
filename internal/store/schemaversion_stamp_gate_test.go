@@ -44,6 +44,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -293,6 +294,86 @@ func isNewValueMapOfPayload(e ast.Expr) bool {
 // the transmitted write boundary this gate's headline guarantee covers.
 var fullWriteMethods = map[string]bool{"Upsert": true}
 
+// partialWriteMethods is the method-name set for the partial-write boundary
+// scan: every targeted payload mutation, which D-02 requires to NEVER stamp
+// schema_version (a one-key merge cannot honestly claim currency).
+var partialWriteMethods = map[string]bool{
+	"SetPayload":       true,
+	"DeletePayload":    true,
+	"OverwritePayload": true,
+}
+
+// writeDisposition classifies a derived full-write call site.
+type writeDisposition int
+
+const (
+	directConforming writeDisposition = iota
+	conformingDelegation
+	namedException
+)
+
+// writeClassification pairs one derived enclosing function with its expected
+// receiver text and (for full writes) disposition, plus a non-empty
+// justification string.
+type writeClassification struct {
+	enclosingFunc string
+	receiver      string
+	disposition   writeDisposition
+	justification string
+}
+
+// fullWriteClassification is the write-boundary classification: exactly
+// FOUR entries in THREE dispositions, derived from
+// `rg -n '\.Upsert\(' internal/store/*.go --glob '!*_test.go'` at revision
+// time (the scanner's OWN matching rule — no `client\.` prefix, since the
+// receiver is deliberately ignored by the match). Two entries
+// (Store.Update, Store.Supersede) are DELEGATIONS, not direct transmissions
+// — the scanner's over-approximating match derives them as subjects too,
+// and a delegating call is genuinely conforming: it routes through
+// Store.Upsert and therefore through payload(), exactly as D-01 states.
+var fullWriteClassification = []writeClassification{
+	{
+		enclosingFunc: "Store.Upsert", receiver: "s.client", disposition: directConforming,
+		justification: "Its request payload derives from payload(), so every full record it transmits carries the monotonic stamp. Subject to payloadDerivesFromCodec below.",
+	},
+	{
+		enclosingFunc: "Store.Update", receiver: "s", disposition: conformingDelegation,
+		justification: "return s.Upsert(ctx, cur, vec) — it transmits nothing itself; it routes through Store.Upsert and therefore through payload(), exactly as D-01 states.",
+	},
+	{
+		enclosingFunc: "Store.Supersede", receiver: "s", disposition: conformingDelegation,
+		justification: "s.Upsert(ctx, newMem, vec) for the new correcting record — same reasoning as Store.Update.",
+	},
+	{
+		enclosingFunc: "Store.Reindex", receiver: "s.client", disposition: namedException,
+		justification: "It copies the raw payload map scrolled off the source collection verbatim (Payload: p.Payload) rather than rebuilding it from a decoded Memory, mirroring the existing embedder_identity exception comment at this write — which is what makes it preserve every key including ones this binary does not know about. Routing it through payload() would defeat that contract.",
+	},
+}
+
+// partialWriteClassification is the partial-write classification: every
+// SetPayload/DeletePayload/OverwritePayload call site in internal/store's
+// package directory (store.go, spine.go, summarize.go), derived at revision
+// time with the scanner's own matching rule — ten entries, named at the
+// level the derivation reports (seams included), not at the level D-02's
+// prose describes the callers. Every entry carries the same underlying
+// justification: a one-key merge cannot honestly claim currency, so a
+// partial write that stamped schema_version would assert "every key of this
+// version is present" while having written only one — a false-currency
+// claim that would make a future migration sweep skip records still needing
+// migration (D-02).
+var partialWriteClassification = []writeClassification{
+	{enclosingFunc: "Store.UpdatePayload", receiver: "s.client", justification: "D-02: caller transmits directly; a partial write must never stamp currency it cannot honor."},
+	{enclosingFunc: "Store.defaultDeletePayloadKeys", receiver: "s.client", justification: "D-02: the deletePayloadKeys SEAM's production implementation; a partial write must never stamp currency it cannot honor."},
+	{enclosingFunc: "Store.defaultSetPayloadKeys", receiver: "s.client", justification: "D-02: the setPayloadKeys SEAM's production implementation; a partial write must never stamp currency it cannot honor."},
+	{enclosingFunc: "Store.SetVisibility", receiver: "s.client", justification: "D-02: caller transmits directly; a partial write must never stamp currency it cannot honor."},
+	{enclosingFunc: "Store.IncrementAccess", receiver: "s.client", justification: "D-02: caller transmits directly; a partial write must never stamp currency it cannot honor."},
+	{enclosingFunc: "Store.BackfillShortIDs", receiver: "s.client", justification: "D-02: operator command; a partial write must never stamp currency it cannot honor."},
+	{enclosingFunc: "Store.MigrateSetOwner", receiver: "s.client", justification: "D-02: operator command; a partial write must never stamp currency it cannot honor."},
+	{enclosingFunc: "Store.RemapOwner", receiver: "s.client", justification: "D-02: operator command; a partial write must never stamp currency it cannot honor."},
+	{enclosingFunc: "Store.Archive", receiver: "s.client", justification: "D-02: outside store.go (spine.go); a partial write must never stamp currency it cannot honor."},
+	{enclosingFunc: "Store.SetSummary", receiver: "s.client", justification: "D-02: outside store.go (summarize.go); a partial write must never stamp currency it cannot honor."},
+}
+
 // parseGoFile is a test-only helper: parse path (relative to this package's
 // directory, matching go test's own working directory convention) and
 // return its *ast.File, failing the test loudly on any read/parse error.
@@ -520,4 +601,394 @@ func TestEveryPointWriteRoutesThroughPayload(t *testing.T) {
 		// than masking it as an error or silently returning a nonzero
 		// count.
 	})
+
+	// Task 2: apply the boundary scan to internal/store's own directory and
+	// match the derived set against fullWriteClassification by SET
+	// EQUALITY in both directions, plus per-entry receiver-text equality
+	// and the conformance predicate on every direct-conforming entry.
+	t.Run("real package", func(t *testing.T) {
+		fset := token.NewFileSet()
+		sites, filesScanned, err := scanPackageDirForCalls(fset, ".", ".go", "_test.go", fullWriteMethods)
+		if err != nil {
+			t.Fatalf("scan internal/store: %v", err)
+		}
+		if filesScanned == 0 {
+			t.Fatal("scanned zero non-test .go files in internal/store — a package rename or empty directory must fail this gate, not report clean")
+		}
+		t.Logf("scanned %d non-test .go files in internal/store", filesScanned)
+
+		got := map[string]qdrantCallSite{}
+		for _, s := range sites {
+			got[s.enclosingFunc] = s
+		}
+		want := map[string]writeClassification{}
+		for _, c := range fullWriteClassification {
+			want[c.enclosingFunc] = c
+		}
+
+		// Completeness by set equality, both directions.
+		for name, site := range got {
+			c, ok := want[name]
+			if !ok {
+				t.Errorf("derived write site %s (%s:%d) has no classification entry — every Upsert call site in internal/store's package directory must be classified", name, site.path, site.line)
+				continue
+			}
+			if site.receiver != c.receiver {
+				t.Errorf("classification entry %s: declared receiver %q, observed %q — a delegation entry whose receiver became s.client must be RECLASSIFIED as direct-conforming rather than have its expectation edited", name, c.receiver, site.receiver)
+			}
+		}
+		for name := range want {
+			if _, ok := got[name]; !ok {
+				t.Errorf("classification entry %s has no matching derived site — stale classification entry (e.g. Store.Reindex refactored to route through payload() would leave this entry stale, hiding that it is no longer an exception)", name)
+			}
+		}
+
+		// Conformance of the direct-conforming site(s), applied to every
+		// direct-conforming entry and to NO conforming-delegation entry —
+		// the exemption is checked, not assumed.
+		storeFile := parseGoFile(t, "store.go")
+		var directChecked, delegationSkipped int
+		var wantDirect, wantDelegation int
+		for _, c := range fullWriteClassification {
+			switch c.disposition {
+			case directConforming:
+				wantDirect++
+			case conformingDelegation:
+				wantDelegation++
+			}
+		}
+		for _, c := range fullWriteClassification {
+			fn := findFuncDeclByDisplayName(storeFile, c.enclosingFunc)
+			if fn == nil {
+				t.Errorf("could not find FuncDecl for classification entry %s in store.go", c.enclosingFunc)
+				continue
+			}
+			switch c.disposition {
+			case directConforming:
+				directChecked++
+				if !payloadDerivesFromCodec(fn) {
+					t.Errorf("%s: direct-conforming entry does not pass the conformance predicate — payload(m) may have been replaced with a hand-built map at the legitimate call site", c.enclosingFunc)
+				}
+			case conformingDelegation:
+				delegationSkipped++
+				// Exempt by construction: a delegation entry builds no
+				// point of its own, so the conformance predicate is
+				// deliberately never invoked on it in this branch.
+			case namedException:
+				// Reindex: not subject to the conformance predicate either
+				// — its whole point is that it does NOT route through
+				// payload().
+			}
+		}
+		if directChecked != wantDirect {
+			t.Errorf("applied the conformance predicate to %d direct-conforming entries, want %d", directChecked, wantDirect)
+		}
+		if delegationSkipped != wantDelegation {
+			t.Errorf("skipped the conformance predicate for %d delegation entries, want %d", delegationSkipped, wantDelegation)
+		}
+	})
+}
+
+// TestPartialWritePathsAreClassifiedNonStamping is D-02's structural half:
+// every SetPayload/DeletePayload/OverwritePayload call site in
+// internal/store's package directory is derived and classified
+// non-stamping with a D-02 justification, by set equality in both
+// directions.
+func TestPartialWritePathsAreClassifiedNonStamping(t *testing.T) {
+	fset := token.NewFileSet()
+	sites, filesScanned, err := scanPackageDirForCalls(fset, ".", ".go", "_test.go", partialWriteMethods)
+	if err != nil {
+		t.Fatalf("scan internal/store: %v", err)
+	}
+	if filesScanned == 0 {
+		t.Fatal("scanned zero non-test .go files in internal/store — a scan that sees nothing must not report clean")
+	}
+	t.Logf("scanned %d non-test .go files in internal/store", filesScanned)
+
+	got := map[string]qdrantCallSite{}
+	for _, s := range sites {
+		got[s.enclosingFunc] = s
+	}
+	want := map[string]writeClassification{}
+	for _, c := range partialWriteClassification {
+		want[c.enclosingFunc] = c
+	}
+
+	for name, site := range got {
+		c, ok := want[name]
+		if !ok {
+			t.Errorf("derived partial-write site %s (%s:%d) has no classification entry — every SetPayload/DeletePayload/OverwritePayload site must be classified non-stamping with a D-02 justification", name, site.path, site.line)
+			continue
+		}
+		if site.receiver != c.receiver {
+			t.Errorf("partial-write classification entry %s: declared receiver %q, observed %q", name, c.receiver, site.receiver)
+		}
+	}
+	for name, c := range want {
+		if _, ok := got[name]; !ok {
+			t.Errorf("partial-write classification entry %s has no matching derived site — stale classification entry", name)
+		}
+		if c.justification == "" {
+			t.Errorf("partial-write classification entry %s has no justification", name)
+		}
+	}
+}
+
+// qdrantClientHolder pairs one non-test .go file that names or constructs a
+// *qdrant.Client with the justification for its allowlist membership.
+type qdrantClientHolder struct {
+	file          string // relative to the module root, forward-slash separated
+	justification string
+}
+
+// qdrantClientHolderAllowlist is verified against source at revision time:
+// exactly TWO members. internal/store/store.go is the one holder the
+// write-boundary gate above scans. internal/server/tools.go is a
+// COMPOSITION ROOT ONLY — it constructs the client and hands it straight to
+// store.New without issuing a single Qdrant operation on it directly (its
+// own d.st.Upsert(...) calls are calls to *store.Store's already-gated
+// Upsert method, not to the qdrant.Client it briefly holds — see
+// qdrantClientLocalNames's doc comment for why this distinction matters).
+var qdrantClientHolderAllowlist = []qdrantClientHolder{
+	{
+		file:          "internal/store/store.go",
+		justification: "The one holder: client *qdrant.Client field and New(c *qdrant.Client, ...) constructor. This is the package the write-boundary gate scans.",
+	},
+	{
+		file:          "internal/server/tools.go",
+		justification: "Composition root only: storeFromConfig constructs the client via qdrant.NewClient and hands it straight to store.New without issuing a single Qdrant operation on the client itself.",
+	},
+}
+
+// findModuleRoot walks up from the working directory until go.mod is found,
+// failing loudly if it never is — never silently scanning nothing.
+func findModuleRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("go.mod not found walking up from %s", dir)
+		}
+		dir = parent
+	}
+}
+
+// fileRefsQdrantClient reports whether file either names the type
+// qdrant.Client anywhere (a field, parameter, result, or variable
+// declaration — ast.Inspect recurses through a leading *ast.StarExpr for
+// the pointer form automatically) or calls qdrant.NewClient.
+func fileRefsQdrantClient(file *ast.File) bool {
+	found := false
+	ast.Inspect(file, func(n ast.Node) bool {
+		if found {
+			return false
+		}
+		switch t := n.(type) {
+		case *ast.CallExpr:
+			if sel, ok := t.Fun.(*ast.SelectorExpr); ok {
+				if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "qdrant" && sel.Sel.Name == "NewClient" {
+					found = true
+					return false
+				}
+			}
+		case *ast.SelectorExpr:
+			if pkg, ok := t.X.(*ast.Ident); ok && pkg.Name == "qdrant" && t.Sel.Name == "Client" {
+				found = true
+				return false
+			}
+		}
+		return true
+	})
+	return found
+}
+
+// scanRepoForQdrantClientRefs locates the module root, then walks every .go
+// file under it via filepath.WalkDir, skipping _test.go files and any gen/
+// or vendor/ directory (plus dot-directories, for hygiene — .git and
+// friends carry no Go source relevant here), and reports the module-root
+// relative file paths that fileRefsQdrantClient flags, plus the count of
+// non-test .go files actually scanned.
+//
+// This does NOT close the cross-package escape — a package could still
+// receive a client through an interface or a wrapper without ever naming
+// *qdrant.Client directly — but it converts the common, realistic form of
+// it (a struct field or a direct dial) from silent to loud.
+func scanRepoForQdrantClientRefs(fset *token.FileSet) (files []string, filesScanned int, err error) {
+	root, err := findModuleRoot()
+	if err != nil {
+		return nil, 0, err
+	}
+	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if path == root {
+				return nil
+			}
+			name := d.Name()
+			if name == "gen" || name == "vendor" || strings.HasPrefix(name, ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
+			return nil
+		}
+		src, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return fmt.Errorf("read %s: %w", path, readErr)
+		}
+		file, parseErr := parser.ParseFile(fset, path, src, 0)
+		if parseErr != nil {
+			return fmt.Errorf("parse %s: %w", path, parseErr)
+		}
+		filesScanned++
+		if fileRefsQdrantClient(file) {
+			rel, relErr := filepath.Rel(root, path)
+			if relErr != nil {
+				rel = path
+			}
+			files = append(files, filepath.ToSlash(rel))
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return nil, filesScanned, walkErr
+	}
+	sort.Strings(files)
+	return files, filesScanned, nil
+}
+
+// qdrantClientLocalNames returns the identifier names in file that are bound
+// DIRECTLY to a *qdrant.Client value returned by qdrant.NewClient(...) (the
+// first assigned name in a `name, err := qdrant.NewClient(...)` shape). It
+// exists so TestQdrantClientIsHeldOnlyByStorePackage's composition-root
+// check can tell "the client variable itself issued a write" from "some
+// OTHER value built from that client (e.g. the *store.Store returned by
+// store.New) issued a write" — the latter is already covered by
+// internal/store's own write-boundary gate above and must not be
+// double-counted (and falsely flagged) here. Without this distinction, a
+// blind method-name scan over internal/server/tools.go would flag its
+// entirely legitimate d.st.Upsert(...) calls — calls to *store.Store's
+// already-gated Upsert method — as if they transmitted directly to Qdrant.
+func qdrantClientLocalNames(file *ast.File) map[string]bool {
+	names := map[string]bool{}
+	ast.Inspect(file, func(n ast.Node) bool {
+		assign, ok := n.(*ast.AssignStmt)
+		if !ok {
+			return true
+		}
+		for i, rhs := range assign.Rhs {
+			call, ok := rhs.(*ast.CallExpr)
+			if !ok {
+				continue
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				continue
+			}
+			pkg, ok := sel.X.(*ast.Ident)
+			if !ok || pkg.Name != "qdrant" || sel.Sel.Name != "NewClient" {
+				continue
+			}
+			// qdrant.NewClient returns (*Client, error); in a
+			// `name, err := qdrant.NewClient(...)` shape, len(Rhs)==1 but
+			// len(Lhs)==2 — index 0 of Lhs is the *Client, positionally.
+			if i < len(assign.Lhs) {
+				if id, ok := assign.Lhs[i].(*ast.Ident); ok {
+					names[id.Name] = true
+				}
+			}
+		}
+		return true
+	})
+	return names
+}
+
+// TestQdrantClientIsHeldOnlyByStorePackage is the cross-package client
+// guard: the largest escape the narrowed write-boundary claim leaves open
+// is a writer in another package, and this converts it from silent to
+// loud. It asserts the derived qdrant.Client-holder file set is set-equal
+// to qdrantClientHolderAllowlist, AND that the composition-root allowlist
+// entry (internal/server/tools.go) never itself calls a full-write or
+// partial-write method ON THE CLIENT VARIABLE IT HOLDS — an allowlist entry
+// that started transmitting would otherwise be permitted forever.
+func TestQdrantClientIsHeldOnlyByStorePackage(t *testing.T) {
+	fset := token.NewFileSet()
+	files, filesScanned, err := scanRepoForQdrantClientRefs(fset)
+	if err != nil {
+		t.Fatalf("scanRepoForQdrantClientRefs: %v", err)
+	}
+	if filesScanned == 0 {
+		t.Fatal("scanned zero non-test .go files across the module — a scan that sees nothing must not report clean")
+	}
+	t.Logf("scanned %d non-test .go files across the module", filesScanned)
+
+	got := map[string]bool{}
+	for _, f := range files {
+		got[f] = true
+	}
+	want := map[string]qdrantClientHolder{}
+	for _, e := range qdrantClientHolderAllowlist {
+		want[e.file] = e
+	}
+	for f := range got {
+		if _, ok := want[f]; !ok {
+			t.Errorf("file %s holds/constructs a *qdrant.Client but is not in the allowlist — a write path outside internal/store may now exist", f)
+		}
+	}
+	for name, e := range want {
+		if !got[name] {
+			t.Errorf("allowlist entry %s (%s) has no matching derived holder — stale allowlist entry", name, e.justification)
+		}
+		if e.justification == "" {
+			t.Errorf("allowlist entry %s has no justification", name)
+		}
+	}
+
+	// The composition-root entry must never itself issue a write ON THE
+	// CLIENT VARIABLE IT HOLDS.
+	root, err := findModuleRoot()
+	if err != nil {
+		t.Fatalf("findModuleRoot: %v", err)
+	}
+	toolsPath := filepath.Join(root, "internal", "server", "tools.go")
+	toolsSrc, err := os.ReadFile(toolsPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", toolsPath, err)
+	}
+	toolsFset := token.NewFileSet()
+	toolsFile, err := parser.ParseFile(toolsFset, toolsPath, toolsSrc, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", toolsPath, err)
+	}
+	clientNames := qdrantClientLocalNames(toolsFile)
+	if len(clientNames) == 0 {
+		t.Fatalf("found no *qdrant.Client-bound identifier in %s — this composition-root check has nothing to verify against; the allowlist entry's own premise may be stale", toolsPath)
+	}
+
+	writeMethods := map[string]bool{}
+	for m := range fullWriteMethods {
+		writeMethods[m] = true
+	}
+	for m := range partialWriteMethods {
+		writeMethods[m] = true
+	}
+	sites, scanErr := scanQdrantCalls(toolsFset, toolsSrc, toolsPath, writeMethods)
+	if scanErr != nil {
+		t.Fatalf("scan %s: %v", toolsPath, scanErr)
+	}
+	for _, s := range sites {
+		if !clientNames[s.receiver] {
+			continue // a call on some other value (e.g. *store.Store), not the qdrant.Client itself
+		}
+		t.Errorf("composition-root file %s issues a %s call on its own qdrant.Client (%s) at line %d (enclosing %s) — an allowlisted composition root must never itself transmit a write", toolsPath, s.method, s.receiver, s.line, s.enclosingFunc)
+	}
 }
