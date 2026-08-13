@@ -35,6 +35,19 @@ jobs:
     # `docker inspect qdrant/qdrant:v1.18.2 --format '{{.Config.Healthcheck}}'`
     # -> <nil>) — without it `go test` could start dialing before the
     # listeners are up, reintroducing the same cascade from a different cause.
+    #
+    # The probe must use only what the image actually ships. Verified by
+    # `docker run --rm --entrypoint sh qdrant/qdrant:v1.18.2 -c 'command -v X'`:
+    # curl, wget, nc and python3 are all ABSENT; bash IS present. A
+    # `curl`-based health-cmd therefore never succeeds, and the job dies at
+    # "Initialize containers" with the container itself perfectly healthy
+    # (status=running, exitCode=0, oomKilled=false) — a failure mode that
+    # looks nothing like the #497 resource-pressure cascade it sits next to.
+    # bash's /dev/tcp probe needs no external binary and targets 6334, the
+    # port the Go client actually dials. Proven both directions against real
+    # containers: exit 0 against a serving qdrant, exit 1 against a dead port
+    # AND against this same image run with `--entrypoint sleep`, so it detects
+    # "qdrant is not serving" rather than merely "a container exists".
     services:
       qdrant:
         # Keep byte-identical to internal/store/store_test.go's qdrantImageTag:
@@ -43,10 +56,11 @@ jobs:
         # guard exists to force a conscious re-verification on a bump.
         image: qdrant/qdrant:v1.18.2
         ports:
-          - 6334:6334 # gRPC — what the Go client dials
-          - 6333:6333 # REST — health-cmd probe only
+          - 6334:6334 # gRPC — what the Go client dials, and what health-cmd probes
+          - 6333:6333 # REST — dashboard/readyz, not used by the tests
         options: >-
-          --health-cmd "curl -f http://localhost:6333/readyz" --health-interval 5s --health-timeout 3s --health-retries 10
+          --health-cmd "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6334'" --health-interval 5s --health-timeout 3s --health-retries
+          10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
