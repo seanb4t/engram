@@ -39,6 +39,15 @@ const qdrantImageTag = "qdrant/qdrant:v1.18.2"
 // never read from or written to by this package.
 var testQdrantAddr string
 
+// testQdrantContainerBooted records whether TestMain booted its OWN
+// testcontainer for this run, as opposed to taking the ENGRAM_QDRANT_TEST_ADDR
+// fast path onto a shared instance. Set true only inside the testcontainer
+// branch, immediately after the container's gRPC endpoint resolves; the env-var
+// branch leaves it false. TestSharedQdrantAddressHonored asserts on it directly
+// so "the CI test job uses one shared Qdrant" is a checkable claim rather than
+// an inference from logs (CONTEXT.md D-20).
+var testQdrantContainerBooted bool
+
 // TestRetrievalEval is the retrieval-quality eval: it seeds the labeled dataset
 // in fixtures.go through the exact production doc-embed sequence, searches it
 // through the production query path, and reports recall@k / MRR plus the
@@ -333,6 +342,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "qdrant grpc endpoint: %v\n", err)
 		os.Exit(1)
 	}
+	testQdrantContainerBooted = true
 	code := m.Run()
 	terminateQdrant(container)
 	os.Exit(code)
@@ -344,4 +354,33 @@ func terminateQdrant(c *tcqdrant.QdrantContainer) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_ = c.Terminate(ctx)
+}
+
+// TestSharedQdrantAddressHonored proves this package took the CI shared-Qdrant
+// fast path rather than booting its own testcontainer, whenever
+// ENGRAM_QDRANT_TEST_ADDR is set. Address equality alone is not enough — a
+// package could boot a container and coincidentally resolve the same address —
+// so the load-bearing assertion is testQdrantContainerBooted == false
+// (CONTEXT.md D-20). Gates on ENGRAM_RETRIEVAL_EVAL first, mirroring every
+// other test in this package (TestMain never touches Qdrant at all unless
+// that gate is "1" — see TestMain's first statement) — this is not the
+// shared-Qdrant skip, it is the package's existing opt-in-eval skip, and
+// conflating the two would make this test fail whenever someone runs the CI
+// `test` job without ENGRAM_RETRIEVAL_EVAL=1, which is the normal case.
+// Skips (does not fail) when the shared-address env var is unset: a developer
+// running the eval locally without it is not the case this test is about.
+func TestSharedQdrantAddressHonored(t *testing.T) {
+	if os.Getenv("ENGRAM_RETRIEVAL_EVAL") != "1" {
+		t.Skip("set ENGRAM_RETRIEVAL_EVAL=1 (and the gateway/model env) to run the retrieval eval")
+	}
+	addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR")
+	if addr == "" {
+		t.Skip("ENGRAM_QDRANT_TEST_ADDR not set: this test only asserts the shared-instance path")
+	}
+	if testQdrantAddr != addr {
+		t.Errorf("testQdrantAddr = %q, want %q (shared CI Qdrant address not honored)", testQdrantAddr, addr)
+	}
+	if testQdrantContainerBooted {
+		t.Error("testQdrantContainerBooted = true, want false: ENGRAM_QDRANT_TEST_ADDR was set but this package booted its own testcontainer anyway")
+	}
 }
