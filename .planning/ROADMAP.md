@@ -279,7 +279,7 @@ Plans:
   4. A negative "recall gate blast radius" test proves `schema_version` never appears in any Qdrant recall or authz filter condition built by `Search`/`SearchReranked`/`SearchDiscovery`/`List`/`ListScheduled` — the adjacent `superseded_by`/`archived_at` `IsEmpty` idiom has inverted cardinality here and copying it would silently exclude every pre-migration record from recall.
   5. A binary reads a record whose `schema_version` is NEWER than its own constant without rejecting, hiding, or downgrading it — tested in both the older-than and newer-than direction, which is what makes rolling the binary back across a schema change safe.
 
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans executed
 
 Plans:
 **Wave 1**
@@ -294,7 +294,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02-03-PLAN.md — Criterion 4: recall-gate blast-radius negative test over the filters actually transmitted to Qdrant, with a derived builder enumeration (wave 3)
+- [x] 02-03-PLAN.md — Criterion 4: recall-gate blast-radius negative test over the filters actually transmitted to Qdrant, with a derived builder enumeration (wave 3)
 
 ### Phase 3: Migration Foundation (Registry, Invariants & Sweep)
 
