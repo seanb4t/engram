@@ -45,6 +45,8 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -265,4 +267,135 @@ func TestEveryStoreConstructionRoutesThroughSeam(t *testing.T) {
 			t.Error(f)
 		}
 	})
+}
+
+// extractTestCollectionPrefix parses every _test.go file in dir looking
+// for a package-level `const testCollectionPrefix = "..."` declaration and
+// returns its string value. Reading it from source rather than importing
+// the package is what lets this one test see all four values: the
+// constants live in four separate test-only scopes that no single package
+// can import together (internal/server, internal/e2e, and
+// internal/retrievaleval all already import internal/store; internal/store
+// importing any of them back would be a cycle).
+func extractTestCollectionPrefix(fset *token.FileSet, dir string) (value string, found bool, err error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", false, fmt.Errorf("read dir %s: %w", dir, err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		src, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return "", false, fmt.Errorf("read %s: %w", path, readErr)
+		}
+		file, parseErr := parser.ParseFile(fset, path, src, 0)
+		if parseErr != nil {
+			return "", false, fmt.Errorf("parse %s: %w", path, parseErr)
+		}
+		for _, decl := range file.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.CONST {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				vspec, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				for i, name := range vspec.Names {
+					if name.Name != "testCollectionPrefix" || i >= len(vspec.Values) {
+						continue
+					}
+					lit, ok := vspec.Values[i].(*ast.BasicLit)
+					if !ok || lit.Kind != token.STRING {
+						continue
+					}
+					unquoted, unquoteErr := strconv.Unquote(lit.Value)
+					if unquoteErr != nil {
+						return "", false, fmt.Errorf("%s: unquote testCollectionPrefix literal %s: %w", path, lit.Value, unquoteErr)
+					}
+					return unquoted, true, nil
+				}
+			}
+		}
+	}
+	return "", false, nil
+}
+
+// resolvedPrefix pairs a package's name with its extracted
+// testCollectionPrefix value, for TestCollectionPrefixesAreDisjoint's
+// pairwise comparison and its -v output.
+type resolvedPrefix struct {
+	name   string
+	prefix string
+}
+
+// TestCollectionPrefixesAreDisjoint is D-20's fourth checkable claim: the
+// four Qdrant-backed packages' collection-name prefixes are pairwise
+// disjoint, so two packages can never concatenate to the same final
+// collection name on the shared CI Qdrant instance.
+func TestCollectionPrefixesAreDisjoint(t *testing.T) {
+	fset := token.NewFileSet()
+	var prefixes []resolvedPrefix
+	for _, pkg := range qdrantBackedPackages {
+		value, found, err := extractTestCollectionPrefix(fset, pkg.dir)
+		if err != nil {
+			t.Fatalf("extract testCollectionPrefix for %s (%s): %v", pkg.name, pkg.dir, err)
+		}
+		if !found {
+			// A package with no declared prefix is a finding, not a skip:
+			// treating "not found" as "nothing to check" would let a fifth
+			// Qdrant-backed package join the shared instance unnamespaced
+			// and silent, exactly the state this gate exists to prevent.
+			t.Errorf("%s (%s): no testCollectionPrefix constant found", pkg.name, pkg.dir)
+			continue
+		}
+		prefixes = append(prefixes, resolvedPrefix{name: pkg.name, prefix: value})
+	}
+	if len(prefixes) != len(qdrantBackedPackages) {
+		t.Fatalf("resolved %d of %d package prefixes; see errors above", len(prefixes), len(qdrantBackedPackages))
+	}
+
+	sort.Slice(prefixes, func(i, j int) bool { return prefixes[i].name < prefixes[j].name })
+	for _, p := range prefixes {
+		t.Logf("resolved prefix: %s = %q", p.name, p.prefix)
+	}
+
+	// Every ORDERED pair, not just unordered pairs: HasPrefix is not
+	// symmetric, and reporting only unordered pairs would still name both
+	// values, but walking ordered pairs is what makes the comparison count
+	// (len(prefixes) * (len(prefixes)-1)) directly checkable against "four
+	// packages" in the SUMMARY rather than requiring the reader to redo
+	// the combinatorics themselves.
+	comparisons := 0
+	for i := range prefixes {
+		for j := range prefixes {
+			if i == j {
+				continue
+			}
+			comparisons++
+			a, b := prefixes[i], prefixes[j]
+			if a.prefix == b.prefix {
+				t.Errorf("%s and %s share the identical prefix %q", a.name, b.name, a.prefix)
+				continue
+			}
+			// The leading-substring case: two DISTINCT prefixes can still
+			// concatenate to the same final collection name when one is a
+			// prefix of the other and the shorter package's collection
+			// happens to start with the longer prefix's remainder (e.g.
+			// prefixes "e2e_" and "e2e_x_" would collide on collection
+			// name "x_foo" in the "e2e_" package: "e2e_" + "x_foo" ==
+			// "e2e_x_" + "foo"). A plain set-equality check over the four
+			// values would miss this entirely; naming it here so a future
+			// reader does not simplify this comparison down to one.
+			if strings.HasPrefix(b.prefix, a.prefix) {
+				t.Errorf("%s's prefix %q is a leading substring of %s's prefix %q: a collection name in %s beginning with %q could collide with one in %s",
+					a.name, a.prefix, b.name, b.prefix, b.name, strings.TrimPrefix(b.prefix, a.prefix), a.name)
+			}
+		}
+	}
+	t.Logf("compared %d ordered pairs across %d packages", comparisons, len(prefixes))
 }
