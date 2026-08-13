@@ -1,650 +1,489 @@
 # Pitfalls Research
 
-**Domain:** Curation/maintenance tooling + interface (CLI/MCP) audit added to an already-shipped,
-correctable memory store
-**Researched:** 2026-08-03
-**Confidence:** HIGH (destructive-op design, CLI/semver conventions, alert-fatigue mechanics —
-cross-checked against multiple independent sources) / MEDIUM (agent-driven-curation consent
-architecture — an emerging area with few mature precedents, reasoned from incident reports plus
-this repo's own `supersede_memory`/`store_rule` consent gates)
+**Domain:** Record schema versioning + payload-migration mechanism + Connect wire-parity widening,
+added to an already-shipped, populated Qdrant-backed memory store (engram)
+**Researched:** 2026-08-12
+**Confidence:** HIGH (Qdrant batch-atomicity behavior confirmed against an open upstream issue and
+the vendored client's own documented chunk size; protobuf field-number permanence confirmed against
+protobuf.dev/buf.build docs; all store-layer claims read directly from `internal/store/store.go` and
+`cmd/engram/*.go` on this branch) / MEDIUM (schema-version-codec design space — few close precedents
+for "flat struct + payload-only codec + no version-dispatch" systems; reasoned from this repo's own
+`internal/webauth` session-version precedent plus general JSON-document-migration literature)
 
 ## Critical Pitfalls
 
-### Pitfall 1: Delete-before-extract ordering has no enforcement mechanism
+### Pitfall 1: Treating "schema_version absent" as excludable narrows recall for every pre-migration record, silently
 
 **What goes wrong:**
-`spine-review` purges/consolidates a phase's collapsed per-phase records before the reusable
-gotchas inside them are extracted into standalone records. The extraction step is a *judgment
-call* (semantic — "is this worth keeping as a standalone fact") that the CLI cannot make; if the
-CLI's structural purge step runs on a schedule, a threshold, or a careless flag combination ahead
-of the skill's semantic pass, the source material for extraction is gone. This is not
-hypothetical — rule `7smp8vy9hr` already mandates this exact ordering today, and nothing in the
-codebase enforces it.
+`Store.Search`/`Store.List`/`Store.SearchDiscovery` each append sibling `Must` conditions to the
+authz-derived filter — `qdrant.NewIsEmpty("superseded_by")`, `qdrant.NewIsEmpty("archived_at")` —
+to soft-hide records in a given state. The **very next** state this milestone adds is
+`schema_version`, sitting textually right next to those two in the same functions. The natural
+(wrong) move is to reuse the identical pattern — e.g. gate recall on `schema_version >= N` or
+exclude `IsEmpty("schema_version")` "until migrated," mirroring how `superseded_by`/`archived_at`
+gate on presence/absence. But `superseded_by`/`archived_at` are **optional** states a minority of
+records carry; `schema_version` absent is the **majority** state at adoption — every record written
+before this milestone. A filter condition built on that assumption removes 100% of existing data
+from recall the moment it ships, with no error, no log line, just empty result sets that look like
+an empty store.
 
 **Why it happens:**
-The CLI and the skill are two separate execution contexts (a deterministic binary vs. an LLM
-agent invoked in a separate session) with no shared transactional boundary. A CLI that exposes
-`purge`/`consolidate`/`archive` as independently invocable subcommands makes it trivial for an
-operator (or a script, or a future autonomous agent) to call `purge` without ever having called
-`extract`. Nothing about the CLI's own state distinguishes "extraction ran and found nothing
-worth keeping" from "extraction never ran."
+The codebase's own established idiom for "new orthogonal record state" IS "add a sibling `IsEmpty`/
+`Range` condition to the recall gate" (see the comments at `store.go:1029-1034` explicitly modeling
+this as the pattern to extend). Schema version looks like the same shape of feature but has the
+opposite cardinality at rollout, so pattern-matching on the neighboring code produces exactly the
+wrong answer.
 
 **How to avoid:**
-- Make `purge`/`archive` refuse to run against a target set until a **recorded, timestamped
-  extraction pass** exists for that set (a state marker the CLI itself writes and checks — not an
-  honor system). `spine-review consolidate` should be the only path that transitions a target from
-  "reviewable" to "purge-eligible," and it should require the extraction step to have executed
-  (even if its answer was "nothing to extract") — not merely permit it to have executed.
-- Never make `purge` a single top-level verb that skips the pipeline. If an operator needs an
-  emergency bypass, require an explicit `--i-extracted-manually` flag that is loud in `--help` and
-  logged, not the default path.
-- The skill's propose-never-perform contract (see Pitfall 4) must write its own completion marker
-  the CLI can check — don't rely on the operator to have "definitely run the skill first."
+`schema_version` must **never** appear in `ownerScopeFilter`, `activeWindowConditions`, the
+`superseded_by`/`archived_at` `IsEmpty` conditions, or any other Must/Should clause built by
+`Search`/`SearchReranked`/`SearchDiscovery`/`List`/`ListScheduled`. Write a negative test — a "recall
+gate blast radius" test, the mirror image of the existing archived/superseded soft-hide tests — that
+constructs the filter for each of these five call sites and asserts no condition references the key
+`schema_version`, then seeds a record with the key entirely absent and asserts it round-trips through
+every recall path unchanged from today's behavior. If migration status ever needs to be *surfaced* to
+an operator (e.g. "how many records are still v0"), that must be a separate `Count`/`Scroll` query
+(the `spine-review scan` / `BackfillShortIDs` dry-run precedent), never a recall-path filter.
 
-**Warning signs:**
-- A `spine-review purge` run that produces zero `store_memory` calls beforehand in the session
-  transcript.
-- Any code path where `purge` and `consolidate`/`extract` are structurally independent
-  subcommands with no shared precondition check between them.
-- Passing review with a happy-path test that only exercises "extract, then purge" — the
-  order-violating case (`purge` first) is exactly the case that must be a test, and it's the case
-  most plans forget to write because it's the "wrong" order nobody intends to use.
+**Warning signs:** any diff that touches `ownerScopeFilter`, `activeWindowConditions`, or the four
+`Search`/`List`/`SearchDiscovery`/`ListScheduled` filter-builders in the same commit that introduces
+`schema_version`.
 
-**Phase to address:**
-Spine curation CLI (structural) phase — the precondition-gate must be part of the initial
-`spine-review` design, not a follow-up hardening pass, because retrofitting a gate onto an already
--shipped `purge` verb is itself a breaking change to a destructive command.
+**Phase to address:** the record-schema-versioning phase (the phase that adds the `schema_version`
+discriminator to `payload()`/`fromPayload()`) — the negative test must land in the SAME phase, not a
+later hardening pass.
 
 ---
 
-### Pitfall 2: The purge step has no tombstone stage — it goes straight to hard delete
+### Pitfall 2: `fromPayload` has no version-dispatch codec, so migrations can only ever be additive — there is no rollback path
 
 **What goes wrong:**
-Mature systems handling bulk destructive maintenance never go straight from "flagged for
-cleanup" to "gone." The standard shape is tombstone-then-finalize: mark the record
-(hidden from normal reads, still recoverable) and only irreversibly reclaim it in a later, separate,
-explicitly-invoked step, often after a grace window. Bigtable, Cassandra, and CDC pipelines all use
-this pattern for exactly this reason — a single-phase delete cannot be undone if the judgment that
-triggered it (staleness, redundancy, "this is superseded") turns out to be wrong, and judgment
-calls about memory content are exactly the class of decision most likely to be wrong at the
-margins.
+`payload()`/`fromPayload()` are flat, unconditional codecs: every field is written/read the same way
+regardless of what else is in the map (`if v, ok := p["key"]; ok { ... }`). Adding a `schema_version`
+int to the struct does not, by itself, give the codec any way to interpret two *different* payload
+shapes differently — it can only ever add new optional keys with zero-value defaults (the protobuf
+"additive is safe" case). If a future migration needs to rename a key, restructure a nested value, or
+change a field's meaning (the JSON-schema-migration literature's "structural" and "semantic" change
+classes), there is no mechanism in this codebase today to make `fromPayload` branch on
+`schema_version` and decode two shapes differently. Ship `schema_version` believing it enables
+arbitrary future migrations, and the first non-additive migration request discovers there is no
+version-dispatch seam to hang it on — a much bigger design problem discovered under time pressure.
+The same gap means there is no rollback story: an old server binary reading a record a newer binary
+migrated non-additively has no way to know it should refuse or reinterpret it (the closest local
+precedent, `internal/webauth`'s `sessionPayloadVersion`, sidesteps this entirely by being
+short-lived and reject-on-mismatch — a session cookie can be safely invalidated and re-minted; a
+memory record cannot).
 
 **Why it happens:**
-`delete_memory` already exists as a direct, irreversible primitive (that's correct for its
-existing use — deleting obvious junk a human explicitly asked to remove). It's tempting to wire
-`spine-review purge` straight onto it because the primitive is already there and "it's just calling
-the existing tool in a loop." That reuse is the trap: a *bulk, automated* sweep calling a
-*single-record, human-intentional* primitive inherits none of the human's implicit judgment that
-made direct deletion safe in the first place.
+"Add a version int, auto-inject on write, check on read" (the milestone's own stated design, mirroring
+`sessionPayloadVersion`) sounds complete by analogy, but the analogy breaks exactly at the point
+where sessions are disposable and records are not. The mirroring is correct for the *injection*
+half (auto-stamp on write) and wrong for the *read* half (reject vs. tolerate-and-interpret).
 
 **How to avoid:**
-This codebase already has the correct precedent twice over — reuse it rather than inventing a new
-pattern:
-- **`schedule_memory` + `prune-expired`** is already tombstone-then-finalize: `not_after` soft-hides
-  a record from recall immediately, and only the separate, explicit `engram prune-expired` command
-  hard-deletes it, typically after the window has been visibly expired for a while.
-- **`supersede_memory`** is the same shape for corrections: the old record is soft-hidden
-  (`superseded_by` set) but never deleted — it stays fetchable by id forever.
-- `spine-review`'s purge-candidate step should **mark** records (a payload flag, or route through
-  `schedule_memory`'s existing `not_after` soft-hide with a grace window) rather than calling
-  `delete_memory` directly from the sweep. A separate, explicitly-confirmed `spine-review
-  finalize`/`--commit` step performs the actual irreversible delete, requiring the operator (or the
-  skill's consent gate) to act twice, at two different times, before data is gone.
-- Add a confirmation threshold: any purge batch above N records (or any purge touching a `rule`-
-  category record at all — rules cannot be superseded and can only be deleted, so they are the
-  single highest-consequence purge target) requires an explicit `--yes`/count-echoing confirmation,
-  not a silent bulk operation.
+Scope this milestone's migrations to **additive-only** changes (new optional payload keys, absent =
+zero-value/legacy), and say so explicitly in the design doc and the `engram migrate` command's own
+`--help` text, so a future author doesn't assume the mechanism is more general than it is. If a
+non-additive migration is anticipated, that is a separate, larger research question (a real
+version-dispatch codec, or the Ditto-style "separate collection per breaking version" pattern) and
+should be flagged as deferred/out-of-scope rather than silently assumed solved by `schema_version`
+existing.
 
-**Warning signs:**
-- `spine-review purge` (or whatever the terminal verb is named) calling `store.Delete` or
-  `delete_memory`'s handler directly, with no intermediate soft-hidden state.
-- No `--dry-run` default or requirement — a destructive bulk command that runs for-real on first
-  invocation, with dry-run as an opt-in rather than the command requiring an explicit
-  `--commit`/`--yes` to go live.
-- A test suite that verifies "purge deletes the record" but has no test verifying "a
-  purge-candidate is still recoverable N hours/days after being marked, before finalize runs."
+**Warning signs:** any migration step in this milestone that renames a payload key, changes a key's
+type, or removes a key that other code still reads unconditionally.
 
-**Phase to address:**
-Spine curation CLI (structural) phase — the tombstone/finalize split is core to the command's
-shape, not an add-on; splitting it out later means every operator script written against the
-single-step verb breaks.
+**Phase to address:** scope this constraint explicitly in the migration-mechanism phase's design
+notes; flag "non-additive schema evolution" as an explicit research gap for a later milestone rather
+than something this milestone's `schema_version` field secretly solves.
 
 ---
 
-### Pitfall 3: Partial-failure mid-sweep leaves the spine in an undocumented, unrecoverable middle state
+### Pitfall 3: A migration step that does a whole-payload `Upsert` drops every out-of-band key it doesn't know about — this has happened before (CR-01)
 
 **What goes wrong:**
-A multi-record consolidation/purge sweep that dies partway (network blip to Qdrant, process
-killed, embedder outage mid-extraction) can leave some records extracted-and-marked, some purged,
-and some untouched — with no record of which stage each one reached. Re-running the sweep from
-scratch is not obviously safe: does it re-extract (creating duplicate standalone records for
-gotchas already extracted), re-purge (erroring or silently no-op'ing on already-gone records), or
-skip everything (silently leaving the untouched remainder unprocessed forever)?
+`Store.Upsert` replaces a point's *entire* payload (`Payload: qdrant.NewValueMap(payload(m))`). A
+migration written as "scroll records, decode into `Memory`, set `SchemaVersion`, `Upsert` it back"
+looks correct and round-trips every field `fromPayload`/`payload` know about — but `Memory.payload()`
+does NOT round-trip anything the codec doesn't have a field for, and `fromPayload` on an old/partial
+decode can silently zero out fields a hand-rolled migration loop doesn't explicitly preserve (this is
+exactly the shape of the v0.11.x CR-01 finding: "client-minted `short_id` lost under concurrent keyed
+Upsert"). The current codec already carries several `json:"-"` payload-only fields
+(`EmbedderIdentity`, `IdempotencyFingerprint`) specifically because they must never leave the Go
+struct via JSON — but they are just as vulnerable to being dropped by a migration that builds its own
+raw payload map instead of going through `payload()`, or that decodes with an older/leaner struct
+shape than production data actually carries.
 
-**Why it happens:**
-Curation sweeps are naturally framed as "process this batch" scripts, and it's easy to write the
-happy path (loop over records, extract, then purge) without separately handling "what if this
-crashes at record 40 of 100." Non-idempotent sweeps are the default output of straightforward
-imperative code; idempotency has to be designed in.
+**How to avoid:** the migration mechanism's write primitive must be a **targeted `SetPayload`**
+merge (`s.client.SetPayload` with only the changed key(s), the same shape `SetVisibility` and
+`Supersede`'s back-stamp already use) — never a full `Upsert` — unless the migration step is proven
+to run `Get` → `fromPayload` → mutate → `payload()` → `Upsert` with the CURRENT struct definition and
+zero raw-map shortcuts. Add a test that seeds a record with every optional field populated
+(`idempotency_fingerprint`, `superseded_by`, `citations`, `archived_at`, `not_before`, `embedder_identity`,
+`summary_source`), runs the migration step, and asserts every one of those keys is byte-identical
+afterward — the same "round-trip everything" proof `TestBackfillShortIDs`'s payload-preservation
+assertion already does for `short_id`.
 
-**How to avoid:**
-- Design every `spine-review` verb to be safely re-runnable: re-running `extract` on an
-  already-extracted record must be a no-op (detect via the state marker from Pitfall 1), not a
-  duplicate write. Re-running `purge` on an already-purged/already-tombstoned record must be a
-  no-op, not an error that halts the batch.
-  - `idempotency_key` already exists on `store_memory`/`schedule_memory` for exactly this shape —
-    prefer it for any record the skill's extraction step writes, rather than inventing a second
-    duplicate-detection mechanism.
-- Process and commit progress per-record (or in small batches with a persisted watermark), not as
-  one large all-or-nothing transaction — Qdrant has no cross-record transaction to rely on here.
-- After any sweep, `spine-review verify` should be able to detect and report an inconsistent
-  middle state (record purged with no corresponding extraction marker; record marked
-  purge-eligible but never actually removed) rather than silently reporting green.
+**Warning signs:** any migration code path that constructs `map[string]any{...}` by hand instead of
+calling `payload()`, or that calls `s.client.Upsert` instead of `s.client.SetPayload`.
 
-**Warning signs:**
-- A sweep command with no persisted progress marker — killing the process and re-running produces
-  different results than letting it finish uninterrupted.
-- `spine-review verify` (or the equivalent) only checks the *current* structural invariants
-  (drifted citations, orphaned records) and has no check for "sweep started but never finished."
-- Manual testing only ever exercises full successful runs; nobody has run the sweep, killed it at
-  record N, and re-run it.
-
-**Phase to address:**
-Spine curation CLI (structural) phase, with the idempotency/re-run test as an explicit acceptance
-criterion — this is exactly the class of defect that compiles, lints, and passes a happy-path
-suite while being wrong.
+**Phase to address:** the migration-mechanism phase, as a hard constraint on the Store primitive the
+mechanism is built on, verified by the round-trip test above before any migration ships.
 
 ---
 
-### Pitfall 4: Agent-driven curation makes a confident, wrong, irreversible mutation with no consent checkpoint
+### Pitfall 4: Qdrant's multi-ID `SetPayload` is not atomic — a migration sweep must reconcile by re-derivation, not trust the write response
 
 **What goes wrong:**
-An LLM judging "is this record still true" or "are these two the same fact" is not making a
-retrieval decision (recoverable — just search again) — it is proposing a *write*, and a wrong
-judgment that reaches the store as a direct action is the single most expensive failure mode in
-this milestone. The 2025–2026 incident record for autonomous coding agents is now well-populated
-with cases of an agent forming a confident, plausible-sounding theory and executing a destructive
-action without any human in the loop to catch it — the common thread across every one of these
-incidents is that the agent had *direct execution authority* over the destructive primitive, not
-merely the ability to *suggest* it.
+This codebase already documents (`qdrantPayloadOpBatchSize`, store.go:126-139) that the pinned
+Qdrant server chunks a multi-ID payload write by 32 points and that "a later chunk can error after an
+earlier chunk has fully committed." This is independently confirmed upstream: Qdrant's own
+maintainers, responding to a live bug report of a batch endpoint returning HTTP 400 while valid
+points inside the batch were still persisted, state plainly: *"batch operations are not promised to
+be atomic... For any operation error, the user must assume the operation is either not, partially, or
+fully applied. The user is responsible for sending the same operation again."* A migration sweep that
+submits a large ID batch to `SetPayload` and treats a non-error response as "every id in the batch is
+now at the new version," or treats an error response as "nothing happened, retry the whole batch,"
+will either under-count (miss records that DID get migrated before the error) or double-apply
+work — both silent, both hard to detect after the fact.
 
-**Why it happens:**
-It's natural to give a curation skill the same tool access as normal working sessions
-(`update_memory`, `supersede_memory`, `delete_memory` all callable directly) because "the skill
-already knows the right verb to use." The failure isn't the skill's judgment being wrong sometimes
-— it's that the architecture gives a wrong judgment a direct path to an irreversible outcome with
-no other party ever seeing the proposal before it executes.
+**How to avoid:** reuse the exact pattern `Store.Supersede`'s `reconcileSupersedeFailure` already
+established (D-15): after any batch write, **re-read** the actual state (a fresh `Scroll`/`Count`
+against `schema_version < target`) rather than trusting the write call's own success/failure signal.
+Keep migration batches at or below `qdrantPayloadOpBatchSize` (32) where practical, but design the
+resume/reconcile logic to be correct regardless of batch size — a crash or partial chunk failure must
+be indistinguishable, from the next run's point of view, from a clean interruption.
 
-**How to avoid:**
-- **Propose-never-perform is the whole design, not a documentation note.** The skill must never
-  itself call `supersede_memory`/`update_memory`/`delete_memory`/`store_rule` as its terminal
-  action. It should emit a structured proposal (which records, which action, why) that a human (or
-  the deterministic `spine-review` CLI, after human confirmation) executes. This mirrors the
-  existing, already-proven `store_rule` consent gate in this codebase: "an agent proposes a rule
-  candidate... `store_rule` is invoked only after the user blesses it (never promoted
-  unilaterally)" — reuse that exact shape rather than inventing a new one.
-- Batch proposals with a visible diff-like summary (what changes, what's lost) before any commit,
-  the same way a destructive `git` operation shows a diff before an irreversible rebase/reset.
-- Never let the skill's own output format be silently executable by tooling downstream (e.g., no
-  "if the proposal JSON validates, auto-apply it" convenience path) — that reintroduces direct
-  execution authority through a side door.
-- Rules are the highest-consequence target: they are user-blessed ground truth and **cannot be
-  superseded, only deleted**. The skill must never propose rule deletion with the same casualness
-  as an ordinary memory correction — require a distinctly higher-friction confirmation for any
-  rule-category proposal.
+**Warning signs:** any migration retry logic that branches on the write call's returned error rather
+than re-querying actual record state; a migration test that only exercises the "clean success" and
+"clean total failure" paths and never a forced mid-batch partial failure (the `TestBackfillShortIDsResumesAfterMidRunFailure` / `03.1`'s "forced mid-sequence partial failure" precedents are the
+bar to match).
 
-**Warning signs:**
-- Any code or skill instruction path where the agent's own tool-call sequence includes a mutating
-  memory verb as a *consequence* of its semantic judgment, rather than a proposal artifact that a
-  separate step (human, or a deterministic re-invocation) turns into a tool call.
-- A "confidence threshold" gating auto-apply (e.g., "if similarity > 0.95, merge automatically") —
-  this reintroduces auto-extraction/auto-mutation by another name, which is the exact thing this
-  project's design intent (explicit, zero-junk, no auto-extraction, ever) forbids.
-- A demo/cold-read validation that only tests the agent proposing correctly, never tests the
-  agent being *wrong* and confirms the wrong proposal still stops at consent (the v0.12.x rule-
-  capture phase's own validation method — a cold-read agent — is the right template; it must be
-  repeated here with an adversarial/wrong-judgment case, not just a correct one).
-
-**Phase to address:**
-Companion curation skill (semantic) phase — the consent architecture is the deliverable, and it
-must be validated the same way v0.12.x validated rule capture: a cold-read agent test, including at
-least one case where the "obviously right" answer is actually wrong, to prove the gate holds under
-a confident bad proposal, not only a correct one.
+**Phase to address:** the migration-mechanism phase; the partial-failure-resume test is a must-have,
+not a nice-to-have, and should be authored against a Qdrant testcontainer only once #497 (testcontainer
+stability) is confirmed fixed — see Pitfall 9.
 
 ---
 
-### Pitfall 5: Semantic dedup/merge collapses two records that were not, in fact, the same fact
+### Pitfall 5: A version-chain skip predicate that checks equality (`schema_version == 0`) strands a record mid-chain after a crash
 
 **What goes wrong:**
-Merging two memories that are lexically or embedding-similar but semantically distinct (e.g., "we
-decided X for repo A" and "we decided X for repo B," or a decision and its later, narrower
-refinement) destroys information. Published guidance on this exact failure mode is consistent:
-even a high cosine-similarity threshold (0.9+) can spuriously merge statements that differ along a
-critical axis the embedding doesn't weight heavily (scope, sign/polarity, "still true" vs. "was
-true then"), and no single scalar threshold is safe as a fully automatic gate.
+`BackfillShortIDs`'s skip predicate is a single boolean condition — "the `short_id` key is absent" —
+because there is only one state to reach. A `schema_version` migration is not: it is a **chain**
+(v0→v1→v2→...), and a crash can leave a record at any intermediate version. If the migration's
+"what still needs work" filter is written as `schema_version == 0` (mirroring the single-predicate
+style of the existing sweep commands) rather than `schema_version < target`, a record that reached v1
+before a crash and needs one more hop to v2 is invisible to a re-run — it doesn't match `== 0`, so it
+is silently left at v1 forever, with no error and no visible gap until something reads a field that
+only exists from v2 onward.
 
-**Why it happens:**
-Vector similarity measures *surface* semantic closeness, not "these are the same fact for the
-purposes of curation." Two decisions with nearly identical wording but opposite scope, or a
-decision and its later refinement (which this repo already distinguishes structurally —
-`supersede_memory` vs. `update_memory`), can sit above any similarity threshold that's loose
-enough to catch true duplicates.
+**How to avoid:** the eligibility filter must be a `Range { Lt: target }` (or an explicit `IsEmpty`
+OR `Range{Lt: target}` composite, mirroring how `activeWindowConditions` already composes
+`IsEmpty` with a `Range` for the same "absent-or-below-threshold" shape) — never a single-value
+equality match. Test by seeding records at every intermediate version (absent, 0, 1, ..., target-1)
+in one collection and asserting a single `engram migrate` invocation walks every one of them to
+`target`, not just the absent/0 case.
 
-**How to avoid:**
-- Treat similarity score as a **candidate filter for the semantic skill to examine**, never as a
-  merge trigger on its own. The skill's job is exactly the judgment a threshold can't make; a
-  threshold's job is only to narrow the candidate set worth showing a human/agent.
-- Distinguish "is-the-same-fact" merge candidates from "is-a-correction-of" candidates explicitly
-  — the former belongs nowhere in this system's vocabulary as a destructive merge (there's no
-  `merge_memory` primitive and there shouldn't be one); the latter already has the correct primitive
-  (`supersede_memory`, additive, recoverable). A "these are duplicates" proposal from the skill
-  should map to *deletion of the redundant one after extraction of anything unique*, never to a
-  new "combined" record replacing two others — a fabricated merged record is unverifiable against
-  either original.
-- Make any merge/redundancy proposal show both full records side by side in the proposal artifact
-  — never a similarity score alone — so the human confirming it can see the axis a score would
-  hide (scope, time, negation).
+**Warning signs:** a migration filter or CLI flag that only distinguishes "migrated" vs
+"not migrated" as a binary, with no representation of "partially migrated."
 
-**Warning signs:**
-- Any design that treats "cosine similarity above threshold N" as sufficient justification to
-  purge one of a pair, with no distinct-content check.
-- A `spine-review`/skill proposal format that shows a similarity score without showing both
-  records' full content for comparison.
-- No test case in the acceptance suite for "two records are similar but scoped to different
-  repos/workspaces/time windows and must NOT be proposed as duplicates."
-
-**Phase to address:**
-Companion curation skill (semantic) phase, with the "is this the same fact" prompt design itself
-being validated against adversarial near-duplicate-but-distinct pairs, not only true duplicates.
+**Phase to address:** the migration-mechanism phase, as a design requirement for the eligibility
+filter from the first implementation, not a later fix once multi-step chains actually exist.
 
 ---
 
-### Pitfall 6: False-positive staleness detection trains operators to stop trusting the verifier
+### Pitfall 6: `buf breaking` passing and the code compiling is not evidence the Connect wire actually carries the new fields — this exact bug has already happened three times
 
 **What goes wrong:**
-An automated "this record looks stale/drifted" check that fires too often on records that are
-actually still valid produces the same dynamic documented extensively in security-alert-fatigue
-research: repeated investigation of alerts that turn out benign trains the operator to give every
-alert — including the real ones — the same skeptical, cursory dismissal. Applied here: if
-`spine-review`'s citation-drift or staleness detector cries wolf on `file:line` anchors that
-merely moved (rather than becoming actually wrong), operators will start reflexively dismissing
-its output, including the times it's caught something real.
+The milestone's own scoping note states the failure mode outright: *"the Connect lane's `Memory`
+message has ALWAYS omitted `superseded_by`, `supersedes`, `not_before`, `not_after`, and now
+`archived_at`, so three milestones of shipped state (v0.8.x scheduling, v0.11.x supersession, v0.13.x
+archive tier) are invisible to BOTH consumers of that lane."* That is: the proto schema was extended,
+`buf breaking` passed (the change is additive), the Go code compiled, and CI was green — for three
+consecutive milestones — while `memoryToProto` silently never mapped the new struct fields onto the
+wire message. Green CI and a clean `buf breaking` run only prove the *schema* is additive; they say
+nothing about whether the *mapping function* was updated. Widening the proto again in this milestone
+(`schema_version` plus the five already-shipped-but-unwired fields) without changing how field-parity
+is verified reproduces the identical bug a fourth time, just with a longer list of omitted fields.
 
-**Why it happens:**
-`file:line` citations drift on *every* edit to the cited file, including pure reformatting,
-unrelated additions above the cited line, or renames that don't touch semantics at all. A naive
-"does this line number still exist / does the line still contain roughly this text" check will
-fire constantly in a fast-moving codebase, vastly out of proportion to genuinely broken citations.
+**How to avoid:** do not rely on a hand-maintained, explicit list of "fields to check" in the test (the
+`contentFingerprint` precedent shows explicit lists are the right tool when the risk is a *security*
+property that must be deliberately, narrowly scoped — but field-parity is the opposite risk: the cost
+of *forgetting* to add a field to an explicit list is exactly this bug). Instead, write an exhaustive
+round-trip test — reflection over `store.Memory`'s exported, wire-eligible fields (excluding the
+`json:"-"` payload-only audit fields, which are deliberately never on the wire), asserting each one
+that `memoryToProto`/the proto `Memory` message defines is populated from a fully-populated source
+record and decodes back losslessly. A test that must be updated by hand every time a field is added is
+the same shape of trap that let this slip three times.
 
-**How to avoid:**
-- Distinguish "line moved but content is unchanged/recognizable" (low severity, informational —
-  auto-repairable by re-locating the anchor via a fuzzy/content match) from "the cited content is
-  gone entirely" (high severity — the citation is actually broken and needs human attention).
-  Never surface both at the same severity.
-- Where the anchor can be mechanically re-resolved (same function/symbol, shifted line number),
-  auto-repair it as part of the verify pass and report it as a fixed-not-flagged count, rather than
-  asking a human to confirm a move that carries no information.
-- Track and report the detector's own false-positive rate over time (how many flagged citations
-  were, on operator review, actually fine) — treat a persistently high rate as a defect in the
-  detector, not a fact about the spine.
-- #355 (drifted `tools.go` citation anchors) is explicitly the fixture this verifier needs to get
-  right — use it as the calibration case: does the shipped detector correctly classify it as
-  "broken" without also flagging a large number of merely-moved, still-valid citations elsewhere
-  in the same sweep?
+**Warning signs:** a PR that adds proto fields and updates `buf breaking`'s baseline, but whose diff
+to `memoryToProto`/`shapeProtoMemories`/the read handlers is smaller than the number of new fields.
 
-**Warning signs:**
-- A first real run of `spine-review verify` against the live spine that flags a large fraction of
-  all citations as "drifted" — that's a detector-precision problem, not a spine-health finding, and
-  shipping it as-is guarantees the next several runs get ignored.
-- No distinction in the tool's output between "auto-repaired, FYI" and "needs your judgment."
-- Operators (in dogfooding/UAT) skipping past `spine-review verify` output without reading it
-  after the first run or two — that is the alert-fatigue signature and should block ship, not be
-  noted as a UX nit.
-
-**Phase to address:**
-Spine curation CLI (structural) phase, using #355 as the acceptance fixture and requiring a
-false-positive-rate check as part of that phase's verification, not deferred to post-ship
-observation.
+**Phase to address:** the Connect record-state parity phase (#482) — the exhaustive round-trip test
+must land in the same phase as the field additions, and should be written to fail loudly (not skip)
+if a future field is added to `store.Memory` without a corresponding proto mapping.
 
 ---
 
-### Pitfall 7: A previously-accepted flag combination is now rejected — a silent breaking change
+### Pitfall 7: `backfill-short-ids`'s default-apply flag is the exact opposite of the destructive-tier convention it's being folded into
 
 **What goes wrong:**
-Adding `MarkFlagsMutuallyExclusive` (or equivalent hand-rolled validation) to enforce a constraint
-that was previously only *documented* in help text (per #453: `client_list.go`'s
-`--offset`/`--cursor-mode`/`--page-token` mutual exclusivity) changes the CLI's actual accepted
-input surface. Any script, cron job, or agent invocation that was — deliberately or accidentally —
-passing more than one of these flags together and silently getting *some* behavior (whichever the
-code happened to prioritize) will now get a hard rejection where it previously ran to completion.
-That is a breaking change to a shipped CLI's public contract (the CLI's flags are its API), even
-though the change looks purely like "finally enforcing what was already documented."
+`cmd/engram/backfill.go` declares `backfillShortIDsCmd.Flags().BoolVar(&backfillDryRun, "dry-run",
+false, ...)` — the default is `false`, meaning **a bare `engram backfill-short-ids` invocation applies
+by default**; `--dry-run` is the opt-in safety flag. This predates v0.13.x Phase 3's
+`registerDestructive` convention, which flipped `prune-expired` and `migrate-remap-owner` to
+preview-by-default (`--apply` as the opt-in escape hatch) specifically because default-apply on a
+destructive/bulk-write command was judged a footgun worth fixing. The milestone's plan explicitly
+folds `backfill-short-ids` into the new versioned `engram migrate`, subsuming it — but subsuming the
+command's *behavior* unchanged would import the pre-v0.13.x default-apply footgun straight into a
+brand-new command, at the exact moment operators are least familiar with it.
 
-**Why it happens:**
-It's easy to treat "the help text already says these are mutually exclusive" as license to add the
-enforcement freely — the validation *looks* like it's just catching a bug, not removing a
-capability. But an unenforced "shouldn't combine these" is, in practice, a permissive
-under-specified behavior, and any caller relying on that permissiveness (even accidentally, even
-via a flag passed by a script that no longer needs it but never got cleaned up) breaks.
+**How to avoid:** `engram migrate` must be registered through `registerDestructive` like every other
+bulk-write operator command in this codebase, with `--apply` as the explicit opt-in and preview
+(no writes) as the bare-invocation default — not `backfill-short-ids`'s inverted `--dry-run` shape.
+This is a deliberate behavior change from `backfill-short-ids`'s current CLI contract, not a
+preservation of it, and should be called out explicitly in the upgrade guide (mirroring
+`guides/upgrade.md`'s existing pattern for other exit-code/behavior changes) since it changes what a
+bare invocation does for anyone with `backfill-short-ids` in a script today.
 
-**How to avoid:**
-- Audit real invocation patterns (scripts, CI, the operator console if any command wraps CLI calls,
-  agent skill invocations) for the flag combination being newly forbidden *before* landing the
-  validation — this is different from checking whether the constraint is documented; it's checking
-  whether anyone actually violates it today.
-- Where the newly-enforced combination could plausibly be in use, land the enforcement as a
-  *warning* first (one release/minor version) before making it a hard error — the standard
-  deprecate-then-remove shape (mark deprecated with a clear message for at least one release cycle,
-  then remove/error) applies just as much to "flags now conflict" as to "flag now removed."
-- Since this repo's CLI is the public API surface and the project treats CLI flags/exit codes as
-  the interface (correct-by-reading, D-00), any test suite added for this must include a
-  **negative-space regression test** proving the *old* accepted combination now correctly errors —
-  not just a test that the *new* rejection message text is right. Silently accepting a
-  previously-rejected-in-code-review-but-not-in-code combination is exactly the kind of thing that
-  passes `go vet`/lint/happy-path tests.
+**Warning signs:** an `engram migrate` implementation that reuses `backfillDryRun`-shaped flag wiring
+verbatim, or that describes itself as "same as backfill-short-ids, now versioned" without addressing
+the default-action inversion.
 
-**Warning signs:**
-- A PR adding `MarkFlagsMutuallyExclusive` with no corresponding test asserting the *specific* old
-  behavior (e.g., "when both `--offset` and `--cursor-mode` were passed together, the tool used to
-  do X") is now gone and replaced by a rejection — if the old behavior was never pinned by a test,
-  there's no way to know whether removing it breaks someone.
-- No CHANGELOG/release-notes line calling out the new rejection as a **breaking change** distinct
-  from ordinary bug fixes — release-please's conventional-commit categorization will bury this as a
-  `fix:` unless it's deliberately marked (`!`/`BREAKING CHANGE:`) footer, which changes semver
-  bump behavior too.
-
-**Phase to address:**
-Documented constraints made enforceable (#453) phase — the audit-before-enforce step belongs at
-the start of this phase, not as an afterthought once the validation already exists.
+**Phase to address:** the migration-mechanism phase, at design time — this is a one-line flag-default
+decision, but it must be made deliberately, not inherited by copy-paste.
 
 ---
 
-### Pitfall 8: Exit-code changes look like cleanup but break every script branching on them
+## Moderate Pitfalls
 
-**What goes wrong:**
-This repo already carries a live, deliberate split: client-facing verbs use a 0/2/4/5 taxonomy
-(D-17) while six operator-command sites stay on exit 1 as a backward-compatibility carve-out
-(D-09, tracked as #467 — "no surface states which taxonomy governs which command"). Any attempt to
-"finish the job" and unify these during this milestone's audit is itself the highest-risk change
-in the whole milestone: a cron job, a CI step, or an operator's own script that branches on
-`engram migrate-remap-owner; if [ $? -eq 1 ]` (today's contract) silently does the wrong thing —
-or nothing at all — the moment that command's failure exit code moves to match the client
-taxonomy.
+### Pitfall 8: Preview and apply already race independently in this codebase's own destructive-tier pattern — `engram migrate` will inherit the same gap unless addressed
 
-**Why it happens:**
-Exit codes are invisible in code review relative to their blast radius — a one-line change from
-`os.Exit(1)` to `os.Exit(2)` reads as trivial, and nothing in a Go type system or a passing test
-suite for the command itself will show that some external caller's branch on the old value now
-takes the wrong path. This is precisely the class this project has already been bitten by once
-(the `*argError` switch-arm-order collapse, `667p88n2be`): a dispatch/mapping change that is
-locally correct but globally wrong, verifiable only by checking every call site, not by unit-
-testing the changed function alone.
+`prune.go`'s `prunePreview`/`pruneApplyRun` each independently call `pruneCutoffNow()` and re-query
+Qdrant — there is no shared snapshot between the preview count an operator sees and the apply count
+that actually runs. Between the two invocations (which may be minutes apart in an operator's
+workflow), a new record can be written, or a concurrent process can change eligibility, so the
+applied count can legitimately differ from what was previewed with no bug involved. `engram migrate`
+subsuming this shape inherits the same gap. **Prevention:** either accept and *document* this as
+advisory-only preview semantics (the honest answer, given no cross-request transaction primitive
+exists here) — matching `spine-review purge`'s already-established "gate-passing set intersected with
+a fresh re-derivation" pattern rather than trusting a stale preview — or, if exact preview/apply
+parity is a requirement for this milestone, that is new scope worth calling out explicitly rather than
+silently assuming the existing pattern already provides it. **Phase:** migration-mechanism phase,
+CLI/console-surfacing phase (whichever writes the operator-facing preview text).
 
-**How to avoid:**
-- Resolve #467 by **documenting the boundary explicitly** (which taxonomy governs which command,
-  as a decision record) before changing any actual exit code — the milestone goal listed is "one
-  exit-code taxonomy, **or a documented boundary**"; the documented-boundary option is strictly
-  lower risk and should be the default unless there's a concrete, named consumer that benefits from
-  unification enough to justify a breaking change.
-- If unification is chosen anyway, treat it exactly like the flag-validation breaking change in
-  Pitfall 7: one minor version with both codes supported/documented as deprecated-old-code, a
-  CHANGELOG breaking-change entry, and a grep across this repo's own CI/Taskfile/scripts (plus any
-  known operator automation, e.g., `prune-expired`/`reindex` invoked from a cron) for exit-code
-  branches before flipping the default.
-- Pin the **current** per-command exit code with a table-driven test enumerating every operator
-  command's exit code for its known failure modes — this is the negative-space test that would
-  have caught the switch-arm-order regression class earlier, and it's the only thing that makes
-  "we changed exit codes" a visible, reviewable diff instead of an invisible one.
+### Pitfall 9: `#497`'s testcontainer flakiness can mask genuine partial-failure-injection test failures, precisely in the area this milestone most needs to trust
 
-**Warning signs:**
-- A code review of an exit-code change that only checks "does the new code make semantic sense,"
-  never "what does this command currently return today, pinned by a test, that this diff changes."
-- No table anywhere in the codebase or docs enumerating command → exit-code contract — if the
-  audit phase produces one, that itself is evidence the gap existed; if it doesn't produce one,
-  the boundary is still undocumented and the pitfall is unaddressed.
-- Any exit-code dispatch implemented as a sequence of `if`/`switch` arms ordered by
-  first-match-wins without an exhaustiveness check — the exact shape that silently collapsed all
-  hint-code classes once already in this codebase.
+The milestone explicitly orders the gate/CI-integrity phase first because "this milestone authors new
+key-links and must be able to trust a red build." The same reasoning applies with more force to the
+partial-failure-resume tests Pitfall 4 requires: a test that forces a mid-batch Qdrant failure and
+asserts clean resume is *exactly* the kind of test a dying testcontainer will intermittently fail for
+unrelated reasons, and a team that has just been burned by real infra flakiness is primed to
+wave off a genuine regression as "probably #497 again." **Prevention:** don't author the
+partial-failure-injection tests for `engram migrate` until #497 is verified fixed; once it is, run the
+new tests in a tight loop (e.g. 20×) before trusting them as a permanent CI gate, the same discipline
+`TestBackfillShortIDsResumesAfterMidRunFailure` and 03.1's forced-partial-failure test already model.
+**Phase:** gate & CI integrity phase (prerequisite), migration-mechanism phase (consumer).
 
-**Phase to address:**
-One exit-code taxonomy, or a documented boundary (#467) phase — must ship a decision record either
-way, and if unification is chosen, must ship the pinned-current-behavior regression test in the
-same change, not after.
+### Pitfall 10: `#479`'s `pattern:` key-link escaping bug will silently no-op any new key-link this milestone authors that needs `\\`
 
----
+The milestone's own scope note states Phases 1-2's key-link gates using `pattern:` fields with `\\`
+escaping were unmatchable no-ops. This milestone will author new key-links (registry entries for
+`schema_version`, `RuleSweepScopeOrAllScopesRequired`, the migration command's conditional rules) in
+`internal/surfaces`. Any of these that needs a `\\`-containing pattern (e.g. matching a version-number
+regex, a Windows-style path, or an escaped brace in generated prose) will reproduce the identical
+silent-no-op bug unless #479 is fixed and *proven* fixed first (a corrupted-region fail-first test,
+the same proof `REQ-surface-conformance-gate` already required for the last conformance gate).
+**Phase:** gate & CI integrity phase (prerequisite for all subsequent phases that touch
+`internal/surfaces`).
 
-### Pitfall 9: A verify/test-selection command that matches nothing exits 0 — a false green forever
+### Pitfall 11: `contentFingerprint`'s explicit field list is the right tool for security scoping and the wrong instinct to reach for on `schema_version`
 
-**What goes wrong:**
-Memory `bsbsvn4hbc` already documents this exact failure class in this codebase: `go test -run
-<pattern>` matching zero tests exits 0, so a Nyquist `VALIDATION.md` row recording a `-run` command
-as "passing" can be **permanently, silently wrong** if the pattern ever stops matching (a rename,
-a moved test, a typo introduced during refactor) — nothing distinguishes "0 tests ran because
-nothing needed testing" from "0 tests ran because the selector is broken." This is the single
-highest-value class the downstream consumer flagged: it passes review, passes CI, and reports
-success while verifying nothing.
+`contentFingerprint` deliberately hashes an explicit field list (not reflection) because it backs a
+security-relevant idempotency-replay check, and this repo has already been bitten once by forgetting
+to add a new client-authored field to it. `schema_version` is the *opposite* kind of field — it is
+server-set/derived (like `EmbedderIdentity`, `IdempotencyFingerprint`), never client-authored, and
+must use the `json:"-"` payload-only pattern those fields already establish. The risk is a developer,
+having just internalized "new field → must add to contentFingerprint," reflexively adding
+`schema_version` to it — which would make idempotency-replay detection depend on which schema version
+happened to be current at write time, an unrelated and unintended coupling. **Prevention:** a one-line
+code comment at the `schema_version` struct field pointing at the `EmbedderIdentity`/
+`IdempotencyFingerprint` precedent (payload-only, `json:"-"`, never in `contentFingerprint`), and a
+test asserting `contentFingerprint`'s output is unaffected by `schema_version`. **Phase:**
+record-schema-versioning phase.
 
-**Why it happens:**
-`go test`'s (and most test runners') exit code answers "did anything that ran, fail," not "did the
-thing I intended to run, run." A selector is not part of the tool's contract in a way that gets
-checked — it's free text that either matches or doesn't, with silence on the "doesn't" case.
+### Pitfall 12: `not_before`/`not_after` outward-rounding parity between the existing write path and the new Connect read path
 
-**How to avoid:**
-- Any `-run`/selector-based verification command recorded anywhere (a `VALIDATION.md` row, a CI
-  step, a `spine-review verify` gate) must be re-resolved against `go test -list` (or the
-  equivalent enumeration for the runner in question) at the time it's trusted, not merely
-  re-executed and checked for exit 0. A stale selector matching nothing must fail loud.
-  For **this milestone's own Nyquist reconciliation work**, that means every one of the six
-  `status: draft` rows plus Phase 2's missing file must have its `-run` command actually re-checked
-  against `go test -list -run <pattern>` (nonzero test count) as part of reconciling it, not just
-  re-run.
-- For any *new* verification tooling this milestone ships (`spine-review verify`, a citation-drift
-  checker, a CLI/MCP-surface audit script), apply the same principle preemptively: if the checker
-  can legitimately find "zero issues" as a true result, it must independently prove it *looked* at
-  a nonzero number of records/commands/flags — report a scanned-count alongside the found-count, so
-  "0 found because there's nothing to find" is distinguishable from "0 found because the scan
-  matched nothing."
-- Generalize past `go test`: the same shape applies to `grep`/`rg`-based checks used as acceptance
-  gates in this milestone's own tooling — a pattern that stops matching (because of a rename) will
-  silently report "clean" forever. Any such gate needs a scanned-count assertion, not just an
-  exit-code check.
+The v0.10.x write lane already established "sub-second outward rounding" (D-09) when converting
+`*time.Time` window fields across the proto boundary on write. `activeWindowConditions` compares
+these fields at epoch-*second* granularity server-side. The new read-path `memoryToProto` mapping
+(#482) needs the identical rounding discipline — if the write path rounds outward and the new read
+path rounds inward (or doesn't round at all, truncating instead), a record whose window boundary sits
+within the same second can appear open on one lane and closed on the other, a client-visible
+inconsistency between what `search_memory` shows as active and what the Connect console shows.
+**Phase:** Connect record-state parity phase, verified with a boundary-second test against both lanes
+simultaneously.
 
-**Warning signs:**
-- A CI/verification step whose only assertion is "exit code 0" with no assertion on how many
-  things were checked.
-- A `VALIDATION.md` (or new spine-review verify report) that has been "green" across multiple
-  unrelated code changes without ever being re-derived from a fresh `-list`/enumeration — a
-  suspiciously stable-forever green is itself the warning sign, not reassurance.
-- Any acceptance criterion phrased as "the check passes" rather than "the check passes AND
-  confirms it examined N ≥ 1 (or the expected N) targets."
+### Pitfall 13: A migration sweep and an in-flight `supersede_memory` call on the same record are safe only if the migration never grabs a stale full-payload read-then-write
 
-**Phase to address:**
-Nyquist validation reconciliation phase — this is the phase's entire reason for existing this
-milestone, and its own deliverable must not repeat the mistake (a reconciled `VALIDATION.md` that
-was never re-checked against a live `-list` is not actually reconciled, just re-stamped).
+`Store.Supersede`'s back-stamp uses a targeted `SetPayload` merge specifically so it composes safely
+with other single-key writers (Qdrant's `SetPayload` merges the named keys, leaving others untouched).
+`Store.TargetLocker` only covers Supersede's own target set — a migration sweep is a new, independent
+caller with no lock coordination with Supersede at all. This composition is safe *as long as* the
+migration also writes via a single-key `SetPayload` (Pitfall 3's requirement) and never reads a full
+payload map, mutates it in memory, and writes the whole thing back — the latter can silently clobber a
+concurrent Supersede back-stamp that landed between the migration's read and its write. **Phase:**
+migration-mechanism phase, verified by a concurrent-writer test pairing a migration sweep with an
+in-flight `Supersede` call under `-race`, mirroring the existing 03.1 concurrent-update race-gate
+precedent for `archive`/`restore`.
 
----
+### Pitfall 14: A gap between "write-path auto-inject" and "sweep migration ships" leaves new writes version-less too, quietly breaking the "absent = v0, no backfill needed" invariant
 
-### Pitfall 10: The same constraint drifts silently across CLI help, self-describe catalog, and MCP tool schema
+The milestone's design is "auto-inject on write, explicit check on read," but these are two separate
+code changes that could land in different commits or even different phases. If the write path (every
+`store_memory`/`schedule_memory`/`supersede_memory` call site) isn't stamping the current
+`schema_version` from the very first commit that introduces the field, there is a window where BOTH
+old *and freshly-written* records are version-less — meaning "absent implies v0" quietly stops being
+true for new data the moment any migration bumps the target version, since a truly-new record and a
+truly-legacy record become indistinguishable by the `schema_version` field alone. **Prevention:** land
+write-path auto-injection and the field definition in the same phase/commit, with a test proving 100%
+of records written after that commit carry a non-absent `schema_version`, before any migration or read
+logic depends on the absent-means-v0 assumption. **Phase:** record-schema-versioning phase.
 
-**What goes wrong:**
-`effectiveSearchScope` and its sibling conditional-requirement rules must be stated in at least
-three independent places: the `cmd/engram/*` flag help strings, the v0.12.x self-describe JSON
-catalog, and the `internal/server` MCP tool/argument jsonschema docs. Each surface is hand-authored
-prose (or hand-authored schema description text) with no single generator producing all three, so
-a fix to the rule's *behavior* is trivially easy to land in code while updating only one of the
-three descriptions — the other two silently keep describing the old, now-wrong behavior. Nothing
-in CI checks that these three surfaces agree, because they're free text/description fields, not
-generated code with a drift-detection build gate the way `gen/` already has for protobuf.
+## Minor Pitfalls
 
-**Why it happens:**
-This repo already has exactly the right template for solving this (`buf breaking`/CI drift-check
-on the committed `gen/` tree, catching protobuf/codegen divergence) — but that machinery only
-covers the wire-format layer, not free-text documentation describing conditional business rules.
-Those conditional rules exist in code (e.g., a Go function implementing `effectiveSearchScope`) but
-their *description* is duplicated by hand into JSON schema strings and CLI help strings, which is
-the same "invented structure in a place a tool doesn't generate" hazard this project already
-guards against for planning artifacts, just applied to documentation surfaces instead.
+### Pitfall 15: `engram migrate` reaching for a raw `Upsert` "just this once" to also fix up the vector
 
-**How to avoid:**
-- Where feasible, generate the description text for one conditional rule from a single source
-  (a Go const/doc-comment referenced by both the MCP tool schema builder and the CLI help-string
-  builder) rather than three independent hand-written sentences saying "the same thing."
-- Where full generation isn't practical this milestone, add a **grep-based drift test** (with the
-  Pitfall 9 caveat applied — assert a nonzero match count, not just "no failures") that checks the
-  same named rule/flag appears with the same key phrase across all three surfaces, so a change to
-  one without the others fails CI rather than shipping silently correct-in-code,
-  wrong-in-three-places-of-documentation.
-- Treat this audit's own output as the enumeration of every place a conditional rule is currently
-  stated — the audit phase's deliverable should include, for each conditional rule found, the list
-  of surfaces it must appear on, so a future change has a checklist rather than tribal knowledge.
+If a future schema step's payload restructuring changes what `EmbedText` composes (unlikely for a
+purely-additive change, but a natural temptation once a migration command exists and someone wants to
+"also re-embed while we're in here"), the path of least resistance is a full `Upsert` with a
+freshly-embedded vector — which reintroduces Pitfall 3's whole-payload lost-write hazard and blurs the
+line between `engram migrate` (schema, payload-only, no embedder client) and `engram reindex`
+(vector-rewrite, already has embedder-config-identity machinery for exactly this). **Prevention:**
+state explicitly in the migration command's design that it is payload-only by construction (no
+embedder dependency, `SetPayload` only); any future need to change vectors as part of a schema bump
+routes through `reindex`'s existing machinery instead, never a bespoke `Upsert` inside `migrate`.
+**Phase:** migration-mechanism phase (a documentation/type-boundary decision, not new code).
 
-**Warning signs:**
-- A PR that changes `effectiveSearchScope`'s logic (or any similar conditional-requirement rule)
-  touching only the Go implementation and one description string, with the diff never showing the
-  other two surfaces.
-- No test anywhere asserting cross-surface agreement — `task lint`/`task` passing is not evidence
-  here, since free-text schema descriptions are not type-checked or drift-checked by existing
-  tooling.
-- The self-describe JSON catalog (v0.12.x Phase 2 D-15) and MCP tool schema jsonschema being
-  generated/updated by different code paths with no shared constant.
+### Pitfall 16: A schema-version-aware filter added to one recall call site but not the other three
 
-**Phase to address:**
-Self-evident surface audit phase — this is the audit's central finding-and-fix category, and its
-deliverable should include the drift-detection test as a permanent regression gate, not just a
-one-time fix of the divergences found during the audit.
-
----
+`Search`, `List`, `SearchDiscovery`, and `ListScheduled` (plus `spine.go`'s scan) each independently
+build their own filter conditions today — the existing code comments already flag this as a known
+drift risk ("a SIBLING condition ... never folded into either"). If any schema-version-aware behavior
+is ever added to recall (even if Pitfall 1 is otherwise avoided — e.g. an operator-only "show only
+records still at v0" flag), it must go through one shared helper reused at every call site, the same
+discipline `categoryMatchCondition`/`activeWindowConditions` already establish, rather than being
+added ad hoc to whichever function the author happened to be editing. **Phase:** wherever such a
+filter is first introduced, if ever — not currently in scope per Pitfall 1's finding that
+`schema_version` should never gate recall at all.
 
 ## Technical Debt Patterns
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|-----------------|------------------|
-| `spine-review purge` calls `delete_memory` directly instead of tombstone-then-finalize | Ships faster; reuses an existing primitive | Irreversible if the purge judgment (structural or semantic) is wrong; no grace window to catch mistakes | Never — this is the milestone's highest-blast-radius shortcut |
-| Skill proposes AND performs the mutation in one agent turn (no separate confirm step) | Fewer round-trips, feels more "autonomous" | Reintroduces auto-extraction/auto-mutation by another name; violates the project's core "no auto-extraction, ever" invariant | Never |
-| Adding `MarkFlagsMutuallyExclusive` without auditing existing scripts for the now-forbidden combination | Closes #453 quickly | Breaks any caller relying on the previously-permissive behavior, with no warning period | Only with a documented one-release deprecation warning first |
-| Unifying exit codes without a pinned "current behavior" regression test | Removes the two-taxonomy carve-out cleanly | Breaks any script/cron branching on today's exit 1 for operator commands, invisibly | Only if #467 is resolved by documenting the boundary instead, or if unification ships with the pinned test + a CHANGELOG breaking-change entry |
-| Re-stamping a `VALIDATION.md` row as reconciled without re-running `-list` against the current test names | Closes the Nyquist tracking item fast | Reintroduces the exact false-green-forever failure the reconciliation phase exists to fix | Never |
-| Similarity-threshold auto-merge without a human/skill judgment step | Removes an interaction round-trip | False-merge rate is unacceptable at any threshold below ~1.0 on records that differ by scope/time/negation; data loss is silent and permanent | Never |
+|----------|--------------------|-----------------|------------------|
+| Skip the exhaustive proto-field-parity test, rely on manual review | Faster PR | Reproduces the exact 3-milestone #482 bug a 4th time | Never — this is precisely the gap that created #482 |
+| Reuse `backfill-short-ids`'s default-apply flag shape for `engram migrate` | No new flag-wiring code | Footgun default reintroduced on a brand-new command | Never |
+| Let the migration write via a raw `Upsert` "since it's simpler than SetPayload" | Simpler single-op code | CR-01-class lost-write risk on any concurrent writer | Never in production; acceptable only in a throwaway prototype never pointed at real data |
+| Treat schema-version eligibility as a single boolean (`== 0`) instead of a range | Simpler filter, works for a single-step migration | Silently strands records mid-chain once a second migration step ships | Acceptable ONLY if the team commits to never shipping more than one schema bump ever — not realistic; build the range filter from the start |
+| Trust the preview count as an exact prediction of apply's outcome | Simpler operator messaging | Operator distrust when preview and apply counts diverge under concurrent writes | Acceptable if explicitly documented as advisory-only in `--help`/docs |
 
 ## Integration Gotchas
 
 | Integration | Common Mistake | Correct Approach |
-|--------------|-----------------|-------------------|
-| `spine-review` CLI ↔ curation skill | Treating the CLI's structural purge as independent of the skill's semantic extraction, letting either run without the other having run first | Gate `purge`/`archive` on a recorded extraction-pass marker the CLI itself checks (Pitfall 1) |
-| Curation skill ↔ mutating memory tools | Skill calls `supersede_memory`/`delete_memory`/`update_memory` directly as its own terminal action | Skill emits a proposal artifact only; a separate confirmed step (human or CLI re-invocation) performs the mutation (Pitfall 4) — mirrors the existing `store_rule` consent gate |
-| `spine-review` purge ↔ `rule` category | Treating rule-category purge candidates with the same friction as ordinary memory corrections | Require materially higher-friction confirmation for any rule-category proposal — rules cannot be superseded, only deleted, so a wrong rule-purge is maximally destructive |
-| CLI help text ↔ cobra flag validation | Documenting a mutual-exclusivity constraint in `Short`/help text without ever enforcing it, then enforcing it later as if it were purely a bug fix | Audit real invocation patterns for the newly-forbidden combination before enforcing; treat enforcement as a breaking change with a deprecation window if any caller might rely on the old permissiveness |
-| Operator-command exit codes ↔ any external script/cron/CI branching on them | Changing an exit code because it "should" match the client taxonomy, without checking existing consumers | Pin current behavior with a table-driven test before touching it; prefer documenting the boundary (#467's explicit "or documented boundary" option) over unifying without evidence of a benefiting consumer |
-| CLI help / self-describe catalog / MCP tool jsonschema | Hand-editing one surface's description of a conditional rule and assuming the others are consistent because they were consistent at last check | Single source of truth for the rule's description where feasible; otherwise a cross-surface grep-based drift test with a nonzero-match assertion |
-| `VALIDATION.md` `-run` commands ↔ actual test names | Treating a `-run` pattern recorded at plan time as still valid because the row says "passing" | Re-resolve every recorded selector against `go test -list` before trusting or reconciling the row (Pitfall 9) |
+|-------------|-----------------|-------------------|
+| Qdrant `SetPayload` (multi-ID) | Trusting a non-error response means every id in the batch is now migrated, or an error response means nothing happened | Re-derive actual state via `Scroll`/`Count` after any batch write (the `reconcileSupersedeFailure` pattern); assume partial application on both success and failure paths |
+| Qdrant batch endpoint generally | Assuming HTTP-level atomicity ("400 means nothing was written") | Confirmed non-atomic upstream (qdrant/qdrant#9371): valid ops inside a rejected batch can still persist; design every batch write to be safely re-submittable |
+| buf/protobuf field numbers | Treating a clean `buf breaking` run as proof the Go mapping code (`memoryToProto`) was updated | `buf breaking` only proves the *schema* is additive; pair every field addition with an exhaustive field-mapping round-trip test, not a manually-maintained list |
+| `internal/surfaces` key-link registry | Authoring a `pattern:` entry with `\\` escaping before #479 is fixed | Verify #479's fix with a fail-first corrupted-region test before authoring any new `\\`-containing pattern |
+| Qdrant testcontainer (`#497`) | Treating a flaky test failure as "probably infra" when it's a genuine migration-resume regression | Verify #497 fixed first; then run new partial-failure tests in a tight loop before trusting them as a permanent gate |
 
 ## Performance Traps
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|-----------------|
-| Citation-drift verification scans every `file:line` anchor in the spine on every `spine-review verify` invocation, re-reading files from disk each time | `verify` gets slower every time the codebase grows, eventually timing out or making the tool unpleasant to run regularly (which itself causes it to be skipped — feeding Pitfall 6) | Cache file content/line hashes keyed by commit SHA; only re-check anchors whose target file changed since the last verified commit | Once the spine has enough citation-bearing records that a full-file re-read per anchor is seconds-to-minutes rather than sub-second |
-| Semantic-dedup candidate generation does an all-pairs similarity comparison across the whole spine | Fine at hundreds of records, quadratic blowup once the spine is large enough that a full curation pass becomes impractically slow to run | Use Qdrant's own ANN search per-record (top-k similar) rather than a manual all-pairs loop; this is already the store's core capability | Once spine size is large enough that O(n²) all-pairs stops being "a few seconds" |
-| Purge/consolidate sweep does one record at a time with a network round-trip per record and no batching | A large sweep takes disproportionately long, increasing the odds of the partial-failure scenario in Pitfall 3 | Batch reads/writes where Qdrant's client supports it; checkpoint progress per-batch, not per-record, but keep the idempotency guarantee from Pitfall 3 | Sweeps touching more than a few hundred records at once |
+| Unbounded single-batch `SetPayload` call across an entire collection scroll page | Looks fine on small test fixtures (a few hundred records, as in `TestBackfillShortIDs`), silently partial-applies once a batch exceeds Qdrant's internal 32-point chunk boundary in production | Cap batch size at or near `qdrantPayloadOpBatchSize`, and make resume correct regardless of batch size (Pitfall 4) | At the same production scale that already prompted `qdrantPayloadOpBatchSize` to be documented — any collection with more than a few dozen eligible records per sweep |
+| Migration progress reporting relies only on a final total, no incremental output | Looks identical to a hang on a large corpus; operator can't tell "slow" from "stuck" | Reuse `BackfillShortIDs`'s cursor-paginated scroll loop shape, and surface periodic progress the way `reindex --resume --dry-run` already sizes work before running | Any collection large enough that a full scroll takes more than a few seconds — no hard number established in this codebase yet, worth a smoke test at realistic production record counts before ship |
 
 ## Security Mistakes
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Curation skill given direct tool access to mutating verbs, reasoning "it's a trusted first-party skill, not a random prompt" | A confident-but-wrong semantic judgment (or a prompt-injected instruction embedded in a memory's own content, which the skill will read while judging it) executes an irreversible mutation with no human check | Propose-never-perform, no exceptions, including for "obviously correct" cases — the incident record shows this exact "obviously right" confidence preceding irreversible mistakes repeatedly |
-| Purge sweep treats `shared`-visibility records the same as private ones for a single caller's judgment | An actor curating their own spine could propose deleting a `shared` record another actor depends on, since shared grants read but never write — a curation proposal touching a record the proposer doesn't own must still route through the existing ownership write-gate, never bypass it because "it's just a cleanup" | Route every spine-review mutation (even proposed-then-confirmed ones) through the existing `getWritable`/ownership gate unchanged — curation tooling gets no special authz bypass |
-| Bulk purge command accepts a broad selector (e.g., a scope glob) with no echo of exactly what will be affected before committing | A slightly-too-broad selector silently deletes more than intended, with no way to know until it's too late | Any bulk destructive command must print (or require `--dry-run` to have been run and reviewed for) the exact record count and a sample before requiring a second explicit confirmation to commit |
-| Exit-code or flag-validation changes shipped without a security-relevant regression check for the existing 404-uniform-not-found invariant (DEC-xa6) | A CLI/MCP surface audit touching validation ordering could accidentally reorder a check so an authz-driven not-found and a plain validation error become distinguishable, reopening a cross-actor existence leak the store layer was designed to prevent | Any change to error/exit dispatch ordering in this milestone must be checked against the existing DEC-xa6 negative tests, not just the new validation behavior being added |
-
-## UX Pitfalls
-
-| Pitfall | User Impact | Better Approach |
-|---------|-------------|-------------------|
-| Over-eager staleness/drift flags on every `spine-review verify` run | Operators stop reading the output after the first few runs (alert fatigue), missing the real findings when they eventually appear | Severity-tier findings; auto-repair the mechanically-fixable class (moved-but-recognizable anchors); report a scanned-count so "clean" is trustworthy |
-| Destructive commands with no `--dry-run` default and a single-step commit | An operator (or a script written by an operator under time pressure) runs the real thing on first try, with no preview | Dry-run by default, or require an explicit second flag/confirmation naming the exact record count before any live commit |
-| A curation-skill proposal that just says "these look like duplicates, delete one" with no visible reasoning or side-by-side content | Operator can't actually evaluate whether the proposal is right, so either rubber-stamps it (false confidence) or ignores it (skill goes unused) | Show both full records, the reasoning, and what's uniquely present in each before asking for confirmation |
-| Two different exit-code taxonomies with no documentation of which governs which command | Script authors guess, get it wrong half the time, and file bugs against engram instead of realizing the split is deliberate | Ship the documented boundary (or the unification) as visible, discoverable documentation — not just an internal decision record — including in `--help` output itself |
-| Flag-validation errors that reject a combination but don't say why it's forbidden or what to do instead | Operator trial-and-errors their way to a working invocation instead of reading help correctly the first time (violates this project's own correct-by-reading principle, D-00) | Every new validation rejection must state the constraint in the error text, matching whatever the help text already says, so the two are provably the same sentence |
+| Exposing raw `schema_version` on the Connect wire without considering it alongside the existing hint-code/error-envelope conventions | Low — `schema_version` is not itself sensitive, but a mismatched-version rejection surfaced verbatim to a caller (mirroring `resolver.go`'s deliberate choice to NOT disclose session payload-version mismatches on the browser-visible surface) could leak internal migration cadence | If any read path ever rejects (rather than tolerates) a version mismatch, keep the version detail server-log-only, matching the `sessionPayloadVersion` precedent's `slog.WarnContext` + generic client-facing error split |
+| Letting a migration sweep run as an unauthenticated/Subject-less operator command (consistent with `spine-review`'s precedent) without confirming it truly has no per-record authz implications | Low in this design (schema bumps are payload-only bookkeeping, not visibility changes) — but worth confirming explicitly, not assuming | State explicitly in the migration-mechanism design that it is the sixth-or-later instance of the existing Subject-less operator tier, never a new authz path — the same discipline `spine-review` already established for `REQ-spine-scan` |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **`spine-review purge`:** Often missing the tombstone/grace-window stage — verify a purge
-      candidate is still recoverable for some window before the terminal, irreversible step runs,
-      not deleted on first invocation.
-- [ ] **Extraction-before-delete ordering:** Often "documented" as a rule (like `7smp8vy9hr`) but
-      not mechanically enforced — verify `purge` structurally refuses to run without a recorded
-      extraction pass, not merely that the operator was told to run extraction first.
-- [ ] **Curation skill consent gate:** Often demonstrated only on a correct-proposal happy path —
-      verify it was cold-read-tested with at least one deliberately-wrong "obviously right" semantic
-      judgment and confirmed the gate still stopped it before any mutation.
-- [ ] **Flag-validation enforcement (#453):** Often shipped without checking whether any existing
-      script/skill invocation relies on the newly-forbidden combination — verify a grep/audit of
-      known invocation sites (CI, Taskfile, docs examples, skill instructions) was actually done,
-      not assumed clean because it "was already documented as forbidden."
-- [ ] **Exit-code taxonomy resolution (#467):** Often "resolved" by picking a taxonomy without
-      checking what currently consumes the other one — verify either a documented-boundary decision
-      record exists, or a pinned-current-behavior regression test shipped alongside any unification.
-- [ ] **Nyquist `VALIDATION.md` reconciliation:** Often re-stamped as reconciled by re-running the
-      recorded `-run` command and seeing exit 0 — verify each row was re-resolved against
-      `go test -list` and shows a nonzero, expected test count, not just a clean exit code.
-- [ ] **Multi-surface documentation (CLI help / self-describe catalog / MCP schema):** Often fixed
-      in the surface that was reported broken, with the other two assumed still correct — verify all
-      three were checked for the same conditional rule, with a grep-based drift test added, not just
-      a one-time fix.
-- [ ] **New verification/audit tooling's own false-negative mode:** Often validated only by
-      confirming it finds known-planted issues — verify it also reports how much it scanned, so a
-      selector/pattern silently matching nothing is distinguishable from genuinely finding zero
-      issues.
+- [ ] **`schema_version` field added to `Memory`:** often missing the negative recall-gate test
+      (Pitfall 1) — verify no `Search`/`List`/`SearchDiscovery`/`ListScheduled` filter references the
+      key.
+- [ ] **`engram migrate` command:** often missing the partial-failure-resume proof (Pitfall 4) —
+      verify a forced mid-batch failure test passes reliably (looped, not single-run) against a
+      confirmed-stable testcontainer.
+- [ ] **Connect proto widening (#482):** often missing the exhaustive field-mapping test (Pitfall 6)
+      — verify `buf breaking` passing is NOT the only evidence cited; confirm `memoryToProto` actually
+      populates every one of the six new fields with a round-trip assertion.
+- [ ] **`backfill-short-ids` subsumption:** often missing the default-apply-to-preview-default flip
+      (Pitfall 7) — verify `engram migrate`'s bare invocation does not write.
+- [ ] **Version-chain eligibility filter:** often implemented as equality (`== 0`) instead of range
+      (`< target`) (Pitfall 5) — verify with intermediate-version fixtures, not just absent/current.
+- [ ] **`not_before`/`not_after` on the Connect read path:** often missing the same outward-rounding
+      discipline the write path already has (Pitfall 12) — verify a boundary-second test against both
+      lanes.
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
-|---------|----------------|------------------|
-| Delete-before-extract already happened (records purged, gotchas lost) | HIGH | If Qdrant snapshots/backups exist, restore from the most recent pre-purge snapshot to recover the deleted records' content before re-attempting extraction; if no backup exists, the gotchas are unrecoverable — this is exactly why Pitfall 1's precondition gate must ship before any purge capability, not after |
-| Wrong semantic merge/delete proposal was confirmed and executed | MEDIUM–HIGH | If the purge routed through the tombstone/grace-window stage (Pitfall 2), the record is still recoverable via `get_memory` until the grace window's finalize step runs — recover it there; if it went straight to `delete_memory`, recovery depends entirely on external backups |
-| Exit-code change broke a script silently | LOW–MEDIUM | Revert the exit-code change as a patch release; add the pinned-current-behavior regression test that should have existed before the change shipped, then re-attempt the change with a documented deprecation window |
-| Flag-validation change rejected a previously-working invocation | LOW | Revert to a deprecation-warning state (accept the combination with a loud warning) for one release cycle, then re-attempt hard rejection with advance notice |
-| A `VALIDATION.md` row was falsely green (selector matched nothing) | LOW | Re-resolve the selector against `go test -list`, write the correct pattern, re-run, and re-verify the referenced success criterion is actually exercised — cheap once caught, expensive only in the false confidence it produced beforehand |
-| Multi-surface documentation drifted (CLI help says one thing, MCP schema says another) | LOW | Reconcile to a single source description and add the cross-surface drift test so it can't recur silently |
+|---------|-----------------|-----------------|
+| Recall gate silently narrowed by a `schema_version` condition (Pitfall 1) | LOW if caught by the negative test before ship; HIGH if it reaches production (silent data-invisibility incident, indistinguishable from an empty store without cross-referencing `Count`) | Remove the offending filter condition; add the negative test retroactively; audit logs/metrics for a `result_count` drop coinciding with the deploy |
+| A migration step drops out-of-band keys via a raw `Upsert` (Pitfall 3) | MEDIUM–HIGH depending on how long it ran before detection | Identify affected records (compare `access_count`/`created_at` presence against expected), re-derive lost fields where still recoverable (e.g. `citations` from source-of-truth logs), accept permanent loss for fields with no other record (e.g. `idempotency_fingerprint` — falls back to allowing a future replay to appear as a fresh write) |
+| A record strands mid-chain after a crash, invisible to an equality-based resume filter (Pitfall 5) | LOW once diagnosed | Fix the filter to a range predicate; the next `engram migrate --apply` run then picks up every stranded record automatically — no manual per-record repair needed if the range fix lands before data grows stale |
+| Proto field silently unmapped despite green CI (Pitfall 6, recurrence of #482's own root cause) | LOW to detect (once the exhaustive test exists), MEDIUM to fix (wire the missing mapping, verify no other consumer depended on the old absent-field behavior) | Add the missing `memoryToProto` mapping; re-run the exhaustive round-trip test; audit whether any client code silently depended on the field being absent (unlikely here, since the fields are additive-only) |
 
 ## Pitfall-to-Phase Mapping
 
 | Pitfall | Prevention Phase | Verification |
-|---------|-------------------|----------------|
-| Delete-before-extract ordering unenforced | Spine curation CLI (structural) | Test: `purge` on a target with no prior extraction marker refuses to run |
-| No tombstone stage before hard delete | Spine curation CLI (structural) | Test: a purge-candidate record is still fetchable via `get_memory` for the grace window before `finalize`/`--commit` runs |
-| Partial-failure mid-sweep leaves inconsistent state | Spine curation CLI (structural) | Test: kill the sweep process mid-batch, re-run, and assert identical end state to an uninterrupted run (idempotency) |
-| Agent-driven curation executes a wrong proposal directly | Companion curation skill (semantic) | Cold-read test with a deliberately-wrong "obviously right" judgment; assert zero mutating tool calls without a separate confirmed step |
-| Semantic dedup false-merges distinct records | Companion curation skill (semantic) | Adversarial test set: near-duplicate-but-scope/time-distinct pairs must never be proposed as merge candidates |
-| False-positive staleness/drift detection | Spine curation CLI (structural) | #355 used as the calibration fixture; false-positive rate measured across a real sweep, not just the planted case |
-| Previously-accepted flag combination now rejected | Documented constraints made enforceable (#453) | Audit of existing invocation sites for the newly-forbidden combination, completed and recorded before landing the validation |
-| Exit-code change breaks scripts | One exit-code taxonomy, or a documented boundary (#467) | Either a documented-boundary decision record, or a pinned-current-behavior table-driven regression test shipped with any unification |
-| Test-selector false green (matches nothing, exits 0) | Nyquist validation reconciliation | Every reconciled row's `-run` pattern re-resolved against `go test -list` with a nonzero, expected match count |
-| Multi-surface documentation drift (CLI/catalog/MCP schema) | Self-evident surface audit | Cross-surface grep-based drift test with a nonzero-match assertion added as a permanent CI gate |
+|---------|--------------------|----------------|
+| 1 — recall gate narrowed by schema_version | record-schema-versioning phase | negative test: no recall filter-builder references `schema_version` |
+| 2 — no version-dispatch codec / no rollback path | record-schema-versioning phase (scope decision) | design doc + `--help` text explicitly scope migrations to additive-only |
+| 3 — whole-payload Upsert drops out-of-band keys | migration-mechanism phase | round-trip test: every optional payload key survives a migration step byte-identical |
+| 4 — Qdrant batch non-atomicity | migration-mechanism phase | forced mid-batch partial-failure test, looped for stability, against reconcile-by-re-derivation logic |
+| 5 — equality vs range eligibility filter | migration-mechanism phase | intermediate-version fixture test proves multi-hop resume |
+| 6 — proto/Go mapping drift despite green CI | Connect record-state parity phase (#482) | exhaustive field-mapping round-trip test, not a hand-maintained list |
+| 7 — backfill's default-apply flag shape | migration-mechanism phase | `engram migrate` bare invocation writes nothing; `guides/upgrade.md` entry documents the behavior change from `backfill-short-ids` |
+| 8 — preview/apply TOCTOU | migration-mechanism phase, CLI/console-surfacing phase | explicit advisory-only documentation, or a two-consecutive-run parity test if exact parity is required |
+| 9 — testcontainer flakiness masking real failures | gate & CI integrity phase (prerequisite) | #497 verified fixed before authoring partial-failure-injection tests; new tests looped 20× before trusted as a gate |
+| 10 — `pattern:` key-link escaping bug | gate & CI integrity phase (prerequisite) | #479 verified fixed via fail-first corrupted-region test before any `\\`-containing pattern is authored |
+| 11 — contentFingerprint reflex-add | record-schema-versioning phase | code comment + test proving `schema_version` never affects `contentFingerprint` output |
+| 12 — not_before/not_after rounding parity | Connect record-state parity phase | boundary-second test against both the existing write-path rounding and the new read-path mapping |
+| 13 — migration vs concurrent Supersede | migration-mechanism phase | concurrent-writer `-race` test pairing a migration sweep with an in-flight `Supersede` |
+| 14 — write-path/sweep ordering gap | record-schema-versioning phase | test proving 100% of post-commit writes carry a non-absent `schema_version` |
+| 15 — migrate reaching for Upsert to also re-embed | migration-mechanism phase | design doc states payload-only, no embedder dependency; any vector-touching need routes through `reindex` |
+| 16 — schema-version filter added at one call site only | wherever first introduced (not currently in scope) | shared helper reused at all five recall/scan call sites, if ever built |
 
 ## Sources
 
-- [Tombstone (data store) — Grokipedia](https://grokipedia.com/page/Tombstone_(data_store)) — HIGH confidence, cross-checked against Bigtable/Cassandra tombstone-then-compaction precedent
-- [Tombstone Design Pattern — James's Knowledge Graph](https://www.jamestharpe.com/tombstone-pattern/) — MEDIUM confidence, corroborating pattern description
-- [CDC Soft Deletes and Tombstones — Streamkap](https://streamkap.com/resources-and-guides/cdc-soft-deletes-tombstones) — MEDIUM confidence
-- [How would you implement soft vs hard TTL for GDPR deletion? — DesignGurus](https://www.designgurus.io/answers/detail/how-would-you-implement-soft-vs-hard-ttl-for-gdpr-deletion) — MEDIUM confidence, "tombstone then finalize" phrasing
-- [An AI Agent Deleted a Company's Entire Production Database — Then Lied About It — DEV Community](https://dev.to/arbabyousaf/an-ai-agent-deleted-a-companys-entire-production-database-then-lied-about-it-49mh) — HIGH confidence, widely corroborated incident (Replit, July 2025)
-- [Incident 1152 — AI Incident Database](https://incidentdatabase.ai/cite/1152/) — HIGH confidence, independently curated incident record
-- [When an Agent Deletes the Production Database — O'Reilly Radar](https://www.oreilly.com/radar/when-an-agent-deletes-the-production-database/) — HIGH confidence, editorial analysis of the failure pattern
-- [When AI Agents Delete Production: Lessons from Amazon's Kiro Incident — Particula](https://particula.tech/blog/ai-agent-production-safety-kiro-incident) — MEDIUM confidence, second independent incident (Dec 2025)
-- [AI Agent Deleted a Production Database, The Real Failure Was Access Control — Penligent](https://www.penligent.ai/hackinglabs/ai-agent-deleted-a-production-database-the-real-failure-was-access-control/) — MEDIUM confidence, corroborates "direct execution authority is the root cause" framing
-- [Semantic Deduplication — NVIDIA NeMo Framework User Guide](https://docs.nvidia.com/nemo-framework/user-guide/25.07/datacuration/semdedup.html) — HIGH confidence, official framework docs on cosine-threshold dedup mechanics
-- [Beyond MD5: transformer-based fuzzy deduplication — Medium](https://medium.com/@banavalikar/beyond-md5-implementing-transformer-based-fuzzy-deduplication-for-unstructured-datasets-at-scale-6ebff328da98) — MEDIUM confidence, threshold examples (0.85/0.95)
-- [Modeling Clinical Uncertainty in Radiology Reports — arXiv](https://arxiv.org/pdf/2511.04506) — MEDIUM confidence, explicit false-merge-at-high-threshold finding in a domain with similarly high correction stakes
-- [cobra package — pkg.go.dev](https://pkg.go.dev/github.com/spf13/cobra) — HIGH confidence, official reference for `MarkFlagsMutuallyExclusive`
-- [MarkFlagsMutuallyExclusive does not work with default values — cobra#1752](https://github.com/spf13/cobra/issues/1752) — HIGH confidence, primary-source known limitation directly relevant to #453
-- [Working with Flags — Cobra docs](https://cobra.dev/docs/how-to-guides/working-with-flags/) — HIGH confidence, official deprecation-pattern (`MarkDeprecated`) documentation
-- [Handling Breaking API Changes — cetra3.github.io](https://cetra3.github.io/blog/breaking-api-changes/) — MEDIUM confidence, "CLI flags/exit codes are the public API" framing
-- [Understanding and fighting alert fatigue — Atlassian](https://www.atlassian.com/incident-management/on-call/alert-fatigue) — HIGH confidence, well-established operational-practice source
-- [The Analyst Who Cried Malware — CardinalOps](https://cardinalops.com/blog/rethinking-false-positives-alert-fatigue/) — MEDIUM confidence, corroborates the "trains reviewers to distrust severity" mechanism
-- [Contract-First APIs: How OpenAPI Becomes Your Single Source of Truth — HackerNoon](https://hackernoon.com/contract-first-apis-how-openapi-becomes-your-single-source-of-truth) — MEDIUM confidence, generalizable single-source-of-truth pattern for multi-surface doc drift
-- Repo-internal precedent (`.planning/PROJECT.md`, `CLAUDE.md`, cited memory IDs `7smp8vy9hr`, `bsbsvn4hbc`, `667p88n2be`, `4aksmneehh`, decisions DEC-xa6/DEC-kyz/DEC-iedk/D-09/D-17) — HIGH confidence, primary source
+- `internal/store/store.go` (this repo, `feat/v0.13` branch) — `payload()`/`fromPayload()`,
+  `Search`/`SearchDiscovery`/`List` filter construction, `qdrantPayloadOpBatchSize` doc comment,
+  `Store.Supersede`/`reconcileSupersedeFailure`, `Store.BackfillShortIDs` — read directly, HIGH
+  confidence (primary source, not inferred)
+- `internal/webauth/session.go`, `resolver.go`, `reseal.go` (this repo) — `sessionPayloadVersion`
+  precedent, HIGH confidence
+- `cmd/engram/backfill.go`, `cmd/engram/prune.go` (this repo) — current flag defaults and
+  preview/apply structure, HIGH confidence
+- `internal/server/idempotency.go` — `contentFingerprint` explicit-field-list rationale, HIGH
+  confidence
+- `.planning/PROJECT.md` (this repo) — milestone scope note on #482's 3-milestone recurrence, the
+  v0.13.x CR-01 lost-write finding, #479/#497 gate ordering rationale, HIGH confidence
+- [Qdrant issue #9371 — "Batch operations not atomic — valid points persisted despite HTTP 400
+  error"](https://github.com/qdrant/qdrant/issues/9371) — maintainer confirmation that batch writes
+  are not promised atomic and callers must assume partial application, HIGH confidence
+- [protobuf.dev — Proto3 Language Guide, "Consequences of Reusing Field Numbers"](https://protobuf.dev/programming-guides/proto3/) — field-number permanence and reservation guidance, HIGH confidence
+- [buf.build docs — Breaking change detection, FILE/PACKAGE/WIRE/WIRE_JSON categories](https://buf.build/docs/breaking/) — HIGH confidence
+- [protobuf.dev — Proto Best Practices, "Don't Re-use a Tag Number"](https://protobuf.dev/best-practices/dos-donts/) — HIGH confidence
+- [Code With Karani — "Your Migration Will Run Twice: Write It That Way"](https://www.codewithkarani.com/blog/why-migrations-must-be-idempotent) — idempotent/resumable backfill design (separate schema-change vs. backfill steps, resumable batched jobs with a progress-marker WHERE clause), MEDIUM confidence (general SQL-migration domain, adapted here to a document-store context)
+- [jsonic.io — "JSON Schema Migration Strategy: Versioning & Transforms"](https://jsonic.io/guides/json-migrations) — schema-version-discriminator pattern, migration registry, lazy vs. batch migration, additive-vs-breaking change classification, MEDIUM confidence (closest available analog to engram's flat-payload-codec situation, not an exact match)
+- [docs.ditto.live — "Schema Versioning"](https://docs.ditto.live/best-practices/schema-versioning) — schema_version-discriminator vs. separate-collection patterns for breaking changes in a schemaless document store, MEDIUM confidence
+- [ArgoCD PR #27664 — dry-run silently applying on an old server](https://github.com/argoproj/argo-cd/pull/27664) — precedent for "preview output actively lying" as a recognized destructive-UX class, MEDIUM confidence (not this codebase's exact failure mode, but the same risk category as Pitfall 8)
 
 ---
-*Pitfalls research for: curation/maintenance tooling + interface audit on an existing shipped memory system (engram v0.13.x)*
-*Researched: 2026-08-03*
+*Pitfalls research for: Record State & Schema Evolution milestone (`2026-08-12.01`), engram*
+*Researched: 2026-08-12*
