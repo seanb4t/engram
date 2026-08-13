@@ -71,6 +71,13 @@ header:
     # license-eye and not runtime-CI-gated; repo LICENSE covers provenance.
     - "internal/authz/policies/*.cedar"
     - "internal/authz/schema.json"
+    # internal/keylinks's committed testdata/*.md fixtures are synthetic
+    # plan-shaped documents the guard's own fixture-pair test parses as
+    # frontmatter (D-06, Phase 1 gate-ci-integrity) — not real docs, and a
+    # leading SPDX comment would corrupt the `---`-on-line-1 frontmatter
+    # contract these fixtures deliberately mimic. repo LICENSE covers
+    # provenance, same rationale as the .planning/** carve-out above.
+    - "internal/keylinks/testdata/*.md"
   language:
     Markdown:
       extensions: [".md"]
