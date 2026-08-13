@@ -1,0 +1,93 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
+// Package goodpkg is a synthetic KNOWN-GOOD fixture for
+// schemaversion_stamp_gate_test.go's TestEveryPointWriteRoutesThroughPayload.
+// It stands in for internal/store/store.go's own write boundary and carries
+// REAL `Upsert` calls that TRANSMIT — a fixture holding only a
+// qdrant.PointStruct literal proves nothing about a boundary this gate
+// defines by transmission, not by construction (see 02-02-PLAN.md's "gate
+// redesign" section).
+//
+// Three functions mirror the three shapes real internal/store source
+// carries:
+//
+//	(a) writer.Upsert — a direct write building the point inline, mirroring
+//	    Store.Upsert itself. Receiver text "w.client".
+//	(b) writer.directViaLocal — a direct write where the Memory value is
+//	    first bound to a local variable and then passed to payload,
+//	    proving the conformance predicate accepts a legitimate refactor of
+//	    the ARGUMENT while still requiring the CALLEE identity. Receiver
+//	    text "w.client".
+//	(c) writer.delegatingWrapper — a delegation self-call that calls
+//	    w.Upsert(ctx, m) and builds no point of its own, mirroring
+//	    Store.Update/Store.Supersede. Receiver text bare "w".
+//
+// This file carries a .go.txt extension deliberately: it is parsed from
+// source bytes by go/parser, never built by `go build`/gofmt/go vet/the
+// linter, so it is not swept by any of them.
+package goodpkg
+
+import (
+	"context"
+
+	"github.com/qdrant/go-client/qdrant"
+)
+
+// Memory is a minimal stand-in for store.Memory — just enough fields for
+// this fixture's payload-building shapes.
+type Memory struct {
+	ID string
+}
+
+// writer is a minimal stand-in for store.Store: it holds a *qdrant.Client
+// and exposes an Upsert method, mirroring the real package's write boundary
+// closely enough for scanQdrantCalls's method-name-only match to find it.
+type writer struct {
+	client *qdrant.Client
+}
+
+// payload is a minimal stand-in for store.payload: the codec every
+// direct-conforming write must route through.
+func payload(m Memory) map[string]any {
+	return map[string]any{"id": m.ID}
+}
+
+// Upsert is the direct-conforming write itself, mirroring Store.Upsert:
+// builds the point inline and calls w.client.Upsert with a Payload derived
+// from payload(m). Receiver text "w.client".
+func (w *writer) Upsert(ctx context.Context, m Memory) error {
+	_, err := w.client.Upsert(ctx, &qdrant.UpsertPoints{
+		CollectionName: "goodpkg",
+		Points: []*qdrant.PointStruct{{
+			Id:      qdrant.NewID(m.ID),
+			Payload: qdrant.NewValueMap(payload(m)),
+		}},
+	})
+	return err
+}
+
+// directViaLocal is the second direct-conforming write: the Memory value is
+// bound to a local variable before being passed to payload, proving the
+// conformance predicate inspects the CALLEE identity of payload(...), not
+// the shape of its argument. Receiver text "w.client".
+func (w *writer) directViaLocal(ctx context.Context, m Memory) error {
+	local := m
+	_, err := w.client.Upsert(ctx, &qdrant.UpsertPoints{
+		CollectionName: "goodpkg",
+		Points: []*qdrant.PointStruct{{
+			Id:      qdrant.NewID(local.ID),
+			Payload: qdrant.NewValueMap(payload(local)),
+		}},
+	})
+	return err
+}
+
+// delegatingWrapper is the fixture analogue of Store.Update/Store.Supersede:
+// a wrapper that calls w.Upsert(ctx, m) and builds no point of its own.
+// Receiver text is the bare "w" — distinct from the two direct sites'
+// "w.client", which is what lets the real-package gate tell a delegation
+// from a direct transmission by receiver path.
+func (w *writer) delegatingWrapper(ctx context.Context, m Memory) error {
+	return w.Upsert(ctx, m)
+}
