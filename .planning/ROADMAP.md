@@ -279,7 +279,22 @@ Plans:
   4. A negative "recall gate blast radius" test proves `schema_version` never appears in any Qdrant recall or authz filter condition built by `Search`/`SearchReranked`/`SearchDiscovery`/`List`/`ListScheduled` — the adjacent `superseded_by`/`archived_at` `IsEmpty` idiom has inverted cardinality here and copying it would silently exclude every pre-migration record from recall.
   5. A binary reads a record whose `schema_version` is NEWER than its own constant without rejecting, hiding, or downgrading it — tested in both the older-than and newer-than direction, which is what makes rolling the binary back across a schema change safe.
 
-**Plans**: TBD
+**Plans:** 5 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — Tracer: `internal/migrate` leaf package, the `SchemaVersion` field, the monotonic `payload()` stamp, absent-safe decode, payload index and operator upgrade note (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02-02-PLAN.md — Criterion 1: AST call-site-identity gate proving `payload()` is the only door, plus the behavioral per-write-method stamping proof (wave 2)
+- [ ] 02-04-PLAN.md — Criterion 5: raw-payload-injection proof of forward and backward version compatibility against real Qdrant (wave 2)
+- [ ] 02-05-PLAN.md — Criterion 3: wire visibility on `full=true` recall and `get_memory`, with the compact `recallView` proven untouched (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 02-03-PLAN.md — Criterion 4: recall-gate blast-radius negative test over the filters actually transmitted to Qdrant, with a derived builder enumeration (wave 3)
 
 ### Phase 3: Migration Foundation (Registry, Invariants & Sweep)
 
