@@ -1,0 +1,56 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
+// Package limitspkg is a synthetic DOCUMENTED-LIMIT fixture for
+// schemaversion_stamp_gate_test.go's TestEveryPointWriteRoutesThroughPayload.
+// Both functions perform a REAL Qdrant write through shapes the
+// selector-name scan PROVABLY CANNOT see, because scanQdrantCalls matches
+// only ast.CallExpr nodes whose callee is an ast.SelectorExpr — neither
+// shape below produces one at its call site:
+//
+//	(a) methodValueBypass — a METHOD VALUE: `write := h.client.Upsert` binds
+//	    the bound method to a variable on one line; `write(ctx, req)` calls
+//	    it on another. The call's callee is an *ast.Ident ("write"), never a
+//	    *ast.SelectorExpr.
+//	(b) methodExpressionBypass — a METHOD EXPRESSION:
+//	    `write := (*qdrant.Client).Upsert` assigns the unbound method to a
+//	    variable, and `write(h.client, ctx, req)` invokes it with the
+//	    client as an explicit first argument. Same shape: the call's callee
+//	    is an *ast.Ident, and the SelectorExpr naming Upsert appears only in
+//	    an assignment RHS, never as a CallExpr.Fun.
+//
+// Neither builds its payload through payload(), so both are genuine
+// bypasses — but this is the scanner's DOCUMENTED BLIND SPOT, not an
+// oversight (see 02-02-PLAN.md's "What this gate proves, and what it does
+// not"): the derived set for this fixture is asserted EMPTY. If a future
+// maintainer adopts go/packages/go/types and the scan starts seeing these,
+// that assertion fails and tells them the limit closed.
+//
+// This file carries a .go.txt extension deliberately: it is parsed from
+// source bytes by go/parser, never built by `go build`/gofmt/go vet/the
+// linter, so it is not swept by any of them.
+package limitspkg
+
+import (
+	"context"
+
+	"github.com/qdrant/go-client/qdrant"
+)
+
+type holder struct {
+	client *qdrant.Client
+}
+
+// methodValueBypass — see package doc comment (a).
+func (h *holder) methodValueBypass(ctx context.Context, req *qdrant.UpsertPoints) error {
+	write := h.client.Upsert
+	_, err := write(ctx, req)
+	return err
+}
+
+// methodExpressionBypass — see package doc comment (b).
+func (h *holder) methodExpressionBypass(ctx context.Context, req *qdrant.UpsertPoints) error {
+	write := (*qdrant.Client).Upsert
+	_, err := write(h.client, ctx, req)
+	return err
+}
