@@ -29,6 +29,37 @@ func gateRepoRoot(t *testing.T) string {
 	return root
 }
 
+// assertScannedSomething is the zero-applicability guard for the two
+// recurring gates below — the same safeguard
+// internal/store/collectionprefix_conformance_test.go applies to its own
+// AST scan, which this package originally omitted.
+//
+// Without it, both gates are indistinguishable from a clean pass when
+// they scan nothing: `ScanPlans` returns an empty offender slice both
+// when every plan is well-formed and when there were no plans to read.
+// A `.planning` tree emptied by ordinary GSD lifecycle churn (milestone
+// archival, a workspace checkout, a sparse clone) would therefore turn
+// both gates green while checking nothing — the precise silent-no-op
+// failure class this whole package exists to detect. A gate that cannot
+// distinguish "found nothing wrong" from "looked at nothing" is not a
+// gate.
+//
+// Both counts are asserted, not just PlanFiles: a tree of plans that
+// declare no key_links at all would satisfy PlanFiles > 0 while still
+// validating zero patterns.
+func assertScannedSomething(t *testing.T, gate string, stats ScanStats) {
+	t.Helper()
+	if stats.PlanFiles == 0 {
+		t.Fatalf("%s gate scanned 0 plan files: a clean result here proves nothing. "+
+			"Either the scan root moved or the tree is empty — fix the scope, do not relax this assertion.", gate)
+	}
+	if stats.KeyLinks == 0 {
+		t.Fatalf("%s gate read %d plan file(s) but 0 key_links: a clean result here proves nothing. "+
+			"Either key-link parsing regressed or no plan declares one — investigate before trusting a green gate.",
+			gate, stats.PlanFiles)
+	}
+}
+
 // runEscapingGate is TestNoEscapedPatternsRepoWide's production code
 // path, returning every offender line. It collects all offenders rather
 // than stopping at the first (D-07): with 39 known instances at the
@@ -37,10 +68,11 @@ func gateRepoRoot(t *testing.T) string {
 func runEscapingGate(t *testing.T) []string {
 	t.Helper()
 	root := gateRepoRoot(t)
-	offenders, err := ScanPlans(root, []string{".planning"}, ModeEscapingOnly)
+	offenders, stats, err := ScanPlansWithStats(root, []string{".planning"}, ModeEscapingOnly)
 	if err != nil {
 		t.Fatalf("ScanPlans (escaping, repo-wide): %v", err)
 	}
+	assertScannedSomething(t, "escaping (repo-wide, .planning)", stats)
 	lines := make([]string, 0, len(offenders))
 	for _, o := range offenders {
 		lines = append(lines, OffenderLine(o))
@@ -71,10 +103,11 @@ func TestNoEscapedPatternsRepoWide(t *testing.T) {
 func runSatisfiabilityGate(t *testing.T) []string {
 	t.Helper()
 	root := gateRepoRoot(t)
-	offenders, err := ScanPlans(root, []string{".planning/phases"}, ModeSatisfiability)
+	offenders, stats, err := ScanPlansWithStats(root, []string{".planning/phases"}, ModeSatisfiability)
 	if err != nil {
 		t.Fatalf("ScanPlans (satisfiability, active milestone): %v", err)
 	}
+	assertScannedSomething(t, "satisfiability (active milestone, .planning/phases)", stats)
 	lines := make([]string, 0, len(offenders))
 	for _, o := range offenders {
 		lines = append(lines, OffenderLine(o))
@@ -113,4 +146,70 @@ func TestGateScopesAreDistinct(t *testing.T) {
 	if !strings.HasPrefix(satisfiabilityRoot, escapingRoot+"/") {
 		t.Fatalf("satisfiability gate root (%q) must be a strict subset path of the escaping gate root (%q) (D-04)", satisfiabilityRoot, escapingRoot)
 	}
+}
+
+// TestZeroApplicabilityGuardFires is the fail-first proof for
+// assertScannedSomething. Asserting the guard's message on a real empty
+// tree — rather than trusting that `if count == 0` must work — is the
+// same standard the gates themselves are held to: the guard is only
+// worth what the attempt to make it fire costs.
+//
+// It exercises the guard through ScanPlansWithStats against a genuinely
+// empty directory, so it proves the production path returns zero counts
+// there, not merely that a hand-built zero-valued ScanStats trips an if.
+func TestZeroApplicabilityGuardFires(t *testing.T) {
+	t.Run("empty tree yields zero counts", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, "empty"), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		_, stats, err := ScanPlansWithStats(dir, []string{"empty"}, ModeEscapingOnly)
+		if err != nil {
+			t.Fatalf("ScanPlansWithStats over an empty tree: %v", err)
+		}
+		if stats.PlanFiles != 0 || stats.KeyLinks != 0 {
+			t.Fatalf("empty tree: got %+v, want zero counts", stats)
+		}
+	})
+
+	t.Run("guard fails the test when counts are zero", func(t *testing.T) {
+		// Run the guard against a synthetic *testing.T so its t.Fatalf is
+		// observed rather than aborting this test. A guard that cannot be
+		// shown to fail is indistinguishable from one that never fires.
+		for _, tc := range []struct {
+			name  string
+			stats ScanStats
+		}{
+			{"no plan files", ScanStats{PlanFiles: 0, KeyLinks: 0}},
+			{"plans but no key links", ScanStats{PlanFiles: 7, KeyLinks: 0}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				if !guardFailed(tc.stats) {
+					t.Errorf("assertScannedSomething(%+v) did not fail; the guard is a no-op", tc.stats)
+				}
+			})
+		}
+	})
+
+	t.Run("guard passes on real coverage", func(t *testing.T) {
+		if guardFailed(ScanStats{PlanFiles: 1, KeyLinks: 1}) {
+			t.Error("assertScannedSomething failed on nonzero counts; the guard is over-tight")
+		}
+	})
+}
+
+// guardFailed runs assertScannedSomething on a throwaway *testing.T and
+// reports whether it failed. t.Fatalf calls runtime.Goexit, so the call
+// runs on its own goroutine and completion is detected by whether the
+// deferred marker ran to the end.
+func guardFailed(stats ScanStats) bool {
+	var fake testing.T
+	done := make(chan bool, 1)
+	go func() {
+		completed := false
+		defer func() { done <- !completed }()
+		assertScannedSomething(&fake, "probe", stats)
+		completed = true
+	}()
+	return <-done
 }

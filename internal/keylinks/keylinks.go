@@ -398,12 +398,38 @@ func SuggestCharClassForm(raw string) string {
 // being returned, so two runs over the same inputs produce byte-
 // identical output (D-07).
 func ScanPlans(repoRoot string, roots []string, mode Mode) ([]Offender, error) {
+	offenders, _, err := ScanPlansWithStats(repoRoot, roots, mode)
+	return offenders, err
+}
+
+// ScanStats reports what a scan actually EXAMINED, as opposed to what it
+// found. A gate that reports zero offenders because it inspected zero
+// files is indistinguishable, from its return value alone, from a gate
+// over a clean repo — and that silent no-op is the exact failure class
+// this package exists to detect. Callers that gate CI on a clean result
+// MUST assert these counts are nonzero; `ScanPlans` alone cannot give
+// them that guarantee, which is why it is a thin wrapper over this.
+type ScanStats struct {
+	// PlanFiles counts *-PLAN.md files actually parsed, after every
+	// mode-specific skip rule has been applied.
+	PlanFiles int
+	// KeyLinks counts the key_links entries read out of those files.
+	// PlanFiles can be nonzero while this is zero (plans exist, none
+	// declare a key link), so a gate wanting to prove it checked
+	// something must look at this one, not just PlanFiles.
+	KeyLinks int
+}
+
+// ScanPlansWithStats is ScanPlans plus the coverage counts needed to
+// tell "found nothing wrong" apart from "looked at nothing".
+func ScanPlansWithStats(repoRoot string, roots []string, mode Mode) ([]Offender, ScanStats, error) {
 	var offenders []Offender
+	var stats ScanStats
 
 	for _, root := range roots {
 		full := filepath.Join(repoRoot, root)
 		if _, err := os.Stat(full); err != nil {
-			return nil, fmt.Errorf("keylinks: scan %s: %w", full, err)
+			return nil, ScanStats{}, fmt.Errorf("keylinks: scan %s: %w", full, err)
 		}
 
 		walkErr := filepath.Walk(full, func(p string, info os.FileInfo, walkErr error) error {
@@ -424,6 +450,8 @@ func ScanPlans(repoRoot string, roots []string, mode Mode) ([]Offender, error) {
 			if perr != nil {
 				return fmt.Errorf("keylinks: scan %s: %w", p, perr)
 			}
+			stats.PlanFiles++
+			stats.KeyLinks += len(links)
 
 			for _, link := range links {
 				re, off := ValidatePattern(link.Pattern)
@@ -442,7 +470,7 @@ func ScanPlans(repoRoot string, roots []string, mode Mode) ([]Offender, error) {
 			return nil
 		})
 		if walkErr != nil {
-			return nil, fmt.Errorf("keylinks: scan %s: %w", full, walkErr)
+			return nil, ScanStats{}, fmt.Errorf("keylinks: scan %s: %w", full, walkErr)
 		}
 	}
 
@@ -456,7 +484,7 @@ func ScanPlans(repoRoot string, roots []string, mode Mode) ([]Offender, error) {
 		return offenders[i].Shape < offenders[j].Shape
 	})
 
-	return offenders, nil
+	return offenders, stats, nil
 }
 
 // hasSiblingSummary reports whether planPath (a <dir>/<phase>-<NN>-PLAN.md
