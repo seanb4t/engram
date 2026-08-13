@@ -228,7 +228,7 @@ records.
 its own schema version — is reachable and legible on every lane, and payload evolution has a real
 mechanism instead of another one-shot operator command.
 
-- [ ] **Phase 1: Gate & CI Integrity** - Key-link `pattern:` matching and the Qdrant testcontainer's mid-run stability fixed so this milestone's own gates can be trusted (#479/#497)
+- [x] **Phase 1: Gate & CI Integrity** - Key-link `pattern:` matching and the Qdrant testcontainer's mid-run stability fixed so this milestone's own gates can be trusted (#479/#497) (completed 2026-08-13)
 - [ ] **Phase 2: Record Schema Versioning Foundation** - `schema_version` discriminator: absent-safe, wire-visible, forward-compatible, and structurally incapable of narrowing recall
 - [ ] **Phase 3: Migration Foundation (Registry, Invariants & Sweep)** - `internal/migrate`'s ordered step registry enforces additive-only + mandatory reversibility declarations; `Store.Migrate` sweeps to convergence without a collection lock
 - [ ] **Phase 4: Migration CLI & First Customer** - `engram migrate` (status/preview/apply/revert) via `registerDestructive`, with `backfill-short-ids` folded in as the registered v0→v1 step
@@ -248,7 +248,7 @@ mechanism instead of another one-shot operator command.
   2. Every v0.13.x Phase 1–2 key-link is re-resolved against the tool: each is either genuinely pinned (a test exists that would fail on regression) or explicitly recorded as unpinned — a past "key-links passed" claim is never accepted as evidence on its own.
   3. A full `go test ./...` run no longer fails from `internal/store`'s Qdrant testcontainer dying mid-run; when the container does die, its exit reason is captured in the failure output so a recurrence is diagnosable from evidence.
 
-**Plans:** 6/6 plans executed in 3 waves
+**Plans:** 6/6 plans complete
 
 Plans:
 **Wave 1**
@@ -426,7 +426,7 @@ Research flag: yes — the operator-UI soft-hidden-state conventions (archived/s
 | 24. Idempotent Capture | v0.11.x | 2/2 | Complete | 2026-07-18 |
 | 25. Supersession with History | v0.11.x | 2/2 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
-| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | In Progress|  |
+| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | Complete    | 2026-08-13 |
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-05 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete    | 2026-08-11 |
