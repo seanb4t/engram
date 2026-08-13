@@ -279,12 +279,12 @@ Plans:
   4. A negative "recall gate blast radius" test proves `schema_version` never appears in any Qdrant recall or authz filter condition built by `Search`/`SearchReranked`/`SearchDiscovery`/`List`/`ListScheduled` — the adjacent `superseded_by`/`archived_at` `IsEmpty` idiom has inverted cardinality here and copying it would silently exclude every pre-migration record from recall.
   5. A binary reads a record whose `schema_version` is NEWER than its own constant without rejecting, hiding, or downgrading it — tested in both the older-than and newer-than direction, which is what makes rolling the binary back across a schema change safe.
 
-**Plans:** 5 plans
+**Plans:** 1/5 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — Tracer: `internal/migrate` leaf package, the `SchemaVersion` field, the monotonic `payload()` stamp, absent-safe decode, payload index and operator upgrade note (wave 1)
+- [x] 02-01-PLAN.md — Tracer: `internal/migrate` leaf package, the `SchemaVersion` field, the monotonic `payload()` stamp, absent-safe decode, payload index and operator upgrade note (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -442,7 +442,7 @@ Research flag: yes — the operator-UI soft-hidden-state conventions (archived/s
 | 25. Supersession with History | v0.11.x | 2/2 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | Complete    | 2026-08-13 |
-| 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-05 |
+| 2. Headless CLI Client | v0.12.x | 4/4 | In Progress|  |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete    | 2026-08-11 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete | 2026-08-01 |
