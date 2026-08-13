@@ -27,10 +27,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/qdrant/go-client/qdrant"
 	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
+
+	"github.com/seanb4t/engram/internal/store"
 )
 
 // engramBin is the binary under test, built once by TestMain. Always non-empty
@@ -51,6 +55,40 @@ var testQdrantAddr string
 // so "the CI test job uses one shared Qdrant" is a checkable claim rather than
 // an inference from logs (CONTEXT.md D-20).
 var testQdrantContainerBooted bool
+
+// testCollectionPrefix namespaces this package's integration-test Qdrant
+// collection names so a single shared Qdrant instance (CI's
+// ENGRAM_QDRANT_TEST_ADDR path) can host every Qdrant-backed package's test
+// suite concurrently without cross-package name collisions (CONTEXT.md D-16).
+// This package already generated collision-safe per-port names before this
+// constant existed (startServer's "e2e_" + port); the constant makes that
+// namespace the single source of truth rather than a comment about a literal
+// elsewhere in the line.
+const testCollectionPrefix = "e2e_"
+
+// testCollection returns name namespaced into this package's collection space
+// on the shared test Qdrant instance.
+func testCollection(name string) string {
+	return testCollectionPrefix + name
+}
+
+// newTestStore is the prefix-enforcing construction seam for every test Store
+// built against a real Qdrant instance in this package. It asserts name
+// carries this package's testCollectionPrefix before constructing the store,
+// so a collection name that skips testCollection() fails the test naming the
+// offending value — a runtime assertion a source-level check could be routed
+// around, but a t.Fatalf inside the one function every test store is built by
+// cannot (CONTEXT.md D-16, plan 01-05). spine_review_test.go's
+// newSpineReviewStore is this package's only direct store.New call site;
+// startServer's ENGRAM_QDRANT_COLLECTION path constructs its store inside the
+// built binary's own subprocess, outside this seam's reach.
+func newTestStore(t testing.TB, c *qdrant.Client, name string) *store.Store {
+	t.Helper()
+	if !strings.HasPrefix(name, testCollectionPrefix) {
+		t.Fatalf("collection name %q does not carry this package's prefix %q: route it through testCollection()", name, testCollectionPrefix)
+	}
+	return store.New(c, name)
+}
 
 // requireQdrant mirrors internal/server's helper: ENGRAM_REQUIRE_QDRANT makes a
 // missing Qdrant fatal rather than a skip, so CI cannot go green with this tier
@@ -284,7 +322,7 @@ func startServer(t *testing.T, extraEnv map[string]string) *serverProc {
 
 	env := map[string]string{
 		"ENGRAM_QDRANT_ADDR":       testQdrantAddr,
-		"ENGRAM_QDRANT_COLLECTION": "e2e_" + strconv.FormatInt(int64(port), 10),
+		"ENGRAM_QDRANT_COLLECTION": testCollection(strconv.FormatInt(int64(port), 10)),
 		"ENGRAM_EMBED_DIM":         "1024",
 		"ENGRAM_LISTEN_ADDR":       addr,
 		"ENGRAM_OPENAI_BASE_URL":   embed.URL,
