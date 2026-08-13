@@ -4,7 +4,9 @@
 package keylinks
 
 import (
+	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -231,6 +233,91 @@ func TestFixturePairSubsetAndSatisfiability(t *testing.T) {
 		off := checkFixtureLink(t, *target, repoRoot)
 		if off == nil || off.Shape != ShapeUnsatisfiable {
 			t.Fatalf("expected ShapeUnsatisfiable offender, got %+v", off)
+		}
+	})
+}
+
+// TestScanPlansDeterministic proves D-07 (two runs over the same inputs
+// return byte-identical offender output), the nonexistent-root error
+// contract, and D-04's un-executed-plan skip rule under
+// ModeSatisfiability — the mechanism proof for the skip rule, not merely
+// a claim: a fixture plan contributes zero offenders before its sibling
+// SUMMARY.md exists, and its unsatisfiable entry once it does.
+func TestScanPlansDeterministic(t *testing.T) {
+	t.Run("determinism", func(t *testing.T) {
+		repoRoot := fixtureRepoRoot(t)
+		for _, mode := range []Mode{ModeEscapingOnly, ModeSatisfiability} {
+			first, err := ScanPlans(repoRoot, []string{"internal/keylinks/testdata"}, mode)
+			if err != nil {
+				t.Fatalf("ScanPlans mode=%v run1: %v", mode, err)
+			}
+			second, err := ScanPlans(repoRoot, []string{"internal/keylinks/testdata"}, mode)
+			if err != nil {
+				t.Fatalf("ScanPlans mode=%v run2: %v", mode, err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Errorf("mode=%v: not deterministic:\nfirst:  %v\nsecond: %v", mode, first, second)
+			}
+		}
+	})
+
+	t.Run("nonexistent-root-errors", func(t *testing.T) {
+		_, err := ScanPlans(".", []string{"testdata/does-not-exist-dir"}, ModeEscapingOnly)
+		if err == nil {
+			t.Fatal("ScanPlans with a nonexistent root: expected a non-nil error, got nil")
+		}
+	})
+
+	t.Run("un-executed-plan-skipped-under-satisfiability", func(t *testing.T) {
+		dir := t.TempDir()
+		targetDir := filepath.Join(dir, "phases", "00-fixture")
+		if err := os.MkdirAll(targetDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+
+		targetFile := filepath.Join(targetDir, "target.txt")
+		if err := os.WriteFile(targetFile, []byte("no matching symbol in this file"), 0o600); err != nil {
+			t.Fatalf("write target: %v", err)
+		}
+
+		planContent := "---\n" +
+			"must_haves:\n" +
+			"  key_links:\n" +
+			"    - from: \"phases/00-fixture/target.txt\"\n" +
+			"      to: \"phases/00-fixture/target.txt\"\n" +
+			"      via: \"unsatisfiable — proves the SUMMARY-presence skip rule\"\n" +
+			"      pattern: \"SCANPLANS_SUMMARY_GATE_SYMBOL\"\n" +
+			"---\n\n" +
+			"fixture plan for TestScanPlansDeterministic.\n"
+		planPath := filepath.Join(targetDir, "00-01-PLAN.md")
+		if err := os.WriteFile(planPath, []byte(planContent), 0o600); err != nil {
+			t.Fatalf("write plan: %v", err)
+		}
+
+		roots := []string{"phases"}
+
+		before, err := ScanPlans(dir, roots, ModeSatisfiability)
+		if err != nil {
+			t.Fatalf("ScanPlans (no sibling SUMMARY): %v", err)
+		}
+		if len(before) != 0 {
+			t.Errorf("un-executed plan (no sibling SUMMARY): expected zero offenders, got %d: %v", len(before), before)
+		}
+
+		summaryPath := filepath.Join(targetDir, "00-01-SUMMARY.md")
+		if err := os.WriteFile(summaryPath, []byte("# Summary\n"), 0o600); err != nil {
+			t.Fatalf("write summary: %v", err)
+		}
+
+		after, err := ScanPlans(dir, roots, ModeSatisfiability)
+		if err != nil {
+			t.Fatalf("ScanPlans (with sibling SUMMARY): %v", err)
+		}
+		if len(after) != 1 {
+			t.Fatalf("executed plan (sibling SUMMARY present): expected exactly one offender, got %d: %v", len(after), after)
+		}
+		if after[0].Shape != ShapeUnsatisfiable {
+			t.Errorf("expected ShapeUnsatisfiable, got %s", after[0].Shape)
 		}
 	})
 }

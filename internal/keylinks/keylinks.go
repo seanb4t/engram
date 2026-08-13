@@ -29,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -383,6 +384,88 @@ func SuggestCharClassForm(raw string) string {
 		return ""
 	}
 	return b.String()
+}
+
+// ScanPlans is the single entry point both this phase's recurring gate
+// tests and the one-time v0.13.x reassessment sweep call, so the two
+// never drift into two matchers that disagree. It walks each root under
+// repoRoot, selecting files whose base name ends in "-PLAN.md", and
+// validates every key link found. Under ModeSatisfiability it also skips
+// any plan that has not been executed yet (D-04): a plan file's sibling
+// SUMMARY.md is what marks it executed, and an un-executed plan's
+// key-links describe files it is about to create, not files that exist
+// at HEAD. Offenders are sorted by file, then line, then shape before
+// being returned, so two runs over the same inputs produce byte-
+// identical output (D-07).
+func ScanPlans(repoRoot string, roots []string, mode Mode) ([]Offender, error) {
+	var offenders []Offender
+
+	for _, root := range roots {
+		full := filepath.Join(repoRoot, root)
+		if _, err := os.Stat(full); err != nil {
+			return nil, fmt.Errorf("keylinks: scan %s: %w", full, err)
+		}
+
+		walkErr := filepath.Walk(full, func(p string, info os.FileInfo, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if info.IsDir() {
+				return nil
+			}
+			if !strings.HasSuffix(info.Name(), "-PLAN.md") {
+				return nil
+			}
+			if mode == ModeSatisfiability && !hasSiblingSummary(p) {
+				return nil
+			}
+
+			links, perr := ParsePlanKeyLinks(p)
+			if perr != nil {
+				return fmt.Errorf("keylinks: scan %s: %w", p, perr)
+			}
+
+			for _, link := range links {
+				re, off := ValidatePattern(link.Pattern)
+				if off != nil {
+					off.File = link.File
+					off.Line = link.Line
+					offenders = append(offenders, *off)
+					continue
+				}
+				if mode == ModeSatisfiability {
+					if sOff := CheckSatisfiable(link, re, repoRoot); sOff != nil {
+						offenders = append(offenders, *sOff)
+					}
+				}
+			}
+			return nil
+		})
+		if walkErr != nil {
+			return nil, fmt.Errorf("keylinks: scan %s: %w", full, walkErr)
+		}
+	}
+
+	sort.Slice(offenders, func(i, j int) bool {
+		if offenders[i].File != offenders[j].File {
+			return offenders[i].File < offenders[j].File
+		}
+		if offenders[i].Line != offenders[j].Line {
+			return offenders[i].Line < offenders[j].Line
+		}
+		return offenders[i].Shape < offenders[j].Shape
+	})
+
+	return offenders, nil
+}
+
+// hasSiblingSummary reports whether planPath (a <dir>/<phase>-<NN>-PLAN.md
+// file) has a sibling <dir>/<phase>-<NN>-SUMMARY.md — the executed-plan
+// marker ModeSatisfiability's skip rule depends on.
+func hasSiblingSummary(planPath string) bool {
+	summaryPath := strings.TrimSuffix(planPath, "-PLAN.md") + "-SUMMARY.md"
+	_, err := os.Stat(summaryPath)
+	return err == nil
 }
 
 // OffenderLine renders one offender as a single deterministic line
