@@ -1,7 +1,7 @@
 ---
 phase: 2
 reviewers: [codex, opencode]
-reviewed_at: 2026-08-13T21:22:18Z
+reviewed_at: 2026-08-13T21:56:40Z
 plans_reviewed: [02-01-PLAN.md, 02-02-PLAN.md, 02-03-PLAN.md, 02-04-PLAN.md, 02-05-PLAN.md]
 reviewer_models:
   codex: default
@@ -852,3 +852,281 @@ revised plans:
 - 02-04's stamp/shape disagreement after rollback rewrite is tested and labelled; it is
   operational risk pending the Phase 3 sweep, not a plan defect.
 - Test-file exclusion from the production-site inventory is correct as specified.
+
+---
+
+# Cycle 3 — Review of Second Revision
+
+Plans under review: `18f6237b` (cycle-2 revision). Plan history: `6e6fddd8` (original)
+→ `609e0a34` (cycle-1 revision) → `18f6237b`. Only 02-01, 02-02 and 02-03 changed in
+cycle 2; 02-04 and 02-05 are untouched since `6e6fddd8` and were judged fully resolved
+in cycle 2.
+
+Reviewers were given cycle 2's four blocking findings (B1–B4) and the claimed fixes, and
+were asked to judge **resolution** rather than re-derive the review — with three specific
+checks: (i) whether B3's narrowed claims are honest in both directions (neither
+overclaiming nor narrowed into vacuity), (ii) whether the four-entry / 18-entry / 10-entry
+tables match what the specified scanners would actually derive from current source, and
+(iii) whether this revision introduced any NEW instance of that same
+plan-text-disagrees-with-its-own-derivation defect class.
+
+**Reviewers:** codex (default model), opencode (`openrouter/moonshotai/kimi-k3`).
+Both had repo access and both independently re-derived the tables from source.
+
+## Codex Review — Cycle 3
+
+# Cross-AI Plan Review — Phase 2, Convergence Cycle 3
+
+## Summary
+
+All four cycle-2 blockers are resolved. The revised tables match the current non-test `internal/store` source under the scanners’ stated selector-name rules: four `Upsert` functions, ten partial-write functions, and eighteen read-emission functions partitioned 6/10/2. The narrowed AST claims are honest and still useful: they enforce classification and codec routing for the present direct-selector topology, while runtime gRPC interception remains the authoritative recall-filter proof. I found no new blocking defect. Two low-severity editorial/execution-order issues should be cleaned up, but neither warrants delaying execution.
+
+## Resolution Table
+
+| Finding | Verdict | Justification |
+|---|---|---|
+| B1 — `Upsert` scanner/table mismatch | **RESOLVED** | The four-entry table now exactly matches `Store.Upsert`, `Store.Update`, `Store.Supersede`, and `Store.Reindex`, including receiver metadata and three dispositions. |
+| B2 — missing `ScrollAndOffset` | **RESOLVED** | The vocabulary now includes it, and the resulting 18-function partition matches current source. |
+| B3 — AST guarantee overclaimed | **RESOLVED** | The claim is explicitly limited to direct selector calls in the package directory, names the blind spots, and retains meaningful enforcement through set equality, receiver classification, codec checks, and runtime capture. |
+| B4 — classification presented as a universal backstop | **RESOLVED** | The plan now clearly says classification cannot backstop an omitted method vocabulary and treats that residual risk as open. |
+
+## Detailed Verdicts
+
+### B1 — RESOLVED
+
+The scanner’s own rule—any selector call named `Upsert` in non-test `internal/store` source—derives exactly four enclosing functions:
+
+- `Store.Upsert`: direct `s.client.Upsert`, with payload produced by `qdrant.NewValueMap(payload(m))` at [internal/store/store.go:744](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:744).
+- `Store.Update`: delegation through `s.Upsert` at [internal/store/store.go:1872](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1872).
+- `Store.Supersede`: delegation through `s.Upsert` at [internal/store/store.go:2279](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:2279).
+- `Store.Reindex`: direct raw-map `s.client.Upsert` at [internal/store/store.go:3213](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:3213).
+
+That precisely matches the revised four-entry classification required by [02-02-PLAN.md:636](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/02-record-schema-versioning-foundation/02-02-PLAN.md:636).
+
+The receiver metadata is meaningful, not decorative: `Update` or `Supersede` changing from receiver `s` to `s.client` would force reclassification and bring the new direct write under the codec conformance predicate.
+
+The partial-write table also matches the scanner’s specified method set. It derives ten enclosing functions:
+
+- `Store.UpdatePayload`
+- `Store.defaultDeletePayloadKeys`
+- `Store.defaultSetPayloadKeys`
+- `Store.SetVisibility`
+- `Store.IncrementAccess`
+- `Store.BackfillShortIDs`
+- `Store.MigrateSetOwner`
+- `Store.RemapOwner`
+- `Store.SetSummary`
+- `Store.Archive`
+
+The two cross-file entries are real transmissions at [internal/store/summarize.go:84](/Volumes/Code/github.com/seanb4t/engram/internal/store/summarize.go:84) and [internal/store/spine.go:750](/Volumes/Code/github.com/seanb4t/engram/internal/store/spine.go:750). This agrees with [02-02-PLAN.md:639](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/02-record-schema-versioning-foundation/02-02-PLAN.md:639).
+
+The proposed cross-package-holder allowlist also matches current non-test source: only `internal/store/store.go` and `internal/server/tools.go` name or construct `qdrant.Client`; the latter constructs it and immediately passes it to `store.New` at [internal/server/tools.go:122](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:122).
+
+### B2 — RESOLVED
+
+There are exactly four non-test `ScrollAndOffset` selector calls:
+
+- `Store.scrollAllPoints` at [internal/store/spine.go:49](/Volumes/Code/github.com/seanb4t/engram/internal/store/spine.go:49).
+- `Store.SummarizeMissing` at [internal/store/summarize.go:145](/Volumes/Code/github.com/seanb4t/engram/internal/store/summarize.go:145).
+- `Store.BackfillShortIDs` at [internal/store/store.go:2696](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:2696).
+- `Store.Reindex` at [internal/store/store.go:3118](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:3118).
+
+The first three carry filters; Reindex does not. The revised vocabulary explicitly includes `ScrollAndOffset` at [02-03-PLAN.md:541](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/02-record-schema-versioning-foundation/02-03-PLAN.md:541).
+
+Using the complete stated vocabulary—`Query`, `QueryBatch`, `Scroll`, `ScrollAndOffset`, `Count`—the source derives exactly eighteen enclosing functions:
+
+- Recall, 6: `Search`, `SearchDiscovery`, `List`, `listByCursor`, `ListScheduled`, `ListScopes`.
+- Operator/migration, 10: `CountOwnerless`, `BackfillShortIDs`, `CountAnonymousBucket`, `MigrateSetOwner`, `RemapOwner`, `Reindex`, `scrollAllPoints`, `CountExpired`, `NearDuplicates`, `SummarizeMissing`.
+- Other infrastructure, 2: `ResolvePointID`, `MintShortID`.
+
+Representative emission evidence includes `List`’s Count and Scroll at [internal/store/store.go:1276](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1276) and [internal/store/store.go:1304](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1304), `ListScopes` at [internal/store/store.go:1553](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1553), `ResolvePointID` at [internal/store/store.go:1629](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1629), and `NearDuplicates` at [internal/store/spine.go:589](/Volumes/Code/github.com/seanb4t/engram/internal/store/spine.go:589).
+
+This matches the 6/10/2 partition and total of 18 required at [02-03-PLAN.md:546](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/02-record-schema-versioning-foundation/02-03-PLAN.md:546).
+
+### B3 — RESOLVED
+
+The narrowed claim is honest and still has teeth.
+
+The plan now limits the structural guarantee to direct selector calls in the `internal/store` package directory and explicitly disclaims type identity, method values, method expressions, cross-package wrappers, and unenumerated verbs at [02-02-PLAN.md:31](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/02-record-schema-versioning-foundation/02-02-PLAN.md:31).
+
+That limitation is not vacuous. The gate still enforces:
+
+- Every syntactically visible `.Upsert(...)` call must be classified.
+- A new helper-built request still creates a visible transmission site.
+- Receiver changes invalidate an existing disposition.
+- The direct-conforming site must still construct its payload through `payload()`.
+- Stale classification entries fail through reverse set inclusion.
+- Common cross-package client ownership is guarded separately.
+- Current recall behavior is tested independently through captured live gRPC requests.
+
+The runtime filter test is appropriately named as authoritative, while the AST gate is a future-change tripwire. That is the right division of responsibility.
+
+One wording nuance remains: the phrase “every direct selector-call transmission” includes `s.Upsert` delegations in the derived set even though those are not direct Qdrant transmissions. The plan’s detailed disposition table makes the distinction unambiguous, so this is not a substantive overclaim.
+
+### B4 — RESOLVED
+
+The plan now distinguishes three limits and explicitly says the classification is **not** a backstop for an omitted method name at [02-03-PLAN.md:39](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/02-record-schema-versioning-foundation/02-03-PLAN.md:39) and [02-03-PLAN.md:734](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/02-record-schema-versioning-foundation/02-03-PLAN.md:734).
+
+That is accurate: if the scanner vocabulary omits an RPC method, no subject is derived and none of the three classifications can expose the omission. The plan now treats the vocabulary as maintained, includes the previously missed `ScrollAndOffset`, and retains a prove-RED case specifically for it.
+
+## New Concerns
+
+### LOW — Linkage prove-RED is assigned before its target table exists
+
+In 02-03 Task 2, the plan says to remove `Store.ListScopes` from “Task 3’s invocation table” to prove the linkage assertion RED at [02-03-PLAN.md:510](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/02-record-schema-versioning-foundation/02-03-PLAN.md:510). But Task 3 creates that table afterward.
+
+This is an execution-order ambiguity, not a design flaw. The executor can perform that RED cycle after Task 3 creates the table, but the plan should say so explicitly.
+
+### LOW — Summary instruction says three cycles although the plan requires five
+
+The output instruction says the summary should cover “all three cycles” at [02-03-PLAN.md:759](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/02-record-schema-versioning-foundation/02-03-PLAN.md:759), while the plan now requires five prove-RED cycles. Other sections correctly say five. This is editorial but should be corrected to avoid an incomplete summary artifact.
+
+## Suggestions
+
+Minimal edits only:
+
+1. In `02-03-PLAN.md`, move prove-RED direction C to Task 3 or state: “Execute this cycle after Task 3 creates the invocation table.”
+2. Change the final output instruction from “covering all three cycles” to “covering all five cycles.”
+3. Optionally replace “direct selector-call transmission” with “selector-call site” where the statement includes `s.Upsert` delegations. Keep “direct transmission” for `s.client.*` calls.
+
+## Risk Assessment
+
+**Overall risk: LOW.**
+
+The characteristic failure mode—plan tables disagreeing with their own scanner predicate—has been corrected and independently checked against current source for all revised enumerations. The residual AST limitations are now accurately documented and balanced by live runtime interception for the safety-critical recall property.
+
+**These plans are ready to execute.** The two new concerns are non-blocking cleanup items and do not justify delaying Phase 2.
+
+---
+
+## OpenCode Review — Cycle 3
+
+I'll verify the claimed fixes against source directly.
+Cross-checks match so far. Verifying enclosing functions of the partial-write sites and a few 02-03 claims:
+All checks complete. Every scanner-derivable table in the plans was verified line-by-line against source using the scanners' own stated matching rules.
+
+# Cross-AI Plan Review — Phase 2, Convergence Cycle 3 (FINAL)
+
+## Summary
+
+All four cycle-2 blocking findings are resolved, and — critically for this plan set's characteristic failure mode — I re-derived every enumeration the revision asserts, using the scanners' own stated matching rules against current source. The four-entry `Upsert` table, the ten-entry partial-write table, the 18-entry emission table split 6/10/2, and the `List` dual-capture expectation all match source exactly. The narrowed claims in 02-02/02-03 are honest without being vacuous: the gate still catches any new direct selector-call transmission regardless of how its payload was built, still conformance-checks the one legitimate site, still detects a delegation silently becoming a direct write via receiver-text assertion, and the runtime gRPC interception in 02-03 is the authoritative recall-side proof with the AST derivation correctly demoted to "catch tomorrow's write path." The plans are ready to execute.
+
+## Resolution Table
+
+| Finding | Verdict | Justification |
+|---|---|---|
+| **B1** — 02-02 scanner spec vs. acceptance criteria | **RESOLVED** | `rg -n '\.Upsert\(' internal/store/*.go --glob '!*_test.go'` (the scanner's own rule, receiver ignored) returns exactly 4 non-test sites: `store.go:744` (`s.client`, enclosing `Store.Upsert`), `store.go:1872` (`s`, `return s.Upsert(ctx, cur, vec)` — a genuine delegation), `store.go:2279` (`s`, `Store.Supersede`), `store.go:3213` (`s.client`, `Store.Reindex`). The plan's four-entry, three-disposition table matches name-for-name, receiver-for-receiver. The cross-check pattern was corrected to the receiver-less form. `receiverText` is specified as metadata-only with a required assertion per entry, and a dedicated fixture subtest ("delegation self-call is seen and distinguished by receiver path") pins the regression by name. |
+| **B2** — `ScrollAndOffset` missing from 02-03 vocabulary | **RESOLVED** | Verified: exactly 4 non-test `ScrollAndOffset` sites exist (`summarize.go:145`, `store.go:2696`, `store.go:3118`, `spine.go:49`), three carrying filters — matching the plan's claim. The widened 5-method scan derives 20 call sites across exactly 18 enclosing functions, and the plan's 6 recall / 10 operator / 2 other split matches my derivation entry-for-entry (including `BackfillShortIDs` contributing two sites — `Count` at :2687, `ScrollAndOffset` at :2696 — under one enclosing function, and `listByCursor` as a reachable non-seed member). The `ScrollAndOffset`→same-`/qdrant.Points/Scroll`-gRPC-method note is consistent with the client API. |
+| **B3** — overclaimed AST-gate strength | **RESOLVED** | The narrowed claim ("every direct selector-call transmission in the `internal/store` package directory; no operation identity") is carried consistently into `must_haves.truths`, acceptance criteria, threat register (T-02-05/T-02-05d), and `<success_criteria>` — I found no residual exhaustive-sounding claim in the normative sections. It is not vacuous: five escapes are enumerated, two are converted to tested properties (`limits_pkg.go.txt` asserted-empty; `TestQdrantClientIsHeldOnlyByStorePackage` verified plausible — `qdrant.Client` is in fact held at `store.go:351` and constructed at `internal/server/tools.go:122`, per the plan's allowlist), and the runtime interceptor carries the authoritative proof. |
+| **B4** — "classification backstop" overstatement | **RESOLVED** | The three limits are named separately; Limit 2 explicitly states the classification is NOT a backstop for an unenumerated method ("produces no subject at all… the suite stays green"), and the plan correctly uses the `ScrollAndOffset` miss itself as evidence the limit is live. The name-collision bias analysis (over-approximation on scan and graph, silent under-approximation only for function values/interfaces) is technically accurate for a `go/ast`-only analysis. |
+
+## Source verification of this revision's new/edited enumerations
+
+- **Partial-write table (02-02, 10 entries):** all 10 non-test `SetPayload`/`DeletePayload` sites confirmed with enclosing functions read directly: `UpdatePayload` (:1970), `defaultDeletePayloadKeys` (:1996), `defaultSetPayloadKeys` (:2011), `SetVisibility` (:2059), `IncrementAccess` (:2442), `BackfillShortIDs` (:2713), `MigrateSetOwner` (:2799), `RemapOwner` (:2923), `Archive` (`spine.go:750`), `SetSummary` (`summarize.go:84`). No `OverwritePayload` sites exist, so the method set's third member is inert but harmless. Table matches.
+- **`List` capture expectations (02-03 Task 3):** confirmed from `store.go:1276-1304` — `Count` precedes the mode branch, so both offset and cursor mode emit `Count` + one `Scroll`; cursor-mode `Scroll` is in `listByCursor` (:1362). Table's per-row multisets are correct.
+- **`updateAfterReadHook` (02-01 Task 3):** exists at `store.go:1780`, fires inside the lock after the in-lock `s.Get` re-read (:1841), pre-existing test users set/restore it via `t.Cleanup` (`store_test.go:7052-7059`). The in-lock refresh at :1828 currently copies exactly `Supersedes`/`SupersededBy`/`ArchivedAt` — the plan's premise for the one-line `fresh.SchemaVersion` addition is accurate.
+- **`SearchReranked`:** delegates to `s.Search` at :1085 and rejects `k == 0`, as the plan states.
+
+## New Concerns
+
+- **LOW — 02-03 key-link `pattern:` omits `QueryBatch`.** The declared pattern is `'client\.(Query|Scroll|ScrollAndOffset|Count)'` while the vocabulary the plan specifies is `{Query, QueryBatch, Scroll, ScrollAndOffset, Count}`. The pattern still matches real source text (so the Phase 1 key-link gate won't false-red), but it is inconsistent with the plan's own vocabulary and is exactly the shape of drift this milestone keeps tripping on. One-character-class fix.
+- **LOW — 02-03 Task 3 `List` rows could hit the `fetch == 0` short-circuit.** `store.go:1290-1296`: offset mode with `Limit == 0` and an empty filtered set returns before the `Scroll`, yielding 1 capture instead of the declared 2. The plan's "declare exact counts, re-derive at execution" instruction covers this, but the executor must seed at least one matching record (or use a nonzero limit) for the `List` offset rows; the plan does not say so explicitly. Non-blocking — the acceptance criteria force an exact count either way, so a miss is loud, not silent.
+- **LOW — 02-02's `good fixture` subtest count.** Task 1's verify expects `rg -c` to print `7` and notes "Task 2 adds an eighth," but Task 2's verify only asserts 3 anchored top-level names and never re-checks the `TestEveryPointWriteRoutesThroughPayload/` subtest count after adding the real-package subtest. Cosmetic; the real-package subtest is asserted by name in Task 2's own pattern.
+
+## Suggestions
+
+1. In `02-03-PLAN.md` frontmatter, change the key-link pattern to `'client\.(Query|QueryBatch|Scroll|ScrollAndOffset|Count)'` (or `\.(Query|QueryBatch|Scroll|ScrollAndOffset|Count)\(` to match the scan rule).
+2. In `02-03-PLAN.md` Task 3, add one sentence to the `List` rows: "seed the collection with at least one record matching the row's filter (or pass a nonzero `Limit`) so offset mode does not take the `fetch == 0` short-circuit at `store.go:1290`."
+
+## Risk Assessment
+
+**LOW.** Every table, count, and cross-check predicate added or edited in `18f6237b` was re-derived against source and matches; the four blocking findings are genuinely closed rather than reworded; the narrowed gate claims are honest and still carry real enforcement (transmission-boundary derivation, conformance predicate on the conforming site, receiver-text drift detection, cross-package client guard, behavioral per-method proof, and runtime interception as the recall-side authority). The three remaining concerns are one-line edits or executor guidance, none structural.
+
+**These plans are ready to execute.**
+
+---
+
+## Consensus Summary — Cycle 3
+
+Both reviewers independently re-derived every enumeration the revision asserts, using the
+scanners' own stated matching rules against current `internal/store` source, and both reached
+the same verdict: **all four cycle-2 blocking findings are RESOLVED**, overall risk is **LOW**,
+and **the plans are ready to execute**. No HIGH or MEDIUM concern was raised by either
+reviewer. This is the first cycle in which the characteristic failure mode —
+"plan text disagrees with what its own specified derivation would produce" — did **not** fire.
+
+### Resolution verdicts (unanimous)
+
+| Finding | Codex | OpenCode |
+|---|---|---|
+| B1 — 02-02 `Upsert` scanner spec vs. acceptance criteria | RESOLVED | RESOLVED |
+| B2 — `ScrollAndOffset` missing from 02-03 vocabulary | RESOLVED | RESOLVED |
+| B3 — 02-03 success criteria overclaimed the `go/ast` gate | RESOLVED | RESOLVED |
+| B4 — "classification backstop" rationale overstated | RESOLVED | RESOLVED |
+
+### Agreed Strengths
+
+- **The four-entry `Upsert` table matches source under the scanner's own rule.** Both
+  reviewers ran the receiver-less pattern and derived exactly `Store.Upsert`
+  (`store.go:744`, `s.client`), `Store.Update` (`store.go:1872`, `s` — delegation),
+  `Store.Supersede` (`store.go:2279`, `s` — delegation), `Store.Reindex`
+  (`store.go:3213`, `s.client`). Table matches name-for-name and receiver-for-receiver, and
+  the cross-check pattern was corrected to the receiver-less form that would actually have
+  caught the cycle-2 defect.
+- **The 18-entry emission table and its 6/10/2 partition match source** under the widened
+  five-method vocabulary. Both reviewers derived the same 6 recall / 10 operator / 2 other
+  split, including `BackfillShortIDs` contributing two call sites under one enclosing
+  function and `listByCursor` as a reachable non-seed member.
+- **The 10-entry partial-write table matches source**, including the two cross-file entries
+  (`summarize.go:84`, `spine.go:750`).
+- **B3's narrowing is honest in both directions.** The claim is limited to direct
+  selector-call transmission in the `internal/store` package directory with no operation
+  identity, carried consistently into `must_haves.truths`, acceptance criteria, the threat
+  register and `<success_criteria>` — and it is *not* vacuous: the gate still forces every
+  syntactically visible call site to be classified, still conformance-checks the one
+  legitimate direct write, still detects a delegation silently becoming a direct write via
+  the receiver-text assertion, still guards cross-package client ownership, and still fails
+  on stale classification entries via reverse set inclusion. Runtime gRPC interception
+  remains the authoritative recall-side proof, with the AST gate correctly demoted to a
+  future-change tripwire.
+- **B4's three separately-named limits are accurate**, and using the `ScrollAndOffset` miss
+  itself as evidence that limit 2 is live is a genuinely honest framing.
+- `receiverText` is correctly specified as classification metadata only, never as a match
+  filter, and the delegation-vs-direct-write regression is pinned by a named fixture subtest.
+
+### Agreed Concerns
+
+None at HIGH or MEDIUM. Both reviewers explicitly stated the plans are ready to execute and
+that no remaining item justifies delaying Phase 2.
+
+### Divergent Views
+
+The reviewers found *different* LOW-severity editorial items rather than disagreeing — the
+union is four distinct nits, all one-line fixes:
+
+- **(Codex) 02-03 prove-RED direction C is specified inside Task 2 but references Task 3's
+  invocation table**, which Task 3 creates afterward (`02-03-PLAN.md:510`; Task 2 spans lines
+  397–563, Task 3 begins at 564). Verified — real execution-order ambiguity. Fix: state
+  "execute this cycle after Task 3 creates the invocation table."
+- **(Codex) 02-03's `<output>` block says the SUMMARY should cover "all three cycles" while
+  `<success_criteria>` requires five** (`02-03-PLAN.md:759` vs. the five-cycle criterion
+  immediately above it). Verified — editorial, but would produce an incomplete evidence
+  artifact.
+- **(OpenCode) 02-03's key-link `pattern:` omits `QueryBatch`** —
+  `'client\.(Query|Scroll|ScrollAndOffset|Count)'` at `02-03-PLAN.md:63` versus the plan's own
+  five-method vocabulary at `02-03-PLAN.md:404`. Verified. The pattern still matches real
+  source text so the Phase 1 key-link gate will not false-red, but it is precisely the shape
+  of vocabulary drift this milestone keeps tripping on.
+- **(OpenCode) 02-03 Task 3's `List` rows can hit the `fetch == 0` short-circuit**
+  (`store.go:1290-1296`), yielding 1 capture instead of the declared 2 if the executor does
+  not seed a matching record or pass a nonzero `Limit`. The acceptance criteria force an exact
+  count either way, so a miss is loud rather than silent — executor guidance, not a defect.
+
+Codex additionally noted a wording nuance in B3: "every direct selector-call transmission"
+technically includes the `s.Upsert` delegations, which are not direct Qdrant transmissions.
+Both reviewers judged this non-substantive because the disposition table makes the distinction
+unambiguous.
+
+OpenCode also flagged a cosmetic gap: 02-02 Task 1's verify expects an `rg -c` count of `7`
+and notes Task 2 adds an eighth, but Task 2's verify never re-checks the subtest count — the
+real-package subtest is asserted by name instead, so nothing is actually unverified.
