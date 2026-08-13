@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
 	"github.com/seanb4t/engram/internal/authz"
+	"github.com/seanb4t/engram/internal/migrate"
 	"github.com/seanb4t/engram/internal/shortid"
 	"github.com/seanb4t/engram/internal/telemetry"
 	"go.opentelemetry.io/otel"
@@ -311,6 +312,45 @@ type Memory struct {
 	// contract, not a replay), but a reader should not assume this field
 	// tracks the record's current state.
 	IdempotencyFingerprint string `json:"-"`
+	// SchemaVersion is the record's schema-version discriminator
+	// (internal/migrate.Version). Three assertions:
+	//
+	//  1. Server-set only and monotonic — no client-writable tool argument
+	//     sets it. payload() computes it as the greater of the current
+	//     schema constant and the record's own decoded value, so a newer
+	//     record is never downgraded by an older binary (D-05).
+	//  2. A legacy record missing the payload key reads migrate.Version(0):
+	//     no backfill required (D-09).
+	//  3. MUST NOT be read by any recall or authz filter (D-13/D-16) — the
+	//     superseded_by/archived_at IsEmpty idiom has INVERTED cardinality
+	//     here (absence is the majority state at adoption, not a minority
+	//     one), and copying it would exclude every pre-migration record
+	//     from recall.
+	//
+	// The plain json tag (no "-") is a deliberate divergence from the two
+	// adjacent EmbedderIdentity/IdempotencyFingerprint fields above, whose
+	// json:"-" tags are themselves deliberate and load-bearing — do not
+	// "fix" this field to match them. omitempty is specifically excluded
+	// too: it would hide the field exactly on the v0 records this phase
+	// exists to make visible (D-10).
+	//
+	// Accepted limitation (D-06): an older binary that edits a newer
+	// record keeps the newer stamp while rebuilding the payload from its
+	// own older struct, so version-newer-only keys are dropped. This is
+	// acceptable because migration steps are additive-only, what is lost
+	// is re-derivable, and the recovery is re-running the migration sweep.
+	//
+	// Narrowed no-downgrade boundary: the guarantee is that a normal full
+	// write stamps at least migrate.CurrentVersion, and that rewriting a
+	// DECODED newer record through Store.Update preserves its higher
+	// version. Store.Upsert is public replacement-by-id and does NOT read
+	// the stored record before writing, so a caller holding a stale Memory
+	// CAN lower a stored version through it — that is outside the
+	// guarantee, stated here rather than papered over. A stored-version
+	// read or compare-and-swap on Upsert was considered and rejected for
+	// this phase: it would change the semantics of a public method every
+	// existing caller depends on, which is not additive scope.
+	SchemaVersion migrate.Version `json:"schema_version"`
 }
 
 // embedderIdentityKey is the shared Qdrant payload key for
@@ -323,6 +363,11 @@ const embedderIdentityKey = "embedder_identity"
 // Memory.IdempotencyFingerprint, written by payload() and read by
 // fromPayload() (Phase 24, D-06). Payload-only, unindexed (DEC-ef28 unchanged).
 const idempotencyFingerprintKey = "idempotency_fingerprint"
+
+// schemaVersionKey is the shared Qdrant payload key for Memory.SchemaVersion.
+// Three readers: payload() (writes the monotonic stamp), fromPayload() (the
+// absent-safe decode), and ensureIndexes() (the payload index registration).
+const schemaVersionKey = "schema_version"
 
 // EmbedText builds the text sent to the embedder for a record. Tags are folded
 // into the embedded document so curated keywords contribute to vector recall
@@ -584,6 +629,12 @@ func payload(m Memory) map[string]any {
 	p["access_count"] = m.AccessCount
 	p[embedderIdentityKey] = m.EmbedderIdentity
 	p[idempotencyFingerprintKey] = m.IdempotencyFingerprint
+	// int(...) is load-bearing, not cosmetic: qdrant.NewValueMap's type
+	// switch matches exact concrete types, and migrate.Version (a named
+	// type over int) does not match its `case int:` arm — an unconverted
+	// migrate.Version value falls through to NewValue's default case and
+	// panics with "invalid type: migrate.Version".
+	p[schemaVersionKey] = int(max(migrate.CurrentVersion, m.SchemaVersion))
 	if m.LastAccessedAt != nil {
 		p["last_accessed_at"] = m.LastAccessedAt.Format(time.RFC3339)
 	}
@@ -677,6 +728,9 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	}
 	if v, ok := p["access_count"]; ok {
 		m.AccessCount = uint64(v.GetIntegerValue())
+	}
+	if v, ok := p[schemaVersionKey]; ok {
+		m.SchemaVersion = migrate.Version(v.GetIntegerValue())
 	}
 	if v, ok := p[embedderIdentityKey]; ok {
 		m.EmbedderIdentity = v.GetStringValue()
@@ -1820,13 +1874,19 @@ func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *
 	// for the identical reason: a lock-free targeted SetPayload landing
 	// between this re-read and the Upsert below would otherwise be silently
 	// erased, exactly like the CR-04 supersession case this comment describes.
+	// Phase 02-01 extends the same in-lock refresh to SchemaVersion: D-05's
+	// monotonic max must be computed against the LATEST STORED stamp, not
+	// only the caller's FetchForUpdate snapshot — otherwise a version raised
+	// by a concurrent writer between that snapshot and this re-read would be
+	// silently lost when this method's Upsert recomputes the max from a
+	// stale cur.SchemaVersion.
 	unlock, err := s.locker.Lock(ctx, cur.ID)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 	if fresh, gerr := s.Get(ctx, cur.ID); gerr == nil {
-		cur.Supersedes, cur.SupersededBy, cur.ArchivedAt = fresh.Supersedes, fresh.SupersededBy, fresh.ArchivedAt
+		cur.Supersedes, cur.SupersededBy, cur.ArchivedAt, cur.SchemaVersion = fresh.Supersedes, fresh.SupersededBy, fresh.ArchivedAt, fresh.SchemaVersion
 	} else if !errors.Is(gerr, ErrNotFound) {
 		return gerr
 	}
