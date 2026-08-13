@@ -245,7 +245,16 @@ mechanism instead of another one-shot operator command.
   1. A key-link `pattern:` field containing `\\` escaping compiles into an actually-matchable `RegExp`, and a guard test proves a reintroduced corrupted-pattern instance fails the build (fail-first, not silently passing).
   2. Every v0.13.x Phase 1–2 key-link is re-resolved against the tool: each is either genuinely pinned (a test exists that would fail on regression) or explicitly recorded as unpinned — a past "key-links passed" claim is never accepted as evidence on its own.
   3. A full `go test ./...` run no longer fails from `internal/store`'s Qdrant testcontainer dying mid-run; when the container does die, its exit reason is captured in the failure output so a recurrence is diagnosable from evidence.
-**Plans**: TBD
+**Plans:** 6 plans in 3 waves
+
+Plans:
+
+- [ ] 01-01-PLAN.md — Tracer: `internal/keylinks` guard core with the committed good/bad fixture pair (wave 1)
+- [ ] 01-02-PLAN.md — Normalize every escaped `pattern:` repo-wide, then land the two recurring gates with D-04's asymmetric scopes (wave 2)
+- [ ] 01-03-PLAN.md — One-time v0.13.x Phase 1–2 key-link reassessment; verdict table plus the D-01 upstream-reporting decision (wave 3)
+- [ ] 01-04-PLAN.md — Tracer: one shared CI Qdrant service, shared-address proof per package, one-container assertion and on-failure diagnostics (wave 1)
+- [ ] 01-05-PLAN.md — Per-package collection namespaces enforced by a prefix-asserting construction seam across all four Qdrant-backed packages (wave 2)
+- [ ] 01-06-PLAN.md — Source-level conformance gate plus prefix-disjointness proof; real CI run confirms the three mechanism claims (wave 3)
 
 ### Phase 2: Record Schema Versioning Foundation
 **Goal**: Every record carries a `schema_version` discriminator that is wire-visible, absent-safe (no backfill needed), forward-compatible in both directions, and structurally incapable of narrowing recall.
