@@ -4,9 +4,16 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"net"
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/qdrant/go-client/qdrant"
 
 	"github.com/seanb4t/engram/internal/migrate"
 	"github.com/seanb4t/engram/internal/store"
@@ -163,4 +170,167 @@ func TestSchemaVersionOnRecallWire(t *testing.T) {
 			}
 		}
 	})
+}
+
+// dialRawQdrantClient dials a raw *qdrant.Client against the same
+// testQdrantAddr this package's TestMain resolved, for the handful of
+// call sites (like TestSchemaVersionOnGetMemoryWire's legacy-seed subtest)
+// that must bypass store.Store's payload() codec entirely to construct the
+// absent-schema_version-key shape a pre-adoption record actually has.
+// Mirrors testDepsWithStore's own dial exactly (this package has no
+// exported seam onto *store.Store's unexported client field).
+func dialRawQdrantClient(t *testing.T) *qdrant.Client {
+	t.Helper()
+	if testQdrantAddr == "" {
+		failOrSkipNoQdrant(t)
+	}
+	host, portStr, err := net.SplitHostPort(testQdrantAddr)
+	if err != nil {
+		t.Fatalf("invalid Qdrant address %q: %v", testQdrantAddr, err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port <= 0 {
+		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, testQdrantAddr, err)
+	}
+	c, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
+	if err != nil {
+		t.Fatalf("raw qdrant client: %v", err)
+	}
+	return c
+}
+
+// assertNoPayloadOnlyNeighboursOnWire re-asserts, alongside the pre-existing
+// TestGetMemoryNeverSurfacesEmbedderIdentity guard, that this plan's
+// json-tag divergence is scoped to schema_version alone: the two
+// payload-only audit stamps stay off the get_memory wire.
+func assertNoPayloadOnlyNeighboursOnWire(t *testing.T, wire []byte) {
+	t.Helper()
+	if strings.Contains(string(wire), "embedder_identity") || strings.Contains(string(wire), "idempotency_fingerprint") {
+		t.Fatalf("get_memory leaked a payload-only neighbour onto the wire: %s", wire)
+	}
+}
+
+// TestSchemaVersionOnGetMemoryWire mirrors TestGetMemoryNeverSurfacesEmbedderIdentity
+// (internal/server/tools_test.go) in the opposite direction, invoking the
+// exact same call that guard makes to reach the registered get_memory tool
+// handler: d.getMemory(ctx, callerFor(ctx, t), idArgs{ID: id}). deps.getMemory
+// is the function internal/server/tools.go's "get_memory" mcp.AddTool
+// registration wraps and returns store.Memory verbatim as the structured MCP
+// result — this call therefore exercises the actual served wire, not a
+// helper that merely returns a store.Memory.
+func TestSchemaVersionOnGetMemoryWire(t *testing.T) {
+	d, _ := testDepsWithStore(t)
+	ran := 0
+
+	t.Run("get_memory: normally-written record carries the field", func(t *testing.T) {
+		ran++
+		ctx := authedContext(t, "sub-schemaversion-wire")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:schemaversion-wire"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Authenticated("sub-schemaversion-wire")))
+		}()
+
+		id, _, err := d.storeMemory(ctx, c, storeArgs{Content: "wire check", Scope: scope, Source: "user-said", Category: "gotcha"})
+		if err != nil {
+			t.Fatalf("storeMemory: %v", err)
+		}
+		got, err := d.getMemory(ctx, c, idArgs{ID: id})
+		if err != nil {
+			t.Fatalf("getMemory: %v", err)
+		}
+		if got.SchemaVersion != migrate.CurrentVersion {
+			t.Fatalf("sanity: persisted SchemaVersion = %d, want %d (store layer must have stamped it)", got.SchemaVersion, migrate.CurrentVersion)
+		}
+
+		wire, err := json.Marshal(got)
+		if err != nil {
+			t.Fatalf("marshal get_memory structured result: %v", err)
+		}
+		var decoded map[string]json.RawMessage
+		if err := json.Unmarshal(wire, &decoded); err != nil {
+			t.Fatalf("unmarshal get_memory JSON: %v", err)
+		}
+		raw, ok := decoded["schema_version"]
+		if !ok {
+			t.Fatalf("get_memory response is missing the schema_version member: %s", wire)
+		}
+		var gotVersion migrate.Version
+		if err := json.Unmarshal(raw, &gotVersion); err != nil {
+			t.Fatalf("decode schema_version member: %v", err)
+		}
+		if gotVersion != migrate.CurrentVersion {
+			t.Fatalf("get_memory schema_version = %d, want %d", gotVersion, migrate.CurrentVersion)
+		}
+		assertNoPayloadOnlyNeighboursOnWire(t, wire)
+	})
+
+	t.Run("get_memory: legacy record with no stored schema_version key still surfaces zero", func(t *testing.T) {
+		ran++
+		ctx := authedContext(t, "sub-schemaversion-legacy")
+		c := callerFor(ctx, t)
+		scope := "iso-test:project:schemaversion-legacy"
+		owner := "sub-schemaversion-legacy"
+		defer func() {
+			cleanupErr(t, "DeleteAll "+scope, d.st.DeleteAll(context.Background(), scope, store.Authenticated(owner)))
+		}()
+
+		// Seed a legacy-shaped payload directly through the raw Qdrant
+		// client, bypassing store.Store's payload() codec entirely — the
+		// only way to construct the absent-schema_version-key shape a
+		// pre-adoption record actually has (mirrors
+		// internal/store/schemaversion_test.go's TestSchemaVersionEndToEnd
+		// raw-insert idiom). The schema_version key is deliberately absent.
+		rc := dialRawQdrantClient(t)
+		legacyID := "e0000000-0000-0000-0000-000000000001"
+		if _, err := rc.Upsert(context.Background(), &qdrant.UpsertPoints{
+			CollectionName: testCollection("mem_eval_test"),
+			Wait:           qdrant.PtrOf(true),
+			Points: []*qdrant.PointStruct{{
+				Id:      qdrant.NewID(legacyID),
+				Vectors: qdrant.NewVectors(0.1, 0.2, 0.3),
+				Payload: qdrant.NewValueMap(map[string]any{
+					"content": "legacy record", "scope": scope, "category": "gotcha",
+					"owner":      owner,
+					"created_at": timeNow().Format(time.RFC3339),
+				}),
+			}},
+		}); err != nil {
+			t.Fatalf("raw Upsert legacy record: %v", err)
+		}
+
+		got, err := d.getMemory(ctx, c, idArgs{ID: legacyID})
+		if err != nil {
+			t.Fatalf("getMemory (legacy): %v", err)
+		}
+		if got.SchemaVersion != migrate.Version(0) {
+			t.Fatalf("sanity: legacy record decoded SchemaVersion = %d, want 0", got.SchemaVersion)
+		}
+
+		wire, err := json.Marshal(got)
+		if err != nil {
+			t.Fatalf("marshal get_memory structured result (legacy): %v", err)
+		}
+		var decoded map[string]json.RawMessage
+		if err := json.Unmarshal(wire, &decoded); err != nil {
+			t.Fatalf("unmarshal get_memory JSON (legacy): %v", err)
+		}
+		raw, ok := decoded["schema_version"]
+		if !ok {
+			t.Fatalf("get_memory response for a legacy (no schema_version key) record is missing the schema_version member — the operator's most direct diagnostic path failed to report a version: %s", wire)
+		}
+		var gotVersion migrate.Version
+		if err := json.Unmarshal(raw, &gotVersion); err != nil {
+			t.Fatalf("decode schema_version member: %v", err)
+		}
+		if gotVersion != migrate.Version(0) {
+			t.Fatalf("get_memory schema_version (legacy) = %d, want 0", gotVersion)
+		}
+		assertNoPayloadOnlyNeighboursOnWire(t, wire)
+	})
+
+	const wantSubtests = 2
+	if ran != wantSubtests {
+		t.Fatalf("executed %d subtests, want %d — a row silently vanished", ran, wantSubtests)
+	}
 }
