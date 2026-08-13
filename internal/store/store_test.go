@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/qdrant/go-client/qdrant"
 	"github.com/seanb4t/engram/internal/authz"
+	"github.com/seanb4t/engram/internal/migrate"
 	"github.com/seanb4t/engram/internal/shortid"
 	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
 )
@@ -2976,6 +2978,82 @@ func TestPayloadRoundTripsIdempotencyFingerprint(t *testing.T) {
 	gotLegacy := fromPayload("legacy-id", legacy)
 	if gotLegacy.IdempotencyFingerprint != "" {
 		t.Fatalf("legacy payload missing idempotency_fingerprint must decode to \"\", got %q", gotLegacy.IdempotencyFingerprint)
+	}
+}
+
+// TestPayloadRoundTripsSchemaVersion pins D-05/D-09/D-10: the monotonic
+// stamp, the absent-safe decode, the always-present payload key, the
+// idempotent ordering, and the exact struct tag. Every expected value is
+// derived from migrate.CurrentVersion, never a hard-coded literal, so this
+// test keeps its meaning when a later phase raises the constant.
+func TestPayloadRoundTripsSchemaVersion(t *testing.T) {
+	cases := []struct {
+		name string
+		m    Memory
+		want migrate.Version
+	}{
+		// A newer record's version survives an older binary's rewrite
+		// undowngraded — the monotonic rule's whole reason to exist.
+		{"above", Memory{ID: "a0000000-0000-0000-0000-000000000004", Content: "c", Scope: "s", SchemaVersion: migrate.CurrentVersion + 3}, migrate.CurrentVersion + 3},
+		// An exact tie is a no-op: neither incremented nor lowered.
+		{"equal", Memory{ID: "a0000000-0000-0000-0000-000000000005", Content: "c", Scope: "s", SchemaVersion: migrate.CurrentVersion}, migrate.CurrentVersion},
+		// The zero-valued Memory{} — the empty-input edge — still stamps
+		// current, and the key is never omitted.
+		{"zero", Memory{}, migrate.CurrentVersion},
+	}
+	if len(cases) != 3 {
+		t.Fatalf("case count = %d, want 3 (above/equal/zero)", len(cases))
+	}
+	ran := 0
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ran++
+			p1 := payload(tc.m)
+			v, ok := p1["schema_version"]
+			if !ok {
+				t.Fatal("schema_version key missing from payload() output")
+			}
+			if got := migrate.Version(v.(int)); got != tc.want {
+				t.Fatalf("payload()[schema_version] = %d, want %d", got, tc.want)
+			}
+
+			got1 := fromPayload(tc.m.ID, qdrant.NewValueMap(p1))
+			if got1.SchemaVersion != tc.want {
+				t.Fatalf("fromPayload(payload(m)).SchemaVersion = %d, want %d", got1.SchemaVersion, tc.want)
+			}
+
+			// Idempotence: payload -> fromPayload -> payload again yields the
+			// identical schema_version value — repeated rewrites in any
+			// order converge and never oscillate.
+			p2 := payload(got1)
+			v2, ok := p2["schema_version"]
+			if !ok {
+				t.Fatal("schema_version key missing from second payload() output")
+			}
+			if got2 := migrate.Version(v2.(int)); got2 != tc.want {
+				t.Fatalf("second payload()[schema_version] = %d, want %d (idempotence broken)", got2, tc.want)
+			}
+		})
+	}
+	if ran != 3 {
+		t.Fatalf("subtests executed = %d, want 3", ran)
+	}
+
+	// Legacy decode: a payload map with no schema_version key at all
+	// decodes to migrate.Version(0) with no panic.
+	legacy := map[string]*qdrant.Value{"content": qdrant.NewValueString("c")}
+	gotLegacy := fromPayload("legacy-id", legacy)
+	if gotLegacy.SchemaVersion != migrate.Version(0) {
+		t.Fatalf("legacy payload missing schema_version must decode to 0, got %d", gotLegacy.SchemaVersion)
+	}
+
+	// Struct tag: the exact json tag, no omitempty, no hidden rename.
+	field, ok := reflect.TypeOf(Memory{}).FieldByName("SchemaVersion")
+	if !ok {
+		t.Fatal("Memory has no SchemaVersion field")
+	}
+	if tag := field.Tag.Get("json"); tag != "schema_version" {
+		t.Fatalf("Memory.SchemaVersion json tag = %q, want exactly %q", tag, "schema_version")
 	}
 }
 

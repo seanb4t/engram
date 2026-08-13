@@ -310,6 +310,38 @@ and docs surfaces but not Go test files under `internal/`, which is exactly wher
 a numeric exit-code assertion is most likely to live. If you maintain a fork,
 grep your own test suites, not just your scripts.
 
+### 12. Records now carry a `schema_version` stamp
+
+Every record written from this release carries a `schema_version` payload
+key, an integer stamped by the server on every write. A record written
+before this release has no such key — it reads as version `0`, exactly the
+same as a record explicitly stamped at version `0`. **No backfill is
+required and none is offered**: recall behaviour is unchanged for those
+records, and nothing you do today is affected by this field's existence.
+
+`schema_version` is visible on `full=true` recall and on `get_memory`
+responses; it is never used to filter or gate what recall returns.
+
+**The rollback hazard.** If you run a binary *older* than a record's stored
+`schema_version` and that binary edits the record, the record keeps its
+higher version stamp, but the payload was rebuilt from the older binary's
+struct — so any key only a newer version knows about is dropped from that
+rewrite. This is safe: schema evolution in this project is additive-only,
+so anything lost this way is always re-derivable, and the recovery is to
+re-run the migration sweep against the affected record. **That sweep does
+not exist in this release** — there is no `engram migrate` command to run
+yet, so do not look for one. The hazard is only reachable if you
+deliberately roll a binary backward across a schema change; until the
+sweep ships, the mitigation is simply not to do that against records you
+cannot re-derive.
+
+`engram reindex` copies payloads verbatim from source to target and
+therefore does **not** advance a record's `schema_version` — reindexing is
+not a migration, and it is not the missing sweep either.
+
+**Who should act:** nobody. This is purely additive, forward-looking
+groundwork; no existing behavior changes.
+
 ---
 
 ## v0.7.10 — Recall returns summaries by default
