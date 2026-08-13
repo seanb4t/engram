@@ -248,13 +248,13 @@ mechanism instead of another one-shot operator command.
   2. Every v0.13.x Phase 1–2 key-link is re-resolved against the tool: each is either genuinely pinned (a test exists that would fail on regression) or explicitly recorded as unpinned — a past "key-links passed" claim is never accepted as evidence on its own.
   3. A full `go test ./...` run no longer fails from `internal/store`'s Qdrant testcontainer dying mid-run; when the container does die, its exit reason is captured in the failure output so a recurrence is diagnosable from evidence.
 
-**Plans:** 6 plans in 3 waves
+**Plans:** 2/6 plans executed in 3 waves
 
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Tracer: `internal/keylinks` guard core with the committed good/bad fixture pair (wave 1)
-- [ ] 01-04-PLAN.md — Tracer: one shared CI Qdrant service, shared-address proof per package, one-container assertion and on-failure diagnostics (wave 1)
+- [x] 01-01-PLAN.md — Tracer: `internal/keylinks` guard core with the committed good/bad fixture pair (wave 1)
+- [x] 01-04-PLAN.md — Tracer: one shared CI Qdrant service, shared-address proof per package, one-container assertion and on-failure diagnostics (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -426,7 +426,7 @@ Research flag: yes — the operator-UI soft-hidden-state conventions (archived/s
 | 24. Idempotent Capture | v0.11.x | 2/2 | Complete | 2026-07-18 |
 | 25. Supersession with History | v0.11.x | 2/2 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
-| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | Complete | 2026-07-31 |
+| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | In Progress|  |
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-05 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete    | 2026-08-11 |
