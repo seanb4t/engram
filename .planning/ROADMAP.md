@@ -248,7 +248,7 @@ mechanism instead of another one-shot operator command.
   2. Every v0.13.x Phase 1–2 key-link is re-resolved against the tool: each is either genuinely pinned (a test exists that would fail on regression) or explicitly recorded as unpinned — a past "key-links passed" claim is never accepted as evidence on its own.
   3. A full `go test ./...` run no longer fails from `internal/store`'s Qdrant testcontainer dying mid-run; when the container does die, its exit reason is captured in the failure output so a recurrence is diagnosable from evidence.
 
-**Plans:** 4/6 plans executed in 3 waves
+**Plans:** 6/6 plans executed in 3 waves
 
 Plans:
 **Wave 1**
@@ -263,8 +263,8 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-03-PLAN.md — One-time v0.13.x Phase 1–2 key-link reassessment; verdict table plus the D-01 upstream-reporting decision (wave 3)
-- [ ] 01-06-PLAN.md — Source-level conformance gate plus prefix-disjointness proof; real CI run confirms the three mechanism claims (wave 3)
+- [x] 01-03-PLAN.md — One-time v0.13.x Phase 1–2 key-link reassessment; verdict table plus the D-01 upstream-reporting decision (wave 3)
+- [x] 01-06-PLAN.md — Source-level conformance gate plus prefix-disjointness proof; real CI run confirms the three mechanism claims (wave 3)
 
 ### Phase 2: Record Schema Versioning Foundation
 
