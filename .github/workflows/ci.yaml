@@ -84,6 +84,35 @@ jobs:
             docker ps --filter "ancestor=qdrant/qdrant:v1.18.2"
             exit 1
           fi
+      # D-20 claim 3: prove each package actually took the SHARED-Qdrant path.
+      # The `Test` step below runs `go test ./...` WITHOUT -v, so it emits only
+      # package-level `ok` lines — and a package whose every test SKIPs still
+      # prints `ok`. That makes `ok` unable to distinguish a running suite from
+      # a silently-skipped one, which is precisely threat T-01-23. This step
+      # re-runs just the shared-address assertions with -v and asserts the
+      # COUNTS, so it fails rather than merely reporting.
+      #
+      # Expected 3 PASS + 1 SKIP, not 4 PASS. internal/retrievaleval's TestMain
+      # returns before setting testQdrantAddr unless ENGRAM_RETRIEVAL_EVAL=1,
+      # so in CI that package never dials Qdrant and does not participate in
+      # the shared instance at all. Both counts are pinned: a package that
+      # stops honoring the shared address (3 -> 2) and retrievaleval quietly
+      # starting to participate (1 -> 0) each trip this gate.
+      - name: assert shared-Qdrant participation per package
+        env:
+          ENGRAM_QDRANT_TEST_ADDR: localhost:6334
+          ENGRAM_REQUIRE_QDRANT: "1"
+        run: |
+          out=$(go test -run '^TestSharedQdrantAddressHonored$' -v -count=1 \
+            ./internal/store/... ./internal/server/... ./internal/e2e/... ./internal/retrievaleval/...)
+          printf '%s\n' "$out"
+          pass=$(printf '%s\n' "$out" | grep -o '^--- PASS: TestSharedQdrantAddressHonored' | wc -l | tr -d '[:space:]')
+          skip=$(printf '%s\n' "$out" | grep -o '^--- SKIP: TestSharedQdrantAddressHonored' | wc -l | tr -d '[:space:]')
+          echo "shared-address PASS=${pass} SKIP=${skip} (expected PASS=3 SKIP=1)"
+          if [ "${pass}" != "3" ] || [ "${skip}" != "1" ]; then
+            echo "::error::expected 3 PASS + 1 SKIP for TestSharedQdrantAddressHonored, got ${pass} PASS + ${skip} SKIP"
+            exit 1
+          fi
       - name: Test
         env:
           # Fail-closed real-Qdrant authz/parity gate (round-6 MED, Codex):
