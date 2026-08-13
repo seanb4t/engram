@@ -24,6 +24,29 @@ jobs:
     name: test
     if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
+    # One shared Qdrant serves the whole job (#497). Four Qdrant-backed test
+    # packages (internal/store, internal/server, internal/e2e,
+    # internal/retrievaleval) each used to boot their own testcontainer, and
+    # `go test ./...` runs packages concurrently — a 2-vCPU runner hosting
+    # four Qdrant instances at once is what killed internal/store mid-run.
+    # The explicit health check below is required, not decoration: GitHub
+    # Actions only gates job steps on an image's own HEALTHCHECK or an
+    # explicit --health-cmd, and this image ships neither (confirmed via
+    # `docker inspect qdrant/qdrant:v1.18.2 --format '{{.Config.Healthcheck}}'`
+    # -> <nil>) — without it `go test` could start dialing before the
+    # listeners are up, reintroducing the same cascade from a different cause.
+    services:
+      qdrant:
+        # Keep byte-identical to internal/store/store_test.go's qdrantImageTag:
+        # the per-package testcontainer fallback (D-18) and this shared
+        # service must stay version-locked, since qdrantTOCTOUVerifiedVersion's
+        # guard exists to force a conscious re-verification on a bump.
+        image: qdrant/qdrant:v1.18.2
+        ports:
+          - 6334:6334 # gRPC — what the Go client dials
+          - 6333:6333 # REST — health-cmd probe only
+        options: >-
+          --health-cmd "curl -f http://localhost:6333/readyz" --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -37,6 +60,10 @@ jobs:
           # the job instead of letting TestMain silently skip the integration
           # suite (see internal/server/tools_test.go requireQdrant/TestMain).
           ENGRAM_REQUIRE_QDRANT: "1"
+          # Points every Qdrant-backed package's TestMain fast path at the
+          # shared services: container above instead of each booting its own
+          # (D-15). All four TestMain chains already honor this var.
+          ENGRAM_QDRANT_TEST_ADDR: localhost:6334
         run: go test ./...
       # Enforce go.mod/go.sum tidiness here, not via a GoReleaser hook: release
       # builds use the exact tagged module files (tag = source of truth).

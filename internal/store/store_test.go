@@ -45,6 +45,19 @@ const qdrantTOCTOUVerifiedVersion = "1.18.2"
 // which case the integration tests skip.
 var testQdrantAddr string
 
+// testCollectionPrefix namespaces this package's integration-test Qdrant
+// collection names so a single shared Qdrant instance (CI's ENGRAM_QDRANT_TEST_ADDR
+// path) can host internal/store's and internal/server's test suites
+// concurrently without their previously-identical "mem_eval_test" collection
+// names colliding (CONTEXT.md D-16).
+const testCollectionPrefix = "store_"
+
+// testCollection returns name namespaced into this package's collection space
+// on the shared test Qdrant instance.
+func testCollection(name string) string {
+	return testCollectionPrefix + name
+}
+
 // requireQdrant is the SOLE place ENGRAM_REQUIRE_QDRANT is read/parsed in this
 // package, mirroring internal/server/tools_test.go's requireQdrant: TestMain and
 // dialTestClient act only on its result, never parsing the env var themselves.
@@ -246,7 +259,7 @@ func TestDialTestClientFailsWhenRequiredAndUnavailable(t *testing.T) {
 
 func testStore(t *testing.T) *Store {
 	t.Helper()
-	s := New(dialTestClient(t), "mem_eval_test")
+	s := New(dialTestClient(t), testCollection("mem_eval_test"))
 	if err := s.EnsureCollection(context.Background(), 3); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}

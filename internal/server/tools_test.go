@@ -123,6 +123,19 @@ func TestToolArgSchemasDoNotPanic(t *testing.T) {
 // in which case they fail (see requireQdrant).
 var testQdrantAddr string
 
+// testCollectionPrefix namespaces this package's integration-test Qdrant
+// collection names so a single shared Qdrant instance (CI's ENGRAM_QDRANT_TEST_ADDR
+// path) can host internal/store's and internal/server's test suites
+// concurrently without their previously-identical "mem_eval_test" collection
+// names colliding (CONTEXT.md D-16).
+const testCollectionPrefix = "server_"
+
+// testCollection returns name namespaced into this package's collection space
+// on the shared test Qdrant instance.
+func testCollection(name string) string {
+	return testCollectionPrefix + name
+}
+
 // requireQdrant is the SOLE place ENGRAM_REQUIRE_QDRANT is read/parsed
 // (round-6 MED, round-7 LOW + round-8 LOW, Codex): TestMain and
 // failOrSkipNoQdrant act only on its result, never parsing the env var
@@ -318,7 +331,7 @@ func testDepsWithStore(t *testing.T) (*deps, *store.Store) {
 	if err != nil {
 		t.Fatalf("client: %v", err)
 	}
-	st := store.New(c, "mem_eval_test")
+	st := store.New(c, testCollection("mem_eval_test"))
 	if err := st.EnsureCollection(context.Background(), 3); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
