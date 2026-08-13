@@ -1,0 +1,22 @@
+diff --git a/internal/store/store.go b/internal/store/store.go
+index f60a9c3a..5dcddd39 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -1634,6 +1634,17 @@ func (s *Store) ListScopes(ctx context.Context, subj Subject) (out []ScopeCount,
+ 	return out, len(pts) == scanCap, nil
+ }
+ 
++// proveRedDirection2ScrollAndOffset is a TEMPORARY, deliberately
++// unclassified ScrollAndOffset emission injected to prove
++// TestRecallEmissionSetIsCompleteAndClassified goes RED against real source
++// (02-03 plan, Task 2, prove-RED direction B — the regression guard for the
++// ScrollAndOffset vocabulary widening). It must be reverted before this
++// plan's Task 2 commit lands.
++func (s *Store) proveRedDirection2ScrollAndOffset(ctx context.Context) error {
++	_, _, err := s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{CollectionName: s.collection})
++	return err
++}
++
+ // Get returns the memory with the given id.
+ func (s *Store) Get(ctx context.Context, id string) (m Memory, err error) {
+ 	ctx, span := tracer.Start(ctx, "store.Get")

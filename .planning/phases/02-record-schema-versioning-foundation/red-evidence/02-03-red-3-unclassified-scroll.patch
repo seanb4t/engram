@@ -1,0 +1,20 @@
+diff --git a/internal/store/store.go b/internal/store/store.go
+index f60a9c3a..0bc33a20 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -1634,6 +1634,15 @@ func (s *Store) ListScopes(ctx context.Context, subj Subject) (out []ScopeCount,
+ 	return out, len(pts) == scanCap, nil
+ }
+ 
++// proveRedDirection1Scroll is a TEMPORARY, deliberately unclassified Scroll
++// emission injected to prove TestRecallEmissionSetIsCompleteAndClassified
++// goes RED against real source (02-03 plan, Task 2, prove-RED direction A).
++// It must be reverted before this plan's Task 2 commit lands.
++func (s *Store) proveRedDirection1Scroll(ctx context.Context) error {
++	_, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{CollectionName: s.collection})
++	return err
++}
++
+ // Get returns the memory with the given id.
+ func (s *Store) Get(ctx context.Context, id string) (m Memory, err error) {
+ 	ctx, span := tracer.Start(ctx, "store.Get")
