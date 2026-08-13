@@ -248,7 +248,7 @@ mechanism instead of another one-shot operator command.
   2. Every v0.13.x Phase 1–2 key-link is re-resolved against the tool: each is either genuinely pinned (a test exists that would fail on regression) or explicitly recorded as unpinned — a past "key-links passed" claim is never accepted as evidence on its own.
   3. A full `go test ./...` run no longer fails from `internal/store`'s Qdrant testcontainer dying mid-run; when the container does die, its exit reason is captured in the failure output so a recurrence is diagnosable from evidence.
 
-**Plans:** 2/6 plans executed in 3 waves
+**Plans:** 4/6 plans executed in 3 waves
 
 Plans:
 **Wave 1**
@@ -258,8 +258,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Normalize every escaped `pattern:` repo-wide, then land the two recurring gates with D-04's asymmetric scopes (wave 2)
-- [ ] 01-05-PLAN.md — Per-package collection namespaces enforced by a prefix-asserting construction seam across all four Qdrant-backed packages (wave 2)
+- [x] 01-02-PLAN.md — Normalize every escaped `pattern:` repo-wide, then land the two recurring gates with D-04's asymmetric scopes (wave 2)
+- [x] 01-05-PLAN.md — Per-package collection namespaces enforced by a prefix-asserting construction seam across all four Qdrant-backed packages (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
