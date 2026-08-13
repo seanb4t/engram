@@ -20,12 +20,24 @@ must_haves:
       to: "internal/keylinks/keylinks.go"
       via: "the doubled-escape corruption shape D-02/D-03 exist to catch"
       pattern: "\\."
+    - from: "internal/keylinks/keylinks.go"
+      to: "internal/keylinks/keylinks.go"
+      via: "a Go-syntax named capture group, banned by D-08"
+      pattern: "(?P<name>foo)"
+    - from: "internal/keylinks/keylinks.go"
+      to: "internal/keylinks/keylinks.go"
+      via: "a JavaScript-only lookahead construct RE2 refuses to compile"
+      pattern: "(?=foo)"
+    - from: "internal/keylinks/keylinks.go"
+      to: "internal/keylinks/keylinks.go"
+      via: "a well-formed, escape-free pattern that names a symbol present in neither file — #479's second finding"
+      pattern: "BADFIXTURE_UNSATISFIABLE_SYMBOL_XYZ"
   prohibitions:
     - "MUST NOT be fixed — this fixture is the known-corrupted half of the D-06 fixture pair, deliberately never repaired."
 ---
 
-Known-corrupted fixture for internal/keylinks's fixture-pair fail-first proof (D-06). Task 2
-extends this file with the named-group, compile-error, and unsatisfiable shapes.
+Known-corrupted fixture for internal/keylinks's fixture-pair fail-first proof (D-06). Carries
+one entry per offender shape: escaping, named-group, compile-error, and unsatisfiable.
 
 This fixture also proves the parser's scoping: the following sentence mentions a pattern: value
 purely as prose, outside any key_links: block, and must never be treated as a key link:

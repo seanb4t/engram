@@ -27,6 +27,7 @@ package keylinks
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -272,6 +273,9 @@ func ValidatePattern(raw string) (*regexp.Regexp, *Offender) {
 
 	re, err := regexp.Compile(raw)
 	if err != nil {
+		// RE2 already refuses lookahead, negative lookahead, and
+		// lookbehind at parse time with a stable message — no bespoke
+		// detector needed for any of them (Pattern 1, 01-RESEARCH.md).
 		return nil, &Offender{
 			Shape: ShapeCompileError,
 			Raw:   raw,
@@ -279,7 +283,57 @@ func ValidatePattern(raw string) (*regexp.Regexp, *Offender) {
 		}
 	}
 
+	// One SubexpNames() sweep catches a named capture group in either
+	// Go's (?P<name>...) syntax or JavaScript's (?<name>...) syntax —
+	// both compile successfully under this repo's Go 1.26 toolchain, so
+	// there is no need to distinguish which syntax was written.
+	for _, name := range re.SubexpNames() {
+		if name != "" {
+			return nil, &Offender{
+				Shape: ShapeNamedGroup,
+				Raw:   raw,
+				Fix:   "remove the named capture group — key-link patterns must not use named groups (D-08)",
+			}
+		}
+	}
+
 	return re, nil
+}
+
+// CheckSatisfiable reports whether link's already-validated pattern re
+// actually matches something, mirroring verify.cjs's own resolution
+// order exactly (verify.cjs:1098-1119, read-only reference per D-01):
+// try the from file first, fall back to the to file. A from file that
+// does not exist yet is a promise from a plan that has not executed —
+// not a broken gate — so it returns nil rather than an offender.
+//
+// This is only valid evidence about the JavaScript-side tool's behavior
+// because D-08 already restricts patterns to the RE2 ∩ JavaScript common
+// subset: a future contributor who loosens D-08 breaks this equivalence.
+func CheckSatisfiable(link KeyLink, re *regexp.Regexp, repoRoot string) *Offender {
+	fromPath := filepath.Join(repoRoot, link.From)
+	fromContent, err := os.ReadFile(fromPath)
+	switch {
+	case err == nil:
+		if re.Match(fromContent) {
+			return nil
+		}
+	case os.IsNotExist(err):
+		return nil
+	}
+
+	toPath := filepath.Join(repoRoot, link.To)
+	if toContent, err := os.ReadFile(toPath); err == nil && re.Match(toContent) {
+		return nil
+	}
+
+	return &Offender{
+		File:  link.File,
+		Line:  link.Line,
+		Shape: ShapeUnsatisfiable,
+		Raw:   link.Pattern,
+		Fix:   fmt.Sprintf("pattern does not match %s or %s — update the pattern or the from/to paths", fromPath, toPath),
+	}
 }
 
 // metaCharsToClass are the regex metacharacters SuggestCharClassForm
