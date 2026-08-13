@@ -196,3 +196,12 @@ None — no external service configuration required.
 *Phase: 02-record-schema-versioning-foundation*
 *Plan: 01*
 *Completed: 2026-08-13*
+
+## Self-Check: PASSED
+
+All created files verified present: `internal/migrate/migrate.go`,
+`internal/migrate/migrate_test.go`, `internal/store/schemaversion_test.go`,
+`docs-site/src/content/docs/guides/upgrade.md`,
+`.planning/phases/02-record-schema-versioning-foundation/02-01-SUMMARY.md`.
+All 4 commit hashes verified present in `git log`: `5ef68517`, `2e041392`,
+`ee476e2c`, `415fddea`.
