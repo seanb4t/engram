@@ -43,6 +43,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"os"
 	"path/filepath"
 	"sort"
@@ -87,8 +88,27 @@ type storeConstructionFinding struct {
 }
 
 func (f storeConstructionFinding) String() string {
-	return fmt.Sprintf("%s:%d: raw collection literal %s bypasses this package's newTestStore seam — route it through testCollection()", f.path, f.line, f.literal)
+	return fmt.Sprintf("%s:%d: live store construction with collection argument %s bypasses this package's newTestStore seam — route it through newTestStore()/testCollection()", f.path, f.line, f.literal)
 }
+
+// seamFuncName is the one function per package permitted to call the raw
+// store constructor. Every other live construction is a finding
+// REGARDLESS of how its collection argument is spelled.
+//
+// The original rule flagged only a *string literal* collection argument,
+// which was unsound in both directions. It let a bypass through —
+//
+//	name := "raw_unprefixed"
+//	s := store.New(client, name)   // *ast.Ident, not *ast.BasicLit: invisible
+//
+// — and it "excluded" the seam's own legitimate `New(c, name, opts...)`
+// call for exactly the same reason (`name` is a parameter identifier),
+// not because the scan recognized it as the seam. So the check never
+// distinguished "routes through the seam" from "argument is not a
+// literal"; it only ever looked like it did. Anchoring on the enclosing
+// function name is both stronger and simpler than the dataflow analysis
+// the literal-shaped rule would otherwise need.
+const seamFuncName = "newTestStore"
 
 // isNilIdent reports whether e is the literal `nil` identifier.
 //
@@ -143,26 +163,45 @@ func scanConstructions(fset *token.FileSet, src []byte, displayPath string, allo
 	}
 
 	var findings []storeConstructionFinding
-	ast.Inspect(file, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok || !isStoreConstructorCall(call, allowUnqualified) || len(call.Args) < 2 {
+
+	// Walk per-declaration rather than over the whole file, so each call
+	// is attributed to its enclosing function and the seam's own call can
+	// be excluded by IDENTITY instead of by the shape of its argument.
+	inspect := func(n ast.Node, insideSeam bool) {
+		ast.Inspect(n, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok || !isStoreConstructorCall(call, allowUnqualified) || len(call.Args) < 2 {
+				return true
+			}
+			// A nil client never dials Qdrant, so it cannot collide on the
+			// shared instance — the pre-existing hermetic unit tests stay
+			// out of scope (unchanged from the original rule).
+			if isNilIdent(call.Args[0]) {
+				return true
+			}
+			if insideSeam {
+				return true
+			}
+			pos := fset.Position(call.Pos())
+			findings = append(findings, storeConstructionFinding{
+				path:    displayPath,
+				line:    pos.Line,
+				literal: types.ExprString(call.Args[1]),
+			})
 			return true
-		}
-		if isNilIdent(call.Args[0]) {
-			return true
-		}
-		lit, ok := call.Args[1].(*ast.BasicLit)
-		if !ok || lit.Kind != token.STRING {
-			return true
-		}
-		pos := fset.Position(call.Pos())
-		findings = append(findings, storeConstructionFinding{
-			path:    displayPath,
-			line:    pos.Line,
-			literal: lit.Value,
 		})
-		return true
-	})
+	}
+
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok {
+			// Package-level var/const initializers can construct too, and
+			// are inside no function — never the seam.
+			inspect(decl, false)
+			continue
+		}
+		inspect(fn, fn.Name != nil && fn.Name.Name == seamFuncName)
+	}
 	return findings, nil
 }
 
@@ -218,7 +257,11 @@ func TestEveryStoreConstructionRoutesThroughSeam(t *testing.T) {
 		}
 	})
 
-	t.Run("bad fixture yields at least one finding naming the offending literal", func(t *testing.T) {
+	// Asserts SET EQUALITY over both bypass shapes, not `len(findings) > 0`.
+	// An "at least one finding" assertion passes while catching only the
+	// literal form — which is precisely the state this gate shipped in, and
+	// precisely what a count-agnostic assertion failed to reveal.
+	t.Run("bad fixture yields a finding for BOTH bypass shapes", func(t *testing.T) {
 		fset := token.NewFileSet()
 		src, err := os.ReadFile(filepath.Join("testdata", "collectionprefix", "bad_pkg_test.go.txt"))
 		if err != nil {
@@ -228,11 +271,23 @@ func TestEveryStoreConstructionRoutesThroughSeam(t *testing.T) {
 		if err != nil {
 			t.Fatalf("scan bad fixture: %v", err)
 		}
-		if len(findings) == 0 {
-			t.Fatal("bad fixture: want at least one finding naming the offending literal, got none")
-		}
+		got := make(map[string]bool, len(findings))
 		for _, f := range findings {
+			got[f.literal] = true
 			t.Logf("bad fixture finding: %s", f)
+		}
+		// The inline literal, and the same raw name bound to a variable
+		// first. The second is invisible to any rule keyed on the
+		// argument's syntactic shape.
+		want := []string{`"hardcoded-bad-pkg-collection"`, "name"}
+		for _, w := range want {
+			if !got[w] {
+				t.Errorf("bad fixture: no finding for collection argument %s — got %v. "+
+					"A bypass this gate cannot see is the defect it exists to prevent.", w, sortedFindingArgs(got))
+			}
+		}
+		if len(got) != len(want) {
+			t.Errorf("bad fixture: got %d distinct findings %v, want exactly %d %v", len(got), sortedFindingArgs(got), len(want), want)
 		}
 	})
 
@@ -398,4 +453,16 @@ func TestCollectionPrefixesAreDisjoint(t *testing.T) {
 		}
 	}
 	t.Logf("compared %d ordered pairs across %d packages", comparisons, len(prefixes))
+}
+
+// sortedFindingArgs renders a finding set deterministically for failure
+// messages. Named distinctly from this package's pre-existing keysOf,
+// which is generic over a different map type.
+func sortedFindingArgs(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

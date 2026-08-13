@@ -4,10 +4,13 @@
 // Package badpkg is a synthetic KNOWN-BAD fixture for
 // collectionprefix_conformance_test.go's
 // TestEveryStoreConstructionRoutesThroughSeam. TestBadPkgBypassesSeam
-// constructs a store directly over a raw collection-name literal, with a
-// non-nil client, bypassing any seam entirely — this is the exact bypass
-// the real gate exists to catch. This fixture must scan dirty: at least
-// one finding naming the "hardcoded-bad-pkg-collection" literal below.
+// constructs a store directly with a non-nil client, bypassing any seam
+// entirely — the exact bypass the real gate exists to catch. This fixture
+// must scan dirty with TWO findings, one per bypass shape:
+//   1. a raw collection-name LITERAL passed inline;
+//   2. the same raw name bound to a local VARIABLE first — invisible to
+//      the original literal-only rule, and the reason that rule was
+//      replaced with an enclosing-function one.
 //
 // This file carries a .go.txt extension deliberately: it is parsed from
 // source bytes by go/parser, never built by `go build`/gofmt/go vet/the
@@ -24,5 +27,17 @@ import (
 func TestBadPkgBypassesSeam(t *testing.T) {
 	var c *qdrant.Client
 	s := store.New(c, "hardcoded-bad-pkg-collection")
+	_ = s
+}
+
+// TestBadPkgBypassesSeamViaVariable is the variable-indirection bypass.
+// The collection argument is an *ast.Ident rather than an *ast.BasicLit,
+// so a rule keyed on the argument's SHAPE cannot see it at all, even
+// though it reaches Qdrant with an unprefixed name exactly as the literal
+// form above does.
+func TestBadPkgBypassesSeamViaVariable(t *testing.T) {
+	var c *qdrant.Client
+	name := "hardcoded-bad-pkg-collection-via-var"
+	s := store.New(c, name)
 	_ = s
 }
