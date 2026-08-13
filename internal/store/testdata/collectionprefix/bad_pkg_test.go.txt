@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
+// Package badpkg is a synthetic KNOWN-BAD fixture for
+// collectionprefix_conformance_test.go's
+// TestEveryStoreConstructionRoutesThroughSeam. TestBadPkgBypassesSeam
+// constructs a store directly over a raw collection-name literal, with a
+// non-nil client, bypassing any seam entirely — this is the exact bypass
+// the real gate exists to catch. This fixture must scan dirty: at least
+// one finding naming the "hardcoded-bad-pkg-collection" literal below.
+//
+// This file carries a .go.txt extension deliberately: it is parsed from
+// source bytes by go/parser, never built by `go build`/gofmt/go vet/the
+// linter, so it is not swept by any of them.
+package badpkg
+
+import (
+	"testing"
+
+	"github.com/qdrant/go-client/qdrant"
+	"github.com/seanb4t/engram/internal/store"
+)
+
+func TestBadPkgBypassesSeam(t *testing.T) {
+	var c *qdrant.Client
+	s := store.New(c, "hardcoded-bad-pkg-collection")
+	_ = s
+}
