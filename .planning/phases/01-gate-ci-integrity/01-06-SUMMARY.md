@@ -68,25 +68,51 @@ coverage:
         status: pass
     human_judgment: false
   - id: D3
-    description: "A real GitHub Actions test job log confirms the one-container assertion count, the resolved shared address, and four TestSharedQdrantAddressHonored PASS lines with no SKIP in the integration suite"
+    description: "A real GitHub Actions test job log confirms the one-container assertion count, the resolved shared address, and per-package TestSharedQdrantAddressHonored results with no SKIP in the store/server integration suites"
     requirement: "REQ-ci-qdrant-container-stability"
-    verification: []
+    verification:
+      - kind: manual
+        ref: "GitHub Actions run 31718449162, test job 94509047766, head 73ea27c9 — claim 1: 'running Qdrant containers (ancestor qdrant/qdrant:v1.18.2): 1'; claim 2: 'ENGRAM_QDRANT_TEST_ADDR resolved to: localhost:6334' (matches the 6334:6334 service mapping); claim 3: 'shared-address PASS=3 SKIP=1 (expected PASS=3 SKIP=1)' with three verbatim '--- PASS: TestSharedQdrantAddressHonored' lines. Zero SKIP lines in the main 'go test ./...' step. gofmt step emitted no 'gofmt needed on:' line."
+        status: pass
     human_judgment: true
-    rationale: "This plan's branch has never been pushed and carries no open PR, so no GitHub Actions run of this code exists yet. Reading these three claims out of a REAL run — not inferring them from a green badge or a local rehearsal — is Task 3's entire purpose (D-20 explicitly rejects a green-run count as evidence) and is an outward-facing action (push + PR) reserved for the human per this plan's own execution instructions. Blocked at the checkpoint; not evaluable by this executor."
+    rationale: |
+      Resolved by the orchestrator against a real run, read as log TEXT rather than as a badge, per D-20.
 
-duration: ~15min (Tasks 1-2 only; Task 3 is the pending checkpoint)
+      Claim 3 was RESTATED, not merely satisfied. As written it demanded four PASS lines; that was
+      unobtainable for two independent reasons, both discovered by attempting it:
+      (1) CI runs `go test ./...` without -v, so per-test lines are never emitted at all — and a
+      package whose every test SKIPs still prints `ok`, so package-level `ok` cannot distinguish a
+      running suite from a skipped one (threat T-01-23 exactly);
+      (2) `internal/retrievaleval`'s TestMain returns before assigning testQdrantAddr unless
+      ENGRAM_RETRIEVAL_EVAL=1, so in CI that package never dials Qdrant and does not participate in
+      the shared instance at all. Four PASS was therefore never achievable without running the full
+      retrieval eval in CI.
+
+      The honest arithmetic is THREE packages sharing one Qdrant (store, server, e2e), not four.
+      A dedicated CI step now asserts PASS=3 and SKIP=1 as pinned counts, so a package dropping out
+      (3->2) or retrievaleval quietly joining (1->0) each trip the gate.
+
+      Also fixed en route: the services: health-cmd used `curl`, which qdrant/qdrant:v1.18.2 does not
+      ship (verified by running `command -v` inside the image; wget/nc/python3 also absent, bash
+      present). The first real run died at "Initialize containers" with the container itself healthy
+      (status=running exitCode=0 oomKilled=false) — a failure mode that mimics the #497 cascade this
+      phase exists to fix. Replaced with a bash /dev/tcp probe against 6334, proven exit 0 against a
+      serving qdrant and exit 1 against both a dead port and this same image run with
+      `--entrypoint sleep`. This is precisely the defect D-20 predicted local green would miss.
+
+duration: ~15min (Tasks 1-2) + orchestrator-resolved Task 3 checkpoint
 completed: 2026-08-13
-status: halted
+status: complete
 ---
 
 # Phase 01 Plan 06: Collection-Prefix Conformance Gate Summary
 
-**A stdlib go/ast source-level scan (`TestEveryStoreConstructionRoutesThroughSeam`) proves no live Store construction across the four Qdrant-backed packages bypasses its package's `newTestStore` runtime seam, and a companion test (`TestCollectionPrefixesAreDisjoint`) proves the four packages' `store_`/`server_`/`e2e_`/`retrievaleval_` prefixes are pairwise disjoint — both gates proven fail-first in every direction the plan's acceptance criteria name. Task 3, the real-CI-run checkpoint, is BLOCKED: this branch has never been pushed and no GitHub Actions run of this code exists yet.**
+**A stdlib go/ast source-level scan (`TestEveryStoreConstructionRoutesThroughSeam`) proves no live Store construction across the four Qdrant-backed packages bypasses its package's `newTestStore` runtime seam, and a companion test (`TestCollectionPrefixesAreDisjoint`) proves the four packages' `store_`/`server_`/`e2e_`/`retrievaleval_` prefixes are pairwise disjoint — both gates proven fail-first in every direction the plan's acceptance criteria name. Task 3, the real-CI-run checkpoint, is RESOLVED against GitHub Actions run 31718449162 — and resolving it exposed two defects no local gate could see: a `curl`-based service health-cmd against an image that ships no curl, and a claim 3 whose evidence the CI job did not emit at all.**
 
 ## Performance
 
 - **Duration:** ~15 min (Tasks 1-2; execution stopped at Task 3's blocking checkpoint)
-- **Tasks:** 2 of 3 completed (Task 3 is a `checkpoint:human-verify gate="blocking"` requiring a real CI run this executor must not create)
+- **Tasks:** 3 of 3 completed (Task 3's `checkpoint:human-verify gate="blocking"` was resolved by the orchestrator against a real CI run after Sean authorized the push + draft PR)
 - **Files modified:** 3 (all newly created)
 
 ## Accomplishments
@@ -254,7 +280,7 @@ Full detail in Task 3 of `.planning/phases/01-gate-ci-integrity/01-06-PLAN.md`.
 
 - All three of D-20's checkable claims now have a mechanical gate: one container + shared address (plan 01-04), disjoint prefixes (this plan). The fourth — confirming the mechanism in a real CI run — is the one remaining open item for the whole phase.
 - Both conformance gates (this plan's AST scan, plan 01-05's runtime seam) fail loudly rather than silently when their input disappears, proven by dedicated subtests/red-proofs rather than manual trial alone.
-- **This plan cannot be marked complete until Task 3's checkpoint is resolved by a human** with push/PR access, since this executor is explicitly prohibited from pushing or opening a PR. `status: halted` reflects this — any downstream plan depending on this one (directly or transitively) should be treated as blocked until Task 3 is confirmed and this SUMMARY is re-issued as `status: complete`.
+- **Task 3's checkpoint is RESOLVED** (run 31718449162, job 94509047766, head 73ea27c9). Sean authorized the push and a draft PR (#498); the orchestrator then read the three claims out of the job log as text. Two defects surfaced and were fixed in the process — the curl-less health-cmd (`b4b5b578`) and claim 3's unobtainable evidence (`73ea27c9`) — and claim 3 was restated from "four PASS" to the accurate "3 PASS + 1 SKIP", since `internal/retrievaleval` does not participate in the shared instance in CI at all. `status: complete`; no downstream plan is blocked.
 
 ---
 *Phase: 01-gate-ci-integrity*
