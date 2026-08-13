@@ -1,0 +1,38 @@
+diff --git a/internal/store/schemaversion_recallgate_test.go b/internal/store/schemaversion_recallgate_test.go
+index 2df58d58..8ce6e0c8 100644
+--- a/internal/store/schemaversion_recallgate_test.go
++++ b/internal/store/schemaversion_recallgate_test.go
+@@ -1113,26 +1113,13 @@ var recallInvocationRows = []recallInvocationRow{
+ 			}
+ 		},
+ 	},
+-	{
+-		name: "ListScopes/anonymous", entryPoint: "Store.ListScopes",
+-		expectCount: 1, expectMethods: []string{"Scroll"},
+-		invoke: func(t *testing.T, ctx context.Context, s *Store) {
+-			t.Helper()
+-			if _, _, err := s.ListScopes(ctx, recallGateAnonymousSubject); err != nil {
+-				t.Fatalf("ListScopes(anonymous): %v", err)
+-			}
+-		},
+-	},
+-	{
+-		name: "ListScopes/owner", entryPoint: "Store.ListScopes",
+-		expectCount: 1, expectMethods: []string{"Scroll"},
+-		invoke: func(t *testing.T, ctx context.Context, s *Store) {
+-			t.Helper()
+-			if _, _, err := s.ListScopes(ctx, recallGateOwnerSubject); err != nil {
+-				t.Fatalf("ListScopes(owner): %v", err)
+-			}
+-		},
+-	},
++	// PROVE-RED direction C (02-03 plan, Task 3, classification-without-
++	// coverage): the ListScopes/anonymous and ListScopes/owner rows are
++	// TEMPORARILY removed here to prove
++	// TestRecallEmissionSetIsCompleteAndClassified's classification-
++	// coverage linkage assertion goes RED when Store.ListScopes stays in
++	// recallEntryPointSeeds but is no longer walked by any row. Must be
++	// reverted before this task's commit.
+ }
+ 
+ // TestSchemaVersionNeverGatesRecall is criterion 4's AUTHORITATIVE proof
