@@ -10,6 +10,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,6 +49,37 @@ var testQdrantAddr string
 // an inference from logs (CONTEXT.md D-20).
 var testQdrantContainerBooted bool
 
+// testCollectionPrefix namespaces this package's integration-test Qdrant
+// collection names so a single shared Qdrant instance (CI's
+// ENGRAM_QDRANT_TEST_ADDR path) can host every Qdrant-backed package's test
+// suite concurrently without cross-package name collisions (CONTEXT.md D-16).
+// This package already generated collision-safe per-UUID names before this
+// constant existed (newTestcontainerStore's "retrievaleval_" + uuid); the
+// constant makes that namespace the single source of truth rather than a
+// comment about a literal elsewhere in the line.
+const testCollectionPrefix = "retrievaleval_"
+
+// testCollection returns name namespaced into this package's collection space
+// on the shared test Qdrant instance.
+func testCollection(name string) string {
+	return testCollectionPrefix + name
+}
+
+// newTestStore is the prefix-enforcing construction seam for every test Store
+// built against a real Qdrant instance in this package. It asserts name
+// carries this package's testCollectionPrefix before constructing the store,
+// so a collection name that skips testCollection() fails the test naming the
+// offending value — a runtime assertion a source-level check could be routed
+// around, but a t.Fatalf inside the one function every test store is built by
+// cannot (CONTEXT.md D-16, plan 01-05).
+func newTestStore(t testing.TB, c *qdrant.Client, name string) *store.Store {
+	t.Helper()
+	if !strings.HasPrefix(name, testCollectionPrefix) {
+		t.Fatalf("collection name %q does not carry this package's prefix %q: route it through testCollection()", name, testCollectionPrefix)
+	}
+	return store.New(c, name)
+}
+
 // TestRetrievalEval is the retrieval-quality eval: it seeds the labeled dataset
 // in fixtures.go through the exact production doc-embed sequence, searches it
 // through the production query path, and reports recall@k / MRR plus the
@@ -81,10 +113,7 @@ func TestRetrievalEval(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// A fresh, uniquely-named collection per case avoids cross-case /
 			// cross-run contamination without needing cleanup.
-			st, err := newTestcontainerStore(testQdrantAddr, dim)
-			if err != nil {
-				t.Fatalf("build eval store: %v", err)
-			}
+			st := newTestcontainerStore(t, testQdrantAddr, dim)
 			scope := "retrieval-eval:project:" + tc.name
 
 			idByKey := make(map[string]string, len(tc.seedRecords))
@@ -291,27 +320,30 @@ func TestRetrievalEval_AsymmetryDiffer(t *testing.T) {
 // newTestcontainerStore builds a *store.Store pinned to addr — the eval's
 // testcontainer, NEVER the ambient ENGRAM_QDRANT_ADDR a developer's prod-like
 // env might set (round-2 finding 1) — in a fresh, uniquely-named collection
-// ensured at dim.
-func newTestcontainerStore(addr string, dim uint64) (*store.Store, error) {
+// ensured at dim, routed through newTestStore so the collection name is
+// prefix-asserted at runtime like every other Qdrant-backed package's test
+// stores (plan 01-05).
+func newTestcontainerStore(t testing.TB, addr string, dim uint64) *store.Store {
+	t.Helper()
 	host, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid test Qdrant address %q: %w", addr, err)
+		t.Fatalf("invalid test Qdrant address %q: %v", addr, err)
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid test Qdrant port %q: %w", portStr, err)
+		t.Fatalf("invalid test Qdrant port %q: %v", portStr, err)
 	}
 	qc, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
 	if err != nil {
-		return nil, fmt.Errorf("qdrant client: %w", err)
+		t.Fatalf("qdrant client: %v", err)
 	}
-	st := store.New(qc, "retrievaleval_"+uuid.NewString())
+	st := newTestStore(t, qc, testCollection(uuid.NewString()))
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := st.EnsureCollection(ctx, dim); err != nil {
-		return nil, fmt.Errorf("EnsureCollection: %w", err)
+		t.Fatalf("EnsureCollection: %v", err)
 	}
-	return st, nil
+	return st
 }
 
 // TestMain gates the whole package on ENGRAM_RETRIEVAL_EVAL as its FIRST

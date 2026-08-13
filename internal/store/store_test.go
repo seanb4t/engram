@@ -67,6 +67,24 @@ func testCollection(name string) string {
 	return testCollectionPrefix + name
 }
 
+// newTestStore is the prefix-enforcing construction seam for every test Store
+// built against a real Qdrant instance in this package. It asserts name
+// carries this package's testCollectionPrefix before constructing the store,
+// so a collection name that skips testCollection() fails the test naming the
+// offending value. This is a runtime assertion on purpose: a source-level
+// check alone could be routed around by assigning the raw name to a variable
+// first, but a t.Fatalf inside the one function every test store is built by
+// cannot (CONTEXT.md D-16, plan 01-05). opts is threaded through to New
+// verbatim so newSpineTestStore's WithClock/WithAuthz callers stay covered
+// by the same seam as every unopted construction.
+func newTestStore(t testing.TB, c *qdrant.Client, name string, opts ...Option) *Store {
+	t.Helper()
+	if !strings.HasPrefix(name, testCollectionPrefix) {
+		t.Fatalf("collection name %q does not carry this package's prefix %q: route it through testCollection()", name, testCollectionPrefix)
+	}
+	return New(c, name, opts...)
+}
+
 // requireQdrant is the SOLE place ENGRAM_REQUIRE_QDRANT is read/parsed in this
 // package, mirroring internal/server/tools_test.go's requireQdrant: TestMain and
 // dialTestClient act only on its result, never parsing the env var themselves.
@@ -289,7 +307,7 @@ func TestDialTestClientFailsWhenRequiredAndUnavailable(t *testing.T) {
 
 func testStore(t *testing.T) *Store {
 	t.Helper()
-	s := New(dialTestClient(t), testCollection("mem_eval_test"))
+	s := newTestStore(t, dialTestClient(t), testCollection("mem_eval_test"))
 	if err := s.EnsureCollection(context.Background(), 3); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
@@ -4536,7 +4554,7 @@ func TestSupersedeMultiProductionDefaultsDoNotPanic(t *testing.T) {
 	subj := Authenticated("sub-A")
 
 	// Success case: production store, every function field nil.
-	s1 := New(dialTestClient(t), "mem_eval_test_prod_defaults_1")
+	s1 := newTestStore(t, dialTestClient(t), testCollection("mem_eval_test_prod_defaults_1"))
 	if err := s1.EnsureCollection(ctx, 3); err != nil {
 		t.Fatalf("ensure s1: %v", err)
 	}
@@ -4563,7 +4581,7 @@ func TestSupersedeMultiProductionDefaultsDoNotPanic(t *testing.T) {
 	}
 
 	// Failing case: a SECOND New-built instance.
-	s2 := New(dialTestClient(t), "mem_eval_test_prod_defaults_2")
+	s2 := newTestStore(t, dialTestClient(t), testCollection("mem_eval_test_prod_defaults_2"))
 	if err := s2.EnsureCollection(ctx, 3); err != nil {
 		t.Fatalf("ensure s2: %v", err)
 	}

@@ -145,6 +145,22 @@ func testCollection(name string) string {
 	return testCollectionPrefix + name
 }
 
+// newTestStore is the prefix-enforcing construction seam for every test Store
+// built against a real Qdrant instance in this package. It asserts name
+// carries this package's testCollectionPrefix before constructing the store,
+// so a collection name that skips testCollection() fails the test naming the
+// offending value. This is a runtime assertion on purpose: a source-level
+// check alone could be routed around by assigning the raw name to a variable
+// first, but a t.Fatalf inside the one function every test store is built by
+// cannot (CONTEXT.md D-16, plan 01-05).
+func newTestStore(t testing.TB, c *qdrant.Client, name string) *store.Store {
+	t.Helper()
+	if !strings.HasPrefix(name, testCollectionPrefix) {
+		t.Fatalf("collection name %q does not carry this package's prefix %q: route it through testCollection()", name, testCollectionPrefix)
+	}
+	return store.New(c, name)
+}
+
 // requireQdrant is the SOLE place ENGRAM_REQUIRE_QDRANT is read/parsed
 // (round-6 MED, round-7 LOW + round-8 LOW, Codex): TestMain and
 // failOrSkipNoQdrant act only on its result, never parsing the env var
@@ -361,7 +377,7 @@ func testDepsWithStore(t *testing.T) (*deps, *store.Store) {
 	if err != nil {
 		t.Fatalf("client: %v", err)
 	}
-	st := store.New(c, testCollection("mem_eval_test"))
+	st := newTestStore(t, c, testCollection("mem_eval_test"))
 	if err := st.EnsureCollection(context.Background(), 3); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
@@ -5326,7 +5342,7 @@ func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
 	// summary queue this test never shuts down — that would leak 2 worker
 	// goroutines for the test binary's lifetime.
 	t.Setenv("ENGRAM_QDRANT_ADDR", testQdrantAddr)
-	t.Setenv("ENGRAM_QDRANT_COLLECTION", "mem_load_once_test")
+	t.Setenv("ENGRAM_QDRANT_COLLECTION", testCollection("mem_load_once_test"))
 	t.Setenv("ENGRAM_EMBED_DIM", "3")
 	t.Setenv("ENGRAM_SUMMARY_MODEL", "")
 	t.Setenv("ENGRAM_SUMMARY_ON_WRITE", "")
