@@ -81,7 +81,9 @@ Deferred. Tracked, not in this roadmap.
 
 ## Traceability
 
-Which phases cover which requirements. Confirmed during roadmap creation.
+Which phases cover which requirements. Confirmed during roadmap creation. Phase IDs match
+`.planning/ROADMAP.md`'s structural `### Phase N:` headers for this active milestone (bare, per
+this repo's structural invariant — see ROADMAP.md's `## Progress` note).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
@@ -94,24 +96,24 @@ Which phases cover which requirements. Confirmed during roadmap creation.
 | REQ-schema-version-forward-compatible | Phase 2 | Pending |
 | REQ-migration-step-registry | Phase 3 | Pending |
 | REQ-migration-additive-only-gated | Phase 3 | Pending |
-| REQ-migrate-command | Phase 3 | Pending |
-| REQ-migrate-status-histogram | Phase 3 | Pending |
-| REQ-migrate-preview-apply-parity | Phase 3 | Pending |
+| REQ-migration-step-reversibility | Phase 3 | Pending |
 | REQ-migrate-partial-failure-resume | Phase 3 | Pending |
 | REQ-migrate-converges-without-lock | Phase 3 | Pending |
-| REQ-backfill-shortids-first-step | Phase 3 | Pending |
-| REQ-migration-step-reversibility | Phase 3 | Pending |
-| REQ-migrate-revert | Phase 3 | Pending |
-| REQ-migrate-never-automatic | Phase 3 | Pending |
-| REQ-connect-record-state-parity | Phase 4 | Pending |
-| REQ-connect-parity-roundtrip-proof | Phase 4 | Pending |
-| REQ-operator-renderer-typed | Phase 5 | Pending |
-| REQ-console-record-state | Phase 6 | Pending |
-| REQ-cli-record-state | Phase 6 | Pending |
-| REQ-migration-state-visible | Phase 6 | Pending |
-| REQ-sweep-scope-rule-registered | Phase 7 | Pending |
-| REQ-docs-record-state | Phase 7 | Pending |
-| REQ-claude-md-migrations-convention | Phase 7 | Pending |
+| REQ-migrate-command | Phase 4 | Pending |
+| REQ-migrate-status-histogram | Phase 4 | Pending |
+| REQ-migrate-preview-apply-parity | Phase 4 | Pending |
+| REQ-backfill-shortids-first-step | Phase 4 | Pending |
+| REQ-migrate-revert | Phase 4 | Pending |
+| REQ-migrate-never-automatic | Phase 4 | Pending |
+| REQ-connect-record-state-parity | Phase 5 | Pending |
+| REQ-connect-parity-roundtrip-proof | Phase 5 | Pending |
+| REQ-operator-renderer-typed | Phase 6 | Pending |
+| REQ-console-record-state | Phase 7 | Pending |
+| REQ-cli-record-state | Phase 7 | Pending |
+| REQ-migration-state-visible | Phase 7 | Pending |
+| REQ-sweep-scope-rule-registered | Phase 8 | Pending |
+| REQ-docs-record-state | Phase 8 | Pending |
+| REQ-claude-md-migrations-convention | Phase 8 | Pending |
 
 **Coverage:**
 
@@ -119,6 +121,13 @@ Which phases cover which requirements. Confirmed during roadmap creation.
 - Mapped to phases: 27
 - Unmapped: 0
 
+**Phase 3 note:** the original single "Migration Mechanism" cluster (11 requirements, 41% of the
+milestone) was split during roadmap creation into Phase 3 (registry, additive-only/reversibility
+invariants, `Store.Migrate` sweep, partial-failure resume, lock-free convergence — 5 requirements)
+and Phase 4 (`engram migrate` CLI: status/preview-apply-parity/revert/never-automatic,
+`backfill-short-ids` fold-in — 6 requirements), avoiding one oversized phase. Total requirement
+count for the cluster (11) and the milestone (27) is unchanged by the split.
+
 ---
 *Requirements defined: 2026-08-12*
-*Last updated: 2026-08-12 after milestone `2026-08-12.01` scoping*
+*Last updated: 2026-08-12 after roadmap creation for milestone `2026-08-12.01` (8 phases; Phase 3 split into Phase 3/4)*

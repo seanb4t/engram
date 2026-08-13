@@ -71,6 +71,32 @@ drift detection is a byte compare against `Citation.Excerpt` already cached at w
 near-duplicate scoring reuses a stored vector via `qdrant.NewQueryID` (no re-embedding), and the
 flag/timeout gaps are one-line `cobra`/stdlib fixes.
 
+**2026-08-12.01 — Record State & Schema Evolution (Phases 1–8), roadmapped 2026-08-12.** First
+milestone under the CalVer label convention (rule `e325awbf7x`) — v0.13.0 is released but not yet
+deployed, so three milestones of code have still never run outside tests and testcontainers. Makes
+a record's full state — supersession, scheduling, archival, and its own schema version — reachable
+and legible on every lane, and gives payload evolution a real mechanism instead of another one-shot
+operator command. Research (HIGH confidence, zero new Go dependencies) converged unanimously across
+all three tracks — stack, architecture, and pitfalls — on a seven-step dependency order, widened to
+eight phases here by splitting the single heaviest requirement cluster (11 of 27 requirements, the
+migration mechanism, 41% of the milestone) into a foundation phase (registry, additive-only /
+reversibility invariants, the `Store.Migrate` sweep, partial-failure resume, lock-free convergence)
+and a CLI phase (`engram migrate` via `registerDestructive`, status histogram, preview/apply
+parity, revert, folding in `backfill-short-ids` as the registered v0→v1 step). Gate & CI integrity
+(#479/#497) lands first, because this milestone authors new `internal/surfaces` key-links and past
+v0.13.x Phase 1–2 key-link gates were silent no-ops. Schema versioning and the full migration
+mechanism land before the Connect proto pass (#482), because proto field numbers are a permanent
+one-way commitment and freezing `schema_version` on the wire before its semantics settle would be
+unfixable. The typed operator renderer (#481) is an independent prerequisite that must land before
+console/CLI state surfacing, not a retrofit after six new fields already flow through the untyped
+renderer. The single highest-risk finding, confirmed independently by both the architecture and
+pitfalls research: the codebase's own idiom for new orthogonal record state is a sibling `IsEmpty`
+recall-gate condition (as already done for `superseded_by`/`archived_at`) — applying that idiom to
+`schema_version`, whose cardinality is inverted (absence is the majority state at adoption, not a
+minority one), would silently exclude every pre-migration record from recall. `schema_version`
+therefore never appears in any recall or authz filter, proven by a negative test landed in the same
+phase that introduces the field, not a later hardening pass.
+
 ## Milestones
 
 - ✅ **v0.8.x Baseline** — Phases 1–7 (shipped)
@@ -80,6 +106,7 @@ flag/timeout gaps are one-line `cobra`/stdlib fixes.
 - ✅ **v0.11.x — Capture & Service Identity** — Phases 22–26 (shipped 2026-07-26): Cedar authz foundation (#362/#373 trust anchor), service auth chain + tenancy isolation (#362/#373), idempotent capture (#340), supersession with history (#342), structured citations + category filter + chat base URL (#341/#374/#350). 11/11 requirements, audit PASSED. Full detail archived at `milestones/v0.11.x-ROADMAP.md`.
 - ✅ **v0.12.x — Headless Reach & Diagnosability** — Phases 1–7 (shipped 2026-08-02): Connect bearer identity + headless mount + CSRF provenance (#343), headless CLI client (#343), cross-spine memory recall (#344), diagnosability trio (#394/#360/#347), operator config & reindex correctness (#350/#345), rule-capture investigation & fix (#351), CLI cross-spine wiring. 21/21 requirements, audit `tech_debt` (0 blockers). Full detail archived at `milestones/v0.12.x-ROADMAP.md`.
 - ✅ **v0.13.x — Curation & Self-Evidence** — Phases 1–5 plus inserted 03.1 (shipped 2026-08-12): CLI interface enforceability (#453/#467 unified + #452 timeout), interface discoverability (conditional-rule conformance, MCP tool annotations, pinned `--help`), `engram spine-review` structural spine curation, multi-target merge supersession, a companion semantic curation skill, and Nyquist `VALIDATION.md` reconciliation (incl. #355). 23/24 requirements, audit `tech_debt` (0 blockers). Full detail archived at `milestones/v0.13.x-ROADMAP.md`.
+- 🚧 **2026-08-12.01 — Record State & Schema Evolution** — Phases 1–8 (roadmapped 2026-08-12): gate & CI integrity first (#479/#497), a `schema_version` payload discriminator (absent-safe, wire-visible, never recall-gated), a versioned `internal/migrate` step registry + `Store.Migrate` sweep with mandatory additive-only/reversibility declarations, `engram migrate` via `registerDestructive` folding in `backfill-short-ids` as its first step, Connect record-state parity (#482) proven by an exhaustive round-trip test, a typed operator renderer (#481), console + CLI state surfacing, and the `RuleSweepScopeOrAllScopesRequired` registry/docs tail (#480). 27/27 v1 requirements mapped.
 
 ## Phases
 
@@ -197,9 +224,114 @@ records.
 
 </details>
 
+**Milestone Goal (2026-08-12.01):** a record's full state — supersession, scheduling, archival, and
+its own schema version — is reachable and legible on every lane, and payload evolution has a real
+mechanism instead of another one-shot operator command.
+
+- [ ] **Phase 1: Gate & CI Integrity** - Key-link `pattern:` matching and the Qdrant testcontainer's mid-run stability fixed so this milestone's own gates can be trusted (#479/#497)
+- [ ] **Phase 2: Record Schema Versioning Foundation** - `schema_version` discriminator: absent-safe, wire-visible, forward-compatible, and structurally incapable of narrowing recall
+- [ ] **Phase 3: Migration Foundation (Registry, Invariants & Sweep)** - `internal/migrate`'s ordered step registry enforces additive-only + mandatory reversibility declarations; `Store.Migrate` sweeps to convergence without a collection lock
+- [ ] **Phase 4: Migration CLI & First Customer** - `engram migrate` (status/preview/apply/revert) via `registerDestructive`, with `backfill-short-ids` folded in as the registered v0→v1 step
+- [ ] **Phase 5: Connect Record-State Parity** - `proto`'s `Memory` gains supersession/scheduling/archival/schema-version fields in one additive pass, proven by an exhaustive field-mapping round-trip test, not `buf breaking` alone (#482)
+- [ ] **Phase 6: Typed Operator Renderer** - `renderOperator` refactored so a json document cannot structurally widen past what its text sentence states (#481)
+- [ ] **Phase 7: Console & CLI State Surfacing** - The operator console UI and the CLI both surface archived/superseded/scheduled/schema-version and pending-migration state
+- [ ] **Phase 8: Registry & Docs Tail** - The shared scope-or-all-scopes guard becomes a registered conditional rule (#480); docs and CLAUDE.md brought current with what this milestone actually ships
+
+### Phase 1: Gate & CI Integrity
+**Goal**: The build can actually go red for schema/migration work — key-link pattern gates are provably matchable again, and the Qdrant testcontainer no longer masks real failures with unrelated infra flakiness.
+**Depends on**: Nothing (first phase)
+**Requirements**: REQ-keylink-pattern-matchable, REQ-keylink-past-gates-reassessed, REQ-ci-qdrant-container-stability
+**Success Criteria** (what must be TRUE):
+  1. A key-link `pattern:` field containing `\\` escaping compiles into an actually-matchable `RegExp`, and a guard test proves a reintroduced corrupted-pattern instance fails the build (fail-first, not silently passing).
+  2. Every v0.13.x Phase 1–2 key-link is re-resolved against the tool: each is either genuinely pinned (a test exists that would fail on regression) or explicitly recorded as unpinned — a past "key-links passed" claim is never accepted as evidence on its own.
+  3. A full `go test ./...` run no longer fails from `internal/store`'s Qdrant testcontainer dying mid-run; when the container does die, its exit reason is captured in the failure output so a recurrence is diagnosable from evidence.
+**Plans**: TBD
+
+### Phase 2: Record Schema Versioning Foundation
+**Goal**: Every record carries a `schema_version` discriminator that is wire-visible, absent-safe (no backfill needed), forward-compatible in both directions, and structurally incapable of narrowing recall.
+**Depends on**: 2026-08-12.01 Phase 1
+**Requirements**: REQ-schema-version-stamped, REQ-schema-version-never-gates-recall, REQ-schema-version-wire-visible, REQ-schema-version-forward-compatible
+**Success Criteria** (what must be TRUE):
+  1. Every write path (store/schedule/supersede/update) stamps the current `schema_version`, proven by a test asserting 100% of write paths stamp — not a sample.
+  2. A record written before this milestone (no `schema_version` key present) reads as v0 by absence with no backfill required, and remains fully recallable through every existing search/list path, unchanged from today's behavior.
+  3. `schema_version` is a plain wire-visible field on `store.Memory` (never `json:"-"`), observable on `full=true` recall and `get_memory` — the deliberate divergence from the `EmbedderIdentity`/`IdempotencyFingerprint` payload-only precedent.
+  4. A negative "recall gate blast radius" test proves `schema_version` never appears in any Qdrant recall or authz filter condition built by `Search`/`SearchReranked`/`SearchDiscovery`/`List`/`ListScheduled` — the adjacent `superseded_by`/`archived_at` `IsEmpty` idiom has inverted cardinality here and copying it would silently exclude every pre-migration record from recall.
+  5. A binary reads a record whose `schema_version` is NEWER than its own constant without rejecting, hiding, or downgrading it — tested in both the older-than and newer-than direction, which is what makes rolling the binary back across a schema change safe.
+**Plans**: TBD
+
+### Phase 3: Migration Foundation (Registry, Invariants & Sweep)
+**Goal**: A pure, dependency-free migration-step registry exists, and no step can be registered without declaring both additive-only compliance and its reversibility — enforced structurally, not caught in review. The sweep that drives it survives Qdrant's real batch non-atomicity and converges without a collection lock.
+**Depends on**: 2026-08-12.01 Phase 2
+**Requirements**: REQ-migration-step-registry, REQ-migration-additive-only-gated, REQ-migration-step-reversibility, REQ-migrate-partial-failure-resume, REQ-migrate-converges-without-lock
+**Success Criteria** (what must be TRUE):
+  1. `internal/migrate` is a stdlib-only leaf package with zero Qdrant or authz dependency, holding the ordered migration-step registry, imported by `internal/store` (never the reverse); a single `Validate` invariant checks step ordering and idempotency over the whole registry.
+  2. Registering a step that removes or renames a payload key fails to build or fails a test — not a review catch — and the step interface is shaped so a per-version decoder can attach later without breaking existing steps.
+  3. Registering a step that is silent about reversibility fails the same way: a reversible step must supply its inverse, an irreversible one must name why — "nobody thought about it" is not a representable state.
+  4. `Store.Migrate`'s sweep survives a forced mid-sequence partial `SetPayload` failure against a real pinned Qdrant, then a subsequent resume converges the backlog to zero — reconciling by re-derivation (a fresh scroll/count), never by trusting the write call's own success/failure signal.
+  5. The sweep runs with no collection lock: because the write path (Phase 2) stamps the current version before the sweep runs, new writes arrive already-current and never create new backlog, proven by a test that writes new records mid-sweep and confirms they are never re-processed.
+**Plans**: TBD
+
+Research flag: yes — the exact `internal/migrate` step-registry API shape (step struct, `Validate` invariants, a `StepsFrom(v)` helper) and the partial-failure-resume test design need explicit attention at plan time; this is the highest-complexity test in the milestone.
+
+### Phase 4: Migration CLI & First Customer
+**Goal**: An operator can preview, apply, and revert schema migrations through the standard destructive-tier CLI, with `backfill-short-ids` folded in as the registry's first real step — never running automatically.
+**Depends on**: 2026-08-12.01 Phase 3
+**Requirements**: REQ-migrate-command, REQ-migrate-status-histogram, REQ-migrate-preview-apply-parity, REQ-backfill-shortids-first-step, REQ-migrate-revert, REQ-migrate-never-automatic
+**Success Criteria** (what must be TRUE):
+  1. `engram migrate` is registered via `registerDestructive`: a bare invocation previews only (no writes), `--apply` is the explicit runtime choke point, and `--output json|text` matches the rest of the operator tier.
+  2. `engram migrate status` reports a version-distribution histogram across the collection, not a single scalar version — a mixed-version collection mid-rollout is correctly represented, not misreported.
+  3. `--apply` acts only on the intersection of the previewed, gate-passing set and a fresh re-derivation (reusing the shipped `spine-review purge` pattern) — a preview that does not match what apply does is treated as a defect, provable by test.
+  4. `backfill-short-ids` is registered as the v0→v1 step, giving the mechanism a real first customer; the standalone command becomes a thin delegating alias (soft deprecation, per the `migrate-set-owner` precedent — never hard removal), and its prior apply-by-default is reconciled with `registerDestructive`'s preview-by-default via a `guides/upgrade.md` entry gated by a test.
+  5. `engram migrate revert` previews by default like `--apply`, runs declared inverses in reverse order, and refuses the whole operation at the first irreversible step in the requested range rather than reverting partially — the refusal message names a collection snapshot as the recovery path.
+  6. No migration ever runs automatically on server startup; at most, startup emits a non-blocking warning that pending migrations exist.
+**Plans**: TBD
+
+### Phase 5: Connect Record-State Parity
+**Goal**: The Connect wire carries a record's full state — the same fields `store.Memory` already exposes — proven by an exhaustive mapping test, not a green `buf breaking` run mistaken for evidence a fourth time.
+**Depends on**: 2026-08-12.01 Phase 4
+**Requirements**: REQ-connect-record-state-parity, REQ-connect-parity-roundtrip-proof
+**Success Criteria** (what must be TRUE):
+  1. `proto`'s `Memory` message gains `superseded_by`, `supersedes`, `not_before`, `not_after`, `archived_at`, and `schema_version` in ONE additive pass (field numbers 23–28), wired through `memoryToProto`; `buf breaking` stays clean.
+  2. An exhaustive field-mapping round-trip test — not a hand-maintained field list — proves every wire-eligible `store.Memory` field is populated by `memoryToProto` and decodes losslessly; the test fails loudly (not silently) if a future field is added to `store.Memory` without a corresponding proto mapping, closing the gap that recurred across v0.8.x, v0.11.x, and v0.13.x.
+  3. `not_before`/`not_after` on the new Connect read path apply the same sub-second outward-rounding discipline the write path already established, proven by a boundary-second test run against both lanes simultaneously.
+**Plans**: TBD
+
+### Phase 6: Typed Operator Renderer
+**Goal**: Operator command output cannot let a json document silently carry more state than its text sentence states — enforced by construction, not merely detected by test.
+**Depends on**: Nothing within this milestone (independent of the other phases; must complete before 2026-08-12.01 Phase 7)
+**Requirements**: REQ-operator-renderer-typed
+**Success Criteria** (what must be TRUE):
+  1. `renderOperator`'s text and json output both derive from one shared ordered field set, so a json document cannot widen past what its text sentence states — field-set identity holds by construction, not by a test over hand-built rows.
+  2. Every existing operator command's `--output json|text` behavior is unchanged (regression-free) after the refactor.
+  3. Adding a new field to an operator report requires touching exactly one field-set declaration to appear correctly in both json and text output — there is no second call site to remember, which is what makes the six new record-state fields (Phase 5/7) safe to add afterward.
+**Plans**: TBD
+
+### Phase 7: Console & CLI State Surfacing
+**Goal**: An operator can see a record's full state — archived, superseded, scheduled, schema version, and pending migrations — from the operator console UI and the CLI, not only by running `engram migrate status`.
+**Depends on**: 2026-08-12.01 Phase 5, 2026-08-12.01 Phase 6
+**Requirements**: REQ-console-record-state, REQ-cli-record-state, REQ-migration-state-visible
+**Success Criteria** (what must be TRUE):
+  1. The operator console UI renders a record's archived, superseded, and scheduled state — today it cannot render the v0.13.x archive tier at all.
+  2. `engram search`/`list`/`get` surface the same state fields through the typed renderer, so the CLI and the console agree on what a record is.
+  3. An operator can see pending-migration state (e.g., how many records sit behind the current schema version) through the console and CLI surfaces, not only by running `engram migrate status` directly.
+**Plans**: TBD
+**UI hint**: yes
+
+Research flag: yes — the operator-UI soft-hidden-state conventions (archived/superseded/scheduled badges, precedence rules for compound state) are synthesized from general product convention, not a single citable spec; validate against real console usage rather than pre-guessing precedence for compound states.
+
+### Phase 8: Registry & Docs Tail
+**Goal**: The shared scope-or-all-scopes guard is a registered, conformance-gated rule instead of a hand-rolled check, and the docs plus CLAUDE.md describe what this milestone actually shipped instead of what it superseded.
+**Depends on**: 2026-08-12.01 Phase 4, 2026-08-12.01 Phase 7
+**Requirements**: REQ-sweep-scope-rule-registered, REQ-docs-record-state, REQ-claude-md-migrations-convention
+**Success Criteria** (what must be TRUE):
+  1. `RuleSweepScopeOrAllScopesRequired` is a registered `surfaces.ConditionalRule` (not a hand-rolled `usageErrorf`), reused by both `summarize-missing` and `spine-review scan`, with its canonical sentence anchored and conformance-gated on every surface its fields resolve to.
+  2. `reference/memory-record.md` and `reference/tools.md` document the full record state including `schema_version`, and a new operator-facing guide documents the migration mechanism end to end.
+  3. CLAUDE.md's "Not used here: database migrations" line is revised to accurately describe what this milestone ships and its scope — schema-version-driven migrations only, deliberately not `migrate-remap-owner`/`summarize-missing`/`reindex` — so the normative doc no longer contradicts the code.
+**Plans**: TBD
+
 ## Progress
 
-**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · 13 → 14 (embedder track) · 15 → 16 → 17 → 18 → 19 (write-lane track, strict order) · 20 → 21 (independent) — v0.10.x shipped 2026-07-16 · 22 → 23 (Cedar foundation → service auth/tenancy, strict order) · 24 → 25 → 26 (capture trio + recall/config tail, strict order; 24 can start in parallel with 22–23) — v0.11.x shipped 2026-07-26 · v0.12.x: 1 → 2 (spine → CLI, strict order) · 3 · 4 · 5 · 6 (independent of the spine and of each other; ran in parallel once 1 was underway) · 7 (CLI cross-spine wiring, closed the audit seam between 2 and 3) — v0.12.x shipped 2026-08-02 · v0.13.x: 1 · 2 (parallelizable with each other) → 3 (needs 1 and 2 settled first) → 4 (authored in parallel with 3, full acceptance trails it) → 5 (last; needs 3's `verify` for the #355 fixture, reconciles each phase's own validation as it closes) — v0.13.x planned 2026-08-03
+**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · 13 → 14 (embedder track) · 15 → 16 → 17 → 18 → 19 (write-lane track, strict order) · 20 → 21 (independent) — v0.10.x shipped 2026-07-16 · 22 → 23 (Cedar foundation → service auth/tenancy, strict order) · 24 → 25 → 26 (capture trio + recall/config tail, strict order; 24 can start in parallel with 22–23) — v0.11.x shipped 2026-07-26 · v0.12.x: 1 → 2 (spine → CLI, strict order) · 3 · 4 · 5 · 6 (independent of the spine and of each other; ran in parallel once 1 was underway) · 7 (CLI cross-spine wiring, closed the audit seam between 2 and 3) — v0.12.x shipped 2026-08-02 · v0.13.x: 1 · 2 (parallelizable with each other) → 3 (needs 1 and 2 settled first) → 4 (authored in parallel with 3, full acceptance trails it) → 5 (last; needs 3's `verify` for the #355 fixture, reconciles each phase's own validation as it closes) — v0.13.x planned 2026-08-03 · 2026-08-12.01: 1 → 2 → 3 → 4 → 5 (needs 4) · 6 (independent, parallelizable with 3–5; must finish before 7) → 7 (needs 5 and 6) → 8 (needs 4 and 7) — 2026-08-12.01 roadmapped 2026-08-12
 
 > **Phase numbering restarts per milestone as of v0.12.x.** Phases 1–26 above are the pre-v0.12.x
 > monotonic sequence and keep their historical numbers. In **prose**, a phase number is only
@@ -219,6 +351,12 @@ records.
 > milestone stay bare; archived milestones whose numbers collide get milestone-qualified.** Keep
 > `**Requirements:**` on ONE line per phase — a wrapped line truncates `phase_req_ids` to whatever
 > fits before the break.
+>
+> **2026-08-12.01 is the first CalVer-labeled milestone; the same convention applies unchanged.**
+> Phase numbering restarts at 1 again (this is now the active milestone), the structural checklist
+> and `### Phase N:` headers above stay bare, and every **prose** reference elsewhere qualifies as
+> `2026-08-12.01 Phase N` — the milestone label is a CalVer string (`YYYY-MM-DD.NN`), not a SemVer
+> version, and is never reformatted to a `vX.Y` shape.
 
 | Phase | Milestone | Requirements | Status | Completed |
 |-------|-----------|--------------|--------|-----------|
@@ -260,12 +398,21 @@ records.
 | 03.1. Merge Supersession (INSERTED) | v0.13.x | 6/6 | Complete | 2026-08-11 |
 | 4. Spine Curation — Semantic (Skill) | v0.13.x | 3/3 | Complete | 2026-08-11 |
 | 5. Validation Debt Reconciliation | v0.13.x | 2/2 | Complete | 2026-08-12 |
+| 1. Gate & CI Integrity | 2026-08-12.01 | 0/3 | Not started | - |
+| 2. Record Schema Versioning Foundation | 2026-08-12.01 | 0/4 | Not started | - |
+| 3. Migration Foundation (Registry, Invariants & Sweep) | 2026-08-12.01 | 0/5 | Not started | - |
+| 4. Migration CLI & First Customer | 2026-08-12.01 | 0/6 | Not started | - |
+| 5. Connect Record-State Parity | 2026-08-12.01 | 0/2 | Not started | - |
+| 6. Typed Operator Renderer | 2026-08-12.01 | 0/1 | Not started | - |
+| 7. Console & CLI State Surfacing | 2026-08-12.01 | 0/3 | Not started | - |
+| 8. Registry & Docs Tail | 2026-08-12.01 | 0/3 | Not started | - |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.
 **v0.11.x — Capture & Service Identity: ✅ shipped 2026-07-26 · 5 phases (22–26), 19 plans, 46 tasks · 11/11 requirements · audit PASSED (6/6 integration seams, 2/2 E2E flows, 0 blockers; Nyquist 5/5 validated — phases 24 and 26 reconciled 2026-07-26, 0 gaps).** Full detail: `milestones/v0.11.x-ROADMAP.md`.
 **v0.12.x — Headless Reach & Diagnosability: ✅ shipped 2026-08-02 · 7 phases (1–7, first milestone on restarted numbering), 28 plans, 68 tasks · 21/21 requirements · audit `tech_debt` (5/5 integration seams, 2/2 E2E flows, 0 blockers; Nyquist not validated — 6 phases at `status: draft`, phase 2 has none, tracked as debt not gaps).** Full detail: `milestones/v0.12.x-ROADMAP.md`.
 **v0.13.x — Curation & Self-Evidence: ✅ shipped 2026-08-12 · 6 phases (1–5 plus inserted 03.1), 33 plans, 99 tasks · 23/24 requirements (REQ-consent-adversarial-proof left unproven — cold-read run cap exhausted at 3, terminal verdict NOT-OBTAINED, non-result accepted by the user; WINDOWS.md id 3 open) · audit `tech_debt` (6/6 integration seams, 4/4 E2E flows, 0 blockers; Nyquist 5/6 COMPLIANT — phase 4 PARTIAL by design, its one pending row *is* the unproven requirement) · cleared the inherited v0.12.x Nyquist debt: all 6 phases now `status: validated`.** Full detail: `milestones/v0.13.x-ROADMAP.md`.
+**2026-08-12.01 — Record State & Schema Evolution: 🚧 roadmapped 2026-08-12 · 8 phases (1–8) · 0/27 requirements.** First CalVer-labeled milestone. Phase 3 of the original 7-step research build order (11/27 requirements, 41% of the milestone) split into Phase 3 (migration foundation: registry, invariants, sweep) and Phase 4 (migration CLI: `engram migrate`, `backfill-short-ids` fold-in) to avoid one oversized phase. Full detail: this file (active milestone, not yet archived).
 
 ---
 
