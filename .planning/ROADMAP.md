@@ -309,7 +309,7 @@ Plans:
   4. `Store.Migrate`'s sweep survives a forced mid-sequence partial `SetPayload` failure against a real pinned Qdrant, then a subsequent resume converges the backlog to zero — reconciling by re-derivation (a fresh scroll/count), never by trusting the write call's own success/failure signal.
   5. The sweep runs with no collection lock: because the write path (Phase 2) stamps the current version before the sweep runs, new writes arrive already-current and never create new backlog, proven by a test that writes new records mid-sweep and confirms they are never re-processed.
 
-**Plans:** 1/5 plans executed
+**Plans:** 5/5 plans executed
 
 Plans:
 **Wave 1**
@@ -318,10 +318,10 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 03-02-PLAN.md — Criterion 1/3: the four construction-time panics, the seal proven by an observed build failure, `Validate`'s three rules, the stdlib-only leaf gate, and the decoder door (wave 2)
-- [ ] 03-03-PLAN.md — Criterion 2: the seven-row additive-only key-set diff over fixture steps, with both anti-vacuity guards and three RED cycles (wave 2)
-- [ ] 03-04-PLAN.md — Criterion 4: forced mid-sequence `SetPayload` failure against real pinned Qdrant, including a committing-but-erroring write, then a resume that converges (wave 2)
-- [ ] 03-05-PLAN.md — Criterion 5: mid-sweep writes proving already-current records are never re-processed and the sweep converges with no collection lock (wave 2)
+- [x] 03-02-PLAN.md — Criterion 1/3: the four construction-time panics, the seal proven by an observed build failure, `Validate`'s three rules, the stdlib-only leaf gate, and the decoder door (wave 2)
+- [x] 03-03-PLAN.md — Criterion 2: the seven-row additive-only key-set diff over fixture steps, with both anti-vacuity guards and three RED cycles (wave 2)
+- [x] 03-04-PLAN.md — Criterion 4: forced mid-sequence `SetPayload` failure against real pinned Qdrant, including a committing-but-erroring write, then a resume that converges (wave 2)
+- [x] 03-05-PLAN.md — Criterion 5: mid-sweep writes proving already-current records are never re-processed and the sweep converges with no collection lock (wave 2)
 
 Research flag: yes — the exact `internal/migrate` step-registry API shape (step struct, `Validate` invariants, a `StepsFrom(v)` helper) and the partial-failure-resume test design need explicit attention at plan time; this is the highest-complexity test in the milestone. Resolved at plan time: see `03-RESEARCH.md` and `03-01-PLAN.md`'s `<planner_assumptions>`.
 
