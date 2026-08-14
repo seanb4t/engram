@@ -7,6 +7,7 @@ import (
 	"context"
 	"maps"
 	"reflect"
+	"slices"
 	"sort"
 	"testing"
 	"time"
@@ -187,5 +188,137 @@ func TestMigrateTracerLegacyRecordEndToEnd(t *testing.T) {
 	snapshotAfterSecond := rawPayloadSnapshot(ctx, t, s, id)
 	if !reflect.DeepEqual(snapshotAfterFirst, snapshotAfterSecond) {
 		t.Errorf("raw payload changed on re-run:\nbefore: %#v\nafter:  %#v", snapshotAfterFirst, snapshotAfterSecond)
+	}
+}
+
+// TestBacklogFilterMatchesAbsentAndBelowTarget proves the backlog filter
+// (Task 2): a record whose schema_version key is genuinely absent, a
+// record with an explicit below-target value, and a record already at
+// target are correctly partitioned, and the target<=0 short-circuit is
+// proven to live in Store.Migrate rather than in backlogFilter itself.
+func TestBacklogFilterMatchesAbsentAndBelowTarget(t *testing.T) {
+	ctx := context.Background()
+	c := dialTestClient(t)
+	collection := testCollection("migrate_backlog_filter")
+	_ = c.DeleteCollection(ctx, collection)
+	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
+
+	s := newTestStore(t, c, collection)
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+
+	absentID := "cf200000-0000-0000-0000-000000000001"
+	belowID := "cf200000-0000-0000-0000-000000000002"
+	currentID := "cf200000-0000-0000-0000-000000000003"
+
+	// absent: schema_version genuinely absent — the only record that can
+	// distinguish a correct filter from a broken one.
+	seedLegacyRecord(ctx, t, s, absentID)
+	if _, ok := rawPayload(ctx, t, s, absentID)[schemaVersionKey]; ok {
+		t.Fatalf("absent record: schema_version key present, want genuinely absent")
+	}
+
+	// below: normally upserted, then raw-injected to an explicit
+	// below-target value. The key is PRESENT with a below-target value.
+	belowMem := Memory{
+		ID: belowID, Content: "below-target record",
+		Scope: "migrate-test:project:below", Owner: "sub-migrate-test",
+		Category: "note", CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, belowMem, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed below: %v", err)
+	}
+	injectRawPayload(ctx, t, s, belowID, qdrant.NewValueMap(map[string]any{schemaVersionKey: 0}))
+
+	// current: normally upserted whose Memory.SchemaVersion is
+	// migrate.Version(1), so payload()'s monotonic max stamps 1 through the
+	// REAL production write path — not injectRawPayload.
+	currentMem := Memory{
+		ID: currentID, Content: "current record",
+		Scope: "migrate-test:project:current", Owner: "sub-migrate-test",
+		Category: "note", CreatedAt: time.Now().UTC(),
+		SchemaVersion: migrate.Version(1),
+	}
+	if err := s.Upsert(ctx, currentMem, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed current: %v", err)
+	}
+	if got := rawPayload(ctx, t, s, currentID)[schemaVersionKey].GetIntegerValue(); got != 1 {
+		t.Fatalf("current record: schema_version = %d, want 1 (stamped by the production write path)", got)
+	}
+
+	// Assert as a SORTED SET, in both directions — not a length check, not
+	// a contains check: a length check passes for the wrong two records,
+	// and a contains check passes for a filter that matches everything.
+	got := migrateBacklogIDs(ctx, t, s, 1)
+	want := []string{absentID, belowID}
+	sort.Strings(want)
+	if !slices.Equal(got, want) {
+		gotSet := make(map[string]bool, len(got))
+		for _, id := range got {
+			gotSet[id] = true
+		}
+		wantSet := make(map[string]bool, len(want))
+		for _, id := range want {
+			wantSet[id] = true
+		}
+		var extra, missing []string
+		for _, id := range got {
+			if !wantSet[id] {
+				extra = append(extra, id)
+			}
+		}
+		for _, id := range want {
+			if !gotSet[id] {
+				missing = append(missing, id)
+			}
+		}
+		t.Errorf("backlog at target=1: got %v, want %v (extra=%v missing=%v)", got, want, extra, missing)
+	}
+
+	// Non-vacuity: the derived set must be non-empty AND must exclude
+	// current — both, as separate assertions. An empty result would
+	// satisfy any "does not contain current" phrasing on its own.
+	if len(got) == 0 {
+		t.Errorf("backlog at target=1 is empty, want non-empty")
+	}
+	for _, id := range got {
+		if id == currentID {
+			t.Errorf("backlog at target=1 contains current record %s, want excluded", currentID)
+		}
+	}
+
+	// target<=0, split into the two halves PA-4 actually names:
+
+	// The FILTER alone at target 0 is broad, deliberately: the IsEmpty arm
+	// matches an absent-key record at ANY target, so a caller who builds
+	// the filter and scrolls it directly gets legacy records back. This is
+	// correct behavior for a filter in isolation and is exactly why the
+	// safety property cannot live here (see backlogFilter's own doc
+	// comment).
+	zeroTargetBacklog := migrateBacklogIDs(ctx, t, s, 0)
+	foundAbsent := false
+	for _, id := range zeroTargetBacklog {
+		if id == absentID {
+			foundAbsent = true
+		}
+	}
+	if !foundAbsent {
+		t.Errorf("backlogFilter(0) does not contain absent record %s — the IsEmpty arm should match it at any target", absentID)
+	}
+
+	// The SWEEP at target 0 does nothing: THIS assertion — not the
+	// filter's shape — is PA-4's actual guarantee. A record at v0 needs no
+	// work, and the sweep must not stamp the whole collection to prove
+	// otherwise.
+	res, err := s.Migrate(ctx, MigrateOptions{Target: 0})
+	if err != nil {
+		t.Fatalf("Migrate(target=0): %v", err)
+	}
+	if res.Migrated != 0 {
+		t.Errorf("Migrate(target=0) Migrated = %d, want 0", res.Migrated)
+	}
+	if _, ok := rawPayload(ctx, t, s, absentID)[schemaVersionKey]; ok {
+		t.Errorf("Migrate(target=0) stamped schema_version onto the absent record — PA-4 violated")
 	}
 }
