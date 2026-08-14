@@ -344,19 +344,19 @@ Research flag: yes — the exact `internal/migrate` step-registry API shape (ste
 Plans:
 **Wave 1**
 
-- [ ] 04-01-PLAN.md — Tracer: v0→v1 backfill-short-ids step + CheckAdditive pre-existing-key carve-out (REVIEWS H1) + full-backlog DryRun preview + manifest-based preview/apply intersection (SC3/H6) + CurrentVersion 0→1 (wave 1)
+- [ ] 04-01-PLAN.md — Tracer: v0→v1 step + CheckAdditive pre-existing-key carve-out (H1) + full-backlog DryRun + manifest-based intersection w/ single-pass PA-3-safe path (H7) + CurrentVersion 0→1 + additive_test.go Registry assertion updated (M13) (wave 1)
 
 **Wave 2**
 
-- [ ] 04-02-PLAN.md — Store MigrateStatus histogram w/ future-version handling + Store.Revert w/ per-record chain selection + fixture injection helper + shared reversePreflight + corrected startup-warning predicate (REVIEWS H3/H4/H5/M3/M4) (wave 2)
+- [ ] 04-02-PLAN.md — Store MigrateStatus histogram w/ future-version handling (M4) + Store.Revert w/ per-record chain selection (H5), pinned StepsFrom(to,from) arg order (H6), unsupported-version whole-operation preflight (H6), fixture injection (H4), corrected startup-warning predicate (H3) (wave 2)
 
 **Wave 3**
 
-- [ ] 04-03-PLAN.md — CLI surface: generalize registerDestructive gate + engram migrate/status/revert w/ manifest-intersection preview/apply parity (H6) + shared preflight (M8) + store interface seam (M7) + leaf-only Use strings (M6) + toolclass rows (wave 3)
+- [ ] 04-03-PLAN.md — CLI surface: generalize registerDestructive gate + engram migrate/status/revert w/ in-apply-closure re-preview (H5/purge pattern, NOT package var) + timeout (H8) + exported PreviewRevert (M8) + store interface seam (M7) + leaf-only Use strings (M6) + !ReadOnly derivation for TestDestructiveCommandsRequireApply (M12) + toolclass rows (wave 3)
 
 **Wave 4**
 
-- [ ] 04-04-PLAN.md — backfill-short-ids as thin delegating alias w/ pre-backfilled-record convergence test (M10) + dead store code deleted + upgrade.md entry documenting --dry-run AND --timeout removal (M11) + D-12 bidirectional gate (wave 4)
+- [ ] 04-04-PLAN.md — backfill-short-ids as thin delegating alias w/ PRESERVED --timeout (H8, NOT removed) + pre-backfilled-record convergence test (M10) + dead store code deleted + upgrade.md entry documenting --dry-run removal only (M11, NOT --timeout) + D-12 bidirectional gate (wave 4)
 
 ### Phase 5: Connect Record-State Parity
 
