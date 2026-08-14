@@ -1,0 +1,15 @@
+diff --git a/internal/migrate/additive.go b/internal/migrate/additive.go
+index ed337d1f..87f70f85 100644
+--- a/internal/migrate/additive.go
++++ b/internal/migrate/additive.go
+@@ -61,10 +61,6 @@ func keyDiff(a, b map[string]any) []string {
+ func CheckAdditive(s Step, before, after map[string]any) error {
+ 	var parts []string
+ 
+-	if removed := RemovedKeys(before, after); len(removed) > 0 {
+-		parts = append(parts, fmt.Sprintf("removed key(s) not permitted: %v", removed))
+-	}
+-
+ 	added := AddedKeys(before, after)
+ 	declared := s.AddsKeys()
+ 	sort.Strings(declared)
