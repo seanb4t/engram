@@ -348,15 +348,15 @@ Plans:
 
 **Wave 2**
 
-- [ ] 04-02-PLAN.md — Store MigrateStatus histogram w/ future-version handling (M4) + Store.Revert w/ per-record chain selection (H5), pinned StepsFrom(to,from) arg order (H6), unsupported-version whole-operation preflight (H6), fixture injection (H4), corrected startup-warning predicate (H3) (wave 2)
+- [ ] 04-02-PLAN.md — Store MigrateStatus histogram w/ PER-VERSION future buckets (M4) + exported Store.PreviewRevert/RevertPlan (cycle-3 HIGH #1) as a whole-range zero-write preflight over the entire above-target set (cycle-3 HIGH #2) + Store.Revert w/ per-record chain selection (H5), pinned StepsFrom(to,from) arg order (H6), fixture injection (H4), DeletePayload-then-stamping-SetPayload partial-failure reconciliation (M3), corrected startup-warning predicate (H3) (wave 2)
 
 **Wave 3**
 
-- [ ] 04-03-PLAN.md — CLI surface: generalize registerDestructive gate + engram migrate/status/revert w/ in-apply-closure re-preview (H5/purge pattern, NOT package var) + timeout (H8) + exported PreviewRevert (M8) + store interface seam (M7) + leaf-only Use strings (M6) + !ReadOnly derivation for TestDestructiveCommandsRequireApply (M12) + toolclass rows (wave 3)
+- [ ] 04-03-PLAN.md — CLI surface: generalize registerDestructive gate + engram migrate/status/revert w/ in-apply-closure re-preview (H5/purge pattern, NOT package var) + shared migrateSweep{Preview,Apply}Run funcs the alias reuses (cycle-3 #7) + duration-taking migrateWithTimeout w/ per-leaf vars and timeoutGroups assignment (H8/N3) + consumes 04-02's exported PreviewRevert (M8) + store interface seam (M7) + leaf-only Use strings (M6) + !ReadOnly derivation for TestDestructiveCommandsRequireApply (M12) + pinned "mutating operator command" rule sentence via surfaces:gen (N5) + toolclass rows (wave 3)
 
 **Wave 4**
 
-- [ ] 04-04-PLAN.md — backfill-short-ids as thin delegating alias w/ PRESERVED --timeout (H8, NOT removed) + pre-backfilled-record convergence test (M10) + dead store code deleted + upgrade.md entry documenting --dry-run removal only (M11, NOT --timeout) + D-12 bidirectional gate (wave 4)
+- [ ] 04-04-PLAN.md — backfill-short-ids as thin delegating alias over the SHARED sweep run funcs so its apply path has full manifest parity (cycle-3 #7) w/ PRESERVED-and-READ --timeout (H8/N3, NOT removed) + pre-backfilled-record convergence test (M10) + dead store code and its recall-gate row deleted + sibling conformance gates widened to the mutating set w/ RED-first proof (cycle-3 #6/N1) + upgrade.md entry documenting --dry-run removal only (M11, NOT --timeout) + D-12 bidirectional gate (wave 4)
 
 ### Phase 5: Connect Record-State Parity
 
