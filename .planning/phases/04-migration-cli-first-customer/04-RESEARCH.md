@@ -273,27 +273,31 @@ Existing callers copy the `spinePurgePreview`/`spinePurgeApplyRun` shape: format
 `schemaVersionKey`, and the sealed `Reversibility` accessors are all VERIFIED from source this
 session — not assumptions.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **registerDestructive generalization shape**
+1. **registerDestructive generalization shape** (RESOLVED → 04-03 Task 1)
    - What we know: it panics on `!Destructive`; SC1/D-09/D-16 all route additive commands through it.
    - What's unclear: change the guard inline vs. extract a shared preview/apply helper; whether to
      rename the mechanism. Recommended: generalize the guard to `!ReadOnly` inline.
    - Recommendation: implement as part of REQ-migrate-command; verify `TestDestructiveGatePreventsMutation`
      still holds.
+   - Resolution: 04-03 Task 1 generalizes the guard to `!cmd.Class.ReadOnly` inline.
 
-2. **Histogram algorithm** (D-08 discretion)
+2. **Histogram algorithm** (D-08 discretion) (RESOLVED → 04-02 Task 1)
    - What we know: reset facet-vs-Default both viable; facet can't see absent keys.
    - What's unclear: whether to use facet+IsEmpty (1 facet + 1 count) vs a per-version exact-Count
      loop (simpler, tiny cardinality).
    - Recommendation: prefer the per-version exact-Count loop for determinism until the collection
      is large; both acceptable.
+   - Resolution: 04-02 Task 1 chose facet+IsEmpty (within D-08's allowed set, diverging from the
+     advisory preference for the per-version loop).
 
-3. **`backfill-short-ids` toolclass row disposition**
+3. **`backfill-short-ids` toolclass row disposition** (RESOLVED → 04-04 Task 1)
    - What we know: one op never carries two classifications; backfill delegates to migrate.
    - What's unclear: whether backfill's row is removed from `operations` or kept with migrate's Class.
    - Recommendation: keep the row for the deprecation-catalog surface, set equal to migrate's Class,
      and let `TestCatalogBlastRadiusMatchesToolClasses` remain both-directions green.
+   - Resolution: 04-04 Task 1 keeps the toolclass row unchanged (step 4: "do NOT reclassify it").
 
 ## Environment Availability
 
