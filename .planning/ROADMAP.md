@@ -309,12 +309,12 @@ Plans:
   4. `Store.Migrate`'s sweep survives a forced mid-sequence partial `SetPayload` failure against a real pinned Qdrant, then a subsequent resume converges the backlog to zero — reconciling by re-derivation (a fresh scroll/count), never by trusting the write call's own success/failure signal.
   5. The sweep runs with no collection lock: because the write path (Phase 2) stamps the current version before the sweep runs, new writes arrive already-current and never create new backlog, proven by a test that writes new records mid-sweep and confirms they are never re-processed.
 
-**Plans:** 5 plans
+**Plans:** 1/5 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — Tracer: one absent-key legacy record end-to-end through `NewStep`/`Validate`/`StepsFrom`, `Store.Migrate`'s re-derived backlog and `backlogFilter`'s Range+IsEmpty OR-shape, plus the additive-only check wired fail-closed into the sweep (wave 1)
+- [x] 03-01-PLAN.md — Tracer: one absent-key legacy record end-to-end through `NewStep`/`Validate`/`StepsFrom`, `Store.Migrate`'s re-derived backlog and `backlogFilter`'s Range+IsEmpty OR-shape, plus the additive-only check wired fail-closed into the sweep (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -455,7 +455,7 @@ Research flag: yes — the operator-UI soft-hidden-state conventions (archived/s
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | Complete    | 2026-08-13 |
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-13 |
-| 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete | 2026-08-01 |
+| 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | In Progress|  |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete    | 2026-08-11 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete | 2026-08-01 |
