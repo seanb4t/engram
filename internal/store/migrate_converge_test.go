@@ -187,11 +187,15 @@ func TestMigrateConvergesWithoutLock(t *testing.T) {
 	// which is the entire point of what this test demonstrates.
 	res, migrateErr := sweepStore.Migrate(ctx, opts)
 
+	// Only the hook's OWN recorded errors gate all three subtests: a
+	// failure detected inside the mid-sweep write itself (e.g. PA-10's
+	// stamp not behaving as documented) means nothing downstream is
+	// trustworthy. Store.Migrate's own error is deliberately NOT gated
+	// here — it is asserted inside subtest 3 below, so a run where the
+	// sweep fails to converge (as RED cycle 1 demonstrates) still lets
+	// subtests 1 and 2 run and report what they observe.
 	if hookErrs := h.drainErrs(); len(hookErrs) > 0 {
 		t.Fatalf("midSweepHook recorded %d error(s) before any subtest ran:\n%s", len(hookErrs), strings.Join(hookErrs, "\n"))
-	}
-	if migrateErr != nil {
-		t.Fatalf("Store.Migrate: %v", migrateErr)
 	}
 
 	fires, triggerMatches, scrolls, writeIDs := h.snapshot()
@@ -233,6 +237,9 @@ func TestMigrateConvergesWithoutLock(t *testing.T) {
 	})
 
 	t.Run("the sweep converged, and this run actually observed what it claims", func(t *testing.T) {
+		if migrateErr != nil {
+			t.Errorf("Store.Migrate returned an error: %v", migrateErr)
+		}
 		if res.Backlog != 0 {
 			t.Errorf("res.Backlog = %d, want 0 (converged)", res.Backlog)
 		}
