@@ -1,0 +1,17 @@
+diff --git a/internal/migrate/registry.go b/internal/migrate/registry.go
+index d310cff4..4bebbfe7 100644
+--- a/internal/migrate/registry.go
++++ b/internal/migrate/registry.go
+@@ -80,12 +80,6 @@ func Validate(steps []Step) error {
+ 			errs = append(errs, fmt.Errorf("migrate: step %d does not advance the version: From=%d To=%d", i, st.from, st.to))
+ 		}
+ 	}
+-	for i := 1; i < len(steps); i++ {
+-		if steps[i].from != steps[i-1].to {
+-			errs = append(errs, fmt.Errorf("migrate: step %d is not contiguous with step %d: step %d.From=%d, step %d.To=%d",
+-				i, i-1, i, steps[i].from, i-1, steps[i-1].to))
+-		}
+-	}
+ 	return errors.Join(errs...)
+ }
+ 
