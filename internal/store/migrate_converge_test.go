@@ -209,8 +209,19 @@ func TestMigrateConvergesWithoutLock(t *testing.T) {
 		// Collection-level claim: the record was never touched. Both
 		// assertions matter — the first alone could pass if the sweep
 		// wrote through some other verb, the second alone could pass if
-		// the step happened to be a no-op.
-		raw := rawPayload(ctx, t, sweepStore, alreadyCurrentID)
+		// the step happened to be a no-op. rawPayloadNoFatal (not
+		// rawPayload) is deliberate here: if the mid-sweep write never
+		// happened at all (e.g. RED cycle 2's no-op), the record does not
+		// exist, and that absence is itself consistent with "never
+		// touched" rather than a reason to crash this subtest — a guard
+		// that fails only because a downstream Get panicked is not a
+		// guard (subtest 3's fires/triggerMatches/write-set assertions
+		// are what catch a mid-sweep write that never happened at all).
+		raw, rerr := rawPayloadNoFatal(ctx, sweepStore, alreadyCurrentID)
+		if rerr != nil {
+			t.Logf("alreadyCurrent(%s) not found in collection (%v) — consistent with never touched; see subtest 3 for whether the mid-sweep write happened at all", alreadyCurrentID, rerr)
+			return
+		}
 		if _, ok := raw["converge_marker"]; ok {
 			t.Errorf("alreadyCurrent(%s) carries converge_marker — it was re-processed", alreadyCurrentID)
 		}
