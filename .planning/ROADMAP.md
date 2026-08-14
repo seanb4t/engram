@@ -230,7 +230,7 @@ mechanism instead of another one-shot operator command.
 
 - [x] **Phase 1: Gate & CI Integrity** - Key-link `pattern:` matching and the Qdrant testcontainer's mid-run stability fixed so this milestone's own gates can be trusted (#479/#497) (completed 2026-08-13)
 - [x] **Phase 2: Record Schema Versioning Foundation** - `schema_version` discriminator: absent-safe, wire-visible, forward-compatible, and structurally incapable of narrowing recall (completed 2026-08-13)
-- [ ] **Phase 3: Migration Foundation (Registry, Invariants & Sweep)** - `internal/migrate`'s ordered step registry enforces additive-only + mandatory reversibility declarations; `Store.Migrate` sweeps to convergence without a collection lock
+- [x] **Phase 3: Migration Foundation (Registry, Invariants & Sweep)** - `internal/migrate`'s ordered step registry enforces additive-only + mandatory reversibility declarations; `Store.Migrate` sweeps to convergence without a collection lock (completed 2026-08-14)
 - [ ] **Phase 4: Migration CLI & First Customer** - `engram migrate` (status/preview/apply/revert) via `registerDestructive`, with `backfill-short-ids` folded in as the registered v0→v1 step
 - [ ] **Phase 5: Connect Record-State Parity** - `proto`'s `Memory` gains supersession/scheduling/archival/schema-version fields in one additive pass, proven by an exhaustive field-mapping round-trip test, not `buf breaking` alone (#482)
 - [ ] **Phase 6: Typed Operator Renderer** - `renderOperator` refactored so a json document cannot structurally widen past what its text sentence states (#481)
@@ -309,7 +309,7 @@ Plans:
   4. `Store.Migrate`'s sweep survives a forced mid-sequence partial `SetPayload` failure against a real pinned Qdrant, then a subsequent resume converges the backlog to zero — reconciling by re-derivation (a fresh scroll/count), never by trusting the write call's own success/failure signal.
   5. The sweep runs with no collection lock: because the write path (Phase 2) stamps the current version before the sweep runs, new writes arrive already-current and never create new backlog, proven by a test that writes new records mid-sweep and confirms they are never re-processed.
 
-**Plans:** 5/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
 **Wave 1**
@@ -455,7 +455,7 @@ Research flag: yes — the operator-UI soft-hidden-state conventions (archived/s
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | Complete    | 2026-08-13 |
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-13 |
-| 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | In Progress|  |
+| 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-08-14 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete    | 2026-08-11 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete | 2026-08-01 |
