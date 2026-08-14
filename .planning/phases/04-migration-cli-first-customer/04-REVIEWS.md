@@ -1,313 +1,292 @@
 ---
 phase: 04
 reviewers: [codex]
-reviewed_at: 2026-08-14T19:50:00Z
+reviewed_at: 2026-08-14T20:35:50Z
 plans_reviewed:
   - 04-01-PLAN.md — Tracer: v0→v1 short_id first customer
   - 04-02-PLAN.md — Store MigrateStatus histogram + Store.Revert + startup warning
   - 04-03-PLAN.md — CLI surface: migrate command family
   - 04-04-PLAN.md — backfill-short-ids as thin delegating alias
+cycle: 2
+cycle_1_findings:
+  high: [H1, H2, H3, H4, H5, H6]
+  actionable: [M1, M2, M3, M4, M5, M6, M7, M8, M9, M10, M11]
+cycle_2_verdict:
+  resolved_high: [H1, H2, H3, H4]
+  partial_high: [H6]
+  unresolved_high: [H5]
+  actionable_unresolved: [M8]
+  new_high: [H7, H8]
+  new_actionable: [M12, M13]
 ---
 
-# Cross-AI Plan Review — Phase 4
+# Cross-AI Plan Review — Phase 4 (Cycle 2)
 
 ## Consensus Summary
 
-One reviewer (Codex) examined all four plans against the actual source tree. The decomposition and wave ordering are well-structured, and the plans consistently reuse the repository's existing migration, operator-output, and destructive-gate patterns. However, **three correctness gaps prevent the plans from satisfying the stated requirements** without design changes.
-
-### Codex Key Findings
-
-**Six HIGH concerns across four plans:**
-
-1. **v0→v1 step fails on records with existing `short_id` but no `schema_version`.** The old standalone `BackfillShortIDs` writes only `short_id` — never `schema_version` — so production records exist with `short_id` present and no schema stamp. `CheckAdditive` requires set-equality between `AddedKeys(before, after)` and `Step.AddsKeys`; an already-populated record would trigger "declared key never added." This is the most critical correctness issue.
-
-2. **DryRun covers only one batch (default 256 records).** The plan specifies returning after the first scroll pass, which produces an incomplete projection for collections larger than `migrateBatch`.
-
-3. **Startup warning predicate is wrong.** The plan's `sum(buckets)+Absent > 0` computes the total collection count, so every non-empty all-current collection would spuriously warn. The predicate must compare against `CurrentVersion`, not total count.
-
-4. **Revert reversible fixture injection is unrepresentable.** `Store.Revert(ctx, to)` has no `Steps` parameter. The plan's test task requires injecting reversible fixture steps but provides no mechanism — unlike `MigrateOptions.Steps`.
-
-5. **CLI preview/apply does not implement manifest-intersection parity.** The repository's purge precedent carries a concrete manifest from preview into apply, intersecting with a fresh re-derivation. The migration plan calls `Store.Migrate` independently in dry-run and apply mode with no manifest bridge, so SC3 / REQ-migrate-preview-apply-parity is unmet. CLI tests using a fake returning deterministic counts would certify routing but not identity-set intersection.
-
-6. **Revert reverse chain must be per-record current version.** The forward path uses `StepsFrom` per record; the revert plan risks applying inverses for versions a record never reached unless it replicates the same per-point chain selection.
+Cycle 2 materially improves the plans: H1–H4 and M1–M11 are now substantially incorporated with concrete tasks, acceptance criteria, verify commands, and test coverage. However, **four HIGH concerns remain**, including two new defects introduced by the cycle-1 revisions. The central manifest-bridge mechanism for preview/apply parity (H5) is still designed in a way incompatible with the shipped CLI lifecycle, the shared-revert-preflight helper (M8) cannot be called by the CLI as specified, and the revisions introduced a timeout regression and a backlog-loop contradiction with the "appeared" record semantics.
 
 ### Agreed Strengths
 
-- `NewMintingStep` follows the existing constructor-enforced invariant; `Step` stays unexported-fields-only.
-- Minting through a parameterized function preserves the `internal/migrate` leaf-package boundary.
-- The two-independent-clone discipline around step application is correctly preserved.
-- `Store.MintShortID` reuse retains collision checking and same-run `seen` protection.
-- Coupling the `Registry` entry and `CurrentVersion` bump in one change is design-intentional and verified by existing tests.
-- Histogram design (facet + `IsEmpty` absent count) correctly handles Qdrant's absent-key limitation.
-- Classic tooling patterns shared across the whole operator CLI tier.
-- The backfill alias reconciliation (removed `--dry-run`, soft deprecation, shared envelope) is a well-isolated cleanup.
-- The upgrade-guide bidirectional gate (D-12) is stronger than a documentation-presence check.
+- H1/H2 fixes are thorough: CheckAdditive carve-out tightly scoped to pre-existing-key only, full-backlog DryRun pagination correctly replaces the single-batch projection.
+- H3 predicate correction is sound and the startup path never calls Store.Migrate.
+- H4's revertWithSteps test injection is well designed.
+- Leaf-only cobra Use strings (M6), fake-store seam (M7), and registerDestructive terminology debt (M9) are all correctly incorporated.
+- The mixed-state end-to-end tests directly cover the critical production state (pre-backfilled record with no schema_version).
+- The D-12 bidirectional gate (M11) with exact string assertions and prove-RED discipline is stronger than a documentation-presence check.
 
 ### Agreed Concerns
 
-- **v0→v1 step / CheckAdditive conflict** (HIGH, 04-01 + 04-04): blocking phase requirement — must be resolved before `BackfillShortIDs` can be deleted.
-- **Startup warning predicate logic error** (HIGH, 04-02): `sum(buckets)+Absent == Total`, not "records behind CurrentVersion."
-- **REQ-migrate-preview-apply-parity unmet** (HIGH, 04-03): CLI design relies on count equivalence, not manifest-plus-intersection.
-- **`Store.Revert` no fixture injection path** (HIGH, 04-02): reversible reverse-walk test cannot be written without a design change.
-- **Multiple MEDIUM concerns** — nested `Use` strings inconsistent with precedent; fake-store test seam does not exist; revert preflight duplicated across CLI and store; `--timeout` removal undocumented; Cobra deprecation affects help discoverability; and the reverse write contract is underspecified.
+- **H5 (04-03, HIGH): Manifest bridge is designed but does not work.** The plan uses package-level migrateLastPreviewManifest var populated by the preview closure and consumed by the apply closure. But registerDestructive dispatches exclusively — a single invocation runs preview OR apply, never both. engram migrate --apply never triggers the preview closure, so the manifest var is nil. The purge precedent (spine_review_purge.go:339-377) calls PreviewPurge inside the apply closure itself, not across separate invocations.
+- **M8 (04-03, actionable MEDIUM): reversePreflight inaccessible.** reversePreflight is an unexported helper in internal/store. The CLI in cmd/engram (package main) cannot call it. The migrateFamilyStore interface only exposes Migrate, MigrateStatus, and Revert — no preflight accessor.
+- **New H7 (04-01, HIGH): Backlog loop contradicts "appeared" semantics.** The PA-3 non-shrinking-backlog guard (migrate.go:167-178) requires backlog to shrink each pass. An "appeared" record (eligible since preview but intentionally skipped because not in manifest) remains below-target and will trigger PA-3. The plan's assertion that Backlog == 0 after a manifest-limited apply with appeared records is contradicted by the shipped loop.
+- **New H8 (04-03/04-04, HIGH): Timeout removal creates unbounded operations.** The shipped backfill-short-ids has a 5-minute --timeout (backfill.go:80). The plan removes it. registerDestructive provides only signal cancellation (destructive.go:125), not a deadline. The plan claims "the destructive tier's own cancellation/deadline behavior governs duration" but that tier has no deadline — only signal-based cancellation, which is not equivalent.
+- **New M12 (04-03, actionable MEDIUM): TestDestructiveCommandsRequireApply will fail.** The test (destructive_test.go:88-106) asserts that commands carrying --apply match the set classified Destructive:true. The migrate command is Destructive:false but carries --apply, so the second direction (line 101-104) will fail.
+- **New M13 (04-01, actionable LOW): Empty-registry assertion will fail.** additive_test.go:40-42 asserts len(Registry) == 0. After registering the v0v1 step, Registry has 1 entry, so t.Fatalf fires. The plan does not mention updating or removing this assertion.
 
-### Divergent Views
+### Divergent Views versus Cycle 1
 
-None — single reviewer.
-
----
-
-## Codex Review
-
-# Cross-AI Plan Review — Phase 4
-
-## Executive assessment
-
-The four-plan decomposition and wave ordering are sensible, and the plans consistently reuse the repository's existing migration, operator-output, and destructive-gate patterns. However, the phase is not implementation-ready. Three correctness gaps prevent the plans from satisfying the stated requirements:
-
-1. The v0→v1 step fails on records that already have `short_id` but lack `schema_version`—precisely the state produced by the existing standalone backfill.
-2. The proposed preview/apply behavior compares counts but does not implement the required preview-manifest ∩ fresh-rederivation intersection.
-3. The startup-warning predicate warns for every non-empty collection, including fully migrated collections.
-
-Plan 02 also lacks an executable mechanism for injecting reversible fixture steps into `Store.Revert`.
+- H6 downgraded from HIGH to PARTIAL: per-record selection is specified, but the StepsFrom invocation order is not precisely pinned and unsupported-version whole-operation preflight is not addressed.
+- M3 was cycle-1 MEDIUM "underspecified." The plan now specifies DeletePayload/SetPayload/stamp behavior with explicit acknowledgment that changed-value detection is not supported (anti-additive direction). Codex raised multi-RPC inverse failure as a separate concern.
+- M4 was cycle-1 MEDIUM. The plan adds FutureVersion uint64 and a compatibility warning. Codex found the per-version bucket detail is collapsed to a scalar. This is a design choice, not a defect.
 
 ---
 
-# 04-01 — v0→v1 short_id first customer
+# Cycle 2 Plan Review
 
-## Summary
+Cycle 2 does not converge. The revisions substantially improve H1–H4 and most medium findings, but the central preview/apply design is still inconsistent with the shipped command lifecycle. I found four HIGH concerns: manifest transport and accounting, an inaccessible revert preflight API, an unsafe/underspecified inverse-write mechanism, and removal of the existing finite timeout.
 
-The plan fits the existing migration architecture well: it preserves the constructor-only `Step`, two-clone additive check, per-point payload writes, and registry/current-version coupling. Its main transformation is nevertheless incompatible with the repository's exact `AddsKeys` invariant. A record that already has a `short_id` but no `schema_version` causes the proposed idempotent branch to add no key, while the step declares that it always adds `short_id`; `CheckAdditive` will reject it. The dry-run pagination design also undercounts collections larger than one batch.
+## Plan 04-01 — v0→v1 short-ID first customer
 
-## Strengths
+### Summary
 
-- The proposed `NewMintingStep` follows the existing constructor-enforced invariant. `Step` has only unexported fields, and `NewStep` already rejects nil reversibility and apply functions ([internal/migrate/step.go:105](/Volumes/Code/github.com/seanb4t/engram/internal/migrate/step.go:105), [internal/migrate/step.go:130](/Volumes/Code/github.com/seanb4t/engram/internal/migrate/step.go:130)).
+The v0→v1 step and the H1/H2 fixes are thoughtfully designed. The plan correctly recognizes the mixed state produced by the old backfill and replaces the one-page dry run with full pagination. However, its manifest-based apply algorithm cannot produce the promised `Spared`, `Appeared`, and `Backlog` results within the current migration loop.
 
-- Passing the minter into the apply call preserves the `internal/migrate` leaf-package boundary. That package is intentionally independent of `internal/store` ([internal/migrate/migrate.go:4](/Volumes/Code/github.com/seanb4t/engram/internal/migrate/migrate.go:4)).
+### Strengths
 
-- The plan correctly preserves the two-independent-clone discipline around every step application ([internal/store/migrate.go:213](/Volumes/Code/github.com/seanb4t/engram/internal/store/migrate.go:213)).
+- H1 is addressed at its actual source. The old backfill writes `short_id` but not `schema_version` in [store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:2782). The proposed `CheckAdditive` carve-out is narrowly scoped to declared keys already present in the original payload; it preserves the existing undeclared-addition and removal checks in [additive.go](/Volumes/Code/github.com/seanb4t/engram/internal/migrate/additive.go:38).
 
-- Reusing `Store.MintShortID` retins both backend collision checking and the same-run `seen` guard ([internal/store/store.go:2661](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:2661), [internal/store/store.go:2699](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:2699)).
+- H2 is explicitly corrected with complete `next_page_offset` pagination. This is necessary because the current sweep scrolls only one batch per pass in [migrate.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/migrate.go:185), relying on writes to shrink subsequent passes.
 
-- Coupling the registry entry and `CurrentVersion` bump is important because production defaults derive both independently in `Store.Migrate` ([internal/store/migrate.go:109](/Volumes/Code/github.com/seanb4t/engram/internal/store/migrate.go:109), [internal/store/migrate.go:113](/Volumes/Code/github.com/seanb4t/engram/internal/store/migrate.go:113)).
+- The minter remains injected at execution time rather than captured in the migration registry, preserving `internal/migrate` as a stdlib-only leaf.
 
-## Concerns
+- The registered step and `CurrentVersion` bump are correctly coupled. The current registry is empty in [registry.go](/Volumes/Code/github.com/seanb4t/engram/internal/migrate/registry.go:11), so this is the right wave to change both.
 
-- **HIGH — The vorgestellte idempotent `v1FillShortID` conflicts with exact additive declarations.** `CheckAdditive` requires actual added keys to be set-equal to `Step.AddsKeys`; a declared key that is not added is an error ([internal/migrate/additive.go:38](/Volumes/Code/github.com/seanb4t/engram/internal/migrate/additive.go:38), [internal/migrate/additive.go:81](/Volumes/Code/github.com/seanb4t/engram/internal/migrate/additive.go:81)). Therefore, a v0 record with an existing non-empty `short_id` returns unchanged from the proposed function and fails with "declared key … never added." Such records are not hypothetical: the current standalone backfill adds `short_id` without a schema stamp ([internal/store/store.go:2741](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:2741), [internal/store/store.go:2782](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:2782)).
+- The mixed-state end-to-end test directly covers M2 and supplies the prerequisite for M10.
 
-- **HIGH — Dry-run covers only one batch as presently specified.** The sweep scrolls at most `Batch`, default 256, with a nil offset ([internal/store/migrate.go:19](/Volumes/Code/github.com/seanb4t/engram/internal/store/migrate.go:19), [internal/store/migrate.go:185](/Volumes/Code/github.com/seanb4t/engram/internal/store/migrate.go:185)). Returning after the first dry-run pass projects only the first 256 records. The plan mentions "either" increasing the batch or accumulating, but its tests use only a small collection and would not detect truncation.
+### Concerns
 
-- **MEDIUM — Dry-run performs one exact collision query per would-be minted ID.** `MintShortID` executes an exact Qdrant count for every candidate ([internal/store/store.go:2704](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:2704)). A preview thus pays essentially all transformation read cost and discards the random IDs afterward. This should be acknowledged and tested at realistic batch size.
+- **HIGH — Manifest intersection cannot work inside the proposed shrinking-backlog loop.** The current loop counts every below-target record and requires that count to shrink between passes, otherwise it returns a non-convergence error in [migrate.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/migrate.go:141). Under the revision, an “appeared” below-target record is intentionally skipped because it was not previewed. It therefore remains in the backlog forever, so apply either trips the non-shrinking guard or returns a nonzero backlog. This contradicts the plan’s assertion that the appeared record remains unmigrated while `Backlog == 0`.
 
-- **MEDIUM — The tests do not cover the migration's most important mixed state.** They cover missing `short_id` and a second run, but not `{short_id: existing, schema_version: absent}`, the state created by prior releases.
+- **HIGH — `Spared` cannot be discovered through the existing backlog query.** A previewed record that becomes current is excluded by `backlogFilter`, which selects only absent or below-target versions in [migratebacklog.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/migratebacklog.go:13). The proposed “point-selection boundary” will never see that record, so it cannot increment `Spared` without separately comparing the complete preview and fresh identity sets.
 
-## Suggestions
+- **HIGH — The manifest return contract is not concretely specified.** The plan adds `Manifest` only to `MigrateOptions`; its proposed `MigrateResult` additions name `Spared` and `Appeared`, but no explicit manifest field or `PreviewMigrate` signature is defined. The objective mentions `PreviewMigrate`, while the task describes calling `Store.Migrate(DryRun:true)`. The CLI cannot transport a manifest that the store result does not expose.
 
-- Resolve conditional additions explicitly before execution. Options include:
-  - supporting per-application declared deltas;
-  - defining a specialized optional-add contract with equally strong undeclared/removal checks; or
-  - designing separate record paths for "missing short ID" and "already has short ID."
-  Simply weakening `CheckAdditive` globally from equality to subset would regress the Phase 3 invariant.
+- **MEDIUM — Empty or malformed existing `short_id` values fall outside the proposed write discipline.** `v1FillShortID` mints when the key is present but empty. Yet the sweep currently constructs its SetPayload map from `AddedKeys`, which only detects newly introduced keys in [additive.go](/Volumes/Code/github.com/seanb4t/engram/internal/migrate/additive.go:12). Replacing an empty existing value would not be written, but the version could still be stamped to v1.
 
-- Add a Qdrant-backed test for an existing pre-schema record that already has a valid `short_id`.
+- **LOW — An existing test explicitly requires an empty registry.** [additive_test.go](/Volumes/Code/github.com/seanb4t/engram/internal/migrate/additive_test.go:14) asserts `len(Registry) == 0`. The plan modifies that file but does not explicitly instruct replacing this assertion with the new v0→v1 invariant.
 
-- Implement dry-run with cursor pagination over the stable backlog, or otherwise guarantee it processes exactly the counted population. Add a test with more than `migrateBatch` records and a deliberately small `Batch`.
+- **LOW — One source citation is incorrect.** The purge command precedent is in [spine_review_purge.go](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/spine_review_purge.go:339), not `internal/store/spine_review_purge.go`.
 
-- Separate "would migrate" from "IDs actually minted" in the report semantics; random preview IDs should not be presented as values that apply will preserve.
+### Suggestions
 
-## Risk assessment
+- Introduce explicit store APIs such as:
 
-**HIGH.** The first real migration fails on a common production state generated by the command it is intended to replace, and preview silently undercounts larger collections.
+  - `PreviewMigrate(...) (MigrateManifest, MigrateResult, error)`
+  - `ApplyMigrate(..., MigrateManifest) (MigrateResult, error)`
 
----
+- During apply, derive the complete fresh eligible-ID set once, compute `intersection`, `spared`, and `appeared` as set operations, and migrate only the intersection. Do not reuse the shrinking-global-backlog loop for a deliberately bounded manifest operation.
 
-# 04-02 — MigrateStatus, Revert, and startup warning
+- Define `Backlog` unambiguously. After a manifest-limited apply, newly appeared records mean the collection backlog is legitimately nonzero.
 
-## Summary
+- Decide whether an empty/non-string `short_id` is preserved as malformed legacy data or repaired. If repaired, add explicit changed-value write support and a test.
 
-The histogram design correctly accounts for Qdrant facets omitting absent keys, and the whole-range irreversible preflight is the right safety boundary. The plan nevertheless contains a directly incorrect pending-migration predicate and leaves the reversible-test injection API unresolved. The reverse-walk instructions also need a more precise per-record chain and payload-diff contract before implementation.
+### Risk Assessment
 
-## Strengths
-
-- The facet-plus-`IsEmpty` approach matches existing schema semantics. `backlogFilter` already documents that range queries do not match absent keys and explicitly adds an `IsEmpty` arm ([internal/store/migratebacklog.go:13](/Volumes/Code/github.com/seanb4t/engram/internal/store/migratebacklog.go:13), [internal/store/migratebacklog.go:58](/Volumes/Code/github.com/seanb4t/engram/internal/store/migratebacklog.go:58)).
-
-- Keeping absent records separate from explicit v0 records is correct. `versionOf` treats absence as v0 operationally, but a status histogram should still distinguish storage states ([internal/store/migratebacklog.go:71](/Volumes/Code/github.com/seanb4t/engram/internal/store/migratebacklog.go:71)).
-
-- A dedicated `Store.Revert` preserves the clear forward-only contract of `Store.Migrate`.
-
-- Preflighting the full reverse range before writes is appropriate because the current reversibility API exposes both declared inverses and irreversible reasons ([internal/migrate/step.go:83](/Volumes/Code/github.com/seanb4t/engram/internal/migrate/step.go:83), [internal/migrate/step.go:95](/Volumes/Code/github.com/seanb4t/engram/internal/migrate/step.go:95)).
-
-- The startup integration point is well chosen: existing warnings run immediately after store construction and are best-effort ([internal/server/tools.go:200](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:200), [internal/server/tools.go:455](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:455)).
-
-## Concerns
-
-- **HIGH — The proposed warning predicate is wrong.** The plan says to warn when `sum(buckets)+Absent > 0`, describing that as "any record not at CurrentVersion." That expression is the collection total, so every non-empty all-v1 collection warns. This contradicts the plan's own required all-current/no-warning test.
-
-- **HIGH — Reversible fixture injection is not representable by the planned API.** The production signature is fixed as `Revert(ctx, to)`, yet the test task asks for "`MigrateOptions.Steps`-like injection." `Migrate` has an actual `Steps` field for this purpose ([internal/store/migrate.go:23](/Volumes/Code/github.com/seanb4t/engram/internal/store/migrate.go:23), [internal/store/migrate.go:31](/Volumes/Code/github.com/seanb4t/engram/internal/store/migrate.go:31)); the proposed `Revert` signature has no equivalent. The executor must either change the public design ad hoc or be unable to run the reversible-path test.
-
-- **HIGH — The reverse chain must be selected per record's current version.** The instruction "apply each selected step's inverse" risks applying inverses for versions a record never reached. The forward path correctly calls `StepsFrom` using each point's `fromV` ([internal/store/migrate.go:197](/Volumes/Code/github.com/seanb4t/engram/internal/store/migrate.go:197)). Revert needs the corresponding per-point chain from its stored version down to the requested target.
-
-- **MEDIUM — The inverse write contract is underspecified.** `ApplyFunc` can add, remove, or change arbitrary payload values. `AddsKeys` describes only the forward addition set, while `CheckAdditive` explicitly cannot detect existing-value changes ([internal/migrate/additive.go:53](/Volumes/Code/github.com/seanb4t/engram/internal/migrate/additive.go:53)). The plan should state exactly how before/after inverse results become `DeletePayload` keys and `SetPayload` values, and whether inverse changes outside the forward `AddsKeys` set are legal.
-
-- **MEDIUM — Future-version records are not addressed.** The histogram can surface versions greater than `CurrentVersion`, but the warning and revert/migrate behavior do not define whether that means "pending," "server too old," or a hard compatibility error.
-
-- **LOW — The server test seam is vague.** `warnPendingMigrations` accepts a concrete `*store.Store`, not an interface; the existing warning has the same shape ([internal/server/tools.go:459](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:459)). A "stub store" cannot be substituted without introducing another seam or using real Qdrant.
-
-## Suggestions
-
-- Compute pending as `Absent + sum(bucket.Count where bucket.Version < CurrentVersion)`. Handle buckets greater than `CurrentVersion` separately as an incompatible/newer-schema warning.
-
-- Introduce an internal `RevertOptions{To, Steps, Batch, DryRun}` or an unexported `revertWithSteps` helper used by both production and fixture tests. Keep the public CLI-facing method simple if desired.
-
-- Define a `reverseStepsFrom(current, target)` helper and test records at multiple intermediate versions in one collection.
-
-- Specify inverse diffing:
-  - removed keys → per-point `DeletePayload`;
-  - newly added or value-changed keys → per-point `SetPayload`;
-  - `schema_version` → explicitly stamp the version actually reached.
-
-- Add a mid-pass failure/resume test, not only irreversible refusal and happy convergence.
-
-## Risk assessment
-
-**HIGH.** The all-current startup behavior is incorrect as written, and the reversible path cannot be tested through the planned API without an unplanned design change.
+**HIGH.** H1 and H2 are well resolved, but the preview/apply mechanism underpinning SC3 is not executable as specified.
 
 ---
 
-# 04-03 — CLI migrate family
+## Plan 04-02 — MigrateStatus, Revert, and startup warning
 
-## Summary
+### Summary
 
-The command-family shape and classification changes align with the repository's existing command architecture, but this plan does not achieve the phase's strongest safety requirement. It treats equal preview/apply counts as proof of a previewed-set intersection, while the actual repository pattern carries a concrete manifest into a fresh derivation. The plan also gives incorrect Cobra `Use` examples for nested commands and relies on a fake-store seam that does not currently exist.
+The corrected pending-warning predicate and test injection for reversible steps are strong revisions. The revert design now recognizes per-record versions, but its inverse delta cannot implement its own stated changed-value behavior, and its multi-request write sequence lacks a credible partial-failure recovery contract.
 
-## Strengths
+### Strengths
 
-- Generalizing the gate from `Destructive` to `!ReadOnly` is logically consistent with the table's taxonomy. The table explicitly distinguishes mutating-additive commands from destructive commands ([internal/surfaces/toolclass.go:15](/Volumes/Code/github.com/seanb4t/engram/internal/surfaces/toolclass.go:15), [internal/surfaces/toolclass.go:159](/Volumes/Code/github.com/seanb4t/engram/internal/surfaces/toolclass.go:159)).
+- H3 is correctly repaired: pending is absent plus buckets below `CurrentVersion`, not total collection size.
 
-- Keeping classification lookup derived from `internal/surfaces` preserves the existing single-source-of-truth mechanism ([cmd/engram/destructive.go:27](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/destructive.go:27), [cmd/engram/destructive.go:37](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/destructive.go:37)).
+- The separate compatibility warning for future-version records prevents them from being mislabeled as pending migrations.
 
-- `registerDestructive` already guarantees exclusive dispatch: it invokes exactly one of preview or apply based on the flag value ([cmd/engram/destructive.go:110](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/destructive.go:110), [cmd/engram/destructive.go:124](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/destructive.go:124)).
+- H4 is addressed by the unexported `revertWithSteps` test seam while keeping the production `Revert(ctx,to)` API registry-bound.
 
-- Making `migrate status` a normal read-only `RunE` avoids giving it an irrelevant `--apply`.
+- H6’s core principle is present: each record’s chain is derived from its stored version rather than applying a single global chain.
 
-- Adding command and classification rows together is necessary because both the destructive gate and catalog panic on missing classifications ([cmd/engram/destructive.go:38](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/destructive.go:38), [cmd/engram/catalog.go:98](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/catalog.go:98)).
+- The whole-range irreversible preflight runs before writes and names snapshot recovery, aligning with the phase’s safety requirement.
 
-## Concerns
+- The startup warning follows the existing bounded, non-blocking pattern used by `warnOwnerlessRecords` in [tools.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:455).
 
-- **HIGH — Preview/apply intersection is not implemented.** The repository's cited pure pattern derives a manifest, then passes that exact manifest into an apply method that performs a fresh derivation and intersects the two sets ([cmd/engram/spine_review_purge.go:339](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/spine_review_purge.go:339), [cmd/engram/spine_review_purge.go:365](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/spine_review_purge.go:365), [cmd/engram/spine_review_purge.go:371](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/spine_review_purge.go:371)). The migration plan instead calls `Store.Migrate` once in dry-run mode or once in apply mode. Equal counts on a stable fake collection do not prove identity or intersection, and newly eligible records appearing between derivations can be migrated without belonging to the previewed set.
+### Concerns
 
-- **HIGH — The proposed CLI test can pass without exercising the claimed mechanism.** A fake returning deterministic `MigrateResult` values proves only formatter/routing behavior. It cannot prove that apply acts on previewed record identities.
+- **HIGH — The inverse write contract cannot detect changed values.** The plan says added or changed keys become `SetPayload`, but then bases the implementation on `AddedKeys`. The shipped helper detects only key presence changes, not changes to an existing value, in [additive.go](/Volumes/Code/github.com/seanb4t/engram/internal/migrate/additive.go:12). The plan acknowledges this limitation without supplying a changed-key algorithm.
 
-- **MEDIUM — Nested `Use` strings are specified incorrectly.** Existing nested commands use the leaf name only—e.g. `Use: "purge"` under `spine-review`—and the qualified path comes from parentage ([cmd/engram/spine_review_purge.go:390](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/spine_review_purge.go:390), [cmd/engram/cmdwalk.go:26](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/cmdwalk.go:26)). `migrateStatusCmd.Use` should be `status`, and revert should be something such as `revert --to <v>`, not `migrate status` or `migrate revert --to <v>`.
+- **HIGH — Revert partial-failure behavior is unsafe and untested.** Each inverse can require both `DeletePayload` and `SetPayload`, plus a schema-version stamp. These are separate Qdrant mutations. A failure between them can leave an incompletely inverted payload. “Call Revert again” is insufficient unless inverses are required and proven idempotent and the version is stamped only after the entire inverse delta succeeds.
 
-- **MEDIUM — The fake-store test seam does not exist.** `server.StoreFromEnv` is a regular function returning concrete `*store.Store` ([internal/server/tools.go:154](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:154)). Existing testable command code introduces a local interface/function seam explicitly, as `spineConsolidateStoreFromEnv` does. The plan says to inject a fake but does not plan such a symbol or interface.
+- **HIGH — Unsupported/future record versions can cause writes before a later chain error.** Whole-range preflight only examines registered reversibility. It does not appear to preflight every record’s reachable reverse chain. A mixed collection containing an unsupported future version could allow earlier records to be modified before `revertStepsFrom` fails on the future record.
 
-- **MEDIUM — Revert preflight is duplicated across CLI and store.** Plan 02 places whole-range preflight inside `Store.Revert`; Plan 03 asks the CLI to implement or call another preflight for both preview and apply. Without one shared helper/result, CLI and store can drift on range selection and refusal formatting.
+- **MEDIUM — Future-version histogram detail is collapsed.** The plan says future records retain a “version annotation,” but its proposed result has only `FutureVersion uint64` and explicitly removes future buckets. That loses whether records are at v2, v3, or several future versions, weakening the promised distribution.
 
-- **LOW — The helper name becomes misleading.** After admitting all mutating commands, `registerDestructive` and `destructiveByClassification` no longer describe their function. This is not a correctness issue, but the plan should either rename them or explicitly accept the terminology debt.
+- **MEDIUM — `revertStepsFrom` needs an exact invocation.** The shipped `StepsFrom` walks forward from its `from` argument in [registry.go](/Volumes/Code/github.com/seanb4t/engram/internal/migrate/registry.go:92). Reverse selection must call `StepsFrom(steps, to, from)` and then reverse it. “Walk StepsFrom forwards” is not precise enough to prevent using the arguments in the intuitive but wrong order.
 
-## Suggestions
+### Suggestions
 
-- Introduce a real migration manifest containing stable point IDs and observed versions:
-  1. `PreviewMigration` derives the manifest and projected report.
-  2. Apply mode derives a manifest in-process.
-  3. `ApplyMigration(manifest, fresh options)` re-derives eligibility and mutates only the intersection.
-  4. Report spared and newly appeared records, following the purge precedent.
+- Add a general payload-delta helper that returns added, changed, and removed keys by comparing values, not only key sets.
 
-- Test identity sets, not only counts. Include one record that becomes current and one that becomes newly eligible between preview and apply.
+- Specify the inverse transaction protocol:
 
-- Use leaf-only Cobra `Use` values and assert resulting `commandKey` values are exactly `migrate`, `migrate status`, and `migrate revert`.
+  - validate all record chains before any mutation;
+  - require and test inverse idempotence;
+  - apply key changes before stamping the lower schema version;
+  - inject failures between delete, set, and version-stamp operations and prove resume convergence.
 
-- Add a narrow local store interface and injectable constructor function in `migrate_family.go`, mirroring the existing consolidation seam.
+- Preserve future versions as buckets, or add `FutureBuckets []VersionBucket` alongside the aggregate count.
 
-- Expose one store-level `PlanRevert`/preflight helper used by both preview and execution.
+- Pin the reverse-chain call explicitly as `StepsFrom(steps, to, from)` followed by reversal.
 
-## Risk assessment
+### Risk Assessment
 
-**HIGH.** The command family can be implemented, but its current design does not satisfy `REQ-migrate-preview-apply-parity`; the proposed tests would certify a weaker property than the requirement.
-
----
-
-# 04-04 — backfill-short-ids alias
-
-## Summary
-
-Consolidating the old command onto the registry mechanism and using one report envelope is a good cleanup. The compatibility documentation and exact doc↔code gate are unusually strong. However, the alias cannot safely replace the old implementation until Plan 01 handles records that already have `short_id`, and the test plan should account for Cobra's deprecated-command discoverability behavior.
-
-## Strengths
-
-- There is only one live production caller of `Store.BackfillShortIDs`: the current command invokes it directly ([cmd/engram/backfill.go:25](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/backfill.go:25), [cmd/engram/backfill.go:44](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/backfill.go:44)). Repointing that command before deletion makes the cleanup bounded.
-
-- Retaining `MintShortID` while deleting only the bespoke sweep is correct; it is the reusable collision-safe primitive ([internal/store/store.go:2661](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:2661)).
-
-- Removing the old `--dry-run` and routing through the shared preview/`--apply` mechanism avoids two incompatible safety conventions. The current command is indeed apply-by-default and owns its own timeout/signal handling ([cmd/engram/backfill.go:28](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/backfill.go:28), [cmd/engram/backfill.go:37](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/backfill.go:37)).
-
-- The proposed exact bidirectional gate is stronger than a documentation-presence check and directly covers the breaking behavioral change.
-
-- Soft deprecation follows an existing project precedent ([cmd/engram/migrate.go:260](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/migrate.go:260)).
-
-## Concerns
-
-- **HIGH — Delegation inherits Plan 01's existing-short-ID failure.** The old sweep selects only records missing `short_id` ([internal/store/store.go:2726](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:2726)); the new migration selects all records below v1. Any record previously processed by the old command has `short_id` but no `schema_version`, so the proposed v0→v1 step fails its exact additive check. Deleting the old implementation before resolving this leaves no working backfill route for that state.
-
-- **MEDIUM — The parity claim still lacks manifest intersection.** Delegating to the same `Store.Migrate` function gives common behavior, but it does not make the behavior satisfy the phase's previewed-set intersection requirement.
-
-- **MEDIUM — Cobra deprecation affects discoverability.** In pinned Cobra v1.10.2, any command with a non-empty `Deprecated` field is excluded from `IsAvailableCommand` ([Cobra command.go:1605](file:///Users/sean/go/pkg/mod/github.com/spf13/cobra@v1.10.2/command.go:1605)), though invoking it prints a warning ([Cobra command.go:905](file:///Users/sean/go/pkg/mod/github.com/spf13/cobra@v1.10.2/command.go:905)). The repo's custom catalog walker includes deprecated commands because it skips only `Hidden` and scaffolding ([cmd/engram/cmdwalk.go:13](file:///Volumes/Code/github.com/seanb4t/engram/cmd/engram/cmdwalk.go:13)). The plan should explicitly accept the resulting difference between Cobra help and the engram catalog.
-
-- **MEDIUM — Removing `--timeout` is another compatibility break but the documentation task only mandates documenting `--dry-run`.** The current command exposes a five-minute configurable timeout ([cmd/engram/backfill.go:77](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/backfill.go:77)). Removing it can break scripts independently of the apply-default reversal.
-
-- **LOW — Test command globals need careful reset.** Existing tests mutate global Cobra command and flag state ([cmd/engram/backfill_test.go:19](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/backfill_test.go:19)). Rewritten preview/apply tests should reset both the shared `--apply` target and command flags between runs.
-
-## Suggestions
-
-- Make Plan 04 conditional on an integration test covering a record previously processed by the old standalone backfill.
-
-- Document both removed flags:
-  - `--dry-run` replaced by preview-by-default;
-  - `--timeout` removed or replaced, including the new cancellation/deadline behavior.
-
-- Add tests proving:
-  - direct invocation still works and emits Cobra's deprecation warning;
-  - the command remains in the engram self-describe catalog;
-  - expected Cobra help discoverability is intentional;
-  - a pre-backfilled/no-schema record converges successfully.
-
-- Do not delete `Store.BackfillShortIDs` until the replacement passes the mixed-state compatibility test.
-
-## Risk assessment
-
-**HIGH as currently sequenced.** The cleanup itself is straightforward, but it removes the known-working backfill path in favor of a migration that cannot process records created by that path.
+**HIGH.** The status and startup-warning portions are solid, but the revert mutation path is not yet safe enough for an operator recovery command.
 
 ---
 
-# Recommended replanning priorities
+## Plan 04-03 — CLI migrate family
 
-1. Redesign conditional migration additions so the v0→v1 step handles both missing and existing `short_id`.
-2. Define a real preview manifest and manifest ∩ fresh-rederivation apply API.
-3. Correct pending-status computation and define future-version handling.
-4. Add an explicit step-injection mechanism for reversible `Store.Revert` tests.
-5. Specify per-record reverse-chain selection and inverse payload diffing.
-6. Expand compatibility documentation to include `--timeout` removal and Cobra deprecation discoverability.
+### Summary
 
-**Overall phase risk: HIGH.** The decomposition is good, but the plans currently prove routing and counts where the requirements demand record-identity safety, and they miss a production state created by the command being migrated.
+The command hierarchy, leaf `Use` strings, rendering, and fake-store seam are well aligned with existing CLI patterns. Two central mechanisms are nevertheless impossible as written: a package-level manifest cannot bridge separate command invocations, and `cmd/engram` cannot call an unexported helper in `internal/store`.
+
+### Strengths
+
+- M6 is fully incorporated through leaf-only `Use` strings.
+
+- M7 is addressed using a narrow local interface and injectable store constructor, following the existing seam in [spine_review_consolidate.go](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/spine_review_consolidate.go:29).
+
+- The status command correctly remains read-only and outside the apply gate.
+
+- Output goes through the shared operator renderer in [operator_output.go](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/operator_output.go:59).
+
+- The three command classifications preserve the useful distinction between additive mutation and destructive inverse operations.
+
+### Concerns
+
+- **HIGH — The package-level manifest bridge does not survive the CLI lifecycle.** `registerDestructive` runs exactly one branch per invocation: apply when `--apply` is present, otherwise preview, in [destructive.go](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/destructive.go:124). Therefore `engram migrate --apply` does not first run the preview closure that populates `migrateLastPreviewManifest`. A package-level variable will normally be nil in a new process and can be stale in tests or embedded invocations.
+
+- **HIGH — The cited purge precedent does the opposite.** The shipped purge apply closure calls `PreviewPurge` itself, then immediately passes that manifest to `ApplyPurge` within the same invocation in [spine_review_purge.go](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/spine_review_purge.go:365). It does not rely on a prior command invocation or package-global manifest.
+
+- **HIGH — The CLI cannot call the proposed shared preflight helper.** `reversePreflight` is unexported in package `store`; `cmd/engram` is package `main`. The proposed `migrateFamilyStore` interface exposes only `Migrate`, `MigrateStatus`, and `Revert`, so it supplies no alternate preflight method. M8 is therefore not implementable as written.
+
+- **HIGH — The new migration RPC paths have no finite timeout.** The family carries no `--timeout`, and `registerDestructive` only provides signal cancellation, not a deadline, in [destructive.go](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/destructive.go:73). This regresses the shipped invariant that every RPC path has a finite deadline.
+
+- **MEDIUM — Generalizing the gate conflicts with the current conformance rule and tests.** `TestDestructiveCommandsRequireApply` currently requires exact equality between `--apply` commands and rows with `Destructive:true` in [destructive_test.go](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/destructive_test.go:84). An additive `migrate` command with `Destructive:false` and `--apply` will fail that test. The canonical surface sentence also says “A destructive operator command…” in [rules.go](/Volumes/Code/github.com/seanb4t/engram/internal/surfaces/rules.go:231), which would describe an additive migration inaccurately.
+
+- **MEDIUM — The proposed synthetic classification test has no identified mechanism.** The current gate derives classification from the production table and deliberately has no injection seam. Existing tests use already-classified real commands rather than registering arbitrary synthetic rows.
+
+### Suggestions
+
+- Make the apply closure run preview and apply in one invocation, exactly like purge:
+
+  1. call `PreviewMigrate`;
+  2. receive a concrete manifest;
+  3. call `ApplyMigrate` with it.
+
+- Replace unexported preflight access with an exported read-only store method such as `PreviewRevert(ctx,to) (RevertPlan,error)`. Both preview and apply can call that same API; apply then invokes `Revert`.
+
+- Preserve a finite `--timeout` for migrate, status, revert, and the alias, or generalize the shared operator wrapper to install a deadline.
+
+- Introduce a mutation-specific conditional rule, e.g. `MutatingOperatorRequiresApply`, derived from `!ReadOnly`, while retaining `Destructive` as the separate blast-radius annotation. Update the exact-set conformance test accordingly.
+
+### Risk Assessment
+
+**HIGH.** The principal forward and reverse CLI paths cannot compile or preserve their preview/apply contract as currently planned.
 
 ---
 
-## Verification coverage
+## Plan 04-04 — `backfill-short-ids` alias
 
-The following symbols referenced by the plans are UNCHECKABLE by grep (external dependencies):
+### Summary
 
-| Symbol | Source | Reason |
-|--------|--------|--------|
-| `qdrant.PointsClient.Facet` | Qdrant go-client | Vendored external package |
-| `qdrant.FacetCounts` | Qdrant go-client | Vendored external package |
-| `qdrant.CountPoints` | Qdrant go-client | Vendored external package |
-| `qdrant.NewIsEmpty` | Qdrant go-client | Vendored external package |
-| `qdrant.NewValueMap` | Qdrant go-client | Vendored external package |
-| `cobra.Command.Deprecated` | Cobra v1.10.2 | External package (path checked: `$GOPATH/pkg/mod/github.com/spf13/cobra@v1.10.2/command.go:1605`) |
-| `cobra.Command.IsAvailableCommand` | Cobra v1.10.2 | External package |
-| `cobra.Command.CommandPath` | Cobra v1.10.2 | External package |
-| `tracer.Start` | OpenTelemetry | Vendored external package |
-| `telemetry.RecordStoreOp` | internal/telemetry | Name verified by convention; func signature not grep-checked |
+Soft deprecation, shared output, dead-code removal, documentation, and the pre-backfilled convergence test are all appropriate. The alias, however, bypasses the required manifest intersection, and removing its timeout creates a concrete regression from the shipped command.
 
-All other referenced symbols were VERIFIED against the source tree. No MISSING or AMBIGUOUS symbols found.
+### Strengths
+
+- M10 is directly covered by a real-Qdrant convergence test for the exact record state produced by the old command.
+
+- M11 is incorporated on both sides: the guide documents removal of `--dry-run` and `--timeout`, and the test asserts the flags are absent.
+
+- The bidirectional guide↔command gate uses exact behavioral assertions rather than a presence proxy.
+
+- Soft deprecation mirrors the existing `migrate-set-owner` precedent.
+
+- Removing `Store.BackfillShortIDs` only after rerouting callers is sound; retaining `MintShortID` respects its continued use by ordinary writes and migration execution.
+
+### Concerns
+
+- **HIGH — The alias’s apply path bypasses preview/apply parity.** It calls `Store.Migrate(DryRun:false)` without a manifest. That contradicts SC3 and the migrate command’s promised manifest intersection. A deprecated alias should delegate to the exact same preview/apply operation, not merely the same underlying sweep with different options.
+
+- **HIGH — Removing `--timeout` creates an unbounded Qdrant operation.** The existing command wraps execution in `context.WithTimeout` in [backfill.go](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/backfill.go:37). The plan claims the destructive tier’s cancellation/deadline behavior takes over, but that tier has cancellation only. Documentation does not make the behavioral regression safe.
+
+- **MEDIUM — “Identical UX to the migrate family” is not achieved.** The family’s proposed apply path consumes a preview manifest, while the alias’s apply path does not. This gives two names for nominally the same mechanism with different mutation semantics.
+
+- **LOW — One acceptance grep is internally contradictory.** It says the timeout grep may return “only references to removed vars”; successful removal should return no references.
+
+### Suggestions
+
+- Factor shared `runMigratePreview` and `runMigrateApply` helpers. Both `migrate` and `backfill-short-ids` should call those helpers so their preview, manifest, timeout, rendering, and clearing behavior cannot drift.
+
+- Retain `--timeout` as a compatibility flag or provide the same timeout through the shared operator layer before removing the command-specific implementation.
+
+- Extend the bidirectional gate to pin the maintained timeout behavior, not merely document its removal.
+
+### Risk Assessment
+
+**HIGH.** The alias is cleanly deprecated but would execute with weaker safety and no finite deadline.
+
+---
+
+# Collective Phase Assessment
+
+The plans do not yet collectively satisfy the six phase success criteria:
+
+1. Preview-by-default routing is mostly designed correctly, but finite execution deadlines regress.
+2. Status is a histogram for current/legacy versions, but future versions are collapsed into one scalar.
+3. Manifest-based preview/apply parity is not achieved.
+4. The first-customer and alias story is strong, including mixed-state compatibility.
+5. Revert refuses declared irreversible steps, but reversible inverse execution remains unsafe and its CLI preflight API is inaccessible.
+6. No automatic migration is planned; the corrected warning-only startup path is sound.
+
+Overall phase risk: **HIGH**.
+
+# Consensus Summary
+
+Cycle 2 materially improves the plans: H1–H4 and most of M1–M11 now have concrete tasks and tests. It does not reach convergence, however. The biggest Cycle 1 issue—H5’s manifest-backed parity—has been acknowledged but not implemented in a way compatible with the actual CLI lifecycle or store backlog loop. M8 is also still mechanically impossible, while M3 and M4 remain only partially specified. The revisions additionally introduce a new timeout regression and expose a mismatch between additive `--apply` commands and the existing destructive-command conformance model.
+
+| Concern | Status | Cycle 2 verdict |
+|---|---|---|
+| H1 | RESOLVED | Narrow pre-existing-key carve-out plus mixed-state tests address the actual old-backfill state. |
+| H2 | RESOLVED | Dry run explicitly paginates the full backlog without using the shrinking-pass loop. |
+| H3 | RESOLVED | Pending predicate now counts only absent and below-current records; future versions warn separately. |
+| H4 | RESOLVED | `revertWithSteps` makes reversible fixture injection representable. |
+| H5 | UNRESOLVED | Manifest transport, `Spared`/`Appeared` discovery, and backlog semantics are incompatible with the shipped loop and CLI lifecycle. |
+| H6 | PARTIAL | Per-record selection is required, but the exact `StepsFrom(to,from)` construction and unsupported-version whole-operation preflight are not pinned. |
+| M1 | RESOLVED | Dry-run mint/collision cost is explicitly acknowledged and accepted. |
+| M2 | RESOLVED | Unit and real-Qdrant mixed-state tests are planned. |
+| M3 | PARTIAL | Delete/set behavior is described, but changed values are not detected and partial multi-RPC inverse failure is not reconciled. |
+| M4 | PARTIAL | Future records are separated, but their individual version distribution/annotation is discarded. |
+| M5 | RESOLVED | Real-Qdrant server warning tests are specified. |
+| M6 | RESOLVED | All nested commands use leaf-only `Use` strings. |
+| M7 | RESOLVED | A narrow injectable store interface is defined for CLI tests. |
+| M8 | UNRESOLVED | The CLI is instructed to call an unexported store helper absent from its interface. |
+| M9 | RESOLVED | The naming debt is explicitly accepted and documented, though the surrounding surface rule still needs redesign. |
+| M10 | RESOLVED | The alias gets a real pre-backfilled-record convergence test. |
+| M11 | RESOLVED | Both flag removals are documented and bidirectionally gated, although removing the timeout is itself a new HIGH defect. |
