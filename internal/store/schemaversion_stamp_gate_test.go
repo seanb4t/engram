@@ -372,6 +372,7 @@ var partialWriteClassification = []writeClassification{
 	{enclosingFunc: "Store.RemapOwner", receiver: "s.client", justification: "D-02: operator command; a partial write must never stamp currency it cannot honor."},
 	{enclosingFunc: "Store.Archive", receiver: "s.client", justification: "D-02: outside store.go (spine.go); a partial write must never stamp currency it cannot honor."},
 	{enclosingFunc: "Store.SetSummary", receiver: "s.client", justification: "D-02: outside store.go (summarize.go); a partial write must never stamp currency it cannot honor."},
+	{enclosingFunc: "Store.Migrate", receiver: "s.client", justification: "Phase 3's SANCTIONED exception to D-02's general rule, not a violation of it: every other entry here is a one-key merge that would falsely CLAIM currency it never verified, but Migrate's SetPayload runs only after applying every step in the record's own chain up to target, and its write map is built from AddedKeys(original, current) plus schemaVersionKey — the exact keys that chain declared and added. Stamping schema_version here is the correctly-earned currency claim this whole migration mechanism exists to make, not a shortcut around it."},
 }
 
 // parseGoFile is a test-only helper: parse path (relative to this package's

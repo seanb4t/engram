@@ -87,6 +87,13 @@ func migrateBacklogIDs(ctx context.Context, t *testing.T, s *Store, target migra
 	return ids
 }
 
+// hasPayloadKey is a thin wrapper over rawPayload asserting key presence.
+func hasPayloadKey(ctx context.Context, t *testing.T, s *Store, id, key string) bool {
+	t.Helper()
+	_, ok := rawPayload(ctx, t, s, id)[key]
+	return ok
+}
+
 // rawPayloadSnapshot reads a record's full raw payload through rawPayload
 // and converts it with payloadToMap into a comparable Go value, so two
 // snapshots taken at different times can be compared with
@@ -320,5 +327,163 @@ func TestBacklogFilterMatchesAbsentAndBelowTarget(t *testing.T) {
 	}
 	if _, ok := rawPayload(ctx, t, s, absentID)[schemaVersionKey]; ok {
 		t.Errorf("Migrate(target=0) stamped schema_version onto the absent record — PA-4 violated")
+	}
+}
+
+// TestMigrateRefusesNonAdditiveStep proves the fail-closed enforcement
+// (Task 3): a step whose actual behavior diverges from its AddsKeys
+// declaration is refused before any write, across three distinct
+// sub-cases — an undeclared extra key, a removed key via a copying step,
+// and a removed key via a step that mutates its input map IN PLACE (the
+// case an aliasing bug in Store.Migrate's per-step re-cloning would make
+// pass).
+func TestMigrateRefusesNonAdditiveStep(t *testing.T) {
+	ctx := context.Background()
+	c := dialTestClient(t)
+	collection := testCollection("migrate_nonadditive")
+	_ = c.DeleteCollection(ctx, collection)
+	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
+
+	s := newTestStore(t, c, collection)
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		id   string
+		step func() migrate.Step
+	}{
+		{
+			name: "undeclared_extra_key",
+			id:   "cf300000-0000-0000-0000-000000000001",
+			step: func() migrate.Step {
+				return migrate.NewStep(0, 1, []string{"declared_key"},
+					migrate.Irreversible("test fixture: undeclared extra key"),
+					func(payload map[string]any) (map[string]any, error) {
+						out := maps.Clone(payload)
+						out["declared_key"] = "v"
+						out["undeclared_key"] = "v"
+						return out, nil
+					})
+			},
+		},
+		{
+			name: "removed_key_via_copy",
+			id:   "cf300000-0000-0000-0000-000000000002",
+			step: func() migrate.Step {
+				return migrate.NewStep(0, 1, []string{"declared_key"},
+					migrate.Irreversible("test fixture: removed key via a copy"),
+					func(payload map[string]any) (map[string]any, error) {
+						out := maps.Clone(payload)
+						out["declared_key"] = "v"
+						delete(out, "content")
+						return out, nil
+					})
+			},
+		},
+		{
+			// This sub-case is the one an aliasing bug (PA-5a) makes pass:
+			// the ApplyFunc mutates its INPUT map in place and returns
+			// that same map rather than a copy. If Store.Migrate's
+			// per-step re-cloning were ever weakened to share one backing
+			// map between before and after, this removal would be
+			// invisible to the diff, CheckAdditive would return nil, and
+			// the sweep would write happily. This sub-case differs from
+			// the previous one ONLY in whether the step copies — and that
+			// difference is the entire point.
+			name: "removed_key_via_in_place_mutation",
+			id:   "cf300000-0000-0000-0000-000000000003",
+			step: func() migrate.Step {
+				return migrate.NewStep(0, 1, []string{"declared_key"},
+					migrate.Irreversible("test fixture: removed key via in-place mutation"),
+					func(payload map[string]any) (map[string]any, error) {
+						payload["declared_key"] = "v"
+						delete(payload, "content")
+						return payload, nil
+					})
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			seedLegacyRecord(ctx, t, s, tc.id)
+
+			res, err := s.Migrate(ctx, MigrateOptions{
+				Target: 1,
+				Steps:  []migrate.Step{tc.step()},
+			})
+			if err == nil {
+				t.Fatalf("Migrate: got nil error, want non-nil (step is non-additive)")
+			}
+			if res.Migrated != 0 {
+				t.Errorf("Migrated = %d, want 0", res.Migrated)
+			}
+
+			// Fail-closed proof: the refusal must precede the write, not
+			// follow it — an independent rawPayload read shows the record
+			// gained NEITHER key and still has no schema_version.
+			if hasPayloadKey(ctx, t, s, tc.id, schemaVersionKey) {
+				t.Errorf("record gained schema_version despite a refused step — refusal must precede the write")
+			}
+			if hasPayloadKey(ctx, t, s, tc.id, "declared_key") {
+				t.Errorf("record gained declared_key despite a refused step — refusal must precede the write")
+			}
+		})
+	}
+}
+
+// TestMigrateWritesOnlyAddedKeys is the containment proof for the gap
+// migrate.CheckAdditive cannot close (T-03-12): a step that is fully
+// conforming BY KEY SET — it declares exactly one new key and adds
+// exactly that key — but whose ApplyFunc ALSO overwrites an EXISTING
+// payload key's value must have that overwrite silently discarded,
+// because Store.Migrate's write map is built from AddedKeys only.
+// CheckAdditive catches key-set violations and is blind to value
+// overwrites; Store.Migrate's added-keys-only write shaping is what makes
+// that blindness harmless; neither alone is sufficient.
+func TestMigrateWritesOnlyAddedKeys(t *testing.T) {
+	ctx := context.Background()
+	c := dialTestClient(t)
+	collection := testCollection("migrate_write_shaping")
+	_ = c.DeleteCollection(ctx, collection)
+	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
+
+	s := newTestStore(t, c, collection)
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+
+	id := "cf400000-0000-0000-0000-000000000001"
+	seedLegacyRecord(ctx, t, s, id)
+	originalContent := rawPayload(ctx, t, s, id)["content"].GetStringValue()
+
+	step := migrate.NewStep(0, 1, []string{"new_declared_key"},
+		migrate.Irreversible("test fixture: value-overwrite containment proof"),
+		func(payload map[string]any) (map[string]any, error) {
+			out := maps.Clone(payload)
+			out["new_declared_key"] = "v"
+			out["content"] = "OVERWRITTEN by a non-conforming value mutation"
+			return out, nil
+		})
+
+	res, err := s.Migrate(ctx, MigrateOptions{Target: 1, Steps: []migrate.Step{step}})
+	if err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if res.Migrated != 1 {
+		t.Fatalf("Migrated = %d, want 1 (the step is additive by key set; CheckAdditive should accept it — this test is not about the checker)", res.Migrated)
+	}
+
+	raw := rawPayload(ctx, t, s, id)
+	if got := raw["content"].GetStringValue(); got != originalContent {
+		t.Errorf("content = %q, want unchanged %q (the write map is built from added keys only)", got, originalContent)
+	}
+	if _, ok := raw["new_declared_key"]; !ok {
+		t.Errorf("record missing new_declared_key — the step did not demonstrably run, so the unchanged-content assertion above is not meaningful")
+	}
+	if got := raw[schemaVersionKey].GetIntegerValue(); got != 1 {
+		t.Errorf("schema_version = %d, want 1", got)
 	}
 }
