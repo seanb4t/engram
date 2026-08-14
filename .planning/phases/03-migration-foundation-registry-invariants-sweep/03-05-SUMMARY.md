@@ -168,7 +168,8 @@ git apply -R .planning/phases/03-migration-foundation-registry-invariants-sweep/
 ## Files Created/Modified
 
 - `internal/store/migrate_converge_test.go` — `midSweepHook`, `midSweepInterceptor`, `dialMidSweepTestClient`, `rawPayloadNoFatal`, `diffSorted`, `TestMigrateConvergesWithoutLock`
-- `.planning/.../red-evidence/03-05-red-1-lte-includes-current.patch`, `03-05-red-2-midsweep-write-skipped.patch`
+- `.planning/phases/03-migration-foundation-registry-invariants-sweep/red-evidence/03-05-red-1-lte-includes-current.patch`
+- `.planning/phases/03-migration-foundation-registry-invariants-sweep/red-evidence/03-05-red-2-midsweep-write-skipped.patch`
 
 ## Decisions Made
 
