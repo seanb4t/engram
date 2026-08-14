@@ -1,0 +1,19 @@
+diff --git a/internal/store/migrate.go b/internal/store/migrate.go
+index 1fd3bd4e..26573c6c 100644
+--- a/internal/store/migrate.go
++++ b/internal/store/migrate.go
+@@ -227,13 +227,7 @@ func (s *Store) Migrate(ctx context.Context, opts MigrateOptions) (res MigrateRe
+ 					err = fmt.Errorf("migrate: point %s: step (From=%d To=%d): %w", id, step.From(), step.To(), aerr)
+ 					return res, err
+ 				}
+-				if caerr := migrate.CheckAdditive(step, beforeThisStep, afterThisStep); caerr != nil {
+-					// A declared-vs-actual drift is a defect in the STEP,
+-					// identical for every record it touches — refuse the
+-					// WHOLE call before any write, not a per-record skip.
+-					err = fmt.Errorf("migrate: point %s: %w", id, caerr)
+-					return res, err
+-				}
++				_ = beforeThisStep
+ 				current = afterThisStep
+ 			}
+ 
