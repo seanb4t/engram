@@ -344,19 +344,19 @@ Research flag: yes — the exact `internal/migrate` step-registry API shape (ste
 Plans:
 **Wave 1**
 
-- [ ] 04-01-PLAN.md — Tracer: v0→v1 short_id first customer — NewMintingStep + minter-aware Step, registered v0→v1 step + CurrentVersion 0→1, Store.Migrate minter branch + DryRun preview (wave 1)
+- [ ] 04-01-PLAN.md — Tracer: v0→v1 backfill-short-ids step + CheckAdditive pre-existing-key carve-out (REVIEWS H1) + full-backlog DryRun preview + manifest-based preview/apply intersection (SC3/H6) + CurrentVersion 0→1 (wave 1)
 
 **Wave 2**
 
-- [ ] 04-02-PLAN.md — Store MigrateStatus histogram + Store.Revert reverse walk with whole-range irreversible preflight + non-blocking pending-migration startup warning (wave 2)
+- [ ] 04-02-PLAN.md — Store MigrateStatus histogram w/ future-version handling + Store.Revert w/ per-record chain selection + fixture injection helper + shared reversePreflight + corrected startup-warning predicate (REVIEWS H3/H4/H5/M3/M4) (wave 2)
 
 **Wave 3**
 
-- [ ] 04-03-PLAN.md — CLI surface: generalize registerDestructive gate to !ReadOnly, engram migrate/status/revert subcommands + envelope + three toolclass rows + catalog gate (wave 3)
+- [ ] 04-03-PLAN.md — CLI surface: generalize registerDestructive gate + engram migrate/status/revert w/ manifest-intersection preview/apply parity (H6) + shared preflight (M8) + store interface seam (M7) + leaf-only Use strings (M6) + toolclass rows (wave 3)
 
 **Wave 4**
 
-- [ ] 04-04-PLAN.md — backfill-short-ids as thin delegating alias through registerDestructive, delete dead BackfillShortIDs/missingShortIDFilter, upgrade.md + D-12 bidirectional gate (wave 4)
+- [ ] 04-04-PLAN.md — backfill-short-ids as thin delegating alias w/ pre-backfilled-record convergence test (M10) + dead store code deleted + upgrade.md entry documenting --dry-run AND --timeout removal (M11) + D-12 bidirectional gate (wave 4)
 
 ### Phase 5: Connect Record-State Parity
 
