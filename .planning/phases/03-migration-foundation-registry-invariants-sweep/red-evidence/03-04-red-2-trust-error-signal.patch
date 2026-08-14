@@ -1,0 +1,19 @@
+diff --git a/internal/store/migrate.go b/internal/store/migrate.go
+index 1fd3bd4e..a5cd5093 100644
+--- a/internal/store/migrate.go
++++ b/internal/store/migrate.go
+@@ -262,12 +262,8 @@ func (s *Store) Migrate(ctx context.Context, opts MigrateOptions) (res MigrateRe
+ 				Payload:        qdrant.NewValueMap(writeMap),
+ 				PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{p.Id}),
+ 			}); werr != nil {
+-				// D-09: the error does not describe what landed, so no
+-				// control-flow branch may be taken on it here — the next
+-				// pass's fresh count decides what is still outstanding.
+-				lastWriteErr = werr
+-				res.Failed++
+-				continue
++				err = werr
++				return res, err
+ 			}
+ 			res.Migrated++
+ 		}

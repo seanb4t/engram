@@ -1,0 +1,36 @@
+diff --git a/internal/store/migrate.go b/internal/store/migrate.go
+index 1fd3bd4e..160076b7 100644
+--- a/internal/store/migrate.go
++++ b/internal/store/migrate.go
+@@ -136,6 +136,7 @@ func (s *Store) Migrate(ctx context.Context, opts MigrateOptions) (res MigrateRe
+ 	filter := backlogFilter(target)
+ 	var lastWriteErr error
+ 	var prevBacklog uint64
++	var offset *qdrant.PointId
+ 	first := true
+ 
+ 	for {
+@@ -179,20 +180,18 @@ func (s *Store) Migrate(ctx context.Context, opts MigrateOptions) (res MigrateRe
+ 		prevBacklog = cnt
+ 		first = false
+ 
+-		// Offset is nil on EVERY pass, by design (D-07): there is no
+-		// cursor persisted across passes, which is exactly why a resume is
+-		// nothing more than calling Migrate again.
+-		pts, _, serr := s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
++		pts, next, serr := s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
+ 			CollectionName: s.collection,
+ 			Filter:         filter,
+ 			Limit:          qdrant.PtrOf(batch),
+-			Offset:         nil,
++			Offset:         offset,
+ 			WithPayload:    qdrant.NewWithPayload(true),
+ 		})
+ 		if serr != nil {
+ 			err = serr
+ 			return res, err
+ 		}
++		offset = next
+ 
+ 		for _, p := range pts {
+ 			id := p.Id.GetUuid()
