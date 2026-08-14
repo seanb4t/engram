@@ -26,15 +26,15 @@ instead of another one-shot operator command.
 
 ### Migration Mechanism
 
-- [ ] **REQ-migration-step-registry**: A stdlib-only `internal/migrate` leaf package holds the ordered migration-step registry, with zero Qdrant or authz dependency, imported by `internal/store` — mirroring the `internal/surfaces`/`internal/openaiurl` leaf precedent. Step ordering and idempotency are checked by a single `Validate` invariant over the registry.
-- [ ] **REQ-migration-additive-only-gated**: A registered step may only ADD payload keys — never remove or rename one. This is enforced by a step-registration invariant that makes a non-additive step a build or test failure, not a review catch. The step interface is shaped so a per-version decoder can attach later without breaking existing steps.
+- [x] **REQ-migration-step-registry**: A stdlib-only `internal/migrate` leaf package holds the ordered migration-step registry, with zero Qdrant or authz dependency, imported by `internal/store` — mirroring the `internal/surfaces`/`internal/openaiurl` leaf precedent. Step ordering and idempotency are checked by a single `Validate` invariant over the registry.
+- [x] **REQ-migration-additive-only-gated**: A registered step may only ADD payload keys — never remove or rename one. This is enforced by a step-registration invariant that makes a non-additive step a build or test failure, not a review catch. The step interface is shaped so a per-version decoder can attach later without breaking existing steps.
 - [ ] **REQ-migrate-command**: `engram migrate` runs the registry through a `Store.Migrate` sweep, registered via `registerDestructive` so it previews by default and `--apply` is a runtime choke point, with `--output json|text` matching the rest of the operator tier.
 - [ ] **REQ-migrate-status-histogram**: `engram migrate status` reports a version-distribution histogram across the collection, not a single scalar version — mixed-version collections are legitimate mid-rollout, and a scalar would misreport them.
 - [ ] **REQ-migrate-preview-apply-parity**: `--apply` acts only on the intersection of the previewed, gate-passing set and a fresh re-derivation, reusing the shipped `spine-review purge` pattern. A preview that does not match what apply does is a defect, not an accepted approximation.
 - [ ] **REQ-migrate-partial-failure-resume**: The sweep survives Qdrant's batch `SetPayload` non-atomicity (confirmed upstream, qdrant/qdrant#9371 — partial application within a chunk must always be assumed). Proven against a real pinned Qdrant with a forced mid-sequence partial failure, then a resume that converges.
-- [ ] **REQ-migrate-converges-without-lock**: The sweep needs no collection lock, because the write path stamps the current version before the sweep runs — so new writes arrive already-current and never create new work, leaving a finite, strictly shrinking backlog. The stamp-then-sweep ordering is a stated dependency, not an accident.
+- [x] **REQ-migrate-converges-without-lock**: The sweep needs no collection lock, because the write path stamps the current version before the sweep runs — so new writes arrive already-current and never create new work, leaving a finite, strictly shrinking backlog. The stamp-then-sweep ordering is a stated dependency, not an accident.
 - [ ] **REQ-backfill-shortids-first-step**: `backfill-short-ids` is registered as the v0→v1 step, giving the mechanism a real first customer. The standalone command becomes a thin delegating alias (soft deprecation, per the `migrate-set-owner` precedent — never hard removal), and its `--dry-run: false` apply-by-default is reconciled with `registerDestructive`'s preview-by-default via a `guides/upgrade.md` entry gated by a test.
-- [ ] **REQ-migration-step-reversibility**: Every registered step declares whether it is reversible. A reversible step supplies its inverse; an irreversible one (a vector rewrite, an external side effect that cannot be undone) is marked so explicitly and names why. The declaration is mandatory — the same registration invariant that enforces additive-only rejects a step that is silent about reversibility, so "nobody thought about it" is not a representable state.
+- [x] **REQ-migration-step-reversibility**: Every registered step declares whether it is reversible. A reversible step supplies its inverse; an irreversible one (a vector rewrite, an external side effect that cannot be undone) is marked so explicitly and names why. The declaration is mandatory — the same registration invariant that enforces additive-only rejects a step that is silent about reversibility, so "nobody thought about it" is not a representable state.
 - [ ] **REQ-migrate-revert**: `engram migrate` can run declared inverses in reverse order to return the collection to an earlier schema version. It previews by default like `--apply`, and it refuses the whole operation at the first irreversible step in the range rather than reverting partially and leaving the collection between versions. An irreversible step's recovery path is a collection snapshot, and the refusal message says so.
 - [ ] **REQ-migrate-never-automatic**: No migration ever runs automatically on startup. At most, startup emits a non-blocking warning that pending migrations exist. This diverges deliberately from the single-binary-server norm (Gitea, Grafana, Vaultwarden all auto-migrate) because it contradicts this project's explicit-never-automatic stance.
 
@@ -94,11 +94,11 @@ this repo's structural invariant — see ROADMAP.md's `## Progress` note).
 | REQ-schema-version-never-gates-recall | Phase 2 | Complete |
 | REQ-schema-version-wire-visible | Phase 2 | Complete |
 | REQ-schema-version-forward-compatible | Phase 2 | Complete |
-| REQ-migration-step-registry | Phase 3 | Pending |
-| REQ-migration-additive-only-gated | Phase 3 | Pending |
-| REQ-migration-step-reversibility | Phase 3 | Pending |
+| REQ-migration-step-registry | Phase 3 | Complete |
+| REQ-migration-additive-only-gated | Phase 3 | Complete |
+| REQ-migration-step-reversibility | Phase 3 | Complete |
 | REQ-migrate-partial-failure-resume | Phase 3 | Pending |
-| REQ-migrate-converges-without-lock | Phase 3 | Pending |
+| REQ-migrate-converges-without-lock | Phase 3 | Complete |
 | REQ-migrate-command | Phase 4 | Pending |
 | REQ-migrate-status-histogram | Phase 4 | Pending |
 | REQ-migrate-preview-apply-parity | Phase 4 | Pending |
