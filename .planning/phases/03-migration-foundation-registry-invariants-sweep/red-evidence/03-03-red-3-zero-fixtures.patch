@@ -1,0 +1,15 @@
+diff --git a/internal/migrate/additive_test.go b/internal/migrate/additive_test.go
+index f9cfc896..c65a3fdf 100644
+--- a/internal/migrate/additive_test.go
++++ b/internal/migrate/additive_test.go
+@@ -181,6 +181,10 @@ func TestAdditiveOnlyKeySetDiff(t *testing.T) {
+ 		},
+ 	}
+ 
++	// PROVE-RED injection (03-03-PLAN.md Task 2 cycle 3): empty the
++	// fixture table to prove the len(fixtures)==0 guard is load-bearing.
++	fixtures = nil
++
+ 	if len(fixtures) == 0 {
+ 		t.Fatal("zero fixtures — D-05 requires a non-zero fixture count assertion")
+ 	}
