@@ -369,7 +369,17 @@ Plans:
   2. An exhaustive field-mapping round-trip test — not a hand-maintained field list — proves every wire-eligible `store.Memory` field is populated by `memoryToProto` and decodes losslessly; the test fails loudly (not silently) if a future field is added to `store.Memory` without a corresponding proto mapping, closing the gap that recurred across v0.8.x, v0.11.x, and v0.13.x.
   3. A sub-second `not_before`/`not_after` bound submitted through the write lane comes back outward-widened and IDENTICAL on both read lanes — MCP (`get_memory` / `full=true` recall) and Connect — proven by a boundary-second test. No read-path rounding code is added: the store's whole-second encoding makes read-side rounding a no-op by construction, and the `not_before`/`not_after` proto field comments record that.
 
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 05-01-PLAN.md — Tracer: the eight record-state fields at proto numbers 23–30, regenerated `gen/` trees, `memoryToProto` wiring, and one real Connect `GetMemory` round trip proving all eight reach the wire; plus the `SummaryEgressAt` comment repair (D-04)
+
+**Wave 2**
+
+- [ ] 05-02-PLAN.md — The exhaustive parity proof: one shared `json:"-"`-derived detector with a permanent negative fixture proving it can reject, plus a reflection auto-filled population fixture and inline decode-back comparison (D-05/D-06/D-07/D-08)
+- [ ] 05-03-PLAN.md — Boundary-second read-lane identity across MCP and Connect with no read-path rounding added (D-09), and the CLI `renderJSON` `schema_version: 0` anchor for Phase 2's D-10 promise (D-03)
 
 ### Phase 6: Typed Operator Renderer
 
