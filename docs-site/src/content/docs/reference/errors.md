@@ -159,6 +159,16 @@ write or between two writes — but reports `Candidates: 1` for the one record t
 it, not the whole range's count. `errors.As` still recovers the same `*RevertRefusedError`
 either way, so a caller does not need to distinguish the two cases.
 
+One consequence is worth acting on: unlike a preflight refusal, a mid-loop refusal can
+follow writes that **already landed**. `migrate revert --apply` reverts in batches, so a run
+can revert whole batches of earlier records and only then hit the racing record that trips
+the refusal. The refusal report therefore carries the real progress counters — `reverted`,
+`failed`, `passes`, and `backlog` — alongside `applied: false`, and the text summary says so
+explicitly. Treat a refusal with a non-zero `reverted` as a **partially reverted
+collection**: run `engram migrate status` to see the resulting version distribution before
+deciding whether to re-run the revert, migrate forward again, or restore the snapshot. A
+preflight refusal reports all-zero counters and needs no reconciliation.
+
 ## The class-to-Connect-code mapping
 
 Every argument-validation failure belongs to one of three classes, and the class — never
