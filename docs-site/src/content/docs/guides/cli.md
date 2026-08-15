@@ -399,6 +399,22 @@ and `engram migrate-remap-owner --help` side by side should not have to
 infer this table from the flag's one-line usage text — the three groups
 genuinely disagree on what `--timeout 0` does.
 
+**`migrate --apply` and `backfill-short-ids --apply` budget TWO full-backlog
+passes under one `--timeout`:** a fresh `DryRun` preview (which additionally
+performs a `MintShortID` collision-probe `Count` per eligible record), then
+the manifest-limited apply pass — with no way to allocate time between the
+two. Size `--timeout` for both passes together, not just the write you
+expect.
+
+**`migrate revert --apply` budgets an even larger share under one
+`--timeout`:** the CLI's own whole-range preflight, `Store.Revert`'s
+independent SECOND whole-range preflight (repeating the identical exhaustive
+scan before it is allowed to write anything), and then the write-convergence
+loop itself, which re-derives and re-scrolls on every pass until the backlog
+reaches zero. An operator sizing `--timeout` for "one reverse walk of my
+backlog" is actually budgeting for at least two full read-only passes over
+that same range before any inverse is even applied.
+
 ## The self-describe catalog
 
 Run `engram` with no arguments. It writes one JSON document to stdout and

@@ -244,7 +244,9 @@ var migrateCmd = &cobra.Command{
 		"own run (a fresh preview inside the apply closure) and migrates only the intersection of " +
 		"what it just showed and what is still eligible at that moment — a record that became " +
 		"ineligible since preview is spared, and a record that became newly eligible is reported " +
-		"appeared (never migrated; re-run to include it).",
+		"appeared (never migrated; re-run to include it). --apply performs a full fresh backlog " +
+		"scan before writing, in addition to the write pass itself — size --timeout for both " +
+		"passes together (same applies to backfill-short-ids, which delegates here).",
 }
 
 // migrateStatusCmd reports Store.MigrateStatus's server-side version-
@@ -532,7 +534,10 @@ var migrateRevertCmd = &cobra.Command{
 		"the ENTIRE range is reversible -- an irreversible step or an unsupported stored version " +
 		"anywhere in the range refuses the whole operation, naming every offending step or version " +
 		"and pointing to a collection snapshot for recovery. A refused --apply exits non-zero; the " +
-		"identical refusal previewed without --apply exits 0.",
+		"identical refusal previewed without --apply exits 0. --apply budgets TWO full read-only " +
+		"whole-range scans (this preflight, then an identical one Store.Revert repeats internally " +
+		"before it is allowed to write) plus the write-convergence loop itself under one --timeout " +
+		"-- size accordingly.",
 }
 
 func init() {
