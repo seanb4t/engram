@@ -29,6 +29,7 @@ import (
 
 	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/embed"
+	"github.com/seanb4t/engram/internal/migrate"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/summarize"
 	"github.com/seanb4t/engram/internal/surfaces"
@@ -207,6 +208,7 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 		return nil, err
 	}
 	warnOwnerlessRecords(st)
+	warnPendingMigrations(st)
 	em, err := embedderFromConfig(cfg)
 	if err != nil {
 		return nil, err
@@ -478,6 +480,59 @@ func warnOwnerlessRecords(st *store.Store) {
 	}
 	if an > 0 {
 		slog.Warn("anonymous-bucket records exist (owner==\"\"): readable by any unauthenticated caller; they predate an OIDC-enabled deployment", "count", an)
+	}
+}
+
+// warnPendingMigrations is warnOwnerlessRecords' non-fatal, synchronous,
+// 10-second-bounded sibling for schema migrations (REQ-migrate-never-
+// automatic, REVIEWS.md C5-L5): it runs INLINE in buildDepsFromEnv, exactly
+// as warnOwnerlessRecords does, so startup is DELAYED by at most 10 seconds
+// and is never PREVENTED — an error, a timeout, or an unreachable Qdrant
+// logs and returns. A goroutine was considered and REJECTED for two
+// reasons worth recording: it would race the server's first request, and a
+// merely-slow Qdrant would then emit the warning after an operator had
+// already stopped reading the startup log — which is the same as not
+// warning at all. REQ-migrate-never-automatic's "non-blocking" therefore
+// means "never gates startup", not "asynchronous"; this comment is where a
+// reader learns which. It MUST NOT invoke Store.Migrate under any
+// circumstance — the ONLY automatic surface this phase allows is the
+// warning itself.
+func warnPendingMigrations(st *store.Store) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	status, err := st.MigrateStatus(ctx)
+	if err != nil {
+		slog.Warn("could not check for pending schema migrations", "err", err)
+		return
+	}
+
+	// H3 CORRECTED predicate: pending = Absent + sum(bucket.Count where
+	// bucket.Version < CurrentVersion) — NOT sum(all buckets)+Absent, which
+	// is the total collection count and would spuriously warn for every
+	// non-empty all-current collection. status.Future is deliberately
+	// excluded: those records are AHEAD, not behind.
+	pending := status.Absent
+	for _, b := range status.Buckets {
+		if b.Version < int(migrate.CurrentVersion) {
+			pending += b.Count
+		}
+	}
+	if pending > 0 {
+		slog.Warn("pending schema migrations exist; run: engram migrate",
+			"pending", pending, "current_version", migrate.CurrentVersion)
+	}
+
+	// M4: a SEPARATE compatibility warning naming the DISTINCT future
+	// versions, never just a total — an operator reading a bare total
+	// cannot tell one-version-ahead drift from a wildly newer binary.
+	if len(status.Future) > 0 {
+		futureVersions := make([]int, len(status.Future))
+		for i, b := range status.Future {
+			futureVersions[i] = b.Version
+		}
+		slog.Warn("records at a future schema version exist — this binary may be too old for some records",
+			"future_versions", futureVersions, "future_total", status.FutureTotal, "server_version", migrate.CurrentVersion)
 	}
 }
 

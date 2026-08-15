@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -5988,4 +5989,228 @@ func TestStoreMemoryIdempotencyFingerprintCoversCitations(t *testing.T) {
 	if _, _, err := d.storeMemory(ctx, callerFor(ctx, t), first); err != nil {
 		t.Fatalf("identical replay must succeed, got %v", err)
 	}
+}
+
+// warnPendingMigrationsCaptureHandler is a minimal slog.Handler recording
+// every emitted slog.Record for structured assertion — mirrors
+// internal/store/store_test.go's capturingLogHandler.
+type warnPendingMigrationsCaptureHandler struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (h *warnPendingMigrationsCaptureHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *warnPendingMigrationsCaptureHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, r.Clone())
+	return nil
+}
+
+func (h *warnPendingMigrationsCaptureHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *warnPendingMigrationsCaptureHandler) WithGroup(string) slog.Handler      { return h }
+
+func (h *warnPendingMigrationsCaptureHandler) messages() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]string, len(h.records))
+	for i, r := range h.records {
+		out[i] = r.Message
+	}
+	return out
+}
+
+// recordFor returns the first captured record whose message contains
+// substr, and whether one was found.
+func (h *warnPendingMigrationsCaptureHandler) recordFor(substr string) (slog.Record, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, r := range h.records {
+		if strings.Contains(r.Message, substr) {
+			return r, true
+		}
+	}
+	return slog.Record{}, false
+}
+
+// warnPendingMigrationsFindAttr returns the value of the first attribute
+// named key in r, and whether it was present — mirrors
+// internal/store/store_test.go's findAttr.
+func warnPendingMigrationsFindAttr(r slog.Record, key string) (slog.Value, bool) {
+	var v slog.Value
+	found := false
+	r.Attrs(func(a slog.Attr) bool {
+		if a.Key == key {
+			v, found = a.Value, true
+			return false
+		}
+		return true
+	})
+	return v, found
+}
+
+// dialWarnPendingMigrationsTestClient dials a raw *qdrant.Client against the
+// package's shared test Qdrant instance, used only to inject raw
+// schema_version values this test needs to construct pending/current/future
+// fixtures — the same pattern testDepsWithStore's own dial uses.
+func dialWarnPendingMigrationsTestClient(t *testing.T) *qdrant.Client {
+	t.Helper()
+	if testQdrantAddr == "" {
+		failOrSkipNoQdrant(t)
+	}
+	host, portStr, err := net.SplitHostPort(testQdrantAddr)
+	if err != nil {
+		t.Fatalf("invalid Qdrant address %q: %v", testQdrantAddr, err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port <= 0 {
+		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, testQdrantAddr, err)
+	}
+	c, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+	return c
+}
+
+// seedWarnPendingMigrationsRecord upserts an ordinary record through st
+// (which stamps schema_version == migrate.CurrentVersion via the codec),
+// then overrides the raw stored schema_version to v directly via c — the
+// only way to construct a record at an arbitrary version (below, at, or
+// above CurrentVersion).
+func seedWarnPendingMigrationsRecord(ctx context.Context, t *testing.T, st *store.Store, c *qdrant.Client, collection, id string, v int) {
+	t.Helper()
+	mem := store.Memory{
+		ID: id, Content: "warn test " + id, Scope: "warn-pending-test:project:" + id,
+		Owner: "sub-warn-pending-test", Category: "note", CreatedAt: time.Now().UTC(),
+	}
+	if err := st.Upsert(ctx, mem, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed upsert(%s): %v", id, err)
+	}
+	if _, err := c.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: collection, Wait: qdrant.PtrOf(true),
+		Payload:        qdrant.NewValueMap(map[string]any{"schema_version": v}),
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
+	}); err != nil {
+		t.Fatalf("inject schema_version(%s): %v", id, err)
+	}
+}
+
+// TestWarnPendingMigrations proves the H3-corrected predicate and the M4
+// per-version future warning against a real *store.Store behind this
+// package's own testcontainer (REVIEWS.md M5 — never a fake seam): a
+// pending collection yields the pending-migrations warning; an
+// already-current collection yields NONE (proving H3's corrected predicate
+// did not regress into total-count behavior); a future-version collection
+// yields only the compatibility warning, naming every distinct version,
+// never the pending-migrations warning.
+func TestWarnPendingMigrations(t *testing.T) {
+	ctx := context.Background()
+	c := dialWarnPendingMigrationsTestClient(t)
+
+	t.Run("pending collection warns", func(t *testing.T) {
+		collection := testCollection("warn_pending")
+		_ = c.DeleteCollection(ctx, collection)
+		t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
+		st := newTestStore(t, c, collection)
+		if err := st.EnsureCollection(ctx, 3); err != nil {
+			t.Fatalf("EnsureCollection: %v", err)
+		}
+		seedWarnPendingMigrationsRecord(ctx, t, st, c, collection, "cfd10000-0000-0000-0000-000000000001", 0)
+
+		handler := &warnPendingMigrationsCaptureHandler{}
+		prev := slog.Default()
+		slog.SetDefault(slog.New(handler))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+
+		warnPendingMigrations(st)
+
+		found := false
+		for _, m := range handler.messages() {
+			if strings.Contains(m, "pending schema migrations exist") {
+				found = true
+			}
+			if strings.Contains(m, "future schema version") {
+				t.Errorf("unexpected future-version warning on a pending-only collection: %q", m)
+			}
+		}
+		if !found {
+			t.Errorf("messages = %v, want a pending-migrations warning", handler.messages())
+		}
+	})
+
+	t.Run("already-current collection warns about nothing", func(t *testing.T) {
+		collection := testCollection("warn_current")
+		_ = c.DeleteCollection(ctx, collection)
+		t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
+		st := newTestStore(t, c, collection)
+		if err := st.EnsureCollection(ctx, 3); err != nil {
+			t.Fatalf("EnsureCollection: %v", err)
+		}
+		// An ordinary Upsert stamps schema_version == CurrentVersion — no
+		// raw injection needed.
+		mem := store.Memory{
+			ID: "cfd20000-0000-0000-0000-000000000001", Content: "current", Scope: "warn-pending-test:project:current",
+			Owner: "sub-warn-pending-test", Category: "note", CreatedAt: time.Now().UTC(),
+		}
+		if err := st.Upsert(ctx, mem, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed upsert: %v", err)
+		}
+
+		handler := &warnPendingMigrationsCaptureHandler{}
+		prev := slog.Default()
+		slog.SetDefault(slog.New(handler))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+
+		warnPendingMigrations(st)
+
+		for _, m := range handler.messages() {
+			if strings.Contains(m, "pending schema migrations exist") {
+				t.Errorf("unexpected pending-migrations warning on an all-current collection (H3 regression to total-count behavior): messages = %v", handler.messages())
+			}
+		}
+	})
+
+	t.Run("future-version collection warns only the compatibility warning, naming every version", func(t *testing.T) {
+		collection := testCollection("warn_future")
+		_ = c.DeleteCollection(ctx, collection)
+		t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
+		st := newTestStore(t, c, collection)
+		if err := st.EnsureCollection(ctx, 3); err != nil {
+			t.Fatalf("EnsureCollection: %v", err)
+		}
+		seedWarnPendingMigrationsRecord(ctx, t, st, c, collection, "cfd30000-0000-0000-0000-000000000001", 2)
+		seedWarnPendingMigrationsRecord(ctx, t, st, c, collection, "cfd30000-0000-0000-0000-000000000002", 42)
+
+		handler := &warnPendingMigrationsCaptureHandler{}
+		prev := slog.Default()
+		slog.SetDefault(slog.New(handler))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+
+		warnPendingMigrations(st)
+
+		for _, m := range handler.messages() {
+			if strings.Contains(m, "pending schema migrations exist") {
+				t.Errorf("unexpected pending-migrations warning on a future-only collection: messages = %v", handler.messages())
+			}
+		}
+		rec, found := handler.recordFor("future schema version")
+		if !found {
+			t.Fatalf("messages = %v, want a future-version compatibility warning", handler.messages())
+		}
+		// M4: the warning names every DISTINCT future version, never just a
+		// total — a collection holding both v2 and v42 must log both.
+		val, ok := warnPendingMigrationsFindAttr(rec, "future_versions")
+		if !ok {
+			t.Fatal("future-version warning carries no future_versions attribute")
+		}
+		versions, ok := val.Any().([]int)
+		if !ok {
+			t.Fatalf("future_versions attribute is %T, want []int", val.Any())
+		}
+		if len(versions) != 2 || versions[0] != 2 || versions[1] != 42 {
+			t.Errorf("future_versions = %v, want [2 42] — a scalar-total implementation cannot report two distinct versions", versions)
+		}
+	})
 }

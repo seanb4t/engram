@@ -125,6 +125,20 @@ fields means they are misordered relative to each other (`not_before` must prece
 another argument you sent — `not_after` must be in the future, for example, which no change
 to a second field can fix.
 
+## Operator-tier hint codes (`engram migrate revert`)
+
+These two codes use the same `field=<name> hint=<code>: <text>` grammar as the ten-code
+table above, but they are produced by `internal/store/revert.go`'s `RevertRefusalError` —
+not by `internal/server/argerror.go` — so they are not `HintCode` constants and the ten-code
+table above remains exactly what it claims to be: a transcription of `argerror.go`. They
+surface only from `engram migrate revert`'s whole-range preflight refusal, never from any
+memory-tool call.
+
+| Hint code | Meaning | What to do |
+|---|---|---|
+| `irreversible` | The requested revert range includes at least one step declared irreversible — the whole operation is refused before any write. | Recover via a collection snapshot taken before the forward migration ran; there is no partial-revert path around an irreversible step. |
+| `unsupported` | At least one record in the above-target range is stamped at a version with no reachable reverse chain to the target. | Recover via a collection snapshot, or narrow the target to a version every record can actually reach. |
+
 ## The class-to-Connect-code mapping
 
 Every argument-validation failure belongs to one of three classes, and the class — never
