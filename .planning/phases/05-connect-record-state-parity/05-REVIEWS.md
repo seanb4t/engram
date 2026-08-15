@@ -1,9 +1,9 @@
 ---
 phase: 5
 reviewers: [codex]
-reviewed_at: 2026-08-15T18:56:28Z
+reviewed_at: 2026-08-15T19:11:50Z
 plans_reviewed: [05-01-PLAN.md, 05-02-PLAN.md, 05-03-PLAN.md]
-cycle: 2
+cycle: 3
 ---
 
 # Cross-AI Plan Review — Phase 5
@@ -12,8 +12,8 @@ Reviewer set: `codex` (codex-cli 0.147.0), invoked with repo access and a
 source-grounding prompt. `--codex` was named explicitly; no other lane was
 requested.
 
-This file is append-only across convergence cycles. Cycle 1 is preserved below
-verbatim; cycle 2 follows it.
+This file is append-only across convergence cycles. Cycles 1 and 2 are preserved
+below verbatim; cycle 3 (the final cycle of `--max-cycles 3`) follows them.
 
 ---
 
@@ -445,3 +445,226 @@ None — single reviewer.
 **Cycle-2 outcome:** 1 unresolved HIGH (new, introduced by the cycle-1 repair),
 2 unresolved actionable non-HIGH (1 MEDIUM new from the orchestrator, 1 LOW from
 the reviewer). Zero cycle-1 findings carried forward.
+
+---
+
+# CYCLE 3 — 2026-08-15T19:11:50Z
+
+**Final cycle of the convergence loop (`--max-cycles 3`).** Anything left open
+here escalates to the human for a proceed/stop decision.
+
+Reviewer set: `codex` (codex-cli 0.147.0), repo access, source-grounding prompt,
+`--codex` named explicitly. The cycle-3 prompt carried the cycle-2 findings, the
+planner's incorporation commit (`1e0398be`), the pattern-map/coverage commit
+(`ba4276f9`), the orchestrator's already-verified list, and an explicit
+instruction to verify each cycle-2 incorporation before hunting for anything new
+— including the inverse defect class (a gate that cannot PASS).
+
+## Cycle-2 Incorporation Verdict
+
+| Cycle-2 finding | Verdict | Evidence |
+|---|---|---|
+| **HIGH** — the diff-shaped "no new top-level function" gate could not fail (`^func` anchor) | **CLOSED as to the anchor; see C3-H1 as to the evaluation point** | The respelled command at `05-01-PLAN.md:263` is genuinely fireable. Orchestrator reproduced it in a throwaway repo: with a `func tmpProbe() {}` appended, `git diff --unified=0 -- f.go \| rg '^\+func[[:space:]]'` printed `+func tmpProbe() {}` and exited **0**; after `git checkout -- f.go` the same command printed nothing and exited **1**. Codex independently reproduced the RED half against `internal/server/connectapi.go` via `git diff --no-index --unified=0 /dev/null`, matching `+func citationsToProto`. The GATE-RED PROOF at `05-01-PLAN.md:264` is a first-class `<acceptance_criteria>` entry requiring both outputs quoted in the SUMMARY — binding, not advisory, since the execute-plan HARD GATE (`execute-plan.md:197-203`) blocks the next task until every criterion passes. |
+| **MEDIUM** — `git diff --numstat` cannot produce the claimed evidence | **PARTIALLY CLOSED** | The `--numstat` spelling is gone; `05-01-PLAN.md:307` now uses a content-shaped pipeline. The rejection rationale for `--numstat` is stated correctly. But the replacement is not satisfiable as literally written (**C3-M1**) and is additionally vacuous at its evaluation point (**C3-H1**). |
+| **LOW** — plan self-description contradicted by the plan's own contents | **PARTIALLY CLOSED** | The `<anti_vacuity_contract>` block at `05-02-PLAN.md:133-147` no longer claims "every gate carries its own RED proof" or "no two gates share a mutation"; the `T-05-06` mitigation at `:460` is restated as concrete mechanism; the four swept phrasings are gone. Orchestrator sweep for `every gate\|no two gates\|only greps\|satisfies every other\|each under a DIFFERENT` returns hits only inside the `<review_cycle_2_incorporation>` block (legitimate decision rationale). One instance survived the sweep (**C3-L1**), and it is in the same file. No NEW self-description was introduced by the cycle-2 edits. |
+
+## Codex Review (cycle 3)
+
+### Summary
+
+The implementation design is strong, and the cycle-2 `^\+func` repair is now
+genuinely fireable. However, one new systemic HIGH concern remains: several
+`git diff`/`git status` acceptance gates are evaluated after task commits, making
+some vacuously green and others literally unsatisfiable. This should be corrected
+before proceeding.
+
+### Strengths
+
+- The corrected top-level-function gate works. `git diff --no-index --unified=0
+  /dev/null internal/server/connectapi.go | rg '^\+func[[:space:]]'` returned
+  status 0 and matched `+func citationsToProto...`; against the clean worktree it
+  returned status 1. The mandatory probe and SUMMARY evidence are explicit and
+  binding at `05-01-PLAN.md:263` and `:264`.
+- The plans correctly target the actual hand-written drift point. `GetMemory`
+  calls `memoryToProto` directly at `internal/server/connectapi.go:298`, and
+  list/search shaping funnels through it at `:115`.
+- The boundary test exercises the right mechanisms. Connect scheduling invokes the
+  existing write conversion at `internal/server/connectapi.go:425`, whose outward
+  floor/ceil behavior lives at `internal/server/protoconv.go:123`. The MCP JSON
+  traversal follows the established marshal/decode precedent at
+  `internal/server/schemaversion_wire_test.go:246`.
+- The CLI anchor correctly relies on `UseProtoNames` and `EmitDefaultValues`,
+  present at `cmd/engram/client_common.go:380`.
+- The parity detector design is materially non-vacuous: exact alias-map equality,
+  a permanent negative fixture, population checks, comparator coverage, and a
+  wrong-but-nonzero RED mutation cover distinct failure modes.
+
+### Concerns
+
+- **C3-H1 — HIGH — working-tree-shaped `git diff`/`git status` gates are
+  evaluated AFTER the task commit, so they are vacuous or unsatisfiable.**
+  `execute-plan.md:194` commits as part of task completion, and only then does the
+  HARD GATE at `:197-203` run the acceptance loop; the SUMMARY self-check at
+  `:158-159` re-runs **all** acceptance criteria after every production commit. At
+  both evaluation points the working tree is clean, so every criterion phrased over
+  `git diff <path>` (no revision range) sees an **empty diff**. Affected:
+  - `05-01-PLAN.md:260` — "`git diff proto/engram/v1/engram.proto` contains no
+    change to any line declaring a field number in 1-22" — post-commit this is
+    satisfied by an empty diff and cannot detect a committed renumbering of the
+    locked 1-22 range.
+  - `05-01-PLAN.md:263` — the repaired `^\+func` gate. The anchor is now correct,
+    but at the HARD-GATE/SUMMARY re-run the diff is empty, so the command exits 1
+    and the criterion passes **regardless of what the change did**. The cycle-2
+    repair fixed the pattern and left the evaluation point unaddressed. (The
+    GATE-RED PROOF at `:264` is performed in the working tree and does remain
+    meaningful; what is vacuous is the criterion's own re-evaluation.)
+  - `05-01-PLAN.md:307` — the comment-only pipeline. Orchestrator confirmed on the
+    clean repository that `git diff --unified=0 -- internal/store/store.go | rg
+    '^[+-]' | rg -v '^(\+\+\+|---)'` produces no output and exits 1, satisfying
+    "yields ONLY lines whose payload begins with `//`" vacuously.
+  - `05-03-PLAN.md:233` — "`git diff --name-only` at task end lists only the new
+    test file" is the inverse defect: post-commit it lists **zero** files, so read
+    literally it can never be satisfied.
+  - `05-03-PLAN.md:311`, `05-03-PLAN.md:369`, `05-02-PLAN.md:438`,
+    `05-02-PLAN.md:497` — `git status --porcelain <production file>` is empty.
+    These remain correct for their primary purpose (proving a transient RED-proof
+    mutation was reverted), but they cannot detect a production edit that was
+    already committed, which is what `05-03`'s "no production file was touched by
+    this plan" claims.
+
+  **Fix:** capture `TASK_BASE=$(git rev-parse HEAD)` before each task and phrase
+  every committed-change assertion as a range — `git diff "$TASK_BASE"..HEAD --
+  <paths>` and `git diff --name-only "$TASK_BASE"..HEAD` — so the criterion
+  observes the change rather than the (clean) working tree. For `05-01:307`
+  additionally require the range diff to be **non-empty** before checking payloads,
+  so an empty result fails instead of passing.
+
+- **C3-L1 — LOW — one prohibited plan self-description survived the cycle-2
+  sweep.** `05-02-PLAN.md:516` (in `<output>`) still asserts "That table is the
+  evidence that each gate carries its own weight." That quantifies over the plan's
+  own gate structure and is disprovable for the same sub-tests cycle 2 named —
+  flatness (`:210`), deterministic ordering (`:239`), near-miss rejection (`:238`)
+  — none of which is exercised by any of the four RED proofs. Delete the final
+  sentence; keep the concrete table requirement above it.
+
+- **C3-L2 — LOW — the hand-built-fixture grep misses the idiomatic multiline
+  form.** `05-02-PLAN.md:433` requires `rg -c 'store\.Memory\{[A-Z]'` to return no
+  matches, which detects `store.Memory{ID: ...}` only when the first keyed field is
+  on the same line. `rg` is line-oriented by default, so the ordinary form
+  `store.Memory{\n\tID: "x",\n}` leaves the gate green while being exactly the
+  hand-built maximal literal D-06 rejects by name. Secondary, because the
+  reflection-based assertions (`auto-fill covers every field`, pairwise
+  distinctness, `Has(fd)`) are far stronger — but the source gate does not prove
+  what its prose claims. Replace with a Go AST-based assertion, or drop it and rely
+  on the auto-fill coverage assertions.
+
+### Suggestions
+
+- Capture `TASK_BASE=$(git rev-parse HEAD)` before every task and use
+  `"$TASK_BASE"..HEAD` for all committed-change assertions.
+- For the comment-only check, require a non-empty range diff and reject non-comment
+  payloads explicitly.
+- Replace the multiline-literal grep with a Go AST-based test, or remove it.
+- Delete `05-02-PLAN.md:516`'s final self-description sentence.
+
+### Risk Assessment
+
+**MEDIUM-HIGH until the post-commit gates are repaired.** The implementation and
+behavioral tests are well designed, but the affected gates protect locked wire
+compatibility, the no-production-change boundary, and comment-only scope. After
+converting them to task-base commit-range checks, the remaining implementation
+risk is LOW.
+
+## Orchestrator Verification of Cycle-3 Findings
+
+| Claim | Method | Result |
+|---|---|---|
+| `^\+func[[:space:]]` gate can go RED and GREEN | Throwaway git repo under `/tmp`: added `func tmpProbe() {}`, ran the exact command → printed the added line, exit **0**; `git checkout --` then re-ran → no output, exit **1** | **Confirmed** — cycle-2's anchor repair is sound |
+| execute-plan commits before the acceptance gate | Read `$HOME/.claude/gsd-core/workflows/execute-plan.md:194` (task commit), `:197-203` (HARD GATE after), `:158-159` (SUMMARY re-runs ALL acceptance criteria post-commit) | **Confirmed** — C3-H1's premise holds on this host's runtime |
+| Post-commit comment-only pipeline is vacuous | Ran the `05-01:307` pipeline on the clean tree | **Confirmed** — no output, exit 1 |
+| `05-02-PLAN.md:516` self-description survives | `rg` sweep for the swept phrasings + direct read | **Confirmed** — only remaining instance outside `<review_cycle_2_incorporation>` |
+| `rg -c 'store\.Memory\{[A-Z]'` misses multiline literals | `rg` is line-oriented; the pattern requires `[A-Z]` immediately after `{` | **Confirmed** |
+| `rg -c 'SupersededBy\|...\|SummaryEgressAt' internal/server/connectapi.go >= 8` is not pre-satisfied | Ran it on the current tree | **Confirmed non-vacuous** — exit 1, zero pre-existing matches |
+| Roadmap SC1/SC3 already corrected; `.planning/` tree clean | `git status --porcelain` | **Confirmed** — only untracked `.mcp.json` (unrelated) |
+
+### C3-M1 — MEDIUM — orchestrator-found, missed by the reviewer
+
+**The comment-only criterion at `05-01-PLAN.md:307` is unsatisfiable as literally
+written, independently of C3-H1's evaluation-point problem.**
+
+`SummaryEgressAt` is a **struct field** inside `type Memory struct` at
+`internal/store/store.go:272-276`, so its doc-comment lines are **tab-indented**.
+In unified-diff output the payload after the leading `+`/`-` therefore begins with
+a TAB, not with `//`.
+
+Orchestrator reproduced this against the real file (edit applied, command run,
+edit reverted, `git status --porcelain internal/store/store.go` empty):
+
+```
+$ git diff --unified=0 -- internal/store/store.go | rg '^[+-]' | rg -v '^(\+\+\+|---)'
+-	// not on the Connect wire. Zero if never egressed or the summary was
++	// visible on both the MCP and Connect wires. Zero if never egressed or the summary was
+
+$ ... | rg -c '^[+-]//'
+(no matches, exit 1)
+```
+
+Every line IS a comment line, yet none has a payload "beginning with `//`". A
+diligent executor reports the criterion unmet and burns its two fix attempts on a
+correct edit; a lax one rubber-stamps it. Either way the gate does not do its job.
+
+**Fix:** allow leading whitespace — assert the payload matches
+`^[+-][[:space:]]*//` — and combine it with C3-H1's range form plus the non-empty
+requirement, e.g.:
+
+```
+git diff --unified=0 "$TASK_BASE"..HEAD -- internal/store/store.go \
+  | rg '^[+-]' | rg -v '^(\+\+\+|---)' > /tmp/d && [ -s /tmp/d ] \
+  && ! rg -v '^[+-][[:space:]]*//' /tmp/d
+```
+
+## Consensus Summary
+
+Single-reviewer cycle (`codex`), so "consensus" is the reviewer's findings
+reconciled against orchestrator verification. Every cycle-3 finding was
+independently reproduced by the orchestrator before being recorded; one additional
+MEDIUM (C3-M1) was found by the orchestrator and missed by the reviewer.
+
+### Agreed Strengths
+
+- Cycle-2's `^\+func` anchor repair is correct and the gate is genuinely fireable
+  (reproduced twice, independently).
+- The GATE-RED PROOF is a binding acceptance criterion, not advisory — the
+  execute-plan HARD GATE blocks the next task until it passes.
+- The plan targets the real drift point (`memoryToProto`, the single funnel for
+  every Connect read RPC) rather than the `.proto` schema `buf breaking` can see.
+- 05-02's detector design remains materially non-vacuous across four independent
+  failure modes.
+- Cycle-2's self-description deletions are clean; no new self-description was
+  introduced by the cycle-2 edits.
+
+### Agreed Concerns
+
+- **C3-H1 (HIGH)** — working-tree-shaped `git diff`/`git status` gates are
+  evaluated post-commit, so five criteria across all three plans are vacuous or
+  unsatisfiable. This is the same recurring class the phase exists to eliminate,
+  arriving for the third consecutive cycle and, again, partly out of the previous
+  cycle's own repair.
+- **C3-M1 (MEDIUM)** — `05-01:307`'s comment-only payload test cannot pass on a
+  tab-indented struct-field comment.
+- **C3-L1 (LOW)** — one plan self-description survived the cycle-2 sweep at
+  `05-02-PLAN.md:516`.
+- **C3-L2 (LOW)** — `rg -c 'store\.Memory\{[A-Z]'` misses the idiomatic multiline
+  literal.
+
+### Divergent Views
+
+None — single reviewer. The only asymmetry is coverage: Codex analysed
+`05-01:307` solely through the post-commit lens and did not notice that the
+criterion also fails pre-commit on comment indentation (C3-M1).
+
+**Cycle-3 outcome:** 1 unresolved HIGH (C3-H1, new, systemic across all three
+plans), 3 unresolved actionable non-HIGH (C3-M1 orchestrator-found MEDIUM, C3-L1
+and C3-L2 reviewer LOWs). Zero cycle-1 or cycle-2 findings carried forward — both
+prior cycles' findings are closed or partially closed with the residue restated as
+the cycle-3 items above.
