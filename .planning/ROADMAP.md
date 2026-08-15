@@ -344,7 +344,7 @@ Research flag: yes — the exact `internal/migrate` step-registry API shape (ste
 Plans:
 **Wave 1**
 
-- [ ] 04-01-PLAN.md — Tracer: v0→v1 step + CheckAdditive pre-existing-key carve-out (H1) + full-backlog DryRun + manifest-based intersection w/ single-pass PA-3-safe path (H7) + CurrentVersion 0→1 + additive_test.go Registry assertion updated (M13) (wave 1)
+- [ ] 04-01-PLAN.md — Tracer: v0→v1 step + CheckAdditive pre-existing-key carve-out (H1) + CurrentVersion 0→1 with its full blast radius repaired and PA-10a item 3 discharged (C5-H2) + full-backlog DryRun + manifest-based intersection w/ single-pass PA-3-safe path (H7); carries the phase-wide Conformance Registry Impact ledger (wave 1)
 
 **Wave 2**
 
