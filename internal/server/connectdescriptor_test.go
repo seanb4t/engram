@@ -136,7 +136,13 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 	// payload/request/response messages plus Memory and ScopeCount, so an
 	// accidental additive/renamed/retyped read field fails this test even
 	// though it wouldn't change the RPC count or req/resp message names.
-	assertFields(t, fd, "Memory", 22, map[protoreflect.FieldNumber]fieldSpec{
+	// Phase 5, plan 05-01: fields 23-30 (D-04, as amended by D-14) are
+	// additive record-state fields on Memory — field count and pins bumped
+	// accordingly. superseded_by/schema_version/summary_model carry explicit
+	// presence (D-14) but that is a proto3_optional flag, not a distinct
+	// protoreflect.Cardinality value, so their expected cardinality is still
+	// Optional (singular) like every other non-repeated field here.
+	assertFields(t, fd, "Memory", 30, map[protoreflect.FieldNumber]fieldSpec{
 		1:  {name: "id", kind: protoreflect.StringKind},
 		14: {name: "created_at", kind: protoreflect.MessageKind, msgType: "google.protobuf.Timestamp"},
 		17: {name: "score", kind: protoreflect.FloatKind},
@@ -145,6 +151,14 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 		20: {name: "last_accessed_at", kind: protoreflect.MessageKind, msgType: "google.protobuf.Timestamp"},
 		21: {name: "kind", kind: protoreflect.StringKind},
 		22: {name: "citations", kind: protoreflect.MessageKind, repeated: true, msgType: "engram.v1.Citation"},
+		23: {name: "superseded_by", kind: protoreflect.StringKind},
+		24: {name: "supersedes", kind: protoreflect.StringKind, repeated: true},
+		25: {name: "not_before", kind: protoreflect.MessageKind, msgType: "google.protobuf.Timestamp"},
+		26: {name: "not_after", kind: protoreflect.MessageKind, msgType: "google.protobuf.Timestamp"},
+		27: {name: "archived_at", kind: protoreflect.MessageKind, msgType: "google.protobuf.Timestamp"},
+		28: {name: "schema_version", kind: protoreflect.Uint32Kind},
+		29: {name: "summary_model", kind: protoreflect.StringKind},
+		30: {name: "summary_egress_at", kind: protoreflect.MessageKind, msgType: "google.protobuf.Timestamp"},
 	})
 	assertFields(t, fd, "ScopeCount", 2, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "scope", kind: protoreflect.StringKind},

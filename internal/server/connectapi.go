@@ -14,6 +14,7 @@ import (
 	"connectrpc.com/connect"
 	"connectrpc.com/otelconnect"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
@@ -52,6 +53,26 @@ func memoryToProto(m store.Memory) *engramv1.Memory {
 	if m.LastAccessedAt != nil {
 		lastAccessed = timestamppb.New(*m.LastAccessedAt)
 	}
+	// NotBefore/NotAfter/ArchivedAt are nil for the common case; leave the
+	// proto field unset rather than emitting a year-1 (0001-01-01) Timestamp.
+	var notBefore *timestamppb.Timestamp
+	if m.NotBefore != nil {
+		notBefore = timestamppb.New(*m.NotBefore)
+	}
+	var notAfter *timestamppb.Timestamp
+	if m.NotAfter != nil {
+		notAfter = timestamppb.New(*m.NotAfter)
+	}
+	var archivedAt *timestamppb.Timestamp
+	if m.ArchivedAt != nil {
+		archivedAt = timestamppb.New(*m.ArchivedAt)
+	}
+	// SummaryEgressAt is a non-pointer time.Time; IsZero() is its emit-only-
+	// if-set guard, mirroring the pointer guards above.
+	var summaryEgressAt *timestamppb.Timestamp
+	if !m.SummaryEgressAt.IsZero() {
+		summaryEgressAt = timestamppb.New(m.SummaryEgressAt)
+	}
 	return &engramv1.Memory{
 		Id: m.ID, Content: m.Content, Scope: m.Scope,
 		Repo: m.Repo, Workspace: m.Workspace, Worktree: m.Worktree, BaseDir: m.BaseDir,
@@ -66,6 +87,18 @@ func memoryToProto(m store.Memory) *engramv1.Memory {
 		LastAccessedAt: lastAccessed,
 		Kind:           m.Kind,
 		Citations:      citationsToProto(m.Citations),
+		SupersededBy:   m.SupersededBy,
+		Supersedes:     m.Supersedes,
+		NotBefore:      notBefore,
+		NotAfter:       notAfter,
+		ArchivedAt:     archivedAt,
+		// SchemaVersion/SummaryModel are assigned UNCONDITIONALLY (D-14 §3):
+		// protojson omits an unset optional field even with
+		// EmitDefaultValues set, so a conditional assignment would drop the
+		// key from every rendered JSON document for a zero-valued record.
+		SchemaVersion:   proto.Uint32(uint32(m.SchemaVersion)),
+		SummaryModel:    proto.String(m.SummaryModel),
+		SummaryEgressAt: summaryEgressAt,
 	}
 }
 

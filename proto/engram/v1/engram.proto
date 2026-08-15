@@ -39,6 +39,25 @@ message Memory {
   // store_memory/schedule_memory, only by store_discovery).
   string kind = 21;
   repeated Citation citations = 22;
+  // A superseded record is soft-hidden from recall but stays fetchable by
+  // id. Unset means not superseded, not superseding anything.
+  optional string superseded_by = 23;
+  repeated string supersedes = 24;
+  // The store encodes not_before/not_after at whole-second granularity, so
+  // the outward rounding applied on the write path makes read-side rounding
+  // a no-op by construction; none is performed here.
+  google.protobuf.Timestamp not_before = 25;
+  google.protobuf.Timestamp not_after = 26;
+  google.protobuf.Timestamp archived_at = 27;
+  // Explicit presence; the server always sets this, including to zero for a
+  // v0 record, which is what keeps the key in every rendered JSON document.
+  // An unset value on the wire is a server bug, never a v0 record.
+  optional uint32 schema_version = 28;
+  // Explicit presence and always set; empty string means no auto summary
+  // was produced. Unset on the wire is a server bug.
+  optional string summary_model = 29;
+  // Unset means never egressed.
+  google.protobuf.Timestamp summary_egress_at = 30;
 }
 
 message ScopeCount {
