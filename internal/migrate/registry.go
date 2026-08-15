@@ -9,9 +9,8 @@ import (
 )
 
 // Registry is the production migration-step chain, in From-ascending order.
-// It ships EMPTY this phase: migrate.CurrentVersion stays 0 (see
-// migrate.go) because no phase has yet registered a step. Phase 4
-// registers the first step (backfill-short-ids, v0->v1) here.
+// It holds the v0->v1 step: Phase 4 registered backfill-short-ids here,
+// raising migrate.CurrentVersion to 1 in the same change (see migrate.go).
 //
 // PHASE4: this var MUST remain declared at PACKAGE SCOPE as a literal —
 // `var Registry = []Step{ NewStep(...), ... }` — never built inside a
@@ -27,7 +26,11 @@ import (
 // TestRegistryIsAPackageLevelVarWithPhase4Marker asserts both this
 // declaration shape and this marker's presence, so violating this
 // obligation is a build-breaking mechanical failure, not a review note.
-var Registry = []Step{}
+var Registry = []Step{
+	NewMintingStep(0, 1, []string{"short_id"},
+		Irreversible("snapshot recovery: minted short_ids may already be cited by get_memory/supersede_memory (D-03)"),
+		v1FillShortID),
+}
 
 // Validate checks the three ordering invariants a step chain must hold for
 // StepsFrom to select a sensible sub-chain from it. An empty chain is

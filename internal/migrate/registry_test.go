@@ -136,10 +136,11 @@ func TestValidateRejectsOrderingAndUniquenessViolations(t *testing.T) {
 		})
 	}
 
-	// The shipped state this phase must leave behind: the real, empty
-	// production registry passes Validate with no error.
+	// The shipped state this phase leaves behind: the real production
+	// registry, now holding the v0->v1 step Phase 4 registered, still
+	// passes Validate with no error.
 	if err := Validate(Registry); err != nil {
-		t.Fatalf("Validate(Registry) = %v, want no error — migrate.Registry ships EMPTY this phase (Phase 4 registers the first step)", err)
+		t.Fatalf("Validate(Registry) = %v, want no error — migrate.Registry holds the v0->v1 backfill-short-ids step Phase 4 registered", err)
 	}
 }
 

@@ -17,6 +17,18 @@ import "slices"
 // to the write path.
 type ApplyFunc func(payload map[string]any) (map[string]any, error)
 
+// ApplyMinterFunc is the transformation a minter-aware migration step
+// performs on one record's decoded raw payload, given a mint closure it may
+// call to obtain a fresh collision-safe identifier (D-01/D-02). The minter
+// is always a PARAMETER, never a captured store: this keeps the step value
+// itself free of any non-stdlib dependency (internal/migrate stays a
+// stdlib-only leaf package — TestMigratePackageIsStdlibOnlyLeaf), and lets
+// the caller (Store.Migrate) inject a per-Migrate-call mint closure that
+// captures the store, ctx, and a fresh seen set. mint returns an error when
+// minting fails (e.g. the collision-safe Count probe errors); a step must
+// propagate that error rather than swallow it.
+type ApplyMinterFunc = func(m map[string]any, mint func() (string, error)) (map[string]any, error)
+
 // Reversibility is a sealed interface: the only two types that satisfy it
 // are the unexported reversibleStep and irreversibleStep this package
 // constructs via Reversible and Irreversible. The unexported isReversibility
@@ -108,11 +120,12 @@ func IrreversibleReason(r Reversibility) (string, bool) {
 // so NewStep is the only way to construct a Step, and every field it
 // requires is therefore guaranteed present (D-02).
 type Step struct {
-	from     Version
-	to       Version
-	addsKeys []string
-	rev      Reversibility
-	apply    ApplyFunc
+	from        Version
+	to          Version
+	addsKeys    []string
+	rev         Reversibility
+	apply       ApplyFunc
+	applyMinter ApplyMinterFunc
 }
 
 // NewStep is the only exported constructor for Step. from, to, addsKeys,
@@ -160,4 +173,49 @@ func (s Step) Reversibility() Reversibility { return s.rev }
 // Apply runs this step's ApplyFunc against payload.
 func (s Step) Apply(payload map[string]any) (map[string]any, error) {
 	return s.apply(payload)
+}
+
+// NewMintingStep is the second exported constructor for Step: it builds a
+// minter-aware step whose apply path calls an injected mint closure rather
+// than a pure ApplyFunc (D-01/D-02). It mirrors NewStep's nil-check
+// discipline verbatim — panics when rev is nil and when applyMinter is nil
+// — because Go permits an explicit nil for any interface- or func-typed
+// parameter regardless of signature shape, so without an explicit check
+// "nobody declared how to apply this step" would remain a representable
+// state here too. A Step built by NewMintingStep carries no apply (plain
+// ApplyFunc) path and vice versa: exactly one of the two constructors is
+// ever used for a given Step value, so there is no representable
+// dual-apply or nil-apply state.
+func NewMintingStep(from, to Version, addsKeys []string, rev Reversibility, applyMinter ApplyMinterFunc) Step {
+	if rev == nil {
+		panic("migrate.NewMintingStep: rev must be non-nil")
+	}
+	if applyMinter == nil {
+		panic("migrate.NewMintingStep: applyMinter must be non-nil")
+	}
+	return Step{
+		from:        from,
+		to:          to,
+		addsKeys:    slices.Clone(addsKeys),
+		rev:         rev,
+		applyMinter: applyMinter,
+	}
+}
+
+// ApplyMinter returns this step's minter-aware apply function and true when
+// s was built via NewMintingStep, or (nil, false) for a step built via
+// NewStep. This accessor is the ONLY way a caller (Store.Migrate) detects a
+// minter-aware step — there is no type assertion and no exported
+// struct-literal path, because every Step field is unexported.
+func (s Step) ApplyMinter() (ApplyMinterFunc, bool) {
+	return s.applyMinter, s.applyMinter != nil
+}
+
+// ApplyMinterMint runs this step's minter-aware apply function against
+// payload, passing mint through. It mirrors Step.Apply's shape so the sweep
+// can choose one apply path uniformly once it has branched on ApplyMinter.
+// Calling ApplyMinterMint on a step built via NewStep (applyMinter nil) is
+// a programming error — the caller must guard with ApplyMinter first.
+func (s Step) ApplyMinterMint(payload map[string]any, mint func() (string, error)) (map[string]any, error) {
+	return s.applyMinter(payload, mint)
 }
