@@ -35,6 +35,87 @@ func destructiveCommandNames() map[string]bool {
 	return out
 }
 
+// applyRoutedAdditions is the NAMED set of commands that are ADDITIVE
+// (Destructive:false) yet route through registerDestructive because
+// previewing before mutating is the right operator contract for any write,
+// destructive or not (D-16). Each entry's justification is why a
+// table-derived predicate cannot express it (REVIEWS.md C4-H1): the
+// blast-radius table has no "routed through registerDestructive" column,
+// so membership here is a routing fact this file names explicitly,
+// mirroring the operatorCommandExclusions precedent (cmdwalk.go:63-97 —
+// a small named set, per-entry justification, pinned by a test).
+//
+//   - "migrate": the v0->v1 sweep only ever ADDS keys (migrate.CheckAdditive
+//     enforces this), yet a bare invocation previews and --apply performs
+//     the write — the same preview/apply contract every destructive command
+//     gets, extended here to an additive one (04-03-PLAN.md Task 2).
+//   - "backfill-short-ids": 04-04 converts this alias onto the SAME sweep
+//     (migrateSweepPreviewRun/migrateSweepApplyRun); it belongs in this set
+//     from the moment the derivation exists, even though its own --apply
+//     flag does not land until 04-04 (see pendingApplyConversion below).
+//
+// migrate revert is deliberately NOT here: its toolclass row is
+// Destructive:true (04-03-PLAN.md Task 3), so destructiveCommandNames()
+// already returns it, and listing it again would be a stale duplicate —
+// TestApplyRoutedAdditionsArePinned's Destructive:false check would catch
+// that mistake.
+var applyRoutedAdditions = map[string]bool{
+	"migrate":            true,
+	"backfill-short-ids": true,
+}
+
+// pendingApplyConversion is a NAMED, TEMPORARY exclusion (REVIEWS.md
+// C4-H1/M12): backfill-short-ids is an applyRoutedAdditions member and
+// therefore already in the mutating set, but its conversion to
+// registerDestructive — and therefore its own --apply flag — lands in plan
+// 04-04 Task 1, one wave later. This entry keeps the wave-3 tree green:
+// switching TestDestructiveCommandsRequireApply onto mutatingCommandNames()
+// without this exclusion would demand --apply from a command that does not
+// carry it yet, by design-order, not by defect. Plan 04-04 Task 1 DELETES
+// both this var and every reference to it, in the SAME task that gives
+// backfill-short-ids its --apply flag.
+//
+// It holds exactly one name, for exactly one wave. If a second entry is
+// ever added here to make a gate pass, the DERIVATION is wrong, not the
+// exclusion list — that is precisely how the rejected !ReadOnly predicate
+// (C4-H1) stayed invisible for three review cycles.
+var pendingApplyConversion = map[string]bool{
+	"backfill-short-ids": true,
+}
+
+// mutatingCommandNames is the `--apply`-REQUIRED set (REVIEWS.md M12 as
+// corrected by C4-H1): destructiveCommandNames() (the table-derived
+// Destructive:true set) UNIONED with the small named applyRoutedAdditions
+// set, MINUS the one-wave pendingApplyConversion exclusion.
+//
+// This is DELIBERATELY NOT `!op.Class.ReadOnly && op.CLICommand != ""`. A
+// prior revision defined it that way; executed against the live
+// surfaces.Operations() table that predicate selects ELEVEN commands
+// (backfill-short-ids, migrate-remap-owner, migrate-set-owner,
+// prune-expired, reindex, serve, spine-review archive, spine-review purge,
+// spine-review restore, store, summarize-missing), of which only THREE are
+// Destructive:true, and --apply exists on exactly the commands routed
+// through registerDestructive (prune.go:159, spine_review_purge.go:425,
+// migrate.go:257, plus 04-03's migrate). So SEVEN commands (store, reindex,
+// summarize-missing, serve, migrate-set-owner, spine-review archive,
+// spine-review restore) would be demanded to carry --apply and have none —
+// the --apply-routed tier is a ROUTING fact, and the blast-radius table has
+// no routing column; !ReadOnly is a different question ("does this command
+// write?") that happens to select a strictly larger set.
+//
+// destructiveCommandNames() STAYS as the table-derived half — this function
+// is built ON it, never a replacement for it.
+func mutatingCommandNames() map[string]bool {
+	out := destructiveCommandNames()
+	for name := range applyRoutedAdditions {
+		out[name] = true
+	}
+	for name := range pendingApplyConversion {
+		delete(out, name)
+	}
+	return out
+}
+
 // firstDestructiveTopLevelCommandName returns the CLICommand of the first
 // declared surfaces.Operations() row that is classified destructive and
 // whose CLICommand is a top-level name (no space) — i.e. resolvable by
@@ -51,6 +132,35 @@ func firstDestructiveTopLevelCommandName(t *testing.T) string {
 	}
 	t.Fatal("surfaces.Operations(): no top-level destructive CLICommand found")
 	return ""
+}
+
+// firstAdditiveRoutedTopLevelCommandName returns the lexicographically-first
+// space-free member of applyRoutedAdditions whose surfaces.ClassForCommand
+// row resolves and reports Destructive == false — i.e. it derives from the
+// SAME named set the generalized admission gate derives from, so the
+// helper and the gate cannot drift apart. A member with no row yet (e.g.
+// "migrate" before its Task 2 toolclass row lands) is silently skipped
+// rather than failing, which is what lets this helper resolve to
+// "backfill-short-ids" at the end of Task 1 and to either name once both
+// rows exist.
+func firstAdditiveRoutedTopLevelCommandName(t *testing.T) string {
+	t.Helper()
+	var names []string
+	for name := range applyRoutedAdditions {
+		if strings.Contains(name, " ") {
+			continue
+		}
+		class, ok := surfaces.ClassForCommand(name)
+		if !ok || class.Destructive {
+			continue
+		}
+		names = append(names, name)
+	}
+	if len(names) == 0 {
+		t.Fatal("applyRoutedAdditions: no top-level, Destructive:false, classified member found")
+	}
+	sort.Strings(names)
+	return names[0]
 }
 
 // ownFlagNames returns cmd's OWN registered flag names — cmd.Flags() minus
@@ -81,12 +191,20 @@ func ownFlagNames(cmd *cobra.Command) []string {
 	return out
 }
 
-// TestDestructiveCommandsRequireApply is D-03's derivation gate: the set of
-// live commands carrying an --apply flag must equal the set
-// surfaces.Operations() classifies destructive, in BOTH directions, so
-// neither a missing flag nor a stray one passes.
+// TestDestructiveCommandsRequireApply is D-03's derivation gate, widened by
+// REVIEWS.md M12 (as corrected by C4-H1, Task 1): the set of live commands
+// carrying an --apply flag must equal mutatingCommandNames() — the NAMED
+// union destructiveCommandNames() ∪ applyRoutedAdditions −
+// pendingApplyConversion — in BOTH directions, so neither a missing flag
+// nor a stray one passes. This is deliberately NOT destructiveCommandNames()
+// alone: migrate (Destructive:false) carries --apply too, via
+// applyRoutedAdditions. At the end of Task 2 this resolves to exactly four
+// names — migrate, migrate-remap-owner, prune-expired, spine-review purge
+// — matching the four live registerDestructive callers (prune.go:159,
+// spine_review_purge.go:425, migrate.go:257, migrate_family.go); Task 3
+// adds the fifth (migrate revert) on both sides in one edit.
 func TestDestructiveCommandsRequireApply(t *testing.T) {
-	want := destructiveCommandNames()
+	want := mutatingCommandNames()
 	got := map[string]bool{}
 	for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {
 		if cmd.Flags().Lookup("apply") != nil {
@@ -95,13 +213,65 @@ func TestDestructiveCommandsRequireApply(t *testing.T) {
 	}
 	for key := range want {
 		if !got[key] {
-			t.Errorf("destructive command %q has no --apply flag", key)
+			t.Errorf("mutating command %q has no --apply flag", key)
 		}
 	}
 	for key := range got {
 		if !want[key] {
-			t.Errorf("command %q carries --apply but is not classified destructive", key)
+			t.Errorf("command %q carries --apply but is not classified mutating (destructiveCommandNames() ∪ applyRoutedAdditions − pendingApplyConversion)", key)
 		}
+	}
+}
+
+// TestApplyRoutedAdditionsArePinned is the direct analogue of
+// TestOperatorCommands' exclusion-set pinning (cmdwalk_test.go:117-130):
+// every name in applyRoutedAdditions must resolve to a live
+// surfaces.ClassForCommand row that is ReadOnly:false (an additive-but-
+// mutating command CAN route through registerDestructive) and
+// Destructive:false (a Destructive:true entry would be redundant with
+// destructiveCommandNames() and therefore stale by construction — a future
+// reclassification of migrate/backfill-short-ids to Destructive:true fails
+// this pin loudly instead of leaving a silently duplicated name).
+func TestApplyRoutedAdditionsArePinned(t *testing.T) {
+	for name := range applyRoutedAdditions {
+		class, ok := surfaces.ClassForCommand(name)
+		if !ok {
+			t.Errorf("applyRoutedAdditions names %q, which has no surfaces.ClassForCommand row", name)
+			continue
+		}
+		if class.ReadOnly {
+			t.Errorf("applyRoutedAdditions names %q, which is ReadOnly:true — it cannot be an additive-but-mutating command", name)
+		}
+		if class.Destructive {
+			t.Errorf("applyRoutedAdditions names %q, which is Destructive:true — it is redundant with destructiveCommandNames() and stale by construction", name)
+		}
+	}
+}
+
+// TestMutatingCommandNamesMembership pins mutatingCommandNames()'s result
+// to the exact FIVE names live at the end of this wave (REVIEWS.md M12,
+// INV-1): migrate, migrate revert, migrate-remap-owner, prune-expired,
+// spine-review purge — declared HERE, in Task 3, because this is the task
+// that gives migrate revert its Destructive:true toolclass row and makes
+// the set reach five. 04-04 Task 1 deletes pendingApplyConversion and
+// updates this pin to SIX by adding backfill-short-ids, in the same task
+// that gives the alias its own --apply flag.
+//
+// If this fails naming the seven UNRELATED commands the rejected !ReadOnly
+// predicate would select (store, reindex, summarize-missing, serve,
+// migrate-set-owner, spine-review archive, spine-review restore), the
+// ENUMERATED SET here is what needs correcting, never the pin — see
+// mutatingCommandNames()'s own doc comment.
+func TestMutatingCommandNamesMembership(t *testing.T) {
+	want := map[string]bool{
+		"migrate":             true,
+		"migrate revert":      true,
+		"migrate-remap-owner": true,
+		"prune-expired":       true,
+		"spine-review purge":  true,
+	}
+	if got := mutatingCommandNames(); !reflect.DeepEqual(got, want) {
+		t.Errorf("mutatingCommandNames() = %v, want %v", got, want)
 	}
 }
 
@@ -153,21 +323,23 @@ func TestDestructiveCommandsRouteThroughGate(t *testing.T) {
 }
 
 // TestDestructiveGatePreventsMutation is the ONLY behavioural proof that the
-// gate prevents MUTATION, rather than merely proving flag presence.
+// gate prevents MUTATION, rather than merely proving flag presence. It has
+// two sub-tests: the original destructive-command case, and (Phase 4 D-16)
+// an additive (Destructive:false) mutating command, proving the generalized
+// `!ReadOnly` admission gate (destructive.go) admits BOTH shapes, not only
+// the destructive one.
 //
-// Its subject is a throwaway *cobra.Command carrying an ALREADY-CLASSIFIED
-// destructive Use name (derived via firstDestructiveTopLevelCommandName,
-// never hardcoded), constructed fresh and never attached to rootCmd or any
-// parent. commandKey is CommandPath() with the root binary name trimmed, and
-// a parentless command's CommandPath() is its bare Name(), so the throwaway
-// resolves to a real registry key that surfaces.Operations() already
-// classifies Destructive: true — registerDestructive's panic branch is never
-// reached, and because the command is never attached to the tree, this test
-// perturbs neither the live tree, the walkers, nor either golden.
+// Each sub-test's subject is a throwaway *cobra.Command carrying an
+// ALREADY-CLASSIFIED Use name (derived, never hardcoded), constructed fresh
+// and never attached to rootCmd or any parent. commandKey is CommandPath()
+// with the root binary name trimmed, and a parentless command's
+// CommandPath() is its bare Name(), so each throwaway resolves to a real
+// registry key surfaces.Operations() already classifies — registerDestructive's
+// panic branch is never reached, and because neither command is attached to
+// the tree, this test perturbs neither the live tree, the walkers, nor
+// either golden.
 func TestDestructiveGatePreventsMutation(t *testing.T) {
-	name := firstDestructiveTopLevelCommandName(t)
-
-	run := func(args ...string) (previewCount, applyCount int) {
+	run := func(name string, args ...string) (previewCount, applyCount int) {
 		cmd := &cobra.Command{Use: name}
 		var apply bool
 		registerDestructive(cmd, &apply,
@@ -183,15 +355,31 @@ func TestDestructiveGatePreventsMutation(t *testing.T) {
 		return previewCount, applyCount
 	}
 
-	if _, applyCount := run(); applyCount != 0 {
-		t.Errorf("bare run: apply closure called %d times, want 0", applyCount)
-	}
-	if _, applyCount := run("--apply=false"); applyCount != 0 {
-		t.Errorf("--apply=false: apply closure called %d times, want 0 (the gate reads the flag's VALUE, never Changed)", applyCount)
-	}
-	if _, applyCount := run("--apply"); applyCount != 1 {
-		t.Errorf("--apply: apply closure called %d times, want 1", applyCount)
-	}
+	t.Run("destructive command is gated", func(t *testing.T) {
+		name := firstDestructiveTopLevelCommandName(t)
+		if _, applyCount := run(name); applyCount != 0 {
+			t.Errorf("bare run: apply closure called %d times, want 0", applyCount)
+		}
+		if _, applyCount := run(name, "--apply=false"); applyCount != 0 {
+			t.Errorf("--apply=false: apply closure called %d times, want 0 (the gate reads the flag's VALUE, never Changed)", applyCount)
+		}
+		if _, applyCount := run(name, "--apply"); applyCount != 1 {
+			t.Errorf("--apply: apply closure called %d times, want 1", applyCount)
+		}
+	})
+
+	t.Run("additive Destructive:false command is admitted", func(t *testing.T) {
+		name := firstAdditiveRoutedTopLevelCommandName(t)
+		if _, applyCount := run(name); applyCount != 0 {
+			t.Errorf("bare run: apply closure called %d times, want 0", applyCount)
+		}
+		if _, applyCount := run(name, "--apply=false"); applyCount != 0 {
+			t.Errorf("--apply=false: apply closure called %d times, want 0", applyCount)
+		}
+		if _, applyCount := run(name, "--apply"); applyCount != 1 {
+			t.Errorf("--apply: apply closure called %d times, want 1 — the generalized !ReadOnly gate must ADMIT an additive command, not only a destructive one", applyCount)
+		}
+	})
 }
 
 // TestApplyFlagUsageComposesRuleSentence proves every destructive command's
@@ -235,6 +423,10 @@ var destructiveFlagCases = []struct {
 	{pruneExpiredCmd, []string{"apply", "older-than", "output", "timeout"}},
 	{migrateRemapOwnerCmd, []string{"apply", "from", "from-anon", "from-missing", "output", "timeout", "to"}},
 	{spineReviewPurgeCmd, []string{"all-scopes", "apply", "category", "class", "older-than", "output", "scope", "tags", "timeout"}},
+	// 04-03-PLAN.md Task 3: migrateRevertCmd's row. It belongs here, not
+	// Task 1, because it is keyed on the migrateRevertCmd Go identifier
+	// this task declares.
+	{migrateRevertCmd, []string{"apply", "output", "timeout", "to"}},
 }
 
 // TestDestructiveCommandsExactFlagSet is the "no escape hatch exists"

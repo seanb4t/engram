@@ -123,15 +123,19 @@ const RuleDiscoveryNotSchedulable = "discovery-not-schedulable"
 // (see the doc comment at that call site).
 const RuleWindowOrdering = "window-not-before-before-not-after"
 
-// RuleDestructiveRequiresApply is the ID of the rule requiring a destructive
-// operator command (internal/surfaces blast-radius table, Destructive: true)
-// to preview by default and mutate only under an explicit --apply flag
-// (03-03-PLAN.md D-02/D-03). Fields is ["apply"] alone — the field/flag this
-// rule constrains — and SurfaceFields is deliberately left unset: the
-// fallback to Fields is correct here, since "apply" is the only name this
-// rule needs to resolve applicability against (unlike
-// RuleDiscoveryNotSchedulable, which needs a wider SurfaceFields override to
-// disambiguate a field shared across differently-behaving tools).
+// RuleDestructiveRequiresApply is the ID of the rule requiring a mutating
+// operator command routed through registerDestructive (internal/surfaces
+// blast-radius table, ReadOnly: false — Phase 4 D-16 widened this from
+// Destructive: true alone, see 04-03-PLAN.md) to preview by default and
+// mutate only under an explicit --apply flag (03-03-PLAN.md D-02/D-03).
+// Fields is ["apply"] alone — the field/flag this rule constrains — and
+// SurfaceFields is deliberately left unset: the fallback to Fields is
+// correct here, since "apply" is the only name this rule needs to resolve
+// applicability against (unlike RuleDiscoveryNotSchedulable, which needs a
+// wider SurfaceFields override to disambiguate a field shared across
+// differently-behaving tools). The rule's ID stays unchanged across the D-16
+// widening — renaming it would ripple through every anchor marker and
+// rule-ID consumer for no behavioral gain.
 const RuleDestructiveRequiresApply = "destructive-requires-apply"
 
 // RuleVerifyFailOnValues is the ID of the rule constraining
@@ -229,7 +233,7 @@ var rules = []ConditionalRule{
 	},
 	{
 		ID:       RuleDestructiveRequiresApply,
-		Sentence: "a destructive operator command previews by default and mutates only when apply is set",
+		Sentence: "a mutating operator command previews by default and mutates only when apply is set",
 		Fields:   []string{"apply"},
 		Hint:     "conditional_required",
 		// TagForm deliberately left empty: no MCP arg struct carries an

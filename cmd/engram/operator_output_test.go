@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/seanb4t/engram/internal/migrate"
 	"github.com/seanb4t/engram/internal/store"
 )
 
@@ -246,6 +247,37 @@ func operatorParityRows() []operatorParityRow {
 			}, store.PurgeOptions{Classes: []store.PurgeClass{store.PurgeClassExpired}, Scope: "s"}),
 			facts: []string{"id-deleted", "id-spared", "id-appeared"},
 		},
+		{
+			// 04-03-PLAN.md Task 2: an APPLIED result (dryRun=false) so the
+			// "migrated" fact is meaningful; backlog is stated explicitly
+			// in migrateSummary's applied-mode sentence for exactly this
+			// parity claim.
+			name:  "migrate",
+			text:  migrateSummary(store.MigrateResult{Migrated: 23, Failed: 2, Passes: 1, Backlog: 5, Spared: []string{"a"}, Appeared: []string{"b", "c"}}, migrate.CurrentVersion, false, 26),
+			doc:   migrateReportDoc(store.MigrateResult{Migrated: 23, Failed: 2, Passes: 1, Backlog: 5, Spared: []string{"a"}, Appeared: []string{"b", "c"}}, migrate.CurrentVersion, false, 26),
+			facts: []string{"26", "23", "5"},
+		},
+		{
+			name: "migrate status",
+			text: statusSummary(store.MigrateStatusResult{
+				Buckets: []store.VersionBucket{{Version: 1, Count: 40}}, Absent: 3,
+				Future: []store.VersionBucket{{Version: 2, Count: 1}}, FutureTotal: 1, Total: 44,
+			}),
+			doc: statusReportDoc(store.MigrateStatusResult{
+				Buckets: []store.VersionBucket{{Version: 1, Count: 40}}, Absent: 3,
+				Future: []store.VersionBucket{{Version: 2, Count: 1}}, FutureTotal: 1, Total: 44,
+			}),
+			facts: []string{"44", "3", "40", "1", "2"},
+		},
+		{
+			// A REVERSIBLE preview fixture (Task 3): facts name
+			// plan.Candidates and the target version, per this row's plan
+			// text.
+			name:  "migrate revert",
+			text:  revertSummary(store.RevertPlan{To: 0, Candidates: 12, Reversible: true}, false, store.RevertResult{}),
+			doc:   revertReportDoc(store.RevertPlan{To: 0, Candidates: 12, Reversible: true}, false, store.RevertResult{}),
+			facts: []string{"12", "0"},
+		},
 	}
 }
 
@@ -455,6 +487,9 @@ var timeoutGroups = []timeoutGroup{
 			"backfill-short-ids": true, "spine-review scan": true, "spine-review verify": true,
 			"spine-review consolidate": true, "spine-review archive": true, "spine-review restore": true,
 			"spine-review purge": true,
+			// 04-03-PLAN.md: migrate/migrate status (Task 2) and migrate
+			// revert (Task 3) all join this group.
+			"migrate": true, "migrate status": true, "migrate revert": true,
 		},
 		zeroRejected: false,
 	},
@@ -506,6 +541,12 @@ func timeoutGroupCaseArgs(t *testing.T, name string) (args []string, env map[str
 		return []string{"migrate-remap-owner", "--from-missing", "--to", "x", "--timeout", "0"}, env
 	case "migrate-set-owner":
 		return []string{"migrate-set-owner", "--owner", "x", "--timeout", "0"}, env
+	case "migrate":
+		return []string{"migrate", "--timeout", "0"}, env
+	case "migrate status":
+		return []string{"migrate", "status", "--timeout", "0"}, env
+	case "migrate revert":
+		return []string{"migrate", "revert", "--to", "0", "--timeout", "0"}, env
 	default:
 		t.Fatalf("timeoutGroupCaseArgs: no row defined for command %q", name)
 		return nil, nil
@@ -556,6 +597,12 @@ func operatorInvalidOutputArgs(t *testing.T, name string) []string {
 		return []string{"spine-review", "restore", "--id", "x"}
 	case "spine-review purge":
 		return []string{"spine-review", "purge", "--class", "expired"}
+	case "migrate":
+		return []string{"migrate"}
+	case "migrate status":
+		return []string{"migrate", "status"}
+	case "migrate revert":
+		return []string{"migrate", "revert", "--to", "0"}
 	default:
 		t.Fatalf("operatorInvalidOutputArgs: no row defined for command %q", name)
 		return nil

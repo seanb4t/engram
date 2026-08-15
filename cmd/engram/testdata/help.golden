@@ -12,6 +12,7 @@ Available Commands:
   completion          Generate the autocompletion script for the specified shell
   help                Help about any command
   list                List memories on a remote engram server
+  migrate             Preview or apply the pending forward schema-version sweep
   migrate-remap-owner Re-stamp record owner across the collection (sub->email, email->email, owner-less, or anonymous bucket)
   prune-expired       Delete memories whose validity window (not_after) has lapsed
   reindex             Re-embed memories into a new (new-dimension) collection for embedder migration
@@ -73,6 +74,58 @@ Flags:
       --visibility string       visibility filter: "" (all), "private", or "shared"
 ```
 
+## engram migrate
+
+```
+Advance every below-target record through the registered migrate.Registry step chain (today: v0->v1, minting a short_id for any record that lacks one). A bare invocation previews the full backlog and writes nothing; --apply re-derives eligibility within its own run (a fresh preview inside the apply closure) and migrates only the intersection of what it just showed and what is still eligible at that moment — a record that became ineligible since preview is spared, and a record that became newly eligible is reported appeared (never migrated; re-run to include it).
+
+Usage:
+  engram migrate [flags]
+  engram migrate [command]
+
+Available Commands:
+  revert      Preview or apply a reverse schema-version walk, refusing any irreversible range whole
+  status      Report a server-side schema-version distribution histogram
+
+Flags:
+      --apply              a mutating operator command previews by default and mutates only when apply is set
+  -h, --help               help for migrate
+      --output string      output format: "json" or "text" (default: detect from stdout)
+      --timeout duration   max wall-clock (0 disables); also cancellable via Ctrl-C (default 5m0s)
+
+Use "engram migrate [command] --help" for more information about a command.
+```
+
+## engram migrate revert
+
+```
+Reverse-walk every record above --to back down to it, applying each traversed step's declared inverse in order. A bare invocation previews the reverse plan and writes nothing; --apply calls the SAME whole-range preflight again inside its own run and applies only when the ENTIRE range is reversible -- an irreversible step or an unsupported stored version anywhere in the range refuses the whole operation, naming every offending step or version and pointing to a collection snapshot for recovery. A refused --apply exits non-zero; the identical refusal previewed without --apply exits 0.
+
+Usage:
+  engram migrate revert --to <v> [flags]
+
+Flags:
+      --apply              a mutating operator command previews by default and mutates only when apply is set
+  -h, --help               help for revert
+      --output string      output format: "json" or "text" (default: detect from stdout)
+      --timeout duration   max wall-clock (0 disables); also cancellable via Ctrl-C (default 5m0s)
+      --to int             target schema version to revert down to (required)
+```
+
+## engram migrate status
+
+```
+Report a server-side schema-version distribution histogram
+
+Usage:
+  engram migrate status [flags]
+
+Flags:
+  -h, --help               help for status
+      --output string      output format: "json" or "text" (default: detect from stdout)
+      --timeout duration   max wall-clock (0 disables); also cancellable via Ctrl-C (default 5m0s)
+```
+
 ## engram migrate-remap-owner
 
 ```
@@ -82,7 +135,7 @@ Usage:
   engram migrate-remap-owner [flags]
 
 Flags:
-      --apply              a destructive operator command previews by default and mutates only when apply is set
+      --apply              a mutating operator command previews by default and mutates only when apply is set
       --from string        current owner value to remap (a sub or email); mutually exclusive with --from-missing/--from-anon
       --from-anon          remap the explicit anonymous bucket (owner=="")
       --from-missing       remap owner-less (pre-isolation) records
@@ -116,7 +169,7 @@ Usage:
   engram prune-expired [flags]
 
 Flags:
-      --apply                 a destructive operator command previews by default and mutates only when apply is set
+      --apply                 a mutating operator command previews by default and mutates only when apply is set
   -h, --help                  help for prune-expired
       --older-than duration   grace period: only prune records whose not_after lapsed at least this long ago (0 = any past not_after)
       --output string         output format: "json" or "text" (default: detect from stdout)
@@ -257,7 +310,7 @@ Usage:
 
 Flags:
       --all-scopes            span every scope; mutually exclusive with --scope
-      --apply                 a destructive operator command previews by default and mutates only when apply is set
+      --apply                 a mutating operator command previews by default and mutates only when apply is set
       --category string       free-form filter: only this category; the free-form filter path requires an explicit --scope or --all-scopes: category or tags always engage it, and older-than engages it when no class is selected
       --class strings         structural eligibility class (repeatable): superseded, expired, archived
   -h, --help                  help for purge
