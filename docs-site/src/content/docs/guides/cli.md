@@ -132,13 +132,19 @@ prose alone.
 
 ### Destructive commands
 
-<!-- engram:rule:start destructive-requires-apply -->a destructive operator command previews by default and mutates only when apply is set<!-- engram:rule:end destructive-requires-apply -->.
-This applies to every command the [blast-radius](#blast-radius) table below
-classifies `destructive`: today, `prune-expired`, `migrate-remap-owner`, and
-`spine-review purge`. A
-bare invocation reports what the sweep *would* do and exits `0` without
-touching the collection; add `--apply` to perform the mutation. A forgotten
-`--apply` is therefore a harmless no-op — the command just previews again.
+<!-- engram:rule:start destructive-requires-apply -->a mutating operator command previews by default and mutates only when apply is set<!-- engram:rule:end destructive-requires-apply -->.
+This applies to every command routed through the `registerDestructive` choke
+point — a wider set than the [blast-radius](#blast-radius) table's
+`destructive` column alone. Today that is every command the table classifies
+`destructive` (`prune-expired`, `migrate-remap-owner`, `spine-review purge`,
+`migrate revert`), **plus `migrate`**, which is classified
+**non-destructive** (its sweep is additive-only) yet still previews by
+default and mutates only under `--apply` — the same contract, extended to a
+mutating-but-not-destructive command. `migrate status` is read-only and
+carries no `--apply` flag at all. A bare invocation of any `--apply`-gated
+command reports what the sweep *would* do and exits `0` without touching the
+collection; add `--apply` to perform the mutation. A forgotten `--apply` is
+therefore a harmless no-op — the command just previews again.
 
 Every other mutating operator command — `reindex`, `summarize-missing`, and
 `backfill-short-ids` — is classified **non-destructive** and keeps its

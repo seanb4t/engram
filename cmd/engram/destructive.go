@@ -24,16 +24,36 @@ import (
 // test (t.Cleanup-restored) is what makes that assertion possible.
 var cliNow = func() time.Time { return time.Now().UTC() }
 
-// destructiveByClassification reports whether cmd is classified destructive
-// in the internal/surfaces blast-radius table, looked up by cmd's qualified
-// command path (commandKey) — never a second, hand-maintained list.
-// Membership is DERIVED from the table (D-03), not declared here.
+// destructiveByClassification reports whether cmd is classified as a
+// MUTATING operator command in the internal/surfaces blast-radius table
+// (Class.ReadOnly == false), looked up by cmd's qualified command path
+// (commandKey) — never a second, hand-maintained list. Membership is
+// DERIVED from the table (D-03), not declared here.
+//
+// The predicate is `!class.ReadOnly`, not `class.Destructive` (Phase 4's
+// D-16 generalization): the gate this function feeds,
+// registerDestructive's ADMISSION check, answers "may this command route
+// through the preview/apply choke point?" — and an additive-but-mutating
+// command (e.g. `migrate`, Destructive:false) deserves that same
+// preview-by-default contract as a genuinely destructive one. This is a
+// DIFFERENT question from "which commands MUST carry --apply?" — that
+// narrower, --apply-REQUIRED set lives in destructive_test.go's
+// mutatingCommandNames(), a NAMED union, never this predicate (REVIEWS.md
+// C4-H1 — see that function's doc comment for the rejected alternative and
+// why it is wrong).
+//
+// M9 (accepted name debt): this function's name, and registerDestructive's
+// panic message below, predate the gate's generalization from
+// Destructive:true to !ReadOnly. "destructive" now means "any mutating
+// operation" throughout this file's identifiers — not exclusively
+// key-removing ones — kept for backward compatibility with every existing
+// caller site rather than renamed in this phase.
 //
 // A command with no classification row at all is a programming error —
 // every command must carry one, the same invariant buildCatalog's own panic
 // backstop enforces (catalog.go) — so this panics rather than silently
-// returning false: a destructive command silently treated as non-destructive
-// is exactly the failure this function exists to prevent.
+// returning false: a mutating command silently treated as read-only is
+// exactly the failure this function exists to prevent.
 func destructiveByClassification(cmd *cobra.Command) bool {
 	key := commandKey(cmd)
 	class, ok := surfaces.ClassForCommand(key)
@@ -44,7 +64,7 @@ func destructiveByClassification(cmd *cobra.Command) bool {
 			key,
 		))
 	}
-	return class.Destructive
+	return !class.ReadOnly
 }
 
 // addApplyFlag registers the shared --apply bool flag on cmd, writing into
@@ -70,21 +90,24 @@ func applyRequested(applied bool) bool {
 	return applied
 }
 
-// registerDestructive is the structural choke point every destructive
+// registerDestructive is the structural choke point every mutating operator
 // command's RunE is installed by (the fix for the prior revision's gap: a
 // derived --apply flag proved PRESENCE, not runtime PREVENTION — nothing
 // stopped a hand-written RunE from ignoring it). It takes the RunE away from
-// the leaf entirely: a destructive command supplies a preview closure and an
-// apply closure and never assigns cmd.RunE itself, so it cannot skip the
-// gate by forgetting to consult the flag. There is no code path from the
-// preview branch to the apply closure — the dispatch below calls exactly one
-// of the two, never falls through, and never composes them.
+// the leaf entirely: a command supplies a preview closure and an apply
+// closure and never assigns cmd.RunE itself, so it cannot skip the gate by
+// forgetting to consult the flag. There is no code path from the preview
+// branch to the apply closure — the dispatch below calls exactly one of the
+// two, never falls through, and never composes them.
 //
-// registerDestructive panics if cmd is not classified destructive: this
-// helper exists ONLY for the destructive tier (surfaces.ClassForCommand's
-// Destructive: true rows), and routing a non-destructive command through it
-// by mistake is a programming error to catch at registration time (init()),
-// not silently at runtime.
+// registerDestructive panics if cmd is not classified as mutating
+// (destructiveByClassification, `!class.ReadOnly` — Phase 4's D-16
+// generalization from the original Destructive:true-only gate): this helper
+// exists for every write-capable operator command, additive or destructive
+// alike, and routing a ReadOnly command through it by mistake is a
+// programming error to catch at registration time (init()), not silently at
+// runtime. The name retains its original "destructive" wording as an
+// accepted debt (M9) — see destructiveByClassification's doc comment.
 //
 // The rejected alternative — an injectable classification seam. A
 // package-level function variable (e.g. classForCommand, initialised to
@@ -115,8 +138,9 @@ func registerDestructive(
 ) {
 	if !destructiveByClassification(cmd) {
 		panic(fmt.Sprintf(
-			"registerDestructive: command %q is not classified destructive in internal/surfaces/toolclass.go — "+
-				"only a command whose blast-radius row has Destructive: true may route through this gate",
+			"registerDestructive: command %q is not classified as a mutating operation in internal/surfaces/toolclass.go — "+
+				"only a command whose blast-radius row has ReadOnly: false may route through this gate "+
+				"(additive mutations included, not only Destructive: true ones — REVIEWS.md M9)",
 			commandKey(cmd),
 		))
 	}

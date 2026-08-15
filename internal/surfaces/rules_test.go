@@ -53,7 +53,7 @@ func TestRuleByIDDestructiveRequiresApply(t *testing.T) {
 	if !ok {
 		t.Fatalf("RuleByID(%q) not found", RuleDestructiveRequiresApply)
 	}
-	const wantSentence = "a destructive operator command previews by default and mutates only when apply is set"
+	const wantSentence = "a mutating operator command previews by default and mutates only when apply is set"
 	if rule.Sentence != wantSentence {
 		t.Errorf("rule.Sentence = %q, want %q", rule.Sentence, wantSentence)
 	}

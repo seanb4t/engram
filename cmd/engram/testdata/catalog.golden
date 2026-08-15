@@ -154,7 +154,7 @@
           "name": "apply",
           "type": "bool",
           "default": "false",
-          "usage": "a destructive operator command previews by default and mutates only when apply is set"
+          "usage": "a mutating operator command previews by default and mutates only when apply is set"
         },
         {
           "name": "from",
@@ -238,7 +238,7 @@
           "name": "apply",
           "type": "bool",
           "default": "false",
-          "usage": "a destructive operator command previews by default and mutates only when apply is set"
+          "usage": "a mutating operator command previews by default and mutates only when apply is set"
         },
         {
           "name": "older-than",
@@ -603,7 +603,7 @@
           "name": "apply",
           "type": "bool",
           "default": "false",
-          "usage": "a destructive operator command previews by default and mutates only when apply is set"
+          "usage": "a mutating operator command previews by default and mutates only when apply is set"
         },
         {
           "name": "category",
