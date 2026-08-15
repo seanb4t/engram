@@ -352,15 +352,18 @@ var fullWriteClassification = []writeClassification{
 
 // partialWriteClassification is the partial-write classification: every
 // SetPayload/DeletePayload/OverwritePayload call site in internal/store's
-// package directory (store.go, spine.go, summarize.go), derived at revision
-// time with the scanner's own matching rule — ten entries, named at the
-// level the derivation reports (seams included), not at the level D-02's
-// prose describes the callers. Every entry carries the same underlying
-// justification: a one-key merge cannot honestly claim currency, so a
-// partial write that stamped schema_version would assert "every key of this
-// version is present" while having written only one — a false-currency
-// claim that would make a future migration sweep skip records still needing
-// migration (D-02).
+// package directory (store.go, spine.go, summarize.go, revert.go), derived
+// at revision time with the scanner's own matching rule — one entry per
+// derived site, named at the level the derivation reports (seams included),
+// not at the level D-02's prose describes the callers. The set-equality gate
+// below (TestPartialWritePathsAreClassifiedNonStamping) is the enforced
+// claim; no count is restated here because a restated count is a second,
+// unenforced assertion that goes stale silently. Every entry carries the
+// same underlying justification unless stated otherwise: a one-key merge
+// cannot honestly claim currency, so a partial write that stamped
+// schema_version would assert "every key of this version is present" while
+// having written only one — a false-currency claim that would make a future
+// migration sweep skip records still needing migration (D-02).
 var partialWriteClassification = []writeClassification{
 	{enclosingFunc: "Store.UpdatePayload", receiver: "s.client", justification: "D-02: caller transmits directly; a partial write must never stamp currency it cannot honor."},
 	{enclosingFunc: "Store.defaultDeletePayloadKeys", receiver: "s.client", justification: "D-02: the deletePayloadKeys SEAM's production implementation; a partial write must never stamp currency it cannot honor."},
@@ -373,6 +376,7 @@ var partialWriteClassification = []writeClassification{
 	{enclosingFunc: "Store.Archive", receiver: "s.client", justification: "D-02: outside store.go (spine.go); a partial write must never stamp currency it cannot honor."},
 	{enclosingFunc: "Store.SetSummary", receiver: "s.client", justification: "D-02: outside store.go (summarize.go); a partial write must never stamp currency it cannot honor."},
 	{enclosingFunc: "Store.Migrate", receiver: "s.client", justification: "Phase 3's SANCTIONED exception to D-02's general rule, not a violation of it: every other entry here is a one-key merge that would falsely CLAIM currency it never verified, but Migrate's SetPayload runs only after applying every step in the record's own chain up to target, and its write map is built from AddedKeys(original, current) plus schemaVersionKey — the exact keys that chain declared and added. Stamping schema_version here is the correctly-earned currency claim this whole migration mechanism exists to make, not a shortcut around it."},
+	{enclosingFunc: "Store.revertWithSteps", receiver: "s.client", justification: "The SECOND sanctioned exception alongside Store.Migrate's row above (04-02): its SetPayload DOES stamp schema_version, but only after every inverse in the record's own reverse chain has been applied, so the version it stamps (the revert target) is the version the record actually reached. Its paired DeletePayload removes exactly the keys RemovedKeys(original, current) reported and stamps nothing — the anti-additive half of a two-RPC commit whose commit point is the following SetPayload (REVIEWS.md M3): a DeletePayload that lands followed by a failing SetPayload leaves the record at its OLD version, so it is re-derived by the next pass."},
 }
 
 // parseGoFile is a test-only helper: parse path (relative to this package's

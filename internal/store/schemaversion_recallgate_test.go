@@ -563,6 +563,10 @@ var operatorMigrationEmitters = []recallEmissionClassification{
 		enclosingFunc: "Store.MigrateStatus",
 		justification: "Emits Count (internal/store/migrate_status.go, twice: an IsEmpty(schema_version) exact Count for the absent/legacy bucket, and an unfiltered exact Count for the whole-collection total). D-16 operator diagnostic behind `engram migrate status`; same Phase 3 rationale as Store.CountOwnerless — the histogram must be able to count by schema_version presence/absence to report the migration backlog's shape. Never reachable from any recallEntryPointSeeds member.",
 	},
+	{
+		enclosingFunc: "Store.revertWithSteps",
+		justification: "Emits Count (internal/store/revert.go) and ScrollAndOffset (internal/store/revert.go), both against aboveTargetFilter — the write loop's own re-derivation, mirroring Store.Migrate's row above. D-16 operator command (`engram migrate revert`); same Phase 3 rationale — the revert sweep must be able to filter/count by schema_version to find its own above-target backlog. Store.previewRevertWithSteps enumerates the SAME range but through Store.scrollAllPoints (already classified below), so it needs no row of its own. Never reachable from any recallEntryPointSeeds member.",
+	},
 }
 
 // otherNonRecallEmitters — the third category the previous binary partition
