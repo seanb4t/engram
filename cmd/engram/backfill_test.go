@@ -6,6 +6,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -316,4 +318,141 @@ func TestBackfillPreBackfilledRecordDelegates(t *testing.T) {
 			t.Fatalf("Migrate called %d time(s), want 2 (H5 in-apply-closure re-preview)", len(fake.migrateCalls))
 		}
 	})
+}
+
+// timeoutRemovalClaimPattern matches a CLAIM that --timeout was removed,
+// within a single sentence CLAUSE (bounded by "." or ";"), never a bare
+// co-occurrence of the two words (REVIEWS.md C5-L1, C6-H1): the guide's own
+// permitted wording -- "`--timeout` is preserved; `--dry-run` is removed"
+// -- puts a semicolon between the two, so this pattern does not fire on a
+// compliant document at any sentence length, unlike a character-count
+// window.
+var timeoutRemovalClaimPattern = regexp.MustCompile(`--timeout[^.;]*\b(removed|no longer accepted|dropped)\b`)
+
+// backfillShortIDsDryRunCombo matches the SPECIFIC stale instruction this
+// gate exists to catch -- `backfill-short-ids` combined with `--dry-run`,
+// in either order, within one line -- rather than a bare `--dry-run`
+// search. A whole-guide bare `--dry-run` search is REJECTED here
+// (REVIEWS.md-class defect, same shape as the whole-file --timeout grep
+// C5-L1 rejects): summarize-missing and reindex each carry their OWN,
+// still-valid `--dry-run` flag with legitimate, unrelated examples
+// elsewhere in this guide (confirmed present before this plan touched the
+// file), so a bare "--dry-run" search would fail on those unrelated,
+// compliant mentions and could never go green -- the exact "gate that
+// cannot pass on a compliant implementation" defect class this phase's own
+// prohibitions repeatedly reject. The property this gate actually proves
+// is narrower and correct: no HISTORICAL section still instructs THIS
+// command with a flag it no longer accepts.
+var backfillShortIDsDryRunCombo = regexp.MustCompile(`backfill-short-ids\b[^\n]{0,40}--dry-run|--dry-run\b[^\n]{0,40}backfill-short-ids`)
+
+// TestUpgradeGuideReconcilesBackfill is the D-12 bidirectional doc<->code
+// gate (memory x6v6qxqd6f: never a len>0/presence proxy). Four assertions,
+// each independently provable RED by reverting its own half:
+//
+//  1. doc side: the "## Unreleased" section names the --dry-run removal
+//     and the --apply/preview-by-default requirement for backfill-short-ids.
+//  2. code side: backfillShortIDsCmd has no "dry-run" flag, carries
+//     "timeout" (PRESERVED -- H8), and Deprecated is EXACTLY
+//     "use: engram migrate".
+//  3. C4-L3: the STALE "backfill-short-ids --dry-run" combination appears
+//     ONLY inside "## Unreleased" (where it documents the removal) --
+//     never in a historical section still instructing it.
+//  4. C5-L1/C6-H1: "## Unreleased" never CLAIMS --timeout was removed
+//     (it is preserved), matched as a clause-scoped removal claim, not a
+//     bare word co-occurrence or a character-count window -- both of
+//     which would trip on this plan's own permitted wording.
+//
+// All three doc-side assertions (1, 3, 4) are simultaneously satisfiable:
+// (1) requires "--dry-run" INSIDE "## Unreleased"; (3) forbids the
+// backfill-short-ids/--dry-run COMBINATION outside it (not a bare
+// "--dry-run" search, which pre-existing unrelated commands' own valid
+// --dry-run mentions would fail); (4) forbids a --timeout REMOVAL CLAIM
+// inside it. No pair contradicts: --dry-run's removal is documented, the
+// STALE instruction is gone, and --timeout is truthfully never claimed
+// removed.
+func TestUpgradeGuideReconcilesBackfill(t *testing.T) {
+	data, err := os.ReadFile(upgradeGuideRelPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			t.Skipf("upgrade guide not present at %s (trimmed checkout?) -- skipping rather than passing silently", upgradeGuideRelPath)
+		}
+		t.Fatalf("read %s: %v", upgradeGuideRelPath, err)
+	}
+	doc := string(data)
+	section := extractUnreleasedSection(doc)
+	if strings.TrimSpace(section) == "" {
+		t.Fatalf("no non-empty %q section found in %s -- either the heading is missing or the section is empty", "## Unreleased", upgradeGuideRelPath)
+	}
+
+	t.Run("doc side: Unreleased names the --dry-run removal and preview-by-default", func(t *testing.T) {
+		// A bare "section contains X" check per token is satisfiable by
+		// THREE INDEPENDENT, SCATTERED mentions elsewhere in this long
+		// section (e.g. item #2's operator-command list names
+		// "backfill-short-ids", item #10 mentions "--dry-run" for a
+		// DIFFERENT command, item #9 mentions "--apply" for a THIRD
+		// command) without ever describing backfill-short-ids's OWN
+		// removal -- confirmed empirically: this exact false-pass was
+		// observed during this test's own RED-first authoring, reverted
+		// once caught. The real property requires all three tokens to
+		// appear TOGETHER in one coherent paragraph.
+		found := false
+		for _, block := range strings.Split(section, "\n\n") {
+			if strings.Contains(block, "backfill-short-ids") &&
+				strings.Contains(block, "--dry-run") &&
+				strings.Contains(block, "--apply") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error(`no single paragraph inside "## Unreleased" jointly names "backfill-short-ids", "--dry-run", and "--apply" -- scattered independent mentions do not document THIS command's removal`)
+		}
+	})
+
+	t.Run("code side: no --dry-run, has --timeout (H8), Deprecated points at migrate", func(t *testing.T) {
+		if backfillShortIDsCmd.Flags().Lookup("dry-run") != nil {
+			t.Error(`backfillShortIDsCmd carries a "dry-run" flag, want none (D-09)`)
+		}
+		if backfillShortIDsCmd.Flags().Lookup("timeout") == nil {
+			t.Error(`backfillShortIDsCmd has no "timeout" flag, want it PRESERVED (REVIEWS.md H8)`)
+		}
+		const wantDeprecated = "use: engram migrate"
+		if backfillShortIDsCmd.Deprecated != wantDeprecated {
+			t.Errorf("backfillShortIDsCmd.Deprecated = %q, want %q", backfillShortIDsCmd.Deprecated, wantDeprecated)
+		}
+	})
+
+	t.Run("C4-L3: the stale backfill-short-ids/--dry-run combination survives ONLY inside Unreleased", func(t *testing.T) {
+		remainder := docWithoutUnreleasedSection(doc)
+		if loc := backfillShortIDsDryRunCombo.FindStringIndex(remainder); loc != nil {
+			t.Errorf("a historical section (outside %q) still instructs backfill-short-ids with --dry-run, a combination the binary no longer accepts: %q",
+				"## Unreleased", remainder[max(0, loc[0]-20):min(len(remainder), loc[1]+20)])
+		}
+	})
+
+	t.Run("C5-L1/C6-H1: Unreleased never claims --timeout was removed", func(t *testing.T) {
+		for _, line := range strings.Split(section, "\n") {
+			if timeoutRemovalClaimPattern.MatchString(line) {
+				t.Errorf("line claims --timeout was removed (it is PRESERVED -- H8): %q", line)
+			}
+		}
+	})
+}
+
+// docWithoutUnreleasedSection returns doc with its "## Unreleased" section's
+// BODY (everything between the heading and the next "## " heading, or EOF)
+// removed -- reusing extractUnreleasedSection's own boundary logic
+// (docsync_test.go) rather than a substring-Replace on the extracted
+// section text, which would be ambiguous if the section's own text ever
+// recurred elsewhere in the document.
+func docWithoutUnreleasedSection(doc string) string {
+	loc := unreleasedHeadingPattern.FindStringIndex(doc)
+	if loc == nil {
+		return doc
+	}
+	rest := doc[loc[1]:]
+	if next := nextH2HeadingPattern.FindStringIndex(rest); next != nil {
+		return doc[:loc[1]] + rest[next[0]:]
+	}
+	return doc[:loc[1]]
 }

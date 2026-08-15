@@ -139,14 +139,15 @@ settable via `ENGRAM_TIMEOUT`), bounding the RPC call with a real deadline.
 Default: `30s`. A value of `0` is rejected as a usage error (exit `2`) — it
 does **not** mean "unbounded."
 
-**This is the opposite convention from four of the six operator commands'
-own `--timeout`** (`reindex`, `prune-expired`, `summarize-missing`,
-`backfill-short-ids`, where `0` still disables the deadline, unchanged).
-It matches `migrate-remap-owner`/`migrate-set-owner`'s own `--timeout` as
-of this release (see #6 below). Same flag name, different zero-semantics
-across three groups of commands — a reader must not have to infer it. See
-[Request timeout](/guides/cli/#request-timeout) for the full comparison
-table.
+**This is the opposite convention from most of the operator tier's own
+`--timeout`.** The rule: `0` still disables the deadline on every operator
+command EXCEPT `migrate-remap-owner`/`migrate-set-owner`, which reject it
+as of this release (see #6 below) — the same rule the new client
+`--timeout` above also follows. Same flag name, different zero-semantics
+across groups of commands — a reader must not have to infer it, and the
+group membership grows as new operator commands ship, so it is not
+re-enumerated here. See [Request timeout](/guides/cli/#request-timeout)
+for the live, three-group comparison table.
 
 **Who should act:** any client-side script invoking `search`/`list`/`store`
 with no explicit `--timeout` gets a new 30-second ceiling it did not have
@@ -342,6 +343,30 @@ not a migration, and it is not the missing sweep either.
 **Who should act:** nobody. This is purely additive, forward-looking
 groundwork; no existing behavior changes.
 
+### 13. `backfill-short-ids --dry-run` is removed; it now previews by default, like `migrate-remap-owner` (#10) and `engram migrate`
+
+`backfill-short-ids` is now a thin delegating alias onto the SAME v0->v1
+schema-version sweep `engram migrate` runs. Like `migrate-remap-owner`
+(#10 above), it drops its own `--dry-run` flag and adopts the same
+preview-by-default / `--apply`-to-write contract every mutating operator
+command now shares: a bare invocation PREVIEWS the count of records it
+would backfill and exits `0` without writing; `--apply` performs the
+backfill. Before this release, a bare invocation APPLIED immediately.
+`--dry-run` no longer exists on this command — passing it now fails with
+an unknown-flag usage error (exit `2`).
+
+`--timeout` is preserved, unchanged, with the same `5m` default and "`0`
+disables the deadline" semantics it already shipped — it is not part of
+this behavior break.
+
+The command is soft-deprecated (`engram backfill-short-ids --help` now
+shows a deprecation notice) toward `engram migrate`, the command it
+delegates to — it is never hard-removed.
+
+**Who should act:** any operator who scripts bare `backfill-short-ids`
+expecting it to apply. Add `--apply` to restore the previous behavior, or
+switch to `engram migrate`.
+
 ---
 
 ## v0.7.10 — Recall returns summaries by default
@@ -430,11 +455,13 @@ Recall output (`search_memory`, `list_memory`) includes both `id` and `short_id`
 ### Backfilling existing records
 
 Memories created before this feature was enabled do not have a `short_id`. Backfill
-them with the operator command. Preview first, then apply:
+them with the operator command. A bare invocation previews; `--apply` performs the
+backfill (see Unreleased #13 above — `--dry-run` is removed and this command now
+delegates to `engram migrate`):
 
 ```sh
-engram backfill-short-ids --dry-run          # run this first: preview without writing
-engram backfill-short-ids                    # apply to all memories
+engram backfill-short-ids                    # preview: no writes
+engram backfill-short-ids --apply            # apply to all memories
 engram backfill-short-ids --timeout 5m       # custom wall-clock limit
 ```
 

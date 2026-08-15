@@ -146,14 +146,24 @@ command reports what the sweep *would* do and exits `0` without touching the
 collection; add `--apply` to perform the mutation. A forgotten `--apply` is
 therefore a harmless no-op — the command just previews again.
 
-Every other mutating operator command — `reindex`, `summarize-missing`, and
-`backfill-short-ids` — is classified **non-destructive** and keeps its
-pre-existing opt-in **preview** idiom, `--dry-run`. This is a deliberate,
-two-idiom split, not an accident: on a destructive command a forgotten
-`--apply` costs nothing (it just previews again), but on a non-destructive
-command a forgotten `--dry-run` merely performs the recoverable, additive
-thing the operator already asked for. The boundary sits exactly on the
-blast-radius table's `Destructive` column and nowhere else.
+`reindex` and `summarize-missing` are classified **non-destructive** and
+keep their pre-existing opt-in **preview** idiom, `--dry-run`. This is a
+deliberate two-idiom split, not an accident: on a command routed through
+`registerDestructive` (above) a forgotten `--apply` costs nothing (it just
+previews again), but on `reindex`/`summarize-missing` a forgotten
+`--dry-run` merely performs the recoverable, additive thing the operator
+already asked for.
+
+`backfill-short-ids` has MOVED from the `--dry-run` idiom to the `--apply`
+one: it is now a thin delegating alias for `engram migrate` — see the
+[upgrade guide](/guides/upgrade/)'s `## Unreleased` entry on
+`backfill-short-ids --dry-run` removal for the full behavior break. Its
+own blast-radius row is still **non-destructive** (the sweep is
+additive-only), exactly like `migrate` itself above — the boundary
+between the two idioms is therefore no longer purely the blast-radius
+table's `Destructive` column; it is "does this command route through
+`registerDestructive`", which today is every `Destructive:true` command
+plus `migrate` and `backfill-short-ids`.
 
 ### `spine-review scan`
 
