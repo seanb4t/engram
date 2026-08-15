@@ -235,6 +235,12 @@ None - no external service configuration required.
 
 None — no stub or placeholder data was introduced by this plan.
 
+## Self-Check: PASSED
+
+- FOUND: internal/migrate/v1_step.go
+- FOUND: .planning/phases/04-migration-cli-first-customer/04-01-SUMMARY.md
+- FOUND: 8fb9d6d9, 0fa76d62, dd3723a8, 96711281
+
 ---
 *Phase: 04-migration-cli-first-customer*
 *Completed: 2026-08-15*
