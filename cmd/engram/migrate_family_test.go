@@ -712,3 +712,69 @@ func TestMigrateFamilyRevertTimeoutWiring(t *testing.T) {
 		})
 	}
 }
+
+// TestMigrateFamilyRevertApplyRefusalReportsPartialProgress pins deep-pass
+// CR-06: a mid-loop refusal (the WR-05 sites inside Store.Revert's write
+// loop) can fire AFTER whole batches already reverted, and Store.Revert
+// returns those accumulated counters alongside the typed refusal. Rendering
+// a zero-value RevertResult there reports `reverted: 0` for a run that
+// really did mutate the collection, telling an operator there is nothing to
+// reconcile when there is. The refusal envelope itself must be unchanged —
+// only the progress counters are added.
+func TestMigrateFamilyRevertApplyRefusalReportsPartialProgress(t *testing.T) {
+	previewPlan := store.RevertPlan{To: 0, Candidates: 300, Reversible: true}
+	// The single-record plan the WR-05 mid-loop sites synthesize.
+	refusedPlan := store.RevertPlan{
+		To: 0, Candidates: 1, Reversible: false,
+		Irreversible: []store.IrreversibleStepRef{{From: 0, To: 1, Reason: "no declared inverse"}},
+	}
+	// Progress that already landed before the racing record tripped refusal.
+	progressed := store.RevertResult{Reverted: 256, Failed: 2, Passes: 1, Backlog: 44, Plan: refusedPlan}
+
+	fake := &fakeMigrateFamilyStore{
+		previewRevertFn: func(context.Context, migrate.Version) (store.RevertPlan, error) { return previewPlan, nil },
+		revertFn: func(context.Context, migrate.Version) (store.RevertResult, error) {
+			return progressed, &store.RevertRefusedError{Plan: refusedPlan}
+		},
+	}
+	withFakeMigrateFamilyStore(t, fake)
+	resetClientFlags(t)
+	resetCommandFlagState(t, migrateRevertCmd)
+
+	stdout, _, err := runClient(t, "migrate", "revert", "--to", "0", "--apply", "--output", "json")
+	if got := exitCodeFromError(err); got != exitUsage {
+		t.Fatalf("exitCodeFromError = %d, want %d (exitUsage)", got, exitUsage)
+	}
+	var doc revertOutputDoc
+	if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+		t.Fatalf("json.Unmarshal: %v (stdout=%q)", uErr, stdout)
+	}
+	if doc.Reverted != progressed.Reverted {
+		t.Errorf("doc.Reverted = %d, want %d — CR-06: a refusal that followed real writes must report them, not zero", doc.Reverted, progressed.Reverted)
+	}
+	if doc.Failed != progressed.Failed {
+		t.Errorf("doc.Failed = %d, want %d (CR-06)", doc.Failed, progressed.Failed)
+	}
+	if doc.Backlog != progressed.Backlog {
+		t.Errorf("doc.Backlog = %d, want %d (CR-06)", doc.Backlog, progressed.Backlog)
+	}
+	// The envelope must be untouched by the CR-06 fix.
+	if want := store.RevertRefusalError(refusedPlan).Error(); doc.Refusal != want {
+		t.Errorf("doc.Refusal = %q, want %q — CR-06's counters must not alter the refusal envelope", doc.Refusal, want)
+	}
+	if doc.Applied {
+		t.Errorf("doc.Applied = true, want false — the operation WAS refused; counters say how far it got")
+	}
+
+	// Text mode carries the same truth: an operator reading the terminal, not
+	// the JSON, must still learn that records changed before the refusal.
+	resetClientFlags(t)
+	resetCommandFlagState(t, migrateRevertCmd)
+	textOut, _, tErr := runClient(t, "migrate", "revert", "--to", "0", "--apply", "--output", "text")
+	if got := exitCodeFromError(tErr); got != exitUsage {
+		t.Fatalf("text mode exitCodeFromError = %d, want %d", got, exitUsage)
+	}
+	if !strings.Contains(textOut, "already reverted 256 record(s)") {
+		t.Errorf("text summary = %q, want it to disclose the 256 records reverted before the refusal (CR-06)", textOut)
+	}
+}

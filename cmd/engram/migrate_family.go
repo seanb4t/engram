@@ -354,6 +354,18 @@ func revertReportDoc(plan store.RevertPlan, applied bool, res store.RevertResult
 	}
 	if !plan.Reversible {
 		doc.Refusal = store.RevertRefusalError(plan).Error()
+		// Report progress that ALREADY LANDED before the refusal (deep-pass
+		// CR-06). A top-level preflight refusal carries an all-zero res, so
+		// these stay 0 and the rendered document is byte-identical to what
+		// it was before. A mid-loop refusal (WR-05) is the case that matters:
+		// Store.Revert may have reverted whole batches for earlier records
+		// before the racing record tripped the refusal, and reporting
+		// `reverted: 0` there would tell an operator there is nothing to
+		// reconcile when there is.
+		doc.Reverted = res.Reverted
+		doc.Failed = res.Failed
+		doc.Passes = res.Passes
+		doc.Backlog = res.Backlog
 		return doc
 	}
 	if applied {
@@ -373,7 +385,16 @@ func revertReportDoc(plan store.RevertPlan, applied bool, res store.RevertResult
 // drift apart.
 func revertSummary(plan store.RevertPlan, applied bool, res store.RevertResult) string {
 	if !plan.Reversible {
-		return store.RevertRefusalError(plan).Error()
+		refusal := store.RevertRefusalError(plan).Error()
+		// Same CR-06 reasoning as revertReportDoc: a mid-loop refusal (WR-05)
+		// can follow writes that already landed. Appended ONLY when there is
+		// progress to report, so a top-level preflight refusal — where res is
+		// all-zero — renders exactly the bare refusal text it always did.
+		if res.Reverted > 0 || res.Failed > 0 {
+			return fmt.Sprintf("%s; before refusing, this run had already reverted %d record(s) (%d failed) — reconcile with `engram migrate status`",
+				refusal, res.Reverted, res.Failed)
+		}
+		return refusal
 	}
 	if !applied {
 		return fmt.Sprintf("preview: %d record(s) above v%d would revert; re-run with --apply to revert",
@@ -505,9 +526,19 @@ func revertApplyRun(ctx context.Context, cmd *cobra.Command) error {
 	if err != nil {
 		var refused *store.RevertRefusedError
 		if errors.As(err, &refused) {
+			// Render the REAL res, never a zero value. Store.Revert returns
+			// its accumulated counters alongside a refusal (revert.go's
+			// `return res, err`), and since WR-05 typed the write-loop's own
+			// mid-run refusals, a refusal can now follow writes that already
+			// landed for earlier records in this same run. Discarding res
+			// here would report `reverted: 0` for a run that really did
+			// mutate the collection — telling an operator there is nothing
+			// to reconcile when there is (deep-pass CR-06). `applied` stays
+			// false: the operation WAS refused; the counters say how far it
+			// got before the refusal.
 			if rerr := renderOperator(cmd, format,
-				revertSummary(refused.Plan, false, store.RevertResult{}),
-				revertReportDoc(refused.Plan, false, store.RevertResult{})); rerr != nil {
+				revertSummary(refused.Plan, false, res),
+				revertReportDoc(refused.Plan, false, res)); rerr != nil {
 				return rerr
 			}
 			return usageErrorf("%s", store.RevertRefusalError(refused.Plan))
