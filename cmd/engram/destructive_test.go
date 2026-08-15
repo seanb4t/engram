@@ -259,8 +259,11 @@ func TestMutatingCommandNamesMembership(t *testing.T) {
 
 // TestDestructiveCommandsRouteThroughGate is the structural gate that makes
 // the guard unbypassable rather than merely conventional: for every
-// table-derived destructive command, cmd.RunE must be the closure
-// registerDestructive installs, resolved via runtime.FuncForPC.
+// MUTATING command (REVIEWS.md N1 — widened from destructiveCommandNames()
+// to mutatingCommandNames() in 04-04 Task 2, so the safety net covers every
+// command that routes through registerDestructive, not only the
+// Destructive:true subset), cmd.RunE must be the closure registerDestructive
+// installs, resolved via runtime.FuncForPC.
 //
 // This is a SUBSTRING match against "registerDestructive", never an equality
 // against the fully-qualified closure symbol (e.g. a ".funcN" suffix). Two
@@ -274,13 +277,15 @@ func TestMutatingCommandNamesMembership(t *testing.T) {
 // attributable at runtime — the substring match plus that pragma together
 // are what keep this assertion durable, not an exact suffix.
 //
-// This test goes RED the moment a destructive command's RunE is assigned by
+// This test goes RED the moment a mutating command's RunE is assigned by
 // hand instead of through registerDestructive — exactly the gap the prior
 // revision's flag-presence-only test could not see. See the plan SUMMARY for
 // the natural (not injected) RED observation this test produced before
-// prune-expired and migrate-remap-owner were converted.
+// prune-expired and migrate-remap-owner were converted, and for the
+// deliberate RED experiment 04-04 Task 2 ran against backfill-short-ids to
+// prove the widened gate is non-vacuous.
 func TestDestructiveCommandsRouteThroughGate(t *testing.T) {
-	for key := range destructiveCommandNames() {
+	for key := range mutatingCommandNames() {
 		key := key
 		t.Run(key, func(t *testing.T) {
 			var target *cobra.Command
@@ -291,7 +296,7 @@ func TestDestructiveCommandsRouteThroughGate(t *testing.T) {
 				}
 			}
 			if target == nil {
-				t.Fatalf("destructive command %q not found in the live tree", key)
+				t.Fatalf("mutating command %q not found in the live tree", key)
 			}
 			if target.RunE == nil {
 				t.Fatalf("%s: RunE is nil, want a closure installed by registerDestructive", key)
@@ -364,15 +369,18 @@ func TestDestructiveGatePreventsMutation(t *testing.T) {
 	})
 }
 
-// TestApplyFlagUsageComposesRuleSentence proves every destructive command's
-// --apply Usage string is composed from the registry's declared Sentence,
-// never a second hand-typed copy.
+// TestApplyFlagUsageComposesRuleSentence proves every MUTATING command's
+// --apply Usage string is composed from the registry's declared Sentence
+// (04-04 Task 2 widens this from destructiveCommandNames() to
+// mutatingCommandNames() — the sentence itself already reads "a mutating
+// operator command …", so this widening is what makes the assertion cover
+// every command the sentence describes), never a second hand-typed copy.
 func TestApplyFlagUsageComposesRuleSentence(t *testing.T) {
 	rule, ok := surfaces.RuleByID(surfaces.RuleDestructiveRequiresApply)
 	if !ok {
 		t.Fatal("surfaces.RuleDestructiveRequiresApply is not registered")
 	}
-	for key := range destructiveCommandNames() {
+	for key := range mutatingCommandNames() {
 		for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {
 			if commandKey(cmd) != key {
 				continue
@@ -389,39 +397,48 @@ func TestApplyFlagUsageComposesRuleSentence(t *testing.T) {
 	}
 }
 
-// destructiveFlagCase pairs a destructive command with its expected OWN
+// mutatingFlagCase pairs a mutating command with its expected OWN
 // flag-name set. This table is the SANCTIONED place to add a row when a
-// later plan registers a new destructive command (03-07's spine-review
-// purge; 03-06 may add archive/restore rows) — adding a row is the correct
+// later plan registers a new mutating command — adding a row is the correct
 // edit; loosening the equality this test asserts is not. Keyed by Go
 // identifier (the command's own package-level *cobra.Command var), never by
 // a string literal of the command's name, so this table cannot be mistaken
-// for a second declared destructive-membership list (that membership is
-// destructiveCommandNames(), derived from surfaces.Operations() alone).
-var destructiveFlagCases = []struct {
+// for a second declared mutating-membership list (that membership is
+// mutatingCommandNames(), derived from surfaces.Operations() plus the
+// applyRoutedAdditions union). RENAMED from destructiveFlagCases in 04-04
+// Task 2 (REVIEWS.md N1): the widening is what makes this the "no escape
+// hatch exists" gate for every command routed through registerDestructive,
+// not only the Destructive:true subset.
+var mutatingFlagCases = []struct {
 	cmd  *cobra.Command
 	want []string
 }{
 	{pruneExpiredCmd, []string{"apply", "older-than", "output", "timeout"}},
 	{migrateRemapOwnerCmd, []string{"apply", "from", "from-anon", "from-missing", "output", "timeout", "to"}},
 	{spineReviewPurgeCmd, []string{"all-scopes", "apply", "category", "class", "older-than", "output", "scope", "tags", "timeout"}},
-	// 04-03-PLAN.md Task 3: migrateRevertCmd's row. It belongs here, not
-	// Task 1, because it is keyed on the migrateRevertCmd Go identifier
-	// this task declares.
+	// 04-03-PLAN.md Task 3: migrateRevertCmd's row.
 	{migrateRevertCmd, []string{"apply", "output", "timeout", "to"}},
+	// 04-04-PLAN.md Task 2: migrateCmd and backfillShortIDsCmd's rows —
+	// both additive-but-mutating (Destructive:false) commands routed
+	// through registerDestructive via applyRoutedAdditions, each carrying
+	// exactly {apply, output, timeout} once registerDestructive's
+	// addApplyFlag call adds "apply" to their own {output, timeout}.
+	{migrateCmd, []string{"apply", "output", "timeout"}},
+	{backfillShortIDsCmd, []string{"apply", "output", "timeout"}},
 }
 
 // TestDestructiveCommandsExactFlagSet is the "no escape hatch exists"
 // gate, asserted by flag-set EQUALITY rather than by grepping for names
 // nobody has invented yet: a bypass flag added later — whatever it is
 // called — fails this equality, which a grep for a guessed vocabulary would
-// not. It also asserts destructiveFlagCases covers every command
-// destructiveCommandNames() names, in both directions, so a newly
-// table-classified destructive command with no row here fails loudly rather
+// not. It also asserts mutatingFlagCases covers every command
+// mutatingCommandNames() names, in both directions (04-04 Task 2 widens
+// this from destructiveCommandNames() — REVIEWS.md N1), so a newly
+// table-classified mutating command with no row here fails loudly rather
 // than silently escaping this gate.
 func TestDestructiveCommandsExactFlagSet(t *testing.T) {
-	covered := make(map[string]bool, len(destructiveFlagCases))
-	for _, c := range destructiveFlagCases {
+	covered := make(map[string]bool, len(mutatingFlagCases))
+	for _, c := range mutatingFlagCases {
 		key := commandKey(c.cmd)
 		covered[key] = true
 		want := append([]string(nil), c.want...)
@@ -431,14 +448,14 @@ func TestDestructiveCommandsExactFlagSet(t *testing.T) {
 			t.Errorf("%s: own flags = %v, want %v", key, got, want)
 		}
 	}
-	for key := range destructiveCommandNames() {
+	for key := range mutatingCommandNames() {
 		if !covered[key] {
-			t.Errorf("destructive command %q has no row in destructiveFlagCases — add one, do not loosen the equality", key)
+			t.Errorf("mutating command %q has no row in mutatingFlagCases — add one, do not loosen the equality", key)
 		}
 	}
 	for key := range covered {
-		if !destructiveCommandNames()[key] {
-			t.Errorf("destructiveFlagCases names %q which is not currently classified destructive", key)
+		if !mutatingCommandNames()[key] {
+			t.Errorf("mutatingFlagCases names %q which is not currently classified mutating", key)
 		}
 	}
 }
