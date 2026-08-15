@@ -314,19 +314,42 @@ func TestBacklogFilterMatchesAbsentAndBelowTarget(t *testing.T) {
 		t.Errorf("backlogFilter(0) does not contain absent record %s — the IsEmpty arm should match it at any target", absentID)
 	}
 
-	// The SWEEP at target 0 does nothing: THIS assertion — not the
-	// filter's shape — is PA-4's actual guarantee. A record at v0 needs no
-	// work, and the sweep must not stamp the whole collection to prove
-	// otherwise.
-	res, err := s.Migrate(ctx, MigrateOptions{Target: 0})
+	// PA-4's short-circuit is reachable ONLY through a NEGATIVE Target as of
+	// migrate.CurrentVersion == 1: MigrateOptions.Target == 0 is now a
+	// SENTINEL that Store.Migrate rewrites to migrate.CurrentVersion (== 1)
+	// BEFORE the target<=0 short-circuit is evaluated — see the DEFAULT
+	// case immediately below, which proves the sentinel resolves to a real
+	// sweep. A future reader must not "simplify" this negative Target back
+	// to 0: that silently converts this assertion into its own opposite
+	// (a live sweep that happens to migrate nothing, rather than a
+	// short-circuit that never runs one). migrate.Version is a named type
+	// over int, so a negative value is representable and reaches only the
+	// target<=0 branch, never a real step chain.
+	res, err := s.Migrate(ctx, MigrateOptions{Target: -1})
 	if err != nil {
-		t.Fatalf("Migrate(target=0): %v", err)
+		t.Fatalf("Migrate(target=-1): %v", err)
 	}
 	if res.Migrated != 0 {
-		t.Errorf("Migrate(target=0) Migrated = %d, want 0", res.Migrated)
+		t.Errorf("Migrate(target=-1) Migrated = %d, want 0", res.Migrated)
 	}
 	if _, ok := rawPayload(ctx, t, s, absentID)[schemaVersionKey]; ok {
-		t.Errorf("Migrate(target=0) stamped schema_version onto the absent record — PA-4 violated")
+		t.Errorf("Migrate(target=-1) stamped schema_version onto the absent record — PA-4 violated")
+	}
+
+	// The DEFAULT target (MigrateOptions{}) resolves through
+	// migrate.CurrentVersion and DOES migrate the absent record. Without
+	// this assertion the negative-target assertion above would also be
+	// satisfied by a sweep that is broken for every target — this is what
+	// makes it non-vacuous.
+	defaultRes, err := s.Migrate(ctx, MigrateOptions{})
+	if err != nil {
+		t.Fatalf("Migrate(default target): %v", err)
+	}
+	if defaultRes.Migrated == 0 {
+		t.Errorf("Migrate(default target) Migrated = 0, want > 0 — the default target resolves through migrate.CurrentVersion and must migrate the absent record")
+	}
+	if got := rawPayload(ctx, t, s, absentID)[schemaVersionKey].GetIntegerValue(); got != int64(migrate.CurrentVersion) {
+		t.Errorf("Migrate(default target) absent record schema_version = %d, want %d (migrate.CurrentVersion)", got, migrate.CurrentVersion)
 	}
 }
 

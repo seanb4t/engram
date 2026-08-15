@@ -3003,10 +3003,11 @@ func TestPayloadRoundTripsSchemaVersion(t *testing.T) {
 		// An OLDER record read by a NEWER binary is RAISED to current — the
 		// arm the whole migration sweep depends on. Constructed one below
 		// CurrentVersion rather than at a literal, so this case keeps
-		// exercising the "below" branch after a later phase raises the
-		// constant. While CurrentVersion is 0 the value is a synthetic
-		// negative sentinel, which is precisely why the assertion is written
-		// against the max() rule and not against a fixed number.
+		// exercising the "below" branch whatever the constant's current
+		// value is. At a low enough CurrentVersion, CurrentVersion-1 is a
+		// synthetic value outside the normal non-negative range — which is
+		// precisely why the assertion is written against the max() rule and
+		// not against a fixed number.
 		{"below", Memory{ID: "a0000000-0000-0000-0000-000000000006", Content: "c", Scope: "s", SchemaVersion: migrate.CurrentVersion - 1}, migrate.CurrentVersion},
 	}
 	// Derived, not enumerated: a hard-coded count silently stays "correct"

@@ -30,21 +30,18 @@ import (
 // deterministic trigger (the sweep's own Scroll request), and observing at
 // the wire which point ids the sweep actually chose to write.
 //
-// PA-10's substitution, stated explicitly: migrate.CurrentVersion is
-// pinned at 0 this phase (registry.go's // PHASE4: marker), so an ordinary
-// mid-sweep write cannot reach a target of 1 through the constant alone.
-// Instead, the mid-sweep "already-current" record is written with an
-// explicit Memory.SchemaVersion of migrate.Version(1); payload()'s
-// monotonic stamp (store.go:646, int(max(migrate.CurrentVersion,
-// m.SchemaVersion))) then stamps 1, matching the sweep's target. What that
-// substitutes is the VALUE the write path claims — supplied by the caller
-// here instead of by the constant; what it does NOT substitute is the
-// PATH: payload() is still the only door a write goes through, the stamp
-// is still monotonic, and the write is still atomic-per-record, all three
-// already proven by Phase 2 (TestEveryPointWriteRoutesThroughPayload,
-// TestEveryFullWriteMethodStampsSchemaVersion). The mid-sweep write goes
-// through Store.Upsert — never a raw-payload injection helper — precisely
-// so this substitution is exercised rather than bypassed.
+// PA-10, DISCHARGED (was: a substitution; now: proven by mechanism). Phase
+// 4 paired migrate.CurrentVersion = 1 with the registered v0->v1 step, so
+// the mid-sweep "already-current" record is now an ORDINARY Store.Upsert
+// carrying NO SchemaVersion at all: payload()'s monotonic stamp (store.go:
+// 646, int(max(migrate.CurrentVersion, m.SchemaVersion))) reaches 1 purely
+// through the CONSTANT, exactly the way every production write does. The
+// sweep's own target is likewise left at zero (MigrateOptions{} — the
+// Target field is simply omitted below), resolving through the same
+// constant. Both sides of the equality now read migrate.CurrentVersion,
+// never a caller-supplied literal. The mid-sweep write goes through
+// Store.Upsert — never a raw-payload injection helper — so the production
+// door (payload()) is exercised rather than bypassed.
 //
 // PA-10a — what this test proves, and what it does not (both review-cycle-1
 // reviewers flagged the earlier framing as an overclaim):
@@ -58,19 +55,17 @@ import (
 //     TestEveryFullWriteMethodStampsSchemaVersion
 //     (schemaversion_stamp_test.go:27, together with
 //     TestEveryPointWriteRoutesThroughPayload); if that gate is ever
-//     weakened, SC5's proof here must be revisited. In production this
-//     equality holds because both sides read the SAME CONSTANT
-//     (migrate.CurrentVersion); here it holds BY CONSTRUCTION, because the
-//     test supplies both the stamp's input (Memory.SchemaVersion) and the
-//     sweep's target (MigrateOptions.Target) itself.
-//  3. PHASE4: the literal, causal half of SC5 — that new writes arrive
-//     already-current BECAUSE the write path stamps the current version —
-//     is deferred to Phase 4. When Phase 4 pairs CurrentVersion = 1 with
-//     the registered v0->v1 step, this same concurrency test must be
-//     re-run with an ORDINARY Memory carrying NO SchemaVersion at all, and
-//     MigrateOptions.Target left at zero so it resolves to CurrentVersion.
-//     That re-run is the only direct proof of SC5's causal claim, and it
-//     is BLOCKING for Phase 4, not optional polish.
+//     weakened, SC5's proof here must be revisited. That equality now
+//     holds THE SAME WAY IT DOES IN PRODUCTION — both sides read the same
+//     constant, migrate.CurrentVersion — rather than by a test-supplied
+//     substitution.
+//  3. PHASE4, DISCHARGED: the literal, causal half of SC5 — that new
+//     writes arrive already-current BECAUSE the write path stamps the
+//     current version — is now proven directly, not deferred. The
+//     mid-sweep write is an ordinary Memory with no SchemaVersion, and the
+//     sweep's target resolves from migrate.CurrentVersion, exactly as this
+//     obligation (previously marked BLOCKING for Phase 4) required. This
+//     is the only direct proof of SC5's causal claim in this codebase.
 //
 // The race is deterministic, not a sleep: the trigger fires from inside a
 // grpc.UnaryClientInterceptor on the sweep's own *qdrant.ScrollPoints
@@ -126,10 +121,13 @@ func TestMigrateConvergesWithoutLock(t *testing.T) {
 	// immediately after Store.Migrate returns. t.Logf is not used here
 	// either, to keep this closure free of any *testing.T dependency.
 	h.fn = func() {
+		// alreadyCurrent is now an ORDINARY Upsert — no SchemaVersion field
+		// at all. payload()'s monotonic stamp reaches 1 through
+		// migrate.CurrentVersion alone, exactly the way a production write
+		// does; that substitution is what PA-10a item 3 required removed.
 		alreadyCurrent := Memory{
 			ID: alreadyCurrentID, Content: "already current at mid-sweep", Scope: scope,
 			Owner: "sub-migrate-test", Category: "note", CreatedAt: time.Now().UTC(),
-			SchemaVersion: migrate.Version(1),
 		}
 		if err := writerStore.Upsert(ctx, alreadyCurrent, []float32{0.7, 0.8, 0.9}); err != nil {
 			h.recordErr("mid-sweep write: alreadyCurrent upsert(%s): %v", alreadyCurrentID, err)
@@ -149,37 +147,47 @@ func TestMigrateConvergesWithoutLock(t *testing.T) {
 		// backlog strictly decreases every pass. This is NOT evidence
 		// that the sweep converges against an arbitrary concurrent
 		// writer; it proves only that the filter's exclusion is real.
-		laggard := Memory{
-			ID: laggardID, Content: "laggard at mid-sweep", Scope: scope,
-			Owner: "sub-migrate-test", Category: "note", CreatedAt: time.Now().UTC(),
-		}
-		if err := writerStore.Upsert(ctx, laggard, []float32{0.4, 0.5, 0.6}); err != nil {
-			h.recordErr("mid-sweep write: laggard upsert(%s): %v", laggardID, err)
+		//
+		// Post-bump, payload() stamps int(max(CurrentVersion, m.SchemaVersion))
+		// unconditionally, so NO Store.Upsert can construct a below-target
+		// record any more — raw injection is the only way left to build
+		// one. seedLegacyRecordNoFatal is that injection, mirroring
+		// seedLegacyRecord's construction (Upsert, raw-delete
+		// schema_version, verify absence) but returning an error instead
+		// of calling t.Fatalf, because PA-11a forbids any t.Fatal-family
+		// call from inside h.fn.
+		if err := seedLegacyRecordNoFatal(ctx, writerStore, laggardID); err != nil {
+			h.recordErr("mid-sweep write: laggard seedLegacyRecordNoFatal(%s): %v", laggardID, err)
 			return
 		}
 
 		// Check the stamped values AT THE CAUSE (here, at write time),
-		// not later at a confusing downstream symptom: if PA-10's
-		// monotonic-max substitution ever stops behaving as documented,
+		// not later at a confusing downstream symptom: if the
+		// CurrentVersion-derived stamp ever stops behaving as documented,
 		// this is where that would first be attributable.
 		acPayload, err := rawPayloadNoFatal(ctx, writerStore, alreadyCurrentID)
 		if err != nil {
 			h.recordErr("mid-sweep write: read back alreadyCurrent(%s): %v", alreadyCurrentID, err)
 		} else if got := acPayload[schemaVersionKey].GetIntegerValue(); got != 1 {
-			h.recordErr("alreadyCurrent(%s) stored schema_version = %d, want 1 (PA-10's monotonic-max stamp did not behave as documented)", alreadyCurrentID, got)
+			h.recordErr("alreadyCurrent(%s) stored schema_version = %d, want 1 — the CONSTANT produced this value (migrate.CurrentVersion), not a caller-supplied literal", alreadyCurrentID, got)
 		}
+		// The laggard must be KEY-ABSENT, i.e. strictly below the sweep's
+		// resolved target of migrate.CurrentVersion — a comma-ok map index,
+		// never .GetIntegerValue() == 0, because GetIntegerValue() on a
+		// missing key also reads 0 for the wrong reason (a false green
+		// against an implementation that left the Upsert in place, which
+		// would stamp 1 and make the key PRESENT).
 		lgPayload, err := rawPayloadNoFatal(ctx, writerStore, laggardID)
 		if err != nil {
 			h.recordErr("mid-sweep write: read back laggard(%s): %v", laggardID, err)
-		} else if got := lgPayload[schemaVersionKey].GetIntegerValue(); got != 0 {
-			h.recordErr("laggard(%s) stored schema_version = %d, want 0 (below the sweep's target of 1)", laggardID, got)
+		} else if _, ok := lgPayload[schemaVersionKey]; ok {
+			h.recordErr("laggard(%s) stored schema_version key is PRESENT, want ABSENT (below the sweep's resolved target of migrate.CurrentVersion)", laggardID)
 		}
 	}
 
 	opts := MigrateOptions{
-		Target: 1,
-		Steps:  []migrate.Step{markerStep(0, 1, "converge_marker")},
-		Batch:  2,
+		Steps: []migrate.Step{markerStep(0, 1, "converge_marker")},
+		Batch: 2,
 	}
 
 	// No collection lock, mutex or other coordination is added around this
@@ -461,6 +469,47 @@ func rawPayloadNoFatal(ctx context.Context, s *Store, id string) (map[string]*qd
 		return nil, fmt.Errorf("point %s not found", id)
 	}
 	return pts[0].Payload, nil
+}
+
+// seedLegacyRecordNoFatal is seedLegacyRecord's (migrate_test.go:47)
+// PA-11a-compatible sibling: it constructs the same genuinely-absent-key
+// legacy-record shape — Upsert, then raw-delete schema_version, then verify
+// the key is really gone — but returns an error at every failure point
+// instead of calling t.Fatalf, and takes no *testing.T. It exists because
+// seedLegacyRecord's two t.Fatalf calls (and the t.Fatalf-family
+// deleteRawPayloadKeys/rawPayload helpers it routes through) may never run
+// from inside midSweepHook's callback (PA-11a: the guarantee that h.fn runs
+// on the test's own goroutine is a property of the current grpc-go call
+// path, not something this test may depend on). seedLegacyRecord itself
+// stays untouched — the fatal form is still correct everywhere outside
+// h.fn — and both forms coexist.
+func seedLegacyRecordNoFatal(ctx context.Context, s *Store, id string) error {
+	mem := Memory{
+		ID:        id,
+		Content:   "legacy record " + id,
+		Scope:     "migrate-test:project:" + id,
+		Owner:     "sub-migrate-test",
+		Category:  "note",
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := s.Upsert(ctx, mem, []float32{0.1, 0.2, 0.3}); err != nil {
+		return fmt.Errorf("seedLegacyRecordNoFatal: seed upsert(%s): %w", id, err)
+	}
+	if _, err := s.client.DeletePayload(ctx, &qdrant.DeletePayloadPoints{
+		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+		Keys:           []string{schemaVersionKey},
+		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
+	}); err != nil {
+		return fmt.Errorf("seedLegacyRecordNoFatal: deleteRawPayloadKeys(%s): %w", id, err)
+	}
+	payload, err := rawPayloadNoFatal(ctx, s, id)
+	if err != nil {
+		return fmt.Errorf("seedLegacyRecordNoFatal: verify(%s): %w", id, err)
+	}
+	if _, ok := payload[schemaVersionKey]; ok {
+		return fmt.Errorf("seedLegacyRecordNoFatal(%s): schema_version key still present after delete — failed to construct the key-absent shape", id)
+	}
+	return nil
 }
 
 // diffSorted returns the elements of a not present in b, via a set lookup —
