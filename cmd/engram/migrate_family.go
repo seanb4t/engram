@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -436,9 +437,9 @@ func revertPreview(ctx context.Context, cmd *cobra.Command) error {
 // revertApplyRun is registerDestructive's apply closure for
 // migrateRevertCmd (REVIEWS.md H5 — the purge in-closure re-derivation
 // pattern, spine_review_purge.go:339-377): it calls the SAME exported
-// PreviewRevert method again, inside THIS invocation, and calls
-// Store.Revert ONLY when plan.Reversible — a refused range never calls
-// Revert at all, so zero records are touched.
+// PreviewRevert method again, inside THIS invocation (call A), and calls
+// Store.Revert (call B) ONLY when call A's plan.Reversible — a refused
+// range never calls Revert at all, so zero records are touched.
 //
 // A REFUSED --apply MUST EXIT NON-ZERO (REVIEWS.md C5-H4): render the
 // refusal document FIRST, THEN return a usageErrorf-classified error
@@ -450,6 +451,23 @@ func revertPreview(ctx context.Context, cmd *cobra.Command) error {
 // script checking $?. exitUsage is the taxonomically correct code: the
 // refusal is already rendered in the field=<name> hint=<code> grammar, the
 // same usage-error shape `--to`'s own validation above already returns.
+//
+// Store.Revert performs its OWN, second, independent preflight (call B's
+// internal previewRevertWithSteps) before touching anything -- a genuinely
+// separate RPC round trip from call A's, so the above-target range CAN
+// change between them (a concurrent writer landing a record in that narrow
+// window; REVIEWS.md deep-pass CR-01). If call B's preflight itself refuses,
+// Store.Revert returns the typed *store.RevertRefusedError wrapping the
+// plan THAT preflight produced; errors.As below recognizes it explicitly
+// and renders the SAME refusal path call A's own refusal branch uses, from
+// the fresher plan B carries -- never the stale outer plan from call A, and
+// never falling through to classifyOperatorErr's generic exit-1 passthrough
+// (REVIEWS.md deep-pass CR-01's gap). On the success path, res.Plan is the
+// SAME fresh verdict Store.Revert actually acted on (revert.go's
+// RevertResult.Plan doc comment: "the preflight verdict this run acted
+// on") -- rendering from it instead of the stale outer plan closes the
+// report-fidelity gap where Candidates could diverge from what was
+// actually observed and reverted (REVIEWS.md deep-pass WR-03).
 func revertApplyRun(ctx context.Context, cmd *cobra.Command) error {
 	format, err := operatorOutputFormat(cmd, migrateRevertOutput)
 	if err != nil {
@@ -483,9 +501,18 @@ func revertApplyRun(ctx context.Context, cmd *cobra.Command) error {
 
 	res, err := st.Revert(ctx, to)
 	if err != nil {
+		var refused *store.RevertRefusedError
+		if errors.As(err, &refused) {
+			if rerr := renderOperator(cmd, format,
+				revertSummary(refused.Plan, false, store.RevertResult{}),
+				revertReportDoc(refused.Plan, false, store.RevertResult{})); rerr != nil {
+				return rerr
+			}
+			return usageErrorf("%s", store.RevertRefusalError(refused.Plan))
+		}
 		return classifyOperatorErr(err)
 	}
-	return renderOperator(cmd, format, revertSummary(plan, true, res), revertReportDoc(plan, true, res))
+	return renderOperator(cmd, format, revertSummary(res.Plan, true, res), revertReportDoc(res.Plan, true, res))
 }
 
 // migrateRevertCmd reverses the sweep: PreviewRevert (M8) computes a

@@ -504,6 +504,52 @@ func TestMigrateFamilyRevertRefusals(t *testing.T) {
 	}
 }
 
+// TestMigrateFamilyRevertApplySecondPreflightRefusal proves the CR-01 gap
+// (REVIEWS.md deep-pass): when call A's own PreviewRevert reports
+// Reversible: true but Store.Revert's SEPARATE internal preflight (call B)
+// refuses -- the exact race window CR-01 and WR-03 both concern -- Revert
+// returns *store.RevertRefusedError, and revertApplyRun must recognize it
+// via errors.As, render the SAME refusal document contract every other
+// refusal path renders, and exit exitUsage (2), never falling through to
+// classifyOperatorErr's generic exit-1 passthrough.
+func TestMigrateFamilyRevertApplySecondPreflightRefusal(t *testing.T) {
+	previewPlan := store.RevertPlan{To: 0, Candidates: 5, Reversible: true}
+	refusedPlan := store.RevertPlan{
+		To: 0, Candidates: 6, Reversible: false,
+		Irreversible: []store.IrreversibleStepRef{{From: 0, To: 1, Reason: "no declared inverse"}},
+	}
+	wantRefusal := store.RevertRefusalError(refusedPlan).Error()
+
+	fake := &fakeMigrateFamilyStore{
+		previewRevertFn: func(context.Context, migrate.Version) (store.RevertPlan, error) { return previewPlan, nil },
+		revertFn: func(context.Context, migrate.Version) (store.RevertResult, error) {
+			return store.RevertResult{Plan: refusedPlan}, &store.RevertRefusedError{Plan: refusedPlan}
+		},
+	}
+	withFakeMigrateFamilyStore(t, fake)
+	resetClientFlags(t)
+	resetCommandFlagState(t, migrateRevertCmd)
+
+	stdout, _, err := runClient(t, "migrate", "revert", "--to", "0", "--apply", "--output", "json")
+	if got := exitCodeFromError(err); got != exitUsage {
+		t.Errorf("exitCodeFromError = %d, want %d (exitUsage); err=%v", got, exitUsage, err)
+	}
+	var doc revertOutputDoc
+	if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+		t.Fatalf("json.Unmarshal: %v (stdout=%q)", uErr, stdout)
+	}
+	if doc.Refusal == "" {
+		t.Errorf("doc.Refusal is empty, want the rendered refusal document -- CR-01: a second-preflight refusal must render, not fall through as a generic error")
+	}
+	if doc.Refusal != wantRefusal {
+		t.Errorf("doc.Refusal = %q, want the refusedPlan's refusal text %q (call B's fresher plan, not call A's stale one)", doc.Refusal, wantRefusal)
+	}
+	if doc.Candidates != refusedPlan.Candidates {
+		t.Errorf("doc.Candidates = %d, want %d -- must render from refused.Plan (call B), not the stale call-A preview plan (Candidates=%d)",
+			doc.Candidates, refusedPlan.Candidates, previewPlan.Candidates)
+	}
+}
+
 // TestMigrateFamilyRevertReversible proves the REVERSIBLE path (M8): a bare
 // invocation renders the reverse-plan preview and calls Revert zero times;
 // --apply calls the SAME exported PreviewRevert method again, THEN Revert,
@@ -539,7 +585,11 @@ func TestMigrateFamilyRevertReversible(t *testing.T) {
 		fake := &fakeMigrateFamilyStore{
 			previewRevertFn: func(context.Context, migrate.Version) (store.RevertPlan, error) { return plan, nil },
 			revertFn: func(context.Context, migrate.Version) (store.RevertResult, error) {
-				return store.RevertResult{Reverted: 5, Backlog: 0}, nil
+				// Plan mirrors the real Store.Revert contract (revert.go:329,
+				// "res.Plan = plan" runs unconditionally before the
+				// reversible check) -- revertApplyRun now renders from
+				// res.Plan, not the stale outer preview plan (WR-03).
+				return store.RevertResult{Reverted: 5, Backlog: 0, Plan: plan}, nil
 			},
 		}
 		withFakeMigrateFamilyStore(t, fake)

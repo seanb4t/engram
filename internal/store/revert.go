@@ -180,6 +180,24 @@ func RevertRefusalError(plan RevertPlan) error {
 	return errors.New(strings.Join(parts, "; "))
 }
 
+// RevertRefusedError is returned by Store.Revert (never PreviewRevert) when
+// ITS OWN internal preflight -- not any earlier, separate PreviewRevert call
+// a caller may have made -- determines the above-target range is not
+// reversible (REVIEWS.md deep-pass CR-01). It wraps the RevertPlan that
+// internal preflight actually produced so a caller can errors.As into it and
+// render the refusal document from the plan Store.Revert acted on, rather
+// than a caller-held plan from an earlier call that may have gone stale in
+// the window between the two RPC round trips. Error() returns the identical
+// text RevertRefusalError(Plan) would, so a caller that only checks err !=
+// nil sees no behavior change -- errors.As is required to reach the plan.
+type RevertRefusedError struct {
+	Plan RevertPlan
+}
+
+func (e *RevertRefusedError) Error() string {
+	return RevertRefusalError(e.Plan).Error()
+}
+
 // PreviewRevert is the EXPORTED whole-range zero-write preflight (cycle-3
 // HIGH #1 + HIGH #2): 04-03's CLI calls this for BOTH its preview and apply
 // closures, and Store.Revert calls the identical code internally, so there
@@ -330,7 +348,11 @@ func (s *Store) revertWithSteps(ctx context.Context, to migrate.Version, steps [
 	if !plan.Reversible {
 		// Zero records touched: the write loop below is unreachable unless
 		// the ENTIRE range preflighted clean (D-13, cycle-3 HIGH #2).
-		err = RevertRefusalError(plan)
+		// Typed (not the bare RevertRefusalError text) so revertApplyRun can
+		// errors.As this specific refusal -- distinct from its own,
+		// separate call-A preflight refusal -- and render from the plan
+		// THIS preflight produced (REVIEWS.md deep-pass CR-01).
+		err = &RevertRefusedError{Plan: plan}
 		return res, err
 	}
 
