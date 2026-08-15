@@ -102,8 +102,9 @@ func TestSpineReviewPurgeNoTransportFlag(t *testing.T) {
 
 // TestSpineReviewPurgeOwnFlagSet asserts the leaf's own registered flag set
 // equals the same nine-name literal destructive_test.go's
-// destructiveFlagCases table uses, read via ownFlagNames -- one shared
-// helper, never two independently typed lists that could silently diverge.
+// mutatingFlagCases table uses (renamed from destructiveFlagCases in 04-04
+// Task 2), read via ownFlagNames -- one shared helper, never two
+// independently typed lists that could silently diverge.
 func TestSpineReviewPurgeOwnFlagSet(t *testing.T) {
 	want := []string{"all-scopes", "apply", "category", "class", "older-than", "output", "scope", "tags", "timeout"}
 	sort.Strings(want)

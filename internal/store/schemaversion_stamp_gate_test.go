@@ -370,7 +370,6 @@ var partialWriteClassification = []writeClassification{
 	{enclosingFunc: "Store.defaultSetPayloadKeys", receiver: "s.client", justification: "D-02: the setPayloadKeys SEAM's production implementation; a partial write must never stamp currency it cannot honor."},
 	{enclosingFunc: "Store.SetVisibility", receiver: "s.client", justification: "D-02: caller transmits directly; a partial write must never stamp currency it cannot honor."},
 	{enclosingFunc: "Store.IncrementAccess", receiver: "s.client", justification: "D-02: caller transmits directly; a partial write must never stamp currency it cannot honor."},
-	{enclosingFunc: "Store.BackfillShortIDs", receiver: "s.client", justification: "D-02: operator command; a partial write must never stamp currency it cannot honor."},
 	{enclosingFunc: "Store.MigrateSetOwner", receiver: "s.client", justification: "D-02: operator command; a partial write must never stamp currency it cannot honor."},
 	{enclosingFunc: "Store.RemapOwner", receiver: "s.client", justification: "D-02: operator command; a partial write must never stamp currency it cannot honor."},
 	{enclosingFunc: "Store.Archive", receiver: "s.client", justification: "D-02: outside store.go (spine.go); a partial write must never stamp currency it cannot honor."},
