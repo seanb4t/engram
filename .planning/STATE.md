@@ -6,7 +6,7 @@ current_phase: 04
 current_phase_name: migration-cli-first-customer
 status: executing
 stopped_at: Phase 5 context gathered
-last_updated: "2026-08-15T17:33:19.467Z"
+last_updated: "2026-08-15T18:00:26.803Z"
 last_activity: 2026-08-15
 last_activity_desc: Phase 04 execution started
 progress:
@@ -218,6 +218,7 @@ milestone needs in working memory.
 - Phase 3 edited: scope expansions D-04 (prune-expired preview-by-default hard flip), D-12 (archive/restore verbs), D-13 (--output tier-wide backfill); +REQ-destructive-preview-default, +REQ-operator-output-flag
 - Phase 03.1 edited: edited fields: success_criteria (SC1 proto premise corrected to MCP JSON schema; SC2 multi-fault rejection; SC3 unrepresentable-vs-tested), added SC4 idempotency_key, requirements (+REQ-merge-idempotency), research flag; removed duplicated Plans block
 - 2026-08-12.01 ROADMAP.md created: 8 phases (1–8), 27/27 requirements mapped, 0 orphans. Phase 3 of the research-derived 7-step build order split into Phase 3 (Migration Foundation) + Phase 4 (Migration CLI & First Customer) to avoid an 11-requirement phase; Phases 5–8 renumbered accordingly.
+- Phase 5 edited: edited fields: success_criteria (SC1, SC3) — SC1 widened from six fields (23-28) to eight (23-30, adding summary_model and summary_egress_at) per 2026-08-15 decision D-04/z1fxhaqdek, which reverses zyaa3m2fvd's store-only rule; SC3 rewritten to the property that actually holds per D-09 — identical outward-widened bounds on both read lanes, with NO read-path rounding code added (a constant gate). Applied via edit-phase at plan time as 05-CONTEXT.md requires.
 
 ## Session Continuity
 

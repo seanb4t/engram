@@ -365,9 +365,9 @@ Plans:
 **Requirements**: REQ-connect-record-state-parity, REQ-connect-parity-roundtrip-proof
 **Success Criteria** (what must be TRUE):
 
-  1. `proto`'s `Memory` message gains `superseded_by`, `supersedes`, `not_before`, `not_after`, `archived_at`, and `schema_version` in ONE additive pass (field numbers 23–28), wired through `memoryToProto`; `buf breaking` stays clean.
+  1. `proto`'s `Memory` message gains `superseded_by`, `supersedes`, `not_before`, `not_after`, `archived_at`, `schema_version`, `summary_model`, and `summary_egress_at` in ONE additive pass (field numbers 23–30), wired through `memoryToProto`; `buf breaking` stays clean.
   2. An exhaustive field-mapping round-trip test — not a hand-maintained field list — proves every wire-eligible `store.Memory` field is populated by `memoryToProto` and decodes losslessly; the test fails loudly (not silently) if a future field is added to `store.Memory` without a corresponding proto mapping, closing the gap that recurred across v0.8.x, v0.11.x, and v0.13.x.
-  3. `not_before`/`not_after` on the new Connect read path apply the same sub-second outward-rounding discipline the write path already established, proven by a boundary-second test run against both lanes simultaneously.
+  3. A sub-second `not_before`/`not_after` bound submitted through the write lane comes back outward-widened and IDENTICAL on both read lanes — MCP (`get_memory` / `full=true` recall) and Connect — proven by a boundary-second test. No read-path rounding code is added: the store's whole-second encoding makes read-side rounding a no-op by construction, and the `not_before`/`not_after` proto field comments record that.
 
 **Plans**: TBD
 
