@@ -131,8 +131,8 @@ These two codes use the same `field=<name> hint=<code>: <text>` grammar as the t
 table above, but they are produced by `internal/store/revert.go`'s `RevertRefusalError` —
 not by `internal/server/argerror.go` — so they are not `HintCode` constants and the ten-code
 table above remains exactly what it claims to be: a transcription of `argerror.go`. They
-surface only from `engram migrate revert`'s whole-range preflight refusal, never from any
-memory-tool call.
+surface only from an `engram migrate revert` refusal (see below for the two places that can
+happen), never from any memory-tool call.
 
 | Hint code | Meaning | What to do |
 |---|---|---|
@@ -145,6 +145,19 @@ carries an unsupported version, `RevertRefusalError` still emits exactly one
 `field=steps hint=irreversible` (irreversible outranks unsupported: it cannot be resolved
 by migrating forward again, unlike an unsupported-version gap) and folds the unsupported
 detail into that same envelope's text as an additional clause.
+
+Both codes can also surface from a narrower, **single-record** refusal discovered *inside*
+`migrate revert --apply`'s write-convergence loop, after its own whole-range preflight has
+already passed — not only from that preflight itself. A concurrent `engram migrate --apply`
+can land a new above-target record in the window between the preflight and the write loop's
+first read (or between any two write-loop passes, since the loop re-derives its backlog on
+every pass), and that record can turn out to be irreversible or unsupported even though the
+preflight never saw it. This surfaces with the identical `field=`/`hint=` grammar and the
+identical recovery guidance — the underlying condition (a genuinely irreversible step, or a
+record with no reachable chain) carries the same remedy whether discovered before the first
+write or between two writes — but reports `Candidates: 1` for the one record that triggered
+it, not the whole range's count. `errors.As` still recovers the same `*RevertRefusedError`
+either way, so a caller does not need to distinguish the two cases.
 
 ## The class-to-Connect-code mapping
 

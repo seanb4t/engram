@@ -5,12 +5,17 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/qdrant/go-client/qdrant"
 	"github.com/seanb4t/engram/internal/migrate"
+	"google.golang.org/grpc"
 )
 
 // seedRevertFixtureRecord upserts an ordinary record, then overrides its raw
@@ -482,5 +487,230 @@ func TestMigrateRevertPartialFailureReconciliation(t *testing.T) {
 		if id == succeededID {
 			t.Errorf("resume re-wrote the already-converged record %s — retry is not idempotent", succeededID)
 		}
+	}
+}
+
+// countSideEffectInjector runs effect() synchronously, exactly once, on the
+// fireOn-th (1-based) *qdrant.CountPoints request it observes — BEFORE that
+// request is allowed to reach the server. Wired into a client's dial options
+// via countSideEffectInterceptor, it exists solely to deterministically
+// reproduce REVIEWS.md iteration-2 WR-05's race: revertWithSteps's write
+// loop issues Count as the FIRST RPC of every pass (revert.go:391), and
+// previewRevertWithSteps's own preflight never issues a Count at all — only
+// Scroll, via scrollAllPoints. Ordinal 1 therefore cleanly identifies "the
+// write loop's first pass, in the window immediately after the preflight
+// above has already returned" — precisely the window the review names, with
+// no need to race real goroutines against each other.
+type countSideEffectInjector struct {
+	mu     sync.Mutex
+	fireOn int
+	seen   int
+	fired  bool
+	effect func()
+}
+
+func (inj *countSideEffectInjector) maybeFire() {
+	inj.mu.Lock()
+	fire := !inj.fired && inj.seen+1 == inj.fireOn
+	inj.seen++
+	if fire {
+		inj.fired = true
+	}
+	inj.mu.Unlock()
+	if fire {
+		inj.effect()
+	}
+}
+
+func countSideEffectInterceptor(inj *countSideEffectInjector) grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		if _, ok := req.(*qdrant.CountPoints); ok {
+			inj.maybeFire()
+		}
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+}
+
+// dialCountSideEffectTestClient is dialFaultInjectingTestClient's sibling
+// for countSideEffectInjector (migrate_faultinject_test.go documents the
+// identical skip/fail-closed contract this mirrors).
+func dialCountSideEffectTestClient(t *testing.T, inj *countSideEffectInjector) *qdrant.Client {
+	t.Helper()
+	if testQdrantAddr == "" {
+		required, err := requireQdrant()
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		if required {
+			t.Fatal("no Qdrant available and ENGRAM_REQUIRE_QDRANT is set: failing instead of skipping")
+		}
+		t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
+	}
+	host, portStr, err := net.SplitHostPort(testQdrantAddr)
+	if err != nil {
+		t.Fatalf("invalid Qdrant address %q: %v", testQdrantAddr, err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port <= 0 {
+		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, testQdrantAddr, err)
+	}
+	c, err := qdrant.NewClient(&qdrant.Config{
+		Host: host, Port: port,
+		GrpcOptions: []grpc.DialOption{grpc.WithUnaryInterceptor(countSideEffectInterceptor(inj))},
+	})
+	if err != nil {
+		t.Fatalf("count side-effect client: %v", err)
+	}
+	return c
+}
+
+// TestMigrateRevertMidLoopRefusalIsTypedAndCatchable proves REVIEWS.md
+// iteration-2 WR-05: a refusal discovered INSIDE revertWithSteps's write-
+// convergence loop, after the whole-range preflight above has already
+// passed, is typed identically to that top-level preflight refusal
+// (*RevertRefusedError, errors.As-catchable) — not the bare, unsentineled
+// fmt.Errorf the pre-fix code returned. It reproduces the review's own
+// concrete trigger against the REAL production migrate.Registry (never a
+// fixture step): the shipped registry's only step, v0->v1, is declared
+// Irreversible, so a revert-to-0 preflighting against an EMPTY collection
+// sees plan.Reversible == true trivially (zero candidates), and the write
+// loop starts. countSideEffectInjector then seeds ONE v1 record —
+// synchronously, on the write loop's first Count RPC, via a SEPARATE plain
+// client — deterministically simulating the concurrent `engram migrate
+// --apply` the review traces landing in that exact window. The seeded
+// record is then the FIRST thing the loop's own ScrollAndOffset (also this
+// pass, since the injector fires before Count returns) observes, so this
+// reproduces the review's "step (From=0 To=1) has no inverse despite
+// passing the whole-range preflight" branch specifically — the Inverse
+// arm. Its sibling, TestMigrateRevertMidLoopUnsupportedRefusalIsTypedAndCatchable,
+// reproduces the OTHER new branch (revertStepsFrom itself failing) the
+// same way, with a racer seeded at an unsupported version instead.
+func TestMigrateRevertMidLoopRefusalIsTypedAndCatchable(t *testing.T) {
+	ctx := context.Background()
+	collection := testCollection("migrate_revert_midloop_refusal")
+
+	plain := dialTestClient(t)
+	_ = plain.DeleteCollection(ctx, collection)
+	t.Cleanup(func() { _ = plain.DeleteCollection(context.Background(), collection) })
+	sPlain := newTestStore(t, plain, collection)
+	if err := sPlain.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+
+	racerID := "cfc60000-0000-0000-0000-000000000001"
+
+	inj := &countSideEffectInjector{fireOn: 1}
+	inj.effect = func() {
+		// Runs synchronously, inline in the intercepted Count call, BEFORE
+		// that call is allowed to reach the server — through the PLAIN,
+		// non-intercepted client, so this seed's own RPCs (Upsert +
+		// SetPayload) are never themselves observed by inj and cannot
+		// recursively re-arm it.
+		seedStatusRecordAtVersion(ctx, t, sPlain, racerID, 1)
+	}
+	fc := dialCountSideEffectTestClient(t, inj)
+	t.Cleanup(func() { _ = fc.Close() })
+	s := newTestStore(t, fc, collection)
+
+	res, err := s.Revert(ctx, 0)
+	if err == nil {
+		t.Fatalf("Revert: got nil error, want a mid-loop refusal (res=%+v)", res)
+	}
+
+	var refused *RevertRefusedError
+	if !errors.As(err, &refused) {
+		t.Fatalf("errors.As(err, &refused) = false, want true — mid-loop refusal must be the SAME typed error the top-level preflight refusal uses, not a bare error; err=%v", err)
+	}
+	if refused.Plan.Candidates != 1 {
+		t.Errorf("refused.Plan.Candidates = %d, want 1 (a per-record refusal, not the stale whole-range plan the loop started with)", refused.Plan.Candidates)
+	}
+	if len(refused.Plan.Irreversible) != 1 {
+		t.Fatalf("len(refused.Plan.Irreversible) = %d, want 1", len(refused.Plan.Irreversible))
+	}
+	if refused.Plan.Irreversible[0].From != 0 || refused.Plan.Irreversible[0].To != 1 {
+		t.Errorf("refused.Plan.Irreversible[0] = %+v, want From=0 To=1", refused.Plan.Irreversible[0])
+	}
+	for _, want := range []string{"field=steps", "hint=irreversible", "From=0", "To=1", "snapshot"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q — mid-loop refusal must carry the same field=/hint= envelope grammar as every other revert refusal", err.Error(), want)
+		}
+	}
+
+	if !inj.fired {
+		t.Fatalf("countSideEffectInjector never fired — this test is vacuous (the racer record was never seeded)")
+	}
+
+	// Zero writes: the racer record's chain/inverse lookup fails BEFORE any
+	// DeletePayload/SetPayload is attempted (revert.go's own doc comment:
+	// "no data loss" for this branch) — REVIEWS.md WR-05 is explicit this
+	// is a diagnosability/contract gap, not a correctness-of-mutation gap.
+	raw := rawPayload(ctx, t, sPlain, racerID)
+	if got := raw[schemaVersionKey].GetIntegerValue(); got != 1 {
+		t.Errorf("racer record: schema_version = %d after refused revert, want unchanged 1 (zero writes attempted)", got)
+	}
+}
+
+// TestMigrateRevertMidLoopUnsupportedRefusalIsTypedAndCatchable is
+// TestMigrateRevertMidLoopRefusalIsTypedAndCatchable's sibling for the
+// OTHER mid-loop branch: revertStepsFrom itself failing (no reachable chain
+// at all), rather than a resolved chain traversing an irreversible step.
+// Same race, same injector, same production Registry — only the racer's
+// seeded version differs: v42 has no step FROM it anywhere in the
+// single-step v0->v1 registry, so revertStepsFrom(steps, to=0, from=42)
+// itself errors, hitting revert.go's OTHER new RevertRefusedError
+// construction (the Unsupported one) rather than the Irreversible one.
+func TestMigrateRevertMidLoopUnsupportedRefusalIsTypedAndCatchable(t *testing.T) {
+	ctx := context.Background()
+	collection := testCollection("migrate_revert_midloop_unsupported")
+
+	plain := dialTestClient(t)
+	_ = plain.DeleteCollection(ctx, collection)
+	t.Cleanup(func() { _ = plain.DeleteCollection(context.Background(), collection) })
+	sPlain := newTestStore(t, plain, collection)
+	if err := sPlain.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+
+	racerID := "cfc70000-0000-0000-0000-000000000001"
+
+	inj := &countSideEffectInjector{fireOn: 1}
+	inj.effect = func() {
+		seedStatusRecordAtVersion(ctx, t, sPlain, racerID, 42)
+	}
+	fc := dialCountSideEffectTestClient(t, inj)
+	t.Cleanup(func() { _ = fc.Close() })
+	s := newTestStore(t, fc, collection)
+
+	res, err := s.Revert(ctx, 0)
+	if err == nil {
+		t.Fatalf("Revert: got nil error, want a mid-loop refusal (res=%+v)", res)
+	}
+
+	var refused *RevertRefusedError
+	if !errors.As(err, &refused) {
+		t.Fatalf("errors.As(err, &refused) = false, want true — mid-loop refusal must be the SAME typed error the top-level preflight refusal uses, not a bare error; err=%v", err)
+	}
+	if refused.Plan.Candidates != 1 {
+		t.Errorf("refused.Plan.Candidates = %d, want 1 (a per-record refusal, not the stale whole-range plan the loop started with)", refused.Plan.Candidates)
+	}
+	if len(refused.Plan.Unsupported) != 1 {
+		t.Fatalf("len(refused.Plan.Unsupported) = %d, want 1", len(refused.Plan.Unsupported))
+	}
+	if refused.Plan.Unsupported[0].Version != 42 || refused.Plan.Unsupported[0].Count != 1 {
+		t.Errorf("refused.Plan.Unsupported[0] = %+v, want Version=42 Count=1", refused.Plan.Unsupported[0])
+	}
+	for _, want := range []string{"field=record_version", "hint=unsupported", "42", "snapshot"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q — mid-loop refusal must carry the same field=/hint= envelope grammar as every other revert refusal", err.Error(), want)
+		}
+	}
+
+	if !inj.fired {
+		t.Fatalf("countSideEffectInjector never fired — this test is vacuous (the racer record was never seeded)")
+	}
+
+	raw := rawPayload(ctx, t, sPlain, racerID)
+	if got := raw[schemaVersionKey].GetIntegerValue(); got != 42 {
+		t.Errorf("racer record: schema_version = %d after refused revert, want unchanged 42 (zero writes attempted)", got)
 	}
 }

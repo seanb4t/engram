@@ -452,7 +452,29 @@ func (s *Store) revertWithSteps(ctx context.Context, to migrate.Version, steps [
 
 			chain, cherr := revertStepsFrom(steps, fromV, to)
 			if cherr != nil {
-				err = fmt.Errorf("revert: point %s: %w", id, cherr)
+				// NOT reachable merely by a record this pass's own Scroll
+				// returned: revertStepsFrom cannot fail for anything the
+				// preflight above already walked (observedChains only holds
+				// SUPPORTED chains, so an unsupported record would have made
+				// plan.Reversible false and this loop unreachable). What
+				// makes this reachable is a record the preflight never SAW:
+				// a concurrent engram migrate --apply can land a new
+				// above-target record in the window between the preflight
+				// finishing and this pass's own Count/ScrollAndOffset above
+				// (a window that reopens on every pass, since the loop
+				// re-scrolls each time) — REVIEWS.md iteration-2 WR-05.
+				// Typed identically to the top-level preflight refusal
+				// (RevertRefusedError, not a bare error) so revertApplyRun's
+				// existing errors.As(err, &refused) handling catches this
+				// too, from a synthetic SINGLE-record plan (Candidates: 1)
+				// rather than the whole-range plan the loop started with —
+				// that plan is now stale for exactly the record that
+				// triggered this branch.
+				err = &RevertRefusedError{Plan: RevertPlan{
+					To:          int(to),
+					Candidates:  1,
+					Unsupported: []UnsupportedVersionRef{{Version: int(fromV), Count: 1}},
+				}}
 				return res, err
 			}
 
@@ -460,11 +482,23 @@ func (s *Store) revertWithSteps(ctx context.Context, to migrate.Version, steps [
 			for _, step := range chain {
 				inverse, ok := migrate.Inverse(step.Reversibility())
 				if !ok {
-					// The whole-range preflight above already guarantees
-					// every step in an observed chain is reversible; this
-					// is a defensive invariant check, never expected to
-					// fire in production.
-					err = fmt.Errorf("revert: point %s: step (From=%d To=%d) has no inverse despite passing the whole-range preflight", id, step.From(), step.To())
+					// Same race as revertStepsFrom's own branch just above,
+					// the irreversible-step twin rather than the
+					// no-reachable-chain one: a record whose chain DOES
+					// resolve (revertStepsFrom found a path) can still
+					// traverse a step this registry declares irreversible,
+					// when that record entered the collection after the
+					// preflight above already computed observedChains. NOT
+					// a defensive-only invariant check — REVIEWS.md
+					// iteration-2 WR-05 traces a concrete, realizable
+					// trigger via a concurrent migrate --apply racing this
+					// revert. Typed the same way, for the same reason.
+					reason, _ := migrate.IrreversibleReason(step.Reversibility())
+					err = &RevertRefusedError{Plan: RevertPlan{
+						To:           int(to),
+						Candidates:   1,
+						Irreversible: []IrreversibleStepRef{{From: int(step.From()), To: int(step.To()), Reason: reason}},
+					}}
 					return res, err
 				}
 				after, aerr := inverse(maps.Clone(current))
