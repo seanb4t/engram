@@ -5,6 +5,8 @@ package store
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"maps"
 	"reflect"
 	"slices"
@@ -508,5 +510,468 @@ func TestMigrateWritesOnlyAddedKeys(t *testing.T) {
 	}
 	if got := raw[schemaVersionKey].GetIntegerValue(); got != 1 {
 		t.Errorf("schema_version = %d, want 1", got)
+	}
+}
+
+// TestMigrateV0ToV1MintEndToEnd is the production first-customer proof: a
+// bare legacy record (no short_id, no schema_version) driven through
+// Store.Migrate against real pinned Qdrant with the REGISTERED v0->v1 step
+// (MigrateOptions{} — target and steps both default to production) mints a
+// short_id via Store.MintShortID, stamps schema_version=1, and a second
+// Migrate run reports Backlog 0 (no-op) — the re-derivation identity
+// REQ-migrate-preview-apply-parity is built on.
+func TestMigrateV0ToV1MintEndToEnd(t *testing.T) {
+	ctx := context.Background()
+	c := dialTestClient(t)
+	collection := testCollection("migrate_v0_v1_mint")
+	_ = c.DeleteCollection(ctx, collection)
+	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
+
+	s := newTestStore(t, c, collection)
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+
+	id := "cf500000-0000-0000-0000-000000000001"
+	seedLegacyRecord(ctx, t, s, id)
+	if _, ok := rawPayload(ctx, t, s, id)["short_id"]; ok {
+		t.Fatalf("seeded record already carries short_id, want genuinely absent")
+	}
+
+	res, err := s.Migrate(ctx, MigrateOptions{})
+	if err != nil {
+		t.Fatalf("Migrate (first run): %v", err)
+	}
+	if res.Migrated != 1 {
+		t.Errorf("first run Migrated = %d, want 1", res.Migrated)
+	}
+	if res.Backlog != 0 {
+		t.Errorf("first run Backlog = %d, want 0", res.Backlog)
+	}
+
+	raw := rawPayload(ctx, t, s, id)
+	sid := raw["short_id"].GetStringValue()
+	if len(sid) != 10 {
+		t.Errorf("short_id = %q, want a 10-char Crockford base32 handle", sid)
+	}
+	if got := raw[schemaVersionKey].GetIntegerValue(); got != int64(migrate.CurrentVersion) {
+		t.Errorf("schema_version = %d, want %d", got, migrate.CurrentVersion)
+	}
+
+	// Added-keys concern: only short_id + schema_version were added, no
+	// other key removed — a general additive-only check over this record.
+	if got := raw["content"]; got == nil {
+		t.Errorf("content key vanished — additive-only violated")
+	}
+
+	// Second run is a no-op: no re-processing, backlog stays 0.
+	res2, err := s.Migrate(ctx, MigrateOptions{})
+	if err != nil {
+		t.Fatalf("Migrate (second run): %v", err)
+	}
+	if res2.Migrated != 0 {
+		t.Errorf("second run Migrated = %d, want 0", res2.Migrated)
+	}
+	if res2.Backlog != 0 {
+		t.Errorf("second run Backlog = %d, want 0", res2.Backlog)
+	}
+	if got := rawPayload(ctx, t, s, id)["short_id"].GetStringValue(); got != sid {
+		t.Errorf("short_id changed across re-run: %q -> %q, want unchanged", sid, got)
+	}
+}
+
+// TestMigrateExistingShortIDPreserves is the H1/M2 mixed-state proof — the
+// critical production state a prior standalone BackfillShortIDs run
+// leaves behind: short_id present, schema_version absent. Migrate must
+// preserve the existing short_id VERBATIM (never re-mint) and stamp
+// schema_version, because the CheckAdditive carve-out treats a
+// pre-existing declared key as satisfying the declaration. This is what
+// makes 04-04's deletion of Store.BackfillShortIDs safe.
+func TestMigrateExistingShortIDPreserves(t *testing.T) {
+	ctx := context.Background()
+	c := dialTestClient(t)
+	collection := testCollection("migrate_existing_shortid")
+	_ = c.DeleteCollection(ctx, collection)
+	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
+
+	s := newTestStore(t, c, collection)
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+
+	id := "cf600000-0000-0000-0000-000000000001"
+	seedLegacyRecord(ctx, t, s, id)
+	const priorShortID = "abc123abcd"
+	injectRawPayload(ctx, t, s, id, qdrant.NewValueMap(map[string]any{"short_id": priorShortID}))
+	before := rawPayload(ctx, t, s, id)
+	if got := before["short_id"].GetStringValue(); got != priorShortID {
+		t.Fatalf("seed: short_id = %q, want %q", got, priorShortID)
+	}
+	if _, ok := before[schemaVersionKey]; ok {
+		t.Fatalf("seed: schema_version key present, want genuinely absent")
+	}
+
+	res, err := s.Migrate(ctx, MigrateOptions{})
+	if err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if res.Backlog != 0 {
+		t.Errorf("Backlog = %d, want 0", res.Backlog)
+	}
+
+	after := rawPayload(ctx, t, s, id)
+	if got := after["short_id"].GetStringValue(); got != priorShortID {
+		t.Errorf("short_id = %q, want UNCHANGED %q (never re-minted)", got, priorShortID)
+	}
+	if got := after[schemaVersionKey].GetIntegerValue(); got != int64(migrate.CurrentVersion) {
+		t.Errorf("schema_version = %d, want %d", got, migrate.CurrentVersion)
+	}
+	// No other key was added or removed.
+	beforeMap, err := payloadToMap(before)
+	if err != nil {
+		t.Fatalf("payloadToMap(before): %v", err)
+	}
+	afterMap, err := payloadToMap(after)
+	if err != nil {
+		t.Fatalf("payloadToMap(after): %v", err)
+	}
+	added := migrate.AddedKeys(beforeMap, afterMap)
+	if len(added) != 1 || added[0] != schemaVersionKey {
+		t.Errorf("added keys = %v, want exactly [%s] (short_id already existed, so it is not an ADDED key)", added, schemaVersionKey)
+	}
+	if removed := migrate.RemovedKeys(beforeMap, afterMap); len(removed) != 0 {
+		t.Errorf("removed keys = %v, want none", removed)
+	}
+}
+
+// seedNLegacyRecords seeds n genuinely-key-absent legacy records with
+// sequential deterministic ids under prefix, returning them sorted.
+func seedNLegacyRecords(ctx context.Context, t *testing.T, s *Store, prefix string, n int) []string {
+	t.Helper()
+	ids := make([]string, n)
+	for i := 0; i < n; i++ {
+		id := fmt.Sprintf("%s-0000-0000-0000-%012d", prefix, i+1)
+		seedLegacyRecord(ctx, t, s, id)
+		ids[i] = id
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+// TestMigrateDryRunWritesNothing proves REVIEWS.md H2's non-writing half:
+// DryRun performs its full backlog projection and issues no SetPayload at
+// all — a fresh payload probe over every seeded record shows no point
+// gained short_id or schema_version.
+func TestMigrateDryRunWritesNothing(t *testing.T) {
+	ctx := context.Background()
+	c := dialTestClient(t)
+	collection := testCollection("migrate_dryrun_nowrite")
+	_ = c.DeleteCollection(ctx, collection)
+	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
+
+	s := newTestStore(t, c, collection)
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+
+	ids := seedNLegacyRecords(ctx, t, s, "cf700000", 5)
+
+	res, err := s.Migrate(ctx, MigrateOptions{DryRun: true, Steps: []migrate.Step{markerStep(0, 1, "dryrun_marker")}})
+	if err != nil {
+		t.Fatalf("Migrate(DryRun): %v", err)
+	}
+	// NOT the projection count — stated explicitly, since Migrated stays 0
+	// under DryRun by construction (nothing is written).
+	if res.Migrated != 0 {
+		t.Errorf("Migrated = %d, want 0 (DryRun writes nothing)", res.Migrated)
+	}
+	if len(res.PreviewManifest) != len(ids) {
+		t.Errorf("len(PreviewManifest) = %d, want %d", len(res.PreviewManifest), len(ids))
+	}
+	for _, id := range ids {
+		raw := rawPayload(ctx, t, s, id)
+		if _, ok := raw["dryrun_marker"]; ok {
+			t.Errorf("record %s gained dryrun_marker under DryRun — a write landed", id)
+		}
+		if _, ok := raw[schemaVersionKey]; ok {
+			t.Errorf("record %s gained schema_version under DryRun — a write landed", id)
+		}
+	}
+}
+
+// TestMigrateFullBacklogProjection proves REVIEWS.md H2's full-backlog
+// half: the preview projects the WHOLE backlog, not one scroll batch — a
+// batch-scoped preview would silently under-report. The backlog here is
+// deliberately larger than Batch. It then applies (DryRun:false, no
+// Manifest) over the same stable collection and proves the applied count
+// equals the earlier projection count.
+func TestMigrateFullBacklogProjection(t *testing.T) {
+	ctx := context.Background()
+	c := dialTestClient(t)
+	collection := testCollection("migrate_full_backlog_projection")
+	_ = c.DeleteCollection(ctx, collection)
+	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
+
+	s := newTestStore(t, c, collection)
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+
+	const seeded = 40
+	const batch = 8 // deliberately smaller than seeded, so a batch-scoped
+	// preview bug would report `batch`, not `seeded`.
+	ids := seedNLegacyRecords(ctx, t, s, "cf800000", seeded)
+
+	opts := MigrateOptions{Steps: []migrate.Step{markerStep(0, 1, "projection_marker")}, Batch: batch}
+
+	dryOpts := opts
+	dryOpts.DryRun = true
+	dryRes, err := s.Migrate(ctx, dryOpts)
+	if err != nil {
+		t.Fatalf("Migrate(DryRun): %v", err)
+	}
+	if dryRes.Migrated != 0 {
+		t.Errorf("DryRun Migrated = %d, want 0", dryRes.Migrated)
+	}
+	if len(dryRes.PreviewManifest) != seeded {
+		t.Errorf("len(PreviewManifest) = %d, want %d (the full backlog, not Batch=%d)", len(dryRes.PreviewManifest), seeded, batch)
+	}
+	for _, id := range ids {
+		if _, ok := dryRes.PreviewManifest[id]; !ok {
+			t.Errorf("PreviewManifest missing seeded id %s", id)
+		}
+	}
+
+	applyRes, err := s.Migrate(ctx, opts)
+	if err != nil {
+		t.Fatalf("Migrate(apply): %v", err)
+	}
+	if applyRes.Backlog != 0 {
+		t.Errorf("apply Backlog = %d, want 0", applyRes.Backlog)
+	}
+	if applyRes.Migrated != uint64(len(dryRes.PreviewManifest)) {
+		t.Errorf("apply Migrated = %d, want %d (equal to the earlier projection count on this stable collection)", applyRes.Migrated, len(dryRes.PreviewManifest))
+	}
+}
+
+// TestMigrateDryRunAndManifestMutuallyExclusive pins REVIEWS.md C5-L9: the
+// undefined DryRun+Manifest combination is REJECTED before any I/O, not
+// resolved by branch precedence. The anti-vacuity half: the store here is
+// never EnsureCollection'd, so any actual backend call (Count/Scroll
+// against a nonexistent collection) would fail with a Qdrant "not found"
+// transport error, NOT ErrInvalidArgument — asserting the validation
+// sentinel specifically proves no backend call was attempted.
+func TestMigrateDryRunAndManifestMutuallyExclusive(t *testing.T) {
+	ctx := context.Background()
+	c := dialTestClient(t)
+	collection := testCollection("migrate_dryrun_manifest_excl")
+	_ = c.DeleteCollection(ctx, collection)
+	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
+	s := newTestStore(t, c, collection)
+	// Deliberately no EnsureCollection: a real Count/Scroll against this
+	// collection would fail with a transport-level "not found" error, not
+	// ErrInvalidArgument — proving the rejection below fires before any
+	// I/O rather than merely alongside it.
+
+	res, err := s.Migrate(ctx, MigrateOptions{
+		DryRun:   true,
+		Manifest: map[string]migrate.Version{"x": 0},
+	})
+	if err == nil {
+		t.Fatal("Migrate(DryRun+Manifest) = nil error, want a validation error")
+	}
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("Migrate(DryRun+Manifest) error = %v, want it to wrap ErrInvalidArgument (proving no backend I/O was attempted against the nonexistent collection)", err)
+	}
+	if res.Migrated != 0 {
+		t.Errorf("Migrated = %d, want 0", res.Migrated)
+	}
+	if res.PreviewManifest != nil {
+		t.Errorf("PreviewManifest = %v, want nil", res.PreviewManifest)
+	}
+}
+
+// manifestDriftFixture seeds three legacy records, previews them via
+// DryRun with a fixture markerStep, then simulates drift between preview
+// and apply: a fourth record inserted AFTER the preview (appeared), and
+// one previewed member stamped to target directly (spared). It returns
+// the preview manifest and the three role ids.
+func manifestDriftFixture(ctx context.Context, t *testing.T, s *Store) (manifest map[string]migrate.Version, keptIDs []string, sparedID, appearedID string) {
+	t.Helper()
+	steps := []migrate.Step{markerStep(0, 1, "drift_marker")}
+
+	ids := seedNLegacyRecords(ctx, t, s, "cf900000", 3)
+	dryRes, err := s.Migrate(ctx, MigrateOptions{DryRun: true, Steps: steps})
+	if err != nil {
+		t.Fatalf("Migrate(DryRun): %v", err)
+	}
+	if len(dryRes.PreviewManifest) != 3 {
+		t.Fatalf("len(PreviewManifest) = %d, want 3", len(dryRes.PreviewManifest))
+	}
+
+	sparedID = ids[0]
+	injectRawPayload(ctx, t, s, sparedID, qdrant.NewValueMap(map[string]any{schemaVersionKey: int(1)}))
+
+	appearedID = "cf900000-0000-0000-0000-999999999999"
+	seedLegacyRecord(ctx, t, s, appearedID)
+
+	keptIDs = []string{ids[1], ids[2]}
+	return dryRes.PreviewManifest, keptIDs, sparedID, appearedID
+}
+
+// TestMigrateManifestIntersection proves REVIEWS.md H6/SC3/C4-H5: apply
+// migrates exactly manifest ∩ fresh re-derivation, Spared/Appeared report
+// the two set differences BY IDENTITY (through stored-payload evidence,
+// never through Migrated, which is a uint64 counter — C6-H3), and the
+// cardinality reconciles.
+func TestMigrateManifestIntersection(t *testing.T) {
+	ctx := context.Background()
+	c := dialTestClient(t)
+	collection := testCollection("migrate_manifest_intersection")
+	_ = c.DeleteCollection(ctx, collection)
+	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
+
+	s := newTestStore(t, c, collection)
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+
+	manifest, keptIDs, sparedID, appearedID := manifestDriftFixture(ctx, t, s)
+
+	res, err := s.Migrate(ctx, MigrateOptions{
+		Manifest: manifest,
+		Steps:    []migrate.Step{markerStep(0, 1, "drift_marker")},
+	})
+	if err != nil {
+		t.Fatalf("Migrate(Manifest): %v", err)
+	}
+
+	if !slices.Contains(res.Appeared, appearedID) {
+		t.Errorf("Appeared = %v, want it to contain %s", res.Appeared, appearedID)
+	}
+	appearedRaw := rawPayload(ctx, t, s, appearedID)
+	if _, ok := appearedRaw[schemaVersionKey]; ok {
+		t.Errorf("appeared record %s carries schema_version — it must NOT have been migrated", appearedID)
+	}
+
+	if !slices.Contains(res.Spared, sparedID) {
+		t.Errorf("Spared = %v, want it to contain %s", res.Spared, sparedID)
+	}
+	sparedRaw := rawPayload(ctx, t, s, sparedID)
+	if _, ok := sparedRaw["drift_marker"]; ok {
+		t.Errorf("spared record %s carries drift_marker — this apply must not have written it", sparedID)
+	}
+
+	for _, id := range keptIDs {
+		raw := rawPayload(ctx, t, s, id)
+		if _, ok := raw["drift_marker"]; !ok {
+			t.Errorf("kept manifest member %s missing drift_marker — it should have been migrated", id)
+		}
+		if got := raw[schemaVersionKey].GetIntegerValue(); got != 1 {
+			t.Errorf("kept manifest member %s schema_version = %d, want 1", id, got)
+		}
+	}
+
+	if res.Failed != 0 {
+		t.Fatalf("Failed = %d, want 0 (this fixture injects no faults; the no-failure cardinality form below assumes it)", res.Failed)
+	}
+	if want := uint64(len(manifest) - len(res.Spared)); res.Migrated != want {
+		t.Errorf("Migrated = %d, want %d (= len(manifest) - len(Spared), the no-failure form)", res.Migrated, want)
+	}
+	if want := uint64(len(manifest) - len(res.Spared)); want != res.Migrated+res.Failed {
+		t.Errorf("general reconciliation failed: len(manifest)-len(Spared) = %d, want == Migrated(%d)+Failed(%d)", want, res.Migrated, res.Failed)
+	}
+
+	if res.Backlog != uint64(len(res.Appeared)) {
+		t.Errorf("Backlog = %d, want %d (== len(Appeared): the only remaining below-target records)", res.Backlog, len(res.Appeared))
+	}
+
+	if !sort.StringsAreSorted(res.Spared) {
+		t.Errorf("Spared not sorted: %v", res.Spared)
+	}
+	if !sort.StringsAreSorted(res.Appeared) {
+		t.Errorf("Appeared not sorted: %v", res.Appeared)
+	}
+}
+
+// TestMigrateManifestSparedDeletedRecord pins the Spared semantic C4-H5
+// documents: a manifest member deleted between preview and apply is
+// reported Spared (not an error) — "ineligible or already gone" is one
+// fact, and a post-scroll set difference reports it either way.
+func TestMigrateManifestSparedDeletedRecord(t *testing.T) {
+	ctx := context.Background()
+	c := dialTestClient(t)
+	collection := testCollection("migrate_manifest_spared_deleted")
+	_ = c.DeleteCollection(ctx, collection)
+	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
+
+	s := newTestStore(t, c, collection)
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+
+	steps := []migrate.Step{markerStep(0, 1, "deleted_marker")}
+	ids := seedNLegacyRecords(ctx, t, s, "cfa00000", 2)
+	dryRes, err := s.Migrate(ctx, MigrateOptions{DryRun: true, Steps: steps})
+	if err != nil {
+		t.Fatalf("Migrate(DryRun): %v", err)
+	}
+
+	deletedID := ids[0]
+	if _, derr := c.Delete(ctx, &qdrant.DeletePoints{
+		CollectionName: collection, Wait: qdrant.PtrOf(true),
+		Points: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(deletedID)}),
+	}); derr != nil {
+		t.Fatalf("delete %s: %v", deletedID, derr)
+	}
+
+	res, err := s.Migrate(ctx, MigrateOptions{Manifest: dryRes.PreviewManifest, Steps: steps})
+	if err != nil {
+		t.Fatalf("Migrate(Manifest) after delete: %v", err)
+	}
+	if !slices.Contains(res.Spared, deletedID) {
+		t.Errorf("Spared = %v, want it to contain deleted id %s", res.Spared, deletedID)
+	}
+}
+
+// TestMigrateManifestBacklogAppeared proves REVIEWS.md H7: Backlog after a
+// manifest-limited apply TRUTHFULLY includes Appeared records this apply
+// intentionally did not touch — never 0 merely because the manifest's own
+// members are done — and a subsequent full sweep (no Manifest) cleans
+// Appeared up, converging Backlog to 0. This also proves the PA-3 guard
+// was never reached: a single-pass manifest apply has no second pass to
+// compare against.
+func TestMigrateManifestBacklogAppeared(t *testing.T) {
+	ctx := context.Background()
+	c := dialTestClient(t)
+	collection := testCollection("migrate_manifest_backlog_appeared")
+	_ = c.DeleteCollection(ctx, collection)
+	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
+
+	s := newTestStore(t, c, collection)
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+
+	manifest, _, _, appearedID := manifestDriftFixture(ctx, t, s)
+	steps := []migrate.Step{markerStep(0, 1, "drift_marker")}
+
+	res, err := s.Migrate(ctx, MigrateOptions{Manifest: manifest, Steps: steps})
+	if err != nil {
+		t.Fatalf("Migrate(Manifest): %v", err)
+	}
+	if res.Backlog == 0 {
+		t.Fatalf("Backlog = 0, want > 0 (the Appeared record %s remains below target)", appearedID)
+	}
+	if res.Backlog != uint64(len(res.Appeared)) {
+		t.Errorf("Backlog = %d, want %d (== len(Appeared))", res.Backlog, len(res.Appeared))
+	}
+
+	full, err := s.Migrate(ctx, MigrateOptions{Steps: steps})
+	if err != nil {
+		t.Fatalf("Migrate(full sweep): %v", err)
+	}
+	if full.Backlog != 0 {
+		t.Errorf("full sweep Backlog = %d, want 0 — the Appeared record must be cleanable by a subsequent full sweep", full.Backlog)
 	}
 }
