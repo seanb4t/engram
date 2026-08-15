@@ -139,6 +139,13 @@ memory-tool call.
 | `irreversible` | The requested revert range includes at least one step declared irreversible — the whole operation is refused before any write. | Recover via a collection snapshot taken before the forward migration ran; there is no partial-revert path around an irreversible step. |
 | `unsupported` | At least one record in the above-target range is stamped at a version with no reachable reverse chain to the target. | Recover via a collection snapshot, or narrow the target to a version every record can actually reach. |
 
+A single refusal never carries both hint codes. If a range is **both** irreversible and
+carries an unsupported version, `RevertRefusalError` still emits exactly one
+`field=`/`hint=` envelope (the one-envelope-per-rejection contract above) — it leads with
+`field=steps hint=irreversible` (irreversible outranks unsupported: it cannot be resolved
+by migrating forward again, unlike an unsupported-version gap) and folds the unsupported
+detail into that same envelope's text as an additional clause.
+
 ## The class-to-Connect-code mapping
 
 Every argument-validation failure belongs to one of three classes, and the class — never

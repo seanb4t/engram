@@ -157,27 +157,52 @@ func reversePreflight(observedChains [][]migrate.Step) []IrreversibleStepRef {
 // apart. It names EVERY irreversible step and EVERY unsupported version, not
 // a sample. Pure: plan in, error out — no I/O, no cobra, no exit code (the
 // exit-code decision belongs to the CLI).
+//
+// Exactly ONE field=/hint= envelope is ever returned (REVIEWS.md deep-pass
+// WR-02; the one-envelope-per-rejection contract, errors.md:14): a range
+// that is BOTH irreversible AND carries an unsupported version leads with
+// field=steps hint=irreversible (a truly irreversible step is the harder
+// blocker -- migrating forward again cannot resolve it, unlike an
+// unsupported-version gap, which a future registry step could close) and
+// folds the unsupported detail into that SAME envelope's text as an
+// additional clause, rather than emitting a second field=/hint= pair.
 func RevertRefusalError(plan RevertPlan) error {
-	var parts []string
-	if len(plan.Irreversible) > 0 {
+	irreversibleClause := func() string {
 		clauses := make([]string, len(plan.Irreversible))
 		for i, s := range plan.Irreversible {
 			clauses[i] = fmt.Sprintf("step (From=%d To=%d) is irreversible: %s", s.From, s.To, s.Reason)
 		}
-		parts = append(parts, fmt.Sprintf(
-			"field=steps hint=irreversible: revert cannot reach v%d: %s; recovery is a collection snapshot",
-			plan.To, strings.Join(clauses, "; ")))
+		return fmt.Sprintf("revert cannot reach v%d: %s", plan.To, strings.Join(clauses, "; "))
 	}
-	if len(plan.Unsupported) > 0 {
+	unsupportedClause := func() string {
 		clauses := make([]string, len(plan.Unsupported))
 		for i, u := range plan.Unsupported {
 			clauses[i] = fmt.Sprintf("%d record(s) at version %d have no reachable chain to target %d", u.Count, u.Version, plan.To)
 		}
-		parts = append(parts, fmt.Sprintf(
-			"field=record_version hint=unsupported: %s; recovery is a collection snapshot",
-			strings.Join(clauses, "; ")))
+		return strings.Join(clauses, "; ")
 	}
-	return errors.New(strings.Join(parts, "; "))
+
+	switch {
+	case len(plan.Irreversible) > 0 && len(plan.Unsupported) > 0:
+		return fmt.Errorf(
+			"field=steps hint=irreversible: %s; additionally, %s; recovery is a collection snapshot",
+			irreversibleClause(), unsupportedClause())
+	case len(plan.Irreversible) > 0:
+		return fmt.Errorf(
+			"field=steps hint=irreversible: %s; recovery is a collection snapshot",
+			irreversibleClause())
+	case len(plan.Unsupported) > 0:
+		return fmt.Errorf(
+			"field=record_version hint=unsupported: %s; recovery is a collection snapshot",
+			unsupportedClause())
+	default:
+		// Unreachable via previewRevertWithSteps (plan.Reversible is
+		// derived as len(Irreversible)==0 && len(Unsupported)==0, so a
+		// caller only reaches RevertRefusalError when at least one is
+		// non-empty), but kept total rather than panicking on a
+		// hand-built RevertPlan a future caller might construct.
+		return errors.New("field=steps hint=irreversible: revert refused for an empty reason set")
+	}
 }
 
 // RevertRefusedError is returned by Store.Revert (never PreviewRevert) when

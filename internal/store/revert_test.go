@@ -62,6 +62,33 @@ func TestMigrateRevertStepsFromArgOrder(t *testing.T) {
 	}
 }
 
+// TestRevertRefusalErrorSingleEnvelope proves the one-envelope-per-rejection
+// contract (REVIEWS.md deep-pass WR-02; errors.md:14) for the ONE plan shape
+// the two-arm strings.Join(parts, "; ") bug could ever emit a SECOND
+// field=/hint= pair for: a range that is BOTH irreversible AND carries an
+// unsupported version. Pure -- no Qdrant dial, RevertPlan built by hand.
+func TestRevertRefusalErrorSingleEnvelope(t *testing.T) {
+	plan := RevertPlan{
+		To: 0, Candidates: 4, Reversible: false,
+		Irreversible: []IrreversibleStepRef{{From: 0, To: 1, Reason: "no declared inverse"}},
+		Unsupported:  []UnsupportedVersionRef{{Version: 42, Count: 3}},
+	}
+	msg := RevertRefusalError(plan).Error()
+
+	fieldHintCount := strings.Count(msg, "field=")
+	if fieldHintCount != 1 {
+		t.Fatalf("RevertRefusalError emitted %d field=/hint= envelope(s), want exactly 1: %q", fieldHintCount, msg)
+	}
+	if !strings.HasPrefix(msg, "field=steps hint=irreversible:") {
+		t.Errorf("envelope = %q, want to lead with field=steps hint=irreversible (irreversible outranks unsupported: it cannot be resolved by migrating forward)", msg)
+	}
+	for _, want := range []string{"From=0", "To=1", "no declared inverse", "42", "3 record", "snapshot"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("envelope %q missing expected detail %q -- folding into one envelope must not drop either condition's detail", msg, want)
+		}
+	}
+}
+
 // TestMigrateRevertIrreversibleRangeRefusesWhole is Task 2 step 8: against
 // the REAL production migrate.Registry (whose only step, v0->v1, is
 // Irreversible per D-03), a revert to v0 refuses the whole operation, names
