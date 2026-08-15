@@ -245,6 +245,15 @@ None - no external service configuration required.
 - Plan 05-03 owns the `renderJSON`/CLI JSON-rendering assertions for `schema_version`'s zero-value visibility.
 - No blockers.
 
+## Self-Check: PASSED
+
+- FOUND: `internal/server/connectapi_recordstate_handler_test.go`
+- FOUND: `.planning/phases/05-connect-record-state-parity/05-01-SUMMARY.md`
+- FOUND commit `4b33cc6b` (Task 1)
+- FOUND commit `be42fab6` (Task 2)
+- FOUND commit `33a6a8c5` (deviation: rebuilt embedded web UI)
+- FOUND commit `c4593f0d` (plan metadata: SUMMARY.md + REQUIREMENTS.md)
+
 ---
 *Phase: 05-connect-record-state-parity*
 *Completed: 2026-08-15*
