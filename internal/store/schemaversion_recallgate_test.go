@@ -559,6 +559,10 @@ var operatorMigrationEmitters = []recallEmissionClassification{
 		enclosingFunc: "Store.SummarizeMissing",
 		justification: "Emits ScrollAndOffset (summarize.go:145). D-16 operator command (`engram summarize-missing`); same Phase 3 rationale.",
 	},
+	{
+		enclosingFunc: "Store.MigrateStatus",
+		justification: "Emits Count (internal/store/migrate_status.go, twice: an IsEmpty(schema_version) exact Count for the absent/legacy bucket, and an unfiltered exact Count for the whole-collection total). D-16 operator diagnostic behind `engram migrate status`; same Phase 3 rationale as Store.CountOwnerless — the histogram must be able to count by schema_version presence/absence to report the migration backlog's shape. Never reachable from any recallEntryPointSeeds member.",
+	},
 }
 
 // otherNonRecallEmitters — the third category the previous binary partition
