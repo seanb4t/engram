@@ -33,7 +33,7 @@ func TestNewMintingStep(t *testing.T) {
 				t.Fatal("NewMintingStep did not panic on nil rev")
 			}
 		}()
-		NewMintingStep(0, 1, []string{"x"}, nil, func(m map[string]any, mint func() (string, error)) (map[string]any, error) {
+		NewMintingStep(0, 1, []string{"x"}, nil, func(m map[string]any, _ func() (string, error)) (map[string]any, error) {
 			return m, nil
 		})
 	})
@@ -58,7 +58,7 @@ func TestNewMintingStep(t *testing.T) {
 
 	t.Run("NewMintingStep is minter-aware", func(t *testing.T) {
 		minting := NewMintingStep(0, 1, []string{"x"}, Irreversible("x"),
-			func(m map[string]any, mint func() (string, error)) (map[string]any, error) { return m, nil })
+			func(m map[string]any, _ func() (string, error)) (map[string]any, error) { return m, nil })
 		fn, ok := minting.ApplyMinter()
 		if !ok || fn == nil {
 			t.Fatalf("minting.ApplyMinter() = (%v, %v), want (non-nil, true)", fn, ok)
@@ -110,7 +110,7 @@ func TestV1FillShortID(t *testing.T) {
 // undeclared-added-key and removed-key branches are unchanged.
 func TestCheckAdditivePreExistingKey(t *testing.T) {
 	step := NewMintingStep(0, 1, []string{"short_id"}, Irreversible("x"),
-		func(m map[string]any, mint func() (string, error)) (map[string]any, error) { return m, nil })
+		func(m map[string]any, _ func() (string, error)) (map[string]any, error) { return m, nil })
 
 	t.Run("pre-existing short_id, no schema_version: passes", func(t *testing.T) {
 		before := map[string]any{"short_id": "abc123"}
