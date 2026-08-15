@@ -1,9 +1,9 @@
 ---
 phase: 5
 reviewers: [codex]
-reviewed_at: 2026-08-15T19:11:50Z
+reviewed_at: 2026-08-15T20:49:52Z
 plans_reviewed: [05-01-PLAN.md, 05-02-PLAN.md, 05-03-PLAN.md]
-cycle: 3
+cycle: 4
 ---
 
 # Cross-AI Plan Review — Phase 5
@@ -12,8 +12,9 @@ Reviewer set: `codex` (codex-cli 0.147.0), invoked with repo access and a
 source-grounding prompt. `--codex` was named explicitly; no other lane was
 requested.
 
-This file is append-only across convergence cycles. Cycles 1 and 2 are preserved
-below verbatim; cycle 3 (the final cycle of `--max-cycles 3`) follows them.
+This file is append-only across convergence cycles. Cycles 1, 2 and 3 are
+preserved below verbatim; cycle 4 — a CONFIRMATION cycle explicitly authorized by
+the human after `--max-cycles 3` was reached — follows them.
 
 ---
 
@@ -668,3 +669,212 @@ plans), 3 unresolved actionable non-HIGH (C3-M1 orchestrator-found MEDIUM, C3-L1
 and C3-L2 reviewer LOWs). Zero cycle-1 or cycle-2 findings carried forward — both
 prior cycles' findings are closed or partially closed with the residue restated as
 the cycle-3 items above.
+
+---
+
+# CYCLE 4 — 2026-08-15T20:49:52Z
+
+**Confirmation cycle**, explicitly authorized by the human after `--max-cycles 3`
+was reached. Its purpose is narrow: cycles 1→2 and 2→3 EACH produced a HIGH that
+was created by the previous cycle's own repair, so this cycle exists to check
+whether cycle 3's repair (`5e974c4b`) did the same. Scope: verify the cycle-3
+incorporations, hunt for anything genuinely new, do not pad.
+
+Bar applied for a HIGH this cycle: a gate that cannot fail, a gate that cannot
+pass, a RED proof that does not prove RED for the half it claims, or a
+contradicted locked decision.
+
+## Cycle-3 Incorporation Verdict
+
+| Cycle-3 finding | Severity | Status | Evidence |
+|---|---|---|---|
+| C3-H1 — working-tree `git diff`/`git status` gates evaluated AFTER the task commit are vacuous (or unsatisfiable) | HIGH | **RESOLVED** | `<commit_range_protocol>` added at `05-01:141-169`, `05-02:168-189`, `05-03:132-156`; affected criteria respelled over a captured base SHA with a `[ -s ]` non-empty guard (`05-01:329,332,379`; `05-02:515,575`; `05-03:295,374,433`). Deviation (`git diff <BASE> --` instead of `"$TASK_BASE"..HEAD`) independently re-verified — see below. |
+| C3-M1 — comment-only criterion unsatisfiable because `SummaryEgressAt`'s doc comment is tab-indented | MEDIUM | **RESOLVED** | Payload test relaxed to `^[+-][[:space:]]*//` at `05-01:379`, combined with the range form and the non-empty guard. Confirmed against source: `internal/store/store.go:270-278` comment lines render `^I//` under `cat -et`. |
+| C3-L1 — surviving self-description at `05-02` | LOW | **RESOLVED** | Deleted, not reworded. The only remaining hit is a quotation inside the cycle-3 decision block at `05-02:161`. |
+| C3-L2 — `rg 'store\.Memory\{[A-Z]'` misses the idiomatic multi-line keyed literal | LOW | **RESOLVED** | Replaced with `rg -U -c 'store\.Memory\{\s*[A-Z]'` at `05-02:509`. The stated residue (unkeyed positional literal) and its govet backstop were re-verified — see below. |
+
+Zero cycle-1, cycle-2 or cycle-3 findings carry forward.
+
+## Codex Review (cycle 4)
+
+## Summary
+
+The cycle-3 repairs hold. The base-to-working-tree diff construction correctly covers both committed task changes and uncommitted RED probes, while the non-empty guards prevent empty-input passes. The comment-only regex now handles Go indentation, the stale self-description was removed except where quoted historically, and the multiline literal guard is adequately backed by this repository's enabled govet composites analyzer. I found no new actionable defect or contradicted locked decision.
+
+## Cycle-3 Incorporation Verdicts
+
+- **C3-H1 — VERIFIED.** The workflow commits before running acceptance criteria and reruns them during summary self-check (`execute-plan.md:194`, `:197`, `:159`). `git diff <BASE>` compares the base tree with the current index/worktree, so it sees committed changes and uncommitted modifications; `<BASE>..HEAD` sees commits only. The plans add mandatory non-empty checks before negative assertions (`05-01-PLAN.md:163`, `05-02-PLAN.md:134`, `05-03-PLAN.md:149`). The retained `git status` checks occur explicitly during the transient-mutation procedure before task completion and are paired with plan-wide commit-range allowlists.
+- **C3-M1 — VERIFIED.** The actual comments are tab-indented in `internal/store/store.go:272`. The repaired `^[+-][[:space:]]*//` predicate accepts those comment lines while rejecting changed code or tags, and it is preceded by a non-empty range assertion (`05-01-PLAN.md:379`).
+- **C3-L1 — VERIFIED.** The deleted assertion survives only as a historical quotation in the cycle-3 incorporation record (`05-02-PLAN.md:161`). The later "own weight" wording describes the concrete wrong-but-nonzero RED proof, not a broad claim that every gate has an independent mutation (`05-02-PLAN.md:479`).
+- **C3-L2 — VERIFIED.** The multiline `rg -U` predicate covers keyed literals split after `{` without matching `store.Memory{}` (`05-02-PLAN.md:509`). The residual unkeyed imported-struct form is covered: `.golangci.yaml:7` enables `govet`, and govet's enabled composites analyzer reports unkeyed literals of structs imported from another package. `task lint:go` is part of the task verification (`05-02-PLAN.md:496`).
+
+## Strengths
+
+- The cycle-3 repair addresses the execution model rather than merely adjusting regex syntax.
+- Base SHAs are captured before edits, substituted literally, and required in summaries, making the gates reproducible.
+- Plan-wide allowlists remain stable when all task criteria are rerun after later tasks.
+- Non-empty guards are explicit wherever an empty diff could otherwise produce a false pass.
+- Transient RED mutations are checked both immediately with `git status` and retrospectively through commit-range allowlists.
+- No locked decision is contradicted.
+
+## Concerns
+
+None.
+
+## Suggestions
+
+None. The residual reliance on executors recording the correct pre-edit base SHA is adequately mitigated by repeated placement at the start of each action and mandatory summary evidence; strengthening it further would require changing the execution harness rather than these plans.
+
+## Risk Assessment
+
+**LOW.** The prior systemic gate defect is closed without creating another vacuous or unsatisfiable gate. Remaining risk is procedural executor error around base-SHA capture, clearly instructed and auditable in each summary, rather than a flaw in the plan's acceptance mechanisms.
+
+## Orchestrator Verification of Cycle-4 Findings
+
+Codex reported a clean result. Because a clean result from a single lane is exactly
+the outcome most vulnerable to under-checking, the orchestrator re-ran the load-bearing
+claims independently in throwaway repos rather than accepting them.
+
+### 1. The `git diff <BASE> --` deviation — CONFIRMED, all three scenarios reproduced
+
+The planner rejected the reviewer-recommended `"$TASK_BASE"..HEAD` in favour of
+`git diff <BASE> --` (base vs WORKING TREE). Its stated reason is that `..HEAD` is
+blind to an UNCOMMITTED RED probe, which would force a criterion and its own
+GATE-RED PROOF to be different commands — reintroducing the very split C3-H1 named.
+Reproduced in a scratch git repo with the `^\+func[[:space:]]` predicate from
+`05-01:332`:
+
+| Scenario | bare worktree form | `git diff <BASE> --` | `<BASE>..HEAD` |
+|---|---|---|---|
+| Committed sneaked-in `func sneakyHelper() {}` | exit 1 — **vacuous PASS** (empty diff) | exit 0 — correctly FAILS | exit 0 — correctly FAILS |
+| UNCOMMITTED RED probe `func redProbe() {}` | exit 0 | exit 0 — correctly FAILS | exit 1 — **blind** (empty diff) |
+| Faithful body-only edit, committed | — | exit 1 (PASS) with `[ -s ]` guard holding | — |
+
+Every reported observation reproduces exactly. `git diff <BASE> --` is a strict
+superset of both alternatives for this purpose, and it is the only one of the three
+that lets a single command serve both the post-commit acceptance gate and the
+pre-commit GATE-RED PROOF. The deviation is correct and the reasoning is sound.
+
+### 2. Parallel-wave interference with the plan-level allowlists — checked, NOT a defect
+
+`05-02` and `05-03` are both `wave: 2` with `depends_on: [05-01]`, so they can run
+concurrently. Each carries an allowlist over `git diff --name-only <PLAN_BASE>` that
+permits only its OWN files plus `.planning/` — `05-02:515(c)` does not allow
+`05-03`'s two files, and `05-03:295(c)` does not allow `05-02`'s. A base-to-working-tree
+diff spans forward to the moment it is evaluated, so if the two plans shared one working
+tree, each would see the other's committed files and the allowlist would FAIL on correct
+work — a gate that cannot pass.
+
+It does not fire: `execute-phase.md:98-129` runs wave-parallel plans in **isolated git
+worktrees** (`workflow.use_worktrees` defaults to `true`; the repo sets no override, and
+`.planning/config.json` carries no `workflow` key), so each plan's `PLAN_BASE` diff is
+scoped to its own tree. On the degraded path (`use_worktrees=false`, or the #683 fork-base
+auto-degrade that this feature branch could plausibly trigger) executors run
+**sequentially** on the main tree, and each plan captures its own `PLAN_BASE` at its own
+start — so the second plan's base is already past the first plan's commit. Both
+execution modes are safe. Recorded here because the property is load-bearing and
+non-obvious, not as a finding.
+
+### 3. govet `composites` backstop for the C3-L2 residue — CONFIRMED against real config
+
+The C3-L2 rationale leans on unkeyed positional `store.Memory` literals being rejected by
+govet's `composites` check rather than by the `rg -U` pattern. Verified rather than taken
+on faith: `.golangci.yaml:7-19` enables `govet` (and golangci-lint's govet enables the
+default `go vet` analyzer set, which includes `composites`; only `fieldalignment` and
+`shadow` are off by default). Reproduced the analyzer's actual behaviour in a throwaway
+module — an unkeyed literal of a struct imported from another package is reported:
+
+```
+pkgb/b.go:5:15: example.com/vt/pkga.Memory struct literal uses unkeyed fields
+```
+
+while the keyed and zero-value forms are not. `store.Memory` is imported into
+`internal/server` from `internal/store`, so the cross-package condition the analyzer
+requires is met. `task lint:go` is already in that task's `<verify>` (`05-02:496`). The
+rationale holds; the AST test would have bought nothing the linter does not already give.
+
+### 4. In-task `git status` criteria — pairing verified sound
+
+The four retained working-tree `git status` criteria (`05-02:438`, `05-02:497`,
+`05-03:311`, `05-03:369`) were each re-read in place. All four are genuinely in-task:
+each sits in an `<action>` block describing a transient production-file mutation that the
+same action reverts before the task ends, so the observation happens pre-commit where the
+working tree is still dirty. Each is annotated in the plan text with why it is *not*
+trusted alone (post-commit it is silent — a file committed WITH the mutation also shows a
+clean status) and is paired with the commit-range allowlist that actually carries the
+assertion. The pairing is sound and the self-limiting annotations are accurate.
+
+### 5. Residual risk the planner named — base-SHA capture is unenforced
+
+The protocol depends on the executor running `git rev-parse HEAD` BEFORE its first edit.
+It is instructed at the top of each affected `<action>`, stated to be unrecoverable after
+the task commits, and required as a SUMMARY field (`05-01:450`, `05-02:590`, `05-03:447`).
+Nothing in the harness enforces it. Assessed and accepted, matching Codex: a stronger
+construction would have to live in `execute-plan.md`, not in these plans — the plans have
+already used every lever available to them (placement at the top of the action, an
+explicit "shell variables do not persist, substitute the literal SHA" warning, and a
+mandatory SUMMARY field that makes an omission visible in review). A late-captured base
+degrades the gate toward the old vacuous behaviour rather than producing a false FAIL, and
+the SUMMARY requirement makes it auditable. Not a finding.
+
+### 6. Untracked-file blindspot in the "committed or not" phrasing — noted, not actionable
+
+`git diff` does not see untracked files, so the plan text's claim that a production file is
+absent "committed or not" (`05-02:575`, `05-03:374`) is strictly true only for *tracked*
+production files. This does not weaken any gate in practice: every threat these allowlists
+guard against is a transient mutation of an EXISTING tracked file (`internal/server/connectapi.go`,
+`cmd/engram/client_common.go`), which `git diff <BASE>` does see whether committed or not.
+Adding a brand-new untracked production file is outside the threat model and would be caught
+by `task lint:go` / the test verbs. Recorded for completeness; it needs no PLAN.md change.
+
+## Consensus Summary
+
+Single-lane cycle (`codex`, source-grounded, with repo access), so "consensus" is
+Codex plus the orchestrator's independent re-verification rather than cross-model
+agreement. Both arrived at the same verdict by different routes — Codex by reading
+the plans against source, the orchestrator by re-running the claimed observations in
+scratch repos.
+
+### Agreed Strengths
+
+- The cycle-3 repair attacks the execution model (when a criterion is evaluated),
+  not the regex surface, which is why it closes the class rather than an instance.
+- `git diff <BASE> --` is a strict superset of both the bare working-tree form and
+  `..HEAD` for this purpose, and is the only spelling that lets one command serve both
+  the post-commit gate and the pre-commit RED proof.
+- Every negative gate over a diff now carries an explicit `[ -s ]` non-empty guard, so
+  an empty range FAILS instead of passing vacuously.
+- The retained `git status` criteria are correctly scoped to in-task pre-commit
+  observation and are each paired with the commit-range allowlist that carries the
+  real assertion, with the limitation stated in the plan text rather than papered over.
+- No locked decision is contradicted.
+
+### Agreed Concerns
+
+None. **This is the first cycle in the sequence whose repairs did not create a new
+HIGH.** Cycles 1→2 and 2→3 each did; cycle 3's repair did not.
+
+### Divergent Views
+
+None. The orchestrator raised two items Codex did not (parallel-wave allowlist
+interference, and the untracked-file blindspot in the "committed or not" phrasing) and
+resolved both as non-findings against the actual execution model and threat model. No
+disagreement on any verdict.
+
+## Verification coverage (cycle 4)
+
+| Claim under test | Method | Result |
+|---|---|---|
+| `git diff <BASE> --` sees a COMMITTED sneaked-in helper | scratch repo, `rg '^\+func[[:space:]]'` | exit 0 (fails correctly); bare worktree form exit 1 (vacuous) |
+| `git diff <BASE> --` sees an UNCOMMITTED RED probe | scratch repo | exit 0; `<BASE>..HEAD` exit 1 (blind) — deviation justified |
+| Faithful body-only edit still passes | scratch repo | exit 1 with `[ -s ]` guard holding |
+| `SummaryEgressAt` doc comment is tab-indented | `internal/store/store.go:270-278` | `^I//` — `^[+-]//` would be unsatisfiable, `^[+-][[:space:]]*//` is correct |
+| govet `composites` rejects unkeyed cross-package literals | throwaway Go module + `go vet` | reported: "struct literal uses unkeyed fields"; keyed and `{}` forms clean |
+| `govet` actually enabled in this repo | `.golangci.yaml:7-19` | enabled |
+| wave-2 plans cannot cross-contaminate each other's allowlists | `execute-phase.md:98-129`, `.planning/config.json` | isolated worktrees when parallel; own `PLAN_BASE` per plan when sequential — safe either way |
+| four retained `git status` criteria are in-task | read in place at `05-02:438,497`, `05-03:311,369` | all pre-commit, all paired with a commit-range allowlist |
+
+**Cycle-4 outcome:** 0 unresolved HIGH, 0 unresolved actionable non-HIGH. All four
+cycle-3 findings (C3-H1, C3-M1, C3-L1, C3-L2) are RESOLVED, and cycle 3's repair —
+unlike cycle 1's and cycle 2's — introduced no new HIGH. The plans are sound as
+written; the confirmation cycle's purpose is discharged.
