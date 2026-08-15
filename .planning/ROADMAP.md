@@ -352,11 +352,11 @@ Plans:
 
 **Wave 3**
 
-- [ ] 04-03-PLAN.md — CLI surface: generalize registerDestructive gate + engram migrate/status/revert w/ in-apply-closure re-preview (H5/purge pattern, NOT package var) + shared migrateSweep{Preview,Apply}Run funcs the alias reuses (cycle-3 #7) + duration-taking migrateWithTimeout w/ per-leaf vars and timeoutGroups assignment (H8/N3) + consumes 04-02's exported PreviewRevert (M8) + store interface seam (M7) + leaf-only Use strings (M6) + !ReadOnly derivation for TestDestructiveCommandsRequireApply (M12) + pinned "mutating operator command" rule sentence via surfaces:gen (N5) + toolclass rows (wave 3)
+- [ ] 04-03-PLAN.md — CLI surface: generalize registerDestructive's ADMISSION gate to !ReadOnly + engram migrate/status/revert w/ in-apply-closure re-preview (H5/purge pattern, NOT package var) + shared migrateSweep{Preview,Apply}Run funcs the alias reuses (cycle-3 #7) + duration-taking migrateWithTimeout w/ per-leaf vars incl. read-only migrate status (H8/N3/C5-M6) + consumes 04-02's exported PreviewRevert and RevertRefusalError (M8/C5-M4) + store interface seam (M7) + leaf-only Use strings (M6) + TestDestructiveCommandsRequireApply re-derived from the NAMED union mutatingCommandNames() (M12/C4-H1) + pinned "mutating operator command" rule sentence via surfaces:gen (N5) + toolclass rows; **every operatorCommands()-keyed registry and a golden regeneration land in the SAME task as their command** — T2 for migrate/migrate status, T3 for migrate revert (wave 3)
 
 **Wave 4**
 
-- [ ] 04-04-PLAN.md — backfill-short-ids as thin delegating alias over the SHARED sweep run funcs so its apply path has full manifest parity (cycle-3 #7) w/ PRESERVED-and-READ --timeout (H8/N3, NOT removed) + pre-backfilled-record convergence test (M10) + dead store code and its recall-gate row deleted + sibling conformance gates widened to the mutating set w/ RED-first proof (cycle-3 #6/N1) + upgrade.md entry documenting --dry-run removal only (M11, NOT --timeout) + D-12 bidirectional gate (wave 4)
+- [ ] 04-04-PLAN.md — backfill-short-ids as thin delegating alias over the SHARED sweep run funcs so its apply path has full manifest parity (cycle-3 #7) w/ PRESERVED-and-passed-through --timeout (H8/N3, NOT removed) + M10 discharged by composition of 04-01's real-Qdrant carve-out test and the alias call-sequence-equality test (C6-H7) + dead store code and both classification-table rows deleted + sibling conformance gates widened to the mutating set w/ RED-first proof (cycle-3 #6/N1) + upgrade.md entry documenting --dry-run removal only (NOT --timeout) + §5's stale --timeout group enumeration and cli.md's stale two-idiom paragraph repaired (C6-M11/C6-M5) + D-12 bidirectional gate (wave 4)
 
 ### Phase 5: Connect Record-State Parity
 
