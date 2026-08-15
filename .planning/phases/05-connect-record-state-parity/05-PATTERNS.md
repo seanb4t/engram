@@ -56,16 +56,27 @@ message Memory {
 }
 ```
 
+> **D-14 correction (2026-08-15).** Three statements in this document were written against D-01
+> and D-02, which Sean REVERSED on 2026-08-15. Each is corrected inline below and flagged
+> `D-14 CORRECTION`. Under D-14, fields 23, 28 and 29 are `optional string`, `optional uint32`,
+> `optional string` — generating `*string`, `*uint32`, `*string`. Where this document and a PLAN
+> disagree, the PLAN wins.
+
 **Field-comment style to copy for the new 23-30 block:** a doc comment sits directly above
 a field only when the field's semantics are non-obvious from its name alone (see `score`,
 `access_count`, `last_accessed_at`, `kind`/`citations` above — each states *when* the field is
 populated/zero and by which lane). Plain self-explanatory fields (`id`, `content`, `scope`,
 etc.) get no comment. Apply this selectively to fields 23-30: `superseded_by`/`supersedes`
 need a one-liner on soft-hide-from-recall vs `get_memory` (mirrors `store.go` comment intent,
-not copied verbatim — proto comment should be terse); `schema_version` needs the "zero is v0
-is absent" statement (D-01) plus the read-side-rounding-is-a-no-op note (D-09) belongs on
-`not_before`/`not_after` instead. Do not import store.go's paragraph-length comments wholesale
-— proto comments in this file are 1-3 lines.
+not copied verbatim — proto comment should be terse); the read-side-rounding-is-a-no-op note
+(D-09) belongs on `not_before`/`not_after`. Do not import store.go's paragraph-length comments
+wholesale — proto comments in this file are 1-3 lines.
+
+> **D-14 CORRECTION.** This paragraph originally said `schema_version` "needs the 'zero is v0 is
+> absent' statement (D-01)". D-01 is REVERSED. `schema_version` is `optional uint32` and its
+> comment must state explicit presence plus that the server ALWAYS sets it — including to zero for
+> a v0 record — and that an unset value on the wire is a server bug. Likewise `superseded_by` is
+> `optional string`: UNSET means not superseded, not empty-string. See 05-01-PLAN.md's task 1.
 
 **Field-number continuation:** next field number is 23 (current max is 22, `citations`). No
 existing field/number in 1-22 is `deprecated = true` (that pattern exists elsewhere in this
@@ -113,13 +124,26 @@ timestamppb.New(*m.Y) }` blocks above the `return`, one each for `NotBefore`, `N
 exactly, including the "leave unset rather than emitting a year-1 Timestamp" comment style
 adapted per field. `SummaryEgressAt` is a **non-pointer** `time.Time`; its guard is `if
 !m.SummaryEgressAt.IsZero()` instead of a nil check — same emit-only-if-set outcome, different
-zero-test idiom. `SupersededBy *string` follows D-02's plain-string collapse: `if
-m.SupersededBy != nil { out.SupersededBy = *m.SupersededBy }` — note this requires switching
-the return from a single composite literal to `out := &engramv1.Memory{...}; if ... { out.X =
-... }; return out` (the current single-expression `return &engramv1.Memory{...}` cannot host a
-post-construction assignment). `Supersedes []string`, `SchemaVersion` (cast `uint32(m.SchemaVersion)`),
-and `SummaryModel string` are direct field-to-field assignments and belong inside the composite
-literal like every other non-Timestamp field already there.
+zero-test idiom.
+
+> **D-14 CORRECTION — this is the largest change in this document.** The original text here
+> described D-02's plain-string collapse for `SupersededBy` and the composite-literal-to-named-local
+> restructure it forced. **D-02 is REVERSED and that restructure must NOT be written.** Under D-14
+> all four non-Timestamp assignments stay INSIDE the composite literal and `memoryToProto` keeps its
+> single-expression return:
+> - `SupersededBy: m.SupersededBy` — a direct `*string`-to-`*string` copy. Nil source stays an unset
+>   proto field; do not dereference, nil-guard, or substitute `""`.
+> - `Supersedes: m.Supersedes` — direct, unchanged.
+> - `SchemaVersion: proto.Uint32(uint32(m.SchemaVersion))` — UNCONDITIONAL. `migrate.Version` is a
+>   named `int`, so the conversion is required and `unconvert` will not flag it.
+> - `SummaryModel: proto.String(m.SummaryModel)` — UNCONDITIONAL.
+>
+> The word UNCONDITIONAL on the last two is load-bearing and is the one real hazard D-14
+> introduces: protojson OMITS an unset `optional` field, and `EmitDefaultValues` does not override
+> that (verified against protobuf-go v1.36.11). An `if` around either assignment silently drops the
+> key from every rendered JSON document for a zero-valued record. Do NOT copy the neighbouring
+> Timestamp nil-guards' shape onto them. This adds `"google.golang.org/protobuf/proto"` to the
+> file's imports — the repo has no `proto.String`/`proto.Uint32` call site yet.
 
 ---
 
@@ -354,15 +378,30 @@ func renderJSON(w io.Writer, m proto.Message) error {
 	return err
 }
 ```
-`EmitDefaultValues: true` (no `EmitUnpopulated`) means: `schema_version` (uint32 scalar)
-renders `0` when zero — this is the assertion D-03's test makes. **Pitfall, confirmed against
-protobuf-go semantics:** the four new `google.protobuf.Timestamp` fields (`not_before`,
-`not_after`, `archived_at`, `summary_egress_at`) are message-typed, not scalar — `EmitDefaultValues`
-does NOT force their emission when unset (only `EmitUnpopulated`, which this project does not
-set, would render them as `null`). D-03's new test must assert `"schema_version": 0` is
-present for a v0 record; it must NOT assert any Timestamp key is present-but-null for an
-unscheduled/unarchived/never-egressed record — that would test behavior `renderJSON`'s actual
-options do not provide.
+**Pitfall, re-verified live against protobuf-go v1.36.11 rather than reasoned about:** the four new
+`google.protobuf.Timestamp` fields (`not_before`, `not_after`, `archived_at`, `summary_egress_at`)
+are message-typed, not scalar — `EmitDefaultValues` does NOT force their emission when unset
+(observed: `{"plain_str":""}`), and only `EmitUnpopulated`, which this project does not set, renders
+them as `null` (observed: `{"plain_str":"", "not_before":null}`). D-03's test must NOT assert any
+Timestamp key is present-but-null for an unscheduled/unarchived/never-egressed record — that would
+test behavior `renderJSON`'s actual options do not provide. **This paragraph is unchanged by D-14.**
+
+> **D-14 CORRECTION.** The original text here said `EmitDefaultValues: true` "means:
+> `schema_version` (uint32 scalar) renders `0` when zero — this is the assertion D-03's test
+> makes." That is now FALSE in both halves. Under D-14 `schema_version` is `optional uint32`, and
+> observed against protobuf-go v1.36.11:
+> - Unset + `EmitDefaultValues:true` → the key is **ABSENT**. The flag forces zero values for
+>   IMPLICIT-presence fields only and does not rescue an unset explicit-presence field.
+>   `EmitUnpopulated:true` does not rescue it either.
+> - Assigned to zero → renders `"schema_version":0` — and does so with `EmitDefaultValues:false`
+>   as well, so this field's visibility no longer depends on that option at all.
+>
+> Consequence for the test: the fixture must ASSIGN `proto.Uint32(0)` (the state `memoryToProto`
+> produces for a v0 record under D-14 §3), and it must be paired with a permanent negative fixture
+> leaving the field nil and asserting the key is absent — otherwise the presence assertion is a
+> tautology over whatever the stub author chose. `renderJSON` is still pinned for `UseProtoNames`
+> (the key's spelling) and for `EmitDefaultValues` on the implicit-presence fields around it. See
+> 05-03-PLAN.md's `<d14_amendment>` and task 2.
 
 ---
 
