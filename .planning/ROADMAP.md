@@ -339,7 +339,7 @@ Research flag: yes — the exact `internal/migrate` step-registry API shape (ste
   5. `engram migrate revert` previews by default like `--apply`, runs declared inverses in reverse order, and refuses the whole operation at the first irreversible step in the requested range rather than reverting partially — the refusal message names a collection snapshot as the recovery path.
   6. No migration ever runs automatically on server startup; at most, startup emits a non-blocking warning that pending migrations exist.
 
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 
 Plans:
 **Wave 1**
@@ -348,7 +348,7 @@ Plans:
 
 **Wave 2**
 
-- [ ] 04-02-PLAN.md — Store MigrateStatus histogram w/ PER-VERSION future buckets (M4) + exported Store.PreviewRevert/RevertPlan (cycle-3 HIGH #1) as a whole-range zero-write preflight over the entire above-target set (cycle-3 HIGH #2) + Store.Revert w/ per-record chain selection (H5), pinned StepsFrom(to,from) arg order (H6), fixture injection (H4), DeletePayload-then-stamping-SetPayload partial-failure reconciliation (M3), corrected startup-warning predicate (H3) (wave 2)
+- [x] 04-02-PLAN.md — Store MigrateStatus histogram w/ PER-VERSION future buckets (M4) + exported Store.PreviewRevert/RevertPlan (cycle-3 HIGH #1) as a whole-range zero-write preflight over the entire above-target set (cycle-3 HIGH #2) + Store.Revert w/ per-record chain selection (H5), pinned StepsFrom(to,from) arg order (H6), fixture injection (H4), DeletePayload-then-stamping-SetPayload partial-failure reconciliation (M3), corrected startup-warning predicate (H3) (wave 2)
 
 **Wave 3**
 
