@@ -40,7 +40,7 @@ instead of another one-shot operator command.
 
 ### Connect Record-State Parity
 
-- [ ] **REQ-connect-record-state-parity**: `proto`'s `Memory` message carries `superseded_by`, `supersedes`, `not_before`, `not_after`, `archived_at`, and `schema_version` — added together in ONE additive pass and wired through `memoryToProto`, so the Connect lane's field list mirrors `store.Memory`'s scheduling, supersession, archival and version state (#482).
+- [x] **REQ-connect-record-state-parity**: `proto`'s `Memory` message carries `superseded_by`, `supersedes`, `not_before`, `not_after`, `archived_at`, and `schema_version` — added together in ONE additive pass and wired through `memoryToProto`, so the Connect lane's field list mirrors `store.Memory`'s scheduling, supersession, archival and version state (#482).
 - [ ] **REQ-connect-parity-roundtrip-proof**: The proof is an exhaustive field-mapping round-trip test, not `buf breaking` passing and the code compiling. This gap has recurred three times (v0.8.x, v0.11.x, v0.13.x) precisely because green codegen was mistaken for evidence that the mapping exists.
 
 ### Operator Output
@@ -105,7 +105,7 @@ this repo's structural invariant — see ROADMAP.md's `## Progress` note).
 | REQ-backfill-shortids-first-step | Phase 4 | Complete |
 | REQ-migrate-revert | Phase 4 | Complete |
 | REQ-migrate-never-automatic | Phase 4 | Complete |
-| REQ-connect-record-state-parity | Phase 5 | Pending |
+| REQ-connect-record-state-parity | Phase 5 | Complete |
 | REQ-connect-parity-roundtrip-proof | Phase 5 | Pending |
 | REQ-operator-renderer-typed | Phase 6 | Pending |
 | REQ-console-record-state | Phase 7 | Pending |

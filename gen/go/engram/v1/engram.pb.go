@@ -108,10 +108,29 @@ type Memory struct {
 	LastAccessedAt *timestamppb.Timestamp `protobuf:"bytes,20,opt,name=last_accessed_at,json=lastAccessedAt,proto3" json:"last_accessed_at,omitempty"`
 	// Discovery-only fields; empty on plain memories (never set by
 	// store_memory/schedule_memory, only by store_discovery).
-	Kind          string      `protobuf:"bytes,21,opt,name=kind,proto3" json:"kind,omitempty"`
-	Citations     []*Citation `protobuf:"bytes,22,rep,name=citations,proto3" json:"citations,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Kind      string      `protobuf:"bytes,21,opt,name=kind,proto3" json:"kind,omitempty"`
+	Citations []*Citation `protobuf:"bytes,22,rep,name=citations,proto3" json:"citations,omitempty"`
+	// A superseded record is soft-hidden from recall but stays fetchable by
+	// id. Unset means not superseded, not superseding anything.
+	SupersededBy *string  `protobuf:"bytes,23,opt,name=superseded_by,json=supersededBy,proto3,oneof" json:"superseded_by,omitempty"`
+	Supersedes   []string `protobuf:"bytes,24,rep,name=supersedes,proto3" json:"supersedes,omitempty"`
+	// The store encodes not_before/not_after at whole-second granularity, so
+	// the outward rounding applied on the write path makes read-side rounding
+	// a no-op by construction; none is performed here.
+	NotBefore  *timestamppb.Timestamp `protobuf:"bytes,25,opt,name=not_before,json=notBefore,proto3" json:"not_before,omitempty"`
+	NotAfter   *timestamppb.Timestamp `protobuf:"bytes,26,opt,name=not_after,json=notAfter,proto3" json:"not_after,omitempty"`
+	ArchivedAt *timestamppb.Timestamp `protobuf:"bytes,27,opt,name=archived_at,json=archivedAt,proto3" json:"archived_at,omitempty"`
+	// Explicit presence; the server always sets this, including to zero for a
+	// v0 record, which is what keeps the key in every rendered JSON document.
+	// An unset value on the wire is a server bug, never a v0 record.
+	SchemaVersion *uint32 `protobuf:"varint,28,opt,name=schema_version,json=schemaVersion,proto3,oneof" json:"schema_version,omitempty"`
+	// Explicit presence and always set; empty string means no auto summary
+	// was produced. Unset on the wire is a server bug.
+	SummaryModel *string `protobuf:"bytes,29,opt,name=summary_model,json=summaryModel,proto3,oneof" json:"summary_model,omitempty"`
+	// Unset means never egressed.
+	SummaryEgressAt *timestamppb.Timestamp `protobuf:"bytes,30,opt,name=summary_egress_at,json=summaryEgressAt,proto3" json:"summary_egress_at,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *Memory) Reset() {
@@ -294,6 +313,62 @@ func (x *Memory) GetKind() string {
 func (x *Memory) GetCitations() []*Citation {
 	if x != nil {
 		return x.Citations
+	}
+	return nil
+}
+
+func (x *Memory) GetSupersededBy() string {
+	if x != nil && x.SupersededBy != nil {
+		return *x.SupersededBy
+	}
+	return ""
+}
+
+func (x *Memory) GetSupersedes() []string {
+	if x != nil {
+		return x.Supersedes
+	}
+	return nil
+}
+
+func (x *Memory) GetNotBefore() *timestamppb.Timestamp {
+	if x != nil {
+		return x.NotBefore
+	}
+	return nil
+}
+
+func (x *Memory) GetNotAfter() *timestamppb.Timestamp {
+	if x != nil {
+		return x.NotAfter
+	}
+	return nil
+}
+
+func (x *Memory) GetArchivedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ArchivedAt
+	}
+	return nil
+}
+
+func (x *Memory) GetSchemaVersion() uint32 {
+	if x != nil && x.SchemaVersion != nil {
+		return *x.SchemaVersion
+	}
+	return 0
+}
+
+func (x *Memory) GetSummaryModel() string {
+	if x != nil && x.SummaryModel != nil {
+		return *x.SummaryModel
+	}
+	return ""
+}
+
+func (x *Memory) GetSummaryEgressAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SummaryEgressAt
 	}
 	return nil
 }
@@ -1970,7 +2045,7 @@ var File_engram_v1_engram_proto protoreflect.FileDescriptor
 
 const file_engram_v1_engram_proto_rawDesc = "" +
 	"\n" +
-	"\x16engram/v1/engram.proto\x12\tengram.v1\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bbuf/validate/validate.proto\"\xa2\x05\n" +
+	"\x16engram/v1/engram.proto\x12\tengram.v1\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bbuf/validate/validate.proto\"\xf2\b\n" +
 	"\x06Memory\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x14\n" +
@@ -1997,7 +2072,22 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\faccess_count\x18\x13 \x01(\x04R\vaccessCount\x12D\n" +
 	"\x10last_accessed_at\x18\x14 \x01(\v2\x1a.google.protobuf.TimestampR\x0elastAccessedAt\x12\x12\n" +
 	"\x04kind\x18\x15 \x01(\tR\x04kind\x121\n" +
-	"\tcitations\x18\x16 \x03(\v2\x13.engram.v1.CitationR\tcitations\"8\n" +
+	"\tcitations\x18\x16 \x03(\v2\x13.engram.v1.CitationR\tcitations\x12(\n" +
+	"\rsuperseded_by\x18\x17 \x01(\tH\x00R\fsupersededBy\x88\x01\x01\x12\x1e\n" +
+	"\n" +
+	"supersedes\x18\x18 \x03(\tR\n" +
+	"supersedes\x129\n" +
+	"\n" +
+	"not_before\x18\x19 \x01(\v2\x1a.google.protobuf.TimestampR\tnotBefore\x127\n" +
+	"\tnot_after\x18\x1a \x01(\v2\x1a.google.protobuf.TimestampR\bnotAfter\x12;\n" +
+	"\varchived_at\x18\x1b \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"archivedAt\x12*\n" +
+	"\x0eschema_version\x18\x1c \x01(\rH\x01R\rschemaVersion\x88\x01\x01\x12(\n" +
+	"\rsummary_model\x18\x1d \x01(\tH\x02R\fsummaryModel\x88\x01\x01\x12F\n" +
+	"\x11summary_egress_at\x18\x1e \x01(\v2\x1a.google.protobuf.TimestampR\x0fsummaryEgressAtB\x10\n" +
+	"\x0e_superseded_byB\x11\n" +
+	"\x0f_schema_versionB\x10\n" +
+	"\x0e_summary_model\"8\n" +
 	"\n" +
 	"ScopeCount\x12\x14\n" +
 	"\x05scope\x18\x01 \x01(\tR\x05scope\x12\x14\n" +
@@ -2210,43 +2300,47 @@ var file_engram_v1_engram_proto_depIdxs = []int32{
 	26, // 0: engram.v1.Memory.created_at:type_name -> google.protobuf.Timestamp
 	26, // 1: engram.v1.Memory.last_accessed_at:type_name -> google.protobuf.Timestamp
 	15, // 2: engram.v1.Memory.citations:type_name -> engram.v1.Citation
-	2,  // 3: engram.v1.ListScopesResponse.scopes:type_name -> engram.v1.ScopeCount
-	1,  // 4: engram.v1.ListMemoriesResponse.memories:type_name -> engram.v1.Memory
-	1,  // 5: engram.v1.SearchMemoriesResponse.memories:type_name -> engram.v1.Memory
-	1,  // 6: engram.v1.GetMemoryResponse.memory:type_name -> engram.v1.Memory
-	1,  // 7: engram.v1.SearchDiscoveriesResponse.discoveries:type_name -> engram.v1.Memory
-	15, // 8: engram.v1.StoreDiscoveryRequest.citations:type_name -> engram.v1.Citation
-	27, // 9: engram.v1.UpdateMemoryRequest.update_mask:type_name -> google.protobuf.FieldMask
-	0,  // 10: engram.v1.SetVisibilityRequest.visibility:type_name -> engram.v1.Visibility
-	26, // 11: engram.v1.ScheduleMemoryRequest.not_before:type_name -> google.protobuf.Timestamp
-	26, // 12: engram.v1.ScheduleMemoryRequest.not_after:type_name -> google.protobuf.Timestamp
-	3,  // 13: engram.v1.EngramService.ListScopes:input_type -> engram.v1.ListScopesRequest
-	5,  // 14: engram.v1.EngramService.ListMemories:input_type -> engram.v1.ListMemoriesRequest
-	7,  // 15: engram.v1.EngramService.SearchMemories:input_type -> engram.v1.SearchMemoriesRequest
-	9,  // 16: engram.v1.EngramService.GetMemory:input_type -> engram.v1.GetMemoryRequest
-	11, // 17: engram.v1.EngramService.SearchDiscoveries:input_type -> engram.v1.SearchDiscoveriesRequest
-	13, // 18: engram.v1.EngramService.StoreMemory:input_type -> engram.v1.StoreMemoryRequest
-	16, // 19: engram.v1.EngramService.StoreDiscovery:input_type -> engram.v1.StoreDiscoveryRequest
-	18, // 20: engram.v1.EngramService.UpdateMemory:input_type -> engram.v1.UpdateMemoryRequest
-	20, // 21: engram.v1.EngramService.DeleteMemory:input_type -> engram.v1.DeleteMemoryRequest
-	22, // 22: engram.v1.EngramService.SetVisibility:input_type -> engram.v1.SetVisibilityRequest
-	24, // 23: engram.v1.EngramService.ScheduleMemory:input_type -> engram.v1.ScheduleMemoryRequest
-	4,  // 24: engram.v1.EngramService.ListScopes:output_type -> engram.v1.ListScopesResponse
-	6,  // 25: engram.v1.EngramService.ListMemories:output_type -> engram.v1.ListMemoriesResponse
-	8,  // 26: engram.v1.EngramService.SearchMemories:output_type -> engram.v1.SearchMemoriesResponse
-	10, // 27: engram.v1.EngramService.GetMemory:output_type -> engram.v1.GetMemoryResponse
-	12, // 28: engram.v1.EngramService.SearchDiscoveries:output_type -> engram.v1.SearchDiscoveriesResponse
-	14, // 29: engram.v1.EngramService.StoreMemory:output_type -> engram.v1.StoreMemoryResponse
-	17, // 30: engram.v1.EngramService.StoreDiscovery:output_type -> engram.v1.StoreDiscoveryResponse
-	19, // 31: engram.v1.EngramService.UpdateMemory:output_type -> engram.v1.UpdateMemoryResponse
-	21, // 32: engram.v1.EngramService.DeleteMemory:output_type -> engram.v1.DeleteMemoryResponse
-	23, // 33: engram.v1.EngramService.SetVisibility:output_type -> engram.v1.SetVisibilityResponse
-	25, // 34: engram.v1.EngramService.ScheduleMemory:output_type -> engram.v1.ScheduleMemoryResponse
-	24, // [24:35] is the sub-list for method output_type
-	13, // [13:24] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	26, // 3: engram.v1.Memory.not_before:type_name -> google.protobuf.Timestamp
+	26, // 4: engram.v1.Memory.not_after:type_name -> google.protobuf.Timestamp
+	26, // 5: engram.v1.Memory.archived_at:type_name -> google.protobuf.Timestamp
+	26, // 6: engram.v1.Memory.summary_egress_at:type_name -> google.protobuf.Timestamp
+	2,  // 7: engram.v1.ListScopesResponse.scopes:type_name -> engram.v1.ScopeCount
+	1,  // 8: engram.v1.ListMemoriesResponse.memories:type_name -> engram.v1.Memory
+	1,  // 9: engram.v1.SearchMemoriesResponse.memories:type_name -> engram.v1.Memory
+	1,  // 10: engram.v1.GetMemoryResponse.memory:type_name -> engram.v1.Memory
+	1,  // 11: engram.v1.SearchDiscoveriesResponse.discoveries:type_name -> engram.v1.Memory
+	15, // 12: engram.v1.StoreDiscoveryRequest.citations:type_name -> engram.v1.Citation
+	27, // 13: engram.v1.UpdateMemoryRequest.update_mask:type_name -> google.protobuf.FieldMask
+	0,  // 14: engram.v1.SetVisibilityRequest.visibility:type_name -> engram.v1.Visibility
+	26, // 15: engram.v1.ScheduleMemoryRequest.not_before:type_name -> google.protobuf.Timestamp
+	26, // 16: engram.v1.ScheduleMemoryRequest.not_after:type_name -> google.protobuf.Timestamp
+	3,  // 17: engram.v1.EngramService.ListScopes:input_type -> engram.v1.ListScopesRequest
+	5,  // 18: engram.v1.EngramService.ListMemories:input_type -> engram.v1.ListMemoriesRequest
+	7,  // 19: engram.v1.EngramService.SearchMemories:input_type -> engram.v1.SearchMemoriesRequest
+	9,  // 20: engram.v1.EngramService.GetMemory:input_type -> engram.v1.GetMemoryRequest
+	11, // 21: engram.v1.EngramService.SearchDiscoveries:input_type -> engram.v1.SearchDiscoveriesRequest
+	13, // 22: engram.v1.EngramService.StoreMemory:input_type -> engram.v1.StoreMemoryRequest
+	16, // 23: engram.v1.EngramService.StoreDiscovery:input_type -> engram.v1.StoreDiscoveryRequest
+	18, // 24: engram.v1.EngramService.UpdateMemory:input_type -> engram.v1.UpdateMemoryRequest
+	20, // 25: engram.v1.EngramService.DeleteMemory:input_type -> engram.v1.DeleteMemoryRequest
+	22, // 26: engram.v1.EngramService.SetVisibility:input_type -> engram.v1.SetVisibilityRequest
+	24, // 27: engram.v1.EngramService.ScheduleMemory:input_type -> engram.v1.ScheduleMemoryRequest
+	4,  // 28: engram.v1.EngramService.ListScopes:output_type -> engram.v1.ListScopesResponse
+	6,  // 29: engram.v1.EngramService.ListMemories:output_type -> engram.v1.ListMemoriesResponse
+	8,  // 30: engram.v1.EngramService.SearchMemories:output_type -> engram.v1.SearchMemoriesResponse
+	10, // 31: engram.v1.EngramService.GetMemory:output_type -> engram.v1.GetMemoryResponse
+	12, // 32: engram.v1.EngramService.SearchDiscoveries:output_type -> engram.v1.SearchDiscoveriesResponse
+	14, // 33: engram.v1.EngramService.StoreMemory:output_type -> engram.v1.StoreMemoryResponse
+	17, // 34: engram.v1.EngramService.StoreDiscovery:output_type -> engram.v1.StoreDiscoveryResponse
+	19, // 35: engram.v1.EngramService.UpdateMemory:output_type -> engram.v1.UpdateMemoryResponse
+	21, // 36: engram.v1.EngramService.DeleteMemory:output_type -> engram.v1.DeleteMemoryResponse
+	23, // 37: engram.v1.EngramService.SetVisibility:output_type -> engram.v1.SetVisibilityResponse
+	25, // 38: engram.v1.EngramService.ScheduleMemory:output_type -> engram.v1.ScheduleMemoryResponse
+	28, // [28:39] is the sub-list for method output_type
+	17, // [17:28] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_engram_v1_engram_proto_init() }
@@ -2254,6 +2348,7 @@ func file_engram_v1_engram_proto_init() {
 	if File_engram_v1_engram_proto != nil {
 		return
 	}
+	file_engram_v1_engram_proto_msgTypes[0].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
