@@ -240,6 +240,29 @@ var operations = []Operation{
 		Class: Class{ReadOnly: false, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
+		// migrate is Phase 4's forward v0->v1 sweep (04-03-PLAN.md D-16):
+		// additive-only — migrate.CheckAdditive refuses the whole call if
+		// a registered step's declared key set does not match what it
+		// actually adds — yet it still previews by default and mutates
+		// only under --apply via registerDestructive, the same
+		// preview/apply contract a destructive command gets. Destructive:
+		// false is the point of the generalization: registerDestructive's
+		// admission gate is `!ReadOnly`, not `Destructive`, so an
+		// additive command can still earn the preview/apply choke point.
+		// Idempotent: a record already at CurrentVersion is untouched by
+		// a re-run.
+		MCPTool: "", CLICommand: "migrate",
+		Class: Class{ReadOnly: false, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
+	{
+		// migrate status reports Store.MigrateStatus's server-side
+		// version-distribution histogram — never a mutating Qdrant RPC.
+		// Idempotent: repeating the same status call against unchanged
+		// data reports the same distribution.
+		MCPTool: "", CLICommand: "migrate status",
+		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
+	{
 		// The bare `engram` self-describe invocation (no subcommand):
 		// prints the catalog JSON and exits. CLICommand is the root
 		// command's own Use ("engram") rather than empty, since

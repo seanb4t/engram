@@ -147,6 +147,60 @@
       }
     },
     {
+      "name": "migrate",
+      "summary": "Preview or apply the pending forward schema-version sweep",
+      "flags": [
+        {
+          "name": "apply",
+          "type": "bool",
+          "default": "false",
+          "usage": "a mutating operator command previews by default and mutates only when apply is set"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "5m0s",
+          "usage": "max wall-clock (0 disables); also cancellable via Ctrl-C"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "migrate status",
+      "summary": "Report a server-side schema-version distribution histogram",
+      "flags": [
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "5m0s",
+          "usage": "max wall-clock (0 disables); also cancellable via Ctrl-C"
+        }
+      ],
+      "blast_radius": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
       "name": "migrate-remap-owner",
       "summary": "Re-stamp record owner across the collection (sub-\u003eemail, email-\u003eemail, owner-less, or anonymous bucket)",
       "flags": [

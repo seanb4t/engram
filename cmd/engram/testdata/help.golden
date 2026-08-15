@@ -12,6 +12,7 @@ Available Commands:
   completion          Generate the autocompletion script for the specified shell
   help                Help about any command
   list                List memories on a remote engram server
+  migrate             Preview or apply the pending forward schema-version sweep
   migrate-remap-owner Re-stamp record owner across the collection (sub->email, email->email, owner-less, or anonymous bucket)
   prune-expired       Delete memories whose validity window (not_after) has lapsed
   reindex             Re-embed memories into a new (new-dimension) collection for embedder migration
@@ -71,6 +72,41 @@ Flags:
       --timeout string          per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
       --token-file string       path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
       --visibility string       visibility filter: "" (all), "private", or "shared"
+```
+
+## engram migrate
+
+```
+Advance every below-target record through the registered migrate.Registry step chain (today: v0->v1, minting a short_id for any record that lacks one). A bare invocation previews the full backlog and writes nothing; --apply re-derives eligibility within its own run (a fresh preview inside the apply closure) and migrates only the intersection of what it just showed and what is still eligible at that moment — a record that became ineligible since preview is spared, and a record that became newly eligible is reported appeared (never migrated; re-run to include it).
+
+Usage:
+  engram migrate [flags]
+  engram migrate [command]
+
+Available Commands:
+  status      Report a server-side schema-version distribution histogram
+
+Flags:
+      --apply              a mutating operator command previews by default and mutates only when apply is set
+  -h, --help               help for migrate
+      --output string      output format: "json" or "text" (default: detect from stdout)
+      --timeout duration   max wall-clock (0 disables); also cancellable via Ctrl-C (default 5m0s)
+
+Use "engram migrate [command] --help" for more information about a command.
+```
+
+## engram migrate status
+
+```
+Report a server-side schema-version distribution histogram
+
+Usage:
+  engram migrate status [flags]
+
+Flags:
+  -h, --help               help for status
+      --output string      output format: "json" or "text" (default: detect from stdout)
+      --timeout duration   max wall-clock (0 disables); also cancellable via Ctrl-C (default 5m0s)
 ```
 
 ## engram migrate-remap-owner

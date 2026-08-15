@@ -171,11 +171,15 @@ func TestClassifyOperatorErrCodesAreDistinct(t *testing.T) {
 	}
 }
 
-// operatorCommandFiles lists the six operator command source files D-03
-// scopes for full classification (CONTEXT.md). Kept as a literal here
-// rather than a directory walk so a new operator command file must be
-// added explicitly -- the same discipline TestExitCodeBaselineRowCount
-// applies to its own row list.
+// operatorCommandFiles lists the operator command source files D-03 scopes
+// for full classification (CONTEXT.md). Kept as a literal here rather than
+// a directory walk so a new operator command file must be added explicitly
+// -- the same discipline TestExitCodeBaselineRowCount applies to its own
+// row list. migrate_family.go (04-03-PLAN.md Task 2) is the phase's newest
+// entry, added the SAME task that created the file (REVIEWS.md C5-H3) --
+// this list does not appear in TestNoBareOperatorErrorReturns' own failure
+// output when a file is missing, so an unlisted operator command file is a
+// SILENT coverage gap, not a loud one.
 var operatorCommandFiles = []string{
 	"reindex.go",
 	"prune.go",
@@ -183,6 +187,7 @@ var operatorCommandFiles = []string{
 	"backfill.go",
 	"migrate.go",
 	"serve.go",
+	"migrate_family.go",
 }
 
 // bareOperatorErrorExceptionMarker is the explicit opt-out comment a

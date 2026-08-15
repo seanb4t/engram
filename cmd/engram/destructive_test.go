@@ -191,12 +191,20 @@ func ownFlagNames(cmd *cobra.Command) []string {
 	return out
 }
 
-// TestDestructiveCommandsRequireApply is D-03's derivation gate: the set of
-// live commands carrying an --apply flag must equal the set
-// surfaces.Operations() classifies destructive, in BOTH directions, so
-// neither a missing flag nor a stray one passes.
+// TestDestructiveCommandsRequireApply is D-03's derivation gate, widened by
+// REVIEWS.md M12 (as corrected by C4-H1, Task 1): the set of live commands
+// carrying an --apply flag must equal mutatingCommandNames() — the NAMED
+// union destructiveCommandNames() ∪ applyRoutedAdditions −
+// pendingApplyConversion — in BOTH directions, so neither a missing flag
+// nor a stray one passes. This is deliberately NOT destructiveCommandNames()
+// alone: migrate (Destructive:false) carries --apply too, via
+// applyRoutedAdditions. At the end of Task 2 this resolves to exactly four
+// names — migrate, migrate-remap-owner, prune-expired, spine-review purge
+// — matching the four live registerDestructive callers (prune.go:159,
+// spine_review_purge.go:425, migrate.go:257, migrate_family.go); Task 3
+// adds the fifth (migrate revert) on both sides in one edit.
 func TestDestructiveCommandsRequireApply(t *testing.T) {
-	want := destructiveCommandNames()
+	want := mutatingCommandNames()
 	got := map[string]bool{}
 	for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {
 		if cmd.Flags().Lookup("apply") != nil {
@@ -205,12 +213,37 @@ func TestDestructiveCommandsRequireApply(t *testing.T) {
 	}
 	for key := range want {
 		if !got[key] {
-			t.Errorf("destructive command %q has no --apply flag", key)
+			t.Errorf("mutating command %q has no --apply flag", key)
 		}
 	}
 	for key := range got {
 		if !want[key] {
-			t.Errorf("command %q carries --apply but is not classified destructive", key)
+			t.Errorf("command %q carries --apply but is not classified mutating (destructiveCommandNames() ∪ applyRoutedAdditions − pendingApplyConversion)", key)
+		}
+	}
+}
+
+// TestApplyRoutedAdditionsArePinned is the direct analogue of
+// TestOperatorCommands' exclusion-set pinning (cmdwalk_test.go:117-130):
+// every name in applyRoutedAdditions must resolve to a live
+// surfaces.ClassForCommand row that is ReadOnly:false (an additive-but-
+// mutating command CAN route through registerDestructive) and
+// Destructive:false (a Destructive:true entry would be redundant with
+// destructiveCommandNames() and therefore stale by construction — a future
+// reclassification of migrate/backfill-short-ids to Destructive:true fails
+// this pin loudly instead of leaving a silently duplicated name).
+func TestApplyRoutedAdditionsArePinned(t *testing.T) {
+	for name := range applyRoutedAdditions {
+		class, ok := surfaces.ClassForCommand(name)
+		if !ok {
+			t.Errorf("applyRoutedAdditions names %q, which has no surfaces.ClassForCommand row", name)
+			continue
+		}
+		if class.ReadOnly {
+			t.Errorf("applyRoutedAdditions names %q, which is ReadOnly:true — it cannot be an additive-but-mutating command", name)
+		}
+		if class.Destructive {
+			t.Errorf("applyRoutedAdditions names %q, which is Destructive:true — it is redundant with destructiveCommandNames() and stale by construction", name)
 		}
 	}
 }
