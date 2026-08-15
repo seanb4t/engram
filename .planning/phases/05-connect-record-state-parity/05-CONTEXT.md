@@ -66,9 +66,21 @@ field comments and the one repaired `store.Memory` comment named in D-04.
   `Memory`'s 22 — beyond the named six, `summary_model` and `summary_egress_at` are also
   absent from the Connect lane while being present on the MCP lane (`shapeRecall` returns
   `store.Memory` verbatim on `full=true`). Both are added: they are already caller-visible on
-  MCP, so this exposes nothing new, and it removes an undeclared lane asymmetry rather than
-  codifying one. There is no do-nothing option — the exhaustive test of
-  `REQ-connect-parity-roundtrip-proof` cannot be written without classifying them.
+  MCP, so this exposes nothing new, and it removes the lane asymmetry rather than codifying it.
+  There is no do-nothing option — the exhaustive test of `REQ-connect-parity-roundtrip-proof`
+  cannot be written without classifying them.
+
+  **This REVERSES a prior decision, deliberately.** Durable record `zyaa3m2fvd` (2026-06-28,
+  closing `engram-3nof`) held that `summary_model` stays store-only and off the proto/Connect
+  wire, reasoning that only `summary`/`summary_source` are client-meaningful, that
+  `summary_model` and `summary_egress_at` are store-internal diagnostics, and that adding one
+  without the other would be asymmetric. That record closed with an explicit invitation:
+  *"Reconsider BOTH together if a consumer ever needs them."* D-04 is that reconsideration,
+  taken together as the record required. What changed: `REQ-connect-parity-roundtrip-proof`
+  makes the classification of every `store.Memory` field mandatory rather than optional, and
+  the consumer is the parity invariant itself — under D-05 an exclusion is no longer free, it
+  costs a permanent exemption in a mechanism whose whole value is having none. `zyaa3m2fvd`
+  is superseded by this decision, not merely overridden.
 
   **Field number assignment** (permanent; assigning the roadmap's named six to 23–28 in its
   own stated order keeps SC1's "field numbers 23–28" literally true):
@@ -189,6 +201,21 @@ field comments and the one repaired `store.Memory` comment named in D-04.
 ## Canonical References
 
 **Downstream agents MUST read these before planning or implementing.**
+
+### Durable memory records this phase reverses or relies on
+
+- `zyaa3m2fvd` — the 2026-06-28 decision keeping `summary_model`/`summary_egress_at` off the
+  Connect wire, **reversed by D-04** under the reconsider-both-together clause it stated.
+- `s780vae1vr` — a `deprecated = true` proto field still occupies its number; reusing one is the
+  single way an otherwise-additive change trips `buf breaking` in FILE mode.
+- `fbgyfq6j6j` — `/gsd-discuss-phase` records scope expansions in CONTEXT.md but never
+  propagates them to `ROADMAP.md`; a separate `/gsd-phase edit` is required and has been missed
+  three consecutive phases. Both roadmap edits named in D-04 and D-09 are subject to this.
+- `k000pn14qp` — an anti-vacuity guard must prove the FILTER can match, not merely that the
+  producer emitted rows (drives D-07 and D-09).
+- `m56eqp97fq` — a fixture that makes the asserted value zero by construction passes vacuously
+  (drives D-06).
+- `ye5922wnvf` — enforce an invariant by construction, not by written rule (drives D-05).
 
 ### Prior-phase decisions this phase is bound by
 
