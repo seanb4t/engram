@@ -1,0 +1,1 @@
+No external API integration: this phase adds eight fields to engram's OWN `EngramService` protobuf schema and wires them through `memoryToProto` — the "Connect" and "MCP" terms the detector matched are this project's own two read/write lanes, not a third-party service, SDK, or endpoint being consumed.
