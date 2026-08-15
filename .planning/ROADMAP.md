@@ -339,7 +339,7 @@ Research flag: yes — the exact `internal/migrate` step-registry API shape (ste
   5. `engram migrate revert` previews by default like `--apply`, runs declared inverses in reverse order, and refuses the whole operation at the first irreversible step in the requested range rather than reverting partially — the refusal message names a collection snapshot as the recovery path.
   6. No migration ever runs automatically on server startup; at most, startup emits a non-blocking warning that pending migrations exist.
 
-**Plans:** 2/4 plans executed
+**Plans:** 3/4 plans executed
 
 Plans:
 **Wave 1**
@@ -352,7 +352,7 @@ Plans:
 
 **Wave 3**
 
-- [ ] 04-03-PLAN.md — CLI surface: generalize registerDestructive's ADMISSION gate to !ReadOnly + engram migrate/status/revert w/ in-apply-closure re-preview (H5/purge pattern, NOT package var) + shared migrateSweep{Preview,Apply}Run funcs the alias reuses (cycle-3 #7) + duration-taking migrateWithTimeout w/ per-leaf vars incl. read-only migrate status (H8/N3/C5-M6) + consumes 04-02's exported PreviewRevert and RevertRefusalError (M8/C5-M4) + store interface seam (M7) + leaf-only Use strings (M6) + TestDestructiveCommandsRequireApply re-derived from the NAMED union mutatingCommandNames() (M12/C4-H1) + pinned "mutating operator command" rule sentence via surfaces:gen (N5) + toolclass rows; **every operatorCommands()-keyed registry and a golden regeneration land in the SAME task as their command** — T2 for migrate/migrate status, T3 for migrate revert (wave 3)
+- [x] 04-03-PLAN.md — CLI surface: generalize registerDestructive's ADMISSION gate to !ReadOnly + engram migrate/status/revert w/ in-apply-closure re-preview (H5/purge pattern, NOT package var) + shared migrateSweep{Preview,Apply}Run funcs the alias reuses (cycle-3 #7) + duration-taking migrateWithTimeout w/ per-leaf vars incl. read-only migrate status (H8/N3/C5-M6) + consumes 04-02's exported PreviewRevert and RevertRefusalError (M8/C5-M4) + store interface seam (M7) + leaf-only Use strings (M6) + TestDestructiveCommandsRequireApply re-derived from the NAMED union mutatingCommandNames() (M12/C4-H1) + pinned "mutating operator command" rule sentence via surfaces:gen (N5) + toolclass rows; **every operatorCommands()-keyed registry and a golden regeneration land in the SAME task as their command** — T2 for migrate/migrate status, T3 for migrate revert (wave 3)
 
 **Wave 4**
 
