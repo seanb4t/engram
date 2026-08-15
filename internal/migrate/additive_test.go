@@ -37,8 +37,18 @@ import (
 // payload, so an overwritten value never reaches Qdrant — proven by
 // TestMigrateWritesOnlyAddedKeys (plan 03-01, internal/store/migrate_test.go).
 func TestAdditiveOnlyKeySetDiff(t *testing.T) {
-	if len(Registry) != 0 {
-		t.Fatalf("Registry has %d step(s), want 0: this phase ships an EMPTY production registry (D-06) — this table deliberately runs against test-only fixtures instead of Registry, because iterating an empty Registry would pass for the wrong reason", len(Registry))
+	// Phase 4 registered the v0->v1 step (M13): Registry is no longer
+	// empty. This table still runs against test-only fixture steps built
+	// via NewStep, never Registry itself — so its content is independent
+	// of Registry either way — but the shape of that independence
+	// changed: it used to be "Registry is empty, so nothing to
+	// accidentally scan"; now it is "the table iterates its own fixture
+	// slice, never Registry's".
+	if len(Registry) < 1 {
+		t.Fatalf("Registry has %d step(s), want >=1: Phase 4 registered the v0->v1 step — this test's table runs against test-only fixtures, not Registry, so it is independent of Registry content", len(Registry))
+	}
+	if Registry[0].From() != 0 || Registry[0].To() != 1 {
+		t.Fatalf("first registered step must be v0->v1, got From=%d To=%d", Registry[0].From(), Registry[0].To())
 	}
 
 	fixtures := []struct {

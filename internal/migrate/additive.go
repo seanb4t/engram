@@ -48,7 +48,16 @@ func keyDiff(a, b map[string]any) []string {
 //     declaration would stop describing the step's real behavior, and the
 //     declaration is the entire mechanism this function exists to
 //     enforce. On failure the error names both differences separately:
-//     keys added but not declared, and keys declared but never added.
+//     keys added but not declared, and keys declared but never added. A
+//     declared key already carried by before is not a declaration
+//     failure — the step's job is to ENSURE the key exists, and it
+//     already does; a declared key already PRESENT in before is treated
+//     as satisfied, even when after does not additionally "add" it
+//     (REVIEWS.md H1). This carve-out is task-limited: a step that
+//     declares a key neither adds it NOR finds it pre-existing in before
+//     is still caught as "declared key never added" — the carve-out only
+//     recognizes a key that is genuinely already there, never one that is
+//     simply absent from both before and after.
 //
 // This comparison is over KEY SETS ONLY. A step that overwrites an
 // EXISTING key's VALUE in place — leaving the key set itself unchanged —
@@ -85,9 +94,17 @@ func CheckAdditive(s Step, before, after map[string]any) error {
 		}
 	}
 	for _, k := range declared {
-		if _, ok := addedSet[k]; !ok {
-			missing = append(missing, k)
+		if _, ok := addedSet[k]; ok {
+			continue
 		}
+		// A declared key already present in before is satisfied by its
+		// pre-existing presence: the step's declaration promises the key
+		// exists after applying, and it did before the step ever ran
+		// (REVIEWS.md H1's pre-existing-short_id carve-out).
+		if _, ok := before[k]; ok {
+			continue
+		}
+		missing = append(missing, k)
 	}
 	if len(undeclared) > 0 {
 		parts = append(parts, fmt.Sprintf("added key(s) not declared in AddsKeys: %v", undeclared))
