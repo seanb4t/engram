@@ -25,7 +25,11 @@ field comments and the one repaired `store.Memory` comment named in D-04.
 
 ### Wire Representation
 
-- **D-01:** `schema_version` is a **plain `uint32`** (field 28) — no `optional`, no explicit
+- **D-01:** ⚠️ **REVERSED by D-14 (2026-08-15).** `schema_version` is now `optional uint32`.
+  The text below is kept as the record of what was decided first and why. Read D-14 before you
+  act on it.
+
+  `schema_version` is a **plain `uint32`** (field 28) — no `optional`, no explicit
   presence. Zero *is* v0 *is* absent, which is the exact semantics Phase 2's D-09 locked when
   it rejected `*int` in Go for the same reason: absent and zero are *defined here* to be the
   same state. This keeps every downstream consumer (Phase 7's CLI and console) free of a nil
@@ -36,7 +40,10 @@ field comments and the one repaired `store.Memory` comment named in D-04.
   — **Reversibility:** one-way — the field number and type are a published wire contract; a
   later change to `optional` is a breaking change under `buf breaking` FILE mode.
 
-- **D-02:** `superseded_by` is a **plain `string`** (field 23) — nil maps to `""`, `""`
+- **D-02:** ⚠️ **REVERSED by D-14 (2026-08-15).** `superseded_by` is now `optional string`.
+  The text below is kept as the record of what was decided first and why.
+
+  `superseded_by` is a **plain `string`** (field 23) — nil maps to `""`, `""`
   decodes to nil. Lossless in practice because `store.Memory.SupersededBy` only ever holds a
   real record id (server-set via `Store.Supersede`'s back-stamp); empty-string is not a value
   the store can produce. `optional string` was rejected: it costs a `*string` in Go and a nil
@@ -58,6 +65,59 @@ field comments and the one repaired `store.Memory` comment named in D-04.
   `(buf.validate.field).required` is defined in terms of field *presence* and therefore cannot
   be expressed on the presence-less `uint32` D-01 selects.
   — **Reversibility:** reversible.
+  — **Amended by D-14:** the protovalidate finding above still holds and is now verified against
+  the source: the interceptor at `internal/server/connectvalidate.go:24-31` validates
+  `req.Any()` only, and `message Memory` carries zero `buf.validate` annotations. D-14 does NOT
+  adopt `optional` to enable protovalidate — nothing validates `Memory` either way. D-14 also
+  makes D-03's assertion load-bearing rather than confirmatory; see D-14's §3.
+
+- **D-14 (2026-08-15, Sean — SUPERSEDES D-01 and D-02):** **All three new scalar fields take
+  explicit presence.** Field 23 `superseded_by` becomes `optional string`, field 28
+  `schema_version` becomes `optional uint32`, field 29 `summary_model` becomes
+  `optional string`. The other five new fields are unaffected: 25/26/27/30 are
+  `google.protobuf.Timestamp`, and message fields already have explicit presence in proto3;
+  24 `supersedes` is `repeated` and has no presence concept.
+
+  **1. Rationale (user decision).** Explicit optionality is preferred over inferring absence
+  from a zero value. One uniform rule across the new scalars is easier to state, to review, and
+  to consume than a per-field judgment about whether each zero value is a real domain member.
+  `superseded_by` is the strongest case on the merits — its Go source is `SupersededBy *string`
+  (`internal/store/store.go:230`), so `optional` carries the pointer to the wire exactly and no
+  reader must know that `""` encodes nil.
+
+  **2. Recorded divergence from Phase 2 D-09.** D-09 locked *zero is v0 is absent* for the
+  STORE. That store semantics is unchanged: a payload with no `schema_version` key is still v0.
+  What changes is that the WIRE can now distinguish "assigned" from "not assigned", a state the
+  store cannot express. This divergence was raised before the decision and accepted knowingly.
+  The mapper closes it by always assigning the field (see §3), so no `Memory` on the wire ever
+  carries the unset state.
+
+  **3. NEW hard requirement on the mapper — the one real risk this introduces.** `renderJSON`
+  sets `EmitDefaultValues: true` (`cmd/engram/client_common.go:381`). That flag forces zero
+  values to be emitted for *implicit*-presence fields only. protojson emits an `optional` field
+  when it is set and OMITS it when unset, and `EmitDefaultValues` does not override that. So
+  Phase 2's D-10 guarantee — *"an operator asking what version is this record always gets one"* —
+  now holds **only if `memoryToProto` always assigns `schema_version` explicitly, including for
+  v0.** If it is ever left unset the key vanishes from the JSON document entirely, where the
+  plain `uint32` would have rendered `0` regardless. D-03's renderJSON assertion is therefore no
+  longer a confirmation of an automatic property; it is the gate on a property the mapper must
+  actively maintain. The same applies to `summary_model` and `superseded_by`: assign always,
+  never conditionally.
+
+  **4. Side effect that strengthens the parity proof.** For an implicit-presence scalar,
+  `protoreflect`'s `Has(fd)` is true only when the value is non-zero, so it conflates "never
+  assigned" with "assigned zero" — which is why the plan's auto-fill needs a non-zero value for
+  every field. For an `optional` field, `Has(fd)` reports actual assignment. On these three
+  fields the population detector therefore becomes a direct test of "did `memoryToProto` assign
+  this", which is what it was always trying to measure.
+
+  **5. Go type changes rippling into the plans.** Generated fields become `*string`, `*uint32`,
+  `*string`. `memoryToProto` must set them via pointers, and the parity test's reflection
+  auto-fill and comparison must handle pointer-typed scalars for these three.
+
+  **6. protovalidate is NOT the motivation.** See D-03's amendment. Nothing validates `Memory`.
+  — **Reversibility:** one-way. Presence is part of the published wire contract; changing it
+  later in either direction is breaking under `buf breaking` FILE mode.
 
 ### Scope of the Additive Pass
 
@@ -85,16 +145,22 @@ field comments and the one repaired `store.Memory` comment named in D-04.
   **Field number assignment** (permanent; assigning the roadmap's named six to 23–28 in its
   own stated order keeps SC1's "field numbers 23–28" literally true):
 
-  | # | Field | Proto type | Source |
-  |---|-------|-----------|--------|
-  | 23 | `superseded_by` | `string` | `SupersededBy *string` (D-02) |
-  | 24 | `supersedes` | `repeated string` | `Supersedes []string` |
-  | 25 | `not_before` | `google.protobuf.Timestamp` | `NotBefore *time.Time` |
-  | 26 | `not_after` | `google.protobuf.Timestamp` | `NotAfter *time.Time` |
-  | 27 | `archived_at` | `google.protobuf.Timestamp` | `ArchivedAt *time.Time` |
-  | 28 | `schema_version` | `uint32` | `SchemaVersion migrate.Version` (D-01) |
-  | 29 | `summary_model` | `string` | `SummaryModel string` |
-  | 30 | `summary_egress_at` | `google.protobuf.Timestamp` | `SummaryEgressAt time.Time` |
+  **Proto types below are as amended by D-14 (2026-08-15).** The three scalars take explicit
+  presence; the four Timestamps already have it, and `repeated` has no presence concept.
+
+  | # | Field | Proto type | Generated Go | Source |
+  |---|-------|-----------|--------------|--------|
+  | 23 | `superseded_by` | `optional string` (D-14) | `*string` | `SupersededBy *string` |
+  | 24 | `supersedes` | `repeated string` | `[]string` | `Supersedes []string` |
+  | 25 | `not_before` | `google.protobuf.Timestamp` | `*timestamppb.Timestamp` | `NotBefore *time.Time` |
+  | 26 | `not_after` | `google.protobuf.Timestamp` | `*timestamppb.Timestamp` | `NotAfter *time.Time` |
+  | 27 | `archived_at` | `google.protobuf.Timestamp` | `*timestamppb.Timestamp` | `ArchivedAt *time.Time` |
+  | 28 | `schema_version` | `optional uint32` (D-14) | `*uint32` | `SchemaVersion migrate.Version` |
+  | 29 | `summary_model` | `optional string` (D-14) | `*string` | `SummaryModel string` |
+  | 30 | `summary_egress_at` | `google.protobuf.Timestamp` | `*timestamppb.Timestamp` | `SummaryEgressAt time.Time` |
+
+  Every one of the three optional scalars must be assigned unconditionally by `memoryToProto`,
+  including when the source value is the zero value — see D-14 §3.
 
   Timestamp fields inherit `memoryToProto`'s established nil/zero handling: leave the proto
   field **unset** rather than emitting a year-1 (`0001-01-01`) stamp — the discipline already
