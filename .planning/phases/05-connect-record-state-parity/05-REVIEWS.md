@@ -1,9 +1,9 @@
 ---
 phase: 5
 reviewers: [codex]
-reviewed_at: 2026-08-15T20:49:52Z
+reviewed_at: 2026-08-15T23:29:36Z
 plans_reviewed: [05-01-PLAN.md, 05-02-PLAN.md, 05-03-PLAN.md]
-cycle: 4
+cycle: 5
 ---
 
 # Cross-AI Plan Review — Phase 5
@@ -14,7 +14,9 @@ requested.
 
 This file is append-only across convergence cycles. Cycles 1, 2 and 3 are
 preserved below verbatim; cycle 4 — a CONFIRMATION cycle explicitly authorized by
-the human after `--max-cycles 3` was reached — follows them.
+the human after `--max-cycles 3` was reached — follows them; and cycle 5 — a
+SCOPE-AMENDMENT review triggered when Sean reversed a locked decision at the
+plan's blocking checkpoint (D-14) — follows cycle 4.
 
 ---
 
@@ -878,3 +880,216 @@ disagreement on any verdict.
 cycle-3 findings (C3-H1, C3-M1, C3-L1, C3-L2) are RESOLVED, and cycle 3's repair —
 unlike cycle 1's and cycle 2's — introduced no new HIGH. The plans are sound as
 written; the confirmation cycle's purpose is discharged.
+
+---
+
+# CYCLE 5 — 2026-08-15T23:29:36Z
+
+**This cycle reviews a SCOPE AMENDMENT, not another repair pass.** Cycles 1–4 converged
+the plans to 0 HIGH / 0 actionable. Sean then reversed a locked decision at the plan's
+blocking checkpoint (D-14, recorded in `41b507cc`), and the plans were amended for it in
+`d04d3651`. Cycle 5 reviews that amendment.
+
+Reviewer set: `codex` (codex-cli 0.147.0), invoked with repo access, a Go toolchain, and a
+source-grounding prompt that named the amendment's empirical claims as load-bearing and
+required them to be executed rather than accepted. `--codex` was named explicitly; no other
+lane was requested.
+
+Scoped OUT of this cycle by the orchestrator, and honored by the reviewer: the
+mapper/renderer seam (accepted, tracked as **#499**); 05-01's single `verify.plan-structure`
+`one-way`-without-`checkpoint:decision` warning (intended — the checkpoint was answered and
+converted to a `<ratified_decision>` record); and D-14 itself, which is Sean's decision and
+not open to re-litigation.
+
+## Codex Review
+
+## Summary
+
+The amendment’s executable design is mostly sound: the protojson observations, pointer-level assertions, `Has(fd)` asymmetries, compile-time presence gate, and RED PROOF 3 all check out. However, D-14’s authoritative text contradicts the plans on `superseded_by`: D-14 repeatedly requires all three optional scalars to be assigned unconditionally, while the plans correctly preserve a nil `SupersededBy` as unset. Because an executor cannot satisfy both the locked decision and the acceptance tests, the amendment is not fully converged.
+
+## Verification log
+
+| Claim tested | Method | Result |
+|---|---|---|
+| Protobuf runtime is v1.36.11 | Inspected `go.mod:38`; generated a throwaway proto with the pinned `protoc-gen-go` | Confirmed |
+| Unassigned optional under `EmitDefaultValues:true` | Marshaled generated `&Memory{}` | `has=false`; key absent |
+| Unassigned optional under `EmitUnpopulated:true` | Same throwaway program | `has=false`; key absent |
+| Assigned `proto.Uint32(0)` under `EmitDefaultValues:true` | Marshaled generated message | `has=true`; `"schema_version":0` |
+| Assigned `proto.Uint32(0)` with defaults disabled | Same program | `has=true`; `"schema_version":0` |
+| `Has(fd)` distinguishes assigned zero from unset | `ProtoReflect().Has(fd)` in the throwaway program | Assigned zero `true`; unset `false` |
+| Pointer comparison rejects plain scalar | Compiled `x.SchemaVersion != nil` where field was `uint32` | Failed as claimed: `mismatched types uint32 and untyped nil` |
+| Existing mapper lacks the eight fields | Inspected `internal/server/connectapi.go:48-69` | Confirmed; plans target the real gap |
+| Store types remain unchanged by D-14 | Inspected `internal/store/store.go:226-276` | `*string`, `migrate.Version`, and `string`, as claimed |
+| `renderJSON` options | Inspected `cmd/engram/client_common.go:369-390` | `UseProtoNames` and `EmitDefaultValues` are enabled |
+| RED PROOF 1 asymmetry | Traced deletion through optional presence semantics and proposed population loop | Deletion makes pointer nil and `Has(fd)==false`; population gate goes red |
+| RED PROOF 2 asymmetry | Traced wrong nonzero wrapped value | `Has(fd)` stays true; decode-back comparator alone goes red |
+| RED PROOF 3 asymmetry | Traced conditional assignment with zero and auto-filled fixtures | Zero fixture goes red; detector, nonzero population, and decode-back fixtures stay green |
+| Live gate spelling | Searched all three plans | Live diff gate uses `^\+func`; `^func` occurrences are symbol-count gates or historical text. `--numstat` appears only as rejected historical text. `git diff <BASE> --` remains live. |
+
+## Strengths
+
+- The empirical protojson model is correct. Assigned optional zero is serialized regardless of `EmitDefaultValues`, while unset optional fields remain absent under both marshal settings (`05-01-PLAN.md:162-178`, independently reproduced).
+
+- The pre-amendment CLI fixture would indeed fail: generated optional fields have pointer storage, so leaving `SchemaVersion` at its Go zero value means nil, not assigned zero (`05-03-PLAN.md:395-407`).
+
+- The CLI fixture pair exercises a real renderer property rather than merely inspecting the stub. The two cases must differ only in pointer assignment (`05-03-PLAN.md:445-447`), so an always-emit renderer fails the negative case and an always-omit renderer fails the positive case.
+
+- Zero-value mapper assertions are explicitly pointer/presence-level: `Has(fd)`, `msg.SchemaVersion != nil`, and dereferencing to compare zero (`05-02-PLAN.md:519-536`). Nil-safe getters are expressly forbidden.
+
+- RED PROOF 3 targets the new failure mode precisely. Its nonzero auto-filled fixture explains why the detector, general population assertion, and comparator remain green, while `store.Memory{}` exposes the conditional assignment (`05-02-PLAN.md:580-600`).
+
+- The mapper/renderer seam is accurately scoped and cannot be overstated by the required summaries (`05-02-PLAN.md:538-546`, `05-03-PLAN.md:525-533`).
+
+- The three `D-14 CORRECTION` blocks in `05-PATTERNS.md:59-79`, `:124-145`, and `:378-404` correctly describe the intended executable implementation. I found no additional D-14-invalid statement in PATTERNS.md.
+
+## Concerns
+
+- **[NEW] HIGH — D-14 contradicts the plans on `superseded_by`.** D-14 first says optionality carries the store pointer exactly (`05-CONTEXT.md:81-86`), but then requires `superseded_by` to be assigned always (`:95-105`) and says every optional scalar must be unconditionally assigned even for a zero-value source (`:162-163`). The plans instead—and consistently—require a nil source to remain unset (`05-01-PLAN.md:359-361`; `05-02-PLAN.md:519-528`). Following D-14 literally would require converting nil into a non-nil pointer, causing the mandatory zero-value test to fail. This is a contradicted locked decision and leaves no implementation that satisfies every instruction.
+
+- **[NEW] LOW — D-14’s pointer-ripple description is stale.** It says the reflection auto-fill and comparator must handle the three generated pointer types (`05-CONTEXT.md:114-116`). Those mechanisms walk `store.Memory` or use value-returning getters, so the plans correctly say no new pointer branch is required outside zero-value assertions (`05-02-PLAN.md:175-184`). This does not break the executable tasks, but it is another false instruction inside the authoritative decision record.
+
+- **[NEW] LOW — the negative-fixture rationale slightly overstates its necessity.** `05-03-PLAN.md:408-419` and `:446` say deleting the negative fixture makes the positive test a gate that “can only ever pass.” That is not literal: assigned-zero presence still fails if the renderer omits the field or changes its key spelling. The negative fixture remains valuable because it distinguishes assigned from unset behavior and catches unconditional emission; it is not what makes the positive assertion capable of failing.
+
+## Suggestions
+
+- Amend D-14 §3 and the field-table note:
+
+  - `schema_version` and `summary_model`: always wrap and assign, including zero/empty values.
+  - `superseded_by`: always copy the source pointer directly; nil remains unset and non-nil remains assigned.
+
+- Replace `05-CONTEXT.md:110-116` with the plan’s accurate distinction: auto-fill walks `store.Memory`; decode-back uses generated value getters; pointer handling is load-bearing only in zero-value presence assertions.
+
+- Reword the negative-fixture claim to: “The pair distinguishes assigned from unset rendering and catches both always-omit and always-emit regressions.”
+
+- Keep all existing RED proofs and commit-range gates unchanged.
+
+## Risk Assessment
+
+**HIGH until D-14 is corrected.** Runtime behavior and executable gates are well-designed, but the authoritative locked decision currently demands behavior that the plans’ mandatory tests reject. After resolving those contradictory D-14 sentences, residual implementation risk is **LOW**.
+
+---
+
+## Consensus Summary
+
+One reviewer ran this cycle, so there is no cross-reviewer consensus to synthesize. What
+follows is the orchestrator's independent adjudication of each finding, verified in the
+repo rather than accepted on the reviewer's word.
+
+### Orchestrator adjudication
+
+**C5-H1 — D-14 contradicts the plans on `superseded_by`. CONFIRMED, HIGH, UNRESOLVED.**
+
+Verified by reading both sides:
+
+- `05-CONTEXT.md:104-105` — "The same applies to `summary_model` and **`superseded_by`: assign
+  always, never conditionally**."
+- `05-CONTEXT.md:162-163` — "**Every one of the three optional scalars** must be assigned
+  **unconditionally** by `memoryToProto`, including when the source value is the zero value."
+- `05-01-PLAN.md:359-361` — "`SupersededBy: m.SupersededBy` — a direct `*string`-to-`*string`
+  copy. The store's nil (not superseded) becomes an **unset** proto field… **Do not
+  dereference, do not nil-guard, do not substitute `""`.**"
+- `05-02-PLAN.md:427`, `:523`, `:624`, `:698` — four separate assertions that for a
+  zero-value `store.Memory`, `superseded_by` reports `Has(fd) == false`.
+
+The contradiction is real and it is inside the authoritative decision record, which every
+plan `@`-references in its `<context>` block. D-14 §1 (`:81-86`) states the *correct* rule
+for this field — optionality exists precisely so the store's `*string` crosses the wire
+exactly, and `""` is not a valid memory id — so the defect is that §3's closing sentence and
+the table note over-generalized §1's own reasoning from two fields to three.
+
+Severity: the failure is loud, not silent — an executor who follows D-14 literally writes
+`SupersededBy: proto.String(...)` and the mandatory zero-value sub-test fails. But this is
+exactly the class this cycle was watching for: an amendment that leaves the executor with
+no implementation satisfying every instruction, and a real risk that the executor "repairs"
+the *gate* instead of the instruction, weakening the very assertion D-14 §4 strengthened.
+It is HIGH.
+
+Fix is a one-line-per-site correction to `05-CONTEXT.md` (`:104-105` and `:162-163`) to
+scope "assign unconditionally" to `schema_version` and `summary_model`, and to state
+`superseded_by`'s rule as a direct pointer copy. No plan text changes.
+
+**C5-L1 — D-14 §5's pointer-ripple claim is stale. CONFIRMED, but NOT actionable.**
+
+`05-CONTEXT.md:114-116` does say the auto-fill and comparator "must handle pointer-typed
+scalars for these three." It is wrong, and the reviewer is right that it is wrong. It is
+**not actionable**, because `05-02-PLAN.md:174-184` already reads it, names it, and rejects
+it in place with executed evidence: "The first instinct is that the reflection auto-fill and
+the decode-back comparator now need pointer handling. **They do not, and adding it would be
+noise**" — followed by the reason for each (`autoFillMemory` walks `store.Memory`, whose Go
+types D-14 does not touch; the generated accessors return value types, observed against this
+repo's pinned codegen). An explicit in-plan rejection with rationale is precisely the
+disposition that removes a finding from the actionable count. Correcting the CONTEXT sentence
+would be tidy; nothing in execution depends on it.
+
+**C5-L2 — the negative-fixture rationale overstates its necessity. CONFIRMED, but NOT
+actionable.**
+
+`05-03-PLAN.md:418-419` says deleting the negative sub-test "converts its sibling into a gate
+that can only ever pass." Strictly false: the assigned-zero assertion would still fail if
+`renderJSON` dropped `UseProtoNames` (key spelling) or omitted the field. The reviewer's
+narrower statement is the accurate one. **Not actionable**: the acceptance criterion that
+actually binds the executor (`05-03-PLAN.md:446`) is already spelled correctly — "satisfiable
+by a renderer that emits every key unconditionally" — and both sub-tests are mandated by
+criteria either way. No action, gate, or artifact changes if the prose stays as written, and
+no gate is thereby made unfalsifiable. Worth a wording pass on the next plan touch; not a
+convergence blocker.
+
+### Orchestrator's own verification (independent of the reviewer)
+
+| Claim under test | Method | Result |
+|---|---|---|
+| `--numstat` was not reintroduced as a live criterion | `rg -n -- '--numstat' *-PLAN.md` | 3 hits, all in `05-01-PLAN.md:99-100,479` — cycle-2 finding text and an explicit *rejection* rationale. No live criterion. |
+| unanchored `^func` was not reintroduced over a diff | `rg -n "'\^func" *-PLAN.md` | 5 hits; `05-02:393`, `05-02:616`, `05-01:429` are `rg -c '^func <symbol>'` **symbol-count gates over source files** (legitimate); `05-01:78,93` are cycle-2/3 historical text. The live diff gate remains `^\+func`. No regression. |
+| `git diff <BASE> --` (base-to-working-tree, no `..HEAD`) still the live spelling | read `<commit_range_protocol>` in `05-01:479`, `05-03` protocol block, and each allowlist criterion | intact; every allowlist criterion asserts `[ -s ... ]` non-emptiness FIRST |
+| Plans consistently implement D-14's presence model | `rg 'SupersededBy\|superseded_by' *-PLAN.md` | 100% consistent across `05-01` and `05-02`: nil source → unset. The inconsistency is on the CONTEXT side only. |
+| `05-03` task 2's fixture pair differs only in the `SchemaVersion` assignment | `05-03-PLAN.md:447` | asserted as an acceptance criterion in exactly those words — the pair does isolate presence |
+| Working tree clean; amendment is the only delta | `git status --porcelain` | only `.mcp.json` untracked (unrelated) |
+
+### Agreed Strengths
+
+Single-reviewer cycle; the strengths below are the reviewer's, each spot-checked by the
+orchestrator against the cited lines.
+
+- The amendment's central empirical claim — `EmitDefaultValues` does **not** rescue an unset
+  `optional`, and an **assigned** zero renders under both settings — is correct, independently
+  reproduced against protobuf-go v1.36.11 with this repo's pinned codegen.
+- The tautology the naive repair would have introduced is genuinely dissolved by the permanent
+  negative fixture: an always-emit renderer fails the negative case, an always-omit renderer
+  fails the positive one, and the pair is constrained to differ only in the pointer assignment.
+- The zero-value assertions are spelled at the pointer/`Has(fd)` level and the nil-safe getters
+  are explicitly forbidden at four sites — the one place D-14's pointer-ness actually matters
+  is the one place the plans guard.
+- The compile-time presence gate (`x.SchemaVersion != nil` does not build against a plain
+  `uint32`) is a real gate, confirmed by compiling it.
+- Both `Has(fd)` asymmetries survive the presence change: RED PROOF 1 (deletion) trips the
+  population half via nil, RED PROOF 2 (wrong-but-nonzero) still leaves it green and is caught
+  by the comparator alone. RED PROOF 3 goes red for exactly the conditional-assignment mutation
+  it names, and green everywhere else.
+- The mapper/renderer seam (#499) is stated accurately in both plans and the SUMMARY
+  instructions forbid merging the two halves into one end-to-end claim.
+
+### Agreed Concerns
+
+Highest priority, and the only convergence blocker:
+
+- **The authoritative decision record and the plans disagree on `superseded_by`.** Fix
+  `05-CONTEXT.md:104-105` and `:162-163`; leave every plan as written.
+
+### Divergent Views
+
+None — a single reviewer ran. The orchestrator downgraded neither of the reviewer's two LOWs
+in severity, but classified both as non-actionable: one is explicitly rejected in-plan with
+executed evidence, the other changes no action, gate, or artifact.
+
+## Cycle-5 outcome
+
+**1 unresolved HIGH, 0 unresolved actionable non-HIGH.**
+
+The amendment's *executable* surface — every gate, RED proof, fixture pair, and commit-range
+criterion — survived the presence reversal intact, and the cycle-3 gate spellings show no
+regression. The one defect is in D-14's own prose: §3's closing sentence and the field-table
+note generalize "assign unconditionally" from two fields to three, contradicting §1's own
+rationale for the third and every plan that implements it. Cycles 1→2 and 2→3 each produced a
+HIGH created by the previous change; cycle 5 continues that pattern, and the finding is of
+exactly the predicted class — an instruction an executor cannot satisfy alongside a mandatory
+gate.
