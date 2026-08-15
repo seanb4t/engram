@@ -101,8 +101,17 @@ field comments and the one repaired `store.Memory` comment named in D-04.
   v0.** If it is ever left unset the key vanishes from the JSON document entirely, where the
   plain `uint32` would have rendered `0` regardless. D-03's renderJSON assertion is therefore no
   longer a confirmation of an automatic property; it is the gate on a property the mapper must
-  actively maintain. The same applies to `summary_model` and `superseded_by`: assign always,
-  never conditionally.
+  actively maintain. The same applies to `summary_model`, whose source is a non-pointer
+  `string`: assign always, never conditionally.
+
+  **`superseded_by` is the exception, and the rule is the opposite.** Its source is already
+  `SupersededBy *string`, so the mapping is a direct pointer copy: nil stays unset, non-nil
+  carries through. Do NOT assign it unconditionally — wrapping a nil source into a non-nil
+  pointer would destroy precisely the distinction that makes `optional` worth choosing here
+  (§1). A zero-value `store.Memory` must therefore report `Has(superseded_by) == false`, which
+  is what all three plans assert. *(Corrected 2026-08-15 after cycle-5 review finding C5-H1: an
+  earlier draft of this section generalized "assign unconditionally" from two fields to three,
+  contradicting §1 and every plan. The plans were right; this record was wrong.)*
 
   **4. Side effect that strengthens the parity proof.** For an implicit-presence scalar,
   `protoreflect`'s `Has(fd)` is true only when the value is non-zero, so it conflates "never
@@ -159,8 +168,11 @@ field comments and the one repaired `store.Memory` comment named in D-04.
   | 29 | `summary_model` | `optional string` (D-14) | `*string` | `SummaryModel string` |
   | 30 | `summary_egress_at` | `google.protobuf.Timestamp` | `*timestamppb.Timestamp` | `SummaryEgressAt time.Time` |
 
-  Every one of the three optional scalars must be assigned unconditionally by `memoryToProto`,
-  including when the source value is the zero value — see D-14 §3.
+  `schema_version` (28) and `summary_model` (29) must be assigned unconditionally by
+  `memoryToProto`, including when the source value is the zero value — their sources are
+  non-pointer Go types, so an unassigned field is indistinguishable from a zero one and the key
+  would vanish from rendered JSON. `superseded_by` (23) is the opposite: its source is already
+  `*string`, so it is a direct pointer copy and a nil source stays UNSET. See D-14 §3.
 
   Timestamp fields inherit `memoryToProto`'s established nil/zero handling: leave the proto
   field **unset** rather than emitting a year-1 (`0001-01-01`) stamp — the discipline already
