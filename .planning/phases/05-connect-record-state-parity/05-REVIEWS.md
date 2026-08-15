@@ -1,9 +1,9 @@
 ---
 phase: 5
 reviewers: [codex]
-reviewed_at: 2026-08-15T18:33:19Z
+reviewed_at: 2026-08-15T18:56:28Z
 plans_reviewed: [05-01-PLAN.md, 05-02-PLAN.md, 05-03-PLAN.md]
-cycle: 1
+cycle: 2
 ---
 
 # Cross-AI Plan Review — Phase 5
@@ -11,6 +11,13 @@ cycle: 1
 Reviewer set: `codex` (codex-cli 0.147.0), invoked with repo access and a
 source-grounding prompt. `--codex` was named explicitly; no other lane was
 requested.
+
+This file is append-only across convergence cycles. Cycle 1 is preserved below
+verbatim; cycle 2 follows it.
+
+---
+
+# CYCLE 1 — 2026-08-15T18:33:19Z
 
 ## Codex Review
 
@@ -240,3 +247,201 @@ inclusion; rename-not-exemption map; no `protoToMemory` inverse) was contradicte
 by any plan, and the reviewer proposed no alternative to any of them. All three
 HIGH findings are proof-quality gaps inside the plans' own gates, not design
 disagreements — each is repairable by adding an acceptance criterion.
+
+---
+
+# CYCLE 2 — 2026-08-15T18:56:28Z
+
+Reviewer set: `codex` (codex-cli 0.147.0), repo access, source-grounding prompt,
+`--codex` named explicitly. The cycle-2 prompt carried the cycle-1 findings, the
+planner's incorporation commit (`1a95f2fb`), and an explicit instruction to
+verify each incorporation before hunting for anything new.
+
+## Codex Review (cycle 2)
+
+### Cycle-1 Incorporation Verdict — three HIGH findings
+
+| Cycle-1 finding | Verdict | Evidence |
+|---|---|---|
+| Decode-back comparison lacked exhaustiveness and an independent RED proof | **CLOSED** | `05-02-PLAN.md:308` now requires `assertDecodeBackCoversAllFields` to compare the sorted, duplicate-free `compared` set against `storeJSONVisibleFields(store.Memory)` and print both differences. `05-02-PLAN.md:351` supplies the independent mutation `SummaryModel: m.SummaryModel` → `m.Summary`. That mutation is genuinely invisible to the other two gates: `SummaryModel` stays a nonzero proto3 scalar so `ProtoReflect().Has(fd)` stays true, and the descriptor/JSON names are untouched so the name detector stays green. `internal/server/connectapi.go:55` shows the two are separate string sources. `05-02-PLAN.md:360` requires both other gates to be observed GREEN under the same mutation. |
+| Alias-map gate could not detect widening | **CLOSED** | `05-02-PLAN.md:206` asserts `maps.Equal` against the complete literal `map[string]string{"worktree_path": "worktree"}` — width and content together. `05-02-PLAN.md:242` carries its own mutation (`"tmp_alias_probe": "id"`) and requires the exact-map sub-test to fail while the mapped-field sub-test stays green. The one real divergence is confirmed: `internal/store/store.go:197` (`json:"worktree_path"`) vs `proto/engram/v1/engram.proto:19` (`worktree`). |
+| MCP read proof bypassed JSON serialization | **CLOSED** | `05-03-PLAN.md:180` now requires `json.Marshal(got)` → `map[string]json.RawMessage` → key-presence checks → timestamp decode, mirroring `internal/server/schemaversion_wire_test.go:246`. `05-03-PLAN.md:205` renames the `NotBefore` json tag as the RED mutation and requires failure on the missing `not_before` member. The mutation does not perturb Qdrant persistence because the store's scheduling codec is manual (`internal/store/store.go:212`) while MCP returns `store.Memory` for downstream JSON serialization (`internal/server/tools.go:2468`). |
+
+### Cycle-1 Incorporation Verdict — seven non-HIGH findings
+
+| Cycle-1 finding | Verdict | Evidence |
+|---|---|---|
+| Distinctness covered scalars only | **CLOSED** | `05-02-PLAN.md:272` — auto-fill now gives the two `[]string` fields disjoint element sets and fills every `Citation` member; slices and citations decode element-wise. Matches `internal/store/store.go:201,218,256`. |
+| `VisibleFields` accounting conflicted with `NumField` | **CLOSED** | `05-02-PLAN.md:184` — both accounting terms use `reflect.VisibleFields`; a separate documented flatness test pins `len(VisibleFields) == NumField()` and rejects promoted/embedded fields with remediation text. `internal/store/store.go:186` is flat today. |
+| Fixture isolation overstated | **CLOSED** | `05-03-PLAN.md:154` — per-run unique scope computed once and reused for write and cleanup, with the shared collection and defer-bypass explicitly acknowledged. |
+| Direct handler call mislabeled a real RPC / wire round trip | **CLOSED** | `05-01-PLAN.md:208` limits the claim to store + handler + mapper and names HTTP transport and protobuf serialization as excluded. `internal/server/connectapi.go:298` confirms the in-process call. |
+| Non-mutation truth implied ownership isolation | **CLOSED** | `05-01-PLAN.md:29` now claims only non-mutation of the input and acknowledges shared slice backing arrays, matching `Tags: m.Tags` at `internal/server/connectapi.go:58`. |
+| Repeat-read idempotency overstated as central evidence | **CLOSED** | `05-03-PLAN.md:27` and `:200` label it a supporting tripwire with limited current mutation sensitivity. |
+| Requirement routing too broad | **CLOSED** | `05-03-PLAN.md:79` attributes the exhaustive proof exclusively to 05-02 and states the CLI renderer contributes nothing to it. Retaining the requirement in frontmatter is defensible because Task 1 is a genuine supporting write/read round trip. |
+
+The separately noted brittle whole-file function-count check is substantively
+replaced at `05-01-PLAN.md:240` by a forbidden-symbol check plus a diff-scoped
+check — but the diff-scoped half introduced a new defect (below).
+
+### Summary
+
+Cycle 1's three HIGH and seven actionable lower findings are incorporated
+sufficiently. In particular the wrong-but-nonzero `SummaryModel` mutation proves
+something the population and name gates cannot prove, and the MCP tag mutation
+now exercises the actual JSON-tag mechanism. One new false-green acceptance gate
+remains in Plan 05-01: its diff pattern cannot match added function declarations
+in ordinary `git diff` output.
+
+### New Concerns
+
+- **HIGH — Plan 05-01's "no new top-level function" diff gate cannot fail.**
+  `05-01-PLAN.md:241` reads: ``git diff internal/server/connectapi.go`` adds no
+  line matching `^func `. Added lines in unified diff output begin with `+`, so a
+  newly added declaration appears as `+func helper(...)` and never matches a
+  `^func `-anchored pattern. The gate therefore stays green if an arbitrary new
+  top-level helper is added. The sibling `^func protoToMemory` repository check
+  catches only that one forbidden name, not the broader "no new helper, no second
+  mapping call site" claim this criterion asserts. This defect was introduced by
+  the cycle-1 repair.
+- **LOW — delete contradictory self-description in the anti-vacuity contract.**
+  `05-02-PLAN.md:114-116` claims "EVERY gate ... carries its own executor-performed
+  RED proof, and no two gates may share a mutation". The omission mutation
+  necessarily fails both `Has(schema_version)` and the value comparison, while
+  several permanent sub-tests — flatness, deterministic ordering, fuzzy-name
+  rejection — carry no transient mutation at all. The operational tasks are
+  adequate; this prose is inaccurate self-description and will invite further
+  bookkeeping churn.
+
+### Suggestions
+
+- In 05-01's acceptance criteria, replace
+
+  ```text
+  git diff internal/server/connectapi.go adds no line matching ^func
+  ```
+
+  with an executable diff assertion that understands the `+` prefix, e.g.
+
+  ```text
+  `git diff --unified=0 -- internal/server/connectapi.go | rg '^\+func[[:space:]]'`
+  returns no matches (exit status 1).
+  ```
+
+  Keep the separate package-wide `^func protoToMemory` absence assertion — it
+  checks a different property.
+- In 05-02, delete the two sentences claiming every gate has a unique mutation.
+  Retain the four concrete RED-proof requirements and the summary table; those
+  describe the actual evidence without counting the plan's own gates.
+
+### Risk Assessment
+
+**MEDIUM.** The production design and all cycle-1 proof gaps are now well
+covered. The remaining HIGH is localized and easy to repair, but it is still a
+literal cannot-fail gate in a phase whose defining goal is preventing false-green
+mapping evidence.
+
+---
+
+## Consensus Summary (cycle 2)
+
+Single-reviewer cycle again (`--codex` named explicitly), so there is no
+cross-reviewer consensus. What follows is the orchestrator's independent
+re-verification of the reviewer's load-bearing claims, plus one finding the
+reviewer did not raise.
+
+### Cycle-1 convergence status
+
+All ten cycle-1 findings (3 HIGH + 7 actionable non-HIGH) plus the known warning
+are **CLOSED**. The orchestrator spot-verified the two most load-bearing claims
+rather than accepting the table wholesale:
+
+- **RED PROOF 2's asymmetry genuinely holds.** `05-02-PLAN.md:379-392` requires
+  the executor to observe `TestConnectMemoryParityDetector` GREEN and the
+  `every proto field is populated` sub-test GREEN under the *same*
+  `SummaryModel: m.Summary` mutation. That asymmetry survives only because
+  `05-02-PLAN.md:272-296` requires auto-fill to derive each field's value from
+  its own field name so no two fields share a rendering — had `Summary` and
+  `SummaryModel` been allowed to carry the same fill value, RED PROOF 2 would
+  itself have been vacuous. The dependency is real and is already spelled out in
+  the plan; no change needed.
+- **The `^func ` diff gate is empirically vacuous.** Reproduced directly:
+  `git diff --no-index --unified=0 /dev/null <file>` piped to `rg '^func '`
+  exits `1` (no match) on a file whose only content is `func old() {}`, while
+  `rg '^\+func '` matches `+func old() {}`. The criterion as spelled can never
+  fail.
+
+### Confirmed New Concerns
+
+**HIGH — 05-01:241, the diff-shaped "no new top-level function" gate cannot fail.**
+Confirmed empirically (above). This is the cycle-1 repair's own regression: the
+brittle-but-functional `rg -c '^func ' … == 18` count was replaced by a pattern
+that is scoped correctly but anchored wrongly. Of the two replacements at
+`05-01-PLAN.md:240-241`, only `:240` (`^func protoToMemory` over
+`internal/server/`) can actually go red; `:241` is decorative. Fix: spell the
+criterion as an executable `^\+func` assertion over `git diff --unified=0`.
+
+**MEDIUM — 05-01:284, `git diff --numstat` cannot show what the criterion claims.**
+Not raised by the reviewer. The criterion reads: "`git diff --numstat
+internal/store/store.go` shows changes confined to the comment block immediately
+above `SummaryEgressAt`." `--numstat` emits exactly `<added>\t<deleted>\t<path>`
+and nothing else — verified by running it against this very phase directory. It
+carries no line locations and no content, so it cannot distinguish a comment-only
+edit from any other edit of the same line count. An executor running the named
+command and reading its output will find the criterion trivially "satisfied" by
+any change whatsoever. The three sibling criteria at `:281-283` do constrain the
+edit meaningfully (the removed phrase is gone, the tag and type are unchanged,
+the `json:"-"` count is still 2), so this is a weak gate rather than an unguarded
+hole — but a gate whose named command cannot produce the claimed evidence belongs
+in the same class this phase exists to eliminate.
+Fix: replace with a content-shaped assertion, e.g. `git diff --unified=0 --
+internal/store/store.go | rg '^[+-]' | rg -v '^(\+\+\+|---)'` yields only lines
+whose payload begins with `//`.
+
+**LOW — 05-02:115-116 (and the parallel clause in T-05-06 at `:436`) is
+self-description contradicted by the plan's own RED-proof set.** Confirmed. The
+plan specifies exactly four RED proofs (`:222`, `:230`, `:370`, `:379`). RED
+PROOF 1 in Task 2 deletes the `SchemaVersion` assignment, which necessarily
+fails both the population gate *and* the decode-back comparator — so "no two
+gates may share a mutation" is false as written. Separately, three permanent
+sub-tests carry no mutation of their own: `store.Memory is flat` (`:249`),
+`failure list is deterministic` (`:215`), and `near-miss names are not fuzzily
+paired` (`:213`) — so "EVERY gate carries its own executor-performed RED proof"
+is also false as written. T-05-06's mitigation text at `:436` repeats the
+"no two are caught by the same mutation" claim and inherits the same defect.
+Per the standing guidance on accumulating self-description, the fix is
+**DELETION**, not correction: drop the two sentences at `:115-116` and the
+"chosen so that no two are caught by the same mutation" clause at `:436`. The
+four concrete RED-proof requirements and the per-gate acceptance criteria already
+carry the actual evidence without the plan counting its own gates.
+
+### Not Re-Raised
+
+The reviewer proposed no ROADMAP.md edit, contradicted no locked decision
+(eight fields at 23–30; plain `uint32` `schema_version`; plain `string`
+`superseded_by`; no read-path rounding; `json:"-"`-derived inclusion;
+rename-not-exemption alias map; no `protoToMemory` inverse), and raised nothing
+against the edge-marker tally, `depends_on` form, or prohibitions-block
+placement — all of which the orchestrator had already verified this cycle.
+
+### Divergent Views
+
+None — single reviewer.
+
+## Verification coverage (cycle 2)
+
+| Claim | Verified against | Verdict |
+|---|---|---|
+| `^func ` cannot match an added line in `git diff` output | reproduced with `git diff --no-index --unified=0`; `rg '^func '` exits 1, `rg '^\+func '` matches | Confirmed |
+| `--numstat` carries no line locations or content | ran `git diff --numstat HEAD~1 -- 05-01-PLAN.md` → `52	21	<path>` | Confirmed |
+| `no two gates may share a mutation` is false | RED PROOF 1 (`05-02-PLAN.md:370`) deletes an assignment → fails population AND decode-back | Confirmed |
+| `EVERY gate carries its own RED proof` is false | flatness `:249`, determinism `:215`, near-miss `:213` have no mutation among the four RED proofs | Confirmed |
+| RED PROOF 2's asymmetry depends on per-field distinct fill values | `05-02-PLAN.md:272-296` requires name-derived distinct values | Confirmed — dependency already satisfied by the plan |
+| Decode-back exhaustiveness gate exists and is set-equality shaped | `05-02-PLAN.md:407` (`slices.Equal`, duplicate rejection) | Confirmed |
+| Alias map pinned by whole-map equality | `05-02-PLAN.md:248`, RED PROOF 2 at `:230`/`:253` | Confirmed |
+| MCP lane now marshals before asserting | `05-03-PLAN.md:180`, `:205`; precedent `schemaversion_wire_test.go:238-266` | Confirmed |
+| `SummaryModel`/`Summary` are distinct sources in the mapper | reviewer cite `internal/server/connectapi.go:55` | Accepted (reviewer-cited, not re-read) |
+| `Worktree` json tag vs proto field name | reviewer cites `internal/store/store.go:197`, `engram.proto:19`; corroborated by cycle 1 | Accepted |
+
+**Cycle-2 outcome:** 1 unresolved HIGH (new, introduced by the cycle-1 repair),
+2 unresolved actionable non-HIGH (1 MEDIUM new from the orchestrator, 1 LOW from
+the reviewer). Zero cycle-1 findings carried forward.
