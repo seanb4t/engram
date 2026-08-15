@@ -381,7 +381,7 @@ zero-semantics, and it is not uniform across commands:**
 | Commands | `--timeout` meaning | `0` behavior |
 |---|---|---|
 | `search`, `list`, `store` | Per-RPC-call deadline | **Rejected** (usage error) |
-| `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan`, `spine-review verify`, `spine-review consolidate`, `spine-review archive`, `spine-review restore`, `spine-review purge`, `migrate`, `migrate status` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
+| `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan`, `spine-review verify`, `spine-review consolidate`, `spine-review archive`, `spine-review restore`, `spine-review purge`, `migrate`, `migrate status`, `migrate revert` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
 | `migrate-remap-owner`, `migrate-set-owner` | Whole-sweep wall-clock budget | **Rejected** (usage error) — changed this release, see the [upgrade guide](/guides/upgrade/#6-migrate-remap-owner---timeout-0--migrate-set-owner---timeout-0-no-longer-means-unbounded) |
 
 A reader comparing `engram search --help` against `engram reindex --help`

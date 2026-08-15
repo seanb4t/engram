@@ -24,14 +24,20 @@ import (
 // spineConsolidateFakeStore's precedent (spine_review_consolidate_test.go).
 // migrateCalls records every store.MigrateOptions this fake's Migrate saw,
 // in call order -- the evidence TestMigrateFamilyPreviewAndApply's H5
-// double-call assertion reads.
+// double-call assertion reads. previewRevertCalls/revertCalls/callOrder are
+// the same evidence for the revert family: callOrder records "preview"/
+// "revert" tokens in the exact sequence the CLI invoked them, proving
+// PreviewRevert always runs before any Revert call.
 type fakeMigrateFamilyStore struct {
 	migrateFn       func(ctx context.Context, opts store.MigrateOptions) (store.MigrateResult, error)
 	migrateStatusFn func(ctx context.Context) (store.MigrateStatusResult, error)
 	revertFn        func(ctx context.Context, to migrate.Version) (store.RevertResult, error)
 	previewRevertFn func(ctx context.Context, to migrate.Version) (store.RevertPlan, error)
 
-	migrateCalls []store.MigrateOptions
+	migrateCalls       []store.MigrateOptions
+	previewRevertCalls []migrate.Version
+	revertCalls        []migrate.Version
+	callOrder          []string
 }
 
 func (f *fakeMigrateFamilyStore) Migrate(ctx context.Context, opts store.MigrateOptions) (store.MigrateResult, error) {
@@ -50,6 +56,8 @@ func (f *fakeMigrateFamilyStore) MigrateStatus(ctx context.Context) (store.Migra
 }
 
 func (f *fakeMigrateFamilyStore) Revert(ctx context.Context, to migrate.Version) (store.RevertResult, error) {
+	f.revertCalls = append(f.revertCalls, to)
+	f.callOrder = append(f.callOrder, "revert")
 	if f.revertFn == nil {
 		return store.RevertResult{}, nil
 	}
@@ -57,6 +65,8 @@ func (f *fakeMigrateFamilyStore) Revert(ctx context.Context, to migrate.Version)
 }
 
 func (f *fakeMigrateFamilyStore) PreviewRevert(ctx context.Context, to migrate.Version) (store.RevertPlan, error) {
+	f.previewRevertCalls = append(f.previewRevertCalls, to)
+	f.callOrder = append(f.callOrder, "preview")
 	if f.previewRevertFn == nil {
 		return store.RevertPlan{}, nil
 	}
@@ -405,5 +415,250 @@ func TestMigrateFamilyStatusReportDocNeverMarshalsNull(t *testing.T) {
 	}
 	if strings.Contains(string(b), `"future":null`) {
 		t.Errorf("marshalled doc contains \"future\":null: %s", b)
+	}
+}
+
+// TestMigrateFamilyRevertRefusals proves both refusal classes (D-13/D-14):
+// an irreversible-step range and an unsupported-version range each render
+// their own field=/hint= envelope, Revert is called ZERO times on EITHER
+// invocation shape, and the exit-code pair is asserted both directions
+// (REVIEWS.md C5-H4): bare exits 0 (the preview correctly reported the
+// refusal), --apply exits exitUsage (2). The refusal-text identity
+// assertion (C5-M4) proves the CLI's rendered refusal is the EXACT
+// store.RevertRefusalError(plan).Error() string, never a re-typed
+// transcription.
+func TestMigrateFamilyRevertRefusals(t *testing.T) {
+	cases := []struct {
+		name string
+		plan store.RevertPlan
+	}{
+		{
+			name: "irreversible range",
+			plan: store.RevertPlan{
+				To: 0, Candidates: 1, Reversible: false,
+				Irreversible: []store.IrreversibleStepRef{{From: 0, To: 1, Reason: "no declared inverse"}},
+			},
+		},
+		{
+			name: "unsupported-version range",
+			plan: store.RevertPlan{
+				To: 0, Candidates: 3, Reversible: false,
+				Unsupported: []store.UnsupportedVersionRef{{Version: 42, Count: 3}},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			wantRefusal := store.RevertRefusalError(tc.plan).Error()
+
+			t.Run("bare invocation exits 0, renders the refusal, never calls Revert", func(t *testing.T) {
+				fake := &fakeMigrateFamilyStore{
+					previewRevertFn: func(context.Context, migrate.Version) (store.RevertPlan, error) { return tc.plan, nil },
+				}
+				withFakeMigrateFamilyStore(t, fake)
+				resetClientFlags(t)
+				resetCommandFlagState(t, migrateRevertCmd)
+
+				stdout, _, err := runClient(t, "migrate", "revert", "--to", "0", "--output", "json")
+				if got := exitCodeFromError(err); got != exitOK {
+					t.Errorf("exitCodeFromError = %d, want %d (exitOK); err=%v", got, exitOK, err)
+				}
+				var doc revertOutputDoc
+				if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+					t.Fatalf("json.Unmarshal: %v (stdout=%q)", uErr, stdout)
+				}
+				if doc.Refusal != wantRefusal {
+					t.Errorf("doc.Refusal = %q, want the EXACT store.RevertRefusalError(plan).Error() string %q", doc.Refusal, wantRefusal)
+				}
+				if len(fake.revertCalls) != 0 {
+					t.Errorf("Revert called %d time(s), want 0", len(fake.revertCalls))
+				}
+			})
+
+			t.Run("--apply exits exitUsage, renders the refusal, never calls Revert", func(t *testing.T) {
+				fake := &fakeMigrateFamilyStore{
+					previewRevertFn: func(context.Context, migrate.Version) (store.RevertPlan, error) { return tc.plan, nil },
+				}
+				withFakeMigrateFamilyStore(t, fake)
+				resetClientFlags(t)
+				resetCommandFlagState(t, migrateRevertCmd)
+
+				stdout, _, err := runClient(t, "migrate", "revert", "--to", "0", "--apply", "--output", "json")
+				if got := exitCodeFromError(err); got != exitUsage {
+					t.Errorf("exitCodeFromError = %d, want %d (exitUsage); err=%v", got, exitUsage, err)
+				}
+				var doc revertOutputDoc
+				if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+					t.Fatalf("json.Unmarshal: %v (stdout=%q)", uErr, stdout)
+				}
+				if doc.Refusal != wantRefusal {
+					t.Errorf("doc.Refusal = %q, want the EXACT store.RevertRefusalError(plan).Error() string %q", doc.Refusal, wantRefusal)
+				}
+				if len(fake.revertCalls) != 0 {
+					t.Errorf("Revert called %d time(s), want 0 -- a refused --apply must touch zero records", len(fake.revertCalls))
+				}
+			})
+		})
+	}
+}
+
+// TestMigrateFamilyRevertReversible proves the REVERSIBLE path (M8): a bare
+// invocation renders the reverse-plan preview and calls Revert zero times;
+// --apply calls the SAME exported PreviewRevert method again, THEN Revert,
+// exactly once each, in that order, and renders the converged result.
+func TestMigrateFamilyRevertReversible(t *testing.T) {
+	plan := store.RevertPlan{To: 0, Candidates: 5, Reversible: true}
+
+	t.Run("bare invocation previews, calls Revert zero times", func(t *testing.T) {
+		fake := &fakeMigrateFamilyStore{
+			previewRevertFn: func(context.Context, migrate.Version) (store.RevertPlan, error) { return plan, nil },
+		}
+		withFakeMigrateFamilyStore(t, fake)
+		resetClientFlags(t)
+		resetCommandFlagState(t, migrateRevertCmd)
+
+		stdout, _, err := runClient(t, "migrate", "revert", "--to", "0", "--output", "json")
+		if err != nil {
+			t.Fatalf("bare revert: %v", err)
+		}
+		var doc revertOutputDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal: %v (stdout=%q)", uErr, stdout)
+		}
+		if doc.Applied || !doc.Reversible || doc.Candidates != 5 {
+			t.Errorf("doc = %+v, want Applied=false Reversible=true Candidates=5", doc)
+		}
+		if len(fake.revertCalls) != 0 {
+			t.Errorf("Revert called %d time(s), want 0 (preview only)", len(fake.revertCalls))
+		}
+	})
+
+	t.Run("--apply calls PreviewRevert then Revert exactly once each, in order", func(t *testing.T) {
+		fake := &fakeMigrateFamilyStore{
+			previewRevertFn: func(context.Context, migrate.Version) (store.RevertPlan, error) { return plan, nil },
+			revertFn: func(context.Context, migrate.Version) (store.RevertResult, error) {
+				return store.RevertResult{Reverted: 5, Backlog: 0}, nil
+			},
+		}
+		withFakeMigrateFamilyStore(t, fake)
+		resetClientFlags(t)
+		resetCommandFlagState(t, migrateRevertCmd)
+
+		stdout, _, err := runClient(t, "migrate", "revert", "--to", "0", "--apply", "--output", "json")
+		if err != nil {
+			t.Fatalf("migrate revert --apply: %v", err)
+		}
+		var doc revertOutputDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal: %v (stdout=%q)", uErr, stdout)
+		}
+		if !doc.Applied || doc.Reverted != 5 {
+			t.Errorf("doc = %+v, want Applied=true Reverted=5", doc)
+		}
+		if len(fake.previewRevertCalls) != 1 {
+			t.Errorf("PreviewRevert called %d time(s), want 1", len(fake.previewRevertCalls))
+		}
+		if len(fake.revertCalls) != 1 {
+			t.Errorf("Revert called %d time(s), want 1", len(fake.revertCalls))
+		}
+		wantOrder := []string{"preview", "revert"}
+		if !reflect.DeepEqual(fake.callOrder, wantOrder) {
+			t.Errorf("call order = %v, want %v", fake.callOrder, wantOrder)
+		}
+	})
+}
+
+// TestMigrateFamilyRevertToValidation proves --to's usage-error surface
+// (D-16, spine_review_purge.go:65 precedent): a non-integer value is
+// rejected by cobra's own flag parsing (a framework flag error, exit 2), a
+// negative value and a missing --to are each rejected by
+// migrateRevertValidateTo, also exit 2 -- never an unregistered panic, and
+// never a store dial.
+func TestMigrateFamilyRevertToValidation(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{name: "missing --to", args: []string{"migrate", "revert"}},
+		{name: "negative --to", args: []string{"migrate", "revert", "--to", "-1"}},
+		{name: "non-integer --to", args: []string{"migrate", "revert", "--to", "abc"}},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeMigrateFamilyStore{}
+			withFakeMigrateFamilyStore(t, fake)
+			resetClientFlags(t)
+			resetCommandFlagState(t, migrateRevertCmd)
+
+			_, _, err := runClient(t, tc.args...)
+			if got := exitCodeFromError(err); got != exitUsage {
+				t.Errorf("exitCodeFromError = %d, want %d (exitUsage); err=%v", got, exitUsage, err)
+			}
+			if len(fake.previewRevertCalls) != 0 {
+				t.Errorf("PreviewRevert called %d time(s), want 0 -- --to validation must precede any dial", len(fake.previewRevertCalls))
+			}
+		})
+	}
+}
+
+// TestMigrateFamilyRevertTimeoutWiring is the three-case behavioural proof
+// for migrate revert's own --timeout (REVIEWS.md H8 + N3), mirroring
+// TestMigrateFamilyTimeoutWiring's cases for migrate/migrate status.
+func TestMigrateFamilyRevertTimeoutWiring(t *testing.T) {
+	cases := []struct {
+		name     string
+		args     []string
+		wantNear time.Duration
+		wantFar  time.Duration
+		wantNone bool
+	}{
+		{name: "--timeout 1s", args: []string{"migrate", "revert", "--to", "0", "--timeout", "1s", "--output", "json"}, wantNear: 2 * time.Second},
+		{name: "default timeout", args: []string{"migrate", "revert", "--to", "0", "--output", "json"}, wantFar: 4 * time.Minute},
+		{name: "--timeout 0", args: []string{"migrate", "revert", "--to", "0", "--timeout", "0", "--output", "json"}, wantNone: true},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			var gotDeadline time.Time
+			var gotOK bool
+			fake := &fakeMigrateFamilyStore{
+				previewRevertFn: func(ctx context.Context, _ migrate.Version) (store.RevertPlan, error) {
+					gotDeadline, gotOK = ctx.Deadline()
+					return store.RevertPlan{To: 0, Reversible: true}, nil
+				},
+			}
+			withFakeMigrateFamilyStore(t, fake)
+			resetClientFlags(t)
+			resetCommandFlagState(t, migrateRevertCmd)
+
+			if _, _, err := runClient(t, tc.args...); err != nil {
+				t.Fatalf("%v: %v", tc.args, err)
+			}
+
+			switch {
+			case tc.wantNone:
+				if gotOK {
+					t.Errorf("ctx.Deadline() ok = true, want false (--timeout 0 disables the deadline)")
+				}
+			case tc.wantNear > 0:
+				if !gotOK {
+					t.Fatal("ctx.Deadline() ok = false, want true")
+				}
+				if d := time.Until(gotDeadline); d > tc.wantNear {
+					t.Errorf("time.Until(deadline) = %v, want <= %v -- a hard-coded default duration cannot pass this case", d, tc.wantNear)
+				}
+			case tc.wantFar > 0:
+				if !gotOK {
+					t.Fatal("ctx.Deadline() ok = false, want true")
+				}
+				if d := time.Until(gotDeadline); d <= tc.wantFar {
+					t.Errorf("time.Until(deadline) = %v, want > %v (the ~5m default is applied)", d, tc.wantFar)
+				}
+			}
+		})
 	}
 }

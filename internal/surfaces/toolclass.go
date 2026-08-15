@@ -263,6 +263,18 @@ var operations = []Operation{
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
+		// migrate revert is the anti-additive counterpart to migrate: an
+		// inverse MAY remove a payload key the forward step added, which
+		// is exactly the destructive direction migrate itself never
+		// takes. Guarded by a whole-range, zero-write PreviewRevert
+		// preflight before any write (D-13) -- an irreversible or
+		// unsupported-version range refuses the ENTIRE operation, never
+		// a partial revert. Idempotent: a re-run against an already-
+		// reverted (empty above-target) range touches zero records.
+		MCPTool: "", CLICommand: "migrate revert",
+		Class: Class{ReadOnly: false, Destructive: true, Idempotent: true, OpenWorld: false},
+	},
+	{
 		// The bare `engram` self-describe invocation (no subcommand):
 		// prints the catalog JSON and exits. CLICommand is the root
 		// command's own Use ("engram") rather than empty, since

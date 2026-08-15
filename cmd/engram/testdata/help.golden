@@ -84,6 +84,7 @@ Usage:
   engram migrate [command]
 
 Available Commands:
+  revert      Preview or apply a reverse schema-version walk, refusing any irreversible range whole
   status      Report a server-side schema-version distribution histogram
 
 Flags:
@@ -93,6 +94,22 @@ Flags:
       --timeout duration   max wall-clock (0 disables); also cancellable via Ctrl-C (default 5m0s)
 
 Use "engram migrate [command] --help" for more information about a command.
+```
+
+## engram migrate revert
+
+```
+Reverse-walk every record above --to back down to it, applying each traversed step's declared inverse in order. A bare invocation previews the reverse plan and writes nothing; --apply calls the SAME whole-range preflight again inside its own run and applies only when the ENTIRE range is reversible -- an irreversible step or an unsupported stored version anywhere in the range refuses the whole operation, naming every offending step or version and pointing to a collection snapshot for recovery. A refused --apply exits non-zero; the identical refusal previewed without --apply exits 0.
+
+Usage:
+  engram migrate revert --to <v> [flags]
+
+Flags:
+      --apply              a mutating operator command previews by default and mutates only when apply is set
+  -h, --help               help for revert
+      --output string      output format: "json" or "text" (default: detect from stdout)
+      --timeout duration   max wall-clock (0 disables); also cancellable via Ctrl-C (default 5m0s)
+      --to int             target schema version to revert down to (required)
 ```
 
 ## engram migrate status

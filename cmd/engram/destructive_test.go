@@ -248,6 +248,33 @@ func TestApplyRoutedAdditionsArePinned(t *testing.T) {
 	}
 }
 
+// TestMutatingCommandNamesMembership pins mutatingCommandNames()'s result
+// to the exact FIVE names live at the end of this wave (REVIEWS.md M12,
+// INV-1): migrate, migrate revert, migrate-remap-owner, prune-expired,
+// spine-review purge — declared HERE, in Task 3, because this is the task
+// that gives migrate revert its Destructive:true toolclass row and makes
+// the set reach five. 04-04 Task 1 deletes pendingApplyConversion and
+// updates this pin to SIX by adding backfill-short-ids, in the same task
+// that gives the alias its own --apply flag.
+//
+// If this fails naming the seven UNRELATED commands the rejected !ReadOnly
+// predicate would select (store, reindex, summarize-missing, serve,
+// migrate-set-owner, spine-review archive, spine-review restore), the
+// ENUMERATED SET here is what needs correcting, never the pin — see
+// mutatingCommandNames()'s own doc comment.
+func TestMutatingCommandNamesMembership(t *testing.T) {
+	want := map[string]bool{
+		"migrate":             true,
+		"migrate revert":      true,
+		"migrate-remap-owner": true,
+		"prune-expired":       true,
+		"spine-review purge":  true,
+	}
+	if got := mutatingCommandNames(); !reflect.DeepEqual(got, want) {
+		t.Errorf("mutatingCommandNames() = %v, want %v", got, want)
+	}
+}
+
 // TestDestructiveCommandsRouteThroughGate is the structural gate that makes
 // the guard unbypassable rather than merely conventional: for every
 // table-derived destructive command, cmd.RunE must be the closure
@@ -396,6 +423,10 @@ var destructiveFlagCases = []struct {
 	{pruneExpiredCmd, []string{"apply", "older-than", "output", "timeout"}},
 	{migrateRemapOwnerCmd, []string{"apply", "from", "from-anon", "from-missing", "output", "timeout", "to"}},
 	{spineReviewPurgeCmd, []string{"all-scopes", "apply", "category", "class", "older-than", "output", "scope", "tags", "timeout"}},
+	// 04-03-PLAN.md Task 3: migrateRevertCmd's row. It belongs here, not
+	// Task 1, because it is keyed on the migrateRevertCmd Go identifier
+	// this task declares.
+	{migrateRevertCmd, []string{"apply", "output", "timeout", "to"}},
 }
 
 // TestDestructiveCommandsExactFlagSet is the "no escape hatch exists"

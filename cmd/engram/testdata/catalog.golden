@@ -177,6 +177,42 @@
       }
     },
     {
+      "name": "migrate revert",
+      "summary": "Preview or apply a reverse schema-version walk, refusing any irreversible range whole",
+      "flags": [
+        {
+          "name": "apply",
+          "type": "bool",
+          "default": "false",
+          "usage": "a mutating operator command previews by default and mutates only when apply is set"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "5m0s",
+          "usage": "max wall-clock (0 disables); also cancellable via Ctrl-C"
+        },
+        {
+          "name": "to",
+          "type": "int",
+          "default": "0",
+          "usage": "target schema version to revert down to (required)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": true,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
       "name": "migrate status",
       "summary": "Report a server-side schema-version distribution histogram",
       "flags": [

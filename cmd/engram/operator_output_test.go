@@ -269,6 +269,15 @@ func operatorParityRows() []operatorParityRow {
 			}),
 			facts: []string{"44", "3", "40", "1", "2"},
 		},
+		{
+			// A REVERSIBLE preview fixture (Task 3): facts name
+			// plan.Candidates and the target version, per this row's plan
+			// text.
+			name:  "migrate revert",
+			text:  revertSummary(store.RevertPlan{To: 0, Candidates: 12, Reversible: true}, false, store.RevertResult{}),
+			doc:   revertReportDoc(store.RevertPlan{To: 0, Candidates: 12, Reversible: true}, false, store.RevertResult{}),
+			facts: []string{"12", "0"},
+		},
 	}
 }
 
@@ -478,11 +487,9 @@ var timeoutGroups = []timeoutGroup{
 			"backfill-short-ids": true, "spine-review scan": true, "spine-review verify": true,
 			"spine-review consolidate": true, "spine-review archive": true, "spine-review restore": true,
 			"spine-review purge": true,
-			// 04-03-PLAN.md Task 2: migrate/migrate status join this group.
-			// migrate revert is deliberately NOT added here — it does not
-			// exist until Task 3, and this group's set equality runs in
-			// BOTH directions (INV-1).
-			"migrate": true, "migrate status": true,
+			// 04-03-PLAN.md: migrate/migrate status (Task 2) and migrate
+			// revert (Task 3) all join this group.
+			"migrate": true, "migrate status": true, "migrate revert": true,
 		},
 		zeroRejected: false,
 	},
@@ -538,6 +545,8 @@ func timeoutGroupCaseArgs(t *testing.T, name string) (args []string, env map[str
 		return []string{"migrate", "--timeout", "0"}, env
 	case "migrate status":
 		return []string{"migrate", "status", "--timeout", "0"}, env
+	case "migrate revert":
+		return []string{"migrate", "revert", "--to", "0", "--timeout", "0"}, env
 	default:
 		t.Fatalf("timeoutGroupCaseArgs: no row defined for command %q", name)
 		return nil, nil
@@ -592,6 +601,8 @@ func operatorInvalidOutputArgs(t *testing.T, name string) []string {
 		return []string{"migrate"}
 	case "migrate status":
 		return []string{"migrate", "status"}
+	case "migrate revert":
+		return []string{"migrate", "revert", "--to", "0"}
 	default:
 		t.Fatalf("operatorInvalidOutputArgs: no row defined for command %q", name)
 		return nil
