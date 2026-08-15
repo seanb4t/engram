@@ -339,7 +339,7 @@ Research flag: yes — the exact `internal/migrate` step-registry API shape (ste
   5. `engram migrate revert` previews by default like `--apply`, runs declared inverses in reverse order, and refuses the whole operation at the first irreversible step in the requested range rather than reverting partially — the refusal message names a collection snapshot as the recovery path.
   6. No migration ever runs automatically on server startup; at most, startup emits a non-blocking warning that pending migrations exist.
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans executed
 
 Plans:
 **Wave 1**
@@ -356,7 +356,7 @@ Plans:
 
 **Wave 4**
 
-- [ ] 04-04-PLAN.md — backfill-short-ids as thin delegating alias over the SHARED sweep run funcs so its apply path has full manifest parity (cycle-3 #7) w/ PRESERVED-and-passed-through --timeout (H8/N3, NOT removed) + M10 discharged by composition of 04-01's real-Qdrant carve-out test and the alias call-sequence-equality test (C6-H7) + dead store code and both classification-table rows deleted + sibling conformance gates widened to the mutating set w/ RED-first proof (cycle-3 #6/N1) + upgrade.md entry documenting --dry-run removal only (NOT --timeout) + §5's stale --timeout group enumeration and cli.md's stale two-idiom paragraph repaired (C6-M11/C6-M5) + D-12 bidirectional gate (wave 4)
+- [x] 04-04-PLAN.md — backfill-short-ids as thin delegating alias over the SHARED sweep run funcs so its apply path has full manifest parity (cycle-3 #7) w/ PRESERVED-and-passed-through --timeout (H8/N3, NOT removed) + M10 discharged by composition of 04-01's real-Qdrant carve-out test and the alias call-sequence-equality test (C6-H7) + dead store code and both classification-table rows deleted + sibling conformance gates widened to the mutating set w/ RED-first proof (cycle-3 #6/N1) + upgrade.md entry documenting --dry-run removal only (NOT --timeout) + §5's stale --timeout group enumeration and cli.md's stale two-idiom paragraph repaired (C6-M11/C6-M5) + D-12 bidirectional gate (wave 4)
 
 ### Phase 5: Connect Record-State Parity
 
