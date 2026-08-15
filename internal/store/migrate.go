@@ -128,9 +128,9 @@ type MigrateResult struct {
 // DERIVES its backlog on EVERY pass — a fresh exact Count, then a fresh
 // Scroll with Offset always nil — rather than threading a cursor across
 // passes, diverging deliberately from every other sweep in this file
-// (Reindex store.go:3133, BackfillShortIDs store.go:2741, RemapOwner
-// store.go:2950), each of which pages a single cursor once. A future
-// reader must not "fix" this back into a single cursor-threaded pass: there
+// (Reindex store.go:3133, RemapOwner store.go:2950), each of which pages a
+// single cursor once. A future reader must not "fix" this back into a
+// single cursor-threaded pass: there
 // is no persisted cursor because D-07's resume story is "call Migrate
 // again" — nothing to reconcile, nothing that can go stale.
 //

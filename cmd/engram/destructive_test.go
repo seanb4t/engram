@@ -49,10 +49,10 @@ func destructiveCommandNames() map[string]bool {
 //     enforces this), yet a bare invocation previews and --apply performs
 //     the write — the same preview/apply contract every destructive command
 //     gets, extended here to an additive one (04-03-PLAN.md Task 2).
-//   - "backfill-short-ids": 04-04 converts this alias onto the SAME sweep
-//     (migrateSweepPreviewRun/migrateSweepApplyRun); it belongs in this set
-//     from the moment the derivation exists, even though its own --apply
-//     flag does not land until 04-04 (see pendingApplyConversion below).
+//   - "backfill-short-ids": 04-04 Task 1 converts this alias onto the SAME
+//     sweep (migrateSweepPreviewRun/migrateSweepApplyRun) and gives it its
+//     own --apply flag in that same task, in the same commit that deletes
+//     04-03's temporary pendingApplyConversion exclusion.
 //
 // migrate revert is deliberately NOT here: its toolclass row is
 // Destructive:true (04-03-PLAN.md Task 3), so destructiveCommandNames()
@@ -64,29 +64,13 @@ var applyRoutedAdditions = map[string]bool{
 	"backfill-short-ids": true,
 }
 
-// pendingApplyConversion is a NAMED, TEMPORARY exclusion (REVIEWS.md
-// C4-H1/M12): backfill-short-ids is an applyRoutedAdditions member and
-// therefore already in the mutating set, but its conversion to
-// registerDestructive — and therefore its own --apply flag — lands in plan
-// 04-04 Task 1, one wave later. This entry keeps the wave-3 tree green:
-// switching TestDestructiveCommandsRequireApply onto mutatingCommandNames()
-// without this exclusion would demand --apply from a command that does not
-// carry it yet, by design-order, not by defect. Plan 04-04 Task 1 DELETES
-// both this var and every reference to it, in the SAME task that gives
-// backfill-short-ids its --apply flag.
-//
-// It holds exactly one name, for exactly one wave. If a second entry is
-// ever added here to make a gate pass, the DERIVATION is wrong, not the
-// exclusion list — that is precisely how the rejected !ReadOnly predicate
-// (C4-H1) stayed invisible for three review cycles.
-var pendingApplyConversion = map[string]bool{
-	"backfill-short-ids": true,
-}
-
 // mutatingCommandNames is the `--apply`-REQUIRED set (REVIEWS.md M12 as
 // corrected by C4-H1): destructiveCommandNames() (the table-derived
 // Destructive:true set) UNIONED with the small named applyRoutedAdditions
-// set, MINUS the one-wave pendingApplyConversion exclusion.
+// set. 04-04 Task 1 DELETED the one-wave pendingApplyConversion exclusion
+// this function subtracted through the end of wave 3 — backfill-short-ids
+// gained its own --apply flag in that same task, closing the window the
+// exclusion existed to cover.
 //
 // This is DELIBERATELY NOT `!op.Class.ReadOnly && op.CLICommand != ""`. A
 // prior revision defined it that way; executed against the live
@@ -96,12 +80,13 @@ var pendingApplyConversion = map[string]bool{
 // spine-review restore, store, summarize-missing), of which only THREE are
 // Destructive:true, and --apply exists on exactly the commands routed
 // through registerDestructive (prune.go:159, spine_review_purge.go:425,
-// migrate.go:257, plus 04-03's migrate). So SEVEN commands (store, reindex,
-// summarize-missing, serve, migrate-set-owner, spine-review archive,
-// spine-review restore) would be demanded to carry --apply and have none —
-// the --apply-routed tier is a ROUTING fact, and the blast-radius table has
-// no routing column; !ReadOnly is a different question ("does this command
-// write?") that happens to select a strictly larger set.
+// migrate.go:257, plus 04-03's migrate and 04-04's backfill-short-ids). So
+// SEVEN commands (store, reindex, summarize-missing, serve,
+// migrate-set-owner, spine-review archive, spine-review restore) would be
+// demanded to carry --apply and have none — the --apply-routed tier is a
+// ROUTING fact, and the blast-radius table has no routing column; !ReadOnly
+// is a different question ("does this command write?") that happens to
+// select a strictly larger set.
 //
 // destructiveCommandNames() STAYS as the table-derived half — this function
 // is built ON it, never a replacement for it.
@@ -109,9 +94,6 @@ func mutatingCommandNames() map[string]bool {
 	out := destructiveCommandNames()
 	for name := range applyRoutedAdditions {
 		out[name] = true
-	}
-	for name := range pendingApplyConversion {
-		delete(out, name)
 	}
 	return out
 }
@@ -194,15 +176,15 @@ func ownFlagNames(cmd *cobra.Command) []string {
 // TestDestructiveCommandsRequireApply is D-03's derivation gate, widened by
 // REVIEWS.md M12 (as corrected by C4-H1, Task 1): the set of live commands
 // carrying an --apply flag must equal mutatingCommandNames() — the NAMED
-// union destructiveCommandNames() ∪ applyRoutedAdditions −
-// pendingApplyConversion — in BOTH directions, so neither a missing flag
-// nor a stray one passes. This is deliberately NOT destructiveCommandNames()
-// alone: migrate (Destructive:false) carries --apply too, via
-// applyRoutedAdditions. At the end of Task 2 this resolves to exactly four
-// names — migrate, migrate-remap-owner, prune-expired, spine-review purge
-// — matching the four live registerDestructive callers (prune.go:159,
-// spine_review_purge.go:425, migrate.go:257, migrate_family.go); Task 3
-// adds the fifth (migrate revert) on both sides in one edit.
+// union destructiveCommandNames() ∪ applyRoutedAdditions — in BOTH
+// directions, so neither a missing flag nor a stray one passes. This is
+// deliberately NOT destructiveCommandNames() alone: migrate
+// (Destructive:false) carries --apply too, via applyRoutedAdditions. At the
+// end of 04-04 Task 1 this resolves to exactly six names — migrate, migrate
+// revert, migrate-remap-owner, prune-expired, spine-review purge,
+// backfill-short-ids — matching the six live registerDestructive callers
+// (prune.go:159, spine_review_purge.go:425, migrate.go:257,
+// migrate_family.go x2, backfill.go).
 func TestDestructiveCommandsRequireApply(t *testing.T) {
 	want := mutatingCommandNames()
 	got := map[string]bool{}
@@ -218,7 +200,7 @@ func TestDestructiveCommandsRequireApply(t *testing.T) {
 	}
 	for key := range got {
 		if !want[key] {
-			t.Errorf("command %q carries --apply but is not classified mutating (destructiveCommandNames() ∪ applyRoutedAdditions − pendingApplyConversion)", key)
+			t.Errorf("command %q carries --apply but is not classified mutating (destructiveCommandNames() ∪ applyRoutedAdditions)", key)
 		}
 	}
 }
@@ -249,13 +231,12 @@ func TestApplyRoutedAdditionsArePinned(t *testing.T) {
 }
 
 // TestMutatingCommandNamesMembership pins mutatingCommandNames()'s result
-// to the exact FIVE names live at the end of this wave (REVIEWS.md M12,
-// INV-1): migrate, migrate revert, migrate-remap-owner, prune-expired,
-// spine-review purge — declared HERE, in Task 3, because this is the task
-// that gives migrate revert its Destructive:true toolclass row and makes
-// the set reach five. 04-04 Task 1 deletes pendingApplyConversion and
-// updates this pin to SIX by adding backfill-short-ids, in the same task
-// that gives the alias its own --apply flag.
+// to the exact SIX names live at the end of wave 4 (REVIEWS.md M12, INV-1):
+// migrate, migrate revert, migrate-remap-owner, prune-expired,
+// spine-review purge, backfill-short-ids — updated HERE, in 04-04 Task 1,
+// which deletes pendingApplyConversion in the SAME task that gives
+// backfill-short-ids its own --apply flag, closing the one-wave window the
+// exclusion existed to cover.
 //
 // If this fails naming the seven UNRELATED commands the rejected !ReadOnly
 // predicate would select (store, reindex, summarize-missing, serve,
@@ -269,6 +250,7 @@ func TestMutatingCommandNamesMembership(t *testing.T) {
 		"migrate-remap-owner": true,
 		"prune-expired":       true,
 		"spine-review purge":  true,
+		"backfill-short-ids":  true,
 	}
 	if got := mutatingCommandNames(); !reflect.DeepEqual(got, want) {
 		t.Errorf("mutatingCommandNames() = %v, want %v", got, want)

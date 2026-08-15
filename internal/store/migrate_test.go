@@ -644,6 +644,100 @@ func TestMigrateExistingShortIDPreserves(t *testing.T) {
 	}
 }
 
+// upsertRawNoOwner writes a point straight through the client whose payload
+// omits the owner key entirely (mirrors seedSource's raw point) — relocated
+// here from store_test.go (04-04) as the one caller left after the deleted
+// Store.BackfillShortIDs' TestBackfillShortIDs, which used it to prove the
+// absent-owner-key invariant survived that method's payload-only SetPayload.
+// TestMigrateOwnerlessRecordInvariant below carries that same proof across
+// onto Store.Migrate.
+func upsertRawNoOwner(ctx context.Context, t *testing.T, s *Store, id string, vec []float32) error {
+	t.Helper()
+	_, err := s.client.Upsert(ctx, &qdrant.UpsertPoints{
+		CollectionName: s.collection,
+		Wait:           qdrant.PtrOf(true),
+		Points: []*qdrant.PointStruct{{
+			Id:      qdrant.NewID(id),
+			Vectors: qdrant.NewVectors(vec...),
+			Payload: qdrant.NewValueMap(map[string]any{"content": "c", "scope": "s"}),
+		}},
+	})
+	return err
+}
+
+// TestMigrateOwnerlessRecordInvariant carries across the absent-owner-key
+// invariant the deleted Store.BackfillShortIDs' TestBackfillShortIDs
+// asserted (04-04, REVIEWS.md C4-H3): a record written with NO owner key at
+// all must still have none after Store.Migrate's payload-only SetPayload —
+// the sweep must never synthesize an owner key it never saw. This is a
+// genuinely legacy-shaped raw insert (no owner, no short_id, no
+// schema_version), so it is picked up by backlogFilter directly with no
+// seedLegacyRecord raw-delete step needed.
+func TestMigrateOwnerlessRecordInvariant(t *testing.T) {
+	ctx := context.Background()
+	c := dialTestClient(t)
+	collection := testCollection("migrate_ownerless_invariant")
+	_ = c.DeleteCollection(ctx, collection)
+	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
+
+	s := newTestStore(t, c, collection)
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+
+	id := "cf700000-0000-0000-0000-000000000001"
+	if err := upsertRawNoOwner(ctx, t, s, id, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("upsertRawNoOwner: %v", err)
+	}
+	if _, ok := rawPayload(ctx, t, s, id)["owner"]; ok {
+		t.Fatalf("seed: owner key present, want genuinely absent")
+	}
+
+	res, err := s.Migrate(ctx, MigrateOptions{})
+	if err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if res.Migrated != 1 {
+		t.Errorf("Migrated = %d, want 1", res.Migrated)
+	}
+
+	after := rawPayload(ctx, t, s, id)
+	if _, ok := after["owner"]; ok {
+		t.Error("Migrate synthesized an owner key on a record that never carried one")
+	}
+	if got := after["short_id"].GetStringValue(); len(got) != 10 {
+		t.Errorf("short_id = %q, want a 10-char Crockford base32 handle", got)
+	}
+	if got := after[schemaVersionKey].GetIntegerValue(); got != int64(migrate.CurrentVersion) {
+		t.Errorf("schema_version = %d, want %d", got, migrate.CurrentVersion)
+	}
+}
+
+// TestMigrateHonorsCancel replaces the deleted Store.BackfillShortIDs'
+// TestBackfillShortIDsHonorsCancel (04-04, REVIEWS.md C4-H3): Store.Migrate
+// must propagate context cancellation to its own Qdrant calls instead of
+// running to completion — the property the CLI's --timeout/Ctrl-C wiring
+// (migrateWithTimeout, cmd/engram/migrate_family.go) relies on.
+func TestMigrateHonorsCancel(t *testing.T) {
+	ctx := context.Background()
+	c := dialTestClient(t)
+	collection := testCollection("migrate_honors_cancel")
+	_ = c.DeleteCollection(ctx, collection)
+	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
+
+	s := newTestStore(t, c, collection)
+	if err := s.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+	seedLegacyRecord(ctx, t, s, "cf800000-0000-0000-0000-000000000001")
+
+	cctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := s.Migrate(cctx, MigrateOptions{}); err == nil {
+		t.Error("cancelled context: expected error")
+	}
+}
+
 // seedNLegacyRecords seeds n genuinely-key-absent legacy records with
 // sequential deterministic ids under prefix, returning them sorted.
 func seedNLegacyRecords(ctx context.Context, t *testing.T, s *Store, prefix string, n int) []string {

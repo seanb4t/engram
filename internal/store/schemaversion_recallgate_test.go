@@ -513,15 +513,15 @@ var recallTransmitters = []recallEmissionClassification{
 }
 
 // operatorMigrationEmitters — D-16's deliberately excluded tier, not
-// reachable from recallEntryPointSeeds, ten entries.
+// reachable from recallEntryPointSeeds. No count is restated here because a
+// restated count is a second, unenforced assertion that goes stale silently
+// (mirrors partialWriteClassification's own discipline,
+// schemaversion_stamp_gate_test.go); the enforced claim is the set-equality
+// gate below (TestRecallEmissionSetIsCompleteAndClassified).
 var operatorMigrationEmitters = []recallEmissionClassification{
 	{
 		enclosingFunc: "Store.CountOwnerless",
 		justification: "Emits Count (store.go:2656). D-16 operator diagnostic: Phase 3's migration sweep must be able to filter/count by schema_version to find its backlog, so a blanket ban across every Qdrant query in this package would make Phase 3 unimplementable.",
-	},
-	{
-		enclosingFunc: "Store.BackfillShortIDs",
-		justification: "Emits Count (store.go:2756) and ScrollAndOffset (store.go:2765). D-16 operator command (`engram backfill-short-ids`); same Phase 3 rationale as Store.CountOwnerless.",
 	},
 	{
 		enclosingFunc: "Store.CountAnonymousBucket",

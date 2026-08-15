@@ -38,9 +38,8 @@ import (
 // a slightly broader predicate than "pre-Phase-2 legacy record" (a record
 // carrying an explicit schema_version: null also matches, and genuinely
 // does need migrating, so the breadth is harmless and arguably desirable
-// here), matching ownerlessFilter (store.go:2631-2636) and
-// missingShortIDFilter (store.go:2726-2731), whose doc comments already
-// state exactly this caveat for their own IsEmpty arms.
+// here), matching ownerlessFilter (store.go:2631-2636), whose doc comment
+// already states exactly this caveat for its own IsEmpty arm.
 //
 // backlogFilter is operator-tier only and is never reachable from any
 // recall entry point — Search/List/SearchDiscovery/ListScheduled all apply

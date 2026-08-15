@@ -168,9 +168,14 @@ func operatorParityRows() []operatorParityRow {
 			facts: []string{"41", "17", "20", "4"},
 		},
 		{
+			// 04-04-PLAN.md Task 1: backfill-short-ids is now a thin
+			// delegating alias sharing migrate's own report envelope
+			// (D-11) -- this row is built from the SAME migrateSummary/
+			// migrateReportDoc pair the "migrate" row above uses, never a
+			// backfill-specific formatter (those are deleted).
 			name:  "backfill-short-ids",
-			text:  backfillSummary(29, false),
-			doc:   backfillReportDoc(29, false),
+			text:  migrateSummary(store.MigrateResult{Migrated: 29, Backlog: 0}, migrate.CurrentVersion, false, 29),
+			doc:   migrateReportDoc(store.MigrateResult{Migrated: 29, Backlog: 0}, migrate.CurrentVersion, false, 29),
 			facts: []string{"29"},
 		},
 		{
@@ -405,10 +410,15 @@ func TestOperatorOutputEncoding(t *testing.T) {
 // zero-record sweep.
 func TestOperatorOutputEmpty(t *testing.T) {
 	docs := map[string]any{
-		"reindex":             reindexReportDoc(store.ReindexResult{}, "t", 0, false, false),
-		"prune-expired":       pruneReportDoc(0, time.Time{}),
-		"summarize-missing":   summarizeReportDoc(store.SummarizeResult{}, false),
-		"backfill-short-ids":  backfillReportDoc(0, false),
+		"reindex":           reindexReportDoc(store.ReindexResult{}, "t", 0, false, false),
+		"prune-expired":     pruneReportDoc(0, time.Time{}),
+		"summarize-missing": summarizeReportDoc(store.SummarizeResult{}, false),
+		// 04-04-PLAN.md Task 1: the deleted backfillReportDoc's entry
+		// replaced with the shared migrate zero-value doc -- this step
+		// REPLACES the backfill-short-ids entry only; it does NOT add a
+		// "migrate status" entry (statusReportDoc's null-safety is gated
+		// directly by 04-03 Task 2, not by this map -- REVIEWS.md C6-L4).
+		"backfill-short-ids":  migrateReportDoc(store.MigrateResult{}, migrate.CurrentVersion, false, 0),
 		"migrate-remap-owner": migrateRemapDoc(0, "", false),
 		"migrate-set-owner":   migrateSetOwnerReportDoc{},
 		"spine-review scan":   spineScanDoc(store.SpineScanResult{}),

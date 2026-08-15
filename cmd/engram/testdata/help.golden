@@ -8,7 +8,6 @@ Usage:
   engram [command]
 
 Available Commands:
-  backfill-short-ids  Assign a short_id to every memory that lacks one (payload-only; no re-embed)
   completion          Generate the autocompletion script for the specified shell
   help                Help about any command
   list                List memories on a remote engram server
@@ -39,7 +38,7 @@ Usage:
   engram backfill-short-ids [flags]
 
 Flags:
-      --dry-run            count records missing a short_id without writing
+      --apply              a mutating operator command previews by default and mutates only when apply is set
   -h, --help               help for backfill-short-ids
       --output string      output format: "json" or "text" (default: detect from stdout)
       --timeout duration   max wall-clock (0 disables); also cancellable via Ctrl-C (default 5m0s)

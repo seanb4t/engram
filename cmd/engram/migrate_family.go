@@ -103,6 +103,19 @@ type migrateOutputDoc struct {
 // DryRun preview's, or the apply closure's own fresh re-preview) the
 // invocation actually acted from, so the projection count is derived once,
 // at the call site, from that manifest's length.
+//
+// target: every LIVE caller passes migrate.CurrentVersion today (the only
+// forward sweep target this binary exposes), but the parameter is kept
+// deliberately general rather than hardcoded — it mirrors
+// revertReportDoc(plan, applied, res)'s sibling shape, where the analogous
+// value (plan.To) genuinely varies per invocation, and keeps this function
+// ready for a future partial-forward-migration target without a signature
+// change. 04-04 Task 1's backfill-short-ids row (D-11: one report shape
+// for one mechanism) is what pushed unparam's evidence count high enough
+// to flag this — a symptom of sharing the formatter correctly, not of an
+// unused parameter.
+//
+//nolint:unparam // target kept general on purpose; see doc comment above
 func migrateReportDoc(res store.MigrateResult, target migrate.Version, dryRun bool, wouldMigrate uint64) migrateOutputDoc {
 	return migrateOutputDoc{
 		Target:       int(target),
@@ -120,6 +133,11 @@ func migrateReportDoc(res store.MigrateResult, target migrate.Version, dryRun bo
 // migrateSummary renders the operator-facing one-line result of a migrate
 // sweep, for both the preview and applied shapes — pure (no I/O), mirroring
 // pruneSummary/migrateRemapSummary's discipline (prune.go:122, migrate.go:204).
+//
+// target: see migrateReportDoc's identical justification immediately
+// above — kept general on purpose, not an unused parameter.
+//
+//nolint:unparam // target kept general on purpose; see doc comment above
 func migrateSummary(res store.MigrateResult, target migrate.Version, dryRun bool, wouldMigrate uint64) string {
 	if dryRun {
 		return fmt.Sprintf("preview: %d record(s) would migrate to v%d; re-run with --apply to migrate",

@@ -7,10 +7,10 @@
       "summary": "Assign a short_id to every memory that lacks one (payload-only; no re-embed)",
       "flags": [
         {
-          "name": "dry-run",
+          "name": "apply",
           "type": "bool",
           "default": "false",
-          "usage": "count records missing a short_id without writing"
+          "usage": "a mutating operator command previews by default and mutates only when apply is set"
         },
         {
           "name": "output",
