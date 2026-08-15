@@ -270,9 +270,9 @@ type Memory struct {
 	// empty otherwise.
 	SummaryModel string `json:"summary_model,omitempty"`
 	// SummaryEgressAt is the k1oe.2 durable audit stamp: when this record's
-	// content was egressed to the summarizer model (auto path only). Store-only;
-	// not on the Connect wire. Zero if never egressed or the summary was
-	// client-authored/cleared.
+	// content was egressed to the summarizer model (auto path only). Plain
+	// json tag, visible on both the MCP and Connect wires. Zero if never
+	// egressed or the summary was client-authored/cleared.
 	SummaryEgressAt time.Time `json:"summary_egress_at"`
 	// Score is the Qdrant similarity score of this record for the query that
 	// returned it (higher = closer). Set only on Search results; zero on
