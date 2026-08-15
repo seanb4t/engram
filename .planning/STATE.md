@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: 2026-08-12.01
 milestone_name: Record State & Schema Evolution
-current_phase: 4
-current_phase_name: Migration CLI & First Customer
-status: "Phase 03 shipped — PR #498"
+current_phase: 04
+current_phase_name: migration-cli-first-customer
+status: executing
 stopped_at: Phase 3 context gathered
-last_updated: "2026-08-14T20:22:34.232Z"
-last_activity: 2026-08-14
-last_activity_desc: Phase 03 execution started
+last_updated: "2026-08-15T13:09:32.477Z"
+last_activity: 2026-08-15
+last_activity_desc: Phase 04 execution started
 progress:
   total_phases: 4
   completed_phases: 3
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-12 — after closing milestone v0.13.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 03 — Migration Foundation (Registry, Invariants & Sweep)
+**Current focus:** Phase 04 — migration-cli-first-customer
 
 ## Current Position
 
-Phase: 4 — Migration CLI & First Customer
-Plan: Not started
-Status: Phase 03 shipped — PR #498
-Last activity: 2026-08-14 — Phase 4 planning complete
+Phase: 04 (migration-cli-first-customer) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 04
+Last activity: 2026-08-15 — Phase 04 execution started
 
 ## Deferred Items
 

@@ -339,12 +339,12 @@ Research flag: yes — the exact `internal/migrate` step-registry API shape (ste
   5. `engram migrate revert` previews by default like `--apply`, runs declared inverses in reverse order, and refuses the whole operation at the first irreversible step in the requested range rather than reverting partially — the refusal message names a collection snapshot as the recovery path.
   6. No migration ever runs automatically on server startup; at most, startup emits a non-blocking warning that pending migrations exist.
 
-**Plans:** 4/4 plans complete
+**Plans:** 1/4 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 04-01-PLAN.md — Tracer: v0→v1 step + CheckAdditive pre-existing-key carve-out (H1) + CurrentVersion 0→1 with its full blast radius repaired and PA-10a item 3 discharged (C5-H2) + full-backlog DryRun + manifest-based intersection w/ single-pass PA-3-safe path (H7); carries the phase-wide Conformance Registry Impact ledger (wave 1)
+- [x] 04-01-PLAN.md — Tracer: v0→v1 step + CheckAdditive pre-existing-key carve-out (H1) + CurrentVersion 0→1 with its full blast radius repaired and PA-10a item 3 discharged (C5-H2) + full-backlog DryRun + manifest-based intersection w/ single-pass PA-3-safe path (H7); carries the phase-wide Conformance Registry Impact ledger (wave 1)
 
 **Wave 2**
 
@@ -473,7 +473,7 @@ Research flag: yes — the operator-UI soft-hidden-state conventions (archived/s
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | Complete    | 2026-08-13 |
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-13 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-08-14 |
-| 4. Diagnosability | v0.12.x | 4/4 | Complete    | 2026-08-11 |
+| 4. Diagnosability | v0.12.x | 4/4 | In Progress|  |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 1. Interface Enforceability | v0.13.x | 9/9 | Complete | 2026-08-04 |
