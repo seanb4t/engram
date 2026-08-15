@@ -1,14 +1,14 @@
 ---
 phase: 04
 reviewers: [codex, opencode]
-reviewed_at: 2026-08-15T01:00:18Z
+reviewed_at: 2026-08-15T02:33:02Z
 plans_reviewed:
   - 04-01-PLAN.md — Tracer: v0→v1 short_id first customer
   - 04-02-PLAN.md — Store MigrateStatus histogram + PreviewRevert/Revert + startup warning
   - 04-03-PLAN.md — CLI surface: migrate command family
   - 04-04-PLAN.md — backfill-short-ids as thin delegating alias
-cycle: 6
-plans_revision: ec1e00bc
+cycle: 7
+plans_revision: ff935731
 cycle_1_findings:
   high: [H1, H2, H3, H4, H5, H6]
   actionable: [M1, M2, M3, M4, M5, M6, M7, M8, M9, M10, M11]
@@ -56,7 +56,563 @@ cycle_6_verdict:
   current_high_count: 7
   current_actionable_count: 22
   converges: false
+cycle_7_verdict:
+  resolved_high: [C6-H1, C6-H2, C6-H3, C6-H4, C6-H5, C6-H6, C6-H7]
+  resolved_actionable:
+    [C6-M1, C6-M2, C6-M3, C6-M4, C6-M5, C6-M6, C6-M7, C6-M8, C6-M9, C6-M10, C6-M11, C6-M12,
+     C6-L1, C6-L2, C6-L3, C6-L4, C6-L5, C6-L6, C6-L7, C6-L8, C6-L9, C6-L10]
+  new_high: []
+  new_actionable: [C7-M1, C7-M2, C7-M3, C7-M4, C7-M5, C7-L1]
+  current_high_count: 0
+  current_actionable_count: 6
+  converges: true
+  reviewer_verdicts:
+    codex: "high=0 actionable=3"
+    opencode: "high=0 actionable=2 — READY TO EXECUTE"
 ---
+# Cross-AI Plan Review — Phase 4 (Cycle 7)
+
+**Cycle 7 is the decisive convergence review.** No further review cycles were authorised. The
+plans were revised in `ff935731` to attack the four root causes cycle 6 identified. This cycle
+re-ran the three class sweeps independently against the plans as they now stand, re-verified
+every cycle-6 HIGH against shipped source, re-audited the ledger's boundary section for a third
+load-bearing exclusion, and sampled all 22 cycle-6 actionables.
+
+**Verdict: the four root causes are genuinely fixed. Zero HIGH concerns remain.** Both external
+reviewers independently reach `high=0` and OpenCode records an explicit **READY TO EXECUTE**.
+Six actionable non-HIGH concerns are open, all newly surfaced by this cycle's deeper verification.
+All six are bounded, local edits — a reworded predicate, a qualified invariant sentence, three
+named prose sites, one ledger row plus a step, and one gate re-anchor. None is structural, none
+requires re-planning, and none re-opens a closed class.
+
+---
+
+## Root-cause verification (the four claims of `ff935731`)
+
+### Root cause 1 — the comment-stripping idiom: **ELIMINATED**
+
+Independent sweep over all four plans for `rg -v`, `grep -v`, `sed '/…/d'` and awk comment
+stripping returns **zero occurrences in any executable gate**. The idiom survives in exactly
+three places, all of them prohibitions forbidding it: `04-01:98` (INV-2, phase-wide), `04-01:64`
+(must_have), `04-04:67` (must_have).
+
+All 19 negative gates were individually shape-classified and executed against the current tree.
+Every one is DECLARATION-, CALL-, COMPOSITE-LITERAL-, ROW-, STRING-LITERAL- or IMPORT-shaped,
+with the sole exception of two `docs-site` prose-literal gates — and prose is the correct shape
+for a prose file. Ten gates are currently RED and go GREEN on completion (verified by execution,
+e.g. `^\s*Target:\s*1,` matches `internal/store/migrate_converge_test.go:180` today); the
+remainder are prohibition guards, each paired in the same `&&` chain with a positive gate
+carrying the progress claim.
+
+**No gate's search scope includes a file where the plan mandates writing the banned token.** The
+two nearest misses are both already handled by the plan itself: `Store.Migrate` in `tools.go` is
+mandated in *bare* form against a *call-shaped* gate (`04-02:72`), and the whole-file `--dry-run`
+greps over `upgrade.md` were deliberately deleted in favour of section-scoped Go assertions
+precisely because they would have contradicted the D-12 gate (`04-04:367`, `:382`). Also
+verified: no `rg -c`-as-count anywhere (every count uses `rg -o … | wc -l` per INV-3); no `head`
+masking exit status; no `git diff --stat`.
+
+### Root cause 2 — INV-1 made structural: **VERIFIED, with one documented exception**
+
+All twelve tasks (3 per plan × 4 plans) carry a bare unfiltered package-level
+`go test ./<pkg>/ -count=1` as the first clause of their `<automated>` block. No task's only
+`go test` carries a `-run`. Seven of the twelve carry two or three unfiltered package runs.
+
+The substantive question — does any task leave the tree in a state its own unfiltered run would
+reject? — resolves to **exactly one task, and the plan says so outright**. `04-01` T1 raises
+`migrate.CurrentVersion` 0→1 and gates only `internal/migrate`; `04-01:221-227` states that this
+"deliberately reds two shipped `internal/store` tests (ledger rows E1/E2); Task 2 — the very next
+task, same wave — repairs them", and its `<done>` closes with "`internal/store` is knowingly RED
+until Task 2."
+
+The blast-radius accounting behind that exception was independently re-derived and is **accurate
+and complete**. The two named RED sites are real (`internal/store/migrate_test.go:321-330`, the
+PA-4 tail; `internal/store/migrate_converge_test.go:152-176`, the laggard control, which reds
+because `payload()` at `store.go:646` stamps `max(1,0)`). Everything else is self-adapting and
+stays green — confirmed by tracing `runCompatRow` (`schemaversion_compat_test.go:250-340`, derives
+`expectedRowCount`/`rows`/`olderThanCovered` from `migrate.CurrentVersion` and raw-injects its
+own `schema_version`), `TestPayloadRoundTripsSchemaVersion` (`store_test.go:2985-3050`, every
+expectation derived), `schemaversion_stamp_test.go:169-212` (raw-injects the key-absent shape),
+`TestMigratePartialFailureResume` (`migrate_faultinject_test.go:310+`, explicit `Target: 1` and a
+fixture `markerStep(0,1,…)`), and all of `internal/server` (`schemaversion_wire_test.go:32` uses
+`migrate.CurrentVersion + 1`).
+
+Because the exception is stated in PLAN.md rather than hidden, it is **not counted as an
+actionable finding** under this cycle's definition. It is recorded here because Codex raised it
+independently and because the phase-wide invariant's *wording* ("every task leaves a green tree")
+is false for this one task — the honest wording is "every task's own package(s)".
+
+### The 04-03 re-sequencing: **CORRECT, verified per test**
+
+At the end of `04-03` T2, all seven named gates pass. Each was resolved by reading the shipped
+test body and determining what it derives its expected set from:
+
+| Test | Derives from | End of T2 | Mechanism |
+|---|---|---|---|
+| `TestOperatorOutputParity` (`operator_output_test.go:310-345`) | rows gated **bidirectionally** against `commandKeySet(operatorCommands())` at `:317-327` | **PASS** | T2 step 6a(b) adds one row each for `migrate` and `migrate status`, each one result value through both formatters |
+| `TestOperatorCommands` (`cmdwalk_test.go:154-184`) | **hardcoded** `wantOperatorCommandKeys` (`:117-130`), bidirectional, plus an exclusion-set pin (`:168-176`) | **PASS** | T2 step 6a(a) adds both keys; both satisfy the live predicate at `cmdwalk.go:101-116` |
+| `TestEveryOperatorCommandRejectsInvalidOutput` (`operator_output_test.go:570-583`) | iterates `operatorCommands()`; `t.Fatalf` default at `:560` | **PASS** | T2 step 6a(c) adds both arg vectors; step 3 also fixes body order so `operatorOutputFormat` runs **before** `migrateFamilyStoreFromEnv()`, else the subtest gets `exitUnavailable` not `exitUsage` |
+| `TestCatalogOutputFlagMatchesOperatorCommandsUnionClientVerbs` (`cmdwalk_test.go:194-229`) | decodes the **committed** `testdata/catalog.golden` and set-equates | **PASS — via step 6c** | this is the one that fails from a stale *golden*, not a stale list; T2 step 6c mandates `task surfaces:gen` as T2's final step |
+| `TestHelpGolden` (`golden_test.go:290-301`) | walks the live tree vs `testdata/help.golden` | **PASS** | step 6c regeneration |
+| `TestCatalogGolden` (`golden_test.go:306-311`) | `buildCatalog(rootCmd)` vs `testdata/catalog.golden` | **PASS** | step 6c regeneration |
+| `TestDestructiveCommandsRequireApply` (`destructive_test.go:88-106`) — **both directions** | A: every `want` key has a live `--apply`; B: every live `--apply` carrier is in `want` | **PASS both** | live table enumerated: `toolclass.go` has exactly three `Destructive:true` rows with non-empty `CLICommand` (`:172/:177`, `:180/:184`, `:327/:328`; those at `:99,:108,:115` are MCP-only). End of T2: `mutatingCommandNames()` = 4; live `--apply` carriers = the three shipped `registerDestructive` callers (`prune.go:159`, `spine_review_purge.go:425`, `migrate.go:257`) + T2's `migrateCmd` = 4. **Exact set equality.** |
+
+Sixteen further same-package gates the plan does not name were also checked and are green at end
+of T2, because they derive from the live tree and T2 lands command + toolclass row together —
+including `TestCatalogBlastRadiusMatchesToolClasses`, `TestSurfaceConformanceCobraUsage`,
+`TestDestructiveCommandsExactFlagSet` (T2 correctly adds **no** `destructiveFlagCases` row for
+`migrate`, which is `Destructive:false`), and `TestTimeoutGroupMatrix` (T2 step 0c explicitly
+forbids adding `"migrate revert"`, whose command does not exist until T3 — the reverse-direction
+trap is correctly identified).
+
+The sharpest sequencing call in the phase is also correct: `04-04` T1 deletes
+`pendingApplyConversion` **in T1, not T2**, because adding `--apply` to `backfill-short-ids`
+immediately fires `TestDestructiveCommandsRequireApply`'s second direction
+(`destructive_test.go:101-104`).
+
+### Root cause 3 — self-referential bookkeeping deleted: **VERIFIED**
+
+`rg -o '04-0[1-4]:[0-9]+'` over all four plans returns **zero** matches: no line anchor into a
+PLAN document survives. Gate/file/form self-counts, ledger methodology history and cycle-N
+changelogs are gone; where a count would have been re-authored, the text now names the shape
+instead (`04-01:64`) or defers to the ledger (`04-01:263`). INV-4 forbids reintroduction.
+
+A side effect worth recording: because the cycle-N changelogs were deliberately removed, closure
+of a cycle-6 actionable had to be verified by finding its **substantive incorporation** into a
+task's action / acceptance criteria / `<verify>` / `<files>` / must_have / prohibition. That is
+how all 22 were checked below.
+
+### Root cause 4 — `.planning/**` promoted to ledger section F: **VERIFIED, and a third exclusion found**
+
+F1/F2 (`04-01:785-788`) now own `TestActiveMilestoneKeyLinksSatisfiable`; the `sweep_test.go`
+exclusion is re-scoped to that file alone with an explicit "`gate_test.go` IS IN SCOPE"
+(`04-01:810`); `internal/keylinks` is removed from the untouched-packages exclusion (`:805`); the
+constraint is carried as `04-01` T3 step 13b with `go test ./internal/keylinks/ -count=1` in T3's
+`<automated>`. Anchors verified live: `gate_test.go:93` = `TestNoEscapedPatternsRepoWide`,
+`:128` = `TestActiveMilestoneKeyLinksSatisfiable`.
+
+**A third load-bearing exclusion does exist** — see C7-M3 below.
+
+---
+
+## Cycle-6 HIGH closure (C6-H1 … C6-H7), verified against shipped source
+
+| ID | Verdict | Evidence |
+|---|---|---|
+| **C6-H1** — negative-gate class not closed | **FULLY CLOSED** | Root cause fixed rather than the four instances (see above). (a) → `^\s*Target:\s*1,` composite-literal gate, non-vacuous (matches `migrate_converge_test.go:180` today). (b) → count gate replaced by a positive `rg -n 'MigrateOptions\{Target: -1\}'`. (c) → `! rg -n '&migrateTimeout' cmd/engram/migrate_family.go`, now present in acceptance, **both** `<automated>` blocks and the phase `<verification>` — no bare form survives. (d) → `! rg -n '^var .*PreviewManifest'`. The C5-L1 reinstatement is fixed: `{0,40}` replaced by a clause boundary `--timeout[^.;]*\b(removed\|no longer accepted\|dropped)\b`, verified empirically — the permitted sentence does **not** match (rc=1), the prohibited claim does (rc=0). |
+| **C6-H2** — forward-reference / false acceptance evidence | **FULLY CLOSED** | Fix option 1 taken. `04-03` T2 steps 6a–6c land registry rows A1/A2/A3/A7/A22, `TestApplyRoutedAdditionsArePinned`, the `TestDestructiveCommandsRequireApply` switch **and** the golden regeneration in the same task as `migrate`/`migrate status`; only `migrate revert`'s rows are in T3. The claim at `04-03:556` is now true rather than asserted. |
+| **C6-H3** — `MigrateResult.Migrated` type | **FULLY CLOSED** | `slices.Contains(res.Migrated…)` is gone (zero hits in any plan). Shipped type confirmed `Migrated uint64` (`internal/store/migrate.go:49`). Parity now proven by stored-payload probes plus the cardinality identity `res.Migrated == uint64(len(previewManifest) - len(res.Spared))` — compiles (int subtraction then conversion) and is sound since `Spared = manifest \ observed`. The payload probe is **discriminating**: the fixture stamps only `schema_version`, so the spared record carries no `short_id`, and a migrating apply would mint one (`payload()` writes `short_id` only when non-empty, `store.go:658-660`). No int/uint64 mismatch anywhere in the chain. |
+| **C6-H4** — adapter vs. grep contradiction | **CLOSED for execution** (stale prose remains) | The blocking gate is gone, replaced by a count pin: `test "$(rg -o 'migrateSweep(Preview\|Apply)Run\(ctx, cmd, backfillOutput, backfillTimeout\)' cmd/engram/backfill.go \| wc -l)" = 2` (`04-04:232`, live at `:250`). It pins what it claims — `04-03:339-340` declares exactly those 4-arg signatures, `04-04:151-152` mandates the exact call text; remove an adapter → 1 → RED, add one → 3 → RED, refactor the file away → 0 → RED. Residue: `04-04:473` still describes `migrateWithTimeout(ctx, backfillTimeout)`, the call form step 3 forbids. Prose only; no gate reads it; the action text at `:149` is emphatic and correct. |
+| **C6-H5** — PA-11a violation | **FULLY CLOSED** | `seedLegacyRecordNoFatal` does not exist in shipped source; the plan creates it (`04-01:333-340`) error-returning, no `*testing.T`, routed into `h.recordErr`, mirroring the shipped `rawPayloadNoFatal` (`migrate_converge_test.go:452`, doc at `:448-451` citing PA-11a). It addresses the stated failure mode: shipped `seedLegacyRecord` (`migrate_test.go:47-64`) calls `t.Fatalf` at `:58`/`:62`. PA-11a is now in T2's `<read_first>` and the acceptance grep is re-pinned to the new name. The paired negative guard is argument-scoped so it does not catch the legitimate seeding loop at `migrate_converge_test.go:111` (verified rc=1 today). |
+| **C6-H6** — ledger `.planning/**` boundary | **FULLY CLOSED** | See root cause 4. Additionally verified: a third phase-3 key link (`pattern: 'PHASE4'`, `03-02-PLAN.md:84`) is anchored in a file `04-01` T1 edits, but is separately covered by ledger row C2 and explicit preserve-the-marker instructions at `04-01:189`, `:208`, `:216`. Effective coverage is complete. |
+| **C6-H7** — M10 has no harness | **CLOSED for execution** (stale prose remains) | Premise verified independently: `rg -l 'testcontainers\|StartQdrant\|dockertest'` returns `internal/store/*`, `internal/server/tools_test.go`, `internal/e2e/harness_test.go`, `internal/retrievaleval/*` — **nothing under `cmd/`**. Downgrade option 2 taken, and the composition genuinely covers M10: half one (`04-01:496`, T3 step 10) seeds `short_id`-present / `schema_version`-absent against real pinned Qdrant and asserts `short_id` unchanged + `schema_version == 1` — constructible there, since `Memory.ShortID` is written verbatim by `payload()` (`store.go:658-660`) and `deleteRawPayloadKeys` strips `schema_version`. Half two is the alias call-sequence equality. Residue: `04-04:434`/`:436` (threat model T-04-08b) still read "proves this with `--apply` against real Qdrant" — the claim the downgrade retracts. Prose only. |
+
+**Net: 5 of 7 fully closed; 2 closed for execution purposes with prose residue that no gate reads
+and no action text contradicts.** Neither residue is counted as actionable — an executor follows
+the emphatic step text, not a stale artifact-list line — but both are named here so a future
+reader does not mistake them for live claims.
+
+---
+
+## Ledger boundary re-audit — a third load-bearing exclusion **was** found
+
+Every remaining excluded item was traced to what it refers to in the repo and tested empirically
+against the phase's changes.
+
+**Correctly excluded** (with the evidence that nothing breaks):
+
+- **Registries in untouched packages.** No `_test.go` in `internal/{authz,summarize,embed,webauth,telemetry,auth,shortid,openaiurl,retrievaleval,testhttp,e2e}` performs a cross-package scan. `ui/src` has zero CLI-command references. The stated scope list omits `internal/surfacesgen` and `internal/e2e`, both genuinely reachable — but both check out: `surfacesgen/main.go:100-103` maps `RuleDestructiveRequiresApply` to exactly `guides/cli.md` + `curating-memory/SKILL.md` (identical to ledger row D2, no third target), and `renderToolBlastRadius` (`:146-161`) `continue`s on `op.MCPTool == ""`, so the three new CLI-only toolclass rows emit nothing and the CI `surfaces` drift job stays clean.
+- **Deleting a test function.** The row's stated rationale ("no registry is keyed on test-function names") is **false** — `03-05-PLAN.md:52` declares `pattern: 'TestEveryFullWriteMethodStampsSchemaVersion'`, live-evaluated by F1's gate. All 44 `pattern:` fields under `.planning/phases` were checked; it is the only test-name-keyed one, it is not among the five tests `04-04` touches, and `CheckSatisfiable` (`internal/keylinks/keylinks.go:313-337`) falls back to the `to` file which defines it. Not load-bearing here.
+- **Runtime/behavioural invariants with no static registry** (PA-2, PA-5a, the `int(target)` cast, PA-11a) — re-running the S1–S9 shapes surfaces no set-equality, directory scan, `t.Fatalf` default or hand-maintained literal keyed on any of them.
+- **`buf`/proto codegen drift.** No plan's `files_modified` contains `proto/**`; `surfacesgen` implements no proto anchor for the changed rule sentence; CI's `git diff --exit-code -- proto/ docs-site/ skill/ gen/ …` (`ci.yaml:286-292`) is satisfied by rows D2 + A11; A21's `MCPTool: ""` constraint keeps `renderToolBlastRadius` byte-identical.
+- **Helm chart invariants.** `rg 'backfill|migrate|schema_version|reindex|prune-expired' charts/` returns four comment lines, all about `reindex`/`migrate-remap-owner`, none falsified. No new `ENGRAM_` field, so the `engram.containerEnv` checksum pin (`Taskfile.yaml:204`) is inert.
+- **The ARCHIVED-milestone key-link sweep.** `collectV013Phase12Links` (`sweep_test.go:94-100`) walks only the archived root, and the live/archived split is itself pinned by `TestGateScopesAreDistinct` (`gate_test.go:138+`).
+- **Lint-only regressions**, as to `golangci-lint unused`.
+
+**Load-bearing — see C7-M3.** The `Prose accuracy in files no test reads` exclusion fails its own
+survival criterion at a third site.
+
+Two further observations that are **not** findings: `.rumdl.toml:29-30` excludes `docs-site` and
+`.planning` outright, so four plan assertions that "`task lint` runs rumdl over the edited
+docs-site markdown" (`04-02:319`, `04-03:620`, `04-04:401`, `:450`) are false — nothing fails
+because of it, and the genuinely rumdl-exposed file is `skill/engram/skills/curating-memory/SKILL.md`
+(rewritten by `04-03` T1's `surfaces:gen`). And ledger row A18's trigger description understates
+`TestUpgradeGuideNamesEveryChangedCommand`, which re-checks **every** `changes:true` row against
+the current `## Unreleased` text on every run and ignores `landed` — mitigated because `04-04` T3's
+`<automated>` runs it by name.
+
+---
+
+## `-run` selector resolvability — converged
+
+62 `go test <pkg> -run <selector>` invocations across the four plans, covering 51 distinct test
+tokens, were each resolved to one of: exists in shipped source, created by an earlier task in
+wave order, or created by the same task. **Zero broken selectors — nothing matches nothing.**
+Cross-package consistency is clean: every (package path, test name) pair is correct, and no
+selector reaches for a name defined in a package it does not run.
+
+Over-matching was checked and is deliberate in all three cases where it occurs
+(`TestDestructive` → 5 shipped, `TestCatalogGolden` → 2, `TestExitCodeBaseline` → 4; the last is
+explicitly reasoned about in `04-03`'s T3 acceptance, which relies on `TestExitCodeBaselineRowCount`'s
+`wantRows = 37` pin being reached). No selector matches **fewer** tests than intended — no typos,
+no case errors, no stale names from earlier cycles.
+
+Residual consistency defects against the plans' own INV-3, all **cosmetic** (a superset selector
+loses no coverage, and 04-04 authors no `TestMigrateFamily*` test of its own, so the vacuity
+failure mode INV-3 defends against cannot bite): `04-04:229` and `:447` use the forbidden bare
+`TestMigrate` form in `cmd/engram`, as does `04-03:619`'s own `<verification>` block;
+`04-04:449` gives `./internal/migrate/` a selector that reaches only `TestMigratePackageIsStdlibOnlyLeaf`
+(the three tests `04-01` T1 creates there carry no `TestMigrate` prefix) — not vacuous, and
+`04-04:445` mandates a bare `go test ./... -count=1` immediately above it; and `04-04:217` vs
+`:500` name the same new test two different ways (`…Delegates` / `…Converges`), which the
+prefix selector `TestBackfill` covers either way.
+
+---
+
+## Cycle-6 actionables (C6-M1 … C6-M12, C6-L1 … C6-L10) — **all 22 CLOSED**
+
+Each was verified by locating its substantive incorporation into a task, not a changelog mention.
+
+| ID | Closing passage |
+|---|---|
+| C6-M1 | `04-02:344` mandates ONE converged / THREE stuck against the shipped `arm(2,0,…)` precedent (`migrate_faultinject_test.go:408,423`); `:376` requires the converged id from `inj.ids()[0]` — wire traffic, not fixture position |
+| C6-M2 | `04-02:73` mandates a package-level **`var`** citing the `spineScrollBatch` precedent (verified live at `internal/store/spine.go:28`); `04-02:207` gates `^var migrateStatusFacetLimit uint64 = 1024` **and** `! rg '^const migrateStatusFacetLimit'`; the "executor picks" fork is deleted |
+| C6-M3 | New search shape **S9** (`04-01:639`) with the `MigrateOptions{` sentinel grep; S8's Found column corrected to "E2, E3, E4 (partial — see S9)" |
+| C6-M4 | Closed by removal — the inconsistent counts are gone; `04-01:263` now defers to ledger section E, `:390` enumerates the five derived files by name with no count |
+| C6-M5 | Ledger row **D9** (`04-01:728`); `04-03:222` step 8c owns `cli.md:136-140`; `04-04:352` step 1b owns `:143-150`; `guides/cli.md` added to `04-04`'s `files_modified` |
+| C6-M6 | `04-03:172` reworded to "must derive its want-set from the NAMED union `mutatingCommandNames()`, **never from the `!ReadOnly` predicate**"; `:96`, `:116`, `:642`, `:654` restate it. No "must derive from `!ReadOnly`" string survives |
+| C6-M7 | `04-02:39` now reads "**The delta is a KEY-PRESENCE diff only.**"; `rg 'added/changed'` over all four plans returns nothing |
+| C6-M8 | `04-03` T2 `<files>` (`:262-274`) and T3 `<files>` (`:458-469`) now list all six omitted files; `04-02` T2 `<files>` includes `schemaversion_stamp_gate_test.go` |
+| C6-M9 | Phase-wide **INV-3** (`04-01:105`) plus exact-name mandates at every creating step (`04-01:199-201`, `:513`; `04-02:186`, `:420`) |
+| C6-M10 | `04-03:405`, `:417`, `:533`, `:561` mandate the `TestMigrateFamily…` prefix and state why (the five shipped matches at `cmd/engram/migrate_test.go:71,86,104,133,145`) |
+| C6-M11 | Ledger row **D10** (`04-01:729`); `04-04:344` step 1c amends §5's enumeration; `04-04:399` gates `! rg -n 'four of the six'` |
+| C6-M12 | `04-02:172-176`: truncation is `uint64(len(facetHits)) >= migrateStatusFacetLimit` **only**; a sum mismatch without a reached bound retries the three RPCs **once**, then raises a distinct non-truncation error naming a concurrent writer. Pinned by a subtest at `:201` |
+| C6-L1 | False counts gone; `04-01:64` restates the invariant by shape and names each gate in force |
+| C6-L2 | `04-03:392` adds "replace the list's doc-comment COUNT phrase with a non-counting sentence"; closure at `:433`; ledger A22 carries the same instruction |
+| C6-L3 | `task license:check` appended to all three `04-04` `<automated>` blocks (`:250`, `:315`, `:404`) and stated as a must_have at `:70` |
+| C6-L4 | `04-03:362` corrects the rationale (04-04 T1 step 6c **REPLACES** the entry, does not add `statusReportDoc`) and mandates the exact test name |
+| C6-L5 | Anchors re-verified live: `cli.md` header `:375` / zero-disables row `:378`; `usageErrorf` at `client_common.go:251` (with an explicit note that `operror.go` does not hold it); `spine.go` `var spineScrollBatch` at `:28`, `scrollAllPoints` at `:46`; `migrate status`/`migrateStatusTimeout` now in the C5-M6 summary |
+| C6-L6 | Ledger row **E4** (`04-01:776`) names both sites as "NOT name-greppable (found only by S9, C6-L6)" with owners; both files added to `files_modified`; E5 amended so its do-not-touch constraint does not block the prose repair |
+| C6-L7 | Ledger row **A24** (`04-01:691`) now reads "a CONSISTENCY gate among declared sets… It does NOT verify that a live command produces each allowlisted code", with the same caveat for A22 |
+| C6-L8 | Closed by prohibition — the idiom is forbidden phase-wide, so the wrong-line-number defect is unreachable |
+| C6-L9 | `04-04:192` extends the coverage-migration naming obligation to `TestBackfillCmdHasDryRunAndTimeoutFlags` and `TestBackfillSummaryUnchanged`, and adds a `newTestStore` do-not-delete guard citing row B8 |
+| C6-L10 | `04-04:197` names `backfill_test.go:35` and `:38` as FORMAT-STRING hits the discovery grep misses but the step-6c acceptance gate matches |
+
+---
+
+## Actionable non-HIGH concerns (cycle 7)
+
+Six. Each would be invisible to `/gsd-execute-phase` unless incorporated into PLAN.md or
+explicitly deferred there.
+
+### C7-M1 — `04-02`'s facet-truncation predicate is stated standalone, inviting an implementation that rejects a valid 1,024-bucket histogram, and no test discriminates the two readings. [Codex, verified orch]
+
+`04-02:167` declares `var migrateStatusFacetLimit uint64 = 1024`; `:170` requests
+`Limit: qdrant.PtrOf(migrateStatusFacetLimit)`; `:173` then states, standalone: *"**Truncation**
+is signalled by `uint64(len(facetHits)) >= migrateStatusFacetLimit` — the bound was reached. …
+This is the only condition that reports truncation."*
+
+In the pinned client (`go.mod:19` → `qdrant/go-client v1.18.3`), `FacetCounts.Limit` is
+documented `// Max number of facets. Default is 10.` (`points.pb.go:7849-7850`) and `FacetResponse`
+(`:10344-10353`) carries **no truncation flag**. So `len(hits) == Limit` is genuinely ambiguous: a
+collection with exactly 1,024 distinct `schema_version` values returns a complete histogram
+indistinguishable, from the response alone, from a truncated one.
+
+The plan does mandate a second, independent signal at `:171` (`Total` is a whole-collection exact
+`Count`, compared against the derived sum), and truncation always implies `sum != Total`. But two
+implementations satisfy the prose equally: **guarded** (`if sum != Total { if len >= limit →
+truncation else → retry }`) — correct, no defect; and **hoisted** (`if len >= limit { return
+truncationErr }`) — which `:173`'s standalone phrasing directly invites, and which false-positives
+at exactly 1,024 legitimate versions. **No test discriminates them**: `:199` seeds *strictly more*
+distinct versions than the lowered bound, and `:201`'s C6-M12 subtest drives a mismatch *without*
+reaching the bound. The boundary is invisible to the plan's own gates. Nothing anywhere discusses
+`len == limit` being potentially complete (the two `1025` mentions at `:73`/`:164` are only about
+seeding cost).
+
+**Fix.** Reword `:173` to pin the ordering rather than state a standalone predicate — the sum
+comparison is the *only* entry into the failure branch, a reconciling sum proves completeness even
+when `len(facetHits) == migrateStatusFacetLimit` (because `FacetResponse` carries no truncation
+flag and `Limit` is a maximum), and only *inside* that branch does `len >= limit` classify
+truncation vs. concurrent writer. Add one acceptance bullet: a subtest with
+`len(hits) == migrateStatusFacetLimit` **and** a reconciling sum must return a clean histogram —
+which goes RED against the hoisted form. (The over-fetch alternative, `Limit: limit+1` with
+truncation iff `len > limit`, also works but collides with acceptance criterion `:198`, which
+asserts the literal passes `migrateStatusFacetLimit` itself.)
+
+### C7-M2 — revert preflight discards the reachable prefix of a broken chain, so the refusal can omit irreversible steps that `04-02:364`'s own acceptance criterion says it must name. [Codex, verified orch]
+
+`internal/migrate/registry.go:102-127`: `StepsFrom` accumulates into `out` and, on a missing link
+at `:116-119`, returns `nil, err` — **discarding the partial chain**. `Validate` rule 3
+(`:57-62`, `:83-88`) enforces contiguity ("a single linear sequence, never a graph"), which makes
+that discarded prefix provably part of any chain the record would ever traverse. The information
+is knowable and is thrown away.
+
+The plan then discards it a second time: `04-02:260` has `preflightRecordVersionSupport` report
+`(chain, err == nil)` — chain is `nil` on error — and `:274` says *"If `!ok`, accumulate into
+`plan.Unsupported`… **If `ok`**, append `chain` to `observedChains`"*, with
+`plan.Irreversible = reversePreflight(observedChains)` at `:275`.
+
+Reachable today: the registry is one step, v0→v1, Irreversible. A collection holding only v42
+records, `revert --to 0` → `Unsupported = [{42,n}]`, `Irreversible = []`, refusal names only
+`hint=unsupported`. The operator closes the version gap, retries, and gets a *second*, different
+refusal. Add one v1 record and `Irreversible` populates, which is why it is easy to miss.
+
+**Writes are never at risk** (`Unsupported` non-empty ⇒ `Reversible == false` ⇒
+`RevertRefusalError` ⇒ zero records touched). The defect is diagnostic completeness — but
+`04-02:364` states as an acceptance criterion that *"the refusal names EVERY irreversible step
+(From/To/reason) and EVERY unsupported version… never a first-offender sample"*, and the specified
+control flow does not achieve that. No gate catches it: test 8 (`:324`) is irreversible-only, test
+11 (`:325-332`) is unsupported-only over a **fully reversible** fixture chain, and the C5-L4
+discriminating subtest (`:373`) keeps all records at a supported version. The plan uses an explicit
+"known limitation, accepted and documented" idiom elsewhere (`:259`, `:290`), so the silence here
+is an omission rather than a choice.
+
+**Fix — either one.** (a) Close it: at `:274`, when `!ok`, derive the maximal contiguous chain
+upward from `to` (well-defined, since the registry is contiguity-validated) and append it to
+`observedChains`, so one envelope names both classes; add a bullet to test 11 seeding a v42 record
+against a fixture whose v0→v1 is Irreversible, asserting both `field=record_version hint=unsupported`
+**and** `field=steps hint=irreversible`. (b) Or defer it explicitly at `:260` in the `:290` idiom,
+and soften `:364` to match, so the acceptance criterion and the algorithm stop contradicting.
+
+### C7-M3 — a THIRD load-bearing exclusion: `guides/upgrade.md` §12 denies the existence of `engram migrate`, inside the same `## Unreleased` section this phase adds its entry to. [orch]
+
+The `Prose accuracy in files no test reads` exclusion survives only *"for prose this phase does not
+touch **and does not falsify**."* It fails that at `docs-site/src/content/docs/guides/upgrade.md:313-343`
+(§12, "Records now carry a `schema_version` stamp"):
+
+- `:318` — "**No backfill is required and none is offered**"
+- `:331-333` — "re-run the migration sweep against the affected record. **That sweep does not exist in this release** — there is no `engram migrate` command to run yet, **so do not look for one**."
+- `:342` — "**Who should act:** nobody. This is purely additive, forward-looking groundwork; no existing behavior changes."
+
+Why this is worse than the two already-promoted sites (D4/D9/D10): **§12 is inside `## Unreleased`**
+(`rg -n '^## '` shows that section spans `:11-346`; §12 is subsection 12, and the entry `04-04` T3
+adds becomes §13). The shipped release note would announce `engram migrate` in §13 and, ~30 lines
+above it *in the same section*, tell the reader the command does not exist and not to look for one.
+`04-04:66`'s own prohibition argues that even the older-section case is unacceptable — *"the file
+self-contradicts across two sections while every gate stays green — a documentation surface that is
+wrong AND passing is worse than one that is merely wrong."*
+
+Every gate stays green: `extractUnreleasedSection` (`cmd/engram/docsync_test.go:34-48`) feeds
+`TestUpgradeGuideNamesEveryChangedCommand` (`:72-100`), which checks only *presence* of command
+names — a contradicting sentence satisfies it; the new `TestUpgradeGuideReconcilesBackfill` asserts
+only `--dry-run`/preview-by-default strings, and §12 contains neither; `.rumdl.toml:29` excludes
+`docs-site` outright. And no plan owns it: `rg 'upgrade\.md'` across the four plans shows exactly
+three owned sites — the new `## Unreleased` entry, §5 (`:142-144`, D10 / T3 step 1c) and §v0.8.4
+(`:436-437`, D4 / T3 step 1d). `:313-343` appears in no plan, ledger row, or exclusion — while
+`guides/upgrade.md` **is** already in `04-04`'s `files_modified` (`04-04:22`), so this is prose the
+phase owns and edits, not prose it merely neighbours. That is precisely the D9/D10 defect class
+this cycle's revision promoted.
+
+Scope is bounded: `rg -ni 'engram migrate|no backfill|migration sweep|not a migration' docs-site/ skill/ README.md CLAUDE.md`
+returns only this section plus legitimate `migrate-remap-owner` references.
+
+**Fix.** Add a step **1e** under `04-04` Task 3 and a ledger row **D11** (trigger `DOC`+`CMD`,
+wave 4, owner 04-04 T3) rewriting `:318`, `:331-333` and `:342` to point forward at the new entry.
+No frontmatter change needed.
+
+### C7-M4 — `04-01` Task 3's cardinality must_have is over-broad: the identity is false whenever a manifest-mode write fails. [OpenCode]
+
+The must_have states the written set is `manifest ∩ fresh re-derivation` and that `Migrated` is
+its cardinality: `res.Migrated == uint64(len(manifest) - len(res.Spared))`.
+
+That identity holds only on a run where every attempted write succeeds. In the manifest path, a
+record in `observed ∩ manifestIDs` whose `SetPayload` fails increments `res.Failed` (the shipped
+discipline at `internal/store/migrate.go:265-270`) but **remains in `observed`**, so it is not in
+`Spared = manifestIDs \ observed` either. The general relation is therefore
+`len(manifest) - len(Spared) == Migrated + Failed`, and the stated form is the `Failed == 0`
+special case.
+
+The *implementation* steps are correct — step 5b mandates counting successes, and
+`MigrateResult.Migrated`'s own doc (`migrate.go:39-47`) defines it as successful writes — and step
+12 asserts the formula only under a no-failure fixture, so the shipped code will be right. This
+matters because the identity is C6-H3's replacement parity evidence: an executor writing a future
+manifest-mode fault-injection test from the must_have text would produce a **failing test for
+correct code**.
+
+**Fix.** One sentence at the must_have: qualify it to "on a run where every attempted write
+succeeds, `res.Migrated == uint64(len(manifest) - len(res.Spared))`; in general
+`len(manifest) - len(res.Spared) == res.Migrated + res.Failed`, because a failed record is observed
+(not Spared) but not written." The step-12 assertion is untouched.
+
+### C7-M5 — three prose sites the `CurrentVersion` bump falsifies escape BOTH E4's sweep and the ledger's own new S9 pattern — in files the phase is already editing. [OpenCode]
+
+This phase made prose falsification a named, rowed defect class (E4, C5-L3, C6-L6) and instructs
+the executor to "repair EVERY prose claim the bump falsifies". Three sites would ship freshly false:
+
+1. `internal/store/migrate.go:28` — the `MigrateOptions` doc says the production registry "stays empty through this phase". `04-01` T3 edits this exact struct's doc to add `DryRun`/`Manifest`.
+2. `internal/migrate/step.go:74` — the `Irreversible` doc says "nothing in this phase's empty production Registry exercises the init-time half, because this phase registers no steps at all". After registration the registered Irreversible step *does* exercise the init-time evaluation. `04-01` T1 edits this file.
+3. `internal/migrate/additive_test.go:17` — "never migrate.Registry, which ships EMPTY this phase (D-06)". T1 step 10 edits the assertion twenty lines below.
+
+None contains the token `CurrentVersion`, so step 9's sweep (`rg -n 'CurrentVersion' internal/migrate/`)
+cannot find them — and **the ledger's own new S9 prose pattern misses all three too**:
+`additive_test.go` line-breaks between "Registry, which" (`:16`) and "ships EMPTY" (`:17`), and the
+other two use lowercase "empty"/"stays empty". S9 was added this cycle precisely to catch this
+class, so this is a gap in the newly added mitigation, not in a pre-existing one.
+
+**Fix.** Name all three in `04-01` Task 1 step 9's site list (or in the E4 row), and widen the
+E4/S9 prose pattern to catch the class — e.g.
+`rg -ni 'registry\b[^.\n]{0,40}\bempty|empty[^.\n]{0,40}\bregistry|stays empty' internal cmd`.
+
+### C7-L1 — `04-04:400`'s `guides/cli.md` closure gate is inert in both directions: the pattern spans a hard-wrapped newline. [orch]
+
+```
+! rg -n 'summarize-missing., and .backfill-short-ids. — is classified' docs-site/src/content/docs/guides/cli.md
+```
+
+The shipped paragraph is hard-wrapped:
+
+```
+Every other mutating operator command — `reindex`, `summarize-missing`, and
+`backfill-short-ids` — is classified **non-destructive** and keeps its
+pre-existing opt-in **preview** idiom, `--dry-run`.
+```
+
+The pattern spans the newline between `and` and `` `backfill-short-ids` ``. `rg` is line-oriented
+with multiline OFF, so it returns no match **today, before any work**, and no match after — it
+cannot go RED. Root cause is visible in the plan: step 1b (`04-04:354`) quotes the paragraph
+reflowed onto one line, and the grep was derived from the reflowed quote rather than from the file.
+
+Mitigated but not harmless: step 1b's action text is explicit and prescriptive, so a diligent
+executor still rewrites the paragraph — and `04-04:400` half-concedes this ("the substantive check
+is that the executor read the rewritten paragraph… and recorded it in the SUMMARY"). But this is
+the closure gate for C6-M5, it silently self-certifies, and an executor who skips step 1b ships a
+docs page flatly contradicting the binary.
+
+**Fix.** Anchor on a fragment that exists on one line — `! rg -n 'pre-existing opt-in \*\*preview\*\* idiom' docs-site/src/content/docs/guides/cli.md`
+(verified present on a single line at `:145`) — or drop the grep and section-scope it in Go, as the
+plan already does for `upgrade.md`.
+
+---
+
+## Non-actionable observations (recorded, not counted)
+
+- **`04-01` T1 leaves `internal/store` RED**, repaired by T2 in the same wave. Explicitly stated in PLAN.md (`04-01:221-227` and its `<done>`), blast radius independently confirmed accurate. Excluded from the count because it is documented, not invisible. The invariant's wording should say "every task's own package(s)", not "the tree".
+- **`04-04:473` and `:434`/`:436`** restate claims C6-H4 and C6-H7 retracted (the `migrateWithTimeout(ctx, backfillTimeout)` call form; "proves this with `--apply` against real Qdrant"). Prose only; no gate reads them; the action text is emphatic and correct.
+- **`04-04:155`** reinstates a comment-text prohibition its own must_have at `:60` explicitly deletes, and mis-describes the gate (`'"dry-run"'`, a quoted string, not the bare literal). Worst case is harmless over-compliance.
+- **The formatter deletion gate cannot see a surviving `type backfillOutputDoc`** (`cmd/engram/backfill.go:67`): `func backfillOutputDoc` never matches a type, and `backfillOutputDoc\(` matches neither the declaration nor a composite literal. `.golangci.yaml` does not enable `unused`, so lint will not catch an orphaned type either. Dead unexported type, no behavioural consequence; add `|type backfillOutputDoc` to the alternation if you want it covered.
+- **Four plan assertions that `task lint` runs rumdl over the edited docs-site markdown are false** (`.rumdl.toml:29-30` excludes `docs-site` and `.planning`). Nothing fails. The genuinely rumdl-exposed file is `skill/engram/skills/curating-memory/SKILL.md`.
+- **`CONTRIBUTING.md:70`** names `TestBackfillShortIDs` in a worked debugging example; `04-04` T1 deletes that test. Ungated, cosmetic. Note that `CONTRIBUTING.md`/`README.md`/`RELEASING.md` are in no exclusion row — the prose exclusion enumerates only `docs-site/**` and `CLAUDE.md`'s Layout table.
+- **`cmd/engram/operror.go:49`** — a non-test doc comment enumerating "the four sweep-style operator commands" goes stale once the migrate family routes through `classifyOperatorErr`. Ungated, cosmetic.
+- **INV-3 consistency residue** — three bare `TestMigrate` selectors and one duplicate test name, all cosmetic (see the `-run` section).
+- **`rg -n "NewMintingStep\(0, 1" internal/migrate/registry.go` is formatting-fragile** [OpenCode] — a line-wrapped registration call would fail the positive gate. gofmt will not wrap it and the plan mandates the exact literal, so it is recoverable at execution.
+- **Gate self-count divergence** — this cycle's two independent enumerations of the negative gates came to 18 (OpenCode) and 19 (orch). Immaterial, and correctly *not* recorded in the plans: INV-4 forbids re-introducing a self-count, and neither enumeration changes any gate's shape verdict.
+
+---
+
+## Risk Assessment
+
+**LOW-to-MEDIUM, and converged.** Every structural class this phase has fought across six cycles
+is now closed at the root: the comment-stripping idiom is gone phase-wide, all twelve tasks carry
+unfiltered package runs, the 04-03 re-sequencing holds in both directions at exact set equality,
+no `-run` selector is vacuous, no PLAN line anchor survives, and all 22 cycle-6 actionables are
+substantively incorporated. Zero HIGH concerns remain.
+
+Both external reviewers converge on `high=0`, and OpenCode — which ran the packages and reports
+green baselines throughout (`cmd/engram` 2.3s, `internal/migrate`/`surfaces`/`keylinks` <1s,
+`internal/server` 6.3s, `internal/store` 41s with containers) — records an explicit **READY TO
+EXECUTE**.
+
+The six open items are bounded and local: two are single-passage rewordings in `04-02` that pin an
+ordering and a diagnostic the plan already half-specifies (C7-M1, C7-M2); one qualifies a single
+invariant sentence in `04-01` T3 (C7-M4); one names three prose sites and widens one search shape
+in `04-01` T1 (C7-M5); one adds a step + ledger row in `04-04` T3 over a docs section already in
+`files_modified` (C7-M3); and one re-anchors a single gate (C7-L1). None re-opens a closed class,
+none requires re-planning, and none is structural. C7-M3 and C7-L1 are both documentation
+correctness in the same wave-4 task and can be fixed together, as can C7-M4 and C7-M5 in `04-01`.
+
+Two patterns are worth naming for the record. First, **the remaining defects cluster in prose that
+gates cannot see** — an over-broad invariant sentence, three stale doc comments, a release-note
+section, and a gate whose pattern does not match the file it guards. That is a materially better
+failure surface than cycles 1–6, where the defects were in the gates and the sequencing themselves.
+Second, **C7-M5 is a gap in a mitigation this cycle added** (search shape S9 misses the very class
+it was introduced to catch), which is the one place where the revision's own new machinery is not
+yet self-sufficient.
+
+The residual execution risk is the documented `04-01` T1 red-tree window, bounded to one task
+inside one wave, whose blast radius has now been independently re-derived twice and confirmed
+accurate and complete.
+
+---
+
+## Codex Review (cycle 7)
+
+## Summary
+
+The plans are substantially stronger after cycle 7: the command/registry sequencing, shaped negative gates, unfiltered package tests, and cross-surface conformance coverage are mostly coherent and source-backed. However, the phase is **NOT READY TO EXECUTE** yet. Three actionable issues remain: one task knowingly leaves an edited package red, the status histogram rejects a valid exact-boundary result, and revert preflight can omit irreversible steps when the same record also has an unsupported-version gap.
+
+## Strengths
+
+- The cycle-7 command sequencing now reflects the real bidirectional registries. `operatorParityRows` is checked for missing and extra commands at [`cmd/engram/operator_output_test.go:307`](cmd/engram/operator_output_test.go:307), invalid-output coverage is similarly derived at [`cmd/engram/operator_output_test.go:532`](cmd/engram/operator_output_test.go:532), and catalog output flags are compared against the live command tree at [`cmd/engram/cmdwalk_test.go:186`](cmd/engram/cmdwalk_test.go:186). Plan 04-03 now places each command and its rows in the same task.
+
+- The revised negative gates are property-shaped. I found no executable use of the banned `rg -v '^\s*//'`, `rg -c`, `head`, or `git diff --stat` patterns. The backfill deletion checks use declarations, calls, table rows, string literals, and imports, avoiding failures caused solely by explanatory comments.
+
+- The key-link boundary is now correctly treated as load-bearing. The shipped gate scans active phase plans under `.planning/phases` at [`internal/keylinks/gate_test.go:103`](internal/keylinks/gate_test.go:103), and the revised plans include the corresponding unfiltered `internal/keylinks` test rather than dismissing `.planning/**` wholesale.
+
+- The planned full-collection revert preflight uses the existing paginated helper rather than a one-page fixture abstraction. `scrollAllPoints` advances `NextPageOffset` until exhaustion at [`internal/store/spine.go:46`](internal/store/spine.go:46), supporting the plan’s multi-page proof.
+
+- Generalizing `registerDestructive` is aimed at the correct seam. Its current implementation validates classification and owns the single preview/apply `RunE` branch at [`cmd/engram/destructive.go:110`](cmd/engram/destructive.go:110); widening admission there preserves the centralized mutation choke point.
+
+## Concerns
+
+- **MEDIUM — Plan 04-01 Task 1 still violates its own atomic green-task invariant.** The phase-wide invariant says each task runs the unfiltered tests for every package it edits at [`.planning/phases/04-migration-cli-first-customer/04-01-PLAN.md:84`](.planning/phases/04-migration-cli-first-customer/04-01-PLAN.md:84). Task 1 edits `internal/store/migrate.go`, but its verification runs only `go test ./internal/migrate/`; its scope note explicitly acknowledges that two `internal/store` tests remain red until Task 2 at [`.planning/phases/04-migration-cli-first-customer/04-01-PLAN.md:221`](.planning/phases/04-migration-cli-first-customer/04-01-PLAN.md:221). An executor committing by task therefore produces a knowingly broken intermediate commit. This is actionable because merely adding an unfiltered store test would make Task 1 fail.
+
+- **MEDIUM — The status facet truncation test rejects a valid histogram with exactly 1,024 distinct versions.** Plan 04-02 requests `Limit: 1024` and treats `len(hits) >= 1024` as proof of truncation at [`.planning/phases/04-migration-cli-first-customer/04-02-PLAN.md:150`](.planning/phases/04-migration-cli-first-customer/04-02-PLAN.md:150). In the pinned Qdrant client, `FacetCounts.Limit` is the maximum returned count; a response whose length equals the limit may be complete. Consequently, exactly 1,024 legitimate version buckets produce a false “incomplete” error. The proposed test covers over-limit cardinality but not the exact boundary. This matters because the milestone explicitly permits arbitrary newer schema versions.
+
+- **MEDIUM — Revert preflight can omit irreversible steps when a record also has an unsupported-version gap.** The proposed `preflightRecordVersionSupport` records a chain only when `revertStepsFrom` succeeds, then computes irreversible steps solely from those successful chains at [`.planning/phases/04-migration-cli-first-customer/04-02-PLAN.md:256`](.planning/phases/04-migration-cli-first-customer/04-02-PLAN.md:256). The existing `StepsFrom` discards its partial chain and returns `nil, err` when it encounters a missing link at [`internal/migrate/registry.go:102`](internal/migrate/registry.go:102). Thus, for a future-version record whose reachable prefix includes v0→v1, preflight can report only “unsupported version” and omit the irreversible v0→v1 step. Writes remain safely refused, but D-14’s requirement to name every applicable irreversible step and reason is not met.
+
+## Suggestions
+
+- Merge 04-01 Tasks 1 and 2, or move the `CurrentVersion` bump and registry activation into Task 2 alongside all affected `internal/store` repairs. Each committed task should end with both `go test ./internal/migrate/ -count=1` and `go test ./internal/store/ -count=1` green.
+
+- Request one extra facet bucket: define a maximum accepted bucket count of 1,024, request 1,025, and reject only when more than 1,024 hits are returned. Add separate tests for exactly 1,024 buckets succeeding and 1,025 buckets producing the bounded-result error.
+
+- Make the revert chain walk return its reachable partial chain alongside the unsupported-version result, and derive irreversible steps from that prefix. Add a mixed preflight fixture that asserts both `Unsupported` and `Irreversible` are populated and that `RevertRefusalError` renders both clauses.
+
+## Risk Assessment
+
+**MEDIUM.** No remaining issue appears capable of causing an unsafe partial revert or automatic migration, but the current plans would create a red intermediate task commit and two observable correctness defects in status and refusal diagnostics.
+
+TALLY: high=0 actionable=3
+
+---
+
+## OpenCode Review (cycle 7)
+
+_(OpenCode ran source-grounded with repo access; its interleaved tool narration is trimmed. Verification baselines it reports: `cmd/engram` 2.3s, `internal/migrate`/`surfaces`/`keylinks` <1s, `internal/server` 6.3s, `internal/store` 41s with containers — all green.)_
+
+# Cycle-7 Cross-AI Plan Review — Phase 4 (Migration CLI & First Customer)
+
+## Summary
+
+This revision holds up under source-level scrutiny. The four claimed root-cause fixes are real: **(a)** no comment-stripping idiom survives in any executable gate — all 18 negative gates are declaration-, call-, composite-literal-, row-, string-literal-, or import-shaped, and the two prose-phrase gates live in acceptance criteria (not `<automated>`) where no mandated comment can trip them; **(b)** all twelve `<verify>` blocks carry a bare unfiltered `go test ./<pkg>/ -count=1`, and my independent simulation of the 04-03 re-sequencing (every `operatorCommands()`-keyed registry row landing in the same task as its command) comes up green at the end of T2; **(c)** self-referential bookkeeping is gone from gate positions; **(d)** the `.planning/**` keylinks gates are correctly promoted to rows F1/F2 (verified: `03-01-PLAN.md:75/:79` declare `migrate[.]StepsFrom`/`migrate[.]CheckAdditive` anchored solely in `internal/store/migrate.go:200/:230`, and `go test ./internal/keylinks/` is green today). All seven cycle-6 HIGHs are genuinely closed against shipped source, all 42 shipped test names in `-run` selectors resolve, and every line anchor I checked (~80) is accurate. Two LOW actionable findings: one over-broad invariant statement in 04-01's must_haves, and three unrowed stale-prose sites that escape both E4's sweep and the ledger's own new S9 pattern. **Verdict: READY TO EXECUTE.**
+
+## Strengths
+
+- **The C6-H2 re-sequencing simulates green.** I walked the end of 04-03 T2 against live derivations: `operatorCommands()` (`cmdwalk.go:101-116`: non-nil RunE, no `server` flag, not in `{serve, version}`) admits `migrate`/`migrate status` the moment they exist, and T2's step 6a updates `wantOperatorCommandKeys` (`cmdwalk_test.go:117-130`), `operatorParityRows` (`operator_output_test.go:137`, bidirectional at :316-326), `operatorInvalidOutputArgs` (`:532-563`, fatal at :560), and regenerates goldens in the same task. `TestDestructiveCommandsRequireApply` switched to `mutatingCommandNames()` in T2 yields exactly 4 names = 4 live `--apply` carriers (`prune.go:159`, `spine_review_purge.go:425`, `migrate.go:257`, + `migrate`) — verified each call site. The `timeoutGroupCaseArgs` `t.Fatalf` default (:510) and the `TestTimeoutGroupMatrix` set equality (:625-648) are correctly handled per-task.
+- **The two composite-literal gates are RED today, GREEN after.** `rg -n '^\s*SchemaVersion: migrate\.Version\(1\),' internal/store/migrate_converge_test.go` matches :132 and `^\s*Target:\s*1,` matches :180 right now — and a comment line (which begins `//` after whitespace) can never match either pattern. Same for the `seedLegacyRecord(ctx, t, writerStore` gate: the legitimate six-record seeding loop at :111 uses `sweepStore`, so the writerStore-scoped negative gate correctly spares it (C6-H5 closure verified structurally, with `rawPayloadNoFatal` at :448-452 as the mandated precedent and PA-11a at :117-124 now in `read_first`).
+- **C4-H1's rejection is independently verified.** I counted the live `surfaces.Operations()` rows myself: `!ReadOnly` with non-empty `CLICommand` selects exactly the eleven commands the plan names (incl. `serve`, `migrate-set-owner`, `spine-review archive/restore` at `toolclass.go:222/:239/:302/:311`), of which only three are `Destructive:true` (`:172`, `:180` area, `:327`). The named-union derivation (`destructiveCommandNames()` ∪ `applyRoutedAdditions` − `pendingApplyConversion`) is the correct shape, and the enumerated 4→5→6 membership progression across T2/T3/wave-4 checks out against the live flag carriers.
+- **The fault-injection arithmetic is now right.** The shipped precedent proves `inj.arm(2, 0, faultBeforeInvoke)` over six records yields `res.Migrated == 1` (`migrate_faultinject_test.go:408,423`); the plan's phase-1 expectation of ONE converged / THREE stuck over four records matches, the converged id comes from `inj.ids()[0]` wire traffic (:434-440), and the interceptor's `*qdrant.SetPayloadPoints`-only type switch (:176-180) makes the DeletePayload-lands/SetPayload-fails sequence constructible exactly as specified.
+- **B5a is real and correctly constrained.** `qdrant.FacetCounts` *does* implement `GetFilter()` (verified via `go doc`), so `recallCaptureInterceptor`'s default branch (`schemaversion_recallgate_test.go:893-901`) would `t.Fatalf` on a filtered Facet — and `Limit` defaults to 10 per the proto doc, so the named `var migrateStatusFacetLimit` + runtime truncation detector is genuinely needed, with the `spineScrollBatch` var precedent (`spine.go:22-28`) correctly cited for why it's a var (C6-M2).
+- **The keylinks F1 row is precise.** `TestActiveMilestoneKeyLinksSatisfiable` (`internal/keylinks/gate_test.go:128`) scans the live `.planning/phases`; phase 3's links at `03-01-PLAN.md:75/:79` anchor on `internal/store/migrate.go:200` (`migrate.StepsFrom`) and `:86/:230` (`migrate.CheckAdditive`); 04-01 T3's step 13b + `<verify>` runs the package.
+- **Every C6 actionable I sampled is closed.** C6-M1 (arithmetic), C6-M2 (var), C6-M3 (S9 added), C6-M4 (enumeration gone), C6-M5 (D9 rows + cli.md in 04-04's files), C6-M6 (no `derive from !ReadOnly` text survives), C6-M7 (no "added/changed"), C6-M8 (T3's `<files>` now lists all edited files), C6-M9 (every new test mandated by exact name), C6-M10 (`TestMigrateFamily` prefix), C6-M11 (D10 amendment), C6-M12 (truncation-vs-racer distinction + retry), C6-L2/L3/L4/L6/L9/L10 all verified in plan text against source.
+
+## Concerns
+
+- **[LOW — actionable] 04-01 Task 3's must_have states a cardinality identity that is false under manifest-mode write failure.** The must_have says: "The written set is manifest ∩ fresh re-derivation, and `Migrated` is its CARDINALITY: `res.Migrated == uint64(len(manifest) - len(res.Spared))`". Mechanism of failure: in the manifest path, a record in `observed ∩ manifestIDs` whose `SetPayload` fails increments `res.Failed` (per the shipped discipline at `internal/store/migrate.go:265-270`), but it remains in `observed`, so it is not in `Spared = manifestIDs \ observed` either. Then `len(manifest) - len(Spared) = Migrated + Failed ≠ Migrated`. The implementation steps are correct (step 5b mandates counting successes, and `MigrateResult.Migrated`'s doc at `migrate.go:39-47` defines it as successful writes), and step 12 asserts the formula only under a no-failure fixture — so the code will be right and only the invariant statement is over-broad. But an executor writing a future manifest-mode fault-injection test from the must_have text would produce a failing test for correct code.
+- **[LOW — actionable] Three value-restating prose sites falsified by the `CurrentVersion` bump escape both E4's stated sweep and the ledger's own new S9 pattern.** (1) `internal/store/migrate.go:28` — the `MigrateOptions` doc says the production registry "stays empty through this phase"; 04-01 T3 edits this exact struct's doc to add `DryRun`/`Manifest`. (2) `internal/migrate/step.go:74` — the `Irreversible` doc says "nothing in this phase's empty production Registry exercises the init-time half, because this phase registers no steps at all" — post-registration this is false (the registered `Irreversible` step *does* exercise the init-time evaluation); 04-01 T1 edits this file. (3) `internal/migrate/additive_test.go:17` — "never migrate.Registry, which ships EMPTY this phase (D-06)"; T1 step 10 edits the assertion 20 lines below. None contains the token `CurrentVersion`, so step 9's sweep (`rg -n 'CurrentVersion' internal/migrate/`) cannot find them; the ledger's own new S9 prose pattern (`Registry.*EMPTY|CurrentVersion is 0|is pinned at 0`) misses all three too — `additive_test.go:17` line-breaks between "Registry, which" (:16) and "ships EMPTY" (:17), and the other two use lowercase "empty"/"stays empty". This phase made prose-falsification a named, rowed defect class (E4, C5-L3, C6-L6) and the executor is instructed to "repair EVERY prose claim the bump falsifies"; these three would ship freshly-false in the very files being edited.
+- **[LOW — not actionable] `rg -n "NewMintingStep\(0, 1" internal/migrate/registry.go` is formatting-fragile.** If an executor wraps the long registration call across lines, the positive gate fails; gofmt won't wrap it and the plan mandates the exact literal, so it's recoverable at execution.
+- **[LOW — not actionable] 04-04 T1 step 3's "no comment in `backfill.go` may contain the literal `dry-run`" is stricter than its own string-literal gate** (`"dry-run"` quoted), which already permits unquoted prose mentions. Harmless redundancy.
+
+## Suggestions
+
+1. **For the cardinality identity (04-01 Task 3, must_have):** qualify the formula — change "`Migrated` is its CARDINALITY: `res.Migrated == uint64(len(manifest) - len(res.Spared))`" to "on a run where every attempted write succeeds, `res.Migrated == uint64(len(manifest) - len(res.Spared))`; in general `len(manifest) - len(res.Spared) == res.Migrated + res.Failed`, because a failed record is observed (not Spared) but not written." One sentence; the step-12 assertion is untouched.
+2. **For the three prose sites:** name them in 04-01 Task 1 step 9's site list (or the E4 row) — `internal/store/migrate.go:28` (drop the "stays empty" clause), `internal/migrate/step.go:74` (re-tier the init-time sentence to its discharged form), `internal/migrate/additive_test.go:17` (update the doc comment alongside the :40-42 assertion) — and widen the E4/S9 prose pattern to catch the class, e.g. `rg -ni 'registry\b[^.\n]{0,40}\bempty|empty[^.\n]{0,40}\bregistry|stays empty' internal cmd`.
+
+## Risk Assessment
+
+**LOW.** Every load-bearing mechanism was traced to shipped source and found as described; all baselines are green (`cmd/engram` 2.3s, `internal/migrate`/`surfaces`/`keylinks` <1s, `internal/server` 6.3s, `internal/store` 41s with containers); the task-level green-state simulation passes at every wave boundary I checked (04-01 T1's declared internal/store RED window is owned by T2 in the same wave with an explicit scope note); and the only surviving defects are one over-broad invariant sentence and three stale-prose sites, all LOW. Execution risk concentrates in 04-03 T2's registry sweep, and that is exactly where the plan is now most explicit.
+
+TALLY: high=0 actionable=2
 
 # Cross-AI Plan Review — Phase 4 (Cycle 6)
 
