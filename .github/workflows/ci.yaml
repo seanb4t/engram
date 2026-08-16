@@ -125,6 +125,12 @@ jobs:
           # shared services: container above instead of each booting its own
           # (D-15). All four TestMain chains already honor this var.
           ENGRAM_QDRANT_TEST_ADDR: localhost:6334
+          # G-05-9 fail-closed browser gate, mirroring ENGRAM_REQUIRE_QDRANT
+          # above: makes a browser-less runner FAIL TestConsoleBundleRendersRecordInBrowser
+          # instead of silently skipping this tier. No install step is added —
+          # ubuntu-latest already ships Chrome 151 and Chromium 151 preinstalled
+          # (verified against the runner-images manifest at plan time).
+          ENGRAM_REQUIRE_BROWSER: "1"
         run: go test ./...
       # D-19: capture WHY the Qdrant container died as a CI post-step rather
       # than in-Go — when the container dies mid-run the Go process often

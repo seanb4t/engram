@@ -308,6 +308,11 @@ type serverProc struct {
 // endpoint is the MCP transport URL.
 func (s *serverProc) endpoint() string { return "http://" + s.addr + "/mcp" }
 
+// baseURL is the server's HTTP origin, used by console_browser_test.go to
+// reach the Connect API and the /ui/ static mount directly (neither goes
+// through the MCP transport, so endpoint() does not apply).
+func (s *serverProc) baseURL() string { return "http://" + s.addr }
+
 // startServer launches `engram serve` with a controlled environment and waits
 // for it to accept connections. extraEnv is merged over the baseline (and may
 // override it) so a test can vary a single variable.
