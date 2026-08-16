@@ -1,8 +1,9 @@
 ---
 phase: 6
 reviewers: [codex]
-review_cycle: 3
-reviewed_at: 2026-08-16T22:01:17Z
+review_cycle: 4
+reviewed_at: 2026-08-16T23:14:00Z
+cycle_3_reviewed_at: 2026-08-16T22:01:17Z
 cycle_2_reviewed_at: 2026-08-16T21:28:21Z
 cycle_1_reviewed_at: 2026-08-16T21:00:51Z
 plans_reviewed:
@@ -19,14 +20,312 @@ plans_reviewed:
 
 # Cross-AI Plan Review — Phase 6: Typed Operator Renderer
 
-> This file accumulates review cycles. **Cycle 3 is the current cycle** and appears
-> first. Cycles 2 and 1 are retained below as an audit trail — cycle 1's eight findings
-> were incorporated in the targeted replan committed as `3968e740`, and cycle 2's five
-> were incorporated in `a943a93e`. Neither set may be re-counted as current.
+> This file accumulates review cycles. **Cycle 4 is the current cycle** and appears
+> first. Cycles 3, 2 and 1 are retained below as an audit trail — cycle 1's eight findings
+> were incorporated in the targeted replan committed as `3968e740`, cycle 2's five in
+> `a943a93e`, and cycle 3's four in `64b0ca8b`. None of those sets may be re-counted as
+> current.
 
 ---
 
-# Cycle 3 (current) — FINAL automatic cycle
+# Cycle 4 (current) — user-authorized cycle beyond the 3-cycle loop limit
+
+## Codex Review
+
+## 1. Summary
+
+Three of the four cycle-3 fixes landed cleanly and convincingly; the fourth landed only
+partially. HIGH-1's per-lane divergence harness, HIGH-2's closed value-kind policy plus
+construction-time text materialization, and MEDIUM-1's package-level string-constant
+resolution are each specified with concrete, falsifiable tests. HIGH-3 correctly fixes the
+alias and dot-import routes, but its AST rule still matches only *direct constructor calls* —
+a constructor captured as a function value, or re-exported through another package, still
+produces a validated, labeled `fieldset.Set` outside `operatorReport` while the derived
+variant gate stays green.
+
+There is also one genuinely new cross-plan contradiction: the revision qualified the
+"do not change any operator-facing sentence byte (D-04)" prohibition for D-08 option-b in
+`06-07-PLAN.md` **only**. Six sibling plans still carry it unconditionally, and `06-02` also
+carries an unconditional success criterion. Option-b is therefore still unexecutable as
+written, even though the golden harness now supports it.
+
+Overall risk: **HIGH**, on two central phase guarantees rather than peripheral detail.
+
+## 2. Verification of cycle-3 fixes
+
+### HIGH-1 — D-08 executable through the golden harness: **LANDED**
+
+- `operatorReportFixture` carries `Divergence` and `DivergenceReason` — `06-01-PLAN.md:695-701`.
+- Per-lane resolution: converted lane always canonical, legacy lane `.legacy.*` only on the
+  moved lane — `06-01-PLAN.md:728-732`.
+- `-update` sources each file from exactly one NAMED lane, and the cycle-2 rule is explicitly
+  marked as REPLACED and forbidden from surviving anywhere in the file — `06-01-PLAN.md:742-752`.
+- `TestOperatorReportGoldenSetIsComplete` asserts four things, including `.legacy.*` set
+  equality in BOTH directions, reason non-empty exactly when diverged, and `d08Option`
+  compatibility — `06-01-PLAN.md:754-769`.
+- All seven conversion plans carry the identical executable **Mechanics** paragraph
+  (`06-02:95-117`, `06-03:96`, `06-04:109`, `06-05:103`, `06-06:106`, `06-07:100`, `06-08:102`).
+- `06-02`'s unconditional "do not regenerate any golden in this commit" is gone and is
+  explicitly named as the cycle-3 defect it replaced — `06-02-PLAN.md:229-236`.
+- Retirement is consistent: `06-09` deletes `.legacy.*` and the `Divergence`/`DivergenceReason`
+  fields only after the legacy lane is gone, and scopes the deletion to `*.legacy.*` alone —
+  `06-09-PLAN.md:500-513`.
+- Source confirms why the transitional dual lane is needed: `renderOperator` still takes
+  independent `text string, doc any` arguments at `cmd/engram/operator_output.go:64`.
+
+### HIGH-2 — pointer/closure immutability: **LANDED**
+
+- Property 6, the closed value-kind allowlist with `ErrNonValueKind` — `06-01-PLAN.md:535-551`.
+- Property 7, `materializeText` invoked once inside `New`; `RenderText` never calls caller
+  code — `06-01-PLAN.md:552-564`.
+- `TestFieldSetRejectsNonValueKind` (table-driven, reject rows AND accept rows so a
+  reject-everything switch cannot satisfy it) — `06-01-PLAN.md:437-445`.
+- `TestFieldSetRenderIsSpentAtConstruction` with the render-call counter — `06-01-PLAN.md:446-452`.
+- `06-06`'s `*float32` is resolved at the builder boundary to a value plus a presence bool,
+  never reaching a `Field` — `06-06-PLAN.md:217-242`, threat row `06-06-PLAN.md:350`.
+
+**Falsifiability holds.** The counter is caller-owned and mutated by the closure during `New`;
+the test then renders twice and asserts the counter is still exactly 1. It goes red for a lazy
+`RenderText` and for repeated eager invocation, and for nothing else. **The allowlist has no
+route around it**: it is a Go *type switch over exact dynamic types*, not a `reflect.Kind`
+check, so it is a whitelist that fails closed. An interface holding `*float32` has dynamic type
+`*float32` and is rejected; a struct containing a pointer is rejected as a non-`Set` struct;
+`[]int`, arrays, maps, funcs, chans, `unsafe.Pointer`, and named types whose underlying kind is
+permitted are all rejected because a Go type switch `case string:` does not match `type S string`.
+`Set` and `[]Set` are closed by induction on their own constructor.
+
+### HIGH-3 — alias-bypassable AST gate: **PARTIALLY LANDED**
+
+The originally reported routes are closed:
+
+- Import paths `strconv.Unquote`d and compared exactly, never by substring — `06-09-PLAN.md:261-263`.
+- Default / alias / blank handled; dot import rejected outright with its own error text —
+  `06-09-PLAN.md:265-271`.
+- Four `testdata/fieldset-gate/` fixture packages plus
+  `TestConstructorRoutingResolvesImportsByPath` — `06-09-PLAN.md:285-303`.
+- New red patch `06-09-red-2-aliased-import-bypass.patch` against the real tree, patch count
+  3 → 4 — `06-09-PLAN.md:345-352`.
+
+**But the rule as written matches only a direct call.** `06-09-PLAN.md:273-275` fails "any
+`*ast.CallExpr` whose function is an `*ast.SelectorExpr`…". That leaves:
+
+```go
+var makeReport = fieldset.MustNewLabeled   // SelectorExpr, but not CallExpr.Fun
+
+func alternateBuilder(...) fieldset.Set {
+    return makeReport(...)                  // CallExpr.Fun is *ast.Ident, not a selector
+}
+```
+
+Neither node is rejected, and the resulting set is validated, labeled, and renderable by
+`renderOperator` with no `operatorReport` pair in the derived universe. The `aliased/` fixture
+tests `fs.MustNewLabeled(...)` as a direct call, so it cannot falsify this route.
+
+A second route: the derivation parses only `cmd/engram`'s non-test `.go` files
+(`06-09-PLAN.md:221`). A helper package that wraps or re-exports the constructor, or a builder
+living under `internal/`, is outside the import-path rule entirely. Note the blast radius is
+bounded — a *new command* is still caught by set-equality 1 against the live cobra tree
+(`06-09-PLAN.md:314`) — but a **new variant of an existing command** built by either route
+evades set-equality 1 (its key is already present) and set-equality 2 (it appears on neither
+side).
+
+This makes these claims currently too strong: "a new runtime branch cannot exist unseen"
+(`06-09-PLAN.md:58`), "no constructor route survives an alias" (`:81`), and "no renderable
+report shape exists outside the derived pair set" (`:83`). The phase's SC1 widening invariant
+still holds by construction; what is overstated is the *coverage* claim.
+
+### MEDIUM-1 — constant template compatibility: **LANDED**
+
+- Package-level string consts collected into a name→value map — `06-09-PLAN.md:239-243`.
+- Argument 2 accepts BasicLit, accepted concatenation, or an `*ast.Ident` present in that map;
+  a `var` identifier is absent from the map and still fails — `06-09-PLAN.md:241-246`.
+- Arguments 0 and 1 stay literal-only — `06-09-PLAN.md:246-249`.
+- `constTemplate/` mirrors `06-04`'s exact shape and is ACCEPTED; `varTemplate/` is REJECTED by
+  `file:line` — `06-09-PLAN.md:297-303`. Deliberate red run (iv) proves the var rejection.
+- Unfoldable const forms fail CLOSED by `file:line` and are recorded as a residual —
+  `06-09-PLAN.md:249-252`.
+
+## 3. New contradictions introduced by the revision
+
+### 3.1 HIGH — option-b is still blocked by unconditional D-04 prohibitions in six plans
+
+The revision qualified the sentence-byte prohibition in `06-07-PLAN.md:48` ("…except under
+option-b, where this plan's `## The re-run line` section states precisely which bytes move…")
+and **nowhere else**. The prohibition immediately below the correctly-qualified golden-freeze
+line remains unconditional in:
+
+- `06-02-PLAN.md:43`, `06-03-PLAN.md:41`, `06-04-PLAN.md:55`, `06-05-PLAN.md:48`,
+  `06-06-PLAN.md:52`, `06-08-PLAN.md:46` — all read verbatim
+  `"Do not change any operator-facing sentence byte (D-04)."`
+
+and `06-02-PLAN.md:297` carries the unconditional success criterion `"No sentence byte moved"`,
+directly contradicting its own option-b row at `06-02-PLAN.md:89` ("`*.txt` REGENERATED for the
+variants whose sentence gains text"). Body text at `06-02-PLAN.md:205` ("Reproduce each sentence
+byte-identically (D-04)") repeats it.
+
+This is the exact cross-plan-contract failure family cycle 2 was flagged for: one half of the
+contract fixed, the counterpart left asserting the opposite. If `06-01`'s blocking checkpoint
+selects option-b, six plans' `must_haves.prohibitions` and one plan's success criteria cannot be
+satisfied.
+
+### 3.2 HIGH — the constructor-routing completeness claim has a function-value bypass
+
+See HIGH-3 above. Recorded here as a contradiction because `06-09`'s `must_haves` state the
+routing rule is exhaustive, and the derivation as specified is not.
+
+### 3.3 MEDIUM — the variant equality is described as derived on both sides; it is not
+
+`06-09-PLAN.md:316-320` says "unlike the first-cycle version, neither side of this equality is
+hand-maintained test metadata." `operatorReportFixtures()` is populated by hand-written `init()`
+registrations in each report's `_test.go` file (`06-01-PLAN.md:705`, and every conversion plan's
+Task 1). What is actually true — and still valuable — is a three-way chain: production pairs are
+AST-derived, fixtures are hand-registered, golden basenames are filesystem-derived, and exact
+bidirectional equality prevents any single representation from drifting alone. Overstating a
+derivation claim in a gate description is precisely the shape this repo's vacuous-gate record
+warns about.
+
+### 3.4 MEDIUM — "every report shape" is broader than what the AST gate proves
+
+The derivation enumerates `operatorReport` **call-site identities**, not all value-dependent
+rendered states. Conditional presence (`WithPresent`) and nested-row shapes vary *within* one
+`(key, variant)` pair. That does not weaken `fieldset.New`'s construction-time widening
+guarantee — the two lanes still cannot disagree — but "every report shape" and "a new runtime
+branch cannot exist unseen" should be narrowed to "every `operatorReport` call-site identity".
+
+### 3.5 LOW — 06-09's accepted over-budget estimate names no extraction point
+
+`06-01-PLAN.md:44-47` names a concrete extraction boundary (Task 3 step (a), isolated to
+`internal/store/redevidence_harness_test.go`). `06-09-PLAN.md:45-53` explains *why* the estimate
+grew to 115k but names no boundary. A workable one exists: extract Task 1 (the AST gate and its
+red evidence) into a prerequisite plan, leaving render collapse and pre-image deletion in the
+final plan — Task 3 already depends on the replacement gate existing.
+
+## 4. Strengths
+
+- The D-08 policy now lives where it executes: per-lane path selection, one named `-update`
+  source per file, exact `.legacy.*` inventory in both directions, mandatory reasons, and a
+  `d08Option` compatibility assertion that fails a fixture diverging on a frozen lane.
+- The `.legacy.*` lifecycle is end-to-end consistent — created only for moved lanes, held under
+  test while it exists, deleted only with the legacy renderer, and enumerated in the SUMMARY.
+- The immutability model is correctly decomposed into three individually necessary properties,
+  each with a test that goes red for exactly one of them.
+- The value-kind policy is exact-type-based rather than `reflect.Kind`-based, which is what makes
+  it a closed whitelist instead of a partition with holes.
+- Residuals are stated by NAME rather than by partition — the cycle-3 lesson applied.
+- The AST gate uses pair-level exact set equality, duplicate detection, loud empty-universe
+  rejection, and named mismatches — never a count, never a partition identity.
+- Source evidence supports the difficult cases the plans isolate: `cmd/engram/operator_output.go:64`
+  (independent text/json arguments today), `cmd/engram/spine_review_purge.go:194` (sixteen
+  independently tagged fields), `cmd/engram/spine_review_archive.go:30,49` (separate text and json
+  conditionals), `cmd/engram/cmdwalk.go:86` (the command universe really is cobra-derived).
+
+## 5. Suggestions
+
+1. Make every D-04/byte-identity statement conditional on the recorded D-08 option, in
+   `must_haves.prohibitions`, task actions, and `success_criteria` — not only in the Mechanics
+   tables. Copy `06-07-PLAN.md:48`'s wording into `06-02`, `06-03`, `06-04`, `06-05`, `06-06`,
+   `06-08`, and fix `06-02-PLAN.md:297`'s success criterion and `:205`'s body text.
+2. Widen the routing rule from "direct call" to "any *reference* to the four exported
+   constructors outside `operatorReport`/`operatorRow`" — i.e. reject a matching `*ast.SelectorExpr`
+   wherever it appears, not only as `CallExpr.Fun`. Add a `funcValue/` fixture
+   (`var makeReport = fs.MustNewLabeled`) and a retained red patch proving it fails.
+3. For the cross-package route, either resolve constructor origins with `go/types`, or record it
+   as a **fourth residual** alongside the three already stated, scoped honestly: a *new command*
+   is caught by the cobra-tree equality; a *new variant of an existing command* built outside
+   `cmd/engram` is not.
+4. Reword `06-09-PLAN.md:316-320` as a three-representation chain (AST-derived / hand-registered /
+   filesystem-derived) rather than "neither side is hand-maintained".
+5. Narrow "every report shape" and "a new runtime branch cannot exist unseen" to
+   "every `operatorReport` call-site identity", and say explicitly that value-dependent variation
+   within a pair is covered by constructor validation plus the selected golden fixtures.
+6. Give `06-09` a named extraction point (split after Task 1), matching `06-01`'s precedent.
+
+## 6. Risk Assessment
+
+**HIGH.** The design is substantially stronger than cycle 3's and three fixes landed
+convincingly. But one of the three blocking-checkpoint outcomes (option-b) cannot be executed
+without violating six plans' own prohibitions, and the constructor-routing gate's direct-call-only
+scan does not support the completeness claim the phase's coverage argument rests on. Both touch
+central phase guarantees.
+
+---
+
+## Orchestrator Corroboration (Claude, cycle 4)
+
+Every cycle-4 finding was independently reproduced against the current plan text before being
+recorded, and the four cycle-3 fixes were verified against the plan text rather than trusted from
+the revision claim.
+
+| Item | Verdict | Evidence checked |
+|---|---|---|
+| HIGH-1 fix landed | **CONFIRMED LANDED** | `divergeNone` appears in all nine plans (06-01×11, 06-02..06-08×3-4 each, 06-09×1). `06-01-PLAN.md:754-769` asserts BOTH-direction set equality on `.legacy.*`, reason-iff-diverged, and `d08Option` compatibility. `06-02-PLAN.md:229-236` replaces the unconditional wording and names the cycle-3 defect. |
+| HIGH-2 fix landed | **CONFIRMED LANDED, falsifiable** | `06-01-PLAN.md:535-564` (properties 6 and 7), `:437-452` (both tests). Allowlist is an exact-dynamic-type switch, so named types, structs-with-pointers, interfaces-holding-pointers, `[]int`, arrays, maps, funcs, chans and `unsafe.Pointer` all fail closed. `06-06-PLAN.md:217-242` resolves the `*float32` at the builder boundary. |
+| HIGH-3 fix landed | **PARTIAL — reproduced independently** | `06-09-PLAN.md:261-271` resolves by unquoted import path and rejects dot imports; `:273-275` restricts the failure to `*ast.CallExpr` whose `Fun` is an `*ast.SelectorExpr`. A package-level `var makeReport = fieldset.MustNewLabeled` is neither a `CallExpr` nor inside a function; the subsequent `makeReport(...)` has an `*ast.Ident` `Fun`. Independently found the same package-scope gap at `:221` ("every non-`_test.go` `.go` file in `cmd/engram`") before reading the reviewer's version. |
+| MEDIUM-1 fix landed | **CONFIRMED LANDED** | `06-09-PLAN.md:239-252` const map + accept/reject rules; `:297-303` `constTemplate`/`varTemplate` fixtures; `:246-249` args 0/1 stay literal-only. |
+| Option-b cross-plan contradiction | **CONFIRMED** | `sed` on each plan shows `"Do not change any operator-facing sentence byte (D-04)."` verbatim and unqualified at `06-02:43`, `06-03:41`, `06-04:55`, `06-05:48`, `06-06:52`, `06-08:46`; only `06-07:48` carries the option-b exception. `06-02:297` success criterion "No sentence byte moved" is unconditional and contradicts `06-02:89`. |
+| Goldens unconditionally frozen anywhere? | **NO — clean** | `rg -n 'do not regenerate\|never regenerate\|unconditionally frozen\|both lanes.*one golden'` returns only historical descriptions of the RETIRED cycle-2 design, each explicitly marked as retired (`06-01:279,296,717,1032`; `06-02:97,233`; `06-03:96`; `06-04:109`; `06-05:103`; `06-06:106`; `06-07:100`; `06-08:102`). No live assertion survives. |
+| `.legacy.*` retirement vs per-option Mechanics | **CONSISTENT** | What `06-09-PLAN.md:502-513` deletes (`*.legacy.*` files, `Divergence`, `DivergenceReason`) is exactly what `06-01-PLAN.md:694-732` creates and what `06-02..06-08`'s Mechanics populate. The deletion is scoped to `*.legacy.*` with canonical goldens explicitly excluded. |
+| Fixture-derivation overstatement | **CONFIRMED** | `06-09-PLAN.md:316-320`. Fixtures come from hand-written `init()` registrations (`06-01-PLAN.md:705` and each conversion plan's Task 1). |
+
+Two findings the reviewer correctly did **not** raise, confirming cycle-4 scoping held: the four
+accepted residuals, and the `06-01`/`06-09` estimate overage as such (it raised only the *missing
+extraction point* in `06-09`, which is a different claim). No resolved cycle-1/2/3 finding was
+re-raised as current.
+
+One procedural note that did **not** rise to a finding: `06-02-PLAN.md:106-110` step (1) `cp`s the
+canonical golden to `.legacy.<ext>` and step (3) then has `-update` write that same file from the
+legacy lane. The two sources are byte-identical at that commit (the legacy lane still produces the
+pre-image), so this is redundancy, not a contradiction.
+
+---
+
+## Cycle 4 — Consensus Summary
+
+Single grounded reviewer (Codex, source-grounded with repo access, `file:line` evidence
+throughout, and citing live source at `cmd/engram/operator_output.go:64`,
+`spine_review_purge.go:194`, `spine_review_archive.go:30,49`, `cmdwalk.go:86`) plus orchestrator
+corroboration. The orchestrator reproduced every finding independently rather than accepting it,
+and independently found the constructor-routing package-scope gap before reading the reviewer's
+account of the same failure family.
+
+### Agreed Strengths
+
+- Three of four cycle-3 fixes LANDED and are falsifiable: the D-08 branch executes through the
+  harness, the immutability guarantee is genuinely widened (closed whitelist, not a partition),
+  and the const/var template distinction is both specified and tested in both directions.
+- No surviving "goldens are unconditionally frozen" text and no surviving "both lanes compare to
+  one golden" assertion — the cycle-2 wording is present only as explicitly-labelled history.
+- `06-09` Task 3's `.legacy.*` retirement is exactly coextensive with what `06-01` creates and
+  `06-02..06-08` populate.
+
+### Agreed Concerns
+
+1. **HIGH — option-b remains unexecutable.** Six plans carry an unconditional
+   `"Do not change any operator-facing sentence byte (D-04)."` prohibition and `06-02` an
+   unconditional "No sentence byte moved" success criterion; only `06-07` was qualified. This is
+   the cycle-2 half-fixed-contract family recurring.
+2. **HIGH — the constructor-routing gate is direct-call-only.** A constructor captured as a
+   function value, or reached through a wrapper package outside `cmd/engram`, produces a
+   validated labeled `Set` with no derived pair. SC1's widening invariant survives; the coverage
+   completeness claim at `06-09-PLAN.md:58,81,83` does not.
+3. **MEDIUM — the variant equality is described as derived on both sides**; the fixture side is
+   hand-registered.
+4. **MEDIUM — "every report shape" overstates what the AST gate proves** (call-site identities,
+   not value-dependent rendered states).
+5. **LOW — `06-09` names no extraction point** for its accepted over-budget estimate, unlike
+   `06-01`.
+
+### Divergent Views
+
+None. Single-reviewer cycle. The orchestrator's independent verification agreed with all findings
+and adds one scoping refinement to concern 2: the bypass defeats the *coverage* universe, not the
+text/json widening invariant itself, and a wholly new *command* is still caught by the cobra-tree
+set equality — so the correct remedy is widening the reference rule plus recording a scoped
+fourth residual, not re-architecting the gate.
+
+---
+
+# Cycle 3 (archived audit trail — all findings incorporated in `64b0ca8b`)
 
 ## Codex Review
 
