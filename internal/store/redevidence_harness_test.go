@@ -1,43 +1,67 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sean Brandt
 
-// This file is the automated harness for Phase 2's red-evidence claim
-// (02-02-SUMMARY.md D5, 02-03-SUMMARY.md D4): "the gate was proven RED
-// against real source by applying a patch from red-evidence/, observing the
-// target test FAIL, and reverting by exact inverse patch." That claim was
-// previously reproducible only by a human running git apply / go test / git
-// apply -R by hand — nothing detected a red-evidence patch that had gone
-// stale, corrupt, or was no longer RED. This harness converts it into a real
-// gate.
+// This file is the automated harness for the red-evidence claim made by
+// every phase that ships one (Phase 2: 02-02-SUMMARY.md D5, 02-03-SUMMARY.md
+// D4; Phase 3: each 03-0N-SUMMARY.md's own red-evidence section): "the gate
+// was proven RED against real source by applying a patch from
+// red-evidence/, observing the target test FAIL, and reverting by exact
+// inverse patch." That claim was previously reproducible only by a human
+// running git apply / go test / git apply -R by hand — nothing detected a
+// red-evidence patch that had gone stale, corrupt, or was no longer RED
+// (concretely: Phase 4's CurrentVersion 0->1 blast radius, commits
+// 8fb9d6d9/0fa76d62/96711281/9695616d, repaired Phase 3's TESTS but left
+// four of Phase 3's red-evidence PATCHES stale over the same code, and
+// nothing caught it — this harness exists to make that class of drift
+// impossible to miss again). This harness converts it into a real gate.
 //
-// For EVERY patch under red-evidence/ (discovered by glob, never a
-// hand-listed fixture set), it asserts:
+// redEvidenceDirs holds ONE independent phase-directory entry per phase
+// that has shipped red-evidence. For EVERY patch under EVERY directory
+// (each discovered by its own glob, never a hand-listed fixture set), it
+// asserts:
 //  1. the patch applies cleanly at HEAD (git apply --check)
 //  2. with the patch applied, its mapped target test FAILS
 //  3. git apply -R restores the tree exactly (git diff --exit-code clean)
 //
-// It fails loudly if the glob matches zero patches (zero-applicability
-// guard, matching this package's own house style — see
-// schemaversion_stamp_gate_test.go) and if any discovered patch has no
-// entry in redEvidenceTargets.
+// It fails loudly, per directory, if that directory's glob matches zero
+// patches (zero-applicability guard, matching this package's own house
+// style — see schemaversion_stamp_gate_test.go) and if any patch discovered
+// under that directory has no entry in that directory's own mapping — a
+// directory that vanishes or gets renamed fails ITS OWN subtest, it can
+// never silently contribute zero patches to the overall run.
 //
 // Tree safety: this harness mutates the working tree (it applies real git
-// patches to real source files). It refuses to run if any file a patch
-// touches is already dirty, and it ALWAYS reverts via t.Cleanup — including
-// on a failing assertion or a panic — so a broken harness run never leaves
-// store.go or any other file mutated.
+// patches to real source files, potentially across more than one package —
+// e.g. Phase 3's patches touch both internal/store and internal/migrate).
+// It refuses to run if any file a patch touches is already dirty, and it
+// ALWAYS reverts via t.Cleanup — including on a failing assertion or a
+// panic — so a broken harness run never leaves store.go, additive.go, or
+// any other file mutated.
+//
+// NOT safe to run concurrently with ITSELF. Two simultaneous runs share one
+// working tree, and their apply/revert cycles interleave: the per-patch
+// dirty-check catches the collision and fails the second run (as designed),
+// but the interleaved reverts can still leave a source file mutated —
+// observed 2026-08-16, leaving migrate_converge_test.go dirty. Ordinary
+// `go test ./...` is fine (this test lives in one package and is not
+// t.Parallel); the hazard is a human or agent launching a second run while
+// one is already in flight. If a run dies unexpectedly, check
+// `git status --porcelain` before trusting the tree.
 //
 // Nested `go test`: the harness shells out to `go test -run` scoped to the
-// single mapped target test function name, which never matches this
-// harness's own test name (TestRedEvidencePatchesAreLive) or any other
-// harness test in this file — so the subprocess never re-invokes this
-// harness, no recursion guard beyond that scoping is needed.
+// single mapped target test function name, run against ./... (not just
+// this package) because a phase's target test may live in a sibling
+// package. The -run regex still narrows to exactly the one named function,
+// which never matches this harness's own test name
+// (TestRedEvidencePatchesAreLive) or any other harness test in this file —
+// so the subprocess never re-invokes this harness, no recursion guard
+// beyond that scoping is needed.
 //
 // This is gated behind testing.Short(): it is a full mutate/build/test/
-// revert cycle per patch (nine patches today), materially slower than the
-// rest of this package's unit tests, so `go test -short` (the fast path)
-// skips it while `task test` (which does not pass -short) still runs it in
-// CI.
+// revert cycle per patch (22 patches today, across two phase directories),
+// materially slower than the rest of this package's unit tests, so
+// `go test -short` (the fast path) skips it while `task test` (which does
+// not pass -short) still runs it in CI.
 package store
 
 import (
@@ -52,26 +76,49 @@ import (
 	"testing"
 )
 
-// redEvidenceTargets maps a red-evidence patch's base filename to the single
-// Go test function it proves RED. Every patch discovered under
-// redEvidenceGlob must have an entry here (TestRedEvidencePatchesAreLive
-// asserts set equality, both directions) — an unmapped patch is exactly the
-// kind of silent rot this harness exists to catch.
-var redEvidenceTargets = map[string]string{
-	"02-02-red-1-bypass.patch":                       "TestEveryPointWriteRoutesThroughPayload",
-	"02-02-red-2-stale-classification.patch":         "TestEveryPointWriteRoutesThroughPayload",
-	"02-02-red-3-cross-package-client.patch":         "TestQdrantClientIsHeldOnlyByStorePackage",
-	"02-03-red-1-toplevel.patch":                     "TestSchemaVersionNeverGatesRecall",
-	"02-03-red-2-nested.patch":                       "TestSchemaVersionNeverGatesRecall",
-	"02-03-red-3-unclassified-scroll.patch":          "TestRecallEmissionSetIsCompleteAndClassified",
-	"02-03-red-4-unclassified-scrollandoffset.patch": "TestRecallEmissionSetIsCompleteAndClassified",
-	"02-03-red-5-linkage.patch":                      "TestRecallEmissionSetIsCompleteAndClassified",
-	"02-review-wr01-monotonic-max.patch":             "TestPayloadRoundTripsSchemaVersion",
+// redEvidenceDirs maps each phase's red-evidence directory (relative to the
+// module root — git's own working directory convention for `git apply`,
+// NOT this package's directory) to that phase's own patch-filename ->
+// target-test-function mapping. Adding a phase means adding one entry here;
+// TestRedEvidencePatchesAreLive iterates every directory independently, so
+// a phase's zero-applicability guard and set-equality mapping check never
+// leak into another phase's.
+var redEvidenceDirs = map[string]map[string]string{
+	".planning/phases/02-record-schema-versioning-foundation/red-evidence": {
+		"02-02-red-1-bypass.patch":                       "TestEveryPointWriteRoutesThroughPayload",
+		"02-02-red-2-stale-classification.patch":         "TestEveryPointWriteRoutesThroughPayload",
+		"02-02-red-3-cross-package-client.patch":         "TestQdrantClientIsHeldOnlyByStorePackage",
+		"02-03-red-1-toplevel.patch":                     "TestSchemaVersionNeverGatesRecall",
+		"02-03-red-2-nested.patch":                       "TestSchemaVersionNeverGatesRecall",
+		"02-03-red-3-unclassified-scroll.patch":          "TestRecallEmissionSetIsCompleteAndClassified",
+		"02-03-red-4-unclassified-scrollandoffset.patch": "TestRecallEmissionSetIsCompleteAndClassified",
+		"02-03-red-5-linkage.patch":                      "TestRecallEmissionSetIsCompleteAndClassified",
+		"02-review-wr01-monotonic-max.patch":             "TestPayloadRoundTripsSchemaVersion",
+	},
+	".planning/phases/03-migration-foundation-registry-invariants-sweep/red-evidence": {
+		"03-01-red-1-range-only-filter.patch":      "TestBacklogFilterMatchesAbsentAndBelowTarget",
+		"03-01-red-2-declared-drift-written.patch": "TestMigrateRefusesNonAdditiveStep",
+		"03-02-red-1-nil-rev-accepted.patch":       "TestNewStepPanicsOnNilReversibility",
+		"03-02-red-2-contiguity-dropped.patch":     "TestValidateRejectsOrderingAndUniquenessViolations",
+		"03-02-red-3-nonstdlib-import.patch":       "TestMigratePackageIsStdlibOnlyLeaf",
+		"03-02-red-4-zero-files-scanned.patch":     "TestMigratePackageIsStdlibOnlyLeaf",
+		"03-03-red-1-superset-not-equality.patch":  "TestAdditiveOnlyKeySetDiff",
+		"03-03-red-2-removal-check-dropped.patch":  "TestAdditiveOnlyKeySetDiff",
+		"03-03-red-3-zero-fixtures.patch":          "TestAdditiveOnlyKeySetDiff",
+		// 03-04-red-1-persisted-cursor.patch is deliberately absent. It was
+		// retired 2026-08-16, not lost: it never drove any test RED, including
+		// on the day it was authored — 03-04-SUMMARY.md's key-decisions record
+		// "Cycle 1 (persisted cursor) reddened ZERO of the three subtests
+		// against the plan's own committed fixtures". The mutation it expresses
+		// (persist the scroll cursor across sweep passes) only misbehaves when a
+		// below-target record whose id sorts BEFORE an already-advanced cursor
+		// arrives mid-sweep, and no test constructs that ordering. Recover it
+		// from git history if that test is ever written; see issue #501.
+		"03-04-red-2-trust-error-signal.patch":     "TestMigratePartialFailureResume",
+		"03-05-red-1-lte-includes-current.patch":   "TestBacklogFilterMatchesAbsentAndBelowTarget",
+		"03-05-red-2-midsweep-write-skipped.patch": "TestMigrateConvergesWithoutLock",
+	},
 }
-
-// redEvidenceDir is relative to the module root (git's own working
-// directory convention for `git apply`), NOT to this package's directory.
-const redEvidenceDir = ".planning/phases/02-record-schema-versioning-foundation/red-evidence"
 
 // gitModuleRoot shells out to `git rev-parse --show-toplevel` rather than
 // reusing findModuleRoot's go.mod walk: every operation in this file is a
@@ -146,7 +193,11 @@ func runGitApply(t *testing.T, root, patchPath string, extraArgs ...string) (ok 
 }
 
 // TestRedEvidencePatchesAreLive is the automated harness. See package doc
-// comment above for the full contract.
+// comment above for the full contract. It iterates every phase directory in
+// redEvidenceDirs independently: each directory gets its own
+// zero-applicability guard and its own set-equality mapping check, so a
+// vanished/renamed directory for ONE phase fails loudly without being
+// masked by another phase's patches still being present.
 func TestRedEvidencePatchesAreLive(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping red-evidence harness under -short: it is a full mutate/build/test/revert cycle per patch")
@@ -154,102 +205,123 @@ func TestRedEvidencePatchesAreLive(t *testing.T) {
 
 	root := gitModuleRoot(t)
 
-	// Zero-applicability guard, matching this package's own house style
-	// (schemaversion_stamp_gate_test.go): a glob that silently matches
-	// nothing must never report clean.
-	patches, err := filepath.Glob(filepath.Join(root, redEvidenceDir, "*.patch"))
-	if err != nil {
-		t.Fatalf("glob %s/*.patch: %v", redEvidenceDir, err)
+	dirs := make([]string, 0, len(redEvidenceDirs))
+	for dir := range redEvidenceDirs {
+		dirs = append(dirs, dir)
 	}
-	if len(patches) == 0 {
-		t.Fatalf("glob %s/*.patch matched zero patches — a red-evidence directory that vanished or was renamed must fail this gate, not report clean", redEvidenceDir)
-	}
-	sort.Strings(patches)
+	sort.Strings(dirs)
 
-	// Mapping completeness: set equality, both directions, exactly this
-	// package's established pattern for classification tables.
-	gotNames := map[string]bool{}
-	for _, p := range patches {
-		gotNames[filepath.Base(p)] = true
-	}
-	for name := range gotNames {
-		if _, ok := redEvidenceTargets[name]; !ok {
-			t.Errorf("discovered patch %s has no entry in redEvidenceTargets — every red-evidence patch must be mapped to the target test it proves RED", name)
-		}
-	}
-	for name := range redEvidenceTargets {
-		if !gotNames[name] {
-			t.Errorf("redEvidenceTargets entry %s has no matching discovered patch — stale mapping entry", name)
-		}
-	}
-	if t.Failed() {
-		// Mapping is broken; running the per-patch subtests below against
-		// an incomplete/stale mapping would produce confusing secondary
-		// failures on top of the real one.
-		return
-	}
-
-	for _, patchPath := range patches {
-		patchPath := patchPath
-		name := filepath.Base(patchPath)
-		target := redEvidenceTargets[name]
-		t.Run(name, func(t *testing.T) {
-			touched := patchTouchedFiles(t, patchPath)
-
-			// Tree-safety: refuse to run if any file this patch touches is
-			// already dirty.
-			if dirty := gitStatusPorcelain(t, root, touched); dirty != "" {
-				t.Fatalf("refusing to apply %s: files it touches are already dirty:\n%s", name, dirty)
+	for _, dir := range dirs {
+		dir := dir
+		targets := redEvidenceDirs[dir]
+		t.Run(dir, func(t *testing.T) {
+			// Zero-applicability guard, matching this package's own house
+			// style (schemaversion_stamp_gate_test.go): a glob that
+			// silently matches nothing must never report clean — a
+			// red-evidence directory that vanished or was renamed must
+			// fail THIS directory's gate, never silently contribute zero
+			// patches to the overall run.
+			patches, err := filepath.Glob(filepath.Join(root, dir, "*.patch"))
+			if err != nil {
+				t.Fatalf("glob %s/*.patch: %v", dir, err)
 			}
-
-			// 1. The patch applies cleanly at HEAD.
-			if ok, out := runGitApply(t, root, patchPath, "--check"); !ok {
-				t.Fatalf("git apply --check %s failed — patch is stale or corrupt against current source:\n%s", name, out)
+			if len(patches) == 0 {
+				t.Fatalf("glob %s/*.patch matched zero patches — a red-evidence directory that vanished or was renamed must fail this gate, not report clean", dir)
 			}
-			if ok, out := runGitApply(t, root, patchPath); !ok {
-				t.Fatalf("git apply %s failed after --check succeeded (non-deterministic apply):\n%s", name, out)
-			}
+			sort.Strings(patches)
 
-			// Tree safety: ALWAYS revert, even on a failing assertion or a
-			// panic inside this subtest.
-			reverted := false
-			revert := func() {
-				if reverted {
-					return
-				}
-				reverted = true
-				if ok, out := runGitApply(t, root, patchPath, "-R"); !ok {
-					t.Fatalf("CRITICAL: git apply -R %s failed — working tree may still be mutated, manual `git checkout -- %s` required:\n%s", name, strings.Join(touched, " "), out)
-					return
-				}
-				if dirty := gitStatusPorcelain(t, root, touched); dirty != "" {
-					t.Fatalf("CRITICAL: tree not restored after reverting %s — git status --porcelain still shows:\n%s", name, dirty)
+			// Mapping completeness: set equality, both directions, exactly
+			// this package's established pattern for classification
+			// tables.
+			gotNames := map[string]bool{}
+			for _, p := range patches {
+				gotNames[filepath.Base(p)] = true
+			}
+			for name := range gotNames {
+				if _, ok := targets[name]; !ok {
+					t.Errorf("discovered patch %s has no entry in redEvidenceDirs[%s] — every red-evidence patch must be mapped to the target test it proves RED", name, dir)
 				}
 			}
-			defer revert()
-			t.Cleanup(revert)
-
-			// 2. With the patch applied, its mapped target test FAILS.
-			cmd := exec.Command("go", "test", "-run", "^"+regexp.QuoteMeta(target)+"$", "-count=1", "./internal/store/...")
-			cmd.Dir = root
-			var out bytes.Buffer
-			cmd.Stdout = &out
-			cmd.Stderr = &out
-			runErr := cmd.Run()
-			if runErr == nil {
-				t.Fatalf("with %s applied, target test %s PASSED — this red-evidence patch no longer proves the gate RED (stale, or the gate regressed and no longer catches this bypass). go test output:\n%s", name, target, out.String())
+			for name := range targets {
+				if !gotNames[name] {
+					t.Errorf("redEvidenceDirs[%s] entry %s has no matching discovered patch — stale mapping entry", dir, name)
+				}
 			}
-			var exitErr *exec.ExitError
-			if !errors.As(runErr, &exitErr) {
-				t.Fatalf("running target test %s with %s applied errored abnormally (not a test failure): %v\noutput:\n%s", target, name, runErr, out.String())
+			if t.Failed() {
+				// Mapping is broken; running the per-patch subtests below
+				// against an incomplete/stale mapping would produce
+				// confusing secondary failures on top of the real one.
+				return
 			}
-			t.Logf("confirmed RED: %s applied -> %s failed as expected", name, target)
 
-			// 3. git apply -R restores the tree exactly — invoked here (in
-			// addition to the deferred/cleanup revert) so the assertion
-			// itself runs inside this subtest's own PASS/FAIL, not only as
-			// a cleanup side effect.
-			revert()
+			for _, patchPath := range patches {
+				patchPath := patchPath
+				name := filepath.Base(patchPath)
+				target := targets[name]
+				t.Run(name, func(t *testing.T) {
+					touched := patchTouchedFiles(t, patchPath)
+
+					// Tree-safety: refuse to run if any file this patch
+					// touches is already dirty.
+					if dirty := gitStatusPorcelain(t, root, touched); dirty != "" {
+						t.Fatalf("refusing to apply %s: files it touches are already dirty:\n%s", name, dirty)
+					}
+
+					// 1. The patch applies cleanly at HEAD.
+					if ok, out := runGitApply(t, root, patchPath, "--check"); !ok {
+						t.Fatalf("git apply --check %s failed — patch is stale or corrupt against current source:\n%s", name, out)
+					}
+					if ok, out := runGitApply(t, root, patchPath); !ok {
+						t.Fatalf("git apply %s failed after --check succeeded (non-deterministic apply):\n%s", name, out)
+					}
+
+					// Tree safety: ALWAYS revert, even on a failing
+					// assertion or a panic inside this subtest.
+					reverted := false
+					revert := func() {
+						if reverted {
+							return
+						}
+						reverted = true
+						if ok, out := runGitApply(t, root, patchPath, "-R"); !ok {
+							t.Fatalf("CRITICAL: git apply -R %s failed — working tree may still be mutated, manual `git checkout -- %s` required:\n%s", name, strings.Join(touched, " "), out)
+							return
+						}
+						if dirty := gitStatusPorcelain(t, root, touched); dirty != "" {
+							t.Fatalf("CRITICAL: tree not restored after reverting %s — git status --porcelain still shows:\n%s", name, dirty)
+						}
+					}
+					defer revert()
+					t.Cleanup(revert)
+
+					// 2. With the patch applied, its mapped target test
+					// FAILS. Scoped to ./... (not just ./internal/store/...)
+					// because a phase's target test may live in a sibling
+					// package (e.g. internal/migrate) — the -run regex
+					// still narrows this to exactly the one named function
+					// wherever it lives.
+					cmd := exec.Command("go", "test", "-run", "^"+regexp.QuoteMeta(target)+"$", "-count=1", "./...")
+					cmd.Dir = root
+					var out bytes.Buffer
+					cmd.Stdout = &out
+					cmd.Stderr = &out
+					runErr := cmd.Run()
+					if runErr == nil {
+						t.Fatalf("with %s applied, target test %s PASSED — this red-evidence patch no longer proves the gate RED (stale, or the gate regressed and no longer catches this bypass). go test output:\n%s", name, target, out.String())
+					}
+					var exitErr *exec.ExitError
+					if !errors.As(runErr, &exitErr) {
+						t.Fatalf("running target test %s with %s applied errored abnormally (not a test failure): %v\noutput:\n%s", target, name, runErr, out.String())
+					}
+					t.Logf("confirmed RED: %s applied -> %s failed as expected", name, target)
+
+					// 3. git apply -R restores the tree exactly — invoked
+					// here (in addition to the deferred/cleanup revert) so
+					// the assertion itself runs inside this subtest's own
+					// PASS/FAIL, not only as a cleanup side effect.
+					revert()
+				})
+			}
 		})
 	}
 }
