@@ -278,6 +278,16 @@ None — no external service configuration required. `ENGRAM_CHROME_PATH` is an 
 - `coverage:` entry `D1` above links this work to `G-05-9` for `/gsd-verify-work` reconciliation.
 - The discovered root-route `recentQ` regression (issue #500) is a pre-existing bug, independent of this plan's own correctness, and does not block phase 05 completion — it predates this plan and phase 05's own scope never touched `ui/`'s query shapes.
 
+## Self-Check: PASSED
+
+- `internal/e2e/console_browser_test.go` — FOUND
+- `.planning/phases/05-connect-record-state-parity/05-04-SUMMARY.md` — FOUND
+- `.planning/phases/05-connect-record-state-parity/deferred-items.md` — FOUND
+- Commit `4b67b658` — FOUND
+- Commit `0a7e413c` — FOUND
+- Commit `2dc26ca6` — FOUND
+- Commit `28729783` — FOUND
+
 ---
 *Phase: 05-connect-record-state-parity*
 *Plan: 04*
