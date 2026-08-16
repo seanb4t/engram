@@ -13,8 +13,8 @@ instead of another one-shot operator command.
 
 ### Gate & CI Integrity
 
-- [ ] **REQ-keylink-pattern-matchable**: A plan's key-link `pattern:` field actually compiles and matches what it claims. The `\\`-escaped form that survives verbatim into `new RegExp` — silently unmatchable rather than throwing — is eliminated from this repo's plans, and a guard detects the shape so a future plan cannot reintroduce it (#479).
-- [ ] **REQ-keylink-past-gates-reassessed**: v0.13.x Phases 1 and 2's key-links are re-resolved against the tool, since both passed verification while their gates were no-ops. Whatever those gates were meant to pin is either genuinely pinned or recorded as unpinned — a past "key-links passed" is not treated as evidence.
+- [x] **REQ-keylink-pattern-matchable**: A plan's key-link `pattern:` field actually compiles and matches what it claims. The `\\`-escaped form that survives verbatim into `new RegExp` — silently unmatchable rather than throwing — is eliminated from this repo's plans, and a guard detects the shape so a future plan cannot reintroduce it (#479).
+- [x] **REQ-keylink-past-gates-reassessed**: v0.13.x Phases 1 and 2's key-links are re-resolved against the tool, since both passed verification while their gates were no-ops. Whatever those gates were meant to pin is either genuinely pinned or recorded as unpinned — a past "key-links passed" is not treated as evidence.
 - [x] **REQ-ci-qdrant-container-stability**: A full `go test ./...` CI run no longer fails from `internal/store`'s Qdrant testcontainer dying mid-run. Whatever mitigation is chosen (shared container, serialized Qdrant-backed packages, memory cap), the job captures the container's exit reason on failure so a recurrence is diagnosable from evidence rather than inferred (#497).
 
 ### Record Schema Versioning
@@ -87,8 +87,8 @@ this repo's structural invariant — see ROADMAP.md's `## Progress` note).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REQ-keylink-pattern-matchable | Phase 1 | Pending |
-| REQ-keylink-past-gates-reassessed | Phase 1 | Pending |
+| REQ-keylink-pattern-matchable | Phase 1 | Complete |
+| REQ-keylink-past-gates-reassessed | Phase 1 | Complete |
 | REQ-ci-qdrant-container-stability | Phase 1 | Complete |
 | REQ-schema-version-stamped | Phase 2 | Complete |
 | REQ-schema-version-never-gates-recall | Phase 2 | Complete |

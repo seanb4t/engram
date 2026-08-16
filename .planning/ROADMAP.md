@@ -493,11 +493,11 @@ Research flag: yes — the operator-UI soft-hidden-state conventions (archived/s
 | 03.1. Merge Supersession (INSERTED) | v0.13.x | 6/6 | Complete | 2026-08-11 |
 | 4. Spine Curation — Semantic (Skill) | v0.13.x | 3/3 | Complete | 2026-08-11 |
 | 5. Validation Debt Reconciliation | v0.13.x | 2/2 | Complete | 2026-08-12 |
-| 1. Gate & CI Integrity | 2026-08-12.01 | 0/3 | Not started | - |
-| 2. Record Schema Versioning Foundation | 2026-08-12.01 | 0/4 | Not started | - |
-| 3. Migration Foundation (Registry, Invariants & Sweep) | 2026-08-12.01 | 0/5 | Not started | - |
-| 4. Migration CLI & First Customer | 2026-08-12.01 | 0/6 | Not started | - |
-| 5. Connect Record-State Parity | 2026-08-12.01 | 0/2 | Not started | - |
+| 1. Gate & CI Integrity | 2026-08-12.01 | 3/3 | Complete | 2026-08-13 |
+| 2. Record Schema Versioning Foundation | 2026-08-12.01 | 4/4 | Complete | 2026-08-13 |
+| 3. Migration Foundation (Registry, Invariants & Sweep) | 2026-08-12.01 | 5/5 | Complete | 2026-08-14 |
+| 4. Migration CLI & First Customer | 2026-08-12.01 | 6/6 | Complete | 2026-08-15 |
+| 5. Connect Record-State Parity | 2026-08-12.01 | 2/2 | Complete | 2026-08-15 |
 | 6. Typed Operator Renderer | 2026-08-12.01 | 0/1 | Not started | - |
 | 7. Console & CLI State Surfacing | 2026-08-12.01 | 0/3 | Not started | - |
 | 8. Registry & Docs Tail | 2026-08-12.01 | 0/3 | Not started | - |
