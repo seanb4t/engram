@@ -11,15 +11,19 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"strconv"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 
+	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
+	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
 	"github.com/seanb4t/engram/internal/webauth"
 )
 
@@ -34,6 +38,11 @@ const sessionCookieName = "engram_session"
 // must be non-empty; it also must not collide with any other e2e fixture's
 // owner, since the fixture record this test writes is scoped to it.
 const testFixtureOwner = "console-e2e-owner@example.com"
+
+// fixtureScope is the scope the seed record is written under, and the scope
+// this test navigates the browser to via /ui/observe?scope=. It is shared
+// between the write and the navigation so the two never drift apart.
+const fixtureScope = "repo:e2e-console-roundtrip"
 
 // requireBrowser mirrors requireQdrant/requireBrowser's harness_test.go
 // sibling byte-for-byte in shape: ENGRAM_REQUIRE_BROWSER makes a missing
@@ -232,6 +241,59 @@ func setConsoleCookies(ctx context.Context, fixture *consoleFixture) error {
 	return nil
 }
 
+// mintFixtureMarker returns a per-run-unique ASCII marker with enough
+// entropy that it cannot collide with anything in the bundle, the shell, or
+// a previous run's residue. Derived from crypto/rand, not the clock, so two
+// runs inside the same nanosecond cannot collide.
+func mintFixtureMarker(t *testing.T) string {
+	t.Helper()
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		t.Fatalf("mint fixture marker: %v", err)
+	}
+	return "engram-e2e-marker-" + hex.EncodeToString(b)
+}
+
+// seedFixtureRecord writes one memory through the Connect API using the SAME
+// identity the browser session carries (fixture.owner), so the record the
+// browser later renders is reachable by the cookie-authenticated read lane —
+// an MCP-written record lands in the owner=="" bucket and would be invisible
+// to the console (verified_facts item 5).
+//
+// The write lane requires the CSRF cookie AND header to be present, equal,
+// and verifiable (verified_facts item 6); both are set here. A non-empty
+// response id is asserted so a silently-degraded write cannot leave the
+// render assertion below to fail later for the wrong reason.
+func seedFixtureRecord(ctx context.Context, t *testing.T, fixture *consoleFixture, marker string) {
+	t.Helper()
+	client := engramv1connect.NewEngramServiceClient(http.DefaultClient, fixture.srv.baseURL())
+
+	req := connect.NewRequest(&engramv1.StoreMemoryRequest{
+		Content:  "e2e console round-trip fixture record",
+		Scope:    fixtureScope,
+		Source:   "agent-inferred",
+		Category: "convention",
+		Summary:  marker,
+	})
+	req.Header().Set("Cookie", consoleCookieHeader(fixture))
+	req.Header().Set(webauth.CSRFHeaderName, fixture.csrfToken)
+
+	resp, err := client.StoreMemory(ctx, req)
+	if err != nil {
+		t.Fatalf("seed fixture record: %v", err)
+	}
+	if resp.Msg.GetId() == "" {
+		t.Fatal("seed fixture record: response carried an empty id")
+	}
+}
+
+// consoleCookieHeader renders the sealed session cookie and the CSRF cookie
+// as a single Cookie header value, the same shape a browser would send.
+func consoleCookieHeader(fixture *consoleFixture) string {
+	return (&http.Cookie{Name: sessionCookieName, Value: fixture.sessionCookie}).String() +
+		"; " + (&http.Cookie{Name: webauth.CSRFCookieName, Value: fixture.csrfToken}).String()
+}
+
 // hydrationPollExpr is satisfied ONLY after SvelteKit hydrates: the shipped
 // static shell (internal/webauth/static/index.html) carries the console
 // heading string exactly once, inside <title>, never as an <h1> — see
@@ -243,14 +305,57 @@ const hydrationPollExpr = `(() => {
 	return !!h1 && h1.textContent.includes('operator console');
 })()`
 
+// markerPollExpr is satisfied ONLY once marker is visible in the live
+// rendered page text. Reading document.body.innerText (not the HTML source)
+// asserts over what a human would actually see.
+//
+// marker is the load-bearing hook: it cannot appear in index.html, cannot
+// appear in any bundled chunk, and reaches the DOM only if the bundle
+// loaded, SvelteKit hydrated, the session cookie authenticated the Connect
+// lane, and ListMemories returned the record — a strictly stronger proof
+// than any data-testid could offer. No data-testid was added to ui/, and the
+// vendored bundle is deliberately untouched by this plan.
+func markerPollExpr(marker string) string {
+	markerJSON, _ := json.Marshal(marker)
+	return fmt.Sprintf(`(() => document.body.innerText.includes(%s))()`, markerJSON)
+}
+
 // TestConsoleBundleRendersRecordInBrowser drives a REAL headless Chrome
 // against the REAL engram binary serving its REAL embedded console bundle,
-// and asserts the SvelteKit SPA hydrates. See G-05-9 / GH #106: nothing else
-// in this repo renders the embedded bundle in a browser, so nothing else can
-// catch a dangling chunk reference or a dropped `all:` embed prefix.
+// and asserts the round trip: a record written moments earlier through the
+// Connect API by the SAME identity the browser session carries is visible in
+// the rendered DOM. See G-05-9 / GH #106: nothing else in this repo renders
+// the embedded bundle in a browser, so nothing else can catch a dangling
+// chunk reference, a dropped `all:` embed prefix, or a broken data path
+// between the Connect write lane and the console read lane.
+//
+// The browser visits TWO routes in the same session, deliberately:
+//  1. /ui/ (the root route) proves hydration via the <h1> hook.
+//  2. /ui/observe?scope=<fixtureScope> — the SAME link the root route's own
+//     scope tile navigates to on click — proves the round trip by rendering
+//     the seeded record's marker.
+//
+// Route 2 is required because the root route's own "Recent memories" query
+// (ui/src/routes/+page.svelte's recentQ, calling listMemories with an empty
+// scope and no cross_spine) predates the "scope required unless cross_spine"
+// server-side constraint (proto/engram/v1/engram.proto, commit 9ba6449b,
+// 2026-08-12) — SearchMemories/ListMemories deliberately do NOT infer
+// cross_spine from an empty scope (internal/server/connectapi.go's D-04
+// note), unlike SearchDiscoveries. That predates-the-constraint gap is a
+// REAL, currently-shipped console bug this test discovered (its "recent
+// memories" panel always errors "scope is required unless cross_spine is
+// true" — confirmed live in this run's diagnostic dump), which is exactly
+// what an e2e test that actually renders is FOR (G9-D3). Fixing ui/ source
+// is out of this plan's file scope (frontmatter prohibitions), so this test
+// proves the round trip via the scoped /observe route instead — a real,
+// already-working, user-reachable path — and the root-route regression is
+// filed separately (05-04-SUMMARY.md deviations; follow-up GitHub issue).
 func TestConsoleBundleRendersRecordInBrowser(t *testing.T) {
 	chromePath := skipOrFailNoBrowser(t) // before startServer: a browser-less run must not pay for a Qdrant boot.
 	fixture := startConsoleServer(t)
+
+	marker := mintFixtureMarker(t)
+	seedFixtureRecord(context.Background(), t, fixture, marker) // BEFORE navigation, so the record exists when the SPA's first listMemories fires.
 
 	allocOpts := append(append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...),
 		chromedp.NoSandbox, // Ubuntu 24.04 restricts unprivileged user namespaces for a non-root CI user (verified_facts item 10).
@@ -269,7 +374,7 @@ func TestConsoleBundleRendersRecordInBrowser(t *testing.T) {
 	})
 
 	var hydrated bool
-	pollErr := chromedp.Run(runCtx,
+	hydrateErr := chromedp.Run(runCtx,
 		setCookies,
 		chromedp.Navigate(fixture.srv.baseURL()+"/ui/"),
 		chromedp.Poll(hydrationPollExpr, &hydrated,
@@ -277,14 +382,31 @@ func TestConsoleBundleRendersRecordInBrowser(t *testing.T) {
 			chromedp.WithPollingInterval(200*time.Millisecond),
 		),
 	)
-	if pollErr != nil {
+	if hydrateErr != nil {
 		logConsoleDiagnostics(t, browserCtx)
 		// A redirect to /auth/login (a rejected cookie) is otherwise
 		// indistinguishable from a broken bundle without this dump.
-		t.Fatalf("hydration wait failed: %v", pollErr)
+		t.Fatalf("hydration wait failed: %v", hydrateErr)
 	}
 	if !hydrated {
 		t.Fatal("hydration poll returned without error but hydrated=false")
+	}
+
+	observeURL := fixture.srv.baseURL() + "/ui/observe?scope=" + url.QueryEscape(fixtureScope)
+	var rendered bool
+	renderErr := chromedp.Run(runCtx,
+		chromedp.Navigate(observeURL),
+		chromedp.Poll(markerPollExpr(marker), &rendered,
+			chromedp.WithPollingTimeout(45*time.Second),
+			chromedp.WithPollingInterval(200*time.Millisecond),
+		),
+	)
+	if renderErr != nil {
+		logConsoleDiagnostics(t, browserCtx)
+		t.Fatalf("render wait failed: %v", renderErr)
+	}
+	if !rendered {
+		t.Fatal("render poll returned without error but rendered=false")
 	}
 }
 
