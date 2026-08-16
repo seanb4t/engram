@@ -9,17 +9,22 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"connectrpc.com/connect"
 	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
@@ -43,6 +48,13 @@ const testFixtureOwner = "console-e2e-owner@example.com"
 // this test navigates the browser to via /ui/observe?scope=. It is shared
 // between the write and the navigation so the two never drift apart.
 const fixtureScope = "repo:e2e-console-roundtrip"
+
+// consoleAssetPathPrefix is the served path prefix for every immutable SPA
+// asset — the segment a key_links entry in 05-04-PLAN.md binds to
+// internal/webauth/static.go through. It is the SINGLE source for the
+// browser-observed-failure filter, the success counter, and the asset sweep
+// below — never reassembled from fragments at any of those three sites.
+const consoleAssetPathPrefix = "/ui/_app/immutable/"
 
 // requireBrowser mirrors requireQdrant/requireBrowser's harness_test.go
 // sibling byte-for-byte in shape: ENGRAM_REQUIRE_BROWSER makes a missing
@@ -373,6 +385,9 @@ func TestConsoleBundleRendersRecordInBrowser(t *testing.T) {
 		return setConsoleCookies(ctx, fixture)
 	})
 
+	obs := newBrowserObserver()
+	obs.attach(runCtx) // BEFORE any navigation, so the first request's events are not missed.
+
 	var hydrated bool
 	hydrateErr := chromedp.Run(runCtx,
 		setCookies,
@@ -383,7 +398,7 @@ func TestConsoleBundleRendersRecordInBrowser(t *testing.T) {
 		),
 	)
 	if hydrateErr != nil {
-		logConsoleDiagnostics(t, browserCtx)
+		logConsoleDiagnostics(browserCtx, t)
 		// A redirect to /auth/login (a rejected cookie) is otherwise
 		// indistinguishable from a broken bundle without this dump.
 		t.Fatalf("hydration wait failed: %v", hydrateErr)
@@ -402,19 +417,22 @@ func TestConsoleBundleRendersRecordInBrowser(t *testing.T) {
 		),
 	)
 	if renderErr != nil {
-		logConsoleDiagnostics(t, browserCtx)
+		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("render wait failed: %v", renderErr)
 	}
 	if !rendered {
 		t.Fatal("render poll returned without error but rendered=false")
 	}
+
+	obs.assertClean(t)
+	sweepConsoleAssets(t, fixture.srv.baseURL())
 }
 
 // logConsoleDiagnostics captures the final page location and visible body
 // text on failure. It uses browserCtx directly (not the already-expired
 // timed-out run context) bounded by its own short timeout, so a Poll timeout
 // does not also prevent the diagnostic capture from running.
-func logConsoleDiagnostics(t *testing.T, browserCtx context.Context) {
+func logConsoleDiagnostics(browserCtx context.Context, t *testing.T) {
 	t.Helper()
 	diagCtx, diagCancel := context.WithTimeout(browserCtx, 5*time.Second)
 	defer diagCancel()
@@ -422,4 +440,162 @@ func logConsoleDiagnostics(t *testing.T, browserCtx context.Context) {
 	_ = chromedp.Run(diagCtx, chromedp.Location(&loc))
 	_ = chromedp.Run(diagCtx, chromedp.Evaluate(`document.body.innerText`, &body))
 	t.Logf("diagnostics: location=%q body=%q", loc, body)
+}
+
+// browserObserver records every network failure and uncaught JS exception the
+// browser reports across BOTH navigations in this test. Its callback runs
+// SYNCHRONOUSLY on chromedp's event goroutine (chromedp.ListenTarget's
+// contract), so it does nothing but append to guarded maps/slices — never a
+// CDP action, never a blocking call.
+type browserObserver struct {
+	mu sync.Mutex
+
+	urlsByRequest  map[network.RequestID]string
+	failedURLs     map[string]string   // url -> reason (HTTP status or loading-failed error text)
+	successAppURLs map[string]struct{} // distinct _app/immutable URLs that loaded with a non-error status
+	exceptions     []string
+}
+
+func newBrowserObserver() *browserObserver {
+	return &browserObserver{
+		urlsByRequest:  make(map[network.RequestID]string),
+		failedURLs:     make(map[string]string),
+		successAppURLs: make(map[string]struct{}),
+	}
+}
+
+// attach registers the observer on ctx. Must be called BEFORE navigation:
+// chromedp enables the network/runtime CDP domains by default, so events for
+// the very first request are only visible if the listener is already
+// registered when that request fires.
+func (o *browserObserver) attach(ctx context.Context) {
+	chromedp.ListenTarget(ctx, func(ev any) {
+		o.mu.Lock()
+		defer o.mu.Unlock()
+		switch e := ev.(type) {
+		case *network.EventRequestWillBeSent:
+			if e.Request != nil {
+				o.urlsByRequest[e.RequestID] = e.Request.URL
+			}
+		case *network.EventResponseReceived:
+			if e.Response == nil {
+				return
+			}
+			u := e.Response.URL
+			switch {
+			case e.Response.Status >= 400:
+				o.failedURLs[u] = fmt.Sprintf("HTTP %d", e.Response.Status)
+			case strings.Contains(u, consoleAssetPathPrefix):
+				o.successAppURLs[u] = struct{}{}
+			}
+		case *network.EventLoadingFailed:
+			u := o.urlsByRequest[e.RequestID]
+			if u == "" {
+				u = string(e.RequestID)
+			}
+			o.failedURLs[u] = e.ErrorText
+		case *runtime.EventExceptionThrown:
+			if e.ExceptionDetails != nil {
+				o.exceptions = append(o.exceptions, e.ExceptionDetails.Error())
+			}
+		}
+	})
+}
+
+// assertClean fails t if the browser observed any failed request under
+// consoleAssetPathPrefix, any uncaught JS exception, or — the non-vacuity
+// check — ZERO successfully-loaded _app/immutable URLs. Zero observed
+// requests trivially yields zero failures, and shipping that shape is
+// exactly how this repo has produced false-green gates before; the
+// non-emptiness assertion is part of the gate, not an extra.
+func (o *browserObserver) assertClean(t *testing.T) {
+	t.Helper()
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	var offenders []string
+	for u, reason := range o.failedURLs {
+		if strings.Contains(u, consoleAssetPathPrefix) {
+			offenders = append(offenders, fmt.Sprintf("%s: %s", u, reason))
+		}
+	}
+	if len(offenders) > 0 {
+		t.Fatalf("browser observed failed requests under %s: %v", consoleAssetPathPrefix, offenders)
+	}
+	if len(o.exceptions) > 0 {
+		t.Fatalf("browser observed uncaught JS exceptions: %v", o.exceptions)
+	}
+	if len(o.successAppURLs) == 0 {
+		t.Fatalf("zero %s URLs were observed loading successfully — non-vacuity check failed (zero requests trivially yields zero failures)", consoleAssetPathPrefix)
+	}
+}
+
+// immutableAssetRefPattern extracts every quoted string containing
+// consoleAssetPathPrefix from served HTML — this catches both
+// href="/ui/_app/immutable/...".modulepreload/stylesheet links AND the
+// bootstrap script's import("/ui/_app/immutable/...") calls, both of which
+// internal/webauth/static/index.html carries (see its source).
+var immutableAssetRefPattern = regexp.MustCompile(`["']([^"']*` + regexp.QuoteMeta(consoleAssetPathPrefix) + `[^"']*)["']`)
+
+// extractImmutableAssetRefs returns the distinct, in-order set of
+// consoleAssetPathPrefix references found in html.
+func extractImmutableAssetRefs(html string) []string {
+	matches := immutableAssetRefPattern.FindAllStringSubmatch(html, -1)
+	seen := make(map[string]struct{}, len(matches))
+	refs := make([]string, 0, len(matches))
+	for _, m := range matches {
+		ref := m[1]
+		if _, ok := seen[ref]; ok {
+			continue
+		}
+		seen[ref] = struct{}{}
+		refs = append(refs, ref)
+	}
+	return refs
+}
+
+// sweepConsoleAssets closes the UAT's literal `missing:` item (G-05-9):
+// parses the SERVED index.html for every immutable-asset reference and
+// requests each one, asserting HTTP 200 and a non-empty body. This is
+// supplementary to the render assertions above, never a substitute for them
+// (G9-D3) — it is what would have caught GH #106 MECHANICALLY, while the
+// render half above is what proves the console actually works.
+func sweepConsoleAssets(t *testing.T, baseURL string) {
+	t.Helper()
+
+	resp, err := http.Get(baseURL + "/ui/")
+	if err != nil {
+		t.Fatalf("GET /ui/: %v", err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		t.Fatalf("read /ui/ body: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /ui/: status %d", resp.StatusCode)
+	}
+
+	refs := extractImmutableAssetRefs(string(body))
+	if len(refs) == 0 {
+		t.Fatal("extracted zero immutable-asset references from the served index.html — an empty parse is a FAILURE, not a pass")
+	}
+
+	var offenders []string
+	for _, ref := range refs {
+		assetURL := baseURL + ref
+		aResp, aErr := http.Get(assetURL)
+		if aErr != nil {
+			offenders = append(offenders, fmt.Sprintf("%s: %v", assetURL, aErr))
+			continue
+		}
+		aBody, _ := io.ReadAll(aResp.Body)
+		_ = aResp.Body.Close()
+		if aResp.StatusCode != http.StatusOK || len(aBody) == 0 {
+			offenders = append(offenders, fmt.Sprintf("%s: status=%d bodyLen=%d", assetURL, aResp.StatusCode, len(aBody)))
+		}
+	}
+	if len(offenders) > 0 {
+		t.Fatalf("stale or missing immutable asset references: %v", offenders)
+	}
 }
