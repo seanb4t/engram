@@ -1,106 +1,125 @@
 ---
 phase: 05-connect-record-state-parity
-reviewed: 2026-08-15T00:00:00Z
+reviewed: 2026-08-16T14:14:47Z
 depth: standard
-files_reviewed: 8
+files_reviewed: 16
 files_reviewed_list:
-  - proto/engram/v1/engram.proto
-  - internal/server/connectapi.go
-  - internal/store/store.go
-  - internal/server/connectapi_recordstate_handler_test.go
-  - internal/server/connectapi_parity_test.go
-  - internal/server/connectapi_boundary_second_test.go
-  - internal/server/connectdescriptor_test.go
+  - .github/workflows/ci.yaml
+  - Taskfile.yaml
   - cmd/engram/client_schemaversion_json_test.go
+  - gen/go/engram/v1/engram.pb.go
+  - gen/ts/engram/v1/engram_pb.ts
+  - go.mod
+  - go.sum
+  - internal/e2e/console_browser_test.go
+  - internal/e2e/harness_test.go
+  - internal/server/connectapi.go
+  - internal/server/connectapi_boundary_second_test.go
+  - internal/server/connectapi_parity_test.go
+  - internal/server/connectapi_recordstate_handler_test.go
+  - internal/server/connectdescriptor_test.go
+  - internal/store/store.go
+  - proto/engram/v1/engram.proto
+  - ui/src/lib/gen/engram/v1/engram_pb.ts
 findings:
   critical: 0
-  warning: 0
+  warning: 1
   info: 1
-  total: 1
+  total: 2
 status: issues_found
 ---
 
-# Phase 05: Code Review Report
+# Phase 5: Code Review Report
 
-**Reviewed:** 2026-08-15T00:00:00Z
+**Reviewed:** 2026-08-16T14:14:47Z
 **Depth:** standard
-**Files Reviewed:** 8
+**Files Reviewed:** 16
 **Status:** issues_found
 
 ## Summary
 
-Phase 05 adds `engramv1.Memory` fields 23-30 and the hand-written `memoryToProto`
-mapping for them (`internal/server/connectapi.go`). The actual code diff for this
-phase is small and surgical: `proto/engram/v1/engram.proto` (field declarations),
-`internal/server/connectapi.go` (the mapping block, +18 lines net of comments), and
-a doc-comment-only change in `internal/store/store.go` (no logic change — confirmed
-via `git diff 059807ab..HEAD -- internal/store/store.go`). Everything else in scope
-is new test code.
+This phase adds eight record-state fields (23-30) to the Connect `Memory` wire message
+and builds several exhaustiveness proofs (field-name parity detector, reflection
+auto-fill population/decode-back comparator, descriptor field-shape pins, a real
+Qdrant-backed handler round trip, and a real headless-Chrome console render test).
+The added/changed production code is small (`proto/engram/v1/engram.proto`,
+`internal/server/connectapi.go`'s `memoryToProto`, plus the new
+`internal/e2e/console_browser_test.go` and the `ENGRAM_REQUIRE_BROWSER` CI/Taskfile
+wiring) and is unusually well defended: every anti-vacuity pattern called out in the
+review brief (working-tree diff gates, comment-filtered negative greps,
+empty-observation-set assertions, tautological parity detectors, skip-instead-of-fail
+gates) was checked against this phase's own additions and each one held up —
+`unmappedStoreFields` is proven capable of rejecting via a permanent negative fixture
+and a near-miss fixture, `browserObserver.assertClean`/`sweepConsoleAssets` both carry
+explicit non-emptiness assertions on their observed sets, and `ENGRAM_REQUIRE_BROWSER`
+is byte-for-byte shaped like the existing `ENGRAM_REQUIRE_QDRANT`/`skipOrFailNoQdrant`
+pair and is genuinely wired into CI (`ci.yaml`) and `Taskfile.yaml`'s `test:strict`.
 
-**D-14 conformance (review priority 1):** verified field-by-field against `memoryToProto`
-(`internal/server/connectapi.go:49-106`). Every one of the eight fields follows its
-mandated rule exactly, not a uniform style:
-- `superseded_by` (23, `optional string`): direct pointer copy (`SupersededBy: m.SupersededBy`) — nil source stays unset. Correct.
-- `supersedes` (24, `repeated`): direct slice assign, no presence concept. Correct.
-- `not_before`/`not_after`/`archived_at`/`summary_egress_at` (25-27, 30, `Timestamp`): each guarded by a nil-pointer (or `IsZero()` for the non-pointer `SummaryEgressAt`) check before `timestamppb.New(...)`, so an unset source never emits a year-1 Timestamp. Correct.
-- `schema_version`/`summary_model` (28-29, `optional uint32`/`optional string`, non-pointer sources): assigned unconditionally via `proto.Uint32(...)`/`proto.String(...)`, with an inline comment explaining why (protojson omits an unset optional even under `EmitDefaultValues`). Correct.
+The `EmbedderIdentity`/`IdempotencyFingerprint` `json:"-"` audit stamps stay correctly
+off the Connect wire (confirmed against `TestConnectMemoryParityDetector`), and the
+generated Go/TS artifacts (`gen/go`, `gen/ts`, `ui/src/lib/gen`) are consistent with
+the proto and with each other. `go.mod`/`go.sum`'s new `chromedp`/`cdproto`/`sysutil`
+dependency triplet is clean (no duplicate entries, pseudo-versioned `cdproto` is
+expected for that module, which has no proper release tags).
 
-**Vacuous-gate sweep (review priority 2):** none of the anti-patterns named in the
-review brief (working-tree git diff assertions, `rg -v '^\s*//'` comment-stripping
-gates, unreachable branches, `len(x) > 0` in place of set-equality, zero-by-construction
-fixtures, `-run` patterns matching nothing) were found in any of the three new test
-files. Specifically for `connectapi_parity_test.go`'s reflection detector: the
-permanent negative fixture (`negativeFixtureMemory`) and near-miss fixture
-(`nearMissFixtureMemory`) genuinely exercise the detector's ability to reject, and the
-"every proto field is populated" `Has(fd)` sub-test is paired with a dedicated
-"zero-value source" sub-test that is the only place in the suite that would actually
-go red if `schema_version`/`summary_model` reverted to a conditional assignment (the
-population sub-test alone cannot see that regression, since `Has()` is true for any
-assignment including an assigned zero — the file's own comment at
-`connectapi_parity_test.go:639-645` states this explicitly and the code backs it up).
-The decode-back comparator's coverage is independently pinned
-(`assertDecodeBackCoversAllFields`) against all 30 json-visible `store.Memory` fields,
-counted and cross-checked by hand against `store.go`'s struct tags — the comparator
-list is complete, not partial-and-silently-passing.
+One real, if low-severity, type-safety gap was found in the new `memoryToProto` code
+(WARNING below), plus one documentation/consistency note (INFO).
 
-**Existing-invariant / consumer sweep (review priority 3):** no other hand-written Go
-production code constructs or reflects over `engramv1.Memory` outside
-`connectapi.go` (confirmed by search across `internal/` and `cmd/`) — no consumer
-assumed the old, smaller field set. `renderJSON` (CLI) is a generic `protojson`
-marshal with no hardcoded field list, so it required no update.
+## Warnings
 
-**Read-gate safety (review priority 4):** none of the eight new fields —
-`schema_version` above all — appear in any recall-gate or authz-filter code path
-(`effectiveSearchScope`, `deps.listMemory`, `deps.searchMemory`, etc.); they are
-read-and-return-only in this phase, and none of the six write RPCs (`StoreMemoryRequest`,
-`ScheduleMemoryRequest`, `UpdateMemoryRequest`, ...) expose them as client-writable
-fields, so there is no authz gap either.
+### WR-01: Unchecked `int` → `uint32` narrowing conversion for `schema_version`
 
-No Critical or Warning findings. One Info-level observation below.
+**File:** `internal/server/connectapi.go:102`
+**Issue:** `memoryToProto` populates the new `schema_version` field with
+`proto.Uint32(uint32(m.SchemaVersion))`. `store.Memory.SchemaVersion` is a
+`migrate.Version`, which is defined as a plain signed `int`
+(`internal/migrate/migrate.go:20`) and is read back off the Qdrant payload via
+`migrate.Version(v.GetIntegerValue())` (`internal/store/store.go:742`), with no
+range validation anywhere on that read path. A negative or `> math.MaxUint32`
+value — from a corrupted/tampered Qdrant payload, a future migration-numbering bug,
+or a manually edited point — silently wraps around instead of failing loudly, and the
+wrapped value is then asserted onto the wire as if it were a normal schema version.
+Every other numeric-adjacent field this phase added guards against exactly this kind
+of silent misrepresentation (e.g. the `nil`-vs-zero-value guards on the four new
+`Timestamp` fields), so this conversion is the one place in the same function that
+has no equivalent guard.
+**Fix:**
+```go
+// memoryToProto (or a small helper) should refuse to silently wrap a
+// SchemaVersion outside uint32's range, e.g.:
+sv := m.SchemaVersion
+if sv < 0 || sv > migrate.Version(math.MaxUint32) {
+    // surface as a server-side invariant violation (log + clamp, or panic in a
+    // debug build) rather than letting `uint32(sv)` wrap silently.
+}
+SchemaVersion: proto.Uint32(uint32(sv)),
+```
 
 ## Info
 
-### IN-01: `uint32(m.SchemaVersion)` has no bounds/sign check
+### IN-01: Connect summary-shaped recall exposes the eight new record-state fields; MCP's `recallView` does not
 
-**File:** `internal/server/connectapi.go:102`
-**Issue:** `m.SchemaVersion` is `migrate.Version`, an `int`-backed type
-(`internal/migrate/migrate.go:20`). `proto.Uint32(uint32(m.SchemaVersion))` performs an
-unchecked `int`→`uint32` conversion. In every code path that populates
-`store.Memory.SchemaVersion` today the value is non-negative and store-controlled
-(`migrate.CurrentVersion`, or `0` for legacy/never-set records decoded from a missing
-Qdrant payload key), so this is not reachable in practice. If a corrupted or
-maliciously-crafted Qdrant payload ever decoded to a negative integer via
-`migrate.Version(v.GetIntegerValue())` (`internal/store/store.go:742`), the conversion
-would silently wrap to a large positive `uint32` (e.g. `-1` → `4294967295`) rather than
-erroring, producing a nonsensical but non-crashing `schema_version` on the wire.
-**Fix:** Not urgent given the field's internal-only provenance; if hardening is
-desired, clamp or reject negative values at the `store.go` decode site
-(`migrate.Version(v.GetIntegerValue())`) rather than at the proto-mapping boundary, so
-the invariant "SchemaVersion is never negative" is enforced once, at the point data
-enters the type, instead of defensively re-checked at every consumer.
+**File:** `internal/server/connectapi.go:151-165` (`shapeProtoMemories`) vs.
+`internal/server/summary.go:40-60` (`recallView`)
+**Issue:** `shapeProtoMemories` (the Connect `full=false` compact shaper) only clears
+`Content`, `Summary`, `Citations`, and `Kind` — it leaves `SupersededBy`, `Supersedes`,
+`NotBefore`, `NotAfter`, `ArchivedAt`, `SchemaVersion`, `SummaryModel`, and
+`SummaryEgressAt` populated. The MCP lane's hand-written `recallView` (the equivalent
+compact shape) omits all eight of these fields entirely. This is confirmed as a
+deliberate, documented choice for this phase (`05-01-PLAN.md`: "the eight fields must
+appear on all [Connect read RPCs] ... via memoriesToProto/shapeProtoMemories"; and
+`05-CONTEXT.md`'s Deferred Ideas explicitly defers "`schema_version` on the compact
+`recallView`" to a later phase per Phase 2's D-11), so this is not a defect to fix in
+this phase — it is flagged here only so the cross-lane (MCP vs. Connect) compact-view
+asymmetry stays visible to the next reader of this file, since nothing in
+`connectapi.go` itself notes that the omission is intentional and MCP-side, only that
+`Content`/`Citations`/`Kind` are cleared.
+**Fix:** No action required for this phase. Consider a one-line comment on
+`shapeProtoMemories` cross-referencing the deferred `recallView` parity item so a
+future reader does not mistake this for an oversight.
 
 ---
 
-_Reviewed: 2026-08-15T00:00:00Z_
+_Reviewed: 2026-08-16T14:14:47Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
