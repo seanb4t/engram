@@ -179,9 +179,10 @@ subsumes G-1's defect, and this class of rot cannot recur silently.
    `02-VERIFICATION.md`'s deferred table as stale-in-the-good-direction, not as
    outstanding work.
 
-2. **`.planning/REQUIREMENTS.md` is stale for this phase** (already flagged by
-   `02-VERIFICATION.md`, still unfixed): `REQ-schema-version-forward-compatible`
-   remains an unchecked `[ ]` with "Pending" in the traceability table, though
-   the implementation and `TestSchemaVersionForwardBackwardCompat` satisfy it.
-   Plans 02-04 and 02-05 never updated the file. Documentation-sync only — no
-   bearing on the requirement itself.
+2. **`02-VERIFICATION.md`'s `REQUIREMENTS.md` discrepancy is already resolved.**
+   That report (2026-08-13) recorded `REQ-schema-version-forward-compatible` as
+   an unchecked `[ ]` with "Pending" in the traceability table and recommended a
+   follow-up commit. That commit happened: `119749ba` ("docs(phase-02): complete
+   phase execution") checked the box and set the row to "Complete". Verified in
+   the current file — nothing outstanding here. Read the discrepancy note in
+   `02-VERIFICATION.md` as closed.
