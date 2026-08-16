@@ -393,7 +393,29 @@ Plans:
   2. Every existing operator command's `--output json|text` behavior is unchanged (regression-free) after the refactor.
   3. Adding a new field to an operator report requires touching exactly one field-set declaration to appear correctly in both json and text output — there is no second call site to remember, which is what makes the six new record-state fields (Phase 5/7) safe to add afterward.
 
-**Plans**: TBD
+**Plans:** 0/9 plans complete
+
+Plans:
+**Wave 1**
+
+- [ ] 06-01-PLAN.md — D-08 checkpoint (what the widening invariant means where today's json and today's sentence describe different value sets), then the tracer: `fieldset.go`/`fieldset_test.go` with the shared placeholder parser and set-equality coverage checker, the new `renderOperator(FieldSet)` beside a temporary legacy entry point, `prune-expired` converted end-to-end, the `operator-reports` golden harness, and two red-evidence patches with phase 06 added to `redEvidenceDirs`
+
+**Wave 2**
+
+- [ ] 06-02-PLAN.md — Group A: `reindex` (3 variants) and `summarize-missing` (2 variants) converted, gated by five goldens frozen from the pre-image
+- [ ] 06-03-PLAN.md — Group A: `migrate-set-owner` (named builder replacing its inline call-site literal) and `migrate-remap-owner` (2 variants), with the mode-dependent key pair resolved from today's struct tags rather than from the running mode
+- [ ] 06-04-PLAN.md — Group A: `migrate`'s two sweep variants (shared outright by `backfill-short-ids`) and `migrate revert`'s four render sites including both refusal sub-shapes
+- [ ] 06-05-PLAN.md — Group B: `spine-review archive`/`restore` (D-05 nesting + the tier's one genuine D-06 span drop) and `spine-review scan` (trailing list + the one sentence-states-what-the-json-lacks case)
+- [ ] 06-06-PLAN.md — Group B: `spine-review consolidate` (replacement-not-drop min-score line) and `spine-review verify` (three independent per-tier row lists)
+- [ ] 06-07-PLAN.md — Group B: `spine-review purge` preview and applied — the tier's largest document, the five-segment preview template, and the seven applied-path fields the sentence never states
+
+**Wave 3**
+
+- [ ] 06-08-PLAN.md — Group C: `migrate status`, the tier's structural exception — hand-declared field set replacing the `store` passthrough, two inline-joined lists, one predicate governing the whole future clause
+
+**Wave 4**
+
+- [ ] 06-09-PLAN.md — D-07 retirement: the hand-built parity gate replaced by a cobra-tree-derived bidirectional registry gate that also asserts field-set coverage tier-wide, collapse to one render entry point, and removal of every pre-image sentence builder and document struct with each affected test's disposition enumerated
 
 ### Phase 7: Console & CLI State Surfacing
 
