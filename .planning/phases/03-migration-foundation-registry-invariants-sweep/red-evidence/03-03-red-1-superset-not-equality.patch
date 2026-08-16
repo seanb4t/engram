@@ -1,8 +1,8 @@
 diff --git a/internal/migrate/additive.go b/internal/migrate/additive.go
-index ed337d1f..717c916a 100644
+index d8ee289f..be311d72 100644
 --- a/internal/migrate/additive.go
 +++ b/internal/migrate/additive.go
-@@ -78,20 +78,12 @@ func CheckAdditive(s Step, before, after map[string]any) error {
+@@ -87,12 +87,7 @@ func CheckAdditive(s Step, before, after map[string]any) error {
  		addedSet[k] = struct{}{}
  	}
  
@@ -14,13 +14,16 @@ index ed337d1f..717c916a 100644
 -	}
 +	var missing []string
  	for _, k := range declared {
- 		if _, ok := addedSet[k]; !ok {
- 			missing = append(missing, k)
+ 		if _, ok := addedSet[k]; ok {
+ 			continue
+@@ -106,9 +101,7 @@ func CheckAdditive(s Step, before, after map[string]any) error {
  		}
+ 		missing = append(missing, k)
  	}
 -	if len(undeclared) > 0 {
 -		parts = append(parts, fmt.Sprintf("added key(s) not declared in AddsKeys: %v", undeclared))
 -	}
++	_ = declaredSet
  	if len(missing) > 0 {
  		parts = append(parts, fmt.Sprintf("declared key(s) in AddsKeys never added: %v", missing))
  	}

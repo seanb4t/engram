@@ -1,23 +1,18 @@
 diff --git a/internal/store/migrate_converge_test.go b/internal/store/migrate_converge_test.go
-index 9b38dd53..39da8dce 100644
+index 460e05ea..d4578b21 100644
 --- a/internal/store/migrate_converge_test.go
 +++ b/internal/store/migrate_converge_test.go
-@@ -126,6 +126,12 @@ func TestMigrateConvergesWithoutLock(t *testing.T) {
+@@ -121,6 +121,7 @@ func TestMigrateConvergesWithoutLock(t *testing.T) {
  	// immediately after Store.Migrate returns. t.Logf is not used here
  	// either, to keep this closure free of any *testing.T dependency.
  	h.fn = func() {
-+		// PROVE-RED cycle 2 (03-05 plan, Task 2): TEMPORARY — wrapping the
-+		// body below in `if false` makes it dead code, so no mid-sweep
-+		// write happens at all, proving subtest 1's negative assertions
-+		// are not vacuously true when no such record was ever written.
-+		// Must be reverted before this task's commit.
 +		if false {
- 		alreadyCurrent := Memory{
- 			ID: alreadyCurrentID, Content: "already current at mid-sweep", Scope: scope,
- 			Owner: "sub-migrate-test", Category: "note", CreatedAt: time.Now().UTC(),
-@@ -174,6 +180,7 @@ func TestMigrateConvergesWithoutLock(t *testing.T) {
- 		} else if got := lgPayload[schemaVersionKey].GetIntegerValue(); got != 0 {
- 			h.recordErr("laggard(%s) stored schema_version = %d, want 0 (below the sweep's target of 1)", laggardID, got)
+ 		// alreadyCurrent is now an ORDINARY Upsert — no SchemaVersion field
+ 		// at all. payload()'s monotonic stamp reaches 1 through
+ 		// migrate.CurrentVersion alone, exactly the way a production write
+@@ -183,6 +184,7 @@ func TestMigrateConvergesWithoutLock(t *testing.T) {
+ 		} else if _, ok := lgPayload[schemaVersionKey]; ok {
+ 			h.recordErr("laggard(%s) stored schema_version key is PRESENT, want ABSENT (below the sweep's resolved target of migrate.CurrentVersion)", laggardID)
  		}
 +		}
  	}
