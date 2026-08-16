@@ -112,14 +112,11 @@ type Memory struct {
 	Citations []*Citation `protobuf:"bytes,22,rep,name=citations,proto3" json:"citations,omitempty"`
 	// A superseded record is soft-hidden from recall but stays fetchable by
 	// id. Unset means not superseded, not superseding anything.
-	SupersededBy *string  `protobuf:"bytes,23,opt,name=superseded_by,json=supersededBy,proto3,oneof" json:"superseded_by,omitempty"`
-	Supersedes   []string `protobuf:"bytes,24,rep,name=supersedes,proto3" json:"supersedes,omitempty"`
-	// The store encodes not_before/not_after at whole-second granularity, so
-	// the outward rounding applied on the write path makes read-side rounding
-	// a no-op by construction; none is performed here.
-	NotBefore  *timestamppb.Timestamp `protobuf:"bytes,25,opt,name=not_before,json=notBefore,proto3" json:"not_before,omitempty"`
-	NotAfter   *timestamppb.Timestamp `protobuf:"bytes,26,opt,name=not_after,json=notAfter,proto3" json:"not_after,omitempty"`
-	ArchivedAt *timestamppb.Timestamp `protobuf:"bytes,27,opt,name=archived_at,json=archivedAt,proto3" json:"archived_at,omitempty"`
+	SupersededBy *string                `protobuf:"bytes,23,opt,name=superseded_by,json=supersededBy,proto3,oneof" json:"superseded_by,omitempty"`
+	Supersedes   []string               `protobuf:"bytes,24,rep,name=supersedes,proto3" json:"supersedes,omitempty"`
+	NotBefore    *timestamppb.Timestamp `protobuf:"bytes,25,opt,name=not_before,json=notBefore,proto3" json:"not_before,omitempty"`
+	NotAfter     *timestamppb.Timestamp `protobuf:"bytes,26,opt,name=not_after,json=notAfter,proto3" json:"not_after,omitempty"`
+	ArchivedAt   *timestamppb.Timestamp `protobuf:"bytes,27,opt,name=archived_at,json=archivedAt,proto3" json:"archived_at,omitempty"`
 	// Explicit presence; the server always sets this, including to zero for a
 	// v0 record, which is what keeps the key in every rendered JSON document.
 	// An unset value on the wire is a server bug, never a v0 record.

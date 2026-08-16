@@ -43,9 +43,6 @@ message Memory {
   // id. Unset means not superseded, not superseding anything.
   optional string superseded_by = 23;
   repeated string supersedes = 24;
-  // The store encodes not_before/not_after at whole-second granularity, so
-  // the outward rounding applied on the write path makes read-side rounding
-  // a no-op by construction; none is performed here.
   google.protobuf.Timestamp not_before = 25;
   google.protobuf.Timestamp not_after = 26;
   google.protobuf.Timestamp archived_at = 27;

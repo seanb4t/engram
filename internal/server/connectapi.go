@@ -55,6 +55,9 @@ func memoryToProto(m store.Memory) *engramv1.Memory {
 	}
 	// NotBefore/NotAfter/ArchivedAt are nil for the common case; leave the
 	// proto field unset rather than emitting a year-1 (0001-01-01) Timestamp.
+	// The store encodes NotBefore/NotAfter at whole-second granularity, so the
+	// outward rounding applied on the write path makes read-side rounding a
+	// no-op by construction; none is performed here.
 	var notBefore *timestamppb.Timestamp
 	if m.NotBefore != nil {
 		notBefore = timestamppb.New(*m.NotBefore)

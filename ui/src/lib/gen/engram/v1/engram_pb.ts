@@ -158,10 +158,6 @@ export type Memory = Message<"engram.v1.Memory"> & {
   supersedes: string[];
 
   /**
-   * The store encodes not_before/not_after at whole-second granularity, so
-   * the outward rounding applied on the write path makes read-side rounding
-   * a no-op by construction; none is performed here.
-   *
    * @generated from field: google.protobuf.Timestamp not_before = 25;
    */
   notBefore?: Timestamp | undefined;
