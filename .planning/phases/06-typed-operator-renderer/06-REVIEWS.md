@@ -1,8 +1,9 @@
 ---
 phase: 6
 reviewers: [codex]
-review_cycle: 2
-reviewed_at: 2026-08-16T21:28:21Z
+review_cycle: 3
+reviewed_at: 2026-08-16T22:01:17Z
+cycle_2_reviewed_at: 2026-08-16T21:28:21Z
 cycle_1_reviewed_at: 2026-08-16T21:00:51Z
 plans_reviewed:
   - 06-01-PLAN.md
@@ -18,14 +19,283 @@ plans_reviewed:
 
 # Cross-AI Plan Review — Phase 6: Typed Operator Renderer
 
-> This file accumulates review cycles. **Cycle 2 is the current cycle** and appears
-> first. Cycle 1's findings are retained below as an audit trail — all eight were
-> incorporated in the targeted replan committed as `3968e740` and must not be
-> re-counted as current.
+> This file accumulates review cycles. **Cycle 3 is the current cycle** and appears
+> first. Cycles 2 and 1 are retained below as an audit trail — cycle 1's eight findings
+> were incorporated in the targeted replan committed as `3968e740`, and cycle 2's five
+> were incorporated in `a943a93e`. Neither set may be re-counted as current.
 
 ---
 
-# Cycle 2 (current)
+# Cycle 3 (current) — FINAL automatic cycle
+
+## Codex Review
+
+## 1. Summary
+
+The plans are unusually rigorous about falsifiability, mutation evidence, exact set equality, and
+staged retirement, and every cycle-2 correction is present in the current plan text. Three new
+issues remain, all of them in the *newly introduced* cycle-2 constructs rather than in the
+architecture they replaced: the D-08 option-a/option-b golden workflow is internally inconsistent
+with the golden harness that must execute it, the promised `Set` immutability does not cover
+mutable render callbacks or pointer values, and the AST constructor-routing gate is syntactic and
+can be evaded by an aliased or dot import. The template-constant rule also conflicts with Plan
+06-04's mandated shared constants. Overall risk remains **HIGH** until these are resolved.
+
+## 2. Cycle-2 Fix Verification
+
+- **HIGH-1 (slice aliasing) — LANDED.** Plan 06-01 explicitly requires cloning the variadic
+  `[]Field`, nested `[]Set`, `[]Field`, and `[]string` before validation, with fresh accessor
+  slices (`06-01-PLAN.md:469-486`). It adds retained-handle mutation tests and verifies
+  `Validated(s)` remains nil (`06-01-PLAN.md:405`). The clone-then-validate ORDER is stated
+  correctly — validating before cloning would validate the caller's array and store a different one.
+
+- **HIGH-2 (variant universe) — LANDED, with a new bypass concern below.** Production
+  `operatorReport` calls carry literal identities, nested rows use `operatorRow`, and
+  labeled/unlabeled behavior is specified (`06-01-PLAN.md:565`). Plan 06-09 derives pairs with
+  `go/ast`, compares exact pair sets in both directions, and retains a real-production-branch
+  mutation patch (`06-09-PLAN.md:174`, `06-09-PLAN.md:225`). The source-derived command half is
+  grounded in the real recursive Cobra walk at `cmd/engram/cmdwalk.go:86`.
+
+- **MEDIUM-1 (nested validated bit) — LANDED.** Validation must inspect the `validated` bit of
+  every nested `Set` and every `[]Set` element, reporting the key and row index
+  (`06-01-PLAN.md:485`). The plan correctly acknowledges legal zero-value composite literals at
+  `06-01-PLAN.md:445-452` and no longer overstates them as impossible.
+
+- **MEDIUM-2 (`registerReportVariants`) — LANDED.** The design explicitly removes it, prohibits its
+  reintroduction, and gates its absence (`06-09-PLAN.md:51`, `06-09-PLAN.md:271`).
+
+- **LOW-1 (`T-06-JOIN` threat row) — LANDED.** Plan 06-06 now grounds the join threat in constructor
+  rejection plus exact `ListKeys()` equality, explicitly retiring the `Sep:` count check
+  (`06-06-PLAN.md:276`).
+
+## 3. Strengths
+
+- Plan 06-01 establishes a genuine package boundary, inert zero value, shared parser,
+  malformed-template suite, ordered JSON, and named RED evidence rather than relying on API
+  convention.
+
+- Plans 06-02 through 06-08 partition conversion work by actual complexity: flat variants,
+  mode-dependent pairs, shared aliases, nested rows, replacement-versus-drop, purge's irregular
+  shape, and inline status joins.
+
+- Plan 06-04 correctly recovered the missing `backfill-short-ids` preview variant. The current
+  source confirms preview and apply are separate live adapters into the shared sweep implementation
+  (`cmd/engram/backfill.go:36`). This is the derivation finding a real gap the hand-list had missed —
+  direct evidence that production-derivation was the right cycle-2 call.
+
+- Plan 06-09's pair-level exact equality is substantially stronger than command-level coverage. It
+  requires missing, extra, duplicate, nonconstant, and empty-universe cases to fail by name
+  (`06-09-PLAN.md:141`), and the empty-universe case explicitly cites this repo's recorded
+  fail-open shape.
+
+- The undeclared-variant mutation is well targeted: a production `operatorReport` branch without
+  fixture or golden must become an unexpected derived pair, so the described gate should go RED
+  rather than merely detect edited test metadata. The three deliberate red runs
+  (`06-09-PLAN.md:283-290`) each prove a different failure class.
+
+## 4. Concerns
+
+### HIGH — NEW: D-08 options a and b are not executable through the golden harness as specified
+
+Plan 06-01 specifies that `TestOperatorReportGolden` drives BOTH lanes — `renderOperatorLegacy` for
+the legacy pair, `renderOperator` for `Report()` when non-nil — and compares both against the SAME
+golden file, and that under `-update` "bytes are written from the legacy lanes while `LegacyDoc` is
+non-nil and from `Report()` once it is not" (`06-01-PLAN.md:600-614`).
+
+Nothing in any plan ever sets `LegacyDoc` to nil: `LegacyDoc` appears exactly twice in the whole
+phase (`rg -n 'LegacyDoc' .planning/phases/06-typed-operator-renderer/*.md` → `06-01-PLAN.md:601`
+and `:613`), both in the harness declaration. Every conversion plan explicitly retains the legacy
+builders (`06-02-PLAN.md:195-197`: "Leave `reindexSummary`, `reindexReportDoc` … in place"), so
+`LegacyDoc` stays non-nil through 06-08.
+
+Two consequences, both blocking:
+1. Under option **a**, `06-02-PLAN.md:79` requires `*.json` REGENERATED for variants whose key set
+   changes. But `-update` writes from the legacy lane while `LegacyDoc` is non-nil, so the harness
+   cannot produce the new JSON shape at all.
+2. Even if regenerated by hand, the legacy JSON lane is still compared against that same regenerated
+   golden and must fail. Option **b** has the mirror-image problem on the text side.
+
+This directly contradicts the same plan's own Task 2 action text, which says unconditionally "Do not
+regenerate any golden in this commit: the goldens are the pre-image, and their surviving the
+conversion untouched is the whole SC2 proof" (`06-02-PLAN.md:199-200`). The D-08 branch table and
+the task action disagree, and the contradiction repeats across the conversion plans. Cycle 2 added
+the branch tables but did not propagate them into the harness design.
+
+### HIGH — NEW: the claimed immutability invariant excludes live mutable inputs the API already admits
+
+`Field` stores `val any` and a caller-provided `render func(any) string` (`06-01-PLAN.md:445`,
+`06-01-PLAN.md:495`). Property 4's clone covers `[]Set`, `[]Field`, and `[]string`
+(`06-01-PLAN.md:476-482`), and the plan's own scope note partitions the remaining world into
+"any other slice-shaped value kind added later" and "a scalar … is a value copy already". A
+**pointer** value falls into neither bucket, and neither does a **closure**.
+
+This is not hypothetical — it is already designed in. `06-06-PLAN.md:185-189` adds
+`consolidateReport(… minScore *float32 …)` and states "The min-score field carries a `Render`
+function returning the formatted score when the pointer is non-nil and the no-filter prose
+otherwise". The pointer originates at `cmd/engram/spine_review_consolidate.go:58` (`parseMinScore`
+returns `*float32`) and is threaded live through `:97` → `:129/:131`. A caller mutating `*minScore`
+after a successful `New` changes what the validated `Set` renders on BOTH lanes — text through the
+render closure, JSON through `encoding/json` following the pointer — while `validated` stays true.
+A render closure capturing mutable state has the same effect on the text lane alone.
+
+Yet `06-01-PLAN.md:505-510` asserts a validated set is immutable and that `Validated`'s
+construction-time bit is therefore sufficient. As written that claim is false for the pointer path,
+and `TestFieldSetNewClonesCallerSlices` cannot go red for it — the mutation test set covers only
+slice kinds. **The accepted residual #3 ("covers only the value kinds `cloneFields` walks") does not
+cover this**: the plan's own text frames the uncovered remainder as *slice-shaped kinds added later*,
+which materially understates a pointer path the phase ships in 06-06.
+
+### HIGH — NEW: the constructor-routing AST gate is syntactic and alias-bypassable
+
+Plan 06-09 makes the derivation's exhaustiveness rest entirely on one rule: "fail on any selector
+expression naming `fieldset.New`, `fieldset.NewLabeled`, `fieldset.MustNew`, or
+`fieldset.MustNewLabeled` from a function other than `operatorReport` or `operatorRow`: that rule is
+what makes the enumeration exhaustive rather than merely broad, because it removes every other route
+to a constructed report" (`06-09-PLAN.md:184-188`).
+
+The rule is matched on the selector's `X` identifier being the literal text `fieldset`. Two routes
+evade it:
+- an aliased import — `fs "…/internal/fieldset"`, then `fs.NewLabeled(…)`, a selector whose `X` is
+  `fs`;
+- a dot import — then `NewLabeled(…)` is a bare `*ast.Ident`, not a selector expression at all.
+
+The hand-checked acceptance criterion has the identical hole:
+`rg -n 'fieldset\.(New|NewLabeled|MustNew|MustNewLabeled)\(' cmd/engram/ --glob '!*_test.go'`
+(`06-09-PLAN.md:276-279`) matches on the same literal package qualifier.
+
+Either route produces a validated, labeled report outside `operatorReport`, defeating the
+exhaustiveness claim while the pair gate stays green — a hand-listed-universe failure re-entering
+one level down, in the very construct built to eliminate it. This is squarely the repo's recorded
+highest-weight failure family, and it answers the cycle-3 question "is there still a route to a
+validated set reaching a render path outside `operatorReport`" with a yes.
+
+### MEDIUM — NEW: the template-constant rule rejects Plan 06-04's mandated implementation
+
+Plan 06-09's stated *contract* is that key, variant, and template must each be "a constant string
+expression" (`06-09-PLAN.md:154-155`). Its stated *implementation* is narrower: each "must be an
+`*ast.BasicLit` of `token.STRING` or a constant concatenation of them; anything else fails the test",
+and "Argument 2 — the template — carries the same constant requirement"
+(`06-09-PLAN.md:188-191`).
+
+Plan 06-04 mandates the opposite for argument 2. To share the sweep sentence between
+`migrate-family` and its `backfill-short-ids` alias without duplicating content, it requires
+"Hoist each sweep sentence template into a package-level `const` in `migrate_family.go`"
+(`06-04-PLAN.md:248`) and builders that "delegate both the template constant and the field list to
+those shared helpers" (`06-04-PLAN.md:251`), with an explicit prohibition on duplicating the
+template (`06-04-PLAN.md:46`).
+
+An identifier naming a Go constant is an `*ast.Ident`, not an `*ast.BasicLit` or a concatenation of
+them. As specified, 06-09's gate fails on 06-04's required implementation — and red run (iii)
+(`06-09-PLAN.md:288-290`) confirms the intent, since it proves a variable argument must fail by
+`file:line`. The contract wording and the implementation wording disagree, and execution of 06-09
+cannot pass over a tree that satisfies 06-04. This is scored MEDIUM as a specification defect but is
+an execution blocker in practice.
+
+## 5. Suggestions
+
+- **D-08 harness.** Redesign the golden harness around the selected policy rather than leaving the
+  branch tables un-executable. Options, in order of preference:
+  - **Option c only** — make bounded-exemption the only executable choice and freeze both lanes; this
+    requires explicitly reopening D-03 and saying so.
+  - **Option a** — compare legacy JSON to a checked-in *pre-image* fixture (`<Key>.<Variant>.legacy.json`)
+    and converted JSON to the justified post-decision golden, while both lanes share the frozen text
+    golden. Mirror for option b on the text side.
+  - Whichever is chosen, reconcile every conversion plan's unconditional "do not regenerate" task
+    action with its D-08 branch table — today they disagree in 06-02 and the same pattern repeats
+    downstream.
+
+- **Immutability.** Make `Field` values deeply immutable by construction: prefer typed constructors
+  that copy or dereference the value and precompute the text representation, rather than retaining
+  arbitrary pointers or callbacks. At minimum, extend `TestFieldSetNewClonesCallerSlices` with two
+  subtests — a captured-variable `WithRender` closure and a `*float32` — each asserting
+  byte-identical output after post-construction mutation AND `Validated(s) == nil`. Then correct
+  `06-01-PLAN.md:505-510`'s immutability claim and restate residual #3 to name pointer and function
+  values explicitly, not just "slice-shaped kinds added later".
+
+- **Constructor routing.** Resolve `fieldset` imports **by import path**, not by qualifier text:
+  record each file's alias for `…/internal/fieldset`, reject dot imports of it outright, and treat a
+  selector through *any* recorded alias as a constructor call. Add a fourth retained red-evidence
+  patch using an aliased import to prove the gate fails — an alias bypass that nobody has watched go
+  red is exactly the state this gate exists to prevent.
+
+- **Template constants.** Either evaluate the argument with `go/types`/`go/constant` (which makes the
+  implementation match the stated "constant string expression" contract), or explicitly permit an
+  `*ast.Ident` that resolves to a package-level string `const` in the same package. Add a gate test
+  covering the shared migrate/backfill template constants so 06-04's shape is proven acceptable
+  rather than discovered incompatible during execution.
+
+## 6. Risk Assessment
+
+**HIGH.** The phase architecture is strong and the cycle-2 corrections materially improve it, but
+two central guarantees remain bypassable — immutable validated sets and exhaustive production-variant
+derivation — and the D-08 branch tables cannot execute against the specified golden harness while the
+legacy builders remain active. These are execution blockers and invariant failures, not stylistic
+concerns.
+
+---
+
+## Orchestrator Corroboration (Claude, cycle 3)
+
+Every cycle-3 finding was independently verified against the current plan text before being recorded.
+All four reproduce.
+
+| Finding | Verdict | Evidence checked |
+|---|---|---|
+| D-08 harness inconsistency | **CONFIRMED** | `rg -n 'LegacyDoc\|LegacyText' *.md` returns exactly two hits, both in `06-01-PLAN.md` (`:601`, `:613`) — no plan ever nils `LegacyDoc`. `06-02-PLAN.md:79` (option a: json REGENERATED) vs `06-02-PLAN.md:199-200` ("Do not regenerate any golden in this commit"). Both lanes compare to the same golden per `06-01-PLAN.md:608-611`. |
+| Pointer/closure mutability | **CONFIRMED, and residual #3 is understated** | `06-06-PLAN.md:185-189` passes `minScore *float32` with a `Render` closure; `cmd/engram/spine_review_consolidate.go:58,97,129,131` confirm the live pointer. `06-01-PLAN.md:476-482` clones only `[]Set`/`[]Field`/`[]string` and frames the remainder as slice-shaped-or-scalar, a partition a pointer does not fall into. `06-01-PLAN.md:505-510` asserts immutability regardless. |
+| AST alias bypass | **CONFIRMED** | `06-09-PLAN.md:184-188` matches on selector `X == "fieldset"`; `06-09-PLAN.md:276-279`'s `rg` gate has the identical qualifier-literal hole. Neither an aliased nor a dot import is addressed anywhere in the plan set. |
+| Template-constant conflict | **CONFIRMED** | `06-09-PLAN.md:154-155` says "constant string expression"; `:188-191` implements `*ast.BasicLit` or literal concatenation. `06-04-PLAN.md:46,248,251` mandates package-level `const` templates passed as argument 2. An `*ast.Ident` is neither. |
+
+Three findings the reviewer correctly did **not** raise, confirming the cycle-3 scoping held: the
+accepted build-tag over-inclusiveness residual, the smart-zone estimate overage on 06-01/06-09, and
+`06-VALIDATION.md`'s `status: draft`. No resolved cycle-1 or cycle-2 finding was re-raised.
+
+One asymmetry worth noting for the replan: findings 1 and 4 are *cross-plan contradictions* — the
+plan text disagrees with itself and execution cannot satisfy both halves. Findings 2 and 3 are
+*overstated guarantees* — the mechanism is narrower than the claim, and the gate protecting it cannot
+go red for the uncovered path. The second class is this repo's recorded failure family and should be
+weighted accordingly.
+
+---
+
+## Cycle 3 — Consensus Summary
+
+Single grounded reviewer (Codex, source-grounded with repo access, `file:line` evidence throughout)
+plus orchestrator corroboration. No divergent views to report; the orchestrator reproduced all four
+findings independently rather than accepting them.
+
+### Agreed Strengths
+
+- All five cycle-2 corrections (HIGH-1, HIGH-2, MEDIUM-1, MEDIUM-2, LOW-1) LANDED in the plan text —
+  verified by both reviewer and orchestrator, not inferred from the commit message.
+- Production-derivation of the variant universe is the right architectural call, and it paid for
+  itself immediately by surfacing the unregistered `backfill-short-ids` preview path
+  (`cmd/engram/backfill.go:36`), taking the phase from 7 variants / 14 goldens to 8 / 16.
+- Pair-level exact set equality in both directions, the empty-universe loud-failure rule, and three
+  named deliberate red runs are all substantially stronger than the cycle-1 design.
+
+### Agreed Concerns
+
+1. **D-08 options a and b cannot execute** against the specified golden harness while `LegacyDoc`
+   stays non-nil — the branch tables added in cycle 2 were never propagated into the harness.
+2. **The immutability invariant is overstated** — pointer and closure values reach a validated `Set`
+   live, the phase already ships one (`06-06`'s `*float32` min-score), and no mutation test can go
+   red for it.
+3. **The constructor-routing rule is syntactic** — an aliased or dot import evades both the AST walk
+   and the hand-checked `rg` criterion, reopening the hand-listed-universe hole one level down.
+4. **06-09's template-constant implementation rejects 06-04's mandated shared constants** — the two
+   plans cannot both be satisfied as written.
+
+### Divergent Views
+
+None. Single-reviewer cycle; the orchestrator's independent verification agreed with all four
+findings and additionally judged the pointer/closure issue to be an *understated* accepted residual
+rather than a wholly new one — a distinction that affects how the replan should word the correction
+(amend residual #3's scope, do not merely add a test).
+
+---
+
+# Cycle 2 (archived audit trail — all findings incorporated in `a943a93e`)
 
 ## Codex Review
 
