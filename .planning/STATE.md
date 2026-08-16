@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: 2026-08-12.01
 milestone_name: Record State & Schema Evolution
-current_phase: 04
-current_phase_name: migration-cli-first-customer
+current_phase: 05
+current_phase_name: connect-record-state-parity
 status: executing
 stopped_at: Phase 5 context gathered
-last_updated: "2026-08-15T20:51:59.718Z"
+last_updated: "2026-08-15T23:34:35.249Z"
 last_activity: 2026-08-15
 last_activity_desc: Phase 04 execution started
 progress:
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-12 — after closing milestone v0.13.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 04 — migration-cli-first-customer
+**Current focus:** Phase 05 — connect-record-state-parity
 
 ## Current Position
 
-Phase: 04 (migration-cli-first-customer) — EXECUTING
-Plan: 1 of 4
-Status: Ready to execute
-Last activity: 2026-08-15 — Phase 04 execution started
+Phase: 05 (connect-record-state-parity) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 05
+Last activity: 2026-08-15 — Phase 05 execution started
 
 ## Deferred Items
 
