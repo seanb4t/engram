@@ -369,12 +369,13 @@ Plans:
   2. An exhaustive field-mapping round-trip test — not a hand-maintained field list — proves every wire-eligible `store.Memory` field is populated by `memoryToProto` and decodes losslessly; the test fails loudly (not silently) if a future field is added to `store.Memory` without a corresponding proto mapping, closing the gap that recurred across v0.8.x, v0.11.x, and v0.13.x.
   3. A sub-second `not_before`/`not_after` bound submitted through the write lane comes back outward-widened and IDENTICAL on both read lanes — MCP (`get_memory` / `full=true` recall) and Connect — proven by a boundary-second test. No read-path rounding code is added: the store's whole-second encoding makes read-side rounding a no-op by construction, and `memoryToProto` (`internal/server/connectapi.go`) records that. The rationale deliberately does NOT live on the `not_before`/`not_after` proto field comments: `internal/surfaces`' `checkProtoSurface` matches proto comments by bare field name across every message, so any comment on `Memory.not_before` binds the `schedule-window-at-least-one-bound` and `window-not-before-before-not-after` rules anchored on `ScheduleMemoryRequest.not_before` and turns `TestSurfaceConformanceProseFiles` red. Do not move it back (amended 2026-08-16 post-Phase-5; commit `44366849`, gotcha `3x25etde4f`).
 
-**Plans:** 3/3 plans complete
+**Plans:** 3/4 plans complete
 
 Plans:
 **Wave 1**
 
 - [x] 05-01-PLAN.md — Tracer: the eight record-state fields at proto numbers 23–30, regenerated `gen/` trees, `memoryToProto` wiring, and one real Connect `GetMemory` round trip proving all eight reach the wire; plus the `SummaryEgressAt` comment repair (D-04)
+- [ ] 05-04-PLAN.md — Gap closure for G-05-9: a chromedp browser test in `internal/e2e` that boots the real binary, writes a record over Connect, and proves the embedded console bundle hydrates and renders that record — plus the fail-closed `ENGRAM_REQUIRE_BROWSER` gate on the existing CI test job (independent of 05-01…05-03; no shared files)
 
 **Wave 2**
 
