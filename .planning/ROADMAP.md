@@ -369,7 +369,7 @@ Plans:
   2. An exhaustive field-mapping round-trip test — not a hand-maintained field list — proves every wire-eligible `store.Memory` field is populated by `memoryToProto` and decodes losslessly; the test fails loudly (not silently) if a future field is added to `store.Memory` without a corresponding proto mapping, closing the gap that recurred across v0.8.x, v0.11.x, and v0.13.x.
   3. A sub-second `not_before`/`not_after` bound submitted through the write lane comes back outward-widened and IDENTICAL on both read lanes — MCP (`get_memory` / `full=true` recall) and Connect — proven by a boundary-second test. No read-path rounding code is added: the store's whole-second encoding makes read-side rounding a no-op by construction, and `memoryToProto` (`internal/server/connectapi.go`) records that. The rationale deliberately does NOT live on the `not_before`/`not_after` proto field comments: `internal/surfaces`' `checkProtoSurface` matches proto comments by bare field name across every message, so any comment on `Memory.not_before` binds the `schedule-window-at-least-one-bound` and `window-not-before-before-not-after` rules anchored on `ScheduleMemoryRequest.not_before` and turns `TestSurfaceConformanceProseFiles` red. Do not move it back (amended 2026-08-16 post-Phase-5; commit `44366849`, gotcha `3x25etde4f`).
 
-**Plans:** 4/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 **Wave 1**
@@ -485,7 +485,7 @@ Research flag: yes — the operator-UI soft-hidden-state conventions (archived/s
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-13 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-08-14 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete   | 2026-08-15 |
-| 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | In Progress|  |
+| 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete    | 2026-08-16 |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete | 2026-08-01 |
 | 1. Interface Enforceability | v0.13.x | 9/9 | Complete | 2026-08-04 |
 | 2. Interface Discoverability | v0.13.x | 6/6 | Complete | 2026-08-05 |
