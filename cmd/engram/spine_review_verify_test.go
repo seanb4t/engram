@@ -382,9 +382,11 @@ func TestVerifyDocEmptyResultMarshalsEmptyArrays(t *testing.T) {
 	}
 }
 
-// TestVerifySummaryFormat pins the pure text formatter's shape: a single
-// trailing-newline-free string naming tier counts and every non-valid
-// entry.
+// TestVerifySummaryFormat pins the pure headline formatter's shape: a
+// single-line, trailing-newline-free string naming the scan instant and
+// the four tier counts only -- per-entry detail (record ids, reasons) now
+// renders only through verifyDoc's field-table rows (R1,
+// 06-01-PLAN.md §Conversion Rules, moved it out of verifySummary).
 func TestVerifySummaryFormat(t *testing.T) {
 	report := verifyReport{
 		ValidCount: 3, MovedCount: 1, BrokenCount: 1, UnverifiableCount: 1,
@@ -393,10 +395,10 @@ func TestVerifySummaryFormat(t *testing.T) {
 		Unverifiable: []verifyEntry{{RecordID: "r3", ShortID: "s3", Ref: "c.go", Reason: "different repo"}},
 	}
 	got := verifySummary(report)
-	if strings.HasSuffix(got, "\n") {
-		t.Errorf("verifySummary result ends with a trailing newline, want none: %q", got)
+	if strings.Contains(got, "\n") {
+		t.Errorf("verifySummary result contains a newline, want a single line: %q", got)
 	}
-	for _, want := range []string{"valid=3", "moved=1", "broken=1", "unverifiable=1", "r1", "r2", "r3", "different repo"} {
+	for _, want := range []string{"valid=3", "moved=1", "broken=1", "unverifiable=1"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("verifySummary(report) = %q, want it to contain %q", got, want)
 		}

@@ -488,7 +488,10 @@ type verifyEntryDoc struct {
 // ids, refs, and reasons only -- NEVER the Excerpt or any other stored
 // record content, on any spine-review output path (T-03-14's mitigation).
 // A hand-declared struct, not an embedded verifyReport, so this exclusion
-// is enforced by the type itself.
+// is enforced by the type itself. Under D-01 (06-CONTEXT.md) this struct
+// is the SOLE serialization -- the text lane renders only what this
+// struct marshals -- so the Excerpt exclusion this type enforces now
+// bounds the text lane too.
 type verifyReportDoc struct {
 	ScannedAt           time.Time        `json:"scanned_at"`
 	Valid               int              `json:"valid"`
@@ -522,23 +525,17 @@ func verifyDoc(report verifyReport) verifyReportDoc {
 	}
 }
 
-// verifySummary renders the operator-facing text report. Pure (value types
+// verifySummary renders the operator-facing headline. Pure (value types
 // only) so it is unit-testable without a live Qdrant or filesystem,
-// mirroring spineScanSummary's discipline.
+// mirroring spineScanSummary's discipline. Per D-04 (06-CONTEXT.md) this
+// is a headline producer only: the scan instant plus the four tier
+// counts, returned as a single line with no trailing newline. The
+// moved/broken/unverifiable entry rows this function used to also print
+// now render only as renderOperatorView's field-table rows, from
+// verifyDoc.
 func verifySummary(report verifyReport) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "spine verify at %s: valid=%d moved=%d broken=%d unverifiable=%d\n",
+	return fmt.Sprintf("spine verify at %s: valid=%d moved=%d broken=%d unverifiable=%d",
 		report.ScannedAt.Format(time.RFC3339), report.ValidCount, report.MovedCount, report.BrokenCount, report.UnverifiableCount)
-	for _, e := range report.Moved {
-		fmt.Fprintf(&b, "  moved record=%s short_id=%s ref=%q: %s\n", e.RecordID, e.ShortID, e.Ref, e.Reason)
-	}
-	for _, e := range report.Broken {
-		fmt.Fprintf(&b, "  broken record=%s short_id=%s ref=%q: %s\n", e.RecordID, e.ShortID, e.Ref, e.Reason)
-	}
-	for _, e := range report.Unverifiable {
-		fmt.Fprintf(&b, "  unverifiable record=%s short_id=%s ref=%q: %s\n", e.RecordID, e.ShortID, e.Ref, e.Reason)
-	}
-	return strings.TrimRight(b.String(), "\n")
 }
 
 // verifyFailOnValues is the accepted enum for --fail-on -- the four tier
