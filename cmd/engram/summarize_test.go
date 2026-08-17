@@ -37,6 +37,26 @@ func TestSummarizeMissingRejectsInvalidOutput(t *testing.T) {
 	}
 }
 
+// TestSummarizeMissingScopeAndAllScopesRejected proves --scope and
+// --all-scopes together are rejected via cobra's own
+// MarkFlagsMutuallyExclusive validation, exiting exitUsage BEFORE RunE ever
+// runs -- mirroring TestSpineReviewScanScopeAndAllScopesRejected (WR-01
+// round 2 fix, 06-REVIEW.md: summarize-missing was the one site iteration
+// 1's WR-01 fix missed, and previously silently discarded --all-scopes
+// when --scope was also supplied, since internal/store.SummarizeMissing
+// only ever reads opts.Scope).
+func TestSummarizeMissingScopeAndAllScopesRejected(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, summarizeMissingCmd)
+	_, _, err := runClient(t, "summarize-missing", "--scope", "x", "--all-scopes")
+	if err == nil {
+		t.Fatal("expected an error for --scope and --all-scopes together, got nil")
+	}
+	if got := exitCodeFromError(err); got != exitUsage {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage)", got, exitUsage)
+	}
+}
+
 // TestSummarizeReportDocSeparatesCounts proves summarize-missing's json
 // document reports filled, skipped and scanned counts as SEPARATE fields
 // (never folded into one prose sentence), reused directly from

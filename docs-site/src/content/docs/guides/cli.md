@@ -158,6 +158,11 @@ previews again), but on `reindex`/`summarize-missing` a forgotten
 `--dry-run` merely performs the recoverable, additive thing the operator
 already asked for.
 
+`summarize-missing --scope <scope>` (or `--all-scopes`) sweeps that scope
+(or every scope) for records with no summary yet; `--scope` and
+`--all-scopes` are mutually exclusive, matching every other operator command
+that offers this pair.
+
 `backfill-short-ids` has MOVED from the `--dry-run` idiom to the `--apply`
 one: it is now a thin delegating alias for `engram migrate` — see the
 [upgrade guide](/guides/upgrade/)'s `## Unreleased` entry on

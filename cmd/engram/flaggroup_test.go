@@ -450,3 +450,51 @@ func TestEveryDeclaredExclusivityHasAFlagGroup(t *testing.T) {
 		t.Fatalf("checked %d claimed pairs, want at least 4 — the command-tree walk did not reach enough flags", checked)
 	}
 }
+
+// TestEveryScopeAllScopesPairHasAFlagGroup is the missing REVERSE direction
+// of TestEveryDeclaredExclusivityHasAFlagGroup above: that gate only fires
+// when a flag's Usage text CLAIMS mutual exclusivity without a backing flag
+// group. It is silent when a command declares both --scope and --all-scopes
+// but never states the constraint in prose at all -- exactly the shape that
+// let WR-01 (round 2, 06-REVIEW.md) recur: summarize-missing registered
+// both flags with the identical silent-narrowing hazard as
+// scan/verify/purge/consolidate (opts.AllScopes is read nowhere once both
+// flags are supplied, so --scope silently wins), but never called
+// MarkFlagsMutuallyExclusive, and no existing test caught it.
+//
+// This walks the LIVE cobra command tree (walkCommands(rootCmd,
+// commandWalkSkip)) rather than a hand-maintained list of command names --
+// a hand-listed expectation is exactly the defect that let the bug recur
+// once already (WR-01 round 1 fixed 4 of 5 sites; a 5th, added or
+// discovered later, would again go unnoticed by a fixed list). Any command
+// that registers both flags, present or future, is required to declare the
+// group.
+func TestEveryScopeAllScopesPairHasAFlagGroup(t *testing.T) {
+	checked := 0
+	for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {
+		cmd := cmd
+		scope := cmd.Flags().Lookup("scope")
+		allScopes := cmd.Flags().Lookup("all-scopes")
+		if scope == nil || allScopes == nil {
+			continue
+		}
+		checked++
+		t.Run(commandKey(cmd), func(t *testing.T) {
+			if !declaredGroupCoversPair(scope, "scope", "all-scopes") {
+				t.Errorf("%s declares both --scope and --all-scopes but no declared cobra flag group "+
+					"(MarkFlagsMutuallyExclusive(\"scope\", \"all-scopes\")) covers the pair — supplying "+
+					"both together is silently accepted", cmd.Name())
+			}
+		})
+	}
+	// Derived set at the time this test was written: spine-review scan,
+	// spine-review verify, spine-review purge, spine-review consolidate,
+	// summarize-missing. This lower bound is a sanity check on the walk
+	// itself (catching a broken walkCommands call), not an enumeration the
+	// test relies on -- the loop above covers whatever the live tree has,
+	// not this list.
+	if checked < 5 {
+		t.Fatalf("checked %d commands declaring both --scope and --all-scopes, want at least 5 — "+
+			"the command-tree walk did not reach enough commands", checked)
+	}
+}

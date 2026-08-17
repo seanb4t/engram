@@ -118,5 +118,6 @@ func init() {
 	summarizeMissingCmd.Flags().IntVar(&summarizeLimit, "limit", 0, "max records to scan (0 = no cap)")
 	summarizeMissingCmd.Flags().BoolVar(&summarizeDryRun, "dry-run", false, "count eligible records without writing")
 	summarizeMissingCmd.Flags().DurationVar(&summarizeTimeout, "timeout", 30*time.Minute, "max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C")
+	summarizeMissingCmd.MarkFlagsMutuallyExclusive("scope", "all-scopes")
 	rootCmd.AddCommand(summarizeMissingCmd)
 }
