@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -147,6 +149,172 @@ func TestRenderOperatorTextAndJSON(t *testing.T) {
 // operatorCommands() in BOTH directions — is carried forward onto the
 // merged view-fixture map by the coverage test below (Task 2 of this
 // plan), which is its inheritor.
+
+// operatorViewFixtures merges every group's fixture function into one map,
+// keyed by commandKey exactly as operatorCommands() produces it: the
+// complete view-fixture universe TestOperatorViewFixturesCoverEveryOperatorCommand
+// checks against operatorCommands() in both directions, and the set every
+// document TestOperatorViewIdentityAcrossEveryOperatorCommand walks.
+//
+// A key returned by more than one group function is a build-time defect —
+// two plans both claimed the same command — and this panics loudly rather
+// than silently letting one group's fixtures overwrite another's.
+func operatorViewFixtures() map[string][]any {
+	groups := []map[string][]any{
+		pruneViewFixtures(),
+		flatViewFixtures(),
+		migrateViewFixtures(),
+		archivePurgeViewFixtures(),
+		spineViewFixtures(),
+	}
+	merged := make(map[string][]any)
+	for _, group := range groups {
+		for key, docs := range group {
+			if _, exists := merged[key]; exists {
+				panic(fmt.Sprintf("operatorViewFixtures: %q is claimed by more than one fixture group", key))
+			}
+			merged[key] = docs
+		}
+	}
+	return merged
+}
+
+// setDiff returns, sorted, the keys present in want but not got (missing)
+// and the keys present in got but not want (extra). Pure and independent
+// of any command or fixture — TestSetDiffDetectsDivergence exercises it
+// directly, without touching operatorCommands() or operatorViewFixtures(),
+// so the enumeration gate's non-vacuity proof cannot be satisfied by the
+// same data the gate itself reads.
+func setDiff(want, got map[string]bool) (missing, extra []string) {
+	for key := range want {
+		if !got[key] {
+			missing = append(missing, key)
+		}
+	}
+	for key := range got {
+		if !want[key] {
+			extra = append(extra, key)
+		}
+	}
+	sort.Strings(missing)
+	sort.Strings(extra)
+	return missing, extra
+}
+
+// TestOperatorViewFixturesCoverEveryOperatorCommand is the inheritor of
+// the retired parity gate's one good property (06-CONTEXT.md D-09): it
+// gates the merged view-fixture set against operatorCommands() in BOTH
+// directions, computing its expectation from the live cobra tree — never
+// a string literal list. Deriving the expectation from the tree, rather
+// than transcribing it, is what caught backfill-short-ids's unregistered
+// preview variant that a hand-written variant list had missed once
+// (06-CONTEXT.md <specifics>). Every fixture entry's document slice must
+// also be non-empty, so a key registered with zero documents cannot
+// satisfy this gate vacuously.
+func TestOperatorViewFixturesCoverEveryOperatorCommand(t *testing.T) {
+	want := commandKeySet(operatorCommands())
+
+	fixtures := operatorViewFixtures()
+	got := make(map[string]bool, len(fixtures))
+	for key := range fixtures {
+		got[key] = true
+	}
+
+	missing, extra := setDiff(want, got)
+	for _, key := range missing {
+		t.Errorf("operator command %q has no entry in operatorViewFixtures()", key)
+	}
+	for _, key := range extra {
+		t.Errorf("operatorViewFixtures() has an entry keyed %q, which is not in operatorCommands()", key)
+	}
+
+	for key, docs := range fixtures {
+		if len(docs) == 0 {
+			t.Errorf("operatorViewFixtures()[%q] is empty — a key registered with zero documents cannot satisfy this gate vacuously", key)
+		}
+	}
+}
+
+// TestSetDiffDetectsDivergence is the committed non-vacuity proof for
+// TestOperatorViewFixturesCoverEveryOperatorCommand's enumeration gate.
+// The red-evidence patch harness is deferred for this phase
+// (06-CONTEXT.md <deferred>) and unavailable, so this table-driven test
+// over setDiff alone — deliberately independent of operatorCommands() and
+// operatorViewFixtures() — is the committed proof the gate can actually
+// fail: a key in want only, a key in got only, disjoint sets, identical
+// sets, and empty inputs each produce the expected missing/extra pair.
+func TestSetDiffDetectsDivergence(t *testing.T) {
+	cases := []struct {
+		name                   string
+		want, got              map[string]bool
+		wantMissing, wantExtra []string
+	}{
+		{
+			name:        "key in want only",
+			want:        map[string]bool{"a": true},
+			got:         map[string]bool{},
+			wantMissing: []string{"a"},
+		},
+		{
+			name:      "key in got only",
+			want:      map[string]bool{},
+			got:       map[string]bool{"a": true},
+			wantExtra: []string{"a"},
+		},
+		{
+			name:        "disjoint sets",
+			want:        map[string]bool{"a": true},
+			got:         map[string]bool{"b": true},
+			wantMissing: []string{"a"},
+			wantExtra:   []string{"b"},
+		},
+		{
+			name: "identical sets",
+			want: map[string]bool{"a": true, "b": true},
+			got:  map[string]bool{"a": true, "b": true},
+		},
+		{
+			name: "empty inputs",
+			want: map[string]bool{},
+			got:  map[string]bool{},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			missing, extra := setDiff(tc.want, tc.got)
+			if !slices.Equal(missing, tc.wantMissing) {
+				t.Errorf("setDiff(%v, %v) missing = %v, want %v", tc.want, tc.got, missing, tc.wantMissing)
+			}
+			if !slices.Equal(extra, tc.wantExtra) {
+				t.Errorf("setDiff(%v, %v) extra = %v, want %v", tc.want, tc.got, extra, tc.wantExtra)
+			}
+		})
+	}
+}
+
+// TestOperatorViewIdentityAcrossEveryOperatorCommand runs the shared
+// identity gate (assertViewIdentity, operator_view_test.go) over the
+// COMPLETE merged fixture set, one subtest per operator command (never per
+// document — a command with several document variants is asserted inside
+// a single subtest so `go test -v` prints exactly one PASS line per
+// command), proving the phase converted the complete set rather than only
+// each group in isolation.
+func TestOperatorViewIdentityAcrossEveryOperatorCommand(t *testing.T) {
+	fixtures := operatorViewFixtures()
+	names := make([]string, 0, len(fixtures))
+	for name := range fixtures {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			for i, doc := range fixtures[name] {
+				assertViewIdentity(t, fmt.Sprintf("%s/%d", name, i), doc)
+			}
+		})
+	}
+}
 
 // TestOperatorOutputEncoding proves a scope/tag value carrying a
 // non-ASCII rune AND a double quote survives a json.Marshal then
