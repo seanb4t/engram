@@ -111,10 +111,10 @@ func countTopLevelFieldLines(out string) int {
 }
 
 // assertViewIdentity is the shared identity-gate body: it asserts (a)
-// jsonTopLevelKeys and viewFields agree on key order — correspondence, per
-// D-06, never derived by calling humanizeKey — and (b) the rendered output
-// carries exactly one top-level field line per json key. name is the
-// fixture's commandKey, used only to annotate failures.
+// jsonTopLevelKeys and viewFields agree on key order — correspondence,
+// per D-06, invariant to label text by construction — and (b) the
+// rendered output carries exactly one top-level field line per json key.
+// name is the fixture's commandKey, used only to annotate failures.
 func assertViewIdentity(t *testing.T, name string, doc any) {
 	t.Helper()
 
@@ -154,5 +154,96 @@ func TestOperatorViewIdentity(t *testing.T) {
 				assertViewIdentity(t, name, doc)
 			})
 		}
+	}
+}
+
+// TestOrderedKeyDiffDetectsDivergence is the committed proof that the
+// correspondence half of the identity gate can actually fail: a dropped
+// key, an extra key, a reordered pair, and a renamed key must each produce
+// a non-empty diff, while two identical (or two empty) slices must not.
+// The red-evidence patch harness (internal/store/redevidence_harness_test.go)
+// is explicitly deferred for this phase (06-CONTEXT.md <deferred>) and is
+// not used here; this table-driven negative test is the committed
+// substitute proof of non-vacuity.
+func TestOrderedKeyDiffDetectsDivergence(t *testing.T) {
+	cases := []struct {
+		name      string
+		want, got []string
+		wantEmpty bool
+	}{
+		{"identical", []string{"a", "b", "c"}, []string{"a", "b", "c"}, true},
+		{"both empty", nil, nil, true},
+		{"dropped key", []string{"a", "b", "c"}, []string{"a", "b"}, false},
+		{"extra key", []string{"a", "b"}, []string{"a", "b", "c"}, false},
+		{"reordered pair", []string{"a", "b"}, []string{"b", "a"}, false},
+		{"renamed key", []string{"a", "b"}, []string{"a", "renamed"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := orderedKeyDiff(tc.want, tc.got)
+			if tc.wantEmpty && len(errs) != 0 {
+				t.Errorf("orderedKeyDiff(%v, %v) = %v, want empty", tc.want, tc.got, errs)
+			}
+			if !tc.wantEmpty && len(errs) == 0 {
+				t.Errorf("orderedKeyDiff(%v, %v) = empty, want a non-empty diff", tc.want, tc.got)
+			}
+		})
+	}
+}
+
+// TestCountTopLevelFieldLines is the committed proof that the
+// rendered-output half of the identity gate can actually fail: it pins
+// the exact-two-leading-spaces shape against fixture strings covering the
+// cases that must and must not count.
+func TestCountTopLevelFieldLines(t *testing.T) {
+	cases := []struct {
+		name string
+		out  string
+		want int
+	}{
+		{"headline only", "headline\n", 0},
+		{"headline plus blank plus one field", "headline\n\n  Field   value\n", 1},
+		{"four-space nested rows not counted", "headline\n\n  Field\n    id=1 outcome=ok\n    id=2 outcome=ok\n", 1},
+		{"blank lines not counted", "headline\n\n  A   1\n\n  B   2\n", 2},
+		{"three leading spaces not counted", "headline\n\n   not a field line\n", 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := countTopLevelFieldLines(tc.out); got != tc.want {
+				t.Errorf("countTopLevelFieldLines(%q) = %d, want %d", tc.out, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestHumanizeKey pins humanizeKey on fixed input/output pairs, with no
+// reference to any renderer output. This is the ONLY check in the phase
+// that can catch a humanizer bug: per D-06 the identity gate is invariant
+// to label text by design (it checks Key correspondence, never Label), so
+// these two checks are deliberately decomposed and cannot move together —
+// the recorded mutation probe in this plan's SUMMARY.md demonstrates that
+// a humanizer bug fails THIS test while TestOperatorViewIdentity stays
+// green.
+func TestHumanizeKey(t *testing.T) {
+	cases := []struct {
+		key  string
+		want string
+	}{
+		{"older_than", "Older than"},
+		{"dry_run", "Dry run"},
+		{"eligible_count", "Eligible count"},
+		{"best_effort", "Best effort"},
+		{"all_scopes", "All scopes"},
+		{"top_k", "Top k"},
+		{"dim", "Dim"},
+		{"by_scope_category", "By scope category"},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.key, func(t *testing.T) {
+			if got := humanizeKey(tc.key); got != tc.want {
+				t.Errorf("humanizeKey(%q) = %q, want %q", tc.key, got, tc.want)
+			}
+		})
 	}
 }
