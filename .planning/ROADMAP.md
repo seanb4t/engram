@@ -233,7 +233,7 @@ mechanism instead of another one-shot operator command.
 - [x] **Phase 3: Migration Foundation (Registry, Invariants & Sweep)** - `internal/migrate`'s ordered step registry enforces additive-only + mandatory reversibility declarations; `Store.Migrate` sweeps to convergence without a collection lock (completed 2026-08-14)
 - [x] **Phase 4: Migration CLI & First Customer** - `engram migrate` (status/preview/apply/revert) via `registerDestructive`, with `backfill-short-ids` folded in as the registered v0→v1 step (completed 2026-08-15)
 - [x] **Phase 5: Connect Record-State Parity** - `proto`'s `Memory` gains supersession/scheduling/archival/schema-version fields in one additive pass, proven by an exhaustive field-mapping round-trip test, not `buf breaking` alone (#482) (completed 2026-08-15)
-- [ ] **Phase 6: Typed Operator Renderer** - `renderOperator` refactored so a json document cannot structurally widen past what its text sentence states (#481)
+- [x] **Phase 6: Typed Operator Renderer** - `renderOperator` refactored so a json document cannot structurally widen past what its text sentence states (#481) (completed 2026-08-17)
 - [ ] **Phase 7: Console & CLI State Surfacing** - The operator console UI and the CLI both surface archived/superseded/scheduled/schema-version and pending-migration state
 - [ ] **Phase 8: Registry & Docs Tail** - The shared scope-or-all-scopes guard becomes a registered conditional rule (#480); docs and CLAUDE.md brought current with what this milestone actually ships
 
@@ -393,7 +393,7 @@ Plans:
   2. Every existing operator command's `--output json|text` behavior is unchanged (regression-free) after the refactor.
   3. Adding a new field to an operator report requires touching exactly one field-set declaration to appear correctly in both json and text output — there is no second call site to remember, which is what makes the six new record-state fields (Phase 5/7) safe to add afterward.
 
-**Plans:** 7/7 plans executed
+**Plans:** 7/7 plans complete
 
 Plans:
 **Wave 1**
@@ -503,7 +503,7 @@ Research flag: yes — the operator-UI soft-hidden-state conventions (archived/s
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-08-14 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete   | 2026-08-15 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete    | 2026-08-16 |
-| 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | In Progress|  |
+| 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete    | 2026-08-17 |
 | 1. Interface Enforceability | v0.13.x | 9/9 | Complete | 2026-08-04 |
 | 2. Interface Discoverability | v0.13.x | 6/6 | Complete | 2026-08-05 |
 | 3. Spine Curation — Structural (CLI) | v0.13.x | 7/7 | Complete | 2026-08-07 |
