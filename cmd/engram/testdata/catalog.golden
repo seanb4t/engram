@@ -16,7 +16,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "timeout",
@@ -160,7 +160,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "timeout",
@@ -190,7 +190,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "timeout",
@@ -220,7 +220,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "timeout",
@@ -268,7 +268,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "timeout",
@@ -298,7 +298,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "owner",
@@ -340,7 +340,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "timeout",
@@ -370,7 +370,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "resume",
@@ -615,7 +615,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "timeout",
@@ -651,7 +651,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "scope",
@@ -717,7 +717,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "scope",
@@ -759,7 +759,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "timeout",
@@ -789,7 +789,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "scope",
@@ -831,7 +831,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "scope",
@@ -987,7 +987,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "scope",

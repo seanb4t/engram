@@ -40,7 +40,7 @@ Usage:
 Flags:
       --apply              a mutating operator command previews by default and mutates only when apply is set
   -h, --help               help for backfill-short-ids
-      --output string      output format: "json" or "text" (default: detect from stdout)
+      --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --timeout duration   max wall-clock (0 disables); also cancellable via Ctrl-C (default 5m0s)
 ```
 
@@ -89,7 +89,7 @@ Available Commands:
 Flags:
       --apply              a mutating operator command previews by default and mutates only when apply is set
   -h, --help               help for migrate
-      --output string      output format: "json" or "text" (default: detect from stdout)
+      --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --timeout duration   max wall-clock (0 disables); also cancellable via Ctrl-C (default 5m0s)
 
 Use "engram migrate [command] --help" for more information about a command.
@@ -106,7 +106,7 @@ Usage:
 Flags:
       --apply              a mutating operator command previews by default and mutates only when apply is set
   -h, --help               help for revert
-      --output string      output format: "json" or "text" (default: detect from stdout)
+      --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --timeout duration   max wall-clock (0 disables); also cancellable via Ctrl-C (default 5m0s)
       --to int             target schema version to revert down to (required)
 ```
@@ -121,7 +121,7 @@ Usage:
 
 Flags:
   -h, --help               help for status
-      --output string      output format: "json" or "text" (default: detect from stdout)
+      --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --timeout duration   max wall-clock (0 disables); also cancellable via Ctrl-C (default 5m0s)
 ```
 
@@ -139,7 +139,7 @@ Flags:
       --from-anon          remap the explicit anonymous bucket (owner=="")
       --from-missing       remap owner-less (pre-isolation) records
   -h, --help               help for migrate-remap-owner
-      --output string      output format: "json" or "text" (default: detect from stdout)
+      --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --timeout duration   max wall-clock (must be > 0); also cancellable via Ctrl-C (default 5m0s)
       --to string          new owner value to stamp (required)
 ```
@@ -154,7 +154,7 @@ Usage:
 
 Flags:
   -h, --help               help for migrate-set-owner
-      --output string      output format: "json" or "text" (default: detect from stdout)
+      --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --owner string       OIDC sub to stamp onto owner-less records (required, non-empty)
       --timeout duration   max wall-clock for the backfill (must be > 0); also cancellable via Ctrl-C (default 5m0s)
 ```
@@ -171,7 +171,7 @@ Flags:
       --apply                 a mutating operator command previews by default and mutates only when apply is set
   -h, --help                  help for prune-expired
       --older-than duration   grace period: only prune records whose not_after lapsed at least this long ago (0 = any past not_after)
-      --output string         output format: "json" or "text" (default: detect from stdout)
+      --output string         output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --timeout duration      max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 5m0s)
 ```
 
@@ -186,7 +186,7 @@ Usage:
 Flags:
       --dry-run            scan and count without creating the target or writing
   -h, --help               help for reindex
-      --output string      output format: "json" or "text" (default: detect from stdout)
+      --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --resume             skip points already present in the target with identical content (cheap restart of an interrupted reindex)
       --source string      source collection to read from (default: ENGRAM_QDRANT_COLLECTION)
       --target string      target collection to create and populate (required)
@@ -277,7 +277,7 @@ Usage:
 Flags:
   -h, --help               help for archive
       --id strings         id (or short_id) of a record to archive; may be repeated
-      --output string      output format: "json" or "text" (default: detect from stdout)
+      --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --timeout duration   max wall-clock for the run (0 disables); also cancellable via Ctrl-C (default 5m0s)
 ```
 
@@ -293,7 +293,7 @@ Flags:
       --all-scopes         span every scope; a candidate pair may then cross scopes, and each row names both (mutually exclusive with --scope)
   -h, --help               help for consolidate
       --min-score string   minimum cosine score a pair must carry to be reported; absent (the default) means NO filter at all — including pairs with a negative score
-      --output string      output format: "json" or "text" (default: detect from stdout)
+      --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --scope string       only consider records in this scope
       --timeout duration   max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 5m0s)
       --top-k uint         neighbours considered per record (default 5)
@@ -314,7 +314,7 @@ Flags:
       --class strings         structural eligibility class (repeatable): superseded, expired, archived
   -h, --help                  help for purge
       --older-than duration   grace/retention window override for the selected class(es) (0 = each class's own default: immediate for superseded/expired, 90 days for archived); with NO class selected, a free-form created-more-than-this-long-ago filter -- the free-form filter path requires an explicit --scope or --all-scopes: category or tags always engage it, and older-than engages it when no class is selected
-      --output string         output format: "json" or "text" (default: detect from stdout)
+      --output string         output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --scope string          restrict the derivation to one scope
       --tags strings          free-form filter: records must carry ALL listed tags (repeatable); the free-form filter path requires an explicit --scope or --all-scopes: category or tags always engage it, and older-than engages it when no class is selected
       --timeout duration      max wall-clock for the run (0 disables); also cancellable via Ctrl-C (default 5m0s)
@@ -331,7 +331,7 @@ Usage:
 Flags:
   -h, --help               help for restore
       --id strings         id (or short_id) of a previously-archived record to restore; may be repeated
-      --output string      output format: "json" or "text" (default: detect from stdout)
+      --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --timeout duration   max wall-clock for the run (0 disables); also cancellable via Ctrl-C (default 5m0s)
 ```
 
@@ -346,7 +346,7 @@ Usage:
 Flags:
       --all-scopes         sweep every scope (required if --scope is omitted)
   -h, --help               help for scan
-      --output string      output format: "json" or "text" (default: detect from stdout)
+      --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --scope string       only scan records in this scope
       --timeout duration   max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 5m0s)
 ```
@@ -363,7 +363,7 @@ Flags:
       --all-scopes         sweep every scope (required if --scope is omitted)
       --fail-on string     fail-on accepts broken, moved, unverifiable, or any; omitted, verify exits 0 regardless of findings
   -h, --help               help for verify
-      --output string      output format: "json" or "text" (default: detect from stdout)
+      --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --scope string       only verify citations from records in this scope
       --timeout duration   max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 5m0s)
 ```
@@ -409,7 +409,7 @@ Flags:
   -h, --help                  help for summarize-missing
       --limit int             max records to scan (0 = no cap)
       --older-than duration   only records created at least this long ago (0 = any age)
-      --output string         output format: "json" or "text" (default: detect from stdout)
+      --output string         output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --scope string          only summarize records in this scope
       --timeout duration      max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 30m0s)
 ```
