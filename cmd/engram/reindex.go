@@ -89,12 +89,14 @@ var reindexCmd = &cobra.Command{
 	},
 }
 
-// reindexSummary renders the operator-facing one-line result of a reindex run.
-// Kept pure (no I/O) so the dry-run vs cutover wording is unit-testable without a
-// live Qdrant. dry-run-without-resume returns the pre-D-14 format string
-// unchanged, character for character — that is what keeps this change
-// additive for anyone parsing that line; dry-run-with-resume returns a
-// different line sizing the repair (D-14, REQ-reindex-stale-repair).
+// reindexSummary is a headline producer (06-CONTEXT.md D-04): one hand-written,
+// non-exhaustive prose line above the complete field table reindexReportDoc
+// renders. Kept pure (no I/O) so the dry-run vs cutover wording is
+// unit-testable without a live Qdrant. Its exact wording may change in any
+// release — --output json is the contract (D-03), not this sentence — but
+// every value it states is also carried as a field in reindexReportDoc, so
+// nothing this line reports is lost by that freedom. dry-run-with-resume
+// returns a different line sizing the repair (D-14, REQ-reindex-stale-repair).
 func reindexSummary(res store.ReindexResult, target string, dim uint64, dryRun, resume bool) string {
 	if dryRun {
 		if resume {

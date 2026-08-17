@@ -73,8 +73,11 @@ var summarizeMissingCmd = &cobra.Command{
 	},
 }
 
-// summarizeSummary renders the operator-facing one-line result. Pure (no I/O) so
-// the dry-run vs live wording is unit-testable without a live gateway.
+// summarizeSummary is a headline producer (06-CONTEXT.md D-04): one
+// hand-written, non-exhaustive prose line above the complete field table
+// summarizeReportDoc renders. Pure (no I/O) so the dry-run vs live wording is
+// unit-testable without a live gateway. Its exact wording may change in any
+// release — --output json is the contract (D-03), not this sentence.
 func summarizeSummary(res store.SummarizeResult, dryRun bool) string {
 	if dryRun {
 		return fmt.Sprintf("dry-run: %d of %d scanned record(s) would be summarized (%d skipped)",
