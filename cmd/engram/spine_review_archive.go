@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -19,33 +18,29 @@ import (
 	"github.com/seanb4t/engram/internal/store"
 )
 
-// archiveSummary renders the operator-facing text report shared by both
-// `spine-review archive` and `spine-review restore` -- pure (value types
-// only, no *store.Store, no context.Context) so it is unit-testable without
-// a live Qdrant, mirroring spineScanSummary's/consolidateSummary's
-// discipline. verb names which of the two ran ("archive" or "restore") for
-// the header line only -- the per-id outcome lines are identical in shape
-// for both, since store.ArchiveResult's three outcomes (changed/already/
-// not_found) mean the same thing on either verb.
+// archiveSummary is a headline producer (06-CONTEXT.md D-04): it returns
+// ONE hand-written prose line naming the verb and how many ids were
+// processed, shared by both `spine-review archive` and `spine-review
+// restore` -- pure (value types only, no *store.Store, no context.Context)
+// so it is unit-testable without a live Qdrant, mirroring
+// spineScanSummary's/consolidateSummary's discipline. verb names which of
+// the two ran ("archive" or "restore"); the per-id outcome table (id
+// present or omitted, per row) is rendered by the operator view from
+// archiveDoc, not by this function -- this line is additive prose over that
+// complete table and its wording may change freely (D-03: --output json is
+// the contract).
 func archiveSummary(results []store.ArchiveResult, verb string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "spine %s: %d id(s) processed\n", verb, len(results))
-	for _, r := range results {
-		// requested= is always the caller's token; id= is the canonical id
-		// and is omitted when resolution failed (there is none).
-		if r.ID == "" {
-			fmt.Fprintf(&b, "  requested=%s outcome=%s\n", r.Requested, r.Outcome)
-			continue
-		}
-		fmt.Fprintf(&b, "  requested=%s id=%s outcome=%s\n", r.Requested, r.ID, r.Outcome)
-	}
-	return strings.TrimRight(b.String(), "\n")
+	return fmt.Sprintf("spine %s: %d id(s) processed", verb, len(results))
 }
 
 // archiveResultDoc is one id's JSON-mode outcome: the SAME three explicit
 // states (changed/already/not_found) the text report names, as a plain
 // string -- never left for a JSON consumer to infer from prose (T-03-29's
-// mitigation).
+// mitigation). The conditional "id=" segment a rendered row shows (or
+// omits) is produced entirely by encoding/json dropping the "id" key under
+// ID's omitempty tag below and the operator view rendering only the keys
+// the json lane actually emitted -- there is no conditional-rendering code
+// anywhere (06-CONTEXT.md D-01/D-02).
 type archiveResultDoc struct {
 	// Requested is the caller's own token, present on every row so a
 	// consumer can correlate results back to its input list; ID is the
