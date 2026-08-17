@@ -307,6 +307,7 @@ func TestShellQuoteRoundTripsThroughARealShell(t *testing.T) {
 		"has'a'quote",
 		"O'Brien's scope",
 		"",
+		"line one\nline two",
 	}
 	for _, want := range cases {
 		t.Run(want, func(t *testing.T) {
