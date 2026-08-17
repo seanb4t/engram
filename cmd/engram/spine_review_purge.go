@@ -423,7 +423,15 @@ func init() {
 	spineReviewPurgeCmd.Flags().BoolVar(&spinePurgeAllScopes, "all-scopes", false, "span every scope; mutually exclusive with --scope")
 	spineReviewPurgeCmd.Flags().StringSliceVar(&spinePurgeClass, "class", nil,
 		"structural eligibility class (repeatable): "+strings.Join(purgeClassNames, ", "))
-	scopeRule, _ := surfaces.RuleByID(surfaces.RulePurgeFilterRequiresScope)
+	scopeRule, ok := surfaces.RuleByID(surfaces.RulePurgeFilterRequiresScope)
+	if !ok {
+		// Mirrors requirePurgeFilterScope's own panic above (IN-02,
+		// 06-REVIEW.md): a missing rule here degrades three --help strings
+		// to an empty trailing sentence instead of failing the binary at
+		// startup, the same class of registry gap requirePurgeFilterScope
+		// treats as unrecoverable three lines away in this same file.
+		panic("spine-review purge: surfaces.RulePurgeFilterRequiresScope is not registered in internal/surfaces/rules.go")
+	}
 	spineReviewPurgeCmd.Flags().StringVar(&spinePurgeCategory, "category", "",
 		"free-form filter: only this category; "+scopeRule.Sentence)
 	spineReviewPurgeCmd.Flags().StringSliceVar(&spinePurgeTags, "tags", nil,
