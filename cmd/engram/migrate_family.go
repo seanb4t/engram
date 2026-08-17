@@ -131,9 +131,12 @@ func migrateReportDoc(res store.MigrateResult, target migrate.Version, dryRun bo
 	}
 }
 
-// migrateSummary renders the operator-facing one-line result of a migrate
-// sweep, for both the preview and applied shapes — pure (no I/O), mirroring
+// migrateSummary is the headline producer (D-04) for a migrate sweep,
+// covering both the preview and applied shapes — pure (no I/O), mirroring
 // pruneSummary/migrateRemapSummary's discipline (prune.go:122, migrate.go:204).
+// Its one line is additive prose over the complete migrateOutputDoc field
+// table the view renders beneath it; its wording may change in any release
+// because --output json, not this sentence, is the contract (D-03).
 //
 // target: see migrateReportDoc's identical justification immediately
 // above — kept general on purpose, not an unused parameter.
@@ -153,7 +156,11 @@ func migrateSummary(res store.MigrateResult, target migrate.Version, dryRun bool
 // backfillShortIDsCmd's alias both call this exact function, one-line
 // adapters over it, so "thin identical alias" is a structural fact rather
 // than a claim. No writes on this path: Store.Migrate's DryRun mode performs
-// a full-backlog projection only.
+// a full-backlog projection only. backfill-short-ids's PREVIEW variant
+// (cmd/engram/backfill.go:36, backfillPreview) reaches the operator view
+// through this exact function — the first pass's hand-registered variant
+// list missed exactly that variant, and it is found only by deriving the
+// universe from source (06-CONTEXT.md <specifics>).
 func migrateSweepPreviewRun(ctx context.Context, cmd *cobra.Command, outputFlag string, timeout time.Duration) error {
 	format, err := operatorOutputFormat(cmd, outputFlag)
 	if err != nil {
@@ -377,12 +384,16 @@ func revertReportDoc(plan store.RevertPlan, applied bool, res store.RevertResult
 	return doc
 }
 
-// revertSummary renders the operator-facing text report of a migrate revert
-// run, for all three shapes (refusal, preview, applied) — pure (no I/O). On
-// a refusal it returns the EXACT store.RevertRefusalError(plan).Error()
-// text, never a re-typed transcription (REVIEWS.md C5-M4) — the same
-// string revertReportDoc's Refusal field carries, so text and json cannot
-// drift apart.
+// revertSummary is the headline producer (D-04) for a migrate revert run,
+// covering all three shapes (refusal, preview, applied) — pure (no I/O).
+// Each line is additive prose over the complete revertOutputDoc field table
+// the view renders beneath it; its wording may change in any release
+// because --output json, not this sentence, is the contract (D-03). On a
+// refusal it returns the EXACT store.RevertRefusalError(plan).Error() text,
+// never a re-typed transcription (REVIEWS.md C5-M4) — the same string
+// revertReportDoc's Refusal field carries, so text and json cannot drift
+// apart. That reasoning is unaffected by the D-01 conversion: the two
+// lanes now share the mechanism as well as the value.
 func revertSummary(plan store.RevertPlan, applied bool, res store.RevertResult) string {
 	if !plan.Reversible {
 		refusal := store.RevertRefusalError(plan).Error()
