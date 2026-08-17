@@ -203,10 +203,17 @@ func operatorParityRows() []operatorParityRow {
 			facts: []string{"bob", "7"},
 		},
 		{
+			// 06-06-PLAN.md Task 1: spineScanSummary is trimmed to a
+			// headline-only producer (R1) and spineScanDoc gains a second
+			// (scope) argument (R2) -- facts narrowed to what the headline
+			// still states (total, owners); the health signals and breakdown
+			// this row's facts used to also assert now render only through
+			// the view, not through TestOperatorOutputParity's fact-in-text
+			// check.
 			name:  "spine-review scan",
 			text:  spineScanSummary(spineRes, "s"),
-			doc:   spineScanDoc(spineRes),
-			facts: []string{"9", "3", "5", "4", "1", "2", "6"},
+			doc:   spineScanDoc(spineRes, "s"),
+			facts: []string{"9", "3"},
 		},
 		{
 			name: "spine-review verify",
@@ -222,13 +229,21 @@ func operatorParityRows() []operatorParityRow {
 				Broken:       []verifyEntry{{RecordID: "rec-broken", ShortID: "short-broken", Ref: "b.go", Reason: reasonFileMissing}},
 				Unverifiable: []verifyEntry{{RecordID: "rec-unverifiable", ShortID: "short-unverifiable", Ref: "c.go", Reason: "different repo"}},
 			}),
-			facts: []string{"2", "1", "rec-moved", "rec-broken", "rec-unverifiable"},
+			// 06-06-PLAN.md Task 2: verifySummary trimmed to headline-only
+			// (R1) -- facts narrowed to the tier counts the headline still
+			// states; per-entry ids now render only through the view.
+			facts: []string{"2", "1"},
 		},
 		{
+			// 06-06-PLAN.md Task 2: consolidateSummary trimmed to
+			// headline-only (R1) -- facts narrowed to what the headline
+			// still states (top_k, scanned/queried); the min_score value
+			// and per-pair ids now render only through the view (json) /
+			// omitempty key, never restated in the headline text.
 			name:  "spine-review consolidate",
 			text:  consolidateSummary(consolidatePairs, "s", false, &consolidateMinScore, 5, 9, 9),
 			doc:   consolidateDoc(consolidatePairs, "s", false, &consolidateMinScore, 5, 9, 9),
-			facts: []string{"9", "5", "0.5", "id-a", "id-b"},
+			facts: []string{"9", "5"},
 		},
 		{
 			name: "spine-review archive",
@@ -433,7 +448,7 @@ func TestOperatorOutputEmpty(t *testing.T) {
 		"backfill-short-ids":  migrateReportDoc(store.MigrateResult{}, migrate.CurrentVersion, false, 0),
 		"migrate-remap-owner": migrateRemapDoc(0, "", false),
 		"migrate-set-owner":   migrateSetOwnerReportDoc{},
-		"spine-review scan":   spineScanDoc(store.SpineScanResult{}),
+		"spine-review scan":   spineScanDoc(store.SpineScanResult{}, ""),
 	}
 	for name, doc := range docs {
 		t.Run(name, func(t *testing.T) {
