@@ -393,29 +393,24 @@ Plans:
   2. Every existing operator command's `--output json|text` behavior is unchanged (regression-free) after the refactor.
   3. Adding a new field to an operator report requires touching exactly one field-set declaration to appear correctly in both json and text output — there is no second call site to remember, which is what makes the six new record-state fields (Phase 5/7) safe to add afterward.
 
-**Plans:** 0/9 plans complete
+**Plans:** 0/7 plans complete
 
 Plans:
 **Wave 1**
 
-- [ ] 06-01-PLAN.md — D-08 checkpoint (what the widening invariant means where today's json and today's sentence describe different value sets), then the tracer: `fieldset.go`/`fieldset_test.go` with the shared placeholder parser and set-equality coverage checker, the new `renderOperator(FieldSet)` beside a temporary legacy entry point, `prune-expired` converted end-to-end, the `operator-reports` golden harness, and two red-evidence patches with phase 06 added to `redEvidenceDirs`
+- [ ] 06-01-PLAN.md — Tracer: the view renderer (`operator_view.go`) walking the bytes `json.Marshal` produced, `renderOperator` rewired, `prune-expired` converted end to end, and the three-part identity gate with a committed negative case per part (wave 1)
 
-**Wave 2**
+**Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 06-02-PLAN.md — Group A: `reindex` (3 variants) and `summarize-missing` (2 variants) converted, gated by five goldens frozen from the pre-image
-- [ ] 06-03-PLAN.md — Group A: `migrate-set-owner` (named builder replacing its inline call-site literal) and `migrate-remap-owner` (2 variants), with the mode-dependent key pair resolved from today's struct tags rather than from the running mode
-- [ ] 06-04-PLAN.md — Group A: `migrate`'s two sweep variants (shared outright by `backfill-short-ids`) and `migrate revert`'s four render sites including both refusal sub-shapes
-- [ ] 06-05-PLAN.md — Group B: `spine-review archive`/`restore` (D-05 nesting + the tier's one genuine D-06 span drop) and `spine-review scan` (trailing list + the one sentence-states-what-the-json-lacks case)
-- [ ] 06-06-PLAN.md — Group B: `spine-review consolidate` (replacement-not-drop min-score line) and `spine-review verify` (three independent per-tier row lists)
-- [ ] 06-07-PLAN.md — Group B: `spine-review purge` preview and applied — the tier's largest document, the five-segment preview template, and the seven applied-path fields the sentence never states
+- [ ] 06-02-PLAN.md — D-03 decision checkpoint, then the `--output` flag help and docs-site CLI guide declaring `text` a view and `json` the contract (wave 2)
+- [ ] 06-03-PLAN.md — Flat group: `reindex`, `summarize-missing`, `migrate-set-owner`, `migrate-remap-owner` converted; byte-stability claims removed from their doc comments (wave 2)
+- [ ] 06-04-PLAN.md — Migrate family: `migrate`, `migrate revert`, the `backfill-short-ids` alias, and `migrate status` given a hand-declared CLI document replacing the `store` passthrough (wave 2)
+- [ ] 06-05-PLAN.md — Two-level group: `spine-review archive`/`restore` and `spine-review purge`; the re-run command becomes a document key (wave 2)
+- [ ] 06-06-PLAN.md — Remaining spine-review leaves: `scan` (gains the `scope` key its sentence always stated), `consolidate`, `verify` (wave 2)
 
-**Wave 3**
+**Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 06-08-PLAN.md — Group C: `migrate status`, the tier's structural exception — hand-declared field set replacing the `store` passthrough, two inline-joined lists, one predicate governing the whole future clause
-
-**Wave 4**
-
-- [ ] 06-09-PLAN.md — D-07 retirement: the hand-built parity gate replaced by a cobra-tree-derived bidirectional registry gate that also asserts field-set coverage tier-wide, collapse to one render entry point, and removal of every pre-image sentence builder and document struct with each affected test's disposition enumerated
+- [ ] 06-07-PLAN.md — Retire the hand-built parity gate, merge the five fixture groups under a cobra-tree-derived bidirectional coverage gate, and demonstrate Success Criterion 3 live (wave 3)
 
 ### Phase 7: Console & CLI State Surfacing
 
