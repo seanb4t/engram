@@ -963,7 +963,7 @@
           "name": "all-scopes",
           "type": "bool",
           "default": "false",
-          "usage": "sweep every scope (required if --scope is omitted)"
+          "usage": "sweep every scope (required if --scope is omitted); mutually exclusive with --scope"
         },
         {
           "name": "dry-run",
