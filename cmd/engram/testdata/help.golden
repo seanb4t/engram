@@ -344,7 +344,7 @@ Usage:
   engram spine-review scan [flags]
 
 Flags:
-      --all-scopes         sweep every scope (required if --scope is omitted)
+      --all-scopes         sweep every scope (required if --scope is omitted); mutually exclusive with --scope
   -h, --help               help for scan
       --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --scope string       only scan records in this scope
@@ -360,7 +360,7 @@ Usage:
   engram spine-review verify [flags]
 
 Flags:
-      --all-scopes         sweep every scope (required if --scope is omitted)
+      --all-scopes         sweep every scope (required if --scope is omitted); mutually exclusive with --scope
       --fail-on string     fail-on accepts broken, moved, unverifiable, or any; omitted, verify exits 0 regardless of findings
   -h, --help               help for verify
       --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json

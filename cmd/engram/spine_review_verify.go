@@ -663,7 +663,7 @@ var spineReviewVerifyCmd = &cobra.Command{
 func init() {
 	addOperatorOutputFlag(spineReviewVerifyCmd, &spineVerifyOutput)
 	spineReviewVerifyCmd.Flags().StringVar(&spineVerifyScope, "scope", "", "only verify citations from records in this scope")
-	spineReviewVerifyCmd.Flags().BoolVar(&spineVerifyAllScopes, "all-scopes", false, "sweep every scope (required if --scope is omitted)")
+	spineReviewVerifyCmd.Flags().BoolVar(&spineVerifyAllScopes, "all-scopes", false, "sweep every scope (required if --scope is omitted); mutually exclusive with --scope")
 	spineReviewVerifyCmd.Flags().DurationVar(&spineVerifyTimeout, "timeout", 5*time.Minute,
 		"max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C")
 	rule, ok := surfaces.RuleByID(surfaces.RuleVerifyFailOnValues)

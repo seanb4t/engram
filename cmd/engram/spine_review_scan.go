@@ -156,7 +156,7 @@ func spineScanSummary(res store.SpineScanResult, scope string) string {
 func init() {
 	addOperatorOutputFlag(spineReviewScanCmd, &spineScanOutput)
 	spineReviewScanCmd.Flags().StringVar(&spineScanScope, "scope", "", "only scan records in this scope")
-	spineReviewScanCmd.Flags().BoolVar(&spineScanAllScopes, "all-scopes", false, "sweep every scope (required if --scope is omitted)")
+	spineReviewScanCmd.Flags().BoolVar(&spineScanAllScopes, "all-scopes", false, "sweep every scope (required if --scope is omitted); mutually exclusive with --scope")
 	spineReviewScanCmd.Flags().DurationVar(&spineScanTimeout, "timeout", 5*time.Minute,
 		"max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C")
 	spineReviewScanCmd.MarkFlagsMutuallyExclusive("scope", "all-scopes")
