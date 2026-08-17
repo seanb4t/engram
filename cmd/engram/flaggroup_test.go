@@ -469,6 +469,24 @@ func TestEveryDeclaredExclusivityHasAFlagGroup(t *testing.T) {
 // discovered later, would again go unnoticed by a fixed list). Any command
 // that registers both flags, present or future, is required to declare the
 // group.
+//
+// It also closes the THIRD direction of the invariant (06-REVIEW.md IN-01):
+// group exists -> usage states it. TestEveryDeclaredExclusivityHasAFlagGroup
+// covers usage-claims -> group-exists; the loop above covers pair-declared ->
+// group-exists; neither, individually or combined, would have failed on
+// WR-01 (round 3): summarize-missing's flag group was real
+// (MarkFlagsMutuallyExclusive("scope", "all-scopes")) and both flags were
+// declared, but --all-scopes's Usage never said so, so an operator running
+// `--help` alone had no way to learn the constraint short of hitting the
+// runtime rejection. The subtest below fires only once a real group is
+// confirmed (declaredGroupCoversPair == true) and requires at least one of
+// the pair's two Usage strings to contain "mutually exclusive" --
+// deliberately reusing flagsClaimedMutuallyExclusive's own substring check
+// rather than a new matcher, and tolerant of either phrasing already live in
+// this codebase (scan/verify/purge/summarize-missing's "; mutually exclusive
+// with --scope" and consolidate's "(mutually exclusive with --scope)") since
+// flagsClaimedMutuallyExclusive only tests for the substring "mutually
+// exclusive", not the surrounding punctuation.
 func TestEveryScopeAllScopesPairHasAFlagGroup(t *testing.T) {
 	checked := 0
 	for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {
@@ -484,6 +502,14 @@ func TestEveryScopeAllScopesPairHasAFlagGroup(t *testing.T) {
 				t.Errorf("%s declares both --scope and --all-scopes but no declared cobra flag group "+
 					"(MarkFlagsMutuallyExclusive(\"scope\", \"all-scopes\")) covers the pair — supplying "+
 					"both together is silently accepted", cmd.Name())
+				return
+			}
+			scopeClaims := len(flagsClaimedMutuallyExclusive(scope.Usage)) > 0
+			allScopesClaims := len(flagsClaimedMutuallyExclusive(allScopes.Usage)) > 0
+			if !scopeClaims && !allScopesClaims {
+				t.Errorf("%s declares a real --scope/--all-scopes flag group, but neither flag's Usage "+
+					"text states the constraint (no \"mutually exclusive\" phrase found) — an operator "+
+					"running --help alone cannot learn this", cmd.Name())
 			}
 		})
 	}
