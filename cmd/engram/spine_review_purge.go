@@ -154,11 +154,30 @@ func purgeScopeText(opts store.PurgeOptions) string {
 	return "(none)"
 }
 
+// shellQuote wraps s in single quotes, escaping any embedded single quote
+// via the standard POSIX-shell idiom: close the current quote, emit a
+// backslash-escaped literal quote, then reopen the quote. The result is
+// safe to substitute into a `sh`/`bash`-family command line regardless of
+// spaces, globs, or other shell metacharacters s might contain. Values
+// this package interpolates into a copy-pasteable command (scope,
+// category, tag) are free-form strings an operator can set on the write
+// path (WR-03, 06-REVIEW.md), so they cannot be trusted to be shell-safe
+// on their own.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // purgeRerunCommand renders the exact command an operator would run to
 // apply this same derivation -- the plain re-run the preview output names,
 // mirroring prune-expired's own "re-run with --apply" wording, expanded
 // here to carry every flag this invocation actually supplied so the
-// printed command is genuinely copy-pasteable.
+// printed command is genuinely copy-pasteable. Every free-form value
+// (--scope, --category, --tags) is shell-quoted via shellQuote so a value
+// containing a space or shell metacharacter still round-trips through a
+// copy-paste into a shell as the single argument it actually was (WR-03,
+// 06-REVIEW.md) -- --class and --older-than need no quoting: both are
+// drawn from a closed, operator-controlled vocabulary (purgeClassNames,
+// time.Duration.String()) that never contains shell metacharacters.
 func purgeRerunCommand(opts store.PurgeOptions) string {
 	var b strings.Builder
 	b.WriteString("engram spine-review purge --apply")
@@ -168,13 +187,13 @@ func purgeRerunCommand(opts store.PurgeOptions) string {
 	if opts.AllScopes {
 		b.WriteString(" --all-scopes")
 	} else if opts.Scope != "" {
-		fmt.Fprintf(&b, " --scope %s", opts.Scope)
+		fmt.Fprintf(&b, " --scope %s", shellQuote(opts.Scope))
 	}
 	if opts.Category != "" {
-		fmt.Fprintf(&b, " --category %s", opts.Category)
+		fmt.Fprintf(&b, " --category %s", shellQuote(opts.Category))
 	}
 	for _, tag := range opts.Tags {
-		fmt.Fprintf(&b, " --tags %s", tag)
+		fmt.Fprintf(&b, " --tags %s", shellQuote(tag))
 	}
 	if opts.OlderThan != 0 {
 		fmt.Fprintf(&b, " --older-than %s", opts.OlderThan)

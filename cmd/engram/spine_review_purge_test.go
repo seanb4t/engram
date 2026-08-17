@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"os/exec"
 	"reflect"
 	"sort"
 	"strings"
@@ -287,5 +288,79 @@ func TestPurgeAppliedViewRendersAppearedRow(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("rendered view = %q, want it to contain %q", out, want)
 		}
+	}
+}
+
+// TestShellQuoteRoundTripsThroughARealShell proves shellQuote's escaping is
+// not merely plausible-looking: piping the quoted output through an actual
+// `sh -c` invocation recovers the exact original string, for a value
+// containing a space and a value containing a single quote (WR-03,
+// 06-REVIEW.md) -- the two shapes purgeRerunCommand's own doc comment
+// names as the ones a copy-paste would otherwise silently mis-split.
+func TestShellQuoteRoundTripsThroughARealShell(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("no sh on PATH")
+	}
+	cases := []string{
+		"plain",
+		"has a space",
+		"has'a'quote",
+		"O'Brien's scope",
+		"",
+	}
+	for _, want := range cases {
+		t.Run(want, func(t *testing.T) {
+			quoted := shellQuote(want)
+			out, err := exec.Command("sh", "-c", "printf '%s' "+quoted).Output()
+			if err != nil {
+				t.Fatalf("sh -c: %v", err)
+			}
+			if got := string(out); got != want {
+				t.Errorf("shellQuote(%q) = %q; sh round-trip = %q, want %q", want, quoted, got, want)
+			}
+		})
+	}
+}
+
+// TestPurgeRerunCommandQuotesFreeFormValues proves purgeRerunCommand
+// shell-quotes --scope, --category, and --tags (the free-form values an
+// operator can set on the write path) so a value containing a space or a
+// single quote does not silently split into extra/different arguments if
+// the rendered command is copy-pasted into a shell (WR-03, 06-REVIEW.md).
+// Verified by actually splitting the rendered command through a real `sh`
+// (via `set --`) rather than by string-matching the quoting scheme.
+func TestPurgeRerunCommandQuotesFreeFormValues(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("no sh on PATH")
+	}
+	opts := store.PurgeOptions{
+		Classes:  []store.PurgeClass{store.PurgeClassExpired},
+		Scope:    "has a space",
+		Category: "o'brien",
+		Tags:     []string{"tag one", "tag'two"},
+	}
+	got := purgeRerunCommand(opts)
+
+	// `set -- $got; for a in "$@"; do printf '%s\n' "$a"; done` re-parses
+	// the rendered command line through sh's own word-splitting/quote
+	// rules and prints one line per resulting argument -- the ground truth
+	// for "what would this copy-paste actually run as".
+	script := "set -- " + got + "; for a in \"$@\"; do printf '%s\\n' \"$a\"; done"
+	out, err := exec.Command("sh", "-c", script).Output()
+	if err != nil {
+		t.Fatalf("sh -c: %v", err)
+	}
+	args := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
+
+	want := []string{
+		"engram", "spine-review", "purge", "--apply",
+		"--class", "expired",
+		"--scope", "has a space",
+		"--category", "o'brien",
+		"--tags", "tag one",
+		"--tags", "tag'two",
+	}
+	if !reflect.DeepEqual(args, want) {
+		t.Errorf("rendered command %q re-parsed by sh as %v, want %v (a free-form value with a space or quote must survive a copy-paste unchanged)", got, args, want)
 	}
 }
