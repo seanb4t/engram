@@ -58,6 +58,23 @@ func TestSpineReviewScanRequiresScopeOrAllScopes(t *testing.T) {
 	}
 }
 
+// TestSpineReviewScanScopeAndAllScopesRejected proves --scope and
+// --all-scopes together are rejected via cobra's own
+// MarkFlagsMutuallyExclusive validation, exiting exitUsage BEFORE RunE ever
+// runs -- mirroring TestSpineReviewConsolidateScopeAndAllScopesRejected
+// (WR-01 fix: scan previously silently discarded --all-scopes when --scope
+// was also supplied).
+func TestSpineReviewScanScopeAndAllScopesRejected(t *testing.T) {
+	resetClientFlags(t)
+	_, _, err := runClient(t, "spine-review", "scan", "--scope", "x", "--all-scopes")
+	if err == nil {
+		t.Fatal("expected an error for --scope and --all-scopes together, got nil")
+	}
+	if got := exitCodeFromError(err); got != exitUsage {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage)", got, exitUsage)
+	}
+}
+
 // TestOperatorOutputFormatResolvesNonTTYForCustomWriter proves
 // operatorOutputFormat derives TTY state from cmd.OutOrStdout(), not the
 // process's real os.Stdout: a command whose output writer is a

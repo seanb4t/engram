@@ -533,3 +533,20 @@ func TestSpineReviewVerifyRequiresScopeOrAllScopes(t *testing.T) {
 		t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage)", got, exitUsage)
 	}
 }
+
+// TestSpineReviewVerifyScopeAndAllScopesRejected proves --scope and
+// --all-scopes together are rejected via cobra's own
+// MarkFlagsMutuallyExclusive validation, exiting exitUsage BEFORE RunE ever
+// runs -- mirroring TestSpineReviewConsolidateScopeAndAllScopesRejected
+// (WR-01 fix: verify previously silently discarded --all-scopes when
+// --scope was also supplied).
+func TestSpineReviewVerifyScopeAndAllScopesRejected(t *testing.T) {
+	resetClientFlags(t)
+	_, _, err := runClient(t, "spine-review", "verify", "--scope", "x", "--all-scopes")
+	if err == nil {
+		t.Fatal("expected an error for --scope and --all-scopes together, got nil")
+	}
+	if got := exitCodeFromError(err); got != exitUsage {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage)", got, exitUsage)
+	}
+}

@@ -159,5 +159,6 @@ func init() {
 	spineReviewScanCmd.Flags().BoolVar(&spineScanAllScopes, "all-scopes", false, "sweep every scope (required if --scope is omitted)")
 	spineReviewScanCmd.Flags().DurationVar(&spineScanTimeout, "timeout", 5*time.Minute,
 		"max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C")
+	spineReviewScanCmd.MarkFlagsMutuallyExclusive("scope", "all-scopes")
 	spineReviewCmd.AddCommand(spineReviewScanCmd)
 }

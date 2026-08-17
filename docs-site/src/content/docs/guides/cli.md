@@ -172,7 +172,8 @@ plus `migrate` and `backfill-short-ids`.
 ### `spine-review scan`
 
 `engram spine-review scan --scope <scope>` (or `--all-scopes`) reports an
-inventory of the memory spine and never mutates on any path. Alongside the
+inventory of the memory spine and never mutates on any path. `--scope` and
+`--all-scopes` are mutually exclusive. Alongside the
 total and a per-scope/per-category breakdown, it reports the health signals
 an operator needs before deciding what to curate: how many records carry a
 summary and how many do not, how many are superseded, expired, or archived
@@ -206,7 +207,8 @@ entirely), and `unverifiable` (a `commit`/`url`/`repo` citation, an empty
 cached excerpt, a citation whose owning record names a different repo than
 the working tree, or a `ref` this command refuses to read for safety —
 every such citation carries the reason it was not checked, so a clean
-report can never be read as coverage the run did not have). It never reads
+report can never be read as coverage the run did not have). `--scope` and
+`--all-scopes` are mutually exclusive. It never reads
 outside the working tree it was run in — not even through a symlink — and
 never widens its search past the file a citation names.
 

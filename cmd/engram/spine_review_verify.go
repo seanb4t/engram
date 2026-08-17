@@ -671,5 +671,6 @@ func init() {
 		panic("spine-review verify: surfaces.RuleVerifyFailOnValues is not registered in internal/surfaces/rules.go")
 	}
 	spineReviewVerifyCmd.Flags().StringVar(&spineVerifyFailOn, "fail-on", "", rule.Sentence)
+	spineReviewVerifyCmd.MarkFlagsMutuallyExclusive("scope", "all-scopes")
 	spineReviewCmd.AddCommand(spineReviewVerifyCmd)
 }
