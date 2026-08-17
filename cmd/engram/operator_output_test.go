@@ -379,6 +379,97 @@ func TestOperatorDocsAreHandDeclared(t *testing.T) {
 	}
 }
 
+// TestOperatorViewFixturesHaveNoUnsanitizedNesting is the WR-02
+// (06-REVIEW.md) regression guard: sanitizeViewValue's control-character
+// stripping — the mitigation for T-06-03 — only ever reaches a top-level
+// scalar string field (viewFields's default case) or a row-level scalar
+// field rendered by viewRow's own key=value walk. viewScalar's kind switch
+// (operator_view.go) recognizes only a JSON string and JSON null; every
+// other shape, including a nested array or object TWO levels deep from the
+// doc root (an array-of-arrays element, or a row-level object/array
+// field), falls through to `return string(raw)` verbatim and UNSANITIZED.
+//
+// No operator report struct produces such a shape today (confirmed via `rg
+// '\[\]\[\]|map\[string\]' cmd/engram/*.go` over non-test files, and
+// re-proven here structurally over the live fixture set rather than by
+// grep alone), so this test passes today and is designed to fail LOUDLY —
+// not silently reintroduce the T-06-03 gap — the day a future report field
+// crosses that boundary. This is deliberately a test-only guard, not a
+// production-code change: WR-02's suggested exhaustive viewScalar rewrite
+// is out of scope here because no live doc needs it yet, and rewriting
+// rendering behavior for a shape nothing produces risks changing
+// `--output text` for no live benefit.
+func TestOperatorViewFixturesHaveNoUnsanitizedNesting(t *testing.T) {
+	fixtures := operatorViewFixtures()
+	names := make([]string, 0, len(fixtures))
+	for name := range fixtures {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			for i, doc := range fixtures[name] {
+				b, err := json.Marshal(doc)
+				if err != nil {
+					t.Fatalf("%s/%d: json.Marshal: %v", name, i, err)
+				}
+				assertNoTwoLevelContainerNesting(t, fmt.Sprintf("%s/%d", name, i), b)
+			}
+		})
+	}
+}
+
+// assertNoTwoLevelContainerNesting walks a marshaled operator doc's
+// top-level object exactly as viewFields does, and fails if any array
+// element or row-level field is itself a JSON array or object — the shape
+// viewScalar renders verbatim, unsanitized, because its kind switch only
+// recognizes JSON string and null.
+func assertNoTwoLevelContainerNesting(t *testing.T, label string, docJSON []byte) {
+	t.Helper()
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(docJSON, &top); err != nil {
+		// A non-object top-level document (errViewNotObject's case) has no
+		// field table to walk.
+		return
+	}
+	for key, raw := range top {
+		switch valueKind(raw) {
+		case '[':
+			var elems []json.RawMessage
+			if err := json.Unmarshal(raw, &elems); err != nil {
+				t.Fatalf("%s: field %q: json.Unmarshal array: %v", label, key, err)
+			}
+			for i, elem := range elems {
+				switch valueKind(elem) {
+				case '{':
+					assertRowHasNoContainerFields(t, label, key, elem)
+				case '[':
+					t.Errorf("%s: field %q element %d is a nested array — sanitizeViewValue's guarantee does not reach this shape (WR-02, 06-REVIEW.md); either give viewScalar an exhaustive kind switch or keep this field one level deep", label, key, i)
+				}
+			}
+		case '{':
+			assertRowHasNoContainerFields(t, label, key, raw)
+		}
+	}
+}
+
+// assertRowHasNoContainerFields fails if any key inside a rendered row
+// (viewRow's key=value walk) is itself a JSON array or object — see
+// TestOperatorViewFixturesHaveNoUnsanitizedNesting.
+func assertRowHasNoContainerFields(t *testing.T, label, fieldKey string, raw json.RawMessage) {
+	t.Helper()
+	var row map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &row); err != nil {
+		t.Fatalf("%s: field %q: json.Unmarshal row: %v", label, fieldKey, err)
+	}
+	for rowKey, val := range row {
+		if kind := valueKind(val); kind == '[' || kind == '{' {
+			t.Errorf("%s: field %q row key %q is a nested %c — sanitizeViewValue's guarantee does not reach this shape (WR-02, 06-REVIEW.md); either give viewScalar an exhaustive kind switch or keep row fields scalar", label, fieldKey, rowKey, kind)
+		}
+	}
+}
+
 // TestOperatorOutputEncoding proves a scope/tag value carrying a
 // non-ASCII rune AND a double quote survives a json.Marshal then
 // json.Unmarshal round trip byte-identically — UTF-8 fidelity through the

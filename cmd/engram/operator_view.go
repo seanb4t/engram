@@ -210,6 +210,16 @@ func humanizeKey(key string) string {
 // terminal escape sequence into an operator's console (threat T-06-03).
 // The json lane needs no equivalent sanitization — encoding/json already
 // escapes control characters in its own string encoding.
+//
+// The guarantee is narrower than a blanket statement over "every value"
+// would imply: it only ever runs on a JSON string value viewScalar
+// recognizes by its own kind check (raw[0] == '"'). A value that is itself
+// a JSON array or object two levels deep from the doc root (a nested array
+// element, or a row-level object/array field inside viewRow) bypasses
+// viewScalar's sanitizing branch entirely and renders verbatim (WR-02,
+// 06-REVIEW.md). No operator report struct produces such a shape today —
+// see TestOperatorViewFixturesHaveNoUnsanitizedNesting (operator_output_test.go),
+// which fails loudly the day one does.
 func sanitizeViewValue(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
