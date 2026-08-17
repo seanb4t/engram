@@ -23,9 +23,9 @@ import (
 // operatorCommands() produces it. Every sample is built by calling the
 // report's own real converter (or, for migrate-set-owner, the same inline
 // struct literal shape its call site uses) — never a hand-rolled map — and
-// the input values are reused from operator_output_test.go's
-// operatorParityRows entries for these four commands so the fixtures stay
-// comparable to what the retiring TestOperatorOutputParity exercised.
+// the input values are reused from the phase's now-retired parity gate's
+// fixed values (06-CONTEXT.md D-09) for these four commands so the
+// fixtures stay comparable to what that retired test once exercised.
 func flatViewFixtures() map[string][]any {
 	reindexRes := store.ReindexResult{Scanned: 57, Upserted: 23, Skipped: 11, Unchanged: 19}
 	summarizeRes := store.SummarizeResult{Scanned: 41, Filled: 17, Skipped: 20, Failed: 4}

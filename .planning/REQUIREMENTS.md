@@ -45,7 +45,7 @@ instead of another one-shot operator command.
 
 ### Operator Output
 
-- [ ] **REQ-operator-renderer-typed**: Operator command output derives text and json from ONE shared ordered field set, so a json document cannot widen past what its text sentence states. Field-set identity holds by construction rather than by a test over hand-built rows (#481).
+- [x] **REQ-operator-renderer-typed**: Operator command output derives text and json from ONE shared ordered field set, so a json document cannot widen past what its text sentence states. Field-set identity holds by construction rather than by a test over hand-built rows (#481).
 
 ### State Surfacing
 
@@ -107,7 +107,7 @@ this repo's structural invariant — see ROADMAP.md's `## Progress` note).
 | REQ-migrate-never-automatic | Phase 4 | Complete |
 | REQ-connect-record-state-parity | Phase 5 | Complete |
 | REQ-connect-parity-roundtrip-proof | Phase 5 | Complete |
-| REQ-operator-renderer-typed | Phase 6 | Pending |
+| REQ-operator-renderer-typed | Phase 6 | Complete |
 | REQ-console-record-state | Phase 7 | Pending |
 | REQ-cli-record-state | Phase 7 | Pending |
 | REQ-migration-state-visible | Phase 7 | Pending |

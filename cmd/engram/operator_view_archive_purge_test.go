@@ -21,10 +21,10 @@ import (
 // archivePurgeViewFixtures returns the identity-gate fixtures for this
 // group's three commandKey entries. Every sample is built by calling the
 // report's own real converter (archiveDoc / purgePreviewDoc / purgeAppliedDoc)
-// -- never a hand-built doc literal -- reusing the fixed input values
-// operator_output_test.go's operatorParityRows entries for these commands
-// used, but none of that other test's declared-string-list assertions or
-// row structure.
+// -- never a hand-built doc literal -- reusing the fixed input values the
+// phase's now-retired parity gate (06-CONTEXT.md D-09) used for these
+// commands, but none of that retired test's declared-string-list
+// assertions or row structure.
 func archivePurgeViewFixtures() map[string][]any {
 	return map[string][]any{
 		"spine-review archive": {

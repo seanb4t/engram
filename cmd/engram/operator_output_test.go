@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"strconv"
+	"reflect"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -130,278 +132,247 @@ func TestRenderOperatorTextAndJSON(t *testing.T) {
 	})
 }
 
-// operatorParityRow is one (command, result value, text sentence, json
-// document, facts) tuple driving TestOperatorOutputParity below. facts is
-// the set of values the text sentence states that MUST also appear as a
-// scalar value somewhere in the json document — the parity claim, made
-// checkable rather than asserted by inspection alone.
-type operatorParityRow struct {
-	name  string
-	text  string
-	doc   any
-	facts []string
-}
-
-// operatorParityRows builds one row per operator command, each computed
-// from a single hand-built result value run through BOTH the pure text
-// formatter and the pure json-doc builder — never two different result
-// values for the same row, which is what "the same fact must appear on
-// both sides" actually requires.
-func operatorParityRows() []operatorParityRow {
-	reindexRes := store.ReindexResult{Scanned: 57, Upserted: 23, Skipped: 11, Unchanged: 19}
-	pruneBefore := time.Date(2031, 6, 15, 12, 0, 0, 0, time.UTC)
-	summarizeRes := store.SummarizeResult{Scanned: 41, Filled: 17, Skipped: 20, Failed: 4}
-	spineRes := store.SpineScanResult{
-		Total: 9, Owners: 3, WithSummary: 5, WithoutSummary: 4,
-		Superseded: 1, Expired: 1, Scheduled: 0, WithCitations: 2, Citations: 6,
-	}
-	consolidatePairs := []store.DuplicatePair{
-		{A: "id-a", B: "id-b", AShortID: "sa", BShortID: "sb", AScope: "s", BScope: "s", Score: 0.5},
-	}
-	consolidateMinScore := float32(0.5)
-
-	return []operatorParityRow{
-		{
-			name:  "reindex",
-			text:  reindexSummary(reindexRes, "target-coll", 1536, false, false),
-			doc:   reindexReportDoc(reindexRes, "target-coll", 1536, false, false),
-			facts: []string{"23", "57", "target-coll", "1536"},
-		},
-		{
-			name:  "prune-expired",
-			text:  pruneSummary(31, pruneBefore),
-			doc:   pruneReportDoc(31, pruneBefore),
-			facts: []string{"31"},
-		},
-		{
-			name:  "summarize-missing",
-			text:  summarizeSummary(summarizeRes, false),
-			doc:   summarizeReportDoc(summarizeRes, false),
-			facts: []string{"41", "17", "20", "4"},
-		},
-		{
-			// 04-04-PLAN.md Task 1: backfill-short-ids is now a thin
-			// delegating alias sharing migrate's own report envelope
-			// (D-11) -- this row is built from the SAME migrateSummary/
-			// migrateReportDoc pair the "migrate" row above uses, never a
-			// backfill-specific formatter (those are deleted).
-			name:  "backfill-short-ids",
-			text:  migrateSummary(store.MigrateResult{Migrated: 29, Backlog: 0}, migrate.CurrentVersion, false, 29),
-			doc:   migrateReportDoc(store.MigrateResult{Migrated: 29, Backlog: 0}, migrate.CurrentVersion, false, 29),
-			facts: []string{"29"},
-		},
-		{
-			name:  "migrate-remap-owner",
-			text:  migrateRemapSummary(13, "alice", false),
-			doc:   migrateRemapDoc(13, "alice", false),
-			facts: []string{"13", "alice"},
-		},
-		{
-			name:  "migrate-set-owner",
-			text:  migrateSetOwnerSummary("bob", 7),
-			doc:   migrateSetOwnerReportDoc{Owner: "bob", Stamped: 7},
-			facts: []string{"bob", "7"},
-		},
-		{
-			// 06-06-PLAN.md Task 1: spineScanSummary is trimmed to a
-			// headline-only producer (R1) and spineScanDoc gains a second
-			// (scope) argument (R2) -- facts narrowed to what the headline
-			// still states (total, owners); the health signals and breakdown
-			// this row's facts used to also assert now render only through
-			// the view, not through TestOperatorOutputParity's fact-in-text
-			// check.
-			name:  "spine-review scan",
-			text:  spineScanSummary(spineRes, "s"),
-			doc:   spineScanDoc(spineRes, "s"),
-			facts: []string{"9", "3"},
-		},
-		{
-			name: "spine-review verify",
-			text: verifySummary(verifyReport{
-				ValidCount: 2, MovedCount: 1, BrokenCount: 1, UnverifiableCount: 1,
-				Moved:        []verifyEntry{{RecordID: "rec-moved", ShortID: "short-moved", Ref: "a.go", Reason: "excerpt found at byte offset 12, not at the cited locator"}},
-				Broken:       []verifyEntry{{RecordID: "rec-broken", ShortID: "short-broken", Ref: "b.go", Reason: reasonFileMissing}},
-				Unverifiable: []verifyEntry{{RecordID: "rec-unverifiable", ShortID: "short-unverifiable", Ref: "c.go", Reason: "different repo"}},
-			}),
-			doc: verifyDoc(verifyReport{
-				ValidCount: 2, MovedCount: 1, BrokenCount: 1, UnverifiableCount: 1,
-				Moved:        []verifyEntry{{RecordID: "rec-moved", ShortID: "short-moved", Ref: "a.go", Reason: "excerpt found at byte offset 12, not at the cited locator"}},
-				Broken:       []verifyEntry{{RecordID: "rec-broken", ShortID: "short-broken", Ref: "b.go", Reason: reasonFileMissing}},
-				Unverifiable: []verifyEntry{{RecordID: "rec-unverifiable", ShortID: "short-unverifiable", Ref: "c.go", Reason: "different repo"}},
-			}),
-			// 06-06-PLAN.md Task 2: verifySummary trimmed to headline-only
-			// (R1) -- facts narrowed to the tier counts the headline still
-			// states; per-entry ids now render only through the view.
-			facts: []string{"2", "1"},
-		},
-		{
-			// 06-06-PLAN.md Task 2: consolidateSummary trimmed to
-			// headline-only (R1) -- facts narrowed to what the headline
-			// still states (top_k, scanned/queried); the min_score value
-			// and per-pair ids now render only through the view (json) /
-			// omitempty key, never restated in the headline text.
-			name:  "spine-review consolidate",
-			text:  consolidateSummary(consolidatePairs, "s", false, &consolidateMinScore, 5, 9, 9),
-			doc:   consolidateDoc(consolidatePairs, "s", false, &consolidateMinScore, 5, 9, 9),
-			facts: []string{"9", "5"},
-		},
-		{
-			name: "spine-review archive",
-			text: archiveSummary([]store.ArchiveResult{
-				{ID: "id-changed", Outcome: store.ArchiveOutcomeChanged},
-				{ID: "id-already", Outcome: store.ArchiveOutcomeAlready},
-			}, "archive"),
-			doc: archiveDoc([]store.ArchiveResult{
-				{ID: "id-changed", Outcome: store.ArchiveOutcomeChanged},
-				{ID: "id-already", Outcome: store.ArchiveOutcomeAlready},
-			}, "archive"),
-			facts: []string{"id-changed", "id-already", "changed", "already"},
-		},
-		{
-			name: "spine-review restore",
-			text: archiveSummary([]store.ArchiveResult{
-				{ID: "id-restored", Outcome: store.ArchiveOutcomeChanged},
-				{ID: "id-unknown", Outcome: store.ArchiveOutcomeNotFound},
-			}, "restore"),
-			doc: archiveDoc([]store.ArchiveResult{
-				{ID: "id-restored", Outcome: store.ArchiveOutcomeChanged},
-				{ID: "id-unknown", Outcome: store.ArchiveOutcomeNotFound},
-			}, "restore"),
-			facts: []string{"id-restored", "id-unknown", "changed", "not_found"},
-		},
-		{
-			name: "spine-review purge",
-			text: purgeAppliedSummary(store.PurgeResult{
-				Deleted: []string{"id-deleted"}, Spared: []string{"id-spared"}, Appeared: []string{"id-appeared"},
-			}, store.PurgeOptions{Classes: []store.PurgeClass{store.PurgeClassExpired}, Scope: "s"}),
-			doc: purgeAppliedDoc([]string{"id-deleted", "id-spared"}, store.PurgeResult{
-				Deleted: []string{"id-deleted"}, Spared: []string{"id-spared"}, Appeared: []string{"id-appeared"},
-			}, store.PurgeOptions{Classes: []store.PurgeClass{store.PurgeClassExpired}, Scope: "s"}),
-			facts: []string{"id-deleted", "id-spared", "id-appeared"},
-		},
-		{
-			// 04-03-PLAN.md Task 2: an APPLIED result (dryRun=false) so the
-			// "migrated" fact is meaningful; backlog is stated explicitly
-			// in migrateSummary's applied-mode sentence for exactly this
-			// parity claim.
-			name:  "migrate",
-			text:  migrateSummary(store.MigrateResult{Migrated: 23, Failed: 2, Passes: 1, Backlog: 5, Spared: []string{"a"}, Appeared: []string{"b", "c"}}, migrate.CurrentVersion, false, 26),
-			doc:   migrateReportDoc(store.MigrateResult{Migrated: 23, Failed: 2, Passes: 1, Backlog: 5, Spared: []string{"a"}, Appeared: []string{"b", "c"}}, migrate.CurrentVersion, false, 26),
-			facts: []string{"26", "23", "5"},
-		},
-		{
-			name: "migrate status",
-			text: statusSummary(store.MigrateStatusResult{
-				Buckets: []store.VersionBucket{{Version: 1, Count: 40}}, Absent: 3,
-				Future: []store.VersionBucket{{Version: 2, Count: 1}}, FutureTotal: 1, Total: 44,
-			}),
-			doc: statusReportDoc(store.MigrateStatusResult{
-				Buckets: []store.VersionBucket{{Version: 1, Count: 40}}, Absent: 3,
-				Future: []store.VersionBucket{{Version: 2, Count: 1}}, FutureTotal: 1, Total: 44,
-			}),
-			facts: []string{"44", "3", "40", "1", "2"},
-		},
-		{
-			// A REVERSIBLE preview fixture (Task 3): facts name
-			// plan.Candidates and the target version, per this row's plan
-			// text.
-			name:  "migrate revert",
-			text:  revertSummary(store.RevertPlan{To: 0, Candidates: 12, Reversible: true}, false, store.RevertResult{}),
-			doc:   revertReportDoc(store.RevertPlan{To: 0, Candidates: 12, Reversible: true}, false, store.RevertResult{}),
-			facts: []string{"12", "0"},
-		},
-	}
-}
-
-// jsonScalarValues flattens doc's json.Marshal output into every scalar
-// (string/number/bool) value reachable anywhere in the document —
-// including inside a slice of structs (spineScanReportDoc's
-// ByScopeCategory) — as their JSON-rendered string form, so a fact can be
-// looked up by exact-element membership rather than substring containment
-// (which would trivially "match" any short numeral inside a longer one).
-func jsonScalarValues(doc any) ([]string, error) {
-	b, err := json.Marshal(doc)
-	if err != nil {
-		return nil, err
-	}
-	var raw any
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return nil, err
-	}
-	var out []string
-	var walk func(v any)
-	walk = func(v any) {
-		switch t := v.(type) {
-		case map[string]any:
-			for _, vv := range t {
-				walk(vv)
-			}
-		case []any:
-			for _, vv := range t {
-				walk(vv)
-			}
-		case float64:
-			out = append(out, strconv.FormatFloat(t, 'f', -1, 64))
-		case string:
-			out = append(out, t)
-		case bool:
-			out = append(out, strconv.FormatBool(t))
-		}
-	}
-	walk(raw)
-	return out, nil
-}
-
-func containsString(haystack []string, needle string) bool {
-	for _, s := range haystack {
-		if s == needle {
-			return true
-		}
-	}
-	return false
-}
-
-// TestOperatorOutputParity is the phase's json/text field-for-fact parity
-// gate (T-03-09's mitigation, Codex review #3's "known limitation,
-// recorded rather than redesigned" — see this plan's SUMMARY): for every
-// operator command, the SAME result value drives both the text sentence
-// and the json document, and every declared fact from the text side must
-// also appear as a scalar value somewhere in the json side.
+// The phase's prior json/text parity gate and its hand-built per-command
+// row table were RETIRED by 06-CONTEXT.md D-09 (plan 06-07): retirement is
+// obsolescence, not supersession by a stronger assertion, because under
+// D-01 both --output text and --output json now derive from ONE
+// serialization (the report's hand-declared struct) and there is no
+// text/json divergence left for a parity gate to detect.
 //
-// The row-set itself is gated both directions against operatorCommands():
-// a seventh operator command added later without a corresponding row here
-// fails this test, rather than silently narrowing the parity claim.
-func TestOperatorOutputParity(t *testing.T) {
-	rows := operatorParityRows()
+// Two things about the retired gate are recorded here rather than lost
+// (durable record b3wd4wwwda): its declared per-row string list was
+// hand-listed — precisely the "test over hand-built rows" ROADMAP Success
+// Criterion 1 rejects — and it was one-directional, asserting every
+// declared text value appeared in the json document but never that the
+// json document failed to widen past the text.
+//
+// Its one genuinely good property — gating its row set against
+// operatorCommands() in BOTH directions — is carried forward onto the
+// merged view-fixture map by the coverage test below (Task 2 of this
+// plan), which is its inheritor.
 
-	rowNames := make(map[string]bool, len(rows))
-	for _, r := range rows {
-		rowNames[r.name] = true
+// operatorViewFixtures merges every group's fixture function into one map,
+// keyed by commandKey exactly as operatorCommands() produces it: the
+// complete view-fixture universe TestOperatorViewFixturesCoverEveryOperatorCommand
+// checks against operatorCommands() in both directions, and the set every
+// document TestOperatorViewIdentityAcrossEveryOperatorCommand walks.
+//
+// A key returned by more than one group function is a build-time defect —
+// two plans both claimed the same command — and this panics loudly rather
+// than silently letting one group's fixtures overwrite another's.
+func operatorViewFixtures() map[string][]any {
+	groups := []map[string][]any{
+		pruneViewFixtures(),
+		flatViewFixtures(),
+		migrateViewFixtures(),
+		archivePurgeViewFixtures(),
+		spineViewFixtures(),
 	}
-	wantNames := commandKeySet(operatorCommands())
-	for name := range wantNames {
-		if !rowNames[name] {
-			t.Errorf("operatorParityRows() is missing a row for operator command %q", name)
-		}
-	}
-	for name := range rowNames {
-		if !wantNames[name] {
-			t.Errorf("operatorParityRows() has a row for %q, which is not in operatorCommands()", name)
-		}
-	}
-
-	for _, row := range rows {
-		t.Run(row.name, func(t *testing.T) {
-			values, err := jsonScalarValues(row.doc)
-			if err != nil {
-				t.Fatalf("jsonScalarValues: %v", err)
+	merged := make(map[string][]any)
+	for _, group := range groups {
+		for key, docs := range group {
+			if _, exists := merged[key]; exists {
+				panic(fmt.Sprintf("operatorViewFixtures: %q is claimed by more than one fixture group", key))
 			}
-			for _, fact := range row.facts {
-				if !strings.Contains(row.text, fact) {
-					t.Errorf("row %q: text %q does not contain declared fact %q (row is malformed)", row.name, row.text, fact)
+			merged[key] = docs
+		}
+	}
+	return merged
+}
+
+// setDiff returns, sorted, the keys present in want but not got (missing)
+// and the keys present in got but not want (extra). Pure and independent
+// of any command or fixture — TestSetDiffDetectsDivergence exercises it
+// directly, without touching operatorCommands() or operatorViewFixtures(),
+// so the enumeration gate's non-vacuity proof cannot be satisfied by the
+// same data the gate itself reads.
+func setDiff(want, got map[string]bool) (missing, extra []string) {
+	for key := range want {
+		if !got[key] {
+			missing = append(missing, key)
+		}
+	}
+	for key := range got {
+		if !want[key] {
+			extra = append(extra, key)
+		}
+	}
+	sort.Strings(missing)
+	sort.Strings(extra)
+	return missing, extra
+}
+
+// TestOperatorViewFixturesCoverEveryOperatorCommand is the inheritor of
+// the retired parity gate's one good property (06-CONTEXT.md D-09): it
+// gates the merged view-fixture set against operatorCommands() in BOTH
+// directions, computing its expectation from the live cobra tree — never
+// a string literal list. Deriving the expectation from the tree, rather
+// than transcribing it, is what caught backfill-short-ids's unregistered
+// preview variant that a hand-written variant list had missed once
+// (06-CONTEXT.md <specifics>). Every fixture entry's document slice must
+// also be non-empty, so a key registered with zero documents cannot
+// satisfy this gate vacuously.
+func TestOperatorViewFixturesCoverEveryOperatorCommand(t *testing.T) {
+	want := commandKeySet(operatorCommands())
+
+	fixtures := operatorViewFixtures()
+	got := make(map[string]bool, len(fixtures))
+	for key := range fixtures {
+		got[key] = true
+	}
+
+	missing, extra := setDiff(want, got)
+	for _, key := range missing {
+		t.Errorf("operator command %q has no entry in operatorViewFixtures()", key)
+	}
+	for _, key := range extra {
+		t.Errorf("operatorViewFixtures() has an entry keyed %q, which is not in operatorCommands()", key)
+	}
+
+	for key, docs := range fixtures {
+		if len(docs) == 0 {
+			t.Errorf("operatorViewFixtures()[%q] is empty — a key registered with zero documents cannot satisfy this gate vacuously", key)
+		}
+	}
+}
+
+// TestSetDiffDetectsDivergence is the committed non-vacuity proof for
+// TestOperatorViewFixturesCoverEveryOperatorCommand's enumeration gate.
+// The red-evidence patch harness is deferred for this phase
+// (06-CONTEXT.md <deferred>) and unavailable, so this table-driven test
+// over setDiff alone — deliberately independent of operatorCommands() and
+// operatorViewFixtures() — is the committed proof the gate can actually
+// fail: a key in want only, a key in got only, disjoint sets, identical
+// sets, and empty inputs each produce the expected missing/extra pair.
+func TestSetDiffDetectsDivergence(t *testing.T) {
+	cases := []struct {
+		name                   string
+		want, got              map[string]bool
+		wantMissing, wantExtra []string
+	}{
+		{
+			name:        "key in want only",
+			want:        map[string]bool{"a": true},
+			got:         map[string]bool{},
+			wantMissing: []string{"a"},
+		},
+		{
+			name:      "key in got only",
+			want:      map[string]bool{},
+			got:       map[string]bool{"a": true},
+			wantExtra: []string{"a"},
+		},
+		{
+			name:        "disjoint sets",
+			want:        map[string]bool{"a": true},
+			got:         map[string]bool{"b": true},
+			wantMissing: []string{"a"},
+			wantExtra:   []string{"b"},
+		},
+		{
+			name: "identical sets",
+			want: map[string]bool{"a": true, "b": true},
+			got:  map[string]bool{"a": true, "b": true},
+		},
+		{
+			name: "empty inputs",
+			want: map[string]bool{},
+			got:  map[string]bool{},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			missing, extra := setDiff(tc.want, tc.got)
+			if !slices.Equal(missing, tc.wantMissing) {
+				t.Errorf("setDiff(%v, %v) missing = %v, want %v", tc.want, tc.got, missing, tc.wantMissing)
+			}
+			if !slices.Equal(extra, tc.wantExtra) {
+				t.Errorf("setDiff(%v, %v) extra = %v, want %v", tc.want, tc.got, extra, tc.wantExtra)
+			}
+		})
+	}
+}
+
+// TestOperatorViewIdentityAcrossEveryOperatorCommand runs the shared
+// identity gate (assertViewIdentity, operator_view_test.go) over the
+// COMPLETE merged fixture set, one subtest per operator command (never per
+// document — a command with several document variants is asserted inside
+// a single subtest so `go test -v` prints exactly one PASS line per
+// command), proving the phase converted the complete set rather than only
+// each group in isolation.
+func TestOperatorViewIdentityAcrossEveryOperatorCommand(t *testing.T) {
+	fixtures := operatorViewFixtures()
+	names := make([]string, 0, len(fixtures))
+	for name := range fixtures {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			for i, doc := range fixtures[name] {
+				assertViewIdentity(t, fmt.Sprintf("%s/%d", name, i), doc)
+			}
+		})
+	}
+}
+
+// operatorDocsAreHandDeclaredMarker exists only so
+// TestOperatorDocsAreHandDeclared can derive this package's own import
+// path via reflection, rather than hardcoding a string literal that would
+// silently go stale on a module rename.
+type operatorDocsAreHandDeclaredMarker struct{}
+
+// TestOperatorDocsAreHandDeclared is the tier-wide statement of the
+// property archiveReportDoc's doc comment asserts per report
+// (spine_review_archive.go: "so this exclusion is enforced by the type
+// itself"): every operator document is a struct hand-declared in THIS
+// package, never an embedded internal/store result type, so record
+// content is unreachable by construction (threat T-06-01). Under D-01
+// that bound now covers the text lane as well as the json lane, since
+// both derive from the same value.
+//
+// A store.VersionBucket used as an ELEMENT type inside
+// migrateStatusReportDoc's Buckets/Future slice fields is permitted and
+// does NOT trip this test: it is a two-scalar value type carrying no
+// record content, and it is a field's element type rather than an
+// embedded struct that would promote unknown fields into the document.
+func TestOperatorDocsAreHandDeclared(t *testing.T) {
+	thisPkgPath := reflect.TypeOf(operatorDocsAreHandDeclaredMarker{}).PkgPath()
+	const storePkgPrefix = "github.com/seanb4t/engram/internal/store"
+
+	fixtures := operatorViewFixtures()
+	names := make([]string, 0, len(fixtures))
+	for name := range fixtures {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			for i, doc := range fixtures[name] {
+				typ := reflect.TypeOf(doc)
+				if typ.Kind() == reflect.Pointer {
+					typ = typ.Elem()
 				}
-				if !containsString(values, fact) {
-					t.Errorf("row %q: json document %v does not carry fact %q that the text sentence %q states", row.name, values, fact, row.text)
+				if typ.Kind() != reflect.Struct {
+					t.Fatalf("%s/%d: doc has kind %s, want a struct", name, i, typ.Kind())
+				}
+				if got := typ.PkgPath(); got != thisPkgPath {
+					t.Errorf("%s/%d: doc type %s is declared in package %q, want %q (every operator document must be hand-declared in this package)", name, i, typ.Name(), got, thisPkgPath)
+				}
+				for f := 0; f < typ.NumField(); f++ {
+					field := typ.Field(f)
+					if !field.Anonymous {
+						continue
+					}
+					fieldType := field.Type
+					if fieldType.Kind() == reflect.Pointer {
+						fieldType = fieldType.Elem()
+					}
+					if strings.HasPrefix(fieldType.PkgPath(), storePkgPrefix) {
+						t.Errorf("%s/%d: doc type %s embeds anonymous field %s (package %q), an internal/store type — record content becomes reachable through field promotion", name, i, typ.Name(), fieldType.Name(), fieldType.PkgPath())
+					}
 				}
 			}
 		})

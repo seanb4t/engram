@@ -139,9 +139,12 @@ func migrateReportDoc(res store.MigrateResult, target migrate.Version, dryRun bo
 // because --output json, not this sentence, is the contract (D-03).
 //
 // target: see migrateReportDoc's identical justification immediately
-// above — kept general on purpose, not an unused parameter.
-//
-//nolint:unparam // target kept general on purpose; see doc comment above
+// above — kept general on purpose, not an unused parameter. Plan 06-07
+// retired the test call site that once pushed unparam's evidence count
+// high enough to flag this function too (the retired parity gate's
+// "backfill-short-ids" row), so the two production call sites alone no
+// longer trip the linter's threshold and the nolint directive below is
+// gone — the parameter's justification is unchanged.
 func migrateSummary(res store.MigrateResult, target migrate.Version, dryRun bool, wouldMigrate uint64) string {
 	if dryRun {
 		return fmt.Sprintf("preview: %d record(s) would migrate to v%d; re-run with --apply to migrate",
