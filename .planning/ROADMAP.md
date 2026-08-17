@@ -393,7 +393,7 @@ Plans:
   2. Every existing operator command's `--output json|text` behavior is unchanged (regression-free) after the refactor.
   3. Adding a new field to an operator report requires touching exactly one field-set declaration to appear correctly in both json and text output — there is no second call site to remember, which is what makes the six new record-state fields (Phase 5/7) safe to add afterward.
 
-**Plans:** 1/7 plans executed
+**Plans:** 7/7 plans executed
 
 Plans:
 **Wave 1**
@@ -402,15 +402,15 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 06-02-PLAN.md — D-03 decision checkpoint, then the `--output` flag help and docs-site CLI guide declaring `text` a view and `json` the contract (wave 2)
-- [ ] 06-03-PLAN.md — Flat group: `reindex`, `summarize-missing`, `migrate-set-owner`, `migrate-remap-owner` converted; byte-stability claims removed from their doc comments (wave 2)
-- [ ] 06-04-PLAN.md — Migrate family: `migrate`, `migrate revert`, the `backfill-short-ids` alias, and `migrate status` given a hand-declared CLI document replacing the `store` passthrough (wave 2)
-- [ ] 06-05-PLAN.md — Two-level group: `spine-review archive`/`restore` and `spine-review purge`; the re-run command becomes a document key (wave 2)
-- [ ] 06-06-PLAN.md — Remaining spine-review leaves: `scan` (gains the `scope` key its sentence always stated), `consolidate`, `verify` (wave 2)
+- [x] 06-02-PLAN.md — D-03 decision checkpoint, then the `--output` flag help and docs-site CLI guide declaring `text` a view and `json` the contract (wave 2)
+- [x] 06-03-PLAN.md — Flat group: `reindex`, `summarize-missing`, `migrate-set-owner`, `migrate-remap-owner` converted; byte-stability claims removed from their doc comments (wave 2)
+- [x] 06-04-PLAN.md — Migrate family: `migrate`, `migrate revert`, the `backfill-short-ids` alias, and `migrate status` given a hand-declared CLI document replacing the `store` passthrough (wave 2)
+- [x] 06-05-PLAN.md — Two-level group: `spine-review archive`/`restore` and `spine-review purge`; the re-run command becomes a document key (wave 2)
+- [x] 06-06-PLAN.md — Remaining spine-review leaves: `scan` (gains the `scope` key its sentence always stated), `consolidate`, `verify` (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 06-07-PLAN.md — Retire the hand-built parity gate, merge the five fixture groups under a cobra-tree-derived bidirectional coverage gate, and demonstrate Success Criterion 3 live (wave 3)
+- [x] 06-07-PLAN.md — Retire the hand-built parity gate, merge the five fixture groups under a cobra-tree-derived bidirectional coverage gate, and demonstrate Success Criterion 3 live (wave 3)
 
 ### Phase 7: Console & CLI State Surfacing
 
