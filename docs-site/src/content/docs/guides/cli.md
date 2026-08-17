@@ -115,7 +115,7 @@ Every operator command — `reindex`, `prune-expired`, `summarize-missing`,
 | Value | Behavior |
 |-------|----------|
 | `json` | Write exactly one JSON document to stdout. |
-| `text` | Write the pre-existing human-readable summary line, unchanged. |
+| `text` | Render a one-line prose headline followed by one aligned line per field of the same document `json` emits. This is a human-readable view, not a stable interface, and is not intended to be parsed. |
 | *(absent)* | Detect from the command's own configured output writer: a human
 terminal renders `text`; anything else (a pipe, a file redirect) renders `json`. |
 | anything else | Rejected as a usage error (exit `2`), naming `--output` and its
@@ -125,10 +125,14 @@ As with the client tier, the JSON document goes to stdout and any warning or
 diagnostic goes to stderr, so `engram <operator-command> --output json | jq .`
 is always safe. A sweep that affected zero records still emits zero-valued
 counters and `[]` for any list-shaped field — never `null` — and exits `0`.
-Every fact an operator command's `text` line states also appears as a field
-in its `json` document; a preview is always distinguished from an applied
-mutation by an explicit boolean field plus separate count fields, never by
-prose alone.
+Both lanes derive from **one serialization**: the `json` document is produced
+by `encoding/json` over the command's own report struct, and `text` is a
+rendered view of that same value — never a second, independently maintained
+format. The `json` document cannot carry a fact `text` omits, and `text`
+cannot show a field `json` withheld, because both are read from the same
+value. The `json` lane is the contract; the `text` lane may change shape in
+any release. A preview is always distinguished from an applied mutation by an
+explicit boolean field plus separate count fields, never by prose alone.
 
 ### Destructive commands
 
