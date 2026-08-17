@@ -94,6 +94,23 @@ func archiveDoc(results []store.ArchiveResult, verb string) archiveReportDoc {
 // as far as it got, shorter than ids, the signal the caller uses to
 // distinguish "completed with a not-found among the results" from "aborted
 // partway through".
+//
+// This function itself still returns those already-collected partial
+// results on abort (never discards them) -- the discard happens one layer
+// up, in renderArchiveResults, which reads len(results) < len(ids) as "no
+// complete report to render" and skips rendering entirely (IN-01,
+// 06-REVIEW.md). That is a deliberate asymmetry with every other
+// partial-progress path this phase added (migrate revert's CR-06, purge's
+// spared/appeared accounting), which all render whatever partial progress
+// they have rather than discard it: a multi-id archive/restore batch's
+// completeness bar for rendering ANYTHING was judged higher than a single
+// scalar operation's, because a partial archive/restore report has no
+// natural "in-progress" framing the way a manifest-driven purge/migrate
+// does. If that judgment turns out wrong in practice, the fix is in
+// renderArchiveResults: render the partial results slice (with an
+// Applied-equivalent field honestly reflecting "processing was
+// interrupted") before returning the classified error, mirroring
+// revertApplyRun's render-then-return-error pattern.
 func spineArchiveOrRestore(ctx context.Context, st *store.Store, ids []string, fn func(context.Context, string) (store.ArchiveResult, error)) (results []store.ArchiveResult, err error) {
 	results = make([]store.ArchiveResult, 0, len(ids))
 	for _, raw := range ids {
@@ -134,7 +151,11 @@ func spineArchiveOrRestore(ctx context.Context, st *store.Store, ids []string, f
 func renderArchiveResults(cmd *cobra.Command, format outputFormat, verb string, ids []string, results []store.ArchiveResult, procErr error) error {
 	if procErr != nil && len(results) < len(ids) {
 		// Aborted partway through on a genuine (non-not-found) failure --
-		// no complete report to render.
+		// no complete report to render. This discards spineArchiveOrRestore's
+		// already-collected results for the ids that DID succeed before the
+		// abort; see that function's doc comment (IN-01, 06-REVIEW.md) for
+		// why this differs from every other partial-progress path in this
+		// phase, and what changing it would look like.
 		return classifyOperatorErr(procErr)
 	}
 	if err := renderOperator(cmd, format, archiveSummary(results, verb), archiveDoc(results, verb)); err != nil {
