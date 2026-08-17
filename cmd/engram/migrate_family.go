@@ -131,9 +131,12 @@ func migrateReportDoc(res store.MigrateResult, target migrate.Version, dryRun bo
 	}
 }
 
-// migrateSummary renders the operator-facing one-line result of a migrate
-// sweep, for both the preview and applied shapes — pure (no I/O), mirroring
+// migrateSummary is the headline producer (D-04) for a migrate sweep,
+// covering both the preview and applied shapes — pure (no I/O), mirroring
 // pruneSummary/migrateRemapSummary's discipline (prune.go:122, migrate.go:204).
+// Its one line is additive prose over the complete migrateOutputDoc field
+// table the view renders beneath it; its wording may change in any release
+// because --output json, not this sentence, is the contract (D-03).
 //
 // target: see migrateReportDoc's identical justification immediately
 // above — kept general on purpose, not an unused parameter.
@@ -153,7 +156,11 @@ func migrateSummary(res store.MigrateResult, target migrate.Version, dryRun bool
 // backfillShortIDsCmd's alias both call this exact function, one-line
 // adapters over it, so "thin identical alias" is a structural fact rather
 // than a claim. No writes on this path: Store.Migrate's DryRun mode performs
-// a full-backlog projection only.
+// a full-backlog projection only. backfill-short-ids's PREVIEW variant
+// (cmd/engram/backfill.go:36, backfillPreview) reaches the operator view
+// through this exact function — the first pass's hand-registered variant
+// list missed exactly that variant, and it is found only by deriving the
+// universe from source (06-CONTEXT.md <specifics>).
 func migrateSweepPreviewRun(ctx context.Context, cmd *cobra.Command, outputFlag string, timeout time.Duration) error {
 	format, err := operatorOutputFormat(cmd, outputFlag)
 	if err != nil {
@@ -279,27 +286,62 @@ var migrateStatusCmd = &cobra.Command{
 	},
 }
 
-// statusReportDoc normalizes res into the JSON-mode shape migrate status
-// renders: store.MigrateStatusResult's own json tags (buckets/absent/
-// future/future_total/total) are already the exact contract this surface
-// needs, so no separate CLI-side type exists — this function's only job is
-// the REVIEWS.md C5-L8 normalization: Buckets/Future must marshal as `[]`,
-// never `null`, and a zero-valued MigrateStatusResult leaves both nil.
-func statusReportDoc(res store.MigrateStatusResult) store.MigrateStatusResult {
-	if res.Buckets == nil {
-		res.Buckets = []store.VersionBucket{}
-	}
-	if res.Future == nil {
-		res.Future = []store.VersionBucket{}
-	}
-	return res
+// migrateStatusReportDoc is the hand-declared CLI-side shape `migrate
+// status` renders through both lanes — never an embedded
+// store.MigrateStatusResult, so this exclusion of anything beyond ids,
+// counts, and version numbers is enforced by the type itself rather than by
+// discipline (mirrors spineScanReportDoc's doc comment, spine_review_scan.go).
+// Under D-01 this struct is the SOLE serialization for this report, which is
+// what makes that property MORE load-bearing than it was before this phase:
+// a future field added to store.MigrateStatusResult is no longer disclosed
+// by default in either lane. Its first five fields reproduce
+// store.MigrateStatusResult's own keys, tags, and order exactly (buckets,
+// absent, future, future_total, total) so the json lane is unchanged for
+// every pre-existing key; CurrentVersion/current_version is added per
+// 06-01-PLAN.md §Conversion Rules R2, because statusSummary states this
+// binary's own migrate.CurrentVersion and no pre-existing key carried it.
+type migrateStatusReportDoc struct {
+	Buckets        []store.VersionBucket `json:"buckets"`
+	Absent         uint64                `json:"absent"`
+	Future         []store.VersionBucket `json:"future"`
+	FutureTotal    uint64                `json:"future_total"`
+	Total          uint64                `json:"total"`
+	CurrentVersion int                   `json:"current_version"`
 }
 
-// statusSummary renders the operator-facing text report of a migrate status
-// histogram — pure (no I/O). It names the distinct FUTURE versions when any
-// exist (REVIEWS.md M4), never collapsing them into FutureTotal alone, so an
-// operator can distinguish one-version-ahead drift from a wildly newer
-// binary.
+// statusReportDoc normalizes res into migrateStatusReportDoc, the JSON-mode
+// shape migrate status renders. Buckets/Future must marshal as `[]`, never
+// `null` (REVIEWS.md C5-L8): a zero-valued MigrateStatusResult leaves both
+// nil, so this function normalizes them to non-nil empty slices before
+// populating the doc.
+func statusReportDoc(res store.MigrateStatusResult) migrateStatusReportDoc {
+	buckets := res.Buckets
+	if buckets == nil {
+		buckets = []store.VersionBucket{}
+	}
+	future := res.Future
+	if future == nil {
+		future = []store.VersionBucket{}
+	}
+	return migrateStatusReportDoc{
+		Buckets:        buckets,
+		Absent:         res.Absent,
+		Future:         future,
+		FutureTotal:    res.FutureTotal,
+		Total:          res.Total,
+		CurrentVersion: int(migrate.CurrentVersion),
+	}
+}
+
+// statusSummary is the headline producer (D-04) for a migrate status
+// histogram — pure (no I/O). Its line is additive prose over the complete
+// migrateStatusReportDoc field table the view renders beneath it; its
+// wording may change in any release because --output json, not this
+// sentence, is the contract (D-03). The per-future-version enumeration that
+// used to live in this sentence's own loop has moved into the field table,
+// which is where D-04 says detail belongs — this sentence now states only
+// that some records are at a version newer than this binary's target,
+// without enumerating them.
 func statusSummary(res store.MigrateStatusResult) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "migrate status: %d record(s) total, %d absent (never migrated)", res.Total, res.Absent)
@@ -307,10 +349,7 @@ func statusSummary(res store.MigrateStatusResult) string {
 		fmt.Fprintf(&b, ", %d at v%d", bucket.Count, bucket.Version)
 	}
 	if len(res.Future) > 0 {
-		fmt.Fprintf(&b, "; %d record(s) at a version newer than this binary's current target (v%d):", res.FutureTotal, int(migrate.CurrentVersion))
-		for _, bucket := range res.Future {
-			fmt.Fprintf(&b, " v%d=%d", bucket.Version, bucket.Count)
-		}
+		fmt.Fprintf(&b, "; %d record(s) at a version newer than this binary's current target (v%d)", res.FutureTotal, int(migrate.CurrentVersion))
 	}
 	return b.String()
 }
@@ -377,12 +416,16 @@ func revertReportDoc(plan store.RevertPlan, applied bool, res store.RevertResult
 	return doc
 }
 
-// revertSummary renders the operator-facing text report of a migrate revert
-// run, for all three shapes (refusal, preview, applied) — pure (no I/O). On
-// a refusal it returns the EXACT store.RevertRefusalError(plan).Error()
-// text, never a re-typed transcription (REVIEWS.md C5-M4) — the same
-// string revertReportDoc's Refusal field carries, so text and json cannot
-// drift apart.
+// revertSummary is the headline producer (D-04) for a migrate revert run,
+// covering all three shapes (refusal, preview, applied) — pure (no I/O).
+// Each line is additive prose over the complete revertOutputDoc field table
+// the view renders beneath it; its wording may change in any release
+// because --output json, not this sentence, is the contract (D-03). On a
+// refusal it returns the EXACT store.RevertRefusalError(plan).Error() text,
+// never a re-typed transcription (REVIEWS.md C5-M4) — the same string
+// revertReportDoc's Refusal field carries, so text and json cannot drift
+// apart. That reasoning is unaffected by the D-01 conversion: the two
+// lanes now share the mechanism as well as the value.
 func revertSummary(plan store.RevertPlan, applied bool, res store.RevertResult) string {
 	if !plan.Reversible {
 		refusal := store.RevertRefusalError(plan).Error()

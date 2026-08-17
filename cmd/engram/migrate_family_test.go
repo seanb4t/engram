@@ -418,6 +418,25 @@ func TestMigrateFamilyStatusReportDocNeverMarshalsNull(t *testing.T) {
 	}
 }
 
+// TestMigrateFamilyStatusReportDocKeyOrder pins the marshaled key order for
+// a populated migrateStatusReportDoc (Task 2's acceptance criterion): the
+// five pre-existing keys stay in their pre-existing order, and
+// current_version — the R2 gap-closure addition — lands last.
+func TestMigrateFamilyStatusReportDocKeyOrder(t *testing.T) {
+	doc := statusReportDoc(store.MigrateStatusResult{
+		Buckets: []store.VersionBucket{{Version: 1, Count: 40}}, Absent: 3,
+		Future: []store.VersionBucket{{Version: 2, Count: 1}}, FutureTotal: 1, Total: 44,
+	})
+	keys, err := jsonTopLevelKeys(doc)
+	if err != nil {
+		t.Fatalf("jsonTopLevelKeys: %v", err)
+	}
+	want := []string{"buckets", "absent", "future", "future_total", "total", "current_version"}
+	for _, e := range orderedKeyDiff(want, keys) {
+		t.Error(e)
+	}
+}
+
 // TestMigrateFamilyRevertRefusals proves both refusal classes (D-13/D-14):
 // an irreversible-step range and an unsupported-version range each render
 // their own field=/hint= envelope, Revert is called ZERO times on EITHER
