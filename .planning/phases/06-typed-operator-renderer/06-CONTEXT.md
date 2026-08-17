@@ -1,176 +1,165 @@
 # Phase 6: Typed Operator Renderer - Context
 
-**Gathered:** 2026-08-16
+**Gathered:** 2026-08-16 (re-discussed — supersedes the 2026-08-16 first pass)
 **Status:** Ready for planning
+
+> **This document replaces an earlier CONTEXT.md for the same phase.** The first pass locked a
+> bespoke `{key}` / `[...]` template language as the mechanism (old D-01 through D-07). Four
+> cross-AI review cycles surfaced that the template was the phase's largest new artifact and the
+> source of most of its risk. Sean re-scoped the mechanism on 2026-08-16; the phase BOUNDARY is
+> unchanged. Durable record: `6z129d6v3x`. The nine PLAN.md files on disk build the superseded
+> design and must be replanned.
 
 <domain>
 ## Phase Boundary
 
-This phase replaces `renderOperator(cmd, format, text string, doc any)` — which takes the
-one-line text sentence and the JSON document as two *unrelated* arguments — with a single
-ordered field-set declaration per operator report, from which BOTH `--output text` and
-`--output json` are derived.
+This phase replaces `renderOperator(cmd, format, text string, doc any)` — which takes the one-line
+text sentence and the JSON document as two *unrelated* arguments — so that both `--output text` and
+`--output json` derive from a single value.
 
-The deliverable is the mechanism plus the migration of every operator report to it. Today
-that is 15 operator commands, each carrying a bespoke `xxxSummary(...) string` (an
-`fmt.Sprintf` prose sentence) and an independent `xxxDoc` struct, coupled only by
-convention.
+The mechanism is **one serialization, plus a view**: the hand-declared report struct with its `json`
+tags is the only serialization, and the text lane is a rendered view produced by walking that same
+struct. There is no second format, no template language, and therefore nothing to keep in sync.
 
-**In scope:** the field-set type and renderer; conversion of all 15 operator reports;
-retirement of the superseded hand-built parity row table.
+The deliverable is the mechanism plus the migration of every operator report to it. Today that is 15
+operator commands, each carrying a bespoke `xxxSummary(...) string` (an `fmt.Sprintf` prose sentence)
+and an independent `xxxDoc` struct, coupled only by convention.
 
-**Out of scope:** the six new record-state fields themselves (2026-08-12.01 Phase 5/7 own
-those). This phase exists so that adding them later touches exactly one declaration per
-report. No new operator command, no change to `--output` flag registration
-(`addOperatorOutputFlag`), no change to the client tier's renderer.
+**In scope:** the view renderer; conversion of all 15 operator reports; retirement of the superseded
+hand-built parity row table.
+
+**Out of scope:** the six new record-state fields themselves (2026-08-12.01 Phase 5/7 own those).
+This phase exists so that adding them later touches exactly one struct per report. No new operator
+command, no change to `--output` flag registration (`addOperatorOutputFlag`), no change to the client
+tier's renderer.
 
 </domain>
 
 <decisions>
 ## Implementation Decisions
 
-### Declaration Shape
+### Serialization Model
 
-- **D-01:** Each operator report is declared as an **ordered `[]Field` value** carrying a
-  text template plus the fields, rather than reflecting over the existing `xxxDoc` struct
-  tags or wrapping them in a generic `Report[T]`. Both lanes walk the same ordered slice:
-  text renders the template, json is built from the fields in declaration order. No
-  reflection, no template engine added to a CLI that has neither today. Accepted cost:
-  each of the 15 reports is rewritten as a builder returning a field set, and the
-  standalone `xxxDoc` structs lose their role as the JSON shape declaration.
+- **D-01:** There is **one serialization: JSON**, produced by `encoding/json` over the report's
+  hand-declared struct. The text lane is a **rendered view** of that same struct — not a second
+  format, not parseable, with no stability contract beyond "it shows every field".
 
-  Illustrative shape (from the discussion, not a locked API):
-
-  ```go
-  func pruneReport(deleted uint64, before time.Time) FieldSet {
-      return FieldSet{
-          Text: "pruned ~{deleted} expired record(s) (not_after < {before}; {best_effort})",
-          Fields: []Field{
-              {Key: "preview", Val: false},
-              {Key: "deleted", Val: deleted},
-              {Key: "before", Val: before},
-              {Key: "best_effort", Val: true},
-          },
-      }
-  }
-  ```
-
-  — **Reversibility:** costly — undo touches all 15 report builders and every call site of
-  `renderOperator`, but nothing outside `cmd/engram` and no published wire contract.
+  This supersedes the first pass's D-01 (ordered `[]Field` + text template), D-03 (every field
+  referenced by a `{key}` placeholder) and D-04 (byte-identical sentences) together. YAML and TOON
+  were both considered and rejected: each adds a dependency against the project's zero-new-Go-deps
+  record, and — the deciding reason — each *looks* parseable, so someone parses it and the project
+  owes escaping and stability semantics it never designed. Two machine-readable surfaces to keep in
+  sync is the original text/json divergence defect wearing a hat.
+  — **Reversibility:** costly — undo touches all 15 report renderers and every `renderOperator` call
+  site, but nothing outside `cmd/engram` and no published wire contract.
 
 ### Enforcement Locus
 
-- **D-02:** The widening guarantee is enforced at **compile time**: `renderOperator` stops
-  accepting a free-form `doc any`. The only way to call it is with a field set, so a JSON
-  document carrying more state than its sentence states becomes *unconstructible* rather
-  than merely detectable. This is the literal reading of the phase goal's "enforced by
-  construction, not merely detected by test".
+- **D-02:** Identity holds **by construction, trivially**: nothing renders text except a walk over
+  the same value `encoding/json` marshals. There is no second call site, therefore no coverage rule
+  to enforce, no `validateFieldSet`, no placeholder parser, and no construction-time gate.
 
-  A consequence to plan for deliberately: `doc any` is what lets the current 15 call sites
-  pass heterogeneous structs. Removing it means every call site converts in the same
-  change as the signature, or behind a temporary second entry point — the planner should
-  pick one and say which; a long-lived two-signature period would reintroduce exactly the
-  uncoupled path this phase deletes.
-  — **Reversibility:** costly — the signature is internal to `cmd/engram` (package `main`),
-  so undo is mechanical, but it is a 15-call-site change in both directions.
+  A direct consequence, and a reversal of the first pass's D-02: **`doc any` becomes safe and stays.**
+  The old design spent significant machinery making `doc any` impossible, because a free-form document
+  could disagree with a free-form sentence. With one value feeding both lanes there is nothing for it
+  to disagree with. `renderOperator` keeps a single document argument.
+  — **Reversibility:** reversible — the signature is internal to `cmd/engram` (package `main`).
 
-### Coverage Rule (what makes the identity claim non-vacuous)
+### Text Lane Status
 
-- **D-03:** **Every field must be referenced by a `{key}` placeholder in the text
-  template.** Prose coverage does not count, and there is no `Silent` escape hatch. A field
-  present in the field set but absent from the template is a construction failure.
+- **D-03:** `--output text` is **explicitly not a stable interface**; `--output json` is the contract.
+  This must be stated in the `--output` flag help and in the docs-site operator reference — it is what
+  makes the text lane safe to evolve, and it is the mechanism by which the first pass's D-04
+  (byte-identity) dissolves rather than being traded away. Sentences may change freely, forever.
 
-  This is the decision that keeps the guarantee real. The rejected alternative — "a
-  placeholder OR a declared prose substring" — would have let boolean fields like
-  `pruneOutputDoc.BestEffort` and `.Preview` stay covered by the words "best-effort count"
-  alone, which is prose asserting a claim rather than a structure enforcing it. The
-  `Silent` variant was rejected outright because every future field can take the escape
-  hatch, which reopens the widening hole this phase exists to close.
+  Consistent with the correct-by-reading principle (`4aksmneehh`): the interface states its own
+  stability guarantee rather than leaving a caller to discover it by breakage.
+  — **Reversibility:** one-way — once published as unstable and evolved, prior text output cannot be
+  restored as a contract; any consumer that depended on it has already been told not to.
 
-  Direct consequence the planner must handle: fields whose current text presence is prose
-  must become **value renderers that emit the same bytes**. `best_effort` renders as the
-  literal `best-effort count` when true and as the empty string when false — the sentence
-  is byte-identical, but the field is now structurally referenced.
-  — **Reversibility:** reversible — loosening the rule later is additive; tightening it
-  after the fact would not be, which is why it is locked strict now.
+### The Headline
 
-### Sentence Fidelity
+- **D-04:** Each report keeps **one hand-written prose headline line** above the field table, declared
+  non-exhaustive (e.g. `spine purge applied: 4 deleted, 1 spared, 0 appeared`). It preserves the
+  at-a-glance summary and the explanatory nuance that field names cannot carry — `1 spared (ineligible
+  since preview)` teaches something `spared_count 1` does not.
 
-- **D-04:** All 15 existing text sentences are preserved **byte-identical**, character for
-  character. This is the strong reading of Success Criterion 2's "regression-free", and it
-  keeps the existing pinned-sentence tests untouched so they act as an *independent*
-  regression gate on this refactor rather than being rewritten alongside it. No named
-  exception list — if a sentence cannot be reproduced, that is a finding about the
-  mechanism, not a licence to normalize the prose.
+  The headline is **additive prose over a complete table**: because the table below it renders every
+  field unconditionally, the headline can add emphasis but can never hide a field. That is the
+  property that makes a hand-written, ungated surface acceptable here — it is bounded to one line and
+  is structurally incapable of causing the widening this phase exists to prevent.
+  — **Reversibility:** reversible — dropping headlines later is a deletion.
 
-  Note the sentences are genuinely bespoke and some are multi-line (`archiveSummary`
-  emits a header line plus one line per row, joined by `\n` and right-trimmed). The field
-  set must be expressive enough for that; it is not a `key: value` renderer.
-  — **Reversibility:** reversible — the constraint is a choice about this refactor, not a
-  structure that outlives it.
+### Field Labels
 
-### Nesting
+- **D-05:** Top-level fields render with a **humanized label** (`older_than` → `Older than`). Nested
+  row fields render with **raw keys inline** (`id=01H8… outcome=ok`).
 
-- **D-05:** A `Field`'s value **may itself be a `FieldSet` or `[]FieldSet`**, recursing the
-  same coverage rule (D-03) one level down. The parent sentence covers the list through an
-  aggregate field (a count); each element's own field set governs its own JSON object and
-  its own rendered line.
+  This asymmetry is **deliberate, not an oversight** — top-level output is read, dense row output is
+  scanned — and is recorded here explicitly so a later reader does not "fix" it into consistency.
 
-  This is not hypothetical — four of the 15 reports are already two-level and already
-  render per-row text today: `archiveReportDoc` (`[]archiveResultDoc`, rows rendered as
-  `  requested=… id=… outcome=…`), the purge/restore pair, `consolidateReportDoc`
-  (`[]consolidatePairDoc`), and `verifyReportDoc` (`[]verifyEntryDoc`). Flattening to
-  aggregates-only was rejected because it changes the JSON shape of those four commands,
-  breaking D-04. Treating the list as one opaque field was rejected because the guarantee
-  would stop at the outer object and element fields could grow freely.
-  — **Reversibility:** costly — the recursion shape is baked into the four two-level
-  reports.
+- **D-06:** The identity gate **MUST NOT derive its expected labels by calling the same humanizer the
+  renderer calls.** Both sides would then move together and a humanizer bug would be invisible — the
+  precise shape of `01mdq5qq9j`, where a partition identity was invariant under the very mutation it
+  appeared to guard.
 
-### Conditional Presence
+  Decompose into two independent checks: (a) the identity gate asserts **one rendered line per JSON
+  key** — correspondence and set equality, not label text; (b) a separate table-driven unit test pins
+  the humanizer on fixed input→output pairs.
+  — **Reversibility:** reversible — but getting it wrong reintroduces a vacuous gate, so it is locked.
 
-- **D-06:** A conditionally-present field carries **one explicit `Present` predicate that
-  both lanes read**. When absent, the field is omitted from the JSON object AND its
-  placeholder together with its surrounding literal segment drops from the sentence — one
-  decision, with no way for the two lanes to disagree.
+### Nested Rendering
 
-  The live case is `archiveResultDoc.ID`: `json:"id,omitempty"` on the JSON side and a
-  hand-written `if r.ID == ""` branch dropping `id=` on the text side. Both lanes already
-  agree, but they agree via two independent conditionals — precisely the divergence this
-  phase removes, one level down. Deriving presence from an optional template segment was
-  rejected as putting the decision in the sentence rather than beside the value; always
-  emitting both was rejected because it changes the JSON shape and the text line for
-  failed-resolution rows, breaking D-04.
+- **D-07:** The four two-level reports (`archive`, `purge`, `consolidate`, `verify`) render **one line
+  per row with inline `key=value` fields**, indented under the field's label. Compact, closest to
+  today's output, and legible for a long list.
 
-  ```go
-  {Key: "id", Val: r.ID, Present: r.ID != "", Text: " id={id}"}
-  ```
-  — **Reversibility:** reversible — local to the field declaration.
+  Accepted cost: this is a second rendering rule (nested values do not render like top-level ones),
+  and very wide rows will wrap. The alternative — an indented sub-block per row — was rejected as too
+  verbose for a 50-row purge.
+  — **Reversibility:** reversible — local to the nested-value branch of the renderer.
+
+### Testing
+
+- **D-08:** Text output is pinned **structurally only — no text goldens.** The gate asserts the
+  identity property (every JSON key has a corresponding rendered line) and nothing about exact
+  formatting, so tweaking the renderer breaks nothing.
+
+  This is the honest consequence of D-03: golden files on an explicitly-unstable lane would create the
+  illusion of a contract and a maintenance surface for output nobody may depend on. JSON goldens are
+  unaffected — that lane *is* the contract and should be pinned normally.
+  — **Reversibility:** reversible — adding goldens later is additive.
 
 ### Fate of the Existing Gate
 
-- **D-07:** `TestOperatorOutputParity` and its 15 hand-built `operatorParityRows()` are
-  **retired**, not kept as a backstop and not rewritten as a derived both-ways gate. If
-  field-set identity holds by construction (D-02 + D-03), the row table is dead weight
-  that can rot — and hand-maintained evidence rotting undetected is a failure mode this
-  milestone has already hit more than once in phases 2 through 4.
+- **D-09:** `TestOperatorOutputParity` and its 15 hand-built `operatorParityRows()` are **retired** —
+  now because they are obsolete rather than because a construction guarantee supersedes them. There is
+  no longer a text/json divergence for a parity test to detect.
 
-  Two facts about the retired test that the planner should record in the SUMMARY rather
-  than lose: its `facts` strings were hand-listed, which is the "test over hand-built
-  rows" that Success Criterion 1 explicitly rejects; and it was **one-directional** — it
-  asserted every declared text fact appears in the JSON, and never that the JSON fails to
-  widen past the text. The new mechanism must cover the direction the old test never did.
+  Two facts about the retired test to record in the SUMMARY rather than lose (durable record
+  `b3wd4wwwda`): its `facts` strings were hand-listed, which is the "test over hand-built rows"
+  Success Criterion 1 explicitly rejects; and it was **one-directional** — it asserted every declared
+  text fact appears in the JSON, never that the JSON fails to widen past the text.
+
+  Its one genuinely good property is worth carrying forward: it gated its row set against
+  `operatorCommands()` in **both directions**. Whatever enumerates reports for the new identity gate
+  must keep that both-ways set equality, derived from the cobra tree and never hand-listed.
   — **Reversibility:** reversible — the deleted test is recoverable from git.
 
 ### Claude's Discretion
 
-- The concrete Go API of `FieldSet` / `Field` (names, whether `Text` is a method or a
-  struct field, how the `{key}` placeholder syntax is parsed and when parse failure is
-  detected) is left to research and planning. D-01's snippet is illustrative.
-- Whether placeholder-coverage failure surfaces at compile time, at `init()`, or at first
-  render is a mechanism choice — but it must be reachable without executing every operator
-  command against a live store.
-- Multi-line and list-joining rendering mechanics for the four two-level reports.
+- Whether the view renderer reflects over the struct or dispatches through a small interface each doc
+  implements. Reflection gives declaration-order field iteration for free and zero per-report work;
+  an interface is explicit but is 15 implementations. Research and planning decide.
+- The humanizer's exact rule (underscore→space plus leading capital is the obvious default) and how
+  acronyms and initialisms are handled.
+- Column alignment mechanics — `text/tabwriter` is the stdlib fit, but the choice is the planner's.
+- How the headline is threaded: whether the existing 15 `xxxSummary` functions are trimmed down to
+  headline producers or replaced outright.
 - Migration order and batching across plans.
+- Whether the report-enumeration gate needs an AST derivation or whether reflection over a registry
+  suffices — the earlier design needed AST only because constructor routing had to be policed, which
+  D-02 removes.
 
 </decisions>
 
@@ -181,44 +170,62 @@ report. No new operator command, no change to `--output` flag registration
 
 ### Phase scope and requirements
 
-- `.planning/ROADMAP.md` §"Phase 6: Typed Operator Renderer" — goal, the three success
-  criteria, and the dependency note (independent of other phases in this milestone; must
-  complete before Phase 7).
-- `.planning/REQUIREMENTS.md` — `REQ-operator-renderer-typed` (line 48), the sole
-  requirement mapped to this phase; upstream issue #481.
+- `.planning/ROADMAP.md` §"Phase 6: Typed Operator Renderer" — goal, the three success criteria, and
+  the dependency note (independent of other phases in this milestone; must complete before Phase 7).
+  **Check the SC1/SC3 wording** — both say "field set", which still reads correctly against a struct,
+  but confirm rather than assume.
+- `.planning/REQUIREMENTS.md` — `REQ-operator-renderer-typed` (line 48), the sole requirement mapped
+  to this phase; upstream issue #481.
+
+### Prior-pass artifacts (read for evidence, NOT for design)
+
+- `.planning/phases/06-typed-operator-renderer/06-RESEARCH.md` — the **codebase baseline is still
+  valid and valuable**: the 15-report enumeration, doc shapes, sentence variants and `file:line`
+  citations were verified directly and rate HIGH confidence. Its *proposed mechanism* (the
+  `FieldSet`/`Field` template) is superseded by D-01 — ignore that half.
+- `.planning/phases/06-typed-operator-renderer/06-PATTERNS.md` — the three-group shape classification
+  (9 flat / 4 two-level / `migrate status` alone) still holds and still drives sequencing.
+- `.planning/phases/06-typed-operator-renderer/06-REVIEWS.md` — four review cycles against the
+  superseded design. Most findings die with the template, but two survive as live facts about the
+  repo: the red-evidence harness accepts build failure as RED (`366pjeht8e`), and
+  `backfill-short-ids` has an unregistered **preview** variant at `cmd/engram/backfill.go:36`.
 
 ### The code being replaced
 
-- `cmd/engram/operator_output.go` — `renderOperator` (line 64), the two-argument rendering
-  path this phase replaces; also `addOperatorOutputFlag` and `operatorOutputFormat`, which
-  are NOT in scope and must keep working unchanged.
+- `cmd/engram/operator_output.go` — `renderOperator` (line 64), the two-argument rendering path this
+  phase replaces; also `addOperatorOutputFlag` and `operatorOutputFormat`, which are NOT in scope and
+  must keep working unchanged.
 - `cmd/engram/operator_output_test.go` — `TestOperatorOutputParity` (line 347) and
-  `operatorParityRows()` (line 138), retired by D-07; `TestRenderOperatorTextAndJSON`
-  (line 84) pins the trailing-newline contract; `TestOperatorOutputEmpty` (line 411) pins
-  the never-emit-bare-null contract; `TestOperatorOutputStream` (line 444) pins the
-  write-to-cmd's-own-writer contract. The last three are behavioral contracts the new
-  renderer must continue to satisfy.
-- `cmd/engram/cmdwalk.go` — `operatorCommands()` (line 101), the derived set that defines
-  which commands are in scope. Derive the migration work-list from this, never from a
-  hand-written list.
+  `operatorParityRows()` (line 138), retired by D-09; `TestRenderOperatorTextAndJSON` (line 84) pins
+  the trailing-newline contract; `TestOperatorOutputEmpty` (line 411) pins the never-emit-bare-null
+  contract; `TestOperatorOutputStream` (line 444) pins the write-to-cmd's-own-writer contract. The
+  last three are behavioral contracts the new renderer must continue to satisfy.
+- `cmd/engram/cmdwalk.go` — `operatorCommands()` (line 101), the derived set that defines which
+  commands are in scope. Derive the migration work-list from this, never from a hand-written list.
 
 ### The 15 reports to convert
 
-- `cmd/engram/prune.go` — `prunePreviewSummary`/`pruneSummary` + `pruneOutputDoc`; the
-  clearest case of prose-covered boolean fields (D-03).
+- `cmd/engram/prune.go` — `prunePreviewSummary`/`pruneSummary` + `pruneOutputDoc`. Note the doc
+  comment at lines 127-132: `Eligible` and `Deleted` are deliberately separate fields so the JSON
+  shape is stable across preview/applied. Preserve that.
 - `cmd/engram/spine_review_archive.go` — `archiveSummary` (line 30) + `archiveReportDoc`/
-  `archiveResultDoc`; the multi-line, nested, conditionally-present case (D-04/D-05/D-06).
-- `cmd/engram/spine_review_purge.go`, `spine_review_consolidate.go`,
-  `spine_review_verify.go`, `spine_review_scan.go` — the remaining spine-review leaves.
-- `cmd/engram/reindex.go`, `summarize.go`, `migrate.go`, `migrate_family.go` — the
-  operator commands proper.
+  `archiveResultDoc`; the multi-line nested case (D-07).
+- `cmd/engram/spine_review_purge.go` — `purgeReportDoc` (line 194) carries the most fields never
+  stated in its applied sentence; the preview sentence prints notices and a `re-run:` line that the
+  applied sentence lacks (`:285` vs `:294-309`).
+- `cmd/engram/spine_review_consolidate.go`, `spine_review_verify.go`, `spine_review_scan.go` — the
+  remaining spine-review leaves. `spineScanReportDoc` (line 82) has **no** `scope` key although
+  `spineScanSummary` renders the scan target; the view will surface that gap.
+- `cmd/engram/reindex.go`, `summarize.go`, `migrate.go`, `migrate_family.go`, `backfill.go` — the
+  operator commands proper. `migrate status` is the one report passing `store.MigrateStatusResult`
+  directly rather than a hand-declared doc struct.
 
 ### Project conventions
 
-- `CLAUDE.md` §Conventions — CLI is cobra, config via `internal/config` (koanf), SPDX
-  headers required on in-scope Go files (`task license:check`).
-- `.planning/codebase/CONVENTIONS.md`, `.planning/codebase/TESTING.md` — established
-  patterns the new mechanism should match.
+- `CLAUDE.md` §Conventions — CLI is cobra, config via `internal/config` (koanf), SPDX headers required
+  on in-scope Go files (`task license:check`).
+- `.planning/codebase/CONVENTIONS.md`, `.planning/codebase/TESTING.md` — established patterns the new
+  mechanism should match.
 
 </canonical_refs>
 
@@ -227,75 +234,91 @@ report. No new operator command, no change to `--output` flag registration
 
 ### Reusable Assets
 
-- `operatorCommands()` (`cmd/engram/cmdwalk.go:101`) already derives the operator command
-  set by walking the cobra tree with explicit exclusions. The existing parity test gates
-  its row set against this **both directions** — a new command without a row fails, and a
-  row without a command fails. That both-ways set-equality discipline is worth carrying
-  into whatever replaces it, even though the row table itself is retired.
-- The existing `xxxSummary(...) string` functions are already **pure, no-I/O** and already
-  return a sentence with no trailing newline (`renderOperator` appends it). That purity is
-  what makes converting them to field-set builders mechanical rather than invasive.
-- `pruneOutputDoc`'s existing design already separates `Eligible` from `Deleted` as
-  distinct fields rather than one mode-dependent field — the field set should preserve
-  that, not collapse it.
+- `operatorCommands()` (`cmd/engram/cmdwalk.go:101`) already derives the operator command set by
+  walking the cobra tree with explicit exclusions, and the existing parity test gates its row set
+  against it **both directions**. Carry that discipline forward (D-09).
+- The existing `xxxSummary(...) string` functions are already **pure, no-I/O** and return a sentence
+  with no trailing newline. That purity makes trimming them to headline producers mechanical.
+- `text/tabwriter` (stdlib) is the idiomatic fit for aligned column output — no dependency needed.
+- `pruneOutputDoc`'s separation of `Eligible` from `Deleted` is a deliberate stable-shape design, not
+  an accident; the conversion must not collapse it.
 
 ### Established Patterns
 
-- Every doc struct is **hand-declared**, never an embedded store result type
-  (`archiveReportDoc`'s comment states this explicitly: "so this exclusion is enforced by
-  the type itself"). The field set must preserve that property — record content must
-  remain unreachable from an operator report by construction, not by remembering to omit it.
-- JSON mode writes **exactly one document plus one trailing newline** via
-  `json.Encoder.Encode`, to `cmd.OutOrStdout()` and never the process's real `os.Stdout`.
-- `uint64` counters render as JSON numbers here (this is the CLI's own encoder, not
-  protojson) — unlike the wire tier, where Phase 5's D-01 had to choose `uint32` because
-  protojson renders `uint64` as a string.
+- Every doc struct is **hand-declared**, never an embedded store result type (`archiveReportDoc`'s
+  comment states this explicitly: "so this exclusion is enforced by the type itself"). This property
+  becomes MORE important under D-01, because the struct is now the sole serialization — record content
+  must remain unreachable by construction.
+- JSON mode writes **exactly one document plus one trailing newline** via `json.Encoder.Encode`, to
+  `cmd.OutOrStdout()` and never the process's real `os.Stdout`.
+- `uint64` counters render as JSON numbers here (the CLI's own encoder, not protojson) — unlike the
+  wire tier, where Phase 5's D-01 chose `uint32` because protojson renders `uint64` as a string.
 
 ### Integration Points
 
-- Every `renderOperator(...)` call site in `cmd/engram/*.go` — 15 reports across
-  `reindex.go`, `prune.go` (2 sites), `summarize.go`, `migrate.go` (2), `migrate_family.go`
-  (3), and the six spine-review leaves.
-- 2026-08-12.01 Phase 7 consumes the result: the six new record-state fields land in
-  operator reports afterward, and Success Criterion 3 is precisely the promise that each
-  one touches a single declaration.
+- Every `renderOperator(...)` call site in `cmd/engram/*.go` — 15 reports (19 call sites) across
+  `reindex.go`, `prune.go` (2), `summarize.go`, `migrate.go` (2), `migrate_family.go` (3),
+  `backfill.go`, and the six spine-review leaves.
+- 2026-08-12.01 Phase 7 consumes the result: the six new record-state fields land in operator reports
+  afterward, and Success Criterion 3 is precisely the promise that each one touches a single struct.
 
 </code_context>
 
 <specifics>
 ## Specific Ideas
 
-- The `best_effort` renderer is the worked example of D-03: it must emit the literal
-  string `best-effort count` when true and the empty string when false, so that
-  `pruneSummary`'s sentence comes out byte-identical while the field becomes structurally
-  referenced rather than merely described in prose.
-- `archiveResultDoc.ID` is the worked example of D-06: `Present: r.ID != ""` drops both the
-  JSON key and the ` id={id}` segment together.
-- The retired parity test's blind spot is worth naming explicitly in the phase SUMMARY: it
-  only ever checked text→json, never json→text. The new mechanism closes the direction the
-  old gate never covered.
+- The worked example of the target text shape, from the discussion:
+
+  ```
+  spine purge applied: 4 deleted, 1 spared, 0 appeared
+
+    Applied          true
+    Classes          orphan
+    Scope            repo:x
+    Category         note
+    Older than       720h
+    Eligible count   5
+    Deleted count    4
+    Deleted
+      id=01H8… outcome=ok
+      id=01H9… outcome=skipped
+  ```
+
+  Headline is hand-written prose (D-04); top-level labels humanized (D-05); nested rows inline with
+  raw keys (D-05, D-07); no colons, no quotes, no brackets — so it reads as a report and not as a
+  document anyone should parse (D-01/D-03).
+
+- `spineScanReportDoc` gaining a `scope` key is expected and welcome: the sentence already renders the
+  scan target, and under one serialization the view surfaces the omission rather than hiding it.
+
+- The `backfill-short-ids` **preview** variant (`cmd/engram/backfill.go:36`) was missed by the first
+  pass's hand-registered variant list and found only by deriving the universe from source. Whatever
+  enumerates reports must derive, not transcribe.
 
 </specifics>
 
 <deferred>
 ## Deferred Ideas
 
-- **Applying the field-set mechanism to the client tier** (`engram search`/`list`/`get`
-  renderers in `client_common.go`). Same class of problem, different tier, and not in this
-  phase's boundary. Worth considering after Phase 7 has exercised the mechanism.
+- **Applying the view mechanism to the client tier** (`engram search`/`list`/`get` renderers in
+  `client_common.go`). Same class of problem, different tier, outside this phase's boundary. Worth
+  considering after Phase 7 has exercised the mechanism.
+- **Hardening the red-evidence harness** so a patch that merely breaks compilation cannot count as RED
+  (`internal/store/redevidence_harness_test.go:303-316`; durable record `366pjeht8e`). Real and worth
+  fixing, but it is a test-infrastructure defect this phase inherits rather than causes — it was
+  in-scope only because the superseded design leaned on that harness for two patches. File it rather
+  than smuggle it in.
 
 ### Reviewed Todos (not folded)
 
 - **Research a versioned payload-migration mechanism**
-  (`2026-08-10-research-versioned-payload-migration-mechanism.md`, matched at score 0.4) —
-  not folded. The match is on weak generic keywords ("phase", "there"), and STATE.md
-  already records this todo as scoped into 2026-08-12.01 Phases 2–4 (schema versioning
-  foundation, migration registry/sweep, migration CLI), all of which are complete. It has
-  no bearing on operator output rendering.
+  (`2026-08-10-research-versioned-payload-migration-mechanism.md`, matched at score 0.4) — not folded.
+  The match is on weak generic keywords, and STATE.md already records this todo as scoped into
+  2026-08-12.01 Phases 2–4, all complete. No bearing on operator output rendering.
 
 </deferred>
 
 ---
 
 *Phase: 6-Typed Operator Renderer*
-*Context gathered: 2026-08-16*
+*Context gathered: 2026-08-16 (re-discussed)*

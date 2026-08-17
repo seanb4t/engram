@@ -3,137 +3,141 @@
 > **Audit trail only.** Do not use as input to planning, research, or execution agents.
 > Decisions are captured in CONTEXT.md — this log preserves the alternatives considered.
 
-**Date:** 2026-08-16
-**Phase:** 6-Typed Operator Renderer
-**Areas discussed:** Declaration shape, Sentence fidelity, Enforcement locus, Fate of the
-existing gate, Coverage rule, Nesting, Conditional presence
+**Date:** 2026-08-16 (re-discussion — supersedes the first pass logged in this file's prior revision)
+**Phase:** 6-typed-operator-renderer
+**Areas discussed:** Serialization format, Headline, Nested rendering, Field labels, Text-lane testing
 
 ---
 
-## Declaration Shape
+## Why this re-discussion happened
 
-| Option | Description | Selected |
-|--------|-------------|----------|
-| Ordered `[]Field` value | Each report builds an explicit ordered slice of fields (json key + value + how it renders in the sentence). `renderOperator` takes only that slice; both lanes walk it. Most explicit, no reflection, but each report gets rewritten as a builder. | ✓ |
-| Struct stays, reflect the tags | Keep the existing `xxxDoc` structs as the declaration; reflect over json tags to derive the ordered field set, with the text template required to reference every field. Smallest diff to the 15 docs. | |
-| Generic `Report[T]` + template | A generic Report type pairing the typed doc with a sentence template; the template engine proves every field is consumed. Type-safe, but adds a template layer to a CLI that has none. | |
+The first pass locked a bespoke `{key}` / `[...]` template language as the mechanism. Four cross-AI
+review cycles (commits `b723814e`, `5cbcebc9`, `68b03af3`, `1d5e54e9`) drove unresolved findings
+8 → 5 → 4 → 5 and then stalled. Reading the findings together showed they clustered around the
+template's *existence* — parser encoding, unmatched delimiters, nested spans, escape rules — rather
+than around bugs in it.
 
-**User's choice:** Ordered `[]Field` value
-**Notes:** Selected with the illustrative `pruneReport` snippet, which is recorded in
-CONTEXT.md D-01 as illustrative rather than a locked API.
-
----
-
-## Sentence Fidelity
-
-| Option | Description | Selected |
-|--------|-------------|----------|
-| Byte-identical, all 15 | Every current sentence survives character-for-character; the field set must reproduce bespoke prose. Strongest reading of SC2, and the existing pinned-sentence tests stay untouched as the regression gate. | ✓ |
-| Semantically equivalent, prose may normalize | Facts and values preserved but wording may shift. Simpler mechanism; costs a rewrite of the pinned-sentence tests, weakening them as an independent check. | |
-| Byte-identical except a named exception list | Default to byte-identical with an explicit documented list of deliberate normalizations. | |
-
-**User's choice:** Byte-identical, all 15 (the recommended option)
-**Notes:** No exception list. Rejecting the exception list means an unreproducible sentence
-is a finding about the mechanism, not a licence to change the prose.
+Sean's objection, which reframed the phase: *"I'm struggling with a custom 'format', we're mixing
+plain text and a truly structured document."* That is the correct diagnosis. The template existed
+only to force prose and a document out of one declaration.
 
 ---
 
-## Enforcement Locus
+## Serialization format
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Compile-time — drop `doc any` | `renderOperator` stops accepting a free-form doc; the only way to call it is with the field set. A widened json document becomes unrepresentable. Touches every call site. | ✓ |
-| Runtime — json derived from the field set | Signature may still take a typed value, but json is built from the ordered field set so an undeclared field never reaches output. By-construction in effect, softer in the type system. | |
-| Both — typed signature plus derived encoder | Belt and braces; redundancy costs nothing at runtime but adds refactor surface. | |
+| Bespoke template (first pass) | `{key}` placeholders + `[...]` conditional spans; identity by construction | |
+| YAML | Structured text lane; real spec, real tooling | |
+| TOON | Token-oriented notation | |
+| JSON only, text is a view | One serialization; text is a non-parseable rendered view of the same struct | ✓ |
 
-**User's choice:** Compile-time — drop `doc any`
-**Notes:** Chosen as the literal reading of the phase goal's "enforced by construction, not
-merely detected by test". The 15-call-site migration cost was accepted rather than
-mitigated with a transitional signature.
+**User's choice:** JSON only — after explicitly asking "yaml / toon / json variant — pick one".
+
+**Notes:** Sean's stated worry about the intermediate proposal was *"'basically yaml' worries me"* —
+which was the right instinct. YAML and TOON were rejected on two grounds: each adds a dependency
+against the project's zero-new-Go-deps record, and — deciding — each *looks* parseable, so someone
+parses it and the project owes escaping and stability semantics it never designed. Two
+machine-readable surfaces to keep in sync is the original divergence defect wearing a hat.
+
+The reframe that settled it: these are not "a sentence and a document", they are **one document and
+one view of it**. Once the text lane is not a format, there is nothing to keep in sync, and the
+template language, its parser, its escape rule, and its whole negative-test suite are deleted rather
+than fixed.
 
 ---
 
-## Fate of the Existing Gate
+## Headline
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Retire it — subsumed by construction | The row table is dead weight that can rot; delete it and record why in the summary. | ✓ |
-| Keep as an independent behavioral backstop | Keep the rows as a second, differently-shaped regression check, accepting the maintenance and rot risk. | |
-| Replace with a derived, both-ways gate | Drop hand-listed `facts` but keep a test walking `operatorCommands()` asserting json key set equals the sentence's referenced field set. | |
+| Keep headline, hand-written | One prose line per report, declared non-exhaustive | ✓ |
+| Pure table, no prose | View is only the rendered struct; zero exempt surface | |
+| Derived headline | Generated from designated summary fields | |
 
-**User's choice:** Retire it — subsumed by construction
-**Notes:** Two properties of the retired test were surfaced during discussion and recorded
-in CONTEXT.md so they are not lost: its `facts` were hand-listed (exactly what SC1
-rejects), and it only ever checked text→json, never json→text.
+**User's choice:** Keep headline, hand-written.
+
+**Notes:** Preserves nuance that field names cannot carry — `1 spared (ineligible since preview)`
+teaches something `spared_count 1` does not. Accepted as safe because the headline is *additive prose
+over a complete table*: since the table renders every field unconditionally, a headline can add
+emphasis but is structurally incapable of hiding a field. Bounded to one line.
 
 ---
 
-## Coverage Rule
-
-Raised because "byte-identical prose" and "one keyed field set" collide on fields whose
-text presence is prose rather than a placeholder — `pruneOutputDoc.BestEffort` appears as
-the words "best-effort count", never as `{best_effort}`.
+## Nested rendering
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Every field needs a `{key}` placeholder | Strictest: no prose-only coverage. Forces booleans to interpolate a rendered form that emits the same bytes. | ✓ |
-| Placeholder OR declared prose coverage | A field is covered by a placeholder or by an explicit `Prose:` substring the renderer asserts is present in the rendered text. | |
-| Placeholder, prose, or explicit `Silent` marker | As above plus an escape hatch for fields deliberately absent from the sentence. | |
+| Indented sub-block per row | Each row renders as its own field block; uniform with top level | |
+| One line per row, inline fields | Rows collapse to `id=… outcome=…`; compact | ✓ |
+| Ids only, counts at top level | Row detail lives only in JSON | |
 
-**User's choice:** Every field needs a `{key}` placeholder
-**Notes:** The `Silent` variant was rejected on the grounds that every future field can take
-the escape hatch, reopening the widening hole. The consequence — prose must become value
-renderers emitting identical bytes — was accepted explicitly.
+**User's choice:** One line per row, inline fields.
+
+**Notes:** Applies to the four two-level reports (archive, purge, consolidate, verify). Closest to
+today's output and legible for a long list; a 50-row purge under the sub-block alternative would be
+unreadable. Accepted cost: nested values render by a different rule than top-level ones, and very wide
+rows wrap.
 
 ---
 
-## Nesting
-
-Raised because four of the 15 reports are two-level and already render per-row text today.
+## Field labels
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Nested `FieldSet` as a field value | A Field's value may itself be a FieldSet or `[]FieldSet`, recursing the same coverage rule one level down. Parent sentence covers the list via an aggregate. | ✓ |
-| List is one opaque field, elements untyped | Coverage applies only at the top level; simplest, but the guarantee stops at the outer object. | |
-| Flatten — aggregate only in the field set | Only scalar aggregates in the field set, detail list passed separately. Cleanest guarantee, but changes the json shape of four commands. | |
+| Raw json tag name | `older_than`, `eligible_count` — literal correspondence to JSON | |
+| Humanized label | `Older than`, `Eligible count` | ✓ |
 
-**User's choice:** Nested `FieldSet` as a field value
-**Notes:** Flattening was rejected because it would break byte-identical output (the
-selected Sentence Fidelity option) for archive, purge/restore, consolidate and verify.
+**User's choice:** Humanized label.
+
+**Notes:** Two consequences were surfaced at selection time and recorded as decisions rather than left
+implicit:
+
+1. **The chosen previews are asymmetric.** Top-level labels are humanized; the nested-row preview Sean
+   selected shows raw inline keys (`id=01H8… outcome=ok`). This is defensible — top-level output is
+   read, dense row output is scanned — and is now written down as deliberate (CONTEXT.md D-05) so a
+   later reader does not "fix" it into consistency.
+
+2. **Humanized labels + structural-only tests is a trap if done naively.** If the identity gate derives
+   its expected labels by calling the same humanizer the renderer calls, both sides move together and a
+   humanizer bug is invisible. That is the exact shape of durable record `01mdq5qq9j`, where a
+   partition identity was invariant under the very mutation it appeared to guard. Resolved by
+   decomposition (CONTEXT.md D-06): the identity gate asserts one rendered line per JSON key
+   (correspondence, not label text), and a separate table test pins the humanizer on fixed pairs.
 
 ---
 
-## Conditional Presence
-
-Raised because `archiveResultDoc.ID` is `json:"id,omitempty"` AND is dropped from its text
-line — the two lanes already agree, but via two independent hand-written conditionals.
+## Text-lane testing
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| One `Present` predicate, both lanes read it | When absent the field is omitted from json AND its placeholder plus surrounding literal drops from the sentence. One decision, no way to disagree. | ✓ |
-| Optional segments in the template | Presence lives in the text template as an optional segment; the json encoder omits fields whose segment did not render. | |
-| No optional fields — always emit both | Always emit the key and the segment. Simplest rule, but changes json shape and text line for failed-resolution rows. | |
+| Structural only — no golden text | Assert the identity property; nothing about formatting | ✓ |
+| Regenerable goldens, explicitly unstable | Keep text goldens with `-update` | |
+| Structural + one smoke golden | Identity assertion plus one representative golden | |
 
-**User's choice:** One `Present` predicate, both lanes read it
-**Notes:** The template-segment variant was rejected as putting the presence decision in the
-sentence rather than beside the value.
+**User's choice:** Structural only — no golden text.
+
+**Notes:** The honest consequence of declaring the text lane unstable. Goldens on an
+explicitly-unstable lane would create the illusion of a contract and a maintenance surface for output
+nobody may depend on. JSON goldens are unaffected — that lane *is* the contract.
 
 ---
 
 ## Claude's Discretion
 
-- The concrete Go API of `FieldSet` / `Field` — names, whether `Text` is a method or a
-  struct field, placeholder syntax and when parse failure is detected.
-- Whether placeholder-coverage failure surfaces at compile time, at `init()`, or at first
-  render — constrained only by having to be reachable without a live store.
-- Multi-line and list-joining rendering mechanics for the four two-level reports.
+- Reflection over the struct vs. a small interface each doc implements.
+- The humanizer's exact rule, and acronym/initialism handling.
+- Column alignment mechanics (`text/tabwriter` is the stdlib fit).
+- Whether the 15 `xxxSummary` functions are trimmed to headline producers or replaced outright.
 - Migration order and batching across plans.
+- Whether report enumeration needs an AST derivation or whether reflection over a registry suffices —
+  the earlier design needed AST only to police constructor routing, which D-02 removes.
 
 ## Deferred Ideas
 
-- Applying the field-set mechanism to the client tier (`engram search`/`list`/`get`
-  renderers in `client_common.go`) — same class of problem, different tier, outside this
-  phase's boundary.
-- Todo `2026-08-10-research-versioned-payload-migration-mechanism.md` was surfaced by the
-  todo cross-reference at score 0.4 and reviewed but not folded — it matched on generic
-  keywords and is already scoped into (completed) Phases 2–4.
+- **Applying the view mechanism to the client tier** (`client_common.go`) — same class of problem,
+  different tier, outside this phase's boundary.
+- **Hardening the red-evidence harness** so a compile failure cannot count as RED
+  (`internal/store/redevidence_harness_test.go:303-316`, durable record `366pjeht8e`). Real, but a
+  test-infrastructure defect this phase inherits rather than causes — it was in scope only because the
+  superseded design leaned on that harness. File it rather than smuggle it in.
