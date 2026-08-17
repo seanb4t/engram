@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -311,6 +312,68 @@ func TestOperatorViewIdentityAcrossEveryOperatorCommand(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			for i, doc := range fixtures[name] {
 				assertViewIdentity(t, fmt.Sprintf("%s/%d", name, i), doc)
+			}
+		})
+	}
+}
+
+// operatorDocsAreHandDeclaredMarker exists only so
+// TestOperatorDocsAreHandDeclared can derive this package's own import
+// path via reflection, rather than hardcoding a string literal that would
+// silently go stale on a module rename.
+type operatorDocsAreHandDeclaredMarker struct{}
+
+// TestOperatorDocsAreHandDeclared is the tier-wide statement of the
+// property archiveReportDoc's doc comment asserts per report
+// (spine_review_archive.go: "so this exclusion is enforced by the type
+// itself"): every operator document is a struct hand-declared in THIS
+// package, never an embedded internal/store result type, so record
+// content is unreachable by construction (threat T-06-01). Under D-01
+// that bound now covers the text lane as well as the json lane, since
+// both derive from the same value.
+//
+// A store.VersionBucket used as an ELEMENT type inside
+// migrateStatusReportDoc's Buckets/Future slice fields is permitted and
+// does NOT trip this test: it is a two-scalar value type carrying no
+// record content, and it is a field's element type rather than an
+// embedded struct that would promote unknown fields into the document.
+func TestOperatorDocsAreHandDeclared(t *testing.T) {
+	thisPkgPath := reflect.TypeOf(operatorDocsAreHandDeclaredMarker{}).PkgPath()
+	const storePkgPrefix = "github.com/seanb4t/engram/internal/store"
+
+	fixtures := operatorViewFixtures()
+	names := make([]string, 0, len(fixtures))
+	for name := range fixtures {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			for i, doc := range fixtures[name] {
+				typ := reflect.TypeOf(doc)
+				if typ.Kind() == reflect.Pointer {
+					typ = typ.Elem()
+				}
+				if typ.Kind() != reflect.Struct {
+					t.Fatalf("%s/%d: doc has kind %s, want a struct", name, i, typ.Kind())
+				}
+				if got := typ.PkgPath(); got != thisPkgPath {
+					t.Errorf("%s/%d: doc type %s is declared in package %q, want %q (every operator document must be hand-declared in this package)", name, i, typ.Name(), got, thisPkgPath)
+				}
+				for f := 0; f < typ.NumField(); f++ {
+					field := typ.Field(f)
+					if !field.Anonymous {
+						continue
+					}
+					fieldType := field.Type
+					if fieldType.Kind() == reflect.Pointer {
+						fieldType = fieldType.Elem()
+					}
+					if strings.HasPrefix(fieldType.PkgPath(), storePkgPrefix) {
+						t.Errorf("%s/%d: doc type %s embeds anonymous field %s (package %q), an internal/store type — record content becomes reachable through field promotion", name, i, typ.Name(), fieldType.Name(), fieldType.PkgPath())
+					}
+				}
 			}
 		})
 	}
