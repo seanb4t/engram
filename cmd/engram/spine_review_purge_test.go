@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"reflect"
 	"sort"
 	"strings"
@@ -115,15 +116,22 @@ func TestSpineReviewPurgeOwnFlagSet(t *testing.T) {
 }
 
 // TestSpineReviewPurgeSameRunNoticePublished asserts BOTH the preview
-// output and the command's Long help state the same-run limitation and the
-// intersection's concurrent-writer scoping, matched on the SAME
-// package-level constants the CLI guide's prose mirrors by hand.
+// document and the command's Long help state the same-run limitation and
+// the intersection's concurrent-writer scoping, matched on the SAME
+// package-level constants the CLI guide's prose mirrors by hand. The notice
+// moved from the preview SENTENCE into purgeReportDoc's own fields when
+// purgePreviewSummary was trimmed to a headline producer (06-01-PLAN.md R1);
+// asserting it against the document is the stronger claim -- the notice is
+// a document key, not text-only prose, so it also reaches the json lane.
 func TestSpineReviewPurgeSameRunNoticePublished(t *testing.T) {
-	preview := purgePreviewSummary(nil, store.PurgeOptions{})
+	doc := purgePreviewDoc(nil, store.PurgeOptions{})
+	if doc.SameRunLimitation != purgeSameRunLimitationNotice {
+		t.Errorf("purgePreviewDoc(...).SameRunLimitation = %q, want %q", doc.SameRunLimitation, purgeSameRunLimitationNotice)
+	}
+	if doc.IntersectionScope != purgeIntersectionScopingNotice {
+		t.Errorf("purgePreviewDoc(...).IntersectionScope = %q, want %q", doc.IntersectionScope, purgeIntersectionScopingNotice)
+	}
 	for _, notice := range []string{purgeSameRunLimitationNotice, purgeIntersectionScopingNotice} {
-		if !strings.Contains(preview, notice) {
-			t.Errorf("preview summary = %q, want it to contain %q", preview, notice)
-		}
 		if !strings.Contains(spineReviewPurgeCmd.Long, notice) {
 			t.Errorf("spineReviewPurgeCmd.Long = %q, want it to contain %q", spineReviewPurgeCmd.Long, notice)
 		}
@@ -214,7 +222,10 @@ func TestSpineReviewPurgeClassTagsDoNotLatchAcrossRows(t *testing.T) {
 
 // TestPurgeReportDocFieldsNeverNull proves purgePreviewDoc/purgeAppliedDoc
 // keep every id-list field non-nil (marshals "[]", never "null") and carry
-// the same three count fields plus three id lists in both modes.
+// the same three count fields plus three id lists in both modes. It also
+// proves the R2 gap-closure field's mode split: rerun is populated on the
+// preview document only, and absent (empty, so omitempty drops the key)
+// from the applied document -- an applied run has nothing left to re-run.
 func TestPurgeReportDocFieldsNeverNull(t *testing.T) {
 	opts := store.PurgeOptions{Classes: []store.PurgeClass{store.PurgeClassExpired}, Scope: "s"}
 
@@ -225,6 +236,12 @@ func TestPurgeReportDocFieldsNeverNull(t *testing.T) {
 	if preview.Deleted == nil || preview.Spared == nil || preview.Appeared == nil || preview.Eligible == nil {
 		t.Errorf("purgePreviewDoc has a nil id-list field: %+v", preview)
 	}
+	if preview.Rerun == "" {
+		t.Error("purgePreviewDoc.Rerun is empty, want the re-run command")
+	}
+	if want := purgeRerunCommand(opts); preview.Rerun != want {
+		t.Errorf("purgePreviewDoc.Rerun = %q, want %q", preview.Rerun, want)
+	}
 
 	applied := purgeAppliedDoc(nil, store.PurgeResult{}, opts)
 	if !applied.Applied {
@@ -233,17 +250,42 @@ func TestPurgeReportDocFieldsNeverNull(t *testing.T) {
 	if applied.Deleted == nil || applied.Spared == nil || applied.Appeared == nil || applied.Eligible == nil {
 		t.Errorf("purgeAppliedDoc has a nil id-list field: %+v", applied)
 	}
+	if applied.Rerun != "" {
+		t.Errorf("purgeAppliedDoc.Rerun = %q, want empty (an applied run has nothing left to re-run)", applied.Rerun)
+	}
 }
 
-// TestPurgeAppliedSummaryNamesAppearedExplicitly proves the appeared set
-// carries its own explicit "not purged" wording, never merged silently
-// into the deleted count (T-03-22's mitigation).
+// TestPurgeAppliedSummaryNamesAppearedExplicitly proves the headline names
+// the appeared count with its own explicit "not purged" wording, never
+// merged silently into the deleted count (T-03-22's mitigation) -- this
+// explanatory nuance is exactly what D-04 says a field name cannot carry,
+// so it stays in the hand-written headline even after R1's per-row trim.
 func TestPurgeAppliedSummaryNamesAppearedExplicitly(t *testing.T) {
 	res := store.PurgeResult{Deleted: []string{"d1"}, Spared: []string{"s1"}, Appeared: []string{"a1"}}
 	got := purgeAppliedSummary(res, store.PurgeOptions{})
-	for _, want := range []string{"1 deleted", "1 spared", "1 appeared", "appeared id=a1 (not purged; re-run to include)"} {
+	for _, want := range []string{"1 deleted", "1 spared", "1 appeared", "NOT purged; re-run to include"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("purgeAppliedSummary(...) = %q, want it to contain %q", got, want)
+		}
+	}
+}
+
+// TestPurgeAppliedViewRendersAppearedRow proves the per-id "not purged"
+// wording -- deleted from purgeAppliedSummary in this task -- is rendered
+// by the operator view from purgeAppliedDoc's appeared field.
+func TestPurgeAppliedViewRendersAppearedRow(t *testing.T) {
+	res := store.PurgeResult{Deleted: []string{"d1"}, Spared: []string{"s1"}, Appeared: []string{"a1"}}
+	opts := store.PurgeOptions{}
+	doc := purgeAppliedDoc(nil, res, opts)
+
+	var buf bytes.Buffer
+	if err := renderOperatorView(&buf, purgeAppliedSummary(res, opts), doc); err != nil {
+		t.Fatalf("renderOperatorView: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{"d1", "s1", "a1"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered view = %q, want it to contain %q", out, want)
 		}
 	}
 }

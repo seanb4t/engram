@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 4
+open_count: 5
 waived_count: 0
 fixed_count: 0
-total_count: 4
-last_updated: 2026-08-16T14:04:38.627Z
+total_count: 5
+last_updated: 2026-08-17T14:44:59.064Z
 ---
 
 # Broken Windows Ledger
@@ -19,6 +19,7 @@ last_updated: 2026-08-16T14:04:38.627Z
 | 2 | 03 | deviation | internal/store/store.go |  | Plan 03-06 Tasks 2/3 tdd RED genuinely observed via injected-defect mutation checks, but RED+GREEN landed in one combined feat commit per task rather than separate test/feat commits (matches 03-01/03-05 precedent) | open |  | 2026-08-07T12:44:35.495Z |  |
 | 3 | 04 | deviation | .planning/phases/04-spine-curation-semantic-skill/04-COLD-READ.md |  | Cold-read run cap exhausted at 3 with all runs row-4 NOT-TEMPTED; terminal verdict NOT-OBTAINED, REQ-consent-adversarial-proof left open pending human decision | open |  | 2026-08-11T23:07:53.037Z |  |
 | 4 | 05 | deviation | ui/src/routes/+page.svelte |  | Root route Recent-memories query (recentQ) calls listMemories with empty scope + no cross_spine, predating the scope-required-unless-cross-spine constraint (9ba6449b); always errors live. Discovered by 05-04's browser render test; fix deferred (out of 05-04 file scope). | open |  | 2026-08-16T14:04:38.627Z |  |
+| 5 | 06 | unmet-truth | cmd/engram/operator_output_test.go | 359 | TestOperatorOutputParity's spine-review archive/restore/purge subtests fail after 06-05's R1 headline trim; expected transitional gap per D-09, resolved when 06-07 retires the test | open |  | 2026-08-17T14:44:59.064Z |  |
 
 ````json
 [
@@ -68,6 +69,18 @@ last_updated: 2026-08-16T14:04:38.627Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-16T14:04:38.627Z",
+    "resolved_at": null
+  },
+  {
+    "id": 5,
+    "kind": "unmet-truth",
+    "phase": "06",
+    "file": "cmd/engram/operator_output_test.go",
+    "line": 359,
+    "description": "TestOperatorOutputParity's spine-review archive/restore/purge subtests fail after 06-05's R1 headline trim; expected transitional gap per D-09, resolved when 06-07 retires the test",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-17T14:44:59.064Z",
     "resolved_at": null
   }
 ]

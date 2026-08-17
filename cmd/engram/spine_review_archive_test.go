@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -11,10 +12,10 @@ import (
 	"github.com/seanb4t/engram/internal/store"
 )
 
-// TestArchiveSummaryFormat pins the pure text formatter's shape: a single
-// trailing-newline-free string reporting every id's outcome, hand-built
-// against a fabricated []store.ArchiveResult with no Qdrant, covering all
-// three outcomes (changed, already, not_found) in one multi-id call.
+// TestArchiveSummaryFormat pins the headline producer's shape (06-CONTEXT.md
+// D-04): a single trailing-newline-free line naming the verb and the
+// processed count, with no per-id lines -- the operator view renders the
+// per-id table from archiveDoc, asserted separately below.
 func TestArchiveSummaryFormat(t *testing.T) {
 	results := []store.ArchiveResult{
 		{Requested: "id-1", ID: "id-1", Outcome: store.ArchiveOutcomeChanged},
@@ -23,23 +24,53 @@ func TestArchiveSummaryFormat(t *testing.T) {
 	}
 	got := archiveSummary(results, "archive")
 
-	if strings.HasSuffix(got, "\n") {
-		t.Errorf("archiveSummary result ends with a trailing newline, want none: %q", got)
+	if strings.Contains(got, "\n") {
+		t.Errorf("archiveSummary result contains a newline, want a single line: %q", got)
 	}
-	for _, want := range []string{
-		"spine archive: 3 id(s) processed",
-		"id=id-1 outcome=changed",
-		"id=id-2 outcome=already",
-		"id=id-3 outcome=not_found",
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("archiveSummary(...) = %q, want it to contain %q", got, want)
-		}
+	if want := "spine archive: 3 id(s) processed"; got != want {
+		t.Errorf("archiveSummary(...) = %q, want %q", got, want)
 	}
 
 	restoreGot := archiveSummary(results, "restore")
-	if !strings.Contains(restoreGot, "spine restore: 3 id(s) processed") {
-		t.Errorf("archiveSummary(..., \"restore\") = %q, want the verb in the header", restoreGot)
+	if want := "spine restore: 3 id(s) processed"; restoreGot != want {
+		t.Errorf("archiveSummary(..., \"restore\") = %q, want %q", restoreGot, want)
+	}
+}
+
+// TestArchiveViewRendersPerRowOutcomes proves the per-id table -- deleted
+// from archiveSummary in this task -- is rendered by the operator view from
+// archiveDoc: a resolved id's row carries requested=/id=/outcome= segments,
+// and an unresolved id's row carries requested=/outcome= but NOT id=,
+// because archiveResultDoc's "id,omitempty" tag drops the key entirely and
+// the view renders only keys the json lane emitted (D-01/D-02).
+func TestArchiveViewRendersPerRowOutcomes(t *testing.T) {
+	results := []store.ArchiveResult{
+		{Requested: "id-1", ID: "id-1", Outcome: store.ArchiveOutcomeChanged},
+		{Requested: "zzzznotfound", Outcome: store.ArchiveOutcomeNotFound},
+	}
+	doc := archiveDoc(results, "archive")
+
+	var buf bytes.Buffer
+	if err := renderOperatorView(&buf, archiveSummary(results, "archive"), doc); err != nil {
+		t.Fatalf("renderOperatorView: %v", err)
+	}
+	out := buf.String()
+
+	for _, want := range []string{
+		"requested=id-1 id=id-1 outcome=changed",
+		"requested=zzzznotfound outcome=not_found",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered view = %q, want it to contain %q", out, want)
+		}
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "zzzznotfound") && strings.Contains(line, "id=") && !strings.Contains(line, "requested=") {
+			t.Errorf("unresolved-id row line %q unexpectedly carries an id= segment", line)
+		}
+	}
+	if strings.Contains(out, "zzzznotfound outcome=not_found id=") {
+		t.Errorf("rendered view = %q, unresolved row must not carry an id= segment", out)
 	}
 }
 
@@ -61,17 +92,21 @@ func TestArchiveReportCorrelatesRequestedToken(t *testing.T) {
 	}
 
 	t.Run("text", func(t *testing.T) {
-		got := archiveSummary(results, "archive")
+		var buf bytes.Buffer
+		if err := renderOperatorView(&buf, archiveSummary(results, "archive"), archiveDoc(results, "archive")); err != nil {
+			t.Fatalf("renderOperatorView: %v", err)
+		}
+		got := buf.String()
 		for _, want := range []string{
 			"requested=" + shortID + " id=11111111-0000-0000-0000-000000000001 outcome=changed",
 			"requested=zzzznotfound outcome=not_found",
 		} {
 			if !strings.Contains(got, want) {
-				t.Errorf("archiveSummary(...) = %q, want it to contain %q", got, want)
+				t.Errorf("rendered view = %q, want it to contain %q", got, want)
 			}
 		}
 		if strings.Contains(got, "id= ") || strings.Contains(got, "id=\n") {
-			t.Errorf("archiveSummary(...) emitted an empty id= for an unresolved token: %q", got)
+			t.Errorf("rendered view emitted an empty id= for an unresolved token: %q", got)
 		}
 	})
 

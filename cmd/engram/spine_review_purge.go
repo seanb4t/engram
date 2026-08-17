@@ -212,6 +212,14 @@ type purgeReportDoc struct {
 	// a json consumer sees the identical wording a human reading --help does.
 	SameRunLimitation string `json:"same_run_limitation"`
 	IntersectionScope string `json:"intersection_scoping"`
+	// Rerun is the exact re-run command an operator would use to apply this
+	// preview -- added per 06-01-PLAN.md Conversion Rules R2 (gap closure):
+	// purgePreviewSummary stated this command in prose and no existing key
+	// carried it. Populated on the preview document only (an applied run has
+	// nothing left to re-run into being); omitempty so an applied document
+	// carries no "rerun" key at all, matching the pre-conversion behavior
+	// where only the preview sentence printed a "re-run:" line.
+	Rerun string `json:"rerun,omitempty"`
 }
 
 // olderThanText renders d as its flag-form string, or "" when zero -- so
@@ -251,6 +259,7 @@ func purgePreviewDoc(eligible []string, opts store.PurgeOptions) purgeReportDoc 
 		EligibleCount: len(eligible), Eligible: nonNilStrings(eligible),
 		Deleted: []string{}, Spared: []string{}, Appeared: []string{},
 		SameRunLimitation: purgeSameRunLimitationNotice, IntersectionScope: purgeIntersectionScopingNotice,
+		Rerun: purgeRerunCommand(opts),
 	}
 }
 
@@ -264,48 +273,39 @@ func purgeAppliedDoc(eligible []string, res store.PurgeResult, opts store.PurgeO
 	doc.DeletedCount, doc.Deleted = len(res.Deleted), nonNilStrings(res.Deleted)
 	doc.SparedCount, doc.Spared = len(res.Spared), nonNilStrings(res.Spared)
 	doc.AppearedCount, doc.Appeared = len(res.Appeared), nonNilStrings(res.Appeared)
+	// An applied run has nothing left to re-run into being -- the re-run
+	// command is preview-only, mirroring the pre-conversion text where only
+	// the preview sentence printed a "re-run:" line.
+	doc.Rerun = ""
 	return doc
 }
 
-// purgePreviewSummary renders the operator-facing text report for a bare
-// (no --apply) run: the eligible count and ids, the same-run limitation,
-// the intersection's real scope, and the exact re-run command -- mirroring
-// reindexSummary's/pruneSummary's pure-formatter discipline (no I/O, no
-// *store.Store, no context.Context). Takes the already-extracted id slice,
-// never store.PurgeManifest -- see purgePreviewDoc's doc comment.
+// purgePreviewSummary is a headline producer (06-CONTEXT.md D-04) for a bare
+// (no --apply) run: the eligible count and the derivation's classes/scope,
+// as ONE hand-written prose line -- mirroring reindexSummary's/
+// pruneSummary's pure-formatter discipline (no I/O, no *store.Store, no
+// context.Context). The eligible id list, the two published notices, and
+// the re-run command all moved from this sentence into purgeReportDoc's
+// field table (eligible, same_run_limitation, intersection_scoping, rerun);
+// the operator view renders them from there. Takes the already-extracted id
+// slice, never store.PurgeManifest -- see purgePreviewDoc's doc comment.
 func purgePreviewSummary(eligible []string, opts store.PurgeOptions) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "spine purge preview: %d record(s) eligible (classes=%s scope=%s)\n",
+	return fmt.Sprintf("spine purge preview: %d record(s) eligible (classes=%s scope=%s)",
 		len(eligible), purgeClassesText(opts.Classes), purgeScopeText(opts))
-	for _, id := range eligible {
-		fmt.Fprintf(&b, "  id=%s\n", id)
-	}
-	fmt.Fprintf(&b, "%s.\n", purgeSameRunLimitationNotice)
-	fmt.Fprintf(&b, "%s.\n", purgeIntersectionScopingNotice)
-	fmt.Fprintf(&b, "re-run: %s\n", purgeRerunCommand(opts))
-	return strings.TrimRight(b.String(), "\n")
 }
 
-// purgeAppliedSummary renders the operator-facing text report for an
+// purgeAppliedSummary is a headline producer (06-CONTEXT.md D-04) for an
 // --apply run: deleted/spared/appeared counts, each named explicitly, with
 // the appeared set carrying its own wording so an operator understands
 // those records were NOT purged and a re-run would include them (T-03-22's
-// mitigation).
+// mitigation) -- this explanatory nuance is exactly what D-04 says a field
+// name cannot carry, so it stays in this hand-written line. The three id
+// lists this sentence used to enumerate row-by-row now render from
+// purgeReportDoc's own deleted/spared/appeared fields via the operator view.
 func purgeAppliedSummary(res store.PurgeResult, opts store.PurgeOptions) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "spine purge applied: %d deleted, %d spared (ineligible since preview), %d appeared "+
-		"(newly eligible since preview -- NOT purged; re-run to include) (classes=%s scope=%s)\n",
+	return fmt.Sprintf("spine purge applied: %d deleted, %d spared (ineligible since preview), %d appeared "+
+		"(newly eligible since preview -- NOT purged; re-run to include) (classes=%s scope=%s)",
 		len(res.Deleted), len(res.Spared), len(res.Appeared), purgeClassesText(opts.Classes), purgeScopeText(opts))
-	for _, id := range res.Deleted {
-		fmt.Fprintf(&b, "  deleted id=%s\n", id)
-	}
-	for _, id := range res.Spared {
-		fmt.Fprintf(&b, "  spared id=%s\n", id)
-	}
-	for _, id := range res.Appeared {
-		fmt.Fprintf(&b, "  appeared id=%s (not purged; re-run to include)\n", id)
-	}
-	return strings.TrimRight(b.String(), "\n")
 }
 
 // spinePurgePreview is registerDestructive's preview closure: it derives
