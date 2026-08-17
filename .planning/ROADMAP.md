@@ -393,12 +393,12 @@ Plans:
   2. Every existing operator command's `--output json|text` behavior is unchanged (regression-free) after the refactor.
   3. Adding a new field to an operator report requires touching exactly one field-set declaration to appear correctly in both json and text output — there is no second call site to remember, which is what makes the six new record-state fields (Phase 5/7) safe to add afterward.
 
-**Plans:** 0/7 plans complete
+**Plans:** 1/7 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 06-01-PLAN.md — Tracer: the view renderer (`operator_view.go`) walking the bytes `json.Marshal` produced, `renderOperator` rewired, `prune-expired` converted end to end, and the three-part identity gate with a committed negative case per part (wave 1)
+- [x] 06-01-PLAN.md — Tracer: the view renderer (`operator_view.go`) walking the bytes `json.Marshal` produced, `renderOperator` rewired, `prune-expired` converted end to end, and the three-part identity gate with a committed negative case per part (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -503,7 +503,7 @@ Research flag: yes — the operator-UI soft-hidden-state conventions (archived/s
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-08-14 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete   | 2026-08-15 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete    | 2026-08-16 |
-| 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete | 2026-08-01 |
+| 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | In Progress|  |
 | 1. Interface Enforceability | v0.13.x | 9/9 | Complete | 2026-08-04 |
 | 2. Interface Discoverability | v0.13.x | 6/6 | Complete | 2026-08-05 |
 | 3. Spine Curation — Structural (CLI) | v0.13.x | 7/7 | Complete | 2026-08-07 |
