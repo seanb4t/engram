@@ -5,11 +5,11 @@ milestone_name: Record State & Schema Evolution
 current_phase: 6
 current_phase_name: Typed Operator Renderer
 status: executing
-stopped_at: Phase 6 context gathered
-last_updated: "2026-08-16T23:31:35.764Z"
+stopped_at: Phase 6 re-discussed — mechanism re-scoped
+last_updated: "2026-08-17T00:15:33.933Z"
 last_activity: 2026-08-16
 last_activity_desc: Phase 05 execution started
-state_head: 28d56c21ee12159f5e4cd6a1a73d1ba1e52d7217
+state_head: 7032a1f1a6ee201cc45bc42bc34535c76671baf5
 progress:
   total_phases: 8
   completed_phases: 5
@@ -223,8 +223,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-16T19:59:54.378Z
-Stopped at: Phase 6 context gathered
+Last session: 2026-08-17T00:15:33.701Z
+Stopped at: Phase 6 re-discussed — mechanism re-scoped
 Resume file: .planning/phases/06-typed-operator-renderer/06-CONTEXT.md
 
 ## Performance Metrics
