@@ -20,9 +20,20 @@ import (
 // This is the operator tier's ONE `--output` registration site: every
 // spine-review leaf and (plan 03-02) every existing operator command calls
 // this rather than declaring the flag by hand.
+//
+// 06-CONTEXT.md D-03: the json lane is this tier's contract — the single
+// serialization produced by encoding/json over each report's hand-declared
+// doc struct. The text lane is a rendered view of that same document and
+// carries no stability contract of its own; it may change shape in any
+// release, which is what makes it safe for a report to grow fields over
+// time. The usage string below states that guarantee directly so a caller
+// discovers it by reading rather than by breakage. The client tier's own
+// registration (client_common.go's addClientFlags) deliberately keeps its
+// pre-existing wording and is out of this phase's scope.
 func addOperatorOutputFlag(cmd *cobra.Command, target *string) {
 	cmd.Flags().StringVar(target, "output", config.FlagDefault("output"),
-		`output format: "json" or "text" (default: detect from stdout)`)
+		`output format: "json" or "text" (default: detect from stdout); `+
+			`text is a human-readable view, not a stable interface — script against json`)
 }
 
 // operatorOutputFormat validates v through config.ValidateOutputFormat —
