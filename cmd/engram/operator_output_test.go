@@ -87,14 +87,26 @@ func TestRenderOperatorTextAndJSON(t *testing.T) {
 	}
 
 	t.Run("text mode", func(t *testing.T) {
+		// Structural assertions only (R4/D-08): text is a rendered VIEW of
+		// doc now, not a literal echo of the headline argument, so this
+		// pins the contract renderOperator still owes — headline first,
+		// exactly one trailing newline, one field line per json key — not
+		// an exact byte string.
 		var buf bytes.Buffer
 		cmd := &cobra.Command{Use: "throwaway"}
 		cmd.SetOut(&buf)
 		if err := renderOperator(cmd, formatText, "hello", doc{Count: 3}); err != nil {
 			t.Fatalf("renderOperator: %v", err)
 		}
-		if got, want := buf.String(), "hello\n"; got != want {
-			t.Errorf("renderOperator text mode wrote %q, want %q", got, want)
+		out := buf.String()
+		if firstLine := strings.SplitN(out, "\n", 2)[0]; firstLine != "hello" {
+			t.Errorf("renderOperator text mode first line = %q, want %q", firstLine, "hello")
+		}
+		if !strings.HasSuffix(out, "\n") || strings.HasSuffix(out, "\n\n") {
+			t.Errorf("renderOperator text mode wrote %q, want exactly one trailing newline", out)
+		}
+		if got, want := countTopLevelFieldLines(out), 1; got != want {
+			t.Errorf("countTopLevelFieldLines(%q) = %d, want %d (one field: count)", out, got, want)
 		}
 	})
 

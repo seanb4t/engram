@@ -5,7 +5,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 
@@ -57,14 +56,22 @@ func isTTYWriter(w io.Writer) bool {
 }
 
 // renderOperator writes cmd's final result through the ONE rendering path
-// every operator command and spine-review leaf shares: text mode writes
-// text plus a trailing newline; json mode marshals doc as exactly one JSON
-// document plus a trailing newline (json.Encoder.Encode's own contract),
-// mirroring runSelfDescribe's (catalog.go) encoding discipline.
-func renderOperator(cmd *cobra.Command, format outputFormat, text string, doc any) error {
+// every operator command and spine-review leaf shares: text mode renders
+// headline followed by a view of doc — renderOperatorView (operator_view.go)
+// walks the SAME bytes the json lane marshals doc to, so text is a rendered
+// view of the json document rather than a second, independently-maintained
+// format; json mode marshals doc as exactly one JSON document plus a
+// trailing newline (json.Encoder.Encode's own contract), mirroring
+// runSelfDescribe's (catalog.go) encoding discipline.
+//
+// There is no second serialization and no second call site from a doc
+// value to rendered text (06-CONTEXT.md D-01), so text/json identity holds
+// by construction rather than by an enforced coverage rule (D-02) — which
+// is also why doc any stays safe as this function's argument. Text output
+// carries no stability contract beyond "it shows every field" (D-03).
+func renderOperator(cmd *cobra.Command, format outputFormat, headline string, doc any) error {
 	if format == formatText {
-		_, err := fmt.Fprintln(cmd.OutOrStdout(), text)
-		return err
+		return renderOperatorView(cmd.OutOrStdout(), headline, doc)
 	}
 	enc := json.NewEncoder(cmd.OutOrStdout())
 	return enc.Encode(doc)

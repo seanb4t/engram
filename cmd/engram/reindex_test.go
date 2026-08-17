@@ -113,20 +113,38 @@ func TestReindexRenderOperatorJSONMode(t *testing.T) {
 	}
 }
 
-// TestReindexTextModeUnchanged proves text-mode output for `reindex` is
-// byte-identical to the pre-backfill sentence: renderOperator's text
-// branch plus the trailing newline it appends must equal what cmd.Println
-// produced before this plan.
+// TestReindexTextModeUnchanged proves text-mode output for `reindex`
+// renders reindexSummary as its headline (first line), ends in exactly
+// one trailing newline, and carries exactly one field line per
+// reindexReportDoc key. Text is no longer pinned byte-for-byte (D-03:
+// --output text is explicitly not a stable interface, 06-01-PLAN.md
+// §Conversion Rules R4) — renderOperator's text branch is now shared,
+// global rendering code (06-01-PLAN.md Task 1) that derives its field
+// table from the same json.Marshal(doc) bytes every operator command's
+// json lane emits, so this assertion is structural rather than a literal
+// echo of the pre-conversion sentence.
 func TestReindexTextModeUnchanged(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := &cobra.Command{Use: "reindex"}
 	cmd.SetOut(&buf)
 	res := store.ReindexResult{Scanned: 5, Upserted: 5}
 	text := reindexSummary(res, "new_coll", 1536, false, false)
-	if err := renderOperator(cmd, formatText, text, reindexReportDoc(res, "new_coll", 1536, false, false)); err != nil {
+	doc := reindexReportDoc(res, "new_coll", 1536, false, false)
+	if err := renderOperator(cmd, formatText, text, doc); err != nil {
 		t.Fatalf("renderOperator: %v", err)
 	}
-	if got, want := buf.String(), text+"\n"; got != want {
-		t.Errorf("text-mode output = %q, want %q (byte-identical to pre-backfill cmd.Println)", got, want)
+	out := buf.String()
+	if firstLine := strings.SplitN(out, "\n", 2)[0]; firstLine != text {
+		t.Errorf("text-mode output first line = %q, want headline %q", firstLine, text)
+	}
+	if !strings.HasSuffix(out, "\n") || strings.HasSuffix(out, "\n\n") {
+		t.Errorf("text-mode output = %q, want exactly one trailing newline", out)
+	}
+	jsonKeys, err := jsonTopLevelKeys(doc)
+	if err != nil {
+		t.Fatalf("jsonTopLevelKeys: %v", err)
+	}
+	if got, want := countTopLevelFieldLines(out), len(jsonKeys); got != want {
+		t.Errorf("countTopLevelFieldLines(%q) = %d, want %d (one line per json key)", out, got, want)
 	}
 }

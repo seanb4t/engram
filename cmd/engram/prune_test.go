@@ -88,19 +88,36 @@ func TestPruneOutputJSONHasBestEffortMarker(t *testing.T) {
 	}
 }
 
-// TestPruneTextModeUnchanged proves text-mode output is byte-identical to
-// the pre-backfill sentence.
+// TestPruneTextModeUnchanged proves text-mode output renders pruneSummary
+// as its headline (first line), ends in exactly one trailing newline, and
+// carries exactly one field line per pruneOutputDoc key. Text is no longer
+// pinned byte-for-byte (D-03: --output text is explicitly not a stable
+// interface; see 06-01-PLAN.md §Conversion Rules R4) — the renderer now
+// derives the field table from the same json.Marshal(doc) bytes the json
+// lane emits, so this test asserts the structural contract instead.
 func TestPruneTextModeUnchanged(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := &cobra.Command{Use: "prune-expired"}
 	cmd.SetOut(&buf)
 	before := time.Date(2031, 1, 2, 15, 0, 0, 0, time.UTC)
 	text := pruneSummary(3, before)
-	if err := renderOperator(cmd, formatText, text, pruneReportDoc(3, before)); err != nil {
+	doc := pruneReportDoc(3, before)
+	if err := renderOperator(cmd, formatText, text, doc); err != nil {
 		t.Fatalf("renderOperator: %v", err)
 	}
-	if got, want := buf.String(), text+"\n"; got != want {
-		t.Errorf("text-mode output = %q, want %q", got, want)
+	out := buf.String()
+	if firstLine := strings.SplitN(out, "\n", 2)[0]; firstLine != text {
+		t.Errorf("text-mode output first line = %q, want headline %q", firstLine, text)
+	}
+	if !strings.HasSuffix(out, "\n") || strings.HasSuffix(out, "\n\n") {
+		t.Errorf("text-mode output = %q, want exactly one trailing newline", out)
+	}
+	jsonKeys, err := jsonTopLevelKeys(doc)
+	if err != nil {
+		t.Fatalf("jsonTopLevelKeys: %v", err)
+	}
+	if got, want := countTopLevelFieldLines(out), len(jsonKeys); got != want {
+		t.Errorf("countTopLevelFieldLines(%q) = %d, want %d (one line per json key)", out, got, want)
 	}
 }
 
