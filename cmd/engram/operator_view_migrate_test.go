@@ -21,15 +21,15 @@ import (
 // migrateViewFixtures returns the migrate-family fixtures the identity gate
 // runs against, keyed by commandKey exactly as operatorCommands() produces
 // it. Every sample is built by calling the report's real converter, reusing
-// the fixed input values from the corresponding (soon-to-be-retired)
-// operatorParityRows entries where one exists (cmd/engram/operator_output_test.go)
-// so the fixtures stay comparable to what that test exercised — never that
-// test's own declared-fact string list or structure.
+// the fixed input values from the phase's now-retired parity gate
+// (06-CONTEXT.md D-09) where one exists so the fixtures stay comparable to
+// what that retired test once exercised — never that test's own
+// declared-fact string list or structure.
 func migrateViewFixtures() map[string][]any {
 	return map[string][]any{
 		// Preview (dry-run, mirrors TestMigrateFamilyReportFields' "bare
 		// migrate" fixture: WouldMigrate=7, Migrated=0) and applied (the
-		// operatorParityRows "migrate" row's exact fixed values, chosen
+		// retired parity gate's "migrate" row's exact fixed values, chosen
 		// there specifically because it carries non-empty Spared/Appeared
 		// so the nested-row path is exercised).
 		"migrate": {
@@ -48,12 +48,13 @@ func migrateViewFixtures() map[string][]any {
 		// backfill-specific one. Its PREVIEW variant is enumerated here
 		// specifically because a hand-written variant list missed it once
 		// (06-CONTEXT.md <specifics>) — the applied variant reuses the
-		// operatorParityRows "backfill-short-ids" row's exact fixed values.
+		// retired parity gate's "backfill-short-ids" row's exact fixed
+		// values.
 		"backfill-short-ids": {
 			migrateReportDoc(store.MigrateResult{}, migrate.CurrentVersion, true, 29),
 			migrateReportDoc(store.MigrateResult{Migrated: 29, Backlog: 0}, migrate.CurrentVersion, false, 29),
 		},
-		// A populated-Future histogram (the operatorParityRows "migrate
+		// A populated-Future histogram (the retired parity gate's "migrate
 		// status" row's exact fixed values) and a zero-valued result, so
 		// both the "[]"-never-"null" shape and the has-future shape render.
 		"migrate status": {
@@ -67,8 +68,8 @@ func migrateViewFixtures() map[string][]any {
 		// irreversible-range case: an all-zero res), refusal with partial
 		// progress (TestMigrateFamilyRevertApplyRefusalReportsPartialProgress's
 		// CR-06 fixture: writes already landed before a mid-loop refusal),
-		// reversible preview (the operatorParityRows "migrate revert" row's
-		// exact fixed values), and applied
+		// reversible preview (the retired parity gate's "migrate revert"
+		// row's exact fixed values), and applied
 		// (TestMigrateFamilyRevertReversible's --apply fixture).
 		"migrate revert": {
 			revertReportDoc(store.RevertPlan{

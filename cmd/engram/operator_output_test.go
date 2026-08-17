@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -130,283 +129,24 @@ func TestRenderOperatorTextAndJSON(t *testing.T) {
 	})
 }
 
-// operatorParityRow is one (command, result value, text sentence, json
-// document, facts) tuple driving TestOperatorOutputParity below. facts is
-// the set of values the text sentence states that MUST also appear as a
-// scalar value somewhere in the json document — the parity claim, made
-// checkable rather than asserted by inspection alone.
-type operatorParityRow struct {
-	name  string
-	text  string
-	doc   any
-	facts []string
-}
-
-// operatorParityRows builds one row per operator command, each computed
-// from a single hand-built result value run through BOTH the pure text
-// formatter and the pure json-doc builder — never two different result
-// values for the same row, which is what "the same fact must appear on
-// both sides" actually requires.
-func operatorParityRows() []operatorParityRow {
-	reindexRes := store.ReindexResult{Scanned: 57, Upserted: 23, Skipped: 11, Unchanged: 19}
-	pruneBefore := time.Date(2031, 6, 15, 12, 0, 0, 0, time.UTC)
-	summarizeRes := store.SummarizeResult{Scanned: 41, Filled: 17, Skipped: 20, Failed: 4}
-	spineRes := store.SpineScanResult{
-		Total: 9, Owners: 3, WithSummary: 5, WithoutSummary: 4,
-		Superseded: 1, Expired: 1, Scheduled: 0, WithCitations: 2, Citations: 6,
-	}
-	consolidatePairs := []store.DuplicatePair{
-		{A: "id-a", B: "id-b", AShortID: "sa", BShortID: "sb", AScope: "s", BScope: "s", Score: 0.5},
-	}
-	consolidateMinScore := float32(0.5)
-
-	return []operatorParityRow{
-		{
-			name:  "reindex",
-			text:  reindexSummary(reindexRes, "target-coll", 1536, false, false),
-			doc:   reindexReportDoc(reindexRes, "target-coll", 1536, false, false),
-			facts: []string{"23", "57", "target-coll", "1536"},
-		},
-		{
-			name:  "prune-expired",
-			text:  pruneSummary(31, pruneBefore),
-			doc:   pruneReportDoc(31, pruneBefore),
-			facts: []string{"31"},
-		},
-		{
-			name:  "summarize-missing",
-			text:  summarizeSummary(summarizeRes, false),
-			doc:   summarizeReportDoc(summarizeRes, false),
-			facts: []string{"41", "17", "20", "4"},
-		},
-		{
-			// 04-04-PLAN.md Task 1: backfill-short-ids is now a thin
-			// delegating alias sharing migrate's own report envelope
-			// (D-11) -- this row is built from the SAME migrateSummary/
-			// migrateReportDoc pair the "migrate" row above uses, never a
-			// backfill-specific formatter (those are deleted).
-			name:  "backfill-short-ids",
-			text:  migrateSummary(store.MigrateResult{Migrated: 29, Backlog: 0}, migrate.CurrentVersion, false, 29),
-			doc:   migrateReportDoc(store.MigrateResult{Migrated: 29, Backlog: 0}, migrate.CurrentVersion, false, 29),
-			facts: []string{"29"},
-		},
-		{
-			name:  "migrate-remap-owner",
-			text:  migrateRemapSummary(13, "alice", false),
-			doc:   migrateRemapDoc(13, "alice", false),
-			facts: []string{"13", "alice"},
-		},
-		{
-			name:  "migrate-set-owner",
-			text:  migrateSetOwnerSummary("bob", 7),
-			doc:   migrateSetOwnerReportDoc{Owner: "bob", Stamped: 7},
-			facts: []string{"bob", "7"},
-		},
-		{
-			// 06-06-PLAN.md Task 1: spineScanSummary is trimmed to a
-			// headline-only producer (R1) and spineScanDoc gains a second
-			// (scope) argument (R2) -- facts narrowed to what the headline
-			// still states (total, owners); the health signals and breakdown
-			// this row's facts used to also assert now render only through
-			// the view, not through TestOperatorOutputParity's fact-in-text
-			// check.
-			name:  "spine-review scan",
-			text:  spineScanSummary(spineRes, "s"),
-			doc:   spineScanDoc(spineRes, "s"),
-			facts: []string{"9", "3"},
-		},
-		{
-			name: "spine-review verify",
-			text: verifySummary(verifyReport{
-				ValidCount: 2, MovedCount: 1, BrokenCount: 1, UnverifiableCount: 1,
-				Moved:        []verifyEntry{{RecordID: "rec-moved", ShortID: "short-moved", Ref: "a.go", Reason: "excerpt found at byte offset 12, not at the cited locator"}},
-				Broken:       []verifyEntry{{RecordID: "rec-broken", ShortID: "short-broken", Ref: "b.go", Reason: reasonFileMissing}},
-				Unverifiable: []verifyEntry{{RecordID: "rec-unverifiable", ShortID: "short-unverifiable", Ref: "c.go", Reason: "different repo"}},
-			}),
-			doc: verifyDoc(verifyReport{
-				ValidCount: 2, MovedCount: 1, BrokenCount: 1, UnverifiableCount: 1,
-				Moved:        []verifyEntry{{RecordID: "rec-moved", ShortID: "short-moved", Ref: "a.go", Reason: "excerpt found at byte offset 12, not at the cited locator"}},
-				Broken:       []verifyEntry{{RecordID: "rec-broken", ShortID: "short-broken", Ref: "b.go", Reason: reasonFileMissing}},
-				Unverifiable: []verifyEntry{{RecordID: "rec-unverifiable", ShortID: "short-unverifiable", Ref: "c.go", Reason: "different repo"}},
-			}),
-			// 06-06-PLAN.md Task 2: verifySummary trimmed to headline-only
-			// (R1) -- facts narrowed to the tier counts the headline still
-			// states; per-entry ids now render only through the view.
-			facts: []string{"2", "1"},
-		},
-		{
-			// 06-06-PLAN.md Task 2: consolidateSummary trimmed to
-			// headline-only (R1) -- facts narrowed to what the headline
-			// still states (top_k, scanned/queried); the min_score value
-			// and per-pair ids now render only through the view (json) /
-			// omitempty key, never restated in the headline text.
-			name:  "spine-review consolidate",
-			text:  consolidateSummary(consolidatePairs, "s", false, &consolidateMinScore, 5, 9, 9),
-			doc:   consolidateDoc(consolidatePairs, "s", false, &consolidateMinScore, 5, 9, 9),
-			facts: []string{"9", "5"},
-		},
-		{
-			name: "spine-review archive",
-			text: archiveSummary([]store.ArchiveResult{
-				{ID: "id-changed", Outcome: store.ArchiveOutcomeChanged},
-				{ID: "id-already", Outcome: store.ArchiveOutcomeAlready},
-			}, "archive"),
-			doc: archiveDoc([]store.ArchiveResult{
-				{ID: "id-changed", Outcome: store.ArchiveOutcomeChanged},
-				{ID: "id-already", Outcome: store.ArchiveOutcomeAlready},
-			}, "archive"),
-			facts: []string{"id-changed", "id-already", "changed", "already"},
-		},
-		{
-			name: "spine-review restore",
-			text: archiveSummary([]store.ArchiveResult{
-				{ID: "id-restored", Outcome: store.ArchiveOutcomeChanged},
-				{ID: "id-unknown", Outcome: store.ArchiveOutcomeNotFound},
-			}, "restore"),
-			doc: archiveDoc([]store.ArchiveResult{
-				{ID: "id-restored", Outcome: store.ArchiveOutcomeChanged},
-				{ID: "id-unknown", Outcome: store.ArchiveOutcomeNotFound},
-			}, "restore"),
-			facts: []string{"id-restored", "id-unknown", "changed", "not_found"},
-		},
-		{
-			name: "spine-review purge",
-			text: purgeAppliedSummary(store.PurgeResult{
-				Deleted: []string{"id-deleted"}, Spared: []string{"id-spared"}, Appeared: []string{"id-appeared"},
-			}, store.PurgeOptions{Classes: []store.PurgeClass{store.PurgeClassExpired}, Scope: "s"}),
-			doc: purgeAppliedDoc([]string{"id-deleted", "id-spared"}, store.PurgeResult{
-				Deleted: []string{"id-deleted"}, Spared: []string{"id-spared"}, Appeared: []string{"id-appeared"},
-			}, store.PurgeOptions{Classes: []store.PurgeClass{store.PurgeClassExpired}, Scope: "s"}),
-			facts: []string{"id-deleted", "id-spared", "id-appeared"},
-		},
-		{
-			// 04-03-PLAN.md Task 2: an APPLIED result (dryRun=false) so the
-			// "migrated" fact is meaningful; backlog is stated explicitly
-			// in migrateSummary's applied-mode sentence for exactly this
-			// parity claim.
-			name:  "migrate",
-			text:  migrateSummary(store.MigrateResult{Migrated: 23, Failed: 2, Passes: 1, Backlog: 5, Spared: []string{"a"}, Appeared: []string{"b", "c"}}, migrate.CurrentVersion, false, 26),
-			doc:   migrateReportDoc(store.MigrateResult{Migrated: 23, Failed: 2, Passes: 1, Backlog: 5, Spared: []string{"a"}, Appeared: []string{"b", "c"}}, migrate.CurrentVersion, false, 26),
-			facts: []string{"26", "23", "5"},
-		},
-		{
-			name: "migrate status",
-			text: statusSummary(store.MigrateStatusResult{
-				Buckets: []store.VersionBucket{{Version: 1, Count: 40}}, Absent: 3,
-				Future: []store.VersionBucket{{Version: 2, Count: 1}}, FutureTotal: 1, Total: 44,
-			}),
-			doc: statusReportDoc(store.MigrateStatusResult{
-				Buckets: []store.VersionBucket{{Version: 1, Count: 40}}, Absent: 3,
-				Future: []store.VersionBucket{{Version: 2, Count: 1}}, FutureTotal: 1, Total: 44,
-			}),
-			facts: []string{"44", "3", "40", "1", "2"},
-		},
-		{
-			// A REVERSIBLE preview fixture (Task 3): facts name
-			// plan.Candidates and the target version, per this row's plan
-			// text.
-			name:  "migrate revert",
-			text:  revertSummary(store.RevertPlan{To: 0, Candidates: 12, Reversible: true}, false, store.RevertResult{}),
-			doc:   revertReportDoc(store.RevertPlan{To: 0, Candidates: 12, Reversible: true}, false, store.RevertResult{}),
-			facts: []string{"12", "0"},
-		},
-	}
-}
-
-// jsonScalarValues flattens doc's json.Marshal output into every scalar
-// (string/number/bool) value reachable anywhere in the document —
-// including inside a slice of structs (spineScanReportDoc's
-// ByScopeCategory) — as their JSON-rendered string form, so a fact can be
-// looked up by exact-element membership rather than substring containment
-// (which would trivially "match" any short numeral inside a longer one).
-func jsonScalarValues(doc any) ([]string, error) {
-	b, err := json.Marshal(doc)
-	if err != nil {
-		return nil, err
-	}
-	var raw any
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return nil, err
-	}
-	var out []string
-	var walk func(v any)
-	walk = func(v any) {
-		switch t := v.(type) {
-		case map[string]any:
-			for _, vv := range t {
-				walk(vv)
-			}
-		case []any:
-			for _, vv := range t {
-				walk(vv)
-			}
-		case float64:
-			out = append(out, strconv.FormatFloat(t, 'f', -1, 64))
-		case string:
-			out = append(out, t)
-		case bool:
-			out = append(out, strconv.FormatBool(t))
-		}
-	}
-	walk(raw)
-	return out, nil
-}
-
-func containsString(haystack []string, needle string) bool {
-	for _, s := range haystack {
-		if s == needle {
-			return true
-		}
-	}
-	return false
-}
-
-// TestOperatorOutputParity is the phase's json/text field-for-fact parity
-// gate (T-03-09's mitigation, Codex review #3's "known limitation,
-// recorded rather than redesigned" — see this plan's SUMMARY): for every
-// operator command, the SAME result value drives both the text sentence
-// and the json document, and every declared fact from the text side must
-// also appear as a scalar value somewhere in the json side.
+// The phase's prior json/text parity gate and its hand-built per-command
+// row table were RETIRED by 06-CONTEXT.md D-09 (plan 06-07): retirement is
+// obsolescence, not supersession by a stronger assertion, because under
+// D-01 both --output text and --output json now derive from ONE
+// serialization (the report's hand-declared struct) and there is no
+// text/json divergence left for a parity gate to detect.
 //
-// The row-set itself is gated both directions against operatorCommands():
-// a seventh operator command added later without a corresponding row here
-// fails this test, rather than silently narrowing the parity claim.
-func TestOperatorOutputParity(t *testing.T) {
-	rows := operatorParityRows()
-
-	rowNames := make(map[string]bool, len(rows))
-	for _, r := range rows {
-		rowNames[r.name] = true
-	}
-	wantNames := commandKeySet(operatorCommands())
-	for name := range wantNames {
-		if !rowNames[name] {
-			t.Errorf("operatorParityRows() is missing a row for operator command %q", name)
-		}
-	}
-	for name := range rowNames {
-		if !wantNames[name] {
-			t.Errorf("operatorParityRows() has a row for %q, which is not in operatorCommands()", name)
-		}
-	}
-
-	for _, row := range rows {
-		t.Run(row.name, func(t *testing.T) {
-			values, err := jsonScalarValues(row.doc)
-			if err != nil {
-				t.Fatalf("jsonScalarValues: %v", err)
-			}
-			for _, fact := range row.facts {
-				if !strings.Contains(row.text, fact) {
-					t.Errorf("row %q: text %q does not contain declared fact %q (row is malformed)", row.name, row.text, fact)
-				}
-				if !containsString(values, fact) {
-					t.Errorf("row %q: json document %v does not carry fact %q that the text sentence %q states", row.name, values, fact, row.text)
-				}
-			}
-		})
-	}
-}
+// Two things about the retired gate are recorded here rather than lost
+// (durable record b3wd4wwwda): its declared per-row string list was
+// hand-listed — precisely the "test over hand-built rows" ROADMAP Success
+// Criterion 1 rejects — and it was one-directional, asserting every
+// declared text value appeared in the json document but never that the
+// json document failed to widen past the text.
+//
+// Its one genuinely good property — gating its row set against
+// operatorCommands() in BOTH directions — is carried forward onto the
+// merged view-fixture map by the coverage test below (Task 2 of this
+// plan), which is its inheritor.
 
 // TestOperatorOutputEncoding proves a scope/tag value carrying a
 // non-ASCII rune AND a double quote survives a json.Marshal then

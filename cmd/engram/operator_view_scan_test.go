@@ -22,10 +22,10 @@ import (
 // for this plan's three commands, keyed by commandKey exactly as
 // operatorCommands() produces it. Every sample is built by calling the
 // report's real converter (spineScanDoc/consolidateDoc/verifyDoc) over
-// fixed input values -- reusing the numeric/string literals
-// operatorParityRows() (cmd/engram/operator_output_test.go) already
-// established for these three commands, never that test's declared-value
-// list or any other part of its structure.
+// fixed input values -- reusing the numeric/string literals the phase's
+// now-retired parity gate (06-CONTEXT.md D-09) already established for
+// these three commands, never that retired test's declared-value list or
+// any other part of its structure.
 func spineViewFixtures() map[string][]any {
 	scanRes := store.SpineScanResult{
 		Total: 9, Owners: 3, WithSummary: 5, WithoutSummary: 4,
