@@ -1,7 +1,7 @@
 ---
 phase: 7
 reviewers: [codex]
-reviewed_at: 2026-08-20T21:37:43Z
+reviewed_at: 2026-08-20T23:01:15Z
 plans_reviewed: [07-01-PLAN.md, 07-02-PLAN.md, 07-03-PLAN.md, 07-04-PLAN.md, 07-05-PLAN.md, 07-06-PLAN.md, 07-07-PLAN.md]
 models:
   codex: "gpt-5.6-sol (reasoning=low)"
@@ -518,3 +518,346 @@ Source-grounding AMBIGUOUS findings, carried in at MEDIUM per
   the Verification coverage block, never counted, and never read as either verified or missing.
 - **MISSING source-grounding items** — none exist this cycle, so no `needs-acknowledgement`
   acknowledgement is owed.
+
+---
+
+# Cycle 2 — Cross-AI Plan Review (reviewed_at: 2026-08-20T22:59:04Z)
+
+Reviewer: codex — `gpt-5.6-sol (reasoning=low)`, source: banner. Prompt fed PROJECT.md (80 lines),
+the Phase 7 ROADMAP section, REQUIREMENTS.md, 07-CONTEXT.md and all seven PLAN.md files, plus a
+cycle-2-specific instruction block naming every claimed fix. 07-RESEARCH.md was omitted from the
+prompt to keep the payload within one context window; no finding depends on it.
+
+Scope: verify the 18 cycle-1 concerns actually landed in PLAN.md content an executor will see, and
+find anything new — including regressions the fixes introduced.
+
+## Codex Review (cycle 2)
+
+## Summary
+
+Cycle 2 is substantially improved. All 17 claimed non-HIGH fixes are present in the executable plan text, the formerly vacuous `cmdwalk.go` anchor genuinely matches once before the change, the 07-07 negative greps filter comments correctly, and no executable `rg -c` gate remains. The six-wave DAG is acyclic and serializes destructive TypeScript re-vendoring against UI compilation.
+
+I found two new medium concerns: the footer timeout test does not match the planned helper API, and the migration-banner error test would duplicate rather than exercise the production `QueryCache.onError` handler. Neither undermines the architecture, but both weaken acceptance evidence enough to warrant plan edits before execution.
+
+## Cycle-1 Fix Verification
+
+| Fix | Status | Evidence |
+|---|---|---|
+| 07-07 single logging owner; component `$effect` removed | VERIFIED-LANDED | `.planning/phases/07-console-cli-state-surfacing/07-07-PLAN.md:31-32,195-202,260-261` assigns logging solely to `QueryCache.onError` and explicitly bans component logging/effects. |
+| 07-07 `errors.test.ts` extended with existing three cases preserved | VERIFIED-LANDED | `07-07-PLAN.md:93-95,137-140,159-162`; the source file currently contains exactly those three cases at `ui/src/lib/errors.test.ts:5-14`. |
+| 07-07 concrete `TriangleAlertIcon` import and corrected precedent | VERIFIED-LANDED | `07-07-PLAN.md:238-244`; the import is valid and matches `ui/src/lib/components/ui/sonner/sonner.svelte:8`. |
+| 07-07 “root QueryClient lifetime,” not “session” | VERIFIED-LANDED | `07-07-PLAN.md:37,190-194`; the root client is created at `ui/src/routes/+layout.svelte:15-25`. |
+| 07-06 adds `MigrateStatus` to existing `memStore` | VERIFIED-LANDED | `07-06-PLAN.md:138-147,264-283`; the existing interface is indeed at `internal/server/store_iface.go:24-43`. |
+| 07-06 uses embedded `migrateStatusFailStore` seam | VERIFIED-LANDED | `07-06-PLAN.md:146-148,278-283,303`; the cited precedent exists at `internal/server/tools_test.go:1629-1641`. |
+| 07-06 splits protojson empty-array and generated-TS claims | VERIFIED-LANDED | `07-06-PLAN.md:45-51,305-308`; `renderJSON` really uses `EmitDefaultValues` at `cmd/engram/client_common.go:380-385`. |
+| 07-06 footer budget is `min(timeout, 2s)` and appears in threat model | VERIFIED-LANDED | `07-06-PLAN.md:41-43,430-440,499`; the plan explicitly rejects a second full timeout. |
+| 07-05 removes fixed “15 producers” premise | VERIFIED-LANDED | `07-05-PLAN.md:25-27,176-186`; it uses the single write site and supplies a reproducible call-site derivation command. |
+| 07-05 schedules `operatorCommands()` comment repair | VERIFIED-LANDED | `07-05-PLAN.md:13,38,277-339`; `cmdwalk.go` is in `files_modified`. |
+| 07-06 schedules the follow-up `operatorCommands()` enumeration update | VERIFIED-LANDED | `07-06-PLAN.md:20,60,325-392`; `cmdwalk.go` is again in `files_modified`. |
+| 07-04 treats `queries.test.ts` as existing and preserves four cases | VERIFIED-LANDED | `07-04-PLAN.md:98-102,124,154-169`; source confirms four cases at `ui/src/lib/queries.test.ts:5-27`. |
+| 07-02 live-record carve-out for unconditional schema chip | VERIFIED-LANDED | `07-02-PLAN.md:29,36,324-335`; it no longer promises literal total identity. |
+| 07-02 badge and inline-link treatments use the correct precedents | VERIFIED-LANDED | `07-02-PLAN.md:230-242,337-345`; badge recipe and markdown-link recipe are kept distinct. |
+| 07-01/07-03 method-scoped guard checks replace `rg -c` | VERIFIED-LANDED | `07-01-PLAN.md:355-363`, `07-03-PLAN.md:207-218`. The only remaining `rg -c` strings are explanatory prose, not commands. |
+| 07-01/07-02 define expired-over-scheduled precedence with inverted fixtures | VERIFIED-LANDED | Go: `07-01-PLAN.md:386-414,447`; TS: `07-02-PLAN.md:160-186,204-205`. Both match the store bounds at `internal/store/store.go:1001-1018`. |
+| 07-02/07-04/07-07 codegen-race DAG edges | VERIFIED-LANDED | `07-02-PLAN.md:5-6,132-139`; `07-04-PLAN.md:5-6,107-114`; `07-07-PLAN.md:5-6`. DAG is `01→03→{02,05}→06→04→07`, with no cycle. |
+| 07-03 replaces prose disjunct with executable negative grep | VERIFIED-LANDED | `07-03-PLAN.md:321-327`; the current phrase genuinely exists at `internal/store/migratebacklog.go:44-48`, so the gate is RED today and GREEN only after repair. |
+
+### Vacuous-gate spot checks
+
+- `rg -o 'so this is how the three' cmd/engram/cmdwalk.go | wc -l` returns exactly `1` today. The anchor exists on one physical line at `cmd/engram/cmdwalk.go:98-99`.
+- Both 07-07 negative greps use `rg -v '^\s*(//|<!--|\*)'` before checking `logError` and `$effect`: `07-07-PLAN.md:260-261`.
+- No executable `rg -c` remains. Its three occurrences are explanations warning against its use.
+- The 07-03 stale-backlog phrase returns exactly `1` today at `internal/store/migratebacklog.go:45`, making its negative gate non-vacuous.
+
+## Strengths
+
+- The recall relaxation preserves authorization structurally. `Store.Search` builds `ownerScopeFilter` before appending state gates at `internal/store/store.go:1086-1097`; `Store.List` follows the corresponding filtered path around `internal/store/store.go:1295-1333`. Plans 07-01 and 07-03 also require cross-owner behavioral tests.
+
+- The intentional 2-of-4 scope is accurately grounded. `SearchDiscovery` owns an inline immutable gate at `internal/store/store.go:1181-1195`, while `ListScheduled` owns a separate inline gate at `internal/store/store.go:1556-1568`. The proposed red experiment against `ListScheduled` is meaningful.
+
+- Scheduled-bound semantics are consistent across the store and both proposed vocabulary implementations. The store uses `not_before <= now` and `not_after > now` at `internal/store/store.go:1001-1018`; both plans define equality and inverted-window behavior explicitly.
+
+- The `MigrateStatus` interface extension fits the current design. `deps.st` already depends on the narrow `memStore` interface at `internal/server/store_iface.go:24-43`, and both the compile-time real-store assertion and scripted fake assertion exist at `store_iface.go:45-47` and `internal/server/fakestore_test.go:50`.
+
+- The migration histogram remains an aggregate-only surface. The existing result contains only bucket counts and totals at `internal/store/migrate_status.go:45-63`; 07-06’s proto design mirrors that shape without exposing owners, scopes, IDs, or content.
+
+- The #505 remediation is complete at the correct choke point. The current unsafe write is the headline write in `cmd/engram/operator_view.go:255-256`; routing that one argument through `sanitizeViewValue` protects every producer without relying on producer enumeration.
+
+- The plans correctly preserve protobuf optional semantics for `engram get`. `renderJSON`’s canonical options live at `cmd/engram/client_common.go:369-390`, and the proposed `json.RawMessage` adapter avoids an `encoding/json` reinterpretation.
+
+- The UI routing plan has a real existing extension point. `ObserveParams`, URL serialization, and the cache key are centralized in `ui/src/lib/queries.ts:9-35`, with only one live route consumer at `ui/src/routes/observe/+page.svelte:20-35`.
+
+## Concerns
+
+- **MEDIUM — NEW: Footer timeout acceptance does not match the planned helper API.**  
+  Plan 07-06 defines `migrationFooterCounts(ctx, client)` at `07-06-PLAN.md:157-159,419-427`. The timeout is created outside that helper at each command call site using `min(timeout, footerLookupBudget)` at `07-06-PLAN.md:430-440`. However, acceptance then says to drive `migrationFooterCounts` “with a resolved client timeout” and prove both the 2-second cap and shorter operator timeout at `07-06-PLAN.md:473-474`. The helper cannot receive or resolve either timeout; with `context.Background()` it can hang forever, while with a pre-timed context the test only proves the test’s context—not production call-site construction. This leaves the actual `min` wiring weakly tested.
+
+- **MEDIUM — NEW: The migration-banner error test can pass against duplicated test logic without exercising production `+layout.svelte`.**  
+  Production error routing is currently an inline closure at `ui/src/routes/+layout.svelte:18-24`. Plan 07-07 changes that closure in place at `07-07-PLAN.md:119-131`, but its automated task runs only `errors` tests and type checking at `07-07-PLAN.md:155`; it adds no direct test for the real layout callback. The banner test constructs a `QueryClient` “whose `QueryCache` carries the layout’s handler” at `07-07-PLAN.md:258`, but there is no exported production handler or factory to reuse. An executor must duplicate the callback in the test, allowing production to call `reportError` while the copied test callback calls `logError` and still passes. That makes the “exactly one logger and no global banner” integration gate partly vacuous.
+
+- **LOW — NEW: `Pending()` test examples hard-code the current migration version.**  
+  `07-06-PLAN.md:219-220` fixes the example around `CurrentVersion == 1`, while the implementation is explicitly coupled to `migrate.CurrentVersion`. The test will become unrelated maintenance debt when the next migration step advances the version. This is not a correctness blocker for Phase 7, but the fixture should derive relative versions from the constant.
+
+## Suggestions
+
+1. Edit 07-06 Task 3 so timeout construction is testable at one production-owned seam. For example:
+
+   - Change the helper to `migrationFooterCounts(parent, client, resolvedTimeout)` and derive `context.WithTimeout(parent, min(resolvedTimeout, footerLookupBudget))` inside it; or
+   - Add a small `migrationFooterContext(parent, resolvedTimeout)` helper used by both search and list.
+
+   Then make the two timeout tests call that exact helper, not a caller-created context.
+
+2. Edit 07-07 Task 1 to extract the production query-error callback into a reusable function, for example `handleQueryError(err, query)`, in `errors.ts` or a small layout-support module. Use it directly in `QueryCache.onError` and in the browser test. Add a test asserting:
+
+   - authentication redirect wins first;
+   - `meta.silent` logs without setting `errorBanner`;
+   - ordinary queries still call `reportError`.
+
+3. Edit 07-06’s `Pending()` test fixture to use versions relative to `migrate.CurrentVersion` rather than literals `0/1/2`.
+
+## Risk Assessment
+
+**MEDIUM.** The implementation design is coherent, security boundaries are explicitly preserved, the phase DAG is valid, and every Cycle-1 revision landed. The remaining risk is concentrated in verification quality: two important cross-layer behaviors—footer latency bounding and silent banner failure handling—can currently be “proven” without exercising the exact production wiring. Fixing those acceptance seams should reduce the plan set to low risk.
+
+## Orchestrator Verification (cycle 2)
+
+Every cycle-1 fix claim was re-checked against the working tree independently of Codex.
+
+### Cycle-1 fix verification — all 18 CLOSED
+
+| # | Claimed fix | Verdict | Evidence |
+|---|---|---|---|
+| HIGH | Short-handle link text → full 36-char UUID; per-link `short_id` lookup rejected; truncation prohibited | CLOSED (user decision, Sean 2026-08-20) | `07-02-PLAN.md:36` states it, and grounds it on `proto/engram/v1/engram.proto:44-45` — verified: `optional string superseded_by = 23;` is line 44, `repeated string supersedes = 24;` is line 45. No short-handle assertion survives in any plan. |
+| 1 | 07-07 single `logError` owner; component `$effect` deleted | VERIFIED-LANDED | `07-07-PLAN.md:31-32,195-202,260-261`. Production owner is `QueryCache.onError` at `ui/src/routes/+layout.svelte:18-24`. |
+| 2 | `errors.test.ts` EXTEND with 3 `describeError` cases pinned | VERIFIED-LANDED | `07-07-PLAN.md:150-152,161`. File is 15 lines with exactly 3 `it(` today; the ≥5 gate goes RED. |
+| 3 | `TriangleAlert` import path concrete; vendored-sonner precedent claim dropped | VERIFIED-LANDED | `07-07-PLAN.md:238-244`; matches `ui/src/lib/components/ui/sonner/sonner.svelte:8`. |
+| 4 | "once per root QueryClient lifetime" replaces "once per session" | VERIFIED-LANDED | `07-07-PLAN.md:37`. |
+| 5 | `MigrateStatus` added to existing `memStore` | VERIFIED-LANDED | `07-06-PLAN.md:143,212,269-277`; `internal/server/store_iface.go:24` holds `memStore` with exactly 18 methods and the two assertions at `:46` / `internal/server/fakestore_test.go:50`. |
+| 6 | `migrateStatusFailStore` on the `upsertFailStore` idiom | VERIFIED-LANDED | `07-06-PLAN.md:146,281,303`; precedent exists at `internal/server/tools_test.go:1634-1641`. |
+| 7 | `[]`-vs-`null` split into protojson + generated-declaration truths, "on the wire" dropped | VERIFIED-LANDED | `07-06-PLAN.md:47-49`. `renderJSON` really carries `EmitDefaultValues: true` (`cmd/engram/client_common.go:383`); protobuf-es really declares repeated fields as bare arrays (`ui/src/lib/gen/engram/v1/engram_pb.ts:145` `citations: Citation[]`). |
+| 8 | `footerLookupBudget = 2s` as `min(resolvedTimeout, budget)`, ceiling in must_haves + T-07-19 | LANDED, but see NEW-1 | `07-06-PLAN.md:430-445`. The text landed; its acceptance criteria do not prove it. |
+| 9 | 07-05 "15 headline producers" count REMOVED everywhere | VERIFIED-LANDED | `07-05-PLAN.md:31,163-172`. No count remains. The supplied derivation command reproduces exactly: 19 call sites across 11 files. |
+| 10 | `operatorCommands()` doc-comment repair scheduled in 07-05 and extended in 07-06; `cmdwalk.go` in both `files_modified` | VERIFIED-LANDED | `07-05-PLAN.md:13,305-325,334`; `07-06-PLAN.md:21,366,390`. |
+| 11 | 07-04 `queries.test.ts` NEW → EXTEND, off artifacts, 4 cases pinned | VERIFIED-LANDED | `07-04-PLAN.md:98-101,124,167`. File is 28 lines with exactly 4 `it(` and one `round-trips observeSearch` today. |
+| 12 | 07-02 byte-for-byte truth restated with the schema chip carved out | VERIFIED-LANDED | `07-02-PLAN.md:29`. |
+| 13 | Micro-label recipe names `MemoryDetail.svelte:68` | VERIFIED-LANDED | `07-02-PLAN.md:242,281`. `MemoryDetail.svelte:68` is the category `Badge` carrying `class="text-[10px] uppercase"`. |
+| 14 | Link treatment points at `.markdown-body :global(a)` (:152), badge link variant excluded | VERIFIED-LANDED | `07-02-PLAN.md:291,335,378`. The rule is at `MemoryDetail.svelte:152`. |
+| 15 | `rg -c` replaced with method-scoped body extraction + `-o \| wc -l` | VERIFIED-LANDED | `07-01-PLAN.md:355`, `07-03-PLAN.md:207`. Exactly 4 `rg -c` strings remain phase-wide and all four are prose warning against it. Both `sed -n '/^func (s \*Store) List(/,/^}/p'` and the `Search` equivalent extract clean bodies (91 / 50 lines). |
+| 16 | Expired-over-scheduled precedence in BOTH derivations + inverted-window fixture on each surface | VERIFIED-LANDED | Go `07-01-PLAN.md:383,386,405-414`; TS `07-02-PLAN.md:160-161,182-186,204-205`. Both bounds match `activeWindowConditions` (`internal/store/store.go:1006-1019`: `Lte` on `not_before`, `Gt` on `not_after`). |
+| 17 | DAG edges 07-02→07-03 and 07-04→07-06 added; waves 5 → 6 | VERIFIED-LANDED | Frontmatter DAG is `01(w1) → 03(w2) → {02,05}(w3) → 06(w4) → 04(w5) → 07(w6)`. Acyclic; every `depends_on` sits in a strictly lower wave; the two file-collision pairs (`observe/+page.svelte` in 07-02+07-04; `toolclass.go`/`cmdwalk.go` in 07-05+07-06) are serialized by real edges. |
+| 18 | 07-03 prose disjunct dropped for a single-line negative grep | VERIFIED-LANDED | `07-03-PLAN.md:321-327`. The target phrase exists at `internal/store/migratebacklog.go:45` today, so the gate is RED now and GREEN only after the repair. |
+
+### Vacuous-gate audit (the repo's recurring defect family)
+
+Every `rg … | wc -l` acceptance criterion phase-wide was executed against the working tree.
+
+| Gate | Expected after | Today | Verdict |
+|---|---|---|---|
+| `rg -o 'so this is how the three' cmd/engram/cmdwalk.go` | 0 | **1** | Non-vacuous — the claimed proven-RED anchor is real. The superseded phrase `the three client verbs` returns 0 because it wraps lines, exactly as the plan says. |
+| `rg -o 'exactly search/list/store and nowhere else' cmd/engram/cmdwalk.go` | 0 | 1 | Non-vacuous |
+| `rg -o 'Search/List/SearchDiscovery/ListScheduled all apply' internal/store/migratebacklog.go` | 0 | 1 | Non-vacuous |
+| `rg -o 'func (r MigrateStatusResult) Pending' …` | 1 | 0 | Non-vacuous |
+| `rg -o 'buckets: SchemaVersionBucket\[\]' ui/src/lib/gen/…` | 1 | 0 | Non-vacuous |
+| `rg -o 'func memoryStateWords' cmd/engram --glob '!*_test.go'` | 1 | 0 | Non-vacuous |
+| `rg -o 'export function memoryStateWords' ui/src/lib/memorystate.ts` | 1 | file absent | Non-vacuous |
+| `rg -o 'MigrateStatus\(ctx context.Context\)' internal/server/store_iface.go` | 1 | 0 | Non-vacuous |
+| `rg -o 'text-\[10px\] uppercase' ui/src/lib/components/MemoryRow.svelte` | ≥1 | 0 | Non-vacuous |
+| `rg -o 'text-primary underline' ui/src/lib/components/MemoryDetail.svelte` | ≥1 | 0 | Non-vacuous |
+| `rg -o 'it\(' ui/src/lib/errors.test.ts` | ≥5 | 3 | Non-vacuous |
+| `rg -o 'it\(' ui/src/lib/queries.test.ts` | ≥11 | 4 | Non-vacuous |
+| `rg -o 'func sanitizeViewValue' …` | 1 | 1 | Preservation gate — declared as such ("no second sanitizer"); acceptable |
+| `rg -o 'MCPTool: "get_memory"' internal/surfaces/toolclass.go` | 1 | 1 | Preservation gate — declared as such ("no duplicate row"); acceptable |
+| `rg -o 'CLICommand: "migrate status"' internal/surfaces/toolclass.go` | 1 | 1 | Preservation gate — declared as such; acceptable |
+| `rg -o 'console\.(error\|warn\|log\|info\|debug)\(' ui/src` (prod, non-test) | 1 | 1 | Preservation gate — declared as such; acceptable |
+| **`rg -o 'context.WithTimeout\(cmd.Context\(\), timeout\)' cmd/engram/client_common.go`** | **0** | **0** | **VACUOUS — see NEW-1** |
+
+07-07's two comment-filtered negative greps (`07-07-PLAN.md:260-261`) do carry
+`rg -v '^\s*(//\|<!--\|\*)'` as claimed, and both target files that do not yet exist, so they are RED
+by construction.
+
+### New concerns (cycle 2)
+
+**NEW-1 — MEDIUM — 07-06: the footer-budget acceptance criteria are scoped to the wrong file and
+cannot prove the `min()` wiring.**
+The action text (`07-06-PLAN.md:452-453`) places the lookup call "from both `client_search.go` and
+`client_list.go`, inside the `format == formatText` branch ONLY", and the declared helper signature
+(`07-06-PLAN.md:158`) is `migrationFooterCounts(ctx context.Context, client …)` — it receives an
+already-built context and cannot itself apply `min(resolvedTimeout, footerLookupBudget)`. Three
+consequences:
+- `rg -o 'context.WithTimeout\(cmd.Context\(\), timeout\)' cmd/engram/client_common.go | wc -l` reports `0` **today and forever** — that string has never lived in `client_common.go`; it lives at `cmd/engram/client_search.go:52` and `cmd/engram/client_list.go:50` (2 occurrences, both for the *primary* call). Re-scoping the grep to those files is not a fix either, because the count would be 2 before and after.
+- `rg -o 'footerLookupBudget' cmd/engram/client_common.go | wc -l` reports "at least 2 … **and it is applied at the lookup site**" — but under the stated wiring the application site is in `client_search.go`/`client_list.go`, which this grep never reads.
+- The two timeout tests (`07-06-PLAN.md:473-474`) drive `migrationFooterCounts` "with a resolved client timeout"; since the helper takes no timeout, the test must build the context itself and therefore proves the test's own arithmetic, not production's.
+
+*PLAN edit needed:* give the derivation a single production-owned seam — either widen the helper to
+`migrationFooterCounts(parent context.Context, client …, resolvedTimeout time.Duration)` and derive
+`context.WithTimeout(parent, min(resolvedTimeout, footerLookupBudget))` inside it, or add
+`migrationFooterContext(parent, resolvedTimeout)` in `client_common.go` — then point both timeout
+tests at that exact function and replace the two greps above with ones that go RED (e.g.
+`rg -o 'footerLookupBudget' cmd/engram/client_search.go cmd/engram/client_list.go | wc -l` reports 2,
+which is 0 today).
+
+**NEW-2 — MEDIUM — 07-07: the "exactly ONE `console.error`" gate cannot exercise production.**
+Production error routing is an unexported inline closure at `ui/src/routes/+layout.svelte:19-24`, and
+07-07 Task 1 edits it in place (`07-07-PLAN.md:137-142`). The MigrationBanner criterion
+(`07-07-PLAN.md:258`) asks for a `QueryClient` "whose `QueryCache` carries the layout's
+`QueryCache.onError` handler" — there is no exported handler or factory to carry, so an executor must
+duplicate the closure in the test. Production could keep calling `reportError` while the duplicated
+test closure calls `logError`, and the gate still passes. Task 1's own `<verify>`
+(`07-07-PLAN.md:155`, `vitest run --project=node errors && npm run check`) never executes
+`+layout.svelte` either, so the `meta?.silent` branch has no behavioural coverage at all — only the
+two `rg -n` line-presence checks.
+
+*PLAN edit needed:* extract the callback into an exported `handleQueryError(err, query)` (in
+`ui/src/lib/errors.ts` or a small layout-support module), have `QueryCache.onError` delegate to it,
+add it to 07-07's artifacts, and make both Task 1's node tests and the MigrationBanner browser test
+import that exact function. Task 1's behavioural cases (auth redirect wins first; `meta.silent` logs
+without setting `errorBanner`; ordinary queries still call `reportError`) then become executable.
+
+**NEW-3 — LOW — 07-06: the `Pending()` behaviour example hard-codes the current schema version.**
+`07-06-PLAN.md:219-220` fixes the example at "a current version of 1" with literal buckets `0/1/2`,
+while `migrate.CurrentVersion` is a constant that will advance (`internal/migrate/migrate.go:54`).
+The resulting test becomes unrelated maintenance debt at the next migration step.
+
+*PLAN edit needed:* express the fixture relative to `migrate.CurrentVersion` (current−1, current,
+current+1) rather than as literals.
+
+**NEW-4 — LOW — three `file:line` citations have drifted, one of them inside an acceptance
+criterion.**
+- `cmd/engram/cmdwalk.go:96-97` (`07-05-PLAN.md:38`, `:281`, `:305`) — the doc-comment claim is at **`:98-99`**. `07-05-PLAN.md:334` additionally states the phrase "wraps across `:97-98`"; it wraps across `:98-99`. That parenthetical sits inside an acceptance criterion, so it is executor-facing.
+- `cmd/engram/client_common.go:369` (`07-06-PLAN.md:47`) is cited for `EmitDefaultValues: true` — `:369` is the first line of `renderJSON`'s doc comment; the option is at **`:383`** and `renderJSON` at `:380`.
+- `ui/src/routes/+layout.svelte:15` (`07-07-PLAN.md:37`) is cited for the `QueryClient` construction — `:15` is the `PRESERVE:` comment; the constructor is at **`:16`**.
+
+*PLAN edit needed:* correct the three citations (the `cmdwalk.go` one in four places).
+
+### Recorded, not counted
+
+- **INFO — 07-07's comment filter is incomplete for multi-line Svelte comments.** `rg -v '^\s*(//|<!--|\*)'` drops a line beginning with `<!--` but not the interior lines of a multi-line `<!-- … -->` block. The failure mode is a **false FAILURE** (the gate reports 1 instead of 0 and the executor must reword the comment), never a false pass, so the gate is fail-closed and no PLAN.md change is owed.
+- **Established facts re-confirmed, not re-raised:** the four `IsEmpty` sites are at `internal/store/store.go:1091/1097` (`Store.Search`), `1191/1195` (`Store.SearchDiscovery`), `1328/1333` (`Store.List`), `1563/1568` (`Store.ListScheduled`) — the 2-of-4 scope is exactly `Search` + `List` and is stated in the plans. `TestOperatorViewFixturesCoverEveryOperatorCommand` is live at `cmd/engram/operator_output_test.go:215`. `renderMemoryTable` genuinely uses `text/tabwriter` (`cmd/engram/client_common.go:397`) while `renderOperatorView` genuinely uses manual `utf8.RuneCountInString` padding (`cmd/engram/operator_view.go:275,281`) — the two statements are about different renderers and both plans are correct. `cmd/engram/operator_view.go:256` is the raw `fmt.Fprintln(w, headline)` of issue #505.
+- **SC2 / D-10 "typed renderer"** — already adjudicated; advisory, out of scope, not re-raised.
+
+## Source-Grounding Pass (cycle 2)
+
+Effective authority adapter: **`grep`** (`drift-guard authority --raw`). Severity map under this
+authority: VERIFIED → `none`; MISSING → `needs-acknowledgement`; AMBIGUOUS → `MEDIUM`;
+UNCHECKABLE → `INFO`. `hardBlock` is `false` for every status, so the cycle was not stopped.
+
+Symbols declared under each plan's "Artifacts this phase produces" are EXCLUDED — they are created
+by this phase. That exclusion covers, among others: `ListMemoriesRequest.include_*`,
+`SearchMemoriesRequest.include_*`, `ListOptions.Include*`, `SearchOptions.Include*`,
+`coreListRequest.Include*`, `coreSearchRequest.Include*`, `memoryStateWords` (Go and TS),
+`memoryStateCell`, `RecordStateWord`, `STATE_WORD_ORDER`, `isPastState`, `INCLUDE_STATES`,
+`getCmd`, `getHeadline`, `migrationStatusCmd`, `SchemaVersionBucket`, `MigrateStatusRequest`,
+`MigrateStatusResponse`, `MigrateStatusResult.Pending`, `engramAPI.MigrateStatus`,
+`memStore.MigrateStatus`, `spyStore.MigrateStatus`, **`migrateStatusFailStore`**,
+**`footerLookupBudget`**, `renderMigrationFooter`, `migrationFooterCounts`, `logError`,
+`MigrationBanner.svelte`, `memorystate.ts`, `client_get.go`, `client_migration_status.go`.
+
+### Resolved symbols — all VERIFIED (severity `none`)
+
+Symbols newly cited by the cycle-1 revision are marked ★.
+
+| Symbol / anchor | file:line | Verdict |
+|---|---|---|
+| ★ `memStore` (interface, 18 methods) | `internal/server/store_iface.go:24` | VERIFIED |
+| ★ `var _ memStore = (*store.Store)(nil)` | `internal/server/store_iface.go:46` | VERIFIED |
+| ★ `upsertFailStore` (embed-and-override idiom) | `internal/server/tools_test.go:1634` | VERIFIED |
+| ★ `operatorCommands()` | `cmd/engram/cmdwalk.go:101` | VERIFIED |
+| ★ `operatorCommands()` doc-comment claim | `cmd/engram/cmdwalk.go:98-99` | VERIFIED (plans cite `:96-97` — see NEW-4) |
+| ★ `MemoryDetail.svelte:68` micro-label (`text-[10px] uppercase` Badge) | `ui/src/lib/components/MemoryDetail.svelte:68` | VERIFIED |
+| ★ `.markdown-body :global(a)` | `ui/src/lib/components/MemoryDetail.svelte:152` | VERIFIED |
+| ★ `describeError` | `ui/src/lib/errors.ts:9` | VERIFIED |
+| ★ `QueryCache` / `onError` | `ui/src/routes/+layout.svelte:3,18-19` | VERIFIED |
+| `Store.Search` | `internal/store/store.go:1064` | VERIFIED |
+| `Store.List` | `internal/store/store.go:1295` | VERIFIED |
+| `Store.SearchDiscovery` | `internal/store/store.go:1162` | VERIFIED |
+| `Store.ListScheduled` | `internal/store/store.go:1531` | VERIFIED |
+| `Store.SearchReranked` | `internal/store/store.go:1144` | VERIFIED |
+| `Store.MigrateStatus` | `internal/store/migrate_status.go:102` | VERIFIED |
+| `activeWindowConditions` | `internal/store/store.go:1006` | VERIFIED |
+| `ownerScopeFilter` | `internal/store/store.go:948` | VERIFIED |
+| `ownerOrSharedCondition` | `internal/store/store.go:832` | VERIFIED |
+| `listFilter` | `internal/store/store.go:1263` | VERIFIED |
+| `backlogFilter` | `internal/store/migratebacklog.go:57` | VERIFIED |
+| `migrate.CurrentVersion` | `internal/migrate/migrate.go:54` | VERIFIED |
+| `RuleWindowOrdering` | `internal/surfaces/rules.go:118` | VERIFIED |
+| `warnPendingMigrations` | `internal/server/tools.go:500` | VERIFIED |
+| `connectError` | `internal/server/connecterror.go:55` | VERIFIED |
+| `engramAPI.GetMemory` | `internal/server/connectapi.go:334` | VERIFIED |
+| `spyStore` / `var _ memStore = (*spyStore)(nil)` | `internal/server/fakestore_test.go:36,50` | VERIFIED |
+| `{MCPTool: "get_memory", CLICommand: ""}` row | `internal/surfaces/toolclass.go:91` | VERIFIED |
+| `{MCPTool: "", CLICommand: "migrate status"}` row | `internal/surfaces/toolclass.go:262` | VERIFIED |
+| `sanitizeViewValue` | `cmd/engram/operator_view.go:223` | VERIFIED |
+| `renderOperatorView` / raw headline write (#505) | `cmd/engram/operator_view.go:255,256` | VERIFIED |
+| `viewFields` | `cmd/engram/operator_view.go:45` | VERIFIED |
+| `utf8.RuneCountInString` padding | `cmd/engram/operator_view.go:275,281` | VERIFIED |
+| `addClientFlags` | `cmd/engram/client_common.go:42` | VERIFIED |
+| `clientFromFlags` | `cmd/engram/client_common.go:133` | VERIFIED |
+| `wrapRPCError` | `cmd/engram/client_common.go:324` | VERIFIED |
+| `renderCoverageFooter` | `cmd/engram/client_common.go:310` | VERIFIED |
+| `renderJSON` / `EmitDefaultValues: true` | `cmd/engram/client_common.go:380,383` | VERIFIED (plan cites `:369` — see NEW-4) |
+| `renderMemoryTable` (+ `text/tabwriter`) | `cmd/engram/client_common.go:396,397` | VERIFIED |
+| existing header rows `SHORT_ID SCOPE CATEGORY [SCORE] SUMMARY` | `cmd/engram/client_common.go:404,406` | VERIFIED |
+| `context.WithTimeout(cmd.Context(), timeout)` primary-call sites | `cmd/engram/client_search.go:52`, `cmd/engram/client_list.go:50` | VERIFIED |
+| `TestOperatorViewFixturesCoverEveryOperatorCommand` | `cmd/engram/operator_output_test.go:215` | VERIFIED |
+| `operatorViewFixtures` | `cmd/engram/operator_output_test.go:163` | VERIFIED |
+| `TestCatalogBlastRadiusMatchesToolClasses` | `cmd/engram/catalog_test.go:429` | VERIFIED |
+| `superseded_by` / `supersedes` proto fields | `proto/engram/v1/engram.proto:44,45` | VERIFIED |
+| `not_before` / `not_after` proto fields | `proto/engram/v1/engram.proto:46,47` | VERIFIED |
+| protobuf-es repeated-field declaration shape | `ui/src/lib/gen/engram/v1/engram_pb.ts:145` (`citations: Citation[]`) | VERIFIED |
+| `mapAuthError` | `ui/src/lib/client.ts:30` | VERIFIED |
+| `reportError` / `errorBanner` / `clearError` | `ui/src/lib/errors.ts:7,15,22` | VERIFIED |
+| `console.error('[engram] query error:', …)` | `ui/src/lib/errors.ts:18` | VERIFIED |
+| `parseObserveParams` / `observeSearch` / `listMemoriesKey` | `ui/src/lib/queries.ts:13,24,34` | VERIFIED |
+| `CATEGORIES` / `VISIBILITIES` | `ui/src/lib/queries.ts:6,7` | VERIFIED |
+| `ObserveParams` (imported by the route) | `ui/src/routes/observe/+page.svelte:11` | VERIFIED |
+| `ScopesSidebar.svelte` | `ui/src/lib/components/ScopesSidebar.svelte` | VERIFIED |
+| `AppShell` `</header>` + `flex flex-1 min-h-0` insertion point | `ui/src/lib/components/AppShell.svelte:28,29` | VERIFIED |
+| `TriangleAlertIcon` import precedent | `ui/src/lib/components/ui/sonner/sonner.svelte:8` | VERIFIED |
+| `queries.test.ts` (28 lines, 4 cases) | `ui/src/lib/queries.test.ts` | VERIFIED |
+| `errors.test.ts` (15 lines, 3 cases) | `ui/src/lib/errors.test.ts` | VERIFIED |
+| `npm run test:browser` / `--project=node` | `ui/package.json:10-11`, `ui/vite.config.ts:22-36` | VERIFIED |
+
+No symbol resolved MISSING or AMBIGUOUS this cycle, so no `needs-acknowledgement` and no
+severity-MEDIUM source-grounding finding is owed.
+
+### Verification coverage
+
+Recorded as UNCHECKABLE (severity `INFO` under `grep` authority — never read as verified and never
+as missing):
+
+| Item | Why UNCHECKABLE |
+|---|---|
+| Every function/method **signature** cited by the plans | Under `grep`/intel authority a signature mismatch cannot be asserted (ADR rule). Names and declaration lines were matched textually; parameter and return types were not verified. This applies to `migrationFooterCounts`, `memoryStateWords`, `Pending()`, `handleQueryError`, and every existing symbol above. |
+| `MigrateStatusResponse.buckets` typed as `SchemaVersionBucket[]` after re-vendoring | Depends on running `task proto:gen` + the re-vendor step. Only the *shape precedent* (`citations: Citation[]`) was verified. |
+| `task surfaces:gen` producing a `get` / `migration-status` entry in `catalog.golden` | Requires executing codegen. |
+| `go build ./internal/server/...` after `memStore` gains a method | Requires a build, not a grep. |
+| Runtime behaviour of every `<automated>` verify command | Not executed; only script/project existence was confirmed. |
+| `drift-guard phase-status --phase 7` | Returns `uncheckable` / `phase_not_in_roadmap` — the documented CalVer-vs-`v(\d+)\.(\d+)` parser limitation (CLAUDE.md). Recorded here; explicitly NOT read as "consistent". |
+| 07-RESEARCH.md | Omitted from the reviewer prompt for payload size. No finding depends on it. |
+
+## Cross-Artifact Fact-Drift Pass (cycle 2 — advisory only, contributes to neither count)
+
+1. **`drift-guard phase-status --phase 7`** → `{"verdict":"uncheckable","reason":"phase_not_in_roadmap","stateStatus":"Ready to plan","roadmapStatus":null,"authority":"STATE.md"}`. Recorded in Verification coverage above. Not a finding; not read as consistent.
+2. **ROADMAP Success Criteria ↔ PLAN `must_haves.truths`** (authority ROADMAP) — SC1 (console renders archived/superseded/scheduled) is carried by 07-02 and 07-04; SC2 (CLI surfaces the same state) by 07-01/07-03/07-05; SC3 (pending-migration state through console and CLI) by 07-06 and 07-07. No PLAN truth **contradicts** a Success Criterion. Several plans ADD truths beyond the roadmap (e.g. the #505 sanitization fix, the inverted-window precedence) — explicitly not flaggable.
+3. **ROADMAP `**Requirements:**` ↔ PLAN requirement refs** (authority ROADMAP) — ROADMAP names `REQ-console-record-state`, `REQ-cli-record-state`, `REQ-migration-state-visible`; all three exist in `.planning/REQUIREMENTS.md:52-54` and are mapped to Phase 7 at `:111-113`. Plan frontmatter covers all three with no reference to a requirement the roadmap does not name. No drift.
+4. **CONTEXT.md Decisions glossary ↔ PLAN usage** (authority CONTEXT.md) — D-01/D-02/D-03 (reveal-not-filter, 2-of-4 scope, byte-identical default), D-04 (authz orthogonality), D-06 (whole-collection migration counts), D-08 (no piggybacking on hot responses; text-lane-only footer), D-11 (structural headline sanitization), D-12 (always-present STATE column), D-13 (per-surface state-word derivation, no shared table), D-14 (unconditional schema chip) are used in the plans with the same meaning CONTEXT.md gives them. No contradiction found.
+5. **SC2 / D-10 ("through the typed renderer" vs `renderMemoryTable` retained)** — already adjudicated before this cycle; not re-raised, per instruction.
+
+**Result: no fact-drift flags.** (Advisory pass; contributes to neither count and never blocks.)
+
+## Cycle 2 Outcome
+
+- **Unresolved HIGH: 0.** The cycle-1 HIGH is closed by user decision and no new HIGH was found by either the external reviewer or the orchestrator pass.
+- **Unresolved actionable non-HIGH: 4** — NEW-1 (MEDIUM), NEW-2 (MEDIUM), NEW-3 (LOW), NEW-4 (LOW). All four are new this cycle; none is a carried cycle-1 item.
+- All 18 cycle-1 concerns are FULLY RESOLVED and excluded from the counts.
+
+### Excluded from the counts (with reason)
+
+- **All 18 cycle-1 findings** — verified landed in PLAN.md content (table above). FULLY RESOLVED.
+- **The cycle-1 HIGH (short-handle link text)** — closed by user decision (Sean, 2026-08-20); `07-UI-SPEC.md:458` corrected in `f51cc8ff`. Not re-opened.
+- **07-07's incomplete multi-line-comment filter** — fail-closed (false failure, never a false pass); no PLAN.md change owed, so not actionable.
+- **The 2-of-4 gate scope, the deleted `TestOperatorOutputParity`, `--output text` instability, the `text/tabwriter` vs manual-padding split** — established facts, re-confirmed above, not findings.
+- **SC2 / D-10 wording** — adjudicated; out of scope for this phase.
+- **The whole Cross-Artifact Fact-Drift pass** — advisory by construction; contributes to neither count.
+- **All UNCHECKABLE source-grounding items** — INFO by the severity map; recorded in Verification coverage, never counted.
+- **MISSING source-grounding items** — none this cycle, so no acknowledgement is owed.
