@@ -127,31 +127,50 @@ follows that voice exactly.
 | CLI verb output headline | `migration status` followed by the rendered `MigrateStatusResult` fields (buckets, absent, future, future_total, total) through `renderOperatorView` — no new copy invented; the raw field table already answers the operator's question. |
 | `engram get` headline | `record {short_id}` when the record carries only default state (matching the plain, count/flag-only headline style of the 15 existing operator reports); `record {short_id} ({state, state, ...})` when it carries one or more non-default states, using the **exact same three words** as the table's STATE column, joined in the same canonical order (see State Vocabulary below) — this is the one place CLI parity between the table and the detail view is made visible at a glance, since `engram get`'s field table alone would bury state among ~15 other fields. |
 | Sidebar toggle labels | `include archived` / `include superseded` / `include scheduled` — lowercase, matching the existing category (`convention`/`gotcha`/`decision`/`preference`) and visibility (`private`/`shared`) label casing in `ScopesSidebar` exactly. |
-| State marker text (console badge + CLI STATE column, identical vocabulary) | `archived` / `superseded` / `scheduled` — lowercase, plain words, never abbreviated, never a symbol standing alone. This is the literal wire-derived vocabulary from D-13; no synonym, no alternate casing on either surface. |
+| State marker text (console badge + CLI STATE column, identical vocabulary) | `archived` / `superseded` / `expired` / `scheduled` — lowercase, plain words, never abbreviated, never a symbol standing alone. This is the literal wire-derived vocabulary from D-13; no synonym, no alternate casing on either surface. |
 
 ---
 
 ## State Vocabulary and Compound-State Precedence
 
 **The wire is the vocabulary (D-13, locked).** Both surfaces derive a record's state purely from
-proto field presence — never a fourth invented word:
+proto field presence — never an invented word with no field behind it:
 
 ```
 archived_at present         → archived
 superseded_by present       → superseded
+not_after in the past       → expired
 not_before in the future    → scheduled
 ```
 
+**`expired` and `scheduled` are mutually exclusive** — `not_before must be strictly before
+not_after` is enforced at write time on both lanes (`internal/surfaces/rules.go:222`, `HintOrdering`),
+so no record can carry both. At most three of the four words ever compose.
+
+**`expired` was added 2026-08-20 (Sean) resolving this document's flagged open gap.** It is not a
+violation of "the wire is the vocabulary" — `not_after` is a wire field, and this rule has the
+identical shape to the other three (field presence/relation → one lowercase word). D-13's original
+three-rule derivation simply did not cover the `not_after`-in-the-past case that `include_scheduled`
+also reveals, because `activeWindowConditions` (`store.go:1013/1017`) gates on **both** halves of the
+window. The locked three-bool API (`include_archived`/`include_superseded`/`include_scheduled`) is
+**unchanged** — only the derivation gains a rule, so nothing about the Connect or CLI surface widens.
+
 **Canonical order (used everywhere a compound state is listed or composed):** `archived, superseded,
-scheduled` — this fixed order is used for the STATE column's composed value, the console badge
+expired, scheduled` — this fixed order is used for the STATE column's composed value, the console badge
 left-to-right order, and `engram get`'s headline parenthetical. Rationale for this exact order,
 grounded rather than arbitrary: it reflects descending **operator-action finality** —
 
 - `archived` is a deliberate, terminal operator action removing a record from active management.
 - `superseded` is a correction with a live successor to follow — less final, structurally recoverable
   via the link.
+- `expired` is a lapsed validity window — the record is past, not corrected and not deliberately
+  removed, and `engram prune-expired` is what eventually reclaims it. Less final than a deliberate
+  archive, more final than a correction that left a live successor behind.
 - `scheduled` (not-yet-active) is the least "severe": the record isn't hidden because something is
   wrong with it, only because its `not_before` window hasn't opened yet.
+
+`expired` slots between `superseded` and `scheduled` because it is the boundary of the finality
+scale's past half: everything above it is history, `scheduled` alone is future.
 
 This ordering is the same property Carbon Design System's status-indicator pattern calls
 "consolidate to the highest-attention state" — applied here as a fixed rendering order rather than a
@@ -167,8 +186,13 @@ shown, never collapsed to one).
 | `archived` only | Yes |
 | `superseded` only | Yes |
 | `archived` + `superseded` | Yes — **same single dimmed treatment as either alone, never extra-dimmed.** There is no "more dimmed" tier. |
+| `expired` only | Yes — an expired record *is* history: its window closed and `prune-expired` reclaims it. Same single dimmed treatment, no extra tier. |
 | `scheduled` only | **No.** A not-yet-active record is not history — it is the live record, early. Dimming it as if it were archived/superseded would misrepresent a record that will become perfectly normal the moment its window opens. |
-| `scheduled` + (`archived` or `superseded`) | Yes — driven by the archived/superseded component; `scheduled` alone never adds or removes dimming. |
+| `scheduled` + (`archived`, `superseded`, or `expired`) | Yes — driven by the archived/superseded/expired component; `scheduled` alone never adds or removes dimming. |
+
+**The rule in one sentence:** dim iff the record is **past** (`archived`, `superseded`, or
+`expired`); `scheduled` describes a record's *future*, so it never dims and never suppresses a dim
+contributed by another state.
 
 This resolves the "biggest open visual question" the phase brief names: precedence is not needed for
 *which* state wins visually, because the marker is composable and shows every present state as its
@@ -181,19 +205,24 @@ and tags dim. Applying the row's dimming opacity to the badge text as well would
 already-small 9.5–10px label below WCAG AA contrast on the exact element the marker-plus-dimming
 pattern (D-15) designates as the non-decorative, load-bearing signal.
 
-### Open gap — flagged, not silently resolved
+### Resolved — `expired` (was this document's flagged open gap)
 
 `include_scheduled` relaxes `activeWindowConditions`, which gates on **both** `not_before` and
-`not_after` (07-CONTEXT.md canonical refs, `store.go:1013/1017`). D-13's three-rule derivation only
-names `not_before` in the future → `scheduled`; it says nothing about a record whose `not_after` has
-already passed (an **expired**, not merely not-yet-active, record) becoming visible through the same
-flag. Under the locked derivation, such a record renders with **no marker at all** — visually
-indistinguishable from a live record once revealed via `include_scheduled`.
+`not_after` (07-CONTEXT.md canonical refs, `store.go:1013/1017`). D-13's three-rule derivation named
+only `not_before` in the future → `scheduled`, so a record whose `not_after` had already passed — an
+**expired**, not merely not-yet-active, record — would have been revealed by `include_scheduled` while
+rendering with **no marker at all**, visually indistinguishable from a live record. That directly
+contradicts this phase's own success criterion that the console renders a record's state.
 
-I have not invented a fourth vocabulary word to cover this, because D-13 is locked and "the wire is
-the vocabulary" is explicit about not doing that. This is recorded as an **unresolved** UI
-consideration below for the planner to either accept as-is (matches D-13 literally) or raise back to
-Sean before implementation — it is not this document's call to make silently.
+**Resolution (Sean, 2026-08-20): add the fourth wire-derived word `expired`** (see the derivation
+table above). Two alternatives were considered and rejected:
+
+- *Split `include_scheduled` into two bools* (`include_scheduled` for `not_before`, a new
+  `include_expired` for `not_after`) so the flags are strictly one-to-one with the two gate
+  conditions. Rejected as reopening a locked decision and widening the Connect + CLI surface for a
+  problem that is purely about *rendering* a revealed record, not about *which* records are revealed.
+- *Accept no marker.* Rejected: it leaves an operator who opts into `include_scheduled` unable to tell
+  a lapsed record from a live one, which is the exact legibility failure this phase exists to fix.
 
 ---
 
@@ -211,6 +240,14 @@ Sean before implementation — it is not this document's call to make silently.
 - Row dimming: apply `opacity-60` (or the project's nearest existing dim utility) to the row's
   `<button>` content **excluding** the state badge wrapper, per the compound-state precedence table
   above. Live rows (no state) are unaffected — zero visual change for the common case.
+- **Overflow — the meta line wraps to a second row** (Sean, 2026-08-20). When state badges plus
+  category/time/scope/tags exceed the panel width, the meta line wraps rather than truncating or
+  hiding anything: add `flex-wrap` with a small `gap-y` to the existing meta-line row. Nothing is
+  ever elided, so no element needs a priority order and no state can be pushed out of view — which
+  matters because the badge is the load-bearing, non-decorative signal (D-15) and must not be the
+  thing that overflow removes. **Consequence to plan for:** list row height becomes variable, so any
+  fixed-row-height or virtualization assumption in the list must be checked; a row with all four
+  states present is the worst case to test against.
 - No new component: this is an addition to the existing `flex items-center gap-2 text-[11px]
   text-muted-foreground` meta-line row, alongside the existing category/time/scope/tags spans.
 
@@ -235,6 +272,9 @@ Sean before implementation — it is not this document's call to make silently.
     — i.e. the same `onselect`-style navigation `MemoryRow` already uses, not a page navigation.
   - `supersedes` (when present, plural) → `supersedes` followed by one link per predecessor, same
     treatment, stacked or comma-joined (executor's choice — not visually load-bearing).
+  - `expired` → `expired {fullTimestamp(not_after)}` (same `fullTimestamp` helper; parallel in shape
+    to the `archived {date}` line, because both state a moment in the past at which the record left
+    active use).
   - `scheduled` → `not yet active — opens {fullTimestamp(not_before)}` (and, if `not_after` is also
     set and in the future, a second line `closes {fullTimestamp(not_after)}` — this is presentation of
     an already-fetched field, not a new derived state per the vocabulary lock above).
@@ -283,7 +323,12 @@ Sean before implementation — it is not this document's call to make silently.
   left, and the widest/most-variable column (SUMMARY) stays last, matching the table's existing
   left-to-right narrow-to-wide convention.
 - **Cell value:** blank for a live record (D-12, locked). For a non-default record, the canonical-order
-  state words joined with a comma and **no space** (`archived,superseded`) — compact, single-cell,
+  state words joined with a comma and **no space** (`archived,superseded`; worst case
+  `archived,superseded,expired` — at most three words ever compose, because `expired` and `scheduled`
+  are **mutually exclusive by a write-time invariant**: `not_before must be strictly before
+  not_after` is enforced on both write lanes (`internal/surfaces/rules.go:222`, `HintOrdering`), so
+  an inverted window is unrepresentable and a record cannot simultaneously have a future
+  `not_before` and a past `not_after`) — compact, single-cell,
   greppable, and avoids ambiguity with tabwriter's tab-delimited column model (an embedded space
   inside a cell is harmless there, but comma-no-space reads as one token to `cut`/`awk`-style
   downstream processing an operator might pipe this through, even though `--output text` carries no
@@ -348,8 +393,8 @@ survive the removal of color, every state on every surface must be conveyable **
 
 | Surface | Mechanism that survives color/opacity removal | What is explicitly NOT relied on |
 |---|---|---|
-| Console list row (`MemoryRow`) | Visible lowercase text badge(s) — `archived` / `superseded` / `scheduled` — always rendered at full opacity, never color-coded | Row dimming (decorative only, exempts the badge); any per-state hue |
-| Console detail pane (`MemoryDetail`) | Named State section with explicit labeled lines (`archived {date}`, `superseded by {link}`, `not yet active — opens {date}`) | Badge color; section placement alone (screen reader gets the text content, not spatial layout) |
+| Console list row (`MemoryRow`) | Visible lowercase text badge(s) — `archived` / `superseded` / `expired` / `scheduled` — always rendered at full opacity, never color-coded | Row dimming (decorative only, exempts the badge); any per-state hue |
+| Console detail pane (`MemoryDetail`) | Named State section with explicit labeled lines (`archived {date}`, `superseded by {link}`, `expired {date}`, `not yet active — opens {date}`) | Badge color; section placement alone (screen reader gets the text content, not spatial layout) |
 | Console migration banner | Full sentence copy naming the condition explicitly ("pending migration" vs "newer schema version... may not render correctly"), paired with (never replaced by) an `aria-hidden` icon | Strip background color (`bg-muted` vs `bg-destructive/10`) as the sole distinguisher between the two conditions — a screen reader or forced-colors/high-contrast mode user reads two different sentences regardless |
 | Console sidebar toggles | Standard `Checkbox` + text label pair (existing pattern, inherently accessible — checked state exposed via `aria-checked`, not color) | N/A — no new risk introduced |
 | CLI STATE column | Plain lowercase ASCII words, no glyphs, no ANSI — see Component Specs rationale | Any escape-sequence-based emphasis; any TTY-conditional rendering |
@@ -361,28 +406,65 @@ codes exist in the text lane at all, per the Component Specs decision above) and
 console because every state-bearing element already carries a required text label independent of the
 `Badge`/strip background color — removing `--destructive`/`--cat-*`/`opacity-60` from the stylesheet
 entirely (a forced-colors browser mode does effectively this) leaves every sentence and label still
-readable and still distinguishing the two banner conditions and three record states.
+readable and still distinguishing the two banner conditions and four record states.
 
 ---
 
 ## UI Considerations
 
-Applicable state considerations resolved: 5 covered, 0 backstop, 1 unresolved.
+Derived from the UI-consideration probe over the 7 surfaces this phase touches (E1 `MemoryRow`,
+E2 `MemoryDetail`, E3 `ScopesSidebar`, E4 `AppShell` banner, E5 CLI `renderMemoryTable`, E6 CLI
+`engram get`, E7 CLI migration verb + footer). The probe raised all 8 state categories against all 7
+surfaces — **56 applicable, 0 unclassified**. Resolved below: **52 explicit, 3 backstop, 1 unresolved**.
 
-| Category | Element(s) | Status | Resolution / Reason |
+Empty- and error-state **copy** lives in `## Copywriting Contract`; the rows below cover shape-rooted
+STATE coverage and reference that section rather than restating it.
+
+| Category | Surface(s) | Status | Resolution |
 |---|---|---|---|
-| empty | record list, any include-flag combination | ✅ covered | Reuses the existing "no memories" empty state verbatim — no new copy, see Copywriting Contract |
-| loading | migration banner (console) | ✅ covered | Banner mounts silent; it only appears once the `MigrateStatus` RPC resolves non-zero. No loading skeleton — silent-at-zero and silent-while-loading are the same rendered state (nothing), which is the correct property for a diagnostic strip that shouldn't cause layout shift on every route load |
-| error | migration banner RPC failure (console); footer RPC failure (CLI) | ✅ covered | Both fail silently — see Copywriting Contract's two error-state rows |
-| populated — single state | any record with exactly one of archived/superseded/scheduled | ✅ covered | Marker + (conditional) dimming per the compound-state table |
-| populated — compound state | archived+superseded, archived+scheduled, superseded+scheduled, all three | ✅ covered | Canonical order + binary dimming rule resolved above — this was the phase's flagged open question |
-| overflow | multiple compound-state words in the STATE column / console meta line | ⚠ unresolved | `archived,superseded,scheduled` (all three, 27 chars) in a dense `text-[11px]` meta line alongside category/time/scope/tags could crowd a narrow list panel. Not resolved here because it depends on the actual panel width chosen at implementation, which this document doesn't fix — the planner/executor should verify visually against the live console rather than assume; if crowding occurs, truncation/wrapping behavior for the meta line is an implementation call, not a re-opened design question (the vocabulary and order are still locked) |
-| zero-one-many | `supersedes` (0, 1, or many predecessor links in `MemoryDetail`'s State section) | ✅ covered | Stacked/comma-joined list of links, same link treatment per predecessor — see Component Specs |
+| empty | E1 record list, any include-flag combination | resolved (explicit) | Reuses the existing generic "no memories" empty state verbatim; no filter-aware copy variant — see Copywriting Contract |
+| empty | E2 detail pane, live record | resolved (explicit) | No State section renders at all; no empty heading — mirrors the banner's silent-at-zero rule at component level |
+| empty | E3 sidebar | resolved (explicit) | All three checkboxes unchecked is the default and is the pre-phase behavior exactly; no empty state exists for a static control group |
+| empty | E4 banner, zero pending and zero future | resolved (explicit) | Renders nothing — silent at zero (D-07) |
+| empty | E5 CLI table, zero rows | resolved (explicit) | Existing zero-row table behavior unchanged; STATE column adds no new empty case |
+| empty | E6 `engram get`, live record | resolved (explicit) | Headline is `record {short_id}` with no parenthetical; state fields render as their existing empty/absent proto values |
+| empty | E7 footer, both counts zero | resolved (explicit) | Whole footer line omitted — see Copywriting Contract |
+| loading | E4 migration banner | resolved (explicit) | Silent while the RPC is in flight. Silent-at-zero and silent-while-loading are the same rendered state (nothing), so no skeleton and no layout shift on route load |
+| loading | E1, E2, E3 | resolved (explicit) | Inherit the console's existing list/detail loading states; state badges are additional fields on already-loaded records, introducing no new async boundary |
+| loading | E5, E6, E7 | resolved (explicit) | N/A — CLI renders after the RPC resolves; there is no intermediate frame to design |
+| error | E4 `MigrateStatus` RPC fails | resolved (explicit) | Renders no banner and logs via `console.error`; never a user-facing error strip — "silent when uncertain" — see Copywriting Contract |
+| error | E7 footer lookup fails | resolved (explicit) | Footer line omitted; the command's primary output and exit code are unaffected — a failed footer must never fail the command |
+| error | E1, E2, E3 | resolved (explicit) | Inherit existing console error handling; no new failure mode is introduced by rendering additional already-fetched fields |
+| error | E6 `engram get` on a missing/ambiguous id | resolved (explicit) | Existing `field=<name> hint=<code>: <text>` envelope, unchanged by this phase |
+| populated — single state | E1, E2, E5, E6 | resolved (explicit) | One marker word, canonical order, plus conditional dimming per the precedence table |
+| populated — compound state | E1, E2, E5, E6 | resolved (explicit) | Canonical order `archived, superseded, expired, scheduled`; binary dim-iff-past rule. All representable combinations enumerated in the precedence table |
+| populated | E3 toggles | resolved (explicit) | Standard checked/unchecked; URL round-trip inherited from the existing sidebar pattern |
+| populated | E4 banner | resolved (explicit) | Two independent strips; behind-version above ahead-version; both can render at once |
+| populated | E7 verb | resolved (explicit) | `renderOperatorView` over `MigrateStatusResult`'s existing field shape; no bespoke table |
+| partial | E2 `superseded_by` target unreadable by this caller | resolved (explicit) | The link renders from the id the record already carries; authz is orthogonal (D-13) and a target the caller cannot read fails on click through the existing get-by-id error envelope, not by suppressing the link — suppressing it would leak a readability probe |
+| partial | E4 one count non-zero, the other zero | resolved (explicit) | Each strip is independently gated on its own count; a zero count renders no strip |
+| partial | E1, E5 record with state but no summary | resolved (explicit) | Existing missing-summary behavior ("no summary yet") is unchanged; state and summary are independent fields |
+| partial | E6 record missing `schema_version` (pre-versioning) | resolved (explicit) | Renders through the existing `humanizeKey` field machinery with its absent/zero value; no synthesized default |
+| partial | E7 buckets present but `absent` non-zero | resolved (explicit) | `renderOperatorView`'s array-of-object handling renders every bucket plus `absent` as its own row; no bucket is collapsed |
+| overflow | E1 meta line with all representable states | resolved (explicit) | **Meta line wraps to a second row** (`flex-wrap` + `gap-y`); nothing truncates or is elided, so the load-bearing badge can never be the element overflow removes. Row height becomes variable — any fixed-height or virtualization assumption in the list must be re-checked |
+| overflow | E5 STATE column, longest composed value | resolved (explicit) | `archived,superseded,expired` (27 chars) is the worst case; `tabwriter` sizes the column to the widest cell. No glyphs, no ANSI, so width is exactly the rune count |
+| overflow | E2, E3, E4, E6, E7 | resolved (explicit) | Full-width block layouts with wrapping prose; no fixed-width container to overflow |
+| zero-one-many | E2 `supersedes` predecessors | resolved (explicit) | Zero renders no line; one or many render one link each, stacked or comma-joined, same treatment per predecessor |
+| zero-one-many | E4 banner strips (0, 1, or 2) | resolved (explicit) | Each independently gated; zero, either alone, or both stacked in the fixed behind-then-ahead order |
+| zero-one-many | E5 table rows | resolved (explicit) | Existing cursor pagination unchanged; STATE adds a column, not a row-count concern |
+| zero-one-many | E7 buckets | resolved (explicit) | Existing repeated-message rendering handles zero, one, or many buckets |
+| zero-one-many | E1, E3, E6 | resolved (explicit) | E1 badges 0–3 by the mutual-exclusion invariant; E3 is a fixed set of exactly three checkboxes; E6 renders one record |
+| long-text | E1 summary alongside badges | resolved (backstop) | Existing summary truncation is unchanged, but badges now compete for meta-line width. Verify visually that a long summary plus a wrapped meta line still reads as one row — held-out visual check at implementation |
+| long-text | E2 `superseded_by` link with a full UUID | resolved (explicit) | Prefer the `short_id` as the visible link text (10-char Crockford base32) with the full id as the click target — the record carries both, and the short form is the documented compact handle |
+| long-text | E5 SUMMARY column with a wide/combining-character summary | resolved (backstop) | `tabwriter` counts runes, so wide and combining characters misalign — a pre-existing, accepted, documented limitation of this renderer, not introduced here. Backstopped by the existing operator-view padding tests rather than re-litigated |
+| long-text | E4 banner copy at a narrow viewport | resolved (backstop) | Copy is a full sentence and will wrap within the strip; verify the strip grows rather than clipping at the narrowest supported width |
+| long-text | E3, E6, E7 | resolved (explicit) | Fixed short labels (E3); labeled field lines that wrap (E6, E7) |
+| long-text | E6 headline with a long state parenthetical | resolved (explicit) | Parenthetical is built only from this document's fixed vocabulary words, never record-derived free text, so its maximum length is bounded and known; routed through `sanitizeViewValue` regardless, per D-11 |
+| partial | E1/E5 **a record revealed by a flag whose state word the operator did not opt into** | ⚠ **unresolved — planner must treat as assumption** | With `include_scheduled` on, an expired record now renders `expired` (resolved above). But the inverse is unspecified: whether a record surfaced by one include-flag while carrying a *different* state should render that other state's marker at all, or be filtered out. Current spec renders every present state regardless of which flag revealed the record. That is the sane default, but it is this document's inference, not a locked decision — raise at plan time if the flags are meant to be filters rather than reveals |
 
-**Flagged separately (not a state-coverage row, a vocabulary gap):** the `include_scheduled` /
-expired-record edge case documented under "State Vocabulary — Open gap" above. It is a locked-decision
-boundary question, not a UI polish question, so it is called out in its own section rather than folded
-into this table.
+**Resolved during this probe (Sean, 2026-08-20):** the `expired` vocabulary gap and the meta-line
+overflow behavior, both previously flagged unresolved by the researcher. See "Resolved — `expired`"
+and the `MemoryRow` overflow bullet above.
 
 ---
 
