@@ -433,15 +433,14 @@ Plans:
 **Wave 1**
 
 - [ ] 07-01-PLAN.md — Tracer: the three recall-gate opt-in bools end to end on the List lane, plus the Go state-word vocabulary and D-12's always-present STATE column (wave 1)
-- [ ] 07-02-PLAN.md — Console record-state rendering: MemoryRow badges with the dim-iff-past rule, MemoryDetail's schema chip and State section, and the TS state-word vocabulary (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [ ] 07-03-PLAN.md — Search-lane mirror, the 2-of-4 gate-scope proof, authorization orthogonality, and re-derivation of the two claims conditional gating invalidates (wave 2)
-- [ ] 07-04-PLAN.md — Console include toggles in ScopesSidebar, round-tripped through the URL and the query cache (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
+- [ ] 07-02-PLAN.md — Console record-state rendering: MemoryRow badges with the dim-iff-past rule, MemoryDetail's schema chip and State section, and the TS state-word vocabulary (wave 3)
 - [ ] 07-05-PLAN.md — `engram get` over the ungated GetMemory RPC, plus D-11's structural headline sanitization fix (#505) (wave 3)
 
 **Wave 4** *(blocked on Wave 3 completion)*
@@ -450,7 +449,11 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 07-07-PLAN.md — The silent-at-zero migration banner in AppShell, on every console route (wave 5)
+- [ ] 07-04-PLAN.md — Console include toggles in ScopesSidebar, round-tripped through the URL and the query cache (wave 5)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 07-07-PLAN.md — The silent-at-zero migration banner in AppShell, on every console route (wave 6)
 
 ### Phase 8: Registry & Docs Tail
 
