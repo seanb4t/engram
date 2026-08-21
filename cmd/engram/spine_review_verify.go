@@ -618,9 +618,8 @@ var spineReviewVerifyCmd = &cobra.Command{
 	Use:   "verify",
 	Short: "Classify every stored citation as valid, moved, broken, or unverifiable",
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		// Mirrors spine-review scan's exact wording (spine_review_scan.go).
-		if spineVerifyScope == "" && !spineVerifyAllScopes {
-			return usageErrorf("--scope <scope> or --all-scopes is required")
+		if err := requireSweepScope(spineVerifyScope, spineVerifyAllScopes); err != nil {
+			return err
 		}
 		format, err := operatorOutputFormat(cmd, spineVerifyOutput)
 		if err != nil {
@@ -663,7 +662,7 @@ var spineReviewVerifyCmd = &cobra.Command{
 func init() {
 	addOperatorOutputFlag(spineReviewVerifyCmd, &spineVerifyOutput)
 	spineReviewVerifyCmd.Flags().StringVar(&spineVerifyScope, "scope", "", "only verify citations from records in this scope")
-	spineReviewVerifyCmd.Flags().BoolVar(&spineVerifyAllScopes, "all-scopes", false, "sweep every scope (required if --scope is omitted); mutually exclusive with --scope")
+	spineReviewVerifyCmd.Flags().BoolVar(&spineVerifyAllScopes, "all-scopes", false, "sweep every scope (required if --scope is omitted); mutually exclusive with --scope; "+sweepScopeRule().Sentence)
 	spineReviewVerifyCmd.Flags().DurationVar(&spineVerifyTimeout, "timeout", 5*time.Minute,
 		"max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C")
 	rule, ok := surfaces.RuleByID(surfaces.RuleVerifyFailOnValues)

@@ -903,7 +903,7 @@
           "name": "all-scopes",
           "type": "bool",
           "default": "false",
-          "usage": "sweep every scope (required if --scope is omitted); mutually exclusive with --scope"
+          "usage": "sweep every scope (required if --scope is omitted); mutually exclusive with --scope; a sweep requires an explicit --scope or --all-scopes: name one scope, or opt into every scope"
         },
         {
           "name": "output",
@@ -939,7 +939,7 @@
           "name": "all-scopes",
           "type": "bool",
           "default": "false",
-          "usage": "sweep every scope (required if --scope is omitted); mutually exclusive with --scope"
+          "usage": "sweep every scope (required if --scope is omitted); mutually exclusive with --scope; a sweep requires an explicit --scope or --all-scopes: name one scope, or opt into every scope"
         },
         {
           "name": "fail-on",

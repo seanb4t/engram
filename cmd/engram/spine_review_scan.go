@@ -33,15 +33,8 @@ var spineReviewScanCmd = &cobra.Command{
 	Use:   "scan",
 	Short: "Report an inventory of the memory spine",
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		// Reuses summarize.go's exact wording (summarize.go:38) so the
-		// operator tier stays internally consistent — NOT because this
-		// check satisfies an already-registered surfaces.ConditionalRule:
-		// summarize.go's own check is a bare usageErrorf, and the registry
-		// (internal/surfaces/rules.go) holds no rule for it. See this
-		// plan's SUMMARY (§ Deferrals) for the follow-up that would
-		// register one.
-		if spineScanScope == "" && !spineScanAllScopes {
-			return usageErrorf("--scope <scope> or --all-scopes is required")
+		if err := requireSweepScope(spineScanScope, spineScanAllScopes); err != nil {
+			return err
 		}
 		format, err := operatorOutputFormat(cmd, spineScanOutput)
 		if err != nil {
@@ -156,7 +149,7 @@ func spineScanSummary(res store.SpineScanResult, scope string) string {
 func init() {
 	addOperatorOutputFlag(spineReviewScanCmd, &spineScanOutput)
 	spineReviewScanCmd.Flags().StringVar(&spineScanScope, "scope", "", "only scan records in this scope")
-	spineReviewScanCmd.Flags().BoolVar(&spineScanAllScopes, "all-scopes", false, "sweep every scope (required if --scope is omitted); mutually exclusive with --scope")
+	spineReviewScanCmd.Flags().BoolVar(&spineScanAllScopes, "all-scopes", false, "sweep every scope (required if --scope is omitted); mutually exclusive with --scope; "+sweepScopeRule().Sentence)
 	spineReviewScanCmd.Flags().DurationVar(&spineScanTimeout, "timeout", 5*time.Minute,
 		"max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C")
 	spineReviewScanCmd.MarkFlagsMutuallyExclusive("scope", "all-scopes")
