@@ -60,6 +60,9 @@ Flags:
       --cursor-mode             opt into cursor paging on the first (tokenless) page; cursor_mode, offset, and page_token are mutually exclusive
       --full                    return full content instead of summaries
   -h, --help                    help for list
+      --include-archived        include archived records, which are hidden by default
+      --include-scheduled       include records outside their validity window (not-yet-active AND already-expired), which are hidden by default
+      --include-superseded      include superseded records, which are hidden by default
       --insecure                skip TLS certificate verification (always warns on stderr; no environment fallback)
       --limit uint              max results (0 = server default)
       --offset uint             offset-for-UI paging; cursor_mode, offset, and page_token are mutually exclusive

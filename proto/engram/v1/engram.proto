@@ -89,6 +89,23 @@ message ListMemoriesRequest {
   // scope is required unless cross_spine is true
   // engram:rule:end scope-required-unless-cross-spine
   bool cross_spine = 12;
+  // false (default) reproduces today's soft-hidden behavior: archived
+  // records stay unreachable. true relaxes exactly the `archived_at`
+  // IsEmpty recall condition in Store.List, revealing archived records
+  // without narrowing the result set to only-archived ones.
+  bool include_archived = 13;
+  // false (default) reproduces today's soft-hidden behavior: superseded
+  // records stay unreachable. true relaxes exactly the `superseded_by`
+  // IsEmpty recall condition in Store.List.
+  bool include_superseded = 14;
+  // false (default) reproduces today's soft-hidden behavior: records
+  // outside their validity window stay unreachable. true relaxes BOTH
+  // bounds of the scheduling gate together — a not-yet-active (not_before
+  // in the future) record AND an already-expired (not_after in the past)
+  // record both become reachable under this single flag. A separate
+  // include_expired bool was considered and rejected upstream; do not
+  // re-propose the split.
+  bool include_scheduled = 15;
 }
 
 message ListMemoriesResponse {

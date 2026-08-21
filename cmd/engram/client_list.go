@@ -15,18 +15,21 @@ import (
 )
 
 var (
-	listScope         string
-	listCrossSpine    bool
-	listLimit         uint64
-	listOffset        uint64
-	listCategories    []string
-	listVisibility    string
-	listTags          []string
-	listFull          bool
-	listCreatedAfter  string
-	listCreatedBefore string
-	listPageToken     string
-	listCursorMode    bool
+	listScope             string
+	listCrossSpine        bool
+	listLimit             uint64
+	listOffset            uint64
+	listCategories        []string
+	listVisibility        string
+	listTags              []string
+	listFull              bool
+	listCreatedAfter      string
+	listCreatedBefore     string
+	listPageToken         string
+	listCursorMode        bool
+	listIncludeArchived   bool
+	listIncludeSuperseded bool
+	listIncludeScheduled  bool
 )
 
 // listCmd is `engram list`, the second of the three D-01 subcommands.
@@ -50,18 +53,21 @@ var listCmd = &cobra.Command{
 		ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 		defer cancel()
 		resp, err := client.ListMemories(ctx, connect.NewRequest(&engramv1.ListMemoriesRequest{
-			Scope:         listScope,
-			CrossSpine:    listCrossSpine,
-			Limit:         listLimit,
-			Offset:        listOffset,
-			Categories:    listCategories,
-			Visibility:    listVisibility,
-			Tags:          listTags,
-			Full:          listFull,
-			CreatedAfter:  listCreatedAfter,
-			CreatedBefore: listCreatedBefore,
-			PageToken:     listPageToken,
-			CursorMode:    listCursorMode,
+			Scope:             listScope,
+			CrossSpine:        listCrossSpine,
+			Limit:             listLimit,
+			Offset:            listOffset,
+			Categories:        listCategories,
+			Visibility:        listVisibility,
+			Tags:              listTags,
+			Full:              listFull,
+			CreatedAfter:      listCreatedAfter,
+			CreatedBefore:     listCreatedBefore,
+			PageToken:         listPageToken,
+			CursorMode:        listCursorMode,
+			IncludeArchived:   listIncludeArchived,
+			IncludeSuperseded: listIncludeSuperseded,
+			IncludeScheduled:  listIncludeScheduled,
 		}))
 		if err != nil {
 			// Do not retry. Return wrapRPCError(err) and let Execute() map
@@ -119,6 +125,9 @@ func init() {
 	listCmd.Flags().StringVar(&listCreatedBefore, "created-before", "", "RFC3339 exclusive upper bound on created_at")
 	listCmd.Flags().StringVar(&listPageToken, "page-token", "", "opaque cursor from a previous response's next_page_token; "+pagingRule.Sentence)
 	listCmd.Flags().BoolVar(&listCursorMode, "cursor-mode", false, "opt into cursor paging on the first (tokenless) page; "+pagingRule.Sentence)
+	listCmd.Flags().BoolVar(&listIncludeArchived, "include-archived", false, "include archived records, which are hidden by default")
+	listCmd.Flags().BoolVar(&listIncludeSuperseded, "include-superseded", false, "include superseded records, which are hidden by default")
+	listCmd.Flags().BoolVar(&listIncludeScheduled, "include-scheduled", false, "include records outside their validity window (not-yet-active AND already-expired), which are hidden by default")
 	// D-07/D-08: the paging trio is mutually exclusive as a declared cobra
 	// flag group, validated centrally by rootCmd.PersistentPreRunE calling
 	// cmd.ValidateFlagGroups() before RunE ever dials. cobra's flag groups

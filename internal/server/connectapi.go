@@ -247,8 +247,11 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 		// sets cursor_mode=true to bootstrap cursor paging on the tokenless first
 		// page. PageToken != "" keeps resume working whether or not the flag is
 		// re-sent. Default (both false) stays offset-for-UI (ADR engram-1frj).
-		CursorMode: req.Msg.CursorMode || req.Msg.PageToken != "",
-		CrossSpine: req.Msg.CrossSpine,
+		CursorMode:        req.Msg.CursorMode || req.Msg.PageToken != "",
+		CrossSpine:        req.Msg.CrossSpine,
+		IncludeArchived:   req.Msg.IncludeArchived,
+		IncludeSuperseded: req.Msg.IncludeSuperseded,
+		IncludeScheduled:  req.Msg.IncludeScheduled,
 	})
 	if err != nil {
 		return nil, connectError(ctx, err)
