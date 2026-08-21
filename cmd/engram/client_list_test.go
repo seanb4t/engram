@@ -511,3 +511,41 @@ func TestClientListFooterUnchangedWithoutCrossSpine(t *testing.T) {
 		t.Errorf("stdout = %q, want exactly %q (no coverage footer line without --cross-spine)", stdout, want.String())
 	}
 }
+
+// TestClientListJSONOutputByteIdenticalToPrePhaseShape (07-06, D-08) proves
+// --output json's document is UNCHANGED by this plan: the migration
+// advisory is a text-lane-only addition, so the json document for a given
+// response must be byte-identical to what renderJSON alone produces,
+// including when the store carries a real backlog.
+func TestClientListJSONOutputByteIdenticalToPrePhaseShape(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
+	resp := &engramv1.ListMemoriesResponse{
+		Memories: []*engramv1.Memory{{ShortId: "AAAA111111", Scope: "repo:x"}},
+		Total:    1,
+	}
+	svc := &stubEngramService{
+		listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
+			return resp, nil
+		},
+		migrateStatusFn: func(context.Context, *engramv1.MigrateStatusRequest) (*engramv1.MigrateStatusResponse, error) {
+			return &engramv1.MigrateStatusResponse{Pending: 9, FutureTotal: 3}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	stdout, _, err := runClient(t, "list", "--server", url, "--scope", "repo:x", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var want strings.Builder
+	if err := renderJSON(&want, resp); err != nil {
+		t.Fatalf("renderJSON: %v", err)
+	}
+	if stdout != want.String() {
+		t.Errorf("stdout = %q, want exactly %q (json lane byte-identical to pre-phase renderJSON output)", stdout, want.String())
+	}
+	if svc.migrateStatusCalls != 0 {
+		t.Errorf("migrateStatusCalls = %d, want 0 — the json lane must never look up the footer", svc.migrateStatusCalls)
+	}
+}

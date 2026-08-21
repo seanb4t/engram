@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/pflag"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
+	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
 	"github.com/seanb4t/engram/internal/server"
 )
 
@@ -977,5 +978,128 @@ func TestRootSilencesUsageAndErrors(t *testing.T) {
 	}
 	if searchCmd.SilenceErrors {
 		t.Error("searchCmd.SilenceErrors = true, want false — this is inherited from rootCmd, not set redundantly")
+	}
+}
+
+// TestRenderMigrationFooter covers renderMigrationFooter's four output
+// cases (07-06): both counts zero writes nothing, each count alone writes
+// its own single-fact line, and both together join on one line with the
+// same two-space separator renderCoverageFooter uses.
+func TestRenderMigrationFooter(t *testing.T) {
+	t.Run("both zero writes nothing", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := renderMigrationFooter(&buf, 0, 0); err != nil {
+			t.Fatalf("renderMigrationFooter(0, 0): %v", err)
+		}
+		if buf.Len() != 0 {
+			t.Errorf("wrote %q, want zero bytes", buf.String())
+		}
+	})
+	t.Run("pending only", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := renderMigrationFooter(&buf, 4, 0); err != nil {
+			t.Fatalf("renderMigrationFooter(4, 0): %v", err)
+		}
+		if want := "pending_migrations: 4\n"; buf.String() != want {
+			t.Errorf("wrote %q, want %q", buf.String(), want)
+		}
+	})
+	t.Run("future_total only", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := renderMigrationFooter(&buf, 0, 2); err != nil {
+			t.Fatalf("renderMigrationFooter(0, 2): %v", err)
+		}
+		if want := "future_schema_records: 2\n"; buf.String() != want {
+			t.Errorf("wrote %q, want %q", buf.String(), want)
+		}
+	})
+	t.Run("both non-zero joined on one line", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := renderMigrationFooter(&buf, 4, 2); err != nil {
+			t.Fatalf("renderMigrationFooter(4, 2): %v", err)
+		}
+		if want := "pending_migrations: 4  future_schema_records: 2\n"; buf.String() != want {
+			t.Errorf("wrote %q, want %q", buf.String(), want)
+		}
+	})
+}
+
+// migrationFooterContextTolerance bounds how far a measured remaining
+// duration may drift from its expected bound before the timeout-ceiling
+// tests below fail — generous enough to absorb scheduler jitter on a
+// loaded CI runner, tight enough that the two tests below cannot both pass
+// under a wrong implementation (e.g. always returning footerLookupBudget
+// regardless of resolvedTimeout, or always passing resolvedTimeout through
+// unbounded).
+const migrationFooterContextTolerance = 500 * time.Millisecond
+
+// TestMigrationFooterContextAppliesCeiling drives migrationFooterContext
+// directly (07-06) with two resolved timeouts on either side of
+// footerLookupBudget, and reads the returned context's own Deadline() —
+// neither case recomputes min() itself, so only production's own
+// arithmetic can satisfy both.
+func TestMigrationFooterContextAppliesCeiling(t *testing.T) {
+	t.Run("resolved timeout longer than the ceiling: the ceiling wins", func(t *testing.T) {
+		ctx, cancel := migrationFooterContext(context.Background(), 30*time.Second)
+		defer cancel()
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			t.Fatal("migrationFooterContext(30s) returned a context with no deadline")
+		}
+		remaining := time.Until(deadline)
+		if diff := remaining - footerLookupBudget; diff > migrationFooterContextTolerance || diff < -migrationFooterContextTolerance {
+			t.Errorf("remaining = %v, want within %v of footerLookupBudget (%v) — not of the 30s resolved timeout", remaining, migrationFooterContextTolerance, footerLookupBudget)
+		}
+	})
+	t.Run("resolved timeout shorter than the ceiling: the resolved timeout wins", func(t *testing.T) {
+		const short = 500 * time.Millisecond
+		ctx, cancel := migrationFooterContext(context.Background(), short)
+		defer cancel()
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			t.Fatal("migrationFooterContext(500ms) returned a context with no deadline")
+		}
+		remaining := time.Until(deadline)
+		if diff := remaining - short; diff > migrationFooterContextTolerance || diff < -migrationFooterContextTolerance {
+			t.Errorf("remaining = %v, want within %v of the 500ms resolved timeout — not of footerLookupBudget (%v)", remaining, migrationFooterContextTolerance, footerLookupBudget)
+		}
+	})
+}
+
+// TestMigrationFooterCountsTimesOutWithoutCallerContext drives
+// migrationFooterCounts (07-06) against a MigrateStatus handler that never
+// returns, passing context.Background() as parent — a context that never
+// expires on its own — with a generous 30s resolved timeout. The bound can
+// therefore ONLY come from migrationFooterCounts deriving its own,
+// footerLookupBudget-ceilinged context: a caller-context or
+// unbounded-passthrough implementation would hang until the test's own
+// deadline instead.
+func TestMigrationFooterCountsTimesOutWithoutCallerContext(t *testing.T) {
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	svc := &stubEngramService{
+		migrateStatusFn: func(ctx context.Context, _ *engramv1.MigrateStatusRequest) (*engramv1.MigrateStatusResponse, error) {
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
+			return nil, ctx.Err()
+		},
+	}
+	url := startStubServer(t, svc)
+	client := engramv1connect.NewEngramServiceClient(http.DefaultClient, url)
+
+	start := time.Now()
+	pending, futureTotal, ok := migrationFooterCounts(context.Background(), client, 30*time.Second)
+	elapsed := time.Since(start)
+
+	if ok {
+		t.Fatal("migrationFooterCounts: ok = true, want false (the lookup never returned)")
+	}
+	if pending != 0 || futureTotal != 0 {
+		t.Errorf("migrationFooterCounts on failure = (%d, %d), want (0, 0)", pending, futureTotal)
+	}
+	if elapsed > footerLookupBudget+migrationFooterContextTolerance {
+		t.Errorf("migrationFooterCounts took %v, want roughly footerLookupBudget (%v) — it must not hang on context.Background()", elapsed, footerLookupBudget)
 	}
 }

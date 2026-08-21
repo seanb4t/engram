@@ -79,7 +79,16 @@ var searchCmd = &cobra.Command{
 			if err := renderMemoryTable(cmd.OutOrStdout(), resp.Msg.GetMemories(), true); err != nil {
 				return err
 			}
-			return renderCoverageFooter(cmd.OutOrStdout(), searchCrossSpine, resp.Msg.GetSearchedScopes(), resp.Msg.GetScopesTruncated())
+			if err := renderCoverageFooter(cmd.OutOrStdout(), searchCrossSpine, resp.Msg.GetSearchedScopes(), resp.Msg.GetScopesTruncated()); err != nil {
+				return err
+			}
+			// The migration advisory is the least-related fact on screen,
+			// so it reads last. A failed lookup never fails the command
+			// (07-06, T-07-19): migrationFooterCounts derives its own
+			// bounded context from cmd.Context() via the resolved timeout,
+			// never a second full resolution here.
+			pending, futureTotal, _ := migrationFooterCounts(cmd.Context(), client, timeout)
+			return renderMigrationFooter(cmd.OutOrStdout(), pending, futureTotal)
 		}
 		return renderJSON(cmd.OutOrStdout(), resp.Msg)
 	},
