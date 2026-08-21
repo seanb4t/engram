@@ -16,7 +16,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file engram/v1/engram.proto.
  */
 export const file_engram_v1_engram: GenFile = /*@__PURE__*/
-  fileDesc("ChZlbmdyYW0vdjEvZW5ncmFtLnByb3RvEgllbmdyYW0udjEivgYKBk1lbW9yeRIKCgJpZBgBIAEoCRIPCgdjb250ZW50GAIgASgJEg0KBXNjb3BlGAMgASgJEgwKBHJlcG8YBCABKAkSEQoJd29ya3NwYWNlGAUgASgJEhAKCHdvcmt0cmVlGAYgASgJEhAKCGJhc2VfZGlyGAcgASgJEg4KBnNvdXJjZRgIIAEoCRIQCghjYXRlZ29yeRgJIAEoCRIMCgR0YWdzGAogAygJEg0KBWFjdG9yGAsgASgJEg0KBW93bmVyGAwgASgJEhIKCnZpc2liaWxpdHkYDSABKAkSLgoKY3JlYXRlZF9hdBgOIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDwoHc3VtbWFyeRgPIAEoCRIWCg5zdW1tYXJ5X3NvdXJjZRgQIAEoCRINCgVzY29yZRgRIAEoAhIQCghzaG9ydF9pZBgSIAEoCRIUCgxhY2Nlc3NfY291bnQYEyABKAQSNAoQbGFzdF9hY2Nlc3NlZF9hdBgUIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDAoEa2luZBgVIAEoCRImCgljaXRhdGlvbnMYFiADKAsyEy5lbmdyYW0udjEuQ2l0YXRpb24SGgoNc3VwZXJzZWRlZF9ieRgXIAEoCUgAiAEBEhIKCnN1cGVyc2VkZXMYGCADKAkSLgoKbm90X2JlZm9yZRgZIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLQoJbm90X2FmdGVyGBogASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIvCgthcmNoaXZlZF9hdBgbIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASGwoOc2NoZW1hX3ZlcnNpb24YHCABKA1IAYgBARIaCg1zdW1tYXJ5X21vZGVsGB0gASgJSAKIAQESNQoRc3VtbWFyeV9lZ3Jlc3NfYXQYHiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wQhAKDl9zdXBlcnNlZGVkX2J5QhEKD19zY2hlbWFfdmVyc2lvbkIQCg5fc3VtbWFyeV9tb2RlbCIqCgpTY29wZUNvdW50Eg0KBXNjb3BlGAEgASgJEg0KBWNvdW50GAIgASgEIhMKEUxpc3RTY29wZXNSZXF1ZXN0IlAKEkxpc3RTY29wZXNSZXNwb25zZRIlCgZzY29wZXMYASADKAsyFS5lbmdyYW0udjEuU2NvcGVDb3VudBITCgthcHByb3hpbWF0ZRgCIAEoCCLFAgoTTGlzdE1lbW9yaWVzUmVxdWVzdBINCgVzY29wZRgBIAEoCRINCgVsaW1pdBgCIAEoBBIOCgZvZmZzZXQYAyABKAQSEgoKY2F0ZWdvcmllcxgEIAMoCRISCgp2aXNpYmlsaXR5GAUgASgJEgwKBHRhZ3MYBiADKAkSDAoEZnVsbBgHIAEoCBIVCg1jcmVhdGVkX2FmdGVyGAggASgJEhYKDmNyZWF0ZWRfYmVmb3JlGAkgASgJEhIKCnBhZ2VfdG9rZW4YCiABKAkSEwoLY3Vyc29yX21vZGUYCyABKAgSEwoLY3Jvc3Nfc3BpbmUYDCABKAgSGAoQaW5jbHVkZV9hcmNoaXZlZBgNIAEoCBIaChJpbmNsdWRlX3N1cGVyc2VkZWQYDiABKAgSGQoRaW5jbHVkZV9zY2hlZHVsZWQYDyABKAgirwEKFExpc3RNZW1vcmllc1Jlc3BvbnNlEiMKCG1lbW9yaWVzGAEgAygLMhEuZW5ncmFtLnYxLk1lbW9yeRINCgV0b3RhbBgCIAEoBBIXCgthcHByb3hpbWF0ZRgDIAEoCEICGAESFwoPbmV4dF9wYWdlX3Rva2VuGAQgASgJEhcKD3NlYXJjaGVkX3Njb3BlcxgFIAMoCRIYChBzY29wZXNfdHJ1bmNhdGVkGAYgASgIIoUCChVTZWFyY2hNZW1vcmllc1JlcXVlc3QSDQoFcXVlcnkYASABKAkSDQoFc2NvcGUYAiABKAkSCQoBaxgDIAEoBBIMCgR0YWdzGAQgAygJEgwKBGZ1bGwYBSABKAgSFQoNY3JlYXRlZF9hZnRlchgGIAEoCRIWCg5jcmVhdGVkX2JlZm9yZRgHIAEoCRISCgpjYXRlZ29yaWVzGAggAygJEhMKC2Nyb3NzX3NwaW5lGAkgASgIEhgKEGluY2x1ZGVfYXJjaGl2ZWQYCiABKAgSGgoSaW5jbHVkZV9zdXBlcnNlZGVkGAsgASgIEhkKEWluY2x1ZGVfc2NoZWR1bGVkGAwgASgIInAKFlNlYXJjaE1lbW9yaWVzUmVzcG9uc2USIwoIbWVtb3JpZXMYASADKAsyES5lbmdyYW0udjEuTWVtb3J5EhcKD3NlYXJjaGVkX3Njb3BlcxgCIAMoCRIYChBzY29wZXNfdHJ1bmNhdGVkGAMgASgIIh4KEEdldE1lbW9yeVJlcXVlc3QSCgoCaWQYASABKAkiNgoRR2V0TWVtb3J5UmVzcG9uc2USIQoGbWVtb3J5GAEgASgLMhEuZW5ncmFtLnYxLk1lbW9yeSJDChhTZWFyY2hEaXNjb3Zlcmllc1JlcXVlc3QSDQoFcXVlcnkYASABKAkSDQoFc2NvcGUYAiABKAkSCQoBaxgDIAEoBCJDChlTZWFyY2hEaXNjb3Zlcmllc1Jlc3BvbnNlEiYKC2Rpc2NvdmVyaWVzGAEgAygLMhEuZW5ncmFtLnYxLk1lbW9yeSL9AQoSU3RvcmVNZW1vcnlSZXF1ZXN0EhgKB2NvbnRlbnQYASABKAlCB7pIBHICEAESFgoFc2NvcGUYAiABKAlCB7pIBHICEAESDgoGc291cmNlGAMgASgJEkEKCGNhdGVnb3J5GAQgASgJQi+6SCxyKlIIZGVjaXNpb25SCnByZWZlcmVuY2VSCmNvbnZlbnRpb25SBmdvdGNoYRIMCgR0YWdzGAUgAygJEgwKBHJlcG8YBiABKAkSEQoJd29ya3NwYWNlGAcgASgJEhAKCHdvcmt0cmVlGAggASgJEhAKCGJhc2VfZGlyGAkgASgJEg8KB3N1bW1hcnkYCiABKAkiMwoTU3RvcmVNZW1vcnlSZXNwb25zZRIKCgJpZBgBIAEoCRIQCghzaG9ydF9pZBgCIAEoCSKIAQoIQ2l0YXRpb24SLAoEa2luZBgBIAEoCUIeukgbchlSBGZpbGVSBmNvbW1pdFIDdXJsUgRyZXBvEhQKA3JlZhgCIAEoCUIHukgEcgIQARIPCgdsb2NhdG9yGAMgASgJEgsKA3BpbhgEIAEoCRIaCgdleGNlcnB0GAUgASgJQgm6SAZyBCiAgAEi1gEKFVN0b3JlRGlzY292ZXJ5UmVxdWVzdBIcCgdjb250ZW50GAEgASgJQgu6SAhyBhABKICABBIeCgRraW5kGAIgASgJQhC6SA1yC1IDbWFwUgRmYWN0EjIKCWNpdGF0aW9ucxgDIAMoCzITLmVuZ3JhbS52MS5DaXRhdGlvbkIKukgHkgEECAEQMhIgCgVzY29wZRgEIAEoCUIRukgOcgw6CmRpc2NvdmVyeToSDAoEdGFncxgFIAMoCRIPCgdzdW1tYXJ5GAYgASgJEgoKAmlkGAcgASgJIjYKFlN0b3JlRGlzY292ZXJ5UmVzcG9uc2USCgoCaWQYASABKAkSEAoIc2hvcnRfaWQYAiABKAkiogMKE1VwZGF0ZU1lbW9yeVJlcXVlc3QSEwoCaWQYASABKAlCB7pIBHICEAESDwoHY29udGVudBgCIAEoCRIOCgZzaGFyZWQYAyABKAgSDAoEdGFncxgEIAMoCRIPCgdzdW1tYXJ5GAUgASgJEjcKC3VwZGF0ZV9tYXNrGAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLkZpZWxkTWFza0IGukgDyAEBOvwBukj4ARr1AQoSdXBkYXRlX21lbW9yeS5tYXNrElN1cGRhdGVfbWFzayBtdXN0IGNvbnRhaW4gYXQgbGVhc3Qgb25lIHBhdGgsIGVhY2ggb2Y6IGNvbnRlbnQsIHNoYXJlZCwgdGFncywgc3VtbWFyeRqJAWhhcyh0aGlzLnVwZGF0ZV9tYXNrKSAmJiBzaXplKHRoaXMudXBkYXRlX21hc2sucGF0aHMpID4gMCAmJiB0aGlzLnVwZGF0ZV9tYXNrLnBhdGhzLmFsbChwLCBwIGluIFsnY29udGVudCcsICdzaGFyZWQnLCAndGFncycsICdzdW1tYXJ5J10pIjQKFFVwZGF0ZU1lbW9yeVJlc3BvbnNlEgoKAmlkGAEgASgJEhAKCHNob3J0X2lkGAIgASgJIioKE0RlbGV0ZU1lbW9yeVJlcXVlc3QSEwoCaWQYASABKAlCB7pIBHICEAEiFgoURGVsZXRlTWVtb3J5UmVzcG9uc2UiYAoUU2V0VmlzaWJpbGl0eVJlcXVlc3QSEwoCaWQYASABKAlCB7pIBHICEAESMwoKdmlzaWJpbGl0eRgCIAEoDjIVLmVuZ3JhbS52MS5WaXNpYmlsaXR5Qgi6SAWCAQIgACI1ChVTZXRWaXNpYmlsaXR5UmVzcG9uc2USCgoCaWQYASABKAkSEAoIc2hvcnRfaWQYAiABKAkigQUKFVNjaGVkdWxlTWVtb3J5UmVxdWVzdBIYCgdjb250ZW50GAEgASgJQge6SARyAhABEhYKBXNjb3BlGAIgASgJQge6SARyAhABEg4KBnNvdXJjZRgDIAEoCRJBCghjYXRlZ29yeRgEIAEoCUIvukgscipSCGRlY2lzaW9uUgpwcmVmZXJlbmNlUgpjb252ZW50aW9uUgZnb3RjaGESDAoEdGFncxgFIAMoCRIMCgRyZXBvGAYgASgJEhEKCXdvcmtzcGFjZRgHIAEoCRIQCgh3b3JrdHJlZRgIIAEoCRIQCghiYXNlX2RpchgJIAEoCRIPCgdzdW1tYXJ5GAogASgJEi4KCm5vdF9iZWZvcmUYCyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi0KCW5vdF9hZnRlchgMIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXA6nwK6SJsCGpgCChZzY2hlZHVsZV9tZW1vcnkud2luZG93EndzY2hlZHVsZV9tZW1vcnkgcmVxdWlyZXMgbm90X2JlZm9yZSBhbmQvb3Igbm90X2FmdGVyLCBhbmQgbm90X2FmdGVyIG11c3QgYmUgc3RyaWN0bHkgYWZ0ZXIgbm90X2JlZm9yZSB3aGVuIGJvdGggYXJlIHNldBqEAShoYXModGhpcy5ub3RfYmVmb3JlKSB8fCBoYXModGhpcy5ub3RfYWZ0ZXIpKSAmJiAoIWhhcyh0aGlzLm5vdF9iZWZvcmUpIHx8ICFoYXModGhpcy5ub3RfYWZ0ZXIpIHx8IHRoaXMubm90X2FmdGVyID4gdGhpcy5ub3RfYmVmb3JlKSI2ChZTY2hlZHVsZU1lbW9yeVJlc3BvbnNlEgoKAmlkGAEgASgJEhAKCHNob3J0X2lkGAIgASgJKlcKClZpc2liaWxpdHkSGgoWVklTSUJJTElUWV9VTlNQRUNJRklFRBAAEhYKElZJU0lCSUxJVFlfUFJJVkFURRABEhUKEVZJU0lCSUxJVFlfU0hBUkVEEAIynAcKDUVuZ3JhbVNlcnZpY2USSQoKTGlzdFNjb3BlcxIcLmVuZ3JhbS52MS5MaXN0U2NvcGVzUmVxdWVzdBodLmVuZ3JhbS52MS5MaXN0U2NvcGVzUmVzcG9uc2USTwoMTGlzdE1lbW9yaWVzEh4uZW5ncmFtLnYxLkxpc3RNZW1vcmllc1JlcXVlc3QaHy5lbmdyYW0udjEuTGlzdE1lbW9yaWVzUmVzcG9uc2USVQoOU2VhcmNoTWVtb3JpZXMSIC5lbmdyYW0udjEuU2VhcmNoTWVtb3JpZXNSZXF1ZXN0GiEuZW5ncmFtLnYxLlNlYXJjaE1lbW9yaWVzUmVzcG9uc2USRgoJR2V0TWVtb3J5EhsuZW5ncmFtLnYxLkdldE1lbW9yeVJlcXVlc3QaHC5lbmdyYW0udjEuR2V0TWVtb3J5UmVzcG9uc2USXgoRU2VhcmNoRGlzY292ZXJpZXMSIy5lbmdyYW0udjEuU2VhcmNoRGlzY292ZXJpZXNSZXF1ZXN0GiQuZW5ncmFtLnYxLlNlYXJjaERpc2NvdmVyaWVzUmVzcG9uc2USTAoLU3RvcmVNZW1vcnkSHS5lbmdyYW0udjEuU3RvcmVNZW1vcnlSZXF1ZXN0Gh4uZW5ncmFtLnYxLlN0b3JlTWVtb3J5UmVzcG9uc2USVQoOU3RvcmVEaXNjb3ZlcnkSIC5lbmdyYW0udjEuU3RvcmVEaXNjb3ZlcnlSZXF1ZXN0GiEuZW5ncmFtLnYxLlN0b3JlRGlzY292ZXJ5UmVzcG9uc2USTwoMVXBkYXRlTWVtb3J5Eh4uZW5ncmFtLnYxLlVwZGF0ZU1lbW9yeVJlcXVlc3QaHy5lbmdyYW0udjEuVXBkYXRlTWVtb3J5UmVzcG9uc2USTwoMRGVsZXRlTWVtb3J5Eh4uZW5ncmFtLnYxLkRlbGV0ZU1lbW9yeVJlcXVlc3QaHy5lbmdyYW0udjEuRGVsZXRlTWVtb3J5UmVzcG9uc2USUgoNU2V0VmlzaWJpbGl0eRIfLmVuZ3JhbS52MS5TZXRWaXNpYmlsaXR5UmVxdWVzdBogLmVuZ3JhbS52MS5TZXRWaXNpYmlsaXR5UmVzcG9uc2USVQoOU2NoZWR1bGVNZW1vcnkSIC5lbmdyYW0udjEuU2NoZWR1bGVNZW1vcnlSZXF1ZXN0GiEuZW5ncmFtLnYxLlNjaGVkdWxlTWVtb3J5UmVzcG9uc2VClgEKDWNvbS5lbmdyYW0udjFCC0VuZ3JhbVByb3RvUAFaM2dpdGh1Yi5jb20vc2VhbmI0dC9lbmdyYW0vZ2VuL2dvL2VuZ3JhbS92MTtlbmdyYW12MaICA0VYWKoCCUVuZ3JhbS5WMcoCCUVuZ3JhbVxWMeICFUVuZ3JhbVxWMVxHUEJNZXRhZGF0YeoCCkVuZ3JhbTo6VjFiBnByb3RvMw", [file_google_protobuf_field_mask, file_google_protobuf_timestamp, file_buf_validate_validate]);
+  fileDesc("ChZlbmdyYW0vdjEvZW5ncmFtLnByb3RvEgllbmdyYW0udjEivgYKBk1lbW9yeRIKCgJpZBgBIAEoCRIPCgdjb250ZW50GAIgASgJEg0KBXNjb3BlGAMgASgJEgwKBHJlcG8YBCABKAkSEQoJd29ya3NwYWNlGAUgASgJEhAKCHdvcmt0cmVlGAYgASgJEhAKCGJhc2VfZGlyGAcgASgJEg4KBnNvdXJjZRgIIAEoCRIQCghjYXRlZ29yeRgJIAEoCRIMCgR0YWdzGAogAygJEg0KBWFjdG9yGAsgASgJEg0KBW93bmVyGAwgASgJEhIKCnZpc2liaWxpdHkYDSABKAkSLgoKY3JlYXRlZF9hdBgOIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDwoHc3VtbWFyeRgPIAEoCRIWCg5zdW1tYXJ5X3NvdXJjZRgQIAEoCRINCgVzY29yZRgRIAEoAhIQCghzaG9ydF9pZBgSIAEoCRIUCgxhY2Nlc3NfY291bnQYEyABKAQSNAoQbGFzdF9hY2Nlc3NlZF9hdBgUIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDAoEa2luZBgVIAEoCRImCgljaXRhdGlvbnMYFiADKAsyEy5lbmdyYW0udjEuQ2l0YXRpb24SGgoNc3VwZXJzZWRlZF9ieRgXIAEoCUgAiAEBEhIKCnN1cGVyc2VkZXMYGCADKAkSLgoKbm90X2JlZm9yZRgZIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLQoJbm90X2FmdGVyGBogASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIvCgthcmNoaXZlZF9hdBgbIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASGwoOc2NoZW1hX3ZlcnNpb24YHCABKA1IAYgBARIaCg1zdW1tYXJ5X21vZGVsGB0gASgJSAKIAQESNQoRc3VtbWFyeV9lZ3Jlc3NfYXQYHiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wQhAKDl9zdXBlcnNlZGVkX2J5QhEKD19zY2hlbWFfdmVyc2lvbkIQCg5fc3VtbWFyeV9tb2RlbCIqCgpTY29wZUNvdW50Eg0KBXNjb3BlGAEgASgJEg0KBWNvdW50GAIgASgEIhMKEUxpc3RTY29wZXNSZXF1ZXN0IlAKEkxpc3RTY29wZXNSZXNwb25zZRIlCgZzY29wZXMYASADKAsyFS5lbmdyYW0udjEuU2NvcGVDb3VudBITCgthcHByb3hpbWF0ZRgCIAEoCCLFAgoTTGlzdE1lbW9yaWVzUmVxdWVzdBINCgVzY29wZRgBIAEoCRINCgVsaW1pdBgCIAEoBBIOCgZvZmZzZXQYAyABKAQSEgoKY2F0ZWdvcmllcxgEIAMoCRISCgp2aXNpYmlsaXR5GAUgASgJEgwKBHRhZ3MYBiADKAkSDAoEZnVsbBgHIAEoCBIVCg1jcmVhdGVkX2FmdGVyGAggASgJEhYKDmNyZWF0ZWRfYmVmb3JlGAkgASgJEhIKCnBhZ2VfdG9rZW4YCiABKAkSEwoLY3Vyc29yX21vZGUYCyABKAgSEwoLY3Jvc3Nfc3BpbmUYDCABKAgSGAoQaW5jbHVkZV9hcmNoaXZlZBgNIAEoCBIaChJpbmNsdWRlX3N1cGVyc2VkZWQYDiABKAgSGQoRaW5jbHVkZV9zY2hlZHVsZWQYDyABKAgirwEKFExpc3RNZW1vcmllc1Jlc3BvbnNlEiMKCG1lbW9yaWVzGAEgAygLMhEuZW5ncmFtLnYxLk1lbW9yeRINCgV0b3RhbBgCIAEoBBIXCgthcHByb3hpbWF0ZRgDIAEoCEICGAESFwoPbmV4dF9wYWdlX3Rva2VuGAQgASgJEhcKD3NlYXJjaGVkX3Njb3BlcxgFIAMoCRIYChBzY29wZXNfdHJ1bmNhdGVkGAYgASgIIoUCChVTZWFyY2hNZW1vcmllc1JlcXVlc3QSDQoFcXVlcnkYASABKAkSDQoFc2NvcGUYAiABKAkSCQoBaxgDIAEoBBIMCgR0YWdzGAQgAygJEgwKBGZ1bGwYBSABKAgSFQoNY3JlYXRlZF9hZnRlchgGIAEoCRIWCg5jcmVhdGVkX2JlZm9yZRgHIAEoCRISCgpjYXRlZ29yaWVzGAggAygJEhMKC2Nyb3NzX3NwaW5lGAkgASgIEhgKEGluY2x1ZGVfYXJjaGl2ZWQYCiABKAgSGgoSaW5jbHVkZV9zdXBlcnNlZGVkGAsgASgIEhkKEWluY2x1ZGVfc2NoZWR1bGVkGAwgASgIInAKFlNlYXJjaE1lbW9yaWVzUmVzcG9uc2USIwoIbWVtb3JpZXMYASADKAsyES5lbmdyYW0udjEuTWVtb3J5EhcKD3NlYXJjaGVkX3Njb3BlcxgCIAMoCRIYChBzY29wZXNfdHJ1bmNhdGVkGAMgASgIIh4KEEdldE1lbW9yeVJlcXVlc3QSCgoCaWQYASABKAkiNgoRR2V0TWVtb3J5UmVzcG9uc2USIQoGbWVtb3J5GAEgASgLMhEuZW5ncmFtLnYxLk1lbW9yeSJDChhTZWFyY2hEaXNjb3Zlcmllc1JlcXVlc3QSDQoFcXVlcnkYASABKAkSDQoFc2NvcGUYAiABKAkSCQoBaxgDIAEoBCJDChlTZWFyY2hEaXNjb3Zlcmllc1Jlc3BvbnNlEiYKC2Rpc2NvdmVyaWVzGAEgAygLMhEuZW5ncmFtLnYxLk1lbW9yeSI1ChNTY2hlbWFWZXJzaW9uQnVja2V0Eg8KB3ZlcnNpb24YASABKAUSDQoFY291bnQYAiABKAQiFgoUTWlncmF0ZVN0YXR1c1JlcXVlc3Qi1wEKFU1pZ3JhdGVTdGF0dXNSZXNwb25zZRIvCgdidWNrZXRzGAEgAygLMh4uZW5ncmFtLnYxLlNjaGVtYVZlcnNpb25CdWNrZXQSDgoGYWJzZW50GAIgASgEEi4KBmZ1dHVyZRgDIAMoCzIeLmVuZ3JhbS52MS5TY2hlbWFWZXJzaW9uQnVja2V0EhQKDGZ1dHVyZV90b3RhbBgEIAEoBBINCgV0b3RhbBgFIAEoBBIXCg9jdXJyZW50X3ZlcnNpb24YBiABKAUSDwoHcGVuZGluZxgHIAEoBCL9AQoSU3RvcmVNZW1vcnlSZXF1ZXN0EhgKB2NvbnRlbnQYASABKAlCB7pIBHICEAESFgoFc2NvcGUYAiABKAlCB7pIBHICEAESDgoGc291cmNlGAMgASgJEkEKCGNhdGVnb3J5GAQgASgJQi+6SCxyKlIIZGVjaXNpb25SCnByZWZlcmVuY2VSCmNvbnZlbnRpb25SBmdvdGNoYRIMCgR0YWdzGAUgAygJEgwKBHJlcG8YBiABKAkSEQoJd29ya3NwYWNlGAcgASgJEhAKCHdvcmt0cmVlGAggASgJEhAKCGJhc2VfZGlyGAkgASgJEg8KB3N1bW1hcnkYCiABKAkiMwoTU3RvcmVNZW1vcnlSZXNwb25zZRIKCgJpZBgBIAEoCRIQCghzaG9ydF9pZBgCIAEoCSKIAQoIQ2l0YXRpb24SLAoEa2luZBgBIAEoCUIeukgbchlSBGZpbGVSBmNvbW1pdFIDdXJsUgRyZXBvEhQKA3JlZhgCIAEoCUIHukgEcgIQARIPCgdsb2NhdG9yGAMgASgJEgsKA3BpbhgEIAEoCRIaCgdleGNlcnB0GAUgASgJQgm6SAZyBCiAgAEi1gEKFVN0b3JlRGlzY292ZXJ5UmVxdWVzdBIcCgdjb250ZW50GAEgASgJQgu6SAhyBhABKICABBIeCgRraW5kGAIgASgJQhC6SA1yC1IDbWFwUgRmYWN0EjIKCWNpdGF0aW9ucxgDIAMoCzITLmVuZ3JhbS52MS5DaXRhdGlvbkIKukgHkgEECAEQMhIgCgVzY29wZRgEIAEoCUIRukgOcgw6CmRpc2NvdmVyeToSDAoEdGFncxgFIAMoCRIPCgdzdW1tYXJ5GAYgASgJEgoKAmlkGAcgASgJIjYKFlN0b3JlRGlzY292ZXJ5UmVzcG9uc2USCgoCaWQYASABKAkSEAoIc2hvcnRfaWQYAiABKAkiogMKE1VwZGF0ZU1lbW9yeVJlcXVlc3QSEwoCaWQYASABKAlCB7pIBHICEAESDwoHY29udGVudBgCIAEoCRIOCgZzaGFyZWQYAyABKAgSDAoEdGFncxgEIAMoCRIPCgdzdW1tYXJ5GAUgASgJEjcKC3VwZGF0ZV9tYXNrGAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLkZpZWxkTWFza0IGukgDyAEBOvwBukj4ARr1AQoSdXBkYXRlX21lbW9yeS5tYXNrElN1cGRhdGVfbWFzayBtdXN0IGNvbnRhaW4gYXQgbGVhc3Qgb25lIHBhdGgsIGVhY2ggb2Y6IGNvbnRlbnQsIHNoYXJlZCwgdGFncywgc3VtbWFyeRqJAWhhcyh0aGlzLnVwZGF0ZV9tYXNrKSAmJiBzaXplKHRoaXMudXBkYXRlX21hc2sucGF0aHMpID4gMCAmJiB0aGlzLnVwZGF0ZV9tYXNrLnBhdGhzLmFsbChwLCBwIGluIFsnY29udGVudCcsICdzaGFyZWQnLCAndGFncycsICdzdW1tYXJ5J10pIjQKFFVwZGF0ZU1lbW9yeVJlc3BvbnNlEgoKAmlkGAEgASgJEhAKCHNob3J0X2lkGAIgASgJIioKE0RlbGV0ZU1lbW9yeVJlcXVlc3QSEwoCaWQYASABKAlCB7pIBHICEAEiFgoURGVsZXRlTWVtb3J5UmVzcG9uc2UiYAoUU2V0VmlzaWJpbGl0eVJlcXVlc3QSEwoCaWQYASABKAlCB7pIBHICEAESMwoKdmlzaWJpbGl0eRgCIAEoDjIVLmVuZ3JhbS52MS5WaXNpYmlsaXR5Qgi6SAWCAQIgACI1ChVTZXRWaXNpYmlsaXR5UmVzcG9uc2USCgoCaWQYASABKAkSEAoIc2hvcnRfaWQYAiABKAkigQUKFVNjaGVkdWxlTWVtb3J5UmVxdWVzdBIYCgdjb250ZW50GAEgASgJQge6SARyAhABEhYKBXNjb3BlGAIgASgJQge6SARyAhABEg4KBnNvdXJjZRgDIAEoCRJBCghjYXRlZ29yeRgEIAEoCUIvukgscipSCGRlY2lzaW9uUgpwcmVmZXJlbmNlUgpjb252ZW50aW9uUgZnb3RjaGESDAoEdGFncxgFIAMoCRIMCgRyZXBvGAYgASgJEhEKCXdvcmtzcGFjZRgHIAEoCRIQCgh3b3JrdHJlZRgIIAEoCRIQCghiYXNlX2RpchgJIAEoCRIPCgdzdW1tYXJ5GAogASgJEi4KCm5vdF9iZWZvcmUYCyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi0KCW5vdF9hZnRlchgMIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXA6nwK6SJsCGpgCChZzY2hlZHVsZV9tZW1vcnkud2luZG93EndzY2hlZHVsZV9tZW1vcnkgcmVxdWlyZXMgbm90X2JlZm9yZSBhbmQvb3Igbm90X2FmdGVyLCBhbmQgbm90X2FmdGVyIG11c3QgYmUgc3RyaWN0bHkgYWZ0ZXIgbm90X2JlZm9yZSB3aGVuIGJvdGggYXJlIHNldBqEAShoYXModGhpcy5ub3RfYmVmb3JlKSB8fCBoYXModGhpcy5ub3RfYWZ0ZXIpKSAmJiAoIWhhcyh0aGlzLm5vdF9iZWZvcmUpIHx8ICFoYXModGhpcy5ub3RfYWZ0ZXIpIHx8IHRoaXMubm90X2FmdGVyID4gdGhpcy5ub3RfYmVmb3JlKSI2ChZTY2hlZHVsZU1lbW9yeVJlc3BvbnNlEgoKAmlkGAEgASgJEhAKCHNob3J0X2lkGAIgASgJKlcKClZpc2liaWxpdHkSGgoWVklTSUJJTElUWV9VTlNQRUNJRklFRBAAEhYKElZJU0lCSUxJVFlfUFJJVkFURRABEhUKEVZJU0lCSUxJVFlfU0hBUkVEEAIy8AcKDUVuZ3JhbVNlcnZpY2USSQoKTGlzdFNjb3BlcxIcLmVuZ3JhbS52MS5MaXN0U2NvcGVzUmVxdWVzdBodLmVuZ3JhbS52MS5MaXN0U2NvcGVzUmVzcG9uc2USTwoMTGlzdE1lbW9yaWVzEh4uZW5ncmFtLnYxLkxpc3RNZW1vcmllc1JlcXVlc3QaHy5lbmdyYW0udjEuTGlzdE1lbW9yaWVzUmVzcG9uc2USVQoOU2VhcmNoTWVtb3JpZXMSIC5lbmdyYW0udjEuU2VhcmNoTWVtb3JpZXNSZXF1ZXN0GiEuZW5ncmFtLnYxLlNlYXJjaE1lbW9yaWVzUmVzcG9uc2USRgoJR2V0TWVtb3J5EhsuZW5ncmFtLnYxLkdldE1lbW9yeVJlcXVlc3QaHC5lbmdyYW0udjEuR2V0TWVtb3J5UmVzcG9uc2USXgoRU2VhcmNoRGlzY292ZXJpZXMSIy5lbmdyYW0udjEuU2VhcmNoRGlzY292ZXJpZXNSZXF1ZXN0GiQuZW5ncmFtLnYxLlNlYXJjaERpc2NvdmVyaWVzUmVzcG9uc2USUgoNTWlncmF0ZVN0YXR1cxIfLmVuZ3JhbS52MS5NaWdyYXRlU3RhdHVzUmVxdWVzdBogLmVuZ3JhbS52MS5NaWdyYXRlU3RhdHVzUmVzcG9uc2USTAoLU3RvcmVNZW1vcnkSHS5lbmdyYW0udjEuU3RvcmVNZW1vcnlSZXF1ZXN0Gh4uZW5ncmFtLnYxLlN0b3JlTWVtb3J5UmVzcG9uc2USVQoOU3RvcmVEaXNjb3ZlcnkSIC5lbmdyYW0udjEuU3RvcmVEaXNjb3ZlcnlSZXF1ZXN0GiEuZW5ncmFtLnYxLlN0b3JlRGlzY292ZXJ5UmVzcG9uc2USTwoMVXBkYXRlTWVtb3J5Eh4uZW5ncmFtLnYxLlVwZGF0ZU1lbW9yeVJlcXVlc3QaHy5lbmdyYW0udjEuVXBkYXRlTWVtb3J5UmVzcG9uc2USTwoMRGVsZXRlTWVtb3J5Eh4uZW5ncmFtLnYxLkRlbGV0ZU1lbW9yeVJlcXVlc3QaHy5lbmdyYW0udjEuRGVsZXRlTWVtb3J5UmVzcG9uc2USUgoNU2V0VmlzaWJpbGl0eRIfLmVuZ3JhbS52MS5TZXRWaXNpYmlsaXR5UmVxdWVzdBogLmVuZ3JhbS52MS5TZXRWaXNpYmlsaXR5UmVzcG9uc2USVQoOU2NoZWR1bGVNZW1vcnkSIC5lbmdyYW0udjEuU2NoZWR1bGVNZW1vcnlSZXF1ZXN0GiEuZW5ncmFtLnYxLlNjaGVkdWxlTWVtb3J5UmVzcG9uc2VClgEKDWNvbS5lbmdyYW0udjFCC0VuZ3JhbVByb3RvUAFaM2dpdGh1Yi5jb20vc2VhbmI0dC9lbmdyYW0vZ2VuL2dvL2VuZ3JhbS92MTtlbmdyYW12MaICA0VYWKoCCUVuZ3JhbS5WMcoCCUVuZ3JhbVxWMeICFUVuZ3JhbVxWMVxHUEJNZXRhZGF0YeoCCkVuZ3JhbTo6VjFiBnByb3RvMw", [file_google_protobuf_field_mask, file_google_protobuf_timestamp, file_buf_validate_validate]);
 
 /**
  * A single memory record (mirrors internal/store.Memory's readable fields).
@@ -669,6 +669,99 @@ export const SearchDiscoveriesResponseSchema: GenMessage<SearchDiscoveriesRespon
   messageDesc(file_engram_v1_engram, 11);
 
 /**
+ * SchemaVersionBucket is one {version, count} pair in the migration-status
+ * histogram, mirroring internal/store.VersionBucket.
+ *
+ * @generated from message engram.v1.SchemaVersionBucket
+ */
+export type SchemaVersionBucket = Message<"engram.v1.SchemaVersionBucket"> & {
+  /**
+   * @generated from field: int32 version = 1;
+   */
+  version: number;
+
+  /**
+   * @generated from field: uint64 count = 2;
+   */
+  count: bigint;
+};
+
+/**
+ * Describes the message engram.v1.SchemaVersionBucket.
+ * Use `create(SchemaVersionBucketSchema)` to create a new message.
+ */
+export const SchemaVersionBucketSchema: GenMessage<SchemaVersionBucket> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 12);
+
+/**
+ * MigrateStatusRequest is deliberately empty: the histogram is a
+ * whole-collection aggregate and takes no parameters (D-06).
+ *
+ * @generated from message engram.v1.MigrateStatusRequest
+ */
+export type MigrateStatusRequest = Message<"engram.v1.MigrateStatusRequest"> & {
+};
+
+/**
+ * Describes the message engram.v1.MigrateStatusRequest.
+ * Use `create(MigrateStatusRequestSchema)` to create a new message.
+ */
+export const MigrateStatusRequestSchema: GenMessage<MigrateStatusRequest> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 13);
+
+/**
+ * MigrateStatusResponse mirrors internal/store.MigrateStatusResult plus one
+ * derived field: pending, computed server-side by the single
+ * MigrateStatusResult.Pending() helper so this RPC, the CLI advisory footer,
+ * and the console banner can never disagree about what "pending" means.
+ *
+ * @generated from message engram.v1.MigrateStatusResponse
+ */
+export type MigrateStatusResponse = Message<"engram.v1.MigrateStatusResponse"> & {
+  /**
+   * @generated from field: repeated engram.v1.SchemaVersionBucket buckets = 1;
+   */
+  buckets: SchemaVersionBucket[];
+
+  /**
+   * @generated from field: uint64 absent = 2;
+   */
+  absent: bigint;
+
+  /**
+   * @generated from field: repeated engram.v1.SchemaVersionBucket future = 3;
+   */
+  future: SchemaVersionBucket[];
+
+  /**
+   * @generated from field: uint64 future_total = 4;
+   */
+  futureTotal: bigint;
+
+  /**
+   * @generated from field: uint64 total = 5;
+   */
+  total: bigint;
+
+  /**
+   * @generated from field: int32 current_version = 6;
+   */
+  currentVersion: number;
+
+  /**
+   * @generated from field: uint64 pending = 7;
+   */
+  pending: bigint;
+};
+
+/**
+ * Describes the message engram.v1.MigrateStatusResponse.
+ * Use `create(MigrateStatusResponseSchema)` to create a new message.
+ */
+export const MigrateStatusResponseSchema: GenMessage<MigrateStatusResponse> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 14);
+
+/**
  * @generated from message engram.v1.StoreMemoryRequest
  */
 export type StoreMemoryRequest = Message<"engram.v1.StoreMemoryRequest"> & {
@@ -728,7 +821,7 @@ export type StoreMemoryRequest = Message<"engram.v1.StoreMemoryRequest"> & {
  * Use `create(StoreMemoryRequestSchema)` to create a new message.
  */
 export const StoreMemoryRequestSchema: GenMessage<StoreMemoryRequest> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 12);
+  messageDesc(file_engram_v1_engram, 15);
 
 /**
  * @generated from message engram.v1.StoreMemoryResponse
@@ -750,7 +843,7 @@ export type StoreMemoryResponse = Message<"engram.v1.StoreMemoryResponse"> & {
  * Use `create(StoreMemoryResponseSchema)` to create a new message.
  */
 export const StoreMemoryResponseSchema: GenMessage<StoreMemoryResponse> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 13);
+  messageDesc(file_engram_v1_engram, 16);
 
 /**
  * Citation mirrors internal/server/tools.go's citationArg (a store_discovery source anchor).
@@ -789,7 +882,7 @@ export type Citation = Message<"engram.v1.Citation"> & {
  * Use `create(CitationSchema)` to create a new message.
  */
 export const CitationSchema: GenMessage<Citation> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 14);
+  messageDesc(file_engram_v1_engram, 17);
 
 /**
  * @generated from message engram.v1.StoreDiscoveryRequest
@@ -838,7 +931,7 @@ export type StoreDiscoveryRequest = Message<"engram.v1.StoreDiscoveryRequest"> &
  * Use `create(StoreDiscoveryRequestSchema)` to create a new message.
  */
 export const StoreDiscoveryRequestSchema: GenMessage<StoreDiscoveryRequest> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 15);
+  messageDesc(file_engram_v1_engram, 18);
 
 /**
  * @generated from message engram.v1.StoreDiscoveryResponse
@@ -860,7 +953,7 @@ export type StoreDiscoveryResponse = Message<"engram.v1.StoreDiscoveryResponse">
  * Use `create(StoreDiscoveryResponseSchema)` to create a new message.
  */
 export const StoreDiscoveryResponseSchema: GenMessage<StoreDiscoveryResponse> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 16);
+  messageDesc(file_engram_v1_engram, 19);
 
 /**
  * UpdateMemoryRequest.update_mask is the sole presence mechanism (D-01/D-02): no
@@ -917,7 +1010,7 @@ export type UpdateMemoryRequest = Message<"engram.v1.UpdateMemoryRequest"> & {
  * Use `create(UpdateMemoryRequestSchema)` to create a new message.
  */
 export const UpdateMemoryRequestSchema: GenMessage<UpdateMemoryRequest> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 17);
+  messageDesc(file_engram_v1_engram, 20);
 
 /**
  * @generated from message engram.v1.UpdateMemoryResponse
@@ -939,7 +1032,7 @@ export type UpdateMemoryResponse = Message<"engram.v1.UpdateMemoryResponse"> & {
  * Use `create(UpdateMemoryResponseSchema)` to create a new message.
  */
 export const UpdateMemoryResponseSchema: GenMessage<UpdateMemoryResponse> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 18);
+  messageDesc(file_engram_v1_engram, 21);
 
 /**
  * @generated from message engram.v1.DeleteMemoryRequest
@@ -956,7 +1049,7 @@ export type DeleteMemoryRequest = Message<"engram.v1.DeleteMemoryRequest"> & {
  * Use `create(DeleteMemoryRequestSchema)` to create a new message.
  */
 export const DeleteMemoryRequestSchema: GenMessage<DeleteMemoryRequest> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 19);
+  messageDesc(file_engram_v1_engram, 22);
 
 /**
  * @generated from message engram.v1.DeleteMemoryResponse
@@ -969,7 +1062,7 @@ export type DeleteMemoryResponse = Message<"engram.v1.DeleteMemoryResponse"> & {
  * Use `create(DeleteMemoryResponseSchema)` to create a new message.
  */
 export const DeleteMemoryResponseSchema: GenMessage<DeleteMemoryResponse> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 20);
+  messageDesc(file_engram_v1_engram, 23);
 
 /**
  * @generated from message engram.v1.SetVisibilityRequest
@@ -991,7 +1084,7 @@ export type SetVisibilityRequest = Message<"engram.v1.SetVisibilityRequest"> & {
  * Use `create(SetVisibilityRequestSchema)` to create a new message.
  */
 export const SetVisibilityRequestSchema: GenMessage<SetVisibilityRequest> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 21);
+  messageDesc(file_engram_v1_engram, 24);
 
 /**
  * @generated from message engram.v1.SetVisibilityResponse
@@ -1013,7 +1106,7 @@ export type SetVisibilityResponse = Message<"engram.v1.SetVisibilityResponse"> &
  * Use `create(SetVisibilityResponseSchema)` to create a new message.
  */
 export const SetVisibilityResponseSchema: GenMessage<SetVisibilityResponse> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 22);
+  messageDesc(file_engram_v1_engram, 25);
 
 /**
  * ScheduleMemoryRequest is FLATTENED (D-05: no nested StoreMemoryRequest) — it
@@ -1104,7 +1197,7 @@ export type ScheduleMemoryRequest = Message<"engram.v1.ScheduleMemoryRequest"> &
  * Use `create(ScheduleMemoryRequestSchema)` to create a new message.
  */
 export const ScheduleMemoryRequestSchema: GenMessage<ScheduleMemoryRequest> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 23);
+  messageDesc(file_engram_v1_engram, 26);
 
 /**
  * @generated from message engram.v1.ScheduleMemoryResponse
@@ -1126,7 +1219,7 @@ export type ScheduleMemoryResponse = Message<"engram.v1.ScheduleMemoryResponse">
  * Use `create(ScheduleMemoryResponseSchema)` to create a new message.
  */
 export const ScheduleMemoryResponseSchema: GenMessage<ScheduleMemoryResponse> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 24);
+  messageDesc(file_engram_v1_engram, 27);
 
 /**
  * Visibility mirrors the Memory.visibility string enum ("private"/"shared") as a
@@ -1201,6 +1294,14 @@ export const EngramService: GenService<{
     methodKind: "unary";
     input: typeof SearchDiscoveriesRequestSchema;
     output: typeof SearchDiscoveriesResponseSchema;
+  },
+  /**
+   * @generated from rpc engram.v1.EngramService.MigrateStatus
+   */
+  migrateStatus: {
+    methodKind: "unary";
+    input: typeof MigrateStatusRequestSchema;
+    output: typeof MigrateStatusResponseSchema;
   },
   /**
    * --- new write RPCs (additive, this phase — stubs only) ---

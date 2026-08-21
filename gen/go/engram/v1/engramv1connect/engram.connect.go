@@ -50,6 +50,9 @@ const (
 	// EngramServiceSearchDiscoveriesProcedure is the fully-qualified name of the EngramService's
 	// SearchDiscoveries RPC.
 	EngramServiceSearchDiscoveriesProcedure = "/engram.v1.EngramService/SearchDiscoveries"
+	// EngramServiceMigrateStatusProcedure is the fully-qualified name of the EngramService's
+	// MigrateStatus RPC.
+	EngramServiceMigrateStatusProcedure = "/engram.v1.EngramService/MigrateStatus"
 	// EngramServiceStoreMemoryProcedure is the fully-qualified name of the EngramService's StoreMemory
 	// RPC.
 	EngramServiceStoreMemoryProcedure = "/engram.v1.EngramService/StoreMemory"
@@ -77,6 +80,7 @@ type EngramServiceClient interface {
 	SearchMemories(context.Context, *connect.Request[v1.SearchMemoriesRequest]) (*connect.Response[v1.SearchMemoriesResponse], error)
 	GetMemory(context.Context, *connect.Request[v1.GetMemoryRequest]) (*connect.Response[v1.GetMemoryResponse], error)
 	SearchDiscoveries(context.Context, *connect.Request[v1.SearchDiscoveriesRequest]) (*connect.Response[v1.SearchDiscoveriesResponse], error)
+	MigrateStatus(context.Context, *connect.Request[v1.MigrateStatusRequest]) (*connect.Response[v1.MigrateStatusResponse], error)
 	// --- new write RPCs (additive, this phase — stubs only) ---
 	StoreMemory(context.Context, *connect.Request[v1.StoreMemoryRequest]) (*connect.Response[v1.StoreMemoryResponse], error)
 	StoreDiscovery(context.Context, *connect.Request[v1.StoreDiscoveryRequest]) (*connect.Response[v1.StoreDiscoveryResponse], error)
@@ -127,6 +131,12 @@ func NewEngramServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(engramServiceMethods.ByName("SearchDiscoveries")),
 			connect.WithClientOptions(opts...),
 		),
+		migrateStatus: connect.NewClient[v1.MigrateStatusRequest, v1.MigrateStatusResponse](
+			httpClient,
+			baseURL+EngramServiceMigrateStatusProcedure,
+			connect.WithSchema(engramServiceMethods.ByName("MigrateStatus")),
+			connect.WithClientOptions(opts...),
+		),
 		storeMemory: connect.NewClient[v1.StoreMemoryRequest, v1.StoreMemoryResponse](
 			httpClient,
 			baseURL+EngramServiceStoreMemoryProcedure,
@@ -173,6 +183,7 @@ type engramServiceClient struct {
 	searchMemories    *connect.Client[v1.SearchMemoriesRequest, v1.SearchMemoriesResponse]
 	getMemory         *connect.Client[v1.GetMemoryRequest, v1.GetMemoryResponse]
 	searchDiscoveries *connect.Client[v1.SearchDiscoveriesRequest, v1.SearchDiscoveriesResponse]
+	migrateStatus     *connect.Client[v1.MigrateStatusRequest, v1.MigrateStatusResponse]
 	storeMemory       *connect.Client[v1.StoreMemoryRequest, v1.StoreMemoryResponse]
 	storeDiscovery    *connect.Client[v1.StoreDiscoveryRequest, v1.StoreDiscoveryResponse]
 	updateMemory      *connect.Client[v1.UpdateMemoryRequest, v1.UpdateMemoryResponse]
@@ -204,6 +215,11 @@ func (c *engramServiceClient) GetMemory(ctx context.Context, req *connect.Reques
 // SearchDiscoveries calls engram.v1.EngramService.SearchDiscoveries.
 func (c *engramServiceClient) SearchDiscoveries(ctx context.Context, req *connect.Request[v1.SearchDiscoveriesRequest]) (*connect.Response[v1.SearchDiscoveriesResponse], error) {
 	return c.searchDiscoveries.CallUnary(ctx, req)
+}
+
+// MigrateStatus calls engram.v1.EngramService.MigrateStatus.
+func (c *engramServiceClient) MigrateStatus(ctx context.Context, req *connect.Request[v1.MigrateStatusRequest]) (*connect.Response[v1.MigrateStatusResponse], error) {
+	return c.migrateStatus.CallUnary(ctx, req)
 }
 
 // StoreMemory calls engram.v1.EngramService.StoreMemory.
@@ -243,6 +259,7 @@ type EngramServiceHandler interface {
 	SearchMemories(context.Context, *connect.Request[v1.SearchMemoriesRequest]) (*connect.Response[v1.SearchMemoriesResponse], error)
 	GetMemory(context.Context, *connect.Request[v1.GetMemoryRequest]) (*connect.Response[v1.GetMemoryResponse], error)
 	SearchDiscoveries(context.Context, *connect.Request[v1.SearchDiscoveriesRequest]) (*connect.Response[v1.SearchDiscoveriesResponse], error)
+	MigrateStatus(context.Context, *connect.Request[v1.MigrateStatusRequest]) (*connect.Response[v1.MigrateStatusResponse], error)
 	// --- new write RPCs (additive, this phase — stubs only) ---
 	StoreMemory(context.Context, *connect.Request[v1.StoreMemoryRequest]) (*connect.Response[v1.StoreMemoryResponse], error)
 	StoreDiscovery(context.Context, *connect.Request[v1.StoreDiscoveryRequest]) (*connect.Response[v1.StoreDiscoveryResponse], error)
@@ -287,6 +304,12 @@ func NewEngramServiceHandler(svc EngramServiceHandler, opts ...connect.HandlerOp
 		EngramServiceSearchDiscoveriesProcedure,
 		svc.SearchDiscoveries,
 		connect.WithSchema(engramServiceMethods.ByName("SearchDiscoveries")),
+		connect.WithHandlerOptions(opts...),
+	)
+	engramServiceMigrateStatusHandler := connect.NewUnaryHandler(
+		EngramServiceMigrateStatusProcedure,
+		svc.MigrateStatus,
+		connect.WithSchema(engramServiceMethods.ByName("MigrateStatus")),
 		connect.WithHandlerOptions(opts...),
 	)
 	engramServiceStoreMemoryHandler := connect.NewUnaryHandler(
@@ -337,6 +360,8 @@ func NewEngramServiceHandler(svc EngramServiceHandler, opts ...connect.HandlerOp
 			engramServiceGetMemoryHandler.ServeHTTP(w, r)
 		case EngramServiceSearchDiscoveriesProcedure:
 			engramServiceSearchDiscoveriesHandler.ServeHTTP(w, r)
+		case EngramServiceMigrateStatusProcedure:
+			engramServiceMigrateStatusHandler.ServeHTTP(w, r)
 		case EngramServiceStoreMemoryProcedure:
 			engramServiceStoreMemoryHandler.ServeHTTP(w, r)
 		case EngramServiceStoreDiscoveryProcedure:
@@ -376,6 +401,10 @@ func (UnimplementedEngramServiceHandler) GetMemory(context.Context, *connect.Req
 
 func (UnimplementedEngramServiceHandler) SearchDiscoveries(context.Context, *connect.Request[v1.SearchDiscoveriesRequest]) (*connect.Response[v1.SearchDiscoveriesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.SearchDiscoveries is not implemented"))
+}
+
+func (UnimplementedEngramServiceHandler) MigrateStatus(context.Context, *connect.Request[v1.MigrateStatusRequest]) (*connect.Response[v1.MigrateStatusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.MigrateStatus is not implemented"))
 }
 
 func (UnimplementedEngramServiceHandler) StoreMemory(context.Context, *connect.Request[v1.StoreMemoryRequest]) (*connect.Response[v1.StoreMemoryResponse], error) {

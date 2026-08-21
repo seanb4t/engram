@@ -17,10 +17,12 @@ import (
 	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/internal/auth"
+	"github.com/seanb4t/engram/internal/migrate"
 	"github.com/seanb4t/engram/internal/store"
 )
 
@@ -1357,4 +1359,133 @@ func TestConnectSearchUnknownCategory(t *testing.T) {
 			t.Errorf("expected empty memories list for an unmatched category, got %d: %+v", len(resp.Msg.Memories), resp.Msg.Memories)
 		}
 	})
+}
+
+// migrateStatusFailStore wraps a memStore and overrides only MigrateStatus
+// to return an injected error — every other method delegates to the
+// embedded store. Mirrors tools_test.go's upsertFailStore idiom exactly
+// (embed memStore, override one method). It exists to make the
+// MigrateStatus-failure branch reachable in tests: spyStore's MigrateStatus
+// (fakestore_test.go) always returns its scripted result with a nil error
+// and has no error-injection hook.
+type migrateStatusFailStore struct {
+	memStore
+	err error
+}
+
+func (s *migrateStatusFailStore) MigrateStatus(context.Context) (store.MigrateStatusResult, error) {
+	return store.MigrateStatusResult{}, s.err
+}
+
+// TestConnectMigrateStatusReturnsStoreHistogram (07-06 Task 1) proves an
+// authenticated caller receives the SAME bucket set Store.MigrateStatus
+// returned, with pending matching MigrateStatusResult.Pending() — over a
+// scripted spyStore result rather than a live Qdrant histogram, since this
+// handler makes no store-side authorization decision to prove against real
+// data.
+func TestConnectMigrateStatusReturnsStoreHistogram(t *testing.T) {
+	d, sp := newSpyDeps()
+	sp.migrateStatus = store.MigrateStatusResult{
+		Buckets:     []store.VersionBucket{{Version: 0, Count: 5}, {Version: 1, Count: 10}},
+		Absent:      3,
+		Future:      []store.VersionBucket{{Version: 2, Count: 1}},
+		FutureTotal: 1,
+		Total:       19,
+	}
+	api := &engramAPI{d: d}
+	ctx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "sub-migrate-status"}})
+
+	resp, err := api.MigrateStatus(ctx, connect.NewRequest(&engramv1.MigrateStatusRequest{}))
+	if err != nil {
+		t.Fatalf("MigrateStatus: %v", err)
+	}
+	if len(resp.Msg.Buckets) != 2 || resp.Msg.Buckets[0].Version != 0 || resp.Msg.Buckets[0].Count != 5 ||
+		resp.Msg.Buckets[1].Version != 1 || resp.Msg.Buckets[1].Count != 10 {
+		t.Fatalf("Buckets = %+v, want [{0 5} {1 10}]", resp.Msg.Buckets)
+	}
+	if resp.Msg.Absent != 3 {
+		t.Errorf("Absent = %d, want 3", resp.Msg.Absent)
+	}
+	if len(resp.Msg.Future) != 1 || resp.Msg.Future[0].Version != 2 || resp.Msg.Future[0].Count != 1 {
+		t.Fatalf("Future = %+v, want [{2 1}]", resp.Msg.Future)
+	}
+	if resp.Msg.FutureTotal != 1 {
+		t.Errorf("FutureTotal = %d, want 1", resp.Msg.FutureTotal)
+	}
+	if resp.Msg.Total != 19 {
+		t.Errorf("Total = %d, want 19", resp.Msg.Total)
+	}
+	if resp.Msg.CurrentVersion != int32(migrate.CurrentVersion) {
+		t.Errorf("CurrentVersion = %d, want %d", resp.Msg.CurrentVersion, migrate.CurrentVersion)
+	}
+	if want := sp.migrateStatus.Pending(); resp.Msg.Pending != want {
+		t.Errorf("Pending = %d, want %d (MigrateStatusResult.Pending())", resp.Msg.Pending, want)
+	}
+}
+
+// TestConnectMigrateStatusEmptyHistogramSerializesEmptyArrays proves an
+// empty buckets/future slice renders as "[]" — never "null" — on the
+// protojson lane renderJSON uses (cmd/engram/client_common.go:383):
+// UseProtoNames + EmitDefaultValues. This is the checkable property; proto
+// BINARY wire format cannot distinguish an absent repeated field from an
+// empty one, so no assertion is made "on the wire".
+func TestConnectMigrateStatusEmptyHistogramSerializesEmptyArrays(t *testing.T) {
+	d, _ := newSpyDeps() // sp.migrateStatus stays zero-valued
+	api := &engramAPI{d: d}
+	ctx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "sub-migrate-status-empty"}})
+
+	resp, err := api.MigrateStatus(ctx, connect.NewRequest(&engramv1.MigrateStatusRequest{}))
+	if err != nil {
+		t.Fatalf("MigrateStatus: %v", err)
+	}
+	b, err := protojson.MarshalOptions{UseProtoNames: true, EmitDefaultValues: true}.Marshal(resp.Msg)
+	if err != nil {
+		t.Fatalf("protojson.Marshal: %v", err)
+	}
+	got := string(b)
+	if !strings.Contains(got, `"buckets":[]`) {
+		t.Errorf("marshaled response %s does not contain \"buckets\":[]", got)
+	}
+	if !strings.Contains(got, `"future":[]`) {
+		t.Errorf("marshaled response %s does not contain \"future\":[]", got)
+	}
+}
+
+// TestConnectMigrateStatusStoreErrorSurfacesAsConnectError (07-06 Task 1)
+// proves an injected store error surfaces through connectError's single
+// classifier as a Connect error, never as a zero-valued response reported
+// as a healthy histogram.
+func TestConnectMigrateStatusStoreErrorSurfacesAsConnectError(t *testing.T) {
+	_, sp := newSpyDeps()
+	failStore := &migrateStatusFailStore{memStore: sp, err: errors.New("facet truncation detected")}
+	api := &engramAPI{d: &deps{st: failStore, em: fakeEmbedder{}}}
+	ctx := withConnectTokenInfo(context.Background(), &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "sub-migrate-status-fail"}})
+
+	resp, err := api.MigrateStatus(ctx, connect.NewRequest(&engramv1.MigrateStatusRequest{}))
+	if err == nil {
+		t.Fatal("MigrateStatus: got nil error, want a Connect error from connectError")
+	}
+	if resp != nil {
+		t.Fatalf("MigrateStatus: got non-nil response %+v alongside an error — a failed histogram must never be reported as healthy", resp)
+	}
+	if connect.CodeOf(err) != connect.CodeInternal {
+		t.Fatalf("MigrateStatus error code = %v, want CodeInternal (connectError's fallthrough for an unclassified store error)", connect.CodeOf(err))
+	}
+}
+
+// TestConnectMigrateStatusUnauthenticatedRejected mirrors ListScopes' auth
+// shape: an unauthenticated caller (missing connectSubjectKey in ctx) is
+// rejected before the store is ever touched.
+func TestConnectMigrateStatusUnauthenticatedRejected(t *testing.T) {
+	d, sp := newSpyDeps()
+	api := &engramAPI{d: d}
+	_, err := api.MigrateStatus(context.Background(), connect.NewRequest(&engramv1.MigrateStatusRequest{}))
+	if err == nil || connect.CodeOf(err) != connect.CodeUnauthenticated {
+		t.Fatalf("MigrateStatus with no subject in ctx: got %v, want CodeUnauthenticated", err)
+	}
+	for _, call := range sp.callLog() {
+		if call.Method == "MigrateStatus" {
+			t.Fatalf("store was called despite the missing subject: %+v", call)
+		}
+	}
 }

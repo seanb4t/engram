@@ -62,6 +62,27 @@ type MigrateStatusResult struct {
 	Total       uint64          `json:"total"`
 }
 
+// Pending is the SINGLE definition of the pending-migration arithmetic
+// (07-06): Absent plus every bucket whose Version is strictly LESS than
+// migrate.CurrentVersion. Future is deliberately EXCLUDED — those records
+// are AHEAD of this binary's schema, not behind it, and "pending" answers
+// "would running engram migrate do work?", which future records never
+// contribute to. warnPendingMigrations, the CLI advisory footer, and (in
+// 07-07) the console banner all derive "pending" from this one method
+// instead of each recomputing the same loop — collapsing what was
+// previously a single inline accumulation in warnPendingMigrations into the
+// one site every consumer now shares, closing off the half-applied
+// N-site-invariant defect class this repo repeatedly hits.
+func (r MigrateStatusResult) Pending() uint64 {
+	pending := r.Absent
+	for _, b := range r.Buckets {
+		if b.Version < int(migrate.CurrentVersion) {
+			pending += b.Count
+		}
+	}
+	return pending
+}
+
 // MigrateStatus computes a server-side version-distribution histogram: a
 // Qdrant Facet over present schema_version values PLUS one exact Count with
 // an IsEmpty(schema_version) filter for the legacy/absent bucket (D-08) —

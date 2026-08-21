@@ -30,6 +30,12 @@ type memStore interface {
 	List(ctx context.Context, scope string, subj store.Subject, opts store.ListOptions) (items []store.Memory, total uint64, nextCursor string, err error)
 	ListScheduled(ctx context.Context, scope string, subj store.Subject, state store.ScheduledState, opts store.ListOptions) ([]store.Memory, error)
 	ListScopes(ctx context.Context, subj store.Subject) ([]store.ScopeCount, bool, error)
+	// MigrateStatus is the handler-error test seam for the Connect
+	// MigrateStatus RPC (07-06): one method added to this EXISTING,
+	// already-eighteen-strong interface — not a new interface. Whole-
+	// collection, no Subject parameter — the histogram is never owner
+	// scoped (D-06).
+	MigrateStatus(ctx context.Context) (store.MigrateStatusResult, error)
 	MintShortID(ctx context.Context, seen map[string]struct{}) (string, error)
 	OwnedOrAbsent(ctx context.Context, id string, subj store.Subject) error
 	ResolvePointID(ctx context.Context, idOrShort string) (string, error)
