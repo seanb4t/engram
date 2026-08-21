@@ -466,7 +466,7 @@ Plans:
   2. `reference/memory-record.md` and `reference/tools.md` document the full record state including `schema_version`, and a new operator-facing guide documents the migration mechanism end to end.
   3. CLAUDE.md's "Not used here: database migrations" line is revised to accurately describe what this milestone ships and its scope — schema-version-driven migrations only, deliberately not `migrate-remap-owner`/`summarize-missing`/`reindex` — so the normative doc no longer contradicts the code.
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans executed
 
 Plans:
 **Wave 1**
@@ -483,7 +483,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 08-04-PLAN.md — CLAUDE.md audit: the migrations convention, the row-scoped catalog-derived command inventory with its tier split, and the record-state vocabulary (wave 4)
+- [x] 08-04-PLAN.md — CLAUDE.md audit: the migrations convention, the row-scoped catalog-derived command inventory with its tier split, and the record-state vocabulary (wave 4)
 
 *Fully serialized on purpose. 08-01 owns every generated artifact and rewrites `docs-site/`,
 `skill/`, `gen/` and the goldens; a concurrent docs plan makes its drift checks see the sibling's

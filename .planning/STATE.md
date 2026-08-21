@@ -4,17 +4,17 @@ milestone: 2026-08-12.01
 milestone_name: Record State & Schema Evolution
 current_phase: 08
 current_phase_name: Registry & Docs Tail
-status: executing
-stopped_at: Completed 08-02-PLAN.md
-last_updated: "2026-08-21T22:26:33.255Z"
+status: verifying
+stopped_at: Completed 08-04-PLAN.md
+last_updated: "2026-08-21T22:35:23.582Z"
 last_activity: 2026-08-21
 last_activity_desc: Phase 08 execution started
-state_head: 03d924259f269f313d0d0280615972bf34dde97b
+state_head: cc5f75a4b04ca49a98dfa1408501f56c9af2c091
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 42
-  completed_plans: 41
+  completed_plans: 42
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-12 — after closing milestone v0.13.
 
 Phase: 08 (Registry & Docs Tail) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-21 — Phase 08 execution started
 
 ## Deferred Items
@@ -195,6 +195,8 @@ milestone needs in working memory.
 - [Phase 08]: 08-03: kept upgrade.md's Who should act: nobody line unchanged — the correction fixes the stated remedy, not who needs to act
 - [Phase 08]: 08-02: named the Store.Upsert version-narrowing generically ("one lower-level write path") on the reader-facing memory-record.md page rather than the Go symbol, since the page documents the tool/wire contract, not Go internals
 - [Phase 08]: 08-02: reordered get_memory's state-word bullets to canonical archived/superseded/expired/scheduled order and moved schema_version to its own paragraph after the list, since it is not a soft-hidden state
+- [Phase 08]: 08-04: Split the stale 'database migrations, viper, cocogitto' bullet into a Migrations bullet (mechanism/automation-contract/boundary) and a shorter Not-used-here bullet — Migrations content no longer fit the not-used-here framing since the project now ships them
+- [Phase 08]: 08-04: Grouped migrate and spine-review command families by parent verb in the cmd/engram/ Layout row to keep density while satisfying the per-word inventory gate — Gate requires every catalog word as a backtick token; grouped notation satisfies it without spelling out every two-word path
 
 ### Pending Todos
 
@@ -230,8 +232,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-21T22:26:33.052Z
-Stopped at: Completed 08-02-PLAN.md
+Last session: 2026-08-21T22:35:23.388Z
+Stopped at: Completed 08-04-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -331,6 +333,7 @@ Resume file: None
 | Phase 08 P01 | 50min | 3 tasks | 12 files |
 | Phase 08 P03 | ~25min | 2 tasks | 2 files |
 | Phase 08 P02 | ~15min | 2 tasks | 2 files |
+| Phase 08 P04 | 20min | 2 tasks | 1 files |
 
 ## Operator Next Steps
 
