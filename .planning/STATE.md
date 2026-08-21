@@ -5,16 +5,16 @@ milestone_name: Record State & Schema Evolution
 current_phase: 08
 current_phase_name: Registry & Docs Tail
 status: executing
-stopped_at: Completed 08-03-PLAN.md
-last_updated: "2026-08-21T22:17:32.288Z"
+stopped_at: Completed 08-02-PLAN.md
+last_updated: "2026-08-21T22:26:33.255Z"
 last_activity: 2026-08-21
 last_activity_desc: Phase 08 execution started
-state_head: 8addb87eae15f58348b8213887053ba2d25c36de
+state_head: 03d924259f269f313d0d0280615972bf34dde97b
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 42
-  completed_plans: 40
+  completed_plans: 41
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-12 — after closing milestone v0.13.
 ## Current Position
 
 Phase: 08 (Registry & Docs Tail) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-08-21 — Phase 08 execution started
 
@@ -193,6 +193,8 @@ milestone needs in working memory.
 - [Phase 08]: 08-03: distinguished migrate.md from reindex.md in exactly one See-also sentence, per the plan's one-sentence allowance for the word reindex
 - [Phase 08]: 08-03: drew the preview-vs---dry-run idiom contrast by operator tier and a link to /guides/cli/#destructive-commands rather than naming any non-version-driven command, satisfying the zero-occurrence scope gate
 - [Phase 08]: 08-03: kept upgrade.md's Who should act: nobody line unchanged — the correction fixes the stated remedy, not who needs to act
+- [Phase 08]: 08-02: named the Store.Upsert version-narrowing generically ("one lower-level write path") on the reader-facing memory-record.md page rather than the Go symbol, since the page documents the tool/wire contract, not Go internals
+- [Phase 08]: 08-02: reordered get_memory's state-word bullets to canonical archived/superseded/expired/scheduled order and moved schema_version to its own paragraph after the list, since it is not a soft-hidden state
 
 ### Pending Todos
 
@@ -228,8 +230,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-21T22:17:32.148Z
-Stopped at: Completed 08-03-PLAN.md
+Last session: 2026-08-21T22:26:33.052Z
+Stopped at: Completed 08-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -328,6 +330,7 @@ Resume file: None
 | Phase 05 P02 | 6min | 2 tasks | 4 files |
 | Phase 08 P01 | 50min | 3 tasks | 12 files |
 | Phase 08 P03 | ~25min | 2 tasks | 2 files |
+| Phase 08 P02 | ~15min | 2 tasks | 2 files |
 
 ## Operator Next Steps
 
