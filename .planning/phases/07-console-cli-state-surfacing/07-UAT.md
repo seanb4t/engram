@@ -3,7 +3,7 @@ status: complete
 phase: 07-console-cli-state-surfacing
 source: 07-01-SUMMARY.md, 07-02-SUMMARY.md, 07-03-SUMMARY.md, 07-04-SUMMARY.md, 07-05-SUMMARY.md, 07-06-SUMMARY.md, 07-07-SUMMARY.md
 started: 2026-08-21T13:44:29Z
-updated: 2026-08-21T13:54:09Z
+updated: 2026-08-21T15:22:04Z
 ---
 
 ## Current Test
@@ -184,7 +184,7 @@ coverage_id: 07-07/D3
 
 total: 24
 passed: 24
-issues: 1
+issues: 0
 pending: 0
 skipped: 0
 blocked: 0
@@ -205,15 +205,19 @@ blocked: 0
     rebuilds the SPA and fails on drift with "vendored SPA is stale — run
     'task ui:build' and commit". It has not fired only because this phase is still
     on an unmerged branch. The outstanding work is therefore just to commit the
-    rebuild, which is currently sitting UNCOMMITTED in the working tree
+    rebuild, which was sitting uncommitted in the working tree
     (23 changed paths under internal/webauth/static/).
+
+    CLOSED 2026-08-21 in commit e13d423f: the rebuilt bundle is committed (and
+    picks up the IN-01 derivation fix from e01bf695). The working tree is clean
+    against `task ui:build`, so CI's ui vendored-asset drift job passes. Backlog
+    item 999.1 tracks the branch-level gate that would have caught it earlier.
   severity: minor
   test: 1
   artifacts:
     - path: "internal/webauth/static/"
       issue: "rebuilt during UAT via `task ui:build`; rebuild is uncommitted"
-  missing:
-    - "Commit the rebuilt internal/webauth/static bundle so the ui vendored-asset drift job passes on the PR"
+  missing: []
 
 ## Environment
 

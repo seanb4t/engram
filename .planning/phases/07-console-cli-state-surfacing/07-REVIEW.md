@@ -153,7 +153,7 @@ be vacuous or false-green.
 
 ## Info
 
-### IN-01: `STATE_WORD_ORDER` exported but unused outside its own test file
+### IN-01: `STATE_WORD_ORDER` exported but unused outside its own test file — RESOLVED
 
 **File:** `ui/src/lib/memorystate.ts:15`
 **Issue:** `STATE_WORD_ORDER` is exported and documents the canonical compound-state order, but no
@@ -168,6 +168,13 @@ tests), just an unused piece of public surface area.
 `STATE_WORD_ORDER` and filtering `stateWords.includes(word)` (making the shared constant load-bearing
 rather than incidental), or drop the export and inline the ordering rationale as a comment on
 `memoryStateWords` alone, mirroring the Go surface (which has no equivalent exported order constant).
+
+**Resolution (2026-08-21, commit e01bf695):** took the first option. `memoryStateWords`
+now collects applicable words into a set and returns `STATE_WORD_ORDER` filtered by it, so
+the constant drives every consumer's order rather than agreeing with it by coincidence. The
+self-referential test assertion was replaced by a sweep over all 16 combinations of the four
+state-bearing wire fields asserting the output is a subsequence of `STATE_WORD_ORDER`;
+mutation-proved RED against a push-order regression. 263 console tests pass.
 
 ---
 
