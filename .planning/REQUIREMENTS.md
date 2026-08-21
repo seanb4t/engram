@@ -49,7 +49,7 @@ instead of another one-shot operator command.
 
 ### State Surfacing
 
-- [ ] **REQ-console-record-state**: The operator console shows a record's archived, superseded, and scheduled state, which it cannot render at all today.
+- [x] **REQ-console-record-state**: The operator console shows a record's archived, superseded, and scheduled state, which it cannot render at all today.
 - [x] **REQ-cli-record-state**: `engram search`/`list`/`get` surface the same state, so the CLI and console agree on what a record is.
 - [ ] **REQ-migration-state-visible**: Pending-migration state is visible to an operator through the same surfaces, not only by running the migrate command.
 
@@ -108,7 +108,7 @@ this repo's structural invariant — see ROADMAP.md's `## Progress` note).
 | REQ-connect-record-state-parity | Phase 5 | Complete |
 | REQ-connect-parity-roundtrip-proof | Phase 5 | Complete |
 | REQ-operator-renderer-typed | Phase 6 | Complete |
-| REQ-console-record-state | Phase 7 | Pending |
+| REQ-console-record-state | Phase 7 | Complete |
 | REQ-cli-record-state | Phase 7 | Complete |
 | REQ-migration-state-visible | Phase 7 | Pending |
 | REQ-sweep-scope-rule-registered | Phase 8 | Pending |
