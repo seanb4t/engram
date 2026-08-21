@@ -70,8 +70,27 @@ describe('memoryStateWords', () => {
     expect(memoryStateWords(m, now)).toEqual(['expired']);
   });
 
-  it('canonical order matches STATE_WORD_ORDER', () => {
-    expect(STATE_WORD_ORDER).toEqual(['archived', 'superseded', 'expired', 'scheduled']);
+  // STATE_WORD_ORDER is load-bearing, not decorative: memoryStateWords builds
+  // its result by filtering it. Asserting the constant equals its own literal
+  // would pin the constant while proving nothing about the derivation, so this
+  // sweeps every combination of the four state-bearing wire fields and asserts
+  // the output is always a SUBSEQUENCE of STATE_WORD_ORDER. It goes red if the
+  // derivation ever reverts to assembling words in applicability order and that
+  // order diverges from canonical.
+  it('output is always a subsequence of STATE_WORD_ORDER, over all field combinations', () => {
+    for (let bits = 0; bits < 16; bits++) {
+      const m = create(MemorySchema, {
+        ...(bits & 1 ? { archivedAt: timestampFromDate(past) } : {}),
+        ...(bits & 2 ? { supersededBy: 'a-successor-id' } : {}),
+        ...(bits & 4 ? { notAfter: timestampFromDate(past) } : {}),
+        ...(bits & 8 ? { notBefore: timestampFromDate(future) } : {})
+      });
+      const words = memoryStateWords(m, now);
+      const positions = words.map((w) => STATE_WORD_ORDER.indexOf(w));
+      expect(positions).not.toContain(-1);
+      expect(positions).toEqual([...positions].sort((a, b) => a - b));
+      expect(new Set(words).size).toBe(words.length);
+    }
   });
 });
 

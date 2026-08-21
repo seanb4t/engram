@@ -27,19 +27,24 @@ export const STATE_WORD_ORDER: readonly RecordStateWord[] = ['archived', 'supers
 // when emitted, suppresses scheduled — the exact precedence
 // cmd/engram/memory_state.go's memoryStateWords uses, which is what keeps
 // the two surfaces in agreement on an inverted-window input.
+// The returned array is ordered by filtering STATE_WORD_ORDER rather than by
+// the order the applicability checks below happen to run in. That makes the
+// exported constant load-bearing: reordering it reorders every consumer's
+// rendered badges, and no caller has to remember to sort. Callers therefore
+// never order state words themselves — they render what this returns.
 export function memoryStateWords(m: Memory, now: Date = new Date()): RecordStateWord[] {
-  const words: RecordStateWord[] = [];
-  if (m.archivedAt) words.push('archived');
-  if (m.supersededBy) words.push('superseded');
+  const applicable = new Set<RecordStateWord>();
+  if (m.archivedAt) applicable.add('archived');
+  if (m.supersededBy) applicable.add('superseded');
   let expired = false;
   if (m.notAfter && timestampDate(m.notAfter).getTime() <= now.getTime()) {
-    words.push('expired');
+    applicable.add('expired');
     expired = true;
   }
   if (!expired && m.notBefore && timestampDate(m.notBefore).getTime() > now.getTime()) {
-    words.push('scheduled');
+    applicable.add('scheduled');
   }
-  return words;
+  return STATE_WORD_ORDER.filter((word) => applicable.has(word));
 }
 
 // A record is dimmed iff it is PAST — archived, superseded, or expired.
