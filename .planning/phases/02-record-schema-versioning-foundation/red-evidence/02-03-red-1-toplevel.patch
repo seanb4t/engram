@@ -1,8 +1,8 @@
 diff --git a/internal/store/store.go b/internal/store/store.go
-index f60a9c3a..f01b0db7 100644
+index 05e20ba3..e10c4685 100644
 --- a/internal/store/store.go
 +++ b/internal/store/store.go
-@@ -1084,6 +1084,11 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
+@@ -1103,6 +1103,11 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
  	}()
  
  	f := s.ownerScopeFilter(ctx, scope, subj)
@@ -11,6 +11,6 @@ index f60a9c3a..f01b0db7 100644
 +	// transmitted filter, proving TestSchemaVersionNeverGatesRecall goes
 +	// RED against real source. Must be reverted before this task's commit.
 +	f.Must = append(f.Must, qdrant.NewIsEmpty(schemaVersionKey))
- 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
- 	// Soft-hide superseded records from search recall (D-09) — sibling
- 	// condition to activeWindowConditions, not folded into it (that helper is
+ 	// IncludeScheduled relaxes the ENTIRE activeWindowConditions append as one
+ 	// unit (both the not_before and not_after halves) — never split across two
+ 	// branches (phase 07, D-01/D-02). Splitting it would make a genuinely
