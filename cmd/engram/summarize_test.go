@@ -37,6 +37,24 @@ func TestSummarizeMissingRejectsInvalidOutput(t *testing.T) {
 	}
 }
 
+// TestSummarizeMissingRequiresScopeOrAllScopes pins the bare usageErrorf
+// guard (mirroring spine-review scan/verify's identical wording) that
+// rejects a summarize-missing invocation naming neither --scope nor
+// --all-scopes. This is the one sweep leaf with no prior coverage of its
+// neither-flag rejection -- taken against unmodified main, before the
+// guard is converted onto the registry, as a characterization pin.
+func TestSummarizeMissingRequiresScopeOrAllScopes(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, summarizeMissingCmd)
+	_, _, err := runClient(t, "summarize-missing")
+	if err == nil {
+		t.Fatal("expected an error when neither --scope nor --all-scopes is supplied, got nil")
+	}
+	if got := exitCodeFromError(err); got != exitUsage {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage)", got, exitUsage)
+	}
+}
+
 // TestSummarizeMissingScopeAndAllScopesRejected proves --scope and
 // --all-scopes together are rejected via cobra's own
 // MarkFlagsMutuallyExclusive validation, exiting exitUsage BEFORE RunE ever
