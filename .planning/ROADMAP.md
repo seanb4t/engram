@@ -471,13 +471,24 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 08-01-PLAN.md — Tracer: `RuleSweepScopeOrAllScopesRequired` registered, anchored on every derived surface, and composed by every sweep leaf, closing the gate at zero hand-rolled copies (wave 1)
-- [ ] 08-03-PLAN.md — The new `guides/migrate.md` operator procedure, and the schema-version release note corrected to link to it (wave 1)
+- [ ] 08-01-PLAN.md — Tracer: `RuleSweepScopeOrAllScopesRequired` registered with a `SurfaceFields` narrowing, anchored on the one derived surface, and composed by every sweep leaf in both its rejection and its `--all-scopes` help text, closing the gate at zero hand-rolled copies (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 08-02-PLAN.md — `reference/memory-record.md` and `reference/tools.md` document the full record state, the asymmetric window boundary, and `schema_version` (wave 2)
-- [ ] 08-04-PLAN.md — CLAUDE.md audit: the migrations convention, the catalog-derived command inventory, and the record-state vocabulary (wave 2)
+- [ ] 08-03-PLAN.md — The new `guides/migrate.md` operator procedure, and the schema-version release note corrected to link to it (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 08-02-PLAN.md — `reference/memory-record.md` and `reference/tools.md` document every wire-visible field, the half-open window boundary, and `schema_version` (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 08-04-PLAN.md — CLAUDE.md audit: the migrations convention, the row-scoped catalog-derived command inventory with its tier split, and the record-state vocabulary (wave 4)
+
+*Fully serialized on purpose. 08-01 owns every generated artifact and rewrites `docs-site/`,
+`skill/`, `gen/` and the goldens; a concurrent docs plan makes its drift checks see the sibling's
+uncommitted edits. 08-02 and 08-04 both state the record-state vocabulary and must agree, which a
+shared wave cannot force. The plans are small; the serialization costs wall-clock, not scope.*
 
 ## Progress
 
