@@ -4,23 +4,21 @@
   import { ModeWatcher } from 'mode-watcher';
   import { beforeNavigate, goto } from '$app/navigation';
   import { base } from '$app/paths';
-  import { mapAuthError } from '$lib/client';
-  import { errorBanner, reportError, clearError } from '$lib/errors';
+  import { errorBanner, handleQueryError, clearError } from '$lib/errors';
   import { Toaster } from '$lib/components/ui/sonner';
   import { Button } from '$lib/components/ui/button';
   import AppShell from '$lib/components/AppShell.svelte';
   import CommandPalette from '$lib/components/CommandPalette.svelte';
   let { children } = $props();
 
-  // PRESERVE: inline queryClient with the auth-redirect / error-report onError.
+  // PRESERVE: the root queryClient, delegating all query errors to the
+  // shared handleQueryError (auth redirect, then silent-query opt-out, then
+  // error-report) so production and every test lane share one routing
+  // implementation.
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
     queryCache: new QueryCache({
-      onError: (err) => {
-        const target = mapAuthError(err);
-        if (target) { window.location.assign(target); return; }
-        reportError(err);
-      }
+      onError: handleQueryError
     })
   });
   beforeNavigate(() => clearError());

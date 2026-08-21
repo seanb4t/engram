@@ -51,7 +51,7 @@ instead of another one-shot operator command.
 
 - [x] **REQ-console-record-state**: The operator console shows a record's archived, superseded, and scheduled state, which it cannot render at all today.
 - [x] **REQ-cli-record-state**: `engram search`/`list`/`get` surface the same state, so the CLI and console agree on what a record is.
-- [ ] **REQ-migration-state-visible**: Pending-migration state is visible to an operator through the same surfaces, not only by running the migrate command.
+- [x] **REQ-migration-state-visible**: Pending-migration state is visible to an operator through the same surfaces, not only by running the migrate command.
 
 ### Registry & Docs
 
@@ -110,7 +110,7 @@ this repo's structural invariant — see ROADMAP.md's `## Progress` note).
 | REQ-operator-renderer-typed | Phase 6 | Complete |
 | REQ-console-record-state | Phase 7 | Complete |
 | REQ-cli-record-state | Phase 7 | Complete |
-| REQ-migration-state-visible | Phase 7 | Pending |
+| REQ-migration-state-visible | Phase 7 | Complete |
 | REQ-sweep-scope-rule-registered | Phase 8 | Pending |
 | REQ-docs-record-state | Phase 8 | Pending |
 | REQ-claude-md-migrations-convention | Phase 8 | Pending |
