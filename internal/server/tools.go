@@ -1450,6 +1450,15 @@ type coreSearchRequest struct {
 	// forgetting the guard (D-07's hazard, closed here rather than in
 	// internal/store).
 	CrossSpine bool
+	// IncludeArchived, IncludeSuperseded, and IncludeScheduled are the phase 07
+	// (D-01/D-02) orthogonal recall-gate opt-ins, copied straight into
+	// store.SearchOptions. Connect and the CLI only (D-03) — the MCP
+	// search_memory closure never sets these, so its coreSearchRequest{}
+	// literal leaves them at their zero value and MCP recall is behaviourally
+	// unchanged.
+	IncludeArchived   bool
+	IncludeSuperseded bool
+	IncludeScheduled  bool
 }
 
 // listMemory returns a page of the caller's readable records in scope on the
@@ -1548,10 +1557,13 @@ func (d *deps) searchMemory(ctx context.Context, c caller, req coreSearchRequest
 		return nil, err
 	}
 	return d.st.SearchReranked(ctx, scope, c.Subj, req.Query, vec, req.K, store.SearchOptions{
-		Tags:          req.Tags,
-		Categories:    req.Categories,
-		CreatedAfter:  req.CreatedAfter,
-		CreatedBefore: req.CreatedBefore,
+		Tags:              req.Tags,
+		Categories:        req.Categories,
+		CreatedAfter:      req.CreatedAfter,
+		CreatedBefore:     req.CreatedBefore,
+		IncludeArchived:   req.IncludeArchived,
+		IncludeSuperseded: req.IncludeSuperseded,
+		IncludeScheduled:  req.IncludeScheduled,
 	})
 }
 

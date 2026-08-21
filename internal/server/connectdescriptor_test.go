@@ -184,7 +184,10 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 		5: {name: "searched_scopes", kind: protoreflect.StringKind, repeated: true},
 		6: {name: "scopes_truncated", kind: protoreflect.BoolKind},
 	})
-	assertFields(t, fd, "SearchMemoriesRequest", 9, nil)
+	// phase 07 plan 03 (D-01/D-02): include_archived/include_superseded/
+	// include_scheduled (fields 10-12) mirror ListMemoriesRequest's opt-in
+	// recall-gate relaxations onto the Search lane.
+	assertFields(t, fd, "SearchMemoriesRequest", 12, nil)
 	assertFields(t, fd, "SearchMemoriesResponse", 3, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "memories", kind: protoreflect.MessageKind, repeated: true, msgType: "engram.v1.Memory"},
 		2: {name: "searched_scopes", kind: protoreflect.StringKind, repeated: true},

@@ -796,9 +796,26 @@ type SearchMemoriesRequest struct {
 	// engram:rule:start scope-required-unless-cross-spine
 	// scope is required unless cross_spine is true
 	// engram:rule:end scope-required-unless-cross-spine
-	CrossSpine    bool `protobuf:"varint,9,opt,name=cross_spine,json=crossSpine,proto3" json:"cross_spine,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	CrossSpine bool `protobuf:"varint,9,opt,name=cross_spine,json=crossSpine,proto3" json:"cross_spine,omitempty"`
+	// false (default) reproduces today's soft-hidden behavior: archived
+	// records stay unreachable. true relaxes exactly the `archived_at`
+	// IsEmpty recall condition in Store.Search, revealing archived records
+	// without narrowing the result set to only-archived ones.
+	IncludeArchived bool `protobuf:"varint,10,opt,name=include_archived,json=includeArchived,proto3" json:"include_archived,omitempty"`
+	// false (default) reproduces today's soft-hidden behavior: superseded
+	// records stay unreachable. true relaxes exactly the `superseded_by`
+	// IsEmpty recall condition in Store.Search.
+	IncludeSuperseded bool `protobuf:"varint,11,opt,name=include_superseded,json=includeSuperseded,proto3" json:"include_superseded,omitempty"`
+	// false (default) reproduces today's soft-hidden behavior: records
+	// outside their validity window stay unreachable. true relaxes BOTH
+	// bounds of the scheduling gate together — a not-yet-active (not_before
+	// in the future) record AND an already-expired (not_after in the past)
+	// record both become reachable under this single flag. A separate
+	// include_expired bool was considered and rejected upstream; do not
+	// re-propose the split.
+	IncludeScheduled bool `protobuf:"varint,12,opt,name=include_scheduled,json=includeScheduled,proto3" json:"include_scheduled,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *SearchMemoriesRequest) Reset() {
@@ -890,6 +907,27 @@ func (x *SearchMemoriesRequest) GetCategories() []string {
 func (x *SearchMemoriesRequest) GetCrossSpine() bool {
 	if x != nil {
 		return x.CrossSpine
+	}
+	return false
+}
+
+func (x *SearchMemoriesRequest) GetIncludeArchived() bool {
+	if x != nil {
+		return x.IncludeArchived
+	}
+	return false
+}
+
+func (x *SearchMemoriesRequest) GetIncludeSuperseded() bool {
+	if x != nil {
+		return x.IncludeSuperseded
+	}
+	return false
+}
+
+func (x *SearchMemoriesRequest) GetIncludeScheduled() bool {
+	if x != nil {
+		return x.IncludeScheduled
 	}
 	return false
 }
@@ -2161,7 +2199,7 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\vapproximate\x18\x03 \x01(\bB\x02\x18\x01R\vapproximate\x12&\n" +
 	"\x0fnext_page_token\x18\x04 \x01(\tR\rnextPageToken\x12'\n" +
 	"\x0fsearched_scopes\x18\x05 \x03(\tR\x0esearchedScopes\x12)\n" +
-	"\x10scopes_truncated\x18\x06 \x01(\bR\x0fscopesTruncated\"\x86\x02\n" +
+	"\x10scopes_truncated\x18\x06 \x01(\bR\x0fscopesTruncated\"\x8d\x03\n" +
 	"\x15SearchMemoriesRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
 	"\x05scope\x18\x02 \x01(\tR\x05scope\x12\f\n" +
@@ -2174,7 +2212,11 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"categories\x18\b \x03(\tR\n" +
 	"categories\x12\x1f\n" +
 	"\vcross_spine\x18\t \x01(\bR\n" +
-	"crossSpine\"\x9b\x01\n" +
+	"crossSpine\x12)\n" +
+	"\x10include_archived\x18\n" +
+	" \x01(\bR\x0fincludeArchived\x12-\n" +
+	"\x12include_superseded\x18\v \x01(\bR\x11includeSuperseded\x12+\n" +
+	"\x11include_scheduled\x18\f \x01(\bR\x10includeScheduled\"\x9b\x01\n" +
 	"\x16SearchMemoriesResponse\x12-\n" +
 	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\x12'\n" +
 	"\x0fsearched_scopes\x18\x02 \x03(\tR\x0esearchedScopes\x12)\n" +
