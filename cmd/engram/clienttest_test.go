@@ -34,10 +34,12 @@ type stubEngramService struct {
 	searchFn func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error)
 	listFn   func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error)
 	storeFn  func(context.Context, *engramv1.StoreMemoryRequest) (*engramv1.StoreMemoryResponse, error)
+	getFn    func(context.Context, *engramv1.GetMemoryRequest) (*engramv1.GetMemoryResponse, error)
 
 	searchCalls int
 	listCalls   int
 	storeCalls  int
+	getCalls    int
 
 	// lastAuthHeader is the Authorization header value observed on the most
 	// recent request to any of the three overridden RPCs.
@@ -77,6 +79,19 @@ func (s *stubEngramService) StoreMemory(ctx context.Context, req *connect.Reques
 		return nil, connect.NewError(connect.CodeUnimplemented, errUnimplementedStub)
 	}
 	resp, err := s.storeFn(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *stubEngramService) GetMemory(ctx context.Context, req *connect.Request[engramv1.GetMemoryRequest]) (*connect.Response[engramv1.GetMemoryResponse], error) {
+	s.getCalls++
+	s.lastAuthHeader = req.Header().Get("Authorization")
+	if s.getFn == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errUnimplementedStub)
+	}
+	resp, err := s.getFn(ctx, req.Msg)
 	if err != nil {
 		return nil, err
 	}
