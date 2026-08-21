@@ -2,16 +2,18 @@
 gsd_state_version: 1.0
 milestone: 2026-08-12.01
 milestone_name: Record State & Schema Evolution
-current_phase: 07
-status: "Phase 07 shipped — PR #498"
-stopped_at: Phase 8 context gathered
-last_updated: "2026-08-21T17:15:31.928Z"
+current_phase: 08
+current_phase_name: registry-docs-tail
+status: "Phase 08 planned — ready to execute"
+stopped_at: Phase 8 planning complete
+last_updated: "2026-08-21T18:35:40.418Z"
 last_activity: 2026-08-21
-state_head: 3598ba5a35a989d6c1cf79f38a0f98781f4b1622
+last_activity_desc: Phase 08 planning complete
+state_head: 2c923a6f34cfa89a6adf275a80063bf408ff444a
 progress:
   total_phases: 8
   completed_phases: 7
-  total_plans: 38
+  total_plans: 42
   completed_plans: 38
 ---
 
@@ -26,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-12 — after closing milestone v0.13.
 
 ## Current Position
 
-Phase: 07 — COMPLETE
-Plan: 1 of 7
-Status: Phase 07 shipped — PR #498
-Last activity: 2026-08-21
+Phase: 08 (registry-docs-tail) — READY TO EXECUTE
+Plan: 1 of 4
+Status: Phase 08 planned — ready to execute
+Last activity: 2026-08-21 — Phase 08 planning complete
 
 ## Deferred Items
 
