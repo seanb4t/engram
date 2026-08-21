@@ -139,6 +139,23 @@ message SearchMemoriesRequest {
   // scope is required unless cross_spine is true
   // engram:rule:end scope-required-unless-cross-spine
   bool cross_spine = 9;
+  // false (default) reproduces today's soft-hidden behavior: archived
+  // records stay unreachable. true relaxes exactly the `archived_at`
+  // IsEmpty recall condition in Store.Search, revealing archived records
+  // without narrowing the result set to only-archived ones.
+  bool include_archived = 10;
+  // false (default) reproduces today's soft-hidden behavior: superseded
+  // records stay unreachable. true relaxes exactly the `superseded_by`
+  // IsEmpty recall condition in Store.Search.
+  bool include_superseded = 11;
+  // false (default) reproduces today's soft-hidden behavior: records
+  // outside their validity window stay unreachable. true relaxes BOTH
+  // bounds of the scheduling gate together — a not-yet-active (not_before
+  // in the future) record AND an already-expired (not_after in the past)
+  // record both become reachable under this single flag. A separate
+  // include_expired bool was considered and rejected upstream; do not
+  // re-propose the split.
+  bool include_scheduled = 12;
 }
 message SearchMemoriesResponse {
   repeated Memory memories = 1;

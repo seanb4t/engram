@@ -309,7 +309,10 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	ms, err := a.d.searchMemory(ctx, c, coreSearchRequest{
 		Scope: req.Msg.Scope, Query: req.Msg.Query, K: k, Tags: req.Msg.Tags,
 		CreatedAfter: after, CreatedBefore: before, Categories: req.Msg.Categories,
-		CrossSpine: req.Msg.CrossSpine,
+		CrossSpine:        req.Msg.CrossSpine,
+		IncludeArchived:   req.Msg.IncludeArchived,
+		IncludeSuperseded: req.Msg.IncludeSuperseded,
+		IncludeScheduled:  req.Msg.IncludeScheduled,
 	})
 	if err != nil {
 		return nil, connectError(ctx, err)

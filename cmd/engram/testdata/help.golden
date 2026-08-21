@@ -211,6 +211,9 @@ Flags:
       --cross-spine             span every scope you can read; mutually exclusive with --scope
       --full                    return full content instead of summaries
   -h, --help                    help for search
+      --include-archived        include archived records, which are hidden by default
+      --include-scheduled       include records outside their validity window (not-yet-active AND already-expired), which are hidden by default
+      --include-superseded      include superseded records, which are hidden by default
       --insecure                skip TLS certificate verification (always warns on stderr; no environment fallback)
       --k uint                  max results (0 = server default)
       --output string           output format: "json" or "text" (default: detect from stdout)

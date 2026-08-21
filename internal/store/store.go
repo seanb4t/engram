@@ -1056,6 +1056,25 @@ type SearchOptions struct {
 	// Half-open creation-time window. Zero value = unbounded on that side.
 	CreatedAfter  time.Time
 	CreatedBefore time.Time
+	// IncludeArchived, IncludeSuperseded, and IncludeScheduled are orthogonal
+	// opt-in relaxations of Store.Search's recall gate (phase 07, D-01/D-02),
+	// mirroring ListOptions' fields of the same name. Each maps 1:1 onto
+	// exactly one Must condition Search appends below: IncludeArchived
+	// relaxes the archived_at IsEmpty gate, IncludeSuperseded relaxes the
+	// superseded_by IsEmpty gate, and IncludeScheduled relaxes the ENTIRE
+	// activeWindowConditions append (both the not_before and not_after
+	// halves) as one unit — never split across two branches. All three
+	// default false, reproducing today's behavior byte-identically.
+	// SearchReranked forwards these unchanged; the MCP lane never sets them.
+	//
+	// Deliberate 2-of-4 scope: this idiom (IsEmpty("superseded_by") /
+	// IsEmpty("archived_at")) appears at four sites in this file. Only
+	// Store.Search and Store.List honor these fields, per D-01.
+	// Store.SearchDiscovery and Store.ListScheduled are deliberately
+	// EXCLUDED — see their own doc comments for why.
+	IncludeArchived   bool
+	IncludeSuperseded bool
+	IncludeScheduled  bool
 }
 
 // Search returns the k nearest readable memories to vec within scope.
@@ -1084,17 +1103,31 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 	}()
 
 	f := s.ownerScopeFilter(ctx, scope, subj)
-	f.Must = append(f.Must, activeWindowConditions(s.now())...)
+	// IncludeScheduled relaxes the ENTIRE activeWindowConditions append as one
+	// unit (both the not_before and not_after halves) — never split across two
+	// branches (phase 07, D-01/D-02). Splitting it would make a genuinely
+	// expired record reachable while relaxing only the not-yet-active half,
+	// which is exactly the failure the STATE column's "expired" word exists to
+	// prevent.
+	if !opts.IncludeScheduled {
+		f.Must = append(f.Must, activeWindowConditions(s.now())...)
+	}
 	// Soft-hide superseded records from search recall (D-09) — sibling
 	// condition to activeWindowConditions, not folded into it (that helper is
 	// time-window-scoped only). get_memory (Store.Get) stays ungated.
-	f.Must = append(f.Must, qdrant.NewIsEmpty("superseded_by"))
+	// IncludeSuperseded relaxes this condition only (phase 07, D-01/D-02).
+	if !opts.IncludeSuperseded {
+		f.Must = append(f.Must, qdrant.NewIsEmpty("superseded_by"))
+	}
 	// Soft-hide archived records (D-12, plan 03-06) — a SIBLING condition to
 	// both activeWindowConditions and the superseded_by IsEmpty above, never
 	// folded into either: archived is orthogonal to both the time window and
 	// supersession, so this stays independently maintained alongside them.
-	// get_memory (Store.Get) stays ungated.
-	f.Must = append(f.Must, qdrant.NewIsEmpty("archived_at"))
+	// get_memory (Store.Get) stays ungated. IncludeArchived relaxes this
+	// condition only (phase 07, D-01/D-02).
+	if !opts.IncludeArchived {
+		f.Must = append(f.Must, qdrant.NewIsEmpty("archived_at"))
+	}
 	f.Must = append(f.Must, tagMatchConditions(opts.Tags)...)
 	if c := categoryMatchCondition(opts.Categories); c != nil {
 		f.Must = append(f.Must, c)

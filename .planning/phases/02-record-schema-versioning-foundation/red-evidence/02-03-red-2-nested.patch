@@ -1,8 +1,8 @@
 diff --git a/internal/store/store.go b/internal/store/store.go
-index f60a9c3a..540dcd38 100644
+index 05e20ba3..63fc6774 100644
 --- a/internal/store/store.go
 +++ b/internal/store/store.go
-@@ -1084,6 +1084,16 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
+@@ -1103,6 +1103,16 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
  	}()
  
  	f := s.ownerScopeFilter(ctx, scope, subj)
@@ -16,6 +16,6 @@ index f60a9c3a..540dcd38 100644
 +	f.Must = append(f.Must, qdrant.NewFilterAsCondition(&qdrant.Filter{Should: []*qdrant.Condition{
 +		qdrant.NewIsEmpty(schemaVersionKey),
 +	}}))
- 	f.Must = append(f.Must, activeWindowConditions(s.now())...)
- 	// Soft-hide superseded records from search recall (D-09) — sibling
- 	// condition to activeWindowConditions, not folded into it (that helper is
+ 	// IncludeScheduled relaxes the ENTIRE activeWindowConditions append as one
+ 	// unit (both the not_before and not_after halves) — never split across two
+ 	// branches (phase 07, D-01/D-02). Splitting it would make a genuinely
