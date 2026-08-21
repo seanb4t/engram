@@ -446,7 +446,7 @@ Usage:
   engram summarize-missing [flags]
 
 Flags:
-      --all-scopes            sweep every scope (required if --scope is omitted); mutually exclusive with --scope
+      --all-scopes            sweep every scope (required if --scope is omitted); mutually exclusive with --scope; a sweep requires an explicit --scope or --all-scopes: name one scope, or opt into every scope
       --dry-run               count eligible records without writing
   -h, --help                  help for summarize-missing
       --limit int             max records to scan (0 = no cap)

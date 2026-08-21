@@ -161,6 +161,46 @@ const RuleVerifyFailOnValues = "verify-fail-on-accepted-values"
 // curating-memory/SKILL.md on the prose lanes (03-07-PLAN.md Task 3).
 const RulePurgeFilterRequiresScope = "purge-filter-requires-scope"
 
+// RuleSweepScopeOrAllScopesRequired is the ID of the rule requiring an
+// explicit --scope (or --all-scopes) at every sweep-style operator leaf:
+// `spine-review scan`, `spine-review verify`, and `summarize-missing`
+// (issue #480). Fields is the flag pair alone (["scope", "all-scopes"]) --
+// it drives field=scope attribution on the error envelope.
+//
+// SurfaceFields diverges from Fields to
+// []string{"scope", "all-scopes", "dry-run"}. Five commands' own flag sets
+// expose BOTH scope and all-scopes: spine-review scan, spine-review verify,
+// summarize-missing (all three enforce this rule today), plus
+// spine-review consolidate and spine-review purge (neither enforces it --
+// consolidate's NearDuplicates treats Scope:"" AllScopes:false as a
+// well-defined empty result, internal/store/spine.go:384-387; purge applies
+// a scope filter only when !AllScopes && Scope != "", internal/store/
+// spine.go:991, so a class-only purge naming neither flag deliberately
+// spans every scope, D-10). No field set can select exactly the three
+// enforcing leaves by Fields alone: their flag-set intersection is
+// {scope, all-scopes, output, timeout} -- summarize-missing's *entire* set
+// minus dry-run/older-than/limit -- which is a strict subset of both
+// consolidate's and purge's flag sets, so any subset of it also resolves
+// onto both non-enforcers. Adding "dry-run" (a field unique to
+// summarize-missing among the five) narrows cobra_usage resolution to
+// summarize-missing alone -- verified empirically against the live tree
+// (08-01-PLAN.md fact 5). The two leaves this narrowing cannot reach
+// (spine-review scan, spine-review verify) are pinned instead by
+// TestSweepLeavesUsageStatesRegisteredRule in cmd/engram, the explicit
+// whitelist the field-set model cannot express.
+//
+// The SAME narrowing determines the derived prose surface: it resolves to
+// SurfaceDocsSite alone (docs-site/reference/tools.md's summarize-missing
+// section mentions dry-run; neither skill file does, so SurfaceSkill
+// resolves empty; all_scopes is not a proto field on any message, so
+// SurfaceProtoComment resolves empty too -- 08-01-PLAN.md fact 6).
+//
+// TagForm is left empty, same reasoning as RuleDestructiveRequiresApply/
+// RuleVerifyFailOnValues/RulePurgeFilterRequiresScope: no MCP arg struct
+// carries an all_scopes field on any schema, so there is no jsonschema tag
+// to compress this rule's statement into.
+const RuleSweepScopeOrAllScopesRequired = "sweep-scope-or-all-scopes-required"
+
 // RulePagingMutuallyExclusive is the ID of the rule making list_memory's
 // three paging controls (cursor_mode, offset, page_token) mutually exclusive.
 // Fields include page_token even though the Connect-lane rejection
@@ -261,6 +301,18 @@ var rules = []ConditionalRule{
 		// TagForm deliberately left empty: no MCP arg struct carries a
 		// "class"/purge-shaped field set at all -- this rule is CLI-only,
 		// same reasoning as RuleDestructiveRequiresApply/RuleVerifyFailOnValues.
+		declared: true,
+	},
+	{
+		ID:            RuleSweepScopeOrAllScopesRequired,
+		Sentence:      "a sweep requires an explicit --scope or --all-scopes: name one scope, or opt into every scope",
+		Fields:        []string{"scope", "all-scopes"},
+		SurfaceFields: []string{"scope", "all-scopes", "dry-run"},
+		Hint:          "conditional_required",
+		// TagForm deliberately left empty: no MCP arg struct carries an
+		// "all_scopes" field on any schema -- this rule is CLI-only, same
+		// reasoning as RuleDestructiveRequiresApply/RuleVerifyFailOnValues/
+		// RulePurgeFilterRequiresScope.
 		declared: true,
 	},
 }

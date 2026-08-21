@@ -89,6 +89,13 @@ var (
 	// unioned only into SurfaceCobraUsage below, the same treatment
 	// cobraDestructiveFields/cobraVerifyFields get.
 	cobraPurgeFields = []string{"class", "category"}
+	// cobraSummarizeFields mirrors summarize-missing's own cobra flag set
+	// (08-01-PLAN.md's RuleSweepScopeOrAllScopesRequired): "dry-run" is the
+	// field that narrows this rule's SurfaceFields to summarize-missing
+	// alone and has no jsonschema-tag or proto-comment counterpart, so this
+	// is unioned only into SurfaceCobraUsage below, the same treatment
+	// cobraDestructiveFields/cobraVerifyFields/cobraPurgeFields get.
+	cobraSummarizeFields = []string{"scope", "all-scopes", "dry-run", "older-than", "limit", "timeout", "output"}
 )
 
 // exposedForTest builds a minimal but representative exposed map covering
@@ -97,7 +104,7 @@ var (
 // one D-08's worked example needs to prove empty for the paging trio).
 func exposedForTest() map[Surface][]string {
 	return map[Surface][]string{
-		SurfaceCobraUsage:    append(append(append(append([]string{}, cobraSearchListFields...), cobraDestructiveFields...), cobraVerifyFields...), cobraPurgeFields...),
+		SurfaceCobraUsage:    append(append(append(append(append([]string{}, cobraSearchListFields...), cobraDestructiveFields...), cobraVerifyFields...), cobraPurgeFields...), cobraSummarizeFields...),
 		SurfaceJSONSchemaTag: jsonschemaListFields,
 		// ProtoComment's exposed set unions BOTH proto messages' fields —
 		// mirroring how the real gate's ProtoFieldComments/buildProseExposed

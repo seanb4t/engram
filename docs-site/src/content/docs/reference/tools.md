@@ -512,7 +512,7 @@ Auto-generated summaries are created offline using the configured model.
 engram summarize-missing (--scope <scope> | --all-scopes) [flags]
 ```
 
-**Either `--scope` or `--all-scopes` is required.**
+Like the other sweep-style operator commands (`spine-review scan`, `spine-review verify`), this command enforces one constraint: <!-- engram:rule:start sweep-scope-or-all-scopes-required -->a sweep requires an explicit --scope or --all-scopes: name one scope, or opt into every scope<!-- engram:rule:end sweep-scope-or-all-scopes-required -->.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|

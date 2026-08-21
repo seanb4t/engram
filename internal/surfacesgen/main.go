@@ -120,6 +120,20 @@ var ruleTargets = map[string][]target{
 		{path: "docs-site/src/content/docs/reference/tools.md", kind: kindMarkdown},
 		{path: "skill/engram/skills/curating-memory/SKILL.md", kind: kindMarkdown},
 	},
+	// RuleSweepScopeOrAllScopesRequired: no proto anchor -- all_scopes is not
+	// a proto field on any message. No skill anchor -- neither SKILL.md
+	// mentions this rule's SurfaceFields (specifically dry-run, the field
+	// that narrows cobra_usage resolution to summarize-missing alone).
+	// No guides/cli.md anchor either, even though it is a SurfaceDocsSite
+	// target file: the narrowed applicability set (Fields plus dry-run)
+	// resolves cobra_usage to summarize-missing ONLY, and cli.md documents
+	// none of the three sweep leaves' scope/all-scopes contract in a way
+	// that names this rule -- checkProseSurface requires just one anchored
+	// file per applicable surface (08-01-PLAN.md fact 6), so tools.md alone
+	// satisfies SurfaceDocsSite.
+	surfaces.RuleSweepScopeOrAllScopesRequired: {
+		{path: "docs-site/src/content/docs/reference/tools.md", kind: kindMarkdown},
+	},
 }
 
 // render returns rule sentence's on-disk form for the given surface kind.

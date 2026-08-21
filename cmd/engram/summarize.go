@@ -35,8 +35,8 @@ var summarizeMissingCmd = &cobra.Command{
 	Use:   "summarize-missing",
 	Short: "Fill empty recall summaries with the configured cheap model",
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		if summarizeScope == "" && !summarizeAllScopes {
-			return usageErrorf("--scope <scope> or --all-scopes is required")
+		if err := requireSweepScope(summarizeScope, summarizeAllScopes); err != nil {
+			return err
 		}
 		format, err := operatorOutputFormat(cmd, summarizeOutput)
 		if err != nil {
@@ -113,7 +113,7 @@ func summarizeReportDoc(res store.SummarizeResult, dryRun bool) summarizeOutputD
 func init() {
 	addOperatorOutputFlag(summarizeMissingCmd, &summarizeOutput)
 	summarizeMissingCmd.Flags().StringVar(&summarizeScope, "scope", "", "only summarize records in this scope")
-	summarizeMissingCmd.Flags().BoolVar(&summarizeAllScopes, "all-scopes", false, "sweep every scope (required if --scope is omitted); mutually exclusive with --scope")
+	summarizeMissingCmd.Flags().BoolVar(&summarizeAllScopes, "all-scopes", false, "sweep every scope (required if --scope is omitted); mutually exclusive with --scope; "+sweepScopeRule().Sentence)
 	summarizeMissingCmd.Flags().DurationVar(&summarizeOlderThan, "older-than", 0, "only records created at least this long ago (0 = any age)")
 	summarizeMissingCmd.Flags().IntVar(&summarizeLimit, "limit", 0, "max records to scan (0 = no cap)")
 	summarizeMissingCmd.Flags().BoolVar(&summarizeDryRun, "dry-run", false, "count eligible records without writing")
