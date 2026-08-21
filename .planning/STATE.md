@@ -4,10 +4,10 @@ milestone: 2026-08-12.01
 milestone_name: Record State & Schema Evolution
 current_phase: 07
 status: "Phase 07 shipped — PR #498"
-stopped_at: Phase 7 UI-SPEC approved
-last_updated: "2026-08-21T15:43:54.014Z"
+stopped_at: Phase 8 context gathered
+last_updated: "2026-08-21T17:15:31.928Z"
 last_activity: 2026-08-21
-state_head: 3181dcbd3f3e70c88ecc576f2bf6e4a26921f253
+state_head: 3598ba5a35a989d6c1cf79f38a0f98781f4b1622
 progress:
   total_phases: 8
   completed_phases: 7
@@ -221,9 +221,9 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-20T20:33:25.902Z
-Stopped at: Phase 7 UI-SPEC approved
-Resume file: .planning/phases/07-console-cli-state-surfacing/07-UI-SPEC.md
+Last session: 2026-08-21T17:15:31.726Z
+Stopped at: Phase 8 context gathered
+Resume file: .planning/phases/08-registry-docs-tail/08-CONTEXT.md
 
 ## Performance Metrics
 
