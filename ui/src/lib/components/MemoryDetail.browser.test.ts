@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { ConnectError, Code } from '@connectrpc/connect';
 import MemoryDetail from './MemoryDetail.svelte';
 import { create } from '@bufbuild/protobuf';
+import { timestampFromDate } from '@bufbuild/protobuf/wkt';
 import { MemorySchema } from '$lib/gen/engram_pb';
 
 const withSummary = create(MemorySchema, {
@@ -31,6 +32,49 @@ const sharedMem = create(MemorySchema, {
 const ruleMem = create(MemorySchema, {
   id: '6', content: 'body', summary: 'a normative rule', category: 'rule', scope: 'rule:repo:x',
   source: 'user-said', actor: 'sean', visibility: 'private'
+});
+
+const now = new Date('2030-06-15T12:00:00Z');
+const past = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+const future = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+const laterFuture = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+const SUCCESSOR_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+const PRED_ID_1 = '11111111-2222-3333-4444-555555555555';
+const PRED_ID_2 = '66666666-7777-8888-9999-000000000000';
+
+const liveWithSchema = create(MemorySchema, {
+  id: '7', shortId: 'LIVE000001', content: 'body', summary: 'a live record', category: 'decision',
+  scope: 'repo:x', source: 'user-said', actor: 'sean', visibility: 'private', schemaVersion: 3
+});
+const archivedMem = create(MemorySchema, {
+  id: '8', shortId: 'ARCH000001', content: 'body', summary: 'an archived record', category: 'decision',
+  scope: 'repo:x', source: 'user-said', actor: 'sean', visibility: 'private',
+  archivedAt: timestampFromDate(now)
+});
+const supersededMem = create(MemorySchema, {
+  id: '9', shortId: 'SUPD000001', content: 'body', summary: 'a superseded record', category: 'decision',
+  scope: 'repo:x', source: 'user-said', actor: 'sean', visibility: 'private',
+  supersededBy: SUCCESSOR_ID
+});
+const supersedesMem = create(MemorySchema, {
+  id: '10', shortId: 'SUCC000001', content: 'body', summary: 'a successor record', category: 'decision',
+  scope: 'repo:x', source: 'user-said', actor: 'sean', visibility: 'private',
+  supersedes: [PRED_ID_1, PRED_ID_2]
+});
+const expiredMem = create(MemorySchema, {
+  id: '11', shortId: 'EXPD000001', content: 'body', summary: 'an expired record', category: 'decision',
+  scope: 'repo:x', source: 'user-said', actor: 'sean', visibility: 'private',
+  notAfter: timestampFromDate(past)
+});
+const scheduledMem = create(MemorySchema, {
+  id: '12', shortId: 'SCHD000001', content: 'body', summary: 'a scheduled record', category: 'decision',
+  scope: 'repo:x', source: 'user-said', actor: 'sean', visibility: 'private',
+  notBefore: timestampFromDate(future)
+});
+const scheduledWithCloseMem = create(MemorySchema, {
+  id: '13', shortId: 'SCHD000002', content: 'body', summary: 'a scheduled record with a close', category: 'decision',
+  scope: 'repo:x', source: 'user-said', actor: 'sean', visibility: 'private',
+  notBefore: timestampFromDate(future), notAfter: timestampFromDate(laterFuture)
 });
 
 describe('MemoryDetail', () => {
@@ -149,5 +193,72 @@ describe('MemoryDetail', () => {
     await expect.element(screen.getByRole('menuitem', { name: 'Edit' })).not.toBeInTheDocument();
     await expect.element(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument();
     await expect.element(screen.getByRole('menuitem', { name: 'Share' })).toBeInTheDocument();
+  });
+
+  it('a live record shows the schema chip and no State section', async () => {
+    const screen = await render(MemoryDetail, { memory: liveWithSchema, loading: false, error: null });
+    await screen.getByRole('tab', { name: 'Meta' }).click();
+    const meta = screen.getByRole('tabpanel');
+    await expect.element(meta.getByText('schema')).toBeInTheDocument();
+    await expect.element(meta.getByText('v3', { exact: true })).toBeInTheDocument();
+    await expect.element(meta.getByText('state', { exact: true })).not.toBeInTheDocument();
+  });
+
+  it('an archived record renders a State section naming the archival moment', async () => {
+    const screen = await render(MemoryDetail, { memory: archivedMem, loading: false, error: null });
+    await screen.getByRole('tab', { name: 'Meta' }).click();
+    const meta = screen.getByRole('tabpanel');
+    await expect.element(meta.getByText(/archived 2030-06-15/)).toBeInTheDocument();
+  });
+
+  it('a superseded record renders a full-UUID link whose click target and visible text are identical', async () => {
+    const onselect = vi.fn();
+    const screen = await render(MemoryDetail, { memory: supersededMem, loading: false, error: null, onselect });
+    await screen.getByRole('tab', { name: 'Meta' }).click();
+    const meta = screen.getByRole('tabpanel');
+    const link = meta.getByText(SUCCESSOR_ID, { exact: true });
+    await expect.element(link).toBeInTheDocument();
+    expect(link.element().textContent?.trim()).toBe(SUCCESSOR_ID);
+    await link.click();
+    expect(onselect).toHaveBeenCalledWith(SUCCESSOR_ID);
+    // Never sourced from the loaded record's own short_id.
+    expect(screen.container.textContent).not.toContain(supersededMem.shortId);
+  });
+
+  it('a record with two supersedes entries renders two predecessor links', async () => {
+    const screen = await render(MemoryDetail, { memory: supersedesMem, loading: false, error: null, onselect: () => {} });
+    await screen.getByRole('tab', { name: 'Meta' }).click();
+    const meta = screen.getByRole('tabpanel');
+    await expect.element(meta.getByText(PRED_ID_1, { exact: true })).toBeInTheDocument();
+    await expect.element(meta.getByText(PRED_ID_2, { exact: true })).toBeInTheDocument();
+  });
+
+  it('renders without an onselect prop for a superseded record without throwing', async () => {
+    const screen = await render(MemoryDetail, { memory: supersededMem, loading: false, error: null });
+    await screen.getByRole('tab', { name: 'Meta' }).click();
+    const meta = screen.getByRole('tabpanel');
+    await expect.element(meta.getByText(SUCCESSOR_ID, { exact: true })).toBeInTheDocument();
+  });
+
+  it('an expired record renders a State section naming the expiry moment', async () => {
+    const screen = await render(MemoryDetail, { memory: expiredMem, loading: false, error: null });
+    await screen.getByRole('tab', { name: 'Meta' }).click();
+    const meta = screen.getByRole('tabpanel');
+    await expect.element(meta.getByText(/expired 2030-06-14/)).toBeInTheDocument();
+  });
+
+  it('a scheduled record renders a not-yet-active line naming the open moment', async () => {
+    const screen = await render(MemoryDetail, { memory: scheduledMem, loading: false, error: null });
+    await screen.getByRole('tab', { name: 'Meta' }).click();
+    const meta = screen.getByRole('tabpanel');
+    await expect.element(meta.getByText(/opens 2030-06-16/)).toBeInTheDocument();
+  });
+
+  it('a scheduled record with a future not_after also renders a closing line', async () => {
+    const screen = await render(MemoryDetail, { memory: scheduledWithCloseMem, loading: false, error: null });
+    await screen.getByRole('tab', { name: 'Meta' }).click();
+    const meta = screen.getByRole('tabpanel');
+    await expect.element(meta.getByText(/opens 2030-06-16/)).toBeInTheDocument();
+    await expect.element(meta.getByText(/closes 2030-06-17/)).toBeInTheDocument();
   });
 });
