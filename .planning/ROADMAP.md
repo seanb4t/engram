@@ -466,7 +466,7 @@ Plans:
   2. `reference/memory-record.md` and `reference/tools.md` document the full record state including `schema_version`, and a new operator-facing guide documents the migration mechanism end to end.
   3. CLAUDE.md's "Not used here: database migrations" line is revised to accurately describe what this milestone ships and its scope — schema-version-driven migrations only, deliberately not `migrate-remap-owner`/`summarize-missing`/`reindex` — so the normative doc no longer contradicts the code.
 
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 
 Plans:
 **Wave 1**
@@ -475,7 +475,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 08-03-PLAN.md — The new `guides/migrate.md` operator procedure, and the schema-version release note corrected to link to it (wave 2)
+- [x] 08-03-PLAN.md — The new `guides/migrate.md` operator procedure, and the schema-version release note corrected to link to it (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 

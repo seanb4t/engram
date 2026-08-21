@@ -5,16 +5,16 @@ milestone_name: Record State & Schema Evolution
 current_phase: 08
 current_phase_name: Registry & Docs Tail
 status: executing
-stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-08-21T22:10:08.629Z"
+stopped_at: Completed 08-03-PLAN.md
+last_updated: "2026-08-21T22:17:32.288Z"
 last_activity: 2026-08-21
 last_activity_desc: Phase 08 execution started
-state_head: 5b933ea308415fbebaab5eea1dd072e20756b401
+state_head: 8addb87eae15f58348b8213887053ba2d25c36de
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 42
-  completed_plans: 39
+  completed_plans: 40
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-12 — after closing milestone v0.13.
 ## Current Position
 
 Phase: 08 (Registry & Docs Tail) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-08-21 — Phase 08 execution started
 
@@ -190,6 +190,9 @@ milestone needs in working memory.
   single existing precedent to copy verbatim for either.
 
 - [Phase 08]: RuleSweepScopeOrAllScopesRequired's SurfaceFields diverges from Fields (adds dry-run) to isolate the three enforcing sweep leaves from spine-review consolidate/purge, which expose the same flag pair without enforcing it; the two leaves it cannot reach are pinned by a dedicated whitelist test instead.
+- [Phase 08]: 08-03: distinguished migrate.md from reindex.md in exactly one See-also sentence, per the plan's one-sentence allowance for the word reindex
+- [Phase 08]: 08-03: drew the preview-vs---dry-run idiom contrast by operator tier and a link to /guides/cli/#destructive-commands rather than naming any non-version-driven command, satisfying the zero-occurrence scope gate
+- [Phase 08]: 08-03: kept upgrade.md's Who should act: nobody line unchanged — the correction fixes the stated remedy, not who needs to act
 
 ### Pending Todos
 
@@ -225,8 +228,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-21T22:10:08.423Z
-Stopped at: Completed 08-01-PLAN.md
+Last session: 2026-08-21T22:17:32.148Z
+Stopped at: Completed 08-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -324,6 +327,7 @@ Resume file: None
 | Phase 05 P01 | 40min | 4 tasks | 4 files |
 | Phase 05 P02 | 6min | 2 tasks | 4 files |
 | Phase 08 P01 | 50min | 3 tasks | 12 files |
+| Phase 08 P03 | ~25min | 2 tasks | 2 files |
 
 ## Operator Next Steps
 
