@@ -26,8 +26,14 @@
   const listQ = createQuery(() => {
     const pp = parseObserveParams(page.url.searchParams);
     return {
-      queryKey: listMemoriesKey(pp.scope, pp.categories, pp.visibility, PAGE_LIMIT, pp.offset),
-      queryFn: () => engram.listMemories({ scope: pp.scope, limit: BigInt(PAGE_LIMIT), offset: BigInt(pp.offset), categories: pp.categories, visibility: pp.visibility }),
+      queryKey: listMemoriesKey(
+        pp.scope, pp.categories, pp.visibility, PAGE_LIMIT, pp.offset,
+        pp.includeArchived, pp.includeSuperseded, pp.includeScheduled
+      ),
+      queryFn: () => engram.listMemories({
+        scope: pp.scope, limit: BigInt(PAGE_LIMIT), offset: BigInt(pp.offset), categories: pp.categories, visibility: pp.visibility,
+        includeArchived: pp.includeArchived, includeSuperseded: pp.includeSuperseded, includeScheduled: pp.includeScheduled
+      }),
       enabled: !!pp.scope
     };
   });
@@ -56,9 +62,11 @@
   <ScopesSidebar
     scopes={scopesQ.data?.scopes ?? []} activeScope={params.scope}
     categories={params.categories} visibility={params.visibility}
+    includeArchived={params.includeArchived} includeSuperseded={params.includeSuperseded} includeScheduled={params.includeScheduled}
     loading={scopesQ.isLoading} error={scopesQ.error}
     onscope={(s) => navigate({ scope: s, offset: 0, selectedId: '' })}
     onfilter={(cats, vis) => navigate({ categories: cats, visibility: vis, offset: 0 })}
+    oninclude={(archived, superseded, scheduled) => navigate({ includeArchived: archived, includeSuperseded: superseded, includeScheduled: scheduled, offset: 0 })}
   />
   <Resizable.PaneGroup direction="horizontal" class="flex-1 min-w-0">
     <Resizable.Pane defaultSize={60} minSize={35} class="flex flex-col min-h-0">
