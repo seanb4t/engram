@@ -241,6 +241,17 @@ func sanitizeViewValue(s string) string {
 // second serialization, so text and json cannot diverge by construction
 // (D-01, D-02).
 //
+// BOTH the headline and every field value pass through sanitizeViewValue
+// before being written (issue #505, D-11, threat T-07-01): the guarantee is
+// therefore independent of what any individual headline producer happens to
+// interpolate. Before this phase the headline was written raw, which was
+// safe only because every existing headline producer interpolated CLI flag
+// values and counts, never stored record content — an invariant that was
+// never enforced and, for fields like scope/tags (user-supplied) and owner
+// (from the IdP), was narrower than it looked even before `engram get`
+// (plan 07-05) made it exploitable: the first headline producer built from
+// a live record's state.
+//
 // Column padding is computed once from the widest label and counts runes
 // via utf8.RuneCountInString — the same measure text/tabwriter itself
 // uses. This is an accepted, documented limitation, not a bug: an
@@ -253,7 +264,7 @@ func sanitizeViewValue(s string) string {
 // output. Otherwise the output ends with exactly one trailing newline and
 // never a trailing blank line.
 func renderOperatorView(w io.Writer, headline string, doc any) error {
-	if _, err := fmt.Fprintln(w, headline); err != nil {
+	if _, err := fmt.Fprintln(w, sanitizeViewValue(headline)); err != nil {
 		return err
 	}
 	fields, err := viewFields(doc)
