@@ -5,6 +5,7 @@ import MemoryDetail from './MemoryDetail.svelte';
 import { create } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
 import { MemorySchema } from '$lib/gen/engram_pb';
+import { fullTimestamp } from '$lib/time';
 
 const withSummary = create(MemorySchema, {
   id: '1', content: 'full **body** here', summary: 'terse digest line',
@@ -34,7 +35,10 @@ const ruleMem = create(MemorySchema, {
   source: 'user-said', actor: 'sean', visibility: 'private'
 });
 
-const now = new Date('2030-06-15T12:00:00Z');
+// Relative to REAL wall-clock time: MemoryDetail's memoryStateWords call uses
+// the default now = new Date() (no injectable now on this surface), so
+// expired/scheduled derivation must be evaluated against actual current time.
+const now = new Date();
 const past = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 const future = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 const laterFuture = new Date(now.getTime() + 48 * 60 * 60 * 1000);
@@ -200,15 +204,18 @@ describe('MemoryDetail', () => {
     await screen.getByRole('tab', { name: 'Meta' }).click();
     const meta = screen.getByRole('tabpanel');
     await expect.element(meta.getByText('schema')).toBeInTheDocument();
-    await expect.element(meta.getByText('v3', { exact: true })).toBeInTheDocument();
-    await expect.element(meta.getByText('state', { exact: true })).not.toBeInTheDocument();
+    // The chip's value shares a text run with the "schema" label sibling
+    // span, so it is not its own element — assert via substring, matching
+    // how the existing by/src/vis chip tests assert their values.
+    await expect.element(meta.getByText('v3')).toBeInTheDocument();
+    await expect.element(meta.getByText('State', { exact: true })).not.toBeInTheDocument();
   });
 
   it('an archived record renders a State section naming the archival moment', async () => {
     const screen = await render(MemoryDetail, { memory: archivedMem, loading: false, error: null });
     await screen.getByRole('tab', { name: 'Meta' }).click();
     const meta = screen.getByRole('tabpanel');
-    await expect.element(meta.getByText(/archived 2030-06-15/)).toBeInTheDocument();
+    await expect.element(meta.getByText(new RegExp(`archived ${fullTimestamp(now)}`))).toBeInTheDocument();
   });
 
   it('a superseded record renders a full-UUID link whose click target and visible text are identical', async () => {
@@ -244,21 +251,21 @@ describe('MemoryDetail', () => {
     const screen = await render(MemoryDetail, { memory: expiredMem, loading: false, error: null });
     await screen.getByRole('tab', { name: 'Meta' }).click();
     const meta = screen.getByRole('tabpanel');
-    await expect.element(meta.getByText(/expired 2030-06-14/)).toBeInTheDocument();
+    await expect.element(meta.getByText(new RegExp(`expired ${fullTimestamp(past)}`))).toBeInTheDocument();
   });
 
   it('a scheduled record renders a not-yet-active line naming the open moment', async () => {
     const screen = await render(MemoryDetail, { memory: scheduledMem, loading: false, error: null });
     await screen.getByRole('tab', { name: 'Meta' }).click();
     const meta = screen.getByRole('tabpanel');
-    await expect.element(meta.getByText(/opens 2030-06-16/)).toBeInTheDocument();
+    await expect.element(meta.getByText(new RegExp(`opens ${fullTimestamp(future)}`))).toBeInTheDocument();
   });
 
   it('a scheduled record with a future not_after also renders a closing line', async () => {
     const screen = await render(MemoryDetail, { memory: scheduledWithCloseMem, loading: false, error: null });
     await screen.getByRole('tab', { name: 'Meta' }).click();
     const meta = screen.getByRole('tabpanel');
-    await expect.element(meta.getByText(/opens 2030-06-16/)).toBeInTheDocument();
-    await expect.element(meta.getByText(/closes 2030-06-17/)).toBeInTheDocument();
+    await expect.element(meta.getByText(new RegExp(`opens ${fullTimestamp(future)}`))).toBeInTheDocument();
+    await expect.element(meta.getByText(new RegExp(`closes ${fullTimestamp(laterFuture)}`))).toBeInTheDocument();
   });
 });
