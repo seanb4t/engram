@@ -263,6 +263,15 @@ var operations = []Operation{
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
+		// migration-status is the CLIENT-tier sibling of "migrate status"
+		// (07-06): the same whole-collection histogram, reached over the
+		// Connect MigrateStatus RPC instead of a direct Qdrant dial. A
+		// distinct row on a distinct command key — never a modification of
+		// the operator-tier row above, which stays unchanged.
+		MCPTool: "", CLICommand: "migration-status",
+		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
+	{
 		// migrate revert is the anti-additive counterpart to migrate: an
 		// inverse MAY remove a payload key the forward step added, which
 		// is exactly the destructive direction migrate itself never

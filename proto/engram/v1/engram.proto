@@ -180,6 +180,31 @@ message SearchDiscoveriesRequest {
 }
 message SearchDiscoveriesResponse { repeated Memory discoveries = 1; }
 
+// SchemaVersionBucket is one {version, count} pair in the migration-status
+// histogram, mirroring internal/store.VersionBucket.
+message SchemaVersionBucket {
+  int32 version = 1;
+  uint64 count = 2;
+}
+
+// MigrateStatusRequest is deliberately empty: the histogram is a
+// whole-collection aggregate and takes no parameters (D-06).
+message MigrateStatusRequest {}
+
+// MigrateStatusResponse mirrors internal/store.MigrateStatusResult plus one
+// derived field: pending, computed server-side by the single
+// MigrateStatusResult.Pending() helper so this RPC, the CLI advisory footer,
+// and the console banner can never disagree about what "pending" means.
+message MigrateStatusResponse {
+  repeated SchemaVersionBucket buckets = 1;
+  uint64 absent = 2;
+  repeated SchemaVersionBucket future = 3;
+  uint64 future_total = 4;
+  uint64 total = 5;
+  int32 current_version = 6;
+  uint64 pending = 7;
+}
+
 // --- write RPC messages (additive, this phase — stubs only; Phase 17 wires handlers) ---
 
 // Visibility mirrors the Memory.visibility string enum ("private"/"shared") as a
@@ -329,6 +354,7 @@ service EngramService {
   rpc SearchMemories(SearchMemoriesRequest) returns (SearchMemoriesResponse);
   rpc GetMemory(GetMemoryRequest) returns (GetMemoryResponse);
   rpc SearchDiscoveries(SearchDiscoveriesRequest) returns (SearchDiscoveriesResponse);
+  rpc MigrateStatus(MigrateStatusRequest) returns (MigrateStatusResponse);
   // --- new write RPCs (additive, this phase — stubs only) ---
   rpc StoreMemory(StoreMemoryRequest) returns (StoreMemoryResponse);
   rpc StoreDiscovery(StoreDiscoveryRequest) returns (StoreDiscoveryResponse);

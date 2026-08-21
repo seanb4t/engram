@@ -63,8 +63,9 @@ func assertFields(t *testing.T, fd protoreflect.FileDescriptor, msgName string, 
 
 // TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs walks the
 // generated EngramService FileDescriptor and asserts the phase's structural
-// invariants survive codegen: exactly 11 RPCs (5 read + 6 write), the six
-// write RPCs' exact request/response types, per-field wire-shape tables for
+// invariants survive codegen: exactly 12 RPCs (6 read + 6 write; 07-06 added
+// the sixth read RPC, MigrateStatus), the six write RPCs' exact
+// request/response types, per-field wire-shape tables for
 // the read-lane messages plus Memory/ScopeCount (SC4 — not just message
 // names), and IDEMPOTENCY_UNKNOWN on every method (SC2/D-12 — no write RPC
 // may become GET-reachable).
@@ -76,8 +77,8 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 	}
 
 	methods := svc.Methods()
-	if methods.Len() != 11 {
-		t.Fatalf("expected 11 RPCs (5 read + 6 write), got %d", methods.Len())
+	if methods.Len() != 12 {
+		t.Fatalf("expected 12 RPCs (6 read + 6 write), got %d", methods.Len())
 	}
 
 	wantReqResp := map[string][2]protoreflect.FullName{
@@ -87,6 +88,8 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 		"SearchMemories":    {"engram.v1.SearchMemoriesRequest", "engram.v1.SearchMemoriesResponse"},
 		"GetMemory":         {"engram.v1.GetMemoryRequest", "engram.v1.GetMemoryResponse"},
 		"SearchDiscoveries": {"engram.v1.SearchDiscoveriesRequest", "engram.v1.SearchDiscoveriesResponse"},
+		// 07-06: the sixth read RPC.
+		"MigrateStatus": {"engram.v1.MigrateStatusRequest", "engram.v1.MigrateStatusResponse"},
 		// write lane (finding #6: pinned by exact name, not just count)
 		"StoreMemory":    {"engram.v1.StoreMemoryRequest", "engram.v1.StoreMemoryResponse"},
 		"StoreDiscovery": {"engram.v1.StoreDiscoveryRequest", "engram.v1.StoreDiscoveryResponse"},

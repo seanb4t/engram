@@ -45,6 +45,11 @@ type spyStore struct {
 	records    map[string]store.Memory
 	shortIndex map[string]string // shortid.Canonical(short_id) -> id
 	calls      []spyCall
+	// migrateStatus is the SCRIPTED result MigrateStatus returns (07-06) —
+	// this fake never derives a histogram from s.records, unlike every
+	// other method here; a test sets this field directly before exercising
+	// a handler.
+	migrateStatus store.MigrateStatusResult
 }
 
 var _ memStore = (*spyStore)(nil)
@@ -431,6 +436,16 @@ func (s *spyStore) ListScopes(_ context.Context, subj store.Subject) ([]store.Sc
 		out = append(out, store.ScopeCount{Scope: scope, Count: c})
 	}
 	return out, false, nil
+}
+
+// MigrateStatus returns the SCRIPTED s.migrateStatus value — it does not
+// derive a histogram from s.records the way List/Search do. Handler tests
+// set s.migrateStatus directly before exercising api.MigrateStatus.
+func (s *spyStore) MigrateStatus(_ context.Context) (store.MigrateStatusResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.record("MigrateStatus", "", nil)
+	return s.migrateStatus, nil
 }
 
 func (s *spyStore) MintShortID(_ context.Context, seen map[string]struct{}) (string, error) {

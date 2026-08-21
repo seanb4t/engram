@@ -482,6 +482,67 @@ func TestClientSearchNoFooterWithoutCrossSpine(t *testing.T) {
 	}
 }
 
+// TestClientSearchMigrationFooterLookupFailureDoesNotAffectCommand (07-06)
+// proves a failing MigrateStatus lookup never fails engram search: stdout
+// is byte-identical to the no-footer baseline (the stub's MigrateStatus is
+// left unconfigured, so it returns CodeUnimplemented) and the command's own
+// error is nil.
+func TestClientSearchMigrationFooterLookupFailureDoesNotAffectCommand(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
+	mems := []*engramv1.Memory{{ShortId: "AAAA111111", Scope: "repo:x"}}
+	svc := &stubEngramService{
+		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+			return &engramv1.SearchMemoriesResponse{Memories: mems}, nil
+		},
+		// migrateStatusFn left nil: the real Connect handler returns
+		// CodeUnimplemented, exercising migrationFooterCounts' "any error"
+		// path over the real wire.
+	}
+	url := startStubServer(t, svc)
+
+	stdout, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x", "--output", "text")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var want strings.Builder
+	if err := renderMemoryTable(&want, mems, true); err != nil {
+		t.Fatalf("renderMemoryTable: %v", err)
+	}
+	if stdout != want.String() {
+		t.Errorf("stdout = %q, want exactly %q (no migration footer line on a failed lookup)", stdout, want.String())
+	}
+}
+
+// TestClientSearchJSONOutputCarriesNoMigrationFooter (07-06, D-08) proves
+// --output json is untouched by the footer: the migration advisory is a
+// text-lane-only addition, so a pending backlog must not appear anywhere
+// in the json document.
+func TestClientSearchJSONOutputCarriesNoMigrationFooter(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
+	svc := &stubEngramService{
+		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+			return &engramv1.SearchMemoriesResponse{}, nil
+		},
+		migrateStatusFn: func(context.Context, *engramv1.MigrateStatusRequest) (*engramv1.MigrateStatusResponse, error) {
+			return &engramv1.MigrateStatusResponse{Pending: 9, FutureTotal: 3}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	stdout, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(stdout, "pending_migrations") || strings.Contains(stdout, "future_schema_records") {
+		t.Errorf("json lane leaked migration footer content: %q", stdout)
+	}
+	if svc.migrateStatusCalls != 0 {
+		t.Errorf("migrateStatusCalls = %d, want 0 — the json lane must never look up the footer", svc.migrateStatusCalls)
+	}
+}
+
 // assertExitCode is a shared helper for the exit-code-mapping tests above.
 func assertExitCode(t *testing.T, err error, want int) {
 	t.Helper()

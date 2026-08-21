@@ -20,6 +20,7 @@ import (
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
 	"github.com/seanb4t/engram/internal/auth"
+	"github.com/seanb4t/engram/internal/migrate"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/surfaces"
 )
@@ -179,6 +180,42 @@ func (a *engramAPI) ListScopes(ctx context.Context, _ *connect.Request[engramv1.
 	resp := &engramv1.ListScopesResponse{Approximate: approx}
 	for _, sc := range scopes {
 		resp.Scopes = append(resp.Scopes, &engramv1.ScopeCount{Scope: sc.Scope, Count: sc.Count})
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// MigrateStatus is a whole-collection read RPC (07-06, D-06): any
+// AUTHENTICATED caller receives the SAME schema-version histogram
+// Store.MigrateStatus computes, with NO owner filter — "will running engram
+// migrate do work?" is a whole-collection property, and an owner-scoped
+// histogram could read zero while a large legacy backlog exists. Mirrors
+// ListScopes' shape exactly: subjectFromConnectContext for the auth check
+// (the resolved subject is discarded — no Subject parameter is passed to
+// the store), connectError(ctx, err) for the single failure mapper. This is
+// the same "any authenticated caller, no owner filter" reasoning
+// ListScopes already uses; an admin-only gate is NOT substituted here
+// because internal/authz/entities.go deliberately omits roles from the
+// principal entity (reserved for a later milestone).
+func (a *engramAPI) MigrateStatus(ctx context.Context, _ *connect.Request[engramv1.MigrateStatusRequest]) (*connect.Response[engramv1.MigrateStatusResponse], error) {
+	if _, err := subjectFromConnectContext(ctx); err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	status, err := a.d.st.MigrateStatus(ctx)
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	resp := &engramv1.MigrateStatusResponse{
+		Absent:         status.Absent,
+		FutureTotal:    status.FutureTotal,
+		Total:          status.Total,
+		CurrentVersion: int32(migrate.CurrentVersion),
+		Pending:        status.Pending(),
+	}
+	for _, b := range status.Buckets {
+		resp.Buckets = append(resp.Buckets, &engramv1.SchemaVersionBucket{Version: int32(b.Version), Count: b.Count})
+	}
+	for _, b := range status.Future {
+		resp.Future = append(resp.Future, &engramv1.SchemaVersionBucket{Version: int32(b.Version), Count: b.Count})
 	}
 	return connect.NewResponse(resp), nil
 }

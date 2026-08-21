@@ -507,17 +507,16 @@ func warnPendingMigrations(st *store.Store) {
 		return
 	}
 
-	// H3 CORRECTED predicate: pending = Absent + sum(bucket.Count where
-	// bucket.Version < CurrentVersion) — NOT sum(all buckets)+Absent, which
-	// is the total collection count and would spuriously warn for every
-	// non-empty all-current collection. status.Future is deliberately
-	// excluded: those records are AHEAD, not behind.
-	pending := status.Absent
-	for _, b := range status.Buckets {
-		if b.Version < int(migrate.CurrentVersion) {
-			pending += b.Count
-		}
-	}
+	// H3 CORRECTED predicate, now the SINGLE definition (07-06):
+	// status.Pending() = Absent + sum(bucket.Count where bucket.Version <
+	// CurrentVersion) — NOT sum(all buckets)+Absent, which is the total
+	// collection count and would spuriously warn for every non-empty
+	// all-current collection. Future is deliberately excluded inside
+	// Pending() itself: those records are AHEAD, not behind. This is the
+	// SAME method the CLI advisory footer and (07-07) the console banner
+	// call, so the three surfaces can never disagree about what "pending"
+	// means.
+	pending := status.Pending()
 	if pending > 0 {
 		slog.Warn("pending schema migrations exist; run: engram migrate",
 			"pending", pending, "current_version", migrate.CurrentVersion)

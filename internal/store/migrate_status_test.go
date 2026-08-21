@@ -15,7 +15,44 @@ import (
 
 	"github.com/qdrant/go-client/qdrant"
 	"google.golang.org/grpc"
+
+	"github.com/seanb4t/engram/internal/migrate"
 )
+
+// TestMigrateStatusResultPending is Task 1's acceptance criterion (07-06):
+// Pending() returns Absent plus every bucket strictly BELOW
+// migrate.CurrentVersion, excluding both the CurrentVersion bucket itself
+// and every Future bucket. The fixture is built RELATIVE to
+// migrate.CurrentVersion via exactly ONE binding (cur), never as literal
+// version numbers — a literal fixture would keep passing while silently
+// testing the wrong partition the moment CurrentVersion advances
+// (internal/migrate/migrate.go:54 is 1 today and is expected to move); a
+// bucket built from a literal would drift into the wrong half of the
+// partition without this test noticing.
+func TestMigrateStatusResultPending(t *testing.T) {
+	cur := int(migrate.CurrentVersion)
+	res := MigrateStatusResult{
+		Absent: 3,
+		Buckets: []VersionBucket{
+			{Version: cur - 1, Count: 5},
+			{Version: cur, Count: 10},
+		},
+		Future:      []VersionBucket{{Version: cur + 1, Count: 1}},
+		FutureTotal: 1,
+		Total:       19,
+	}
+	if got := res.Pending(); got != 8 {
+		t.Errorf("Pending() = %d, want 8 (absent=3 plus below-current bucket=5; excludes the current bucket and every future bucket)", got)
+	}
+}
+
+// TestMigrateStatusResultPendingZeroValue pins the zero-value case: an
+// empty MigrateStatusResult{} reports zero pending records.
+func TestMigrateStatusResultPendingZeroValue(t *testing.T) {
+	if got := (MigrateStatusResult{}).Pending(); got != 0 {
+		t.Errorf("MigrateStatusResult{}.Pending() = %d, want 0", got)
+	}
+}
 
 // seedStatusRecordAtVersion upserts an ordinary record (which stamps
 // schema_version == migrate.CurrentVersion via payload()) and then overrides
