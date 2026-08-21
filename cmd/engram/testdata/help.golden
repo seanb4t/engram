@@ -9,6 +9,7 @@ Usage:
 
 Available Commands:
   completion          Generate the autocompletion script for the specified shell
+  get                 Fetch one memory by id or short id and render its full state
   help                Help about any command
   list                List memories on a remote engram server
   migrate             Preview or apply the pending forward schema-version sweep
@@ -42,6 +43,23 @@ Flags:
   -h, --help               help for backfill-short-ids
       --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --timeout duration   max wall-clock (0 disables); also cancellable via Ctrl-C (default 5m0s)
+```
+
+## engram get
+
+```
+Fetch one memory by id or short id and render its full state
+
+Usage:
+  engram get <id> [flags]
+
+Flags:
+  -h, --help                help for get
+      --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --output string       output format: "json" or "text" (default: detect from stdout)
+      --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
 ```
 
 ## engram list

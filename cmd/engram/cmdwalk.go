@@ -94,10 +94,20 @@ var operatorCommandExclusions = map[string]bool{
 // commandWalkSkip), keep only commands with a non-nil RunE (drops
 // non-runnable GROUP commands such as "spine-review", whose own bare
 // invocation only ever prints help), drop any command whose own flag set
-// declares the client-tier's "server" flag (addClientFlags registers it on
-// exactly search/list/store and nowhere else, so this is how the three
-// client verbs are excluded without naming them), then drop the small
-// named exclusion set above.
+// declares the client-tier's "server" flag, then drop the small named
+// exclusion set above.
+//
+// The "server"-flag check reads the LIVE flag set
+// (cmd.Flags().Lookup("server") != nil), so every command that calls
+// addClientFlags is excluded by construction and no enumeration needs
+// maintaining here. That structural grounding is why this doc comment can
+// state, rather than merely assert, which commands it excludes today
+// without going stale the next time one is added: as of phase
+// 07-console-cli-state-surfacing those commands are search, list, store,
+// and get. A prior version of this comment named a fixed count of client
+// verbs as the reasoning itself, which engram get (this phase) invalidated;
+// the structural predicate above was already true underneath that count and
+// needed no change — only the comment's own grounds did.
 func operatorCommands() []*cobra.Command {
 	var out []*cobra.Command
 	for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {

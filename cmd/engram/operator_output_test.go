@@ -576,7 +576,7 @@ type timeoutGroup struct {
 var timeoutGroups = []timeoutGroup{
 	{
 		name:         "reject-zero-client",
-		commands:     map[string]bool{"search": true, "list": true, "store": true},
+		commands:     map[string]bool{"search": true, "list": true, "store": true, "get": true},
 		zeroRejected: true,
 	},
 	{
@@ -615,6 +615,8 @@ func timeoutGroupCaseArgs(t *testing.T, name string) (args []string, env map[str
 		return []string{"list", "--server", deadServer, "--scope", "s", "--timeout", "0"}, nil
 	case "store":
 		return []string{"store", "--server", deadServer, "--scope", "s", "--content", "c", "--timeout", "0"}, nil
+	case "get":
+		return []string{"get", "some-id", "--server", deadServer, "--timeout", "0"}, nil
 	case "reindex":
 		return []string{"reindex", "--target", "t", "--timeout", "0"}, env
 	case "prune-expired":

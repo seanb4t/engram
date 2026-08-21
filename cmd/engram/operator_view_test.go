@@ -562,6 +562,50 @@ func TestOperatorViewSanitizesControlCharacters(t *testing.T) {
 	}
 }
 
+// TestRenderOperatorViewSanitizesHeadline covers issue #505 (D-11, threat
+// T-07-01): renderOperatorView's headline write is routed through
+// sanitizeViewValue, the SAME sanitizer the field path already uses, so the
+// guarantee holds by construction rather than by every headline producer
+// happening to interpolate flag values and counts. Control runes are built
+// from their rune values (not raw literal bytes) so this test file itself
+// carries no raw control bytes.
+func TestRenderOperatorViewSanitizesHeadline(t *testing.T) {
+	t.Run("C0 control rune (ESC, the escape-sequence introducer) replaced with a single space", func(t *testing.T) {
+		esc := string(rune(0x1b))
+		headline := "record" + esc + "ABCDE12345"
+		var buf bytes.Buffer
+		if err := renderOperatorView(&buf, headline, 42); err != nil {
+			t.Fatalf("renderOperatorView: %v", err)
+		}
+		if got, want := buf.String(), "record ABCDE12345\n"; got != want {
+			t.Errorf("renderOperatorView(headline) = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("DEL rune replaced with a single space", func(t *testing.T) {
+		del := string(rune(0x7f))
+		headline := "record" + del + "ABCDE12345"
+		var buf bytes.Buffer
+		if err := renderOperatorView(&buf, headline, 42); err != nil {
+			t.Fatalf("renderOperatorView: %v", err)
+		}
+		if got, want := buf.String(), "record ABCDE12345\n"; got != want {
+			t.Errorf("renderOperatorView(headline) = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("ordinary printable headline renders byte-identical", func(t *testing.T) {
+		headline := "record ABCDE12345 (archived, superseded)"
+		var buf bytes.Buffer
+		if err := renderOperatorView(&buf, headline, 42); err != nil {
+			t.Fatalf("renderOperatorView: %v", err)
+		}
+		if got, want := buf.String(), headline+"\n"; got != want {
+			t.Errorf("renderOperatorView(headline) = %q, want %q (idempotent on ordinary text)", got, want)
+		}
+	})
+}
+
 // TestOperatorViewNonObjectDocument proves a marshaled-array or
 // marshaled-scalar document is handled gracefully rather than panicking:
 // viewFields returns errViewNotObject, and renderOperatorView still
