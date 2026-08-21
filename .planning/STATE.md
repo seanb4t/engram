@@ -3,12 +3,11 @@ gsd_state_version: 1.0
 milestone: 2026-08-12.01
 milestone_name: Record State & Schema Evolution
 current_phase: 07
-status: completed
+status: "Phase 07 shipped — PR #498"
 stopped_at: Phase 7 UI-SPEC approved
-last_updated: "2026-08-21T03:17:03.826Z"
-last_activity: 2026-08-20
-last_activity_desc: Phase 07 marked complete
-state_head: 696c07613e8c496668749103fbe86e745e48251f
+last_updated: "2026-08-21T15:43:54.014Z"
+last_activity: 2026-08-21
+state_head: 3181dcbd3f3e70c88ecc576f2bf6e4a26921f253
 progress:
   total_phases: 8
   completed_phases: 7
@@ -29,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-08-12 — after closing milestone v0.13.
 
 Phase: 07 — COMPLETE
 Plan: 1 of 7
-Status: Phase 07 complete
-Last activity: 2026-08-20 — Phase 07 marked complete
+Status: Phase 07 shipped — PR #498
+Last activity: 2026-08-21
 
 ## Deferred Items
 
