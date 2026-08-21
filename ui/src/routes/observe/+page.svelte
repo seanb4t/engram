@@ -104,6 +104,7 @@
     <Resizable.Handle />
     <Resizable.Pane defaultSize={40} minSize={25} class="min-h-0">
       <MemoryDetail memory={detailQ.data?.memory} loading={detailQ.isLoading} error={detailQ.error}
+        onselect={(id) => navigate({ selectedId: id })}
         onedit={(id) => writeSurfaces?.openEdit(id)}
         ondelete={(id) => writeSurfaces?.requestDelete(id, 'memory')}
         onshare={(memory) => writeSurfaces?.requestShare(memory, 'memory')} />
