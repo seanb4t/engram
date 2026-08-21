@@ -42,10 +42,23 @@ import (
 // already states exactly this caveat for its own IsEmpty arm.
 //
 // backlogFilter is operator-tier only and is never reachable from any
-// recall entry point — Search/List/SearchDiscovery/ListScheduled all apply
-// activeWindowConditions or no temporal gate at all, never this filter —
-// so Phase 2's TestSchemaVersionNeverGatesRecall reachability derivation
-// continues to hold with this filter's addition.
+// recall entry point. That claim's ORIGINAL grounds — every recall entry
+// point unconditionally applies activeWindowConditions or no temporal gate
+// at all, never this filter — stopped holding once phase 07 plan 03 gave
+// Store.Search and Store.List three orthogonal opt-in bools
+// (IncludeArchived/IncludeSuperseded/IncludeScheduled) that make their own
+// gate conditions CONDITIONAL. The claim's SUBSTANCE still holds, on grounds
+// that survive that change: backlogFilter is not referenced, directly or
+// transitively, by any of the six functions in recallEntryPointSeeds (the
+// AST-reachability derivation TestSchemaVersionNeverGatesRecall runs) — and
+// a recall entry point relaxing its own gate REMOVES conditions from its own
+// filter under an `if !opts.IncludeX` guard, it never ADOPTS a different
+// filter such as this one. Conditional gating changes which conditions a
+// recall entry point's filter contains; it does not change which filter a
+// recall entry point calls. Phase 2's TestSchemaVersionNeverGatesRecall
+// reachability derivation continues to hold with this filter's addition —
+// re-run after phase 07 plan 03 landed, still green (18 filters walked,
+// zero containing schema_version).
 //
 // backlogFilter ALONE is deliberately broad at target == 0: the IsEmpty
 // arm matches every legacy record regardless of target, so a caller that
