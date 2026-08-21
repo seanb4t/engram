@@ -3,7 +3,8 @@
     "_auto_chain_active": false,
     "nyquist_validation": true,
     "ai_integration_phase": true,
-    "plan_review_convergence": true
+    "plan_review_convergence": true,
+    "use_worktrees": true
   },
   "git": {
     "branching_strategy": "none",
