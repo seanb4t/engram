@@ -88,7 +88,7 @@ var operations = []Operation{
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
-		MCPTool: "get_memory", CLICommand: "",
+		MCPTool: "get_memory", CLICommand: "get",
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{

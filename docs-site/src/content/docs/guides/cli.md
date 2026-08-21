@@ -388,7 +388,7 @@ for the full migration note.
 
 ## Request timeout
 
-Every client verb (`search`, `list`, `store`) bounds its RPC call with
+Every client verb (`search`, `list`, `store`, `get`) bounds its RPC call with
 `--timeout` (or `ENGRAM_TIMEOUT`), default `30s`. `0`, a negative value, and
 a malformed duration are all rejected as usage errors (exit `2`) **before**
 any dial — `--timeout 0` together with an unreachable `--server` still exits
@@ -401,7 +401,7 @@ zero-semantics, and it is not uniform across commands:**
 
 | Commands | `--timeout` meaning | `0` behavior |
 |---|---|---|
-| `search`, `list`, `store` | Per-RPC-call deadline | **Rejected** (usage error) |
+| `search`, `list`, `store`, `get` | Per-RPC-call deadline | **Rejected** (usage error) |
 | `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan`, `spine-review verify`, `spine-review consolidate`, `spine-review archive`, `spine-review restore`, `spine-review purge`, `migrate`, `migrate status`, `migrate revert` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
 | `migrate-remap-owner`, `migrate-set-owner` | Whole-sweep wall-clock budget | **Rejected** (usage error) — changed this release, see the [upgrade guide](/guides/upgrade/#6-migrate-remap-owner---timeout-0--migrate-set-owner---timeout-0-no-longer-means-unbounded) |
 

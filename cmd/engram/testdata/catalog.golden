@@ -33,6 +33,48 @@
       }
     },
     {
+      "name": "get",
+      "summary": "Fetch one memory by id or short id and render its full state",
+      "flags": [
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
       "name": "list",
       "summary": "List memories on a remote engram server",
       "flags": [
