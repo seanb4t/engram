@@ -1407,6 +1407,12 @@ type coreListRequest struct {
 	// what resolves them via effectiveSearchScope — the same typed-core
 	// chokepoint reasoning coreSearchRequest.CrossSpine documents.
 	CrossSpine bool
+	// IncludeArchived is the phase 07 (D-01/D-02) orthogonal recall-gate
+	// opt-in, copied straight into store.ListOptions. Connect and the CLI
+	// only (D-03) — the MCP list_memory closure below never sets this, so its
+	// coreListRequest{} literal leaves it at zero value and MCP recall is
+	// behaviourally unchanged.
+	IncludeArchived bool
 }
 
 // coreListResult is the typed list result: raw []store.Memory (no []any, no
@@ -1458,15 +1464,16 @@ func (d *deps) listMemory(ctx context.Context, c caller, req coreListRequest) (c
 		return coreListResult{}, err
 	}
 	ms, total, next, err := d.st.List(ctx, scope, c.Subj, store.ListOptions{
-		Limit:         req.Limit,
-		Offset:        req.Offset,
-		Categories:    req.Categories,
-		Visibility:    req.Visibility,
-		Tags:          req.Tags,
-		CreatedAfter:  req.CreatedAfter,
-		CreatedBefore: req.CreatedBefore,
-		Cursor:        req.Cursor,
-		CursorMode:    req.CursorMode,
+		Limit:           req.Limit,
+		Offset:          req.Offset,
+		Categories:      req.Categories,
+		Visibility:      req.Visibility,
+		Tags:            req.Tags,
+		CreatedAfter:    req.CreatedAfter,
+		CreatedBefore:   req.CreatedBefore,
+		Cursor:          req.Cursor,
+		CursorMode:      req.CursorMode,
+		IncludeArchived: req.IncludeArchived,
 	})
 	if err != nil {
 		return coreListResult{}, err

@@ -89,6 +89,11 @@ message ListMemoriesRequest {
   // scope is required unless cross_spine is true
   // engram:rule:end scope-required-unless-cross-spine
   bool cross_spine = 12;
+  // false (default) reproduces today's soft-hidden behavior: archived
+  // records stay unreachable. true relaxes exactly the `archived_at`
+  // IsEmpty recall condition in Store.List, revealing archived records
+  // without narrowing the result set to only-archived ones.
+  bool include_archived = 13;
 }
 
 message ListMemoriesResponse {

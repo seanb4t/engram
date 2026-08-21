@@ -73,6 +73,12 @@
           "usage": "return full content instead of summaries"
         },
         {
+          "name": "include-archived",
+          "type": "bool",
+          "default": "false",
+          "usage": "include archived records, which are hidden by default"
+        },
+        {
           "name": "insecure",
           "type": "bool",
           "default": "false",
