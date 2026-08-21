@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: 2026-08-12.01
 milestone_name: Record State & Schema Evolution
 current_phase: 08
-current_phase_name: registry-docs-tail
-status: Phase 08 planned — ready to execute
-stopped_at: Phase 8 planning complete
-last_updated: "2026-08-21T19:58:00.573Z"
+current_phase_name: Registry & Docs Tail
+status: executing
+stopped_at: Completed 08-01-PLAN.md
+last_updated: "2026-08-21T22:10:08.629Z"
 last_activity: 2026-08-21
-last_activity_desc: Phase 08 planning complete
-state_head: e6e28a5fa097ef13a8c6de5b43c1adf64592e889
+last_activity_desc: Phase 08 execution started
+state_head: 5b933ea308415fbebaab5eea1dd072e20756b401
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 42
-  completed_plans: 38
+  completed_plans: 39
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-12 — after closing milestone v0.13.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 07 — Console & CLI State Surfacing
+**Current focus:** Phase 08 — Registry & Docs Tail
 
 ## Current Position
 
-Phase: 08 (registry-docs-tail) — READY TO EXECUTE
-Plan: 1 of 4
-Status: Phase 08 planned — ready to execute
-Last activity: 2026-08-21 — Phase 08 planning complete
+Phase: 08 (Registry & Docs Tail) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-08-21 — Phase 08 execution started
 
 ## Deferred Items
 
@@ -189,6 +189,8 @@ milestone needs in working memory.
   (console/CLI soft-hidden-state conventions) flagged as needing a research pass at plan time — no
   single existing precedent to copy verbatim for either.
 
+- [Phase 08]: RuleSweepScopeOrAllScopesRequired's SurfaceFields diverges from Fields (adds dry-run) to isolate the three enforcing sweep leaves from spine-review consolidate/purge, which expose the same flag pair without enforcing it; the two leaves it cannot reach are pinned by a dedicated whitelist test instead.
+
 ### Pending Todos
 
 [From .planning/todos/pending/ — ideas captured during sessions]
@@ -223,9 +225,9 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-21T17:15:31.726Z
-Stopped at: Phase 8 context gathered
-Resume file: .planning/phases/08-registry-docs-tail/08-CONTEXT.md
+Last session: 2026-08-21T22:10:08.423Z
+Stopped at: Completed 08-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -321,6 +323,7 @@ Resume file: .planning/phases/08-registry-docs-tail/08-CONTEXT.md
 | Phase 02 P05 | ~40min | 3 tasks | 11 files |
 | Phase 05 P01 | 40min | 4 tasks | 4 files |
 | Phase 05 P02 | 6min | 2 tasks | 4 files |
+| Phase 08 P01 | 50min | 3 tasks | 12 files |
 
 ## Operator Next Steps
 

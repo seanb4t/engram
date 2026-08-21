@@ -55,7 +55,7 @@ instead of another one-shot operator command.
 
 ### Registry & Docs
 
-- [ ] **REQ-sweep-scope-rule-registered**: The `--scope`-or-`--all-scopes` requirement shared by `summarize-missing` and `spine-review scan` is a registered `surfaces.ConditionalRule` rather than a hand-rolled `usageErrorf`, with its canonical sentence anchored on every surface its fields resolve to (#480).
+- [x] **REQ-sweep-scope-rule-registered**: The `--scope`-or-`--all-scopes` requirement shared by `summarize-missing` and `spine-review scan` is a registered `surfaces.ConditionalRule` rather than a hand-rolled `usageErrorf`, with its canonical sentence anchored on every surface its fields resolve to (#480).
 - [ ] **REQ-docs-record-state**: `reference/memory-record.md` and `reference/tools.md` document the full record state including `schema_version`, and the migration mechanism has an operator-facing guide.
 - [ ] **REQ-claude-md-migrations-convention**: CLAUDE.md's Conventions line "Not used here: database migrations" is revised to describe what this milestone actually ships, so the normative doc does not contradict the code.
 
@@ -111,7 +111,7 @@ this repo's structural invariant — see ROADMAP.md's `## Progress` note).
 | REQ-console-record-state | Phase 7 | Complete |
 | REQ-cli-record-state | Phase 7 | Complete |
 | REQ-migration-state-visible | Phase 7 | Complete |
-| REQ-sweep-scope-rule-registered | Phase 8 | Pending |
+| REQ-sweep-scope-rule-registered | Phase 8 | Complete |
 | REQ-docs-record-state | Phase 8 | Pending |
 | REQ-claude-md-migrations-convention | Phase 8 | Pending |
 

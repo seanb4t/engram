@@ -466,12 +466,12 @@ Plans:
   2. `reference/memory-record.md` and `reference/tools.md` document the full record state including `schema_version`, and a new operator-facing guide documents the migration mechanism end to end.
   3. CLAUDE.md's "Not used here: database migrations" line is revised to accurately describe what this milestone ships and its scope — schema-version-driven migrations only, deliberately not `migrate-remap-owner`/`summarize-missing`/`reindex` — so the normative doc no longer contradicts the code.
 
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 08-01-PLAN.md — Tracer: `RuleSweepScopeOrAllScopesRequired` registered with a `SurfaceFields` narrowing, anchored on the one derived surface, and composed by every sweep leaf in both its rejection and its `--all-scopes` help text, closing the gate at zero hand-rolled copies (wave 1)
+- [x] 08-01-PLAN.md — Tracer: `RuleSweepScopeOrAllScopesRequired` registered with a `SurfaceFields` narrowing, anchored on the one derived surface, and composed by every sweep leaf in both its rejection and its `--all-scopes` help text, closing the gate at zero hand-rolled copies (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -528,7 +528,7 @@ shared wave cannot force. The plans are small; the serialization costs wall-cloc
 | v0.8.x Phase 5: Config & Transport | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
 | v0.8.x Phase 6: Telemetry & Observability | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
 | 7. Web UI, Docs Site & Distribution | v0.8.x | 9/9 | Complete   | 2026-08-20 |
-| 8. Connect Auth Hardening | v0.8.x | 1/1 | Complete | shipped (PR #248/#266) |
+| 8. Connect Auth Hardening | v0.8.x | 1/1 | In Progress|  |
 | 9. Retrieval Eval & Ranking Precision | v0.9.x | 3/3 | Complete | 2026-07-10 (PR #336) |
 | 10. Asymmetric Query/Document Embeddings | v0.9.x | 1/1 | Complete (already shipped) | 2026-07-10 (#305) |
 | 11. Async-on-Write Summaries | v0.9.x | 1/1 | Complete | 2026-07-10 (PR #336) |
@@ -588,6 +588,7 @@ Unsequenced ideas parked outside the active phase sequence. Promote with `/gsd-r
 **Plans:** 0 plans
 
 Plans:
+
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
 **Context (captured 2026-08-21, during phase 07 UAT):**
@@ -600,8 +601,10 @@ shipped binary. Nothing caught it for the whole phase:
 - CI's `ui vendored-asset drift` job (`.github/workflows/ci.yaml:301`) is correct
   and required, but triggers on `pull_request` and `push: main` only — it cannot
   fire on an unmerged feature branch.
+
 - `task` (= `lint` + `test`) has no drift check at all. `ui:build` is a generate
   verb with no verify counterpart.
+
 - `internal/e2e/console_browser_test.go` does drive the real vendored bundle in
   headless Chrome (CI forces it via `ENGRAM_REQUIRE_BROWSER: "1"`), but asserts
   only hydration (an `<h1>` containing "operator console") and one seeded
@@ -617,9 +620,10 @@ branch push, while the existing `ui-drift` job stays the authoritative content
 check at PR time. Verified against the phase-07 history: it reports STALE.
 
 **Open questions for planning:**
+
 - Rebase/cherry-pick can reorder commit timestamps — decide the tolerance and
   whether a same-commit vendor (equal timestamps) must pass.
+
 - Whether a working-tree-dirty case should also fail, or only committed state.
 - Whether the same shape should cover the `surfaces:gen` drift check, which has
   the identical local-verb/CI-verify split.
-
