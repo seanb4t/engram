@@ -1,359 +1,206 @@
 ---
 phase: 8
-cycle: 2
+cycle: 3
 reviewers: [codex]
-reviewed_at: 2026-08-21T19:31:56Z
+reviewed_at: 2026-08-21T19:56:09Z
 plans_reviewed: [08-01-PLAN.md, 08-02-PLAN.md, 08-03-PLAN.md, 08-04-PLAN.md]
 models:
   codex: "gpt-5.6-sol (reasoning=low)"
 model_sources:
   codex: "banner"
-prior_cycle: df98e8b4
+prior_cycle: a5b9c55f
 ---
 
-# Cross-AI Plan Review — Phase 8 (cycle 2)
+# Cross-AI Plan Review — Phase 8 (cycle 3)
 
-> Cycle 1's full text (8 HIGH + 33 actionable non-HIGH) is preserved in git at `df98e8b4`.
-> This file is the cycle-2 review of the plans as they stand after replan commit `a66336bf`.
+> Cycle 1's full text (8 HIGH + 33 actionable) is preserved in git at `df98e8b4`; cycle 2's
+> (0 HIGH + 8 actionable) at `a5b9c55f`. This file is the cycle-3 review of the plans as they
+> stand after replan commit `1f04f5a0`. Cycles 1 and 2 are HISTORY — both are fully resolved and
+> nothing in them is counted here. This is the FINAL cycle before escalation.
+
+**Verdict: 0 unresolved HIGH, 0 unresolved actionable non-HIGH. Risk LOW. Execution can proceed.**
 
 ## Codex Review
 
-# Summary
+## Summary
 
-The replanning resolves all eight cycle-1 HIGH findings and nearly all 33 lower-severity findings. The operational claims, dependency edges, generated-artifact workflow, and docs limitations are now substantially accurate. Two new gate defects remain: the CLAUDE.md inventory gate is unsatisfiable under zsh’s default word-splitting behavior, and the record-table completeness gate scans every table on the page, allowing the discovery table to satisfy the missing `kind` row. Several task `<verify>` commands are also already green because unmatched `-run` patterns succeed with “[no tests to run].” Overall risk is **MEDIUM**: implementation scope is sound, but the verification commands need correction before execution.
+The current Cycle 3 plans are execution-ready. I verified all nine `<automated>` blocks verbatim under both bash and zsh: every gate exits 1 on the pre-implementation tree, for the intended missing artifact or existing defect. I found no shell divergence, newly introduced substring collision, file-ownership conflict, or Wave 1 ordering hazard. The new wave shape `(08-01 ‖ 08-03) → 08-02 → 08-04` is sound. No unresolved concern warrants blocking execution.
 
-# Strengths
+## Gate Verification Table
 
-- The `SurfaceFields` solution is now grounded in the actual applicability mechanism. `ApplicableSurfaces` uses `SurfaceFields` when present ([normalize.go](/Volumes/Code/github.com/seanb4t/engram/internal/surfaces/normalize.go:93)), and the Cobra gate applies that same field set per command ([surfaces_test.go](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/surfaces_test.go:61)). The plan also adds explicit positive and negative coverage for the leaves the field model cannot select.
+| Plan / task | What it guards | Bash | Zsh | Verdict | Evidence |
+|---|---|---:|---:|---|---|
+| 08-01 Task 1 | New characterization test actually exists and runs | 1 | 1 | FIRES | `go test` currently reports “no tests to run”; the required `=== RUN` line is absent. The explicit match prevents Go’s empty-selection success from passing the gate. [08-01-PLAN.md:262](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-01-PLAN.md:262) |
+| 08-01 Task 2 | New anchor and helper call exist before running conformance tests | 1 | 1 | FIRES | Current counts are `anchor=0`, `requireSweepScope` call in `summarize.go=0`; both must become 1. The failure occurs before the already-green tests. [08-01-PLAN.md:413](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-01-PLAN.md:413) |
+| 08-01 Task 3 | No old inline guard remains, then complete Go suites pass | 1 | 1 | FIRES | The literal currently occurs exactly three times under `cmd/engram/`; the gate requires zero. [08-01-PLAN.md:528](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-01-PLAN.md:528) |
+| 08-02 Task 1 | Field-reference table covers all wire-visible `Memory` JSON keys | 1 | 1 | FIRES | The bounded set difference reports eight keys: `access_count`, `kind`, `last_accessed_at`, `not_after`, `not_before`, `schema_version`, `score`, `summary_egress_at`. The struct is the correct authority. [08-02-PLAN.md:265](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-02-PLAN.md:265), [store.go:185](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:185) |
+| 08-02 Task 2 | Removes the off-by-one wording, enforces canonical order, preserves anchors | 1 | 1 | FIRES | Current stale phrase count is 1; current order is `scheduled expired superseded archived`, while the gate requires the reverse canonical order. [08-02-PLAN.md:336](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-02-PLAN.md:336) |
+| 08-03 Task 1 | New guide exists with frontmatter and documents every report JSON key | 1 | 1 | FIRES | `migrate.md` does not exist, so `head` fails immediately. The derived source set has the expected 21 keys, including `refusal,omitempty`. [08-03-PLAN.md:297](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-03-PLAN.md:297), [migrate_family.go:86](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/migrate_family.go:86), [migrate_family.go:306](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/migrate_family.go:306), [migrate_family.go:375](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/migrate_family.go:375) |
+| 08-03 Task 2 | Removes both line-wrapped stale migration claims | 1 | 1 | FIRES | Both flattened phrases occur exactly once today. Flattening makes the check insensitive to Markdown wrapping. [08-03-PLAN.md:369](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-03-PLAN.md:369) |
+| 08-04 Task 1 | Layout row covers catalog commands and marks the deprecated alias | 1 | 1 | FIRES | The row currently has 24 command/word misses and zero `deprecated` markers. Explicit `tr ' ' '\\n'` produces identical results in both shells. [08-04-PLAN.md:208](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-04-PLAN.md:208) |
+| 08-04 Task 2 | Memory-contract section gains the three required state terms without changing its prose structure | 1 | 1 | FIRES | `schema_version`, `archived_at`, and `spine-review archive` each currently occur zero times in the scoped section. [08-04-PLAN.md:274](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-04-PLAN.md:274) |
 
-- The zero-occurrence invariant correctly protects against a future fourth copied guard. The live count is currently three, so this gate is genuinely red.
+## Strengths
 
-- Generator verification now tests a fixed point with two runs rather than incorrectly comparing intended generated changes against `HEAD`.
+- The three inline runtime guards are genuinely present, and the zero-occurrence invariant is stronger than a fixed conversion count. The plan also prevents tests and comments from reintroducing the literal. [08-01-PLAN.md:258](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-01-PLAN.md:258), [08-01-PLAN.md:531](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-01-PLAN.md:531)
 
-- Migration documentation now respects the implementation’s real limits:
+- The `SurfaceFields` design is paired with a meaningful safety net: the native conformance gate checks applicable commands by their exposed flag sets and searches their `Usage` strings for the canonical sentence. [surfaces_test.go:61](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/surfaces_test.go:61)
 
-  - Re-running is distinguished from persisted resumability ([migrate.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/migrate.go:123)).
-  - Non-shrinking backlog is treated as reachable and diagnosed rather than denied ([migrate.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/migrate.go:502)).
-  - The automatic startup behavior is accurately limited to `MigrateStatus`, never `Store.Migrate` ([tools.go](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:490)).
+- The record-state boundary prose is based on the correct implementation: `not_before <= now` and `not_after > now`. This supports the plans’ active-at-lower-bound and expired-at-upper-bound wording. [store.go:1001](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:1001)
 
-- The reference-doc plan now carries both forward-version limitations. The source explicitly says an older binary can discard newer-only keys and that stale `Store.Upsert` can lower the stored version ([store.go](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:337)).
+- The version-contract narrowing is well grounded. The source explicitly documents both the lossy older-binary rewrite and `Store.Upsert`’s ability to lower a stored version from stale input. [store.go:337](/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go:337)
 
-- The four-plan dependency chain is internally consistent: 08-02 waits for both its generated anchor and migration-guide link target, and 08-04 waits for every source it compresses.
+- The migration guide correctly requires both revert-refusal forms. The write loop can discover a newly arrived unsupported or irreversible record after earlier records were reverted, so documenting every refusal as zero-write would be wrong. [revert.go:453](/Volumes/Code/github.com/seanb4t/engram/internal/store/revert.go:453), [revert.go:481](/Volumes/Code/github.com/seanb4t/engram/internal/store/revert.go:481)
 
-- The plans correctly acknowledge that docs-site prose is manual-review-only: neither rumdl nor the Astro build proves behavioral prose or internal links.
+- The “automatic” distinction is accurate: startup runs a bounded, read-only status probe, may warn, and explicitly must never call `Store.Migrate`. [tools.go:490](/Volumes/Code/github.com/seanb4t/engram/internal/server/tools.go:490)
 
-# Concerns
+- Wave 1 is safe. `08-01` owns Go, goldens, and `reference/tools.md`; `08-03` owns only `guides/migrate.md` and `guides/upgrade.md`. [08-01-PLAN.md:7](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-01-PLAN.md:7), [08-03-PLAN.md:7](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-03-PLAN.md:7)
 
-- **HIGH — NEW: The CLAUDE.md inventory gate does not implement its stated grouped-family semantics.**  
-  The plan says each word of `spine-review scan` should be tested independently so grouped notation such as `` `spine-review` (`scan`) `` passes ([08-04-PLAN.md](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-04-PLAN.md:163)). But its loop is `for w in $name` ([08-04-PLAN.md](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-04-PLAN.md:190)). In zsh, scalar expansion is not split on whitespace by default. The gate therefore searches for the single token `` `spine-review scan` ``, not separate `` `spine-review` `` and `` `scan` `` tokens. Running it produced misses such as:
+- No shared navigation file is needed: the Guides sidebar autogenerates from the directory. [astro.config.mjs:28](/Volumes/Code/github.com/seanb4t/engram/docs-site/astro.config.mjs:28)
 
-  ```text
-  migrate revert/migrate revert
-  spine-review scan/spine-review scan
-  ```
+## Concerns
 
-  The finished grouped row required by the plan cannot satisfy this gate. Use `for w in ${(z)name}` or another explicit split.
+No unresolved HIGH, MEDIUM, or LOW correctness concern remains against the current plans.
 
-- **MEDIUM — NEW: The record-table completeness gate is not scoped to the field-reference table.**  
-  The right-hand extraction scans every Markdown table in the page ([08-02-PLAN.md](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-02-PLAN.md:256)). Consequently, `kind` is already considered documented because it appears in the later discovery and citation tables ([memory-record.md](/Volumes/Code/github.com/seanb4t/engram/docs-site/src/content/docs/reference/memory-record.md:162)), even though it has no row in the promised field-reference table ending at line 35. The live gate reports seven missing keys, while the plan says it must add eight rows. Scope the right-hand extraction between `## Field reference` and the next heading.
+I also found no new mandated-prose/negative-grep collision. In particular:
 
-- **MEDIUM — NEW: Three task `<verify>` commands are already green without their planned artifacts.**
+- The removed scope literal is not mandated in any new `cmd/engram/` artifact.
+- The migration guide is explicitly told not to name the two commands prohibited by its scope gate.
+- The `\bas of\b` changelog check no longer collides with the mandated phrase “alias of.”
+- The widened internal-link class accepts uppercase and underscore-bearing paths before fragment removal.
 
-  - 08-01 Task 1 exits 0 with `testing: warning: no tests to run`.
-  - 08-01 Task 2 exits 0 because the new test-name branch matches nothing and all existing tests pass.
-  - 08-02 Task 2 exits 0 because the existing anchor-conformance test is already green.
+## Suggestions
 
-  The stronger acceptance criteria sometimes catch this by requiring RUN/PASS lines, but `<verify>` itself does not. This contradicts the requested red-before-work property and weakens executor feedback.
+- For extra defense, incorporate the expected `21`-key source count directly into 08-03 Task 1’s `<automated>` block. The acceptance criteria already require it, and the current extraction does produce 21, but embedding the count would prevent a future struct-name or extraction-pattern drift from reducing the left-hand set to empty and making `comm -23` vacuously pass.
 
-- **LOW — NEW: `requireSweepScope` specifies a potentially unused `command` parameter.**  
-  The required signature includes `command` ([08-01-PLAN.md](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-01-PLAN.md:112)), but its prescribed implementation only uses `scope`, `allScopes`, and `sweepScopeRule().Sentence` ([08-01-PLAN.md](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/08-registry-docs-tail/08-01-PLAN.md:362)). In Go, an unused parameter is legal, but it creates misleading API surface. Either use it for command-specific diagnostic context or remove it.
+- During execution, retain the plans’ constructed-defect observations in each summary. Those checks are especially valuable for the whitelist, anchor-drift, broken-link, and characterization-test gates.
 
-- **LOW — NEW: Full serialization is stronger than required.**  
-  08-03 edits only `guides/migrate.md` and `guides/upgrade.md`; it neither quotes the new rule sentence nor shares files with 08-01. The meaningful dependency chain is `(08-01 || 08-03) → 08-02 → 08-04`. Serializing 08-03 behind 08-01 avoids shared-worktree coordination risk, but it is not a semantic dependency.
+## Risk Assessment
 
-# Suggestions
-
-- Fix the row inventory loop explicitly for zsh:
-
-  ```zsh
-  for w in ${(z)name}; do
-    printf '%s' "$row" | rg -qF -- "\`$w\`" ||
-      missing="$missing $name/$w"
-  done
-  ```
-
-  Add a self-test using `spine-review scan` so the gate proves it accepts grouped notation.
-
-- Scope the field-table extraction:
-
-  ```zsh
-  sed -n '/^## Field reference$/,/^### /p' \
-    docs-site/src/content/docs/reference/memory-record.md
-  ```
-
-  Confirm the pre-change difference includes `kind` as well as the seven currently reported keys.
-
-- Make each new-test `<verify>` command require a matched test:
-
-  ```zsh
-  out=$(go test ... -v)
-  print -r -- "$out"
-  print -r -- "$out" | rg -q '^=== RUN   TestExactName$'
-  ```
-
-- Remove `command` from `requireSweepScope` unless it contributes to diagnostics.
-
-- Consider placing 08-01 and 08-03 in the same wave if the execution system provides isolated worktrees. Keep serialization if agents truly share one dirty worktree.
-
-# Cycle-1 resolution audit
-
-| Cycle-1 finding | Status | Evidence |
-|---|---|---|
-| H-1 | RESOLVED | `SurfaceFields` narrowing plus whitelist test is executable plan content in 08-01. |
-| H-2 | RESOLVED | Task 1 now adds only the pre-refactor characterization test; registry-dependent tests move later. |
-| H-3 | RESOLVED | 08-03 explicitly forbids “resumable” and documents fresh re-derivation. |
-| H-4 | RESOLVED | 08-03 cites and documents the non-shrinking-backlog guard. |
-| H-5 | RESOLVED | 08-02/03 explicitly state docs prose is not linted and require manual review. |
-| H-6 | RESOLVED | Both docs plans add explicit internal-link existence loops. |
-| H-7 | RESOLVED | Upgrade-note gates flatten line wrapping with `tr '\n' ' '`. |
-| H-8 | RESOLVED | The migration guide now avoids naming `summarize-missing`; the zero-occurrence gate is satisfiable. |
-| F-1.1 | RESOLVED | Rule-identifier count changed to a floor. |
-| F-1.2 | RESOLVED | Helper occurrence count changed to `-ge 4`; zero literal count remains authoritative. |
-| F-1.3 | RESOLVED | Plans consistently invoke `task surfaces:gen`, including golden regeneration. |
-| F-1.4 | RESOLVED | Fixed-point verification uses two generator runs and diff hashes. |
-| F-1.5 | RESOLVED | Plan now correctly says slice order affects failure ordering, not region churn. |
-| F-1.6 | RESOLVED | Goldens are expected and required to move. |
-| F-1.7 | RESOLVED | Anchor absence uses explicit counts; leaf wiring has purpose-built tests. |
-| F-1.8 | RESOLVED | Positive controls directly test the helper without dialing Qdrant. |
-| F-1.9 | RESOLVED | Plan correctly identifies only `summarize-missing` as uncovered. |
-| F-1.10 | RESOLVED | The new anchor is placed only in `reference/tools.md`. |
-| F-1.11 | PARTIAL | All eight rows are required in prose, but the derived gate mistakenly accepts `kind` from another table. |
-| F-1.12 | RESOLVED | The tracker citation is removed; summary says work shipped and issue is closable. |
-| F-1.13 | RESOLVED | Older-binary key loss is explicitly required. |
-| F-1.14 | RESOLVED | Both docs plans use the same narrowed rollback contract, including `Store.Upsert`. |
-| F-1.15 | RESOLVED | Tools-page boundary and canonical-order checks are explicit. |
-| F-1.16 | RESOLVED | Exact field-label wording is no longer the main completeness gate. |
-| F-1.17 | RESOLVED | Window semantics are described as the shared half-open convention. |
-| F-1.18 | RESOLVED | JSON extraction now accepts `,omitempty`; it derives 21 keys. |
-| F-1.19 | RESOLVED | Guide keys must appear backticked, with manual explanation review retained. |
-| F-1.20 | RESOLVED | Correct full struct ranges are in `read_first`. |
-| F-1.21 | RESOLVED | Both docs plans explicitly install from the frozen lockfile when needed. |
-| F-1.22 | RESOLVED | Plans distinguish automatic status probing from automatic application. |
-| F-1.23 | RESOLVED | Both preflight and mid-loop revert refusals are documented. |
-| F-1.24 | RESOLVED | Hazard survival is anchored to its exact heading and sentence. |
-| F-1.25 | RESOLVED | `pending` and protojson `uint64` string rendering are explicitly covered. |
-| F-1.26 | PARTIAL | The gate is row-scoped, but zsh prevents its promised per-word grouped-family comparison. |
-| F-1.27 | RESOLVED | 08-04 depends on 08-01, 08-02, and 08-03. |
-| F-1.28 | RESOLVED | Memory-section structural checks are region-scoped. |
-| F-1.29 | RESOLVED | The row must distinguish client and direct-Qdrant operator tiers. |
-| F-1.30 | RESOLVED | Hunk-location checks replace `git diff --stat`. |
-| F-1.31 | RESOLVED | The existing CLAUDE.md SPDX header must be preserved. |
-| F-1.32 | RESOLVED | Plans accurately treat license checks as repo-wide only for docs-site. |
-| F-1.33 | RESOLVED | Validation text now uses the correct boundary sources and acknowledges no prose linter. |
-
-# Gate verification log
-
-| Gate | Current result | Genuinely red? |
-|---|---|---|
-| 08-01 Task 1 `<verify>` | Exit 0; `[no tests to run]` | **No — vacuously green** |
-| 08-01 Task 2 `<verify>` | Exit 0; existing surfaces/golden tests pass | **No — already green** |
-| 08-01 Task 3 `<verify>` | Exit 1; guard literal count is `3` | **Yes** |
-| 08-02 Task 1 field difference | Exit 1; missing `access_count`, `last_accessed_at`, `not_after`, `not_before`, `schema_version`, `score`, `summary_egress_at` | **Yes, but misses absent field-table row `kind`** |
-| 08-02 Task 2 `<verify>` | Exit 0; existing prose anchors conform | **No — already green** |
-| 08-03 Task 1 `<verify>` | Exit 1; `guides/migrate.md` absent | **Yes** |
-| 08-03 Task 2 `<verify>` | Exit 1; both stale flattened claims remain | **Yes** |
-| 08-04 Task 1 row gate | Exit 1 with current row; multiword names remain whole scalar values | **Red today, but unsatisfiable by required grouped notation** |
-| 08-04 Task 2 `<verify>` | Exit 1; section lacks new vocabulary | **Yes** |
-| Guard zero-occurrence gate | Output `3` | **Yes** |
-| Migration JSON-key derivation | Derived exactly `21` keys | Struct-side extraction works |
-| Upgrade stale-claim gates | Both stale claims currently count `1` when flattened | **Yes** |
-| Keylink gate | Reported green during replanning; no contradictory source evidence found | Regression gate, not red-before-work |
-
-# Risk Assessment
-
-**MEDIUM.** The phase design and factual documentation requirements are now strong, and all cycle-1 HIGH issues are substantively resolved. Execution should pause for two gate corrections: explicit zsh word splitting in 08-04 and section-scoping of the 08-02 table extraction. The already-green `<verify>` commands should also be hardened so executors cannot mistake “no matching tests” for evidence.
+**LOW.** All nine primary gates demonstrably fire under both supported shells, the newly changed extraction and link patterns behave as intended, Wave 1 has disjoint ownership with no generator or navigation collision, and the remaining prose-only properties are explicitly assigned manual verification against identified source authorities. Execution can proceed.
 
 ---
 
 ## Consensus Summary
 
-Only one external lane ran this cycle (`codex`; the `claude` lane is skipped for independence
-because the orchestrator IS Claude Code). To keep the cycle from being single-sourced, the
-orchestrator ran an independent verification pass over the same plans and executed every
-`<verify>` command and every rewritten gate against the live tree. Where the two agree, the
-finding is marked **CONFIRMED**; where only one found it, it is marked with its source.
+One prompt-fed, source-grounded reviewer ran this cycle (Codex, `gpt-5.6-sol`). Its findings were
+independently re-derived by the orchestrating reviewer against the working tree rather than accepted
+on assertion — every claim below carries a directly observed measurement, not a restatement.
 
-**Verdict: the replan closed all 8 cycle-1 HIGHs and 31 of the 33 actionable non-HIGHs. No
-HIGH remains. Four MEDIUM and three LOW findings remain, all of them defects in gate
-*precision* rather than in the phase's design, scope, or factual content. Overall risk:
-MEDIUM-LOW.**
+### The load-bearing claim: do the nine gates fire?
 
-### Gate verification log (run against the live tree, 2026-08-21)
+**VERIFIED. The cycle-2 replan's central assertion holds.** All nine `<automated>` blocks were
+extracted verbatim (programmatically, from the `<automated>…</automated>` spans in the four
+`PLAN.md` files — nine found, matching the claim) and executed from the repo root under both shells.
 
-Nine `<verify>` blocks exist across the four plans (08-01: 3, 08-02: 2, 08-03: 2, 08-04: 2) —
-not five. Six are genuinely RED today; **three are already green**.
+| # | Plan:line | Guards | bash | zsh | Verdict | Why it is red (traced, not assumed) |
+|---|-----------|--------|------|-----|---------|--------------------------------------|
+| 1 | `08-01-PLAN.md:262` | The characterization pin exists and actually ran | 1 | 1 | FIRES | `go test -run` exits 0 with `testing: warning: no tests to run`; the required `=== RUN   TestSummarizeMissingRequiresScopeOrAllScopes` line is absent. The `rg -q` clause is what makes it red — the bare `go test` half is green today. |
+| 2 | `08-01-PLAN.md:413` | Anchor pair + helper call exist before the (already-green) test suite | 1 | 1 | FIRES | Measured: anchor count `0` (must be `1`), `requireSweepScope(` in `summarize.go` count `0` (must be `1`). Both `rg` clauses precede the `go test` clauses, so the red arrives from the artifact half. |
+| 3 | `08-01-PLAN.md:528` | No hand-rolled guard literal survives under `cmd/engram/` | 1 | 1 | FIRES | Leg-1 measured `3` occurrences (`spine_review_verify.go:623`, `summarize.go:39`, `spine_review_scan.go:44`); must be `0`. Leg 2 (`go test ./cmd/engram/... ./internal/surfaces/...`) was run in isolation and is **green** (`ok` both packages) — so the red is the intended assertion, not an incidental test failure. |
+| 4 | `08-02-PLAN.md:265` | Field-reference table covers every wire-visible `Memory` JSON key | 1 | 1 | FIRES | Section-bounded `comm -23` reports exactly the eight keys the must-have names: `access_count kind last_accessed_at not_after not_before schema_version score summary_egress_at`. The `sed` boundary was confirmed to run `memory-record.md:10` → `:37` (`### Supersession`), i.e. the M-2.2 fix is genuinely in force. |
+| 5 | `08-02-PLAN.md:336` | Off-by-one wording gone, canonical order, anchors undisturbed | 1 | 1 | FIRES | Leg 1 measured `1` (must be `0`). Leg 2 measured `scheduled expired superseded archived ` — the exact reverse of the required `archived superseded expired scheduled `. Two independent red halves ahead of the already-green conformance test. |
+| 6 | `08-03-PLAN.md:297` | New guide exists with frontmatter and documents every report key | 1 | 1 | FIRES | `guides/migrate.md` does not exist, so `head -1` fails and `&&` short-circuits. All three struct names (`migrateOutputDoc`, `migrateStatusReportDoc`, `revertOutputDoc`) confirmed present in `cmd/engram/migrate_family.go`, so the LHS is non-vacuous: it yields 21 keys. |
+| 7 | `08-03-PLAN.md:369` | Both line-wrapped stale migration claims removed | 1 | 1 | FIRES | Both flattened phrases measured at `1` today (must be `0`). The `tr '\n' ' '` flattening is load-bearing and present — without it the check could never go red, since both phrases wrap mid-sentence at `upgrade.md:331-334`. |
+| 8 | `08-04-PLAN.md:208` | Layout row covers the catalog and marks the deprecated alias | 1 | 1 | FIRES | 24 name/word misses — **byte-identical count under bash, zsh AND sh**, confirming the M-2.1 word-split fix. The `deprecated` half is independently red (word absent from the row). |
+| 9 | `08-04-PLAN.md:274` | Memory-contract section gains three terms without changing prose shape | 1 | 1 | FIRES | `schema_version`, `archived_at`, `spine-review archive` each measured `0` in the `sed`-extracted section (`CLAUDE.md:72`→`:173`). The two structural clauses correctly measure `0` today, so they assert preservation, not change. |
 
-| # | Plan / task | Command result | Genuinely RED today? |
-|---|---|---|---|
-| V1 | 08-01 T1 | exit 0 — `ok … [no tests to run]` | **No — vacuously green** |
-| V2 | 08-01 T2 | exit 0 — the one unwritten test name matches nothing; the other four already pass | **No — already green** |
-| V3 | 08-01 T3 | exit 1 — guard literal occurs 3× under `cmd/engram/`, gate requires 0 | Yes |
-| V4 | 08-02 T1 | exit 1 — reports exactly `access_count last_accessed_at not_after not_before schema_version score summary_egress_at` | Yes (but see M-2.2) |
-| V5 | 08-02 T2 | exit 0 — `TestSurfaceConformanceProseFiles` already passes and would still pass if Task 2 did nothing | **No — already green** |
-| V6 | 08-03 T1 | exit 1 — `guides/migrate.md` does not exist | Yes |
-| V7 | 08-03 T2 | exit 1 — both flattened stale claims still count 1 | Yes |
-| V8 | 08-04 T1 | exit 1 under bash — 24 name/word misses | Yes (but see M-2.1) |
-| V9 | 08-04 T2 | exit 1 — Memory contract section lacks the new vocabulary | Yes |
+**Nine of nine fire, under both shells, for the intended reason.** No gate is green on the clean
+tree; none is red for an incidental reason; none is shell-divergent. Gate 3 was the only one where an
+incidental red was plausible (its second leg is a full `go test` run) and that leg was separately
+confirmed green. Gate 6 was the only one where a vacuous LHS was plausible and all three struct names
+were separately confirmed present.
 
-Cycle-1-derived RED baselines the plans assert were spot-checked and hold:
-`` rg -o -F '`not_after` in the past' tools.md `` → `1`; the `get_memory` state order today prints
-`scheduled expired superseded archived` (the exact reverse of canonical); the guard literal count
-is `3`; `docs-site/node_modules` is absent (so the `pnpm install --frozen-lockfile` precondition
-08-02/08-03 now declare is required, and F-1.21 is closed).
+### Collision hunt (the `as of` / `alias of` shape)
 
-The single load-bearing fact behind H-1's fix was re-verified independently: `--dry-run` is
-registered on exactly `summarize-missing` and `reindex` (`cmd/engram/summarize.go:119`,
-`cmd/engram/reindex.go:156`), and `reindex` carries no `--all-scopes`
-(`rg '"all-scopes"' cmd/engram/*.go` returns only consolidate, purge, summarize-missing, verify,
-scan). `SurfaceFields: {scope, all-scopes, dry-run}` therefore selects `summarize-missing` alone.
-The `SurfaceFields` divergence is sound.
+Every `<action>`-mandated literal in the phase was cross-checked against every negative and
+exact-count gate across all four plans, not only within each plan. **No further collision found.**
+Each candidate is pre-closed by the plans themselves:
 
-### Agreed Concerns
+- **The removed guard literal vs. new `cmd/engram/` artifacts.** The mandated `Sentence` is
+  `a sweep requires an explicit --scope or --all-scopes: name one scope, or opt into every scope` —
+  it does not contain the forbidden `--scope <scope> or --all-scopes is required`, so the goldens
+  (`help.golden`/`catalog.golden`, both under the directory gate 3 sweeps) will carry the new text
+  and cannot re-trip the gate. The mandated sentence was additionally machine-checked against all
+  **eight** currently registered `Sentence` values (`internal/surfaces/rules.go`): no substring
+  containment in either direction, so `validateRuleSet` will not reject the registry.
+- **The characterization pin.** `08-01-PLAN.md:257` and `:271` explicitly forbid reproducing the
+  literal in `summarize_test.go`, including in comments and fixtures, and forbid asserting on the
+  message text there. Closed.
+- **The `upgrade.md` rewrite vs. its own negative gate.** `08-03-PLAN.md` Task 2's action explicitly
+  says "Do not carry any of the removed sentences' negative phrasing forward into the replacement."
+  Closed.
+- **`schema_version` vs. gate 5's four-bullet order extraction.** `rg -o '^- \*\*[a-z]+\*\*'` cannot
+  match `- **schema_version**` (the `_` breaks the `[a-z]+` run before the closing `**`), so the
+  mandated `schema_version` addition is invisible to the order gate and cannot displace the four
+  state words. Any mis-shaping fails RED, never silently green.
+- **`migrate.md`'s scope-boundary gate.** `08-03-PLAN.md:130-135` mandates the prose forms
+  "owner remapping" / "embedder reindexing", never the command names `migrate-remap-owner` /
+  `summarize-missing` that its boundary check forbids, and permits `reindex` explicitly.
+- **Gate 9's structural clauses vs. 08-04's own bullet split.** Task 1's permitted `- ` additions
+  land in the Conventions list; gate 9 is scoped to `## Memory contract` → `## Auth`. No false-RED.
+- **`deprecated alias of` vs. the `\bas of\b` changelog check.** Re-verified directly: the unbounded
+  form prints `as of` on `deprecated alias of x`; the bounded form in the plans prints nothing.
 
-- **M-2.1 — MEDIUM, NEW. The 08-04 inventory gate's per-word split is shell-dependent.**
-  CONFIRMED (codex rated it HIGH; the orchestrator rates it MEDIUM). `for w in $name`
-  (`08-04-PLAN.md:190`) relies on implicit word splitting of a scalar, which bash performs and
-  zsh/fish do not. Under bash the gate behaves exactly as `08-04-PLAN.md:193` describes — 24
-  separate name/word misses including `spine-review scan/spine-review` and
-  `spine-review scan/scan`, so grouped notation satisfies it. Under zsh it searches for the
-  single token `` `spine-review scan` ``, which the plan's own required grouped row can never
-  satisfy — the gate becomes unsatisfiable. The GSD executor runs `<verify>` through bash, so
-  this is a portability hazard rather than a live break, but the plan nowhere declares the shell
-  and the same block also uses `< <(…)` process substitution (bash/zsh only, not `sh`).
-  → **PLAN.md change needed:** state the required shell explicitly in the `<verify>` block, or
-  replace the implicit split with an explicit one (`read -ra`/`tr ' ' '\n'`) that behaves
-  identically under bash and zsh.
+### Wave 1 (`08-01 ‖ 08-03`)
 
-- **M-2.2 — MEDIUM, NEW. The 08-02 field-completeness gate is not scoped to the field-reference
-  table.** CONFIRMED. The right-hand extraction
-  (`rg -o '^\| [^|]* \| \`[a-z_]+\`' …memory-record.md`, `08-02-PLAN.md:256`) scans **every**
-  markdown table on the page. `kind` therefore already reads as documented — it has rows in the
-  Discovery-fields table (`memory-record.md:162`) and the Citation-fields table (`:182`) but
-  **no row in the `## Field reference` table** (`:12-35`). The gate reports 7 missing keys while
-  the plan's own must-have requires 8 rows added ("…plus `kind`"), so the one gate the plan
-  elevates to "the table's completeness IS machine-checkable" cannot enforce the last row.
-  → **PLAN.md change needed:** bound the RHS extraction to the `## Field reference` section
-  (e.g. `sed -n '/^## Field reference$/,/^### /p'`) and restate the expected before-list as 8 keys.
-
-- **M-2.3 — MEDIUM, NEW. Three `<verify>` commands are already green.** CONFIRMED — see V1, V2,
-  V5 above. `go test -run 'Name'` exits 0 with `[no tests to run]` when `Name` does not exist, so
-  08-01 T1's gate passes today and would still pass if the executor wrote the test under a
-  mistyped name; 08-01 T2's gate is green because the one unwritten name contributes nothing to
-  an otherwise-passing set; 08-02 T2's gate is an already-passing anchor-conformance test that is
-  insensitive to everything Task 2 actually does. All three are *compensated* at the
-  `<acceptance_criteria>` level — 08-01 T1 and T3 explicitly say "a package-level `ok` alone is
-  not evidence the name matched" and demand a RUN/PASS pair plus an observed RED, and 08-02 T2
-  carries four independently falsifiable criteria with established before-values. The defect is
-  confined to the `<verify>` element, which is what an executor gates on first.
-  → **PLAN.md change needed:** make each of the three `<verify>` commands assert a matched test
-  (capture `-v` output and require `^=== RUN   <ExactName>$`), or, for 08-02 T2, promote one of
-  its already-falsifiable acceptance criteria (the canonical-order extraction, or the
-  `` `not_after` in the past `` count) into `<verify>`.
-
-- **M-2.4 — MEDIUM, NEW. The purpose-built internal-link loop silently skips links whose target
-  contains an underscore or an uppercase letter.** Orchestrator-only (codex did not find this).
-  The loop's match pattern is `\]\((/[a-z0-9/#-]+)\)` (`08-02-PLAN.md:269`, `08-03-PLAN.md:293`).
-  `_` is absent from the character class, so a link is skipped *before* the `sed 's/#.*//'`
-  fragment strip ever runs. Probed directly: `](/guides/DOES-NOT-EXIST/#schema_version)` produces
-  **no output at all**, while `](/guides/nope2/)` correctly reports `BROKEN /guides/nope2`. This
-  matters here specifically: `memory-record.md` — the page 08-02 edits — already carries
-  `](/reference/tools/#supersede_memory)` (as does `reference/errors.md`), which the loop is
-  silently not checking, and 08-02's own instructions push the executor toward deep links into
-  snake_case field anchors (`#schema_version`, `#not_before`). This loop is the plan's stated
-  remediation for cycle-1 H-6 and is described as "the only check that proves the new link
-  resolves"; a gate that reports nothing on a page it is not reading is the exact failure mode
-  H-6 was filed about. `/guides/migrate/` itself has no underscore, so the specific new link the
-  plans care about *is* covered — hence MEDIUM, not HIGH.
-  → **PLAN.md change needed:** widen the class to `[A-Za-z0-9/#_.-]` in both plans, and add a
-  self-test asserting the loop reports BROKEN for an underscore-fragment link to a missing file.
-
-- **M-2.5 — MEDIUM, NEW. `08-03`'s `depends_on: ["08-01"]` edge is undeclared and appears
-  ceremonial; the phase is serialized into 4 waves for 4 plans.** CONFIRMED (codex rated LOW).
-  08-04 explicitly justifies each of its three edges under "Why this plan runs last" and states
-  the standard — "the edges are real, not ceremonial". 08-03 states no reason for its edge and
-  none is discoverable: 08-03 touches only `guides/migrate.md` and `guides/upgrade.md`; 08-01
-  touches Go sources, `reference/tools.md` and the goldens. There is no file overlap, no anchor
-  dependency, and no sentence 08-03 quotes from the registry. 08-02's two edges ARE real (it
-  shares `reference/tools.md` with 08-01, and its link gate requires 08-03's new page), as are
-  08-04's three. The genuinely required shape is `(08-01 ‖ 08-03) → 08-02 → 08-04` — three waves,
-  not four.
-  → **PLAN.md change needed:** either drop `08-01` from 08-03's `depends_on` and move 08-03 to
-  wave 1, or state the edge's reason in 08-03 the way 08-04 states its own (a shared-dirty-worktree
-  coordination argument would be a legitimate reason — it just has to be written down).
-
-- **L-2.1 — LOW, NEW.** `08-04-PLAN.md:193` instructs the executor to record a before-list of
-  "**26 distinct name/word misses** against `main`". Run against the current tree the gate
-  reports **24**. An executor told to record 26 and observing 24 has no way to tell a stale
-  number from a real regression. → correct the number, or restate it as a floor.
-
-- **L-2.2 — LOW, NEW.** The same gate derives its expected set from `catalog.golden`, which lists
-  `migrate-set-owner` — the **deprecated alias** of `migrate-remap-owner` (CLAUDE.md's Memory
-  contract already documents it as such). The gate therefore compels the `cmd/engram/` Layout row
-  to name a deprecated alias as if it were a first-class command, which cuts against the row's
-  stated purpose of routing an agent to the right verb. → either exclude deprecated aliases from
-  the derived set, or require the row to mark it as an alias and say so in the criterion.
-
-- **L-2.3 — LOW, NEW.** Codex-only: `requireSweepScope`'s prescribed signature includes a
-  `command` parameter (`08-01-PLAN.md:112`) that its prescribed body never uses
-  (`08-01-PLAN.md:362`). Legal Go, but a misleading API surface on a helper the plan makes the
-  single composition point. → use it for command-specific diagnostic context, or drop it.
+**Genuinely disjoint, no ordering hazard.** `08-01` owns Go sources, the two goldens, and
+`docs-site/src/content/docs/reference/tools.md`; `08-03` owns only `docs-site/src/content/docs/guides/migrate.md`
+and `guides/upgrade.md`. No shared file, no shared anchor pair, no shared generated region — `08-03`
+touches no anchored file at all. No shared navigation config either: the Guides sidebar is
+`{ autogenerate: { directory: 'guides' } }` (`docs-site/astro.config.mjs:33`), so the new page needs
+no config edit and neither plan's `files_modified` omits one. The one file both waves touch,
+`reference/tools.md`, is `08-01` (wave 1) then `08-02` (wave 2) — sequential, not concurrent.
+Cross-plan link ordering also resolves correctly: `08-03` creates `guides/migrate.md` in wave 1,
+before `08-02`'s and `08-04`'s link-resolution criteria depend on it.
 
 ### Agreed Strengths
 
-- The `SurfaceFields` divergence (cycle-1 H-1) is now grounded in the real applicability
-  mechanism rather than asserted, with a closed impossibility proof in the plan, a doc-comment
-  obligation to record it, and — critically — a **negative** half in
-  `TestSweepLeavesUsageStatesRegisteredRule` that fails if a future edit publishes the sentence
-  onto `consolidate` or `purge`. The threat register ties that negative half to the concrete
-  blast-radius misstatement it prevents (`internal/store/spine.go:991`).
-- The zero-occurrence invariant (V3) is the right shape: it counts occurrences and requires zero,
-  so a fourth copy-pasted guard fails rather than slipping past a hardcoded conversion count.
-- Generator stability is now verified as a two-run fixed point over a diff hash rather than by
-  `git diff --exit-code` against `HEAD`, which would false-RED on the task's own uncommitted
-  generated output (cycle-1 F-1.4).
-- Every operational overclaim cycle 1 caught is now inverted into an explicit prohibition with a
-  source citation: not-resumable (H-3), not-strictly-shrinking (H-4), never-applies-automatically
-  **but** a read-only startup probe does run (F-1.22), and both revert-refusal forms including the
-  mid-loop race case (F-1.23).
-- The "what actually gates these pages" sections in 08-02/08-03 and the new coverage table in
-  `08-VALIDATION.md` are the correct structural answer to H-5: they name what each lane does
-  **not** read, and they forbid reporting `task lint` / `task license:check` / `pnpm build` as
-  evidence about docs-site prose. `08-VALIDATION.md:129` also carries the corrected `Lte`/`Gt`
-  line numbers (`:1012`/`:1016`), closing F-1.33.
-- The forward-version contract is stated with both of its narrowings (older-binary rewrite drops
-  version-newer-only keys; `Store.Upsert` can lower a stored version) and the two docs plans now
-  use the same narrowed wording, closing F-1.13 and the cross-plan contradiction F-1.14.
+- Every `<verify>` is now falsifiable **before** the work, with the red-before-work half placed
+  ahead of the already-green half in the `&&` chain. That ordering is what makes the three cycle-2
+  `<verify>` promotions real rather than cosmetic.
+- The gates that could go *vacuously green* are each pinned by an accompanying criterion that
+  requires the executor to record the observed before-value (gate 6's 21-key LHS, gate 8's
+  `-ge 24` floor treated as a floor rather than an equality, gate 4's eight-key before-list).
+- Applicability is proven by the gate's own output rather than asserted: `08-01-PLAN.md`'s single
+  most important criterion requires a temporarily-removed Usage composition to produce exactly one
+  `command=` line naming `summarize-missing`.
+- Structural checks are region-scoped rather than diff-scoped throughout, which is what stops them
+  false-REDing on sibling tasks' permitted edits.
+
+### Agreed Concerns
+
+None. Codex records no unresolved HIGH, MEDIUM or LOW correctness concern, and independent
+re-derivation against the tree found none either.
 
 ### Divergent Views
 
-- **Severity of M-2.1.** Codex rates the 08-04 word-split defect HIGH on the grounds that the
-  gate is unsatisfiable by the row the plan requires. The orchestrator rates it MEDIUM: codex
-  measured under zsh, but the executor runs `<verify>` through bash, where the gate was verified
-  to behave exactly as documented (24 separate per-word misses). The disagreement is entirely
-  about which shell executes the block — which is itself the argument for pinning it.
-- **Severity of M-2.5.** Codex rates the serialization LOW ("stronger than required, but safe").
-  The orchestrator rates it MEDIUM because it costs a full wave of wall-clock and because the
-  undeclared edge violates the standard 08-04 sets for itself two files away.
+None — a single prompt-fed reviewer ran this cycle. Where the orchestrating reviewer re-derived
+Codex's claims independently the results agreed, with two immaterial corrections to Codex's prose:
+gate 6's extraction yields `refusal` (the pattern deliberately drops the closing quote so it survives
+`json:"refusal,omitempty"`), not a literal `refusal,omitempty` key; and gate 3's second leg was
+confirmed green in isolation, which Codex asserted but did not show.
 
-### Cycle-1 resolution audit (orchestrator)
+### Non-blocking observations (recorded, not actionable)
 
-All 8 HIGHs: **RESOLVED**. Of the 33 actionable non-HIGHs, 31 **RESOLVED**; **F-1.11 PARTIAL**
-(superseded by M-2.2 — the prose obligation is in the plan, the gate cannot enforce the `kind`
-row) and **F-1.26 PARTIAL** (superseded by M-2.1 — the gate is correctly row-scoped now, but its
-per-word comparison is shell-dependent). Codex's per-finding table above agrees line for line and
-is reproduced there in full.
+Neither of these requires a `PLAN.md` edit; both are already covered by existing plan text, and
+neither would make `/gsd-execute-phase` do the wrong thing.
 
-<!-- Reviewer coverage note: `codex` was the only external lane invoked (`--codex`); the `claude`
-     lane is skipped by the workflow's self-CLI rule. The orchestrator's independent verification
-     pass above is not a second AI reviewer — it is source-grounded evidence gathered by executing
-     the plans' own gates, and should be read as such. -->
+- Codex's single suggestion — fold gate 6's expected `21`-key count into the `<automated>` block
+  itself — is already carried as an acceptance criterion (`08-03-PLAN.md:150`: "Confirm the derived
+  left-hand set has **21** members before trusting an empty difference"). The LHS also cannot drift
+  during the phase: `cmd/engram/migrate_family.go` appears in no plan's `files_modified`.
+- `08-03-PLAN.md` Task 2 asks for prose consistent with a `reference/memory-record.md` section that
+  `08-02` writes in a later wave. The plan supplies its own escape hatch ("if you would rather leave
+  that detail to the reference page, link to it instead of paraphrasing it"), and `08-02-PLAN.md`
+  states the required wording constraints for an executor that wants them. No gate depends on it.
+
+## Risk Assessment
+
+**LOW.** All nine automated gates were demonstrated to fire, verbatim, under both supported shells,
+each for the assertion it exists to make. The cycle-2 replan introduced no new defect in the three
+areas it touched (link-loop character class, word-split, section-bounded extraction) and no further
+substring collision exists between mandated prose and negative gates. Wave 1 is disjoint in files,
+anchors and navigation. The residual risk in this phase is prose accuracy on four documentation
+pages, which is assigned to read-and-quote criteria against named source authorities — the correct
+disposition, since no grep distinguishes a fluent wrong sentence from a correct one.
