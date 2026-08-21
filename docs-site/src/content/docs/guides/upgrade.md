@@ -329,16 +329,16 @@ higher version stamp, but the payload was rebuilt from the older binary's
 struct — so any key only a newer version knows about is dropped from that
 rewrite. This is safe: schema evolution in this project is additive-only,
 so anything lost this way is always re-derivable, and the recovery is to
-re-run the migration sweep against the affected record. **That sweep does
-not exist in this release** — there is no `engram migrate` command to run
-yet, so do not look for one. The hazard is only reachable if you
-deliberately roll a binary backward across a schema change; until the
-sweep ships, the mitigation is simply not to do that against records you
-cannot re-derive.
+re-run the migration sweep against the affected record: `engram migrate
+--apply`. See the [migration guide](/guides/migrate/) for the full
+procedure, including `migrate status` for checking whether any record needs
+it. The hazard is only reachable if you deliberately roll a binary backward
+across a schema change and it then edits a record — reads and recall of a
+newer-stamped record are always safe on any binary.
 
 `engram reindex` copies payloads verbatim from source to target and
 therefore does **not** advance a record's `schema_version` — reindexing is
-not a migration, and it is not the missing sweep either.
+not a migration, and it is a separate mechanism from the sweep above.
 
 **Who should act:** nobody. This is purely additive, forward-looking
 groundwork; no existing behavior changes.
