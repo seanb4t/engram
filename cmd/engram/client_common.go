@@ -392,7 +392,9 @@ func renderJSON(w io.Writer, m proto.Message) error {
 
 // renderMemoryTable renders mems as a human-readable table via
 // text/tabwriter. withScore adds a SCORE column (search results carry a
-// meaningful score; list results do not).
+// meaningful score; list results do not). STATE is unconditional (D-12):
+// blank for a live record, comma-joined state words (memoryStateCell) for a
+// record carrying archived/superseded/expired/scheduled state.
 func renderMemoryTable(w io.Writer, mems []*engramv1.Memory, withScore bool) error {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	var writeErr error
@@ -403,18 +405,20 @@ func renderMemoryTable(w io.Writer, mems []*engramv1.Memory, withScore bool) err
 		_, writeErr = fmt.Fprintf(tw, format, a...)
 	}
 	if withScore {
-		writeLine("SHORT_ID\tSCOPE\tCATEGORY\tSCORE\tSUMMARY\n")
+		writeLine("SHORT_ID\tSCOPE\tCATEGORY\tSTATE\tSCORE\tSUMMARY\n")
 	} else {
-		writeLine("SHORT_ID\tSCOPE\tCATEGORY\tSUMMARY\n")
+		writeLine("SHORT_ID\tSCOPE\tCATEGORY\tSTATE\tSUMMARY\n")
 	}
+	now := time.Now()
 	for _, m := range mems {
 		summary := truncateSummary(m.GetSummary(), 80)
+		state := memoryStateCell(m, now)
 		if withScore {
-			writeLine("%s\t%s\t%s\t%.4f\t%s\n",
-				m.GetShortId(), m.GetScope(), m.GetCategory(), m.GetScore(), summary)
+			writeLine("%s\t%s\t%s\t%s\t%.4f\t%s\n",
+				m.GetShortId(), m.GetScope(), m.GetCategory(), state, m.GetScore(), summary)
 		} else {
-			writeLine("%s\t%s\t%s\t%s\n",
-				m.GetShortId(), m.GetScope(), m.GetCategory(), summary)
+			writeLine("%s\t%s\t%s\t%s\t%s\n",
+				m.GetShortId(), m.GetScope(), m.GetCategory(), state, summary)
 		}
 	}
 	if writeErr != nil {

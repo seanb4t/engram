@@ -7,10 +7,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 )
@@ -309,6 +312,66 @@ func TestClientListTextOutput(t *testing.T) {
 	if !strings.Contains(stdout, "AAAA111111") {
 		t.Errorf("stdout = %q, want it to contain the short_id", stdout)
 	}
+}
+
+// TestClientListTextOutputStateColumn pins D-12/D-13: the STATE column is
+// unconditional (blank for a live record) and carries the memoryStateWords
+// vocabulary for a record with state.
+func TestClientListTextOutputStateColumn(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
+	svc := &stubEngramService{
+		listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
+			return &engramv1.ListMemoriesResponse{
+				Memories: []*engramv1.Memory{
+					{ShortId: "LIVE111111", Scope: "repo:x"},
+					{
+						ShortId:      "ARCH222222",
+						Scope:        "repo:x",
+						ArchivedAt:   timestamppb.Now(),
+						SupersededBy: proto.String("successor-id"),
+					},
+				},
+				Total: 2,
+			}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	stdout, _, err := runClient(t, "list", "--server", url, "--scope", "repo:x", "--output", "text")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	header := strings.SplitN(stdout, "\n", 2)[0]
+	if got, want := strings.Fields(header), []string{"SHORT_ID", "SCOPE", "CATEGORY", "STATE", "SUMMARY"}; !slices.Equal(got, want) {
+		t.Errorf("header fields = %v, want %v (stdout = %q)", got, want, stdout)
+	}
+	liveLine := lineContaining(t, stdout, "LIVE111111")
+	if strings.Contains(liveLine, "archived") || strings.Contains(liveLine, "superseded") {
+		t.Errorf("live record row = %q, want an empty STATE cell", liveLine)
+	}
+	archivedLine := lineContaining(t, stdout, "ARCH222222")
+	if !strings.Contains(archivedLine, "archived,superseded") {
+		t.Errorf("archived+superseded record row = %q, want STATE cell %q", archivedLine, "archived,superseded")
+	}
+}
+
+// lineContaining returns the single line of s containing substr, failing the
+// test if there is not exactly one such line.
+func lineContaining(t *testing.T, s, substr string) string {
+	t.Helper()
+	var match string
+	found := 0
+	for _, line := range strings.Split(s, "\n") {
+		if strings.Contains(line, substr) {
+			match = line
+			found++
+		}
+	}
+	if found != 1 {
+		t.Fatalf("expected exactly one line containing %q, found %d in %q", substr, found, s)
+	}
+	return match
 }
 
 // TestClientListCrossSpineEndToEnd mirrors
