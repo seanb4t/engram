@@ -2,7 +2,7 @@
 phase: 08-registry-docs-tail
 verified: 2026-08-21T23:40:00Z
 status: gaps_found
-score: 8/10 must-haves verified
+score: 8/12 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
 gaps:
@@ -14,6 +14,14 @@ gaps:
         issue: "Layout table cmd/engram/ row (line 15) marks migrate-set-owner deprecated but not backfill-short-ids"
     missing:
       - "Mark backfill-short-ids as deprecated (delegates to engram migrate) in the Layout row, matching the treatment already given to migrate-set-owner"
+  - truth: "internal/surfaces/rules.go's doc comment for RuleSweepScopeOrAllScopesRequired accurately describes its own enforcement (no false present-tense operational claim)"
+    status: failed
+    reason: "The comment at rules.go:167-168 states, in the present tense, that Fields ('the flag pair alone') 'drives field=scope attribution on the error envelope.' No conditionalErrf call site exists for RuleSweepScopeOrAllScopesRequired anywhere in the tree -- internal/server/tools.go and connectapi.go reference five other rules via conditionalErrf, none is this one. The sole enforcement site is requireSweepScope (cmd/engram/sweep_scope.go), which returns a bare usageErrorf(\"%s\", ...) carrying no field=/hint= envelope. TagForm is deliberately left empty for the same reason (no MCP/Connect lane), and Hint: \"conditional_required\" is equally inert. The claim is inherited boilerplate from the general Fields field-doc comment on the ConditionalRule type, restated in this rule's own comment as if operationally true for it, when it is not. rules.go is the single declared source of truth every other surface composes from; a false present-tense claim there will be believed by the next contributor wiring a lane for a sweep verb. Independently confirmed by 08-REVIEW.md WR-02."
+    artifacts:
+      - path: "internal/surfaces/rules.go"
+        issue: "RuleSweepScopeOrAllScopesRequired's doc comment (lines 167-168) asserts the rule drives field=scope error-envelope attribution via conditionalErrf, but no such call site exists for this rule -- it is CLI-only and enforced via bare usageErrorf"
+    missing:
+      - "Reword the comment to state the conditional explicitly, e.g.: this rule is CLI-only, the sole enforcement site (requireSweepScope) raises a bare usageErrorf with no field=/hint= envelope today, and Fields/Hint are declared for a future conditionalErrf lane rather than a live surface"
   - truth: "CLAUDE.md's Memory contract Archived-state paragraph agrees with reference/memory-record.md's statement of the same recall-gate fact, per plan 08-04's own acceptance criterion requiring the two pages to use the same vocabulary with no place where CLAUDE.md's compression diverges"
     status: failed
     reason: "CLAUDE.md's new Archived-state paragraph states: 'an archived record drops out of `search_memory`/`list_memory` but stays reachable by id via `get_memory`' -- naming only 2 recall surfaces. qdrant.NewIsEmpty(\"archived_at\") is applied at FOUR recall-gate sites in internal/store/store.go: Search (:1129), SearchDiscovery (:1228), List (:1399), and the scheduled-records listing (:1635) -- confirmed by the file's own comment, 'IsEmpty(\"archived_at\")) appears at four sites in this file.' docs-site/src/content/docs/reference/memory-record.md (written by the sibling plan 08-02 in this same phase) correctly states all four: 'soft-hidden from recall (`search_memory`, `list_memory`, `search_discovery`, `list_scheduled`)'. CLAUDE.md's own adjacent Supersession paragraph (pre-existing, two paragraphs above) also correctly names all four for the identical superseded_by gate. The Archived-state paragraph is new content this phase (08-04 Task 2) wrote and was instructed to cross-check against reference/memory-record.md's wording; the SUMMARY reports full agreement, but the two-vs-four-surface gap is a real, confirmed factual understatement introduced by this phase."
