@@ -28,3 +28,15 @@ issues unrelated to the current task's changes, not auto-fixed.
   `planning-artifacts` convention). Out of scope per SCOPE BOUNDARY — logged, not fixed.
   `go test ./...` fails only on this one package; every other package (including
   `internal/store`, `internal/server`, `cmd/engram`) is green.
+
+## 07-03
+
+- **`task lint` pre-existing staticcheck finding (SA1019), unrelated to this plan — still
+  present, unchanged.** Same finding as 07-01's entry above:
+  `internal/server/connectapi.go:271` (`Approximate: false,` inside `ListMemories`, shifted by
+  three lines from 07-01's report due to this plan's own unrelated edits earlier in the file).
+  This plan's edits to `connectapi.go` are confined to `SearchMemories`'s `coreSearchRequest{...}`
+  literal (the `IncludeArchived`/`IncludeSuperseded`/`IncludeScheduled` threading); the
+  `ListMemories` handler and its `Approximate` field are untouched. Out of scope per SCOPE
+  BOUNDARY. `task lint:go` fails on this single finding; `task test` (the full Go suite) is
+  unaffected and fully green for this plan.
