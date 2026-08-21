@@ -1228,19 +1228,26 @@ type ListOptions struct {
 	// only on the offset/all path used by list_rules; cursor mode is unaffected
 	// (rules do not paginate). Zero value preserves the existing desc behavior.
 	Ascending bool
-	// IncludeArchived is an orthogonal opt-in relaxation of Store.List's recall
-	// gate (phase 07, D-01/D-02): false (default) reproduces today's behavior
-	// byte-identically; true relaxes exactly the archived_at IsEmpty Must
-	// condition List appends below. The MCP lane never sets this field.
+	// IncludeArchived, IncludeSuperseded, and IncludeScheduled are orthogonal
+	// opt-in relaxations of Store.List's recall gate (phase 07, D-01/D-02).
+	// Each maps 1:1 onto exactly one Must condition List appends below:
+	// IncludeArchived relaxes the archived_at IsEmpty gate, IncludeSuperseded
+	// relaxes the superseded_by IsEmpty gate, and IncludeScheduled relaxes the
+	// ENTIRE activeWindowConditions append (both the not_before and not_after
+	// halves) as one unit — never split across two branches. All three
+	// default false, reproducing today's behavior byte-identically. The MCP
+	// lane never sets these fields.
 	//
 	// Deliberate 2-of-4 scope: this idiom (IsEmpty("superseded_by") /
 	// IsEmpty("archived_at")) appears at four sites in this file. Only
-	// Store.Search and Store.List honor this and its siblings (added
-	// alongside it in phase 07), per D-01. Store.SearchDiscovery and
-	// Store.ListScheduled are deliberately EXCLUDED — ListScheduled accepts a
-	// ListOptions value but must NOT inherit these fields; it has its own
-	// inline filter and its own state semantics (ScheduledState).
-	IncludeArchived bool
+	// Store.Search and Store.List honor these fields, per D-01.
+	// Store.SearchDiscovery and Store.ListScheduled are deliberately
+	// EXCLUDED — ListScheduled accepts a ListOptions value but must NOT
+	// inherit these fields; it has its own inline filter and its own state
+	// semantics (ScheduledState).
+	IncludeArchived   bool
+	IncludeSuperseded bool
+	IncludeScheduled  bool
 }
 
 // createdRangeCondition builds a half-open [after, before) DatetimeRange on the
@@ -1334,11 +1341,22 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 	}
 
 	f := s.listFilter(ctx, scope, subj, opts)
-	f.Must = append(f.Must, activeWindowConditions(s.now())...)
+	// IncludeScheduled relaxes the ENTIRE activeWindowConditions append as one
+	// unit (both the not_before and not_after halves) — never split across two
+	// branches (phase 07, D-01/D-02). Splitting it would make a genuinely
+	// expired record reachable while relaxing only the not-yet-active half,
+	// which is exactly the failure the STATE column's "expired" word exists to
+	// prevent.
+	if !opts.IncludeScheduled {
+		f.Must = append(f.Must, activeWindowConditions(s.now())...)
+	}
 	// Soft-hide superseded records from list recall (D-09) — sibling
 	// condition to activeWindowConditions, not folded into it (that helper is
 	// time-window-scoped only). get_memory (Store.Get) stays ungated.
-	f.Must = append(f.Must, qdrant.NewIsEmpty("superseded_by"))
+	// IncludeSuperseded relaxes this condition only (phase 07, D-01/D-02).
+	if !opts.IncludeSuperseded {
+		f.Must = append(f.Must, qdrant.NewIsEmpty("superseded_by"))
+	}
 	// Soft-hide archived records (D-12, plan 03-06) — a SIBLING condition,
 	// never folded into activeWindowConditions or the superseded_by gate
 	// above: archived, expired, and superseded stay independently observable

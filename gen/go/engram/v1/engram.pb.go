@@ -537,8 +537,20 @@ type ListMemoriesRequest struct {
 	// IsEmpty recall condition in Store.List, revealing archived records
 	// without narrowing the result set to only-archived ones.
 	IncludeArchived bool `protobuf:"varint,13,opt,name=include_archived,json=includeArchived,proto3" json:"include_archived,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// false (default) reproduces today's soft-hidden behavior: superseded
+	// records stay unreachable. true relaxes exactly the `superseded_by`
+	// IsEmpty recall condition in Store.List.
+	IncludeSuperseded bool `protobuf:"varint,14,opt,name=include_superseded,json=includeSuperseded,proto3" json:"include_superseded,omitempty"`
+	// false (default) reproduces today's soft-hidden behavior: records
+	// outside their validity window stay unreachable. true relaxes BOTH
+	// bounds of the scheduling gate together — a not-yet-active (not_before
+	// in the future) record AND an already-expired (not_after in the past)
+	// record both become reachable under this single flag. A separate
+	// include_expired bool was considered and rejected upstream; do not
+	// re-propose the split.
+	IncludeScheduled bool `protobuf:"varint,15,opt,name=include_scheduled,json=includeScheduled,proto3" json:"include_scheduled,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ListMemoriesRequest) Reset() {
@@ -658,6 +670,20 @@ func (x *ListMemoriesRequest) GetCrossSpine() bool {
 func (x *ListMemoriesRequest) GetIncludeArchived() bool {
 	if x != nil {
 		return x.IncludeArchived
+	}
+	return false
+}
+
+func (x *ListMemoriesRequest) GetIncludeSuperseded() bool {
+	if x != nil {
+		return x.IncludeSuperseded
+	}
+	return false
+}
+
+func (x *ListMemoriesRequest) GetIncludeScheduled() bool {
+	if x != nil {
+		return x.IncludeScheduled
 	}
 	return false
 }
@@ -2104,7 +2130,7 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\x11ListScopesRequest\"e\n" +
 	"\x12ListScopesResponse\x12-\n" +
 	"\x06scopes\x18\x01 \x03(\v2\x15.engram.v1.ScopeCountR\x06scopes\x12 \n" +
-	"\vapproximate\x18\x02 \x01(\bR\vapproximate\"\x99\x03\n" +
+	"\vapproximate\x18\x02 \x01(\bR\vapproximate\"\xf5\x03\n" +
 	"\x13ListMemoriesRequest\x12\x14\n" +
 	"\x05scope\x18\x01 \x01(\tR\x05scope\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x04R\x05limit\x12\x16\n" +
@@ -2126,7 +2152,9 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"cursorMode\x12\x1f\n" +
 	"\vcross_spine\x18\f \x01(\bR\n" +
 	"crossSpine\x12)\n" +
-	"\x10include_archived\x18\r \x01(\bR\x0fincludeArchived\"\xfd\x01\n" +
+	"\x10include_archived\x18\r \x01(\bR\x0fincludeArchived\x12-\n" +
+	"\x12include_superseded\x18\x0e \x01(\bR\x11includeSuperseded\x12+\n" +
+	"\x11include_scheduled\x18\x0f \x01(\bR\x10includeScheduled\"\xfd\x01\n" +
 	"\x14ListMemoriesResponse\x12-\n" +
 	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x04R\x05total\x12$\n" +

@@ -6727,6 +6727,137 @@ func TestArchiveRecallGateIncludeArchived(t *testing.T) {
 	}
 }
 
+// TestListIncludeSupersededAndScheduled (phase 07, D-01/D-02) completes the
+// three-flag opt-in proof on the List lane: IncludeSuperseded and
+// IncludeScheduled each map 1:1 onto their own gate condition,
+// IncludeScheduled relaxes BOTH halves of activeWindowConditions together
+// (proven by one call returning both a not-yet-active and an already-expired
+// record), the flags compose (archived AND superseded revealed together only
+// when both flags are set), and the all-false default path is unchanged.
+func TestListIncludeSupersededAndScheduled(t *testing.T) {
+	s := testStore(t)
+	fixed := time.Date(2030, 6, 15, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return fixed }
+	ctx := context.Background()
+	scope := "list-test:project:include-superseded-scheduled"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+	vec := []float32{0.1, 0.2, 0.3}
+	future := fixed.Add(24 * time.Hour)
+	past := fixed.Add(-24 * time.Hour)
+
+	liveID := "e4000000-0000-0000-0000-000000000001"
+	supersededID := "e4000000-0000-0000-0000-000000000002"
+	supersessorID := "e4000000-0000-0000-0000-000000000003"
+	archivedID := "e4000000-0000-0000-0000-000000000004"
+	notYetActiveID := "e4000000-0000-0000-0000-000000000005"
+	expiredID := "e4000000-0000-0000-0000-000000000006"
+	bothArchivedAndSupersededID := "e4000000-0000-0000-0000-000000000007"
+
+	if err := s.Upsert(ctx, Memory{ID: liveID, Content: "live", Scope: scope, Owner: "sub-A", CreatedAt: fixed}, vec); err != nil {
+		t.Fatalf("upsert live: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: supersededID, Content: "old", Scope: scope, Owner: "sub-A", CreatedAt: fixed, SupersededBy: &supersessorID}, vec); err != nil {
+		t.Fatalf("upsert superseded: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: archivedID, Content: "archived", Scope: scope, Owner: "sub-A", CreatedAt: fixed}, vec); err != nil {
+		t.Fatalf("upsert archived: %v", err)
+	}
+	if _, err := s.Archive(ctx, archivedID); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: notYetActiveID, Content: "future", Scope: scope, Owner: "sub-A", CreatedAt: fixed, NotBefore: &future}, vec); err != nil {
+		t.Fatalf("upsert not-yet-active: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: expiredID, Content: "expired", Scope: scope, Owner: "sub-A", CreatedAt: fixed, NotAfter: &past}, vec); err != nil {
+		t.Fatalf("upsert expired: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{
+		ID: bothArchivedAndSupersededID, Content: "both", Scope: scope, Owner: "sub-A",
+		CreatedAt: fixed, SupersededBy: &supersessorID,
+	}, vec); err != nil {
+		t.Fatalf("upsert both: %v", err)
+	}
+	if _, err := s.Archive(ctx, bothArchivedAndSupersededID); err != nil {
+		t.Fatalf("Archive both: %v", err)
+	}
+
+	// IncludeSuperseded reveals ONLY the superseded record, not the archived
+	// one.
+	items, _, _, err := s.List(ctx, scope, subj, ListOptions{Limit: 20, IncludeSuperseded: true})
+	if err != nil {
+		t.Fatalf("List IncludeSuperseded: %v", err)
+	}
+	got := recordIDs(items)
+	if !slices.Contains(got, supersededID) {
+		t.Errorf("List IncludeSuperseded: superseded record %s absent, want present: %v", supersededID, got)
+	}
+	if slices.Contains(got, archivedID) {
+		t.Errorf("List IncludeSuperseded: archived record %s present, want excluded: %v", archivedID, got)
+	}
+
+	// IncludeScheduled reveals BOTH halves of the window in ONE call: the
+	// not-yet-active record AND the already-expired record. It does not
+	// reveal archived or superseded records.
+	items, _, _, err = s.List(ctx, scope, subj, ListOptions{Limit: 20, IncludeScheduled: true})
+	if err != nil {
+		t.Fatalf("List IncludeScheduled: %v", err)
+	}
+	got = recordIDs(items)
+	if !slices.Contains(got, notYetActiveID) {
+		t.Errorf("List IncludeScheduled: not-yet-active record %s absent, want present: %v", notYetActiveID, got)
+	}
+	if !slices.Contains(got, expiredID) {
+		t.Errorf("List IncludeScheduled: expired record %s absent, want present: %v", expiredID, got)
+	}
+	if slices.Contains(got, archivedID) {
+		t.Errorf("List IncludeScheduled: archived record %s present, want excluded: %v", archivedID, got)
+	}
+	if slices.Contains(got, supersededID) {
+		t.Errorf("List IncludeScheduled: superseded record %s present, want excluded: %v", supersededID, got)
+	}
+
+	// The flags compose: a record that is both archived and superseded is
+	// returned only when BOTH flags are set.
+	items, _, _, err = s.List(ctx, scope, subj, ListOptions{Limit: 20, IncludeArchived: true})
+	if err != nil {
+		t.Fatalf("List IncludeArchived only: %v", err)
+	}
+	if got := recordIDs(items); slices.Contains(got, bothArchivedAndSupersededID) {
+		t.Errorf("List IncludeArchived only: archived+superseded record %s present, want excluded (still superseded-hidden): %v", bothArchivedAndSupersededID, got)
+	}
+	items, _, _, err = s.List(ctx, scope, subj, ListOptions{Limit: 20, IncludeSuperseded: true})
+	if err != nil {
+		t.Fatalf("List IncludeSuperseded only: %v", err)
+	}
+	if got := recordIDs(items); slices.Contains(got, bothArchivedAndSupersededID) {
+		t.Errorf("List IncludeSuperseded only: archived+superseded record %s present, want excluded (still archived-hidden): %v", bothArchivedAndSupersededID, got)
+	}
+	items, _, _, err = s.List(ctx, scope, subj, ListOptions{Limit: 20, IncludeArchived: true, IncludeSuperseded: true})
+	if err != nil {
+		t.Fatalf("List IncludeArchived+IncludeSuperseded: %v", err)
+	}
+	if got := recordIDs(items); !slices.Contains(got, bothArchivedAndSupersededID) {
+		t.Errorf("List IncludeArchived+IncludeSuperseded: archived+superseded record %s absent, want present (both flags compose): %v", bothArchivedAndSupersededID, got)
+	}
+
+	// Default path (all three false): exactly the live records, matching
+	// today's behavior over this same corpus.
+	items, _, _, err = s.List(ctx, scope, subj, ListOptions{Limit: 20})
+	if err != nil {
+		t.Fatalf("List default: %v", err)
+	}
+	got = recordIDs(items)
+	if !slices.Contains(got, liveID) {
+		t.Errorf("List default: live record %s absent, want present: %v", liveID, got)
+	}
+	for _, hidden := range []string{supersededID, archivedID, notYetActiveID, expiredID, bothArchivedAndSupersededID} {
+		if slices.Contains(got, hidden) {
+			t.Errorf("List default: hidden record %s present, want excluded: %v", hidden, got)
+		}
+	}
+}
+
 // TestArchiveRecallGateSearchDiscovery mirrors
 // TestSearchDiscoverySupersededHidden for the archived_at soft-hide.
 func TestArchiveRecallGateSearchDiscovery(t *testing.T) {

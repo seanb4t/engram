@@ -79,6 +79,18 @@
           "usage": "include archived records, which are hidden by default"
         },
         {
+          "name": "include-scheduled",
+          "type": "bool",
+          "default": "false",
+          "usage": "include records outside their validity window (not-yet-active AND already-expired), which are hidden by default"
+        },
+        {
+          "name": "include-superseded",
+          "type": "bool",
+          "default": "false",
+          "usage": "include superseded records, which are hidden by default"
+        },
+        {
           "name": "insecure",
           "type": "bool",
           "default": "false",

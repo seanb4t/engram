@@ -172,9 +172,10 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 	// 03-04: cross_spine (D-04) plus searched_scopes/scopes_truncated (D-12/
 	// D-13/D-14) are additive fields on these four messages — field counts
 	// and the two new response fields' pins bumped accordingly.
-	// phase 07 (D-01/D-02): include_archived (field 13) is a further additive
-	// opt-in recall-gate relaxation on ListMemoriesRequest.
-	assertFields(t, fd, "ListMemoriesRequest", 13, nil)
+	// phase 07 (D-01/D-02): include_archived/include_superseded/
+	// include_scheduled (fields 13-15) are further additive opt-in
+	// recall-gate relaxations on ListMemoriesRequest.
+	assertFields(t, fd, "ListMemoriesRequest", 15, nil)
 	assertFields(t, fd, "ListMemoriesResponse", 6, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "memories", kind: protoreflect.MessageKind, repeated: true, msgType: "engram.v1.Memory"},
 		2: {name: "total", kind: protoreflect.Uint64Kind},
