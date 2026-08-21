@@ -466,7 +466,18 @@ Plans:
   2. `reference/memory-record.md` and `reference/tools.md` document the full record state including `schema_version`, and a new operator-facing guide documents the migration mechanism end to end.
   3. CLAUDE.md's "Not used here: database migrations" line is revised to accurately describe what this milestone ships and its scope — schema-version-driven migrations only, deliberately not `migrate-remap-owner`/`summarize-missing`/`reindex` — so the normative doc no longer contradicts the code.
 
-**Plans**: TBD
+**Plans:** 4 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 08-01-PLAN.md — Tracer: `RuleSweepScopeOrAllScopesRequired` registered, anchored on every derived surface, and composed by every sweep leaf, closing the gate at zero hand-rolled copies (wave 1)
+- [ ] 08-03-PLAN.md — The new `guides/migrate.md` operator procedure, and the schema-version release note corrected to link to it (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 08-02-PLAN.md — `reference/memory-record.md` and `reference/tools.md` document the full record state, the asymmetric window boundary, and `schema_version` (wave 2)
+- [ ] 08-04-PLAN.md — CLAUDE.md audit: the migrations convention, the catalog-derived command inventory, and the record-state vocabulary (wave 2)
 
 ## Progress
 
