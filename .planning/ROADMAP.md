@@ -559,4 +559,45 @@ Plans:
 
 Unsequenced ideas parked outside the active phase sequence. Promote with `/gsd-review-backlog`.
 
-_None — both prior items promoted into v0.13.x on 2026-08-03._
+### Phase 999.1: Vendored-SPA staleness gate that runs on feature branches (BACKLOG)
+
+**Goal:** [Captured for future planning]
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+**Context (captured 2026-08-21, during phase 07 UAT):**
+
+Phase 07 changed `ui/` across three plans and never ran `task ui:build`, so the
+go:embed'd console in `internal/webauth/static` was still the phase-05 build.
+Every phase-07 console deliverable was green in vitest and absent from the
+shipped binary. Nothing caught it for the whole phase:
+
+- CI's `ui vendored-asset drift` job (`.github/workflows/ci.yaml:301`) is correct
+  and required, but triggers on `pull_request` and `push: main` only — it cannot
+  fire on an unmerged feature branch.
+- `task` (= `lint` + `test`) has no drift check at all. `ui:build` is a generate
+  verb with no verify counterpart.
+- `internal/e2e/console_browser_test.go` does drive the real vendored bundle in
+  headless Chrome (CI forces it via `ENGRAM_REQUIRE_BROWSER: "1"`), but asserts
+  only hydration (an `<h1>` containing "operator console") and one seeded
+  record's marker text — both true of a phase-05 bundle. Per its own package
+  header it deliberately covers the cobra→mux→transport wiring seam, so it is
+  structurally incapable of noticing the bundle predates the phase.
+
+**Proposed shape:** a Go test in `internal/webauth` comparing
+`git log -1 --format=%ct` over `ui/src ui/package.json ui/pnpm-lock.yaml` against
+`internal/webauth/static`. No pnpm, no build, milliseconds. Living in
+`go test ./...` gates both `task test` locally and the CI test job on every
+branch push, while the existing `ui-drift` job stays the authoritative content
+check at PR time. Verified against the phase-07 history: it reports STALE.
+
+**Open questions for planning:**
+- Rebase/cherry-pick can reorder commit timestamps — decide the tolerance and
+  whether a same-commit vendor (equal timestamps) must pass.
+- Whether a working-tree-dirty case should also fail, or only committed state.
+- Whether the same shape should cover the `surfaces:gen` drift check, which has
+  the identical local-verb/CI-verify split.
+
