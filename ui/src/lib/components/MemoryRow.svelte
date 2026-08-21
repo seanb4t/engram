@@ -3,7 +3,9 @@
   import { timestampDate } from '@bufbuild/protobuf/wkt';
   import { stripCategoryPrefix } from '$lib/summary';
   import { relativeTime } from '$lib/time';
+  import { memoryStateWords, isPastState } from '$lib/memorystate';
   import { Button } from '$lib/components/ui/button';
+  import { Badge } from '$lib/components/ui/badge';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import ScopeChip from './ScopeChip.svelte';
   import EllipsisVerticalIcon from '@lucide/svelte/icons/ellipsis-vertical';
@@ -42,6 +44,14 @@
   const isRule = $derived(memory.category === 'rule');
   const isShared = $derived(memory.visibility === 'shared');
   const showMenu = $derived(!isRule && !!(onedit || ondelete || (onshare && !isShared)));
+  // D-13/D-15: state words drive the badges below and the dim-iff-past
+  // treatment. dimmed applies opacity-60 to individual dimmable elements —
+  // never to a shared ancestor of the badges, since CSS opacity multiplies
+  // through descendants (accessibility carve-out: the badge stays full
+  // opacity even inside a dimmed row).
+  const stateWords = $derived(memoryStateWords(memory));
+  const dimmed = $derived(isPastState(stateWords));
+  const dimCls = $derived(dimmed ? 'opacity-60' : '');
 </script>
 
 <div
@@ -55,16 +65,17 @@
     class="flex-1 min-w-0 text-left px-3 py-2 flex flex-col gap-1"
   >
     <div class="flex items-center gap-2 min-w-0">
-      <span class="truncate flex-1 text-[13px]">{summary}</span>
+      <span class={'truncate flex-1 text-[13px] ' + dimCls}>{summary}</span>
       {#if isAuto}<span aria-label="auto-generated summary" title="auto-generated summary" class="shrink-0 text-[10px] text-primary">✦</span>{/if}
     </div>
-    <div class="flex items-center gap-2 text-[11px] text-muted-foreground min-w-0">
-      <span class="font-medium shrink-0" style="color:var(--c)">{memory.category}</span>
-      <span class="shrink-0">·</span>
-      <span class="tabular-nums shrink-0">{when}</span>
-      {#if showScope && memory.scope}<span class="shrink-0"><ScopeChip scope={memory.scope} /></span>{/if}
-      {#each shownTags as t (t)}<span class="shrink-0 px-1 rounded bg-muted font-mono text-[10.5px]">{t}</span>{/each}
-      {#if overflow > 0}<span class="shrink-0">+{overflow}</span>{/if}
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground min-w-0">
+      <span class={'font-medium shrink-0 ' + dimCls} style="color:var(--c)">{memory.category}</span>
+      <span class={'shrink-0 ' + dimCls}>·</span>
+      <span class={'tabular-nums shrink-0 ' + dimCls}>{when}</span>
+      {#each stateWords as word (word)}<Badge variant="outline" class="text-[10px] uppercase shrink-0">{word}</Badge>{/each}
+      {#if showScope && memory.scope}<span class={'shrink-0 ' + dimCls}><ScopeChip scope={memory.scope} /></span>{/if}
+      {#each shownTags as t (t)}<span class={'shrink-0 px-1 rounded bg-muted font-mono text-[10.5px] ' + dimCls}>{t}</span>{/each}
+      {#if overflow > 0}<span class={'shrink-0 ' + dimCls}>+{overflow}</span>{/if}
     </div>
   </button>
   {#if showMenu}
