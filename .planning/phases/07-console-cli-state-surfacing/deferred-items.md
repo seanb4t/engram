@@ -40,3 +40,35 @@ issues unrelated to the current task's changes, not auto-fixed.
   `ListMemories` handler and its `Approximate` field are untouched. Out of scope per SCOPE
   BOUNDARY. `task lint:go` fails on this single finding; `task test` (the full Go suite) is
   unaffected and fully green for this plan.
+
+## Resolved by the orchestrator (phase-level)
+
+- **`TestNoEscapedPatternsRepoWide` / `TestActiveMilestoneKeyLinksSatisfiable` — FIXED in
+  `7cfb3017`.** 07-01 correctly declined this as out of scope for a plan executor and correctly
+  cited the planning-artifacts convention. It is nonetheless in scope for the *orchestrator*: the
+  convention forbids inventing new structure in a tool-owned artifact, but explicitly permits
+  filling in values in shapes the tool already writes, and a `pattern:` value is such a shape. All
+  19 patterns across `07-01`..`07-07-PLAN.md` were rewritten from over-escaped form
+  (`memoryStateCell\\(`) to the backslash-free character-class form used by the phase-01 and
+  phase-05 plans (`memoryStateCell[(]`); the four whitespace patterns anchor on `[ ]+`, matching
+  the gofmt-aligned struct literals they target. Both gates now pass.
+
+- **`staticcheck SA1019` at `internal/server/connectapi.go:308` — STILL OPEN, confirmed
+  pre-existing.** `git blame` puts the line in `906a5cf6` ("feat: v0.12.x — headless reach &
+  diagnosability"), a prior milestone. The three differing line numbers reported across
+  07-01/07-03/07-06 (268 / 271 / 308) are this phase's own insertions shifting it downward, not
+  three separate findings. Remains out of scope for phase 07.
+
+## Environment gaps (pre-existing, `ui/`)
+
+- `npm run check` (svelte-check) crashes on startup — `svelte-check@4.7.3` / `typescript@7.0.2`
+  incompatibility already pinned in `ui/package.json`. Hit by 07-02, 07-04, 07-07.
+- `ui/package.json` has no `lint` script, so plan verification lines naming `npm run lint` cannot
+  execute as written. Executors substituted the vitest suite and `npx tsc --noEmit`.
+
+## Deferred to phase UAT (needs a live server + Qdrant, unrunnable in a worktree)
+
+- 07-04: load `/observe?scope=…&inc=archived` against a running server and confirm the URL
+  round-trip reveals archived records with their markers (`human_judgment: true`).
+- 07-07: visual check of the migration banner — viewport wrap behavior, and a live migrate
+  round-trip exercising the behind-version and ahead-version strips.

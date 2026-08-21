@@ -427,33 +427,33 @@ Plans:
 
 Research flag: yes — the operator-UI soft-hidden-state conventions (archived/superseded/scheduled badges, precedence rules for compound state) are synthesized from general product convention, not a single citable spec; validate against real console usage rather than pre-guessing precedence for compound states.
 
-**Plans:** 7 plans
+**Plans:** 7/7 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 07-01-PLAN.md — Tracer: the three recall-gate opt-in bools end to end on the List lane, plus the Go state-word vocabulary and D-12's always-present STATE column (wave 1)
+- [x] 07-01-PLAN.md — Tracer: the three recall-gate opt-in bools end to end on the List lane, plus the Go state-word vocabulary and D-12's always-present STATE column (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 07-03-PLAN.md — Search-lane mirror, the 2-of-4 gate-scope proof, authorization orthogonality, and re-derivation of the two claims conditional gating invalidates (wave 2)
+- [x] 07-03-PLAN.md — Search-lane mirror, the 2-of-4 gate-scope proof, authorization orthogonality, and re-derivation of the two claims conditional gating invalidates (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 07-02-PLAN.md — Console record-state rendering: MemoryRow badges with the dim-iff-past rule, MemoryDetail's schema chip and State section, and the TS state-word vocabulary (wave 3)
-- [ ] 07-05-PLAN.md — `engram get` over the ungated GetMemory RPC, plus D-11's structural headline sanitization fix (#505) (wave 3)
+- [x] 07-02-PLAN.md — Console record-state rendering: MemoryRow badges with the dim-iff-past rule, MemoryDetail's schema chip and State section, and the TS state-word vocabulary (wave 3)
+- [x] 07-05-PLAN.md — `engram get` over the ungated GetMemory RPC, plus D-11's structural headline sanitization fix (#505) (wave 3)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 07-06-PLAN.md — MigrateStatus Connect RPC, one shared definition of "pending", the `engram migration-status` verb, and the advisory footer on search/list (wave 4)
+- [x] 07-06-PLAN.md — MigrateStatus Connect RPC, one shared definition of "pending", the `engram migration-status` verb, and the advisory footer on search/list (wave 4)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 07-04-PLAN.md — Console include toggles in ScopesSidebar, round-tripped through the URL and the query cache (wave 5)
+- [x] 07-04-PLAN.md — Console include toggles in ScopesSidebar, round-tripped through the URL and the query cache (wave 5)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 07-07-PLAN.md — The silent-at-zero migration banner in AppShell, on every console route (wave 6)
+- [x] 07-07-PLAN.md — The silent-at-zero migration banner in AppShell, on every console route (wave 6)
 
 ### Phase 8: Registry & Docs Tail
 
@@ -505,7 +505,7 @@ Plans:
 | v0.8.x Phase 4: Embedder | v0.8.x | 1/1 | Complete | shipped (v0.8.x) |
 | v0.8.x Phase 5: Config & Transport | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
 | v0.8.x Phase 6: Telemetry & Observability | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
-| 7. Web UI, Docs Site & Distribution | v0.8.x | 9/9 | Complete | shipped (v0.8.x) |
+| 7. Web UI, Docs Site & Distribution | v0.8.x | 9/9 | In Progress|  |
 | 8. Connect Auth Hardening | v0.8.x | 1/1 | Complete | shipped (PR #248/#266) |
 | 9. Retrieval Eval & Ranking Precision | v0.9.x | 3/3 | Complete | 2026-07-10 (PR #336) |
 | 10. Asymmetric Query/Document Embeddings | v0.9.x | 1/1 | Complete (already shipped) | 2026-07-10 (#305) |
