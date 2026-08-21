@@ -3,6 +3,7 @@
   import { base } from '$app/paths';
   import { page } from '$app/state';
   import BrandMark from './BrandMark.svelte';
+  import MigrationBanner from './MigrationBanner.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Kbd } from '$lib/components/ui/kbd';
   import EyeIcon from '@lucide/svelte/icons/eye';
@@ -26,6 +27,7 @@
     </Button>
     <Button variant="outline" size="sm" aria-label="toggle theme" onclick={cycleTheme}><SunMoonIcon data-icon="inline-start" /></Button>
   </header>
+  <MigrationBanner />
   <div class="flex flex-1 min-h-0">
     <nav class="flex flex-col gap-1 p-2 border-r border-border w-[64px] items-center">
       {#each nav as n (n.href)}
