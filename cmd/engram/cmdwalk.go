@@ -104,10 +104,11 @@ var operatorCommandExclusions = map[string]bool{
 // state, rather than merely assert, which commands it excludes today
 // without going stale the next time one is added: as of phase
 // 07-console-cli-state-surfacing those commands are search, list, store,
-// and get. A prior version of this comment named a fixed count of client
-// verbs as the reasoning itself, which engram get (this phase) invalidated;
-// the structural predicate above was already true underneath that count and
-// needed no change — only the comment's own grounds did.
+// get, and migration-status. A prior version of this comment named a fixed
+// count of client verbs as the reasoning itself, which engram get (this
+// phase) invalidated; the structural predicate above was already true
+// underneath that count and needed no change — only the comment's own
+// grounds did.
 func operatorCommands() []*cobra.Command {
 	var out []*cobra.Command
 	for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {

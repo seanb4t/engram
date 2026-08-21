@@ -14,6 +14,7 @@ Available Commands:
   list                List memories on a remote engram server
   migrate             Preview or apply the pending forward schema-version sweep
   migrate-remap-owner Re-stamp record owner across the collection (sub->email, email->email, owner-less, or anonymous bucket)
+  migration-status    Report the server's schema-version migration status
   prune-expired       Delete memories whose validity window (not_after) has lapsed
   reindex             Re-embed memories into a new (new-dimension) collection for embedder migration
   search              Search memories on a remote engram server
@@ -178,6 +179,23 @@ Flags:
       --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --owner string       OIDC sub to stamp onto owner-less records (required, non-empty)
       --timeout duration   max wall-clock for the backfill (must be > 0); also cancellable via Ctrl-C (default 5m0s)
+```
+
+## engram migration-status
+
+```
+Report the server's schema-version migration status
+
+Usage:
+  engram migration-status [flags]
+
+Flags:
+  -h, --help                help for migration-status
+      --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --output string       output format: "json" or "text" (default: detect from stdout)
+      --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
 ```
 
 ## engram prune-expired

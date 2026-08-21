@@ -194,11 +194,11 @@ func TestOperatorCommands(t *testing.T) {
 // committed catalog.golden fixture and asserts SET EQUALITY between the
 // set of command names whose flag list carries "output" and
 // operatorCommands()'s commandKey set unioned with the client verbs
-// (search, list, store, get — as of phase 07-console-cli-state-surfacing,
-// which added get). This is the behavioural gate the plan's acceptance
-// criteria call for — an rg-based literal count over the golden text would
-// pass on two offsetting errors; decoding the JSON and comparing sets
-// cannot.
+// (search, list, store, get, migration-status — as of phase
+// 07-console-cli-state-surfacing, which added get then migration-status).
+// This is the behavioural gate the plan's acceptance criteria call for —
+// an rg-based literal count over the golden text would pass on two
+// offsetting errors; decoding the JSON and comparing sets cannot.
 func TestCatalogOutputFlagMatchesOperatorCommandsUnionClientVerbs(t *testing.T) {
 	b, err := os.ReadFile("testdata/catalog.golden")
 	if err != nil {
@@ -224,6 +224,7 @@ func TestCatalogOutputFlagMatchesOperatorCommandsUnionClientVerbs(t *testing.T) 
 	want["list"] = true
 	want["store"] = true
 	want["get"] = true
+	want["migration-status"] = true
 
 	for key := range want {
 		if !golden[key] {
