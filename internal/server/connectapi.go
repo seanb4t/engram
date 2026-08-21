@@ -302,10 +302,14 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 	if err != nil {
 		return nil, connectError(ctx, err)
 	}
+	// approximate (field 3) is deprecated and always false since totals became
+	// exact (Count). It is deliberately NOT assigned here: false is the proto3
+	// zero value for a non-optional bool, so omitting the assignment is
+	// byte-identical on the wire while keeping this handler free of any
+	// reference to the deprecated field (staticcheck SA1019).
 	return connect.NewResponse(&engramv1.ListMemoriesResponse{
 		Memories:        shapeProtoMemories(res.Memories, req.Msg.Full, a.d.summaryMaxChars),
 		Total:           res.Total,
-		Approximate:     false,
 		NextPageToken:   res.NextToken,
 		SearchedScopes:  scopes,
 		ScopesTruncated: truncated,
