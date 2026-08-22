@@ -63,3 +63,6 @@ ui/**/__screenshots__/
 
 # Background-shell manifests (per-session scratch)
 .bg-shell/
+
+# Local MCP server wiring (machine-specific absolute paths; not shareable)
+.mcp.json
