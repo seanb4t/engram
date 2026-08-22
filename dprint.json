@@ -4,7 +4,14 @@
   "json": { "indentWidth": 2, "useTabs": false },
   "toml": { "indentWidth": 2 },
   "includes": ["**/*.json", "**/*.toml"],
-  "excludes": ["**/node_modules", "**/vendor", "**/dist", "**/.git", "**/bin"],
+  "excludes": [
+    "**/node_modules",
+    "**/vendor",
+    "**/dist",
+    "**/.git",
+    "**/bin",
+    "internal/webauth/static"
+  ],
   "plugins": [
     "https://plugins.dprint.dev/json-0.19.3.wasm",
     "https://plugins.dprint.dev/toml-0.6.3.wasm"
