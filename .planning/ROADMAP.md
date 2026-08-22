@@ -585,12 +585,12 @@ shared wave cannot force. The plans are small; the serialization costs wall-cloc
 **Goal:** Close audit items W2 and W3 (`.planning/2026-08-12.01-MILESTONE-AUDIT.md`). W2: `engram migrate status` omits `pending`, the value the milestone declared canonical — `migrateStatusReportDoc` (`cmd/engram/migrate_family.go:306-313`) carries no such field and `statusSummary` (`:348-358`) never computes it, so the offline operator verb is the one surface that does not report it. W3: `docs-site/src/content/docs/guides/migrate.md:279` already claims "the CLI's own text and json output derive the equivalent number from `absent` and `buckets` directly" — behavior the code does not have. One code fix closes both: add `pending` to the CLI report struct and text summary via the single existing `store.MigrateStatusResult.Pending()` definition (`internal/store/migrate_status.go:76`), never a re-derivation, then correct the doc sentence to match.
 **Requirements**: REQ-migrate-status-histogram, REQ-docs-record-state (both already satisfied; this is debt closure, not new scope)
 **Depends on:** Phase 8
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 09-01-PLAN.md — `pending` end-to-end: report struct field, converter call, unconditional text-headline clause, and the discriminating gate that proves it came from `Pending()` (W2)
+- [x] 09-01-PLAN.md — `pending` end-to-end: report struct field, converter call, unconditional text-headline clause, and the discriminating gate that proves it came from `Pending()` (W2)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
