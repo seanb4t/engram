@@ -164,8 +164,16 @@ const RulePurgeFilterRequiresScope = "purge-filter-requires-scope"
 // RuleSweepScopeOrAllScopesRequired is the ID of the rule requiring an
 // explicit --scope (or --all-scopes) at every sweep-style operator leaf:
 // `spine-review scan`, `spine-review verify`, and `summarize-missing`
-// (issue #480). Fields is the flag pair alone (["scope", "all-scopes"]) --
-// it drives field=scope attribution on the error envelope.
+// (issue #480). Fields is the flag pair alone (["scope", "all-scopes"]).
+// This rule is CLI-only -- its sole enforcement site is cmd/engram's
+// requireSweepScope, which raises a bare usageErrorf, so nothing carries a
+// field=/hint= envelope for it today. No conditionalErrf call site exists
+// for this rule anywhere in the tree -- internal/server never references
+// this rule's const at all. Fields WOULD drive field=scope attribution,
+// and Hint's "conditional_required" value WOULD become live, only if a
+// future MCP or Connect lane raised this rule through
+// internal/server.conditionalErrf; both are declared for that future lane,
+// not for a live surface.
 //
 // SurfaceFields diverges from Fields to
 // []string{"scope", "all-scopes", "dry-run"}. Five commands' own flag sets
