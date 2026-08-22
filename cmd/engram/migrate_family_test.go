@@ -475,7 +475,7 @@ func TestMigrateFamilyStatusReportDocPendingNeverRederived(t *testing.T) {
 
 	t.Run("fixture_discriminates_every_naive_rederivation", func(t *testing.T) {
 		want := res.Pending()
-		var absentPlusEveryBucket uint64 = res.Absent
+		absentPlusEveryBucket := res.Absent
 		for _, b := range res.Buckets {
 			absentPlusEveryBucket += b.Count
 		}
