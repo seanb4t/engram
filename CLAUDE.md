@@ -173,7 +173,7 @@ more records by id; `engram spine-review restore` deletes it, returning the
 record to normal recall — always reversible, and never a delete, content
 erasure, or vector removal. `archived_at` shares supersession's soft-hidden-
 but-still-fetchable-by-id contract: an archived record drops out of
-`search_memory`/`list_memory` but stays reachable by id via `get_memory`.
+`search_memory`/`list_memory`/`search_discovery`/`list_scheduled` but stays reachable by id via `get_memory`.
 Archiving is an orthogonal key — it never writes an expiry and never writes a
 supersession link, and each of a record's derived states clears independently
 of the others. Every surface renders a record's derived state as up to four
