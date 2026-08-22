@@ -1,0 +1,15 @@
+diff --git a/cmd/engram/cmdwalk.go b/cmd/engram/cmdwalk.go
+--- a/cmd/engram/cmdwalk.go
++++ b/cmd/engram/cmdwalk.go
+@@ -79,8 +79,9 @@ func commandKey(cmd *cobra.Command) string {
+ // future addition to this set cannot go unnoticed and a stale entry
+ // (naming a command that no longer exists) cannot silently persist.
+ var operatorCommandExclusions = map[string]bool{
+-	"serve":   true,
+-	"version": true,
++	"serve":         true,
++	"version":       true,
++	"prune-expired": true,
+ }
+ 
+ // operatorCommands returns every operator-tier command in the live cobra

@@ -1,0 +1,13 @@
+diff --git a/cmd/engram/operator_view.go b/cmd/engram/operator_view.go
+--- a/cmd/engram/operator_view.go
++++ b/cmd/engram/operator_view.go
+@@ -289,6 +289,9 @@ func renderOperatorView(w io.Writer, headline string, doc any) error {
+ 	}
+ 
+ 	for _, f := range fields {
++		if f.Value == "" && len(f.Rows) == 0 {
++			continue
++		}
+ 		pad := width - utf8.RuneCountInString(f.Label) + 3
+ 		line := "  " + f.Label + strings.Repeat(" ", pad)
+ 		if f.Value == "" {

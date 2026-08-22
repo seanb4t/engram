@@ -118,6 +118,22 @@ var redEvidenceDirs = map[string]map[string]string{
 		"03-05-red-1-lte-includes-current.patch":   "TestBacklogFilterMatchesAbsentAndBelowTarget",
 		"03-05-red-2-midsweep-write-skipped.patch": "TestMigrateConvergesWithoutLock",
 	},
+	// Phase 6's central claim is field-set identity BY CONSTRUCTION: the
+	// text lane walks the very bytes the json lane marshals, so a widening
+	// applied to a report's document struct alone widens BOTH lanes and is
+	// invariant under the identity gate — it cannot redden it, by design.
+	// The mutations that can, and therefore the ones retained here, are the
+	// ones that break the single-derivation property itself: a field
+	// present in json but suppressed in text (red-1), a field rendered in
+	// text with no json counterpart (red-2) — the two directions of the
+	// same divergence — plus one on the enumeration gate, an operator
+	// command dropped from the registry the fixture set is checked against
+	// (red-3).
+	".planning/phases/06-typed-operator-renderer/red-evidence": {
+		"06-red-1-empty-field-line-suppressed.patch": "TestOperatorViewIdentityAcrossEveryOperatorCommand",
+		"06-red-2-text-lane-only-field.patch":        "TestOperatorViewIdentityAcrossEveryOperatorCommand",
+		"06-red-3-operator-command-dropped.patch":    "TestOperatorViewFixturesCoverEveryOperatorCommand",
+	},
 }
 
 // gitModuleRoot shells out to `git rev-parse --show-toplevel` rather than
