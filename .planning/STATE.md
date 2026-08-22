@@ -4,17 +4,17 @@ milestone: 2026-08-12.01
 milestone_name: Record State & Schema Evolution
 current_phase: 09
 current_phase_name: Report pending in migrate status
-status: completed
-stopped_at: Phase 9 context gathered
-last_updated: "2026-08-22T18:34:41.767Z"
-last_activity: 2026-08-21
-last_activity_desc: Phase 08 complete
-state_head: ebc333bd0de98f6ef58e6104a9dd2d5019321730
+status: verifying
+stopped_at: Completed 09-02-PLAN.md
+last_updated: "2026-08-22T19:14:14.275Z"
+last_activity: 2026-08-22
+last_activity_desc: Phase 09 execution started
+state_head: 60dc52a77aa1af49bc42838831dcd27b74d888ef
 progress:
   total_phases: 9
   completed_phases: 8
   total_plans: 46
-  completed_plans: 44
+  completed_plans: 46
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-12 — after closing milestone v0.13.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 08 — Registry & Docs Tail
+**Current focus:** Phase 09 — Report pending in migrate status
 
 ## Current Position
 
-Phase: 09 (Report pending in migrate status) — READY TO EXECUTE
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-08-21 — Phase 08 complete
+Phase: 09 (Report pending in migrate status) — EXECUTING
+Plan: 2 of 2
+Status: Phase complete — ready for verification
+Last activity: 2026-08-22 — Phase 09 execution started
 
 ## Deferred Items
 
@@ -199,6 +199,8 @@ milestone needs in working memory.
 - [Phase 08]: 08-04: Grouped migrate and spine-review command families by parent verb in the cmd/engram/ Layout row to keep density while satisfying the per-word inventory gate — Gate requires every catalog word as a backtick token; grouped notation satisfies it without spelling out every two-word path
 - [Phase 08]: 08-05: Left migrate-remap-owner/migrate-set-owner alias wording untouched (info-level-only per 08-VERIFICATION.md); derived-set gates (goldens diff, paragraph symmetric-difference + live gate-site count) close truths 11/12 without hardcoding names
 - [Phase 08]: Declined a committed source-level literal grep for the retired sweep-guard string; TestNoHandRolledSweepScopeGuards' structural gate + the registry-Sentence comparison already in TestSweepLeavesRejectMissingScopeIdentically are strictly stronger and avoid the gate-matches-its-own-source vacuity shape.
+- [Phase 09]: 09-01: pending appended LAST to migrateStatusReportDoc (D-01) sourced from a single res.Pending() call (D-02); statusSummary's pending clause is unconditional, positioned between the bucket enumeration and the future clause (D-03)
+- [Phase 09]: 09-02: rewrote guides/migrate.md's pending row (W3) and added cmd/engram/migrate_docs_test.go, a self-tested zero-occurrence docs gate anchored on the inflection-free phrase "the equivalent number from" plus "Connect lane only", shipped with a 7-case positive control.
 
 ### Pending Todos
 
@@ -236,9 +238,9 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-22T17:47:23.110Z
-Stopped at: Phase 9 context gathered
-Resume file: .planning/phases/09-report-pending-in-migrate-status/09-CONTEXT.md
+Last session: 2026-08-22T19:14:14.035Z
+Stopped at: Completed 09-02-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -340,6 +342,8 @@ Resume file: .planning/phases/09-report-pending-in-migrate-status/09-CONTEXT.md
 | Phase 08 P04 | 20min | 2 tasks | 1 files |
 | Phase 08 P05 | 8min | 2 tasks | 1 files |
 | Phase 08 P06 | 24min | 3 tasks | 2 files |
+| Phase 09 P01 | 20min | 2 tasks | 2 files |
+| Phase 09 P02 | 12min | 2 tasks | 2 files |
 
 ## Operator Next Steps
 
