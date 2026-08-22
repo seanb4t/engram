@@ -362,11 +362,15 @@ new flag, no new RPC, no proto change, no MCP tool-schema change.
 <specifics>
 ## Specific Ideas
 
-- The discriminating fixture for D-05 should reuse the shape already present in the codebase's
-  `migrate status` view fixture (`Buckets: [{v1, 40}]`, `Absent: 3`, `Future: [{v2, 1}]`,
-  `FutureTotal: 1`, `Total: 44`) extended with a bucket **at** `migrate.CurrentVersion`. That gives
-  four distinct naive re-derivations, all different from the correct answer, in one fixture — and it
-  keeps the numbers recognizable against the existing tests.
+- The discriminating fixture for D-05 must carry a bucket **strictly below** `migrate.CurrentVersion`
+  — **corrected at research time; the earlier "at CurrentVersion" wording here was wrong.**
+  `migrate.CurrentVersion` is `1` (`internal/migrate/migrate.go:54`), so the existing `migrate status`
+  view fixture's `{Version: 1, Count: 40}` bucket is already *at* current, and a fixture without a
+  below-current bucket never exercises `Pending()`'s bucket loop — a re-derivation of plain
+  `pending = Absent` would pass it. See `09-RESEARCH.md` §Common Pitfalls 1 for the worked arithmetic
+  of a corrected fixture and the three naive re-derivations it separates. Build version numbers as
+  `cur := int(migrate.CurrentVersion)` and offsets from it, never as literals — the convention
+  `internal/store/migrate_status_test.go:29-45` already follows.
 - The rewritten doc row should state the `future` exclusion explicitly. It is the single most
   likely thing for an operator to get wrong when they check the arithmetic by hand against the
   `buckets`/`future` rows sitting directly above it.
