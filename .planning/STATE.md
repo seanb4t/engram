@@ -5,16 +5,16 @@ milestone_name: Record State & Schema Evolution
 current_phase: 08
 current_phase_name: Registry & Docs Tail
 status: executing
-stopped_at: Completed 08-05-PLAN.md
-last_updated: "2026-08-22T00:37:34.348Z"
+stopped_at: Completed 08-06-PLAN.md
+last_updated: "2026-08-22T00:47:55.456Z"
 last_activity: 2026-08-21
 last_activity_desc: Phase 08 execution started
-state_head: 628b79a724864e808f9cf4b0c861f0fec53bb27c
+state_head: 86388ae12307b94516a664fc46d53a67f6c20f0a
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 44
-  completed_plans: 43
+  completed_plans: 44
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-12 — after closing milestone v0.13.
 ## Current Position
 
 Phase: 08 (Registry & Docs Tail) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-08-21 — Phase 08 execution started
 
@@ -198,6 +198,7 @@ milestone needs in working memory.
 - [Phase 08]: 08-04: Split the stale 'database migrations, viper, cocogitto' bullet into a Migrations bullet (mechanism/automation-contract/boundary) and a shorter Not-used-here bullet — Migrations content no longer fit the not-used-here framing since the project now ships them
 - [Phase 08]: 08-04: Grouped migrate and spine-review command families by parent verb in the cmd/engram/ Layout row to keep density while satisfying the per-word inventory gate — Gate requires every catalog word as a backtick token; grouped notation satisfies it without spelling out every two-word path
 - [Phase 08]: 08-05: Left migrate-remap-owner/migrate-set-owner alias wording untouched (info-level-only per 08-VERIFICATION.md); derived-set gates (goldens diff, paragraph symmetric-difference + live gate-site count) close truths 11/12 without hardcoding names
+- [Phase 08]: Declined a committed source-level literal grep for the retired sweep-guard string; TestNoHandRolledSweepScopeGuards' structural gate + the registry-Sentence comparison already in TestSweepLeavesRejectMissingScopeIdentically are strictly stronger and avoid the gate-matches-its-own-source vacuity shape.
 
 ### Pending Todos
 
@@ -233,8 +234,8 @@ milestone needs in working memory.
 
 ## Session Continuity
 
-Last session: 2026-08-22T00:37:34.100Z
-Stopped at: Completed 08-05-PLAN.md
+Last session: 2026-08-22T00:47:55.304Z
+Stopped at: Completed 08-06-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -336,6 +337,7 @@ Resume file: None
 | Phase 08 P02 | ~15min | 2 tasks | 2 files |
 | Phase 08 P04 | 20min | 2 tasks | 1 files |
 | Phase 08 P05 | 8min | 2 tasks | 1 files |
+| Phase 08 P06 | 24min | 3 tasks | 2 files |
 
 ## Operator Next Steps
 
