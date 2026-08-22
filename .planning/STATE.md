@@ -3,12 +3,11 @@ gsd_state_version: 1.0
 milestone: 2026-08-12.01
 milestone_name: Record State & Schema Evolution
 current_phase: 09
-status: completed
+status: "Phase 09 shipped — PR #498"
 stopped_at: Phase 09 complete — all phases complete
-last_updated: "2026-08-22T19:25:59.908Z"
+last_updated: "2026-08-22T20:35:57.885Z"
 last_activity: 2026-08-22
-last_activity_desc: Phase 09 complete
-state_head: 904793b0b7df8fa1969b26af0b9e7d059f01ecc8
+state_head: d2051884e2f9c8bdb6d0448b6f92281d87876b6c
 progress:
   total_phases: 9
   completed_phases: 9
@@ -29,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-08-12 — after closing milestone v0.13.
 
 Phase: 09
 Plan: Not started
-Status: All phases complete
-Last activity: 2026-08-22 — Phase 09 complete
+Status: Phase 09 shipped — PR #498
+Last activity: 2026-08-22
 
 ## Deferred Items
 
