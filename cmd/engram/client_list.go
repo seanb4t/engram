@@ -15,18 +15,21 @@ import (
 )
 
 var (
-	listScope         string
-	listCrossSpine    bool
-	listLimit         uint64
-	listOffset        uint64
-	listCategories    []string
-	listVisibility    string
-	listTags          []string
-	listFull          bool
-	listCreatedAfter  string
-	listCreatedBefore string
-	listPageToken     string
-	listCursorMode    bool
+	listScope             string
+	listCrossSpine        bool
+	listLimit             uint64
+	listOffset            uint64
+	listCategories        []string
+	listVisibility        string
+	listTags              []string
+	listFull              bool
+	listCreatedAfter      string
+	listCreatedBefore     string
+	listPageToken         string
+	listCursorMode        bool
+	listIncludeArchived   bool
+	listIncludeSuperseded bool
+	listIncludeScheduled  bool
 )
 
 // listCmd is `engram list`, the second of the three D-01 subcommands.
@@ -50,18 +53,21 @@ var listCmd = &cobra.Command{
 		ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 		defer cancel()
 		resp, err := client.ListMemories(ctx, connect.NewRequest(&engramv1.ListMemoriesRequest{
-			Scope:         listScope,
-			CrossSpine:    listCrossSpine,
-			Limit:         listLimit,
-			Offset:        listOffset,
-			Categories:    listCategories,
-			Visibility:    listVisibility,
-			Tags:          listTags,
-			Full:          listFull,
-			CreatedAfter:  listCreatedAfter,
-			CreatedBefore: listCreatedBefore,
-			PageToken:     listPageToken,
-			CursorMode:    listCursorMode,
+			Scope:             listScope,
+			CrossSpine:        listCrossSpine,
+			Limit:             listLimit,
+			Offset:            listOffset,
+			Categories:        listCategories,
+			Visibility:        listVisibility,
+			Tags:              listTags,
+			Full:              listFull,
+			CreatedAfter:      listCreatedAfter,
+			CreatedBefore:     listCreatedBefore,
+			PageToken:         listPageToken,
+			CursorMode:        listCursorMode,
+			IncludeArchived:   listIncludeArchived,
+			IncludeSuperseded: listIncludeSuperseded,
+			IncludeScheduled:  listIncludeScheduled,
 		}))
 		if err != nil {
 			// Do not retry. Return wrapRPCError(err) and let Execute() map
@@ -85,7 +91,16 @@ var listCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			return renderCoverageFooter(cmd.OutOrStdout(), listCrossSpine, resp.Msg.GetSearchedScopes(), resp.Msg.GetScopesTruncated())
+			if err := renderCoverageFooter(cmd.OutOrStdout(), listCrossSpine, resp.Msg.GetSearchedScopes(), resp.Msg.GetScopesTruncated()); err != nil {
+				return err
+			}
+			// The migration advisory is the least-related fact on screen,
+			// so it reads last. A failed lookup never fails the command
+			// (07-06, T-07-19): migrationFooterCounts derives its own
+			// bounded context from cmd.Context() via the resolved timeout,
+			// never a second full resolution here.
+			pending, futureTotal, _ := migrationFooterCounts(cmd.Context(), client, timeout)
+			return renderMigrationFooter(cmd.OutOrStdout(), pending, futureTotal)
 		}
 		return renderJSON(cmd.OutOrStdout(), resp.Msg)
 	},
@@ -119,6 +134,9 @@ func init() {
 	listCmd.Flags().StringVar(&listCreatedBefore, "created-before", "", "RFC3339 exclusive upper bound on created_at")
 	listCmd.Flags().StringVar(&listPageToken, "page-token", "", "opaque cursor from a previous response's next_page_token; "+pagingRule.Sentence)
 	listCmd.Flags().BoolVar(&listCursorMode, "cursor-mode", false, "opt into cursor paging on the first (tokenless) page; "+pagingRule.Sentence)
+	listCmd.Flags().BoolVar(&listIncludeArchived, "include-archived", false, "include archived records, which are hidden by default")
+	listCmd.Flags().BoolVar(&listIncludeSuperseded, "include-superseded", false, "include superseded records, which are hidden by default")
+	listCmd.Flags().BoolVar(&listIncludeScheduled, "include-scheduled", false, "include records outside their validity window (not-yet-active AND already-expired), which are hidden by default")
 	// D-07/D-08: the paging trio is mutually exclusive as a declared cobra
 	// flag group, validated centrally by rootCmd.PersistentPreRunE calling
 	// cmd.ValidateFlagGroups() before RunE ever dials. cobra's flag groups

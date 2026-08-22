@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
+// Package goodpkg is a synthetic KNOWN-GOOD fixture for
+// collectionprefix_conformance_test.go's
+// TestEveryStoreConstructionRoutesThroughSeam. It stands in for a real
+// Qdrant-backed test package written in the "elsewhere" (qualified
+// store.New) style internal/server, internal/e2e, and
+// internal/retrievaleval all use. Every construction of the store's New
+// constructor routes through the local newTestStore seam below — so this
+// fixture must scan clean: zero findings. Note the seam is recognized by
+// its NAME, not by the shape of its collection argument; passing an
+// identifier is not what makes a call clean, and a direct store.New with
+// an identifier argument is a finding (see the bad fixture).
+//
+// This file carries a .go.txt extension deliberately: it is parsed from
+// source bytes by go/parser, never built by `go build`/gofmt/go vet/the
+// linter, so it is not swept by any of them.
+package goodpkg
+
+import (
+	"testing"
+
+	"github.com/qdrant/go-client/qdrant"
+	"github.com/seanb4t/engram/internal/store"
+)
+
+const testCollectionPrefix = "goodpkg_"
+
+func testCollection(name string) string {
+	return testCollectionPrefix + name
+}
+
+// newTestStore is the ONLY call site in this fixture that invokes the raw
+// store.New constructor, and it is exempt because of its NAME — it is the
+// seam. Plan 01-05's runtime seam (mirrored here by the prefix check) is
+// what verifies the collection VALUE; this gate only forces every live
+// construction through it.
+func newTestStore(t testing.TB, c *qdrant.Client, name string) *store.Store {
+	t.Helper()
+	if len(name) < len(testCollectionPrefix) || name[:len(testCollectionPrefix)] != testCollectionPrefix {
+		t.Fatalf("collection name %q does not carry this package's prefix %q", name, testCollectionPrefix)
+	}
+	return store.New(c, name)
+}
+
+func TestGoodPkgUsesSeam(t *testing.T) {
+	var c *qdrant.Client
+	s := newTestStore(t, c, testCollection("example"))
+	_ = s
+}

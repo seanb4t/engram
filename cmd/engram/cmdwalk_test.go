@@ -109,11 +109,15 @@ func TestWalkCommands(t *testing.T) {
 // operatorCommands() over the LIVE rootCmd tree: the six pre-existing
 // operator commands this plan backfills plus spine-review scan (plan
 // 03-01's first operator-tier leaf), spine-review verify (plan 03-04's
-// leaf), spine-review consolidate (plan 03-05's leaf), and spine-review
-// archive/restore (plan 03-06's leaves) — never search/list/store (the
-// client tier, excluded by the "server" flag check) and never spine-review
-// itself (the non-runnable group, excluded by the RunE check) or
-// serve/version (the named exclusion set).
+// leaf), spine-review consolidate (plan 03-05's leaf), spine-review
+// archive/restore (plan 03-06's leaves), and migrate / migrate status /
+// migrate revert (04-03-PLAN.md's three migrate-family leaves, landed
+// across Tasks 2 and 3) — never search/list/store (the client tier, excluded by the
+// "server" flag check) and never spine-review or migrate itself as a
+// non-runnable parent (migrate DOES have its own RunE via
+// registerDestructive, so it IS a member; only spine-review, the
+// non-runnable group, is excluded by the RunE check) or serve/version (the
+// named exclusion set).
 var wantOperatorCommandKeys = map[string]bool{
 	"reindex":                  true,
 	"prune-expired":            true,
@@ -127,6 +131,9 @@ var wantOperatorCommandKeys = map[string]bool{
 	"spine-review archive":     true,
 	"spine-review restore":     true,
 	"spine-review purge":       true,
+	"migrate":                  true,
+	"migrate status":           true,
+	"migrate revert":           true,
 }
 
 // commandKeySet is a small helper turning a []*cobra.Command into a
@@ -186,11 +193,12 @@ func TestOperatorCommands(t *testing.T) {
 // TestCatalogOutputFlagMatchesOperatorCommandsUnionClientVerbs decodes the
 // committed catalog.golden fixture and asserts SET EQUALITY between the
 // set of command names whose flag list carries "output" and
-// operatorCommands()'s commandKey set unioned with the three client verbs
-// (search, list, store). This is the behavioural gate the plan's
-// acceptance criteria call for — an rg-based literal count over the golden
-// text would pass on two offsetting errors; decoding the JSON and
-// comparing sets cannot.
+// operatorCommands()'s commandKey set unioned with the client verbs
+// (search, list, store, get, migration-status — as of phase
+// 07-console-cli-state-surfacing, which added get then migration-status).
+// This is the behavioural gate the plan's acceptance criteria call for —
+// an rg-based literal count over the golden text would pass on two
+// offsetting errors; decoding the JSON and comparing sets cannot.
 func TestCatalogOutputFlagMatchesOperatorCommandsUnionClientVerbs(t *testing.T) {
 	b, err := os.ReadFile("testdata/catalog.golden")
 	if err != nil {
@@ -215,6 +223,8 @@ func TestCatalogOutputFlagMatchesOperatorCommandsUnionClientVerbs(t *testing.T) 
 	want["search"] = true
 	want["list"] = true
 	want["store"] = true
+	want["get"] = true
+	want["migration-status"] = true
 
 	for key := range want {
 		if !golden[key] {

@@ -1,0 +1,21 @@
+diff --git a/internal/store/store.go b/internal/store/store.go
+index 05e20ba3..63fc6774 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -1103,6 +1103,16 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
+ 	}()
+ 
+ 	f := s.ownerScopeFilter(ctx, scope, subj)
++	// PROVE-RED direction 2 (02-03 plan, Task 3, shape 2 — nested):
++	// TEMPORARY injection of a schema_version condition wrapped in a
++	// NewFilterAsCondition Should-group — the categoryMatchCondition shape
++	// — proving TestSchemaVersionNeverGatesRecall goes RED against real
++	// source even when the walker's recursion, not just its top-level
++	// scan, is what has to catch it. Must be reverted before this task's
++	// commit.
++	f.Must = append(f.Must, qdrant.NewFilterAsCondition(&qdrant.Filter{Should: []*qdrant.Condition{
++		qdrant.NewIsEmpty(schemaVersionKey),
++	}}))
+ 	// IncludeScheduled relaxes the ENTIRE activeWindowConditions append as one
+ 	// unit (both the not_before and not_after halves) — never split across two
+ 	// branches (phase 07, D-01/D-02). Splitting it would make a genuinely

@@ -2,6 +2,7 @@ import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi } from 'vitest';
 import MemoryRow from './MemoryRow.svelte';
 import { create } from '@bufbuild/protobuf';
+import { timestampFromDate } from '@bufbuild/protobuf/wkt';
 import { MemorySchema } from '$lib/gen/engram_pb';
 
 const autoMem = create(MemorySchema, {
@@ -15,6 +16,27 @@ const autoMem = create(MemorySchema, {
 const sharedMem = create(MemorySchema, { id: '9', summary: 'already shared record', category: 'decision', visibility: 'shared' });
 const privateEmptyVis = create(MemorySchema, { id: '10', summary: 'legacy no-visibility record', category: 'decision', visibility: '' });
 const ruleMem = create(MemorySchema, { id: '11', summary: 'a normative rule', category: 'rule' });
+
+const now = new Date('2030-06-15T12:00:00Z');
+const future = timestampFromDate(new Date(now.getTime() + 24 * 60 * 60 * 1000));
+
+const liveMem = create(MemorySchema, { id: '20', summary: 'a live record', category: 'decision' });
+const archivedMem = create(MemorySchema, { id: '21', summary: 'an archived record', category: 'decision', archivedAt: timestampFromDate(now) });
+const archivedSupersededMem = create(MemorySchema, {
+  id: '22',
+  summary: 'archived and superseded',
+  category: 'decision',
+  archivedAt: timestampFromDate(now),
+  supersededBy: 'successor-id'
+});
+const scheduledMem = create(MemorySchema, { id: '23', summary: 'not yet active', category: 'decision', notBefore: future });
+const scheduledArchivedMem = create(MemorySchema, {
+  id: '24',
+  summary: 'archived but also carries a future window',
+  category: 'decision',
+  archivedAt: timestampFromDate(now),
+  notBefore: future
+});
 
 describe('MemoryRow', () => {
   it('renders the real summary (category prefix stripped) and tags', async () => {
@@ -111,5 +133,53 @@ describe('MemoryRow', () => {
     await expect.element(screen.getByRole('menuitem', { name: 'Edit' })).not.toBeInTheDocument();
     await expect.element(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument();
     await expect.element(screen.getByRole('menuitem', { name: 'Share' })).toBeInTheDocument();
+  });
+
+  it('a live record renders no state badges and no dim class — unchanged from today', async () => {
+    const screen = await render(MemoryRow, { memory: liveMem, selected: false, onselect: () => {} });
+    for (const word of ['archived', 'superseded', 'expired', 'scheduled']) {
+      await expect.element(screen.getByText(word, { exact: true })).not.toBeInTheDocument();
+    }
+    await expect.element(screen.getByText('a live record')).not.toHaveClass('opacity-60');
+  });
+
+  it('an archived record renders one "archived" badge and dims the summary', async () => {
+    const screen = await render(MemoryRow, { memory: archivedMem, selected: false, onselect: () => {} });
+    await expect.element(screen.getByText('archived', { exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByText('superseded', { exact: true })).not.toBeInTheDocument();
+    await expect.element(screen.getByText('an archived record')).toHaveClass('opacity-60');
+  });
+
+  it('archived + superseded renders both badges in canonical order with the SAME single dim treatment', async () => {
+    const screen = await render(MemoryRow, { memory: archivedSupersededMem, selected: false, onselect: () => {} });
+    const badges = screen.container.querySelectorAll('[data-slot="badge"]');
+    const badgeTexts = Array.from(badges).map((b) => b.textContent?.trim());
+    expect(badgeTexts).toEqual(['archived', 'superseded']);
+    await expect.element(screen.getByText('archived and superseded')).toHaveClass('opacity-60');
+  });
+
+  it('in a dimmed row the badge element does not carry the dim class', async () => {
+    const screen = await render(MemoryRow, { memory: archivedMem, selected: false, onselect: () => {} });
+    const badge = screen.container.querySelector('[data-slot="badge"]');
+    expect(badge?.className).not.toMatch(/opacity-60/);
+  });
+
+  it('a scheduled-only record renders its badge and is NOT dimmed', async () => {
+    const screen = await render(MemoryRow, { memory: scheduledMem, selected: false, onselect: () => {} });
+    await expect.element(screen.getByText('scheduled', { exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByText('not yet active')).not.toHaveClass('opacity-60');
+  });
+
+  it('scheduled + archived renders both badges and IS dimmed (past component drives dimming)', async () => {
+    const screen = await render(MemoryRow, { memory: scheduledArchivedMem, selected: false, onselect: () => {} });
+    await expect.element(screen.getByText('archived', { exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByText('scheduled', { exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByText('archived but also carries a future window')).toHaveClass('opacity-60');
+  });
+
+  it('the meta line wraps rather than truncating (flex-wrap present)', async () => {
+    const screen = await render(MemoryRow, { memory: archivedSupersededMem, selected: false, onselect: () => {} });
+    const metaLine = screen.getByText('archived', { exact: true }).element().closest('div');
+    expect(metaLine?.className).toMatch(/flex-wrap/);
   });
 });

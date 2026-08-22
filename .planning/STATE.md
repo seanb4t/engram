@@ -1,19 +1,18 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.13.x
-milestone_name: Curation & Self-Evidence
-status: "Milestone v0.13.x shipped — PR #494"
-stopped_at: Milestone v0.13.x archived
-last_updated: "2026-08-12T21:11:28.588Z"
-last_activity: 2026-08-12
-last_activity_desc: Milestone v0.13.x completed and archived
+milestone: 2026-08-12.01
+milestone_name: Record State & Schema Evolution
+current_phase: 09
+status: "Phase 09 shipped — PR #498"
+stopped_at: Phase 09 complete — all phases complete
+last_updated: "2026-08-22T20:35:57.885Z"
+last_activity: 2026-08-22
+state_head: d2051884e2f9c8bdb6d0448b6f92281d87876b6c
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 33
-  completed_plans: 33
-current_phase: null
-current_phase_name: null
+  total_phases: 9
+  completed_phases: 9
+  total_plans: 46
+  completed_plans: 46
 ---
 
 # Project State
@@ -23,14 +22,14 @@ current_phase_name: null
 See: .planning/PROJECT.md (updated 2026-08-12 — after closing milestone v0.13.x)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Planning next milestone — run `/gsd-new-milestone`
+**Current focus:** Phase 09 — Report pending in migrate status
 
 ## Current Position
 
-Phase: Milestone v0.13.x complete
-Plan: —
-Status: Milestone v0.13.x shipped — PR #494
-Last activity: 2026-08-12 — Milestone v0.13.x shipped as PR #494
+Phase: 09
+Plan: Not started
+Status: Phase 09 shipped — PR #498
+Last activity: 2026-08-22
 
 ## Deferred Items
 
@@ -44,8 +43,8 @@ Items acknowledged and deferred at milestone close on 2026-08-12:
 
 | Category | Item | Status |
 |----------|------|--------|
-| pending_todo | research-versioned-payload-migration-mechanism (no stored schema/payload version; each evolution ships as its own one-shot operator command) | Deferred — untouched by v0.13.x, still pending |
-| requirement | REQ-consent-adversarial-proof (Phase 4 — cold read proving a confidently-wrong proposal still stops at consent) | NOT SATISFIED — run cap exhausted at 3, all runs NOT-TEMPTED, terminal verdict NOT-OBTAINED; non-result accepted by Sean 2026-08-11. WINDOWS.md id 3 open |
+| pending_todo | research-versioned-payload-migration-mechanism (no stored schema/payload version; each evolution ships as its own one-shot operator command) | Now scoped into milestone 2026-08-12.01 (Phases 2–4: schema versioning foundation, migration registry/sweep, migration CLI) |
+| requirement | REQ-consent-adversarial-proof (Phase 4 — cold read proving a confidently-wrong proposal still stops at consent) | NOT SATISFIED — run cap exhausted at 3, all runs NOT-TEMPTED, terminal verdict NOT-OBTAINED; non-result accepted by Sean 2026-08-11. WINDOWS.md id 3 open. Carried as a v2 requirement in milestone 2026-08-12.01's REQUIREMENTS.md, still deferred |
 | broken_window | WINDOWS.md id 1, id 2 (Phase 03 TDD RED+GREEN landed in combined commits) | Open — RED genuinely observed, commit granularity only |
 | code | internal/surfaces/toolclass.go:141-142 stale rationale comment contradicting shipped Phase 03.1 idempotency_key support | Open — annotation value correct, comment wrong |
 | test | TestExitCodeBaseline env-var fragility (ENGRAM_REINDEX_TARGET / ENGRAM_MIGRATE_OWNER) | Tracked upstream as #476 |
@@ -153,20 +152,68 @@ milestone needs in working memory.
 - [Phase ?]: Phase 5 Plan 2: dropped REQ-citation-fixture-355's claim that the repair calibrates spine-review verify (D-05) — verify reads stored Qdrant citations, cannot see a Go comment or docs cross-ref
 - [Phase ?]: Phase 5 Plan 2: REQ-nyquist-reconciled and ROADMAP Phase 5 corrected to the live re-resolution finding (D-06) — 89/90 v0.12.x rows clean at merge commit 906a5cf6, replacing the disproven six-draft premise
 
+**2026-08-12.01 roadmap decisions (2026-08-12, carried from research + user scoping):**
+
+- Phase 3 (original migration-mechanism cluster, 11 requirements — 41% of the milestone) split
+  into Phase 3 (Migration Foundation: `internal/migrate` registry, additive-only + mandatory
+  reversibility declaration as a registration invariant, `Store.Migrate` sweep, partial-failure
+  resume, convergence-without-lock) and Phase 4 (Migration CLI & First Customer: `engram migrate`
+  via `registerDestructive`, status histogram, preview/apply parity, revert, `backfill-short-ids`
+  fold-in) — the single heaviest phase, split per roadmap review rather than left oversized.
+
+- Ordering is a hard constraint, not preference: schema versioning (Phase 2) and the full migration
+  mechanism (Phases 3–4) land before the Connect proto pass (Phase 5) — proto field numbers are a
+  permanent one-way commitment, and freezing `schema_version` on the wire before its semantics
+  settle would be unfixable.
+
+- Gate & CI integrity (#479/#497) lands first (Phase 1) — this milestone authors new key-links and
+  past v0.13.x Phase 1–2 gates were no-ops.
+
+- Additive-only migrations are ENFORCED by a registration invariant (not prose); the step interface
+  is shaped so a per-version decoder could attach later. No collection lock — stamp-then-sweep
+  ordering (write path stamps before the sweep runs) is what makes the sweep converge.
+
+- `backfill-short-ids` becomes the registered v0→v1 step; the standalone command becomes a
+  delegating alias (soft deprecation, never hard removal, per the `migrate-set-owner` precedent).
+
+- Steps may have side effects but MUST declare reversibility; `engram migrate` refuses a range
+  containing an irreversible step rather than reverting partially.
+
+- `schema_version` must NEVER appear in a recall/authz filter — copying the
+  `superseded_by`/`archived_at` `IsEmpty` idiom has inverted cardinality (absence is the majority
+  state at adoption, not a minority one) and would exclude every pre-migration record from recall.
+
+- Phase 3 (migration-step registry API shape + partial-failure-resume test design) and Phase 7
+  (console/CLI soft-hidden-state conventions) flagged as needing a research pass at plan time — no
+  single existing precedent to copy verbatim for either.
+
+- [Phase 08]: RuleSweepScopeOrAllScopesRequired's SurfaceFields diverges from Fields (adds dry-run) to isolate the three enforcing sweep leaves from spine-review consolidate/purge, which expose the same flag pair without enforcing it; the two leaves it cannot reach are pinned by a dedicated whitelist test instead.
+- [Phase 08]: 08-03: distinguished migrate.md from reindex.md in exactly one See-also sentence, per the plan's one-sentence allowance for the word reindex
+- [Phase 08]: 08-03: drew the preview-vs---dry-run idiom contrast by operator tier and a link to /guides/cli/#destructive-commands rather than naming any non-version-driven command, satisfying the zero-occurrence scope gate
+- [Phase 08]: 08-03: kept upgrade.md's Who should act: nobody line unchanged — the correction fixes the stated remedy, not who needs to act
+- [Phase 08]: 08-02: named the Store.Upsert version-narrowing generically ("one lower-level write path") on the reader-facing memory-record.md page rather than the Go symbol, since the page documents the tool/wire contract, not Go internals
+- [Phase 08]: 08-02: reordered get_memory's state-word bullets to canonical archived/superseded/expired/scheduled order and moved schema_version to its own paragraph after the list, since it is not a soft-hidden state
+- [Phase 08]: 08-04: Split the stale 'database migrations, viper, cocogitto' bullet into a Migrations bullet (mechanism/automation-contract/boundary) and a shorter Not-used-here bullet — Migrations content no longer fit the not-used-here framing since the project now ships them
+- [Phase 08]: 08-04: Grouped migrate and spine-review command families by parent verb in the cmd/engram/ Layout row to keep density while satisfying the per-word inventory gate — Gate requires every catalog word as a backtick token; grouped notation satisfies it without spelling out every two-word path
+- [Phase 08]: 08-05: Left migrate-remap-owner/migrate-set-owner alias wording untouched (info-level-only per 08-VERIFICATION.md); derived-set gates (goldens diff, paragraph symmetric-difference + live gate-site count) close truths 11/12 without hardcoding names
+- [Phase 08]: Declined a committed source-level literal grep for the retired sweep-guard string; TestNoHandRolledSweepScopeGuards' structural gate + the registry-Sentence comparison already in TestSweepLeavesRejectMissingScopeIdentically are strictly stronger and avoid the gate-matches-its-own-source vacuity shape.
+- [Phase 09]: 09-01: pending appended LAST to migrateStatusReportDoc (D-01) sourced from a single res.Pending() call (D-02); statusSummary's pending clause is unconditional, positioned between the bucket enumeration and the future clause (D-03)
+- [Phase 09]: 09-02: rewrote guides/migrate.md's pending row (W3) and added cmd/engram/migrate_docs_test.go, a self-tested zero-occurrence docs gate anchored on the inflection-free phrase "the equivalent number from" plus "Connect lane only", shipped with a 7-case positive control.
+
 ### Pending Todos
 
 [From .planning/todos/pending/ — ideas captured during sessions]
 
 - **supersede_memory cannot merge two records into one without a delete** (api, major) — folded into v0.13.x Phase 03.1; the origin analysis for that phase.
-- **Research a versioned payload-migration mechanism** (database, minor) — no stored schema/payload version exists; every evolution ships as its own one-off operator command. Deferred out of Phase 03.1.
+- **Research a versioned payload-migration mechanism** (database, minor) — no stored schema/payload version exists; every evolution ships as its own one-off operator command. Now scoped into milestone 2026-08-12.01 (Phases 2–4).
 
 ### Blockers/Concerns
 
 **Open:**
 
-- **Deployed server lags `main`:** the running engram instance predates the v0.11.x and v0.12.x merges, so `supersede_memory`, memory `citations`, the `categories` filter, and every v0.12.x capability (Connect bearer identity, the headless CLI, `cross_spine`, the field+hint error envelope) are not callable until the next release.
-- **Not deployed → not exercised:** every v0.11.x and v0.12.x feature is verified against tests and a real Qdrant via testcontainers, but none has run in the deployed instance. Watch the first release for integration surprises.
-- **Validation commands can false-green:** `go test -run X ./pkg/...` matching nothing exits 0 with `ok … [no tests to run]`. This bit v0.12.x too: VALIDATION.md `-run` commands are written at PLAN time and routinely never match what shipped (wrong package in Phase 4, wrong test name in Phase 7), so the row reports a false green forever. Re-resolve every `-run` against `go test -list` when auditing, and prove execution with `-v` RUN/PASS pairs, not a package-level `ok`. Durable record: `bsbsvn4hbc`. **This is v0.13.x Phase 5's own deliverable — do not let Phase 5 reproduce the bug it exists to close.**
+- **Released but NOT DEPLOYED:** `v0.13.0` was cut and shipped 2026-08-12 (tag + GitHub Release, binaries for linux/darwin × amd64/arm64, image `0.13.0`/`latest`, OCI Helm chart) — so v0.11.x, v0.12.x and v0.13.x capabilities are now *available*. They are **not yet rolled out** to the running instance, which still predates all three. Until it is, `supersede_memory`, memory `citations`, the `categories` filter, Connect bearer identity, the headless CLI, `cross_spine`, the field+hint error envelope, `spine-review`, and the archive tier remain uncallable in practice.
+- **Not deployed → not exercised:** every v0.11.x, v0.12.x and v0.13.x feature is verified against tests and a real Qdrant via testcontainers, but **none has ever run in the deployed instance**. Three milestones of unexercised code land at once on the first rollout — watch it closely for integration surprises.
+- **Validation commands can false-green:** `go test -run X ./pkg/...` matching nothing exits 0 with `ok … [no tests to run]`. This bit v0.12.x too: VALIDATION.md `-run` commands are written at PLAN time and routinely never match what shipped (wrong package in Phase 4, wrong test name in Phase 7), so the row reports a false green forever. Re-resolve every `-run` against `go test -list` when auditing, and prove execution with `-v` RUN/PASS pairs, not a package-level `ok`. Durable record: `bsbsvn4hbc`. **Closed as a deliverable by v0.13.x Phase 5** (all six phases reconciled to `status: validated`), but the trap itself is permanent — it applies to every VALIDATION.md this milestone writes. Related and now CLOSED as this milestone's own Phase 1: #479, where a key-link `pattern:` carrying `\\` escaping is silently unmatchable, so v0.13.x Phases 1–2's gates were no-ops; 2026-08-12.01 Phase 1 fixes that before authoring its own key-links.
 - Tracked tech debt: #369 (Renovate self-heal live observation, post-merge only), #366 (console e2e harness), #370 (Taskfile yamlfmt/CI reconciliation), plus 2 high Dependabot alerts open on `main`.
 - **CI gates outside the phase lifecycle:** `task chart:validate` (containerEnv checksum pin) and `task ui:build` (vendored SPA) are required checks that no phase gate runs. Run both locally before shipping any phase touching `charts/` or generated TS.
 
@@ -175,6 +222,7 @@ milestone needs in working memory.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260717-g1r | Triage + fix #301 — Renovate ui/ postUpgradeTasks via `bash -c` (shell-free); branch unmerged, gated on a cluster-first allowlist update | 2026-07-17 | 1462da20 | [260717-g1r-renovate-ui-vendor-shell](./quick/260717-g1r-renovate-ui-vendor-shell/) |
+| 260822-im2 | Repo hygiene from the 2026-08-12.01 audit — dprint excludes `internal/webauth/static` (vendored SPA) + 3 authored files formatted (`fmt:check` 201→0); phase-06 `iter2`/`iter3` review artifacts tracked; `.mcp.json` gitignored | 2026-08-22 | faece501, 2937d265, cef262d1 | [20260822-repo-hygiene-dprint-and-artifacts](./quick/20260822-repo-hygiene-dprint-and-artifacts/) |
 
 ### Roadmap Evolution
 
@@ -182,11 +230,14 @@ milestone needs in working memory.
 - Phase 2 edited: edited fields: success_criteria (added D-05 six-surface scope, D-06/D-07 generated anchored regions + one drift job, D-08 derived applicability + zero-surface guard, D-10 openWorldHint, D-11 catalog blast-radius parity); applied under --force since phase is complete
 - Phase 3 edited: scope expansions D-04 (prune-expired preview-by-default hard flip), D-12 (archive/restore verbs), D-13 (--output tier-wide backfill); +REQ-destructive-preview-default, +REQ-operator-output-flag
 - Phase 03.1 edited: edited fields: success_criteria (SC1 proto premise corrected to MCP JSON schema; SC2 multi-fault rejection; SC3 unrepresentable-vs-tested), added SC4 idempotency_key, requirements (+REQ-merge-idempotency), research flag; removed duplicated Plans block
+- 2026-08-12.01 ROADMAP.md created: 8 phases (1–8), 27/27 requirements mapped, 0 orphans. Phase 3 of the research-derived 7-step build order split into Phase 3 (Migration Foundation) + Phase 4 (Migration CLI & First Customer) to avoid an 11-requirement phase; Phases 5–8 renumbered accordingly.
+- Phase 5 edited: edited fields: success_criteria (SC1, SC3) — SC1 widened from six fields (23-28) to eight (23-30, adding summary_model and summary_egress_at) per 2026-08-15 decision D-04/z1fxhaqdek, which reverses zyaa3m2fvd's store-only rule; SC3 rewritten to the property that actually holds per D-09 — identical outward-widened bounds on both read lanes, with NO read-path rounding code added (a constant gate). Applied via edit-phase at plan time as 05-CONTEXT.md requires.
+- Phase 9 added: Report pending in migrate status — closes milestone-audit items W2 (`engram migrate status` omits the canonical `pending` value) and W3 (`guides/migrate.md:279` documents a CLI derivation that does not exist). One code fix closes both. Debt closure against already-satisfied REQ-migrate-status-histogram / REQ-docs-record-state, not new milestone scope.
 
 ## Session Continuity
 
-Last session: 2026-08-12T12:32:02.025Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-08-22T19:14:14.035Z
+Stopped at: Phase 09 complete — all phases complete
 Resume file: None
 
 ## Performance Metrics
@@ -283,7 +334,15 @@ Resume file: None
 | Phase 02 P05 | ~40min | 3 tasks | 11 files |
 | Phase 05 P01 | 40min | 4 tasks | 4 files |
 | Phase 05 P02 | 6min | 2 tasks | 4 files |
+| Phase 08 P01 | 50min | 3 tasks | 12 files |
+| Phase 08 P03 | ~25min | 2 tasks | 2 files |
+| Phase 08 P02 | ~15min | 2 tasks | 2 files |
+| Phase 08 P04 | 20min | 2 tasks | 1 files |
+| Phase 08 P05 | 8min | 2 tasks | 1 files |
+| Phase 08 P06 | 24min | 3 tasks | 2 files |
+| Phase 09 P01 | 20min | 2 tasks | 2 files |
+| Phase 09 P02 | 12min | 2 tasks | 2 files |
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Review the 2026-08-12.01 roadmap draft (`.planning/ROADMAP.md`, `.planning/REQUIREMENTS.md`); once approved, start Phase 1 with `/gsd-plan-phase 1` (Gate & CI Integrity — #479/#497).

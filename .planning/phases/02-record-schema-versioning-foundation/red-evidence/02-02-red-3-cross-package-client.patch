@@ -1,0 +1,27 @@
+diff --git a/internal/server/usagequeue.go b/internal/server/usagequeue.go
+index 26e1d700..6dc0f901 100644
+--- a/internal/server/usagequeue.go
++++ b/internal/server/usagequeue.go
+@@ -8,6 +8,8 @@ import (
+ 	"log/slog"
+ 	"sync"
+ 
++	"github.com/qdrant/go-client/qdrant"
++
+ 	"github.com/seanb4t/engram/internal/telemetry"
+ )
+ 
+@@ -47,6 +49,13 @@ type usageQueue struct {
+ 
+ 	workers int
+ 	metrics *telemetry.UsageQueueMetrics
++
++	// proveRedDirection3Client is a TEMPORARY injection (02-02-PLAN.md
++	// Task 2 prove-RED direction 3): a *qdrant.Client field on a struct
++	// outside internal/store, proving
++	// TestQdrantClientIsHeldOnlyByStorePackage fails loudly on a
++	// cross-package client holder.
++	proveRedDirection3Client *qdrant.Client
+ }
+ 
+ // newUsageQueue constructs a usageQueue with a bounded channel of capacity

@@ -10,6 +10,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,6 +39,46 @@ const qdrantImageTag = "qdrant/qdrant:v1.18.2"
 // might set (round-2 finding 1) — so a configured production/dev Qdrant is
 // never read from or written to by this package.
 var testQdrantAddr string
+
+// testQdrantContainerBooted records whether TestMain booted its OWN
+// testcontainer for this run, as opposed to taking the ENGRAM_QDRANT_TEST_ADDR
+// fast path onto a shared instance. Set true only inside the testcontainer
+// branch, immediately after the container's gRPC endpoint resolves; the env-var
+// branch leaves it false. TestSharedQdrantAddressHonored asserts on it directly
+// so "the CI test job uses one shared Qdrant" is a checkable claim rather than
+// an inference from logs (CONTEXT.md D-20).
+var testQdrantContainerBooted bool
+
+// testCollectionPrefix namespaces this package's integration-test Qdrant
+// collection names so a single shared Qdrant instance (CI's
+// ENGRAM_QDRANT_TEST_ADDR path) can host every Qdrant-backed package's test
+// suite concurrently without cross-package name collisions (CONTEXT.md D-16).
+// This package already generated collision-safe per-UUID names before this
+// constant existed (newTestcontainerStore's "retrievaleval_" + uuid); the
+// constant makes that namespace the single source of truth rather than a
+// comment about a literal elsewhere in the line.
+const testCollectionPrefix = "retrievaleval_"
+
+// testCollection returns name namespaced into this package's collection space
+// on the shared test Qdrant instance.
+func testCollection(name string) string {
+	return testCollectionPrefix + name
+}
+
+// newTestStore is the prefix-enforcing construction seam for every test Store
+// built against a real Qdrant instance in this package. It asserts name
+// carries this package's testCollectionPrefix before constructing the store,
+// so a collection name that skips testCollection() fails the test naming the
+// offending value — a runtime assertion a source-level check could be routed
+// around, but a t.Fatalf inside the one function every test store is built by
+// cannot (CONTEXT.md D-16, plan 01-05).
+func newTestStore(t testing.TB, c *qdrant.Client, name string) *store.Store {
+	t.Helper()
+	if !strings.HasPrefix(name, testCollectionPrefix) {
+		t.Fatalf("collection name %q does not carry this package's prefix %q: route it through testCollection()", name, testCollectionPrefix)
+	}
+	return store.New(c, name)
+}
 
 // TestRetrievalEval is the retrieval-quality eval: it seeds the labeled dataset
 // in fixtures.go through the exact production doc-embed sequence, searches it
@@ -72,10 +113,7 @@ func TestRetrievalEval(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// A fresh, uniquely-named collection per case avoids cross-case /
 			// cross-run contamination without needing cleanup.
-			st, err := newTestcontainerStore(testQdrantAddr, dim)
-			if err != nil {
-				t.Fatalf("build eval store: %v", err)
-			}
+			st := newTestcontainerStore(t, testQdrantAddr, dim)
 			scope := "retrieval-eval:project:" + tc.name
 
 			idByKey := make(map[string]string, len(tc.seedRecords))
@@ -282,27 +320,30 @@ func TestRetrievalEval_AsymmetryDiffer(t *testing.T) {
 // newTestcontainerStore builds a *store.Store pinned to addr — the eval's
 // testcontainer, NEVER the ambient ENGRAM_QDRANT_ADDR a developer's prod-like
 // env might set (round-2 finding 1) — in a fresh, uniquely-named collection
-// ensured at dim.
-func newTestcontainerStore(addr string, dim uint64) (*store.Store, error) {
+// ensured at dim, routed through newTestStore so the collection name is
+// prefix-asserted at runtime like every other Qdrant-backed package's test
+// stores (plan 01-05).
+func newTestcontainerStore(t testing.TB, addr string, dim uint64) *store.Store {
+	t.Helper()
 	host, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid test Qdrant address %q: %w", addr, err)
+		t.Fatalf("invalid test Qdrant address %q: %v", addr, err)
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid test Qdrant port %q: %w", portStr, err)
+		t.Fatalf("invalid test Qdrant port %q: %v", portStr, err)
 	}
 	qc, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
 	if err != nil {
-		return nil, fmt.Errorf("qdrant client: %w", err)
+		t.Fatalf("qdrant client: %v", err)
 	}
-	st := store.New(qc, "retrievaleval_"+uuid.NewString())
+	st := newTestStore(t, qc, testCollection(uuid.NewString()))
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := st.EnsureCollection(ctx, dim); err != nil {
-		return nil, fmt.Errorf("EnsureCollection: %w", err)
+		t.Fatalf("EnsureCollection: %v", err)
 	}
-	return st, nil
+	return st
 }
 
 // TestMain gates the whole package on ENGRAM_RETRIEVAL_EVAL as its FIRST
@@ -333,6 +374,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "qdrant grpc endpoint: %v\n", err)
 		os.Exit(1)
 	}
+	testQdrantContainerBooted = true
 	code := m.Run()
 	terminateQdrant(container)
 	os.Exit(code)
@@ -344,4 +386,33 @@ func terminateQdrant(c *tcqdrant.QdrantContainer) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_ = c.Terminate(ctx)
+}
+
+// TestSharedQdrantAddressHonored proves this package took the CI shared-Qdrant
+// fast path rather than booting its own testcontainer, whenever
+// ENGRAM_QDRANT_TEST_ADDR is set. Address equality alone is not enough — a
+// package could boot a container and coincidentally resolve the same address —
+// so the load-bearing assertion is testQdrantContainerBooted == false
+// (CONTEXT.md D-20). Gates on ENGRAM_RETRIEVAL_EVAL first, mirroring every
+// other test in this package (TestMain never touches Qdrant at all unless
+// that gate is "1" — see TestMain's first statement) — this is not the
+// shared-Qdrant skip, it is the package's existing opt-in-eval skip, and
+// conflating the two would make this test fail whenever someone runs the CI
+// `test` job without ENGRAM_RETRIEVAL_EVAL=1, which is the normal case.
+// Skips (does not fail) when the shared-address env var is unset: a developer
+// running the eval locally without it is not the case this test is about.
+func TestSharedQdrantAddressHonored(t *testing.T) {
+	if os.Getenv("ENGRAM_RETRIEVAL_EVAL") != "1" {
+		t.Skip("set ENGRAM_RETRIEVAL_EVAL=1 (and the gateway/model env) to run the retrieval eval")
+	}
+	addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR")
+	if addr == "" {
+		t.Skip("ENGRAM_QDRANT_TEST_ADDR not set: this test only asserts the shared-instance path")
+	}
+	if testQdrantAddr != addr {
+		t.Errorf("testQdrantAddr = %q, want %q (shared CI Qdrant address not honored)", testQdrantAddr, addr)
+	}
+	if testQdrantContainerBooted {
+		t.Error("testQdrantContainerBooted = true, want false: ENGRAM_QDRANT_TEST_ADDR was set but this package booted its own testcontainer anyway")
+	}
 }

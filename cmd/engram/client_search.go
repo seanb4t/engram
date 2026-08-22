@@ -14,15 +14,18 @@ import (
 )
 
 var (
-	searchQuery         string
-	searchScope         string
-	searchCrossSpine    bool
-	searchK             uint64
-	searchTags          []string
-	searchFull          bool
-	searchCreatedAfter  string
-	searchCreatedBefore string
-	searchCategories    []string
+	searchQuery             string
+	searchScope             string
+	searchCrossSpine        bool
+	searchK                 uint64
+	searchTags              []string
+	searchFull              bool
+	searchCreatedAfter      string
+	searchCreatedBefore     string
+	searchCategories        []string
+	searchIncludeArchived   bool
+	searchIncludeSuperseded bool
+	searchIncludeScheduled  bool
 )
 
 // searchCmd is `engram search`, the phase's tracer command.
@@ -52,15 +55,18 @@ var searchCmd = &cobra.Command{
 		ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 		defer cancel()
 		resp, err := client.SearchMemories(ctx, connect.NewRequest(&engramv1.SearchMemoriesRequest{
-			Query:         searchQuery,
-			Scope:         searchScope,
-			CrossSpine:    searchCrossSpine,
-			K:             searchK,
-			Tags:          searchTags,
-			Full:          searchFull,
-			CreatedAfter:  searchCreatedAfter,
-			CreatedBefore: searchCreatedBefore,
-			Categories:    searchCategories,
+			Query:             searchQuery,
+			Scope:             searchScope,
+			CrossSpine:        searchCrossSpine,
+			K:                 searchK,
+			Tags:              searchTags,
+			Full:              searchFull,
+			CreatedAfter:      searchCreatedAfter,
+			CreatedBefore:     searchCreatedBefore,
+			Categories:        searchCategories,
+			IncludeArchived:   searchIncludeArchived,
+			IncludeSuperseded: searchIncludeSuperseded,
+			IncludeScheduled:  searchIncludeScheduled,
 		}))
 		if err != nil {
 			// Do not retry. Return wrapRPCError(err) and let Execute() map
@@ -73,7 +79,16 @@ var searchCmd = &cobra.Command{
 			if err := renderMemoryTable(cmd.OutOrStdout(), resp.Msg.GetMemories(), true); err != nil {
 				return err
 			}
-			return renderCoverageFooter(cmd.OutOrStdout(), searchCrossSpine, resp.Msg.GetSearchedScopes(), resp.Msg.GetScopesTruncated())
+			if err := renderCoverageFooter(cmd.OutOrStdout(), searchCrossSpine, resp.Msg.GetSearchedScopes(), resp.Msg.GetScopesTruncated()); err != nil {
+				return err
+			}
+			// The migration advisory is the least-related fact on screen,
+			// so it reads last. A failed lookup never fails the command
+			// (07-06, T-07-19): migrationFooterCounts derives its own
+			// bounded context from cmd.Context() via the resolved timeout,
+			// never a second full resolution here.
+			pending, futureTotal, _ := migrationFooterCounts(cmd.Context(), client, timeout)
+			return renderMigrationFooter(cmd.OutOrStdout(), pending, futureTotal)
 		}
 		return renderJSON(cmd.OutOrStdout(), resp.Msg)
 	},
@@ -98,6 +113,9 @@ func init() {
 	searchCmd.Flags().StringVar(&searchCreatedAfter, "created-after", "", "RFC3339 inclusive lower bound on created_at")
 	searchCmd.Flags().StringVar(&searchCreatedBefore, "created-before", "", "RFC3339 exclusive upper bound on created_at")
 	searchCmd.Flags().StringSliceVar(&searchCategories, "categories", nil, "category filter (ANY listed category)")
+	searchCmd.Flags().BoolVar(&searchIncludeArchived, "include-archived", false, "include archived records, which are hidden by default")
+	searchCmd.Flags().BoolVar(&searchIncludeSuperseded, "include-superseded", false, "include superseded records, which are hidden by default")
+	searchCmd.Flags().BoolVar(&searchIncludeScheduled, "include-scheduled", false, "include records outside their validity window (not-yet-active AND already-expired), which are hidden by default")
 	// D-07: the second of the three exclusivity claim sites. cobra's flag
 	// groups count a *supplied* flag, not its value, so --cross-spine=false
 	// is rejected too (the search/scope+cross-spine-false baseline row) —

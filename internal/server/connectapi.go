@@ -14,11 +14,13 @@ import (
 	"connectrpc.com/connect"
 	"connectrpc.com/otelconnect"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
 	"github.com/seanb4t/engram/internal/auth"
+	"github.com/seanb4t/engram/internal/migrate"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/surfaces"
 )
@@ -52,6 +54,29 @@ func memoryToProto(m store.Memory) *engramv1.Memory {
 	if m.LastAccessedAt != nil {
 		lastAccessed = timestamppb.New(*m.LastAccessedAt)
 	}
+	// NotBefore/NotAfter/ArchivedAt are nil for the common case; leave the
+	// proto field unset rather than emitting a year-1 (0001-01-01) Timestamp.
+	// The store encodes NotBefore/NotAfter at whole-second granularity, so the
+	// outward rounding applied on the write path makes read-side rounding a
+	// no-op by construction; none is performed here.
+	var notBefore *timestamppb.Timestamp
+	if m.NotBefore != nil {
+		notBefore = timestamppb.New(*m.NotBefore)
+	}
+	var notAfter *timestamppb.Timestamp
+	if m.NotAfter != nil {
+		notAfter = timestamppb.New(*m.NotAfter)
+	}
+	var archivedAt *timestamppb.Timestamp
+	if m.ArchivedAt != nil {
+		archivedAt = timestamppb.New(*m.ArchivedAt)
+	}
+	// SummaryEgressAt is a non-pointer time.Time; IsZero() is its emit-only-
+	// if-set guard, mirroring the pointer guards above.
+	var summaryEgressAt *timestamppb.Timestamp
+	if !m.SummaryEgressAt.IsZero() {
+		summaryEgressAt = timestamppb.New(m.SummaryEgressAt)
+	}
 	return &engramv1.Memory{
 		Id: m.ID, Content: m.Content, Scope: m.Scope,
 		Repo: m.Repo, Workspace: m.Workspace, Worktree: m.Worktree, BaseDir: m.BaseDir,
@@ -66,6 +91,18 @@ func memoryToProto(m store.Memory) *engramv1.Memory {
 		LastAccessedAt: lastAccessed,
 		Kind:           m.Kind,
 		Citations:      citationsToProto(m.Citations),
+		SupersededBy:   m.SupersededBy,
+		Supersedes:     m.Supersedes,
+		NotBefore:      notBefore,
+		NotAfter:       notAfter,
+		ArchivedAt:     archivedAt,
+		// SchemaVersion/SummaryModel are assigned UNCONDITIONALLY (D-14 §3):
+		// protojson omits an unset optional field even with
+		// EmitDefaultValues set, so a conditional assignment would drop the
+		// key from every rendered JSON document for a zero-valued record.
+		SchemaVersion:   proto.Uint32(uint32(m.SchemaVersion)),
+		SummaryModel:    proto.String(m.SummaryModel),
+		SummaryEgressAt: summaryEgressAt,
 	}
 }
 
@@ -147,6 +184,42 @@ func (a *engramAPI) ListScopes(ctx context.Context, _ *connect.Request[engramv1.
 	return connect.NewResponse(resp), nil
 }
 
+// MigrateStatus is a whole-collection read RPC (07-06, D-06): any
+// AUTHENTICATED caller receives the SAME schema-version histogram
+// Store.MigrateStatus computes, with NO owner filter — "will running engram
+// migrate do work?" is a whole-collection property, and an owner-scoped
+// histogram could read zero while a large legacy backlog exists. Mirrors
+// ListScopes' shape exactly: subjectFromConnectContext for the auth check
+// (the resolved subject is discarded — no Subject parameter is passed to
+// the store), connectError(ctx, err) for the single failure mapper. This is
+// the same "any authenticated caller, no owner filter" reasoning
+// ListScopes already uses; an admin-only gate is NOT substituted here
+// because internal/authz/entities.go deliberately omits roles from the
+// principal entity (reserved for a later milestone).
+func (a *engramAPI) MigrateStatus(ctx context.Context, _ *connect.Request[engramv1.MigrateStatusRequest]) (*connect.Response[engramv1.MigrateStatusResponse], error) {
+	if _, err := subjectFromConnectContext(ctx); err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	status, err := a.d.st.MigrateStatus(ctx)
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	resp := &engramv1.MigrateStatusResponse{
+		Absent:         status.Absent,
+		FutureTotal:    status.FutureTotal,
+		Total:          status.Total,
+		CurrentVersion: int32(migrate.CurrentVersion),
+		Pending:        status.Pending(),
+	}
+	for _, b := range status.Buckets {
+		resp.Buckets = append(resp.Buckets, &engramv1.SchemaVersionBucket{Version: int32(b.Version), Count: b.Count})
+	}
+	for _, b := range status.Future {
+		resp.Future = append(resp.Future, &engramv1.SchemaVersionBucket{Version: int32(b.Version), Count: b.Count})
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // ListMemories is rewired onto the 17-06 typed core deps.listMemory (D-07):
 // every Connect field (offset/categories/visibility/exact total/cursor/
 // cursor_mode/tags/created window) survives, and Limit is passed through
@@ -211,8 +284,11 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 		// sets cursor_mode=true to bootstrap cursor paging on the tokenless first
 		// page. PageToken != "" keeps resume working whether or not the flag is
 		// re-sent. Default (both false) stays offset-for-UI (ADR engram-1frj).
-		CursorMode: req.Msg.CursorMode || req.Msg.PageToken != "",
-		CrossSpine: req.Msg.CrossSpine,
+		CursorMode:        req.Msg.CursorMode || req.Msg.PageToken != "",
+		CrossSpine:        req.Msg.CrossSpine,
+		IncludeArchived:   req.Msg.IncludeArchived,
+		IncludeSuperseded: req.Msg.IncludeSuperseded,
+		IncludeScheduled:  req.Msg.IncludeScheduled,
 	})
 	if err != nil {
 		return nil, connectError(ctx, err)
@@ -226,10 +302,14 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 	if err != nil {
 		return nil, connectError(ctx, err)
 	}
+	// approximate (field 3) is deprecated and always false since totals became
+	// exact (Count). It is deliberately NOT assigned here: false is the proto3
+	// zero value for a non-optional bool, so omitting the assignment is
+	// byte-identical on the wire while keeping this handler free of any
+	// reference to the deprecated field (staticcheck SA1019).
 	return connect.NewResponse(&engramv1.ListMemoriesResponse{
 		Memories:        shapeProtoMemories(res.Memories, req.Msg.Full, a.d.summaryMaxChars),
 		Total:           res.Total,
-		Approximate:     false,
 		NextPageToken:   res.NextToken,
 		SearchedScopes:  scopes,
 		ScopesTruncated: truncated,
@@ -270,7 +350,10 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	ms, err := a.d.searchMemory(ctx, c, coreSearchRequest{
 		Scope: req.Msg.Scope, Query: req.Msg.Query, K: k, Tags: req.Msg.Tags,
 		CreatedAfter: after, CreatedBefore: before, Categories: req.Msg.Categories,
-		CrossSpine: req.Msg.CrossSpine,
+		CrossSpine:        req.Msg.CrossSpine,
+		IncludeArchived:   req.Msg.IncludeArchived,
+		IncludeSuperseded: req.Msg.IncludeSuperseded,
+		IncludeScheduled:  req.Msg.IncludeScheduled,
 	})
 	if err != nil {
 		return nil, connectError(ctx, err)

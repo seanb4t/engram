@@ -319,6 +319,69 @@ func renderCoverageFooter(w io.Writer, crossSpine bool, searchedScopes []string,
 	return err
 }
 
+// footerLookupBudget bounds the migration-advisory footer's lookup latency
+// (07-06, T-07-19): the ceiling min(resolvedTimeout, footerLookupBudget) is
+// applied against, never the caller's full resolved --timeout, which could
+// nearly double worst-case command latency for a fact the operator did not
+// ask for. Store.MigrateStatus is three retried Qdrant requests
+// (internal/store/migrate_status.go:102, :166), so a generous second
+// budget is not cheap.
+const footerLookupBudget = 2 * time.Second
+
+// renderMigrationFooter is the advisory line search/list print when a
+// migration backlog exists (D-08), matching renderCoverageFooter's shape
+// exactly: key: value, two-space-joined when both facts are present. The
+// zero-gate lives INSIDE the helper, not at each call site, for the same
+// reason renderCoverageFooter's own doc comment gives: it makes it
+// structurally impossible for a caller to forget.
+func renderMigrationFooter(w io.Writer, pending, futureTotal uint64) error {
+	switch {
+	case pending == 0 && futureTotal == 0:
+		return nil
+	case pending > 0 && futureTotal > 0:
+		_, err := fmt.Fprintf(w, "pending_migrations: %d  future_schema_records: %d\n", pending, futureTotal)
+		return err
+	case pending > 0:
+		_, err := fmt.Fprintf(w, "pending_migrations: %d\n", pending)
+		return err
+	default:
+		_, err := fmt.Fprintf(w, "future_schema_records: %d\n", futureTotal)
+		return err
+	}
+}
+
+// migrationFooterContext derives the footer lookup's bounded context. This
+// is the ONLY place in the codebase min(resolvedTimeout, footerLookupBudget)
+// is written: a caller's shorter --timeout still wins over the ceiling
+// (the footer must never outlive the budget the operator chose for the
+// command itself), and the ceiling wins over a generous or unbounded
+// caller timeout.
+func migrationFooterContext(parent context.Context, resolvedTimeout time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(parent, min(resolvedTimeout, footerLookupBudget))
+}
+
+// migrationFooterCounts looks up the migration-status pending/future_total
+// counts for the advisory footer. It takes the RESOLVED TIMEOUT, never an
+// already-built context, and derives its own bounded context through
+// migrationFooterContext — the min() ceiling therefore lives in ONE
+// production site a unit test can drive directly, rather than being
+// recomputed, unobserved, at each call site. Runs SEQUENTIALLY after the
+// primary RPC, deriving from parent (cmd.Context()), never the primary
+// call's already-exhausted context, so a slow-but-successful primary call
+// does not automatically suppress the footer. A failed lookup returns ok
+// == false and never logs to stderr — a diagnostic that is itself broken
+// should be quiet — and the caller must treat this exactly like "no
+// backlog" for rendering purposes (renderMigrationFooter prints nothing).
+func migrationFooterCounts(parent context.Context, client engramv1connect.EngramServiceClient, resolvedTimeout time.Duration) (pending, futureTotal uint64, ok bool) {
+	ctx, cancel := migrationFooterContext(parent, resolvedTimeout)
+	defer cancel()
+	resp, err := client.MigrateStatus(ctx, connect.NewRequest(&engramv1.MigrateStatusRequest{}))
+	if err != nil {
+		return 0, 0, false
+	}
+	return resp.Msg.GetPending(), resp.Msg.GetFutureTotal(), true
+}
+
 // wrapRPCError wraps an RPC error in a *cliError whose code is
 // exitCodeForConnectErr(err) (D-10).
 func wrapRPCError(err error) error {
@@ -392,7 +455,9 @@ func renderJSON(w io.Writer, m proto.Message) error {
 
 // renderMemoryTable renders mems as a human-readable table via
 // text/tabwriter. withScore adds a SCORE column (search results carry a
-// meaningful score; list results do not).
+// meaningful score; list results do not). STATE is unconditional (D-12):
+// blank for a live record, comma-joined state words (memoryStateCell) for a
+// record carrying archived/superseded/expired/scheduled state.
 func renderMemoryTable(w io.Writer, mems []*engramv1.Memory, withScore bool) error {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	var writeErr error
@@ -403,18 +468,20 @@ func renderMemoryTable(w io.Writer, mems []*engramv1.Memory, withScore bool) err
 		_, writeErr = fmt.Fprintf(tw, format, a...)
 	}
 	if withScore {
-		writeLine("SHORT_ID\tSCOPE\tCATEGORY\tSCORE\tSUMMARY\n")
+		writeLine("SHORT_ID\tSCOPE\tCATEGORY\tSTATE\tSCORE\tSUMMARY\n")
 	} else {
-		writeLine("SHORT_ID\tSCOPE\tCATEGORY\tSUMMARY\n")
+		writeLine("SHORT_ID\tSCOPE\tCATEGORY\tSTATE\tSUMMARY\n")
 	}
+	now := time.Now()
 	for _, m := range mems {
 		summary := truncateSummary(m.GetSummary(), 80)
+		state := memoryStateCell(m, now)
 		if withScore {
-			writeLine("%s\t%s\t%s\t%.4f\t%s\n",
-				m.GetShortId(), m.GetScope(), m.GetCategory(), m.GetScore(), summary)
+			writeLine("%s\t%s\t%s\t%s\t%.4f\t%s\n",
+				m.GetShortId(), m.GetScope(), m.GetCategory(), state, m.GetScore(), summary)
 		} else {
-			writeLine("%s\t%s\t%s\t%s\n",
-				m.GetShortId(), m.GetScope(), m.GetCategory(), summary)
+			writeLine("%s\t%s\t%s\t%s\t%s\n",
+				m.GetShortId(), m.GetScope(), m.GetCategory(), state, summary)
 		}
 	}
 	if writeErr != nil {

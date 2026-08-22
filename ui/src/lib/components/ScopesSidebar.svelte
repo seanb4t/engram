@@ -6,15 +6,28 @@
   import { Select } from '$lib/components/ui/select';
   import { Skeleton } from '$lib/components/ui/skeleton';
   import ScopeChip from './ScopeChip.svelte';
-  let { scopes, activeScope, categories, visibility, loading = false, error = null, onscope, onfilter }: {
+  let {
+    scopes, activeScope, categories, visibility,
+    includeArchived, includeSuperseded, includeScheduled,
+    loading = false, error = null, onscope, onfilter, oninclude
+  }: {
     scopes: ScopeCount[]; activeScope: string; categories: Category[]; visibility: Visibility;
+    includeArchived: boolean; includeSuperseded: boolean; includeScheduled: boolean;
     loading?: boolean; error?: unknown; onscope: (s: string) => void; onfilter: (c: Category[], v: Visibility) => void;
+    oninclude: (archived: boolean, superseded: boolean, scheduled: boolean) => void;
   } = $props();
   const allCats: Category[] = ['convention', 'gotcha', 'decision', 'preference'];
   function toggleCat(c: Category) {
     onfilter(categories.includes(c) ? categories.filter((x) => x !== c) : [...categories, c], visibility);
   }
   const visOptions = [{ value: '', label: 'all' }, { value: 'private', label: 'private' }, { value: 'shared', label: 'shared' }];
+  function toggleInclude(flag: 'archived' | 'superseded' | 'scheduled') {
+    oninclude(
+      flag === 'archived' ? !includeArchived : includeArchived,
+      flag === 'superseded' ? !includeSuperseded : includeSuperseded,
+      flag === 'scheduled' ? !includeScheduled : includeScheduled
+    );
+  }
 </script>
 
 <div class="w-[240px] shrink-0 border-r border-border p-3 flex flex-col gap-1 overflow-y-auto">
@@ -38,4 +51,14 @@
   {/each}
   <div class="mt-2 text-[10px] uppercase text-muted-foreground">visibility</div>
   <Select value={visibility} options={visOptions} ariaLabel="visibility" onValueChange={(v) => onfilter(categories, v as Visibility)} />
+  <div class="mt-2 text-[10px] uppercase text-muted-foreground">state</div>
+  <label class="flex items-center gap-2 text-sm">
+    <Checkbox checked={includeArchived} onCheckedChange={() => toggleInclude('archived')} aria-label="include archived" />include archived
+  </label>
+  <label class="flex items-center gap-2 text-sm">
+    <Checkbox checked={includeSuperseded} onCheckedChange={() => toggleInclude('superseded')} aria-label="include superseded" />include superseded
+  </label>
+  <label class="flex items-center gap-2 text-sm">
+    <Checkbox checked={includeScheduled} onCheckedChange={() => toggleInclude('scheduled')} aria-label="include scheduled" />include scheduled
+  </label>
 </div>

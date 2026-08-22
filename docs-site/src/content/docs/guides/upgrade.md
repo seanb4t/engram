@@ -139,14 +139,15 @@ settable via `ENGRAM_TIMEOUT`), bounding the RPC call with a real deadline.
 Default: `30s`. A value of `0` is rejected as a usage error (exit `2`) — it
 does **not** mean "unbounded."
 
-**This is the opposite convention from four of the six operator commands'
-own `--timeout`** (`reindex`, `prune-expired`, `summarize-missing`,
-`backfill-short-ids`, where `0` still disables the deadline, unchanged).
-It matches `migrate-remap-owner`/`migrate-set-owner`'s own `--timeout` as
-of this release (see #6 below). Same flag name, different zero-semantics
-across three groups of commands — a reader must not have to infer it. See
-[Request timeout](/guides/cli/#request-timeout) for the full comparison
-table.
+**This is the opposite convention from most of the operator tier's own
+`--timeout`.** The rule: `0` still disables the deadline on every operator
+command EXCEPT `migrate-remap-owner`/`migrate-set-owner`, which reject it
+as of this release (see #6 below) — the same rule the new client
+`--timeout` above also follows. Same flag name, different zero-semantics
+across groups of commands — a reader must not have to infer it, and the
+group membership grows as new operator commands ship, so it is not
+re-enumerated here. See [Request timeout](/guides/cli/#request-timeout)
+for the live, three-group comparison table.
 
 **Who should act:** any client-side script invoking `search`/`list`/`store`
 with no explicit `--timeout` gets a new 30-second ceiling it did not have
@@ -310,6 +311,62 @@ and docs surfaces but not Go test files under `internal/`, which is exactly wher
 a numeric exit-code assertion is most likely to live. If you maintain a fork,
 grep your own test suites, not just your scripts.
 
+### 12. Records now carry a `schema_version` stamp
+
+Every record written from this release carries a `schema_version` payload
+key, an integer stamped by the server on every write. A record written
+before this release has no such key — it reads as version `0`, exactly the
+same as a record explicitly stamped at version `0`. **No backfill is
+required and none is offered**: recall behaviour is unchanged for those
+records, and nothing you do today is affected by this field's existence.
+
+`schema_version` is visible on `full=true` recall and on `get_memory`
+responses; it is never used to filter or gate what recall returns.
+
+**The rollback hazard.** If you run a binary *older* than a record's stored
+`schema_version` and that binary edits the record, the record keeps its
+higher version stamp, but the payload was rebuilt from the older binary's
+struct — so any key only a newer version knows about is dropped from that
+rewrite. This is safe: schema evolution in this project is additive-only,
+so anything lost this way is always re-derivable, and the recovery is to
+re-run the migration sweep against the affected record: `engram migrate
+--apply`. See the [migration guide](/guides/migrate/) for the full
+procedure, including `migrate status` for checking whether any record needs
+it. The hazard is only reachable if you deliberately roll a binary backward
+across a schema change and it then edits a record — reads and recall of a
+newer-stamped record are always safe on any binary.
+
+`engram reindex` copies payloads verbatim from source to target and
+therefore does **not** advance a record's `schema_version` — reindexing is
+not a migration, and it is a separate mechanism from the sweep above.
+
+**Who should act:** nobody. This is purely additive, forward-looking
+groundwork; no existing behavior changes.
+
+### 13. `backfill-short-ids --dry-run` is removed; it now previews by default, like `migrate-remap-owner` (#10) and `engram migrate`
+
+`backfill-short-ids` is now a thin delegating alias onto the SAME v0->v1
+schema-version sweep `engram migrate` runs. Like `migrate-remap-owner`
+(#10 above), it drops its own `--dry-run` flag and adopts the same
+preview-by-default / `--apply`-to-write contract every mutating operator
+command now shares: a bare invocation PREVIEWS the count of records it
+would backfill and exits `0` without writing; `--apply` performs the
+backfill. Before this release, a bare invocation APPLIED immediately.
+`--dry-run` no longer exists on this command — passing it now fails with
+an unknown-flag usage error (exit `2`).
+
+`--timeout` is preserved, unchanged, with the same `5m` default and "`0`
+disables the deadline" semantics it already shipped — it is not part of
+this behavior break.
+
+The command is soft-deprecated (`engram backfill-short-ids --help` now
+shows a deprecation notice) toward `engram migrate`, the command it
+delegates to — it is never hard-removed.
+
+**Who should act:** any operator who scripts bare `backfill-short-ids`
+expecting it to apply. Add `--apply` to restore the previous behavior, or
+switch to `engram migrate`.
+
 ---
 
 ## v0.7.10 — Recall returns summaries by default
@@ -398,11 +455,13 @@ Recall output (`search_memory`, `list_memory`) includes both `id` and `short_id`
 ### Backfilling existing records
 
 Memories created before this feature was enabled do not have a `short_id`. Backfill
-them with the operator command. Preview first, then apply:
+them with the operator command. A bare invocation previews; `--apply` performs the
+backfill (see Unreleased #13 above — `--dry-run` is removed and this command now
+delegates to `engram migrate`):
 
 ```sh
-engram backfill-short-ids --dry-run          # run this first: preview without writing
-engram backfill-short-ids                    # apply to all memories
+engram backfill-short-ids                    # preview: no writes
+engram backfill-short-ids --apply            # apply to all memories
 engram backfill-short-ids --timeout 5m       # custom wall-clock limit
 ```
 

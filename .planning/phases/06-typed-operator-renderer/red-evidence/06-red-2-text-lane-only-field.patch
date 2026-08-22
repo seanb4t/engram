@@ -1,0 +1,11 @@
+diff --git a/cmd/engram/operator_view.go b/cmd/engram/operator_view.go
+--- a/cmd/engram/operator_view.go
++++ b/cmd/engram/operator_view.go
+@@ -103,6 +103,7 @@ func viewFields(doc any) ([]viewField, error) {
+ 		}
+ 		fields = append(fields, field)
+ 	}
++	fields = append(fields, viewField{Key: "rendered_at", Label: humanizeKey("rendered_at"), Value: "text-lane only"})
+ 	return fields, nil
+ }
+ 

@@ -7,16 +7,16 @@
       "summary": "Assign a short_id to every memory that lacks one (payload-only; no re-embed)",
       "flags": [
         {
-          "name": "dry-run",
+          "name": "apply",
           "type": "bool",
           "default": "false",
-          "usage": "count records missing a short_id without writing"
+          "usage": "a mutating operator command previews by default and mutates only when apply is set"
         },
         {
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "timeout",
@@ -27,6 +27,48 @@
       ],
       "blast_radius": {
         "read_only": false,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "get",
+      "summary": "Fetch one memory by id or short id and render its full state",
+      "flags": [
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": true,
         "destructive": false,
         "idempotent": true,
         "open_world": false
@@ -71,6 +113,24 @@
           "type": "bool",
           "default": "false",
           "usage": "return full content instead of summaries"
+        },
+        {
+          "name": "include-archived",
+          "type": "bool",
+          "default": "false",
+          "usage": "include archived records, which are hidden by default"
+        },
+        {
+          "name": "include-scheduled",
+          "type": "bool",
+          "default": "false",
+          "usage": "include records outside their validity window (not-yet-active AND already-expired), which are hidden by default"
+        },
+        {
+          "name": "include-superseded",
+          "type": "bool",
+          "default": "false",
+          "usage": "include superseded records, which are hidden by default"
         },
         {
           "name": "insecure",
@@ -147,6 +207,96 @@
       }
     },
     {
+      "name": "migrate",
+      "summary": "Preview or apply the pending forward schema-version sweep",
+      "flags": [
+        {
+          "name": "apply",
+          "type": "bool",
+          "default": "false",
+          "usage": "a mutating operator command previews by default and mutates only when apply is set"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "5m0s",
+          "usage": "max wall-clock (0 disables); also cancellable via Ctrl-C"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "migrate revert",
+      "summary": "Preview or apply a reverse schema-version walk, refusing any irreversible range whole",
+      "flags": [
+        {
+          "name": "apply",
+          "type": "bool",
+          "default": "false",
+          "usage": "a mutating operator command previews by default and mutates only when apply is set"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "5m0s",
+          "usage": "max wall-clock (0 disables); also cancellable via Ctrl-C"
+        },
+        {
+          "name": "to",
+          "type": "int",
+          "default": "0",
+          "usage": "target schema version to revert down to (required)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": true,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "migrate status",
+      "summary": "Report a server-side schema-version distribution histogram",
+      "flags": [
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "5m0s",
+          "usage": "max wall-clock (0 disables); also cancellable via Ctrl-C"
+        }
+      ],
+      "blast_radius": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
       "name": "migrate-remap-owner",
       "summary": "Re-stamp record owner across the collection (sub-\u003eemail, email-\u003eemail, owner-less, or anonymous bucket)",
       "flags": [
@@ -154,7 +304,7 @@
           "name": "apply",
           "type": "bool",
           "default": "false",
-          "usage": "a destructive operator command previews by default and mutates only when apply is set"
+          "usage": "a mutating operator command previews by default and mutates only when apply is set"
         },
         {
           "name": "from",
@@ -178,7 +328,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "timeout",
@@ -208,7 +358,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "owner",
@@ -231,6 +381,48 @@
       }
     },
     {
+      "name": "migration-status",
+      "summary": "Report the server's schema-version migration status",
+      "flags": [
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
       "name": "prune-expired",
       "summary": "Delete memories whose validity window (not_after) has lapsed",
       "flags": [
@@ -238,7 +430,7 @@
           "name": "apply",
           "type": "bool",
           "default": "false",
-          "usage": "a destructive operator command previews by default and mutates only when apply is set"
+          "usage": "a mutating operator command previews by default and mutates only when apply is set"
         },
         {
           "name": "older-than",
@@ -250,7 +442,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "timeout",
@@ -280,7 +472,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "resume",
@@ -347,6 +539,24 @@
           "type": "bool",
           "default": "false",
           "usage": "return full content instead of summaries"
+        },
+        {
+          "name": "include-archived",
+          "type": "bool",
+          "default": "false",
+          "usage": "include archived records, which are hidden by default"
+        },
+        {
+          "name": "include-scheduled",
+          "type": "bool",
+          "default": "false",
+          "usage": "include records outside their validity window (not-yet-active AND already-expired), which are hidden by default"
+        },
+        {
+          "name": "include-superseded",
+          "type": "bool",
+          "default": "false",
+          "usage": "include superseded records, which are hidden by default"
         },
         {
           "name": "insecure",
@@ -525,7 +735,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "timeout",
@@ -561,7 +771,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "scope",
@@ -603,7 +813,7 @@
           "name": "apply",
           "type": "bool",
           "default": "false",
-          "usage": "a destructive operator command previews by default and mutates only when apply is set"
+          "usage": "a mutating operator command previews by default and mutates only when apply is set"
         },
         {
           "name": "category",
@@ -627,7 +837,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "scope",
@@ -669,7 +879,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "timeout",
@@ -693,13 +903,13 @@
           "name": "all-scopes",
           "type": "bool",
           "default": "false",
-          "usage": "sweep every scope (required if --scope is omitted)"
+          "usage": "sweep every scope (required if --scope is omitted); mutually exclusive with --scope; a sweep requires an explicit --scope or --all-scopes: name one scope, or opt into every scope"
         },
         {
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "scope",
@@ -729,7 +939,7 @@
           "name": "all-scopes",
           "type": "bool",
           "default": "false",
-          "usage": "sweep every scope (required if --scope is omitted)"
+          "usage": "sweep every scope (required if --scope is omitted); mutually exclusive with --scope; a sweep requires an explicit --scope or --all-scopes: name one scope, or opt into every scope"
         },
         {
           "name": "fail-on",
@@ -741,7 +951,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "scope",
@@ -873,7 +1083,7 @@
           "name": "all-scopes",
           "type": "bool",
           "default": "false",
-          "usage": "sweep every scope (required if --scope is omitted)"
+          "usage": "sweep every scope (required if --scope is omitted); mutually exclusive with --scope; a sweep requires an explicit --scope or --all-scopes: name one scope, or opt into every scope"
         },
         {
           "name": "dry-run",
@@ -897,7 +1107,7 @@
           "name": "output",
           "type": "string",
           "default": "",
-          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json"
         },
         {
           "name": "scope",

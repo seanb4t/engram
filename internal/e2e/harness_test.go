@@ -27,10 +27,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/qdrant/go-client/qdrant"
 	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
+
+	"github.com/seanb4t/engram/internal/store"
 )
 
 // engramBin is the binary under test, built once by TestMain. Always non-empty
@@ -42,6 +46,49 @@ var engramBin string
 // Docker is unavailable (Qdrant-backed tests then skip, or fail under
 // ENGRAM_REQUIRE_QDRANT — mirroring internal/server and internal/store).
 var testQdrantAddr string
+
+// testQdrantContainerBooted records whether TestMain booted its OWN
+// testcontainer for this run, as opposed to taking the ENGRAM_QDRANT_TEST_ADDR
+// fast path onto a shared instance. Set true only inside the testcontainer
+// branch, immediately after the container's gRPC endpoint resolves; the env-var
+// branch leaves it false. TestSharedQdrantAddressHonored asserts on it directly
+// so "the CI test job uses one shared Qdrant" is a checkable claim rather than
+// an inference from logs (CONTEXT.md D-20).
+var testQdrantContainerBooted bool
+
+// testCollectionPrefix namespaces this package's integration-test Qdrant
+// collection names so a single shared Qdrant instance (CI's
+// ENGRAM_QDRANT_TEST_ADDR path) can host every Qdrant-backed package's test
+// suite concurrently without cross-package name collisions (CONTEXT.md D-16).
+// This package already generated collision-safe per-port names before this
+// constant existed (startServer's "e2e_" + port); the constant makes that
+// namespace the single source of truth rather than a comment about a literal
+// elsewhere in the line.
+const testCollectionPrefix = "e2e_"
+
+// testCollection returns name namespaced into this package's collection space
+// on the shared test Qdrant instance.
+func testCollection(name string) string {
+	return testCollectionPrefix + name
+}
+
+// newTestStore is the prefix-enforcing construction seam for every test Store
+// built against a real Qdrant instance in this package. It asserts name
+// carries this package's testCollectionPrefix before constructing the store,
+// so a collection name that skips testCollection() fails the test naming the
+// offending value — a runtime assertion a source-level check could be routed
+// around, but a t.Fatalf inside the one function every test store is built by
+// cannot (CONTEXT.md D-16, plan 01-05). spine_review_test.go's
+// newSpineReviewStore is this package's only direct store.New call site;
+// startServer's ENGRAM_QDRANT_COLLECTION path constructs its store inside the
+// built binary's own subprocess, outside this seam's reach.
+func newTestStore(t testing.TB, c *qdrant.Client, name string) *store.Store {
+	t.Helper()
+	if !strings.HasPrefix(name, testCollectionPrefix) {
+		t.Fatalf("collection name %q does not carry this package's prefix %q: route it through testCollection()", name, testCollectionPrefix)
+	}
+	return store.New(c, name)
+}
 
 // requireQdrant mirrors internal/server's helper: ENGRAM_REQUIRE_QDRANT makes a
 // missing Qdrant fatal rather than a skip, so CI cannot go green with this tier
@@ -110,6 +157,7 @@ func TestMain(m *testing.M) {
 		_ = os.RemoveAll(tmp)
 		os.Exit(1)
 	}
+	testQdrantContainerBooted = true
 	code := m.Run()
 	terminateQdrant(container)
 	_ = os.RemoveAll(tmp)
@@ -132,6 +180,26 @@ func skipOrFailNoQdrant(t *testing.T) {
 		t.Fatal("no Qdrant available and ENGRAM_REQUIRE_QDRANT is set: failing instead of skipping")
 	}
 	t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
+}
+
+// TestSharedQdrantAddressHonored proves this package took the CI shared-Qdrant
+// fast path rather than booting its own testcontainer, whenever
+// ENGRAM_QDRANT_TEST_ADDR is set. Address equality alone is not enough — a
+// package could boot a container and coincidentally resolve the same address —
+// so the load-bearing assertion is testQdrantContainerBooted == false
+// (CONTEXT.md D-20). Skips (does not fail) when the env var is unset: a
+// developer running locally without it is not the case this test is about.
+func TestSharedQdrantAddressHonored(t *testing.T) {
+	addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR")
+	if addr == "" {
+		t.Skip("ENGRAM_QDRANT_TEST_ADDR not set: this test only asserts the shared-instance path")
+	}
+	if testQdrantAddr != addr {
+		t.Errorf("testQdrantAddr = %q, want %q (shared CI Qdrant address not honored)", testQdrantAddr, addr)
+	}
+	if testQdrantContainerBooted {
+		t.Error("testQdrantContainerBooted = true, want false: ENGRAM_QDRANT_TEST_ADDR was set but this package booted its own testcontainer anyway")
+	}
 }
 
 // childEnv builds the subprocess environment from SCRATCH rather than extending
@@ -240,6 +308,11 @@ type serverProc struct {
 // endpoint is the MCP transport URL.
 func (s *serverProc) endpoint() string { return "http://" + s.addr + "/mcp" }
 
+// baseURL is the server's HTTP origin, used by console_browser_test.go to
+// reach the Connect API and the /ui/ static mount directly (neither goes
+// through the MCP transport, so endpoint() does not apply).
+func (s *serverProc) baseURL() string { return "http://" + s.addr }
+
 // startServer launches `engram serve` with a controlled environment and waits
 // for it to accept connections. extraEnv is merged over the baseline (and may
 // override it) so a test can vary a single variable.
@@ -254,7 +327,7 @@ func startServer(t *testing.T, extraEnv map[string]string) *serverProc {
 
 	env := map[string]string{
 		"ENGRAM_QDRANT_ADDR":       testQdrantAddr,
-		"ENGRAM_QDRANT_COLLECTION": "e2e_" + strconv.FormatInt(int64(port), 10),
+		"ENGRAM_QDRANT_COLLECTION": testCollection(strconv.FormatInt(int64(port), 10)),
 		"ENGRAM_EMBED_DIM":         "1024",
 		"ENGRAM_LISTEN_ADDR":       addr,
 		"ENGRAM_OPENAI_BASE_URL":   embed.URL,

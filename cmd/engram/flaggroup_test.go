@@ -450,3 +450,77 @@ func TestEveryDeclaredExclusivityHasAFlagGroup(t *testing.T) {
 		t.Fatalf("checked %d claimed pairs, want at least 4 — the command-tree walk did not reach enough flags", checked)
 	}
 }
+
+// TestEveryScopeAllScopesPairHasAFlagGroup is the missing REVERSE direction
+// of TestEveryDeclaredExclusivityHasAFlagGroup above: that gate only fires
+// when a flag's Usage text CLAIMS mutual exclusivity without a backing flag
+// group. It is silent when a command declares both --scope and --all-scopes
+// but never states the constraint in prose at all -- exactly the shape that
+// let WR-01 (round 2, 06-REVIEW.md) recur: summarize-missing registered
+// both flags with the identical silent-narrowing hazard as
+// scan/verify/purge/consolidate (opts.AllScopes is read nowhere once both
+// flags are supplied, so --scope silently wins), but never called
+// MarkFlagsMutuallyExclusive, and no existing test caught it.
+//
+// This walks the LIVE cobra command tree (walkCommands(rootCmd,
+// commandWalkSkip)) rather than a hand-maintained list of command names --
+// a hand-listed expectation is exactly the defect that let the bug recur
+// once already (WR-01 round 1 fixed 4 of 5 sites; a 5th, added or
+// discovered later, would again go unnoticed by a fixed list). Any command
+// that registers both flags, present or future, is required to declare the
+// group.
+//
+// It also closes the THIRD direction of the invariant (06-REVIEW.md IN-01):
+// group exists -> usage states it. TestEveryDeclaredExclusivityHasAFlagGroup
+// covers usage-claims -> group-exists; the loop above covers pair-declared ->
+// group-exists; neither, individually or combined, would have failed on
+// WR-01 (round 3): summarize-missing's flag group was real
+// (MarkFlagsMutuallyExclusive("scope", "all-scopes")) and both flags were
+// declared, but --all-scopes's Usage never said so, so an operator running
+// `--help` alone had no way to learn the constraint short of hitting the
+// runtime rejection. The subtest below fires only once a real group is
+// confirmed (declaredGroupCoversPair == true) and requires at least one of
+// the pair's two Usage strings to contain "mutually exclusive" --
+// deliberately reusing flagsClaimedMutuallyExclusive's own substring check
+// rather than a new matcher, and tolerant of either phrasing already live in
+// this codebase (scan/verify/purge/summarize-missing's "; mutually exclusive
+// with --scope" and consolidate's "(mutually exclusive with --scope)") since
+// flagsClaimedMutuallyExclusive only tests for the substring "mutually
+// exclusive", not the surrounding punctuation.
+func TestEveryScopeAllScopesPairHasAFlagGroup(t *testing.T) {
+	checked := 0
+	for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {
+		cmd := cmd
+		scope := cmd.Flags().Lookup("scope")
+		allScopes := cmd.Flags().Lookup("all-scopes")
+		if scope == nil || allScopes == nil {
+			continue
+		}
+		checked++
+		t.Run(commandKey(cmd), func(t *testing.T) {
+			if !declaredGroupCoversPair(scope, "scope", "all-scopes") {
+				t.Errorf("%s declares both --scope and --all-scopes but no declared cobra flag group "+
+					"(MarkFlagsMutuallyExclusive(\"scope\", \"all-scopes\")) covers the pair — supplying "+
+					"both together is silently accepted", cmd.Name())
+				return
+			}
+			scopeClaims := len(flagsClaimedMutuallyExclusive(scope.Usage)) > 0
+			allScopesClaims := len(flagsClaimedMutuallyExclusive(allScopes.Usage)) > 0
+			if !scopeClaims && !allScopesClaims {
+				t.Errorf("%s declares a real --scope/--all-scopes flag group, but neither flag's Usage "+
+					"text states the constraint (no \"mutually exclusive\" phrase found) — an operator "+
+					"running --help alone cannot learn this", cmd.Name())
+			}
+		})
+	}
+	// Derived set at the time this test was written: spine-review scan,
+	// spine-review verify, spine-review purge, spine-review consolidate,
+	// summarize-missing. This lower bound is a sanity check on the walk
+	// itself (catching a broken walkCommands call), not an enumeration the
+	// test relies on -- the loop above covers whatever the live tree has,
+	// not this list.
+	if checked < 5 {
+		t.Fatalf("checked %d commands declaring both --scope and --all-scopes, want at least 5 — "+
+			"the command-tree walk did not reach enough commands", checked)
+	}
+}

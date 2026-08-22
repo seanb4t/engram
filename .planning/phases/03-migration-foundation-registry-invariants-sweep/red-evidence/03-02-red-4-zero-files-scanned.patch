@@ -1,0 +1,13 @@
+diff --git a/internal/migrate/leafpurity_test.go b/internal/migrate/leafpurity_test.go
+index 91f2f983..3051cfbb 100644
+--- a/internal/migrate/leafpurity_test.go
++++ b/internal/migrate/leafpurity_test.go
+@@ -68,7 +68,7 @@ func modulePath(t *testing.T) string {
+ // an independent, out-of-band cross-check — deliberately a separate
+ // derivation from this AST scan, not a duplicate of it.
+ func TestMigratePackageIsStdlibOnlyLeaf(t *testing.T) {
+-	files := nonTestGoFiles(t, ".")
++	files := nonTestGoFiles(t, "does-not-exist-zzz")
+ 	if len(files) == 0 {
+ 		t.Fatal("scanned zero non-test .go files in internal/migrate — a scan matching nothing is vacuously green, and this milestone has already shipped exactly that defect once (durable record x6v6qxqd6f); this is a defect in the scan, not evidence the package is pure")
+ 	}

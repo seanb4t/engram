@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -151,7 +150,11 @@ type consolidatePairDoc struct {
 // applied" (field absent, via omitempty on a nil pointer) from "filtered
 // at exactly 0" (field present with value 0) — the same distinction
 // NearDuplicateOptions.MinScore exists to make representable at the store
-// layer.
+// layer. Under D-01 (06-CONTEXT.md) this struct is the sole
+// serialization, so that absent key IS the "no filter applied" signal in
+// BOTH lanes together; the human-facing explanation of what the absence
+// means lives in consolidateSummary's headline, never as a second
+// rendering rule here.
 type consolidateReportDoc struct {
 	Scope      string               `json:"scope"`
 	AllScopes  bool                 `json:"all_scopes"`
@@ -180,31 +183,37 @@ func consolidateDoc(pairs []store.DuplicatePair, scope string, allScopes bool, m
 	return doc
 }
 
-// consolidateSummary renders the operator-facing text report. Pure (value
+// consolidateSummary renders the operator-facing headline. Pure (value
 // types only — no *store.Store, no context.Context) so it is unit-testable
 // without a live Qdrant, mirroring reindexSummary's/spineScanSummary's
-// discipline. States plainly, in the header, that these are ranked
-// candidates, never duplicates, and that consolidate never merges or
-// mutates — the report's meaning is stated in the output itself, not just
-// in the CLI guide.
+// discipline. Per D-04 (06-CONTEXT.md) this is a headline producer only:
+// states plainly that these are ranked candidates, never duplicates, and
+// that consolidate never merges or mutates — the report's meaning is
+// stated in the output itself, not just in the CLI guide. Returns a
+// single line with no trailing newline; the per-pair rows this function
+// used to also print now render only as renderOperatorView's field-table
+// rows, from consolidateDoc.
+//
+// When minScore is nil, the headline also states that no min_score filter
+// was applied and that negative-scoring pairs are therefore reported —
+// preserving the nuance the deleted min_score line used to carry. When
+// minScore is non-nil, the headline says nothing about it at all: the
+// threshold now lives solely in the min_score json key
+// (consolidateReportDoc.MinScore's pointer-plus-omitempty design already
+// makes the key's presence-or-absence the signal in both lanes, per D-01
+// — restating the value in the headline would be a second rendering
+// rule).
 func consolidateSummary(pairs []store.DuplicatePair, scope string, allScopes bool, minScore *float32, topK, scanned, queried uint64) string {
 	target := fmt.Sprintf("scope=%q", scope)
 	if allScopes {
 		target = "all scopes"
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "spine consolidate (%s) top_k=%d scanned=%d queried=%d: %d ranked candidate(s) — "+
-		"NOT duplicates, never merged or mutated; a pair may cross scopes\n", target, topK, scanned, queried, len(pairs))
-	if minScore != nil {
-		fmt.Fprintf(&b, "  min_score=%g\n", *minScore)
-	} else {
-		b.WriteString("  min_score=(none — no filter applied; negative-scoring pairs are reported)\n")
+	headline := fmt.Sprintf("spine consolidate (%s) top_k=%d scanned=%d queried=%d: %d ranked candidate(s) — "+
+		"NOT duplicates, never merged or mutated; a pair may cross scopes", target, topK, scanned, queried, len(pairs))
+	if minScore == nil {
+		headline += " — no min_score filter applied; negative-scoring pairs are reported"
 	}
-	for _, p := range pairs {
-		fmt.Fprintf(&b, "  score=%g a=%s (short_id=%s scope=%q) b=%s (short_id=%s scope=%q)\n",
-			p.Score, p.A, p.AShortID, p.AScope, p.B, p.BShortID, p.BScope)
-	}
-	return strings.TrimRight(b.String(), "\n")
+	return headline
 }
 
 func init() {

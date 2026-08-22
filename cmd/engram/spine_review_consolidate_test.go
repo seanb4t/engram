@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"strings"
@@ -258,15 +259,15 @@ func TestConsolidateDocEmptyCandidatesMarshalsEmptyArray(t *testing.T) {
 }
 
 // TestConsolidateRowNamesBothScopes proves a cross-scope pair's row names
-// both scopes in text mode, and carries both as distinct JSON fields.
+// both scopes: the json document carries them as distinct fields, and the
+// rendered view's candidate row line -- which viewRow builds from those
+// same json fields -- carries both, structurally rather than via a
+// hand-written summary sentence. R1 (06-01-PLAN.md §Conversion Rules)
+// moved per-pair detail out of consolidateSummary entirely, so
+// consolidateSummary itself is no longer where "both scopes" is asserted.
 func TestConsolidateRowNamesBothScopes(t *testing.T) {
 	pairs := []store.DuplicatePair{
 		{A: "id-a", B: "id-b", AShortID: "sa", BShortID: "sb", AScope: "scope-a", BScope: "scope-b", Score: 0.9},
-	}
-
-	text := consolidateSummary(pairs, "", true, nil, 5, 2, 2)
-	if !strings.Contains(text, "scope-a") || !strings.Contains(text, "scope-b") {
-		t.Errorf("text = %q, want both scopes named", text)
 	}
 
 	doc := consolidateDoc(pairs, "", true, nil, 5, 2, 2)
@@ -277,23 +278,40 @@ func TestConsolidateRowNamesBothScopes(t *testing.T) {
 	if !strings.Contains(string(b), `"a_scope":"scope-a"`) || !strings.Contains(string(b), `"b_scope":"scope-b"`) {
 		t.Errorf("marshaled doc = %s, want both scope fields as distinct JSON fields", b)
 	}
+
+	var buf bytes.Buffer
+	if err := renderOperatorView(&buf, consolidateSummary(pairs, "", true, nil, 5, 2, 2), doc); err != nil {
+		t.Fatalf("renderOperatorView: %v", err)
+	}
+	rendered := buf.String()
+	if !strings.Contains(rendered, "scope-a") || !strings.Contains(rendered, "scope-b") {
+		t.Errorf("rendered view = %q, want the candidate row to name both scopes", rendered)
+	}
 }
 
 // TestConsolidateNeverLabelsPairAsDuplicateOrCluster proves no per-pair
-// row (text or JSON) carries a duplicate/cluster/group verdict label. The
-// text header's own "NOT duplicates" disclaimer is deliberately excluded
-// from this check -- stating the report's meaning plainly is required
-// (see the CLI guide); labelling an individual CANDIDATE ROW a verdict is
-// what is forbidden.
+// row (rendered view or json) carries a duplicate/cluster/group verdict
+// label. consolidateSummary's own "NOT duplicates" disclaimer is
+// deliberately excluded from this check -- stating the report's meaning
+// plainly is required (see the CLI guide); labelling an individual
+// CANDIDATE ROW a verdict is what is forbidden. Per-pair detail now lives
+// only in the rendered view's candidate rows (R1 moved it out of
+// consolidateSummary), so this checks those rows rather than summary
+// text.
 func TestConsolidateNeverLabelsPairAsDuplicateOrCluster(t *testing.T) {
 	pairs := []store.DuplicatePair{
 		{A: "id-a", B: "id-b", AShortID: "sa", BShortID: "sb", AScope: "s", BScope: "s", Score: 0.99},
 	}
 
-	text := consolidateSummary(pairs, "s", false, nil, 5, 2, 2)
-	for _, line := range strings.Split(text, "\n") {
-		if !strings.HasPrefix(strings.TrimSpace(line), "score=") {
-			continue // only candidate rows are under test here
+	doc := consolidateDoc(pairs, "s", false, nil, 5, 2, 2)
+	var buf bytes.Buffer
+	if err := renderOperatorView(&buf, consolidateSummary(pairs, "s", false, nil, 5, 2, 2), doc); err != nil {
+		t.Fatalf("renderOperatorView: %v", err)
+	}
+	for _, line := range strings.Split(buf.String(), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "a=") {
+			continue // only candidate rows (viewRow's "a=... b=..." shape) are under test here
 		}
 		lower := strings.ToLower(line)
 		for _, bad := range []string{"duplicate", "cluster", "group"} {
@@ -303,7 +321,6 @@ func TestConsolidateNeverLabelsPairAsDuplicateOrCluster(t *testing.T) {
 		}
 	}
 
-	doc := consolidateDoc(pairs, "s", false, nil, 5, 2, 2)
 	b, err := json.Marshal(doc)
 	if err != nil {
 		t.Fatalf("json.Marshal: %v", err)
@@ -316,17 +333,70 @@ func TestConsolidateNeverLabelsPairAsDuplicateOrCluster(t *testing.T) {
 	}
 }
 
-// TestConsolidateSummaryMinScoreRendering pins the pure formatter's
-// min-score line for both the no-filter and filtered states.
+// TestConsolidateSummaryMinScoreRendering pins the pure headline's
+// min-score clause: present (naming "no min_score filter applied") only
+// when minScore is nil; absent when minScore is non-nil -- the filtered
+// case now states the threshold only via the min_score json key, never
+// restated in the headline (R1/R2, 06-01-PLAN.md §Conversion Rules).
 func TestConsolidateSummaryMinScoreRendering(t *testing.T) {
 	noFilter := consolidateSummary(nil, "s", false, nil, 5, 0, 0)
-	if !strings.Contains(noFilter, "no filter applied") {
-		t.Errorf("no-MinScore summary = %q, want it to state no filter is applied", noFilter)
+	if !strings.Contains(noFilter, "no min_score filter applied") {
+		t.Errorf("no-MinScore summary = %q, want it to state no min_score filter is applied", noFilter)
+	}
+	if strings.Contains(noFilter, "\n") {
+		t.Errorf("consolidateSummary result contains a newline, want a single line: %q", noFilter)
 	}
 
 	threshold := float32(0.5)
 	filtered := consolidateSummary(nil, "s", false, &threshold, 5, 0, 0)
-	if !strings.Contains(filtered, "min_score=0.5") {
-		t.Errorf("MinScore=0.5 summary = %q, want it to state the threshold", filtered)
+	if strings.Contains(filtered, "min_score") {
+		t.Errorf("MinScore=0.5 summary = %q, want no min_score mention in the headline (the value lives in the min_score json key)", filtered)
+	}
+	if strings.Contains(filtered, "\n") {
+		t.Errorf("consolidateSummary result contains a newline, want a single line: %q", filtered)
+	}
+}
+
+// TestConsolidateMinScoreOmitemptySymmetry proves the omitempty symmetry
+// at the rendered level (D-01, 06-CONTEXT.md): a nil minScore drops the
+// min_score key from BOTH the json document and the rendered view
+// together -- the rendered view carries exactly one fewer top-level field
+// line than the non-nil case.
+func TestConsolidateMinScoreOmitemptySymmetry(t *testing.T) {
+	threshold := float32(0.5)
+	withFilter := consolidateDoc(nil, "s", false, &threshold, 5, 0, 0)
+	withoutFilter := consolidateDoc(nil, "s", false, nil, 5, 0, 0)
+
+	b, err := json.Marshal(withoutFilter)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if strings.Contains(string(b), "min_score") {
+		t.Errorf("marshaled doc = %s, want no min_score key when minScore is nil", b)
+	}
+
+	withFilterKeys, err := jsonTopLevelKeys(withFilter)
+	if err != nil {
+		t.Fatalf("jsonTopLevelKeys: %v", err)
+	}
+	withoutFilterKeys, err := jsonTopLevelKeys(withoutFilter)
+	if err != nil {
+		t.Fatalf("jsonTopLevelKeys: %v", err)
+	}
+	if got, want := len(withoutFilterKeys), len(withFilterKeys)-1; got != want {
+		t.Errorf("len(jsonTopLevelKeys(nil-minScore doc)) = %d, want %d (one fewer key than the non-nil case)", got, want)
+	}
+
+	var bufWith, bufWithout bytes.Buffer
+	if err := renderOperatorView(&bufWith, "headline", withFilter); err != nil {
+		t.Fatalf("renderOperatorView: %v", err)
+	}
+	if err := renderOperatorView(&bufWithout, "headline", withoutFilter); err != nil {
+		t.Fatalf("renderOperatorView: %v", err)
+	}
+	gotWith := countTopLevelFieldLines(bufWith.String())
+	gotWithout := countTopLevelFieldLines(bufWithout.String())
+	if gotWithout != gotWith-1 {
+		t.Errorf("countTopLevelFieldLines(nil-minScore rendered) = %d, want %d (one fewer top-level field line than the non-nil case's %d)", gotWithout, gotWith-1, gotWith)
 	}
 }

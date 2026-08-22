@@ -63,8 +63,9 @@ func assertFields(t *testing.T, fd protoreflect.FileDescriptor, msgName string, 
 
 // TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs walks the
 // generated EngramService FileDescriptor and asserts the phase's structural
-// invariants survive codegen: exactly 11 RPCs (5 read + 6 write), the six
-// write RPCs' exact request/response types, per-field wire-shape tables for
+// invariants survive codegen: exactly 12 RPCs (6 read + 6 write; 07-06 added
+// the sixth read RPC, MigrateStatus), the six write RPCs' exact
+// request/response types, per-field wire-shape tables for
 // the read-lane messages plus Memory/ScopeCount (SC4 — not just message
 // names), and IDEMPOTENCY_UNKNOWN on every method (SC2/D-12 — no write RPC
 // may become GET-reachable).
@@ -76,8 +77,8 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 	}
 
 	methods := svc.Methods()
-	if methods.Len() != 11 {
-		t.Fatalf("expected 11 RPCs (5 read + 6 write), got %d", methods.Len())
+	if methods.Len() != 12 {
+		t.Fatalf("expected 12 RPCs (6 read + 6 write), got %d", methods.Len())
 	}
 
 	wantReqResp := map[string][2]protoreflect.FullName{
@@ -87,6 +88,8 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 		"SearchMemories":    {"engram.v1.SearchMemoriesRequest", "engram.v1.SearchMemoriesResponse"},
 		"GetMemory":         {"engram.v1.GetMemoryRequest", "engram.v1.GetMemoryResponse"},
 		"SearchDiscoveries": {"engram.v1.SearchDiscoveriesRequest", "engram.v1.SearchDiscoveriesResponse"},
+		// 07-06: the sixth read RPC.
+		"MigrateStatus": {"engram.v1.MigrateStatusRequest", "engram.v1.MigrateStatusResponse"},
 		// write lane (finding #6: pinned by exact name, not just count)
 		"StoreMemory":    {"engram.v1.StoreMemoryRequest", "engram.v1.StoreMemoryResponse"},
 		"StoreDiscovery": {"engram.v1.StoreDiscoveryRequest", "engram.v1.StoreDiscoveryResponse"},
@@ -136,7 +139,13 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 	// payload/request/response messages plus Memory and ScopeCount, so an
 	// accidental additive/renamed/retyped read field fails this test even
 	// though it wouldn't change the RPC count or req/resp message names.
-	assertFields(t, fd, "Memory", 22, map[protoreflect.FieldNumber]fieldSpec{
+	// Phase 5, plan 05-01: fields 23-30 (D-04, as amended by D-14) are
+	// additive record-state fields on Memory — field count and pins bumped
+	// accordingly. superseded_by/schema_version/summary_model carry explicit
+	// presence (D-14) but that is a proto3_optional flag, not a distinct
+	// protoreflect.Cardinality value, so their expected cardinality is still
+	// Optional (singular) like every other non-repeated field here.
+	assertFields(t, fd, "Memory", 30, map[protoreflect.FieldNumber]fieldSpec{
 		1:  {name: "id", kind: protoreflect.StringKind},
 		14: {name: "created_at", kind: protoreflect.MessageKind, msgType: "google.protobuf.Timestamp"},
 		17: {name: "score", kind: protoreflect.FloatKind},
@@ -145,6 +154,14 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 		20: {name: "last_accessed_at", kind: protoreflect.MessageKind, msgType: "google.protobuf.Timestamp"},
 		21: {name: "kind", kind: protoreflect.StringKind},
 		22: {name: "citations", kind: protoreflect.MessageKind, repeated: true, msgType: "engram.v1.Citation"},
+		23: {name: "superseded_by", kind: protoreflect.StringKind},
+		24: {name: "supersedes", kind: protoreflect.StringKind, repeated: true},
+		25: {name: "not_before", kind: protoreflect.MessageKind, msgType: "google.protobuf.Timestamp"},
+		26: {name: "not_after", kind: protoreflect.MessageKind, msgType: "google.protobuf.Timestamp"},
+		27: {name: "archived_at", kind: protoreflect.MessageKind, msgType: "google.protobuf.Timestamp"},
+		28: {name: "schema_version", kind: protoreflect.Uint32Kind},
+		29: {name: "summary_model", kind: protoreflect.StringKind},
+		30: {name: "summary_egress_at", kind: protoreflect.MessageKind, msgType: "google.protobuf.Timestamp"},
 	})
 	assertFields(t, fd, "ScopeCount", 2, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "scope", kind: protoreflect.StringKind},
@@ -158,7 +175,10 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 	// 03-04: cross_spine (D-04) plus searched_scopes/scopes_truncated (D-12/
 	// D-13/D-14) are additive fields on these four messages — field counts
 	// and the two new response fields' pins bumped accordingly.
-	assertFields(t, fd, "ListMemoriesRequest", 12, nil)
+	// phase 07 (D-01/D-02): include_archived/include_superseded/
+	// include_scheduled (fields 13-15) are further additive opt-in
+	// recall-gate relaxations on ListMemoriesRequest.
+	assertFields(t, fd, "ListMemoriesRequest", 15, nil)
 	assertFields(t, fd, "ListMemoriesResponse", 6, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "memories", kind: protoreflect.MessageKind, repeated: true, msgType: "engram.v1.Memory"},
 		2: {name: "total", kind: protoreflect.Uint64Kind},
@@ -167,7 +187,10 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 		5: {name: "searched_scopes", kind: protoreflect.StringKind, repeated: true},
 		6: {name: "scopes_truncated", kind: protoreflect.BoolKind},
 	})
-	assertFields(t, fd, "SearchMemoriesRequest", 9, nil)
+	// phase 07 plan 03 (D-01/D-02): include_archived/include_superseded/
+	// include_scheduled (fields 10-12) mirror ListMemoriesRequest's opt-in
+	// recall-gate relaxations onto the Search lane.
+	assertFields(t, fd, "SearchMemoriesRequest", 12, nil)
 	assertFields(t, fd, "SearchMemoriesResponse", 3, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "memories", kind: protoreflect.MessageKind, repeated: true, msgType: "engram.v1.Memory"},
 		2: {name: "searched_scopes", kind: protoreflect.StringKind, repeated: true},

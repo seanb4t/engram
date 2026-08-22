@@ -4,6 +4,8 @@
 package main
 
 import (
+	"bytes"
+	"os/exec"
 	"reflect"
 	"sort"
 	"strings"
@@ -102,8 +104,9 @@ func TestSpineReviewPurgeNoTransportFlag(t *testing.T) {
 
 // TestSpineReviewPurgeOwnFlagSet asserts the leaf's own registered flag set
 // equals the same nine-name literal destructive_test.go's
-// destructiveFlagCases table uses, read via ownFlagNames -- one shared
-// helper, never two independently typed lists that could silently diverge.
+// mutatingFlagCases table uses (renamed from destructiveFlagCases in 04-04
+// Task 2), read via ownFlagNames -- one shared helper, never two
+// independently typed lists that could silently diverge.
 func TestSpineReviewPurgeOwnFlagSet(t *testing.T) {
 	want := []string{"all-scopes", "apply", "category", "class", "older-than", "output", "scope", "tags", "timeout"}
 	sort.Strings(want)
@@ -114,15 +117,22 @@ func TestSpineReviewPurgeOwnFlagSet(t *testing.T) {
 }
 
 // TestSpineReviewPurgeSameRunNoticePublished asserts BOTH the preview
-// output and the command's Long help state the same-run limitation and the
-// intersection's concurrent-writer scoping, matched on the SAME
-// package-level constants the CLI guide's prose mirrors by hand.
+// document and the command's Long help state the same-run limitation and
+// the intersection's concurrent-writer scoping, matched on the SAME
+// package-level constants the CLI guide's prose mirrors by hand. The notice
+// moved from the preview SENTENCE into purgeReportDoc's own fields when
+// purgePreviewSummary was trimmed to a headline producer (06-01-PLAN.md R1);
+// asserting it against the document is the stronger claim -- the notice is
+// a document key, not text-only prose, so it also reaches the json lane.
 func TestSpineReviewPurgeSameRunNoticePublished(t *testing.T) {
-	preview := purgePreviewSummary(nil, store.PurgeOptions{})
+	doc := purgePreviewDoc(nil, store.PurgeOptions{})
+	if doc.SameRunLimitation != purgeSameRunLimitationNotice {
+		t.Errorf("purgePreviewDoc(...).SameRunLimitation = %q, want %q", doc.SameRunLimitation, purgeSameRunLimitationNotice)
+	}
+	if doc.IntersectionScope != purgeIntersectionScopingNotice {
+		t.Errorf("purgePreviewDoc(...).IntersectionScope = %q, want %q", doc.IntersectionScope, purgeIntersectionScopingNotice)
+	}
 	for _, notice := range []string{purgeSameRunLimitationNotice, purgeIntersectionScopingNotice} {
-		if !strings.Contains(preview, notice) {
-			t.Errorf("preview summary = %q, want it to contain %q", preview, notice)
-		}
 		if !strings.Contains(spineReviewPurgeCmd.Long, notice) {
 			t.Errorf("spineReviewPurgeCmd.Long = %q, want it to contain %q", spineReviewPurgeCmd.Long, notice)
 		}
@@ -213,7 +223,10 @@ func TestSpineReviewPurgeClassTagsDoNotLatchAcrossRows(t *testing.T) {
 
 // TestPurgeReportDocFieldsNeverNull proves purgePreviewDoc/purgeAppliedDoc
 // keep every id-list field non-nil (marshals "[]", never "null") and carry
-// the same three count fields plus three id lists in both modes.
+// the same three count fields plus three id lists in both modes. It also
+// proves the R2 gap-closure field's mode split: rerun is populated on the
+// preview document only, and absent (empty, so omitempty drops the key)
+// from the applied document -- an applied run has nothing left to re-run.
 func TestPurgeReportDocFieldsNeverNull(t *testing.T) {
 	opts := store.PurgeOptions{Classes: []store.PurgeClass{store.PurgeClassExpired}, Scope: "s"}
 
@@ -224,6 +237,12 @@ func TestPurgeReportDocFieldsNeverNull(t *testing.T) {
 	if preview.Deleted == nil || preview.Spared == nil || preview.Appeared == nil || preview.Eligible == nil {
 		t.Errorf("purgePreviewDoc has a nil id-list field: %+v", preview)
 	}
+	if preview.Rerun == "" {
+		t.Error("purgePreviewDoc.Rerun is empty, want the re-run command")
+	}
+	if want := purgeRerunCommand(opts); preview.Rerun != want {
+		t.Errorf("purgePreviewDoc.Rerun = %q, want %q", preview.Rerun, want)
+	}
 
 	applied := purgeAppliedDoc(nil, store.PurgeResult{}, opts)
 	if !applied.Applied {
@@ -232,17 +251,117 @@ func TestPurgeReportDocFieldsNeverNull(t *testing.T) {
 	if applied.Deleted == nil || applied.Spared == nil || applied.Appeared == nil || applied.Eligible == nil {
 		t.Errorf("purgeAppliedDoc has a nil id-list field: %+v", applied)
 	}
+	if applied.Rerun != "" {
+		t.Errorf("purgeAppliedDoc.Rerun = %q, want empty (an applied run has nothing left to re-run)", applied.Rerun)
+	}
 }
 
-// TestPurgeAppliedSummaryNamesAppearedExplicitly proves the appeared set
-// carries its own explicit "not purged" wording, never merged silently
-// into the deleted count (T-03-22's mitigation).
+// TestPurgeAppliedSummaryNamesAppearedExplicitly proves the headline names
+// the appeared count with its own explicit "not purged" wording, never
+// merged silently into the deleted count (T-03-22's mitigation) -- this
+// explanatory nuance is exactly what D-04 says a field name cannot carry,
+// so it stays in the hand-written headline even after R1's per-row trim.
 func TestPurgeAppliedSummaryNamesAppearedExplicitly(t *testing.T) {
 	res := store.PurgeResult{Deleted: []string{"d1"}, Spared: []string{"s1"}, Appeared: []string{"a1"}}
 	got := purgeAppliedSummary(res, store.PurgeOptions{})
-	for _, want := range []string{"1 deleted", "1 spared", "1 appeared", "appeared id=a1 (not purged; re-run to include)"} {
+	for _, want := range []string{"1 deleted", "1 spared", "1 appeared", "NOT purged; re-run to include"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("purgeAppliedSummary(...) = %q, want it to contain %q", got, want)
 		}
+	}
+}
+
+// TestPurgeAppliedViewRendersAppearedRow proves the per-id "not purged"
+// wording -- deleted from purgeAppliedSummary in this task -- is rendered
+// by the operator view from purgeAppliedDoc's appeared field.
+func TestPurgeAppliedViewRendersAppearedRow(t *testing.T) {
+	res := store.PurgeResult{Deleted: []string{"d1"}, Spared: []string{"s1"}, Appeared: []string{"a1"}}
+	opts := store.PurgeOptions{}
+	doc := purgeAppliedDoc(nil, res, opts)
+
+	var buf bytes.Buffer
+	if err := renderOperatorView(&buf, purgeAppliedSummary(res, opts), doc); err != nil {
+		t.Fatalf("renderOperatorView: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{"d1", "s1", "a1"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered view = %q, want it to contain %q", out, want)
+		}
+	}
+}
+
+// TestShellQuoteRoundTripsThroughARealShell proves shellQuote's escaping is
+// not merely plausible-looking: piping the quoted output through an actual
+// `sh -c` invocation recovers the exact original string, for a value
+// containing a space and a value containing a single quote (WR-03,
+// 06-REVIEW.md) -- the two shapes purgeRerunCommand's own doc comment
+// names as the ones a copy-paste would otherwise silently mis-split.
+func TestShellQuoteRoundTripsThroughARealShell(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("no sh on PATH")
+	}
+	cases := []string{
+		"plain",
+		"has a space",
+		"has'a'quote",
+		"O'Brien's scope",
+		"",
+		"line one\nline two",
+	}
+	for _, want := range cases {
+		t.Run(want, func(t *testing.T) {
+			quoted := shellQuote(want)
+			out, err := exec.Command("sh", "-c", "printf '%s' "+quoted).Output()
+			if err != nil {
+				t.Fatalf("sh -c: %v", err)
+			}
+			if got := string(out); got != want {
+				t.Errorf("shellQuote(%q) = %q; sh round-trip = %q, want %q", want, quoted, got, want)
+			}
+		})
+	}
+}
+
+// TestPurgeRerunCommandQuotesFreeFormValues proves purgeRerunCommand
+// shell-quotes --scope, --category, and --tags (the free-form values an
+// operator can set on the write path) so a value containing a space or a
+// single quote does not silently split into extra/different arguments if
+// the rendered command is copy-pasted into a shell (WR-03, 06-REVIEW.md).
+// Verified by actually splitting the rendered command through a real `sh`
+// (via `set --`) rather than by string-matching the quoting scheme.
+func TestPurgeRerunCommandQuotesFreeFormValues(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("no sh on PATH")
+	}
+	opts := store.PurgeOptions{
+		Classes:  []store.PurgeClass{store.PurgeClassExpired},
+		Scope:    "has a space",
+		Category: "o'brien",
+		Tags:     []string{"tag one", "tag'two"},
+	}
+	got := purgeRerunCommand(opts)
+
+	// `set -- $got; for a in "$@"; do printf '%s\n' "$a"; done` re-parses
+	// the rendered command line through sh's own word-splitting/quote
+	// rules and prints one line per resulting argument -- the ground truth
+	// for "what would this copy-paste actually run as".
+	script := "set -- " + got + "; for a in \"$@\"; do printf '%s\\n' \"$a\"; done"
+	out, err := exec.Command("sh", "-c", script).Output()
+	if err != nil {
+		t.Fatalf("sh -c: %v", err)
+	}
+	args := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
+
+	want := []string{
+		"engram", "spine-review", "purge", "--apply",
+		"--class", "expired",
+		"--scope", "has a space",
+		"--category", "o'brien",
+		"--tags", "tag one",
+		"--tags", "tag'two",
+	}
+	if !reflect.DeepEqual(args, want) {
+		t.Errorf("rendered command %q re-parsed by sh as %v, want %v (a free-form value with a space or quote must survive a copy-paste unchanged)", got, args, want)
 	}
 }

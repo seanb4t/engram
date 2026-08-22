@@ -35,8 +35,8 @@ var summarizeMissingCmd = &cobra.Command{
 	Use:   "summarize-missing",
 	Short: "Fill empty recall summaries with the configured cheap model",
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		if summarizeScope == "" && !summarizeAllScopes {
-			return usageErrorf("--scope <scope> or --all-scopes is required")
+		if err := requireSweepScope(summarizeScope, summarizeAllScopes); err != nil {
+			return err
 		}
 		format, err := operatorOutputFormat(cmd, summarizeOutput)
 		if err != nil {
@@ -73,8 +73,11 @@ var summarizeMissingCmd = &cobra.Command{
 	},
 }
 
-// summarizeSummary renders the operator-facing one-line result. Pure (no I/O) so
-// the dry-run vs live wording is unit-testable without a live gateway.
+// summarizeSummary is a headline producer (06-CONTEXT.md D-04): one
+// hand-written, non-exhaustive prose line above the complete field table
+// summarizeReportDoc renders. Pure (no I/O) so the dry-run vs live wording is
+// unit-testable without a live gateway. Its exact wording may change in any
+// release — --output json is the contract (D-03), not this sentence.
 func summarizeSummary(res store.SummarizeResult, dryRun bool) string {
 	if dryRun {
 		return fmt.Sprintf("dry-run: %d of %d scanned record(s) would be summarized (%d skipped)",
@@ -110,10 +113,11 @@ func summarizeReportDoc(res store.SummarizeResult, dryRun bool) summarizeOutputD
 func init() {
 	addOperatorOutputFlag(summarizeMissingCmd, &summarizeOutput)
 	summarizeMissingCmd.Flags().StringVar(&summarizeScope, "scope", "", "only summarize records in this scope")
-	summarizeMissingCmd.Flags().BoolVar(&summarizeAllScopes, "all-scopes", false, "sweep every scope (required if --scope is omitted)")
+	summarizeMissingCmd.Flags().BoolVar(&summarizeAllScopes, "all-scopes", false, "sweep every scope (required if --scope is omitted); mutually exclusive with --scope; "+sweepScopeRule().Sentence)
 	summarizeMissingCmd.Flags().DurationVar(&summarizeOlderThan, "older-than", 0, "only records created at least this long ago (0 = any age)")
 	summarizeMissingCmd.Flags().IntVar(&summarizeLimit, "limit", 0, "max records to scan (0 = no cap)")
 	summarizeMissingCmd.Flags().BoolVar(&summarizeDryRun, "dry-run", false, "count eligible records without writing")
 	summarizeMissingCmd.Flags().DurationVar(&summarizeTimeout, "timeout", 30*time.Minute, "max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C")
+	summarizeMissingCmd.MarkFlagsMutuallyExclusive("scope", "all-scopes")
 	rootCmd.AddCommand(summarizeMissingCmd)
 }

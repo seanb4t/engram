@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
+// Package sealedprobe is copied by
+// TestReversibilityIsSealedToThisPackage's build-probe sub-test
+// (internal/migrate/step_test.go) into a temporary directory under
+// internal/migrate/ and built with `go build .` (PA-2). It declares its own
+// type with its own method named isReversibility and asserts that type
+// satisfies migrate.Reversibility. The assertion below MUST fail to
+// compile: Go's identity for an unexported method includes the declaring
+// package, so a method named isReversibility declared in package
+// sealedprobe is a DIFFERENT method from the one migrate.Reversibility
+// names, even though the name and empty signature match exactly. An
+// observed build failure naming isReversibility is the strong half of the
+// seal proof; a successful build here would mean the seal is open.
+package sealedprobe
+
+import "github.com/seanb4t/engram/internal/migrate"
+
+type fake struct{}
+
+func (fake) isReversibility() {}
+
+var _ migrate.Reversibility = fake{}

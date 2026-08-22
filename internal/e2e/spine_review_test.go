@@ -81,7 +81,12 @@ func spineReviewQdrantClient(t *testing.T) *qdrant.Client {
 // the shared ephemeral Qdrant, deleted before (in case a prior run left it
 // behind) and after (via t.Cleanup) — mirroring internal/store's own
 // newSpineTestStore, reimplemented here since this package cannot import
-// internal/store's unexported test helpers.
+// internal/store's unexported test helpers. collection must already carry
+// this package's testCollectionPrefix (via testCollection()) — callers pass
+// the prefixed value directly, rather than this helper applying the prefix
+// itself, because the SAME value is also handed to pruneEnv for the built
+// binary's ENGRAM_QDRANT_COLLECTION; the Go-side store and the subprocess
+// must agree on one literal collection name.
 func newSpineReviewStore(t *testing.T, collection string) *store.Store {
 	t.Helper()
 	if testQdrantAddr == "" {
@@ -90,7 +95,7 @@ func newSpineReviewStore(t *testing.T, collection string) *store.Store {
 	c := spineReviewQdrantClient(t)
 	_ = c.DeleteCollection(context.Background(), collection)
 	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
-	s := store.New(c, collection)
+	s := newTestStore(t, c, collection)
 	if err := s.EnsureCollection(context.Background(), 3); err != nil {
 		t.Fatalf("ensure collection %q: %v", collection, err)
 	}
@@ -164,7 +169,7 @@ func TestE2EPruneExpiredPreviewsBeforeApply(t *testing.T) {
 	if testQdrantAddr == "" {
 		skipOrFailNoQdrant(t)
 	}
-	const collection = "e2e_prune_expired"
+	collection := testCollection("prune_expired")
 	s := newSpineReviewStore(t, collection)
 	ctx := context.Background()
 
@@ -216,7 +221,7 @@ func TestE2EPruneExpiredPreviewZeroEligible(t *testing.T) {
 	if testQdrantAddr == "" {
 		skipOrFailNoQdrant(t)
 	}
-	const collection = "e2e_prune_expired_empty"
+	collection := testCollection("prune_expired_empty")
 	newSpineReviewStore(t, collection)
 
 	// --output text forces the human sentence regardless of the subprocess's
@@ -310,7 +315,7 @@ func TestE2EPhaseAcceptance(t *testing.T) {
 	if testQdrantAddr == "" {
 		skipOrFailNoQdrant(t)
 	}
-	const collection = "e2e_phase_acceptance"
+	collection := testCollection("phase_acceptance")
 	s := newSpineReviewStore(t, collection)
 	ctx := context.Background()
 	env := pruneEnv(collection)

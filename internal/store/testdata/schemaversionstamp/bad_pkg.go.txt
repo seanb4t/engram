@@ -1,0 +1,69 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
+// Package badpkg is a synthetic KNOWN-BAD fixture for
+// schemaversion_stamp_gate_test.go's TestEveryPointWriteRoutesThroughPayload.
+// Both functions transmit a REAL request via a REAL `Upsert` call, and both
+// bypass the payload() codec — the two bypass shapes the write-boundary gate
+// exists to catch:
+//
+//	(a) handBuiltPayload — a hand-built payload map is constructed INLINE
+//	    into the point and transmitted via client.Upsert. A shape that
+//	    could carry a schema_version key by hand and still never call
+//	    payload().
+//	(b) helperBuiltWrite — the request is assembled by a SEPARATE HELPER
+//	    FUNCTION (buildRequest) and transmitted through a local variable,
+//	    so the enclosing function that actually calls Upsert contains NO
+//	    qdrant.PointStruct literal of its own whatsoever. This is the H1
+//	    bypass a construction-anchored scanner cannot see at all: the
+//	    write happens in a function with no composite literal to scan.
+//
+// This file carries a .go.txt extension deliberately: it is parsed from
+// source bytes by go/parser, never built by `go build`/gofmt/go vet/the
+// linter, so it is not swept by any of them.
+package badpkg
+
+import (
+	"context"
+
+	"github.com/qdrant/go-client/qdrant"
+)
+
+type writer struct {
+	client *qdrant.Client
+}
+
+// handBuiltPayload transmits a request whose Payload is a hand-built map
+// literal, never routed through payload(). Non-conforming.
+func (w *writer) handBuiltPayload(ctx context.Context, id string) error {
+	_, err := w.client.Upsert(ctx, &qdrant.UpsertPoints{
+		CollectionName: "badpkg",
+		Points: []*qdrant.PointStruct{{
+			Id:      qdrant.NewID(id),
+			Payload: qdrant.NewValueMap(map[string]any{"content": "hand-built, never through payload()"}),
+		}},
+	})
+	return err
+}
+
+// buildRequest assembles a request in a SEPARATE HELPER FUNCTION from the
+// one that transmits it (helperBuiltWrite, below) — the H1 bypass shape.
+func buildRequest(id string) *qdrant.UpsertPoints {
+	return &qdrant.UpsertPoints{
+		CollectionName: "badpkg",
+		Points: []*qdrant.PointStruct{{
+			Id:      qdrant.NewID(id),
+			Payload: qdrant.NewValueMap(map[string]any{"content": "built elsewhere, never through payload()"}),
+		}},
+	}
+}
+
+// helperBuiltWrite transmits a request built by buildRequest through a
+// local variable. This function's own body contains NO PointStruct literal
+// — a scanner anchored on qdrant.PointStruct construction rather than the
+// transmitted Upsert call would never see this write at all.
+func (w *writer) helperBuiltWrite(ctx context.Context, id string) error {
+	req := buildRequest(id)
+	_, err := w.client.Upsert(ctx, req)
+	return err
+}

@@ -1,0 +1,22 @@
+diff --git a/internal/migrate/step.go b/internal/migrate/step.go
+index 14475531..94f75234 100644
+--- a/internal/migrate/step.go
++++ b/internal/migrate/step.go
+@@ -3,7 +3,16 @@
+ 
+ package migrate
+ 
+-import "slices"
++import (
++	"slices"
++
++	"github.com/qdrant/go-client/qdrant"
++)
++
++// redCycle3Probe is a throwaway reference so the injected import above is
++// actually used and this file still compiles under the RED-cycle 3
++// injection (03-02-red-3-nonstdlib-import.patch).
++var redCycle3Probe = qdrant.CollectionStatus_UnknownCollectionStatus
+ 
+ // ApplyFunc is the transformation a migration step performs on one record's
+ // decoded raw payload. It receives the payload map decoded from a stored

@@ -3,6 +3,7 @@ created: 2026-08-10T20:21:49Z
 title: Research a versioned payload-migration mechanism
 area: database
 severity: minor
+resolves_phase: 3
 files:
   - cmd/engram/backfill.go
   - cmd/engram/migrate.go

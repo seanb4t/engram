@@ -1,0 +1,13 @@
+diff --git a/internal/store/migratebacklog.go b/internal/store/migratebacklog.go
+index f6bb4fc1..b0b87fcd 100644
+--- a/internal/store/migratebacklog.go
++++ b/internal/store/migratebacklog.go
+@@ -60,7 +60,7 @@ func backlogFilter(target migrate.Version) *qdrant.Filter {
+ 		Must: []*qdrant.Condition{
+ 			qdrant.NewFilterAsCondition(&qdrant.Filter{
+ 				Should: []*qdrant.Condition{
+-					qdrant.NewRange(schemaVersionKey, &qdrant.Range{Lt: qdrant.PtrOf(float64(target))}),
++					qdrant.NewRange(schemaVersionKey, &qdrant.Range{Lte: qdrant.PtrOf(float64(target))}),
+ 					qdrant.NewIsEmpty(schemaVersionKey),
+ 				},
+ 			}),

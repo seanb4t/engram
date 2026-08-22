@@ -7,10 +7,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 )
@@ -311,6 +314,66 @@ func TestClientListTextOutput(t *testing.T) {
 	}
 }
 
+// TestClientListTextOutputStateColumn pins D-12/D-13: the STATE column is
+// unconditional (blank for a live record) and carries the memoryStateWords
+// vocabulary for a record with state.
+func TestClientListTextOutputStateColumn(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
+	svc := &stubEngramService{
+		listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
+			return &engramv1.ListMemoriesResponse{
+				Memories: []*engramv1.Memory{
+					{ShortId: "LIVE111111", Scope: "repo:x"},
+					{
+						ShortId:      "ARCH222222",
+						Scope:        "repo:x",
+						ArchivedAt:   timestamppb.Now(),
+						SupersededBy: proto.String("successor-id"),
+					},
+				},
+				Total: 2,
+			}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	stdout, _, err := runClient(t, "list", "--server", url, "--scope", "repo:x", "--output", "text")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	header := strings.SplitN(stdout, "\n", 2)[0]
+	if got, want := strings.Fields(header), []string{"SHORT_ID", "SCOPE", "CATEGORY", "STATE", "SUMMARY"}; !slices.Equal(got, want) {
+		t.Errorf("header fields = %v, want %v (stdout = %q)", got, want, stdout)
+	}
+	liveLine := lineContaining(t, stdout, "LIVE111111")
+	if strings.Contains(liveLine, "archived") || strings.Contains(liveLine, "superseded") {
+		t.Errorf("live record row = %q, want an empty STATE cell", liveLine)
+	}
+	archivedLine := lineContaining(t, stdout, "ARCH222222")
+	if !strings.Contains(archivedLine, "archived,superseded") {
+		t.Errorf("archived+superseded record row = %q, want STATE cell %q", archivedLine, "archived,superseded")
+	}
+}
+
+// lineContaining returns the single line of s containing substr, failing the
+// test if there is not exactly one such line.
+func lineContaining(t *testing.T, s, substr string) string {
+	t.Helper()
+	var match string
+	found := 0
+	for _, line := range strings.Split(s, "\n") {
+		if strings.Contains(line, substr) {
+			match = line
+			found++
+		}
+	}
+	if found != 1 {
+		t.Fatalf("expected exactly one line containing %q, found %d in %q", substr, found, s)
+	}
+	return match
+}
+
 // TestClientListCrossSpineEndToEnd mirrors
 // TestClientSearchCrossSpineEndToEnd: --cross-spine reaches the wire request
 // untouched (D-01), and the text-mode coverage footer reports a count only,
@@ -446,5 +509,43 @@ func TestClientListFooterUnchangedWithoutCrossSpine(t *testing.T) {
 	fmt.Fprintf(&want, "total: %d\n", 2)
 	if stdout != want.String() {
 		t.Errorf("stdout = %q, want exactly %q (no coverage footer line without --cross-spine)", stdout, want.String())
+	}
+}
+
+// TestClientListJSONOutputByteIdenticalToPrePhaseShape (07-06, D-08) proves
+// --output json's document is UNCHANGED by this plan: the migration
+// advisory is a text-lane-only addition, so the json document for a given
+// response must be byte-identical to what renderJSON alone produces,
+// including when the store carries a real backlog.
+func TestClientListJSONOutputByteIdenticalToPrePhaseShape(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
+	resp := &engramv1.ListMemoriesResponse{
+		Memories: []*engramv1.Memory{{ShortId: "AAAA111111", Scope: "repo:x"}},
+		Total:    1,
+	}
+	svc := &stubEngramService{
+		listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
+			return resp, nil
+		},
+		migrateStatusFn: func(context.Context, *engramv1.MigrateStatusRequest) (*engramv1.MigrateStatusResponse, error) {
+			return &engramv1.MigrateStatusResponse{Pending: 9, FutureTotal: 3}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	stdout, _, err := runClient(t, "list", "--server", url, "--scope", "repo:x", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var want strings.Builder
+	if err := renderJSON(&want, resp); err != nil {
+		t.Fatalf("renderJSON: %v", err)
+	}
+	if stdout != want.String() {
+		t.Errorf("stdout = %q, want exactly %q (json lane byte-identical to pre-phase renderJSON output)", stdout, want.String())
+	}
+	if svc.migrateStatusCalls != 0 {
+		t.Errorf("migrateStatusCalls = %d, want 0 — the json lane must never look up the footer", svc.migrateStatusCalls)
 	}
 }

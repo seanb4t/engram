@@ -58,6 +58,23 @@ func TestSpineReviewScanRequiresScopeOrAllScopes(t *testing.T) {
 	}
 }
 
+// TestSpineReviewScanScopeAndAllScopesRejected proves --scope and
+// --all-scopes together are rejected via cobra's own
+// MarkFlagsMutuallyExclusive validation, exiting exitUsage BEFORE RunE ever
+// runs -- mirroring TestSpineReviewConsolidateScopeAndAllScopesRejected
+// (WR-01 fix: scan previously silently discarded --all-scopes when --scope
+// was also supplied).
+func TestSpineReviewScanScopeAndAllScopesRejected(t *testing.T) {
+	resetClientFlags(t)
+	_, _, err := runClient(t, "spine-review", "scan", "--scope", "x", "--all-scopes")
+	if err == nil {
+		t.Fatal("expected an error for --scope and --all-scopes together, got nil")
+	}
+	if got := exitCodeFromError(err); got != exitUsage {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage)", got, exitUsage)
+	}
+}
+
 // TestOperatorOutputFormatResolvesNonTTYForCustomWriter proves
 // operatorOutputFormat derives TTY state from cmd.OutOrStdout(), not the
 // process's real os.Stdout: a command whose output writer is a
@@ -85,7 +102,7 @@ func TestOperatorOutputFormatResolvesNonTTYForCustomWriter(t *testing.T) {
 // (store.ScanSpine's own contract). Hand-built store.SpineScanResult, no
 // Qdrant.
 func TestSpineScanDocEmptyResultMarshalsEmptyArray(t *testing.T) {
-	doc := spineScanDoc(store.SpineScanResult{})
+	doc := spineScanDoc(store.SpineScanResult{}, "")
 	b, err := json.Marshal(doc)
 	if err != nil {
 		t.Fatalf("json.Marshal: %v", err)
@@ -107,10 +124,14 @@ func TestSpineScanDocEmptyResultMarshalsEmptyArray(t *testing.T) {
 	}
 }
 
-// TestSpineScanSummaryFormat pins the pure text formatter's shape: a
-// single trailing-newline-free string (renderOperator appends the newline
-// on write), reporting total/owners/health-signal lines, hand-built
-// against a fabricated store.SpineScanResult with no Qdrant.
+// TestSpineScanSummaryFormat pins the pure headline formatter's shape: a
+// single-line, trailing-newline-free string naming the scan target
+// (named scope or the "all scopes" fallback), total and owners, hand-built
+// against a fabricated store.SpineScanResult with no Qdrant. Per R1
+// (06-01-PLAN.md §Conversion Rules) the health signals and the (scope,
+// category) breakdown this function used to also print are asserted below
+// as an assertion over the RENDERED VIEW instead -- one top-level field
+// line per spineScanDoc key -- not as substrings of the headline.
 func TestSpineScanSummaryFormat(t *testing.T) {
 	res := store.SpineScanResult{
 		Total: 3, Owners: 2, WithSummary: 1, WithoutSummary: 2,
@@ -119,12 +140,10 @@ func TestSpineScanSummaryFormat(t *testing.T) {
 	}
 	got := spineScanSummary(res, "s")
 
-	if strings.HasSuffix(got, "\n") {
-		t.Errorf("spineScanSummary result ends with a trailing newline, want none: %q", got)
+	if strings.Contains(got, "\n") {
+		t.Errorf("spineScanSummary result contains a newline, want a single line: %q", got)
 	}
-	for _, want := range []string{"total=3", "owners=2", "without_summary=2", "with_summary=1",
-		"superseded=1", "expired=1", "scheduled=0", "archived=1", "with_citations=1", "citations=4",
-		`scope="s"`, `category="note"`, "count=3"} {
+	for _, want := range []string{"total=3", "owners=2"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("spineScanSummary(res, %q) = %q, want it to contain %q", "s", got, want)
 		}
@@ -133,6 +152,19 @@ func TestSpineScanSummaryFormat(t *testing.T) {
 	allScopes := spineScanSummary(store.SpineScanResult{}, "")
 	if !strings.Contains(allScopes, "all scopes") {
 		t.Errorf("spineScanSummary(res, \"\") = %q, want it to name \"all scopes\"", allScopes)
+	}
+
+	doc := spineScanDoc(res, "s")
+	jsonKeys, err := jsonTopLevelKeys(doc)
+	if err != nil {
+		t.Fatalf("jsonTopLevelKeys: %v", err)
+	}
+	var buf bytes.Buffer
+	if err := renderOperatorView(&buf, got, doc); err != nil {
+		t.Fatalf("renderOperatorView: %v", err)
+	}
+	if gotLines, want := countTopLevelFieldLines(buf.String()), len(jsonKeys); gotLines != want {
+		t.Errorf("countTopLevelFieldLines(rendered) = %d, want %d (one line per json key); rendered=%q", gotLines, want, buf.String())
 	}
 }
 

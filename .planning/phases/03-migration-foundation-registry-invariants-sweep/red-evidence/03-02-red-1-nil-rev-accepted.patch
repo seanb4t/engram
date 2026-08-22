@@ -1,0 +1,14 @@
+diff --git a/internal/migrate/step.go b/internal/migrate/step.go
+index 14475531..28a80e8b 100644
+--- a/internal/migrate/step.go
++++ b/internal/migrate/step.go
+@@ -128,9 +128,6 @@ type Step struct {
+ // the declaration AddsKeys() returns from what was recorded at
+ // construction time.
+ func NewStep(from, to Version, addsKeys []string, rev Reversibility, apply ApplyFunc) Step {
+-	if rev == nil {
+-		panic("migrate.NewStep: rev must be non-nil")
+-	}
+ 	if apply == nil {
+ 		panic("migrate.NewStep: apply must be non-nil")
+ 	}

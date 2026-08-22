@@ -226,16 +226,29 @@ Fetch one memory by id.
 Returns the full memory record. Authenticated callers can read their own records
 plus any `shared` records. Anonymous callers can only read ownerless records.
 Fetch-by-id is **not** recall-gated: it returns every state `search_memory`/
-`list_memory`/`search_discovery`/`list_scheduled` hide —
+`list_memory`/`search_discovery`/`list_scheduled` hide, in the same order every
+other surface emits them (descending by finality) —
 
-- **scheduled** — not yet active (`not_before` in the future)
-- **expired** — past its validity window (`not_after` in the past)
-- **superseded** — corrected away by [`supersede_memory`](#supersede_memory);
-  see that section for the full soft-hide contract
 - **archived** — explicitly retired via the `engram spine-review archive` CLI
   command (reversible via `restore`); see
   [`reference/memory-record`](/reference/memory-record/#archiving) for the
   `archived_at` field's contract
+- **superseded** — corrected away by [`supersede_memory`](#supersede_memory);
+  see that section for the full soft-hide contract
+- **expired** — the validity window has ended: `not_after` is at or before now.
+  The upper bound is exclusive, so a record whose `not_after` equals the
+  current instant is already expired — see
+  [the validity window](/reference/memory-record/#the-validity-window) for the
+  full boundary rule
+- **scheduled** — not yet active: `not_before` is in the future. The lower
+  bound is inclusive, so the two ends of the window do not behave
+  symmetrically — see
+  [the validity window](/reference/memory-record/#the-validity-window)
+
+`get_memory` also returns `schema_version` on every fetch — not a soft-hidden
+state, just a value every fetch carries. See
+[Schema version](/reference/memory-record/#schema-version) for the full
+forward-compatibility contract.
 
 `get_memory` always returns `citations` in full — unlike `search_memory`/
 `list_memory`, it has no compact view to omit them from.
@@ -512,7 +525,7 @@ Auto-generated summaries are created offline using the configured model.
 engram summarize-missing (--scope <scope> | --all-scopes) [flags]
 ```
 
-**Either `--scope` or `--all-scopes` is required.**
+Like the other sweep-style operator commands (`spine-review scan`, `spine-review verify`), this command enforces one constraint: <!-- engram:rule:start sweep-scope-or-all-scopes-required -->a sweep requires an explicit --scope or --all-scopes: name one scope, or opt into every scope<!-- engram:rule:end sweep-scope-or-all-scopes-required -->.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|

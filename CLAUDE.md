@@ -12,7 +12,7 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 
 | Path | Responsibility |
 |------|----------------|
-| `cmd/engram/` | cobra CLI: `root`, `serve`, `version` + operator commands (`reindex` embedder migration — see docs-site `guides/reindex`; `migrate-remap-owner`; `prune-expired`; `summarize-missing`; `backfill-short-ids`) (entrypoint only) |
+| `cmd/engram/` | cobra CLI: `root`, `serve`, `version` + client-tier commands reaching a running server over Connect (`get`, `search`, `list`, `store`, `migration-status`) + operator-tier commands acting on Qdrant directly (`reindex` embedder migration — see docs-site `guides/reindex`; `migrate` (`status`, `revert`) schema-version sweep — see docs-site `guides/migrate`; `migrate-remap-owner` (alias: `migrate-set-owner`, deprecated); `prune-expired`; `summarize-missing`; `backfill-short-ids` (deprecated, use `migrate`); `spine-review` (`scan`, `verify`, `consolidate`, `purge`, `archive`, `restore`)) (entrypoint only) |
 | `internal/server/` | MCP tool registration + handlers (`Register`, `EnvOr`) |
 | `internal/store/` | Qdrant-backed memory store |
 | `internal/embed/` | embedder (OpenAI-compatible) |
@@ -67,7 +67,20 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
   (`task chart:push`). release-please syncs `charts/engram/Chart.yaml`
   (`version`/`appVersion`) and `skill/engram/.claude-plugin/plugin.json`
   (`$.version`); the binary version is ldflags-injected into `main.version`.
-- **Not used here:** database migrations, viper, cocogitto.
+- **Migrations:** payload migrations ARE schema-version-driven — an ordered
+  registry of additive-only steps in `internal/migrate`, each declaring its
+  reversibility, swept by `engram migrate` (see docs-site `guides/migrate`).
+  No migration ever applies automatically — not on startup, not on failure —
+  the mutating verbs preview by default and mutate only under `--apply`.
+  What IS automatic: server startup runs a read-only `MigrateStatus` probe
+  that may log a pending-migrations warning (and a separate future-version
+  warning); it never invokes the sweep and never gates startup. The registry
+  covers version-driven payload evolution only — `migrate-remap-owner`,
+  `summarize-missing`, and `reindex` key off an IdP claim change, ongoing
+  async summary fill, and embedder config identity respectively, none of
+  which is version-driven, so none is in the registry or the status
+  histogram.
+- **Not used here:** viper, cocogitto.
 
 ## Memory contract (stable)
 
@@ -79,9 +92,11 @@ Tools: `store_memory` / `schedule_memory` / `search_memory` / `list_memory` /
 `actor` (verified caller — server-set, never client-supplied), `owner` (caller's
 configured owner-claim value — `ENGRAM_OWNER_CLAIM`, default `email`, the authz
 key — server-set), `visibility` (`private` default |
-`shared`), `created_at`, and a server-minted `short_id` (10-char Crockford
+`shared`), `created_at`, a server-minted `short_id` (10-char Crockford
 base32 handle, accepted anywhere an id is accepted; legacy records gain one via
-`engram backfill-short-ids`). Recall returns summaries by default with `full=true` opt-in;
+`engram backfill-short-ids`), and `schema_version` (server-set on every write; a
+record predating the key reads as version 0 by absence; never gates recall).
+Recall returns summaries by default with `full=true` opt-in;
 full content via `get_memory`. `search_memory` results carry an always-on per-result
 `score` (raw Qdrant cosine similarity, higher = closer; zero/omitted on unranked
 `list_memory`/`get_memory` results). Design intent: explicit, zero-junk, correctable. Do not
@@ -152,6 +167,20 @@ the target set, and a retry after an ambiguous failure replays instead of
 duplicating. Use it for *reversals* — prefer `update_memory` for in-place
 refinement and `delete_memory` for junk. Agent-facing guidance lives in the
 `curating-memory` skill.
+
+Archived state: `engram spine-review archive` stamps `archived_at` on one or
+more records by id; `engram spine-review restore` deletes it, returning the
+record to normal recall — always reversible, and never a delete, content
+erasure, or vector removal. `archived_at` shares supersession's soft-hidden-
+but-still-fetchable-by-id contract: an archived record drops out of
+`search_memory`/`list_memory`/`search_discovery`/`list_scheduled` but stays reachable by id via `get_memory`.
+Archiving is an orthogonal key — it never writes an expiry and never writes a
+supersession link, and each of a record's derived states clears independently
+of the others. Every surface renders a record's derived state as up to four
+words, in canonical order: `archived`, `superseded`, `expired`, `scheduled` —
+descending by finality. `expired` is evaluated first and, when present,
+suppresses `scheduled`; the window-boundary rule that decides each state
+lives on `reference/memory-record.md`, not restated here.
 
 Discovery tools: `store_discovery` / `search_discovery`. A discovery is a 5th
 `category` carrying `kind` (`map`|`fact`), `citations` (with aging `pin`s), and

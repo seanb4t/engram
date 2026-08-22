@@ -23,13 +23,18 @@ import (
 // the WHOLE collection with no owner or scope-required filter, so sharing
 // a collection across tests would let one test's leftover records
 // contaminate another's Total/Owners counts. Deleted before (in case a
-// prior run left it behind) and after (via t.Cleanup).
+// prior run left it behind) and after (via t.Cleanup). collection is
+// namespaced through testCollection ONCE here, at the helper, so every one
+// of its ~30 call sites keeps passing the bare descriptive name it passes
+// today — the delete-before-create and t.Cleanup deletion below then both
+// operate on the prefixed name automatically (plan 01-05).
 func newSpineTestStore(t *testing.T, collection string, opts ...Option) *Store {
 	t.Helper()
+	collection = testCollection(collection)
 	c := dialTestClient(t)
 	_ = c.DeleteCollection(context.Background(), collection)
 	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
-	s := New(c, collection, opts...)
+	s := newTestStore(t, c, collection, opts...)
 	if err := s.EnsureCollection(context.Background(), 3); err != nil {
 		t.Fatalf("ensure collection %q: %v", collection, err)
 	}

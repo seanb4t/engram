@@ -24,11 +24,95 @@ jobs:
     name: test
     if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
+    # One shared Qdrant serves the whole job (#497). Four Qdrant-backed test
+    # packages (internal/store, internal/server, internal/e2e,
+    # internal/retrievaleval) each used to boot their own testcontainer, and
+    # `go test ./...` runs packages concurrently — a 2-vCPU runner hosting
+    # four Qdrant instances at once is what killed internal/store mid-run.
+    # The explicit health check below is required, not decoration: GitHub
+    # Actions only gates job steps on an image's own HEALTHCHECK or an
+    # explicit --health-cmd, and this image ships neither (confirmed via
+    # `docker inspect qdrant/qdrant:v1.18.2 --format '{{.Config.Healthcheck}}'`
+    # -> <nil>) — without it `go test` could start dialing before the
+    # listeners are up, reintroducing the same cascade from a different cause.
+    #
+    # The probe must use only what the image actually ships. Verified by
+    # `docker run --rm --entrypoint sh qdrant/qdrant:v1.18.2 -c 'command -v X'`:
+    # curl, wget, nc and python3 are all ABSENT; bash IS present. A
+    # `curl`-based health-cmd therefore never succeeds, and the job dies at
+    # "Initialize containers" with the container itself perfectly healthy
+    # (status=running, exitCode=0, oomKilled=false) — a failure mode that
+    # looks nothing like the #497 resource-pressure cascade it sits next to.
+    # bash's /dev/tcp probe needs no external binary and targets 6334, the
+    # port the Go client actually dials. Proven both directions against real
+    # containers: exit 0 against a serving qdrant, exit 1 against a dead port
+    # AND against this same image run with `--entrypoint sleep`, so it detects
+    # "qdrant is not serving" rather than merely "a container exists".
+    services:
+      qdrant:
+        # Keep byte-identical to internal/store/store_test.go's qdrantImageTag:
+        # the per-package testcontainer fallback (D-18) and this shared
+        # service must stay version-locked, since qdrantTOCTOUVerifiedVersion's
+        # guard exists to force a conscious re-verification on a bump.
+        image: qdrant/qdrant:v1.18.2
+        ports:
+          - 6334:6334 # gRPC — what the Go client dials, and what health-cmd probes
+          - 6333:6333 # REST — dashboard/readyz, not used by the tests
+        options: >-
+          --health-cmd "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6334'" --health-interval 5s --health-timeout 3s --health-retries
+          10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
+      # Asserts the FIX'S OWN MECHANISM, not the absence of the flake it
+      # replaced (CONTEXT.md D-20 — a green streak is never sufficient
+      # evidence, per durable-memory finding cmjxxswmm2). The count is
+      # compared against the literal 1 with no `|| echo`/`2>/dev/null ||`
+      # fallback: a docker failure here yields an empty/non-"1" count and
+      # correctly trips the assertion rather than silently passing.
+      - name: assert exactly one Qdrant container
+        env:
+          ENGRAM_QDRANT_TEST_ADDR: localhost:6334
+        run: |
+          echo "ENGRAM_QDRANT_TEST_ADDR resolved to: ${ENGRAM_QDRANT_TEST_ADDR}"
+          count=$(docker ps --filter "ancestor=qdrant/qdrant:v1.18.2" --format '{{.ID}}' | wc -l | tr -d '[:space:]')
+          echo "running Qdrant containers (ancestor qdrant/qdrant:v1.18.2): ${count}"
+          if [ "${count}" != "1" ]; then
+            echo "::error::expected exactly one Qdrant container, found ${count}"
+            docker ps --filter "ancestor=qdrant/qdrant:v1.18.2"
+            exit 1
+          fi
+      # D-20 claim 3: prove each package actually took the SHARED-Qdrant path.
+      # The `Test` step below runs `go test ./...` WITHOUT -v, so it emits only
+      # package-level `ok` lines — and a package whose every test SKIPs still
+      # prints `ok`. That makes `ok` unable to distinguish a running suite from
+      # a silently-skipped one, which is precisely threat T-01-23. This step
+      # re-runs just the shared-address assertions with -v and asserts the
+      # COUNTS, so it fails rather than merely reporting.
+      #
+      # Expected 3 PASS + 1 SKIP, not 4 PASS. internal/retrievaleval's TestMain
+      # returns before setting testQdrantAddr unless ENGRAM_RETRIEVAL_EVAL=1,
+      # so in CI that package never dials Qdrant and does not participate in
+      # the shared instance at all. Both counts are pinned: a package that
+      # stops honoring the shared address (3 -> 2) and retrievaleval quietly
+      # starting to participate (1 -> 0) each trip this gate.
+      - name: assert shared-Qdrant participation per package
+        env:
+          ENGRAM_QDRANT_TEST_ADDR: localhost:6334
+          ENGRAM_REQUIRE_QDRANT: "1"
+        run: |
+          out=$(go test -run '^TestSharedQdrantAddressHonored$' -v -count=1 \
+            ./internal/store/... ./internal/server/... ./internal/e2e/... ./internal/retrievaleval/...)
+          printf '%s\n' "$out"
+          pass=$(printf '%s\n' "$out" | grep -o '^--- PASS: TestSharedQdrantAddressHonored' | wc -l | tr -d '[:space:]')
+          skip=$(printf '%s\n' "$out" | grep -o '^--- SKIP: TestSharedQdrantAddressHonored' | wc -l | tr -d '[:space:]')
+          echo "shared-address PASS=${pass} SKIP=${skip} (expected PASS=3 SKIP=1)"
+          if [ "${pass}" != "3" ] || [ "${skip}" != "1" ]; then
+            echo "::error::expected 3 PASS + 1 SKIP for TestSharedQdrantAddressHonored, got ${pass} PASS + ${skip} SKIP"
+            exit 1
+          fi
       - name: Test
         env:
           # Fail-closed real-Qdrant authz/parity gate (round-6 MED, Codex):
@@ -37,7 +121,40 @@ jobs:
           # the job instead of letting TestMain silently skip the integration
           # suite (see internal/server/tools_test.go requireQdrant/TestMain).
           ENGRAM_REQUIRE_QDRANT: "1"
+          # Points every Qdrant-backed package's TestMain fast path at the
+          # shared services: container above instead of each booting its own
+          # (D-15). All four TestMain chains already honor this var.
+          ENGRAM_QDRANT_TEST_ADDR: localhost:6334
+          # G-05-9 fail-closed browser gate, mirroring ENGRAM_REQUIRE_QDRANT
+          # above: makes a browser-less runner FAIL TestConsoleBundleRendersRecordInBrowser
+          # instead of silently skipping this tier. No install step is added —
+          # ubuntu-latest already ships Chrome 151 and Chromium 151 preinstalled
+          # (verified against the runner-images manifest at plan time).
+          ENGRAM_REQUIRE_BROWSER: "1"
         run: go test ./...
+      # D-19: capture WHY the Qdrant container died as a CI post-step rather
+      # than in-Go — when the container dies mid-run the Go process often
+      # cannot reach it either, so in-process capture yields nothing in
+      # exactly the case that matters most. Scoped to the pinned Qdrant
+      # image's own container only: no printenv, no unscoped `docker ps -a`
+      # of every container on the runner. Every command tolerates its own
+      # absence so this step itself never fails and masks the real failure.
+      - name: qdrant container diagnostics on failure
+        if: failure()
+        env:
+          QDRANT_IMAGE: qdrant/qdrant:v1.18.2
+        run: |
+          echo "--- qdrant container state ---"
+          cid=$(docker ps -aq --filter "ancestor=${QDRANT_IMAGE}" | head -n1)
+          if [ -n "${cid}" ]; then
+            docker inspect "${cid}" --format 'id={{.Id}} status={{.State.Status}} exitCode={{.State.ExitCode}} oomKilled={{.State.OOMKilled}} error={{.State.Error}}' || echo "docker inspect failed"
+            echo "--- qdrant container logs (last 200 lines) ---"
+            docker logs "${cid}" 2>&1 | tail -n 200 || echo "docker logs failed"
+          else
+            echo "no qdrant container found (ancestor ${QDRANT_IMAGE})"
+          fi
+          echo "--- kernel OOM evidence ---"
+          dmesg 2>/dev/null | grep -i -E 'oom|killed process' || echo "no OOM evidence in dmesg (or dmesg unavailable)"
       # Enforce go.mod/go.sum tidiness here, not via a GoReleaser hook: release
       # builds use the exact tagged module files (tag = source of truth).
       - name: go.mod tidy check

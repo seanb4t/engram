@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -34,15 +33,8 @@ var spineReviewScanCmd = &cobra.Command{
 	Use:   "scan",
 	Short: "Report an inventory of the memory spine",
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		// Reuses summarize.go's exact wording (summarize.go:38) so the
-		// operator tier stays internally consistent — NOT because this
-		// check satisfies an already-registered surfaces.ConditionalRule:
-		// summarize.go's own check is a bare usageErrorf, and the registry
-		// (internal/surfaces/rules.go) holds no rule for it. See this
-		// plan's SUMMARY (§ Deferrals) for the follow-up that would
-		// register one.
-		if spineScanScope == "" && !spineScanAllScopes {
-			return usageErrorf("--scope <scope> or --all-scopes is required")
+		if err := requireSweepScope(spineScanScope, spineScanAllScopes); err != nil {
+			return err
 		}
 		format, err := operatorOutputFormat(cmd, spineScanOutput)
 		if err != nil {
@@ -63,7 +55,7 @@ var spineReviewScanCmd = &cobra.Command{
 		if err != nil {
 			return classifyOperatorErr(err)
 		}
-		return renderOperator(cmd, format, spineScanSummary(res, spineScanScope), spineScanDoc(res))
+		return renderOperator(cmd, format, spineScanSummary(res, spineScanScope), spineScanDoc(res, spineScanScope))
 	},
 }
 
@@ -79,7 +71,17 @@ type spineScanBreakdownDoc struct {
 // text, on any spine-review output path (T-03-05's mitigation). A hand
 // declared struct, not an embedded store.SpineScanResult, so this
 // exclusion is enforced by the type itself rather than by discipline.
+//
+// Scope is the raw --scope flag value, with the empty string meaning all
+// scopes (spineReviewScanCmd requires one of --scope or --all-scopes, so
+// no separate all_scopes key is needed to disambiguate). Added per
+// 06-01-PLAN.md §Conversion Rules R2 (gap closure): spineScanSummary has
+// always rendered the scan target on its headline, but no key carried it
+// until now — 06-CONTEXT.md <specifics> names this gap explicitly and
+// blesses closing it. Placed first so the rendered field table leads with
+// the scan target exactly as the headline always has.
 type spineScanReportDoc struct {
+	Scope          string    `json:"scope"`
 	Total          uint64    `json:"total"`
 	ScannedAt      time.Time `json:"scanned_at"`
 	Owners         uint64    `json:"owners"`
@@ -98,9 +100,12 @@ type spineScanReportDoc struct {
 }
 
 // spineScanDoc converts res into spineScanReportDoc, keeping the breakdown
-// slice non-nil so an empty spine marshals it as `[]`, never `null`.
-func spineScanDoc(res store.SpineScanResult) spineScanReportDoc {
+// slice non-nil so an empty spine marshals it as `[]`, never `null`. scope
+// is the raw --scope flag value (empty means all scopes), threaded through
+// verbatim into Scope.
+func spineScanDoc(res store.SpineScanResult, scope string) spineScanReportDoc {
 	doc := spineScanReportDoc{
+		Scope:           scope,
 		Total:           res.Total,
 		ScannedAt:       res.ScannedAt,
 		Owners:          res.Owners,
@@ -122,34 +127,31 @@ func spineScanDoc(res store.SpineScanResult) spineScanReportDoc {
 	return doc
 }
 
-// spineScanSummary renders the operator-facing text report. Pure (value
-// types only — no *store.Store, no context.Context) so it is
-// unit-testable without a live Qdrant, mirroring reindexSummary's
-// discipline (reindex.go). Two parts: a header line with Total, Owners and
-// the scan instant, then one line per health signal, then the (scope,
-// category) breakdown sorted as store.ScanSpine already returns it.
+// spineScanSummary renders the operator-facing headline. Pure (value types
+// only — no *store.Store, no context.Context) so it is unit-testable
+// without a live Qdrant, mirroring reindexSummary's discipline
+// (reindex.go). Per D-04 (06-CONTEXT.md) this is a headline producer only:
+// it names the scan target, the scan instant, the total and the owner
+// count, and returns a single line with no trailing newline. The health
+// signals (without_summary/with_summary/superseded/expired/scheduled/
+// archived/with_citations/citations) and the (scope, category) breakdown
+// this function used to print as extra lines now render only as
+// renderOperatorView's field-table rows, from spineScanDoc.
 func spineScanSummary(res store.SpineScanResult, scope string) string {
 	target := scope
 	if target == "" {
 		target = "all scopes"
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "spine scan (%s) at %s: total=%d owners=%d\n",
+	return fmt.Sprintf("spine scan (%s) at %s: total=%d owners=%d",
 		target, res.ScannedAt.Format(time.RFC3339), res.Total, res.Owners)
-	fmt.Fprintf(&b, "  without_summary=%d with_summary=%d\n", res.WithoutSummary, res.WithSummary)
-	fmt.Fprintf(&b, "  superseded=%d expired=%d scheduled=%d archived=%d\n", res.Superseded, res.Expired, res.Scheduled, res.Archived)
-	fmt.Fprintf(&b, "  with_citations=%d citations=%d\n", res.WithCitations, res.Citations)
-	for _, c := range res.ByScopeCategory {
-		fmt.Fprintf(&b, "  scope=%q category=%q count=%d\n", c.Scope, c.Category, c.Count)
-	}
-	return strings.TrimRight(b.String(), "\n")
 }
 
 func init() {
 	addOperatorOutputFlag(spineReviewScanCmd, &spineScanOutput)
 	spineReviewScanCmd.Flags().StringVar(&spineScanScope, "scope", "", "only scan records in this scope")
-	spineReviewScanCmd.Flags().BoolVar(&spineScanAllScopes, "all-scopes", false, "sweep every scope (required if --scope is omitted)")
+	spineReviewScanCmd.Flags().BoolVar(&spineScanAllScopes, "all-scopes", false, "sweep every scope (required if --scope is omitted); mutually exclusive with --scope; "+sweepScopeRule().Sentence)
 	spineReviewScanCmd.Flags().DurationVar(&spineScanTimeout, "timeout", 5*time.Minute,
 		"max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C")
+	spineReviewScanCmd.MarkFlagsMutuallyExclusive("scope", "all-scopes")
 	spineReviewCmd.AddCommand(spineReviewScanCmd)
 }

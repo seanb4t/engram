@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
 	"github.com/seanb4t/engram/internal/authz"
+	"github.com/seanb4t/engram/internal/migrate"
 	"github.com/seanb4t/engram/internal/shortid"
 	"github.com/seanb4t/engram/internal/telemetry"
 	"go.opentelemetry.io/otel"
@@ -269,9 +270,9 @@ type Memory struct {
 	// empty otherwise.
 	SummaryModel string `json:"summary_model,omitempty"`
 	// SummaryEgressAt is the k1oe.2 durable audit stamp: when this record's
-	// content was egressed to the summarizer model (auto path only). Store-only;
-	// not on the Connect wire. Zero if never egressed or the summary was
-	// client-authored/cleared.
+	// content was egressed to the summarizer model (auto path only). Plain
+	// json tag, visible on both the MCP and Connect wires. Zero if never
+	// egressed or the summary was client-authored/cleared.
 	SummaryEgressAt time.Time `json:"summary_egress_at"`
 	// Score is the Qdrant similarity score of this record for the query that
 	// returned it (higher = closer). Set only on Search results; zero on
@@ -311,6 +312,45 @@ type Memory struct {
 	// contract, not a replay), but a reader should not assume this field
 	// tracks the record's current state.
 	IdempotencyFingerprint string `json:"-"`
+	// SchemaVersion is the record's schema-version discriminator
+	// (internal/migrate.Version). Three assertions:
+	//
+	//  1. Server-set only and monotonic — no client-writable tool argument
+	//     sets it. payload() computes it as the greater of the current
+	//     schema constant and the record's own decoded value, so a newer
+	//     record is never downgraded by an older binary (D-05).
+	//  2. A legacy record missing the payload key reads migrate.Version(0):
+	//     no backfill required (D-09).
+	//  3. MUST NOT be read by any recall or authz filter (D-13/D-16) — the
+	//     superseded_by/archived_at IsEmpty idiom has INVERTED cardinality
+	//     here (absence is the majority state at adoption, not a minority
+	//     one), and copying it would exclude every pre-migration record
+	//     from recall.
+	//
+	// The plain json tag (no "-") is a deliberate divergence from the two
+	// adjacent EmbedderIdentity/IdempotencyFingerprint fields above, whose
+	// json:"-" tags are themselves deliberate and load-bearing — do not
+	// "fix" this field to match them. omitempty is specifically excluded
+	// too: it would hide the field exactly on the v0 records this phase
+	// exists to make visible (D-10).
+	//
+	// Accepted limitation (D-06): an older binary that edits a newer
+	// record keeps the newer stamp while rebuilding the payload from its
+	// own older struct, so version-newer-only keys are dropped. This is
+	// acceptable because migration steps are additive-only, what is lost
+	// is re-derivable, and the recovery is re-running the migration sweep.
+	//
+	// Narrowed no-downgrade boundary: the guarantee is that a normal full
+	// write stamps at least migrate.CurrentVersion, and that rewriting a
+	// DECODED newer record through Store.Update preserves its higher
+	// version. Store.Upsert is public replacement-by-id and does NOT read
+	// the stored record before writing, so a caller holding a stale Memory
+	// CAN lower a stored version through it — that is outside the
+	// guarantee, stated here rather than papered over. A stored-version
+	// read or compare-and-swap on Upsert was considered and rejected for
+	// this phase: it would change the semantics of a public method every
+	// existing caller depends on, which is not additive scope.
+	SchemaVersion migrate.Version `json:"schema_version"`
 }
 
 // embedderIdentityKey is the shared Qdrant payload key for
@@ -323,6 +363,11 @@ const embedderIdentityKey = "embedder_identity"
 // Memory.IdempotencyFingerprint, written by payload() and read by
 // fromPayload() (Phase 24, D-06). Payload-only, unindexed (DEC-ef28 unchanged).
 const idempotencyFingerprintKey = "idempotency_fingerprint"
+
+// schemaVersionKey is the shared Qdrant payload key for Memory.SchemaVersion.
+// Three readers: payload() (writes the monotonic stamp), fromPayload() (the
+// absent-safe decode), and ensureIndexes() (the payload index registration).
+const schemaVersionKey = "schema_version"
 
 // EmbedText builds the text sent to the embedder for a record. Tags are folded
 // into the embedded document so curated keywords contribute to vector recall
@@ -511,6 +556,14 @@ func (s *Store) ensureCollection(ctx context.Context, name string, dim uint64) e
 // (enables server-side DatetimeRange + order_by). Re-creating an existing index
 // is idempotent in Qdrant; the AlreadyExists check defends against versions/races
 // that return it instead of succeeding silently.
+//
+// schema_version is an integer index (D-12) serving the future Phase 3
+// migration sweep and Phase 4's `migrate status` version histogram
+// EXCLUSIVELY — it must never serve recall. See
+// internal/store/schemaversion_recallgate_test.go (plan 02-03) for the gate
+// that holds that line: an index that exists makes it easier for a future
+// filter to reach for the field, which is precisely why that gate — not
+// inconvenience — is the guard.
 func (s *Store) ensureIndexes(ctx context.Context, name string) error {
 	type idx struct {
 		field  string
@@ -523,6 +576,7 @@ func (s *Store) ensureIndexes(ctx context.Context, name string) error {
 		{"scope", qdrant.FieldType_FieldTypeKeyword, nil},
 		{"created_at", qdrant.FieldType_FieldTypeDatetime, nil},
 		{"short_id", qdrant.FieldType_FieldTypeKeyword, nil},
+		{schemaVersionKey, qdrant.FieldType_FieldTypeInteger, nil},
 	}
 	for _, ix := range idxs {
 		req := &qdrant.CreateFieldIndexCollection{
@@ -584,6 +638,12 @@ func payload(m Memory) map[string]any {
 	p["access_count"] = m.AccessCount
 	p[embedderIdentityKey] = m.EmbedderIdentity
 	p[idempotencyFingerprintKey] = m.IdempotencyFingerprint
+	// int(...) is load-bearing, not cosmetic: qdrant.NewValueMap's type
+	// switch matches exact concrete types, and migrate.Version (a named
+	// type over int) does not match its `case int:` arm — an unconverted
+	// migrate.Version value falls through to NewValue's default case and
+	// panics with "invalid type: migrate.Version".
+	p[schemaVersionKey] = int(max(migrate.CurrentVersion, m.SchemaVersion))
 	if m.LastAccessedAt != nil {
 		p["last_accessed_at"] = m.LastAccessedAt.Format(time.RFC3339)
 	}
@@ -677,6 +737,9 @@ func fromPayload(id string, p map[string]*qdrant.Value) Memory {
 	}
 	if v, ok := p["access_count"]; ok {
 		m.AccessCount = uint64(v.GetIntegerValue())
+	}
+	if v, ok := p[schemaVersionKey]; ok {
+		m.SchemaVersion = migrate.Version(v.GetIntegerValue())
 	}
 	if v, ok := p[embedderIdentityKey]; ok {
 		m.EmbedderIdentity = v.GetStringValue()
@@ -993,6 +1056,25 @@ type SearchOptions struct {
 	// Half-open creation-time window. Zero value = unbounded on that side.
 	CreatedAfter  time.Time
 	CreatedBefore time.Time
+	// IncludeArchived, IncludeSuperseded, and IncludeScheduled are orthogonal
+	// opt-in relaxations of Store.Search's recall gate (phase 07, D-01/D-02),
+	// mirroring ListOptions' fields of the same name. Each maps 1:1 onto
+	// exactly one Must condition Search appends below: IncludeArchived
+	// relaxes the archived_at IsEmpty gate, IncludeSuperseded relaxes the
+	// superseded_by IsEmpty gate, and IncludeScheduled relaxes the ENTIRE
+	// activeWindowConditions append (both the not_before and not_after
+	// halves) as one unit — never split across two branches. All three
+	// default false, reproducing today's behavior byte-identically.
+	// SearchReranked forwards these unchanged; the MCP lane never sets them.
+	//
+	// Deliberate 2-of-4 scope: this idiom (IsEmpty("superseded_by") /
+	// IsEmpty("archived_at")) appears at four sites in this file. Only
+	// Store.Search and Store.List honor these fields, per D-01.
+	// Store.SearchDiscovery and Store.ListScheduled are deliberately
+	// EXCLUDED — see their own doc comments for why.
+	IncludeArchived   bool
+	IncludeSuperseded bool
+	IncludeScheduled  bool
 }
 
 // Search returns the k nearest readable memories to vec within scope.
@@ -1021,17 +1103,31 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 	}()
 
 	f := s.ownerScopeFilter(ctx, scope, subj)
-	f.Must = append(f.Must, activeWindowConditions(s.now())...)
+	// IncludeScheduled relaxes the ENTIRE activeWindowConditions append as one
+	// unit (both the not_before and not_after halves) — never split across two
+	// branches (phase 07, D-01/D-02). Splitting it would make a genuinely
+	// expired record reachable while relaxing only the not-yet-active half,
+	// which is exactly the failure the STATE column's "expired" word exists to
+	// prevent.
+	if !opts.IncludeScheduled {
+		f.Must = append(f.Must, activeWindowConditions(s.now())...)
+	}
 	// Soft-hide superseded records from search recall (D-09) — sibling
 	// condition to activeWindowConditions, not folded into it (that helper is
 	// time-window-scoped only). get_memory (Store.Get) stays ungated.
-	f.Must = append(f.Must, qdrant.NewIsEmpty("superseded_by"))
+	// IncludeSuperseded relaxes this condition only (phase 07, D-01/D-02).
+	if !opts.IncludeSuperseded {
+		f.Must = append(f.Must, qdrant.NewIsEmpty("superseded_by"))
+	}
 	// Soft-hide archived records (D-12, plan 03-06) — a SIBLING condition to
 	// both activeWindowConditions and the superseded_by IsEmpty above, never
 	// folded into either: archived is orthogonal to both the time window and
 	// supersession, so this stays independently maintained alongside them.
-	// get_memory (Store.Get) stays ungated.
-	f.Must = append(f.Must, qdrant.NewIsEmpty("archived_at"))
+	// get_memory (Store.Get) stays ungated. IncludeArchived relaxes this
+	// condition only (phase 07, D-01/D-02).
+	if !opts.IncludeArchived {
+		f.Must = append(f.Must, qdrant.NewIsEmpty("archived_at"))
+	}
 	f.Must = append(f.Must, tagMatchConditions(opts.Tags)...)
 	if c := categoryMatchCondition(opts.Categories); c != nil {
 		f.Must = append(f.Must, c)
@@ -1165,6 +1261,26 @@ type ListOptions struct {
 	// only on the offset/all path used by list_rules; cursor mode is unaffected
 	// (rules do not paginate). Zero value preserves the existing desc behavior.
 	Ascending bool
+	// IncludeArchived, IncludeSuperseded, and IncludeScheduled are orthogonal
+	// opt-in relaxations of Store.List's recall gate (phase 07, D-01/D-02).
+	// Each maps 1:1 onto exactly one Must condition List appends below:
+	// IncludeArchived relaxes the archived_at IsEmpty gate, IncludeSuperseded
+	// relaxes the superseded_by IsEmpty gate, and IncludeScheduled relaxes the
+	// ENTIRE activeWindowConditions append (both the not_before and not_after
+	// halves) as one unit — never split across two branches. All three
+	// default false, reproducing today's behavior byte-identically. The MCP
+	// lane never sets these fields.
+	//
+	// Deliberate 2-of-4 scope: this idiom (IsEmpty("superseded_by") /
+	// IsEmpty("archived_at")) appears at four sites in this file. Only
+	// Store.Search and Store.List honor these fields, per D-01.
+	// Store.SearchDiscovery and Store.ListScheduled are deliberately
+	// EXCLUDED — ListScheduled accepts a ListOptions value but must NOT
+	// inherit these fields; it has its own inline filter and its own state
+	// semantics (ScheduledState).
+	IncludeArchived   bool
+	IncludeSuperseded bool
+	IncludeScheduled  bool
 }
 
 // createdRangeCondition builds a half-open [after, before) DatetimeRange on the
@@ -1258,16 +1374,30 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 	}
 
 	f := s.listFilter(ctx, scope, subj, opts)
-	f.Must = append(f.Must, activeWindowConditions(s.now())...)
+	// IncludeScheduled relaxes the ENTIRE activeWindowConditions append as one
+	// unit (both the not_before and not_after halves) — never split across two
+	// branches (phase 07, D-01/D-02). Splitting it would make a genuinely
+	// expired record reachable while relaxing only the not-yet-active half,
+	// which is exactly the failure the STATE column's "expired" word exists to
+	// prevent.
+	if !opts.IncludeScheduled {
+		f.Must = append(f.Must, activeWindowConditions(s.now())...)
+	}
 	// Soft-hide superseded records from list recall (D-09) — sibling
 	// condition to activeWindowConditions, not folded into it (that helper is
 	// time-window-scoped only). get_memory (Store.Get) stays ungated.
-	f.Must = append(f.Must, qdrant.NewIsEmpty("superseded_by"))
+	// IncludeSuperseded relaxes this condition only (phase 07, D-01/D-02).
+	if !opts.IncludeSuperseded {
+		f.Must = append(f.Must, qdrant.NewIsEmpty("superseded_by"))
+	}
 	// Soft-hide archived records (D-12, plan 03-06) — a SIBLING condition,
 	// never folded into activeWindowConditions or the superseded_by gate
 	// above: archived, expired, and superseded stay independently observable
-	// states. get_memory (Store.Get) stays ungated.
-	f.Must = append(f.Must, qdrant.NewIsEmpty("archived_at"))
+	// states. get_memory (Store.Get) stays ungated. IncludeArchived relaxes
+	// this condition only (phase 07, D-01/D-02).
+	if !opts.IncludeArchived {
+		f.Must = append(f.Must, qdrant.NewIsEmpty("archived_at"))
+	}
 	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
 		f.Must = append(f.Must, c)
 	}
@@ -1820,13 +1950,19 @@ func (s *Store) Update(ctx context.Context, cur Memory, content string, shared *
 	// for the identical reason: a lock-free targeted SetPayload landing
 	// between this re-read and the Upsert below would otherwise be silently
 	// erased, exactly like the CR-04 supersession case this comment describes.
+	// Phase 02-01 extends the same in-lock refresh to SchemaVersion: D-05's
+	// monotonic max must be computed against the LATEST STORED stamp, not
+	// only the caller's FetchForUpdate snapshot — otherwise a version raised
+	// by a concurrent writer between that snapshot and this re-read would be
+	// silently lost when this method's Upsert recomputes the max from a
+	// stale cur.SchemaVersion.
 	unlock, err := s.locker.Lock(ctx, cur.ID)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 	if fresh, gerr := s.Get(ctx, cur.ID); gerr == nil {
-		cur.Supersedes, cur.SupersededBy, cur.ArchivedAt = fresh.Supersedes, fresh.SupersededBy, fresh.ArchivedAt
+		cur.Supersedes, cur.SupersededBy, cur.ArchivedAt, cur.SchemaVersion = fresh.Supersedes, fresh.SupersededBy, fresh.ArchivedAt, fresh.SchemaVersion
 	} else if !errors.Is(gerr, ErrNotFound) {
 		return gerr
 	}
@@ -2654,79 +2790,6 @@ func (s *Store) MintShortID(ctx context.Context, seen map[string]struct{}) (id s
 	return "", err
 }
 
-// missingShortIDFilter matches records with no short_id key (pre-backfill legacy
-// rows). NewIsEmpty matches missing/null/empty — NOT a non-empty value — so
-// already-backfilled records are excluded (idempotent). Mirrors ownerlessFilter.
-func missingShortIDFilter() *qdrant.Filter {
-	return &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewIsEmpty("short_id")}}
-}
-
-// BackfillShortIDs assigns a globally-unique short id to every record lacking
-// one, writing it with a payload-only SetPayload (no re-embed; vectors and the
-// absent-owner-key invariant are preserved). Writing the filtered field while
-// paging is safe because ScrollAndOffset's next_page_offset is a point-ID
-// forward watermark (a continuation point-id, not an ordinal skip-count):
-// stamping already-visited points shrinks the NewIsEmpty("short_id") matched
-// set but can never skip a not-yet-visited point. The offset=next loop matches
-// SummarizeMissing mechanically. dryRun counts without writing.
-func (s *Store) BackfillShortIDs(ctx context.Context, dryRun bool) (n uint64, err error) {
-	ctx, span := tracer.Start(ctx, "store.BackfillShortIDs")
-	defer span.End()
-	start := time.Now()
-	defer func() {
-		telemetry.RecordStoreOp(ctx, "BackfillShortIDs", start, err)
-		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, err.Error())
-		} else {
-			span.SetAttributes(attribute.Int64("engram.result_count", int64(n)))
-		}
-	}()
-
-	if dryRun {
-		n, err = s.client.Count(ctx, &qdrant.CountPoints{
-			CollectionName: s.collection, Filter: missingShortIDFilter(), Exact: qdrant.PtrOf(true),
-		})
-		return n, err
-	}
-
-	seen := map[string]struct{}{}
-	var offset *qdrant.PointId
-	for {
-		pts, next, serr := s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
-			CollectionName: s.collection,
-			Filter:         missingShortIDFilter(),
-			Limit:          qdrant.PtrOf(uint32(reindexBatch)),
-			Offset:         offset,
-			WithPayload:    qdrant.NewWithPayload(false),
-		})
-		if serr != nil {
-			err = serr
-			return n, err
-		}
-		for _, p := range pts {
-			sid, merr := s.MintShortID(ctx, seen)
-			if merr != nil {
-				err = merr
-				return n, err
-			}
-			if _, perr := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
-				CollectionName: s.collection, Wait: qdrant.PtrOf(true),
-				Payload:        qdrant.NewValueMap(map[string]any{"short_id": sid}),
-				PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{p.Id}),
-			}); perr != nil {
-				err = perr
-				return n, err
-			}
-			n++
-		}
-		if next == nil {
-			return n, nil
-		}
-		offset = next
-	}
-}
-
 // CountAnonymousBucket returns the number of records in the auth-disabled
 // anonymous bucket (an explicit owner==""). Distinct from CountOwnerless, which
 // matches pre-isolation records with NO owner key (NewIsEmpty). The server
@@ -3037,6 +3100,18 @@ const reindexBatch = 256
 // overwritten on the payload map immediately before the upsert (Phase 13
 // SC3). This is a guarded additive raw-map write, not a Memory/payload()
 // round-trip, so it does not touch the owner key or any other field.
+//
+// Reindex's per-point write (the raw client.Upsert call below, Payload:
+// p.Payload) is the intentional whole-write exception to "every full write
+// routes through payload()" — it never calls payload() at all. This has a
+// real consequence for schema_version specifically (correcting an earlier
+// assumption that Reindex "inherits" the D-05 monotonic stamp like every
+// other full write): because the payload map is copied verbatim off the
+// source point rather than rebuilt from a decoded Memory, Reindex preserves
+// schema_version byte-for-byte, present or absent, exactly as the source
+// carried it. Reindexing does NOT advance a record's version — converging
+// a version toward current is the future migration sweep's job (Phase 3),
+// not Reindex's.
 //
 // Fail-closed: an embed error aborts immediately and is returned wrapped; no
 // zero/garbage vector is ever written. A point carrying no content is skipped

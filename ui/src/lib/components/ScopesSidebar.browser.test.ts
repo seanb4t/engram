@@ -9,11 +9,18 @@ const scopes = [create(ScopeCountSchema, { scope: 'repo:github.com/fzymgc-house/
 
 type Props = {
   scopes: ScopeCount[]; activeScope: string; categories: Category[]; visibility: Visibility;
+  includeArchived: boolean; includeSuperseded: boolean; includeScheduled: boolean;
   loading: boolean; error: unknown; onscope: (s: string) => void; onfilter: (c: Category[], v: Visibility) => void;
+  oninclude: (archived: boolean, superseded: boolean, scheduled: boolean) => void;
 };
 
 function baseProps(overrides: Partial<Props> = {}): Props {
-  return { scopes, activeScope: '', categories: [], visibility: '', loading: false, error: null, onscope: () => {}, onfilter: () => {}, ...overrides };
+  return {
+    scopes, activeScope: '', categories: [], visibility: '',
+    includeArchived: false, includeSuperseded: false, includeScheduled: false,
+    loading: false, error: null, onscope: () => {}, onfilter: () => {}, oninclude: () => {},
+    ...overrides
+  };
 }
 
 describe('ScopesSidebar', () => {
@@ -71,5 +78,45 @@ describe('ScopesSidebar', () => {
     const screen = await render(ScopesSidebar, baseProps({ loading: true }));
     await expect.element(screen.getByTestId('scopes-loading')).toBeInTheDocument();
     await expect.element(screen.getByText('selfhosted-cluster')).not.toBeInTheDocument();
+  });
+
+  it('renders the three include-state checkboxes with their exact lowercase labels', async () => {
+    const screen = await render(ScopesSidebar, baseProps());
+    await expect.element(screen.getByRole('checkbox', { name: 'include archived' })).toBeInTheDocument();
+    await expect.element(screen.getByRole('checkbox', { name: 'include superseded' })).toBeInTheDocument();
+    await expect.element(screen.getByRole('checkbox', { name: 'include scheduled' })).toBeInTheDocument();
+    await expect.element(screen.getByText('include archived')).toBeInTheDocument();
+    await expect.element(screen.getByText('include superseded')).toBeInTheDocument();
+    await expect.element(screen.getByText('include scheduled')).toBeInTheDocument();
+  });
+
+  it('reflects each include prop as its checkbox checked state', async () => {
+    const screen = await render(ScopesSidebar, baseProps({ includeArchived: true, includeScheduled: true }));
+    await expect.element(screen.getByRole('checkbox', { name: 'include archived' })).toBeChecked();
+    await expect.element(screen.getByRole('checkbox', { name: 'include superseded' })).not.toBeChecked();
+    await expect.element(screen.getByRole('checkbox', { name: 'include scheduled' })).toBeChecked();
+  });
+
+  it('checking include archived calls oninclude with the other two incoming flags preserved', async () => {
+    const oninclude = vi.fn();
+    const screen = await render(ScopesSidebar, baseProps({ includeSuperseded: true, oninclude }));
+    await screen.getByRole('checkbox', { name: 'include archived' }).click();
+    expect(oninclude).toHaveBeenCalledWith(true, true, false);
+  });
+
+  it('unchecking a checked include flag calls oninclude with that flag false and the other two unchanged', async () => {
+    const oninclude = vi.fn();
+    const screen = await render(ScopesSidebar, baseProps({ includeArchived: true, includeSuperseded: true, oninclude }));
+    await screen.getByRole('checkbox', { name: 'include superseded' }).click();
+    expect(oninclude).toHaveBeenCalledWith(true, false, false);
+  });
+
+  it('keeps every existing control rendering and invoking onfilter unchanged alongside the new toggles', async () => {
+    const onfilter = vi.fn();
+    const screen = await render(ScopesSidebar, baseProps({ onfilter }));
+    await expect.element(screen.getByRole('checkbox', { name: 'gotcha' })).toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'visibility' })).toBeInTheDocument();
+    await screen.getByRole('checkbox', { name: 'gotcha' }).click();
+    expect(onfilter).toHaveBeenCalledWith(['gotcha'], '');
   });
 });

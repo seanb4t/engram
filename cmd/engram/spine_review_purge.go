@@ -154,11 +154,30 @@ func purgeScopeText(opts store.PurgeOptions) string {
 	return "(none)"
 }
 
+// shellQuote wraps s in single quotes, escaping any embedded single quote
+// via the standard POSIX-shell idiom: close the current quote, emit a
+// backslash-escaped literal quote, then reopen the quote. The result is
+// safe to substitute into a `sh`/`bash`-family command line regardless of
+// spaces, globs, or other shell metacharacters s might contain. Values
+// this package interpolates into a copy-pasteable command (scope,
+// category, tag) are free-form strings an operator can set on the write
+// path (WR-03, 06-REVIEW.md), so they cannot be trusted to be shell-safe
+// on their own.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // purgeRerunCommand renders the exact command an operator would run to
 // apply this same derivation -- the plain re-run the preview output names,
 // mirroring prune-expired's own "re-run with --apply" wording, expanded
 // here to carry every flag this invocation actually supplied so the
-// printed command is genuinely copy-pasteable.
+// printed command is genuinely copy-pasteable. Every free-form value
+// (--scope, --category, --tags) is shell-quoted via shellQuote so a value
+// containing a space or shell metacharacter still round-trips through a
+// copy-paste into a shell as the single argument it actually was (WR-03,
+// 06-REVIEW.md) -- --class and --older-than need no quoting: both are
+// drawn from a closed, operator-controlled vocabulary (purgeClassNames,
+// time.Duration.String()) that never contains shell metacharacters.
 func purgeRerunCommand(opts store.PurgeOptions) string {
 	var b strings.Builder
 	b.WriteString("engram spine-review purge --apply")
@@ -168,13 +187,13 @@ func purgeRerunCommand(opts store.PurgeOptions) string {
 	if opts.AllScopes {
 		b.WriteString(" --all-scopes")
 	} else if opts.Scope != "" {
-		fmt.Fprintf(&b, " --scope %s", opts.Scope)
+		fmt.Fprintf(&b, " --scope %s", shellQuote(opts.Scope))
 	}
 	if opts.Category != "" {
-		fmt.Fprintf(&b, " --category %s", opts.Category)
+		fmt.Fprintf(&b, " --category %s", shellQuote(opts.Category))
 	}
 	for _, tag := range opts.Tags {
-		fmt.Fprintf(&b, " --tags %s", tag)
+		fmt.Fprintf(&b, " --tags %s", shellQuote(tag))
 	}
 	if opts.OlderThan != 0 {
 		fmt.Fprintf(&b, " --older-than %s", opts.OlderThan)
@@ -212,6 +231,14 @@ type purgeReportDoc struct {
 	// a json consumer sees the identical wording a human reading --help does.
 	SameRunLimitation string `json:"same_run_limitation"`
 	IntersectionScope string `json:"intersection_scoping"`
+	// Rerun is the exact re-run command an operator would use to apply this
+	// preview -- added per 06-01-PLAN.md Conversion Rules R2 (gap closure):
+	// purgePreviewSummary stated this command in prose and no existing key
+	// carried it. Populated on the preview document only (an applied run has
+	// nothing left to re-run into being); omitempty so an applied document
+	// carries no "rerun" key at all, matching the pre-conversion behavior
+	// where only the preview sentence printed a "re-run:" line.
+	Rerun string `json:"rerun,omitempty"`
 }
 
 // olderThanText renders d as its flag-form string, or "" when zero -- so
@@ -251,6 +278,7 @@ func purgePreviewDoc(eligible []string, opts store.PurgeOptions) purgeReportDoc 
 		EligibleCount: len(eligible), Eligible: nonNilStrings(eligible),
 		Deleted: []string{}, Spared: []string{}, Appeared: []string{},
 		SameRunLimitation: purgeSameRunLimitationNotice, IntersectionScope: purgeIntersectionScopingNotice,
+		Rerun: purgeRerunCommand(opts),
 	}
 }
 
@@ -264,48 +292,39 @@ func purgeAppliedDoc(eligible []string, res store.PurgeResult, opts store.PurgeO
 	doc.DeletedCount, doc.Deleted = len(res.Deleted), nonNilStrings(res.Deleted)
 	doc.SparedCount, doc.Spared = len(res.Spared), nonNilStrings(res.Spared)
 	doc.AppearedCount, doc.Appeared = len(res.Appeared), nonNilStrings(res.Appeared)
+	// An applied run has nothing left to re-run into being -- the re-run
+	// command is preview-only, mirroring the pre-conversion text where only
+	// the preview sentence printed a "re-run:" line.
+	doc.Rerun = ""
 	return doc
 }
 
-// purgePreviewSummary renders the operator-facing text report for a bare
-// (no --apply) run: the eligible count and ids, the same-run limitation,
-// the intersection's real scope, and the exact re-run command -- mirroring
-// reindexSummary's/pruneSummary's pure-formatter discipline (no I/O, no
-// *store.Store, no context.Context). Takes the already-extracted id slice,
-// never store.PurgeManifest -- see purgePreviewDoc's doc comment.
+// purgePreviewSummary is a headline producer (06-CONTEXT.md D-04) for a bare
+// (no --apply) run: the eligible count and the derivation's classes/scope,
+// as ONE hand-written prose line -- mirroring reindexSummary's/
+// pruneSummary's pure-formatter discipline (no I/O, no *store.Store, no
+// context.Context). The eligible id list, the two published notices, and
+// the re-run command all moved from this sentence into purgeReportDoc's
+// field table (eligible, same_run_limitation, intersection_scoping, rerun);
+// the operator view renders them from there. Takes the already-extracted id
+// slice, never store.PurgeManifest -- see purgePreviewDoc's doc comment.
 func purgePreviewSummary(eligible []string, opts store.PurgeOptions) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "spine purge preview: %d record(s) eligible (classes=%s scope=%s)\n",
+	return fmt.Sprintf("spine purge preview: %d record(s) eligible (classes=%s scope=%s)",
 		len(eligible), purgeClassesText(opts.Classes), purgeScopeText(opts))
-	for _, id := range eligible {
-		fmt.Fprintf(&b, "  id=%s\n", id)
-	}
-	fmt.Fprintf(&b, "%s.\n", purgeSameRunLimitationNotice)
-	fmt.Fprintf(&b, "%s.\n", purgeIntersectionScopingNotice)
-	fmt.Fprintf(&b, "re-run: %s\n", purgeRerunCommand(opts))
-	return strings.TrimRight(b.String(), "\n")
 }
 
-// purgeAppliedSummary renders the operator-facing text report for an
+// purgeAppliedSummary is a headline producer (06-CONTEXT.md D-04) for an
 // --apply run: deleted/spared/appeared counts, each named explicitly, with
 // the appeared set carrying its own wording so an operator understands
 // those records were NOT purged and a re-run would include them (T-03-22's
-// mitigation).
+// mitigation) -- this explanatory nuance is exactly what D-04 says a field
+// name cannot carry, so it stays in this hand-written line. The three id
+// lists this sentence used to enumerate row-by-row now render from
+// purgeReportDoc's own deleted/spared/appeared fields via the operator view.
 func purgeAppliedSummary(res store.PurgeResult, opts store.PurgeOptions) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "spine purge applied: %d deleted, %d spared (ineligible since preview), %d appeared "+
-		"(newly eligible since preview -- NOT purged; re-run to include) (classes=%s scope=%s)\n",
+	return fmt.Sprintf("spine purge applied: %d deleted, %d spared (ineligible since preview), %d appeared "+
+		"(newly eligible since preview -- NOT purged; re-run to include) (classes=%s scope=%s)",
 		len(res.Deleted), len(res.Spared), len(res.Appeared), purgeClassesText(opts.Classes), purgeScopeText(opts))
-	for _, id := range res.Deleted {
-		fmt.Fprintf(&b, "  deleted id=%s\n", id)
-	}
-	for _, id := range res.Spared {
-		fmt.Fprintf(&b, "  spared id=%s\n", id)
-	}
-	for _, id := range res.Appeared {
-		fmt.Fprintf(&b, "  appeared id=%s (not purged; re-run to include)\n", id)
-	}
-	return strings.TrimRight(b.String(), "\n")
 }
 
 // spinePurgePreview is registerDestructive's preview closure: it derives
@@ -404,7 +423,15 @@ func init() {
 	spineReviewPurgeCmd.Flags().BoolVar(&spinePurgeAllScopes, "all-scopes", false, "span every scope; mutually exclusive with --scope")
 	spineReviewPurgeCmd.Flags().StringSliceVar(&spinePurgeClass, "class", nil,
 		"structural eligibility class (repeatable): "+strings.Join(purgeClassNames, ", "))
-	scopeRule, _ := surfaces.RuleByID(surfaces.RulePurgeFilterRequiresScope)
+	scopeRule, ok := surfaces.RuleByID(surfaces.RulePurgeFilterRequiresScope)
+	if !ok {
+		// Mirrors requirePurgeFilterScope's own panic above (IN-02,
+		// 06-REVIEW.md): a missing rule here degrades three --help strings
+		// to an empty trailing sentence instead of failing the binary at
+		// startup, the same class of registry gap requirePurgeFilterScope
+		// treats as unrecoverable three lines away in this same file.
+		panic("spine-review purge: surfaces.RulePurgeFilterRequiresScope is not registered in internal/surfaces/rules.go")
+	}
 	spineReviewPurgeCmd.Flags().StringVar(&spinePurgeCategory, "category", "",
 		"free-form filter: only this category; "+scopeRule.Sentence)
 	spineReviewPurgeCmd.Flags().StringSliceVar(&spinePurgeTags, "tags", nil,

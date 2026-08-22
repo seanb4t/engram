@@ -100,7 +100,7 @@ func keys(m map[string]*qdrant.Value) []string {
 func seedSource(t *testing.T, c *qdrant.Client, src string) (fullID, rawID string) {
 	t.Helper()
 	ctx := context.Background()
-	s := New(c, src)
+	s := newTestStore(t, c, src)
 	if err := s.EnsureCollection(ctx, 3); err != nil {
 		t.Fatalf("ensure source: %v", err)
 	}
@@ -210,7 +210,7 @@ func TestReindexRejectsInvalidArgs(t *testing.T) {
 func TestReindexRoundtrip(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()
-	const src, tgt = "reindex_src", "reindex_tgt"
+	src, tgt := testCollection("reindex_src"), testCollection("reindex_tgt")
 	_ = c.DeleteCollection(ctx, src)
 	_ = c.DeleteCollection(ctx, tgt)
 	t.Cleanup(func() {
@@ -221,7 +221,7 @@ func TestReindexRoundtrip(t *testing.T) {
 	fullID, rawID := seedSource(t, c, src)
 	srcBefore := scrollPoints(t, c, src)
 
-	s := New(c, src)
+	s := newTestStore(t, c, src)
 	res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4}, embed4)
 	if err != nil {
 		t.Fatalf("reindex: %v", err)
@@ -288,7 +288,7 @@ func TestReindexRoundtrip(t *testing.T) {
 func TestReindexSourceOverride(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()
-	const realSrc, envSrc, tgt = "reindex_srcov_real", "reindex_srcov_env", "reindex_srcov_tgt"
+	realSrc, envSrc, tgt := testCollection("reindex_srcov_real"), testCollection("reindex_srcov_env"), testCollection("reindex_srcov_tgt")
 	cols := []string{realSrc, envSrc, tgt}
 	for _, col := range cols {
 		_ = c.DeleteCollection(ctx, col)
@@ -302,7 +302,7 @@ func TestReindexSourceOverride(t *testing.T) {
 	seedSource(t, c, realSrc) // create + seed the override source only
 
 	// Store points at envSrc, which is never created; Source=realSrc must win.
-	s := New(c, envSrc)
+	s := newTestStore(t, c, envSrc)
 	res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Source: realSrc, Dim: 4}, embed4)
 	if err != nil {
 		t.Fatalf("reindex with source override: %v", err)
@@ -321,7 +321,7 @@ func TestReindexSourceOverride(t *testing.T) {
 func TestReindexProgressCallback(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()
-	const src, tgt = "reindex_prog_src", "reindex_prog_tgt"
+	src, tgt := testCollection("reindex_prog_src"), testCollection("reindex_prog_tgt")
 	_ = c.DeleteCollection(ctx, src)
 	_ = c.DeleteCollection(ctx, tgt)
 	t.Cleanup(func() {
@@ -330,7 +330,7 @@ func TestReindexProgressCallback(t *testing.T) {
 	})
 	seedSource(t, c, src) // two points
 
-	s := New(c, src)
+	s := newTestStore(t, c, src)
 	var snaps []ReindexResult
 	res, err := s.Reindex(ctx, ReindexOptions{
 		Target: tgt, Dim: 4, Batch: 1,
@@ -362,7 +362,7 @@ func TestReindexProgressCallback(t *testing.T) {
 func TestReindexResumeSkipsUnchanged(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()
-	const src, tgt = "reindex_resume_src", "reindex_resume_tgt"
+	src, tgt := testCollection("reindex_resume_src"), testCollection("reindex_resume_tgt")
 	_ = c.DeleteCollection(ctx, src)
 	_ = c.DeleteCollection(ctx, tgt)
 	t.Cleanup(func() {
@@ -371,7 +371,7 @@ func TestReindexResumeSkipsUnchanged(t *testing.T) {
 	})
 	_, rawID := seedSource(t, c, src) // two points
 
-	s := New(c, src)
+	s := newTestStore(t, c, src)
 	// First run: fresh target, nothing to skip — both re-embedded.
 	res1, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Batch: 1, Resume: true}, embed4)
 	if err != nil {
@@ -425,7 +425,7 @@ func TestReindexResumeSkipsUnchanged(t *testing.T) {
 func TestReindexResumeTags(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()
-	const src, tgt = "reindex_resume_tags_src", "reindex_resume_tags_tgt"
+	src, tgt := testCollection("reindex_resume_tags_src"), testCollection("reindex_resume_tags_tgt")
 	_ = c.DeleteCollection(ctx, src)
 	_ = c.DeleteCollection(ctx, tgt)
 	t.Cleanup(func() {
@@ -434,7 +434,7 @@ func TestReindexResumeTags(t *testing.T) {
 	})
 	fullID, rawID := seedSource(t, c, src) // fullID: content="alpha content", tags=[x,y]. rawID: no tags key.
 
-	s := New(c, src)
+	s := newTestStore(t, c, src)
 	// Seed run: fresh target, populate it (not itself an assertion step).
 	if seed, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Batch: 1, Resume: true}, embed4); err != nil {
 		t.Fatalf("seed run: %v", err)
@@ -550,7 +550,7 @@ func TestTagsEqual(t *testing.T) {
 func TestReindexDryRunWritesNothing(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()
-	const src, tgt = "reindex_dry_src", "reindex_dry_tgt"
+	src, tgt := testCollection("reindex_dry_src"), testCollection("reindex_dry_tgt")
 	_ = c.DeleteCollection(ctx, src)
 	_ = c.DeleteCollection(ctx, tgt)
 	t.Cleanup(func() {
@@ -559,7 +559,7 @@ func TestReindexDryRunWritesNothing(t *testing.T) {
 	})
 	seedSource(t, c, src)
 
-	s := New(c, src)
+	s := newTestStore(t, c, src)
 	res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, DryRun: true}, embed4)
 	if err != nil {
 		t.Fatalf("reindex dry-run: %v", err)
@@ -579,14 +579,14 @@ func TestReindexDryRunWritesNothing(t *testing.T) {
 func TestReindexErrorsOnMissingSource(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()
-	const src, tgt = "reindex_missing_src", "reindex_missing_tgt"
+	src, tgt := testCollection("reindex_missing_src"), testCollection("reindex_missing_tgt")
 	_ = c.DeleteCollection(ctx, src)
 	_ = c.DeleteCollection(ctx, tgt)
 	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), tgt) })
 
 	// Source never created — reindexing it must fail loudly, not silently scan
 	// zero and report success (which would mask a typo'd ENGRAM_QDRANT_COLLECTION).
-	s := New(c, src)
+	s := newTestStore(t, c, src)
 	_, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4}, embed4)
 	if err == nil {
 		t.Fatalf("want error for missing source collection, got nil")
@@ -599,7 +599,7 @@ func TestReindexErrorsOnMissingSource(t *testing.T) {
 func TestReindexSkipsEmptyContent(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()
-	const src, tgt = "reindex_empty_src", "reindex_empty_tgt"
+	src, tgt := testCollection("reindex_empty_src"), testCollection("reindex_empty_tgt")
 	_ = c.DeleteCollection(ctx, src)
 	_ = c.DeleteCollection(ctx, tgt)
 	t.Cleanup(func() {
@@ -607,7 +607,7 @@ func TestReindexSkipsEmptyContent(t *testing.T) {
 		_ = c.DeleteCollection(context.Background(), tgt)
 	})
 
-	s := New(c, src)
+	s := newTestStore(t, c, src)
 	if err := s.EnsureCollection(ctx, 3); err != nil {
 		t.Fatalf("ensure source: %v", err)
 	}
@@ -647,7 +647,7 @@ func TestReindexSkipsEmptyContent(t *testing.T) {
 func TestReindexMultiPageCursor(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()
-	const src, tgt = "reindex_page_src", "reindex_page_tgt"
+	src, tgt := testCollection("reindex_page_src"), testCollection("reindex_page_tgt")
 	_ = c.DeleteCollection(ctx, src)
 	_ = c.DeleteCollection(ctx, tgt)
 	t.Cleanup(func() {
@@ -655,7 +655,7 @@ func TestReindexMultiPageCursor(t *testing.T) {
 		_ = c.DeleteCollection(context.Background(), tgt)
 	})
 
-	s := New(c, src)
+	s := newTestStore(t, c, src)
 	if err := s.EnsureCollection(ctx, 3); err != nil {
 		t.Fatalf("ensure source: %v", err)
 	}
@@ -688,7 +688,7 @@ func TestReindexMultiPageCursor(t *testing.T) {
 func TestReindexPartialWriteOnLateEmbedError(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()
-	const src, tgt = "reindex_partial_src", "reindex_partial_tgt"
+	src, tgt := testCollection("reindex_partial_src"), testCollection("reindex_partial_tgt")
 	_ = c.DeleteCollection(ctx, src)
 	_ = c.DeleteCollection(ctx, tgt)
 	t.Cleanup(func() {
@@ -710,7 +710,7 @@ func TestReindexPartialWriteOnLateEmbedError(t *testing.T) {
 		return embed4Vec(content), nil
 	}
 
-	s := New(c, src)
+	s := newTestStore(t, c, src)
 	res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Batch: 1}, flaky)
 	if !errors.Is(err, boom) {
 		t.Fatalf("want late embed error surfaced, got %v", err)
@@ -742,7 +742,7 @@ const staleIdentity = "v1:oldoldoldoldold0"
 func TestReindexStampsEmbedderIdentity(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()
-	const src, tgtStamped, tgtUnstamped = "reindex_identity_src", "reindex_identity_tgt", "reindex_identity_tgt_none"
+	src, tgtStamped, tgtUnstamped := testCollection("reindex_identity_src"), testCollection("reindex_identity_tgt"), testCollection("reindex_identity_tgt_none")
 	cols := []string{src, tgtStamped, tgtUnstamped}
 	for _, col := range cols {
 		_ = c.DeleteCollection(ctx, col)
@@ -755,7 +755,7 @@ func TestReindexStampsEmbedderIdentity(t *testing.T) {
 
 	fullID, rawID := seedSource(t, c, src)
 
-	s := New(c, src)
+	s := newTestStore(t, c, src)
 	res, err := s.Reindex(ctx, ReindexOptions{Target: tgtStamped, Dim: 4, Identity: sentinelIdentity}, embed4)
 	if err != nil {
 		t.Fatalf("reindex with identity: %v", err)
@@ -813,7 +813,7 @@ func TestReindexStampsEmbedderIdentity(t *testing.T) {
 func TestReindexResumeRestampsStaleIdentity(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()
-	const src, tgt = "reindex_restamp_src", "reindex_restamp_tgt"
+	src, tgt := testCollection("reindex_restamp_src"), testCollection("reindex_restamp_tgt")
 	_ = c.DeleteCollection(ctx, src)
 	_ = c.DeleteCollection(ctx, tgt)
 	t.Cleanup(func() {
@@ -826,7 +826,7 @@ func TestReindexResumeRestampsStaleIdentity(t *testing.T) {
 	// Pre-create the target collection at the reindex dimension so the raw
 	// pre-population upserts below have somewhere to land (normally Reindex
 	// itself ensures the target; here we're seeding state that predates it).
-	if err := New(c, tgt).EnsureCollection(ctx, 4); err != nil {
+	if err := newTestStore(t, c, tgt).EnsureCollection(ctx, 4); err != nil {
 		t.Fatalf("pre-create target collection: %v", err)
 	}
 
@@ -844,7 +844,7 @@ func TestReindexResumeRestampsStaleIdentity(t *testing.T) {
 		t.Fatalf("pre-populate target (mismatched identity): %v", err)
 	}
 
-	s := New(c, src)
+	s := newTestStore(t, c, src)
 	res, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Resume: true, Identity: sentinelIdentity}, embed4)
 	if err != nil {
 		t.Fatalf("reindex resume-restamp: %v", err)
@@ -898,7 +898,7 @@ func s2Upsert(ctx context.Context, c *qdrant.Client, collection, id, content str
 func TestReindexFailsClosedOnEmbedError(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()
-	const src, tgt = "reindex_fail_src", "reindex_fail_tgt"
+	src, tgt := testCollection("reindex_fail_src"), testCollection("reindex_fail_tgt")
 	_ = c.DeleteCollection(ctx, src)
 	_ = c.DeleteCollection(ctx, tgt)
 	t.Cleanup(func() {
@@ -910,7 +910,7 @@ func TestReindexFailsClosedOnEmbedError(t *testing.T) {
 	boom := errors.New("embedder down")
 	failing := func(_ context.Context, _ string) ([]float32, error) { return nil, boom }
 
-	s := New(c, src)
+	s := newTestStore(t, c, src)
 	_, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4}, failing)
 	if !errors.Is(err, boom) {
 		t.Fatalf("want embedder error surfaced, got %v", err)
@@ -930,7 +930,7 @@ func TestReindexFailsClosedOnEmbedError(t *testing.T) {
 func TestReindexDryRunResume(t *testing.T) {
 	c := dialTestClient(t)
 	ctx := context.Background()
-	const src, tgt = "reindex_dryresume_src", "reindex_dryresume_tgt"
+	src, tgt := testCollection("reindex_dryresume_src"), testCollection("reindex_dryresume_tgt")
 	_ = c.DeleteCollection(ctx, src)
 	_ = c.DeleteCollection(ctx, tgt)
 	t.Cleanup(func() {
@@ -939,7 +939,7 @@ func TestReindexDryRunResume(t *testing.T) {
 	})
 	fullID, _ := seedSource(t, c, src)
 
-	s := New(c, src)
+	s := newTestStore(t, c, src)
 	// Populate the target with a real resume run first.
 	if _, err := s.Reindex(ctx, ReindexOptions{Target: tgt, Dim: 4, Resume: true}, embed4); err != nil {
 		t.Fatalf("populate target: %v", err)
@@ -972,7 +972,7 @@ func TestReindexDryRunResume(t *testing.T) {
 
 	// Second case: dry-run --resume against a target that does not exist yet —
 	// no error, everything counted would-re-embed, and the target stays absent.
-	const missingTgt = "reindex_dryresume_missing_tgt"
+	missingTgt := testCollection("reindex_dryresume_missing_tgt")
 	_ = c.DeleteCollection(ctx, missingTgt)
 	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), missingTgt) })
 	res2, err := s.Reindex(ctx, ReindexOptions{Target: missingTgt, Dim: 4, DryRun: true, Resume: true}, embed4)

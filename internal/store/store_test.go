@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/qdrant/go-client/qdrant"
 	"github.com/seanb4t/engram/internal/authz"
+	"github.com/seanb4t/engram/internal/migrate"
 	"github.com/seanb4t/engram/internal/shortid"
 	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
 )
@@ -44,6 +46,46 @@ const qdrantTOCTOUVerifiedVersion = "1.18.2"
 // ephemeral testcontainer. Empty when neither is available (Docker absent), in
 // which case the integration tests skip.
 var testQdrantAddr string
+
+// testQdrantContainerBooted records whether TestMain booted its OWN
+// testcontainer for this run, as opposed to taking the ENGRAM_QDRANT_TEST_ADDR
+// fast path onto a shared instance. Set true only inside the testcontainer
+// branch, immediately after the container's gRPC endpoint resolves; the env-var
+// branch leaves it false. TestSharedQdrantAddressHonored asserts on it directly
+// so "the CI test job uses one shared Qdrant" is a checkable claim rather than
+// an inference from logs (CONTEXT.md D-20).
+var testQdrantContainerBooted bool
+
+// testCollectionPrefix namespaces this package's integration-test Qdrant
+// collection names so a single shared Qdrant instance (CI's ENGRAM_QDRANT_TEST_ADDR
+// path) can host internal/store's and internal/server's test suites
+// concurrently without their previously-identical "mem_eval_test" collection
+// names colliding (CONTEXT.md D-16).
+const testCollectionPrefix = "store_"
+
+// testCollection returns name namespaced into this package's collection space
+// on the shared test Qdrant instance.
+func testCollection(name string) string {
+	return testCollectionPrefix + name
+}
+
+// newTestStore is the prefix-enforcing construction seam for every test Store
+// built against a real Qdrant instance in this package. It asserts name
+// carries this package's testCollectionPrefix before constructing the store,
+// so a collection name that skips testCollection() fails the test naming the
+// offending value. This is a runtime assertion on purpose: a source-level
+// check alone could be routed around by assigning the raw name to a variable
+// first, but a t.Fatalf inside the one function every test store is built by
+// cannot (CONTEXT.md D-16, plan 01-05). opts is threaded through to New
+// verbatim so newSpineTestStore's WithClock/WithAuthz callers stay covered
+// by the same seam as every unopted construction.
+func newTestStore(t testing.TB, c *qdrant.Client, name string, opts ...Option) *Store {
+	t.Helper()
+	if !strings.HasPrefix(name, testCollectionPrefix) {
+		t.Fatalf("collection name %q does not carry this package's prefix %q: route it through testCollection()", name, testCollectionPrefix)
+	}
+	return New(c, name, opts...)
+}
 
 // requireQdrant is the SOLE place ENGRAM_REQUIRE_QDRANT is read/parsed in this
 // package, mirroring internal/server/tools_test.go's requireQdrant: TestMain and
@@ -102,6 +144,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "qdrant grpc endpoint: %v\n", err)
 		os.Exit(1)
 	}
+	testQdrantContainerBooted = true
 	if required && testQdrantAddr == "" {
 		terminateQdrant(container)
 		fmt.Fprintln(os.Stderr, "fatal: ENGRAM_REQUIRE_QDRANT is set but no Qdrant address resolved")
@@ -188,6 +231,26 @@ func TestRequireQdrant(t *testing.T) {
 	}
 }
 
+// TestSharedQdrantAddressHonored proves this package took the CI shared-Qdrant
+// fast path rather than booting its own testcontainer, whenever
+// ENGRAM_QDRANT_TEST_ADDR is set. Address equality alone is not enough — a
+// package could boot a container and coincidentally resolve the same address —
+// so the load-bearing assertion is testQdrantContainerBooted == false
+// (CONTEXT.md D-20). Skips (does not fail) when the env var is unset: a
+// developer running locally without it is not the case this test is about.
+func TestSharedQdrantAddressHonored(t *testing.T) {
+	addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR")
+	if addr == "" {
+		t.Skip("ENGRAM_QDRANT_TEST_ADDR not set: this test only asserts the shared-instance path")
+	}
+	if testQdrantAddr != addr {
+		t.Errorf("testQdrantAddr = %q, want %q (shared CI Qdrant address not honored)", testQdrantAddr, addr)
+	}
+	if testQdrantContainerBooted {
+		t.Error("testQdrantContainerBooted = true, want false: ENGRAM_QDRANT_TEST_ADDR was set but this package booted its own testcontainer anyway")
+	}
+}
+
 // TestDialTestClientSkipsWhenNotRequired proves dialTestClient preserves its
 // original skip-not-fail behavior with no Qdrant available and
 // ENGRAM_REQUIRE_QDRANT unset, so local development without Docker still
@@ -246,7 +309,7 @@ func TestDialTestClientFailsWhenRequiredAndUnavailable(t *testing.T) {
 
 func testStore(t *testing.T) *Store {
 	t.Helper()
-	s := New(dialTestClient(t), "mem_eval_test")
+	s := newTestStore(t, dialTestClient(t), testCollection("mem_eval_test"))
 	if err := s.EnsureCollection(context.Background(), 3); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
@@ -2418,6 +2481,25 @@ func TestListScheduledSupersededHidden(t *testing.T) {
 	if got := recordIDs(sched); !slices.Contains(got, liveID) {
 		t.Errorf("ListScheduled: live record %s absent, want present: %v", liveID, got)
 	}
+
+	// ListScheduled is one of the two gate sites deliberately EXCLUDED from
+	// the phase 07 (D-01/D-02) opt-in scope (D-01) — this is the gate which
+	// goes RED if a later change wires IncludeSuperseded into ListScheduled's
+	// inline superseded_by condition and "completes" the 2-of-4 by accident.
+	// Even with all three include bools set true, the superseded record must
+	// STILL be absent.
+	schedAllFlags, err := s.ListScheduled(ctx, scope, subj, ScheduledPending, ListOptions{
+		Limit: 10, IncludeArchived: true, IncludeSuperseded: true, IncludeScheduled: true,
+	})
+	if err != nil {
+		t.Fatalf("ListScheduled with all include bools: %v", err)
+	}
+	if got := recordIDs(schedAllFlags); slices.Contains(got, supersededID) {
+		t.Errorf("ListScheduled with all include bools: superseded record %s present, want excluded (D-01 excludes ListScheduled from the opt-in scope): %v", supersededID, got)
+	}
+	if got := recordIDs(schedAllFlags); !slices.Contains(got, liveID) {
+		t.Errorf("ListScheduled with all include bools: live record %s absent, want present: %v", liveID, got)
+	}
 }
 
 // TestListScheduledRejectsInvalidState pins the store-layer guard (hr2.5): an
@@ -2918,6 +3000,101 @@ func TestPayloadRoundTripsIdempotencyFingerprint(t *testing.T) {
 	}
 }
 
+// TestPayloadRoundTripsSchemaVersion pins D-05/D-09/D-10: the monotonic
+// stamp, the absent-safe decode, the always-present payload key, the
+// idempotent ordering, and the exact struct tag. Every expected value is
+// derived from migrate.CurrentVersion, never a hard-coded literal, so this
+// test keeps its meaning when a later phase raises the constant.
+func TestPayloadRoundTripsSchemaVersion(t *testing.T) {
+	cases := []struct {
+		name string
+		m    Memory
+		want migrate.Version
+	}{
+		// A newer record's version survives an older binary's rewrite
+		// undowngraded — the monotonic rule's whole reason to exist.
+		{"above", Memory{ID: "a0000000-0000-0000-0000-000000000004", Content: "c", Scope: "s", SchemaVersion: migrate.CurrentVersion + 3}, migrate.CurrentVersion + 3},
+		// An exact tie is a no-op: neither incremented nor lowered.
+		{"equal", Memory{ID: "a0000000-0000-0000-0000-000000000005", Content: "c", Scope: "s", SchemaVersion: migrate.CurrentVersion}, migrate.CurrentVersion},
+		// The zero-valued Memory{} — the empty-input edge — still stamps
+		// current, and the key is never omitted.
+		{"zero", Memory{}, migrate.CurrentVersion},
+		// An OLDER record read by a NEWER binary is RAISED to current — the
+		// arm the whole migration sweep depends on. Constructed one below
+		// CurrentVersion rather than at a literal, so this case keeps
+		// exercising the "below" branch whatever the constant's current
+		// value is. At a low enough CurrentVersion, CurrentVersion-1 is a
+		// synthetic value outside the normal non-negative range — which is
+		// precisely why the assertion is written against the max() rule and
+		// not against a fixed number.
+		{"below", Memory{ID: "a0000000-0000-0000-0000-000000000006", Content: "c", Scope: "s", SchemaVersion: migrate.CurrentVersion - 1}, migrate.CurrentVersion},
+	}
+	// Derived, not enumerated: a hard-coded count silently stays "correct"
+	// while a case goes missing. Assert on the case NAMES so a dropped or
+	// renamed arm fails loudly instead of passing on cardinality alone.
+	wantNames := []string{"above", "equal", "zero", "below"}
+	gotNames := make([]string, 0, len(cases))
+	for _, tc := range cases {
+		gotNames = append(gotNames, tc.name)
+	}
+	if !slices.Equal(gotNames, wantNames) {
+		t.Fatalf("case set = %v, want %v — every arm of the monotonic rule must stay covered", gotNames, wantNames)
+	}
+	ran := 0
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ran++
+			p1 := payload(tc.m)
+			v, ok := p1["schema_version"]
+			if !ok {
+				t.Fatal("schema_version key missing from payload() output")
+			}
+			if got := migrate.Version(v.(int)); got != tc.want {
+				t.Fatalf("payload()[schema_version] = %d, want %d", got, tc.want)
+			}
+
+			got1 := fromPayload(tc.m.ID, qdrant.NewValueMap(p1))
+			if got1.SchemaVersion != tc.want {
+				t.Fatalf("fromPayload(payload(m)).SchemaVersion = %d, want %d", got1.SchemaVersion, tc.want)
+			}
+
+			// Idempotence: payload -> fromPayload -> payload again yields the
+			// identical schema_version value — repeated rewrites in any
+			// order converge and never oscillate.
+			p2 := payload(got1)
+			v2, ok := p2["schema_version"]
+			if !ok {
+				t.Fatal("schema_version key missing from second payload() output")
+			}
+			if got2 := migrate.Version(v2.(int)); got2 != tc.want {
+				t.Fatalf("second payload()[schema_version] = %d, want %d (idempotence broken)", got2, tc.want)
+			}
+		})
+	}
+	// Derived from the table, not restated as a literal: a second hard-coded
+	// count is a second place to forget when an arm is added.
+	if ran != len(cases) {
+		t.Fatalf("subtests executed = %d, want %d (one per case)", ran, len(cases))
+	}
+
+	// Legacy decode: a payload map with no schema_version key at all
+	// decodes to migrate.Version(0) with no panic.
+	legacy := map[string]*qdrant.Value{"content": qdrant.NewValueString("c")}
+	gotLegacy := fromPayload("legacy-id", legacy)
+	if gotLegacy.SchemaVersion != migrate.Version(0) {
+		t.Fatalf("legacy payload missing schema_version must decode to 0, got %d", gotLegacy.SchemaVersion)
+	}
+
+	// Struct tag: the exact json tag, no omitempty, no hidden rename.
+	field, ok := reflect.TypeOf(Memory{}).FieldByName("SchemaVersion")
+	if !ok {
+		t.Fatal("Memory has no SchemaVersion field")
+	}
+	if tag := field.Tag.Get("json"); tag != "schema_version" {
+		t.Fatalf("Memory.SchemaVersion json tag = %q, want exactly %q", tag, "schema_version")
+	}
+}
+
 // TestEnsureCollectionCreatesIndexes pins that EnsureCollection provisions the
 // owner/scope/created_at payload indexes and is idempotent on a second call.
 func TestEnsureCollectionCreatesIndexes(t *testing.T) {
@@ -3083,6 +3260,24 @@ func TestSupersedeRecallGate(t *testing.T) {
 	}
 	if got := recordIDs(items); !slices.Contains(got, liveID) {
 		t.Errorf("List: live record %s absent, want present: %v", liveID, got)
+	}
+
+	// Positive-relaxation (phase 07 plan 03, D-01/D-02): the record hidden
+	// above is REVEALED when IncludeSuperseded is set, on both Search and
+	// List.
+	hits, err = s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10, SearchOptions{IncludeSuperseded: true})
+	if err != nil {
+		t.Fatalf("Search IncludeSuperseded: %v", err)
+	}
+	if got := recordIDs(hits); !slices.Contains(got, supersededID) {
+		t.Errorf("Search IncludeSuperseded: superseded record %s absent, want present: %v", supersededID, got)
+	}
+	items, _, _, err = s.List(ctx, scope, subj, ListOptions{Limit: 10, IncludeSuperseded: true})
+	if err != nil {
+		t.Fatalf("List IncludeSuperseded: %v", err)
+	}
+	if got := recordIDs(items); !slices.Contains(got, supersededID) {
+		t.Errorf("List IncludeSuperseded: superseded record %s absent, want present: %v", supersededID, got)
 	}
 
 	// Get: superseded record still fetchable, content intact.
@@ -3677,6 +3872,30 @@ func TestSupersedeMultiRecallGate(t *testing.T) {
 	}
 	if !slices.Contains(gotHitIDs, newID) {
 		t.Errorf("Search: survivor %s absent, want present: %v", newID, gotHitIDs)
+	}
+
+	// Positive-relaxation (phase 07 plan 03, D-01/D-02): all three merged
+	// targets are REVEALED when IncludeSuperseded is set, on both Search and
+	// List.
+	items, _, _, err = s.List(ctx, scope, subj, ListOptions{Limit: 10, IncludeSuperseded: true})
+	if err != nil {
+		t.Fatalf("List IncludeSuperseded: %v", err)
+	}
+	gotIDs = recordIDs(items)
+	for _, id := range targets {
+		if !slices.Contains(gotIDs, id) {
+			t.Errorf("List IncludeSuperseded: target %s absent, want present: %v", id, gotIDs)
+		}
+	}
+	hits, err = s.Search(ctx, scope, subj, []float32{0.1, 0.2, 0.3}, 10, SearchOptions{IncludeSuperseded: true})
+	if err != nil {
+		t.Fatalf("Search IncludeSuperseded: %v", err)
+	}
+	gotHitIDs = recordIDs(hits)
+	for _, id := range targets {
+		if !slices.Contains(gotHitIDs, id) {
+			t.Errorf("Search IncludeSuperseded: target %s absent, want present: %v", id, gotHitIDs)
+		}
 	}
 
 	for _, id := range targets {
@@ -4493,7 +4712,7 @@ func TestSupersedeMultiProductionDefaultsDoNotPanic(t *testing.T) {
 	subj := Authenticated("sub-A")
 
 	// Success case: production store, every function field nil.
-	s1 := New(dialTestClient(t), "mem_eval_test_prod_defaults_1")
+	s1 := newTestStore(t, dialTestClient(t), testCollection("mem_eval_test_prod_defaults_1"))
 	if err := s1.EnsureCollection(ctx, 3); err != nil {
 		t.Fatalf("ensure s1: %v", err)
 	}
@@ -4520,7 +4739,7 @@ func TestSupersedeMultiProductionDefaultsDoNotPanic(t *testing.T) {
 	}
 
 	// Failing case: a SECOND New-built instance.
-	s2 := New(dialTestClient(t), "mem_eval_test_prod_defaults_2")
+	s2 := newTestStore(t, dialTestClient(t), testCollection("mem_eval_test_prod_defaults_2"))
 	if err := s2.EnsureCollection(ctx, 3); err != nil {
 		t.Fatalf("ensure s2: %v", err)
 	}
@@ -5564,180 +5783,6 @@ func floatsEqual(a, b []float32) bool {
 	return true
 }
 
-// upsertRawNoOwner writes a point straight through the client whose payload omits
-// the owner key (mirrors seedSource's raw point). It exists to prove the
-// absent-owner-key invariant survives BackfillShortIDs' payload-only SetPayload.
-func upsertRawNoOwner(t *testing.T, s *Store, id string, vec []float32) error {
-	t.Helper()
-	_, err := s.client.Upsert(context.Background(), &qdrant.UpsertPoints{
-		CollectionName: s.collection,
-		Wait:           qdrant.PtrOf(true),
-		Points: []*qdrant.PointStruct{{
-			Id:      qdrant.NewID(id),
-			Vectors: qdrant.NewVectors(vec...),
-			Payload: qdrant.NewValueMap(map[string]any{"content": "c", "scope": "s"}),
-		}},
-	})
-	return err
-}
-
-func TestBackfillShortIDs(t *testing.T) {
-	st := testStore(t)
-	ctx := context.Background()
-	defer func() { cleanupErr(t, "DeleteAllRaw s", st.DeleteAllRaw(ctx, "s")) }()
-	vec := []float32{0.1, 0.2, 0.3}
-	// >reindexBatch records so the cursor loop pages more than once (item 25).
-	const total = 300
-	for i := 0; i < total; i++ {
-		id := fmt.Sprintf("a0000000-0000-0000-0000-%012d", i)
-		if err := st.Upsert(ctx, Memory{ID: id, Content: "c", Scope: "s", Owner: "o"}, vec); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// One extra record written WITHOUT an owner key, to prove the absent-owner
-	// invariant survives the payload-only SetPayload.
-	rawID := "b0000000-0000-0000-0000-000000000000"
-	if err := upsertRawNoOwner(t, st, rawID, vec); err != nil { // helper below
-		t.Fatal(err)
-	}
-
-	// dry-run counts, writes nothing
-	n, err := st.BackfillShortIDs(ctx, true)
-	if err != nil || n != total+1 {
-		t.Fatalf("dry-run n=%d err=%v", n, err)
-	}
-	pts := scrollPoints(t, st.client, st.collection)
-	if pts["a0000000-0000-0000-0000-000000000000"].payload["short_id"].GetStringValue() != "" {
-		t.Fatal("dry-run wrote a short id")
-	}
-	// The collection is Cosine-distance, so Qdrant stores vectors L2-normalized —
-	// the read-back vector never equals the raw input. Snapshot the stored vector
-	// now (dry-run wrote nothing) so the post-apply check can prove the
-	// payload-only SetPayload left it untouched.
-	rawVec := pts[rawID].vec
-
-	// apply, then assert every record got a distinct short id
-	n, err = st.BackfillShortIDs(ctx, false)
-	if err != nil || n != total+1 {
-		t.Fatalf("apply n=%d err=%v", n, err)
-	}
-	pts = scrollPoints(t, st.client, st.collection)
-	uniq := map[string]struct{}{}
-	for id, p := range pts {
-		sid := p.payload["short_id"].GetStringValue()
-		if len(sid) != shortid.Length {
-			t.Fatalf("%s short id %q", id, sid)
-		}
-		uniq[sid] = struct{}{}
-	}
-	if len(uniq) != total+1 {
-		t.Fatalf("short ids not globally unique: %d distinct of %d", len(uniq), total+1)
-	}
-	// vector preserved (no re-embed) + absent-owner invariant preserved
-	if !floatsEqual(pts[rawID].vec, rawVec) {
-		t.Fatal("backfill changed a vector")
-	}
-	if _, ok := pts[rawID].payload["owner"]; ok {
-		t.Fatal("backfill synthesized an owner key on the raw point")
-	}
-
-	// idempotent: second run finds nothing to do
-	if n, err = st.BackfillShortIDs(ctx, false); err != nil || n != 0 {
-		t.Fatalf("idempotent run n=%d err=%v", n, err)
-	}
-}
-
-// TestBackfillShortIDsHonorsCancel verifies the backfill propagates context
-// cancellation to its Qdrant calls instead of running to completion — the
-// property the CLI relies on for its --timeout / Ctrl-C bound.
-func TestBackfillShortIDsHonorsCancel(t *testing.T) {
-	st := testStore(t)
-	ctx := context.Background()
-	defer func() { cleanupErr(t, "DeleteAllRaw s", st.DeleteAllRaw(ctx, "s")) }()
-	vec := []float32{0.1, 0.2, 0.3}
-	for i := 0; i < 3; i++ {
-		id := fmt.Sprintf("c0000000-0000-0000-0000-%012d", i)
-		if err := st.Upsert(ctx, Memory{ID: id, Content: "c", Scope: "s", Owner: "o"}, vec); err != nil {
-			t.Fatal(err)
-		}
-	}
-	cctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if _, err := st.BackfillShortIDs(cctx, false); err == nil {
-		t.Error("cancelled context: expected error")
-	}
-}
-
-// TestBackfillShortIDsResumesAfterMidRunFailure exercises the scenario the
-// global short_id==candidate Count check (vs. the in-run "seen" map alone)
-// exists for: a backfill interrupted partway through (OOM, pod restart,
-// Ctrl-C) after some records are already stamped, then re-run. Unlike
-// TestBackfillShortIDsHonorsCancel (which cancels before any work happens),
-// this forces mintCandidate to fail after K successful mints so the run
-// aborts MID-run with some records already committed, then proves a second
-// run resumes on exactly the unstamped remainder without touching or
-// colliding with the already-stamped ones.
-func TestBackfillShortIDsResumesAfterMidRunFailure(t *testing.T) {
-	st := testStore(t)
-	ctx := context.Background()
-	defer func() { cleanupErr(t, "DeleteAllRaw s", st.DeleteAllRaw(ctx, "s")) }()
-	vec := []float32{0.1, 0.2, 0.3}
-	const total = 10
-	const stampBeforeFailure = 4
-	for i := 0; i < total; i++ {
-		id := fmt.Sprintf("d0000000-0000-0000-0000-%012d", i)
-		if err := st.Upsert(ctx, Memory{ID: id, Content: "c", Scope: "s", Owner: "o"}, vec); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	// First run: mint stampBeforeFailure valid, distinct handles, then fail.
-	mintErr := errors.New("injected mint failure")
-	calls := 0
-	st.mintCandidate = func() (string, error) {
-		calls++
-		if calls > stampBeforeFailure {
-			return "", mintErr
-		}
-		return fmt.Sprintf("firstrun%02d", calls), nil
-	}
-	n, err := st.BackfillShortIDs(ctx, false)
-	if !errors.Is(err, mintErr) {
-		t.Fatalf("first run err = %v, want %v", err, mintErr)
-	}
-	if n != stampBeforeFailure {
-		t.Fatalf("first run n = %d, want %d", n, stampBeforeFailure)
-	}
-
-	// Second run: real minting, resuming on the unstamped remainder.
-	st.mintCandidate = nil
-	n, err = st.BackfillShortIDs(ctx, false)
-	if err != nil {
-		t.Fatalf("resume run: %v", err)
-	}
-	if n != total-stampBeforeFailure {
-		t.Fatalf("resume run n = %d, want %d", n, total-stampBeforeFailure)
-	}
-
-	pts := scrollPoints(t, st.client, st.collection)
-	uniq := map[string]struct{}{}
-	for id, p := range pts {
-		sid := p.payload["short_id"].GetStringValue()
-		if len(sid) != shortid.Length {
-			t.Fatalf("%s short id %q", id, sid)
-		}
-		uniq[sid] = struct{}{}
-	}
-	if len(uniq) != total {
-		t.Fatalf("short ids not globally unique: %d distinct of %d", len(uniq), total)
-	}
-
-	// Third run: nothing left to do.
-	if n, err = st.BackfillShortIDs(ctx, false); err != nil || n != 0 {
-		t.Fatalf("third run n=%d err=%v", n, err)
-	}
-}
-
 // TestUpdatePayloadPreservesVectorBumpsUsageAndClearsProvenance is the
 // round-3/5/7/8 payload-only-update regression guard. It seeds a record with
 // stale auto-summary provenance (SummarySourceAuto + a non-empty SummaryModel
@@ -6658,8 +6703,482 @@ func TestArchiveRecallGateSearchAndList(t *testing.T) {
 	}
 }
 
+// TestArchiveRecallGateIncludeArchived (phase 07, D-01/D-02) proves
+// ListOptions.IncludeArchived is a REVEAL of the existing archived_at hide
+// gate — an archived record becomes reachable via Store.List when the flag
+// is set, a live record in the same scope stays reachable alongside it, the
+// flag maps 1:1 onto exactly the archived_at condition (it does not reveal a
+// superseded or windowed-inactive record), and authorization stays
+// orthogonal to state (D-04): it never reveals another owner's private
+// record.
+func TestArchiveRecallGateIncludeArchived(t *testing.T) {
+	s := testStore(t)
+	fixed := time.Date(2030, 6, 15, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return fixed }
+	ctx := context.Background()
+	scope := "archive-test:project:include-archived"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+	vec := []float32{0.1, 0.2, 0.3}
+	future := fixed.Add(24 * time.Hour)
+
+	archivedID := "e3000000-0000-0000-0000-000000000001"
+	liveID := "e3000000-0000-0000-0000-000000000002"
+	supersededID := "e3000000-0000-0000-0000-000000000003"
+	supersessorID := "e3000000-0000-0000-0000-000000000004"
+	scheduledID := "e3000000-0000-0000-0000-000000000005"
+	otherOwnerID := "e3000000-0000-0000-0000-000000000006"
+
+	if err := s.Upsert(ctx, Memory{ID: archivedID, Content: "archived", Scope: scope, Owner: "sub-A", CreatedAt: fixed}, vec); err != nil {
+		t.Fatalf("upsert archived: %v", err)
+	}
+	if _, err := s.Archive(ctx, archivedID); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: liveID, Content: "live", Scope: scope, Owner: "sub-A", CreatedAt: fixed}, vec); err != nil {
+		t.Fatalf("upsert live: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: supersededID, Content: "old", Scope: scope, Owner: "sub-A", CreatedAt: fixed, SupersededBy: &supersessorID}, vec); err != nil {
+		t.Fatalf("upsert superseded: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: scheduledID, Content: "future", Scope: scope, Owner: "sub-A", CreatedAt: fixed, NotBefore: &future}, vec); err != nil {
+		t.Fatalf("upsert scheduled: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: otherOwnerID, Content: "not mine", Scope: scope, Owner: "sub-B", CreatedAt: fixed}, vec); err != nil {
+		t.Fatalf("upsert other-owner: %v", err)
+	}
+	if _, err := s.Archive(ctx, otherOwnerID); err != nil {
+		t.Fatalf("Archive other-owner: %v", err)
+	}
+
+	// ListOptions{} (default, zero value): archived record absent — today's
+	// behavior, unchanged.
+	items, _, _, err := s.List(ctx, scope, subj, ListOptions{Limit: 20})
+	if err != nil {
+		t.Fatalf("List default: %v", err)
+	}
+	if got := recordIDs(items); slices.Contains(got, archivedID) {
+		t.Errorf("List default: archived record %s present, want excluded: %v", archivedID, got)
+	}
+
+	// ListOptions{IncludeArchived: true}: the archived record is present, a
+	// live record in the same scope is still present, and the flag maps 1:1
+	// onto exactly one gate — it does not reveal superseded or
+	// windowed-inactive records, and it never reveals another owner's
+	// private record (authz stays orthogonal, D-04).
+	items, _, _, err = s.List(ctx, scope, subj, ListOptions{Limit: 20, IncludeArchived: true})
+	if err != nil {
+		t.Fatalf("List IncludeArchived: %v", err)
+	}
+	got := recordIDs(items)
+	if !slices.Contains(got, archivedID) {
+		t.Errorf("List IncludeArchived: archived record %s absent, want present: %v", archivedID, got)
+	}
+	if !slices.Contains(got, liveID) {
+		t.Errorf("List IncludeArchived: live record %s absent, want present: %v", liveID, got)
+	}
+	if slices.Contains(got, supersededID) {
+		t.Errorf("List IncludeArchived: superseded record %s present, want excluded: %v", supersededID, got)
+	}
+	if slices.Contains(got, scheduledID) {
+		t.Errorf("List IncludeArchived: windowed-inactive record %s present, want excluded: %v", scheduledID, got)
+	}
+	if slices.Contains(got, otherOwnerID) {
+		t.Errorf("List IncludeArchived: other owner's private record %s present, want excluded (D-04): %v", otherOwnerID, got)
+	}
+}
+
+// TestListIncludeSupersededAndScheduled (phase 07, D-01/D-02) completes the
+// three-flag opt-in proof on the List lane: IncludeSuperseded and
+// IncludeScheduled each map 1:1 onto their own gate condition,
+// IncludeScheduled relaxes BOTH halves of activeWindowConditions together
+// (proven by one call returning both a not-yet-active and an already-expired
+// record), the flags compose (archived AND superseded revealed together only
+// when both flags are set), and the all-false default path is unchanged.
+func TestListIncludeSupersededAndScheduled(t *testing.T) {
+	s := testStore(t)
+	fixed := time.Date(2030, 6, 15, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return fixed }
+	ctx := context.Background()
+	scope := "list-test:project:include-superseded-scheduled"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+	vec := []float32{0.1, 0.2, 0.3}
+	future := fixed.Add(24 * time.Hour)
+	past := fixed.Add(-24 * time.Hour)
+
+	liveID := "e4000000-0000-0000-0000-000000000001"
+	supersededID := "e4000000-0000-0000-0000-000000000002"
+	supersessorID := "e4000000-0000-0000-0000-000000000003"
+	archivedID := "e4000000-0000-0000-0000-000000000004"
+	notYetActiveID := "e4000000-0000-0000-0000-000000000005"
+	expiredID := "e4000000-0000-0000-0000-000000000006"
+	bothArchivedAndSupersededID := "e4000000-0000-0000-0000-000000000007"
+
+	if err := s.Upsert(ctx, Memory{ID: liveID, Content: "live", Scope: scope, Owner: "sub-A", CreatedAt: fixed}, vec); err != nil {
+		t.Fatalf("upsert live: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: supersededID, Content: "old", Scope: scope, Owner: "sub-A", CreatedAt: fixed, SupersededBy: &supersessorID}, vec); err != nil {
+		t.Fatalf("upsert superseded: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: archivedID, Content: "archived", Scope: scope, Owner: "sub-A", CreatedAt: fixed}, vec); err != nil {
+		t.Fatalf("upsert archived: %v", err)
+	}
+	if _, err := s.Archive(ctx, archivedID); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: notYetActiveID, Content: "future", Scope: scope, Owner: "sub-A", CreatedAt: fixed, NotBefore: &future}, vec); err != nil {
+		t.Fatalf("upsert not-yet-active: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: expiredID, Content: "expired", Scope: scope, Owner: "sub-A", CreatedAt: fixed, NotAfter: &past}, vec); err != nil {
+		t.Fatalf("upsert expired: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{
+		ID: bothArchivedAndSupersededID, Content: "both", Scope: scope, Owner: "sub-A",
+		CreatedAt: fixed, SupersededBy: &supersessorID,
+	}, vec); err != nil {
+		t.Fatalf("upsert both: %v", err)
+	}
+	if _, err := s.Archive(ctx, bothArchivedAndSupersededID); err != nil {
+		t.Fatalf("Archive both: %v", err)
+	}
+
+	// IncludeSuperseded reveals ONLY the superseded record, not the archived
+	// one.
+	items, _, _, err := s.List(ctx, scope, subj, ListOptions{Limit: 20, IncludeSuperseded: true})
+	if err != nil {
+		t.Fatalf("List IncludeSuperseded: %v", err)
+	}
+	got := recordIDs(items)
+	if !slices.Contains(got, supersededID) {
+		t.Errorf("List IncludeSuperseded: superseded record %s absent, want present: %v", supersededID, got)
+	}
+	if slices.Contains(got, archivedID) {
+		t.Errorf("List IncludeSuperseded: archived record %s present, want excluded: %v", archivedID, got)
+	}
+
+	// IncludeScheduled reveals BOTH halves of the window in ONE call: the
+	// not-yet-active record AND the already-expired record. It does not
+	// reveal archived or superseded records.
+	items, _, _, err = s.List(ctx, scope, subj, ListOptions{Limit: 20, IncludeScheduled: true})
+	if err != nil {
+		t.Fatalf("List IncludeScheduled: %v", err)
+	}
+	got = recordIDs(items)
+	if !slices.Contains(got, notYetActiveID) {
+		t.Errorf("List IncludeScheduled: not-yet-active record %s absent, want present: %v", notYetActiveID, got)
+	}
+	if !slices.Contains(got, expiredID) {
+		t.Errorf("List IncludeScheduled: expired record %s absent, want present: %v", expiredID, got)
+	}
+	if slices.Contains(got, archivedID) {
+		t.Errorf("List IncludeScheduled: archived record %s present, want excluded: %v", archivedID, got)
+	}
+	if slices.Contains(got, supersededID) {
+		t.Errorf("List IncludeScheduled: superseded record %s present, want excluded: %v", supersededID, got)
+	}
+
+	// The flags compose: a record that is both archived and superseded is
+	// returned only when BOTH flags are set.
+	items, _, _, err = s.List(ctx, scope, subj, ListOptions{Limit: 20, IncludeArchived: true})
+	if err != nil {
+		t.Fatalf("List IncludeArchived only: %v", err)
+	}
+	if got := recordIDs(items); slices.Contains(got, bothArchivedAndSupersededID) {
+		t.Errorf("List IncludeArchived only: archived+superseded record %s present, want excluded (still superseded-hidden): %v", bothArchivedAndSupersededID, got)
+	}
+	items, _, _, err = s.List(ctx, scope, subj, ListOptions{Limit: 20, IncludeSuperseded: true})
+	if err != nil {
+		t.Fatalf("List IncludeSuperseded only: %v", err)
+	}
+	if got := recordIDs(items); slices.Contains(got, bothArchivedAndSupersededID) {
+		t.Errorf("List IncludeSuperseded only: archived+superseded record %s present, want excluded (still archived-hidden): %v", bothArchivedAndSupersededID, got)
+	}
+	items, _, _, err = s.List(ctx, scope, subj, ListOptions{Limit: 20, IncludeArchived: true, IncludeSuperseded: true})
+	if err != nil {
+		t.Fatalf("List IncludeArchived+IncludeSuperseded: %v", err)
+	}
+	if got := recordIDs(items); !slices.Contains(got, bothArchivedAndSupersededID) {
+		t.Errorf("List IncludeArchived+IncludeSuperseded: archived+superseded record %s absent, want present (both flags compose): %v", bothArchivedAndSupersededID, got)
+	}
+
+	// Default path (all three false): exactly the live records, matching
+	// today's behavior over this same corpus.
+	items, _, _, err = s.List(ctx, scope, subj, ListOptions{Limit: 20})
+	if err != nil {
+		t.Fatalf("List default: %v", err)
+	}
+	got = recordIDs(items)
+	if !slices.Contains(got, liveID) {
+		t.Errorf("List default: live record %s absent, want present: %v", liveID, got)
+	}
+	for _, hidden := range []string{supersededID, archivedID, notYetActiveID, expiredID, bothArchivedAndSupersededID} {
+		if slices.Contains(got, hidden) {
+			t.Errorf("List default: hidden record %s present, want excluded: %v", hidden, got)
+		}
+	}
+}
+
+// TestSearchIncludeArchived (phase 07 plan 03, mirroring
+// TestArchiveRecallGateIncludeArchived on the List lane) proves
+// SearchOptions.IncludeArchived is a REVEAL of the existing archived_at hide
+// gate on Store.Search: an archived record becomes reachable when the flag
+// is set, a live record in the same scope stays reachable alongside it, the
+// flag maps 1:1 onto exactly the archived_at condition (it does not reveal a
+// superseded or windowed-inactive record), and authorization stays
+// orthogonal to state (D-04): it never reveals another owner's private
+// record.
+func TestSearchIncludeArchived(t *testing.T) {
+	s := testStore(t)
+	fixed := time.Date(2030, 6, 15, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return fixed }
+	ctx := context.Background()
+	scope := "search-test:project:include-archived"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+	vec := []float32{0.1, 0.2, 0.3}
+	future := fixed.Add(24 * time.Hour)
+
+	archivedID := "e5000000-0000-0000-0000-000000000001"
+	liveID := "e5000000-0000-0000-0000-000000000002"
+	supersededID := "e5000000-0000-0000-0000-000000000003"
+	supersessorID := "e5000000-0000-0000-0000-000000000004"
+	scheduledID := "e5000000-0000-0000-0000-000000000005"
+	otherOwnerID := "e5000000-0000-0000-0000-000000000006"
+
+	if err := s.Upsert(ctx, Memory{ID: archivedID, Content: "archived", Scope: scope, Owner: "sub-A", CreatedAt: fixed}, vec); err != nil {
+		t.Fatalf("upsert archived: %v", err)
+	}
+	if _, err := s.Archive(ctx, archivedID); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: liveID, Content: "live", Scope: scope, Owner: "sub-A", CreatedAt: fixed}, vec); err != nil {
+		t.Fatalf("upsert live: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: supersededID, Content: "old", Scope: scope, Owner: "sub-A", CreatedAt: fixed, SupersededBy: &supersessorID}, vec); err != nil {
+		t.Fatalf("upsert superseded: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: scheduledID, Content: "future", Scope: scope, Owner: "sub-A", CreatedAt: fixed, NotBefore: &future}, vec); err != nil {
+		t.Fatalf("upsert scheduled: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: otherOwnerID, Content: "not mine", Scope: scope, Owner: "sub-B", CreatedAt: fixed}, vec); err != nil {
+		t.Fatalf("upsert other-owner: %v", err)
+	}
+	if _, err := s.Archive(ctx, otherOwnerID); err != nil {
+		t.Fatalf("Archive other-owner: %v", err)
+	}
+
+	// SearchOptions{} (default, zero value): archived record absent — today's
+	// behavior, unchanged. This is also the default-path assertion required
+	// by Task 1's <behavior>: over this mixed corpus, only the live record is
+	// reachable.
+	hits, err := s.Search(ctx, scope, subj, vec, 20, SearchOptions{})
+	if err != nil {
+		t.Fatalf("Search default: %v", err)
+	}
+	got := recordIDs(hits)
+	if !slices.Contains(got, liveID) {
+		t.Errorf("Search default: live record %s absent, want present: %v", liveID, got)
+	}
+	for _, hidden := range []string{archivedID, supersededID, scheduledID} {
+		if slices.Contains(got, hidden) {
+			t.Errorf("Search default: hidden record %s present, want excluded: %v", hidden, got)
+		}
+	}
+
+	// SearchOptions{IncludeArchived: true}: the archived record is present, a
+	// live record in the same scope is still present, and the flag maps 1:1
+	// onto exactly one gate — it does not reveal superseded or
+	// windowed-inactive records, and it never reveals another owner's
+	// private record (authz stays orthogonal, D-04).
+	hits, err = s.Search(ctx, scope, subj, vec, 20, SearchOptions{IncludeArchived: true})
+	if err != nil {
+		t.Fatalf("Search IncludeArchived: %v", err)
+	}
+	got = recordIDs(hits)
+	if !slices.Contains(got, archivedID) {
+		t.Errorf("Search IncludeArchived: archived record %s absent, want present: %v", archivedID, got)
+	}
+	if !slices.Contains(got, liveID) {
+		t.Errorf("Search IncludeArchived: live record %s absent, want present: %v", liveID, got)
+	}
+	if slices.Contains(got, supersededID) {
+		t.Errorf("Search IncludeArchived: superseded record %s present, want excluded: %v", supersededID, got)
+	}
+	if slices.Contains(got, scheduledID) {
+		t.Errorf("Search IncludeArchived: windowed-inactive record %s present, want excluded: %v", scheduledID, got)
+	}
+	if slices.Contains(got, otherOwnerID) {
+		t.Errorf("Search IncludeArchived: other owner's private record %s present, want excluded (D-04): %v", otherOwnerID, got)
+	}
+}
+
+// TestSearchIncludeSupersededAndScheduled (phase 07 plan 03, mirroring
+// TestListIncludeSupersededAndScheduled on the List lane) completes the
+// three-flag opt-in proof on the Search lane: IncludeSuperseded and
+// IncludeScheduled each map 1:1 onto their own gate condition,
+// IncludeScheduled relaxes BOTH halves of activeWindowConditions together
+// (proven by one call returning both a not-yet-active and an already-expired
+// record), and the all-false default path is unchanged.
+func TestSearchIncludeSupersededAndScheduled(t *testing.T) {
+	s := testStore(t)
+	fixed := time.Date(2030, 6, 15, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return fixed }
+	ctx := context.Background()
+	scope := "search-test:project:include-superseded-scheduled"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+	vec := []float32{0.1, 0.2, 0.3}
+	future := fixed.Add(24 * time.Hour)
+	past := fixed.Add(-24 * time.Hour)
+
+	liveID := "e6000000-0000-0000-0000-000000000001"
+	supersededID := "e6000000-0000-0000-0000-000000000002"
+	supersessorID := "e6000000-0000-0000-0000-000000000003"
+	archivedID := "e6000000-0000-0000-0000-000000000004"
+	notYetActiveID := "e6000000-0000-0000-0000-000000000005"
+	expiredID := "e6000000-0000-0000-0000-000000000006"
+
+	if err := s.Upsert(ctx, Memory{ID: liveID, Content: "live", Scope: scope, Owner: "sub-A", CreatedAt: fixed}, vec); err != nil {
+		t.Fatalf("upsert live: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: supersededID, Content: "old", Scope: scope, Owner: "sub-A", CreatedAt: fixed, SupersededBy: &supersessorID}, vec); err != nil {
+		t.Fatalf("upsert superseded: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: archivedID, Content: "archived", Scope: scope, Owner: "sub-A", CreatedAt: fixed}, vec); err != nil {
+		t.Fatalf("upsert archived: %v", err)
+	}
+	if _, err := s.Archive(ctx, archivedID); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: notYetActiveID, Content: "future", Scope: scope, Owner: "sub-A", CreatedAt: fixed, NotBefore: &future}, vec); err != nil {
+		t.Fatalf("upsert not-yet-active: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: expiredID, Content: "expired", Scope: scope, Owner: "sub-A", CreatedAt: fixed, NotAfter: &past}, vec); err != nil {
+		t.Fatalf("upsert expired: %v", err)
+	}
+
+	// IncludeSuperseded reveals ONLY the superseded record, not the archived
+	// one.
+	hits, err := s.Search(ctx, scope, subj, vec, 20, SearchOptions{IncludeSuperseded: true})
+	if err != nil {
+		t.Fatalf("Search IncludeSuperseded: %v", err)
+	}
+	got := recordIDs(hits)
+	if !slices.Contains(got, supersededID) {
+		t.Errorf("Search IncludeSuperseded: superseded record %s absent, want present: %v", supersededID, got)
+	}
+	if slices.Contains(got, archivedID) {
+		t.Errorf("Search IncludeSuperseded: archived record %s present, want excluded: %v", archivedID, got)
+	}
+
+	// IncludeScheduled reveals BOTH halves of the window in ONE call: the
+	// not-yet-active record AND the already-expired record. It does not
+	// reveal archived or superseded records.
+	hits, err = s.Search(ctx, scope, subj, vec, 20, SearchOptions{IncludeScheduled: true})
+	if err != nil {
+		t.Fatalf("Search IncludeScheduled: %v", err)
+	}
+	got = recordIDs(hits)
+	if !slices.Contains(got, notYetActiveID) {
+		t.Errorf("Search IncludeScheduled: not-yet-active record %s absent, want present: %v", notYetActiveID, got)
+	}
+	if !slices.Contains(got, expiredID) {
+		t.Errorf("Search IncludeScheduled: expired record %s absent, want present: %v", expiredID, got)
+	}
+	if slices.Contains(got, archivedID) {
+		t.Errorf("Search IncludeScheduled: archived record %s present, want excluded: %v", archivedID, got)
+	}
+	if slices.Contains(got, supersededID) {
+		t.Errorf("Search IncludeScheduled: superseded record %s present, want excluded: %v", supersededID, got)
+	}
+
+	// Default path (all three false): exactly the live records, matching
+	// today's behavior over this same corpus.
+	hits, err = s.Search(ctx, scope, subj, vec, 20, SearchOptions{})
+	if err != nil {
+		t.Fatalf("Search default: %v", err)
+	}
+	got = recordIDs(hits)
+	if !slices.Contains(got, liveID) {
+		t.Errorf("Search default: live record %s absent, want present: %v", liveID, got)
+	}
+	for _, hidden := range []string{supersededID, archivedID, notYetActiveID, expiredID} {
+		if slices.Contains(got, hidden) {
+			t.Errorf("Search default: hidden record %s present, want excluded: %v", hidden, got)
+		}
+	}
+}
+
+// TestSearchRerankedMatchesSearchMembership (phase 07 plan 03) proves
+// Store.SearchReranked forwards SearchOptions unchanged to Store.Search and
+// adds no second gate: under identical options (including the include
+// flags), SearchReranked's result set has the same MEMBERSHIP as a direct
+// Store.Search call (SearchReranked additionally reorders and truncates to
+// k, so only set membership — not order — is compared).
+func TestSearchRerankedMatchesSearchMembership(t *testing.T) {
+	s := testStore(t)
+	fixed := time.Date(2030, 6, 15, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return fixed }
+	ctx := context.Background()
+	scope := "search-test:project:reranked-membership"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	subj := Authenticated("sub-A")
+	vec := []float32{0.1, 0.2, 0.3}
+	future := fixed.Add(24 * time.Hour)
+
+	liveID := "e7000000-0000-0000-0000-000000000001"
+	archivedID := "e7000000-0000-0000-0000-000000000002"
+	scheduledID := "e7000000-0000-0000-0000-000000000003"
+
+	if err := s.Upsert(ctx, Memory{ID: liveID, Content: "live memory content", Scope: scope, Owner: "sub-A", CreatedAt: fixed}, vec); err != nil {
+		t.Fatalf("upsert live: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: archivedID, Content: "archived memory content", Scope: scope, Owner: "sub-A", CreatedAt: fixed}, vec); err != nil {
+		t.Fatalf("upsert archived: %v", err)
+	}
+	if _, err := s.Archive(ctx, archivedID); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+	if err := s.Upsert(ctx, Memory{ID: scheduledID, Content: "scheduled memory content", Scope: scope, Owner: "sub-A", CreatedAt: fixed, NotBefore: &future}, vec); err != nil {
+		t.Fatalf("upsert scheduled: %v", err)
+	}
+
+	opts := SearchOptions{IncludeArchived: true, IncludeScheduled: true}
+	direct, err := s.Search(ctx, scope, subj, vec, 20, opts)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	reranked, err := s.SearchReranked(ctx, scope, subj, "memory content", vec, 20, opts)
+	if err != nil {
+		t.Fatalf("SearchReranked: %v", err)
+	}
+	directIDs := recordIDs(direct)
+	rerankedIDs := recordIDs(reranked)
+	slices.Sort(directIDs)
+	slices.Sort(rerankedIDs)
+	if !slices.Equal(directIDs, rerankedIDs) {
+		t.Errorf("SearchReranked membership = %v, want same as Search = %v", rerankedIDs, directIDs)
+	}
+	for _, want := range []string{liveID, archivedID, scheduledID} {
+		if !slices.Contains(rerankedIDs, want) {
+			t.Errorf("SearchReranked: record %s absent under IncludeArchived+IncludeScheduled, want present: %v", want, rerankedIDs)
+		}
+	}
+}
+
 // TestArchiveRecallGateSearchDiscovery mirrors
 // TestSearchDiscoverySupersededHidden for the archived_at soft-hide.
+//
+// SearchDiscovery is one of the two gate sites deliberately EXCLUDED from
+// the phase 07 (D-01/D-02) opt-in scope. It builds its filter from an inline
+// `must` slice (not a shared helper) and accepts no options struct at
+// all — its signature is (ctx, scope, kind, subj, vec, k), with no
+// SearchOptions/ListOptions parameter to carry new fields on — so it cannot
+// inherit include_archived/include_superseded/include_scheduled without a
+// signature change that would break every call site. That is why no
+// options-carrying variant of this assertion exists: there is no options
+// value to pass one to.
 func TestArchiveRecallGateSearchDiscovery(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -6730,6 +7249,115 @@ func TestArchiveRecallGateListScheduled(t *testing.T) {
 		t.Errorf("ListScheduled: archived record %s present, want excluded: %v", archivedID, got)
 	} else if !slices.Contains(got, liveID) {
 		t.Errorf("ListScheduled: live record %s absent, want present: %v", liveID, got)
+	}
+
+	// ListScheduled is one of the two gate sites deliberately EXCLUDED from
+	// the phase 07 (D-01/D-02) opt-in scope (D-01). Unlike SearchDiscovery,
+	// it DOES accept a ListOptions value — so this assertion is the gate
+	// that goes RED if a later change wires IncludeArchived into
+	// ListScheduled's inline archived_at condition and "completes" the
+	// 2-of-4 by accident. This repo has a recurring, expensive defect class
+	// of half-applied N-site invariants; an unlabelled 2-of-4 is
+	// indistinguishable from that defect, so this label and this assertion
+	// are both load-bearing. Even with all three include bools set true, the
+	// archived record must STILL be absent.
+	schedAllFlags, err := s.ListScheduled(ctx, scope, subj, ScheduledPending, ListOptions{
+		Limit: 10, IncludeArchived: true, IncludeSuperseded: true, IncludeScheduled: true,
+	})
+	if err != nil {
+		t.Fatalf("ListScheduled with all include bools: %v", err)
+	}
+	if got := recordIDs(schedAllFlags); slices.Contains(got, archivedID) {
+		t.Errorf("ListScheduled with all include bools: archived record %s present, want excluded (D-01 excludes ListScheduled from the opt-in scope): %v", archivedID, got)
+	} else if !slices.Contains(got, liveID) {
+		t.Errorf("ListScheduled with all include bools: live record %s absent, want present: %v", liveID, got)
+	}
+}
+
+// TestSearchAndListAuthorizationOrthogonalToState (phase 07 plan 03,
+// T-07-02/D-04) proves authorization stays orthogonal to state: a caller who
+// sets all three include bools on Store.Search and Store.List receives no
+// record belonging to another owner that they could not already read, and no
+// other owner's PRIVATE record — while a SHARED record that has since been
+// archived or superseded becomes readable, under the flags, by exactly the
+// callers its live predecessor was readable by (D-04's stated property,
+// asserted directly rather than merely claimed).
+func TestSearchAndListAuthorizationOrthogonalToState(t *testing.T) {
+	s := testStore(t)
+	fixed := time.Date(2030, 6, 15, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return fixed }
+	ctx := context.Background()
+	scope := "authz-orthogonal-test:project:x"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	vec := []float32{0.1, 0.2, 0.3}
+
+	// sub-A owns everything below. Two private records (one live, one
+	// archived) must NEVER be visible to sub-B under any flag combination.
+	// Two shared records (one archived, one superseded) must become visible
+	// to sub-B once the matching flag reveals them — the D-04 property.
+	aPrivateLiveID := "f7000000-0000-0000-0000-000000000001"
+	aPrivateArchivedID := "f7000000-0000-0000-0000-000000000002"
+	aSharedArchivedID := "f7000000-0000-0000-0000-000000000003"
+	aSharedSupersededID := "f7000000-0000-0000-0000-000000000004"
+	aSupersessorID := "f7000000-0000-0000-0000-000000000005"
+
+	upsert := func(id, owner, vis string, supersededBy *string) {
+		m := Memory{
+			ID: id, Content: "content " + id, Scope: scope, Owner: owner, Visibility: vis,
+			CreatedAt: fixed, SupersededBy: supersededBy,
+		}
+		if err := s.Upsert(ctx, m, vec); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	upsert(aPrivateLiveID, "sub-A", "", nil)
+	upsert(aPrivateArchivedID, "sub-A", "", nil)
+	upsert(aSharedArchivedID, "sub-A", "shared", nil)
+	upsert(aSharedSupersededID, "sub-A", "shared", &aSupersessorID)
+
+	if _, err := s.Archive(ctx, aPrivateArchivedID); err != nil {
+		t.Fatalf("Archive private: %v", err)
+	}
+	if _, err := s.Archive(ctx, aSharedArchivedID); err != nil {
+		t.Fatalf("Archive shared: %v", err)
+	}
+
+	subB := Authenticated("sub-B")
+	allFlags := SearchOptions{IncludeArchived: true, IncludeSuperseded: true, IncludeScheduled: true}
+	listAllFlags := ListOptions{Limit: 20, IncludeArchived: true, IncludeSuperseded: true, IncludeScheduled: true}
+
+	hits, err := s.Search(ctx, scope, subB, vec, 20, allFlags)
+	if err != nil {
+		t.Fatalf("Search (sub-B, all flags): %v", err)
+	}
+	gotHits := recordIDs(hits)
+	items, _, _, err := s.List(ctx, scope, subB, listAllFlags)
+	if err != nil {
+		t.Fatalf("List (sub-B, all flags): %v", err)
+	}
+	gotItems := recordIDs(items)
+
+	// Cross-owner: sub-B, with all three flags set, sees ZERO of sub-A's
+	// PRIVATE records — authorization is untouched by state relaxation.
+	for _, private := range []string{aPrivateLiveID, aPrivateArchivedID} {
+		if slices.Contains(gotHits, private) {
+			t.Errorf("Search (sub-B, all flags): sub-A's private record %s present, want excluded (D-04): %v", private, gotHits)
+		}
+		if slices.Contains(gotItems, private) {
+			t.Errorf("List (sub-B, all flags): sub-A's private record %s present, want excluded (D-04): %v", private, gotItems)
+		}
+	}
+
+	// D-04: sub-A's SHARED records that are archived or superseded ARE
+	// returned to non-owning sub-B once the corresponding flag reveals
+	// them — sharing is unchanged by state.
+	for _, want := range []string{aSharedArchivedID, aSharedSupersededID} {
+		if !slices.Contains(gotHits, want) {
+			t.Errorf("Search (sub-B, all flags): shared record %s absent, want present (D-04 — sharing unchanged by state): %v", want, gotHits)
+		}
+		if !slices.Contains(gotItems, want) {
+			t.Errorf("List (sub-B, all flags): shared record %s absent, want present (D-04 — sharing unchanged by state): %v", want, gotItems)
+		}
 	}
 }
 

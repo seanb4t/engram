@@ -9,6 +9,7 @@
   import * as Tabs from '$lib/components/ui/tabs';
   import { toast } from 'svelte-sonner';
   import { relativeTime, fullTimestamp } from '$lib/time';
+  import { memoryStateWords } from '$lib/memorystate';
   import { renderMarkdown } from '$lib/markdown';
   import CopyIcon from '@lucide/svelte/icons/copy';
   import EllipsisVerticalIcon from '@lucide/svelte/icons/ellipsis-vertical';
@@ -21,7 +22,8 @@
     error,
     onedit,
     ondelete,
-    onshare
+    onshare,
+    onselect
   }: {
     memory: Memory | undefined;
     loading: boolean;
@@ -29,6 +31,7 @@
     onedit?: (id: string) => void;
     ondelete?: (id: string) => void;
     onshare?: (memory: Memory) => void;
+    onselect?: (id: string) => void;
   } = $props();
   // D-05 rule fence (mechanical, not "parent omits callbacks") + visibility
   // gate on Share (locked D-07: private->shared is one-way, no unshare item).
@@ -40,6 +43,14 @@
   const hasSummary = $derived(!!memory?.summary?.trim());
   const defaultTab = $derived(hasSummary ? 'summary' : 'content');
   const bodyHtml = $derived(memory ? renderMarkdown(memory.content) : '');
+  // D-13/D-14: state words gate the State section; the schema chip is
+  // unconditional (D-14 promises it for every record, including v0).
+  const stateWords = $derived(memory ? memoryStateWords(memory) : []);
+  // A pure successor record (supersedes a predecessor but carries none of
+  // the four state words itself) still needs the section to list its
+  // predecessor links, so the gate is words-present OR supersedes-present.
+  const hasState = $derived(stateWords.length > 0 || (memory?.supersedes.length ?? 0) > 0);
+  const closesInFuture = $derived(!!memory?.notAfter && timestampDate(memory.notAfter) > new Date());
   async function copy() {
     if (!memory) return;
     try {
@@ -124,10 +135,44 @@
           <span class="border border-border rounded px-1.5 py-0.5"><span class="text-muted-foreground">by</span> {memory.actor}</span>
           <span class="border border-border rounded px-1.5 py-0.5"><span class="text-muted-foreground">src</span> {memory.source}</span>
           <span class="border border-border rounded px-1.5 py-0.5"><span class="text-muted-foreground">vis</span> {memory.visibility}</span>
+          <span class="border border-border rounded px-1.5 py-0.5"><span class="text-muted-foreground">schema</span> v{memory.schemaVersion ?? 0}</span>
         </div>
         <div class="flex gap-1.5 flex-wrap">
           {#each memory.tags as t (t)}<span class="px-1.5 rounded bg-muted font-mono text-[10.5px]">{t}</span>{/each}
         </div>
+        {#if hasState}
+          <div>
+            <div class="text-[9.5px] uppercase tracking-wide text-muted-foreground font-semibold mb-1">State</div>
+            <div class="flex flex-col gap-1 text-[12px]">
+              {#if memory.archivedAt}
+                <div>archived {fullTimestamp(timestampDate(memory.archivedAt))}</div>
+              {/if}
+              {#if memory.supersededBy}
+                <div>
+                  superseded by
+                  <button type="button" class="text-primary underline underline-offset-2 break-all" onclick={() => onselect?.(memory.supersededBy!)}>{memory.supersededBy}</button>
+                </div>
+              {/if}
+              {#if memory.supersedes.length > 0}
+                <div>
+                  supersedes
+                  {#each memory.supersedes as predId (predId)}
+                    <button type="button" class="text-primary underline underline-offset-2 break-all" onclick={() => onselect?.(predId)}>{predId}</button>
+                  {/each}
+                </div>
+              {/if}
+              {#if memory.notAfter && stateWords.includes('expired')}
+                <div>expired {fullTimestamp(timestampDate(memory.notAfter))}</div>
+              {/if}
+              {#if memory.notBefore && stateWords.includes('scheduled')}
+                <div>not yet active — opens {fullTimestamp(timestampDate(memory.notBefore))}</div>
+                {#if closesInFuture}
+                  <div>closes {fullTimestamp(timestampDate(memory.notAfter!))}</div>
+                {/if}
+              {/if}
+            </div>
+          </div>
+        {/if}
       </Tabs.Content>
     </Tabs.Root>
   {/if}

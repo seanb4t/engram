@@ -125,6 +125,50 @@ fields means they are misordered relative to each other (`not_before` must prece
 another argument you sent — `not_after` must be in the future, for example, which no change
 to a second field can fix.
 
+## Operator-tier hint codes (`engram migrate revert`)
+
+These two codes use the same `field=<name> hint=<code>: <text>` grammar as the ten-code
+table above, but they are produced by `internal/store/revert.go`'s `RevertRefusalError` —
+not by `internal/server/argerror.go` — so they are not `HintCode` constants and the ten-code
+table above remains exactly what it claims to be: a transcription of `argerror.go`. They
+surface only from an `engram migrate revert` refusal (see below for the two places that can
+happen), never from any memory-tool call.
+
+| Hint code | Meaning | What to do |
+|---|---|---|
+| `irreversible` | The requested revert range includes at least one step declared irreversible — the whole operation is refused before any write. | Recover via a collection snapshot taken before the forward migration ran; there is no partial-revert path around an irreversible step. |
+| `unsupported` | At least one record in the above-target range is stamped at a version with no reachable reverse chain to the target. | Recover via a collection snapshot, or narrow the target to a version every record can actually reach. |
+
+A single refusal never carries both hint codes. If a range is **both** irreversible and
+carries an unsupported version, `RevertRefusalError` still emits exactly one
+`field=`/`hint=` envelope (the one-envelope-per-rejection contract above) — it leads with
+`field=steps hint=irreversible` (irreversible outranks unsupported: it cannot be resolved
+by migrating forward again, unlike an unsupported-version gap) and folds the unsupported
+detail into that same envelope's text as an additional clause.
+
+Both codes can also surface from a narrower, **single-record** refusal discovered *inside*
+`migrate revert --apply`'s write-convergence loop, after its own whole-range preflight has
+already passed — not only from that preflight itself. A concurrent `engram migrate --apply`
+can land a new above-target record in the window between the preflight and the write loop's
+first read (or between any two write-loop passes, since the loop re-derives its backlog on
+every pass), and that record can turn out to be irreversible or unsupported even though the
+preflight never saw it. This surfaces with the identical `field=`/`hint=` grammar and the
+identical recovery guidance — the underlying condition (a genuinely irreversible step, or a
+record with no reachable chain) carries the same remedy whether discovered before the first
+write or between two writes — but reports `Candidates: 1` for the one record that triggered
+it, not the whole range's count. `errors.As` still recovers the same `*RevertRefusedError`
+either way, so a caller does not need to distinguish the two cases.
+
+One consequence is worth acting on: unlike a preflight refusal, a mid-loop refusal can
+follow writes that **already landed**. `migrate revert --apply` reverts in batches, so a run
+can revert whole batches of earlier records and only then hit the racing record that trips
+the refusal. The refusal report therefore carries the real progress counters — `reverted`,
+`failed`, `passes`, and `backlog` — alongside `applied: false`, and the text summary says so
+explicitly. Treat a refusal with a non-zero `reverted` as a **partially reverted
+collection**: run `engram migrate status` to see the resulting version distribution before
+deciding whether to re-run the revert, migrate forward again, or restore the snapshot. A
+preflight refusal reports all-zero counters and needs no reconciliation.
+
 ## The class-to-Connect-code mapping
 
 Every argument-validation failure belongs to one of three classes, and the class — never

@@ -1,0 +1,13 @@
+diff --git a/internal/store/store.go b/internal/store/store.go
+index 77071876..e78624fa 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -643,7 +643,7 @@ func payload(m Memory) map[string]any {
+ 	// type over int) does not match its `case int:` arm — an unconverted
+ 	// migrate.Version value falls through to NewValue's default case and
+ 	// panics with "invalid type: migrate.Version".
+-	p[schemaVersionKey] = int(max(migrate.CurrentVersion, m.SchemaVersion))
++	p[schemaVersionKey] = int(m.SchemaVersion)
+ 	if m.LastAccessedAt != nil {
+ 		p["last_accessed_at"] = m.LastAccessedAt.Format(time.RFC3339)
+ 	}

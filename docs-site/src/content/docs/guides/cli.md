@@ -115,7 +115,7 @@ Every operator command — `reindex`, `prune-expired`, `summarize-missing`,
 | Value | Behavior |
 |-------|----------|
 | `json` | Write exactly one JSON document to stdout. |
-| `text` | Write the pre-existing human-readable summary line, unchanged. |
+| `text` | Render a one-line prose headline followed by one aligned line per field of the same document `json` emits. This is a human-readable view, not a stable interface, and is not intended to be parsed. |
 | *(absent)* | Detect from the command's own configured output writer: a human
 terminal renders `text`; anything else (a pipe, a file redirect) renders `json`. |
 | anything else | Rejected as a usage error (exit `2`), naming `--output` and its
@@ -125,34 +125,60 @@ As with the client tier, the JSON document goes to stdout and any warning or
 diagnostic goes to stderr, so `engram <operator-command> --output json | jq .`
 is always safe. A sweep that affected zero records still emits zero-valued
 counters and `[]` for any list-shaped field — never `null` — and exits `0`.
-Every fact an operator command's `text` line states also appears as a field
-in its `json` document; a preview is always distinguished from an applied
-mutation by an explicit boolean field plus separate count fields, never by
-prose alone.
+Both lanes derive from **one serialization**: the `json` document is produced
+by `encoding/json` over the command's own report struct, and `text` is a
+rendered view of that same value — never a second, independently maintained
+format. The `json` document cannot carry a fact `text` omits, and `text`
+cannot show a field `json` withheld, because both are read from the same
+value. The `json` lane is the contract; the `text` lane may change shape in
+any release. A preview is always distinguished from an applied mutation by an
+explicit boolean field plus separate count fields, never by prose alone.
 
 ### Destructive commands
 
-<!-- engram:rule:start destructive-requires-apply -->a destructive operator command previews by default and mutates only when apply is set<!-- engram:rule:end destructive-requires-apply -->.
-This applies to every command the [blast-radius](#blast-radius) table below
-classifies `destructive`: today, `prune-expired`, `migrate-remap-owner`, and
-`spine-review purge`. A
-bare invocation reports what the sweep *would* do and exits `0` without
-touching the collection; add `--apply` to perform the mutation. A forgotten
-`--apply` is therefore a harmless no-op — the command just previews again.
+<!-- engram:rule:start destructive-requires-apply -->a mutating operator command previews by default and mutates only when apply is set<!-- engram:rule:end destructive-requires-apply -->.
+This applies to every command routed through the `registerDestructive` choke
+point — a wider set than the [blast-radius](#blast-radius) table's
+`destructive` column alone. Today that is every command the table classifies
+`destructive` (`prune-expired`, `migrate-remap-owner`, `spine-review purge`,
+`migrate revert`), **plus `migrate`**, which is classified
+**non-destructive** (its sweep is additive-only) yet still previews by
+default and mutates only under `--apply` — the same contract, extended to a
+mutating-but-not-destructive command. `migrate status` is read-only and
+carries no `--apply` flag at all. A bare invocation of any `--apply`-gated
+command reports what the sweep *would* do and exits `0` without touching the
+collection; add `--apply` to perform the mutation. A forgotten `--apply` is
+therefore a harmless no-op — the command just previews again.
 
-Every other mutating operator command — `reindex`, `summarize-missing`, and
-`backfill-short-ids` — is classified **non-destructive** and keeps its
-pre-existing opt-in **preview** idiom, `--dry-run`. This is a deliberate,
-two-idiom split, not an accident: on a destructive command a forgotten
-`--apply` costs nothing (it just previews again), but on a non-destructive
-command a forgotten `--dry-run` merely performs the recoverable, additive
-thing the operator already asked for. The boundary sits exactly on the
-blast-radius table's `Destructive` column and nowhere else.
+`reindex` and `summarize-missing` are classified **non-destructive** and
+keep their pre-existing opt-in **preview** idiom, `--dry-run`. This is a
+deliberate two-idiom split, not an accident: on a command routed through
+`registerDestructive` (above) a forgotten `--apply` costs nothing (it just
+previews again), but on `reindex`/`summarize-missing` a forgotten
+`--dry-run` merely performs the recoverable, additive thing the operator
+already asked for.
+
+`summarize-missing --scope <scope>` (or `--all-scopes`) sweeps that scope
+(or every scope) for records with no summary yet; `--scope` and
+`--all-scopes` are mutually exclusive, matching every other operator command
+that offers this pair.
+
+`backfill-short-ids` has MOVED from the `--dry-run` idiom to the `--apply`
+one: it is now a thin delegating alias for `engram migrate` — see the
+[upgrade guide](/guides/upgrade/)'s `## Unreleased` entry on
+`backfill-short-ids --dry-run` removal for the full behavior break. Its
+own blast-radius row is still **non-destructive** (the sweep is
+additive-only), exactly like `migrate` itself above — the boundary
+between the two idioms is therefore no longer purely the blast-radius
+table's `Destructive` column; it is "does this command route through
+`registerDestructive`", which today is every `Destructive:true` command
+plus `migrate` and `backfill-short-ids`.
 
 ### `spine-review scan`
 
 `engram spine-review scan --scope <scope>` (or `--all-scopes`) reports an
-inventory of the memory spine and never mutates on any path. Alongside the
+inventory of the memory spine and never mutates on any path. `--scope` and
+`--all-scopes` are mutually exclusive. Alongside the
 total and a per-scope/per-category breakdown, it reports the health signals
 an operator needs before deciding what to curate: how many records carry a
 summary and how many do not, how many are superseded, expired, or archived
@@ -186,7 +212,8 @@ entirely), and `unverifiable` (a `commit`/`url`/`repo` citation, an empty
 cached excerpt, a citation whose owning record names a different repo than
 the working tree, or a `ref` this command refuses to read for safety —
 every such citation carries the reason it was not checked, so a clean
-report can never be read as coverage the run did not have). It never reads
+report can never be read as coverage the run did not have). `--scope` and
+`--all-scopes` are mutually exclusive. It never reads
 outside the working tree it was run in — not even through a symlink — and
 never widens its search past the file a citation names.
 
@@ -361,7 +388,7 @@ for the full migration note.
 
 ## Request timeout
 
-Every client verb (`search`, `list`, `store`) bounds its RPC call with
+Every client verb (`search`, `list`, `store`, `get`) bounds its RPC call with
 `--timeout` (or `ENGRAM_TIMEOUT`), default `30s`. `0`, a negative value, and
 a malformed duration are all rejected as usage errors (exit `2`) **before**
 any dial — `--timeout 0` together with an unreachable `--server` still exits
@@ -374,14 +401,30 @@ zero-semantics, and it is not uniform across commands:**
 
 | Commands | `--timeout` meaning | `0` behavior |
 |---|---|---|
-| `search`, `list`, `store` | Per-RPC-call deadline | **Rejected** (usage error) |
-| `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan`, `spine-review verify`, `spine-review consolidate`, `spine-review archive`, `spine-review restore`, `spine-review purge` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
+| `search`, `list`, `store`, `get`, `migration-status` | Per-RPC-call deadline | **Rejected** (usage error) |
+| `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan`, `spine-review verify`, `spine-review consolidate`, `spine-review archive`, `spine-review restore`, `spine-review purge`, `migrate`, `migrate status`, `migrate revert` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
 | `migrate-remap-owner`, `migrate-set-owner` | Whole-sweep wall-clock budget | **Rejected** (usage error) — changed this release, see the [upgrade guide](/guides/upgrade/#6-migrate-remap-owner---timeout-0--migrate-set-owner---timeout-0-no-longer-means-unbounded) |
 
 A reader comparing `engram search --help` against `engram reindex --help`
 and `engram migrate-remap-owner --help` side by side should not have to
 infer this table from the flag's one-line usage text — the three groups
 genuinely disagree on what `--timeout 0` does.
+
+**`migrate --apply` and `backfill-short-ids --apply` budget TWO full-backlog
+passes under one `--timeout`:** a fresh `DryRun` preview (which additionally
+performs a `MintShortID` collision-probe `Count` per eligible record), then
+the manifest-limited apply pass — with no way to allocate time between the
+two. Size `--timeout` for both passes together, not just the write you
+expect.
+
+**`migrate revert --apply` budgets an even larger share under one
+`--timeout`:** the CLI's own whole-range preflight, `Store.Revert`'s
+independent SECOND whole-range preflight (repeating the identical exhaustive
+scan before it is allowed to write anything), and then the write-convergence
+loop itself, which re-derives and re-scrolls on every pass until the backlog
+reaches zero. An operator sizing `--timeout` for "one reverse walk of my
+backlog" is actually budgeting for at least two full read-only passes over
+that same range before any inverse is even applied.
 
 ## The self-describe catalog
 

@@ -47,9 +47,10 @@ tasks:
     cmds:
       - go test ./internal/e2e/ -count=1 -v
   test:strict:
-    desc: Run the Go suite fail-closed — a missing Qdrant fails instead of silently skipping
+    desc: Run the Go suite fail-closed — a missing Qdrant or browser fails instead of silently skipping
     env:
       ENGRAM_REQUIRE_QDRANT: '1'
+      ENGRAM_REQUIRE_BROWSER: '1'
     cmds:
       - go test ./... -count=1
   test:coverage:

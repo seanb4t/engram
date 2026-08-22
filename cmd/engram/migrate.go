@@ -61,14 +61,23 @@ var migrateSetOwnerCmd = &cobra.Command{
 		if err != nil {
 			return classifyOperatorErr(err)
 		}
+		// The document is an INLINE struct literal here, not a named converter
+		// like reindexReportDoc/summarizeReportDoc — deliberate under
+		// 06-01-PLAN.md §Conversion Rules R5: the view mechanism has no
+		// converter-function registry for this literal to be missing from, so
+		// the historical hazard that motivated naming a converter is gone. Its
+		// document shape is enumerated by flatViewFixtures in
+		// operator_view_flat_test.go.
 		return renderOperator(cmd, format, migrateSetOwnerSummary(migrateOwner, n), migrateSetOwnerReportDoc{Owner: migrateOwner, Stamped: n})
 	},
 }
 
-// migrateSetOwnerSummary renders the operator-facing one-line result of a
-// migrate-set-owner backfill. Pure (no I/O), mirroring reindexSummary's
-// discipline, and returns the pre-D-13 sentence unchanged, character for
-// character (renderOperator supplies the trailing newline on write).
+// migrateSetOwnerSummary is a headline producer (06-CONTEXT.md D-04): one
+// hand-written, non-exhaustive prose line above the complete field table
+// migrateSetOwnerReportDoc renders. Pure (no I/O), mirroring reindexSummary's
+// discipline. Its exact wording may change in any release — --output json is
+// the contract (D-03), not this sentence (renderOperator supplies the
+// trailing newline on write).
 func migrateSetOwnerSummary(owner string, stamped uint64) string {
 	return fmt.Sprintf("stamped owner=%s onto %d owner-less record(s)", owner, stamped)
 }
