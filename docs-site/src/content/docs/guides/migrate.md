@@ -276,7 +276,7 @@ stderr; the one machine-parseable document goes to stdout.
 | `future_total` | Sum of `future`'s counts. |
 | `total` | Fresh whole-collection count. |
 | `current_version` | This binary's own current target version. |
-| `pending` | **Connect lane only** (`MigrateStatusResponse` field 7) — the same value `status.Pending()` computes server-side: `absent` plus every bucket below `current_version`. No CLI report struct carries this field; the CLI's own text and json output derive the equivalent number from `absent` and `buckets` directly. |
+| `pending` | `absent` plus every bucket **strictly below** `current_version` — buckets sitting *at* `current_version` and every `future` bucket are excluded, because `pending` answers "would running `engram migrate` do work?". Reported by `engram migrate status` (both `text` and `json`), by `engram migration-status`, and by the Connect `MigrateStatusResponse` (field 7); all three read the same server-side `MigrateStatusResult.Pending()`, never a re-derivation. |
 
 The Connect lane also differs in how it renders numbers: protojson encodes
 `uint64` fields as JSON **strings**, not numbers, so a script consuming both
