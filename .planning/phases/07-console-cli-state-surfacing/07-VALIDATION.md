@@ -3,9 +3,9 @@ phase: 7
 slug: console-cli-state-surfacing
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
 # audit-milestone §5.5 distinguishes NOT-VALIDATED (draft) from PARTIAL (validated + nyquist_compliant: false) (#2117)
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-08-20
 ---
 
@@ -38,21 +38,24 @@ created: 2026-08-20
 
 ## Per-Task Verification Map
 
-Task IDs are assigned when PLAN.md files are written; this map is seeded at requirement
-granularity and task IDs are filled in at `/gsd-validate-phase` time.
+Re-derived 2026-08-22 by `/gsd-validate-phase` from the seven shipped SUMMARYs. Every test name
+below was resolved by `go test -list` and then by execution — none is transcribed from this draft's
+guesses, all of which were written before any PLAN.md existed and none of which matched a shipped
+name exactly (record `1xe3ze1v9s`, and record `bsbsvn4hbc` on `-run` patterns that match nothing).
 
-| Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
-|---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| pending | TBD | TBD | REQ-cli-record-state | — | `Search`/`List` with `IncludeSuperseded:true` surfaces a previously-hidden superseded record; default (all bools false) is byte-identical to today's gated behavior | integration | `go test ./internal/store/... -run TestSupersedeRecallGate` | ✅ exists (`store_test.go:3195`) — extend with sub-cases, do not add a file | ⬜ pending |
-| pending | TBD | TBD | REQ-cli-record-state, REQ-console-record-state | — | Same relaxation for `IncludeArchived`; an archived record is reachable ONLY with the opt-in flag | integration | `go test ./internal/store/... -run TestArchiveRecallGate` (name TBD) | ❌ W0 | ⬜ pending |
-| pending | TBD | TBD | REQ-cli-record-state, REQ-console-record-state | — | `IncludeScheduled` relaxes BOTH halves of `activeWindowConditions` together, so an `expired` record is reachable and the `expired` vocabulary word is derivable | integration | `go test ./internal/store/... -run TestSearchIncludeScheduled` (name TBD) | ❌ W0 | ⬜ pending |
-| pending | TBD | TBD | REQ-console-record-state, REQ-cli-record-state | — | D-13 state-word derivation produces the identical vocabulary and canonical order (`archived, superseded, expired, scheduled`) on the Go surface and the TS surface | unit (Go) + component (Vitest browser) | `go test ./cmd/engram/... -run TestStateWord` (name TBD) AND `cd ui && npm run test:browser -- MemoryRow` | ❌ W0 — both new; D-13 explicitly requires a test per surface asserting the derivation | ⬜ pending |
-| pending | TBD | TBD | REQ-migration-state-visible | — | New Connect read RPC returns the same histogram `Store.MigrateStatus` already computes, with nil→`[]` normalization per the `statusReportDoc` precedent; readable by any authenticated caller | integration | `go test ./internal/server/... -run TestMigrateStatus` (name TBD) | ❌ W0 | ⬜ pending |
-| pending | TBD | TBD | REQ-cli-record-state | — | `engram get` text/json identity holds, mirroring Phase 6 `assertViewIdentity` fixture discipline; protojson bytes render through `renderOperatorView` including correct omission/presence of an `optional` field | unit (Go) | `go test ./cmd/engram/... -run TestGetCommand` (name TBD) | ❌ W0 | ⬜ pending |
-| pending | TBD | TBD | REQ-cli-record-state, REQ-migration-state-visible | T-07-01 (issue #505) | The operator-view HEADLINE is sanitized: a state-word parenthetical with no control characters passes through unchanged, and a synthetic control-character input is neutralized — closing the `sanitizeViewValue` bypass this phase creates the exploit condition for | unit (Go) | `go test ./cmd/engram/... -run TestOperatorViewHeadlineSanitized` (name TBD) | ❌ W0 | ⬜ pending |
-| pending | TBD | TBD | REQ-cli-record-state, REQ-migration-state-visible | — | Every new CLI command (`engram get`, the new migration verb) is classified in `internal/surfaces/toolclass.go`; `buildCatalog` panics at test time on any unclassified command | unit (Go, existing gate) | `go test ./cmd/engram/... -run TestCatalogBlastRadiusMatchesToolClasses` | ✅ exists — this IS the gate; new rows must be added to pass | ⬜ pending |
-| pending | TBD | TBD | REQ-cli-record-state, REQ-console-record-state | — | Proto/codegen drift: `gen/go/` and `ui/src/lib/gen/` are regenerated and committed; `buf lint` and `buf breaking` pass against `main` | CI gate (existing) | `task proto:lint && task proto:gen && git diff --exit-code -- gen/ ui/src/lib/gen/` | ✅ exists — CI job `buf` (`.github/workflows/ci.yaml:244-264`) | ⬜ pending |
-| pending | TBD | TBD | REQ-cli-record-state | — | CLI golden drift: `--help`/catalog goldens regenerate cleanly from the live cobra tree after the new verbs land | CI gate (existing) | `task surfaces:gen && git diff --exit-code` | ✅ exists — CI job `surfaces` (`.github/workflows/ci.yaml:273-`) | ⬜ pending |
+| Task | Plan | Requirement | Test Type | Automated Command | Status |
+|------|------|-------------|-----------|-------------------|--------|
+| 7-01 | 07-01 | REQ-cli-record-state | integration | `go test ./internal/store/ -run TestSupersedeRecallGate` | ✅ green |
+| 7-02 | 07-01, 07-02 | REQ-cli-record-state, REQ-console-record-state | integration | `go test ./internal/store/ -run TestArchiveRecallGate` (4 tests: SearchAndList, IncludeArchived, SearchDiscovery, ListScheduled) | ✅ green |
+| 7-03 | 07-03 | REQ-cli-record-state, REQ-console-record-state | integration | `go test ./internal/store/ -run 'TestRecallWindowGate\|TestListIncludeSupersededAndScheduled'` | ✅ green |
+| 7-04 | 07-03, 07-04 | REQ-console-record-state, REQ-cli-record-state | unit (Go) + unit (Vitest) | `go test ./cmd/engram/ -run TestMemoryState` AND `cd ui && npx vitest run --project=node src/lib/memorystate.test.ts` | ✅ green (Go 2, TS 15) |
+| 7-05 | 07-07 | REQ-migration-state-visible | integration | `go test ./internal/server/ -run TestMigrateStatus` | ✅ green |
+| 7-06 | 07-05 | REQ-cli-record-state | unit (Go) | `go test ./cmd/engram/ -run 'TestGetHeadline\|TestGetTextOutputRendersHeadlineAndFieldTable'` | ✅ green |
+| 7-07 | 07-06 | REQ-cli-record-state, REQ-migration-state-visible (T-07-01, issue #505) | unit (Go) | `go test ./cmd/engram/ -run TestRenderOperatorViewSanitizesHeadline` | ✅ green |
+| 7-08 | all | REQ-cli-record-state, REQ-migration-state-visible | unit (existing gate) | `go test ./cmd/engram/ -run TestCatalogBlastRadiusMatchesToolClasses` | ✅ green |
+| 7-09 | all | REQ-cli-record-state, REQ-console-record-state | CI gate | `task proto:lint && task proto:gen && git diff --exit-code -- gen/ ui/src/lib/gen/` | ✅ green (CI `buf`) |
+| 7-10 | all | REQ-cli-record-state | CI gate | `task surfaces:gen && git diff --exit-code` | ✅ green (CI `surfaces`) |
+| 7-RG | 07-01 | REQ-cli-record-state | regression (gates made conditional) | `go test ./internal/store/ -run 'TestSchemaVersionNeverGatesRecall\|TestRecallEmissionSetIsCompleteAndClassified'` | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -60,17 +63,18 @@ granularity and task IDs are filled in at `/gsd-validate-phase` time.
 
 ## Wave 0 Requirements
 
-- [ ] Archived-record recall-gate positive-relaxation test (`internal/store`) — covers REQ-cli-record-state, REQ-console-record-state
-- [ ] Scheduled/expired recall-gate positive-relaxation test asserting BOTH window bounds relax together (`internal/store`) — covers REQ-cli-record-state, REQ-console-record-state; directly gates the `expired` vocabulary word
-- [ ] Go-side D-13 state-word derivation unit test (`cmd/engram`) — covers REQ-cli-record-state
-- [ ] TS-side Vitest browser D-13 state-word derivation test per touched component — covers REQ-console-record-state
-- [ ] New-RPC integration test against a real histogram: multiple version buckets, absent bucket, future bucket (`internal/server`) — covers REQ-migration-state-visible
-- [ ] `engram get` identity/adapter test (`cmd/engram`) — covers REQ-cli-record-state
-- [ ] D-11 headline-sanitization regression test (`cmd/engram`) — covers the phase's own stated precondition fix (issue #505)
-- [ ] Negative/default-path assertion on the two in-scope gate sites: with all three bools false, `Store.Search` and `Store.List` behavior is unchanged
-- [ ] Re-run (do NOT assume) the `recallEntryPointSeeds` derivation in `schemaversion_recallgate_test.go` and the `backlogFilter` "never reachable from any recall entry point" claim — both rest on the gates being unconditional, and this phase makes them conditional
+- [x] Archived-record recall-gate positive-relaxation test — `TestArchiveRecallGateSearchAndList` / `...IncludeArchived` (`internal/store`)
+- [x] Scheduled/expired recall-gate test asserting BOTH window bounds relax together — `TestRecallWindowGate`
+- [x] Go-side D-13 state-word derivation unit test — `TestMemoryStateWords`, `TestMemoryStateCell` (`cmd/engram`)
+- [x] TS-side D-13 derivation test — `ui/src/lib/memorystate.test.ts` (15 tests) plus `MemoryRow.browser.test.ts`
+- [x] New-RPC integration test against a real histogram — `TestMigrateStatusHistogram` and siblings (`internal/server`)
+- [x] `engram get` identity/adapter test — `TestGetHeadline`, `TestGetTextOutputRendersHeadlineAndFieldTable`
+- [x] D-11 headline-sanitization regression test — `TestRenderOperatorViewSanitizesHeadline` (issue #505)
+- [x] Negative/default-path assertion: with all three bools false, `Store.Search`/`Store.List` behavior is unchanged — asserted at `internal/store/store_test.go:6905` and `:7096`
+- [x] Re-derived (not assumed) `recallEntryPointSeeds` in `schemaversion_recallgate_test.go` — the list is declared once and a classification-coverage linkage subtest asserts it is set-equal to the distinct entry points `recallInvocationRows` actually invokes, so a recall-transmitted function never walked by any row cannot stay invisible. The `backlogFilter` unreachability claim rides the same gate. Both re-verified green after this phase made the gates conditional.
 
----
+*All nine satisfied. Unlike Phase 6, Phase 7's Wave 0 work genuinely shipped — only the contract
+went unreconciled, because every test landed under a different name than this draft guessed.*
 
 ## Manual-Only Verifications
 
@@ -83,11 +87,37 @@ granularity and task IDs are filled in at `/gsd-validate-phase` time.
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 120s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 120s (measured: `cmd/engram` scoped 0.4s, `internal/store` scoped 1.6s with container reuse, UI node project 0.2s — the draft's 60-120s estimate was pessimistic)
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** validated 2026-08-22 by `/gsd-validate-phase 07`
+
+---
+
+## Validation Audit 2026-08-22
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 0 |
+
+No coverage gaps. All ten map rows and all nine Wave 0 items are covered by shipped, executing
+tests: 18 Go subtests (7 `cmd/engram`, 9 `internal/store`, 2 `internal/server`) and 15 TS tests,
+all green, **0 failures and 0 skips**. The `internal/store` run was checked for silent skips
+specifically — testcontainers connected to Docker and reported no SKIP lines; its 1.6s wall time is
+container reuse via `TestMain`, not an unrun suite.
+
+This file was `status: draft` only because it was never reconciled after execution. Every one of
+its `name TBD` guesses resolved to a real shipped test under a different name; the map above
+records the resolved names.
+
+**Observation, not a gap:** this phase converted three previously unconditional recall gates into
+conditional ones, which is the change class where a red-proof earns its keep — but this contract
+never asked for red-evidence (unlike Phase 6's), and Phase 7 has no `red-evidence/` directory.
+Recorded here rather than silently expanding this audit's scope; closing it would be a deliberate
+decision, not a gap-fill.
