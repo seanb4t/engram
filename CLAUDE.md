@@ -12,7 +12,7 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 
 | Path | Responsibility |
 |------|----------------|
-| `cmd/engram/` | cobra CLI: `root`, `serve`, `version` + client-tier commands reaching a running server over Connect (`get`, `search`, `list`, `store`, `migration-status`) + operator-tier commands acting on Qdrant directly (`reindex` embedder migration — see docs-site `guides/reindex`; `migrate` (`status`, `revert`) schema-version sweep — see docs-site `guides/migrate`; `migrate-remap-owner` (alias: `migrate-set-owner`, deprecated); `prune-expired`; `summarize-missing`; `backfill-short-ids`; `spine-review` (`scan`, `verify`, `consolidate`, `purge`, `archive`, `restore`)) (entrypoint only) |
+| `cmd/engram/` | cobra CLI: `root`, `serve`, `version` + client-tier commands reaching a running server over Connect (`get`, `search`, `list`, `store`, `migration-status`) + operator-tier commands acting on Qdrant directly (`reindex` embedder migration — see docs-site `guides/reindex`; `migrate` (`status`, `revert`) schema-version sweep — see docs-site `guides/migrate`; `migrate-remap-owner` (alias: `migrate-set-owner`, deprecated); `prune-expired`; `summarize-missing`; `backfill-short-ids` (deprecated, use `migrate`); `spine-review` (`scan`, `verify`, `consolidate`, `purge`, `archive`, `restore`)) (entrypoint only) |
 | `internal/server/` | MCP tool registration + handlers (`Register`, `EnvOr`) |
 | `internal/store/` | Qdrant-backed memory store |
 | `internal/embed/` | embedder (OpenAI-compatible) |
