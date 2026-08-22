@@ -3,9 +3,9 @@ phase: 6
 slug: typed-operator-renderer
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
 # audit-milestone §5.5 distinguishes NOT-VALIDATED (draft) from PARTIAL (validated + nyquist_compliant: false) (#2117)
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-08-16
 ---
 
@@ -43,28 +43,36 @@ pairs, never a package-level `ok`.
 
 ## Per-Task Verification Map
 
-| Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
-|---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 6-TBD | TBD | TBD | REQ-operator-renderer-typed | — | N/A | unit | TBD — filled when PLAN.md files land | ❌ W0 | ⬜ pending |
+| Task ID | Plan | Requirement | Test Type | Automated Command | Status |
+|---------|------|-------------|-----------|-------------------|--------|
+| 6-01 | 06-01 | REQ-operator-renderer-typed | unit | `go test ./cmd/engram/ -run TestRenderOperatorTextAndJSON -count=1` | ✅ green |
+| 6-02 | 06-02 | REQ-operator-renderer-typed | unit | `go test ./cmd/engram/ -run TestOperatorOutputFormat -count=1` | ✅ green |
+| 6-03 | 06-03 | REQ-operator-renderer-typed | unit | `go test ./cmd/engram/ -run TestOperatorViewFixturesCoverEveryOperatorCommand -count=1` | ✅ green |
+| 6-04 | 06-04 | REQ-operator-renderer-typed | unit | `go test ./cmd/engram/ -run TestOperatorDocsAreHandDeclared -count=1` | ✅ green |
+| 6-05 | 06-05 | REQ-operator-renderer-typed | unit | `go test ./cmd/engram/ -run TestOperatorViewIdentityAcrossEveryOperatorCommand -count=1` | ✅ green |
+| 6-06 | 06-06 | REQ-operator-renderer-typed | unit | `go test ./cmd/engram/ -run TestOperatorViewFixturesHaveNoUnsanitizedNesting -count=1` | ✅ green |
+| 6-07 | 06-07 | REQ-operator-renderer-typed | unit | `go test ./cmd/engram/ -run TestEveryOperatorCommandRejectsInvalidOutput -count=1` | ✅ green |
+| 6-RE | validate-phase | REQ-operator-renderer-typed | integration | `go test ./internal/store/ -run TestRedEvidencePatchesAreLive -count=1` | ✅ green |
+| 6-NV | 06-01 | REQ-operator-renderer-typed | unit (comparator non-vacuity) | `go test ./cmd/engram/ -run TestSetDiffDetectsDivergence -count=1` | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
-*Task rows are seeded as TBD because no PLAN.md exists yet. `/gsd-validate-phase` resolves them
-against the plans' actual task IDs. Per record `1xe3ze1v9s`, seeded `N-TBD` rows do NOT
-auto-resolve — they must be re-derived, not transcribed.*
+*Re-derived by `/gsd-validate-phase` on 2026-08-22 from the seven shipped SUMMARYs, not transcribed
+from the seeded `6-TBD` row (record `1xe3ze1v9s`). Every `-run` pattern above was re-resolved by
+execution: 20 subtest PASS lines, 0 FAIL, never a bare package-level `ok`.*
 
 ---
 
 ## Wave 0 Requirements
 
-- [ ] `cmd/engram/fieldset.go` — `FieldSet`/`Field` types, `validateFieldSet`, the shared placeholder parser, `FieldSet.MarshalJSON`, and the text-render walk (zero regression risk: nothing calls it yet)
-- [ ] `cmd/engram/fieldset_test.go` — unit tests for the above, including `TestFieldSetCoverage_CatchesWidening` (the mandatory red-proof mutation test) and its symmetric companion proving a MISSING placeholder for a declared field is also caught
-- [ ] A bidirectional registry test proving the report-constructor registry is set-equal to `operatorCommands()` in BOTH directions — authored during the conversion, but MUST NOT replace `TestOperatorOutputParity` until all 15 reports have converted (D-07 retirement is the last step, not a Wave 0 action)
+- [x] The shared operator-view mechanism and its own test file — shipped as `cmd/engram/operator_view.go` + `operator_view_test.go`, **not** as the drafted `cmd/engram/fieldset.go` / `fieldset_test.go`
+- [x] A non-vacuity self-test for the set comparator — shipped as `TestSetDiffDetectsDivergence` (`operator_output_test.go:247`), covering missing / extra / disjoint / identical / empty
+- [x] A bidirectional registry test proving the fixture set is set-equal to `operatorCommands()` in both directions — shipped as `TestOperatorViewFixturesCoverEveryOperatorCommand` (`:215`)
 
-*Framework and per-report test files already exist; the only genuine Wave 0 gap is the new
-mechanism's own test file.*
-
----
+*Reconciled 2026-08-22. The drafted `FieldSet` + placeholder-parser design was written before any
+PLAN.md existed and was never built; the phase took the walk-the-marshaled-bytes route instead
+(`viewFields`, `operator_view.go:45`). The drafted file names are retained above only as the record
+of what changed — they are not outstanding work.*
 
 ## Manual-Only Verifications
 
@@ -80,28 +88,64 @@ This milestone treats a gate that cannot go red as no gate at all (records `fqzn
 `bqpfcnrnjs`, `tm0s0h3wgy`, `01mdq5qq9j`). Phase 6's central claim — field-set identity holds *by
 construction* — is exactly the kind of claim that can be vacuously "proven".
 
-- `TestFieldSetCoverage_CatchesWidening` MUST be demonstrated RED by a real mutation (add a
-  json-only field to a converted report's doc and observe the failure), and the demonstration MUST
-  be retained as a checked-in patch under this phase's red-evidence directory — not described in
-  prose.
-- Phase 06's directory MUST be added to `redEvidenceDirs` in
-  `internal/store/redevidence_harness_test.go`. That map is **declared, not discovered**: it fails
-  closed within a listed directory and fails OPEN across directories, so an unlisted Phase 06 is
-  silently ungated (issue #501, record `bqpfcnrnjs`).
-- Prefer exact SET EQUALITY over count/partition identities. Record `01mdq5qq9j` documents a
-  partition check that was invariant under the very mutation it appeared to guard.
+**Satisfied 2026-08-22.** Three patches under `red-evidence/`, all registered in `redEvidenceDirs`
+and all confirmed RED by the live harness:
 
----
+| Patch | Reddens | Direction |
+|-------|---------|-----------|
+| `06-red-1-empty-field-line-suppressed.patch` | `TestOperatorViewIdentityAcrossEveryOperatorCommand` | json key present, text suppressed |
+| `06-red-2-text-lane-only-field.patch` | `TestOperatorViewIdentityAcrossEveryOperatorCommand` | text field with no json counterpart |
+| `06-red-3-operator-command-dropped.patch` | `TestOperatorViewFixturesCoverEveryOperatorCommand` | command dropped from the enumerated registry |
+
+All three are exact set/order-equality failures, never count or partition identities (record
+`01mdq5qq9j`: a partition check was invariant under the very mutation it appeared to guard).
+
+**Correction to this contract's original bullet 1.** The draft demanded a patch that adds "a
+json-only field to a converted report's doc". **That mutation cannot redden any gate, by
+construction, and no such patch can exist.** `viewFields` (`cmd/engram/operator_view.go:45-46`)
+performs a single `json.Marshal(doc)` and the text lane walks those very bytes, so a field added to
+a document struct widens *both* lanes identically and the identity gate correctly stays green.
+That is the D-01/D-02 design working as intended, not a hole. The drafted mutation presumed the
+`FieldSet` + placeholder-parser architecture, which was never built. The retained patches attack
+the property that genuinely can break — the single-derivation invariant itself — in both
+directions.
+
+Phase 06 is registered in `redEvidenceDirs` (`internal/store/redevidence_harness_test.go`). That
+map fails closed within a listed directory but fails OPEN across directories, so registration was
+a hard prerequisite: before it, a patch would never have been executed (issue #501, record
+`bqpfcnrnjs`).
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 90s
-- [ ] Every `-run` pattern re-resolved against `go test -list` (not transcribed from this draft)
-- [ ] Red-evidence patch retained and Phase 06 listed in `redEvidenceDirs`
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (reconciled — the drafted design was never built)
+- [x] No watch-mode flags
+- [x] Feedback latency < 90s (package-scoped run: 0.38s)
+- [x] Every `-run` pattern re-resolved by execution — 20 subtest PASS lines, 0 FAIL, never a bare package-level `ok`
+- [x] Red-evidence patches retained (3) and Phase 06 listed in `redEvidenceDirs`
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** validated 2026-08-22 by `/gsd-validate-phase 06`
+
+---
+
+## Validation Audit 2026-08-22
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 2 |
+| Resolved | 2 |
+| Escalated | 0 |
+
+Gaps closed: (1) no red-evidence patch for phase 06; (2) phase 06 absent from `redEvidenceDirs`,
+where the map fails open across directories. Both compounded — a patch without registration is
+never executed, and registration without a patch trips the zero-applicability guard.
+
+One finding recorded rather than silently worked around: this contract's original red-evidence
+bullet named a mutation that is impossible under the shipped architecture. See the correction in
+the Red-Evidence Requirement section above.
+
+Verified by `go test ./internal/store/ -run TestRedEvidencePatchesAreLive -count=1 -v` — the
+phase-06 subtest executes and passes; all three patches log `confirmed RED`; the working tree
+reverts clean.
