@@ -235,7 +235,7 @@ mechanism instead of another one-shot operator command.
 - [x] **Phase 5: Connect Record-State Parity** - `proto`'s `Memory` gains supersession/scheduling/archival/schema-version fields in one additive pass, proven by an exhaustive field-mapping round-trip test, not `buf breaking` alone (#482) (completed 2026-08-15)
 - [x] **Phase 6: Typed Operator Renderer** - `renderOperator` refactored so a json document cannot structurally widen past what its text sentence states (#481) (completed 2026-08-17)
 - [x] **Phase 7: Console & CLI State Surfacing** - The operator console UI and the CLI both surface archived/superseded/scheduled/schema-version and pending-migration state (completed 2026-08-20)
-- [ ] **Phase 8: Registry & Docs Tail** - The shared scope-or-all-scopes guard becomes a registered conditional rule (#480); docs and CLAUDE.md brought current with what this milestone actually ships
+- [x] **Phase 8: Registry & Docs Tail** - The shared scope-or-all-scopes guard becomes a registered conditional rule (#480); docs and CLAUDE.md brought current with what this milestone actually ships (completed 2026-08-21)
 
 ### Phase 1: Gate & CI Integrity
 
@@ -466,7 +466,7 @@ Plans:
   2. `reference/memory-record.md` and `reference/tools.md` document the full record state including `schema_version`, and a new operator-facing guide documents the migration mechanism end to end.
   3. CLAUDE.md's "Not used here: database migrations" line is revised to accurately describe what this milestone ships and its scope — schema-version-driven migrations only, deliberately not `migrate-remap-owner`/`summarize-missing`/`reindex` — so the normative doc no longer contradicts the code.
 
-**Plans:** 6/6 plans executed
+**Plans:** 6/6 plans complete
 
 Plans:
 **Wave 1**
@@ -533,7 +533,7 @@ shared wave cannot force. The plans are small; the serialization costs wall-cloc
 | v0.8.x Phase 5: Config & Transport | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
 | v0.8.x Phase 6: Telemetry & Observability | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
 | 7. Web UI, Docs Site & Distribution | v0.8.x | 9/9 | Complete   | 2026-08-20 |
-| 8. Connect Auth Hardening | v0.8.x | 1/1 | In Progress|  |
+| 8. Connect Auth Hardening | v0.8.x | 1/1 | Complete    | 2026-08-21 |
 | 9. Retrieval Eval & Ranking Precision | v0.9.x | 3/3 | Complete | 2026-07-10 (PR #336) |
 | 10. Asymmetric Query/Document Embeddings | v0.9.x | 1/1 | Complete (already shipped) | 2026-07-10 (#305) |
 | 11. Async-on-Write Summaries | v0.9.x | 1/1 | Complete | 2026-07-10 (PR #336) |
