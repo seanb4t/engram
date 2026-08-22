@@ -588,8 +588,12 @@ shared wave cannot force. The plans are small; the serialization costs wall-cloc
 **Plans:** 2 plans
 
 Plans:
+**Wave 1**
 
 - [ ] 09-01-PLAN.md — `pending` end-to-end: report struct field, converter call, unconditional text-headline clause, and the discriminating gate that proves it came from `Pending()` (W2)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 09-02-PLAN.md — rewrite `guides/migrate.md`'s `pending` row and land a self-tested zero-occurrence docs gate behind it (W3)
 
 ---
@@ -682,6 +686,7 @@ harness, asserting preview/apply parity on a seeded v0 collection.
 
 - Whether `migrate-remap-owner` (also untested full-stack, but not
   schema-version-driven) belongs in the same harness or its own item.
+
 - Runtime cost against the existing `internal/e2e` Qdrant fixture.
 
 **Affected requirements (already satisfied; this is depth, not coverage):**
