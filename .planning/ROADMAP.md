@@ -466,7 +466,7 @@ Plans:
   2. `reference/memory-record.md` and `reference/tools.md` document the full record state including `schema_version`, and a new operator-facing guide documents the migration mechanism end to end.
   3. CLAUDE.md's "Not used here: database migrations" line is revised to accurately describe what this milestone ships and its scope — schema-version-driven migrations only, deliberately not `migrate-remap-owner`/`summarize-missing`/`reindex` — so the normative doc no longer contradicts the code.
 
-**Plans:** 4/4 plans executed
+**Plans:** 4/6 plans executed
 
 Plans:
 **Wave 1**
@@ -484,6 +484,11 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] 08-04-PLAN.md — CLAUDE.md audit: the migrations convention, the row-scoped catalog-derived command inventory with its tier split, and the record-state vocabulary (wave 4)
+
+**Wave 5** *(gap closure, after 08-VERIFICATION.md; 08-05 and 08-06 share no files and are both wave 1 of the `--gaps-only` run, so they execute in parallel)*
+
+- [ ] 08-05-PLAN.md — CLAUDE.md accuracy repairs: every deprecated command marked in the Layout row (derived from the goldens, not a named pair), and the Archived-state paragraph's soft-hide surface set brought into gated agreement with its own Supersession paragraph and the store's `archived_at` gate sites (wave 1)
+- [ ] 08-06-PLAN.md — The sweep rule's doc comment claims only the enforcement that exists, and `TestNoHandRolledSweepScopeGuards` turns the phase's one-time "zero hand-rolled guards" check into a tree-walking both-directions gate, proven RED against a deliberately constructed defect (wave 1)
 
 *Fully serialized on purpose. 08-01 owns every generated artifact and rewrites `docs-site/`,
 `skill/`, `gen/` and the goldens; a concurrent docs plan makes its drift checks see the sibling's
