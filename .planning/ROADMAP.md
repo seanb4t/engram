@@ -580,6 +580,17 @@ shared wave cannot force. The plans are small; the serialization costs wall-cloc
 **v0.13.x — Curation & Self-Evidence: ✅ shipped 2026-08-12 · 6 phases (1–5 plus inserted 03.1), 33 plans, 99 tasks · 23/24 requirements (REQ-consent-adversarial-proof left unproven — cold-read run cap exhausted at 3, terminal verdict NOT-OBTAINED, non-result accepted by the user; WINDOWS.md id 3 open) · audit `tech_debt` (6/6 integration seams, 4/4 E2E flows, 0 blockers; Nyquist 5/6 COMPLIANT — phase 4 PARTIAL by design, its one pending row *is* the unproven requirement) · cleared the inherited v0.12.x Nyquist debt: all 6 phases now `status: validated`.** Full detail: `milestones/v0.13.x-ROADMAP.md`.
 **2026-08-12.01 — Record State & Schema Evolution: 🚧 roadmapped 2026-08-12 · 8 phases (1–8) · 0/27 requirements.** First CalVer-labeled milestone. Phase 3 of the original 7-step research build order (11/27 requirements, 41% of the milestone) split into Phase 3 (migration foundation: registry, invariants, sweep) and Phase 4 (migration CLI: `engram migrate`, `backfill-short-ids` fold-in) to avoid one oversized phase. Full detail: this file (active milestone, not yet archived).
 
+### Phase 9: Report pending in migrate status
+
+**Goal:** Close audit items W2 and W3 (`.planning/2026-08-12.01-MILESTONE-AUDIT.md`). W2: `engram migrate status` omits `pending`, the value the milestone declared canonical — `migrateStatusReportDoc` (`cmd/engram/migrate_family.go:306-313`) carries no such field and `statusSummary` (`:348-358`) never computes it, so the offline operator verb is the one surface that does not report it. W3: `docs-site/src/content/docs/guides/migrate.md:279` already claims "the CLI's own text and json output derive the equivalent number from `absent` and `buckets` directly" — behavior the code does not have. One code fix closes both: add `pending` to the CLI report struct and text summary via the single existing `store.MigrateStatusResult.Pending()` definition (`internal/store/migrate_status.go:76`), never a re-derivation, then correct the doc sentence to match.
+**Requirements**: REQ-migrate-status-histogram, REQ-docs-record-state (both already satisfied; this is debt closure, not new scope)
+**Depends on:** Phase 8
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 9 to break down)
+
 ---
 
 ## Backlog
@@ -632,3 +643,100 @@ check at PR time. Verified against the phase-07 history: it reports STALE.
 - Whether a working-tree-dirty case should also fail, or only committed state.
 - Whether the same shape should cover the `surfaces:gen` drift check, which has
   the identical local-verb/CI-verify split.
+
+### Phase 999.2: Full-stack E2E for `engram migrate` (BACKLOG)
+
+**Goal:** [Captured for future planning]
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+**Context (captured 2026-08-22, milestone-audit item W1):**
+
+`internal/e2e/` has zero migrate coverage — `rg -ln 'migrate|Migrate' internal/e2e/`
+returns nothing; the package holds `boot_test.go`, `cli_exitcode_test.go`,
+`console_browser_test.go`, `harness_test.go`, `spine_review_test.go` only. The
+flagship operator verb of milestone 2026-08-12.01 is proven by two disjoint
+suites that never compose:
+
+- CLI layer: `cmd/engram/migrate_family_test.go` runs against
+  `fakeMigrateFamilyStore` (`:29`, explicit "no live Qdrant dial" comment). Proves
+  CLI→store-*interface* wiring.
+
+- Store layer: `internal/store/migrate_test.go` (e.g. `TestMigrateV0ToV1MintEndToEnd`)
+  exercises `store.Migrate` directly against a real Qdrant, bypassing cobra entirely.
+
+Both halves are strong; the join between them is inferred, never witnessed. The
+integration checker independently re-derived this as the milestone's one PARTIAL
+seam (P4→P2), and found no additional gap.
+
+**Proposed shape:** one `internal/e2e` test driving the built binary's
+`engram migrate status` → `--apply` → `revert` against the existing live-Qdrant
+harness, asserting preview/apply parity on a seeded v0 collection.
+
+**Open questions for planning:**
+
+- Whether `migrate-remap-owner` (also untested full-stack, but not
+  schema-version-driven) belongs in the same harness or its own item.
+- Runtime cost against the existing `internal/e2e` Qdrant fixture.
+
+**Affected requirements (already satisfied; this is depth, not coverage):**
+REQ-migrate-command, REQ-migrate-preview-apply-parity, REQ-migrate-revert.
+
+### Phase 999.3: Narrow CLAUDE.md's "every surface" record-state claim (BACKLOG)
+
+**Goal:** [Captured for future planning]
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+**Context (captured 2026-08-22, milestone-audit item W4):**
+
+CLAUDE.md:180 states "Every surface renders a record's derived state as up to four
+words, in canonical order". That overstates by one lane. Two surfaces derive the
+words — `cmd/engram/memory_state.go` (CLI) and `ui/src/lib/memorystate.ts` (console).
+The MCP lane emits raw fields and leaves derivation to the caller: `internal/server`
+renders zero state words, its only `archived|superseded|expired|scheduled` hits being
+comments and jsonschema argument descriptions.
+
+Small, documentation-only, and non-blocking — but the sentence is the kind of
+convention claim a future agent will act on. Either narrow it to name the two
+rendering surfaces, or state the MCP lane's raw-field contract explicitly.
+
+**Affected requirement (already satisfied):** REQ-claude-md-migrations-convention.
+
+### Phase 999.4: Unify `schema_version` proto typing (BACKLOG)
+
+**Goal:** [Captured for future planning]
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+**Context (captured 2026-08-22, milestone-audit cross-cutting item):**
+
+Schema version is typed three ways across one proto file and the Go side:
+
+- `Memory.schema_version` — `optional uint32` (`proto/engram/v1/engram.proto:52`)
+- `SchemaVersionBucket.version` — `int32` (`:186`)
+- `MigrateStatusResponse.current_version` — `int32` (`:203`)
+- Go-side `migrate.Version` — `int`
+
+No live break today: every value in play is small and non-negative, so the
+signed/unsigned split never manifests. It is a trap for a future signed sentinel
+(a `-1` meaning "unset" or "unknown" would round-trip through `uint32` as
+4294967295), and a wire-compat decision once chosen — changing a field's type
+after release is not free.
+
+**Open questions for planning:**
+
+- Whether unification is worth a proto change at all, or whether the right
+  outcome is a comment pinning "non-negative, never a sentinel" as the contract.
