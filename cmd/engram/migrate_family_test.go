@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -431,10 +432,151 @@ func TestMigrateFamilyStatusReportDocKeyOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("jsonTopLevelKeys: %v", err)
 	}
-	want := []string{"buckets", "absent", "future", "future_total", "total", "current_version"}
+	want := []string{"buckets", "absent", "future", "future_total", "total", "current_version", "pending"}
 	for _, e := range orderedKeyDiff(want, keys) {
 		t.Error(e)
 	}
+}
+
+// TestMigrateFamilyStatusReportDocPendingNeverRederived is the 09-01
+// discriminating-fixture gate for D-02/D-05: it proves statusReportDoc's
+// Pending field comes from the single store.MigrateStatusResult.Pending()
+// definition rather than any of the plausible-looking naive rederivations
+// a copy-paste could introduce. The fixture is built cur-relative
+// (migrate.CurrentVersion, never a literal version number) so it keeps
+// discriminating after CurrentVersion advances: Absent 88, one bucket
+// below current (cur-1, count 9), one bucket at current (cur, count 40),
+// one future bucket (cur+1, count 5), FutureTotal 5, Total 142 — chosen so
+// Pending() (97), the naive absent-plus-every-bucket sum (137), that plus
+// FutureTotal (142), and Total-minus-current-bucket (102) are four
+// pairwise-distinct values.
+func TestMigrateFamilyStatusReportDocPendingNeverRederived(t *testing.T) {
+	cur := int(migrate.CurrentVersion)
+	res := store.MigrateStatusResult{
+		Absent: 88,
+		Buckets: []store.VersionBucket{
+			{Version: cur - 1, Count: 9},
+			{Version: cur, Count: 40},
+		},
+		Future:      []store.VersionBucket{{Version: cur + 1, Count: 5}},
+		FutureTotal: 5,
+		Total:       142,
+	}
+
+	t.Run("equals_store_pending", func(t *testing.T) {
+		doc := statusReportDoc(res)
+		if doc.Pending != res.Pending() {
+			t.Errorf("doc.Pending = %d, want res.Pending() = %d", doc.Pending, res.Pending())
+		}
+		if doc.Pending != 97 {
+			t.Errorf("doc.Pending = %d, want 97", doc.Pending)
+		}
+	})
+
+	t.Run("fixture_discriminates_every_naive_rederivation", func(t *testing.T) {
+		want := res.Pending()
+		var absentPlusEveryBucket uint64 = res.Absent
+		for _, b := range res.Buckets {
+			absentPlusEveryBucket += b.Count
+		}
+		plusFutureTotal := absentPlusEveryBucket + res.FutureTotal
+		var atCurrentCount uint64
+		for _, b := range res.Buckets {
+			if b.Version == cur {
+				atCurrentCount = b.Count
+			}
+		}
+		totalMinusCurrentBucket := res.Total - atCurrentCount
+
+		if absentPlusEveryBucket != 137 {
+			t.Fatalf("absentPlusEveryBucket = %d, want 137 (fixture arithmetic changed)", absentPlusEveryBucket)
+		}
+		if plusFutureTotal != 142 {
+			t.Fatalf("plusFutureTotal = %d, want 142 (fixture arithmetic changed)", plusFutureTotal)
+		}
+		if totalMinusCurrentBucket != 102 {
+			t.Fatalf("totalMinusCurrentBucket = %d, want 102 (fixture arithmetic changed)", totalMinusCurrentBucket)
+		}
+
+		values := map[string]uint64{
+			"want":                    want,
+			"absentPlusEveryBucket":   absentPlusEveryBucket,
+			"plusFutureTotal":         plusFutureTotal,
+			"totalMinusCurrentBucket": totalMinusCurrentBucket,
+		}
+		seen := map[uint64]string{}
+		for name, v := range values {
+			if other, ok := seen[v]; ok {
+				t.Errorf("%s and %s both equal %d — fixture no longer discriminates naive rederivations", name, other, v)
+			}
+			seen[v] = name
+		}
+	})
+
+	t.Run("zero_value_marshals_pending_zero", func(t *testing.T) {
+		b, err := json.Marshal(statusReportDoc(store.MigrateStatusResult{}))
+		if err != nil {
+			t.Fatalf("json.Marshal: %v", err)
+		}
+		if !strings.Contains(string(b), `"pending":0`) {
+			t.Errorf("marshalled doc does not contain \"pending\":0: %s", b)
+		}
+	})
+
+	t.Run("converter_is_pure", func(t *testing.T) {
+		inputCopy := store.MigrateStatusResult{
+			Absent: 88,
+			Buckets: []store.VersionBucket{
+				{Version: cur - 1, Count: 9},
+				{Version: cur, Count: 40},
+			},
+			Future:      []store.VersionBucket{{Version: cur + 1, Count: 5}},
+			FutureTotal: 5,
+			Total:       142,
+		}
+		first := statusReportDoc(res)
+		second := statusReportDoc(res)
+		if !reflect.DeepEqual(first, second) {
+			t.Errorf("statusReportDoc is not idempotent: first=%+v second=%+v", first, second)
+		}
+		if !reflect.DeepEqual(res, inputCopy) {
+			t.Errorf("statusReportDoc mutated its input: got=%+v want=%+v", res, inputCopy)
+		}
+	})
+
+	t.Run("renders_last_in_both_lanes", func(t *testing.T) {
+		doc := statusReportDoc(res)
+		fields, err := viewFields(doc)
+		if err != nil {
+			t.Fatalf("viewFields: %v", err)
+		}
+		if len(fields) == 0 {
+			t.Fatal("viewFields returned no fields")
+		}
+		last := fields[len(fields)-1]
+		if last.Key != "pending" {
+			t.Errorf("last field Key = %q, want %q", last.Key, "pending")
+		}
+		if last.Label != "Pending" {
+			t.Errorf("last field Label = %q, want %q", last.Label, "Pending")
+		}
+
+		var textBuf bytes.Buffer
+		if err := renderOperatorView(&textBuf, statusSummary(res), doc); err != nil {
+			t.Fatalf("renderOperatorView: %v", err)
+		}
+		if !strings.Contains(textBuf.String(), "Pending") || !strings.Contains(textBuf.String(), "97") {
+			t.Errorf("rendered text view missing Pending/97: %s", textBuf.String())
+		}
+
+		var jsonBuf bytes.Buffer
+		if err := json.NewEncoder(&jsonBuf).Encode(doc); err != nil {
+			t.Fatalf("json.NewEncoder.Encode: %v", err)
+		}
+		if !strings.Contains(jsonBuf.String(), `"pending":97`) {
+			t.Errorf("rendered json missing pending:97: %s", jsonBuf.String())
+		}
+	})
 }
 
 // TestMigrateFamilyRevertRefusals proves both refusal classes (D-13/D-14):

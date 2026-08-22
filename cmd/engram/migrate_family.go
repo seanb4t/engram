@@ -303,6 +303,9 @@ var migrateStatusCmd = &cobra.Command{
 // every pre-existing key; CurrentVersion/current_version is added per
 // 06-01-PLAN.md §Conversion Rules R2, because statusSummary states this
 // binary's own migrate.CurrentVersion and no pre-existing key carried it.
+// Pending/pending is appended LAST for the same append-never-interleave
+// reason CurrentVersion was (09-CONTEXT.md D-01); its value is read from
+// store.MigrateStatusResult.Pending() rather than computed here (09-01).
 type migrateStatusReportDoc struct {
 	Buckets        []store.VersionBucket `json:"buckets"`
 	Absent         uint64                `json:"absent"`
@@ -310,6 +313,7 @@ type migrateStatusReportDoc struct {
 	FutureTotal    uint64                `json:"future_total"`
 	Total          uint64                `json:"total"`
 	CurrentVersion int                   `json:"current_version"`
+	Pending        uint64                `json:"pending"`
 }
 
 // statusReportDoc normalizes res into migrateStatusReportDoc, the JSON-mode
@@ -333,6 +337,7 @@ func statusReportDoc(res store.MigrateStatusResult) migrateStatusReportDoc {
 		FutureTotal:    res.FutureTotal,
 		Total:          res.Total,
 		CurrentVersion: int(migrate.CurrentVersion),
+		Pending:        res.Pending(),
 	}
 }
 
