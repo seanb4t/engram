@@ -221,6 +221,7 @@ milestone needs in working memory.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260717-g1r | Triage + fix #301 — Renovate ui/ postUpgradeTasks via `bash -c` (shell-free); branch unmerged, gated on a cluster-first allowlist update | 2026-07-17 | 1462da20 | [260717-g1r-renovate-ui-vendor-shell](./quick/260717-g1r-renovate-ui-vendor-shell/) |
+| 260822-im2 | Repo hygiene from the 2026-08-12.01 audit — dprint excludes `internal/webauth/static` (vendored SPA) + 3 authored files formatted (`fmt:check` 201→0); phase-06 `iter2`/`iter3` review artifacts tracked; `.mcp.json` gitignored | 2026-08-22 | faece501, 2937d265, cef262d1 | [20260822-repo-hygiene-dprint-and-artifacts](./quick/20260822-repo-hygiene-dprint-and-artifacts/) |
 
 ### Roadmap Evolution
 
