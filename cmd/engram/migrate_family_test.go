@@ -579,6 +579,54 @@ func TestMigrateFamilyStatusReportDocPendingNeverRederived(t *testing.T) {
 	})
 }
 
+// TestMigrateFamilyStatusSummaryPendingClause is the 09-01 gate for D-03/
+// D-04: statusSummary's pending clause is asserted on VALUES and POSITION,
+// never on the sentence's exact wording, because the sentence carries no
+// stability contract (unlike --output json, D-03). Reuses Task 1's
+// cur-relative fixture (Pending() 97).
+func TestMigrateFamilyStatusSummaryPendingClause(t *testing.T) {
+	cur := int(migrate.CurrentVersion)
+	res := store.MigrateStatusResult{
+		Absent: 88,
+		Buckets: []store.VersionBucket{
+			{Version: cur - 1, Count: 9},
+			{Version: cur, Count: 40},
+		},
+		Future:      []store.VersionBucket{{Version: cur + 1, Count: 5}},
+		FutureTotal: 5,
+		Total:       142,
+	}
+
+	t.Run("ordering_tokens_are_unambiguous", func(t *testing.T) {
+		headline := statusSummary(res)
+		for _, tok := range []string{"40", "97", "5"} {
+			if n := strings.Count(headline, tok); n != 1 {
+				t.Errorf("strings.Count(headline, %q) = %d, want 1 (migrate.CurrentVersion may have changed — re-pick fixture counts, do not weaken this assertion): %s", tok, n, headline)
+			}
+		}
+	})
+
+	t.Run("states_pending_value_between_buckets_and_future", func(t *testing.T) {
+		headline := statusSummary(res)
+		iBucket := strings.Index(headline, "40")
+		iPending := strings.Index(headline, "97")
+		iFuture := strings.Index(headline, "5")
+		if iBucket < 0 || iPending < 0 || iFuture < 0 {
+			t.Fatalf("expected ordering tokens 40, 97, 5 all present: %s", headline)
+		}
+		if !(iBucket < iPending && iPending < iFuture) {
+			t.Errorf("expected order bucket(40) < pending(97) < future(5) by index, got %d, %d, %d in: %s", iBucket, iPending, iFuture, headline)
+		}
+	})
+
+	t.Run("emitted_unconditionally_at_zero", func(t *testing.T) {
+		headline := strings.ToLower(statusSummary(store.MigrateStatusResult{}))
+		if !strings.Contains(headline, "pending") {
+			t.Errorf("zero-valued statusSummary missing pending clause: %s", headline)
+		}
+	})
+}
+
 // TestMigrateFamilyRevertRefusals proves both refusal classes (D-13/D-14):
 // an irreversible-step range and an unsupported-version range each render
 // their own field=/hint= envelope, Revert is called ZERO times on EITHER

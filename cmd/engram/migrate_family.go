@@ -349,13 +349,18 @@ func statusReportDoc(res store.MigrateStatusResult) migrateStatusReportDoc {
 // used to live in this sentence's own loop has moved into the field table,
 // which is where D-04 says detail belongs — this sentence now states only
 // that some records are at a version newer than this binary's target,
-// without enumerating them.
+// without enumerating them. The pending clause (09-01) is emitted
+// UNCONDITIONALLY, between the bucket enumeration and the future clause,
+// while the future clause stays conditional — a zero pending count is
+// still real information (nothing to migrate), whereas a zero future
+// count means the clause has nothing to say at all.
 func statusSummary(res store.MigrateStatusResult) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "migrate status: %d record(s) total, %d absent (never migrated)", res.Total, res.Absent)
 	for _, bucket := range res.Buckets {
 		fmt.Fprintf(&b, ", %d at v%d", bucket.Count, bucket.Version)
 	}
+	fmt.Fprintf(&b, "; %d pending", res.Pending())
 	if len(res.Future) > 0 {
 		fmt.Fprintf(&b, "; %d record(s) at a version newer than this binary's current target (v%d)", res.FutureTotal, int(migrate.CurrentVersion))
 	}
