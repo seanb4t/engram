@@ -614,7 +614,7 @@ func TestMigrateFamilyStatusSummaryPendingClause(t *testing.T) {
 		if iBucket < 0 || iPending < 0 || iFuture < 0 {
 			t.Fatalf("expected ordering tokens 40, 97, 5 all present: %s", headline)
 		}
-		if !(iBucket < iPending && iPending < iFuture) {
+		if iBucket >= iPending || iPending >= iFuture {
 			t.Errorf("expected order bucket(40) < pending(97) < future(5) by index, got %d, %d, %d in: %s", iBucket, iPending, iFuture, headline)
 		}
 	})
