@@ -220,8 +220,12 @@ milestone needs in working memory.
 
 [From .planning/todos/pending/ — ideas captured during sessions]
 
-- **supersede_memory cannot merge two records into one without a delete** (api, major) — folded into v0.13.x Phase 03.1; the origin analysis for that phase.
-- **Research a versioned payload-migration mechanism** (database, minor) — no stored schema/payload version exists; every evolution ships as its own one-off operator command. Now scoped into milestone 2026-08-12.01 (Phases 2–4).
+None. `.planning/todos/pending/` is empty as of 2026-08-23.
+
+Both prior entries were delivered and had simply never been closed out:
+
+- **supersede_memory cannot merge two records into one without a delete** (api, major) — delivered by v0.13.x Phase 03.1, which it was the origin analysis for. Filed under `todos/done/`.
+- **Research a versioned payload-migration mechanism** (database, minor) — delivered by milestone 2026-08-12.01 (Phases 2–4: schema versioning foundation, migration registry/sweep, migration CLI). Closed 2026-08-23; rationale and the one question decided-by-construction rather than evaluated are recorded in the note's own `## Closure` section, now at `todos/completed/`.
 
 ### Blockers/Concerns
 

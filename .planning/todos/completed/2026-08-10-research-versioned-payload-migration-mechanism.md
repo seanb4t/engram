@@ -75,3 +75,39 @@ Scope of the research:
 
 Related context: `.planning/phases/03.1-merge-supersession-supersede-memory-accepts-multiple-targets/03.1-CONTEXT.md`
 §Deferred Ideas and §Decisions D-04.
+
+## Closure
+
+**Closed as delivered 2026-08-23** (Sean), by milestone 2026-08-12.01 — "Record State &
+Schema Evolution", shipped 2026-08-22, released as v0.14.0 and deployed 2026-08-23.
+
+Every research question this note posed was answered by something that shipped:
+
+| Question asked here | Delivered |
+|---|---|
+| Is a version key worth introducing, and where does it live given Qdrant has no DDL layer? | `schema_version`, per-record, server-stamped on every write. A record predating the key reads as version 0 *by absence*, so no backfill was ever needed to make that true. It never gates recall — a runtime gRPC-interceptor gate proves it reaches no Qdrant filter on any recall path. |
+| An ordered migration registry — how evolutions declare order and applicability | `internal/migrate`: stdlib-only leaf package, ordered registry, additive-only with a two-direction key-set diff (`CheckAdditive`), and mandatory reversibility — a sealed `Reversibility` type with positional-required `NewStep` makes a step silent about reversibility unrepresentable. |
+| Idempotent re-runs must not be lost | `Store.Migrate` re-derives its backlog every pass and is explicitly safe to re-run. It is deliberately **not** resumable — no cursor, no checkpoint, nothing to reconcile after an interruption; you re-run the same command. |
+| A current-version report | `engram migrate status` — a version-distribution histogram, never a scalar. Plus a Connect-lane `migration-status` sibling. |
+| Retrofit the existing one-off commands, or leave them? | `backfill-short-ids` became the registered v0→v1 step and is now a thin delegating alias onto the same sweep, with apply-path parity proven by call-sequence equality. The other three were deliberately **not** retrofitted: `migrate-remap-owner` keys off an IdP claim change, `summarize-missing` off ongoing async fill, and `reindex` off embedder config identity — none is version-driven, so none belongs in the registry. |
+
+**One question was decided by construction rather than evaluated.** This note's honest
+counter-case — *"four one-off commands over the project's life may simply be cheaper than a
+framework, and the tolerant-decoder pattern may generalize well enough that most future
+evolutions need no migration at all"* — was never argued on its merits. The framework was
+built, and the counter-case lapsed. That is a legitimate outcome, not a defect, but it is
+recorded here so nobody later mistakes the framework's existence for a verdict on the
+alternative.
+
+**Live evidence, not just tests.** The 0.11.1 → 0.14.0 rollout on 2026-08-23 ran the sweep
+against the production collection: 2444/2444 records converged to `schema_version: 1`, with
+0 pending, 0 absent, and 0 ahead. As this note predicted for the retrofit case,
+`backfill-short-ids` had already run, so `v1FillShortID` no-op'd on essentially every record
+and the sweep's real work was stamping the version key. That exercise is evidence the
+CLI→store join works; it is **not** a test, and backlog item 999.2 (full-stack E2E for
+`engram migrate`) stays open to cover it.
+
+The stated convention this note flagged — CLAUDE.md's *"Not used here: database migrations"* —
+was correspondingly reversed and rewritten: payload migrations ARE schema-version-driven, and
+CLAUDE.md now documents the registry, the preview-by-default contract, and the explicit
+carve-out for the three non-version-driven sweeps.
