@@ -34,6 +34,14 @@ jobs:
         with:
           app-id: ${{ secrets.RELEASE_APP }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          # repositories: is a closed allowlist, not an addition to the
+          # default: unset means "this repository only", and setting it
+          # REPLACES that default rather than extending it. Scoping this to
+          # homebrew-tap alone would strip engram from the token's scope and
+          # break the release-please step above, which writes release PRs,
+          # tags, and Releases to engram in this same job — do not "tighten"
+          # this list to just the tap.
+          repositories: engram,homebrew-tap
       - if: ${{ github.event_name == 'push' }}
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
