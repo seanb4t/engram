@@ -1,36 +1,33 @@
 ---
 gsd_state_version: 1.0
-milestone: 2026-08-12.01
-milestone_name: Record State & Schema Evolution
-status: Awaiting next milestone
-stopped_at: Phase 09 complete — all phases complete
-last_updated: "2026-08-23T00:00:06.707Z"
-last_activity: 2026-08-22
-last_activity_desc: Milestone 2026-08-12.01 completed and archived
-state_head: f35fcbe5980785ea8ef154c719aaa1b3418ccfa6
+milestone: 2026-08-23.01
+milestone_name: Distribution & Agent Bootstrap
+status: planning
+last_updated: "2026-08-23T16:32:32.102Z"
+last_activity: 2026-08-23
 progress:
-  total_phases: 9
-  completed_phases: 9
-  total_plans: 46
-  completed_plans: 46
-current_phase: 09
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-22 — after closing milestone 2026-08-12.01)
+See: .planning/PROJECT.md (updated 2026-08-23 — after opening milestone 2026-08-23.01)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
 **Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: Milestone 2026-08-12.01 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-22 — Milestone 2026-08-12.01 completed and archived
+Status: Defining requirements
+Last activity: 2026-08-23 — Milestone 2026-08-23.01 started
 
 ## Deferred Items
 

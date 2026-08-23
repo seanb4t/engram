@@ -198,16 +198,50 @@ Full detail archived at `milestones/v0.10.x-{ROADMAP,REQUIREMENTS,MILESTONE-AUDI
 
 </details>
 
-## Next Milestone Goals
+## Current Milestone: 2026-08-23.01 Distribution & Agent Bootstrap
 
-No milestone is open. `2026-08-12.01 — Record State & Schema Evolution` shipped 2026-08-22; its
-goal, phase-by-phase target features, and requirement mapping are archived at
-`milestones/2026-08-12.01-{ROADMAP,REQUIREMENTS}.md`.
+**Goal:** engram is installable in one command and configures itself across every agent runtime —
+`brew install engram`, then `engram setup` detects what is on the machine, shows what it would
+write, and wires it up.
 
-Start the next one with `/gsd-new-milestone` (pass `--reset-phase-numbers`), which writes a fresh
-`REQUIREMENTS.md` and stamps a new CalVer label. Candidates are carried in **Deferred** below and in
-`.planning/BACKLOG.md`; the three tech-debt items this milestone parked already sit as backlog
-phases 999.2 / 999.3 / 999.4.
+**Target features:**
+
+- **Homebrew cask** — `homebrew_casks:` in `.goreleaser.yaml` publishing to `seanb4t/homebrew-tap`,
+  joining the existing `Casks/codegraph.rb`. GoReleaser **deprecated `brews:`** in favour of
+  `homebrew_casks:`, so a cask is the current shape for a pre-built Go binary, not a compromise.
+  Carries three setup costs: a cross-repo PAT (the default `GITHUB_TOKEN` is scoped to this repo
+  only), a `postflight`/`hooks.post.install` quarantine strip (`CGO_ENABLED=0` with no signing or
+  notarization step), and an install-time gate.
+- **`engram version --json`** — prerequisite, not polish. `version.go:16` prints a bare string
+  today, so the codegraph cask's postflight version assertion does not port. The gate cannot be
+  delegated to `generate_completions_from_executable`: Homebrew's `write_completion` wraps binary
+  execution in `rescue => e; opoo e`, so a broken binary installs green.
+- **`engram setup`** — an executable CLI subcommand that detects installed runtimes, shows what it
+  would write, and applies on confirmation. Preview-by-default, matching the `engram migrate`
+  convention; correct-by-reading per D-00, so the invocation is learnable from help text rather
+  than from interpreting a failure.
+- **Multi-runtime config writers** — Claude Code (plugin + skills + hooks + MCP registration),
+  generic MCP clients (portable config), Codex / AGENTS.md, and Cursor / opencode.
+- **Skills distribution** — install the five curation skills in each runtime's native format where
+  one exists, falling back to AGENTS.md-appended guidance where none does.
+- **Idempotent re-install as the update path** — re-running `engram setup` converges config. No
+  drift detection, no binary-vs-plugin-vs-server version skew reasoning this milestone.
+- **`/engram-setup` conditionally delegates** — hands off to `engram setup` when the binary is on
+  PATH, and otherwise keeps its current prose bootstrap for the current agent. The plugin installs
+  standalone via `claude plugin install`, so the binary is never guaranteed present and the prose
+  path stays first-class. Both paths must agree; the equivalence needs a derived gate rather than
+  two hand-maintained instruction sets.
+- **Install documentation** — a real install path on docs-site. `guides/quickstart.md` documents
+  Docker only, and `guides/cli.md` describes the binary at length without ever saying how to get it.
+
+**Key context:** this is not four greenfield builds. The Claude plugin and its five skills already
+ship (`.claude-plugin/marketplace.json` → `skill/engram`, version release-please-synced); the
+milestone unifies them under one entry point rather than building them. The bootstrap is circular
+today — `/engram-setup` ships *inside* the plugin, so a cold-start user must already know the
+marketplace URL to reach the thing that configures the server; a brew-installed binary inverts
+that. Standing constraint: zero new Go dependencies. Milestone labels are CalVer and decoupled
+from release-please's SemVer (rules `e325awbf7x` / `0v4249kc9d`); phase numbering restarts at 1
+(rule `rvmts69cz1`).
 
 ## Core Value
 
@@ -366,9 +400,12 @@ pre-close `REQUIREMENTS.md` snapshot).
 
 ### Active
 
-No milestone is open. `2026-08-12.01` shipped 2026-08-22 with all 27 requirements verified and
-moved to **Validated** above. `/gsd-new-milestone` writes the next `REQUIREMENTS.md`; until then
-the candidate set lives in **Deferred** below and `.planning/BACKLOG.md`.
+Milestone `2026-08-23.01` (Distribution & Agent Bootstrap) is open — see **Current Milestone**
+above for its goal and target features. Scoped requirements with REQ-IDs live in
+`.planning/REQUIREMENTS.md`, written by `/gsd-new-milestone` and mapped to phases by the roadmap.
+`2026-08-12.01` shipped 2026-08-22 with all 27 requirements verified and moved to **Validated**
+above. Candidates not taken into this milestone remain in **Deferred** below and
+`.planning/BACKLOG.md`.
 
 ### Deferred (carry-forward for next milestone)
 
@@ -722,4 +759,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-08-22 — after the `2026-08-12.01` (Record State & Schema Evolution) milestone.*
+*Last updated: 2026-08-23 — after opening milestone `2026-08-23.01` (Distribution & Agent Bootstrap).*
