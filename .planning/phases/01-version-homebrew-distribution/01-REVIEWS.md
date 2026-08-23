@@ -1,8 +1,11 @@
 ---
 phase: 1
 reviewers: [codex]
-reviewed_at: 2026-08-23T15:50:00-07:00
+reviewed_at: 2026-08-23T16:18:00-07:00
+cycles: 2
+cycle_1_reviewed_at: 2026-08-23T15:50:00-07:00
 plans_reviewed: [01-01-PLAN.md, 01-02-PLAN.md, 01-03-PLAN.md]
+plans_revision: c3b6f9813ea1e905fcb166d606f0df255f76767a
 models:
   codex: "gpt-5.6-sol (reasoning=low)"
 model_sources:
@@ -10,6 +13,16 @@ model_sources:
 ---
 
 # Cross-AI Plan Review — Phase 1
+
+> This file is APPEND-ONLY across review cycles. Everything between the
+> `# Cycle 1` and `# Cycle 2` markers is the cycle-1 audit trail, preserved as
+> written. Findings recorded under Cycle 1 are **historical**: several were fully
+> resolved by revision `c3b6f981` and are re-verified as such in Cycle 2. Do not
+> read a Cycle-1 finding as an open concern.
+
+---
+
+# Cycle 1 — 2026-08-23T15:50:00-07:00 (pre-revision plans)
 
 ## Codex Review
 
@@ -451,3 +464,662 @@ GoReleaser's, or Apple Gatekeeper's own behavior (D-11 / rule `m45p2b4bp7`); the
 around `.goreleaser.yaml` and `release.yaml` (the project's stated layer-appropriate-testing position);
 any suggestion to convert the cask to a formula (`brews:` is deprecated in GoReleaser); and any
 inference between the CalVer milestone label and the SemVer release version.
+
+---
+
+# Cycle 2 — 2026-08-23T16:18:00-07:00 (plans as revised by `c3b6f981`)
+
+Cycle 1 raised 5 HIGH and 14 actionable non-HIGH findings. The planner revised all three
+plans in place (`c3b6f981 docs(01): revise phase plans against cycle-1 cross-AI review`) and
+each plan now carries a `## Review dispositions (cycle 1 — codex …)` table. This cycle
+(a) re-verifies every cycle-1 finding against the **current** plan text and the live tree,
+(b) reviews the revised plans fresh for defects the revision itself introduced, and
+(c) re-runs the source-grounding and cross-artifact fact-drift passes.
+
+**Counting rules honored here.** A cycle-1 finding whose fix actually landed is FULLY RESOLVED
+and is excluded from this cycle's counts. Findings restated in the plans' own dispositions
+tables, and everything in the Cycle-1 section above, are historical and are not re-counted.
+Fact-drift findings are advisory and contribute to neither count.
+
+## Codex Review (cycle 2)
+
+### Summary
+
+Cycle 2 materially improves most of the executable gates: the Cobra reset discipline, Homebrew hook ordering check, telemetry call-site edit, SemVer grammar validation, token-scope wording, and SHA-based no-write check are now concrete and source-grounded. However, the plan set is not ready to execute. Plan 01-02 is structurally corrupted by an accidental duplicate document inserted mid-table, and Plan 01-03 still does not satisfy the phase’s publication and credential-verification requirements in-phase. Filing a post-merge issue owns the remaining work but does not fulfill it, and nothing prevents a release from running before the credential probe.
+
+### Cycle-1 finding re-verification
+
+| Finding | Status | Evidence |
+|---|---|---|
+| HIGH-1 — shared Cobra state not reset | FULLY RESOLVED | Mandatory `resetClientFlags(t)` discipline and shuffle/count gates appear at [01-01-PLAN.md:182](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-01-PLAN.md:182), [01-01-PLAN.md:193](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-01-PLAN.md:193), and [01-01-PLAN.md:359](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-01-PLAN.md:359). Existing helper verified at [clienttest_test.go:157](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/clienttest_test.go:157). |
+| HIGH-2 — telemetry outcome not implemented | FULLY RESOLVED | Task edits the real caller at [01-02-PLAN.md:492](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-02-PLAN.md:492), includes `serve.go` in `files_modified`, and adds a positive/negative gate at line 554. Current tree is RED as expected: [serve.go:83](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/serve.go:83) still passes raw `version`. [config.go:34](/Volumes/Code/github.com/seanb4t/engram/internal/telemetry/config.go:34) is correctly identified as a parameter sink. |
+| HIGH-3 — impossible pre-merge workflow dispatch | FULLY RESOLVED | Task 3 now contains only the App grant and baseline capture at [01-03-PLAN.md:380](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-03-PLAN.md:380). Dispatch appears only in Task 4’s post-merge checklist at line 451 onward. |
+| HIGH-4 — published-cask requirement unfulfilled | UNRESOLVED | The plan explicitly says publication and the credential probe are “not verified in-phase” at [01-03-PLAN.md:556](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-03-PLAN.md:556). That conflicts with the requirement and roadmap at [REQUIREMENTS.md:23](/Volumes/Code/github.com/seanb4t/engram/.planning/REQUIREMENTS.md:23) and [ROADMAP.md:305](/Volumes/Code/github.com/seanb4t/engram/.planning/ROADMAP.md:305). A tracking issue is ownership, not fulfillment. |
+| HIGH-5 — ordering gate matched a comment | FULLY RESOLVED | Revised gate at [01-01-PLAN.md:366](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-01-PLAN.md:366). Independent fixtures produced: correct `PASS`, transposed `FAIL`, comment-only `FAIL`. The companion version anchor also resolved to the executable line. |
+| M-1 — `Atoi` accepted invalid grammar | FULLY RESOLVED | Anchored grammar plus rejection cases at [01-02-PLAN.md:338](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-02-PLAN.md:338) and implementation instructions at line 387. |
+| M-2 — explicit `--output text` untested | FULLY RESOLVED | Explicit test specified at [01-01-PLAN.md:210](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-01-PLAN.md:210) and runnable acceptance gate at line 357. |
+| M-3 — probe overstated exact repository access | FULLY RESOLVED | Truth now distinguishes requested YAML allowlist from observed positive access at [01-03-PLAN.md:35](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-03-PLAN.md:35). |
+| M-4 — release-please access claimed without evidence | FULLY RESOLVED | Revised truth explicitly says the probe does not exercise release-please at [01-03-PLAN.md:36](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-03-PLAN.md:36). |
+| M-5 — App repository selection conflated with permissions | FULLY RESOLVED | Separation is explicit at [01-03-PLAN.md:403](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-03-PLAN.md:403) and in Task 3 instructions. |
+| M-6 — `release:check` overstated template verification | FULLY RESOLVED | Scope is accurately stated at [01-03-PLAN.md:290](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-03-PLAN.md:290). Task definition confirms `release:check` runs only `goreleaser check` at [Taskfile.yaml:221](/Volumes/Code/github.com/seanb4t/engram/Taskfile.yaml:221). |
+| M-7 — OS guard criterion not executable | FULLY RESOLVED | Deterministic block-form line-order gate follows the D-09 gate in Plan 01-01. |
+| M-8 — ordering claim exceeded what test proved | FULLY RESOLVED | Narrow invariant is stated at [01-02-PLAN.md:361](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-02-PLAN.md:361). |
+| L-1 — no-write check lacked a baseline | FULLY RESOLVED | Task 3 captures a 40-character HEAD SHA; Task 4 compares that exact value at [01-03-PLAN.md:481](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-03-PLAN.md:481). |
+| L-2 — validator also accepts empty output | FULLY RESOLVED | Plan explicitly routes `""` to text; source confirms empty is legal at [client_validate.go:58](/Volumes/Code/github.com/seanb4t/engram/internal/config/client_validate.go:58). |
+| L-3 — catalog version divergence | FULLY RESOLVED as accepted consequence | Plan documents and gates the divergence at [01-02-PLAN.md:556](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-02-PLAN.md:556). Source confirms catalog reads `root.Version` at [catalog.go:87](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/catalog.go:87). |
+| L-4 — reset helper misattributed | FULLY RESOLVED | Correct location is cited, matching [exitcode_baseline_test.go:475](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/exitcode_baseline_test.go:475). |
+| L-5 — raw `grep` in added criteria | FULLY RESOLVED | Revised acceptance criteria use `rg`. Existing source-owned shell code containing `grep` is outside this finding. |
+| L-6 — patch increment overflow unconsidered | FULLY RESOLVED | `ParseUint(..., 32)` and boundary rejection are specified at [01-02-PLAN.md:395](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-02-PLAN.md:395). |
+| L-7 — hand-maintained cask description | FULLY RESOLVED | Plan requires byte identity with [root.go:27](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/root.go:27) and adds a runnable gate. |
+
+### Strengths
+
+- The D-09 ordering gate is now genuinely falsifiable. The `^[^#]*` prefix rejects full-line comments while still matching the executable xattr line even though a later interpolation contains `#{...}`.
+- The telemetry correction targets the actual argument source, not the sink.
+- Cobra’s shared package-level command state is handled using the repository’s established whole-tree reset helper.
+- The dev-version logic is decomposed into pure functions with strict input grammar and no new dependency.
+- Plan 01-03 now distinguishes token request scope, App installation scope, and observed repository permission.
+- Wave-2 file ownership remains disjoint: 01-02 modifies Go/version files plus release-please config; 01-03 modifies only release workflows and `.goreleaser.yaml`.
+
+### Concerns
+
+#### HIGH — Plan 01-02 is structurally corrupted
+
+At [01-02-PLAN.md:147](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-02-PLAN.md:147), the artifact-table row is cut off after:
+
+```text
+moduleTagPattern ... `<major>.<minor>.<patch>---
+```
+
+A second complete `phase: ... plan: 02` document begins immediately afterward at line 148. The phase header occurs twice and the file contains three `---` separators.
+
+This is an executable-plan integrity failure, not cosmetic duplication. Depending on the parser, the first plan body may have no tasks, or the duplicated frontmatter may become malformed body text. Remove the truncated first copy and retain one valid plan document.
+
+#### HIGH — REQ-homebrew-cask-published remains unfulfilled
+
+The authoritative requirement says a tagged release publishes an installable cask at [REQUIREMENTS.md:23](/Volumes/Code/github.com/seanb4t/engram/.planning/REQUIREMENTS.md:23). The roadmap says the phase proves publishing end to end at [ROADMAP.md:286](/Volumes/Code/github.com/seanb4t/engram/.planning/ROADMAP.md:286).
+
+Plan 01-03 instead declares publication a post-merge observation that “must not be failed” during phase verification at [01-03-PLAN.md:556](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-03-PLAN.md:556). Filing an issue makes the gap durable but does not close the requirement. HIGH-4 was narrowed and narrated, not resolved.
+
+Either:
+
+- keep the phase open until the first tagged publication is observed; or
+- formally move `REQ-homebrew-cask-published` and roadmap criterion 2 to a later release-observation phase.
+
+#### HIGH — Nothing guarantees the credential probe runs before a release
+
+D-13 and the requirement demand an explicit credential check before any release depends on it. Plan 01-03 says this will happen post-merge, but Task 4 only files an issue. The existing release workflow runs on every push to `main` at [release.yaml:4](/Volumes/Code/github.com/seanb4t/engram/.github/workflows/release.yaml:4), including the merge that introduces the probe workflow.
+
+There is no dependency, environment gate, required status, or sequencing control preventing release-please from cutting and shipping a release before someone manually dispatches the new probe. Thus [01-03-PLAN.md:111](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-03-PLAN.md:111) is aspirational rather than enforced.
+
+The phase must remain incomplete until the probe passes, or the release job must have an owned precondition proving the credential check has occurred.
+
+#### MEDIUM — Plan 01-02’s “exactly three consumers” claim is false
+
+The objective says `main.version` has exactly three consumers. Current source contains additional direct uses:
+
+- MCP implementation version: [serve.go:231](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/serve.go:231)
+- startup log version: [serve.go:296](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/serve.go:296)
+- Cobra root version: [root.go:28](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/root.go:28) and reassignment at line 71
+- catalog transitively reads it at [catalog.go:87](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/catalog.go:87)
+
+The OpenTelemetry fix itself is correct, but the consumer inventory and “single source” language must be narrowed. The plan should explicitly decide whether MCP server metadata and the startup log intentionally remain `dev` on local builds.
+
+#### MEDIUM — The `go install @vX.Y.Z` success criterion lacks an end-to-end verification
+
+The plan’s pure `versionFromModuleVersion("v0.14.0")` test validates parsing, but it does not establish that a real `go install ...@vX.Y.Z` binary reaches that branch. The phase truth and success criterion claim the actual installation behavior.
+
+This is application-owned Go behavior, so an end-to-end Go build/install check is appropriate. It need not test Go’s implementation; it should run the produced engram binary and assert its output.
+
+### Source-grounding table
+
+Phase-created artifacts such as `resolvedVersion`, `patchCorePattern`, `TestVersionExplicitTextLane`, `homebrew_casks`, and the new verification workflow are excluded as instructed.
+
+| Symbol | Kind | Plan line(s) | Verdict | Evidence |
+|---|---|---:|---|---|
+| `versionCmd` / `engram version` | Go variable / CLI command | 01-01:173 | VERIFIED | [version.go:12](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/version.go:12) |
+| `version` package variable | Go variable | 01-01:174; 01-02:329 | VERIFIED | [root.go:19](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/root.go:19) |
+| `rootCmd.Version` | Struct field use | 01-01:174; 01-02:251 | VERIFIED | [root.go:28](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/root.go:28), assignment at line 71 |
+| `addClientFlags` | Go function | 01-01:175 | VERIFIED | [client_common.go:42](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/client_common.go:42) |
+| `outputFormatFromConfig` | Go function | 01-01:175 | VERIFIED | [client_common.go:201](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/client_common.go:201) |
+| `exitUsage` | Go constant | 01-01:175 | VERIFIED | [client_common.go:222](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/client_common.go:222) |
+| `usageErrorf` | Go function | 01-01:175 | VERIFIED | [client_common.go:251](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/client_common.go:251) |
+| `ValidateOutputFormat` | Go function | 01-01:176 | VERIFIED | [client_validate.go:58](/Volumes/Code/github.com/seanb4t/engram/internal/config/client_validate.go:58) |
+| `addOperatorOutputFlag` | Go function | 01-01:174 | VERIFIED | [operator_output.go:33](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/operator_output.go:33) |
+| `operatorOutputFormat` | Go function | 01-01:174 | VERIFIED | [operator_output.go:49](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/operator_output.go:49) |
+| `renderOperator` | Go function | 01-01:174 | VERIFIED | [operator_output.go:83](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/operator_output.go:83) |
+| `renderOperatorView` | Go function | 01-01 action | VERIFIED | [operator_view.go:266](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/operator_view.go:266) |
+| `runClient` | Test helper | 01-01:181 | VERIFIED | [clienttest_test.go:240](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/clienttest_test.go:240) |
+| `resetClientFlags` | Test helper | 01-01:182 | VERIFIED | [clienttest_test.go:157](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/clienttest_test.go:157) |
+| `resetEveryCommandFlagState` | Test helper | 01-01:183 | VERIFIED | [exitcode_baseline_test.go:475](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/exitcode_baseline_test.go:475) |
+| `exitCodeBaseline` | Test table | 01-01 behavior | VERIFIED | [exitcode_baseline_test.go:30](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/exitcode_baseline_test.go:30) |
+| `client.output` registry row | Config field | 01-01 action | VERIFIED | [registry.go:94](/Volumes/Code/github.com/seanb4t/engram/internal/config/registry.go:94) |
+| version catalog entry | Generated JSON object | 01-01:184 | VERIFIED | [catalog.golden:1132](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/testdata/catalog.golden:1132) |
+| version help block | Golden block | 01-01:185 | VERIFIED | [help.golden:459](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/testdata/help.golden:459) |
+| version surface classification | Registry row | 01-01 action | VERIFIED | [toolclass.go:201](/Volumes/Code/github.com/seanb4t/engram/internal/surfaces/toolclass.go:201) |
+| `telemetry.ConfigFromEnv("engram", version)` | Go call | 01-02:482 | VERIFIED | [serve.go:83](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/serve.go:83) |
+| `ConfigFromEnv` parameter sink | Go function | 01-02:483 | VERIFIED | [config.go:34](/Volumes/Code/github.com/seanb4t/engram/internal/telemetry/config.go:34), stored at line 41 |
+| `buildCatalog` / `root.Version` | Go function / field | 01-02:485 | VERIFIED | [catalog.go:84](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/catalog.go:84), [catalog.go:87](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/catalog.go:87) |
+| release-please `extra-files` | JSON key | 01-02:330, 478 | VERIFIED | [release-please-config.json:9](/Volumes/Code/github.com/seanb4t/engram/release-please-config.json:9), currently three entries |
+| `bump-minor-pre-major` | JSON key | 01-02 objective | VERIFIED | [release-please-config.json:7](/Volumes/Code/github.com/seanb4t/engram/release-please-config.json:7) |
+| `.release-please-manifest.json` root key | JSON field | 01-02:331 | VERIFIED | File contains `{".":"0.14.0"}` |
+| GoReleaser `builds`, `ldflags`, archive template | YAML keys | 01-01, 01-02 | VERIFIED | [.goreleaser.yaml:18](/Volumes/Code/github.com/seanb4t/engram/.goreleaser.yaml:18), lines 30–38 |
+| release workflow `workflow_dispatch.tag` | Workflow trigger/input | 01-03:80 | VERIFIED | [release.yaml:10](/Volumes/Code/github.com/seanb4t/engram/.github/workflows/release.yaml:10) |
+| App-token mint `app-token` | Workflow step id | 01-03:306 | VERIFIED | [release.yaml:32](/Volumes/Code/github.com/seanb4t/engram/.github/workflows/release.yaml:32) |
+| target resolver `target` | Workflow step id | 01-03 action | VERIFIED | [release.yaml:47](/Volumes/Code/github.com/seanb4t/engram/.github/workflows/release.yaml:47) |
+| `Reconcile :latest after a re-ship` | Workflow step | 01-03:226 | VERIFIED | [release.yaml:145](/Volumes/Code/github.com/seanb4t/engram/.github/workflows/release.yaml:145) |
+| `goreleaser/goreleaser-action` | Workflow action | 01-03 action | VERIFIED | [release.yaml:131](/Volumes/Code/github.com/seanb4t/engram/.github/workflows/release.yaml:131) |
+| `release:check` | Task target | multiple | VERIFIED | [Taskfile.yaml:221](/Volumes/Code/github.com/seanb4t/engram/Taskfile.yaml:221) |
+| `release:snapshot` | Task target | multiple | VERIFIED | [Taskfile.yaml:224](/Volumes/Code/github.com/seanb4t/engram/Taskfile.yaml:224) |
+| `surfaces:gen` | Task target | 01-01 action | VERIFIED | [Taskfile.yaml:245](/Volumes/Code/github.com/seanb4t/engram/Taskfile.yaml:245) |
+| `completion` subcommand | Cobra-generated CLI surface | 01-01 Task 2 | VERIFIED | Present in committed help golden; generated by Cobra rather than a repository declaration |
+| `Casks/codegraph.rb` | External tap file | multiple | UNCHECKABLE | Not in this repository; no network/source fetch was authorized or needed for this local grounding pass |
+| `permissions.push` response field | External GitHub API field | 01-03 Task 2 | UNCHECKABLE | Runtime API response shape cannot be proven by repository grep |
+| GitHub App installation repository list | External state | 01-03 Task 3 | UNCHECKABLE | Account-level GitHub UI state |
+| Homebrew `system_command` semantics | Third-party behavior | 01-01 | UNCHECKABLE | Correctly documented rather than gated under D-11 |
+| GoReleaser `skip_upload` template semantics | Third-party behavior | 01-03 | UNCHECKABLE | `release:check` validates schema only; manual snapshot observation is correctly identified |
+
+### Verification coverage
+
+Skipped or uncheckable items:
+
+- Phase-created symbols: `versionDoc`, `runVersion`, `resolvedVersion`, `nextPatch`, `deriveDevVersion`, `versionFromModuleVersion`, `patchCorePattern`, `moduleTagPattern`, all new version tests, `homebrew_casks`, `skip_upload`, `SKIP_HOMEBREW_UPLOAD`, `verify-tap-credential` workflow/job. These are artifacts of the phase and correctly absent today.
+- Function signatures beyond visible declarations were not behaviorally verified; grep/source grounding can confirm syntax and call sites, not runtime semantics.
+- GitHub’s default-branch `workflow_dispatch` registration behavior, App installation scope, and API permission response are external behavior/state.
+- Homebrew and GoReleaser runtime behavior are deliberately not gated, per D-11.
+- The first cask publication is future external state and therefore not verified.
+
+Line-offset quality improved for the newly cited seams: `serve.go:83`, `ConfigFromEnv:34`, `catalog.go:84–90`, `resetClientFlags:157`, and `resetEveryCommandFlagState:475` are accurate. Some prose still cites broad ranges rather than exact declarations, but no material source seam is mislocated.
+
+### Cross-artifact fact-drift advisory
+
+- `REQ-homebrew-cask-published` and roadmap success criterion 2 require actual publication. Plan 01-03 explicitly defers that observation. This is substantive drift, not merely added detail.
+- `REQ-cask-credential-verified` and roadmap criterion 4 require the check before a release depends on it. The issue-based follow-up has no enforcement against a release racing ahead.
+- ROADMAP still says `engram version --json` at [ROADMAP.md:302](/Volumes/Code/github.com/seanb4t/engram/.planning/ROADMAP.md:302), while locked CONTEXT D-01 and all plans specify `--output json`. CONTEXT is the more precise implementation decision, but the roadmap wording is stale.
+- D-01 through D-14 are otherwise represented faithfully.
+- D-15’s construction-over-rehearsal decision is honored; no prohibited Homebrew or backfill rehearsal has been reintroduced.
+- The correction to D-05’s `"(devel)"` premise is appropriate and should not be treated as drift.
+
+### Suggestions
+
+1. Repair [01-02-PLAN.md](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-02-PLAN.md) first: delete the truncated duplicate prefix and retain exactly one valid frontmatter/body.
+2. Keep Phase 1 open through the first successful credential probe and cask publication, or formally move those requirements to a follow-up phase. Do not mark a tracking issue as requirement completion.
+3. Add an explicit release sequencing control or operational gate so the first release cannot depend on the tap credential before the probe succeeds.
+4. Correct Plan 01-02’s version-consumer inventory and decide whether MCP metadata and startup logging should use `resolvedVersion()`.
+5. Add a live Go-owned verification for the `go install ...@vX.Y.Z` path.
+6. Update the roadmap’s `--json` spelling to `--output json` through the repository’s approved roadmap-edit path.
+
+### Risk Assessment
+
+**HIGH**
+
+Most cycle-1 implementation defects are genuinely fixed, but two release requirements remain deferred outside phase acceptance, the “probe before release” ordering is unenforced, and Plan 01-02 is malformed on disk. Those are execution and completion-integrity risks, not minor documentation concerns.
+
+---
+
+## Orchestrator Verification Pass (cycle 2)
+
+Every claim the planner asserted in its dispositions tables was re-tested against the live
+tree or against purpose-built fixtures, rather than accepted on faith.
+
+### Cycle-1 HIGH re-verification (independently reproduced)
+
+| Finding | Verdict | Independent evidence |
+|---|---|---|
+| **HIGH-1** — tests omit the shared-Cobra-state reset | **FULLY RESOLVED** | `resetClientFlags` exists at `cmd/engram/clienttest_test.go:157` and calls `resetEveryCommandFlagState(t, rootCmd)` at `:159` — the plan's cited line is exact. `resetEveryCommandFlagState` is at `cmd/engram/exitcode_baseline_test.go:475`, inside the plan's corrected `465-482` range. 01-01 Task 1 `<behavior>` opens with the mandatory reset paragraph, and the reset-discipline gate (`R >= C` over `resetClientFlags(t)` vs `runClient(t`) plus `-shuffle=on` / `-count=2` are runnable. |
+| **HIGH-2** — telemetry outcome claimed but not delivered | **FULLY RESOLVED** | `cmd/engram/serve.go:83` is exactly `telCfg := telemetry.ConfigFromEnv("engram", version)`. The new gate was executed against today's (pre-change) tree and is **RED as required**: the positive anchor `rg -c -F 'telemetry.ConfigFromEnv("engram", resolvedVersion())' cmd/engram/serve.go` returns no match (exit 1); the negative anchor `rg -c '^[^/]*telemetry\.ConfigFromEnv\("engram", version\)' cmd/engram/serve.go` returns `1`. `internal/telemetry/config.go:34` accepts `serviceVersion` and stores it at `:41` — correctly named a do-not-edit parameter sink. `cmd/engram/serve.go` is in `files_modified`. |
+| **HIGH-3** — blocking checkpoint dispatched a workflow absent from `main` | **FULLY RESOLVED** | 01-03 Task 3 (`<task type="checkpoint:human-action" gate="blocking">`, line 379) now contains only the App-installation grant and the tap HEAD-SHA capture — both executable from the feature branch. `rg` over Task 3 finds no `gh workflow run`; the dispatch appears only in Task 4's post-merge checklist (step A2). D-13's "before any real release depends on it" is preserved *in the checklist* (step A is ordered first; step B4 forbids marking the requirement complete until both are recorded) — see M-E below for the residual enforcement gap. |
+| **HIGH-4** — REQ-homebrew-cask-published claimed but not fulfilled | **PARTIALLY RESOLVED — counted** | See "Judgement on HIGH-4" below. |
+| **HIGH-5** — D-09 ordering gate defeatable by a comment | **FULLY RESOLVED — the replacement provably goes RED** | Reproduced against three purpose-built fixtures. Correct hook: `Q=9 V=12`, gate **exit 0 (PASS)**. Statements transposed: `Q=14 V=11`, gate **exit 1 (FAIL)**. Quarantine mentioned only in a comment: `Q` empty, gate **exit 1 (FAIL)**, while the retired cycle-1 anchor (`com.apple.quarantine` + `head -1`) resolved to the comment at line 8 and would have passed. The `^[^#]*` prefix behaves exactly as claimed: it rejects a match preceded by `#` on the same line, yet still matches the executable xattr line whose *later* `#{staged_path}` interpolation contains a `#`. The companion `^[^#]*"version", "--output", "json"` anchor is sound **as specified** — the plan's `<action>` mandates the two-line form (`binary = "#{HOMEBREW_PREFIX}/bin/engram"` then `result = system_command binary, args: [...]`), which keeps the `#{` off the anchored line. A one-line variant would silently break it; the `<action>` forecloses that. |
+
+### Judgement on HIGH-4 — truthfully scoped, but the scoping decision is unmade
+
+Asked to judge honestly whether `REQ-homebrew-cask-published` is now truthfully scoped or
+merely relabelled, the answer is **both halves, separately**:
+
+- **The dishonesty is genuinely fixed.** The new "Requirement scope" table (01-03:196-211)
+  splits State A (in-branch) from State B (post-merge) per requirement; Task 4 files a
+  tracking issue with runnable observation steps; step B4 states outright *"Only after both A
+  and B are recorded may `REQ-homebrew-cask-published` be marked complete in
+  `.planning/REQUIREMENTS.md`. Do not mark it complete at phase verification."*;
+  `<success_criteria>` was reworded to what the phase actually delivers. The cycle-1 failure
+  mode — *the phase finishes fully green while three plans claim the requirement* — is closed.
+  This is a real narrowing with an owned residual, not a relabelling.
+- **The requirement still has no in-phase closure, and no sanctioned re-scoping.**
+  `.planning/REQUIREMENTS.md:23` and ROADMAP success criterion 2 both still assert that a
+  tagged release publishes an installable cask, and the ROADMAP goal paragraph says the
+  pipeline is *"proven to work end to end rather than merely configured."* The plan takes a
+  third path — close the phase, carry the requirement in a GitHub issue — that neither
+  authority sanctions. The decision that would close this (keep Phase 1 open through the
+  first publication, **or** formally move `REQ-homebrew-cask-published` and criterion 2 to a
+  later release-observation phase) has not been made anywhere.
+
+Under this cycle's definitions that is **PARTIALLY RESOLVED** (acknowledged, mitigation in
+progress, not verified/completed), so it is counted. Codex reached the same conclusion
+independently and rated it UNRESOLVED/HIGH.
+
+### Cycle-1 non-HIGH re-verification
+
+All 14 actionable cycle-1 non-HIGH findings (M-1 through M-8, L-1 through L-7) were checked
+against the current plan text. **Thirteen are FULLY RESOLVED and are excluded from this
+cycle's count.** Spot-verified in depth:
+
+- **M-1 / L-6** — FULLY RESOLVED. 01-02 Task 1 specifies `patchCorePattern` =
+  `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$` with `strconv.ParseUint(c, 10, 32)`
+  after it, leading zeros **rejected not normalized** (policy stated), and eight explicit
+  not-ok rows in `TestNextPatch` (`+0.14.0`, `-0.14.0`, `0.+14.0`, `0.14.-0`, `01.14.0`,
+  `0.014.0`, `0.14.00`, `1.2.4294967296`). The row set is well chosen: every one of those
+  eight passes an `Atoi`-based check, and `1.2.4294967296` is accepted by the regex and
+  rejected only by the 32-bit `ParseUint` bound, so it genuinely exercises the overflow fix
+  rather than the pattern. The `rg -c '^[^/]*strconv\.Atoi' … is 0` assertion is
+  non-comment-scoped as claimed (`^[^/]*` rejects both a bare `// …` and an indented one).
+- **M-7** — FULLY RESOLVED in substance: the unrunnable "or on the same statement group"
+  clause is gone, replaced by `^[^#]*if OS\.mac\?$` with a strict line-number comparison,
+  and `<action>` now mandates the block form that makes it deterministic. Verified PASS on
+  the correct fixture (`M=8 < Q=9`). One residual runnability wart is carried forward as L-A.
+- **L-5** — FULLY RESOLVED for the criteria the finding covered: all three plans'
+  `<acceptance_criteria>` and `<verify>` blocks now use `rg`, each carrying an explicit
+  tooling note about explicit-file/hidden behavior and `rg -o … | wc -l` counting. A
+  consistency residual is carried forward as L-B.
+- **L-4** — FULLY RESOLVED: `read_first` now cites `exitcode_baseline_test.go:465-482` for
+  `resetEveryCommandFlagState` (actual `:475`) and adds `resetClientFlags` at
+  `clienttest_test.go:131-160` (actual func `:157`, call `:159`).
+
+**One cycle-1 source-grounding item was NOT carried into the revision** and is re-raised as
+L-C below: 01-02 still describes `always-update: true` as package-level.
+
+### Wave safety after resequencing
+
+Wave 2 = `01-02` and `01-03`. `files_modified` intersection is **empty**:
+
+| Plan | Wave | files_modified |
+|---|---|---|
+| 01-01 | 1 | `cmd/engram/version.go`, `cmd/engram/version_test.go`, `cmd/engram/exitcode_baseline_test.go`, `cmd/engram/testdata/help.golden`, `cmd/engram/testdata/catalog.golden`, `.goreleaser.yaml` |
+| 01-02 | 2 | `cmd/engram/buildversion.go`, `cmd/engram/buildversion_test.go`, `cmd/engram/version.go`, **`cmd/engram/serve.go`** (added by the HIGH-2 fix), `release-please-config.json` |
+| 01-03 | 2 | `.github/workflows/release.yaml`, `.github/workflows/verify-tap-credential.yaml`, `.goreleaser.yaml` |
+
+`cmd/engram/serve.go` is touched by no other plan. The two wave-1 to wave-2 overlaps
+(`cmd/engram/version.go` in 01-01+01-02, `.goreleaser.yaml` in 01-01+01-03) are strictly
+sequential across the wave boundary and are correctly declared by `depends_on: [01-01]` on
+both wave-2 plans. **No wave hazard.**
+
+## Concerns — NEW or STILL-UNRESOLVED (cycle 2)
+
+### HIGH — `01-02-PLAN.md` is structurally corrupted by the revision (NEW)
+
+`.planning/phases/01-version-homebrew-distribution/01-02-PLAN.md` contains **two complete
+plan documents**. Line 147 truncates mid-table-row and the second document's frontmatter
+begins on the same line:
+
+```text
+| Go var | `moduleTagPattern` (the compiled `^v<major>.<minor>.<patch>---
+phase: 01-version-homebrew-distribution
+plan: 02
+```
+
+`rg -n '^---$|^phase:|^wave:|^<objective>'` over the file yields `---` at 1, `phase:` at 2,
+`wave:` at 5, `---` at 61, `<objective>` at 63, then `phase:` at **148**, `wave:` at **151**,
+`---` at **207**, `<objective>` at **209** — the whole preamble repeats, and the first copy's
+"Artifacts this phase produces" table is severed mid-row (the `patchCorePattern` entry the
+M-1 fix added is lost from that copy). `<tasks>` appears once, at 319. The file is 612 lines
+where the pre-revision version was 364.
+
+This was introduced by the revision, not pre-existing:
+`git show c3b6f981^:…/01-02-PLAN.md | rg -n '^---$'` yields exactly `1` and `55` — one
+frontmatter. `01-01-PLAN.md` and `01-03-PLAN.md` are clean (single `---` pair each).
+
+This is an executable-plan integrity failure, not cosmetic. A phase executor reads a
+truncated artifact table, then a raw YAML dump as body prose, then a second objective; and
+depending on how the frontmatter parser treats the second `---` run, the effective document
+boundaries are not the ones the planner intended. **Repair before execution: delete the
+truncated first copy, keep exactly one valid document.**
+
+### HIGH — REQ-homebrew-cask-published: PARTIALLY RESOLVED (carried, counted)
+
+See "Judgement on HIGH-4" above. The false claim is removed and the residual is owned; the
+scoping decision (keep the phase open vs. formally move the requirement and ROADMAP criterion 2)
+is unmade, and no PLAN.md, REQUIREMENTS.md, or ROADMAP.md records it.
+
+### MEDIUM — 01-01 Task 2's completions ordering gate is unsatisfiable (NEW)
+
+01-01 Task 2 `<acceptance_criteria>`, "Completions-after-gate ordering (runnable,
+comment-proof)":
+
+```sh
+V=$(rg -n '^[^#]*"version", "--output", "json"' .goreleaser.yaml | head -1 | cut -d: -f1)
+C=$(rg -n '^[^#]*bash_completion\.d/engram'    .goreleaser.yaml | head -1 | cut -d: -f1)
+test -n "$V" && test -n "$C" && test "$V" -lt "$C"
+```
+
+The same task's `<action>` mandates `#{HOMEBREW_PREFIX}`-rooted destinations —
+bash maps to `#{HOMEBREW_PREFIX}/etc/bash_completion.d/engram`. That puts a `#` **before**
+`bash_completion.d/engram` on the only line that can carry it, so `^[^#]*` can never match.
+Executed against a correct hook fixture: `V=12`, `C=` (empty), criterion **exit 1**. The gate
+is red on every correct implementation and green on none.
+
+This is the HIGH-5 fix over-applied: `^[^#]*` is right for anchors whose match precedes any
+interpolation (the xattr call, the `"version", "--output", "json"` args, `if OS.mac?`) and
+wrong for one whose match is *inside* an interpolated string. The danger is not the red
+itself — it is that an executor pressured by a permanently-red gate may "fix" it by dropping
+the `#{HOMEBREW_PREFIX}` prefix, producing relative completion paths.
+
+**PLAN change needed** (01-01 Task 2 `<acceptance_criteria>`): anchor the completions step on
+a construct that precedes the interpolation — e.g. `^[^#]*"completion"` (the
+`system_command binary, args: ["completion", shell]` line) — or keep the path anchor and drop
+the `^[^#]*` prefix in favour of `rg -n -F 'bash_completion.d/engram'`, letting `head -1`
+disambiguate the uninstall hook's second occurrence.
+
+### MEDIUM — 01-02's "exactly three consumers" inventory is false, and two of them are in a file this plan now edits (NEW)
+
+01-02 `<objective>`: *"`main.version` has exactly three consumers today"*, enumerating the
+cask gate, OpenTelemetry, and `rootCmd.Version`. The tree has **five** direct uses:
+
+| Site | Evidence | Plan's treatment |
+|---|---|---|
+| telemetry `service.version` | `cmd/engram/serve.go:83` | rewired to `resolvedVersion()` |
+| MCP `Implementation.Version` | `cmd/engram/serve.go:231` — `mcp.NewServer(&mcp.Implementation{Name: "engram", Version: version}, nil)` | **unnamed, undecided** |
+| startup log | `cmd/engram/serve.go:296` — `slog.Info("engram listening", "version", version, …)` | **unnamed, undecided** |
+| `rootCmd.Version` to `-v/--version` + `buildCatalog` | `cmd/engram/root.go:28`, `:71`; `cmd/engram/catalog.go:87` | accepted consequence (L-3) |
+| `version` subcommand | `cmd/engram/version.go:16` | the thing being changed |
+
+This matters because the HIGH-2 fix put `cmd/engram/serve.go` into `files_modified`: the
+executor now opens that exact file, changes line 83, and finds two sibling lines on the raw
+var with no instruction either way. After this plan a single local `engram serve` process
+emits `service.version = 0.14.1-dev.0+g…` while logging `version=dev` at startup and
+advertising `Version: dev` over MCP. That is a coherence defect an executor may reasonably
+"fix" unilaterally — exactly what L-3's explicit accept-and-record treatment exists to prevent.
+
+**PLAN change needed** (01-02 `<objective>` + Task 2 `<action>`): correct the inventory to five
+sites, and make an explicit decision for `serve.go:231` and `serve.go:296` — wire both to
+`resolvedVersion()`, or record them as an accepted divergence the way `catalog.go` is, with a
+matching acceptance criterion either way.
+
+### MEDIUM — 01-03 Task 1's ordering gate did not receive the HIGH-5 comment-proofing (NEW)
+
+01-03 Task 1's runnable ordering gate:
+
+```sh
+C=$(rg -n -F 'actions/checkout' .github/workflows/release.yaml | head -1 | cut -d: -f1)
+```
+
+`rg -n 'actions/checkout' .github/workflows/release.yaml` returns **`56`** (a comment:
+*"The dispatch input reaches actions/checkout's `ref:` …"*) before **`79`** (the real
+`uses: actions/checkout@3d3c42e5…` step). `head -1` therefore binds `C` to the comment. The
+gate happens to pass today because 56 < 79 < 132, but it is measuring the wrong line: move
+the checkout step below the new guard step and the comment keeps the gate green — the precise
+defect class HIGH-5 was raised about. The `^[^#]*` discipline was applied to 01-01's three
+gates and 01-02's telemetry gate but not here. (`goreleaser/goreleaser-action` resolves
+uniquely to `:132`; only the checkout anchor is affected.)
+
+**PLAN change needed** (01-03 Task 1 `<acceptance_criteria>`): anchor as
+`^[^#]*uses: actions/checkout` (or `^\s*uses: actions/checkout`), matching the discipline the
+other two plans now use.
+
+### MEDIUM — 01-02's `go install …@vX.Y.Z` truth has no verification and cannot have one in-phase (NEW)
+
+`must_haves.truths`: *"`go install github.com/seanb4t/engram/cmd/engram@vX.Y.Z` reports
+`X.Y.Z` rather than the bare `dev` sentinel"*, restated in `<success_criteria>`. Nothing in
+either task verifies it. `TestVersionFromModuleVersion` proves only that the *parser* accepts
+`v0.14.0` and rejects a pseudo-version; it never establishes that a real module-install binary
+reaches that branch. Nor can the phase establish it: every existing tag (`v0.14.0` and older)
+predates `cmd/engram/buildversion.go`, so `go install …@v0.14.0` installs code without the
+resolver. This is application-owned Go behavior, so a verification would be legitimate under
+the repo's testing rules — there simply is not one, and the truth reads as proven.
+
+**PLAN change needed** (01-02 `must_haves.truths` + `<success_criteria>`): narrow the truth to
+what `versionFromModuleVersion` actually establishes, and move the end-to-end module-install
+claim into 01-03 Task 4's post-merge observation checklist alongside the other first-release
+observations.
+
+### MEDIUM — nothing keeps a release from running before the credential probe (NEW; Codex rated HIGH)
+
+`REQ-cask-credential-verified` and ROADMAP criterion 4 require the check *"performed before any
+real release depends on it — never assumed."* After the HIGH-3 resequencing the probe's first
+dispatch is a post-merge item on a GitHub issue. `release.yaml:4` triggers on every push to
+`main`, and although cutting a tag still requires merging a release-please PR (a human action,
+so merging *this* branch is not itself a release, as 01-03's objective correctly says), nothing
+in the plan prevents that PR being merged before anyone dispatches the probe.
+
+**Recorded divergence from Codex, with reasons.** Codex rates this HIGH. This pass rates it
+MEDIUM: the failure is loud and bounded — GoReleaser publishes binaries and the image, then
+fails at the cask upload, and recovery is the `workflow_dispatch` re-ship path this very phase
+builds (which permits re-shipping the newest tag, and the failed tag *is* the newest). Adding a
+required status check or environment gate to make the ordering structural would be exactly the
+CI over-engineering this repo's layer-appropriate-testing position rules out. The gap is real
+but the fix is procedural, not architectural.
+
+**PLAN change needed** (01-03 Task 4 `<action>` + `<acceptance_criteria>`): the issue body must
+carry an explicit instruction — *do not merge a release-please PR until checklist A is recorded* —
+and `01-03-SUMMARY.md` must list that ordering constraint as a **blocking** open item rather than
+an ordinary one.
+
+### LOW — 01-01's OS-guard gate depends on a variable set in a different criterion bullet (NEW)
+
+01-01 Task 1: `M=$(rg -n '^[^#]*if OS\.mac\?$' .goreleaser.yaml | head -1 | cut -d: -f1); test -n "$M" && test "$M" -lt "$Q"`.
+`$Q` is assigned only in the *preceding* bullet (the D-09 gate). Run as a standalone snippet —
+which is how an executor checking one criterion would run it — `$Q` is empty and
+`test 8 -lt ""` errors with "integer expression expected". It passes only if the two bullets
+happen to share a shell.
+
+**PLAN change needed** (01-01 Task 1 `<acceptance_criteria>`): make the OS-guard bullet
+self-contained by re-deriving `Q` inside it.
+
+### LOW — several criteria assert `rg -c … is 0`, which `rg` cannot print (NEW)
+
+`rg -c` emits nothing and exits 1 when there are no matches, so "`rg -c … ` is 0" is never
+literally observable. Affected: 01-02 Task 2's telemetry-wiring gate, Task 1's `strconv.Atoi`
+gate and `lastRelease = "v` gate, and 01-03 Task 2's `pull_request` / `push:` / `inputs:` /
+`--token` gates. This also contradicts the tooling note each of those same tasks carries —
+*"Occurrence counts use `rg -o … | wc -l` rather than `rg -c`"*. The gates are semantically
+right; only their spelling is not runnable as stated. (The telemetry gate was still executed
+successfully in this pass by reading exit status rather than output.)
+
+**PLAN change needed**: convert every zero-assertion to `test "$(rg -o … | wc -l)" = 0` or
+`! rg -q …`, consistent with each task's own stated convention.
+
+### LOW — 01-02 still places `always-update: true` at the package level (carried from cycle 1, unresolved)
+
+01-02:329 (`read_first`) — *"the package-level `always-update: true` / `bump-minor-pre-major: true`
+settings"* — and 01-02:528 (`<action>`) — *"`always-update: true` is already set at the package
+level and needs no change"*. In fact `always-update` is at the **root** of
+`release-please-config.json` (line 3), outside `packages`; only `bump-minor-pre-major` is
+package-level (line 7). The conclusion ("needs no change") is correct, so the consequence is
+small, but an executor sent to `packages["."]` will not find it. Cycle 1 recorded this as
+AMBIGUOUS in its source-grounding table; the revision did not carry it.
+
+**PLAN change needed** (01-02 lines 329 and 528): say root-level, not package-level.
+
+### LOW — `rootCmd.Short` cited one line low (NEW, minor)
+
+01-01 Task 1 `<action>` cites `rootCmd.Short` at `cmd/engram/root.go:26`; it is at `:27`
+(`root.go:25` is `var rootCmd = &cobra.Command{`, `:26` is `Use:`). The description
+single-source gate extracts by literal string rather than by line, so the gate is unaffected —
+but the cycle-1 observation that Codex's offsets ran 2-4 low was only partly corrected. The
+seams the fixes newly introduced are exact (`serve.go:83`, `config.go:34`/`:41`,
+`clienttest_test.go:157`/`:159`, `exitcode_baseline_test.go:475`, `catalog.go:87`); a few
+inherited prose citations still drift by one.
+
+**PLAN change needed** (01-01 Task 1 `<action>`): `root.go:26` becomes `root.go:27`.
+
+## Source-Grounding Pass (cycle 2, orchestrator, authority `grep`)
+
+`gsd-tools drift-guard authority --raw` resolves to `grep`, so nothing hard-blocks:
+`drift-guard severity --status MISSING --authority grep` returns
+`{"severity":"needs-acknowledgement","hardBlock":false}`; `AMBIGUOUS` returns
+`{"severity":"MEDIUM","hardBlock":false}`; `UNCHECKABLE` returns
+`{"severity":"INFO","hardBlock":false}`. Signature-level claims are UNCHECKABLE by
+construction under this authority. Symbols listed in each plan's "Artifacts this phase
+produces" table are excluded — they are created BY this phase.
+
+This table re-resolves the symbols the **cycle-1 fixes newly introduced**, plus the seams whose
+verdicts could have changed. Symbols VERIFIED in cycle 1 and untouched by the revision are not
+re-listed; their cycle-1 verdicts stand.
+
+| Symbol (plan line) | Kind | Verdict | Evidence |
+|---|---|---|---|
+| `resolvedVersion`, `patchCorePattern`, `nextPatch`, `deriveDevVersion`, `versionFromModuleVersion`, `moduleTagPattern`, `TestVersionExplicitTextLane`, `versionDoc`, `runVersion` | phase artifacts | **SKIPPED BY RULE** | Every one appears in the "Artifacts this phase produces" table of 01-01:110-135 / 01-03:150-176 (`patchCorePattern` is present in 01-03's copy; it is **lost from 01-02's truncated first copy** — see the corruption HIGH). Correctly absent from the tree today. |
+| `resetClientFlags` — "`clienttest_test.go` lines 131-155 and 157-160" (01-01 `read_first`) | Go test helper | **VERIFIED** | `cmd/engram/clienttest_test.go:157` (`func resetClientFlags(t *testing.T)`); doc comment spans `:131-156`; `resetEveryCommandFlagState(t, rootCmd)` at `:159` — the plan's `:159` claim is exact. |
+| `resetEveryCommandFlagState` — "`exitcode_baseline_test.go` lines 465-482" (01-01 `read_first`) | Go test helper | **VERIFIED** | `cmd/engram/exitcode_baseline_test.go:475`, inside the cited range. Cycle 1's L-4 misattribution to `clienttest_test.go` is corrected. |
+| `cmd/engram/serve.go:83` — `telemetry.ConfigFromEnv("engram", version)` (01-02 `read_first`, `<action>`) | Go call site | **VERIFIED (exact line)** | `cmd/engram/serve.go:83`. |
+| `internal/telemetry/config.go` "signature at `:34` … stores `serviceVersion` at `:41`" (01-02 `read_first`) | Go func + assignment | **VERIFIED** | `internal/telemetry/config.go:34` (`func ConfigFromEnv(serviceName, serviceVersion string) Config`); `ServiceVersion: serviceVersion` at `:41`. Correctly described as a parameter sink, never a reader of `main.version`. |
+| "`main.version` has exactly three consumers today" (01-02 `<objective>`) | inventory claim | **MISSING** (needs-acknowledgement) | Five direct uses: `serve.go:83`, `serve.go:231`, `serve.go:296`, `root.go:28`+`:71`, `version.go:16`. Two are unnamed and undecided. See the MEDIUM above. |
+| `buildCatalog` / `root.Version` — "`catalog.go:87`" (01-02 `<action>`) | Go func + field | **VERIFIED** | `cmd/engram/catalog.go:87` reads `root.Version`; `cmd/engram/root.go:71` assigns it the raw package var. |
+| `rootCmd.Short` — "`cmd/engram/root.go:26`" (01-01 `<action>`) | Go struct field | **AMBIGUOUS** (MEDIUM) | Actually `cmd/engram/root.go:27`. Value is exactly `Self-hosted, correctable, OAuth-secured memory for coding agents`, matching the literal the description gate extracts, so the *claim* holds and the gate works; the line offset is one low. |
+| "the package-level `always-update: true`" (01-02:329, :528) | JSON key location | **AMBIGUOUS** (MEDIUM) | `always-update: true` is at `release-please-config.json:3`, the **root** object. `bump-minor-pre-major: true` is package-level at `:7`. Conclusion correct, location wrong. Carried unresolved from cycle 1. |
+| "the three existing `extra-files` entries" (01-02 `read_first`) | JSON array | **VERIFIED** | `release-please-config.json` `packages["."]["extra-files"]` has exactly 3 entries (Chart.yaml x2, plugin.json). |
+| `.release-please-manifest.json` root key | JSON field | **VERIFIED** | `{".": "0.14.0"}`. |
+| `.github/workflows/release.yaml` "lines 44-75 (`target` resolver)" (01-03 Task 4 `read_first`) | Workflow step | **VERIFIED** | `id: target` at `:47`. Range contains it. |
+| `actions/checkout` in `release.yaml` (01-03 Task 1 gate anchor) | Workflow step | **AMBIGUOUS** (MEDIUM) | Two matches: a comment at `:56` and the real `uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7` at `:79`. `head -1` binds the comment. See the MEDIUM above. |
+| `goreleaser/goreleaser-action` (01-03 Task 1 gate anchor) | Workflow action | **VERIFIED (unique)** | `.github/workflows/release.yaml:132`, single occurrence. |
+| `git tag -l 'v*' --sort=-v:refname` (01-03 Task 1, "exactly 2 after the change") | Shell expression | **VERIFIED (RED today)** | Exactly one occurrence today, at `.github/workflows/release.yaml:150`. The gate correctly requires 2 only after the guard step lands. |
+| `release.yaml` triggers — `push: branches: [main]` plus `workflow_dispatch` with required `tag` (01-03 `<objective>`'s "a probe that cannot be run without performing a release") | Workflow trigger | **VERIFIED** | `.github/workflows/release.yaml:4-15`; `tag` is `required: true` at `:13`. The rationale for a separate probe workflow is sound. |
+| `bcd2ba49218906704ab6c1aa796996da409d3eb1` (App-token action pin) | Action SHA | **VERIFIED** | `.github/workflows/release.yaml:32`. |
+| `cmd/engram/testdata/catalog.golden` "around line 1132" | Golden block | **VERIFIED** | `"name": "version"` at `:1133`; "around" is fair. |
+| `.github/workflows/verify-tap-credential.yaml` (01-03 Task 3/4 `read_first`) | Workflow file | **SKIPPED BY RULE** | Phase artifact (01-03 Task 2 creates it). Task 3 only *reads* the branch copy; it does not dispatch it. |
+| `system_command`, `staged_path`, `must_succeed:`, `version.to_s`, `FileUtils`, `install_artifacts` symlink ordering | Homebrew Cask DSL | **UNCHECKABLE** (INFO) | Third-party; D-11 forbids gating it. |
+| `homebrew_casks:`, `skip_upload`, `index .Env`, GoReleaser template evaluation | GoReleaser schema/engine | **UNCHECKABLE** (INFO) | Not vendored. `goreleaser check` (schema only) is the in-repo gate; the plans now say so precisely (M-6 fix). |
+| `repositories:` closed-allowlist semantics on `actions/create-github-app-token` | Action input contract | **UNCHECKABLE** (INFO) | Third-party input contract. |
+| `.permissions.push` on `GET /repos/{o}/{r}` | GitHub REST field | **UNCHECKABLE** (INFO) | Runtime API response shape. |
+| `workflow_dispatch` exposure requiring the workflow on the default branch | GitHub Actions lifecycle | **UNCHECKABLE** locally (INFO) | The *finding* HIGH-3 rested on was our own unexecutable instruction, not an assertion about GitHub — and it is now resolved by resequencing rather than by gating GitHub. |
+| GitHub App installation repository list; `Casks/codegraph.rb` and future `Casks/engram.rb` in `seanb4t/homebrew-tap` | External state / external repo | **UNCHECKABLE** (INFO) | Account-level UI state and a repository not present locally. |
+| `go install …@vX.Y.Z` reaching `versionFromModuleVersion` | Go toolchain behavior on future tags | **UNCHECKABLE** (INFO) | Every existing tag predates `buildversion.go`; the claim cannot be exercised until a tag containing the resolver exists. See the MEDIUM above. |
+
+### Verification coverage
+
+Not resolvable against this source tree; **none** treated as verified or as missing.
+
+- **UNCHECKABLE — third party, and D-11 forbids gating it:** the Homebrew Cask DSL and
+  `generate_completions_from_executable`'s rescue-to-warning; Apple Gatekeeper's SIGKILL of an
+  unsigned quarantined binary; GoReleaser's `homebrew_casks:` schema, template engine, and
+  `skip_upload` semantics; release-please's `generic` updater; `actions/create-github-app-token`'s
+  `repositories:`/`owner:` semantics; GitHub's `.permissions.push` field; `workflow_dispatch`
+  default-branch registration; `gh` being preinstalled on runners; `git tag --sort=-v:refname`
+  ordering.
+- **UNCHECKABLE — external state:** the release-please App's installation repository list;
+  `seanb4t/homebrew-tap` contents (`Casks/codegraph.rb`, future `Casks/engram.rb`); the first
+  cask publication (future).
+- **UNCHECKABLE — self-referential / future:** properties of files this phase creates
+  (`buildversion.go`'s single `debug.ReadBuildInfo` call site, the four `extra-files` entries
+  after the change, the rendered cask text, the probe workflow's body); `go install …@vX.Y.Z`
+  against a tag that does not yet exist.
+- **UNCHECKABLE — signature-level:** under authority `grep`, no claim about a function's
+  parameter list or return types is asserted; declarations and call sites are confirmed
+  syntactically only.
+- **Skipped by rule:** every row of each plan's "Artifacts this phase produces" table.
+- **Fixture-based rather than tree-based:** the D-09 / OS-guard / completions gate behavior was
+  established against three purpose-built `.goreleaser.yaml` fixtures (correct, transposed,
+  comment-only), because the real `homebrew_casks:` block does not exist yet. Fixture results
+  are reported as fixture results, not as tree verification.
+- **Reviewer-lane caveat:** the Codex lane again resolved to `gpt-5.6-sol (reasoning=low)`. Its
+  citations were spot-checked against this tree, and its two reproducible HIGHs (the 01-02
+  corruption, HIGH-4's residual) were found independently by this pass before its output was
+  read; breadth at `low` effort should still not be read as exhaustive.
+
+## Cross-Artifact Fact-Drift Pass (cycle 2 — ADVISORY, contributes to NEITHER count)
+
+**Phase status.** `gsd-tools drift-guard phase-status --phase 01` returns
+`{"verdict":"uncheckable","reason":"phase_not_in_roadmap","phase":"01","stateStatus":"Roadmapped, awaiting first plan","roadmapStatus":null,"authority":"STATE.md"}`.
+Recorded as **uncheckable**, explicitly **not** read as consistent — unchanged from cycle 1.
+The ROADMAP heading is `### Phase 1: Version & Homebrew Distribution` while the directory is
+`01-…`, and the resolver does not match the two. This is an upstream resolver gap, not
+something to hand-edit `ROADMAP.md` for (`planning-artifacts` rule). Lag is not a finding.
+
+| # | Pair | Authority | Verdict |
+|---|---|---|---|
+| FD-1 | ROADMAP goal + criterion 1 (`engram version --json`) vs all three plans (`--output json`) | ROADMAP | **DRIFTED, unchanged.** CONTEXT D-01 records the developer choosing `--output`; CONTEXT and PLAN agree and the stale text is the ROADMAP's. Still a roadmap-prose correction, not a plan defect. |
+| FD-2 | ROADMAP criterion 5 / REQ-cask-reship-recovery ("rehearsed once, not assumed") vs 01-03 (no rehearsal, satisfied by construction under D-15) | ROADMAP | **DRIFTED, known and accepted, unchanged.** 01-03's `<verification>` now states it explicitly and instructs a verifier not to fail the criterion on its literal rehearsal wording — an improvement in visibility. The drift itself lives between two artifacts and cannot be closed inside PLAN.md. |
+| FD-3 | ROADMAP criterion 2 / REQUIREMENTS.md:23 (a tagged release publishes the cask) vs 01-03 "Requirement scope" State B | ROADMAP | **DRIFTED.** Advisory here by construction; the substantive form is counted as the HIGH-4 residual above. |
+| FD-4 | ROADMAP criterion 4 / REQ-cask-credential-verified ("before any real release depends on it") vs 01-03's post-merge probe | ROADMAP | **DRIFTED.** Advisory here; the substantive form is counted as M-E above. |
+| FD-5 | CONTEXT D-05 (`Main.Version` returns `"(devel)"`) vs 01-02 (pseudo-version) | CONTEXT.md | **PLAN IS CORRECT — not drift.** Empirically disproved in cycle 1; 01-02 names the correction, instructs a source comment, and keeps `(devel)` only as a rejected input row. Per this cycle's rules this is explicitly not flagged. |
+| FD-6 | CONTEXT D-04/D-05 example `0.14.1-dev.2+g800a98f1` vs 01-02's locked `.0` | CONTEXT.md | **PLAN IS RIGHT AND SAYS SO, unchanged.** The `.2` is an illustrative placeholder; 01-02 records the `.0` decision with full rationale plus a prohibition against improvising the `.N` meaning. |
+| FD-7 | ROADMAP `**Requirements:**` line vs PLAN task requirement refs | ROADMAP | **CONSISTENT.** ROADMAP lists five IDs; 01-01 claims 3, 01-02 claims 1, 01-03 claims 3 — union is exactly the five, no extras. Unchanged by the revision. |
+| FD-8 | ROADMAP Success Criteria vs PLAN `must_haves.truths` | ROADMAP | **CONSISTENT apart from FD-1 through FD-4.** Criteria 1 and 3 map cleanly onto 01-01/01-02 truths. Several plan truths ADD detail beyond the criteria (the text-equals-json invariant, the reset discipline, the `service.version` parity) — not flagged, per rule. |
+| FD-9 | CONTEXT `Decisions` D-01 through D-15 vs PLAN usage | CONTEXT.md | **CONSISTENT.** D-09's three-step ordering, D-10's three completion paths, D-11's ownership boundary, D-12/D-13/D-14's plumbing and D-15's construction-over-rehearsal all appear with the same meaning. D-13's *substance* (a read-only `workflow_dispatch` probe run before any real release) is preserved by the resequencing; only its enforcement is soft (M-E). |
+
+Nothing under CONTEXT.md's `Claude's Discretion` or `Deferred Ideas` was judged. No finding in
+this section contributes to either count.
+
+## Consensus Summary (cycle 2)
+
+One prompt-fed, source-grounded reviewer ran (Codex, `gpt-5.6-sol (reasoning=low)`), so
+"consensus" is Codex's verdict cross-checked against an independent orchestrator pass rather
+than agreement between peers.
+
+### Agreed Strengths
+
+- **The cycle-1 fixes are real, not narrated.** 17 of the 19 cycle-1 findings are fully
+  resolved with executable evidence in the plans, and both reviewers verified the two
+  load-bearing ones by construction: the D-09 gate provably goes RED on transposition and on a
+  comment-only quarantine mention, and the telemetry gate is RED against today's tree.
+- **The `^[^#]*` comment-proofing discipline is the right idea and mostly correctly applied** —
+  it rejects a `#`-preceded match while still matching an executable line whose *later*
+  interpolation contains `#`.
+- **The `nextPatch` grammar fix is well chosen**: the anchored `(0|[1-9][0-9]*)` alternation and
+  the `ParseUint(_,10,32)` bound are separately exercised by the eight rejection rows, so the
+  test set proves the mechanism rather than restating it.
+- **01-03's credential vocabulary is now precise** — token *request* scope, App *installation*
+  scope, and *observed* repository permission are three different things and the plan says so.
+- **Wave-2 file ownership is disjoint**, including after `cmd/engram/serve.go` was added to 01-02.
+- **The Requirement scope table is an honest instrument**, whatever one concludes about whether
+  it closes the requirement: it forbids a verifier from failing post-merge items as missing AND
+  forbids marking the requirement complete at phase verification.
+
+### Agreed Concerns
+
+1. **`01-02-PLAN.md` is structurally corrupted** — found independently by both passes. Duplicate
+   document, frontmatter twice, artifacts table severed mid-row at line 147.
+2. **`REQ-homebrew-cask-published` is still not closed by the phase.** Both passes agree the
+   claim is now honest and the residual owned; both agree a tracking issue is ownership, not
+   fulfilment, and that the keep-open-vs-re-scope decision has not been made.
+
+### Divergent Views
+
+- **Probe-before-release enforcement.** Codex rates it HIGH ("the phase must remain incomplete
+  until the probe passes, or the release job must have an owned precondition"). This pass rates
+  it MEDIUM: the failure mode is loud, bounded, and recoverable through the re-ship path this
+  phase builds, and a required-status/environment gate would be CI over-engineering against the
+  repo's stated layer-appropriate position. Both agree the plan-side fix is the same — make the
+  ordering an explicit, blocking instruction in Task 4's issue and in the SUMMARY.
+- **Several defects were found by only one pass.** The orchestrator pass alone raised the
+  unsatisfiable completions gate, the comment-bound `actions/checkout` anchor, the `$Q` scope
+  leak, the `rg -c … is 0` spelling, and the carried `always-update` location. Codex alone
+  raised the consumer-inventory error and the missing `go install` verification. All are
+  reproduced above with `file:line` evidence.
+
+### Cycle-2 finding ledger
+
+| # | Sev | Status | Finding | PLAN change still needed |
+|---|---|---|---|---|
+| H-1 | HIGH | NEW | `01-02-PLAN.md` carries a duplicate document; frontmatter twice, artifacts table truncated mid-row at `:147`; introduced by `c3b6f981` | Delete the truncated first copy; retain exactly one valid frontmatter plus body |
+| H-2 | HIGH | PARTIALLY RESOLVED (carried) | `REQ-homebrew-cask-published` / ROADMAP criterion 2 have no in-phase closure and no sanctioned re-scoping | Record the decision: keep Phase 1 open through the first publication, **or** formally move the requirement and criterion 2 to a later release-observation phase |
+| M-A | MED | NEW | 01-01 Task 2's completions ordering gate is unsatisfiable — `^[^#]*bash_completion\.d/engram` can never match the `#{HOMEBREW_PREFIX}`-rooted path the same task mandates | 01-01 Task 2 `<acceptance_criteria>`: anchor on `^[^#]*"completion"`, or drop `^[^#]*` for this anchor |
+| M-B | MED | NEW | 01-02's "exactly three consumers" is false — five sites; `serve.go:231` and `serve.go:296` are unnamed and undecided in a file the plan now edits | 01-02 `<objective>` plus Task 2 `<action>`: correct the inventory and decide (wire, or accept-and-record) for both sites, with a matching criterion |
+| M-C | MED | NEW | 01-03 Task 1's ordering gate binds `actions/checkout` to the comment at `release.yaml:56`, not the step at `:79` — the HIGH-5 discipline was not applied here | 01-03 Task 1 `<acceptance_criteria>`: anchor `^[^#]*uses: actions/checkout` |
+| M-D | MED | NEW | 01-02's `go install …@vX.Y.Z` truth is unverified and unverifiable in-phase (every existing tag predates `buildversion.go`) | 01-02 `must_haves.truths` plus `<success_criteria>`: narrow to what the parser test proves; move the end-to-end claim to 01-03 Task 4's post-merge checklist |
+| M-E | MED | NEW (Codex: HIGH) | Nothing keeps a release-please PR from being merged before the credential probe is dispatched | 01-03 Task 4 `<action>` plus `<acceptance_criteria>`: the issue body must say *do not merge a release-please PR until checklist A is recorded*; SUMMARY lists it as a **blocking** open item |
+| L-A | LOW | NEW | 01-01's OS-guard gate uses `$Q`, set only in a different criterion bullet; standalone it errors | 01-01 Task 1 `<acceptance_criteria>`: re-derive `Q` inside the OS-guard bullet |
+| L-B | LOW | NEW | Several criteria assert `rg -c … is 0`, which `rg` never prints, contradicting the tasks' own stated `rg -o … \| wc -l` convention | All zero-assertions become `test "$(rg -o … \| wc -l)" = 0` or `! rg -q …` |
+| L-C | LOW | CARRIED (cycle-1 AMBIGUOUS, unresolved) | 01-02:329 and :528 call `always-update: true` package-level; it is root-level at `release-please-config.json:3` | 01-02 lines 329 and 528: say root-level |
+| L-D | LOW | NEW | 01-01 cites `rootCmd.Short` at `root.go:26`; it is `:27` | 01-01 Task 1 `<action>`: `root.go:26` becomes `root.go:27` |
+
+Explicitly **not** raised, per this repo's governing rules: any test or CI gate over Homebrew's,
+GoReleaser's, Apple Gatekeeper's, or git's own behavior (D-11 / rule `m45p2b4bp7`); the absence
+of unit tests around `.goreleaser.yaml` and `release.yaml` (the project's layer-appropriate
+testing position); any suggestion to convert the cask to a formula; and any inference between the
+CalVer milestone label and the SemVer release version.
+
+### Cycle-2 counts
+
+- **Unresolved HIGH: 2** (H-1 new; H-2 partially resolved and carried)
+- **Unresolved actionable non-HIGH: 9** (M-A through M-E, L-A through L-D)
+- **Fully resolved and excluded from the counts:** HIGH-1, HIGH-2, HIGH-3, HIGH-5, M-1, M-2,
+  M-3, M-4, M-5, M-6, M-7, M-8, L-1, L-2, L-3, L-4, L-5, L-6, L-7 — 18 of the 19 cycle-1
+  findings, the exception being HIGH-4.
+
+### Risk Assessment
+
+**HIGH.** The implementation-level defects cycle 1 raised are genuinely fixed and provably so.
+What keeps the risk high is (a) a planning artifact that is malformed on disk and must be
+repaired before any executor reads it, and (b) two release requirements whose closure the phase
+defers without a recorded decision about where they land. The remaining MEDIUMs are all
+one- to three-line PLAN.md edits.
