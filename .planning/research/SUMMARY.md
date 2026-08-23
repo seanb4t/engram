@@ -14,6 +14,46 @@ The other half — writing native config for Claude Code, Codex, Cursor, and ope
 
 The core architectural risk is not any single runtime's config format — it's the "two paths must agree" problem: `/engram-setup` (hand-maintained prose) and `engram setup` (Go code) must produce equivalent outcomes, and this repo has documented history of vacuous gates (keyword-presence checks, independent liveness checks) that look like they prove equivalence while proving nothing. The mitigation converges from architecture and pitfalls research on the same answer — generate the prose's mechanical content from the CLI's own source of truth, with a `git diff --exit-code` gate that cannot pass on stale content — and this should be treated as load-bearing infrastructure, not a follow-up test.
 
+## Post-Synthesis Live Verification (orchestrator, 2026-08-23)
+
+> Added by the `/gsd-new-milestone` orchestrator AFTER synthesis, by running the real binaries
+> installed on this machine. This supersedes the corresponding "MEDIUM/LOW confidence,
+> re-verify just-in-time" guidance below wherever the two disagree — these are HIGH-confidence
+> observations from live tools, not documentation reads. Open questions 1, 2 and 9 are resolved
+> in the table further down.
+
+**Three of four target runtimes have a native `mcp add` CLI command. Only Cursor needs a file writer.**
+
+| Runtime | Write path | Verified how | Format engram must parse |
+|---------|-----------|--------------|--------------------------|
+| Claude Code | `claude mcp add --transport http engram <url> --scope user` (+ `--header`, `--client-id`) | already shipped in `/engram-setup` prose | none |
+| Codex | `codex mcp add <NAME> --url <URL>` (+ `--bearer-token-env-var`, `--oauth-client-id`, `--env`) | `codex mcp add --help`, codex-cli **0.148.0** | **none — TOML never touched** |
+| opencode | `opencode mcp add [name] --url <URL> --header KEY=VALUE` (+ `auth`, `logout`, `debug`, `list`) | `opencode mcp add --help`, opencode **1.18.15** | **none — JSONC never touched** |
+| Cursor | file write: `~/.cursor/mcp.json` | read live: plain JSON, top-level `mcpServers` key | plain JSON (stdlib `encoding/json`) |
+
+**Consequences for the roadmap:**
+
+1. **The TOML/JSONC stdlib gap is retired, not mitigated.** The "surgical marker-bounded text editing"
+   design that all four researchers converged on is no longer needed for any runtime. Zero-new-Go-dependencies
+   is under no pressure from this milestone. Do not build a TOML text editor.
+2. **opencode's V1/V2 schema divergence — named as the round's single highest-risk item — is moot.**
+   engram never writes that file, so which schema the binary reads is not engram's concern.
+3. **Phase 7 collapses.** What was scoped as "three high-risk writers needing just-in-time schema
+   re-verification" is now two shell-out writers (structurally identical to the Claude Code writer)
+   plus one plain-JSON file writer.
+4. **The merge-never-replace requirement is live and real for Cursor.** The verifying machine's
+   `~/.cursor/mcp.json` already contains three unrelated servers (`MCP_DOCKER`, `codegraph`, `firecrawl`).
+   Clobbering that file is a real, reachable defect, not a hypothetical.
+5. **A new dependency appears: runtime CLI availability.** Shelling out means each runtime's binary must
+   be on PATH and support these flags. Flag/version drift in a third-party CLI is now a live failure mode,
+   which argues for pinning the observed versions above and failing legibly on an unexpected flag surface
+   rather than silently writing nothing.
+
+**Not verified here:** Cursor was not on PATH on this machine (only `~/.cursor/` exists), so no Cursor
+*CLI* surface was probed — the file-writer conclusion stands on the config file read, and the possibility
+of a Cursor CLI remains genuinely unchecked. Native *skill*-format questions (open questions 3 and 4) are
+untouched by this verification and remain open.
+
 ## Key Findings
 
 ### Recommended Stack
@@ -163,15 +203,15 @@ Merged and deduplicated across all four research files. Each marked (a) cheap to
 
 | # | Question | Source(s) | Resolution timing | Scope impact if unresolved |
 |---|----------|-----------|--------------------|-----------------------------|
-| 1 | Does a native `codex mcp add` (or equivalent) CLI command exist? | STACK, FEATURES, ARCHITECTURE | (a) Cheap — `codex mcp --help` or equivalent, ~10 minutes, before Phase 7 planning locks in an approach | **Scope-changing**: if it exists, Codex becomes a shell-out writer like Claude Code and the entire TOML-avoidance design (surgical text editing) is unnecessary work |
-| 2 | Which opencode MCP config schema (V1 `mcp.<name>` vs V2 `mcp.servers.<name>`) does the installed binary expect, and is there a native add command? | FEATURES, ARCHITECTURE, PITFALLS | (b) Just-in-time — must be resolved against a real installed opencode binary during Phase 7, not from docs alone (docs contradict each other) | **Scope-changing**: this is the one runtime FEATURES explicitly flags as possibly shipping AGENTS.md-fallback-only this milestone if unresolved in time |
+| 1 | Does a native `codex mcp add` (or equivalent) CLI command exist? | STACK, FEATURES, ARCHITECTURE | **RESOLVED 2026-08-23 (orchestrator, live)** — YES. `codex mcp add <NAME> (--url <URL> \| -- <COMMAND>...)` on codex-cli 0.148.0, with `--bearer-token-env-var`, `--oauth-client-id`, `--env`. | **Scope REDUCED**: Codex is a shell-out writer like Claude Code. The TOML-avoidance surgical-text-editing design is UNNECESSARY — `~/.codex/config.toml` is never touched by engram. |
+| 2 | Which opencode MCP config schema (V1 `mcp.<name>` vs V2 `mcp.servers.<name>`) does the installed binary expect, and is there a native add command? | FEATURES, ARCHITECTURE, PITFALLS | **RESOLVED 2026-08-23 (orchestrator, live)** — native add EXISTS: `opencode mcp add [name] --url <URL> --header KEY=VALUE` on opencode 1.18.15 (also `list`/`auth`/`logout`/`debug`). | **Scope REDUCED / risk RETIRED**: the V1-vs-V2 schema divergence is MOOT — engram never writes opencode's config file. This was flagged as the round's highest-risk item; it is now closed. |
 | 3 | Exact Codex `.agents/skills` / opencode `.opencode/agents` native skill-file schema, if any | FEATURES | (b) Just-in-time, during each runtime's Phase 7 sub-task | Not scope-changing — AGENTS.md fallback is already the sanctioned default absent a confirmed native format |
 | 4 | Does Cursor require an explicit `type: "stdio"` field on stdio MCP entries, or is it inferred? | FEATURES | (a) Cheap — one source claims required, two primary-looking Cursor docs pages show working examples without it; a single test-fixture install against real Cursor resolves this before Phase 7 | Not scope-changing — affects correctness of one field, not the writer's overall shape |
 | 5 | Third-party-tap scoping of Homebrew's September 2026 Gatekeeper-removal policy | STACK | (a) Cheap — re-check before Phase 2 ships if the window spans a Homebrew version bump | Not scope-changing for this milestone (only official taps are in scope for removal, and `seanb4t/homebrew-tap` is third-party) but worth a calendar note |
 | 6 | Exit-code semantics for "N of M runtimes succeeded, 1 failed" in `engram setup` | ARCHITECTURE | (a) Cheap — no existing precedent to model on; decide explicitly during Phase 4 planning rather than inferring from `supersede_memory`'s different-shaped merge semantics | Not scope-changing, but must be decided deliberately, not left implicit |
 | 7 | `engram version --json` naming: bespoke bool flag vs. reusing the existing `--output json\|text` operator convention | STACK | (a) Cheap — a naming-consistency call, not a technical blocker; decide during Phase 1 planning | Not scope-changing |
 | 8 | Whether the plugin's own bundled `.mcp.json` already self-registers on `claude plugin install`, narrowing what `engram setup` needs to additionally write for Claude Code | STACK | (a) Cheap — confirm during Phase 5 planning before implementing the Claude Code writer | Not scope-changing, but affects the writer's scope within Phase 5 |
-| 9 | Whether line-oriented text editing (no TOML parser) proves too fragile for real-world Codex config files with nested inline tables or multi-line strings | PITFALLS | (b) Just-in-time — build the fixture round-trip test (Pitfall 6/14) TDD-style during Phase 7's Codex sub-task before trusting the approach | **Potentially scope-changing**: if it proves fragile, this becomes the one legitimate case for a recorded, deliberate exception to the zero-new-Go-dependencies constraint — must be escalated explicitly, not silently patched around |
+| 9 | Whether line-oriented text editing (no TOML parser) proves too fragile for real-world Codex config files | PITFALLS | **RESOLVED 2026-08-23 (orchestrator, live)** — MOOT via Q1. No TOML is parsed or written at all. | **Risk RETIRED**: the zero-new-Go-dependencies constraint is no longer under any pressure from this milestone. |
 
 ## Confidence Assessment
 
