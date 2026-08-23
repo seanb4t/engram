@@ -104,6 +104,25 @@ homebrew_casks:
     # it is made checkable by a plan acceptance criterion that extracts the
     # literal from root.go and requires the identical bytes here.
     description: Self-hosted, correctable, OAuth-secured memory for coding agents
+    # Guarded optional-env: emits the workflow guard step's computed value,
+    # falling back to "false" when SKIP_HOMEBREW_UPLOAD is unset entirely
+    # (e.g. `task release:snapshot` run locally), so local snapshot renders
+    # keep working while CI always supplies the real value. A bare
+    # {{ .Env.SKIP_HOMEBREW_UPLOAD }} would hard-fail template evaluation
+    # whenever the variable is unset. GoReleaser's template functions cannot
+    # run `git tag -l`, which is why the newest-tag comparison is computed
+    # in the workflow and only read here.
+    #
+    # Not skip_upload: auto — that skips uploads for tags carrying a
+    # prerelease indicator, a different rule from the newest-tag rule this
+    # guard implements, and layering it on top would make the effective
+    # condition harder to reason about than either alone.
+    #
+    # This is the guard that keeps a workflow_dispatch backfill of an older
+    # tag from regressing the tap: this repo already lost `latest` to a
+    # v0.11.0 backfill after v0.11.1 had shipped, and a version-pinned cask
+    # would fail the same way with no floating tag to notice it by.
+    skip_upload: '{{ if index .Env "SKIP_HOMEBREW_UPLOAD" }}{{ .Env.SKIP_HOMEBREW_UPLOAD }}{{ else }}false{{ end }}'
     hooks:
       post:
         install: |-

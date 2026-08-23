@@ -125,6 +125,37 @@ jobs:
           done
           echo "::error::${mod}@${TAG_NAME} not served by proxy+sumdb after 10 minutes"
           exit 1
+      # Computes whether GoReleaser's Homebrew cask upload should run for this
+      # tag. The cask is version-pinned (unlike the floating :latest image
+      # tag below), so a workflow_dispatch backfill of an older tag must not
+      # be allowed to overwrite the tap with a stale version.
+      - if: ${{ steps.target.outputs.ship == 'true' }}
+        name: Resolve Homebrew upload guard
+        env:
+          SHIPPED_TAG: ${{ steps.target.outputs.tag }}
+        run: |
+          set -euo pipefail
+          newest=$(git tag -l 'v*' --sort=-v:refname | head -1)
+          echo "shipped=${SHIPPED_TAG} newest=${newest}"
+          if [ -z "$newest" ]; then
+            echo "::error::no v* tags found — cannot compute Homebrew upload guard"
+            exit 1
+          fi
+          # Boundary: equal to the newest tag means upload, anything older
+          # means skip. The push path always ships the newest tag and so
+          # always evaluates to false on its own; only a workflow_dispatch
+          # backfill of an older tag lands on the skip branch. This step
+          # runs unconditionally on both entry paths (not gated to
+          # workflow_dispatch, unlike the :latest reconciliation below) —
+          # the env var must always be defined by the time GoReleaser runs.
+          # Reuses the same newest-tag computation as the reconciliation
+          # step below; do not add a second, parallel implementation
+          # elsewhere.
+          if [ "$newest" = "$SHIPPED_TAG" ]; then
+            echo "SKIP_HOMEBREW_UPLOAD=false" >> "$GITHUB_ENV"
+          else
+            echo "SKIP_HOMEBREW_UPLOAD=true" >> "$GITHUB_ENV"
+          fi
       # release-please already created the tag-keyed GitHub Release (changelog
       # body); GoReleaser uploads the binary + image to it. The app token (not
       # GITHUB_TOKEN) writes the release, matching the release-PR actor.
