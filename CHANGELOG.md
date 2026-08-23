@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/seanb4t/engram/compare/v0.13.0...v0.14.0) (2026-08-23)
+
+
+### Features
+
+* **2026-08-12.01:** record state & schema evolution — phases 1-9 ([#498](https://github.com/seanb4t/engram/issues/498)) ([62c39c2](https://github.com/seanb4t/engram/commit/62c39c220693a6fbb73c6e3a24aa17b2fe1d894a))
+
 ## [0.13.0](https://github.com/seanb4t/engram/compare/v0.12.0...v0.13.0) (2026-08-12)
 
 
