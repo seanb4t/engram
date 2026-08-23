@@ -5,6 +5,8 @@ issues unrelated to the current task's changes, not auto-fixed.
 
 ## 07-01
 
+- **Status:** acknowledged
+
 - **`task lint` pre-existing staticcheck finding (SA1019), unrelated to this plan.**
   `internal/server/connectapi.go:268` (`Approximate: false,` inside the `ListMemoriesResponse{...}`
   literal in `ListMemories`) triggers `staticcheck SA1019` because
@@ -31,6 +33,8 @@ issues unrelated to the current task's changes, not auto-fixed.
 
 ## 07-03
 
+- **Status:** acknowledged
+
 - **`task lint` pre-existing staticcheck finding (SA1019), unrelated to this plan — still
   present, unchanged.** Same finding as 07-01's entry above:
   `internal/server/connectapi.go:271` (`Approximate: false,` inside `ListMemories`, shifted by
@@ -42,6 +46,8 @@ issues unrelated to the current task's changes, not auto-fixed.
   unaffected and fully green for this plan.
 
 ## Resolved by the orchestrator (phase-level)
+
+- **Status:** acknowledged
 
 - **`TestNoEscapedPatternsRepoWide` / `TestActiveMilestoneKeyLinksSatisfiable` — FIXED in
   `7cfb3017`.** 07-01 correctly declined this as out of scope for a plan executor and correctly
@@ -61,12 +67,16 @@ issues unrelated to the current task's changes, not auto-fixed.
 
 ## Environment gaps (pre-existing, `ui/`)
 
+- **Status:** acknowledged
+
 - `npm run check` (svelte-check) crashes on startup — `svelte-check@4.7.3` / `typescript@7.0.2`
   incompatibility already pinned in `ui/package.json`. Hit by 07-02, 07-04, 07-07.
 - `ui/package.json` has no `lint` script, so plan verification lines naming `npm run lint` cannot
   execute as written. Executors substituted the vitest suite and `npx tsc --noEmit`.
 
 ## Deferred to phase UAT (needs a live server + Qdrant, unrunnable in a worktree)
+
+- **Status:** acknowledged
 
 - 07-04: load `/observe?scope=…&inc=archived` against a running server and confirm the URL
   round-trip reveals archived records with their markers (`human_judgment: true`).

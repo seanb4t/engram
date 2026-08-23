@@ -5,6 +5,8 @@ Out-of-scope discoveries logged during phase execution per the executor's SCOPE 
 
 ## Plan 01-05
 
+- **Status:** acknowledged
+
 - **`task lint` fails on `rumdl` MD041 for `internal/keylinks/testdata/{bad,good}_key_links.md`.**
   Both fixture files intentionally start with GSD-style YAML frontmatter (`---`) rather than an H1
   heading, since they are keylinks-parser test fixtures shaped like real PLAN.md files. Confirmed
