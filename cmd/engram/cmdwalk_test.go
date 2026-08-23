@@ -195,7 +195,12 @@ func TestOperatorCommands(t *testing.T) {
 // set of command names whose flag list carries "output" and
 // operatorCommands()'s commandKey set unioned with the client verbs
 // (search, list, store, get, migration-status — as of phase
-// 07-console-cli-state-surfacing, which added get then migration-status).
+// 07-console-cli-state-surfacing, which added get then migration-status)
+// and "version" (as of 01-version-homebrew-distribution Phase 1 — D-01's
+// deliberate, documented fourth --output registration site: version is
+// this binary's first genuinely local command, needs an unconditional
+// non-TTY-detecting text default, and so cannot reuse either the client or
+// operator tier's own --output registration).
 // This is the behavioural gate the plan's acceptance criteria call for —
 // an rg-based literal count over the golden text would pass on two
 // offsetting errors; decoding the JSON and comparing sets cannot.
@@ -225,6 +230,7 @@ func TestCatalogOutputFlagMatchesOperatorCommandsUnionClientVerbs(t *testing.T) 
 	want["store"] = true
 	want["get"] = true
 	want["migration-status"] = true
+	want["version"] = true
 
 	for key := range want {
 		if !golden[key] {
