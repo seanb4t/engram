@@ -301,21 +301,30 @@ membership).
 
 1. `engram version --json` prints a machine-readable payload carrying the version, while the
    existing human-readable `engram version` output is unchanged for existing callers.
+
 2. A tagged release publishes a working Homebrew cask to `seanb4t/homebrew-tap` (via GoReleaser's
    `homebrew_casks:`), installable on both amd64 and arm64, on both macOS and Linux.
+
 3. Installing a binary that fails the version-json assertion makes `brew install` fail loudly
    rather than install silently broken, even though the binary is unsigned — because the quarantine
    strip runs before the gate, not after.
+
 4. The release workflow's cross-repo credential to `seanb4t/homebrew-tap` is proven to work by an
    explicit check performed before any real release depends on it — never assumed from the default,
    repo-scoped `GITHUB_TOKEN`.
+
 5. A rehearsed failure between tag creation and cask publication is recovered using this repo's
    existing `workflow_dispatch` re-ship path, with no hand-edit to the tap.
 
 **Plans:** 3 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 01-01-PLAN.md — `engram version --output json|text` and the cask's install-time gate that consumes it
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 01-02-PLAN.md — dev-build version derivation from `runtime/debug.ReadBuildInfo()` plus the release-please-managed base const
 - [ ] 01-03-PLAN.md — release plumbing: newest-tag re-ship guard, explicit cross-repo token scope, read-only credential probe
 
@@ -342,13 +351,17 @@ predicate excludes any command carrying a flag literally named `server`, which w
    runtime's own binary as the primary signal — a leftover config directory from an uninstalled
    runtime does not read as installed — and shows the exact command or content it would issue per
    runtime, changing nothing on disk.
+
 2. Running `engram setup --apply` twice converges to the same state on the second run, which
    reports "already correct" distinctly from the first run's "wrote it".
+
 3. `engram setup` runs to completion without a TTY: a caller can select runtimes explicitly, skip
    confirmation, and receive machine-readable output — scriptable from CI or another agent.
+
 4. When one runtime succeeds and another fails in the same invocation, the report names each
    runtime's own outcome individually, and the process exit status distinguishes total success,
    partial success, and total failure.
+
 5. `engram setup --help` alone teaches which runtimes are targetable, what `--apply` does, and
    which auth modes are accepted, without the caller needing to run it and interpret a failure.
 
@@ -377,11 +390,14 @@ runtime writer plugs into it).
    invoking that runtime's own CLI (`claude mcp add`, `codex mcp add`, `opencode mcp add`
    respectively) — never by reading, parsing, or hand-writing any of their config files
    (`~/.claude.json`, `.mcp.json`, `~/.codex/config.toml`, opencode's config).
+
 2. For an MCP client engram does not natively support, `engram setup` prints a portable server
    configuration the user can paste or redirect into that client.
+
 3. Every registration path covers OAuth, pre-registered OAuth client, static bearer token, and
    no-auth deployments — or states plainly which are unsupported for that runtime — and no secret
    is ever placed on a command line where the shell or process table would capture it.
+
 4. When a runtime's CLI is absent, or present with an unexpected flag surface, `engram setup`
    fails with a message naming the runtime and what it expected, rather than silently writing
    nothing.
@@ -407,8 +423,10 @@ and detection Phase 3 established).
 
 1. A brew-installed engram binary with no Claude plugin present can still produce the full content
    of the five curation skills, sourced from the same files the plugin ships.
+
 2. For a runtime with a native skill or rules format, `engram setup --apply` installs the skills
    in that native format.
+
 3. For a runtime with no native skill format, `engram setup --apply` writes the guidance into
    AGENTS.md inside a delimited, re-detectable block; re-running replaces that block rather than
    appending a second copy, and content outside the block is left byte-for-byte untouched.
@@ -437,8 +455,10 @@ equivalent to).
 
 1. `/engram-setup` detects the `engram` binary on PATH and delegates to `engram setup` when it is
    present.
+
 2. When the binary is absent, `/engram-setup` completes setup for the current agent using its own
    instructions, unchanged from today's first-class prose path.
+
 3. The mechanical parts of `/engram-setup`'s prose are generated from the same source of truth
    `engram setup` reads, and CI fails on any difference between the generated content and what's
    committed — so the two paths cannot silently diverge.
@@ -463,6 +483,7 @@ and the delegation story settled).
 1. docs-site documents how to obtain the binary, including the exact working Homebrew invocation —
    closing the gap where `guides/quickstart.md` covers Docker only and `guides/cli.md` never says
    how to get the binary.
+
 2. docs-site documents `engram setup` — which runtimes it configures, its preview/`--apply`
    behavior, and how to configure a runtime it does not support.
 
