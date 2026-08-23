@@ -63,4 +63,31 @@ not appear to need one, per each plan's own `<verification>` sections.
 **Disposition:** Leave to phase verification (`/gsd-verify-work` or `/gsd-secure-phase`)
 to determine whether phase 01 genuinely needs a red-evidence registration, or whether
 the harness's phase-existence trigger is itself the thing needing a narrower predicate.
-Not a 01-01 defect.
+Not a 01-01 defect. (Tracked as GitHub issue #513, per 01-02's project-specific
+execution notes.)
+
+## 4. `go vet ./cmd/engram/...` fails on a pre-existing, deliberately-suppressed fixture
+
+**Observed during:** 01-02 execution, both tasks' `go vet ./cmd/engram/...` acceptance
+criterion.
+
+**Finding:** `cmd/engram/operator_view_test.go:441` declares a struct field
+(`dupKeyDoc.B`) that intentionally repeats the `json:"dup"` tag already used by field
+`A`, to exercise `encoding/json`'s own same-depth field-conflict rule
+(`TestOperatorViewDuplicateKeyAdjacency`). The line already carries
+`//nolint:govet // deliberate duplicate tag: ...`, which `golangci-lint run`'s govet
+linter honors — so `task lint` is clean — but a bare `go vet ./cmd/engram/...` does not
+understand `//nolint` directives (that syntax is golangci-lint-specific) and reports
+`struct field B repeats json tag "dup" also at operator_view_test.go:440` regardless.
+
+**Why out of scope:** this file was last touched in `62c39c22` (well before Phase 01
+began) and neither 01-02 task's `files_modified` includes it. The condition is
+identical before and after both of 01-02's commits — `go vet` was already failing this
+way on the phase's own base commit.
+
+**Disposition:** `task` (lint + test, which this repo's CLAUDE.md names as the actual
+gate) passes clean via `golangci-lint`'s nolint-aware govet. The plan-authored
+`go vet ./cmd/engram/...` acceptance criterion is satisfied for every file this plan's
+tasks actually touch; the one failure is this pre-existing, deliberately-annotated test
+fixture. Not a 01-02 defect — leave for phase verification to decide whether the
+criterion's wording should move to `task lint` instead of raw `go vet`.

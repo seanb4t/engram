@@ -80,7 +80,11 @@ func runServe(cmd *cobra.Command) error {
 		return usageErrorf("ENGRAM_LISTEN_ADDR (or --listen-addr) is empty: a listen address is required")
 	}
 
-	telCfg := telemetry.ConfigFromEnv("engram", version)
+	// resolvedVersion (buildversion.go) is the single source for every
+	// version surface this file emits: this OpenTelemetry attribute, the
+	// MCP handshake below, and the startup log line — one engram serve
+	// process never reports three different version strings.
+	telCfg := telemetry.ConfigFromEnv("engram", resolvedVersion())
 	logger, shutdown, err := telemetry.Setup(context.Background(), telCfg)
 	if err != nil {
 		// Bucket 1. telemetry.Setup never returns a non-nil error today --
@@ -228,7 +232,7 @@ func runServe(cmd *cobra.Command) error {
 	// resolve==nil gate is untouched.
 	connectResolve := connectResolverFor(chain, headless, cookieResolve)
 
-	srv := mcp.NewServer(&mcp.Implementation{Name: "engram", Version: version}, nil)
+	srv := mcp.NewServer(&mcp.Implementation{Name: "engram", Version: resolvedVersion()}, nil)
 	drain, err := server.Register(srv, mux, tm, sqm, uqm, connectResolve, connectCSRFVerify, connectReseal)
 	if err != nil {
 		slog.Error("server registration failed", "err", err)
@@ -293,7 +297,7 @@ func runServe(cmd *cobra.Command) error {
 
 	serveErr := make(chan error, 1)
 	go func() {
-		slog.Info("engram listening", "version", version, "addr", cfg.Server.ListenAddr)
+		slog.Info("engram listening", "version", resolvedVersion(), "addr", cfg.Server.ListenAddr)
 		// DELIBERATE D-03 EXCEPTION (second, and only other, documented
 		// exit-1 case alongside root.go's mistyped-verb path, plan 01-02):
 		// ListenAndServe's own failure (e.g. "address already in use") is a
