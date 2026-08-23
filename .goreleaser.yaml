@@ -135,3 +135,33 @@ homebrew_casks:
             raise "engram cask post-install: installed binary reports version " \
                   "#{reported_version.inspect}, cask declares #{declared_version.inspect}"
           end
+
+          # Completions are written from the installed binary via
+          # system_command (which raises on failure), never via the
+          # declarative completions: field or
+          # generate_completions_from_executable — the latter's
+          # write_completion wraps execution in a rescue that downgrades a
+          # failure to a warning, so a broken binary would install green.
+          # This is the second time the hook exercises the binary, which is
+          # the point: a binary that cannot produce completions is a binary
+          # that fails the install rather than one that installs with a
+          # warning.
+          {
+            "bash" => "#{HOMEBREW_PREFIX}/etc/bash_completion.d/engram",
+            "zsh" => "#{HOMEBREW_PREFIX}/share/zsh/site-functions/_engram",
+            "fish" => "#{HOMEBREW_PREFIX}/share/fish/vendor_completions.d/engram.fish",
+          }.each do |shell, dest|
+            completion = system_command binary, args: ["completion", shell]
+            FileUtils.mkdir_p(File.dirname(dest))
+            File.write(dest, completion.stdout)
+          end
+        uninstall: |-
+          # Homebrew tracks only the files IT installs, never files a hook
+          # wrote, so without this an uninstall leaves all three completion
+          # files behind. Removes exactly those three paths — never their
+          # parent directories, which are shared with other formulae and
+          # casks — with the file-scoped remover, never the recursive tree
+          # remover.
+          FileUtils.rm_f "#{HOMEBREW_PREFIX}/etc/bash_completion.d/engram"
+          FileUtils.rm_f "#{HOMEBREW_PREFIX}/share/zsh/site-functions/_engram"
+          FileUtils.rm_f "#{HOMEBREW_PREFIX}/share/fish/vendor_completions.d/engram.fish"
