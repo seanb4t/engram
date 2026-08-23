@@ -3,7 +3,11 @@
 
 package main
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"testing"
+)
 
 // TestNextPatch is the D-04/D-05 table test over nextPatch's grammar. Every
 // row here is a pure-function assertion — no test in this file calls
@@ -146,5 +150,36 @@ func TestVersionFromModuleVersion(t *testing.T) {
 				t.Errorf("versionFromModuleVersion(%q) = (%q, %v), want (%q, %v)", c.in, got, ok, c.want, c.ok)
 			}
 		})
+	}
+}
+
+// TestLastReleaseMatchesManifest is the drift gate for D-05's whole
+// mechanism: it reads .release-please-manifest.json — relative to the
+// package directory, since Go tests run with the package as the working
+// directory — decodes it into a map[string]string, and asserts the value
+// at key "." is byte-equal to lastRelease. It deliberately does NOT wrap
+// the read in a fallback substituting a default on failure: a defaulted
+// value on both sides would make the comparison pass while measuring
+// nothing. If the extra-files entry in release-please-config.json is ever
+// dropped, renamed, or silently stops matching the x-release-please-version
+// annotation, this test turns the resulting drift into a red build on the
+// very next release rather than a quietly wrong dev-build version string.
+// It asserts nothing about release-please's own behavior — only that these
+// two files in this repo agree with each other.
+func TestLastReleaseMatchesManifest(t *testing.T) {
+	data, err := os.ReadFile("../../.release-please-manifest.json")
+	if err != nil {
+		t.Fatalf("reading .release-please-manifest.json: %v", err)
+	}
+	var manifest map[string]string
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatalf("json.Unmarshal(.release-please-manifest.json): %v", err)
+	}
+	manifestVersion, ok := manifest["."]
+	if !ok {
+		t.Fatalf(`.release-please-manifest.json has no "." key: %#v`, manifest)
+	}
+	if manifestVersion != lastRelease {
+		t.Fatalf("lastRelease = %q, .release-please-manifest.json[\".\"] = %q, want equal", lastRelease, manifestVersion)
 	}
 }

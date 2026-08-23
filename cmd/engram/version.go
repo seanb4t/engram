@@ -69,7 +69,11 @@ func runVersion(cmd *cobra.Command, _ []string) error {
 		return usageErrorf("%w", err)
 	}
 
-	v := version
+	// resolvedVersion (buildversion.go) is the ONLY place this value is
+	// obtained: both the json and text lanes below read it, so D-07's
+	// text-equals-json invariant keeps holding by construction across the
+	// two separate render paths.
+	v := resolvedVersion()
 	if output == "json" {
 		return json.NewEncoder(cmd.OutOrStdout()).Encode(versionDoc{Version: v})
 	}

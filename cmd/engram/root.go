@@ -68,6 +68,13 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
+	// Deliberately NOT resolvedVersion() — D-02. Cobra's built-in
+	// -v/--version template and the pinned help.golden line 29 both key off
+	// this raw package var; rewiring it would also require rewiring
+	// catalog.go's buildCatalog (which reads root.Version), reversing D-02.
+	// engram version and all three engram serve surfaces DO report the
+	// resolved string (cmd/engram/version.go, cmd/engram/serve.go); this is
+	// the one deliberate, accepted divergence — see 01-02-SUMMARY.md.
 	rootCmd.Version = version
 	rootCmd.AddCommand(serveCmd, versionCmd)
 	// This registration is inherited by every subcommand whose own
