@@ -110,7 +110,7 @@ and opencode's JSONC is unneeded, and opencode's live V1/V2 schema self-contradi
 because engram never reads that file. Cursor was deferred to v2 at scoping precisely because it
 would have been the one config-file writer among four shell-out writers, and its own CLI surface
 was unverifiable on the researching machine. The build order follows the confidence gradient:
-`engram version --json` and the Homebrew cask (Phase 1) are near-execution-ready and independent of
+`engram version --output json` and the Homebrew cask (Phase 1) are near-execution-ready and independent of
 the setup-command track, so they run first and in parallel with it; `internal/setup`'s core
 abstraction, the `Runtime` interface, and `cmd/engram/setup.go` land together in Phase 2 because
 `cmd/engram/catalog.go` panics on any cobra command missing a row in
@@ -272,7 +272,7 @@ mechanism instead of another one-shot operator command.
 
 </details>
 
-- [ ] **Phase 1: Version & Homebrew Distribution** - `engram version --json` plus a published, credential-verified, recoverable Homebrew cask
+- [ ] **Phase 1: Version & Homebrew Distribution** - `engram version --output json` plus a published, credential-verified, recoverable Homebrew cask
 - [ ] **Phase 2: Setup Command Core** - `engram setup` detects runtimes, previews by default, converges idempotently, and is fully scriptable without a TTY
 - [ ] **Phase 3: Runtime Registration** - `engram setup --apply` registers engram with Claude Code, Codex, and opencode via their own CLIs, plus a generic-MCP fallback, across every auth mode
 - [ ] **Phase 4: Skills Distribution** - The five curation skills reach every runtime, native format where one exists, AGENTS.md fallback otherwise
@@ -285,7 +285,7 @@ mechanism instead of another one-shot operator command.
 
 **Goal:** A user can install engram with `brew install` on macOS or Linux (amd64 and arm64), and
 the pipeline that publishes it is proven to work end to end rather than merely configured.
-`engram version --json` lands in this same phase because it is the cask's install-time correctness
+`engram version --output json` lands in this same phase because it is the cask's install-time correctness
 gate (`version.go:16` prints a bare string today) and cannot be delegated to Homebrew's
 `generate_completions_from_executable`, which rescues a broken binary's failure to a warning
 (`rescue => e; opoo e`). The cask's `postflight` strips `com.apple.quarantine` as its literal first
@@ -299,7 +299,7 @@ membership).
 
 **Success criteria:**
 
-1. `engram version --json` prints a machine-readable payload carrying the version, while the
+1. `engram version --output json` prints a machine-readable payload carrying the version, while the
    existing human-readable `engram version` output is unchanged for existing callers.
 
 2. The repository is configured to publish a Homebrew cask to `seanb4t/homebrew-tap` via
