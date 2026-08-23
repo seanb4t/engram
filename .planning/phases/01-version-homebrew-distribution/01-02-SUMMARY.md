@@ -206,3 +206,17 @@ None — no external service configuration required.
 ---
 *Phase: 01-version-homebrew-distribution*
 *Completed: 2026-08-23*
+
+## Self-Check: PASSED
+
+- `cmd/engram/buildversion.go` — FOUND
+- `cmd/engram/buildversion_test.go` — FOUND
+- `.planning/phases/01-version-homebrew-distribution/01-02-SUMMARY.md` — FOUND
+- Commit `3832ce9b` (test, RED) — FOUND in `git log --oneline --all`
+- Commit `18641f57` (feat, GREEN Task 1) — FOUND in `git log --oneline --all`
+- Commit `15abc05d` (feat, Task 2) — FOUND in `git log --oneline --all`
+- Commit `417d93a5` (docs, deferred-items) — FOUND in `git log --oneline --all`
+- All named tests re-run green: `TestNextPatch`, `TestDeriveDevVersion`, `TestVersionFromModuleVersion`, `TestLastReleaseMatchesManifest`, `TestVersionJSONLane`, `TestVersionTextLane`, `TestVersionExplicitTextLane`, `TestVersionTextEqualsJSON`, `TestVersionOutputFlagDefault`
+- `task lint` — clean
+- `task test` — clean except the pre-existing, out-of-scope `TestRedEvidencePatchesAreLive` (issue #513)
+- End-to-end binary check: `go build -o /tmp/engram-devcheck ./cmd/engram && /tmp/engram-devcheck version` printed `0.14.1-dev.0+g9830586d.dirty`, matching the plan's regex; `--output json` and `--output text` lanes byte-identical
