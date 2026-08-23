@@ -88,13 +88,37 @@ Which phases cover which requirements. Filled during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| _(pending roadmap)_ | | |
+| REQ-version-json | Phase 1 | Pending |
+| REQ-homebrew-cask-published | Phase 1 | Pending |
+| REQ-cask-install-gate | Phase 1 | Pending |
+| REQ-cask-credential-verified | Phase 1 | Pending |
+| REQ-cask-reship-recovery | Phase 1 | Pending |
+| REQ-setup-detects-runtimes | Phase 2 | Pending |
+| REQ-setup-previews-by-default | Phase 2 | Pending |
+| REQ-setup-idempotent | Phase 2 | Pending |
+| REQ-setup-non-interactive | Phase 2 | Pending |
+| REQ-setup-partial-failure-legible | Phase 2 | Pending |
+| REQ-setup-correct-by-reading | Phase 2 | Pending |
+| REQ-register-claude-code | Phase 3 | Pending |
+| REQ-register-codex | Phase 3 | Pending |
+| REQ-register-opencode | Phase 3 | Pending |
+| REQ-register-generic-mcp | Phase 3 | Pending |
+| REQ-register-auth-modes | Phase 3 | Pending |
+| REQ-register-cli-surface-drift-legible | Phase 3 | Pending |
+| REQ-skills-embedded-in-binary | Phase 4 | Pending |
+| REQ-skills-native-format | Phase 4 | Pending |
+| REQ-skills-agents-md-fallback | Phase 4 | Pending |
+| REQ-engram-setup-delegates | Phase 5 | Pending |
+| REQ-engram-setup-prose-fallback | Phase 5 | Pending |
+| REQ-delegation-equivalence-derived | Phase 5 | Pending |
+| REQ-docs-install-path | Phase 6 | Pending |
+| REQ-docs-setup-documented | Phase 6 | Pending |
 
 **Coverage:**
 
 - v1 requirements: 25 total
-- Mapped to phases: 0
-- Unmapped: 25 ⚠️
+- Mapped to phases: 25
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-08-23*
