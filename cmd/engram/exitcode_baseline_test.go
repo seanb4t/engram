@@ -242,6 +242,14 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		changes: true,
 		landed:  true,
 	},
+	{
+		// Introduced by this plan (01-01): `version` did not accept
+		// --output before this plan, so there is no meaningful `before`.
+		name:       "version/output-bogus",
+		args:       []string{"version", "--output", "bogus"},
+		after:      exitUsage,
+		introduced: true,
+	},
 
 	// --- Operator commands ---
 
@@ -438,7 +446,7 @@ func TestExitCodeBaselineClaims(t *testing.T) {
 // uniqueness so a silently-deleted row fails the test instead of quietly
 // shrinking coverage.
 func TestExitCodeBaselineRowCount(t *testing.T) {
-	const wantRows = 37
+	const wantRows = 38
 	if got := len(exitCodeBaseline); got != wantRows {
 		t.Errorf("len(exitCodeBaseline) = %d, want %d", got, wantRows)
 	}

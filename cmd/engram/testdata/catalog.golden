@@ -1132,7 +1132,14 @@
     {
       "name": "version",
       "summary": "Print the engram version",
-      "flags": [],
+      "flags": [
+        {
+          "name": "output",
+          "type": "string",
+          "default": "text",
+          "usage": "output format: \"json\" or \"text\" (default: text, always — unlike every other --output flag in this binary, this one never auto-detects from stdout)"
+        }
+      ],
       "blast_radius": {
         "read_only": true,
         "destructive": false,

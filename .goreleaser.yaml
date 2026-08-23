@@ -86,3 +86,52 @@ release:
   # uploads artifacts to that already-created, tag-keyed release.
   # replace_existing_artifacts makes re-runs idempotent.
   replace_existing_artifacts: true
+
+# homebrew_casks: is GoReleaser's current cask publisher — brews: (formula) is
+# deprecated and must not be introduced. No repository.token override: the
+# GoReleaser step in release.yaml already passes the release-please App token
+# as GITHUB_TOKEN (D-12), extended to cover seanb4t/homebrew-tap too.
+homebrew_casks:
+  - name: engram
+    repository:
+      owner: seanb4t
+      name: homebrew-tap
+    directory: Casks
+    homepage: https://github.com/seanb4t/engram
+    # Copied byte-for-byte from rootCmd.Short (cmd/engram/root.go:27) — the
+    # project's one established one-liner, already shipped in `engram --help`.
+    # YAML cannot reference a Go constant, so this duplication is unavoidable;
+    # it is made checkable by a plan acceptance criterion that extracts the
+    # literal from root.go and requires the identical bytes here.
+    description: Self-hosted, correctable, OAuth-secured memory for coding agents
+    hooks:
+      post:
+        install: |-
+          # engram ships unsigned (CGO_ENABLED=0, no GoReleaser Pro and no
+          # Apple Developer Program membership). Invoking the binary before
+          # stripping quarantine gets it SIGKILLed by Gatekeeper instead of
+          # failing cleanly with a diagnosable message, so the strip must be
+          # the literal first statement in this hook. xattr does not exist on
+          # Linux, which has no Gatekeeper quarantine to strip in the first
+          # place, so this is guarded to macOS only.
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/engram"]
+          end
+
+          # This runs after Homebrew's install_artifacts has already created
+          # the HOMEBREW_PREFIX symlink, so the installed binary (not the
+          # staged archive) is what gets exercised here. system_command
+          # defaults to must_succeed: true, so a non-zero exit from the
+          # binary raises on its own; the explicit raise below covers the
+          # case where the binary exits zero but reports the wrong version.
+          # No v-prefix normalization on either side: engram's version string
+          # and archive names are bare SemVer with no "v" prefix already, so
+          # both sides are already in the same shape.
+          binary = "#{HOMEBREW_PREFIX}/bin/engram"
+          result = system_command binary, args: ["version", "--output", "json"]
+          reported_version = JSON.parse(result.stdout)["version"].to_s
+          declared_version = version.to_s
+          if reported_version != declared_version
+            raise "engram cask post-install: installed binary reports version " \
+                  "#{reported_version.inspect}, cask declares #{declared_version.inspect}"
+          end
