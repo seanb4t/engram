@@ -312,7 +312,12 @@ membership).
 5. A rehearsed failure between tag creation and cask publication is recovered using this repo's
    existing `workflow_dispatch` re-ship path, with no hand-edit to the tap.
 
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — `engram version --output json|text` and the cask's install-time gate that consumes it
+- [ ] 01-02-PLAN.md — dev-build version derivation from `runtime/debug.ReadBuildInfo()` plus the release-please-managed base const
+- [ ] 01-03-PLAN.md — release plumbing: newest-tag re-ship guard, explicit cross-repo token scope, read-only credential probe
 
 ---
 
