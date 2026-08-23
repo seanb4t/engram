@@ -5,11 +5,16 @@ area: database
 severity: minor
 resolves_phase: 3
 files:
+
   - cmd/engram/backfill.go
   - cmd/engram/migrate.go
   - cmd/engram/summarize.go
   - internal/store/store.go:490-600
   - CLAUDE.md
+
+audit_acknowledged:
+  milestone: 2026-08-12.01
+  at: 2026-08-22
 ---
 
 ## Problem
@@ -53,13 +58,17 @@ Scope of the research:
 
 - Whether a **version key** (collection-level or per-record) is worth introducing, and where it
   would live given Qdrant has no schema/DDL layer of its own.
+
 - An **ordered migration registry** — how evolutions declare their order and their applicability
   predicate.
+
 - **Idempotent re-runs** — every existing command is already safely re-runnable; a framework must
   not lose that property.
+
 - A **current-version report** so an operator can see where a collection stands.
 - Whether the existing four commands would be **retrofitted** into it or left alone, and what
   deprecation of the standalone verbs would cost users.
+
 - The honest counter-case: four one-off commands over the project's life may simply be cheaper than
   a framework, and the tolerant-decoder pattern (Phase 03.1's resolution) may generalize well enough
   that most future evolutions need no migration at all.

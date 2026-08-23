@@ -2,34 +2,35 @@
 gsd_state_version: 1.0
 milestone: 2026-08-12.01
 milestone_name: Record State & Schema Evolution
-current_phase: 09
-status: "Phase 09 shipped — PR #498"
+status: Awaiting next milestone
 stopped_at: Phase 09 complete — all phases complete
-last_updated: "2026-08-22T20:35:57.885Z"
+last_updated: "2026-08-23T00:00:06.707Z"
 last_activity: 2026-08-22
-state_head: d2051884e2f9c8bdb6d0448b6f92281d87876b6c
+last_activity_desc: Milestone 2026-08-12.01 completed and archived
+state_head: f35fcbe5980785ea8ef154c719aaa1b3418ccfa6
 progress:
   total_phases: 9
   completed_phases: 9
   total_plans: 46
   completed_plans: 46
+current_phase: 09
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-12 — after closing milestone v0.13.x)
+See: .planning/PROJECT.md (updated 2026-08-22 — after closing milestone 2026-08-12.01)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 09 — Report pending in migrate status
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: 09
-Plan: Not started
-Status: Phase 09 shipped — PR #498
-Last activity: 2026-08-22
+Phase: Milestone 2026-08-12.01 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-22 — Milestone 2026-08-12.01 completed and archived
 
 ## Deferred Items
 
@@ -48,6 +49,21 @@ Items acknowledged and deferred at milestone close on 2026-08-12:
 | broken_window | WINDOWS.md id 1, id 2 (Phase 03 TDD RED+GREEN landed in combined commits) | Open — RED genuinely observed, commit granularity only |
 | code | internal/surfaces/toolclass.go:141-142 stale rationale comment contradicting shipped Phase 03.1 idempotency_key support | Open — annotation value correct, comment wrong |
 | test | TestExitCodeBaseline env-var fragility (ENGRAM_REINDEX_TARGET / ENGRAM_MIGRATE_OWNER) | Tracked upstream as #476 |
+
+Items acknowledged and deferred at milestone close on 2026-08-22 (milestone 2026-08-12.01, `override_closeout` — 8 newly acknowledged, 0 carried forward from a prior close):
+
+| Category | Item | Status |
+|----------|------|--------|
+| todos | 2026-08-10-research-versioned-payload-migration-mechanism.md (database) | acknowledged — superseded in substance by the `internal/migrate` registry this milestone shipped; the note itself was never closed out |
+| deferred_items | Phase 01 / Plan 01-05: `rumdl` MD041 on `internal/keylinks/testdata/{bad,good}_key_links.md` | acknowledged — the entry records its own RESOLVED verdict (`51d0269e`, `.rumdl.toml` exclude added); `task lint` exits 0 |
+| deferred_items | Phase 05 / From 05-04: `task fmt:check` dprint drift on 4 untouched files | acknowledged — milestone audit records it resolved; `task fmt:check` exits 0, `internal/webauth/static` added as a dprint exclude |
+| deferred_items | Phase 07 / 07-01: staticcheck SA1019 on `connectapi.go` + `TestNoEscapedPatternsRepoWide` failure | acknowledged — milestone audit records both resolved; deprecated `ListMemoriesResponse.Approximate` removed, `task lint` exits 0 across 126 files |
+| deferred_items | Phase 07 / 07-03: same SA1019 finding, reported at a shifted line number | acknowledged — same single finding as 07-01's, not a second one; resolved with it |
+| deferred_items | Phase 07 / Resolved by the orchestrator (phase-level) | acknowledged — `TestNoEscapedPatternsRepoWide` fixed in `7cfb3017`; the SA1019 half it left open is now resolved too |
+| deferred_items | Phase 07 / Environment gaps (`ui/`): svelte-check crash, no `lint` script | acknowledged — genuine pre-existing debt. `svelte-check@4.7.3` / `typescript@7.0.2` incompatibility pinned in `ui/package.json`; executors substituted vitest + `npx tsc --noEmit` |
+| deferred_items | Phase 07 / Deferred to phase UAT (07-04 `/observe?inc=archived` round-trip, 07-07 migration-banner visual check) | acknowledged — genuine, needs a live server + Qdrant; unrunnable in a worktree |
+
+Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own `- **Status:** acknowledged` marker.
 
 ## Accumulated Context
 
@@ -221,8 +237,6 @@ milestone needs in working memory.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
-| 260717-g1r | Triage + fix #301 — Renovate ui/ postUpgradeTasks via `bash -c` (shell-free); branch unmerged, gated on a cluster-first allowlist update | 2026-07-17 | 1462da20 | [260717-g1r-renovate-ui-vendor-shell](./quick/260717-g1r-renovate-ui-vendor-shell/) |
-| 260822-im2 | Repo hygiene from the 2026-08-12.01 audit — dprint excludes `internal/webauth/static` (vendored SPA) + 3 authored files formatted (`fmt:check` 201→0); phase-06 `iter2`/`iter3` review artifacts tracked; `.mcp.json` gitignored | 2026-08-22 | faece501, 2937d265, cef262d1 | [20260822-repo-hygiene-dprint-and-artifacts](./quick/20260822-repo-hygiene-dprint-and-artifacts/) |
 
 ### Roadmap Evolution
 
@@ -345,4 +359,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Review the 2026-08-12.01 roadmap draft (`.planning/ROADMAP.md`, `.planning/REQUIREMENTS.md`); once approved, start Phase 1 with `/gsd-plan-phase 1` (Gate & CI Integrity — #479/#497).
+- Start the next milestone with /gsd-new-milestone

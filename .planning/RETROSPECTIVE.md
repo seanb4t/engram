@@ -337,22 +337,140 @@ hygiene (rumdl exclude, Phase-11 residuals, Renovate self-heal).
 
 ---
 
+## Milestone: 2026-08-12.01 — Record State & Schema Evolution
+
+**Shipped:** 2026-08-22
+**Phases:** 9 (1–9) | **Plans:** 46 | **Tasks:** 121 | **Requirements:** 27/27
+**Git range:** `1daafefd..HEAD` — 181 files, +26,418 / −1,392 (excluding `.planning/`)
+**Timeline:** 2026-08-12 → 2026-08-22 (11 days) · first CalVer-labeled milestone
+
+### What Was Built
+
+- **`schema_version`** — an absent-safe payload discriminator, stamped by 100% of write paths,
+  wire-visible on `get_memory` and `full=true` recall, forward-compatible in both directions, and
+  structurally barred from every recall and authz filter.
+- **`internal/migrate`** — a stdlib-only leaf package holding an ordered registry of additive-only
+  steps, each required at registration to declare its reversibility, plus `Store.Migrate`'s
+  re-derive-every-pass sweep that converges with no collection lock.
+- **`engram migrate` / `status` / `revert`** — the operator CLI, through `registerDestructive`,
+  preview-by-default, with a version histogram rather than a scalar and a revert that refuses a
+  range at its first irreversible step. `backfill-short-ids` became the registered v0→v1 step.
+- **Connect record-state parity** — eight additive `Memory` fields wired through `memoryToProto` in
+  one pass, with a reflection detector making a silently-dropped field structurally impossible.
+- **Typed operator renderer** — one serialization plus a view across 15 commands, retiring the
+  text/json parity claim and publishing `--output text` as explicitly unstable.
+- **State on every surface** — three orthogonal `include_*` opt-ins from proto to CLI flags to
+  console checkboxes, one tested `memoryStateWords` derivation, `engram get`, a sixth Connect read
+  RPC for the histogram, and a migration advisory on CLI and every console route.
+- **Gate and CI integrity** — `internal/keylinks` closing the silent-no-op key-link shapes, one
+  shared CI Qdrant replacing four per-package testcontainers, and a go/ast seam-conformance gate.
+
+### What Worked
+
+- **Repairing the gates before using them.** Phase 1 existed because v0.13.x Phases 1–2 passed
+  verification while their key-link gates were no-ops. Taking that first — rather than as a tail
+  cleanup — is why this milestone's own gates are believable.
+- **RED-first as a committed artifact, not a claim.** Phases 2, 3, and 5 shipped reviewer-
+  reproducible RED patches alongside the gates they justify. Several diverged from the plan's
+  predicted failure signature and were recorded as observed rather than reconciled to the
+  prediction — one of those divergences turned up a genuine finding about `CheckAdditive`'s error
+  message independence.
+- **Splitting the oversized phase at roadmap time.** The original build order put 11 of 27
+  requirements (41%) in one migration phase; splitting it into Foundation (3) and CLI (4) before
+  planning avoided the phase that would have had to be split mid-execution.
+- **Ordering as a hard constraint.** Schema versioning and the full migration mechanism landed
+  before the Connect proto pass, because proto field numbers are a one-way commitment. Freezing
+  `schema_version` on the wire before its semantics settled would have been unfixable.
+- **Inverted-cardinality caught at requirement time.** `REQ-schema-version-never-gates-recall`
+  exists because the adjacent `superseded_by`/`archived_at` `IsEmpty` idiom would have excluded
+  every pre-migration record from recall. Naming that as a requirement, not a review note, is why
+  it shipped with a runtime interceptor gate instead of a convention.
+
+### What Was Inefficient
+
+- **The vacuous-gate family kept producing new shapes.** Six distinct ones surfaced across Phases 8
+  and the audit: a token prefix inside a character class merging `REQ-aREQ-b` into one match; `cmd |
+  tail; echo $?` reporting tail's status; a negative grep anchored on the wrong inflection; a JSON
+  golden searched with a text regex; a top-level-only golden diffed against a full catalog; and
+  `go test -run <NonexistentName>` exiting 0. Each was found only because a control was run.
+- **A gate written to close a vacuous-gate finding is the highest-risk gate in the phase.** Three
+  instances in Phase 8 alone. The countermeasure that actually worked: extract every gate verbatim
+  and run it against a deliberately constructed defect, under more than one shell.
+- **Agent-visible command output is lossy.** A verifier concluded from displayed output that
+  go1.26.7 does not print `=== RUN` lines and wrote that into `08-VERIFICATION.md`. It does; the
+  lines were stripped in rendering. `wc -l` on the same pipeline reported all 14.
+- **Two agents independently declared a true documented equivalence false** (`migrate-set-owner` as
+  a deprecated alias) by comparing flag shapes, because both searched only `cmd/engram/` while the
+  pinning test lives in `internal/store/`.
+- **Harness worktree isolation rejected every external binary** from an isolated executor —
+  `git branch` failed identically to a complex command — burning 243K subagent tokens across two
+  agents before diagnosis. Recovery was `use_worktrees false` plus `--force-isolation none`.
+- **A deferred issue's site list went stale while the issue sat open.** #480 named two hand-rolled
+  sweep-guard sites; by execution there were three, and both the requirement and the roadmap had
+  copied the stale list verbatim.
+
+### Patterns Established
+
+- **Gate on zero, never on N.** A count gate passes when a new site lands between planning and
+  execution; a zero-occurrence assertion fails, which is correct. Re-measure any inherited site
+  list at plan time.
+- **A widened character class is a claim; a self-test that watches the gate fire is evidence.**
+- **Non-vacuity controls are mandatory for derived-set gates** — inject a known-absent member and a
+  known-present one, and observe both verdicts.
+- **Never infer a toolchain's behavior from what you see in tool output.** Redirect to a file and
+  read the file, or construct a known-answer case.
+- **Search repo-wide for a pinning test before declaring a documented equivalence false.**
+  Reasoning from signatures is not evidence.
+- **One serialization plus a view** — derive text and json from the same ordered field set so
+  divergence is unrepresentable rather than tested for.
+- **Stamp-then-sweep** — having the write path stamp the current version before the sweep runs is
+  what makes a lock-free sweep converge on a strictly shrinking backlog.
+
+### Key Lessons
+
+1. **Fix your instruments first.** A milestone that authors new gates should repair the gate
+   machinery in its own Phase 1, not assume the previous milestone's green was real.
+2. **The fix for a false-green is itself the likeliest false-green.** Budget a self-test for every
+   gate written to close a gate finding.
+3. **An empty search is evidence only when the searched string is provably the one that would
+   appear.** Otherwise read the cited region.
+4. **Cardinality decides whether an idiom transfers.** The `IsEmpty` recall-gate pattern is correct
+   where absence is the minority state and catastrophic where it is the majority.
+5. **Proto field numbers are one-way.** Sequence any wire change behind the semantics it encodes.
+6. **A CLI writer that refuses rather than guesses is doing its job.** `audit-open acknowledge`
+   declined the heading-delimited `deferred-items.md` shape instead of writing into the wrong
+   entry; the manual path it named was correct and the refusal was the right verdict.
+
+### Cost / Process Observations
+
+- Merge shape: one squashed PR (#498) for phases 1–9, then three follow-up docs commits for the
+  Phase 9 validation and audit re-run.
+- Phase 9 was created *by* the milestone audit — a two-plan debt-closure phase closing W2 and W3,
+  which is why the audit had to be re-run afterward and now records 9/9 rather than 8/8.
+- 243K subagent tokens lost to the worktree-isolation defect in Phase 8, the milestone's single
+  largest non-productive spend.
+- Closeout was `override_closeout`: 8 open artifacts acknowledged, of which 5 were stale text for
+  work already resolved. Deferred-item entries do not self-clear when the underlying work is fixed
+  — a resolved entry keeps surfacing until someone sets its `status:`.
+
+---
+
 ## Cross-Milestone Trends
 
 Populated as milestones accumulate.
 
-| Trend | v0.9.x | v0.10.x | v0.11.x | v0.13.x | Notes |
-|-------|--------|---------|---------|---------|-------|
-| Already-shipped surprises | 1 (Phase 10) | 0 | 0 | 0 | v0.9.x also had Phase 8 in the baseline — baseline-verify before planning |
-| Worktree isolation | degraded (#683) | degraded (#683) | degraded (#683) | degraded (#683) | Stacked unmerged branch each time; cleared post-merge |
-| Reusable kernels extracted | 2 (CR-01 shutdown, `*time.Time`) | App-token self-push, `set -e` sub-swallow, post-merge-defer | PDP-decides/store-enforces, options-struct-before-2nd-same-type, targeted-SetPayload, explicit-field-list upkeep | derive-applicability-from-fields, unexported-marker-as-compile-gate, pin-both-ends-of-a-diff-range, walk-the-live-tree-not-a-list | Applied within-milestone and captured for reuse |
-| Requirements satisfied | 6/6 | 19/20 (1 post-merge-deferred) | 11/11 | 23/24 (1 genuinely unmet) | 3-source cross-referenced |
-| Audit verdict | PASSED | tech_debt (0 blockers) | PASSED (0 blockers) | tech_debt (0 blockers) | v0.13.x: 6/6 integration seams, 4/4 E2E flows |
-| Merge shape | 1 PR (all phases) | per-phase PRs | per-phase PRs (22+23 combined) | single branch `feat/v0.13` | v0.13.x did not split per-phase |
-| Defects caught by review, not tests | — | — | 3 (phases 23, 25, 26) | 2 (`defaultK` attribution, `toolclass.go` rationale) | Both v0.13.x cases were prose contradicting the code it described |
-| Nyquist coverage | — | 9/9 | 3/5 at close → 5/5 reconciled | 6/6 validated, 5/6 compliant | v0.13.x cleared v0.12.x's inherited 6-row debt; 04 PARTIAL by design |
-| Planning-artifact drift found at audit | — | — | — | 4 defects, all under-reporting | New trend — all four would have frozen into the immutable archive a day later |
-| Retrospective written at close | ✓ | ✓ | ✓ | ✓ | **v0.12.x skipped** — the only gap in the series |
+| Trend | v0.9.x | v0.10.x | v0.11.x | v0.13.x | 2026-08-12.01 | Notes |
+|-------|--------|---------|---------|---------|---------------|-------|
+| Already-shipped surprises | 1 (Phase 10) | 0 | 0 | 0 | 0 | v0.9.x also had Phase 8 in the baseline — baseline-verify before planning |
+| Worktree isolation | degraded (#683) | degraded (#683) | degraded (#683) | degraded (#683) | **harness-level denial** (all external binaries) | Stacked unmerged branch each time; cleared post-merge |
+| Reusable kernels extracted | 2 (CR-01 shutdown, `*time.Time`) | App-token self-push, `set -e` sub-swallow, post-merge-defer | PDP-decides/store-enforces, options-struct-before-2nd-same-type, targeted-SetPayload, explicit-field-list upkeep | derive-applicability-from-fields, unexported-marker-as-compile-gate, pin-both-ends-of-a-diff-range, walk-the-live-tree-not-a-list | gate-on-zero-not-N, control-every-derived-set-gate, one-serialization-plus-a-view, stamp-then-sweep | Applied within-milestone and captured for reuse |
+| Requirements satisfied | 6/6 | 19/20 (1 post-merge-deferred) | 11/11 | 23/24 (1 genuinely unmet) | 27/27 | 3-source cross-referenced |
+| Audit verdict | PASSED | tech_debt (0 blockers) | PASSED (0 blockers) | tech_debt (0 blockers) | tech_debt (0 blockers) | v0.13.x: 6/6 integration seams, 4/4 E2E flows |
+| Merge shape | 1 PR (all phases) | per-phase PRs | per-phase PRs (22+23 combined) | single branch `feat/v0.13` | 1 squashed PR (#498) + docs tail | v0.13.x did not split per-phase |
+| Defects caught by review, not tests | — | — | 3 (phases 23, 25, 26) | 2 (`defaultK` attribution, `toolclass.go` rationale) | 2 false positives (`migrate-set-owner` alias called false twice) | Both v0.13.x cases were prose contradicting the code it described |
+| Nyquist coverage | — | 9/9 | 3/5 at close → 5/5 reconciled | 6/6 validated, 5/6 compliant | 9/9 COMPLIANT | v0.13.x cleared v0.12.x's inherited 6-row debt; 04 PARTIAL by design |
+| Planning-artifact drift found at audit | — | — | — | 4 defects, all under-reporting | 3 (stale ROADMAP progress rows 6–8, no Phase 9 row) | New trend — all four would have frozen into the immutable archive a day later |
+| Retrospective written at close | ✓ | ✓ | ✓ | ✓ | ✓ | **v0.12.x skipped** — the only gap in the series |
 
 ---
 

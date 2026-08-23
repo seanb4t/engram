@@ -1,5 +1,57 @@
 # Milestones — engram
 
+## 2026-08-12.01 Record State & Schema Evolution (Shipped: 2026-08-22)
+
+**Phases completed:** 9 phases (1–9), 46 plans, 121 tasks
+**Requirements:** 27/27 verified · **Audit:** `tech_debt` (5/5 integration seams, 3/5 E2E flows, 0 blockers, Nyquist 9/9 COMPLIANT)
+**Git range:** `1daafefd..HEAD` — 181 files, +26,418 / −1,392 (excluding `.planning/`)
+**Timeline:** 2026-08-12 → 2026-08-22 (11 days) · **No git tag** — release-please owns the version namespace
+**Closeout:** `override_closeout` · **Known verification overrides:** 8 newly acknowledged, 0 carried forward from a prior close (see STATE.md Deferred Items)
+**Archived:** `milestones/2026-08-12.01-{ROADMAP,REQUIREMENTS,MILESTONE-AUDIT}.md` + `2026-08-12.01-phases/` + `2026-08-12.01-quick/`
+
+**Delivered:** a record's full state became reachable and legible on every lane, and payload
+evolution got a real mechanism instead of another one-shot operator command. `schema_version`
+landed as an absent-safe discriminator — stamped on every write, visible on the wire, and
+structurally incapable of narrowing recall, proven by a runtime interceptor rather than by
+convention. Behind it, `internal/migrate` turned migrations into an ordered registry of
+additive-only steps that must declare their own reversibility at registration, swept to
+convergence by `Store.Migrate` without a collection lock, and driven by `engram migrate` through
+the existing `registerDestructive` admission gate with `backfill-short-ids` folded in as its first
+registered customer. The operator tier collapsed to one serialization plus a view, so a json
+document can no longer widen past the text sentence beside it, and `--output text` is now published
+as explicitly unstable. Console and CLI both surface archived/superseded/expired/scheduled state
+from one tested derivation. The milestone opened, deliberately, by repairing its own gates: key-link
+patterns that could not match and a Qdrant testcontainer that masked real failures.
+
+**Key accomplishments:**
+
+1. **`schema_version` as an absent-safe payload discriminator** — monotonically stamped on every write, wire-visible on `get_memory` and `full=true` recall, with a runtime gRPC-interceptor gate proving it never reaches any Qdrant filter, so no legacy record can be hidden from recall by the field's own absence.
+2. **A versioned `internal/migrate` step registry and sweep** — sealed `Reversibility`, `CheckAdditive`'s two-direction key-set diff, and re-derive-every-pass convergence proven under a live concurrent writer with no collection lock, all against real Qdrant with committed reviewer-reproducible RED patches.
+3. **`engram migrate` (`status` / `revert`) as the operator CLI** — routed through a generalized `registerDestructive` admission gate with a deliberately named `--apply`-required union, folding `backfill-short-ids` in as the registered v0→v1 step with apply-path parity proven by call-sequence equality.
+4. **One-serialization-plus-a-view typed operator renderer** — 15 commands converted with zero new per-report renderer code, `--output text` published as an explicitly unstable human-readable view (json is the contract), retiring the old text/json parity claim.
+5. **Record state surfaced end to end** — eight additive Connect `Memory` fields, three orthogonal `include_*` opt-ins across List and Search on proto, CLI and console, a single tested `memoryStateWords` derivation, and a headless-Chrome test driving the real embedded SvelteKit bundle for the first time.
+6. **Gate and CI integrity taken first, not last** — `internal/keylinks` closed the silent-no-op key-link shapes (39 patterns repaired across 20 plans), one shared CI Qdrant replaced four per-package testcontainers, and an AST gate proved no test store construction bypasses its package's collection-prefix seam.
+
+### Known Tech Debt
+
+All three items were parked in backlog phases before close; none blocks the milestone.
+
+- **No full-stack E2E for `engram migrate`** (Phase 4) — `internal/e2e/` covers boot, tool surface, CLI exit codes, console rendering, spine-review and prune-expired, but the status → apply → status reconvergence path has no live-Qdrant coverage. Backlog 999.2.
+- **CLAUDE.md's "every surface renders a record's derived state" overstates** (Phase 8) — the MCP lane exposes the raw fields (`SupersededBy`, `ArchivedAt`) but derives no state words. Backlog 999.3.
+- **`schema_version` typed three ways in one proto file** (cross-cutting) — `schema_version` uint32 (`:52`) vs `version` int32 (`:186`) vs `current_version` int32 (`:204`). Backlog 999.4.
+
+### Known Verification Overrides
+
+8 open artifacts were acknowledged at close (`override_closeout`), 0 carried forward from a prior
+close. Five are stale text for work the milestone audit independently confirms resolved (the
+Phase 01 rumdl exclude, the Phase 05 dprint drift, and the Phase 07 SA1019 / escaped-pattern
+findings). Three are genuine pre-existing debt: one pending research todo the migration registry
+superseded in substance, the `ui/` environment gaps (`svelte-check` / TypeScript incompatibility,
+no `lint` script), and two Phase 07 UAT checks that need a live server plus Qdrant. Full disclosure
+in STATE.md `## Deferred Items`.
+
+---
+
 ## v0.13.x Curation & Self-Evidence (Shipped: 2026-08-12)
 
 **Phases completed:** 6 phases (1–5 plus inserted 03.1), 33 plans, 99 tasks

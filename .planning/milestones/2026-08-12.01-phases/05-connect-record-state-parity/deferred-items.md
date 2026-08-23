@@ -5,6 +5,8 @@ Out-of-scope discoveries logged during plan execution, per the executor's scope-
 
 ## From 05-04 (G-05-9 gap closure)
 
+- **Status:** acknowledged
+
 - **`task fmt:check` (dprint) pre-existing drift, unrelated to this plan's diff.** Running
   `task fmt:check` during 05-04's task-3 verification surfaced 4 already-unformatted files, none
   touched by this plan's commits (confirmed via `git status --short` on each — zero output, i.e.
