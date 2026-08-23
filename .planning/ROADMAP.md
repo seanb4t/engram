@@ -318,12 +318,12 @@ membership).
 5. A rehearsed failure between tag creation and cask publication is recovered using this repo's
    existing `workflow_dispatch` re-ship path, with no hand-edit to the tap.
 
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — `engram version --output json|text` and the cask's install-time gate that consumes it
+- [x] 01-01-PLAN.md — `engram version --output json|text` and the cask's install-time gate that consumes it
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -555,7 +555,7 @@ and the delegation story settled).
 | 24. Idempotent Capture | v0.11.x | 2/2 | Complete | 2026-07-18 |
 | 25. Supersession with History | v0.11.x | 2/2 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
-| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | Complete    | 2026-08-13 |
+| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | In Progress|  |
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-13 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-08-14 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete   | 2026-08-15 |

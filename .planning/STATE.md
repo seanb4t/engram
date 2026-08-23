@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: 2026-08-23.01
 current_phase: 01
-current_phase_name: version-homebrew-distribution
-status: planning
+current_phase_name: Version & Homebrew Distribution
+status: executing
 stopped_at: Phase 1 context gathered
-last_updated: "2026-08-23T19:44:42.207Z"
+last_updated: "2026-08-23T22:12:24.920Z"
 last_activity: 2026-08-23
-last_activity_desc: ROADMAP.md and REQUIREMENTS.md traceability written for 2026-08-23.01
-state_head: 8c754430a83c0c3970153991060406ba3a090cd3
+last_activity_desc: Phase 01 execution started
+state_head: 93cfe1d778150c8684758ff0587a0f720e0d8616
 progress:
   total_phases: 6
   completed_phases: 0
@@ -24,14 +24,14 @@ milestone_name: Distribution & Agent Bootstrap
 See: .planning/PROJECT.md (updated 2026-08-23 — after opening milestone 2026-08-23.01)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Roadmap written for 2026-08-23.01 (6 phases, 25/25 requirements mapped). Next: `/gsd-plan-phase 1`.
+**Current focus:** Phase 01 — Version & Homebrew Distribution
 
 ## Current Position
 
-Phase: 01 (version-homebrew-distribution) — READY TO EXECUTE
-Plan: —
-Status: Roadmapped, awaiting first plan
-Last activity: 2026-08-23 — ROADMAP.md and REQUIREMENTS.md traceability written for 2026-08-23.01
+Phase: 01 (Version & Homebrew Distribution) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 01
+Last activity: 2026-08-23 — Phase 01 execution started
 
 ## Deferred Items
 
@@ -64,7 +64,7 @@ Items acknowledged and deferred at milestone close on 2026-08-22 (milestone 2026
 | deferred_items | Phase 07 / Environment gaps (`ui/`): svelte-check crash, no `lint` script | acknowledged — genuine pre-existing debt. `svelte-check@4.7.3` / `typescript@7.0.2` incompatibility pinned in `ui/package.json`; executors substituted vitest + `npx tsc --noEmit` |
 | deferred_items | Phase 07 / Deferred to phase UAT (07-04 `/observe?inc=archived` round-trip, 07-07 migration-banner visual check) | acknowledged — genuine, needs a live server + Qdrant; unrunnable in a worktree |
 
-Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own `- **Status:** acknowledged` marker.
+Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own `- **Status:** Executing Phase 01
 
 ## Accumulated Context
 
