@@ -97,6 +97,30 @@ minority one), would silently exclude every pre-migration record from recall. `s
 therefore never appears in any recall or authz filter, proven by a negative test landed in the same
 phase that introduces the field, not a later hardening pass.
 
+**2026-08-23.01 — Distribution & Agent Bootstrap (Phases 1–6), roadmapped 2026-08-23.** engram
+becomes installable in one command and self-configuring across every agent runtime it targets:
+`brew install engram`, then `engram setup` detects what's on the machine, shows what it would
+write, and wires it up. Research was bimodal — HIGH confidence on distribution mechanics, MEDIUM on
+the runtime config surfaces that make up most of the new code — but a live post-synthesis
+verification retired the round's two named highest-risk items before roadmapping: `codex mcp add`
+(codex-cli 0.148.0) and `opencode mcp add` (opencode 1.18.15) both exist on the machine's installed
+CLIs, so every v1 runtime is a shell-out writer and engram parses no third-party config format at
+all — the "surgical marker-bounded text editing" design the research body proposed for Codex's TOML
+and opencode's JSONC is unneeded, and opencode's live V1/V2 schema self-contradiction is moot
+because engram never reads that file. Cursor was deferred to v2 at scoping precisely because it
+would have been the one config-file writer among four shell-out writers, and its own CLI surface
+was unverifiable on the researching machine. The build order follows the confidence gradient:
+`engram version --json` and the Homebrew cask (Phase 1) are near-execution-ready and independent of
+the setup-command track, so they run first and in parallel with it; `internal/setup`'s core
+abstraction, the `Runtime` interface, and `cmd/engram/setup.go` land together in Phase 2 because
+`cmd/engram/catalog.go` panics on any cobra command missing a row in
+`internal/surfaces/toolclass.go` — adding `setup` to the tree and its own classification row cannot
+be sequenced across two phases. Runtime registration (Phase 3), skills distribution (Phase 4), and
+the `/engram-setup` delegation gate (Phase 5) each depend on the phase before it, since delegation's
+generated-equivalence proof needs the full runtime registry and skill content settled to generate
+complete prose against. Install documentation (Phase 6) is sequenced last so it documents final
+shipped behavior rather than a moving target.
+
 ## Milestones
 
 - ✅ **v0.8.x Baseline** — Phases 1–7 (shipped)
@@ -248,9 +272,202 @@ mechanism instead of another one-shot operator command.
 
 </details>
 
+- [ ] **Phase 1: Version & Homebrew Distribution** - `engram version --json` plus a published, credential-verified, recoverable Homebrew cask
+- [ ] **Phase 2: Setup Command Core** - `engram setup` detects runtimes, previews by default, converges idempotently, and is fully scriptable without a TTY
+- [ ] **Phase 3: Runtime Registration** - `engram setup --apply` registers engram with Claude Code, Codex, and opencode via their own CLIs, plus a generic-MCP fallback, across every auth mode
+- [ ] **Phase 4: Skills Distribution** - The five curation skills reach every runtime, native format where one exists, AGENTS.md fallback otherwise
+- [ ] **Phase 5: Slash Command Delegation** - `/engram-setup` delegates to the binary when present, keeps its prose fallback first-class otherwise, with a generated (not hand-checked) equivalence gate
+- [ ] **Phase 6: Install Documentation** - docs-site documents how to get the binary and how to run `engram setup`
+
+## Phase Details
+
+### Phase 1: Version & Homebrew Distribution
+
+**Goal:** A user can install engram with `brew install` on macOS or Linux (amd64 and arm64), and
+the pipeline that publishes it is proven to work end to end rather than merely configured.
+`engram version --json` lands in this same phase because it is the cask's install-time correctness
+gate (`version.go:16` prints a bare string today) and cannot be delegated to Homebrew's
+`generate_completions_from_executable`, which rescues a broken binary's failure to a warning
+(`rescue => e; opoo e`). The cask's `postflight` strips `com.apple.quarantine` as its literal first
+action, before it ever invokes the binary — reversing that order gets the gate itself SIGKILLed by
+Gatekeeper, since engram ships unsigned by design (no GoReleaser Pro / Apple Developer Program
+membership).
+
+**Requirements:** REQ-version-json, REQ-homebrew-cask-published, REQ-cask-install-gate, REQ-cask-credential-verified, REQ-cask-reship-recovery
+
+**Depends on:** Nothing (first phase).
+
+**Success criteria:**
+
+1. `engram version --json` prints a machine-readable payload carrying the version, while the
+   existing human-readable `engram version` output is unchanged for existing callers.
+2. A tagged release publishes a working Homebrew cask to `seanb4t/homebrew-tap` (via GoReleaser's
+   `homebrew_casks:`), installable on both amd64 and arm64, on both macOS and Linux.
+3. Installing a binary that fails the version-json assertion makes `brew install` fail loudly
+   rather than install silently broken, even though the binary is unsigned — because the quarantine
+   strip runs before the gate, not after.
+4. The release workflow's cross-repo credential to `seanb4t/homebrew-tap` is proven to work by an
+   explicit check performed before any real release depends on it — never assumed from the default,
+   repo-scoped `GITHUB_TOKEN`.
+5. A rehearsed failure between tag creation and cask publication is recovered using this repo's
+   existing `workflow_dispatch` re-ship path, with no hand-edit to the tap.
+
+**Plans:** TBD
+
+---
+
+### Phase 2: Setup Command Core
+
+**Goal:** `engram setup` exists as a real, preview-by-default, fully scriptable CLI command that
+can detect which supported agent runtimes are present on the machine and report what it would
+write to each — before it writes anything. `cmd/engram/catalog.go` panics if any cobra command
+lacks a row in `internal/surfaces/toolclass.go`, so registering the `setup` command and adding its
+classification row land together in this one phase, not sequenced across two. If `setup` needs a
+server-URL flag, it must not be spelled `--server`: `cmdwalk.go:118`'s `operatorCommands()`
+predicate excludes any command carrying a flag literally named `server`, which would silently drop
+`setup` out of operator-tier classification — the opposite of this milestone's intent.
+
+**Requirements:** REQ-setup-detects-runtimes, REQ-setup-previews-by-default, REQ-setup-idempotent, REQ-setup-non-interactive, REQ-setup-partial-failure-legible, REQ-setup-correct-by-reading
+
+**Depends on:** Nothing (parallelizable with Phase 1 — touches unrelated files).
+
+**Success criteria:**
+
+1. `engram setup` (no `--apply`) reports which supported runtimes are present, using each
+   runtime's own binary as the primary signal — a leftover config directory from an uninstalled
+   runtime does not read as installed — and shows the exact command or content it would issue per
+   runtime, changing nothing on disk.
+2. Running `engram setup --apply` twice converges to the same state on the second run, which
+   reports "already correct" distinctly from the first run's "wrote it".
+3. `engram setup` runs to completion without a TTY: a caller can select runtimes explicitly, skip
+   confirmation, and receive machine-readable output — scriptable from CI or another agent.
+4. When one runtime succeeds and another fails in the same invocation, the report names each
+   runtime's own outcome individually, and the process exit status distinguishes total success,
+   partial success, and total failure.
+5. `engram setup --help` alone teaches which runtimes are targetable, what `--apply` does, and
+   which auth modes are accepted, without the caller needing to run it and interpret a failure.
+
+**Plans:** TBD
+
+---
+
+### Phase 3: Runtime Registration
+
+**Goal:** `engram setup --apply` actually registers the engram MCP server with Claude Code, Codex,
+and opencode by shelling out to each runtime's own CLI, and emits a portable configuration for any
+MCP client engram doesn't natively support — covering every auth mode engram deploys behind. Live
+post-synthesis verification confirmed `codex mcp add` (codex-cli 0.148.0) and `opencode mcp add`
+(opencode 1.18.15) both exist, so all three native writers are structurally the same shape as the
+already-shipped `/engram-setup` prose's `claude mcp add` path — no TOML or JSONC is ever parsed or
+written, and the zero-new-Go-dependencies constraint is under no pressure.
+
+**Requirements:** REQ-register-claude-code, REQ-register-codex, REQ-register-opencode, REQ-register-generic-mcp, REQ-register-auth-modes, REQ-register-cli-surface-drift-legible
+
+**Depends on:** Phase 2 (the `Runtime` interface and the `setup` command must exist before any
+runtime writer plugs into it).
+
+**Success criteria:**
+
+1. `engram setup --apply` registers engram with each of Claude Code, Codex, and opencode by
+   invoking that runtime's own CLI (`claude mcp add`, `codex mcp add`, `opencode mcp add`
+   respectively) — never by reading, parsing, or hand-writing any of their config files
+   (`~/.claude.json`, `.mcp.json`, `~/.codex/config.toml`, opencode's config).
+2. For an MCP client engram does not natively support, `engram setup` prints a portable server
+   configuration the user can paste or redirect into that client.
+3. Every registration path covers OAuth, pre-registered OAuth client, static bearer token, and
+   no-auth deployments — or states plainly which are unsupported for that runtime — and no secret
+   is ever placed on a command line where the shell or process table would capture it.
+4. When a runtime's CLI is absent, or present with an unexpected flag surface, `engram setup`
+   fails with a message naming the runtime and what it expected, rather than silently writing
+   nothing.
+
+**Plans:** TBD
+
+---
+
+### Phase 4: Skills Distribution
+
+**Goal:** The five curation skills reach every configured runtime — installed in that runtime's
+native skill or rules format where one exists, and appended into a delimited, re-detectable
+AGENTS.md block where none does — from a brew-installed binary that carries the skill content
+itself, so a Claude-plugin-free install still teaches an agent how to curate. The embedded content
+is sourced from the same files the plugin ships, so the two cannot drift apart.
+
+**Requirements:** REQ-skills-embedded-in-binary, REQ-skills-native-format, REQ-skills-agents-md-fallback
+
+**Depends on:** Phase 3 (skill installation is scoped per runtime, reusing the same runtime list
+and detection Phase 3 established).
+
+**Success criteria:**
+
+1. A brew-installed engram binary with no Claude plugin present can still produce the full content
+   of the five curation skills, sourced from the same files the plugin ships.
+2. For a runtime with a native skill or rules format, `engram setup --apply` installs the skills
+   in that native format.
+3. For a runtime with no native skill format, `engram setup --apply` writes the guidance into
+   AGENTS.md inside a delimited, re-detectable block; re-running replaces that block rather than
+   appending a second copy, and content outside the block is left byte-for-byte untouched.
+
+**Plans:** TBD
+
+---
+
+### Phase 5: Slash Command Delegation
+
+**Goal:** `/engram-setup` and `engram setup` are two entry points to the same outcome. The slash
+command hands off to the binary when it's on PATH, and keeps its own prose bootstrap first-class
+when it's absent — the plugin installs standalone via `claude plugin install`, so the binary is
+never guaranteed present. The two paths are proven equivalent by construction: the mechanical parts
+of the prose are generated from the same source of truth the CLI reads, with a CI gate that fails
+on any difference after regeneration — not a keyword-presence or liveness check that could pass
+while proving nothing, the failure shape this repo has hit before.
+
+**Requirements:** REQ-engram-setup-delegates, REQ-engram-setup-prose-fallback, REQ-delegation-equivalence-derived
+
+**Depends on:** Phase 4 (delegation hands off to a `engram setup` that already registers every
+runtime and installs skills — otherwise "equivalent to the binary" has nothing complete to be
+equivalent to).
+
+**Success criteria:**
+
+1. `/engram-setup` detects the `engram` binary on PATH and delegates to `engram setup` when it is
+   present.
+2. When the binary is absent, `/engram-setup` completes setup for the current agent using its own
+   instructions, unchanged from today's first-class prose path.
+3. The mechanical parts of `/engram-setup`'s prose are generated from the same source of truth
+   `engram setup` reads, and CI fails on any difference between the generated content and what's
+   committed — so the two paths cannot silently diverge.
+
+**Plans:** TBD
+
+---
+
+### Phase 6: Install Documentation
+
+**Goal:** docs-site tells a new user how to actually obtain engram and how to run `engram setup`,
+reflecting the final, shipped behavior of every earlier phase rather than the Docker-only,
+binary-optional story it tells today.
+
+**Requirements:** REQ-docs-install-path, REQ-docs-setup-documented
+
+**Depends on:** Phase 1 (needs the working cask) and Phase 5 (needs `engram setup`'s final behavior
+and the delegation story settled).
+
+**Success criteria:**
+
+1. docs-site documents how to obtain the binary, including the exact working Homebrew invocation —
+   closing the gap where `guides/quickstart.md` covers Docker only and `guides/cli.md` never says
+   how to get the binary.
+2. docs-site documents `engram setup` — which runtimes it configures, its preview/`--apply`
+   behavior, and how to configure a runtime it does not support.
+
+**Plans:** TBD
+
+---
+
 ## Progress
 
-**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · 13 → 14 (embedder track) · 15 → 16 → 17 → 18 → 19 (write-lane track, strict order) · 20 → 21 (independent) — v0.10.x shipped 2026-07-16 · 22 → 23 (Cedar foundation → service auth/tenancy, strict order) · 24 → 25 → 26 (capture trio + recall/config tail, strict order; 24 can start in parallel with 22–23) — v0.11.x shipped 2026-07-26 · v0.12.x: 1 → 2 (spine → CLI, strict order) · 3 · 4 · 5 · 6 (independent of the spine and of each other; ran in parallel once 1 was underway) · 7 (CLI cross-spine wiring, closed the audit seam between 2 and 3) — v0.12.x shipped 2026-08-02 · v0.13.x: 1 · 2 (parallelizable with each other) → 3 (needs 1 and 2 settled first) → 4 (authored in parallel with 3, full acceptance trails it) → 5 (last; needs 3's `verify` for the #355 fixture, reconciles each phase's own validation as it closes) — v0.13.x planned 2026-08-03 · 2026-08-12.01: 1 → 2 → 3 → 4 → 5 (needs 4) · 6 (independent, parallelizable with 3–5; must finish before 7) → 7 (needs 5 and 6) → 8 (needs 4 and 7) — 2026-08-12.01 roadmapped 2026-08-12
+**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · 13 → 14 (embedder track) · 15 → 16 → 17 → 18 → 19 (write-lane track, strict order) · 20 → 21 (independent) — v0.10.x shipped 2026-07-16 · 22 → 23 (Cedar foundation → service auth/tenancy, strict order) · 24 → 25 → 26 (capture trio + recall/config tail, strict order; 24 can start in parallel with 22–23) — v0.11.x shipped 2026-07-26 · v0.12.x: 1 → 2 (spine → CLI, strict order) · 3 · 4 · 5 · 6 (independent of the spine and of each other; ran in parallel once 1 was underway) · 7 (CLI cross-spine wiring, closed the audit seam between 2 and 3) — v0.12.x shipped 2026-08-02 · v0.13.x: 1 · 2 (parallelizable with each other) → 3 (needs 1 and 2 settled first) → 4 (authored in parallel with 3, full acceptance trails it) → 5 (last; needs 3's `verify` for the #355 fixture, reconciles each phase's own validation as it closes) — v0.13.x planned 2026-08-03 · 2026-08-12.01: 1 → 2 → 3 → 4 → 5 (needs 4) · 6 (independent, parallelizable with 3–5; must finish before 7) → 7 (needs 5 and 6) → 8 (needs 4 and 7) — 2026-08-12.01 roadmapped 2026-08-12 · 2026-08-23.01: 1 · 2 (independent, parallelizable with 1) → 3 → 4 → 5 (strict order) → 6 (needs 1 and 5) — 2026-08-23.01 roadmapped 2026-08-23
 
 > **Phase numbering restarts per milestone as of v0.12.x.** Phases 1–26 above are the pre-v0.12.x
 > monotonic sequence and keep their historical numbers. In **prose**, a phase number is only
@@ -326,6 +543,12 @@ mechanism instead of another one-shot operator command.
 | 7. Console & CLI State Surfacing | 2026-08-12.01 | 3/3 | Complete | 2026-08-20 |
 | 8. Registry & Docs Tail | 2026-08-12.01 | 3/3 | Complete | 2026-08-22 |
 | 9. Report pending in migrate status | 2026-08-12.01 | 2/2 | Complete | 2026-08-22 |
+| 1. Version & Homebrew Distribution | 2026-08-23.01 | 0/5 | Not started | - |
+| 2. Setup Command Core | 2026-08-23.01 | 0/6 | Not started | - |
+| 3. Runtime Registration | 2026-08-23.01 | 0/6 | Not started | - |
+| 4. Skills Distribution | 2026-08-23.01 | 0/3 | Not started | - |
+| 5. Slash Command Delegation | 2026-08-23.01 | 0/3 | Not started | - |
+| 6. Install Documentation | 2026-08-23.01 | 0/2 | Not started | - |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.

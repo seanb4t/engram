@@ -1,175 +1,256 @@
 # Project Research Summary
 
-**Project:** engram — Record State & Schema Evolution
-**Milestone:** `2026-08-12.01`
-**Domain:** Payload schema versioning + eager migration mechanism + Connect wire-parity widening + typed operator renderer, in an already-shipped Go + Qdrant single-binary service
-**Researched:** 2026-08-12
-**Confidence:** HIGH overall (every architectural and pitfall claim is read directly off internal/store, internal/surfaces, internal/webauth, cmd/engram, proto/engram/v1 at HEAD; the migration-registry shape is MEDIUM — no canonical Go library exists for a db-less, Qdrant-native migration ledger, so it is a designed pattern extrapolated from in-repo precedent, not an imported one)
+**Project:** engram
+**Domain:** CLI distribution (Homebrew cask) + multi-runtime agent-config bootstrap (`engram setup`)
+**Milestone:** 2026-08-23.01 — Distribution & Agent Bootstrap
+**Researched:** 2026-08-23
+**Confidence:** MEDIUM overall — HIGH on distribution mechanics, MEDIUM on the agent-runtime config surfaces that make up most of the new code
 
 ## Executive Summary
 
-This milestone adds four tightly-coupled capabilities to an already-shipped memory store: a schema_version payload discriminator, an eager sweep-based migration mechanism (engram migrate), additive Connect wire parity for six Memory fields (five already exist in Go, unwired on the wire), and a typed operator renderer to make JSON/text output drift structurally unrepresentable. All four research tracks converge on the same conclusion: zero new Go dependencies are required. Every capability lands on a seam the codebase already has — internal/webauth session payload version for the version-stamp mechanics, registerDestructive preview/apply tier for the migration CLI, BackfillShortIDs/RemapOwner idempotent-scan-and-repair shape for the sweep, and internal/surfaces sealed-registry discipline (minus its literal conformance-gate machinery) for the migration-step registry.
+This milestone builds on solved ground for half its scope and open ground for the other half, and the two halves should not be graded on the same curve. Homebrew cask publishing via GoReleaser's `homebrew_casks:` is HIGH confidence: version-pinned docs, a real sibling cask already running in production (`seanb4t/homebrew-tap` `Casks/codegraph.rb`), and this repo's own dependency graph all agree on the shape. The hard parts here are known and enumerable — cross-repo credential scoping, the release-please/GoReleaser tag-vs-artifact ordering gap, and (because this binary is deliberately unsigned) getting the quarantine-strip-before-version-gate ordering right in the cask's `postflight` block.
 
-The single highest-risk finding, surfaced independently by both the architecture and pitfalls research, is a cardinality trap: the codebase's own idiom for "new orthogonal record state" is to add a sibling IsEmpty condition to the recall gate (as done for superseded_by/archived_at). Applying that exact idiom to schema_version — which is absent on nearly 100% of existing records at adoption, the inverse cardinality of the optional states it sits next to in the code — would silently exclude every pre-migration record from recall with no error, indistinguishable from an empty store. This must become an explicit negative requirement (a "recall gate blast radius" test) landed in the same phase that introduces the field, not deferred to a hardening pass. A second structural finding narrows the scope of what the migration mechanism can safely promise: fromPayload/payload() are flat, unconditional codecs with no version-dispatch branch, so schema_version alone enables only additive schema evolution (new optional keys) — not renaming, restructuring, or reinterpreting existing keys. That constraint should be stated explicitly in the design, not discovered under pressure by a future migration author. A third finding, orthogonal to correctness but shaping where the sweep is even needed: tolerant read-time decoding (the Phase 03.1 supersedesFromPayload precedent) fully handles representation-only schema changes, but structurally cannot fix a field that participates in a Qdrant filter/index condition — those filters run server-side against the raw stored payload, before decode-time tolerance ever runs. Only filter-relevant fields require the explicit sweep.
+The other half — writing native config for Claude Code, Codex, Cursor, and opencode — is MEDIUM confidence across all four independent research passes, and all four converge on the same warning: third-party agent-runtime docs move fast, are not version-pinned the way GoReleaser's are, and in opencode's case actively contradict themselves across two currently-live docs pages (V1 vs V2 MCP schema). This asymmetry should drive build order directly: land the distribution half and the `internal/setup` writer *abstraction* first, where the ground is solid, and treat each runtime-specific writer as needing a fresh, direct verification pass against that runtime's current behavior immediately before its own implementation — not as something settled by this research round.
 
-The main deployment-facing risk to steer around is the field's dominant default: auto-migration on server startup (Gitea, Grafana, Vaultwarden all do this, and all have documented operator friction from it — Grafana's community forum has repeated threads asking to disable it). That default directly contradicts engram's own "explicit, never automatic" design stance and its already-shipped, audited registerDestructive precedent; the recommended shape is a non-blocking, logged startup warning ("N records at a stale schema version; run engram migrate --apply") with the actual mutation staying a deliberate, registerDestructive-gated operator action. Finally, issue 482 (Connect lane silently omitting five already-shipped state fields for three consecutive milestones) recurred specifically because a clean buf breaking run and green CI were mistaken for proof that memoryToProto was updated — they prove only that the schema is additive, not that the mapping function changed. This milestone must not repeat that mistake a fourth time; the required proof is an exhaustive round-trip test over store.Memory's wire-eligible fields, not a hand-maintained checklist.
+The core architectural risk is not any single runtime's config format — it's the "two paths must agree" problem: `/engram-setup` (hand-maintained prose) and `engram setup` (Go code) must produce equivalent outcomes, and this repo has documented history of vacuous gates (keyword-presence checks, independent liveness checks) that look like they prove equivalence while proving nothing. The mitigation converges from architecture and pitfalls research on the same answer — generate the prose's mechanical content from the CLI's own source of truth, with a `git diff --exit-code` gate that cannot pass on stale content — and this should be treated as load-bearing infrastructure, not a follow-up test.
+
+## Post-Synthesis Live Verification (orchestrator, 2026-08-23)
+
+> Added by the `/gsd-new-milestone` orchestrator AFTER synthesis, by running the real binaries
+> installed on this machine. This supersedes the corresponding "MEDIUM/LOW confidence,
+> re-verify just-in-time" guidance below wherever the two disagree — these are HIGH-confidence
+> observations from live tools, not documentation reads. Open questions 1, 2 and 9 are resolved
+> in the table further down.
+
+**Three of four target runtimes have a native `mcp add` CLI command. Only Cursor needs a file writer.**
+
+| Runtime | Write path | Verified how | Format engram must parse |
+|---------|-----------|--------------|--------------------------|
+| Claude Code | `claude mcp add --transport http engram <url> --scope user` (+ `--header`, `--client-id`) | already shipped in `/engram-setup` prose | none |
+| Codex | `codex mcp add <NAME> --url <URL>` (+ `--bearer-token-env-var`, `--oauth-client-id`, `--env`) | `codex mcp add --help`, codex-cli **0.148.0** | **none — TOML never touched** |
+| opencode | `opencode mcp add [name] --url <URL> --header KEY=VALUE` (+ `auth`, `logout`, `debug`, `list`) | `opencode mcp add --help`, opencode **1.18.15** | **none — JSONC never touched** |
+| Cursor | file write: `~/.cursor/mcp.json` | read live: plain JSON, top-level `mcpServers` key | plain JSON (stdlib `encoding/json`) |
+
+**Consequences for the roadmap:**
+
+1. **The TOML/JSONC stdlib gap is retired, not mitigated.** The "surgical marker-bounded text editing"
+   design that all four researchers converged on is no longer needed for any runtime. Zero-new-Go-dependencies
+   is under no pressure from this milestone. Do not build a TOML text editor.
+2. **opencode's V1/V2 schema divergence — named as the round's single highest-risk item — is moot.**
+   engram never writes that file, so which schema the binary reads is not engram's concern.
+3. **Phase 7 collapses.** What was scoped as "three high-risk writers needing just-in-time schema
+   re-verification" is now two shell-out writers (structurally identical to the Claude Code writer)
+   plus one plain-JSON file writer.
+4. **The merge-never-replace requirement is live and real for Cursor.** The verifying machine's
+   `~/.cursor/mcp.json` already contains three unrelated servers (`MCP_DOCKER`, `codegraph`, `firecrawl`).
+   Clobbering that file is a real, reachable defect, not a hypothetical.
+5. **A new dependency appears: runtime CLI availability.** Shelling out means each runtime's binary must
+   be on PATH and support these flags. Flag/version drift in a third-party CLI is now a live failure mode,
+   which argues for pinning the observed versions above and failing legibly on an unexpected flag surface
+   rather than silently writing nothing.
+
+**Not verified here:** Cursor was not on PATH on this machine (only `~/.cursor/` exists), so no Cursor
+*CLI* surface was probed — the file-writer conclusion stands on the config file read, and the possibility
+of a Cursor CLI remains genuinely unchecked. Native *skill*-format questions (open questions 3 and 4) are
+untouched by this verification and remain open.
 
 ## Key Findings
 
 ### Recommended Stack
 
-Nothing new to install; go.mod/go.sum should be unchanged by this milestone (verify with git diff go.mod go.sum before merge). The stack decision is entirely about which existing seam each capability extends.
+GoReleaser v2.10+ `homebrew_casks:` (already satisfied by this repo's `~> v2` CI pin) replaces the deprecated `brews:` formula path. No archive changes needed — the existing single `tar.gz` `id: default` archive works as-is. `engram version --json` and shell-completion generation both ride on `cobra`/`cobra/doc`, whose transitive deps are *already* indirect requirements in `go.mod` — importing `cobra/doc` should be a zero-diff `go mod tidy`. Cross-repo publishing to `seanb4t/homebrew-tap` requires a dedicated credential (PAT or GitHub App token) distinct from the release workflow's own `GITHUB_TOKEN`. Unsigned-binary distribution is handled by a `postflight` xattr quarantine strip, not code signing — signing would require GoReleaser Pro + an Apple Developer account, correctly out of scope.
 
-Core technologies (existing, reused):
-- Go stdlib encoding/json — schema_version discriminator and migration-report JSON extend store.Memory's existing payload()/fromPayload() round-trip pair; no new marshal mechanism needed.
-- github.com/qdrant/go-client v1.18.3 (pinned) — migration writes are a SetPayload single-key merge, the exact shape Store.Supersede's back-stamp already uses; no new query surface.
-- github.com/spf13/cobra v1.10.2 (pinned) — engram migrate registers through registerDestructive, the existing choke point migrate-remap-owner/prune-expired already use.
+**Core technologies:**
+- GoReleaser `homebrew_casks:` — cask generation/push, replaces deprecated `brews:` — matches the org's already-shipped `codegraph.rb` pattern
+- `cobra`/`cobra/doc` (already vendored) — completions, man pages, `version --json` — genuinely zero new dependency
+- `encoding/json` (stdlib) — JSON config-writer targets (Claude Code, Cursor); NOT sufficient for Codex (TOML) or comment-bearing opencode files (JSONC)
+- Marker-delimited plain-text append (no library) — AGENTS.md fallback for runtimes with no native skill format
 
-Supporting patterns (named, not imported): the "Schema Versioning Pattern" (document-store literature: version field on the document, absent = legacy, no backfill to adopt) already matches sessionPayloadVersion's shape; eager background-sweep migration (not lazy/migrate-on-read) matches every migration engram has shipped to date; idempotent scan-and-repair with Qdrant itself as the ledger (no separate migrations table) matches BackfillShortIDs/RemapOwner; an ordered step registry as a plain Go slice/const table (not a DAG or file-discovery mechanism), mirroring internal/surfaces's rule registry and toolclass table.
-
-Explicitly rejected: golang-migrate/goose/atlas (relational, .sql-file-based, no Qdrant driver, violates the zero-new-dependency constraint); a new schema_migrations-equivalent Qdrant collection (new infrastructure for a property schema_version less-than target already gives for free — and would additionally violate the locked invariant DEC-2bv, one Qdrant collection ever); lazy migrate-on-read (would smear version-handling across every read call site instead of concentrating it in one sweep command); reflection-based struct-tag walking for the typed renderer (new dependency or hand-rolled reflect walker, inconsistent with this codebase's compile-time-visible-structure preference).
 ### Expected Features
 
-Must have (table stakes) — all P1 per FEATURES.md's prioritization matrix:
-- schema_version discriminator, absent = v0, auto-injected on write / explicit-checked on read
-- engram migrate status — a read-only version-distribution histogram (not a single scalar; Qdrant has no single schema-version row, so "current version" is inherently a per-collection distribution), reported before any write
-- engram migrate --apply via registerDestructive (preview-by-default, --apply opt-in — reusing, not reinventing, the choke point)
-- Ordered migration registry (v0 to v1 chain), subsuming backfill-short-ids as its step body — and explicitly NOT subsuming migrate-remap-owner/summarize-missing/reindex (none of those three are schema-version-driven; folding them in would make the registry's applicability predicate lie)
-- Connect record-state proto parity (six additive Memory fields)
-- Typed operator renderer (structural fix for the JSON/text drift class issue 481 exists to close)
-- Console + CLI surfacing of archived/superseded/scheduled/migration state
-- Idempotent re-run and bounded/cancellable runtime (--timeout, SIGTERM) — both already-shipped properties of every existing sweep command, must not regress
+**Must have (table stakes):**
+- Runtime detection via binary-on-PATH as primary signal (config-dir presence alone produces both false positives and false negatives — every serious prior-art tool avoids it as the sole gate)
+- Preview-by-default / `--apply` to mutate, matching engram's own established operator-command convention (`migrate`, `prune-expired`)
+- Show the exact bytes that would be written, not a summary — table stakes across every serious multi-runtime tool surveyed (`mx setup --dry-run`, `zowe --dry-run`)
+- Merge into existing config, never replace whole file — every serious prior-art tool (`getmcp`, `mx setup`, `mcp-config`) treats overwriting a foreign entry as the cardinal sin
+- Idempotent re-run converging to the same state, with "already correct" reported distinctly from "wrote it"
+- Claude Code: shell out to `claude mcp add`, never hand-write `~/.claude.json`/`.mcp.json` — the existing `/engram-setup` prose already does this correctly and must not regress
+- Non-interactive `--yes`/`--json`/`--runtime <name>` flags from v1, not deferred — every serious multi-runtime tool has these from day one
 
-Should have (differentiators): per-collection version histogram instead of a single "dirty"-flag-style scalar (sidesteps golang-migrate's best-known operator pain point by construction); migration report routed through the new typed renderer from its first commit rather than a bespoke hand-rolled struct; shared --scope/--all-scopes guard (RuleSweepScopeOrAllScopesRequired, issue 480) reused by migrate rather than a bespoke flag; console/CLI record-state surfacing that no comparable self-hosted tool (Gitea, Grafana, Vaultwarden) exposes in its UI at all.
+**Should have (differentiators):**
+- Single first-party binary configuring 4 runtimes in one pass, vs. generic third-party tools that can't know engram's own auth modes
+- `/engram-setup` conditionally delegating to `engram setup` — genuinely novel prior-art shape, needs a derived (not hand-maintained) equivalence gate
 
-Defer (v2+): migration progress/resumability tuning for very large collections (no real deployment size data exists yet — v0.13.0 itself is undeployed); migrate status --output json wired into a CI health-check gate; refined precedence rules for compound record state (archived AND superseded simultaneously) — don't pre-guess, wait for real console usage.
+**Defer (v2+):**
+- Drift/version-skew detection across binary, plugin, and server versions — explicitly out of scope
+- Auto-reconciling a manually hand-edited engram MCP entry that has drifted from what `engram setup` would write
+- Team/org-level Cursor config — no CLI surface exists for this even in principle
 
-Anti-features (rejected explicitly, not by omission): automatic migration on server startup (contradicts the explicit-only design stance and the shipped registerDestructive precedent — use a logged, non-blocking warning instead); down-migrations/rollback (Qdrant has no DDL/schema layer, "down" would mean writing a second payload-mutation function to trust, and it papers over the tension that in-place migration mutation is the one place this milestone diverges from supersession's additive/history-preserving philosophy — use Qdrant snapshot/restore as the documented rollback story instead); retrofitting migrate-remap-owner/summarize-missing/reindex into the version-driven registry (none are schema-version-triggered — already correctly scoped out by PROJECT.md, not an open question); a tolerant decoder as the sole schema-evolution mechanism forever (works only for representation-only changes — see Architecture finding on filter-relevant fields below).
+**Anti-features (deliberately not building):** silently overwriting existing config entries; auto-running `engram setup` from a `brew install` postinstall hook (Homebrew postflight failures are swallowed, `rescue => e; opoo e`, making a broken auto-setup invisible); telemetry on detected runtimes; mutating a runtime's config without the user selecting it; guessing opencode's schema version and writing the wrong one silently.
 
 ### Architecture Approach
 
-The system's existing three-tier operator-command shape (internal/store does the Qdrant work, cmd/engram is a thin cobra adapter, pure sharable logic lives in its own leaf package) is not being replaced — this milestone is one more instance of it. internal/store gains a SchemaVersion field on Memory plus a new Store.Migrate sweep method (Subject-less, scroll-batch-resume, mirroring BackfillShortIDs/Reindex/RemapOwner). A new pure leaf package, internal/migrate, holds the ordered step registry — zero import of internal/store/qdrant/authz, imported BY internal/store (never the reverse), operating on raw map payloads rather than the typed Memory struct. internal/server memoryToProto gains six additive field mappings from the already-shipped-but-unwired Go fields plus the new SchemaVersion. cmd/engram gets a new file (not a reuse of the existing migrate.go, which already owns migrate-remap-owner) wiring engram migrate through registerDestructive.
+`internal/setup/` follows this repo's established stdlib-only leaf-package convention (mirroring `internal/migrate`, `internal/surfaces`): a `Runtime` interface (`Detect`/`Plan`/`Apply`/`SupportsNativeSkills`) implemented one file per runtime in the *same* package (not subpackages — avoids invented parent packages and import-cycle risk), registered in a package-level `Runtimes` slice literal. `cmd/engram/setup.go` is a thin entrypoint wired through `registerDestructive`, the same preview/`--apply` machinery every other mutating operator command already uses — this gives `engram setup --help` identical apply-flag wording to `engram migrate --help` for free.
 
-Major components:
-1. internal/store — owns Memory, the payload codec, every Qdrant filter (authz + recall gates), and the new Store.Migrate sweep (Subject-less, same authz-bypass precedent as Reindex/BackfillShortIDs/RemapOwner)
-2. internal/migrate (NEW) — pure, dependency-free ordered step registry; reuses internal/surfaces's sealed-marker plus ValidateX() invariant-checker plus copy-returning accessor discipline, but explicitly rejects its literal anchored-text conformance-gate machinery (a migration step is one executable transform applied once to stored data — there is no second "surface" to byte-compare against)
-3. internal/server (connectapi.go) — the single memoryToProto conversion chokepoint gains 6 field mappings, numbers 23 to 28 (message currently ends at citations = 22) — a one-way door under buf breaking CI gating
-4. cmd/engram — new file for engram migrate, thin RunE calling exactly st.Migrate(ctx, opts), routed through registerDestructive; renderOperator gets the typed-renderer refactor (issue 481)
-5. Operator console (SvelteKit) — currently "cannot render the v0.13.x archive tier at all"; gains archived/superseded/scheduled/schema-version surfacing, gated behind proto parity plus the typed renderer both landing first
+**Major components:**
+1. `internal/setup/runtime.go` — the `Runtime` interface + registry, mirroring `migrate.Registry`'s "must be a package-level literal" discipline
+2. `internal/setup/{claudecode,codex,cursor,opencode,genericmcp}.go` — one writer per runtime, each independently addable without touching the others
+3. `internal/setup/apply.go` — shared atomic-write + backup primitives (temp file in same dir + `os.Rename`, one implementation reused by every file-based writer)
+4. `internal/setupgen/` (new, mirrors `internal/surfacesgen`) — generates the mechanical parts of `/engram-setup`'s prose fallback from `setup.Runtimes`, with a CI `git diff --exit-code` gate
+5. `skill/engram/assets.go` — a same-tree `go:embed` package carrying the five skills' Markdown, giving a brew-installed binary with no Claude plugin present the content needed for native-format or AGENTS.md-fallback skill writes, with zero duplication risk
 
-Suggested build order (from ARCHITECTURE.md's dependency analysis): (1) gate/CI integrity fixes (issue 479 pattern-escaping bug, issue 497 testcontainer flakiness) must land first because every later phase authors new internal/surfaces key-links and needs a build that can actually go red; (2) record schema versioning foundation (field plus codec plus internal/migrate scaffolding, no sweep/proto/CLI yet — pure and independently testable); (3) the migration mechanism (Store.Migrate plus engram migrate CLI); (4) Connect record-state parity (issue 482, strictly after 2/3 since the Go type must be locked before the one-way proto cut); (5) typed operator renderer (issue 481, can run parallel to 4, must precede 6); (6) console plus CLI surfacing (depends on 4 and 5); (7) registry plus docs tail (RuleSweepScopeOrAllScopesRequired, reference docs, CLAUDE.md's "Not used here" line revision).
+**Hard sequencing constraints found in the code:**
+- `cmd/engram/catalog.go:100-107` panics if any cobra command lacks a row in `internal/surfaces/toolclass.go` — adding `setup` to the tree and adding its classification row **must land in the same commit/PR**, not sequenced across two.
+- `cmd/engram/cmdwalk.go:118`'s `operatorCommands()` predicate excludes any command with a flag literally named `--server` — if `engram setup` needs a server-URL flag, it must be named something else (e.g. `--server-url`) or it silently falls out of operator-tier classification, the opposite of the milestone's intent.
+- `engram version --json` is a hard prerequisite for the cask's postflight install-time gate (`system_command engram, args: ["version", "--json"]`) — it has no dependency on anything else in this milestone and should land first or in parallel with the cask work, never after.
+- Quarantine-strip ordering: the `postflight` block must strip `com.apple.quarantine` from the installed binary as its literal first action, before any `system_command` invocation of that binary — reversing this order means the version-assertion gate itself gets SIGKILLed by Gatekeeper rather than failing cleanly.
 
 ### Critical Pitfalls
 
-1. Recall-gate cardinality trap — reusing the IsEmpty(superseded_by)/IsEmpty(archived_at) soft-hide idiom for schema_version would silently exclude ~100% of pre-migration records from recall (absence is the majority state, not a minority optional one, at adoption). schema_version must never appear in any of ownerScopeFilter, activeWindowConditions, or any Search/List/SearchDiscovery/ListScheduled filter-builder. A negative "recall gate blast radius" test is required in the same phase that introduces the field, not a later hardening pass.
-2. No version-dispatch codec, meaning additive-only migrations, no rollback path — fromPayload/payload() are flat, unconditional codecs; adding schema_version does not by itself let the codec interpret two different payload shapes. Scope this milestone's migrations to additive-only changes explicitly (in design doc and --help text); flag non-additive schema evolution as a deferred, separate research question rather than something schema_version secretly already solves.
-3. Filter-relevant fields structurally require the sweep; representation-only ones don't — tolerant decode (Phase 03.1's supersedesFromPayload precedent) is free and correct for fields never read by a Qdrant filter condition, but has zero effect on filter-condition fields (owner, visibility, superseded_by, archived_at, not_before, not_after, any future indexed key) because those filters run server-side against the raw stored payload before any Go decode ever executes. Audit each new/evolving field against ownerScopeFilter/activeWindowConditions/the two IsEmpty gates before deciding whether a step needs the write-back sweep.
-4. Whole-payload Upsert in a migration step drops out-of-band keys (recurrence risk of CR-01) — the migration write primitive must be a targeted SetPayload merge (same shape as SetVisibility/Supersede's back-stamp), never a full Upsert, unless proven to round-trip through payload()/fromPayload() with the current struct definition. Requires a round-trip test seeding every optional field and asserting byte-identical survival.
-5. Qdrant multi-ID SetPayload is not atomic (confirmed upstream, qdrant/qdrant issue 9371) — a migration sweep must reconcile by re-derivation (fresh Scroll/Count against schema_version less-than target) after any batch write, never trust the write call's own success/failure signal, mirroring reconcileSupersedeFailure (D-15).
-6. buf breaking passing plus code compiling is NOT evidence the wire mapping is correct — this exact failure (issue 482) has already recurred three times: proto extended, buf breaking green, CI green, while memoryToProto silently never mapped the new fields. Requires an exhaustive round-trip test (not a hand-maintained field list) landed in the same phase as the field additions.
+1. **Cross-repo credential scoping (Pitfall 1)** — the release workflow's `GITHUB_TOKEN` and release-please App token cannot write to `seanb4t/homebrew-tap`; a dedicated credential (scoped PAT or, better, a second GitHub App installed only on the tap) must be provisioned and verified with a manual `gh api` call *before* the first real release depends on it.
+2. **Tag-cut-but-cask-unpublished (Pitfall 2)** — release-please and GoReleaser share only "the tag exists" as a signal; any failure between tag creation and the cask push (proxy delay, credential failure) leaves a published GitHub Release with a stale or missing cask. Recovery already exists in this repo's `workflow_dispatch` re-ship path — extend it, don't invent a new mechanism, and rehearse it once against a throwaway tag.
+3. **Quarantine-strip-before-gate ordering (Pitfall 3)** — the single most consequential pitfall for this milestone specifically, because `engram version --json` as an install-time correctness gate is a named milestone prerequisite.
+4. **TOML/JSONC vs. zero-new-Go-dependencies (Pitfall 6, cross-cutting)** — see dedicated section below.
+5. **The two-paths-must-agree vacuity trap (Pitfall 12, cross-cutting)** — see dedicated section below.
+
+## Cross-Cutting Risks (found independently by multiple researchers)
+
+### TOML/JSONC stdlib gap vs. zero-new-Go-dependencies
+
+STACK, FEATURES, ARCHITECTURE, and PITFALLS all independently flag the same fact: Go's stdlib has no TOML support (needed for Codex's `~/.codex/config.toml`) and `encoding/json` rejects comments outright (needed for opencode's `opencode.jsonc`), while the milestone's standing constraint is zero new Go dependencies. All four converge on the same mitigation, described with matching detail: **do not attempt a general parse/merge round-trip for either format.** Instead do surgical, marker-bounded *text-level* editing — detect a `[mcp_servers.engram]` table header (or equivalent) via line-oriented scanning/regex, and only ever append (if absent) or replace the exact byte range between that header and the next top-level header (if present), leaving everything else in the file byte-for-byte untouched. This sidesteps needing a parser for the write path entirely; a similarly narrow lexical check suffices for the idempotency-detection read path. PITFALLS additionally flags this as a decision point that must be *recorded explicitly* if it ever needs revisiting (e.g., if line-oriented editing proves too fragile against nested inline tables or multi-line strings) — this project's "zero new deps" constraint is described as standing, i.e. requiring a deliberate, recorded exception rather than a quiet one. No disagreement across researchers on this point; treat it as settled guidance.
+
+### The two-paths-must-agree vacuity problem
+
+ARCHITECTURE and PITFALLS both treat this as a primary risk and converge on the same underlying diagnosis and the same primary mitigation, with PITFALLS adding sharper detail on *why naive gates fail*:
+
+- **Diagnosis (both agree):** `/engram-setup` (hand-maintained markdown) and `engram setup` (Go code) must produce equivalent outcomes when the slash command delegates, and nothing structurally prevents drift between them. This repo has documented history of exactly this failure shape (a regex character class swallowing a token boundary; independent liveness checks that each look green while proving nothing about equivalence).
+- **Naive gates that would pass vacuously (PITFALLS, itemized):** keyword/string-presence matching between the two files; independent liveness checks with no cross-comparison; freshness/recency proxies (mtime ordering). ARCHITECTURE's own evaluated-options table (option C, "structural equivalence via substring containment") independently arrives at the same rejection for the same reason.
+- **Primary mitigation (both agree, same mechanism):** generate the mechanical content — the mode→command table already in `engram-setup.md` — from a single Go-side source of truth (`internal/setup.Runtimes`), with a `git diff --exit-code` CI gate after a full regeneration in a throwaway checkout. This is structurally non-vacuous because "pass" and "byte-identical to fresh output" are the same condition by construction; there is no partial-match check to weaken. ARCHITECTURE names the concrete implementation: a new `internal/setupgen` package mirroring the existing `internal/surfacesgen`, with anchor-comment regions in the markdown, following the same `task surfaces:gen`-in-throwaway-checkout CI pattern already proven for `internal/surfaces`.
+- **Secondary mitigation, where they add distinct value:** ARCHITECTURE proposes a *manual cold-read UAT* at phase-verification time — citing this repo's own v0.12.x precedent of a fresh agent with zero phase context correctly following prose as an accepted verification instrument — for the natural-language parts that can't be generated (framing, tone, troubleshooting prose). PITFALLS frames the same non-generatable-content problem as needing a *behavioral* dry-run-diff test: run `engram setup --dry-run` for a given runtime/mode combination, capture the machine-readable plan, and prove both the prose-delegation branch and the CLI branch converge on the same resulting config state by diffing the *result*, never the *instructions*. These are complementary, not conflicting — generate what's mechanical, gate what's generated with a byte-diff, and verify what's irreducibly prose with either a cold read (ARCHITECTURE) or a behavioral convergence test (PITFALLS); both explicitly reject textual-similarity checking as the *primary* proof mechanism for the same reason.
+
+No disagreement between the two reports on the core mitigation; they emphasize complementary secondary layers rather than proposing competing solutions.
+
 ## Implications for Roadmap
 
-Research strongly converges on the seven-step build order ARCHITECTURE.md derives from the dependency graph, cross-validated against FEATURES.md's dependency notes and PITFALLS.md's phase-mapping table. All three research files independently arrive at the same phase boundaries — this is a rare case of unanimous agreement across tracks, which should carry weight in the roadmap.
+Based on research, suggested phase structure (ordered by genuine dependency per ARCHITECTURE's build-order analysis, not conceptual grouping):
 
-### Phase 1: Gate and CI Integrity (prerequisite)
-Rationale: Every later phase authors new internal/surfaces key-links (at minimum RuleSweepScopeOrAllScopesRequired) and new partial-failure-injection tests. Issue 479 (a pattern escaping bug that silently no-ops key-link gates) and issue 497 (Qdrant testcontainer flakiness) must both be fixed and proven fixed first, or later phases either author silently-broken gates or get real regressions waved off as "probably infra."
-Delivers: A build that can actually go red for the work this milestone is about to add.
-Avoids: Pitfalls 9, 10.
+### Phase 1: `engram version --json`
+**Rationale:** No dependency on anything else in this milestone; hard prerequisite for the cask's postflight gate. Land first or in parallel with cask work, never after.
+**Delivers:** `--json` flag on the existing `version` command (`Run` → `RunE` for error return), no new `internal/surfaces` row needed (already classified `ReadOnly: true`).
+**Avoids:** Pitfall 3 (a cask that installs green but whose install-time correctness gate has nothing to invoke).
 
-### Phase 2: Record Schema Versioning Foundation
-Rationale: Pure and independently testable — no Qdrant sweep, no proto, no CLI needed yet. Must land before the migration mechanism (which needs schema_version to filter on) and before the proto cut (which needs the Go type locked, since proto field numbers are a one-way door).
-Delivers: store.Memory.SchemaVersion, the current-version constant, payload()/fromPayload() wiring (server-set-only stamp on write; absent-reads-as-v0 on read, mirroring sessionPayloadVersion but not mirroring its reject-on-mismatch half — a memory record is a persistent asset, not a disposable session). Scaffolds the new internal/migrate leaf package (sealed-marker registry shape plus ValidateSteps()), even with zero steps registered yet.
-Addresses: schema_version discriminator (FEATURES.md P1).
-Avoids: Pitfall 1 (negative recall-gate test, must land in THIS phase), Pitfall 11 (contentFingerprint reflex-add), Pitfall 14 (write-path/sweep-timing gap — write-path auto-injection must land in the same commit as the field, proven by a test that 100% of post-commit writes carry a non-absent version).
+### Phase 2: Homebrew cask distribution
+**Rationale:** Depends only on Phase 1 (needs `version --json` to exist for the postflight gate). Can proceed in parallel with the `internal/setup` work.
+**Delivers:** `homebrew_casks:` block in `.goreleaser.yaml`, cross-repo credential, `postflight` quarantine-strip-then-version-assert hook, and a forked-and-adapted cask rehearsal target (`task release:rehearse-cask`, unsigned-appropriate variant of `codegraph-go`'s).
+**Addresses:** the milestone's "one command" install promise.
+**Avoids:** Pitfalls 1 (credential scoping), 2 (tag/artifact ordering gap), 3 (quarantine ordering), 4 (`brew audit` failure classes), 15 (rehearsal must positively assert the quarantine strip, not just copy the signed sibling's rehearsal).
 
-### Phase 3: Migration Mechanism (engram migrate)
-Rationale: Depends on Phase 2's schema_version field and internal/migrate scaffold. Independent of the proto/console work — this is pure store plus CLI.
-Delivers: Store.Migrate sweep method (Subject-less, scroll-batch-resume, range-based eligibility filter less-than target not equality zero); new cmd/engram file (not migrate.go, which is already migrate-remap-owner's) wiring the command through registerDestructive with --apply as opt-in, preview as bare-invocation default — a deliberate behavior change from backfill-short-ids's inverted --dry-run default, called out in the upgrade guide. Subsumes (soft-deprecates, does not delete) backfill-short-ids.
-Uses: registerDestructive, targeted SetPayload (never Upsert), qdrantPayloadOpBatchSize-aware batching with reconcile-by-re-derivation.
-Avoids: Pitfalls 3, 4, 5, 7, 8, 13, 15.
+### Phase 3: `internal/setup` core abstraction
+**Rationale:** Every runtime writer depends on this interface's shape being settled first; the milestone explicitly calls for the writer abstraction before individual runtimes.
+**Delivers:** `Runtime` interface, `Plan`/`Action`/`Outcome` types, shared atomic-write+backup primitives (same-directory temp file + rename, symlinked-dotfiles-safe), an injectable-home-directory test seam, empty `Runtimes` registry.
+**Uses:** stdlib only (`os`, `io`, `os/exec`, `encoding/json`).
+**Avoids:** Pitfall 7 (non-atomic writes / cross-filesystem rename), Pitfall 14 (tests mutating a contributor's real dotfiles).
 
-### Phase 4: Connect Record-State Parity (issue 482)
-Rationale: Strictly after Phase 2/3 — schema_version's Go and wire type must be fully locked before the proto cut, since field numbers 23 to 28 are a permanent one-way door once shipped.
-Delivers: Six additive Memory proto fields (five already exist in Go, unwired; schema_version is the one genuinely new field); memoryToProto mapping; buf breaking stays clean.
-Implements: Connect wire chokepoint (internal/server/connectapi.go).
-Avoids: Pitfall 6 (exhaustive round-trip test, not a hand-maintained list — required in this SAME phase, not a follow-up), Pitfall 12 (not_before/not_after outward-rounding parity between write path and new read path, boundary-second test).
+### Phase 4: `cmd/engram/setup.go` wiring + two-paths generator scaffold
+**Rationale:** Must land atomically with Phase 3's registry becoming non-empty enough to be user-visible — `buildCatalog` panics on an unclassified command the instant it's added to the tree, so the command and its `internal/surfaces/toolclass.go` row are a same-commit dependency, not sequenceable across PRs. The generator scaffold (`internal/setupgen`, CI drift gate) should land here too, even with only a stub runtime registered, so every subsequent runtime addition is mechanically forced through the regenerate-and-diff gate from the start.
+**Delivers:** `setup` registered via `registerDestructive` (preview/`--apply` for free, matching `migrate`'s convention), the `internal/surfaces` classification row, golden-file regeneration, and the `internal/setupgen` anchor-comment/CI-diff mechanism.
+**Avoids:** Pitfall 12 (two-paths vacuity) from the start, rather than retrofitting once several runtimes exist undocumented; the `cmdwalk.go` `--server` flag-naming landmine.
 
-### Phase 5: Typed Operator Renderer (issue 481)
-Rationale: Can run in parallel with Phase 4 (orthogonal files, no shared code), but must complete before Phase 6 — every operator command rendering the six new fields needs the JSON/text-drift-proof shape to exist first, not retrofitted after the fields already flow through the old renderer.
-Delivers: renderOperator structural refactor — a shared Field slice walked by both Text() and MarshalJSON(), making json-wider-than-text structurally unrepresentable rather than merely detectable-by-test.
-Uses: Concrete Field-slice construction (rejects reflection-based tag-walking and a fully generic OperatorReport wrapper — see STACK.md's alternatives table).
+### Phase 5: Claude Code writer
+**Rationale:** Richest existing precedent (`/engram-setup`'s current `claude mcp add` table) to port; lowest-risk runtime since a confirmed, versioned CLI command exists. Also the first consumer of the shared `skill/engram/assets.go` `go:embed` skill-content package.
+**Delivers:** shell-out-based `Plan()`/`Apply()` for Claude Code, reusing `/engram-setup`'s existing auth-mode question flow as CLI prompts/flags.
+**Addresses:** FEATURES' "shell out, never hand-write `~/.claude.json`" table-stakes requirement.
+**Avoids:** Pitfall 5 (reimplementing Claude Code's config write by hand, regressing behavior the prose path already got right).
 
-### Phase 6: Console and CLI State Surfacing
-Rationale: Depends on Phase 4 (fields must exist on the wire) and Phase 5 (typed renderer must exist to receive them safely) — both are hard blockers, not soft ones.
-Delivers: Operator console renders archived/superseded/scheduled/schema-version state (today it "cannot render the v0.13.x archive tier at all"); CLI surfaces the same through the typed renderer.
-Addresses: FEATURES.md's named differentiator — no comparable self-hosted tool (Gitea/Grafana/Vaultwarden) exposes this in its UI.
+### Phase 6: Generic MCP client writer
+**Rationale:** No CLI to shell out to, so it exercises the plain file-write + backup + atomic-rename path in isolation before the three higher-risk runtimes reuse it.
+**Delivers:** JSON merge-write to a portable MCP config shape.
+**Uses:** the shared atomic-write primitive from Phase 3.
 
-### Phase 7: Registry and Docs Tail
-Rationale: Trailing cleanup. RuleSweepScopeOrAllScopesRequired registration has no forward dependency on the other phases and could move earlier, but documenting a mechanism before it exists invites drift — keep it last.
-Delivers: Shared --scope/--all-scopes guard registered and reused by migrate, summarize-missing, spine-review scan; reference/memory-record.md and reference/tools.md updated; CLAUDE.md's "Not used here: database migrations" line revised to state what IS now used and its scope.
+### Phase 7: Cursor, Codex, opencode writers
+**Rationale:** Each needs its own config-format re-verification at implementation time — this is the phase group where the confidence gradient bites hardest. Cursor is lowest-risk of the three (fully primary-sourced JSON schema, though the `type: "stdio"` field requirement is disputed across sources). Codex needs the TOML-avoidance surgical-text-edit approach (see Cross-Cutting Risks) and a resolved answer to "does a native `codex mcp add` exist" before committing to file-write-only. opencode is the highest-risk of all four runtimes — a confirmed, live V1/V2 schema divergence between two currently-published docs pages means writing the wrong shape produces a config the server silently never reads.
+**Delivers:** per-runtime `Plan()`/`Apply()`, with opencode possibly shipping as AGENTS.md-fallback-only this milestone if the schema question can't be closed in time (explicitly sanctioned degradation per FEATURES' MVP definition).
+**Avoids:** Pitfall 6 (TOML/deps collision), Pitfall 8 (non-uniform config paths — hardcode each as a cited constant, never derive), Pitfall 9 (duplicate registrations across differently-keyed identity signals), Pitfall 11 (version skew writing a config shape an older runtime doesn't understand).
+
+### Phase 8: AGENTS.md fallback + `/engram-setup` delegation
+**Rationale:** The delegation logic is a small, independent prose edit that can land as soon as Phase 4 produces a minimally functional `engram setup` — it doesn't need to wait for every runtime writer, since delegation only means "invoke the binary." The AGENTS.md fallback needs its own idempotency discipline (marker-delimited whole-block replacement, not checksum-only or naive append).
+**Delivers:** conditional delegation in `/engram-setup`, marker-bounded AGENTS.md-appended skill guidance for runtimes without native skill formats.
+**Avoids:** Pitfall 13 (AGENTS.md marker-deletion and in-region-edit-loss failure modes).
+
+### Phase 9: Docs-site install documentation
+**Rationale:** Sequence last so it documents final, shipped behavior; drafting can start once the cask (Phase 2) and Claude Code writer (Phase 5) exist. Must reflect the Homebrew 6.0.0 tap-trust nuance (the fully-qualified `brew install seanb4t/tap/engram` form auto-trusts and is the genuinely one-command path; the two-step tap-then-install form now requires an additional `brew trust` step on fresh installs).
 
 ### Phase Ordering Rationale
 
-- The gate/CI-integrity phase is first because it is a structural prerequisite for trusting every subsequent phase's tests, independently confirmed by both ARCHITECTURE.md's build order and PITFALLS.md's phase-mapping table (pitfalls 9, 10).
-- Schema versioning precedes the migration mechanism because the sweep needs a field to filter on; both precede the proto cut because proto field numbers are irrevocable once shipped and the Go representation must be settled first.
-- The typed renderer and Connect parity phases are mutually independent (no shared files) but both must complete before console/CLI surfacing, which depends on both.
-- This ordering directly avoids the recall-gate cardinality trap (by putting the negative test in the phase that introduces the field, not later) and the issue 482 recurrence (by putting the exhaustive round-trip test in the same phase as the field additions, not a follow-up).
+- Distribution (cask) and the config-writer core are independent after `version --json` lands, and can run in parallel — neither blocks the other.
+- Within the config-writer track, the order is strictly risk-ascending: shared infrastructure → highest-confidence runtime (Claude Code, confirmed CLI) → no-CLI baseline (generic MCP) → the three runtimes needing fresh verification (Cursor, Codex, opencode), cheapest-to-verify first.
+- The two-paths generator scaffold is deliberately front-loaded (Phase 4, not Phase 8) specifically to avoid the "retrofit a gate onto already-accumulated drift" failure mode this repo has hit before.
 
 ### Research Flags
 
-Needs deeper research during planning:
-- Phase 3 (migration mechanism): the ordered step-registry pattern is a designed shape, not an imported one (MEDIUM confidence in STACK.md) — the exact internal/migrate API surface (step struct shape, ValidateSteps() invariants, StepsFrom(v int) helper) should be nailed down at plan time, and the partial-failure-resume test design (Pitfall 4/5) needs explicit attention since it is the highest-complexity test in this milestone.
-- Phase 6 (console plus CLI surfacing): the operator-UI soft-hidden-state conventions (archived/superseded/scheduled badges, precedence rules for compound state) are synthesized from general product convention, not a single citable spec (MEDIUM confidence in FEATURES.md) — validate against real console usage rather than pre-guessing precedence for compound states.
+Phases likely needing deeper research during planning (`--research-phase`):
+- **Phase 7 (Codex/Cursor/opencode writers):** all three carry MEDIUM-or-lower confidence per every research pass; opencode specifically has a confirmed, currently-live schema self-contradiction that must be resolved against a real installed binary, not docs alone, before implementation. Budget explicit re-verification time here, not assumed research reuse.
+- **Phase 2 (cask):** mostly HIGH confidence, but the September 2026 Homebrew Gatekeeper policy's third-party-tap scoping has no single canonical citation (inferred consistently across three sources) — worth a fast re-check if this phase's implementation window slips past a Homebrew version bump.
 
-Phases with standard, well-documented in-repo patterns (skip research-phase):
-- Phase 2 (schema versioning foundation): directly mirrors the already-shipped sessionPayloadVersion pattern, HIGH confidence, primary source read directly.
-- Phase 4 (Connect parity): directly mirrors the existing memoryToProto additive-field pattern and buf breaking CI gate, HIGH confidence.
-- Phase 5 (typed renderer): the Field-slice pattern is a straightforward internal refactor with a clear precedent in issue 481's own analysis, HIGH confidence.
+Phases with standard patterns (skip research-phase):
+- **Phase 1 (`version --json`):** mechanical, fully specified by existing `cobra`/`cmd/engram` conventions.
+- **Phase 3 (`internal/setup` core):** directly modeled on `internal/migrate`'s already-proven leaf-package shape; no open questions.
+- **Phase 5 (Claude Code writer):** CLI command already confirmed and already exercised by the shipped `/engram-setup` prose.
+
+## Consolidated Open Questions
+
+Merged and deduplicated across all four research files. Each marked (a) cheap to resolve before planning, or (b) needing just-in-time resolution during its own phase; scope-changing ones flagged explicitly.
+
+| # | Question | Source(s) | Resolution timing | Scope impact if unresolved |
+|---|----------|-----------|--------------------|-----------------------------|
+| 1 | Does a native `codex mcp add` (or equivalent) CLI command exist? | STACK, FEATURES, ARCHITECTURE | **RESOLVED 2026-08-23 (orchestrator, live)** — YES. `codex mcp add <NAME> (--url <URL> \| -- <COMMAND>...)` on codex-cli 0.148.0, with `--bearer-token-env-var`, `--oauth-client-id`, `--env`. | **Scope REDUCED**: Codex is a shell-out writer like Claude Code. The TOML-avoidance surgical-text-editing design is UNNECESSARY — `~/.codex/config.toml` is never touched by engram. |
+| 2 | Which opencode MCP config schema (V1 `mcp.<name>` vs V2 `mcp.servers.<name>`) does the installed binary expect, and is there a native add command? | FEATURES, ARCHITECTURE, PITFALLS | **RESOLVED 2026-08-23 (orchestrator, live)** — native add EXISTS: `opencode mcp add [name] --url <URL> --header KEY=VALUE` on opencode 1.18.15 (also `list`/`auth`/`logout`/`debug`). | **Scope REDUCED / risk RETIRED**: the V1-vs-V2 schema divergence is MOOT — engram never writes opencode's config file. This was flagged as the round's highest-risk item; it is now closed. |
+| 3 | Exact Codex `.agents/skills` / opencode `.opencode/agents` native skill-file schema, if any | FEATURES | (b) Just-in-time, during each runtime's Phase 7 sub-task | Not scope-changing — AGENTS.md fallback is already the sanctioned default absent a confirmed native format |
+| 4 | Does Cursor require an explicit `type: "stdio"` field on stdio MCP entries, or is it inferred? | FEATURES | (a) Cheap — one source claims required, two primary-looking Cursor docs pages show working examples without it; a single test-fixture install against real Cursor resolves this before Phase 7 | Not scope-changing — affects correctness of one field, not the writer's overall shape |
+| 5 | Third-party-tap scoping of Homebrew's September 2026 Gatekeeper-removal policy | STACK | (a) Cheap — re-check before Phase 2 ships if the window spans a Homebrew version bump | Not scope-changing for this milestone (only official taps are in scope for removal, and `seanb4t/homebrew-tap` is third-party) but worth a calendar note |
+| 6 | Exit-code semantics for "N of M runtimes succeeded, 1 failed" in `engram setup` | ARCHITECTURE | (a) Cheap — no existing precedent to model on; decide explicitly during Phase 4 planning rather than inferring from `supersede_memory`'s different-shaped merge semantics | Not scope-changing, but must be decided deliberately, not left implicit |
+| 7 | `engram version --json` naming: bespoke bool flag vs. reusing the existing `--output json\|text` operator convention | STACK | (a) Cheap — a naming-consistency call, not a technical blocker; decide during Phase 1 planning | Not scope-changing |
+| 8 | Whether the plugin's own bundled `.mcp.json` already self-registers on `claude plugin install`, narrowing what `engram setup` needs to additionally write for Claude Code | STACK | (a) Cheap — confirm during Phase 5 planning before implementing the Claude Code writer | Not scope-changing, but affects the writer's scope within Phase 5 |
+| 9 | Whether line-oriented text editing (no TOML parser) proves too fragile for real-world Codex config files | PITFALLS | **RESOLVED 2026-08-23 (orchestrator, live)** — MOOT via Q1. No TOML is parsed or written at all. | **Risk RETIRED**: the zero-new-Go-dependencies constraint is no longer under any pressure from this milestone. |
+
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH (schema-version discriminator, Qdrant payload-versioning affordances, typed-renderer field-set-by-construction) / MEDIUM (exact migration-step registry shape — no canonical Go library exists for a db-less, Qdrant-native migration ledger) | All claims read directly from in-repo code; the one genuinely designed (not sourced) piece is the step-registry API shape |
-| Features | MEDIUM | Cross-checked against multiple named tools' own docs/community reports for migration-CLI conventions (goose/golang-migrate/Atlas, Gitea/Grafana/Vaultwarden); the operator-UI soft-hidden-state guidance is synthesized from widely-replicated product convention, not a single citable spec |
-| Architecture | HIGH | Every claim read directly off the live internal/store, internal/surfaces, internal/webauth, cmd/engram, proto/engram/v1 trees at HEAD — not inferred from a generic pattern |
-| Pitfalls | HIGH (Qdrant batch-atomicity confirmed against an open upstream issue; protobuf field-number permanence confirmed against protobuf.dev/buf.build docs; all store-layer claims read directly) / MEDIUM (schema-version-codec design space — few close precedents for "flat struct plus payload-only codec plus no version-dispatch" systems, reasoned from this repo's own sessionPayloadVersion precedent plus general JSON-document-migration literature) | |
+| Stack | HIGH on GoReleaser/Homebrew/cobra mechanics; MEDIUM on agent-runtime config-file specifics | Distribution tooling verified against version-pinned docs and a real running sibling cask in this org; runtime config formats are third-party docs without comparable version pins |
+| Features | MEDIUM-HIGH | Primary vendor docs for all four runtimes plus two independent third-party universal-installer tools (`getmcp`, `mx setup`) corroborating the same config-path table — but explicit UNVERIFIED markers remain for Codex/opencode CLI-native write paths |
+| Architecture | HIGH | Every claim grounded in files read directly in this repo, cited by file:line; the only items flagged as open are the same third-party config-format unknowns Stack/Features/Pitfalls also flag |
+| Pitfalls | HIGH for Homebrew-cask mechanics and release-pipeline integration (verified against this org's own shipped sibling cask and workflow); MEDIUM for cross-checked external claims (Gatekeeper quarantine behavior); MEDIUM/LOW for single-source runtime config-format claims (Codex TOML shape, opencode JSON shape) | |
 
-Overall confidence: HIGH — this is a well-precedented internal extension of an already-shipped system, not greenfield design; the MEDIUM-confidence areas are narrow (the exact step-registry API shape, and general document-store migration literature used only to name already-independently-discovered patterns).
+**Overall confidence:** MEDIUM — genuinely bimodal, not an average. Treat the distribution phases (1-2, 9) as near-execution-ready; treat the three non-Claude-Code runtime writers (Phase 7) as carrying real, named unknowns that all four researchers independently flagged and all recommend re-verifying immediately before writing parser/writer code, not at some later point.
 
 ### Gaps to Address
 
-- backfill-short-ids deprecation shape (open decision): ARCHITECTURE.md recommends the soft, discoverable-alias shape migrate-set-owner already established (Deprecated equals "use: ...", never a hard removal) as a recommendation grounded in codebase practice, not a PROJECT.md requirement. Confirm this explicitly at plan time for Phase 3 rather than assuming it.
-- Whether internal/migrate ships with zero registered steps at Phase 2, or Phase 2 and 3 merge (open decision): STACK.md and ARCHITECTURE.md both frame Phase 2 as scaffolding the package "even before any real step is registered" — no concrete v0 to v1 transform is named anywhere in the research (the closest is backfill-short-ids's subsumption, which happens in Phase 3). Decide at plan time whether Phase 2 ships an empty-but-validated registry or whether the first real step (backfill-short-ids subsumption) lands in the same phase.
-- Additive-only migrations: written scope constraint vs. attempted version-dispatch codec (open decision, PITFALLS.md Pitfall 2): the research recommends stating "additive-only" explicitly in the design doc and --help text rather than attempting a real version-dispatch codec this milestone. This should be a deliberate, written decision at plan time, not an implicit assumption a future author discovers is false under pressure.
-- Preview/apply exact parity: advisory-only vs. hard requirement (open decision, Pitfall 8): the existing prune.go pattern already has this gap (preview and apply independently re-query Qdrant, no shared snapshot). The research offers two paths — document as advisory-only (matching existing precedent), or treat exact parity as new scope requiring a two-consecutive-run parity test. This needs an explicit decision, not inheritance-by-default, since the two paths have materially different implementation costs.
-- No real production-scale data exists for sizing migration-sweep performance or progress-reporting needs (v0.13.0 itself is undeployed) — defer progress/resumability tuning to v1.x per FEATURES.md's MVP framing, and flag this as an assumption rather than a proven-sufficient design.
+- opencode's MCP config schema divergence (open question #2 above) is the single highest-risk unresolved item in this entire research round — it is not a documentation-quality problem that will resolve itself with more reading; it needs a hands-on test against a real installed binary.
+- The Codex CLI-native-add-command question (open question #1) gates a real implementation-complexity decision (shell out vs. build a TOML-avoidance text editor) and is cheap enough to resolve that it should happen before roadmap phase sequencing locks in Phase 7's Codex sub-task scope, not during it.
+- No research pass could confirm Cursor's User Rules (global, personal) storage location — it appears to live in Cursor's internal application state, not a user-editable file, and is likely simply out of reach for an external CLI. This should be explicitly scoped out of Phase 7 rather than silently attempted and silently failing.
+- The multi-runtime partial-failure exit-code question (open question #6) has no existing precedent in this codebase to model on and needs a deliberate decision, not an inference from `supersede_memory`'s differently-shaped all-or-nothing semantics.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- internal/store/store.go, internal/store/spine.go (this repo, read directly) — Memory, payload()/fromPayload(), filter construction, BackfillShortIDs/RemapOwner/Reindex/Supersede, qdrantPayloadOpBatchSize
-- internal/webauth/session.go, resolver.go, reseal.go (this repo) — sessionPayloadVersion precedent
-- internal/surfaces/rules.go, toolclass.go, surfaces.go (this repo) — sealed-registry discipline
-- cmd/engram/backfill.go, migrate.go, reindex.go, destructive.go, prune.go (this repo) — operator-command conventions
-- internal/server/connectapi.go (memoryToProto), internal/server/idempotency.go (contentFingerprint) (this repo)
-- proto/engram/v1/engram.proto (this repo)
-- .planning/PROJECT.md, .planning/intel/decisions.md (DEC-2bv, DEC-xa6) (this repo)
-- GitHub issues 481, 482 (this repo, read via gh issue view)
-- Qdrant issue qdrant/qdrant 9371 — batch non-atomicity, maintainer confirmation
-- protobuf.dev, buf.build docs — field-number permanence and breaking-change categories
+- `seanb4t/homebrew-tap` `Casks/codegraph.rb`, `seanb4t/codegraph-go` `.goreleaser.yaml` and `Taskfile.yml` (fetched via `gh api`) — ground truth for a real, running sibling cask in this exact tap
+- This repo's own `go.mod`/`go.sum`, `cmd/engram/*.go`, `internal/surfaces/`, `internal/migrate/`, `.goreleaser.yaml`, `.github/workflows/release.yaml`, `skill/engram/commands/engram-setup.md` — read directly, not recalled
+- Context7 `/websites/goreleaser` — `customization/homebrew_casks`, `deprecations`, `customization/ci/actions`, `customization/notarize`
+- Context7 `/websites/code_claude` — MCP scopes, `claude mcp add` syntax, plugin/skill/hook format
+- `github.com/openai/codex/blob/main/codex-rs/core/src/agents_md.rs` — primary source confirming AGENTS.md discovery/merge logic
+- `github.com/anomalyco/opencode/blob/9afbdc10/packages/opencode/src/config/config.ts` — primary source, zod schema (matches V1 docs shape only)
 
 ### Secondary (MEDIUM confidence)
-- Gitea/Grafana/Vaultwarden docs and community forums — auto-migration-on-startup default and its documented operator friction
-- goose/golang-migrate/Atlas docs (atlasgo.io, pkg.go.dev) — status/dry-run/version verb conventions, the "dirty flag" pain point
-- Qdrant official docs (Fundamentals FAQ, embedding-model-migration tutorial) — confirms no built-in payload schema versioning, migration tooling scoped to vectors not payload shape
-- bool.dev, jsonic.io — named "Schema Versioning Pattern" and lazy-vs-eager migration dichotomy, corroborating already-independently-derived in-repo pattern
-- docs.ditto.live — schema_version-discriminator vs. separate-collection pattern for breaking changes
-- Code With Karani — idempotent/resumable migration design (general SQL-migration domain, adapted)
-- ArgoCD PR 27664 — precedent for "preview output actively lying" as a recognized destructive-UX risk class
+- Homebrew Gatekeeper/tap-trust policy: `workbrew.com/blog/homebrew-5-0-0`, `brew.sh/2026/06/11/homebrew-6.0.0`, `docs.brew.sh/Tap-Trust`, `github.com/orgs/Homebrew/discussions/6537`, `Homebrew/homebrew-cask#246786`
+- cursor.com/help/customization/mcp, cursor.com/docs/mcp, cursor.com/docs/rules — Cursor MCP/rules schema
+- developers.openai.com/codex/mcp, /config-reference, /guides/agents-md — Codex TOML schema, AGENTS.md precedence
+- Third-party universal installers: `@getmcp/cli` (npm, 2026-02-18), MemNexus `mx setup` blog (2026-02-15), `MarcusJellinghaus/mcp-config`, `metamcp.org` — cross-runtime config-path corroboration
 
-### Tertiary (LOW confidence)
-- go-render (github.com/jimeh/go-render) — surfaced only as a rejected reflection-based alternative for the typed renderer, not independently vetted for production use
+### Tertiary (LOW confidence, needs validation)
+- opencode.ai/docs/mcp-servers/ vs opencode.ai/v2/docs/mcp-servers — confirmed live self-contradiction on MCP config shape (V1 vs V2), needs resolution against a real installed binary
+- Aggregated web-search results for Codex `config.toml` and Cursor `type: "stdio"` requirement — single-source or conflicting-source claims flagged inline throughout research files
 
 ---
-Research completed: 2026-08-12
-Ready for roadmap: yes
+*Research completed: 2026-08-23*
+*Ready for roadmap: yes*

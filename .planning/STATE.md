@@ -1,36 +1,33 @@
 ---
 gsd_state_version: 1.0
-milestone: 2026-08-12.01
-milestone_name: Record State & Schema Evolution
-status: Awaiting next milestone
-stopped_at: Phase 09 complete — all phases complete
-last_updated: "2026-08-23T00:00:06.707Z"
-last_activity: 2026-08-22
-last_activity_desc: Milestone 2026-08-12.01 completed and archived
-state_head: f35fcbe5980785ea8ef154c719aaa1b3418ccfa6
+milestone: 2026-08-23.01
+milestone_name: Distribution & Agent Bootstrap
+status: planning
+last_updated: "2026-08-23T17:19:00.000Z"
+last_activity: 2026-08-23
 progress:
-  total_phases: 9
-  completed_phases: 9
-  total_plans: 46
-  completed_plans: 46
-current_phase: 09
+  total_phases: 6
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-22 — after closing milestone 2026-08-12.01)
+See: .planning/PROJECT.md (updated 2026-08-23 — after opening milestone 2026-08-23.01)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Planning next milestone
+**Current focus:** Roadmap written for 2026-08-23.01 (6 phases, 25/25 requirements mapped). Next: `/gsd-plan-phase 1`.
 
 ## Current Position
 
-Phase: Milestone 2026-08-12.01 complete
+Phase: Phase 1 — Version & Homebrew Distribution (not started)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-22 — Milestone 2026-08-12.01 completed and archived
+Status: Roadmapped, awaiting first plan
+Last activity: 2026-08-23 — ROADMAP.md and REQUIREMENTS.md traceability written for 2026-08-23.01
 
 ## Deferred Items
 
@@ -216,6 +213,39 @@ milestone needs in working memory.
 - [Phase 09]: 09-01: pending appended LAST to migrateStatusReportDoc (D-01) sourced from a single res.Pending() call (D-02); statusSummary's pending clause is unconditional, positioned between the bucket enumeration and the future clause (D-03)
 - [Phase 09]: 09-02: rewrote guides/migrate.md's pending row (W3) and added cmd/engram/migrate_docs_test.go, a self-tested zero-occurrence docs gate anchored on the inflection-free phrase "the equivalent number from" plus "Connect lane only", shipped with a 7-case positive control.
 
+**2026-08-23.01 roadmap decisions (2026-08-23, carried from research + post-synthesis live verification):**
+
+- Phase numbering restarted at 1 (rule `rvmts69cz1`); 6 phases mapped to all 25 v1 requirements
+  1:1, 0 orphans.
+
+- The research body's "surgical marker-bounded text editing" design for Codex's TOML and
+  opencode's JSONC was DROPPED before roadmapping — live orchestrator verification found both
+  `codex mcp add` (codex-cli 0.148.0) and `opencode mcp add` (opencode 1.18.15) exist, so every
+  v1 runtime writer shells out to the runtime's own CLI and engram parses no third-party config
+  format. This also retires opencode's V1/V2 schema self-contradiction, the research round's
+  single named highest-risk item.
+
+- Cursor is v2-deferred by explicit user decision (not roadmapped this milestone) — it would have
+  been the one config-file writer among four shell-out writers, and its CLI surface was
+  unverifiable on the researching machine.
+
+- `cmd/engram/setup.go`'s command registration and its `internal/surfaces/toolclass.go`
+  classification row are scoped to the SAME phase (Phase 2) — `cmd/engram/catalog.go` panics on
+  any cobra command missing a classification row, so this cannot be sequenced across two phases.
+
+- `engram version --json` was folded into Phase 1 with the Homebrew cask rather than given its own
+  phase — it is the cask's install-time gate and has no independent value without the cask that
+  consumes it; a single-requirement phase would have violated standard granularity.
+
+- The research-suggested 9-phase breakdown (Codex/Cursor/opencode as a separate high-risk Phase 7)
+  collapsed to one Runtime Registration phase (Phase 3 here) once live verification confirmed all
+  three non-Cursor writers are the same shell-out shape as the already-shipped Claude Code path.
+
+- Phase 2 (Setup Command Core) is deliberately independent of Phase 1 (Homebrew cask) — the two
+  tracks touch unrelated files and can execute in parallel; Phases 3→4→5 are strict-order
+  (registration → skills → delegation), and Phase 6 (docs) depends on both Phase 1 and Phase 5 so
+  it documents final shipped behavior.
+
 ### Pending Todos
 
 [From .planning/todos/pending/ — ideas captured during sessions]
@@ -236,6 +266,10 @@ Both prior entries were delivered and had simply never been closed out:
 - **Validation commands can false-green:** `go test -run X ./pkg/...` matching nothing exits 0 with `ok … [no tests to run]`. This bit v0.12.x too: VALIDATION.md `-run` commands are written at PLAN time and routinely never match what shipped (wrong package in Phase 4, wrong test name in Phase 7), so the row reports a false green forever. Re-resolve every `-run` against `go test -list` when auditing, and prove execution with `-v` RUN/PASS pairs, not a package-level `ok`. Durable record: `bsbsvn4hbc`. **Closed as a deliverable by v0.13.x Phase 5** (all six phases reconciled to `status: validated`), but the trap itself is permanent — it applies to every VALIDATION.md this milestone writes. Related and now CLOSED as this milestone's own Phase 1: #479, where a key-link `pattern:` carrying `\\` escaping is silently unmatchable, so v0.13.x Phases 1–2's gates were no-ops; 2026-08-12.01 Phase 1 fixes that before authoring its own key-links.
 - Tracked tech debt: #369 (Renovate self-heal live observation, post-merge only), #366 (console e2e harness), #370 (Taskfile yamlfmt/CI reconciliation), plus 2 high Dependabot alerts open on `main`.
 - **CI gates outside the phase lifecycle:** `task chart:validate` (containerEnv checksum pin) and `task ui:build` (vendored SPA) are required checks that no phase gate runs. Run both locally before shipping any phase touching `charts/` or generated TS.
+- **New this milestone: runtime CLI availability.** Phase 3's shell-out writers now depend on
+  each target runtime's own CLI being present and flag-stable (`claude`, `codex`, `opencode`) —
+  flag/version drift in a third-party binary is a live failure mode, not a hypothetical; pinned
+  versions verified live were codex-cli 0.148.0 and opencode 1.18.15.
 
 ### Quick Tasks Completed
 
@@ -251,6 +285,7 @@ Both prior entries were delivered and had simply never been closed out:
 - 2026-08-12.01 ROADMAP.md created: 8 phases (1–8), 27/27 requirements mapped, 0 orphans. Phase 3 of the research-derived 7-step build order split into Phase 3 (Migration Foundation) + Phase 4 (Migration CLI & First Customer) to avoid an 11-requirement phase; Phases 5–8 renumbered accordingly.
 - Phase 5 edited: edited fields: success_criteria (SC1, SC3) — SC1 widened from six fields (23-28) to eight (23-30, adding summary_model and summary_egress_at) per 2026-08-15 decision D-04/z1fxhaqdek, which reverses zyaa3m2fvd's store-only rule; SC3 rewritten to the property that actually holds per D-09 — identical outward-widened bounds on both read lanes, with NO read-path rounding code added (a constant gate). Applied via edit-phase at plan time as 05-CONTEXT.md requires.
 - Phase 9 added: Report pending in migrate status — closes milestone-audit items W2 (`engram migrate status` omits the canonical `pending` value) and W3 (`guides/migrate.md:279` documents a CLI derivation that does not exist). One code fix closes both. Debt closure against already-satisfied REQ-migrate-status-histogram / REQ-docs-record-state, not new milestone scope.
+- 2026-08-23.01 ROADMAP.md created: 6 phases (1–6), 25/25 requirements mapped, 0 orphans. Phase numbering restarted at 1. The research-suggested 9-phase breakdown collapsed: Codex/Cursor/opencode's separate high-risk Phase 7 merged into one Runtime Registration phase (Phase 3) after live verification retired the TOML/JSONC and opencode-schema risks; `engram version --json` folded into the cask phase (Phase 1) rather than standing alone.
 
 ## Session Continuity
 
@@ -363,4 +398,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Run `/gsd-plan-phase 1` to plan Phase 1 — Version & Homebrew Distribution.
