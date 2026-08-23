@@ -89,7 +89,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | REQ-version-json | Phase 1 | Pending |
-| REQ-homebrew-cask-published | Phase 1 | Pending |
+| REQ-homebrew-cask-published | Phase 6 | Pending |
 | REQ-cask-install-gate | Phase 1 | Pending |
 | REQ-cask-credential-verified | Phase 1 | Pending |
 | REQ-cask-reship-recovery | Phase 1 | Pending |

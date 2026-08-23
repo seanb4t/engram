@@ -293,7 +293,7 @@ action, before it ever invokes the binary — reversing that order gets the gate
 Gatekeeper, since engram ships unsigned by design (no GoReleaser Pro / Apple Developer Program
 membership).
 
-**Requirements:** REQ-version-json, REQ-homebrew-cask-published, REQ-cask-install-gate, REQ-cask-credential-verified, REQ-cask-reship-recovery
+**Requirements:** REQ-version-json, REQ-cask-install-gate, REQ-cask-credential-verified, REQ-cask-reship-recovery
 
 **Depends on:** Nothing (first phase).
 
@@ -302,8 +302,10 @@ membership).
 1. `engram version --json` prints a machine-readable payload carrying the version, while the
    existing human-readable `engram version` output is unchanged for existing callers.
 
-2. A tagged release publishes a working Homebrew cask to `seanb4t/homebrew-tap` (via GoReleaser's
-   `homebrew_casks:`), installable on both amd64 and arm64, on both macOS and Linux.
+2. The repository is configured to publish a Homebrew cask to `seanb4t/homebrew-tap` via
+   GoReleaser's `homebrew_casks:`, targeting amd64 and arm64 on both macOS and Linux, and the
+   configuration is validated locally without publishing. Observing an actual tagged release
+   publish the cask belongs to Phase 6 (REQ-homebrew-cask-published).
 
 3. Installing a binary that fails the version-json assertion makes `brew install` fail loudly
    rather than install silently broken, even though the binary is unsigned — because the quarantine
@@ -473,7 +475,7 @@ equivalent to).
 reflecting the final, shipped behavior of every earlier phase rather than the Docker-only,
 binary-optional story it tells today.
 
-**Requirements:** REQ-docs-install-path, REQ-docs-setup-documented
+**Requirements:** REQ-docs-install-path, REQ-docs-setup-documented, REQ-homebrew-cask-published
 
 **Depends on:** Phase 1 (needs the working cask) and Phase 5 (needs `engram setup`'s final behavior
 and the delegation story settled).
@@ -486,6 +488,11 @@ and the delegation story settled).
 
 2. docs-site documents `engram setup` — which runtimes it configures, its preview/`--apply`
    behavior, and how to configure a runtime it does not support.
+
+3. A tagged release has published a working Homebrew cask to `seanb4t/homebrew-tap` (via
+   GoReleaser's `homebrew_casks:`), observed installable on both amd64 and arm64, on both macOS and
+   Linux — the end-to-end confirmation of the pipeline Phase 1 configures, and the prerequisite for
+   documenting the exact working invocation in criterion 1.
 
 **Plans:** TBD
 
