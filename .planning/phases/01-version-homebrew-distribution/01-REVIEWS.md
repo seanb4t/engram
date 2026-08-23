@@ -1,11 +1,13 @@
 ---
 phase: 1
 reviewers: [codex]
-reviewed_at: 2026-08-23T16:18:00-07:00
-cycles: 2
+reviewed_at: 2026-08-23T17:14:00-04:00
+cycle_2_reviewed_at: 2026-08-23T16:18:00-07:00
+cycles: 3
 cycle_1_reviewed_at: 2026-08-23T15:50:00-07:00
 plans_reviewed: [01-01-PLAN.md, 01-02-PLAN.md, 01-03-PLAN.md]
-plans_revision: c3b6f9813ea1e905fcb166d606f0df255f76767a
+plans_revision: b14c4af873ebdbe46e07a056cda2b363f6f106e8
+cycle_2_plans_revision: c3b6f9813ea1e905fcb166d606f0df255f76767a
 models:
   codex: "gpt-5.6-sol (reasoning=low)"
 model_sources:
@@ -15,10 +17,12 @@ model_sources:
 # Cross-AI Plan Review — Phase 1
 
 > This file is APPEND-ONLY across review cycles. Everything between the
-> `# Cycle 1` and `# Cycle 2` markers is the cycle-1 audit trail, preserved as
-> written. Findings recorded under Cycle 1 are **historical**: several were fully
-> resolved by revision `c3b6f981` and are re-verified as such in Cycle 2. Do not
-> read a Cycle-1 finding as an open concern.
+> `# Cycle 1`, `# Cycle 2`, and `# Cycle 3` markers is that cycle's audit trail,
+> preserved as written. Findings recorded under Cycle 1 and Cycle 2 are
+> **historical**: nearly all were fully resolved by revisions `c3b6f981`,
+> `1923b3a8`, `b87071f6`, and `b14c4af8`, and are re-verified as such in the
+> later cycles. Do not read a Cycle-1 or Cycle-2 finding as an open concern —
+> only Cycle 3's "Concerns" section is current.
 
 ---
 
@@ -1123,3 +1127,554 @@ What keeps the risk high is (a) a planning artifact that is malformed on disk an
 repaired before any executor reads it, and (b) two release requirements whose closure the phase
 defers without a recorded decision about where they land. The remaining MEDIUMs are all
 one- to three-line PLAN.md edits.
+
+---
+
+# Cycle 3 — 2026-08-23T17:14:00-04:00 (plans as revised by `b14c4af8`; H-1 repaired by `1923b3a8`, H-2 re-scoped by `b87071f6`)
+
+**This is the final cycle before escalation.** Its job is threefold: (1) re-verify each of the
+nine cycle-2 actionable findings against current plan text, excluding anything fully resolved;
+(2) review the revised plans fresh for defects the cycle-2 revision *introduced*; (3) record the
+required source-grounding and cross-artifact passes.
+
+**Two cycle-2 HIGHs are resolved outside the planner and are NOT re-counted here:**
+
+- **H-1** (01-02-PLAN.md structural corruption) — repaired by the orchestrator in `1923b3a8`.
+  Independently re-verified below: the file is one valid document.
+- **H-2** (`REQ-homebrew-cask-published` had no in-phase closure) — resolved by **developer
+  decision** in `b87071f6`, which formally moved the requirement and ROADMAP criterion 2 to
+  Phase 6. This is a sanctioned re-scoping by the authority that owns it. Independently
+  re-verified below: ROADMAP, REQUIREMENTS.md, and all three plans agree.
+
+Findings appearing in the plans' own `## Review dispositions (cycle 1 …)` / `(cycle 2 …)` tables,
+and in the Cycle 1 / Cycle 2 sections above, are audit trail and are excluded from this cycle's
+counts by construction.
+
+## Codex Review (cycle 3)
+
+## Summary
+
+The plans are substantially stronger after two review cycles: the structural corruption is repaired, the Homebrew publication requirement is correctly moved to Phase 6, the fragile ordering gates now pass correct fixtures and fail representative defects, and the five version consumers are accurately accounted for. One new blocking mismatch remains: the authoritative ROADMAP still requires `engram version --json`, while all plans implement only `engram version --output json`. Unless the roadmap is corrected or `--json` is implemented as an alias, Phase 1 cannot satisfy its own first success criterion. I found one additional low-severity execution-order ambiguity around writing `01-03-SUMMARY.md` before the plan-completion step creates it.
+
+## Cycle-2 finding re-verification
+
+| Finding | Verdict | Evidence |
+|---|---|---|
+| H-1 structural corruption | FULLY RESOLVED | [01-02-PLAN.md](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-02-PLAN.md:1) is 544 lines, has exactly two `---` delimiters and one each of `phase:`, `plan:`, and `wave:`. |
+| H-2 publication ownership | FULLY RESOLVED | Phase 1 now owns four requirements at [ROADMAP.md:296](/Volumes/Code/github.com/seanb4t/engram/.planning/ROADMAP.md:296); publication belongs to Phase 6 at [ROADMAP.md:478](/Volumes/Code/github.com/seanb4t/engram/.planning/ROADMAP.md:478) and [REQUIREMENTS.md:92](/Volumes/Code/github.com/seanb4t/engram/.planning/REQUIREMENTS.md:92). |
+| M-A completion anchor | FULLY RESOLVED | New gate is at [01-01-PLAN.md:478](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-01-PLAN.md:478). Re-derived results: correct fixture `V=1 C=2` PASS; transposed `V=2 C=1` FAIL; comment-only completion `C=""` FAIL. |
+| M-B version consumers | FULLY RESOLVED | Current raw consumers are telemetry [serve.go:83](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/serve.go:83), MCP handshake [serve.go:231](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/serve.go:231), startup log [serve.go:296](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/serve.go:296), subcommand [version.go:16](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/version.go:16), and root/catalog [root.go:28](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/root.go:28), [catalog.go:87](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/catalog.go:87). Against current source, all three planned positive gates return 0 and all three old-form negative gates return 1, correctly RED before implementation. |
+| M-C checkout anchor | FULLY RESOLVED | The old search resolves to the comment at [release.yaml:56](/Volumes/Code/github.com/seanb4t/engram/.github/workflows/release.yaml:56); `^[^#]*uses: actions/checkout` resolves to the actual step at [release.yaml:79](/Volumes/Code/github.com/seanb4t/engram/.github/workflows/release.yaml:79). |
+| M-D `go install` E2E | FULLY RESOLVED | Parser-level claim is narrowed in 01-02 and the unavailable E2E observation is carried by checklist C at [01-03-PLAN.md:602](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-03-PLAN.md:602). |
+| M-E merge block | FULLY RESOLVED | First-line and title requirements are explicit at [01-03-PLAN.md:548](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-03-PLAN.md:548); SUMMARY blocking-item requirement is at [01-03-PLAN.md:617](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-03-PLAN.md:617). The rejected self-tripping issue-body grep was replaced with the tree-scoped gate at [01-03-PLAN.md:638](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-03-PLAN.md:638). |
+| L-A variable independence | FULLY RESOLVED | The OS guard independently derives both `Q` and `M` at [01-01-PLAN.md:403](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-01-PLAN.md:403). Task 4 explicitly declares shared `N`/`B` setup before its criteria at [01-03-PLAN.md:627](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-03-PLAN.md:627). |
+| L-B zero-match assertions | FULLY RESOLVED | No executable zero assertion remains in the broken `rg -c … = 0` form. The one surviving `rg -c` command is a positive “at least 5” count at [01-01-PLAN.md:390](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-01-PLAN.md:390), so it is not affected by zero-match semantics. |
+| L-C release-please setting level | FULLY RESOLVED | `always-update` is root-level at [release-please-config.json:3](/Volumes/Code/github.com/seanb4t/engram/release-please-config.json:3); `bump-minor-pre-major` is package-level at [release-please-config.json:7](/Volumes/Code/github.com/seanb4t/engram/release-please-config.json:7). Plan 01-02 now says exactly that at line 208. |
+| L-D `rootCmd.Short` offset | FULLY RESOLVED | The value is at [root.go:27](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/root.go:27), matching the revised plan. |
+| Self-tripping negative gates | FULLY RESOLVED | The three gates search `.goreleaser.yaml`, not the plan prose: [01-01-PLAN.md:400](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-01-PLAN.md:400), [01-01-PLAN.md:405](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-01-PLAN.md:405), and [01-01-PLAN.md:477](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-01-PLAN.md:477). Their own task actions expressly keep those literals out of the generated YAML, including comments, at lines 370–375 and 456–458. The plan text containing the terms cannot trip artifact-scoped commands. The discipline markers are supplementary, not the mechanism holding correctness. |
+
+## Strengths
+
+- The central contract is genuinely end-to-end: the cask consumes the exact JSON lane introduced in the same plan, with text/JSON equality pinned by Go tests.
+- The quarantine/version/completion ordering gates are now mechanically meaningful. The completion anchor excludes comments without excluding Ruby interpolation.
+- Shared Cobra state is handled using the established recursive reset helper. Its necessity is well grounded by [clienttest_test.go:131](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/clienttest_test.go:131), and the underlying recursive reset is at [exitcode_baseline_test.go:455](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/exitcode_baseline_test.go:455).
+- Plan 01-02 correctly distinguishes the telemetry call site from the parameter sink: [serve.go:83](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/serve.go:83) is the seam; [config.go:34](/Volumes/Code/github.com/seanb4t/engram/internal/telemetry/config.go:34) merely accepts and stores the supplied version.
+- The release credential probe is separated from the release workflow, avoiding an accidental re-ship merely to inspect permissions.
+- Testing respects the project’s ownership boundary: Go behavior is tested hard, while Homebrew, Gatekeeper, and GoReleaser behavior is reviewed and locally validated rather than imitated in unit tests.
+
+## Concerns
+
+### HIGH — NEW: ROADMAP requires a flag the plans do not implement
+
+The authoritative Phase 1 prose says `engram version --json` at [ROADMAP.md:288](/Volumes/Code/github.com/seanb4t/engram/.planning/ROADMAP.md:288), and success criterion 1 repeats that exact invocation at [ROADMAP.md:302](/Volumes/Code/github.com/seanb4t/engram/.planning/ROADMAP.md:302).
+
+Plan 01-01 instead creates only `--output json|text`, explicitly registering `Flags().String("output", "text", …)` at [01-01-PLAN.md:396](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-01-PLAN.md:396). No plan adds `--json`.
+
+Mechanism: after execution, `engram version --json` will remain an unknown flag and exit 2, while the roadmap says it must print the payload. D-15 exempts literal rehearsal wording only for criteria 3 and 5, not criterion 1. This can cause verification failure even if every planned task succeeds.
+
+### LOW — NEW: SUMMARY lifecycle is underspecified at the human checkpoint
+
+Task 3 requires the baseline SHA and App-installation observations to already appear in `01-03-SUMMARY.md`, while Task 4 later edits that summary and the plan’s formal output creates it only “when done” at [01-03-PLAN.md:715](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-03-PLAN.md:715).
+
+Mechanism: depending on the executor workflow, the summary may not exist at Task 3’s checkpoint. The information is valid and needed, but the plan should explicitly say to create a provisional summary before pausing, then finalize it after Task 4.
+
+## Source-grounding pass
+
+Artifacts explicitly listed as newly produced by the plans are excluded.
+
+| Kind | Plan claim | Verdict | Source evidence |
+|---|---|---|---|
+| Go variable | “`version` package var … defaults to `dev`” | VERIFIED | [root.go:16](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/root.go:16)–19 |
+| Cobra command | “`versionCmd` prints the bare version today” | VERIFIED | [version.go:12](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/version.go:12)–16 |
+| Struct field | “`rootCmd.Short` at `root.go:27`” | VERIFIED | [root.go:27](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/root.go:27) |
+| Struct field | “Cobra built-in `Version` remains raw” | VERIFIED | [root.go:28](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/root.go:28), reassigned at line 71 |
+| Function | “`ValidateOutputFormat` accepts JSON, text, and empty” | VERIFIED | [client_validate.go:51](/Volumes/Code/github.com/seanb4t/engram/internal/config/client_validate.go:51)–63 |
+| Function | “`runClient` resets no flag state” | VERIFIED | [clienttest_test.go:240](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/clienttest_test.go:240)–252 |
+| Function | “`resetClientFlags` reaches the whole command tree” | VERIFIED | [clienttest_test.go:157](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/clienttest_test.go:157)–160 and [exitcode_baseline_test.go:475](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/exitcode_baseline_test.go:475)–480 |
+| Function call | “Telemetry version seam is `serve.go:83`” | VERIFIED | [serve.go:83](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/serve.go:83) |
+| Struct field | “MCP `Implementation.Version` at `serve.go:231`” | VERIFIED | [serve.go:231](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/serve.go:231) |
+| Log field | “Startup log version at `serve.go:296`” | VERIFIED | [serve.go:296](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/serve.go:296) |
+| Function | “`ConfigFromEnv` is a parameter sink” | VERIFIED | [config.go:34](/Volumes/Code/github.com/seanb4t/engram/internal/telemetry/config.go:34)–41 |
+| Struct field | “Catalog reads `root.Version`” | VERIFIED | [catalog.go:84](/Volumes/Code/github.com/seanb4t/engram/cmd/engram/catalog.go:84)–87 |
+| JSON key | “root `always-update`” | VERIFIED | [release-please-config.json:3](/Volumes/Code/github.com/seanb4t/engram/release-please-config.json:3) |
+| JSON key | “package-level `bump-minor-pre-major`” | VERIFIED | [release-please-config.json:7](/Volumes/Code/github.com/seanb4t/engram/release-please-config.json:7) |
+| JSON array | “three existing `extra-files` entries” | VERIFIED | [release-please-config.json:9](/Volumes/Code/github.com/seanb4t/engram/release-please-config.json:9)–24 |
+| Workflow step | “checkout step at line 79; comment at line 56” | VERIFIED | [release.yaml:56](/Volumes/Code/github.com/seanb4t/engram/.github/workflows/release.yaml:56), [release.yaml:79](/Volumes/Code/github.com/seanb4t/engram/.github/workflows/release.yaml:79) |
+| Workflow step | “GoReleaser action at line 132” | VERIFIED | [release.yaml:131](/Volumes/Code/github.com/seanb4t/engram/.github/workflows/release.yaml:131)–137 |
+| Workflow step | “Existing newest-tag computation” | VERIFIED | [release.yaml:145](/Volumes/Code/github.com/seanb4t/engram/.github/workflows/release.yaml:145)–156 |
+| YAML key | Existing `builds.env: CGO_ENABLED=0` | VERIFIED | Present in `.goreleaser.yaml`; supports the unsigned-static-binary rationale |
+| Go symbols | `patchCorePattern`, `nextPatch`, `resolvedVersion`, `versionFromModuleVersion` | EXCLUDED | Explicitly listed as Phase 1 artifacts; absent by design |
+| Checklist | New checklist C | VERIFIED AS PLAN CONTENT | [01-03-PLAN.md:602](/Volumes/Code/github.com/seanb4t/engram/.planning/phases/01-version-homebrew-distribution/01-03-PLAN.md:602)–613 |
+| Third-party behavior | `system_command` defaults to `must_succeed: true` | UNCHECKABLE FROM TREE | Homebrew behavior; appropriately not gated |
+| Third-party behavior | `workflow_dispatch` registration requires default branch | UNCHECKABLE FROM TREE | GitHub behavior; sequencing is conservatively handled |
+| Third-party behavior | `repositories:` is a closed allowlist | UNCHECKABLE FROM TREE | Action contract; plan uses the researched form consistently |
+| Third-party behavior | GoReleaser `skip_upload` supports templates | UNCHECKABLE FROM TREE | External GoReleaser contract; local schema/snapshot validation is appropriately planned |
+
+No newly corrected source offsets were stale. `serve.go:231`, `serve.go:296`, `root.go:27`, and the release-please settings at lines 3 and 7 all match the live tree.
+
+## Suggestions
+
+1. Resolve the ROADMAP mismatch before execution:
+
+   - Preferred: update Phase 1 prose and criterion 1 from `engram version --json` to `engram version --output json`, since D-01 explicitly chose the repository-wide `--output` vocabulary.
+   - Alternative: add a hidden/deprecated `--json` alias, though that broadens the surface and conflicts with the decision to use one output vocabulary.
+
+2. Add one sentence to Task 3: “Create or update a provisional `01-03-SUMMARY.md` before pausing; Task 4 finalizes it.” Add that path to Task 3’s files or checkpoint output contract.
+
+3. Leave the three `.goreleaser.yaml` negative gates as written. They are artifact-scoped and do not self-trip on plan prose; replacing them would add complexity without improving correctness.
+
+## Risk Assessment
+
+**HIGH until the ROADMAP flag mismatch is corrected; LOW afterward.**
+
+The implementation decomposition, sequencing, source links, and defect-sensitive gates are otherwise sound. The remaining high risk is contractual rather than architectural: the plans can execute perfectly and still fail the phase’s literal first success criterion because `--json` and `--output json` are different CLI surfaces.
+
+---
+
+## Orchestrator Verification Pass (cycle 3)
+
+Every claim below was re-derived against the live tree at `b14c4af8`, or against scratch fixtures
+built for the purpose. Nothing in this section is taken from the planner's own dispositions or
+from Codex's report.
+
+### H-1 — 01-02-PLAN.md structural integrity (repaired outside the planner, `1923b3a8`)
+
+**CONFIRMED REPAIRED. Not a cycle-3 finding.**
+
+| Check | Expected | Observed |
+|---|---|---|
+| Line count | 544 | `wc -l` -> **544** |
+| `^---$` delimiters | exactly 2 | `rg -n '^---$'` -> **`1`, `62`** |
+| `phase:` / `plan:` / `wave:` | one each | `:2` `phase: 01-version-homebrew-distribution`, `:3` `plan: 02`, `:5` `wave: 2` |
+| Truncated table row | none | none present |
+
+01-01 (`---` at `1`,`63`) and 01-03 (`---` at `1`,`60`) are likewise single valid documents.
+
+### H-2 — the requirement move (developer decision, `b87071f6`)
+
+**CONFIRMED CONSISTENT ACROSS ALL FIVE ARTIFACTS. Not a cycle-3 finding.**
+
+| Artifact | Observed |
+|---|---|
+| `ROADMAP.md` Phase 1 `**Requirements:**` | `REQ-version-json, REQ-cask-install-gate, REQ-cask-credential-verified, REQ-cask-reship-recovery` — four, publication absent |
+| `ROADMAP.md` Phase 1 criterion 2 | narrowed to *"configured ... validated locally without publishing. Observing an actual tagged release publish the cask belongs to Phase 6"* |
+| `ROADMAP.md` Phase 6 | `**Requirements:** REQ-docs-install-path, REQ-docs-setup-documented, REQ-homebrew-cask-published`; new criterion 3 carries the observed publication |
+| `REQUIREMENTS.md:92` | `REQ-homebrew-cask-published` -> Phase 6 -> Pending |
+| Plan frontmatter | 01-01 `{version-json, cask-install-gate}`; 01-02 `{version-json}`; 01-03 `{cask-credential-verified, cask-reship-recovery}` — union is exactly the four; no plan claims the moved ID |
+
+The plans' narrowed claims **match the new roadmap**; per the cycle contract this is correct, not
+scope reduction. The `Casks/engram.rb` artifact row is re-attributed to Phase 6 in all three
+plans, and 01-03's `<verification>` explicitly forbids failing Phase 1 for its absence.
+
+### Cycle-2 finding re-verification — all nine re-derived
+
+| # | Cycle-2 finding | Verdict | Independent evidence (re-derived this cycle) |
+|---|---|---|---|
+| **M-A** | completions anchor `^[^#]*bash_completion\.d/engram` unsatisfiable (mandated path contains Ruby `#{}`) | **FULLY RESOLVED** | New anchor `^[^#]*args: \["completion"` run against four scratch fixtures: correct hook `V=10 C=13` **exit 0**; completions above the gate `V=15 C=10` **exit 1**; version gate deleted `V` empty **exit 1**; completions demoted to a comment `C` empty **exit 1**. The **old** anchor re-run against the *correct* fixture returned `C` empty (exit 1) — permanently unsatisfiable, exactly as cycle 2 reported. The gate now passes on correct content and fails on the defect. |
+| **M-B** | version-consumer inventory claimed three; there are five, two undecided | **FULLY RESOLVED** | `rg -n 'version' cmd/engram/serve.go` — the literal command the plan's `<read_first>` instructs running — returns **exactly** `:83`, `:231`, `:296`, matching the plan's five-row table (plus `root.go:28`/`:71` -> `catalog.go:87`). Both `serve.go:231` and `:296` are **wired**, not accepted. Gates re-run against current source: three positives = `0,0,0`; three `^[^/]*` negatives = `1,1,1`; total `resolvedVersion()` in `serve.go` = `0`. Correctly RED pre-implementation. |
+| **M-C** | `actions/checkout` anchor bound to the comment at `release.yaml:56`, not the step at `:79` | **FULLY RESOLVED** | Against the live file: bare `rg -n 'actions/checkout'` -> first hit **`:56`** (a comment: *"The dispatch input reaches actions/checkout's `ref:` ..."*); `rg -n '^[^#]*uses: actions/checkout'` -> **`:79`** (the step). The full ordering gate run live gives `C=79 R=132 G` empty -> **exit 1**, correctly RED (guard step not yet authored). Cycle 2's claim that the old gate exited 0 on a guard-before-checkout fixture is consistent with what `:56` anchoring produces. |
+| **M-D** | end-to-end `go install ...@vX.Y.Z` unverifiable in-phase | **FULLY RESOLVED** | Rehomed to 01-03 Task 4 as **checklist C** with runnable steps and an explicit "a `dev` result is a real defect to file, not a box to tick". 01-03 `<verification>` records it as not-in-phase-by-design. |
+| **M-E** | nothing ordered the credential probe before the first release-please merge | **FULLY RESOLVED** | 01-03 Task 4 `<action>` opens the issue body with the merge block as its **first line**; the title carries `(blocks release-please merge)`; `01-03-SUMMARY.md` must record checklist A as **blocking** *in those words*; the runnable gate anchors on `head -1`, which a block buried lower fails. **No CI gate was added** — correctly, per the hard rule against asserting third-party behavior. |
+| **L-A** | criteria consumed shell variables assigned in a different bullet | **FULLY RESOLVED** | 01-01's OS-guard bullet re-derives `Q` inside itself; every 01-01 and 01-02 criterion is standalone. 01-03 Task 4 declares `N`/`B` **once in the criteria preamble**, above the bullet list, and states that no bullet re-derives anything beyond those two — a stated setup block, not hidden cross-bullet coupling. Accepted as resolved. |
+| **L-B** | `rg -c ... is 0` can never hold | **FULLY RESOLVED** | Swept all three plans. **Zero** zero-assertions remain in the broken shape; every one is `test "$(rg -o ... \| wc -l \| tr -d ' ')" = 0`. Re-derived: `rg -c` on a zero-match file prints nothing and exits 1; the counting form returns `0`/exit 0 on absence and exit 1 on presence. The single surviving `rg -c` (01-01-PLAN.md:390) is a **positive** "at least 5" count, unaffected by zero-match semantics. |
+| **L-C** | `always-update` twice called package-level | **FULLY RESOLVED** | `release-please-config.json:3` `"always-update": true` is a root sibling of `$schema` and `packages`; `:7` `"bump-minor-pre-major": true` is inside `packages["."]`. Both plan mentions (01-02 `<read_first>` `:208`, Task 2 `<action>` `:434-436`) now say exactly that. |
+| **L-D** | `rootCmd.Short` cited at `root.go:26`; it is `:27` | **FULLY RESOLVED** | `cmd/engram/root.go` — `:25` `var rootCmd = &cobra.Command{`, `:26` `Use:`, **`:27` `Short: "Self-hosted, correctable, OAuth-secured memory for coding agents"`**, `:28` `Version: version`. Corrected in both `<action>` and `<read_first>`. The description single-source gate runs green against `root.go` today. |
+
+**All nine cycle-2 actionable findings are FULLY RESOLVED and are excluded from this cycle's
+counts.** No cycle-2 finding was answered by narration alone; each has a corresponding executable
+change that was re-derived here.
+
+### The crux of cycle 3 — the two planner self-corrections, judged
+
+**Self-correction 1 — the M-E gate that grepped the issue body for `required status check`.**
+**CORRECTLY FIXED.** The gate is now written against the **tree**: `test "$(git status
+--porcelain -- .github | wc -l | tr -d ' ')" = 0`. That is the right seam — the failure being
+guarded (a workflow, branch-protection rule, or status check invented to enforce the merge block)
+is visible in `git status` and nowhere else, and the task's `<action>` is free to name the
+rejected mechanism in order to reject it. Sequencing holds: 01-03 Tasks 1 and 2 both end
+"Committed.", so `.github` is clean by the time Task 4 runs.
+
+**Self-correction 2 — the three unguarded negative greps in 01-01
+(`generate_completions_from_executable`, `brews:`, `rm_rf`), remedied with an instruction plus a
+`planner-discipline-allow` marker rather than a structural fix.** **THE REMEDY HOLDS — these are
+not self-tripping gates.** The decisive fact is **scope**: all three gates name `.goreleaser.yaml`
+as their explicit search target, never the plan file. Plan prose containing those literals is
+structurally incapable of tripping an artifact-scoped `rg`. The markers address GSD's own
+planner-discipline linter, not execution. The residual risk — an executor writing the literal into
+a YAML **comment** — is closed by an explicit `<action>` instruction in each case (*"Keep that
+identifier, and the token `brews:`, out of `.goreleaser.yaml` entirely — including out of YAML
+comments"*; *"keep it out of comments too"*), and the plan states plainly why no `^[^#]*` guard is
+used: *"there is no safe guard for a token this task never wants written at all."* That reasoning
+is correct — a comment-guarded gate would *permit* the literal in a comment, which is precisely
+what these three must forbid. Leave as written.
+
+### Sweep — every negative and exact-count assertion in all three plans, with its target file
+
+The sweep the crux demanded, extended to *all* zero-count and exact-count assertions, judged on
+whether the forbidden or counted literal can plausibly appear in the **target file** as a comment
+that the task's own `<action>` invites.
+
+| Plan | Assertion | Target file | Comment-guarded? | Verdict |
+|---|---|---|---|---|
+| 01-01:400 | `^brews:` = 0 | `.goreleaser.yaml` | no (deliberate) | **SAFE** — `<action>` forbids the literal in YAML comments; guarding would defeat the gate |
+| 01-01:400 | `^homebrew_casks:` = 1 | `.goreleaser.yaml` | `^`-anchored | **SAFE** |
+| 01-01:405 | `generate_completions_from_executable` = 0 | `.goreleaser.yaml` | no (deliberate) | **SAFE** — same instruction |
+| 01-01:477 | `rm_rf` = 0 | `.goreleaser.yaml` | no (deliberate) | **SAFE** — same instruction; `FileUtils.rm_f` does not contain the substring |
+| 01-01:402/403 | D-09 + OS-guard ordering | `.goreleaser.yaml` | `^[^#]*` | **SAFE** — re-derived four directions |
+| 01-01:478 | completions ordering | `.goreleaser.yaml` | `^[^#]*` | **SAFE** — re-derived four directions (M-A) |
+| 01-02:343 | `^[^/]*strconv\.Atoi` = 0 | `cmd/engram/buildversion.go` | `^[^/]*` | **SAFE** — a `//` comment explaining the rejection is expressly permitted |
+| 01-02:466-468 | three `resolvedVersion()` positives = 1 | `cmd/engram/serve.go` | no | SAFE (equality on distinct full-expression literals) |
+| 01-02:469-472 | three old-form negatives = 0 | `cmd/engram/serve.go` | `^[^/]*` | **SAFE** |
+| **01-02:451 / 473 / 528** | **`resolvedVersion()` total = 3** | `cmd/engram/serve.go` | **no** | **DEFECT — see M-F** |
+| **01-02:485** | **`resolvedVersion` = 0 in `catalog.go` and `root.go`** | those files | **no** | **DEFECT — see M-F** |
+| 01-02:463 | `resolvedVersion` = 1 in `version.go` | `cmd/engram/version.go` | no | same class at lower likelihood; folded into M-F |
+| 01-03:429 | `^[^#]*owner:` = 0 | `.github/workflows/release.yaml` | `^[^#]*` | **SAFE** — explicitly guarded *because* `<action>` mandates a comment naming `owner:` |
+| **01-03:430** | **`workflow_dispatch` = 1, `pull_request` = 0, `^\s+push:` = 0** | `.github/workflows/verify-tap-credential.yaml` | **no** | **DEFECT — see M-G** |
+| **01-03:431** | **`inputs:` = 0** | same | **no** | **DEFECT — see M-G** |
+| **01-03:432** | **`--token` = 0** | same | **no** | **DEFECT — see M-G** |
+| **01-03:433** | **`--method PUT` / `--method POST` / `git push` / `git commit` = 0** | same | **no** | **DEFECT — see M-G** |
+| **01-03:434** | **`contents: write` = 0** | same | **no** | **DEFECT — see M-G** |
+| 01-03:328 | three-anchor ordering gate | `.github/workflows/release.yaml` | `^[^#]*` | **SAFE** (M-C) |
+| 01-03:347 | `git tag -l 'v*' --sort=-v:refname` = 2 | `.github/workflows/release.yaml` | no | SAFE — live count is `1` at `:150`, exactly as the plan states; a comment repeating that exact 34-character command is implausible |
+| 01-03:638 | `git status --porcelain -- .github` = 0 | working tree | n/a | **SAFE** — the deliberate tree-scoped rewrite |
+
+## Concerns — NEW in cycle 3
+
+Two new MEDIUM and one new LOW, all introduced or left behind by the cycle-2 revision. **No HIGH
+remains.**
+
+### M-F (NEW, MEDIUM) — 01-02's newly-introduced `resolvedVersion` count gates are not comment-guarded, while the same task's `<action>` mandates writing a comment that names that identifier
+
+`01-02-PLAN.md` Task 2 `<action>` instructs: *"Add one short comment at `:83` naming
+`resolvedVersion` as the single source for every version surface this file emits."* The task then
+gates the same file with an **exact count and no comment guard**, in three places
+(`<verify><automated>` :451, `<acceptance_criteria>` :473, `<verification>` :528):
+
+```
+test "$(rg -o -F 'resolvedVersion()' cmd/engram/serve.go | wc -l | tr -d ' ')" = 3
+```
+
+Re-derived against fixtures this cycle:
+
+| Fixture | count | gate |
+|---|---|---|
+| Three sites rewired, no comment | 3 | **exit 0** |
+| Three sites rewired **plus the mandated comment written as `// resolvedVersion() is the single source ...`** | **4** | **exit 1** |
+
+The natural Go idiom for naming a function in a comment includes the parentheses, so the plan's
+own instruction is the most likely way to turn its own gate red on *correct* content. The same
+class hits the L-3 "catalog consequence" gate at :485 — `resolvedVersion` = 0 in `root.go` and
+`catalog.go` — where a `// Deliberately NOT resolvedVersion() — D-02` comment at `root.go:28` is
+an entirely plausible thing for an executor to write, and produced count `1`, **exit 1**, in the
+fixture run. :463 (`resolvedVersion` = 1 in `version.go`) carries the same exposure at lower
+likelihood.
+
+This is the M-A / M-C / HIGH-5 comment-anchor class recurring — the discipline was applied to the
+three `^[^/]*` negatives two bullets away but missed on the counts. It is a **false-RED** (fails on
+correct content), not a false-GREEN, so it wastes an execution cycle rather than shipping a
+defect — hence MEDIUM, not HIGH.
+
+**Remedy (verified both directions this cycle):** prefix the counting patterns with `^[^/]*`.
+`test "$(rg -o '^[^/]*resolvedVersion\(\)' cmd/engram/serve.go | wc -l | tr -d ' ')" = 3` returned
+**3 / exit 0** on *both* the commented and uncommented fixtures, and the `^[^/]*resolvedVersion`
+= 0 form returned **exit 0** on the commented `root.go` fixture. Apply at :451, :463, :473, :485,
+and :528. An "keep `resolvedVersion` out of comments" instruction is *not* the right alternative
+here, because it contradicts the `<action>`'s own mandate to write such a comment.
+
+### M-G (NEW, MEDIUM) — 01-03 Task 2's six gates over the newly-authored probe workflow are unguarded, in a file the plan invites heavy commenting
+
+`01-03-PLAN.md` Task 2 authors `.github/workflows/verify-tap-credential.yaml` from scratch and
+gates it with six unguarded assertions (:430-:434). The task's own `<action>` mandates a comment in
+the *sibling* edit (*"Add a comment saying exactly that, so a later reader tempted to 'tighten' the
+list to just the tap sees why it cannot be"*), the repo's `release.yaml` is densely commented
+(`:17-23`, `:56`, `:145-148`), and the plan repeatedly stresses the two facts most worth writing
+into a header comment: that `workflow_dispatch` is only exposed from the default branch, and that
+the probe is read-only by construction.
+
+Re-derived against two fixtures — an uncommented probe workflow and the same workflow with a
+plausible three-line header comment plus a one-line read-only note:
+
+| Gate | uncommented | commented |
+|---|---|---|
+| `workflow_dispatch` = 1 | exit 0 | **count 2 -> exit 1** |
+| `pull_request` = 0 | exit 0 | **exit 1** |
+| `contents: write` = 0 | exit 0 | **exit 1** |
+| `--method PUT` / `POST` / `git push` / `git commit` = 0 | exit 0 | **exit 1** |
+
+Four of six gates go RED on correct content the moment the file is documented the way this repo
+documents workflows. The contrast is sharp and self-evident: the **`owner:` gate two bullets away
+carries `^[^#]*` precisely because its `<action>` mandates a comment naming `owner:`** — the
+discipline was reasoned about once and then not carried across the bullet list.
+
+**Remedy (verified both directions this cycle):** add `^[^#]*` to the patterns at :430, :431,
+:432, :433, and :434. `test "$(rg -o '^[^#]*workflow_dispatch' ... )" = 1` and
+`test "$(rg -o '^[^#]*pull_request' ... )" = 0` both returned **exit 0** on the commented *and*
+uncommented fixtures. `inputs:` (:431) needs the guard too — a header comment explaining
+"dispatchable with no inputs" is likely.
+
+### L-E (NEW, LOW) — 01-03 Task 3's acceptance criteria assert content in `01-03-SUMMARY.md`, which the plan's `<output>` creates only "when done"
+
+`01-03-PLAN.md` Task 3 is `type="checkpoint:human-action" gate="blocking"` and carries **no
+`<files>` element**, yet three of its four acceptance criteria require `01-03-SUMMARY.md` to
+already contain the tap's baseline SHA, the observed repository-access list, and the Contents
+permission value (:511-:513). Task 4 then edits the same file (its `<files>` at :521), while the
+plan's `<output>` at :716 says *"Create `01-03-SUMMARY.md` when done"* — that is, after Task 4.
+Execution pauses at Task 3's blocking checkpoint; at that moment the file the criteria assert
+against does not exist, so the criteria are unsatisfiable as written and the human is given no
+instruction to create it.
+
+Codex independently raised this. It is a real ordering gap, not a documentation nit: the baseline
+SHA is the *only* record of the pre-dispatch tap state, and Task 4's no-write check (step A5)
+compares against it.
+
+**Remedy:** one sentence in Task 3's `<action>`/`<instructions>` — *"Create a provisional
+`01-03-SUMMARY.md` with an open-items section before pausing; Task 4 finalizes it"* — plus
+`.planning/phases/01-version-homebrew-distribution/01-03-SUMMARY.md` added to Task 3's `<files>`.
+
+### INFO (not counted) — 01-01-PLAN.md:390 uses `rg -c` against its own stated convention
+
+The `<acceptance_criteria>` preamble at :388 states *"Occurrence counts use `rg -o ... | wc -l`
+rather than `rg -c`"*, and the very next bullet at :390 reads
+`go test ./cmd/engram -list 'TestVersion.*' | rg -c '^TestVersion'` is at least 5. 01-02 converted
+its two analogous `-list | rg -c '^Test'` checks to the counting form; 01-01's was left.
+
+**Not actionable and not counted.** The criterion is a *positive* "at least" assertion, so
+zero-match semantics never bite it: it is correctly RED today (`rg -c` exits 1 with no tests
+present) and green once the five tests exist. This is a cosmetic inconsistency with a stated
+convention, not a defect in the gate's behavior. Recorded so a later reader does not mistake it
+for an L-B residual.
+
+## Source-Grounding Pass (cycle 3, orchestrator, authority `grep`)
+
+`plan_review.source_grounding` ON. `gsd-tools drift-guard authority --raw` -> **`grep`**.
+Classification via `gsd-tools drift-guard severity --status <verdict> --authority grep`:
+VERIFIED -> `none`; MISSING -> `needs-acknowledgement`; AMBIGUOUS -> `MEDIUM`;
+UNCHECKABLE -> `INFO`. **Nothing hard-blocks at `grep`** (`hardBlock: false` for every verdict).
+
+Symbols under each plan's **"Artifacts this phase produces"** are EXCLUDED by construction —
+`--output` on `version`, `versionDoc`, `runVersion`, `version_test.go`, the five `TestVersion*`
+funcs, the `version/output-bogus` baseline row, `homebrew_casks:` and its hook keys,
+`buildversion.go`, `lastRelease`, `nextPatch`, `deriveDevVersion`, `versionFromModuleVersion`,
+`resolvedVersion`, `moduleTagPattern`, `patchCorePattern`, `buildversion_test.go`, the four
+`TestNextPatch`-family funcs, the 4th `extra-files` entry, `skip_upload`, the
+`Resolve Homebrew upload guard` step, `SKIP_HOMEBREW_UPLOAD`, the `repositories:` input, the
+`verify-tap-credential` job/workflow, and the tracking issue.
+
+Emphasis this cycle, per the review brief, is on symbols the cycle-2 revision **newly introduced
+or moved**, and on whether any of cycle 1's 2-4-low line offsets survive.
+
+| Kind | Plan line (quoted) | Verdict | Evidence |
+|---|---|---|---|
+| Go call site | 01-02: *"`:83` — `telemetry.ConfigFromEnv("engram", version)`"* | **VERIFIED** | `cmd/engram/serve.go:83` — exact |
+| Go struct field | 01-02: *"`:231` — `mcp.NewServer(&mcp.Implementation{Name: "engram", Version: version}, nil)`"* | **VERIFIED** | `cmd/engram/serve.go:231` — exact |
+| Go log field | 01-02: *"`:296` — `slog.Info("engram listening", "version", version, ...)`"* | **VERIFIED** | `cmd/engram/serve.go:296` — exact |
+| Shell command | 01-02 `<read_first>`: *"which `rg -n 'version' cmd/engram/serve.go` returns as `:83`, `:231`, `:296`"* | **VERIFIED** | The literal command returns exactly those three lines and nothing else |
+| Go struct field | 01-01/01-02: *"`rootCmd.Short` (`cmd/engram/root.go:27`)"* | **VERIFIED** | `root.go:27` `Short: "Self-hosted, correctable, OAuth-secured memory for coding agents"` (L-D fix confirmed) |
+| Go struct field | 01-02: *"`root.Version` is assigned the raw `version` package var at `cmd/engram/root.go:28`"* | **VERIFIED** | `root.go:28` `Version: version`; re-assigned at `root.go:71` |
+| Go field read | 01-02: *"`buildCatalog` sets its `Version` field from `root.Version` (`cmd/engram/catalog.go:87`)"* | **VERIFIED** | `catalog.go:85-87` — `Version: root.Version` at `:87` |
+| Go var | 01-01: *"`version` package var ... `root.go` lines 16-19"* | **VERIFIED** | doc comment `:16-18`, `var version = "dev"` at `:19` |
+| Go func | 01-01: *"`internal/config/client_validate.go` around line 58 — `ValidateOutputFormat`"* | **VERIFIED** | `:58`; accepts `"json", "text", ""` at `:60` |
+| Go func | 01-01: *"`clienttest_test.go` lines 131-155 and 157-160 — `resetClientFlags`"* | **VERIFIED** | `func resetClientFlags` at `:157`; doc comment above; calls `resetEveryCommandFlagState(t, rootCmd)` at `:159` |
+| Go func | 01-01: *"`exitcode_baseline_test.go` lines 465-482 — `resetEveryCommandFlagState` itself (it lives in **this** file)"* | **VERIFIED** | `func resetEveryCommandFlagState` at `:475`, inside the cited range; L-4's misattribution stays fixed |
+| Go func | 01-01: *"`clienttest_test.go` lines 240-262 — the `runClient` harness"* | **VERIFIED** | `func runClient` at `:240` |
+| Go func | 01-02: *"`ConfigFromEnv`'s signature at `:34` and where it stores `serviceVersion` at `:41`"* | **VERIFIED** | `internal/telemetry/config.go:34` signature; `ServiceVersion: serviceVersion` at `:41` — a parameter sink, exactly as claimed |
+| JSON key | 01-02: *"`always-update: true` ... at the **root** ... (`:3`)"* | **VERIFIED** | `release-please-config.json:3`, sibling of `$schema`/`packages` (L-C fix confirmed) |
+| JSON key | 01-02: *"`bump-minor-pre-major: true` at `:7`, inside `packages["."]`"* | **VERIFIED** | `release-please-config.json:7` |
+| JSON array | 01-02: *"the three existing `extra-files` entries"* | **VERIFIED** | `:9-25`, exactly three objects |
+| Workflow step | 01-03: *"the real one at `:79` — note `:56` is a comment mentioning `actions/checkout`"* | **VERIFIED** | `release.yaml:56` comment; `:79` `uses: actions/checkout@3d3c42e5...` (M-C fix confirmed) |
+| Workflow step | 01-03 gate anchor `^[^#]*uses: goreleaser/goreleaser-action` | **VERIFIED** | `release.yaml:132` |
+| Workflow line | 01-03: *"the pre-existing `:latest` reconciliation (currently the only copy, at `:150`)"* | **VERIFIED** | `release.yaml:150` `newest=$(git tag -l 'v*' --sort=-v:refname \| head -1)`; live count = 1 — **offset exact, not stale** |
+| Workflow step | 01-03: *"the `actions/create-github-app-token` mint pinned at `bcd2ba49...`"*, lines 32-37 | **VERIFIED** | `release.yaml:32` with that exact SHA |
+| Workflow lines | 01-03: *"line 41 (release-please consuming the token via a `with: token:` input), and line 137 (GoReleaser consuming it via `env: GITHUB_TOKEN:`)"* | **VERIFIED** | `:41` `token: ${{ steps.app-token.outputs.token }}`; `:137` `GITHUB_TOKEN: ${{ ... }}` |
+| Workflow key | 01-03 gates: `repositories:` / `owner:` absent today | **VERIFIED (absent)** | neither key present in `release.yaml` — both gates correctly RED/0 |
+| Task target | 01-01/01-03: *"`task release:check` is `goreleaser check` (`Taskfile.yaml:221`)"* | **VERIFIED** | `Taskfile.yaml:221` `release:check:` -> `:223` `goreleaser check` |
+| YAML key | 01-01: *"`archives.name_template` is `{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}` with no `v` prefix"* | **VERIFIED** | `.goreleaser.yaml:38` |
+| YAML key | 01-01: *"`builds.env: CGO_ENABLED=0`"* | **VERIFIED** | `.goreleaser.yaml:23` |
+| Golden line | 01-01: *"`catalog.golden` around line 1132 — the existing `version` entry"* | **VERIFIED** | `"name": "version"` at `:1133`, inside the object opening at `:1132` — within the stated tolerance, **not stale** |
+| Golden line | 01-01: *"`help.golden` around lines 455-469 — the existing `## engram version` block"* | **VERIFIED** | heading at `:459`, inside the cited range |
+| Golden line | 01-01/01-02: *"the pinned `help.golden` line 29"* (the `-v, --version` line D-02 protects) | **VERIFIED** | `help.golden:29` `-v, --version   version for engram` — **exact** |
+| Golden line | 01-01 Task 2: *"`help.golden` around line 11 — confirms `completion` is a live subcommand"* | **VERIFIED** | `:11` `completion   Generate the autocompletion script...` — **exact** |
+| Go registry row | 01-01: *"`internal/surfaces/toolclass.go` already classifies `version` (`ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false`)"* | **VERIFIED** | `toolclass.go:202-203` — all four field values match verbatim |
+| Third-party | *"`system_command` defaults to `must_succeed: true`"*; *"`write_completion` rescues failures to a warning"* | **UNCHECKABLE** -> INFO | Homebrew behavior; correctly documented and never gated (D-11) |
+| Third-party | *"`workflow_dispatch` is only exposed for workflows present on the default branch"* | **UNCHECKABLE** -> INFO | GitHub behavior; the plan resequences around it rather than asserting it |
+| Third-party | *"`repositories:` is a closed allowlist; supplying it replaces the default"* | **UNCHECKABLE** -> INFO | `create-github-app-token` contract |
+| Third-party | *"GoReleaser `skip_upload` supports the `index .Env` guarded template"* | **UNCHECKABLE** -> INFO | GoReleaser contract; render observed manually via `release:snapshot`, never asserted |
+
+### Verification coverage (refreshed, cycle 3)
+
+| Verdict | Count | Severity at authority `grep` | Hard-block |
+|---|---|---|---|
+| VERIFIED | 31 | `none` | no |
+| MISSING | 0 | `needs-acknowledgement` | no |
+| AMBIGUOUS | 0 | `MEDIUM` | no |
+| UNCHECKABLE | 4 | `INFO` | no |
+
+**Coverage: 31 of 35 resolvable symbols VERIFIED (89%); the remaining 4 are third-party behavior
+claims, UNCHECKABLE by definition and correctly left ungated.** Zero MISSING, zero AMBIGUOUS — so
+the source-grounding pass contributes **no** findings to this cycle's counts.
+
+**Stale-offset check (cycle 1 found offsets running 2-4 low):** none survive. Every offset the
+cycle-2 revision touched or introduced (`serve.go:83/:231/:296`, `root.go:27/:28/:71`,
+`catalog.go:87`, `release-please-config.json:3/:7`, `release.yaml:56/:79/:132/:150`,
+`Taskfile.yaml:221`, `client_validate.go:58`, `clienttest_test.go:157/:240`,
+`exitcode_baseline_test.go:475`, `telemetry/config.go:34/:41`, `help.golden:11/:29`,
+`toolclass.go:202`) resolves exactly, and the two remaining "around line N" citations
+(`catalog.golden` 1132, `help.golden` 455-469) contain their targets.
+
+## Cross-Artifact Fact-Drift Pass (cycle 3 — ADVISORY, contributes to NEITHER count)
+
+`gsd-tools drift-guard phase-status --phase 01` returned:
+
+```json
+{"verdict":"uncheckable","reason":"phase_not_in_roadmap","phase":"01",
+ "stateStatus":"Roadmapped, awaiting first plan","roadmapStatus":null,
+ "stateRank":null,"roadmapRank":null,"authority":"STATE.md"}
+```
+
+**Verdict recorded as `uncheckable` — the same result as cycles 1 and 2.** `uncheckable` is
+explicitly **not** "consistent"; the tool could not compare, because the phase heading is not in a
+form its roadmap parser resolves. No lag finding is drawn from this.
+
+### D-1 (ADVISORY, highest priority) — ROADMAP Phase 1 criterion 1 names `engram version --json`; the plans deliver `engram version --output json`
+
+Codex raised this as its one new HIGH. Independently confirmed:
+
+| Artifact | Text |
+|---|---|
+| `ROADMAP.md:275` | *"Phase 1: Version & Homebrew Distribution — **`engram version --json`** plus a published..."* |
+| `ROADMAP.md:288` | *"**`engram version --json`** lands in this same phase because it is the cask's install-time correctness gate"* |
+| `ROADMAP.md:302` (criterion 1) | *"**`engram version --json`** prints a machine-readable payload carrying the version..."* |
+| `ROADMAP.md:326` (plan index) | *"01-01-PLAN.md — `engram version --output json\|text`..."* |
+| `01-CONTEXT.md` D-01 | *"`engram version` gains **`--output json\|text`**, reusing the repo's established vocabulary"* |
+| `REQUIREMENTS.md:22` REQ-version-json | *"`engram version` emits machine-readable output carrying the version"* — **names no flag** |
+
+**Why this is advisory and is not counted in either total:**
+
+1. It is precisely a ROADMAP-Success-Criteria vs PLAN comparison, which this cycle's contract
+   places in the fact-drift pass — advisory by construction.
+2. **The plans are not wrong.** `REQ-version-json`, the actual requirement, is flag-agnostic. The
+   plans implement `--output json` because `01-CONTEXT.md` **D-01** is a recorded developer
+   decision, made downstream of the roadmap during `/gsd-discuss-phase`, choosing the repo's
+   established `--output` vocabulary over a bespoke `--json`. This is structurally identical to
+   the D-05 `"(devel)"` case the contract already resolves in the plans' favour: a later, more
+   specific, recorded decision supersedes earlier roadmap prose.
+3. The fix therefore belongs in **`ROADMAP.md`**, not in any PLAN.md — and `ROADMAP.md` is a
+   tool-owned artifact edited through `/gsd-phase edit`, not by a planner revision.
+
+**Recommended resolution (developer/orchestrator, before execution):** update ROADMAP `:275`,
+`:288`, and criterion 1 at `:302` from `engram version --json` to `engram version --output json`,
+per D-01. Do **not** add a `--json` alias — that would create a second output vocabulary in a
+binary whose whole D-01 rationale is having one, and `01-CONTEXT.md:276-277` records the repo's
+"one `--output` registration site per tier" discipline.
+
+**Residual risk if left alone:** `/gsd-verify-work` reads ROADMAP success criteria literally.
+After a perfect execution, `engram version --json` will be an unknown flag and exit 2, and
+criterion 1 could be failed on wording. The plans have a precedent device for exactly this —
+01-03's *"Per D-15, ... ROADMAP criteria 3 and 5 are satisfied by construction and must not be
+failed on their literal rehearsal wording"* — so a plan-side supersession note is a valid fallback
+if the roadmap is left as-is. Fixing the roadmap is cleaner.
+
+### D-2 through D-5 — the rest of the pass, all consistent
+
+| Check | Verdict |
+|---|---|
+| ROADMAP Phase 1 `**Requirements:**` vs PLAN `requirements:` frontmatter | **CONSISTENT** — the union of the three plans is exactly the four post-`b87071f6` requirements; no plan claims the moved ID |
+| ROADMAP Phase 1 criterion 2 (*configured + locally validated*) vs 01-01/01-03 claims | **CONSISTENT** — plans claim configuration plus `goreleaser check` schema validation only, and state explicitly what `release:check` does *not* prove |
+| ROADMAP Phase 1 criteria 3, 4, 5 vs PLAN `must_haves.truths` | **CONSISTENT** — 3 by 01-01's ordering gates, 4 by 01-03 Tasks 2-4, 5 by 01-03 Task 1's newest-tag guard; D-15's "satisfied by construction, not by literal rehearsal" carve-out is stated in 01-03 `<verification>` |
+| ROADMAP Phase 6 criterion 3 vs 01-03 Task 4 checklist B | **CONSISTENT** — checklist B is explicitly labelled Phase 6's, with a runnable gate (`rg -o -F -i 'phase 6'`) requiring the issue body to say so |
+| CONTEXT.md D-01/D-02/D-03/D-06/D-07/D-08/D-09/D-10/D-11/D-12/D-15 vs PLAN usage | **CONSISTENT** — each is cited at the task that implements it, with the mechanism named |
+| CONTEXT.md D-05 (`"(devel)"` premise, empirically disproved in cycle 1) | **PLANS CORRECT** — 01-02 contradicts D-05 on that specific point, which the cycle contract confirms is right |
+
+Nothing in this pass is drawn into either count.
+
+## Consensus Summary (cycle 3)
+
+One reviewer ran this cycle (`codex` / `gpt-5.6-sol`), so "consensus" is Codex plus the
+orchestrator's independent verification pass. The two agree on every re-verification verdict.
+
+### Agreed Strengths
+
+- **Every cycle-2 finding genuinely landed.** All nine actionable findings and both HIGHs are
+  fully resolved, each with an executable change rather than narration. Both reviewers re-derived
+  M-A, M-B, M-C, and L-B independently and reached the same result.
+- **The gates are now real.** The M-A completions anchor passes on correct content and fails in
+  three distinct defect directions; the M-C checkout anchor moved off a comment and onto the step;
+  the M-B `serve.go` gates are provably RED against current source in six directions.
+- **The comment-anchor discipline is understood** — `^[^#]*` / `^[^/]*` appears wherever the
+  planner reasoned about it explicitly, with correct rationale for the three places it is
+  deliberately omitted.
+- **Ownership boundaries are respected.** No test or gate asserts Homebrew, Gatekeeper, GitHub, or
+  GoReleaser behavior. Both reviewers rejected a required-status-check for M-E, and the plan
+  implemented the procedural mechanism both proposed.
+- **The requirement move is clean.** ROADMAP, REQUIREMENTS.md, and all three plans agree; Phase 1
+  can close green without a published cask, and 01-03 says so in the words a verifier will read.
+
+### Agreed Concerns
+
+- **The comment-anchor class recurred once more, on the gates cycle 2 newly added** (M-F in 01-02,
+  M-G in 01-03). Both are false-RED, both are one-token fixes, both were proven in both
+  directions. Codex classified the 01-03 gates as acceptable; the orchestrator's fixture run shows
+  four of six going red on a plausibly-commented file, so this review counts them.
+- **`01-03-SUMMARY.md`'s lifecycle is underspecified at the blocking checkpoint** (L-E) — raised
+  independently by both.
+
+### Divergent Views
+
+- **The `--json` / `--output json` mismatch.** Codex rates it HIGH and blocking. This review
+  confirms the fact but classifies it as **cross-artifact fact drift (advisory, uncounted)**: the
+  plans faithfully implement recorded decision D-01 and satisfy `REQ-version-json` as written, and
+  the stale text is in `ROADMAP.md`, which no PLAN.md revision can fix. Recorded as advisory item
+  **D-1** with a concrete recommended edit. It is the single highest-priority item in this file
+  even though it does not enter either count.
+- **The three unguarded `.goreleaser.yaml` negatives** (`generate_completions_from_executable`,
+  `brews:`, `rm_rf`). Codex says leave them; this review agrees, on stronger grounds — the gates
+  are artifact-scoped, plan prose cannot reach them, and a comment guard would *defeat* their
+  purpose, since the literal must be absent from comments too.
+
+### Out of scope — do not raise in a later cycle
+
+Any test or gate over Homebrew's, GitHub's, GoReleaser's, or Apple Gatekeeper's own behavior
+(D-11 / rule `m45p2b4bp7`); the absence of unit tests around `.goreleaser.yaml` and `release.yaml`
+(the project's layer-appropriate testing position); any suggestion to convert the cask to a
+formula; any inference between the CalVer milestone label and the SemVer release version; and
+re-raising H-1 or H-2, both resolved outside the planner.
+
+### Cycle-3 counts
+
+- **Unresolved HIGH: 0**
+- **Unresolved actionable non-HIGH: 3** — M-F, M-G, L-E
+- **Fully resolved and excluded:** all nine cycle-2 actionable findings (M-A, M-B, M-C, M-D, M-E,
+  L-A, L-B, L-C, L-D), both cycle-2 HIGHs (H-1 by repair `1923b3a8`, H-2 by developer decision
+  `b87071f6`), and all 19 cycle-1 findings.
+- **Advisory, uncounted:** D-1 (the ROADMAP `--json` wording), the `phase-status` `uncheckable`
+  verdict, and the 01-01:390 `rg -c` convention nit.
+
+### Risk Assessment
+
+**LOW.** Nothing structural, nothing security-relevant, and nothing that ships a wrong artifact
+remains. The three counted findings are all **false-RED** gate defects or an ordering nit — they
+cost an execution cycle if hit; they do not let a defect through. Each is a one-token or
+one-sentence PLAN.md edit, and each has a remedy already proven in both directions in this file.
+The one item that could still fail the phase at verification time is the ROADMAP `--json` wording
+(D-1), a two-word edit to an artifact outside the planner's reach, flagged as the top advisory
+item.
