@@ -126,9 +126,60 @@ func runSatisfiabilityGate(t *testing.T) []string {
 // exact failure this phase exists to fix — so this scope stays narrow
 // even though the escaping gate's scope deliberately does not.
 func TestActiveMilestoneKeyLinksSatisfiable(t *testing.T) {
+	if dirs := activeMilestonePhaseDirs(t, gateRepoRoot(t)); len(dirs) == 0 {
+		t.Skip("no milestone is open: .planning/phases holds only 999.x backlog entries, " +
+			"so there are no active-milestone plans whose key links could be resolved. " +
+			"This is the designed steady state between /gsd-complete-milestone (which archives " +
+			"the phase directories) and /gsd-new-milestone (which writes the next set).")
+	}
 	for _, v := range runSatisfiabilityGate(t) {
 		t.Error(v)
 	}
+}
+
+// activeMilestonePhaseDirs returns the .planning/phases entries belonging
+// to an OPEN milestone: every subdirectory except the 999.x backlog
+// placeholders, which /gsd-review-backlog parks there unplanned and which
+// therefore never carry a *-PLAN.md.
+//
+// It exists to separate the two ways .planning/phases can hold no plans,
+// which assertScannedSomething cannot tell apart on its own:
+//
+//   - No milestone is open. /gsd-complete-milestone archives every phase
+//     directory to .planning/milestones/<label>-phases/ by design, so
+//     between two milestones only 999.x remains. Satisfiability has
+//     nothing to resolve, and failing here would make every milestone
+//     close red for a tree that is exactly as it should be.
+//   - The scan root moved, or the tree was emptied by something other
+//     than an archival. That IS the silent-no-op this package exists to
+//     catch, and it still fails: active phase directories present with no
+//     readable plans reaches assertScannedSomething unchanged.
+//
+// This narrows the guard rather than relaxing it — the only new green is
+// a state in which there is provably nothing in scope. A missing
+// .planning/phases is NOT that state and fails loudly, so deleting or
+// renaming the scan root can never be mistaken for a closed milestone.
+//
+// NOTE: internal/store/redevidence_harness_test.go carries a deliberate
+// copy of this predicate for its own empty-map guard. The two are
+// test-only and intentionally not shared across the package boundary;
+// keep them in sync.
+func activeMilestonePhaseDirs(t *testing.T, root string) []string {
+	t.Helper()
+	phases := filepath.Join(root, ".planning", "phases")
+	entries, err := os.ReadDir(phases)
+	if err != nil {
+		t.Fatalf("activeMilestonePhaseDirs: read %s: %v — the scan root moved or was deleted; "+
+			"an unreadable phases directory must never be mistaken for a closed milestone", phases, err)
+	}
+	dirs := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), "999.") {
+			continue
+		}
+		dirs = append(dirs, e.Name())
+	}
+	return dirs
 }
 
 // TestGateScopesAreDistinct pins D-04's scope asymmetry as a test
@@ -209,6 +260,85 @@ func guardFailed(stats ScanStats) bool {
 		completed := false
 		defer func() { done <- !completed }()
 		assertScannedSomething(&fake, "probe", stats)
+		completed = true
+	}()
+	return <-done
+}
+
+// TestActiveMilestonePredicateDistinguishesAllThreeStates is the
+// fail-first proof for activeMilestonePhaseDirs. A predicate that lets
+// TestActiveMilestoneKeyLinksSatisfiable skip is a predicate that can
+// switch the gate off, so it is held to the same standard the gate is:
+// each of its three outcomes is observed against a real tree, not
+// asserted from the shape of the code.
+//
+// The middle case is the one that matters. Narrowing the guard is only
+// sound if "active phases exist but hold no plans" still reaches
+// assertScannedSomething — otherwise this change would have converted a
+// genuine silent-no-op into a skip.
+func TestActiveMilestonePredicateDistinguishesAllThreeStates(t *testing.T) {
+	mkRoot := func(t *testing.T, phaseDirs ...string) string {
+		t.Helper()
+		root := t.TempDir()
+		for _, d := range phaseDirs {
+			if err := os.MkdirAll(filepath.Join(root, ".planning", "phases", d), 0o755); err != nil {
+				t.Fatalf("mkdir %s: %v", d, err)
+			}
+		}
+		return root
+	}
+
+	t.Run("backlog only yields no active milestone", func(t *testing.T) {
+		root := mkRoot(t, "999.1-a", "999.2-b")
+		if got := activeMilestonePhaseDirs(t, root); len(got) != 0 {
+			t.Errorf("got %v, want none: 999.x backlog entries must not count as an open milestone", got)
+		}
+	})
+
+	t.Run("a real phase directory yields an active milestone", func(t *testing.T) {
+		root := mkRoot(t, "999.1-a", "01-gate-ci-integrity")
+		got := activeMilestonePhaseDirs(t, root)
+		if len(got) != 1 || got[0] != "01-gate-ci-integrity" {
+			t.Fatalf("got %v, want exactly [01-gate-ci-integrity]", got)
+		}
+	})
+
+	t.Run("an empty active phase directory still reaches the zero-applicability guard", func(t *testing.T) {
+		// The narrowing must not swallow this: phases present, plans
+		// absent, is the silent-no-op the package exists to catch.
+		root := mkRoot(t, "01-gate-ci-integrity")
+		if got := activeMilestonePhaseDirs(t, root); len(got) == 0 {
+			t.Fatal("predicate reported no active milestone for a tree that has one; the gate would skip a real defect")
+		}
+		_, stats, err := ScanPlansWithStats(root, []string{".planning/phases"}, ModeSatisfiability)
+		if err != nil {
+			t.Fatalf("ScanPlansWithStats: %v", err)
+		}
+		if !guardFailed(stats) {
+			t.Errorf("assertScannedSomething(%+v) passed for an active milestone with no plans; the narrowing created a false green", stats)
+		}
+	})
+
+	t.Run("a missing phases directory fails rather than reading as closed", func(t *testing.T) {
+		root := t.TempDir() // no .planning/phases at all
+		if !predicateFailed(root) {
+			t.Error("activeMilestonePhaseDirs did not fail on a missing phases directory; " +
+				"a moved or deleted scan root would be indistinguishable from a closed milestone")
+		}
+	})
+}
+
+// predicateFailed runs activeMilestonePhaseDirs on a throwaway *testing.T
+// and reports whether it failed, mirroring guardFailed above: t.Fatalf
+// calls runtime.Goexit, so the call runs on its own goroutine and
+// completion is detected by whether the deferred marker ran to the end.
+func predicateFailed(root string) bool {
+	var fake testing.T
+	done := make(chan bool, 1)
+	go func() {
+		completed := false
+		defer func() { done <- !completed }()
+		activeMilestonePhaseDirs(&fake, root)
 		completed = true
 	}()
 	return <-done

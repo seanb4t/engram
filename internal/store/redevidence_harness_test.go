@@ -58,7 +58,7 @@
 // beyond that scoping is needed.
 //
 // This is gated behind testing.Short(): it is a full mutate/build/test/
-// revert cycle per patch (22 patches today, across two phase directories),
+// revert cycle per patch (one per registered active-milestone patch),
 // materially slower than the rest of this package's unit tests, so
 // `go test -short` (the fast path) skips it while `task test` (which does
 // not pass -short) still runs it in CI.
@@ -76,64 +76,37 @@ import (
 	"testing"
 )
 
-// redEvidenceDirs maps each phase's red-evidence directory (relative to the
-// module root — git's own working directory convention for `git apply`,
-// NOT this package's directory) to that phase's own patch-filename ->
-// target-test-function mapping. Adding a phase means adding one entry here;
-// TestRedEvidencePatchesAreLive iterates every directory independently, so
-// a phase's zero-applicability guard and set-equality mapping check never
-// leak into another phase's.
+// redEvidenceDirs maps an ACTIVE-MILESTONE phase's red-evidence directory
+// (relative to the module root — git's own working directory convention
+// for `git apply`, NOT this package's directory) to that phase's own
+// patch-filename -> target-test-function mapping. Adding a phase means
+// adding one entry here; TestRedEvidencePatchesAreLive iterates every
+// directory independently, so a phase's zero-applicability guard and
+// set-equality mapping check never leak into another phase's.
+//
+// SCOPE: the OPEN milestone only, never an archived one. This mirrors
+// internal/keylinks' TestActiveMilestoneKeyLinksSatisfiable and its D-04
+// rationale verbatim, because the property is identical: a red-evidence
+// patch asserts that mutating today's source makes a named test fail, so
+// its liveness depends on the code as it stands right now. Re-applying a
+// shipped milestone's patches at HEAD goes red whenever that code is
+// legitimately refactored — a red that is not a defect. A gate that cries
+// wolf on unrelated refactors trains people to ignore it, which recreates
+// the exact silent-no-op failure this harness exists to prevent.
+//
+// So at /gsd-complete-milestone the phase directories are archived to
+// .planning/milestones/<label>-phases/, this map empties, and the patches
+// become history — inspectable there, with their retired target-test
+// mappings recorded alongside them in RED-EVIDENCE.md. It refills when the
+// next milestone ships its own.
+//
+// An empty map is therefore legitimate BETWEEN milestones and a defect
+// DURING one. TestRedEvidencePatchesAreLive tells those apart rather than
+// treating zero directories as vacuously green — see its empty-map guard.
 var redEvidenceDirs = map[string]map[string]string{
-	".planning/phases/02-record-schema-versioning-foundation/red-evidence": {
-		"02-02-red-1-bypass.patch":                       "TestEveryPointWriteRoutesThroughPayload",
-		"02-02-red-2-stale-classification.patch":         "TestEveryPointWriteRoutesThroughPayload",
-		"02-02-red-3-cross-package-client.patch":         "TestQdrantClientIsHeldOnlyByStorePackage",
-		"02-03-red-1-toplevel.patch":                     "TestSchemaVersionNeverGatesRecall",
-		"02-03-red-2-nested.patch":                       "TestSchemaVersionNeverGatesRecall",
-		"02-03-red-3-unclassified-scroll.patch":          "TestRecallEmissionSetIsCompleteAndClassified",
-		"02-03-red-4-unclassified-scrollandoffset.patch": "TestRecallEmissionSetIsCompleteAndClassified",
-		"02-03-red-5-linkage.patch":                      "TestRecallEmissionSetIsCompleteAndClassified",
-		"02-review-wr01-monotonic-max.patch":             "TestPayloadRoundTripsSchemaVersion",
-	},
-	".planning/phases/03-migration-foundation-registry-invariants-sweep/red-evidence": {
-		"03-01-red-1-range-only-filter.patch":      "TestBacklogFilterMatchesAbsentAndBelowTarget",
-		"03-01-red-2-declared-drift-written.patch": "TestMigrateRefusesNonAdditiveStep",
-		"03-02-red-1-nil-rev-accepted.patch":       "TestNewStepPanicsOnNilReversibility",
-		"03-02-red-2-contiguity-dropped.patch":     "TestValidateRejectsOrderingAndUniquenessViolations",
-		"03-02-red-3-nonstdlib-import.patch":       "TestMigratePackageIsStdlibOnlyLeaf",
-		"03-02-red-4-zero-files-scanned.patch":     "TestMigratePackageIsStdlibOnlyLeaf",
-		"03-03-red-1-superset-not-equality.patch":  "TestAdditiveOnlyKeySetDiff",
-		"03-03-red-2-removal-check-dropped.patch":  "TestAdditiveOnlyKeySetDiff",
-		"03-03-red-3-zero-fixtures.patch":          "TestAdditiveOnlyKeySetDiff",
-		// 03-04-red-1-persisted-cursor.patch is deliberately absent. It was
-		// retired 2026-08-16, not lost: it never drove any test RED, including
-		// on the day it was authored — 03-04-SUMMARY.md's key-decisions record
-		// "Cycle 1 (persisted cursor) reddened ZERO of the three subtests
-		// against the plan's own committed fixtures". The mutation it expresses
-		// (persist the scroll cursor across sweep passes) only misbehaves when a
-		// below-target record whose id sorts BEFORE an already-advanced cursor
-		// arrives mid-sweep, and no test constructs that ordering. Recover it
-		// from git history if that test is ever written; see issue #501.
-		"03-04-red-2-trust-error-signal.patch":     "TestMigratePartialFailureResume",
-		"03-05-red-1-lte-includes-current.patch":   "TestBacklogFilterMatchesAbsentAndBelowTarget",
-		"03-05-red-2-midsweep-write-skipped.patch": "TestMigrateConvergesWithoutLock",
-	},
-	// Phase 6's central claim is field-set identity BY CONSTRUCTION: the
-	// text lane walks the very bytes the json lane marshals, so a widening
-	// applied to a report's document struct alone widens BOTH lanes and is
-	// invariant under the identity gate — it cannot redden it, by design.
-	// The mutations that can, and therefore the ones retained here, are the
-	// ones that break the single-derivation property itself: a field
-	// present in json but suppressed in text (red-1), a field rendered in
-	// text with no json counterpart (red-2) — the two directions of the
-	// same divergence — plus one on the enumeration gate, an operator
-	// command dropped from the registry the fixture set is checked against
-	// (red-3).
-	".planning/phases/06-typed-operator-renderer/red-evidence": {
-		"06-red-1-empty-field-line-suppressed.patch": "TestOperatorViewIdentityAcrossEveryOperatorCommand",
-		"06-red-2-text-lane-only-field.patch":        "TestOperatorViewIdentityAcrossEveryOperatorCommand",
-		"06-red-3-operator-command-dropped.patch":    "TestOperatorViewFixturesCoverEveryOperatorCommand",
-	},
+	// Empty: no milestone is open. See the SCOPE note above before adding
+	// an archived path here — the guard below fails if an active-milestone
+	// phase directory exists while this map is empty.
 }
 
 // gitModuleRoot shells out to `git rev-parse --show-toplevel` rather than
@@ -220,6 +193,20 @@ func TestRedEvidencePatchesAreLive(t *testing.T) {
 	}
 
 	root := gitModuleRoot(t)
+
+	// Empty-map guard. An empty redEvidenceDirs must never be a silent
+	// green: iterating zero directories would report clean while proving
+	// nothing, which is precisely the vacuity this harness was built to
+	// eliminate. It is legitimate only when no milestone is open.
+	if len(redEvidenceDirs) == 0 {
+		if active := activeMilestonePhaseDirs(t, root); len(active) > 0 {
+			t.Fatalf("redEvidenceDirs is empty while %d active-milestone phase director(ies) exist (%s): "+
+				"a phase that shipped red-evidence must register it here, or record explicitly that it has none. "+
+				"An empty map during an open milestone is a vacuous gate, not a clean run.",
+				len(active), strings.Join(active, ", "))
+		}
+		t.Skip("no milestone is open: a shipped milestone's red-evidence is history, not a live gate (see the SCOPE note on redEvidenceDirs)")
+	}
 
 	dirs := make([]string, 0, len(redEvidenceDirs))
 	for dir := range redEvidenceDirs {
@@ -340,4 +327,37 @@ func TestRedEvidencePatchesAreLive(t *testing.T) {
 			}
 		})
 	}
+}
+
+// activeMilestonePhaseDirs returns the .planning/phases entries belonging
+// to an OPEN milestone: every subdirectory except the 999.x backlog
+// placeholders, which /gsd-review-backlog parks there unplanned.
+//
+// It exists so TestRedEvidencePatchesAreLive's empty-map guard can tell
+// "no milestone is open, so there is nothing to register" apart from "a
+// milestone is open and its red-evidence went unregistered". A missing
+// .planning/phases fails loudly rather than reading as a closed
+// milestone, so a moved or deleted tree can never turn the guard green.
+//
+// NOTE: internal/keylinks/gate_test.go carries the same predicate for its
+// own skip guard. Both are test-only and deliberately not shared across
+// the package boundary — internal/store does not otherwise depend on
+// internal/keylinks, and a production export used only by tests would be
+// a worse trade than twenty duplicated lines. Keep them in sync.
+func activeMilestonePhaseDirs(t *testing.T, root string) []string {
+	t.Helper()
+	phases := filepath.Join(root, ".planning", "phases")
+	entries, err := os.ReadDir(phases)
+	if err != nil {
+		t.Fatalf("activeMilestonePhaseDirs: read %s: %v — the phases directory moved or was deleted; "+
+			"an unreadable phases directory must never be mistaken for a closed milestone", phases, err)
+	}
+	dirs := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), "999.") {
+			continue
+		}
+		dirs = append(dirs, e.Name())
+	}
+	return dirs
 }
