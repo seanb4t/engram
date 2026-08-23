@@ -327,8 +327,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — dev-build version derivation from `runtime/debug.ReadBuildInfo()`, the release-please-managed base const, and the `serve` telemetry rewire
-- [ ] 01-03-PLAN.md — release plumbing: newest-tag re-ship guard, explicit cross-repo token scope, read-only credential probe, and the tracked post-merge publication observation
+- [ ] 01-02-PLAN.md — dev-build version derivation from `runtime/debug.ReadBuildInfo()`, the release-please-managed base const, and the rewire of all three `serve` version surfaces
+- [ ] 01-03-PLAN.md — release plumbing: newest-tag re-ship guard, explicit cross-repo token scope, read-only credential probe, and the blocking post-merge probe dispatch that gates the next release-please merge
 
 ---
 
