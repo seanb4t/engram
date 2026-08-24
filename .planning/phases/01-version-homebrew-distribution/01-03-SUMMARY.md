@@ -111,8 +111,8 @@ Each task was committed atomically:
 1. **Task 1: Re-ship guard — newest-tag comparison templated into `skip_upload`** - `b96bb92f` (feat)
 2. **Task 2: Cross-repo credential — explicit token scope plus a standalone read-only probe** - `91b23e88` (feat)
 3. **Task 3, part A (provisional, pre-checkpoint): capture tap baseline SHA, create provisional SUMMARY** - `c5546f0b` (docs)
-4. **Task 3, part B (finalized, post-checkpoint): record observed installation state** - see commit below
-5. **Task 4: file the post-merge tracking issue** - see commit below
+4. **Task 3, part B (finalized, post-checkpoint): record observed installation state** - `a0b06096` (docs)
+5. **Task 4: file the post-merge tracking issue** - GitHub issue [#514](https://github.com/seanb4t/engram/issues/514) (no source file modified); this file's citation of it is the commit below
 
 _Task 3 is a `checkpoint:human-action` — its provisional-SUMMARY commit landed before the pause; its finalization (this file) and Task 4's issue-citation update land in the commits listed under "Files Created/Modified" below._
 
@@ -155,10 +155,10 @@ None beyond the expected checkpoint pause for the GitHub App installation grant,
 
 ## Open items
 
-- **[BLOCKING, tracked] Credential probe not yet dispatched.** `workflow_dispatch` is only exposed for a workflow definition present on the default branch, so `.github/workflows/verify-tap-credential.yaml` cannot be dispatched from this feature branch. **A tracking GitHub issue has been filed** (see Task 4 below) whose first line blocks any release-please PR merge until the probe has been dispatched from `main` and its result — including a comparison of the tap's HEAD SHA against the `969aef42d3d8f0d8290d0ad67b4013251ae955f9` baseline recorded above — is recorded on that issue.
-- **[Handoff to Phase 6, non-blocking] Cask publication observation.** `REQ-homebrew-cask-published` (ROADMAP Phase 6 criterion 3, moved from Phase 1 by developer decision 2026-08-23, commit `b87071f6`) is carried in the same tracking issue's checklist B. Not a Phase 1 debt.
-- **[Tracked, non-blocking] End-to-end `go install` version check (01-02, M-D).** Every tag today predates `cmd/engram/buildversion.go`; the check is carried in the tracking issue's checklist C, runnable against the first tag that contains that file.
-- **Not touched by this plan: `.planning/REQUIREMENTS.md`.** `REQ-cask-credential-verified` is closed in-branch by configuration plus the App-installation grant, but per the plan's own "Requirement scope" section its REQUIREMENTS.md checkbox is marked complete only once the probe's first dispatch (checklist A) is recorded on the tracking issue — deferred to whoever executes that checklist post-merge, not this plan.
+- **[BLOCKING, tracked] Credential probe not yet dispatched.** `workflow_dispatch` is only exposed for a workflow definition present on the default branch, so `.github/workflows/verify-tap-credential.yaml` cannot be dispatched from this feature branch. **Tracking issue: [#514](https://github.com/seanb4t/engram/issues/514) — "Phase 01 post-merge: verify tap credential (blocks release-please merge)"** — its first line blocks any release-please PR merge until checklist A (the probe dispatch, from `main`) has been run and its result — including a comparison of the tap's HEAD SHA against the `969aef42d3d8f0d8290d0ad67b4013251ae955f9` baseline recorded above — is recorded on that issue.
+- **[Handoff to Phase 6, non-blocking] Cask publication observation.** `REQ-homebrew-cask-published` (ROADMAP Phase 6 criterion 3, moved from Phase 1 by developer decision 2026-08-23, commit `b87071f6`) is carried in issue [#514](https://github.com/seanb4t/engram/issues/514)'s checklist B, explicitly labelled as Phase 6's. Not a Phase 1 debt.
+- **[Tracked, non-blocking] End-to-end `go install` version check (01-02, M-D).** Every tag today predates `cmd/engram/buildversion.go`; the check is carried in issue [#514](https://github.com/seanb4t/engram/issues/514)'s checklist C, runnable against the first tag that contains that file.
+- **Not touched by this plan: `.planning/REQUIREMENTS.md`.** `REQ-cask-credential-verified` is closed in-branch by configuration plus the App-installation grant, but per the plan's own "Requirement scope" section its REQUIREMENTS.md checkbox is marked complete only once the probe's first dispatch (checklist A) is recorded on issue #514 — deferred to whoever executes that checklist post-merge, not this plan.
 
 ## Next Phase Readiness
 
