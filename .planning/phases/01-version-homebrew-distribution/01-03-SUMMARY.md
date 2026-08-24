@@ -169,3 +169,14 @@ None beyond the expected checkpoint pause for the GitHub App installation grant,
 ---
 *Phase: 01-version-homebrew-distribution*
 *Completed: 2026-08-24*
+
+## Self-Check: PASSED
+
+- `.github/workflows/verify-tap-credential.yaml` — FOUND
+- `.planning/phases/01-version-homebrew-distribution/01-03-SUMMARY.md` — FOUND
+- Commits `b96bb92f`, `91b23e88`, `c5546f0b`, `a0b06096`, `d1bf04e5` — all FOUND in `git log --oneline`
+- `task lint` — PASSED (all checks)
+- `task test` — PASSED except the pre-existing, out-of-scope `TestRedEvidencePatchesAreLive` (issue #513)
+- `task lint:actions && task lint:yaml && task release:check` — PASSED
+- `git diff --name-only` (base..HEAD, workflow/goreleaser scope) — exactly the three `files_modified` entries
+- GitHub issue #514 body — all acceptance-criteria `rg` gates re-run and passed (merge-block `head -1`=1, checklist markers, no `.github/` changes, no credential-shaped strings)
