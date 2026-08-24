@@ -318,7 +318,7 @@ membership).
 5. A rehearsed failure between tag creation and cask publication is recovered using this repo's
    existing `workflow_dispatch` re-ship path, with no hand-edit to the tap.
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans executed
 
 Plans:
 **Wave 1**
@@ -328,7 +328,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 01-02-PLAN.md — dev-build version derivation from `runtime/debug.ReadBuildInfo()`, the release-please-managed base const, and the rewire of all three `serve` version surfaces
-- [ ] 01-03-PLAN.md — release plumbing: newest-tag re-ship guard, explicit cross-repo token scope, read-only credential probe, and the blocking post-merge probe dispatch that gates the next release-please merge
+- [x] 01-03-PLAN.md — release plumbing: newest-tag re-ship guard, explicit cross-repo token scope, read-only credential probe, and the blocking post-merge probe dispatch that gates the next release-please merge
 
 ---
 
