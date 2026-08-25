@@ -34,14 +34,25 @@ jobs:
         with:
           app-id: ${{ secrets.RELEASE_APP }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-          # repositories: is a closed allowlist, not an addition to the
-          # default: unset means "this repository only", and setting it
-          # REPLACES that default rather than extending it. Scoping this to
-          # homebrew-tap alone would strip engram from the token's scope and
-          # break the release-please step above, which writes release PRs,
-          # tags, and Releases to engram in this same job — do not "tighten"
-          # this list to just the tap.
-          repositories: engram,homebrew-tap
+          # Deliberately UNSET, which means "this repository only". This App
+          # exists to do exactly one job — cut releases in THIS repo — and it
+          # must never be widened to a second repository. The Homebrew tap is
+          # written by a DIFFERENT App (see the tap-token step below); one App,
+          # one purpose. Adding `repositories:` here to reach another repo is
+          # the change this comment exists to prevent.
+      # The cask push targets seanb4t/homebrew-tap, a different repository, so
+      # it needs its own credential. It gets a dedicated App scoped to that one
+      # repository rather than widening the release App: an App named and
+      # installed for releasing engram must not also hold write access to the
+      # tap. GoReleaser reads this via homebrew_casks[].repository.token in
+      # .goreleaser.yaml, which overrides GITHUB_TOKEN for that publisher only.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        id: tap-token
+        with:
+          app-id: ${{ secrets.TAP_PUBLISHER_APP }}
+          private-key: ${{ secrets.TAP_PUBLISHER_APP_PRIVATE_KEY }}
+          owner: seanb4t
+          repositories: homebrew-tap
       - if: ${{ github.event_name == 'push' }}
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
@@ -174,6 +185,10 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          # Consumed only by homebrew_casks[].repository.token — scoped to the
+          # tap and nothing else. Keep it out of GITHUB_TOKEN so the tap
+          # credential can never write a release, and vice versa.
+          HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
       # `.goreleaser.yaml`'s docker_manifests tags `ghcr.io/seanb4t/engram:latest`
       # unconditionally, so a dispatch re-ship of an OLDER tag drags the floating
       # `latest` backwards — backfilling v0.11.0 after v0.11.1 had shipped left

@@ -96,6 +96,13 @@ homebrew_casks:
     repository:
       owner: seanb4t
       name: homebrew-tap
+      # A dedicated tap-publisher App's token, NOT the release App's. This
+      # overrides GITHUB_TOKEN for this publisher only, so the credential that
+      # writes the tap cannot cut a release and the credential that cuts
+      # releases cannot write the tap. One App, one purpose. Falls back to an
+      # empty string when unset so `task release:snapshot` still renders
+      # locally (a snapshot never uploads).
+      token: "{{ if .Env.HOMEBREW_TAP_TOKEN }}{{ .Env.HOMEBREW_TAP_TOKEN }}{{ end }}"
     directory: Casks
     homepage: https://github.com/seanb4t/engram
     # Copied byte-for-byte from rootCmd.Short (cmd/engram/root.go:27) — the
