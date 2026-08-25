@@ -1,6 +1,6 @@
 {
   "workflow": {
-    "_auto_chain_active": true,
+    "_auto_chain_active": false,
     "nyquist_validation": true,
     "ai_integration_phase": true,
     "plan_review_convergence": true,
