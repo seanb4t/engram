@@ -65,6 +65,12 @@ jobs:
           private-key: ${{ secrets.TAP_PUBLISHER_APP_PRIVATE_KEY }}
           owner: seanb4t
           repositories: homebrew-tap
+          # Scope the token DOWN to the one permission the cask push needs, so
+          # it cannot do anything else even if the App is later granted more.
+          # It also fails the release loudly — rather than pushing a cask that
+          # silently never lands — if the App ever loses contents:write, since
+          # GitHub refuses to mint a token scoped above what the App holds.
+          permission-contents: write
       - if: ${{ github.event_name == 'push' }}
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
