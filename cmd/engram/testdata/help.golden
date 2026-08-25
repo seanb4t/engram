@@ -465,5 +465,6 @@ Usage:
   engram version [flags]
 
 Flags:
-  -h, --help   help for version
+  -h, --help            help for version
+      --output string   output format: "json" or "text" (default: text, always — unlike every other --output flag in this binary, this one never auto-detects from stdout) (default "text")
 ```

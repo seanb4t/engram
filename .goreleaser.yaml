@@ -86,3 +86,112 @@ release:
   # uploads artifacts to that already-created, tag-keyed release.
   # replace_existing_artifacts makes re-runs idempotent.
   replace_existing_artifacts: true
+
+# homebrew_casks: is GoReleaser's current cask publisher — brews: (formula) is
+# deprecated and must not be introduced. No repository.token override: the
+# GoReleaser step in release.yaml already passes the release-please App token
+# as GITHUB_TOKEN (D-12), extended to cover seanb4t/homebrew-tap too.
+homebrew_casks:
+  - name: engram
+    repository:
+      owner: seanb4t
+      name: homebrew-tap
+      # A dedicated tap-publisher App's token, NOT the release App's. This
+      # overrides GITHUB_TOKEN for this publisher only, so the credential that
+      # writes the tap cannot cut a release and the credential that cuts
+      # releases cannot write the tap. One App, one purpose. Falls back to an
+      # empty string when unset so `task release:snapshot` still renders
+      # locally (a snapshot never uploads).
+      token: "{{ if .Env.HOMEBREW_TAP_TOKEN }}{{ .Env.HOMEBREW_TAP_TOKEN }}{{ end }}"
+    directory: Casks
+    homepage: https://github.com/seanb4t/engram
+    # Copied byte-for-byte from rootCmd.Short (cmd/engram/root.go:27) — the
+    # project's one established one-liner, already shipped in `engram --help`.
+    # YAML cannot reference a Go constant, so this duplication is unavoidable;
+    # it is made checkable by a plan acceptance criterion that extracts the
+    # literal from root.go and requires the identical bytes here.
+    description: Self-hosted, correctable, OAuth-secured memory for coding agents
+    # Guarded optional-env: emits the workflow guard step's computed value,
+    # falling back to "false" when SKIP_HOMEBREW_UPLOAD is unset entirely
+    # (e.g. `task release:snapshot` run locally), so local snapshot renders
+    # keep working while CI always supplies the real value. A bare
+    # {{ .Env.SKIP_HOMEBREW_UPLOAD }} would hard-fail template evaluation
+    # whenever the variable is unset. GoReleaser's template functions cannot
+    # run `git tag -l`, which is why the newest-tag comparison is computed
+    # in the workflow and only read here.
+    #
+    # Not skip_upload: auto — that skips uploads for tags carrying a
+    # prerelease indicator, a different rule from the newest-tag rule this
+    # guard implements, and layering it on top would make the effective
+    # condition harder to reason about than either alone.
+    #
+    # This is the guard that keeps a workflow_dispatch backfill of an older
+    # tag from regressing the tap: this repo already lost `latest` to a
+    # v0.11.0 backfill after v0.11.1 had shipped, and a version-pinned cask
+    # would fail the same way with no floating tag to notice it by.
+    skip_upload: '{{ if index .Env "SKIP_HOMEBREW_UPLOAD" }}{{ .Env.SKIP_HOMEBREW_UPLOAD }}{{ else }}false{{ end }}'
+    hooks:
+      post:
+        install: |-
+          # engram ships unsigned (CGO_ENABLED=0, no GoReleaser Pro and no
+          # Apple Developer Program membership). Invoking the binary before
+          # stripping quarantine gets it SIGKILLed by Gatekeeper instead of
+          # failing cleanly with a diagnosable message, so the strip must be
+          # the literal first statement in this hook. xattr does not exist on
+          # Linux, which has no Gatekeeper quarantine to strip in the first
+          # place, so this is guarded to macOS only.
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/engram"]
+          end
+
+          # This runs after Homebrew's install_artifacts has already created
+          # the HOMEBREW_PREFIX symlink, so the installed binary (not the
+          # staged archive) is what gets exercised here. system_command
+          # defaults to must_succeed: true, so a non-zero exit from the
+          # binary raises on its own; the explicit raise below covers the
+          # case where the binary exits zero but reports the wrong version.
+          # No v-prefix normalization on either side: engram's version string
+          # and archive names are bare SemVer with no "v" prefix already, so
+          # both sides are already in the same shape.
+          binary = "#{HOMEBREW_PREFIX}/bin/engram"
+          result = system_command binary, args: ["version", "--output", "json"]
+          reported_version = JSON.parse(result.stdout)["version"].to_s
+          declared_version = version.to_s
+          if reported_version != declared_version
+            raise "engram cask post-install: installed binary reports version " \
+                  "#{reported_version.inspect}, cask declares #{declared_version.inspect}"
+          end
+
+          # Completions are written from the installed binary via
+          # system_command (which raises on failure), never via the
+          # declarative completions: field and never via Homebrew's
+          # completion-generation helper — that helper's write_completion
+          # wraps execution in a rescue that downgrades a failure to a
+          # warning, so a broken binary would install green. The helper is
+          # named neither here nor anywhere else in this file on purpose:
+          # the acceptance gate for this decision is a literal occurrence
+          # count over this file, so naming it even in a comment destroys
+          # the gate's ability to tell prose from actual use.
+          # This is the second time the hook exercises the binary, which is
+          # the point: a binary that cannot produce completions is a binary
+          # that fails the install rather than one that installs with a
+          # warning.
+          {
+            "bash" => "#{HOMEBREW_PREFIX}/etc/bash_completion.d/engram",
+            "zsh" => "#{HOMEBREW_PREFIX}/share/zsh/site-functions/_engram",
+            "fish" => "#{HOMEBREW_PREFIX}/share/fish/vendor_completions.d/engram.fish",
+          }.each do |shell, dest|
+            completion = system_command binary, args: ["completion", shell]
+            FileUtils.mkdir_p(File.dirname(dest))
+            File.write(dest, completion.stdout)
+          end
+        uninstall: |-
+          # Homebrew tracks only the files IT installs, never files a hook
+          # wrote, so without this an uninstall leaves all three completion
+          # files behind. Removes exactly those three paths — never their
+          # parent directories, which are shared with other formulae and
+          # casks — with the file-scoped remover, never the recursive tree
+          # remover.
+          FileUtils.rm_f "#{HOMEBREW_PREFIX}/etc/bash_completion.d/engram"
+          FileUtils.rm_f "#{HOMEBREW_PREFIX}/share/zsh/site-functions/_engram"
+          FileUtils.rm_f "#{HOMEBREW_PREFIX}/share/fish/vendor_completions.d/engram.fish"
