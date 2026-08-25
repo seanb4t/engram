@@ -104,9 +104,15 @@ import (
 // DURING one. TestRedEvidencePatchesAreLive tells those apart rather than
 // treating zero directories as vacuously green — see its empty-map guard.
 var redEvidenceDirs = map[string]map[string]string{
-	// Empty: no milestone is open. See the SCOPE note above before adding
-	// an archived path here — the guard below fails if an active-milestone
-	// phase directory exists while this map is empty.
+	// Milestone 2026-08-23.01, phase 01 (version-homebrew-distribution).
+	// The phase's contract is that `engram version --output json` emits a
+	// machine-readable payload the cask's install gate parses by the
+	// `version` key; renaming that key is the exact regression that would
+	// make a cask install pass its own gate against a payload no consumer
+	// can read. The patch proves TestVersionJSONLane still catches it.
+	".planning/phases/01-version-homebrew-distribution/red-evidence": {
+		"version-json-key.patch": "TestVersionJSONLane",
+	},
 }
 
 // gitModuleRoot shells out to `git rev-parse --show-toplevel` rather than
