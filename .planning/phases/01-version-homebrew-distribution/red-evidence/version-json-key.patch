@@ -1,0 +1,13 @@
+diff --git a/cmd/engram/version.go b/cmd/engram/version.go
+index 8bc1e726..03a5ace0 100644
+--- a/cmd/engram/version.go
++++ b/cmd/engram/version.go
+@@ -27,7 +27,7 @@ import (
+ // SemVer build metadata, so a separate "commit" field would be a second
+ // spelling of the same fact.
+ type versionDoc struct {
+-	Version string `json:"version"`
++	Version string `json:"engramVersion"`
+ }
+ 
+ var versionCmd = &cobra.Command{
