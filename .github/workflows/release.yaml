@@ -41,15 +41,27 @@ jobs:
           # one purpose. Adding `repositories:` here to reach another repo is
           # the change this comment exists to prevent.
       # The cask push targets seanb4t/homebrew-tap, a different repository, so
-      # it needs its own credential. It gets a dedicated App scoped to that one
-      # repository rather than widening the release App: an App named and
-      # installed for releasing engram must not also hold write access to the
-      # tap. GoReleaser reads this via homebrew_casks[].repository.token in
+      # it needs its own credential rather than a widened release-App token:
+      # an App installed to release engram must not also hold write access to
+      # the tap. One App, one purpose.
+      #
+      # That purpose is TAP PUBLISHING, not "engram's tap push" — this is the
+      # same App codegraph uses to publish its own cask. Sharing it across the
+      # repos that publish to the tap is the same rule, not an exception to it:
+      # one identity doing one job for one target repository. What is forbidden
+      # is one App doing two DIFFERENT jobs (cutting releases AND writing the
+      # tap), which is what this step replaced.
+      #
+      # GoReleaser reads this via homebrew_casks[].repository.token in
       # .goreleaser.yaml, which overrides GITHUB_TOKEN for that publisher only.
+      #
+      # client-id, not app-id: the action deprecated app-id in favour of
+      # client-id. The release-App mint above still uses app-id and still warns,
+      # because no RELEASE_APP_CLIENT_ID secret exists yet.
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         id: tap-token
         with:
-          app-id: ${{ secrets.TAP_PUBLISHER_APP }}
+          client-id: ${{ secrets.TAP_PUBLISHER_CLIENT_ID }}
           private-key: ${{ secrets.TAP_PUBLISHER_APP_PRIVATE_KEY }}
           owner: seanb4t
           repositories: homebrew-tap
