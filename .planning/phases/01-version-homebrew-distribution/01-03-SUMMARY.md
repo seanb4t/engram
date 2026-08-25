@@ -90,6 +90,40 @@ status: complete
 
 **Newest-tag `skip_upload` guard plus a scoped, read-only `workflow_dispatch` credential probe make the Homebrew cask publishing pipeline correct by construction — a `workflow_dispatch` backfill of an older tag can no longer regress the tap, and the cross-repo App token's push access is checkable without a real release.**
 
+## Superseded: credential design changed after review
+
+**Everything below describing a single App scoped `repositories: engram,homebrew-tap`
+is HISTORICAL and no longer reflects the shipped configuration.** Read this section
+first; it overrides the App/token claims in the sections that follow.
+
+The original design widened the existing release App ("fzy Release-Please",
+installation `138490520`) to reach `seanb4t/homebrew-tap`, so one credential served two
+repositories and two purposes. The user rejected that on review: **an App exists to do
+one job.** All three cross-AI plan-review cycles missed this — the only related review
+comment (cycle 2) narrowed a *claim* about what the runtime probe observes, and never
+questioned the multi-use itself.
+
+Shipped instead (commit `f67622eb`):
+
+- The release App's mint has NO `repositories:` input, restoring its default scope of
+  this repository only. It cannot reach the tap.
+- A dedicated tap-publisher App, installed on `seanb4t/homebrew-tap` alone, is minted in
+  its own step and exposed to GoReleaser as `HOMEBREW_TAP_TOKEN`.
+- `.goreleaser.yaml` sets `homebrew_casks[].repository.token` to that value, which
+  overrides `GITHUB_TOKEN` for that publisher only (a documented, non-Pro GoReleaser
+  field). The release credential cannot write the tap; the tap credential cannot cut a
+  release.
+- `verify-tap-credential.yaml` probes the TAP App — probing the release App would now
+  assert the wrong thing.
+
+Outstanding operator setup, tracked on issue #514:
+
+1. Create the tap-publisher App with `contents: write`, installed on
+   `seanb4t/homebrew-tap` only.
+2. Add repository secrets `TAP_PUBLISHER_APP` and `TAP_PUBLISHER_APP_PRIVATE_KEY`.
+3. **Revoke** `seanb4t/homebrew-tap` from the "fzy Release-Please" App — the grant
+   recorded below is no longer wanted.
+
 ## Performance
 
 - **Duration:** ~55 min (across a human-action checkpoint pause)
