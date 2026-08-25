@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: 2026-08-23.01
 current_phase: 01
 current_phase_name: Version & Homebrew Distribution
-status: executing
+status: "Phase 01 shipped — PR #515"
 stopped_at: Phase 1 context gathered
-last_updated: "2026-08-23T22:12:24.920Z"
+last_updated: "2026-08-25T00:47:45.058Z"
 last_activity: 2026-08-23
 last_activity_desc: Phase 01 execution started
-state_head: 93cfe1d778150c8684758ff0587a0f720e0d8616
+state_head: d808b6a13f1899fb1c294f5fcb2b5b1326a8d3b4
 progress:
   total_phases: 6
   completed_phases: 0
@@ -64,7 +64,7 @@ Items acknowledged and deferred at milestone close on 2026-08-22 (milestone 2026
 | deferred_items | Phase 07 / Environment gaps (`ui/`): svelte-check crash, no `lint` script | acknowledged — genuine pre-existing debt. `svelte-check@4.7.3` / `typescript@7.0.2` incompatibility pinned in `ui/package.json`; executors substituted vitest + `npx tsc --noEmit` |
 | deferred_items | Phase 07 / Deferred to phase UAT (07-04 `/observe?inc=archived` round-trip, 07-07 migration-banner visual check) | acknowledged — genuine, needs a live server + Qdrant; unrunnable in a worktree |
 
-Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own `- **Status:** Executing Phase 01
+Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own `- **Status:** Phase 01 shipped — PR #515
 
 ## Accumulated Context
 
