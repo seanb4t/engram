@@ -157,10 +157,14 @@ homebrew_casks:
 
           # Completions are written from the installed binary via
           # system_command (which raises on failure), never via the
-          # declarative completions: field or
-          # generate_completions_from_executable — the latter's
-          # write_completion wraps execution in a rescue that downgrades a
-          # failure to a warning, so a broken binary would install green.
+          # declarative completions: field and never via Homebrew's
+          # completion-generation helper — that helper's write_completion
+          # wraps execution in a rescue that downgrades a failure to a
+          # warning, so a broken binary would install green. The helper is
+          # named neither here nor anywhere else in this file on purpose:
+          # the acceptance gate for this decision is a literal occurrence
+          # count over this file, so naming it even in a comment destroys
+          # the gate's ability to tell prose from actual use.
           # This is the second time the hook exercises the binary, which is
           # the point: a binary that cannot produce completions is a binary
           # that fails the install rather than one that installs with a
