@@ -20,7 +20,7 @@ import (
 // version: with bump-minor-pre-major: true the real next release after
 // 0.14.0 is usually 0.15.0, not 0.14.1, so the derived 0.14.1-dev.0 below
 // is a correctly-ordering lower bound and nothing more.
-const lastRelease = "0.14.0" // x-release-please-version
+const lastRelease = "0.14.1" // x-release-please-version
 
 // patchCorePattern anchors nextPatch's input to a plain, unsigned SemVer
 // core: exactly three dot-separated components, each either "0" or a

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/seanb4t/engram/compare/v0.14.0...v0.14.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **ci:** prove tap write access at mint time, and use client-id ([#516](https://github.com/seanb4t/engram/issues/516)) ([fdb3448](https://github.com/seanb4t/engram/commit/fdb3448484650776332de80fb4dbae77568a8f81))
+
 ## [0.14.0](https://github.com/seanb4t/engram/compare/v0.13.0...v0.14.0) (2026-08-23)
 
 
