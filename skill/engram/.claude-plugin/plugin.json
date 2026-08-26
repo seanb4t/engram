@@ -1,5 +1,5 @@
 {
   "name": "engram",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "description": "Self-hosted, correctable, OAuth-secured memory for coding agents: session-start recall, curation discipline, and a two-tier per-workspace memory scope. Register the engram MCP server with /engram-setup."
 }
