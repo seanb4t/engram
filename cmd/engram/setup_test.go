@@ -333,6 +333,161 @@ func TestSetupUnsupportedAuthModeIsFailedRow(t *testing.T) {
 	}
 }
 
+// TestSetupApplyAllAbsentExitsZero proves `engram setup --apply` against a
+// fake Environment where every selected runtime is absent exits 0 and
+// every row's outcome is not-present (D-07): nothing was attempted, so
+// nothing can have failed.
+func TestSetupApplyAllAbsentExitsZero(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupEnv(t, fakeSetupEnv())
+
+	stdout, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--apply", "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v (stdout=%q stderr=%q)", err, stdout, stderr)
+	}
+
+	var doc setupReportDoc
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+	}
+	if len(doc.Runtimes) != len(setup.Names()) {
+		t.Fatalf("setup --apply emitted %d rows, want %d: %s", len(doc.Runtimes), len(setup.Names()), stdout)
+	}
+	for _, row := range doc.Runtimes {
+		if row.Outcome != string(setup.OutcomeNotPresent) {
+			t.Errorf("%s row.Outcome = %q, want %q", row.Name, row.Outcome, "not-present")
+		}
+	}
+}
+
+// TestSetupApplyAtLeastOnePresentExitsSetupFailed proves `engram setup
+// --apply` against a fake Environment with at least one runtime present
+// exits exitSetupFailed (9), and that the SAME run's captured stdout still
+// carries a report row for every selected runtime (T-02-06): a nonzero
+// exit must never erase the per-runtime record of what happened.
+func TestSetupApplyAtLeastOnePresentExitsSetupFailed(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupEnv(t, fakeSetupEnv("claude"))
+
+	stdout, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--apply", "--output", "json")
+	if err == nil {
+		t.Fatal("expected a non-nil error for --apply with at least one runtime present, got nil")
+	}
+	if got := exitCodeFromError(err); got != exitSetupFailed {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitSetupFailed); stderr=%q", got, exitSetupFailed, stderr)
+	}
+	if stdout == "" {
+		t.Fatal("stdout is empty; the report must be rendered before the nonzero exit (T-02-06)")
+	}
+	var doc setupReportDoc
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+	}
+	if len(doc.Runtimes) != len(setup.Names()) {
+		t.Fatalf("setup --apply emitted %d rows, want %d (one per selected runtime, none collapsed): %s", len(doc.Runtimes), len(setup.Names()), stdout)
+	}
+	var found bool
+	for _, row := range doc.Runtimes {
+		if row.Name != "claude-code" {
+			continue
+		}
+		found = true
+		if row.Outcome != string(setup.OutcomeFailed) {
+			t.Errorf("claude-code row.Outcome = %q, want %q", row.Outcome, "failed")
+		}
+		if row.Reason == "" {
+			t.Error("claude-code row.Reason is empty, want it to name why the attempt failed")
+		}
+	}
+	if !found {
+		t.Fatalf("setup --apply has no claude-code row: %s", stdout)
+	}
+}
+
+// TestSetupPreviewExitsZeroRegardlessOfPresence proves a bare `engram
+// setup` (no --apply) exits 0 whether every selected runtime is present or
+// every one is absent (D-08): a preview never fails on a detection
+// outcome, only on a usage/config error.
+func TestSetupPreviewExitsZeroRegardlessOfPresence(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  setup.Environment
+	}{
+		{"all-absent", fakeSetupEnv()},
+		{"all-present", fakeSetupEnv("claude", "codex", "opencode")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resetClientFlags(t)
+			resetCommandFlagState(t, setupCmd)
+			withFakeSetupEnv(t, tc.env)
+
+			_, stderr, err := runClient(t, "setup", "--output", "json")
+			if err != nil {
+				t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+			}
+		})
+	}
+}
+
+// TestSetupApplyJSONEmitsPerRuntimeOutcome proves `engram setup --output
+// json --apply` against a mixed fake Environment emits a runtimes array
+// with exactly one element per selected runtime, each carrying its own
+// outcome field — no aggregate count field ever replaces the per-runtime
+// rows.
+func TestSetupApplyJSONEmitsPerRuntimeOutcome(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupEnv(t, fakeSetupEnv("claude", "codex")) // opencode absent
+
+	stdout, _, _ := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--output", "json", "--apply")
+
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(stdout), &raw); err != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+	}
+	if _, ok := raw["runtimes"]; !ok {
+		t.Fatalf("emitted document has no runtimes field: %s", stdout)
+	}
+	for _, aggregateKey := range []string{"count", "failed_count", "present_count", "summary_count"} {
+		if _, ok := raw[aggregateKey]; ok {
+			t.Errorf("emitted document has an aggregate field %q; no runtime's outcome may be collapsed into a count", aggregateKey)
+		}
+	}
+
+	var doc setupReportDoc
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+	}
+	if len(doc.Runtimes) != len(setup.Names()) {
+		t.Fatalf("setup --output json --apply emitted %d rows, want %d: %s", len(doc.Runtimes), len(setup.Names()), stdout)
+	}
+	for _, row := range doc.Runtimes {
+		if row.Outcome == "" {
+			t.Errorf("%s row has an empty outcome", row.Name)
+		}
+	}
+}
+
+// TestSetupExitCodes is the direct three-case table over setupExitCode's
+// mapping function.
+func TestSetupExitCodes(t *testing.T) {
+	cases := []struct {
+		class setup.ExitClass
+		want  int
+	}{
+		{setup.ExitTotalSuccess, exitOK},
+		{setup.ExitPartial, exitPartial},
+		{setup.ExitTotalFailure, exitSetupFailed},
+	}
+	for _, c := range cases {
+		if got := setupExitCode(c.class); got != c.want {
+			t.Errorf("setupExitCode(%v) = %d, want %d", c.class, got, c.want)
+		}
+	}
+}
+
 // TestSetupHelpNamesEveryRuntimeAndAuthMode is the golden-backed
 // assertion that `engram setup --help`'s help.golden section names each
 // of claude-code, codex, opencode, oauth, oauth-client, bearer, and none,

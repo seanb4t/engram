@@ -31,7 +31,7 @@ would write, and wires it up.
 - [ ] **REQ-setup-previews-by-default**: `engram setup` previews without mutating and changes nothing until `--apply`, matching `engram migrate` and `prune-expired`. The preview shows the exact command or content that would be issued, not a summary of it.
 - [ ] **REQ-setup-idempotent**: Re-running `engram setup --apply` converges to the same state without duplicating entries, and reports "already correct" distinctly from "wrote it", so an operator can tell a no-op from a change.
 - [ ] **REQ-setup-non-interactive**: `engram setup` is fully usable without a TTY — a caller can select runtimes explicitly, skip confirmation, and get machine-readable output, so the command is scriptable from CI or another agent on day one.
-- [ ] **REQ-setup-partial-failure-legible**: When some runtimes succeed and others fail in one invocation, the outcome per runtime is reported individually and the process exit status distinguishes total success, partial success, and total failure. No runtime's failure silently discards another's success.
+- [x] **REQ-setup-partial-failure-legible**: When some runtimes succeed and others fail in one invocation, the outcome per runtime is reported individually and the process exit status distinguishes total success, partial success, and total failure. No runtime's failure silently discards another's success.
 - [ ] **REQ-setup-correct-by-reading**: `engram setup --help` teaches the correct invocation — which runtimes are targetable, what `--apply` does, and what auth modes are accepted — without the caller having to run it and interpret a failure (D-00).
 
 ### Runtime Registration
@@ -97,7 +97,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-setup-previews-by-default | Phase 2 | Pending |
 | REQ-setup-idempotent | Phase 3 | Pending |
 | REQ-setup-non-interactive | Phase 2 | Pending |
-| REQ-setup-partial-failure-legible | Phase 2 | Pending |
+| REQ-setup-partial-failure-legible | Phase 2 | Complete |
 | REQ-setup-correct-by-reading | Phase 2 | Pending |
 | REQ-register-claude-code | Phase 3 | Pending |
 | REQ-register-codex | Phase 3 | Pending |

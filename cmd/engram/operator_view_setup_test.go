@@ -54,6 +54,21 @@ func setupViewFixtures() map[string][]any {
 		Outcome: "failed",
 		Reason:  "opencode: auth mode \"oauth-client\": setup: auth mode is not supported by this runtime",
 	}
+	// applyAttemptedFailed and applyNotPresent model the --apply-shaped
+	// document setupApplyRun renders (02-02 Task 3): every present runtime
+	// is marked failed (Apply is stubbed, D-09), and a not-present runtime
+	// keeps its OutcomeNotPresent row untouched (D-07).
+	applyAttemptedFailed := setupRuntimeRow{
+		Name:    "claude-code",
+		Present: true,
+		Outcome: "failed",
+		Reason:  "setup: --apply is not implemented yet (Phase 3) — run `engram setup` (without --apply) to preview the invocation it would issue",
+	}
+	applyNotPresent := setupRuntimeRow{
+		Name:    "codex",
+		Present: false,
+		Outcome: "not-present",
+	}
 
 	return map[string][]any{
 		"setup": {
@@ -64,10 +79,12 @@ func setupViewFixtures() map[string][]any {
 			// every registered runtime.
 			setupReportDoc{Runtimes: []setupRuntimeRow{present, codexPresent, openCodeAbsent}},
 			// Task 3: a bearer-mode fixture (credential redacted by
-			// provenance, D-16) and an unsupported-mode fixture
-			// (opencode x oauth-client, outcome=failed).
+			// provenance, D-16), an unsupported-mode fixture (opencode x
+			// oauth-client, outcome=failed), and an apply-shaped mixed
+			// not-present/failed fixture covering the apply lane.
 			setupReportDoc{Runtimes: []setupRuntimeRow{bearerMode}},
 			setupReportDoc{Runtimes: []setupRuntimeRow{unsupportedMode}},
+			setupReportDoc{Runtimes: []setupRuntimeRow{applyAttemptedFailed, applyNotPresent}},
 		},
 	}
 }

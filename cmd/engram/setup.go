@@ -192,16 +192,125 @@ func setupPreview(_ context.Context, cmd *cobra.Command) error {
 	return renderOperator(cmd, format, setupPreviewSummary(doc.Runtimes), doc)
 }
 
+// setupExitCode maps a setup.ExitClass to this binary's process exit code
+// (D-06). The default arm is unreachable while ExitClass has exactly three
+// values; it exists only as the backstop catalog.go documents exitGeneric
+// to be, not as a code path any caller of this function should reach.
+func setupExitCode(c setup.ExitClass) int {
+	switch c {
+	case setup.ExitTotalSuccess:
+		return exitOK
+	case setup.ExitPartial:
+		return exitPartial
+	case setup.ExitTotalFailure:
+		return exitSetupFailed
+	default:
+		return exitGeneric
+	}
+}
+
+// setupApplyStubReason is the Reason every present (attempted) runtime's
+// row carries under --apply this phase (D-09): Apply() itself is not
+// implemented until Phase 3, so every attempted runtime fails identically
+// regardless of whether Plan() would itself have succeeded.
+func setupApplyStubReason() string {
+	return fmt.Sprintf("%v — run `engram setup` (without --apply) to preview the invocation it would issue", setup.ErrApplyNotImplemented)
+}
+
+// setupResultsFromRows converts report rows into internal/setup.Result
+// values for setup.Classify — a pure, local mapping so internal/setup
+// never needs to know about cmd/engram's rendering types (the leaf-purity
+// gate, leafpurity_test.go).
+func setupResultsFromRows(rows []setupRuntimeRow) []setup.Result {
+	results := make([]setup.Result, len(rows))
+	for i, r := range rows {
+		results[i] = setup.Result{
+			Runtime: r.Name,
+			Present: r.Present,
+			Outcome: setup.Outcome(r.Outcome),
+			Command: r.Command,
+			Reason:  r.Reason,
+		}
+	}
+	return results
+}
+
+// setupApplySummary renders the operator-facing one-line APPLY headline:
+// how many of the selected runtimes failed this phase's stub, since every
+// attempted runtime does (D-09).
+func setupApplySummary(rows []setupRuntimeRow) string {
+	failed := 0
+	for _, r := range rows {
+		if r.Outcome == string(setup.OutcomeFailed) {
+			failed++
+		}
+	}
+	return fmt.Sprintf("apply: %d/%d selected runtime(s) failed; registration lands in a later phase (Phase 3)", failed, len(rows))
+}
+
 // setupApplyRun is registerDestructive's apply closure. Phase 2 ships no
-// Apply() implementation (D-09): it renders the SAME report setupPreview
-// renders, then returns an error wrapping setup.ErrApplyNotImplemented
-// naming Phase 3 as the phase that wires runtime registration and
-// pointing the caller at the bare invocation to preview.
-func setupApplyRun(ctx context.Context, cmd *cobra.Command) error {
-	if err := setupPreview(ctx, cmd); err != nil {
+// Apply() implementation (D-09): it builds the SAME per-runtime rows
+// setupPreview builds (same Detect(), same Plan(), same ordering — text
+// and JSON stay one serialization plus a view), then marks every runtime
+// that was actually attempted (Present) as failed with a Reason naming
+// setup.ErrApplyNotImplemented. A not-present runtime keeps
+// OutcomeNotPresent untouched (D-07) — it was never attempted, so it
+// cannot fail.
+//
+// The report is rendered with renderOperator UNCONDITIONALLY, before any
+// error is returned (T-02-06): a nonzero exit must never erase the
+// per-runtime record of what happened. setup.Classify then determines the
+// process exit code; exitPartial has no live producer until Phase 3 makes
+// a runtime capable of succeeding under --apply (every attempted runtime
+// fails this phase, so only ExitTotalSuccess — nothing attempted — and
+// ExitTotalFailure are reachable here; that gap is recorded in
+// catalog_test.go's nonConnectProducedCodes and proven by exit_test.go's
+// pure table, not by this command).
+func setupApplyRun(_ context.Context, cmd *cobra.Command) error {
+	format, err := operatorOutputFormat(cmd, setupOutput)
+	if err != nil {
 		return err
 	}
-	return fmt.Errorf("engram setup --apply: %w — run `engram setup` (without --apply) to preview the invocation it would issue", setup.ErrApplyNotImplemented)
+	doc, err := setupPlanDoc(cmd)
+	if err != nil {
+		return err
+	}
+
+	reason := setupApplyStubReason()
+	rows := make([]setupRuntimeRow, len(doc.Runtimes))
+	for i, r := range doc.Runtimes {
+		if !r.Present {
+			rows[i] = r
+			continue
+		}
+		rows[i] = setupRuntimeRow{
+			Name:    r.Name,
+			Present: true,
+			Outcome: string(setup.OutcomeFailed),
+			Reason:  reason,
+		}
+	}
+	doc.Runtimes = rows
+
+	if err := renderOperator(cmd, format, setupApplySummary(rows), doc); err != nil {
+		return err
+	}
+
+	class := setup.Classify(setupResultsFromRows(rows))
+	if class == setup.ExitTotalSuccess {
+		return nil
+	}
+	failed := 0
+	for _, r := range rows {
+		if r.Outcome == string(setup.OutcomeFailed) {
+			failed++
+		}
+	}
+	return &cliError{
+		code: setupExitCode(class),
+		err: fmt.Errorf("engram setup --apply: %d of %d selected runtime(s) failed — run `engram setup` (without --apply) to preview the invocation each would issue",
+			failed, len(rows)),
+	}
 }
 
 // setupApplySentence returns surfaces.RuleDestructiveRequiresApply's own
