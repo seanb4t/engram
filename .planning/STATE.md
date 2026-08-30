@@ -5,14 +5,14 @@ current_phase: 02
 current_phase_name: Setup Command Core
 status: executing
 stopped_at: Phase 2 planned
-last_updated: "2026-08-30T06:41:11.960Z"
+last_updated: "2026-08-30T14:34:10.000Z"
 last_activity: 2026-08-30
 last_activity_desc: Phase 02 execution started
-state_head: 81ac8f3c72fb26356e0ddd39987b1b0db847a42c
+state_head: 28954ccff017301a71975e191fc81a5b8652d0f8
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 5
+  total_plans: 6
   completed_plans: 3
 milestone_name: Distribution & Agent Bootstrap
 ---
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-08-23 — after opening milestone 2026-0
 
 ## Current Position
 
-Phase: 02 (Setup Command Core) — EXECUTING
+Phase: 02 (Setup Command Core) — READY TO EXECUTE
 Plan: 1 of 2
-Status: Executing Phase 02
+Status: Ready to execute
 Last activity: 2026-08-30 — Phase 02 execution started
 
 ## Deferred Items
@@ -64,7 +64,7 @@ Items acknowledged and deferred at milestone close on 2026-08-22 (milestone 2026
 | deferred_items | Phase 07 / Environment gaps (`ui/`): svelte-check crash, no `lint` script | acknowledged — genuine pre-existing debt. `svelte-check@4.7.3` / `typescript@7.0.2` incompatibility pinned in `ui/package.json`; executors substituted vitest + `npx tsc --noEmit` |
 | deferred_items | Phase 07 / Deferred to phase UAT (07-04 `/observe?inc=archived` round-trip, 07-07 migration-banner visual check) | acknowledged — genuine, needs a live server + Qdrant; unrunnable in a worktree |
 
-Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own `- **Status:** Executing Phase 02
+Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own `- **Status:** acknowledged` marker.
 
 ## Accumulated Context
 
