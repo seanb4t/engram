@@ -1228,6 +1228,14 @@
     {
       "code": 7,
       "meaning": "findings reported under an explicit opt-in flag (e.g. spine-review verify --fail-on); the command itself succeeded"
+    },
+    {
+      "code": 8,
+      "meaning": "at least one runtime was registered successfully and at least one failed in the same engram setup invocation"
+    },
+    {
+      "code": 9,
+      "meaning": "every runtime engram setup attempted failed; a runtime that is not installed does not count as an attempt"
     }
   ],
   "notes": [

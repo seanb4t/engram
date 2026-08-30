@@ -233,6 +233,23 @@ const (
 	// command itself succeeded; the data just didn't pass a check the
 	// caller opted into.
 	exitFindings = 7
+	// exitPartial is produced by `engram setup --apply` (D-06) when at
+	// least one selected runtime failed alongside at least one that
+	// succeeded or was already correct. Like exitFindings, it has no
+	// exitCodeForConnectErr producer -- catalog_test.go's
+	// nonConnectProducedCodes carries a named allowlist entry for it. A
+	// runtime that is simply not installed contributes to neither this
+	// code nor exitSetupFailed (D-07): "there was nothing to do" must
+	// never be reported to a script as "I failed."
+	exitPartial = 8
+	// exitSetupFailed is produced by `engram setup --apply` (D-06) when
+	// every runtime engram actually attempted failed. Like exitFindings
+	// and exitPartial, it has no exitCodeForConnectErr producer --
+	// catalog_test.go's nonConnectProducedCodes carries a named allowlist
+	// entry for it. A runtime that is simply not installed does not count
+	// as an attempt and contributes to neither this code nor exitPartial
+	// (D-07).
+	exitSetupFailed = 9
 )
 
 // cliError carries an explicit process exit code alongside a wrapped
