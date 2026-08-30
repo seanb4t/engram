@@ -114,6 +114,46 @@ func TestSelectUnknownNameIsErrAuthModeUnsupportedDistinct(t *testing.T) {
 	}
 }
 
+// TestSelectDedupesRepeatedNames proves Select gives a repeated --runtime
+// name first-occurrence deduplication (WR-02): a repeat is silently
+// skipped (never an error), and the caller's stated order is preserved
+// rather than re-sorted into registry order.
+func TestSelectDedupesRepeatedNames(t *testing.T) {
+	t.Run("single-name-repeated", func(t *testing.T) {
+		got, err := Select([]string{"claude-code", "claude-code"})
+		if err != nil {
+			t.Fatalf("Select: %v", err)
+		}
+		if len(got) != 1 || got[0].Name() != "claude-code" {
+			t.Errorf("Select([\"claude-code\", \"claude-code\"]) = %v, want exactly one claude-code runtime", got)
+		}
+	})
+
+	t.Run("mixed-first-occurrence-order", func(t *testing.T) {
+		got, err := Select([]string{"codex", "claude-code", "codex"})
+		if err != nil {
+			t.Fatalf("Select: %v", err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("Select([\"codex\", \"claude-code\", \"codex\"]) returned %d runtimes, want 2", len(got))
+		}
+		if got[0].Name() != "codex" || got[1].Name() != "claude-code" {
+			t.Errorf("Select([\"codex\", \"claude-code\", \"codex\"]) = [%s %s], want [codex claude-code] (first-occurrence order)",
+				got[0].Name(), got[1].Name())
+		}
+	})
+
+	t.Run("unknown-name-repeated-still-errors", func(t *testing.T) {
+		_, err := Select([]string{"nope", "nope"})
+		if err == nil {
+			t.Fatal(`Select(["nope", "nope"]) = nil error, want an error naming "nope"`)
+		}
+		if !strings.Contains(err.Error(), "nope") {
+			t.Errorf("Select([\"nope\", \"nope\"]) error = %q, want it to contain %q", err, "nope")
+		}
+	})
+}
+
 // TestPlanAuthModes is the exhaustive 3x4 runtime-by-auth-mode table
 // (Task 3): every cell either returns a Plan with a non-empty
 // Action.Command, or an error satisfying errors.Is(err,
