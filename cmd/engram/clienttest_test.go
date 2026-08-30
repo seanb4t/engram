@@ -183,6 +183,8 @@ func resetClientFlags(t *testing.T) {
 		spineRestoreIDs = nil
 		spinePurgeClass = nil
 		spinePurgeTags = nil
+		// 02-01-PLAN.md Task 1: setupRuntime is StringSliceVar-backed too.
+		setupRuntime = nil
 	})
 }
 

@@ -63,6 +63,9 @@ const goldenTestVersion = "test-version"
 var envDerivedFlagDefaults = map[string]map[string]bool{
 	"reindex":           {"target": true},
 	"migrate-set-owner": {"owner": true},
+	// setup's --runtime default is read directly via os.Getenv("ENGRAM_RUNTIME")
+	// at init() time (02-01-PLAN.md Task 1, Pitfall 3) — same hazard, same fix.
+	"setup": {"runtime": true},
 }
 
 // withGoldenDeterminism pins rootCmd.Version to goldenTestVersion and blanks

@@ -251,6 +251,9 @@ func TestMutatingCommandNamesMembership(t *testing.T) {
 		"prune-expired":       true,
 		"spine-review purge":  true,
 		"backfill-short-ids":  true,
+		// 02-01-PLAN.md Task 1: setup joins the table Destructive:true
+		// (internal/surfaces/toolclass.go D-13), landing it here too.
+		"setup": true,
 	}
 	if got := mutatingCommandNames(); !reflect.DeepEqual(got, want) {
 		t.Errorf("mutatingCommandNames() = %v, want %v", got, want)
@@ -425,6 +428,9 @@ var mutatingFlagCases = []struct {
 	// addApplyFlag call adds "apply" to their own {output, timeout}.
 	{migrateCmd, []string{"apply", "output", "timeout"}},
 	{backfillShortIDsCmd, []string{"apply", "output", "timeout"}},
+	// 02-01-PLAN.md Task 1: setupCmd's row — its own six flags plus
+	// "apply" once registerDestructive's addApplyFlag adds it.
+	{setupCmd, []string{"apply", "auth", "output", "runtime", "token-file", "url"}},
 }
 
 // TestDestructiveCommandsExactFlagSet is the "no escape hatch exists"
