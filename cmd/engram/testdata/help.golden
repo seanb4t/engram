@@ -320,7 +320,7 @@ Flags:
       --output string       output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --runtime strings     runtimes to target, comma-separated or repeated (default: every detected runtime); valid values: claude-code, codex, opencode (default: ENGRAM_RUNTIME) (default )
       --token-file string   path to a file containing the bearer credential for --auth bearer (carries only the PATH, never the secret itself; no environment fallback)
-      --url string          MCP endpoint URL to register, used verbatim — never appended to or stripped (default: ENGRAM_URL)
+      --url string          MCP endpoint URL to register, used verbatim — never appended to or stripped (required) (default: ENGRAM_URL)
 ```
 
 ## engram spine-review

@@ -84,6 +84,15 @@ func Names() []string {
 // VALID name whose runtime is simply absent from the machine is NOT an
 // error here; that distinction belongs to Detect(), reported as
 // OutcomeNotPresent by the caller.
+//
+// A repeated name is deduplicated to its FIRST occurrence rather than
+// rejected (WR-02): `--runtime a,a` and `--runtime a --runtime a` both
+// plainly mean "target a", so producing two identical report rows and
+// inflating setupApplySummary's denominator would be a second, unrequested
+// behavior change layered on an unambiguous invocation. The dedup preserves
+// the caller's stated order — it does not re-sort into registry order. The
+// unknown-name check still runs for every element before any dedup
+// decision, so a repeated unknown name still errors.
 func Select(names []string) ([]Runtime, error) {
 	if len(names) == 0 {
 		return Runtimes, nil
@@ -92,12 +101,17 @@ func Select(names []string) ([]Runtime, error) {
 	for _, rt := range Runtimes {
 		byName[rt.Name()] = rt
 	}
+	seen := make(map[string]bool, len(names))
 	out := make([]Runtime, 0, len(names))
 	for _, name := range names {
 		rt, ok := byName[name]
 		if !ok {
 			return nil, fmt.Errorf("unknown runtime %q: valid runtimes are %s", name, strings.Join(Names(), ", "))
 		}
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
 		out = append(out, rt)
 	}
 	return out, nil

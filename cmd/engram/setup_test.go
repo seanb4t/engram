@@ -146,7 +146,7 @@ func TestSetupPreviewExecutesNoRuntimeCLI(t *testing.T) {
 	}
 	withFakeSetupEnv(t, env)
 
-	_, _, err := runClient(t, "setup", "--output", "json")
+	_, _, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--output", "json")
 	if err != nil {
 		t.Fatalf("runClient: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestSetupRuntimeAbsentIsNotPresentRow(t *testing.T) {
 	resetCommandFlagState(t, setupCmd)
 	withFakeSetupEnv(t, fakeSetupEnv("claude")) // codex absent
 
-	stdout, _, err := runClient(t, "setup", "--runtime", "codex", "--output", "json")
+	stdout, _, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--runtime", "codex", "--output", "json")
 	if err != nil {
 		t.Fatalf("runClient: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestSetupAllThreeRuntimesPresentEmitsThreeRows(t *testing.T) {
 	resetCommandFlagState(t, setupCmd)
 	withFakeSetupEnv(t, fakeSetupEnv("claude", "codex", "opencode"))
 
-	stdout, _, err := runClient(t, "setup", "--output", "json")
+	stdout, _, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--output", "json")
 	if err != nil {
 		t.Fatalf("runClient: %v", err)
 	}
@@ -423,7 +423,7 @@ func TestSetupPreviewExitsZeroRegardlessOfPresence(t *testing.T) {
 			resetCommandFlagState(t, setupCmd)
 			withFakeSetupEnv(t, tc.env)
 
-			_, stderr, err := runClient(t, "setup", "--output", "json")
+			_, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--output", "json")
 			if err != nil {
 				t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
 			}
@@ -506,5 +506,248 @@ func TestSetupHelpNamesEveryRuntimeAndAuthMode(t *testing.T) {
 		if !strings.Contains(section, want) {
 			t.Errorf("## engram setup section does not contain %q:\n%s", want, section)
 		}
+	}
+}
+
+// TestSetupURLFromEnvReachesCommand proves ENGRAM_URL, with no --url flag,
+// reaches the previewed command for every present runtime (CR-01): the
+// environment lane setupPlanDoc's config.Load(cmd.Flags()) call wires.
+func TestSetupURLFromEnvReachesCommand(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupEnv(t, fakeSetupEnv("claude", "codex"))
+	t.Setenv("ENGRAM_URL", "https://env-url.example.com/mcp")
+
+	stdout, stderr, err := runClient(t, "setup", "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v (stdout=%q stderr=%q)", err, stdout, stderr)
+	}
+
+	var doc setupReportDoc
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+	}
+	var sawClaude, sawCodex bool
+	for _, row := range doc.Runtimes {
+		switch row.Name {
+		case "claude-code":
+			sawClaude = true
+			if !strings.Contains(row.Command, "https://env-url.example.com/mcp") {
+				t.Errorf("claude-code row.Command = %q, want it to contain the ENGRAM_URL value", row.Command)
+			}
+		case "codex":
+			sawCodex = true
+			want := "codex mcp add engram --url https://env-url.example.com/mcp"
+			if row.Command != want {
+				t.Errorf("codex row.Command = %q, want %q", row.Command, want)
+			}
+		}
+	}
+	if !sawClaude || !sawCodex {
+		t.Fatalf("expected claude-code and codex rows, got: %s", stdout)
+	}
+}
+
+// TestSetupAuthFromEnvSelectsBearerForm proves ENGRAM_AUTH=bearer, with no
+// --auth flag, selects the bearer form of the previewed command.
+func TestSetupAuthFromEnvSelectsBearerForm(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupEnv(t, fakeSetupEnv("codex"))
+	t.Setenv("ENGRAM_URL", "https://env-url.example.com/mcp")
+	t.Setenv("ENGRAM_AUTH", "bearer")
+
+	stdout, stderr, err := runClient(t, "setup", "--runtime", "codex", "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v (stdout=%q stderr=%q)", err, stdout, stderr)
+	}
+
+	var doc setupReportDoc
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+	}
+	if len(doc.Runtimes) != 1 {
+		t.Fatalf("setup --runtime codex emitted %d rows, want exactly 1: %s", len(doc.Runtimes), stdout)
+	}
+	want := "codex mcp add engram --url https://env-url.example.com/mcp --bearer-token-env-var ENGRAM_TOKEN"
+	if doc.Runtimes[0].Command != want {
+		t.Errorf("codex row.Command = %q, want %q", doc.Runtimes[0].Command, want)
+	}
+}
+
+// TestSetupFlagBeatsEnvForURL is the adjacency edge: when both --url/--auth
+// and ENGRAM_URL/ENGRAM_AUTH are set, the FLAG wins for each independently.
+// Each sub-case runs in its own t.Run scope so its resetClientFlags(t)
+// t.Cleanup fires before the next sub-case starts — otherwise the
+// StringSliceVar-backed --runtime flag would ACCUMULATE across sub-cases
+// (resetCommandFlagState's own doc comment: a stringSlice flag's Changed
+// latch is cleared but its value is not, by design; only resetClientFlags's
+// deferred cleanup nils it).
+func TestSetupFlagBeatsEnvForURL(t *testing.T) {
+	t.Run("url", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		withFakeSetupEnv(t, fakeSetupEnv("codex"))
+		t.Setenv("ENGRAM_URL", "https://env-url.example.com/mcp")
+
+		stdout, stderr, err := runClient(t, "setup", "--runtime", "codex",
+			"--url", "https://flag-url.example.com/mcp", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stdout=%q stderr=%q)", err, stdout, stderr)
+		}
+		var doc setupReportDoc
+		if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+		}
+		if len(doc.Runtimes) != 1 {
+			t.Fatalf("setup --runtime codex emitted %d rows, want exactly 1: %s", len(doc.Runtimes), stdout)
+		}
+		if strings.Contains(doc.Runtimes[0].Command, "env-url.example.com") {
+			t.Errorf("codex row.Command = %q, want it to NOT carry the ENGRAM_URL value when --url is set", doc.Runtimes[0].Command)
+		}
+		if !strings.Contains(doc.Runtimes[0].Command, "flag-url.example.com") {
+			t.Errorf("codex row.Command = %q, want it to carry the --url value", doc.Runtimes[0].Command)
+		}
+	})
+
+	t.Run("auth", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		withFakeSetupEnv(t, fakeSetupEnv("codex"))
+		t.Setenv("ENGRAM_AUTH", "none")
+
+		stdout, stderr, err := runClient(t, "setup", "--runtime", "codex",
+			"--url", "https://flag-url.example.com/mcp", "--auth", "bearer", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stdout=%q stderr=%q)", err, stdout, stderr)
+		}
+		var doc setupReportDoc
+		if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+		}
+		if len(doc.Runtimes) != 1 || !strings.Contains(doc.Runtimes[0].Command, "--bearer-token-env-var") {
+			t.Errorf("codex row.Command = %q, want the bearer form (--auth bearer beats ENGRAM_AUTH=none)", doc.Runtimes[0].Command)
+		}
+	})
+}
+
+// TestSetupMissingURLIsUsageError is the empty edge: neither lane supplying
+// a URL, ENGRAM_URL="", and an explicit --url "" must all produce exitUsage
+// (2), not a malformed would-write command (WR-01).
+func TestSetupMissingURLIsUsageError(t *testing.T) {
+	t.Run("neither-flag-nor-env", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		withFakeSetupEnv(t, fakeSetupEnv("claude"))
+
+		stdout, stderr, err := runClient(t, "setup", "--output", "json")
+		if err == nil {
+			t.Fatal("expected an error when neither --url nor ENGRAM_URL supplies a URL, got nil")
+		}
+		if got := exitCodeFromError(err); got != exitUsage {
+			t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage); stderr=%q", got, exitUsage, stderr)
+		}
+		for _, want := range []string{"--url", "ENGRAM_URL"} {
+			if !strings.Contains(err.Error(), want) && !strings.Contains(stderr, want) {
+				t.Errorf("neither err (%q) nor stderr (%q) names %q", err, stderr, want)
+			}
+		}
+		if strings.Contains(stdout, "would-write") {
+			t.Errorf("stdout carries a would-write outcome despite the missing-URL usage error: %s", stdout)
+		}
+	})
+
+	t.Run("empty-env", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		withFakeSetupEnv(t, fakeSetupEnv("claude"))
+		t.Setenv("ENGRAM_URL", "")
+
+		_, stderr, err := runClient(t, "setup", "--output", "json")
+		if err == nil {
+			t.Fatal(`expected an error for ENGRAM_URL="", got nil`)
+		}
+		if got := exitCodeFromError(err); got != exitUsage {
+			t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage); stderr=%q", got, exitUsage, stderr)
+		}
+	})
+
+	t.Run("explicit-empty-flag", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		withFakeSetupEnv(t, fakeSetupEnv("claude"))
+
+		_, stderr, err := runClient(t, "setup", "--url", "", "--output", "json")
+		if err == nil {
+			t.Fatal(`expected an error for --url "", got nil`)
+		}
+		if got := exitCodeFromError(err); got != exitUsage {
+			t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage); stderr=%q", got, exitUsage, stderr)
+		}
+	})
+}
+
+// TestSetupEnvURLPassedVerbatim is the encoding edge: a URL crossing the
+// environment lane must reach the emitted command byte-for-byte — no
+// appended /mcp, no stripped trailing slash, no decoded escape, no
+// re-encoding (D-02).
+func TestSetupEnvURLPassedVerbatim(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupEnv(t, fakeSetupEnv("codex"))
+	const url = "https://gw.example.com/mcp%2Fengram/"
+	t.Setenv("ENGRAM_URL", url)
+
+	stdout, stderr, err := runClient(t, "setup", "--runtime", "codex", "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v (stdout=%q stderr=%q)", err, stdout, stderr)
+	}
+	var doc setupReportDoc
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+	}
+	if len(doc.Runtimes) != 1 {
+		t.Fatalf("setup --runtime codex emitted %d rows, want exactly 1: %s", len(doc.Runtimes), stdout)
+	}
+	if !strings.Contains(doc.Runtimes[0].Command, url) {
+		t.Errorf("codex row.Command = %q, want it to contain %q byte-for-byte", doc.Runtimes[0].Command, url)
+	}
+}
+
+// TestSetupEnvLanePreviewDeterministic is the idempotency edge: with
+// ENGRAM_URL/ENGRAM_AUTH set and no matching flags, two previews on the
+// json lane and two on the text lane must each be byte-identical.
+func TestSetupEnvLanePreviewDeterministic(t *testing.T) {
+	resetClientFlags(t)
+	withFakeSetupEnv(t, fakeSetupEnv("claude", "codex"))
+	t.Setenv("ENGRAM_URL", "https://env-url.example.com/mcp")
+	t.Setenv("ENGRAM_AUTH", "bearer")
+
+	resetCommandFlagState(t, setupCmd)
+	jsonOut1, _, err := runClient(t, "setup", "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient (json 1st): %v", err)
+	}
+	resetCommandFlagState(t, setupCmd)
+	jsonOut2, _, err := runClient(t, "setup", "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient (json 2nd): %v", err)
+	}
+	if jsonOut1 != jsonOut2 {
+		t.Errorf("two identical setup --output json runs differ:\n%q\n%q", jsonOut1, jsonOut2)
+	}
+
+	resetCommandFlagState(t, setupCmd)
+	textOut1, _, err := runClient(t, "setup", "--output", "text")
+	if err != nil {
+		t.Fatalf("runClient (text 1st): %v", err)
+	}
+	resetCommandFlagState(t, setupCmd)
+	textOut2, _, err := runClient(t, "setup", "--output", "text")
+	if err != nil {
+		t.Fatalf("runClient (text 2nd): %v", err)
+	}
+	if textOut1 != textOut2 {
+		t.Errorf("two identical setup --output text runs differ:\n%q\n%q", textOut1, textOut2)
 	}
 }
