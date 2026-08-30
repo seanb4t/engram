@@ -369,7 +369,7 @@ predicate excludes any command carrying a flag literally named `server`, which w
 5. `engram setup --help` alone teaches which runtimes are targetable, what `--apply` does, and
    which auth modes are accepted, without the caller needing to run it and interpret a failure.
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans executed
 
 Plans:
 **Wave 1**
@@ -378,7 +378,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-02-PLAN.md — the three-way exit-status taxonomy: `exitPartial = 8` and `exitSetupFailed = 9` published across all five sites, a pure `Classify` proven over the full outcome-combination table, and per-runtime legibility preserved on the failure path
+- [x] 02-02-PLAN.md — the three-way exit-status taxonomy: `exitPartial = 8` and `exitSetupFailed = 9` published across all five sites, a pure `Classify` proven over the full outcome-combination table, and per-runtime legibility preserved on the failure path
 
 ---
 
