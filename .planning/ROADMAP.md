@@ -369,12 +369,12 @@ predicate excludes any command carrying a flag literally named `server`, which w
 5. `engram setup --help` alone teaches which runtimes are targetable, what `--apply` does, and
    which auth modes are accepted, without the caller needing to run it and interpret a failure.
 
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — the `setup` command end to end: `internal/setup`'s `Runtime`/`Environment`/`Outcome` core, real `Detect()` and `Plan()` for claude-code, codex, and opencode across all four auth modes, its `internal/surfaces` row, and the full pinned-gate churn set in one commit
+- [x] 02-01-PLAN.md — the `setup` command end to end: `internal/setup`'s `Runtime`/`Environment`/`Outcome` core, real `Detect()` and `Plan()` for claude-code, codex, and opencode across all four auth modes, its `internal/surfaces` row, and the full pinned-gate churn set in one commit
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -571,7 +571,7 @@ and the delegation story settled).
 | 25. Supersession with History | v0.11.x | 2/2 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | In Progress|  |
-| 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-13 |
+| 2. Headless CLI Client | v0.12.x | 4/4 | In Progress|  |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-08-14 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete   | 2026-08-15 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete    | 2026-08-16 |

@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: 2026-08-23.01
 current_phase: 02
 current_phase_name: Setup Command Core
-status: "Phase 01 shipped — PR #515"
+status: executing
 stopped_at: Phase 2 planned
-last_updated: "2026-08-30T06:10:31.246Z"
+last_updated: "2026-08-30T06:41:11.960Z"
 last_activity: 2026-08-30
-last_activity_desc: Phase 02 planned
-state_head: d65e4860b2b30c0d23137647994db71bdfe91b92
+last_activity_desc: Phase 02 execution started
+state_head: 81ac8f3c72fb26356e0ddd39987b1b0db847a42c
 progress:
   total_phases: 6
   completed_phases: 1
@@ -24,14 +24,14 @@ milestone_name: Distribution & Agent Bootstrap
 See: .planning/PROJECT.md (updated 2026-08-23 — after opening milestone 2026-08-23.01)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 01 — Version & Homebrew Distribution
+**Current focus:** Phase 02 — Setup Command Core
 
 ## Current Position
 
-Phase: 02 (Setup Command Core) — READY TO EXECUTE
-Plan: 0 of 2
-Status: Ready to execute
-Last activity: 2026-08-30 — Phase 02 planned (2 plans, 2 waves)
+Phase: 02 (Setup Command Core) — EXECUTING
+Plan: 1 of 2
+Status: Executing Phase 02
+Last activity: 2026-08-30 — Phase 02 execution started
 
 ## Deferred Items
 
@@ -64,7 +64,7 @@ Items acknowledged and deferred at milestone close on 2026-08-22 (milestone 2026
 | deferred_items | Phase 07 / Environment gaps (`ui/`): svelte-check crash, no `lint` script | acknowledged — genuine pre-existing debt. `svelte-check@4.7.3` / `typescript@7.0.2` incompatibility pinned in `ui/package.json`; executors substituted vitest + `npx tsc --noEmit` |
 | deferred_items | Phase 07 / Deferred to phase UAT (07-04 `/observe?inc=archived` round-trip, 07-07 migration-banner visual check) | acknowledged — genuine, needs a live server + Qdrant; unrunnable in a worktree |
 
-Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own `- **Status:** Phase 01 shipped — PR #515
+Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own `- **Status:** Executing Phase 02
 
 ## Accumulated Context
 
