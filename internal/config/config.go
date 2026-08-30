@@ -34,6 +34,7 @@ type Config struct {
 	Log         LogConfig         `koanf:"log"`
 	Usage       UsageConfig       `koanf:"usage"`
 	Client      ClientConfig      `koanf:"client"`
+	Setup       SetupConfig       `koanf:"setup"`
 }
 
 // ServerConfig is engram's HTTP-listener surface: where the process binds and
@@ -258,6 +259,23 @@ type ClientConfig struct {
 	// --help` against `engram reindex --help` must not have to infer which
 	// convention applies.
 	Timeout string `koanf:"timeout"`
+}
+
+// SetupConfig backs `engram setup` (D-04): the deployment facts an
+// operator would otherwise retype on every invocation. URL/Auth are
+// deliberately the ONLY two fields here — --apply, --token-file, and
+// --runtime are excluded by design (see registry.go's setup.* rows for the
+// per-flag rationale) and are read directly by cmd/engram/setup.go rather
+// than through this struct.
+type SetupConfig struct {
+	// URL is the MCP endpoint to register (ENGRAM_URL / --url), used
+	// verbatim wherever it flows — engram never appends, strips, or
+	// normalizes it (D-02).
+	URL string `koanf:"url"`
+	// Auth is the auth mode (ENGRAM_AUTH / --auth): "oauth" (default),
+	// "oauth-client", "bearer", or "none" — validated by
+	// ValidateSetupAuth.
+	Auth string `koanf:"auth"`
 }
 
 // Load builds Config from registry defaults, the ENGRAM_ env layer, and — when

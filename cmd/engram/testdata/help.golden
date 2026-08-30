@@ -19,6 +19,7 @@ Available Commands:
   reindex             Re-embed memories into a new (new-dimension) collection for embedder migration
   search              Search memories on a remote engram server
   serve               Run the engram MCP server
+  setup               Detect installed agent runtimes and preview registering engram as an MCP server
   spine-review        Inventory, verify, and curate the memory spine
   store               Store a memory on a remote engram server
   summarize-missing   Fill empty recall summaries with the configured cheap model
@@ -284,6 +285,42 @@ Flags:
       --ui-enabled string               enable the web UI + login lane (empty=imply from creds; 'false'=hard off)
       --ui-issuer string                OIDC issuer for the web-UI login lane (empty=default to --oidc-issuer)
       --ui-redirect-url string          OIDC auth-code callback URL
+```
+
+## engram setup
+
+```
+Detect installed agent runtimes and preview registering engram as an MCP server.
+
+Targetable runtimes (select one or more with --runtime): claude-code, codex, opencode. A bare
+invocation targets every detected runtime.
+
+a mutating operator command previews by default and mutates only when apply is set
+
+Accepted --auth modes:
+  oauth         OAuth via the runtime's own login/callback flow (default)
+  oauth-client  a pre-registered OAuth client (client id and secret)
+  bearer        a static bearer token, named by provenance from --token-file
+                (or ENGRAM_TOKEN when --token-file is omitted) — the token
+                itself never appears on the command line
+  none          a local / no-auth server
+
+Usage:
+  engram setup [flags]
+
+Examples:
+  engram setup --url https://engram.example.com/mcp
+  engram setup --url https://engram.example.com/mcp --runtime claude-code
+  engram setup --url https://engram.example.com/mcp --auth bearer --token-file ~/.engram/token
+
+Flags:
+      --apply               a mutating operator command previews by default and mutates only when apply is set
+      --auth string         auth mode: "oauth", "oauth-client", "bearer", or "none" (default: ENGRAM_AUTH) (default "oauth")
+  -h, --help                help for setup
+      --output string       output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
+      --runtime strings     runtimes to target, comma-separated or repeated (default: every detected runtime); valid values: claude-code, codex, opencode (default: ENGRAM_RUNTIME) (default )
+      --token-file string   path to a file containing the bearer credential for --auth bearer (carries only the PATH, never the secret itself; no environment fallback)
+      --url string          MCP endpoint URL to register, used verbatim — never appended to or stripped (default: ENGRAM_URL)
 ```
 
 ## engram spine-review

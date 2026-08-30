@@ -97,6 +97,21 @@ var registry = []field{
 	// would weaken that promise silently.
 	{Key: "client.insecure", Flag: "insecure", Default: "false"},
 	{Key: "client.timeout", Env: "ENGRAM_TIMEOUT", Flag: "timeout", Default: "30s"},
+	// setup.* backs `engram setup` (D-04): --url and --auth are deployment
+	// facts, enrolled env-first with flag override like the 45/48 majority
+	// of this registry — unlike client.token_file/client.output/
+	// client.insecure above, neither rationale for omitting an Env row
+	// applies here. --apply, --token-file, and --runtime deliberately get
+	// NO row: --apply on the client.insecure precedent (an exported env var
+	// silently flipping a preview into a mutation is the same class of
+	// harm); --token-file on the client.token_file D-13 precedent (a
+	// credential must never reach argv); --runtime because pflag's
+	// StringSliceVar.Value.String() returns the bracketed display form
+	// ("[a b]"), which the changed-flag overlay cannot round-trip — its own
+	// env default (ENGRAM_RUNTIME) is read directly via os.Getenv in
+	// cmd/engram/setup.go's init(), mirroring reindex.go --target.
+	{Key: "setup.url", Env: "ENGRAM_URL", Flag: "url"},
+	{Key: "setup.auth", Env: "ENGRAM_AUTH", Flag: "auth", Default: "oauth"},
 }
 
 // envToKey maps each ENGRAM_* env var to its koanf key.

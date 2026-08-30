@@ -167,6 +167,7 @@ func operatorViewFixtures() map[string][]any {
 		migrateViewFixtures(),
 		archivePurgeViewFixtures(),
 		spineViewFixtures(),
+		setupViewFixtures(),
 	}
 	merged := make(map[string][]any)
 	for _, group := range groups {
@@ -706,6 +707,8 @@ func operatorInvalidOutputArgs(t *testing.T, name string) []string {
 		return []string{"migrate", "status"}
 	case "migrate revert":
 		return []string{"migrate", "revert", "--to", "0"}
+	case "setup":
+		return []string{"setup"}
 	default:
 		t.Fatalf("operatorInvalidOutputArgs: no row defined for command %q", name)
 		return nil

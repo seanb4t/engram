@@ -134,6 +134,9 @@ var wantOperatorCommandKeys = map[string]bool{
 	"migrate":                  true,
 	"migrate status":           true,
 	"migrate revert":           true,
+	// 02-01-PLAN.md Task 1: setup, a top-level command with its own RunE
+	// (via registerDestructive) and no "server" flag.
+	"setup": true,
 }
 
 // commandKeySet is a small helper turning a []*cobra.Command into a
