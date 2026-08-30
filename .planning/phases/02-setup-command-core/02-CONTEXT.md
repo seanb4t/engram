@@ -147,6 +147,15 @@ scoping); install documentation (Phase 6).
   `opencode mcp add` invocation strings are AUTHORED HERE, in `Plan()`. Phase 3 owns *executing*
   them, not re-deriving them. A Phase 3 that re-derives the strings creates the two-encodings drift
   this milestone exists to prevent.
+  **Consequence for success criterion 2 (resolved 2026-08-30, user-blessed at plan-check):** a
+  stubbed `Apply()` makes the original criterion 2 — "`engram setup --apply` twice converges,
+  reporting 'already correct' distinctly from 'wrote it'" — unreachable this phase: every runtime
+  attempted under `--apply` reports `failed`, on both runs. D-09 as originally written reasoned
+  about criterion 1 only and was silent on criterion 2; that was an oversight, not a decision.
+  Criterion 2 and REQ-setup-idempotent have therefore MOVED TO PHASE 3, where `Apply()` executes.
+  Phase 2's criterion 2 now proves only what it can: the five-value `Outcome` vocabulary and
+  deterministic classification from a `Plan()`. ROADMAP.md and REQUIREMENTS.md were amended to
+  match, so no artifact claims a behavior this phase does not deliver.
 
 - **D-10:** A bare `engram setup` (no `--runtime`) targets **every detected runtime**. Detection is
   the feature; the milestone's own pitch is "detects what's on the machine, shows what it would

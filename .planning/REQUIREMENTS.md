@@ -95,7 +95,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-cask-reship-recovery | Phase 1 | Pending |
 | REQ-setup-detects-runtimes | Phase 2 | Pending |
 | REQ-setup-previews-by-default | Phase 2 | Pending |
-| REQ-setup-idempotent | Phase 2 | Pending |
+| REQ-setup-idempotent | Phase 3 | Pending |
 | REQ-setup-non-interactive | Phase 2 | Pending |
 | REQ-setup-partial-failure-legible | Phase 2 | Pending |
 | REQ-setup-correct-by-reading | Phase 2 | Pending |

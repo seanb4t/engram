@@ -273,8 +273,8 @@ mechanism instead of another one-shot operator command.
 </details>
 
 - [ ] **Phase 1: Version & Homebrew Distribution** - `engram version --output json` plus a published, credential-verified, recoverable Homebrew cask
-- [ ] **Phase 2: Setup Command Core** - `engram setup` detects runtimes, previews by default, converges idempotently, and is fully scriptable without a TTY
-- [ ] **Phase 3: Runtime Registration** - `engram setup --apply` registers engram with Claude Code, Codex, and opencode via their own CLIs, plus a generic-MCP fallback, across every auth mode
+- [ ] **Phase 2: Setup Command Core** - `engram setup` detects runtimes, previews by default, declares its full outcome vocabulary, and is fully scriptable without a TTY
+- [ ] **Phase 3: Runtime Registration** - `engram setup --apply` registers engram with Claude Code, Codex, and opencode via their own CLIs, converging idempotently, plus a generic-MCP fallback, across every auth mode
 - [ ] **Phase 4: Skills Distribution** - The five curation skills reach every runtime, native format where one exists, AGENTS.md fallback otherwise
 - [ ] **Phase 5: Slash Command Delegation** - `/engram-setup` delegates to the binary when present, keeps its prose fallback first-class otherwise, with a generated (not hand-checked) equivalence gate
 - [ ] **Phase 6: Install Documentation** - docs-site documents how to get the binary and how to run `engram setup`
@@ -343,7 +343,7 @@ server-URL flag, it must not be spelled `--server`: `cmdwalk.go:118`'s `operator
 predicate excludes any command carrying a flag literally named `server`, which would silently drop
 `setup` out of operator-tier classification — the opposite of this milestone's intent.
 
-**Requirements:** REQ-setup-detects-runtimes, REQ-setup-previews-by-default, REQ-setup-idempotent, REQ-setup-non-interactive, REQ-setup-partial-failure-legible, REQ-setup-correct-by-reading
+**Requirements:** REQ-setup-detects-runtimes, REQ-setup-previews-by-default, REQ-setup-non-interactive, REQ-setup-partial-failure-legible, REQ-setup-correct-by-reading
 
 **Depends on:** Nothing (parallelizable with Phase 1 — touches unrelated files).
 
@@ -354,8 +354,10 @@ predicate excludes any command carrying a flag literally named `server`, which w
    runtime does not read as installed — and shows the exact command or content it would issue per
    runtime, changing nothing on disk.
 
-2. Running `engram setup --apply` twice converges to the same state on the second run, which
-   reports "already correct" distinctly from the first run's "wrote it".
+2. `engram setup` declares the full per-runtime outcome vocabulary — `not-present`,
+   `already-correct`, `would-write`, `wrote`, `failed` — as five distinct first-class values, and
+   classifies deterministically from a `Plan()`. Convergence of a real `--apply` across two runs is
+   proven in Phase 3, once `Apply()` executes (CONTEXT.md D-09 stubs it this phase).
 
 3. `engram setup` runs to completion without a TTY: a caller can select runtimes explicitly, skip
    confirmation, and receive machine-readable output — scriptable from CI or another agent.
@@ -390,7 +392,7 @@ post-synthesis verification confirmed `codex mcp add` (codex-cli 0.148.0) and `o
 already-shipped `/engram-setup` prose's `claude mcp add` path — no TOML or JSONC is ever parsed or
 written, and the zero-new-Go-dependencies constraint is under no pressure.
 
-**Requirements:** REQ-register-claude-code, REQ-register-codex, REQ-register-opencode, REQ-register-generic-mcp, REQ-register-auth-modes, REQ-register-cli-surface-drift-legible
+**Requirements:** REQ-setup-idempotent, REQ-register-claude-code, REQ-register-codex, REQ-register-opencode, REQ-register-generic-mcp, REQ-register-auth-modes, REQ-register-cli-surface-drift-legible
 
 **Depends on:** Phase 2 (the `Runtime` interface and the `setup` command must exist before any
 runtime writer plugs into it).
@@ -412,6 +414,10 @@ runtime writer plugs into it).
 4. When a runtime's CLI is absent, or present with an unexpected flag surface, `engram setup`
    fails with a message naming the runtime and what it expected, rather than silently writing
    nothing.
+
+5. Running `engram setup --apply` twice converges to the same state on the second run, which
+   reports "already correct" distinctly from the first run's "wrote it" (moved here from Phase 2,
+   which stubs `Apply()` per its CONTEXT.md D-09).
 
 **Plans:** TBD
 
