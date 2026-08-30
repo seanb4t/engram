@@ -367,7 +367,16 @@ predicate excludes any command carrying a flag literally named `server`, which w
 5. `engram setup --help` alone teaches which runtimes are targetable, what `--apply` does, and
    which auth modes are accepted, without the caller needing to run it and interpret a failure.
 
-**Plans:** TBD
+**Plans:** 2 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — the `setup` command end to end: `internal/setup`'s `Runtime`/`Environment`/`Outcome` core, real `Detect()` and `Plan()` for claude-code, codex, and opencode across all four auth modes, its `internal/surfaces` row, and the full pinned-gate churn set in one commit
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02-02-PLAN.md — the three-way exit-status taxonomy: `exitPartial = 8` and `exitSetupFailed = 9` published across all five sites, a pure `Classify` proven over the full outcome-combination table, and per-runtime legibility preserved on the failure path
 
 ---
 
