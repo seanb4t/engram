@@ -63,3 +63,23 @@ func ValidateOutputFormat(v string) error {
 		return fmt.Errorf(`--output %q: must be "json", "text", or empty`, v)
 	}
 }
+
+// ValidateSetupAuth reports whether v is a legal `engram setup --auth`
+// value: "oauth", "oauth-client", "bearer", "none", or "" (empty means "use
+// the default" — the caller, cmd/engram/setup.go, defaults an empty value
+// before passing it to internal/setup.Options.Auth). These four non-empty
+// values are taken verbatim from the table already shipped at
+// skill/engram/commands/engram-setup.md (D-03), so a later generated-
+// equivalence proof compares like to like rather than reconciling two
+// vocabularies. Shaped identically to ValidateOutputFormat above: a bad
+// value routes to usageErrorf -> exitUsage (2), the same shape --output
+// gets, and the error names every accepted mode so --help-driven
+// correction needs no second lookup.
+func ValidateSetupAuth(v string) error {
+	switch v {
+	case "oauth", "oauth-client", "bearer", "none", "":
+		return nil
+	default:
+		return fmt.Errorf(`--auth %q: must be "oauth", "oauth-client", "bearer", "none", or empty`, v)
+	}
+}

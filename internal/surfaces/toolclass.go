@@ -184,6 +184,18 @@ var operations = []Operation{
 		Class: Class{ReadOnly: false, Destructive: true, Idempotent: true, OpenWorld: false},
 	},
 	{
+		// setup detects installed agent runtimes and previews registering
+		// engram as an MCP server on each (02-CONTEXT.md D-13). Destructive:
+		// true — `claude mcp add`/`codex mcp add`/`opencode mcp add`
+		// OVERWRITE an existing "engram" entry rather than refusing or
+		// merging, so the table's own conservative rule ("false only when
+		// EVERY valid invocation is purely additive") forces true.
+		// Idempotent: true — a re-run against an already-correct entry
+		// reports already-correct and writes nothing further.
+		MCPTool: "", CLICommand: "setup",
+		Class: Class{ReadOnly: false, Destructive: true, Idempotent: true, OpenWorld: false},
+	},
+	{
 		MCPTool: "", CLICommand: "summarize-missing",
 		// Additive: only fills an EMPTY summary field; the command
 		// documents that "records that already have a summary ... are

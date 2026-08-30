@@ -34,6 +34,28 @@ func TestValidateOutputFormat(t *testing.T) {
 	}
 }
 
+// TestValidateSetupAuth pins `engram setup --auth`'s validator: exactly
+// "oauth", "oauth-client", "bearer", "none", and "" (empty — the caller
+// defaults it) are legal; every other value is rejected naming both the
+// flag and all four accepted modes.
+func TestValidateSetupAuth(t *testing.T) {
+	for _, v := range []string{"oauth", "oauth-client", "bearer", "none", ""} {
+		if err := ValidateSetupAuth(v); err != nil {
+			t.Errorf("ValidateSetupAuth(%q) = %v, want nil", v, err)
+		}
+	}
+
+	err := ValidateSetupAuth("basic")
+	if err == nil {
+		t.Fatal("ValidateSetupAuth(\"basic\") = nil, want an error")
+	}
+	for _, want := range []string{"--auth", "basic", "oauth", "oauth-client", "bearer", "none"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("ValidateSetupAuth(\"basic\") error = %q, want it to contain %q", err, want)
+		}
+	}
+}
+
 // TestClientConfigLoadPrecedence locks in the client.* registry rows'
 // wiring into cfg.Client: registry defaults, the ENGRAM_ env layer (including
 // the empty-env-preserves-default guard), and the deliberate absence of an
