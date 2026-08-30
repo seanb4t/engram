@@ -17,8 +17,6 @@ import (
 )
 
 var (
-	setupURL       string
-	setupAuth      string
 	setupTokenFile string
 	setupOutput    string
 	setupRuntime   []string
@@ -145,12 +143,24 @@ func setupPreviewSummary(rows []setupRuntimeRow) string {
 	return fmt.Sprintf("preview: %d/%d selected runtime(s) present; registration via --apply lands in a later phase", present, len(rows))
 }
 
-// setupPlanDoc validates --auth, selects runtimes via setupRuntime, and
-// builds the report doc shared by setupPreview and setupApplyRun — so
-// both closures render the identical document (D-14's stated shape for
-// setup).
-func setupPlanDoc(_ *cobra.Command) (setupReportDoc, error) {
-	if err := config.ValidateSetupAuth(setupAuth); err != nil {
+// setupPlanDoc resolves --url/--auth through config.Load (CR-01: the
+// ENGRAM_URL/ENGRAM_AUTH environment lane this command's --help has always
+// advertised), validates --auth, selects runtimes via setupRuntime, and
+// builds the report doc shared by setupPreview and setupApplyRun — so both
+// closures render the identical document (D-14's stated shape for setup).
+func setupPlanDoc(cmd *cobra.Command) (setupReportDoc, error) {
+	// flagToKey (internal/config/registry.go) is keyed by flag NAME, and
+	// setup carries flags named "output" and "token-file" that collide with
+	// the client.output and client.token_file rows. When either is passed
+	// on this command, this Load also writes those client.* keys. That is
+	// inert here — setupPlanDoc reads only cfg.Setup and never cfg.Client —
+	// but it should be stated rather than discovered.
+	cfg, err := config.Load(cmd.Flags())
+	if err != nil {
+		return setupReportDoc{}, usageErrorf("load setup configuration: %w", err)
+	}
+
+	if err := config.ValidateSetupAuth(cfg.Setup.Auth); err != nil {
 		return setupReportDoc{}, usageErrorf("%w", err)
 	}
 	// ValidateSetupAuth accepts "" as "use the default" (the validator's
@@ -158,7 +168,7 @@ func setupPlanDoc(_ *cobra.Command) (setupReportDoc, error) {
 	// since --auth's own pflag default is already "oauth"
 	// (config.FlagDefault) and only an explicit `--auth ""` reaches here
 	// empty.
-	auth := setupAuth
+	auth := cfg.Setup.Auth
 	if auth == "" {
 		auth = "oauth"
 	}
@@ -168,7 +178,18 @@ func setupPlanDoc(_ *cobra.Command) (setupReportDoc, error) {
 		return setupReportDoc{}, usageErrorf("%w", err)
 	}
 
-	opts := setup.Options{URL: setupURL, Auth: auth, TokenFile: setupTokenFile}
+	if cfg.Setup.URL == "" {
+		// Mirrors clientFromFlags' "--server or ENGRAM_SERVER_URL is
+		// required" guard (client_common.go) — a runtime usageErrorf, not
+		// cobra's own required-flag mechanism (which raises a plain
+		// fmt.Errorf bypassing cliError/ExitCode() — the exact defect D-03
+		// rejected MarkFlagsMutuallyExclusive for) and not reachable when
+		// ENGRAM_URL alone supplies the value, which cobra's mechanism
+		// would wrongly demand anyway.
+		return setupReportDoc{}, usageErrorf("--url or ENGRAM_URL is required")
+	}
+
+	opts := setup.Options{URL: cfg.Setup.URL, Auth: auth, TokenFile: setupTokenFile}
 	rows := setupBuildRows(setupEnv, runtimes, opts)
 	return setupReportDoc{Runtimes: rows}, nil
 }
@@ -362,9 +383,9 @@ func init() {
 	setupCmd.Long = setupLongDescription()
 	setupCmd.Example = setupExample
 	addOperatorOutputFlag(setupCmd, &setupOutput)
-	setupCmd.Flags().StringVar(&setupURL, "url", config.FlagDefault("url"),
-		"MCP endpoint URL to register, used verbatim — never appended to or stripped (default: ENGRAM_URL)")
-	setupCmd.Flags().StringVar(&setupAuth, "auth", config.FlagDefault("auth"),
+	setupCmd.Flags().String("url", config.FlagDefault("url"),
+		"MCP endpoint URL to register, used verbatim — never appended to or stripped (required) (default: ENGRAM_URL)")
+	setupCmd.Flags().String("auth", config.FlagDefault("auth"),
 		`auth mode: "oauth", "oauth-client", "bearer", or "none" (default: ENGRAM_AUTH)`)
 	setupCmd.Flags().StringSliceVar(&setupRuntime, "runtime", setupRuntimeEnvDefault(),
 		fmt.Sprintf("runtimes to target, comma-separated or repeated (default: every detected runtime); valid values: %s (default: ENGRAM_RUNTIME)",

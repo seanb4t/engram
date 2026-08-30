@@ -748,7 +748,7 @@
           "name": "url",
           "type": "string",
           "default": "",
-          "usage": "MCP endpoint URL to register, used verbatim — never appended to or stripped (default: ENGRAM_URL)"
+          "usage": "MCP endpoint URL to register, used verbatim — never appended to or stripped (required) (default: ENGRAM_URL)"
         }
       ],
       "blast_radius": {
