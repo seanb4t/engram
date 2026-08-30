@@ -273,7 +273,7 @@ mechanism instead of another one-shot operator command.
 </details>
 
 - [ ] **Phase 1: Version & Homebrew Distribution** - `engram version --output json` plus a published, credential-verified, recoverable Homebrew cask
-- [ ] **Phase 2: Setup Command Core** - `engram setup` detects runtimes, previews by default, declares its full outcome vocabulary, and is fully scriptable without a TTY
+- [x] **Phase 2: Setup Command Core** - `engram setup` detects runtimes, previews by default, declares its full outcome vocabulary, and is fully scriptable without a TTY (completed 2026-08-30)
 - [ ] **Phase 3: Runtime Registration** - `engram setup --apply` registers engram with Claude Code, Codex, and opencode via their own CLIs, converging idempotently, plus a generic-MCP fallback, across every auth mode
 - [ ] **Phase 4: Skills Distribution** - The five curation skills reach every runtime, native format where one exists, AGENTS.md fallback otherwise
 - [ ] **Phase 5: Slash Command Delegation** - `/engram-setup` delegates to the binary when present, keeps its prose fallback first-class otherwise, with a generated (not hand-checked) equivalence gate
@@ -369,7 +369,7 @@ predicate excludes any command carrying a flag literally named `server`, which w
 5. `engram setup --help` alone teaches which runtimes are targetable, what `--apply` does, and
    which auth modes are accepted, without the caller needing to run it and interpret a failure.
 
-**Plans:** 3/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -596,7 +596,7 @@ and the delegation story settled).
 | 8. Registry & Docs Tail | 2026-08-12.01 | 3/3 | Complete | 2026-08-22 |
 | 9. Report pending in migrate status | 2026-08-12.01 | 2/2 | Complete | 2026-08-22 |
 | 1. Version & Homebrew Distribution | 2026-08-23.01 | 0/5 | Not started | - |
-| 2. Setup Command Core | 2026-08-23.01 | 0/6 | Not started | - |
+| 2. Setup Command Core | 2026-08-23.01 | 3/3 | Complete | 2026-08-30 |
 | 3. Runtime Registration | 2026-08-23.01 | 0/6 | Not started | - |
 | 4. Skills Distribution | 2026-08-23.01 | 0/3 | Not started | - |
 | 5. Slash Command Delegation | 2026-08-23.01 | 0/3 | Not started | - |
