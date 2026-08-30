@@ -369,7 +369,7 @@ predicate excludes any command carrying a flag literally named `server`, which w
 5. `engram setup --help` alone teaches which runtimes are targetable, what `--apply` does, and
    which auth modes are accepted, without the caller needing to run it and interpret a failure.
 
-**Plans:** 2/2 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 **Wave 1**
@@ -379,6 +379,10 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 02-02-PLAN.md — the three-way exit-status taxonomy: `exitPartial = 8` and `exitSetupFailed = 9` published across all five sites, a pure `Classify` proven over the full outcome-combination table, and per-runtime legibility preserved on the failure path
+
+**Wave 3** *(gap closure — blocked on Wave 2 completion)*
+
+- [ ] 02-03-PLAN.md — close CR-01: route `--url`/`--auth` through `config.Load(cmd.Flags())` so `ENGRAM_URL`/`ENGRAM_AUTH` actually reach `Plan()` (D-04), make a URL absent from both lanes a usage error instead of a malformed `would-write` (WR-01), and dedupe repeated `--runtime` names (WR-02)
 
 ---
 
