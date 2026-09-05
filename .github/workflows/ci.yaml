@@ -54,7 +54,7 @@ jobs:
         # the per-package testcontainer fallback (D-18) and this shared
         # service must stay version-locked, since qdrantTOCTOUVerifiedVersion's
         # guard exists to force a conscious re-verification on a bump.
-        image: qdrant/qdrant:v1.18.2
+        image: qdrant/qdrant:v1.19.0@sha256:057ee3a8da769fe7310dd3537b4dc7583bf87a95ce8ac43c0af5a46bc580d1fc
         ports:
           - 6334:6334 # gRPC — what the Go client dials, and what health-cmd probes
           - 6333:6333 # REST — dashboard/readyz, not used by the tests
@@ -189,7 +189,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: apache/skywalking-eyes/header@61275cc80d0798a405cb070f7d3a8aaf7cf2c2c1 # v0.8.0
+      - uses: apache/skywalking-eyes/header@a196742f472feaffafea537ce5a2a4c3c53a8de4 # v0.9.0
 
   chart:
     name: helm chart
