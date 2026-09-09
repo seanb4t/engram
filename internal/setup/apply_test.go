@@ -536,3 +536,57 @@ func TestPreviewNeverExecutesWriteAction(t *testing.T) {
 		t.Fatalf("Run called %d times during Preview, want at most 1 (the probe, never the write): %+v", len(calls), calls)
 	}
 }
+
+// TestEveryActionArgsValidated pins that execute() validates EVERY action's
+// Args, not only Actions[0]'s. The loop that runs the actions slices
+// action.Args[1:] for each one, and a zero-length slice panics there
+// ("slice bounds out of range [1:0]") — a panic no recover() in the call
+// chain catches, so it would crash the whole `--apply` invocation and lose
+// every OTHER runtime's row, contradicting the per-runtime isolation the
+// executor is built for.
+//
+// This is not hypothetical scope: Plan.Actions is documented as growable
+// (claude-code already authors two actions, and Phase 4's skills
+// distribution appends more), and it was exactly that growability that
+// justified keeping Action.Tolerant an authored field rather than a
+// positional rule. A guard that only ever looked at index 0 was correct
+// when Plans held one action and silently stopped being correct when they
+// did not.
+func TestEveryActionArgsValidated(t *testing.T) {
+	// A well-formed first action followed by a malformed second one: the
+	// index-0-only guard passes this, then the run loop panics on it.
+	rt := fakeRuntime{name: "faketool", plan: Plan{
+		Runtime: "faketool",
+		Actions: []Action{
+			{Args: []string{"faketool", "mcp", "remove"}, Tolerant: true, Description: "clear the slot"},
+			{Args: nil, Description: "malformed — authored with no Args"},
+		},
+	}}
+	var calls []runCall
+	env := fakeEnvWithRun(scriptedRun(&calls,
+		scriptedResult{Result: RunResult{ExitCode: 0}},
+	), "faketool")
+
+	// Apply must RETURN a failed row, never panic.
+	res := Apply(context.Background(), env, rt, Options{})
+
+	if res.Outcome != OutcomeFailed {
+		t.Fatalf("Outcome = %q, want %q — a malformed action must fail its own row", res.Outcome, OutcomeFailed)
+	}
+	if !strings.Contains(res.Reason, "faketool") {
+		t.Errorf("Reason = %q, want it to name the runtime", res.Reason)
+	}
+	// The index is what makes the report actionable: "some action is
+	// malformed" does not tell an author which one to fix.
+	if !strings.Contains(res.Reason, "1") {
+		t.Errorf("Reason = %q, want it to name the offending action's index (1)", res.Reason)
+	}
+	// Fail BEFORE running anything: a malformed Plan is an authoring bug,
+	// and running its well-formed prefix first would half-apply it. For
+	// claude-code's shape that prefix is the tolerant `mcp remove`, so
+	// running it would clear a real registration on behalf of a Plan that
+	// was never going to complete.
+	if len(calls) != 0 {
+		t.Errorf("Run called %d times, want 0 — validation must precede execution: %+v", len(calls), calls)
+	}
+}
