@@ -274,7 +274,7 @@ mechanism instead of another one-shot operator command.
 
 - [x] **Phase 1: Version & Homebrew Distribution** - `engram version --output json` plus a published, credential-verified, recoverable Homebrew cask (completed 2026-08-25)
 - [x] **Phase 2: Setup Command Core** - `engram setup` detects runtimes, previews by default, declares its full outcome vocabulary, and is fully scriptable without a TTY (completed 2026-08-30)
-- [ ] **Phase 3: Runtime Registration** - `engram setup --apply` registers engram with Claude Code, Codex, and opencode via their own CLIs, converging idempotently, plus a generic-MCP fallback, across every auth mode
+- [x] **Phase 3: Runtime Registration** - `engram setup --apply` registers engram with Claude Code, Codex, and opencode via their own CLIs, converging idempotently, plus a generic-MCP fallback, across every auth mode (completed 2026-09-09)
 - [ ] **Phase 4: Skills Distribution** - The five curation skills reach every runtime, native format where one exists, AGENTS.md fallback otherwise
 - [ ] **Phase 5: Slash Command Delegation** - `/engram-setup` delegates to the binary when present, keeps its prose fallback first-class otherwise, with a generated (not hand-checked) equivalence gate
 - [ ] **Phase 6: Install Documentation** - docs-site documents how to get the binary and how to run `engram setup`
@@ -423,7 +423,7 @@ runtime writer plugs into it).
    reports "already correct" distinctly from the first run's "wrote it" (moved here from Phase 2,
    which stubs `Apply()` per its CONTEXT.md D-09).
 
-**Plans:** 5/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
 **Wave 1**
@@ -615,7 +615,7 @@ and the delegation story settled).
 | 9. Report pending in migrate status | 2026-08-12.01 | 2/2 | Complete | 2026-08-22 |
 | 1. Version & Homebrew Distribution | 2026-08-23.01 | 3/3 | Complete | 2026-08-25 |
 | 2. Setup Command Core | 2026-08-23.01 | 3/3 | Complete | 2026-08-30 |
-| 3. Runtime Registration | 2026-08-23.01 | 7/7 | In Progress | - |
+| 3. Runtime Registration | 2026-08-23.01 | 7/7 | Complete | 2026-09-09 |
 | 4. Skills Distribution | 2026-08-23.01 | 0/3 | Not started | - |
 | 5. Slash Command Delegation | 2026-08-23.01 | 0/3 | Not started | - |
 | 6. Install Documentation | 2026-08-23.01 | 0/2 | Not started | - |

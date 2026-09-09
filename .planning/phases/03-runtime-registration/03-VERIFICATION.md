@@ -1,9 +1,10 @@
 ---
 phase: 03-runtime-registration
 verified: 2026-09-09T21:00:00Z
-status: human_needed
+status: passed
 score: 5/5 must-haves verified
 covered_files:
+
   - .planning/REQUIREMENTS.md
   - .planning/phases/03-runtime-registration/03-01-PLAN.md
   - .planning/phases/03-runtime-registration/03-01-SUMMARY.md
@@ -29,6 +30,7 @@ covered_files:
   - internal/setup/quote.go
   - internal/setup/runtime.go
   - internal/surfaces/toolclass.go
+
 covered_digest: "v1:sha256:572082af3a0774a9fe6bbe21bd315d27b105587d9ce68bb633943529ef9e428e"
 behavior_unverified: 0
 overrides_applied: 0
@@ -40,6 +42,7 @@ re_verification:
   gaps_remaining: []
   regressions: []
 human_verification:
+
   - test: "Run `engram setup --apply --runtime claude-code` twice in a row against a real Claude Code install with no prior engram registration, then a third time after manually deleting the entry."
     expected: "Run 1: outcome=wrote. Run 2 (state unchanged): outcome=already-correct. Between runs 1 and 2 there is a real (tolerant-remove-then-fatal-add) window where the registration briefly does not exist — this is by design, not a bug."
     why_human: "Repo rule m45p2b4bp7 forbids any test in this repo from invoking a real third-party CLI; the mechanism is proven with a scripted fake (TestApplyConvergesClaudeCode). A real two-invocation --apply round trip against a live claude-code install is intentionally not run from inside automated verification because --apply is destructive against the verifier's own machine state."
