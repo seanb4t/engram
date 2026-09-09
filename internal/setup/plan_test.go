@@ -5,14 +5,34 @@ package setup
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
 
+// planHasArgElement reports whether any Action in plan carries an Args
+// element equal to want, byte-for-byte. Searching every action's Args
+// slice — rather than a substring of Actions[0]'s rendered display — is
+// the load-bearing change Task 3 makes: index zero stops being the
+// registration action the moment a runtime authors a tolerant
+// clear-the-slot step first, and a substring assertion on a rendered
+// (quoted) string cannot catch a malformed individual argument the way a
+// direct Args-element comparison can (03-RESEARCH.md Pitfall 2's warning).
+func planHasArgElement(plan Plan, want string) bool {
+	for _, action := range plan.Actions {
+		for _, arg := range action.Args {
+			if arg == want {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // TestPlanPassesURLVerbatimGatewayRoute proves that for every entry in
 // Runtimes, Plan() with auth == "oauth" and a gateway-route URL (a path
-// suffix beyond the bare host) returns an Action.Command containing that
-// URL byte-for-byte — never appended to or stripped (D-02).
+// suffix beyond the bare host) authors an Args element equal to that URL
+// byte-for-byte — never appended to or stripped (D-02).
 func TestPlanPassesURLVerbatimGatewayRoute(t *testing.T) {
 	const url = "https://gw.example.com/mcp/engram"
 	for _, rt := range Runtimes {
@@ -25,8 +45,8 @@ func TestPlanPassesURLVerbatimGatewayRoute(t *testing.T) {
 			if len(plan.Actions) == 0 {
 				t.Fatalf("%s.Plan: no actions", rt.Name())
 			}
-			if !strings.Contains(plan.Actions[0].Command(), url) {
-				t.Errorf("%s.Plan.Actions[0].Command = %q, want it to contain %q byte-for-byte", rt.Name(), plan.Actions[0].Command(), url)
+			if !planHasArgElement(plan, url) {
+				t.Errorf("%s.Plan: no action's Args contains an element equal to %q byte-for-byte", rt.Name(), url)
 			}
 		})
 	}
@@ -47,8 +67,92 @@ func TestPlanPassesURLVerbatimRootMounted(t *testing.T) {
 			if len(plan.Actions) == 0 {
 				t.Fatalf("%s.Plan: no actions", rt.Name())
 			}
-			if !strings.Contains(plan.Actions[0].Command(), url) {
-				t.Errorf("%s.Plan.Actions[0].Command = %q, want it to contain %q byte-for-byte", rt.Name(), plan.Actions[0].Command(), url)
+			if !planHasArgElement(plan, url) {
+				t.Errorf("%s.Plan: no action's Args contains an element equal to %q byte-for-byte", rt.Name(), url)
+			}
+		})
+	}
+}
+
+// TestNoSecretInArgs proves that for every registered runtime and every
+// auth mode, the ACTUAL CREDENTIAL VALUE never reaches Action.Args — the
+// argv-side control for REQ-register-auth-modes' "a secret is never
+// placed on a command line where the shell or process table would
+// capture it." The sentinel here stands in for a RESOLVED secret's bytes,
+// exported through the fake Environment.Getenv as ENGRAM_TOKEN would be
+// resolved by a runtime at its own connect time — never by Plan() itself,
+// which performs zero file reads (leafpurity_test.go) and never touches
+// Getenv for the bearer credential. A --token-file PATH is a distinct
+// concept: it is not a secret (TestPlanBearerNeverReadsTokenFile already
+// pins that Plan() never opens it) and may legitimately appear in a
+// claude-code/opencode bearer row's own provenance segment ("Bearer <from
+// PATH>", Phase 2 D-16, narrowed by D-06 in a later wave) — this test
+// does not assert against that sanctioned, already-pinned rendering.
+//
+// A mode returning ErrAuthModeUnsupported is a PASS for that pair, not a
+// skip-and-forget: the error is asserted to wrap ErrAuthModeUnsupported
+// so an accidental future removal of the guard is caught.
+func TestNoSecretInArgs(t *testing.T) {
+	const secretValue = "SUPER-SECRET-VALUE-MUST-NEVER-APPEAR-9f3e2a"
+	env := Environment{
+		LookPath: func(string) (string, error) { return "/usr/local/bin/x", nil },
+		Getenv: func(key string) string {
+			if key == "ENGRAM_TOKEN" {
+				return secretValue
+			}
+			return ""
+		},
+		HomeDir: func() (string, error) { return "/home/fake", nil },
+	}
+
+	for _, rt := range Runtimes {
+		for _, auth := range []string{"oauth", "oauth-client", "bearer", "none"} {
+			rt, auth := rt, auth
+			t.Run(rt.Name()+":"+auth, func(t *testing.T) {
+				plan, err := rt.Plan(env, Options{URL: "https://x", Auth: auth, TokenFile: "/home/u/.engram/token"})
+				if err != nil {
+					if errors.Is(err, ErrAuthModeUnsupported) {
+						return
+					}
+					t.Fatalf("Plan: %v (want either success or errors.Is(err, ErrAuthModeUnsupported))", err)
+				}
+				for _, action := range plan.Actions {
+					for _, arg := range action.Args {
+						if strings.Contains(arg, secretValue) {
+							t.Errorf("%s:%s: Args element %q contains the resolved credential value", rt.Name(), auth, arg)
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
+// TestOAuthAndNoneAuthorIdenticalArgs pins D-01's "oauth and none are
+// deliberately the same invocation" intent: for every registered runtime,
+// "oauth" and "none" must author deeply-equal Args across every action.
+// No runtime's `mcp add` has a separate no-auth form; this test makes
+// that a pinned fact rather than a coincidence a future edit could break
+// silently.
+func TestOAuthAndNoneAuthorIdenticalArgs(t *testing.T) {
+	for _, rt := range Runtimes {
+		rt := rt
+		t.Run(rt.Name(), func(t *testing.T) {
+			oauthPlan, err := rt.Plan(OSEnvironment, Options{URL: "https://x", Auth: "oauth"})
+			if err != nil {
+				t.Fatalf("oauth Plan: %v", err)
+			}
+			nonePlan, err := rt.Plan(OSEnvironment, Options{URL: "https://x", Auth: "none"})
+			if err != nil {
+				t.Fatalf("none Plan: %v", err)
+			}
+			if len(oauthPlan.Actions) != len(nonePlan.Actions) {
+				t.Fatalf("action count differs: oauth=%d none=%d", len(oauthPlan.Actions), len(nonePlan.Actions))
+			}
+			for i := range oauthPlan.Actions {
+				if !reflect.DeepEqual(oauthPlan.Actions[i].Args, nonePlan.Actions[i].Args) {
+					t.Errorf("action %d: oauth Args = %v, none Args = %v, want identical", i, oauthPlan.Actions[i].Args, nonePlan.Actions[i].Args)
+				}
 			}
 		})
 	}
@@ -181,7 +285,7 @@ func TestPlanAuthModes(t *testing.T) {
 				if err != nil {
 					t.Fatalf("%s: Plan: %v", key, err)
 				}
-				if len(plan.Actions) == 0 || plan.Actions[0].Command() == "" {
+				if len(plan.Actions) == 0 || plan.Display() == "" {
 					t.Fatalf("%s: Plan returned no non-empty Action.Command", key)
 				}
 			})
@@ -209,7 +313,7 @@ func TestPlanBearerRedactsCredentialByProvenance(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Plan: %v", err)
 			}
-			cmd := plan.Actions[0].Command()
+			cmd := plan.Display()
 			if !strings.Contains(cmd, want) {
 				t.Errorf("%s bearer command = %q, want it to contain %q", rt.Name(), cmd, want)
 			}
@@ -222,7 +326,7 @@ func TestPlanBearerRedactsCredentialByProvenance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("codex Plan: %v", err)
 	}
-	cmd := plan.Actions[0].Command()
+	cmd := plan.Display()
 	if strings.Contains(cmd, tokenFile) {
 		t.Errorf("codex bearer command = %q, want it to NOT contain the token file path — codex names ENGRAM_TOKEN, never a path", cmd)
 	}
@@ -247,8 +351,8 @@ func TestPlanBearerNeverReadsTokenFile(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Plan: %v (a nonexistent token file must not cause Plan to fail — it never reads the file)", err)
 			}
-			if !strings.Contains(plan.Actions[0].Command(), want) {
-				t.Errorf("%s bearer command = %q, want it to contain %q even though the file does not exist", rt.Name(), plan.Actions[0].Command(), want)
+			if !strings.Contains(plan.Display(), want) {
+				t.Errorf("%s bearer command = %q, want it to contain %q even though the file does not exist", rt.Name(), plan.Display(), want)
 			}
 		})
 	}
@@ -264,8 +368,8 @@ func TestPlanBearerEmptyTokenFileNamesEnvVar(t *testing.T) {
 		t.Fatalf("Plan: %v", err)
 	}
 	want := "Bearer <from ENGRAM_TOKEN>"
-	if !strings.Contains(plan.Actions[0].Command(), want) {
-		t.Errorf("claude-code bearer command (empty token-file) = %q, want it to contain %q", plan.Actions[0].Command(), want)
+	if !strings.Contains(plan.Display(), want) {
+		t.Errorf("claude-code bearer command (empty token-file) = %q, want it to contain %q", plan.Display(), want)
 	}
 }
 
@@ -277,7 +381,7 @@ func TestPlanClaudeCodeOAuthClientForm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
-	cmd := plan.Actions[0].Command()
+	cmd := plan.Display()
 	for _, want := range []string{"--client-id", "--client-secret", "--callback-port 8765"} {
 		if !strings.Contains(cmd, want) {
 			t.Errorf("claude-code oauth-client command = %q, want it to contain %q", cmd, want)
