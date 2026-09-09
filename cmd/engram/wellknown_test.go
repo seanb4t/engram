@@ -57,10 +57,10 @@ func TestProtectedResourceDocument(t *testing.T) {
 
 	t.Run("both well-known paths produce byte-identical bodies", func(t *testing.T) {
 		h := protectedResourceHandler("https://engram.example.test/mcp", "https://issuer.example.test", "/mcp")
-		base, suffix := protectedResourcePaths("/mcp")
+		suffix := protectedResourcePaths("/mcp")
 
 		recBase := httptest.NewRecorder()
-		h.ServeHTTP(recBase, httptest.NewRequest(http.MethodGet, base, nil))
+		h.ServeHTTP(recBase, httptest.NewRequest(http.MethodGet, wellKnownPRMBase, nil))
 		recSuffix := httptest.NewRecorder()
 		h.ServeHTTP(recSuffix, httptest.NewRequest(http.MethodGet, suffix, nil))
 
@@ -244,7 +244,7 @@ func TestMountWellKnownRoutes(t *testing.T) {
 		mux := http.NewServeMux()
 		mountMCPRoutes(mux, mcpStub, false, mcpPath)
 		mountWellKnownRoutes(mux, metaStub, mcpPath)
-		base, suffix := protectedResourcePaths(mcpPath)
+		suffix := protectedResourcePaths(mcpPath)
 
 		cases := []struct {
 			name     string
@@ -254,9 +254,9 @@ func TestMountWellKnownRoutes(t *testing.T) {
 			wantMeta bool
 			wantMCP  bool
 		}{
-			{"GET host-only well-known reaches metadata", http.MethodGet, base, http.StatusOK, true, false},
+			{"GET host-only well-known reaches metadata", http.MethodGet, wellKnownPRMBase, http.StatusOK, true, false},
 			{"GET suffix well-known reaches metadata", http.MethodGet, suffix, http.StatusOK, true, false},
-			{"POST host-only well-known is 404", http.MethodPost, base, http.StatusNotFound, false, false},
+			{"POST host-only well-known is 404", http.MethodPost, wellKnownPRMBase, http.StatusNotFound, false, false},
 			{"GET unrelated well-known path is 404", http.MethodGet, "/.well-known/nope", http.StatusNotFound, false, false},
 			{"GET /mcp reaches MCP", http.MethodGet, mcpPath, http.StatusOK, false, true},
 			{"POST /mcp reaches MCP", http.MethodPost, mcpPath, http.StatusOK, false, true},
@@ -283,22 +283,22 @@ func TestMountWellKnownRoutes(t *testing.T) {
 		mux := http.NewServeMux()
 		mountMCPRoutes(mux, mcpStub, false, mcpPath)
 		mountWellKnownRoutes(mux, metaStub, mcpPath)
-		base, suffix := protectedResourcePaths(mcpPath)
+		suffix := protectedResourcePaths(mcpPath)
 
 		if suffix != "" {
-			t.Fatalf("protectedResourcePaths(%q) suffix=%q want empty (root MCP path)", mcpPath, suffix)
+			t.Fatalf("protectedResourcePaths(%q)=%q want empty (root MCP path)", mcpPath, suffix)
 		}
 
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, base, nil))
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, wellKnownPRMBase, nil))
 		if rec.Code != http.StatusOK || rec.Header().Get(metaHdr) != "hit" {
-			t.Fatalf("GET %s: status=%d metaHit=%v want 200/true", base, rec.Code, rec.Header().Get(metaHdr) == "hit")
+			t.Fatalf("GET %s: status=%d metaHit=%v want 200/true", wellKnownPRMBase, rec.Code, rec.Header().Get(metaHdr) == "hit")
 		}
 
 		rec = httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, base, nil))
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, wellKnownPRMBase, nil))
 		if rec.Code != http.StatusOK || rec.Header().Get(mcpHdr) != "hit" {
-			t.Fatalf("POST %s: status=%d mcpHit=%v want 200/true (legacy root catch-all must not be narrowed)", base, rec.Code, rec.Header().Get(mcpHdr) == "hit")
+			t.Fatalf("POST %s: status=%d mcpHit=%v want 200/true (legacy root catch-all must not be narrowed)", wellKnownPRMBase, rec.Code, rec.Header().Get(mcpHdr) == "hit")
 		}
 	})
 }

@@ -40,18 +40,18 @@ type protectedResourceMetadata struct {
 	ScopesSupported        []string `json:"scopes_supported"`
 }
 
-// protectedResourcePaths returns the RFC 9728 host-only path and, when
-// mcpPath names a non-root MCP mount, the §3.1 path-suffix form (the
-// host-only path concatenated with mcpPath). The suffix is empty when
-// mcpPath is the bare root: concatenating it would produce a trailing-slash
-// ServeMux subtree pattern, and the host-only form already IS the correct
-// document location for a root-mounted resource.
-func protectedResourcePaths(mcpPath string) (base, suffix string) {
-	base = wellKnownPRMBase
+// protectedResourcePaths returns the RFC 9728 §3.1 path-suffix form (the
+// host-only path -- wellKnownPRMBase -- concatenated with mcpPath) when
+// mcpPath names a non-root MCP mount. It returns empty when mcpPath is the
+// bare root: concatenating it would produce a trailing-slash ServeMux
+// subtree pattern, and the host-only form already IS the correct document
+// location for a root-mounted resource. Callers that also need the
+// host-only path use the wellKnownPRMBase constant directly.
+func protectedResourcePaths(mcpPath string) (suffix string) {
 	if mcpPath == "" || mcpPath == "/" {
-		return base, ""
+		return ""
 	}
-	return base, base + mcpPath
+	return wellKnownPRMBase + mcpPath
 }
 
 // validForwardedHost reports whether v is safe to trust as an
@@ -200,11 +200,10 @@ func resolveResourceMetadataURL(configured, mcpResourceURL, mcpPath string) stri
 		return ""
 	}
 	origin := u.Scheme + "://" + u.Host
-	base, suffix := protectedResourcePaths(mcpPath)
-	if suffix != "" {
+	if suffix := protectedResourcePaths(mcpPath); suffix != "" {
 		return origin + suffix
 	}
-	return origin + base
+	return origin + wellKnownPRMBase
 }
 
 // mountWellKnownRoutes registers h under the RFC 9728 host-only path and,
@@ -215,9 +214,8 @@ func resolveResourceMetadataURL(configured, mcpResourceURL, mcpPath string) stri
 // through to it untouched (verified behaviour -- see the probe note in
 // 260909-ofg-PLAN.md's verified_orientation).
 func mountWellKnownRoutes(mux *http.ServeMux, h http.Handler, mcpPath string) {
-	base, suffix := protectedResourcePaths(mcpPath)
-	mux.Handle("GET "+base, h)
-	if suffix != "" {
+	mux.Handle("GET "+wellKnownPRMBase, h)
+	if suffix := protectedResourcePaths(mcpPath); suffix != "" {
 		mux.Handle("GET "+suffix, h)
 	}
 }
