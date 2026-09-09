@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.15.0](https://github.com/seanb4t/engram/compare/v0.14.0...v0.15.0) (2026-09-09)
+
+
+### Features
+
+* **serve:** serve RFC 9728 protected-resource metadata ([#528](https://github.com/seanb4t/engram/issues/528)) ([581ed59](https://github.com/seanb4t/engram/commit/581ed59a3a3d7084e5ccaa6d8c3c1bcd4ce62355))
+
+
+### Bug Fixes
+
+* **ci:** prove tap write access at mint time, and use client-id ([#516](https://github.com/seanb4t/engram/issues/516)) ([fdb3448](https://github.com/seanb4t/engram/commit/fdb3448484650776332de80fb4dbae77568a8f81))
+
 ## [0.14.0](https://github.com/seanb4t/engram/compare/v0.13.0...v0.14.0) (2026-08-23)
 
 
