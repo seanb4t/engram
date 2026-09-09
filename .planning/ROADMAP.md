@@ -423,7 +423,14 @@ runtime writer plugs into it).
    reports "already correct" distinctly from the first run's "wrote it" (moved here from Phase 2,
    which stubs `Apply()` per its CONTEXT.md D-09).
 
-**Plans:** TBD
+**Plans:** 5 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Shared executor tracer: `Args`/`Probe` model, `Environment.Run` seam, read→write→read convergence, and a real `--apply` for codex end-to-end
+- [ ] 03-02-PLAN.md — claude-code's two-action write sequence, closing the refuse-on-exists gap that makes `already-correct` unreachable
+- [ ] 03-03-PLAN.md — opencode's `KEY=VALUE` header fix and its `Args`/`Probe` conversion
+- [ ] 03-04-PLAN.md — The `generic` opt-in pseudo-runtime and its portable `mcpServers` configuration
+- [ ] 03-05-PLAN.md — Preview-side probe reporting, the `token_file` marker, help prose, and golden regeneration
 
 ---
 
