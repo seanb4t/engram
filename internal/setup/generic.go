@@ -4,6 +4,7 @@
 package setup
 
 import (
+	"encoding/json"
 	"fmt"
 )
 
@@ -113,11 +114,27 @@ type genericConfigDoc struct {
 // phase's earlier waves (03-02, 03-03). Neither form ever carries a
 // credential VALUE — only a variable reference or a path.
 func (genericRuntime) Plan(_ Environment, opts Options) (Plan, error) {
-	// TDD RED STUB (03-04 Task 1): deliberately does not build the
-	// portable config document yet.
 	switch opts.Auth {
 	case "oauth", "none", "bearer":
-		return Plan{Runtime: "generic"}, nil
+		server := genericMCPServer{Type: "http", URL: opts.URL}
+		if opts.Auth == "bearer" {
+			headerValue := "Bearer ${ENGRAM_TOKEN}"
+			if opts.TokenFile != "" {
+				headerValue = "Bearer " + bearerProvenance(opts.TokenFile)
+			}
+			server.Headers = map[string]string{"Authorization": headerValue}
+		}
+		doc := genericConfigDoc{MCPServers: map[string]genericMCPServer{"engram": server}}
+		b, err := json.Marshal(doc)
+		if err != nil {
+			// doc is a small, fixed, fully-controlled shape (two known
+			// string fields and an optional single-entry map of strings);
+			// json.Marshal cannot fail on it in practice. Surfaced as an
+			// OutcomeFailed row rather than a panic, on the same footing
+			// as every other runtime's Plan error path.
+			return Plan{}, fmt.Errorf("generic: marshal portable config: %w", err)
+		}
+		return Plan{Runtime: "generic", Config: string(b)}, nil
 	default:
 		return Plan{}, fmt.Errorf("generic: auth mode %q: %w", opts.Auth, ErrAuthModeUnsupported)
 	}
