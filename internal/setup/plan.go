@@ -191,13 +191,23 @@ type Result struct {
 // bearerProvenance renders the literal, non-secret provenance form of a
 // bearer credential (D-16): "<from PATH>" when tokenFile is set, or
 // "<from ENGRAM_TOKEN>" when it is empty — the env-var fallback
-// resolveToken already implements binary-wide. Every Runtime's Plan that
-// authors a `--header "Authorization: Bearer <credential>"` form (Task 3)
-// substitutes <credential> with this string, and MUST NOT open, stat, or
-// read tokenFile: the path is the whole payload at this layer, so a
-// nonexistent path still previews successfully. A fixed "Bearer ***" mask
-// was rejected — on a machine with several token files, WHICH credential
-// would be used is precisely the detail worth previewing.
+// resolveToken already implements binary-wide. Originally every
+// registered Runtime's bearer form substituted <credential> with this
+// string; as of Phase 3 (claude-code, 03-02; opencode, 03-03) every
+// registered runtime instead names ENGRAM_TOKEN through its own
+// runtime-native substitution mechanism (D-05/D-06), so this function
+// currently has NO caller in Runtimes. It MUST NOT be deleted
+// (03-02-PLAN.md Task 2's own acceptance criterion): the generic
+// pseudo-runtime (03-04, an opt-in portable-config target with no CLI of
+// its own to resolve a substitution token at) still needs a literal,
+// non-secret provenance placeholder and will call this. MUST NOT open,
+// stat, or read tokenFile: the path is the whole payload at this layer,
+// so a nonexistent path still previews successfully. A fixed
+// "Bearer ***" mask was rejected — on a machine with several token
+// files, WHICH credential would be used is precisely the detail worth
+// previewing.
+//
+//nolint:unused // dead between 03-02/03-03 removing its last caller and 03-04 adding the next one; kept per 03-02-PLAN.md's own "MUST NOT be deleted" acceptance criterion above.
 func bearerProvenance(tokenFile string) string {
 	if tokenFile == "" {
 		return "<from ENGRAM_TOKEN>"

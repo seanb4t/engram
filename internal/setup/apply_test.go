@@ -359,6 +359,85 @@ func TestApplyFailsWhenRegistrationActionFails(t *testing.T) {
 	}
 }
 
+// TestActionToleranceIsAuthoredNotPositional pins the Assumptions Log A4
+// decision 03-02-PLAN.md's Task 1 checkpoint made explicitly: an action's
+// failure tolerance comes ONLY from its own authored Action.Tolerant
+// field, never from its position in Plan.Actions. 03-RESEARCH.md's
+// Pattern 1 recommended the opposite — a general "only the LAST action's
+// exit determines OutcomeFailed" positional rule — and this phase
+// rejected it because plan.go's own doc comment records Plan.Actions as
+// growable by a later phase (skills distribution, Phase 4): a positional
+// rule would silently make every later, non-final action tolerant the
+// moment Actions grows past length 2, which is exactly the kind of
+// latent defect that ships green and is discovered only in production.
+//
+// The synthetic Plan below is built inline, deliberately NOT obtained
+// from any registered runtime's own Plan() — this test must prove the
+// EXECUTOR's rule, not accidentally validate a runtime author's ordering
+// choice. Two orderings:
+//
+//   - tolerant-last: Actions[0] non-tolerant and FAILING,
+//     Actions[len-1] tolerant and succeeding. Under the rejected
+//     positional rule ("only the last action's exit fails the row"), the
+//     first action's failure would be silently swallowed and the row
+//     would NOT be OutcomeFailed — exactly the regression this test
+//     exists to catch if anyone ever reintroduces a position-derived
+//     tolerance rule. Under the correct authored rule, Actions[0]'s
+//     failure is fatal regardless of its position, so the row MUST be
+//     OutcomeFailed.
+//   - tolerant-first (inverted): Actions[0] tolerant and FAILING,
+//     Actions[len-1] non-tolerant and succeeding — the shape
+//     claudecode.go's remove-then-add sequence actually uses. The row
+//     must NOT be OutcomeFailed, proving tolerance is read from the
+//     field on the FIRST action too, not merely "not the last one".
+func TestActionToleranceIsAuthoredNotPositional(t *testing.T) {
+	t.Run("tolerant-last", func(t *testing.T) {
+		rt := fakeRuntime{name: "faketool", plan: Plan{
+			Runtime: "faketool",
+			Actions: []Action{
+				{Args: []string{"faketool", "add"}, Tolerant: false, Description: "first, non-tolerant, FAILS"},
+				{Args: []string{"faketool", "verify"}, Tolerant: true, Description: "last, tolerant, succeeds"},
+			},
+		}}
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{ExitCode: 1, Stderr: "boom"}}, // first action fails
+			scriptedResult{Result: RunResult{ExitCode: 0}},                 // never reached if the executor is correct
+		), "faketool")
+
+		res := Apply(context.Background(), env, rt, Options{})
+		if res.Outcome != OutcomeFailed {
+			t.Fatalf("Outcome = %q, want %q — a non-tolerant FIRST action's failure must fail the row even though a LATER action is tolerant (a positional \"only the last action counts\" rule would wrongly pass this)", res.Outcome, OutcomeFailed)
+		}
+		if len(calls) != 1 {
+			t.Errorf("Run called %d times, want exactly 1 — the sequence must stop at the first non-tolerant failure, never run a later action to find its tolerance", len(calls))
+		}
+	})
+
+	t.Run("tolerant-first", func(t *testing.T) {
+		rt := fakeRuntime{name: "faketool", plan: Plan{
+			Runtime: "faketool",
+			Actions: []Action{
+				{Args: []string{"faketool", "remove"}, Tolerant: true, Description: "first, tolerant, FAILS (tolerated)"},
+				{Args: []string{"faketool", "add"}, Tolerant: false, Description: "last, non-tolerant, succeeds"},
+			},
+		}}
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{ExitCode: 1, Stderr: "not found"}}, // tolerated
+			scriptedResult{Result: RunResult{ExitCode: 0}},                      // succeeds
+		), "faketool")
+
+		res := Apply(context.Background(), env, rt, Options{})
+		if res.Outcome == OutcomeFailed {
+			t.Fatalf("Outcome = %q, want anything but %q — a tolerant FIRST action's failure must never fail the row", res.Outcome, OutcomeFailed)
+		}
+		if len(calls) != 2 {
+			t.Fatalf("Run called %d times, want 2 — the sequence must continue past a tolerated failure regardless of position", len(calls))
+		}
+	})
+}
+
 // TestPreviewNeverExecutesWriteAction proves Preview() against a present
 // runtime never runs the write Action — only Detect/Plan/LookPath, plus
 // (if wired) a read-only probe. Scripting the write action's response as
