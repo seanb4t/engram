@@ -269,6 +269,86 @@ func TestDriftReportedLegibly(t *testing.T) {
 	})
 }
 
+// TestPreviewReportsRegisteredState covers 03-05-PLAN.md Task 1's
+// <behavior> bullets at the package level: probe-zero, probe-nonzero,
+// probe-seam-error, not-present, and zero-action (generic) plans, each
+// asserting the resulting Outcome and whether Run was invoked at all.
+func TestPreviewReportsRegisteredState(t *testing.T) {
+	opts := Options{URL: "https://engram.example.com/mcp", Auth: "oauth"}
+
+	t.Run("probe-zero-exit-reports-registered", func(t *testing.T) {
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: "engram: https://engram.example.com/mcp (HTTP)"}},
+		), "codex")
+
+		res := Preview(context.Background(), env, Codex, opts)
+		if res.Outcome != OutcomeWouldWrite {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeWouldWrite)
+		}
+		if res.Registered == "" {
+			t.Error("Registered is empty, want the bounded probe output (D-10)")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("Run called %d times, want exactly 1 (the probe, never the write): %+v", len(calls), calls)
+		}
+	})
+
+	t.Run("probe-nonzero-exit-still-would-write", func(t *testing.T) {
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{ExitCode: 1, Stderr: "No MCP server named 'engram' found"}},
+		), "codex")
+
+		res := Preview(context.Background(), env, Codex, opts)
+		if res.Outcome != OutcomeWouldWrite {
+			t.Fatalf("Outcome = %q, want %q — a probe's nonzero exit must never change a preview's classification (D-10)", res.Outcome, OutcomeWouldWrite)
+		}
+	})
+
+	t.Run("probe-seam-error-still-would-write", func(t *testing.T) {
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Err: errors.New("exec: start failure")},
+		), "codex")
+
+		res := Preview(context.Background(), env, Codex, opts)
+		if res.Outcome != OutcomeWouldWrite {
+			t.Fatalf("Outcome = %q, want %q — a probe seam error must never change a preview's classification (D-10)", res.Outcome, OutcomeWouldWrite)
+		}
+		if res.Registered != "" {
+			t.Errorf("Registered = %q, want empty when the probe never produced a valid read", res.Registered)
+		}
+	})
+
+	t.Run("not-present-never-execs", func(t *testing.T) {
+		env := fakeEnvWithRun(func(context.Context, string, []string) (RunResult, error) {
+			t.Fatal("Run must never be called for a not-present runtime")
+			return RunResult{}, nil
+		}) // codex absent — nothing on this fake's PATH
+
+		res := Preview(context.Background(), env, Codex, opts)
+		if res.Outcome != OutcomeNotPresent {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeNotPresent)
+		}
+	})
+
+	t.Run("zero-action-plan-never-execs", func(t *testing.T) {
+		env := fakeEnvWithRun(func(context.Context, string, []string) (RunResult, error) {
+			t.Fatal("Run must never be called for a zero-Action Plan (D-16) — generic has no Probe and no write")
+			return RunResult{}, nil
+		})
+
+		res := Preview(context.Background(), env, Generic, opts)
+		if res.Outcome != OutcomeWouldWrite {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeWouldWrite)
+		}
+		if res.Registered != "" {
+			t.Errorf("Registered = %q, want empty — generic observes nothing", res.Registered)
+		}
+	})
+}
+
 // TestApplyConvergesClaudeCode is TestApplyConvergesCodex's claude-code
 // sibling — the ONLY test shape 03-RESEARCH.md's Pitfall 1 names as
 // catching the defect: a plan that only exercises the FIRST --apply run

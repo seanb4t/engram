@@ -71,14 +71,20 @@ func boundCapture(s string) string {
 	return s[:limit] + truncationMarker
 }
 
-// Preview runs rt's read-only detection and planning against env and opts
-// without ever executing a write action: the classified Outcome always
-// stays OutcomeWouldWrite for a present runtime (D-10 reverses Phase 2's
-// D-12 "shells out to nothing" preview posture only insofar as a probe MAY
-// run for informational purposes in a later plan — this task's Preview
-// performs no exec at all, so cmd/engram's existing preview path, which
-// calls Detect/Plan directly rather than through this function, does not
-// regress T-02-08's "a preview cannot produce a nonzero exit code").
+// Preview runs rt's read-only detection and planning against env and opts,
+// then — for a present runtime with a Plan.Probe wired — runs that probe
+// once and reports its bounded output on Result.Registered (D-10): the
+// operator sees present state next to intended state before anything is
+// written. The classified Outcome always stays OutcomeWouldWrite: a single
+// probe read has no honest basis for classifying already-correct, because
+// D-08's byte-compare needs a WRITE between two reads. No probe result of
+// ANY kind — zero exit, nonzero exit, empty output, or a seam error (start
+// failure/timeout) — ever moves Outcome away from OutcomeWouldWrite or
+// produces a nonzero process exit code; only a usage/configuration error
+// does that. This re-pins T-02-08's exit-code property on behavioral
+// grounds now that its original structural argument ("setupPreview starts
+// no process") no longer holds — see
+// cmd/engram/setup_test.go's TestSetupPreviewExitsZeroWhenProbeFails.
 func Preview(ctx context.Context, env Environment, rt Runtime, opts Options) Result {
 	return execute(ctx, env, rt, opts, false)
 }
@@ -165,10 +171,13 @@ func toleratedNote(action Action, exitCode int, stderr string) string {
 //     between Detect and the write.
 //  4. Run Plan.Probe (read #1) if this runtime has one wired; keep the
 //     RAW combined captures in local variables, never bounded.
-//  5. mutate == false (Preview): classify OutcomeWouldWrite and return —
-//     the probe read above is not yet rendered onto Result this task
-//     (03-01-PLAN.md Task 1: "the preview-side probe reporting is wired
-//     in a later plan").
+//  5. mutate == false (Preview): classify OutcomeWouldWrite and return.
+//     When this runtime has a probe wired AND it produced a valid read (no
+//     seam error), the RAW read #1 capture is bounded and rendered onto
+//     Result.Registered (D-10) — a nonzero probe exit is rendered exactly
+//     like a zero exit, since D-11 reports rather than diagnoses. A probe
+//     seam error leaves Registered empty; either way Outcome stays
+//     OutcomeWouldWrite and the process exit code is unaffected.
 //  6. A probe SEAM error (start failure/timeout) under Apply is
 //     OutcomeFailed.
 //  7. Run each Action in order on the resolved binary. A non-Tolerant
@@ -225,7 +234,15 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 	}
 
 	if !mutate {
+		// D-10: no probe result of ANY kind — zero exit, nonzero exit,
+		// empty output, or a seam error — may move Outcome away from
+		// OutcomeWouldWrite. Byte-compare requires a WRITE between two
+		// reads (D-08), so a single read here has no honest basis for
+		// claiming already-correct, whatever it shows.
 		res.Outcome = OutcomeWouldWrite
+		if hasProbe && probe1Err == nil {
+			res.Registered = boundCapture(probe1.Stdout + probe1.Stderr)
+		}
 		return res
 	}
 

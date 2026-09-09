@@ -105,47 +105,30 @@ type setupReportDoc struct {
 	Runtimes []setupRuntimeRow `json:"runtimes"`
 }
 
-// setupBuildRows runs Detect+Plan for every runtime in runtimes against
-// env and opts, returning one row per runtime. This function never
-// returns a command-level error: an absent runtime is OutcomeNotPresent
-// (D-07, not a failure), and a Plan() failure (e.g.
+// setupBuildRows runs setup.Preview for every runtime in runtimes against
+// env and opts, returning one row per runtime — the SAME setup.Preview /
+// setup.Apply shared-executor path setupApplyRun already uses (D-15's
+// one-serialization-plus-a-view invariant extended to the row-building
+// path itself, 03-05-PLAN.md Task 1): the preview and apply lanes cannot
+// drift because there is only one code path from a Runtime to a Result.
+// setup.Preview never executes a write action and never produces a
+// nonzero-affecting outcome on its own — an absent runtime is
+// OutcomeNotPresent (D-07, not a failure), and a Plan() failure (e.g.
 // setup.ErrAuthModeUnsupported) becomes an OutcomeFailed row naming the
 // reason via err.Error() — never string-matched, but also never elevated
 // to a whole-command failure this phase, since a single unsupported
 // (runtime, auth) pair must not prevent every OTHER selected runtime's row
 // from rendering (D-08: a preview exits nonzero only for usage/config
 // errors; per-runtime partial-failure exit codes are out of this plan's
-// scope).
-func setupBuildRows(env setup.Environment, runtimes []setup.Runtime, opts setup.Options) []setupRuntimeRow {
+// scope). For a present runtime with a Plan.Probe wired, setup.Preview also
+// runs that probe once and reports its output on Result.Registered (D-10)
+// — this is what makes the report show present state next to intended
+// state without ever changing this function's own no-command-level-error
+// contract.
+func setupBuildRows(ctx context.Context, env setup.Environment, runtimes []setup.Runtime, opts setup.Options) []setupRuntimeRow {
 	rows := make([]setupRuntimeRow, 0, len(runtimes))
 	for _, rt := range runtimes {
-		if !rt.Detect(env) {
-			rows = append(rows, setupRuntimeRow{
-				Name:    rt.Name(),
-				Present: false,
-				Outcome: string(setup.OutcomeNotPresent),
-			})
-			continue
-		}
-
-		plan, err := rt.Plan(env, opts)
-		if err != nil {
-			rows = append(rows, setupRuntimeRow{
-				Name:    rt.Name(),
-				Present: true,
-				Outcome: string(setup.OutcomeFailed),
-				Reason:  err.Error(),
-			})
-			continue
-		}
-
-		rows = append(rows, setupRuntimeRow{
-			Name:    rt.Name(),
-			Present: true,
-			Outcome: string(setup.OutcomeWouldWrite),
-			Command: plan.Display(),
-			Config:  plan.Config,
-		})
+		rows = append(rows, setupRuntimeRowFromResult(setup.Preview(ctx, env, rt, opts)))
 	}
 	return rows
 }
@@ -214,31 +197,37 @@ func setupResolve(cmd *cobra.Command) ([]setup.Runtime, setup.Options, error) {
 }
 
 // setupPlanDoc resolves --url/--auth/--runtime (setupResolve) and builds
-// the preview report doc setupPreview renders — Detect+Plan only, no exec
-// of any kind (T-02-08 unchanged: a preview cannot produce a nonzero exit
-// code).
-func setupPlanDoc(cmd *cobra.Command) (setupReportDoc, error) {
+// the preview report doc setupPreview renders, via setup.Preview
+// (setupBuildRows) for every selected runtime — a present runtime with a
+// Plan.Probe wired may run that ONE read-only probe (D-10); it never
+// performs a write of any kind. T-02-08's exit-code property is
+// unaffected: a probe's own result (zero exit, nonzero exit, or a seam
+// error) never changes a preview's classification or produces a nonzero
+// process exit code — only a usage/configuration error (returned by
+// setupResolve, before any runtime is touched) does that.
+func setupPlanDoc(ctx context.Context, cmd *cobra.Command) (setupReportDoc, error) {
 	runtimes, opts, err := setupResolve(cmd)
 	if err != nil {
 		return setupReportDoc{}, err
 	}
-	rows := setupBuildRows(setupEnv, runtimes, opts)
+	rows := setupBuildRows(ctx, setupEnv, runtimes, opts)
 	return setupReportDoc{Runtimes: rows}, nil
 }
 
 // setupPreview is registerDestructive's preview closure: it builds the
-// SAME report setupApplyRun builds and performs no write of any kind — no
-// file, no runtime CLI execution (Detect's exec.LookPath call is a
-// read-only resolution, never an invocation). cliNow's preview cutoff
-// clock (destructive.go) is deliberately unused here (D-14): it exists
-// for store-sweep commands' not_after comparisons and carries no meaning
-// for a local-machine detection preview.
-func setupPreview(_ context.Context, cmd *cobra.Command) error {
+// SAME report setupApplyRun builds and never performs a write of any kind
+// — Detect's exec.LookPath call is a read-only resolution, and the one
+// probe setup.Preview may run per present runtime (D-10) is itself a
+// read-only invocation of that runtime's own CLI, never a mutation.
+// cliNow's preview cutoff clock (destructive.go) is deliberately unused
+// here (D-14): it exists for store-sweep commands' not_after comparisons
+// and carries no meaning for a local-machine detection preview.
+func setupPreview(ctx context.Context, cmd *cobra.Command) error {
 	format, err := operatorOutputFormat(cmd, setupOutput)
 	if err != nil {
 		return err
 	}
-	doc, err := setupPlanDoc(cmd)
+	doc, err := setupPlanDoc(ctx, cmd)
 	if err != nil {
 		return err
 	}

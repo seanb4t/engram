@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -481,6 +482,92 @@ func TestSetupPreviewExitsZeroRegardlessOfPresence(t *testing.T) {
 				t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
 			}
 		})
+	}
+}
+
+// TestSetupPreviewExitsZeroWhenProbeFails is the behavioral replacement
+// proof for T-02-08 (03-05-PLAN.md Task 1): now that setup.Preview starts a
+// real child process for a present runtime's Plan.Probe (D-10), the
+// structural argument 02-SECURITY.md's T-02-08 originally rested on
+// ("setupPreview starts no process") no longer holds, and the exit-code
+// property must be re-pinned on its own terms. Both subtests assert the
+// command returns a nil error AND that the rendered report still carries
+// one row per selected runtime (T-02-06: a probe failure must never erase
+// the per-runtime record).
+func TestSetupPreviewExitsZeroWhenProbeFails(t *testing.T) {
+	t.Run("nonzero-probe-exit", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		failingProbe := func(context.Context, string, []string) (setup.RunResult, error) {
+			return setup.RunResult{ExitCode: 1, Stderr: "No MCP server named 'engram' found"}, nil
+		}
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(failingProbe, "claude"))
+
+		stdout, stderr, err := runClient(t, "setup",
+			"--url", "https://engram.example.com/mcp", "--runtime", "claude-code", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		if len(doc.Runtimes) != 1 {
+			t.Fatalf("setup preview emitted %d rows, want exactly 1 (a probe failure must not erase the row): %s", len(doc.Runtimes), stdout)
+		}
+	})
+
+	t.Run("probe-seam-error", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		seamErrorRun := func(context.Context, string, []string) (setup.RunResult, error) {
+			return setup.RunResult{}, errors.New("exec: start failure")
+		}
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(seamErrorRun, "claude"))
+
+		stdout, stderr, err := runClient(t, "setup",
+			"--url", "https://engram.example.com/mcp", "--runtime", "claude-code", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		if len(doc.Runtimes) != 1 {
+			t.Fatalf("setup preview emitted %d rows, want exactly 1 (a probe seam error must not erase the row): %s", len(doc.Runtimes), stdout)
+		}
+	})
+}
+
+// TestSetupPreviewNeverClassifiesAlreadyCorrect scripts a probe returning
+// IDENTICAL output on every call and asserts no row's outcome is ever
+// "already-correct" under a bare preview (D-10): byte-compare needs a
+// WRITE between two reads, and a preview never writes, so no single probe
+// read — however convincing — has an honest basis for that classification.
+func TestSetupPreviewNeverClassifiesAlreadyCorrect(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	identicalProbe := func(context.Context, string, []string) (setup.RunResult, error) {
+		return setup.RunResult{Stdout: "engram: https://engram.example.com/mcp (HTTP)"}, nil
+	}
+	withFakeSetupEnv(t, fakeSetupEnvWithRun(identicalProbe, "claude", "codex", "opencode"))
+
+	stdout, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+	}
+	var doc setupReportDoc
+	if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+	}
+	if len(doc.Runtimes) == 0 {
+		t.Fatalf("setup preview emitted no runtimes: %s", stdout)
+	}
+	for _, row := range doc.Runtimes {
+		if row.Outcome == string(setup.OutcomeAlreadyCorrect) {
+			t.Errorf("%s row.Outcome = %q, want never %q under a bare preview (D-10)", row.Name, row.Outcome, setup.OutcomeAlreadyCorrect)
+		}
 	}
 }
 
