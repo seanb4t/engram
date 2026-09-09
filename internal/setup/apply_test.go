@@ -5,8 +5,24 @@ package setup
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
+	"unicode/utf8"
 )
+
+// fakeRuntime implements Runtime with a caller-supplied Plan, so
+// TestDriftReportedLegibly can drive the shared executor through exact
+// Action/Tolerant/Probe combinations without going through a real
+// registered runtime's own Plan() logic.
+type fakeRuntime struct {
+	name string
+	plan Plan
+}
+
+func (f fakeRuntime) Name() string                            { return f.name }
+func (f fakeRuntime) Detect(Environment) bool                 { return true }
+func (f fakeRuntime) Plan(Environment, Options) (Plan, error) { return f.plan, nil }
 
 // TestApplyConvergesCodex drives two consecutive Apply calls against codex
 // through the scripted Run fake — the only test shape that can prove
@@ -91,6 +107,166 @@ func TestApplyNotPresentNeverExecs(t *testing.T) {
 	if res.Present {
 		t.Error("res.Present = true, want false")
 	}
+}
+
+// TestDriftReportedLegibly covers every 03-01-PLAN.md Task 2 <behavior>
+// bullet: every executor failure path yields a Reason an operator can act
+// on, and nothing branches on stderr's CONTENT to decide an Outcome
+// (D-11). Assertions check for the presence of the runtime name, the argv
+// display, and the exit code as SUBSTRINGS of Reason — never the whole
+// Reason string, which would pin engram's own prose unnecessarily.
+func TestDriftReportedLegibly(t *testing.T) {
+	t.Run("non-tolerant-nonzero-with-stderr", func(t *testing.T) {
+		rt := fakeRuntime{name: "faketool", plan: Plan{
+			Runtime: "faketool",
+			Actions: []Action{{Args: []string{"faketool", "mcp", "add"}, Description: "add"}},
+		}}
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{ExitCode: 3, Stderr: "boom: something broke"}},
+		), "faketool")
+
+		res := Apply(context.Background(), env, rt, Options{})
+		if res.Outcome != OutcomeFailed {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeFailed)
+		}
+		for _, want := range []string{"faketool", "mcp add", "3", "boom: something broke"} {
+			if !strings.Contains(res.Reason, want) {
+				t.Errorf("Reason = %q, want it to contain %q", res.Reason, want)
+			}
+		}
+	})
+
+	t.Run("non-tolerant-nonzero-empty-stderr", func(t *testing.T) {
+		rt := fakeRuntime{name: "faketool", plan: Plan{
+			Runtime: "faketool",
+			Actions: []Action{{Args: []string{"faketool", "mcp", "add"}, Description: "add"}},
+		}}
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{ExitCode: 7}}, // no stderr at all
+		), "faketool")
+
+		res := Apply(context.Background(), env, rt, Options{})
+		if res.Outcome != OutcomeFailed {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeFailed)
+		}
+		if res.Reason == "" {
+			t.Fatal("Reason is empty, want a non-empty Reason even with no captured stderr")
+		}
+		for _, want := range []string{"faketool", "7"} {
+			if !strings.Contains(res.Reason, want) {
+				t.Errorf("Reason = %q, want it to contain %q", res.Reason, want)
+			}
+		}
+	})
+
+	t.Run("tolerant-nonzero-does-not-fail-row", func(t *testing.T) {
+		rt := fakeRuntime{name: "faketool", plan: Plan{
+			Runtime: "faketool",
+			Actions: []Action{
+				{Args: []string{"faketool", "remove"}, Tolerant: true, Description: "clear prior registration"},
+				{Args: []string{"faketool", "add"}, Description: "add"},
+			},
+		}}
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{ExitCode: 1, Stderr: "not found"}}, // tolerated
+			scriptedResult{Result: RunResult{ExitCode: 0}},                      // add succeeds
+		), "faketool")
+
+		res := Apply(context.Background(), env, rt, Options{})
+		if res.Outcome == OutcomeFailed {
+			t.Fatalf("Outcome = %q, want anything but %q — a tolerated action must never fail the row", res.Outcome, OutcomeFailed)
+		}
+		if res.Notes == "" {
+			t.Error("Notes is empty, want a record of the tolerated nonzero exit")
+		}
+		if !strings.Contains(res.Notes, "1") {
+			t.Errorf("Notes = %q, want it to record the tolerated exit code", res.Notes)
+		}
+		if len(calls) != 2 {
+			t.Fatalf("Run called %d times, want 2 (the tolerated action, then the next one) — sequence must continue past a tolerated failure", len(calls))
+		}
+	})
+
+	t.Run("probe-seam-error-under-apply-fails", func(t *testing.T) {
+		rt := fakeRuntime{name: "faketool", plan: Plan{
+			Runtime: "faketool",
+			Actions: []Action{{Args: []string{"faketool", "add"}}},
+			Probe:   []string{"faketool", "get"},
+		}}
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Err: errors.New("exec: start failure")},
+		), "faketool")
+
+		res := Apply(context.Background(), env, rt, Options{})
+		if res.Outcome != OutcomeFailed {
+			t.Fatalf("Apply outcome = %q, want %q", res.Outcome, OutcomeFailed)
+		}
+	})
+
+	t.Run("probe-seam-error-under-preview-stays-would-write", func(t *testing.T) {
+		rt := fakeRuntime{name: "faketool", plan: Plan{
+			Runtime: "faketool",
+			Actions: []Action{{Args: []string{"faketool", "add"}}},
+			Probe:   []string{"faketool", "get"},
+		}}
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Err: errors.New("exec: start failure")},
+		), "faketool")
+
+		res := Preview(context.Background(), env, rt, Options{})
+		if res.Outcome != OutcomeWouldWrite {
+			t.Fatalf("Preview outcome = %q, want %q (a probe seam error must not change the preview classification)", res.Outcome, OutcomeWouldWrite)
+		}
+	})
+
+	t.Run("captured-output-over-budget-truncated-on-rune-boundary", func(t *testing.T) {
+		longStderr := strings.Repeat("€", 2000) // 3-byte rune, 6000 bytes total, indivisible by maxCapturedBytes
+		rt := fakeRuntime{name: "faketool", plan: Plan{
+			Runtime: "faketool",
+			Actions: []Action{{Args: []string{"faketool", "add"}}},
+		}}
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{ExitCode: 1, Stderr: longStderr}},
+		), "faketool")
+
+		res := Apply(context.Background(), env, rt, Options{})
+		if !utf8.ValidString(res.Reason) {
+			t.Fatalf("Reason is not valid UTF-8 after truncation: %q", res.Reason)
+		}
+		if !strings.Contains(res.Reason, truncationMarker) {
+			t.Errorf("Reason = %q, want it to carry the truncation marker %q", res.Reason, truncationMarker)
+		}
+		if len(res.Reason) >= len(longStderr) {
+			t.Errorf("Reason length %d, want it bounded well below the untruncated stderr length %d", len(res.Reason), len(longStderr))
+		}
+	})
+
+	t.Run("probe-reads-differ-only-beyond-budget-still-wrote", func(t *testing.T) {
+		probe1 := strings.Repeat("x", maxCapturedBytes) + "AAAA"
+		probe2 := strings.Repeat("x", maxCapturedBytes) + "BBBB" // identical for the first maxCapturedBytes bytes, differs after
+		rt := fakeRuntime{name: "faketool", plan: Plan{
+			Runtime: "faketool",
+			Actions: []Action{{Args: []string{"faketool", "add"}}},
+			Probe:   []string{"faketool", "get"},
+		}}
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: probe1}},
+			scriptedResult{Result: RunResult{ExitCode: 0}},
+			scriptedResult{Result: RunResult{Stdout: probe2}},
+		), "faketool")
+
+		res := Apply(context.Background(), env, rt, Options{})
+		if res.Outcome != OutcomeWrote {
+			t.Fatalf("Outcome = %q, want %q — a raw byte-compare must never bound before comparing (D-08)", res.Outcome, OutcomeWrote)
+		}
+	})
 }
 
 // TestPreviewNeverExecutesWriteAction proves Preview() against a present

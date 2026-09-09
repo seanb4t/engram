@@ -132,10 +132,21 @@ func (p Plan) Display() string {
 // renders into its report doc. Present mirrors Detect()'s answer; Outcome
 // is the classified result; Command is the exact invocation from the
 // runtime's Plan (empty when Outcome is OutcomeNotPresent), populated from
-// Plan.Display(); Reason carries a human-readable explanation when Outcome
-// is OutcomeFailed (D-11: names the runtime, the exact argv, and the
-// numeric exit code — the empty-stderr case still yields a non-empty
-// Reason via the exit code alone).
+// Plan.Display().
+//
+// Reason carries a human-readable explanation when Outcome is
+// OutcomeFailed. D-11's failure legibility is built from a FIXED, ORDERED
+// composition (apply.go's describeFailure/describeSeamError): the
+// runtime's Name(), the failing action's rendered argv display
+// (Action.Command()), the numeric exit code (when one exists — a seam
+// error that never produced an exit status carries the seam error text
+// instead), and the bounded captured stderr. The exit code is what keeps
+// an EMPTY-stderr failure legible: it is always present, so a runtime that
+// fails silently still yields a non-empty, actionable Reason. Nothing that
+// builds Reason ever branches on stderr's CONTENT to decide an Outcome
+// (the typed-cause-never-message-text discipline cmd/engram/operror.go's
+// classifyOperatorErr already follows) — stderr is carried here as DATA,
+// never string-matched.
 //
 // Binary (D-04) is the LookPath-resolved absolute path Apply() actually
 // executed — recorded even though Args[0] (and therefore Command) stays
@@ -143,10 +154,15 @@ func (p Plan) Display() string {
 // report. Registered (D-10) is the bounded, informational capture of
 // Plan.Probe's output; TokenFile (D-07) is the "token_file=ignored"-style
 // marker for a native runtime that received --token-file; Config (D-15) is
-// the generic pseudo-runtime's minified portable JSON. Notes (03-RESEARCH.md
-// Open Question 1) carries a one-line record per TOLERATED nonzero exit, so
-// a genuinely broken tolerant step stays visible in --output json even
-// though it never fails the row. Every one of these five is a plain
+// the generic pseudo-runtime's minified portable JSON.
+//
+// Notes (03-RESEARCH.md Open Question 1) carries a one-line record per
+// TOLERATED nonzero exit, so a genuinely broken tolerant step stays
+// visible in --output json even though it never fails the row — each
+// entry names the tolerated action's Command() and its exit code, joined
+// by "; " when more than one action was tolerated.
+//
+// Every one of Binary/Registered/TokenFile/Config/Notes is a plain
 // string — never json.RawMessage, a map, or a slice — so it can never
 // bypass sanitizeViewValue's scalar-only sanitizing branch
 // (cmd/engram/operator_view.go).

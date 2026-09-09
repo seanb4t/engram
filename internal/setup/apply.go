@@ -38,6 +38,23 @@ const maxCapturedBytes = 4096
 // truncationMarker is appended by boundCapture when a capture is cut.
 const truncationMarker = "...[truncated]"
 
+// No pre-flight probe of any runtime's `--help` output and no
+// version-floor check exist anywhere in this package (D-11), by design.
+// Both were rejected in 03-CONTEXT.md/03-RESEARCH.md: a pre-flight
+// `--help` scrape would assert a third-party surface, which repo rule
+// m45p2b4bp7 forbids (matching tokens in help text is scraping a format
+// that drifts just as easily as the flag surface it claims to protect
+// against); a version floor gates the proxy (the version string) rather
+// than the property (whether the flag surface still works) — memory
+// r7n0nejp9f measured codex's flag surface HOLDING across two minor-version
+// bumps in six days, which is exactly why a version gate would false-fail
+// on drift that does not matter and cannot catch a flag removed inside an
+// allowed range. CLI-surface drift is instead detected and reported POST
+// HOC ONLY: a nonzero exit from either the probe or the write becomes an
+// OutcomeFailed row via describeFailure/describeSeamError below — engram
+// reports what it tried and what the runtime said back; it does not itself
+// distinguish "unknown flag" from "network error", and does not need to.
+
 // boundCapture truncates s to at most maxCapturedBytes bytes, scanning
 // back to the last valid rune boundary so the result is always valid
 // UTF-8, then appends truncationMarker. A string already within budget is
