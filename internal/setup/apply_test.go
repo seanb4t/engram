@@ -269,6 +269,96 @@ func TestDriftReportedLegibly(t *testing.T) {
 	})
 }
 
+// TestApplyConvergesClaudeCode is TestApplyConvergesCodex's claude-code
+// sibling — the ONLY test shape 03-RESEARCH.md's Pitfall 1 names as
+// catching the defect: a plan that only exercises the FIRST --apply run
+// can look correct and still never reach OutcomeAlreadyCorrect on a
+// second run. claude-code's two-action tolerant-remove-then-fatal-add
+// sequence means each Apply call drives 4 scripted Run results (probe,
+// remove, add, probe), not codex's 3.
+func TestApplyConvergesClaudeCode(t *testing.T) {
+	opts := Options{URL: "https://engram.example.com/mcp", Auth: "oauth"}
+
+	t.Run("first-run-wrote", func(t *testing.T) {
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stderr: "No MCP server named 'engram' in user scope", ExitCode: 1}}, // probe #1: nothing registered
+			scriptedResult{Result: RunResult{ExitCode: 1, Stderr: "No MCP server named 'engram' in user scope"}}, // tolerant remove: slot already empty
+			scriptedResult{Result: RunResult{ExitCode: 0}},                                                       // fatal add: succeeds
+			scriptedResult{Result: RunResult{Stdout: "engram: https://engram.example.com/mcp (HTTP)"}},           // probe #2: now registered
+		), "claude")
+
+		res := Apply(context.Background(), env, ClaudeCode, opts)
+		if res.Outcome != OutcomeWrote {
+			t.Fatalf("first Apply outcome = %q, want %q", res.Outcome, OutcomeWrote)
+		}
+		if len(calls) != 4 {
+			t.Fatalf("Run called %d times, want exactly 4 (probe, remove, add, probe): %+v", len(calls), calls)
+		}
+	})
+
+	t.Run("second-run-already-correct", func(t *testing.T) {
+		const probeOutput = "engram: https://engram.example.com/mcp (HTTP)"
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: probeOutput}}, // probe #1: already registered
+			scriptedResult{Result: RunResult{ExitCode: 0}},         // tolerant remove: clears the slot
+			scriptedResult{Result: RunResult{ExitCode: 0}},         // fatal add: re-registers identically
+			scriptedResult{Result: RunResult{Stdout: probeOutput}}, // probe #2: byte-identical
+		), "claude")
+
+		res := Apply(context.Background(), env, ClaudeCode, opts)
+		if res.Outcome != OutcomeAlreadyCorrect {
+			t.Fatalf("second Apply outcome = %q, want %q — this is the exact defect 03-RESEARCH.md Pitfall 1 names: claude-code must be able to reach already-correct", res.Outcome, OutcomeAlreadyCorrect)
+		}
+	})
+}
+
+// TestApplyToleratesClearSlotFailure proves that when claude-code's
+// tolerant clear-the-slot action exits nonzero (the slot was already
+// empty) and the following registration action succeeds, the row is NOT
+// failed and Notes records the tolerated action.
+func TestApplyToleratesClearSlotFailure(t *testing.T) {
+	var calls []runCall
+	env := fakeEnvWithRun(scriptedRun(&calls,
+		scriptedResult{Result: RunResult{ExitCode: 1, Stderr: "No MCP server named 'engram' in user scope"}}, // probe #1
+		scriptedResult{Result: RunResult{ExitCode: 1, Stderr: "No MCP server named 'engram' in user scope"}}, // tolerant remove: fails, tolerated
+		scriptedResult{Result: RunResult{ExitCode: 0}},                                                       // fatal add: succeeds
+		scriptedResult{Result: RunResult{Stdout: "engram registered"}},                                       // probe #2
+	), "claude")
+
+	res := Apply(context.Background(), env, ClaudeCode, Options{URL: "https://x", Auth: "oauth"})
+	if res.Outcome == OutcomeFailed {
+		t.Fatalf("Outcome = %q, want anything but %q — a tolerated action must never fail the row", res.Outcome, OutcomeFailed)
+	}
+	if res.Notes == "" {
+		t.Error("Notes is empty, want a record of the tolerated clear-the-slot exit")
+	}
+}
+
+// TestApplyFailsWhenRegistrationActionFails proves that when claude-code's
+// tolerant clear-the-slot action SUCCEEDS (an existing registration was
+// actually removed) and the following fatal registration action then
+// fails, the row IS OutcomeFailed — this is the destructive-window case
+// the Task 1 checkpoint accepted: the operator is left with no claude-code
+// registration where they previously had one.
+func TestApplyFailsWhenRegistrationActionFails(t *testing.T) {
+	var calls []runCall
+	env := fakeEnvWithRun(scriptedRun(&calls,
+		scriptedResult{Result: RunResult{Stdout: "engram: https://engram.example.com/mcp (HTTP)"}}, // probe #1: existing registration
+		scriptedResult{Result: RunResult{ExitCode: 0}},                                             // tolerant remove: succeeds, clears the slot
+		scriptedResult{Result: RunResult{ExitCode: 1, Stderr: "unknown flag: --transport"}},        // fatal add: fails
+	), "claude")
+
+	res := Apply(context.Background(), env, ClaudeCode, Options{URL: "https://x", Auth: "oauth"})
+	if res.Outcome != OutcomeFailed {
+		t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeFailed)
+	}
+	if res.Reason == "" {
+		t.Error("Reason is empty, want a non-empty Reason naming the failing action")
+	}
+}
+
 // TestPreviewNeverExecutesWriteAction proves Preview() against a present
 // runtime never runs the write Action — only Detect/Plan/LookPath, plus
 // (if wired) a read-only probe. Scripting the write action's response as
