@@ -84,6 +84,12 @@ func boundCapture(s string) string {
 	return s[:limit] + truncationMarker
 }
 
+// displayCapture bounds s to the capture budget, then renders it as one
+// quoted shell word.
+func displayCapture(s string) string {
+	return quoteWord(boundCapture(s))
+}
+
 // Preview runs rt's read-only detection and planning against env and opts,
 // then — for a present runtime with a Plan.Probe wired — runs that probe
 // once and reports its bounded output on Result.Registered (D-10): the
@@ -133,8 +139,8 @@ func runSeam(ctx context.Context, env Environment, path string, args []string) (
 // diagnose) — stderr is carried as data, appended verbatim (bounded).
 func describeFailure(name, cmdDisplay string, exitCode int, stderr string) string {
 	reason := fmt.Sprintf("%s: %s exited %d", name, cmdDisplay, exitCode)
-	if bounded := boundCapture(stderr); bounded != "" {
-		reason += ": " + bounded
+	if stderr != "" {
+		reason += ": " + displayCapture(stderr)
 	}
 	return reason
 }
@@ -157,9 +163,9 @@ func describeSeamError(name, cmdDisplay string, err error) string {
 // the row.
 func toleratedNote(action Action, exitCode int, stderr string) string {
 	if action.Description == "" {
-		return fmt.Sprintf("%s exited %d: %s", action.Command(), exitCode, boundCapture(stderr))
+		return fmt.Sprintf("%s exited %d: %s", action.Command(), exitCode, displayCapture(stderr))
 	}
-	return fmt.Sprintf("%s: %s exited %d: %s", action.Description, action.Command(), exitCode, boundCapture(stderr))
+	return fmt.Sprintf("%s: %s exited %d: %s", action.Description, action.Command(), exitCode, displayCapture(stderr))
 }
 
 // execute is the shared sequencing core both Preview and Apply delegate
@@ -289,7 +295,7 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 		// claiming already-correct, whatever it shows.
 		res.Outcome = OutcomeWouldWrite
 		if hasProbe && probe1Err == nil {
-			res.Registered = boundCapture(probe1.Stdout + probe1.Stderr)
+			res.Registered = displayCapture(probe1.Stdout + probe1.Stderr)
 		}
 		return res
 	}
@@ -352,7 +358,7 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 		res.Outcome = OutcomeWrote
 		return res
 	}
-	res.Registered = boundCapture(probe2.Stdout + probe2.Stderr)
+	res.Registered = displayCapture(probe2.Stdout + probe2.Stderr)
 
 	if probe1Err == nil && probe1.Stdout == probe2.Stdout && probe1.Stderr == probe2.Stderr {
 		res.Outcome = OutcomeAlreadyCorrect
