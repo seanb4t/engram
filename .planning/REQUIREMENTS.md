@@ -36,7 +36,7 @@ would write, and wires it up.
 
 ### Runtime Registration
 
-- [ ] **REQ-register-claude-code**: `engram setup` registers the engram MCP server with Claude Code by invoking `claude mcp add`, never by hand-writing `~/.claude.json` or `.mcp.json`. This preserves what the shipped `/engram-setup` prose already does correctly.
+- [x] **REQ-register-claude-code**: `engram setup` registers the engram MCP server with Claude Code by invoking `claude mcp add`, never by hand-writing `~/.claude.json` or `.mcp.json`. This preserves what the shipped `/engram-setup` prose already does correctly.
 - [x] **REQ-register-codex**: `engram setup` registers engram with Codex by invoking `codex mcp add`. `~/.codex/config.toml` is never read, parsed, or written by engram.
 - [x] **REQ-register-opencode**: `engram setup` registers engram with opencode by invoking `opencode mcp add`. opencode's config file is never read, parsed, or written by engram, so its documented V1/V2 schema divergence cannot affect engram.
 - [ ] **REQ-register-generic-mcp**: For an MCP client engram does not natively support, `engram setup` emits a portable server configuration the user can paste or redirect into that client, so an unsupported runtime is a documented manual path rather than a dead end.
@@ -99,7 +99,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-setup-non-interactive | Phase 2 | Pending |
 | REQ-setup-partial-failure-legible | Phase 2 | Complete |
 | REQ-setup-correct-by-reading | Phase 2 | Complete |
-| REQ-register-claude-code | Phase 3 | Pending |
+| REQ-register-claude-code | Phase 3 | Complete |
 | REQ-register-codex | Phase 3 | Complete |
 | REQ-register-opencode | Phase 3 | Complete |
 | REQ-register-generic-mcp | Phase 3 | Pending |
