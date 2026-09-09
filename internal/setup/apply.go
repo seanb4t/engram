@@ -38,6 +38,19 @@ const maxCapturedBytes = 4096
 // truncationMarker is appended by boundCapture when a capture is cut.
 const truncationMarker = "...[truncated]"
 
+// tokenFileIgnoredMarker is the fixed, engram-authored value Result.TokenFile
+// carries when --token-file was supplied for a runtime whose write action
+// EXECUTES something rather than merely emitting a config document (D-06,
+// D-07): the child process only writes config — it never uses the
+// credential, which the runtime resolves itself from its own environment
+// at connect time — so a --token-file path has nothing to do there. This
+// converts a silently inert flag into a legible one (memory zcev96ng18's
+// fails-by-absence shape, in reverse). Deliberately never carries the
+// supplied path: bearerProvenance already renders the path where it means
+// something (generic.go's fallback form), and duplicating it into this
+// field would be noise (T-03-26).
+const tokenFileIgnoredMarker = "ignored"
+
 // No pre-flight probe of any runtime's `--help` output and no
 // version-floor check exist anywhere in this package (D-11), by design.
 // Both were rejected in 03-CONTEXT.md/03-RESEARCH.md: a pre-flight
@@ -225,6 +238,22 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 	}
 
 	res := Result{Runtime: name, Present: true, Command: plan.Display(), Binary: binary, Config: plan.Config}
+	if opts.TokenFile != "" {
+		// D-06/D-07: a --token-file path has no execution meaning for a
+		// runtime that registers by EXECUTING something (plan.Actions is
+		// non-empty here — the zero-Actions, Config-only case returned
+		// above without ever reaching this line) — the child process only
+		// writes config, never reads or uses the credential, which the
+		// runtime resolves itself from its own environment at connect
+		// time. This is a STRUCTURAL rule keyed on "does this Plan carry
+		// at least one Action", never a comparison against Name(): the
+		// generic pseudo-runtime is excluded because its Plan has zero
+		// Actions, not because this code knows its name. The marker never
+		// carries the supplied PATH — bearerProvenance already renders
+		// the path where it means something (generic.go), and duplicating
+		// it into an "ignored" field would be noise (T-03-26).
+		res.TokenFile = tokenFileIgnoredMarker
+	}
 	hasProbe := len(plan.Probe) > 0
 
 	var probe1 RunResult

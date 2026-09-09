@@ -348,6 +348,114 @@ func TestSetupBearerTokenFileRedactedInOutput(t *testing.T) {
 	}
 }
 
+// TestSetupTokenFileMarkedIgnoredForNativeRuntimes proves `--token-file`
+// with every runtime selected marks each NATIVE runtime's row with the
+// D-07 token_file=ignored marker — in BOTH the preview and the apply lane
+// — while the generic row carries no such marker (D-06: --token-file
+// genuinely applies to generic's portable config).
+func TestSetupTokenFileMarkedIgnoredForNativeRuntimes(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"preview", []string{"setup", "--url", "https://engram.example.com/mcp", "--auth", "bearer", "--token-file", "/tmp/does-not-exist", "--runtime", "claude-code,codex,opencode,generic", "--output", "json"}},
+		{"apply", []string{"setup", "--url", "https://engram.example.com/mcp", "--auth", "bearer", "--token-file", "/tmp/does-not-exist", "--runtime", "claude-code,codex,opencode,generic", "--output", "json", "--apply"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resetClientFlags(t)
+			resetCommandFlagState(t, setupCmd)
+			withFakeSetupEnv(t, fakeSetupEnv("claude", "codex", "opencode"))
+
+			stdout, stderr, _ := runClient(t, tc.args...)
+
+			var doc setupReportDoc
+			if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+				t.Fatalf("json.Unmarshal(%q): %v (stderr=%q)", stdout, err, stderr)
+			}
+			if len(doc.Runtimes) != 4 {
+				t.Fatalf("setup emitted %d rows, want exactly 4: %s", len(doc.Runtimes), stdout)
+			}
+			for _, row := range doc.Runtimes {
+				if row.Name == "generic" {
+					if row.TokenFile != "" {
+						t.Errorf("generic row.TokenFile = %q, want empty — --token-file genuinely applies to the portable config (D-06)", row.TokenFile)
+					}
+					continue
+				}
+				if row.TokenFile == "" {
+					t.Errorf("%s row.TokenFile is empty, want the D-07 marker — a native runtime's own row must say --token-file did not apply", row.Name)
+				}
+			}
+		})
+	}
+}
+
+// TestSetupNoTokenFileLeavesNoMarker proves that with NO --token-file
+// supplied, no row carries a token_file field at all — an omitempty field
+// that always renders is the fails-by-absence shape D-07 exists to
+// prevent, in reverse.
+func TestSetupNoTokenFileLeavesNoMarker(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupEnv(t, fakeSetupEnv("claude", "codex", "opencode"))
+
+	stdout, stderr, err := runClient(t, "setup",
+		"--url", "https://engram.example.com/mcp",
+		"--runtime", "claude-code,codex,opencode,generic",
+		"--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+	}
+
+	var raw struct {
+		Runtimes []map[string]any `json:"runtimes"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &raw); err != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+	}
+	for _, row := range raw.Runtimes {
+		if _, ok := row["token_file"]; ok {
+			t.Errorf("row %v carries a token_file field though --token-file was never supplied", row)
+		}
+	}
+}
+
+// TestSetupTokenFilePathNotDuplicatedIntoMarker proves the D-07 marker
+// value never contains the supplied --token-file PATH — the path renders
+// only where it means something (generic's provenance form), never
+// duplicated into a native runtime's "ignored" marker.
+func TestSetupTokenFilePathNotDuplicatedIntoMarker(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupEnv(t, fakeSetupEnv("claude"))
+
+	const tokenPath = "/tmp/does-not-exist-token-path"
+	stdout, stderr, err := runClient(t, "setup",
+		"--url", "https://engram.example.com/mcp",
+		"--auth", "bearer",
+		"--token-file", tokenPath,
+		"--runtime", "claude-code",
+		"--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+	}
+
+	var doc setupReportDoc
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+	}
+	if len(doc.Runtimes) != 1 {
+		t.Fatalf("setup --runtime claude-code emitted %d rows, want exactly 1: %s", len(doc.Runtimes), stdout)
+	}
+	row := doc.Runtimes[0]
+	if row.TokenFile == "" {
+		t.Fatal("claude-code row.TokenFile is empty, want the D-07 marker")
+	}
+	if strings.Contains(row.TokenFile, tokenPath) {
+		t.Errorf("claude-code row.TokenFile = %q, want it to NOT contain the supplied path %q", row.TokenFile, tokenPath)
+	}
+}
+
 // TestSetupUnsupportedAuthModeIsFailedRow proves `engram setup --auth
 // oauth-client --runtime opencode --output json` exits 0 and emits one
 // row whose outcome is "failed" and whose reason names both "opencode"

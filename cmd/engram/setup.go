@@ -134,8 +134,12 @@ func setupBuildRows(ctx context.Context, env setup.Environment, runtimes []setup
 }
 
 // setupPreviewSummary renders the operator-facing one-line PREVIEW
-// headline: how many of the selected runtimes are present, and that
-// --apply is not yet the way to register them (Phase 3, D-09).
+// headline: how many of the selected runtimes are present, that a bare
+// invocation reads current state from each present runtime's own CLI (D-10
+// — the fact that makes the probe's side effect, including a live network
+// dial for two of the three native runtimes, discoverable by reading
+// rather than by observing, per REQ-setup-correct-by-reading), and that
+// --apply is what actually performs the registration.
 func setupPreviewSummary(rows []setupRuntimeRow) string {
 	present := 0
 	for _, r := range rows {
@@ -143,7 +147,9 @@ func setupPreviewSummary(rows []setupRuntimeRow) string {
 			present++
 		}
 	}
-	return fmt.Sprintf("preview: %d/%d selected runtime(s) present; registration via --apply lands in a later phase", present, len(rows))
+	return fmt.Sprintf(
+		"preview: %d/%d selected runtime(s) present; a present runtime's own CLI is read to show current state (two of the three dial the configured URL); run with --apply to register",
+		present, len(rows))
 }
 
 // setupResolve resolves --url/--auth through config.Load (CR-01: the
@@ -381,21 +387,37 @@ func setupApplySentence() string {
 // targetable, derived by calling setup.Names() so it cannot drift from
 // the registry; that a bare invocation previews and changes nothing while
 // --apply performs the registration (setupApplySentence, by reference);
-// and the four accepted --auth modes and what each means.
+// that a bare invocation reads each present runtime's own CLI for its
+// current state, including a network dial for two of the three (D-10 —
+// what makes that side effect discoverable by reading rather than by
+// observing); and the four accepted --auth modes, including bearer's
+// narrowed --token-file scope (D-06).
 func setupLongDescription() string {
 	return fmt.Sprintf(`Detect installed agent runtimes and preview registering engram as an MCP server.
 
 Targetable runtimes (select one or more with --runtime): %s. A bare
 invocation targets every detected runtime.
 
+A bare invocation (no --apply) contacts each present runtime's own CLI to
+read its current registration state for the report; nothing is written.
+For claude-code and opencode, that read dials the configured URL; for
+codex, it is a pure local read.
+
 %s
 
 Accepted --auth modes:
   oauth         OAuth via the runtime's own login/callback flow (default)
   oauth-client  a pre-registered OAuth client (client id and secret)
-  bearer        a static bearer token, named by provenance from --token-file
-                (or ENGRAM_TOKEN when --token-file is omitted) — the token
-                itself never appears on the command line
+  bearer        a static bearer token. A native runtime (claude-code, codex,
+                opencode) is registered with an environment-variable
+                REFERENCE naming ENGRAM_TOKEN, resolved by that runtime
+                itself at connect time — the token never appears on any
+                command line or in any config engram writes. --token-file
+                applies only to the portable configuration (--runtime
+                generic): it names that credential's PROVENANCE there,
+                carrying the path, never the secret — and has no effect on
+                a native runtime, whose row carries token_file=ignored
+                when the flag is supplied
   none          a local / no-auth server`,
 		strings.Join(setup.Names(), ", "), setupApplySentence())
 }
@@ -419,7 +441,7 @@ func init() {
 		fmt.Sprintf("runtimes to target, comma-separated or repeated (default: every detected runtime); valid values: %s (default: ENGRAM_RUNTIME)",
 			strings.Join(setup.Names(), ", ")))
 	setupCmd.Flags().StringVar(&setupTokenFile, "token-file", "",
-		"path to a file containing the bearer credential for --auth bearer (carries only the PATH, never the secret itself; no environment fallback)")
+		"path naming the bearer credential's provenance for the portable configuration (--runtime generic) — carries only the PATH, never the secret itself; has no effect for a natively-registered runtime (claude-code, codex, opencode), which resolves the credential itself from its own environment at connect time")
 	registerDestructive(setupCmd, &setupApply, setupPreview, setupApplyRun)
 	rootCmd.AddCommand(setupCmd)
 }
