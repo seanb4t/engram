@@ -4,16 +4,16 @@ milestone: 2026-08-23.01
 current_phase: 03
 current_phase_name: Runtime Registration
 status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-09-09T01:45:30.619Z"
+stopped_at: Completed 03-03-PLAN.md
+last_updated: "2026-09-09T02:49:16.732Z"
 last_activity: 2026-09-08
 last_activity_desc: Phase 03 execution started
-state_head: 5527f5d14c9ca14f837f0680f6fec39b3a2f31ce
+state_head: ef236b144c7929cd0eb942e481a40c7c07a25164
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 11
-  completed_plans: 7
+  completed_plans: 8
 milestone_name: Distribution & Agent Bootstrap
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 — after opening milestone 2026-0
 ## Current Position
 
 Phase: 03 (Runtime Registration) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-09-08 — Phase 03 execution started
 
@@ -251,6 +251,7 @@ milestone needs in working memory.
   it documents final shipped behavior.
 - [Phase 03]: Deleted Action.Command as a settable field (D-01), forcing a mechanical content-identical Args conversion of claudecode.go/opencode.go even though neither is in 03-01's files_modified list. — Action.Command must never be authored by hand anywhere (Task 1 acceptance criterion); the field's deletion is repo-wide, not per-file.
 - [Phase 03]: A Plan with no Probe wired degrades safely under the shared executor to never claiming OutcomeAlreadyCorrect, applying D-08's ambiguity-resolves-to-wrote invariant to the zero-signal case. — claude-code/opencode have no Probe this wave; treating that as a safe degradation avoids special-casing runtimes by name in the shared executor.
+- [Phase 03]: opencode's bearer header fixed to KEY=VALUE form (Authorization=Bearer {env:ENGRAM_TOKEN}), replacing the confirmed-broken colon-space HTTP-header-string form
 
 ### Pending Todos
 
@@ -295,8 +296,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-09T01:45:30.551Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-09-09T02:49:16.672Z
+Stopped at: Completed 03-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -402,6 +403,7 @@ Resume file: None
 | Phase 09 P01 | 20min | 2 tasks | 2 files |
 | Phase 09 P02 | 12min | 2 tasks | 2 files |
 | Phase 03 P01 | 95min | 3 tasks | 14 files |
+| Phase 03 P03 | 33min | 2 tasks | 4 files |
 
 ## Operator Next Steps
 
