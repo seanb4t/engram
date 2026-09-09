@@ -4,6 +4,7 @@
 package setup
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strings"
@@ -150,4 +151,70 @@ func TestOpenCodeBearerHeaderCarriesNoSecret(t *testing.T) {
 	if !strings.Contains(headerElement, "ENGRAM_TOKEN") {
 		t.Errorf("header element %q does not name ENGRAM_TOKEN", headerElement)
 	}
+}
+
+// TestApplyOpenCodeConvergence pins opencode's D-08 convergence behavior
+// under its uniquely polluted probe (03-RESEARCH.md Pitfall 3): `opencode
+// mcp list` has no --json flag, lists EVERY registered server, and dials
+// the network for each of them on every call, so a read1-vs-read2
+// byte-compare can be polluted by an UNRELATED server's transient
+// connection-status flip, not just a genuine change to engram's own
+// registration. All three subtests drive the shared executor through the
+// scripted Run fake — none invokes a real opencode binary (rule
+// m45p2b4bp7).
+func TestApplyOpenCodeConvergence(t *testing.T) {
+	opts := Options{URL: "https://engram.example.com/mcp", Auth: "oauth"}
+
+	t.Run("identical-probe-captures-already-correct", func(t *testing.T) {
+		const listOutput = "┌─────────┬─────────┐\n│ engram  │ ✓ connected │\n└─────────┴─────────┘\n"
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: listOutput}}, // probe #1
+			scriptedResult{Result: RunResult{ExitCode: 0}},        // write: opencode mcp add
+			scriptedResult{Result: RunResult{Stdout: listOutput}}, // probe #2: byte-identical
+		), "opencode")
+
+		res := Apply(context.Background(), env, OpenCode, opts)
+		if res.Outcome != OutcomeAlreadyCorrect {
+			t.Fatalf("Outcome = %q, want %q when both mcp list captures are byte-identical", res.Outcome, OutcomeAlreadyCorrect)
+		}
+	})
+
+	// unrelated-server-status-flip-still-wrote is D-08's own invariant
+	// applied to opencode's worst case: opencode's mcp list output is
+	// polluted by every OTHER registered server's live connection status,
+	// not just engram's row. A read1-vs-read2 capture that differs only in
+	// a region representing an unrelated server's status glyph flipping
+	// (e.g. a second server going from connected to a transient failure
+	// between the two reads) must still classify as OutcomeWrote, never
+	// OutcomeAlreadyCorrect — over-reporting change is the SAFE direction
+	// D-08 mandates, not a defect to "fix" by parsing the table to isolate
+	// engram's own row (03-RESEARCH.md Pitfall 3's own warning).
+	t.Run("unrelated-server-status-flip-still-wrote", func(t *testing.T) {
+		probe1 := "┌─────────┬──────────────┐\n│ engram  │ ✓ connected  │\n│ other   │ ✓ connected  │\n└─────────┴──────────────┘\n"
+		probe2 := "┌─────────┬──────────────┐\n│ engram  │ ✓ connected  │\n│ other   │ ✗ failed     │\n└─────────┴──────────────┘\n"
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: probe1}}, // probe #1
+			scriptedResult{Result: RunResult{ExitCode: 0}},    // write: opencode mcp add
+			scriptedResult{Result: RunResult{Stdout: probe2}}, // probe #2: only "other"'s row differs
+		), "opencode")
+
+		res := Apply(context.Background(), env, OpenCode, opts)
+		if res.Outcome != OutcomeWrote {
+			t.Fatalf("Outcome = %q, want %q — an unrelated server's status flip must degrade to wrote, never already-correct (D-08)", res.Outcome, OutcomeWrote)
+		}
+	})
+
+	t.Run("probe-seam-error-not-already-correct", func(t *testing.T) {
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Err: errors.New("exec: start failure")}, // probe #1 seam error
+		), "opencode")
+
+		res := Apply(context.Background(), env, OpenCode, opts)
+		if res.Outcome == OutcomeAlreadyCorrect {
+			t.Fatalf("Outcome = %q, want anything but %q when the probe itself cannot run", res.Outcome, OutcomeAlreadyCorrect)
+		}
+	})
 }
