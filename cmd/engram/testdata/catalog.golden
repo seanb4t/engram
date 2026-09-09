@@ -736,7 +736,7 @@
           "name": "runtime",
           "type": "stringSlice",
           "default": "",
-          "usage": "runtimes to target, comma-separated or repeated (default: every detected runtime); valid values: claude-code, codex, opencode (default: ENGRAM_RUNTIME)"
+          "usage": "runtimes to target, comma-separated or repeated (default: every detected runtime); valid values: claude-code, codex, opencode, generic (default: ENGRAM_RUNTIME)"
         },
         {
           "name": "token-file",

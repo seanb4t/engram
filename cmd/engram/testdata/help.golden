@@ -292,7 +292,7 @@ Flags:
 ```
 Detect installed agent runtimes and preview registering engram as an MCP server.
 
-Targetable runtimes (select one or more with --runtime): claude-code, codex, opencode. A bare
+Targetable runtimes (select one or more with --runtime): claude-code, codex, opencode, generic. A bare
 invocation targets every detected runtime.
 
 a mutating operator command previews by default and mutates only when apply is set
@@ -318,7 +318,7 @@ Flags:
       --auth string         auth mode: "oauth", "oauth-client", "bearer", or "none" (default: ENGRAM_AUTH) (default "oauth")
   -h, --help                help for setup
       --output string       output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
-      --runtime strings     runtimes to target, comma-separated or repeated (default: every detected runtime); valid values: claude-code, codex, opencode (default: ENGRAM_RUNTIME) (default )
+      --runtime strings     runtimes to target, comma-separated or repeated (default: every detected runtime); valid values: claude-code, codex, opencode, generic (default: ENGRAM_RUNTIME) (default )
       --token-file string   path to a file containing the bearer credential for --auth bearer (carries only the PATH, never the secret itself; no environment fallback)
       --url string          MCP endpoint URL to register, used verbatim — never appended to or stripped (required) (default: ENGRAM_URL)
 ```
