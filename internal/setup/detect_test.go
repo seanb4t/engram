@@ -4,6 +4,8 @@
 package setup
 
 import (
+	"context"
+	"fmt"
 	"os/exec"
 	"testing"
 )
@@ -28,6 +30,49 @@ func fakeEnv(present ...string) Environment {
 		Getenv:  func(string) string { return "" },
 		HomeDir: func() (string, error) { return "/home/fake", nil },
 	}
+}
+
+// runCall records one (path, args) invocation a scripted Run fake
+// received — the shared prerequisite every Apply/Preview test in this
+// package depends on to prove Apply() drives the exact resolved path and
+// argv it claims to, never a real binary (rule m45p2b4bp7).
+type runCall struct {
+	Path string
+	Args []string
+}
+
+// scriptedResult is one entry in a scriptedRun's response script.
+type scriptedResult struct {
+	Result RunResult
+	Err    error
+}
+
+// scriptedRun returns an Environment.Run fake that replays results in
+// order, one response per call, recording every (path, args) it receives
+// into *calls. Calling it more times than len(results) is a test-authoring
+// bug and panics immediately — a missing script entry must fail loudly,
+// never silently replay the last scripted response and mask a wrong call
+// count.
+func scriptedRun(calls *[]runCall, results ...scriptedResult) func(context.Context, string, []string) (RunResult, error) {
+	i := 0
+	return func(_ context.Context, path string, args []string) (RunResult, error) {
+		*calls = append(*calls, runCall{Path: path, Args: args})
+		if i >= len(results) {
+			panic(fmt.Sprintf("scriptedRun: called %d times, only %d result(s) scripted", i+1, len(results)))
+		}
+		r := results[i]
+		i++
+		return r.Result, r.Err
+	}
+}
+
+// fakeEnvWithRun is fakeEnv(present...) with its Run seam replaced by run
+// — the sibling constructor every Apply/Preview test needs, since fakeEnv
+// alone carries no Run seam at all.
+func fakeEnvWithRun(run func(context.Context, string, []string) (RunResult, error), present ...string) Environment {
+	env := fakeEnv(present...)
+	env.Run = run
+	return env
 }
 
 // TestDetectClaudeCodePresent: a fake whose LookPath resolves "claude"

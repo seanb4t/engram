@@ -37,13 +37,24 @@ func (claudeCodeRuntime) Detect(env Environment) bool {
 // "oauth": Claude Code's `claude mcp add` has no separate no-auth form,
 // and a local/no-auth server simply never returns the 401 that would
 // trigger the OAuth flow.
+//
+// Mechanically converted to Args (D-01) as part of Phase 3 Task 1's
+// Action.Command field deletion — every argv element here is
+// content-identical to the string Phase 2 authored, just split into a
+// slice. This runtime otherwise gets NO Phase 3 Task 1 treatment: no
+// Probe (D-09), no tolerant remove-then-add write sequence
+// (03-RESEARCH.md Pitfall 1), and no D-05 env-var-reference bearer form —
+// all three are Wave 2's work. Until then, a Plan.Probe-less runtime
+// degrades safely under the shared executor (apply.go): it can report
+// OutcomeWrote but never OutcomeAlreadyCorrect (D-08's own
+// ambiguity-resolves-to-wrote invariant).
 func (claudeCodeRuntime) Plan(_ Environment, opts Options) (Plan, error) {
 	switch opts.Auth {
 	case "oauth", "none":
 		return Plan{
 			Runtime: "claude-code",
 			Actions: []Action{{
-				Command:     fmt.Sprintf("claude mcp add --transport http engram %s --scope user", opts.URL),
+				Args:        []string{"claude", "mcp", "add", "--transport", "http", "engram", opts.URL, "--scope", "user"},
 				Description: "register engram as a user-scope MCP server",
 			}},
 		}, nil
@@ -51,9 +62,8 @@ func (claudeCodeRuntime) Plan(_ Environment, opts Options) (Plan, error) {
 		return Plan{
 			Runtime: "claude-code",
 			Actions: []Action{{
-				Command: fmt.Sprintf(
-					"claude mcp add --transport http engram %s --scope user --client-id <id> --client-secret --callback-port 8765",
-					opts.URL),
+				Args: []string{"claude", "mcp", "add", "--transport", "http", "engram", opts.URL,
+					"--scope", "user", "--client-id", "<id>", "--client-secret", "--callback-port", "8765"},
 				Description: "register engram as a user-scope MCP server (pre-registered OAuth client)",
 			}},
 		}, nil
@@ -61,9 +71,8 @@ func (claudeCodeRuntime) Plan(_ Environment, opts Options) (Plan, error) {
 		return Plan{
 			Runtime: "claude-code",
 			Actions: []Action{{
-				Command: fmt.Sprintf(
-					`claude mcp add --transport http engram %s --scope user --header "Authorization: Bearer %s"`,
-					opts.URL, bearerProvenance(opts.TokenFile)),
+				Args: []string{"claude", "mcp", "add", "--transport", "http", "engram", opts.URL,
+					"--scope", "user", "--header", fmt.Sprintf("Authorization: Bearer %s", bearerProvenance(opts.TokenFile))},
 				Description: "register engram as a user-scope MCP server (bearer token)",
 			}},
 		}, nil

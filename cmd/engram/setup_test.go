@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -14,10 +15,24 @@ import (
 	"github.com/seanb4t/engram/internal/setup"
 )
 
+// fakeSetupEnvSucceedingRun is the default Run every fakeSetupEnv-built
+// Environment carries: every invocation succeeds with no captured output.
+// Apply() is real as of this phase (D-09 retired), so any test exercising
+// --apply against a present runtime now drives a real Environment.Run
+// call — a nil Run field panics (repo rule m45p2b4bp7 forbids scripting a
+// SPECIFIC runtime's real behavior here; "succeeded, no output" is the
+// generic default every test that does not care about the exact response
+// can rely on).
+func fakeSetupEnvSucceedingRun(context.Context, string, []string) (setup.RunResult, error) {
+	return setup.RunResult{ExitCode: 0}, nil
+}
+
 // fakeSetupEnv builds a setup.Environment resolving only the binaries
 // named present — swapped onto the package-level setupEnv seam so a test
 // drives detection without touching the real machine's PATH (repo rule
-// m45p2b4bp7: never test or red-gate third-party CLI behavior).
+// m45p2b4bp7: never test or red-gate third-party CLI behavior). Its Run
+// seam defaults to fakeSetupEnvSucceedingRun; use fakeSetupEnvWithRun to
+// script a specific response.
 func fakeSetupEnv(present ...string) setup.Environment {
 	set := make(map[string]bool, len(present))
 	for _, name := range present {
@@ -32,7 +47,17 @@ func fakeSetupEnv(present ...string) setup.Environment {
 		},
 		Getenv:  func(string) string { return "" },
 		HomeDir: func() (string, error) { return "/home/fake", nil },
+		Run:     fakeSetupEnvSucceedingRun,
 	}
+}
+
+// fakeSetupEnvWithRun is fakeSetupEnv(present...) with its Run seam
+// replaced by run, for a test that needs to script a specific runtime CLI
+// failure.
+func fakeSetupEnvWithRun(run func(context.Context, string, []string) (setup.RunResult, error), present ...string) setup.Environment {
+	env := fakeSetupEnv(present...)
+	env.Run = run
+	return env
 }
 
 // withFakeSetupEnv points the package-level setupEnv seam at env for the
@@ -155,17 +180,18 @@ func TestSetupPreviewExecutesNoRuntimeCLI(t *testing.T) {
 	}
 }
 
-// TestSetupApplyReturnsErrorNotPanic proves `engram setup --apply` returns
-// a non-nil error and does not panic — Apply() is stubbed this phase
-// (D-09).
-func TestSetupApplyReturnsErrorNotPanic(t *testing.T) {
+// TestSetupApplyRunsRealRegistrationSucceeds proves `engram setup --apply`
+// against a fake Environment whose Run seam always succeeds performs a
+// real registration (no panic, exit 0) for a present runtime — Apply() is
+// no longer stubbed (D-09 retired this phase).
+func TestSetupApplyRunsRealRegistrationSucceeds(t *testing.T) {
 	resetClientFlags(t)
 	resetCommandFlagState(t, setupCmd)
 	withFakeSetupEnv(t, fakeSetupEnv("claude"))
 
-	_, _, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--apply")
-	if err == nil {
-		t.Fatal("engram setup --apply = nil error, want a non-nil error (Apply is stubbed this phase)")
+	_, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--apply")
+	if err != nil {
+		t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
 	}
 }
 
@@ -369,7 +395,10 @@ func TestSetupApplyAllAbsentExitsZero(t *testing.T) {
 func TestSetupApplyAtLeastOnePresentExitsSetupFailed(t *testing.T) {
 	resetClientFlags(t)
 	resetCommandFlagState(t, setupCmd)
-	withFakeSetupEnv(t, fakeSetupEnv("claude"))
+	failingRun := func(context.Context, string, []string) (setup.RunResult, error) {
+		return setup.RunResult{ExitCode: 1, Stderr: "boom: mcp add failed"}, nil
+	}
+	withFakeSetupEnv(t, fakeSetupEnvWithRun(failingRun, "claude"))
 
 	stdout, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--apply", "--output", "json")
 	if err == nil {

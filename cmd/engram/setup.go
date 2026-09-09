@@ -68,11 +68,16 @@ func setupRuntimeEnvDefault() []string {
 // characters from any string field here, including a Plan()-authored
 // command string.
 type setupRuntimeRow struct {
-	Name    string `json:"name"`
-	Present bool   `json:"present"`
-	Outcome string `json:"outcome"`
-	Command string `json:"command,omitempty"`
-	Reason  string `json:"reason,omitempty"`
+	Name       string `json:"name"`
+	Present    bool   `json:"present"`
+	Outcome    string `json:"outcome"`
+	Command    string `json:"command,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+	Binary     string `json:"binary,omitempty"`
+	Registered string `json:"registered,omitempty"`
+	TokenFile  string `json:"token_file,omitempty"`
+	Config     string `json:"config,omitempty"`
+	Notes      string `json:"notes,omitempty"`
 }
 
 // setupReportDoc is the one typed document setupPreview and setupApplyRun
@@ -116,15 +121,11 @@ func setupBuildRows(env setup.Environment, runtimes []setup.Runtime, opts setup.
 			continue
 		}
 
-		var cmdStr string
-		if len(plan.Actions) > 0 {
-			cmdStr = plan.Actions[0].Command
-		}
 		rows = append(rows, setupRuntimeRow{
 			Name:    rt.Name(),
 			Present: true,
 			Outcome: string(setup.OutcomeWouldWrite),
-			Command: cmdStr,
+			Command: plan.Display(),
 		})
 	}
 	return rows
@@ -143,25 +144,26 @@ func setupPreviewSummary(rows []setupRuntimeRow) string {
 	return fmt.Sprintf("preview: %d/%d selected runtime(s) present; registration via --apply lands in a later phase", present, len(rows))
 }
 
-// setupPlanDoc resolves --url/--auth through config.Load (CR-01: the
+// setupResolve resolves --url/--auth through config.Load (CR-01: the
 // ENGRAM_URL/ENGRAM_AUTH environment lane this command's --help has always
-// advertised), validates --auth, selects runtimes via setupRuntime, and
-// builds the report doc shared by setupPreview and setupApplyRun — so both
-// closures render the identical document (D-14's stated shape for setup).
-func setupPlanDoc(cmd *cobra.Command) (setupReportDoc, error) {
+// advertised), validates --auth, and selects runtimes via setupRuntime —
+// the resolution logic setupPlanDoc (preview) and setupApplyRun (apply)
+// both need, kept in exactly one place so it cannot drift between the two
+// closures (D-14's stated shape for setup).
+func setupResolve(cmd *cobra.Command) ([]setup.Runtime, setup.Options, error) {
 	// flagToKey (internal/config/registry.go) is keyed by flag NAME, and
 	// setup carries flags named "output" and "token-file" that collide with
 	// the client.output and client.token_file rows. When either is passed
 	// on this command, this Load also writes those client.* keys. That is
-	// inert here — setupPlanDoc reads only cfg.Setup and never cfg.Client —
+	// inert here — setupResolve reads only cfg.Setup and never cfg.Client —
 	// but it should be stated rather than discovered.
 	cfg, err := config.Load(cmd.Flags())
 	if err != nil {
-		return setupReportDoc{}, usageErrorf("load setup configuration: %w", err)
+		return nil, setup.Options{}, usageErrorf("load setup configuration: %w", err)
 	}
 
 	if err := config.ValidateSetupAuth(cfg.Setup.Auth); err != nil {
-		return setupReportDoc{}, usageErrorf("%w", err)
+		return nil, setup.Options{}, usageErrorf("%w", err)
 	}
 	// ValidateSetupAuth accepts "" as "use the default" (the validator's
 	// own doc comment) — this is the one call site that resolves it,
@@ -175,7 +177,7 @@ func setupPlanDoc(cmd *cobra.Command) (setupReportDoc, error) {
 
 	runtimes, err := setup.Select(setupRuntime)
 	if err != nil {
-		return setupReportDoc{}, usageErrorf("%w", err)
+		return nil, setup.Options{}, usageErrorf("%w", err)
 	}
 
 	if cfg.Setup.URL == "" {
@@ -186,10 +188,21 @@ func setupPlanDoc(cmd *cobra.Command) (setupReportDoc, error) {
 		// rejected MarkFlagsMutuallyExclusive for) and not reachable when
 		// ENGRAM_URL alone supplies the value, which cobra's mechanism
 		// would wrongly demand anyway.
-		return setupReportDoc{}, usageErrorf("--url or ENGRAM_URL is required")
+		return nil, setup.Options{}, usageErrorf("--url or ENGRAM_URL is required")
 	}
 
-	opts := setup.Options{URL: cfg.Setup.URL, Auth: auth, TokenFile: setupTokenFile}
+	return runtimes, setup.Options{URL: cfg.Setup.URL, Auth: auth, TokenFile: setupTokenFile}, nil
+}
+
+// setupPlanDoc resolves --url/--auth/--runtime (setupResolve) and builds
+// the preview report doc setupPreview renders — Detect+Plan only, no exec
+// of any kind (T-02-08 unchanged: a preview cannot produce a nonzero exit
+// code).
+func setupPlanDoc(cmd *cobra.Command) (setupReportDoc, error) {
+	runtimes, opts, err := setupResolve(cmd)
+	if err != nil {
+		return setupReportDoc{}, err
+	}
 	rows := setupBuildRows(setupEnv, runtimes, opts)
 	return setupReportDoc{Runtimes: rows}, nil
 }
@@ -230,12 +243,23 @@ func setupExitCode(c setup.ExitClass) int {
 	}
 }
 
-// setupApplyStubReason is the Reason every present (attempted) runtime's
-// row carries under --apply this phase (D-09): Apply() itself is not
-// implemented until Phase 3, so every attempted runtime fails identically
-// regardless of whether Plan() would itself have succeeded.
-func setupApplyStubReason() string {
-	return fmt.Sprintf("%v — run `engram setup` (without --apply) to preview the invocation it would issue", setup.ErrApplyNotImplemented)
+// setupRuntimeRowFromResult maps one internal/setup.Result onto its
+// cmd/engram row shape, field-for-field (D-04/D-07/D-10/D-15 — every new
+// Result field is one more key=value the existing renderOperator pipeline
+// picks up automatically, no bespoke rendering code).
+func setupRuntimeRowFromResult(r setup.Result) setupRuntimeRow {
+	return setupRuntimeRow{
+		Name:       r.Runtime,
+		Present:    r.Present,
+		Outcome:    string(r.Outcome),
+		Command:    r.Command,
+		Reason:     r.Reason,
+		Binary:     r.Binary,
+		Registered: r.Registered,
+		TokenFile:  r.TokenFile,
+		Config:     r.Config,
+		Notes:      r.Notes,
+	}
 }
 
 // setupResultsFromRows converts report rows into internal/setup.Result
@@ -246,72 +270,68 @@ func setupResultsFromRows(rows []setupRuntimeRow) []setup.Result {
 	results := make([]setup.Result, len(rows))
 	for i, r := range rows {
 		results[i] = setup.Result{
-			Runtime: r.Name,
-			Present: r.Present,
-			Outcome: setup.Outcome(r.Outcome),
-			Command: r.Command,
-			Reason:  r.Reason,
+			Runtime:    r.Name,
+			Present:    r.Present,
+			Outcome:    setup.Outcome(r.Outcome),
+			Command:    r.Command,
+			Reason:     r.Reason,
+			Binary:     r.Binary,
+			Registered: r.Registered,
+			TokenFile:  r.TokenFile,
+			Config:     r.Config,
+			Notes:      r.Notes,
 		}
 	}
 	return results
 }
 
 // setupApplySummary renders the operator-facing one-line APPLY headline:
-// how many of the selected runtimes failed this phase's stub, since every
-// attempted runtime does (D-09).
+// how many of the selected runtimes were written, were already correct,
+// and failed — replacing Phase 2's "registration lands in a later phase"
+// wording, which is false as of this phase (D-09's stub is retired).
 func setupApplySummary(rows []setupRuntimeRow) string {
-	failed := 0
+	var wrote, already, failed int
 	for _, r := range rows {
-		if r.Outcome == string(setup.OutcomeFailed) {
+		switch setup.Outcome(r.Outcome) {
+		case setup.OutcomeWrote:
+			wrote++
+		case setup.OutcomeAlreadyCorrect:
+			already++
+		case setup.OutcomeFailed:
 			failed++
 		}
 	}
-	return fmt.Sprintf("apply: %d/%d selected runtime(s) failed; registration lands in a later phase (Phase 3)", failed, len(rows))
+	return fmt.Sprintf("apply: %d wrote, %d already correct, %d failed (of %d selected runtime(s))", wrote, already, failed, len(rows))
 }
 
-// setupApplyRun is registerDestructive's apply closure. Phase 2 ships no
-// Apply() implementation (D-09): it builds the SAME per-runtime rows
-// setupPreview builds (same Detect(), same Plan(), same ordering — text
-// and JSON stay one serialization plus a view), then marks every runtime
-// that was actually attempted (Present) as failed with a Reason naming
-// setup.ErrApplyNotImplemented. A not-present runtime keeps
-// OutcomeNotPresent untouched (D-07) — it was never attempted, so it
-// cannot fail.
+// setupApplyRun is registerDestructive's apply closure. It resolves
+// --url/--auth/--runtime (setupResolve) and calls setup.Apply once per
+// selected runtime, accumulating rows independently (D-03, the
+// errors.Join-style precedent in internal/migrate/registry.go): one
+// runtime's failure never prevents another's attempt or its row from
+// rendering.
 //
 // The report is rendered with renderOperator UNCONDITIONALLY, before any
 // error is returned (T-02-06): a nonzero exit must never erase the
 // per-runtime record of what happened. setup.Classify then determines the
-// process exit code; exitPartial has no live producer until Phase 3 makes
-// a runtime capable of succeeding under --apply (every attempted runtime
-// fails this phase, so only ExitTotalSuccess — nothing attempted — and
-// ExitTotalFailure are reachable here; that gap is recorded in
-// catalog_test.go's nonConnectProducedCodes and proven by exit_test.go's
-// pure table, not by this command).
-func setupApplyRun(_ context.Context, cmd *cobra.Command) error {
+// process exit code — exitPartial (8) now has its first live production
+// producer, since a runtime can genuinely succeed under --apply
+// (catalog_test.go's nonConnectProducedCodes already names this).
+func setupApplyRun(ctx context.Context, cmd *cobra.Command) error {
 	format, err := operatorOutputFormat(cmd, setupOutput)
 	if err != nil {
 		return err
 	}
-	doc, err := setupPlanDoc(cmd)
+	runtimes, opts, err := setupResolve(cmd)
 	if err != nil {
 		return err
 	}
 
-	reason := setupApplyStubReason()
-	rows := make([]setupRuntimeRow, len(doc.Runtimes))
-	for i, r := range doc.Runtimes {
-		if !r.Present {
-			rows[i] = r
-			continue
-		}
-		rows[i] = setupRuntimeRow{
-			Name:    r.Name,
-			Present: true,
-			Outcome: string(setup.OutcomeFailed),
-			Reason:  reason,
-		}
+	rows := make([]setupRuntimeRow, len(runtimes))
+	for i, rt := range runtimes {
+		rows[i] = setupRuntimeRowFromResult(setup.Apply(ctx, setupEnv, rt, opts))
 	}
-	doc.Runtimes = rows
+	doc := setupReportDoc{Runtimes: rows}
 
 	if err := renderOperator(cmd, format, setupApplySummary(rows), doc); err != nil {
 		return err

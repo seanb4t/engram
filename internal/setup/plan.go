@@ -16,7 +16,10 @@
 // this milestone exists to prevent.
 package setup
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Outcome classifies the result of planning (or, once Apply lands,
 // actually performing) one runtime's registration. It is a five-value
@@ -51,38 +54,113 @@ const (
 	OutcomeFailed Outcome = "failed"
 )
 
-// Action is one authored, ready-to-issue invocation a Plan carries.
-// Command is the exact, fully-formed command line engram would run (or
-// preview) — credential material appears only by provenance (D-16:
-// "Bearer <from /path/to/token>"), never by value. Description is a short
-// human-facing label for the action.
+// Action is one authored, ready-to-issue invocation a Plan carries. Args
+// is the authored source of truth (D-01): the exact argv Apply() execs,
+// Args[0] the runtime's own bare binary name (never a resolved path — see
+// Result.Binary). Credential material appears only by provenance (D-16:
+// "Bearer <from /path/to/token>") or by variable reference (D-05), never
+// by value.
+//
+// Tolerant, when true, means a nonzero exit from THIS action is expected
+// and must never fail the row — e.g. a "clear any prior registration" step
+// that is tolerant of a "not found" exit. Tolerant is authored explicitly
+// per action in Plan(), never inferred from an action's position:
+// Plan.Actions is documented as growable by a later phase (skills
+// distribution), so a position-derived tolerance rule would silently make
+// a later, unrelated action tolerant too. This is a deliberate, reasoned
+// choice of 03-RESEARCH.md Pitfall 1's option 2 over its recommended
+// option 1 (Assumptions Log A4 requires this be picked explicitly, not
+// left to fall out of an unexamined default).
+//
+// Description is a short human-facing label for the action.
 type Action struct {
-	Command     string
+	Args        []string
+	Tolerant    bool
 	Description string
 }
 
+// Command renders Args through the D-02 minimal POSIX quoter (quoteArgs,
+// quote.go): a pure function of Args, deliberately a METHOD rather than a
+// settable field, so no code path can author a display string by hand
+// that diverges from what Apply() actually execs (D-01). A single-action
+// Plan's Command() renders byte-identical to Phase 2's hand-authored
+// string for every ordinary URL; only a value carrying a shell
+// metacharacter or a space renders single-quoted.
+func (a Action) Command() string {
+	return quoteArgs(a.Args)
+}
+
 // Plan is one runtime's set of authored actions for a given set of
-// Options. Runtime is the runtime's own Name(). Phase 2 ships exactly one
-// Action per Plan (the single `<tool> mcp add` invocation); Actions is a
-// slice so a later phase (e.g. skills distribution) can grow it without a
-// type change.
+// Options. Runtime is the runtime's own Name(). Actions is a slice so a
+// later phase (e.g. skills distribution) can grow it without a type
+// change; Phase 3 Task 1 uses more than one Action for a runtime whose
+// "make state match Plan()" write cannot be expressed as a single
+// idempotent call (03-RESEARCH.md Pattern 1).
+//
+// Probe is the per-runtime read-only verb used to observe existing
+// registration state (D-08, D-09): authored in the SAME Plan() call that
+// authors the write Actions, in the runtime's own file — never a
+// runtime-agnostic default, and never authored anywhere outside a
+// runtime's own file (the package doc comment's AUTHORED-HERE invariant
+// extends to this field). Probe[0] is the bare binary name, resolved
+// exactly like an Action's Args[0] at exec time (Apply.go closes over one
+// resolved path per runtime and reuses it for Probe and every Action). A
+// nil or empty Probe means this runtime has no probe wired yet: the
+// shared executor degrades to never claiming OutcomeAlreadyCorrect for it
+// (D-08's own invariant — ambiguity resolves to wrote, never to
+// already-correct).
 type Plan struct {
 	Runtime string
 	Actions []Action
+	Probe   []string
+}
+
+// Display renders every Action's Command() joined by "; " — a
+// single-action Plan renders byte-identical to Phase 2's single string; a
+// multi-action Plan renders POSIX sequential-execution semantics, which is
+// what tolerant-then-fatal action ordering actually means to a human
+// reading the preview.
+func (p Plan) Display() string {
+	cmds := make([]string, len(p.Actions))
+	for i, a := range p.Actions {
+		cmds[i] = a.Command()
+	}
+	return strings.Join(cmds, "; ")
 }
 
 // Result is one runtime's reported outcome — the shape cmd/engram/setup.go
 // renders into its report doc. Present mirrors Detect()'s answer; Outcome
 // is the classified result; Command is the exact invocation from the
-// runtime's Plan (empty when Outcome is OutcomeNotPresent); Reason carries
-// a human-readable explanation when Outcome is OutcomeFailed (e.g. an
-// unsupported auth mode naming both the runtime and the mode).
+// runtime's Plan (empty when Outcome is OutcomeNotPresent), populated from
+// Plan.Display(); Reason carries a human-readable explanation when Outcome
+// is OutcomeFailed (D-11: names the runtime, the exact argv, and the
+// numeric exit code — the empty-stderr case still yields a non-empty
+// Reason via the exit code alone).
+//
+// Binary (D-04) is the LookPath-resolved absolute path Apply() actually
+// executed — recorded even though Args[0] (and therefore Command) stays
+// the bare runtime name, so a PATH-spoofing incident leaves a trace in the
+// report. Registered (D-10) is the bounded, informational capture of
+// Plan.Probe's output; TokenFile (D-07) is the "token_file=ignored"-style
+// marker for a native runtime that received --token-file; Config (D-15) is
+// the generic pseudo-runtime's minified portable JSON. Notes (03-RESEARCH.md
+// Open Question 1) carries a one-line record per TOLERATED nonzero exit, so
+// a genuinely broken tolerant step stays visible in --output json even
+// though it never fails the row. Every one of these five is a plain
+// string — never json.RawMessage, a map, or a slice — so it can never
+// bypass sanitizeViewValue's scalar-only sanitizing branch
+// (cmd/engram/operator_view.go).
 type Result struct {
-	Runtime string
-	Present bool
-	Outcome Outcome
-	Command string
-	Reason  string
+	Runtime    string
+	Present    bool
+	Outcome    Outcome
+	Command    string
+	Reason     string
+	Binary     string `json:"binary,omitempty"`
+	Registered string `json:"registered,omitempty"`
+	TokenFile  string `json:"token_file,omitempty"`
+	Config     string `json:"config,omitempty"`
+	Notes      string `json:"notes,omitempty"`
 }
 
 // bearerProvenance renders the literal, non-secret provenance form of a

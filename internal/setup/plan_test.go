@@ -25,8 +25,8 @@ func TestPlanPassesURLVerbatimGatewayRoute(t *testing.T) {
 			if len(plan.Actions) == 0 {
 				t.Fatalf("%s.Plan: no actions", rt.Name())
 			}
-			if !strings.Contains(plan.Actions[0].Command, url) {
-				t.Errorf("%s.Plan.Actions[0].Command = %q, want it to contain %q byte-for-byte", rt.Name(), plan.Actions[0].Command, url)
+			if !strings.Contains(plan.Actions[0].Command(), url) {
+				t.Errorf("%s.Plan.Actions[0].Command = %q, want it to contain %q byte-for-byte", rt.Name(), plan.Actions[0].Command(), url)
 			}
 		})
 	}
@@ -47,8 +47,8 @@ func TestPlanPassesURLVerbatimRootMounted(t *testing.T) {
 			if len(plan.Actions) == 0 {
 				t.Fatalf("%s.Plan: no actions", rt.Name())
 			}
-			if !strings.Contains(plan.Actions[0].Command, url) {
-				t.Errorf("%s.Plan.Actions[0].Command = %q, want it to contain %q byte-for-byte", rt.Name(), plan.Actions[0].Command, url)
+			if !strings.Contains(plan.Actions[0].Command(), url) {
+				t.Errorf("%s.Plan.Actions[0].Command = %q, want it to contain %q byte-for-byte", rt.Name(), plan.Actions[0].Command(), url)
 			}
 		})
 	}
@@ -98,9 +98,8 @@ func TestSelectEmptyReturnsEveryRuntime(t *testing.T) {
 }
 
 // TestSelectUnknownNameIsErrAuthModeUnsupportedDistinct is a sanity check
-// that Select's unknown-name error is NOT ErrAuthModeUnsupported or
-// ErrApplyNotImplemented — a usage-shaped error, distinct from either
-// sentinel this package exports.
+// that Select's unknown-name error is NOT ErrAuthModeUnsupported — a
+// usage-shaped error, distinct from the sentinel this package exports.
 func TestSelectUnknownNameIsErrAuthModeUnsupportedDistinct(t *testing.T) {
 	_, err := Select([]string{"nope"})
 	if err == nil {
@@ -108,9 +107,6 @@ func TestSelectUnknownNameIsErrAuthModeUnsupportedDistinct(t *testing.T) {
 	}
 	if errors.Is(err, ErrAuthModeUnsupported) {
 		t.Error("Select's unknown-name error satisfies errors.Is(err, ErrAuthModeUnsupported), want distinct error classes")
-	}
-	if errors.Is(err, ErrApplyNotImplemented) {
-		t.Error("Select's unknown-name error satisfies errors.Is(err, ErrApplyNotImplemented), want distinct error classes")
 	}
 }
 
@@ -185,7 +181,7 @@ func TestPlanAuthModes(t *testing.T) {
 				if err != nil {
 					t.Fatalf("%s: Plan: %v", key, err)
 				}
-				if len(plan.Actions) == 0 || plan.Actions[0].Command == "" {
+				if len(plan.Actions) == 0 || plan.Actions[0].Command() == "" {
 					t.Fatalf("%s: Plan returned no non-empty Action.Command", key)
 				}
 			})
@@ -213,7 +209,7 @@ func TestPlanBearerRedactsCredentialByProvenance(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Plan: %v", err)
 			}
-			cmd := plan.Actions[0].Command
+			cmd := plan.Actions[0].Command()
 			if !strings.Contains(cmd, want) {
 				t.Errorf("%s bearer command = %q, want it to contain %q", rt.Name(), cmd, want)
 			}
@@ -226,7 +222,7 @@ func TestPlanBearerRedactsCredentialByProvenance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("codex Plan: %v", err)
 	}
-	cmd := plan.Actions[0].Command
+	cmd := plan.Actions[0].Command()
 	if strings.Contains(cmd, tokenFile) {
 		t.Errorf("codex bearer command = %q, want it to NOT contain the token file path — codex names ENGRAM_TOKEN, never a path", cmd)
 	}
@@ -251,8 +247,8 @@ func TestPlanBearerNeverReadsTokenFile(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Plan: %v (a nonexistent token file must not cause Plan to fail — it never reads the file)", err)
 			}
-			if !strings.Contains(plan.Actions[0].Command, want) {
-				t.Errorf("%s bearer command = %q, want it to contain %q even though the file does not exist", rt.Name(), plan.Actions[0].Command, want)
+			if !strings.Contains(plan.Actions[0].Command(), want) {
+				t.Errorf("%s bearer command = %q, want it to contain %q even though the file does not exist", rt.Name(), plan.Actions[0].Command(), want)
 			}
 		})
 	}
@@ -268,8 +264,8 @@ func TestPlanBearerEmptyTokenFileNamesEnvVar(t *testing.T) {
 		t.Fatalf("Plan: %v", err)
 	}
 	want := "Bearer <from ENGRAM_TOKEN>"
-	if !strings.Contains(plan.Actions[0].Command, want) {
-		t.Errorf("claude-code bearer command (empty token-file) = %q, want it to contain %q", plan.Actions[0].Command, want)
+	if !strings.Contains(plan.Actions[0].Command(), want) {
+		t.Errorf("claude-code bearer command (empty token-file) = %q, want it to contain %q", plan.Actions[0].Command(), want)
 	}
 }
 
@@ -281,7 +277,7 @@ func TestPlanClaudeCodeOAuthClientForm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
-	cmd := plan.Actions[0].Command
+	cmd := plan.Actions[0].Command()
 	for _, want := range []string{"--client-id", "--client-secret", "--callback-port 8765"} {
 		if !strings.Contains(cmd, want) {
 			t.Errorf("claude-code oauth-client command = %q, want it to contain %q", cmd, want)

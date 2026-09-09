@@ -35,13 +35,24 @@ func (openCodeRuntime) Detect(env Environment) bool {
 // plainly which are unsupported for that runtime" clause, honoured at
 // this planning layer). "none" reuses the same invocation as "oauth":
 // opencode's `mcp add` has no separate no-auth form.
+//
+// Mechanically converted to Args (D-01) as part of Phase 3 Task 1's
+// Action.Command field deletion — every argv element here is
+// content-identical to the string Phase 2 authored, just split into a
+// slice. The header value's colon-form ("Authorization: Bearer ...") is
+// live-confirmed WRONG for opencode (03-RESEARCH.md Pitfall 2 — opencode
+// requires KEY=VALUE) — fixing that, and adding a Probe (D-09), are
+// Wave 3's work, out of scope for this task's mechanical conversion. A
+// Plan.Probe-less runtime degrades safely under the shared executor
+// (apply.go): it can report OutcomeWrote but never OutcomeAlreadyCorrect
+// (D-08's own ambiguity-resolves-to-wrote invariant).
 func (openCodeRuntime) Plan(_ Environment, opts Options) (Plan, error) {
 	switch opts.Auth {
 	case "oauth", "none":
 		return Plan{
 			Runtime: "opencode",
 			Actions: []Action{{
-				Command:     fmt.Sprintf("opencode mcp add engram --url %s", opts.URL),
+				Args:        []string{"opencode", "mcp", "add", "engram", "--url", opts.URL},
 				Description: "register engram as an MCP server",
 			}},
 		}, nil
@@ -49,9 +60,8 @@ func (openCodeRuntime) Plan(_ Environment, opts Options) (Plan, error) {
 		return Plan{
 			Runtime: "opencode",
 			Actions: []Action{{
-				Command: fmt.Sprintf(
-					`opencode mcp add engram --url %s --header "Authorization: Bearer %s"`,
-					opts.URL, bearerProvenance(opts.TokenFile)),
+				Args: []string{"opencode", "mcp", "add", "engram", "--url", opts.URL,
+					"--header", fmt.Sprintf("Authorization: Bearer %s", bearerProvenance(opts.TokenFile))},
 				Description: "register engram as an MCP server (bearer token)",
 			}},
 		}, nil

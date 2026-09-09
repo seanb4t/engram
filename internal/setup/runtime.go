@@ -15,11 +15,6 @@ import (
 // of this phase).
 var ErrAuthModeUnsupported = errors.New("setup: auth mode is not supported by this runtime")
 
-// ErrApplyNotImplemented is returned by every mutating apply path this
-// phase: actually executing the authored invocation against the real
-// machine is Phase 3's work (D-09) — Phase 2 ships only Detect and Plan.
-var ErrApplyNotImplemented = errors.New("setup: --apply is not implemented yet (Phase 3)")
-
 // Options carries the resolved, caller-supplied values a Runtime's Plan
 // needs to author its invocation: the MCP endpoint URL (passed through
 // byte-for-byte, D-02 — never appended to, stripped, or normalized), the
