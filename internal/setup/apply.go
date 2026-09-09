@@ -222,10 +222,29 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 		// 2a, for the full reasoning.
 		return Result{Runtime: name, Present: true, Outcome: OutcomeWouldWrite, Command: plan.Display(), Config: plan.Config}
 	}
-	if len(plan.Actions[0].Args) == 0 {
-		return Result{
-			Runtime: name, Present: true, Outcome: OutcomeFailed,
-			Reason: fmt.Sprintf("%s: Plan() authored an action with no Args", name),
+	// Validate EVERY action, not only Actions[0]: the run loop below slices
+	// action.Args[1:] for each action, which panics on a zero-length slice
+	// and is caught by no recover() in this call chain — so a malformed
+	// later action would crash the whole --apply invocation and lose every
+	// OTHER runtime's row, rather than failing just this runtime's.
+	//
+	// Index 0 alone was sufficient only while a Plan held exactly one
+	// action. Plan.Actions is documented as growable (claude-code authors
+	// two; Phase 4 appends more), and that same growability is why
+	// Action.Tolerant is an authored field rather than a positional rule.
+	// Validating the whole slice keeps the guard true as Plans grow.
+	//
+	// This runs BEFORE any Run: a malformed Plan is an authoring bug, and
+	// executing its well-formed prefix first would half-apply it. For
+	// claude-code's shape that prefix is the tolerant `mcp remove`, so
+	// running it would clear a real registration on behalf of a Plan that
+	// was never going to complete.
+	for i, action := range plan.Actions {
+		if len(action.Args) == 0 {
+			return Result{
+				Runtime: name, Present: true, Outcome: OutcomeFailed,
+				Reason: fmt.Sprintf("%s: Plan() authored action %d with no Args", name, i),
+			}
 		}
 	}
 
