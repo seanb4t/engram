@@ -426,10 +426,21 @@ runtime writer plugs into it).
 **Plans:** 5 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 03-01-PLAN.md — Shared executor tracer: `Args`/`Probe` model, `Environment.Run` seam, read→write→read convergence, and a real `--apply` for codex end-to-end
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 03-02-PLAN.md — claude-code's two-action write sequence, closing the refuse-on-exists gap that makes `already-correct` unreachable
 - [ ] 03-03-PLAN.md — opencode's `KEY=VALUE` header fix and its `Args`/`Probe` conversion
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 03-04-PLAN.md — The `generic` opt-in pseudo-runtime and its portable `mcpServers` configuration
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 03-05-PLAN.md — Preview-side probe reporting, the `token_file` marker, help prose, and golden regeneration
 
 ---
