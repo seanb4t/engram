@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/seanb4t/engram/compare/v0.15.0...v0.15.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **release:** use env-only cask token so the tap push can run ([#529](https://github.com/seanb4t/engram/issues/529)) ([b8db0c1](https://github.com/seanb4t/engram/commit/b8db0c1c3e9ef76edefea32f3f9987b6857190ef))
+
 ## [0.15.0](https://github.com/seanb4t/engram/compare/v0.14.0...v0.15.0) (2026-09-09)
 
 
