@@ -590,3 +590,134 @@ func TestEveryActionArgsValidated(t *testing.T) {
 		t.Errorf("Run called %d times, want 0 — validation must precede execution: %+v", len(calls), calls)
 	}
 }
+
+// TestThirdPartyCaptureIsQuotedForDisplay closes T-03-04's Tampering half.
+//
+// Registered, Reason and Notes are the first report fields carrying bytes
+// engram did not author — they are whatever the third-party runtime CLI
+// wrote to stdout/stderr. Command is quoted (D-02/#523) precisely because
+// a human may paste it, and these fields render on adjacent key=value
+// lines, so an operator has every reason to read the whole report line as
+// paste-safe.
+//
+// boundCapture alone does not make them so: it closes the flooding facet,
+// and cmd/engram's sanitizeViewValue closes the control-character facet
+// (it maps only r < 0x20 || r == 0x7f), but every shell metacharacter is
+// printable and passes both untouched. That is phase 02's T-02-13 (control
+// chars, mitigated) being mistaken for T-02-05 (shell metachars, not
+// covered) — the false-closure trap those adjacent rows set.
+//
+// The control belongs HERE, at the boundary the untrusted bytes cross,
+// not at the display layer: sanitizeViewValue is shared by every operator
+// view in this CLI, and memory content, tags, scopes and summaries all
+// legitimately carry arbitrary printable characters that must NOT be
+// quoted.
+func TestThirdPartyCaptureIsQuotedForDisplay(t *testing.T) {
+	// A capture that is hostile if pasted into a shell.
+	const hostile = "engram: connected; rm -rf ~"
+
+	quotedForm := func(t *testing.T, field, value string) {
+		t.Helper()
+		if value == hostile {
+			t.Errorf("%s = %q — the raw third-party capture reached the field verbatim; a paste executes the trailing command", field, value)
+			return
+		}
+		if !strings.HasPrefix(value, "'") || !strings.HasSuffix(value, "'") {
+			t.Errorf("%s = %q, want it single-quoted so a paste treats it as one inert word", field, value)
+		}
+		if !strings.Contains(value, hostile) {
+			t.Errorf("%s = %q, want the capture's text preserved inside the quotes — quoting must not destroy the operator's information", field, value)
+		}
+	}
+
+	t.Run("registered-from-probe-stdout", func(t *testing.T) {
+		rt := fakeRuntime{name: "faketool", plan: Plan{
+			Runtime: "faketool",
+			Actions: []Action{{Args: []string{"faketool", "mcp", "add"}}},
+			Probe:   []string{"faketool", "mcp", "get"},
+		}}
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: hostile}}, // probe #1
+			scriptedResult{Result: RunResult{ExitCode: 0}},     // write
+			scriptedResult{Result: RunResult{Stdout: hostile}}, // probe #2
+		), "faketool")
+
+		res := Apply(context.Background(), env, rt, Options{})
+		quotedForm(t, "Registered", res.Registered)
+
+		// T-03-08 regression guard: the convergence byte-compare reads the
+		// RAW probe captures, never the display field. Quoting the field
+		// must not perturb the classification — identical captures still
+		// converge to already-correct.
+		if res.Outcome != OutcomeAlreadyCorrect {
+			t.Errorf("Outcome = %q, want %q — quoting the display field must not affect the byte-compare, which reads the raw captures", res.Outcome, OutcomeAlreadyCorrect)
+		}
+	})
+
+	t.Run("reason-from-failing-stderr", func(t *testing.T) {
+		rt := fakeRuntime{name: "faketool", plan: Plan{
+			Runtime: "faketool",
+			Actions: []Action{{Args: []string{"faketool", "mcp", "add"}}},
+		}}
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{ExitCode: 3, Stderr: hostile}},
+		), "faketool")
+
+		res := Apply(context.Background(), env, rt, Options{})
+		if res.Outcome != OutcomeFailed {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeFailed)
+		}
+		if strings.Contains(res.Reason, hostile) && !strings.Contains(res.Reason, "'"+hostile+"'") {
+			t.Errorf("Reason = %q — the raw stderr reached it unquoted", res.Reason)
+		}
+	})
+
+	t.Run("notes-from-tolerated-stderr", func(t *testing.T) {
+		rt := fakeRuntime{name: "faketool", plan: Plan{
+			Runtime: "faketool",
+			Actions: []Action{
+				{Args: []string{"faketool", "mcp", "remove"}, Tolerant: true, Description: "clear the slot"},
+				{Args: []string{"faketool", "mcp", "add"}},
+			},
+		}}
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{ExitCode: 1, Stderr: hostile}}, // tolerated
+			scriptedResult{Result: RunResult{ExitCode: 0}},                  // add
+		), "faketool")
+
+		res := Apply(context.Background(), env, rt, Options{})
+		if res.Notes == "" {
+			t.Fatalf("Notes is empty; want the tolerated action recorded")
+		}
+		if strings.Contains(res.Notes, hostile) && !strings.Contains(res.Notes, "'"+hostile+"'") {
+			t.Errorf("Notes = %q — the raw tolerated stderr reached it unquoted", res.Notes)
+		}
+	})
+
+	// Positive control: quoting must not become blanket noise. A capture
+	// made entirely of safe runes renders bare, exactly as quoteWord's own
+	// safe-set table promises — otherwise every ordinary report line would
+	// grow quotes and the signal would be lost.
+	t.Run("safe-capture-stays-bare", func(t *testing.T) {
+		const benign = "connected"
+		rt := fakeRuntime{name: "faketool", plan: Plan{
+			Runtime: "faketool",
+			Actions: []Action{{Args: []string{"faketool", "mcp", "add"}}},
+			Probe:   []string{"faketool", "mcp", "get"},
+		}}
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: benign}},
+			scriptedResult{Result: RunResult{ExitCode: 0}},
+			scriptedResult{Result: RunResult{Stdout: benign}},
+		), "faketool")
+
+		res := Apply(context.Background(), env, rt, Options{})
+		if res.Registered != benign {
+			t.Errorf("Registered = %q, want %q rendered bare — a safe capture must not gain quotes", res.Registered, benign)
+		}
+	})
+}
