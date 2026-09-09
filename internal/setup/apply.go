@@ -129,6 +129,20 @@ func describeSeamError(name, cmdDisplay string, err error) string {
 	return fmt.Sprintf("%s: %s: %v", name, cmdDisplay, err)
 }
 
+// toleratedNote builds one Result.Notes entry for a TOLERATED nonzero
+// exit: the action's own Description (when authored — e.g.
+// claudecode.go's claudeCodeRemoveAction) is prefixed onto the rendered
+// argv, exit code, and bounded captured stderr, so a genuinely broken
+// tolerant step — and any consequence its Description records for a
+// following action's failure — stays legible even though it never fails
+// the row.
+func toleratedNote(action Action, exitCode int, stderr string) string {
+	if action.Description == "" {
+		return fmt.Sprintf("%s exited %d: %s", action.Command(), exitCode, boundCapture(stderr))
+	}
+	return fmt.Sprintf("%s: %s exited %d: %s", action.Description, action.Command(), exitCode, boundCapture(stderr))
+}
+
 // execute is the shared sequencing core both Preview and Apply delegate
 // to. Sequence:
 //  1. rt.Detect(env) false -> OutcomeNotPresent, no exec of any kind.
@@ -213,7 +227,7 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 			}
 			return res
 		case rr.ExitCode != 0 && action.Tolerant:
-			notes = append(notes, fmt.Sprintf("%s exited %d: %s", action.Command(), rr.ExitCode, boundCapture(rr.Stderr)))
+			notes = append(notes, toleratedNote(action, rr.ExitCode, rr.Stderr))
 		case rr.ExitCode != 0:
 			res.Outcome = OutcomeFailed
 			res.Reason = describeFailure(name, action.Command(), rr.ExitCode, rr.Stderr)
@@ -221,6 +235,21 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 				res.Notes = strings.Join(notes, "; ")
 			}
 			return res
+		case action.Tolerant:
+			// A tolerant action's DESCRIPTION is surfaced on Notes even when
+			// it succeeded (exit 0) — not only when its own exit was
+			// tolerated above. A tolerant action's Description (e.g.
+			// claudecode.go's claudeCodeRemoveAction) can carry a
+			// consequence that only matters if a LATER, non-tolerant
+			// action in the same Plan then fails: the operator reading a
+			// failed row's Notes alongside its Reason must learn that
+			// state, without this executor knowing anything about
+			// claude-code by name (03-02-PLAN.md Task 2). This is a
+			// general executor behavior applied uniformly to every
+			// tolerant action in any runtime's Plan, not a special case.
+			if action.Description != "" {
+				notes = append(notes, action.Description)
+			}
 		}
 	}
 	if len(notes) > 0 {

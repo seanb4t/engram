@@ -100,7 +100,7 @@ func TestSetupPreviewJSONHasClaudeCodeCommand(t *testing.T) {
 		if !row.Present {
 			t.Error("claude-code row Present = false, want true")
 		}
-		want := "claude mcp add --transport http engram https://engram.example.com/mcp --scope user"
+		want := "claude mcp remove engram --scope user; claude mcp add --transport http engram https://engram.example.com/mcp --scope user"
 		if row.Command != want {
 			t.Errorf("claude-code row Command = %q, want %q", row.Command, want)
 		}
@@ -284,16 +284,15 @@ func TestSetupRuntimeEnvDefaultReadsEnv(t *testing.T) {
 
 // TestSetupBearerTokenFileRedactedInOutput proves `engram setup --auth
 // bearer --token-file /tmp/does-not-exist --output json` exits 0, and no
-// row's emitted command field ever contains a token-shaped value. The two
-// runtimes exercised here author bearer credentials through structurally
-// different, deliberately different forms: claude-code (not yet converted
-// by this phase's opencode wave) still redacts via the provenance string
-// "Bearer <from PATH>" (D-16); opencode (converted by 03-03, D-05/D-06)
-// names ENGRAM_TOKEN through its own {env:...} substitution token instead
-// and carries neither the provenance form nor the token-file path at all
-// — this is a nonexistent path, so either runtime's Plan() reading it and
-// leaking real content is structurally impossible, but the per-runtime
-// string-shape assertions pin each REDACTED FORM itself.
+// row's emitted command field ever contains a token-shaped value. Both
+// runtimes exercised here now author bearer credentials through their own
+// runtime-native substitution token rather than bearerProvenance's
+// path-provenance placeholder: claude-code (D-05/D-06, 03-02) via a
+// ${ENGRAM_TOKEN} shell-style reference, opencode (D-05/D-06, 03-03) via
+// its {env:...} substitution token — neither carries the token-file path
+// at all. This is a nonexistent path, so either runtime's Plan() reading
+// it and leaking real content is structurally impossible, but the
+// per-runtime assertions pin each corrected form itself.
 func TestSetupBearerTokenFileRedactedInOutput(t *testing.T) {
 	resetClientFlags(t)
 	resetCommandFlagState(t, setupCmd)
@@ -322,18 +321,11 @@ func TestSetupBearerTokenFileRedactedInOutput(t *testing.T) {
 		if strings.Contains(row.Command, "Bearer eyJ") {
 			t.Errorf("%s row.Command = %q, want it to NOT contain a token-shaped value", row.Name, row.Command)
 		}
-		switch row.Name {
-		case "opencode":
-			if strings.Contains(row.Command, "/tmp/does-not-exist") {
-				t.Errorf("opencode row.Command = %q, want it to NOT contain the token-file path (D-05/D-06: opencode names ENGRAM_TOKEN, never a path)", row.Command)
-			}
-			if !strings.Contains(row.Command, "ENGRAM_TOKEN") {
-				t.Errorf("opencode row.Command = %q, want it to name ENGRAM_TOKEN via opencode's own {env:...} substitution token", row.Command)
-			}
-		default:
-			if !strings.Contains(row.Command, "Bearer <from /tmp/does-not-exist>") {
-				t.Errorf("%s row.Command = %q, want it to contain the provenance form %q", row.Name, row.Command, "Bearer <from /tmp/does-not-exist>")
-			}
+		if strings.Contains(row.Command, "/tmp/does-not-exist") {
+			t.Errorf("%s row.Command = %q, want it to NOT contain the token-file path (D-05/D-06: names ENGRAM_TOKEN, never a path)", row.Name, row.Command)
+		}
+		if !strings.Contains(row.Command, "ENGRAM_TOKEN") {
+			t.Errorf("%s row.Command = %q, want it to name ENGRAM_TOKEN via its own runtime-native substitution token", row.Name, row.Command)
 		}
 	}
 }

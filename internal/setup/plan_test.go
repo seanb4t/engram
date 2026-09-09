@@ -296,80 +296,54 @@ func TestPlanAuthModes(t *testing.T) {
 	}
 }
 
-// TestPlanBearerRedactsCredentialByProvenance proves that claude-code's
-// bearer form (not yet converted by this phase's opencode wave) embeds
-// the literal provenance placeholder "Bearer <from /home/u/.engram/token>"
-// and no other credential material. codex and opencode both name
-// ENGRAM_TOKEN through their own runtime-native substitution mechanism
-// instead of a provenance placeholder — codex via its
-// --bearer-token-env-var flag (no placeholder at all), opencode via its
-// {env:...} substitution token (D-05/D-06, 03-03) — and are asserted
-// separately below rather than folded into the provenance table, since
-// neither authors that string.
+// TestPlanBearerRedactsCredentialByProvenance proves that NO registered
+// runtime's bearer form renders a credential value or Options.TokenFile's
+// path: codex, claude-code (D-05/D-06, 03-02), and opencode (D-05/D-06,
+// 03-03) each name ENGRAM_TOKEN through their own runtime-native
+// substitution mechanism instead — codex via its --bearer-token-env-var
+// flag (no placeholder at all), claude-code via a ${ENGRAM_TOKEN}
+// shell-style variable reference, opencode via its {env:...} substitution
+// token. bearerProvenance's path-provenance placeholder form is no longer
+// authored by any entry in Runtimes; it survives only for the generic
+// pseudo-runtime (a later plan).
 func TestPlanBearerRedactsCredentialByProvenance(t *testing.T) {
 	const tokenFile = "/home/u/.engram/token"
-	want := "Bearer <from " + tokenFile + ">"
 
-	t.Run("claude-code", func(t *testing.T) {
-		plan, err := ClaudeCode.Plan(OSEnvironment, Options{URL: "https://x", Auth: "bearer", TokenFile: tokenFile})
-		if err != nil {
-			t.Fatalf("Plan: %v", err)
-		}
-		cmd := plan.Display()
-		if !strings.Contains(cmd, want) {
-			t.Errorf("claude-code bearer command = %q, want it to contain %q", cmd, want)
-		}
-	})
-
-	// codex's own bearer form: no credential placeholder to redact at all,
-	// just a fixed env-var name.
-	plan, err := Codex.Plan(OSEnvironment, Options{URL: "https://x", Auth: "bearer", TokenFile: tokenFile})
-	if err != nil {
-		t.Fatalf("codex Plan: %v", err)
-	}
-	cmd := plan.Display()
-	if strings.Contains(cmd, tokenFile) {
-		t.Errorf("codex bearer command = %q, want it to NOT contain the token file path — codex names ENGRAM_TOKEN, never a path", cmd)
-	}
-	if !strings.Contains(cmd, "ENGRAM_TOKEN") {
-		t.Errorf("codex bearer command = %q, want it to name ENGRAM_TOKEN", cmd)
-	}
-
-	// opencode's own bearer form (D-05/D-06, 03-03): names ENGRAM_TOKEN via
-	// its {env:...} substitution token, never a provenance placeholder and
-	// never the token-file path.
-	plan, err = OpenCode.Plan(OSEnvironment, Options{URL: "https://x", Auth: "bearer", TokenFile: tokenFile})
-	if err != nil {
-		t.Fatalf("opencode Plan: %v", err)
-	}
-	cmd = plan.Display()
-	if strings.Contains(cmd, tokenFile) {
-		t.Errorf("opencode bearer command = %q, want it to NOT contain the token file path — opencode names ENGRAM_TOKEN, never a path", cmd)
-	}
-	if !strings.Contains(cmd, "ENGRAM_TOKEN") {
-		t.Errorf("opencode bearer command = %q, want it to name ENGRAM_TOKEN", cmd)
+	for _, rt := range Runtimes {
+		rt := rt
+		t.Run(rt.Name(), func(t *testing.T) {
+			plan, err := rt.Plan(OSEnvironment, Options{URL: "https://x", Auth: "bearer", TokenFile: tokenFile})
+			if err != nil {
+				t.Fatalf("Plan: %v", err)
+			}
+			cmd := plan.Display()
+			if strings.Contains(cmd, tokenFile) {
+				t.Errorf("%s bearer command = %q, want it to NOT contain the token file path — it names ENGRAM_TOKEN, never a path", rt.Name(), cmd)
+			}
+			if !strings.Contains(cmd, "ENGRAM_TOKEN") {
+				t.Errorf("%s bearer command = %q, want it to name ENGRAM_TOKEN", rt.Name(), cmd)
+			}
+		})
 	}
 }
 
-// TestPlanBearerNeverReadsTokenFile is the negative assertion Task 3
-// requires: given a TokenFile whose contents would be a secret, Plan()
-// never reads the file. For claude-code (provenance form) this is proven
-// by pointing TokenFile at a path that does not exist and confirming
-// Plan() still succeeds and still emits the provenance string. opencode
-// (D-05/D-06, 03-03) never emits the path at all, so its assertion is
-// simply that Plan() still succeeds against a nonexistent path and never
-// echoes it.
+// TestPlanBearerNeverReadsTokenFile is the negative assertion Task 3 of
+// 03-01-PLAN.md requires: given a TokenFile whose contents would be a
+// secret, Plan() never reads the file. Both claude-code (D-05/D-06,
+// 03-02) and opencode (D-05/D-06, 03-03) name ENGRAM_TOKEN via their own
+// substitution token and never emit the path at all, so both assertions
+// are simply that Plan() still succeeds against a nonexistent path and
+// never echoes it.
 func TestPlanBearerNeverReadsTokenFile(t *testing.T) {
 	const nonexistent = "/definitely/does/not/exist/token"
-	want := "Bearer <from " + nonexistent + ">"
 
 	t.Run("claude-code", func(t *testing.T) {
 		plan, err := ClaudeCode.Plan(OSEnvironment, Options{URL: "https://x", Auth: "bearer", TokenFile: nonexistent})
 		if err != nil {
 			t.Fatalf("Plan: %v (a nonexistent token file must not cause Plan to fail — it never reads the file)", err)
 		}
-		if !strings.Contains(plan.Display(), want) {
-			t.Errorf("claude-code bearer command = %q, want it to contain %q even though the file does not exist", plan.Display(), want)
+		if strings.Contains(plan.Display(), nonexistent) {
+			t.Errorf("claude-code bearer command = %q, want it to NOT contain the token-file path even though the file does not exist", plan.Display())
 		}
 	})
 
@@ -384,18 +358,29 @@ func TestPlanBearerNeverReadsTokenFile(t *testing.T) {
 	})
 }
 
-// TestPlanBearerEmptyTokenFileNamesEnvVar proves that --auth bearer with
-// an empty --token-file emits "Bearer <from ENGRAM_TOKEN>" — the env-var
-// fallback resolveToken already implements binary-wide — and never a
-// literal variable value.
-func TestPlanBearerEmptyTokenFileNamesEnvVar(t *testing.T) {
-	plan, err := ClaudeCode.Plan(OSEnvironment, Options{URL: "https://x", Auth: "bearer", TokenFile: ""})
+// TestPlanClaudeCodeBearerIgnoresTokenFile proves that D-05/D-06's
+// env-var-reference conversion made Options.TokenFile irrelevant to
+// claude-code's bearer output: Plan() with an empty TokenFile and Plan()
+// with a populated TokenFile author byte-identical Display() output, both
+// naming ENGRAM_TOKEN via the ${...} reference form and never a path —
+// this replaces the pre-conversion
+// TestPlanBearerEmptyTokenFileNamesEnvVar, which pinned the now-retired
+// bearerProvenance-based "Bearer <from ENGRAM_TOKEN>" fallback form.
+func TestPlanClaudeCodeBearerIgnoresTokenFile(t *testing.T) {
+	withFile, err := ClaudeCode.Plan(OSEnvironment, Options{URL: "https://x", Auth: "bearer", TokenFile: "/home/u/.engram/token"})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
-	want := "Bearer <from ENGRAM_TOKEN>"
-	if !strings.Contains(plan.Display(), want) {
-		t.Errorf("claude-code bearer command (empty token-file) = %q, want it to contain %q", plan.Display(), want)
+	withoutFile, err := ClaudeCode.Plan(OSEnvironment, Options{URL: "https://x", Auth: "bearer", TokenFile: ""})
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if withFile.Display() != withoutFile.Display() {
+		t.Errorf("claude-code bearer Display() differs by TokenFile: with=%q without=%q, want identical (D-05/D-06: TokenFile is irrelevant once bearer is an env-var reference)", withFile.Display(), withoutFile.Display())
+	}
+	const want = "Authorization: Bearer ${ENGRAM_TOKEN}"
+	if !strings.Contains(withoutFile.Display(), want) {
+		t.Errorf("claude-code bearer command = %q, want it to contain %q", withoutFile.Display(), want)
 	}
 }
 

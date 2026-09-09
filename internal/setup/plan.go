@@ -157,10 +157,19 @@ func (p Plan) Display() string {
 // the generic pseudo-runtime's minified portable JSON.
 //
 // Notes (03-RESEARCH.md Open Question 1) carries a one-line record per
-// TOLERATED nonzero exit, so a genuinely broken tolerant step stays
-// visible in --output json even though it never fails the row — each
-// entry names the tolerated action's Command() and its exit code, joined
-// by "; " when more than one action was tolerated.
+// TOLERANT action in Plan.Actions — whether that action's own exit was
+// zero or a tolerated nonzero — joined by "; " when more than one such
+// record applies. A tolerated nonzero exit's entry names the action's own
+// Description (when authored), its Command(), and its exit code, so a
+// genuinely broken tolerant step stays visible in --output json even
+// though it never fails the row. A tolerant action that succeeded still
+// contributes its bare Description when non-empty: a tolerant action's
+// Description can record a consequence that only matters if a LATER,
+// non-tolerant action in the same Plan then fails (claudecode.go's
+// claudeCodeRemoveAction, Phase 3 Task 2) — surfacing it here, in the
+// shared executor, keeps that consequence visible on the failed row's
+// Notes without this package (apply.go) ever knowing anything about
+// claude-code by name.
 //
 // Every one of Binary/Registered/TokenFile/Config/Notes is a plain
 // string — never json.RawMessage, a map, or a slice — so it can never
