@@ -113,6 +113,16 @@ type Plan struct {
 	Runtime string
 	Actions []Action
 	Probe   []string
+	// Config is the generic pseudo-runtime's minified, single-line
+	// portable MCP-server-configuration JSON document (03-04) — the
+	// whole deliverable for a runtime that authors zero Actions and no
+	// Probe. Authored alongside every other field in Plan(), in the
+	// runtime's own file (the package doc comment's AUTHORED-HERE
+	// invariant extends to this field too); the shared executor
+	// (apply.go) copies it onto Result.Config unchanged, never
+	// re-deriving or re-serializing it. Empty for every runtime that
+	// authors at least one Action.
+	Config string
 }
 
 // Display renders every Action's Command() joined by "; " — a
@@ -194,20 +204,18 @@ type Result struct {
 // resolveToken already implements binary-wide. Originally every
 // registered Runtime's bearer form substituted <credential> with this
 // string; as of Phase 3 (claude-code, 03-02; opencode, 03-03) every
-// registered runtime instead names ENGRAM_TOKEN through its own
-// runtime-native substitution mechanism (D-05/D-06), so this function
-// currently has NO caller in Runtimes. It MUST NOT be deleted
-// (03-02-PLAN.md Task 2's own acceptance criterion): the generic
-// pseudo-runtime (03-04, an opt-in portable-config target with no CLI of
-// its own to resolve a substitution token at) still needs a literal,
-// non-secret provenance placeholder and will call this. MUST NOT open,
-// stat, or read tokenFile: the path is the whole payload at this layer,
-// so a nonexistent path still previews successfully. A fixed
-// "Bearer ***" mask was rejected — on a machine with several token
-// files, WHICH credential would be used is precisely the detail worth
-// previewing.
-//
-//nolint:unused // dead between 03-02/03-03 removing its last caller and 03-04 adding the next one; kept per 03-02-PLAN.md's own "MUST NOT be deleted" acceptance criterion above.
+// NATIVE runtime instead names ENGRAM_TOKEN through its own
+// runtime-native substitution mechanism (D-05/D-06). This function's one
+// remaining production caller is the generic pseudo-runtime (generic.go,
+// 03-04): an opt-in, no-CLI-of-its-own portable-config target that cannot
+// promise a "${...}" reference will ever be expanded by whatever
+// third-party client the operator ultimately pastes its config into, so
+// it falls back to this literal placeholder when a --token-file is
+// supplied. MUST NOT open, stat, or read tokenFile: the path is the whole
+// payload at this layer, so a nonexistent path still previews
+// successfully. A fixed "Bearer ***" mask was rejected — on a machine
+// with several token files, WHICH credential would be used is precisely
+// the detail worth previewing.
 func bearerProvenance(tokenFile string) string {
 	if tokenFile == "" {
 		return "<from ENGRAM_TOKEN>"

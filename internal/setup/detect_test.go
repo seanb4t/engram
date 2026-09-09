@@ -125,12 +125,18 @@ func TestDetectIsDeterministic(t *testing.T) {
 // (Task 2), not over the three names — a fourth runtime added to the
 // registry without wiring its own binary into this table fails
 // immediately, since the fake only resolves the SPECIFIC binary each
-// entry expects.
+// entry expects. An empty wantBinary entry means "no binary — this
+// runtime's Detect() is deliberately unconditional" (generic, 03-04
+// D-14): that runtime's assertion is a single unconditional-true check
+// against an empty PATH rather than the present/absent pair every other
+// entry gets, since it has no binary for fakeEnv to ever resolve or
+// withhold.
 func TestDetectEveryRegisteredRuntime(t *testing.T) {
 	wantBinary := map[string]string{
 		"claude-code": "claude",
 		"codex":       "codex",
 		"opencode":    "opencode",
+		"generic":     "",
 	}
 	for _, rt := range Runtimes {
 		rt := rt
@@ -138,6 +144,12 @@ func TestDetectEveryRegisteredRuntime(t *testing.T) {
 			binary, ok := wantBinary[rt.Name()]
 			if !ok {
 				t.Fatalf("TestDetectEveryRegisteredRuntime: no expected binary name recorded for runtime %q — add one to wantBinary", rt.Name())
+			}
+			if binary == "" {
+				if !rt.Detect(fakeEnv()) {
+					t.Errorf("%s.Detect(fakeEnv()) = false, want true (unconditional Detect — no binary required)", rt.Name())
+				}
+				return
 			}
 			if !rt.Detect(fakeEnv(binary)) {
 				t.Errorf("%s.Detect(fakeEnv(%q)) = false, want true", rt.Name(), binary)
@@ -150,12 +162,16 @@ func TestDetectEveryRegisteredRuntime(t *testing.T) {
 }
 
 // TestDetectOnlyCodexPresent: a fake resolving only "codex" yields
-// present=true for codex and present=false for the other two registered
-// runtimes.
+// present=true for codex and present=false for every other registered
+// runtime whose Detect actually consults PATH. A runtime whose Detect is
+// unconditional (generic, 03-04 D-14) is exempted structurally — by
+// evidence (calling Detect against an EMPTY env and observing it still
+// reports true), never by name — rather than skipped.
 func TestDetectOnlyCodexPresent(t *testing.T) {
 	env := fakeEnv("codex")
 	for _, rt := range Runtimes {
-		want := rt.Name() == "codex"
+		alwaysDetected := rt.Detect(fakeEnv())
+		want := rt.Name() == "codex" || alwaysDetected
 		if got := rt.Detect(env); got != want {
 			t.Errorf("%s.Detect(env) = %v, want %v (only codex is on PATH)", rt.Name(), got, want)
 		}

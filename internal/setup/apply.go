@@ -147,6 +147,18 @@ func toleratedNote(action Action, exitCode int, stderr string) string {
 // to. Sequence:
 //  1. rt.Detect(env) false -> OutcomeNotPresent, no exec of any kind.
 //  2. rt.Plan(env, opts) error -> OutcomeFailed, Reason = err.Error().
+//  2a. plan.Actions is empty -> OutcomeWouldWrite immediately, in BOTH
+//     the preview and --apply lane (mutate is not consulted at all): no
+//     env.LookPath call, no env.Run call, no probe of any kind. This is
+//     D-16's general rule for a runtime whose entire deliverable is
+//     Plan.Config rather than a write action — the generic pseudo-runtime
+//     (generic.go) today, and any future runtime shaped the same way —
+//     applied uniformly here rather than special-cased on any runtime's
+//     name. OutcomeAlreadyCorrect is a claim about OBSERVED existing
+//     state (plan.go); a runtime with nothing to write observes nothing,
+//     so it can never reach that value, and OutcomeWouldWrite already
+//     counts as a non-failed attempt under Classify (exit.go) — nothing
+//     about that exhaustive combination table moves.
 //  3. Resolve Args[0] of the FIRST action via env.LookPath and record it
 //     as Result.Binary (D-04) — every subsequent exec in this runtime's
 //     sequence reuses that SAME resolved path, closing the TOCTOU window
@@ -180,10 +192,18 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 	if err != nil {
 		return Result{Runtime: name, Present: true, Outcome: OutcomeFailed, Reason: err.Error()}
 	}
-	if len(plan.Actions) == 0 || len(plan.Actions[0].Args) == 0 {
+	if len(plan.Actions) == 0 {
+		// D-16: a Plan with no Actions authors nothing to write — its
+		// whole deliverable is Plan.Config. Never touch LookPath or Run,
+		// and never consult mutate: this outcome is the same in preview
+		// and --apply alike. See this function's own doc comment, step
+		// 2a, for the full reasoning.
+		return Result{Runtime: name, Present: true, Outcome: OutcomeWouldWrite, Command: plan.Display(), Config: plan.Config}
+	}
+	if len(plan.Actions[0].Args) == 0 {
 		return Result{
 			Runtime: name, Present: true, Outcome: OutcomeFailed,
-			Reason: fmt.Sprintf("%s: Plan() authored no actions", name),
+			Reason: fmt.Sprintf("%s: Plan() authored an action with no Args", name),
 		}
 	}
 
@@ -195,7 +215,7 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 		}
 	}
 
-	res := Result{Runtime: name, Present: true, Command: plan.Display(), Binary: binary}
+	res := Result{Runtime: name, Present: true, Command: plan.Display(), Binary: binary, Config: plan.Config}
 	hasProbe := len(plan.Probe) > 0
 
 	var probe1 RunResult

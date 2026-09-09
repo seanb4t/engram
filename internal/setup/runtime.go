@@ -60,7 +60,27 @@ type Runtime interface {
 // (internal/migrate/registry.go) — never built inside an init() or behind
 // a lazy getter: a runtime hidden behind indirection is a worse failure
 // than a compile-time-visible list.
-var Runtimes = []Runtime{ClaudeCode, Codex, OpenCode}
+//
+// Generic (03-04) is deliberately LAST: it is the one entry that opts
+// itself out of the default (no-`--runtime`) selection (see
+// optInOnlyRuntime below and Select's doc comment), and appending it
+// preserves the three native runtimes' existing relative order rather
+// than renumbering them.
+var Runtimes = []Runtime{ClaudeCode, Codex, OpenCode, Generic}
+
+// optInOnlyRuntime is an OPTIONAL interface a Runtime may implement to
+// declare that it must never be included in Select(nil)'s default (no
+// `--runtime`) selection — a structural predicate the runtime states
+// about ITSELF, consumed once here, rather than a by-name exclusion
+// anywhere in this file (the same structural-predicates-over-enumerations
+// shape cmd/engram/cmdwalk.go's operatorCommands() already uses). Only
+// the generic pseudo-runtime (generic.go, D-14) implements this today; no
+// native runtime does, and none is expected to.
+type optInOnlyRuntime interface {
+	// OptInOnly reports true when this runtime must be explicitly named
+	// via --runtime to ever be selected — Select(nil) skips it entirely.
+	OptInOnly() bool
+}
 
 // Names returns every registered runtime's Name(), in registry order.
 func Names() []string {
@@ -73,8 +93,11 @@ func Names() []string {
 
 // Select resolves names (typically --runtime's value) to their matching
 // entries in Runtimes. A nil or empty names returns every registered
-// runtime, in registry order (D-10: a bare `engram setup` targets every
-// detected runtime). A name matching no registered runtime's Name() is a
+// runtime EXCEPT one that declares itself optInOnlyRuntime (D-14), in
+// registry order (D-10: a bare `engram setup` targets every detected
+// NATIVE runtime — the generic pseudo-runtime never claims presence or
+// inflates that report's denominator unless the caller named it
+// explicitly). A name matching no registered runtime's Name() is a
 // usage error naming the offending value and every valid name (D-11) — a
 // VALID name whose runtime is simply absent from the machine is NOT an
 // error here; that distinction belongs to Detect(), reported as
@@ -88,9 +111,20 @@ func Names() []string {
 // the caller's stated order — it does not re-sort into registry order. The
 // unknown-name check still runs for every element before any dedup
 // decision, so a repeated unknown name still errors.
+//
+// The explicit-names branch below is UNCHANGED by D-14: `--runtime
+// generic` still resolves exactly as before — optInOnlyRuntime only ever
+// gates the empty-names (default-set) branch.
 func Select(names []string) ([]Runtime, error) {
 	if len(names) == 0 {
-		return Runtimes, nil
+		out := make([]Runtime, 0, len(Runtimes))
+		for _, rt := range Runtimes {
+			if oi, ok := rt.(optInOnlyRuntime); ok && oi.OptInOnly() {
+				continue
+			}
+			out = append(out, rt)
+		}
+		return out, nil
 	}
 	byName := make(map[string]Runtime, len(Runtimes))
 	for _, rt := range Runtimes {

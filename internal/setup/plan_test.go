@@ -29,6 +29,20 @@ func planHasArgElement(plan Plan, want string) bool {
 	return false
 }
 
+// planCarriesURL reports whether url appears byte-for-byte either in some
+// Action's Args elements or in the plan's Config text — the structural
+// check that covers both a native runtime's argv-authored Plan and the
+// generic pseudo-runtime's zero-action, Config-only Plan (03-04). Written
+// this way rather than skipping a zero-action plan by name: a runtime
+// with neither an Args match nor a Config match authored the URL nowhere
+// at all, which is exactly the failure this check exists to catch.
+func planCarriesURL(plan Plan, url string) bool {
+	if planHasArgElement(plan, url) {
+		return true
+	}
+	return strings.Contains(plan.Config, url)
+}
+
 // TestPlanPassesURLVerbatimGatewayRoute proves that for every entry in
 // Runtimes, Plan() with auth == "oauth" and a gateway-route URL (a path
 // suffix beyond the bare host) authors an Args element equal to that URL
@@ -42,11 +56,8 @@ func TestPlanPassesURLVerbatimGatewayRoute(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s.Plan: %v", rt.Name(), err)
 			}
-			if len(plan.Actions) == 0 {
-				t.Fatalf("%s.Plan: no actions", rt.Name())
-			}
-			if !planHasArgElement(plan, url) {
-				t.Errorf("%s.Plan: no action's Args contains an element equal to %q byte-for-byte", rt.Name(), url)
+			if !planCarriesURL(plan, url) {
+				t.Errorf("%s.Plan: neither an action's Args nor Config contains an element equal to %q byte-for-byte", rt.Name(), url)
 			}
 		})
 	}
@@ -64,11 +75,8 @@ func TestPlanPassesURLVerbatimRootMounted(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s.Plan: %v", rt.Name(), err)
 			}
-			if len(plan.Actions) == 0 {
-				t.Fatalf("%s.Plan: no actions", rt.Name())
-			}
-			if !planHasArgElement(plan, url) {
-				t.Errorf("%s.Plan: no action's Args contains an element equal to %q byte-for-byte", rt.Name(), url)
+			if !planCarriesURL(plan, url) {
+				t.Errorf("%s.Plan: neither an action's Args nor Config contains an element equal to %q byte-for-byte", rt.Name(), url)
 			}
 		})
 	}
@@ -122,6 +130,12 @@ func TestNoSecretInArgs(t *testing.T) {
 							t.Errorf("%s:%s: Args element %q contains the resolved credential value", rt.Name(), auth, arg)
 						}
 					}
+				}
+				// The generic pseudo-runtime (03-04) carries its whole
+				// deliverable in Config rather than Args — the resolved
+				// credential value must never reach there either.
+				if strings.Contains(plan.Config, secretValue) {
+					t.Errorf("%s:%s: Config %q contains the resolved credential value", rt.Name(), auth, plan.Config)
 				}
 			})
 		}
@@ -185,19 +199,58 @@ func TestSelectUnknownName(t *testing.T) {
 }
 
 // TestSelectEmptyReturnsEveryRuntime proves Select(nil) returns every
-// entry in Runtimes, in registry order (D-10).
+// entry in Runtimes EXCEPT one declaring itself optInOnlyRuntime (D-14),
+// in registry order.
 func TestSelectEmptyReturnsEveryRuntime(t *testing.T) {
 	got, err := Select(nil)
 	if err != nil {
 		t.Fatalf("Select(nil): %v", err)
 	}
-	if len(got) != len(Runtimes) {
-		t.Fatalf("Select(nil) returned %d runtimes, want %d", len(got), len(Runtimes))
+	var want []Runtime
+	for _, rt := range Runtimes {
+		if oi, ok := rt.(optInOnlyRuntime); ok && oi.OptInOnly() {
+			continue
+		}
+		want = append(want, rt)
 	}
-	for i, rt := range Runtimes {
+	if len(got) != len(want) {
+		t.Fatalf("Select(nil) returned %d runtimes, want %d", len(got), len(want))
+	}
+	for i, rt := range want {
 		if got[i].Name() != rt.Name() {
 			t.Errorf("Select(nil)[%d].Name() = %q, want %q (registry order)", i, got[i].Name(), rt.Name())
 		}
+	}
+}
+
+// TestSelectDefaultSetExcludesOptInRuntimes proves Select(nil)'s result
+// excludes every registry entry that declares itself optInOnlyRuntime —
+// derived from the predicate itself, never from a hardcoded expected
+// list, so registering a SECOND opt-in runtime later cannot make this
+// test vacuous: it would still have to be excluded from Select(nil), and
+// this test would still catch it if it were not.
+func TestSelectDefaultSetExcludesOptInRuntimes(t *testing.T) {
+	got, err := Select(nil)
+	if err != nil {
+		t.Fatalf("Select(nil): %v", err)
+	}
+	selected := make(map[string]bool, len(got))
+	for _, rt := range got {
+		selected[rt.Name()] = true
+	}
+	var sawOptIn bool
+	for _, rt := range Runtimes {
+		oi, ok := rt.(optInOnlyRuntime)
+		if !ok || !oi.OptInOnly() {
+			continue
+		}
+		sawOptIn = true
+		if selected[rt.Name()] {
+			t.Errorf("Select(nil) includes %q, which declares OptInOnly() == true", rt.Name())
+		}
+	}
+	if !sawOptIn {
+		t.Fatal("no registered runtime declares itself optInOnlyRuntime — this test has nothing to exercise; is generic still registered and does it still implement OptInOnly?")
 	}
 }
 
@@ -254,18 +307,21 @@ func TestSelectDedupesRepeatedNames(t *testing.T) {
 	})
 }
 
-// TestPlanAuthModes is the exhaustive 3x4 runtime-by-auth-mode table
-// (Task 3): every cell either returns a Plan with a non-empty
-// Action.Command, or an error satisfying errors.Is(err,
-// ErrAuthModeUnsupported). Exactly one cell (opencode x oauth-client) is
-// the error case — the table is exhaustive so a future runtime cannot
-// skip a mode silently.
+// TestPlanAuthModes is the exhaustive 4x4 runtime-by-auth-mode table
+// (Task 3, extended in 03-04 to generic's row): every cell either returns
+// a Plan with a non-empty Action.Command OR a non-empty Config (the
+// generic pseudo-runtime's entire deliverable, D-16 — it never authors an
+// Action), or an error satisfying errors.Is(err, ErrAuthModeUnsupported).
+// Two cells (opencode x oauth-client, generic x oauth-client) are the
+// error case — the table is exhaustive so a future runtime cannot skip a
+// mode silently.
 func TestPlanAuthModes(t *testing.T) {
 	const url = "https://engram.example.com/mcp"
 	const tokenFile = "/home/u/.engram/token"
 
 	unsupported := map[string]bool{
 		"opencode:oauth-client": true,
+		"generic:oauth-client":  true,
 	}
 
 	var unsupportedSeen int
@@ -285,8 +341,8 @@ func TestPlanAuthModes(t *testing.T) {
 				if err != nil {
 					t.Fatalf("%s: Plan: %v", key, err)
 				}
-				if len(plan.Actions) == 0 || plan.Display() == "" {
-					t.Fatalf("%s: Plan returned no non-empty Action.Command", key)
+				if plan.Display() == "" && plan.Config == "" {
+					t.Fatalf("%s: Plan returned no non-empty Action.Command and no Config", key)
 				}
 			})
 		}
@@ -296,16 +352,28 @@ func TestPlanAuthModes(t *testing.T) {
 	}
 }
 
-// TestPlanBearerRedactsCredentialByProvenance proves that NO registered
-// runtime's bearer form renders a credential value or Options.TokenFile's
+// TestPlanBearerRedactsCredentialByProvenance proves that every NATIVE
+// registered runtime's bearer form (one that authors at least one
+// Action) renders neither a credential value nor Options.TokenFile's
 // path: codex, claude-code (D-05/D-06, 03-02), and opencode (D-05/D-06,
 // 03-03) each name ENGRAM_TOKEN through their own runtime-native
 // substitution mechanism instead — codex via its --bearer-token-env-var
 // flag (no placeholder at all), claude-code via a ${ENGRAM_TOKEN}
 // shell-style variable reference, opencode via its {env:...} substitution
 // token. bearerProvenance's path-provenance placeholder form is no longer
-// authored by any entry in Runtimes; it survives only for the generic
-// pseudo-runtime (a later plan).
+// authored by any NATIVE entry in Runtimes.
+//
+// A zero-action runtime (generic, 03-04) is exempted from that same
+// assertion structurally, by the len(plan.Actions) == 0 property rather
+// than by name: it has no CLI of its own that could resolve a
+// substitution token at connect time on an arbitrary third-party client,
+// so its Plan() deliberately falls back to bearerProvenance's literal
+// path-provenance placeholder — the ONE remaining production caller of
+// that function (generic.go) — rather than a ${...} reference it cannot
+// promise will ever expand. Its own narrower assertion below still proves
+// the resolved CREDENTIAL VALUE never appears; the path legitimately does
+// (TestGenericConfigCarriesNoSecret, generic_test.go, pins the credential
+// half specifically for generic).
 func TestPlanBearerRedactsCredentialByProvenance(t *testing.T) {
 	const tokenFile = "/home/u/.engram/token"
 
@@ -315,6 +383,12 @@ func TestPlanBearerRedactsCredentialByProvenance(t *testing.T) {
 			plan, err := rt.Plan(OSEnvironment, Options{URL: "https://x", Auth: "bearer", TokenFile: tokenFile})
 			if err != nil {
 				t.Fatalf("Plan: %v", err)
+			}
+			if len(plan.Actions) == 0 {
+				if !strings.Contains(plan.Config, tokenFile) {
+					t.Errorf("%s bearer config = %q, want it to contain the token-file path via bearerProvenance's placeholder (no CLI of its own to name a substitution token)", rt.Name(), plan.Config)
+				}
+				return
 			}
 			cmd := plan.Display()
 			if strings.Contains(cmd, tokenFile) {

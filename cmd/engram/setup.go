@@ -67,6 +67,24 @@ func setupRuntimeEnvDefault() []string {
 // "key=value ..." line, and sanitizeViewValue already strips control
 // characters from any string field here, including a Plan()-authored
 // command string.
+//
+// Config deliberately does NOT take D-15's second clause: D-15 states
+// both that the generic pseudo-runtime's portable config is "minified
+// single-line JSON in an ordinary row field" AND that "--output json
+// nests it properly as an object for machine consumers". Those two are
+// not simultaneously satisfiable against this shipped renderer — a field
+// typed to marshal as a JSON object falls through viewScalar's kind
+// switch (cmd/engram/operator_view.go), which recognizes only a JSON
+// string and JSON null, straight to a verbatim, UNSANITIZED render, and
+// TestOperatorViewFixturesHaveNoUnsanitizedNesting
+// (operator_output_test.go) fails on exactly that shape by design —
+// reopening that gap would put an unsanitized, operator-supplied --url
+// into the text lane, the T-06-03 control the guard exists to protect.
+// Config therefore stays a Go string (D-15's first clause, honored
+// intact): --output json emits it as a JSON STRING whose contents happen
+// to be JSON, not as a nested object. A later "consistency" edit that
+// promotes this field to a struct, map, or json.RawMessage type will fail
+// that guard test rather than silently reopening the gap.
 type setupRuntimeRow struct {
 	Name       string `json:"name"`
 	Present    bool   `json:"present"`
@@ -126,6 +144,7 @@ func setupBuildRows(env setup.Environment, runtimes []setup.Runtime, opts setup.
 			Present: true,
 			Outcome: string(setup.OutcomeWouldWrite),
 			Command: plan.Display(),
+			Config:  plan.Config,
 		})
 	}
 	return rows

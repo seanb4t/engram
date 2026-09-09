@@ -69,6 +69,23 @@ func withFakeSetupEnv(t *testing.T, env setup.Environment) {
 	t.Cleanup(func() { setupEnv = orig })
 }
 
+// defaultRuntimeCount returns the number of runtimes a BARE `engram
+// setup` (no --runtime) targets — setup.Select(nil)'s own result length,
+// derived from the live registry rather than hardcoded, so a test
+// asserting a bare invocation's row count stays correct regardless of how
+// many opt-in-only runtimes (03-04 D-14) the registry carries. This is
+// deliberately NOT len(setup.Names()): Names() reports every REGISTERED
+// runtime (including an opt-in one like generic), while a bare invocation
+// only ever targets the DEFAULT SET Select(nil) resolves to.
+func defaultRuntimeCount(t *testing.T) int {
+	t.Helper()
+	rts, err := setup.Select(nil)
+	if err != nil {
+		t.Fatalf("setup.Select(nil): %v", err)
+	}
+	return len(rts)
+}
+
 // TestSetupPreviewJSONHasClaudeCodeCommand proves `engram setup --output
 // json` against a fake Environment resolving "claude" exits 0 and emits a
 // document carrying a runtimes array with a claude-code element whose
@@ -175,7 +192,7 @@ func TestSetupPreviewExecutesNoRuntimeCLI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runClient: %v", err)
 	}
-	if want := len(setup.Names()); lookupCalls != want {
+	if want := defaultRuntimeCount(t); lookupCalls != want {
 		t.Errorf("LookPath called %d times, want exactly %d (one read-only detection call per registered runtime, no execution)", lookupCalls, want)
 	}
 }
@@ -384,8 +401,8 @@ func TestSetupApplyAllAbsentExitsZero(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
 		t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
 	}
-	if len(doc.Runtimes) != len(setup.Names()) {
-		t.Fatalf("setup --apply emitted %d rows, want %d: %s", len(doc.Runtimes), len(setup.Names()), stdout)
+	if want := defaultRuntimeCount(t); len(doc.Runtimes) != want {
+		t.Fatalf("setup --apply emitted %d rows, want %d: %s", len(doc.Runtimes), want, stdout)
 	}
 	for _, row := range doc.Runtimes {
 		if row.Outcome != string(setup.OutcomeNotPresent) {
@@ -421,8 +438,8 @@ func TestSetupApplyAtLeastOnePresentExitsSetupFailed(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
 		t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
 	}
-	if len(doc.Runtimes) != len(setup.Names()) {
-		t.Fatalf("setup --apply emitted %d rows, want %d (one per selected runtime, none collapsed): %s", len(doc.Runtimes), len(setup.Names()), stdout)
+	if want := defaultRuntimeCount(t); len(doc.Runtimes) != want {
+		t.Fatalf("setup --apply emitted %d rows, want %d (one per selected runtime, none collapsed): %s", len(doc.Runtimes), want, stdout)
 	}
 	var found bool
 	for _, row := range doc.Runtimes {
@@ -496,8 +513,8 @@ func TestSetupApplyJSONEmitsPerRuntimeOutcome(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
 		t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
 	}
-	if len(doc.Runtimes) != len(setup.Names()) {
-		t.Fatalf("setup --output json --apply emitted %d rows, want %d: %s", len(doc.Runtimes), len(setup.Names()), stdout)
+	if want := defaultRuntimeCount(t); len(doc.Runtimes) != want {
+		t.Fatalf("setup --output json --apply emitted %d rows, want %d: %s", len(doc.Runtimes), want, stdout)
 	}
 	for _, row := range doc.Runtimes {
 		if row.Outcome == "" {
@@ -785,5 +802,137 @@ func TestSetupEnvLanePreviewDeterministic(t *testing.T) {
 	}
 	if textOut1 != textOut2 {
 		t.Errorf("two identical setup --output text runs differ:\n%q\n%q", textOut1, textOut2)
+	}
+}
+
+// TestSetupGenericRowCarriesPortableConfig proves `engram setup --runtime
+// generic --output json` emits a row whose config field is a JSON STRING
+// (never a nested object — the D-15 clause Task 2 deliberately does not
+// take, cmd/engram/setup.go's setupRuntimeRow doc comment) whose contents
+// themselves unmarshal into the mcpServers document. The two-step decode
+// (once for the outer document, once for the string's own contents) is
+// exactly what fails if Config is ever promoted to a nested-object type.
+func TestSetupGenericRowCarriesPortableConfig(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupEnv(t, fakeSetupEnv())
+
+	stdout, stderr, err := runClient(t, "setup",
+		"--url", "https://engram.example.com/mcp",
+		"--runtime", "generic",
+		"--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+	}
+
+	// First decode: confirm the raw wire shape carries config as a JSON
+	// string, not an object or array.
+	var raw struct {
+		Runtimes []struct {
+			Name   string          `json:"name"`
+			Config json.RawMessage `json:"config"`
+		} `json:"runtimes"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &raw); err != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+	}
+	var genericRaw json.RawMessage
+	for _, r := range raw.Runtimes {
+		if r.Name == "generic" {
+			genericRaw = r.Config
+		}
+	}
+	if len(genericRaw) == 0 {
+		t.Fatalf("setup --runtime generic emitted no generic row with a config field: %s", stdout)
+	}
+	if genericRaw[0] != '"' {
+		t.Fatalf("generic row config is not encoded as a JSON string (first byte %q): %s", genericRaw[0], genericRaw)
+	}
+
+	// Second decode: the string's own CONTENTS must unmarshal into the
+	// mcpServers document.
+	var doc setupReportDoc
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+	}
+	var configText string
+	for _, r := range doc.Runtimes {
+		if r.Name == "generic" {
+			configText = r.Config
+		}
+	}
+	if configText == "" {
+		t.Fatalf("generic row Config is empty: %s", stdout)
+	}
+	var inner struct {
+		MCPServers map[string]struct {
+			Type string `json:"type"`
+			URL  string `json:"url"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal([]byte(configText), &inner); err != nil {
+		t.Fatalf("generic row Config %q does not itself unmarshal into the mcpServers document: %v", configText, err)
+	}
+	entry, ok := inner.MCPServers["engram"]
+	if !ok {
+		t.Fatalf("generic row Config %q has no mcpServers.engram entry", configText)
+	}
+	if entry.URL != "https://engram.example.com/mcp" {
+		t.Errorf("mcpServers.engram.url = %q, want the --url value byte-for-byte", entry.URL)
+	}
+}
+
+// TestSetupBareInvocationOmitsGeneric proves a bare `engram setup` (no
+// --runtime) against a fake Environment where all three native runtime
+// binaries resolve never emits a "generic" row — the opt-in pseudo-
+// runtime (D-14) is excluded from the default set even though every
+// OTHER registered runtime is present.
+func TestSetupBareInvocationOmitsGeneric(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupEnv(t, fakeSetupEnv("claude", "codex", "opencode"))
+
+	stdout, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+	}
+
+	var doc setupReportDoc
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+	}
+	for _, row := range doc.Runtimes {
+		if row.Name == "generic" {
+			t.Errorf("bare `engram setup` emitted a generic row, want none (D-14): %s", stdout)
+		}
+	}
+}
+
+// TestSetupGenericAndFailingRuntimeExitsPartial proves `engram setup
+// --apply --runtime generic,claude-code` with a scripted claude-code
+// failure exits exitPartial (8), never exitSetupFailed (9) — D-16's
+// stated, defensible consequence of leaving internal/setup/exit.go
+// untouched: generic's OutcomeWouldWrite counts as a non-failed attempt
+// alongside claude-code's OutcomeFailed, so Classify's own combination
+// table (unchanged) yields ExitPartial. Pinning the EXACT constant (not
+// merely "nonzero") is what stops a later Classify edit from silently
+// reclassifying this combination.
+func TestSetupGenericAndFailingRuntimeExitsPartial(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	failingRun := func(context.Context, string, []string) (setup.RunResult, error) {
+		return setup.RunResult{ExitCode: 1, Stderr: "boom: mcp add failed"}, nil
+	}
+	withFakeSetupEnv(t, fakeSetupEnvWithRun(failingRun, "claude"))
+
+	_, stderr, err := runClient(t, "setup",
+		"--url", "https://engram.example.com/mcp",
+		"--runtime", "generic,claude-code",
+		"--apply")
+	if err == nil {
+		t.Fatal("expected a non-nil error (claude-code fails while generic succeeds), got nil")
+	}
+	if got := exitCodeFromError(err); got != exitPartial {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitPartial); stderr=%q", got, exitPartial, stderr)
 	}
 }
