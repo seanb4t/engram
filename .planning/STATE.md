@@ -1,14 +1,14 @@
 ---
-gsd_state_version: 1.0
+gsd_state_version: "1.0"
 milestone: 2026-08-23.01
 current_phase: 01
 current_phase_name: Version & Homebrew Distribution
 status: "Phase 01 shipped — PR #515"
 stopped_at: Phase 1 context gathered
-last_updated: "2026-08-25T00:47:45.058Z"
-last_activity: 2026-08-23
-last_activity_desc: Phase 01 execution started
-state_head: d808b6a13f1899fb1c294f5fcb2b5b1326a8d3b4
+last_updated: "2026-09-09T22:01:13.637Z"
+last_activity: 2026-09-09
+last_activity_desc: "Completed quick task 260909-ofg: serve RFC 9728 protected-resource metadata (GH-526)"
+state_head: d7a70ad64896e822183336c946e556fd5943cfc4
 progress:
   total_phases: 6
   completed_phases: 0
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 — after opening milestone 2026-0
 Phase: 01 (Version & Homebrew Distribution) — EXECUTING
 Plan: 1 of 3
 Status: Executing Phase 01
-Last activity: 2026-08-23 — Phase 01 execution started
+Last activity: 2026-09-09 — Completed quick task 260909-ofg: serve RFC 9728 protected-resource metadata (GH-526)
 
 ## Deferred Items
 
@@ -279,6 +279,7 @@ Both prior entries were delivered and had simply never been closed out:
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 260909-ofg | fix gh issue 526: serve RFC 9728 protected-resource metadata at /.well-known/oauth-protected-resource | 2026-09-09 | d7a70ad6 | [260909-ofg-fix-gh-issue-526-serve-rfc-9728-protecte](./quick/260909-ofg-fix-gh-issue-526-serve-rfc-9728-protecte/) |
 
 ### Roadmap Evolution
 
