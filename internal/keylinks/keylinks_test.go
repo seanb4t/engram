@@ -321,3 +321,123 @@ func TestScanPlansDeterministic(t *testing.T) {
 		}
 	})
 }
+
+// TestMalformedKeyLinkEntry pins the reporting of a key_links entry that
+// is a bare prose string rather than a from/to/pattern mapping. YAML
+// accepts it, ParsePlanKeyLinks records it with every field empty, and
+// before ShapeMalformed existed it surfaced as ShapeUnsatisfiable with
+// an empty pattern and the repo root printed as BOTH the from and the to
+// path — a message that sends a reader hunting a regex bug that is not
+// there.
+//
+// The negative half is the load-bearing one: asserting only "an offender
+// is reported" passes just as happily on the old, misleading shape, so
+// the test also refuses ShapeUnsatisfiable explicitly.
+func TestMalformedKeyLinkEntry(t *testing.T) {
+	writeFixture := func(t *testing.T, entry string) string {
+		t.Helper()
+		dir := t.TempDir()
+		targetDir := filepath.Join(dir, "phases", "00-fixture")
+		if err := os.MkdirAll(targetDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+		plan := "---\nmust_haves:\n  key_links:\n" + entry + "---\n\nfixture plan.\n"
+		if err := os.WriteFile(filepath.Join(targetDir, "00-01-PLAN.md"), []byte(plan), 0o600); err != nil {
+			t.Fatalf("write plan: %v", err)
+		}
+		// A sibling SUMMARY is what pulls a plan into satisfiability scope.
+		if err := os.WriteFile(filepath.Join(targetDir, "00-01-SUMMARY.md"), []byte("done\n"), 0o600); err != nil {
+			t.Fatalf("write summary: %v", err)
+		}
+		return dir
+	}
+
+	t.Run("prose-string-entry-reports-malformed-not-unsatisfiable", func(t *testing.T) {
+		dir := writeFixture(t, "    - \"a prose claim with no file pair at all\"\n")
+
+		offenders, err := ScanPlans(dir, []string{"phases"}, ModeSatisfiability)
+		if err != nil {
+			t.Fatalf("ScanPlans: %v", err)
+		}
+		if len(offenders) != 1 {
+			t.Fatalf("expected exactly 1 offender, got %d: %v", len(offenders), offenders)
+		}
+
+		got := offenders[0]
+		if got.Shape == ShapeUnsatisfiable {
+			t.Errorf("prose entry reported as %q — that is the misleading pre-fix shape this test exists to refuse", ShapeUnsatisfiable)
+		}
+		if got.Shape != ShapeMalformed {
+			t.Errorf("shape = %q, want %q", got.Shape, ShapeMalformed)
+		}
+		// Assert against the missing-keys CLAUSE, not the whole message:
+		// the guidance half spells out "from:, to:, via: and pattern:"
+		// verbatim, so a Contains check over the full Fix is vacuous —
+		// it passes for any key whether or not that key is missing.
+		missing := missingKeysClause(t, got.Fix)
+		for _, key := range []string{"from", "to", "pattern"} {
+			if !strings.Contains(missing, key) {
+				t.Errorf("missing-keys clause %q does not name %q", missing, key)
+			}
+		}
+		// The entry has no pattern: line, so Line must come from the
+		// seeded "- " item — line 4 of the fixture, not 0.
+		if got.Line != 4 {
+			t.Errorf("line = %d, want 4 (the entry's own list-item line); 0 means the seed was dropped", got.Line)
+		}
+	})
+
+	t.Run("partial-entry-missing-pattern-is-malformed", func(t *testing.T) {
+		dir := writeFixture(t, "    - from: \"a.txt\"\n      to: \"b.txt\"\n      via: \"has a file pair but nothing to pin\"\n")
+
+		offenders, err := ScanPlans(dir, []string{"phases"}, ModeSatisfiability)
+		if err != nil {
+			t.Fatalf("ScanPlans: %v", err)
+		}
+		if len(offenders) != 1 {
+			t.Fatalf("expected exactly 1 offender, got %d: %v", len(offenders), offenders)
+		}
+		if offenders[0].Shape != ShapeMalformed {
+			t.Errorf("shape = %q, want %q", offenders[0].Shape, ShapeMalformed)
+		}
+		missing := missingKeysClause(t, offenders[0].Fix)
+		if missing != "pattern" {
+			t.Errorf("missing-keys clause = %q, want exactly %q — from: and to: are both present", missing, "pattern")
+		}
+	})
+
+	t.Run("escaping-mode-leaves-prose-entries-alone", func(t *testing.T) {
+		// 239 of 447 entries repo-wide are prose-form. The repo-wide
+		// escaping gate must stay green across every archived milestone,
+		// so this check is satisfiability-scoped by construction.
+		dir := writeFixture(t, "    - \"a prose claim with no file pair at all\"\n")
+
+		offenders, err := ScanPlans(dir, []string{"phases"}, ModeEscapingOnly)
+		if err != nil {
+			t.Fatalf("ScanPlans: %v", err)
+		}
+		if len(offenders) != 0 {
+			t.Errorf("escaping mode reported %d offender(s) for a prose entry; want 0: %v", len(offenders), offenders)
+		}
+	})
+}
+
+// missingKeysClause isolates the "is missing X, Y" half of a
+// ShapeMalformed Fix from the guidance half that follows the em-dash.
+// The guidance half names from:, to:, via: and pattern: verbatim, so any
+// assertion made over the whole message is vacuous — it holds for a key
+// whether or not that key is actually missing. Splitting first is what
+// makes the assertion able to fail on the wrong input.
+func missingKeysClause(t *testing.T, fix string) string {
+	t.Helper()
+	const prefix = "key_links entry is missing "
+	head, _, found := strings.Cut(fix, " — ")
+	if !found {
+		t.Fatalf("fix has no %q separator, cannot isolate the missing-keys clause: %q", " — ", fix)
+	}
+	clause, ok := strings.CutPrefix(head, prefix)
+	if !ok {
+		t.Fatalf("fix does not start with %q: %q", prefix, fix)
+	}
+	return clause
+}
