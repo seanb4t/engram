@@ -4,16 +4,16 @@ milestone: 2026-08-23.01
 current_phase: 03
 current_phase_name: Runtime Registration
 status: executing
-stopped_at: Completed 03-04-PLAN.md
-last_updated: "2026-09-09T16:18:55.120Z"
+stopped_at: Completed 03-05-PLAN.md
+last_updated: "2026-09-09T16:40:39.694Z"
 last_activity: 2026-09-08
 last_activity_desc: Phase 03 execution started
-state_head: 145f68b192780e4c8ba9035f9710fe4d588a8634
+state_head: 9908ab465c549346719241f024ea3f94223185c9
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 11
-  completed_plans: 9
+  completed_plans: 11
 milestone_name: Distribution & Agent Bootstrap
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 — after opening milestone 2026-0
 
 Phase: 03 (Runtime Registration) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-08 — Phase 03 execution started
 
 ## Deferred Items
@@ -255,6 +255,9 @@ milestone needs in working memory.
 - [Phase 03]: claude-code: tolerant remove-then-fatal-add (destructive window explicitly accepted); Action.Tolerant authored-per-action, not positional; toolclass.go setup-row comment corrected to real per-runtime overwrite/refuse behavior
 - [Phase 03]: generic pseudo-runtime opts out of the default (--runtime-less) selection via a self-declared optInOnlyRuntime predicate, not a by-name check — D-14's literal Detect()-based phrasing was unimplementable without a by-name check or an interface signature change; the structural predicate achieves the same operator-visible outcome (a bare invocation never claims presence for a no-binary pseudo-runtime)
 - [Phase 03]: bearer mode on generic falls back to bearerProvenance's path placeholder when --token-file is supplied, diverging from the native runtimes' ENGRAM_TOKEN-naming convention — generic has no CLI of its own that could resolve a ${...} substitution token on an arbitrary third-party client, so it cannot promise that reference will ever expand there
+- [Phase 03]: Preview's probe capture uses the SAME combined stdout+stderr shape apply's read #2 already uses, applied regardless of the probe's exit code (D-11 reports rather than diagnoses).
+- [Phase 03]: The token_file=ignored marker is set structurally (Plan carries at least one Action), never keyed on a runtime's name, and never carries the supplied --token-file path (D-07).
+- [Phase 03]: TestSetupPartialExitIsLiveProducible distinguishes runtimes inside its scripted Run fake by the LookPath-resolved binary path, never by a runtime-name branch in production code, proving exitPartial has a real two-native-runtime production path.
 
 ### Pending Todos
 
@@ -299,8 +302,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-09T16:18:55.051Z
-Stopped at: Completed 03-04-PLAN.md
+Last session: 2026-09-09T16:40:39.622Z
+Stopped at: Completed 03-05-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -409,6 +412,7 @@ Resume file: None
 | Phase 03 P03 | 33min | 2 tasks | 4 files |
 | Phase 03 P02 | 15min | 3 tasks | 8 files |
 | Phase 03 P04 | 45min | 3 tasks | 11 files |
+| Phase 03 P05 | 19min | 3 tasks | 6 files |
 
 ## Operator Next Steps
 

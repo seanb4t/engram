@@ -29,7 +29,7 @@ would write, and wires it up.
 
 - [ ] **REQ-setup-detects-runtimes**: `engram setup` reports which supported agent runtimes are present on the machine, using the runtime's own binary as the primary signal. A config directory left behind by an uninstalled runtime does not read as installed.
 - [ ] **REQ-setup-previews-by-default**: `engram setup` previews without mutating and changes nothing until `--apply`, matching `engram migrate` and `prune-expired`. The preview shows the exact command or content that would be issued, not a summary of it.
-- [ ] **REQ-setup-idempotent**: Re-running `engram setup --apply` converges to the same state without duplicating entries, and reports "already correct" distinctly from "wrote it", so an operator can tell a no-op from a change.
+- [x] **REQ-setup-idempotent**: Re-running `engram setup --apply` converges to the same state without duplicating entries, and reports "already correct" distinctly from "wrote it", so an operator can tell a no-op from a change.
 - [ ] **REQ-setup-non-interactive**: `engram setup` is fully usable without a TTY — a caller can select runtimes explicitly, skip confirmation, and get machine-readable output, so the command is scriptable from CI or another agent on day one.
 - [x] **REQ-setup-partial-failure-legible**: When some runtimes succeed and others fail in one invocation, the outcome per runtime is reported individually and the process exit status distinguishes total success, partial success, and total failure. No runtime's failure silently discards another's success.
 - [x] **REQ-setup-correct-by-reading**: `engram setup --help` teaches the correct invocation — which runtimes are targetable, what `--apply` does, and what auth modes are accepted — without the caller having to run it and interpret a failure (D-00).
@@ -40,8 +40,8 @@ would write, and wires it up.
 - [x] **REQ-register-codex**: `engram setup` registers engram with Codex by invoking `codex mcp add`. `~/.codex/config.toml` is never read, parsed, or written by engram.
 - [x] **REQ-register-opencode**: `engram setup` registers engram with opencode by invoking `opencode mcp add`. opencode's config file is never read, parsed, or written by engram, so its documented V1/V2 schema divergence cannot affect engram.
 - [x] **REQ-register-generic-mcp**: For an MCP client engram does not natively support, `engram setup` emits a portable server configuration the user can paste or redirect into that client, so an unsupported runtime is a documented manual path rather than a dead end.
-- [ ] **REQ-register-auth-modes**: Every registration path covers the auth modes engram actually deploys behind — OAuth, pre-registered OAuth client, static bearer token, and none — or states plainly which are unsupported for that runtime. A secret is never placed on a command line where the shell or process table would capture it.
-- [ ] **REQ-register-cli-surface-drift-legible**: When a runtime's CLI is absent, or present with an unexpected flag surface, `engram setup` fails with a message naming the runtime and what it expected. Shelling out replaces a config-format dependency with a CLI-contract dependency, and that contract breaking must not degrade into silently writing nothing.
+- [x] **REQ-register-auth-modes**: Every registration path covers the auth modes engram actually deploys behind — OAuth, pre-registered OAuth client, static bearer token, and none — or states plainly which are unsupported for that runtime. A secret is never placed on a command line where the shell or process table would capture it.
+- [x] **REQ-register-cli-surface-drift-legible**: When a runtime's CLI is absent, or present with an unexpected flag surface, `engram setup` fails with a message naming the runtime and what it expected. Shelling out replaces a config-format dependency with a CLI-contract dependency, and that contract breaking must not degrade into silently writing nothing.
 
 ### Skills Distribution
 
@@ -95,7 +95,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-cask-reship-recovery | Phase 1 | Pending |
 | REQ-setup-detects-runtimes | Phase 2 | Pending |
 | REQ-setup-previews-by-default | Phase 2 | Pending |
-| REQ-setup-idempotent | Phase 3 | Pending |
+| REQ-setup-idempotent | Phase 3 | Complete |
 | REQ-setup-non-interactive | Phase 2 | Pending |
 | REQ-setup-partial-failure-legible | Phase 2 | Complete |
 | REQ-setup-correct-by-reading | Phase 2 | Complete |
@@ -103,8 +103,8 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-register-codex | Phase 3 | Complete |
 | REQ-register-opencode | Phase 3 | Complete |
 | REQ-register-generic-mcp | Phase 3 | Complete |
-| REQ-register-auth-modes | Phase 3 | Pending |
-| REQ-register-cli-surface-drift-legible | Phase 3 | Pending |
+| REQ-register-auth-modes | Phase 3 | Complete |
+| REQ-register-cli-surface-drift-legible | Phase 3 | Complete |
 | REQ-skills-embedded-in-binary | Phase 4 | Pending |
 | REQ-skills-native-format | Phase 4 | Pending |
 | REQ-skills-agents-md-fallback | Phase 4 | Pending |

@@ -423,7 +423,7 @@ runtime writer plugs into it).
    reports "already correct" distinctly from the first run's "wrote it" (moved here from Phase 2,
    which stubs `Apply()` per its CONTEXT.md D-09).
 
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans executed
 
 Plans:
 **Wave 1**
@@ -441,7 +441,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 03-05-PLAN.md — Preview-side probe reporting, the `token_file` marker, help prose, and golden regeneration
+- [x] 03-05-PLAN.md — Preview-side probe reporting, the `token_file` marker, help prose, and golden regeneration
 
 ---
 
@@ -615,7 +615,7 @@ and the delegation story settled).
 | 9. Report pending in migrate status | 2026-08-12.01 | 2/2 | Complete | 2026-08-22 |
 | 1. Version & Homebrew Distribution | 2026-08-23.01 | 3/3 | Complete | 2026-08-25 |
 | 2. Setup Command Core | 2026-08-23.01 | 3/3 | Complete | 2026-08-30 |
-| 3. Runtime Registration | 2026-08-23.01 | 4/7 | In Progress | - |
+| 3. Runtime Registration | 2026-08-23.01 | 7/7 | In Progress | - |
 | 4. Skills Distribution | 2026-08-23.01 | 0/3 | Not started | - |
 | 5. Slash Command Delegation | 2026-08-23.01 | 0/3 | Not started | - |
 | 6. Install Documentation | 2026-08-23.01 | 0/2 | Not started | - |
