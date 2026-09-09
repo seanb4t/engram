@@ -25,6 +25,7 @@ The chart sets `ENGRAM_*` environment variables from these Helm values. Supply t
 |-----------|---------------------|-------------|
 | `memory.listenAddr` | `ENGRAM_LISTEN_ADDR` | Listen address (default `:8080`) |
 | `memory.mcpPath` | `ENGRAM_MCP_PATH` | MCP transport path (empty → `/mcp`; `/` restores the legacy root catch-all) |
+| `memory.mcpResourceUrl` | `ENGRAM_MCP_RESOURCE_URL` | Public URL clients reach the MCP endpoint on (empty → derived per request) |
 | `memory.openai.baseURL` | `ENGRAM_OPENAI_BASE_URL` | Embeddings endpoint URL (cluster must supply) |
 | `memory.embed.model` | `ENGRAM_EMBED_MODEL` | Embed model name (default `ollama/bge-m3`) |
 | `memory.embed.dim` | `ENGRAM_EMBED_DIM` | Vector dimension (default `1024`) |

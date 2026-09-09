@@ -36,11 +36,19 @@ type Config struct {
 	Client      ClientConfig      `koanf:"client"`
 }
 
-// ServerConfig is engram's HTTP-listener surface: where the process binds and
-// the route the MCP transport mounts under.
+// ServerConfig is engram's HTTP-listener surface: where the process binds,
+// the route the MCP transport mounts under, and the public URL a client
+// reaches that endpoint on.
 type ServerConfig struct {
 	ListenAddr string `koanf:"listen_addr"`
 	MCPPath    string `koanf:"mcp_path"`
+	// MCPResourceURL (GH-526, D-03/D-04) is the public URL a client reaches
+	// the MCP endpoint on -- a deployment-topology value set once behind a
+	// gateway, env-only, with no --flag. When set, it becomes the RFC 9728
+	// `resource` field verbatim (cmd/engram/wellknown.go) and no request
+	// header can override it. Empty (default) means the value is derived
+	// per request from the forwarded/Host headers and the MCP path.
+	MCPResourceURL string `koanf:"mcp_resource_url"`
 }
 
 // QdrantConfig points engram at its vector backend: the gRPC endpoint to dial

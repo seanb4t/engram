@@ -263,12 +263,37 @@ func runServe(cmd *cobra.Command) error {
 		// Bucket 1: a malformed/colliding --mcp-path.
 		return usageErrorf("%w", err)
 	}
+	// GH-526 / D-04: shape-checked here, at its single use site, rather than
+	// in Config.Validate (which is scoped to fields every command's
+	// store/embedder path consumes -- this field is serve-only). Bucket 1: a
+	// malformed configured ENGRAM_MCP_RESOURCE_URL.
+	resolvedMCPResourceURL, err := resolveMCPResourceURL(cfg.Server.MCPResourceURL)
+	if err != nil {
+		slog.Error("invalid MCP resource URL", "err", err)
+		return usageErrorf("%w", err)
+	}
 
 	var handler http.Handler = mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return srv }, nil)
-	handler = withAuth(handler, chain, cfg.OIDC.ResourceMetadata)
+	// GH-526 / D-02: an explicitly configured ENGRAM_OIDC_RESOURCE_METADATA
+	// still wins; otherwise, when ENGRAM_MCP_RESOURCE_URL is set, the 401
+	// challenge now defaults to the path this server itself serves rather
+	// than pointing at nothing.
+	handler = withAuth(handler, chain, resolveResourceMetadataURL(cfg.OIDC.ResourceMetadata, resolvedMCPResourceURL, resolvedMCPPath))
 	handler = accessLog(tm.RecordAuthFailure, nil)(handler)
 	handler = otelhttp.NewHandler(handler, "mcp")
+	// GH-526: mount the RFC 9728 protected-resource metadata document bare on
+	// the mux, NOT through withAuth/accessLog/otelhttp -- matching how the
+	// /auth and /ui mounts already sit bare on this mux (RFC 9728 requires
+	// unauthenticated public reachability). The whole-mux
+	// CrossOriginProtection wrapper below still covers it and passes
+	// safe-method GET untouched.
+	mountWellKnownRoutes(mux, protectedResourceHandler(resolvedMCPResourceURL, cfg.OIDC.Issuer, resolvedMCPPath), resolvedMCPPath)
+	if resolvedMCPResourceURL != "" {
+		slog.Info("protected-resource metadata mounted", "resource", "configured")
+	} else {
+		slog.Info("protected-resource metadata mounted", "resource", "derived-per-request")
+	}
 	// Mount the MCP transport at its configured path and give "/" to the console
 	// landing / 404 handler (mcpPath="/" restores the legacy root catch-all).
 	mountMCPRoutes(mux, handler, uiCfg.Enabled, resolvedMCPPath)

@@ -59,6 +59,9 @@
 {{- with .Values.memory.mcpPath }}
 - { name: ENGRAM_MCP_PATH, value: "{{ . }}" }
 {{- end }}
+{{- with .Values.memory.mcpResourceUrl }}
+- { name: ENGRAM_MCP_RESOURCE_URL, value: "{{ . }}" }
+{{- end }}
 {{- with .Values.memory.oidc.issuer }}
 - { name: ENGRAM_OIDC_ISSUER, value: "{{ . }}" }
 {{- end }}

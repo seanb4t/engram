@@ -27,10 +27,36 @@ The MCP bearer-token lane's serve flags that have both a `--flag` and an `ENGRAM
 | `--oidc-issuer` | `ENGRAM_OIDC_ISSUER` | _(unset — auth disabled)_ |
 | `--oidc-audience` | `ENGRAM_OIDC_AUDIENCE` | _(unset — audience not checked)_ |
 | `--oidc-resource-metadata` | `ENGRAM_OIDC_RESOURCE_METADATA` | _(unset)_ |
+| _(env-only)_ | `ENGRAM_MCP_RESOURCE_URL` | _(unset)_ |
 
 Storage and embedding are configured via env-only variables (`ENGRAM_QDRANT_ADDR`,
 `ENGRAM_QDRANT_COLLECTION`, `ENGRAM_OPENAI_BASE_URL`, `ENGRAM_OPENAI_API_KEY`,
 `ENGRAM_EMBED_MODEL`, `ENGRAM_EMBED_DIM`) — these do not have `--flag` equivalents.
+
+### Protected-resource metadata (RFC 9728)
+
+engram serves the RFC 9728 OAuth protected-resource metadata document,
+unauthenticated, at `/.well-known/oauth-protected-resource` and at its §3.1
+path-suffix form (that path plus the resolved MCP path, e.g.
+`/.well-known/oauth-protected-resource/mcp`). Both return `200` with
+`Content-Type: application/json` and a byte-identical body.
+
+The document has four fields:
+
+- `resource` — the public URL the MCP endpoint is reached on. When
+  `ENGRAM_MCP_RESOURCE_URL` is set, this is that value verbatim and no
+  request header can influence it. When unset, it is derived per request
+  from `X-Forwarded-Proto` / `X-Forwarded-Host` / `Host` and the resolved
+  MCP path; a derived response also carries `Cache-Control: no-store` so no
+  shared cache retains a document derived from a spoofable header. A
+  configured response carries no `Cache-Control` header at all.
+- `authorization_servers` — a one-element array holding `ENGRAM_OIDC_ISSUER`.
+  Omitted entirely (not an empty array) when no issuer is configured.
+- `bearer_methods_supported` — the constant `["header"]`.
+- `scopes_supported` — the constant `["offline_access"]`.
+
+`ENGRAM_MCP_PATH` can no longer be set to `/.well-known` or any path under
+it — that root is reserved for these routes.
 
 ### What is verified
 

@@ -18,6 +18,10 @@ memory:
   # every path) for clients that still POST to the host root. When the UI is on
   # and this is the default, the host root serves the console.
   mcpPath: ""
+  # ENGRAM_MCP_RESOURCE_URL: the public URL clients reach the MCP endpoint
+  # on. Empty (default) means engram derives the value per request from the
+  # forwarded/Host headers and the MCP path.
+  mcpResourceUrl: ""
   embed:
     model: "ollama/bge-m3"
     dim: 1024

@@ -11,6 +11,7 @@ engram uses **env-first configuration** with no viper: every setting is an envir
 |---------------------|------|---------|-------------|
 | `ENGRAM_LISTEN_ADDR` | `--listen-addr` | `:8080` | TCP address the HTTP server binds to |
 | `ENGRAM_MCP_PATH` | `--mcp-path` | `/mcp` | Path the MCP transport mounts at. `/` restores the legacy root catch-all (where the transport answered at every path). When the web UI is enabled and this is `/mcp`, the host root serves the console. |
+| `ENGRAM_MCP_RESOURCE_URL` | — | _(empty)_ | The public URL clients reach the MCP endpoint on. When set, it becomes the `resource` field of the served protected-resource document (see [Auth & Isolation](/reference/auth/)) verbatim, and no request header can override it. When unset, the value is derived per request from the forwarded/`Host` headers and the MCP path. |
 
 Source: `cmd/engram/serve.go` (flag registration via `internal/config`)
 
@@ -138,7 +139,7 @@ Setting `ENGRAM_OIDC_ISSUER` enables bearer-token enforcement (JWKS signature + 
 |---------------------|------|---------|-------------|
 | `ENGRAM_OIDC_ISSUER` | `--oidc-issuer` | _(empty)_ | OIDC issuer URL; setting it enables bearer-token enforcement |
 | `ENGRAM_OIDC_AUDIENCE` | `--oidc-audience` | _(empty)_ | Expected `aud` claim (optional; omit to skip audience check) |
-| `ENGRAM_OIDC_RESOURCE_METADATA` | `--oidc-resource-metadata` | _(empty)_ | `WWW-Authenticate` resource metadata URL returned in 401 responses (optional) |
+| `ENGRAM_OIDC_RESOURCE_METADATA` | `--oidc-resource-metadata` | _(empty)_ | `WWW-Authenticate` resource metadata URL returned in 401 responses (optional). Left empty with `ENGRAM_MCP_RESOURCE_URL` set, this now defaults to the protected-resource document path engram itself serves; explicit config still wins. |
 | `ENGRAM_OWNER_CLAIM` | `--owner-claim` | `email` | OIDC claim whose value becomes the record `owner` (authz key); fail-closed if absent; requires `email_verified` when `email` |
 
 Source: `cmd/engram/serve.go` (`init()` flag registration and `buildAuthChain`, which composes the chain and wraps it in `auth.EnforceExpiry` so token expiry is enforced on the composed chain rather than only inside the MCP bearer wrapper).
