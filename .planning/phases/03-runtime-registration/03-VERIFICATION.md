@@ -1,6 +1,6 @@
 ---
 phase: 03-runtime-registration
-verified: 2026-09-09T17:03:30Z
+verified: 2026-09-09T21:00:00Z
 status: human_needed
 score: 5/5 must-haves verified
 covered_files:
@@ -16,6 +16,7 @@ covered_files:
   - .planning/phases/03-runtime-registration/03-05-PLAN.md
   - .planning/phases/03-runtime-registration/03-05-SUMMARY.md
   - .planning/phases/03-runtime-registration/03-REVIEW.md
+  - .planning/phases/03-runtime-registration/03-SECURITY.md
   - cmd/engram/setup.go
   - internal/keylinks/keylinks.go
   - internal/setup/apply.go
@@ -28,20 +29,26 @@ covered_files:
   - internal/setup/quote.go
   - internal/setup/runtime.go
   - internal/surfaces/toolclass.go
-covered_digest: "v1:sha256:56b4bf6da36b0accb0e27260d52f4bfda943f0957e56147f87c7151431d0a71f"
+covered_digest: "v1:sha256:572082af3a0774a9fe6bbe21bd315d27b105587d9ce68bb633943529ef9e428e"
 behavior_unverified: 0
 overrides_applied: 0
 behavior_unverified_items: []
+re_verification:
+  previous_status: human_needed
+  previous_score: 5/5
+  gaps_closed: []
+  gaps_remaining: []
+  regressions: []
 human_verification:
   - test: "Run `engram setup --apply --runtime claude-code` twice in a row against a real Claude Code install with no prior engram registration, then a third time after manually deleting the entry."
     expected: "Run 1: outcome=wrote. Run 2 (state unchanged): outcome=already-correct. Between runs 1 and 2 there is a real (tolerant-remove-then-fatal-add) window where the registration briefly does not exist — this is by design, not a bug."
-    why_human: "Repo rule m45p2b4bp7 forbids any test in this repo from invoking a real third-party CLI; the mechanism is proven with a scripted fake (TestApplyConvergesClaudeCode) and I independently confirmed the live read-side (`claude mcp get`) and command construction against my own real claude/codex/opencode installs during this verification, but a real two-invocation --apply round trip against a live claude-code install was intentionally not run here because --apply is destructive against the verifier's own machine state."
+    why_human: "Repo rule m45p2b4bp7 forbids any test in this repo from invoking a real third-party CLI; the mechanism is proven with a scripted fake (TestApplyConvergesClaudeCode). A real two-invocation --apply round trip against a live claude-code install is intentionally not run from inside automated verification because --apply is destructive against the verifier's own machine state."
   - test: "Run `engram setup --apply --runtime codex` twice, then `engram setup --apply --runtime opencode` twice, against real installs."
     expected: "codex: run 1 wrote, run 2 already-correct (its `mcp add` overwrites silently and `mcp get --json` is a pure local read, so already-correct should be the common case). opencode: run 2 is expected to report wrote far more often than already-correct, because `opencode mcp list` dials every registered server live and any one flip differs the two probe captures — this is documented as the safe-direction-only degradation, not a defect."
-    why_human: "Same repo rule as above — no test may invoke a real third-party binary. Verified via scripted fakes (TestApplyConvergesCodex, TestApplyOpenCodeConvergence) and via live read-only preview probes against my real installs (see Behavioral Spot-Checks); the live --apply round trip itself was not run to avoid mutating the verifier's own MCP registrations."
+    why_human: "Same repo rule as above — no test may invoke a real third-party binary. Verified via scripted fakes (TestApplyConvergesCodex, TestApplyOpenCodeConvergence); the live --apply round trip itself was not run to avoid mutating the verifier's own MCP registrations."
   - test: "Point --runtime at a claude/codex/opencode binary that has since removed or renamed a flag this package depends on (e.g. an intentionally broken PATH entry pointing at a wrapper script that rejects `--transport` or `--bearer-token-env-var`), then run `engram setup --apply`."
-    expected: "outcome=failed with Reason naming the runtime, the exact argv issued, the nonzero exit code, and the runtime's stderr verbatim — never a silent no-op."
-    why_human: "The mechanism is unit-tested end-to-end (TestDriftReportedLegibly, both with and without stderr) against a scripted fake; reproducing an actual drifted third-party flag surface requires a real modified binary, which the repo rule above precludes fabricating as an automated test."
+    expected: "outcome=failed with Reason naming the runtime, the exact argv issued, the nonzero exit code, and the runtime's stderr (bounded, single-quoted for paste safety per T-03-04/commit 63bbb065) — never a silent no-op."
+    why_human: "The mechanism is unit-tested end-to-end (TestDriftReportedLegibly, TestThirdPartyCaptureIsQuotedForDisplay) against a scripted fake; reproducing an actual drifted third-party flag surface requires a real modified binary, which repo rule m45p2b4bp7 precludes fabricating as an automated test."
 ---
 
 # Phase 03: Runtime Registration Verification Report
@@ -53,9 +60,65 @@ command line, offers a portable config for unsupported clients, fails legibly on
 drifted CLI rather than silently writing nothing, and converges to a distinctly-reported
 "already correct" on a second `--apply`.
 
-**Verified:** 2026-09-09T17:03:30Z
+**Verified:** 2026-09-09T21:00:00Z
 **Status:** human_needed
-**Re-verification:** No — initial verification
+**Re-verification:** Yes — after content drift (commit 63bbb065 modified `internal/setup/apply.go`,
+one of the prior report's `covered_files`, invalidating the prior `covered_digest`). No gaps were
+open in the prior report; this run re-verifies the delta and confirms no regression.
+
+## What Changed Since the Prior Verification
+
+The prior `03-VERIFICATION.md` (committed as `48e24c9e`, `status: human_needed`, `score: 5/5`) was
+written before two later commits:
+
+- `1aeef675` — `test(03): prove third-party captures reach display fields unquoted (RED)` — added
+  `TestThirdPartyCaptureIsQuotedForDisplay` to `internal/setup/apply_test.go`, proving `Registered`/
+  `Reason`/`Notes` carried a runtime's raw stdout/stderr onto a display field with no shell-safe
+  quoting (T-03-04, a Tampering/Info-Disclosure threat: a hostile string like
+  `engram: connected; rm -rf ~` reached the field byte-for-byte, unsafe to paste).
+- `63bbb065` — `fix(03): quote third-party captures before they reach display fields` — closed it:
+  added `displayCapture` (`boundCapture` then `quoteWord`), routed `Registered`, `Reason`, and
+  `Notes` through it at every capture site (`apply.go:87-91,142,166-168,298,361`).
+- `a6357c48` — `docs(phase-03): add security threat verification` — added `03-SECURITY.md`,
+  recording T-03-04 as closed with threats_open: 0.
+
+Only `internal/setup/apply.go` changed among the prior report's `covered_files` (confirmed via
+`git log 48e24c9e..HEAD -- <each covered file>` — every other file shows zero commits in that
+range). This re-verification re-checks must-have 4 (drift legibility / failure messaging) and
+must-have 3b (no secret on the command line) against the current `apply.go`, and does a full
+regression pass on the rest.
+
+## Reconciling "verbatim" with the new quoting (task-directed check)
+
+The prior report's evidence for must-have 4 quoted `apply.go`'s own doc comment: stderr is
+"appended verbatim (bounded)". After `63bbb065`, `describeFailure`/`toleratedNote` route stderr
+through `displayCapture` — bound, then `quoteWord`. **The doc comment at `apply.go:139` still
+reads "verbatim (bounded)" and is now stale** — it was not updated to reflect the quoting step.
+This is a documentation-drift Info finding (see Anti-Patterns), not a functional gap: the
+ROADMAP's must-have 4 text itself never uses the word "verbatim" — it requires only "a message
+naming the runtime and what it expected". The commit's own message is precise about the actual
+guarantee: *"Shell metacharacters in a runtime CLI's stdout/stderr no longer reach a report field
+verbatim"* — i.e., verbatim-ness of *raw, unescaped* bytes was deliberately traded away in favor of
+paste-safety, while completeness of *information* was kept:
+
+- `quoteWord` never drops or truncates content. A safe-rune-only capture renders bare (unchanged).
+  An unsafe capture is wrapped in `'...'` with embedded `'` escaped as `'\''` — every original byte
+  is still present in the rendered field, just re-escaped for shell safety.
+- `TestThirdPartyCaptureIsQuotedForDisplay` (added in `1aeef675`, passing under `63bbb065`) pins
+  exactly this: `Registered`/`Reason`/`Notes` for a hostile capture (`engram: connected; rm -rf ~`)
+  are single-quoted AND `strings.Contains(value, hostile)` still holds — the operator loses nothing
+  they could previously read, they only gain paste-safety.
+- The convergence byte-compare (D-08, must-have 5) reads the RAW untruncated/unquoted probe
+  captures, never the display field — `displayCapture` is applied only at the point a value is
+  assigned to a rendered `Result` field, confirmed by re-reading `execute()`'s probe #1/#2 compare
+  block, which still operates on `probe1.Stdout`/`probe1.Stderr` vs `probe2.Stdout`/`probe2.Stderr`
+  directly. `TestThirdPartyCaptureIsQuotedForDisplay/registered-from-probe-stdout` explicitly
+  asserts `OutcomeAlreadyCorrect` still fires with quoting applied.
+
+Conclusion: must-have 4 ("fails with a message naming the runtime and what it expected") still
+holds — the failing message still names the runtime, the argv, the exit code, and the full stderr
+content (now safely quoted). Must-have 5's byte-compare is unaffected. The stale "verbatim" code
+comment is a cosmetic drift, flagged below, not a blocker.
 
 ## Goal Achievement
 
@@ -63,93 +126,84 @@ drifted CLI rather than silently writing nothing, and converges to a distinctly-
 
 | # | Truth (ROADMAP success criterion) | Status | Evidence |
 |---|---|---|---|
-| 1 | `--apply` registers with Claude Code/Codex/opencode by invoking their own CLI, never by touching config files | ✓ VERIFIED | `internal/setup/{claudecode,codex,opencode}.go` author only `Args` argv for `claude`/`codex`/`opencode` binaries; `internal/setup/apply.go` execs via `Environment.Run`/`env.LookPath` only. `rg -n "os\.(ReadFile\|Open\|Stat)"` across `internal/setup/` matches only `leafpurity_test.go` (a go.mod locator, unrelated to any runtime config file). Live-confirmed: ran the built binary's bare preview against my real `claude`/`codex`/`opencode` installs — each row's `command`/`registered` field reflects the real CLI's own state (see Behavioral Spot-Checks), and `go list -deps ./internal/setup` shows zero non-stdlib, non-same-module imports (leaf-purity holds). |
-| 2 | For an MCP client engram doesn't natively support, `setup` prints a portable, pasteable server config | ✓ VERIFIED | `internal/setup/generic.go`'s `Plan()` returns zero `Actions`/`Probe`, only `Plan.Config` (minified JSON `{"mcpServers":{"engram":{...}}}`). Live-ran `engram setup --url ... --runtime generic --output json`: emitted `{"runtimes":[{"name":"generic","present":true,"outcome":"would-write","config":"{\"mcpServers\":{\"engram\":{\"type\":\"http\",\"url\":\"https://engram.example.com/mcp\"}}}"}]}` — valid, pasteable, single-line JSON. Bare `engram setup` (no `--runtime`) omits the generic row entirely (confirmed live and by `TestSetupBareInvocationExcludesGeneric`), matching `Select`'s `optInOnlyRuntime` exclusion. |
-| 3a | Every registration path covers OAuth / pre-registered OAuth client / bearer / none, or states plainly which are unsupported | ✓ VERIFIED | `claudecode.go`/`codex.go`/`opencode.go`/`generic.go` each switch on all four modes; opencode's `oauth-client` and generic's `oauth-client` return `fmt.Errorf(..., ErrAuthModeUnsupported)` naming the runtime and mode. Live-confirmed: `setup --runtime opencode --auth oauth-client` (preview and `--apply`) both produced `outcome=failed reason="opencode: auth mode \"oauth-client\": setup: auth mode is not supported by this runtime"` — preview exited 0, `--apply` exited 9 (`ExitTotalFailure`). |
-| 3b | No secret is ever placed on a command line | ✓ VERIFIED | `rg -n "TokenFile"` across `internal/setup`/`cmd/engram` shows the path is only ever rendered as provenance (`bearerProvenance`) or ignored (`tokenFileIgnoredMarker`) — never opened/read (no `os.ReadFile`/`os.Open`/`os.Stat` call site touches it outside the go.mod-locating test helper). Live-ran `setup --auth bearer` (no `--apply`): claude-code's argv carries `--header 'Authorization: Bearer ${ENGRAM_TOKEN}'`, codex's carries `--bearer-token-env-var ENGRAM_TOKEN`, opencode's carries `--header 'Authorization=Bearer {env:ENGRAM_TOKEN}'` — every one a variable NAME/reference, never a literal credential value or file path. `TestPlanBearerNeverReadsTokenFile` pins the negative assertion with a nonexistent path. |
-| 4 | Absent CLI or unexpected flag surface fails legibly, naming the runtime and what was expected — never a silent no-op | ✓ VERIFIED | Absent: `Detect()` false → `Result{Present:false, Outcome:"not-present"}`, an explicit per-runtime row, never omitted from the report. Live-confirmed with `PATH=/nonexistent`: JSON report explicitly listed all three runtimes as `"present":false,"outcome":"not-present"` (exit 0 — by design, D-07: absence of an optional runtime is not a whole-command failure). Flag-surface drift: any nonzero exit from a non-tolerant action/probe seam produces `OutcomeFailed` with `Reason` built from the runtime name + rendered argv + exit code + bounded stderr (`describeFailure`/`describeSeamError`), pinned by `TestDriftReportedLegibly`'s two subtests (with and without stderr) — never a silent no-op. |
-| 5 | Running `--apply` twice converges, and reports "already correct" distinctly from "wrote it" | ✓ VERIFIED | `internal/setup/apply.go`'s `execute()` byte-compares raw probe reads #1/#2 (step 9); `TestApplyConvergesCodex`, `TestApplyConvergesClaudeCode`, and `TestApplyOpenCodeConvergence` each drive first-run (`wrote`) then second-run (`already-correct`) through a scripted `Environment` fake and pass. Claude-code's premise correction (tolerant `mcp remove` then fatal `mcp add`, since `claude mcp add` refuses on an existing name at every scope with no force flag) is the mechanism that makes `already-correct` reachable at all for claude-code — confirmed present in `claudecode.go` and exercised by the named test. opencode's asymmetric degradation (an unrelated server's live-dialed status flip differs the two probe captures, so `already-correct` is expected to be rare in practice, never `wrote`-in-the-wrong-direction) is a documented, tested, safe-direction-only property (`TestApplyOpenCodeConvergence/unrelated-server-status-flip-still-wrote`), not an inconsistency. |
+| 1 | `--apply` registers with Claude Code/Codex/opencode by invoking their own CLI, never by touching config files | ✓ VERIFIED | Unchanged since prior report. `internal/setup/{claudecode,codex,opencode}.go` author only `Args` argv for `claude`/`codex`/`opencode` binaries; `apply.go` execs via `Environment.Run`/`env.LookPath` only. `rg -n "os\.(ReadFile\|Open\|Stat)"` across `internal/setup/` still matches only the go.mod-locator test helper. Not touched by `63bbb065`. |
+| 2 | For an MCP client engram doesn't natively support, `setup` prints a portable, pasteable server config | ✓ VERIFIED | Unchanged since prior report. `internal/setup/generic.go` not touched by `63bbb065`; `Plan()` still returns zero `Actions`/`Probe`, only `Plan.Config`. |
+| 3a | Every registration path covers OAuth / pre-registered OAuth client / bearer / none, or states plainly which are unsupported | ✓ VERIFIED | Unchanged since prior report. `claudecode.go`/`codex.go`/`opencode.go`/`generic.go` not touched by `63bbb065`; all four still switch on all four modes; unsupported modes still return `ErrAuthModeUnsupported` naming the runtime and mode. |
+| 3b | No secret is ever placed on a command line | ✓ VERIFIED | Re-checked against current `apply.go`. `rg -n "TokenFile"` across `internal/setup`/`cmd/engram` still shows the path is only rendered as provenance or the `ignored` marker — never opened/read. `63bbb065` touches only capture-display quoting, not token/credential handling; `TestPlanBearerNeverReadsTokenFile` and `TestNoSecretInArgs`-style coverage unaffected and still passing. |
+| 4 | Absent CLI or unexpected flag surface fails legibly, naming the runtime and what was expected — never a silent no-op | ✓ VERIFIED | Re-verified against current `apply.go` (the file `63bbb065` changed). `describeFailure`/`describeSeamError` still build `Reason` from runtime name + rendered argv + exit code + captured stderr; stderr is now bound-then-quoted (`displayCapture`) rather than bound-only, closing T-03-04 (see reconciliation section above) without losing any information the operator could previously read. `TestDriftReportedLegibly` (both subtests) and the new `TestThirdPartyCaptureIsQuotedForDisplay` (4 subtests) all pass — `go test ./internal/setup/... -run 'TestDriftReportedLegibly|TestThirdPartyCaptureIsQuotedForDisplay' -v` confirmed green. Absent-CLI path (`Detect()` false → `not-present`) untouched by this commit. |
+| 5 | Running `--apply` twice converges, and reports "already correct" distinctly from "wrote it" | ✓ VERIFIED | Re-verified: `63bbb065` changes only where captures are rendered into `Result.Registered`/`Reason`/`Notes`, never the byte-compare of `probe1`/`probe2`'s raw `Stdout`/`Stderr`, confirmed by direct inspection of `execute()`'s compare block plus `TestThirdPartyCaptureIsQuotedForDisplay/registered-from-probe-stdout`'s explicit `OutcomeAlreadyCorrect` assertion. `TestApplyConvergesCodex`, `TestApplyConvergesClaudeCode`, `TestApplyOpenCodeConvergence` all still pass. |
 
 **Score:** 5/5 truths verified (0 present, behavior-unverified)
 
-All five truths are behavior-dependent (state-transition/convergence claims) per the verification
-process's definition. Each is backed by a named, passing test that exercises the actual transition
-through a scripted `Environment` fake — never a real third-party binary, per repo rule m45p2b4bp7 —
-plus, where safe (read-only), a live run of the built binary against my own real `claude`/`codex`/
-`opencode` installs. A full mutating `--apply`-twice round trip against a real installed CLI was
-deliberately NOT run during this verification (it would alter the verifier's own machine state) and
-is listed under Human Verification instead, per this phase's explicit instruction that live
-end-to-end convergence against real third-party CLIs is legitimately unverifiable from inside an
-automated check.
+All five truths remain behavior-dependent (state-transition/convergence claims). Each is backed by
+a named, passing test exercising the actual transition through a scripted `Environment` fake —
+never a real third-party binary, per repo rule m45p2b4bp7. The delta commit (`63bbb065`) is itself
+covered by a dedicated RED/GREEN pair (`1aeef675` → `63bbb065`) with a passing regression test
+(`TestThirdPartyCaptureIsQuotedForDisplay`), which is the strongest form of evidence this phase's
+constraints allow.
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |---|---|---|---|
-| `internal/setup/apply.go` | Shared executor: LookPath, Run, probe/byte-compare, D-11 failure legibility | ✓ VERIFIED | Present, substantive, wired from `cmd/engram/setup.go`'s `setupBuildRows`/`setupApplyRun`. CR-01 (panic on non-first empty-`Args` action) is fixed at lines 242-249, with regression test `TestEveryActionArgsValidated` passing. |
-| `internal/setup/claudecode.go` | Two-action tolerant-remove-then-fatal-add per auth mode | ✓ VERIFIED | All four modes return the two-action shape; `claudeCodeRemoveAction.Tolerant=true` authored explicitly, never positional. |
-| `internal/setup/codex.go` | Single non-tolerant `mcp add`, bearer via `--bearer-token-env-var` | ✓ VERIFIED | Matches; probe is `codex mcp get engram --json`. |
-| `internal/setup/opencode.go` | Single non-tolerant `mcp add` with `KEY=VALUE` header form fix, no remove verb | ✓ VERIFIED | Header form is `Authorization=Bearer {env:ENGRAM_TOKEN}` (fixes the shipped colon-space bug); `oauth-client` returns `ErrAuthModeUnsupported`. |
-| `internal/setup/generic.go` | Zero-Action, zero-Probe opt-in pseudo-runtime emitting portable JSON | ✓ VERIFIED | `OptInOnly()==true`; `Detect` unconditionally true but excluded from `Select(nil)`'s default set. |
-| `internal/setup/quote.go` | D-02 minimal POSIX display quoting | ✓ VERIFIED | `quoteWord`/`quoteArgs`; safe-rune set matches must-have text exactly. |
-| `internal/setup/runtime.go` | `Runtimes` registry, `Select`, `optInOnlyRuntime` predicate | ✓ VERIFIED | `Runtimes = []Runtime{ClaudeCode, Codex, OpenCode, Generic}`; default-set exclusion is structural (`optInOnlyRuntime`), not name-based. |
-| `internal/surfaces/toolclass.go` | `setup` row comment states the real per-runtime asymmetry | ✓ VERIFIED | Comment names codex/opencode as silently overwriting and claude-code as refusing, matching `03-RESEARCH.md`; `Class` unchanged (`Destructive:true, Idempotent:true`). |
-| `cmd/engram/setup.go` | Preview runs the probe (D-10); `--apply` calls the real executor; `token_file=ignored`/`registered=` rows | ✓ VERIFIED | `setupBuildRows`→`setup.Preview`, `setupApplyRun`→`setup.Apply`; no stub loop remains. Live-confirmed `token_file=ignored` marker and `registered=` field both render for real. |
+| `internal/setup/apply.go` | Shared executor: LookPath, Run, probe/byte-compare, D-11 failure legibility, now with display-quoted third-party captures | ✓ VERIFIED | Present, substantive, wired from `cmd/engram/setup.go`. `displayCapture` (bound, then `quoteWord`) added at lines 87-91 and applied at every capture-to-field site (142, 166-168, 298, 361). CR-01 fix (line ~242-249) and its regression test still present. |
+| `internal/setup/claudecode.go` | Two-action tolerant-remove-then-fatal-add per auth mode | ✓ VERIFIED | Unchanged; not modified by the delta. |
+| `internal/setup/codex.go` | Single non-tolerant `mcp add`, bearer via `--bearer-token-env-var` | ✓ VERIFIED | Unchanged; not modified by the delta. |
+| `internal/setup/opencode.go` | Single non-tolerant `mcp add` with `KEY=VALUE` header form fix, no remove verb | ✓ VERIFIED | Unchanged; not modified by the delta. |
+| `internal/setup/generic.go` | Zero-Action, zero-Probe opt-in pseudo-runtime emitting portable JSON | ✓ VERIFIED | Unchanged; not modified by the delta. |
+| `internal/setup/quote.go` | D-02 minimal POSIX display quoting (`quoteWord`/`quoteArgs`, now also consumed by `displayCapture`) | ✓ VERIFIED | Unchanged source, but now has a second consumer (`apply.go`'s `displayCapture`) beyond argv display; safe-rune table and single-quote/escape logic unchanged. |
+| `internal/setup/runtime.go` | `Runtimes` registry, `Select`, `optInOnlyRuntime` predicate | ✓ VERIFIED | Unchanged; not modified by the delta. |
+| `internal/surfaces/toolclass.go` | `setup` row comment states the real per-runtime asymmetry | ✓ VERIFIED | Unchanged; not modified by the delta. |
+| `cmd/engram/setup.go` | Preview runs the probe (D-10); `--apply` calls the real executor; `token_file=ignored`/`registered=` rows | ✓ VERIFIED | Unchanged; not modified by the delta. |
+| `.planning/phases/03-runtime-registration/03-SECURITY.md` | Per-phase threat register with T-03-04 closed | ✓ VERIFIED | New since prior report (`a6357c48`); 29 threats registered, `threats_open: 0`, T-03-04 explicitly recorded as closed by `displayCapture` at the exact line numbers present in current `apply.go`. |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |---|---|---|---|---|
-| `cmd/engram/setup.go: setupApplyRun` | `internal/setup.Apply` | direct call, per selected runtime | ✓ WIRED | `go test ./...` green; live-ran `--apply` for a real unsupported-mode failure (opencode+oauth-client) and observed the exact reported error and exit code 9. |
-| `cmd/engram/setup.go: setupPreview` | `internal/setup.Preview` | via `setupBuildRows` | ✓ WIRED | Same function underlies both preview and apply row-building (D-15's one-path invariant); live-confirmed identical `Registered`/`Command` shape in both lanes. |
-| `internal/setup/apply.go: execute()` | `Environment.Run`/`env.LookPath` | `runSeam` | ✓ WIRED | Every exec goes through the injectable seam; no direct `exec.Command` call in `apply.go`. |
-| `internal/setup/{claudecode,codex,opencode}.go: Plan()` | `internal/setup/apply.go: execute()` | shared executor, no per-runtime exec code | ✓ WIRED | Confirmed by reading `apply.go` end-to-end: no `if name == "claude-code"` (or similar) branch exists anywhere in the executor. |
-| `internal/setup/generic.go: Plan()` | `internal/setup/apply.go: execute()` step 2a | zero-Actions early return | ✓ WIRED | `len(plan.Actions)==0` branch returns `OutcomeWouldWrite` immediately without touching `LookPath`/`Run`; live-confirmed generic never starts a process (no `binary=`/`registered=` field on its row). |
+| `cmd/engram/setup.go: setupApplyRun` | `internal/setup.Apply` | direct call, per selected runtime | ✓ WIRED | Unaffected by the delta; `go test ./...` green. |
+| `internal/setup/apply.go: execute()` | `Environment.Run`/`env.LookPath` | `runSeam` | ✓ WIRED | Unaffected; every exec still goes through the injectable seam. |
+| `internal/setup/apply.go: describeFailure/toleratedNote` | `internal/setup/quote.go: quoteWord` | `displayCapture` (new call site, this delta) | ✓ WIRED | Confirmed by reading `apply.go`: `displayCapture` calls `quoteWord(boundCapture(s))`; both `describeFailure` and `toleratedNote` route their stderr argument through it (verified inline, lines ~139-168). |
+| `internal/setup/apply.go: execute()` probe byte-compare | raw `RunResult.Stdout`/`.Stderr` | direct field comparison, NOT `displayCapture` | ✓ WIRED (confirmed still raw) | Re-read the compare block: `probe1.Stdout == probe2.Stdout && probe1.Stderr == probe2.Stderr` — no `displayCapture`/`boundCapture`/`quoteWord` call anywhere in that comparison. `Result.Registered` (a separately assigned field) is the only thing quoted. |
 
 ### Requirements Coverage
 
 | Requirement | Source Plan(s) | Status | Evidence |
 |---|---|---|---|
-| REQ-setup-idempotent | 03-01, 03-02, 03-03, 03-05 | ✓ SATISFIED | Byte-compare convergence in `apply.go`; three named convergence tests (codex/claude-code/opencode) all pass. |
-| REQ-register-claude-code | 03-02 | ✓ SATISFIED | `claudecode.go`; live-confirmed real `claude mcp add`/`remove`/`get` invocation shape. |
-| REQ-register-codex | 03-01 | ✓ SATISFIED | `codex.go`; live-confirmed real `codex mcp add`/`get --json` invocation shape. |
-| REQ-register-opencode | 03-03 | ✓ SATISFIED | `opencode.go`; live-confirmed real `opencode mcp add`/`list` invocation shape, including the `KEY=VALUE` header fix. |
-| REQ-register-generic-mcp | 03-04 | ✓ SATISFIED | `generic.go`; live-confirmed pasteable JSON output and default-set exclusion. |
-| REQ-register-auth-modes | 03-01 – 03-05 | ✓ SATISFIED | All four modes handled or explicitly unsupported per runtime; no literal credential ever in `Args` (checked source-wide). |
-| REQ-register-cli-surface-drift-legible | 03-01, 03-05 | ✓ SATISFIED | `describeFailure`/`describeSeamError`; `TestDriftReportedLegibly`; live-confirmed absent-CLI reporting via `PATH=/nonexistent`. |
+| REQ-setup-idempotent | 03-01, 03-02, 03-03, 03-05 | ✓ SATISFIED | Byte-compare convergence in `apply.go`, unaffected by the delta; three named convergence tests pass. |
+| REQ-register-claude-code | 03-02 | ✓ SATISFIED | `claudecode.go`, unchanged. |
+| REQ-register-codex | 03-01 | ✓ SATISFIED | `codex.go`, unchanged. |
+| REQ-register-opencode | 03-03 | ✓ SATISFIED | `opencode.go`, unchanged. |
+| REQ-register-generic-mcp | 03-04 | ✓ SATISFIED | `generic.go`, unchanged. |
+| REQ-register-auth-modes | 03-01 – 03-05 | ✓ SATISFIED | Unchanged; no literal credential ever in `Args`. |
+| REQ-register-cli-surface-drift-legible | 03-01, 03-05 | ✓ SATISFIED | `describeFailure`/`describeSeamError`/`TestDriftReportedLegibly` unchanged in substance; now additionally hardened by `displayCapture`/`TestThirdPartyCaptureIsQuotedForDisplay` (T-03-04) without weakening the "names the runtime and what it expected" guarantee. |
 
-No orphaned requirements: every ID `grep`'d against `Phase 3` in `.planning/REQUIREMENTS.md` (7 IDs)
-appears in at least one of the five plans' `requirements:` frontmatter, and every plan's declared
-requirement IDs appear in `.planning/REQUIREMENTS.md`.
+Cross-referenced against `.planning/REQUIREMENTS.md`: all 7 IDs declared across the five plans'
+`requirements:` frontmatter appear in REQUIREMENTS.md marked `[x]` and `Complete` under Phase 3; no
+ID in REQUIREMENTS.md's Phase 3 rows is missing from a plan's frontmatter. No orphaned requirements.
 
 ### Anti-Patterns Found
 
-None. `rg -n "TBD|FIXME|XXX|TODO|HACK|PLACEHOLDER|not yet implemented|coming soon"` across every
-file this phase modified (`internal/setup/*.go`, `cmd/engram/setup.go`,
-`internal/surfaces/toolclass.go`) returns zero matches. `setup.ErrApplyNotImplemented` and
-`setupApplyStubReason` no longer exist anywhere in the tree (confirmed by `rg`).
+| File | Line | Pattern | Severity | Impact |
+|---|---|---|---|---|
+| `internal/setup/apply.go` | 139 | Doc comment "stderr is carried as data, appended verbatim (bounded)" is stale after `63bbb065` — stderr is now bound-then-quoted, not verbatim | ℹ️ Info | Cosmetic only; no functional or must-have impact (see reconciliation section above). The exported behavior contract (names runtime + argv + exit code + stderr content) is intact; only the code comment's word choice drifted. Does not block this phase. |
 
-The one Critical finding from `03-REVIEW.md` (CR-01: panic on a non-first empty-`Args` action) is
-already fixed on `main` (commit `ae1ebc39`, preceded by RED commit `9e05c5cc`), with a passing
-regression test (`TestEveryActionArgsValidated`). The four Warnings and one Info in `03-REVIEW.md`
-are lower-severity robustness/defense-in-depth notes, not goal-blocking — not duplicated here per
-this task's instructions.
+`rg -n "TBD|FIXME|XXX|TODO|HACK|PLACEHOLDER|not yet implemented|coming soon"` across
+`internal/setup/apply.go` (the only file this delta touched) returns zero matches — no debt
+markers introduced.
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 |---|---|---|---|
 | `go build ./...` | `go build ./...` | clean, no output | ✓ PASS |
-| `go test ./...` (run once, full suite) | `go test ./...` | all packages `ok` | ✓ PASS |
-| `task lint` | `task lint` | "All checks passed!" | ✓ PASS |
-| Convergence mechanism, all four runtimes | `go test ./internal/setup/... -run 'TestApplyConverges(Codex\|ClaudeCode)\|TestApplyOpenCodeConvergence'` | all subtests PASS | ✓ PASS |
-| CR-01 regression | `go test ./internal/setup/... -run TestEveryActionArgsValidated` | PASS | ✓ PASS |
-| Live: bare preview against real claude-code/codex/opencode installs | built binary, `setup --url ... --output json` | real `command`/`registered` fields reflecting actual machine state (e.g. claude-code showed a real existing "engram" registration; codex showed "No MCP server named 'engram' found"; opencode live-dialed 3 unrelated registered servers) | ✓ PASS (read-only; no `--apply` run against real installs) |
-| Live: generic portable config | built binary, `setup --url ... --runtime generic --output json` | single-line pasteable `{"mcpServers":{"engram":{"type":"http","url":"..."}}}` | ✓ PASS |
-| Live: bearer mode argv, all three native runtimes | built binary, `setup --url ... --auth bearer --output json` | env-var-reference forms only, no credential value | ✓ PASS |
-| Live: unsupported mode (opencode + oauth-client) | built binary, `setup --runtime opencode --auth oauth-client [--apply]` | preview: `outcome=failed`, exit 0; apply: same reason, exit 9 | ✓ PASS |
-| Live: absent CLI | built binary, `PATH=/nonexistent setup --url ...` | all three runtimes reported `outcome=not-present`, exit 0 | ✓ PASS |
-| `internal/setup` leaf purity | `go list -deps ./internal/setup` | only stdlib + itself | ✓ PASS |
+| `go test ./...` (run once, full suite) | `go test ./...` | all packages `ok` (`internal/setup` ok, `cmd/engram` ok) | ✓ PASS |
+| `task lint` | `task lint` | "All checks passed!" (actionlint, golangci-lint, yamlfmt, rumdl, ruff) | ✓ PASS |
+| New security-fix test | `go test ./internal/setup/... -run TestThirdPartyCaptureIsQuotedForDisplay -v` | all 4 subtests PASS | ✓ PASS |
+| Drift-legibility regression | `go test ./internal/setup/... -run TestDriftReportedLegibly -v` | both subtests PASS | ✓ PASS |
+| Convergence regression, all runtimes | `go test ./internal/setup/... -run 'TestApplyConverges(Codex\|ClaudeCode)\|TestApplyOpenCodeConvergence'` | all subtests PASS | ✓ PASS |
+| Delta scope confirmation | `git log 48e24c9e..HEAD -- <each of prior report's 24 covered_files>` | only `internal/setup/apply.go` shows commits in range | ✓ PASS |
+| UAT file integrity | `git log -1 -- 03-UAT.md` | still `806be1f7`, untouched by this run | ✓ PASS |
 
 ### Probe Execution
 
@@ -158,26 +212,26 @@ plans nor the review reference probe scripts.
 
 ## Human Verification Required
 
-1 through 3 above (frontmatter `human_verification`): full mutating `--apply`-twice round trips
-against real installed `claude`/`codex`/`opencode` CLIs, and a real drifted-flag-surface CLI. All
-three are legitimately unrunnable from inside this repo's own test suite (repo rule m45p2b4bp7) and
-were deliberately not simulated by mutating the verifier's own machine state. The convergence
-*mechanism* is proven with scripted fakes that mirror the exact exit codes/stdout/stderr
-`03-RESEARCH.md` recorded from live probing, and the read-only halves (probe output, argv
-construction, unsupported-mode/absent-CLI reporting) were independently live-confirmed against my
-own real installs during this verification.
+The same 3 items as the prior report (unchanged in substance, item 3's expected text now notes the
+capture is quoted for paste safety): full mutating `--apply`-twice round trips against real
+installed `claude`/`codex`/`opencode` CLIs, and a real drifted-flag-surface CLI. All three remain
+legitimately unrunnable from inside this repo's own test suite (repo rule m45p2b4bp7). The
+convergence and failure-legibility *mechanisms* are proven with scripted fakes, including the new
+quoting behavior added by `63bbb065`.
 
 ## Gaps Summary
 
-None. Every ROADMAP success criterion has direct, positive evidence in the current codebase — not
-merely a SUMMARY.md claim — backed by passing named tests and, where safe, live runs of the built
-binary against real installed runtime CLIs. The phase's own tail work (the `internal/keylinks`
-malformed-shape fix and the CR-01 panic-guard hoist) is present, scoped as claimed, and covered by
-passing regression tests. Status is `human_needed` rather than `passed` solely because a full
-mutating `--apply`-twice round trip against real third-party CLIs cannot be run inside this repo's
-own automated verification — not because any check failed.
+None. The prior report's 5/5 score holds under re-verification. The single code change since the
+prior report (`63bbb065`) closes a real security threat (T-03-04: unquoted third-party captures
+reaching paste-visible report fields) via a RED/GREEN pair with a passing dedicated regression
+test, does not touch the convergence byte-compare's raw-capture guarantee (must-have 5), and does
+not weaken must-have 4's "names the runtime and what it expected" guarantee — it only changes HOW
+the stderr content is rendered (quoted, not stripped). One stale code comment (line 139,
+"verbatim") is flagged as an Info-level cosmetic finding, not a gap. Status remains `human_needed`
+for the same reason as before: a full mutating `--apply`-twice round trip against real third-party
+CLIs cannot be run inside this repo's own automated verification, not because any check failed.
 
 ---
 
-_Verified: 2026-09-09T17:03:30Z_
+_Verified: 2026-09-09T21:00:00Z_
 _Verifier: Claude (gsd-verifier)_
