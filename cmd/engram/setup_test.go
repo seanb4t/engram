@@ -1131,3 +1131,60 @@ func TestSetupGenericAndFailingRuntimeExitsPartial(t *testing.T) {
 		t.Errorf("exitCodeFromError(err) = %d, want %d (exitPartial); stderr=%q", got, exitPartial, stderr)
 	}
 }
+
+// TestSetupPartialExitIsLiveProducible proves exitPartial (8) has a REAL,
+// live production path — not merely an allowlist claim
+// (catalog_test.go's nonConnectProducedCodes names "setup (partial
+// per-runtime failure)" as this code's producer, but until this phase no
+// production path could actually reach it). Two NATIVE runtimes are
+// selected: claude-code's write succeeds, codex's write fails. This turns
+// the allowlist entry into a proven one, which is what that entry's own
+// doc comment says it is supposed to mean.
+func TestSetupPartialExitIsLiveProducible(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	// Distinguish by the LookPath-resolved BINARY PATH (never a
+	// runtime-name check inside the fake — the fake only ever sees
+	// path/args, mirroring what the real Environment.Run seam sees):
+	// codex's every invocation fails, claude-code's every invocation
+	// succeeds.
+	mixedRun := func(_ context.Context, path string, _ []string) (setup.RunResult, error) {
+		if strings.Contains(path, "codex") {
+			return setup.RunResult{ExitCode: 1, Stderr: "boom: mcp add failed"}, nil
+		}
+		return setup.RunResult{ExitCode: 0}, nil
+	}
+	withFakeSetupEnv(t, fakeSetupEnvWithRun(mixedRun, "claude", "codex"))
+
+	stdout, stderr, err := runClient(t, "setup",
+		"--url", "https://engram.example.com/mcp",
+		"--runtime", "claude-code,codex",
+		"--output", "json",
+		"--apply")
+	if err == nil {
+		t.Fatal("expected a non-nil error (codex fails while claude-code succeeds), got nil")
+	}
+	if got := exitCodeFromError(err); got != exitPartial {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitPartial); stdout=%q stderr=%q", got, exitPartial, stdout, stderr)
+	}
+
+	var doc setupReportDoc
+	if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+	}
+	var sawSucceeded, sawFailed bool
+	for _, row := range doc.Runtimes {
+		switch row.Name {
+		case "claude-code":
+			sawSucceeded = row.Outcome == string(setup.OutcomeWrote) || row.Outcome == string(setup.OutcomeAlreadyCorrect)
+		case "codex":
+			sawFailed = row.Outcome == string(setup.OutcomeFailed)
+		}
+	}
+	if !sawSucceeded {
+		t.Errorf("claude-code row did not report a successful outcome: %s", stdout)
+	}
+	if !sawFailed {
+		t.Errorf("codex row did not report %q: %s", setup.OutcomeFailed, stdout)
+	}
+}
