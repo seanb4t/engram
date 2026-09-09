@@ -88,9 +88,11 @@ release:
   replace_existing_artifacts: true
 
 # homebrew_casks: is GoReleaser's current cask publisher — brews: (formula) is
-# deprecated and must not be introduced. No repository.token override: the
-# GoReleaser step in release.yaml already passes the release-please App token
-# as GITHUB_TOKEN (D-12), extended to cover seanb4t/homebrew-tap too.
+# deprecated and must not be introduced. The publisher DOES override
+# repository.token (see below): #516 replaced the original single-token design
+# (D-12, release-please App as GITHUB_TOKEN widened to seanb4t/homebrew-tap)
+# with a dedicated tap-publisher App, so the release credential can no longer
+# reach the tap. Do not re-widen the release App to the tap.
 homebrew_casks:
   - name: engram
     repository:
@@ -99,10 +101,21 @@ homebrew_casks:
       # A dedicated tap-publisher App's token, NOT the release App's. This
       # overrides GITHUB_TOKEN for this publisher only, so the credential that
       # writes the tap cannot cut a release and the credential that cuts
-      # releases cannot write the tap. One App, one purpose. Falls back to an
-      # empty string when unset so `task release:snapshot` still renders
-      # locally (a snapshot never uploads).
-      token: "{{ if .Env.HOMEBREW_TAP_TOKEN }}{{ .Env.HOMEBREW_TAP_TOKEN }}{{ end }}"
+      # releases cannot write the tap. One App, one purpose.
+      #
+      # MUST stay the bare `{{ .Env.NAME }}` form. GoReleaser regex-matches this
+      # field against `^{{\s*\.Env\.[^.\s}]+\s*}}$` on the RAW config string
+      # before expanding it (internal/tmpl ApplySingleEnvOnly), deliberately
+      # refusing credentials composed from any other interpolation. The previous
+      # `{{ if .Env.X }}…{{ end }}` guard could never match and failed v0.15.0
+      # with "expected {{ .Env.VAR_NAME }} only".
+      #
+      # No fallback is needed for an unset var: this field is only read on the
+      # cask pipe's PUBLISH path, which `--snapshot` never reaches and which
+      # `skip_upload: true` short-circuits before token resolution. That is also
+      # why `goreleaser check` and every PR run stay green on a broken value —
+      # only a real tag exercises it.
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Casks
     homepage: https://github.com/seanb4t/engram
     # Copied byte-for-byte from rootCmd.Short (cmd/engram/root.go:27) — the
