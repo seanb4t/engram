@@ -4,11 +4,11 @@ milestone: 2026-08-23.01
 current_phase: 03
 current_phase_name: Runtime Registration
 status: executing
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-09-09T15:51:18.564Z"
+stopped_at: Completed 03-04-PLAN.md
+last_updated: "2026-09-09T16:18:55.120Z"
 last_activity: 2026-09-08
 last_activity_desc: Phase 03 execution started
-state_head: 7e30ae764d886142cc8e89c3990fa5b430bc4d6b
+state_head: 145f68b192780e4c8ba9035f9710fe4d588a8634
 progress:
   total_phases: 6
   completed_phases: 2
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 — after opening milestone 2026-0
 ## Current Position
 
 Phase: 03 (Runtime Registration) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-09-08 — Phase 03 execution started
 
@@ -253,6 +253,8 @@ milestone needs in working memory.
 - [Phase 03]: A Plan with no Probe wired degrades safely under the shared executor to never claiming OutcomeAlreadyCorrect, applying D-08's ambiguity-resolves-to-wrote invariant to the zero-signal case. — claude-code/opencode have no Probe this wave; treating that as a safe degradation avoids special-casing runtimes by name in the shared executor.
 - [Phase 03]: opencode's bearer header fixed to KEY=VALUE form (Authorization=Bearer {env:ENGRAM_TOKEN}), replacing the confirmed-broken colon-space HTTP-header-string form
 - [Phase 03]: claude-code: tolerant remove-then-fatal-add (destructive window explicitly accepted); Action.Tolerant authored-per-action, not positional; toolclass.go setup-row comment corrected to real per-runtime overwrite/refuse behavior
+- [Phase 03]: generic pseudo-runtime opts out of the default (--runtime-less) selection via a self-declared optInOnlyRuntime predicate, not a by-name check — D-14's literal Detect()-based phrasing was unimplementable without a by-name check or an interface signature change; the structural predicate achieves the same operator-visible outcome (a bare invocation never claims presence for a no-binary pseudo-runtime)
+- [Phase 03]: bearer mode on generic falls back to bearerProvenance's path placeholder when --token-file is supplied, diverging from the native runtimes' ENGRAM_TOKEN-naming convention — generic has no CLI of its own that could resolve a ${...} substitution token on an arbitrary third-party client, so it cannot promise that reference will ever expand there
 
 ### Pending Todos
 
@@ -297,8 +299,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-09T15:51:18.500Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-09-09T16:18:55.051Z
+Stopped at: Completed 03-04-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -406,6 +408,7 @@ Resume file: None
 | Phase 03 P01 | 95min | 3 tasks | 14 files |
 | Phase 03 P03 | 33min | 2 tasks | 4 files |
 | Phase 03 P02 | 15min | 3 tasks | 8 files |
+| Phase 03 P04 | 45min | 3 tasks | 11 files |
 
 ## Operator Next Steps
 
