@@ -275,7 +275,11 @@ func runServe(cmd *cobra.Command) error {
 
 	var handler http.Handler = mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return srv }, nil)
-	handler = withAuth(handler, chain, cfg.OIDC.ResourceMetadata)
+	// GH-526 / D-02: an explicitly configured ENGRAM_OIDC_RESOURCE_METADATA
+	// still wins; otherwise, when ENGRAM_MCP_RESOURCE_URL is set, the 401
+	// challenge now defaults to the path this server itself serves rather
+	// than pointing at nothing.
+	handler = withAuth(handler, chain, resolveResourceMetadataURL(cfg.OIDC.ResourceMetadata, resolvedMCPResourceURL, resolvedMCPPath))
 	handler = accessLog(tm.RecordAuthFailure, nil)(handler)
 	handler = otelhttp.NewHandler(handler, "mcp")
 	// GH-526: mount the RFC 9728 protected-resource metadata document bare on

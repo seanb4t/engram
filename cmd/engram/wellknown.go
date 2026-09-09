@@ -167,6 +167,46 @@ func protectedResourceHandler(configuredResourceURL, issuer, mcpPath string) htt
 	})
 }
 
+// resolveResourceMetadataURL implements D-02 (260909-ofg-PLAN.md): it decides
+// what withAuth's 401 WWW-Authenticate resource_metadata challenge points at.
+// An explicitly configured value (ENGRAM_OIDC_RESOURCE_METADATA) always
+// wins and is returned untouched -- including when mcpResourceURL is also
+// set. An empty mcpResourceURL yields empty, preserving exactly what ships
+// today (no resource_metadata in the challenge). Otherwise the challenge URL
+// is derived from mcpResourceURL's origin (scheme + host only -- any path,
+// query, or trailing slash it carries is discarded, so the result never
+// doubles a path segment) plus whichever protectedResourcePaths form applies
+// for mcpPath.
+//
+// The per-request derivation resourceURLFor does is NOT available here:
+// withAuth is built once, at server-construction time, from a single static
+// string (see the withAuth call site in serve.go) -- there is no *http.Request
+// in scope to inspect forwarded headers against. mcpResourceURL is the only
+// honest source of a public origin at that point in startup.
+//
+// A parse failure of mcpResourceURL yields empty rather than a malformed
+// challenge URL. This is a belt-and-braces fallback, not a live path:
+// resolveMCPResourceURL has already rejected malformed input at startup
+// before this function is ever called with it.
+func resolveResourceMetadataURL(configured, mcpResourceURL, mcpPath string) string {
+	if configured != "" {
+		return configured
+	}
+	if mcpResourceURL == "" {
+		return ""
+	}
+	u, err := url.Parse(mcpResourceURL)
+	if err != nil {
+		return ""
+	}
+	origin := u.Scheme + "://" + u.Host
+	base, suffix := protectedResourcePaths(mcpPath)
+	if suffix != "" {
+		return origin + suffix
+	}
+	return origin + base
+}
+
 // mountWellKnownRoutes registers h under the RFC 9728 host-only path and,
 // when mcpPath is not the bare root, the §3.1 path-suffix path too. Both
 // patterns are method-scoped ("GET <path>") rather than a bare path
