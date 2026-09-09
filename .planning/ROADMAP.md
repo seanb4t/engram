@@ -423,12 +423,12 @@ runtime writer plugs into it).
    reports "already correct" distinctly from the first run's "wrote it" (moved here from Phase 2,
    which stubs `Apply()` per its CONTEXT.md D-09).
 
-**Plans:** 5 plans
+**Plans:** 1/5 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — Shared executor tracer: `Args`/`Probe` model, `Environment.Run` seam, read→write→read convergence, and a real `--apply` for codex end-to-end
+- [x] 03-01-PLAN.md — Shared executor tracer: `Args`/`Probe` model, `Environment.Run` seam, read→write→read convergence, and a real `--apply` for codex end-to-end
 
 **Wave 2** *(blocked on Wave 1 completion)*
 

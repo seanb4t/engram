@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 milestone: 2026-08-23.01
 current_phase: 03
 current_phase_name: Runtime Registration
-status: planning
-stopped_at: Phase 3 context gathered
-last_updated: "2026-09-09T00:14:06.118Z"
-last_activity: 2026-08-30
-last_activity_desc: Phase 02 complete, transitioned to Phase 1
-state_head: 875701048de18d5ac6089e6daef0420133cd4846
+status: executing
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-09-09T01:45:30.619Z"
+last_activity: 2026-09-08
+last_activity_desc: Phase 03 execution started
+state_head: 5527f5d14c9ca14f837f0680f6fec39b3a2f31ce
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 11
-  completed_plans: 6
+  completed_plans: 7
 milestone_name: Distribution & Agent Bootstrap
 ---
 
@@ -24,14 +24,14 @@ milestone_name: Distribution & Agent Bootstrap
 See: .planning/PROJECT.md (updated 2026-08-23 — after opening milestone 2026-08-23.01)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 02 — Setup Command Core
+**Current focus:** Phase 03 — Runtime Registration
 
 ## Current Position
 
-Phase: 03 (Runtime Registration) — READY TO EXECUTE
-Plan: Not started
+Phase: 03 (Runtime Registration) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-08-30 — Phase 02 complete, transitioned to Phase 1
+Last activity: 2026-09-08 — Phase 03 execution started
 
 ## Deferred Items
 
@@ -249,6 +249,8 @@ milestone needs in working memory.
   tracks touch unrelated files and can execute in parallel; Phases 3→4→5 are strict-order
   (registration → skills → delegation), and Phase 6 (docs) depends on both Phase 1 and Phase 5 so
   it documents final shipped behavior.
+- [Phase 03]: Deleted Action.Command as a settable field (D-01), forcing a mechanical content-identical Args conversion of claudecode.go/opencode.go even though neither is in 03-01's files_modified list. — Action.Command must never be authored by hand anywhere (Task 1 acceptance criterion); the field's deletion is repo-wide, not per-file.
+- [Phase 03]: A Plan with no Probe wired degrades safely under the shared executor to never claiming OutcomeAlreadyCorrect, applying D-08's ambiguity-resolves-to-wrote invariant to the zero-signal case. — claude-code/opencode have no Probe this wave; treating that as a safe degradation avoids special-casing runtimes by name in the shared executor.
 
 ### Pending Todos
 
@@ -293,9 +295,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-08T22:34:32.996Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-runtime-registration/03-CONTEXT.md
+Last session: 2026-09-09T01:45:30.551Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -399,6 +401,7 @@ Resume file: .planning/phases/03-runtime-registration/03-CONTEXT.md
 | Phase 08 P06 | 24min | 3 tasks | 2 files |
 | Phase 09 P01 | 20min | 2 tasks | 2 files |
 | Phase 09 P02 | 12min | 2 tasks | 2 files |
+| Phase 03 P01 | 95min | 3 tasks | 14 files |
 
 ## Operator Next Steps
 
