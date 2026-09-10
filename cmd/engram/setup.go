@@ -161,7 +161,15 @@ func setupApplySkillsFacet(row *setupRuntimeRow, registrationOutcome setup.Outco
 // own RunE — registerDestructive owns that, which is what
 // TestDestructiveCommandsRouteThroughGate asserts.
 var setupCmd = &cobra.Command{
-	Use:   "setup",
+	Use: "setup",
+	// Short is the "summary" field in cmd/engram/testdata/catalog.golden
+	// (buildCatalog, catalog.go) and is pinned exactly BYTE-IDENTICAL by
+	// this phase's own decisions (04-04-PLAN.md success criterion 5): the
+	// widened effect --apply now performs (installing the curation
+	// skills) is stated in Long instead — see setupLongDescription's own
+	// widened paragraph — so this line does not move as part of Phase 4.
+	// A later "consistency" edit that widens this string too is a
+	// deliberate choice to move the catalog golden, never an accident.
 	Short: "Detect installed agent runtimes and preview registering engram as an MCP server",
 }
 
@@ -277,8 +285,10 @@ func setupBuildRows(ctx context.Context, env setup.Environment, runtimes []setup
 // invocation reads current state from each present runtime's own CLI (D-10
 // — the fact that makes the probe's side effect, including a live network
 // dial for two of the three native runtimes, discoverable by reading
-// rather than by observing, per REQ-setup-correct-by-reading), and that
-// --apply is what actually performs the registration.
+// rather than by observing, per REQ-setup-correct-by-reading), and both
+// effects --apply actually performs (Phase 4: registration AND the
+// curation skills install) — never registration alone, which would be a
+// half-truth about what the command now does.
 func setupPreviewSummary(rows []setupRuntimeRow) string {
 	present := 0
 	for _, r := range rows {
@@ -287,7 +297,7 @@ func setupPreviewSummary(rows []setupRuntimeRow) string {
 		}
 	}
 	return fmt.Sprintf(
-		"preview: %d/%d selected runtime(s) present; a present runtime's own CLI is read to show current state (two of the three dial the configured URL); run with --apply to register",
+		"preview: %d/%d selected runtime(s) present; a present runtime's own CLI is read to show current state (two of the three dial the configured URL); run with --apply to register and install skills",
 		present, len(rows))
 }
 
@@ -555,6 +565,14 @@ For claude-code and opencode, that read dials the configured URL; for
 codex, it is a pure local read.
 
 %s
+
+--apply also installs the engram curation skills into each present
+runtime's own user-scope skills location, in addition to registering the
+MCP server — the skills are carried inside the binary itself, so no
+separate plugin install is required. Each present runtime's row reports a
+registration result and a skills result as two separate fields under one
+aggregated outcome, with the full skill content available in the
+--output json lane.
 
 Accepted --auth modes:
   oauth         OAuth via the runtime's own login/callback flow (default)

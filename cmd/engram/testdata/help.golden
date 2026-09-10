@@ -302,6 +302,14 @@ codex, it is a pure local read.
 
 a mutating operator command previews by default and mutates only when apply is set
 
+--apply also installs the engram curation skills into each present
+runtime's own user-scope skills location, in addition to registering the
+MCP server — the skills are carried inside the binary itself, so no
+separate plugin install is required. Each present runtime's row reports a
+registration result and a skills result as two separate fields under one
+aggregated outcome, with the full skill content available in the
+--output json lane.
+
 Accepted --auth modes:
   oauth         OAuth via the runtime's own login/callback flow (default)
   oauth-client  a pre-registered OAuth client (client id and secret)

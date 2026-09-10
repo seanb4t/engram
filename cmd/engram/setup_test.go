@@ -798,6 +798,58 @@ func TestSetupHelpNamesEveryRuntimeAndAuthMode(t *testing.T) {
 	}
 }
 
+// TestSetupHelpNamesSkillsInstallation proves setupCmd's long description
+// (REQ-setup-correct-by-reading, success criterion 5) states that
+// --apply installs the curation skills in addition to registering the
+// MCP server, and that the skills are carried inside the binary itself —
+// while naming no per-runtime destination path segment, so a destination
+// is stated in exactly one place: the runtime's own file. The forbidden
+// segments are derived from each registered runtime's own authored
+// SkillTarget via Plan() against a fake environment, never hardcoded, so
+// this assertion cannot go stale as runtimes are added or their
+// destinations change.
+func TestSetupHelpNamesSkillsInstallation(t *testing.T) {
+	long := setupCmd.Long
+	lower := strings.ToLower(long)
+	for _, want := range []string{"skill", "binary"} {
+		if !strings.Contains(lower, want) {
+			t.Errorf("setup long description does not mention %q: %s", want, long)
+		}
+	}
+
+	const fakeHome = "/home/fake-setup-help-test"
+	fakeEnv := setup.Environment{
+		LookPath: func(string) (string, error) { return "", exec.ErrNotFound },
+		Getenv:   func(string) string { return "" },
+		HomeDir:  func() (string, error) { return fakeHome, nil },
+	}
+	for _, rt := range setup.Runtimes {
+		plan, err := rt.Plan(fakeEnv, setup.Options{URL: "https://engram.example.com/mcp", Auth: "oauth"})
+		if err != nil {
+			t.Fatalf("%s.Plan: %v", rt.Name(), err)
+		}
+		for _, dest := range []string{plan.Skills.Dir, plan.Skills.IndexFile} {
+			suffix := strings.TrimPrefix(dest, fakeHome)
+			if suffix == "" || suffix == dest {
+				// Empty destination (generic's no-destination format) or
+				// HomeDir was not this destination's prefix — nothing to
+				// check.
+				continue
+			}
+			for _, segment := range strings.Split(suffix, string(filepath.Separator)) {
+				if segment == "" {
+					continue
+				}
+				forbidden := string(filepath.Separator) + segment
+				if strings.Contains(long, forbidden) {
+					t.Errorf("%s: setup long description contains destination path segment %q derived from Plan().Skills (%q): %s",
+						rt.Name(), forbidden, dest, long)
+				}
+			}
+		}
+	}
+}
+
 // TestSetupURLFromEnvReachesCommand proves ENGRAM_URL, with no --url flag,
 // reaches the previewed command for every present runtime (CR-01): the
 // environment lane setupPlanDoc's config.Load(cmd.Flags()) call wires.
