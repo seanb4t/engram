@@ -475,7 +475,7 @@ and detection Phase 3 established).
 Plans:
 
 - [x] 04-01-PLAN.md — Tracer: vendor → embed → inventory → native install → claude-code row, plus outcome aggregation and the import gate (wave 1)
-- [ ] 04-02-PLAN.md — The `metadata` index entry, frontmatter parsing, and the AGENTS.md anchored-block scan, splice and symlink-preserving write (wave 2)
+- [x] 04-02-PLAN.md — The `metadata` index entry, frontmatter parsing, and the AGENTS.md anchored-block scan, splice and symlink-preserving write (wave 2)
 - [ ] 04-03-PLAN.md — Codex and opencode skills destinations, with the AGENTS.md routing decision and the runtime-surfacing human verification (wave 3)
 - [ ] 04-04-PLAN.md — `generic`'s skills payload, `--help` correctness, and the four-runtime end-to-end report gate (wave 3)
 

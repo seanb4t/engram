@@ -4,16 +4,16 @@ milestone: 2026-08-23.01
 current_phase: 04
 current_phase_name: Skills Distribution
 status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-09-10T05:00:22.761Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-09-10T05:29:18.961Z"
 last_activity: 2026-09-10
 last_activity_desc: Phase 04 execution started
-state_head: 0dccc1d083cda2c16ed7e30bdb144378fb79347f
+state_head: 31dc4a47291e335bb3c61ecf5a53c5a52fb4722f
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 15
-  completed_plans: 12
+  completed_plans: 13
 milestone_name: Distribution & Agent Bootstrap
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 — after opening milestone 2026-0
 ## Current Position
 
 Phase: 04 (Skills Distribution) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-09-10 — Phase 04 execution started
 
@@ -260,6 +260,7 @@ milestone needs in working memory.
 - [Phase 03]: TestSetupPartialExitIsLiveProducible distinguishes runtimes inside its scripted Run fake by the LookPath-resolved binary path, never by a runtime-name branch in production code, proving exitPartial has a real two-native-runtime production path.
 - [Phase 04]: internal/skills' setupSkillsTarget returns (skills.Target, bool) rather than the plan's literal single-return signature, so an un-wired runtime (codex/opencode/generic this wave) is skipped rather than reaching Install with an empty destination.
 - [Phase 04]: cmd/engram/setup_test.go's withFakeSetupEnv now also fakes the skillsEnv seam by default, protecting every existing --apply test from a real filesystem write to $HOME/.claude/skills.
+- [Phase 04]: ParseFrontmatter parses name/metadata from isolated per-top-level-key YAML fragments, not the whole frontmatter document, because curating-spine's real description contains a bare colon-space YAML's plain-scalar grammar rejects.
 
 ### Pending Todos
 
@@ -304,8 +305,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-10T05:00:22.692Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-09-10T05:29:18.891Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -416,6 +417,7 @@ Resume file: None
 | Phase 03 P04 | 45min | 3 tasks | 11 files |
 | Phase 03 P05 | 19min | 3 tasks | 6 files |
 | Phase 04 P01 | 34min | 3 tasks | 23 files |
+| Phase 04-skills-distribution P02 | 35min | 3 tasks | 20 files |
 
 ## Operator Next Steps
 
