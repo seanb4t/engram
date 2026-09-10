@@ -21,6 +21,16 @@ import (
 func TestOpenCodePlan(t *testing.T) {
 	const url = "https://engram.example.com/mcp"
 	wantProbe := []string{"opencode", "mcp", "list"}
+	// Phase 4 widened Plan() to consult env.HomeDir() (via
+	// opencodeConfigRoot, opencode.go:158) for the SkillTarget it now
+	// authors; a fake keeps this test isolated from the real $HOME rather
+	// than reaching os.UserHomeDir() as a side effect of asserting the
+	// (unrelated) registration Args (WR-01).
+	env := Environment{
+		LookPath: func(string) (string, error) { return "", exec.ErrNotFound },
+		Getenv:   func(string) string { return "" },
+		HomeDir:  func() (string, error) { return "/home/fake", nil },
+	}
 
 	cases := []struct {
 		auth string
@@ -44,7 +54,7 @@ func TestOpenCodePlan(t *testing.T) {
 	for _, c := range cases {
 		c := c
 		t.Run(c.auth, func(t *testing.T) {
-			plan, err := OpenCode.Plan(OSEnvironment, Options{URL: url, Auth: c.auth})
+			plan, err := OpenCode.Plan(env, Options{URL: url, Auth: c.auth})
 			if err != nil {
 				t.Fatalf("Plan(%q): %v", c.auth, err)
 			}
@@ -173,7 +183,15 @@ func TestOpenCodePlanFailsWhenHomeUnresolvable(t *testing.T) {
 // Pitfall 2's own warning that a test only checking the rendered command
 // contains the URL would pass on the broken code.
 func TestOpenCodeBearerHeaderSyntax(t *testing.T) {
-	plan, err := OpenCode.Plan(OSEnvironment, Options{URL: "https://x", Auth: "bearer"})
+	// Fake home, for the same WR-01 isolation reason as TestOpenCodePlan
+	// above: Plan() now calls env.HomeDir() to author the SkillTarget this
+	// test never asserts against.
+	env := Environment{
+		LookPath: func(string) (string, error) { return "", exec.ErrNotFound },
+		Getenv:   func(string) string { return "" },
+		HomeDir:  func() (string, error) { return "/home/fake", nil },
+	}
+	plan, err := OpenCode.Plan(env, Options{URL: "https://x", Auth: "bearer"})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}

@@ -4,6 +4,7 @@
 package setup
 
 import (
+	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
@@ -20,6 +21,15 @@ func TestClaudeCodePlan(t *testing.T) {
 	const url = "https://engram.example.com/mcp"
 	wantRemove := []string{"claude", "mcp", "remove", "engram", "--scope", "user"}
 	wantProbe := []string{"claude", "mcp", "get", "engram"}
+	// Phase 4 widened Plan() to consult env.HomeDir() for the SkillTarget
+	// it now authors (claudecode.go:114); a fake keeps this test isolated
+	// from the real $HOME rather than reaching os.UserHomeDir() as a side
+	// effect of asserting the (unrelated) registration Args (WR-01).
+	env := Environment{
+		LookPath: func(string) (string, error) { return "", exec.ErrNotFound },
+		Getenv:   func(string) string { return "" },
+		HomeDir:  func() (string, error) { return "/home/fake", nil },
+	}
 
 	tests := []struct {
 		auth    string
@@ -48,7 +58,7 @@ func TestClaudeCodePlan(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.auth, func(t *testing.T) {
-			plan, err := ClaudeCode.Plan(OSEnvironment, Options{URL: url, Auth: tc.auth})
+			plan, err := ClaudeCode.Plan(env, Options{URL: url, Auth: tc.auth})
 			if err != nil {
 				t.Fatalf("Plan(auth=%q): %v", tc.auth, err)
 			}
@@ -85,7 +95,15 @@ func TestClaudeCodeBearerHeaderIsAnEnvVarReference(t *testing.T) {
 	const sentinelCredential = "SUPER-SECRET-VALUE-MUST-NEVER-APPEAR-9f3e2a"
 	const sentinelTokenFile = "/home/u/.engram/token-sentinel"
 
-	plan, err := ClaudeCode.Plan(OSEnvironment, Options{URL: "https://x", Auth: "bearer", TokenFile: sentinelTokenFile})
+	// Fake home, for the same WR-01 isolation reason as TestClaudeCodePlan
+	// above: Plan() now calls env.HomeDir() to author the SkillTarget this
+	// test never asserts against.
+	env := Environment{
+		LookPath: func(string) (string, error) { return "", exec.ErrNotFound },
+		Getenv:   func(string) string { return "" },
+		HomeDir:  func() (string, error) { return "/home/fake", nil },
+	}
+	plan, err := ClaudeCode.Plan(env, Options{URL: "https://x", Auth: "bearer", TokenFile: sentinelTokenFile})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
