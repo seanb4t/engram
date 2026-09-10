@@ -623,7 +623,7 @@ and the delegation story settled).
 | 1. Version & Homebrew Distribution | 2026-08-23.01 | 3/3 | Complete | 2026-08-25 |
 | 2. Setup Command Core | 2026-08-23.01 | 3/3 | Complete | 2026-08-30 |
 | 3. Runtime Registration | 2026-08-23.01 | 7/7 | Complete | 2026-09-09 |
-| 4. Skills Distribution | 2026-08-23.01 | 4/4 | Complete | 2026-09-10 |
+| 4. Skills Distribution | 2026-08-23.01 | 3/3 | Complete | 2026-09-10 |
 | 5. Slash Command Delegation | 2026-08-23.01 | 0/3 | Not started | - |
 | 6. Install Documentation | 2026-08-23.01 | 0/2 | Not started | - |
 
