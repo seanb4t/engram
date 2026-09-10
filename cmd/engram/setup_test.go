@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1465,4 +1466,424 @@ func TestSetupSkillsFailureReachesPartialExit(t *testing.T) {
 	if !sawCodexRow {
 		t.Errorf("codex row missing or carries an empty outcome: %s", stdout)
 	}
+}
+
+// setupE2ERecorder builds an in-memory setup.Environment/skills.Environment
+// pair for TestSetupReportCoversEveryRuntimeShape, recording every process
+// invocation and every skills filesystem write it receives — so the
+// "no real runtime binary is executed" and "no real home directory is
+// written" properties (repo rule m45p2b4bp7) can be asserted STRUCTURALLY
+// against the recording, rather than merely by construction.
+type setupE2ERecorder struct {
+	home     string
+	resolved map[string]string // bare binary name -> the ONE fake path LookPath returns for it
+
+	runCalls  []string       // every path env.Run was invoked with, in call order
+	callCount map[string]int // per-path call counter, so a probe read and a later probe read never coincidentally look identical
+
+	// runResult scripts env.Run's response for one call to path; nil means
+	// "always succeed, with output that varies by call count" — the
+	// default every subtest but the two failure scenarios below wants,
+	// since a probe read that never changes byte-for-byte would make
+	// every native runtime's registration facet ambiguous between wrote
+	// and already-correct (D-08) rather than deterministically wrote.
+	runResult func(path string, callNum int) setup.RunResult
+
+	writes    map[string][]byte // path -> content, backing both ReadFile and WriteFile
+	writeLog  []string          // every path skills.Environment.WriteFile was invoked with, in call order
+	failWrite func(path string) bool
+}
+
+func newSetupE2ERecorder(home string, present ...string) *setupE2ERecorder {
+	resolved := make(map[string]string, len(present))
+	for _, name := range present {
+		resolved[name] = "/fake/bin/e2e-" + name
+	}
+	return &setupE2ERecorder{
+		home:      home,
+		resolved:  resolved,
+		callCount: make(map[string]int),
+		writes:    make(map[string][]byte),
+	}
+}
+
+func (r *setupE2ERecorder) setupEnv() setup.Environment {
+	return setup.Environment{
+		LookPath: func(file string) (string, error) {
+			if p, ok := r.resolved[file]; ok {
+				return p, nil
+			}
+			return "", exec.ErrNotFound
+		},
+		Getenv:  func(string) string { return "" },
+		HomeDir: func() (string, error) { return r.home, nil },
+		Run: func(_ context.Context, path string, _ []string) (setup.RunResult, error) {
+			r.runCalls = append(r.runCalls, path)
+			r.callCount[path]++
+			if r.runResult != nil {
+				return r.runResult(path, r.callCount[path]), nil
+			}
+			return setup.RunResult{ExitCode: 0, Stdout: fmt.Sprintf("call-%d", r.callCount[path])}, nil
+		},
+	}
+}
+
+func (r *setupE2ERecorder) skillsEnv() skills.Environment {
+	return skills.Environment{
+		ReadFile: func(name string) ([]byte, error) {
+			b, ok := r.writes[name]
+			if !ok {
+				return nil, os.ErrNotExist
+			}
+			return b, nil
+		},
+		WriteFile: func(name string, data []byte, _ os.FileMode) error {
+			r.writeLog = append(r.writeLog, name)
+			if r.failWrite != nil && r.failWrite(name) {
+				return errors.New("boom: scripted skills write failure")
+			}
+			cp := make([]byte, len(data))
+			copy(cp, data)
+			r.writes[name] = cp
+			return nil
+		},
+		MkdirAll: func(string, os.FileMode) error { return nil },
+	}
+}
+
+// install points the package-level setupEnv/skillsEnv seams at r for the
+// duration of the calling test, restoring both via t.Cleanup — the
+// setupE2ERecorder-backed analogue of withFakeSetupEnv above, used instead
+// of it because this test needs the extra call/write recording that
+// helper does not provide.
+func (r *setupE2ERecorder) install(t *testing.T) {
+	t.Helper()
+	origSetup, origSkills := setupEnv, skillsEnv
+	setupEnv = r.setupEnv()
+	skillsEnv = r.skillsEnv()
+	t.Cleanup(func() {
+		setupEnv = origSetup
+		skillsEnv = origSkills
+	})
+}
+
+// assertNoRealInvocationOrHomeWrite is the structural proof (repo rule
+// m45p2b4bp7) that this test never touched a real runtime binary or the
+// real filesystem: every recorded Run call used a path r's own fake
+// LookPath returned, and every recorded skills write landed under r's own
+// fake home directory.
+func (r *setupE2ERecorder) assertNoRealInvocationOrHomeWrite(t *testing.T) {
+	t.Helper()
+	fakePaths := make(map[string]bool, len(r.resolved))
+	for _, p := range r.resolved {
+		fakePaths[p] = true
+	}
+	for _, called := range r.runCalls {
+		if !fakePaths[called] {
+			t.Errorf("env.Run was invoked with %q, which is not a path the fake LookPath ever returned (%v) — this would be a REAL runtime binary", called, r.resolved)
+		}
+	}
+	for _, written := range r.writeLog {
+		if !strings.HasPrefix(written, r.home) {
+			t.Errorf("skills.Environment.WriteFile was invoked with %q, which is not under the fake home directory %q — this would be a REAL filesystem write", written, r.home)
+		}
+	}
+}
+
+// namesOf returns each Runtime's own Name(), in the given slice's order —
+// the derived-from-the-registry equivalent of a hardcoded runtime-name
+// literal, used throughout TestSetupReportCoversEveryRuntimeShape so the
+// test needs no edit when a fifth runtime is registered.
+func namesOf(rts []setup.Runtime) []string {
+	names := make([]string, len(rts))
+	for i, rt := range rts {
+		names[i] = rt.Name()
+	}
+	return names
+}
+
+// setupOutcomeFoldTable is the LITERAL, pinned lookup table
+// TestSetupReportCoversEveryRuntimeShape's aggregation assertions consult
+// for every (Registration, Skills) facet pair this test's own scenarios
+// produce. This is deliberately NOT computed by calling
+// setup.AggregateOutcome — a test that calls the function under test to
+// derive its own expectation proves nothing (04-04-PLAN.md Task 3
+// acceptance criteria). Every entry here is a fact this test's own
+// fakes are scripted to produce, pinned by hand.
+var setupOutcomeFoldTable = map[[2]string]string{
+	{string(setup.OutcomeWouldWrite), string(setup.OutcomeWouldWrite)}: string(setup.OutcomeWouldWrite),
+	{string(setup.OutcomeWrote), string(setup.OutcomeWrote)}:           string(setup.OutcomeWrote),
+	{string(setup.OutcomeWrote), string(setup.OutcomeFailed)}:          string(setup.OutcomeFailed),
+	{string(setup.OutcomeFailed), string(setup.OutcomeWrote)}:          string(setup.OutcomeFailed),
+}
+
+// assertFoldedOutcome asserts row.Outcome equals setupOutcomeFoldTable's
+// entry for row's own (Registration, Skills) pair — never a call to
+// setup.AggregateOutcome.
+func assertFoldedOutcome(t *testing.T, row setupRuntimeRow) {
+	t.Helper()
+	key := [2]string{row.Registration, row.Skills}
+	want, ok := setupOutcomeFoldTable[key]
+	if !ok {
+		t.Fatalf("%s: setupOutcomeFoldTable has no entry for facet pair (Registration=%q, Skills=%q) — extend the literal table", row.Name, row.Registration, row.Skills)
+	}
+	if row.Outcome != want {
+		t.Errorf("%s: row.Outcome = %q, want %q (the literal table's fold of Registration=%q, Skills=%q)", row.Name, row.Outcome, want, row.Registration, row.Skills)
+	}
+}
+
+// rowByName finds the row named name in rows, failing the test if absent.
+func rowByName(t *testing.T, rows []setupRuntimeRow, name string) setupRuntimeRow {
+	t.Helper()
+	for _, r := range rows {
+		if r.Name == name {
+			return r
+		}
+	}
+	t.Fatalf("no row named %q in %+v", name, rows)
+	return setupRuntimeRow{}
+}
+
+// TestSetupReportCoversEveryRuntimeShape is the phase's closing gate: one
+// table-driven test that drives the REAL command through both lanes with
+// every runtime shape present at once, so the composition, the
+// aggregation, the row shape, and the exit classification are proven
+// together rather than one at a time (04-04-PLAN.md Task 3). Every
+// scenario below runs against setupE2ERecorder's fully in-memory
+// Environment pair — no real runtime binary is ever executed and no path
+// outside this test's own fakes is ever written (repo rule m45p2b4bp7),
+// asserted structurally via assertNoRealInvocationOrHomeWrite after every
+// subtest that mutates.
+func TestSetupReportCoversEveryRuntimeShape(t *testing.T) {
+	inv, invErr := skills.Inventory()
+	if invErr != nil {
+		t.Fatalf("skills.Inventory(): %v", invErr)
+	}
+	wantDigest := setupSkillsDigestSummary(inv)
+	wantBytes := strconv.Itoa(skills.TotalBytes(inv))
+
+	nativeRuntimes, selErr := setup.Select(nil)
+	if selErr != nil {
+		t.Fatalf("setup.Select(nil): %v", selErr)
+	}
+	nativeNames := namesOf(nativeRuntimes) // claude-code, codex, opencode — generic excluded (D-14)
+	allNames := setup.Names()              // claude-code, codex, opencode, generic, in registry order
+
+	t.Run("bare preview omits generic and covers the default set", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		rec := newSetupE2ERecorder("/home/e2e-bare", "claude", "codex", "opencode")
+		rec.install(t)
+
+		stdout, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		if len(doc.Runtimes) != len(nativeNames) {
+			t.Fatalf("bare preview emitted %d rows, want %d (setup.Select(nil)'s own length): %s", len(doc.Runtimes), len(nativeNames), stdout)
+		}
+		for _, row := range doc.Runtimes {
+			if row.Name == "generic" {
+				t.Errorf("bare preview emitted a generic row, want none (D-14): %s", stdout)
+			}
+			assertFoldedOutcome(t, row)
+		}
+		rec.assertNoRealInvocationOrHomeWrite(t)
+	})
+
+	t.Run("explicit four-runtime preview renders in caller-stated order with the full row shape", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		rec := newSetupE2ERecorder("/home/e2e-four", "claude", "codex", "opencode")
+		rec.install(t)
+
+		// A deliberately non-registry order, derived from the registry
+		// (reversed) rather than a hand-typed literal — proves the
+		// rendering-order property is about the CALLER's order, not
+		// registry order.
+		reordered := make([]string, len(allNames))
+		for i, name := range allNames {
+			reordered[len(allNames)-1-i] = name
+		}
+		runtimeArg := strings.Join(reordered, ",")
+
+		stdoutJSON, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--runtime", runtimeArg, "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient (json): %v (stderr=%q)", err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdoutJSON), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdoutJSON, uErr)
+		}
+		if len(doc.Runtimes) != len(reordered) {
+			t.Fatalf("explicit selection emitted %d rows, want %d: %s", len(doc.Runtimes), len(reordered), stdoutJSON)
+		}
+		// Rendering-order property: row N's name must equal reordered[N].
+		for i, row := range doc.Runtimes {
+			if row.Name != reordered[i] {
+				t.Errorf("row %d has Name %q, want %q (caller-stated order): %s", i, row.Name, reordered[i], stdoutJSON)
+			}
+		}
+
+		for _, row := range doc.Runtimes {
+			assertFoldedOutcome(t, row)
+			if row.SkillsDigest != wantDigest {
+				t.Errorf("%s: row.SkillsDigest = %q, want %q (derived from skills.Inventory(), never a literal)", row.Name, row.SkillsDigest, wantDigest)
+			}
+			if row.SkillsBytes != wantBytes {
+				t.Errorf("%s: row.SkillsBytes = %q, want %q (derived from skills.Inventory(), never a literal)", row.Name, row.SkillsBytes, wantBytes)
+			}
+			if row.SkillsContent == "" {
+				t.Errorf("%s: row.SkillsContent is empty in the json lane, want the full skill content for every runtime (D-03)", row.Name)
+			}
+			if row.Name == "generic" {
+				if row.SkillsDest != "" {
+					t.Errorf("generic: row.SkillsDest = %q, want empty (no destination, D-11)", row.SkillsDest)
+				}
+				if row.SkillsIndex != "" {
+					t.Errorf("generic: row.SkillsIndex = %q, want empty (no destination, D-11)", row.SkillsIndex)
+				}
+			} else {
+				if row.SkillsDest == "" {
+					t.Errorf("%s: row.SkillsDest is empty, want a destination", row.Name)
+				}
+			}
+		}
+
+		resetCommandFlagState(t, setupCmd)
+		stdoutText, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--runtime", runtimeArg, "--output", "text")
+		if err != nil {
+			t.Fatalf("runClient (text): %v (stderr=%q)", err, stderr)
+		}
+		contentKey := setupRowJSONTag(t, "SkillsContent")
+		if strings.Contains(stdoutText, contentKey) {
+			t.Errorf("text lane contains %q, want the dense text row to never carry skill content: %s", contentKey, stdoutText)
+		}
+
+		rec.assertNoRealInvocationOrHomeWrite(t)
+	})
+
+	t.Run("apply with one skills-only failure reaches the partial exit class", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		rec := newSetupE2ERecorder("/home/e2e-partial", "claude", "codex", "opencode")
+		claudeSkillsPrefix := filepath.Join(rec.home, ".claude", "skills")
+		rec.failWrite = func(path string) bool { return strings.HasPrefix(path, claudeSkillsPrefix) }
+		rec.install(t)
+
+		runtimeArg := strings.Join(allNames, ",")
+		stdout, stderr, err := runClient(t, "setup",
+			"--url", "https://engram.example.com/mcp",
+			"--runtime", runtimeArg,
+			"--output", "json",
+			"--apply")
+		if err == nil {
+			t.Fatal("expected a non-nil error (claude-code's skills install fails), got nil")
+		}
+		if got := exitCodeFromError(err); got != exitPartial {
+			t.Errorf("exitCodeFromError(err) = %d, want %d (exitPartial); stderr=%q", got, exitPartial, stderr)
+		}
+		if stdout == "" {
+			t.Fatal("stdout is empty; the report must be rendered before the nonzero exit (T-02-06)")
+		}
+
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		if len(doc.Runtimes) != len(allNames) {
+			t.Fatalf("apply emitted %d rows, want %d (every row rendered despite the failure): %s", len(doc.Runtimes), len(allNames), stdout)
+		}
+
+		claudeRow := rowByName(t, doc.Runtimes, "claude-code")
+		if claudeRow.Outcome != string(setup.OutcomeFailed) {
+			t.Errorf("claude-code: row.Outcome = %q, want %q (skills-only failure)", claudeRow.Outcome, setup.OutcomeFailed)
+		}
+		for _, row := range doc.Runtimes {
+			assertFoldedOutcome(t, row)
+			if row.Name != "claude-code" && row.Outcome == string(setup.OutcomeFailed) {
+				t.Errorf("%s: row.Outcome = %q, want its OWN outcome preserved alongside claude-code's failure, not collapsed to failed", row.Name, row.Outcome)
+			}
+		}
+
+		rec.assertNoRealInvocationOrHomeWrite(t)
+	})
+
+	t.Run("apply where every attempted runtime fails reaches the total-failure exit class", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		rec := newSetupE2ERecorder("/home/e2e-total-failure", "claude", "codex", "opencode")
+		rec.runResult = func(string, int) setup.RunResult {
+			return setup.RunResult{ExitCode: 1, Stderr: "boom: mcp add failed"}
+		}
+		rec.install(t)
+
+		runtimeArg := strings.Join(nativeNames, ",") // generic never fails — excluded so this scenario stays total-failure, not partial
+		stdout, stderr, err := runClient(t, "setup",
+			"--url", "https://engram.example.com/mcp",
+			"--runtime", runtimeArg,
+			"--output", "json",
+			"--apply")
+		if err == nil {
+			t.Fatal("expected a non-nil error (every attempted runtime fails), got nil")
+		}
+		if got := exitCodeFromError(err); got != exitSetupFailed {
+			t.Errorf("exitCodeFromError(err) = %d, want %d (exitSetupFailed/total-failure); stderr=%q", got, exitSetupFailed, stderr)
+		}
+		if stdout == "" {
+			t.Fatal("stdout is empty; the report must be rendered before the nonzero exit (T-02-06)")
+		}
+
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		if len(doc.Runtimes) != len(nativeNames) {
+			t.Fatalf("apply emitted %d rows, want %d: %s", len(doc.Runtimes), len(nativeNames), stdout)
+		}
+		for _, row := range doc.Runtimes {
+			if row.Outcome != string(setup.OutcomeFailed) {
+				t.Errorf("%s: row.Outcome = %q, want %q (every attempted runtime fails)", row.Name, row.Outcome, setup.OutcomeFailed)
+			}
+			assertFoldedOutcome(t, row)
+		}
+
+		rec.assertNoRealInvocationOrHomeWrite(t)
+	})
+
+	t.Run("a selection where no runtime is present exits successfully with not-present rows", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		rec := newSetupE2ERecorder("/home/e2e-absent") // nothing resolves
+		rec.install(t)
+
+		stdout, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		if len(doc.Runtimes) != len(nativeNames) {
+			t.Fatalf("bare preview (nothing present) emitted %d rows, want %d: %s", len(doc.Runtimes), len(nativeNames), stdout)
+		}
+		for _, row := range doc.Runtimes {
+			if row.Present {
+				t.Errorf("%s: row.Present = true, want false (nothing resolves on this fake PATH)", row.Name)
+			}
+			if row.Outcome != string(setup.OutcomeNotPresent) {
+				t.Errorf("%s: row.Outcome = %q, want %q", row.Name, row.Outcome, setup.OutcomeNotPresent)
+			}
+			if row.Skills != "" || row.Registration != "" {
+				t.Errorf("%s: row carries a skills facet (Skills=%q, Registration=%q), want none for a not-present runtime (D-07)", row.Name, row.Skills, row.Registration)
+			}
+		}
+
+		rec.assertNoRealInvocationOrHomeWrite(t)
+	})
 }
