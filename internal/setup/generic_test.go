@@ -115,6 +115,56 @@ func TestGenericStartsNoProcess(t *testing.T) {
 	}
 }
 
+// TestGenericSkillTargetHasNoDestination proves generic's Plan() authors
+// the explicit no-destination skill format (D-11) for every auth mode it
+// supports, with both path fields left empty — generic has no machine of
+// its own and therefore no destination to derive — and that the returned
+// Plan still carries zero Actions and a nil Probe, exactly as it did
+// before Phase 4 wired its skills payload.
+func TestGenericSkillTargetHasNoDestination(t *testing.T) {
+	const url = "https://engram.example.com/mcp"
+
+	for _, auth := range []string{"oauth", "none", "bearer"} {
+		auth := auth
+		t.Run(auth, func(t *testing.T) {
+			plan, err := Generic.Plan(OSEnvironment, Options{URL: url, Auth: auth})
+			if err != nil {
+				t.Fatalf("Plan: %v", err)
+			}
+			if plan.Skills.Format != SkillFormatNone {
+				t.Errorf("Plan.Skills.Format = %q, want %q", plan.Skills.Format, SkillFormatNone)
+			}
+			if plan.Skills.Dir != "" {
+				t.Errorf("Plan.Skills.Dir = %q, want empty (generic has no destination)", plan.Skills.Dir)
+			}
+			if plan.Skills.IndexFile != "" {
+				t.Errorf("Plan.Skills.IndexFile = %q, want empty (generic has no destination)", plan.Skills.IndexFile)
+			}
+			if len(plan.Actions) != 0 {
+				t.Errorf("Plan.Actions = %v, want none (generic authors no Action)", plan.Actions)
+			}
+			if plan.Probe != nil {
+				t.Errorf("Plan.Probe = %v, want nil (generic authors no Probe)", plan.Probe)
+			}
+		})
+	}
+}
+
+// TestGenericSkillsOutcomeIsWouldWriteInBothLanes is the unit-level pin
+// for D-11's central claim: SkillsOutcome for the no-destination format
+// always yields would-write, in both the preview lane (mutate=false) and
+// the apply lane (mutate=true) — generic never writes and never
+// converges, so the already-correct value can never legitimately be
+// produced for it.
+func TestGenericSkillsOutcomeIsWouldWriteInBothLanes(t *testing.T) {
+	for _, mutate := range []bool{false, true} {
+		got := SkillsOutcome(SkillFormatNone, mutate, 0, 0, false)
+		if got != OutcomeWouldWrite {
+			t.Errorf("SkillsOutcome(SkillFormatNone, mutate=%v, 0, 0, false) = %q, want %q", mutate, got, OutcomeWouldWrite)
+		}
+	}
+}
+
 // TestGenericConfigCarriesNoSecret proves that a resolved ENGRAM_TOKEN
 // credential value never reaches generic's Config text, mirroring
 // TestNoSecretInArgs' sentinel discipline (plan_test.go) for the

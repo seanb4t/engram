@@ -40,27 +40,26 @@ var skillsEnv = skills.OSEnvironment
 
 // setupSkillsTarget maps a setup.SkillTarget onto a skills.Target — the
 // ONE explicit mapping across the D-05 package boundary, exhaustive over
-// the three real SkillFormat values. ok is false for any format this
-// switch does not recognize, INCLUDING the Go zero value ("") a runtime
-// whose Plan() has not yet authored a SkillTarget naturally carries
-// (Codex, opencode, and generic in this wave — only claude-code is wired,
-// per this plan's tracer scope). The caller uses ok to skip the skills
-// facet entirely for such a runtime, rather than installing to an empty
-// destination or silently producing skills.Target's zero value — there is
-// deliberately no default case mapping an unrecognized format to
-// anything, so an actually-invalid non-empty format (a future authoring
-// bug) is just as visibly skipped as the "not wired yet" case, never
-// silently coerced into a destination nobody authored.
-func setupSkillsTarget(t setup.SkillTarget) (skills.Target, bool) {
+// the three real SkillFormat values. Every registered runtime now
+// authors one of those three values in its own Plan() (claude-code and
+// opencode: native; codex: agents-md; generic: the no-destination value —
+// 04-01 through 04-04), so there is deliberately no default case mapping
+// a format to anything: an unrecognized value — including the Go zero
+// value ("") a Plan() that forgot to author Skills would naturally
+// carry — is a genuine authoring bug, surfaced to the caller as an error
+// naming the unknown value rather than silently coerced into a
+// destination nobody authored, or silently skipped as this package used
+// to do while some runtimes were still un-wired (04-01/04-02/04-03).
+func setupSkillsTarget(t setup.SkillTarget) (skills.Target, error) {
 	switch t.Format {
 	case setup.SkillFormatNone:
-		return skills.Target{Format: skills.FormatNone}, true
+		return skills.Target{Format: skills.FormatNone}, nil
 	case setup.SkillFormatNative:
-		return skills.Target{Format: skills.FormatNative, Dir: t.Dir, IndexFile: t.IndexFile}, true
+		return skills.Target{Format: skills.FormatNative, Dir: t.Dir, IndexFile: t.IndexFile}, nil
 	case setup.SkillFormatAgentsMD:
-		return skills.Target{Format: skills.FormatAgentsMD, Dir: t.Dir, IndexFile: t.IndexFile}, true
+		return skills.Target{Format: skills.FormatAgentsMD, Dir: t.Dir, IndexFile: t.IndexFile}, nil
 	default:
-		return skills.Target{}, false
+		return skills.Target{}, fmt.Errorf("unrecognized skill format %q", t.Format)
 	}
 }
 
@@ -89,10 +88,13 @@ func setupJoinReason(existing, next string) string {
 }
 
 // setupApplySkillsFacet composes the skills facet onto row and returns
-// row's final, AGGREGATED outcome (D-06): registrationOutcome unchanged
-// when target carries no recognized SkillTarget (setupSkillsTarget's
-// ok == false — the runtime has not been wired for skills this wave), or
-// AggregateOutcome(registrationOutcome, skillsOutcome) when it does.
+// row's final, AGGREGATED outcome (D-06): AggregateOutcome(
+// registrationOutcome, skillsOutcome) on every path, since every
+// registered runtime now authors a recognized SkillTarget (see
+// setupSkillsTarget's own doc comment). An unrecognized format — an
+// authoring bug this switch can still detect even though production
+// never hits it today — produces a FAILED row naming the unknown value,
+// rather than silently continuing with row's Skills fields unset.
 //
 // mutate selects the preview lane (skills.Inventory only — never
 // skills.Install; a preview performs no filesystem write of any kind) vs
@@ -101,11 +103,14 @@ func setupJoinReason(existing, next string) string {
 // when the resolved output format is not text, so the dense text row
 // never carries skill file content.
 func setupApplySkillsFacet(row *setupRuntimeRow, registrationOutcome setup.Outcome, planTarget setup.SkillTarget, mutate bool, includeContent bool) setup.Outcome {
-	target, ok := setupSkillsTarget(planTarget)
-	if !ok {
-		return registrationOutcome
-	}
 	row.Registration = string(registrationOutcome)
+
+	target, targetErr := setupSkillsTarget(planTarget)
+	if targetErr != nil {
+		row.Skills = string(setup.OutcomeFailed)
+		row.Reason = setupJoinReason(row.Reason, fmt.Sprintf("skills: %s: %v", row.Name, targetErr))
+		return setup.AggregateOutcome(registrationOutcome, setup.OutcomeFailed)
+	}
 
 	inv, invErr := skills.Inventory()
 	if invErr != nil {
@@ -116,7 +121,12 @@ func setupApplySkillsFacet(row *setupRuntimeRow, registrationOutcome setup.Outco
 
 	var wrote, alreadyCorrect int
 	var installErr error
-	if mutate {
+	// The no-destination format (generic, D-11) never reaches the install
+	// path at all — not even Install's own no-op FormatNone branch — so a
+	// future authoring bug can never accidentally hand it a real
+	// destination and have it write through undetected (Task 1's own
+	// prohibition: "never let generic reach the install path").
+	if mutate && target.Format != skills.FormatNone {
 		report := skills.Install(skillsEnv, target, inv)
 		wrote, alreadyCorrect = len(report.Wrote), len(report.AlreadyCorrect)
 		installErr = report.Err
@@ -394,11 +404,10 @@ func setupExitCode(c setup.ExitClass) int {
 // For a PRESENT runtime, this also composes the skills facet
 // (setupApplySkillsFacet) and OVERWRITES Outcome with the aggregated
 // value D-06 requires — r.Outcome itself is passed through unchanged as
-// the registration facet's own outcome, and is what setupApplySkillsFacet
-// returns verbatim when this runtime carries no recognized SkillTarget
-// (a runtime not yet wired for skills this wave: setupSkillsTarget's
-// ok == false). A not-present runtime is skipped entirely: it keeps its
-// OutcomeNotPresent row untouched, with no skills facet (D-07).
+// the registration facet's own outcome, folded together with the skills
+// facet's own outcome via setup.AggregateOutcome. A not-present runtime
+// is skipped entirely: it keeps its OutcomeNotPresent row untouched, with
+// no skills facet (D-07).
 func setupRuntimeRowFromResult(r setup.Result, mutate bool, includeContent bool) setupRuntimeRow {
 	row := setupRuntimeRow{
 		Name:       r.Runtime,

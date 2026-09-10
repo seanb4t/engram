@@ -113,6 +113,26 @@ type genericConfigDoc struct {
 // bearerProvenance (D-06); every native runtime moved off it in this
 // phase's earlier waves (03-02, 03-03). Neither form ever carries a
 // credential VALUE — only a variable reference or a path.
+//
+// Every returned Plan also authors Skills with the explicit
+// SkillFormatNone value (Phase 4, D-11): generic carries the curation
+// skills in its DELIVERABLE, exactly as it already carries the portable
+// server configuration above, never on the filesystem — it has no
+// machine of its own and therefore no destination to derive, so Dir and
+// IndexFile stay their empty-string zero value rather than being
+// authored from env.HomeDir(). SkillFormatNone is a REAL, explicit value
+// here, never an unset field — the same explicit-value-never-absence
+// discipline plan.go's SkillFormat doc comment states for the type as a
+// whole. Generic's aggregated outcome stays would-write in both the
+// preview and the --apply lane for the same reason it already does for
+// registration (see this method's own top-level doc comment): there is
+// no state to converge and no second read to compare against, so the
+// already-correct value can never legitimately be produced. D-11 is what
+// makes this the one class of operator — an MCP client engram has no
+// native support for — that still gets the curation guidance from
+// somewhere: `engram setup --runtime generic --output json` is the
+// documented manual path, and a dead end for the guidance would still be
+// a dead end for exactly that operator.
 func (genericRuntime) Plan(_ Environment, opts Options) (Plan, error) {
 	switch opts.Auth {
 	case "oauth", "none", "bearer":
@@ -134,7 +154,7 @@ func (genericRuntime) Plan(_ Environment, opts Options) (Plan, error) {
 			// as every other runtime's Plan error path.
 			return Plan{}, fmt.Errorf("generic: marshal portable config: %w", err)
 		}
-		return Plan{Runtime: "generic", Config: string(b)}, nil
+		return Plan{Runtime: "generic", Config: string(b), Skills: SkillTarget{Format: SkillFormatNone}}, nil
 	default:
 		return Plan{}, fmt.Errorf("generic: auth mode %q: %w", opts.Auth, ErrAuthModeUnsupported)
 	}
