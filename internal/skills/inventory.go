@@ -49,7 +49,19 @@ type Skill struct {
 // failure exactly like the class D-04's own inventory-canary discussion
 // warns against.
 func Inventory() ([]Skill, error) {
-	entries, err := fs.ReadDir(skillsFS, dataRoot)
+	return walkSkills(skillsFS)
+}
+
+// walkSkills is Inventory's unexported implementation, factored to take a
+// filesystem INTERFACE value (fs.FS) rather than reaching for the
+// package-level skillsFS var directly: the embedded FS itself cannot be
+// extended at runtime, so a test proving the walk is a STRUCTURAL
+// predicate — not an enumeration — drives this function against an
+// in-memory fs.FS instead (TestInventoryIsStructural, inventory_test.go).
+// Inventory() itself calls this with the embedded FS, so a test driving
+// walkSkills exercises the exact same code path the binary does.
+func walkSkills(fsys fs.FS) ([]Skill, error) {
+	entries, err := fs.ReadDir(fsys, dataRoot)
 	if err != nil {
 		return nil, fmt.Errorf("skills: read embedded %q: %w", dataRoot, err)
 	}
@@ -63,14 +75,14 @@ func Inventory() ([]Skill, error) {
 		skillRoot := dataRoot + "/" + skillName
 
 		var files []File
-		walkErr := fs.WalkDir(skillsFS, skillRoot, func(p string, d fs.DirEntry, err error) error {
+		walkErr := fs.WalkDir(fsys, skillRoot, func(p string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
 			if d.IsDir() {
 				return nil
 			}
-			content, readErr := fs.ReadFile(skillsFS, p)
+			content, readErr := fs.ReadFile(fsys, p)
 			if readErr != nil {
 				return fmt.Errorf("read embedded %q: %w", p, readErr)
 			}
