@@ -72,7 +72,7 @@ created: "2026-09-09"
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
 | Codex actually surfaces a skill written to the chosen user-scope destination | REQ-skills-native-format | Official docs name `$HOME/.agents/skills`; a live machine shows a populated `$CODEX_HOME/skills`. Which one Codex's own selector reads is unresolved, and repo rule `m45p2b4bp7` forbids gating on third-party behavior. | Install skills via `engram setup --apply`, start `codex`, and confirm the five curation skills appear in its skill list. Record which destination was written. |
-| Claude Code / opencode tolerate the new `summary:` frontmatter key without warning or dropping the skill | REQ-skills-native-format | Same ownership-boundary rule — this is third-party loader behavior, verifiable but not gateable. | Install skills, start each runtime, confirm all five skills load and no frontmatter warning is emitted. |
+| Claude Code / opencode tolerate the new `metadata.engram-summary` frontmatter key without warning or dropping the skill | REQ-skills-native-format | Same ownership-boundary rule — this is third-party loader behavior, verifiable but not gateable. | Install skills, start each runtime, confirm all five skills load and no frontmatter warning is emitted. |
 
 ---
 

@@ -685,9 +685,20 @@ specific failure mode so the planner can either lock in the recommendation, add 
 `checkpoint:human-verify` task before the relevant install path ships, or route it back through
 `/gsd-discuss-phase` if it's judged to need a user decision before planning proceeds.
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+*All three were closed during `/gsd-plan-phase 4` on 2026-09-09, after this research returned.
+Each item below carries its resolution inline; the original question text is left unedited.*
 
 1. **Codex's canonical user-scope skill destination.**
+
+   **RESOLVED — `$HOME/.agents/skills`.** User decision (Sean, this plan-phase run): the
+   documented, spec-standard path wins over the observed `$CODEX_HOME/skills`; both are not
+   written. Implemented in `04-03-PLAN.md` Task 2, with `$CODEX_HOME/skills` excluded by a negative
+   gate. The recommended `checkpoint:human-verify` was taken — it is blocking, and assumption A1's
+   failure mode (write succeeds, engram reports `wrote` truthfully, Codex never surfaces the skill)
+   is its checkpoint text.
+
    - What we know: official docs name `$HOME/.agents/skills`; a live, current machine also has a
      populated, working-looking `$CODEX_HOME/skills` with both bundled and third-party-installed
      content.
@@ -699,6 +710,20 @@ specific failure mode so the planner can either lock in the recommendation, add 
      locks it in as the shipped destination — do not resolve this by assumption alone.
 
 2. **Frontmatter parsing dependency choice (YAML library vs. hand-rolled scanner).**
+
+   **RESOLVED — take the library: `go.yaml.in/yaml/v3`, promoted indirect → direct.** User decision
+   (Sean, this plan-phase run), now governed by repo rule `xvqj44e5mk`: always prefer an established
+   OSS/idiomatic solution over a hand-rolled one, and verify the *maintained* upstream before
+   adopting a module already in `go.sum`. Note the correction this forced — `gopkg.in/yaml.v3`
+   v3.0.1 is the **unmaintained** original (repo labeled unmaintained April 2025);
+   `go.yaml.in/yaml/v3` v3.0.4 is the maintained successor under the official YAML organization, and
+   is already reached via `spf13/cobra/doc` as well as `buf`. The "zero new Go dependencies"
+   constraint was read as being about supply-chain surface and shipped-binary linkage, not as a
+   mandate to reimplement a solved problem. Implemented in `04-02-PLAN.md` Task 1, with two
+   `go list -m -f '{{.Indirect}}'` gates pinning the direction. Leaf-purity consequence resolved
+   there too: `internal/skills` keeps a same-module import ban with a named third-party allowlist
+   (empty in 04-01, widened by exactly one entry in 04-02) instead of a stdlib-only gate.
+
    - What we know: no frontmatter-parsing code exists anywhere in this codebase today; two YAML
      modules already sit in `go.sum` but are reachable only from build tooling, not the shipped
      binary.
@@ -711,6 +736,14 @@ specific failure mode so the planner can either lock in the recommendation, add 
 
 3. **Whether the AGENTS.md anchor-detection logic should literally import `internal/surfaces`
    or reimplement the same shape locally in `internal/skills`.**
+
+   **RESOLVED — reimplement locally; do not import `internal/surfaces`.** The planner took this
+   research's own recommendation. Implemented in `04-02-PLAN.md` Task 2, which explicitly declines
+   the import and is gated by `rg` checks forbidding both `internal/surfaces.WriteRegion` and any
+   stage-and-rename shape (D-15/D-16). `04-PATTERNS.md` carries the same warning: `scanAnchors`'
+   detection shape is the reusable half, `WriteRegion` is an explicit anti-pattern here because it
+   is multi-pair-tolerant and rename-based.
+
    - What we know: `internal/surfaces` has no leaf-purity gate, so importing it is architecturally
      legal; its detection logic (not its write logic) is a close match for D-15's needs.
    - What's unclear: whether importing a package whose OWN write behavior (`WriteRegion`) is
