@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/seanb4t/engram/internal/setup"
+	"github.com/seanb4t/engram/internal/skills"
 )
 
 // fakeSetupEnvSucceedingRun is the default Run every fakeSetupEnv-built
@@ -61,13 +62,51 @@ func fakeSetupEnvWithRun(run func(context.Context, string, []string) (setup.RunR
 	return env
 }
 
+// fakeSkillsEnv builds an in-memory skills.Environment backed by a map,
+// so no test in this file ever installs skills to a real home directory
+// (repo rule m45p2b4bp7) — the skills-package analogue of fakeSetupEnv
+// above. MkdirAll is a no-op; the in-memory map has no directory concept
+// to create.
+func fakeSkillsEnv() skills.Environment {
+	store := make(map[string][]byte)
+	return skills.Environment{
+		ReadFile: func(name string) ([]byte, error) {
+			b, ok := store[name]
+			if !ok {
+				return nil, os.ErrNotExist
+			}
+			return b, nil
+		},
+		WriteFile: func(name string, data []byte, _ os.FileMode) error {
+			cp := make([]byte, len(data))
+			copy(cp, data)
+			store[name] = cp
+			return nil
+		},
+		MkdirAll: func(string, os.FileMode) error { return nil },
+	}
+}
+
 // withFakeSetupEnv points the package-level setupEnv seam at env for the
-// duration of the test.
+// duration of the test, and ALSO points skillsEnv at a fresh
+// fakeSkillsEnv() (Phase 4): every existing test in this file drives
+// setup.Environment through this one helper, and the skills facet
+// (setupApplySkillsFacet, setup.go) now runs unconditionally for any
+// present, skills-wired runtime (claude-code, this wave) reached through
+// setupPreview/setupApplyRun — without this, an unmodified pre-Phase-4
+// test would silently attempt a REAL skills.Install against the caller's
+// actual home directory. A test that needs to script a specific skills
+// outcome (e.g. a scripted install failure) overrides the package-level
+// skillsEnv itself, after calling this helper.
 func withFakeSetupEnv(t *testing.T, env setup.Environment) {
 	t.Helper()
 	orig := setupEnv
 	setupEnv = env
 	t.Cleanup(func() { setupEnv = orig })
+
+	origSkills := skillsEnv
+	skillsEnv = fakeSkillsEnv()
+	t.Cleanup(func() { skillsEnv = origSkills })
 }
 
 // defaultRuntimeCount returns the number of runtimes a BARE `engram

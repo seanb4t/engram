@@ -54,6 +54,42 @@ const (
 	OutcomeFailed Outcome = "failed"
 )
 
+// SkillFormat classifies a SkillTarget's write shape. It mirrors
+// internal/skills.Format's three explicit values — a "no filesystem
+// destination" case, a "native" case, and an "agents-md" case — as a
+// DELIBERATELY SEPARATE type, never a shared alias: the leaf-purity gate
+// forbids either package importing the other (D-05), so this package
+// cannot reference internal/skills.Format directly, and cmd/engram owns
+// the one explicit mapping between the two (setupSkillsTarget). Every
+// value is a REAL, explicit value, never modeled as an absence or the
+// zero value — the same discipline Outcome's own doc comment states
+// above.
+type SkillFormat string
+
+const (
+	// SkillFormatNone means this runtime has no filesystem destination
+	// for skills at all (D-11's "no skills" case).
+	SkillFormatNone SkillFormat = "none"
+	// SkillFormatNative means Dir is the runtime's own native skill
+	// directory.
+	SkillFormatNative SkillFormat = "native"
+	// SkillFormatAgentsMD means the runtime falls back to a delimited
+	// block in an AGENTS.md-shaped file at IndexFile (D-13/D-15/D-16).
+	SkillFormatAgentsMD SkillFormat = "agents-md"
+)
+
+// SkillTarget is one runtime's authored skills-install destination:
+// Format selects the write shape, Dir is the absolute destination
+// directory, and IndexFile is the absolute path of the file an
+// agents-md-shaped splice targets (meaningful only for
+// SkillFormatAgentsMD). AUTHORED HERE — in each runtime's own Plan(),
+// never a runtime-agnostic default — exactly like Probe above.
+type SkillTarget struct {
+	Format    SkillFormat
+	Dir       string
+	IndexFile string
+}
+
 // Action is one authored, ready-to-issue invocation a Plan carries. Args
 // is the authored source of truth (D-01): the exact argv Apply() execs,
 // Args[0] the runtime's own bare binary name (never a resolved path — see
@@ -123,6 +159,13 @@ type Plan struct {
 	// re-deriving or re-serializing it. Empty for every runtime that
 	// authors at least one Action.
 	Config string
+	// Skills is this runtime's authored skills-install destination
+	// (Phase 4, D-05), authored alongside every other field in Plan(),
+	// in the runtime's own file. A runtime that has not yet been wired
+	// (this phase's earlier waves) leaves this at its zero value —
+	// cmd/engram's setupSkillsTarget treats that as "no skills facet for
+	// this runtime" rather than a fourth SkillFormat value.
+	Skills SkillTarget
 }
 
 // Display renders every Action's Command() joined by "; " — a
@@ -185,17 +228,27 @@ func (p Plan) Display() string {
 // string — never json.RawMessage, a map, or a slice — so it can never
 // bypass sanitizeViewValue's scalar-only sanitizing branch
 // (cmd/engram/operator_view.go).
+//
+// Skills is the single NON-RENDERED field on this struct — its json tag
+// EXCLUDES it from marshaling. It exists so cmd/engram composes its
+// skills facet from the SAME Plan() call the shared executor already made
+// (execute, apply.go) rather than planning a second time, which now
+// matters because Plan() reads the home directory (D-10). Excluding it
+// from marshaling is what keeps a struct-valued field from ever reaching
+// the row renderer — cmd/engram maps it onto its own scalar row fields
+// instead (setupSkillsTarget).
 type Result struct {
 	Runtime    string
 	Present    bool
 	Outcome    Outcome
 	Command    string
 	Reason     string
-	Binary     string `json:"binary,omitempty"`
-	Registered string `json:"registered,omitempty"`
-	TokenFile  string `json:"token_file,omitempty"`
-	Config     string `json:"config,omitempty"`
-	Notes      string `json:"notes,omitempty"`
+	Binary     string      `json:"binary,omitempty"`
+	Registered string      `json:"registered,omitempty"`
+	TokenFile  string      `json:"token_file,omitempty"`
+	Config     string      `json:"config,omitempty"`
+	Notes      string      `json:"notes,omitempty"`
+	Skills     SkillTarget `json:"-"`
 }
 
 // bearerProvenance renders the literal, non-secret provenance form of a

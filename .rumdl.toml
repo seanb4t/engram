@@ -28,6 +28,7 @@ exclude = [
   "docs-site", # Astro/Starlight site — MDX + generated output, not plain prose
   ".planning", # GSD planning artifacts — agent-generated working docs, not shipped prose
   "internal/keylinks/testdata", # plan-shaped test fixtures — frontmatter must be line 1, same as .planning
+  "internal/skills/data", # vendored copy of skill/engram/skills/** — already-linted tree, same disposition as internal/webauth/static in dprint.json
 ]
 
 respect-gitignore = true

@@ -7,12 +7,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/setup"
+	"github.com/seanb4t/engram/internal/skills"
 	"github.com/seanb4t/engram/internal/surfaces"
 )
 
@@ -29,6 +31,113 @@ var (
 // (spine_review_verify.go), so a test drives a fake PATH/home instead of
 // the real machine (repo rule m45p2b4bp7).
 var setupEnv = setup.OSEnvironment
+
+// skillsEnv is the injectable internal/skills.Environment seam the skills
+// facet writes through — package-level and t.Cleanup-overridable in a
+// test, mirroring setupEnv above, so a test drives an in-memory
+// destination instead of a real home directory (repo rule m45p2b4bp7).
+var skillsEnv = skills.OSEnvironment
+
+// setupSkillsTarget maps a setup.SkillTarget onto a skills.Target — the
+// ONE explicit mapping across the D-05 package boundary, exhaustive over
+// the three real SkillFormat values. ok is false for any format this
+// switch does not recognize, INCLUDING the Go zero value ("") a runtime
+// whose Plan() has not yet authored a SkillTarget naturally carries
+// (Codex, opencode, and generic in this wave — only claude-code is wired,
+// per this plan's tracer scope). The caller uses ok to skip the skills
+// facet entirely for such a runtime, rather than installing to an empty
+// destination or silently producing skills.Target's zero value — there is
+// deliberately no default case mapping an unrecognized format to
+// anything, so an actually-invalid non-empty format (a future authoring
+// bug) is just as visibly skipped as the "not wired yet" case, never
+// silently coerced into a destination nobody authored.
+func setupSkillsTarget(t setup.SkillTarget) (skills.Target, bool) {
+	switch t.Format {
+	case setup.SkillFormatNone:
+		return skills.Target{Format: skills.FormatNone}, true
+	case setup.SkillFormatNative:
+		return skills.Target{Format: skills.FormatNative, Dir: t.Dir, IndexFile: t.IndexFile}, true
+	case setup.SkillFormatAgentsMD:
+		return skills.Target{Format: skills.FormatAgentsMD, Dir: t.Dir, IndexFile: t.IndexFile}, true
+	default:
+		return skills.Target{}, false
+	}
+}
+
+// setupSkillsDigestSummary renders inv's per-skill content digest as
+// "<skill-name>:<12 hex>" entries joined by a single comma with no
+// spaces, in inventory order (D-06's row-field shape) — an operator can
+// compare two machines' skills without diffing files.
+func setupSkillsDigestSummary(inv []skills.Skill) string {
+	parts := make([]string, len(inv))
+	for i, s := range inv {
+		parts[i] = s.Name + ":" + skills.Digest(s)
+	}
+	return strings.Join(parts, ",")
+}
+
+// setupJoinReason appends next onto existing with "; " when existing is
+// non-empty, mirroring the shared executor's own Notes-joining idiom
+// (internal/setup/apply.go) — used here to fold a skills-facet failure
+// into a row's Reason alongside (never instead of) any registration
+// failure already recorded there (D-07).
+func setupJoinReason(existing, next string) string {
+	if existing == "" {
+		return next
+	}
+	return existing + "; " + next
+}
+
+// setupApplySkillsFacet composes the skills facet onto row and returns
+// row's final, AGGREGATED outcome (D-06): registrationOutcome unchanged
+// when target carries no recognized SkillTarget (setupSkillsTarget's
+// ok == false — the runtime has not been wired for skills this wave), or
+// AggregateOutcome(registrationOutcome, skillsOutcome) when it does.
+//
+// mutate selects the preview lane (skills.Inventory only — never
+// skills.Install; a preview performs no filesystem write of any kind) vs
+// the apply lane (skills.Install actually writes through skillsEnv).
+// includeContent gates skills_content population per D-03: populated only
+// when the resolved output format is not text, so the dense text row
+// never carries skill file content.
+func setupApplySkillsFacet(row *setupRuntimeRow, registrationOutcome setup.Outcome, planTarget setup.SkillTarget, mutate bool, includeContent bool) setup.Outcome {
+	target, ok := setupSkillsTarget(planTarget)
+	if !ok {
+		return registrationOutcome
+	}
+	row.Registration = string(registrationOutcome)
+
+	inv, invErr := skills.Inventory()
+	if invErr != nil {
+		row.Skills = string(setup.OutcomeFailed)
+		row.Reason = setupJoinReason(row.Reason, fmt.Sprintf("skills: %v", invErr))
+		return setup.AggregateOutcome(registrationOutcome, setup.OutcomeFailed)
+	}
+
+	var wrote, alreadyCorrect int
+	var installErr error
+	if mutate {
+		report := skills.Install(skillsEnv, target, inv)
+		wrote, alreadyCorrect = len(report.Wrote), len(report.AlreadyCorrect)
+		installErr = report.Err
+	}
+
+	skillsOutcome := setup.SkillsOutcome(planTarget.Format, mutate, wrote, alreadyCorrect, installErr != nil)
+	row.Skills = string(skillsOutcome)
+	row.SkillsDest = target.Dir
+	row.SkillsIndex = target.IndexFile
+	row.SkillsDigest = setupSkillsDigestSummary(inv)
+	row.SkillsBytes = strconv.Itoa(skills.TotalBytes(inv))
+	if includeContent {
+		if content, cErr := skills.ContentJSON(inv); cErr == nil {
+			row.SkillsContent = content
+		}
+	}
+	if installErr != nil {
+		row.Reason = setupJoinReason(row.Reason, fmt.Sprintf("skills: %v", installErr))
+	}
+	return setup.AggregateOutcome(registrationOutcome, skillsOutcome)
+}
 
 // setupCmd detects which supported agent runtimes are present on the
 // machine and reports the exact command it would issue to register engram
@@ -85,6 +194,18 @@ func setupRuntimeEnvDefault() []string {
 // to be JSON, not as a nested object. A later "consistency" edit that
 // promotes this field to a struct, map, or json.RawMessage type will fail
 // that guard test rather than silently reopening the gap.
+//
+// Phase 4 (D-06) promotes Outcome from "the registration outcome" to "the
+// aggregated per-runtime setup outcome": Registration and Skills are the
+// two FACETS aggregation folds together (setup.AggregateOutcome), each
+// riding as its own ordinary key=value field, exactly like every field
+// above. SkillsDest/SkillsIndex/SkillsDigest/SkillsBytes/SkillsContent are
+// the skills facet's own detail fields (D-03/D-11) — SkillsContent is
+// populated ONLY for a non-text output lane (setupApplySkillsFacet), so
+// the dense text row never carries skill file content, which can run to
+// tens of kilobytes. Every one of these seven fields is a plain string —
+// the same "never a struct, map, or raw-message type" constraint Config's
+// own comment states above applies identically to each of them.
 type setupRuntimeRow struct {
 	Name       string `json:"name"`
 	Present    bool   `json:"present"`
@@ -96,6 +217,14 @@ type setupRuntimeRow struct {
 	TokenFile  string `json:"token_file,omitempty"`
 	Config     string `json:"config,omitempty"`
 	Notes      string `json:"notes,omitempty"`
+
+	Registration  string `json:"registration,omitempty"`
+	Skills        string `json:"skills,omitempty"`
+	SkillsDest    string `json:"skills_dest,omitempty"`
+	SkillsIndex   string `json:"skills_index,omitempty"`
+	SkillsDigest  string `json:"skills_digest,omitempty"`
+	SkillsBytes   string `json:"skills_bytes,omitempty"`
+	SkillsContent string `json:"skills_content,omitempty"`
 }
 
 // setupReportDoc is the one typed document setupPreview and setupApplyRun
@@ -125,10 +254,10 @@ type setupReportDoc struct {
 // — this is what makes the report show present state next to intended
 // state without ever changing this function's own no-command-level-error
 // contract.
-func setupBuildRows(ctx context.Context, env setup.Environment, runtimes []setup.Runtime, opts setup.Options) []setupRuntimeRow {
+func setupBuildRows(ctx context.Context, env setup.Environment, runtimes []setup.Runtime, opts setup.Options, includeContent bool) []setupRuntimeRow {
 	rows := make([]setupRuntimeRow, 0, len(runtimes))
 	for _, rt := range runtimes {
-		rows = append(rows, setupRuntimeRowFromResult(setup.Preview(ctx, env, rt, opts)))
+		rows = append(rows, setupRuntimeRowFromResult(setup.Preview(ctx, env, rt, opts), false, includeContent))
 	}
 	return rows
 }
@@ -211,12 +340,12 @@ func setupResolve(cmd *cobra.Command) ([]setup.Runtime, setup.Options, error) {
 // error) never changes a preview's classification or produces a nonzero
 // process exit code — only a usage/configuration error (returned by
 // setupResolve, before any runtime is touched) does that.
-func setupPlanDoc(ctx context.Context, cmd *cobra.Command) (setupReportDoc, error) {
+func setupPlanDoc(ctx context.Context, cmd *cobra.Command, format outputFormat) (setupReportDoc, error) {
 	runtimes, opts, err := setupResolve(cmd)
 	if err != nil {
 		return setupReportDoc{}, err
 	}
-	rows := setupBuildRows(ctx, setupEnv, runtimes, opts)
+	rows := setupBuildRows(ctx, setupEnv, runtimes, opts, format != formatText)
 	return setupReportDoc{Runtimes: rows}, nil
 }
 
@@ -233,7 +362,7 @@ func setupPreview(ctx context.Context, cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	doc, err := setupPlanDoc(ctx, cmd)
+	doc, err := setupPlanDoc(ctx, cmd, format)
 	if err != nil {
 		return err
 	}
@@ -261,8 +390,17 @@ func setupExitCode(c setup.ExitClass) int {
 // cmd/engram row shape, field-for-field (D-04/D-07/D-10/D-15 — every new
 // Result field is one more key=value the existing renderOperator pipeline
 // picks up automatically, no bespoke rendering code).
-func setupRuntimeRowFromResult(r setup.Result) setupRuntimeRow {
-	return setupRuntimeRow{
+//
+// For a PRESENT runtime, this also composes the skills facet
+// (setupApplySkillsFacet) and OVERWRITES Outcome with the aggregated
+// value D-06 requires — r.Outcome itself is passed through unchanged as
+// the registration facet's own outcome, and is what setupApplySkillsFacet
+// returns verbatim when this runtime carries no recognized SkillTarget
+// (a runtime not yet wired for skills this wave: setupSkillsTarget's
+// ok == false). A not-present runtime is skipped entirely: it keeps its
+// OutcomeNotPresent row untouched, with no skills facet (D-07).
+func setupRuntimeRowFromResult(r setup.Result, mutate bool, includeContent bool) setupRuntimeRow {
+	row := setupRuntimeRow{
 		Name:       r.Runtime,
 		Present:    r.Present,
 		Outcome:    string(r.Outcome),
@@ -274,6 +412,10 @@ func setupRuntimeRowFromResult(r setup.Result) setupRuntimeRow {
 		Config:     r.Config,
 		Notes:      r.Notes,
 	}
+	if r.Present {
+		row.Outcome = string(setupApplySkillsFacet(&row, r.Outcome, r.Skills, mutate, includeContent))
+	}
+	return row
 }
 
 // setupResultsFromRows converts report rows into internal/setup.Result
@@ -343,7 +485,7 @@ func setupApplyRun(ctx context.Context, cmd *cobra.Command) error {
 
 	rows := make([]setupRuntimeRow, len(runtimes))
 	for i, rt := range runtimes {
-		rows[i] = setupRuntimeRowFromResult(setup.Apply(ctx, setupEnv, rt, opts))
+		rows[i] = setupRuntimeRowFromResult(setup.Apply(ctx, setupEnv, rt, opts), true, format != formatText)
 	}
 	doc := setupReportDoc{Runtimes: rows}
 

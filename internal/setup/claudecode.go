@@ -5,6 +5,7 @@ package setup
 
 import (
 	"fmt"
+	"path/filepath"
 )
 
 // claudeCodeRuntime implements Runtime for Claude Code, authoring the
@@ -103,7 +104,22 @@ var claudeCodeRemoveAction = Action{
 // field, never from its position in Plan.Actions or from Plan.Runtime's
 // name, so no per-runtime execution code exists anywhere outside this
 // file.
-func (claudeCodeRuntime) Plan(_ Environment, opts Options) (Plan, error) {
+//
+// Every auth mode also authors the SAME SkillTarget (Phase 4, D-05,
+// D-10): skills install at user scope only, with the destination derived
+// from env.HomeDir() — never a literal beginning with a tilde and never
+// an environment-variable read. A HomeDir failure is reported as a failed
+// row naming this runtime, exactly like any other Plan() error.
+func (claudeCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
+	home, err := env.HomeDir()
+	if err != nil {
+		return Plan{}, fmt.Errorf("claude-code: resolve home directory: %w", err)
+	}
+	skillTarget := SkillTarget{
+		Format: SkillFormatNative,
+		Dir:    filepath.Join(home, ".claude", "skills"),
+	}
+
 	switch opts.Auth {
 	case "oauth", "none":
 		return Plan{
@@ -115,7 +131,8 @@ func (claudeCodeRuntime) Plan(_ Environment, opts Options) (Plan, error) {
 					Description: "register engram as a user-scope MCP server",
 				},
 			},
-			Probe: []string{"claude", "mcp", "get", "engram"},
+			Probe:  []string{"claude", "mcp", "get", "engram"},
+			Skills: skillTarget,
 		}, nil
 	case "oauth-client":
 		return Plan{
@@ -131,7 +148,8 @@ func (claudeCodeRuntime) Plan(_ Environment, opts Options) (Plan, error) {
 					Description: "register engram as a user-scope MCP server (pre-registered OAuth client)",
 				},
 			},
-			Probe: []string{"claude", "mcp", "get", "engram"},
+			Probe:  []string{"claude", "mcp", "get", "engram"},
+			Skills: skillTarget,
 		}, nil
 	case "bearer":
 		return Plan{
@@ -144,7 +162,8 @@ func (claudeCodeRuntime) Plan(_ Environment, opts Options) (Plan, error) {
 					Description: "register engram as a user-scope MCP server (bearer token via ENGRAM_TOKEN)",
 				},
 			},
-			Probe: []string{"claude", "mcp", "get", "engram"},
+			Probe:  []string{"claude", "mcp", "get", "engram"},
+			Skills: skillTarget,
 		}, nil
 	default:
 		return Plan{}, fmt.Errorf("claude-code: auth mode %q: %w", opts.Auth, ErrAuthModeUnsupported)

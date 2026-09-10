@@ -172,7 +172,7 @@ func toleratedNote(action Action, exitCode int, stderr string) string {
 // to. Sequence:
 //  1. rt.Detect(env) false -> OutcomeNotPresent, no exec of any kind.
 //  2. rt.Plan(env, opts) error -> OutcomeFailed, Reason = err.Error().
-//  2a. plan.Actions is empty -> OutcomeWouldWrite immediately, in BOTH
+//     2a. plan.Actions is empty -> OutcomeWouldWrite immediately, in BOTH
 //     the preview and --apply lane (mutate is not consulted at all): no
 //     env.LookPath call, no env.Run call, no probe of any kind. This is
 //     D-16's general rule for a runtime whose entire deliverable is
@@ -226,7 +226,7 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 		// and never consult mutate: this outcome is the same in preview
 		// and --apply alike. See this function's own doc comment, step
 		// 2a, for the full reasoning.
-		return Result{Runtime: name, Present: true, Outcome: OutcomeWouldWrite, Command: plan.Display(), Config: plan.Config}
+		return Result{Runtime: name, Present: true, Outcome: OutcomeWouldWrite, Command: plan.Display(), Config: plan.Config, Skills: plan.Skills}
 	}
 	// Validate EVERY action, not only Actions[0]: the run loop below slices
 	// action.Args[1:] for each action, which panics on a zero-length slice
@@ -262,7 +262,7 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 		}
 	}
 
-	res := Result{Runtime: name, Present: true, Command: plan.Display(), Binary: binary, Config: plan.Config}
+	res := Result{Runtime: name, Present: true, Command: plan.Display(), Binary: binary, Config: plan.Config, Skills: plan.Skills}
 	if opts.TokenFile != "" {
 		// D-06/D-07: a --token-file path has no execution meaning for a
 		// runtime that registers by EXECUTING something (plan.Actions is

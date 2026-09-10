@@ -32,6 +32,16 @@ tasks:
       - mkdir -p ../internal/webauth/static
       - cp -R build/. ../internal/webauth/static/
 
+  skills:vendor:
+    desc: >-
+      Vendor skill/engram/skills into internal/skills/data (canonical -> vendored copy, D-01). NOT a dependency of default/test/test:go:
+      an edit made directly to the vendored copy must fail TestSkillsEmbedMatchesVendored rather than being silently re-vendored
+      away by an unrelated `task` run.
+    cmds:
+      - rm -rf internal/skills/data
+      - mkdir -p internal/skills/data
+      - cp -R skill/engram/skills/. internal/skills/data/
+
   test:
     desc: Run unit tests (go + python)
     deps: ['test:go', 'test:python']
