@@ -9,6 +9,16 @@
   "platformAutomerge": true,
   "packageRules": [
     {
+      "description": "Do NOT pin qdrant/qdrant to a digest. ci.yaml's service image must stay BYTE-IDENTICAL to internal/store/store_test.go's qdrantImageTag constant (\"qdrant/qdrant:v1.18.2\") \u2014 the testcontainer fallback (D-18) and the shared CI service are deliberately version-locked so qdrantTOCTOUVerifiedVersion forces a conscious re-verification on a bump. A digest suffix breaks that lock, and also breaks the three `docker ps --filter ancestor=qdrant/qdrant:v1.18.2` guards in the same workflow, which stop matching once the container is created from a digest-pinned reference (measured 2026-09-09: renovate PR #535 red on \"expected exactly one Qdrant container, found 0\"). Version bumps are still offered; only digest pinning is off.",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "qdrant/qdrant"
+      ],
+      "pinDigests": false
+    },
+    {
       "description": "Keep opentelemetry-go (core) and opentelemetry-go-contrib in ONE group. Upstream ships them as separate monorepos, so group:monorepos splits them, but they are API-coupled for consumers: bumping core otel/log 0.20->0.22 alone leaves contrib otelslog v0.19.0 calling the removed log.Int64Value, and bumping contrib alone leaves sdk/log v0.20.0 against a newer log. Each half is individually unbuildable, so both PRs sit red forever and neither can automerge (measured 2026-09-09: renovate PRs #478 and #485). Grouping them makes the coupled upgrade land as one buildable change.",
       "matchPackageNames": [
         "go.opentelemetry.io/**"
