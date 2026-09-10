@@ -5,6 +5,7 @@ package setup
 
 import (
 	"errors"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -167,6 +168,40 @@ func TestOAuthAndNoneAuthorIdenticalArgs(t *testing.T) {
 				if !reflect.DeepEqual(oauthPlan.Actions[i].Args, nonePlan.Actions[i].Args) {
 					t.Errorf("action %d: oauth Args = %v, none Args = %v, want identical", i, oauthPlan.Actions[i].Args, nonePlan.Actions[i].Args)
 				}
+			}
+		})
+	}
+}
+
+// TestSkillTargetDestinationsAreAbsolute is a registry-driven structural
+// guard (WR-03), the same shape as codex_test.go's
+// TestEveryRuntimeAuthorsAnExplicitSkillFormat: for every entry in
+// Runtimes (never a hand-written list, so a fifth runtime is covered
+// automatically), Plan()'s authored SkillTarget.Dir must be absolute for
+// every non-SkillFormatNone target, and SkillTarget.IndexFile must be
+// absolute for every SkillFormatAgentsMD target. Today every runtime
+// happens to derive its destination from env.HomeDir() correctly, but
+// nothing previously caught a relative Dir/IndexFile — an authoring bug in
+// a future runtime, or a refactor that drops the env.HomeDir() call —
+// before it silently wrote skill files (or spliced an AGENTS.md-shaped
+// file) relative to engram's own current working directory (threat
+// T-04-08, 04-CONTEXT.md).
+func TestSkillTargetDestinationsAreAbsolute(t *testing.T) {
+	env := fakeEnv()
+	opts := Options{URL: "https://engram.example.com/mcp", Auth: "oauth"}
+
+	for _, rt := range Runtimes {
+		rt := rt
+		t.Run(rt.Name(), func(t *testing.T) {
+			plan, err := rt.Plan(env, opts)
+			if err != nil {
+				t.Fatalf("%s: Plan(oauth): %v", rt.Name(), err)
+			}
+			if plan.Skills.Format != SkillFormatNone && !filepath.IsAbs(plan.Skills.Dir) {
+				t.Errorf("%s: Skills.Dir = %q, want an absolute path (Format=%q)", rt.Name(), plan.Skills.Dir, plan.Skills.Format)
+			}
+			if plan.Skills.Format == SkillFormatAgentsMD && !filepath.IsAbs(plan.Skills.IndexFile) {
+				t.Errorf("%s: Skills.IndexFile = %q, want an absolute path (Format=%q)", rt.Name(), plan.Skills.IndexFile, plan.Skills.Format)
 			}
 		})
 	}
