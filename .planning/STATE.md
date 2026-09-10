@@ -4,16 +4,16 @@ milestone: 2026-08-23.01
 current_phase: 04
 current_phase_name: Skills Distribution
 status: executing
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-09-10T05:29:18.961Z"
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-09-10T15:08:06.015Z"
 last_activity: 2026-09-10
 last_activity_desc: Phase 04 execution started
-state_head: 31dc4a47291e335bb3c61ecf5a53c5a52fb4722f
+state_head: 334dea903e9f5d80d8de25268a13f071aa37e58b
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 15
-  completed_plans: 13
+  completed_plans: 14
 milestone_name: Distribution & Agent Bootstrap
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 — after opening milestone 2026-0
 ## Current Position
 
 Phase: 04 (Skills Distribution) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-09-10 — Phase 04 execution started
 
@@ -261,6 +261,7 @@ milestone needs in working memory.
 - [Phase 04]: internal/skills' setupSkillsTarget returns (skills.Target, bool) rather than the plan's literal single-return signature, so an un-wired runtime (codex/opencode/generic this wave) is skipped rather than reaching Install with an empty destination.
 - [Phase 04]: cmd/engram/setup_test.go's withFakeSetupEnv now also fakes the skillsEnv seam by default, protecting every existing --apply test from a real filesystem write to $HOME/.claude/skills.
 - [Phase 04]: ParseFrontmatter parses name/metadata from isolated per-top-level-key YAML fragments, not the whole frontmatter document, because curating-spine's real description contains a bare colon-space YAML's plain-scalar grammar rejects.
+- [Phase 04]: Codex routing: codex-native-plus-index (native skills + AGENTS.md index); RESEARCH assumption A1 confirmed by human observation — Gives ROADMAP success criterion 3 a live --apply write path and hedges the one MEDIUM-confidence open question; Sean confirmed codex's skill selector surfaces the five skills
 
 ### Pending Todos
 
@@ -305,8 +306,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-10T05:29:18.891Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-09-10T15:08:05.892Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -418,6 +419,7 @@ Resume file: None
 | Phase 03 P05 | 19min | 3 tasks | 6 files |
 | Phase 04 P01 | 34min | 3 tasks | 23 files |
 | Phase 04-skills-distribution P02 | 35min | 3 tasks | 20 files |
+| Phase 04 P03 | 55min | 3 tasks | 6 files |
 
 ## Operator Next Steps
 
