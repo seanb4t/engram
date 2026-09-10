@@ -45,9 +45,9 @@ would write, and wires it up.
 
 ### Skills Distribution
 
-- [ ] **REQ-skills-embedded-in-binary**: A brew-installed engram binary carries the curation skills' content without a Claude plugin present, sourced from the same files the plugin ships so the two cannot drift.
-- [ ] **REQ-skills-native-format**: Where a runtime has a native skill or rules format, `engram setup` installs the skills in that format.
-- [ ] **REQ-skills-agents-md-fallback**: Where a runtime has no native skill format, `engram setup` writes the guidance into AGENTS.md inside a delimited, re-detectable block, so a re-run replaces that block rather than appending a second copy. Content outside the block is left byte-for-byte untouched.
+- [x] **REQ-skills-embedded-in-binary**: A brew-installed engram binary carries the curation skills' content without a Claude plugin present, sourced from the same files the plugin ships so the two cannot drift.
+- [x] **REQ-skills-native-format**: Where a runtime has a native skill or rules format, `engram setup` installs the skills in that format.
+- [x] **REQ-skills-agents-md-fallback**: Where a runtime has no native skill format, `engram setup` writes the guidance into AGENTS.md inside a delimited, re-detectable block, so a re-run replaces that block rather than appending a second copy. Content outside the block is left byte-for-byte untouched.
 
 ### Slash Command Delegation
 
@@ -105,9 +105,9 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-register-generic-mcp | Phase 3 | Complete |
 | REQ-register-auth-modes | Phase 3 | Complete |
 | REQ-register-cli-surface-drift-legible | Phase 3 | Complete |
-| REQ-skills-embedded-in-binary | Phase 4 | Pending |
-| REQ-skills-native-format | Phase 4 | Pending |
-| REQ-skills-agents-md-fallback | Phase 4 | Pending |
+| REQ-skills-embedded-in-binary | Phase 4 | Complete |
+| REQ-skills-native-format | Phase 4 | Complete |
+| REQ-skills-agents-md-fallback | Phase 4 | Complete |
 | REQ-engram-setup-delegates | Phase 5 | Pending |
 | REQ-engram-setup-prose-fallback | Phase 5 | Pending |
 | REQ-delegation-equivalence-derived | Phase 5 | Pending |

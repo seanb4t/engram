@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 milestone: 2026-08-23.01
 current_phase: 04
 current_phase_name: Skills Distribution
-status: executing
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-09-10T15:08:06.015Z"
+status: verifying
+stopped_at: Completed 04-04-PLAN.md
+last_updated: "2026-09-10T15:37:27.654Z"
 last_activity: 2026-09-10
 last_activity_desc: Phase 04 execution started
-state_head: 334dea903e9f5d80d8de25268a13f071aa37e58b
+state_head: 8c9804508e217915390f3f7c19e07e7b3acc36a8
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 15
-  completed_plans: 14
+  completed_plans: 15
 milestone_name: Distribution & Agent Bootstrap
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-23 — after opening milestone 2026-0
 
 Phase: 04 (Skills Distribution) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-10 — Phase 04 execution started
 
 ## Deferred Items
@@ -64,7 +64,7 @@ Items acknowledged and deferred at milestone close on 2026-08-22 (milestone 2026
 | deferred_items | Phase 07 / Environment gaps (`ui/`): svelte-check crash, no `lint` script | acknowledged — genuine pre-existing debt. `svelte-check@4.7.3` / `typescript@7.0.2` incompatibility pinned in `ui/package.json`; executors substituted vitest + `npx tsc --noEmit` |
 | deferred_items | Phase 07 / Deferred to phase UAT (07-04 `/observe?inc=archived` round-trip, 07-07 migration-banner visual check) | acknowledged — genuine, needs a live server + Qdrant; unrunnable in a worktree |
 
-Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own `- **Status:** Ready to execute
+Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own `- **Status:** Phase complete — ready for verification
 
 ## Accumulated Context
 
@@ -262,6 +262,8 @@ milestone needs in working memory.
 - [Phase 04]: cmd/engram/setup_test.go's withFakeSetupEnv now also fakes the skillsEnv seam by default, protecting every existing --apply test from a real filesystem write to $HOME/.claude/skills.
 - [Phase 04]: ParseFrontmatter parses name/metadata from isolated per-top-level-key YAML fragments, not the whole frontmatter document, because curating-spine's real description contains a bare colon-space YAML's plain-scalar grammar rejects.
 - [Phase 04]: Codex routing: codex-native-plus-index (native skills + AGENTS.md index); RESEARCH assumption A1 confirmed by human observation — Gives ROADMAP success criterion 3 a live --apply write path and hedges the one MEDIUM-confidence open question; Sean confirmed codex's skill selector surfaces the five skills
+- [Phase 04]: setupSkillsTarget widened to (skills.Target, error): every registered runtime now authors an explicit SkillFormat, so an unrecognized format is a failed row, never a silent skip
+- [Phase 04]: generic's Plan() authors the explicit no-destination SkillFormatNone, carrying the curation skills in its --output json deliverable with the install call explicitly skipped so it can never reach the filesystem
 
 ### Pending Todos
 
@@ -306,8 +308,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-10T15:08:05.892Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-09-10T15:37:27.587Z
+Stopped at: Completed 04-04-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -420,6 +422,7 @@ Resume file: None
 | Phase 04 P01 | 34min | 3 tasks | 23 files |
 | Phase 04-skills-distribution P02 | 35min | 3 tasks | 20 files |
 | Phase 04 P03 | 55min | 3 tasks | 6 files |
+| Phase 04 P04 | 25min | 3 tasks | 5 files |
 
 ## Operator Next Steps
 

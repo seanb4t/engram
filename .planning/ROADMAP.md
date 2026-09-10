@@ -470,14 +470,14 @@ and detection Phase 3 established).
    AGENTS.md inside a delimited, re-detectable block; re-running replaces that block rather than
    appending a second copy, and content outside the block is left byte-for-byte untouched.
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans executed
 
 Plans:
 
 - [x] 04-01-PLAN.md — Tracer: vendor → embed → inventory → native install → claude-code row, plus outcome aggregation and the import gate (wave 1)
 - [x] 04-02-PLAN.md — The `metadata` index entry, frontmatter parsing, and the AGENTS.md anchored-block scan, splice and symlink-preserving write (wave 2)
 - [x] 04-03-PLAN.md — Codex and opencode skills destinations, with the AGENTS.md routing decision and the runtime-surfacing human verification (wave 3)
-- [ ] 04-04-PLAN.md — `generic`'s skills payload, `--help` correctness, and the four-runtime end-to-end report gate (wave 3)
+- [x] 04-04-PLAN.md — `generic`'s skills payload, `--help` correctness, and the four-runtime end-to-end report gate (wave 3)
 
 ---
 
@@ -623,7 +623,7 @@ and the delegation story settled).
 | 1. Version & Homebrew Distribution | 2026-08-23.01 | 3/3 | Complete | 2026-08-25 |
 | 2. Setup Command Core | 2026-08-23.01 | 3/3 | Complete | 2026-08-30 |
 | 3. Runtime Registration | 2026-08-23.01 | 7/7 | Complete | 2026-09-09 |
-| 4. Skills Distribution | 2026-08-23.01 | 0/3 | In Progress|  |
+| 4. Skills Distribution | 2026-08-23.01 | 4/4 | Complete | 2026-09-10 |
 | 5. Slash Command Delegation | 2026-08-23.01 | 0/3 | Not started | - |
 | 6. Install Documentation | 2026-08-23.01 | 0/2 | Not started | - |
 
