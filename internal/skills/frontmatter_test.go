@@ -82,6 +82,45 @@ func TestParseFrontmatter(t *testing.T) {
 			t.Errorf("error %q does not name the path", err.Error())
 		}
 	})
+
+	// WR-04: a summary containing a newline (as a YAML block scalar would
+	// parse to) or exceeding MaxSummaryBytes must be rejected by
+	// ParseFrontmatter itself, not merely by a test run against whatever
+	// the currently embedded inventory happens to contain.
+	t.Run("multi-line summary is an error naming the path", func(t *testing.T) {
+		content := "---\nname: example\nmetadata:\n  engram-summary: |\n    line one\n    line two\n---\n# Example\n"
+		_, _, err := ParseFrontmatter("example/SKILL.md", []byte(content))
+		if err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+		if !strings.Contains(err.Error(), "example/SKILL.md") {
+			t.Errorf("error %q does not name the path", err.Error())
+		}
+	})
+
+	t.Run("over-length summary is an error naming the path", func(t *testing.T) {
+		long := strings.Repeat("a", MaxSummaryBytes+1)
+		content := "---\nname: example\nmetadata:\n  engram-summary: \"" + long + "\"\n---\n# Example\n"
+		_, _, err := ParseFrontmatter("example/SKILL.md", []byte(content))
+		if err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+		if !strings.Contains(err.Error(), "example/SKILL.md") {
+			t.Errorf("error %q does not name the path", err.Error())
+		}
+	})
+
+	t.Run("exactly MaxSummaryBytes is not an error", func(t *testing.T) {
+		exact := strings.Repeat("a", MaxSummaryBytes)
+		content := "---\nname: example\nmetadata:\n  engram-summary: \"" + exact + "\"\n---\n# Example\n"
+		_, summary, err := ParseFrontmatter("example/SKILL.md", []byte(content))
+		if err != nil {
+			t.Fatalf("ParseFrontmatter: %v", err)
+		}
+		if summary != exact {
+			t.Errorf("summary length = %d, want %d", len(summary), MaxSummaryBytes)
+		}
+	})
 }
 
 // TestEverySkillCarriesIndexSummary drives the REAL embedded inventory:

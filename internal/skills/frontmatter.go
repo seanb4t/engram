@@ -22,6 +22,7 @@ package skills
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	yaml "go.yaml.in/yaml/v3"
 )
@@ -77,6 +78,16 @@ type frontmatterMetadataDoc struct {
 // TestEverySkillCarriesIndexSummary) decides what to do with an absent
 // entry. This split is deliberate: a missing index entry must fail
 // engram's own build, never a user's install.
+//
+// A PRESENT summary containing a newline, or exceeding MaxSummaryBytes,
+// IS an error naming path (WR-04): D-14's "authored, single-line" contract
+// was previously enforced only by TestEverySkillCarriesIndexSummary
+// against whatever the currently embedded inventory happens to contain —
+// a YAML block-scalar `summary: |` value would parse successfully and
+// pass straight through to RenderBlock, silently emitting a malformed
+// multi-line bullet into the spliced AGENTS.md index block. Rejecting it
+// here makes the invariant structurally impossible to embed, rather than
+// merely tested if the gate happens to run before the binary is built.
 func ParseFrontmatter(path string, content []byte) (name string, summary string, err error) {
 	allLines := bytes.Split(content, []byte("\n"))
 	if len(allLines) == 0 || string(bytes.TrimRight(allLines[0], "\r")) != fenceLine {
@@ -112,6 +123,13 @@ func ParseFrontmatter(path string, content []byte) (name string, summary string,
 		if doc.Metadata != nil {
 			summary = doc.Metadata[MetadataSummaryKey]
 		}
+	}
+
+	if strings.Contains(summary, "\n") {
+		return "", "", fmt.Errorf("skills: %s: %s %q value contains a newline — it must be authored as a single line (D-14)", path, MetadataSummaryKey, summary)
+	}
+	if len(summary) > MaxSummaryBytes {
+		return "", "", fmt.Errorf("skills: %s: %s is %d bytes, want at most %d (D-14)", path, MetadataSummaryKey, len(summary), MaxSummaryBytes)
 	}
 
 	return name, summary, nil
