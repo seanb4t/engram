@@ -248,6 +248,14 @@ None — no external service configuration required.
 - `04-02-PLAN.md` is next: the AGENTS.md delimited-block splice and `SkillFormatAgentsMD`'s real implementation (closing this plan's one disclosed stub), plus the YAML frontmatter parser (`go.yaml.in/yaml/v3`) that widens `internal/skills`' now-empty third-party allowlist by exactly one entry.
 - `REQ-skills-embedded-in-binary` and `REQ-skills-native-format` are NOT yet marked complete in `REQUIREMENTS.md` — both are shared with `04-02`/`04-03`/`04-04` per the shared-ID gate (`gsd_run query requirements.ready-ids` confirmed `0/2` ready), and will flip to `Complete` once every plan declaring them has its own `SUMMARY.md`.
 
+## Self-Check: PASSED
+
+- All 12 key files (created in Tasks 1-3) verified present on disk with `[ -f ]`.
+- All 5 commits (`24194900`, `48d52049`, `bd8e8a5d`, `4b41db68`, `0dccc1d0`) verified present in `git log --oneline --all`.
+- Re-ran `go build ./... && go test ./internal/skills/... ./internal/setup/... ./cmd/engram/... -count=1` — all green.
+- Re-ran the drift-gate live falsification (corrupt one byte under `internal/skills/data`, confirm `TestSkillsEmbedMatchesVendored` fails naming the exact path, restore, confirm it passes again) — behaves as documented.
+- `git diff --stat internal/setup/exit.go internal/setup/exit_test.go` and `cmd/engram/testdata/catalog.golden` both print nothing (pinned files untouched).
+
 ---
 *Phase: 04-skills-distribution*
 *Completed: 2026-09-10*

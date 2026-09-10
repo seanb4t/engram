@@ -1,19 +1,19 @@
 ---
 gsd_state_version: "1.0"
 milestone: 2026-08-23.01
-current_phase: 4
+current_phase: 04
 current_phase_name: Skills Distribution
-status: planning
-stopped_at: Phase 4 context gathered
-last_updated: "2026-09-10T03:13:41.933Z"
-last_activity: 2026-09-09
-last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: e684dcc471fbfdde7abc290baf9b1c7ce8acc9d7
+status: executing
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-09-10T05:00:22.761Z"
+last_activity: 2026-09-10
+last_activity_desc: Phase 04 execution started
+state_head: 0dccc1d083cda2c16ed7e30bdb144378fb79347f
 progress:
   total_phases: 6
-  completed_phases: 3
-  total_plans: 11
-  completed_plans: 11
+  completed_phases: 2
+  total_plans: 15
+  completed_plans: 12
 milestone_name: Distribution & Agent Bootstrap
 ---
 
@@ -24,14 +24,14 @@ milestone_name: Distribution & Agent Bootstrap
 See: .planning/PROJECT.md (updated 2026-08-23 — after opening milestone 2026-08-23.01)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 03 — Runtime Registration
+**Current focus:** Phase 04 — Skills Distribution
 
 ## Current Position
 
-Phase: 4 — Skills Distribution
-Plan: Not started
-Status: Executing Phase 03
-Last activity: 2026-09-09 — Phase 3 complete, transitioned to Phase 4
+Phase: 04 (Skills Distribution) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-09-10 — Phase 04 execution started
 
 ## Deferred Items
 
@@ -64,7 +64,7 @@ Items acknowledged and deferred at milestone close on 2026-08-22 (milestone 2026
 | deferred_items | Phase 07 / Environment gaps (`ui/`): svelte-check crash, no `lint` script | acknowledged — genuine pre-existing debt. `svelte-check@4.7.3` / `typescript@7.0.2` incompatibility pinned in `ui/package.json`; executors substituted vitest + `npx tsc --noEmit` |
 | deferred_items | Phase 07 / Deferred to phase UAT (07-04 `/observe?inc=archived` round-trip, 07-07 migration-banner visual check) | acknowledged — genuine, needs a live server + Qdrant; unrunnable in a worktree |
 
-Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own `- **Status:** Ready to plan
+Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own `- **Status:** Ready to execute
 
 ## Accumulated Context
 
@@ -258,6 +258,8 @@ milestone needs in working memory.
 - [Phase 03]: Preview's probe capture uses the SAME combined stdout+stderr shape apply's read #2 already uses, applied regardless of the probe's exit code (D-11 reports rather than diagnoses).
 - [Phase 03]: The token_file=ignored marker is set structurally (Plan carries at least one Action), never keyed on a runtime's name, and never carries the supplied --token-file path (D-07).
 - [Phase 03]: TestSetupPartialExitIsLiveProducible distinguishes runtimes inside its scripted Run fake by the LookPath-resolved binary path, never by a runtime-name branch in production code, proving exitPartial has a real two-native-runtime production path.
+- [Phase 04]: internal/skills' setupSkillsTarget returns (skills.Target, bool) rather than the plan's literal single-return signature, so an un-wired runtime (codex/opencode/generic this wave) is skipped rather than reaching Install with an empty destination.
+- [Phase 04]: cmd/engram/setup_test.go's withFakeSetupEnv now also fakes the skillsEnv seam by default, protecting every existing --apply test from a real filesystem write to $HOME/.claude/skills.
 
 ### Pending Todos
 
@@ -302,9 +304,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-10T03:13:41.847Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-skills-distribution/04-CONTEXT.md
+Last session: 2026-09-10T05:00:22.692Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -413,6 +415,7 @@ Resume file: .planning/phases/04-skills-distribution/04-CONTEXT.md
 | Phase 03 P02 | 15min | 3 tasks | 8 files |
 | Phase 03 P04 | 45min | 3 tasks | 11 files |
 | Phase 03 P05 | 19min | 3 tasks | 6 files |
+| Phase 04 P01 | 34min | 3 tasks | 23 files |
 
 ## Operator Next Steps
 
