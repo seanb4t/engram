@@ -115,6 +115,13 @@ func setupApplySkillsFacet(row *setupRuntimeRow, registrationOutcome setup.Outco
 	inv, invErr := skills.Inventory()
 	if invErr != nil {
 		row.Skills = string(setup.OutcomeFailed)
+		// target was already resolved successfully above (targetErr ==
+		// nil on this path) — populate the destination fields before
+		// returning so an operator triaging a broken-build report (a
+		// broken embed) does not lose the destination context that was
+		// already available (WR-05).
+		row.SkillsDest = target.Dir
+		row.SkillsIndex = target.IndexFile
 		row.Reason = setupJoinReason(row.Reason, fmt.Sprintf("skills: %v", invErr))
 		return setup.AggregateOutcome(registrationOutcome, setup.OutcomeFailed)
 	}
