@@ -4,8 +4,10 @@
 package skills
 
 import (
+	"bytes"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -154,5 +156,188 @@ func TestInstallAccumulatesFailuresAndAttemptsEverySkill(t *testing.T) {
 	msg := report.Err.Error()
 	if strings.Count(msg, "boom: disk full") != 2 {
 		t.Errorf("Install: Err = %q, want it to contain both of alpha's failures (one per file)", msg)
+	}
+}
+
+// TestInstallAgentsMdConverges drives Install's FormatAgentsMD branch
+// across every non-symlink bullet in 04-02-PLAN.md Task 3's behavior
+// block using the in-memory fake seam: create, replace, already-correct
+// on a second run, and the malformed case.
+func TestInstallAgentsMdConverges(t *testing.T) {
+	const indexFile = "/home/fake/AGENTS.md"
+	target := Target{Format: FormatAgentsMD, Dir: "/home/fake/.claude/skills", IndexFile: indexFile}
+
+	t.Run("create: index file does not exist yet", func(t *testing.T) {
+		store := make(map[string][]byte)
+		env := fakeInstallEnv(store)
+		list := testSkills()
+
+		report := Install(env, target, list)
+		if report.Err != nil {
+			t.Fatalf("Install: unexpected error: %v", report.Err)
+		}
+		if len(report.Wrote) != 4 { // 3 skill files + the index file
+			t.Fatalf("len(Wrote) = %d, want 4 (3 skill files + index)", len(report.Wrote))
+		}
+		var sawIndex bool
+		for _, p := range report.Wrote {
+			if p == indexFile {
+				sawIndex = true
+			}
+		}
+		if !sawIndex {
+			t.Fatalf("Wrote = %v, want it to contain the index file %q", report.Wrote, indexFile)
+		}
+		body := string(store[indexFile])
+		if !strings.Contains(body, BlockStartMarker) || !strings.Contains(body, BlockEndMarker) {
+			t.Errorf("index file content = %q, want it to contain both markers", body)
+		}
+	})
+
+	t.Run("replace: a well-formed pre-existing block is replaced in place", func(t *testing.T) {
+		store := make(map[string][]byte)
+		env := fakeInstallEnv(store)
+		list := testSkills()
+
+		if r := Install(env, target, list); r.Err != nil {
+			t.Fatalf("seed Install: unexpected error: %v", r.Err)
+		}
+		// Hand-alter the pre-existing block's interior to prove a re-run
+		// replaces rather than appends a second copy.
+		store[indexFile] = []byte(strings.Replace(string(store[indexFile]), "alpha", "ALPHA-STALE", 1))
+
+		second := Install(env, target, list)
+		if second.Err != nil {
+			t.Fatalf("second Install: unexpected error: %v", second.Err)
+		}
+		var sawIndexWrote bool
+		for _, p := range second.Wrote {
+			if p == indexFile {
+				sawIndexWrote = true
+			}
+		}
+		if !sawIndexWrote {
+			t.Errorf("second Install: Wrote = %v, want it to contain the index file", second.Wrote)
+		}
+		if strings.Contains(string(store[indexFile]), "ALPHA-STALE") {
+			t.Error("second Install did not replace the stale interior")
+		}
+		if strings.Count(string(store[indexFile]), BlockStartMarker) != 1 {
+			t.Errorf("index file has %d start markers, want exactly 1 (replaced, not appended)", strings.Count(string(store[indexFile]), BlockStartMarker))
+		}
+	})
+
+	t.Run("already-correct: a second run with nothing changed writes nothing to the index", func(t *testing.T) {
+		store := make(map[string][]byte)
+		env := fakeInstallEnv(store)
+		list := testSkills()
+
+		if r := Install(env, target, list); r.Err != nil {
+			t.Fatalf("seed Install: unexpected error: %v", r.Err)
+		}
+
+		second := Install(env, target, list)
+		if second.Err != nil {
+			t.Fatalf("second Install: unexpected error: %v", second.Err)
+		}
+		for _, p := range second.Wrote {
+			if p == indexFile {
+				t.Errorf("second Install: Wrote = %v, want the index file NOT on Wrote", second.Wrote)
+			}
+		}
+		var sawIndexAlreadyCorrect bool
+		for _, p := range second.AlreadyCorrect {
+			if p == indexFile {
+				sawIndexAlreadyCorrect = true
+			}
+		}
+		if !sawIndexAlreadyCorrect {
+			t.Errorf("second Install: AlreadyCorrect = %v, want it to contain the index file", second.AlreadyCorrect)
+		}
+	})
+
+	t.Run("malformed: the index write is skipped but every skill file still installs", func(t *testing.T) {
+		store := make(map[string][]byte)
+		env := fakeInstallEnv(store)
+		list := testSkills()
+
+		malformed := []byte(BlockEndMarker + "\nno matching start\n")
+		store[indexFile] = append([]byte(nil), malformed...)
+
+		report := Install(env, target, list)
+		if report.Err == nil {
+			t.Fatal("Install: Err = nil, want a non-nil error naming the malformed index")
+		}
+		if !strings.Contains(report.Err.Error(), indexFile) {
+			t.Errorf("Install: Err = %q, want it to name the index path %q", report.Err.Error(), indexFile)
+		}
+		if !bytes.Equal(store[indexFile], malformed) {
+			t.Errorf("store[%q] = %q, want it UNCHANGED — zero bytes written to a malformed index", indexFile, store[indexFile])
+		}
+		for _, p := range report.Wrote {
+			if p == indexFile {
+				t.Error("Wrote contains the index file, want zero writes to it on a malformed input")
+			}
+		}
+		if len(report.Wrote) != 3 {
+			t.Errorf("len(Wrote) = %d, want 3 (every skill file still installs)", len(report.Wrote))
+		}
+	})
+}
+
+// TestAgentsMdPreservesSymlink is the one test in this package that uses
+// a REAL filesystem: the property under test — what the operating system
+// does to a symlink under a whole-file write — cannot be exhibited by a
+// fake seam. This is engram's OWN write behavior against a real
+// filesystem, not third-party behavior, so it is a legitimate automated
+// gate under repo rule m45p2b4bp7.
+func TestAgentsMdPreservesSymlink(t *testing.T) {
+	dir := t.TempDir()
+	realFile := filepath.Join(dir, "real-agents.md")
+	symlinkFile := filepath.Join(dir, "AGENTS.md")
+
+	if err := os.WriteFile(realFile, []byte("pre-existing dotfile content\n"), 0o644); err != nil {
+		t.Fatalf("seed real file: %v", err)
+	}
+	if err := os.Symlink(realFile, symlinkFile); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	target := Target{
+		Format:    FormatAgentsMD,
+		Dir:       filepath.Join(dir, "skills"),
+		IndexFile: symlinkFile,
+	}
+
+	report := Install(OSEnvironment, target, testSkills())
+	if report.Err != nil {
+		t.Fatalf("Install: unexpected error: %v", report.Err)
+	}
+
+	info, err := os.Lstat(symlinkFile)
+	if err != nil {
+		t.Fatalf("Lstat symlink path: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("%s is no longer a symlink after Install", symlinkFile)
+	}
+
+	linkTarget, err := os.Readlink(symlinkFile)
+	if err != nil {
+		t.Fatalf("Readlink: %v", err)
+	}
+	if linkTarget != realFile {
+		t.Errorf("Readlink(%s) = %q, want %q — the link's target changed identity", symlinkFile, linkTarget, realFile)
+	}
+
+	content, err := os.ReadFile(realFile)
+	if err != nil {
+		t.Fatalf("read real target file: %v", err)
+	}
+	if !strings.Contains(string(content), BlockStartMarker) {
+		t.Errorf("real target file content = %q, want it to contain the skills index block", content)
+	}
+	if !strings.Contains(string(content), "pre-existing dotfile content") {
+		t.Errorf("real target file content = %q, want the pre-existing content preserved", content)
 	}
 }

@@ -1,18 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sean Brandt
 
-// Package skills' frontmatter.go parses the one-line index entry each
-// shipped SKILL.md authors at the Agent Skills specification's own
-// `metadata` extension point (D-14). It is the sole reason this package
-// carries a third-party import at all: go.yaml.in/yaml/v3 is the
-// maintained successor to the archived gopkg.in/yaml.v3 (unmaintained
-// April 2025), already resolved in go.sum and reached transitively today
-// by cobra/doc and the buf tool. Promoting it to a direct dependency here
-// is a deliberate, user-locked decision against repo rule xvqj44e5mk,
-// which prefers an established upstream over a hand-rolled parser — the
-// standing "zero new Go dependencies" constraint is about supply-chain
-// surface and shipped-binary linkage, not a mandate to reimplement a
-// solved problem. gopkg.in/yaml.v3 must never be promoted alongside it.
+// Package skills embeds the shipped curation skills into the binary and
+// installs them for a runtime, either natively or via an AGENTS.md
+// delimited-block fallback.
+//
+// frontmatter.go parses the one-line index entry each shipped SKILL.md
+// authors at the Agent Skills specification's own `metadata` extension
+// point (D-14). It is the sole reason this package carries a third-party
+// import at all: go.yaml.in/yaml/v3 is the maintained successor to the
+// archived gopkg.in/yaml.v3 (unmaintained April 2025), already resolved
+// in go.sum and reached transitively today by cobra/doc and the buf
+// tool. Promoting it to a direct dependency here is a deliberate,
+// user-locked decision against repo rule xvqj44e5mk, which prefers an
+// established upstream over a hand-rolled parser — the standing "zero
+// new Go dependencies" constraint is about supply-chain surface and
+// shipped-binary linkage, not a mandate to reimplement a solved problem.
+// gopkg.in/yaml.v3 must never be promoted alongside it.
 package skills
 
 import (
