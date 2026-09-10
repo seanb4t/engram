@@ -4,7 +4,9 @@
 package setup
 
 import (
+	"errors"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -120,6 +122,54 @@ func TestClaudeCodeBearerHeaderIsAnEnvVarReference(t *testing.T) {
 	}
 	if strings.Contains(headerArg, sentinelTokenFile) {
 		t.Errorf("header arg = %q, contains the sentinel token-file path — D-06 requires an env-var reference, never a path", headerArg)
+	}
+}
+
+// TestClaudeCodeSkillTarget asserts claude-code's own authored SkillTarget
+// (claudecode.go:118-121) against a fake environment with a deterministic
+// home, across every supported auth mode, mirroring
+// TestCodexSkillTarget/TestOpenCodeSkillTarget (WR-02): claude-code's
+// destination had no equivalent independent assertion, so a typo or
+// segment reordering in the authored Dir would have passed every existing
+// test undetected.
+func TestClaudeCodeSkillTarget(t *testing.T) {
+	const url = "https://engram.example.com/mcp"
+	env := fakeEnv()
+	wantDir := filepath.Join("/home/fake", ".claude", "skills")
+	wantTarget := SkillTarget{Format: SkillFormatNative, Dir: wantDir}
+
+	modes := []string{"oauth", "none", "oauth-client", "bearer"}
+	for _, mode := range modes {
+		mode := mode
+		t.Run(mode, func(t *testing.T) {
+			plan, err := ClaudeCode.Plan(env, Options{URL: url, Auth: mode})
+			if err != nil {
+				t.Fatalf("Plan(%q): %v", mode, err)
+			}
+			if !reflect.DeepEqual(plan.Skills, wantTarget) {
+				t.Errorf("Plan(%q).Skills = %+v, want %+v", mode, plan.Skills, wantTarget)
+			}
+		})
+	}
+}
+
+// TestClaudeCodePlanFailsWhenHomeUnresolvable asserts a fake whose
+// home-directory function errors makes Plan() return an error naming the
+// runtime, rather than silently producing an empty-destination
+// SkillTarget — mirroring TestCodexPlanFailsWhenHomeUnresolvable /
+// TestOpenCodePlanFailsWhenHomeUnresolvable (WR-02).
+func TestClaudeCodePlanFailsWhenHomeUnresolvable(t *testing.T) {
+	env := Environment{
+		LookPath: func(string) (string, error) { return "", exec.ErrNotFound },
+		Getenv:   func(string) string { return "" },
+		HomeDir:  func() (string, error) { return "", errors.New("boom") },
+	}
+	_, err := ClaudeCode.Plan(env, Options{URL: "https://engram.example.com/mcp", Auth: "oauth"})
+	if err == nil {
+		t.Fatal("Plan: want an error when the home directory is unresolvable, got nil")
+	}
+	if !strings.Contains(err.Error(), "claude-code") {
+		t.Errorf("Plan err = %q, want it to name the runtime", err.Error())
 	}
 }
 
