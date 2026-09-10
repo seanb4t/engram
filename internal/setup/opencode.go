@@ -3,7 +3,10 @@
 
 package setup
 
-import "fmt"
+import (
+	"fmt"
+	"path/filepath"
+)
 
 // openCodeRuntime implements Runtime for opencode, authoring the
 // live-verified `opencode mcp add [name] --url <URL>` invocation surface
@@ -88,9 +91,26 @@ func (openCodeRuntime) Detect(env Environment) bool {
 //     side, from a wrong token. Do not write a test asserting opencode's
 //     substitution behavior — repo rule m45p2b4bp7 forbids red-gating
 //     third-party behavior engram does not own.
-func (openCodeRuntime) Plan(_ Environment, opts Options) (Plan, error) {
+//
+// Every auth mode also authors the SAME SkillTarget (Phase 4, D-05,
+// D-10): skills install to opencode's own documented global skills
+// directory, opencodeConfigRoot(env) joined with "opencode" and "skills"
+// — SkillFormatNative, since opencode has a native skill format and this
+// phase's routing decision (04-03-SUMMARY.md) does not touch opencode. A
+// HomeDir failure surfaced through opencodeConfigRoot is reported as a
+// failed row naming this runtime, exactly like any other Plan() error.
+func (openCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
 	const probeVerb = "opencode"
 	probe := []string{probeVerb, "mcp", "list"}
+
+	configRoot, err := opencodeConfigRoot(env)
+	if err != nil {
+		return Plan{}, fmt.Errorf("opencode: resolve home directory: %w", err)
+	}
+	skillTarget := SkillTarget{
+		Format: SkillFormatNative,
+		Dir:    filepath.Join(configRoot, "opencode", "skills"),
+	}
 
 	switch opts.Auth {
 	case "oauth", "none":
@@ -100,7 +120,8 @@ func (openCodeRuntime) Plan(_ Environment, opts Options) (Plan, error) {
 				Args:        []string{"opencode", "mcp", "add", "engram", "--url", opts.URL},
 				Description: "register engram as an MCP server",
 			}},
-			Probe: probe,
+			Probe:  probe,
+			Skills: skillTarget,
 		}, nil
 	case "bearer":
 		return Plan{
@@ -110,9 +131,33 @@ func (openCodeRuntime) Plan(_ Environment, opts Options) (Plan, error) {
 					"--header", "Authorization=Bearer {env:ENGRAM_TOKEN}"},
 				Description: "register engram as an MCP server (bearer token)",
 			}},
-			Probe: probe,
+			Probe:  probe,
+			Skills: skillTarget,
 		}, nil
 	default:
 		return Plan{}, fmt.Errorf("opencode: auth mode %q: %w", opts.Auth, ErrAuthModeUnsupported)
 	}
+}
+
+// opencodeConfigRoot resolves the operator's own declared configuration
+// root: XDG_CONFIG_HOME (04-03-PLAN.md's Task 2 behavior) when that
+// variable holds a non-empty, absolute path — the exact value opencode
+// itself honors for its own config root (04-RESEARCH.md, opencode.ai's
+// documented global-skills path) — falling back to the home directory
+// joined with ".config" otherwise. An empty or relative XDG_CONFIG_HOME
+// is treated exactly like an unset one, never joined as-is: a relative
+// destination would let engram write relative to whatever directory the
+// `engram setup --apply` process happens to be running from, which D-10's
+// user-scope-only decision exists to prevent (threat T-04-08). This is
+// the ONLY environment variable this package's Plan implementations
+// consult, and it is consulted only here, in opencode's own file.
+func opencodeConfigRoot(env Environment) (string, error) {
+	if v := env.Getenv("XDG_CONFIG_HOME"); v != "" && filepath.IsAbs(v) {
+		return v, nil
+	}
+	home, err := env.HomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config"), nil
 }

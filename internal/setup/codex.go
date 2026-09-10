@@ -3,7 +3,10 @@
 
 package setup
 
-import "fmt"
+import (
+	"fmt"
+	"path/filepath"
+)
 
 // codexRuntime implements Runtime for Codex, authoring the live-verified
 // `codex mcp add <NAME> --url <URL>` invocation surface
@@ -40,7 +43,44 @@ func (codexRuntime) Detect(env Environment) bool {
 // no remove-then-add is needed. Probe is `codex mcp get <name> --json`, a
 // pure local config read confirmed to dial no network (03-RESEARCH.md
 // Pitfall 3) — the ideal D-09 convergence oracle.
-func (codexRuntime) Plan(_ Environment, opts Options) (Plan, error) {
+//
+// Every auth mode also authors the SAME SkillTarget (Phase 4, D-05, D-10,
+// and 04-03-SUMMARY.md's recorded routing decision,
+// "codex-native-plus-index"): skills are written to $HOME/.agents/skills
+// — what Codex's own official documentation names as the USER scope for
+// personal skills (04-RESEARCH.md § "Native format and destination per
+// runtime", citing learn.chatgpt.com/docs/build-skills), and
+// independently one of opencode's own documented global discovery paths
+// (opencode.ai/docs/skills/), so this single write covers both. A live
+// research machine also showed a populated, working-looking
+// $CODEX_HOME/skills (04-RESEARCH.md's Codex discrepancy write-up); that
+// path was DELIBERATELY NOT CHOSEN, and engram never writes two skills
+// destinations for one runtime — a future contributor must not "fix"
+// this by adding the second path.
+//
+// Under the recorded routing, Codex ALSO carries an index: the skills
+// index block is spliced into $HOME/.codex/AGENTS.md — precisely the
+// file 04-CONTEXT.md's D-16 symlink rationale was written about — as a
+// hedge for RESEARCH assumption A1 (if Codex's own skills loader does
+// not read $HOME/.agents/skills, the index still teaches the agent the
+// skills exist and names their absolute paths). SkillFormatAgentsMD is
+// what makes both halves happen from one Target:
+// internal/skills.Install's FormatAgentsMD case writes skill files to Dir
+// exactly as FormatNative does, then independently splices the index
+// into IndexFile (internal/skills/install.go). A HomeDir failure is
+// reported as a failed row naming this runtime, exactly like any other
+// Plan() error.
+func (codexRuntime) Plan(env Environment, opts Options) (Plan, error) {
+	home, err := env.HomeDir()
+	if err != nil {
+		return Plan{}, fmt.Errorf("codex: resolve home directory: %w", err)
+	}
+	skillTarget := SkillTarget{
+		Format:    SkillFormatAgentsMD,
+		Dir:       filepath.Join(home, ".agents", "skills"),
+		IndexFile: filepath.Join(home, ".codex", "AGENTS.md"),
+	}
+
 	probe := []string{"codex", "mcp", "get", "engram", "--json"}
 	switch opts.Auth {
 	case "oauth", "none":
@@ -50,7 +90,8 @@ func (codexRuntime) Plan(_ Environment, opts Options) (Plan, error) {
 				Args:        []string{"codex", "mcp", "add", "engram", "--url", opts.URL},
 				Description: "register engram as an MCP server",
 			}},
-			Probe: probe,
+			Probe:  probe,
+			Skills: skillTarget,
 		}, nil
 	case "oauth-client":
 		return Plan{
@@ -59,7 +100,8 @@ func (codexRuntime) Plan(_ Environment, opts Options) (Plan, error) {
 				Args:        []string{"codex", "mcp", "add", "engram", "--url", opts.URL, "--oauth-client-id", "<id>"},
 				Description: "register engram as an MCP server (pre-registered OAuth client)",
 			}},
-			Probe: probe,
+			Probe:  probe,
+			Skills: skillTarget,
 		}, nil
 	case "bearer":
 		return Plan{
@@ -68,7 +110,8 @@ func (codexRuntime) Plan(_ Environment, opts Options) (Plan, error) {
 				Args:        []string{"codex", "mcp", "add", "engram", "--url", opts.URL, "--bearer-token-env-var", "ENGRAM_TOKEN"},
 				Description: "register engram as an MCP server (bearer token via ENGRAM_TOKEN)",
 			}},
-			Probe: probe,
+			Probe:  probe,
+			Skills: skillTarget,
 		}, nil
 	default:
 		return Plan{}, fmt.Errorf("codex: auth mode %q: %w", opts.Auth, ErrAuthModeUnsupported)

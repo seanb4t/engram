@@ -1344,23 +1344,32 @@ func TestSetupTextRowOmitsSkillContent(t *testing.T) {
 // the partial exit class — because setupResultsFromRows feeds Classify
 // the AGGREGATED outcome (D-06/D-07, REQ-setup-partial-failure-legible).
 // claude-code's registration succeeds while its skills install fails
-// (scripted via skillsEnv); codex — not yet wired for skills this wave —
-// simply registers successfully with no skills facet at all. Both rows
-// must still render in the captured output before the nonzero exit
-// (T-02-06).
+// (scripted via skillsEnv, scoped to claude-code's own destination —
+// 04-03-PLAN.md wires codex for skills too, so the fake WriteFile must
+// distinguish the two runtimes' destinations rather than failing
+// universally); codex's own skills write succeeds, giving a clean
+// registration+skills row to pair against claude-code's skills-only
+// failure. Both rows must still render in the captured output before the
+// nonzero exit (T-02-06).
 func TestSetupSkillsFailureReachesPartialExit(t *testing.T) {
 	resetClientFlags(t)
 	resetCommandFlagState(t, setupCmd)
 	withFakeSetupEnv(t, fakeSetupEnv("claude", "codex"))
 
 	// Override the auto-faked skillsEnv (withFakeSetupEnv) with one whose
-	// every write fails — claude-code is the only runtime this wave whose
-	// Plan() authors a recognized SkillTarget, so this failure reaches
-	// exactly one row's skills facet, never codex's (it has none).
+	// writes fail ONLY under claude-code's own skills destination
+	// (.claude/skills) — codex's distinct destination (.agents/skills,
+	// plus its .codex/AGENTS.md index) writes through cleanly, so this
+	// failure reaches exactly one row's skills facet.
 	skillsEnv = skills.Environment{
-		ReadFile:  func(string) ([]byte, error) { return nil, os.ErrNotExist },
-		WriteFile: func(string, []byte, os.FileMode) error { return errors.New("boom: disk full") },
-		MkdirAll:  func(string, os.FileMode) error { return nil },
+		ReadFile: func(string) ([]byte, error) { return nil, os.ErrNotExist },
+		WriteFile: func(path string, _ []byte, _ os.FileMode) error {
+			if strings.Contains(path, string(os.PathSeparator)+".claude"+string(os.PathSeparator)+"skills"+string(os.PathSeparator)) {
+				return errors.New("boom: disk full")
+			}
+			return nil
+		},
+		MkdirAll: func(string, os.FileMode) error { return nil },
 	}
 
 	stdout, stderr, err := runClient(t, "setup",

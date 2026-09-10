@@ -6,6 +6,8 @@ package setup
 import (
 	"context"
 	"errors"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -70,6 +72,96 @@ func TestOpenCodePlan(t *testing.T) {
 			t.Errorf("Plan(%q) err = %q, want it to name both the runtime and the mode", "oauth-client", err)
 		}
 	})
+}
+
+// TestOpenCodeSkillTarget covers the four XDG_CONFIG_HOME shapes
+// 04-03-PLAN.md Task 2 names: an absolute value (used verbatim), an
+// unset variable, an empty value, and a relative value (the latter two
+// both fall back to the home-based default) — asserting the resulting
+// Skills.Dir for each, and asserting it is absolute in all four
+// (threat T-04-08: a destination must never resolve relative to the
+// process's own working directory).
+func TestOpenCodeSkillTarget(t *testing.T) {
+	const url = "https://engram.example.com/mcp"
+	const home = "/home/fake"
+
+	cases := []struct {
+		name    string
+		set     bool
+		value   string
+		wantDir string
+	}{
+		{
+			name:    "absolute",
+			set:     true,
+			value:   "/xdg/config",
+			wantDir: filepath.Join("/xdg/config", "opencode", "skills"),
+		},
+		{
+			name:    "unset",
+			set:     false,
+			wantDir: filepath.Join(home, ".config", "opencode", "skills"),
+		},
+		{
+			name:    "empty",
+			set:     true,
+			value:   "",
+			wantDir: filepath.Join(home, ".config", "opencode", "skills"),
+		},
+		{
+			name:    "relative",
+			set:     true,
+			value:   "relative/config",
+			wantDir: filepath.Join(home, ".config", "opencode", "skills"),
+		},
+	}
+
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			env := Environment{
+				LookPath: func(string) (string, error) { return "", exec.ErrNotFound },
+				Getenv: func(key string) string {
+					if key == "XDG_CONFIG_HOME" && c.set {
+						return c.value
+					}
+					return ""
+				},
+				HomeDir: func() (string, error) { return home, nil },
+			}
+			plan, err := OpenCode.Plan(env, Options{URL: url, Auth: "oauth"})
+			if err != nil {
+				t.Fatalf("Plan: %v", err)
+			}
+			if plan.Skills.Dir != c.wantDir {
+				t.Errorf("Skills.Dir = %q, want %q", plan.Skills.Dir, c.wantDir)
+			}
+			if !filepath.IsAbs(plan.Skills.Dir) {
+				t.Errorf("Skills.Dir = %q, want an absolute path", plan.Skills.Dir)
+			}
+			if plan.Skills.Format != SkillFormatNative {
+				t.Errorf("Skills.Format = %q, want %q", plan.Skills.Format, SkillFormatNative)
+			}
+		})
+	}
+}
+
+// TestOpenCodePlanFailsWhenHomeUnresolvable asserts a fake whose
+// home-directory function errors (with no XDG_CONFIG_HOME override) makes
+// Plan() return an error naming the runtime.
+func TestOpenCodePlanFailsWhenHomeUnresolvable(t *testing.T) {
+	env := Environment{
+		LookPath: func(string) (string, error) { return "", exec.ErrNotFound },
+		Getenv:   func(string) string { return "" },
+		HomeDir:  func() (string, error) { return "", errors.New("boom") },
+	}
+	_, err := OpenCode.Plan(env, Options{URL: "https://engram.example.com/mcp", Auth: "oauth"})
+	if err == nil {
+		t.Fatal("Plan: want an error when the home directory is unresolvable, got nil")
+	}
+	if !strings.Contains(err.Error(), "opencode") {
+		t.Errorf("Plan err = %q, want it to name the runtime", err.Error())
+	}
 }
 
 // TestOpenCodeBearerHeaderSyntax is the explicit regression test for the
