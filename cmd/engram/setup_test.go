@@ -1659,6 +1659,22 @@ func TestSetupReportCoversEveryRuntimeShape(t *testing.T) {
 	if invErr != nil {
 		t.Fatalf("skills.Inventory(): %v", invErr)
 	}
+	// WR-06: wantDigest/wantBytes call the SAME production functions
+	// (setupSkillsDigestSummary, skills.TotalBytes) that
+	// setupApplySkillsFacet calls to populate row.SkillsDigest/SkillsBytes.
+	// The assertions below therefore prove ONLY that the composition
+	// threads one skills.Inventory() call through consistently across
+	// runtimes and lanes — legitimate plumbing coverage, but NOT
+	// independent verification that setupSkillsDigestSummary or
+	// skills.TotalBytes compute the correct value; a bug shared between
+	// this setup and the production call site would pass silently. That
+	// narrower correctness question is independently covered by
+	// internal/skills/inventory_test.go's TestDigestIsStableAndTruncated.
+	// A hand-verified literal (setupOutcomeFoldTable's own pattern,
+	// deliberately NOT used here) would pin an exact digest/byte-count tied
+	// to today's five skills' content, reopening this test for every
+	// content edit — the opposite of D-04's "a sixth skill ships with zero
+	// code change" property this test is built to preserve.
 	wantDigest := setupSkillsDigestSummary(inv)
 	wantBytes := strconv.Itoa(skills.TotalBytes(inv))
 
