@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -1225,5 +1227,181 @@ func TestSetupPartialExitIsLiveProducible(t *testing.T) {
 	}
 	if !sawFailed {
 		t.Errorf("codex row did not report %q: %s", setup.OutcomeFailed, stdout)
+	}
+}
+
+// setupRowJSONTag returns setupRuntimeRow's json tag NAME for fieldName
+// (the part before any comma), failing the test if the field or its tag
+// is missing. Deriving the literal this way — rather than restating the
+// tag text a second time in an assertion — means a field rename cannot
+// leave an assertion passing vacuously (04-01-PLAN.md Task 2).
+func setupRowJSONTag(t *testing.T, fieldName string) string {
+	t.Helper()
+	field, ok := reflect.TypeOf(setupRuntimeRow{}).FieldByName(fieldName)
+	if !ok {
+		t.Fatalf("setupRuntimeRow has no field named %q", fieldName)
+	}
+	name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+	if name == "" {
+		t.Fatalf("setupRuntimeRow.%s has no json tag name", fieldName)
+	}
+	return name
+}
+
+// TestSetupPreviewSkillsJSON proves the json output lane carries the FULL
+// skill content (D-03): the claude-code row's skills_content field is a
+// non-empty string that parses as a JSON object whose key count equals
+// the number of files skills.Inventory() discovers — never a literal
+// count — and the row also carries a non-empty digest summary and a
+// byte count that parses as a positive integer.
+func TestSetupPreviewSkillsJSON(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupEnv(t, fakeSetupEnv("claude"))
+
+	stdout, stderr, err := runClient(t, "setup",
+		"--url", "https://engram.example.com/mcp", "--runtime", "claude-code", "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+	}
+
+	var doc setupReportDoc
+	if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+	}
+	if len(doc.Runtimes) != 1 {
+		t.Fatalf("setup preview emitted %d rows, want exactly 1: %s", len(doc.Runtimes), stdout)
+	}
+	row := doc.Runtimes[0]
+
+	if row.SkillsContent == "" {
+		t.Fatalf("claude-code row.SkillsContent is empty, want the full skill content (D-03 json lane): %s", stdout)
+	}
+	var contentDoc map[string]string
+	if uErr := json.Unmarshal([]byte(row.SkillsContent), &contentDoc); uErr != nil {
+		t.Fatalf("json.Unmarshal(row.SkillsContent = %q): %v", row.SkillsContent, uErr)
+	}
+
+	inv, invErr := skills.Inventory()
+	if invErr != nil {
+		t.Fatalf("skills.Inventory(): %v", invErr)
+	}
+	wantKeys := 0
+	for _, s := range inv {
+		wantKeys += len(s.Files)
+	}
+	if len(contentDoc) != wantKeys {
+		t.Errorf("row.SkillsContent has %d keys, want %d (derived from skills.Inventory(), never a literal)", len(contentDoc), wantKeys)
+	}
+
+	if row.SkillsDigest == "" {
+		t.Error("claude-code row.SkillsDigest is empty, want a non-empty per-skill digest summary")
+	}
+	n, convErr := strconv.Atoi(row.SkillsBytes)
+	if convErr != nil {
+		t.Errorf("claude-code row.SkillsBytes = %q, want it to parse as an integer: %v", row.SkillsBytes, convErr)
+	} else if n <= 0 {
+		t.Errorf("claude-code row.SkillsBytes = %q, want a positive integer", row.SkillsBytes)
+	}
+}
+
+// TestSetupTextRowOmitsSkillContent renders the SAME preview through the
+// text format and asserts the dense row carries the destination, digest,
+// and byte-count fields, but NEVER the content field (D-03) — the text
+// lane must stay dense even though the five skills total tens of
+// kilobytes.
+func TestSetupTextRowOmitsSkillContent(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupEnv(t, fakeSetupEnv("claude"))
+
+	stdout, stderr, err := runClient(t, "setup",
+		"--url", "https://engram.example.com/mcp", "--runtime", "claude-code", "--output", "text")
+	if err != nil {
+		t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+	}
+
+	contentKey := setupRowJSONTag(t, "SkillsContent")
+	digestKey := setupRowJSONTag(t, "SkillsDigest")
+	bytesKey := setupRowJSONTag(t, "SkillsBytes")
+	destKey := setupRowJSONTag(t, "SkillsDest")
+
+	for _, want := range []string{digestKey, bytesKey, destKey} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("text output does not contain %q: %s", want, stdout)
+		}
+	}
+	if strings.Contains(stdout, contentKey) {
+		t.Errorf("text output contains %q, want the dense text row to NEVER carry skill content field (D-03): %s", contentKey, stdout)
+	}
+	if len(stdout) >= 4096 {
+		t.Errorf("text output is %d bytes, want under 4096 for a single-runtime preview", len(stdout))
+	}
+}
+
+// TestSetupSkillsFailureReachesPartialExit proves that a SKILLS-ONLY
+// failure on one runtime, alongside another runtime's success, produces
+// the partial exit class — because setupResultsFromRows feeds Classify
+// the AGGREGATED outcome (D-06/D-07, REQ-setup-partial-failure-legible).
+// claude-code's registration succeeds while its skills install fails
+// (scripted via skillsEnv); codex — not yet wired for skills this wave —
+// simply registers successfully with no skills facet at all. Both rows
+// must still render in the captured output before the nonzero exit
+// (T-02-06).
+func TestSetupSkillsFailureReachesPartialExit(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupEnv(t, fakeSetupEnv("claude", "codex"))
+
+	// Override the auto-faked skillsEnv (withFakeSetupEnv) with one whose
+	// every write fails — claude-code is the only runtime this wave whose
+	// Plan() authors a recognized SkillTarget, so this failure reaches
+	// exactly one row's skills facet, never codex's (it has none).
+	skillsEnv = skills.Environment{
+		ReadFile:  func(string) ([]byte, error) { return nil, os.ErrNotExist },
+		WriteFile: func(string, []byte, os.FileMode) error { return errors.New("boom: disk full") },
+		MkdirAll:  func(string, os.FileMode) error { return nil },
+	}
+
+	stdout, stderr, err := runClient(t, "setup",
+		"--url", "https://engram.example.com/mcp",
+		"--runtime", "claude-code,codex",
+		"--output", "json",
+		"--apply")
+	if err == nil {
+		t.Fatal("expected a non-nil error (claude-code's skills install fails), got nil")
+	}
+	if got := exitCodeFromError(err); got != exitPartial {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitPartial); stdout=%q stderr=%q", got, exitPartial, stdout, stderr)
+	}
+	if stdout == "" {
+		t.Fatal("stdout is empty; the report must be rendered before the nonzero exit (T-02-06)")
+	}
+
+	var doc setupReportDoc
+	if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+	}
+	if len(doc.Runtimes) != 2 {
+		t.Fatalf("setup --apply emitted %d rows, want 2 (claude-code and codex, both rendered): %s", len(doc.Runtimes), stdout)
+	}
+
+	var sawClaudeFailed, sawCodexRow bool
+	for _, row := range doc.Runtimes {
+		switch row.Name {
+		case "claude-code":
+			sawClaudeFailed = row.Outcome == string(setup.OutcomeFailed)
+			if row.Skills != string(setup.OutcomeFailed) {
+				t.Errorf("claude-code row.Skills = %q, want %q (skills-only failure)", row.Skills, setup.OutcomeFailed)
+			}
+		case "codex":
+			sawCodexRow = row.Outcome != ""
+		}
+	}
+	if !sawClaudeFailed {
+		t.Errorf("claude-code row did not report an aggregated outcome of %q: %s", setup.OutcomeFailed, stdout)
+	}
+	if !sawCodexRow {
+		t.Errorf("codex row missing or carries an empty outcome: %s", stdout)
 	}
 }
