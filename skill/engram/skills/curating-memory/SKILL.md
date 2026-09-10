@@ -1,6 +1,8 @@
 ---
 name: curating-memory
 description: Use when storing or updating durable project memory via the engram MCP tools — enforces the engram-vs-beads routing gate (engram is preferred over `bd remember`/`bd memories` for durable facts), durable-only capture, search-before-store, supersede-on-contradiction, and the two-tier spine/overlay scope. Trigger when the user states a durable decision/preference/convention/gotcha, when the user explicitly asks to remember something (including a time-bound reminder, due date, or "not before"/expiry — even if it looks task-shaped), whenever you are about to record a durable fact and the repo also has a beads memory store (prefer engram; do not write it to `bd remember`), on the session-start recall and capture nudges, whenever a durable fact you are about to store contradicts or corrects one already in the store (supersede it, do not overwrite it), and before any mcp__engram__store_memory / schedule_memory / supersede_memory / update_memory / delete_memory / store_rule / list_rules call, when a fact you are about to store is phrased as a MUST / NEVER / ALWAYS constraint on future behavior (propose a rule, never promote one), and when a footgun the store already records is hit again.
+metadata:
+  engram-summary: "The routing gate and write discipline before any engram memory write — durable-only, search-before-store, supersede-on-contradiction, and engram preferred over beads."
 ---
 
 # Curating Memory

@@ -29,10 +29,15 @@ type File struct {
 }
 
 // Skill is one discovered skill: Name is the vendored directory's own
-// name, and Files is every regular file beneath it, sorted by Path.
+// name, Files is every regular file beneath it (sorted by Path), and
+// Summary is the authored, single-line index entry parsed from the
+// skill's own SKILL.md frontmatter (D-14) — derived FROM the bytes
+// already carried in Files, never a replacement for them, so byte
+// identity with the plugin's files is unaffected.
 type Skill struct {
-	Name  string
-	Files []File
+	Name    string
+	Files   []File
+	Summary string
 }
 
 // Inventory walks the embedded skill tree structurally: every immediate
@@ -95,7 +100,23 @@ func walkSkills(fsys fs.FS) ([]Skill, error) {
 		}
 
 		sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
-		out = append(out, Skill{Name: skillName, Files: files})
+
+		var skillMD *File
+		for i := range files {
+			if files[i].Path == "SKILL.md" {
+				skillMD = &files[i]
+				break
+			}
+		}
+		if skillMD == nil {
+			return nil, fmt.Errorf("skills: skill directory %q has no SKILL.md — a skill without one is malformed", skillRoot)
+		}
+		_, summary, parseErr := ParseFrontmatter(skillRoot+"/SKILL.md", skillMD.Content)
+		if parseErr != nil {
+			return nil, fmt.Errorf("skills: %w", parseErr)
+		}
+
+		out = append(out, Skill{Name: skillName, Files: files, Summary: summary})
 	}
 
 	if len(out) == 0 {

@@ -85,10 +85,16 @@ func nonTestGoFiles(t *testing.T, dir string) []string {
 }
 
 // skillsThirdPartyAllowlist names every third-party (non-stdlib,
-// non-same-module) import path internal/skills may use. EMPTY at this
-// point in the phase (04-01) — 04-02 widens it by exactly one entry for
-// the YAML frontmatter parser D-14's summary-line extraction needs, and
-// records why there.
+// non-same-module) import path internal/skills may use. This is the
+// package's ENTIRE third-party budget: exactly one entry,
+// "go.yaml.in/yaml/v3", added in 04-02 for frontmatter.go's SKILL.md
+// parsing (D-14's summary-line extraction). The same-module import ban
+// below is UNCHANGED and is the property that actually forces the
+// declare/install split (D-05) — this allowlist only narrows the
+// third-party ban from "none" (04-01) to "exactly this one, audited,
+// already-resolved entry". Any second entry is a new decision requiring
+// its own justification in a future plan, never a mechanical edit to
+// this map.
 //
 // Resolution of 04-CONTEXT.md's "Claude's Discretion" leaf-purity
 // question: internal/skills is deliberately NOT held to
@@ -104,11 +110,13 @@ func nonTestGoFiles(t *testing.T, dir string) []string {
 // internal/setup structurally unable to reach internal/skills. The
 // third-party ban is narrowed from "none" to "exactly what this
 // allowlist names", so dependency creep still fails the build while
-// the one audited, already-resolved parser is permitted once 04-02
-// lands. The tradeoff, stated plainly: the skills write path is no
-// longer provably third-party-free from this gate alone — the
-// allowlist is the mechanism that bounds it.
-var skillsThirdPartyAllowlist = map[string]bool{}
+// the one audited, already-resolved parser is permitted. The tradeoff,
+// stated plainly: the skills write path is no longer provably
+// third-party-free from this gate alone — the allowlist is the
+// mechanism that bounds it.
+var skillsThirdPartyAllowlist = map[string]bool{
+	"go.yaml.in/yaml/v3": true,
+}
 
 // TestSkillsPackageImportsAreGated asserts two properties over every
 // non-test Go file in this package: no import path is prefixed by this

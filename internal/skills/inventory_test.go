@@ -8,6 +8,15 @@ import (
 	"testing/fstest"
 )
 
+// fakeSkillMD builds a minimal, well-formed SKILL.md fixture (a valid
+// frontmatter fence, a name, and an authored metadata.engram-summary
+// entry) for a fake in-memory skill named name — walkSkills now requires
+// every discovered skill's SKILL.md to parse via ParseFrontmatter (Task
+// 1), so a bare content string is no longer a valid fixture.
+func fakeSkillMD(name string) string {
+	return "---\nname: " + name + "\nmetadata:\n  engram-summary: \"fake index entry for " + name + "\"\n---\n# " + name + "\n"
+}
+
 // TestInventoryIsStructural proves the walk is a structural predicate,
 // never an enumeration (D-04): layering an additional skill directory and
 // an additional nested file over an in-memory filesystem view — the real
@@ -17,9 +26,9 @@ import (
 // here exercises the SAME code path the binary does.
 func TestInventoryIsStructural(t *testing.T) {
 	fsys := fstest.MapFS{
-		"data/alpha/SKILL.md":            &fstest.MapFile{Data: []byte("alpha content")},
+		"data/alpha/SKILL.md":            &fstest.MapFile{Data: []byte(fakeSkillMD("alpha"))},
 		"data/alpha/references/notes.md": &fstest.MapFile{Data: []byte("alpha reference notes")},
-		"data/zeta/SKILL.md":             &fstest.MapFile{Data: []byte("zeta content")},
+		"data/zeta/SKILL.md":             &fstest.MapFile{Data: []byte(fakeSkillMD("zeta"))},
 	}
 
 	discovered, err := walkSkills(fsys)
@@ -66,7 +75,7 @@ func TestInventoryIsStructural(t *testing.T) {
 // is present with non-empty content.
 func TestInventoryIncludesUnderscoreAndDotPrefixedContent(t *testing.T) {
 	fsys := fstest.MapFS{
-		"data/alpha/SKILL.md":          &fstest.MapFile{Data: []byte("alpha content")},
+		"data/alpha/SKILL.md":          &fstest.MapFile{Data: []byte(fakeSkillMD("alpha"))},
 		"data/alpha/_shared/helper.md": &fstest.MapFile{Data: []byte("shared helper content")},
 		"data/alpha/.hidden.md":        &fstest.MapFile{Data: []byte("hidden content")},
 	}
@@ -141,6 +150,9 @@ func TestInventoryIsDeterministic(t *testing.T) {
 	for i := range first {
 		if first[i].Name != second[i].Name {
 			t.Errorf("skill order differs at index %d: %q then %q", i, first[i].Name, second[i].Name)
+		}
+		if first[i].Summary != second[i].Summary {
+			t.Errorf("skill %q summary differs across calls: %q then %q", first[i].Name, first[i].Summary, second[i].Summary)
 		}
 		if len(first[i].Files) != len(second[i].Files) {
 			t.Fatalf("skill %q has %d files then %d files, want the same count both times", first[i].Name, len(first[i].Files), len(second[i].Files))

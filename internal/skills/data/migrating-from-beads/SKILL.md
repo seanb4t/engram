@@ -1,6 +1,8 @@
 ---
 name: migrating-from-beads
 description: Use to migrate durable project memories out of a beads memory store (`bd remember` / `bd memories`) into the engram spine, one time, when adopting engram in a repo that already used beads for memory. Trigger on "migrate beads memories to engram", "import bd remember into engram", "adopt engram in this repo", "move bd memories to engram", or when you notice a repo carries durable facts in both `bd remember` and engram and the split should be reconciled. Migrates *memories* only — never beads *issues*. Pairs with curating-memory (routing + junk taxonomy) and promoting-memory (the overlay analogue).
+metadata:
+  engram-summary: "One-time move of durable memories out of a beads store (bd remember / bd memories) into the engram spine, for a repo that already used beads before adopting engram."
 ---
 
 # Migrating from Beads

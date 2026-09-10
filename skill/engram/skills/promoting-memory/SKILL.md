@@ -1,6 +1,8 @@
 ---
 name: promoting-memory
 description: Use when a line of work completes (merges, lands, or is abandoned) to graduate a workspace's overlay memories into the repo spine and clean up. Trigger on "promote memories", "merge workspace memories", "clean up this workspace's memories", or when finishing/merging a branch.
+metadata:
+  engram-summary: "Graduates a workspace's overlay memories into the repo spine and cleans up when a line of work completes — merges, lands, or is abandoned."
 ---
 
 # Promoting Memory

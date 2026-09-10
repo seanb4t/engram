@@ -1,6 +1,8 @@
 ---
 name: curating-spine
 description: Use when curating the semantic quality of the memory spine — judging whether two records are the same fact, checking a record's claims against the current tree, or running a deliberate spine-review sweep. Trigger on "curate the spine", "check for stale memories", "are these two records the same fact", "run a spine-review sweep", or when consuming `engram spine-review consolidate --output json` candidates — and also, reactively, when a record recall just surfaced plainly contradicts a file, commit, or fact the agent already has open or just read, which surfaces only a one-line note rather than opening the full flow. This skill judges and proposes: it never mutates a record without the user's explicit consent in this conversation, and it never produces candidate pairs itself — those come from `spine-review consolidate`.
+metadata:
+  engram-summary: "Semantic curation of the memory spine — judges whether records duplicate or have gone stale and proposes fixes, but never mutates a record without the user's explicit consent."
 ---
 
 # Curating Spine

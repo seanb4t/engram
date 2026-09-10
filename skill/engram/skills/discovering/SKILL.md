@@ -1,6 +1,8 @@
 ---
 name: discovering
 description: Use when mapping or investigating a repository/codebase to cache agent-earned understanding as citation-backed discoveries via engram's store_discovery tool. Trigger on "map this repo", "help me understand this codebase", onboarding to unfamiliar third-party code, or before substantial work in an unmapped area. Pairs with search_discovery for on-demand recall.
+metadata:
+  engram-summary: "Caches citation-backed, agent-earned understanding of a codebase as engram discoveries for on-demand recall — use when mapping or investigating a repo."
 ---
 
 # Discovering
