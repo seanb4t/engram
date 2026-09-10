@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cenkalti/backoff/v5"
+	"github.com/cenkalti/backoff/v7"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
@@ -425,8 +425,7 @@ func TestStoreFillReturnsPermanentOnNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error for a not-found id")
 	}
-	var perm *backoff.PermanentError
-	if !errors.As(err, &perm) {
-		t.Fatalf("expected a *backoff.PermanentError (not retryable), got %T: %v", err, err)
+	if !errors.Is(err, backoff.ErrPermanent) {
+		t.Fatalf("expected a permanent (not retryable) error, got %T: %v", err, err)
 	}
 }
