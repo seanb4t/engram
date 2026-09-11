@@ -14,11 +14,15 @@ import (
 const defaultMCPPath = "/mcp"
 
 // reservedMCPRoots are the namespaces already owned by other mux mounts (the
-// console, the cookie/OIDC auth routes, and the Connect API). Mounting MCP under
-// any of them would panic http.ServeMux on a conflicting registration at
-// startup, so resolveMCPPath rejects them up front with a clear error. Keep in
-// sync with the explicit mounts in runServe.
-var reservedMCPRoots = []string{"/ui", "/auth", "/engram.v1.EngramService"}
+// console, the cookie/OIDC auth routes, the Connect API, and -- since GH-526
+// -- the RFC 9728 protected-resource metadata document mounted by
+// mountWellKnownRoutes in wellknown.go). Mounting MCP under any of them would
+// either panic http.ServeMux on a conflicting registration at startup or let
+// the bearer-gated MCP transport shadow a document clients must read
+// unauthenticated to discover how to authenticate (T-526-03), so
+// resolveMCPPath rejects them up front with a clear error. Keep in sync with
+// the explicit mounts in runServe (mountMCPRoutes and mountWellKnownRoutes).
+var reservedMCPRoots = []string{"/ui", "/auth", "/engram.v1.EngramService", "/.well-known"}
 
 // resolveMCPPath normalizes the configured MCP transport path. An empty value
 // defaults to /mcp; the path MUST be absolute (leading "/") and MUST NOT fall

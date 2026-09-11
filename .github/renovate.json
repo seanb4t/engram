@@ -9,6 +9,23 @@
   "platformAutomerge": true,
   "packageRules": [
     {
+      "description": "Do NOT pin qdrant/qdrant to a digest. ci.yaml's service image must stay BYTE-IDENTICAL to internal/store/store_test.go's qdrantImageTag constant (\"qdrant/qdrant:v1.18.2\") \u2014 the testcontainer fallback (D-18) and the shared CI service are deliberately version-locked so qdrantTOCTOUVerifiedVersion forces a conscious re-verification on a bump. A digest suffix breaks that lock, and also breaks the three `docker ps --filter ancestor=qdrant/qdrant:v1.18.2` guards in the same workflow, which stop matching once the container is created from a digest-pinned reference (measured 2026-09-09: renovate PR #535 red on \"expected exactly one Qdrant container, found 0\"). Version bumps are still offered; only digest pinning is off.",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "qdrant/qdrant"
+      ],
+      "pinDigests": false
+    },
+    {
+      "description": "Keep opentelemetry-go (core) and opentelemetry-go-contrib in ONE group. Upstream ships them as separate monorepos, so group:monorepos splits them, but they are API-coupled for consumers: bumping core otel/log 0.20->0.22 alone leaves contrib otelslog v0.19.0 calling the removed log.Int64Value, and bumping contrib alone leaves sdk/log v0.20.0 against a newer log. Each half is individually unbuildable, so both PRs sit red forever and neither can automerge (measured 2026-09-09: renovate PRs #478 and #485). Grouping them makes the coupled upgrade land as one buildable change.",
+      "matchPackageNames": [
+        "go.opentelemetry.io/**"
+      ],
+      "groupName": "opentelemetry-go monorepo (core + contrib)"
+    },
+    {
       "description": "Auto-merge non-major Go module updates; majors still need manual review. CI (the branch checks) gates every merge.",
       "matchManagers": [
         "gomod"
@@ -30,7 +47,7 @@
       "minimumReleaseAge": "3 days"
     },
     {
-      "description": "Rebuild and commit the vendored SvelteKit SPA whenever a ui/ dependency changes, so the 'ui vendored-asset drift' check stays green (the UI analog of gomodTidy). Renovate runs postUpgradeTasks shell-free (it shlex-splits the string and spawns argv[0] directly), so the recipe is wrapped in a single `bash -c '…'`: the whole `&&` chain then runs in one bash process — `cd` works as a builtin, and a failed `pnpm build` short-circuits before `rm -rf`, preserving the build→vendor interlock (a bare array of commands would NOT short-circuit and could commit the deletion). `installTools.pnpm` installs pnpm at the repo's packageManager major (the runner's bundled pnpm is older). CROSS-REPO: the self-hosted bot pins this exact command string by anchored exact-match allowlist, so any edit here needs a paired selfhosted-cluster allowedCommands update landed cluster-first.",
+      "description": "Rebuild and commit the vendored SvelteKit SPA whenever a ui/ dependency changes, so the 'ui vendored-asset drift' check stays green (the UI analog of gomodTidy). Renovate runs postUpgradeTasks shell-free (it shlex-splits the string and spawns argv[0] directly), so the recipe is wrapped in a single `bash -c '\u2026'`: the whole `&&` chain then runs in one bash process \u2014 `cd` works as a builtin, and a failed `pnpm build` short-circuits before `rm -rf`, preserving the build\u2192vendor interlock (a bare array of commands would NOT short-circuit and could commit the deletion). `installTools.pnpm` installs pnpm at the repo's packageManager major (the runner's bundled pnpm is older). CROSS-REPO: the self-hosted bot pins this exact command string by anchored exact-match allowlist, so any edit here needs a paired selfhosted-cluster allowedCommands update landed cluster-first.",
       "matchFileNames": [
         "ui/package.json"
       ],
@@ -48,7 +65,7 @@
       }
     },
     {
-      "description": "Block cookie major bumps: cookie v2 is an ESM-only API rewrite (parse→parseCookie, serialize→stringifyCookie) that @sveltejs/kit 2.68.0 does not support — a v2 bump breaks the SPA build at the pnpm build step (caught by the 'ui vendored-asset drift' check). The ui/pnpm-workspace.yaml override forces cookie up only to clear GHSA-pxg6-pf52-xh8x (cookie <0.7.0); ^1.0.0 already clears it, so v2 adds no security value. Minor/patch within 1.x remain allowed.",
+      "description": "Block cookie major bumps: cookie v2 is an ESM-only API rewrite (parse\u2192parseCookie, serialize\u2192stringifyCookie) that @sveltejs/kit 2.68.0 does not support \u2014 a v2 bump breaks the SPA build at the pnpm build step (caught by the 'ui vendored-asset drift' check). The ui/pnpm-workspace.yaml override forces cookie up only to clear GHSA-pxg6-pf52-xh8x (cookie <0.7.0); ^1.0.0 already clears it, so v2 adds no security value. Minor/patch within 1.x remain allowed.",
       "matchPackageNames": [
         "cookie"
       ],

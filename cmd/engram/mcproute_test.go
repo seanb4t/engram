@@ -30,6 +30,12 @@ func TestResolveMCPPath(t *testing.T) {
 		{"reserved under /auth is an error", "/auth/login", "", true},
 		{"reserved Connect path is an error", "/engram.v1.EngramService/", "", true},
 		{"non-reserved lookalike is allowed", "/uimcp", "/uimcp", false},
+		// GH-526: /.well-known is now owned by the protected-resource
+		// metadata mounts (wellknown.go) -- reject the root and any
+		// sub-path of it, but not a mere prefix lookalike.
+		{"reserved well-known root is an error", "/.well-known", "", true},
+		{"reserved well-known protected-resource path is an error", "/.well-known/oauth-protected-resource", "", true},
+		{"non-reserved well-known lookalike is allowed", "/.well-known-ish", "/.well-known-ish", false},
 		// A trailing slash makes ServeMux register a subtree pattern that
 		// 301-redirects POST /mcp -> /mcp/, breaking MCP clients — reject it.
 		// (The bare root "/" is the exception: it's the catch-all escape hatch.)

@@ -25,6 +25,10 @@ type field struct {
 var registry = []field{
 	{Key: "server.listen_addr", Env: "ENGRAM_LISTEN_ADDR", Legacy: "MEM_LISTEN_ADDR", Flag: "listen-addr", Default: ":8080"},
 	{Key: "server.mcp_path", Env: "ENGRAM_MCP_PATH", Legacy: "MEM_MCP_PATH", Flag: "mcp-path"},
+	// server.mcp_resource_url (D-03, GH-526): a brand-new key, no Legacy value
+	// (nothing retired to guard against) and no Flag (env-only — a deployment-
+	// topology value, never typed at a prompt).
+	{Key: "server.mcp_resource_url", Env: "ENGRAM_MCP_RESOURCE_URL"},
 	{Key: "qdrant.addr", Env: "ENGRAM_QDRANT_ADDR", Legacy: "MEM_QDRANT_ADDR", Default: "localhost:6334"},
 	{Key: "qdrant.collection", Env: "ENGRAM_QDRANT_COLLECTION", Legacy: "MEM_QDRANT_COLLECTION", Default: "mem_eval"},
 	{Key: "embed.model", Env: "ENGRAM_EMBED_MODEL", Legacy: "MEM_EMBED_MODEL", Default: "ollama/bge-m3"},
