@@ -510,7 +510,12 @@ equivalent to).
    `engram setup` reads, and CI fails on any difference between the generated content and what's
    committed — so the two paths cannot silently diverge.
 
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — Add validated OAuth client-ID input through CLI and runtime argv.
+- [ ] 05-02-PLAN.md — Generate four-mode slash delegation and Claude fallback from real Plans.
+- [ ] 05-03-PLAN.md — Enforce read-only local drift checks and prove both gate failure paths.
 
 ---
 
