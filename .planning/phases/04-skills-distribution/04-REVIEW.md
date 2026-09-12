@@ -1,255 +1,117 @@
 ---
 phase: 04-skills-distribution
-reviewed: 2026-09-10T15:52:09Z
-depth: deep
-files_reviewed: 33
+reviewed: 2026-09-12T00:00:00Z
+depth: standard
+files_reviewed: 4
 files_reviewed_list:
-  - .licenserc.yaml
-  - .rumdl.toml
-  - Taskfile.yaml
-  - cmd/engram/setup.go
   - cmd/engram/setup_test.go
-  - cmd/engram/testdata/help.golden
-  - go.mod
-  - internal/setup/aggregate.go
-  - internal/setup/aggregate_test.go
-  - internal/setup/apply.go
-  - internal/setup/claudecode.go
-  - internal/setup/claudecode_test.go
-  - internal/setup/codex.go
-  - internal/setup/codex_test.go
-  - internal/setup/generic.go
-  - internal/setup/generic_test.go
-  - internal/setup/opencode.go
-  - internal/setup/opencode_test.go
-  - internal/setup/plan.go
-  - internal/skills/agentsmd.go
-  - internal/skills/agentsmd_test.go
-  - internal/skills/data/curating-memory/SKILL.md
-  - internal/skills/data/curating-spine/SKILL.md
-  - internal/skills/data/discovering/SKILL.md
-  - internal/skills/data/migrating-from-beads/SKILL.md
-  - internal/skills/data/promoting-memory/SKILL.md
-  - internal/skills/drift_test.go
-  - internal/skills/embed.go
   - internal/skills/environment.go
-  - internal/skills/frontmatter.go
-  - internal/skills/frontmatter_test.go
-  - internal/skills/importgate_test.go
   - internal/skills/install.go
   - internal/skills/install_test.go
-  - internal/skills/inventory.go
-  - internal/skills/inventory_test.go
-  - skill/engram/skills/curating-memory/SKILL.md
-  - skill/engram/skills/curating-spine/SKILL.md
-  - skill/engram/skills/discovering/SKILL.md
-  - skill/engram/skills/migrating-from-beads/SKILL.md
-  - skill/engram/skills/promoting-memory/SKILL.md
 findings:
   critical: 0
-  warning: 6
-  info: 0
-  total: 6
-status: issues_found
+  warning: 0
+  info: 1
+  total: 1
+status: clean
 ---
 
-# Phase 4: Code Review Report
+# Phase 04: Code Review Report
 
-**Reviewed:** 2026-09-10T15:52:09Z
-**Depth:** deep
-**Files Reviewed:** 33 (of 40 changed; 5 `internal/skills/data/**/SKILL.md` files verified byte-identical to their `skill/engram/skills/**/SKILL.md` sources and reviewed once as the `skill/` copies, per scope instructions; `cmd/engram/testdata/help.golden` reviewed as a diff, not full content)
-**Status:** issues_found
+**Reviewed:** 2026-09-12T00:00:00Z
+**Depth:** standard
+**Files Reviewed:** 4
+**Status:** clean
 
 ## Summary
 
-Reviewed the full non-`.planning` diff for Phase 4 (Skills Distribution): the new `internal/skills`
-package (embed, inventory, environment seam, native install, AGENTS.md scan/render/splice,
-frontmatter parsing), `internal/setup`'s `SkillTarget`/`SkillFormat`/`SkillsOutcome`/
-`AggregateOutcome` additions, each runtime's `Plan()` wiring, and `cmd/engram/setup.go`'s
-composition and report-row changes.
+This is an incremental re-review of the phase-04 gap-closure fix for issue #559
+(commits `95daee01`, `bae018f2`, `c773d80e` on `docs/milestone-closeout`, diffed
+against `efcfb0ad6fcf929dbfd0de195ec04d2eadfa612c`). The change narrows
+`installAgentsMDIndex`'s create-case detection from "treat any read error as
+empty" to `errors.Is(err, fs.ErrNotExist)`, so any other AGENTS.md read error
+(permission denied, transient I/O failure, etc.) preserves the operator-owned
+index file byte-for-byte, performs zero writes, and surfaces a wrapped error
+naming the index path.
 
-**All ten locked invariants in the review brief were independently verified and hold:**
-`exit.go`/`exit_test.go`/`catalog.golden` are byte-identical to `788d7127`; `internal/skills`
-imports zero same-module packages and exactly one third-party package
-(`go.yaml.in/yaml/v3`, matching the allowlist's single entry); `gopkg.in/yaml.v3` stays indirect
-and unimported by engram code; the AGENTS.md splice hard-fails on any state other than
-zero/one blocks, naming byte offsets, writing zero bytes (proven by both
-`internal/skills/agentsmd_test.go` and `internal/skills/install_test.go`); the AGENTS.md write is
-a single in-place `env.WriteFile` call with no `os.CreateTemp`/`os.Rename`/`EvalSymlinks`
-anywhere in the package, and `TestAgentsMdPreservesSymlink` proves it writes through a real
-symlink; no test in this diff reaches a real runtime binary or a real `$HOME` write path;
-`//go:embed all:data` is used; `generic` always authors the explicit no-destination
-`SkillFormatNone` and its own facet stays `would-write` in both preview and apply, with
-`setupApplySkillsFacet` refusing to call `skills.Install` at all for that format; and no
-new code path puts secret material into argv or a rendered row. The vendored
-`internal/skills/data/**/SKILL.md` files are confirmed byte-for-byte identical to
-`skill/engram/skills/**/SKILL.md` via direct diff.
+I read all four files in full, traced the call chain
+(`installAgentsMDIndex` → `Install` → `setupApplySkillsFacet` →
+`setup.SkillsOutcome` → `setup.AggregateOutcome` → `setup.Classify`) through
+`cmd/engram/setup.go`, `internal/setup/aggregate.go`, and
+`internal/setup/exit.go` to confirm the fix's error actually reaches the
+CLI's partial-exit classification, and independently verified the new
+regression tests' path assumptions against `internal/setup/codex.go`
+(`$HOME/.agents/skills`, `$HOME/.codex/AGENTS.md`).
 
-The core write-path logic (`installFiles`, `installAgentsMDIndex`, `scanBlock`/`Splice`,
-`AggregateOutcome`, `SkillsOutcome`) is correct on close reading, including the byte-offset
-arithmetic in `spliceReplace` (verified safe against a start-marker-line-at-EOF edge case,
-which cannot occur for a well-formed block) and the independent-failure/accumulation model
-(D-07) across `installFiles` and `installAgentsMDIndex`. Test quality across the new
-`internal/skills` and `internal/setup` test files is strong: exhaustive tables with
-hand-authored expectations (`TestAggregateOutcomeExhaustive`, `TestSkillsOutcomeExhaustive`),
-set-equality-before-byte-equality drift checks, and structural (never enumerated) inventory
-tests.
+Verification performed beyond static reading:
+- `go build ./...` — clean.
+- `go vet ./internal/skills/... ./cmd/engram/...` — one pre-existing, unrelated
+  finding in `cmd/engram/operator_view_test.go` (duplicate JSON tag), outside
+  this review's scope and outside the diff under review.
+- `go test ./internal/skills/... ./cmd/engram/...` — all pass, including the
+  two new regression tests (`TestInstallPreservesIndexOnReadError`,
+  `TestSetupIndexReadFailureReachesPartialExit`) and every pre-existing test
+  in both packages.
+- `go test -race ./internal/skills/... ./cmd/engram/...` — clean; the
+  package-level `skillsEnv`/`setupEnv` seam mutation in tests is safe because
+  no test in either file calls `t.Parallel()`.
+- `golangci-lint run ./internal/skills/... ./cmd/engram/...` — 0 issues.
+- SPDX headers present on all four files.
+- Confirmed both new tests use only injected fake seams
+  (`fakeInstallEnv`/custom `Environment` literals in `install_test.go`;
+  `withFakeSetupEnv` + a scripted `skillsEnv` override in `setup_test.go`) —
+  neither touches the real `$HOME` or filesystem, consistent with repo rule
+  m45p2b4bp7.
 
-No BLOCKER-level defect was found: nothing here causes incorrect behavior, a security
-vulnerability, or data loss as shipped. The findings below are WARNING-level test-isolation,
-test-coverage, and defense-in-depth gaps — several of which are inconsistent with the
-discipline this same phase applies rigorously everywhere else (fake environments for every
-new test, a structural per-runtime guard for `SkillFormat`), which is what makes their
-absence elsewhere worth flagging rather than waving off.
+Logic traced and confirmed correct:
+- `os.ErrNotExist` is the same value as `fs.ErrNotExist` (Go 1.16+ alias),
+  and `*fs.PathError`/`syscall.Errno` implement `Is` against it, so
+  `errors.Is(readErr, fs.ErrNotExist)` correctly matches both a bare
+  sentinel and a wrapped `os.ReadFile` error — verified against both the
+  "bare nonexistence" and "wrapped nonexistence" table rows in
+  `TestInstallPreservesIndexOnReadError`.
+- On a non-`ErrNotExist` read error, `installAgentsMDIndex` returns before
+  calling `RenderBlock`/`Splice`/`MkdirAll`/`WriteFile`, and `wrote`/
+  `alreadyCorrect` (already populated by the independent `installFiles`
+  pass) are returned unmodified — D-07's independent-failure model holds:
+  a failed index read never suppresses the skill-file writes, and the
+  skill-file writes never mask the index failure.
+- The accumulated error is wrapped with `%w` and joined via
+  `errors.Join`, so `errors.Is(report.Err, originalReadErr)` succeeds and
+  the message names `target.IndexFile` — both properties the new tests
+  assert directly.
+- End-to-end, `setupApplySkillsFacet` still populates
+  `row.SkillsDest`/`row.SkillsIndex`/`row.SkillsDigest`/`row.SkillsBytes`
+  even when `Install` fails, so an operator triaging a failed row does not
+  lose destination context — confirmed by
+  `TestSetupIndexReadFailureReachesPartialExit`'s assertion on
+  `row.SkillsIndex`.
+- `setup.SkillsOutcome` maps `failed=true` straight to `OutcomeFailed`
+  regardless of partial `wrote`/`alreadyCorrect` counts, `AggregateOutcome`
+  resolves the codex row's registration-success/skills-failure mix to
+  `OutcomeFailed`, and `setup.Classify` correctly buckets a run with one
+  failed row and one non-failed row as `ExitPartial` — matching the new
+  test's exit-code assertion.
 
-## Warnings
+No BLOCKER or WARNING findings. One trivial Info-level cosmetic note below;
+it does not affect behavior, correctness, or maintainability meaningfully
+enough to withhold a clean status.
 
-### WR-01: Pre-existing claude-code/opencode `Plan()` tests now silently depend on the real `$HOME`
+All reviewed files meet quality standards; the gap-closure fix behaves
+exactly as described in the task context and is fully covered by
+regression tests that exercise both the fixed path and its previously
+buggy behavior.
 
-**File:** `internal/setup/claudecode_test.go:51` (`TestClaudeCodePlan`), `:88`
-(`TestClaudeCodeBearerHeaderIsAnEnvVarReference`); `internal/setup/opencode_test.go:47,67`
-(`TestOpenCodePlan`), `:176` (`TestOpenCodeBearerHeaderSyntax`)
+## Info
 
-**Issue:** Before this phase, `claudeCodeRuntime.Plan` and `openCodeRuntime.Plan` had the
-signature `Plan(_ Environment, opts Options)` — the `Environment` argument was ignored
-entirely, so calling them with `OSEnvironment` in a test was a safe no-op. This phase changes
-both to `Plan(env Environment, opts Options)` and has them call `env.HomeDir()` (directly in
-`claudecode.go:114`, and via `opencodeConfigRoot` in `opencode.go:158`) to author the new
-`SkillTarget`. The pre-existing tests above were not updated and still pass `OSEnvironment`
-directly — confirmed present at baseline `788d7127` via `git show 788d7127:internal/setup/opencode_test.go`.
-These tests now transitively invoke the real `os.UserHomeDir()` as a side effect of testing
-something unrelated (MCP registration argv shape, bearer header form), even though the value
-is never asserted. In any environment where `$HOME` is unresolvable (minimal containers,
-some sandboxes, a user with no home directory), these four tests would newly fail with an
-unrelated "resolve home directory" error — a regression in test isolation this same phase
-took care to prevent everywhere else it touched (e.g. `cmd/engram/setup_test.go`'s
-`withFakeSetupEnv` was explicitly widened in 04-01 specifically to stop a pre-existing test
-from reaching a real filesystem once the skills facet was wired in).
+### IN-01: Redundant "skills:" prefix likely to appear in row.Reason for an index-read failure
 
-**Fix:** Give these four tests a fake `Environment` with a scripted `HomeDir` (mirroring
-`fakeEnv()` already used in the phase's own new tests), e.g.:
-```go
-env := Environment{
-	LookPath: func(string) (string, error) { return "", exec.ErrNotFound },
-	Getenv:   func(string) string { return "" },
-	HomeDir:  func() (string, error) { return "/home/fake", nil },
-}
-plan, err := ClaudeCode.Plan(env, Options{URL: url, Auth: tc.auth})
-```
-
-### WR-02: No unit test asserts claude-code's own `SkillTarget` value
-
-**File:** `internal/setup/claudecode.go:113-121`; absent from `internal/setup/claudecode_test.go`
-
-**Issue:** `codex.go` and `opencode.go` each received a dedicated test
-(`TestCodexSkillTarget`, `TestOpenCodeSkillTarget`) asserting the exact `Format`/`Dir`/
-`IndexFile` the runtime authors, across every auth mode. `claude-code`'s own destination
-(`filepath.Join(home, ".claude", "skills")`, `SkillFormatNative`) has no equivalent —
-`claudecode_test.go` was not modified by this phase at all. The only places `.claude/skills`
-appears in any test are `cmd/engram/setup_test.go:1420` and `:1774`, both of which use the
-literal as a fixture to script a fake write failure — they assume the path is correct rather
-than independently verifying it against `claudeCodeRuntime.Plan()`'s output. A typo or
-segment reordering in the authored `Dir` (e.g. `"skills", ".claude"`) would pass
-`TestEveryRuntimeAuthorsAnExplicitSkillFormat` (which only checks `Format` is non-zero) and
-every existing test, and would only surface as a live-machine discrepancy.
-
-**Fix:** Add a `TestClaudeCodeSkillTarget` analogous to `TestCodexSkillTarget`/
-`TestOpenCodeSkillTarget`, asserting `plan.Skills == SkillTarget{Format: SkillFormatNative,
-Dir: filepath.Join(home, ".claude", "skills")}` across all four auth modes, plus a
-`TestClaudeCodePlanFailsWhenHomeUnresolvable` mirroring the codex/opencode equivalents (the
-`HomeDir` error path added at `claudecode.go:114-116` is currently untested).
-
-### WR-03: No structural guard that a non-`none` `SkillTarget`'s destination is absolute
-
-**File:** `internal/setup` (no such test exists); `internal/skills/install.go:96-124`
-(`installFiles`), `:148-194` (`installAgentsMDIndex`)
-
-**Issue:** `TestEveryRuntimeAuthorsAnExplicitSkillFormat` (`codex_test.go:99`) is a registry-wide
-structural guard proving every runtime authors a real `SkillFormat` value, explicitly
-designed to catch a future runtime shipping a silently-zero-valued target. No equivalent
-guard exists for the `Dir`/`IndexFile` fields being absolute. Today every runtime happens to
-derive its destination from `env.HomeDir()` correctly, and `opencode_test.go:139` independently
-checks `filepath.IsAbs` for its own four XDG_CONFIG_HOME cases — but `claude-code` and `codex`
-have no such assertion, there is no cross-runtime version of that check, and
-`internal/skills.installFiles`/`installAgentsMDIndex` themselves perform no `filepath.IsAbs`
-validation before `filepath.Join`-ing and writing. A relative `Dir` (an authoring bug in a
-future runtime, or a refactor that drops the `env.HomeDir()` call) would silently install
-skill files, or splice into an AGENTS.md-shaped file, relative to `engram`'s own current
-working directory — precisely the class of hazard T-04-08 (`04-CONTEXT.md`) exists to close,
-with nothing catching it before or during the write.
-
-**Fix:** Add a registry-driven test (same shape as `TestEveryRuntimeAuthorsAnExplicitSkillFormat`)
-asserting `filepath.IsAbs(plan.Skills.Dir)` for every non-`SkillFormatNone` target and
-`filepath.IsAbs(plan.Skills.IndexFile)` for every `SkillFormatAgentsMD` target; consider also
-having `internal/skills.Install` refuse (accumulate an error for) a non-absolute `Dir`/
-`IndexFile` as a second, independent line of defense at the point where the actual write
-happens.
-
-### WR-04: `metadata.engram-summary`'s single-line/length bound is enforced only by a test, never at parse time
-
-**File:** `internal/skills/frontmatter.go:80-118` (`ParseFrontmatter`);
-`internal/skills/frontmatter_test.go:92-113` (`TestEverySkillCarriesIndexSummary`);
-`internal/skills/agentsmd.go:171-184` (`RenderBlock`)
-
-**Issue:** `MaxSummaryBytes` (`frontmatter.go:40`) and the "authored, single-line" contract
-(D-14) are checked only by `TestEverySkillCarriesIndexSummary`, which runs against whatever
-the CURRENTLY embedded inventory happens to contain. `ParseFrontmatter`/`walkSkills`
-themselves impose no length bound and do not reject a `metadata.engram-summary` value
-containing an embedded newline (a YAML block-scalar `summary: |` value would parse
-successfully and pass straight through to `Skill.Summary`). If a future skill (or an edit to
-an existing one) ships with such a value and, for any reason, the `go test ./internal/skills/...`
-gate is not run before the binary is built (e.g. `task skills:vendor` run standalone,
-per the Taskfile.yaml comment: "NOT a dependency of default/test/test:go"), `RenderBlock`
-(`agentsmd.go:179`) would silently emit a malformed multi-line bullet into the spliced
-AGENTS.md index block, and `Digest`/byte-count reporting would not flag it either.
-
-**Fix:** Have `ParseFrontmatter` itself reject a summary containing `\n` or exceeding
-`MaxSummaryBytes`, returning it as a parse error (consistent with how it already treats a
-missing fence or invalid YAML) — this converts the invariant from "tested, if the test
-happens to run" into "structurally impossible to embed."
-
-### WR-05: A destination already resolved is dropped from the row on an inventory failure
-
-**File:** `cmd/engram/setup.go:108-115` (`setupApplySkillsFacet`)
-
-**Issue:** On `targetErr != nil` (an authoring bug) the function returns before populating
-`row.SkillsDest`/`SkillsIndex`. On `invErr != nil` (`skills.Inventory()` failing — a broken
-embed) it also returns early, even though `setupSkillsTarget` already succeeded and `target`
-holds a valid, already-computed destination. In both cases the failed row's `Reason` names the
-error, but an operator triaging a broken-build report loses the destination context that was
-already available. Low impact in practice (an `Inventory()` failure means the shipped binary
-itself is broken, not a per-machine condition), but it is an easy, free addition.
-
-**Fix:** Populate `row.SkillsDest`/`row.SkillsIndex` from `target` before returning on the
-`invErr` path (the `targetErr` path has no valid `target` to use, so that one is unavoidable).
-
-### WR-06: `TestSetupReportCoversEveryRuntimeShape`'s digest/byte-count expectations are derived by calling the code under test
-
-**File:** `cmd/engram/setup_test.go:1662-1663`, `:1734-1738`
-
-**Issue:** `wantDigest := setupSkillsDigestSummary(inv)` and `wantBytes :=
-strconv.Itoa(skills.TotalBytes(inv))` call the exact same production functions
-(`setupSkillsDigestSummary`, `skills.TotalBytes`) that `setupApplySkillsFacet` calls to
-populate `row.SkillsDigest`/`row.SkillsBytes`. The subsequent assertions
-(`row.SkillsDigest != wantDigest`) therefore prove the composition threads the same
-`skills.Inventory()` call through consistently across runtimes and lanes — a legitimate
-plumbing check — but prove nothing about whether `setupSkillsDigestSummary` or
-`skills.TotalBytes` compute the *correct* value; a bug shared between the test's setup and the
-production call site would pass silently. This is the "test computing its own expectation by
-calling the function under test" pattern the review brief calls out by name. Correctness of
-`Digest`/`TotalBytes` themselves is independently covered by `internal/skills/inventory_test.go`
-(`TestDigestIsStableAndTruncated`), which mitigates the risk, but the closing-gate test's own
-comment (`setupOutcomeFoldTable`'s doc, `setup_test.go:1608-1611`) explicitly disclaims this
-exact pattern for the outcome-fold table while the digest/byte-count assertions a few lines
-away use it without comment.
-
-**Fix:** Either compute `wantDigest`/`wantBytes` from a literal, hand-verified value (as
-`setupOutcomeFoldTable` does for outcomes), or narrow the assertion's stated intent in a
-comment to "the composition plumbs the same inventory through consistently," so a future
-reader does not mistake it for independent verification of the digest/byte-count algorithms.
+**File:** `internal/skills/install.go:167` (interacts with `cmd/engram/setup.go:154`, not in review scope)
+**Issue:** `installAgentsMDIndex` wraps its error as `fmt.Errorf("skills: read index %s: %w", ...)`. The caller in `setupApplySkillsFacet` (not part of this review's file list, so not separately findable here, but visible from the traced call chain) again prefixes the resulting message with `"skills: %v"` when composing `row.Reason`. The practical effect is a doubled `"skills: skills: read index ...: permission denied"` string in the operator-facing `Reason` field. This is cosmetic only — `TestSetupIndexReadFailureReachesPartialExit` only asserts the path substring is present, which it is — and the offending second prefix lives outside this review's four files, so it is not actionable here.
+**Fix:** No action required for this review's scope. If addressed, drop one of the two `"skills:"` prefixes (either in `installAgentsMDIndex`'s own wrap or in the caller's `Reason` composition) the next time `cmd/engram/setup.go` is in scope.
 
 ---
 
-_Reviewed: 2026-09-10T15:52:09Z_
+_Reviewed: 2026-09-12T00:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
-_Depth: deep_
+_Depth: standard_
