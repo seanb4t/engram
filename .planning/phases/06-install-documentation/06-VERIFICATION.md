@@ -4,7 +4,7 @@ verified: 2026-09-12T18:26:52.862468+00:00
 status: passed
 scope: documentation acceptance and D-10 qualifying-release observations
 score: 7/7 must-haves verified
-behavior_unverified: 2026-09-12T18:26:52.862468+00:00
+behavior_unverified: 0
 overrides_applied: 0
 post_release_status: complete
 post_release_tracker: https://github.com/seanb4t/engram/issues/514
@@ -35,7 +35,7 @@ covered_files:
   - internal/setup/opencode.go
   - internal/setup/plan.go
   - skill/engram/commands/engram-setup.md
-covered_digest: v1:sha256:7b2c583b74abfa96371e886873ef32df4a362cb21a3450d8960a5805678a46cb
+covered_digest: v1:sha256:c04c63364185a30c0a4e1e0d72c0493ea88eb50e23dac91df283daeef28e7dc3
 ---
 
 # Phase 6: Install Documentation Verification Report
@@ -134,3 +134,11 @@ Live HTTP reads of all five guide routes show v0.16.0 and no old unreleased noti
 requests succeeded, so live content is supported by those successful responses.
 No source or rendered guide changed in this metadata reconciliation. Fingerprints
 were refreshed only for these reviewed documentation/requirement-status changes.
+
+## Milestone audit metadata correction
+
+The post-release edit accidentally put the verification timestamp into
+`behavior_unverified`. Restored the integer 0, matching this report's existing
+seven verified documentation truths. This repairs field typing, not acceptance.
+The independent milestone audit found a Phase 4 AGENTS.md error-path defect
+(#559); this documentation-phase pass does not override that milestone blocker.

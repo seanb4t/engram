@@ -37,7 +37,7 @@ covered_files:
   - internal/setup/quote.go
   - internal/setup/runtime.go
   - internal/surfaces/toolclass.go
-covered_digest: v1:sha256:865b6eb8bb913e1179e263d9698609f5f8348af8732a6ec1fec7111fbaa6060f
+covered_digest: v1:sha256:632d631cfb9109de9f6d83dff1bf5f57e6410254fe01576f0a26f6726cbd68d9
 behavior_unverified: 0
 overrides_applied: 0
 behavior_unverified_items: []

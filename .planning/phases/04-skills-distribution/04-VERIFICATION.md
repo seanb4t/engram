@@ -1,9 +1,10 @@
 ---
 phase: 04-skills-distribution
 verified: 2026-09-12T15:41:47Z
-status: passed
-score: 46/46 must-haves verified
+status: gaps_found
+score: AGENTS.md preservation gap found; prior 46/46 verdict superseded
 covered_files:
+  - .planning/2026-08-23.01-INTEGRATION.md
   - .planning/REQUIREMENTS.md
   - .planning/ROADMAP.md
   - .planning/phases/04-skills-distribution/04-01-PLAN.md
@@ -42,14 +43,14 @@ covered_files:
   - internal/skills/importgate_test.go
   - internal/skills/install.go
   - internal/skills/inventory.go
-covered_digest: v1:sha256:b1fc4111b9876925c54fbd70113ab69b6ecf5940ff653043276f05e12feda8b2
+covered_digest: v1:sha256:76bfbe360519bb2d83ae17749079d620bd83839a13103be8101a1b9e8b99a335
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
-  previous_status: stale
+  previous_status: passed
   previous_score: 46/46
   gaps_closed: []
-  gaps_remaining: []
+  gaps_remaining: [B01]
   regressions: []
 human_verification_evidence:
   - test: "Start Claude Code and opencode with the five curation skills installed via `engram setup --apply --runtime claude-code` and `--runtime opencode` (against a scratch/fake $HOME, never the operator's real one — see the incident recorded in 04-03-SUMMARY.md), then check each runtime's own skill list and startup/log output."
@@ -60,6 +61,23 @@ human_verification_evidence:
 ---
 
 # Phase 4: Skills Distribution Verification Report
+
+## Current milestone audit verdict — 2026-09-12
+
+**Gaps found.** The integration checker reproduced an existing-file read error
+being treated as an empty AGENTS.md index at `internal/skills/install.go:152–155`.
+The later write replaces unrelated guidance and reports success. This violates
+REQ-skills-agents-md-fallback's outside-block preservation contract. The
+permission-error reproduction used the owned fake filesystem and actual Install
+function; no user files were touched. See [integration finding B01](../../2026-08-23.01-INTEGRATION.md#detailed-findings)
+and [issue #559](https://github.com/seanb4t/engram/issues/559).
+
+The earlier passing tests and human observations below remain historical
+positive-path evidence. They did not cover this read-error boundary. The current
+gaps_found verdict supersedes their aggregate pass until the failure is fixed
+and re-verified; it does not revoke the recorded runtime skill-loading results.
+
+## Earlier phase verification
 
 **Phase Goal:** The five curation skills reach every configured runtime — installed in that
 runtime's native skill or rules format where one exists, and appended into a delimited,

@@ -275,7 +275,7 @@ mechanism instead of another one-shot operator command.
 - [x] **Phase 1: Version & Homebrew Distribution** - `engram version --output json` plus a published, credential-verified, recoverable Homebrew cask (completed 2026-08-25)
 - [x] **Phase 2: Setup Command Core** - `engram setup` detects runtimes, previews by default, declares its full outcome vocabulary, and is fully scriptable without a TTY (completed 2026-08-30)
 - [x] **Phase 3: Runtime Registration** - `engram setup --apply` registers engram with Claude Code, Codex, and opencode via their own CLIs, converging idempotently, plus a generic-MCP fallback, across every auth mode (completed 2026-09-09)
-- [x] **Phase 4: Skills Distribution** - The five curation skills reach every runtime, native format where one exists, AGENTS.md fallback otherwise (completed 2026-09-11)
+- [ ] **Phase 4: Skills Distribution** - The five curation skills reach every runtime, native format where one exists, AGENTS.md fallback otherwise (audit reopened preservation gap #559 on 2026-09-12)
 - [x] **Phase 5: Slash Command Delegation** - `/engram-setup` delegates to the binary when present, keeps its prose fallback first-class otherwise, with a generated (not hand-checked) equivalence gate (completed 2026-09-12)
 - [x] **Phase 6: Install Documentation** - docs-site documents how to get the binary and how to run `engram setup` (completed 2026-09-12)
 
@@ -553,10 +553,11 @@ Plans:
 - [x] 06-01-PLAN.md — Canonical Install and Agent Setup guides with reconciled entry points
 - [x] 06-02-PLAN.md — Release provenance, four-platform installation evidence and shipped availability
 
-Phase 6 pre-merge acceptance is verified. v0.15.1 publication and all four
-actual Homebrew installs passed. Qualifying setup/client-ID/delegation release
-checks and availability updates remain pending under D-10; see the
-[post-release handoff](phases/06-install-documentation/06-POST-RELEASE.md).
+Phase 6 release observations are complete for v0.16.0: all four Homebrew installs,
+setup/client-ID help, tagged Go version and merged/deployed availability guides.
+See the [post-release handoff](phases/06-install-documentation/06-POST-RELEASE.md).
+The [milestone audit](2026-08-23.01-MILESTONE-AUDIT.md) found a Phase 4
+AGENTS.md preservation gap (#559); archival remains blocked on that fix.
 
 ---
 
@@ -640,10 +641,10 @@ checks and availability updates remain pending under D-10; see the
 | 9. Report pending in migrate status | 2026-08-12.01 | 2/2 | Complete | 2026-08-22 |
 | 1. Version & Homebrew Distribution | 2026-08-23.01 | 3/3 | Complete | 2026-08-25 |
 | 2. Setup Command Core | 2026-08-23.01 | 3/3 | Complete | 2026-08-30 |
-| 3. Runtime Registration | 2026-08-23.01 | 7/7 | Complete | 2026-09-09 |
-| 4. Skills Distribution | 2026-08-23.01 | 3/3 | Complete | 2026-09-10 |
+| 3. Runtime Registration | 2026-08-23.01 | 5/5 | Complete | 2026-09-09 |
+| 4. Skills Distribution | 2026-08-23.01 | 4/4 | Audit gap — #559 | 2026-09-12 |
 | 5. Slash Command Delegation | 2026-08-23.01 | 3/3 | Complete | 2026-09-12 |
-| 6. Install Documentation | 2026-08-23.01 | 2/2 | Complete (pre-merge) | 2026-09-12 |
+| 6. Install Documentation | 2026-08-23.01 | 2/2 | Complete; released docs live | 2026-09-12 |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.

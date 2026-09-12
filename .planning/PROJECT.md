@@ -204,7 +204,7 @@ Full detail archived at `milestones/v0.10.x-{ROADMAP,REQUIREMENTS,MILESTONE-AUDI
 `brew install engram`, then `engram setup` detects what is on the machine, shows what it would
 write, and wires it up.
 
-**Progress:** Phase 5 locally implemented and verified on 2026-09-12; Phase 6 installation documentation and tagged-release confirmation remain. This is repository verification, not a release or deployment.
+**Progress:** Implementation released as v0.16.0 and Phase 6 guides deployed on 2026-09-12. Milestone audit found an AGENTS.md preservation defect (#559): 24/25 requirements satisfied, archival blocked pending repair. See `.planning/2026-08-23.01-MILESTONE-AUDIT.md`.
 
 **Target features:**
 

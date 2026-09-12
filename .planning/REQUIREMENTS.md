@@ -27,10 +27,10 @@ would write, and wires it up.
 
 ### Setup Command Core
 
-- [ ] **REQ-setup-detects-runtimes**: `engram setup` reports which supported agent runtimes are present on the machine, using the runtime's own binary as the primary signal. A config directory left behind by an uninstalled runtime does not read as installed.
-- [ ] **REQ-setup-previews-by-default**: `engram setup` previews without mutating and changes nothing until `--apply`, matching `engram migrate` and `prune-expired`. The preview shows the exact command or content that would be issued, not a summary of it.
+- [x] **REQ-setup-detects-runtimes**: `engram setup` reports which supported agent runtimes are present on the machine, using the runtime's own binary as the primary signal. A config directory left behind by an uninstalled runtime does not read as installed.
+- [x] **REQ-setup-previews-by-default**: `engram setup` previews without mutating and changes nothing until `--apply`, matching `engram migrate` and `prune-expired`. The preview shows the exact command or content that would be issued, not a summary of it.
 - [x] **REQ-setup-idempotent**: Re-running `engram setup --apply` converges to the same state without duplicating entries, and reports "already correct" distinctly from "wrote it", so an operator can tell a no-op from a change.
-- [ ] **REQ-setup-non-interactive**: `engram setup` is fully usable without a TTY — a caller can select runtimes explicitly, skip confirmation, and get machine-readable output, so the command is scriptable from CI or another agent on day one.
+- [x] **REQ-setup-non-interactive**: `engram setup` is fully usable without a TTY — a caller can select runtimes explicitly, skip confirmation, and get machine-readable output, so the command is scriptable from CI or another agent on day one.
 - [x] **REQ-setup-partial-failure-legible**: When some runtimes succeed and others fail in one invocation, the outcome per runtime is reported individually and the process exit status distinguishes total success, partial success, and total failure. No runtime's failure silently discards another's success.
 - [x] **REQ-setup-correct-by-reading**: `engram setup --help` teaches the correct invocation — which runtimes are targetable, what `--apply` does, and what auth modes are accepted — without the caller having to run it and interpret a failure (D-00).
 
@@ -47,7 +47,7 @@ would write, and wires it up.
 
 - [x] **REQ-skills-embedded-in-binary**: A brew-installed engram binary carries the curation skills' content without a Claude plugin present, sourced from the same files the plugin ships so the two cannot drift.
 - [x] **REQ-skills-native-format**: Where a runtime has a native skill or rules format, `engram setup` installs the skills in that format.
-- [x] **REQ-skills-agents-md-fallback**: Where a runtime has no native skill format, `engram setup` writes the guidance into AGENTS.md inside a delimited, re-detectable block, so a re-run replaces that block rather than appending a second copy. Content outside the block is left byte-for-byte untouched.
+- [ ] **REQ-skills-agents-md-fallback**: Where a runtime has no native skill format, `engram setup` writes the guidance into AGENTS.md inside a delimited, re-detectable block, so a re-run replaces that block rather than appending a second copy. Content outside the block is left byte-for-byte untouched. **Audit gap (2026-09-12):** an existing unreadable-but-writable index is overwritten after a read error; preservation is not satisfied on that path ([#559](https://github.com/seanb4t/engram/issues/559)).
 
 ### Slash Command Delegation
 
@@ -93,10 +93,10 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-cask-install-gate | Phase 1 | Complete |
 | REQ-cask-credential-verified | Phase 1 | Complete |
 | REQ-cask-reship-recovery | Phase 1 | Complete |
-| REQ-setup-detects-runtimes | Phase 2 | Pending |
-| REQ-setup-previews-by-default | Phase 2 | Pending |
+| REQ-setup-detects-runtimes | Phase 2 | Complete |
+| REQ-setup-previews-by-default | Phase 2 | Complete |
 | REQ-setup-idempotent | Phase 3 | Complete |
-| REQ-setup-non-interactive | Phase 2 | Pending |
+| REQ-setup-non-interactive | Phase 2 | Complete |
 | REQ-setup-partial-failure-legible | Phase 2 | Complete |
 | REQ-setup-correct-by-reading | Phase 2 | Complete |
 | REQ-register-claude-code | Phase 3 | Complete |
@@ -107,7 +107,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-register-cli-surface-drift-legible | Phase 3 | Complete |
 | REQ-skills-embedded-in-binary | Phase 4 | Complete |
 | REQ-skills-native-format | Phase 4 | Complete |
-| REQ-skills-agents-md-fallback | Phase 4 | Complete |
+| REQ-skills-agents-md-fallback | Phase 4 | Gap found — #559 |
 | REQ-engram-setup-delegates | Phase 5 | Complete |
 | REQ-engram-setup-prose-fallback | Phase 5 | Complete |
 | REQ-delegation-equivalence-derived | Phase 5 | Complete |

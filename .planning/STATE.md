@@ -2,15 +2,15 @@
 gsd_state_version: "1.0"
 milestone: 2026-08-23.01
 current_phase: 6
-status: ready_for_milestone_audit
-stopped_at: PR 558 merged and docs deployed; ready for milestone audit
-last_updated: "2026-09-12T18:49:55.636624+00:00"
+status: milestone_audit_gaps_found
+stopped_at: milestone audit found AGENTS.md preservation gap 559; fix and re-verify Phase 4
+last_updated: "2026-09-12T19:11:20.121382+00:00"
 last_activity: 2026-09-12
-last_activity_desc: PR 558 merged and docs deployed; stale recovery blocker corrected against D-15
+last_activity_desc: milestone audit 24/25; preservation blocker 559, timeout warning 560, validation debt 561
 state_head: d205d4a361979ff318bb47adda278ab17d3672e5
 progress:
   total_phases: 6
-  completed_phases: 6
+  completed_phases: 5
   total_plans: 20
   completed_plans: 20
 milestone_name: Distribution & Agent Bootstrap
@@ -23,19 +23,20 @@ milestone_name: Distribution & Agent Bootstrap
 See: .planning/PROJECT.md (updated 2026-09-12 — after Phase 5 verification)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 06 — Install Documentation
+**Current focus:** Milestone audit — close Phase 4 preservation gap #559
 
 ## Current Position
 
 Phase: 06 — Install Documentation
 Plan: 2 of 2 complete
-Status: Phase 6 shipped; PR #558 merged and docs deployed; ready for milestone audit
+Status: Milestone audit gaps_found — 24/25 requirements; fix #559 before archival
 Last activity: 2026-09-12 — PRs #557 and #533 merged; four Homebrew installs and tagged Go install passed
 
-All six phase reports pass. The three Phase 6 requirements are complete under
-D-10 pre-merge acceptance. GSD's phase-completion helper could not parse the
-repository's descriptive requirement IDs, so those verified entries were
-reconciled explicitly. Existing unrelated pending requirement entries are preserved.
+The milestone audit found an existing AGENTS.md read-error preservation defect.
+Phase 4 is reopened as gaps_found; the other five canonical reports pass. All
+20 plan summaries exist, but completion counts do not override the reproduced
+failure. The three stale Phase 2 checkboxes were reconciled against both summary
+and verification evidence. Audit: `.planning/2026-08-23.01-MILESTONE-AUDIT.md`.
 
 The qualifying-release checks passed for v0.16.0. See
 `.planning/phases/06-install-documentation/06-RELEASE-0.16.0.md` for publication,
@@ -45,7 +46,8 @@ The five-guide availability update merged as PR #558 and deployed through run
 are closed. The earlier recovery-rehearsal blocker was incorrect: Phase 1 D-15
 explicitly accepts that criterion by construction and prohibits a staged
 rehearsal; its verification report agrees. The requirement checkbox is now
-reconciled with the completed credential probe. Milestone audit/archive is next.
+reconciled with the completed credential probe. The audit found a separate
+AGENTS.md preservation blocker (#559); no recovery rehearsal is required.
 
 ## Deferred Items
 
@@ -324,7 +326,7 @@ Both prior entries were delivered and had simply never been closed out:
 ## Session Continuity
 
 Last session: 2026-09-12T16:44:40+00:00
-Stopped at: PR 558 merged and docs deployed; ready for milestone audit
+Stopped at: milestone audit gaps_found; Phase 4 preservation repair required
 Resume file: .planning/phases/06-install-documentation/06-POST-RELEASE.md
 
 ## Performance Metrics
@@ -441,5 +443,6 @@ Resume file: .planning/phases/06-install-documentation/06-POST-RELEASE.md
 
 ## Operator Next Steps
 
-- Run milestone audit, reconciling any remaining stale requirement statuses against canonical reports.
-- Complete milestone archival after the audit; no recovery rehearsal is required under Phase 1 D-15.
+- Resolve #559 with a scoped gap plan and re-verify Phase 4 and the affected integration flow.
+- Address timeout warning #560 and reconcile validation records for phases 1–4 (#561).
+- Rerun milestone audit before archival; Phase 1 D-15 still rules out a recovery rehearsal.

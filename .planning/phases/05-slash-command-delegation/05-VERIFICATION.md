@@ -37,7 +37,7 @@ covered_files:
   - internal/surfacesgen/main.go
   - internal/surfacesgen/main_test.go
   - skill/engram/commands/engram-setup.md
-covered_digest: v1:sha256:61e52c6a115ca6302d5685d18e55aa2c617282f3f2d1e92286caf91029aae235
+covered_digest: v1:sha256:374513078a825a72396a4233d50969b5e3353b27ab02ef394fa2d680b7ed99ec
 ---
 
 # Phase 05: Slash Command Delegation Verification Report
