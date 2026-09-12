@@ -204,7 +204,7 @@ Full detail archived at `milestones/v0.10.x-{ROADMAP,REQUIREMENTS,MILESTONE-AUDI
 `brew install engram`, then `engram setup` detects what is on the machine, shows what it would
 write, and wires it up.
 
-**Progress:** Implementation released as v0.16.0 and Phase 6 guides deployed on 2026-09-12. Milestone audit found an AGENTS.md preservation defect (#559): 24/25 requirements satisfied, archival blocked pending repair. See `.planning/2026-08-23.01-MILESTONE-AUDIT.md`.
+**Progress:** Implementation released as v0.16.0 and Phase 6 guides deployed on 2026-09-12. The milestone audit's AGENTS.md preservation defect (#559) was closed the same day by Phase 4 gap-closure plan 04-05 (Phase 4 re-verified 53/53); all 25 requirements are now marked satisfied and the audit needs a re-run before archival. See `.planning/2026-08-23.01-MILESTONE-AUDIT.md`.
 
 **Target features:**
 
@@ -745,6 +745,7 @@ and `.planning/intel/merge-adrs/decisions.md`; the `refines →` note names the 
 | `spine-review` extends the Subject-less operator tier; it is never a new authz path (v0.13.x) | Composing the Subject-gated `Search`/`List` would silently scope an operator sweep to one actor — authorization stays in `internal/store` or the feature does not ship | ✓ Good — sixth instance of the existing tier |
 | `consolidate` reports near-duplicates; it never merges them (v0.13.x Phase 3) | Every system surveyed showed threshold auto-merge silently destroys provenance, exceptions, and version distinctions | ✓ Good — no clustering, no default threshold, no mutation on any path |
 | Record an adversarial non-result as NOT-OBTAINED rather than convert it to pass or fail (v0.13.x Phase 4) | The 3-run cap produced only *correct* verdicts, so the criterion's confidently-wrong case was never observed; scoring that as a pass would have made the artifact claim a proof it does not have | ⚠️ Revisit — honest, but `REQ-consent-adversarial-proof` stays unmet (`WINDOWS.md` id 3) |
+| Only confirmed nonexistence is the AGENTS.md create case (2026-08-23.01 Phase 4, 04-05 / #559) | `installAgentsMDIndex` treated every index read error as "no index" and overwrote the operator's file; read and write permission are independent, so an unreadable-but-writable index lost every byte outside the managed block with no error. D-15 already refuses to guess at a region engram did not author — an unreadable file is the most ambiguous state of all, so `errors.Is(err, fs.ErrNotExist)` is the only create path and any other read error preserves the file with zero writes and surfaces through the runtime row and the partial exit | ✓ Good — one predicate at one call site; package- and CLI-boundary regressions; found by the milestone audit, not by the phase's own tests |
 
 ## Evolution
 
@@ -765,4 +766,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-09-12 — after Phase 5 verification in milestone `2026-08-23.01`.*
+*Last updated: 2026-09-12 — after Phase 4 gap closure (04-05, #559) in milestone `2026-08-23.01`.*

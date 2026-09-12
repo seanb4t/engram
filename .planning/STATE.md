@@ -21,7 +21,7 @@ milestone_name: Distribution & Agent Bootstrap
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-12 — after Phase 5 verification)
+See: .planning/PROJECT.md (updated 2026-09-12 — after Phase 4 gap closure, #559)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
 **Current focus:** Milestone audit re-run — Phase 4 gap #559 closed
@@ -286,6 +286,7 @@ milestone needs in working memory.
 - [Phase 04]: Codex routing: codex-native-plus-index (native skills + AGENTS.md index); RESEARCH assumption A1 confirmed by human observation — Gives ROADMAP success criterion 3 a live --apply write path and hedges the one MEDIUM-confidence open question; Sean confirmed codex's skill selector surfaces the five skills
 - [Phase 04]: setupSkillsTarget widened to (skills.Target, error): every registered runtime now authors an explicit SkillFormat, so an unrecognized format is a failed row, never a silent skip
 - [Phase 04]: generic's Plan() authors the explicit no-destination SkillFormatNone, carrying the curation skills in its --output json deliverable with the install call explicitly skipped so it can never reach the filesystem
+- [Phase 04]: Only `errors.Is(readErr, fs.ErrNotExist)` is the AGENTS.md create case (04-05, #559); any other index read error performs zero writes, preserves the file byte-for-byte, and surfaces a wrapped error naming the index path through SkillsOutcome → AggregateOutcome → Classify (partial exit). D-15 extended to the unreadable case; installFiles' own posture deliberately unchanged (D-08).
 
 ### Pending Todos
 
@@ -330,7 +331,7 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-12T16:44:40+00:00
+Last session: 2026-09-12T20:31:18+00:00
 Stopped at: Phase 04 gap #559 closed and re-verified; milestone audit re-run pending
 Resume file: .planning/phases/06-install-documentation/06-POST-RELEASE.md
 
