@@ -306,7 +306,7 @@ jobs:
       # `uses:` steps ignore working-directory, so point action-setup at the
       # ui packageManager field (pnpm@11) explicitly — the repo root has no
       # package.json for it to read.
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           package_json_file: ui/package.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -405,7 +405,7 @@ jobs:
     if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           package_json_file: ui/package.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
