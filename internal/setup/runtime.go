@@ -18,13 +18,14 @@ var ErrAuthModeUnsupported = errors.New("setup: auth mode is not supported by th
 // Options carries the resolved, caller-supplied values a Runtime's Plan
 // needs to author its invocation: the MCP endpoint URL (passed through
 // byte-for-byte, D-02 — never appended to, stripped, or normalized), the
-// selected auth mode, and the path to a bearer token file. TokenFile's
+// selected auth mode, the non-secret opaque OAuth client ID, and the path to a bearer token file. TokenFile's
 // PATH is the whole payload at this layer: Plan must never open, stat, or
 // read it (D-16) — only its path is previewed, as
 // "Bearer <from /path/to/token>".
 type Options struct {
 	URL       string
 	Auth      string
+	ClientID  string
 	TokenFile string
 }
 

@@ -20,6 +20,7 @@ import (
 
 var (
 	setupTokenFile string
+	setupClientID  string
 	setupOutput    string
 	setupRuntime   []string
 	setupApply     bool
@@ -339,6 +340,14 @@ func setupResolve(cmd *cobra.Command) ([]setup.Runtime, setup.Options, error) {
 		auth = "oauth"
 	}
 
+	if auth == "oauth-client" {
+		if strings.TrimSpace(setupClientID) == "" {
+			return nil, setup.Options{}, usageErrorf("--client-id is required for --auth oauth-client")
+		}
+	} else if cmd.Flags().Changed("client-id") {
+		return nil, setup.Options{}, usageErrorf("--client-id is only valid for --auth oauth-client")
+	}
+
 	runtimes, err := setup.Select(setupRuntime)
 	if err != nil {
 		return nil, setup.Options{}, usageErrorf("%w", err)
@@ -355,7 +364,7 @@ func setupResolve(cmd *cobra.Command) ([]setup.Runtime, setup.Options, error) {
 		return nil, setup.Options{}, usageErrorf("--url or ENGRAM_URL is required")
 	}
 
-	return runtimes, setup.Options{URL: cfg.Setup.URL, Auth: auth, TokenFile: setupTokenFile}, nil
+	return runtimes, setup.Options{URL: cfg.Setup.URL, Auth: auth, TokenFile: setupTokenFile, ClientID: setupClientID}, nil
 }
 
 // setupPlanDoc resolves --url/--auth/--runtime (setupResolve) and builds
@@ -583,7 +592,10 @@ aggregated outcome, with the full skill content available in the
 
 Accepted --auth modes:
   oauth         OAuth via the runtime's own login/callback flow (default)
-  oauth-client  a pre-registered OAuth client (client id and secret)
+  oauth-client  a pre-registered OAuth client; requires --client-id with a
+                non-secret client ID. Other auth modes reject --client-id.
+                For scripted Claude Code registration, supply MCP_CLIENT_SECRET
+                in the inherited environment; engram has no interactive stdin.
   bearer        a static bearer token. A native runtime (claude-code, codex,
                 opencode) is registered with an environment-variable
                 REFERENCE naming ENGRAM_TOKEN, resolved by that runtime
@@ -598,11 +610,12 @@ Accepted --auth modes:
 		strings.Join(setup.Names(), ", "), setupApplySentence())
 }
 
-// setupExample carries three worked invocations
+// setupExample carries four worked invocations
 // (REQ-setup-correct-by-reading, success criterion 5): a bare preview, a
-// --runtime-scoped preview, and a --auth bearer --token-file preview.
+// --runtime-scoped preview, an OAuth-client preview, and a bearer preview.
 const setupExample = `  engram setup --url https://engram.example.com/mcp
   engram setup --url https://engram.example.com/mcp --runtime claude-code
+  engram setup --url https://engram.example.com/mcp --auth oauth-client --client-id example-client
   engram setup --url https://engram.example.com/mcp --auth bearer --token-file ~/.engram/token`
 
 func init() {
@@ -616,6 +629,8 @@ func init() {
 	setupCmd.Flags().StringSliceVar(&setupRuntime, "runtime", setupRuntimeEnvDefault(),
 		fmt.Sprintf("runtimes to target, comma-separated or repeated (default: every detected runtime); valid values: %s (default: ENGRAM_RUNTIME)",
 			strings.Join(setup.Names(), ", ")))
+	setupCmd.Flags().StringVar(&setupClientID, "client-id", "",
+		"non-secret OAuth client ID; required for --auth oauth-client; other auth modes reject this flag")
 	setupCmd.Flags().StringVar(&setupTokenFile, "token-file", "",
 		"path naming the bearer credential's provenance for the portable configuration (--runtime generic) — carries only the PATH, never the secret itself; has no effect for a natively-registered runtime (claude-code, codex, opencode), which resolves the credential itself from its own environment at connect time")
 	registerDestructive(setupCmd, &setupApply, setupPreview, setupApplyRun)

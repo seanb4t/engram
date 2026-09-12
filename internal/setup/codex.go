@@ -97,7 +97,7 @@ func (codexRuntime) Plan(env Environment, opts Options) (Plan, error) {
 		return Plan{
 			Runtime: "codex",
 			Actions: []Action{{
-				Args:        []string{"codex", "mcp", "add", "engram", "--url", opts.URL, "--oauth-client-id", "<id>"},
+				Args:        []string{"codex", "mcp", "add", "engram", "--url", opts.URL, "--oauth-client-id", opts.ClientID},
 				Description: "register engram as an MCP server (pre-registered OAuth client)",
 			}},
 			Probe:  probe,

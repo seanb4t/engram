@@ -48,7 +48,7 @@ func TestClaudeCodePlan(t *testing.T) {
 		{
 			auth: "oauth-client",
 			wantAdd: []string{"claude", "mcp", "add", "--transport", "http", "engram", url,
-				"--scope", "user", "--client-id", "<id>", "--client-secret", "--callback-port", "8765"},
+				"--scope", "user", "--client-id", "test-client", "--client-secret", "--callback-port", "8765"},
 		},
 		{
 			auth: "bearer",
@@ -60,7 +60,7 @@ func TestClaudeCodePlan(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.auth, func(t *testing.T) {
-			plan, err := ClaudeCode.Plan(env, Options{URL: url, Auth: tc.auth})
+			plan, err := ClaudeCode.Plan(env, Options{URL: url, Auth: tc.auth, ClientID: "test-client"})
 			if err != nil {
 				t.Fatalf("Plan(auth=%q): %v", tc.auth, err)
 			}
@@ -142,7 +142,7 @@ func TestClaudeCodeSkillTarget(t *testing.T) {
 	for _, mode := range modes {
 		mode := mode
 		t.Run(mode, func(t *testing.T) {
-			plan, err := ClaudeCode.Plan(env, Options{URL: url, Auth: mode})
+			plan, err := ClaudeCode.Plan(env, Options{URL: url, Auth: mode, ClientID: "test-client"})
 			if err != nil {
 				t.Fatalf("Plan(%q): %v", mode, err)
 			}
@@ -184,4 +184,33 @@ func findHeaderArg(t *testing.T, args []string) string {
 	}
 	t.Fatalf("no --header flag found in Args %v", args)
 	return ""
+}
+
+func TestClaudeCodeClientID(t *testing.T) {
+	const url = "https://engram.example.com/mcp"
+	for _, id := range []string{"test-client", "  client 'quoted'; $(echo nope) &  "} {
+		t.Run(id, func(t *testing.T) {
+			plan, err := ClaudeCode.Plan(fakeEnv(), Options{URL: url, Auth: "oauth-client", ClientID: id})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []Action{
+				claudeCodeRemoveAction,
+				{
+					Args: []string{"claude", "mcp", "add", "--transport", "http", "engram", url,
+						"--scope", "user", "--client-id", id, "--client-secret", "--callback-port", "8765"},
+					Description: "register engram as a user-scope MCP server (pre-registered OAuth client)",
+				},
+			}
+			if !reflect.DeepEqual(plan.Actions, want) {
+				t.Errorf("Actions = %#v, want %#v", plan.Actions, want)
+			}
+			if !reflect.DeepEqual(plan.Probe, []string{"claude", "mcp", "get", "engram"}) {
+				t.Errorf("Probe = %q", plan.Probe)
+			}
+			if want := (SkillTarget{Format: SkillFormatNative, Dir: filepath.Join("/home/fake", ".claude", "skills")}); plan.Skills != want {
+				t.Errorf("Skills = %+v, want %+v", plan.Skills, want)
+			}
+		})
+	}
 }

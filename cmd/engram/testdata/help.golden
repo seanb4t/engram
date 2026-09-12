@@ -312,7 +312,10 @@ aggregated outcome, with the full skill content available in the
 
 Accepted --auth modes:
   oauth         OAuth via the runtime's own login/callback flow (default)
-  oauth-client  a pre-registered OAuth client (client id and secret)
+  oauth-client  a pre-registered OAuth client; requires --client-id with a
+                non-secret client ID. Other auth modes reject --client-id.
+                For scripted Claude Code registration, supply MCP_CLIENT_SECRET
+                in the inherited environment; engram has no interactive stdin.
   bearer        a static bearer token. A native runtime (claude-code, codex,
                 opencode) is registered with an environment-variable
                 REFERENCE naming ENGRAM_TOKEN, resolved by that runtime
@@ -331,11 +334,13 @@ Usage:
 Examples:
   engram setup --url https://engram.example.com/mcp
   engram setup --url https://engram.example.com/mcp --runtime claude-code
+  engram setup --url https://engram.example.com/mcp --auth oauth-client --client-id example-client
   engram setup --url https://engram.example.com/mcp --auth bearer --token-file ~/.engram/token
 
 Flags:
       --apply               a mutating operator command previews by default and mutates only when apply is set
       --auth string         auth mode: "oauth", "oauth-client", "bearer", or "none" (default: ENGRAM_AUTH) (default "oauth")
+      --client-id string    non-secret OAuth client ID; required for --auth oauth-client; other auth modes reject this flag
   -h, --help                help for setup
       --output string       output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --runtime strings     runtimes to target, comma-separated or repeated (default: every detected runtime); valid values: claude-code, codex, opencode, generic (default: ENGRAM_RUNTIME) (default )

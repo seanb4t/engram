@@ -32,7 +32,7 @@ func TestCodexSkillTarget(t *testing.T) {
 	for _, mode := range modes {
 		mode := mode
 		t.Run(mode, func(t *testing.T) {
-			plan, err := Codex.Plan(env, Options{URL: url, Auth: mode})
+			plan, err := Codex.Plan(env, Options{URL: url, Auth: mode, ClientID: "test-client"})
 			if err != nil {
 				t.Fatalf("Plan(%q): %v", mode, err)
 			}
@@ -115,5 +115,31 @@ func TestEveryRuntimeAuthorsAnExplicitSkillFormat(t *testing.T) {
 			t.Errorf("%s: Skills.Format = %q, want one of %q/%q/%q, never the zero value",
 				rt.Name(), plan.Skills.Format, SkillFormatNone, SkillFormatNative, SkillFormatAgentsMD)
 		}
+	}
+}
+
+func TestCodexClientID(t *testing.T) {
+	const url = "https://engram.example.com/mcp"
+	for _, id := range []string{"test-client", "  client 'quoted'; $(echo nope) &  "} {
+		t.Run(id, func(t *testing.T) {
+			plan, err := Codex.Plan(fakeEnv(), Options{URL: url, Auth: "oauth-client", ClientID: id})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []Action{{
+				Args:        []string{"codex", "mcp", "add", "engram", "--url", url, "--oauth-client-id", id},
+				Description: "register engram as an MCP server (pre-registered OAuth client)",
+			}}
+			if !reflect.DeepEqual(plan.Actions, want) {
+				t.Errorf("Actions = %#v, want %#v", plan.Actions, want)
+			}
+			if !reflect.DeepEqual(plan.Probe, []string{"codex", "mcp", "get", "engram", "--json"}) {
+				t.Errorf("Probe = %q", plan.Probe)
+			}
+			wantSkills := SkillTarget{Format: SkillFormatAgentsMD, Dir: filepath.Join("/home/fake", ".agents", "skills"), IndexFile: filepath.Join("/home/fake", ".codex", "AGENTS.md")}
+			if plan.Skills != wantSkills {
+				t.Errorf("Skills = %+v, want %+v", plan.Skills, wantSkills)
+			}
+		})
 	}
 }
