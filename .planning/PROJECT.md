@@ -204,6 +204,8 @@ Full detail archived at `milestones/v0.10.x-{ROADMAP,REQUIREMENTS,MILESTONE-AUDI
 `brew install engram`, then `engram setup` detects what is on the machine, shows what it would
 write, and wires it up.
 
+**Progress:** Phase 5 locally implemented and verified on 2026-09-12; Phase 6 installation documentation and tagged-release confirmation remain. This is repository verification, not a release or deployment.
+
 **Target features:**
 
 - **Homebrew cask** — `homebrew_casks:` in `.goreleaser.yaml` publishing to `seanb4t/homebrew-tap`,
@@ -397,6 +399,10 @@ pre-close `REQUIREMENTS.md` snapshot).
 - ✓ **REQ-sweep-scope-rule-registered** — one declared `RuleSweepScopeOrAllScopesRequired` composed at all three sweep leaves, with a `TestNoHandRolledSweepScopeGuards` zero-occurrence gate observed failing against a constructed defect — 2026-08-12.01 Phase 8 (#480)
 - ✓ **REQ-docs-record-state** — `reference/memory-record.md` covers all 28 wire-visible keys (proven by set difference), plus a new evergreen `guides/migrate.md` — 2026-08-12.01 Phase 8
 - ✓ **REQ-claude-md-migrations-convention** — CLAUDE.md now describes the schema-version registry instead of denying migrations exist, with derived (not hardcoded) verification gates — 2026-08-12.01 Phase 8
+
+- ✓ **REQ-engram-setup-delegates** — validated client-ID input and four-mode CLI delegation — 2026-08-23.01 Phase 5
+- ✓ **REQ-engram-setup-prose-fallback** — first-class Claude fallback with credential-safe registration commands — 2026-08-23.01 Phase 5
+- ✓ **REQ-delegation-equivalence-derived** — Plan-derived commands with read-only lint and CI drift checks — 2026-08-23.01 Phase 5
 
 ### Active
 
@@ -759,4 +765,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-08-23 — after opening milestone `2026-08-23.01` (Distribution & Agent Bootstrap).*
+*Last updated: 2026-09-12 — after Phase 5 verification in milestone `2026-08-23.01`.*

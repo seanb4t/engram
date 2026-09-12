@@ -51,9 +51,9 @@ would write, and wires it up.
 
 ### Slash Command Delegation
 
-- [ ] **REQ-engram-setup-delegates**: `/engram-setup` detects the `engram` binary on PATH and delegates to `engram setup` when it is present.
-- [ ] **REQ-engram-setup-prose-fallback**: When the binary is absent, `/engram-setup` still completes setup for the current agent using its own instructions. The plugin installs standalone, so the binary is never guaranteed and the prose path stays first-class rather than vestigial.
-- [ ] **REQ-delegation-equivalence-derived**: The two paths cannot silently diverge, because the mechanical parts of the prose are generated from the same source of truth the CLI uses and CI fails on any difference after regeneration. Equivalence is established by construction, not by a similarity or keyword check that can pass while proving nothing.
+- [x] **REQ-engram-setup-delegates**: `/engram-setup` detects the `engram` binary on PATH and delegates to `engram setup` when it is present.
+- [x] **REQ-engram-setup-prose-fallback**: When the binary is absent, `/engram-setup` still completes setup for the current agent using its own instructions. The plugin installs standalone, so the binary is never guaranteed and the prose path stays first-class rather than vestigial.
+- [x] **REQ-delegation-equivalence-derived**: The two paths cannot silently diverge, because the mechanical parts of the prose are generated from the same source of truth the CLI uses and CI fails on any difference after regeneration. Equivalence is established by construction, not by a similarity or keyword check that can pass while proving nothing.
 
 ### Install Documentation
 
@@ -108,9 +108,9 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-skills-embedded-in-binary | Phase 4 | Complete |
 | REQ-skills-native-format | Phase 4 | Complete |
 | REQ-skills-agents-md-fallback | Phase 4 | Complete |
-| REQ-engram-setup-delegates | Phase 5 | Pending |
-| REQ-engram-setup-prose-fallback | Phase 5 | Pending |
-| REQ-delegation-equivalence-derived | Phase 5 | Pending |
+| REQ-engram-setup-delegates | Phase 5 | Complete |
+| REQ-engram-setup-prose-fallback | Phase 5 | Complete |
+| REQ-delegation-equivalence-derived | Phase 5 | Complete |
 | REQ-docs-install-path | Phase 6 | Pending |
 | REQ-docs-setup-documented | Phase 6 | Pending |
 

@@ -276,7 +276,7 @@ mechanism instead of another one-shot operator command.
 - [x] **Phase 2: Setup Command Core** - `engram setup` detects runtimes, previews by default, declares its full outcome vocabulary, and is fully scriptable without a TTY (completed 2026-08-30)
 - [x] **Phase 3: Runtime Registration** - `engram setup --apply` registers engram with Claude Code, Codex, and opencode via their own CLIs, converging idempotently, plus a generic-MCP fallback, across every auth mode (completed 2026-09-09)
 - [x] **Phase 4: Skills Distribution** - The five curation skills reach every runtime, native format where one exists, AGENTS.md fallback otherwise (completed 2026-09-11)
-- [ ] **Phase 5: Slash Command Delegation** - `/engram-setup` delegates to the binary when present, keeps its prose fallback first-class otherwise, with a generated (not hand-checked) equivalence gate
+- [x] **Phase 5: Slash Command Delegation** - `/engram-setup` delegates to the binary when present, keeps its prose fallback first-class otherwise, with a generated (not hand-checked) equivalence gate (completed 2026-09-12)
 - [ ] **Phase 6: Install Documentation** - docs-site documents how to get the binary and how to run `engram setup`
 
 ## Phase Details
@@ -510,7 +510,7 @@ equivalent to).
    `engram setup` reads, and CI fails on any difference between the generated content and what's
    committed — so the two paths cannot silently diverge.
 
-**Plans:** 3/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 
@@ -631,7 +631,7 @@ and the delegation story settled).
 | 2. Setup Command Core | 2026-08-23.01 | 3/3 | Complete | 2026-08-30 |
 | 3. Runtime Registration | 2026-08-23.01 | 7/7 | Complete | 2026-09-09 |
 | 4. Skills Distribution | 2026-08-23.01 | 3/3 | Complete | 2026-09-10 |
-| 5. Slash Command Delegation | 2026-08-23.01 | 3/3 | Awaiting verification | - |
+| 5. Slash Command Delegation | 2026-08-23.01 | 3/3 | Complete | 2026-09-12 |
 | 6. Install Documentation | 2026-08-23.01 | 0/2 | Not started | - |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
