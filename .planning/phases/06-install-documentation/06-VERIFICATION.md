@@ -35,7 +35,7 @@ covered_files:
   - internal/setup/opencode.go
   - internal/setup/plan.go
   - skill/engram/commands/engram-setup.md
-covered_digest: v1:sha256:c04c63364185a30c0a4e1e0d72c0493ea88eb50e23dac91df283daeef28e7dc3
+covered_digest: v1:sha256:83e95c539443858c52cd55a1eedfe0f0f8c0bd4851afd80847521cc00d1bce42
 ---
 
 # Phase 6: Install Documentation Verification Report
