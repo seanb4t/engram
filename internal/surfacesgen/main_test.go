@@ -76,7 +76,7 @@ func TestCheckDispatch(t *testing.T) {
 }
 
 // Execute the actual main in a subprocess so os.Exit and stderr are tested.
-func TestCheckMainHelper(t *testing.T) {
+func TestCheckMainHelper(_ *testing.T) {
 	if os.Getenv("ENGRAM_SURFACESGEN_TEST_MAIN") != "1" {
 		return
 	}
@@ -125,5 +125,23 @@ func TestDispatchRejectsUnknownArgs(t *testing.T) {
 			t.Fatalf("accepted %q", args)
 		}
 		assertFixtureUnchanged(t, root, path, before)
+	}
+}
+
+func TestCheckDispatchWriterControl(t *testing.T) {
+	root, path, before := checkFixture(t, false)
+	t.Chdir(root)
+	// Prove the sentinel is on the real write path: ordinary generation
+	// rewrites it before encountering the deliberately absent next target.
+	if err := dispatch(nil); err == nil {
+		t.Fatal("ordinary generation unexpectedly accepted incomplete fixture")
+	}
+	sentinel, err := os.ReadFile(filepath.Join(root, toolBlastRadiusPath))
+	if err != nil || string(sentinel) == sentinelContent {
+		t.Fatalf("writer control did not alter sentinel: %v", err)
+	}
+	target, err := os.ReadFile(path)
+	if err != nil || string(target) != before {
+		t.Fatalf("ordinary generation reached setup despite missing earlier targets: %v", err)
 	}
 }
