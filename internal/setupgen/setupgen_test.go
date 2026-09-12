@@ -166,3 +166,40 @@ func TestWriteNoneTracer(t *testing.T) {
 		t.Fatal("repeat generation changed bytes")
 	}
 }
+
+func TestCheckReadOnly(t *testing.T) {
+	body, err := Render(setup.ClaudeCode.Plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := "<!-- engram:rule:start setup-commands -->\n"
+	end := "\n<!-- engram:rule:end setup-commands -->\n"
+	valid := start + body + end
+	for _, tc := range []struct {
+		name, content string
+		wantError bool
+	}{
+		{"exact", valid, false},
+		{"one-byte-drift", start + "X" + body[1:] + end, true},
+		{"trailing-newline-drift", start + strings.TrimSuffix(body, "\n") + end, true},
+		{"crlf-drift", strings.ReplaceAll(valid, "\n", "\r\n"), true},
+		{"missing", "no anchors\n", true},
+		{"unterminated", start + body, true},
+		{"reversed", end + body + start, true},
+		{"nested", start + valid + end, true},
+		{"duplicate-stale", valid + start + "stale" + end, true},
+		{"duplicate-inline", strings.TrimSpace(start) + valid, true},
+		{"malformed", strings.Replace(valid, "setup-commands -->", "setup-commands ->", 1), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "command.md")
+			before := "Authored prefix.\n" + tc.content + "Authored suffix.\n"
+			if err := os.WriteFile(path, []byte(before), 0o600); err != nil { t.Fatal(err) }
+			err := Check(path)
+			if (err != nil) != tc.wantError { t.Fatalf("Check error = %v, wantError %v", err, tc.wantError) }
+			if err != nil && (!strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "task surfaces:gen")) { t.Fatalf("error lacks target or remedy: %v", err) }
+			after, err := os.ReadFile(path)
+			if err != nil || string(after) != before { t.Fatalf("check changed file: %v", err) }
+		})
+	}
+}
