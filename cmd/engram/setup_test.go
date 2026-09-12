@@ -510,6 +510,7 @@ func TestSetupUnsupportedAuthModeIsFailedRow(t *testing.T) {
 	stdout, _, err := runClient(t, "setup",
 		"--url", "https://engram.example.com/mcp",
 		"--auth", "oauth-client",
+		"--client-id", "test-client",
 		"--runtime", "opencode",
 		"--output", "json")
 	if err != nil {
@@ -1902,4 +1903,132 @@ func TestSetupReportCoversEveryRuntimeShape(t *testing.T) {
 
 		rec.assertNoRealInvocationOrHomeWrite(t)
 	})
+}
+
+// TestSetupClientID exercises only the fake runtime and in-memory skills seams.
+func TestSetupClientID(t *testing.T) {
+	const url = "https://engram.example.com/mcp"
+	for _, tc := range []struct {
+		name string
+		id   string
+	}{
+		{"ordinary", "test-client"},
+		{"metacharacters", "  test client; $(echo nope) 'quoted' &  "},
+	} {
+		for _, apply := range []bool{false, true} {
+			lane := "preview"
+			if apply {
+				lane = "fake_apply"
+			}
+			t.Run(tc.name+"/"+lane, func(t *testing.T) {
+				resetClientFlags(t)
+				resetCommandFlagState(t, setupCmd)
+				var calls [][]string
+				env := fakeSetupEnvWithRun(func(_ context.Context, path string, args []string) (setup.RunResult, error) {
+					calls = append(calls, append([]string{filepath.Base(path)}, args...))
+					return setup.RunResult{}, nil
+				}, "claude")
+				withFakeSetupEnv(t, env)
+				mutations := 0
+				write, mkdir := skillsEnv.WriteFile, skillsEnv.MkdirAll
+				skillsEnv.WriteFile = func(path string, data []byte, mode os.FileMode) error {
+					mutations++
+					return write(path, data, mode)
+				}
+				skillsEnv.MkdirAll = func(path string, mode os.FileMode) error {
+					mutations++
+					return mkdir(path, mode)
+				}
+				args := []string{"setup", "--url", url, "--auth", "oauth-client", "--client-id", tc.id, "--runtime", "claude-code", "--output", "json"}
+				if apply {
+					args = append(args, "--apply")
+				}
+				stdout, stderr, err := runClient(t, args...)
+				if err != nil {
+					t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+				}
+				var doc setupReportDoc
+				if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+					t.Fatal(err)
+				}
+				wantAdd := []string{"claude", "mcp", "add", "--transport", "http", "engram", url, "--scope", "user", "--client-id", tc.id, "--client-secret", "--callback-port", "8765"}
+				wantCommand := "claude mcp remove engram --scope user; " + (setup.Action{Args: wantAdd}).Command()
+				if len(doc.Runtimes) != 1 || doc.Runtimes[0].Command != wantCommand {
+					t.Fatalf("report = %+v, want one row with command %q", doc.Runtimes, wantCommand)
+				}
+				adds := 0
+				for _, call := range calls {
+					if len(call) > 2 && call[2] == "add" {
+						adds++
+						if !reflect.DeepEqual(call, wantAdd) {
+							t.Errorf("add argv = %q, want %q", call, wantAdd)
+						}
+					} else if !apply && !reflect.DeepEqual(call, []string{"claude", "mcp", "get", "engram"}) {
+						t.Errorf("preview ran a non-probe command: %q", call)
+					}
+				}
+				if apply && (adds != 1 || mutations == 0) {
+					t.Errorf("apply: adds=%d skills mutations=%d, want one add and installed skills", adds, mutations)
+				}
+				if !apply && (adds != 0 || mutations != 0) {
+					t.Errorf("preview: adds=%d skills mutations=%d, want zero", adds, mutations)
+				}
+			})
+		}
+	}
+
+	invalid := []struct {
+		name string
+		args []string
+	}{
+		{"missing", []string{"--auth", "oauth-client"}},
+		{"empty", []string{"--auth", "oauth-client", "--client-id="}},
+		{"whitespace", []string{"--auth", "oauth-client", "--client-id", " \t\n\u2003"}},
+	}
+	for _, auth := range []string{"default", "", "oauth", "bearer", "none"} {
+		for _, id := range []string{"", "irrelevant"} {
+			args := []string{"--client-id=" + id}
+			if auth != "default" {
+				args = append(args, "--auth", auth)
+			}
+			invalid = append(invalid, struct {
+				name string
+				args []string
+			}{"irrelevant/" + auth + "/" + id, args})
+		}
+	}
+	for _, tc := range invalid {
+		for _, apply := range []bool{false, true} {
+			t.Run(tc.name+"/apply="+strconv.FormatBool(apply), func(t *testing.T) {
+				resetClientFlags(t)
+				resetCommandFlagState(t, setupCmd)
+				effects := 0
+				env := fakeSetupEnv("claude")
+				env.LookPath = func(string) (string, error) { effects++; return "", exec.ErrNotFound }
+				env.HomeDir = func() (string, error) { effects++; return "/home/fake", nil }
+				env.Run = func(context.Context, string, []string) (setup.RunResult, error) {
+					effects++
+					return setup.RunResult{}, nil
+				}
+				withFakeSetupEnv(t, env)
+				skillsEnv.WriteFile = func(string, []byte, os.FileMode) error { effects++; return nil }
+				skillsEnv.MkdirAll = func(string, os.FileMode) error { effects++; return nil }
+				args := append([]string{"setup", "--url", url}, tc.args...)
+				if apply {
+					args = append(args, "--apply")
+				}
+				_, stderr, err := runClient(t, args...)
+				var coded interface{ ExitCode() int }
+				if !errors.As(err, &coded) || coded.ExitCode() != exitUsage {
+					t.Errorf("error = %v, want ExitCode() == exitUsage (stderr=%q)", err, stderr)
+				}
+				if err == nil || !strings.Contains(err.Error(), "--client-id") {
+					t.Errorf("error = %v, want it to name --client-id", err)
+				}
+				if effects != 0 {
+					t.Errorf("invalid input caused %d runtime/skills effects, want zero", effects)
+				}
+			})
+		}
+	}
 }
