@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -1468,6 +1469,124 @@ func TestSetupSkillsFailureReachesPartialExit(t *testing.T) {
 	}
 	if !sawCodexRow {
 		t.Errorf("codex row missing or carries an empty outcome: %s", stdout)
+	}
+}
+
+// TestSetupIndexReadFailureReachesPartialExit proves that an unreadable
+// AGENTS.md index (issue #559, Task 1 of this plan) surfaces at the CLI
+// boundary exactly like TestSetupSkillsFailureReachesPartialExit's
+// scripted write failure does: a failed codex row naming the index path,
+// a non-failed claude-code row, zero index writes, continued native
+// skill writes, and the partial exit code — proving the wiring from
+// Report.Err through setupApplySkillsFacet, SkillsOutcome,
+// AggregateOutcome, and Classify already carries an upstream index-read
+// failure end to end (D-06/D-07). Unlike the analog above, this test
+// never fails a WRITE — the point is that a successful writer must never
+// be REACHED for the index once its read failed.
+func TestSetupIndexReadFailureReachesPartialExit(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupEnv(t, fakeSetupEnv("claude", "codex"))
+
+	const codexIndex = "/home/fake/.codex/AGENTS.md"
+	seed := []byte("# Operator's own AGENTS.md\n\nHand-written guidance.\n")
+
+	store := map[string][]byte{codexIndex: append([]byte(nil), seed...)}
+	var writeLog []string
+
+	// Override the auto-faked skillsEnv (withFakeSetupEnv) with one whose
+	// READ fails ONLY for codex's index path — every other known key
+	// reads its stored bytes, every other unknown key reports
+	// os.ErrNotExist (the ordinary "not yet installed" case).
+	skillsEnv = skills.Environment{
+		ReadFile: func(name string) ([]byte, error) {
+			if name == codexIndex {
+				return nil, os.ErrPermission
+			}
+			if b, ok := store[name]; ok {
+				return b, nil
+			}
+			return nil, os.ErrNotExist
+		},
+		WriteFile: func(name string, data []byte, _ os.FileMode) error {
+			writeLog = append(writeLog, name)
+			cp := make([]byte, len(data))
+			copy(cp, data)
+			store[name] = cp
+			return nil
+		},
+		MkdirAll: func(string, os.FileMode) error { return nil },
+	}
+
+	stdout, stderr, err := runClient(t, "setup",
+		"--url", "https://engram.example.com/mcp",
+		"--runtime", "claude-code,codex",
+		"--output", "json",
+		"--apply")
+	if err == nil {
+		t.Fatal("expected a non-nil error (codex's index read fails), got nil")
+	}
+	if got := exitCodeFromError(err); got != exitPartial {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitPartial); stdout=%q stderr=%q", got, exitPartial, stdout, stderr)
+	}
+	if stdout == "" {
+		t.Fatal("stdout is empty; the report must be rendered before the nonzero exit (T-02-06)")
+	}
+
+	var doc setupReportDoc
+	if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+	}
+	if len(doc.Runtimes) != 2 {
+		t.Fatalf("setup --apply emitted %d rows, want 2 (claude-code and codex, both rendered): %s", len(doc.Runtimes), stdout)
+	}
+
+	for _, row := range doc.Runtimes {
+		switch row.Name {
+		case "codex":
+			if row.Outcome != string(setup.OutcomeFailed) {
+				t.Errorf("codex row.Outcome = %q, want %q", row.Outcome, setup.OutcomeFailed)
+			}
+			if row.Skills != string(setup.OutcomeFailed) {
+				t.Errorf("codex row.Skills = %q, want %q", row.Skills, setup.OutcomeFailed)
+			}
+			if row.Registration == string(setup.OutcomeFailed) {
+				t.Errorf("codex row.Registration = %q, want it NOT failed (registration itself succeeds; only the skills facet's index read fails)", row.Registration)
+			}
+			if row.SkillsIndex != codexIndex {
+				t.Errorf("codex row.SkillsIndex = %q, want %q", row.SkillsIndex, codexIndex)
+			}
+			if !strings.Contains(row.Reason, codexIndex) {
+				t.Errorf("codex row.Reason = %q, want it to contain %q", row.Reason, codexIndex)
+			}
+		case "claude-code":
+			if row.Outcome == string(setup.OutcomeFailed) {
+				t.Errorf("claude-code row.Outcome = %q, want it NOT failed", row.Outcome)
+			}
+			if row.Skills == string(setup.OutcomeFailed) {
+				t.Errorf("claude-code row.Skills = %q, want it NOT failed", row.Skills)
+			}
+		}
+	}
+
+	var indexWriteCount int
+	var sawSkillsDirWrite bool
+	for _, p := range writeLog {
+		if p == codexIndex {
+			indexWriteCount++
+		}
+		if strings.HasPrefix(p, "/home/fake/.agents/skills/") {
+			sawSkillsDirWrite = true
+		}
+	}
+	if indexWriteCount != 0 {
+		t.Errorf("writeLog contains %d entries for %q, want 0 (zero index writes on a read failure)", indexWriteCount, codexIndex)
+	}
+	if !sawSkillsDirWrite {
+		t.Errorf("writeLog = %v, want at least one entry under /home/fake/.agents/skills/ (codex's native skill files still install, D-07)", writeLog)
+	}
+	if !bytes.Equal(store[codexIndex], seed) {
+		t.Errorf("store[%q] = %q, want it UNCHANGED — zero bytes written on a read failure", codexIndex, store[codexIndex])
 	}
 }
 
