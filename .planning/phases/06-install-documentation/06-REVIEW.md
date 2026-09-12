@@ -1,6 +1,6 @@
 ---
 phase: 06-install-documentation
-reviewed: 2026-09-12T16:39:23Z
+reviewed: 2026-09-12T16:42:27Z
 depth: standard
 files_reviewed: 5
 files_reviewed_list:
@@ -10,31 +10,35 @@ files_reviewed_list:
   - docs-site/src/content/docs/guides/cli.md
   - docs-site/src/content/docs/guides/plugin.md
 findings:
-  critical: 2
-  warning: 1
+  critical: 0
+  warning: 0
   info: 0
-  total: 3
-status: issues_found
+  total: 0
+status: clean
+resolved_findings: 3
+resolution_commit: 4e1ee5d68afcd8cd574f32fbfc51cd659c074240
 ---
 
 # Phase 6: Code Review Report
 
-**Reviewed:** 2026-09-12T16:39:23Z
+**Reviewed:** 2026-09-12T16:42:27Z
 **Depth:** standard
 **Files Reviewed:** 5
-**Status:** issues_found
+**Status:** clean — all three original findings resolved
 
 ## Summary
 
-Reviewed all five guides, their shell examples, the setup/runtime/credential contracts they describe, the repository plugin manifest, and the published release/cask references. Found two blocking onboarding defects and one stale exit-code contract. These are retained defects in the submitted guide files, not regressions introduced by the Phase 6 diff against `bef73238`.
+The initial standard review covered all five guides, their shell examples, setup/runtime/credential contracts, the repository plugin manifest, and published release/cask references. It found two blocking onboarding defects and one stale exit-code contract, all retained defects rather than Phase 6 regressions against `bef73238`. A bounded re-review of commit `4e1ee5d68afcd8cd574f32fbfc51cd659c074240` confirms that all three were corrected. No unresolved findings remain from this review; frontmatter counts describe open findings. The original findings below are retained as resolution history, with original line references.
 
 ## Narrative Findings (AI reviewer)
 
-## Critical Issues
+## Resolved Critical Issues
 
 ### CR-01: Local Docker quickstart exposes unauthenticated services to the network
 
 **Classification:** BLOCKER
+
+**Status:** RESOLVED in `4e1ee5d6`. Quickstart now creates the `engram-local` user-defined network, attaches both containers, leaves Qdrant unpublished, and uses `engram-qdrant:6334`. The only published service is engram at `127.0.0.1:8080:8080`; the external embedder retains its host route. Remote access is explicitly routed to authenticated deployment guidance. Reviewed the changed commands against the original Docker port-publishing reference and root's Context7 `/docker/docs` evidence at `/tmp/engram-06-docker-docs.txt`; no container was launched.
 
 **File:** `/Volumes/Code/github.com/seanb4t/engram/docs-site/src/content/docs/guides/quickstart.md:19` and `:34`
 
@@ -45,6 +49,8 @@ Reviewed all five guides, their shell examples, the setup/runtime/credential con
 ### CR-02: Both standalone plugin installation commands use unsupported arguments
 
 **Classification:** BLOCKER
+
+**Status:** RESOLVED in `4e1ee5d6`. Both examples now add the marketplace before installing `engram@engram`; the clone example names the repository root. The corrected arguments agree with the previously inspected read-only Claude help and `.claude-plugin/marketplace.json`. No installation was executed.
 
 **File:** `/Volumes/Code/github.com/seanb4t/engram/docs-site/src/content/docs/guides/plugin.md:20` and `:26`
 
@@ -66,11 +72,13 @@ claude plugin install engram@engram
 
 The local marketplace path must be the repository root, not `skill/engram`.
 
-## Warnings
+## Resolved Warnings
 
 ### WR-01: The global CLI exit-code table omits setup's failure codes
 
 **Classification:** WARNING
+
+**Status:** RESOLVED in `4e1ee5d6`. The guide now includes codes `8` and `9`, excludes absent runtimes from failed attempts, removes the fixed eight-code assertion, and explicitly labels the setup codes unreleased with v0.15.1 availability wording. The entries match the source constants and classification examined in the initial review.
 
 **File:** `/Volumes/Code/github.com/seanb4t/engram/docs-site/src/content/docs/guides/cli.md:355-370`
 
@@ -80,6 +88,7 @@ The local marketplace path must be the repository root, not `skill/engram`.
 
 ## Review evidence and limits
 
+- Re-review was limited to the three guide fixes in `4e1ee5d6`; it did not repeat the full review or inspect other agents' release-observation work. The final build log `/tmp/engram-06-final-docs-build.log` records 21 pages built successfully. Root reports forced Markdown lint passed all five pages. No broad tests or builds were repeated by this reviewer.
 - Read `AGENTS.md`, Phase 6 context/plan/summary, the supplied reviewer-role file, and the project skill index. `BOOST.md` was absent. The agent-skills query returned no configured additions. Beads is retired by repository instructions, so no tracker command ran.
 - Consulted CodeGraph before source exploration. Checked current setup help implementation, auth validation, generic output, runtime plans, skill destinations, and exit-code production against the guide claims.
 - Used only read-only Claude help for installation syntax; no plugin installation or runtime registration was attempted.
