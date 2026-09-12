@@ -47,7 +47,7 @@ would write, and wires it up.
 
 - [x] **REQ-skills-embedded-in-binary**: A brew-installed engram binary carries the curation skills' content without a Claude plugin present, sourced from the same files the plugin ships so the two cannot drift.
 - [x] **REQ-skills-native-format**: Where a runtime has a native skill or rules format, `engram setup` installs the skills in that format.
-- [ ] **REQ-skills-agents-md-fallback**: Where a runtime has no native skill format, `engram setup` writes the guidance into AGENTS.md inside a delimited, re-detectable block, so a re-run replaces that block rather than appending a second copy. Content outside the block is left byte-for-byte untouched. **Audit gap (2026-09-12):** an existing unreadable-but-writable index is overwritten after a read error; preservation is not satisfied on that path ([#559](https://github.com/seanb4t/engram/issues/559)).
+- [x] **REQ-skills-agents-md-fallback**: Where a runtime has no native skill format, `engram setup` writes the guidance into AGENTS.md inside a delimited, re-detectable block, so a re-run replaces that block rather than appending a second copy. Content outside the block is left byte-for-byte untouched. **Audit gap (2026-09-12) closed by 04-05:** an unreadable-but-writable index is preserved with zero writes; only confirmed nonexistence (`fs.ErrNotExist`) is the create case ([#559](https://github.com/seanb4t/engram/issues/559)).
 
 ### Slash Command Delegation
 
@@ -107,7 +107,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-register-cli-surface-drift-legible | Phase 3 | Complete |
 | REQ-skills-embedded-in-binary | Phase 4 | Complete |
 | REQ-skills-native-format | Phase 4 | Complete |
-| REQ-skills-agents-md-fallback | Phase 4 | Gap found — #559 |
+| REQ-skills-agents-md-fallback | Phase 4 | Complete |
 | REQ-engram-setup-delegates | Phase 5 | Complete |
 | REQ-engram-setup-prose-fallback | Phase 5 | Complete |
 | REQ-delegation-equivalence-derived | Phase 5 | Complete |

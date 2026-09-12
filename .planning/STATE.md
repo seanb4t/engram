@@ -1,19 +1,19 @@
 ---
 gsd_state_version: "1.0"
 milestone: 2026-08-23.01
-current_phase: 04
-current_phase_name: Skills Distribution
-status: executing
-stopped_at: milestone audit found AGENTS.md preservation gap 559; fix and re-verify Phase 4
-last_updated: "2026-09-12T20:00:49.462Z"
+current_phase: 06
+current_phase_name: Install Documentation
+status: ready_for_milestone_audit
+stopped_at: Phase 04 gap #559 closed and re-verified 53/53; ready to re-run milestone audit
+last_updated: "2026-09-12T20:28:15.582Z"
 last_activity: 2026-09-12
-last_activity_desc: Phase 04 execution started
-state_head: 7980593b4e338dba22592184d2a5809c55ba28e9
+last_activity_desc: Phase 04 gap closure 04-05 executed and verified passed; #559 fixed
+state_head: ee9f91949c2c9528076c641f6910c21e031cf049
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 21
-  completed_plans: 20
+  completed_plans: 21
 milestone_name: Distribution & Agent Bootstrap
 ---
 
@@ -24,20 +24,22 @@ milestone_name: Distribution & Agent Bootstrap
 See: .planning/PROJECT.md (updated 2026-09-12 — after Phase 5 verification)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 04 — Skills Distribution
+**Current focus:** Milestone audit re-run — Phase 4 gap #559 closed
 
 ## Current Position
 
-Phase: 04 (Skills Distribution) — EXECUTING
+Phase: 04 — Skills Distribution (gap closure complete; all 6 phases complete)
 Plan: 5 of 5 complete
-Status: Executing Phase 04
-Last activity: 2026-09-12 — Phase 04 execution started
+Status: Phase 4 re-verified passed (53/53); ready to re-run milestone audit
+Last activity: 2026-09-12 — 04-05 closed #559 (95daee01, bae018f2, c773d80e); verification passed; review clean
 
-The milestone audit found an existing AGENTS.md read-error preservation defect.
-Phase 4 is reopened as gaps_found; the other five canonical reports pass. All
-20 plan summaries exist, but completion counts do not override the reproduced
-failure. The three stale Phase 2 checkboxes were reconciled against both summary
-and verification evidence. Audit: `.planning/2026-08-23.01-MILESTONE-AUDIT.md`.
+The milestone audit found an existing AGENTS.md read-error preservation defect
+(B01, #559) and reopened Phase 4 as gaps_found. Gap-closure plan 04-05 fixed it:
+only `errors.Is(err, fs.ErrNotExist)` is the create case; any other index read
+error preserves the file with zero writes and surfaces through the codex row and
+the partial exit. Phase 4 re-verified passed 53/53; all 21 plan summaries exist.
+The audit (`.planning/2026-08-23.01-MILESTONE-AUDIT.md`) needs a re-run before
+archival. The three stale Phase 2 checkboxes were reconciled earlier.
 
 The qualifying-release checks passed for v0.16.0. See
 `.planning/phases/06-install-documentation/06-RELEASE-0.16.0.md` for publication,
@@ -329,7 +331,7 @@ Both prior entries were delivered and had simply never been closed out:
 ## Session Continuity
 
 Last session: 2026-09-12T16:44:40+00:00
-Stopped at: milestone audit gaps_found; Phase 4 preservation repair required
+Stopped at: Phase 04 gap #559 closed and re-verified; milestone audit re-run pending
 Resume file: .planning/phases/06-install-documentation/06-POST-RELEASE.md
 
 ## Performance Metrics

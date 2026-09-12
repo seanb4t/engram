@@ -275,7 +275,7 @@ mechanism instead of another one-shot operator command.
 - [x] **Phase 1: Version & Homebrew Distribution** - `engram version --output json` plus a published, credential-verified, recoverable Homebrew cask (completed 2026-08-25)
 - [x] **Phase 2: Setup Command Core** - `engram setup` detects runtimes, previews by default, declares its full outcome vocabulary, and is fully scriptable without a TTY (completed 2026-08-30)
 - [x] **Phase 3: Runtime Registration** - `engram setup --apply` registers engram with Claude Code, Codex, and opencode via their own CLIs, converging idempotently, plus a generic-MCP fallback, across every auth mode (completed 2026-09-09)
-- [ ] **Phase 4: Skills Distribution** - The five curation skills reach every runtime, native format where one exists, AGENTS.md fallback otherwise (audit reopened preservation gap #559 on 2026-09-12)
+- [x] **Phase 4: Skills Distribution** - The five curation skills reach every runtime, native format where one exists, AGENTS.md fallback otherwise (audit reopened preservation gap #559 on 2026-09-12) (completed 2026-09-12)
 - [x] **Phase 5: Slash Command Delegation** - `/engram-setup` delegates to the binary when present, keeps its prose fallback first-class otherwise, with a generated (not hand-checked) equivalence gate (completed 2026-09-12)
 - [x] **Phase 6: Install Documentation** - docs-site documents how to get the binary and how to run `engram setup` (completed 2026-09-12)
 
@@ -470,7 +470,7 @@ and detection Phase 3 established).
    AGENTS.md inside a delimited, re-detectable block; re-running replaces that block rather than
    appending a second copy, and content outside the block is left byte-for-byte untouched.
 
-**Plans:** 5/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
 **Wave 1**
@@ -656,7 +656,7 @@ AGENTS.md preservation gap (#559); archival remains blocked on that fix.
 | 1. Version & Homebrew Distribution | 2026-08-23.01 | 3/3 | Complete | 2026-08-25 |
 | 2. Setup Command Core | 2026-08-23.01 | 3/3 | Complete | 2026-08-30 |
 | 3. Runtime Registration | 2026-08-23.01 | 5/5 | Complete | 2026-09-09 |
-| 4. Skills Distribution | 2026-08-23.01 | 4/4 | Audit gap — #559 | 2026-09-12 |
+| 4. Skills Distribution | 2026-08-23.01 | 3/3 | Complete | 2026-09-12 |
 | 5. Slash Command Delegation | 2026-08-23.01 | 3/3 | Complete | 2026-09-12 |
 | 6. Install Documentation | 2026-08-23.01 | 2/2 | Complete; released docs live | 2026-09-12 |
 
