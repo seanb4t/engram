@@ -727,6 +727,12 @@
           "usage": "auth mode: \"oauth\", \"oauth-client\", \"bearer\", or \"none\" (default: ENGRAM_AUTH)"
         },
         {
+          "name": "client-id",
+          "type": "string",
+          "default": "",
+          "usage": "non-secret OAuth client ID; required for --auth oauth-client; other auth modes reject this flag"
+        },
+        {
           "name": "output",
           "type": "string",
           "default": "",

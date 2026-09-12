@@ -592,7 +592,10 @@ aggregated outcome, with the full skill content available in the
 
 Accepted --auth modes:
   oauth         OAuth via the runtime's own login/callback flow (default)
-  oauth-client  a pre-registered OAuth client (client id and secret)
+  oauth-client  a pre-registered OAuth client; requires --client-id with a
+                non-secret client ID. Other auth modes reject --client-id.
+                For scripted Claude Code registration, supply MCP_CLIENT_SECRET
+                in the inherited environment; engram has no interactive stdin.
   bearer        a static bearer token. A native runtime (claude-code, codex,
                 opencode) is registered with an environment-variable
                 REFERENCE naming ENGRAM_TOKEN, resolved by that runtime
@@ -607,11 +610,12 @@ Accepted --auth modes:
 		strings.Join(setup.Names(), ", "), setupApplySentence())
 }
 
-// setupExample carries three worked invocations
+// setupExample carries four worked invocations
 // (REQ-setup-correct-by-reading, success criterion 5): a bare preview, a
-// --runtime-scoped preview, and a --auth bearer --token-file preview.
+// --runtime-scoped preview, an OAuth-client preview, and a bearer preview.
 const setupExample = `  engram setup --url https://engram.example.com/mcp
   engram setup --url https://engram.example.com/mcp --runtime claude-code
+  engram setup --url https://engram.example.com/mcp --auth oauth-client --client-id example-client
   engram setup --url https://engram.example.com/mcp --auth bearer --token-file ~/.engram/token`
 
 func init() {

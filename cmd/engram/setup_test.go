@@ -792,6 +792,8 @@ func TestSetupHelpNamesEveryRuntimeAndAuthMode(t *testing.T) {
 	for _, want := range []string{
 		"claude-code", "codex", "opencode",
 		"oauth", "oauth-client", "bearer", "none",
+		"client-id", "non-secret client ID", "Other auth modes reject --client-id",
+		"MCP_CLIENT_SECRET", "inherited environment", "no interactive stdin",
 		"apply",
 	} {
 		if !strings.Contains(section, want) {
@@ -2072,24 +2074,23 @@ func TestSetupClientID(t *testing.T) {
 		}
 	}
 
-	invalid := []struct {
+	type invalidCase struct {
 		name string
 		args []string
-	}{
+	}
+	invalid := make([]invalidCase, 0, 13)
+	invalid = append(invalid, []invalidCase{
 		{"missing", []string{"--auth", "oauth-client"}},
 		{"empty", []string{"--auth", "oauth-client", "--client-id="}},
 		{"whitespace", []string{"--auth", "oauth-client", "--client-id", " \t\n\u2003"}},
-	}
+	}...)
 	for _, auth := range []string{"default", "", "oauth", "bearer", "none"} {
 		for _, id := range []string{"", "irrelevant"} {
 			args := []string{"--client-id=" + id}
 			if auth != "default" {
 				args = append(args, "--auth", auth)
 			}
-			invalid = append(invalid, struct {
-				name string
-				args []string
-			}{"irrelevant/" + auth + "/" + id, args})
+			invalid = append(invalid, invalidCase{"irrelevant/" + auth + "/" + id, args})
 		}
 	}
 	for _, tc := range invalid {
@@ -2125,5 +2126,36 @@ func TestSetupClientID(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestSetupHelpClientIDContract(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	stdout, stderr, err := runClient(t, "setup", "--help")
+	if err != nil {
+		t.Fatalf("help: %v (stderr=%q)", err, stderr)
+	}
+	for _, want := range []string{
+		"requires --client-id", "non-secret client ID", "Other auth modes reject --client-id",
+		"MCP_CLIENT_SECRET", "inherited environment", "no interactive stdin",
+		"--auth oauth-client --client-id example-client", "ENGRAM_TOKEN",
+		"applies only to the portable configuration", "token_file=ignored",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("help missing %q:\n%s", want, stdout)
+		}
+	}
+	flag := setupCmd.Flags().Lookup("client-id")
+	if flag == nil {
+		t.Fatal("--client-id flag missing")
+	}
+	for _, want := range []string{"non-secret", "required for --auth oauth-client", "other auth modes reject"} {
+		if !strings.Contains(flag.Usage, want) {
+			t.Errorf("client-id flag help = %q, missing %q", flag.Usage, want)
+		}
+	}
+	if flag.DefValue != "" {
+		t.Errorf("client-id default = %q, want empty", flag.DefValue)
 	}
 }

@@ -143,8 +143,9 @@ func (claudeCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
 					Args: []string{"claude", "mcp", "add", "--transport", "http", "engram", opts.URL,
 						"--scope", "user", "--client-id", opts.ClientID, "--client-secret", "--callback-port", "8765"},
 					// --client-secret deliberately takes no inline value: Claude
-					// Code prompts for it with masked input, which is why no
-					// secret can reach argv on this path.
+					// Code can prompt interactively, but engram provides no stdin.
+					// Scripted registration requires MCP_CLIENT_SECRET in the
+					// inherited environment; no secret reaches argv here.
 					Description: "register engram as a user-scope MCP server (pre-registered OAuth client)",
 				},
 			},
