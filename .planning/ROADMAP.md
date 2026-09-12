@@ -631,7 +631,7 @@ and the delegation story settled).
 | 2. Setup Command Core | 2026-08-23.01 | 3/3 | Complete | 2026-08-30 |
 | 3. Runtime Registration | 2026-08-23.01 | 7/7 | Complete | 2026-09-09 |
 | 4. Skills Distribution | 2026-08-23.01 | 3/3 | Complete | 2026-09-10 |
-| 5. Slash Command Delegation | 2026-08-23.01 | 0/3 | Not started | - |
+| 5. Slash Command Delegation | 2026-08-23.01 | 1/3 | In Progress | - |
 | 6. Install Documentation | 2026-08-23.01 | 0/2 | Not started | - |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
